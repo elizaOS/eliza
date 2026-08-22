@@ -5,6 +5,8 @@ import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
 
+import { logger } from "../logger";
+
 export interface DetectedProvider {
   id: string;
   source: string;
@@ -99,6 +101,38 @@ async function isCliInstalled(name: string): Promise<boolean> {
     // error-policy:J4 CLI absent (spawn probe)
     return false;
   }
+}
+
+/**
+ * Read a Chromium "Safe Storage" cookie-encryption key from the macOS Keychain
+ * through the native `@napi-rs/keyring` binding — never the `security` CLI
+ * (the CLI can target a stale default keychain and pop a misleading dialog;
+ * see `platform-secure-store-node.ts`). Chromium writes each entry with
+ * `svce=<browser> Safe Storage` and the product name as the account
+ * ({@link ChromiumBrowserDef.keychainAccount}). Returns `null` when the entry
+ * is absent, unreadable, or access-denied, so the caller can fall through to
+ * the next browser.
+ *
+ * Fail-soft is deliberate and version-pinned: `@napi-rs/keyring` 1.3.0's
+ * `AsyncEntry.getPassword()` resolves every underlying keyring failure
+ * (`Ok(inner.get_password().ok())` in the binding) to `undefined`, so absent
+ * and unreadable entries are indistinguishable at this layer. That matches
+ * both the pre-#23068 `security`-CLI helper's semantics and the #23068 vault
+ * store's identical `AsyncEntry` falsy→not-found handling in
+ * `platform-secure-store-node.ts`. Only binding import/construction failures
+ * throw, and the per-browser caller degrades those to a skipped browser.
+ */
+async function readKeychainCredential(
+  service: string,
+  account: string,
+): Promise<string | null> {
+  if (process.platform !== "darwin") return null;
+  const { AsyncEntry } = await import("@napi-rs/keyring");
+  const value: string | undefined = await new AsyncEntry(
+    service,
+    account,
+  ).getPassword();
+  return typeof value === "string" && value.length > 0 ? value : null;
 }
 
 async function scanCodexCredentials(
@@ -258,6 +292,13 @@ interface ChromiumBrowserDef {
   name: string;
   cookiePath: string;
   keychainService: string;
+  /**
+   * Keychain account (`acct`) of the Safe Storage entry. Chromium writes the
+   * browser's product name here, which is not always the display `name` above
+   * (Edge's account is "Microsoft Edge", not "Edge"). Pinned per browser so
+   * keychain identity never silently follows a UI rename.
+   */
+  keychainAccount: string;
 }
 
 const CHROMIUM_BROWSERS: ChromiumBrowserDef[] = [
@@ -265,26 +306,31 @@ const CHROMIUM_BROWSERS: ChromiumBrowserDef[] = [
     name: "Chrome",
     cookiePath: "Google/Chrome/Default/Cookies",
     keychainService: "Chrome Safe Storage",
+    keychainAccount: "Chrome",
   },
   {
     name: "Arc",
     cookiePath: "Arc/User Data/Default/Cookies",
     keychainService: "Arc Safe Storage",
+    keychainAccount: "Arc",
   },
   {
     name: "Brave",
     cookiePath: "BraveSoftware/Brave-Browser/Default/Cookies",
     keychainService: "Brave Safe Storage",
+    keychainAccount: "Brave",
   },
   {
     name: "Edge",
     cookiePath: "Microsoft Edge/Default/Cookies",
     keychainService: "Microsoft Edge Safe Storage",
+    keychainAccount: "Microsoft Edge",
   },
   {
     name: "Chromium",
     cookiePath: "Chromium/Default/Cookies",
     keychainService: "Chromium Safe Storage",
+    keychainAccount: "Chromium",
   },
 ];
 
@@ -394,8 +440,22 @@ export async function readChromiumCookies(
     const dbPath = path.join(appSupport, browser.cookiePath);
     if (!fs.existsSync(dbPath)) continue;
 
-    // Get the decryption key from Keychain
-    const password = await readKeychainCredential(browser.keychainService);
+    let password: string | null;
+    try {
+      // Get the decryption key from Keychain
+      password = await readKeychainCredential(
+        browser.keychainService,
+        browser.keychainAccount,
+      );
+    } catch (err) {
+      // error-policy:J4 native keyring binding failure for one browser
+      // degrades to a skipped browser so the scan continues with the others.
+      logger.warn(
+        `[credentials] Failed to read ${browser.name} keychain key:`,
+        err,
+      );
+      continue;
+    }
     if (!password) continue;
 
     const key = deriveChromiumCookieKey(password);
@@ -637,10 +697,15 @@ async function scanProviderCredentialsRaw(): Promise<DetectedProvider[]> {
  * Checks files → browser session → env vars, deduplicating by provider ID
  * (first match wins per provider).
  *
- * It deliberately does not scrape third-party macOS Keychain items. Those
- * reads can trigger consent/default-keychain dialogs and are not an
- * App-Sandbox-safe credential integration. Providers that need Keychain-backed
- * sign-in must expose an explicit OAuth or native integration instead.
+ * It deliberately does not scrape third-party PROVIDER credentials from the
+ * macOS Keychain (Claude/Copilot/Cursor login items). Those reads can trigger
+ * consent/default-keychain dialogs and are not an App-Sandbox-safe credential
+ * integration; providers that need Keychain-backed sign-in must expose an
+ * explicit OAuth or native integration instead. The one keychain read kept is
+ * the Chromium "Safe Storage" cookie key in `readChromiumCookies` — required
+ * to decrypt the user's own browser cookies for the Eliza Cloud session
+ * import, read through the native `@napi-rs/keyring` binding, never the
+ * `security` CLI.
  *
  * API keys are masked in the returned results (last 4 chars only) to
  * prevent accidental exposure via IPC or logging.

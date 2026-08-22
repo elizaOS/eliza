@@ -76,13 +76,12 @@ describe("check-in briefing ranking", () => {
   });
 });
 
-describe("check-in item detail clip", () => {
-  it("never splits surrogate pairs at the truncation boundary", () => {
+describe("check-in item detail normalization", () => {
+  it("preserves complete surrogate-pair content", () => {
     const text = `${"a".repeat(216)}🦊${"b".repeat(50)}`;
     const clipped = clip(text, 220);
     expect(clipped.isWellFormed()).toBe(true);
-    expect(clipped).toBe(`${"a".repeat(216)}...`);
-    expect(clipped.length).toBe(219);
+    expect(clipped).toBe(text);
   });
 
   it("sanitizes lone surrogates before clipping", () => {
@@ -99,11 +98,11 @@ describe("check-in item detail clip", () => {
     expect(clipped.isWellFormed()).toBe(true);
   });
 
-  it("handles boundary lengths and edge cases cleanly", () => {
-    expect(clip("hello", 0)).toBe("");
-    expect(clip("hello", -1)).toBe("");
-    expect(clip("hello", 2)).toBe("..");
-    expect(clip("hello", 3)).toBe("...");
+  it("does not let obsolete caller budgets discard content", () => {
+    expect(clip("hello", 0)).toBe("hello");
+    expect(clip("hello", -1)).toBe("hello");
+    expect(clip("hello", 2)).toBe("hello");
+    expect(clip("hello", 3)).toBe("hello");
     expect(clip("hello", 5)).toBe("hello");
   });
 });

@@ -135,6 +135,21 @@ export function resolveSocketDir(env: NodeJS.ProcessEnv = process.env): string {
   return path.join(resolveStateDir(env), "sockets");
 }
 
+/**
+ * macOS limits Unix-domain socket paths to roughly 100 bytes. When a branded
+ * or QA state directory is too long, keep the socket in a private child of the
+ * process temp directory instead of chmodding Apple's shared temp root.
+ */
+export function resolveShortSocketDir(
+  tempRoot: string = os.tmpdir(),
+  uid: number | undefined = typeof process.getuid === "function"
+    ? process.getuid()
+    : undefined,
+): string {
+  const owner = uid === undefined ? "user" : uid.toString(36);
+  return path.join(tempRoot, `eza-${owner}`);
+}
+
 // ── Persisted-session round-trip ─────────────────────────────────────────────
 
 /**
@@ -268,7 +283,7 @@ function openBootstrapSocket(
     process.platform === "darwin" &&
     path.join(socketDir, socketName).length > 100
   ) {
-    socketDir = os.tmpdir();
+    socketDir = resolveShortSocketDir();
     socketName = `mda-${crypto.randomBytes(4).toString("hex")}.sock`;
   }
   fs.mkdirSync(socketDir, { recursive: true, mode: 0o700 });

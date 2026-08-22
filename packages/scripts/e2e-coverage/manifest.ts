@@ -158,7 +158,6 @@ export const PLUGIN_ROUTE_COVERAGE: Record<string, ManifestEntry> = {
   "plugin-meetings": existing(
     "plugins/plugin-meetings/src/routes/meetings-routes.test.ts",
   ),
-  "plugin-signal": existing("plugins/plugin-signal/src/setup-routes.test.ts"),
   "plugin-notes": existing(
     "plugins/plugin-notes/src/__tests__/backend.test.ts",
   ),

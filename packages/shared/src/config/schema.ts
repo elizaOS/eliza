@@ -12,7 +12,6 @@ const ELIZA_CORE_CONNECTOR_IDS = [
   "slack",
   "twitter",
   "whatsapp",
-  "signal",
   "imessage",
   "farcaster",
   "lens",

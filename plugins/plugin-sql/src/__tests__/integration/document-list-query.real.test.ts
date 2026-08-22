@@ -26,6 +26,7 @@ import { createIsolatedTestDatabase } from "../test-helpers";
 
 const REQUESTER_ID = "10000000-0000-0000-0000-000000000001" as UUID;
 const OTHER_ENTITY_ID = "10000000-0000-0000-0000-000000000002" as UUID;
+const DIRECT_GRANTEE_ID = "10000000-0000-0000-0000-000000000003" as UUID;
 const postgresIt = process.env.POSTGRES_URL ? it : it.skip;
 
 describe("document list query (real SQL parity)", () => {
@@ -69,6 +70,11 @@ describe("document list query (real SQL parity)", () => {
         id: OTHER_ENTITY_ID,
         agentId,
         names: ["Other"],
+      } as Entity,
+      {
+        id: DIRECT_GRANTEE_ID,
+        agentId,
+        names: ["Direct grantee"],
       } as Entity,
     ]);
     await adapter.addParticipant(REQUESTER_ID, roomId);
@@ -311,6 +317,126 @@ describe("document list query (real SQL parity)", () => {
     }
   });
 
+  it("authorizes direct grants outside current rooms before list and fragment construction", async () => {
+    const otherRoomId = v4() as UUID;
+    await adapter.createRooms([
+      {
+        id: otherRoomId,
+        agentId,
+        worldId,
+        name: "direct-grant-room",
+        source: "test",
+        type: ChannelType.DM,
+      } as Room,
+    ]);
+    const granted = document(20, {
+      roomId: otherRoomId,
+      metadata: {
+        scope: "owner-private",
+        directGrantEntityIds: [REQUESTER_ID],
+      },
+    });
+    const agentOnly = document(21, {
+      roomId: otherRoomId,
+      metadata: {
+        scope: "agent-private",
+        directGrantEntityIds: [REQUESTER_ID],
+      },
+    });
+    const fragment = document(22, {
+      roomId: otherRoomId,
+      metadata: {
+        type: MemoryType.FRAGMENT,
+        documentId: granted.id,
+        documentRevision: 0,
+        position: 0,
+      },
+    });
+    await seedSql([granted, agentOnly]);
+    await adapter.createMemories([{ memory: fragment, tableName: "document_fragments" }]);
+    const inMemory = await seedInMemory([granted, agentOnly]);
+    await inMemory.createMemories([{ memory: fragment, tableName: "document_fragments" }]);
+    const context = {
+      agentId,
+      requesterEntityId: REQUESTER_ID,
+      requesterRoomIds: [],
+      requesterRole: "USER" as const,
+    };
+
+    const sqlDocuments = await adapter.queryDocuments({ ...context, limit: 10, offset: 0 });
+    const memoryDocuments = await inMemory.queryDocuments({ ...context, limit: 10, offset: 0 });
+    expect(sqlDocuments).toEqual(memoryDocuments);
+    expect(ids(sqlDocuments.documents)).toEqual([granted.id]);
+    expect(await adapter.getDocument({ ...context, documentId: granted.id as UUID })).toMatchObject(
+      {
+        id: granted.id,
+      }
+    );
+    expect(
+      ids(
+        await adapter.queryDocumentFragments({
+          ...context,
+          documentId: granted.id as UUID,
+          limit: 10,
+        })
+      )
+    ).toEqual([fragment.id as UUID]);
+    expect(
+      await adapter.queryDocuments({ ...context, requesterRole: "GUEST", limit: 10, offset: 0 })
+    ).toEqual(
+      await inMemory.queryDocuments({
+        ...context,
+        requesterRole: "GUEST",
+        limit: 10,
+        offset: 0,
+      })
+    );
+  });
+
+  it("filters fragment pages by exact authorized parent before pagination", async () => {
+    const firstParent = document(1);
+    const secondParent = document(2);
+    const fragment = (index: number, documentId: UUID, createdAt: number): Memory =>
+      document(index, {
+        createdAt,
+        metadata: {
+          type: MemoryType.FRAGMENT,
+          documentId,
+          documentRevision: 0,
+          position: index,
+        },
+      });
+    const firstFragments = [
+      fragment(3, firstParent.id as UUID, 3_000),
+      fragment(4, firstParent.id as UUID, 2_000),
+    ];
+    const otherFragment = fragment(5, secondParent.id as UUID, 4_000);
+    const rows = [firstParent, secondParent, ...firstFragments, otherFragment];
+    await seedSql([firstParent, secondParent]);
+    await adapter.createMemories(
+      [...firstFragments, otherFragment].map((memory) => ({
+        memory,
+        tableName: "document_fragments",
+      }))
+    );
+    const inMemory = await seedInMemory(rows);
+    const query = {
+      agentId,
+      requesterEntityId: REQUESTER_ID,
+      requesterRoomIds: [roomId],
+      requesterRole: "OWNER" as const,
+      documentId: firstParent.id,
+      limit: 1,
+      offset: 1,
+    };
+
+    const sqlFragments = await adapter.queryDocumentFragments(query);
+    const memoryFragments = await inMemory.queryDocumentFragments(query);
+
+    expect(sqlFragments).toEqual(memoryFragments);
+    expect(ids(sqlFragments)).toEqual([firstFragments[1]?.id]);
+  });
+
   it("does not skip or duplicate equal-timestamp rows across keyset pages", async () => {
     const documents = Array.from({ length: 151 }, (_, index) => document(index));
     await seedSql(documents);
@@ -540,6 +666,10 @@ describe("document list query (real SQL parity)", () => {
       document(5, { metadata: { addedBy: "not-a-uuid" } }),
       document(6, { metadata: { documentRevision: 1.5 } }),
       document(9, { metadata: { documentRevision: "1" } }),
+      document(11, { metadata: { directGrantEntityIds: ["not-a-uuid"] } }),
+      document(12, {
+        metadata: { directGrantEntityIds: [REQUESTER_ID, REQUESTER_ID] },
+      }),
     ];
     const validParent = document(2, {
       metadata: {
@@ -714,6 +844,83 @@ describe("document list query (real SQL parity)", () => {
       })
     ).resolves.toEqual({ status: "conflict" });
     await expect(adapter.getMemoryById(original.id!)).resolves.not.toBeNull();
+  });
+
+  it("atomically replaces direct grants under owner and current-room-admin authority", async () => {
+    const global = document(41, { metadata: { documentRevision: 0 } });
+    const ownerPrivate = document(42, {
+      metadata: { scope: "owner-private", documentRevision: 0 },
+    });
+    await seedSql([global, ownerPrivate]);
+    const ownerContext = {
+      agentId,
+      requesterEntityId: REQUESTER_ID,
+      requesterRoomIds: [] as UUID[],
+      requesterRole: "OWNER" as const,
+    };
+    const adminContext = {
+      agentId,
+      requesterEntityId: REQUESTER_ID,
+      requesterRoomIds: [roomId],
+      requesterRole: "ADMIN" as const,
+    };
+    const globalSnapshot = readDocumentMutationSnapshot(global)!;
+
+    await expect(
+      adapter.updateDocumentDirectGrants({
+        ...adminContext,
+        documentId: global.id!,
+        expected: globalSnapshot,
+        directGrantEntityIds: [DIRECT_GRANTEE_ID],
+      })
+    ).resolves.toMatchObject({
+      status: "updated",
+      document: { metadata: { directGrantEntityIds: [DIRECT_GRANTEE_ID] } },
+    });
+    await expect(
+      adapter.getDocument({
+        agentId,
+        documentId: global.id!,
+        requesterEntityId: DIRECT_GRANTEE_ID,
+        requesterRoomIds: [],
+        requesterRole: "USER",
+      })
+    ).resolves.toMatchObject({ id: global.id });
+
+    await expect(
+      adapter.updateDocumentDirectGrants({
+        ...adminContext,
+        documentId: ownerPrivate.id!,
+        expected: readDocumentMutationSnapshot(ownerPrivate)!,
+        directGrantEntityIds: [DIRECT_GRANTEE_ID],
+      })
+    ).resolves.toEqual({ status: "forbidden" });
+    await expect(
+      adapter.updateDocumentDirectGrants({
+        ...ownerContext,
+        documentId: ownerPrivate.id!,
+        expected: readDocumentMutationSnapshot(ownerPrivate)!,
+        directGrantEntityIds: [DIRECT_GRANTEE_ID],
+      })
+    ).resolves.toMatchObject({ status: "updated" });
+
+    await expect(
+      adapter.updateDocumentDirectGrants({
+        ...adminContext,
+        documentId: global.id!,
+        expected: globalSnapshot,
+        directGrantEntityIds: [],
+      })
+    ).resolves.toEqual({ status: "conflict" });
+    const currentGlobal = await adapter.getMemoryById(global.id!);
+    await expect(
+      adapter.updateDocumentDirectGrants({
+        ...ownerContext,
+        documentId: global.id!,
+        expected: readDocumentMutationSnapshot(currentGlobal!)!,
+        directGrantEntityIds: ["10000000-0000-0000-0000-000000000099" as UUID],
+      })
+    ).resolves.toEqual({ status: "not_found" });
   });
 
   it("rolls back a complete revision when a staged fragment cannot be inserted", async () => {

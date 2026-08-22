@@ -19,7 +19,7 @@ import {
 	type UUID,
 } from "../types";
 
-export const DOCUMENT_LIST_QUERY_CAPABILITY_VERSION = 3 as const;
+export const DOCUMENT_LIST_QUERY_CAPABILITY_VERSION = 4 as const;
 export const DOCUMENT_LIST_MAX_LIMIT = 100;
 export const DOCUMENT_LIST_MAX_OFFSET = 10_000;
 export const DOCUMENT_LIST_MAX_QUERY_LENGTH = 512;
@@ -27,6 +27,7 @@ export const DOCUMENT_LIST_MAX_TAGS = 32;
 export const DOCUMENT_LIST_MAX_TAG_LENGTH = 128;
 export const DOCUMENT_LIST_MAX_REQUESTER_ROOMS = 1_000;
 export const DOCUMENT_REVISION_MAX_FRAGMENTS = 10_000;
+export const DOCUMENT_DIRECT_GRANT_LIMIT = 1_000;
 
 export interface DocumentListQueryCapableAdapter {
 	readonly documentListQueryCapability: typeof DOCUMENT_LIST_QUERY_CAPABILITY_VERSION;
@@ -269,6 +270,49 @@ function readUuidMetadata(
 	return isUuid(value) ? value : undefined;
 }
 
+function readDirectGrantEntityIds(
+	metadata: Record<string, unknown>,
+): UUID[] | null {
+	const value = metadata.directGrantEntityIds;
+	if (value === undefined) return [];
+	if (!Array.isArray(value) || value.length > DOCUMENT_DIRECT_GRANT_LIMIT) {
+		return null;
+	}
+	const grants: UUID[] = [];
+	const seen = new Set<string>();
+	for (const entityId of value) {
+		if (!isUuid(entityId)) return null;
+		const normalized = entityId.toLowerCase() as UUID;
+		if (seen.has(normalized)) return null;
+		seen.add(normalized);
+		grants.push(normalized);
+	}
+	return grants;
+}
+
+/** Validates and canonicalizes the bounded ACL payload used by adapter writes. */
+export function validateDocumentDirectGrantEntityIds(value: unknown): UUID[] {
+	if (!Array.isArray(value) || value.length > DOCUMENT_DIRECT_GRANT_LIMIT) {
+		throw new ElizaError(
+			"Document direct grants must be a bounded UUID array",
+			{
+				code: "DOCUMENT_DIRECT_GRANTS_INVALID",
+				context: { limit: DOCUMENT_DIRECT_GRANT_LIMIT },
+			},
+		);
+	}
+	const grants = readDirectGrantEntityIds({ directGrantEntityIds: value });
+	if (!grants || grants.length !== value.length) {
+		throw new ElizaError(
+			"Document direct grants contain an invalid or duplicate entity id",
+			{
+				code: "DOCUMENT_DIRECT_GRANTS_INVALID",
+			},
+		);
+	}
+	return [...grants].sort();
+}
+
 function readDocumentRevision(metadata: unknown): number | null {
 	if (metadata === null || typeof metadata !== "object") return null;
 	const value = Reflect.get(metadata, "documentRevision");
@@ -302,6 +346,8 @@ export function readDocumentMutationSnapshot(
 	if (metadata.scopedToEntityId !== undefined && !scopedToEntityId) return null;
 	const addedBy = readUuidMetadata(metadata, "addedBy");
 	if (metadata.addedBy !== undefined && !addedBy) return null;
+	const directGrantEntityIds = readDirectGrantEntityIds(metadata);
+	if (!directGrantEntityIds) return null;
 	const revision = readDocumentRevision(metadata);
 	if (revision === null) return null;
 	const ingestionAttemptId = readUuidMetadata(metadata, "ingestionAttemptId");
@@ -330,6 +376,7 @@ export function readDocumentMutationSnapshot(
 			: {}),
 		...(scopedToEntityId ? { scopedToEntityId } : {}),
 		...(addedBy ? { addedBy } : {}),
+		...(directGrantEntityIds.length > 0 ? { directGrantEntityIds } : {}),
 	};
 }
 
@@ -364,6 +411,10 @@ export function validateDocumentRevisionReplacement(
 		replacementSnapshot.scope !== params.expected.scope ||
 		replacementSnapshot.roomId !== params.expected.roomId ||
 		replacementSnapshot.entityId !== params.expected.entityId ||
+		!uuidArraysEqual(
+			replacementSnapshot.directGrantEntityIds,
+			params.expected.directGrantEntityIds,
+		) ||
 		replacementSnapshot.scopedToEntityId !== params.expected.scopedToEntityId ||
 		replacementSnapshot.addedBy !== params.expected.addedBy ||
 		replacementSnapshot.ingestionAttemptId !==
@@ -426,9 +477,20 @@ export function isDocumentVisibleToRequester(
 	if (documentRoleHasGlobalVisibility(params.requesterRole)) {
 		return true;
 	}
+	if (params.requesterRole === "GUEST") {
+		return (
+			params.requesterRoomIds.includes(snapshot.roomId) &&
+			snapshot.scope === "global"
+		);
+	}
+	if (
+		snapshot.scope !== "agent-private" &&
+		snapshot.directGrantEntityIds?.includes(params.requesterEntityId)
+	) {
+		return true;
+	}
 	if (!params.requesterRoomIds.includes(snapshot.roomId)) return false;
 	if (snapshot.scope === "global") return true;
-	if (params.requesterRole === "GUEST") return false;
 	if (snapshot.scope !== "user-private") return false;
 	if (params.requesterRole === "ADMIN") return true;
 	return snapshot.scopedToEntityId === params.requesterEntityId;
@@ -459,6 +521,23 @@ export function canRequesterMutateDocument(
 	);
 }
 
+/** Canonical authority for changing explicit document read grants. */
+export function canRequesterManageDocumentDirectGrants(
+	memory: Memory,
+	params: DocumentRequesterContext,
+): boolean {
+	if (params.requesterRole === "OWNER") {
+		return readDocumentMutationSnapshot(memory) !== null;
+	}
+	if (params.requesterRole !== "ADMIN") return false;
+	const snapshot = readDocumentMutationSnapshot(memory);
+	return (
+		snapshot !== null &&
+		params.requesterRoomIds.includes(snapshot.roomId) &&
+		(snapshot.scope === "global" || snapshot.scope === "user-private")
+	);
+}
+
 export function documentMutationSnapshotMatches(
 	memory: Memory,
 	expected: DocumentMutationSnapshot,
@@ -469,11 +548,24 @@ export function documentMutationSnapshotMatches(
 		actual.scope === expected.scope &&
 		actual.roomId === expected.roomId &&
 		actual.entityId === expected.entityId &&
+		uuidArraysEqual(
+			actual.directGrantEntityIds,
+			expected.directGrantEntityIds,
+		) &&
 		actual.scopedToEntityId === expected.scopedToEntityId &&
 		actual.addedBy === expected.addedBy &&
 		actual.revision === expected.revision &&
 		actual.ingestionAttemptId === expected.ingestionAttemptId &&
 		actual.ingestionState === expected.ingestionState
+	);
+}
+
+function uuidArraysEqual(left?: UUID[], right?: UUID[]): boolean {
+	const normalizedLeft = left ?? [];
+	const normalizedRight = right ?? [];
+	return (
+		normalizedLeft.length === normalizedRight.length &&
+		normalizedLeft.every((value, index) => value === normalizedRight[index])
 	);
 }
 
@@ -662,6 +754,24 @@ export function validateDocumentFragmentQueryParams(
 				context: { limit: params.limit },
 			},
 		);
+	}
+	if (
+		params.offset !== undefined &&
+		(!Number.isSafeInteger(params.offset) || params.offset < 0)
+	) {
+		throw new ElizaError(
+			"Document fragment offset must be a non-negative integer",
+			{
+				code: "DOCUMENT_FRAGMENT_QUERY_INVALID",
+				context: { offset: params.offset },
+			},
+		);
+	}
+	if (params.documentId !== undefined && !isUuid(params.documentId)) {
+		throw new ElizaError("Document fragment parent id is invalid", {
+			code: "DOCUMENT_FRAGMENT_QUERY_INVALID",
+			context: { documentId: params.documentId },
+		});
 	}
 	if (params.embedding === undefined) {
 		if (params.matchThreshold !== undefined) {
@@ -902,6 +1012,7 @@ export function queryDocumentFragmentsInMemory(
 			}
 			const documentId = memory.metadata?.documentId;
 			if (!isUuid(documentId)) return false;
+			if (params.documentId && documentId !== params.documentId) return false;
 			const parent = parents.get(documentId);
 			if (!parent || !isDocumentVisibleToRequester(parent, params))
 				return false;
@@ -956,7 +1067,8 @@ export function queryDocumentFragmentsInMemory(
 	} else {
 		fragments.sort(compareDocumentOrder);
 	}
-	return fragments.slice(0, params.limit);
+	const offset = params.offset ?? 0;
+	return fragments.slice(offset, offset + params.limit);
 }
 
 export function hasDocumentListQueryCapability(
@@ -968,6 +1080,7 @@ export function hasDocumentListQueryCapability(
 		getDocument?: unknown;
 		queryDocumentFragments?: unknown;
 		compareAndSwapDocument?: unknown;
+		updateDocumentDirectGrants?: unknown;
 		replaceDocumentRevision?: unknown;
 		deleteDocumentWithSnapshot?: unknown;
 	};
@@ -978,6 +1091,7 @@ export function hasDocumentListQueryCapability(
 		typeof candidate.getDocument === "function" &&
 		typeof candidate.queryDocumentFragments === "function" &&
 		typeof candidate.compareAndSwapDocument === "function" &&
+		typeof candidate.updateDocumentDirectGrants === "function" &&
 		typeof candidate.replaceDocumentRevision === "function" &&
 		typeof candidate.deleteDocumentWithSnapshot === "function"
 	);
@@ -990,7 +1104,7 @@ function requireDocumentListQueryCapability(adapter: IDatabaseAdapter): void {
 		queryDocuments?: unknown;
 	};
 	throw new ElizaError(
-		"Database adapter must implement document-store capability v3; migrate by adding authorized list, lookup, fragment search, atomic revision replacement, CAS update, and CAS delete methods",
+		"Database adapter must implement document-store capability v4; migrate by adding authorized list, lookup, fragment search, atomic revision replacement, CAS update/delete, and direct-grant CAS methods",
 		{
 			code: "DOCUMENT_STORE_CAPABILITY_REQUIRED",
 			context: {
@@ -999,7 +1113,7 @@ function requireDocumentListQueryCapability(adapter: IDatabaseAdapter): void {
 				advertisedVersion: candidate.documentListQueryCapability,
 				hasQueryMethod: typeof candidate.queryDocuments === "function",
 				migrationGuide:
-					"Implement IDatabaseAdapter documentListQueryCapability=3 and all document-store methods, including replaceDocumentRevision; no compatibility scan is supported.",
+					"Implement IDatabaseAdapter documentListQueryCapability=4 and every document-store method, including replaceDocumentRevision and updateDocumentDirectGrants; no compatibility scan is supported.",
 			},
 			severity: "fatal",
 		},

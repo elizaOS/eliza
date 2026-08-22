@@ -899,13 +899,17 @@ describe("installDatabaseTrajectoryLogger (capture bridge)", () => {
     });
     await standalone.flushWriteQueue();
     expect(execute).not.toHaveBeenCalled();
-    expect(
-      reportError.mock.calls.filter(
-        ([scope, , context]) =>
-          scope === "TrajectoryStorage.lateCapture" &&
-          (context as { diagnosticOnly?: boolean }).diagnosticOnly === true,
-      ),
-    ).toHaveLength(2);
+    // Both captures are rejected, but only the first reports: repeats for the
+    // same closed step dedupe to debug logging.
+    const lateReports = reportError.mock.calls.filter(
+      ([scope, , context]) =>
+        scope === "TrajectoryStorage.lateCapture" &&
+        (context as { diagnosticOnly?: boolean }).diagnosticOnly === true,
+    );
+    expect(lateReports).toHaveLength(1);
+    expect(String((lateReports[0][1] as Error).message)).toMatch(
+      /step=\S+ type=llm purpose=action age=\d+s/,
+    );
 
     await standalone.stop();
     execute.mockClear();

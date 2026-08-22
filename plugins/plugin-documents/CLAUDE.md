@@ -25,6 +25,8 @@ Repo-wide conventions (logger-only, ESM, naming, architecture rules, git workflo
 | POST   | `/api/documents/bulk` | Bulk upload up to 100 documents |
 | POST   | `/api/documents/url` | Fetch and ingest a URL or YouTube transcript |
 | PATCH  | `/api/documents/:id` | Update document text content (re-fragments) |
+| PATCH  | `/api/documents/:id/access` | Replace bounded direct entity read grants (OWNER or room ADMIN) |
+| GET    | `/api/documents/:id/access` | Read direct grants through the same management authority |
 | DELETE | `/api/documents/:id` | Delete document and all its fragments |
 
 **Actions:** none registered here. `OWNER_DOCUMENTS` is registered by
@@ -85,18 +87,36 @@ storage authorization: ADMIN is not OWNER, GUEST is not USER, and an unresolved
 role is rejected. Guests may read only global documents in their current rooms
 and may not mutate documents.
 
+List, facet, search, parent, and fragment REST reads must call the
+access-context-aware `DocumentService` methods. Do not use
+`runtime.getMemoryById()` or `getMemories()` and apply route-local authorization
+afterward: authorization belongs in the adapter query before rows, search
+ranking, fragment bytes, counts, or pagination are constructed. Route list and
+facet filters may narrow the already-authorized set for presentation, and
+fragment counts must use the authorized parent/fragment path.
+
+PATCH and DELETE must use the access-context-aware mutation methods. The route
+may inspect the already-authorized parent for editability, but it may not scan
+or delete fragments itself; `DocumentService` owns snapshot validation and the
+adapter performs the atomic parent/revision mutation.
+Direct-grant replacement is a separate storage-enforced CAS operation. OWNER
+may manage grants on any valid document; ADMIN may manage global or
+user-private documents only while a current member of the document room.
+
 ## How to extend
 
 **Add a new route:**
 1. Add the method + path to `DOCUMENT_ROUTES` in `src/plugin.ts`.
-2. Implement the handler branch inside `handleDocumentsRoutes()` in `src/routes.ts`. Follow the existing pattern: resolve actor, check access with `canReadDocumentMemory`/`canMutateDocumentMemory`, delegate to `documentsService`, call `json(res, ...)` or `error(res, ...)`.
+2. Implement the handler branch inside `handleDocumentsRoutes()` in `src/routes.ts`. Resolve the authenticated access context, delegate authorization to the access-context-aware `DocumentService` method, then call `json(res, ...)` or `error(res, ...)`.
 3. Every route must have a real caller (UI or agent action) per root CLAUDE.md rule 10.
 
 **Add a new presenter field:**
 Add to `PresentedDocument` in `src/document-presenter.ts` and populate it in `presentDocument()`.
 
 **Add document scope enforcement logic:**
-All scope/permission decisions live in `src/routes.ts` (`canReadDocumentMemory`, `canMutateDocumentMemory`, `filtersFromUploadBody`). Do not scatter access checks into the presenter or service.
+Canonical read/mutation authorization belongs in `DocumentService` and its
+adapter queries. Route helpers may validate upload scope and presentation, but
+must never become a competing read authority or post-filter raw storage rows.
 
 ## Conventions / gotchas
 
@@ -105,7 +125,7 @@ All scope/permission decisions live in `src/routes.ts` (`canReadDocumentMemory`,
 - **Bundled and character documents** are read-only: `getDocumentEditability` and `getDocumentDeleteability` enforce this in the presenter, and the PATCH/DELETE handlers check these flags before proceeding.
 - **Image upload.** Images are stored as text. If `includeImageDescriptions: true` is passed in the metadata, the handler calls `runtime.useModel(ModelType.IMAGE_DESCRIPTION, ...)` to generate a description. If the model call fails, a warning is included in the response and the stored text explicitly says that image description was unavailable.
 - **YouTube URLs.** `POST /api/documents/url` detects YouTube URLs via `isYouTubeUrl()` from `@elizaos/core` and sets `source: "youtube"` in metadata; the transcript is fetched by `fetchDocumentFromUrl()`.
-- **Fragment pagination.** Fragment listing always paginates in batches of 500 (`FRAGMENT_BATCH_SIZE`). Large documents with many fragments will issue multiple `getMemories` calls.
+- **Fragment pagination.** `DocumentService` paginates authorized fragments through the adapter's document-fragment query. Routes must not scan the raw fragment table.
 - **Max body size.** Single and bulk upload endpoints cap at 32 MB (`DOCUMENT_UPLOAD_MAX_BODY_BYTES`). Bulk is further capped at 100 documents per request.
 - **rawPath routing.** All routes are registered with `rawPath: true`, meaning the agent server dispatches them directly without prefix stripping. The path `/api/documents` is absolute.
 - **OWNER_DOCUMENTS is host-adapted.** Do not add a second action here unless the PA-hosted approval, scheduler, and document-request behavior is moved with tests that prove parity.

@@ -163,7 +163,7 @@ export const DESKTOP_ONLY_PLUGINS: readonly string[] =
 /**
  * Mobile-safe core plugins. Used when `ELIZA_PLATFORM=android` (or `ios`).
  *
- * Phones cannot host the workflow runtime, the Signal CLI, the swarm orchestrator,
+ * Phones cannot host the workflow runtime, the swarm orchestrator,
  * the sandbox engine, the desktop launch hooks, or the autonomous PTY tools.
  * They also have no `/usr/bin/open`, `osascript`, `xdg-open`, `ffmpeg`,
  * `wmctrl`, etc., so plugins that bind to those at init crash the runtime.
@@ -434,7 +434,6 @@ export const OPTIONAL_CORE_PLUGINS: readonly string[] = [
   "@elizaos/plugin-cli", // CLI interface
   "@elizaos/plugin-discord", // Discord bot integration
   "@elizaos/plugin-telegram", // Telegram bot integration
-  "@elizaos/plugin-signal", // Signal user-account integration
   "@elizaos/plugin-elevenlabs", // ElevenLabs text-to-speech
   "@elizaos/plugin-music", // Library, playback, and streaming routes.
   "@elizaos/plugin-gitpathologist", // forensic git-history analysis (opt-in via ELIZA_GITPATHOLOGIST, auto-on when .git/ exists)

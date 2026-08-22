@@ -14,12 +14,9 @@ name: App Live E2E
 # CI stub-force, so the live stack boots the real @elizaos/app-core runtime and
 # the live-only specs (test.skip'd in keyless CI) un-skip.
 #
-# Runs nightly + on-demand; never on pull_request.
+# Runs on demand; never on pull_request.
 
 on:
-  schedule:
-    # 07:00 UTC daily — after the nightly build lanes settle.
-    - cron: "0 7 * * *"
   workflow_dispatch:
     inputs:
       run_android_local_chat:

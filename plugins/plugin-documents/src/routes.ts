@@ -11,11 +11,8 @@ import {
   actorCanManageOwnerDocuments,
   asRecord,
   asUuid,
-  canMutateDocumentMemory,
-  canReadDocumentMemory,
   type DocumentReadableMemory,
   documentMediaFormat,
-  documentScopedEntityId,
   documentTags,
   matchesDocumentFilter as matchesSharedDocumentFilter,
   parseDocumentScope,
@@ -37,6 +34,7 @@ import type {
 import {
   __setDocumentUrlFetchImplForTests,
   actorFromAccessContext,
+  ElizaError,
   fetchDocumentFromUrl,
   isYouTubeUrl,
   normalizeDocumentContentType,
@@ -74,7 +72,6 @@ export interface DocumentRouteContext extends RouteRequestContext {
 
 const DOCUMENTS_TABLE = "documents";
 const DOCUMENT_FRAGMENTS_TABLE = "document_fragments";
-const FRAGMENT_BATCH_SIZE = 500;
 const DOCUMENT_UPLOAD_MAX_BODY_BYTES = 32 * 1_048_576; // 32 MB
 const MAX_BULK_DOCUMENTS = 100;
 const DOCUMENT_CONTENT_TYPE_VALIDATION_ERROR =
@@ -89,6 +86,19 @@ function isUuidValue(value: unknown): value is UUID {
       value.trim(),
     )
   );
+}
+
+function documentGrantErrorStatus(cause: ElizaError): number {
+  if (
+    cause.code === "DOCUMENT_NOT_FOUND" ||
+    cause.code === "DOCUMENT_GRANT_TARGET_NOT_FOUND"
+  ) {
+    return 404;
+  }
+  if (cause.code === "DOCUMENT_GRANT_MUTATION_FORBIDDEN") return 403;
+  if (cause.code === "DOCUMENT_DIRECT_GRANTS_INVALID") return 400;
+  if (cause.code === "DOCUMENT_GRANT_MUTATION_CONFLICT") return 409;
+  return 500;
 }
 
 type DocumentFilter = SharedDocumentFilter & {
@@ -506,157 +516,35 @@ function decodeMatchedPathComponent(
   }
 }
 
-async function countDocumentFragmentsForDocument(
-  documentsService: DocumentsServiceLike,
-  roomId: UUID | undefined,
-  documentId: UUID,
-): Promise<number> {
-  let offset = 0;
-  let fragmentCount = 0;
-
-  while (true) {
-    const fragmentBatch = await documentsService.getMemories({
-      tableName: DOCUMENT_FRAGMENTS_TABLE,
-      roomId,
-      count: FRAGMENT_BATCH_SIZE,
-      offset,
-    });
-
-    if (fragmentBatch.length === 0) break;
-
-    fragmentCount += fragmentBatch.filter((memory) => {
-      const metadata = asRecord(memory.metadata);
-      return metadata?.documentId === documentId;
-    }).length;
-
-    if (fragmentBatch.length < FRAGMENT_BATCH_SIZE) break;
-    offset += FRAGMENT_BATCH_SIZE;
-  }
-
-  return fragmentCount;
-}
-
-async function mapDocumentFragmentsByDocumentId(
-  documentsService: DocumentsServiceLike,
-  roomId: UUID | undefined,
-  documentIds: readonly UUID[],
-): Promise<Map<UUID, number>> {
-  const fragmentCounts = new Map<UUID, number>();
-  const trackedDocumentIds = new Set(documentIds);
-  for (const documentId of trackedDocumentIds) {
-    fragmentCounts.set(documentId, 0);
-  }
-
-  if (trackedDocumentIds.size === 0) return fragmentCounts;
-
-  let offset = 0;
-  while (true) {
-    const fragmentBatch = await documentsService.getMemories({
-      tableName: DOCUMENT_FRAGMENTS_TABLE,
-      roomId,
-      count: FRAGMENT_BATCH_SIZE,
-      offset,
-    });
-
-    if (fragmentBatch.length === 0) break;
-
-    for (const memory of fragmentBatch) {
-      const metadata = asRecord(memory.metadata);
-      const documentId = metadata?.documentId;
-      if (
-        typeof documentId === "string" &&
-        trackedDocumentIds.has(documentId as UUID)
-      ) {
-        const currentCount = fragmentCounts.get(documentId as UUID) ?? 0;
-        fragmentCounts.set(documentId as UUID, currentCount + 1);
-      }
-    }
-
-    if (fragmentBatch.length < FRAGMENT_BATCH_SIZE) break;
-    offset += FRAGMENT_BATCH_SIZE;
-  }
-
-  return fragmentCounts;
-}
-
-async function listDocumentFragmentsForDocument(
-  documentsService: DocumentsServiceLike,
-  roomId: UUID | undefined,
-  documentId: UUID,
-): Promise<UUID[]> {
-  let offset = 0;
-  const fragmentIds: UUID[] = [];
-
-  while (true) {
-    const fragmentBatch = await documentsService.getMemories({
-      tableName: DOCUMENT_FRAGMENTS_TABLE,
-      roomId,
-      count: FRAGMENT_BATCH_SIZE,
-      offset,
-    });
-
-    for (const memory of fragmentBatch) {
-      const metadata = asRecord(memory.metadata);
-      if (metadata?.documentId === documentId && hasUuidId(memory)) {
-        fragmentIds.push(memory.id);
-      }
-    }
-
-    if (fragmentBatch.length < FRAGMENT_BATCH_SIZE) break;
-    offset += FRAGMENT_BATCH_SIZE;
-  }
-
-  return fragmentIds;
-}
-
 async function listDocumentMemories({
   documentsService,
   agentId,
-  actor,
+  accessContext,
   filters,
   limit,
   offset,
 }: {
   documentsService: DocumentsServiceLike;
   agentId: UUID;
-  actor: RouteActor;
+  accessContext: AccessContext;
   filters: DocumentFilter;
   limit: number;
   offset: number;
 }): Promise<{ documents: Memory[]; total: number }> {
-  let scanOffset = 0;
-  let total = 0;
-  const documents: Memory[] = [];
-
-  while (true) {
-    const batch = await documentsService.getMemories({
-      tableName: DOCUMENTS_TABLE,
-      count: FRAGMENT_BATCH_SIZE,
-      offset: scanOffset,
-    });
-
-    if (batch.length === 0) break;
-
-    for (const memory of batch) {
-      if (
-        !isDocumentMemory(memory, agentId) ||
-        !matchesDocumentFilter(memory, filters) ||
-        !canReadDocumentMemory(memory, actor, filters)
-      ) {
-        continue;
-      }
-
-      if (total >= offset && documents.length < limit) {
-        documents.push(memory);
-      }
-      total += 1;
-    }
-
-    if (batch.length < FRAGMENT_BATCH_SIZE) break;
-    scanOffset += FRAGMENT_BATCH_SIZE;
+  if (!documentsService.listAllDocumentsWithAccessContext) {
+    throw new Error("Canonical document listing is unavailable");
   }
-
-  return { documents, total };
+  const matching = (
+    await documentsService.listAllDocumentsWithAccessContext(accessContext)
+  ).filter(
+    (memory) =>
+      isDocumentMemory(memory, agentId) &&
+      matchesDocumentFilter(memory, filters),
+  );
+  return {
+    documents: matching.slice(offset, offset + limit),
+    total: matching.length,
+  };
 }
 
 /**
@@ -670,12 +558,12 @@ async function listDocumentMemories({
 async function countDocumentFacets({
   documentsService,
   agentId,
-  actor,
+  accessContext,
   filters,
 }: {
   documentsService: DocumentsServiceLike;
   agentId: UUID;
-  actor: RouteActor;
+  accessContext: AccessContext;
   filters: DocumentFilter;
 }): Promise<Record<KnowledgeHubFacet, number>> {
   const counts: Record<KnowledgeHubFacet, number> = {
@@ -689,36 +577,26 @@ async function countDocumentFacets({
   // Drop the hub facet so the scan sees every bucket; keep the rest of the
   // narrowing (scope/room/tag/search) so counts match the visible list.
   const { knowledgeFacet: _ignored, ...baseFilters } = filters;
-  let scanOffset = 0;
-
-  while (true) {
-    const batch = await documentsService.getMemories({
-      tableName: DOCUMENTS_TABLE,
-      count: FRAGMENT_BATCH_SIZE,
-      offset: scanOffset,
-    });
-    if (batch.length === 0) break;
-
-    for (const memory of batch) {
-      if (
-        !isDocumentMemory(memory, agentId) ||
-        !matchesDocumentFilter(memory, baseFilters) ||
-        !canReadDocumentMemory(memory, actor, baseFilters)
-      ) {
-        continue;
-      }
-      const metadata = asRecord(memory.metadata);
-      const documentTags = Array.isArray(metadata?.tags)
-        ? metadata.tags.filter(
-            (value): value is string => typeof value === "string",
-          )
-        : [];
-      counts[documentHubFacet(metadata, documentTags)] += 1;
-      counts.all += 1;
+  if (!documentsService.listAllDocumentsWithAccessContext) {
+    throw new Error("Canonical document listing is unavailable");
+  }
+  const authorized =
+    await documentsService.listAllDocumentsWithAccessContext(accessContext);
+  for (const memory of authorized) {
+    if (
+      !isDocumentMemory(memory, agentId) ||
+      !matchesDocumentFilter(memory, baseFilters)
+    ) {
+      continue;
     }
-
-    if (batch.length < FRAGMENT_BATCH_SIZE) break;
-    scanOffset += FRAGMENT_BATCH_SIZE;
+    const metadata = asRecord(memory.metadata);
+    const documentTags = Array.isArray(metadata?.tags)
+      ? metadata.tags.filter(
+          (value): value is string => typeof value === "string",
+        )
+      : [];
+    counts[documentHubFacet(metadata, documentTags)] += 1;
+    counts.all += 1;
   }
 
   return counts;
@@ -749,11 +627,12 @@ export async function handleDocumentsRoutes(
   }
   const agentId = runtime.agentId as UUID;
   const ownerEntityId = getOwnerEntityId(runtime);
-  const routeActor = resolveRouteActor(
-    agentId,
-    ownerEntityId,
-    ctx.accessContext,
-  );
+  const accessContext = ctx.accessContext;
+  if (!accessContext) {
+    error(res, "Authentication required", 401);
+    return true;
+  }
+  const routeActor = resolveRouteActor(agentId, ownerEntityId, accessContext);
 
   if (!routeActor) {
     error(res, "Authentication required", 401);
@@ -900,10 +779,14 @@ export async function handleDocumentsRoutes(
     // every bucket is counted; the remaining scope/room/tag/search filters are
     // honored so the counts describe the current narrowing.
     const filters = filtersFromSearchParams(url, { includeTextQuery: true });
+    if (!documentsService.listAllDocumentsWithAccessContext) {
+      error(res, "Canonical document authorization is unavailable", 503);
+      return true;
+    }
     const counts = await countDocumentFacets({
       documentsService,
       agentId,
-      actor: routeActor,
+      accessContext,
       filters,
     });
     json(res, {
@@ -920,20 +803,38 @@ export async function handleDocumentsRoutes(
     const offset = parsePositiveInteger(url.searchParams.get("offset"), 0);
     const filters = filtersFromSearchParams(url, { includeTextQuery: true });
 
+    if (
+      !documentsService.listAllDocumentsWithAccessContext ||
+      !documentsService.listDocumentFragmentsWithAccessContext
+    ) {
+      error(res, "Canonical document authorization is unavailable", 503);
+      return true;
+    }
+    const listAuthorizedFragments =
+      documentsService.listDocumentFragmentsWithAccessContext.bind(
+        documentsService,
+      );
+
     const { documents, total } = await listDocumentMemories({
       documentsService,
       agentId,
-      actor: routeActor,
+      accessContext,
       filters,
       limit,
       offset,
     });
-    const documentIds = documents.filter(hasUuidId).map((doc) => doc.id);
-    const fragmentCounts = await mapDocumentFragmentsByDocumentId(
-      documentsService,
-      undefined,
-      documentIds,
+    const fragmentCountEntries = await Promise.all(
+      documents
+        .filter(hasUuidId)
+        .map(
+          async (doc) =>
+            [
+              doc.id,
+              (await listAuthorizedFragments(doc.id, accessContext)).length,
+            ] as const,
+        ),
     );
+    const fragmentCounts = new Map(fragmentCountEntries);
     const cleanedDocuments = documents.map((doc) =>
       presentDocument(
         doc,
@@ -994,12 +895,12 @@ export async function handleDocumentsRoutes(
       searchMessage,
       serviceSearchScope(filters),
       searchMode,
+      accessContext,
     );
 
     const filteredResults = results
       .filter((result) => (result.similarity ?? 0) >= threshold)
       .filter((result) => matchesDocumentFilter(result, filters))
-      .filter((result) => canReadDocumentMemory(result, routeActor, filters))
       .slice(0, limit)
       .map((result) => {
         const meta = asRecord(result.metadata);
@@ -1043,52 +944,38 @@ export async function handleDocumentsRoutes(
     );
     if (!decodedDocumentId) return true;
     const documentId = decodedDocumentId as UUID;
-    const document = await runtime.getMemoryById(documentId);
     if (
-      !document ||
-      !isDocumentMemory(document, agentId) ||
-      !canReadDocumentMemory(document, routeActor, {
-        scopedToEntityId: documentScopedEntityId(document),
-      })
+      !documentsService.getDocumentByIdWithAccessContext ||
+      !documentsService.listDocumentFragmentsWithAccessContext
     ) {
+      error(res, "Canonical document authorization is unavailable", 503);
+      return true;
+    }
+    const document = await documentsService.getDocumentByIdWithAccessContext(
+      documentId,
+      accessContext,
+    );
+    if (!document) {
       error(res, "Document not found", 404);
       return true;
     }
 
-    const allFragments: Array<{
-      id: UUID;
-      text: string;
-      position: unknown;
-      createdAt: number;
-    }> = [];
-    let fragmentOffset = 0;
-
-    while (true) {
-      const fragmentBatch = await documentsService.getMemories({
-        tableName: DOCUMENT_FRAGMENTS_TABLE,
-        count: FRAGMENT_BATCH_SIZE,
-        offset: fragmentOffset,
-      });
-
-      if (fragmentBatch.length === 0) break;
-
-      for (const fragment of fragmentBatch) {
+    const fragments =
+      await documentsService.listDocumentFragmentsWithAccessContext(
+        documentId,
+        accessContext,
+      );
+    const documentFragments = fragments
+      .filter(hasUuidIdAndCreatedAt)
+      .map((fragment) => {
         const metadata = asRecord(fragment.metadata);
-        if (metadata?.documentId !== documentId) continue;
-        if (!hasUuidIdAndCreatedAt(fragment)) continue;
-        allFragments.push({
+        return {
           id: fragment.id,
           text: (fragment.content as { text?: string })?.text || "",
-          position: metadata.position,
+          position: metadata?.position,
           createdAt: fragment.createdAt,
-        });
-      }
-
-      if (fragmentBatch.length < FRAGMENT_BATCH_SIZE) break;
-      fragmentOffset += FRAGMENT_BATCH_SIZE;
-    }
-
-    const documentFragments = allFragments
+        };
+      })
       .sort((a, b) => {
         const posA = typeof a.position === "number" ? a.position : 0;
         const posB = typeof b.position === "number" ? b.position : 0;
@@ -1110,6 +997,101 @@ export async function handleDocumentsRoutes(
   }
 
   const docIdMatch = /^\/api\/documents\/([^/]+)$/.exec(pathname);
+  const docAccessMatch = /^\/api\/documents\/([^/]+)\/access$/.exec(pathname);
+  if (method === "GET" && docAccessMatch) {
+    const decodedDocumentId = decodeMatchedPathComponent(
+      ctx,
+      docAccessMatch[1],
+      "document id",
+    );
+    if (!decodedDocumentId) return true;
+    if (!isUuidValue(decodedDocumentId)) {
+      error(res, "document id must be a valid UUID");
+      return true;
+    }
+    if (!documentsService.getDocumentDirectGrantsWithAccessContext) {
+      error(res, "Canonical document grant authority is unavailable", 503);
+      return true;
+    }
+    try {
+      const directGrantEntityIds =
+        await documentsService.getDocumentDirectGrantsWithAccessContext(
+          decodedDocumentId.trim() as UUID,
+          accessContext,
+        );
+      json(res, {
+        documentId: decodedDocumentId.trim(),
+        directGrantEntityIds,
+      });
+    } catch (cause) {
+      // error-policy:J1 The HTTP boundary translates typed ACL failures without exposing storage details.
+      if (!(cause instanceof ElizaError)) throw cause;
+      error(res, cause.message, documentGrantErrorStatus(cause));
+    }
+    return true;
+  }
+
+  if (method === "PATCH" && docAccessMatch) {
+    const decodedDocumentId = decodeMatchedPathComponent(
+      ctx,
+      docAccessMatch[1],
+      "document id",
+    );
+    if (!decodedDocumentId) return true;
+    if (!isUuidValue(decodedDocumentId)) {
+      error(res, "document id must be a valid UUID");
+      return true;
+    }
+    if (!documentsService.setDocumentDirectGrantsWithAccessContext) {
+      error(res, "Canonical document grant authority is unavailable", 503);
+      return true;
+    }
+    const body = await readJsonBody<{ directGrantEntityIds?: unknown }>(
+      req,
+      res,
+      {
+        maxBytes: 128 * 1024,
+      },
+    );
+    if (!body) return true;
+    if (!Array.isArray(body.directGrantEntityIds)) {
+      error(res, "directGrantEntityIds must be an array of UUIDs");
+      return true;
+    }
+    const requestedGrants: UUID[] = [];
+    for (const value of body.directGrantEntityIds) {
+      if (!isUuidValue(value)) {
+        error(res, "directGrantEntityIds must contain only UUIDs");
+        return true;
+      }
+      requestedGrants.push(value.trim() as UUID);
+    }
+    try {
+      const document =
+        await documentsService.setDocumentDirectGrantsWithAccessContext(
+          decodedDocumentId.trim() as UUID,
+          requestedGrants,
+          accessContext,
+        );
+      // `metadata` is the MemoryMetadata union; only DocumentMetadata carries
+      // the grants, so narrow with `in` before reading.
+      const metadata = document.metadata;
+      const directGrantCandidate =
+        metadata &&
+        "directGrantEntityIds" in metadata &&
+        (metadata as { directGrantEntityIds?: unknown }).directGrantEntityIds;
+      const directGrantEntityIds = Array.isArray(directGrantCandidate)
+        ? directGrantCandidate
+        : [];
+      json(res, { ok: true, documentId: document.id, directGrantEntityIds });
+    } catch (cause) {
+      // error-policy:J1 The HTTP boundary translates typed ACL failures without exposing storage details.
+      if (!(cause instanceof ElizaError)) throw cause;
+      error(res, cause.message, documentGrantErrorStatus(cause));
+    }
+    return true;
+  }
+
   if (method === "GET" && docIdMatch) {
     const decodedDocumentId = decodeMatchedPathComponent(
       ctx,
@@ -1118,23 +1100,29 @@ export async function handleDocumentsRoutes(
     );
     if (!decodedDocumentId) return true;
     const documentId = decodedDocumentId as UUID;
-    const document = await runtime.getMemoryById(documentId);
-    if (
-      !document ||
-      !isDocumentMemory(document, agentId) ||
-      !canReadDocumentMemory(document, routeActor, {
-        scopedToEntityId: documentScopedEntityId(document),
-      })
-    ) {
+    if (!documentsService.getDocumentByIdWithAccessContext) {
+      error(res, "Canonical document authorization is unavailable", 503);
+      return true;
+    }
+    const document = await documentsService.getDocumentByIdWithAccessContext(
+      documentId,
+      accessContext,
+    );
+    if (!document) {
       error(res, "Document not found", 404);
       return true;
     }
 
-    const fragmentCount = await countDocumentFragmentsForDocument(
-      documentsService,
-      undefined,
-      documentId,
-    );
+    if (!documentsService.listDocumentFragmentsWithAccessContext) {
+      error(res, "Canonical document authorization is unavailable", 503);
+      return true;
+    }
+    const fragmentCount = (
+      await documentsService.listDocumentFragmentsWithAccessContext(
+        documentId,
+        accessContext,
+      )
+    ).length;
 
     json(res, {
       document: presentDocument(document, fragmentCount, {
@@ -1152,12 +1140,15 @@ export async function handleDocumentsRoutes(
     );
     if (!decodedDocumentId) return true;
     const documentId = decodedDocumentId as UUID;
-    const document = await runtime.getMemoryById(documentId);
-    if (
-      !document ||
-      !isDocumentMemory(document, agentId) ||
-      !canMutateDocumentMemory(document, routeActor)
-    ) {
+    if (!documentsService.getMutableDocumentWithAccessContext) {
+      error(res, "Canonical document authorization is unavailable", 503);
+      return true;
+    }
+    const document = await documentsService.getMutableDocumentWithAccessContext(
+      documentId,
+      accessContext,
+    );
+    if (!document) {
       error(res, "Document not found", 404);
       return true;
     }
@@ -1181,11 +1172,7 @@ export async function handleDocumentsRoutes(
     const result = await documentsService.updateDocument({
       documentId,
       content: body.content,
-      message: buildRouteMessage({
-        agentId,
-        text: body.content,
-        actor: routeActor,
-      }),
+      accessContext,
     });
 
     json(res, {
@@ -1204,12 +1191,20 @@ export async function handleDocumentsRoutes(
     );
     if (!decodedDocumentId) return true;
     const documentId = decodedDocumentId as UUID;
-    const existingDocument = await runtime.getMemoryById(documentId);
     if (
-      !existingDocument ||
-      !isDocumentMemory(existingDocument, agentId) ||
-      !canMutateDocumentMemory(existingDocument, routeActor)
+      !documentsService.getMutableDocumentWithAccessContext ||
+      !documentsService.listDocumentFragmentsWithAccessContext ||
+      !documentsService.deleteDocumentWithAccessContext
     ) {
+      error(res, "Canonical document authorization is unavailable", 503);
+      return true;
+    }
+    const existingDocument =
+      await documentsService.getMutableDocumentWithAccessContext(
+        documentId,
+        accessContext,
+      );
+    if (!existingDocument) {
       error(res, "Document not found", 404);
       return true;
     }
@@ -1224,20 +1219,20 @@ export async function handleDocumentsRoutes(
       return true;
     }
 
-    const fragmentIds = await listDocumentFragmentsForDocument(
-      documentsService,
-      undefined,
+    const fragmentCount = (
+      await documentsService.listDocumentFragmentsWithAccessContext(
+        documentId,
+        accessContext,
+      )
+    ).length;
+    await documentsService.deleteDocumentWithAccessContext(
       documentId,
+      accessContext,
     );
-
-    for (const fragmentId of fragmentIds) {
-      await documentsService.deleteMemory(fragmentId);
-    }
-    await documentsService.deleteMemory(documentId);
 
     json(res, {
       ok: true,
-      deletedFragments: fragmentIds.length,
+      deletedFragments: fragmentCount,
     });
     return true;
   }

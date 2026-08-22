@@ -517,6 +517,72 @@ describe("action tiering", () => {
 		expect(surface.exposedActionNames).toContain("SCHEDULED_TASKS");
 	});
 
+	it("matches an unambiguous reversed compound child name", () => {
+		const catalog = buildActionCatalog([
+			{
+				name: "TASKS",
+				description: "Manage coding tasks.",
+				subActions: ["TASKS_CANCEL"],
+			},
+			{ name: "TASKS_CANCEL", description: "Cancel a coding task." },
+		]);
+		const tasks = catalog.parentByName.get("TASKS");
+		if (!tasks) throw new Error("missing TASKS parent");
+
+		const surface = tierActionResults({
+			catalog,
+			results: [resultFor(tasks, 0.1)],
+			narrowToCandidateActions: ["CANCEL_TASKS"],
+		});
+
+		expect(surface.tierAParents.map((parent) => parent.name)).toEqual([
+			"TASKS",
+		]);
+		expect(surface.exposedActionNames).toContain("TASKS_CANCEL");
+	});
+
+	it("does not guess when reversed compound tokens identify multiple parents", () => {
+		const catalog = buildActionCatalog([
+			{ name: "MUSIC", description: "Control music." },
+			{
+				name: "TASKS",
+				description: "Manage coding tasks.",
+				subActions: ["TASKS_CANCEL_NOW"],
+			},
+			{ name: "TASKS_CANCEL_NOW", description: "Cancel a coding task." },
+			{
+				name: "CANCELLATIONS",
+				description: "Manage cancellation records.",
+				subActions: ["CANCEL_NOW_TASKS"],
+			},
+			{ name: "CANCEL_NOW_TASKS", description: "Cancel task records." },
+		]);
+		const music = catalog.parentByName.get("MUSIC");
+		const tasks = catalog.parentByName.get("TASKS");
+		const cancellations = catalog.parentByName.get("CANCELLATIONS");
+		if (!music || !tasks || !cancellations) {
+			throw new Error("missing collision parents");
+		}
+
+		const surface = tierActionResults({
+			catalog,
+			results: [
+				resultFor(music, 0.95),
+				resultFor(tasks, 0.1),
+				resultFor(cancellations, 0.1),
+			],
+			narrowToCandidateActions: ["NOW_TASKS_CANCEL"],
+		});
+
+		// No canonical action owns the proposed spelling and two parents own its
+		// unordered token set, so narrowing must remain inactive.
+		expect(surface.tierAParents.map((parent) => parent.name)).toEqual([
+			"MUSIC",
+		]);
+		expect(surface.exposedActionNames).not.toContain("TASKS_CANCEL_NOW");
+		expect(surface.exposedActionNames).not.toContain("CANCEL_NOW_TASKS");
+	});
+
 	it("demotes non-candidate Tier A parents when a candidate is promoted", () => {
 		const catalog = buildActionCatalog(actions);
 		const music = catalog.parentByName.get("MUSIC");

@@ -11,6 +11,9 @@ import type {
   ScenarioExecutionProfile,
 } from "@elizaos/scenario-runner/schema";
 
+const MEETINGS_PLUGIN_PACKAGE = "@elizaos/plugin-meetings";
+const MEETINGS_TEST_SUPPORT_PACKAGE = "@elizaos/plugin-meetings/test-support";
+
 const NON_PRODUCTION_PACKAGE_PATTERN =
   /(?:^|[/._-])(?:mock|mocks|fixture|fixtures|test|tests|test-harness)(?:$|[/._-])/iu;
 const PACKAGE_NAME_PATTERN =
@@ -40,6 +43,38 @@ export function resolveRequiredPluginPackages(
   if (!Array.isArray(plugins)) return [];
   const normalized = plugins.map((plugin) => plugin.trim()).filter(Boolean);
   return [...new Set(normalized)];
+}
+
+/**
+ * Reject shared-runtime batches where a test companion would alter a production
+ * scenario that did not declare it. Process-isolated execution remains valid.
+ */
+export function assertSharedRuntimePluginBatchSafe(
+  scenarios: readonly ScenarioDefinition[],
+): void {
+  const meetingScenarios = scenarios.map((scenario) => ({
+    id: scenario.id,
+    plugins: resolveRequiredPluginPackages(scenario),
+  }));
+  const withTestSupport = meetingScenarios.filter(({ plugins }) =>
+    plugins.includes(MEETINGS_TEST_SUPPORT_PACKAGE),
+  );
+  for (const scenario of withTestSupport) {
+    if (!scenario.plugins.includes(MEETINGS_PLUGIN_PACKAGE)) {
+      throw new Error(
+        `[scenario-runner] scenario ${scenario.id} declares meetings test support without ${MEETINGS_PLUGIN_PACKAGE}`,
+      );
+    }
+  }
+  if (withTestSupport.length === 0) return;
+  const withoutTestSupport = meetingScenarios.filter(
+    ({ plugins }) => !plugins.includes(MEETINGS_TEST_SUPPORT_PACKAGE),
+  );
+  if (withoutTestSupport.length > 0) {
+    throw new Error(
+      `[scenario-runner] unsafe shared meetings batch: once test support is loaded by [${withTestSupport.map(({ id }) => id).join(", ")}], every scenario sharing that runtime must explicitly declare ${MEETINGS_TEST_SUPPORT_PACKAGE}; missing declarations: [${withoutTestSupport.map(({ id }) => id).join(", ")}]. Run those scenarios process-isolated or select a dependency-homogeneous batch`,
+    );
+  }
 }
 
 export function providerQualifiedPluginPackageProblem(

@@ -18,6 +18,7 @@
         <item name="windowActionBar">false</item>
         <item name="windowNoTitle">true</item>
         <item name="android:background">@null</item>
+        <item name="android:windowBackground">@color/splash_background</item>
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:navigationBarColor">@android:color/transparent</item>
         <!-- White status-bar icons (light=false) from the first frame, matching
@@ -29,7 +30,7 @@
 
     <style name="AppTheme.NoActionBarLaunch" parent="Theme.SplashScreen">
         <item name="android:background">@drawable/splash</item>
-        <item name="android:windowSplashScreenBackground">@color/splash_background</item>
+        <item name="windowSplashScreenBackground">@color/splash_background</item>
         <!-- Launch status bar matches the splash + home background (#ef5a1f),
              not the brand accent, so there is no orange→orange flash before the
              ambient home renders (issue #9565). -->

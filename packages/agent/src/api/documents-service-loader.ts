@@ -86,7 +86,31 @@ export interface DocumentsServiceLike {
     message?: Memory,
     options?: Record<string, unknown>,
   ): Promise<Memory[]>;
+  listAllDocumentsWithAccessContext?(
+    accessContext: AccessContext,
+  ): Promise<Memory[]>;
   getDocumentById?(documentId: UUID, message?: Memory): Promise<Memory | null>;
+  getDocumentByIdWithAccessContext?(
+    documentId: UUID,
+    accessContext: AccessContext,
+  ): Promise<Memory | null>;
+  getMutableDocumentWithAccessContext?(
+    documentId: UUID,
+    accessContext: AccessContext,
+  ): Promise<Memory | null>;
+  setDocumentDirectGrantsWithAccessContext?(
+    documentId: UUID,
+    directGrantEntityIds: UUID[],
+    accessContext: AccessContext,
+  ): Promise<Memory>;
+  getDocumentDirectGrantsWithAccessContext?(
+    documentId: UUID,
+    accessContext: AccessContext,
+  ): Promise<UUID[]>;
+  listDocumentFragmentsWithAccessContext?(
+    documentId: UUID,
+    accessContext: AccessContext,
+  ): Promise<Memory[]>;
   getMemories(params: {
     tableName: string;
     roomId?: UUID;
@@ -103,11 +127,16 @@ export interface DocumentsServiceLike {
     documentId: UUID;
     content: string;
     message?: Memory;
+    accessContext?: AccessContext;
   }): Promise<{
     documentId: UUID;
     fragmentCount: number;
   }>;
   deleteDocument?(documentId: UUID, message?: Memory): Promise<void>;
+  deleteDocumentWithAccessContext?(
+    documentId: UUID,
+    accessContext: AccessContext,
+  ): Promise<void>;
   deleteMemory(memoryId: UUID): Promise<void>;
 }
 
@@ -127,7 +156,12 @@ const MAX_TIMEOUT_MS = 60_000;
 export function getDocumentsServiceTimeoutMs(): number {
   const envVal = process.env.DOCUMENTS_SERVICE_TIMEOUT_MS;
   if (!envVal) return DEFAULT_TIMEOUT_MS;
-  const parsed = Number.parseInt(envVal, 10);
+  // `Number.parseInt` stops at the first non-digit, so "1junk" parsed to a
+  // positive 1 and passed the guard below — a 1ms budget that makes every
+  // documents-service load report `timeout`, from a value nobody set as a
+  // timeout. Require the whole trimmed value to be decimal.
+  const trimmed = envVal.trim();
+  const parsed = /^\+?\d+$/.test(trimmed) ? Number(trimmed) : Number.NaN;
   if (Number.isNaN(parsed) || parsed <= 0) return DEFAULT_TIMEOUT_MS;
   return Math.min(parsed, MAX_TIMEOUT_MS);
 }

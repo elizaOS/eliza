@@ -3,7 +3,7 @@ name: Scenario E2E
 # Scenario-heavy and browser matrix coverage for the integrated develop tree.
 
 on:
-  # Reusable entry for the scheduled exhaustive develop lane (#12342).
+  # Reusable entry for the exhaustive Develop Full lane (#12342).
   workflow_call:
     inputs:
       concurrency_scope:
@@ -11,11 +11,6 @@ on:
         required: false
         type: string
         default: standalone
-  push:
-    branches: [develop]
-  schedule:
-    # Nightly heavy lane (#14051): 07:00 UTC.
-    - cron: "0 7 * * *"
   workflow_dispatch:
 
 # A reusable caller's scope separates it from the standalone ref domain.

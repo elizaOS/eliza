@@ -174,7 +174,6 @@ const optionalPluginSpecifiers = {
   cloud: "@elizaos/plugin-elizacloud",
   imessage: "@elizaos/plugin-imessage",
   mcp: "@elizaos/plugin-mcp",
-  signal: "@elizaos/plugin-signal",
   whatsapp: "@elizaos/plugin-whatsapp",
   workflow: "@elizaos/plugin-workflow",
 } as const;
@@ -185,7 +184,6 @@ const optionalPluginImports = {
   cloud: () => importOptionalPlugin(optionalPluginSpecifiers.cloud),
   imessage: () => importOptionalPlugin(optionalPluginSpecifiers.imessage),
   mcp: () => importOptionalPlugin(optionalPluginSpecifiers.mcp),
-  signal: () => importOptionalPlugin(optionalPluginSpecifiers.signal),
   whatsapp: () => importOptionalPlugin(optionalPluginSpecifiers.whatsapp),
   workflow: () => importOptionalPlugin(optionalPluginSpecifiers.workflow),
 };
@@ -842,7 +840,11 @@ async function handleBuiltinOptionalRoutes(
     if (method === "POST") {
       await readBody(req).catch(() => undefined);
     }
-    json(res, absentPluginStub.buildBody(req));
+    json(
+      res,
+      absentPluginStub.buildBody(req),
+      absentPluginStub.statusCode ?? 200,
+    );
     return true;
   }
 
@@ -2552,11 +2554,6 @@ async function handleRequest(
             applyWhatsAppQrOverride: (...args: unknown[]) => void;
           }>("whatsapp")
         ).applyWhatsAppQrOverride,
-        applySignalQrOverride: (
-          await getOptionalPluginApi<{
-            applySignalQrOverride: (...args: unknown[]) => void;
-          }>("signal")
-        ).applySignalQrOverride,
         resolvePluginConfigMutationRejections,
         requirePluginManager,
         requireCoreManager,
@@ -4770,7 +4767,7 @@ export async function startApiServer(opts?: {
   state.broadcastWsToConversation = (conversationId: string, data: object) =>
     eventHub.sendToConversation(conversationId, data);
   // Wire up ConnectorSetupService broadcastWs so connector plugins
-  // (Signal, WhatsApp) can broadcast pairing events via the service.
+  // Pairing connectors such as WhatsApp can broadcast events via the service.
   if (state.runtime) {
     try {
       const setupSvc = state.runtime.getService("connector-setup") as {
@@ -5081,14 +5078,6 @@ export async function startApiServer(opts?: {
       dispose: async () => {
         const sessions = [...(state.whatsappPairingSessions?.values() ?? [])];
         state.whatsappPairingSessions?.clear();
-        await Promise.all(sessions.map((session) => session.stop()));
-      },
-    },
-    {
-      name: "Signal pairing sessions",
-      dispose: async () => {
-        const sessions = [...(state.signalPairingSessions?.values() ?? [])];
-        state.signalPairingSessions?.clear();
         await Promise.all(sessions.map((session) => session.stop()));
       },
     },

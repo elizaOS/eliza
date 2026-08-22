@@ -64,6 +64,26 @@ declared capabilities and nonce-bound observations emitted by the executed
 suite. Normal CI is fully offline and credential-free; live/sandbox lanes
 remain optional.
 
+## Synthetic environment leases
+
+`@elizaos/cloud-test-mocks/synthetic-environment` exposes a file-backed SQLite
+lease store for standalone scenario and mock-service processes. Acquisition,
+reset rollover, heartbeat, release, and `withActiveGeneration` use the same
+OS-visible transaction boundary; pass the callback's database handle to local
+synthetic writes instead of checking authority separately.
+
+The SQLite adapter is a same-host authority; do not place it on a network
+filesystem or use it to coordinate different machines. The database must live
+in a private, non-symlink directory that is not writable
+by other users; the adapter rejects symlink/non-regular targets and pins the
+database file to owner-only permissions. A storage exception during commit is
+an ambiguous result: read the canonical namespace snapshot and reconcile the
+lease ID/generation before issuing another mutation. Namespace values use the
+same exact, non-normalizing 512-character contract as synthetic subprocess
+control envelopes.
+Processes running under the same OS account are inside this local trust
+boundary and can access the same file-backed authority by design.
+
 ## Hetzner Cloud mock
 
 Implements the subset of the Hetzner Cloud API that the autoscaler client in
