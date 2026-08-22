@@ -7,6 +7,7 @@
 import type { Browser, BrowserWorker, Page } from "@cloudflare/playwright";
 import { getCloudBinding } from "../runtime/cloud-bindings";
 import { logger } from "../utils/logger";
+import { doorDashPersistentConnectOptions } from "./doordash-browser-run-session";
 import { assertManagedCheckoutBinding } from "./doordash-checkout-binding";
 
 const BASE_URL = "https://www.doordash.com";
@@ -40,8 +41,19 @@ function browserBinding(): BrowserWorker {
 }
 
 async function pageFor(browser: Browser): Promise<Page> {
-  const context = browser.contexts()[0] ?? (await browser.newContext());
+  const context = browser.contexts()[0];
+  if (!context) {
+    throw new Error("Cloudflare Browser Run persistent context is unavailable");
+  }
   return context.pages()[0] ?? (await context.newPage());
+}
+
+async function connectPersistentBrowser(
+  binding: BrowserWorker,
+  sessionId: string,
+): Promise<Browser> {
+  const { connect } = await browserRunSdk();
+  return await connect(binding, doorDashPersistentConnectOptions(sessionId));
 }
 
 async function liveViewUrl(page: Page): Promise<string> {
@@ -101,7 +113,7 @@ async function disconnect(browser: Browser): Promise<void> {
 
 export async function createDoorDashBrowserSession(): Promise<DoorDashBrowserSession> {
   const binding = browserBinding();
-  const { acquire, connect } = await browserRunSdk();
+  const { acquire } = await browserRunSdk();
   const { sessionId } = await acquire(binding, {
     keep_alive: KEEP_ALIVE_MS,
     guardrails: {
@@ -116,7 +128,7 @@ export async function createDoorDashBrowserSession(): Promise<DoorDashBrowserSes
       allowedDomainSets: ["common-cdns"],
     },
   });
-  const browser = await connect(binding, sessionId);
+  const browser = await connectPersistentBrowser(binding, sessionId);
   try {
     const page = await pageFor(browser);
     await page.goto(`${BASE_URL}/consumer/login`, {
@@ -139,8 +151,7 @@ export async function createDoorDashBrowserSession(): Promise<DoorDashBrowserSes
 export async function getDoorDashBrowserSession(
   sessionId: string,
 ): Promise<DoorDashBrowserSession> {
-  const { connect } = await browserRunSdk();
-  const browser = await connect(browserBinding(), sessionId);
+  const browser = await connectPersistentBrowser(browserBinding(), sessionId);
   try {
     const page = await pageFor(browser);
     return { id: sessionId, interactiveLiveViewUrl: await liveViewUrl(page) };
@@ -456,8 +467,7 @@ export async function executeDoorDashBrowserOperation(
   name: string,
   args: Record<string, unknown>,
 ): Promise<Record<string, unknown>> {
-  const { connect } = await browserRunSdk();
-  const browser = await connect(browserBinding(), sessionId);
+  const browser = await connectPersistentBrowser(browserBinding(), sessionId);
   try {
     const page = await pageFor(browser);
     if (name !== "doordash_auth_check" && (await hasDoorDashSecurityChallenge(page))) {

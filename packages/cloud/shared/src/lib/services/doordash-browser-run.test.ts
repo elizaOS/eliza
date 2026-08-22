@@ -1,6 +1,7 @@
-/** Verifies the Cloudflare checkout click is bound to the exact confirmed cart and preview. */
+/** Verifies persistent Cloudflare sessions and exact checkout binding safeguards. */
 
 import { describe, expect, test } from "bun:test";
+import { doorDashPersistentConnectOptions } from "./doordash-browser-run-session";
 import {
   assertManagedCheckoutBinding,
   managedCheckoutBindingDigest,
@@ -61,5 +62,14 @@ describe("managed DoorDash checkout binding", () => {
     expect(() => assertManagedCheckoutBinding(digest, currentCart, currentPreview)).toThrow(
       /changed after confirmation/i,
     );
+  });
+});
+
+describe("managed DoorDash Browser Run lifecycle", () => {
+  test("reconnects through Cloudflare persistent mode so Live View tabs survive", () => {
+    expect(doorDashPersistentConnectOptions("session-1")).toEqual({
+      persistent: true,
+      sessionId: "session-1",
+    });
   });
 });
