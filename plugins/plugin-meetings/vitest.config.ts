@@ -6,10 +6,13 @@
  */
 import { fileURLToPath } from "node:url";
 import { configDefaults, defineConfig } from "vitest/config";
+import { buildWorkspaceSourceAliases } from "../../packages/scripts/vitest/source-aliases.ts";
 
+const repoRoot = fileURLToPath(new URL("../..", import.meta.url));
 const sharedSourceRoot = fileURLToPath(
   new URL("../../packages/shared/src", import.meta.url),
 );
+const workspaceSourceAliases = buildWorkspaceSourceAliases(repoRoot);
 
 export default defineConfig({
   resolve: {
@@ -22,6 +25,7 @@ export default defineConfig({
         find: /^@elizaos\/shared$/,
         replacement: `${sharedSourceRoot}/index.ts`,
       },
+      ...workspaceSourceAliases,
     ],
   },
   test: {

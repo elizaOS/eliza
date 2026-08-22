@@ -311,6 +311,25 @@ describe("/api/meetings routes", () => {
         .transcriptId,
     ).toBeUndefined();
 
+    for (const role of [undefined, "MALFORMED"] as const) {
+      const denied = await get(
+        ctx({
+          params: { id: session.id },
+          accessContext: {
+            requesterEntityId: "55555555-5555-5555-5555-555555555555" as UUID,
+            role: role as never,
+          },
+        }),
+      );
+      const deniedSession = (
+        denied.body as {
+          session: { transcriptId?: string; transcriptRedacted?: true };
+        }
+      ).session;
+      expect(deniedSession.transcriptId).toBeUndefined();
+      expect(deniedSession.transcriptRedacted).toBeUndefined();
+    }
+
     // USER with a FULL grant: full, unflagged.
     const row2 = fake.memories.get(transcriptId);
     if (!row2) throw new Error("transcript row missing");

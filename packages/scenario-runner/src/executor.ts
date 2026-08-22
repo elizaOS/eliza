@@ -404,6 +404,8 @@ type ScenarioApiServer = {
   close: () => Promise<void>;
 };
 
+const activeScenarioByRuntime = new WeakMap<AgentRuntime, string>();
+
 type ScenarioRouteRequest = http.IncomingMessage &
   RouteRequest & {
     get?: (name: string) => string | undefined;
@@ -2434,6 +2436,14 @@ export async function runScenario(
       return report;
     }
   }
+  const activeScenarioId = activeScenarioByRuntime.get(runtime);
+  if (activeScenarioId) {
+    report.status = "failed";
+    report.error = `runtime is already executing scenario ${activeScenarioId}; concurrent scenarios require isolated runtimes`;
+    report.durationMs = Date.now() - startedAt;
+    return report;
+  }
+  activeScenarioByRuntime.set(runtime, scenario.id);
   // Every numeric LLM-judge score produced while running this scenario (turn
   // responseJudge + judgeRubric final checks). The minimum — the binding
   // quality constraint — is serialized as report.judgeScore (#8795).
@@ -2457,6 +2467,8 @@ export async function runScenario(
   const scenarioComputerUseService = createScenarioComputerUseService();
   let apiServer: ScenarioApiServer | null = null;
   let fixtureConsumptionChecked = false;
+  const originalUseModel = runtime.useModel;
+  let modelFreeGuardInstalled = false;
 
   try {
     beginScenarioModelFixtureAttempt(
@@ -2465,6 +2477,15 @@ export async function runScenario(
       opts.attemptId ?? `${scenario.id}:attempt-1`,
       opts.worldId,
     );
+    if (scenarioModelFixtureMode(scenario) === "model-free") {
+      (runtime as { useModel: AgentRuntime["useModel"] }).useModel = (() => {
+        throw new ElizaError(
+          `Scenario ${scenario.id} declared model-free but invoked a model`,
+          { code: "SCENARIO_MODEL_FREE_CALL" },
+        );
+      }) as AgentRuntime["useModel"];
+      modelFreeGuardInstalled = true;
+    }
     await resetSharedSchedulingState(runtime);
 
     runtime.setSetting("ELIZA_ADMIN_ENTITY_ID", primaryRoom.userId, false);
@@ -2794,6 +2815,10 @@ export async function runScenario(
         report.failedAssertions.push({ label: "cleanup", detail });
       }
     }
+    if (modelFreeGuardInstalled) {
+      (runtime as { useModel: AgentRuntime["useModel"] }).useModel =
+        originalUseModel;
+    }
     (
       runtime as {
         getService: AgentRuntime["getService"];
@@ -2802,6 +2827,9 @@ export async function runScenario(
     interceptor.detach();
     if (apiServer) {
       await apiServer.close();
+    }
+    if (activeScenarioByRuntime.get(runtime) === scenario.id) {
+      activeScenarioByRuntime.delete(runtime);
     }
     report.durationMs = Date.now() - startedAt;
   }

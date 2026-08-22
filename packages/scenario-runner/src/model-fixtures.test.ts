@@ -141,6 +141,13 @@ describe("scenario model fixture manifests", () => {
     expect(() =>
       beginScenarioModelFixtureAttempt(runtime, conversational, "attempt-1"),
     ).toThrow(/declares model-free but contains model-backed work/);
+    expect(() =>
+      beginScenarioModelFixtureAttempt(
+        {} as AgentRuntime,
+        conversational,
+        "live-attempt",
+      ),
+    ).toThrow(/declares model-free but contains model-backed work/);
   });
 
   it("reports strict versus legacy migration modes without guessing", () => {

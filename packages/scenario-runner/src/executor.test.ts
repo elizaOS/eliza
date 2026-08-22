@@ -12,6 +12,7 @@ import type {
   RouteRequest,
   RouteResponse,
 } from "@elizaos/core";
+import { ModelType } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { runScenario } from "./executor";
 
@@ -34,6 +35,14 @@ function createRuntime(
     },
     ...overrides,
   } as unknown as AgentRuntime;
+}
+
+function deferred() {
+  let resolve!: () => void;
+  const promise = new Promise<void>((resolvePromise) => {
+    resolve = resolvePromise;
+  });
+  return { promise, resolve };
 }
 
 describe("scenario executor wait turns", () => {
@@ -880,6 +889,97 @@ describe("scenario executor action turns", () => {
     expect(report.finalChecks).toContainEqual(
       expect.objectContaining({ type: "actionCalled", status: "failed" }),
     );
+  });
+
+  it("fails a model-free action that invokes a model internally", async () => {
+    const useModel = vi.fn(async () => "fabricated");
+    const runtime = createRuntime(
+      [
+        {
+          name: "HIDDEN_MODEL",
+          description: "test action",
+          validate: vi.fn(async () => true),
+          handler: vi.fn(async (actionRuntime: IAgentRuntime) => {
+            await actionRuntime.useModel(ModelType.TEXT_SMALL, {
+              prompt: "hidden",
+            });
+            return { success: true };
+          }),
+        } as Action,
+      ],
+      { useModel: useModel as AgentRuntime["useModel"] },
+    );
+
+    const report = await runScenario(
+      {
+        id: "model-free-hidden-call",
+        title: "Model-free hidden call",
+        domain: "executor",
+        modelFixtures: { mode: "model-free", reason: "direct action" },
+        turns: [
+          {
+            kind: "action",
+            name: "hidden",
+            actionName: "HIDDEN_MODEL",
+          },
+        ],
+      },
+      runtime,
+      {
+        minJudgeScore: 0.8,
+        providerName: "unit-test",
+        turnTimeoutMs: 1_000,
+      },
+    );
+
+    expect(report.status).toBe("failed");
+    expect(report.error).toContain("declared model-free but invoked a model");
+    expect(useModel).not.toHaveBeenCalled();
+    expect(runtime.useModel).toBe(useModel);
+  });
+
+  it("rejects concurrent scenarios sharing one runtime without cross-attempt leakage", async () => {
+    const barrier = deferred();
+    const runtime = createRuntime([
+      {
+        name: "BLOCK",
+        description: "test action",
+        validate: vi.fn(async () => true),
+        handler: vi.fn(async () => {
+          await barrier.promise;
+          return { success: true };
+        }),
+      } as Action,
+    ]);
+    const definition = {
+      id: "exclusive-runtime",
+      title: "Exclusive runtime",
+      domain: "executor",
+      turns: [{ kind: "action" as const, name: "block", actionName: "BLOCK" }],
+    };
+
+    const first = runScenario(definition, runtime, {
+      minJudgeScore: 0.8,
+      providerName: "unit-test",
+      turnTimeoutMs: 1_000,
+    });
+    await Promise.resolve();
+    const concurrent = await runScenario(
+      { ...definition, id: "concurrent-runtime" },
+      runtime,
+      {
+        minJudgeScore: 0.8,
+        providerName: "unit-test",
+        turnTimeoutMs: 1_000,
+      },
+    );
+
+    expect(concurrent.status).toBe("failed");
+    expect(concurrent.error).toContain(
+      "runtime is already executing scenario exclusive-runtime",
+    );
+    barrier.resolve();
+    await expect(first).resolves.toMatchObject({ status: "passed" });
   });
 
   it("reports expected and actual response text for responseIncludesAny failures", async () => {

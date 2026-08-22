@@ -139,17 +139,17 @@ export function beginScenarioModelFixtureAttempt(
   attemptId: string,
   worldId?: string,
 ): void {
-  const registry = (runtime as RuntimeWithScenarioModelFixtureRegistry)
-    .scenarioModelFixtures;
-  if (!registry) return;
   const declaration: ScenarioModelFixtureDeclaration | undefined =
     scenario.modelFixtures;
-  (
-    runtime as RuntimeWithScenarioModelFixtureRegistry
-  ).setScenarioModelFixtureMode?.(scenarioModelFixtureMode(scenario));
   if (declaration?.mode === "model-free") {
     assertModelFreeScenario(scenario);
   }
+  const registry = (runtime as RuntimeWithScenarioModelFixtureRegistry)
+    .scenarioModelFixtures;
+  if (!registry) return;
+  (
+    runtime as RuntimeWithScenarioModelFixtureRegistry
+  ).setScenarioModelFixtureMode?.(scenarioModelFixtureMode(scenario));
   const fixtures =
     declaration?.mode === "fixtures"
       ? declaration.fixtures.map(compileScenarioModelFixture)
