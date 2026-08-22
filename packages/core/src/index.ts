@@ -19,7 +19,7 @@ export {
 } from "./errors";
 // Re-export everything from the Node.js entry point
 // This ensures that imports from "@elizaos/core" resolve correctly during builds
-export * from "./index.node";
+export * from "./index.node.ts";
 // Unwraps the untrusted-content envelope to the user's verbatim text. Public
 // because orchestration surfaces that forward a user message onward (e.g. a
 // deterministic follow-up send) must never embed the security banner in a
