@@ -70,6 +70,7 @@ import {
 } from "@elizaos/core";
 import type { RouteRequestContext } from "@elizaos/shared";
 import {
+  CODING_PROVIDER_DESCRIPTORS,
   codingAgentSpawnCapabilityForProvider,
   codingProviderDescriptorForProvider,
   isLinkedAccountProviderId,
@@ -324,29 +325,16 @@ export function _resetAccountsRoutesPoolCache(): void {
 
 // ─── Provider id mapping ────────────────────────────────────────────
 
-const SUPPORTED_PROVIDER_IDS = [
-  "anthropic-subscription",
-  "openai-codex",
-  "gemini-cli",
-  "zai-coding",
-  "kimi-coding",
-  "deepseek-coding",
-  "anthropic-api",
-  "openai-api",
-  "deepseek-api",
-  "zai-api",
-  "moonshot-api",
-  "cerebras-api",
-] as const satisfies readonly LinkedAccountProviderId[];
+const SUPPORTED_PROVIDER_IDS = Object.keys(
+  CODING_PROVIDER_DESCRIPTORS,
+) as LinkedAccountProviderId[];
 
-const DIRECT_PROVIDER_IDS = new Set<LinkedAccountProviderId>([
-  "anthropic-api",
-  "openai-api",
-  "deepseek-api",
-  "zai-api",
-  "moonshot-api",
-  "cerebras-api",
-]);
+const DIRECT_PROVIDER_IDS = new Set<LinkedAccountProviderId>(
+  SUPPORTED_PROVIDER_IDS.filter(
+    (providerId) =>
+      CODING_PROVIDER_DESCRIPTORS[providerId].accountKind === "api-key",
+  ),
+);
 
 const ANTHROPIC_SUBSCRIPTION_CHAT_BLOCKED_REASON =
   "Claude subscription OAuth credentials are scoped to Claude Code CLI/coding-agent use. Fable chat must use a direct Anthropic API/app-owned provider path; the shared external Anthropic proxy is a dev fallback only.";

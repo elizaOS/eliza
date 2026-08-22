@@ -3654,51 +3654,60 @@ export class AcpService extends Service {
     available: boolean;
     reason?: string;
   } {
-    let commandLine: string;
+    let commandLines: string[];
     try {
-      commandLine =
-        this.transportMode === "native"
-          ? this.nativeAgentCommand(agentType)
-          : this.cliPath;
+      if (this.transportMode === "native") {
+        commandLines = [this.nativeAgentCommand(agentType)];
+      } else {
+        const adapter = this.legacyAcpxAdapter(agentType);
+        commandLines = [
+          this.cliPath,
+          ...(adapter.command ? [adapter.command] : []),
+        ];
+      }
     } catch (error) {
       // error-policy:J4 preflight turns an invalid backend configuration into
       // an explicit unavailable row instead of aborting the entire inventory.
       return { available: false, reason: errorMessage(error) };
     }
-    const [token] = commandLine.match(/(?:[^\s"']+|"[^"]*"|'[^']*')+/gu) ?? [];
-    const command = token?.replace(/^(['"])(.*)\1$/u, "$2") ?? "";
-    if (!command) {
-      return {
-        available: false,
-        reason: "No executable command is configured.",
-      };
-    }
-    if (command.includes("/") || command.includes("\\")) {
-      try {
-        const commandPath = resolve(command);
-        if (!statSync(commandPath).isFile()) {
-          return {
-            available: false,
-            reason: `Configured command is not a file: ${command}`,
-          };
-        }
-        accessSync(commandPath, constants.X_OK);
-        return { available: true };
-      } catch {
-        // error-policy:J3 configured command paths fail closed when absent or
-        // non-executable; the preflight row reports installed=false.
+    for (const commandLine of commandLines) {
+      const [token] =
+        commandLine.match(/(?:[^\s"']+|"[^"]*"|'[^']*')+/gu) ?? [];
+      const command = token?.replace(/^(['"])(.*)\1$/u, "$2") ?? "";
+      if (!command) {
         return {
           available: false,
-          reason: `Configured command is missing or not executable: ${command}`,
+          reason: "No executable command is configured.",
         };
       }
-    }
-    return findExecutableOnPath(command)
-      ? { available: true }
-      : {
+      if (command.includes("/") || command.includes("\\")) {
+        try {
+          const commandPath = resolve(command);
+          if (!statSync(commandPath).isFile()) {
+            return {
+              available: false,
+              reason: `Configured command is not a file: ${command}`,
+            };
+          }
+          accessSync(commandPath, constants.X_OK);
+          continue;
+        } catch {
+          // error-policy:J3 configured command paths fail closed when absent or
+          // non-executable; the preflight row reports installed=false.
+          return {
+            available: false,
+            reason: `Configured command is missing or not executable: ${command}`,
+          };
+        }
+      }
+      if (!findExecutableOnPath(command)) {
+        return {
           available: false,
           reason: `Command is not available on PATH: ${command}`,
         };
+      }
+    }
+    return { available: true };
   }
 
   private async stopNativeClient(sessionId: string): Promise<void> {
@@ -3715,10 +3724,35 @@ export class AcpService extends Service {
   }
 
   private agentCommandArgs(agentType: AgentType, args: string[]): string[] {
-    if (agentType !== "opencode") return [agentType, ...args];
-    const command = this.opencodeAgentCommand();
-    if (!command) return [agentType, ...args];
-    return ["--agent", command, ...args];
+    return [...this.legacyAcpxAdapter(agentType).args, ...args];
+  }
+
+  /** Resolve only acpx adapters whose invocation contract is known here. */
+  private legacyAcpxAdapter(agentType: AgentType): {
+    args: readonly string[];
+    command?: string;
+  } {
+    const normalized = normalizeTaskAgentAdapter(agentType) ?? agentType;
+    switch (normalized) {
+      case "pi-agent":
+        return { args: ["pi"] };
+      case "claude":
+      case "codex":
+        return { args: [normalized] };
+      case "elizaos":
+      case "opencode": {
+        const command = this.nativeAgentCommand(normalized);
+        return { args: ["--agent", command], command };
+      }
+      default:
+        throw new ElizaError(
+          `No verified legacy acpx adapter is registered for ${String(normalized)}`,
+          {
+            code: "ACP_LEGACY_ADAPTER_UNAVAILABLE",
+            context: { agentType: String(normalized) },
+          },
+        );
+    }
   }
 
   private runAcpx(opts: RunOptions): Promise<RunResult> {

@@ -20,10 +20,22 @@ export const CODING_PROVIDER_DESCRIPTOR_VERSION = 1 as const;
 export type CodingProviderAccountKind = "subscription" | "api-key";
 export type CodingProviderAuthMode =
   | "oauth"
-  | "api-key"
+  | "direct-api-key"
+  | "coding-plan-key"
   | "external-cli"
   | "unavailable";
-export type CodingProviderBillingMode = "subscription" | "usage";
+export type CodingProviderBillingMode =
+  | "subscription-coding-plan"
+  | "subscription-coding-cli"
+  | "usage";
+export type CodingProviderSubscriptionAuthMode =
+  | "oauth"
+  | "external-cli"
+  | "coding-plan-key"
+  | "unavailable";
+export type CodingProviderSubscriptionBillingMode =
+  | "subscription-coding-plan"
+  | "subscription-coding-cli";
 export type CodingProviderDiscoveryPolicy =
   | "bundled-or-configured-command"
   | "configured-command-or-path"
@@ -106,15 +118,29 @@ export function isCodingAgentBackend(
   );
 }
 
-function descriptor(
-  providerId: string,
-  accountKind: CodingProviderAccountKind,
-  authMode: CodingProviderAuthMode,
-  billingMode: CodingProviderBillingMode,
-  inferenceSupport: boolean,
-  backend: CodingAgentBackend | null,
+function descriptor<
+  const ProviderId extends string,
+  const AccountKind extends CodingProviderAccountKind,
+  const AuthMode extends CodingProviderAuthMode,
+  const BillingMode extends CodingProviderBillingMode,
+  const InferenceSupport extends boolean,
+  const Backend extends CodingAgentBackend | null,
+>(
+  providerId: ProviderId,
+  accountKind: AccountKind,
+  authMode: AuthMode,
+  billingMode: BillingMode,
+  inferenceSupport: InferenceSupport,
+  backend: Backend,
   unsupportedReason: string | null,
-): CodingProviderDescriptor {
+): CodingProviderDescriptor & {
+  providerId: ProviderId;
+  accountKind: AccountKind;
+  authMode: AuthMode;
+  billingMode: BillingMode;
+  inferenceSupport: InferenceSupport;
+  backend: Backend;
+} {
   const preflight = backend ? CODING_AGENT_BACKEND_PREFLIGHTS[backend] : null;
   return {
     version: CODING_PROVIDER_DESCRIPTOR_VERSION,
@@ -140,7 +166,7 @@ export const CODING_PROVIDER_DESCRIPTORS = {
     "anthropic-subscription",
     "subscription",
     "oauth",
-    "subscription",
+    "subscription-coding-cli",
     false,
     "claude",
     null,
@@ -149,7 +175,7 @@ export const CODING_PROVIDER_DESCRIPTORS = {
     "openai-codex",
     "subscription",
     "oauth",
-    "subscription",
+    "subscription-coding-cli",
     true,
     "codex",
     null,
@@ -158,7 +184,7 @@ export const CODING_PROVIDER_DESCRIPTORS = {
     "gemini-cli",
     "subscription",
     "external-cli",
-    "subscription",
+    "subscription-coding-cli",
     false,
     null,
     "Gemini CLI is not wired to a supported coding-agent spawn backend.",
@@ -166,8 +192,8 @@ export const CODING_PROVIDER_DESCRIPTORS = {
   "zai-coding": descriptor(
     "zai-coding",
     "subscription",
-    "api-key",
-    "subscription",
+    "coding-plan-key",
+    "subscription-coding-plan",
     true,
     null,
     "The z.ai coding credential can serve model inference, but no supported coding-agent spawn backend consumes it.",
@@ -175,8 +201,8 @@ export const CODING_PROVIDER_DESCRIPTORS = {
   "kimi-coding": descriptor(
     "kimi-coding",
     "subscription",
-    "api-key",
-    "subscription",
+    "coding-plan-key",
+    "subscription-coding-plan",
     true,
     null,
     "The Kimi coding credential can serve model inference, but no supported coding-agent spawn backend consumes it.",
@@ -185,7 +211,7 @@ export const CODING_PROVIDER_DESCRIPTORS = {
     "deepseek-coding",
     "subscription",
     "unavailable",
-    "subscription",
+    "subscription-coding-plan",
     false,
     null,
     "No first-party DeepSeek coding subscription surface or supported coding-agent spawn backend is available.",
@@ -193,7 +219,7 @@ export const CODING_PROVIDER_DESCRIPTORS = {
   "anthropic-api": descriptor(
     "anthropic-api",
     "api-key",
-    "api-key",
+    "direct-api-key",
     "usage",
     true,
     "claude",
@@ -202,7 +228,7 @@ export const CODING_PROVIDER_DESCRIPTORS = {
   "openai-api": descriptor(
     "openai-api",
     "api-key",
-    "api-key",
+    "direct-api-key",
     "usage",
     true,
     "codex",
@@ -211,7 +237,7 @@ export const CODING_PROVIDER_DESCRIPTORS = {
   "deepseek-api": descriptor(
     "deepseek-api",
     "api-key",
-    "api-key",
+    "direct-api-key",
     "usage",
     true,
     null,
@@ -220,7 +246,7 @@ export const CODING_PROVIDER_DESCRIPTORS = {
   "zai-api": descriptor(
     "zai-api",
     "api-key",
-    "api-key",
+    "direct-api-key",
     "usage",
     true,
     null,
@@ -229,7 +255,7 @@ export const CODING_PROVIDER_DESCRIPTORS = {
   "moonshot-api": descriptor(
     "moonshot-api",
     "api-key",
-    "api-key",
+    "direct-api-key",
     "usage",
     true,
     null,
@@ -238,7 +264,7 @@ export const CODING_PROVIDER_DESCRIPTORS = {
   "cerebras-api": descriptor(
     "cerebras-api",
     "api-key",
-    "api-key",
+    "direct-api-key",
     "usage",
     true,
     "opencode",
@@ -278,6 +304,46 @@ export function codingProviderDescriptorForProvider(
   providerId: string,
 ): CodingProviderDescriptor | undefined {
   return CODING_PROVIDER_DESCRIPTORS[providerId as CodingProviderId];
+}
+
+export type CodingSubscriptionProviderId = {
+  [ProviderId in CodingProviderId]: (typeof CODING_PROVIDER_DESCRIPTORS)[ProviderId]["accountKind"] extends "subscription"
+    ? ProviderId
+    : never;
+}[CodingProviderId];
+
+export function isCodingSubscriptionProvider(
+  providerId: string,
+): providerId is CodingSubscriptionProviderId {
+  return (
+    codingProviderDescriptorForProvider(providerId)?.accountKind ===
+    "subscription"
+  );
+}
+
+/** Maps a subscription descriptor to the auth package's enrollment contract. */
+export function codingProviderSubscriptionAuthMode(
+  providerId: CodingSubscriptionProviderId,
+): CodingProviderSubscriptionAuthMode {
+  const descriptor = CODING_PROVIDER_DESCRIPTORS[providerId];
+  switch (descriptor.authMode) {
+    case "oauth":
+      return "oauth";
+    case "external-cli":
+      return "external-cli";
+    case "coding-plan-key":
+      return "coding-plan-key";
+    case "unavailable":
+      return "unavailable";
+  }
+}
+
+/** Maps canonical billing truth to the subscription-status wire vocabulary. */
+export function codingProviderSubscriptionBillingMode(
+  providerId: CodingSubscriptionProviderId,
+): CodingProviderSubscriptionBillingMode {
+  const descriptor = CODING_PROVIDER_DESCRIPTORS[providerId];
+  return descriptor.billingMode;
 }
 
 export interface CodingAgentSpawnCapability {

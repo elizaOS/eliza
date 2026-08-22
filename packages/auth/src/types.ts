@@ -2,6 +2,11 @@
  * Subscription auth types for eliza.
  */
 
+import {
+  codingProviderSubscriptionAuthMode,
+  codingProviderSubscriptionBillingMode,
+} from "@elizaos/shared";
+
 export interface OAuthCredentials {
   access: string;
   refresh: string;
@@ -222,8 +227,10 @@ export const SUBSCRIPTION_PROVIDER_METADATA: Record<
     displayName: "Claude Subscription",
     selectionIds: ["anthropic-subscription"],
     allowedClient: "Claude Code CLI",
-    billingMode: "subscription-coding-cli",
-    authMode: "oauth",
+    billingMode: codingProviderSubscriptionBillingMode(
+      "anthropic-subscription",
+    ),
+    authMode: codingProviderSubscriptionAuthMode("anthropic-subscription"),
     availability: "available",
     setupHint: "Sign in through the app or run claude auth login.",
     directProviderId: "anthropic-api",
@@ -233,8 +240,8 @@ export const SUBSCRIPTION_PROVIDER_METADATA: Record<
     displayName: "OpenAI Codex",
     selectionIds: ["openai-subscription"],
     allowedClient: "Codex CLI / Codex-backed provider",
-    billingMode: "subscription-coding-cli",
-    authMode: "oauth",
+    billingMode: codingProviderSubscriptionBillingMode("openai-codex"),
+    authMode: codingProviderSubscriptionAuthMode("openai-codex"),
     availability: "available",
     setupHint: "Sign in through the app or run codex login.",
     directProviderId: "openai-api",
@@ -244,8 +251,8 @@ export const SUBSCRIPTION_PROVIDER_METADATA: Record<
     displayName: "Gemini CLI",
     selectionIds: ["gemini-subscription"],
     allowedClient: "Gemini CLI",
-    billingMode: "subscription-coding-cli",
-    authMode: "external-cli",
+    billingMode: codingProviderSubscriptionBillingMode("gemini-cli"),
+    authMode: codingProviderSubscriptionAuthMode("gemini-cli"),
     availability: "external",
     setupHint:
       "Run gemini auth login; tokens are not imported into API env vars.",
@@ -255,8 +262,8 @@ export const SUBSCRIPTION_PROVIDER_METADATA: Record<
     displayName: "z.ai Coding Plan",
     selectionIds: ["zai-coding-subscription"],
     allowedClient: "z.ai Coding endpoint",
-    billingMode: "subscription-coding-plan",
-    authMode: "coding-plan-key",
+    billingMode: codingProviderSubscriptionBillingMode("zai-coding"),
+    authMode: codingProviderSubscriptionAuthMode("zai-coding"),
     availability: "available",
     setupHint:
       "Add a z.ai Coding Plan credential for the dedicated coding endpoint.",
@@ -269,8 +276,8 @@ export const SUBSCRIPTION_PROVIDER_METADATA: Record<
     displayName: "Kimi Code",
     selectionIds: ["kimi-coding-subscription"],
     allowedClient: "Kimi Code endpoint",
-    billingMode: "subscription-coding-plan",
-    authMode: "coding-plan-key",
+    billingMode: codingProviderSubscriptionBillingMode("kimi-coding"),
+    authMode: codingProviderSubscriptionAuthMode("kimi-coding"),
     availability: "available",
     setupHint: "Add a Kimi Code credential for the dedicated coding endpoint.",
     directProviderId: "moonshot-api",
@@ -282,8 +289,8 @@ export const SUBSCRIPTION_PROVIDER_METADATA: Record<
     displayName: "DeepSeek Coding Plan",
     selectionIds: ["deepseek-coding-subscription"],
     allowedClient: "Unavailable",
-    billingMode: "subscription-coding-plan",
-    authMode: "unavailable",
+    billingMode: codingProviderSubscriptionBillingMode("deepseek-coding"),
+    authMode: codingProviderSubscriptionAuthMode("deepseek-coding"),
     availability: "unavailable",
     setupHint:
       "Use the DeepSeek direct API-key provider if you have API billing.",

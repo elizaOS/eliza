@@ -113,9 +113,11 @@ describe("coding-agent capability mapping", () => {
         providerId,
         accountKind: expect.stringMatching(/^(subscription|api-key)$/),
         authMode: expect.stringMatching(
-          /^(oauth|api-key|external-cli|unavailable)$/,
+          /^(oauth|direct-api-key|coding-plan-key|external-cli|unavailable)$/,
         ),
-        billingMode: expect.stringMatching(/^(subscription|usage)$/),
+        billingMode: expect.stringMatching(
+          /^(subscription-coding-plan|subscription-coding-cli|usage)$/,
+        ),
         inferenceSupport: expect.any(Boolean),
         spawnSupport: expect.any(Boolean),
       });
@@ -136,6 +138,14 @@ describe("coding-agent capability mapping", () => {
         expect(descriptor.discoveryPolicy).toBe("none");
         expect(descriptor.unsupportedReason).toBeTruthy();
       }
+    }
+    for (const providerId of ["zai-coding", "kimi-coding"] as const) {
+      expect(CODING_PROVIDER_DESCRIPTORS[providerId]).toMatchObject({
+        authMode: "coding-plan-key",
+        billingMode: "subscription-coding-plan",
+        inferenceSupport: true,
+        spawnSupport: false,
+      });
     }
   });
 

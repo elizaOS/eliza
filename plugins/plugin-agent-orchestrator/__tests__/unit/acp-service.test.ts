@@ -15,7 +15,10 @@ import {
   CODING_AGENT_BACKEND_PREFLIGHTS,
   CODING_AGENT_BACKENDS,
 } from "@elizaos/shared";
-import { getHostExecutionBaseline } from "@elizaos/shared/host-execution-env";
+import {
+  captureHostExecutionBaseline,
+  getHostExecutionBaseline,
+} from "@elizaos/shared/host-execution-env";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // The ACP implementation runs every workdir through `path.resolve`, which on
@@ -23,6 +26,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // POSIX-style string in and compare the spawn cwd against the resolved
 // form so the same source compares correctly on both POSIX and Windows.
 const RESOLVED_ACP_WORKDIR = path.resolve("/tmp/acp-test");
+
+// Production entrypoints capture this authority before constructing services;
+// mirror that boundary so warm-claim tests exercise the production contract.
+captureHostExecutionBaseline();
 
 import {
   type AcpJsonRpcMessage,
@@ -212,6 +219,9 @@ function runtime(
   const values = {
     ELIZA_ACP_TRANSPORT: "cli",
     ELIZA_ELIZAOS_ACP_COMMAND: "eliza-code-acp",
+    // Unit fixtures use isolated temporary roots and do not exercise the
+    // host-capacity policy; keep low host disk from masking ACP assertions.
+    ELIZA_WORKSPACE_MIN_FREE_BYTES: "1",
     ...settings,
   };
   return {
@@ -394,6 +404,75 @@ describe("AcpService", () => {
 
     expect(availability).toHaveLength(CODING_AGENT_BACKENDS.length);
     expect(availability.every((entry) => entry.installed === true)).toBe(true);
+  });
+
+  it("resolves verified acpx profiles and preflights raw command adapters", async () => {
+    const configuredCommands = Object.fromEntries(
+      CODING_AGENT_BACKENDS.map((backend) => [
+        CODING_AGENT_BACKEND_PREFLIGHTS[backend].commandConfigKey,
+        process.execPath,
+      ]),
+    );
+    const available = new AcpService(
+      runtime({
+        ELIZA_ACP_TRANSPORT: "cli",
+        ELIZA_ACP_CLI: process.execPath,
+        ...configuredCommands,
+      }),
+    );
+    expect(
+      (await available.checkAvailableAgents()).every(
+        (entry) => entry.installed,
+      ),
+    ).toBe(true);
+
+    const service = new AcpService(
+      runtime({
+        ELIZA_ACP_TRANSPORT: "cli",
+        ELIZA_ACP_CLI: process.execPath,
+        ...configuredCommands,
+        ELIZA_ELIZAOS_ACP_COMMAND: "/missing/elizaos",
+        ELIZA_OPENCODE_ACP_COMMAND: "/missing/opencode",
+        ELIZA_PI_AGENT_ACP_COMMAND: "/missing/ignored-pi-native-command",
+        ELIZA_CLAUDE_ACP_COMMAND: "/missing/ignored-claude-native-command",
+        ELIZA_CODEX_ACP_COMMAND: "/missing/ignored-codex-native-command",
+      }),
+    );
+    const byAgent = new Map(
+      (await service.checkAvailableAgents()).map((entry) => [
+        entry.agentType,
+        entry,
+      ]),
+    );
+
+    expect(byAgent.get("pi-agent")?.installed).toBe(true);
+    expect(byAgent.get("claude")?.installed).toBe(true);
+    expect(byAgent.get("codex")?.installed).toBe(true);
+    expect(byAgent.get("elizaos")?.installed).toBe(false);
+    expect(byAgent.get("opencode")?.installed).toBe(false);
+    expect(byAgent.get("elizaos")?.unavailableReason).toContain(
+      "/missing/elizaos",
+    );
+    expect(byAgent.get("opencode")?.unavailableReason).toContain(
+      "/missing/opencode",
+    );
+
+    const resolveArgs = service as unknown as {
+      agentCommandArgs(agentType: AgentType, args: string[]): string[];
+    };
+    expect(resolveArgs.agentCommandArgs("pi-agent", ["--cwd", "/tmp"])).toEqual(
+      ["pi", "--cwd", "/tmp"],
+    );
+    expect(resolveArgs.agentCommandArgs("claude", [])).toEqual(["claude"]);
+    expect(resolveArgs.agentCommandArgs("codex", [])).toEqual(["codex"]);
+    expect(resolveArgs.agentCommandArgs("elizaos", [])).toEqual([
+      "--agent",
+      "/missing/elizaos",
+    ]);
+    expect(resolveArgs.agentCommandArgs("opencode", [])).toEqual([
+      "--agent",
+      "/missing/opencode",
+    ]);
   });
 
   it("honors Windows PATHEXT when preflighting canonical backend commands", async () => {
@@ -1491,7 +1570,9 @@ describe("AcpService", () => {
 
     expect(session.agentType).toBe("elizaos");
     const args = spawnMock.mock.calls[0]?.[1] as string[] | undefined;
-    expect(args).toContain("elizaos");
+    const agentArgIndex = args?.indexOf("--agent") ?? -1;
+    expect(agentArgIndex).toBeGreaterThanOrEqual(0);
+    expect(args?.[agentArgIndex + 1]).toBe("eliza-code-acp");
     expect(args).not.toContain("opencode");
 
     const env = spawnMock.mock.calls[0]?.[2]?.env as

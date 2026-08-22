@@ -206,9 +206,7 @@ describe("getTaskAgentFrameworkState", () => {
         runtime(),
         installedProbe(),
       );
-      const framework = state.frameworks.find(
-        (item) => item.id === agentType,
-      );
+      const framework = state.frameworks.find((item) => item.id === agentType);
 
       expect(framework?.installed).toBe(false);
       expect(framework?.authReady).toBe(false);
@@ -295,6 +293,29 @@ describe("getTaskAgentFrameworkState", () => {
     expect(
       state.frameworks.find((item) => item.id === "codex")?.installed,
     ).toBe(false);
+    expect(
+      state.frameworks.find((item) => item.id === "codex")?.authReady,
+    ).toBe(false);
+  });
+
+  it("keeps an explicit failed preflight authoritative over PATH and auth", async () => {
+    writeExecutable(path.join(tempHome, "codex"));
+    setEnv({ CODEX_API_KEY: "codex-test" });
+    const probe: TaskAgentFrameworkProbe = {
+      checkAvailableAgents: vi.fn(async () => [
+        {
+          adapter: "OpenAI Codex",
+          installed: false,
+          auth: { status: "authenticated" },
+        },
+      ]),
+    };
+
+    const state = await getTaskAgentFrameworkState(runtime(), probe);
+    const codex = state.frameworks.find((item) => item.id === "codex");
+
+    expect(codex?.installed).toBe(false);
+    expect(codex?.authReady).toBe(false);
   });
 
   it("rejects a configured Codex ACP command when the file is not executable", async () => {

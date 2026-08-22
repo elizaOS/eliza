@@ -20,8 +20,8 @@ import {
   resolveUserPath,
 } from "@elizaos/core";
 import {
-  CODING_AGENT_BACKENDS,
   CODING_AGENT_BACKEND_PREFLIGHTS,
+  CODING_AGENT_BACKENDS,
   type CodingAgentBackend,
   readAliasedEnv,
 } from "@elizaos/shared";
@@ -766,15 +766,16 @@ async function computeTaskAgentFrameworkState(
   const inventory: TaskAgentFrameworkAvailability[] = STANDARD_FRAMEWORKS.map(
     (id) => {
       const preflight = preflightByAdapter.get(id);
-      const installed =
-        preflight?.installed === true || hasFrameworkBinary(id);
+      const installed = preflight
+        ? preflight.installed === true
+        : hasFrameworkBinary(id);
       const subscriptionReady =
         id === "claude"
           ? claudeSubscriptionReady
           : id === "codex"
             ? codexSubscriptionReady
             : false;
-      const authReady =
+      const credentialsReady =
         id === "elizaos" || id === "pi-agent"
           ? installed
           : id === "claude"
@@ -782,6 +783,7 @@ async function computeTaskAgentFrameworkState(
             : id === "codex"
               ? codexAuthReady
               : opencodeAuthReady;
+      const authReady = installed && credentialsReady;
       const reason =
         id === "elizaos" && installed
           ? "ready to use the configured native ElizaOS ACP adapter"
