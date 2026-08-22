@@ -16,16 +16,18 @@ import {
 
 function createRuntime() {
   const warn = vi.fn();
+  const reportError = vi.fn();
   const runtime = {
     agentId: "trajectory-observability-test",
     actions: [],
     adapter: { db: undefined },
     logger: { warn },
+    reportError,
     useModel: vi.fn(async () => {
       throw new Error("model down");
     }),
   } as unknown as IAgentRuntime;
-  return { runtime, warn };
+  return { runtime, reportError, warn };
 }
 
 describe("trajectory observability", () => {
@@ -82,7 +84,7 @@ describe("trajectory observability", () => {
   });
 
   it("logs observation flush failures before returning an empty result", async () => {
-    const { runtime, warn } = createRuntime();
+    const { runtime, reportError, warn } = createRuntime();
     pushChatExchange(runtime, {
       userPrompt: "hello",
       response: "hi",
@@ -98,6 +100,11 @@ describe("trajectory observability", () => {
         subsystem: "trajectory-db",
       }),
       "[trajectory-persistence] observation flush failed",
+    );
+    expect(reportError).toHaveBeenCalledWith(
+      "TrajectoryPersistence.flushObservationBuffer",
+      expect.any(Error),
+      { agentId: "trajectory-observability-test" },
     );
   });
 
