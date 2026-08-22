@@ -223,7 +223,7 @@ describe("FileMessageInteractionSessionStore", () => {
     ).toHaveLength(7);
   });
 
-  it("treats the exact two-link owner publication window as in progress", async () => {
+  it("does not retire a live publisher paused past the recovery ceiling", async () => {
     const stateDirectory = await temporaryDirectory();
     const now = Date.parse("2026-08-21T00:00:00.000Z");
     const publication = barrier();
@@ -237,7 +237,9 @@ describe("FileMessageInteractionSessionStore", () => {
     await publication.entered;
     const contender = new FileMessageInteractionSessionStore({
       stateDirectory,
-      clock: () => now,
+      clock: () => now + 10_000,
+      staleLockMs: 1,
+      hardStaleLockMs: 2,
       lockTimeoutMs: 20,
       pollMs: 1,
     }).deleteExpired(now);
@@ -674,7 +676,7 @@ describe("FileMessageInteractionSessionStore", () => {
     await expect(successorTransaction).resolves.toBe(0);
   });
 
-  it("recovers a transition marker abandoned by a dead lock owner", async () => {
+  it("fails closed on a transition marker abandoned by a dead owner", async () => {
     const stateDirectory = await temporaryDirectory();
     const now = Date.parse("2026-08-21T00:00:00.000Z");
     const lockPath = path.join(
@@ -698,16 +700,25 @@ describe("FileMessageInteractionSessionStore", () => {
       { mode: 0o600 },
     );
 
+    const marker = await fs.readFile(`${lockPath}.transition`, "utf8");
     const store = new FileMessageInteractionSessionStore({
       stateDirectory,
       clock: () => now,
-      lockTimeoutMs: 1_000,
+      lockTimeoutMs: 20,
       pollMs: 1,
     });
-    await expect(store.deleteExpired(now)).resolves.toBe(0);
+    await expect(store.deleteExpired(now)).rejects.toMatchObject({
+      code: "INTERACTION_STORE_RECOVERY_REQUIRED",
+    });
+    expect(await fs.readFile(`${lockPath}.transition`, "utf8")).toBe(marker);
+    await expect(
+      fs.lstat(
+        path.join(stateDirectory, "message-interaction-sessions.v1.json"),
+      ),
+    ).rejects.toMatchObject({ code: "ENOENT" });
   });
 
-  it("two clearers cannot remove a replacement live transition marker", async () => {
+  it("two contenders leave an abandoned transition marker untouched", async () => {
     const stateDirectory = await temporaryDirectory();
     const now = Date.parse("2026-08-21T00:00:00.000Z");
     const lockPath = path.join(
@@ -731,53 +742,30 @@ describe("FileMessageInteractionSessionStore", () => {
       { mode: 0o600 },
     );
 
-    const firstBeforeRetire = barrier();
-    const secondBeforeRetire = barrier();
-    const firstAfterRetire = barrier();
+    const marker = await fs.readFile(`${lockPath}.transition`, "utf8");
     const first = new FileMessageInteractionSessionStore({
       stateDirectory,
       clock: () => now,
-      lockTimeoutMs: 30,
+      lockTimeoutMs: 20,
       pollMs: 1,
-      lockRaceHooks: {
-        beforeAbandonedTransitionRetire: firstBeforeRetire.hook,
-        afterAbandonedTransitionRetire: firstAfterRetire.hook,
-      },
     }).deleteExpired(now);
     const second = new FileMessageInteractionSessionStore({
       stateDirectory,
       clock: () => now,
-      lockTimeoutMs: 30,
+      lockTimeoutMs: 20,
       pollMs: 1,
-      lockRaceHooks: {
-        beforeAbandonedTransitionRetire: secondBeforeRetire.hook,
-      },
     }).deleteExpired(now);
-    await Promise.all([firstBeforeRetire.entered, secondBeforeRetire.entered]);
-
-    firstBeforeRetire.release();
-    await firstAfterRetire.entered;
-    await fs.writeFile(
-      `${lockPath}.transition`,
-      JSON.stringify({
-        pid: process.pid,
-        processIdentity: null,
-        token: "live-replacement-transition",
-      }),
-      { mode: 0o600, flag: "wx" },
-    );
-    secondBeforeRetire.release();
-    await expect(second).rejects.toMatchObject({
-      code: "INTERACTION_STORE_LOCK_TIMEOUT",
-    });
-    expect(
-      JSON.parse(await fs.readFile(`${lockPath}.transition`, "utf8")),
-    ).toMatchObject({ token: "live-replacement-transition" });
-
-    firstAfterRetire.release();
-    await expect(first).rejects.toMatchObject({
-      code: "INTERACTION_STORE_LOCK_TIMEOUT",
-    });
+    await expect(Promise.allSettled([first, second])).resolves.toMatchObject([
+      {
+        status: "rejected",
+        reason: { code: "INTERACTION_STORE_RECOVERY_REQUIRED" },
+      },
+      {
+        status: "rejected",
+        reason: { code: "INTERACTION_STORE_RECOVERY_REQUIRED" },
+      },
+    ]);
+    expect(await fs.readFile(`${lockPath}.transition`, "utf8")).toBe(marker);
   });
 
   it("a delayed release cannot detach a replacement lock generation", async () => {
@@ -841,6 +829,55 @@ describe("FileMessageInteractionSessionStore", () => {
     await expect(fs.lstat(`${lockPath}.transition`)).rejects.toMatchObject({
       code: "ENOENT",
     });
+  });
+
+  it("reports a committed mutation whose transition cleanup fails", async () => {
+    const stateDirectory = await temporaryDirectory();
+    const { created, now } = await seed(stateDirectory, { retentionMs: 0 });
+    const lockPath = path.join(
+      stateDirectory,
+      "message-interaction-sessions.v1.json.lock",
+    );
+    const filePath = path.join(
+      stateDirectory,
+      "message-interaction-sessions.v1.json",
+    );
+    const failing = new FileMessageInteractionSessionStore({
+      stateDirectory,
+      retentionMs: 0,
+      clock: () => now,
+      lockRaceHooks: {
+        beforeTransitionMarkerCleanup: async () => {
+          throw new Error("simulated transition cleanup failure");
+        },
+      },
+    });
+    await expect(
+      failing.deleteExpired(Date.parse(created.session.expiresAt)),
+    ).rejects.toMatchObject({
+      code: "INTERACTION_STORE_TRANSITION_CLEANUP_FAILED",
+      message:
+        "Interaction transaction committed but transition cleanup failed; stop all store users before recovery.",
+    });
+    await expect(fs.lstat(lockPath)).rejects.toMatchObject({ code: "ENOENT" });
+    expect(await fs.lstat(`${lockPath}.transition`)).toBeDefined();
+    const committedState = await fs.readFile(filePath, "utf8");
+
+    const contender = new FileMessageInteractionSessionStore({
+      stateDirectory,
+      clock: () => now,
+      lockTimeoutMs: 20,
+      pollMs: 1,
+    });
+    await expect(
+      contender.create({
+        ...created.session,
+        reference: "fedcba9876543210fedcba9876543210",
+      }),
+    ).rejects.toMatchObject({
+      code: "INTERACTION_STORE_RECOVERY_REQUIRED",
+    });
+    expect(await fs.readFile(filePath, "utf8")).toBe(committedState);
   });
 
   it("collects expired sessions through the explicit retention/GC boundary", async () => {

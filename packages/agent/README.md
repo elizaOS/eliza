@@ -36,8 +36,13 @@ boot/process generation, and generation-fences stale takeover and release with
 an atomically published transition marker. A complete owner inode is fsynced
 before no-replace hardlink publication; malformed owners have a bounded
 recovery ceiling, while a live PID that cannot be generation-qualified fails
-closed. Its boundary
-is one machine and one state directory. Multi-host deployments must supply a
+closed. An abandoned transition marker also fails closed because portable
+filesystems cannot conditionally unlink a pathname generation; an operator may
+remove it only after stopping every store user and verifying that no host
+process owns the store. Operations report
+`INTERACTION_STORE_RECOVERY_REQUIRED` and do not mutate state while that marker
+remains; this state has no bounded automatic recovery. Its boundary is one
+machine and one state directory. Multi-host deployments must supply a
 transactional database implementation of `MessageInteractionSessionStore` and
 use the session replay key as the effect or outbox idempotency key.
 

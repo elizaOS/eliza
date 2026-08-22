@@ -2,6 +2,8 @@
  * Persists message-interaction sessions for one host with cross-process atomic
  * transitions. Multi-host deployments should implement the same store contract
  * with a transactional database row or outbox rather than sharing this file.
+ * An abandoned lifecycle marker fails closed until an operator stops every
+ * store user, verifies no owner remains, and removes the marker.
  */
 
 import { constants } from "node:fs";
@@ -43,15 +45,8 @@ interface LockRaceHooks {
   beforePublicationCandidateValidation?: () => Promise<void>;
   beforeStaleRetire?: () => Promise<void>;
   beforeReleaseRetire?: () => Promise<void>;
-  beforeAbandonedTransitionRetire?: () => Promise<void>;
-  afterAbandonedTransitionRetire?: () => Promise<void>;
   beforeLockUnlink?: () => Promise<void>;
-}
-
-interface LockTransitionOwner {
-  pid: number;
-  processIdentity: string | null;
-  token: string;
+  beforeTransitionMarkerCleanup?: () => Promise<void>;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -268,8 +263,8 @@ function newToken(): string {
 
 /**
  * A single-machine durable store. Atomic rename and directory fsync preserve a
- * complete prior or next revision across process/power loss; the lock directory
- * serializes independent host processes.
+ * complete prior or next revision across process/power loss; the lock owner
+ * inode and transition marker serialize independent host processes.
  */
 export class FileMessageInteractionSessionStore
   implements MessageInteractionSessionStore
@@ -479,9 +474,6 @@ export class FileMessageInteractionSessionStore
         isErrno(error, "EEXIST") ||
         isErrno(error, "ENOTEMPTY")
       ) {
-        if (isErrno(error, "EEXIST")) {
-          await this.clearAbandonedTransition(lockIdentity);
-        }
         return null;
       }
       throw error;
@@ -506,79 +498,6 @@ export class FileMessageInteractionSessionStore
       return null;
     }
     return marker;
-  }
-
-  private async clearAbandonedTransition(lockIdentity: string): Promise<void> {
-    const current = await existsLstat(this.lockPath);
-    if (!current || this.lockIdentity(current) !== lockIdentity) return;
-    const marker = `${this.lockPath}.transition`;
-    let markerEntry: Awaited<ReturnType<typeof fs.lstat>>;
-    let value: Partial<LockTransitionOwner>;
-    try {
-      markerEntry = await fs.lstat(marker);
-      if (!markerEntry.isFile() || markerEntry.isSymbolicLink()) return;
-      const handle = await fs.open(
-        marker,
-        constants.O_RDONLY | constants.O_NOFOLLOW,
-      );
-      try {
-        const opened = await handle.stat();
-        if (opened.dev !== markerEntry.dev || opened.ino !== markerEntry.ino) {
-          return;
-        }
-        value = JSON.parse(
-          await handle.readFile("utf8"),
-        ) as Partial<LockTransitionOwner>;
-      } finally {
-        await handle.close();
-      }
-    } catch (error) {
-      if (isErrno(error, "ENOENT")) return;
-      // error-policy:J3 malformed transition ownership fails closed.
-      if (error instanceof SyntaxError) return;
-      throw error;
-    }
-    if (
-      !Number.isSafeInteger(value.pid) ||
-      (value.processIdentity !== null &&
-        typeof value.processIdentity !== "string") ||
-      typeof value.token !== "string"
-    ) {
-      return;
-    }
-    const live = this.processAlive(value.pid as number);
-    const identity = live
-      ? await this.readProcessIdentity(value.pid as number)
-      : null;
-    if (
-      live &&
-      (!value.processIdentity ||
-        !identity ||
-        value.processIdentity === identity)
-    ) {
-      return;
-    }
-    await this.lockRaceHooks.beforeAbandonedTransitionRetire?.();
-    const retiredMarker = path.join(
-      this.directory,
-      `${path.basename(this.lockPath)}.transition-retired-${this.lockIdentity(markerEntry)}`,
-    );
-    try {
-      await fs.link(marker, retiredMarker);
-    } catch (error) {
-      if (isErrno(error, "ENOENT") || isErrno(error, "EEXIST")) return;
-      throw error;
-    }
-    const retiredEntry = await fs.lstat(retiredMarker);
-    if (
-      retiredEntry.dev !== markerEntry.dev ||
-      retiredEntry.ino !== markerEntry.ino
-    ) {
-      await fs.rm(retiredMarker, { force: true });
-      return;
-    }
-    await fs.rm(marker, { force: true });
-    await this.lockRaceHooks.afterAbandonedTransitionRetire?.();
   }
 
   /** The transition hardlink excludes release and all competing recoverers. */
@@ -612,9 +531,18 @@ export class FileMessageInteractionSessionStore
       throw error;
     }
     try {
-      await fs.rm(marker, { force: true });
-    } catch {
-      // error-policy:J6 an abandoned transition is generation-recoverable.
+      await this.lockRaceHooks.beforeTransitionMarkerCleanup?.();
+      await fs.rm(marker);
+    } catch (error) {
+      // error-policy:J2 The lock is already detached, so acquisition or release
+      // must surface the fail-closed marker instead of permitting a successor.
+      throw new ElizaError(
+        "Interaction lock detached but transition cleanup failed.",
+        {
+          code: "INTERACTION_STORE_TRANSITION_CLEANUP_FAILED",
+          cause: error,
+        },
+      );
     }
     return true;
   }
@@ -730,9 +658,10 @@ export class FileMessageInteractionSessionStore
             "Interaction store lock publication hardlink changed.",
           );
         }
-        // The creator has not completed candidate cleanup and therefore has
-        // not returned the lease to a transaction yet.
-        return null;
+        return {
+          ...(value as LockOwner),
+          processIdentity: value.processIdentity ?? null,
+        };
       }
       return {
         ...(value as LockOwner),
@@ -817,7 +746,8 @@ export class FileMessageInteractionSessionStore
       const now = this.clock();
       const token = newToken();
       const candidate = `${this.lockPath}.owner-${process.pid}-${token}.tmp`;
-      let owner: LockOwner;
+      let owner: LockOwner | null = null;
+      let published = false;
       try {
         const handle = await fs.open(
           candidate,
@@ -845,9 +775,13 @@ export class FileMessageInteractionSessionStore
         // link(2) publishes the already complete owner inode with no-replace
         // semantics. A delayed creator never writes through the shared path.
         await this.lockRaceHooks.beforeLockPublish?.();
+        if (await existsLstat(`${this.lockPath}.transition`)) {
+          await delay(this.pollMs);
+          continue;
+        }
         await fs.link(candidate, this.lockPath);
+        published = true;
         await this.lockRaceHooks.afterLockPublishBeforeCandidateCleanup?.();
-        return owner;
       } catch (error) {
         if (!isErrno(error, "EEXIST")) throw error;
         await this.recoverStaleLock(now);
@@ -855,6 +789,27 @@ export class FileMessageInteractionSessionStore
       } finally {
         await fs.rm(candidate, { force: true });
       }
+      if (published && owner) {
+        const canonical = await existsLstat(this.lockPath);
+        const current = await this.readLockOwner();
+        if (
+          !canonical ||
+          this.lockIdentity(canonical) !== owner.lockIdentity ||
+          current?.token !== owner.token
+        ) {
+          storeError(
+            "INTERACTION_STORE_LOCK_LOST",
+            "Interaction store lock ownership changed during publication.",
+          );
+        }
+        return owner;
+      }
+    }
+    if (await existsLstat(`${this.lockPath}.transition`)) {
+      storeError(
+        "INTERACTION_STORE_RECOVERY_REQUIRED",
+        "Interaction store recovery requires all users to stop before the abandoned transition marker is removed.",
+      );
     }
     return storeError(
       "INTERACTION_STORE_LOCK_TIMEOUT",
@@ -882,6 +837,12 @@ export class FileMessageInteractionSessionStore
         break;
       }
       await delay(this.pollMs);
+    }
+    if (await existsLstat(`${this.lockPath}.transition`)) {
+      storeError(
+        "INTERACTION_STORE_RECOVERY_REQUIRED",
+        "Interaction store recovery requires all users to stop before the abandoned transition marker is removed.",
+      );
     }
     storeError(
       "INTERACTION_STORE_LOCK_LOST",
@@ -1102,6 +1063,20 @@ export class FileMessageInteractionSessionStore
       );
     }
     if (operationError) throw operationError;
+    if (
+      releaseError instanceof ElizaError &&
+      releaseError.code === "INTERACTION_STORE_TRANSITION_CLEANUP_FAILED"
+    ) {
+      // error-policy:J2 The state rename and directory fsync completed before
+      // release began, so this is a committed mutation plus an operator outage.
+      throw new ElizaError(
+        "Interaction transaction committed but transition cleanup failed; stop all store users before recovery.",
+        {
+          code: releaseError.code,
+          cause: releaseError,
+        },
+      );
+    }
     if (releaseError) throw releaseError;
     return result as T;
   }
