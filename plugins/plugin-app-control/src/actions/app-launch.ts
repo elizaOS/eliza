@@ -158,7 +158,8 @@ export async function runLaunch({
 			displayName: result.displayName,
 			openedInBrowser: opened,
 			browserNavigationStatus:
-				browserNavigation?.status ?? (launchUrl ? "unavailable" : "not-requested"),
+				browserNavigation?.status ??
+				(launchUrl ? "unavailable" : "not-requested"),
 			...(browserNavigation?.errorCode
 				? { browserNavigationError: browserNavigation.errorCode }
 				: {}),

@@ -114,6 +114,17 @@ describe("app launch Browser navigation", () => {
 		).resolves.toMatchObject({ errorCode: "TRANSPORT_FAILURE" });
 	});
 
+	it("translates a malformed launch URL before any transport call", async () => {
+		const fetchMock = vi.fn();
+		vi.stubGlobal("fetch", fetchMock);
+		await expect(
+			openLaunchUrlInBrowserView("http://[", {
+				originatingClientId: "client-a",
+			}),
+		).resolves.toMatchObject({ errorCode: "INVALID_LAUNCH_URL" });
+		expect(fetchMock).not.toHaveBeenCalled();
+	});
+
 	it("scopes concurrent requests to their respective clients", async () => {
 		const bodies: Array<Record<string, unknown>> = [];
 		vi.stubGlobal(

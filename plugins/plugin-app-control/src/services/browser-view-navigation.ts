@@ -49,6 +49,7 @@ export interface BrowserViewNavigationResult {
 	completedActionHandoffId?: string;
 	errorCode?:
 		| "NO_ORIGINATING_CLIENT"
+		| "INVALID_LAUNCH_URL"
 		| "RENDERER_UNAVAILABLE"
 		| "INVALID_RECEIPT"
 		| "NAVIGATION_REJECTED"
@@ -67,7 +68,22 @@ export async function openLaunchUrlInBrowserView(
 		completedActionHandoffId?: string;
 	} = {},
 ): Promise<BrowserViewNavigationResult> {
-	const path = browserViewPathForLaunchUrl(launchUrl);
+	let path: string;
+	try {
+		path = browserViewPathForLaunchUrl(launchUrl);
+	} catch (error) {
+		// error-policy:J4 a malformed launch receipt cannot navigate a renderer;
+		// retain an explicit result so the action can still present the raw link.
+		logger.warn(
+			`[plugin-app-control] Invalid app launch URL: ${error instanceof Error ? error.message : String(error)}`,
+		);
+		return {
+			path: "/browser",
+			status: "unavailable",
+			completedActionDelivered: false,
+			errorCode: "INVALID_LAUNCH_URL",
+		};
+	}
 	const originatingClientId = options.originatingClientId;
 	if (!originatingClientId || !SAFE_VIEW_CLIENT_ID.test(originatingClientId)) {
 		return {
@@ -126,6 +142,14 @@ export async function openLaunchUrlInBrowserView(
 			};
 		}
 		if (typeof body !== "object" || body === null || Array.isArray(body)) {
+			return {
+				path,
+				status: "unavailable",
+				completedActionDelivered: false,
+				errorCode: "INVALID_RECEIPT",
+			};
+		}
+		if (ownValue(body, "ok") !== true) {
 			return {
 				path,
 				status: "unavailable",
