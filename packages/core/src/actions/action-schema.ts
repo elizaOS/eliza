@@ -274,13 +274,13 @@ export function actionParameterSchemaToJsonSchema(
 	return jsonSchema;
 }
 
-function preferCompressedParamDescription(
+function preferCompleteParamDescription(
 	parameter: ActionParameter,
 ): string | undefined {
 	return (
+		parameter.description ??
 		parameter.descriptionCompressed ??
-		parameter.compressedDescription ??
-		parameter.description
+		parameter.compressedDescription
 	);
 }
 
@@ -292,7 +292,6 @@ function appendParameterExamples(
 		return description;
 	}
 	const parts = examples
-		.slice(0, 3)
 		.map((example) =>
 			typeof example === "string" ||
 			typeof example === "number" ||
@@ -317,7 +316,7 @@ export function actionParametersToJsonSchema(
 
 	for (const parameter of parameters) {
 		const enumValues = readEnumValues(parameter);
-		const baseDescription = preferCompressedParamDescription(parameter);
+		const baseDescription = preferCompleteParamDescription(parameter);
 		const description = appendParameterExamples(
 			baseDescription,
 			parameter.examples,
