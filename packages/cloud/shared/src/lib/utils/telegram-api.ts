@@ -5,6 +5,22 @@
  */
 
 export const TELEGRAM_API_BASE = "https://api.telegram.org";
+export const TELEGRAM_REQUEST_TIMEOUT_MS = 30_000;
+
+/**
+ * Bound every Telegram Bot API hop while preserving caller cancellation.
+ */
+function telegramFetch(
+  input: RequestInfo | URL,
+  init?: RequestInit,
+  timeoutMs: number = TELEGRAM_REQUEST_TIMEOUT_MS,
+): Promise<Response> {
+  const deadline = AbortSignal.timeout(timeoutMs);
+  return fetch(input, {
+    ...init,
+    signal: init?.signal ? AbortSignal.any([init.signal, deadline]) : deadline,
+  });
+}
 
 interface TelegramApiResponse<T> {
   ok: boolean;
@@ -23,7 +39,7 @@ export async function telegramBotApiRequest<T>(
 ): Promise<T> {
   const url = `${TELEGRAM_API_BASE}/bot${botToken}/${method}`;
 
-  const response = await fetch(url, {
+  const response = await telegramFetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: params ? JSON.stringify(params) : undefined,
@@ -56,7 +72,7 @@ export async function telegramBotApiGet<T>(
     });
   }
 
-  const response = await fetch(url.toString());
+  const response = await telegramFetch(url.toString());
   const data = (await response.json()) as TelegramApiResponse<T>;
 
   if (!data.ok) {
