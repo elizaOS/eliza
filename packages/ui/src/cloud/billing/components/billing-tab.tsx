@@ -25,7 +25,14 @@ import {
   XCircle,
 } from "lucide-react";
 import type { ComponentType, FormEvent } from "react";
-import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { ApiError, api } from "../../lib/api-client";
@@ -63,6 +70,17 @@ import { Button } from "../../../components/ui/button";
 
 interface BillingTabProps {
   user: BillingUser;
+  checkoutIntentStore?: CardCheckoutIntentStore;
+}
+
+export interface CardCheckoutIntent {
+  organizationId: string;
+  amount: number;
+  key: string;
+}
+
+export interface CardCheckoutIntentStore {
+  current: CardCheckoutIntent | null;
 }
 
 const AMOUNT_LIMITS = {
@@ -228,7 +246,7 @@ function getInvoiceStatusPresentation(status: string): {
   return { Icon: AlertCircle, className: "text-muted-strong" };
 }
 
-export function BillingTab({ user }: BillingTabProps) {
+export function BillingTab({ user, checkoutIntentStore }: BillingTabProps) {
   const t = useCloudT();
   const navigate = useNavigate();
   const billingSnapshot = useBillingSnapshotV2(user.organization_id);
@@ -247,7 +265,8 @@ export function BillingTab({ user }: BillingTabProps) {
   // (plain 4xx) proves the server never accepted the intent. Deliberately a
   // single-slot ref, NOT a per-amount map: editing A -> B -> A must not
   // resurrect A's earlier key as a "same intent" replay.
-  const checkoutIntentRef = useRef<{ amount: number; key: string } | null>(null);
+  const localCheckoutIntentStore = useRef<CardCheckoutIntent | null>(null);
+  const intentStore = checkoutIntentStore ?? localCheckoutIntentStore;
   // Tracks whether a submit has been attempted so an empty submission (which
   // never populates purchaseAmount) still marks the field invalid and renders
   // the adjacent inline error instead of only emitting a transient toast.
@@ -372,10 +391,19 @@ export function BillingTab({ user }: BillingTabProps) {
     // Card checkout only. The crypto branches above have returned by here, so
     // the idempotency intent stays scoped to the route that requires it
     // (/api/stripe/create-checkout-session) and never touches crypto payments.
-    const intent = checkoutIntentRef.current;
+    const intent = intentStore.current;
     const idempotencyKey =
-      intent && intent.amount === amount ? intent.key : crypto.randomUUID();
-    checkoutIntentRef.current = { amount, key: idempotencyKey };
+      intent &&
+      intent.organizationId === user.organization_id &&
+      intent.amount === amount
+        ? intent.key
+        : crypto.randomUUID();
+    const requestIntent: CardCheckoutIntent = {
+      organizationId: user.organization_id,
+      amount,
+      key: idempotencyKey,
+    };
+    intentStore.current = requestIntent;
 
     try {
       const data = await api<{ url?: string }>(
@@ -406,6 +434,9 @@ export function BillingTab({ user }: BillingTabProps) {
         setIsProcessingCheckout(false);
         return;
       }
+      if (intentStore.current?.key === requestIntent.key) {
+        intentStore.current = null;
+      }
       window.location.href = data.url;
     } catch (error) {
       // Preserve the idempotency key across ambiguous/transient outcomes
@@ -425,9 +456,12 @@ export function BillingTab({ user }: BillingTabProps) {
         error.status >= 400 &&
         error.status < 500 &&
         error.status !== 408 &&
-        error.status !== 429
+        error.status !== 429 &&
+        intentStore.current?.organizationId === requestIntent.organizationId &&
+        intentStore.current.amount === requestIntent.amount &&
+        intentStore.current.key === requestIntent.key
       ) {
-        checkoutIntentRef.current = null;
+        intentStore.current = null;
       }
       toast.error(
         error instanceof ApiError

@@ -11,9 +11,15 @@
  */
 // @vitest-environment jsdom
 
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import type { UserEvent } from "@testing-library/user-event";
+import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const apiMock = vi.hoisted(() => vi.fn());
@@ -59,17 +65,53 @@ vi.mock("react-router-dom", () => ({
   useNavigate: () => navigateMock,
 }));
 
+vi.mock("../data/billing-snapshot", () => ({
+  useBillingSnapshotV2: () => ({
+    data: {
+      snapshotStartedAt: "2026-08-21T10:20:30.000Z",
+      snapshotCompletedAt: "2026-08-21T10:20:30.000Z",
+      balance: {
+        status: "available",
+        source: "credit-ledger",
+        observedAt: "2026-08-21T10:20:30.000Z",
+        value: {
+          balance: { value: "12.500000", unit: "usd", currency: "USD" },
+          revision: "7",
+        },
+      },
+      activeCompute: {
+        resources: {
+          status: "available",
+          source: "compute",
+          observedAt: "2026-08-21T10:20:30.000Z",
+          value: [],
+        },
+        estimatedRecurringComputeCostPerDay: {
+          status: "available",
+          source: "compute",
+          observedAt: "2026-08-21T10:20:30.000Z",
+          value: { value: "0.000000", unit: "usd_per_day", currency: "USD" },
+        },
+      },
+    },
+    isError: false,
+    isFetching: false,
+    isRefetchError: false,
+    fetchStatus: "idle",
+    refetch: vi.fn(),
+  }),
+}));
+
 vi.mock("./auto-top-up-card", () => ({
   AutoTopUpCard: () => null,
 }));
 
 import type { BillingUser, InvoiceDisplay } from "../types";
-import { BillingTab } from "./billing-tab";
+import { BillingTab, type CardCheckoutIntentStore } from "./billing-tab";
 
 const user: BillingUser = {
   organization_id: "org-1",
   wallet_address: null,
-  organization: { credit_balance: 12.5 },
 };
 
 const invoices: InvoiceDisplay[] = [
@@ -79,7 +121,9 @@ const invoices: InvoiceDisplay[] = [
 /** The server's exact header contract. */
 const IDEMPOTENCY_KEY_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$/;
 
-function routeApi(checkoutResponse: () => Promise<unknown> = () => Promise.resolve({})) {
+function routeApi(
+  checkoutResponse: () => Promise<unknown> = () => Promise.resolve({}),
+) {
   apiMock.mockImplementation((url: string) => {
     if (url.startsWith("/api/invoices/list")) {
       return Promise.resolve({ invoices });
@@ -107,6 +151,24 @@ function checkoutCalls() {
 function keyOf(call: unknown[]): string {
   const init = call[1] as { headers?: Record<string, string> };
   return init?.headers?.["Idempotency-Key"] ?? "";
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (error: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
+}
+
+function submitFormAmount(amount: string) {
+  const input = screen.getByLabelText("Amount (USD)");
+  fireEvent.change(input, { target: { value: amount } });
+  const form = input.closest("form");
+  if (!form) throw new Error("Billing checkout form is missing");
+  fireEvent.submit(form);
 }
 
 async function submitAmount(
@@ -314,7 +376,11 @@ describe("BillingTab card-checkout idempotency key (#24144)", () => {
       attempt += 1;
       if (attempt === 1) {
         return Promise.reject(
-          new apiClient.ApiError(400, "invalid", "Idempotency-Key header is invalid"),
+          new apiClient.ApiError(
+            400,
+            "invalid",
+            "Idempotency-Key header is invalid",
+          ),
         );
       }
       return Promise.resolve({});
@@ -338,6 +404,96 @@ describe("BillingTab card-checkout idempotency key (#24144)", () => {
     expect(keyOf(checkoutCalls()[0])).not.toBe(keyOf(checkoutCalls()[1]));
   });
 
+  it("does not let an older 4xx clear a newer ambiguous checkout intent", async () => {
+    const first = deferred<unknown>();
+    const second = deferred<unknown>();
+    let attempt = 0;
+    routeApi(() => {
+      attempt += 1;
+      if (attempt === 1) return first.promise;
+      if (attempt === 2) return second.promise;
+      return Promise.resolve({});
+    });
+    const apiClient = await import("../../lib/api-client");
+    render(<BillingTab user={user} />);
+    await screen.findAllByTestId("invoice-row");
+
+    submitFormAmount("25");
+    await waitFor(() => expect(checkoutCalls()).toHaveLength(1));
+    submitFormAmount("30");
+    await waitFor(() => expect(checkoutCalls()).toHaveLength(2));
+
+    first.reject(new apiClient.ApiError(400, "invalid", "rejected"));
+    second.reject(new Error("response lost"));
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /Buy credits/i })).toBeTruthy(),
+    );
+    submitFormAmount("30");
+    await waitFor(() => expect(checkoutCalls()).toHaveLength(3));
+
+    expect(keyOf(checkoutCalls()[0])).not.toBe(keyOf(checkoutCalls()[1]));
+    expect(keyOf(checkoutCalls()[2])).toBe(keyOf(checkoutCalls()[1]));
+  });
+
+  it("does not let an older ambiguous completion restore a rejected newer intent", async () => {
+    const first = deferred<unknown>();
+    const second = deferred<unknown>();
+    let attempt = 0;
+    routeApi(() => {
+      attempt += 1;
+      if (attempt === 1) return first.promise;
+      if (attempt === 2) return second.promise;
+      return Promise.resolve({});
+    });
+    const apiClient = await import("../../lib/api-client");
+    render(<BillingTab user={user} />);
+    await screen.findAllByTestId("invoice-row");
+
+    submitFormAmount("25");
+    await waitFor(() => expect(checkoutCalls()).toHaveLength(1));
+    submitFormAmount("30");
+    await waitFor(() => expect(checkoutCalls()).toHaveLength(2));
+    const rejectedKey = keyOf(checkoutCalls()[1]);
+
+    second.reject(new apiClient.ApiError(400, "invalid", "rejected"));
+    first.reject(new Error("older response lost"));
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /Buy credits/i })).toBeTruthy(),
+    );
+    submitFormAmount("30");
+    await waitFor(() => expect(checkoutCalls()).toHaveLength(3));
+
+    expect(keyOf(checkoutCalls()[2])).not.toBe(rejectedKey);
+    expect(keyOf(checkoutCalls()[2])).not.toBe(keyOf(checkoutCalls()[0]));
+  });
+
+  it("reuses an ambiguous intent after BillingTab unmounts and remounts", async () => {
+    const intentStore: CardCheckoutIntentStore = { current: null };
+    let attempt = 0;
+    routeApi(() => {
+      attempt += 1;
+      return attempt === 1
+        ? Promise.reject(new Error("response lost"))
+        : Promise.resolve({});
+    });
+    const firstRender = render(
+      <BillingTab user={user} checkoutIntentStore={intentStore} />,
+    );
+    await screen.findAllByTestId("invoice-row");
+    const actor = userEvent.setup();
+    await submitAmount(actor, "25");
+    await waitFor(() => expect(checkoutCalls()).toHaveLength(1));
+    const originalKey = keyOf(checkoutCalls()[0]);
+
+    firstRender.unmount();
+    render(<BillingTab user={user} checkoutIntentStore={intentStore} />);
+    await screen.findAllByTestId("invoice-row");
+    await submitAmount(actor, "25");
+    await waitFor(() => expect(checkoutCalls()).toHaveLength(2));
+
+    expect(keyOf(checkoutCalls()[1])).toBe(originalKey);
+  });
+
   it("sends no Idempotency-Key on the hosted crypto path", async () => {
     apiMock.mockImplementation((url: string) => {
       if (url.startsWith("/api/invoices/list")) {
@@ -347,7 +503,10 @@ describe("BillingTab card-checkout idempotency key (#24144)", () => {
         return Promise.resolve({ balance: 12.5 });
       }
       if (url.startsWith("/api/crypto/status")) {
-        return Promise.resolve({ enabled: true, directWallet: { enabled: false } });
+        return Promise.resolve({
+          enabled: true,
+          directWallet: { enabled: false },
+        });
       }
       if (url.startsWith("/api/crypto/payments")) {
         // A javascript: payLink is refused client-side (no jsdom navigation),
@@ -366,13 +525,17 @@ describe("BillingTab card-checkout idempotency key (#24144)", () => {
 
     await waitFor(() => {
       expect(
-        apiMock.mock.calls.some(([url]) => String(url).startsWith("/api/crypto/payments")),
+        apiMock.mock.calls.some(([url]) =>
+          String(url).startsWith("/api/crypto/payments"),
+        ),
       ).toBe(true);
     });
     const cryptoCall = apiMock.mock.calls.find(([url]) =>
       String(url).startsWith("/api/crypto/payments"),
     );
-    const init = cryptoCall?.[1] as { headers?: Record<string, string> } | undefined;
+    const init = cryptoCall?.[1] as
+      | { headers?: Record<string, string> }
+      | undefined;
     expect(init?.headers?.["Idempotency-Key"]).toBeUndefined();
     expect(checkoutCalls()).toHaveLength(0);
   });

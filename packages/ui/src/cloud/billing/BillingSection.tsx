@@ -21,8 +21,9 @@ import {
   DashboardErrorState,
   DashboardLoadingState,
 } from "@elizaos/ui/cloud-ui";
+import { useRef } from "react";
 import { useCloudT } from "../shell/CloudI18nProvider";
-import { BillingTab } from "./components/billing-tab";
+import { BillingTab, type CardCheckoutIntent } from "./components/billing-tab";
 import { useBillingUser } from "./data/billing-data";
 import { ConditionalWalletProviders } from "./wallet/ConditionalWalletProviders";
 
@@ -34,6 +35,10 @@ function wasCheckoutCanceled(): boolean {
 /** The billing surface, rendered by the Settings → Cloud billing section. */
 export function BillingSectionBody() {
   const t = useCloudT();
+  // This owner stays mounted while a membership refresh temporarily replaces
+  // BillingTab with its loading state. Keeping the checkout intent here lets an
+  // ambiguous Stripe request replay the same key after that normal remount.
+  const checkoutIntentStore = useRef<CardCheckoutIntent | null>(null);
   const {
     user,
     isLoading,
@@ -92,7 +97,7 @@ export function BillingSectionBody() {
           })}
         </div>
       ) : null}
-      <BillingTab user={user} />
+      <BillingTab user={user} checkoutIntentStore={checkoutIntentStore} />
     </ConditionalWalletProviders>
   );
 }

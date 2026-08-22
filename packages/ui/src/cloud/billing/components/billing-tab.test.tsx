@@ -257,9 +257,8 @@ describe("BillingTab buy-credits accessibility", () => {
     await actor.type(input, "{Enter}");
 
     await waitFor(() => {
-      const checkoutCall = apiMock.mock.calls.find(
-        (call) =>
-          String(call[0]).startsWith("/api/stripe/create-checkout-session"),
+      const checkoutCall = apiMock.mock.calls.find((call) =>
+        String(call[0]).startsWith("/api/stripe/create-checkout-session"),
       );
       expect(checkoutCall).toBeDefined();
       const init = checkoutCall?.[1] as {
