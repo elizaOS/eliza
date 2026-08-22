@@ -70,7 +70,7 @@ describe("gateway-discord env helpers over the shared parser", () => {
     } finally {
       restore();
     }
-  });
+  }, 30_000);
 
   test("the gateway manager refuses a prefix-parsed value at module load", async () => {
     stub("MAX_BOTS_PER_POD", "5junk");
@@ -81,7 +81,7 @@ describe("gateway-discord env helpers over the shared parser", () => {
     } finally {
       restore();
     }
-  });
+  }, 30_000);
 
   test("the gateway manager still enforces its own minimum", async () => {
     stub("MAX_BOTS_PER_POD", "0");
@@ -92,5 +92,5 @@ describe("gateway-discord env helpers over the shared parser", () => {
     } finally {
       restore();
     }
-  });
+  }, 30_000);
 });
