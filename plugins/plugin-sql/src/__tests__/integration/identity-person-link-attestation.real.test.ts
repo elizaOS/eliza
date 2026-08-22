@@ -3,7 +3,7 @@
  * authority, including stale generations, forged fields, replay, and proof
  * that attestations never create redirects or merge journals.
  */
-import { IdentityResolutionService, type RouteHandlerContext, type UUID } from "@elizaos/core";
+import { PrincipalService, type RouteHandlerContext, type UUID } from "@elizaos/core";
 import { count, eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { identityPersonLinkRoutes } from "../../routes/identity-person-link";
@@ -14,7 +14,7 @@ import {
   identityMergeJournalTable,
   identityPersonLinkAttestationTable,
 } from "../../schema/identityAuthority";
-import { SqlIdentityResolutionService } from "../../services/sql-identity-resolution";
+import { SqlPrincipalService } from "../../services/sql-principal";
 import type { DrizzleDatabase } from "../../types";
 import { createIsolatedTestDatabase } from "../test-helpers";
 
@@ -28,7 +28,7 @@ describe.sequential("authenticated identity person-link ingress", () => {
   let cleanup: () => Promise<void>;
   let db: DrizzleDatabase;
   let runtime: Awaited<ReturnType<typeof createIsolatedTestDatabase>>["runtime"];
-  let service: SqlIdentityResolutionService;
+  let service: SqlPrincipalService;
   let agentId: UUID;
 
   const attestRoute = identityPersonLinkRoutes.find(
@@ -44,9 +44,9 @@ describe.sequential("authenticated identity person-link ingress", () => {
     db = setup.adapter.getDatabase() as DrizzleDatabase;
     runtime = setup.runtime;
     agentId = setup.testAgentId;
-    service = new SqlIdentityResolutionService(runtime);
+    service = new SqlPrincipalService(runtime);
     vi.spyOn(runtime, "getService").mockImplementation((type) =>
-      type === IdentityResolutionService.serviceType ? service : null
+      type === PrincipalService.serviceType ? service : null
     );
     await db.insert(entityTable).values(
       [actorId, leftId, rightId, otherLeftId, otherRightId].map((id) => ({

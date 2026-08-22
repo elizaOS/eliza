@@ -4,7 +4,7 @@
  * PGlite integration lane rather than mocks of the SQL authority.
  */
 import { describe, expect, it } from "vitest";
-import { computeIdentityRequestDigest } from "./sql-identity-resolution";
+import { computeIdentityRequestDigest } from "./sql-principal";
 
 describe("computeIdentityRequestDigest", () => {
   it("is stable across object-key and principal-set order", () => {
