@@ -3,10 +3,9 @@
  * into runtime `Action` / `Provider` definitions so the prompt-facing docs are
  * complete for every registered capability. The merge is additive and
  * conservative: it never overwrites an existing description, similes, or
- * parameters, and it always fills `descriptionCompressed` (and the
- * parameter-level compressed descriptions) via `compressPromptDescription` —
- * matching Python's `compress_prompt_description` — so prompt compression is on
- * even for plugins that ship no canonical spec row.
+ * parameters, and it fills legacy `descriptionCompressed` metadata (including
+ * parameter metadata) via `compressPromptDescription` for consumers that still
+ * read those fields. Model-facing renderers prefer the complete descriptions.
  */
 
 import { allActionDocs, allProviderDocs } from "./generated/action-docs.ts";
