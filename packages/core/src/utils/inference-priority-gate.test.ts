@@ -286,16 +286,18 @@ describe("device-class background budget (#11760 seam)", () => {
 		expect(result.clamped).toEqual([]);
 	});
 
-	it("rejects a missing output ceiling instead of installing a silent cap", () => {
+	it("uses the device maximum when the optional output ceiling is omitted", () => {
 		const budget = resolveBackgroundInferenceBudget("constrained");
-		expect(() =>
+		expect(
 			applyBackgroundInferenceBudget(
 				{ prompt: "p", maxTokens: undefined },
 				budget,
 			),
-		).toThrowError(
+		).toEqual(
 			expect.objectContaining({
-				code: "INFERENCE_BACKGROUND_OUTPUT_BUDGET_REQUIRED",
+				prompt: "p",
+				maxTokens: budget.maxTokens,
+				clamped: [],
 			}),
 		);
 	});
