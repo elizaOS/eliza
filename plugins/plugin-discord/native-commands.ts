@@ -87,6 +87,8 @@ export interface CommandArgMenu {
 
 const DISCORD_MAX_ACTION_ROWS = 5;
 const DISCORD_MAX_BUTTONS_PER_ROW = 5;
+const DISCORD_MAX_COMMAND_CHOICE_LENGTH = 100;
+const DISCORD_MAX_CUSTOM_ID_LENGTH = 100;
 
 /**
  * Key for command argument custom IDs
@@ -126,10 +128,42 @@ export function buildDiscordCommandOptions(
 
 		const choices =
 			arg.choices && arg.choices.length > 0 && arg.choices.length <= 25
-				? arg.choices.map((choice) => ({
-						name: choice.label,
-						value: choice.value,
-					}))
+				? arg.choices.map((choice) => {
+						if (
+							choice.value.length < 1 ||
+							choice.value.length > DISCORD_MAX_COMMAND_CHOICE_LENGTH ||
+							toWellFormedUnicode(choice.value) !== choice.value
+						) {
+							throw new ElizaError(
+								"Discord command choice values must be complete, valid Unicode within the protocol limit",
+								{
+									code: "DISCORD_COMMAND_CHOICE_VALUE_INVALID",
+									context: {
+										arg: arg.name,
+										valueLength: choice.value.length,
+										maxLength: DISCORD_MAX_COMMAND_CHOICE_LENGTH,
+									},
+								},
+							);
+						}
+						const label = toWellFormedUnicode(choice.label);
+						if (label.length < 1) {
+							throw new ElizaError(
+								"Discord command choice labels must not be empty",
+								{
+									code: "DISCORD_COMMAND_CHOICE_LABEL_INVALID",
+									context: { arg: arg.name },
+								},
+							);
+						}
+						return {
+							name:
+								label.length > DISCORD_MAX_COMMAND_CHOICE_LENGTH
+									? truncateWellFormed(label, DISCORD_MAX_COMMAND_CHOICE_LENGTH)
+									: label,
+							value: choice.value,
+						};
+					})
 				: undefined;
 
 		return {
@@ -206,12 +240,36 @@ export function buildCommandArgCustomId(params: {
 	value: string;
 	userId: string;
 }): string {
-	return [
+	for (const [field, value] of Object.entries(params)) {
+		if (toWellFormedUnicode(value) !== value) {
+			throw new ElizaError(
+				"Discord command button identifiers require valid Unicode inputs",
+				{
+					code: "DISCORD_COMMAND_CUSTOM_ID_INPUT_INVALID",
+					context: { field },
+				},
+			);
+		}
+	}
+	const customId = [
 		`${COMMAND_ARG_CUSTOM_ID_KEY}:command=${encodeCommandArgValue(params.command)}`,
 		`arg=${encodeCommandArgValue(params.arg)}`,
 		`value=${encodeCommandArgValue(params.value)}`,
 		`user=${encodeCommandArgValue(params.userId)}`,
 	].join(";");
+	if (customId.length > DISCORD_MAX_CUSTOM_ID_LENGTH) {
+		throw new ElizaError(
+			"Discord command button identifier exceeds the protocol limit",
+			{
+				code: "DISCORD_COMMAND_CUSTOM_ID_TOO_LONG",
+				context: {
+					length: customId.length,
+					maxLength: DISCORD_MAX_CUSTOM_ID_LENGTH,
+				},
+			},
+		);
+	}
+	return customId;
 }
 
 /**
@@ -321,6 +379,15 @@ export function buildCommandArgMenu(params: {
 	const rows = chunkArray(choices, buttonsPerRow).map((rowChoices) => ({
 		buttons: rowChoices.map((choice) => {
 			const wellFormed = toWellFormedUnicode(choice.label);
+			if (wellFormed.length < 1) {
+				throw new ElizaError(
+					"Discord command button labels must not be empty",
+					{
+						code: "DISCORD_COMMAND_BUTTON_LABEL_INVALID",
+						context: { commandName, arg: arg.name },
+					},
+				);
+			}
 			return {
 				label:
 					wellFormed.length > 80

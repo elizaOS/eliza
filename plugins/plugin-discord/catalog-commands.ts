@@ -423,7 +423,14 @@ export function mapOption(
 	option: ConnectorCommand["options"][number],
 ): SlashCommandOption {
 	const choices =
-		option.choices.length > 0 && option.choices.length <= 25
+		option.choices.length > 0 &&
+		option.choices.length <= 25 &&
+		option.choices.every(
+			(value) =>
+				value.length > 0 &&
+				value.length <= 100 &&
+				toWellFormedUnicode(value) === value,
+		)
 			? option.choices.map((value) => {
 					const wellFormed = toWellFormedUnicode(value);
 					return {

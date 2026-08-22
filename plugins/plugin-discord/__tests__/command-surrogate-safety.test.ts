@@ -6,10 +6,14 @@
 import { ElizaError } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import { mapOption } from "../catalog-commands";
-import { buildCommandArgMenu } from "../native-commands";
+import {
+	buildCommandArgCustomId,
+	buildCommandArgMenu,
+	buildDiscordCommandOptions,
+} from "../native-commands";
 
 describe("Discord command projection Unicode safety", () => {
-	it("keeps a complete surrogate pair when it fits the 100-unit choice limit", () => {
+	it("omits a fixed catalog choice whose complete value exceeds the limit", () => {
 		const emoji = "💎";
 		const option = mapOption({
 			name: "badge",
@@ -18,10 +22,10 @@ describe("Discord command projection Unicode safety", () => {
 			choices: [`${"d".repeat(98)}${emoji}tail`],
 		});
 
-		expect(option.choices?.[0]?.name).toBe(`${"d".repeat(98)}${emoji}`);
+		expect(option.choices).toBeUndefined();
 	});
 
-	it("does not split a surrogate pair at the 100-unit choice limit", () => {
+	it("omits a fixed catalog choice that cannot fit without splitting Unicode", () => {
 		const option = mapOption({
 			name: "badge",
 			description: "Badge name",
@@ -29,8 +33,40 @@ describe("Discord command projection Unicode safety", () => {
 			choices: [`${"d".repeat(99)}💎tail`],
 		});
 
-		expect(option.choices?.[0]?.name).toBe("d".repeat(99));
-		expect(option.choices?.[0]?.name.isWellFormed()).toBe(true);
+		expect(option.choices).toBeUndefined();
+	});
+
+	it("hardens the native slash-command choice projection", () => {
+		const options = buildDiscordCommandOptions([
+			{
+				name: "badge",
+				description: "Badge name",
+				type: "string",
+				choices: [{ label: `${"d".repeat(99)}💎tail`, value: "diamond" }],
+			},
+		]);
+
+		expect(options?.[0]?.choices?.[0]).toEqual({
+			name: "d".repeat(99),
+			value: "diamond",
+		});
+	});
+
+	it("rejects a native slash-command choice with an unrepresentable value", () => {
+		expect(() =>
+			buildDiscordCommandOptions([
+				{
+					name: "badge",
+					description: "Badge name",
+					type: "string",
+					choices: [{ label: "Diamond", value: "v".repeat(101) }],
+				},
+			]),
+		).toThrowError(
+			expect.objectContaining({
+				code: "DISCORD_COMMAND_CHOICE_VALUE_INVALID",
+			}),
+		);
 	});
 
 	it("preserves the existing dynamic-choice behavior above Discord's 25-choice limit", () => {
@@ -39,6 +75,17 @@ describe("Discord command projection Unicode safety", () => {
 			description: "Theme name",
 			required: false,
 			choices: Array.from({ length: 26 }, (_, index) => `theme-${index}`),
+		});
+
+		expect(option.choices).toBeUndefined();
+	});
+
+	it("falls back to free text for an empty fixed catalog choice", () => {
+		const option = mapOption({
+			name: "theme",
+			description: "Theme name",
+			required: false,
+			choices: [""],
 		});
 
 		expect(option.choices).toBeUndefined();
@@ -131,6 +178,53 @@ describe("Discord command projection Unicode safety", () => {
 		expect(caught).toBeInstanceOf(ElizaError);
 		expect((caught as ElizaError).code).toBe(
 			"DISCORD_COMMAND_MENU_INVALID_ROW_WIDTH",
+		);
+	});
+
+	it("rejects an empty command button label with a typed error", () => {
+		expect(() =>
+			buildCommandArgMenu({
+				commandName: "mode",
+				arg: { name: "level", description: "Mode level", type: "string" },
+				choices: [{ label: "", value: "empty" }],
+				userId: "user-123",
+			}),
+		).toThrowError(
+			expect.objectContaining({
+				code: "DISCORD_COMMAND_BUTTON_LABEL_INVALID",
+			}),
+		);
+	});
+
+	it("accepts a command button custom ID at the exact protocol boundary", () => {
+		const fixedLength = buildCommandArgCustomId({
+			command: "mode",
+			arg: "level",
+			value: "",
+			userId: "user-123",
+		}).length;
+		const customId = buildCommandArgCustomId({
+			command: "mode",
+			arg: "level",
+			value: "v".repeat(100 - fixedLength),
+			userId: "user-123",
+		});
+
+		expect(customId).toHaveLength(100);
+	});
+
+	it("rejects a percent-encoded command button custom ID above the limit", () => {
+		expect(() =>
+			buildCommandArgCustomId({
+				command: "mode",
+				arg: "level",
+				value: "🔥".repeat(20),
+				userId: "123456789012345678",
+			}),
+		).toThrowError(
+			expect.objectContaining({
+				code: "DISCORD_COMMAND_CUSTOM_ID_TOO_LONG",
+			}),
 		);
 	});
 });
