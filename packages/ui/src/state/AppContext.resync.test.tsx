@@ -1,9 +1,9 @@
 /** Verifies useResyncReconcile through the package's configured test harness. */
 // @vitest-environment jsdom
 
-import { renderHook } from "@testing-library/react";
+import { act, renderHook } from "@testing-library/react";
 import type { MutableRefObject } from "react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { RESYNC_EVENT, type ResyncEventDetail } from "./AppContext.hooks";
 import type { LoadConversationMessagesResult } from "./internal";
 import { useResyncReconcile } from "./useResyncReconcile";
@@ -36,6 +36,10 @@ function setup(activeId: string | null) {
 }
 
 describe("useResyncReconcile", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it("reloads the active conversation on resync", () => {
     const { loadConversationMessages } = setup("conv-1");
     dispatchResync("conv-1");
@@ -65,6 +69,43 @@ describe("useResyncReconcile", () => {
     const { loadConversationMessages, view } = setup("conv-1");
     view.unmount();
     dispatchResync("conv-1");
+    expect(loadConversationMessages).not.toHaveBeenCalled();
+  });
+
+  it("trails an interrupted voice turn so its durable reply cannot wait for the next turn", () => {
+    vi.useFakeTimers();
+    const { activeConversationIdRef, loadConversationMessages } =
+      setup("conv-1");
+
+    dispatchResync("conv-1");
+    expect(loadConversationMessages).toHaveBeenCalledTimes(1);
+    loadConversationMessages.mockClear();
+
+    window.dispatchEvent(
+      new CustomEvent<ResyncEventDetail>(RESYNC_EVENT, {
+        detail: {
+          conversationId: "conv-1",
+          reason: "voice-turn-interrupted",
+        },
+      }),
+    );
+    expect(loadConversationMessages).not.toHaveBeenCalled();
+
+    act(() => vi.advanceTimersByTime(300));
+    expect(loadConversationMessages).toHaveBeenCalledTimes(1);
+    expect(loadConversationMessages).toHaveBeenCalledWith("conv-1");
+
+    loadConversationMessages.mockClear();
+    window.dispatchEvent(
+      new CustomEvent<ResyncEventDetail>(RESYNC_EVENT, {
+        detail: {
+          conversationId: "conv-1",
+          reason: "voice-turn-interrupted",
+        },
+      }),
+    );
+    activeConversationIdRef.current = "conv-2";
+    act(() => vi.advanceTimersByTime(300));
     expect(loadConversationMessages).not.toHaveBeenCalled();
   });
 });

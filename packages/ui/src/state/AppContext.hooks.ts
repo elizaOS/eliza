@@ -17,7 +17,8 @@ export interface ResyncEventDetail {
   reason?:
     | "connection-recovered"
     | "voice-turn-progress"
-    | "voice-turn-complete";
+    | "voice-turn-complete"
+    | "voice-turn-interrupted";
 }
 
 /** Notify the mounted app that canonical conversation history changed elsewhere. */

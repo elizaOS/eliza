@@ -855,7 +855,7 @@ describe("voice-session WS lifecycle", () => {
     );
     expect(endOfTurnLog?.[1]).toMatchObject({
       transcriptChars: "hello agent".length,
-      configuredEndTimeoutMs: 640,
+      configuredEndTimeoutMs: 1_200,
       turnActiveMs: expect.any(Number),
       firstTranscriptOffsetMs: expect.any(Number),
       lastTranscriptToFinalMs: expect.any(Number),

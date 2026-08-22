@@ -2484,6 +2484,18 @@ describe("useShellController — mounted Cartesia Talk ownership", () => {
         conversationId,
         reason: "voice-turn-complete",
       });
+
+      act(() => {
+        onServerEvent?.({
+          t: "interrupted",
+          reason: "acoustic",
+          traceId: "trace-voice-turn",
+        });
+      });
+      expect(resyncEvents[2]?.detail).toEqual({
+        conversationId,
+        reason: "voice-turn-interrupted",
+      });
     } finally {
       window.removeEventListener(RESYNC_EVENT, onResync);
     }

@@ -561,10 +561,18 @@ export function useShellController(): ShellController {
       // The voice gateway submits through the canonical conversation stream,
       // outside this renderer's useChatSend instance. Reconcile at first model
       // text so the committed user turn appears promptly, then at terminal usage
-      // so the persisted assistant reply replaces the in-flight state. Never
-      // synthesize local bubbles: the normal conversation loader remains the
-      // sole reader and deduper for saved history.
-      if (event.t !== "llm_first_text" && event.t !== "usage") return;
+      // so the persisted assistant reply replaces the in-flight state. An
+      // interrupted turn needs one trailing reconcile because usage is emitted
+      // synchronously before the aborted upstream persists its durable receipt.
+      // Never synthesize local bubbles: the normal conversation loader remains
+      // the sole reader and deduper for saved history.
+      if (
+        event.t !== "llm_first_text" &&
+        event.t !== "usage" &&
+        event.t !== "interrupted"
+      ) {
+        return;
+      }
       const conversationId = activeConversationIdRef.current?.trim() || null;
       if (!conversationId) return;
       dispatchConversationResync({
@@ -572,7 +580,9 @@ export function useShellController(): ShellController {
         reason:
           event.t === "llm_first_text"
             ? "voice-turn-progress"
-            : "voice-turn-complete",
+            : event.t === "interrupted"
+              ? "voice-turn-interrupted"
+              : "voice-turn-complete",
       });
     },
     [],
