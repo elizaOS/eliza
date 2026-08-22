@@ -295,22 +295,6 @@ export function WorkbenchHeader({
   const resumeAllLabel = t("orchestrator.action.resumeAll", {
     defaultValue: "Resume all",
   });
-  const { ref: pauseAllRef, agentProps: pauseAllAgentProps } =
-    useAgentElement<HTMLButtonElement>({
-      id: "header-pause-all",
-      role: "button",
-      label: pauseAllLabel,
-      group: "orchestrator-header",
-      description: "Pause every active orchestrator task",
-    });
-  const { ref: resumeAllRef, agentProps: resumeAllAgentProps } =
-    useAgentElement<HTMLButtonElement>({
-      id: "header-resume-all",
-      role: "button",
-      label: resumeAllLabel,
-      group: "orchestrator-header",
-      description: "Resume every paused orchestrator task",
-    });
   const accountsLabel = t("orchestrator.toggleAccounts", {
     defaultValue: "Coding accounts & pool health",
   });
@@ -348,7 +332,6 @@ export function WorkbenchHeader({
       <div className="ml-auto flex shrink-0 items-center gap-1.5">
         {status?.activeTaskCount ? (
           <Button
-            ref={pauseAllRef}
             variant="ghost"
             size="sm"
             disabled={busy}
@@ -357,14 +340,14 @@ export function WorkbenchHeader({
             aria-label={pauseAllLabel}
             title={pauseAllLabel}
             data-testid="orchestrator-pause-all"
-            {...pauseAllAgentProps}
+            data-agent-authority="human"
+            data-agent-human-id="header-pause-all"
           >
             <Pause className="h-3.5 w-3.5" />
           </Button>
         ) : null}
         {status?.pausedTaskCount ? (
           <Button
-            ref={resumeAllRef}
             variant="ghost"
             size="sm"
             disabled={busy}
@@ -373,7 +356,8 @@ export function WorkbenchHeader({
             aria-label={resumeAllLabel}
             title={resumeAllLabel}
             data-testid="orchestrator-resume-all"
-            {...resumeAllAgentProps}
+            data-agent-authority="human"
+            data-agent-human-id="header-resume-all"
           >
             <Play className="h-3.5 w-3.5" />
           </Button>
@@ -447,14 +431,6 @@ function SubAgentCard({
       group: "orchestrator-sub-agents",
       description: `Open recovery and event details for the "${session.label}" sub-agent`,
     });
-  const { ref: stopRef, agentProps: stopAgentProps } =
-    useAgentElement<HTMLButtonElement>({
-      id: `sub-agent-stop-${session.sessionId}`,
-      role: "button",
-      label: `${stopLabel}: ${session.label}`,
-      group: "orchestrator-sub-agents",
-      description: `Stop the "${session.label}" sub-agent`,
-    });
   return (
     <div className="py-1">
       <div className="flex items-center gap-1.5">
@@ -478,14 +454,14 @@ function SubAgentCard({
         {stoppable ? (
           <Button
             unstyled
-            ref={stopRef}
             type="button"
             disabled={busy}
             onClick={() => onStop(session.sessionId)}
             className="flex items-center gap-0.5 px-1 py-0.5 text-2xs text-muted transition-colors hover:text-danger disabled:opacity-50"
             data-testid="orchestrator-stop-agent"
             aria-label={stopLabel}
-            {...stopAgentProps}
+            data-agent-authority="human"
+            data-agent-human-id={`sub-agent-stop-${session.sessionId}`}
           >
             <CircleStop className="h-3 w-3" />
           </Button>
@@ -578,14 +554,6 @@ function EditedPlanRestartSection({
       label: toggleLabel,
       group: "orchestrator-inspector",
       description: "Open the plan JSON editor",
-    });
-  const { ref: restartRef, agentProps: restartAgentProps } =
-    useAgentElement<HTMLButtonElement>({
-      id: "inspector-restart-edited-plan",
-      role: "button",
-      label: restartLabel,
-      group: "orchestrator-inspector",
-      description: "Restart this task with the edited plan",
     });
 
   useEffect(() => {
@@ -693,14 +661,14 @@ function EditedPlanRestartSection({
           {error ? <p className="text-2xs text-danger">{error}</p> : null}
           <div className="flex justify-end">
             <Button
-              ref={restartRef}
               type="button"
               size="sm"
               disabled={busy}
               onClick={submit}
               className="h-7 gap-1.5 px-2.5 text-xs-tight"
               data-testid="orchestrator-plan-restart"
-              {...restartAgentProps}
+              data-agent-authority="human"
+              data-agent-human-id="inspector-restart-edited-plan"
             >
               <RotateCcw className="h-3 w-3" />
               {restartLabel}
@@ -957,17 +925,6 @@ function AddAgentForm({
       group: "orchestrator-add-agent",
       description: "Cancel adding a sub-agent",
     });
-  const { ref: spawnRef, agentProps: spawnAgentProps } =
-    useAgentElement<HTMLButtonElement>({
-      id: "add-agent-spawn",
-      role: "button",
-      label: spawnLabel,
-      group: "orchestrator-add-agent",
-      description: "Spawn a new sub-agent on this task",
-      onActivate: () => {
-        if (!busy) spawn();
-      },
-    });
 
   return (
     <div className="mt-1.5 space-y-1.5">
@@ -1041,13 +998,13 @@ function AddAgentForm({
           {cancelLabel}
         </Button>
         <Button
-          ref={spawnRef}
           size="sm"
           disabled={busy}
           onClick={spawn}
           className="h-6 px-2 text-2xs"
           data-testid="orchestrator-add-agent-submit"
-          {...spawnAgentProps}
+          data-agent-authority="human"
+          data-agent-human-id="add-agent-spawn"
         >
           {spawnLabel}
         </Button>
@@ -1075,6 +1032,46 @@ function ControlButton({
   tone?: "neutral" | "danger";
   testId?: string;
 }) {
+  return (
+    <Button
+      unstyled
+      type="button"
+      disabled={disabled}
+      onClick={onClick}
+      aria-label={label}
+      title={label}
+      className={`flex items-center justify-center p-1.5 transition-colors disabled:opacity-50 ${
+        tone === "danger"
+          ? "text-muted hover:text-danger"
+          : "text-muted hover:text-txt"
+      }`}
+      data-testid={testId}
+      data-agent-authority="human"
+      data-agent-human-id={agentId}
+      data-agent-human-reason={description}
+    >
+      {icon}
+    </Button>
+  );
+}
+
+function AgentLocalControlButton({
+  agentId,
+  description,
+  icon,
+  label,
+  onClick,
+  disabled,
+  testId,
+}: {
+  agentId: string;
+  description: string;
+  icon: ReactNode;
+  label: string;
+  onClick: () => void;
+  disabled: boolean;
+  testId?: string;
+}) {
   const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
     id: agentId,
     role: "button",
@@ -1091,11 +1088,7 @@ function ControlButton({
       onClick={onClick}
       aria-label={label}
       title={label}
-      className={`flex items-center justify-center p-1.5 transition-colors disabled:opacity-50 ${
-        tone === "danger"
-          ? "text-muted hover:text-danger"
-          : "text-muted hover:text-txt"
-      }`}
+      className="flex items-center justify-center p-1.5 text-muted transition-colors hover:text-txt disabled:opacity-50"
       data-testid={testId}
       {...agentProps}
     >
@@ -1121,23 +1114,17 @@ export function RecoveryActionButton({
   disabled: boolean;
   testId: string;
 }) {
-  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
-    id: agentId,
-    role: "button",
-    label,
-    group: "orchestrator-operator-detail",
-    description,
-  });
   return (
     <Button
       unstyled
-      ref={ref}
       type="button"
       disabled={disabled}
       onClick={onClick}
       className="inline-flex h-7 items-center gap-1.5 px-1 text-2xs font-semibold text-muted transition-colors hover:text-txt disabled:opacity-50"
       data-testid={testId}
-      {...agentProps}
+      data-agent-authority="human"
+      data-agent-human-id={agentId}
+      data-agent-human-reason={description}
     >
       {icon}
       {label}
@@ -1167,20 +1154,12 @@ function AgentDeleteDialogConfirm({
   label: string;
   onDelete: () => void;
 }) {
-  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
-    id: "inspector-delete-confirm",
-    role: "button",
-    label,
-    group: "orchestrator-inspector-delete-confirmation",
-    description: "Permanently delete this task and its transcript",
-    onActivate: onDelete,
-  });
   return (
     <AlertDialogAction
-      ref={ref}
       onClick={onDelete}
       className="bg-red-600 hover:bg-red-700"
-      {...agentProps}
+      data-agent-authority="human"
+      data-agent-human-id="inspector-delete-confirm"
     >
       {label}
     </AlertDialogAction>
@@ -1278,20 +1257,6 @@ export function TaskInspector({
       label: closeDetailsLabel,
       group: "orchestrator-inspector",
       description: "Close the task details panel",
-    });
-  const { ref: priorityRef, agentProps: priorityAgentProps } =
-    useAgentElement<HTMLButtonElement>({
-      id: "inspector-priority",
-      role: "select",
-      label: setPriorityLabel,
-      group: "orchestrator-inspector",
-      description: "Set the priority of this task",
-      options: ["low", "normal", "high", "urgent"],
-      getValue: () => detail.priority,
-      onFill: (value) => {
-        const next = paramPriority(value);
-        if (next && next !== detail.priority) onSetPriority(next);
-      },
     });
 
   return (
@@ -1416,7 +1381,7 @@ export function TaskInspector({
           />
         )}
         {terminal ? null : (
-          <ControlButton
+          <AgentLocalControlButton
             agentId="inspector-add-agent"
             description="Open the add-agent form for this task"
             icon={<UserPlus className="h-3 w-3" />}
@@ -1428,7 +1393,7 @@ export function TaskInspector({
             testId="orchestrator-add-agent"
           />
         )}
-        <ControlButton
+        <AgentLocalControlButton
           agentId="inspector-copy-link"
           description="Copy a deep link to this task"
           icon={<Copy className="h-3 w-3" />}
@@ -1449,11 +1414,11 @@ export function TaskInspector({
             disabled={busy}
           >
             <SelectTrigger
-              ref={priorityRef}
               aria-label={setPriorityLabel}
               className="border-border/35 h-auto w-auto border-b bg-transparent px-1 py-1 text-2xs text-muted transition-colors hover:border-accent/60 hover:text-txt disabled:opacity-50"
               data-testid="orchestrator-priority-select"
-              {...priorityAgentProps}
+              data-agent-authority="human"
+              data-agent-human-id="inspector-priority"
             >
               <SelectValue />
             </SelectTrigger>

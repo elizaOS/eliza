@@ -183,7 +183,9 @@ describe("TaskCoordinatorView — GUI route wrapper", () => {
     await screen.findByText("Refactor auth");
     fireEvent.click(button("open-t1"));
     await screen.findByText("ships");
-    fireEvent.click(button("delete-thread"));
+    const deleteButton = screen.getByRole("button", { name: "Delete task" });
+    expect(deleteButton.hasAttribute("data-agent-id")).toBe(false);
+    fireEvent.click(deleteButton);
     await waitFor(() =>
       expect(archiveCodingAgentTaskThread).toHaveBeenCalledWith("t1"),
     );
@@ -197,7 +199,9 @@ describe("TaskCoordinatorView — GUI route wrapper", () => {
     await screen.findByText("Refactor auth");
     fireEvent.click(button("open-t1"));
     await screen.findByText("ships");
-    fireEvent.click(button("reopen-thread"));
+    const reopenButton = screen.getByRole("button", { name: "Reopen task" });
+    expect(reopenButton.hasAttribute("data-agent-id")).toBe(false);
+    fireEvent.click(reopenButton);
     await waitFor(() =>
       expect(reopenCodingAgentTaskThread).toHaveBeenCalledWith("t1"),
     );
