@@ -325,6 +325,46 @@ describe("subscription billing and error isolation", () => {
     expect(grokEnv.ANTHROPIC_API_KEY).not.toBe("parent-gateway-secret");
   });
 
+  it("pins the probed account home into the child and disables Grok API-key fallback", () => {
+    const service = new AcpService(
+      makeRuntime({
+        KIMI_CODE_HOME: "/tenant-a/kimi",
+        GROK_HOME: "/tenant-a/grok",
+      }) as never,
+    );
+    const buildEnv = (
+      service as unknown as {
+        buildEnv: (
+          extra: Record<string, string>,
+          customCredentials: Record<string, string>,
+          model: string | undefined,
+          agentType: string,
+        ) => NodeJS.ProcessEnv;
+      }
+    ).buildEnv.bind(service);
+
+    const kimiEnv = buildEnv(
+      { KIMI_CODE_HOME: "/caller-controlled/kimi" },
+      {},
+      undefined,
+      "kimi",
+    );
+    const grokEnv = buildEnv(
+      {
+        GROK_HOME: "/caller-controlled/grok",
+        GROK_DISABLE_API_KEY_AUTH: "0",
+      },
+      { XAI_API_KEY: "payg-must-not-win" },
+      undefined,
+      "grok",
+    );
+
+    expect(kimiEnv.KIMI_CODE_HOME).toBe("/tenant-a/kimi");
+    expect(grokEnv.GROK_HOME).toBe("/tenant-a/grok");
+    expect(grokEnv.GROK_DISABLE_API_KEY_AUTH).toBe("1");
+    expect(grokEnv.XAI_API_KEY).toBeUndefined();
+  });
+
   it("surfaces billing source and execution policy in agent inventory", async () => {
     const service = new AcpService(makeRuntime() as never);
     const available = await service.getAvailableAgents();

@@ -32,6 +32,7 @@ export interface SubscriptionCodingAdapterDescriptor {
   label: string;
   binary: string;
   commandSetting: string;
+  homeEnvironmentKey: "KIMI_CODE_HOME" | "GROK_HOME";
   defaultAcpCommand: string;
   supportedPlatforms: readonly NodeJS.Platform[];
   billingSource: SubscriptionBillingSource;
@@ -58,6 +59,7 @@ export const SUBSCRIPTION_CODING_ADAPTERS: Readonly<
     label: "Kimi Code",
     binary: "kimi",
     commandSetting: "ELIZA_KIMI_ACP_COMMAND",
+    homeEnvironmentKey: "KIMI_CODE_HOME",
     defaultAcpCommand: "kimi acp",
     supportedPlatforms: SUPPORTED_DESKTOP_PLATFORMS,
     billingSource: {
@@ -89,6 +91,7 @@ export const SUBSCRIPTION_CODING_ADAPTERS: Readonly<
     label: "Grok Build",
     binary: "grok",
     commandSetting: "ELIZA_GROK_ACP_COMMAND",
+    homeEnvironmentKey: "GROK_HOME",
     defaultAcpCommand: "grok agent stdio",
     supportedPlatforms: SUPPORTED_DESKTOP_PLATFORMS,
     billingSource: {
