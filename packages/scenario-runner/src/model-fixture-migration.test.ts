@@ -165,6 +165,18 @@ function scenarioFiles(): string[] {
 }
 
 describe("scenario model fixture migration", () => {
+  it("requires verifier observers to declare attempt-scoped cleanup", () => {
+    const missingCleanup = scenarioFiles().filter((file) => {
+      const source = readFileSync(resolve(repoRoot, file), "utf8");
+      return (
+        source.includes("installVerifierPromptCapture(") &&
+        !source.includes("cleanup: [verifierPromptCaptureCleanupStep]")
+      );
+    });
+
+    expect(missingCleanup).toEqual([]);
+  });
+
   it("never increases the undeclared deterministic corpus", () => {
     const classifications = scenarioFiles().map((file) =>
       classifyScenarioSource(

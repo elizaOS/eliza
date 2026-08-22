@@ -10,6 +10,7 @@ import {
   ORCHESTRATOR_EVIDENCE_BUNDLE,
   ORCHESTRATOR_SCENARIO_PLUGIN_NAME,
 } from "./_helpers/orchestrator-scenario-harness";
+import { verifierPromptCaptureCleanupStep } from "./_helpers/verifier-prompt-capture";
 
 function actionData(ctx: ScenarioContext): Record<string, unknown> | null {
   const action = ctx.actionsCalled.find(
@@ -73,6 +74,7 @@ export default scenario({
       },
     },
   ],
+  cleanup: [verifierPromptCaptureCleanupStep],
   turns: [
     {
       kind: "action",

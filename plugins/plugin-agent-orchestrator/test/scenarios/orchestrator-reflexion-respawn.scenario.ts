@@ -10,6 +10,7 @@ import {
   ORCHESTRATOR_REFLEXION_RESPAWN,
   ORCHESTRATOR_SCENARIO_PLUGIN_NAME,
 } from "./_helpers/orchestrator-scenario-harness";
+import { verifierPromptCaptureCleanupStep } from "./_helpers/verifier-prompt-capture";
 
 const FAIL_SUMMARY = "the sub-agent never ran the unit tests";
 const MISSING_CRITERION = "unit tests pass";
@@ -76,6 +77,7 @@ export default scenario({
       },
     },
   ],
+  cleanup: [verifierPromptCaptureCleanupStep],
   turns: [
     {
       kind: "action",
