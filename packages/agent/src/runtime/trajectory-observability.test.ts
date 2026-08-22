@@ -6,7 +6,10 @@
 import type { IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import {
+  appendCompleteTrajectoryTextRecords,
+  capScriptForPersistence,
   computeBySource,
+  extractInsightsFromResponse,
   flushObservationBuffer,
   pushChatExchange,
 } from "./trajectory-internals";
@@ -26,6 +29,58 @@ function createRuntime() {
 }
 
 describe("trajectory observability", () => {
+  it("preserves every ordered metadata record across former recency caps", () => {
+    const existing = Array.from({ length: 35 }, (_, index) => `old-${index}`);
+    const additions = [
+      "duplicate",
+      "duplicate",
+      ...Array.from({ length: 25 }, (_, index) => `new-${index}`),
+    ];
+
+    const records = appendCompleteTrajectoryTextRecords(
+      existing,
+      additions,
+      "insights",
+    );
+
+    expect(records).toEqual([...existing, ...additions]);
+    expect(records).toHaveLength(62);
+  });
+
+  it("rejects malformed persisted metadata instead of treating it as empty", () => {
+    expect(() =>
+      appendCompleteTrajectoryTextRecords(["valid", 3], ["next"], "insights"),
+    ).toThrowError(
+      expect.objectContaining({ code: "TRAJECTORY_TEXT_METADATA_INVALID" }),
+    );
+  });
+
+  it("preserves long and whitespace-significant extracted trajectory text", () => {
+    const decision = `${"x".repeat(1_500)}  `;
+    const reasoning = `${"reasoning ".repeat(40)}  `;
+
+    expect(
+      extractInsightsFromResponse(`DECISION: ${decision}\n`, "coordination"),
+    ).toEqual([decision]);
+    expect(
+      extractInsightsFromResponse(
+        JSON.stringify({ reasoning }),
+        "coordination",
+      ),
+    ).toEqual([reasoning]);
+  });
+
+  it("rejects malformed Unicode instead of repairing recorded context", () => {
+    expect(() => capScriptForPersistence("bad\ud800script")).toThrowError(
+      expect.objectContaining({ code: "TRAJECTORY_TEXT_MALFORMED_UNICODE" }),
+    );
+    expect(() =>
+      appendCompleteTrajectoryTextRecords([], ["bad\ud800insight"], "insights"),
+    ).toThrowError(
+      expect.objectContaining({ code: "TRAJECTORY_TEXT_MALFORMED_UNICODE" }),
+    );
+  });
+
   it("logs observation flush failures before returning an empty result", async () => {
     const { runtime, warn } = createRuntime();
     pushChatExchange(runtime, {

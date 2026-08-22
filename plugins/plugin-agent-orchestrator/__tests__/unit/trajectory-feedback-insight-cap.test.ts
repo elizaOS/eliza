@@ -1,18 +1,12 @@
 /**
- * Per-trajectory insight budget regression (audit-2 #7).
+ * Complete trajectory-feedback traversal regression.
  *
- * The fast path (pre-extracted metadata insights) has always capped at 50
- * insights per trajectory via `.slice(0, 50)`. The slow-path detail scan
- * (legacy trajectories with no metadata insights) previously had NO such cap,
- * so a single trajectory with many steps/LLM calls could balloon the
- * intermediate `experiences` array before the final dedup + `maxEntries` cap.
- * These tests pin BOTH paths to the same 50/trajectory budget.
+ * The deterministic logger doubles prove both metadata and legacy detail paths
+ * preserve every insight even when legacy page-size options request less.
  */
 
 import { describe, expect, it } from "vitest";
 import { queryPastExperience } from "../../src/services/trajectory-feedback";
-
-const MAX = 50;
 
 type Summary = {
   id: string;
@@ -78,24 +72,164 @@ function fastPathLogger(insightCount: number) {
   };
 }
 
-describe("queryPastExperience per-trajectory insight cap (audit-2 #7)", () => {
-  it("caps the SLOW path at 50 insights from a single trajectory", async () => {
-    // 120 unique decisions in one trajectory; maxEntries is set high so the
-    // per-trajectory cap — not the final cap — is what limits the result.
+describe("queryPastExperience complete traversal", () => {
+  it("preserves every SLOW-path insight from a single trajectory", async () => {
     const runtime = makeRuntime(slowPathLogger(120));
-    const result = await queryPastExperience(runtime, { maxEntries: 1_000 });
-    expect(result.length).toBe(MAX);
+    const result = await queryPastExperience(runtime, { maxEntries: 1 });
+    expect(result).toHaveLength(120);
+    expect(result[0]?.insight).toBe("unique slow-path insight number 0");
+    expect(result[119]?.insight).toBe("unique slow-path insight number 119");
   });
 
-  it("caps the FAST path at 50 insights from a single trajectory", async () => {
+  it("preserves every FAST-path insight from a single trajectory", async () => {
     const runtime = makeRuntime(fastPathLogger(120));
-    const result = await queryPastExperience(runtime, { maxEntries: 1_000 });
-    expect(result.length).toBe(MAX);
+    const result = await queryPastExperience(runtime, { maxEntries: 1 });
+    expect(result).toHaveLength(120);
   });
 
   it("returns all insights when a trajectory is under the cap", async () => {
     const runtime = makeRuntime(slowPathLogger(10));
     const result = await queryPastExperience(runtime, { maxEntries: 1_000 });
     expect(result.length).toBe(10);
+  });
+
+  it("preserves duplicate records in source order", async () => {
+    const runtime = makeRuntime({
+      listTrajectories: async () => ({
+        trajectories: [
+          {
+            id: "first",
+            source: "orchestrator",
+            startTime: 2,
+            llmCallCount: 0,
+            createdAt: new Date(2).toISOString(),
+            metadata: { insights: ["Same", "Same"] },
+          },
+          {
+            id: "second",
+            source: "orchestrator",
+            startTime: 1,
+            llmCallCount: 0,
+            createdAt: new Date(1).toISOString(),
+            metadata: { insights: ["older"] },
+          },
+        ],
+        total: 2,
+      }),
+      getTrajectoryDetail: async () => null,
+    });
+
+    const result = await queryPastExperience(runtime, {
+      taskDescription: "unrelated filter",
+    });
+    expect(result.map((entry) => entry.insight)).toEqual([
+      "Same",
+      "Same",
+      "older",
+    ]);
+  });
+
+  it("preserves whitespace and long reasoning exactly", async () => {
+    const exactMetadata = "  metadata insight  ";
+    const longReasoning = `${"reasoning ".repeat(40)}  `;
+    const runtime = makeRuntime({
+      listTrajectories: async () => ({
+        trajectories: [
+          {
+            id: "metadata",
+            source: "orchestrator",
+            startTime: 2,
+            llmCallCount: 0,
+            createdAt: new Date(2).toISOString(),
+            metadata: { insights: [exactMetadata] },
+          },
+          {
+            id: "legacy",
+            source: "orchestrator",
+            startTime: 1,
+            llmCallCount: 1,
+            createdAt: new Date(1).toISOString(),
+          },
+        ],
+        total: 2,
+      }),
+      getTrajectoryDetail: async (id: string) =>
+        id === "legacy"
+          ? {
+              trajectoryId: id,
+              steps: [
+                {
+                  llmCalls: [
+                    {
+                      purpose: "coordination",
+                      response: JSON.stringify({ reasoning: longReasoning }),
+                    },
+                  ],
+                },
+              ],
+            }
+          : null,
+    });
+
+    const result = await queryPastExperience(runtime);
+    expect(result.map((entry) => entry.insight)).toEqual([
+      exactMetadata,
+      longReasoning,
+    ]);
+  });
+
+  it("rejects malformed stored insight text explicitly", async () => {
+    const runtime = makeRuntime({
+      listTrajectories: async () => ({
+        trajectories: [
+          {
+            id: "malformed",
+            source: "orchestrator",
+            startTime: 1,
+            llmCallCount: 0,
+            createdAt: new Date(1).toISOString(),
+            metadata: { insights: ["bad\ud800insight"] },
+          },
+        ],
+        total: 1,
+      }),
+      getTrajectoryDetail: async () => null,
+    });
+
+    await expect(queryPastExperience(runtime)).rejects.toMatchObject({
+      code: "TRAJECTORY_EXPERIENCE_MALFORMED_UNICODE",
+    });
+  });
+
+  it("traverses every storage page without treating page size as a content cap", async () => {
+    const summaries = Array.from({ length: 501 }, (_, index) => ({
+      id: `trajectory-${index}`,
+      source: "orchestrator",
+      startTime: 501 - index,
+      llmCallCount: 0,
+      createdAt: new Date(501 - index).toISOString(),
+      metadata: { insights: [`insight-${index}`] },
+    }));
+    const offsets: number[] = [];
+    const runtime = makeRuntime({
+      listTrajectories: async (options: {
+        offset?: number;
+        limit?: number;
+      }) => {
+        const offset = options.offset ?? 0;
+        const limit = options.limit ?? 50;
+        offsets.push(offset);
+        return {
+          trajectories: summaries.slice(offset, offset + limit),
+          total: summaries.length,
+        };
+      },
+      getTrajectoryDetail: async () => null,
+    });
+
+    const result = await queryPastExperience(runtime, { maxTrajectories: 1 });
+    expect(offsets).toEqual([0, 500]);
+    expect(result).toHaveLength(501);
+    expect(result[500]?.insight).toBe("insight-500");
   });
 });

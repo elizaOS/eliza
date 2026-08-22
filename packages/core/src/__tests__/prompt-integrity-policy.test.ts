@@ -24,6 +24,7 @@ const removedCompactionModules = [
 ];
 
 const removedPromptCapCloneTests = [
+	"packages/agent/src/runtime/trajectory-internals.surrogate.test.ts",
 	"packages/core/src/features/advanced-capabilities/actions/role.surrogate.test.ts",
 	"packages/core/src/features/advanced-capabilities/evaluators/trajectory-evaluator-utils.surrogate.test.ts",
 	"packages/core/src/features/advanced-capabilities/experience/evaluators/experience-items.surrogate.test.ts",
@@ -150,6 +151,17 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 	"plugins/plugin-agent-orchestrator/src/services/model-gateway-lease.ts": [
 		/truncateWellFormed/,
 	],
+	"plugins/plugin-agent-orchestrator/src/services/skill-recommender.ts": [
+		/recommendations\.slice\(/,
+		/\.slice\(0,\s*max\)/,
+		/description\.replace\(\/\\s\+\/g/,
+	],
+	"plugins/plugin-agent-orchestrator/src/services/trajectory-feedback.ts": [
+		/ordered\.slice\(/,
+		/\.catch\(\(\)\s*=>\s*null\)/,
+		/insights\.push\(match\[1\]\.trim\(\)\)/,
+		/\{20,200\}/,
+	],
 	"plugins/plugin-agent-orchestrator/src/services/acp-service.ts": [
 		/wellFormed\.length\s*>\s*500/,
 		/truncateWellFormed\(wellFormed,\s*200\)/,
@@ -272,6 +284,15 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 	],
 	"packages/agent/src/runtime/prompt-optimization.ts": [
 		/actionCompactionEnabled/,
+	],
+	"packages/agent/src/runtime/trajectory-internals.ts": [
+		/truncateField/,
+		/truncateRecord/,
+		/\[\^\\n\]\{1,1024\}/,
+		/\[\^"\]\{1,1024\}/,
+		/\[\^"\]\{20,200\}/,
+		/insights\.push\([^)]*\.trim\(\)\)/,
+		/(?:return|const\s+safeResponse\s*=)[^;\n]*toWellFormedUnicode\((?:response|script|value)\)/,
 	],
 	"packages/scenario-runner/src/executor.ts": [
 		/serialized\.slice\(/,
