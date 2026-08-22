@@ -128,6 +128,7 @@ async function seedActorsAndAgents(count: number) {
       sandbox_id: `http-sandbox-${index}`,
       node_id: `http-node-${index}`,
       container_name: `http-agent-${index}`,
+      execution_tier: "dedicated-always",
       docker_image: SOURCE_IMAGE,
       image_digest: SOURCE_DIGEST,
     });
