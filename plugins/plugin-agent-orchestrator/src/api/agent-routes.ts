@@ -9,6 +9,7 @@
  * @module api/agent-routes
  */
 
+import { readSubagentStdout } from "../services/subagent-stdout-log.js";
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { access, readFile, realpath, rm } from "node:fs/promises";
@@ -16,6 +17,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import * as path from "node:path";
 import { promisify } from "node:util";
 import { logger } from "@elizaos/core";
+import { markSessionAdministrativelyStopped } from "../services/admin-stop-marker.js";
 import { assignAgentName } from "../services/agent-name-assignment.js";
 import { buildGoalFollowUp, buildGoalPrompt } from "../services/goal-prompt.js";
 import { isParentAgentBrokerWired } from "../services/parent-agent-broker.js";
@@ -431,7 +433,7 @@ export async function handleAgentRoutes(
       if (!agentType) {
         sendError(
           res,
-          "agentType query parameter required (claude, codex)",
+          "agentType query parameter required (claude, codex, elizaos)",
           400,
         );
         return true;
@@ -810,6 +812,14 @@ export async function handleAgentRoutes(
 
     try {
       const sessionId = stopMatch[1];
+      // A dashboard/API stop is administrative: this route already answers its
+      // caller with success JSON, so the terminal relay must not also post
+      // "<label> — stopped before completion." into the Discord origin room.
+      await markSessionAdministrativelyStopped(
+        ctx.acpService,
+        sessionId,
+        "api_stop",
+      );
       await ctx.acpService.stopSession(sessionId);
       sendJson(res, { success: true, sessionId });
     } catch (error) {
@@ -847,6 +857,37 @@ export async function handleAgentRoutes(
       return true;
     }
 
+    // Continuation semantics for durable session output (#24262 close-out):
+    // ?offset=<chunk>&limit=<n> windows the per-session durable stdout log —
+    // the resolver for `acpx-session-output:<sessionId>` content references.
+    // Without offset, the live-buffer tail keeps its existing shape.
+    const offsetRaw = url.searchParams.get("offset");
+    if (offsetRaw !== null) {
+      const offset = Number.parseInt(offsetRaw, 10);
+      if (!Number.isSafeInteger(offset)) {
+        sendError(res, "offset must be an integer chunk index", 400);
+        return true;
+      }
+      try {
+        const window = await readSubagentStdout(sessionId, {
+          offset,
+          limit: lines,
+        });
+        if (!window) {
+          sendError(res, "No durable output log for this session", 404);
+          return true;
+        }
+        sendJson(res, { sessionId, ...window });
+      } catch (error) {
+        // error-policy:J1 route boundary — service failure becomes a 500 response.
+        sendError(
+          res,
+          error instanceof Error ? error.message : "Failed to read output log",
+          500,
+        );
+      }
+      return true;
+    }
     try {
       const output = await ctx.acpService.getSessionOutput?.(sessionId, lines);
       sendJson(res, { sessionId, output });
