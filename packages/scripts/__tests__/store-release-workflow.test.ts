@@ -76,6 +76,8 @@ describe("canonical store release workflow", () => {
     expect(snapcraftSource).toMatch(/^title: Eliza$/m);
     expect(snapcraftSource).toMatch(/^grade: stable$/m);
     expect(snapcraftSource).toMatch(/^ {2}eliza:$/m);
+    expect(snapcraftSource).toMatch(/^ {4}source: \.\.\/\.\.\/\.\.\/\.\.$/m);
+    expect(snapcraftSource).toMatch(/^ {4}source-type: local$/m);
   });
 
   test("calls mobile stores only after exact release finalization", () => {

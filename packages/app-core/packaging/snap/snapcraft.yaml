@@ -106,7 +106,11 @@ parts:
   elizaos-app:
     after: [node, bun]
     plugin: nil
-    source: .
+    # Snapcraft runs with this manifest directory as the project root. Stage the
+    # monorepo root because the build script below consumes repository packages,
+    # plugins, scripts, and the root workspace manifest.
+    source: ../../../..
+    source-type: local
     override-build: |
       set -eu
       export PATH="$CRAFT_STAGE/bun/bin:$CRAFT_STAGE/node/bin:$PATH"
