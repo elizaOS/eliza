@@ -5,6 +5,7 @@
  * provides stableStringify — key-order-independent JSON for stable hashing/IDs.
  */
 
+import { ElizaError } from "../errors";
 import { EXAMPLE_NAMES } from "./example-names";
 
 const UINT32_MAX = 0x100000000;
@@ -106,30 +107,207 @@ export function getDeterministicNames(
 	});
 }
 
-export function stableStringify(value: unknown): string {
-	return JSON.stringify(sortStable(value));
+export const STABLE_STRINGIFY_UNBOUNDED = "STABLE_STRINGIFY_UNBOUNDED";
+export const MAX_STABLE_STRINGIFY_DEPTH = 32;
+export const MAX_STABLE_STRINGIFY_NODES = 2_048;
+export const MAX_STABLE_STRINGIFY_STRING_BYTES = 64 * 1024;
+
+export class StableStringifyUnboundedError extends ElizaError {
+	override readonly name = "StableStringifyUnboundedError";
+	constructor(
+		reason: string,
+		context: Record<string, unknown> = {},
+		cause?: unknown,
+	) {
+		super(`stableStringify is unbounded (${reason})`, {
+			code: STABLE_STRINGIFY_UNBOUNDED,
+			context: { reason, ...context },
+			severity: "fatal",
+			...(cause !== undefined ? { cause } : {}),
+		});
+	}
 }
 
-function sortStable(value: unknown): unknown {
-	if (Array.isArray(value)) {
-		return value.map((entry) => sortStable(entry));
+export function stableStringify(value: unknown): string {
+	const sorted = sortStable(value);
+	return JSON.stringify(sorted);
+}
+
+function sortStableBounded(
+	value: unknown,
+	depth: number,
+	state: { nodes: number; seen: WeakSet<object> },
+): unknown {
+	if (depth > MAX_STABLE_STRINGIFY_DEPTH) {
+		throw new StableStringifyUnboundedError("depth", { depth });
+	}
+	if (state.nodes > MAX_STABLE_STRINGIFY_NODES) {
+		throw new StableStringifyUnboundedError("nodes", { nodes: state.nodes });
 	}
 
-	if (value instanceof Date) {
-		// Keep native Date#toJSON behavior, including null for an invalid date.
+	if (value === null || typeof value !== "object") {
+		if (typeof value === "string") {
+			const bytes = new TextEncoder().encode(value).byteLength;
+			if (bytes > MAX_STABLE_STRINGIFY_STRING_BYTES) {
+				throw new StableStringifyUnboundedError("leaf", { stringBytes: bytes });
+			}
+			state.nodes += Math.max(1, Math.ceil(bytes / 1024));
+		} else {
+			state.nodes += 1;
+		}
+		if (state.nodes > MAX_STABLE_STRINGIFY_NODES) {
+			throw new StableStringifyUnboundedError("nodes", { nodes: state.nodes });
+		}
 		return value;
 	}
 
-	if (value && typeof value === "object") {
-		return Object.fromEntries(
-			Object.entries(value as Record<string, unknown>)
-				// Code-unit order, not localeCompare: ICU collation is
-				// environment-dependent, so hashes derived from this output
-				// must not vary with the host locale.
-				.sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
-				.map(([key, nestedValue]) => [key, sortStable(nestedValue)]),
-		);
+	if (value instanceof Date) {
+		state.nodes += 1;
+		if (state.nodes > MAX_STABLE_STRINGIFY_NODES) {
+			throw new StableStringifyUnboundedError("nodes", { nodes: state.nodes });
+		}
+		return value;
+	}
+
+	if (typeof value === "object") {
+		if (state.seen.has(value as object)) {
+			throw new StableStringifyUnboundedError("cycle", {});
+		}
+		state.seen.add(value as object);
+		try {
+			if (Array.isArray(value)) {
+				let prototype: object | null;
+				try {
+					prototype = Object.getPrototypeOf(value) as object | null;
+				} catch (error) {
+					throw new StableStringifyUnboundedError("reflection", {}, error);
+				}
+				if (prototype !== Array.prototype && prototype !== null) {
+					throw new StableStringifyUnboundedError("leaf", {
+						type: "non-array-object",
+					});
+				}
+				let lengthDescriptor: PropertyDescriptor | undefined;
+				try {
+					lengthDescriptor = Object.getOwnPropertyDescriptor(value, "length");
+				} catch (error) {
+					throw new StableStringifyUnboundedError(
+						"reflection",
+						{ field: "length" },
+						error,
+					);
+				}
+				if (
+					!lengthDescriptor ||
+					!("value" in lengthDescriptor) ||
+					typeof lengthDescriptor.value !== "number" ||
+					!Number.isSafeInteger(lengthDescriptor.value) ||
+					lengthDescriptor.value < 0
+				) {
+					throw new StableStringifyUnboundedError("reflection", {
+						field: "length",
+					});
+				}
+				const length = lengthDescriptor.value;
+				if (length > MAX_STABLE_STRINGIFY_NODES - state.nodes) {
+					throw new StableStringifyUnboundedError("nodes", {
+						nodes: state.nodes + length,
+					});
+				}
+				const out: unknown[] = [];
+				for (let index = 0; index < length; index += 1) {
+					let descriptor: PropertyDescriptor | undefined;
+					try {
+						descriptor = Object.getOwnPropertyDescriptor(value, String(index));
+					} catch (error) {
+						throw new StableStringifyUnboundedError(
+							"reflection",
+							{ index },
+							error,
+						);
+					}
+					if (!descriptor) {
+						state.nodes += 1;
+						if (state.nodes > MAX_STABLE_STRINGIFY_NODES) {
+							throw new StableStringifyUnboundedError("nodes", {
+								nodes: state.nodes,
+							});
+						}
+						out.push(null);
+						continue;
+					}
+					if (!("value" in descriptor)) {
+						throw new StableStringifyUnboundedError("accessor", { index });
+					}
+					out.push(sortStableBounded(descriptor.value, depth + 1, state));
+				}
+				return out;
+			}
+
+			let prototype: object | null;
+			try {
+				prototype = Object.getPrototypeOf(value) as object | null;
+			} catch (error) {
+				throw new StableStringifyUnboundedError("reflection", {}, error);
+			}
+			if (prototype !== Object.prototype && prototype !== null) {
+				throw new StableStringifyUnboundedError("leaf", {
+					type: "non-plain-object",
+				});
+			}
+			let keys: readonly PropertyKey[];
+			try {
+				keys = Reflect.ownKeys(value as object);
+			} catch (error) {
+				throw new StableStringifyUnboundedError("reflection", {}, error);
+			}
+			if (keys.length > MAX_STABLE_STRINGIFY_NODES - state.nodes) {
+				throw new StableStringifyUnboundedError("nodes", {
+					nodes: state.nodes + keys.length,
+				});
+			}
+			const sortedKeys = (keys as string[])
+				.filter((k): k is string => typeof k === "string")
+				.sort((left, right) => (left < right ? -1 : left > right ? 1 : 0));
+			const output: Record<string, unknown> = {};
+			for (const key of sortedKeys) {
+				let descriptor: PropertyDescriptor | undefined;
+				try {
+					descriptor = Object.getOwnPropertyDescriptor(value as object, key);
+				} catch (error) {
+					throw new StableStringifyUnboundedError("reflection", { key }, error);
+				}
+				if (!descriptor?.enumerable) continue;
+				const keyBytes = new TextEncoder().encode(key).byteLength;
+				if (keyBytes > MAX_STABLE_STRINGIFY_STRING_BYTES) {
+					throw new StableStringifyUnboundedError("leaf", { keyBytes });
+				}
+				state.nodes += Math.max(1, Math.ceil(keyBytes / 1024));
+				if (state.nodes > MAX_STABLE_STRINGIFY_NODES) {
+					throw new StableStringifyUnboundedError("nodes", {
+						nodes: state.nodes,
+					});
+				}
+				if (!("value" in descriptor)) {
+					throw new StableStringifyUnboundedError("accessor", { key });
+				}
+				const nested = sortStableBounded(descriptor.value, depth + 1, state);
+				Object.defineProperty(output, key, {
+					configurable: true,
+					enumerable: true,
+					value: nested,
+					writable: true,
+				});
+			}
+			return output;
+		} finally {
+			state.seen.delete(value as object);
+		}
 	}
 
 	return value;
+}
+
+function sortStable(value: unknown): unknown {
+	return sortStableBounded(value, 0, { nodes: 0, seen: new WeakSet() });
 }
