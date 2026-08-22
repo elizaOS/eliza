@@ -29,11 +29,11 @@ export const INSTAGRAM_PROVIDER_ID = "instagram";
 
 function toConnectorAccount(runtime: IAgentRuntime, accountId: string): ConnectorAccount {
   let connected = false;
-  let username = "";
+  let externalId = "";
   try {
     const config = resolveInstagramAccountConfig(runtime, accountId);
-    username = config.username ?? "";
-    connected = Boolean(config.username && config.password);
+    externalId = config.instagramAccountId;
+    connected = Boolean(config.accessToken && config.instagramAccountId);
   } catch {
     connected = false;
   }
@@ -41,17 +41,16 @@ function toConnectorAccount(runtime: IAgentRuntime, accountId: string): Connecto
   return {
     id: accountId,
     provider: INSTAGRAM_PROVIDER_ID,
-    label: username || accountId,
+    label: externalId || accountId,
     role: "AGENT",
     purpose: ["posting", "reading"],
     accessGate: "open",
     status: connected ? "connected" : "disabled",
-    externalId: username || undefined,
-    displayHandle: username || undefined,
+    externalId: externalId || undefined,
     createdAt: now,
     updatedAt: now,
     metadata: {
-      username,
+      instagramAccountId: externalId,
     },
   };
 }

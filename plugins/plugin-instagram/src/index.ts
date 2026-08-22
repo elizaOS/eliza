@@ -46,6 +46,12 @@ export {
   INSTAGRAM_PROVIDER_ID,
 } from "./connector-account-provider";
 export * from "./constants";
+export { InstagramGraphClient, type InstagramGraphClientConfig } from "./graph-client";
 export { InstagramService, validateInstagramComment } from "./service";
 export * from "./types";
+export {
+  type InstagramWebhookChange,
+  parseInstagramWebhookDelivery,
+  verifyInstagramWebhookChallenge,
+} from "./webhook";
 export default instagramPlugin;

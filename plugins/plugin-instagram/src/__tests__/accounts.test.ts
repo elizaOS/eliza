@@ -1,6 +1,6 @@
 /**
  * Unit tests for Instagram account-config resolution (`accounts.ts`) against a
- * mocked runtime — legacy default account, named `INSTAGRAM_ACCOUNTS`, and
+ * mocked runtime — professional-account default, named `INSTAGRAM_ACCOUNTS`, and
  * character-settings sources. No live Instagram API.
  */
 import { type Content, ElizaError, type IAgentRuntime, type TargetInfo } from "@elizaos/core";
@@ -23,10 +23,10 @@ function runtime(
 }
 
 describe("Instagram account config", () => {
-  it("preserves legacy env settings as the default account", () => {
+  it("resolves Graph credentials as the default professional account", () => {
     const rt = runtime({
-      INSTAGRAM_USERNAME: "owner",
-      INSTAGRAM_PASSWORD: "password",
+      INSTAGRAM_GRAPH_ACCOUNT_ID: "owner",
+      INSTAGRAM_ACCESS_TOKEN: "password",
     });
 
     expect(resolveDefaultInstagramAccountId(rt)).toBe("default");
@@ -34,20 +34,29 @@ describe("Instagram account config", () => {
     expect(resolveInstagramAccountConfig(rt).accountId).toBe("default");
   });
 
+  it("does not reinterpret private username/password settings as Graph credentials", () => {
+    const config = resolveInstagramAccountConfig(
+      runtime({ INSTAGRAM_USERNAME: "consumer", INSTAGRAM_PASSWORD: "private-password" })
+    );
+    expect(config.accessToken).toBe("");
+    expect(config.instagramAccountId).toBe("");
+    expect(JSON.stringify(config)).not.toContain("private-password");
+  });
+
   it("resolves named accounts from INSTAGRAM_ACCOUNTS", () => {
     const rt = runtime({
       INSTAGRAM_DEFAULT_ACCOUNT_ID: "brand",
       INSTAGRAM_ACCOUNTS: JSON.stringify({
         brand: {
-          username: "brand",
-          password: "brand-password",
+          instagramAccountId: "brand",
+          accessToken: "brand-password",
         },
       }),
     });
 
     const config = resolveInstagramAccountConfig(rt);
     expect(config.accountId).toBe("brand");
-    expect(config.username).toBe("brand");
+    expect(config.instagramAccountId).toBe("brand");
   });
 });
 
@@ -91,7 +100,7 @@ describe("INSTAGRAM_ACCOUNTS fail-closed parsing (#18969)", () => {
     const rt = runtime({
       INSTAGRAM_DEFAULT_ACCOUNT_ID: "brand",
       INSTAGRAM_ACCOUNTS: JSON.stringify({
-        " brand ": { username: "brand-user", password: "brand-password" },
+        " brand ": { instagramAccountId: "brand-user", accessToken: "brand-password" },
       }),
     });
 
@@ -99,18 +108,18 @@ describe("INSTAGRAM_ACCOUNTS fail-closed parsing (#18969)", () => {
     const config = resolveInstagramAccountConfig(rt);
     expect(config.accountId).toBe("brand");
     // Pre-#18969 the padded key listed as `brand` but resolved to an empty
-    // config (no username) because lookup used the raw map key.
-    expect(config.username).toBe("brand-user");
+    // config (no professional account ID) because lookup used the raw map key.
+    expect(config.instagramAccountId).toBe("brand-user");
   });
 
   it("keeps well-formed object and array shapes working", () => {
     const objectRt = runtime({
-      INSTAGRAM_ACCOUNTS: JSON.stringify({ a: { username: "a-user" } }),
+      INSTAGRAM_ACCOUNTS: JSON.stringify({ a: { instagramAccountId: "a-user" } }),
     });
     expect(listInstagramAccountIds(objectRt)).toContain("a");
 
     const arrayRt = runtime({
-      INSTAGRAM_ACCOUNTS: JSON.stringify([{ accountId: "b", username: "b-user" }]),
+      INSTAGRAM_ACCOUNTS: JSON.stringify([{ accountId: "b", instagramAccountId: "b-user" }]),
     });
     expect(listInstagramAccountIds(arrayRt)).toContain("b");
   });
@@ -121,28 +130,28 @@ describe("INSTAGRAM_ACCOUNTS fail-closed parsing (#18969)", () => {
         null,
         "junk",
         [],
-        { id: " work ", username: "work-user" },
+        { id: " work ", instagramAccountId: "work-user" },
       ]),
     });
     expect(listInstagramAccountIds(arrayRt)).toEqual(["work"]);
-    expect(resolveInstagramAccountConfig(arrayRt, "work").username).toBe("work-user");
+    expect(resolveInstagramAccountConfig(arrayRt, "work").instagramAccountId).toBe("work-user");
 
     const objectRt = runtime({
       INSTAGRAM_ACCOUNTS: JSON.stringify({
         junk: "not-an-account",
         nestedArray: [],
-        " brand ": { username: "brand-user" },
+        " brand ": { instagramAccountId: "brand-user" },
       }),
     });
     expect(listInstagramAccountIds(objectRt)).toEqual(["brand"]);
-    expect(resolveInstagramAccountConfig(objectRt, "brand").username).toBe("brand-user");
+    expect(resolveInstagramAccountConfig(objectRt, "brand").instagramAccountId).toBe("brand-user");
   });
 
   it("fails closed when distinct entries normalize to the same id", () => {
     const rt = runtime({
       INSTAGRAM_ACCOUNTS: JSON.stringify({
-        brand: { username: "first" },
-        " brand ": { username: "second" },
+        brand: { instagramAccountId: "first" },
+        " brand ": { instagramAccountId: "second" },
       }),
     });
     expect(() => listInstagramAccountIds(rt)).toThrowError(/duplicate account id "brand"/);
@@ -154,13 +163,13 @@ describe("INSTAGRAM_ACCOUNTS fail-closed parsing (#18969)", () => {
       {
         instagram: {
           accounts: {
-            " brand ": { username: "character-brand" },
+            " brand ": { instagramAccountId: "character-brand" },
           },
         },
       }
     );
     expect(listInstagramAccountIds(rt)).toEqual(["brand"]);
-    expect(resolveInstagramAccountConfig(rt, "brand").username).toBe("character-brand");
+    expect(resolveInstagramAccountConfig(rt, "brand").instagramAccountId).toBe("character-brand");
   });
 });
 
@@ -188,12 +197,12 @@ describe("Instagram connector accounts", () => {
     const ownerSend = vi.fn();
     const brandSend = vi.fn();
     Object.assign(owner, {
-      instagramConfig: { accountId: "owner", username: "owner", password: "pw" },
+      instagramConfig: { accountId: "owner", instagramAccountId: "owner", accessToken: "pw" },
       isRunning: true,
       sendDirectMessage: ownerSend,
     });
     Object.assign(brand, {
-      instagramConfig: { accountId: "brand", username: "brand", password: "pw" },
+      instagramConfig: { accountId: "brand", instagramAccountId: "brand", accessToken: "pw" },
       isRunning: true,
       sendDirectMessage: brandSend,
     });
@@ -235,7 +244,7 @@ describe("Instagram connector accounts", () => {
     const postComment = vi.fn(async () => "comment-1");
     Object.assign(service, {
       defaultAccountId: "owner",
-      instagramConfig: { accountId: "owner", username: "owner", password: "pw" },
+      instagramConfig: { accountId: "owner", instagramAccountId: "owner", accessToken: "pw" },
       isRunning: true,
       accountServices: new Map(),
       postComment,
@@ -263,7 +272,7 @@ describe("Instagram connector accounts", () => {
     const postComment = vi.fn(async () => "comment-ok");
     Object.assign(service, {
       defaultAccountId: "owner",
-      instagramConfig: { accountId: "owner", username: "owner", password: "pw" },
+      instagramConfig: { accountId: "owner", instagramAccountId: "owner", accessToken: "pw" },
       isRunning: true,
       accountServices: new Map(),
       postComment,
@@ -282,24 +291,22 @@ describe("Instagram connector accounts", () => {
     expect(result.metadata).toMatchObject({ accountId: "owner" });
   });
 
-  it("fails API operations explicitly instead of returning synthetic Instagram data", async () => {
+  it("fails API operations explicitly when the production Graph client is absent", async () => {
     const service = Object.create(InstagramService.prototype) as InstagramService;
     Object.assign(service, {
       isRunning: true,
     });
 
-    await expect(service.sendDirectMessage("thread-1", "hello")).rejects.toThrow(
-      "requires a configured Instagram API client"
-    );
-    await expect(service.postComment("123", "hello")).rejects.toThrow(
-      "requires a configured Instagram API client"
-    );
-    await expect(service.getUserInfo(456)).rejects.toThrow(
-      "requires a configured Instagram API client"
-    );
-    await expect(service.getThreads()).rejects.toThrow(
-      "requires a configured Instagram API client"
-    );
+    for (const operation of [
+      service.sendDirectMessage("thread-1", "hello"),
+      service.postComment("123", "hello"),
+      service.getUserInfo(456),
+      service.getThreads(),
+    ]) {
+      const error = await operation.catch((caught: unknown) => caught);
+      expect(error).toBeInstanceOf(ElizaError);
+      expect((error as ElizaError).code).toBe("INSTAGRAM_CONFIG_INVALID");
+    }
   });
 
   it("rejects media IDs with trailing junk instead of prefix-parsing them", async () => {
@@ -307,7 +314,11 @@ describe("Instagram connector accounts", () => {
     const postComment = vi.fn(async () => 99);
     Object.assign(service, {
       defaultAccountId: "default",
-      instagramConfig: { accountId: "default", username: "user", password: "password" },
+      instagramConfig: {
+        accountId: "default",
+        instagramAccountId: "user",
+        accessToken: "password",
+      },
       isRunning: true,
       postComment,
     });
@@ -328,7 +339,11 @@ describe("Instagram connector accounts", () => {
     const postComment = vi.fn(async () => "17900000000000001");
     Object.assign(service, {
       defaultAccountId: "default",
-      instagramConfig: { accountId: "default", username: "user", password: "password" },
+      instagramConfig: {
+        accountId: "default",
+        instagramAccountId: "user",
+        accessToken: "password",
+      },
       isRunning: true,
       postComment,
     });
@@ -351,7 +366,11 @@ describe("Instagram connector accounts", () => {
       const postComment = vi.fn(async () => "99");
       Object.assign(service, {
         defaultAccountId: "default",
-        instagramConfig: { accountId: "default", username: "user", password: "password" },
+        instagramConfig: {
+          accountId: "default",
+          instagramAccountId: "user",
+          accessToken: "password",
+        },
         isRunning: true,
         postComment,
       });
