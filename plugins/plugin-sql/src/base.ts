@@ -2269,6 +2269,12 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
           : params.unit === "line"
             ? parent.sourceLineCount
             : parent.sourceFragmentCount;
+      if (params.offset > total) {
+        throw new ElizaError("Document range offset exceeds the source length", {
+          code: "DOCUMENT_READ_INVALID_RANGE",
+          context: { documentId: params.documentId, offset: params.offset, total },
+        });
+      }
       const requestedEnd = Math.min(params.offset + params.limit, total);
       const sourceParent = alias(memoryTable, "document_source_parent");
       const sourceSegment = alias(memoryTable, "document_source_segment");

@@ -517,6 +517,30 @@ describe("DocumentService requester authorization", () => {
 				DOCUMENT_SOURCE_READ_LOOKAHEAD_SEGMENTS *
 					DOCUMENT_SOURCE_SEGMENT_MAX_BYTES,
 			);
+			await expect(
+				runtime.adapter.readDocumentRange?.({
+					agentId: runtime.agentId,
+					documentId: LARGE_DOCUMENT_ID,
+					requesterEntityId: USER_ID,
+					requesterRoomIds: [ROOM_ID],
+					requesterRole: "USER",
+					unit: "line",
+					offset: 10_240,
+					limit: 1,
+				}),
+			).resolves.toMatchObject({ text: "", start: 10_240, end: 10_240 });
+			await expect(
+				runtime.adapter.readDocumentRange?.({
+					agentId: runtime.agentId,
+					documentId: LARGE_DOCUMENT_ID,
+					requesterEntityId: USER_ID,
+					requesterRoomIds: [ROOM_ID],
+					requesterRole: "USER",
+					unit: "line",
+					offset: 10_241,
+					limit: 1,
+				}),
+			).rejects.toMatchObject({ code: "DOCUMENT_READ_INVALID_RANGE" });
 		} finally {
 			getService.mockRestore();
 			wholeRead.mockRestore();

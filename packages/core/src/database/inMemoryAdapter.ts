@@ -125,6 +125,50 @@ function roomTableKey(tableName: string, roomId: UUID): string {
 	return `${tableName}:${String(roomId)}`;
 }
 
+function documentSourceIndexKey(args: {
+	agentId: UUID;
+	documentId: UUID | string;
+	documentRevision: number;
+	revisionAttemptId?: string;
+}): string {
+	return JSON.stringify([
+		String(args.agentId),
+		String(args.documentId),
+		args.documentRevision,
+		args.revisionAttemptId ?? "",
+	]);
+}
+
+function sourceSegmentIndexKey(memory: Memory): string | null {
+	const metadata = (memory.metadata ?? {}) as Record<string, unknown>;
+	if (
+		typeof memory.agentId !== "string" ||
+		metadata.type !== MemoryType.FRAGMENT ||
+		metadata.fragmentRole !== "source-segment" ||
+		metadata.sourceSegmentVersion !== 1 ||
+		typeof metadata.documentId !== "string" ||
+		!Number.isSafeInteger(metadata.documentRevision) ||
+		(metadata.revisionAttemptId !== undefined &&
+			typeof metadata.revisionAttemptId !== "string")
+	) {
+		return null;
+	}
+	return documentSourceIndexKey({
+		agentId: memory.agentId as UUID,
+		documentId: metadata.documentId,
+		documentRevision: metadata.documentRevision as number,
+		revisionAttemptId: metadata.revisionAttemptId as string | undefined,
+	});
+}
+
+function sourceSegmentPosition(memory: Memory): number {
+	const position = (memory.metadata as Record<string, unknown> | undefined)
+		?.position;
+	return typeof position === "number" && Number.isSafeInteger(position)
+		? position
+		: Number.MAX_SAFE_INTEGER;
+}
+
 function memoryMatchesMetadata(
 	memory: Memory,
 	filter: Record<string, unknown>,
@@ -323,9 +367,37 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 
 	private memoriesById = new Map<string, Memory>();
 	private memoriesByRoom = new Map<string, Memory[]>();
+	private sourceSegmentsByGeneration = new Map<string, Memory[]>();
 	private cache = new Map<string, string>();
 	/** Width last passed to {@link ensureEmbeddingDimension}; used to reclaim stale vectors. */
 	private embeddingDimension: number | undefined;
+
+	private addSourceSegmentToIndex(memory: Memory): void {
+		const key = sourceSegmentIndexKey(memory);
+		if (!key) return;
+		const segments = this.sourceSegmentsByGeneration.get(key) ?? [];
+		const position = sourceSegmentPosition(memory);
+		let low = 0;
+		let high = segments.length;
+		while (low < high) {
+			const middle = low + Math.floor((high - low) / 2);
+			if (sourceSegmentPosition(segments[middle]) <= position) low = middle + 1;
+			else high = middle;
+		}
+		segments.splice(low, 0, memory);
+		this.sourceSegmentsByGeneration.set(key, segments);
+	}
+
+	private removeSourceSegmentFromIndex(memory: Memory): void {
+		const key = sourceSegmentIndexKey(memory);
+		if (!key) return;
+		const segments = this.sourceSegmentsByGeneration.get(key);
+		if (!segments) return;
+		const id = String(memory.id);
+		const next = segments.filter((segment) => String(segment.id) !== id);
+		if (next.length === 0) this.sourceSegmentsByGeneration.delete(key);
+		else this.sourceSegmentsByGeneration.set(key, next);
+	}
 
 	private participantsByRoom = new Map<string, Set<string>>();
 	private roomsByParticipant = new Map<string, Set<string>>();
@@ -943,6 +1015,16 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 				: params.unit === "line"
 					? parent.sourceLineCount
 					: parent.sourceFragmentCount;
+		if (params.offset > total) {
+			throw new ElizaError("Document range offset exceeds the source length", {
+				code: "DOCUMENT_READ_INVALID_RANGE",
+				context: {
+					documentId: params.documentId,
+					offset: params.offset,
+					total,
+				},
+			});
+		}
 		const requestedEnd = Math.min(params.offset + params.limit, total);
 		const coordinateName =
 			params.unit === "byte"
@@ -952,44 +1034,46 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 					: "Fragment";
 		const startKey = `source${coordinateName}Start`;
 		const endKey = `source${coordinateName}End`;
+		const indexKey = documentSourceIndexKey({
+			agentId: params.agentId,
+			documentId: params.documentId,
+			documentRevision: parent.documentRevision,
+			revisionAttemptId: parent.revisionAttemptId,
+		});
+		const indexed = this.sourceSegmentsByGeneration.get(indexKey) ?? [];
+		let examinedSourceSegments = 0;
+		let low = 0;
+		let high = indexed.length;
+		while (low < high) {
+			const middle = low + Math.floor((high - low) / 2);
+			const end = (
+				indexed[middle].metadata as Record<string, unknown> | undefined
+			)?.[endKey];
+			examinedSourceSegments += 1;
+			if (typeof end === "number" && end > params.offset) high = middle;
+			else low = middle + 1;
+		}
 		const sourceSegments: Memory[] = [];
-		for (const candidate of this.memoriesById.values()) {
-			const candidateMetadata = (candidate.metadata ?? {}) as Record<
-				string,
-				unknown
-			>;
-			const start = candidateMetadata[startKey];
-			const end = candidateMetadata[endKey];
-			if (
-				candidate.agentId === params.agentId &&
-				candidateMetadata.type === MemoryType.FRAGMENT &&
-				candidateMetadata.fragmentRole === "source-segment" &&
-				candidateMetadata.documentId === params.documentId &&
-				candidateMetadata.sourceSegmentVersion === 1 &&
-				candidateMetadata.documentRevision === parent.documentRevision &&
-				(parent.revisionAttemptId === undefined ||
-					candidateMetadata.revisionAttemptId === parent.revisionAttemptId) &&
-				typeof start === "number" &&
-				typeof end === "number" &&
-				end > params.offset &&
-				start < requestedEnd
-			) {
-				sourceSegments.push(candidate);
-				sourceSegments.sort(
-					(left, right) =>
-						Number((left.metadata as Record<string, unknown>)?.position) -
-						Number((right.metadata as Record<string, unknown>)?.position),
-				);
-				if (sourceSegments.length > DOCUMENT_SOURCE_READ_LOOKAHEAD_SEGMENTS) {
-					sourceSegments.pop();
-				}
-			}
+		for (
+			let index = low;
+			index < indexed.length &&
+			sourceSegments.length < DOCUMENT_SOURCE_READ_LOOKAHEAD_SEGMENTS;
+			index += 1
+		) {
+			const candidate = indexed[index];
+			const start = (
+				candidate.metadata as Record<string, unknown> | undefined
+			)?.[startKey];
+			examinedSourceSegments += 1;
+			if (typeof start !== "number" || start >= requestedEnd) break;
+			sourceSegments.push(candidate);
 		}
 		return readDocumentSourceProjection({
 			segments: sourceSegments,
 			params,
 			parent,
 			documentId: params.documentId,
+			examinedSourceSegments,
 			sourceQueryCount: 2,
 		});
 	}
@@ -1119,7 +1203,11 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 				});
 			}
 		}
-		for (const id of oldFragmentIds) this.memoriesById.delete(id);
+		for (const id of oldFragmentIds) {
+			const fragment = this.memoriesById.get(id);
+			if (fragment) this.removeSourceSegmentFromIndex(fragment);
+			this.memoriesById.delete(id);
+		}
 		for (const [key, list] of this.memoriesByRoom) {
 			this.memoriesByRoom.set(
 				key,
@@ -1142,6 +1230,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 		}
 		for (const fragment of params.fragments) {
 			this.memoriesById.set(String(fragment.id), fragment);
+			this.addSourceSegmentToIndex(fragment);
 			const key = roomTableKey("document_fragments", fragment.roomId);
 			this.memoriesByRoom.set(key, [
 				...(this.memoriesByRoom.get(key) ?? []),
@@ -1534,7 +1623,10 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 				id: asUuid(id),
 				unique: unique ?? memory.unique ?? true,
 			};
+			const existing = this.memoriesById.get(id);
+			if (existing) this.removeSourceSegmentFromIndex(existing);
 			this.memoriesById.set(id, stored);
+			this.addSourceSegmentToIndex(stored);
 			const roomId = memory.roomId;
 			const key = roomTableKey(tableName, roomId);
 			const list = this.memoriesByRoom.get(key) ?? [];
@@ -1556,7 +1648,9 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 				continue;
 			}
 			const merged: Memory = { ...existing, ...memory };
+			this.removeSourceSegmentFromIndex(existing);
 			this.memoriesById.set(String(memory.id), merged);
+			this.addSourceSegmentToIndex(merged);
 			// Update reference in memoriesByRoom to keep consistency
 			const oldRoomId = existing.roomId;
 			const newRoomId = merged.roomId;
@@ -1600,6 +1694,8 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 	async deleteMemories(memoryIds: UUID[]): Promise<void> {
 		const idSet = new Set(memoryIds.map(String));
 		for (const id of memoryIds) {
+			const memory = this.memoriesById.get(String(id));
+			if (memory) this.removeSourceSegmentFromIndex(memory);
 			this.memoriesById.delete(String(id));
 		}
 		// Clean up memoriesByRoom references
@@ -1618,6 +1714,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 			const key = roomTableKey(tableName, roomId);
 			const memories = this.memoriesByRoom.get(key) ?? [];
 			for (const mem of memories) {
+				this.removeSourceSegmentFromIndex(mem);
 				this.memoriesById.delete(String(mem.id));
 			}
 			this.memoriesByRoom.delete(key);

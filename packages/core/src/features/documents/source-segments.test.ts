@@ -4,6 +4,7 @@
  * unit continuation, bounded source-work counters, authorization, legacy
  * migration failure, and corruption-sensitive invariants.
  */
+import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { InMemoryDatabaseAdapter } from "../../database/inMemoryAdapter";
 import type { DocumentRangeReadParams, Memory, UUID } from "../../types";
@@ -361,5 +362,190 @@ describe("in-memory document source adapter", () => {
 				limit: 1,
 			}),
 		).rejects.toMatchObject({ code: "DOCUMENT_REINDEX_REQUIRED" });
+	});
+
+	it("seeks logarithmically through a high-cardinality source index", async () => {
+		const adapter = new InMemoryDatabaseAdapter();
+		const segmentCount = 10_000;
+		const segmentText = "x\n";
+		const source = segmentText.repeat(segmentCount);
+		const segmentSha256 = createHash("sha256")
+			.update(segmentText)
+			.digest("hex");
+		const parent = parentDocument(source);
+		parent.metadata = {
+			...parent.metadata,
+			sourceFingerprint: `sha256:${createHash("sha256").update(source).digest("hex")}`,
+			sourceByteLength: Buffer.byteLength(source, "utf8"),
+			sourceLineCount: segmentCount,
+			sourceFragmentCount: segmentCount,
+			sourceSegmentCount: segmentCount,
+			sourceSegmentVersion: 1,
+		};
+		const segments = Array.from({ length: segmentCount }, (_, position) => {
+			const byteStart = position * 2;
+			return {
+				id: `d2000000-0000-4000-8000-${position.toString(16).padStart(12, "0")}` as UUID,
+				agentId: AGENT_ID,
+				entityId: USER_ID,
+				roomId: ROOM_ID,
+				worldId: WORLD_ID,
+				content: { text: segmentText },
+				metadata: {
+					...parent.metadata,
+					type: MemoryType.FRAGMENT,
+					fragmentRole: "source-segment",
+					sourceSegmentVersion: 1,
+					documentId: DOCUMENT_ID,
+					position,
+					sourceSegmentSha256: segmentSha256,
+					sourceByteStart: byteStart,
+					sourceByteEnd: byteStart + 2,
+					sourceLineStart: position,
+					sourceLineEnd: position + 1,
+					sourceLineStartBoundary: true,
+					sourceLineEndBoundary: true,
+					sourceFragmentStart: position,
+					sourceFragmentEnd: position + 1,
+					sourceFragmentStartBoundary: true,
+					sourceFragmentEndBoundary: true,
+				},
+			} satisfies Memory;
+		});
+		await adapter.createMemories([
+			{ memory: parent, tableName: "documents" },
+			...segments.map((memory) => ({
+				memory,
+				tableName: "document_fragments",
+			})),
+		]);
+
+		const page = await adapter.readDocumentRange({
+			agentId: AGENT_ID,
+			documentId: DOCUMENT_ID,
+			requesterEntityId: USER_ID,
+			requesterRoomIds: [ROOM_ID],
+			requesterRole: "USER",
+			unit: "line",
+			offset: segmentCount - 1,
+			limit: 1,
+		});
+		expect(page).toMatchObject({
+			text: segmentText,
+			returnedSourceSegments: 1,
+		});
+		expect(page?.examinedSourceSegments).toBeGreaterThan(
+			page?.returnedSourceSegments ?? 0,
+		);
+		expect(page?.examinedSourceSegments).toBeLessThanOrEqual(
+			Math.ceil(Math.log2(segmentCount)) + 2,
+		);
+
+		const empty = await adapter.readDocumentRange({
+			agentId: AGENT_ID,
+			documentId: DOCUMENT_ID,
+			requesterEntityId: USER_ID,
+			requesterRoomIds: [ROOM_ID],
+			requesterRole: "USER",
+			unit: "line",
+			offset: segmentCount,
+			limit: 1,
+		});
+		expect(empty).toMatchObject({
+			text: "",
+			start: segmentCount,
+			end: segmentCount,
+		});
+
+		const index = Reflect.get(adapter, "sourceSegmentsByGeneration");
+		Reflect.set(adapter, "sourceSegmentsByGeneration", {
+			get: () => {
+				throw new Error(
+					"source index must not be touched for an invalid offset",
+				);
+			},
+		});
+		try {
+			await expect(
+				adapter.readDocumentRange({
+					agentId: AGENT_ID,
+					documentId: DOCUMENT_ID,
+					requesterEntityId: USER_ID,
+					requesterRoomIds: [ROOM_ID],
+					requesterRole: "USER",
+					unit: "line",
+					offset: segmentCount + 1,
+					limit: 1,
+				}),
+			).rejects.toMatchObject({ code: "DOCUMENT_READ_INVALID_RANGE" });
+		} finally {
+			Reflect.set(adapter, "sourceSegmentsByGeneration", index);
+		}
+	});
+
+	it("keeps adversarial generation keys and legacy source rows isolated", async () => {
+		const adapter = new InMemoryDatabaseAdapter();
+		const firstId = "x:1" as UUID;
+		const secondId = "x" as UUID;
+		const first = projection("first\n", firstId);
+		const second = projection("second\n", secondId);
+		const retag = (
+			projected: ReturnType<typeof projection>,
+			documentRevision: number,
+			revisionAttemptId: string,
+		) => {
+			projected.parent.metadata = {
+				...projected.parent.metadata,
+				documentRevision,
+				revisionAttemptId,
+			};
+			projected.segments = projected.segments.map((segment) => ({
+				...segment,
+				metadata: {
+					...segment.metadata,
+					documentRevision,
+					revisionAttemptId,
+				},
+			}));
+		};
+		// These tuples collide under delimiter concatenation:
+		// ["x:1", 2, "3"] and ["x", 1, "2:3"].
+		retag(first, 2, "3");
+		retag(second, 1, "2:3");
+		const legacy = {
+			...first.segments[0],
+			id: "d3000000-0000-4000-8000-000000000001" as UUID,
+			metadata: {
+				...first.segments[0].metadata,
+				sourceSegmentVersion: 0,
+			},
+		};
+		await adapter.createMemories([
+			{ memory: first.parent, tableName: "documents" },
+			{ memory: second.parent, tableName: "documents" },
+			...first.segments.map((memory) => ({
+				memory,
+				tableName: "document_fragments",
+			})),
+			...second.segments.map((memory) => ({
+				memory,
+				tableName: "document_fragments",
+			})),
+			{ memory: legacy, tableName: "document_fragments" },
+		]);
+
+		const read = (documentId: UUID) =>
+			adapter.readDocumentRange({
+				agentId: AGENT_ID,
+				documentId,
+				requesterEntityId: USER_ID,
+				requesterRoomIds: [ROOM_ID],
+				requesterRole: "USER",
+				unit: "line",
+				offset: 0,
+				limit: 1,
+			});
+		await expect(read(firstId)).resolves.toMatchObject({ text: "first\n" });
+		await expect(read(secondId)).resolves.toMatchObject({ text: "second\n" });
 	});
 });
