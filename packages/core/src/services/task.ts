@@ -130,7 +130,15 @@ export class TaskService extends Service {
 	 * @returns {Promise<Service>} A promise that resolves with the TaskService instance.
 	 */
 	static async start(runtime: IAgentRuntime): Promise<Service> {
-		const service = new TaskService(runtime);
+		return TaskService.startWithClock(runtime, systemTaskServiceClock);
+	}
+
+	/** Starts the production task service against an explicit host clock. */
+	static async startWithClock(
+		runtime: IAgentRuntime,
+		clock: TaskServiceClock,
+	): Promise<TaskService> {
+		const service = new TaskService(runtime, clock);
 		// WHY: batcher owns HOW (sections, packing, cache); task system owns WHEN. One scheduler for all periodic drains.
 		runtime.registerTaskWorker({
 			name: "BATCHER_DRAIN",
@@ -1007,6 +1015,22 @@ export class TaskService extends Service {
 		});
 		if (allTasks.length) {
 			await this.runTick(allTasks);
+		}
+	}
+
+	/** Reports only real TaskService tick and worker promises still in flight. */
+	pendingWorkCount(): number {
+		return (this.activeTick ? 1 : 0) + this.executingTaskPromises.size;
+	}
+
+	/** Waits until the current tick and every worker it launched have settled. */
+	async waitForQuiescence(): Promise<void> {
+		while (this.activeTick || this.executingTaskPromises.size > 0) {
+			const pending = [
+				...(this.activeTick ? [this.activeTick] : []),
+				...this.executingTaskPromises,
+			];
+			await Promise.allSettled(pending);
 		}
 	}
 

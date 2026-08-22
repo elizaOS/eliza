@@ -123,6 +123,55 @@ class DeterministicTaskClock implements TaskServiceClock {
 }
 
 describe("TaskService injected clock", () => {
+	it("starts through the explicit host clock boundary", async () => {
+		const { runtime } = makeTaskRuntime();
+		const getTasks = vi.spyOn(runtime, "getTasks");
+		const clock = new DeterministicTaskClock(T0);
+		const service = await TaskService.startWithClock(runtime, clock);
+
+		await clock.advanceBy(1_000);
+		expect(getTasks).toHaveBeenCalledTimes(1);
+		await service.stop();
+	});
+
+	it("reports and awaits a real tick and its blocked worker", async () => {
+		const { runtime, tasks, workers } = makeTaskRuntime();
+		let releaseWorker: (() => void) | undefined;
+		const workerGate = new Promise<void>((resolve) => {
+			releaseWorker = resolve;
+		});
+		const execute = vi.fn(async () => workerGate);
+		workers.set("BLOCKED", { name: "BLOCKED", execute });
+		tasks.set("blocked", {
+			id: "blocked" as UUID,
+			name: "BLOCKED",
+			agentId: AGENT_ID,
+			tags: ["queue"],
+			dueAt: T0 + 1_000,
+		});
+		const clock = new DeterministicTaskClock(T0);
+		const service = new TaskService(runtime, clock);
+		service.startTimer();
+
+		const advancing = clock.advanceBy(1_000);
+		for (let turn = 0; turn < 10 && execute.mock.calls.length === 0; turn += 1) {
+			await Promise.resolve();
+		}
+		expect(execute).toHaveBeenCalledTimes(1);
+		expect(service.pendingWorkCount()).toBe(2);
+		let quiesced = false;
+		const quiescence = service.waitForQuiescence().then(() => {
+			quiesced = true;
+		});
+		await Promise.resolve();
+		expect(quiesced).toBe(false);
+
+		releaseWorker?.();
+		await Promise.all([advancing, quiescence]);
+		expect(service.pendingWorkCount()).toBe(0);
+		await service.stop();
+	});
+
 	it("runs same-deadline tasks deterministically at the injected boundary", async () => {
 		const { runtime, tasks, workers } = makeTaskRuntime();
 		const order: string[] = [];
