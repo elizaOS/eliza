@@ -5,7 +5,11 @@
  * removes cloud-only credentials.
  */
 
-import { REALTIME_VOICE_CLIENT_TRANSPORT } from "@elizaos/shared";
+import {
+  LOCAL_VOICE_RUNTIME_AGENT_HEADER,
+  LOCAL_VOICE_RUNTIME_CONVERSATION_HEADER,
+  REALTIME_VOICE_CLIENT_TRANSPORT,
+} from "@elizaos/shared";
 import { VOICE_STREAM_PROTOCOL } from "@/lib/voice-session/eliza-sse-bridge";
 
 const CLOUD_CONVERSATION_STREAM_PATH =
@@ -87,6 +91,11 @@ export function createLocalRuntimeConversationFetch(
     }
     headers.set("Content-Type", "application/json");
     headers.set("Accept", "text/event-stream");
+    // These values come from the startup-validated scope, never the untrusted
+    // cloud request headers. The loopback host uses them as an atomic runtime
+    // generation fence at its enqueue boundary.
+    headers.set(LOCAL_VOICE_RUNTIME_AGENT_HEADER, scope.agentId);
+    headers.set(LOCAL_VOICE_RUNTIME_CONVERSATION_HEADER, scope.conversationId);
 
     return fetchImpl(target, {
       ...init,
