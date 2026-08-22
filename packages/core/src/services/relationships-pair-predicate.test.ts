@@ -113,4 +113,32 @@ describe("RelationshipsService.analyzeRelationship pair predicate", () => {
 		expect(offsets).toEqual([0, 200]);
 		expect(analytics?.topicsDiscussed).toEqual(topics);
 	});
+
+	it("fails explicitly when a memory adapter ignores the page offset", async () => {
+		const roomId = "dddddddd-dddd-4ddd-8ddd-dddddddddddd" as UUID;
+		const repeatedPage = Array.from({ length: 200 }, (_, index) => ({
+			id: `00000000-0000-4000-8000-${String(index).padStart(12, "0")}` as UUID,
+			entityId: index % 2 === 0 ? A : B,
+			roomId,
+			content: { text: `topic-${index}` },
+		}));
+		const runtime = {
+			agentId: "11111111-1111-4111-8111-111111111111" as UUID,
+			async getRelationships() {
+				return [];
+			},
+			async getRoomsForParticipant() {
+				return [roomId];
+			},
+			async getMemoriesByRoomIds() {
+				return repeatedPage;
+			},
+		};
+
+		const service = new RelationshipsService(runtime as never);
+		await expect(service.analyzeRelationship(A, B)).rejects.toMatchObject({
+			code: "RELATIONSHIP_MESSAGE_PAGINATION_STALLED",
+			context: { offset: 200, pageSize: 200 },
+		});
+	});
 });
