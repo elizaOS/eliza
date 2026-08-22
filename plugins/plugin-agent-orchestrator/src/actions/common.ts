@@ -273,7 +273,7 @@ function recentMessagesFromState(state: State | undefined): Memory[] {
  *      (`state.data.providers.RECENT_MESSAGES.data.recentMessages`) — covers
  *      the case where the action message is a synthetic re-plan trigger but
  *      the user's original request is still in the dialogue;
- *   3. a complete `getMemories` read, kept ONLY as a last resort.
+ *   3. a bounded `getMemories` read, kept ONLY as a last resort.
  *
  * Fail-open: every source is optional and the result is unioned with the
  * action's own text, so routing never regresses below today's behavior.
@@ -282,6 +282,7 @@ export async function resolveOriginatingRequestText(
   runtime: IAgentRuntime,
   message: Memory,
   state?: State,
+  opts: { scanLimit?: number } = {},
 ): Promise<string> {
   // Primary: the raw request carried on the current message itself.
   const direct = userRequestFromMessage(message);
@@ -297,18 +298,20 @@ export async function resolveOriginatingRequestText(
     return direct ? `${fromState}\n${direct}` : fromState;
   }
 
-  // Last resort: a complete room read. Demoted below the synchronous sources
+  // Last resort: a bounded room read. Demoted below the synchronous sources
   // because at spawn time the CURRENT user message is mid-processing and not
   // yet persisted, so this can only return older/stale messages.
   const roomId = message.roomId;
   if (typeof runtime.getMemories !== "function" || !roomId) {
     return direct;
   }
+  const scanLimit = opts.scanLimit ?? 8;
   let recent: Memory[] = [];
   try {
     recent = await runtime.getMemories({
       roomId: roomId as UUID,
       tableName: "messages",
+      count: scanLimit,
       unique: false,
       includeEmbedding: false,
     });
@@ -332,7 +335,7 @@ export function hasExplicitPayload(message: Memory, fields: string[]): boolean {
 }
 
 export function canonicalSessionId(id: string): string {
-  return id.toLowerCase();
+  return id;
 }
 
 export function labelFor(

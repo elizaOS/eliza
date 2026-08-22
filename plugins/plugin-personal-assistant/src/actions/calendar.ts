@@ -74,7 +74,6 @@ import {
   resolveDefaultTimeZone,
 } from "../lifeops/defaults.js";
 import {
-  formatCalendarEventDateTime,
   runLifeOpsJsonModel,
   runLifeOpsTextModel,
 } from "../lifeops/google/format-helpers.js";
@@ -92,6 +91,7 @@ import {
   resolveCreateEventTravelIntent,
 } from "../travel-time/calendar-create.js";
 import { TravelTimeUnavailableError } from "../travel-time/service.js";
+import { formatBulkReschedulePreviewLines } from "./calendar-preview.js";
 import {
   calendarSnapshotEffectProof,
   readCalendarSnapshotEffectProof,
@@ -1423,12 +1423,7 @@ async function handleBulkReschedulePreview(args: {
     );
 
   const cohortText = cohortLabel ? `${cohortLabel} meetings` : "those meetings";
-  const previewLines = matches.map((event) => {
-    const when = formatCalendarEventDateTime(event, {
-      includeTimeZoneName: true,
-    });
-    return `- ${event.title || "Untitled"} — ${when}`;
-  });
+  const previewLines = formatBulkReschedulePreviewLines(matches);
 
   const responseText =
     matches.length === 0

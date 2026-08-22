@@ -11,7 +11,11 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import { logger, requireConfirmation } from "@elizaos/core";
+import {
+  logger,
+  requireConfirmation,
+  toWellFormedUnicode,
+} from "@elizaos/core";
 import {
   buildResolvedClient,
   describeSelection,
@@ -33,6 +37,21 @@ import {
 
 type PRState = "open" | "closed" | "all";
 type ReviewAction = "approve" | "request-changes" | "comment";
+
+/** Build the complete confirmation text shown before a PR review mutation. */
+export function buildReviewPreview(
+  action: ReviewAction,
+  repo: string,
+  number: number,
+  body: string | null | undefined,
+  identity: string,
+): string {
+  return (
+    `About to ${action.replace("-", " ")} PR ${repo}#${number}` +
+    (body ? ` with body: "${toWellFormedUnicode(body)}"` : "") +
+    ` as ${identity}.`
+  );
+}
 
 interface PRSummary {
   repo: string;
@@ -175,10 +194,13 @@ async function runReview(
     return { success: false, error: err };
   }
 
-  const preview =
-    `About to ${action.replace("-", " ")} PR ${repo}#${number}` +
-    (body ? ` with body: "${body}"` : "") +
-    ` as ${describeSelection(selection)}.`;
+  const preview = buildReviewPreview(
+    action,
+    repo,
+    number,
+    body,
+    describeSelection(selection),
+  );
   const decision = await requireConfirmation({
     runtime,
     message,

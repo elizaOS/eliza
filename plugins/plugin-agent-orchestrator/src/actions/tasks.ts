@@ -100,6 +100,7 @@ import {
   setCurrentSessions,
   waitForSpawnSlot,
 } from "./common.js";
+import { labelFrom } from "./task-label.js";
 import { parseHistoryLimit } from "./tasks-history-limit.js";
 
 const MAX_CONCURRENT_AGENTS = 8;
@@ -323,12 +324,6 @@ function parseAgentPrefix(
     return { task: part, agentType: fallbackAgentType };
   }
   return { agentType: candidate, task: match[2] ?? part };
-}
-
-function labelFrom(task: string, index: number): string {
-  const cleaned = task.replace(/\s+/g, " ").trim();
-  const wellFormed = toWellFormedUnicode(cleaned);
-  return wellFormed || `task-${index + 1}`;
 }
 
 function objectValue(value: unknown): Record<string, unknown> | undefined {
@@ -1886,7 +1881,7 @@ async function runSpawnAgent(
     const labelParam = pickString(params, content, "label");
     const label = labelParam
       ? userReferenceLogView(labelParam)
-      : toWellFormedUnicode(task);
+      : labelFrom(task, 0);
     const originConnectorMessageId = connectorMessageIdFromMemory(
       message,
       content,

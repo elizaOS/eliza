@@ -7,7 +7,11 @@
  */
 
 import type { Memory } from "@elizaos/core";
-import { getUserMessageText, unwrapUserMessageText } from "@elizaos/core";
+import {
+	getUserMessageText,
+	unwrapUserMessageText,
+	userReferenceLogView,
+} from "@elizaos/core";
 
 const LAUNCH_VERBS = [
 	"launch",
@@ -115,8 +119,7 @@ export function describeTargetReference(
  * boundary rather than silently changing the value here.
  */
 export function targetReferenceLogView(reference: string): string {
-	const collapsed = reference.replace(/\s+/g, " ").trim();
-	return collapsed;
+	return userReferenceLogView(reference);
 }
 
 export function normalizeActionOptions(

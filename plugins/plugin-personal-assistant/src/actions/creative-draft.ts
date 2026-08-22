@@ -232,12 +232,17 @@ function ownerVoiceSourceKind(memory: Memory): OwnerVoiceSource["source"] {
   return "note";
 }
 
-async function resolveOwnerVoiceSources(args: {
+export async function resolveOwnerVoiceSources(args: {
   documents: CreativeDraftDocumentService;
   message: Memory;
   supplied: readonly OwnerVoiceSource[];
 }): Promise<OwnerVoiceSource[]> {
-  const byId = new Map(args.supplied.map((source) => [source.id, source]));
+  const byId = new Map(
+    args.supplied.map((source) => [
+      source.id,
+      { ...source, text: toWellFormedUnicode(source.text) },
+    ]),
+  );
   let cursor: DocumentListCursor | undefined;
   const seenCursors = new Set<string>();
   do {

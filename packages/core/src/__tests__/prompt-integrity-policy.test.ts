@@ -114,8 +114,11 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 		/truncateWellFormed/,
 		/seed\.slice\(/,
 	],
+	"plugins/plugin-agent-orchestrator/src/actions/task-label.ts": [
+		/truncateWellFormed/,
+		/\.slice\(/,
+	],
 	"plugins/plugin-agent-orchestrator/src/actions/common.ts": [
-		/scanLimit/,
 		/id\.slice\(0,\s*8\)/,
 		/shortId/,
 	],
@@ -155,6 +158,7 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 	"plugins/plugin-personal-assistant/src/actions/creative-draft.ts": [
 		/MAX_OWNER_(?:VOICE_SOURCES|SOURCE_CHARS)/,
 		/text:\s*truncateWellFormed/,
+		/\[\.\.\.byId\.values\(\)\]\.slice\(/,
 	],
 	"plugins/plugin-personal-assistant/src/actions/life.ts": [
 		/(?:attendeeNames|events|atRisk|needsAttention|onTrack|occurrences|goals|selected)\s*\.slice\(0,/,
@@ -165,6 +169,9 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 	"plugins/plugin-personal-assistant/src/actions/calendar.ts": [
 		/matches\.slice\(0,\s*8\)/,
 		/approvalSafeLabel[\s\S]{0,400}truncateWellFormed/,
+	],
+	"plugins/plugin-personal-assistant/src/actions/calendar-preview.ts": [
+		/matches\.slice\(/,
 	],
 	"plugins/plugin-google-workspace/src/meet.ts": [
 		/sentences\.slice\(/,
