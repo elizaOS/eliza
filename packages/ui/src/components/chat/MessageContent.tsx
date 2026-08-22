@@ -1179,7 +1179,7 @@ export function SensitiveRequestBlock({
               <ShieldCheck className="h-3.5 w-3.5 shrink-0" aria-hidden />
               {tunnel
                 ? "Sent once to the waiting session — never stored, never posted to chat."
-                : "Stored encrypted in the agent's secret store — never posted to chat."}
+                : "Sent directly to the agent — never posted to chat."}
             </div>
           )}
         </form>
