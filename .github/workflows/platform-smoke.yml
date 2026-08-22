@@ -1,34 +1,14 @@
-# This workflow provides one deterministic scheduled health signal. Publishing
-# and credential-backed product probes are deliberately owned by release and
-# live-smoke workflows instead of running as part of nightly validation.
-name: Nightly
+# This reusable workflow preserves deterministic macOS and Windows runtime proof
+# inside the single Develop Full authority.
+name: Platform Smoke
 
 on:
-  schedule:
-    - cron: "0 4 * * *"
-  workflow_dispatch:
-
-concurrency:
-  group: nightly-${{ github.ref }}
-  cancel-in-progress: true
+  workflow_call:
 
 permissions:
   contents: read
 
 jobs:
-  ci:
-    name: Full deterministic CI
-    # Must cover everything the called graph requests: ci.yml's device caller
-    # carries actions:read/contents:read/issues:write for device-e2e.yml's
-    # schedule-only notifier, and workflow_call permission validation is
-    # static and transitive — an uncovered nested request startup-fails this
-    # entire nightly run before any job is evaluated.
-    permissions:
-      actions: read
-      contents: read
-      issues: write
-    uses: ./.github/workflows/ci.yml
-
   platform-smoke:
     name: Platform smoke (${{ matrix.os }})
     strategy:

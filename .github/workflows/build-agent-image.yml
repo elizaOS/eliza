@@ -1,56 +1,12 @@
 name: Build Agent Image
 
 # Single source of truth for the cloud-agent container image used by the
-# cloud sandbox provisioner. Two trigger surfaces:
-#   - push to develop → :develop + :sha-<short>
-#   - workflow_dispatch → manual canonical reruns or digest-preserving demo promotion
+# cloud sandbox provisioner. Publication is explicit through workflow_dispatch
+# until a later current-SHA effect fence can safely reconcile automatic builds.
 # The previous release-only workflow (image.yaml) duplicated this entire
 # pre-build sequence; it's been deleted in favor of this consolidated build.
 
 on:
-  push:
-    branches: [develop]
-    paths:
-      - "bun.lock"
-      - "bunfig.toml"
-      - "package.json"
-      - "patches/**"
-      - "plugins/**"
-      - "tsconfig.base.json"
-      - "tsconfig.build.template.json"
-      - "tsconfig.json"
-      - "turbo.json"
-      - "packages/auth/**"
-      - "packages/cloud/routing/**"
-      - "packages/cloud/shared/**"
-      - "packages/evidence/**"
-      - "packages/elizaos/**"
-      - "packages/logger/**"
-      - "packages/prompts/**"
-      - "packages/registry/**"
-      - "packages/scripts/build-private-workspace-packages.mjs"
-      - "packages/scripts/build-core-packages.mjs"
-      - "packages/scripts/build-core.mjs"
-      - "packages/scripts/ensure-workspace-symlinks.mjs"
-      - "packages/scripts/lib/repository-file-integrity.mjs"
-      - "packages/scripts/lib/script-metadata.mjs"
-      - "packages/scripts/lib/workspaces.mjs"
-      - "packages/scripts/patch-llama-cpp-capacitor.mjs"
-      - "packages/scripts/patch-nested-core-dist.mjs"
-      - "packages/scripts/patch-punycode-deprecation.mjs"
-      - "packages/scripts/run-turbo.mjs"
-      - "packages/shared/**"
-      - "packages/skills/**"
-      - "packages/ui/**"
-      - "packages/vault/**"
-      - "packages/app-core/deploy/Dockerfile.ci"
-      - "packages/agent/**"
-      - "packages/core/**"
-      - "packages/app/**"
-      - "packages/app-core/**"
-      - "packages/cloud/sdk/**"
-      - ".github/workflows/build-agent-image.yml"
-      - ".dockerignore"
   workflow_dispatch:
     inputs:
       publication_target:
@@ -69,12 +25,10 @@ env:
   BUN_VERSION: "1.3.14"
 
 # Default to least privilege. Override per-job where needed.
-# New develop images supersede older in-flight develop builds. Stable main,
-# Manual publications always finish because they publish operator-selected
-# targets.
+# Manual publications always finish because they publish operator-selected targets.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'push' && github.ref == 'refs/heads/develop' }}
+  cancel-in-progress: false
 
 permissions:
   contents: read

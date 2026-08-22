@@ -21,15 +21,6 @@ on:
         required: false
         type: string
         default: standalone
-  push:
-    branches: [develop]
-    paths:
-      - "packages/ui/src/**"
-      - "packages/ui/package.json"
-      - "packages/agent/src/services/proactive-interaction-*.ts"
-      - "packages/agent/src/api/views-routes.ts"
-      - "packages/agent/src/api/interactions-routes.ts"
-      - "packages/agent/src/api/server-helpers-swarm.ts"
 
 # Develop pushes share a stable key so obsolete work is superseded. Reusable
 # callers pass a distinct scope for exhaustive work.

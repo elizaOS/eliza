@@ -16,21 +16,6 @@ name: Deploy Apps Worker (Product 2)
 # then set the env's ELIZA_APPS_WORKER_HOST + ELIZA_APPS_WORKER_SSH_KEY secrets.
 
 on:
-  push:
-    branches: [develop]
-    paths:
-      - '.github/workflows/deploy-apps-worker.yml'
-      - 'packages/cloud/scripts/admin/daemons/apps-provisioning-worker.ts'
-      - 'packages/cloud/scripts/admin/daemons/provisioning-worker.ts'
-      - 'packages/cloud/scripts/admin/eliza-apps-worker.service'
-      - 'packages/cloud/shared/src/lib/services/provisioning-jobs.ts'
-      - 'packages/cloud/shared/src/lib/services/provisioning-job-types.ts'
-      - 'packages/cloud/shared/src/lib/services/apps-deploy-backend.ts'
-      - 'packages/cloud/shared/src/lib/services/tenant-db/**'
-      - 'packages/cloud/shared/src/lib/services/app-deploy-runner.ts'
-      - 'packages/cloud/sdk/**'
-      - 'packages/core/**'
-      - 'plugins/plugin-sql/**'
   workflow_dispatch:
     inputs:
       environment:
@@ -43,7 +28,7 @@ on:
           - production
 
 concurrency:
-  # One shared group per environment so concurrent pushes QUEUE instead of
+  # One shared group per environment so concurrent dispatches queue instead of
   # racing the host-side flock: the per-SHA groups this replaces let every
   # commit's run start simultaneously on ubuntu-latest, and the losers burned
   # their 9m flock wait against the shared apps-control host and failed red

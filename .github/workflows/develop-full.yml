@@ -1,0 +1,129 @@
+# This workflow is the sole develop-push validation authority. It cancels the
+# complete read-only graph for a superseded tip and delegates each validation
+# family to a reusable workflow. Publication and deployment effects remain
+# manual until durable current-SHA fencing and reconciliation own cancellation.
+name: Develop Full
+
+on:
+  push:
+    branches: [develop]
+
+concurrency:
+  group: develop-full
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  canonical:
+    uses: ./.github/workflows/ci.yml
+    secrets: inherit
+
+  chat-shell:
+    uses: ./.github/workflows/chat-shell-gestures.yml
+    secrets: inherit
+
+  cloud-gateway-discord:
+    uses: ./.github/workflows/cloud-gateway-discord.yml
+    secrets: inherit
+
+  cloud:
+    uses: ./.github/workflows/cloud-tests.yml
+    secrets: inherit
+
+  dev-smoke:
+    uses: ./.github/workflows/dev-smoke.yml
+    with:
+      concurrency_scope: develop-full
+    secrets: inherit
+
+  docker:
+    uses: ./.github/workflows/docker-ci-smoke.yml
+    with:
+      concurrency_scope: develop-full
+    secrets: inherit
+
+  secrets:
+    uses: ./.github/workflows/gitleaks.yml
+    secrets: inherit
+
+  quality:
+    uses: ./.github/workflows/quality.yml
+    secrets: inherit
+
+  platform-smoke:
+    uses: ./.github/workflows/platform-smoke.yml
+    secrets: inherit
+
+  scenarios:
+    uses: ./.github/workflows/scenario-pr.yml
+    with:
+      concurrency_scope: develop-full
+    secrets: inherit
+
+  tests:
+    uses: ./.github/workflows/test.yml
+    secrets: inherit
+
+  ui-core:
+    uses: ./.github/workflows/ui-e2e-gate.yml
+    with:
+      concurrency_scope: develop-full
+    secrets: inherit
+
+  ui-extended:
+    uses: ./.github/workflows/ui-fixture-e2e.yml
+    with:
+      concurrency_scope: develop-full
+    secrets: inherit
+
+  ui-stories:
+    uses: ./.github/workflows/ui-story-gate.yml
+    secrets: inherit
+
+  complete:
+    name: Complete manifest
+    if: ${{ !cancelled() }}
+    needs:
+      - canonical
+      - chat-shell
+      - cloud-gateway-discord
+      - cloud
+      - dev-smoke
+      - docker
+      - secrets
+      - quality
+      - platform-smoke
+      - scenarios
+      - tests
+      - ui-core
+      - ui-extended
+      - ui-stories
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Require every delegated validation family
+        env:
+          RESULTS: >-
+            canonical=${{ needs.canonical.result }}
+            chat-shell=${{ needs.chat-shell.result }}
+            cloud-gateway-discord=${{ needs.cloud-gateway-discord.result }}
+            cloud=${{ needs.cloud.result }}
+            dev-smoke=${{ needs.dev-smoke.result }}
+            docker=${{ needs.docker.result }}
+            secrets=${{ needs.secrets.result }}
+            quality=${{ needs.quality.result }}
+            platform-smoke=${{ needs.platform-smoke.result }}
+            scenarios=${{ needs.scenarios.result }}
+            tests=${{ needs.tests.result }}
+            ui-core=${{ needs.ui-core.result }}
+            ui-extended=${{ needs.ui-extended.result }}
+            ui-stories=${{ needs.ui-stories.result }}
+        run: |
+          set -euo pipefail
+          for pair in $RESULTS; do
+            if [ "${pair#*=}" != "success" ]; then
+              echo "::error::$pair"
+              exit 1
+            fi
+          done

@@ -1,4 +1,4 @@
-/** Exercises the policy that permits only PR Static Smoke for PR/merge events and restricts branch pushes to develop. */
+/** Exercises the single PR Static Smoke and latest-tip Develop Full trigger authorities. */
 
 import { describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -20,8 +20,9 @@ function buildRepo(workflows: Record<string, string>): string {
 
 function validateFixture(
   workflow: string,
+  name = "develop-full.yml",
 ): ReturnType<typeof validateWorkflowTriggerPolicy> {
-  const root = buildRepo({ "test.yml": workflow });
+  const root = buildRepo({ [name]: workflow });
   try {
     return validateWorkflowTriggerPolicy(root);
   } finally {
@@ -47,23 +48,36 @@ jobs: {}
 `;
 
 describe("workflow trigger policy", () => {
-  test("accepts develop pushes alongside manual and scheduled operations", () => {
+  test("accepts the Develop Full push alongside manual operations", () => {
     expect(
       validateFixture(`name: Test
 on:
   push:
     branches: [develop]
   workflow_dispatch:
-  schedule:
-    - cron: "0 7 * * *"
 jobs: {}
 `),
     ).toEqual({ developPushWorkflows: 1, files: 1 });
   });
 
+  test.each(["schedule", "workflow_run"])(
+    "rejects the %s automation trigger",
+    (eventName) => {
+      const eventConfig =
+        eventName === "schedule"
+          ? '    - cron: "0 7 * * *"'
+          : "    workflows: [CI]\n    types: [completed]";
+      expect(() =>
+        validateFixture(
+          `on:\n  push:\n    branches: [develop]\n  ${eventName}:\n${eventConfig}\njobs: {}\n`,
+        ),
+      ).toThrow(/is forbidden/);
+    },
+  );
+
   test("accepts tag-only release pushes", () => {
     const root = buildRepo({
-      "develop.yml": `on:\n  push:\n    branches: [develop]\njobs: {}\n`,
+      "develop-full.yml": `on:\n  push:\n    branches: [develop]\njobs: {}\n`,
       "release.yml": `on:\n  push:\n    tags: ["v*"]\njobs: {}\n`,
     });
     try {
@@ -160,9 +174,29 @@ jobs: {}
     }
   });
 
-  test("the checked-in workflows expose only PR Static Smoke and develop pushes", () => {
+  test("reserves the develop push for Develop Full", () => {
+    expect(() => validateFixture(developPush, "ci.yml")).toThrow(
+      /develop push is reserved for develop-full\.yml/,
+    );
+  });
+
+  test("rejects duplicate develop authorities", () => {
+    const root = buildRepo({
+      "develop-full.yml": developPush,
+      "duplicate.yml": developPush,
+    });
+    try {
+      expect(() => validateWorkflowTriggerPolicy(root)).toThrow(
+        /Expected exactly one develop push workflow/,
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("the checked-in workflows expose exactly the two validation authorities", () => {
     const result = validateWorkflowTriggerPolicy(REAL_REPO_ROOT);
     expect(result.files).toBeGreaterThan(40);
-    expect(result.developPushWorkflows).toBeGreaterThan(15);
+    expect(result.developPushWorkflows).toBe(1);
   });
 });

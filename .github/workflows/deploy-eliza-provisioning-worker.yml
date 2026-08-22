@@ -8,26 +8,6 @@ name: Deploy Eliza Provisioning Worker
 #   HCLOUD_TOKEN=... bun run packages/cloud/scripts/admin/bootstrap-provisioning-worker-host.mjs
 
 on:
-  push:
-    branches: [develop]
-    paths:
-      - '.github/workflows/deploy-eliza-provisioning-worker.yml'
-      - 'packages/cloud/scripts/admin/daemons/provisioning-worker.ts'
-      - 'packages/cloud/scripts/admin/daemons/agent-router.ts'
-      - 'packages/cloud/scripts/admin/eliza-provisioning-worker.service'
-      - 'packages/cloud/scripts/admin/eliza-agent-router.service'
-      - 'packages/cloud/scripts/admin/ensure-generated-keywords.sh'
-      - 'packages/cloud/scripts/admin/preflight-job-execution-interruptions.ts'
-      - 'packages/cloud/scripts/admin/error-preserving-cleanup.ts'
-      - 'packages/cloud/shared/src/lib/services/provisioning-jobs.ts'
-      - 'packages/cloud/shared/src/lib/services/docker-sandbox-provider.ts'
-      - 'packages/cloud/shared/src/lib/services/eliza-sandbox.ts'
-      - 'packages/cloud/shared/src/db/repositories/agent-sandboxes.ts'
-      - 'packages/cloud/shared/**'
-      - 'packages/cloud/sdk/**'
-      - 'packages/shared/**'
-      - 'packages/core/**'
-      - 'plugins/plugin-sql/**'
   workflow_dispatch:
     inputs:
       environment:
