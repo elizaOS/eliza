@@ -229,8 +229,15 @@ export async function sendTweet(
 ): Promise<SentTweet> {
   const weightedLength = countTwitterWeightedLength(text);
   if (weightedLength > TWEET_MAX_LENGTH) {
-    throw new RangeError(
+    throw new ElizaError(
       `X posts are limited to ${TWEET_MAX_LENGTH} weighted characters; received ${weightedLength}`,
+      {
+        code: "X_POST_LENGTH_EXCEEDED",
+        context: {
+          weightedLength,
+          maxWeightedLength: TWEET_MAX_LENGTH,
+        },
+      },
     );
   }
   return client.withAuthenticatedSession(async (session) => {

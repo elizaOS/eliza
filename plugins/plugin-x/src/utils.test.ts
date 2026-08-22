@@ -113,9 +113,10 @@ describe("sendTweet", () => {
       });
     client.isAuthenticatedSessionCurrent = () => true;
 
-    await expect(sendTweet(client, "你".repeat(141))).rejects.toThrow(
-      /weighted characters; received 282/,
-    );
+    await expect(sendTweet(client, "你".repeat(141))).rejects.toMatchObject({
+      code: "X_POST_LENGTH_EXCEEDED",
+      context: { weightedLength: 282, maxWeightedLength: 280 },
+    });
     expect(send).not.toHaveBeenCalled();
   });
 

@@ -819,8 +819,15 @@ export class XService extends Service {
     }
     const weightedLength = countTwitterWeightedLength(text);
     if (weightedLength > X_MAX_POST_LENGTH) {
-      throw new Error(
+      throw new ElizaError(
         `X post connector requires text <= ${X_MAX_POST_LENGTH} weighted characters; received ${weightedLength}.`,
+        {
+          code: "X_POST_LENGTH_EXCEEDED",
+          context: {
+            weightedLength,
+            maxWeightedLength: X_MAX_POST_LENGTH,
+          },
+        },
       );
     }
 
