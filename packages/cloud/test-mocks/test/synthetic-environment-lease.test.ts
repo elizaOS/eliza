@@ -4,7 +4,7 @@
  */
 
 import { afterEach, describe, expect, it } from "bun:test";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { hostname } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -12,11 +12,15 @@ import type { SyntheticEnvironmentLeaseAuthority } from "@elizaos/shared/contrac
 import { SqliteSyntheticEnvironmentLeaseStore } from "../src/synthetic-environment/sqlite-lease-store";
 
 const roots: string[] = [];
+const holders: Array<ReturnType<typeof Bun.spawn>> = [];
 const workerPath = fileURLToPath(
   new URL("./fixtures/synthetic-lease-worker.ts", import.meta.url),
 );
 const rolloverWorkerPath = fileURLToPath(
   new URL("./fixtures/synthetic-rollover-worker.ts", import.meta.url),
+);
+const holderWorkerPath = fileURLToPath(
+  new URL("./fixtures/synthetic-lease-holder.ts", import.meta.url),
 );
 
 async function tempRoot(): Promise<string> {
@@ -118,11 +122,63 @@ async function rolloverWorkerResult(
 
 afterEach(async () => {
   await Promise.all(
+    holders.splice(0).map(async (holder) => {
+      if (holder.exitCode === null) holder.kill("SIGKILL");
+      await holder.exited;
+    }),
+  );
+  await Promise.all(
     roots.splice(0).map((root) => rm(root, { recursive: true, force: true })),
   );
 });
 
 describe("SqliteSyntheticEnvironmentLeaseStore", () => {
+  it("shares the control protocol namespace contract and rejects malformed runtime input", async () => {
+    const root = await tempRoot();
+    const store = new SqliteSyntheticEnvironmentLeaseStore(
+      path.join(root, "leases.sqlite"),
+    );
+    await expect(store.acquire(null as never)).rejects.toMatchObject({
+      code: "SYNTHETIC_LEASE_INVALID_INPUT",
+    });
+    await expect(
+      store.acquire({
+        namespace: undefined as never,
+        owner: { ownerId: "owner", processId: process.pid, host: hostname() },
+        leaseDurationMs: 5_000,
+      }),
+    ).rejects.toMatchObject({ code: "SYNTHETIC_LEASE_INVALID_INPUT" });
+    await expect(
+      store.acquire({
+        namespace: " namespace-with-outer-space ",
+        owner: { ownerId: "owner", processId: process.pid, host: hostname() },
+        leaseDurationMs: 5_000,
+      }),
+    ).rejects.toMatchObject({ code: "SYNTHETIC_LEASE_INVALID_INPUT" });
+    const compatibleNamespace = `scenario/${"x".repeat(503)}`;
+    const acquired = await store.acquire({
+      namespace: compatibleNamespace,
+      owner: { ownerId: "owner", processId: process.pid, host: hostname() },
+      leaseDurationMs: 5_000,
+    });
+    expect(acquired.authority.namespace).toBe(compatibleNamespace);
+    store.close();
+  });
+
+  it.skipIf(process.platform === "win32")(
+    "refuses a symbolic-link database target",
+    async () => {
+      const root = await tempRoot();
+      const target = path.join(root, "target.sqlite");
+      await writeFile(target, "not a database", { mode: 0o600 });
+      const linked = path.join(root, "linked.sqlite");
+      await symlink(target, linked);
+      expect(() => new SqliteSyntheticEnvironmentLeaseStore(linked)).toThrow(
+        expect.objectContaining({ code: "SYNTHETIC_LEASE_INVALID_INPUT" }),
+      );
+    },
+  );
+
   it("admits exactly one of two independent OS processes", async () => {
     const root = await tempRoot();
     const databasePath = path.join(root, "leases.sqlite");
@@ -196,6 +252,101 @@ describe("SqliteSyntheticEnvironmentLeaseStore", () => {
         authority: expect.objectContaining({ generation: 2 }),
       }),
     );
+  });
+
+  it.skipIf(process.platform === "win32")(
+    "recovers only after a SIGKILL holder's lease expires",
+    async () => {
+      const root = await tempRoot();
+      const databasePath = path.join(root, "leases.sqlite");
+      const acquiredPath = path.join(root, "killed-authority.json");
+      const holder = Bun.spawn(
+        [
+          process.execPath,
+          "--conditions=eliza-source",
+          holderWorkerPath,
+          databasePath,
+          "recovery:killed",
+          acquiredPath,
+          "120",
+        ],
+        { cwd: path.dirname(holderWorkerPath), stdout: "pipe", stderr: "pipe" },
+      );
+      holders.push(holder);
+      await waitForFiles([acquiredPath]);
+      holder.kill("SIGKILL");
+      await holder.exited;
+
+      const store = new SqliteSyntheticEnvironmentLeaseStore(databasePath);
+      await expect(
+        store.acquire({
+          namespace: "recovery:killed",
+          owner: {
+            ownerId: "too-early",
+            processId: process.pid,
+            host: hostname(),
+          },
+          leaseDurationMs: 5_000,
+        }),
+      ).rejects.toMatchObject({ code: "SYNTHETIC_LEASE_COLLISION" });
+      await Bun.sleep(160);
+      const recovered = await store.acquire({
+        namespace: "recovery:killed",
+        owner: {
+          ownerId: "recovery-owner",
+          processId: process.pid,
+          host: hostname(),
+        },
+        leaseDurationMs: 5_000,
+      });
+      expect(recovered).toEqual(
+        expect.objectContaining({
+          operation: "recover",
+          authority: expect.objectContaining({ generation: 2 }),
+        }),
+      );
+      store.close();
+    },
+  );
+
+  it("sequences readback and refuses close during a guarded transaction", async () => {
+    const root = await tempRoot();
+    const store = new SqliteSyntheticEnvironmentLeaseStore(
+      path.join(root, "leases.sqlite"),
+    );
+    const acquired = await store.acquire({
+      namespace: "sequence:one",
+      owner: { ownerId: "owner", processId: process.pid, host: hostname() },
+      leaseDurationMs: 5_000,
+    });
+    let unblock: () => void = () => undefined;
+    const barrier = new Promise<void>((resolve) => {
+      unblock = resolve;
+    });
+    let entered: () => void = () => undefined;
+    const started = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    const guarded = store.withActiveGeneration(acquired.authority, async () => {
+      entered();
+      await barrier;
+    });
+    await started;
+    expect(() => store.close()).toThrow(
+      expect.objectContaining({ code: "SYNTHETIC_LEASE_STORAGE_FAILURE" }),
+    );
+    let readResolved = false;
+    const read = store.read("sequence:one").then((snapshot) => {
+      readResolved = true;
+      return snapshot;
+    });
+    await Bun.sleep(20);
+    expect(readResolved).toBe(false);
+    unblock();
+    await guarded;
+    expect(await read).toEqual(expect.objectContaining({ generation: 1 }));
+    store.close();
+    store.close();
   });
 
   it("admits exactly one reset generation across independent OS processes", async () => {
