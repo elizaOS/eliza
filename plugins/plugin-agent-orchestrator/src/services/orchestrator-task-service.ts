@@ -3127,6 +3127,25 @@ export class OrchestratorTaskService extends Service {
    * lets a resume/rerun spawn self-heal a task the stuck-task reaper
    * interrupted while the spawn was still in flight.
    */
+  /** Stamp the reason for a SYSTEM-initiated interrupt (reaper, stop-failure
+   * fallback). Overwrites any stale user stamp from a prior life so
+   * userInterrupted() reflects THIS interrupt — a leftover "user_interrupt"
+   * made a reaper interrupt sticky (no attach self-heal). */
+  private async stampSystemInterrupt(
+    taskId: string,
+    reason: string,
+  ): Promise<void> {
+    const doc = await this.store.getTask(taskId);
+    if (!doc || doc.task.status !== "interrupted") return;
+    await this.store.updateTask(taskId, {
+      metadata: {
+        ...(doc.task.metadata ?? {}),
+        interruptReason: reason,
+        interruptedAt: nowIso(),
+      },
+    });
+  }
+
   private async advanceTaskLiveness(taskId: string): Promise<void> {
     const doc = await this.store.getTask(taskId);
     if (!doc || doc.task.paused) return;
@@ -7256,6 +7275,7 @@ export class OrchestratorTaskService extends Service {
       // — `done → interrupted` has no table edge, so this is a legal no-op there
       // and only interrupts a genuinely non-terminal task.
       await this.advanceTaskStatus(taskId, "interrupted");
+      await this.stampSystemInterrupt(taskId, "session_stop_failed");
       throw new Error("ACP service unavailable; cannot stop active session");
     }
     // Stamp BEFORE stopping (same contract as every other administrative
@@ -7300,6 +7320,7 @@ export class OrchestratorTaskService extends Service {
       !after.sessions.some((s) => !TERMINAL_TASK_SESSION_STATUSES.has(s.status))
     ) {
       await this.advanceTaskStatus(taskId, "interrupted");
+      await this.stampSystemInterrupt(taskId, "session_stop_failed");
       this.emitChange(taskId);
     }
     return true;
@@ -7524,6 +7545,7 @@ export class OrchestratorTaskService extends Service {
         ),
       );
       await this.advanceTaskStatus(doc.task.id, "interrupted");
+      await this.stampSystemInterrupt(doc.task.id, "session_stop_failed");
       throw new RecoveryConflictError(
         "ACP service unavailable; cannot stop active sessions",
       );
@@ -7620,6 +7642,7 @@ export class OrchestratorTaskService extends Service {
       // must not regress to `interrupted`; the table makes that a legal no-op
       // while still interrupting a non-terminal one.
       await this.advanceTaskStatus(doc.task.id, "interrupted");
+      await this.stampSystemInterrupt(doc.task.id, "session_stop_failed");
       throw new RecoveryConflictError(
         `Failed to stop ${failures.length} active session${
           failures.length === 1 ? "" : "s"
@@ -7733,6 +7756,7 @@ export class OrchestratorTaskService extends Service {
           createdAt: nowIso(),
         });
         await this.advanceTaskStatus(record.id, "interrupted");
+        await this.stampSystemInterrupt(record.id, "stalled_reaped");
         this.emitChange(record.id);
         this.log("info", "stuck task reaped to interrupted", {
           taskId: record.id,
