@@ -171,19 +171,6 @@ export const identityClaimJournalTable = pgTable(
   ]
 );
 
-/**
- * Application-visible deletion receipts. One fresh opaque identifier is
- * emitted per agent deletion that had claim history. Query roles cannot link
- * it to a tenant; PostgreSQL superusers and WAL readers remain out of scope.
- */
-export const identityClaimRetentionLedgerTable = pgTable(
-  "identity_claim_retention_ledger",
-  {
-    id: uuid("id").primaryKey().default(sql`gen_random_uuid()`).notNull(),
-  },
-  () => []
-);
-
 export const identityAuthorityStateTable = pgTable(
   "identity_authority_state",
   {

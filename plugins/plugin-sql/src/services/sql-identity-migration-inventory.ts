@@ -421,7 +421,7 @@ export async function inspectSqlIdentityMigration(
     (await tableExists(db, "app_lifeops", "life_entity_identities"))
   ) {
     const result = await db.execute(sql`
-      SELECT i.id, i.entity_id, i.platform, i.handle, i.connector_account_id,
+      SELECT i.id, i.agent_id AS life_agent_id, i.entity_id, i.platform, i.handle, i.connector_account_id,
              i.verified, i.confidence, e.entity_id AS declared_entity_id,
              principal.agent_id AS principal_agent_id,
              account.agent_id AS account_agent_id,
@@ -435,6 +435,8 @@ export async function inspectSqlIdentityMigration(
         LEFT JOIN entities principal ON principal.id::text = i.entity_id::text
         LEFT JOIN connector_accounts account ON account.id::text = i.connector_account_id::text
        WHERE i.agent_id = ${agentId}
+          OR principal.agent_id = ${agentId}
+          OR account.agent_id = ${agentId}
        ORDER BY i.id
     `);
     for (const record of resultRows(result)) {
@@ -443,6 +445,9 @@ export async function inspectSqlIdentityMigration(
       const account = String(record.connector_account_id ?? "");
       sources.life_entity_identities += 1;
       const reasons: string[] = [];
+      if (String(record.life_agent_id ?? "") !== agentId) {
+        reasons.push("lifeops_identity_wrong_tenant");
+      }
       if (record.declared_entity_id === null || record.declared_entity_id === undefined) {
         reasons.push("lifeops_entity_missing");
       }

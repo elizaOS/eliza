@@ -58,6 +58,8 @@ const PLAN_TTL_MS = 15 * 60_000;
 const CONFIRMATION_TTL_MS = 5 * 60_000;
 const MAX_JOURNAL_PAGE = 100;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const CANONICAL_INSTANT_PATTERN =
+  /^\d{4}-(0[1-9]|1[0-2])-([0-2]\d|3[01])T([01]\d|2[0-3]):[0-5]\d:[0-5]\d\.\d{3}Z$/;
 const PENDING_CONSUMERS = Object.freeze([
   "runtime-relationships",
   "contacts",
@@ -77,6 +79,12 @@ type VersionedIdentityClaim = IdentityClaim & { version: number };
 
 function fail(code: string, message: string, context: Record<string, unknown> = {}): never {
   throw new ElizaError(message, { code, context, severity: "fatal" });
+}
+
+function isCanonicalInstant(value: unknown): value is string {
+  if (typeof value !== "string" || !CANONICAL_INSTANT_PATTERN.test(value)) return false;
+  const parsed = new Date(value);
+  return Number.isFinite(parsed.getTime()) && parsed.toISOString() === value;
 }
 
 function stableJson(value: unknown): string {
@@ -437,9 +445,8 @@ export class SqlIdentityResolutionService extends IdentityResolutionService {
       evidence: request.evidence,
     };
     assertRequestDigest(request.requestDigest, "observe-claim", requestValue);
-    const observedAt = new Date(request.observedAt);
     if (
-      !Number.isFinite(observedAt.getTime()) ||
+      !isCanonicalInstant(request.observedAt) ||
       !Number.isFinite(request.confidence) ||
       request.confidence < 0 ||
       request.confidence > 1 ||
@@ -511,7 +518,7 @@ export class SqlIdentityResolutionService extends IdentityResolutionService {
         : eventKind === "revoked"
           ? (request as RevokeIdentityClaimRequest).revokedAt
           : null;
-    if (transitionTimestamp !== null && !Number.isFinite(new Date(transitionTimestamp).getTime())) {
+    if (transitionTimestamp !== null && !isCanonicalInstant(transitionTimestamp)) {
       fail("IDENTITY_CLAIM_INPUT_INVALID", "Claim transition timestamp is invalid.");
     }
     if (eventKind === "verified") {

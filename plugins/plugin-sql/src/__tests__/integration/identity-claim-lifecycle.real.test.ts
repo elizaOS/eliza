@@ -18,11 +18,7 @@ import { authOwnerBindingTable } from "../../schema/authOwnerBinding";
 import { connectorAccountsTable } from "../../schema/connectorAccounts";
 import { entityTable } from "../../schema/entity";
 import { entityIdentityTable } from "../../schema/entityIdentity";
-import {
-  identityClaimJournalTable,
-  identityClaimRetentionLedgerTable,
-  identityClaimTable,
-} from "../../schema/identityAuthority";
+import { identityClaimJournalTable, identityClaimTable } from "../../schema/identityAuthority";
 import { relationshipTable } from "../../schema/relationship";
 import {
   computeIdentityRequestDigest,
@@ -162,6 +158,15 @@ describe("SQL identity claim lifecycle and migration inventory", () => {
     await expect(service.observeClaim(observationRequest())).rejects.toMatchObject({
       code: "IDENTITY_CLAIM_OBSERVATION_AUTHORITY_UNAVAILABLE",
     });
+    const { requestDigest: ignoredDigest, ...invalidObservation } = observationRequest();
+    void ignoredDigest;
+    const nonCanonicalObservation = { ...invalidObservation, observedAt: "0" };
+    await expect(
+      service.observeClaim({
+        ...nonCanonicalObservation,
+        requestDigest: computeIdentityRequestDigest("observe-claim", nonCanonicalObservation),
+      })
+    ).rejects.toMatchObject({ code: "IDENTITY_CLAIM_INPUT_INVALID" });
     expect(
       await db
         .select()
@@ -187,6 +192,13 @@ describe("SQL identity claim lifecycle and migration inventory", () => {
         requestDigest: computeIdentityRequestDigest("verify-claim", value),
       })
     ).rejects.toMatchObject({ code: "IDENTITY_VERIFICATION_AUTHORITY_UNAVAILABLE" });
+    const nonCanonicalVerification = { ...value, verifiedAt: "2026-08-21T20:01:00Z" };
+    await expect(
+      service.verifyClaim({
+        ...nonCanonicalVerification,
+        requestDigest: computeIdentityRequestDigest("verify-claim", nonCanonicalVerification),
+      })
+    ).rejects.toMatchObject({ code: "IDENTITY_CLAIM_INPUT_INVALID" });
     await expect(service.resolveVerifiedDeliveryClaims(agentId, principalId)).resolves.toEqual([]);
     await expect(service.resolveVerifiedDeliveryClaims(agentId, ownerPrincipalId)).resolves.toEqual(
       []
@@ -271,7 +283,7 @@ describe("SQL identity claim lifecycle and migration inventory", () => {
     ).rejects.toMatchObject({ code: "IDENTITY_JOURNAL_CURSOR_INVALID" });
   });
 
-  it("denies journal mutation and retains unlinkable receipts on agent deletion", async () => {
+  it("denies journal mutation while allowing the parent-agent deletion cascade", async () => {
     const deletionAgentId = crypto.randomUUID() as UUID;
     const deletionPrincipalId = crypto.randomUUID() as UUID;
     const deletionAccountId = crypto.randomUUID() as UUID;
@@ -335,13 +347,6 @@ describe("SQL identity claim lifecycle and migration inventory", () => {
       )
     ).rejects.toBeDefined();
 
-    const beforeIds = new Set(
-      (
-        await db
-          .select({ id: identityClaimRetentionLedgerTable.id })
-          .from(identityClaimRetentionLedgerTable)
-      ).map((row) => row.id)
-    );
     await db.delete(agentTable).where(eq(agentTable.id, deletionAgentId));
     expect(
       await db
@@ -349,39 +354,6 @@ describe("SQL identity claim lifecycle and migration inventory", () => {
         .from(identityClaimJournalTable)
         .where(eq(identityClaimJournalTable.agentId, deletionAgentId))
     ).toHaveLength(0);
-    const receipts = (await db.select().from(identityClaimRetentionLedgerTable)).filter(
-      (row) => !beforeIds.has(row.id)
-    );
-    expect(receipts).toHaveLength(1);
-    expect(Object.keys(receipts[0] ?? {})).toEqual(["id"]);
-    const serialized = JSON.stringify(receipts);
-    for (const identifyingValue of [
-      deletionAgentId,
-      deletionPrincipalId,
-      deletionAccountId,
-      claim.id,
-      "deleted-subject",
-      "secret-request-digest",
-      "contains identifying free text",
-    ]) {
-      expect(serialized).not.toContain(identifyingValue);
-    }
-    const receiptId = receipts[0]?.id as UUID;
-    await expect(
-      Promise.resolve(
-        db
-          .update(identityClaimRetentionLedgerTable)
-          .set({ id: crypto.randomUUID() })
-          .where(eq(identityClaimRetentionLedgerTable.id, receiptId))
-      )
-    ).rejects.toBeDefined();
-    await expect(
-      Promise.resolve(
-        db
-          .delete(identityClaimRetentionLedgerTable)
-          .where(eq(identityClaimRetentionLedgerTable.id, receiptId))
-      )
-    ).rejects.toBeDefined();
   });
 
   it("reports wrong-instance, unverified, disconnected, mismatched, and orphan identities", async () => {
@@ -431,7 +403,23 @@ describe("SQL identity claim lifecycle and migration inventory", () => {
       },
     ]);
     const foreignAgentId = crypto.randomUUID() as UUID;
+    const foreignPrincipalId = crypto.randomUUID() as UUID;
+    const foreignAccountId = crypto.randomUUID() as UUID;
     await db.insert(agentTable).values({ id: foreignAgentId, name: "foreign-inventory-agent" });
+    await db.insert(entityTable).values({
+      id: foreignPrincipalId,
+      agentId: foreignAgentId,
+      names: ["foreign principal"],
+      metadata: {},
+    });
+    await db.insert(connectorAccountsTable).values({
+      id: foreignAccountId,
+      agentId: foreignAgentId,
+      provider: "discord",
+      accountKey: "foreign-inventory-account",
+      externalId: "foreign-account",
+      status: "connected",
+    });
     await db.insert(entityIdentityTable).values({
       agentId: foreignAgentId,
       entityId: principalId,
@@ -476,6 +464,13 @@ describe("SQL identity claim lifecycle and migration inventory", () => {
     await db.execute(sql`
       INSERT INTO app_lifeops.life_entity_identities (
         id, agent_id, entity_id, platform, handle, connector_account_id, verified, confidence
+      ) VALUES
+        ('life-foreign-target-principal', ${foreignAgentId}, ${principalId}, 'discord', 'foreign-principal-ref', ${foreignAccountId}, FALSE, 0.3),
+        ('life-foreign-target-account', ${foreignAgentId}, ${foreignPrincipalId}, 'discord', 'foreign-account-ref', ${accountId}, FALSE, 0.3)
+    `);
+    await db.execute(sql`
+      INSERT INTO app_lifeops.life_entity_identities (
+        id, agent_id, entity_id, platform, handle, connector_account_id, verified, confidence
       ) VALUES (
         'life-id-provider-mismatch', ${agentId}, ${principalId}, 'telegram', 'mismatch', ${accountId}, TRUE, 0.8
       )
@@ -508,6 +503,22 @@ describe("SQL identity claim lifecycle and migration inventory", () => {
     expect(first.rows.find((row) => row.sourceId === "life-id-provider-mismatch")).toMatchObject({
       disposition: "conflict",
       reasons: expect.arrayContaining(["lifeops_connector_account_provider_mismatch"]),
+    });
+    expect(
+      first.rows.find((row) => row.sourceId === "life-foreign-target-principal")
+    ).toMatchObject({
+      disposition: "conflict",
+      reasons: expect.arrayContaining([
+        "lifeops_identity_wrong_tenant",
+        "lifeops_connector_account_wrong_tenant",
+      ]),
+    });
+    expect(first.rows.find((row) => row.sourceId === "life-foreign-target-account")).toMatchObject({
+      disposition: "conflict",
+      reasons: expect.arrayContaining([
+        "lifeops_identity_wrong_tenant",
+        "lifeops_canonical_principal_wrong_tenant",
+      ]),
     });
     expect(
       first.rows.find(

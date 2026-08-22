@@ -8,7 +8,6 @@ import {
   identityAuthorityStateTable,
   identityCanonicalRedirectTable,
   identityClaimJournalTable,
-  identityClaimRetentionLedgerTable,
   identityClaimTable,
   identityMergeConfirmationTable,
   identityMergeJournalTable,
@@ -64,12 +63,6 @@ describe("canonical identity authority schema", () => {
         "identity_claim_journal_version_check",
       ])
     );
-  });
-
-  it("retains only unlinkable lifecycle receipt fields", () => {
-    const config = getTableConfig(identityClaimRetentionLedgerTable);
-    expect(config.foreignKeys).toHaveLength(0);
-    expect(config.columns.map((column) => column.name)).toEqual(["id"]);
   });
 
   it("retains merge and split plans with lineage and before-state", () => {

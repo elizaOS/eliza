@@ -8,7 +8,6 @@ import {
 	identityAuthorityStateSchema,
 	identityCanonicalRedirectSchema,
 	identityClaimJournalSchema,
-	identityClaimRetentionLedgerSchema,
 	identityClaimSchema,
 	identityMergeConfirmationSchema,
 	identityMergeJournalSchema,
@@ -43,7 +42,7 @@ describe("portable identity authority schemas", () => {
 		);
 	});
 
-	it("journals tenant transitions and retains only unlinkable receipts", () => {
+	it("journals tenant transitions at the agent lifecycle boundary", () => {
 		expect(identityClaimSchema.columns.version?.default).toBe(1);
 		expect(
 			identityClaimJournalSchema.uniqueConstraints
@@ -54,10 +53,6 @@ describe("portable identity authority schemas", () => {
 			identityClaimJournalSchema.foreignKeys.fk_identity_claim_journal_agent
 				?.onDelete,
 		).toBe("cascade");
-		expect(identityClaimRetentionLedgerSchema.foreignKeys).toEqual({});
-		expect(Object.keys(identityClaimRetentionLedgerSchema.columns)).toEqual([
-			"id",
-		]);
 	});
 
 	it("binds a bounded confirmation to the exact plan and generation", () => {

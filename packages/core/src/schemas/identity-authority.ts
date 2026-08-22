@@ -315,25 +315,6 @@ export const identityClaimJournalSchema: SchemaTable = {
 	},
 };
 
-export const identityClaimRetentionLedgerSchema: SchemaTable = {
-	name: "identity_claim_retention_ledger",
-	schema: "",
-	columns: {
-		id: {
-			name: "id",
-			type: "uuid",
-			primaryKey: true,
-			notNull: true,
-			default: "gen_random_uuid()",
-		},
-	},
-	indexes: {},
-	foreignKeys: {},
-	compositePrimaryKeys: {},
-	uniqueConstraints: {},
-	checkConstraints: {},
-};
-
 export const identityAuthorityStateSchema: SchemaTable = {
 	name: "identity_authority_state",
 	schema: "",

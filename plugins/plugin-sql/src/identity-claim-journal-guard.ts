@@ -1,7 +1,7 @@
 /**
- * Installs schema-qualified append-only and lifecycle guards for identity claim
- * history after migration. The visible deployment schema is discovered from
- * PostgreSQL catalogs; no public-schema assumption is made.
+ * Installs schema-qualified append-only guards for identity claim history after
+ * migration. Agent deletion remains the lifecycle boundary, but this module
+ * deliberately emits no correlatable deletion receipt.
  */
 
 import { sql } from "drizzle-orm";
@@ -22,10 +22,6 @@ async function findAuthoritySchema(db: DrizzleDatabase): Promise<string | null> 
       FROM pg_catalog.pg_class journal
       JOIN pg_catalog.pg_namespace journal_ns
         ON journal_ns.oid = journal.relnamespace
-      JOIN pg_catalog.pg_class retention
-        ON retention.relnamespace = journal.relnamespace
-       AND retention.relname = 'identity_claim_retention_ledger'
-       AND retention.relkind IN ('r', 'p')
       JOIN pg_catalog.pg_class agent
         ON agent.relnamespace = journal.relnamespace
        AND agent.relname = 'agents'
@@ -41,18 +37,16 @@ async function findAuthoritySchema(db: DrizzleDatabase): Promise<string | null> 
   return typeof schemaName === "string" && schemaName.length > 0 ? schemaName : null;
 }
 
-/** Install or refresh mutation, truncate, and agent-deletion guards. */
+/** Install or refresh journal mutation and lifecycle-truncate guards. */
 export async function applyIdentityClaimJournalGuard(db: DrizzleDatabase): Promise<boolean> {
   const schemaName = await findAuthoritySchema(db);
   if (!schemaName) return false;
 
   const schema = sql.identifier(schemaName);
   const journal = sql`${schema}.${sql.identifier("identity_claim_journal")}`;
-  const retention = sql`${schema}.${sql.identifier("identity_claim_retention_ledger")}`;
   const agents = sql`${schema}.${sql.identifier("agents")}`;
   const rejectMutation = sql`${schema}.${sql.identifier("reject_identity_claim_history_mutation")}`;
   const rejectTruncate = sql`${schema}.${sql.identifier("reject_identity_claim_history_truncate")}`;
-  const retainDeletion = sql`${schema}.${sql.identifier("retain_identity_claim_deletion_receipt")}`;
 
   await db.execute(sql`
     CREATE OR REPLACE FUNCTION ${rejectMutation}()
@@ -81,46 +75,14 @@ export async function applyIdentityClaimJournalGuard(db: DrizzleDatabase): Promi
     END;
     $$
   `);
-  await db.execute(sql`
-    CREATE OR REPLACE FUNCTION ${retainDeletion}()
-    RETURNS trigger
-    LANGUAGE plpgsql
-    AS $$
-    BEGIN
-      IF EXISTS (SELECT 1 FROM ${journal} WHERE agent_id = OLD.id) THEN
-        INSERT INTO ${retention} DEFAULT VALUES;
-      END IF;
-      RETURN OLD;
-    END;
-    $$
-  `);
-
   await db.execute(sql`DROP TRIGGER IF EXISTS identity_claim_journal_append_only ON ${journal}`);
   await db.execute(sql`
     CREATE TRIGGER identity_claim_journal_append_only
     BEFORE UPDATE OR DELETE ON ${journal}
     FOR EACH ROW EXECUTE FUNCTION ${rejectMutation}()
   `);
-  await db.execute(
-    sql`DROP TRIGGER IF EXISTS identity_claim_retention_ledger_append_only ON ${retention}`
-  );
-  await db.execute(sql`
-    CREATE TRIGGER identity_claim_retention_ledger_append_only
-    BEFORE UPDATE OR DELETE ON ${retention}
-    FOR EACH ROW EXECUTE FUNCTION ${rejectMutation}()
-  `);
-  await db.execute(
-    sql`DROP TRIGGER IF EXISTS identity_claim_journal_retention_on_agent_delete ON ${agents}`
-  );
-  await db.execute(sql`
-    CREATE TRIGGER identity_claim_journal_retention_on_agent_delete
-    BEFORE DELETE ON ${agents}
-    FOR EACH ROW EXECUTE FUNCTION ${retainDeletion}()
-  `);
-
   for (const [table, triggerName] of [
     [journal, "identity_claim_journal_no_truncate"],
-    [retention, "identity_claim_retention_no_truncate"],
     [agents, "identity_claim_agents_no_truncate"],
   ] as const) {
     await db.execute(sql`DROP TRIGGER IF EXISTS ${sql.identifier(triggerName)} ON ${table}`);

@@ -135,22 +135,18 @@ Message-search DDL is also guarded on production Postgres. The generated column 
 
 Claim journal rows are append-only for ordinary database roles. Direct update,
 delete, and truncate operations fail; deleting an agent remains the sole
-supported lifecycle cascade and emits one fresh UUID-only retention receipt for
-the whole deletion transaction. The receipt proves only that some retained
-claim history was erased. It contains no tenant, account, principal, claim,
-subject, timestamp, event, digest, or version field that an application query
-role could use to correlate it with surviving rows. A rolled-back deletion also
-rolls back its receipt.
+supported lifecycle cascade. This foundation deliberately emits no deletion
+receipt or erasure proof: a row written by the deletion transaction remains
+correlatable through PostgreSQL transaction metadata, WAL, replicas, backups,
+and query logs even if its application columns are opaque.
 
-This is an application-role privacy boundary, not erasure from PostgreSQL
-internals. Database owners, superusers, replication roles, WAL/archive readers,
-physical backup operators, and external query/log capture can observe the
-deletion transaction and are trusted infrastructure principals. Deployments
-requiring erasure from those systems must apply their own WAL, backup, log, and
-replica retention controls. Historical `owner_bound` and `verified` claim rows
-are not authorization evidence: delivery and owner evaluation fail closed until
-an independently authenticated producer can prove both the connector assertion
-and the principal-to-owner relationship.
+Deletion evidence is therefore unavailable pending #23098 and an
+out-of-transaction lifecycle saga with a separately governed correlation-secret
+lifecycle. That saga is outside this dormant foundation. Historical
+`owner_bound` and `verified` claim rows are also not authorization evidence:
+delivery and owner evaluation fail closed until an independently authenticated
+producer can prove both the connector assertion and the principal-to-owner
+relationship.
 
 ## Connection Management
 

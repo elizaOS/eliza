@@ -15,11 +15,7 @@ import { DatabaseMigrationService } from "../../../migration-service";
 import { agentTable } from "../../../schema/agent";
 import { connectorAccountsTable } from "../../../schema/connectorAccounts";
 import { entityTable } from "../../../schema/entity";
-import {
-  identityClaimJournalTable,
-  identityClaimRetentionLedgerTable,
-  identityClaimTable,
-} from "../../../schema/identityAuthority";
+import { identityClaimJournalTable, identityClaimTable } from "../../../schema/identityAuthority";
 import type { DrizzleDatabase } from "../../../types";
 import { createIsolatedTestDatabase } from "../../test-helpers";
 
@@ -47,9 +43,8 @@ const enabled =
     await admin.query(`CREATE ROLE ${roleName} LOGIN PASSWORD '${password}'`);
     await admin.query(`GRANT USAGE ON SCHEMA public TO ${roleName}`);
     await admin.query(
-      `GRANT SELECT, UPDATE, DELETE, TRUNCATE ON identity_claim_journal, identity_claim_retention_ledger TO ${roleName}`
+      `GRANT SELECT, UPDATE, DELETE, TRUNCATE ON identity_claim_journal TO ${roleName}`
     );
-    await admin.query(`GRANT INSERT ON identity_claim_retention_ledger TO ${roleName}`);
     await admin.query(`GRANT SELECT, DELETE, TRUNCATE ON agents TO ${roleName}`);
     await admin.query(`GRANT TRUNCATE ON ALL TABLES IN SCHEMA public TO ${roleName}`);
     const restrictedUrl = new URL(postgresUrl);
@@ -133,28 +128,50 @@ const enabled =
     await expect(restricted.query("TRUNCATE identity_claim_journal")).rejects.toMatchObject({
       code: "55000",
     });
-    await expect(
-      restricted.query("TRUNCATE identity_claim_retention_ledger")
-    ).rejects.toMatchObject({ code: "55000" });
     await expect(restricted.query("TRUNCATE agents CASCADE")).rejects.toMatchObject({
       code: "55000",
     });
+
+    const unavailable = await admin.query(`
+      SELECT to_regclass('public.identity_claim_retention_ledger') AS ledger,
+             to_regprocedure('public.retain_identity_claim_deletion_receipt()') AS producer
+    `);
+    expect(unavailable.rows[0]).toEqual({ ledger: null, producer: null });
+    const grants = await admin.query(
+      "SELECT privilege_type FROM information_schema.role_table_grants WHERE grantee = $1 AND table_name = 'identity_claim_retention_ledger'",
+      [roleName]
+    );
+    expect(grants.rows).toHaveLength(0);
+    await expect(
+      restricted.query("INSERT INTO identity_claim_retention_ledger DEFAULT VALUES")
+    ).rejects.toMatchObject({ code: "42P01" });
+    await expect(
+      restricted.query("SELECT retain_identity_claim_deletion_receipt()")
+    ).rejects.toMatchObject({ code: "42883" });
 
     await restricted.query("BEGIN");
     await restricted.query("DELETE FROM agents WHERE id = $1", [deletionAgentId]);
     expect(
       Number(
-        (await restricted.query("SELECT count(*) AS count FROM identity_claim_retention_ledger"))
-          .rows[0]?.count
+        (
+          await restricted.query(
+            "SELECT count(*) AS count FROM identity_claim_journal WHERE agent_id = $1",
+            [deletionAgentId]
+          )
+        ).rows[0]?.count
       )
-    ).toBe(1);
+    ).toBe(0);
     await restricted.query("ROLLBACK");
     expect(
       Number(
-        (await restricted.query("SELECT count(*) AS count FROM identity_claim_retention_ledger"))
-          .rows[0]?.count
+        (
+          await restricted.query(
+            "SELECT count(*) AS count FROM identity_claim_journal WHERE agent_id = $1",
+            [deletionAgentId]
+          )
+        ).rows[0]?.count
       )
-    ).toBe(0);
+    ).toBe(1);
 
     await restricted.query("DELETE FROM agents WHERE id = $1", [deletionAgentId]);
     expect(
@@ -163,9 +180,6 @@ const enabled =
         .from(identityClaimJournalTable)
         .where(eq(identityClaimJournalTable.agentId, deletionAgentId))
     ).toHaveLength(0);
-    const receipts = await db.select().from(identityClaimRetentionLedgerTable);
-    expect(receipts).toHaveLength(1);
-    expect(Object.keys(receipts[0] ?? {})).toEqual(["id"]);
   });
 
   it("installs and enforces the same authority in a non-public visible schema", async () => {
@@ -176,9 +190,6 @@ const enabled =
       await client.query(`CREATE SCHEMA ${schemaName}`);
       await client.query(`
         CREATE TABLE ${schemaName}.agents (id uuid PRIMARY KEY);
-        CREATE TABLE ${schemaName}.identity_claim_retention_ledger (
-          id uuid PRIMARY KEY DEFAULT gen_random_uuid()
-        );
         CREATE TABLE ${schemaName}.identity_claim_journal (
           id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
           agent_id uuid NOT NULL REFERENCES ${schemaName}.agents(id) ON DELETE CASCADE
@@ -200,13 +211,10 @@ const enabled =
       await client.query(`DELETE FROM ${schemaName}.agents WHERE id = $1`, [customAgentId]);
       expect(
         Number(
-          (
-            await client.query(
-              `SELECT count(*) AS count FROM ${schemaName}.identity_claim_retention_ledger`
-            )
-          ).rows[0]?.count
+          (await client.query(`SELECT count(*) AS count FROM ${schemaName}.identity_claim_journal`))
+            .rows[0]?.count
         )
-      ).toBe(1);
+      ).toBe(0);
     } finally {
       await client.query("RESET search_path");
       await client.query(`DROP SCHEMA IF EXISTS ${schemaName} CASCADE`);
