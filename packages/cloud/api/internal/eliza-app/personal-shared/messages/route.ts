@@ -1,6 +1,7 @@
 /** Runs a trusted messaging delivery through one rowless personal Shared turn. */
 
 import { ChannelType } from "@elizaos/core/edge";
+import type { SharedReminderDelivery } from "@elizaos/plugin-scheduling/edge";
 import { Hono } from "hono";
 import { z } from "zod";
 import {
@@ -415,6 +416,7 @@ app.post("/", async (c) => {
     let groupConversationId: string | undefined;
     let groupActorLabel: string | undefined;
     let groupPersonalAgentId: string | undefined;
+    let groupTrustedDelivery: SharedReminderDelivery | undefined;
     let dedicated:
       | Pick<AgentSandbox, "id" | "status" | "bridge_url" | "agent_config">
       | null
@@ -595,6 +597,20 @@ app.post("/", async (c) => {
       accountResolution = "group-binding";
       groupConversationId = binding.conversation_id;
       groupPersonalAgentId = binding.personal_agent_id;
+      // Only the owner who linked Eliza may schedule proactive sends into the
+      // group; other participants have no account or billing authority here.
+      if (
+        parsed.data.actor.platformUserId === binding.created_by_platform_user_id
+      ) {
+        groupTrustedDelivery = {
+          platform: parsed.data.platform,
+          kind: "group",
+          project: parsed.data.project,
+          chatId: parsed.data.chatId,
+          groupBindingId: binding.id,
+          ownerLabel: parsed.data.actor.displayName ?? "the group owner",
+        };
+      }
       const actorDigest = (
         await sha256Hex(
           `${parsed.data.platform}\n${parsed.data.actor.platformUserId}`,
@@ -1033,7 +1049,7 @@ app.post("/", async (c) => {
           worker.namespace,
           parsed.data.messageId,
           "platform",
-          undefined,
+          groupTrustedDelivery,
           undefined,
           { type: ChannelType.GROUP, source: parsed.data.platform },
         )

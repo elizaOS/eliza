@@ -47,10 +47,13 @@ const createSharedScheduledTaskRunner = mock(
   }),
 );
 
+const { sharedGroupReminderMessageText } = await import("@elizaos/plugin-scheduling/edge");
+
 mock.module("@elizaos/plugin-scheduling/edge", () => ({
   listDueScheduledTaskRefs,
   listRecoverableScheduledTaskRefs,
   SHARED_REMINDER_MAX_TEXT_LENGTH: 2000,
+  sharedGroupReminderMessageText,
   parseSharedReminderDelivery(value: unknown) {
     if (!value || typeof value !== "object") return undefined;
     const delivery = value as Record<string, unknown>;
@@ -58,6 +61,9 @@ mock.module("@elizaos/plugin-scheduling/edge", () => ({
     if (delivery.platform === "blooio") return delivery;
     if (delivery.platform === "discord") return delivery;
     return undefined;
+  },
+  isSharedGroupReminderDelivery(delivery: Record<string, unknown>) {
+    return delivery.kind === "group";
   },
 }));
 mock.module("./shared-scheduling", () => ({

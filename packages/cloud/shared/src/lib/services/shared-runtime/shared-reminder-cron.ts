@@ -1,14 +1,24 @@
-/** Finds due Shared reminders, atomically claims them, and dispatches through the connector gateway. */
+/**
+ * Finds due Shared reminders, atomically claims them, and dispatches through
+ * the connector gateway. The Dedicated cutover deliver route reuses the same
+ * dispatcher, so every group delivery re-verifies its binding here regardless
+ * of which runtime requested the fire.
+ */
 
 import {
+  isSharedGroupReminderDelivery,
   listDueScheduledTaskRefs,
   listRecoverableScheduledTaskRefs,
   parseSharedReminderDelivery,
   type ScheduledTaskDispatcher,
   type ScheduledTaskDispatchRecord,
   SHARED_REMINDER_MAX_TEXT_LENGTH,
+  type SharedGroupReminderDelivery,
   type SharedReminderDelivery,
+  sharedGroupReminderMessageText,
 } from "@elizaos/plugin-scheduling/edge";
+import { personalSharedGroupsRepository } from "../../../db/repositories/personal-shared-groups";
+import type { PersonalSharedGroupBinding } from "../../../db/schemas/personal-shared-groups";
 import type { Bindings } from "../../../types/cloud-worker-env";
 import { logger } from "../../utils/logger";
 import { coordinateSharedPushDispatch } from "./conversation-coordinator";
@@ -76,6 +86,39 @@ interface SharedReminderDispatcherOptions {
   telegramDispatch?: SharedTelegramReminderDispatch;
 }
 
+/**
+ * A group reminder is only deliverable while its binding is still the active
+ * authority for the same provider chat. Suspension (Eliza removed), owner
+ * revocation (`/eliza_leave`), and a re-bound chat id all fail the send closed
+ * before any connector egress.
+ */
+async function resolveActiveGroupBinding(
+  delivery: SharedGroupReminderDelivery,
+): Promise<PersonalSharedGroupBinding | undefined> {
+  const binding = await personalSharedGroupsRepository.findBindingById(delivery.groupBindingId);
+  if (
+    !binding ||
+    binding.state !== "active" ||
+    binding.platform !== delivery.platform ||
+    binding.project !== delivery.project ||
+    binding.provider_chat_id !== delivery.chatId
+  ) {
+    return undefined;
+  }
+  return binding;
+}
+
+/** The connector gateway only accepts the provider-addressable delivery fields. */
+function gatewayWireDelivery(delivery: SharedReminderDelivery) {
+  return isSharedGroupReminderDelivery(delivery)
+    ? {
+        platform: delivery.platform,
+        project: delivery.project,
+        chatId: delivery.chatId,
+      }
+    : delivery;
+}
+
 async function readGatewayDeliveryResponse(
   response: Response,
 ): Promise<GatewayDeliveryResponse | undefined> {
@@ -100,7 +143,24 @@ export function sharedReminderDispatcher(
       if (typeof idempotencyKey !== "string" || !idempotencyKey) {
         throw new Error("Shared reminder dispatch idempotency key is missing");
       }
-      const text = record.output?.fallback?.body ?? record.promptInstructions;
+      const groupDelivery = isSharedGroupReminderDelivery(delivery) ? delivery : undefined;
+      const groupBinding = groupDelivery
+        ? await resolveActiveGroupBinding(groupDelivery)
+        : undefined;
+      if (groupDelivery && !groupBinding) {
+        return {
+          ok: false,
+          reason: "unknown_recipient",
+          userActionable: true,
+          acceptance: "not_accepted",
+          message:
+            "This group is no longer linked to Eliza, so the group reminder was not delivered.",
+        };
+      }
+      const body = record.output?.fallback?.body ?? record.promptInstructions;
+      // Creation reserved this prefix inside the connector limit, so the
+      // guard below only trips for rows written before that budget existed.
+      const text = groupDelivery ? sharedGroupReminderMessageText(groupDelivery, body) : body;
       if (text.length > SHARED_REMINDER_MAX_TEXT_LENGTH) {
         return {
           ok: false,
@@ -147,7 +207,7 @@ export function sharedReminderDispatcher(
               "X-Internal-Secret": secret,
             },
             body: JSON.stringify({
-              ...delivery,
+              ...gatewayWireDelivery(delivery),
               text,
               idempotencyKey,
             }),
@@ -253,7 +313,29 @@ export function sharedReminderDispatcher(
           message: "Reminder delivery returned no verifiable provider receipt.",
         };
       }
-      if (agentId && isPersonalSharedAgentId(agentId)) {
+      if (groupBinding) {
+        try {
+          await personalSharedGroupsRepository.recordDeliveryReceipts({
+            platform: groupBinding.platform,
+            project: groupBinding.project,
+            connectorAccountId: groupBinding.connector_account_id,
+            providerChatId: groupBinding.provider_chat_id,
+            sourceMessageId: idempotencyKey,
+            providerMessageIds,
+          });
+        } catch (error) {
+          // error-policy:J7 receipt rows only power reply verification for
+          // later inbound turns; the connector's verified acceptance stands.
+          logger.warn("[SharedReminders] group delivery receipt recording failed", {
+            taskId: record.taskId,
+            bindingId: groupBinding.id,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+      }
+      // A group reminder already landed in the group thread; a DM-styled push
+      // notification to the owner's phone would misattribute the destination.
+      if (!groupDelivery && agentId && isPersonalSharedAgentId(agentId)) {
         const namespace = env.SHARED_RUNTIME_CONVERSATIONS;
         if (!namespace) {
           logger.warn("[SharedReminders] mobile push coordinator is unavailable", {
@@ -292,8 +374,9 @@ export function sharedReminderDispatcher(
       return {
         ok: true,
         channelKey: "current_dm",
-        target:
-          delivery.platform === "telegram"
+        target: isSharedGroupReminderDelivery(delivery)
+          ? delivery.chatId
+          : delivery.platform === "telegram"
             ? delivery.chatId
             : delivery.platform === "blooio"
               ? delivery.phoneNumber
