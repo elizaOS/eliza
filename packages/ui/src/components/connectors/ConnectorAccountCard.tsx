@@ -238,6 +238,7 @@ export function ConnectorAccountCard({
               withDot
             />
             <EditableAccountLabel
+              agentId={`connector-account-${account.id}-label`}
               value={account.label}
               disabled={saving}
               onSubmit={(label) => onUpdate({ label })}

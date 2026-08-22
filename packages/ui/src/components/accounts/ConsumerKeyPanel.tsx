@@ -18,6 +18,7 @@ import {
   X,
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
+import { AgentButton } from "../../agent-surface/components";
 import { client } from "../../api";
 import type {
   ConsumerKeyCreated,
@@ -469,7 +470,9 @@ export function ConsumerKeyPanelBody({
                         {t("consumerKeys.rotate", { defaultValue: "Rotate" })}
                       </Button>
                       {entry.enabled ? (
-                        <Button
+                        <AgentButton
+                          agentId={`consumer-key-${entry.id}-disable`}
+                          agentLabel={`Disable ${entry.label}`}
                           size="sm"
                           variant="ghost"
                           disabled={rowBusy}
@@ -480,9 +483,11 @@ export function ConsumerKeyPanelBody({
                           {t("consumerKeys.disable", {
                             defaultValue: "Disable",
                           })}
-                        </Button>
+                        </AgentButton>
                       ) : (
-                        <Button
+                        <AgentButton
+                          agentId={`consumer-key-${entry.id}-enable`}
+                          agentLabel={`Enable ${entry.label}`}
                           size="sm"
                           variant="ghost"
                           disabled={rowBusy}
@@ -497,7 +502,7 @@ export function ConsumerKeyPanelBody({
                           }
                         >
                           {t("consumerKeys.enable", { defaultValue: "Enable" })}
-                        </Button>
+                        </AgentButton>
                       )}
                       {editing ? (
                         <span className="flex items-center gap-1">

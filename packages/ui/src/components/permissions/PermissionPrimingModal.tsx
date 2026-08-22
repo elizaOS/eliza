@@ -377,6 +377,7 @@ function PrimingCard({
                 {t("permissionpriming.notNow", { defaultValue: "Not now" })}
               </Button>
               <Button
+                data-agent-id={`priming-enable-${id}`}
                 type="button"
                 size="sm"
                 variant="default"

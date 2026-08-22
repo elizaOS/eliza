@@ -8,6 +8,7 @@
 
 import type { ReactNode } from "react";
 import { useEffect, useRef } from "react";
+import { AgentButton } from "../../agent-surface/components";
 import { useAppSelector } from "../../state";
 import { PagePanel } from "../composites/page-panel";
 import { Button } from "../ui/button";
@@ -136,9 +137,15 @@ export function ConnectorQrPairingOverlay({
       <PagePanel.Notice
         tone="danger"
         actions={
-          <Button variant="default" size="sm" onClick={start}>
+          <AgentButton
+            agentId={`connector-${connectorName.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-retry`}
+            agentLabel={tryAgainLabel}
+            variant="default"
+            size="sm"
+            onClick={start}
+          >
             {tryAgainLabel}
-          </Button>
+          </AgentButton>
         }
       >
         <p className="text-xs-tight">
@@ -155,9 +162,15 @@ export function ConnectorQrPairingOverlay({
       <PagePanel.Notice
         tone={error ? "danger" : "default"}
         actions={
-          <Button variant="default" size="sm" onClick={start}>
+          <AgentButton
+            agentId={`connector-${connectorName.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-connect`}
+            agentLabel={connectLabel}
+            variant="default"
+            size="sm"
+            onClick={start}
+          >
             {connectLabel}
-          </Button>
+          </AgentButton>
         }
       >
         <div className="space-y-1">
