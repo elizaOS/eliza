@@ -182,6 +182,10 @@ export const MOBILE_CAPACITOR_PLUGIN_MANIFEST = [
     iosPods: [{ name: "ElizaosCapacitorLocation", kind: "custom" }],
   },
   {
+    packageName: "@elizaos/capacitor-secure-store",
+    iosPods: [{ name: "ElizaosCapacitorSecureStore", kind: "custom" }],
+  },
+  {
     packageName: "@elizaos/capacitor-mobile-signals",
     iosPods: [{ name: "ElizaosCapacitorMobileSignals", kind: "custom" }],
   },
