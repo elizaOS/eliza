@@ -311,6 +311,50 @@ describe("document list query (real SQL parity)", () => {
     }
   });
 
+  it("filters fragment pages by exact authorized parent before pagination", async () => {
+    const firstParent = document(1);
+    const secondParent = document(2);
+    const fragment = (index: number, documentId: UUID, createdAt: number): Memory =>
+      document(index, {
+        createdAt,
+        metadata: {
+          type: MemoryType.FRAGMENT,
+          documentId,
+          documentRevision: 0,
+          position: index,
+        },
+      });
+    const firstFragments = [
+      fragment(3, firstParent.id as UUID, 3_000),
+      fragment(4, firstParent.id as UUID, 2_000),
+    ];
+    const otherFragment = fragment(5, secondParent.id as UUID, 4_000);
+    const rows = [firstParent, secondParent, ...firstFragments, otherFragment];
+    await seedSql([firstParent, secondParent]);
+    await adapter.createMemories(
+      [...firstFragments, otherFragment].map((memory) => ({
+        memory,
+        tableName: "document_fragments",
+      }))
+    );
+    const inMemory = await seedInMemory(rows);
+    const query = {
+      agentId,
+      requesterEntityId: REQUESTER_ID,
+      requesterRoomIds: [roomId],
+      requesterRole: "OWNER" as const,
+      documentId: firstParent.id,
+      limit: 1,
+      offset: 1,
+    };
+
+    const sqlFragments = await adapter.queryDocumentFragments(query);
+    const memoryFragments = await inMemory.queryDocumentFragments(query);
+
+    expect(sqlFragments).toEqual(memoryFragments);
+    expect(ids(sqlFragments)).toEqual([firstFragments[1]?.id]);
+  });
+
   it("does not skip or duplicate equal-timestamp rows across keyset pages", async () => {
     const documents = Array.from({ length: 151 }, (_, index) => document(index));
     await seedSql(documents);

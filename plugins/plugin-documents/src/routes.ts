@@ -15,7 +15,6 @@ import {
   canReadDocumentMemory,
   type DocumentReadableMemory,
   documentMediaFormat,
-  documentScopedEntityId,
   documentTags,
   matchesDocumentFilter as matchesSharedDocumentFilter,
   parseDocumentScope,
@@ -506,36 +505,6 @@ function decodeMatchedPathComponent(
   }
 }
 
-async function countDocumentFragmentsForDocument(
-  documentsService: DocumentsServiceLike,
-  roomId: UUID | undefined,
-  documentId: UUID,
-): Promise<number> {
-  let offset = 0;
-  let fragmentCount = 0;
-
-  while (true) {
-    const fragmentBatch = await documentsService.getMemories({
-      tableName: DOCUMENT_FRAGMENTS_TABLE,
-      roomId,
-      count: FRAGMENT_BATCH_SIZE,
-      offset,
-    });
-
-    if (fragmentBatch.length === 0) break;
-
-    fragmentCount += fragmentBatch.filter((memory) => {
-      const metadata = asRecord(memory.metadata);
-      return metadata?.documentId === documentId;
-    }).length;
-
-    if (fragmentBatch.length < FRAGMENT_BATCH_SIZE) break;
-    offset += FRAGMENT_BATCH_SIZE;
-  }
-
-  return fragmentCount;
-}
-
 async function mapDocumentFragmentsByDocumentId(
   documentsService: DocumentsServiceLike,
   roomId: UUID | undefined,
@@ -749,11 +718,12 @@ export async function handleDocumentsRoutes(
   }
   const agentId = runtime.agentId as UUID;
   const ownerEntityId = getOwnerEntityId(runtime);
-  const routeActor = resolveRouteActor(
-    agentId,
-    ownerEntityId,
-    ctx.accessContext,
-  );
+  const accessContext = ctx.accessContext;
+  if (!accessContext) {
+    error(res, "Authentication required", 401);
+    return true;
+  }
+  const routeActor = resolveRouteActor(agentId, ownerEntityId, accessContext);
 
   if (!routeActor) {
     error(res, "Authentication required", 401);
@@ -1043,52 +1013,38 @@ export async function handleDocumentsRoutes(
     );
     if (!decodedDocumentId) return true;
     const documentId = decodedDocumentId as UUID;
-    const document = await runtime.getMemoryById(documentId);
     if (
-      !document ||
-      !isDocumentMemory(document, agentId) ||
-      !canReadDocumentMemory(document, routeActor, {
-        scopedToEntityId: documentScopedEntityId(document),
-      })
+      !documentsService.getDocumentByIdWithAccessContext ||
+      !documentsService.listDocumentFragmentsWithAccessContext
     ) {
+      error(res, "Canonical document authorization is unavailable", 503);
+      return true;
+    }
+    const document = await documentsService.getDocumentByIdWithAccessContext(
+      documentId,
+      accessContext,
+    );
+    if (!document) {
       error(res, "Document not found", 404);
       return true;
     }
 
-    const allFragments: Array<{
-      id: UUID;
-      text: string;
-      position: unknown;
-      createdAt: number;
-    }> = [];
-    let fragmentOffset = 0;
-
-    while (true) {
-      const fragmentBatch = await documentsService.getMemories({
-        tableName: DOCUMENT_FRAGMENTS_TABLE,
-        count: FRAGMENT_BATCH_SIZE,
-        offset: fragmentOffset,
-      });
-
-      if (fragmentBatch.length === 0) break;
-
-      for (const fragment of fragmentBatch) {
+    const fragments =
+      await documentsService.listDocumentFragmentsWithAccessContext(
+        documentId,
+        accessContext,
+      );
+    const documentFragments = fragments
+      .filter(hasUuidIdAndCreatedAt)
+      .map((fragment) => {
         const metadata = asRecord(fragment.metadata);
-        if (metadata?.documentId !== documentId) continue;
-        if (!hasUuidIdAndCreatedAt(fragment)) continue;
-        allFragments.push({
+        return {
           id: fragment.id,
           text: (fragment.content as { text?: string })?.text || "",
-          position: metadata.position,
+          position: metadata?.position,
           createdAt: fragment.createdAt,
-        });
-      }
-
-      if (fragmentBatch.length < FRAGMENT_BATCH_SIZE) break;
-      fragmentOffset += FRAGMENT_BATCH_SIZE;
-    }
-
-    const documentFragments = allFragments
+        };
+      })
       .sort((a, b) => {
         const posA = typeof a.position === "number" ? a.position : 0;
         const posB = typeof b.position === "number" ? b.position : 0;
@@ -1118,23 +1074,29 @@ export async function handleDocumentsRoutes(
     );
     if (!decodedDocumentId) return true;
     const documentId = decodedDocumentId as UUID;
-    const document = await runtime.getMemoryById(documentId);
-    if (
-      !document ||
-      !isDocumentMemory(document, agentId) ||
-      !canReadDocumentMemory(document, routeActor, {
-        scopedToEntityId: documentScopedEntityId(document),
-      })
-    ) {
+    if (!documentsService.getDocumentByIdWithAccessContext) {
+      error(res, "Canonical document authorization is unavailable", 503);
+      return true;
+    }
+    const document = await documentsService.getDocumentByIdWithAccessContext(
+      documentId,
+      accessContext,
+    );
+    if (!document) {
       error(res, "Document not found", 404);
       return true;
     }
 
-    const fragmentCount = await countDocumentFragmentsForDocument(
-      documentsService,
-      undefined,
-      documentId,
-    );
+    if (!documentsService.listDocumentFragmentsWithAccessContext) {
+      error(res, "Canonical document authorization is unavailable", 503);
+      return true;
+    }
+    const fragmentCount = (
+      await documentsService.listDocumentFragmentsWithAccessContext(
+        documentId,
+        accessContext,
+      )
+    ).length;
 
     json(res, {
       document: presentDocument(document, fragmentCount, {

@@ -2194,6 +2194,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       if (params.roomId) conditions.push(eq(parent.roomId, params.roomId));
       if (params.worldId) conditions.push(eq(parent.worldId, params.worldId));
       if (params.entityId) conditions.push(eq(parent.entityId, params.entityId));
+      if (params.documentId) conditions.push(eq(parent.id, params.documentId));
 
       const parentJoin = sql`${parent.id}::text = ${fragment.metadata}->>'documentId'`;
       if (!params.embedding) {
@@ -2203,7 +2204,8 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
           .innerJoin(parent, parentJoin)
           .where(and(...conditions))
           .orderBy(desc(fragment.createdAt), desc(fragment.id))
-          .limit(params.limit);
+          .limit(params.limit)
+          .offset(params.offset ?? 0);
         return rows.map((row) => memoryFromRow(row.memory));
       }
 
@@ -2225,7 +2227,8 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         .innerJoin(parent, parentJoin)
         .where(and(...conditions))
         .orderBy(asc(distance), desc(fragment.createdAt), desc(fragment.id))
-        .limit(params.limit);
+        .limit(params.limit)
+        .offset(params.offset ?? 0);
       return rows.map((row) =>
         memoryFromRow(
           row.memory,

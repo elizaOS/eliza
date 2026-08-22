@@ -10,6 +10,7 @@ import {
 	documentMutationSnapshotMatches,
 	isDocumentVisibleToRequester,
 	portableDocumentSearchTokens,
+	queryDocumentFragmentsInMemory,
 	queryDocumentsInMemory,
 	queryDocumentsWithCapability,
 	readDocumentMutationSnapshot,
@@ -231,6 +232,43 @@ describe("document-list capability contract", () => {
 		expect(isDocumentVisibleToRequester(global, unresolvedParams)).toBe(false);
 		expect(canRequesterMutateDocument(global, guestParams)).toBe(false);
 		expect(canRequesterMutateDocument(global, unresolvedParams)).toBe(false);
+	});
+
+	it("filters fragments by authorized parent before applying offset and limit", () => {
+		const firstParent = document(5);
+		const secondParent = document(6);
+		const fragment = (
+			index: number,
+			documentId: UUID,
+			createdAt: number,
+		): Memory => ({
+			...document(index),
+			createdAt,
+			metadata: {
+				type: MemoryType.FRAGMENT,
+				documentId,
+				documentRevision: 0,
+				position: index,
+			},
+		});
+		const firstFragments = [
+			fragment(7, firstParent.id as UUID, 3_000),
+			fragment(8, firstParent.id as UUID, 2_000),
+		];
+		const otherFragment = fragment(9, secondParent.id as UUID, 4_000);
+
+		const result = queryDocumentFragmentsInMemory(
+			[firstParent, secondParent, ...firstFragments, otherFragment],
+			{
+				...params,
+				requesterRole: "OWNER",
+				documentId: firstParent.id,
+				limit: 1,
+				offset: 1,
+			},
+		);
+
+		expect(result.map((memory) => memory.id)).toEqual([firstFragments[1]?.id]);
 	});
 
 	it("uses locale-independent tokens that preserve punctuation and Unicode", () => {

@@ -85,6 +85,12 @@ storage authorization: ADMIN is not OWNER, GUEST is not USER, and an unresolved
 role is rejected. Guests may read only global documents in their current rooms
 and may not mutate documents.
 
+Parent and fragment REST reads must call the access-context-aware
+`DocumentService` methods. Do not use `runtime.getMemoryById()` or
+`getMemories()` and apply route-local authorization afterward: authorization
+belongs in the adapter query before rows, fragment bytes, counts, or pagination
+are constructed.
+
 ## How to extend
 
 **Add a new route:**
@@ -96,7 +102,9 @@ and may not mutate documents.
 Add to `PresentedDocument` in `src/document-presenter.ts` and populate it in `presentDocument()`.
 
 **Add document scope enforcement logic:**
-All scope/permission decisions live in `src/routes.ts` (`canReadDocumentMemory`, `canMutateDocumentMemory`, `filtersFromUploadBody`). Do not scatter access checks into the presenter or service.
+Canonical read/mutation authorization belongs in `DocumentService` and its
+adapter queries. Route helpers may validate upload scope and presentation, but
+must never become a competing read authority or post-filter raw storage rows.
 
 ## Conventions / gotchas
 
