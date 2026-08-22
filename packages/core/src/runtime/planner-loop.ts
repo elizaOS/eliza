@@ -3869,18 +3869,84 @@ function isSuccessfulCodingVerificationStep(step: PlannerStep): boolean {
 	}
 	const command = shellCommandParam(step.toolCall);
 	if (!command) return false;
+	const segments = splitShellCommandSegments(command);
+	// The SHELL result exposes only the aggregate exit status. Until the shell
+	// boundary returns per-command typed evidence, any control operator can mask
+	// a failed verifier (`test || true`, `test | tee`, or `test; true`).
+	if (segments.length !== 1) return false;
+	const segment = stripShellVerificationPrefix(segments[0]);
 	return [
-		/(?:^|[;&|]\s*)(?:test|\[)\s+[^;&|]+/i,
-		/\bgit\s+diff\s+--check\b/i,
-		/\b(?:bun|npm|pnpm|yarn|deno)\b[^;&|\n]*\b(?:test|verify|check|lint|typecheck|build)\b/i,
-		/\b(?:vitest|jest|pytest|rspec|phpunit|mocha|ava)\b/i,
-		/\bgo\s+(?:test|vet|build)\b/i,
-		/\bcargo\s+(?:test|check|clippy|build)\b/i,
-		/\b(?:dotnet\s+test|mvn\s+(?:test|verify)|gradle\w*\s+(?:test|check|build))\b/i,
-		/\b(?:make|just)\b[^;&|\n]*\b(?:test|verify|check|lint|typecheck|build)\b/i,
-		/\b(?:tsc|eslint|biome)\b/i,
-		/\b(?:python\d*\s+-m\s+(?:compileall|py_compile)|ruby\s+-c|bash\s+-n|node\s+--check)\b/i,
-	].some((pattern) => pattern.test(command));
+		/^bun\s+(?:run\s+)?(?:(?:--cwd|-C)\s+\S+\s+)?(?:test|verify|check|lint|typecheck|build)(?:\s|$)/i,
+		/^npm\s+(?:test|(?:run|run-script)\s+(?:test|verify|check|lint|typecheck|build))(?:\s|$)/i,
+		/^(?:pnpm|yarn)\s+(?:run\s+)?(?:test|verify|check|lint|typecheck|build)(?:\s|$)/i,
+		/^(?:npx|bunx)\s+(?:vitest|jest|eslint|biome|tsc)(?:\s|$)/i,
+		/^deno\s+(?:test|check|task\s+(?:test|verify|check|lint|typecheck|build))(?:\s|$)/i,
+		/^(?:vitest|jest|pytest|rspec|phpunit|mocha|ava)(?:\s|$)/i,
+		/^(?:uv|poetry)\s+run\s+(?:pytest|ruff|mypy)(?:\s|$)/i,
+		/^bundle\s+exec\s+rspec(?:\s|$)/i,
+		/^go\s+(?:test|vet|build)(?:\s|$)/i,
+		/^cargo\s+(?:test|check|clippy|build)(?:\s|$)/i,
+		/^(?:dotnet\s+test|mvn\s+(?:test|verify)|gradle\w*\s+(?:test|check|build)|(?:\.\/)?gradlew\s+(?:test|check|build))(?:\s|$)/i,
+		/^(?:swift|mix)\s+test(?:\s|$)/i,
+		/^tox(?:\s|$)/i,
+		/^(?:make|just)(?:\s+[^\s;&|]+)*\s+(?:test|verify|check|lint|typecheck|build)(?:\s|$)/i,
+		/^(?:tsc|eslint|biome)(?:\s|$)/i,
+		/^(?:python\d*\s+-m\s+(?:compileall|py_compile)|ruby\s+-c|bash\s+-n|node\s+--check)(?:\s|$)/i,
+	].some((pattern) => pattern.test(segment));
+}
+
+/**
+ * Splits only on unquoted shell control operators. Verification recognition is
+ * deliberately command-position based: diagnostic prose such as
+ * `echo 'run vitest'` must never become proof merely because it names a test
+ * runner.
+ */
+function splitShellCommandSegments(command: string): string[] {
+	const segments: string[] = [];
+	let start = 0;
+	let quote: "'" | '"' | undefined;
+	let escaped = false;
+	for (let index = 0; index < command.length; index++) {
+		const character = command[index];
+		if (escaped) {
+			escaped = false;
+			continue;
+		}
+		if (character === "\\" && quote !== "'") {
+			escaped = true;
+			continue;
+		}
+		if (character === "'" || character === '"') {
+			quote = quote === character ? undefined : (quote ?? character);
+			continue;
+		}
+		if (
+			!quote &&
+			(character === ";" ||
+				character === "|" ||
+				character === "&" ||
+				character === "\n")
+		) {
+			const segment = command.slice(start, index).trim();
+			if (segment) segments.push(segment);
+			while (command[index + 1] === character) index++;
+			start = index + 1;
+		}
+	}
+	const tail = command.slice(start).trim();
+	if (tail) segments.push(tail);
+	return segments;
+}
+
+function stripShellVerificationPrefix(segment: string): string {
+	let command = segment.trim();
+	if (/^env(?:\s|$)/i.test(command)) {
+		command = command.replace(/^env\s+/i, "");
+	}
+	while (/^[A-Za-z_][A-Za-z0-9_]*=\S+\s+/.test(command)) {
+		command = command.replace(/^[A-Za-z_][A-Za-z0-9_]*=\S+\s+/, "");
+	}
+	return command;
 }
 
 function getToolDefinitionName(tool: ToolDefinition): string | undefined {
@@ -4537,6 +4603,11 @@ async function finishWithForcedSynthesis(params: {
 			trajectory,
 			evaluator,
 			finalMessage: message,
+			terminalFailure: {
+				kind: "coding_mutation_unverified",
+				transient: false,
+				message,
+			},
 		};
 	}
 	trajectory.context = appendContextEvent(trajectory.context, {

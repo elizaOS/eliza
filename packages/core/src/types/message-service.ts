@@ -76,10 +76,25 @@ export interface MessageProcessingOptions {
 /**
  * Result of message processing
  */
+export interface MessageTerminalFailure {
+	/** Stable machine-readable category for adapters and orchestration hosts. */
+	kind: string;
+	/** Whether retrying the same turn without user intervention may succeed. */
+	transient: boolean;
+	/** Complete user-facing explanation of why the turn did not complete. */
+	message: string;
+}
+
 export interface MessageProcessingResult {
 	didRespond: boolean;
 	responseContent?: Content | null;
 	responseMessages: Memory[];
+	/**
+	 * Terminal failure independent of response delivery. Callback-delivered or
+	 * deduplicated text may leave `responseContent` null, but callers still need
+	 * an authoritative non-success result.
+	 */
+	terminalFailure?: MessageTerminalFailure;
 	/**
 	 * The returned delivery belongs to a live message-service run whose detached
 	 * task barrier will emit `RUN_ENDED`. Hosts must preserve this capability on

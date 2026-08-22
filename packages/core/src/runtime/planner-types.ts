@@ -240,6 +240,16 @@ export interface PlannerLoopResult {
 	evaluator?: EvaluatorOutput;
 	finalMessage?: string;
 	/**
+	 * Machine-readable terminal failure that survives independent text delivery.
+	 * The message service propagates this outside `responseContent`, so a host
+	 * cannot mistake a callback-delivered failure for a successful turn.
+	 */
+	terminalFailure?: {
+		kind: "coding_mutation_unverified";
+		transient: false;
+		message: string;
+	};
+	/**
 	 * Marks a turn whose empty `finalMessage` is a designed outcome — the
 	 * planner ended on STOP/IGNORE or a `suppressPlannerReply` terminal action —
 	 * so the tool-turn reply guarantee (`runPlannerLoop`'s post-pass) never

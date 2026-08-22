@@ -738,7 +738,7 @@ describe("v5 planner loop skeleton", () => {
 							{
 								id: "shell-1",
 								name: "SHELL",
-								arguments: { command: "test -s dice.html" },
+								arguments: { command: "npm test -- dice.html" },
 							},
 						],
 					})
@@ -858,6 +858,156 @@ describe("v5 planner loop skeleton", () => {
 		});
 	});
 
+	it.each([
+		"echo vitest",
+		"printf 'git diff --check'",
+		"test -f config.go",
+		"[ -f config.go ]",
+		"echo 'bun test packages/core'",
+		"npm exec echo test",
+		"printf 'safe && vitest'",
+		"git diff --check",
+		"go test ./... || true",
+		"go test ./...; true",
+		"go test ./... | tee test.log",
+		"git diff --check || echo ignored",
+	])(
+		"does not treat verifier-looking shell text as coding verification: %s",
+		async (spoofCommand) => {
+			await withCodingRequiredToolDefaults(async () => {
+				const runtime = {
+					useModel: vi
+						.fn()
+						.mockResolvedValueOnce({
+							text: "",
+							toolCalls: [
+								{
+									id: "write-1",
+									name: "WRITE",
+									arguments: { path: "config.go", content: "package config" },
+								},
+							],
+						})
+						.mockResolvedValueOnce({
+							text: "",
+							toolCalls: [
+								{
+									id: "shell-spoof-1",
+									name: "SHELL",
+									arguments: { command: spoofCommand },
+								},
+							],
+						})
+						.mockResolvedValueOnce(
+							codingReply("reply-spoofed", "Implemented the change."),
+						)
+						.mockResolvedValueOnce({
+							text: "",
+							toolCalls: [
+								{
+									id: "shell-real-1",
+									name: "SHELL",
+									arguments: { command: "go test ./..." },
+								},
+							],
+						})
+						.mockResolvedValueOnce(
+							codingReply(
+								"reply-verified",
+								"Implemented and tested the change.",
+							),
+						),
+					logger: { warn: vi.fn() },
+				};
+				const executeToolCall = vi.fn(async () => ({
+					success: true,
+					text: "succeeded",
+				}));
+
+				const result = await runPlannerLoop({
+					runtime,
+					context: codingPlannerContext,
+					codingMode: true,
+					tools: [
+						{ name: "WRITE", description: "Write a file." },
+						{ name: "SHELL", description: "Run a command." },
+						{ name: "REPLY", description: "Reply to the user." },
+					],
+					executeToolCall,
+					evaluate: vi.fn(),
+				});
+
+				expect(runtime.useModel).toHaveBeenCalledTimes(5);
+				expect(executeToolCall).toHaveBeenCalledTimes(3);
+				expect(result.finalMessage).toBe("Implemented and tested the change.");
+				expect(
+					result.trajectory.evaluatorOutputs.filter(
+						(output) => output.decision === "CONTINUE",
+					),
+				).toHaveLength(1);
+			});
+		},
+	);
+
+	it.each([
+		"./gradlew test",
+		"npx vitest",
+		"bunx vitest",
+		"uv run pytest",
+		"poetry run pytest",
+		"bundle exec rspec",
+		"swift test",
+		"mix test",
+		"tox",
+	])("accepts a successful common coding verifier: %s", async (command) => {
+		await withCodingRequiredToolDefaults(async () => {
+			const runtime = {
+				useModel: vi
+					.fn()
+					.mockResolvedValueOnce({
+						text: "",
+						toolCalls: [
+							{
+								id: "write-1",
+								name: "WRITE",
+								arguments: { path: "config.go", content: "package config" },
+							},
+						],
+					})
+					.mockResolvedValueOnce({
+						text: "",
+						toolCalls: [
+							{ id: "verify-1", name: "SHELL", arguments: { command } },
+						],
+					})
+					.mockResolvedValueOnce(
+						codingReply("reply-verified", "Implemented and tested the change."),
+					),
+				logger: { warn: vi.fn() },
+			};
+			const executeToolCall = vi.fn(async () => ({
+				success: true,
+				text: "succeeded",
+			}));
+
+			const result = await runPlannerLoop({
+				runtime,
+				context: codingPlannerContext,
+				codingMode: true,
+				tools: [
+					{ name: "WRITE", description: "Write a file." },
+					{ name: "SHELL", description: "Run a command." },
+					{ name: "REPLY", description: "Reply to the user." },
+				],
+				executeToolCall,
+				evaluate: vi.fn(),
+			});
+
+			expect(runtime.useModel).toHaveBeenCalledTimes(3);
+			expect(executeToolCall).toHaveBeenCalledTimes(2);
+			expect(result.finalMessage).toBe("Implemented and tested the change.");
+		});
+	});
 	it("bounds repeated terminal replies while a coding mutation remains unverified", async () => {
 		await withCodingRequiredToolDefaults(async () => {
 			const unverifiedReply = codingReply(
@@ -884,7 +1034,7 @@ describe("v5 planner loop skeleton", () => {
 							{
 								id: "shell-failed",
 								name: "SHELL",
-								arguments: { command: "test -s dice.html" },
+								arguments: { command: "npm test -- dice.html" },
 							},
 						],
 					})
@@ -927,6 +1077,11 @@ describe("v5 planner loop skeleton", () => {
 			expect(result.evaluator).toMatchObject({
 				success: false,
 				decision: "FINISH",
+			});
+			expect(result.terminalFailure).toMatchObject({
+				kind: "coding_mutation_unverified",
+				transient: false,
+				message: expect.stringContaining("coding task is incomplete"),
 			});
 			expect(result.finalMessage).toContain("coding task is incomplete");
 			expect(
@@ -1084,7 +1239,7 @@ describe("v5 planner loop skeleton", () => {
 							{
 								id: "shell-failed",
 								name: "SHELL",
-								arguments: { command: "test -s dice.html" },
+								arguments: { command: "npm test -- dice.html" },
 							},
 						],
 					})
@@ -1108,7 +1263,7 @@ describe("v5 planner loop skeleton", () => {
 							{
 								id: "shell-passed",
 								name: "SHELL",
-								arguments: { command: "test -s dice.html" },
+								arguments: { command: "npm test -- dice.html" },
 							},
 						],
 					})
@@ -1187,7 +1342,7 @@ describe("v5 planner loop skeleton", () => {
 							{
 								id: "verify-passed",
 								name: "SHELL",
-								arguments: { command: "test -s dice.html" },
+								arguments: { command: "npm test -- dice.html" },
 							},
 						],
 					})
