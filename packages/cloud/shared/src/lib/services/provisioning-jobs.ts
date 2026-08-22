@@ -3522,8 +3522,25 @@ export class ProvisioningJobService {
     status: "completed" | "cancelled",
     updates?: Partial<Job>,
   ): Promise<void> {
+    const settledUpdates =
+      status === "completed"
+        ? {
+            ...updates,
+            // A retry that succeeds must not retain the prior attempt's error
+            // beside a completed receipt. Keep the payload metadata canonical
+            // too, including when the failed attempt externalized its error.
+            error: null,
+            error_storage: "inline" as const,
+            error_key: null,
+          }
+        : updates;
     await this.retryOwnedWrite(job, "settle", () =>
-      jobsRepository.settleExecution(job, status, updates, this.executionOwnerId),
+      jobsRepository.settleExecution(
+        job,
+        status,
+        settledUpdates,
+        this.executionOwnerId,
+      ),
     );
   }
 
@@ -3563,6 +3580,9 @@ export class ProvisioningJobService {
         {
           result: agentDeleteJobResultToRecord(jobResult),
           completed_at: new Date(),
+          error: null,
+          error_storage: "inline",
+          error_key: null,
         },
         this.executionOwnerId,
         agentDeleteAuthorityFence(currentData),
