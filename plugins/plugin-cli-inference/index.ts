@@ -464,9 +464,8 @@ export function parseTurnTimeout(value: string | undefined): number | undefined 
   // opt-out to an unbounded turn, so "0junk" and "0.5" both truncated to 0 and
   // silently REMOVED the turn timeout rather than falling back to the bounded
   // default. An explicit "0" is still honoured.
-  const trimmed = value.trim();
-  if (trimmed === "0") return 0;
-  return parseTimeout(trimmed);
+  if (value === "0") return 0;
+  return parseTimeout(value);
 }
 
 type TimeoutSettingKey =

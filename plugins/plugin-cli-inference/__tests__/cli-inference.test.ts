@@ -1784,6 +1784,7 @@ describe("parseTurnTimeout (#16553)", () => {
     expect(parseTurnTimeout("-0")).toBeUndefined();
     expect(parseTurnTimeout("+0")).toBeUndefined();
     expect(parseTurnTimeout("00")).toBeUndefined();
+    expect(parseTurnTimeout(" 0 ")).toBeUndefined();
   });
 });
 
