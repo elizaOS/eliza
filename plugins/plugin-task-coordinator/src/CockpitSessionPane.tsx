@@ -23,6 +23,7 @@
  * taskId and passes `onBack` to return to the deck.
  */
 
+import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { client } from "@elizaos/ui/api";
 import type { CodingAgentSession } from "@elizaos/ui/api/client-types-cloud";
 import {
@@ -66,6 +67,45 @@ export interface CockpitSessionPaneProps {
   t?: Translate;
   /** BCP-47 locale for clock/number formatting in the transcript. */
   locale?: string;
+}
+
+function CockpitDetailsButton({
+  open,
+  onToggle,
+  label,
+}: {
+  open: boolean;
+  onToggle: () => void;
+  label: string;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: "cockpit-session-details",
+    role: "toggle",
+    label,
+    group: "cockpit-session-navigation",
+    description: "Show or hide task controls and details",
+    status: open ? "open" : "closed",
+    onActivate: onToggle,
+  });
+  return (
+    <Button
+      ref={ref}
+      unstyled
+      type="button"
+      onClick={onToggle}
+      aria-pressed={open}
+      data-testid="cockpit-session-details-toggle"
+      title={label}
+      className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md transition-colors ${
+        open
+          ? "bg-accent/15 text-accent"
+          : "text-muted hover:bg-bg-hover/40 hover:text-txt"
+      }`}
+      {...agentProps}
+    >
+      <PanelRight className="h-4 w-4" aria-hidden />
+    </Button>
+  );
 }
 
 export function CockpitSessionPane({
@@ -256,7 +296,35 @@ export function CockpitSessionPane({
     }),
     onSubmit: onComposerSubmit,
   });
-
+  const { ref: backRef, agentProps: backAgentProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: "cockpit-session-back",
+      role: "button",
+      label: "Back to all task rooms",
+      group: "cockpit-session-navigation",
+      description: "Return to the coding cockpit room deck",
+      onActivate: onBack,
+    });
+  const { ref: transcriptRef, agentProps: transcriptAgentProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: "cockpit-session-view-transcript",
+      role: "tab",
+      label: "Show task transcript",
+      group: "cockpit-session-view",
+      description: "Show messages, tool activity, and results for this task",
+      status: view === "transcript" ? "active" : "inactive",
+      onActivate: () => setView("transcript"),
+    });
+  const { ref: terminalRef, agentProps: terminalAgentProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: "cockpit-session-view-terminal",
+      role: "tab",
+      label: "Show terminal output",
+      group: "cockpit-session-view",
+      description: "Show the terminal output for this task's active session",
+      status: view === "terminal" ? "active" : "inactive",
+      onActivate: () => setView("terminal"),
+    });
   return (
     <div
       className="flex h-full min-h-0 w-full flex-col bg-bg"
@@ -264,6 +332,7 @@ export function CockpitSessionPane({
     >
       <header className="flex shrink-0 items-center gap-2 border-border/40 border-b px-3 py-2">
         <Button
+          ref={backRef}
           unstyled
           type="button"
           onClick={onBack}
@@ -272,6 +341,7 @@ export function CockpitSessionPane({
             defaultValue: "Back to all rooms",
           })}
           data-testid="cockpit-session-back"
+          {...backAgentProps}
         >
           <ArrowLeft className="h-4 w-4" aria-hidden />
         </Button>
@@ -294,11 +364,13 @@ export function CockpitSessionPane({
           })}
         >
           <Button
+            ref={transcriptRef}
             unstyled
             type="button"
             onClick={() => setView("transcript")}
             aria-pressed={view === "transcript"}
             data-testid="cockpit-view-transcript"
+            {...transcriptAgentProps}
             title={t("cockpit.session.transcript", {
               defaultValue: "Transcript",
             })}
@@ -311,11 +383,13 @@ export function CockpitSessionPane({
             <ScrollText className="h-4 w-4" aria-hidden />
           </Button>
           <Button
+            ref={terminalRef}
             unstyled
             type="button"
             onClick={() => setView("terminal")}
             aria-pressed={view === "terminal"}
             data-testid="cockpit-view-terminal"
+            {...terminalAgentProps}
             title={t("cockpit.session.watch", {
               defaultValue: "Watch (terminal output)",
             })}
@@ -329,21 +403,11 @@ export function CockpitSessionPane({
           </Button>
         </fieldset>
         {isMobile && detail ? (
-          <Button
-            unstyled
-            type="button"
-            onClick={() => setInspectorOpen((prev) => !prev)}
-            aria-pressed={inspectorOpen}
-            data-testid="cockpit-session-details-toggle"
-            title={t("cockpit.session.details", { defaultValue: "Details" })}
-            className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md transition-colors ${
-              inspectorOpen
-                ? "bg-accent/15 text-accent"
-                : "text-muted hover:bg-bg-hover/40 hover:text-txt"
-            }`}
-          >
-            <PanelRight className="h-4 w-4" aria-hidden />
-          </Button>
+          <CockpitDetailsButton
+            open={inspectorOpen}
+            onToggle={() => setInspectorOpen((prev) => !prev)}
+            label={t("cockpit.session.details", { defaultValue: "Details" })}
+          />
         ) : null}
       </header>
 
