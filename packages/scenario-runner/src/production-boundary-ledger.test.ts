@@ -50,6 +50,8 @@ function identity(
   overrides: Partial<ProductionBoundaryIdentity> = {},
 ): ProductionBoundaryIdentity {
   return {
+    tenantId: "organization-1",
+    runId: "scenario-run-1",
     surface: "connector.dispatch",
     target: "discord:user:owner-1",
     idempotencyKey: "task-1:2026-08-21T12:00:00.000Z",
@@ -200,6 +202,33 @@ describe("production boundary observation ledger", () => {
     expect(calls).toBe(0);
   });
 
+  it("rejects oversized evidence before invoking the production boundary", async () => {
+    const { ledger } = await createLedger();
+    let calls = 0;
+    await expect(
+      observeProductionBoundary({
+        ledger,
+        identity: identity(),
+        payload: { value: "x".repeat(1_048_577) },
+        now: clock("2026-08-21T12:00:00.000Z"),
+        generationFence: generationFence(),
+        invoke: async () => {
+          calls += 1;
+          return { id: "effect" };
+        },
+        classify: () => ({
+          acceptance: "accepted",
+          code: "accepted",
+          retryable: false,
+        }),
+        readback: async () => ({ id: "effect" }),
+        verifyReadback: () => true,
+      }),
+    ).rejects.toMatchObject({ code: "BOUNDARY_EVIDENCE_TOO_COMPLEX" });
+    expect(calls).toBe(0);
+    await expect(ledger.readAll()).resolves.toEqual([]);
+  });
+
   it("records a typed connector call only after matching authoritative readback", async () => {
     const { ledger, path } = await createLedger();
     const { runtime, effects } = runtimeWithReadback();
@@ -225,6 +254,8 @@ describe("production boundary observation ledger", () => {
 
     expect(observation).toMatchObject({
       order: 1,
+      tenantId: "organization-1",
+      runId: "scenario-run-1",
       surface: "connector.dispatch",
       target: "discord:user:owner-1",
       generation: "generation-7",
@@ -433,6 +464,48 @@ describe("production boundary observation ledger", () => {
     expect(calls).toBe(1);
   });
 
+  it("does not deduplicate identical attempts across tenants or runs", async () => {
+    const { ledger } = await createLedger();
+    let calls = 0;
+    const common = {
+      ledger,
+      payload: { text: "payload" },
+      now: clock("2026-08-21T12:00:00.000Z"),
+      generationFence: generationFence(),
+      invoke: async () => ({ id: `effect-${++calls}` }),
+      classify: () => ({
+        acceptance: "accepted" as const,
+        code: "accepted",
+        retryable: false,
+      }),
+      readback: async () => ({ id: `effect-${calls}` }),
+      verifyReadback: (response: { id: string }, readback: { id: string }) =>
+        response.id === readback.id,
+    };
+    const first = await observeProductionBoundary({
+      ...common,
+      identity: identity(),
+    });
+    const otherTenant = await observeProductionBoundary({
+      ...common,
+      identity: identity({ tenantId: "organization-2" }),
+    });
+    const otherRun = await observeProductionBoundary({
+      ...common,
+      identity: identity({ runId: "scenario-run-2" }),
+    });
+
+    expect(
+      new Set([
+        first.observationId,
+        otherTenant.observationId,
+        otherRun.observationId,
+      ]).size,
+    ).toBe(3);
+    expect(calls).toBe(3);
+    expect(await ledger.readAll()).toHaveLength(3);
+  });
+
   it("singleflights concurrent identical attempts through invoke and append", async () => {
     const { ledger } = await createLedger();
     let calls = 0;
@@ -481,6 +554,65 @@ describe("production boundary observation ledger", () => {
     expect(concurrent).toEqual(first);
     expect(calls).toBe(1);
     await expect(ledger.readAll()).resolves.toEqual([first]);
+  });
+
+  it("coordinates concurrent ledger instances that share one file", async () => {
+    const { ledger, path } = await createLedger();
+    const secondLedger = new JsonlBoundaryObservationLedger(path);
+    let calls = 0;
+    let enterInvoke: () => void = () => undefined;
+    const invokeEntered = new Promise<void>((resolve) => {
+      enterInvoke = resolve;
+    });
+    let releaseInvoke: () => void = () => undefined;
+    const invokeReleased = new Promise<void>((resolve) => {
+      releaseInvoke = resolve;
+    });
+    const options = {
+      identity: identity(),
+      payload: { text: "payload" },
+      now: clock("2026-08-21T12:00:00.000Z"),
+      generationFence: generationFence(),
+      invoke: async () => {
+        calls += 1;
+        enterInvoke();
+        await invokeReleased;
+        return { id: "effect" };
+      },
+      classify: () => ({
+        acceptance: "accepted" as const,
+        code: "accepted",
+        retryable: false,
+      }),
+      readback: async () => ({ id: "effect" }),
+      verifyReadback: () => true,
+    };
+    const first = observeProductionBoundary({ ...options, ledger });
+    const duplicate = observeProductionBoundary({
+      ...options,
+      ledger: secondLedger,
+    });
+    await invokeEntered;
+    expect(calls).toBe(1);
+    releaseInvoke();
+    expect(await duplicate).toEqual(await first);
+    expect(calls).toBe(1);
+
+    await Promise.all([
+      observeProductionBoundary({
+        ...options,
+        ledger,
+        identity: identity({ idempotencyKey: "second-effect" }),
+      }),
+      observeProductionBoundary({
+        ...options,
+        ledger: secondLedger,
+        identity: identity({ idempotencyKey: "third-effect" }),
+      }),
+    ]);
+    const records = await ledger.readAll();
+    expect(records).toHaveLength(3);
+    expect(records.map((record) => record.order)).toEqual([1, 2, 3]);
   });
 
   it("reconciles an exact receipt after a post-commit durability error", async () => {
@@ -567,6 +699,80 @@ describe("production boundary observation ledger", () => {
     await expect(
       new JsonlBoundaryObservationLedger(path).readAll(),
     ).rejects.toMatchObject({ code: "BOUNDARY_LEDGER_CORRUPT" });
+  });
+
+  it("rejects duplicate observations and forged retry lineage on restart", async () => {
+    const { ledger, path } = await createLedger();
+    const common = {
+      ledger,
+      payload: { text: "payload" },
+      now: clock("2026-08-21T12:00:00.000Z"),
+      generationFence: generationFence(),
+      invoke: async () => ({ id: "effect" }),
+      classify: () => ({
+        acceptance: "accepted" as const,
+        code: "accepted",
+        retryable: false,
+      }),
+      readback: async () => ({ id: "effect" }),
+      verifyReadback: () => true,
+    };
+    const first = await observeProductionBoundary({
+      ...common,
+      identity: identity(),
+      fault: { kind: "timeout" as const, message: "retry" },
+    });
+    const retry = await observeProductionBoundary({
+      ...common,
+      identity: identity({
+        retry: { attempt: 2, retryOfObservationId: first.observationId },
+      }),
+    });
+
+    const { recordSha256: _duplicateHash, ...duplicateWithoutHash } = {
+      ...first,
+      order: 2,
+      previousRecordSha256: first.recordSha256,
+    };
+    const duplicate = {
+      ...duplicateWithoutHash,
+      recordSha256: canonicalSha256(
+        duplicateWithoutHash,
+        "boundaryObservationRecord",
+      ),
+    };
+    await writeFile(
+      path,
+      `${JSON.stringify(first)}\n${JSON.stringify(duplicate)}\n`,
+      "utf8",
+    );
+    await expect(
+      new JsonlBoundaryObservationLedger(path).readAll(),
+    ).rejects.toMatchObject({
+      code: "BOUNDARY_LEDGER_CORRUPT",
+    });
+
+    const { recordSha256: _retryHash, ...forgedRetryWithoutHash } = {
+      ...retry,
+      retryOfObservationId: "0".repeat(64),
+    };
+    const forgedRetry = {
+      ...forgedRetryWithoutHash,
+      recordSha256: canonicalSha256(
+        forgedRetryWithoutHash,
+        "boundaryObservationRecord",
+      ),
+    };
+    await writeFile(
+      path,
+      `${JSON.stringify(first)}\n${JSON.stringify(forgedRetry)}\n`,
+      "utf8",
+    );
+    await expect(
+      new JsonlBoundaryObservationLedger(path).readAll(),
+    ).rejects.toMatchObject({
+      code: "BOUNDARY_LEDGER_CORRUPT",
+    });
   });
 
   it("documents that an unsealed chain cannot detect full rewrites or tail deletion", async () => {
