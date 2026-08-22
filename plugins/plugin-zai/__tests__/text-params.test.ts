@@ -62,6 +62,34 @@ describe("z.ai text parameter resolution", () => {
     );
   });
 
+  it("maps the public maxTokens and cancellation signal to AI SDK v7 parameters", async () => {
+    const runtime = {
+      character: {},
+      getSetting(key: string) {
+        if (key === "ZAI_API_KEY") return "test-key";
+        return undefined;
+      },
+    };
+    const controller = new AbortController();
+    const { handleTextSmall } = await import("../models/text");
+
+    await expect(
+      handleTextSmall(runtime as never, {
+        prompt: "hello",
+        maxTokens: 37,
+        signal: controller.signal,
+      })
+    ).resolves.toBe("ok");
+
+    expect(generateTextMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        maxOutputTokens: 37,
+        abortSignal: controller.signal,
+      })
+    );
+    expect(generateTextMock.mock.calls[0]?.[0]).not.toHaveProperty("maxTokens");
+  });
+
   it("honors a per-call model override before z.ai slot defaults", async () => {
     const runtime = {
       character: {},

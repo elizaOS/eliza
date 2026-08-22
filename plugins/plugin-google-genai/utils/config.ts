@@ -44,6 +44,47 @@ export function getApiKey(runtime: IAgentRuntime): string | undefined {
   return getSetting(runtime, "GOOGLE_GENERATIVE_AI_API_KEY");
 }
 
+/** Optional full API origin used by local protocol mocks and private compatible gateways. */
+export function getGoogleGenAIBaseURL(
+  runtime: IAgentRuntime,
+): string | undefined {
+  const value = getSetting(runtime, "GOOGLE_GENERATIVE_AI_BASE_URL");
+  if (!value) return undefined;
+  let parsed: URL;
+  try {
+    parsed = new URL(value);
+  } catch (error) {
+    throw new Error(
+      "GOOGLE_GENERATIVE_AI_BASE_URL must be an absolute HTTP(S) URL",
+      {
+        cause: error,
+      },
+    );
+  }
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    throw new Error("GOOGLE_GENERATIVE_AI_BASE_URL must use HTTP or HTTPS");
+  }
+  if (parsed.username || parsed.password) {
+    throw new Error(
+      "GOOGLE_GENERATIVE_AI_BASE_URL must not contain URL credentials",
+    );
+  }
+  if (parsed.search || parsed.hash) {
+    throw new Error(
+      "GOOGLE_GENERATIVE_AI_BASE_URL must not contain a query or fragment",
+    );
+  }
+  const isLiteralLoopback =
+    parsed.hostname === "127.0.0.1" || parsed.hostname === "[::1]";
+  if (parsed.protocol === "http:" && !isLiteralLoopback) {
+    throw new Error(
+      "GOOGLE_GENERATIVE_AI_BASE_URL must use HTTPS unless the host is literal loopback (127.0.0.1 or ::1)",
+    );
+  }
+  const normalizedPath = parsed.pathname.replace(/\/+$/, "");
+  return `${parsed.origin}${normalizedPath === "/" ? "" : normalizedPath}`;
+}
+
 export function getSmallModel(runtime: IAgentRuntime): string {
   return (
     getSetting(runtime, "GOOGLE_SMALL_MODEL") ??
@@ -179,7 +220,11 @@ export function createGoogleGenAI(runtime: IAgentRuntime): GoogleGenAI | null {
     return null;
   }
 
-  return new GoogleGenAI({ apiKey });
+  const baseUrl = getGoogleGenAIBaseURL(runtime);
+  return new GoogleGenAI({
+    apiKey,
+    ...(baseUrl ? { httpOptions: { baseUrl } } : {}),
+  });
 }
 
 export function getSafetySettings() {

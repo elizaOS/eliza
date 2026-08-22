@@ -98,6 +98,12 @@
         "required": true,
         "sensitive": true
       },
+      "GOOGLE_GENERATIVE_AI_BASE_URL": {
+        "type": "string",
+        "description": "Optional Google Generative Language API origin for a private compatible gateway or deterministic local protocol mock. HTTPS is required except for literal loopback.",
+        "required": false,
+        "sensitive": false
+      },
       "GOOGLE_EMBEDDING_MODEL": {
         "type": "string",
         "description": "Overrides the default text embedding model used by Google Generative AI.",

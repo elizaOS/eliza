@@ -8,6 +8,7 @@
     ".": "./src/index.ts",
     "./hetzner": "./src/hetzner/index.ts",
     "./control-plane": "./src/control-plane/index.ts",
+    "./model-provider": "./src/model-provider/index.ts",
     "./steward": "./src/steward/index.ts",
     "./provider-contract": "./src/provider-contract/index.ts"
   },

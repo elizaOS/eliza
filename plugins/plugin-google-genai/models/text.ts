@@ -520,6 +520,7 @@ function buildGoogleGenerationConfig(
           responseJsonSchema,
         }
       : {}),
+    ...(params.signal ? { abortSignal: params.signal } : {}),
   };
 
   return baseConfig as NonNullable<GenerateContentParams["config"]>;

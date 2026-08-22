@@ -122,6 +122,14 @@ function extractText(
   );
 }
 
+function extractSignal(
+  params: TextEmbeddingParams | string | null,
+): AbortSignal | undefined {
+  return typeof params === "object" && params !== null
+    ? params.signal
+    : undefined;
+}
+
 async function providerTokenCount(
   genAI: GoogleGenAI,
   model: string,
@@ -202,6 +210,7 @@ export async function handleTextEmbedding(
   runtime: IAgentRuntime,
   params: TextEmbeddingParams | string | null,
 ): Promise<number[]> {
+  const signal = extractSignal(params);
   if (params === null) {
     return createInitProbeVector();
   }
@@ -241,7 +250,10 @@ export async function handleTextEmbedding(
       // written matches the pgvector column the runtime sized from the probe.
       // Without this, `gemini-embedding-001` returns its 3072-dim default and
       // every write fails against the 768-wide column (#22010).
-      config: { outputDimensionality: EMBEDDING_DIMENSIONS },
+      config: {
+        outputDimensionality: EMBEDDING_DIMENSIONS,
+        ...(signal ? { abortSignal: signal } : {}),
+      },
     });
 
     // The provider billed this call when it returned. Reuse the exact token

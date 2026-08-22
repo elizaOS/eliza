@@ -2,6 +2,24 @@
 
 Stateful, in-process mocks of third-party cloud APIs used by Eliza Cloud. Designed for use in unit / integration tests and local development without hitting real provider APIs.
 
+## Model-provider protocol mock
+
+`@elizaos/cloud-test-mocks/model-provider` starts one resettable loopback server
+with provider-specific base URLs for configured OpenAI-compatible embeddings,
+Google Generative Language, Ollama/zerollama, and z.ai. Production handlers and
+SDK clients serialize the requests; the mock validates the provider wire,
+returns deterministic seeded responses or queued faults, redacts credentials
+from its typed request ledger, and exposes authoritative readback of observed
+calls and Ollama model state. It is a standalone protocol fixture, not a second
+synthetic-world authority; shared cross-process generation/reset orchestration
+remains owned by #24078.
+
+Every request captures the store generation before executing a queued delay.
+Reset fences old requests from applying mutations or entering the current
+observation ledger; stale completions are returned as HTTP 409 and retained in
+the separately generation-tagged `staleObservations` audit. Delay faults also
+stop on request cancellation.
+
 ## Managed provider contract harness
 
 `@elizaos/cloud-test-mocks/provider-contract` provides a reusable real-HTTP

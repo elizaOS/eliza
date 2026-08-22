@@ -16,6 +16,14 @@
       "advanced": false,
       "autoEnableProvider": true
     },
+    "GOOGLE_GENERATIVE_AI_BASE_URL": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Generative AI Base URL",
+      "help": "Optional API origin for a private compatible gateway or deterministic local protocol mock. HTTPS is required except for literal loopback.",
+      "advanced": true
+    },
     "GOOGLE_API_KEY": {
       "type": "secret",
       "required": false,

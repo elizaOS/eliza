@@ -68,6 +68,7 @@ Settings are read first from `runtime.getSetting(key)`, then from `process.env`.
 | Env var | Required | Default | Notes |
 |---|---|---|---|
 | `GOOGLE_GENERATIVE_AI_API_KEY` | Yes | — | The only key `getApiKey` reads. `GOOGLE_API_KEY` and `GEMINI_API_KEY` trigger auto-enable (`auto-enable.ts`) but are not read as the API key. |
+| `GOOGLE_GENERATIVE_AI_BASE_URL` | No | Google Generative Language API | Optional API origin for a private compatible gateway or deterministic local protocol mock. HTTPS is required except for literal `127.0.0.1`/`::1`; URL credentials, query, and fragment are rejected. The production `GoogleGenAI` client still owns request serialization and response parsing. |
 | `GOOGLE_NANO_MODEL` / `NANO_MODEL` | No | falls back to small | |
 | `GOOGLE_SMALL_MODEL` / `SMALL_MODEL` | No | `gemini-2.0-flash-001` | |
 | `GOOGLE_MEDIUM_MODEL` / `MEDIUM_MODEL` | No | falls back to small | |

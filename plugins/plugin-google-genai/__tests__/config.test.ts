@@ -39,6 +39,7 @@ import {
   getApiKey,
   getEmbeddingInputTokenLimit,
   getEmbeddingModel,
+  getGoogleGenAIBaseURL,
   getLargeModel,
   getResponseHandlerModel,
   getSmallModel,
@@ -127,6 +128,80 @@ describe("Google GenAI config", () => {
 
     expect(mocks.googleGenAI).toHaveBeenCalledWith({ apiKey: "test-key" });
   });
+
+  it("wires a literal-loopback HTTP override into the production SDK", () => {
+    const runtime = runtimeWith({
+      GOOGLE_GENERATIVE_AI_API_KEY: "test-key",
+      GOOGLE_GENERATIVE_AI_BASE_URL: " http://127.0.0.1:4567/google/ ",
+    });
+
+    expect(getGoogleGenAIBaseURL(runtime)).toBe("http://127.0.0.1:4567/google");
+    createGoogleGenAI(runtime);
+    expect(mocks.googleGenAI).toHaveBeenCalledWith({
+      apiKey: "test-key",
+      httpOptions: { baseUrl: "http://127.0.0.1:4567/google" },
+    });
+  });
+
+  it("allows HTTPS and literal IPv4/IPv6 loopback while normalizing trailing path slashes", () => {
+    expect(
+      getGoogleGenAIBaseURL(
+        runtimeWith({
+          GOOGLE_GENERATIVE_AI_BASE_URL:
+            "https://gateway.example.test/google///",
+        }),
+      ),
+    ).toBe("https://gateway.example.test/google");
+    expect(
+      getGoogleGenAIBaseURL(
+        runtimeWith({
+          GOOGLE_GENERATIVE_AI_BASE_URL: "http://127.0.0.1:4567/google/",
+        }),
+      ),
+    ).toBe("http://127.0.0.1:4567/google");
+    expect(
+      getGoogleGenAIBaseURL(
+        runtimeWith({
+          GOOGLE_GENERATIVE_AI_BASE_URL: "http://[::1]:4567/google/",
+        }),
+      ),
+    ).toBe("http://[::1]:4567/google");
+  });
+
+  it.each([
+    ["remote cleartext", "http://api.example.test/google", /must use HTTPS/],
+    ["localhost DNS", "http://localhost:4567/google", /must use HTTPS/],
+    [
+      "embedded username",
+      "https://user@gateway.example.test/google",
+      /credentials/,
+    ],
+    [
+      "embedded password",
+      "https://user:pass@gateway.example.test/google",
+      /credentials/,
+    ],
+    [
+      "query",
+      "https://gateway.example.test/google?key=value",
+      /query or fragment/,
+    ],
+    [
+      "fragment",
+      "https://gateway.example.test/google#route",
+      /query or fragment/,
+    ],
+    ["unsafe scheme", "file:///tmp/not-an-api", /HTTP or HTTPS/],
+  ])(
+    "rejects %s base URLs before creating a credentialed client",
+    (_label, baseURL, pattern) => {
+      expect(() =>
+        getGoogleGenAIBaseURL(
+          runtimeWith({ GOOGLE_GENERATIVE_AI_BASE_URL: baseURL }),
+        ),
+      ).toThrow(pattern);
+    },
+  );
 
   it("defaults the embedding model to a v1beta-valid id, not the 404-ing text-embedding-004", () => {
     // Regression: the historical default text-embedding-004 404s on the current

@@ -144,7 +144,8 @@ async function generateTextWithModel(
     presencePenalty: resolved.presencePenalty,
     experimental_telemetry: telemetryConfig,
     topP: resolved.topP,
-    ...(typeof resolved.maxTokens === "number" ? { maxTokens: resolved.maxTokens } : {}),
+    ...(typeof resolved.maxTokens === "number" ? { maxOutputTokens: resolved.maxTokens } : {}),
+    ...(params.signal ? { abortSignal: params.signal } : {}),
   };
 
   const { text, usage, finishReason } = await generateText(

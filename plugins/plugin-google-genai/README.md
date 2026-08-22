@@ -37,6 +37,7 @@ Or register it explicitly in your agent character file:
 | Environment variable | Required | Default | Description |
 |---|---|---|---|
 | `GOOGLE_GENERATIVE_AI_API_KEY` | Yes | — | API key from [Google AI Studio](https://aistudio.google.com/) |
+| `GOOGLE_GENERATIVE_AI_BASE_URL` | No | Google Generative Language API | Optional API origin for a private compatible gateway or local protocol mock. HTTPS is required except for literal `127.0.0.1`/`::1`; embedded credentials, query, and fragment are rejected. |
 | `GOOGLE_SMALL_MODEL` | No | `gemini-2.0-flash-001` | Small/fast text model |
 | `GOOGLE_LARGE_MODEL` | No | `gemini-2.5-pro-preview-03-25` | Large/capable text model |
 | `GOOGLE_NANO_MODEL` | No | falls back to small | Nano text model |

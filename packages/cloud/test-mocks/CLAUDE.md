@@ -25,6 +25,13 @@ exits.
   `Job`/`JobStatus`/`JobType`/`Sandbox`/`SandboxStatus` types.
 - `src/steward/` (export `./steward`) — stateful loopback mock for authenticated
   Steward platform-user deactivation and deletion calls used by account lifecycle E2E.
+- `src/model-provider/` (export `./model-provider`) — resettable real-HTTP
+  configured-embedding, Google Generative Language, Ollama/zerollama, and z.ai
+  protocol slices. Tests point the production raw-fetch/SDK clients at its
+  provider-specific base URLs. The store exposes only sanitized observations
+  and authoritative model/readback state; it is not a world authority. Request
+  admission is generation-fenced: reset prevents delayed old work from mutating
+  or entering current observations and reports it separately as stale.
 - `src/fetch-server.ts` — shared `startFetchServer(fetch, opts)`; uses
   `Bun.serve` when running under Bun, falls back to a `node:http` adapter
   otherwise.
