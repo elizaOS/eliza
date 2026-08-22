@@ -3388,12 +3388,24 @@ async function runSpawnAgent(
     // repo is requested, provision the workspace clone here and bind to it.
     let provisionedRepo: string | undefined;
     let provisionedWorkspaceId: string | undefined;
-    const requestedRepo = await resolveRequestedRepo(
+    let requestedRepo = await resolveRequestedRepo(
       runtime,
       params as Record<string, unknown>,
       [task, requestText(message)],
       requestText(message),
     );
+    // Same rule as the create path: a repo that re-spells the matched route
+    // is the route — use its checkout, never clone (live 2026-08-22).
+    if (
+      requestedRepo &&
+      effectiveRoute &&
+      repoNamesRoute(requestedRepo, effectiveRoute)
+    ) {
+      logger(runtime).warn(
+        `[TASKS:spawn_agent] planner repo ${requestedRepo} names the matched route ${effectiveRoute.id}; using its workdir instead of cloning`,
+      );
+      requestedRepo = undefined;
+    }
     if (requestedRepo && effectiveRoute) {
       logger(runtime).info(
         `[TASKS:spawn_agent] explicit repo ${requestedRepo} outranks route ${effectiveRoute.id ?? effectiveRoute.workdir}; provisioning a clone`,
