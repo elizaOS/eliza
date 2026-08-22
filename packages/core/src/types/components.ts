@@ -990,11 +990,10 @@ export interface ActionResult {
 	data?: ProviderDataRecord;
 
 	/**
-	 * Optional model-bound projection of `data`. When present, prompt renderers
-	 * use only this object and never additionally serialize `data`. Exact source
-	 * pages remain in `text`; progressive readers put model-safe `ReadView`
-	 * metadata here and keep native locators and complete bodies out of both
-	 * prompt projections and trajectories.
+	 * Optional supplemental model-bound metadata. Prompt renderers serialize this
+	 * alongside `data`; it never replaces the complete action result. Progressive
+	 * readers can attach `ReadView` continuation metadata here while final request
+	 * preparation explicitly rejects unsupported complete payload sizes.
 	 */
 	promptData?: ProviderDataRecord;
 

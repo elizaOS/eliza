@@ -1,6 +1,6 @@
 /**
  * Renders completed planner trajectory steps into native assistant/tool chat
- * message pairs and projects a tool result to plain text for the next planner
+ * message pairs and serializes complete tool results for the next planner
  * call, shaping everything append-only so the prompt prefix stays byte-stable
  * for provider prompt caching. Also re-exports the provider cache-plan helpers.
  */
@@ -51,8 +51,8 @@ export interface RenderedActionResultsForModel {
 }
 
 /**
- * Render legacy ActionResults through the same promptData-over-data and
- * recoverable-page projection used by native tool messages. This is the
+ * Render legacy ActionResults through the same complete data and supplemental
+ * promptData representation used by native tool messages. This is the
  * migration bridge for prompt builders that cannot yet carry structured tool
  * messages; non-model display code should keep using its display formatter.
  */
@@ -82,7 +82,8 @@ export function renderActionResultsForModel(
 			redactText,
 		) as PlannerToolResult;
 		if (
-			hasRecoverableContentLocator(safeResult.promptData ?? safeResult.data)
+			hasRecoverableContentLocator(safeResult.promptData) ||
+			hasRecoverableContentLocator(safeResult.data)
 		) {
 			pagesIncluded++;
 		}
@@ -142,7 +143,7 @@ export function trajectoryStepsToMessages(
 		const toolCallId = stableToolCallId(step, safeArgs);
 
 		const assistantContent: ChatMessageContentPart[] = [];
-		const thought = redactText((step.thought ?? "").trim());
+		const thought = redactText(step.thought ?? "");
 		if (thought) {
 			assistantContent.push({ type: "text", text: thought });
 		}
@@ -162,7 +163,8 @@ export function trajectoryStepsToMessages(
 			redactText,
 		) as PlannerToolResult;
 		if (
-			hasRecoverableContentLocator(safeResult.promptData ?? safeResult.data)
+			hasRecoverableContentLocator(safeResult.promptData) ||
+			hasRecoverableContentLocator(safeResult.data)
 		) {
 			pagesIncluded++;
 		}
@@ -216,37 +218,32 @@ function shortArgsDigest(params: Record<string, unknown> | undefined): string {
 	return (hash >>> 0).toString(16).padStart(8, "0").slice(0, 8);
 }
 
-/** Serialize one validated, non-duplicating tool-result projection. */
+/** Serialize one validated complete tool result. */
 export function toolMessageContent(result: PlannerToolResult): string {
 	return stringifyForModel(projectToolResultForModel(result));
 }
 
 function hasRecoverableContentLocator(value: unknown): boolean {
-	const pending: Array<{ value: unknown; depth: number }> = [
-		{ value, depth: 0 },
-	];
-	let visited = 0;
-	while (pending.length > 0 && visited < 100) {
+	const pending: unknown[] = [value];
+	const visited = new WeakSet<object>();
+	while (pending.length > 0) {
 		const current = pending.pop();
 		if (!current) break;
-		visited++;
-		if (isReadView(current.value)) {
+		if (isReadView(current)) {
 			return true;
 		}
-		if (
-			current.depth >= 4 ||
-			current.value === null ||
-			typeof current.value !== "object"
-		) {
+		if (current === null || typeof current !== "object") {
 			continue;
 		}
+		if (visited.has(current)) continue;
+		visited.add(current);
 		let children: unknown[];
-		if (Array.isArray(current.value)) {
-			children = current.value;
+		if (Array.isArray(current)) {
+			children = current;
 		} else {
 			children = [];
 			for (const [key, child] of Object.entries(
-				current.value as Record<string, unknown>,
+				current as Record<string, unknown>,
 			)) {
 				if (key === "readView") {
 					if (isReadView(child)) return true;
@@ -256,26 +253,21 @@ function hasRecoverableContentLocator(value: unknown): boolean {
 			}
 		}
 		for (const child of children) {
-			pending.push({ value: child, depth: current.depth + 1 });
+			pending.push(child);
 		}
 	}
 	return false;
 }
 
 /**
- * Produce the sole model-bound shape for a tool result. `promptData` is an
- * explicit replacement for `data`, never an additional payload. This serializer
- * preserves the complete model-facing result; final request preparation rejects
- * unsupported sizes instead of deleting fields.
+ * Produce the sole model-bound shape for a tool result. `promptData` is
+ * supplemental metadata and never replaces `data`; final request preparation
+ * rejects unsupported sizes instead of deleting fields.
  */
 export function projectToolResultForModel(
 	result: PlannerToolResult,
 ): PlannerToolResult {
-	const projected = { ...result };
-	if (result.promptData !== undefined) {
-		delete projected.data;
-	}
-	return projected;
+	return { ...result };
 }
 
 export function cacheProviderOptions(
