@@ -183,19 +183,28 @@ function resolveStaticExpression(expression, context, resolving = new Set()) {
     ts.isIdentifier(value.expression)
   ) {
     const declaration = context.functions.get(value.expression.text);
-    const returns = declaration?.body?.statements.filter((statement) =>
+    const statements = declaration?.body?.statements;
+    const returns = statements?.filter((statement) =>
       ts.isReturnStatement(statement),
     );
-    if (returns?.length === 1 && returns[0].expression) {
+    const returned =
+      returns?.length === 1 && returns[0].expression
+        ? unwrap(returns[0].expression)
+        : null;
+    const hasExecutableStatement = statements?.some(
+      (statement) =>
+        statement !== returns?.[0] && !ts.isVariableStatement(statement),
+    );
+    if (
+      returned &&
+      ts.isObjectLiteralExpression(returned) &&
+      !hasExecutableStatement
+    ) {
       const key = `${context.source}:function:${value.expression.text}`;
       if (resolving.has(key)) {
         throw new Error(`[plugin-view-inventory] cyclic static value ${key}`);
       }
-      return resolveStaticExpression(
-        returns[0].expression,
-        context,
-        new Set(resolving).add(key),
-      );
+      return { value: returned, context };
     }
   }
   if (!ts.isIdentifier(value)) return { value, context };

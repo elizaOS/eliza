@@ -401,6 +401,49 @@ export const factoryPlugin: Plugin = createPlugin();\n`,
     ]);
   });
 
+  test("rejects a factory that mutates and returns a declared manifest", () => {
+    const root = makeRoot();
+    const source = addPluginSource(
+      root,
+      "plugin-mutating-factory",
+      `const manifest = {
+  name: "factory",
+  description: "fixture",
+  views: [${view("pre-mutation")}],
+};
+function createPlugin(): Plugin {
+  manifest.views = [${view("runtime")}];
+  return manifest;
+}
+export const factoryPlugin: Plugin = createPlugin();\n`,
+    );
+
+    expect(() => discover(root, [source])).toThrow(
+      /exported Plugin factoryPlugin must resolve statically to an object literal/,
+    );
+  });
+
+  test("rejects an otherwise static factory with an executable statement", () => {
+    const root = makeRoot();
+    const source = addPluginSource(
+      root,
+      "plugin-side-effect-factory",
+      `function createPlugin(): Plugin {
+  observeFactoryExecution();
+  return {
+    name: "factory",
+    description: "fixture",
+    views: [${view("runtime")}],
+  };
+}
+export const factoryPlugin: Plugin = createPlugin();\n`,
+    );
+
+    expect(() => discover(root, [source])).toThrow(
+      /exported Plugin factoryPlugin must resolve statically to an object literal/,
+    );
+  });
+
   test("rejects plugin composition that could hide runtime views", () => {
     const root = makeRoot();
     const source = addPluginSource(
