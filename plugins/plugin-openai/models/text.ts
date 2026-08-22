@@ -331,10 +331,15 @@ function normalizeCerebrasModelId(modelName: string): string {
     .replace(/:(?!free$).+$/, "");
 }
 
-function isCerebrasReasoningModel(modelName: string | undefined): boolean {
+function _isCerebrasReasoningModel(modelName: string | undefined): boolean {
   if (!modelName) return false;
   const id = normalizeCerebrasModelId(modelName);
-  return id === "gpt-oss-120b" || id === "zai-glm-4.7";
+  // gemma-4-31b accepts reasoning_effort but does NOT reason unless the field
+  // is sent — and `"low"` is not bounded for it: hidden reasoning consumes the
+  // entire completion budget on small-capped calls (max_tokens 128 →
+  // finish_reason "length", content null; verified live 2026-08-20). Its
+  // correct default is explicit `"none"`, mapped per-model below.
+  return id === "gpt-oss-120b" || id === "zai-glm-4.7" || id === "gemma-4-31b";
 }
 
 function isOpenCodeGoEndpoint(value: string | undefined): boolean {
@@ -377,6 +382,7 @@ function resolveThinkingOffReasoningEffort(
   if (isCerebrasMode(runtime)) {
     if (cerebrasId === "gpt-oss-120b") return "low";
     if (cerebrasId === "zai-glm-4.7") return "none";
+    if (cerebrasId === "gemma-4-31b") return "none";
   }
 
   const exactModelId = modelName.trim().toLowerCase();
@@ -384,10 +390,26 @@ function resolveThinkingOffReasoningEffort(
   return undefined;
 }
 
+/**
+ * Per-model Cerebras reasoning default. `"low"` bounds the models whose hidden
+ * reasoning must be capped but still helps quality; gemma-4-31b gets `"none"`
+ * because any non-none effort can spend the whole completion budget on hidden
+ * reasoning and return empty content on small-capped calls (live 2026-08-20).
+ */
+function resolveCerebrasDefaultReasoningEffort(
+  modelName: string | undefined
+): ReasoningEffort | "none" | undefined {
+  if (!modelName) return undefined;
+  const id = normalizeCerebrasModelId(modelName);
+  if (id === "gpt-oss-120b" || id === "zai-glm-4.7") return "low";
+  if (id === "gemma-4-31b") return "none";
+  return undefined;
+}
+
 function resolveReasoningEffort(
   runtime: IAgentRuntime,
   modelName?: string
-): ReasoningEffort | undefined {
+): ReasoningEffort | "none" | undefined {
   const raw = runtime.getSetting("OPENAI_REASONING_EFFORT");
   const normalized = typeof raw === "string" ? raw.trim().toLowerCase() : "";
   if (normalized) {
@@ -399,11 +421,11 @@ function resolveReasoningEffort(
     );
   }
   // The exact provider contract gates this default: family lookalikes may
-  // reject the field, while both supported reasoning models need a bounded
-  // budget so visible content survives a capped response. An explicit valid
-  // value above wins over this default.
-  if (isCerebrasMode(runtime) && isCerebrasReasoningModel(modelName)) {
-    return "low";
+  // reject the field, and the right bound is per-model — "low" caps hidden
+  // reasoning for gpt-oss/zai, while gemma-4-31b needs "none" outright. An
+  // explicit valid value above wins over this default.
+  if (isCerebrasMode(runtime)) {
+    return resolveCerebrasDefaultReasoningEffort(modelName);
   }
   return undefined;
 }
@@ -809,8 +831,15 @@ function normalizeNativeToolsForCall(
     }
 
     toolSet[registeredName] = {
-      ...(description ? { description } : {}),
-      inputSchema: jsonSchema(inputSchema as JSONSchema7),
+      // Caller-controlled strings are sanitized HERE, before the AI SDK
+      // jsonSchema() wrapper: the wrapper exposes `jsonSchema` as a lazy
+      // enumerable accessor which the strict deep sanitizer rejects fatally,
+      // so the assembled ToolSet must never be deep-walked afterwards (every
+      // child RESPONSE_HANDLER call died on it, live 2026-08-21).
+      ...(description
+        ? { description: deepToWellFormedUnicode(description) }
+        : {}),
+      inputSchema: jsonSchema(deepToWellFormedUnicode(inputSchema) as JSONSchema7),
       ...(options.cerebrasMode
         ? { strict: cerebrasRequestStrict }
         : strict === undefined
@@ -2351,11 +2380,19 @@ async function generateTextByModelType(
   // on ("lone leading surrogate in hex escape", wrong_api_format — #18025),
   // so EVERY outgoing string — including tool descriptions/schemas, output
   // schemas, and provider options — is forced to well-formed Unicode here.
-  const sanitizedTools = normalizedTools ? deepToWellFormedUnicode(normalizedTools) : undefined;
+  // Already sanitized pre-wrap inside normalizeNativeToolsForCall — the
+  // jsonSchema() wrapper's lazy accessor makes the assembled set unwalkable.
+  const sanitizedTools = normalizedTools;
   const sanitizedToolChoice = normalizedToolChoice
     ? deepToWellFormedUnicode(normalizedToolChoice)
     : undefined;
-  const sanitizedOutput = requestedOutput ? deepToWellFormedUnicode(requestedOutput) : undefined;
+  // NOT deep-sanitized: the AI SDK's Output wrapper exposes `jsonSchema` as a
+  // lazy accessor, which the strict walk rejects fatally — and every child
+  // RESPONSE_HANDLER call with responseFormat json_object died on it (live
+  // 2026-08-21). Caller-controlled strings were already sanitized BEFORE
+  // wrapping (sanitizedResponseSchema above); bare Output.json() carries no
+  // caller data at all, so skipping the walk loses nothing.
+  const sanitizedOutput = requestedOutput;
   const sanitizedProviderOptions = providerOptions
     ? (deepToWellFormedUnicode(providerOptions) as NativeProviderOptions)
     : undefined;
