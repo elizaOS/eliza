@@ -74,6 +74,8 @@ const CODING_BACKENDS = [
   "claude",
   "codex",
   "opencode",
+  "kimi",
+  "grok",
 ] as const;
 const CODING_BACKEND_ALIASES: Record<string, string> = {
   "eliza-os": "elizaos",
@@ -83,6 +85,8 @@ const CODING_BACKEND_ALIASES: Record<string, string> = {
   "claude-code": "claude",
   openai: "codex",
   "openai-codex": "codex",
+  "kimi-code": "kimi",
+  "grok-build": "grok",
 };
 const DIFFICULTY_TAGS = ["simple", "moderate", "hard"] as const;
 const BRAIN_MODEL_KEYS = [
@@ -625,14 +629,66 @@ function handleShowBackends(runtime: IAgentRuntime): ActionResult {
       `- coding allowed (lock-list): ${coding.allow.join(", ")}`,
     );
   }
+  const selectedBackend =
+    normalizeCodingBackend(coding.default) ??
+    normalizeCodingBackend(policyValue("ELIZA_DEFAULT_AGENT_TYPE")) ??
+    null;
+  const modelKeys: Record<string, { powerful: string; fast: string }> = {
+    codex: {
+      powerful: "ELIZA_CODEX_MODEL_POWERFUL",
+      fast: "ELIZA_CODEX_MODEL_FAST",
+    },
+    claude: {
+      powerful: "ELIZA_CLAUDE_MODEL_POWERFUL",
+      fast: "ELIZA_CLAUDE_MODEL_FAST",
+    },
+    opencode: {
+      powerful: "ELIZA_OPENCODE_MODEL_POWERFUL",
+      fast: "ELIZA_OPENCODE_MODEL_FAST",
+    },
+    kimi: {
+      powerful: "ELIZA_KIMI_MODEL_POWERFUL",
+      fast: "ELIZA_KIMI_MODEL_FAST",
+    },
+    grok: {
+      powerful: "ELIZA_GROK_MODEL_POWERFUL",
+      fast: "ELIZA_GROK_MODEL_FAST",
+    },
+    elizaos: {
+      powerful: "ELIZA_ELIZAOS_MODEL_POWERFUL",
+      fast: "ELIZA_ELIZAOS_MODEL_FAST",
+    },
+  };
+  const selectedKeys = selectedBackend ? modelKeys[selectedBackend] : undefined;
+  const fallbackBackends = (policyValue("ELIZA_CODING_FALLBACK_BACKENDS") ?? "")
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean);
+  const accountIds = (policyValue("ELIZA_CODING_ACCOUNT_IDS") ?? "")
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean);
+  const policy = {
+    backend: selectedBackend,
+    powerfulModel: selectedKeys ? policyValue(selectedKeys.powerful) : null,
+    fastModel: selectedKeys ? policyValue(selectedKeys.fast) : null,
+    fallbackBackends,
+    approvalPreset: policyValue("ELIZA_DEFAULT_APPROVAL_PRESET") ?? "standard",
+    accountProvider: policyValue("ELIZA_CODING_ACCOUNT_PROVIDER"),
+    accountStrategy:
+      policyValue("ELIZA_CODING_ACCOUNT_STRATEGY") ?? "least-used",
+    accountIds,
+    billingMode: policyValue("ELIZA_CODING_BILLING_MODE") ?? "automatic",
+  };
   codingLines.push(
-    `- powerful model: ${policyValue("ELIZA_CODEX_MODEL_POWERFUL") ?? policyValue("ELIZA_CLAUDE_MODEL_POWERFUL") ?? policyValue("ELIZA_OPENCODE_MODEL_POWERFUL") ?? policyValue("ELIZA_ELIZAOS_MODEL_POWERFUL") ?? "(backend default)"}`,
-    `- fast model: ${policyValue("ELIZA_CODEX_MODEL_FAST") ?? policyValue("ELIZA_CLAUDE_MODEL_FAST") ?? policyValue("ELIZA_OPENCODE_MODEL_FAST") ?? policyValue("ELIZA_ELIZAOS_MODEL_FAST") ?? "(backend default)"}`,
-    `- fallback order: ${policyValue("ELIZA_CODING_FALLBACK_BACKENDS") ?? "(none)"}`,
-    `- approval: ${policyValue("ELIZA_DEFAULT_APPROVAL_PRESET") ?? "standard"}`,
-    `- account provider: ${policyValue("ELIZA_CODING_ACCOUNT_PROVIDER") ?? "(backend managed)"}`,
-    `- account selection: ${policyValue("ELIZA_CODING_ACCOUNT_STRATEGY") ?? "least-used"}`,
-    `- billing: ${policyValue("ELIZA_CODING_BILLING_MODE") ?? "automatic"}`,
+    `- powerful model: ${policy.powerfulModel ?? "(backend default)"}`,
+    `- fast model: ${policy.fastModel ?? "(backend default)"}`,
+    `- fallback order: ${fallbackBackends.join(",") || "(none)"}`,
+    `- approval: ${policy.approvalPreset}`,
+    `- account provider: ${policy.accountProvider ?? "(backend managed)"}`,
+    `- account selection: ${policy.accountStrategy}`,
+    `- account records: ${accountIds.join(",") || "(backend managed)"}`,
+    `- billing: ${policy.billingMode}`,
   );
   const text = [
     "Current backend routing:",
@@ -642,6 +698,7 @@ function handleShowBackends(runtime: IAgentRuntime): ActionResult {
   return ok(text, {
     op: "show_backends",
     coding,
+    policy,
     brain,
   });
 }
@@ -958,7 +1015,7 @@ export const settingsAction: Action = {
     {
       name: "backend",
       description:
-        "[set_backend] The backend to route to. For coding: elizaos, pi-agent, claude, codex, or opencode. For brain: a loaded provider id (e.g. anthropic, openai, cerebras).",
+        "[set_backend] The backend to route to. For coding: elizaos, pi-agent, claude, codex, opencode, kimi, or grok. Kimi and Grok subscription sessions require an attended user. For brain: a loaded provider id (e.g. anthropic, openai, cerebras).",
       required: false,
       schema: { type: "string" as const },
     },

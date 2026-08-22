@@ -55,4 +55,24 @@ describe("buildCodingPolicyMetadata", () => {
       }).expectedBillingMode,
     ).toBe("automatic");
   });
+
+  it.each([
+    ["kimi", "kimi-cli-oauth"],
+    ["grok", "grok-build-oauth"],
+  ])("stamps the pinned native OAuth source for %s", (backend, provider) => {
+    expect(
+      buildCodingPolicyMetadata({
+        backend,
+        account: null,
+        approvalPreset: "standard",
+        readSetting: () => undefined,
+      }),
+    ).toMatchObject({
+      provider,
+      accountId: null,
+      observedCredentialSource: "external-cli-oauth",
+      actualBillingMode: null,
+      billingVerification: "declared-only",
+    });
+  });
 });

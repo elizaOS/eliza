@@ -154,6 +154,8 @@ import {
   type SessionStore,
   type SpawnOptions,
   type SpawnResult,
+  SUBSCRIPTION_EXECUTION_AUTHORIZATION_METADATA_KEY,
+  subscriptionExecutionAuthorizationFromMetadata,
   TERMINAL_SESSION_STATUSES,
 } from "./types.js";
 import {
@@ -507,18 +509,29 @@ export function buildCodingPolicyMetadata(args: {
     billing === "cloud"
       ? billing
       : "automatic";
+  const nativeSubscriptionProvider =
+    args.backend === "kimi"
+      ? "kimi-cli-oauth"
+      : args.backend === "grok"
+        ? "grok-build-oauth"
+        : null;
+  const observedCredentialSource = args.account
+    ? args.account.source
+    : nativeSubscriptionProvider
+      ? "external-cli-oauth"
+      : null;
   return {
     backend: args.backend,
-    provider: args.account?.providerId ?? null,
+    provider: args.account?.providerId ?? nativeSubscriptionProvider,
     accountId: args.account?.accountId ?? null,
-    accountSource: args.account?.source ?? null,
+    accountSource: observedCredentialSource,
     model: args.model ?? null,
     // Configuration records the operator's expected funding path. The ACP
     // selection receipt can prove which credential source was used, but the
     // provider does not report whether this task crossed into overage/credits
     // at spawn time, so never present the declaration as a verified charge.
     expectedBillingMode: billingMode,
-    observedCredentialSource: args.account?.source ?? null,
+    observedCredentialSource,
     actualBillingMode: null,
     billingVerification: "declared-only",
     fallbackBackends: (readSetting("ELIZA_CODING_FALLBACK_BACKENDS") ?? "")
@@ -1937,6 +1950,8 @@ export class AcpService extends Service {
     const agentType =
       normalizeTaskAgentAdapter(opts.agentType ?? this.defaultAgent) ??
       this.defaultAgent;
+    const subscriptionExecutionAuthorization =
+      opts.subscriptionExecutionAuthorization;
     if (isSubscriptionCodingAdapter(agentType)) {
       const preflightEnv: NodeJS.ProcessEnv = {
         ...process.env,
@@ -1947,10 +1962,15 @@ export class AcpService extends Service {
         SUBSCRIPTION_CODING_ADAPTERS[agentType].homeEnvironmentKey;
       const configuredHome = this.setting(homeKey);
       if (configuredHome) preflightEnv[homeKey] = configuredHome;
+      // Probe the exact environment the child will receive. In particular,
+      // caller-supplied Kimi model credentials and Grok auth-source overrides
+      // are removed before both preflight and spawn, so a passing account can
+      // never differ from the account the subprocess resolves.
+      stripSubscriptionApiEnvironment(agentType, preflightEnv);
       assertSubscriptionCodingAdapterReady(agentType, {
         command: this.nativeAgentCommand(agentType),
         env: preflightEnv,
-        executionMode: opts.subscriptionExecutionMode,
+        executionMode: subscriptionExecutionAuthorization?.mode,
         transportMode: this.transportMode,
       });
     }
@@ -2169,6 +2189,12 @@ export class AcpService extends Service {
           approvalPreset,
           accountStrategy,
         }),
+        ...(subscriptionExecutionAuthorization
+          ? {
+              [SUBSCRIPTION_EXECUTION_AUTHORIZATION_METADATA_KEY]:
+                subscriptionExecutionAuthorization,
+            }
+          : {}),
         [ORCHESTRATOR_OWNED_ARTIFACTS_METADATA_KEY]:
           this.getOrchestratorOwnedArtifacts(id),
         ...(spawnModel ? { [ACP_METADATA_SPAWN_MODEL]: spawnModel } : {}),
@@ -2931,6 +2957,8 @@ export class AcpService extends Service {
       agentType: session.agentType,
       workdir: session.workdir,
       approvalPreset: session.approvalPreset,
+      subscriptionExecutionAuthorization:
+        subscriptionExecutionAuthorizationFromMetadata(session.metadata),
       metadata: { ...session.metadata, reattachedFrom: session.id },
       model:
         typeof session.metadata?.[ACP_METADATA_SPAWN_MODEL] === "string"

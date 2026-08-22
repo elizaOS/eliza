@@ -324,6 +324,8 @@ export type ModelsConfigCodingBackend =
   | "codex"
   | "claude"
   | "opencode"
+  | "kimi"
+  | "grok"
   | "eliza-code";
 
 /** Which config seam won for a key reported by `GET /api/models/config`. */

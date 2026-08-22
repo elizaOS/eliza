@@ -80,7 +80,15 @@ describe("owner gate on SETTINGS (show_backends / set_backend)", () => {
 
 describe("normalizeCodingBackend", () => {
   it("accepts known coding backends", () => {
-    for (const b of ["elizaos", "pi-agent", "claude", "codex", "opencode"]) {
+    for (const b of [
+      "elizaos",
+      "pi-agent",
+      "claude",
+      "codex",
+      "opencode",
+      "kimi",
+      "grok",
+    ]) {
       expect(normalizeCodingBackend(b)).toBe(b);
     }
   });
@@ -250,12 +258,14 @@ describe("SETTINGS full coding policy", () => {
 
   it("shows the effective non-secret policy", async () => {
     configHarness.config.env = {
+      ELIZA_DEFAULT_AGENT_TYPE: "codex",
       ELIZA_CODEX_MODEL_POWERFUL: "gpt-5.6-sol",
       ELIZA_CODEX_MODEL_FAST: "gpt-5.6-luna",
       ELIZA_CODING_FALLBACK_BACKENDS: "claude,opencode",
       ELIZA_DEFAULT_APPROVAL_PRESET: "standard",
       ELIZA_CODING_ACCOUNT_PROVIDER: "openai-codex",
       ELIZA_CODING_ACCOUNT_STRATEGY: "quota-aware",
+      ELIZA_CODING_ACCOUNT_IDS: "acct-primary,acct-backup",
       ELIZA_CODING_BILLING_MODE: "subscription-plus-overage",
     };
     const result = await settingsAction.handler(
@@ -268,6 +278,19 @@ describe("SETTINGS full coding policy", () => {
     expect(result?.text).toContain("powerful model: gpt-5.6-sol");
     expect(result?.text).toContain("fallback order: claude,opencode");
     expect(result?.text).toContain("billing: subscription-plus-overage");
+    expect(result?.data?.policy).toEqual({
+      backend: "codex",
+      powerfulModel: "gpt-5.6-sol",
+      fastModel: "gpt-5.6-luna",
+      fallbackBackends: ["claude", "opencode"],
+      approvalPreset: "standard",
+      accountProvider: "openai-codex",
+      accountStrategy: "quota-aware",
+      accountIds: ["acct-primary", "acct-backup"],
+      billingMode: "subscription-plus-overage",
+    });
+    expect(JSON.stringify(result?.data)).not.toContain("credential");
+    expect(JSON.stringify(result?.data)).not.toContain("apiKey");
   });
 
   it("rejects an incompatible account provider before saving", async () => {

@@ -365,6 +365,26 @@ describe("prefill and option filtering", () => {
     );
     expect(input).toBeTruthy();
   });
+
+  it("exposes attended Kimi/Grok backends and canonical OpenCode account providers", async () => {
+    await renderReady();
+
+    expect(agentElements.get("models-coding-backend")?.options).toEqual(
+      expect.arrayContaining(["kimi", "grok"]),
+    );
+    fill("models-coding-backend", "opencode");
+    expect(
+      agentElements.get("models-coding-account-provider")?.options,
+    ).toEqual(
+      expect.arrayContaining([
+        "deepseek-api",
+        "zai-api",
+        "moonshot-api",
+        "openrouter-api",
+        "xai-api",
+      ]),
+    );
+  });
 });
 
 describe("active-provider scoping", () => {

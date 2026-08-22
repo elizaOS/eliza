@@ -28,6 +28,10 @@ import {
   KNOWN_ADAPTER_TYPES,
   normalizeTaskAgentAdapter,
 } from "../services/task-agent-routing.js";
+import {
+  createSubscriptionExecutionAuthorization,
+  SUBSCRIPTION_EXECUTION_AUTHORIZATION_METADATA_KEY,
+} from "../services/types.js";
 
 const roots: string[] = [];
 
@@ -56,6 +60,49 @@ function executable(root: string, name: string): string {
 function writeJson(file: string, value: unknown): void {
   mkdirSync(join(file, ".."), { recursive: true });
   writeFileSync(file, JSON.stringify(value), "utf8");
+}
+
+function writeManagedKimiLogin(
+  kimiHome: string,
+  credentials: Record<string, unknown>,
+): void {
+  mkdirSync(kimiHome, { recursive: true });
+  writeFileSync(
+    join(kimiHome, "config.toml"),
+    [
+      'default_model = "kimi-code/kimi-for-coding"',
+      "",
+      '[providers."managed:kimi-code"]',
+      'type = "kimi"',
+      'base_url = "https://api.kimi.com/coding/v1"',
+      'api_key = ""',
+      "",
+      '[providers."managed:kimi-code".oauth]',
+      'storage = "file"',
+      'key = "oauth/kimi-code"',
+      "",
+      '[models."kimi-code/kimi-for-coding"]',
+      'provider = "managed:kimi-code"',
+      'model = "kimi-for-coding"',
+      "max_context_size = 262144",
+      "",
+    ].join("\n"),
+    "utf8",
+  );
+  writeJson(join(kimiHome, "credentials", "kimi-code.json"), credentials);
+}
+
+function grokOidcRecord(
+  overrides: Record<string, unknown> = {},
+): Record<string, unknown> {
+  return {
+    key: "session-token",
+    auth_mode: "oidc",
+    create_time: "2098-12-01T00:00:00.000Z",
+    user_id: "subscription-user",
+    expires_at: "2099-01-01T00:00:00.000Z",
+    ...overrides,
+  };
 }
 
 function makeRuntime(
@@ -113,7 +160,7 @@ describe("subscription coding adapter probes", () => {
     const root = tempRoot();
     const bin = executable(root, "kimi");
     const kimiHome = join(root, "kimi-home");
-    writeJson(join(kimiHome, "credentials", "kimi-code.json"), {
+    writeManagedKimiLogin(kimiHome, {
       access_token: "secret-access-token",
       refresh_token: "secret-refresh-token",
       expires_at: 1,
@@ -143,7 +190,7 @@ describe("subscription coding adapter probes", () => {
     const root = tempRoot();
     const bin = executable(root, "kimi");
     const kimiHome = join(root, "kimi-home");
-    writeJson(join(kimiHome, "credentials", "kimi-code.json"), {
+    writeManagedKimiLogin(kimiHome, {
       access_token: "expired-token",
       expires_at: 1,
     });
@@ -170,7 +217,12 @@ describe("subscription coding adapter probes", () => {
     const bin = executable(root, "grok");
     const grokHome = join(root, "grok-home");
     writeJson(join(grokHome, "auth.json"), {
-      "xai::api_key": { key: "payg-key", auth_mode: "api_key" },
+      "xai::api_key": {
+        key: "payg-key",
+        auth_mode: "api_key",
+        create_time: "2098-12-01T00:00:00.000Z",
+        user_id: "",
+      },
     });
 
     expect(
@@ -182,12 +234,14 @@ describe("subscription coding adapter probes", () => {
     ).toBe("auth-required");
 
     writeJson(join(grokHome, "auth.json"), {
-      "https://accounts.x.ai": {
-        key: "session-token",
-        auth_mode: "oidc",
-        expires_at: "2099-01-01T00:00:00.000Z",
+      "https://auth.x.ai::b1a00492-073a-47ea-816f-4c329264a828":
+        grokOidcRecord(),
+      "xai::api_key": {
+        key: "payg-key",
+        auth_mode: "api_key",
+        create_time: "2098-12-01T00:00:00.000Z",
+        user_id: "",
       },
-      "xai::api_key": { key: "payg-key", auth_mode: "api_key" },
     });
     expect(
       probeSubscriptionCodingAdapter("grok", {
@@ -196,6 +250,67 @@ describe("subscription coding adapter probes", () => {
         platform: "linux",
       }),
     ).toMatchObject({ status: "ready", authenticated: true });
+  });
+
+  it("rejects incomplete and legacy Grok records exactly as the CLI does", () => {
+    const root = tempRoot();
+    const bin = executable(root, "grok");
+    const grokHome = join(root, "grok-home");
+    const probe = () =>
+      probeSubscriptionCodingAdapter("grok", {
+        env: { PATH: bin, GROK_HOME: grokHome },
+        homeDir: root,
+        platform: "linux",
+      });
+
+    writeJson(join(grokHome, "auth.json"), {
+      "https://auth.x.ai::b1a00492-073a-47ea-816f-4c329264a828": {
+        key: "token-without-required-record-fields",
+        auth_mode: "oidc",
+      },
+    });
+    expect(probe().status).toBe("auth-required");
+
+    writeJson(join(grokHome, "auth.json"), {
+      "https://auth.x.ai::b1a00492-073a-47ea-816f-4c329264a828": grokOidcRecord(
+        { auth_mode: "grok" },
+      ),
+    });
+    expect(probe().status).toBe("auth-required");
+  });
+
+  it("rejects a Kimi default model that could bill a direct provider", () => {
+    const root = tempRoot();
+    const bin = executable(root, "kimi");
+    const kimiHome = join(root, "kimi-home");
+    writeManagedKimiLogin(kimiHome, {
+      access_token: "oauth-token-that-must-not-mask-config",
+    });
+    writeFileSync(
+      join(kimiHome, "config.toml"),
+      [
+        'default_model = "direct/model"',
+        "",
+        '[providers."direct"]',
+        'type = "openai_legacy"',
+        'base_url = "https://api.moonshot.ai/v1"',
+        'api_key = "direct-billing-key"',
+        "",
+        '[models."direct/model"]',
+        'provider = "direct"',
+        'model = "kimi-k2"',
+      ].join("\n"),
+      "utf8",
+    );
+
+    expect(
+      probeSubscriptionCodingAdapter("kimi", {
+        env: { PATH: bin, KIMI_CODE_HOME: kimiHome },
+        executionMode: "user-attended",
+        homeDir: root,
+        platform: "linux",
+      }).status,
+    ).toBe("billing-conflict");
   });
 
   it("returns typed unsupported-platform and native-transport failures", () => {
@@ -219,6 +334,9 @@ describe("subscription billing and error isolation", () => {
       KIMI_API_KEY: "payg",
       KIMI_CODING_API_KEY: "endpoint-key",
       KIMI_CODING_BASE_URL: "https://api.kimi.com/coding/v1",
+      KIMI_MODEL_NAME: "direct/model",
+      KIMI_MODEL_API_KEY: "model-payg",
+      KIMI_CODE_CUSTOM_HEADERS: '{"Authorization":"Bearer payg"}',
       MOONSHOT_API_KEY: "payg",
       PATH: "/bin",
     };
@@ -226,6 +344,8 @@ describe("subscription billing and error isolation", () => {
       GROK_HOME: "/tmp/grok-home",
       XAI_API_KEY: "payg",
       GROK_API_KEY: "payg-alias",
+      GROK_AUTH: '{"key":"inline-override"}',
+      GROK_AUTH_PATH: "/tmp/attacker/auth.json",
       XAI_BASE_URL: "https://api.x.ai/v1",
       PATH: "/bin",
     };
@@ -235,11 +355,16 @@ describe("subscription billing and error isolation", () => {
       "KIMI_CODING_API_KEY",
       "MOONSHOT_API_KEY",
       "KIMI_CODING_BASE_URL",
+      "KIMI_CODE_CUSTOM_HEADERS",
+      "KIMI_MODEL_NAME",
+      "KIMI_MODEL_API_KEY",
     ]);
     expect(stripSubscriptionApiEnvironment("grok", grokEnv)).toEqual([
       "XAI_API_KEY",
       "GROK_API_KEY",
       "XAI_BASE_URL",
+      "GROK_AUTH",
+      "GROK_AUTH_PATH",
     ]);
     expect(kimiEnv).toEqual({ KIMI_CODE_HOME: "/tmp/kimi-home", PATH: "/bin" });
     expect(grokEnv).toEqual({ GROK_HOME: "/tmp/grok-home", PATH: "/bin" });
@@ -286,6 +411,9 @@ describe("subscription billing and error isolation", () => {
         KIMI_CODE_HOME: "/tmp/kimi-home",
         KIMI_API_KEY: "payg",
         KIMI_CODING_API_KEY: "pooled-endpoint-key",
+        KIMI_MODEL_NAME: "direct/model",
+        KIMI_MODEL_API_KEY: "model-payg",
+        KIMI_CODE_CUSTOM_HEADERS: '{"Authorization":"Bearer payg"}',
       },
       {
         MOONSHOT_API_KEY: "payg",
@@ -299,6 +427,8 @@ describe("subscription billing and error isolation", () => {
         GROK_HOME: "/tmp/grok-home",
         XAI_API_KEY: "payg",
         GROK_API_KEY: "payg-alias",
+        GROK_AUTH: '{"key":"inline-override"}',
+        GROK_AUTH_PATH: "/tmp/attacker/auth.json",
       },
       { ELIZA_XAI_API_KEY: "payg", XAI_BASE_URL: "https://api.x.ai/v1" },
       undefined,
@@ -309,6 +439,9 @@ describe("subscription billing and error isolation", () => {
     expect(kimiEnv.KIMI_API_KEY).toBeUndefined();
     expect(kimiEnv.KIMI_CODING_API_KEY).toBeUndefined();
     expect(kimiEnv.KIMI_CODING_BASE_URL).toBeUndefined();
+    expect(kimiEnv.KIMI_MODEL_NAME).toBeUndefined();
+    expect(kimiEnv.KIMI_MODEL_API_KEY).toBeUndefined();
+    expect(kimiEnv.KIMI_CODE_CUSTOM_HEADERS).toBeUndefined();
     expect(kimiEnv.MOONSHOT_API_KEY).toBeUndefined();
     expect(kimiEnv.OPENAI_API_KEY).toBeUndefined();
     expect(kimiEnv.ELIZA_MODEL_GATEWAY_URL).toBeUndefined();
@@ -317,6 +450,8 @@ describe("subscription billing and error isolation", () => {
     expect(grokEnv.GROK_HOME).toBe("/tmp/grok-home");
     expect(grokEnv.XAI_API_KEY).toBeUndefined();
     expect(grokEnv.GROK_API_KEY).toBeUndefined();
+    expect(grokEnv.GROK_AUTH).toBeUndefined();
+    expect(grokEnv.GROK_AUTH_PATH).toBeUndefined();
     expect(grokEnv.XAI_BASE_URL).toBeUndefined();
     expect(grokEnv.ELIZA_XAI_API_KEY).toBeUndefined();
     expect(grokEnv.ELIZA_MODEL_GATEWAY_URL).toBeUndefined();
@@ -353,6 +488,8 @@ describe("subscription billing and error isolation", () => {
       {
         GROK_HOME: "/caller-controlled/grok",
         GROK_DISABLE_API_KEY_AUTH: "0",
+        GROK_AUTH_PATH: "/caller-controlled/auth.json",
+        GROK_AUTH: '{"key":"inline-override"}',
       },
       { XAI_API_KEY: "payg-must-not-win" },
       undefined,
@@ -362,6 +499,8 @@ describe("subscription billing and error isolation", () => {
     expect(kimiEnv.KIMI_CODE_HOME).toBe("/tenant-a/kimi");
     expect(grokEnv.GROK_HOME).toBe("/tenant-a/grok");
     expect(grokEnv.GROK_DISABLE_API_KEY_AUTH).toBe("1");
+    expect(grokEnv.GROK_AUTH_PATH).toBeUndefined();
+    expect(grokEnv.GROK_AUTH).toBeUndefined();
     expect(grokEnv.XAI_API_KEY).toBeUndefined();
   });
 
@@ -388,6 +527,83 @@ describe("subscription billing and error isolation", () => {
 });
 
 describe("Kimi user-attended spawn policy", () => {
+  it("persists interactive attendance proof on the durable session", async () => {
+    const root = tempRoot("kimi-attended-");
+    const bin = executable(root, "kimi");
+    const kimiHome = join(root, "kimi-home");
+    const workspaceRoot = join(root, "workspaces");
+    writeManagedKimiLogin(kimiHome, {
+      access_token: "valid-oauth-token",
+      expires_at: 4_070_908_800,
+    });
+    const store = new InMemorySessionStore();
+    const service = new AcpService(
+      makeRuntime({
+        ELIZA_ACP_WORKSPACE_ROOT: workspaceRoot,
+        ELIZA_KIMI_ACP_COMMAND: join(bin, "kimi"),
+        KIMI_CODE_HOME: kimiHome,
+      }) as never,
+      { store },
+    );
+    (service as unknown as { started: boolean }).started = true;
+    (
+      service as unknown as {
+        spawnNativeSession: (
+          id: string,
+          session: {
+            name?: string;
+            agentType: string;
+            workdir: string;
+            status: string;
+            metadata?: Record<string, unknown>;
+          },
+        ) => Promise<Record<string, unknown>>;
+      }
+    ).spawnNativeSession = async (id, session) => ({
+      sessionId: id,
+      id,
+      name: session.name ?? id,
+      agentType: session.agentType,
+      workdir: session.workdir,
+      status: session.status,
+      metadata: session.metadata,
+    });
+    const authorization = createSubscriptionExecutionAuthorization(
+      "interactive-http",
+      "request-24096",
+    );
+
+    await service.spawnSession({
+      agentType: "kimi",
+      subscriptionExecutionAuthorization: authorization,
+      env: {
+        KIMI_MODEL_NAME: "direct/model",
+        KIMI_MODEL_API_KEY: "must-not-override-managed-oauth",
+      },
+    });
+
+    const [persisted] = await store.list();
+    expect(
+      persisted?.metadata?.[SUBSCRIPTION_EXECUTION_AUTHORIZATION_METADATA_KEY],
+    ).toEqual(authorization);
+
+    const recoverySpawn = vi.fn(async () => ({
+      sessionId: "recovered-session",
+      id: "recovered-session",
+      name: "recovered-session",
+      agentType: "kimi",
+      workdir: workspaceRoot,
+      status: "ready",
+    }));
+    service.spawnSession = recoverySpawn as never;
+    await service.reattachSession(persisted?.id ?? "missing-session");
+    expect(recoverySpawn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        subscriptionExecutionAuthorization: authorization,
+      }),
+    );
+  });
+
   it("fails unattended Kimi before creating a workspace or durable task", async () => {
     const root = tempRoot("kimi-unattended-");
     const store = new InMemorySessionStore();
@@ -401,7 +617,6 @@ describe("Kimi user-attended spawn policy", () => {
     try {
       await service.spawnSession({
         agentType: "kimi",
-        subscriptionExecutionMode: "unattended",
       });
     } catch (error) {
       refusal = error;

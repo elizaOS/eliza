@@ -66,6 +66,8 @@ export const CODING_BACKEND_OPTIONS: ReadonlyArray<{
   { value: "codex", label: "Codex" },
   { value: "claude", label: "Claude" },
   { value: "opencode", label: "OpenCode" },
+  { value: "kimi", label: "Kimi Code (attended)" },
+  { value: "grok", label: "Grok Build (attended)" },
   { value: "eliza-code", label: "elizaOS" },
 ];
 
@@ -83,6 +85,8 @@ const CODING_MODEL_KEYS: Record<ModelsConfigCodingBackend, string> = {
   codex: "ELIZA_CODEX_MODEL_POWERFUL",
   claude: "ELIZA_CLAUDE_MODEL_POWERFUL",
   opencode: "ELIZA_OPENCODE_MODEL_POWERFUL",
+  kimi: "ELIZA_KIMI_MODEL_POWERFUL",
+  grok: "ELIZA_GROK_MODEL_POWERFUL",
   "eliza-code": "ELIZA_ELIZAOS_MODEL_POWERFUL",
 };
 
@@ -513,6 +517,8 @@ export function useModelConfiguration(
     codex: { model: "", fastModel: "", effort: "", configured: null },
     claude: { model: "", fastModel: "", effort: "", configured: null },
     opencode: { model: "", fastModel: "", effort: "", configured: null },
+    kimi: { model: "", fastModel: "", effort: "", configured: null },
+    grok: { model: "", fastModel: "", effort: "", configured: null },
     "eliza-code": { model: "", fastModel: "", effort: "", configured: null },
   });
   const [codingPolicy, setCodingPolicy] = useState<{
@@ -571,6 +577,8 @@ export function useModelConfiguration(
       codex: resolveCodingDraft("codex", data.catalog, data.config),
       claude: resolveCodingDraft("claude", data.catalog, data.config),
       opencode: resolveCodingDraft("opencode", data.catalog, data.config),
+      kimi: resolveCodingDraft("kimi", data.catalog, data.config),
+      grok: resolveCodingDraft("grok", data.catalog, data.config),
       "eliza-code": resolveCodingDraft("eliza-code", data.catalog, data.config),
     });
     const coding = data.config.targets.coding;
@@ -688,6 +696,14 @@ export function useModelConfiguration(
       opencode: {
         ...prev.opencode,
         configured: resolveCodingDraft("opencode", catalog, config).configured,
+      },
+      kimi: {
+        ...prev.kimi,
+        configured: resolveCodingDraft("kimi", catalog, config).configured,
+      },
+      grok: {
+        ...prev.grok,
+        configured: resolveCodingDraft("grok", catalog, config).configured,
       },
       "eliza-code": {
         ...prev["eliza-code"],
@@ -894,7 +910,7 @@ export function useModelConfiguration(
   const buildCodingGroup = useCallback(
     (data: ReadyData): ModelConfigCodingGroup => {
       const draft = codingDrafts[codingBackend];
-      const freeFormModel = codingBackend === "eliza-code";
+      const freeFormModel = !CODING_CATALOG_PROVIDERS[codingBackend];
       const modelOptions = codingModelOptions(
         codingBackend,
         data.catalog,
@@ -918,6 +934,7 @@ export function useModelConfiguration(
             )?.value ??
             providers[0]?.value ??
             "",
+          billingMode: "automatic",
         }));
         setMakeDefault(backend === persistedDefaultBackend);
         setSaveState("coding", { phase: "idle" });

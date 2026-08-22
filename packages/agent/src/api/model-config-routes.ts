@@ -56,7 +56,13 @@ import {
 } from "./model-catalog.ts";
 
 export type ModelConfigTarget = "small" | "large" | "coding";
-export type CodingBackend = "codex" | "claude" | "opencode" | "eliza-code";
+export type CodingBackend =
+  | "codex"
+  | "claude"
+  | "opencode"
+  | "kimi"
+  | "grok"
+  | "eliza-code";
 
 export interface ModelConfigWriteBody {
   target: ModelConfigTarget;
@@ -107,6 +113,8 @@ const CODING_BACKENDS = new Set<CodingBackend>([
   "codex",
   "claude",
   "opencode",
+  "kimi",
+  "grok",
   "eliza-code",
 ]);
 const APPROVAL_PRESETS = new Set([
@@ -186,6 +194,18 @@ const CODING_BACKEND_SEAMS: Record<CodingBackend, CodingBackendSeam> = {
     effortKey: null,
     catalogProvider: null,
   },
+  kimi: {
+    modelKey: "ELIZA_KIMI_MODEL_POWERFUL",
+    fastModelKey: "ELIZA_KIMI_MODEL_FAST",
+    effortKey: null,
+    catalogProvider: null,
+  },
+  grok: {
+    modelKey: "ELIZA_GROK_MODEL_POWERFUL",
+    fastModelKey: "ELIZA_GROK_MODEL_FAST",
+    effortKey: null,
+    catalogProvider: null,
+  },
   "eliza-code": {
     modelKey: "ELIZA_ELIZAOS_MODEL_POWERFUL",
     fastModelKey: "ELIZA_ELIZAOS_MODEL_FAST",
@@ -201,6 +221,8 @@ const DEFAULT_BACKEND_PERSISTED_VALUE: Record<CodingBackend, string> = {
   codex: "codex",
   claude: "claude",
   opencode: "opencode",
+  kimi: "kimi",
+  grok: "grok",
   "eliza-code": "elizaos",
 };
 
@@ -909,6 +931,10 @@ function buildEffectiveConfig(
       ELIZA_CLAUDE_MODEL_FAST: resolve("ELIZA_CLAUDE_MODEL_FAST"),
       ELIZA_OPENCODE_MODEL_POWERFUL: resolve("ELIZA_OPENCODE_MODEL_POWERFUL"),
       ELIZA_OPENCODE_MODEL_FAST: resolve("ELIZA_OPENCODE_MODEL_FAST"),
+      ELIZA_KIMI_MODEL_POWERFUL: resolve("ELIZA_KIMI_MODEL_POWERFUL"),
+      ELIZA_KIMI_MODEL_FAST: resolve("ELIZA_KIMI_MODEL_FAST"),
+      ELIZA_GROK_MODEL_POWERFUL: resolve("ELIZA_GROK_MODEL_POWERFUL"),
+      ELIZA_GROK_MODEL_FAST: resolve("ELIZA_GROK_MODEL_FAST"),
       ELIZA_ELIZAOS_MODEL_POWERFUL: resolve("ELIZA_ELIZAOS_MODEL_POWERFUL"),
       ELIZA_ELIZAOS_MODEL_FAST: resolve("ELIZA_ELIZAOS_MODEL_FAST"),
       ELIZA_CODING_FALLBACK_BACKENDS: resolve("ELIZA_CODING_FALLBACK_BACKENDS"),

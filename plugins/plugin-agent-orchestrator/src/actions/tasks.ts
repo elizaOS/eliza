@@ -25,6 +25,7 @@ import {
   ElizaError,
   looksLikeBareLinkShare,
   MESSAGE_SOURCE_SUB_AGENT,
+  MESSAGE_SOURCE_TRIGGER_PROMPT,
   stringToUuid,
   toWellFormedUnicode,
   truncateWellFormed,
@@ -65,8 +66,10 @@ import {
 import { requireTaskAgentAccess } from "../services/task-policy.js";
 import {
   type AgentType,
+  createSubscriptionExecutionAuthorization,
   type SessionInfo,
   type SpawnResult,
+  subscriptionExecutionAuthorizationFromMetadata,
   TERMINAL_SESSION_STATUSES,
 } from "../services/types.js";
 import type {
@@ -342,7 +345,9 @@ export async function resolveReadyCodingBackend(
     .map((value) => normalizeTaskAgentAdapter(value))
     .filter(
       (value): value is string =>
-        Boolean(value) && value !== selected && KNOWN_ADAPTER_TYPES.has(value),
+        typeof value === "string" &&
+        value !== selected &&
+        KNOWN_ADAPTER_TYPES.has(value),
     );
   const candidates = [selected, ...new Set(fallback)];
   if (candidates.length === 1 || !service.checkAvailableAgents) {
@@ -520,6 +525,24 @@ export function spawnOriginKeyFor(
 ): string | undefined {
   const root = spawnRootIdFor(message, content);
   return root ? `${root}\0${agentType}` : undefined;
+}
+
+export function subscriptionAuthorizationForMessage(
+  runtime: IAgentRuntime,
+  message: Memory,
+  content: Record<string, unknown>,
+) {
+  if (content.source === MESSAGE_SOURCE_TRIGGER_PROMPT) return undefined;
+  if (content.source === MESSAGE_SOURCE_SUB_AGENT) {
+    return subscriptionExecutionAuthorizationFromMetadata(
+      objectValue(content.metadata),
+    );
+  }
+  if (message.entityId === runtime.agentId || !message.id) return undefined;
+  return createSubscriptionExecutionAuthorization(
+    "interactive-message",
+    message.id,
+  );
 }
 
 function pickRoutingString(
@@ -1173,6 +1196,11 @@ async function runCreateLegacy(
             };
       const session = await service.spawnSession({
         agentType,
+        subscriptionExecutionAuthorization: subscriptionAuthorizationForMessage(
+          runtime,
+          message,
+          content,
+        ),
         workdir: sessionWorkdir,
         isolateWorkdir,
         memoryContent,
@@ -2084,6 +2112,11 @@ async function runSpawnAgent(
 
     const session = await service.spawnSession({
       agentType,
+      subscriptionExecutionAuthorization: subscriptionAuthorizationForMessage(
+        runtime,
+        message,
+        content,
+      ),
       workdir: effectiveWorkdir,
       isolateWorkdir,
       initialTask: taskWithRouteHints,

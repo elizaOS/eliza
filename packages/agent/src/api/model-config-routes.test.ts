@@ -471,6 +471,30 @@ describe("POST /api/models/config coding writes", () => {
     expect(env.ELIZA_DEFAULT_AGENT_TYPE).toBe("opencode");
   });
 
+  it.each([
+    ["kimi", "ELIZA_KIMI_MODEL_POWERFUL"],
+    ["grok", "ELIZA_GROK_MODEL_POWERFUL"],
+  ])(
+    "persists the native %s OAuth backend without an account credential field",
+    async (backend, modelKey) => {
+      const { ctx, config } = makeHarness("POST", {
+        target: "coding",
+        backend,
+        model: "native-default",
+        defaultBackend: backend,
+        billingMode: "subscription",
+      });
+      await handleModelConfigRoutes(ctx as never);
+      const env = (config as Record<string, unknown>).env as Record<
+        string,
+        unknown
+      >;
+      expect(env[modelKey]).toBe("native-default");
+      expect(env.ELIZA_DEFAULT_AGENT_TYPE).toBe(backend);
+      expect(env.ELIZA_CODING_ACCOUNT_PROVIDER).toBeUndefined();
+    },
+  );
+
   it("persists defaultBackend eliza-code under the orchestrator's elizaos spelling", async () => {
     const { ctx, config } = makeHarness("POST", {
       target: "coding",
