@@ -1,9 +1,14 @@
+/**
+ * Deterministic unit coverage for the in-memory overlay-app heartbeat state.
+ * Fake time isolates TTL boundaries without exercising the HTTP route.
+ */
+
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  OVERLAY_APP_PRESENCE_TTL_MS,
   isOverlayAppPresenceActive,
+  OVERLAY_APP_PRESENCE_TTL_MS,
   setOverlayAppPresence,
-} from "./overlay-app-presence.ts";
+} from "../overlay-app-presence.ts";
 
 beforeEach(() => {
   vi.useFakeTimers();
@@ -18,7 +23,7 @@ describe("overlay-app-presence", () => {
   it("reports active for the same app within TTL", () => {
     vi.setSystemTime(1_000_000);
     setOverlayAppPresence("companion");
-    vi.setSystemTime(1_000_000 + OVERLAY_APP_PRESENCE_TTL_MS - 1);
+    vi.setSystemTime(1_000_000 + OVERLAY_APP_PRESENCE_TTL_MS);
     expect(isOverlayAppPresenceActive("companion")).toBe(true);
   });
 
