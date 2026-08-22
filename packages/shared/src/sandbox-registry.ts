@@ -94,14 +94,14 @@ export class SandboxRegistry {
   }
 
   async register(): Promise<void> {
-    await this.writeKeys();
+    await this.registerKeys();
     logger.info(
       `[sandbox-registry] Registered ${this.config.serverName} -> ${this.config.serverUrl} (agent ${this.config.agentId}, ttl ${this.config.ttlSeconds}s, transport ${this.tcp ? "tcp" : "rest"})`,
     );
   }
 
   async refresh(): Promise<void> {
-    await this.writeKeys();
+    await this.refreshOwnedKeys();
   }
 
   async unregister(): Promise<void> {
@@ -109,17 +109,13 @@ export class SandboxRegistry {
     const heartbeat = this.heartbeatInFlight;
     if (heartbeat) {
       let drainTimer: ReturnType<typeof setTimeout> | null = null;
+      let drained = false;
       try {
-        await Promise.race([
-          heartbeat,
-          new Promise<never>((_resolve, reject) => {
+        drained = await Promise.race([
+          heartbeat.then(() => true),
+          new Promise<false>((resolve) => {
             drainTimer = setTimeout(() => {
-              reject(
-                new ElizaError(
-                  "Timed out draining sandbox registry heartbeat; routing keys will expire through their TTL",
-                  { code: "SANDBOX_REGISTRY_HEARTBEAT_DRAIN_TIMEOUT" },
-                ),
-              );
+              resolve(false);
             }, REGISTRY_HEARTBEAT_DRAIN_TIMEOUT_MS);
             if (typeof drainTimer === "object" && "unref" in drainTimer) {
               drainTimer.unref();
@@ -129,8 +125,27 @@ export class SandboxRegistry {
       } finally {
         if (drainTimer !== null) clearTimeout(drainTimer);
       }
+      if (!drained) {
+        void heartbeat
+          .then(() => this.deleteOwnedKeys())
+          .catch((err) => {
+            // error-policy:J6 teardown already failed closed; warn if the
+            // handled late-write cleanup cannot remove this instance's keys.
+            logger.warn(
+              `[sandbox-registry] Late heartbeat cleanup failed: ${formatErr(err)}`,
+            );
+          });
+        throw new ElizaError(
+          "Timed out draining sandbox registry heartbeat; late-write cleanup remains attached",
+          { code: "SANDBOX_REGISTRY_HEARTBEAT_DRAIN_TIMEOUT" },
+        );
+      }
     }
 
+    await this.deleteOwnedKeys();
+  }
+
+  private async deleteOwnedKeys(): Promise<void> {
     const { serverName, serverUrl, agentId } = this.config;
     const serverUrlKey = `server:${serverName}:url`;
     const agentServerKey = `agent:${agentId}:server`;
@@ -202,12 +217,30 @@ export class SandboxRegistry {
    * value or miss a routing entry whose other half was just renewed. REST uses
    * the Upstash pipeline endpoint; TCP pipelines both commands on one socket.
    */
-  private async writeKeys(): Promise<void> {
+  private async registerKeys(): Promise<void> {
     const { serverName, serverUrl, agentId, ttlSeconds } = this.config;
     const ttl = String(ttlSeconds);
     await this.pipeline([
       ["SET", `server:${serverName}:url`, serverUrl, "EX", ttl],
       ["SET", `agent:${agentId}:server`, serverName, "EX", ttl],
+    ]);
+  }
+
+  /** Renew only while both routing keys are still owned by this instance. */
+  private async refreshOwnedKeys(): Promise<void> {
+    const { serverName, serverUrl, agentId, ttlSeconds } = this.config;
+    await this.command([
+      "EVAL",
+      "local u=redis.call('GET',KEYS[1]) local s=redis.call('GET',KEYS[2]) " +
+        "if (u==ARGV[1] and s==ARGV[2]) or (not u and not s) then " +
+        "redis.call('SET',KEYS[1],ARGV[1],'EX',ARGV[3]) " +
+        "redis.call('SET',KEYS[2],ARGV[2],'EX',ARGV[3]) return 1 end return 0",
+      "2",
+      `server:${serverName}:url`,
+      `agent:${agentId}:server`,
+      serverUrl,
+      serverName,
+      String(ttlSeconds),
     ]);
   }
 
