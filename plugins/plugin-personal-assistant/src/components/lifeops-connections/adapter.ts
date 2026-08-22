@@ -140,6 +140,9 @@ export const defaultLifeOpsConnectionsAdapter: LifeOpsConnectionsAdapter = {
     onProgress("preparing");
     let gmailMessageCount = 0;
     if (request.includeGmail) {
+      if (!request.grantId) {
+        throw new Error("Gmail seeding requires a connected Google account.");
+      }
       onProgress("gmail");
       const gmail = await lifeOpsClient.getLifeOpsGmailSearch({
         side: "owner",
