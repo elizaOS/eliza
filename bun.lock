@@ -1264,6 +1264,7 @@
         "coding-agent-adapters": "0.16.3",
         "drizzle-orm": "0.45.2",
         "effect": "4.0.0-beta.105",
+        "smol-toml": "^1.8.0",
         "smthrs": "0.34.0",
         "universal-user-agent": "^7.0.3",
       },

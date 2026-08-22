@@ -59,7 +59,7 @@
   "accounts.provider.deepseekApi": "DeepSeek API",
   "accounts.provider.deepseekCoding": "DeepSeek 编码订阅",
   "accounts.provider.geminiCli": "Gemini CLI 订阅",
-  "accounts.provider.kimiCoding": "Kimi Code",
+  "accounts.provider.kimiCoding": "Kimi 编码端点密钥",
   "accounts.provider.moonshotApi": "Kimi / Moonshot API",
   "accounts.provider.openaiApi": "OpenAI API",
   "accounts.provider.openaiCodex": "OpenAI Codex 订阅",

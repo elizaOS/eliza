@@ -133,6 +133,22 @@ describe("AddAccountDialog", () => {
     ).toBe("sk-...");
   });
 
+  it("labels Kimi endpoint enrollment separately from CLI OAuth", () => {
+    render(
+      <AddAccountDialog
+        open
+        providerId="kimi-coding"
+        onClose={vi.fn()}
+        onCreated={vi.fn()}
+      />,
+    );
+
+    expect(
+      screen.getByText("Add Kimi Coding Endpoint Key account"),
+    ).toBeTruthy();
+    expect(screen.queryByText("Add Kimi Code account")).toBeNull();
+  });
+
   it("surfaces an API failure and supports retry", async () => {
     api.createApiKeyAccount.mockRejectedValueOnce(
       new Error("credential rejected"),

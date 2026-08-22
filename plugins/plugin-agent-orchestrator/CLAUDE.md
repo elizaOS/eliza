@@ -7,7 +7,8 @@ task history, and runtime-driven sub-agent routing.
 ## Purpose / role
 
 This plugin adds a full coding-agent orchestration surface to any Eliza agent.
-It spawns local coding agents (elizaos, pi-agent, opencode, codex, claude) as
+It spawns local coding agents (elizaos, pi-agent, opencode, codex, claude,
+Kimi Code, and Grok Build) as
 ACP subprocesses, routes their terminal events back into the elizaOS runtime as
 synthetic inbound messages, and manages the git workspace and GitHub issue
 lifecycle that accompanies repo-hosted coding tasks.
@@ -145,6 +146,8 @@ preferred over API key):
 | `claude` | anthropic-subscription → anthropic-api |
 | `codex` | openai-codex → openai-api |
 | `opencode` | cerebras-api |
+| `kimi` | runtime-routed official CLI OAuth (not `kimi-coding` / `moonshot-api`) |
+| `grok` | runtime-routed official CLI OAuth |
 
 ## Layout
 
@@ -272,7 +275,7 @@ README → "GitHub credentials".
 | `GITHUB_OAUTH_CLIENT_SECRET` | unset | Server-side OAuth secret for the device flow. Read directly from **process env** by design — deliberately kept out of the plugin `getSetting` allowlist. |
 | `ELIZA_ACP_TRANSPORT` | `native` | Transport: `native` (embedded JSON-RPC) or `cli`/`acpx` (legacy shell wrapper) |
 | `ELIZA_ACP_CLI` | `acpx` | Path/command for the CLI transport |
-| `ELIZA_ACP_DEFAULT_AGENT` | `elizaos` | Default agent type: `elizaos`, `pi-agent`, `opencode` |
+| `ELIZA_ACP_DEFAULT_AGENT` | `elizaos` | Default agent type: `elizaos`, `pi-agent`, `opencode`, `claude`, `codex`, `kimi`, or `grok` |
 | `ELIZA_ACP_WARM_SPAWN` | unset | Set to `1` to pre-initialize one native `elizaos` ACP child. The child receives no session credentials until an authenticated, single-use claim and exits after that session; stale unclaimed children are recycled. |
 | `ELIZA_DEFAULT_AGENT_TYPE` | `elizaos` | Compatibility alias for `ELIZA_ACP_DEFAULT_AGENT` |
 | `ELIZA_AGENT_SELECTION_STRATEGY` | `fixed` | Adapter selection policy: `fixed` or `dynamic` |
@@ -284,6 +287,8 @@ README → "GitHub credentials".
 | `ELIZA_CODEX_ACP_APPROVAL_POLICY` / `ELIZA_CODEX_APPROVAL_POLICY` | `never` for no-Landlock fallback, otherwise unset | Optional managed Codex ACP approval policy. Setting it requires an explicit sandbox mode; the successor supports the fixed pairs `read-only`/`on-request`, `workspace-write`/`on-request`, and `danger-full-access`/`never`. |
 | `ELIZA_CODEX_ACP_LANDLOCK` / `ELIZA_CODEX_LANDLOCK` | auto-detect | Force Landlock detection for containers/tests: `1`/`true` or `0`/`false` |
 | `ELIZA_CLAUDE_ACP_COMMAND` | `npx -y @agentclientprotocol/claude-agent-acp@0.34.0` | Native Claude ACP command |
+| `ELIZA_KIMI_ACP_COMMAND` | `kimi acp` | Official Kimi Code subscription ACP command. Interactive message, HTTP, and task-control boundaries mint attendance authorization and persist it for recovery; scheduled, agent-authored, and unspecified spawns fail before workspace creation. The adapter validates that the effective default model selects the managed OAuth provider. Login is `kimi login`; logout is the interactive `/logout` because there is no top-level logout/status command. |
+| `ELIZA_GROK_ACP_COMMAND` | `grok agent stdio` | Official Grok Build subscription ACP command. Login is `grok login` or `grok login --device-auth`; status/models is `grok models`; logout is `grok logout`. |
 | `ELIZA_OPENCODE_ACP_COMMAND` | bundled shim or `opencode acp` | Native OpenCode ACP command |
 | `ELIZA_ACP_MAX_SESSIONS` | `8` | Concurrent session cap |
 | `ELIZA_ACP_SYSTEM_SESSION_HEADROOM` | `2` | Reserved concurrent slots for short-lived `system` spawns (the #8898 read-only verifier), counted separately from `ELIZA_ACP_MAX_SESSIONS` so validation never deadlocks behind the worker cap |

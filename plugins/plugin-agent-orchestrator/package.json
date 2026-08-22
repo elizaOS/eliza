@@ -78,6 +78,7 @@
     "coding-agent-adapters": "0.16.3",
     "drizzle-orm": "0.45.2",
     "effect": "4.0.0-beta.105",
+    "smol-toml": "^1.8.0",
     "universal-user-agent": "^7.0.3",
     "@elizaos/auth": "workspace:*"
   },
@@ -139,7 +140,7 @@
       },
       "ELIZA_ACP_DEFAULT_AGENT": {
         "type": "string",
-        "description": "Default coding agent adapter for TASKS create/spawn_agent when the user or planner does not choose one. Supported defaults include elizaos, pi-agent, and opencode.",
+        "description": "Default coding agent adapter for TASKS create/spawn_agent when the user or planner does not choose one. Supported defaults include elizaos, pi-agent, opencode, claude, codex, kimi, and grok.",
         "required": false,
         "default": "elizaos",
         "sensitive": false
@@ -153,7 +154,7 @@
       },
       "ELIZA_DEFAULT_AGENT_TYPE": {
         "type": "string",
-        "description": "Compatibility alias for the default coding agent adapter. Use elizaos, pi-agent, or opencode to switch the default code agent from settings.",
+        "description": "Compatibility alias for the default coding agent adapter. Use elizaos, pi-agent, opencode, claude, codex, kimi, or grok to switch the default code agent from settings.",
         "required": false,
         "default": "elizaos",
         "sensitive": false
@@ -233,6 +234,20 @@
         "description": "Native ACP command used for Claude sessions when ELIZA_ACP_TRANSPORT=native. Pin this in production to avoid implicit package upgrades.",
         "required": false,
         "default": "npx -y @agentclientprotocol/claude-agent-acp@0.34.0",
+        "sensitive": false
+      },
+      "ELIZA_KIMI_ACP_COMMAND": {
+        "type": "string",
+        "description": "Official Kimi Code subscription ACP command. Kimi spawns require explicit user-attended execution metadata and use the CLI login stored under KIMI_CODE_HOME.",
+        "required": false,
+        "default": "kimi acp",
+        "sensitive": false
+      },
+      "ELIZA_GROK_ACP_COMMAND": {
+        "type": "string",
+        "description": "Official Grok Build subscription ACP stdio command. Authentication comes from grok login state under GROK_HOME, never XAI_API_KEY.",
+        "required": false,
+        "default": "grok agent stdio",
         "sensitive": false
       },
       "ELIZA_OPENCODE_ACP_COMMAND": {
