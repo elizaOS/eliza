@@ -16,9 +16,22 @@ effects. New commits cancel stale work for the same pull request or merge group.
 
 `develop-full.yml` is the sole develop-push workflow. Its stable concurrency
 group cancels the complete read-only graph for a superseded tip, delegates each
-validation family to its reusable workflow, and publishes `Complete manifest`
-only when every family succeeds. Publication and deployment workflows remain
-manual until durable current-SHA effect fencing makes cancellation safe.
+invalidated validation family to its reusable workflow, and publishes `Complete
+manifest` only when every registered family has current green evidence.
+`.github/develop-surface-graph.json` owns the reviewed surface DAG, workspace
+roots, non-workspace inputs, environment identity, and evidence lifetime.
+`packages/scripts/develop-impact-evidence.mjs` hashes exact tracked bytes plus
+each surface's transitive workspace and surface dependencies. A prior verdict is
+reused only from an immutable exact-digest cache key after its SHA-256 record,
+graph, environment, input closure, and expiry verify. Missing, malformed,
+duplicate, unexpected, stale, or ambiguous evidence fails closed or reruns the
+surface; unknown changed-path ownership forces the full graph. The expected and
+observed manifests are retained as the run's reviewable domain artifact.
+Markdown and `packages/docs` inputs belong to the Quality surface, which checks
+CLAUDE/AGENTS parity, maintained relative-link targets, and formatting before
+their evidence can be reused.
+Publication and deployment workflows remain manual until durable current-SHA
+effect fencing makes cancellation safe.
 The delegated `platform-smoke.yml` family preserves macOS and Windows core
 proof without a separate periodic authority.
 

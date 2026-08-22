@@ -1,7 +1,6 @@
 # This workflow is the sole develop-push validation authority. It cancels the
-# complete read-only graph for a superseded tip and delegates each validation
-# family to a reusable workflow. Publication and deployment effects remain
-# manual until durable current-SHA fencing and reconciliation own cancellation.
+# complete read-only graph for a superseded tip and reuses a surface verdict
+# only when immutable cached evidence matches that surface's exact input digest.
 name: Develop Full
 
 on:
@@ -16,76 +15,253 @@ permissions:
   contents: read
 
 jobs:
+  plan:
+    name: Exact-input impact plan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    outputs:
+      run_canonical: ${{ steps.resolve.outputs.run_canonical }}
+      run_chat_shell: ${{ steps.resolve.outputs.run_chat_shell }}
+      run_cloud_gateway_discord: ${{ steps.resolve.outputs.run_cloud_gateway_discord }}
+      run_cloud: ${{ steps.resolve.outputs.run_cloud }}
+      run_dev_smoke: ${{ steps.resolve.outputs.run_dev_smoke }}
+      run_docker: ${{ steps.resolve.outputs.run_docker }}
+      run_secrets: ${{ steps.resolve.outputs.run_secrets }}
+      run_quality: ${{ steps.resolve.outputs.run_quality }}
+      run_platform_smoke: ${{ steps.resolve.outputs.run_platform_smoke }}
+      run_scenarios: ${{ steps.resolve.outputs.run_scenarios }}
+      run_tests: ${{ steps.resolve.outputs.run_tests }}
+      run_ui_core: ${{ steps.resolve.outputs.run_ui_core }}
+      run_ui_extended: ${{ steps.resolve.outputs.run_ui_extended }}
+      run_ui_stories: ${{ steps.resolve.outputs.run_ui_stories }}
+      digest_canonical: ${{ steps.impact.outputs.digest_canonical }}
+      digest_chat_shell: ${{ steps.impact.outputs.digest_chat_shell }}
+      digest_cloud_gateway_discord: ${{ steps.impact.outputs.digest_cloud_gateway_discord }}
+      digest_cloud: ${{ steps.impact.outputs.digest_cloud }}
+      digest_dev_smoke: ${{ steps.impact.outputs.digest_dev_smoke }}
+      digest_docker: ${{ steps.impact.outputs.digest_docker }}
+      digest_secrets: ${{ steps.impact.outputs.digest_secrets }}
+      digest_quality: ${{ steps.impact.outputs.digest_quality }}
+      digest_platform_smoke: ${{ steps.impact.outputs.digest_platform_smoke }}
+      digest_scenarios: ${{ steps.impact.outputs.digest_scenarios }}
+      digest_tests: ${{ steps.impact.outputs.digest_tests }}
+      digest_ui_core: ${{ steps.impact.outputs.digest_ui_core }}
+      digest_ui_extended: ${{ steps.impact.outputs.digest_ui_extended }}
+      digest_ui_stories: ${{ steps.impact.outputs.digest_ui_stories }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          submodules: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: "24.15.0"
+
+      - name: Compute exact input closures
+        id: impact
+        env:
+          BASE_SHA: ${{ github.event.before }}
+          HEAD_SHA: ${{ github.sha }}
+        run: >-
+          node packages/scripts/develop-impact-evidence.mjs plan
+          --base "$BASE_SHA"
+          --head "$HEAD_SHA"
+          --expected .develop-evidence/expected.json
+          --github-output "$GITHUB_OUTPUT"
+
+      -
+        name: Restore canonical evidence
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: .develop-evidence/reused/canonical
+          key: develop-evidence-v1-canonical-${{ steps.impact.outputs.digest_canonical }}
+      -
+        name: Restore chat-shell evidence
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: .develop-evidence/reused/chat-shell
+          key: develop-evidence-v1-chat-shell-${{ steps.impact.outputs.digest_chat_shell }}
+      -
+        name: Restore cloud-gateway-discord evidence
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: .develop-evidence/reused/cloud-gateway-discord
+          key: develop-evidence-v1-cloud-gateway-discord-${{ steps.impact.outputs.digest_cloud_gateway_discord }}
+      -
+        name: Restore cloud evidence
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: .develop-evidence/reused/cloud
+          key: develop-evidence-v1-cloud-${{ steps.impact.outputs.digest_cloud }}
+      -
+        name: Restore dev-smoke evidence
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: .develop-evidence/reused/dev-smoke
+          key: develop-evidence-v1-dev-smoke-${{ steps.impact.outputs.digest_dev_smoke }}
+      -
+        name: Restore docker evidence
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: .develop-evidence/reused/docker
+          key: develop-evidence-v1-docker-${{ steps.impact.outputs.digest_docker }}
+      -
+        name: Restore secrets evidence
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: .develop-evidence/reused/secrets
+          key: develop-evidence-v1-secrets-${{ steps.impact.outputs.digest_secrets }}
+      -
+        name: Restore quality evidence
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: .develop-evidence/reused/quality
+          key: develop-evidence-v1-quality-${{ steps.impact.outputs.digest_quality }}
+      -
+        name: Restore platform-smoke evidence
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: .develop-evidence/reused/platform-smoke
+          key: develop-evidence-v1-platform-smoke-${{ steps.impact.outputs.digest_platform_smoke }}
+      -
+        name: Restore scenarios evidence
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: .develop-evidence/reused/scenarios
+          key: develop-evidence-v1-scenarios-${{ steps.impact.outputs.digest_scenarios }}
+      -
+        name: Restore tests evidence
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: .develop-evidence/reused/tests
+          key: develop-evidence-v1-tests-${{ steps.impact.outputs.digest_tests }}
+      -
+        name: Restore ui-core evidence
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: .develop-evidence/reused/ui-core
+          key: develop-evidence-v1-ui-core-${{ steps.impact.outputs.digest_ui_core }}
+      -
+        name: Restore ui-extended evidence
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: .develop-evidence/reused/ui-extended
+          key: develop-evidence-v1-ui-extended-${{ steps.impact.outputs.digest_ui_extended }}
+      -
+        name: Restore ui-stories evidence
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: .develop-evidence/reused/ui-stories
+          key: develop-evidence-v1-ui-stories-${{ steps.impact.outputs.digest_ui_stories }}
+
+      - name: Resolve reusable evidence
+        id: resolve
+        run: >-
+          node packages/scripts/develop-impact-evidence.mjs resolve
+          --expected .develop-evidence/expected.json
+          --evidence .develop-evidence/reused
+          --github-output "$GITHUB_OUTPUT"
+
   canonical:
+    needs: plan
+    if: needs.plan.outputs.run_canonical == 'true'
     uses: ./.github/workflows/ci.yml
     secrets: inherit
 
   chat-shell:
+    needs: plan
+    if: needs.plan.outputs.run_chat_shell == 'true'
     uses: ./.github/workflows/chat-shell-gestures.yml
     secrets: inherit
 
   cloud-gateway-discord:
+    needs: plan
+    if: needs.plan.outputs.run_cloud_gateway_discord == 'true'
     uses: ./.github/workflows/cloud-gateway-discord.yml
     secrets: inherit
 
   cloud:
+    needs: plan
+    if: needs.plan.outputs.run_cloud == 'true'
     uses: ./.github/workflows/cloud-tests.yml
     secrets: inherit
 
   dev-smoke:
+    needs: plan
+    if: needs.plan.outputs.run_dev_smoke == 'true'
     uses: ./.github/workflows/dev-smoke.yml
     with:
       concurrency_scope: develop-full
     secrets: inherit
 
   docker:
+    needs: plan
+    if: needs.plan.outputs.run_docker == 'true'
     uses: ./.github/workflows/docker-ci-smoke.yml
     with:
       concurrency_scope: develop-full
     secrets: inherit
 
   secrets:
+    needs: plan
+    if: needs.plan.outputs.run_secrets == 'true'
     uses: ./.github/workflows/gitleaks.yml
     secrets: inherit
 
   quality:
+    needs: plan
+    if: needs.plan.outputs.run_quality == 'true'
     uses: ./.github/workflows/quality.yml
     secrets: inherit
 
   platform-smoke:
+    needs: plan
+    if: needs.plan.outputs.run_platform_smoke == 'true'
     uses: ./.github/workflows/platform-smoke.yml
     secrets: inherit
 
   scenarios:
+    needs: plan
+    if: needs.plan.outputs.run_scenarios == 'true'
     uses: ./.github/workflows/scenario-pr.yml
     with:
       concurrency_scope: develop-full
     secrets: inherit
 
   tests:
+    needs: plan
+    if: needs.plan.outputs.run_tests == 'true'
     uses: ./.github/workflows/test.yml
     secrets: inherit
 
   ui-core:
+    needs: plan
+    if: needs.plan.outputs.run_ui_core == 'true'
     uses: ./.github/workflows/ui-e2e-gate.yml
     with:
       concurrency_scope: develop-full
     secrets: inherit
 
   ui-extended:
+    needs: plan
+    if: needs.plan.outputs.run_ui_extended == 'true'
     uses: ./.github/workflows/ui-fixture-e2e.yml
     with:
       concurrency_scope: develop-full
     secrets: inherit
 
   ui-stories:
+    needs: plan
+    if: needs.plan.outputs.run_ui_stories == 'true'
     uses: ./.github/workflows/ui-story-gate.yml
     secrets: inherit
 
   complete:
     name: Complete manifest
-    if: ${{ !cancelled() }}
+    if: ${{ always() && needs.plan.result == 'success' }}
     needs:
+      - plan
       - canonical
       - chat-shell
       - cloud-gateway-discord
@@ -101,29 +277,115 @@ jobs:
       - ui-extended
       - ui-stories
     runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      SURFACE_RESULTS: >-
+        {"canonical":"${{ needs.canonical.result }}","chat-shell":"${{ needs.chat-shell.result }}","cloud-gateway-discord":"${{ needs.cloud-gateway-discord.result }}","cloud":"${{ needs.cloud.result }}","dev-smoke":"${{ needs.dev-smoke.result }}","docker":"${{ needs.docker.result }}","secrets":"${{ needs.secrets.result }}","quality":"${{ needs.quality.result }}","platform-smoke":"${{ needs.platform-smoke.result }}","scenarios":"${{ needs.scenarios.result }}","tests":"${{ needs.tests.result }}","ui-core":"${{ needs.ui-core.result }}","ui-extended":"${{ needs.ui-extended.result }}","ui-stories":"${{ needs.ui-stories.result }}"}
     steps:
-      - name: Require every delegated validation family
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          submodules: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: "24.15.0"
+
+      - name: Recompute expected manifest
         env:
-          RESULTS: >-
-            canonical=${{ needs.canonical.result }}
-            chat-shell=${{ needs.chat-shell.result }}
-            cloud-gateway-discord=${{ needs.cloud-gateway-discord.result }}
-            cloud=${{ needs.cloud.result }}
-            dev-smoke=${{ needs.dev-smoke.result }}
-            docker=${{ needs.docker.result }}
-            secrets=${{ needs.secrets.result }}
-            quality=${{ needs.quality.result }}
-            platform-smoke=${{ needs.platform-smoke.result }}
-            scenarios=${{ needs.scenarios.result }}
-            tests=${{ needs.tests.result }}
-            ui-core=${{ needs.ui-core.result }}
-            ui-extended=${{ needs.ui-extended.result }}
-            ui-stories=${{ needs.ui-stories.result }}
-        run: |
-          set -euo pipefail
-          for pair in $RESULTS; do
-            if [ "${pair#*=}" != "success" ]; then
-              echo "::error::$pair"
-              exit 1
-            fi
-          done
+          BASE_SHA: ${{ github.event.before }}
+          HEAD_SHA: ${{ github.sha }}
+        run: >-
+          node packages/scripts/develop-impact-evidence.mjs plan
+          --base "$BASE_SHA"
+          --head "$HEAD_SHA"
+          --expected .develop-evidence/expected.json
+
+      - name: Restore or publish canonical evidence
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: .develop-evidence/reused/canonical
+          key: develop-evidence-v1-canonical-${{ needs.plan.outputs.digest_canonical }}
+      - name: Restore or publish chat-shell evidence
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: .develop-evidence/reused/chat-shell
+          key: develop-evidence-v1-chat-shell-${{ needs.plan.outputs.digest_chat_shell }}
+      - name: Restore or publish cloud-gateway-discord evidence
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: .develop-evidence/reused/cloud-gateway-discord
+          key: develop-evidence-v1-cloud-gateway-discord-${{ needs.plan.outputs.digest_cloud_gateway_discord }}
+      - name: Restore or publish cloud evidence
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: .develop-evidence/reused/cloud
+          key: develop-evidence-v1-cloud-${{ needs.plan.outputs.digest_cloud }}
+      - name: Restore or publish dev-smoke evidence
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: .develop-evidence/reused/dev-smoke
+          key: develop-evidence-v1-dev-smoke-${{ needs.plan.outputs.digest_dev_smoke }}
+      - name: Restore or publish docker evidence
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: .develop-evidence/reused/docker
+          key: develop-evidence-v1-docker-${{ needs.plan.outputs.digest_docker }}
+      - name: Restore or publish secrets evidence
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: .develop-evidence/reused/secrets
+          key: develop-evidence-v1-secrets-${{ needs.plan.outputs.digest_secrets }}
+      - name: Restore or publish quality evidence
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: .develop-evidence/reused/quality
+          key: develop-evidence-v1-quality-${{ needs.plan.outputs.digest_quality }}
+      - name: Restore or publish platform-smoke evidence
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: .develop-evidence/reused/platform-smoke
+          key: develop-evidence-v1-platform-smoke-${{ needs.plan.outputs.digest_platform_smoke }}
+      - name: Restore or publish scenarios evidence
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: .develop-evidence/reused/scenarios
+          key: develop-evidence-v1-scenarios-${{ needs.plan.outputs.digest_scenarios }}
+      - name: Restore or publish tests evidence
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: .develop-evidence/reused/tests
+          key: develop-evidence-v1-tests-${{ needs.plan.outputs.digest_tests }}
+      - name: Restore or publish ui-core evidence
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: .develop-evidence/reused/ui-core
+          key: develop-evidence-v1-ui-core-${{ needs.plan.outputs.digest_ui_core }}
+      - name: Restore or publish ui-extended evidence
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: .develop-evidence/reused/ui-extended
+          key: develop-evidence-v1-ui-extended-${{ needs.plan.outputs.digest_ui_extended }}
+      - name: Restore or publish ui-stories evidence
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: .develop-evidence/reused/ui-stories
+          key: develop-evidence-v1-ui-stories-${{ needs.plan.outputs.digest_ui_stories }}
+
+      - name: Require one current green row per surface
+        run: >-
+          node packages/scripts/develop-impact-evidence.mjs record
+          --expected .develop-evidence/expected.json
+          --evidence .develop-evidence/reused
+          --observed .develop-evidence/observed.json
+          --results-env SURFACE_RESULTS
+
+      - name: Upload exact manifest evidence
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: develop-full-manifest-${{ github.sha }}
+          path: |
+            .develop-evidence/expected.json
+            .develop-evidence/observed.json
+          if-no-files-found: error
+          retention-days: 14
