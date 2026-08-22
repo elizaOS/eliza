@@ -1,6 +1,9 @@
 /** Exercises the real scenario effect-assertion helpers against captured action records. */
 
-import type { CapturedAction, ScenarioContext } from "@elizaos/scenario-runner/schema";
+import type {
+  CapturedAction,
+  ScenarioContext,
+} from "@elizaos/scenario-runner/schema";
 import { describe, expect, it } from "vitest";
 import {
   callPayloadBlob,
@@ -37,13 +40,18 @@ describe("successfulActionData", () => {
   it("returns the first successful non-synthesized data payload", () => {
     const c = ctx([
       action({ actionName: "other" }),
-      action({ actionName: "target", result: { success: true, data: { value: 42 } } }),
+      action({
+        actionName: "target",
+        result: { success: true, data: { value: 42 } },
+      }),
     ]);
     expect(successfulActionData(c, "target")).toEqual({ value: 42 });
   });
 
   it("accepts multiple names", () => {
-    const c = ctx([action({ actionName: "b", result: { success: true, data: { x: 1 } } })]);
+    const c = ctx([
+      action({ actionName: "b", result: { success: true, data: { x: 1 } } }),
+    ]);
     expect(successfulActionData(c, ["a", "b"])).toEqual({ x: 1 });
   });
 
@@ -97,21 +105,25 @@ describe("callPayloadBlob", () => {
 describe("describeCalls", () => {
   it("summarizes calls and handles the empty case", () => {
     expect(describeCalls(ctx([]))).toBe("(no actions called)");
-    const c = ctx([action({ actionName: "go", result: { success: true, data: null } })]);
+    const c = ctx([
+      action({ actionName: "go", result: { success: true, data: null } }),
+    ]);
     expect(describeCalls(c)).toContain("go(success=true");
   });
 });
 
 describe("expectNoActionCalled", () => {
   it("returns undefined when no forbidden action fired", () => {
-    expect(expectNoActionCalled(ctx([action({ actionName: "ok" })]), ["bad"])).toBeUndefined();
+    expect(
+      expectNoActionCalled(ctx([action({ actionName: "ok" })]), ["bad"]),
+    ).toBeUndefined();
   });
 
   it("returns a failure message when a forbidden action fired", () => {
-    const message = expectNoActionCalled(
-      ctx([action({ actionName: "bad" })]),
-      ["bad", "worse"],
-    );
+    const message = expectNoActionCalled(ctx([action({ actionName: "bad" })]), [
+      "bad",
+      "worse",
+    ]);
     expect(message).toContain("expected none of");
     expect(message).toContain("bad");
   });

@@ -26,7 +26,10 @@ vi.mock("../../platform/aosp-user-agent.js", () => ({
   userAgentHasElizaOSMarker: (ua: string) => ua.includes("ElizaOS/"),
 }));
 
-function fakeApp(name: string, overrides: Partial<OverlayApp> = {}): OverlayApp {
+function fakeApp(
+  name: string,
+  overrides: Partial<OverlayApp> = {},
+): OverlayApp {
   return {
     name,
     displayName: name,
@@ -52,7 +55,11 @@ describe("overlay-app registry", () => {
   it("lists all registered apps", () => {
     registerOverlayApp(fakeApp("a"));
     registerOverlayApp(fakeApp("b"));
-    expect(getAllOverlayApps().map((a) => a.name).sort()).toEqual(["a", "b"]);
+    expect(
+      getAllOverlayApps()
+        .map((a) => a.name)
+        .sort(),
+    ).toEqual(["a", "b"]);
   });
 
   it("overwrites on re-registration of the same name", () => {
@@ -67,13 +74,19 @@ describe("availability filtering", () => {
   it("hides androidOnly apps on non-AOSP platforms", () => {
     registerOverlayApp(fakeApp("normal"));
     registerOverlayApp(fakeApp("priv", { androidOnly: true }));
-    const apps = getAvailableOverlayApps({ platform: "android", aospAndroid: false });
+    const apps = getAvailableOverlayApps({
+      platform: "android",
+      aospAndroid: false,
+    });
     expect(apps.map((a) => a.name)).toEqual(["normal"]);
   });
 
   it("shows androidOnly apps on AOSP Android", () => {
     registerOverlayApp(fakeApp("priv", { androidOnly: true }));
-    const apps = getAvailableOverlayApps({ platform: "android", aospAndroid: true });
+    const apps = getAvailableOverlayApps({
+      platform: "android",
+      aospAndroid: true,
+    });
     expect(apps.map((a) => a.name)).toEqual(["priv"]);
   });
 
@@ -85,7 +98,10 @@ describe("availability filtering", () => {
 
   it("detects AOSP from user agent", () => {
     expect(
-      isAospAndroid({ platform: "android", userAgent: "Mozilla ElizaOS/1.2.3" }),
+      isAospAndroid({
+        platform: "android",
+        userAgent: "Mozilla ElizaOS/1.2.3",
+      }),
     ).toBe(true);
     expect(
       isAospAndroid({ platform: "android", userAgent: "Mozilla plain" }),
