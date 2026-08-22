@@ -1149,14 +1149,14 @@ export default function StewardLoginSection() {
           "Passkey sign-in requires device verification (PIN or biometric). Your device may not support this — try Magic Link instead.",
         );
         setLoading(null);
-      } else if (
-        isUserCancelled(e) ||
-        (e instanceof StewardApiError && e.status === 404)
-      ) {
-        // A discoverable-credential request intentionally cannot reveal whether
-        // an account or passkey exists. Chromium reports the same NotAllowedError
-        // for an empty credential result and a cancelled prompt, so recovery must
-        // remain an explicit user choice instead of silently sending signup mail.
+      } else if (e instanceof StewardApiError && e.status === 404) {
+        // A typed email with no matching passkey never reached WebAuthn. Continue
+        // directly into the email-verified enrollment path instead of presenting
+        // browser-cancellation recovery for a prompt that never opened.
+        await startPasskeySignup();
+      } else if (isUserCancelled(e)) {
+        // A browser-owned cancellation is ambiguous, so keep recovery as an
+        // explicit user choice rather than sending signup mail automatically.
         setShowPasskeyRecovery(true);
         setLoading(null);
       } else {
