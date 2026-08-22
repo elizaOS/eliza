@@ -158,4 +158,61 @@ describe("runVaultBootstrap", () => {
       ]),
     );
   });
+
+  it("reuses an identical protected winner before replacing plaintext with a sentinel", async () => {
+    const values = new Map([["CEREBRAS_API_KEY", "same-secret"]]);
+    const config = { env: { CEREBRAS_API_KEY: "same-secret" } };
+
+    const result = await migrateElizaJsonSecretsForTesting(
+      config as unknown as ElizaConfig,
+      createRecordingVault(values),
+    );
+
+    expect(result).toMatchObject({
+      migrated: ["CEREBRAS_API_KEY"],
+      failed: [],
+      mutated: true,
+    });
+    expect(config.env.CEREBRAS_API_KEY).toBe("vault://CEREBRAS_API_KEY");
+    expect(values.get("CEREBRAS_API_KEY")).toBe("same-secret");
+  });
+
+  it("preserves a different protected row and its plaintext recovery source", async () => {
+    const values = new Map([["CEREBRAS_API_KEY", "protected-winner"]]);
+    const config = { env: { CEREBRAS_API_KEY: "plaintext-recovery" } };
+
+    const result = await migrateElizaJsonSecretsForTesting(
+      config as unknown as ElizaConfig,
+      createRecordingVault(values),
+    );
+
+    expect(result).toMatchObject({
+      migrated: [],
+      failed: ["CEREBRAS_API_KEY"],
+      mutated: false,
+    });
+    expect(config.env.CEREBRAS_API_KEY).toBe("plaintext-recovery");
+    expect(values.get("CEREBRAS_API_KEY")).toBe("protected-winner");
+  });
+
+  it("does not replace plaintext when protected read-back is unavailable", async () => {
+    const values = new Map<string, string>();
+    const vault = createRecordingVault(values);
+    vault.reveal = async () => {
+      throw new Error("protected read failed");
+    };
+    const config = { env: { CARTESIA_API_KEY: "plaintext-recovery" } };
+
+    const result = await migrateElizaJsonSecretsForTesting(
+      config as unknown as ElizaConfig,
+      vault,
+    );
+
+    expect(result).toMatchObject({
+      migrated: [],
+      failed: ["CARTESIA_API_KEY"],
+      mutated: false,
+    });
+    expect(config.env.CARTESIA_API_KEY).toBe("plaintext-recovery");
+  });
 });

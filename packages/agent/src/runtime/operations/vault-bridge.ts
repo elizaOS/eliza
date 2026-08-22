@@ -15,7 +15,12 @@
  */
 
 import { randomBytes } from "node:crypto";
-import { createManager, type SecretsManager, type Vault } from "@elizaos/vault";
+import {
+  createManager,
+  type SecretsManager,
+  type Vault,
+  writeSensitiveValueVerified,
+} from "@elizaos/vault";
 import type { OperationErrorCode } from "./types.ts";
 
 export class VaultResolveError extends Error {
@@ -205,8 +210,7 @@ export async function persistProviderApiKey(opts: {
   caller: string;
 }): Promise<string> {
   const ref = vaultKeyForProviderApiKey(opts.normalizedProvider);
-  await opts.secrets.vault.set(ref, opts.apiKey, {
-    sensitive: true,
+  await writeSensitiveValueVerified(opts.secrets.vault, ref, opts.apiKey, {
     caller: opts.caller,
   });
   return ref;
