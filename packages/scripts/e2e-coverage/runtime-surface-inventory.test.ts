@@ -10,6 +10,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readdirSync,
+  readFileSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
@@ -421,6 +422,23 @@ describe("runtime-surface production inventory", () => {
     expect(
       realInventory.gaps.byScenarioLane["missing-deterministic"]?.length,
     ).toBeGreaterThan(0);
+    expect(realInventory.gaps.byExternalService.unresolved).toContain(
+      "@elizaos/plugin-openai:model-handler:action_planner",
+    );
+    expect(realInventory.gaps.byMockOwner.unresolved).toContain(
+      "@elizaos/plugin-openai:model-handler:action_planner",
+    );
+    expect(
+      realInventory.rows.find(
+        (row) =>
+          row.id === "@elizaos/plugin-openai:model-handler:action_planner",
+      ),
+    ).toMatchObject({
+      dependencyDisposition: "unresolved",
+      status: "provider-qualified-only",
+      externalServiceDependencies: [],
+      mockDependencies: [],
+    });
     expect(Object.keys(realInventory.gaps.byWorkstream).sort()).toEqual(
       expect.arrayContaining([
         "#22899",
@@ -1032,6 +1050,29 @@ crons = ["0 * * * *", "30 * * * *"]
     }
   });
 
+  test("rejects a dist index when the manifest cannot select one source index", () => {
+    const root = mkdtempSync(
+      path.join(os.tmpdir(), "surface-dist-index-ambiguous-"),
+    );
+    try {
+      mkdirSync(path.join(root, "src"));
+      writeFileSync(
+        path.join(root, "package.json"),
+        JSON.stringify({ name: "@elizaos/ambiguous", main: "./dist/index.js" }),
+      );
+      writeFileSync(path.join(root, "index.ts"), "export const root = true;\n");
+      writeFileSync(
+        path.join(root, "src", "index.ts"),
+        "export const source = true;\n",
+      );
+      expect(() => packageEntryPoints(root)).toThrow(
+        /ambiguous dist\/index\.js source authority: src\/index\.ts, index\.ts/,
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   test("uses generated Cloud router authority and excludes unserved route files", () => {
     const root = mkdtempSync(path.join(os.tmpdir(), "surface-cloud-routes-"));
     try {
@@ -1090,6 +1131,26 @@ export const ROUTE_MOUNTS = [
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
+  });
+
+  test("matches every live generated route mount and its declared header count", () => {
+    const apiDir = path.join(RUNTIME_SURFACE_REPO_ROOT, "packages/cloud/api");
+    const routerSource = readFileSync(
+      path.join(apiDir, "src", "_router.generated.ts"),
+      "utf8",
+    );
+    const declaredCount = Number(
+      routerSource.match(/\* (\d+) routes mounted across/)?.[1],
+    );
+    expect(Number.isSafeInteger(declaredCount)).toBe(true);
+    expect(declaredCount).toBeGreaterThan(0);
+
+    const mounts = servedCloudRoutes(apiDir);
+    expect(mounts).toHaveLength(declaredCount);
+    expect(new Set(mounts.map((mount) => mount.routePath)).size).toBe(
+      declaredCount,
+    );
+    expect(mounts.every((mount) => existsSync(mount.file))).toBe(true);
   });
 
   test("reports duplicate, artifact-free, and mock-owner coverage findings", () => {

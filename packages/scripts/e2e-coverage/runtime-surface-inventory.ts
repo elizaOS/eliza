@@ -821,6 +821,17 @@ function resolveWorkspaceModule(specifier: string): string | null {
 export function packageEntryPoints(packageDir: string): string[] {
   const candidates = new Set<string>();
   const manifest = readJson(path.join(packageDir, "package.json"));
+  const rootExport =
+    manifest.exports && typeof manifest.exports === "object"
+      ? (manifest.exports as Record<string, unknown>)["."]
+      : manifest.exports;
+  const hasRootSourceCondition =
+    rootExport &&
+    typeof rootExport === "object" &&
+    !Array.isArray(rootExport) &&
+    "eliza-source" in (rootExport as Record<string, unknown>);
+  const hasExplicitSource =
+    typeof manifest.source === "string" || hasRootSourceCondition;
   const visit = (value: unknown, preferSourceCondition = true): void => {
     if (typeof value === "string") {
       const normalized = value.replace(/^\.\//, "");
@@ -833,6 +844,26 @@ export function packageEntryPoints(packageDir: string): string[] {
           .replace(/\.(?:m?js|cjs)$/, "");
         const sourceGroups = [[path.join("src", outputStem), outputStem]];
         const basename = path.basename(outputStem);
+        if (outputStem === "index") {
+          if (hasExplicitSource) return;
+          const inferredIndexes = [path.join("src", "index"), "index"].flatMap(
+            (stem) =>
+              [".ts", ".tsx", ".mts", ".cts"]
+                .map((extension) =>
+                  path.join(packageDir, `${stem}${extension}`),
+                )
+                .filter((file) => existsSync(file)),
+          );
+          if (inferredIndexes.length > 1) {
+            throw new Error(
+              `${manifest.name ?? packageDir} has ambiguous dist/index.js source authority: ${inferredIndexes
+                .map((file) => path.relative(packageDir, file))
+                .join(", ")}`,
+            );
+          }
+          if (inferredIndexes[0]) candidates.add(inferredIndexes[0]);
+          return;
+        }
         if (/^index\.(?:browser|node|edge)$/.test(basename)) {
           sourceGroups.push([path.join("src", basename), basename]);
         }
@@ -873,17 +904,6 @@ export function packageEntryPoints(packageDir: string): string[] {
   visit(manifest.exports);
   visit(manifest.bin);
   visit(manifest.source);
-  const rootExport =
-    manifest.exports && typeof manifest.exports === "object"
-      ? (manifest.exports as Record<string, unknown>)["."]
-      : manifest.exports;
-  const hasRootSourceCondition =
-    rootExport &&
-    typeof rootExport === "object" &&
-    !Array.isArray(rootExport) &&
-    "eliza-source" in (rootExport as Record<string, unknown>);
-  const hasExplicitSource =
-    typeof manifest.source === "string" || hasRootSourceCondition;
   if (!hasExplicitSource) {
     visit(manifest.main, false);
     visit(manifest.module, false);
@@ -3584,18 +3604,20 @@ export function buildRuntimeSurfaceInventory(
     const missingMock = runtimeDependencies.mockDependencies.some(
       (dependency) => dependency.availability === "missing",
     );
+    const providerBoundary = [
+      "provider",
+      "connector-ingress",
+      "connector-egress",
+      "model-handler",
+    ].includes(surface.kind);
+    const unresolvedDependencies =
+      runtimeDependencies.dependencyDisposition === "unresolved";
     const status: RuntimeSurfaceStatus = covered
       ? "covered"
       : surface.kind === "native-bridge" ||
           surface.package.platformRequirements.includes("native-host")
         ? "platform-deferred"
-        : missingMock &&
-            [
-              "provider",
-              "connector-ingress",
-              "connector-egress",
-              "model-handler",
-            ].includes(surface.kind)
+        : providerBoundary && (missingMock || unresolvedDependencies)
           ? "provider-qualified-only"
           : "uncovered";
     const reason = covered
@@ -3603,7 +3625,9 @@ export function buildRuntimeSurfaceInventory(
       : status === "platform-deferred"
         ? `${surface.package.packageName} ${surface.kind} ${normalizeName(surface.name)} requires a native host; the report records it without claiming synthetic coverage.`
         : status === "provider-qualified-only"
-          ? `${surface.package.packageName} ${surface.kind} ${normalizeName(surface.name)} has an explicit external protocol but no owned mock source; the report records the gap without claiming coverage.`
+          ? unresolvedDependencies
+            ? `${surface.package.packageName} ${surface.kind} ${normalizeName(surface.name)} has an unresolved external-service boundary; provider qualification is required until exact collaborators and mock ownership are declared.`
+            : `${surface.package.packageName} ${surface.kind} ${normalizeName(surface.name)} has an explicit external protocol but no owned mock source; the report records the gap without claiming coverage.`
           : runtimeDependencies.dependencyDisposition === "unresolved"
             ? `${surface.package.packageName} ${surface.kind} ${normalizeName(surface.name)} has an explicitly unresolved per-surface dependency boundary; the report refuses to classify it as local-only.`
             : `${surface.package.packageName} ${surface.kind} ${normalizeName(surface.name)} has no executable synthetic-world boundary artifact in this report.`;
@@ -3678,18 +3702,22 @@ export function buildRuntimeSurfaceInventory(
     if (row.status === "covered") continue;
     appendGap(gaps.byOwner, row.owner, row.id);
     const services =
-      row.externalServiceDependencies.length > 0
-        ? row.externalServiceDependencies.map((dependency) => dependency.id)
-        : ["none"];
+      row.dependencyDisposition === "unresolved"
+        ? ["unresolved"]
+        : row.externalServiceDependencies.length > 0
+          ? row.externalServiceDependencies.map((dependency) => dependency.id)
+          : ["none"];
     for (const service of services) {
       appendGap(gaps.byExternalService, service, row.id);
     }
     const mockOwners =
-      row.mockDependencies.length > 0
-        ? row.mockDependencies.map(
-            (dependency) => dependency.owner ?? "missing",
-          )
-        : ["not-applicable"];
+      row.dependencyDisposition === "unresolved"
+        ? ["unresolved"]
+        : row.mockDependencies.length > 0
+          ? row.mockDependencies.map(
+              (dependency) => dependency.owner ?? "missing",
+            )
+          : ["not-applicable"];
     for (const owner of mockOwners) {
       appendGap(gaps.byMockOwner, owner, row.id);
     }
