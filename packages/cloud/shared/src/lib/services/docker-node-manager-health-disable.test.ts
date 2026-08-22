@@ -11,9 +11,10 @@
  *   3. a successful check clears the accumulated failure count.
  */
 
-import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
+import { afterAll, afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import * as realDockerNodesNs from "../../db/repositories/docker-nodes";
 import type { DockerNode } from "../../db/schemas/docker-nodes";
+import type { ComputeProvider } from "./containers/compute-provider";
 import * as realDockerNodeWorkloadsNs from "./docker-node-workloads";
 import * as realDockerSshNs from "./docker-ssh";
 import * as realNodeDiskNs from "./node-disk-manager";
@@ -90,6 +91,28 @@ afterAll(() => {
 
 import { __resetNodeHealthFailureStateForTests, DockerNodeManager } from "./docker-node-manager";
 
+let originalFirewallIds: string | undefined;
+let originalEnvironment: string | undefined;
+
+function managerWithProviderAuthority(target: DockerNode): DockerNodeManager {
+  const serverId = Number(target.provider_server_id);
+  const provider = {
+    getServer: async () => ({
+      id: serverId,
+      name: target.node_id,
+      status: "running" as const,
+      labels: {
+        "managed-by": "eliza-cloud",
+        "node-id": target.node_id,
+        environment: "test",
+        tier: "data-plane",
+      },
+      firewallAttachments: [{ id: 8101, status: "applied" as const }],
+    }),
+  } as unknown as ComputeProvider;
+  return new DockerNodeManager(provider);
+}
+
 function node(nodeId: string): DockerNode {
   return {
     id: `${nodeId}-uuid`,
@@ -133,6 +156,10 @@ afterAll(() => {
 });
 
 beforeEach(() => {
+  originalFirewallIds = process.env.CONTAINERS_HCLOUD_FIREWALL_IDS;
+  originalEnvironment = process.env.ENVIRONMENT;
+  process.env.CONTAINERS_HCLOUD_FIREWALL_IDS = "8101";
+  process.env.ENVIRONMENT = "test";
   __resetNodeHealthFailureStateForTests();
   repoCalls.updateStatus = [];
   repoCalls.markOfflineAndDisable = [];
@@ -143,6 +170,13 @@ beforeEach(() => {
   sshMock.connect.mockReset();
   sshMock.exec.mockReset();
   sshMock.getVerifiedHostKeyFingerprint.mockReset();
+});
+
+afterEach(() => {
+  if (originalFirewallIds === undefined) delete process.env.CONTAINERS_HCLOUD_FIREWALL_IDS;
+  else process.env.CONTAINERS_HCLOUD_FIREWALL_IDS = originalFirewallIds;
+  if (originalEnvironment === undefined) delete process.env.ENVIRONMENT;
+  else process.env.ENVIRONMENT = originalEnvironment;
 });
 
 describe("healthCheckNode auto-disable on repeated failure", () => {
@@ -200,7 +234,6 @@ describe("healthCheckNode auto-disable on repeated failure", () => {
   });
 
   test("attests a typed node boot and invalidates malformed observations without hiding health", async () => {
-    const manager = DockerNodeManager.getInstance();
     const target = {
       ...node("typed-cloud-node"),
       id: "00000000-0000-4000-8000-000000000201",
@@ -208,7 +241,9 @@ describe("healthCheckNode auto-disable on repeated failure", () => {
       infrastructure_provider: "hetzner" as const,
       provider_server_id: "4242",
       node_incarnation: "00000000-0000-4000-8000-000000000211",
+      metadata: { environment: "test" },
     };
+    const manager = managerWithProviderAuthority(target);
     const observed = "00000000-0000-4000-8000-000000000212";
     sshMock.connect.mockResolvedValue(undefined);
     sshMock.exec.mockImplementation((command: string) => {
@@ -250,7 +285,6 @@ describe("healthCheckNode auto-disable on repeated failure", () => {
   });
 
   test("pins a first Cloud host key before publishing its initial boot authority", async () => {
-    const manager = DockerNodeManager.getInstance();
     const target = {
       ...node("new-cloud-node"),
       id: "00000000-0000-4000-8000-000000000221",
@@ -259,7 +293,9 @@ describe("healthCheckNode auto-disable on repeated failure", () => {
       infrastructure_provider: "hetzner" as const,
       provider_server_id: "4343",
       node_incarnation: null,
+      metadata: { environment: "test" },
     };
+    const manager = managerWithProviderAuthority(target);
     const observed = "00000000-0000-4000-8000-000000000222";
     sshMock.connect.mockResolvedValue(undefined);
     sshMock.getVerifiedHostKeyFingerprint.mockReturnValue("first-cloud-pin");
@@ -290,7 +326,6 @@ describe("healthCheckNode auto-disable on repeated failure", () => {
   });
 
   test("never reports healthy when stale boot authority cannot be revoked", async () => {
-    const manager = DockerNodeManager.getInstance();
     const target = {
       ...node("revocation-failure-node"),
       id: "00000000-0000-4000-8000-000000000231",
@@ -298,7 +333,9 @@ describe("healthCheckNode auto-disable on repeated failure", () => {
       infrastructure_provider: "hetzner" as const,
       provider_server_id: "4444",
       node_incarnation: "00000000-0000-4000-8000-000000000232",
+      metadata: { environment: "test" },
     };
+    const manager = managerWithProviderAuthority(target);
     invalidateNodeIncarnationError = new Error("primary write unavailable");
     sshMock.connect.mockResolvedValue(undefined);
     sshMock.exec.mockImplementation((command: string) => {
@@ -321,7 +358,6 @@ describe("healthCheckNode auto-disable on repeated failure", () => {
   });
 
   test("revokes a typed boot when SSH fails before Docker or Docker returns no identity", async () => {
-    const manager = DockerNodeManager.getInstance();
     const target = {
       ...node("unverifiable-source-node"),
       id: "00000000-0000-4000-8000-000000000241",
@@ -329,7 +365,9 @@ describe("healthCheckNode auto-disable on repeated failure", () => {
       infrastructure_provider: "hetzner" as const,
       provider_server_id: "4545",
       node_incarnation: "00000000-0000-4000-8000-000000000242",
+      metadata: { environment: "test" },
     };
+    const manager = managerWithProviderAuthority(target);
     const expectedRevocation = {
       id: target.id,
       nodeId: target.node_id,
