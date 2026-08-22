@@ -24,7 +24,7 @@
  * log-capture pipeline.
  */
 
-import { logger, toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
+import { logger, toWellFormedUnicode } from "@elizaos/core";
 
 export type AndroidActionKind =
   | "tap"
@@ -41,7 +41,7 @@ export interface AndroidTrajectoryActionEvent {
   success: boolean;
   /** Bridge error code (only on failure). */
   errorCode?: string;
-  /** Free-form error message; trimmed for log hygiene. */
+  /** Complete free-form error message, normalized to well-formed Unicode. */
   errorMessage?: string;
   /** Display-local pixel coords for tap/swipe (optional). */
   x?: number;
@@ -66,8 +66,6 @@ export interface AndroidTrajectoryStepEvent {
   rationale: string;
 }
 
-const MAX_ERROR_MSG = 256;
-
 /**
  * Emit a `computeruse.android.action` log entry. Returns the payload so
  * callers can also forward it elsewhere (e.g. in-memory replay buffer).
@@ -75,22 +73,19 @@ const MAX_ERROR_MSG = 256;
 export function emitAndroidAction(
   event: AndroidTrajectoryActionEvent,
 ): AndroidTrajectoryActionEvent {
-  const trimmed: AndroidTrajectoryActionEvent = { ...event };
-  if (trimmed.errorMessage) {
-    trimmed.errorMessage = truncateWellFormed(
-      toWellFormedUnicode(trimmed.errorMessage),
-      MAX_ERROR_MSG,
-    );
+  const normalized: AndroidTrajectoryActionEvent = { ...event };
+  if (normalized.errorMessage) {
+    normalized.errorMessage = toWellFormedUnicode(normalized.errorMessage);
   }
   logger.info(
     {
       evt: "computeruse.android.action",
       platform: "android" as const,
-      ...trimmed,
+      ...normalized,
     },
-    `[computeruse/android] ${trimmed.kind}${trimmed.success ? "" : ` failed (${trimmed.errorCode ?? "?"})`}`,
+    `[computeruse/android] ${normalized.kind}${normalized.success ? "" : ` failed (${normalized.errorCode ?? "?"})`}`,
   );
-  return trimmed;
+  return normalized;
 }
 
 /**

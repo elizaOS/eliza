@@ -11,8 +11,6 @@ import {
   emitAndroidAgentStep,
 } from "../mobile/android-trajectory.js";
 
-const MAX_ERROR_MESSAGE_LENGTH = 256;
-
 function makeActionEvent(
   overrides: Partial<AndroidTrajectoryActionEvent> = {},
 ): AndroidTrajectoryActionEvent {
@@ -54,9 +52,8 @@ describe("emitAndroidAction", () => {
     );
   });
 
-  it("preserves absent, empty, short, and exact-limit error messages", () => {
+  it("preserves absent, empty, and short error messages", () => {
     const spy = vi.spyOn(logger, "info").mockImplementation(() => logger);
-    const exact = "a".repeat(MAX_ERROR_MESSAGE_LENGTH);
 
     expect(emitAndroidAction(makeActionEvent()).errorMessage).toBeUndefined();
     expect(
@@ -66,39 +63,27 @@ describe("emitAndroidAction", () => {
       emitAndroidAction(makeActionEvent({ errorMessage: "short" }))
         .errorMessage,
     ).toBe("short");
-    expect(
-      emitAndroidAction(makeActionEvent({ errorMessage: exact })).errorMessage,
-    ).toBe(exact);
-    expect(spy).toHaveBeenCalledTimes(4);
+    expect(spy).toHaveBeenCalledTimes(3);
   });
 
-  it("truncates over-limit BMP messages to exactly 256 code units", () => {
+  it("preserves complete diagnostic messages beyond 256 code units", () => {
     vi.spyOn(logger, "info").mockImplementation(() => logger);
+    const errorMessage = `${"x".repeat(300)}🧠tail`;
     const payload = emitAndroidAction(
       makeActionEvent({
         success: false,
         errorCode: "accessibility_unavailable",
-        errorMessage: "x".repeat(MAX_ERROR_MESSAGE_LENGTH + 1),
+        errorMessage,
       }),
     );
 
-    expect(payload.errorMessage).toBe("x".repeat(MAX_ERROR_MESSAGE_LENGTH));
-    expect(payload.errorMessage).toHaveLength(MAX_ERROR_MESSAGE_LENGTH);
+    expect(payload.errorMessage).toBe(errorMessage);
+    expect(payload.errorMessage?.length).toBeGreaterThan(256);
   });
 
-  it("backs off rather than splitting an astral pair at the limit", () => {
+  it("normalizes both lone surrogate halves without truncating the diagnostic", () => {
     vi.spyOn(logger, "info").mockImplementation(() => logger);
-    const input = `${"a".repeat(MAX_ERROR_MESSAGE_LENGTH - 1)}\u{1f9e0}z`;
-
-    const payload = emitAndroidAction(makeActionEvent({ errorMessage: input }));
-
-    expect(payload.errorMessage).toBe("a".repeat(MAX_ERROR_MESSAGE_LENGTH - 1));
-    expect(payload.errorMessage).toHaveLength(MAX_ERROR_MESSAGE_LENGTH - 1);
-  });
-
-  it("normalizes lone surrogates before applying the length limit", () => {
-    vi.spyOn(logger, "info").mockImplementation(() => logger);
-    const prefix = "a".repeat(MAX_ERROR_MESSAGE_LENGTH - 1);
+    const prefix = "a".repeat(300);
 
     expect(
       emitAndroidAction(makeActionEvent({ errorMessage: "ok\ud83e" }))
@@ -120,14 +105,14 @@ describe("emitAndroidAction", () => {
 
   it("logs the same normalized error while leaving the input unchanged", () => {
     const spy = vi.spyOn(logger, "info").mockImplementation(() => logger);
-    const input = `${"a".repeat(MAX_ERROR_MESSAGE_LENGTH - 1)}\u{1f9e0}z`;
+    const input = `${"a".repeat(300)}\ud83ez`;
     const event = makeActionEvent({ errorMessage: input });
 
     const payload = emitAndroidAction(event);
 
     expect(event.errorMessage).toBe(input);
     expect(payload).not.toBe(event);
-    expect(payload.errorMessage).toBe("a".repeat(MAX_ERROR_MESSAGE_LENGTH - 1));
+    expect(payload.errorMessage).toBe(`${"a".repeat(300)}\ufffdz`);
     expect(spy).toHaveBeenCalledWith(
       expect.objectContaining({ errorMessage: payload.errorMessage }),
       expect.any(String),
