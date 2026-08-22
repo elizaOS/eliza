@@ -2,10 +2,11 @@
 
 import { listAppShellPages } from "@elizaos/ui/app-shell-registry";
 import { describe, expect, it } from "vitest";
+import { SimpleCalendarView } from "./components/calendar/SimpleCalendarView.tsx";
 import "./register.ts";
 
 describe("Calendar app registration", () => {
-  it("matches the runtime route and targets the canonical Calendar component", () => {
+  it("matches the runtime route and targets the canonical Calendar component", async () => {
     const pages = listAppShellPages().filter(
       (page) => page.pluginId === "@elizaos/plugin-calendar",
     );
@@ -30,6 +31,7 @@ describe("Calendar app registration", () => {
       header: "fullscreen",
       capabilities: ["agent-surface"],
     });
-    expect(String(pages[0]?.loader)).toContain("SimpleCalendarView");
+    const loaded = await pages[0]?.loader?.();
+    expect(loaded?.default).toBe(SimpleCalendarView);
   });
 });

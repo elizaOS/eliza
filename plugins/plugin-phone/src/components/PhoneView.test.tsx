@@ -147,6 +147,16 @@ describe("PhoneView — unified GUI dialer", () => {
     ).toBe(true);
   });
 
+  it("keeps Call disabled while the dialer holds no callable digits", async () => {
+    render(React.createElement(PhoneView));
+    await screen.findByText("Ada Lovelace");
+
+    fireEvent.click(button("key-*"));
+    expect(button("phone-call").disabled).toBe(true);
+    fireEvent.click(button("key-7"));
+    expect(button("phone-call").disabled).toBe(false);
+  });
+
   it("backspace removes the last digit", async () => {
     render(React.createElement(PhoneView));
     await screen.findByText("Ada Lovelace");

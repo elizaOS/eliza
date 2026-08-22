@@ -16,6 +16,8 @@ import {
   VStack,
 } from "@elizaos/ui/spatial";
 
+import { normalizeNumber } from "./phone-view-helpers.ts";
+
 export interface PhoneCallRow {
   id: string;
   /** Display name: cached contact name, else the number. */
@@ -116,7 +118,9 @@ export function PhoneSpatialView({
   onAction,
 }: PhoneSpatialViewProps) {
   const dispatch = (action: string) => () => onAction?.(action);
-  const canCall = snapshot.dialed.trim().length > 0;
+  // Mirror the `placeCall()` guard: only a dialed value that normalizes to a
+  // callable number enables Call, so separators or stray keys keep it off.
+  const canCall = Boolean(normalizeNumber(snapshot.dialed));
   return (
     <Card gap={1} padding={1}>
       <HStack gap={1} align="center">
