@@ -6,6 +6,7 @@
 
 import { describe, expect, test } from "bun:test";
 import {
+  authorizeLocalVoiceRuntimeConversation,
   LocalVoiceRuntimeIdentityError,
   resolveLocalVoiceRuntimeIdentity,
 } from "./local-voice-runtime-identity";
@@ -56,6 +57,76 @@ function runtimeFetch(options: RuntimeFixtureOptions = {}): {
 }
 
 describe("local voice runtime identity", () => {
+  test("authorizes a live conversation and forbids a proven absent one", async () => {
+    const runtime = runtimeFetch();
+    await expect(
+      authorizeLocalVoiceRuntimeConversation({
+        runtimeOrigin: "http://127.0.0.1:31337",
+        agentId: AGENT_ID,
+        conversationId: CONVERSATION_ID,
+        fetchImpl: runtime.fetchImpl,
+      }),
+    ).resolves.toBe("authorized");
+    await expect(
+      authorizeLocalVoiceRuntimeConversation({
+        runtimeOrigin: "http://127.0.0.1:31337",
+        agentId: AGENT_ID,
+        conversationId: "deleted-conversation",
+        fetchImpl: runtime.fetchImpl,
+      }),
+    ).resolves.toBe("forbidden");
+  });
+
+  test("fails unavailable for runtime transport failure or startup-agent swap", async () => {
+    await expect(
+      authorizeLocalVoiceRuntimeConversation({
+        runtimeOrigin: "http://127.0.0.1:31337",
+        agentId: AGENT_ID,
+        conversationId: CONVERSATION_ID,
+        fetchImpl: (async () => {
+          throw new Error("runtime unavailable");
+        }) as unknown as typeof fetch,
+      }),
+    ).rejects.toMatchObject({ code: "runtime_unavailable" });
+
+    const swapped = runtimeFetch({
+      agents: [{ id: OTHER_AGENT_ID, status: "running" }],
+    });
+    await expect(
+      authorizeLocalVoiceRuntimeConversation({
+        runtimeOrigin: "http://127.0.0.1:31337",
+        agentId: AGENT_ID,
+        conversationId: CONVERSATION_ID,
+        fetchImpl: swapped.fetchImpl,
+      }),
+    ).rejects.toMatchObject({ code: "runtime_unavailable" });
+  });
+
+  test("revokes authority when a previously live conversation disappears", async () => {
+    let conversationExists = true;
+    const runtime = runtimeFetch();
+    const fetchImpl = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = new URL(String(input));
+      if (url.pathname === "/api/conversations" && !conversationExists) {
+        return Response.json({ conversations: [] });
+      }
+      return runtime.fetchImpl(input, init);
+    }) as typeof fetch;
+    const options = {
+      runtimeOrigin: "http://127.0.0.1:31337",
+      agentId: AGENT_ID,
+      conversationId: CONVERSATION_ID,
+      fetchImpl,
+    };
+    await expect(authorizeLocalVoiceRuntimeConversation(options)).resolves.toBe(
+      "authorized",
+    );
+    conversationExists = false;
+    await expect(authorizeLocalVoiceRuntimeConversation(options)).resolves.toBe(
+      "forbidden",
+    );
+  });
+
   test("binds configured canonical IDs to live running runtime records", async () => {
     const { fetchImpl, calls, redirects } = runtimeFetch({
       conversations: [

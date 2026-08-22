@@ -53,7 +53,10 @@ if (process.env.ELIZA_PROCESS_ISOLATED_TEST === "1") {
   }));
   mock.module("@/lib/voice-session/consent-nonce", () => ({
     issueConsentNonce: async () => ({ nonce: "consent" }),
-    consumeConsentNonce: async () => true,
+    consumeConsentNonce: async () => {
+      calls.push("consumed");
+      return true;
+    },
   }));
   const revokedChecks: string[] = [];
   mock.module("@/lib/voice-session/jwt", () => ({
@@ -62,12 +65,15 @@ if (process.env.ELIZA_PROCESS_ISOLATED_TEST === "1") {
       revokedChecks.push(jti);
       return false;
     },
-    mintVoiceSessionToken: async () => ({
-      token: "signed-token",
-      jti: "jti",
-      expSeconds: 123,
-      expiresAt: "2099-01-01T00:00:00.000Z",
-    }),
+    mintVoiceSessionToken: async () => {
+      calls.push("minted-token");
+      return {
+        token: "signed-token",
+        jti: "jti",
+        expSeconds: 123,
+        expiresAt: "2099-01-01T00:00:00.000Z",
+      };
+    },
     recordVoiceSessionJti: async () => calls.push("recorded"),
     revokeVoiceSessionToken: async () => undefined,
   }));
@@ -277,6 +283,120 @@ if (process.env.ELIZA_PROCESS_ISOLATED_TEST === "1") {
 
       await server.stop();
       expect(calls.filter((call) => call === "reset")).toHaveLength(2);
+    });
+
+    test("authorizes a newly selected local-runtime conversation before mint", async () => {
+      await harness.installHarnessSigningKey();
+      const requestedConversationIds: string[] = [];
+      const server = await harness.startRealVoiceServer({
+        cartesiaApiKey: "cartesia",
+        cartesiaVoiceId: "voice",
+        elizaEndpoint: "http://127.0.0.1/eliza",
+        elizaAuthorization: "Bearer test",
+        organizationId: "org",
+        userId: "user",
+        agentId: "agent",
+        conversationId: CONVERSATION_ID,
+        authorizeConversationId: async (conversationId) => {
+          requestedConversationIds.push(conversationId);
+          if (conversationId === "throwing-local-conversation") {
+            throw new Error("runtime unavailable");
+          }
+          return conversationId === "new-local-conversation"
+            ? "authorized"
+            : "forbidden";
+        },
+        fetchImpl: fetch,
+        hooks: { log: () => undefined },
+      });
+
+      try {
+        const protectedCallCounts = () => ({
+          consumed: calls.filter((call) => call === "consumed").length,
+          minted: calls.filter((call) => call === "minted-token").length,
+          recorded: calls.filter((call) => call === "recorded").length,
+        });
+        const beforeInvalidRequests = protectedCallCounts();
+        for (const [conversationId, expectedStatus] of [
+          ["denied-local-conversation", 403],
+          ["throwing-local-conversation", 503],
+        ] as const) {
+          const deniedConsent = await fetch(
+            `${server.httpUrl}/api/v1/voice/session/consent`,
+            { method: "POST" },
+          );
+          const deniedConsentBody = (await deniedConsent.json()) as {
+            consentNonce: string;
+          };
+          const denied = await fetch(`${server.httpUrl}/api/v1/voice/session`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              conversationId,
+              consentNonce: deniedConsentBody.consentNonce,
+              transport: "websocket",
+            }),
+          });
+          expect(denied.status).toBe(expectedStatus);
+          expect((await denied.json()) as { code: string }).toEqual({
+            code:
+              expectedStatus === 403
+                ? "conversation_scope_mismatch"
+                : "conversation_authorization_unavailable",
+          });
+        }
+
+        const invalidTransportConsent = await fetch(
+          `${server.httpUrl}/api/v1/voice/session/consent`,
+          { method: "POST" },
+        );
+        const invalidTransportNonce =
+          (await invalidTransportConsent.json()) as {
+            consentNonce: string;
+          };
+        const invalidTransport = await fetch(
+          `${server.httpUrl}/api/v1/voice/session`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              conversationId: "transport-probe-conversation",
+              consentNonce: invalidTransportNonce.consentNonce,
+              transport: "webrtc",
+            }),
+          },
+        );
+        expect(invalidTransport.status).toBe(400);
+        expect(requestedConversationIds).not.toContain(
+          "transport-probe-conversation",
+        );
+        expect(protectedCallCounts()).toEqual(beforeInvalidRequests);
+
+        const consent = await fetch(
+          `${server.httpUrl}/api/v1/voice/session/consent`,
+          { method: "POST" },
+        );
+        const { consentNonce } = (await consent.json()) as {
+          consentNonce: string;
+        };
+        const allowed = await fetch(`${server.httpUrl}/api/v1/voice/session`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            conversationId: "new-local-conversation",
+            consentNonce,
+            transport: "websocket",
+          }),
+        });
+        expect(allowed.status).toBe(200);
+        expect(requestedConversationIds).toEqual([
+          "denied-local-conversation",
+          "throwing-local-conversation",
+          "new-local-conversation",
+        ]);
+      } finally {
+        await server.stop();
+      }
     });
   });
 } else {

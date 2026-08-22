@@ -48,10 +48,31 @@ export interface ResolveLocalVoiceRuntimeIdentityOptions {
   fetchImpl?: FetchLike;
 }
 
+export type LocalVoiceRuntimeConversationAuthorizationResult =
+  | "authorized"
+  | "forbidden";
+
+export interface AuthorizeLocalVoiceRuntimeConversationOptions {
+  runtimeOrigin: string;
+  agentId: string;
+  conversationId: string;
+  fetchImpl?: FetchLike;
+}
+
+export type LocalVoiceRuntimeIdentityErrorCode =
+  | "conversation_not_found"
+  | "runtime_unavailable";
+
 export class LocalVoiceRuntimeIdentityError extends Error {
-  constructor(message: string, options?: ErrorOptions) {
+  readonly code: LocalVoiceRuntimeIdentityErrorCode;
+
+  constructor(
+    message: string,
+    options?: ErrorOptions & { code?: LocalVoiceRuntimeIdentityErrorCode },
+  ) {
     super(message, options);
     this.name = "LocalVoiceRuntimeIdentityError";
+    this.code = options?.code ?? "runtime_unavailable";
   }
 }
 
@@ -142,6 +163,34 @@ export async function resolveLocalVoiceRuntimeIdentity(
   );
 
   return { runtimeOrigin, agentId, conversationId };
+}
+
+/**
+ * Proves a requested conversation against the current loopback runtime and
+ * startup agent. Only a well-formed live listing that omits the conversation
+ * is an authorization denial; transport, health, shape, and agent failures
+ * remain availability errors so callers never misreport them as scope denial.
+ */
+export async function authorizeLocalVoiceRuntimeConversation(
+  options: AuthorizeLocalVoiceRuntimeConversationOptions,
+): Promise<LocalVoiceRuntimeConversationAuthorizationResult> {
+  try {
+    await resolveLocalVoiceRuntimeIdentity({
+      runtimeOrigin: options.runtimeOrigin,
+      configuredAgentId: options.agentId,
+      configuredConversationId: options.conversationId,
+      fetchImpl: options.fetchImpl,
+    });
+    return "authorized";
+  } catch (error) {
+    if (
+      error instanceof LocalVoiceRuntimeIdentityError &&
+      error.code === "conversation_not_found"
+    ) {
+      return "forbidden";
+    }
+    throw error;
+  }
 }
 
 async function fetchJson(
@@ -321,6 +370,7 @@ function selectConversationId(
     if (!configured) {
       throw new LocalVoiceRuntimeIdentityError(
         "configured local conversation does not exist in the runtime",
+        { code: "conversation_not_found" },
       );
     }
     return configured.id;

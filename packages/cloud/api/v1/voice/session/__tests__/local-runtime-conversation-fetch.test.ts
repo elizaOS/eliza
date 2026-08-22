@@ -6,6 +6,7 @@
 import { describe, expect, test } from "bun:test";
 import { REALTIME_VOICE_CLIENT_TRANSPORT } from "@elizaos/shared";
 import { streamElizaConversation } from "../../../../../shared/src/lib/voice-session/eliza-sse-bridge";
+import { createLocalRuntimeConversationAuthorization } from "../lib/local-runtime-conversation-authorization";
 import {
   createLocalRuntimeConversationFetch,
   LocalRuntimeConversationFetchError,
@@ -330,6 +331,124 @@ describe("local runtime conversation fetch", () => {
       expect(calls).toBe(0);
     },
   );
+
+  test("accepts only a current bounded live-runtime conversation grant", async () => {
+    let now = 1_000;
+    let runtimeUnavailable = false;
+    const liveConversations = new Set(["new-local-conversation"]);
+    const authorization = createLocalRuntimeConversationAuthorization({
+      validate: async (conversationId) => {
+        if (runtimeUnavailable) throw new Error("runtime unavailable");
+        return liveConversations.has(conversationId)
+          ? "authorized"
+          : "forbidden";
+      },
+      ttlMs: 100,
+      maxEntries: 2,
+      now: () => now,
+    });
+    const calls: string[] = [];
+    const bridge = createLocalRuntimeConversationFetch(
+      "http://127.0.0.1:31337",
+      {
+        ...SCOPE,
+        isConversationAuthorized: authorization.isAuthorized,
+      },
+      (async (input: RequestInfo | URL) => {
+        calls.push(String(input));
+        return new Response();
+      }) as typeof fetch,
+    );
+
+    const request = () =>
+      bridge(
+        "https://cloud.example/api/v1/eliza/agents/agent-a/api/conversations/new-local-conversation/messages/stream",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            text: "hello",
+            metadata: { clientTransport: REALTIME_VOICE_CLIENT_TRANSPORT },
+            streamProtocol: "delta-v2",
+          }),
+        },
+      );
+
+    await expect(request()).rejects.toThrow("bound runtime identity");
+    await expect(
+      authorization.authorize("new-local-conversation"),
+    ).resolves.toBe("authorized");
+    await expect(request()).resolves.toBeInstanceOf(Response);
+    expect(calls).toEqual([
+      "http://127.0.0.1:31337/api/conversations/new-local-conversation/messages/stream",
+    ]);
+
+    now += 101;
+    await expect(request()).rejects.toThrow("bound runtime identity");
+    liveConversations.delete("new-local-conversation");
+    await expect(
+      authorization.authorize("new-local-conversation"),
+    ).resolves.toBe("forbidden");
+    expect(authorization.isAuthorized("new-local-conversation")).toBe(false);
+
+    liveConversations.add("new-local-conversation");
+    await authorization.authorize("new-local-conversation");
+    runtimeUnavailable = true;
+    await expect(
+      authorization.authorize("new-local-conversation"),
+    ).rejects.toThrow("runtime unavailable");
+    expect(authorization.isAuthorized("new-local-conversation")).toBe(false);
+  });
+
+  test("caps short-lived conversation grants under rapid churn", async () => {
+    const authorization = createLocalRuntimeConversationAuthorization({
+      validate: async () => "authorized",
+      maxEntries: 2,
+    });
+    await authorization.authorize("conversation-1");
+    await authorization.authorize("conversation-2");
+    await authorization.authorize("conversation-3");
+    expect(authorization.isAuthorized("conversation-1")).toBe(false);
+    expect(authorization.isAuthorized("conversation-2")).toBe(true);
+    expect(authorization.isAuthorized("conversation-3")).toBe(true);
+  });
+
+  test("requires a current dynamic lease for the startup conversation too", async () => {
+    let now = 10_000;
+    const authorization = createLocalRuntimeConversationAuthorization({
+      validate: async () => "authorized",
+      ttlMs: 100,
+      now: () => now,
+    });
+    const bridge = createLocalRuntimeConversationFetch(
+      "http://127.0.0.1:31337",
+      {
+        ...SCOPE,
+        isConversationAuthorized: authorization.isAuthorized,
+      },
+      (async () => new Response()) as unknown as typeof fetch,
+    );
+    const request = () =>
+      bridge(
+        "https://cloud.example/api/v1/eliza/agents/agent-a/api/conversations/11111111-1111-4111-8111-111111111111/messages/stream",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            text: "hello",
+            metadata: { clientTransport: REALTIME_VOICE_CLIENT_TRANSPORT },
+            streamProtocol: "delta-v2",
+          }),
+        },
+      );
+
+    await expect(request()).rejects.toThrow("bound runtime identity");
+    await authorization.authorize(SCOPE.conversationId);
+    await expect(request()).resolves.toBeInstanceOf(Response);
+    now += 101;
+    await expect(request()).rejects.toThrow("bound runtime identity");
+    await authorization.authorize(SCOPE.conversationId);
+    authorization.revoke(SCOPE.conversationId);
+    await expect(request()).rejects.toThrow("bound runtime identity");
+  });
 
   test.each([
     "https://127.0.0.1:31337",
