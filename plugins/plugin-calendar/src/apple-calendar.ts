@@ -61,6 +61,23 @@ type NativeCalendarEvent = {
   conferenceLink?: string | null;
   organizer?: Record<string, unknown> | null;
   attendees?: NativeCalendarAttendee[];
+  iCalUID?: string | null;
+  originalStartAt?: string | null;
+  lastModifiedAt?: string | null;
+  recurrenceRules?: Array<{
+    frequency?: string;
+    interval?: number;
+    occurrenceCount?: number | null;
+    endDate?: string | null;
+  }>;
+  reminders?: Array<{
+    relativeOffsetSeconds?: number | null;
+    absoluteDate?: string | null;
+    locationTitle?: string | null;
+  }>;
+  sourceIdentifier?: string | null;
+  sourceTitle?: string | null;
+  sourceType?: string | null;
 };
 
 type NativeCalendarSummary = {
@@ -73,6 +90,9 @@ type NativeCalendarSummary = {
   foregroundColor?: string | null;
   timeZone?: string | null;
   selected?: boolean;
+  sourceIdentifier?: string | null;
+  sourceTitle?: string | null;
+  sourceType?: string | null;
 };
 
 type NativeCalendarPayload = {
@@ -122,6 +142,10 @@ type NativeCalendarBridge = {
     payload: NativeCalendarEventPayload,
   ): Promise<NativeCalendarPayload>;
   deleteEvent(eventId: string): Promise<NativeCalendarPayload>;
+  addListener?(
+    eventName: "calendarStoreChanged",
+    listener: (event: { observedAt: string }) => void,
+  ): Promise<{ remove: () => Promise<void> }>;
 };
 
 type NativeCalendarCreateEventPayload = {
@@ -426,10 +450,21 @@ async function loadIosCalendarBridge(): Promise<NativeCalendarBridge | null> {
           await AppleCalendar.deleteEvent({ eventId }),
         );
       },
+      async addListener(eventName, listener) {
+        return AppleCalendar.addListener(eventName, listener);
+      },
     };
   } catch {
     return null;
   }
+}
+
+export async function subscribeNativeAppleCalendarChanges(
+  listener: (event: { observedAt: string }) => void,
+): Promise<{ remove: () => Promise<void> } | null> {
+  const bridge = await loadNativeCalendarBridge();
+  if (!bridge?.addListener) return null;
+  return bridge.addListener("calendarStoreChanged", listener);
 }
 
 async function loadNativeCalendarBridge(): Promise<NativeCalendarBridge | null> {
@@ -626,10 +661,20 @@ export function lifeOpsCalendarEventFromApple(args: {
     conferenceLink: event.conferenceLink ?? null,
     organizer: event.organizer ?? null,
     attendees: normalizeAttendees(event.attendees),
+    recurrence: null,
+    recurringEventId: null,
     metadata: {
       appleCalendar: true,
       appleAvailability: availability,
       transparency: availability === "free" ? "transparent" : "opaque",
+      iCalUID: event.iCalUID ?? null,
+      originalStartTime: event.originalStartAt ?? null,
+      appleLastModifiedAt: event.lastModifiedAt ?? null,
+      recurrenceRules: event.recurrenceRules ?? [],
+      reminders: event.reminders ?? [],
+      sourceIdentifier: event.sourceIdentifier ?? null,
+      sourceTitle: event.sourceTitle ?? null,
+      sourceType: event.sourceType ?? null,
     },
     syncedAt,
     updatedAt: syncedAt,
