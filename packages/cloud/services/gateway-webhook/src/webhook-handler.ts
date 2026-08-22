@@ -334,7 +334,7 @@ export async function handleWebhook(
     });
   }
 
-  const event = await adapter.extractEvent(rawBody);
+  const event = await adapter.extractEvent(rawBody, config);
   if (!event) {
     return ackResponse(adapter.platform);
   }
@@ -354,6 +354,8 @@ export async function handleWebhook(
       if (
         !agentId &&
         project === configuredPersonalProject &&
+        event.chatType !== "group" &&
+        event.chatType !== "supergroup" &&
         deps.deliveryAuthoritySecret !== undefined
       ) {
         return forwardPersonalTelegramToEdge(
@@ -776,6 +778,16 @@ function isPersonalElizaTransport(
   );
 }
 
+function groupInvocationForEvent(
+  event: ChatEvent,
+): "mention" | "command" | "reply" | "ambient" {
+  if (event.groupInvocation) return event.groupInvocation;
+  if (event.replyToMessageId) return "reply";
+  if (/^\s*(?:\/|eliza\b)/i.test(event.text)) return "command";
+  if (/(?:^|\s)@eliza\b/i.test(event.text)) return "mention";
+  return "ambient";
+}
+
 function beginTypingFeedback(
   adapter: PlatformAdapter,
   config: WebhookConfig,
@@ -832,6 +844,22 @@ async function sendPersonalSharedReply(
 ): Promise<PersonalSharedDeliveryTiming> {
   const { cloudBaseUrl, getAuthHeader } = deps;
   const reauth = deps.reacquireAuthHeader ?? reacquireAuthHeader;
+  const connectorAccountId = resolveConnectorAccountId(
+    adapter.platform,
+    config,
+  );
+  if (!connectorAccountId) {
+    throw new PersonalSharedPreEgressError(
+      "connector account identity is not configured",
+    );
+  }
+  const isGroup = event.chatType === "group" || event.chatType === "supergroup";
+  const sendReplyWithReceipt = adapter.sendReplyWithReceipt;
+  if (isGroup && !sendReplyWithReceipt) {
+    throw new PersonalSharedPreEgressError(
+      "group connector cannot return a provider delivery receipt",
+    );
+  }
   const voiceNote = event.voiceNote
     ? await adapter.resolveVoiceNote?.(config, event)
     : undefined;
@@ -853,24 +881,61 @@ async function sendPersonalSharedReply(
         ...authHeader,
       },
       body: JSON.stringify(
-        adapter.platform === "telegram"
+        event.membershipChange
           ? {
+              eventType: "membership",
               platform: "telegram",
               project,
+              connectorAccountId,
               chatId: event.chatId,
-              telegramUserId: event.senderId,
-              displayName: event.senderName,
               messageId: `telegram:${project}:${event.messageId}`,
-              ...(event.text ? { message: event.text } : {}),
-              ...(voiceNote ? { voiceNote } : {}),
+              membershipChange: event.membershipChange,
             }
-          : {
-              platform: adapter.platform,
-              project,
-              phoneNumber: event.senderId,
-              messageId: `${adapter.platform}:${project}:${event.messageId}`,
-              message: event.text,
-            },
+          : isGroup &&
+              (adapter.platform === "telegram" || adapter.platform === "blooio")
+            ? {
+                platform: adapter.platform,
+                chatType: event.chatType,
+                project,
+                connectorAccountId,
+                chatId: event.chatId,
+                actor: {
+                  platformUserId: event.senderId,
+                  ...(event.senderName
+                    ? { displayName: event.senderName }
+                    : {}),
+                  role:
+                    adapter.platform === "telegram"
+                      ? (event.groupActorRole ?? "unknown")
+                      : "possessor",
+                },
+                messageId: `${adapter.platform}:${project}:${event.messageId}`,
+                message: event.text,
+                invocation: groupInvocationForEvent(event),
+                ...(event.replyToMessageId
+                  ? { replyToMessageId: event.replyToMessageId }
+                  : {}),
+              }
+            : adapter.platform === "telegram"
+              ? {
+                  platform: "telegram",
+                  project,
+                  connectorAccountId,
+                  chatId: event.chatId,
+                  telegramUserId: event.senderId,
+                  displayName: event.senderName,
+                  messageId: `telegram:${project}:${event.messageId}`,
+                  ...(event.text ? { message: event.text } : {}),
+                  ...(voiceNote ? { voiceNote } : {}),
+                }
+              : {
+                  platform: adapter.platform,
+                  project,
+                  connectorAccountId,
+                  phoneNumber: event.senderId,
+                  messageId: `${adapter.platform}:${project}:${event.messageId}`,
+                  message: event.text,
+                },
       ),
       signal: AbortSignal.timeout(
         voiceNote ? PERSONAL_SHARED_VOICE_TIMEOUT_MS : 30_000,
@@ -981,7 +1046,54 @@ async function sendPersonalSharedReply(
     };
   }
   const egressStartedAt = Date.now();
-  await adapter.sendReply(config, event, reply, deliveryHooks);
+  if (isGroup) {
+    if (!sendReplyWithReceipt) {
+      throw new PersonalSharedPreEgressError(
+        "group connector cannot return a provider delivery receipt",
+      );
+    }
+    const receipt = await sendReplyWithReceipt(
+      config,
+      event,
+      reply,
+      deliveryHooks,
+    );
+    const receiptBody = JSON.stringify({
+      eventType: "delivery_receipt",
+      platform: adapter.platform,
+      project,
+      connectorAccountId,
+      chatId: event.chatId,
+      sourceMessageId: `${adapter.platform}:${project}:${event.messageId}`,
+      providerMessageIds: receipt.providerMessageIds,
+    });
+    const postReceipt = (header: Record<string, string>) =>
+      fetch(`${cloudBaseUrl}/api/internal/eliza-app/personal-shared/messages`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          [ELIZA_TRACE_ID_HEADER]: traceId,
+          ...header,
+        },
+        body: receiptBody,
+        signal: AbortSignal.timeout(10_000),
+      });
+    let receiptResponse = await postReceipt(authHeader);
+    if (receiptResponse.status === 401 || receiptResponse.status === 403) {
+      await receiptResponse.body?.cancel();
+      authHeader = await reauth();
+      receiptResponse = await postReceipt(authHeader);
+    }
+    if (!receiptResponse.ok) {
+      await receiptResponse.body?.cancel();
+      throw new Error(
+        `group delivery receipt persistence failed (${receiptResponse.status})`,
+      );
+    }
+    await receiptResponse.body?.cancel();
+  } else {
+    await adapter.sendReply(config, event, reply, deliveryHooks);
+  }
   return {
     cloudMs,
     cloudAttempts: attemptResult.attempts,
