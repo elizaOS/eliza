@@ -139,6 +139,26 @@ export const INTEGRATION_TRUST: Readonly<Record<string, IntegrationTrust>> =
       "weather-mcp": weather,
       "crypto-prices": crypto,
       "crypto-mcp": crypto,
+      doordash: {
+        publisher: "elizaOS",
+        provenance: "first-party",
+        authMode: "api-key",
+        domains: ["www.doordash.com", "live.browser.run"],
+        reviewedAt: "2026-08-21",
+        capabilities: [
+          read("doordash_auth_check"),
+          write("doordash_set_address"),
+          write("doordash_auth_clear"),
+          read("doordash_search"),
+          read("doordash_menu"),
+          write("doordash_add_to_cart"),
+          write("remove_from_cart"),
+          read("doordash_cart"),
+          read("order_history"),
+          write("doordash_checkout"),
+          read("doordash_track_order"),
+        ],
+      },
       "web-search": {
         publisher: "elizaOS",
         provenance: "operator-proxied",
@@ -267,6 +287,12 @@ export function resolveIntegrationAvailability(
   if (providerSlug === null) return "unconfigured";
   if (BUILTIN_PROVIDERS.has(providerSlug)) return "available";
   const upstream = env[upstreamEnvKeyForProvider(providerSlug)];
+  if (providerSlug === "doordash") {
+    return env.BROWSER !== undefined ||
+      (typeof upstream === "string" && upstream.trim().length > 0)
+      ? "available"
+      : "unconfigured";
+  }
   return typeof upstream === "string" && upstream.trim().length > 0
     ? "available"
     : "unconfigured";

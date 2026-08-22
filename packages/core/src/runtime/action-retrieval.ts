@@ -294,6 +294,17 @@ const CANDIDATE_ACTION_PARENT_ALIASES: Record<string, readonly string[]> = {
 	CREATE_BRANCH: ["TASKS"],
 	// Finance-shaped candidates: OWNER_FINANCES declares only one simile
 	// ("FINANCES"), so the common Stage-1 inventions need explicit hints.
+	// Reminder-mutation inventions ("update my vitamins reminder" →
+	// TASKS_UPDATE_REMINDER, live 2026-08-18; the TASKS prefix fuzzy-matched
+	// VIEWS and the turn errored) bind to the reminder owners like the other
+	// reminder aliases above.
+	TASKS_UPDATE_REMINDER: ["OWNER_REMINDERS", "TRIGGER"],
+	UPDATE_REMINDER: ["OWNER_REMINDERS", "TRIGGER"],
+	CHANGE_REMINDER: ["OWNER_REMINDERS", "TRIGGER"],
+	EDIT_REMINDER: ["OWNER_REMINDERS", "TRIGGER"],
+	FIX_REMINDER: ["OWNER_REMINDERS", "TRIGGER"],
+	REMINDER_UPDATE: ["OWNER_REMINDERS", "TRIGGER"],
+	RESCHEDULE_REMINDER: ["OWNER_REMINDERS", "TRIGGER"],
 	FINANCE: ["OWNER_FINANCES"],
 	SPENDING: ["OWNER_FINANCES"],
 	SPENDING_SUMMARY: ["OWNER_FINANCES"],
@@ -523,6 +534,18 @@ export function retrieveActions(
 			const explicitAliases =
 				explicitParentAliasesForCandidateAction(actionName);
 			if (explicitAliases.length > 0) return explicitAliases;
+			// A candidate that is a real simile claimed by multiple parents is
+			// ambiguous by contract — the shape heuristics below (coding-name →
+			// TASKS, view-name → VIEWS) must not overrule that refusal (live
+			// regression: GITHUB_LIST_ISSUES claimed by TASKS and a repo-issues
+			// parent still exact-hinted TASKS via the coding-token heuristic).
+			if (
+				collectAmbiguousSimiles(input.catalog.parents).has(
+					normalizeActionName(actionName),
+				)
+			) {
+				return [];
+			}
 			return candidateNamespaceParentExists(input.catalog.parents, actionName)
 				? []
 				: parentAliasesForCandidateAction(actionName);
@@ -1161,6 +1184,13 @@ export function parentAliasesForCandidateAction(actionName: string): string[] {
 	if (looksLikeSettingsPermissionCandidateAction(normalized)) {
 		return ["SETTINGS"];
 	}
+	// Coding/repo-shaped names route to the TASKS umbrella before the view
+	// heuristics get a chance to claim them: git-surface tokens plus a view
+	// operation (CODE_PR_CREATE, UPDATE_REPO_README) otherwise read as a
+	// "generated capability" and misroute repo work to the views catalog.
+	if (looksLikeCodingCandidateAction(normalized)) {
+		return ["TASKS"];
+	}
 	const aliases: string[] = [];
 	if (looksLikeViewCandidateAction(normalized)) {
 		aliases.push("VIEWS");
@@ -1268,6 +1298,29 @@ function looksLikeSettingsPermissionCandidateAction(
 	return namesAPermission || namesAScopedAccess;
 }
 
+// Git-surface vocabulary. CODE is included but guarded against QR_CODE-style
+// names; generic verbs (PULL, MERGE, CREATE) are deliberately absent — bare
+// verbs collide with contact/view inventions (MERGE_CONTACTS) and only the
+// surface nouns are unambiguous.
+const CODING_SURFACE_TOKENS = new Set([
+	"CODE",
+	"CODING",
+	"REPO",
+	"REPOSITORY",
+	"GIT",
+	"GITHUB",
+	"PR",
+	"COMMIT",
+	"BRANCH",
+]);
+
+function looksLikeCodingCandidateAction(normalizedActionName: string): boolean {
+	if (!normalizedActionName) return false;
+	const tokens = new Set(normalizedActionName.split(/_+/).filter(Boolean));
+	if (tokens.has("QR")) return false;
+	return hasAnyToken(tokens, CODING_SURFACE_TOKENS);
+}
+
 function looksLikeViewCandidateAction(normalizedActionName: string): boolean {
 	if (!normalizedActionName) return false;
 	const tokens = new Set(normalizedActionName.split(/_+/).filter(Boolean));
@@ -1295,6 +1348,37 @@ function hasOnlyOperationTokens(tokens: Set<string>): boolean {
 /** Once-per-process dedupe for the ambiguous-simile warn — the resolver runs
  *  on every retrieval and the catalog is stable within a process. */
 const warnedAmbiguousSimiles = new Set<string>();
+
+/** Normalized similes claimed by MORE than one catalog parent — routing on
+ * one of these steals the intent from the other parent (#16561), so both the
+ * simile resolver and the shape-heuristic alias fallback must refuse them. */
+function collectAmbiguousSimiles(
+	parents: readonly ActionCatalogParent[],
+): Set<string> {
+	const parentNames = new Set(parents.map((parent) => parent.normalizedName));
+	const claimed = new Map<string, string>();
+	const ambiguous = new Set<string>();
+	for (const parent of parents) {
+		const ownSimiles = new Set(
+			[
+				...parent.similes,
+				...parent.children.flatMap((child) => child.similes),
+			].flatMap((simile) => {
+				const normalized = normalizeActionName(simile);
+				return !normalized || parentNames.has(normalized) ? [] : [normalized];
+			}),
+		);
+		for (const normalized of ownSimiles) {
+			const claimedBy = claimed.get(normalized);
+			if (claimedBy !== undefined && claimedBy !== parent.normalizedName) {
+				ambiguous.add(normalized);
+				continue;
+			}
+			claimed.set(normalized, parent.normalizedName);
+		}
+	}
+	return ambiguous;
+}
 
 function resolveSimileParentHints(
 	parents: readonly ActionCatalogParent[],

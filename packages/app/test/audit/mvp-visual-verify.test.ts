@@ -431,6 +431,20 @@ describe("sparse-home OCR regression guard (#14343)", () => {
 });
 
 describe("mvp-visual-verify CLI", () => {
+  it("preserves complete long OCR transcripts in review evidence", () => {
+    const tail = "semantic-tail-beyond-the-former-cap";
+    const text = `${"visible content ".repeat(400)}${tail}`;
+
+    expect(
+      visualVerify.buildOcrEvidence({
+        available: true,
+        chars: text.length,
+        text,
+        words: 801,
+      }),
+    ).toMatchObject({ text: expect.stringContaining(tail) });
+  });
+
   it("computes missing required states by slug or viewport-specific key", () => {
     const results = [
       { slug: "builtin-chat", viewport: "desktop" },

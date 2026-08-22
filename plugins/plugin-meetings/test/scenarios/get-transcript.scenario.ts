@@ -1,267 +1,230 @@
 /**
- * Keyless per-plugin e2e for `@elizaos/plugin-meetings` (issue #8801, cluster 1
- * of #15759).
- *
- * Drives the `GET_MEETING_TRANSCRIPT` action end-to-end against a real
- * MeetingService whose browser adapters + ASR pipeline are replaced by scripted
- * mocks (via `MeetingService.dependencyFactory`, overridden in the seed after
- * the plugin module is imported so the override survives registration). The
- * seed registers the plugin itself, drives a real `requestJoin` on a Google
- * Meet URL, lets the mock adapter/pipeline run the full lifecycle to a
- * finalized transcript record, and waits for the session to reach a terminal
- * state — so the persisted transcript the action reads is produced by the real
- * session state machine + transcript writer (#15704 finalization path), with no
- * browser, no live meeting, and no credentials.
+ * Exercises transcript retrieval through the real scenario runtime,
+ * MeetingService state machine, and transcript repository. Browser capture and
+ * ASR are the only synthetic boundaries; their scripted state is read back
+ * from the production memory store before this scenario can pass.
  */
-import type { AgentRuntime, UUID } from "@elizaos/core";
-import { ModelType } from "@elizaos/core";
-import type {
-  MeetingBotSession,
-  MeetingPipelineInstance,
-  MeetingPlatformAdapter,
-  MeetingService,
-  MeetingServiceDependencies,
-} from "@elizaos/plugin-meetings";
+
+import type { UUID } from "@elizaos/core";
 import {
   callPayloadBlob,
   describeCalls,
   successfulActionData,
 } from "@elizaos/scenario-runner/scenario-assertions";
-import { scenario } from "@elizaos/scenario-runner/schema";
-import type {
-  MeetingPlatform,
-  MeetingSession,
-  TranscriptSegment,
-} from "@elizaos/shared";
+import {
+  type ScenarioContext,
+  scenario,
+} from "@elizaos/scenario-runner/schema";
+import {
+  assertMeetingMockLedger,
+  finalizeMeetingMockLedger,
+  installMockSeed,
+  joinedTranscriptIsReady,
+  MEETINGS_MOCK_REQUIRED_PLUGINS,
+  meetingMockLedgerMatches,
+} from "./_meetings-mock.js";
 
 const GET_MEETING_TRANSCRIPT = "GET_MEETING_TRANSCRIPT";
 const MEET_URL = "https://meet.google.com/abc-defg-hij";
 const SEGMENT_TEXT = "the quarterly roadmap review is on track for friday";
-const SPEAKER = "Alex";
+const USER_REQUEST =
+  "Show me the transcript from my last meeting — what was said?";
 
-type R = AgentRuntime & {
-  registerPlugin: (plugin: unknown) => Promise<unknown>;
-  getService: (name: string) => unknown;
-  scenarioModelFixtures?: {
-    register: (...f: Array<Record<string, unknown>>) => void;
+async function transcriptEffect(
+  ctx: ScenarioContext,
+): Promise<string | undefined> {
+  const data = successfulActionData(ctx, GET_MEETING_TRANSCRIPT);
+  if (!data) {
+    return `no successful ${GET_MEETING_TRANSCRIPT} result data; calls: ${describeCalls(ctx)}`;
+  }
+  const transcriptId = data.transcriptId;
+  if (typeof transcriptId !== "string") {
+    return `expected a transcript id, saw ${String(transcriptId ?? "(missing)")}`;
+  }
+  const joined = successfulActionData(ctx, "JOIN_MEETING");
+  if (joined?.transcriptId !== transcriptId) {
+    return `expected retrieval of joined transcript ${String(joined?.transcriptId)}, saw ${transcriptId}`;
+  }
+  const row = await ctx.runtime.getMemoryById(transcriptId as UUID);
+  if (!row) return `transcript row ${transcriptId} is missing`;
+  const serialized = (row.content as { transcript?: unknown }).transcript;
+  if (typeof serialized !== "string") {
+    return `transcript row ${transcriptId} has no serialized transcript`;
+  }
+  const persisted = JSON.parse(serialized) as {
+    status?: string;
+    segments?: Array<{ speakerLabel?: string; text?: string }>;
   };
-};
-
-let joinedTranscriptId: string | undefined;
-
-/**
- * A scripted ASR pipeline: emits exactly one confirmed segment when the adapter
- * pushes audio, and returns the accumulated segments on finalize — the same
- * confirmed/pending update flow the real pipeline drives, minus the model.
- */
-function createMockPipeline(): MeetingPipelineInstance {
-  let listener:
-    | ((update: {
-        confirmed: TranscriptSegment[];
-        pending: TranscriptSegment[];
-      }) => void)
-    | null = null;
-  const segments: TranscriptSegment[] = [];
-  const makeSegment = (): TranscriptSegment => ({
-    id: `seg-${segments.length + 1}`,
-    speakerLabel: SPEAKER,
-    startMs: segments.length * 1000,
-    endMs: segments.length * 1000 + 900,
-    text: SEGMENT_TEXT,
-    words: [],
-  });
-  return {
-    onUpdate(l) {
-      listener = l;
-      return () => {
-        listener = null;
-      };
-    },
-    pushSpeakerAudio() {
-      const segment = makeSegment();
-      segments.push(segment);
-      listener?.({ confirmed: [segment], pending: [] });
-    },
-    setSpeakerName() {},
-    flushSpeaker() {},
-    participantJoined() {},
-    participantLeft() {},
-    async finalize() {
-      return segments;
-    },
-    speakerNames() {
-      return [SPEAKER];
-    },
-  };
+  if (persisted.status !== "ready") {
+    return `expected transcript status ready, saw ${String(persisted.status)}`;
+  }
+  const segment = persisted.segments?.[0];
+  if (segment?.speakerLabel !== "Alex" || segment.text !== SEGMENT_TEXT) {
+    return `unexpected authoritative transcript readback: ${JSON.stringify(persisted.segments)}`;
+  }
+  const blob = callPayloadBlob(ctx, GET_MEETING_TRANSCRIPT);
+  if (!blob.includes(SEGMENT_TEXT)) {
+    return `expected the transcribed speech in the action result, saw ${blob.slice(0, 300)}`;
+  }
+  return undefined;
 }
-
-/** A scripted Google Meet adapter: join → one speaker turn → normal completion. */
-const mockAdapter: MeetingPlatformAdapter = {
-  platform: "google_meet",
-  async run(session: MeetingBotSession) {
-    session.reportStatus("joining");
-    session.reportStatus("active");
-    session.sink.participantJoined({
-      id: "p-alex",
-      displayName: SPEAKER,
-      joinedAtMs: 0,
-    });
-    session.sink.setSpeakerName("spk-alex", SPEAKER);
-    session.sink.pushSpeakerAudio("spk-alex", new Float32Array(320));
-    session.sink.flushSpeaker("spk-alex");
-    return "normal_completion";
-  },
-};
 
 export default scenario({
   lane: "pr-deterministic",
+  modelFixtures: {
+    mode: "fixtures",
+    fixtures: [
+      {
+        name: "meetings-transcript-stage1",
+        match: {
+          modelType: "RESPONSE_HANDLER",
+          input: { includes: USER_REQUEST },
+          toolNames: ["HANDLE_RESPONSE"],
+        },
+        response: {
+          json: {
+            contexts: ["meetings"],
+            intents: ["show me the meeting transcript"],
+            replyText: "",
+            threadOps: [],
+            candidateActionNames: [GET_MEETING_TRANSCRIPT],
+          },
+        },
+      },
+      {
+        name: "meetings-transcript-planner",
+        match: {
+          modelType: "ACTION_PLANNER",
+          input: { includes: USER_REQUEST },
+          toolNames: [
+            "GET_MEETING_TRANSCRIPT",
+            "IGNORE",
+            "REPLY",
+            "RESOLVE_REQUEST",
+            "RESOLVE_REQUEST_APPROVE",
+            "RESOLVE_REQUEST_RECONCILE_DELIVERED",
+            "RESOLVE_REQUEST_RECONCILE_NOT_DELIVERED",
+            "RESOLVE_REQUEST_REJECT",
+            "STOP",
+          ],
+        },
+        response: {
+          json: {
+            text: "",
+            thought: "Read the most recent meeting transcript.",
+            messageToUser: "",
+            completed: true,
+            finishReason: "tool-calls",
+            toolCalls: [
+              {
+                id: "call-transcript",
+                name: GET_MEETING_TRANSCRIPT,
+                type: "function",
+                arguments: {},
+              },
+            ],
+          },
+        },
+      },
+      {
+        name: "meetings-transcript-decision",
+        match: {
+          modelType: "RESPONSE_HANDLER",
+          input: { includes: USER_REQUEST },
+          toolNames: [],
+        },
+        response: {
+          json: {
+            success: true,
+            decision: "FINISH",
+            thought: "Returned the meeting transcript; nothing more to do.",
+            messageToUser: "Here's the transcript from your last meeting.",
+          },
+        },
+      },
+      {
+        name: "meetings-transcript-post-turn-evaluator",
+        match: {
+          modelType: "TEXT_SMALL",
+          input: {
+            pattern:
+              "# Task: Post-turn evaluation[\\s\\S]*Show me the transcript from my last meeting — what was said\\?",
+          },
+          toolNames: [],
+        },
+        response: { json: {} },
+        cardinality: 1,
+      },
+    ],
+  },
   id: "meetings.get-transcript",
   title:
     "Meetings: read a finalized meeting transcript via GET_MEETING_TRANSCRIPT",
   domain: "meetings",
   tags: ["smoke", "meetings", "transcripts"],
   description:
-    "Reads a finalized meeting transcript through the GET_MEETING_TRANSCRIPT action, backed by a real MeetingService driven with scripted browser/ASR mocks — keyless, no browser or live meeting.",
-
-  requires: { plugins: ["@elizaos/plugin-meetings"] },
+    "Reads a finalized transcript through production meeting and memory paths with scripted capture and strict model fixtures.",
+  requires: { plugins: MEETINGS_MOCK_REQUIRED_PLUGINS },
   isolation: "per-scenario",
-
   seed: [
-    {
-      type: "custom",
-      name: "meetings-mock-join-and-fixtures",
-      apply: async (ctx) => {
-        const runtime = ctx.runtime as R;
-
-        // Import the plugin FIRST (evaluates its module, which sets the real
-        // dependencyFactory), then override with scripted mocks. The module is
-        // cached, so the executor's later auto-load will not re-run it and reset
-        // the factory back to the browser adapters.
-        const meetings = (await import("@elizaos/plugin-meetings")) as {
-          MeetingService: typeof MeetingService;
-          meetingsPlugin: unknown;
-        };
-        const dependencies: MeetingServiceDependencies = {
-          adapters: new Map<MeetingPlatform, MeetingPlatformAdapter>([
-            ["google_meet", mockAdapter],
-          ]),
-          createPipeline: () => createMockPipeline(),
-        };
-        meetings.MeetingService.dependencyFactory = () => dependencies;
-
-        await runtime.registerPlugin(meetings.meetingsPlugin);
-
-        const svc = runtime.getService("meetings") as MeetingService;
-        const session = await svc.requestJoin({
-          platform: "google_meet",
-          meetingUrl: MEET_URL,
-        });
-        joinedTranscriptId = session.transcriptId;
-
-        // The mock adapter completes synchronously; wait for the session state
-        // machine + transcript writer to reach a terminal state so the persisted
-        // transcript is finalized ("ready") before the turn reads it.
-        const deadline = Date.now() + 5_000;
-        while (Date.now() < deadline) {
-          const current = svc.getSession(
-            session.id as UUID,
-          ) as MeetingSession | null;
-          if (
-            current &&
-            (current.status === "ended" || current.status === "failed")
-          ) {
-            break;
-          }
-          await new Promise((resolve) => setTimeout(resolve, 25));
-        }
-
-        runtime.scenarioModelFixtures?.register(
+    installMockSeed({
+      "abc-defg-hij": {
+        platform: "google_meet",
+        holdUntilLeave: false,
+        turns: [
           {
-            name: "meetings-stage1",
-            match: {
-              modelType: ModelType.RESPONSE_HANDLER,
-              input: (v: string) =>
-                v.includes("transcript") || v.includes("meeting"),
-              toolName: "HANDLE_RESPONSE",
-            },
-            response: {
-              contexts: ["meetings"],
-              intents: ["show me the meeting transcript"],
-              replyText: "",
-              threadOps: [],
-              candidateActionNames: [GET_MEETING_TRANSCRIPT],
-            },
-            times: 1,
+            speakerKey: "spk-alex",
+            displayName: "Alex",
+            startMs: 0,
+            endMs: 900,
+            text: SEGMENT_TEXT,
           },
-          {
-            name: "meetings-planner",
-            match: (call: { modelType: string; toolNames: string[] }) =>
-              call.modelType === ModelType.ACTION_PLANNER &&
-              call.toolNames.includes(GET_MEETING_TRANSCRIPT),
-            response: {
-              text: "",
-              thought: "Read the most recent meeting transcript.",
-              messageToUser: "",
-              completed: true,
-              finishReason: "tool-calls",
-              toolCalls: [
-                {
-                  id: "call-transcript",
-                  name: GET_MEETING_TRANSCRIPT,
-                  type: "function",
-                  arguments: {},
-                },
-              ],
-            },
-            times: 1,
-          },
-          {
-            name: "meetings-decision",
-            match: (call: { modelType: string; toolNames: string[] }) =>
-              call.modelType === ModelType.RESPONSE_HANDLER &&
-              !call.toolNames.includes("HANDLE_RESPONSE"),
-            response: {
-              success: true,
-              decision: "FINISH",
-              thought: "Returned the meeting transcript; nothing more to do.",
-              messageToUser: "Here's the transcript from your last meeting.",
-            },
-            times: 1,
-          },
-        );
-        return undefined;
+        ],
       },
-    },
+    }),
   ],
-
   rooms: [
     { id: "main", source: "dashboard", channelType: "DM", title: "Meetings" },
   ],
-
   turns: [
+    {
+      kind: "action",
+      name: "join the scripted meeting through the production action",
+      actionName: "JOIN_MEETING",
+      text: `join ${MEET_URL} and take notes`,
+    },
+    {
+      kind: "wait",
+      name: "wait for the authoritative transcript row to become ready",
+      timeoutMs: 5_000,
+      until: joinedTranscriptIsReady,
+    },
     {
       kind: "message",
       name: "get-transcript",
-      text: "Show me the transcript from my last meeting — what was said?",
+      text: USER_REQUEST,
       timeoutMs: 120_000,
       assertTurn: (turn) => {
         const call = turn.actionsCalled.find(
-          (a) => a.actionName === GET_MEETING_TRANSCRIPT,
+          (action) => action.actionName === GET_MEETING_TRANSCRIPT,
         );
         if (!call) {
           return `Expected ${GET_MEETING_TRANSCRIPT} but got: ${turn.actionsCalled
-            .map((a) => a.actionName)
+            .map((action) => action.actionName)
             .join(", ")}`;
         }
-        if (!call.result?.success) {
-          return `${GET_MEETING_TRANSCRIPT} did not succeed: ${
-            call.error?.message ?? call.result?.text ?? "unknown error"
-          }`;
-        }
+        return call.result?.success
+          ? undefined
+          : `${GET_MEETING_TRANSCRIPT} did not succeed: ${call.error?.message ?? call.result?.text ?? "unknown error"}`;
       },
     },
+    {
+      kind: "action",
+      name: "snapshot strict meetings provider ledger",
+      actionName: "ASSERT_MEETING_MOCK_LEDGER",
+      assertTurn: assertMeetingMockLedger,
+    },
   ],
-
   finalChecks: [
     {
       type: "actionCalled",
@@ -270,28 +233,15 @@ export default scenario({
       minCount: 1,
     },
     {
-      // Effect proof (#11381): the action returned the transcript that the real
-      // session lifecycle finalized — the id matches the joined session's
-      // transcript, and the reply carries the transcribed speech — not just
-      // "the handler returned success".
       type: "custom",
-      name: "meetings-transcript-effect",
-      predicate: (ctx) => {
-        if (!joinedTranscriptId) {
-          return "the mock meeting never produced a transcript id in the seed";
-        }
-        const data = successfulActionData(ctx, GET_MEETING_TRANSCRIPT);
-        if (!data) {
-          return `no successful ${GET_MEETING_TRANSCRIPT} result data; calls: ${describeCalls(ctx)}`;
-        }
-        if (data.transcriptId !== joinedTranscriptId) {
-          return `expected result.data.transcriptId ${joinedTranscriptId} (the finalized session's transcript), saw ${String(data.transcriptId ?? "(missing)")}`;
-        }
-        const blob = callPayloadBlob(ctx, GET_MEETING_TRANSCRIPT);
-        if (!blob.includes(SEGMENT_TEXT)) {
-          return `expected the transcribed speech "${SEGMENT_TEXT}" in the ${GET_MEETING_TRANSCRIPT} reply, saw ${blob.slice(0, 300)}`;
-        }
-      },
+      name: "transcript result matches the authoritative ready row",
+      predicate: transcriptEffect,
+    },
+    {
+      type: "custom",
+      name: "strict meetings provider ledger matches",
+      predicate: meetingMockLedgerMatches,
     },
   ],
+  cleanup: [finalizeMeetingMockLedger()],
 });

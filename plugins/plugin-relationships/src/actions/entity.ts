@@ -14,9 +14,7 @@
  *   - `read`               fetch a single entity by id
  *   - `list`               list known entities (optionally filtered by kind)
  *   - `log_interaction`    record an inbound/outbound interaction on an entity
- *   - `set_identity`       observe a verified (platform, handle) identity
  *   - `set_relationship`   upsert a typed edge between two entities
- *   - `merge`              fold duplicate entities into a target
  *
  * Owner-only (`roleGate.minRole: OWNER` + the {@link hasOwnerAccess} gate).
  *
@@ -39,7 +37,7 @@ import type {
   State,
 } from "@elizaos/core";
 import { describeUserReference, logger } from "@elizaos/core";
-import type { Entity, EntityIdentity } from "@elizaos/shared";
+import type { Entity } from "@elizaos/shared";
 import { SELF_ENTITY_ID } from "@elizaos/shared";
 
 import {
@@ -63,22 +61,16 @@ export interface EntityActionParameters {
   kind?: string;
   /** Display name for `create`. */
   name?: string;
-  /** Target entity id for `read` / `log_interaction` / `merge` target. */
+  /** Target entity id for `read` / `log_interaction`. */
   entityId?: string;
-  /** Identity platform for `set_identity` (e.g. `discord`, `email`). */
+  /** Connector platform for `log_interaction`. */
   platform?: string;
-  /** Handle on `platform` for `set_identity`. */
-  handle?: string;
-  /** Display name shown for an observed identity. */
-  displayName?: string;
   /** Edge target id for `set_relationship`. */
   toEntityId?: string;
   /** Edge source id for `set_relationship`. Defaults to `self`. */
   fromEntityId?: string;
   /** Edge type label for `set_relationship` (e.g. `manages`). */
   relationshipType?: string;
-  /** Source entity ids consumed when calling `merge`. */
-  sourceEntityIds?: string[];
   /** Free-form evidence string for provenance trail. */
   evidence?: string;
   /** Interaction direction for `log_interaction`. Defaults to `outbound`. */
@@ -87,13 +79,6 @@ export interface EntityActionParameters {
   summary?: string;
   /** Limit for `list`. */
   limit?: number;
-}
-
-interface TrustedIdentityVerification {
-  platform: string;
-  handle: string;
-  evidence: string;
-  verified: true;
 }
 
 function getParams(
@@ -159,44 +144,13 @@ function listScopeText(args: {
   return `No entities of kind ${kindLabel}. The graph has ${entityCount(args.unfiltered.count, args.unfiltered.hasMore)} of other kinds; list without kind to see them.`;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}
-
-function resolveTrustedIdentityVerification(
-  options: HandlerOptions | undefined,
-  platform: string,
-  handle: string,
-): TrustedIdentityVerification | null {
-  const candidate = options?.identityVerification;
-  if (!isRecord(candidate)) return null;
-  if (candidate.verified !== true) return null;
-  const verifiedPlatform = trimmed(
-    typeof candidate.platform === "string" ? candidate.platform : undefined,
-  );
-  const verifiedHandle = trimmed(
-    typeof candidate.handle === "string" ? candidate.handle : undefined,
-  );
-  const evidence = trimmed(
-    typeof candidate.evidence === "string" ? candidate.evidence : undefined,
-  );
-  if (!verifiedPlatform || !verifiedHandle || !evidence) return null;
-  if (verifiedPlatform !== platform || verifiedHandle !== handle) return null;
-  return {
-    platform: verifiedPlatform,
-    handle: verifiedHandle,
-    evidence,
-    verified: true,
-  };
-}
-
 export const entityAction: Action = {
   name: RELATIONSHIPS_ACTION_NAME,
   similes: ["ENTITY_CRUD", "GRAPH_ENTITY", "KNOWLEDGE_GRAPH_CRUD"],
   description:
-    "Direct CRUD over the runtime knowledge graph (entities + typed edges): create | read | list | log_interaction | set_identity | set_relationship | merge. Backs the relationships viewer. Contact orchestration with planning -> ENTITY (personal-assistant).",
+    "Direct CRUD over the runtime knowledge graph (entities + typed edges): create | read | list | log_interaction | set_relationship. Identity claims and merges require the deterministic identity authority and are not agent actions.",
   descriptionCompressed:
-    "KNOWLEDGE_GRAPH create|read|list|log_interaction|set_identity|set_relationship|merge",
+    "KNOWLEDGE_GRAPH create|read|list|log_interaction|set_relationship",
   tags: [
     "domain:relationships",
     "capability:read",
@@ -248,7 +202,7 @@ export const entityAction: Action = {
     const op = resolveOp(params);
     if (!op) {
       const text =
-        "Tell me which knowledge-graph op: create, read, list, log_interaction, set_identity, set_relationship, or merge.";
+        "Tell me which knowledge-graph op: create, read, list, log_interaction, or set_relationship. Identity verification and merging require the deterministic identity authority.";
       await callback?.({
         text,
         source: "action",
@@ -401,75 +355,6 @@ export const entityAction: Action = {
         });
       }
 
-      case "set_identity": {
-        const platform = trimmed(params.platform);
-        const handle = trimmed(params.handle);
-        if (!platform || !handle) {
-          return reply({
-            success: false,
-            text: "I need both the platform and the handle to record an identity.",
-            data: { op, error: "MISSING_FIELDS" },
-          });
-        }
-        const evidence = trimmed(params.evidence) ?? "user_chat";
-        const displayName = trimmed(params.displayName);
-        const observation = await entityStore.observeIdentity({
-          platform,
-          handle,
-          ...(displayName ? { displayName } : {}),
-          evidence: [evidence],
-          confidence: 1,
-        });
-        const verification = resolveTrustedIdentityVerification(
-          options,
-          platform,
-          handle,
-        );
-        if (!verification) {
-          return reply({
-            success: false,
-            text: `Recorded identity ${platform}:${handle} as unverified. Verification requires trusted platform proof before it can be marked verified.`,
-            data: {
-              op,
-              error: "IDENTITY_VERIFICATION_REQUIRED",
-              entity: entitySummary(observation.entity),
-              mergedFrom: observation.mergedFrom ?? null,
-              conflict: observation.conflict ?? false,
-            },
-          });
-        }
-        const verifiedIdentities: EntityIdentity[] =
-          observation.entity.identities.map((identity) =>
-            identity.platform === platform && identity.handle === handle
-              ? {
-                  ...identity,
-                  verified: true,
-                  evidence: Array.from(
-                    new Set([
-                      ...(identity.evidence ?? []),
-                      evidence,
-                      verification.evidence,
-                    ]),
-                  ),
-                }
-              : identity,
-          );
-        const merged = await entityStore.upsert({
-          ...observation.entity,
-          identities: verifiedIdentities,
-        });
-        return reply({
-          success: true,
-          text: `Recorded identity ${platform}:${handle} on ${merged.preferredName}.`,
-          data: {
-            op,
-            entity: entitySummary(merged),
-            mergedFrom: observation.mergedFrom ?? null,
-            conflict: observation.conflict ?? false,
-          },
-        });
-      }
-
       case "set_relationship": {
         const toEntityId = trimmed(params.toEntityId);
         const relationshipType = trimmed(params.relationshipType);
@@ -496,30 +381,6 @@ export const entityAction: Action = {
           success: true,
           text: `Recorded ${fromEntityId} -[${relationshipType}]-> ${toEntityId}.`,
           data: { op, relationship: edge },
-        });
-      }
-
-      case "merge": {
-        const targetEntityId = trimmed(params.entityId);
-        const sourceEntityIds = (params.sourceEntityIds ?? []).filter(
-          (id): id is string => typeof id === "string" && id.trim().length > 0,
-        );
-        if (!targetEntityId || sourceEntityIds.length === 0) {
-          return reply({
-            success: false,
-            text: "I need a target entityId and at least one sourceEntityId to merge duplicates.",
-            data: { op, error: "MISSING_FIELDS" },
-          });
-        }
-        const merged = await entityStore.merge(targetEntityId, sourceEntityIds);
-        return reply({
-          success: true,
-          text: `Merged ${sourceEntityIds.length} entit${sourceEntityIds.length === 1 ? "y" : "ies"} into ${merged.preferredName}.`,
-          data: {
-            op,
-            entity: entitySummary(merged),
-            sourceEntityIds,
-          },
         });
       }
     }

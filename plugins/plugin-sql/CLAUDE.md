@@ -13,9 +13,12 @@ The exported `plugin` object (`src/index.ts` / `src/index.node.ts` / `src/index.
 | Kind | Name | Description |
 |------|------|-------------|
 | Service | `AdvancedMemoryStorageService` (`serviceType = "memoryStorage"`) | Implements `MemoryStorageProvider`; persists long-term memories and session summaries to dedicated SQL tables via the runtime memory API |
+| Service | `SqlIdentityResolutionService` (`serviceType = "IDENTITY_RESOLUTION"`) | Canonical generation-fenced identity authority for claims, person-link attestations, reversible redirects, merge/split journals, and owner-binding reads |
+| Route | `POST /api/identity/person-links/attest` | Private OWNER/ADMIN ingress; requires an authenticated `AccessContext`, derives actor authority from it, and records immutable same-person evidence without merging principals |
+| Route | `GET /api/identity/person-links/verify` | Private exact-generation verification; also requires OWNER/ADMIN `AccessContext` |
 | Schema | `schema` (all tables) | Passed as `plugin.schema` so `DatabaseMigrationService` can auto-migrate at startup |
 
-No actions, providers, evaluators, routes, or event handlers are registered by this plugin.
+No actions, providers, evaluators, or event handlers are registered by this plugin. Identity mutation is never model-callable.
 
 ## Layout
 
@@ -34,6 +37,8 @@ plugins/plugin-sql/
     utils/
       string-to-uuid.ts         String-to-UUID conversion utility
     connector-credential-store.ts  ConnectorCredentialStore/Vault interfaces + factory
+    routes/
+      identity-person-link.ts    Authenticated operator attestation + verification routes
     migration-service.ts        DatabaseMigrationService — discovers plugin schemas, runs migrations, re-applies RLS
     migrations.ts               One-off migrations (e.g., entity RLS backfill)
     rls.ts                      Row Level Security helpers (install/apply/uninstall)
@@ -53,6 +58,7 @@ plugins/plugin-sql/
       agent.ts / room.ts / memory.ts / entity.ts / ...  One file per table
     services/
       advanced-memory-storage.ts  AdvancedMemoryStorageService implementation
+      sql-identity-resolution.ts  Canonical identity authority implementation
     stores/
       agent.store.ts / memory.store.ts / room.store.ts / ...  Query logic split by domain
     runtime-migrator/
@@ -132,6 +138,7 @@ Settings are read via `runtime.getSetting(key)` inside `plugin.init`.
 - **Drizzle subpath export.** Common Drizzle query helpers (`eq`, `sql`, `and`, etc.) are re-exported from `@elizaos/plugin-sql` and `@elizaos/plugin-sql/drizzle` to avoid direct drizzle-orm version coupling in consumer code.
 - **Vector dimensions are active-width scoped.** `ensureEmbeddingDimension(n)` selects the current vector column, and runtime boot calls `clearEmbeddingsOutsideActiveDimension()` to delete vectors in other dimension columns and queue those memories for re-embedding at the active width. Memory rows survive; stale vectors do not.
 - **RLS is PostgreSQL-only.** PGlite does not support Row Level Security. The `ENABLE_DATA_ISOLATION` path is silently skipped on PGlite.
+- **Document entitlements are query-time authority.** Document list, lookup, and fragment queries authorize the parent before constructing results. Current room IDs satisfy the parent's single room entitlement; validated `directGrantEntityIds` provide read-only access outside the room, except for `agent-private` documents. Never materialize per-member document grants or move these predicates after pagination/ranking.
 - **Tests live under `src/__tests__/`** and run via vitest configured in `src/vitest.config.ts`.
 
 ## Verification

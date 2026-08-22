@@ -1049,6 +1049,48 @@ describe("voice-session WS lifecycle", () => {
     expect(JSON.stringify(client.controlFrames)).not.toContain("not-forwarded");
   });
 
+  test("forwards a terminal APP launch through the originating Session turn trace", async () => {
+    const client = new FakeClientSocket();
+    await connectSession({
+      client,
+      fetchImpl: makeCanonicalChunkFetch(["Opened Demo."], {
+        actionResults: [
+          {
+            actionName: "APP",
+            success: true,
+            values: {
+              mode: "launch",
+              viewId: "browser",
+              viewPath: "/browser?browse=%2Fapi%2Fapps%2Flocal%2Fdemo%2F",
+            },
+          },
+        ],
+      }),
+    });
+
+    const ink = FakeInkSocket.instances.at(-1)!;
+    ink.emitTurn("turn.start");
+    ink.emitTurn("turn.end", "launch demo");
+    await flush();
+    await flush();
+
+    const firstText = client.controlFrames.find(
+      (frame) => frame.t === "llm_first_text",
+    );
+    const navigation = client.controlFrames.filter(
+      (frame) => frame.t === "navigate_view",
+    );
+    expect(firstText).toBeDefined();
+    expect(navigation).toEqual([
+      {
+        t: "navigate_view",
+        viewId: "browser",
+        viewPath: "/browser?browse=%2Fapi%2Fapps%2Flocal%2Fdemo%2F",
+        traceId: firstText?.traceId,
+      },
+    ]);
+  });
+
   test("prewarms Eliza tenancy context when the live session starts", async () => {
     let prewarmCalls = 0;
     const client = new FakeClientSocket();
