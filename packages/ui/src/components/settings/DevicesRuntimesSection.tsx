@@ -168,7 +168,7 @@ function DesktopTargetPanel({
                 <Button
                   type="button"
                   variant="ghost"
-                  className="min-h-11 text-destructive"
+                  className="min-h-11 text-txt-strong"
                   disabled={busy || !onRevoke}
                   onClick={() => setConfirmingRevoke(true)}
                 >
@@ -181,7 +181,7 @@ function DesktopTargetPanel({
         {confirmingRevoke ? (
           <div
             role="alert"
-            className="mt-3 flex flex-wrap items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/5 p-2"
+            className="mt-3 flex flex-wrap items-center gap-2 rounded-lg border border-border-strong bg-surface p-2"
           >
             <span className="mr-auto text-xs text-txt-strong">
               Revoke this host in Cloud, stop its relay, and remove local host
@@ -197,7 +197,7 @@ function DesktopTargetPanel({
             </Button>
             <Button
               type="button"
-              variant="destructive"
+              variant="default"
               className="min-h-11"
               disabled={busy || !onRevoke}
               onClick={() => {
@@ -210,7 +210,14 @@ function DesktopTargetPanel({
           </div>
         ) : null}
         {target.lastErrorCode ? (
-          <p role="alert" className="mt-3 text-xs text-destructive">
+          <p
+            role="alert"
+            className="mt-3 flex items-start gap-1.5 text-xs text-txt-strong"
+          >
+            <CircleAlert
+              className="mt-0.5 h-3.5 w-3.5 shrink-0"
+              aria-hidden
+            />
             Remote target needs attention ({target.lastErrorCode}). Retry or
             inspect desktop logs.
           </p>
@@ -316,10 +323,10 @@ const STATUS_META: Record<
   RuntimeTargetStatus,
   { label: string; className: string }
 > = {
-  connected: { label: "Connected", className: "text-ok" },
-  offline: { label: "Offline", className: "text-muted" },
-  error: { label: "Needs attention", className: "text-destructive" },
-  pairing: { label: "Pairing", className: "text-accent" },
+  connected: { label: "Connected", className: "text-txt-strong" },
+  offline: { label: "Offline", className: "text-muted-strong" },
+  error: { label: "Needs attention", className: "text-txt-strong" },
+  pairing: { label: "Pairing", className: "text-txt-strong" },
 };
 
 function PairingQr({ payload }: { payload: string }) {
@@ -402,7 +409,7 @@ function PairingPanel({ pairing }: { pairing: DevicePairingView }) {
         <p
           className={cn(
             "mt-2 text-xs",
-            remaining ? "text-muted" : "text-destructive",
+            remaining ? "text-muted" : "text-txt-strong",
           )}
         >
           {remaining
@@ -475,7 +482,7 @@ function RuntimeCard({
           </div>
           {target.error ? (
             <p
-              className="mt-2 flex items-start gap-1.5 text-xs text-destructive"
+              className="mt-2 flex items-start gap-1.5 text-xs text-txt-strong"
               role="alert"
             >
               <CircleAlert
@@ -540,7 +547,7 @@ function RuntimeCard({
             type="button"
             size="sm"
             variant="ghost"
-            className="min-h-11 text-destructive"
+            className="min-h-11 text-txt-strong"
             disabled={busy}
             onClick={() => setConfirming("remove")}
           >
@@ -549,7 +556,7 @@ function RuntimeCard({
         ) : null}
         {confirming ? (
           <div
-            className="flex w-full flex-wrap items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/5 p-2"
+            className="flex w-full flex-wrap items-center gap-2 rounded-lg border border-border-strong bg-surface p-2"
             role="alert"
           >
             <span className="mr-auto text-xs text-txt-strong">
@@ -569,7 +576,7 @@ function RuntimeCard({
             <Button
               type="button"
               size="sm"
-              variant="destructive"
+              variant="default"
               className="min-h-11"
               disabled={busy}
               onClick={() => {
@@ -745,14 +752,14 @@ function AdvancedSsh({
             className={cn(
               "sm:col-span-2 rounded-lg border p-3",
               inspection.changed
-                ? "border-destructive/50 bg-destructive/5"
+                ? "border-border-strong bg-surface"
                 : "border-accent/35 bg-accent/5",
             )}
             role="status"
           >
             <p className="flex items-center gap-2 text-xs font-semibold text-txt-strong">
               {inspection.changed ? (
-                <CircleAlert className="h-4 w-4 text-destructive" aria-hidden />
+                <CircleAlert className="h-4 w-4 text-txt-strong" aria-hidden />
               ) : (
                 <ShieldCheck className="h-4 w-4 text-accent" aria-hidden />
               )}
@@ -764,7 +771,7 @@ function AdvancedSsh({
               {inspection.preferredFingerprint}
             </code>
             {inspection.changed ? (
-              <p className="mt-2 text-xs text-destructive">
+              <p className="mt-2 text-xs text-txt-strong">
                 The saved key does not match this server. Confirm the change
                 outside Eliza before replacing trust.
               </p>
@@ -826,7 +833,7 @@ export function DevicesRuntimesSection({
       {error ? (
         <div
           role="alert"
-          className="rounded-lg border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive"
+          className="rounded-lg border border-border-strong bg-surface px-3 py-2 text-sm text-txt-strong"
         >
           {error}
         </div>

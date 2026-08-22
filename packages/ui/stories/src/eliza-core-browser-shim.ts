@@ -2,6 +2,63 @@
  * Browser shim standing in for @elizaos/core in the stories app: the minimal types/constants the gallery needs without pulling the runtime.
  */
 export const DEFAULT_MAX_BODY_BYTES = 1_048_576;
+export {
+  LINKED_ACCOUNT_ACCOUNT_SOURCES,
+  LINKED_ACCOUNT_HEALTH_STATES,
+  LINKED_ACCOUNT_PROVIDER_IDS,
+  SERVICE_ROUTE_ACCOUNT_STRATEGIES,
+} from "../../../core/src/contracts/service-routing-types.ts";
+export { stripUnclaimedInteractionMarkup } from "../../../core/src/messaging/interactions/parse.ts";
+export { sanitizeSpeechText } from "../../../core/src/spoken-text.ts";
+
+export class ElizaError extends Error {
+  readonly name = "ElizaError";
+  readonly code: string;
+  readonly context?: Record<string, unknown>;
+  readonly severity?: "ephemeral" | "fatal";
+
+  constructor(
+    message: string,
+    options: {
+      code: string;
+      cause?: unknown;
+      context?: Record<string, unknown>;
+      severity?: "ephemeral" | "fatal";
+    },
+  ) {
+    super(
+      message,
+      options.cause === undefined ? undefined : { cause: options.cause },
+    );
+    this.code = options.code;
+    this.context = options.context;
+    this.severity = options.severity;
+  }
+}
+
+export function toWellFormedUnicode(text: string): string {
+  const native = (
+    String.prototype as string & {
+      toWellFormed?: () => string;
+    }
+  ).toWellFormed;
+  if (native) return native.call(text);
+  return text.replace(
+    /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g,
+    "\uFFFD",
+  );
+}
+
+export function truncateWellFormed(text: string, maxLength: number): string {
+  if (!Number.isFinite(maxLength) || maxLength <= 0) return "";
+  if (text.length <= maxLength) return text;
+  const end =
+    /[\uD800-\uDBFF]/.test(text[maxLength - 1] ?? "") &&
+    /[\uDC00-\uDFFF]/.test(text[maxLength] ?? "")
+      ? maxLength - 1
+      : maxLength;
+  return text.slice(0, end);
+}
 
 // Mirrors core's canonical truthy set (core/src/env-utils.ts); re-exported
 // through @elizaos/shared/env-utils, which gallery pages reach via
@@ -243,7 +300,6 @@ export function sendJsonError(): void {}
 export function isConnectorConfigured(): boolean {
   return false;
 }
-
 
 export function isWechatConfigured(): boolean {
   return false;

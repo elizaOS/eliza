@@ -17,10 +17,137 @@ import {
   type VoiceUpdatePreferencesView,
 } from "@ui-src/components/local-inference/ModelUpdatesPanel.tsx";
 import { PermissionRecoveryCallout } from "@ui-src/components/permissions/PermissionRecoveryCallout.tsx";
+import {
+  type DevicePairingView,
+  type DeviceRuntimeTarget,
+  DevicesRuntimesSection,
+} from "@ui-src/components/settings/DevicesRuntimesSection.tsx";
+import type { SshHostInspection } from "@ui-src/platform/ssh-runtime.ts";
 import { useState } from "react";
 import type { StoryDefinition } from "../Story.tsx";
 
 const noop = (): void => undefined;
+
+const initialRuntimeTargets: DeviceRuntimeTarget[] = [
+  {
+    id: "local-mac",
+    label: "This Mac",
+    detail: "This device · private local runtime",
+    kind: "local",
+    status: "connected",
+    selected: true,
+    activity: "Running on this device",
+  },
+  {
+    id: "eliza-cloud",
+    label: "Eliza Cloud",
+    detail: "Eliza Cloud runtime",
+    kind: "cloud",
+    status: "connected",
+    selected: false,
+    activity: "Available",
+  },
+  {
+    id: "host:studio-mac",
+    label: "Studio Mac",
+    detail: "Mac · encrypted Cloud relay · health/status only",
+    kind: "relay",
+    status: "offline",
+    selected: false,
+    activity: "Last seen 3 minutes ago",
+    canPair: true,
+    canRevoke: true,
+  },
+  {
+    id: "private-vps",
+    label: "Private VPS",
+    detail: "VPS over SSH · eliza@vps.example.test",
+    kind: "ssh",
+    status: "offline",
+    selected: false,
+    activity: "Tunnel stopped",
+    canRemove: true,
+  },
+];
+
+function DevicesAndRuntimesStory() {
+  const [targets, setTargets] = useState(initialRuntimeTargets);
+  const [pairing, setPairing] = useState<DevicePairingView | null>(null);
+  const [inspection, setInspection] = useState<SshHostInspection | null>(null);
+  const [relayRunning, setRelayRunning] = useState(true);
+  const select = (id: string) =>
+    setTargets((current) =>
+      current.map((target) => ({ ...target, selected: target.id === id })),
+    );
+  return (
+    <div className="w-[min(920px,calc(100vw-2rem))]">
+      <DevicesRuntimesSection
+        targets={targets}
+        pairing={pairing}
+        sshInspection={inspection}
+        cloudState="available"
+        desktopTarget={{
+          hostId: "studio-mac",
+          platform: "macos",
+          enrolled: true,
+          running: relayRunning,
+          activeSessions: pairing ? 1 : 0,
+          lastErrorCode: null,
+        }}
+        onRefresh={noop}
+        onSelect={select}
+        onRetry={(id) =>
+          setTargets((current) =>
+            current.map((target) =>
+              target.id === id
+                ? { ...target, status: "connected", activity: "Connected" }
+                : target,
+            ),
+          )
+        }
+        onPair={(id) => {
+          const target = targets.find((candidate) => candidate.id === id);
+          setPairing({
+            hostId: id.replace(/^host:/, ""),
+            hostLabel: target?.label ?? "remote computer",
+            sessionId: "50000000-0000-4000-8000-000000000001",
+            code: "482731",
+            expiresAt: new Date(Date.now() + 300_000).toISOString(),
+            qrPayload:
+              "elizaos://remote/pair?session=50000000-0000-4000-8000-000000000001&code=482731",
+          });
+        }}
+        onRevoke={(id) =>
+          setTargets((current) => current.filter((target) => target.id !== id))
+        }
+        onRemove={(id) =>
+          setTargets((current) => current.filter((target) => target.id !== id))
+        }
+        onInspectSsh={({ target, sshPort }) =>
+          setInspection({
+            target,
+            host: target.split("@").at(-1) ?? target,
+            sshPort,
+            fingerprints: [
+              {
+                algorithm: "ssh-ed25519",
+                fingerprint: `SHA256:${"A".repeat(43)}`,
+              },
+            ],
+            preferredFingerprint: `SHA256:${"A".repeat(43)}`,
+            pinnedFingerprint: null,
+            changed: false,
+          })
+        }
+        onConnectSsh={noop}
+        onEnrollDesktopTarget={noop}
+        onActivateDesktopTarget={() => setPairing(null)}
+        onSetDesktopTargetRunning={setRelayRunning}
+        onRevokeDesktopTarget={noop}
+      />
+    </div>
+  );
+}
 
 const catalogApps: RegistryAppInfo[] = [
   {
@@ -249,6 +376,15 @@ function PermissionRecoveryStory() {
 }
 
 export const featureSurfaceStories: StoryDefinition[] = [
+  {
+    id: "feature-devices-runtimes",
+    name: "Devices & Runtimes",
+    importPath:
+      'import { DevicesRuntimesSection } from "@elizaos/ui/components/settings/DevicesRuntimesSection"',
+    description:
+      "Select local, Cloud, encrypted relay, or verified SSH runtimes; pair, revoke, and recover from one canonical settings surface.",
+    render: () => <DevicesAndRuntimesStory />,
+  },
   {
     id: "feature-running-apps-row",
     name: "RunningAppsRow",

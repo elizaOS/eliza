@@ -45,6 +45,29 @@ export const isIP = (input: string): 0 | 4 | 6 => {
 };
 export const isIPv4 = (input: string): boolean => isIP(input) === 4;
 export const isIPv6 = (input: string): boolean => isIP(input) === 6;
+export class BlockList {
+  readonly #addresses = new Set<string>();
+
+  addAddress(address: string, _type?: string): void {
+    this.#addresses.add(address.toLowerCase());
+  }
+
+  addSubnet(address: string, prefix: number, _type?: string): void {
+    const family = isIP(address);
+    if ((family === 4 && prefix === 32) || (family === 6 && prefix === 128)) {
+      this.addAddress(address);
+    }
+  }
+
+  addRange(start: string, end: string): void {
+    this.addAddress(start);
+    this.addAddress(end);
+  }
+
+  check(address: string, _type?: string): boolean {
+    return this.#addresses.has(address.toLowerCase());
+  }
+}
 
 // ── node:crypto (named bits some guards touch at load) ───────────────────────
 export const randomUUID = (): string => "00000000-0000-4000-8000-000000000000";

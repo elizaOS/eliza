@@ -68,6 +68,43 @@ describe("DevicesRuntimesSection", () => {
     expect(
       screen.getByRole("button", { name: "Pair device" }).className,
     ).toContain("min-h-11");
+    expect(screen.getByText("Connected").className).toContain(
+      "text-txt-strong",
+    );
+    expect(screen.getByText("Connected").className).not.toContain("text-ok");
+  });
+
+  it("keeps error state legible without relying on destructive theme color", () => {
+    render(
+      <DevicesRuntimesSection
+        {...props({
+          targets: [
+            {
+              id: "host:error",
+              label: "Studio Mac",
+              detail: "Mac · Cloud relay",
+              kind: "relay",
+              status: "error",
+              selected: false,
+              activity: "Connection failed",
+              error: "Relay unavailable. Retry when the host is online.",
+              canRemove: true,
+            },
+          ],
+        })}
+      />,
+    );
+
+    expect(screen.getByText("Needs attention").className).toContain(
+      "text-txt-strong",
+    );
+    expect(screen.getByRole("alert").className).toContain("text-txt-strong");
+    expect(screen.getByRole("alert").className).not.toContain(
+      "text-destructive",
+    );
+    expect(screen.getByRole("button", { name: "Remove" }).className).toContain(
+      "text-txt-strong",
+    );
   });
 
   it("renders an independent six-digit code, real QR image, and expiry status", () => {
