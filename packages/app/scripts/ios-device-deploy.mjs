@@ -75,15 +75,10 @@ import {
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const appRoot = path.resolve(scriptDir, "..");
 const repoRoot = path.resolve(appRoot, "..", "..");
-const iosEntitlementsRoot = path.join(
-  repoRoot,
-  "packages",
-  "app-core",
-  "platforms",
-  "ios",
-  "App",
-  "App",
-);
+// The mobile build applies a custom app identity to this generated project.
+// Signing must validate those concrete entitlements, not the canonical
+// app-core template that still carries the upstream bundle and App Group IDs.
+const iosEntitlementsRoot = path.join(appRoot, "ios", "App", "App");
 
 const log = (message) => console.log(`[ios-device-deploy] ${message}`);
 const fail = (message) => {
