@@ -8,6 +8,7 @@ import { EventEmitter } from "node:events";
 import type http from "node:http";
 import { type AgentRuntime, ElizaError } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
+import * as skillCatalogClient from "../services/skill-catalog-client";
 import { SKILL_NAME_MAX_LENGTH } from "../types";
 import {
   handleSkillsRoutes,
@@ -687,5 +688,28 @@ describe("catalog pagination parameter parsing", () => {
     const body = json.mock.calls[0]?.[1] as { page: number; perPage: number };
     expect(body.page).toBe(3);
     expect(body.perPage).toBe(25);
+  });
+
+  it("preserves the historical defaults for explicit zero values", async () => {
+    for (const zero of ["0", "00", "-0", "%2B0"]) {
+      const { ctx, json } = catalogContext(`?page=${zero}&perPage=${zero}`);
+      await handleSkillsRoutes(ctx);
+      const body = json.mock.calls[0]?.[1] as { page: number; perPage: number };
+      expect(body.page).toBe(1);
+      expect(body.perPage).toBe(50);
+    }
+
+    const search = vi
+      .spyOn(skillCatalogClient, "searchCatalogSkills")
+      .mockResolvedValue([]);
+    try {
+      const pathname = "/api/skills/catalog/search";
+      const { ctx: searchCtx } = createSkillsContext("GET", pathname);
+      searchCtx.url = new URL(`http://localhost${pathname}?q=test&limit=0`);
+      await handleSkillsRoutes(searchCtx);
+      expect(search).toHaveBeenCalledWith("test", 30);
+    } finally {
+      search.mockRestore();
+    }
   });
 });

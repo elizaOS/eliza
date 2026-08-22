@@ -182,6 +182,16 @@ export interface SkillsServerState {
   skills: SkillEntry[];
 }
 
+function parseDefaultedClampedInteger(
+  value: string | null,
+  options: { min: number; max: number; fallback: number },
+): number {
+  // Preserve the routes' historical `Number(value) || fallback` treatment of
+  // zero while still rejecting fractions, non-finite values, and unsafe ints.
+  if (/^[+-]?0+$/.test(value?.trim() ?? "")) return options.fallback;
+  return parseClampedInteger(value, options);
+}
+
 interface InstallRequestLifecycle {
   readonly signal: AbortSignal;
   markCompleted(): void;
@@ -670,11 +680,10 @@ export async function handleSkillsRoutes(
         min: 1,
         fallback: 1,
       });
-      const perPage = parseClampedInteger(url.searchParams.get("perPage"), {
-        min: 1,
-        max: 100,
-        fallback: 50,
-      });
+      const perPage = parseDefaultedClampedInteger(
+        url.searchParams.get("perPage"),
+        { min: 1, max: 100, fallback: 50 },
+      );
       const sort = url.searchParams.get("sort") ?? "downloads";
       const sorted = [...all];
       if (sort === "downloads")
@@ -753,11 +762,10 @@ export async function handleSkillsRoutes(
       const { searchCatalogSkills } = await import(
         "../services/skill-catalog-client"
       );
-      const limit = parseClampedInteger(url.searchParams.get("limit"), {
-        min: 1,
-        max: 100,
-        fallback: 30,
-      });
+      const limit = parseDefaultedClampedInteger(
+        url.searchParams.get("limit"),
+        { min: 1, max: 100, fallback: 30 },
+      );
       const results = (await searchCatalogSkills(q, limit)).filter((skill) =>
         shouldExposeBinanceSkillRecord(skill),
       );
