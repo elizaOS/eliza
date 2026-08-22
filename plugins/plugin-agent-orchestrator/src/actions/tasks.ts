@@ -21,15 +21,14 @@ import type {
 } from "@elizaos/core";
 import {
   ChannelType,
+  completeUserReferenceView,
   logger as coreLogger,
   ElizaError,
   looksLikeBareLinkShare,
   MESSAGE_SOURCE_SUB_AGENT,
   stringToUuid,
   toWellFormedUnicode,
-  truncateWellFormed,
   unwrapUserMessageText,
-  userReferenceLogView,
 } from "@elizaos/core";
 import type { IssueInfo, PullRequestInfo } from "git-workspace-service";
 import {
@@ -76,6 +75,7 @@ import type {
 import { getCodingWorkspaceService } from "../services/workspace-service.js";
 import {
   callbackText,
+  canonicalSessionId,
   contentRecord,
   emitSessionEvent,
   errorResult,
@@ -98,9 +98,9 @@ import {
   resolveSession,
   setCurrentSession,
   setCurrentSessions,
-  shortId,
   waitForSpawnSlot,
 } from "./common.js";
+import { labelFrom } from "./task-label.js";
 import { parseHistoryLimit } from "./tasks-history-limit.js";
 
 const MAX_CONCURRENT_AGENTS = 8;
@@ -324,12 +324,6 @@ function parseAgentPrefix(
     return { task: part, agentType: fallbackAgentType };
   }
   return { agentType: candidate, task: match[2] ?? part };
-}
-
-function labelFrom(task: string, index: number): string {
-  const cleaned = task.replace(/\s+/g, " ").trim();
-  const wellFormed = toWellFormedUnicode(cleaned);
-  return wellFormed ? truncateWellFormed(wellFormed, 80) : `task-${index + 1}`;
 }
 
 function objectValue(value: unknown): Record<string, unknown> | undefined {
@@ -556,7 +550,7 @@ async function ensureDistinctTaskRoom(
     }
     await runtime.createRoom({
       id: roomId,
-      name: label?.trim() || `Task ${seed.slice(0, 18)}`,
+      name: label?.trim() || `Task ${seed}`,
       source: "orchestrator-task",
       type: ChannelType.GROUP,
       worldId,
@@ -892,11 +886,11 @@ async function runCreateLegacy(
   const maxSmithersTurns = readPositiveInteger(
     params.maxTurns ?? content.maxTurns,
   );
-  // A planner-supplied label is free text; clamp like the labelFrom fallback
-  // so listings, room names, and progress lines stay bounded.
+  // Preserve planner-supplied labels completely so listings and room names do
+  // not become ambiguous aliases for different tasks.
   const baseLabelParam = pickString(params, content, "label");
   const baseLabel = baseLabelParam
-    ? userReferenceLogView(baseLabelParam)
+    ? completeUserReferenceView(baseLabelParam)
     : undefined;
   const extraMetadata = additionalSessionMetadata(params, content);
   const keepAliveAfterComplete = hasVerifiedRetryLifecycle(
@@ -933,11 +927,10 @@ async function runCreateLegacy(
   // Planner-supplied title/goal is unbounded free text (it can be a whole
   // blob); clamp at the persist/display seam — the stored task title and the
   // [TASK:] widget block both render it. labelFrom's fallback is already
-  // 80-clamped, so only the params-derived branch needs bounding.
   const plannerTitle =
     pickString(params, content, "title") ?? pickString(params, content, "goal");
   const taskTitle = plannerTitle
-    ? userReferenceLogView(plannerTitle)
+    ? completeUserReferenceView(plannerTitle)
     : tasks[0]
       ? labelFrom(tasks[0], 0)
       : "Coding task";
@@ -1884,12 +1877,11 @@ async function runSpawnAgent(
     // no interim reply. No regex over the task text (the model judges intent).
     const deferUserReply =
       pickBoolean(params, content, "deferUserReply") === true;
-    // A planner-supplied label is free text; clamp like the derived fallback
-    // so listings, room names, and progress lines stay bounded.
+    // Preserve the complete task label; it is model-visible task identity.
     const labelParam = pickString(params, content, "label");
     const label = labelParam
-      ? userReferenceLogView(labelParam)
-      : truncateWellFormed(toWellFormedUnicode(task), 80);
+      ? completeUserReferenceView(labelParam)
+      : labelFrom(task, 0);
     const originConnectorMessageId = connectorMessageIdFromMemory(
       message,
       content,
@@ -2471,7 +2463,7 @@ async function runListAgents(
   const lines = [`Active task agents (${sessions.length}):`];
   for (const session of sessions) {
     lines.push(
-      `- ${labelFor(session)} [${shortId(session.id)}] ${session.agentType} ${session.status} in ${session.workdir}`,
+      `- ${labelFor(session)} [${canonicalSessionId(session.id)}] ${session.agentType} ${session.status} in ${session.workdir}`,
     );
   }
   const text = lines.join("\n");

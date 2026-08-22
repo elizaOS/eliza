@@ -694,11 +694,14 @@ describe("renderInteractionsAsPlainText", () => {
 
 	it("strips dashboard markers contributed by parsed block fallbacks", () => {
 		const taskId = "abc12345-def6-7890-abcd-ef1234567890";
+		// A URL-less task widget contributes NOTHING to plain text — its bare
+		// title read as a dangling duplicate line under the ack on chat
+		// transports (2026-08-19). hadBlocks still reports the widget.
 		expect(
 			renderInteractionsAsPlainText(
 				`[TASK:${taskId}]Ship it [CONFIG:@elizaos/plugin-gmail][/TASK]`,
 			),
-		).toEqual({ text: "Ship it", hadBlocks: true });
+		).toEqual({ text: "", hadBlocks: true });
 
 		const form = JSON.stringify({
 			title: "Configure account [CONFIG:@elizaos/plugin-gmail]",
@@ -746,7 +749,7 @@ describe("renderContentInteractionsAsPlainText", () => {
 			],
 		});
 
-		expect(rendered).toEqual({ text: "Review:\n\nShip it", hadBlocks: true });
+		expect(rendered).toEqual({ text: "Review:", hadBlocks: true });
 	});
 });
 

@@ -1,4 +1,4 @@
 /**
- * Re-exports the shared owner-name normalizer and its length cap.
+ * Re-exports the shared lossless owner-name normalizer.
  */
-export { normalizeOwnerName, OWNER_NAME_MAX_LENGTH } from "@elizaos/shared";
+export { normalizeOwnerName } from "@elizaos/shared";

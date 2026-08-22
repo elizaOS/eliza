@@ -23,6 +23,8 @@ import { DocumentService } from "./service.ts";
 const USER_ID = "f4300000-0000-4000-8000-000000000001" as UUID;
 const OTHER_USER_ID = "f4300000-0000-4000-8000-000000000007" as UUID;
 const OTHER_AGENT_ID = "f4300000-0000-4000-8000-000000000008" as UUID;
+const ADMIN_ID = "f4300000-0000-4000-8000-000000000020" as UUID;
+const GRANTEE_ID = "f4300000-0000-4000-8000-000000000021" as UUID;
 const WORLD_ID = "f4300000-0000-4000-8000-000000000002" as UUID;
 const ROOM_ID = "f4300000-0000-4000-8000-000000000003" as UUID;
 const UPDATE_DOCUMENT_ID = "f4300000-0000-4000-8000-000000000004" as UUID;
@@ -34,6 +36,7 @@ const ATOMIC_UPDATE_DOCUMENT_ID =
 	"f4300000-0000-4000-8000-000000000016" as UUID;
 const FAILED_UPDATE_DOCUMENT_ID =
 	"f4300000-0000-4000-8000-000000000018" as UUID;
+const GRANT_DOCUMENT_ID = "f4300000-0000-4000-8000-000000000022" as UUID;
 
 let runtime: AgentRuntime;
 let cleanup: () => Promise<void>;
@@ -127,6 +130,19 @@ beforeAll(async () => {
 		type: ChannelType.DM,
 	});
 	await runtime.ensureConnection({
+		entityId: ADMIN_ID,
+		roomId: ROOM_ID,
+		worldId: WORLD_ID,
+		worldName: "Document authorization",
+		userName: "Document admin",
+		name: "Document admin",
+		source: "test",
+		type: ChannelType.DM,
+	});
+	await runtime.adapter.createEntities([
+		{ id: GRANTEE_ID, agentId: runtime.agentId, names: ["Direct grantee"] },
+	]);
+	await runtime.ensureConnection({
 		entityId: OTHER_USER_ID,
 		roomId: ROOM_ID,
 		worldId: WORLD_ID,
@@ -141,8 +157,16 @@ beforeAll(async () => {
 		name: "Document authorization",
 		agentId: runtime.agentId,
 		metadata: {
-			roles: { [USER_ID]: "USER", [OTHER_USER_ID]: "USER" },
-			roleSources: { [USER_ID]: "manual", [OTHER_USER_ID]: "manual" },
+			roles: {
+				[USER_ID]: "USER",
+				[OTHER_USER_ID]: "USER",
+				[ADMIN_ID]: "ADMIN",
+			},
+			roleSources: {
+				[USER_ID]: "manual",
+				[OTHER_USER_ID]: "manual",
+				[ADMIN_ID]: "manual",
+			},
 		},
 	});
 	await runtime.adapter.createAgent({
@@ -174,6 +198,18 @@ beforeAll(async () => {
 		},
 	);
 	await runtime.createMemories([
+		{
+			memory: {
+				...userPrivateDocument(GRANT_DOCUMENT_ID, "Grantable global body"),
+				metadata: {
+					...userPrivateDocument(GRANT_DOCUMENT_ID, "Grantable global body")
+						.metadata,
+					scope: "global",
+					scopedToEntityId: undefined,
+				},
+			},
+			tableName: "documents",
+		},
 		{
 			memory: userPrivateDocument(UPDATE_DOCUMENT_ID, "Original update body"),
 			tableName: "documents",
@@ -217,6 +253,55 @@ afterAll(async () => {
 }, 120_000);
 
 describe("DocumentService requester authorization", () => {
+	it("lets a current room admin atomically grant read access without granting mutation", async () => {
+		const service = new DocumentService(runtime);
+		const adminContext = {
+			requesterEntityId: ADMIN_ID,
+			role: "ADMIN" as const,
+			isOwner: false,
+		};
+		await expect(
+			service.setDocumentDirectGrantsWithAccessContext(
+				GRANT_DOCUMENT_ID,
+				[GRANTEE_ID],
+				adminContext,
+			),
+		).resolves.toMatchObject({
+			id: GRANT_DOCUMENT_ID,
+			metadata: { directGrantEntityIds: [GRANTEE_ID] },
+		});
+		await expect(
+			service.getDocumentDirectGrantsWithAccessContext(
+				GRANT_DOCUMENT_ID,
+				adminContext,
+			),
+		).resolves.toEqual([GRANTEE_ID]);
+
+		await expect(
+			runtime.adapter.getDocument({
+				agentId: runtime.agentId,
+				documentId: GRANT_DOCUMENT_ID,
+				requesterEntityId: GRANTEE_ID,
+				requesterRoomIds: [],
+				requesterRole: "USER",
+			}),
+		).resolves.toMatchObject({ id: GRANT_DOCUMENT_ID });
+		await expect(
+			service.setDocumentDirectGrantsWithAccessContext(GRANT_DOCUMENT_ID, [], {
+				requesterEntityId: GRANTEE_ID,
+				role: "USER",
+				isOwner: false,
+			}),
+		).rejects.toMatchObject({ code: "DOCUMENT_GRANT_MUTATION_FORBIDDEN" });
+		await expect(
+			service.getDocumentDirectGrantsWithAccessContext(GRANT_DOCUMENT_ID, {
+				requesterEntityId: GRANTEE_ID,
+				role: "USER",
+				isOwner: false,
+			}),
+		).rejects.toMatchObject({ code: "DOCUMENT_GRANT_MUTATION_FORBIDDEN" });
+	});
+
 	it("composes knowledge context with requester-scoped user and tenant visibility", async () => {
 		const selected = filterByContextGate(
 			[documentsProvider],
@@ -248,9 +333,12 @@ describe("DocumentService requester authorization", () => {
 			expect(result.text).toContain("VISIBLE_OWNER_DOCUMENT");
 			expect(result.text).not.toContain("HIDDEN_OTHER_USER");
 			expect(result.text).not.toContain("HIDDEN_FOREIGN_TENANT");
-			expect(result.values?.documents).toEqual([
-				expect.objectContaining({ id: VISIBLE_DOCUMENT_ID }),
-			]);
+			expect(result.values?.documents).toEqual(
+				expect.arrayContaining([
+					expect.objectContaining({ id: VISIBLE_DOCUMENT_ID }),
+					expect.objectContaining({ id: GRANT_DOCUMENT_ID }),
+				]),
+			);
 		} finally {
 			getService.mockRestore();
 		}
@@ -377,6 +465,11 @@ describe("DocumentService requester authorization", () => {
 			"getRoomsForParticipants",
 		);
 		const request = message();
+		const accessContext = {
+			requesterEntityId: USER_ID,
+			role: "USER" as const,
+			isOwner: false,
+		};
 
 		await runWithTrajectoryContext(
 			{ turnMemo: new Map<string, Promise<unknown>>() },
@@ -397,8 +490,11 @@ describe("DocumentService requester authorization", () => {
 					}),
 				).rejects.toMatchObject({ code: "DOCUMENT_NOT_FOUND" });
 				await expect(
-					service.deleteDocument(DELETE_DOCUMENT_ID, request),
-				).rejects.toMatchObject({ code: "DOCUMENT_MUTATION_FORBIDDEN" });
+					service.deleteDocumentWithAccessContext(
+						DELETE_DOCUMENT_ID,
+						accessContext,
+					),
+				).rejects.toMatchObject({ code: "DOCUMENT_NOT_FOUND" });
 			},
 		);
 

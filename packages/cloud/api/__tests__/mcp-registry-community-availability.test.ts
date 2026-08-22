@@ -31,11 +31,74 @@ mock.module("@/lib/utils/logger", () => ({
 
 const registryRoute = (await import("../mcp/registry/route")).default;
 
-async function getRegistry(path = "/") {
+async function getRegistry(path = "/", env: Record<string, unknown> = {}) {
   return await registryRoute.request(path, undefined, {
     NEXT_PUBLIC_APP_URL: "https://app.example.test",
+    ...env,
   });
 }
+
+test("reports DoorDash live when either managed browser or Cloud upstream is configured", async () => {
+  listPublic.mockResolvedValue([]);
+
+  const unavailableResponse = await getRegistry("/?search=DoorDash");
+  const unavailable = (await unavailableResponse.json()) as {
+    registry: Array<{ id: string; status: string }>;
+  };
+  expect(unavailable.registry).toEqual([]);
+
+  const availableResponse = await getRegistry("/?search=DoorDash", {
+    MCP_DOORDASH_STREAMABLE_HTTP_URL: "https://doordash-mcp.example.test/mcp",
+  });
+  const available = (await availableResponse.json()) as {
+    registry: Array<{ id: string; status: string }>;
+  };
+  expect(available.registry).toEqual([
+    expect.objectContaining({ id: "doordash", status: "live" }),
+  ]);
+
+  const managedResponse = await getRegistry("/?search=DoorDash", {
+    BROWSER: { fetch: mock() },
+  });
+  const managed = (await managedResponse.json()) as {
+    registry: Array<{ id: string; status: string }>;
+  };
+  expect(managed.registry).toEqual([
+    expect.objectContaining({ id: "doordash", status: "live" }),
+  ]);
+});
+
+test("advertises every managed DoorDash tool", async () => {
+  listPublic.mockResolvedValue([]);
+
+  const response = await getRegistry("/?search=DoorDash", {
+    BROWSER: { fetch: mock() },
+  });
+  const body = (await response.json()) as {
+    registry: Array<{ id: string; toolCount: number; features: string[] }>;
+  };
+  const doordash = body.registry.find((entry) => entry.id === "doordash");
+
+  expect(doordash).toEqual(
+    expect.objectContaining({
+      id: "doordash",
+      toolCount: 11,
+      features: [
+        "doordash_auth_check",
+        "doordash_auth_clear",
+        "doordash_set_address",
+        "doordash_search",
+        "doordash_menu",
+        "doordash_add_to_cart",
+        "remove_from_cart",
+        "doordash_cart",
+        "order_history",
+        "doordash_checkout",
+        "doordash_track_order",
+      ],
+    }),
+  );
+});
 
 test("marks community registry unavailable when the optional live lookup fails", async () => {
   listPublic.mockRejectedValueOnce(new Error("community registry unavailable"));

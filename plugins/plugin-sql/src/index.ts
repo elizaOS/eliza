@@ -51,8 +51,10 @@ import {
   type PgliteManagerCache,
   type PgliteSingletonCache,
 } from "./pglite/manager-cache";
+import { identityPersonLinkRoutes } from "./routes/identity-person-link";
 import * as schema from "./schema";
 import { AdvancedMemoryStorageService } from "./services/advanced-memory-storage";
+import { SqlIdentityResolutionService } from "./services/sql-identity-resolution";
 import { resolvePgliteDir } from "./utils";
 import { stringToUuid } from "./utils/string-to-uuid";
 
@@ -174,11 +176,8 @@ export const plugin: Plugin = {
   description: "A plugin for SQL database access with dynamic schema migrations",
   priority: 0,
   schema: schema,
-  // Identity authority is exported for explicit hosts and integration tests,
-  // but remains cutover-gated until owner claims are backfilled. Registering
-  // it early would make role resolution prefer an empty authority over the
-  // verified owner-pairing compatibility path.
-  services: [AdvancedMemoryStorageService],
+  services: [AdvancedMemoryStorageService, SqlIdentityResolutionService],
+  routes: [...identityPersonLinkRoutes],
   init: async (_, runtime: IAgentRuntime) => {
     const runtimeWithAdapter = runtime as IAgentRuntime & RuntimeWithAdapterRegistrar;
     runtime.logger.info(

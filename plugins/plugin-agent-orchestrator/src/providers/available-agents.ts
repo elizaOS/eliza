@@ -1,17 +1,17 @@
 /**
  * `AVAILABLE_AGENTS` provider: the adapter inventory (which ACP coding backends
- * are installed and authenticated) plus a bounded list of recent/active
+ * are installed and authenticated) plus the complete list of recent/active
  * sessions, rendered into the planner context. Merges the `checkAvailableAgents`
  * inventory with framework state so shell-adapter backends like opencode — which
  * the adapter registry misses — still appear when installed and auth-ready.
  */
 import type { IAgentRuntime, Memory, Provider, State } from "@elizaos/core";
 import {
+  canonicalSessionId,
   getAcpService,
   labelFor,
   listSessionsWithin,
   reportProviderFetchFailure,
-  shortId,
 } from "../actions/common.js";
 import {
   getTaskAgentFrameworkState,
@@ -139,12 +139,8 @@ export const availableAgentsProvider: Provider = {
       const renderedSessions = summarizeSessionsForPrompt(sessions);
       for (const session of renderedSessions) {
         lines.push(
-          `- ${labelFor(session)} [${shortId(session.id)}] ${session.agentType} ${session.status} in ${session.workdir}`,
+          `- ${labelFor(session)} [${canonicalSessionId(session.id)}] ${session.agentType} ${session.status} in ${session.workdir}`,
         );
-      }
-      const omitted = sessions.length - renderedSessions.length;
-      if (omitted > 0) {
-        lines.push(`... (+${omitted} older sessions omitted)`);
       }
     } else {
       lines.push("", "No active task-agent sessions.");

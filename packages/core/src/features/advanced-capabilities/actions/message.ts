@@ -717,7 +717,6 @@ async function resolveOptionalTarget(
 						"TARGET_AMBIGUOUS",
 						`Target ambiguous for ${connector.label}. Choose one of:\n` +
 							sorted
-								.slice(0, 8)
 								.map(
 									(t, i) =>
 										`${i + 1}. ${t.label ?? targetLabel(t.target)} (${t.kind ?? "target"})`,
@@ -3392,7 +3391,7 @@ async function handleReadWithContact(
 				conversations.push({
 					platform: roomPlatform,
 					roomId: room.id,
-					roomName: roomRecord.name ?? `Room ${room.id.slice(0, 8)}`,
+					roomName: roomRecord.name ?? `Room ${room.id}`,
 					messageCount: memories.length,
 					lastMessageAt: last?.createdAt
 						? new Date(last.createdAt).toISOString()
@@ -3771,10 +3770,6 @@ async function handleListServers(
 	}
 }
 
-// At most this many connectors in the cross-connector roster, so a deployment
-// wired to many accounts can't produce an unbounded result.
-const MAX_LISTED_CONNECTIONS = 8;
-
 // Cross-connector: unlike list_channels/list_servers (which pick ONE connector
 // via selectConnectorForOp), this iterates EVERY connector exposing listRooms
 // and reports a per-platform summary — platform + label + account + room count,
@@ -3810,8 +3805,6 @@ async function handleListConnections(
 		if (!connector.accountId && sourcesWithAccount.has(connector.source)) {
 			continue;
 		}
-		if (connections.length >= MAX_LISTED_CONNECTIONS) break;
-
 		const context = buildQueryContext(
 			runtime,
 			message,

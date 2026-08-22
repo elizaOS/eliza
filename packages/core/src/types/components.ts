@@ -171,6 +171,14 @@ export interface MessageHandlerPlan {
 	requiresTool?: boolean;
 	contextSlices?: string[];
 	candidateActions?: string[];
+	/**
+	 * Stage 1's declared user intents for the turn, verbatim ("delete
+	 * reminder", "create reminder", …). Multi-intent turns feed these to the
+	 * planner context so the loop serves every declared leg or says which it
+	 * did not — small planner models otherwise complete leg one and finish
+	 * (live: "delete and recreate my reminder" deleted, never recreated).
+	 */
+	intents?: string[];
 	parentActionHints?: string[];
 	/**
 	 * Per-turn cap on the planner's required-tool miss budget, set by the
