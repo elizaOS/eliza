@@ -980,10 +980,20 @@ export class AcpService extends Service {
     );
     const configuredCli = this.setting("ELIZA_ACP_CLI") ?? "acpx";
     const parsedCli = splitCommandLine(configuredCli);
+    // A zero-argument value must normalize to the PARSED token, not the raw
+    // literal: the availability walker and missingCliMessage() both parse
+    // (quote-stripping) while spawn() consumes this.cliPath verbatim and gets
+    // no shell. Keeping the raw literal let a quoted single token such as
+    // `"acpx"` report installed and then ENOENT at spawn time (#24684).
+    // Only a token that actually looks like a path is resolved to an absolute
+    // path; a bare command name stays bare so PATH lookup still works. An
+    // empty parsed command is preserved verbatim so it is rejected as
+    // unavailable instead of becoming a PATH lookup of the empty string.
     this.cliPath =
-      parsedCli.args.length === 0 &&
-      (parsedCli.command.includes("/") || parsedCli.command.includes("\\"))
-        ? resolve(parsedCli.command)
+      parsedCli.args.length === 0 && parsedCli.command !== ""
+        ? parsedCli.command.includes("/") || parsedCli.command.includes("\\")
+          ? resolve(parsedCli.command)
+          : parsedCli.command
         : configuredCli;
     this.transportMode =
       normalizeTransportMode(
@@ -5366,8 +5376,15 @@ export class AcpService extends Service {
   }
 
   private missingCliMessage(): string | undefined {
-    if (splitCommandLine(this.cliPath).args.length > 0) {
+    const parsed = splitCommandLine(this.cliPath);
+    if (parsed.args.length > 0) {
       return "ELIZA_ACP_CLI must name one executable path; command arguments are not supported.";
+    }
+    // An empty or whitespace-only value must fail closed here rather than
+    // reaching spawn() as a PATH lookup of the empty string (#24684). The
+    // availability walker already rejects this with the same wording.
+    if (parsed.command === "") {
+      return "No executable command is configured.";
     }
     if (!this.cliPath.includes("/") || existsSync(this.cliPath)) {
       return undefined;
