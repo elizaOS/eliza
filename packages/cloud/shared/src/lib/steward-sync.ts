@@ -48,6 +48,7 @@ import { getDefaultElizaCharacterData } from "./utils/default-eliza-character";
 import { getRandomUserAvatar } from "./utils/default-user-avatar";
 import { logger } from "./utils/logger";
 import { isValidE164, normalizePhoneNumber } from "./utils/phone-normalization";
+import { settleOffResponsePath } from "./utils/settle-off-response-path";
 
 export interface SignupWelcomeBonusMetadata {
   initialCreditsGranted?: boolean;
@@ -57,7 +58,15 @@ export interface SignupWelcomeBonusMetadata {
   welcomeBonusWithheldMessage?: string;
 }
 
-export type StewardSyncedUser = UserWithOrganization & SignupWelcomeBonusMetadata;
+export type StewardSyncedUser = UserWithOrganization &
+  SignupWelcomeBonusMetadata & {
+    /** True only when a Worker owns the new-account provisioning tail. */
+    postCommitProvisioningDeferred?: true;
+  };
+
+export interface StewardSyncExecutionContext {
+  waitUntil(promise: Promise<unknown>): void;
+}
 
 const STEWARD_IDENTITY_UNIQUE_CONSTRAINT = "user_identities_steward_user_id_unique";
 
@@ -246,6 +255,94 @@ export interface StewardSyncParams {
   telegramContinuation?: string;
   /** Strongly ordered personal-history coordinator supplied by the Worker auth boundary. */
   sharedRuntimeConversationNamespace?: RuntimeDurableObjectNamespace;
+  /** Worker lifetime for direct-new-user post-commit provisioning. */
+  executionCtx?: StewardSyncExecutionContext;
+}
+
+type DirectSignupProvisioningOperation = {
+  name: "default API key" | "default character" | "Steward tenant";
+  run: () => Promise<unknown>;
+};
+
+function reportDeferredSignupProvisioningFailure(
+  operation: DirectSignupProvisioningOperation["name"],
+  userId: string,
+  organizationId: string,
+  error: unknown,
+): void {
+  const detail = describeSyncError(error);
+  if (operation === "Steward tenant") {
+    logger.warn(
+      `[StewardSync] Eager Steward tenant provisioning failed for new org ${organizationId}; signup proceeds and agent-provision will retry: ${detail}`,
+    );
+    return;
+  }
+
+  logger.error(
+    `[StewardSync] Deferred ${operation} provisioning failed for new user ${userId} in org ${organizationId}: ${detail}`,
+  );
+}
+
+async function provisionDirectSignupResources(input: {
+  userId: string;
+  organizationId: string;
+  executionCtx?: StewardSyncExecutionContext;
+}): Promise<void> {
+  const { userId, organizationId, executionCtx } = input;
+
+  if (!executionCtx) {
+    // Preserve the non-Worker contract: default-key failure remains strict, the
+    // character helper remains fail-open, and tenant failure remains fail-open.
+    await apiKeysService.provisionDefaultApiKey(userId, organizationId);
+    await ensureDefaultCharacter(userId, organizationId);
+    try {
+      await ensureStewardTenant(organizationId);
+    } catch (error) {
+      // error-policy:J4 tenant readiness has an independent agent-provision
+      // repair path, so an upstream outage must not roll back a committed user.
+      reportDeferredSignupProvisioningFailure("Steward tenant", userId, organizationId, error);
+    }
+    return;
+  }
+
+  const operations: DirectSignupProvisioningOperation[] = [
+    {
+      name: "default API key",
+      run: () => apiKeysService.provisionDefaultApiKey(userId, organizationId),
+    },
+    {
+      name: "default character",
+      run: () => ensureDefaultCharacter(userId, organizationId),
+    },
+    {
+      name: "Steward tenant",
+      run: () => ensureStewardTenant(organizationId),
+    },
+  ];
+  const startedAtMs = Date.now();
+
+  await settleOffResponsePath(executionCtx, async () => {
+    const outcomes = await Promise.allSettled(operations.map((operation) => operation.run()));
+    for (const [index, outcome] of outcomes.entries()) {
+      if (outcome.status === "rejected") {
+        reportDeferredSignupProvisioningFailure(
+          operations[index].name,
+          userId,
+          organizationId,
+          outcome.reason,
+        );
+      }
+    }
+    logger.info("[StewardSync] Direct-signup post-commit provisioning settled", {
+      userId,
+      organizationId,
+      durationMs: Date.now() - startedAtMs,
+      outcomes: outcomes.map((outcome, index) => ({
+        operation: operations[index].name,
+        status: outcome.status,
+      })),
+    });
+  });
 }
 
 export class StewardPhoneAccountConflictError extends Error {
@@ -1147,44 +1244,26 @@ export async function syncUserFromSteward(params: StewardSyncParams): Promise<St
       logger.error("[StewardSync] Discord signup log failed:", { error });
     });
 
-  // Await default provisioning: on Cloudflare Workers an un-awaited promise is
-  // cancelled once the response returns unless registered via
-  // executionCtx.waitUntil, which this shared-lib function cannot reach — and a
-  // cancelled create leaves the new user permanently without a default
-  // character/API key (later logins return at the existing-user branch). Both
-  // default-key provisioning is required for signup to be usable; the default
-  // character helper keeps its own retry-on-next-session behavior.
-  await apiKeysService.provisionDefaultApiKey(userWithOrg.id, userWithOrg.organization?.id || "");
-  await ensureDefaultCharacter(userWithOrg.id, userWithOrg.organization?.id || "");
-
-  // Provision the org's Steward tenant EAGERLY at signup (#14645). Previously
-  // this only happened lazily at first agent-provision, so a brand-new user
-  // had no Steward tenant and `GET /steward/user/me/tenants` 403'd -> the app
-  // read that as "not authenticated" and bounced to /login in a loop, and the
-  // user could never reach agent-provision to self-heal (chicken-and-egg;
-  // 629/630 staging orgs had a NULL steward_tenant_id). Provisioning it here
-  // makes /me/tenants resolve 200 on the first post-signup request.
-  //
-  // FAIL-OPEN: a Steward outage must NOT block signup. `ensureStewardTenant`
-  // is idempotent (409-tolerant) and the agent-provision call site still
-  // self-heals later, so on failure we log and proceed rather than roll back
-  // the just-created account -- same non-fatal posture as the welcome-credit
-  // and default-character provisioning above.
-  const eagerTenantOrgId = userWithOrg.organization?.id;
-  if (eagerTenantOrgId) {
-    try {
-      await ensureStewardTenant(eagerTenantOrgId);
-    } catch (error) {
-      logger.warn(
-        `[StewardSync] Eager Steward tenant provisioning failed for new org ${eagerTenantOrgId}; signup proceeds and agent-provision will retry: ${describeSyncError(error)}`,
-      );
-    }
+  // The committed user + organization + identity projection above are the
+  // cookie-authority boundary. Defaults and the Steward tenant are idempotent
+  // post-commit resources: Workers keep their concurrent tail alive through
+  // waitUntil, while tests and non-Worker callers retain the prior inline
+  // ordering and strict default-key failure semantics.
+  const newOrganizationId = userWithOrg.organization?.id;
+  if (!newOrganizationId) {
+    throw new Error(`New Steward user ${userWithOrg.id} is missing its organization`);
   }
+  await provisionDirectSignupResources({
+    userId: userWithOrg.id,
+    organizationId: newOrganizationId,
+    executionCtx: params.executionCtx,
+  });
 
   return {
     ...userWithOrg,
     initialCreditsGranted,
     initialFreeCreditsUsd,
+    ...(params.executionCtx ? { postCommitProvisioningDeferred: true as const } : {}),
   };
 }
 

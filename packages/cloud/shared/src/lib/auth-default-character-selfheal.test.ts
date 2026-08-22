@@ -37,6 +37,7 @@ mock.module("./cache/client", () => ({
   },
 }));
 mock.module("./auth/steward-client", () => ({
+  isValidStewardTelegramId: () => false,
   isStagingSessionTokenCandidate: () => false,
   verifyStewardTokenCached: async () => ({ userId: "steward-123" }),
   invalidateStewardTokenCache: async () => undefined,
