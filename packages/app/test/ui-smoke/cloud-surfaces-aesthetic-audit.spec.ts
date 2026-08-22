@@ -710,6 +710,24 @@ test.describe("cloud-surfaces aesthetic audit (#10725/#11342)", () => {
           ).toBeVisible({ timeout: 10_000 });
         }
 
+        if (auditCase.slug === "cloud-billing") {
+          // The generic readable-text gate also accepts BillingTab's error
+          // state. Prove the canonical v2 resource payload parsed and the
+          // authoritative interval/null cursor labels reached the real card.
+          for (const label of [
+            "Smoke API container",
+            "Daily",
+            "Smoke research agent",
+            "Hourly",
+            "Not reported",
+            "Not scheduled",
+          ]) {
+            await expect(
+              page.getByText(label, { exact: true }).filter({ visible: true }),
+            ).toBeVisible({ timeout: 10_000 });
+          }
+        }
+
         if (auditCase.slug === "get-started-success") {
           await page
             .getByRole("button", { name: "Connect this iMessage account" })
