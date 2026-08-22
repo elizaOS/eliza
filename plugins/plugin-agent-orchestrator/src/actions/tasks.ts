@@ -1029,6 +1029,72 @@ async function runPromptAndClose(
   }
 }
 
+/** "also …", "add … to it", "make it …": an instruction about work already
+ *  under way, not a new deliverable. */
+const FOLLOW_UP_SHAPE_RE =
+  /^\s*(?:oh\s+|and\s+)?(?:also|plus|btw|additionally)\b|\b(?:to|on|in|for|into)\s+(?:it|that|the\s+(?:page|app|site|script))\b|\bmake\s+it\b|\bit\s+(?:too|as\s+well)\b/i;
+
+export function looksLikeFollowUpToInFlightWork(text: string): boolean {
+  return FOLLOW_UP_SHAPE_RE.test(text);
+}
+
+const FOLLOW_UP_SIBLING_WINDOW_MS = 3 * 60_000;
+const FOLLOW_UP_SESSION_WAIT_MS = 20_000;
+
+/** The newest in-flight task of this room from a DIFFERENT origin message,
+ *  created within the follow-up window, and its live (or just-spawned)
+ *  session — polled briefly because the spawn may still be in flight. */
+async function inFlightSiblingSessionForFollowUp(
+  runtime: IAgentRuntime,
+  message: Memory,
+): Promise<{ taskId: string; sessionId: string } | undefined> {
+  const taskService = runtime.getService?.(
+    OrchestratorTaskService.serviceType,
+  ) as OrchestratorTaskService | null | undefined;
+  const roomId = typeof message.roomId === "string" ? message.roomId : "";
+  if (!taskService || !roomId) return undefined;
+  const origin = spawnRootIdFor(message, {}) ?? "";
+  const now = Date.now();
+  let candidates: Array<{ id: string }> = [];
+  try {
+    const tasks = await taskService.listTasks({ includeArchived: false });
+    candidates = tasks
+      .filter(
+        (task) =>
+          ["open", "active", "validating"].includes(String(task.status)) &&
+          now - new Date(task.createdAt).getTime() <
+            FOLLOW_UP_SIBLING_WINDOW_MS,
+      )
+      .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+  } catch {
+    // error-policy:J4 a listing failure keeps today's behavior (fresh create).
+    return undefined;
+  }
+  for (const candidate of candidates) {
+    const doc = await taskService.getTask(candidate.id).catch(() => null);
+    if (!doc) continue;
+    if (origin && String(doc.metadata?.spawnRootMessageId ?? "") === origin) {
+      continue;
+    }
+    const target = await taskService
+      .getTaskOriginTarget(candidate.id)
+      .catch(() => null);
+    if (target?.roomId !== roomId) continue;
+    const deadline = Date.now() + FOLLOW_UP_SESSION_WAIT_MS;
+    while (Date.now() < deadline) {
+      const fresh = await taskService.getTask(candidate.id).catch(() => null);
+      // Latest session whatever its status: runSend queues on a busy lane
+      // and redirects a finished one to a merged successor.
+      const latest = [...(fresh?.sessions ?? [])].sort(
+        (a, b) => b.registeredAt - a.registeredAt,
+      )[0];
+      if (latest) return { taskId: candidate.id, sessionId: latest.sessionId };
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+  }
+  return undefined;
+}
+
 async function runCreateLegacy(
   runtime: IAgentRuntime,
   message: Memory,
@@ -1060,6 +1126,30 @@ async function runCreateLegacy(
   }
 
   const text = requestText(message);
+  // A follow-up to a build that is still spawning ("oh also add a dark mode
+  // toggle to it", 7s after the ask) has no session to interrupt and no lane
+  // to queue on, so the planner minted a SECOND page in `<slug>-2` (live
+  // 2026-08-22). Fold it into the in-flight sibling instead: wait for its
+  // session, then the send path queues it (busy) or builds a merged successor.
+  if (
+    !routedSubAgentCompletion(content) &&
+    looksLikeFollowUpToInFlightWork(text)
+  ) {
+    const sibling = await inFlightSiblingSessionForFollowUp(runtime, message);
+    if (sibling) {
+      logger(runtime).warn(
+        `[TASKS:create] follow-up folded into in-flight lane ${sibling.sessionId} (task ${sibling.taskId})`,
+      );
+      return runSend(
+        runtime,
+        message,
+        state,
+        { action: "send", sessionId: sibling.sessionId, input: text },
+        content,
+        callback,
+      );
+    }
+  }
   // The create turn's own abort signal (a user stop); checked once the spawn
   // returns, the only point at which a session exists to stop.
   const createTurnSignal = getStreamingContext()?.abortSignal;
