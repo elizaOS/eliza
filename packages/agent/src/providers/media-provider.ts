@@ -57,10 +57,16 @@ async function withProviderErrorBoundary<T>(
   } catch (err) {
     // error-policy:J1 provider boundary returns an explicit failed result.
     const message = err instanceof Error ? err.message : String(err);
+    const structuredError = isElizaError(err) ? err : undefined;
     return {
       success: false,
-      error: `[${providerName}] Network error: ${message}`,
-      ...(isElizaError(err) ? { errorCode: err.code } : {}),
+      error: `[${providerName}] ${structuredError ? message : `Network error: ${message}`}`,
+      ...(structuredError
+        ? {
+            errorCode: structuredError.code,
+            errorContext: structuredError.context,
+          }
+        : {}),
     };
   }
 }
@@ -158,6 +164,7 @@ export interface MediaProviderResult<T> {
   data?: T;
   error?: string;
   errorCode?: string;
+  errorContext?: Record<string, unknown>;
 }
 
 export interface ImageGenerationResult {
@@ -1347,13 +1354,28 @@ export class AnthropicVisionProvider implements VisionAnalysisProvider {
         : { type: "url" as const, url: imageInput.value };
 
     return withProviderErrorBoundary(this.name, async () => {
+      if (
+        options.maxTokens !== undefined &&
+        (!Number.isSafeInteger(options.maxTokens) || options.maxTokens <= 0)
+      ) {
+        throw new ElizaError(
+          `Requested Anthropic output tokens must be a positive safe integer; received ${options.maxTokens}`,
+          {
+            code: "VISION_OUTPUT_BUDGET_INVALID",
+            context: {
+              model: this.model,
+              requestedMaxTokens: options.maxTokens,
+            },
+          },
+        );
+      }
       const modelMaxOutputTokens = await this.resolveModelMaxOutputTokens();
       if (
         options.maxTokens !== undefined &&
         options.maxTokens > modelMaxOutputTokens
       ) {
         throw new ElizaError(
-          `Anthropic model ${this.model} supports at most ${modelMaxOutputTokens} output tokens`,
+          `Requested ${options.maxTokens} output tokens for Anthropic model ${this.model}, which supports at most ${modelMaxOutputTokens}`,
           {
             code: "VISION_OUTPUT_BUDGET_UNSUPPORTED",
             context: {
