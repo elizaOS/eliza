@@ -193,6 +193,7 @@ export type DocumentAddedByRole =
 	| "OWNER"
 	| "ADMIN"
 	| "USER"
+	| "GUEST"
 	| "AGENT"
 	| "RUNTIME";
 

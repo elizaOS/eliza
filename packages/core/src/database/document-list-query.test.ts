@@ -6,6 +6,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { DocumentListQueryParams, Memory, UUID } from "../types";
 import { MemoryType } from "../types";
 import {
+	canRequesterMutateDocument,
 	documentMutationSnapshotMatches,
 	isDocumentVisibleToRequester,
 	portableDocumentSearchTokens,
@@ -200,6 +201,36 @@ describe("document-list capability contract", () => {
 		expect(new Set(admin.documents.map((memory) => memory.id))).toEqual(
 			new Set([owned.id, other.id]),
 		);
+	});
+
+	it("keeps guest and unresolved document authority fail-closed", () => {
+		const global = document(3);
+		const privateDocument = {
+			...document(4),
+			metadata: {
+				type: MemoryType.DOCUMENT,
+				scope: "user-private",
+				scopedToEntityId: REQUESTER_ID,
+			},
+		};
+		const guestParams = {
+			...params,
+			requesterRole: "GUEST" as const,
+			requesterRoomIds: [ROOM_ID],
+		};
+		const unresolvedParams = {
+			...params,
+			requesterRole: "UNRESOLVED" as const,
+			requesterRoomIds: [ROOM_ID],
+		};
+
+		expect(isDocumentVisibleToRequester(global, guestParams)).toBe(true);
+		expect(isDocumentVisibleToRequester(privateDocument, guestParams)).toBe(
+			false,
+		);
+		expect(isDocumentVisibleToRequester(global, unresolvedParams)).toBe(false);
+		expect(canRequesterMutateDocument(global, guestParams)).toBe(false);
+		expect(canRequesterMutateDocument(global, unresolvedParams)).toBe(false);
 	});
 
 	it("uses locale-independent tokens that preserve punctuation and Unicode", () => {

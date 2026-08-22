@@ -182,10 +182,7 @@ export async function resolveDocumentRequesterRole(
 		const result = await checkSenderRole(runtime, message);
 		return {
 			entityId: message.entityId,
-			role:
-				result?.role === "OWNER" || result?.role === "ADMIN"
-					? result.role
-					: "USER",
+			role: result?.role ?? "UNRESOLVED",
 		};
 	} catch (cause) {
 		// error-policy:J2 Preserve role-resolution context and fail the read/write.
@@ -213,17 +210,14 @@ export async function resolveDocumentRequesterRole(
  *
  * The read runs for the entity the caller named, not the message author, so a
  * privileged sender cannot widen a request the caller deliberately scoped. An
- * absent role is treated as an unprivileged USER rather than inherited from
- * the sender: the safe reading of "unspecified" is the least privilege.
+ * absent role remains `UNRESOLVED` rather than inheriting or fabricating a
+ * lower role. The storage authorization boundary denies that state.
  */
 export async function resolveDocumentRequesterFromAccessContext(
 	runtime: IAgentRuntime,
 	accessContext: AccessContext,
 ): Promise<DocumentRequester> {
-	const role: DocumentListRequesterRole =
-		accessContext.role === "OWNER" || accessContext.role === "ADMIN"
-			? accessContext.role
-			: "USER";
+	const role: DocumentListRequesterRole = accessContext.role ?? "UNRESOLVED";
 	if (documentRoleHasGlobalVisibility(role)) {
 		return { entityId: accessContext.requesterEntityId, roomIds: [], role };
 	}

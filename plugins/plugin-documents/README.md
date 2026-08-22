@@ -43,7 +43,10 @@ Documents are stored as memories in the runtime's `documents` table and chunked 
 
 The caller's role comes from the authenticated `AccessContext` supplied by the
 host route boundary. A request without that context returns `401`; request
-headers and `ELIZA_ADMIN_ENTITY_ID` never create an authenticated caller.
+headers and `ELIZA_ADMIN_ENTITY_ID` never create an authenticated caller. Roles
+remain exact at this boundary: ADMIN is not OWNER, GUEST is not USER, and an
+unresolved role is rejected. Guests may read global documents in rooms where
+they are current members, but cannot read private scopes or mutate documents.
 
 ## Configuration
 

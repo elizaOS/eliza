@@ -282,6 +282,35 @@ describe("document list query (real SQL parity)", () => {
     }
   });
 
+  it("keeps GUEST room-global and UNRESOLVED fail-closed across SQL and memory", async () => {
+    const documents = [
+      document(1),
+      document(2, {
+        metadata: {
+          scope: "user-private",
+          scopedToEntityId: REQUESTER_ID,
+        },
+      }),
+    ];
+    await seedSql(documents);
+    const inMemory = await seedInMemory(documents);
+    const baseParams = {
+      agentId,
+      requesterEntityId: REQUESTER_ID,
+      requesterRoomIds: [roomId],
+      limit: 10,
+      offset: 0,
+    };
+
+    for (const requesterRole of ["GUEST", "UNRESOLVED"] as const) {
+      const roleParams = { ...baseParams, requesterRole };
+      const sqlResult = await adapter.queryDocuments(roleParams);
+      const memoryResult = await inMemory.queryDocuments(roleParams);
+      expect(sqlResult).toEqual(memoryResult);
+      expect(ids(sqlResult.documents)).toEqual(requesterRole === "GUEST" ? [documents[0]?.id] : []);
+    }
+  });
+
   it("does not skip or duplicate equal-timestamp rows across keyset pages", async () => {
     const documents = Array.from({ length: 151 }, (_, index) => document(index));
     await seedSql(documents);

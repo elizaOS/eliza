@@ -253,10 +253,19 @@ function documentVisibilityCondition(
   if (documentRoleHasGlobalVisibility(params.requesterRole)) {
     return validAuthorizationMetadata;
   }
+  if (params.requesterRole === "UNRESOLVED") {
+    return sql`false`;
+  }
   if (params.requesterRole === "ADMIN") {
     return sql`(
       ${validAuthorizationMetadata}
       AND ${metadata}->>'scope' IN ('global', 'user-private')
+    )`;
+  }
+  if (params.requesterRole === "GUEST") {
+    return sql`(
+      ${validAuthorizationMetadata}
+      AND ${metadata}->>'scope' = 'global'
     )`;
   }
   return sql`(
