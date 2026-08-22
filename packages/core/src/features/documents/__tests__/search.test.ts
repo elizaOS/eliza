@@ -240,23 +240,22 @@ describe("DocumentService.searchDocuments", () => {
 				"vector",
 			);
 
-			expect(rt.adapter.queryDocumentFragments).toHaveBeenCalledOnce();
+			expect(rt.adapter.queryDocumentFragments).toHaveBeenCalledTimes(2);
 			expect(results).toHaveLength(1);
 			expect(results[0].id).toBe("frag-1");
 		});
 
-		it("filters out fragments with no id", async () => {
+		it("rejects a fragment without an id instead of hiding an incomplete row", async () => {
 			const frag = makeFragment("", "orphan fragment", 0.8);
 			frag.id = undefined as UUID;
 			const rt = buildRuntime({ hasEmbedding: true, fragments: [frag] });
 			const svc = buildService(rt);
 
-			const results = await svc.searchDocuments(
-				makeMessage("orphan"),
-				undefined,
-				"vector",
-			);
-			expect(results).toHaveLength(0);
+			await expect(
+				svc.searchDocuments(makeMessage("orphan"), undefined, "vector"),
+			).rejects.toMatchObject({
+				code: "DOCUMENT_FRAGMENT_TRAVERSAL_ROW_INVALID",
+			});
 		});
 	});
 
@@ -278,7 +277,95 @@ describe("DocumentService.searchDocuments", () => {
 			expect(new Set(results.map((result) => result.id)).size).toBe(
 				fragments.length,
 			);
-			expect(rt.adapter.queryDocumentFragments).toHaveBeenCalledTimes(2);
+			expect(rt.adapter.queryDocumentFragments).toHaveBeenCalledTimes(4);
+		});
+
+		it("rejects an offset traversal whose inventory changes after the first page", async () => {
+			const fragments = Array.from({ length: 1_205 }, (_, index) =>
+				makeFragment(`frag-${index}`, `complete corpus match ${index}`),
+			);
+			const rt = buildRuntime({ hasEmbedding: false, fragments });
+			let call = 0;
+			rt.adapter.queryDocumentFragments.mockImplementation(async (params) => {
+				call += 1;
+				if (call === 2) fragments.shift();
+				return fragments.slice(
+					params.offset ?? 0,
+					(params.offset ?? 0) + params.limit,
+				);
+			});
+			const svc = buildService(rt);
+
+			await expect(
+				svc.searchDocuments(
+					makeMessage("complete corpus match"),
+					undefined,
+					"keyword",
+				),
+			).rejects.toMatchObject({
+				code: "DOCUMENT_FRAGMENT_TRAVERSAL_CHANGED",
+			});
+		});
+
+		it("rejects content changes between complete traversal passes", async () => {
+			const fragments = Array.from({ length: 1_205 }, (_, index) =>
+				makeFragment(`frag-${index}`, `complete corpus match ${index}`),
+			);
+			const rt = buildRuntime({ hasEmbedding: false, fragments });
+			let call = 0;
+			rt.adapter.queryDocumentFragments.mockImplementation(async (params) => {
+				call += 1;
+				if (call === 3) {
+					fragments[100].content.text =
+						"changed content with the same identity";
+				}
+				return fragments.slice(
+					params.offset ?? 0,
+					(params.offset ?? 0) + params.limit,
+				);
+			});
+			const svc = buildService(rt);
+
+			await expect(
+				svc.searchDocuments(
+					makeMessage("complete corpus match"),
+					undefined,
+					"keyword",
+				),
+			).rejects.toMatchObject({
+				code: "DOCUMENT_FRAGMENT_TRAVERSAL_CHANGED",
+			});
+		});
+
+		it("rejects insertion between complete traversal passes", async () => {
+			const fragments = Array.from({ length: 1_205 }, (_, index) =>
+				makeFragment(`frag-${index}`, `complete corpus match ${index}`),
+			);
+			const rt = buildRuntime({ hasEmbedding: false, fragments });
+			let call = 0;
+			rt.adapter.queryDocumentFragments.mockImplementation(async (params) => {
+				call += 1;
+				if (call === 3) {
+					fragments.push(
+						makeFragment("frag-inserted", "new complete corpus match"),
+					);
+				}
+				return fragments.slice(
+					params.offset ?? 0,
+					(params.offset ?? 0) + params.limit,
+				);
+			});
+			const svc = buildService(rt);
+
+			await expect(
+				svc.searchDocuments(
+					makeMessage("complete corpus match"),
+					undefined,
+					"keyword",
+				),
+			).rejects.toMatchObject({
+				code: "DOCUMENT_FRAGMENT_TRAVERSAL_CHANGED",
+			});
 		});
 
 		it("rejects a non-advancing fragment adapter instead of ranking a prefix", async () => {
@@ -317,7 +404,7 @@ describe("DocumentService.searchDocuments", () => {
 				"keyword",
 			);
 
-			expect(rt.adapter.queryDocumentFragments).toHaveBeenCalledOnce();
+			expect(rt.adapter.queryDocumentFragments).toHaveBeenCalledTimes(2);
 
 			// frag-a should score highest (both "quantum" and "computing" match)
 			expect(results[0].id).toBe("frag-a");
@@ -391,7 +478,7 @@ describe("DocumentService.searchDocuments", () => {
 				"hybrid",
 			);
 
-			expect(rt.adapter.queryDocumentFragments).toHaveBeenCalledOnce();
+			expect(rt.adapter.queryDocumentFragments).toHaveBeenCalledTimes(2);
 			expect(results).toHaveLength(2);
 
 			// frag-b should be ranked higher because BM25 breaks the vector tie
