@@ -115,9 +115,7 @@ it("keeps canonical app-host login on the current origin", async () => {
     </MemoryRouter>,
   );
 
-  expect(
-    await screen.findByRole("heading", { name: "Sign in" }),
-  ).toBeTruthy();
+  expect(await screen.findByRole("heading", { name: "Sign in" })).toBeTruthy();
   expect(
     await screen.findByRole("button", { name: /Magic Link/i }),
   ).toBeTruthy();
@@ -135,9 +133,7 @@ it("keeps canonical staging app-host login on the current origin", async () => {
     </MemoryRouter>,
   );
 
-  expect(
-    await screen.findByRole("heading", { name: "Sign in" }),
-  ).toBeTruthy();
+  expect(await screen.findByRole("heading", { name: "Sign in" })).toBeTruthy();
   expect(
     await screen.findByRole("button", { name: /Magic Link/i }),
   ).toBeTruthy();
@@ -155,9 +151,7 @@ it("normalizes a canonical app hostname before keeping login local", async () =>
     </MemoryRouter>,
   );
 
-  expect(
-    await screen.findByRole("heading", { name: "Sign in" }),
-  ).toBeTruthy();
+  expect(await screen.findByRole("heading", { name: "Sign in" })).toBeTruthy();
   expect(
     await screen.findByRole("button", { name: /Magic Link/i }),
   ).toBeTruthy();

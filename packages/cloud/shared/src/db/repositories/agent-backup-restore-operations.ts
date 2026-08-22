@@ -29,7 +29,7 @@ import {
 } from "./agent-backup-catalog";
 import { parseAgentBackupManifestV3Authority } from "./agent-backup-restore";
 import { hasAgentBackupRestoreAuthority } from "./agent-backup-restore-authority";
-import { proveUnambiguousAgentNodeIncarnationForLockedNode } from "./agent-backup-restore-history";
+import { proveExactAgentNodeOccurrenceForLockedNode } from "./agent-backup-restore-history";
 import type { AgentBackupRestoreLeaseAuthorityReceipt } from "./agent-backup-restore-lease";
 import { readPostLockDatabaseNow } from "./primary-database-clock";
 
@@ -68,6 +68,7 @@ export interface AgentBackupRestoreTargetAuthority {
   nodeRecordId: string;
   nodeId: string;
   nodeIncarnation: string;
+  nodeHistoryId: string;
   imageDigest: string;
 }
 
@@ -361,7 +362,7 @@ export async function claimAgentBackupRestoreOperation(params: {
 /**
  * Reserve one caller-selected, already-attested Docker target before any remote
  * restore effect. This repository never discovers, autoscales, or reselects a
- * node: the exact record/incarnation pair is the request authority.
+ * node: the exact record/incarnation/occurrence tuple is the request authority.
  *
  * Capacity and the operation target commit in the same transaction. A lost
  * response can therefore replay the exact tuple without consuming a second
@@ -377,11 +378,13 @@ export async function reserveAgentBackupRestoreTarget(params: {
   claimGeneration: string;
   targetNodeRecordId: string;
   targetNodeIncarnation: string;
+  targetNodeHistoryId: string;
 }): Promise<ReserveAgentBackupRestoreTargetResult> {
   const operationId = requireUuid(params.operationId, "operationId");
   const claimGeneration = requireUuid(params.claimGeneration, "claimGeneration");
   const targetNodeRecordId = requireUuid(params.targetNodeRecordId, "targetNodeRecordId");
   const targetNodeIncarnation = requireUuid(params.targetNodeIncarnation, "targetNodeIncarnation");
+  const targetNodeHistoryId = requireUuid(params.targetNodeHistoryId, "targetNodeHistoryId");
   requireOwnerId(params.ownerId);
 
   // This first read supplies immutable keys for the global lock order. The row
@@ -534,7 +537,15 @@ export async function reserveAgentBackupRestoreTarget(params: {
     if (node.node_incarnation !== targetNodeIncarnation) {
       throw new AgentBackupCatalogConflictError("Restore target node incarnation changed");
     }
-    await proveUnambiguousAgentNodeIncarnationForLockedNode(tx, node, targetNodeIncarnation);
+    if (node.current_node_history_id !== targetNodeHistoryId) {
+      throw new AgentBackupCatalogConflictError("Restore target node occurrence changed");
+    }
+    await proveExactAgentNodeOccurrenceForLockedNode(
+      tx,
+      node,
+      targetNodeIncarnation,
+      targetNodeHistoryId,
+    );
 
     const catalogAuthority = await lockAgentBackupCatalogAuthority(
       tx,
@@ -567,6 +578,7 @@ export async function reserveAgentBackupRestoreTarget(params: {
       nodeRecordId: node.id,
       nodeId: node.node_id,
       nodeIncarnation: targetNodeIncarnation,
+      nodeHistoryId: targetNodeHistoryId,
       imageDigest: manifest.runtime.imageDigest,
     });
     const targetAlreadyRecorded = operation.expected_node_record_id !== null;
@@ -574,13 +586,18 @@ export async function reserveAgentBackupRestoreTarget(params: {
       if (
         operation.expected_node_record_id !== target.nodeRecordId ||
         operation.expected_node_incarnation !== target.nodeIncarnation ||
+        operation.expected_node_history_id !== target.nodeHistoryId ||
         operation.expected_image_digest !== target.imageDigest
       ) {
         throw new AgentBackupCatalogConflictError("Restore target replay authority mismatch");
       }
       return { operation: Object.freeze(operation), target, replayed: true };
     }
-    if (operation.expected_node_incarnation !== null || operation.expected_image_digest !== null) {
+    if (
+      operation.expected_node_incarnation !== null ||
+      operation.expected_node_history_id !== null ||
+      operation.expected_image_digest !== null
+    ) {
       throw new AgentBackupCatalogConflictError("Restore target authority is only partially set");
     }
     if (
@@ -607,6 +624,7 @@ export async function reserveAgentBackupRestoreTarget(params: {
         and(
           eq(dockerNodes.id, targetNodeRecordId),
           eq(dockerNodes.node_incarnation, targetNodeIncarnation),
+          eq(dockerNodes.current_node_history_id, targetNodeHistoryId),
           eq(dockerNodes.enabled, true),
           eq(dockerNodes.status, "healthy"),
           eq(dockerNodes.placement_state, PLACEABLE_NODE_STATE),
@@ -624,6 +642,7 @@ export async function reserveAgentBackupRestoreTarget(params: {
       .set({
         expected_node_record_id: target.nodeRecordId,
         expected_node_incarnation: target.nodeIncarnation,
+        expected_node_history_id: target.nodeHistoryId,
         expected_image_digest: target.imageDigest,
         updated_at: databaseNow,
       })
@@ -634,6 +653,7 @@ export async function reserveAgentBackupRestoreTarget(params: {
           eq(agentBackupRestoreOperations.claim_generation, claimGeneration),
           sql`${agentBackupRestoreOperations.expected_node_record_id} IS NULL`,
           sql`${agentBackupRestoreOperations.expected_node_incarnation} IS NULL`,
+          sql`${agentBackupRestoreOperations.expected_node_history_id} IS NULL`,
           sql`${agentBackupRestoreOperations.expected_image_digest} IS NULL`,
         ),
       )
@@ -743,6 +763,7 @@ export async function advanceAgentBackupRestoreOperation(params: {
       targetAuthorityRequired &&
       (operation.expected_node_record_id === null ||
         operation.expected_node_incarnation === null ||
+        operation.expected_node_history_id === null ||
         operation.expected_image_digest === null)
     ) {
       throw new AgentBackupCatalogConflictError(
@@ -782,6 +803,7 @@ export async function advanceAgentBackupRestoreOperation(params: {
             ? and(
                 isNotNull(agentBackupRestoreOperations.expected_node_record_id),
                 isNotNull(agentBackupRestoreOperations.expected_node_incarnation),
+                isNotNull(agentBackupRestoreOperations.expected_node_history_id),
                 isNotNull(agentBackupRestoreOperations.expected_image_digest),
               )
             : undefined,
