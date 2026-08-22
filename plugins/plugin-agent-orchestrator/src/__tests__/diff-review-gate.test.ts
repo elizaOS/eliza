@@ -237,9 +237,7 @@ describe("reviewDiff — secret-pattern parity with core", () => {
     // uppercase branch catches `DATABASE_PASSWORD=…` while lowercase spellings
     // are covered only through the unambiguous compound names it enumerates
     // (api_key, client_secret, …). Parity means the gate matches exactly that.
-    const diff = addedFileDiff("config.sh", [
-      "api_key=hunter2hunter2hunter2",
-    ]);
+    const diff = addedFileDiff("config.sh", ["api_key=hunter2hunter2hunter2"]);
     const result = reviewDiff({ diff, changedFiles: ["config.sh"] });
     expect(result.passed).toBe(false);
     expect(result.blocking.some((f) => f.check === "secret")).toBe(true);
@@ -264,7 +262,7 @@ describe("reviewDiff — secret-pattern parity with core", () => {
       "database_password=hunter2hunter2hunter2",
     ]);
     const result = reviewDiff({ diff, changedFiles: ["config.sh"] });
-    expect(result.blocking.some((f) => f.check === "secret")).toBe(false);
+    expect(result.blocking).toEqual([]);
   });
 
   it("blocks a lowercase `authorization: bearer …` header (bare core patterns still compile with `i`)", () => {

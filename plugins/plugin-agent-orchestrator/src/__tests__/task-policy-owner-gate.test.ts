@@ -13,7 +13,7 @@ beforeAll(async () => {
   ({ runtime, cleanup: cleanupRuntime } = await createRealTestRuntime({
     characterName: "TaskPolicyOwnerGateTest",
   }));
-});
+}, 30_000);
 
 afterEach(() => {
   if (runtime.character.settings) {

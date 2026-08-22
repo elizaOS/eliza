@@ -318,7 +318,7 @@ describe("TASKS submit_workspace (real service, real git, bare remote)", () => {
     );
     // The remote kept its own commit — the rejected push changed nothing.
     expect(git(bare, "rev-parse", "refs/heads/feat/submit")).toBe(remoteHash);
-  });
+  }, 15_000);
 
   it("returns WORKSPACE_NOT_FOUND for an unknown workspace id", async () => {
     const runtime = makeRuntime(tempDir("submit-base-"));
