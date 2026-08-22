@@ -63,6 +63,7 @@ describe("desktop experience contract — chat-first launch", () => {
       expect(presentation.titleBarStyle).toBe("hidden");
       expect(presentation.transparent).toBe(true);
       expect(presentation.nativeShadow).toBe(false);
+      expect(presentation.nativeInteractiveChrome).toBe(false);
     }
   });
 
@@ -84,6 +85,7 @@ describe("desktop experience contract — chat-first launch", () => {
     expect(presentation.mode).toBe("default");
     expect(presentation.transparent).toBe(false);
     expect(presentation.nativeShadow).toBe(true);
+    expect(presentation.nativeInteractiveChrome).toBe(true);
   });
 
   it("resolves kiosk presentation when requested", () => {
