@@ -70,6 +70,7 @@ import {
 } from "./first-run-bootstrap";
 import {
   clearPersistedActiveServer,
+  createPersistedActiveServer,
   hydratePersistedFirstRunCompleteFromNativeStore,
   loadPersistedActiveServer,
   loadPersistedFirstRunComplete,
@@ -887,12 +888,11 @@ export async function runRestoringSession(
   // persisted server exists (covers headless/VPS setups where config was
   // set via files without going through UI firstRun).
   //
-  // A committed mobile on-device runtime (`local`/`cloud-hybrid`) means the
-  // native service is bringing the bundled agent up right now; its ~30s cold
-  // boot on a low-power phone outlasts the 3.5s single-shot probe, so wait for
-  // it (up to 45s) instead of dropping the returning user back into first-run
-  // every cold launch. A fresh install (no committed mode) keeps the fast
-  // single-shot.
+  // Packaged Electrobun and committed mobile on-device runtimes both start a
+  // bundled agent concurrently with the renderer. Their cold boot can outlast
+  // the single-shot probe, so wait for the agent instead of permanently
+  // misclassifying a returning user as first-run while its socket is still
+  // binding. Browser and genuinely fresh mobile installs keep the fast probe.
   const committedMobileOnDeviceMode =
     (isAndroid || isIOS) &&
     isCommittedOnDeviceMobileRuntimeMode(readPersistedMobileRuntimeMode());
@@ -908,21 +908,22 @@ export async function runRestoringSession(
           : committedMobileOnDeviceMode
             ? Math.min(getBackendStartupTimeoutMs(), 45_000)
             : Math.min(getBackendStartupTimeoutMs(), 3_500),
-        waitForBootingAgent: committedMobileOnDeviceMode,
+        waitForBootingAgent: isDesktop || committedMobileOnDeviceMode,
       });
     } catch (err) {
       // error-policy:J1 existing-install probe boundary. The probe only throws
       // in wait-for-boot mode, and only for a GENUINE fault — the committed
-      // on-device agent answered with auth/5xx/malformed, not a still-booting
-      // heartbeat. The install exists, so re-onboarding would both lose the
-      // user's setup and mask the fault: instead route to restore as a detected
-      // install and let the polling-backend phase surface the real error
-      // through its designed timeout/error states.
+      // bundled agent answered with auth/5xx/malformed, not a still-booting
+      // heartbeat. The install exists, so onboarding would mask the fault:
+      // route to restore and let the polling-backend phase surface it through
+      // its designed timeout/error states.
       logger.error(
-        `[startup-phase-restore] existing-install probe failed for a committed on-device runtime: ${err instanceof Error ? err.message : String(err)}`,
+        `[startup-phase-restore] existing-install probe failed for a bundled runtime: ${err instanceof Error ? err.message : String(err)}`,
       );
       probed = {
-        activeServer: mobileLocalActiveServer(isAndroid ? "android" : "ios"),
+        activeServer: isDesktop
+          ? createPersistedActiveServer({ kind: "local" })
+          : mobileLocalActiveServer(isAndroid ? "android" : "ios"),
         detectedExistingInstall: true,
       };
     }

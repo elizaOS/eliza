@@ -75,6 +75,36 @@ describe("runRestoringSession desktop bridge startup calls", () => {
       type: "NO_SESSION",
       hadPriorFirstRun: false,
     });
+    expect(
+      firstRunBootstrapMock.detectExistingFirstRunConnection,
+    ).toHaveBeenCalledWith(
+      expect.objectContaining({
+        timeoutMs: 30_000,
+        waitForBootingAgent: true,
+      }),
+    );
+  });
+
+  it("restores desktop startup instead of showing onboarding when the booting agent answers before session auth settles", async () => {
+    firstRunBootstrapMock.detectExistingFirstRunConnection.mockRejectedValueOnce(
+      Object.assign(new Error("Unauthorized"), {
+        kind: "http",
+        status: 401,
+      }),
+    );
+    const deps = makeDeps();
+    const dispatch = vi.fn();
+    const ctxRef = { current: null };
+
+    await runRestoringSession(deps, dispatch, ctxRef, { current: false });
+
+    expect(dispatch).not.toHaveBeenCalledWith(
+      expect.objectContaining({ type: "NO_SESSION" }),
+    );
+    expect(dispatch).toHaveBeenCalledWith({
+      type: "SESSION_RESTORED",
+      target: "embedded-local",
+    });
   });
 
   it("continues into backend polling when restored local desktop runtime RPCs time out", async () => {
