@@ -114,6 +114,28 @@ describe("scheduling plugin boot", () => {
     );
   });
 
+  it("uses the central heavy-boot window for registration after 30 seconds", async () => {
+    vi.useFakeTimers();
+    let registered = false;
+    const service = {} as ScheduledTaskRunnerService;
+    const getServiceLoadPromise = vi.fn(async () => service);
+    const runtime = {
+      initPromise: Promise.resolve(),
+      hasService: () => registered,
+      getServiceRegistrationStatus: () =>
+        registered ? "registered" : "unknown",
+      getServiceLoadPromise,
+    } as unknown as IAgentRuntime;
+
+    const load = waitForScheduledTaskRunnerService(runtime);
+    await vi.advanceTimersByTimeAsync(30_250);
+    expect(getServiceLoadPromise).not.toHaveBeenCalled();
+
+    registered = true;
+    await vi.advanceTimersByTimeAsync(250);
+    await expect(load).resolves.toBe(service);
+  });
+
   it("fails at the bounded deadline when the declaration never registers", async () => {
     vi.useFakeTimers();
     const getServiceLoadPromise = vi.fn();
@@ -169,7 +191,7 @@ describe("scheduling plugin boot", () => {
     vi.useFakeTimers();
     const runtime = {
       initPromise: Promise.resolve(),
-      stopped: false,
+      stopRequested: false,
       hasService: () => false,
       getServiceRegistrationStatus: () => "unknown",
       getServiceLoadPromise: vi.fn(),
@@ -183,7 +205,11 @@ describe("scheduling plugin boot", () => {
       code: "SCHEDULED_TASK_RUNNER_WAIT_STOPPED",
     });
     await vi.advanceTimersByTimeAsync(100);
-    (runtime as IAgentRuntime & { stopped: boolean }).stopped = true;
+    (
+      runtime as IAgentRuntime & {
+        stopRequested: boolean;
+      }
+    ).stopRequested = true;
     await vi.advanceTimersByTimeAsync(100);
 
     await outcome;

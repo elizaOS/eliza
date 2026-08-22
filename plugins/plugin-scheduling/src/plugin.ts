@@ -40,7 +40,10 @@ export const SCHEDULED_TASK_RUNNER_REGISTRATION_FAILED =
 export const SCHEDULED_TASK_RUNNER_WAIT_STOPPED =
   "SCHEDULED_TASK_RUNNER_WAIT_STOPPED";
 
-const DEFAULT_RUNNER_REGISTRATION_TIMEOUT_MS = 30_000;
+// Deferred plugin registration can legitimately trail runtime initialization
+// on a cold, plugin-heavy boot. Keep the observed boot allowance in the
+// scheduling owner so every consumer shares one readiness contract.
+const DEFAULT_RUNNER_REGISTRATION_TIMEOUT_MS = 120_000;
 const DEFAULT_RUNNER_REGISTRATION_POLL_MS = 250;
 
 export interface WaitForScheduledTaskRunnerServiceOptions {
@@ -54,9 +57,14 @@ function runnerWaitStopped(
   runtime: IAgentRuntime,
   signal?: AbortSignal,
 ): boolean {
+  const lifecycle = runtime as IAgentRuntime & {
+    stopped?: boolean;
+    stopRequested?: boolean;
+  };
   return (
     signal?.aborted === true ||
-    (runtime as IAgentRuntime & { stopped?: boolean }).stopped === true
+    lifecycle.stopRequested === true ||
+    lifecycle.stopped === true
   );
 }
 
