@@ -7,6 +7,7 @@
  */
 import type { ReportedError } from "../errors";
 import type { Logger } from "../logger";
+import type { ConnectorInteractionCapabilityProfile } from "../messaging/interactions/profiles";
 import type { ContextRegistry } from "../runtime/context-registry";
 import type { ResponseHandlerEvaluator } from "../runtime/response-handler-evaluators";
 import type { ResponseHandlerFieldEvaluator } from "../runtime/response-handler-field-evaluator";
@@ -381,6 +382,13 @@ export interface MessageConnector {
 	description?: string;
 	contexts: AgentContext[];
 	metadata?: Metadata;
+	/** Resolve the negotiated interaction contract for this exact account/target. */
+	resolveInteractionProfile?: (
+		target: TargetInfo,
+		context: MessageConnectorQueryContext,
+	) =>
+		| Promise<ConnectorInteractionCapabilityProfile>
+		| ConnectorInteractionCapabilityProfile;
 	resolveTargets?: (
 		query: string,
 		context: MessageConnectorQueryContext,
