@@ -67,6 +67,15 @@ plugin only where the OWNER role and host/container boundary are trusted for
 that access. Static command analysis and the command denylist are safety checks,
 not filesystem confinement.
 
+Foreground SHELL transcripts shown to the planner are capped at 50,000
+characters. When that cap is reached, the action writes the complete redacted
+stdout and stderr plus a manifest under
+`ELIZA_STATE_DIR/coding-tools/shell-output/<handle>/`, returns the handle and
+paths with byte/line counts, and leaves the bounded preview in the tool result.
+Artifact directories are owner-only (`0700`) and files are `0600`. They use
+`SHELL_JOB_TTL_MS` (30 minutes by default) and expired handles are removed
+opportunistically when the next truncated foreground result is persisted.
+
 The folded `ShellService` retains these compatibility settings for external
 callers of `runtime.getService("shell").exec()` / `executeCommand()`; the
 canonical SHELL action continues to use the `CODING_TOOLS_*` settings above.

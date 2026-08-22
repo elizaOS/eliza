@@ -37,6 +37,10 @@ import {
   truncate,
 } from "../lib/format.js";
 import { runShell, type ShellResult } from "../lib/run-shell.js";
+import {
+  persistShellOutputArtifact,
+  type ShellOutputArtifact,
+} from "../lib/shell-output-artifact.js";
 import { resolveHostShell } from "../lib/terminal-capabilities.js";
 import type { BackgroundShellService } from "../services/background-shell-service.js";
 import type { SandboxService } from "../services/sandbox-service.js";
@@ -1148,6 +1152,79 @@ function formatStreams(
   return lines.join("\n");
 }
 
+function shellArtifactResultData(
+  artifact: ShellOutputArtifact | undefined,
+): Record<string, unknown> {
+  if (!artifact) return {};
+  return {
+    output_artifact_handle: artifact.handle,
+    output_artifact_path: artifact.manifestPath,
+    output_artifact_stdout_path: artifact.stdoutPath,
+    output_artifact_stderr_path: artifact.stderrPath,
+    output_artifact_created_at: artifact.createdAt,
+    output_artifact_expires_at: artifact.expiresAt,
+    output_artifact_retention_ms: artifact.retentionMs,
+    output_truncation: {
+      model_character_limit: MODEL_FACING_SHELL_OUTPUT_CHARS,
+      stdout: artifact.stdout,
+      stderr: artifact.stderr,
+    },
+  };
+}
+
+function truncateToHardLimit(
+  text: string,
+  maxCharacters: number,
+): { text: string; truncated: boolean } {
+  if (maxCharacters <= 0) {
+    return { text: "", truncated: text.length > 0 };
+  }
+  let prefixBudget = maxCharacters;
+  let result = truncate(text, prefixBudget);
+  while (result.text.length > maxCharacters && prefixBudget > 0) {
+    prefixBudget = Math.max(
+      0,
+      prefixBudget - (result.text.length - maxCharacters),
+    );
+    result = truncate(text, prefixBudget);
+  }
+  return result.text.length <= maxCharacters
+    ? result
+    : { text: "", truncated: text.length > 0 };
+}
+
+export function boundedShellText(
+  fullText: string,
+  artifact: ShellOutputArtifact | undefined,
+): { text: string; truncated: boolean } {
+  if (!artifact) {
+    return truncateToHardLimit(fullText, MODEL_FACING_SHELL_OUTPUT_CHARS);
+  }
+  const notice = [
+    `[output truncated; complete redacted artifact ${artifact.handle}]`,
+    `manifest: ${artifact.manifestPath}`,
+    `stdout: ${artifact.stdoutPath} (${artifact.stdout.bytes} bytes, ${artifact.stdout.lines} lines)`,
+    `stderr: ${artifact.stderrPath} (${artifact.stderr.bytes} bytes, ${artifact.stderr.lines} lines)`,
+    `expires: ${artifact.expiresAt}`,
+  ].join("\n");
+  // State roots are operator-configurable. Bound an unusually long notice
+  // independently while the structured result retains every complete path.
+  const boundedNotice = truncateToHardLimit(
+    notice,
+    Math.floor(MODEL_FACING_SHELL_OUTPUT_CHARS / 2),
+  );
+  const preview = truncateToHardLimit(
+    fullText,
+    MODEL_FACING_SHELL_OUTPUT_CHARS - boundedNotice.text.length - 1,
+  );
+  return {
+    text: preview.text
+      ? `${preview.text}\n${boundedNotice.text}`
+      : boundedNotice.text,
+    truncated: true,
+  };
+}
+
 export const shellAction: Action = {
   name: "SHELL",
   contexts: [...CODING_TOOLS_CONTEXTS],
@@ -1879,8 +1956,35 @@ export const shellAction: Action = {
       showEmptyStreams: !result.stdout && !result.stderr,
     });
     const fullText = streams.length > 0 ? `${head}\n${streams}` : head;
-    const bounded = truncate(fullText, MODEL_FACING_SHELL_OUTPUT_CHARS);
+    let artifact: ShellOutputArtifact | undefined;
+    if (fullText.length > MODEL_FACING_SHELL_OUTPUT_CHARS) {
+      try {
+        artifact = await persistShellOutputArtifact({
+          command: redactedCommand,
+          cwd: redactedCwd,
+          stdout: redactedStdout,
+          stderr: redactedStderr,
+          exitCode: result.exitCode,
+          timedOut,
+          signal,
+          modelCharacterLimit: MODEL_FACING_SHELL_OUTPUT_CHARS,
+          modelCharacters: MODEL_FACING_SHELL_OUTPUT_CHARS,
+        });
+      } catch (err) {
+        // error-policy:J1 artifact persistence is part of the SHELL result
+        // boundary: do not claim recoverable truncation when storage failed.
+        return failureToActionResult(
+          {
+            reason: "io_error",
+            message: `complete shell output could not be persisted: ${redactShellText(runtime, (err as Error).message)}`,
+          },
+          { command: redactedCommand, cwd: redactedCwd },
+        );
+      }
+    }
+    const bounded = boundedShellText(fullText, artifact);
     const text = bounded.text;
+    const artifactData = shellArtifactResultData(artifact);
 
     const echoTranscript =
       process.env.ELIZA_SHELL_ECHO_TRANSCRIPT?.trim().toLowerCase();
@@ -1898,6 +2002,7 @@ export const shellAction: Action = {
           cwd: redactedCwd,
           output: text,
           output_truncated: bounded.truncated,
+          ...artifactData,
         },
       );
     }
@@ -1913,6 +2018,7 @@ export const shellAction: Action = {
           cwd: redactedCwd,
           output: text,
           output_truncated: bounded.truncated,
+          ...artifactData,
         },
       );
     }
@@ -1924,6 +2030,7 @@ export const shellAction: Action = {
       sandbox_backend: result.sandbox,
       signal,
       output_truncated: bounded.truncated,
+      ...artifactData,
     });
     // The crypto / disk / memory / status projections are CHAT conveniences
     // keyed on the *message text*, and the coding sub-agent's message text is
