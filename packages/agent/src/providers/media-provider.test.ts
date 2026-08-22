@@ -615,6 +615,44 @@ describe("media vision provider input validation", () => {
     ]);
     expect(calls[1].body.max_tokens).toBe(128_000);
   });
+
+  it("rejects an explicit Anthropic output request above the model maximum before dispatch", async () => {
+    const calls: FetchCall[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+        const href = String(url);
+        calls.push({
+          url: href,
+          init,
+          body:
+            typeof init?.body === "string"
+              ? (JSON.parse(init.body) as Record<string, unknown>)
+              : {},
+        });
+        return Response.json({ max_tokens: 128_000 });
+      }),
+    );
+    const provider = createVisionProvider(
+      {
+        mode: "own-key",
+        provider: "anthropic",
+        anthropic: { apiKey: "anthropic-key", model: "claude-opus-4-7" },
+      },
+      { cloudMediaDisabled: true },
+    );
+
+    await expect(
+      provider.analyze({ imageBase64: "AQID", maxTokens: 128_001 }),
+    ).resolves.toMatchObject({
+      success: false,
+      errorCode: "VISION_OUTPUT_BUDGET_UNSUPPORTED",
+      error: expect.stringMatching(/supports at most 128000 output tokens/),
+    });
+    expect(calls.map((call) => call.url)).toEqual([
+      "https://api.anthropic.com/v1/models/claude-opus-4-7",
+    ]);
+  });
 });
 
 /**
