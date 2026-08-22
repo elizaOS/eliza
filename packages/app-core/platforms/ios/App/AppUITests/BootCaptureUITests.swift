@@ -1117,28 +1117,30 @@ final class BootCaptureUITests: XCTestCase {
             NSPredicate(format: "label BEGINSWITH[c] 'Connect to this server?'")
         ).firstMatch
         let deadline = Date().addingTimeInterval(timeout)
+        var tapAttempts = 0
+        var nextTapAt = Date.distantPast
         while Date() < deadline {
+            if pairingField.exists {
+                return
+            }
             if trustCopy.exists {
                 let confirm = app.alerts.firstMatch.buttons.matching(
                     NSPredicate(format: "label ==[c] 'Ok' OR label ==[c] 'Connect'")
                 ).firstMatch
-                if confirm.exists, confirm.isHittable {
-                    attachScreenshot(named: "pairing-006-server-trust-prompt")
-                    confirm.tap()
-                    return
+                if confirm.exists, !confirm.frame.isEmpty, Date() >= nextTapAt {
+                    if tapAttempts == 0 {
+                        attachScreenshot(named: "pairing-006-server-trust-prompt")
+                    }
+                    if tapAttempts == 0, confirm.isHittable {
+                        confirm.tap()
+                    } else {
+                        confirm.coordinate(
+                            withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)
+                        ).tap()
+                    }
+                    tapAttempts += 1
+                    nextTapAt = Date().addingTimeInterval(0.75)
                 }
-                if confirm.exists, !confirm.frame.isEmpty,
-                   Date().timeIntervalSince(deadline.addingTimeInterval(-timeout)) > 2
-                {
-                    attachScreenshot(named: "pairing-006-server-trust-prompt")
-                    confirm.coordinate(
-                        withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)
-                    ).tap()
-                    return
-                }
-            }
-            if pairingField.exists {
-                return
             }
             Thread.sleep(forTimeInterval: 0.25)
         }
