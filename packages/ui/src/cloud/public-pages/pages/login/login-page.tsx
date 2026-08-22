@@ -163,7 +163,7 @@ function PublicLoginPage(): React.JSX.Element {
           <div className="space-y-1.5">
             <h1 className="font-sans text-2xl font-semibold tracking-tight text-txt-strong">
               {t("cloud.login.signIn", {
-                defaultValue: "Sign in to Eliza",
+                defaultValue: "Sign in",
               })}
             </h1>
             <p className="text-sm text-muted">
