@@ -9,6 +9,9 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { resolveDedicatedAgentId } from "../state/agent-session-recovery";
 import { loadPersistedActiveServer } from "../state/persistence";
+import { isRealtimeVoiceForceEnabled } from "../voice/realtime-voice-config";
+
+export { isRealtimeVoiceForceEnabled } from "../voice/realtime-voice-config";
 
 /**
  * Sentinel agent UUID used ONLY when the force-arm override is on and no real
@@ -20,24 +23,6 @@ import { loadPersistedActiveServer } from "../state/persistence";
  */
 export const REALTIME_FORCE_SENTINEL_AGENT_ID =
   "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
-
-/**
- * Read the VITE-side force-arm flag. Vite statically replaces `import.meta.env.
- * VITE_*` at build time, so this MUST be a literal member read (not a dynamic
- * key). Absent/blank/anything-but-truthy ⇒ OFF, so no build arms via the
- * sentinel unless it explicitly opts in. Mirrors `isRealtimeVoiceFlagEnabled`.
- */
-export function isRealtimeVoiceForceEnabled(): boolean {
-  try {
-    const raw = import.meta.env?.VITE_VOICE_REALTIME_FORCE as unknown;
-    if (typeof raw !== "string") return false;
-    const v = raw.trim().toLowerCase();
-    return v === "1" || v === "true" || v === "yes" || v === "on";
-  } catch {
-    // error-policy:J4 An unreadable build flag leaves force-arming explicitly disabled.
-    return false;
-  }
-}
 
 // NOTE ON MODULE GRAPH: the default consent fetch pulls the full native/cloud
 // transport chain. We import it LAZILY (dynamic import inside

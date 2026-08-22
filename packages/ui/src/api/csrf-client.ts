@@ -36,13 +36,36 @@ export async function fetchWithCsrf(
   init: RequestInit = {},
   context: AgentRequestContext = {},
 ): Promise<Response> {
+  return fetchWithCsrfInternal(url, init, context, true);
+}
+
+/**
+ * Authenticated same-origin request for routes owned by the renderer host
+ * rather than the injected agent API base (for example local voice-session
+ * control traffic). Auth headers, CSRF, timeouts, and platform transports stay
+ * identical to fetchWithCsrf; only relative URL absolutization is suppressed.
+ */
+export async function fetchSameOriginWithCsrf(
+  url: string,
+  init: RequestInit = {},
+  context: AgentRequestContext = {},
+): Promise<Response> {
+  return fetchWithCsrfInternal(url, init, context, false);
+}
+
+async function fetchWithCsrfInternal(
+  url: string,
+  init: RequestInit,
+  context: AgentRequestContext,
+  resolveRelativeApiPath: boolean,
+): Promise<Response> {
   // Resolve relative API paths against the configured API base. On Capacitor
   // remote mode the page origin is the bundle's asset server, which answers
   // ANY path with index.html and HTTP 200 — a relative "/api/..." fetch
   // "succeeds" and then explodes at JSON parse. No-op when no base is set
   // (plain same-origin web). Absolute and protocol-relative URLs pass through
   // untouched — resolveApiUrl prefixes blindly and would corrupt them.
-  if (url.startsWith("/") && !url.startsWith("//")) {
+  if (resolveRelativeApiPath && url.startsWith("/") && !url.startsWith("//")) {
     url = resolveApiUrl(url);
   }
   const method = (init.method ?? "GET").toUpperCase();

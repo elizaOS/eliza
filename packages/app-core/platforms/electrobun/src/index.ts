@@ -121,7 +121,9 @@ import { printElectrobunDevSettingsBanner } from "./print-electrobun-dev-setting
 import {
   createRendererApiProxyRequestInit,
   isRendererApiProxyPath,
+  resolveRendererLocalVoiceGatewayBase,
   resolveRendererProxyIdleTimeoutSeconds,
+  resolveRendererProxyTargetBase,
   shouldProxyToApiBase,
 } from "./renderer-api-proxy";
 import {
@@ -931,6 +933,9 @@ async function startRendererServer(): Promise<string> {
 
   const rendererProxyIdleTimeoutSeconds =
     resolveRendererProxyIdleTimeoutSeconds(process.env);
+  const localVoiceGatewayBase = resolveRendererLocalVoiceGatewayBase(
+    process.env as Record<string, string | undefined>,
+  );
 
   Bun.serve({
     port,
@@ -944,15 +949,23 @@ async function startRendererServer(): Promise<string> {
       const url = new URL(req.url);
       const pathname = url.pathname;
 
-      // Proxy /api/*, /ws, /music-player to the agent port. Mirrors the Vite
-      // dev-server proxy in apps/app/vite.config.ts so the renderer can rely
-      // on same-origin /api fetches whether it's loaded via Vite (watch mode)
-      // or this static server (non-watch dev:desktop). Without this, every
-      // /api/* call returned SPA HTML and Settings sat on "Loading…" forever.
+      // Mirror Vite's ordered proxy ownership: local /api/v1/voice traffic
+      // belongs to the configured voice gateway, then generic /api, /ws and
+      // /music-player traffic falls through to the agent. The voice mint
+      // response returns the gateway's direct WebSocket URL, preserving the
+      // HTTP + WebSocket handoff without exposing provider credentials.
       const apiBase =
         apiBaseOwner.getCurrent().base ?? initialApiBase ?? undefined;
-      if (shouldProxyToApiBase(apiBase) && isRendererApiProxyPath(pathname)) {
-        const target = new URL(pathname + url.search, apiBase);
+      const proxyTargetBase = resolveRendererProxyTargetBase(
+        pathname,
+        apiBase,
+        localVoiceGatewayBase,
+      );
+      if (
+        shouldProxyToApiBase(proxyTargetBase) &&
+        isRendererApiProxyPath(pathname)
+      ) {
+        const target = new URL(pathname + url.search, proxyTargetBase);
         try {
           const upstreamRequest = createRendererApiProxyRequestInit(
             req,
