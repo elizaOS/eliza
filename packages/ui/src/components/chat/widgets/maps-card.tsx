@@ -89,10 +89,7 @@ function placeMapUris(place: MapsCardPlace): {
 function AttributionLine({ attribution }: { attribution: string | null }) {
   if (!attribution) return null;
   return (
-    <div
-      className="pt-0.5 text-3xs text-muted"
-      data-testid="maps-attribution"
-    >
+    <div className="pt-0.5 text-3xs text-muted" data-testid="maps-attribution">
       {attribution}
     </div>
   );
