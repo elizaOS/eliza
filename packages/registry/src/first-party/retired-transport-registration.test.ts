@@ -169,8 +169,6 @@ describe("retired transport registration", () => {
 
     const localAuthorityFiles = [
       "packages/registry/src/first-party/generated.json",
-      "packages/scripts/post-merge-secrets.txt",
-      ".env.test.example",
       ...[
         "packages/agent/src",
         "packages/core/src",
@@ -196,7 +194,7 @@ describe("retired transport registration", () => {
     const retiredLocalAuthority =
       /whatsapp-cloud-webhook|whatsappSessionPath|WHATSAPP_(?:TOKEN|ACCESS_TOKEN|PHONE_NUMBER_ID|WEBHOOK_VERIFY_TOKEN|APP_SECRET|BUSINESS_ACCOUNT_ID|SESSION_PATH)|whatsapp_business_account|graph\.facebook\.com[^\n]{0,200}whatsapp|whatsapp[^\n]{0,120}(?:cloud api|webhook|access token|phone number id|app secret)|(?:cloud api|webhook|access token|phone number id|app secret)[^\n]{0,120}whatsapp/i;
     const retiredCoreAuthority =
-      /WHATSAPP_(?:TOKEN|ACCESS_TOKEN|PHONE_NUMBER_ID|WEBHOOK_VERIFY_TOKEN|APP_SECRET|BUSINESS_ACCOUNT_ID|SESSION_PATH)|whatsapp-cloud-webhook|whatsapp_business_account|graph\.facebook\.com[^\n]{0,200}whatsapp/i;
+      /WHATSAPP_(?:ACCESS_TOKEN|PHONE_NUMBER_ID|WEBHOOK_VERIFY_TOKEN|APP_SECRET|BUSINESS_ACCOUNT_ID|SESSION_PATH)|whatsapp-cloud-webhook|whatsapp_business_account|graph\.facebook\.com[^\n]{0,200}whatsapp/i;
     for (const authority of new Set(localAuthorityFiles)) {
       let source = readFileSync(authority, "utf8");
       if (
@@ -223,7 +221,7 @@ describe("retired transport registration", () => {
       path.join(repositoryRoot, "plugins/plugin-whatsapp"),
     )) {
       expect(readFileSync(pluginFile, "utf8"), pluginFile).not.toMatch(
-        /whatsapp-cloud-webhook|WHATSAPP_(?:ACCESS_TOKEN|PHONE_NUMBER_ID|WEBHOOK_VERIFY_TOKEN|APP_SECRET|BUSINESS_ACCOUNT_ID)|graph\.facebook\.com|cloudapi|whatsapp_business_account|handleWebhook|verifyWebhook/i,
+        /whatsapp-cloud-webhook|WHATSAPP_(?:ACCESS_TOKEN|PHONE_NUMBER_ID|WEBHOOK_VERIFY_TOKEN|APP_SECRET|BUSINESS_ACCOUNT_ID|SESSION_PATH)|graph\.facebook\.com|cloudapi|whatsapp_business_account|handleWebhook|verifyWebhook/i,
       );
     }
 

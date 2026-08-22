@@ -20,7 +20,7 @@ POST /api/whatsapp/pair/stop
 POST /api/whatsapp/disconnect
 ```
 
-The pairing route broadcasts a `whatsapp-qr` event containing a QR data URL. Scanning it stores the session directory in connector configuration. For non-interactive deployments, set `WHATSAPP_AUTH_DIR` (or the legacy `WHATSAPP_SESSION_PATH`) to an existing paired Baileys session directory.
+The pairing route broadcasts a `whatsapp-qr` event containing a QR data URL. Scanning it stores the session directory in connector configuration. For non-interactive deployments, set `WHATSAPP_AUTH_DIR` to an existing paired Baileys session directory.
 
 Access policy settings are `WHATSAPP_DM_POLICY`, `WHATSAPP_GROUP_POLICY`, `WHATSAPP_ALLOW_FROM`, and `WHATSAPP_GROUP_ALLOW_FROM`. `WHATSAPP_AUTO_REPLY` remains off by default.
 

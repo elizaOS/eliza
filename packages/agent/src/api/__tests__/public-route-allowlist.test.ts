@@ -323,16 +323,6 @@ const ALLOWLIST: Record<string, string> = {
   "/api/wallet/market-overview (wallet-market-overview)":
     "public read-only market data; no per-user data exposed",
 
-  // plugin-whatsapp — Meta requires the webhook endpoints to bypass auth.
-  "/api/whatsapp/webhook (whatsapp-webhook-verify)":
-    "Meta webhook verification must bypass auth",
-  "/api/whatsapp/webhook (whatsapp-webhook-event)":
-    "Meta webhook delivery must bypass auth",
-
-  // plugin-bluebubbles
-  "bluebubbles-webhook":
-    "BlueBubbles webhook delivery must bypass auth (path is a runtime const)",
-
   // @elizaos/ui cloud public pages — reachable by external/unauthenticated users.
   "payment/:paymentRequestId":
     "cloud public page: external payer; the request id is the capability link",

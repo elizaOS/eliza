@@ -650,15 +650,6 @@ export async function handleFirstRunRoutes(
       config.connectors.discord = { token: body.discordToken.trim() };
     }
     if (
-      body.whatsappSessionPath &&
-      typeof body.whatsappSessionPath === "string" &&
-      body.whatsappSessionPath.trim()
-    ) {
-      config.connectors.whatsapp = {
-        sessionPath: body.whatsappSessionPath.trim(),
-      };
-    }
-    if (
       body.twilioAccountSid &&
       typeof body.twilioAccountSid === "string" &&
       body.twilioAccountSid.trim() &&

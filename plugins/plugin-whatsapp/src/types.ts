@@ -8,7 +8,6 @@ export interface BaileysConfig {
   authMethod?: "baileys";
   authDir: string;
   printQRInTerminal?: boolean;
-  sessionPath?: string;
 }
 
 /**

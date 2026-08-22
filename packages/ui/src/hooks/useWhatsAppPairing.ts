@@ -46,12 +46,19 @@ export function useWhatsAppPairing(accountId = DEFAULT_CONNECTOR_ACCOUNT_ID) {
     client
       .getWhatsAppStatus(accountId)
       .then((res) => {
-        if (res.authExists) {
-          setState((prev) => ({
-            ...prev,
-            status: "connected",
-          }));
-        }
+        const pairingStatus = asPairingStatus(res.status);
+        setState((prev) => ({
+          ...prev,
+          status: res.serviceConnected
+            ? "connected"
+            : pairingStatus === "connected"
+              ? "disconnected"
+              : (pairingStatus ?? "idle"),
+          phoneNumber:
+            typeof res.servicePhone === "string"
+              ? res.servicePhone
+              : prev.phoneNumber,
+        }));
       })
       .catch(() => {
         // error-policy:J4 initial-status probe is advisory; an unreachable

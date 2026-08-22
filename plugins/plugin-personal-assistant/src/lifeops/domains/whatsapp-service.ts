@@ -190,7 +190,7 @@ export class WhatsAppDomain {
           axis: "transport-offline",
           code: "whatsapp_plugin_inbound_unavailable",
           message:
-            "The WhatsApp runtime service is connected, but @elizaos/plugin-whatsapp does not expose webhook or message fetch handling.",
+            "The WhatsApp runtime service is connected, but @elizaos/plugin-whatsapp does not expose an inbound receive path.",
           retryable: true,
         });
       }
