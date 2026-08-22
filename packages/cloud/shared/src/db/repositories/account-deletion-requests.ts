@@ -544,6 +544,42 @@ export class AccountDeletionRequestsRepository {
       .then((rows) => rows.map((row) => row.request));
   }
 
+  async findCancellationPhaseCandidates(
+    phase: "steward_reactivation",
+    now: Date,
+    limit: number,
+  ): Promise<AccountDeletionRequest[]> {
+    return await dbWrite
+      .select({ request: accountDeletionRequests })
+      .from(accountDeletionPhaseReceipts)
+      .innerJoin(
+        accountDeletionRequests,
+        eq(accountDeletionRequests.id, accountDeletionPhaseReceipts.request_id),
+      )
+      .where(
+        and(
+          eq(accountDeletionPhaseReceipts.phase, phase),
+          eq(accountDeletionRequests.status, "canceling"),
+          notInArray(accountDeletionPhaseReceipts.status, [
+            "completed",
+            "canceled",
+            "action_required",
+          ]),
+          or(
+            isNull(accountDeletionPhaseReceipts.next_attempt_at),
+            lte(accountDeletionPhaseReceipts.next_attempt_at, now),
+          ),
+          or(
+            isNull(accountDeletionPhaseReceipts.lease_expires_at),
+            lte(accountDeletionPhaseReceipts.lease_expires_at, now),
+          ),
+        ),
+      )
+      .orderBy(asc(accountDeletionPhaseReceipts.created_at))
+      .limit(limit)
+      .then((rows) => rows.map((row) => row.request));
+  }
+
   async markRecoveryActionRequired(input: {
     requestId: string;
     errorCode: string;
@@ -894,7 +930,7 @@ export class AccountDeletionRequestsRepository {
           and(
             eq(accountDeletionPhaseReceipts.id, input.phaseReceiptId),
             eq(accountDeletionPhaseReceipts.request_id, input.requestId),
-            eq(accountDeletionPhaseReceipts.status, "calling"),
+            inArray(accountDeletionPhaseReceipts.status, ["leased", "calling", "reconciling"]),
             eq(accountDeletionPhaseReceipts.lease_generation, input.generation),
           ),
         )
