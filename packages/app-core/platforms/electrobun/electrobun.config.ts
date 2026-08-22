@@ -84,6 +84,17 @@ function linuxCefChromiumFlags(): Record<string, string | true> {
   });
 }
 
+export function resolveLinuxRenderer(
+  env: Record<string, string | undefined> = process.env,
+): "native" | "cef" {
+  const requested = env.ELIZA_ELECTROBUN_LINUX_RENDERER?.trim().toLowerCase();
+  if (!requested || requested === "cef") return "cef";
+  if (requested === "native") return "native";
+  throw new Error(
+    `ELIZA_ELECTROBUN_LINUX_RENDERER must be "native" or "cef", received: ${requested}`,
+  );
+}
+
 export function hasElectrobunWorkspaceRoot(candidateDir: string): boolean {
   return (
     fs.existsSync(path.join(candidateDir, "bun.lock")) &&
@@ -530,6 +541,7 @@ export function createElectrobunConfig(): ElectrobunConfig {
   const buildVariant: "store" | "direct" =
     process.env.ELIZA_BUILD_VARIANT === "store" ? "store" : "direct";
   const embedRuntime = shouldEmbedRuntimeBundle(process.env);
+  const linuxRenderer = resolveLinuxRenderer(process.env);
   const brandConfigCopySource = resolveBrandConfigCopySource({
     appName,
     appId,
@@ -667,11 +679,13 @@ export function createElectrobunConfig(): ElectrobunConfig {
         // failing to composite any pixels, leaving a solid white client area.
         // Bundle Chromium so Linux uses the same renderer that paints the
         // packaged first-run page correctly outside the native GTK webview.
-        bundleCEF: true,
+        bundleCEF: linuxRenderer === "cef",
         bundleWGPU: true,
-        defaultRenderer: "cef",
+        defaultRenderer: linuxRenderer,
         icon: "assets/appIcon.png",
-        chromiumFlags: linuxCefChromiumFlags(),
+        ...(linuxRenderer === "cef"
+          ? { chromiumFlags: linuxCefChromiumFlags() }
+          : {}),
       },
       win: {
         bundleCEF: true,
