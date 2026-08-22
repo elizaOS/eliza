@@ -18,6 +18,7 @@ import React, {
   useState,
 } from "react";
 import { createPortal } from "react-dom";
+import { AgentButton } from "../../agent-surface/components";
 import type {
   FieldRenderer,
   FieldRenderProps,
@@ -611,7 +612,9 @@ function SearchableSelectInner({
             {/* Options list */}
             <div className="overflow-y-auto overscroll-contain max-h-[220px]">
               {!props.required && (
-                <Button
+                <AgentButton
+                  agentId={`config-${props.key}-clear`}
+                  agentLabel="Clear selection"
                   type="button"
                   variant="ghost"
                   className="w-full text-left px-3 py-1.5 text-xs text-muted hover:bg-bg-hover transition-colors italic rounded-none justify-start h-auto"
@@ -624,7 +627,7 @@ function SearchableSelectInner({
                   }}
                 >
                   {t("config-field.None", { defaultValue: "None" })}
-                </Button>
+                </AgentButton>
               )}
               {filtered.length === 0 && (
                 <div className="px-3 py-3 text-xs text-muted text-center">
@@ -919,7 +922,9 @@ function MultiselectFieldInner({ fp: props }: { fp: FieldRenderProps }) {
             >
               {opt.label}
               {!props.readonly && (
-                <Button
+                <AgentButton
+                  agentId={`config-${props.key}-remove-${opt.value}`}
+                  agentLabel={`Remove ${opt.label}`}
                   type="button"
                   variant="ghost"
                   size="icon"
@@ -927,7 +932,7 @@ function MultiselectFieldInner({ fp: props }: { fp: FieldRenderProps }) {
                   onClick={() => remove(opt.value)}
                 >
                   ×
-                </Button>
+                </AgentButton>
               )}
             </span>
           ))}

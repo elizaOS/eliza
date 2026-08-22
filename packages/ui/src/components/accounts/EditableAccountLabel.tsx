@@ -6,7 +6,7 @@
  * rejected value reverts to the previous label.
  */
 
-import { Pencil } from "lucide-react";
+import { Check, Pencil } from "lucide-react";
 import {
   type FormEvent,
   type KeyboardEvent,
@@ -14,11 +14,11 @@ import {
   useEffect,
   useState,
 } from "react";
+import { AgentButton, AgentInput } from "../../agent-surface/components";
 import { cn } from "../../lib/utils";
-import { Button } from "../ui/button";
-import { Input } from "../ui/input";
 
 export interface EditableAccountLabelProps {
+  agentId: string;
   value: string;
   onSubmit: (label: string) => Promise<void> | void;
   disabled?: boolean;
@@ -29,6 +29,7 @@ export interface EditableAccountLabelProps {
 }
 
 export function EditableAccountLabel({
+  agentId,
   value,
   onSubmit,
   disabled = false,
@@ -75,8 +76,14 @@ export function EditableAccountLabel({
 
   if (editing) {
     return (
-      <form onSubmit={submit} className="min-w-0 flex-1">
-        <Input
+      <form
+        data-agent-id={`${agentId}-form`}
+        onSubmit={submit}
+        className="flex min-w-0 flex-1 items-center gap-1"
+      >
+        <AgentInput
+          agentId={`${agentId}-input`}
+          agentLabel={inputAriaLabel}
           value={draft}
           onChange={(event) => setDraft(event.target.value)}
           onBlur={() => void submit()}
@@ -86,12 +93,25 @@ export function EditableAccountLabel({
           className={cn("h-7 max-w-[240px] text-sm", inputClassName)}
           aria-label={inputAriaLabel}
         />
+        <AgentButton
+          agentId={`${agentId}-save`}
+          agentLabel={`Save ${inputAriaLabel}`}
+          type="submit"
+          variant="ghost"
+          size="icon-sm"
+          disabled={disabled}
+          title={`Save ${inputAriaLabel}`}
+        >
+          <Check className="h-3 w-3" aria-hidden />
+        </AgentButton>
       </form>
     );
   }
 
   return (
-    <Button
+    <AgentButton
+      agentId={`${agentId}-edit`}
+      agentLabel={editTitle}
       variant="ghost"
       onClick={() => {
         if (!disabled) setEditing(true);
@@ -108,6 +128,6 @@ export function EditableAccountLabel({
         className="h-3 w-3 shrink-0 opacity-0 transition-opacity group-hover:opacity-100"
         aria-hidden
       />
-    </Button>
+    </AgentButton>
   );
 }

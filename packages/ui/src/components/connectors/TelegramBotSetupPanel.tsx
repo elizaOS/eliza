@@ -5,6 +5,7 @@
  */
 
 import { useCallback, useState } from "react";
+import { AgentButton } from "../../agent-surface/components";
 import { client } from "../../api";
 import { useAppSelector } from "../../state";
 import { PagePanel } from "../composites/page-panel";
@@ -88,7 +89,9 @@ export function TelegramBotSetupPanel() {
         tone="accent"
         className="mt-4"
         actions={
-          <Button
+          <AgentButton
+            agentId="telegram-bot-disconnect"
+            agentLabel="Disconnect Telegram bot"
             variant="outline"
             size="sm"
             className="h-8 rounded-sm px-4 text-xs-tight font-semibold"
@@ -97,7 +100,7 @@ export function TelegramBotSetupPanel() {
             }}
           >
             {t("common.disconnect", { defaultValue: "Disconnect" })}
-          </Button>
+          </AgentButton>
         }
       >
         <div className="space-y-1 text-xs">

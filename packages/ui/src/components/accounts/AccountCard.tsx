@@ -221,6 +221,7 @@ export function AccountCard({
         <div className="flex min-w-0 flex-1 items-center gap-2">
           <StatusBadge label={health.label} tone={health.tone} withDot />
           <EditableAccountLabel
+            agentId={`provider-account-${account.id}-label`}
             value={account.label}
             onSubmit={(label) => onPatch({ label })}
             disabled={saving}

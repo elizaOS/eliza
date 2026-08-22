@@ -327,6 +327,7 @@ export function BrowserSessionPolicyPanel({
             {takeover ? (
               <div className="flex gap-2">
                 <Button
+                  data-agent-id={`browser-session-${session.id}-approve`}
                   size="sm"
                   disabled={busy}
                   data-testid={`browser-session-${session.id}-approve`}
@@ -335,6 +336,7 @@ export function BrowserSessionPolicyPanel({
                   Approve and continue
                 </Button>
                 <Button
+                  data-agent-id={`browser-session-${session.id}-decline`}
                   size="sm"
                   variant="outline"
                   disabled={busy}
@@ -348,6 +350,7 @@ export function BrowserSessionPolicyPanel({
             <div className="flex gap-2">
               {blocked ? (
                 <Button
+                  data-agent-id={`browser-session-${session.id}-unblock`}
                   size="sm"
                   variant="outline"
                   disabled={domainBusy}
@@ -362,6 +365,7 @@ export function BrowserSessionPolicyPanel({
                 <>
                   {verdict.mode === "outside_grants" ? (
                     <Button
+                      data-agent-id={`browser-session-${session.id}-grant`}
                       size="sm"
                       variant="outline"
                       disabled={domainBusy}
@@ -374,6 +378,7 @@ export function BrowserSessionPolicyPanel({
                     </Button>
                   ) : null}
                   <Button
+                    data-agent-id={`browser-session-${session.id}-block`}
                     size="sm"
                     variant="outline"
                     disabled={domainBusy}
