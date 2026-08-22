@@ -114,8 +114,7 @@ function numberEnv(name: string, fallback: number): number {
   // The optional leading plus is kept deliberately: `Number.parseInt` accepted
   // "+500", so rejecting it here would be a compatibility regression rather
   // than a fix.
-  const parsed =
-    trimmed && /^\+?\d+$/.test(trimmed) ? Number(trimmed) : Number.NaN;
+  const parsed = trimmed && /^\+?\d+$/.test(trimmed) ? Number(trimmed) : Number.NaN;
   return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : fallback;
 }
 

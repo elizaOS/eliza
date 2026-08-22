@@ -74,11 +74,7 @@ describe("observeCloudRequest", () => {
 });
 
 describe("telemetry threshold env parsing", () => {
-  const KEYS = [
-    "CLOUD_SLOW_DB_MS",
-    "CLOUD_SLOW_REQUEST_MS",
-    "CLOUD_DB_BURST_COUNT",
-  ];
+  const KEYS = ["CLOUD_SLOW_DB_MS", "CLOUD_SLOW_REQUEST_MS", "CLOUD_DB_BURST_COUNT"];
   const saved = new Map<string, string | undefined>();
 
   beforeEach(() => {
