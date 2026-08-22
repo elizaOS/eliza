@@ -18,12 +18,14 @@ import type {
   LifeOpsCalendarEventMutationResult,
   LifeOpsCalendarEventUpdate,
   LifeOpsCalendarFeed,
+  LifeOpsCalendarImportedDataPurgeReceipt,
   LifeOpsCalendarSummary,
   LifeOpsIcsCalendarSourceMutationResponse,
   LifeOpsIcsCalendarSyncResponse,
   LifeOpsNextCalendarEventContext,
   ListLifeOpsCalendarsRequest,
   ListLifeOpsIcsCalendarSourcesResponse,
+  PurgeLifeOpsCalendarImportedDataRequest,
   SetLifeOpsCalendarIncludedRequest,
   SetLifeOpsCalendarIncludedResponse,
   UpdateLifeOpsIcsCalendarSourceRequest,
@@ -97,6 +99,9 @@ export interface CalendarClientMethods {
   syncLifeOpsIcsCalendarSource(
     sourceId: string,
   ): Promise<LifeOpsIcsCalendarSyncResponse>;
+  purgeLifeOpsCalendarImportedData(
+    data: PurgeLifeOpsCalendarImportedDataRequest,
+  ): Promise<LifeOpsCalendarImportedDataPurgeReceipt>;
 }
 
 // The `/api/meetings` client (requestMeetingBot / listMeetings / getMeeting /
@@ -136,6 +141,16 @@ calendarClientPrototype.getLifeOpsCalendarFeed = async function (
   const query = params.toString();
   return this.fetch<LifeOpsCalendarFeed>(
     `/api/lifeops/calendar/feed${query ? `?${query}` : ""}`,
+  );
+};
+
+calendarClientPrototype.purgeLifeOpsCalendarImportedData = async function (
+  this: ElizaClient,
+  data,
+) {
+  return this.fetch<LifeOpsCalendarImportedDataPurgeReceipt>(
+    "/api/lifeops/calendar/imported-data/purge",
+    { method: "POST", body: JSON.stringify(data) },
   );
 };
 

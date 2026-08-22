@@ -17,6 +17,7 @@ import type {
   LifeOpsGmailBatchReplyDraftsFeed,
   LifeOpsGmailBatchReplySendResult,
   LifeOpsGmailEventIngestResult,
+  LifeOpsGmailImportedDataPurgeReceipt,
   LifeOpsGmailManageResult,
   LifeOpsGmailMessageSummary,
   LifeOpsGmailNeedsResponseFeed,
@@ -25,9 +26,11 @@ import type {
   LifeOpsGmailSearchFeed,
   LifeOpsGmailSpamReviewFeed,
   LifeOpsGmailSpamReviewItem,
+  LifeOpsGmailSyncHealth,
   LifeOpsGmailTriageFeed,
   LifeOpsGmailUnrespondedFeed,
   ManageLifeOpsGmailMessagesRequest,
+  PurgeLifeOpsGmailImportedDataRequest,
   SendLifeOpsGmailBatchReplyRequest,
   SendLifeOpsGmailMessageRequest,
   SendLifeOpsGmailReplyRequest,
@@ -35,6 +38,19 @@ import type {
 } from "../contracts/index.js";
 
 export interface LifeOpsGmailService {
+  getGmailSyncHealth(
+    requestUrl: URL,
+    request: {
+      side?: LifeOpsConnectorSide;
+      mode?: LifeOpsConnectorMode;
+      grantId: string;
+    },
+  ): Promise<LifeOpsGmailSyncHealth>;
+  purgeGmailImportedData(
+    requestUrl: URL,
+    request: PurgeLifeOpsGmailImportedDataRequest,
+    now?: Date,
+  ): Promise<LifeOpsGmailImportedDataPurgeReceipt>;
   getGmailTriage(
     requestUrl: URL,
     request?: GetLifeOpsGmailTriageRequest,

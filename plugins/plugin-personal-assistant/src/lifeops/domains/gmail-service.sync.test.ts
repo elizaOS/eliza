@@ -95,8 +95,13 @@ function harness(args: {
   const repository = {
     getGmailSyncState: vi.fn(async () => args.previousState ?? null),
     getGmailMessage: vi.fn(async () => null),
+    countGmailMessages: vi.fn(async () => 4),
+    countGmailSpamReviewItems: vi.fn(async () => 2),
     upsertGmailMessage,
     deleteGmailMessages,
+    deleteGmailMessagesForProvider: vi.fn(async () => undefined),
+    deleteGmailSpamReviewItemsForProvider: vi.fn(async () => undefined),
+    deleteGmailSyncState: vi.fn(async () => undefined),
     upsertGmailSyncState,
   };
   const domain = new GmailDomain(
@@ -209,6 +214,102 @@ describe("LifeOps Gmail sync cursors", () => {
         cursorStatus: "resynced",
         fullResyncReason: "history_cursor_expired",
       }),
+    );
+  });
+
+  it("reports exact local cursor and cache health for one connected account", async () => {
+    const { domain } = harness({
+      previousState: {
+        historyId: "105",
+        cursorStatus: "incremental",
+        fullResyncReason: null,
+        syncedAt: "2026-08-22T08:00:00.000Z",
+      },
+    });
+
+    await expect(
+      domain.getGmailSyncHealth(new URL("http://127.0.0.1/"), {
+        grantId: grant.id,
+      }),
+    ).resolves.toEqual({
+      provider: "google",
+      side: "owner",
+      grantId: grant.id,
+      connectorAccountId: "account-1",
+      mailbox: "me",
+      state: "current",
+      cursorStatus: "incremental",
+      historyCursorPresent: true,
+      fullResyncReason: null,
+      cachedMessageCount: 4,
+      syncedAt: "2026-08-22T08:00:00.000Z",
+    });
+  });
+});
+
+describe("LifeOps Gmail imported-data purge", () => {
+  it("requires immediate confirmation and exact grant/account identity", async () => {
+    const { domain, repository } = harness({});
+    const request = {
+      grantId: grant.id,
+      connectorAccountId: "account-1",
+      confirmAction: false,
+    };
+
+    await expect(
+      domain.purgeGmailImportedData(new URL("http://127.0.0.1/"), request),
+    ).rejects.toThrow(/explicit confirmation/i);
+    await expect(
+      domain.purgeGmailImportedData(new URL("http://127.0.0.1/"), {
+        ...request,
+        connectorAccountId: "different-account",
+        confirmAction: true,
+      }),
+    ).rejects.toThrow(/identities do not match/i);
+    expect(repository.deleteGmailMessagesForProvider).not.toHaveBeenCalled();
+  });
+
+  it("purges only the local exact-grant projection and returns honest counts", async () => {
+    const { domain, repository } = harness({
+      previousState: { historyId: "105" },
+    });
+
+    const receipt = await domain.purgeGmailImportedData(
+      new URL("http://127.0.0.1/"),
+      {
+        grantId: grant.id,
+        connectorAccountId: "account-1",
+        confirmAction: true,
+      },
+      new Date("2026-08-22T09:00:00.000Z"),
+    );
+
+    expect(receipt).toEqual({
+      provider: "google",
+      side: "owner",
+      grantId: grant.id,
+      connectorAccountId: "account-1",
+      deletedMessageCount: 4,
+      deletedSpamReviewCount: 2,
+      deletedSyncCursor: true,
+      providerMutation: false,
+      purgedAt: "2026-08-22T09:00:00.000Z",
+    });
+    expect(repository.deleteGmailMessagesForProvider).toHaveBeenCalledWith(
+      "agent-1",
+      "google",
+      "owner",
+      grant.id,
+    );
+    expect(
+      repository.deleteGmailSpamReviewItemsForProvider,
+    ).toHaveBeenCalledWith("agent-1", "google", "owner", grant.id);
+    expect(repository.deleteGmailSyncState).toHaveBeenCalledWith(
+      "agent-1",
+      "google",
+      "me",
+      "owner",
+      grant.id,
     );
   });
 });

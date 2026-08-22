@@ -24,7 +24,6 @@ import { INTERNAL_URL } from "../access.js";
 import {
   disconnectedGoogleStatus,
   googleAccountIdFromGrantId,
-  googleGrantFromAccount,
   googleGrantIdForAccount,
   googleScopesForAccount,
   googleSideForAccount,
@@ -645,12 +644,7 @@ export class GoogleDomain {
       }
       return this.getGoogleConnectorStatus(requestUrl, "local", side);
     }
-    const grant = googleGrantFromAccount({
-      account,
-      agentId: this.ctx.agentId(),
-    });
     await manager.deleteAccount("google", account.id);
-    await this.clearGoogleGrantData(grant);
     await this.ctx.recordConnectorAudit(
       "google:connector-account",
       "google connector account disconnected",
