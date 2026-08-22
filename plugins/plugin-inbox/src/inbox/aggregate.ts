@@ -191,7 +191,15 @@ export function toInboxMessage(
         ? !hasSeenState
         : true;
 
+  const gmailAccountId = message.gmailAccountId?.trim();
+  const gmailIdentityPrefix =
+    channel === "gmail" && gmailAccountId
+      ? `gmail:${encodeURIComponent(gmailAccountId)}:`
+      : null;
   const threadId = deriveThreadId(message, channel, externalId);
+  const scopedThreadId = gmailIdentityPrefix
+    ? `${gmailIdentityPrefix}${encodeURIComponent(threadId)}`
+    : threadId;
   const chatType: InboxChatType =
     message.chatType ??
     (channel === "gmail"
@@ -201,7 +209,9 @@ export function toInboxMessage(
         : "dm");
 
   return {
-    id: `${channel}:${externalId || `${message.timestamp}-${index}`}`,
+    id: gmailIdentityPrefix
+      ? `${gmailIdentityPrefix}${encodeURIComponent(externalId)}`
+      : `${channel}:${externalId || `${message.timestamp}-${index}`}`,
     channel,
     sender: {
       id: senderId,
@@ -225,10 +235,10 @@ export function toInboxMessage(
         : {}),
       ...(message.phoneNumber ? { phoneNumber: message.phoneNumber } : {}),
     },
-    threadId,
+    threadId: scopedThreadId,
     chatType,
     participantCount: message.participantCount,
-    gmailAccountId: message.gmailAccountId,
+    gmailAccountId,
     gmailAccountEmail: message.gmailAccountEmail,
     phoneAccountId: message.phoneAccountId,
     phoneAccountLabel: message.phoneAccountLabel,

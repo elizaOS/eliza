@@ -477,6 +477,15 @@ export function mapGoogleEmailAddress(
   return typeof value === "string" ? { email: value } : value;
 }
 
+/** Stable Gmail projection identity scoped to the exact Google account. */
+export function lifeOpsGmailMessageId(args: {
+  agentId: string;
+  grant: LifeOpsConnectorGrant;
+  externalId: string;
+}): string {
+  return `${args.agentId}:google:${args.grant.side}:${accountIdForGrant(args.grant)}:gmail:${args.externalId}`;
+}
+
 export function lifeOpsGmailMessageFromGoogle(args: {
   message: GoogleMessageSummary | GoogleGmailMessageSummary;
   grant: LifeOpsConnectorGrant;
@@ -485,17 +494,17 @@ export function lifeOpsGmailMessageFromGoogle(args: {
 }): LifeOpsGmailMessageSummary {
   const { message, grant, agentId } = args;
   const syncedAt = args.syncedAt ?? new Date().toISOString();
-  const rich = "externalId" in message ? message : null;
-  const labels =
-    rich?.labels ?? ("labelIds" in message ? (message.labelIds ?? []) : []);
-  const fromName =
-    rich?.from.trim() || (!rich ? message.from?.name?.trim() : undefined);
-  const fromEmail =
-    rich?.fromEmail ?? (!rich ? (message.from?.email?.trim() ?? null) : null);
+  const rich: GoogleGmailMessageSummary | undefined =
+    "externalId" in message ? message : undefined;
+  const legacy: GoogleMessageSummary | undefined =
+    "id" in message ? message : undefined;
+  const labels = rich?.labels ?? legacy?.labelIds ?? [];
+  const fromName = rich?.from.trim() || legacy?.from?.name?.trim();
+  const fromEmail = rich?.fromEmail ?? legacy?.from?.email?.trim() ?? null;
   const receivedAt = message.receivedAt ?? syncedAt;
-  const externalId = rich?.externalId ?? (!rich ? message.id : "");
+  const externalId = "externalId" in message ? message.externalId : message.id;
   return {
-    id: `${agentId}:google:${grant.side}:gmail:${externalId}`,
+    id: lifeOpsGmailMessageId({ agentId, grant, externalId }),
     externalId,
     agentId,
     provider: "google",
@@ -504,20 +513,10 @@ export function lifeOpsGmailMessageFromGoogle(args: {
     subject: message.subject ?? "(no subject)",
     from: fromName || fromEmail || "Unknown sender",
     fromEmail,
-    replyTo: rich?.replyTo ?? (!rich ? (message.replyTo?.email ?? null) : null),
-    to:
-      rich?.to ??
-      (!rich
-        ? (message.to ?? []).map((item: GoogleEmailAddress) => item.email)
-        : []),
-    cc:
-      rich?.cc ??
-      (!rich
-        ? (message.cc ?? []).map((item: GoogleEmailAddress) => item.email)
-        : []),
-    snippet:
-      rich?.snippet ??
-      (!rich ? (message.snippet ?? message.bodyText ?? "") : ""),
+    replyTo: rich?.replyTo ?? legacy?.replyTo?.email ?? null,
+    to: rich?.to ?? legacy?.to?.map((item) => item.email) ?? [],
+    cc: rich?.cc ?? legacy?.cc?.map((item) => item.email) ?? [],
+    snippet: rich?.snippet ?? legacy?.snippet ?? legacy?.bodyText ?? "",
     receivedAt,
     isUnread: rich?.isUnread ?? labels.includes("UNREAD"),
     isImportant: rich?.isImportant ?? labels.includes("IMPORTANT"),
@@ -539,8 +538,8 @@ export function lifeOpsGmailMessageFromGoogle(args: {
     metadata: {
       googlePlugin: true,
       ...(rich?.metadata ?? {}),
-      ...(!rich
-        ? { headers: message.headers ?? {}, bodyHtml: message.bodyHtml }
+      ...(legacy
+        ? { headers: legacy.headers ?? {}, bodyHtml: legacy.bodyHtml }
         : {}),
     },
     syncedAt,

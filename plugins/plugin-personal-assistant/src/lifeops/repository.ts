@@ -6422,6 +6422,18 @@ export class LifeOpsRepository {
                 })
               : null))
           : null);
+      const gmailAccountId = message.gmailAccountId?.trim() || null;
+      const gmailStoragePrefix =
+        channel === "gmail" && gmailAccountId
+          ? `gmail:${encodeURIComponent(gmailAccountId)}:`
+          : null;
+      const storageId = gmailStoragePrefix
+        ? `${gmailStoragePrefix}${encodeURIComponent(sourceRef.externalId)}`
+        : message.id;
+      const storageExternalId =
+        gmailStoragePrefix && gmailAccountId
+          ? `${encodeURIComponent(gmailAccountId)}:${encodeURIComponent(sourceRef.externalId)}`
+          : sourceRef.externalId;
       await executeRawSql(
         this.runtime,
         `INSERT INTO app_lifeops.life_inbox_messages (
@@ -6431,10 +6443,10 @@ export class LifeOpsRepository {
           gmail_account_id, gmail_account_email, last_seen_at, replied_at, priority_score,
           priority_category, priority_flags_json, connector_account_id, cached_at, updated_at
         ) VALUES (
-          ${sqlQuote(message.id)},
+          ${sqlQuote(storageId)},
           ${sqlQuote(agentId)},
           ${sqlQuote(channel)},
-          ${sqlQuote(sourceRef.externalId)},
+          ${sqlQuote(storageExternalId)},
           ${sqlText(message.threadId)},
           ${sqlQuote(message.sender.id)},
           ${sqlQuote(message.sender.displayName)},
@@ -6447,7 +6459,7 @@ export class LifeOpsRepository {
           ${sqlJson(sourceRef)},
           ${sqlQuote(chatType)},
           ${sqlInteger(message.participantCount)},
-          ${sqlText(message.gmailAccountId)},
+          ${sqlText(gmailAccountId)},
           ${sqlText(message.gmailAccountEmail)},
           ${sqlText(message.lastSeenAt)},
           ${sqlText(message.repliedAt)},
@@ -6483,6 +6495,20 @@ export class LifeOpsRepository {
           cached_at = excluded.cached_at,
           updated_at = excluded.updated_at`,
       );
+      if (gmailStoragePrefix && gmailAccountId) {
+        // The pre-account-scoped cache key can coexist with the new key. Only
+        // remove an exact same-account legacy row after the replacement is
+        // durable, so a crash cannot discard the cached message.
+        await executeRawSql(
+          this.runtime,
+          `DELETE FROM app_lifeops.life_inbox_messages
+            WHERE agent_id = ${sqlQuote(agentId)}
+              AND channel = ${sqlQuote("gmail")}
+              AND gmail_account_id = ${sqlQuote(gmailAccountId)}
+              AND external_id = ${sqlQuote(sourceRef.externalId)}
+              AND id <> ${sqlQuote(storageId)}`,
+        );
+      }
     }
   }
 
