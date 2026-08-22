@@ -11,12 +11,14 @@ import {
   applyMessageInteractionClaim,
   applyMessageInteractionCommit,
   applyMessageInteractionCompletion,
+  applyMessageInteractionReconciliation,
   applyMessageInteractionRevocation,
   ElizaError,
   type MessageInteractionClaimContext,
   type MessageInteractionClaimResult,
   type MessageInteractionCommitContext,
   type MessageInteractionCompleteContext,
+  type MessageInteractionReconcileContext,
   type MessageInteractionSession,
   type MessageInteractionSessionStore,
 } from "@elizaos/core";
@@ -28,6 +30,7 @@ interface SessionFile {
 
 interface LockOwner {
   pid: number;
+  processIdentity: string | null;
   token: string;
   createdAt: number;
   expiresAt: number;
@@ -187,8 +190,11 @@ export interface FileMessageInteractionSessionStoreOptions {
   fileName?: string;
   lockTimeoutMs?: number;
   staleLockMs?: number;
+  /** Absolute recovery ceiling for platforms that cannot qualify a PID. */
+  hardStaleLockMs?: number;
   pollMs?: number;
   retentionMs?: number;
+  committedRetentionMs?: number;
   maxStoreBytes?: number;
   maxSessions?: number;
   clock?: () => number;
@@ -253,8 +259,10 @@ export class FileMessageInteractionSessionStore
   private readonly lockPath: string;
   private readonly lockTimeoutMs: number;
   private readonly staleLockMs: number;
+  private readonly hardStaleLockMs: number;
   private readonly pollMs: number;
   private readonly retentionMs: number;
+  private readonly committedRetentionMs: number;
   private readonly maxStoreBytes: number;
   private readonly maxSessions: number;
   private readonly clock: () => number;
@@ -290,10 +298,20 @@ export class FileMessageInteractionSessionStore
       "staleLockMs",
       1,
     );
+    this.hardStaleLockMs = safeInteger(
+      options.hardStaleLockMs ?? Math.max(this.staleLockMs * 10, 300_000),
+      "hardStaleLockMs",
+      this.staleLockMs,
+    );
     this.pollMs = safeInteger(options.pollMs ?? 10, "pollMs", 1);
     this.retentionMs = safeInteger(
       options.retentionMs ?? 7 * 24 * 60 * 60 * 1_000,
       "retentionMs",
+      0,
+    );
+    this.committedRetentionMs = safeInteger(
+      options.committedRetentionMs ?? 30 * 24 * 60 * 60 * 1_000,
+      "committedRetentionMs",
       0,
     );
     this.maxStoreBytes = safeInteger(
@@ -391,6 +409,31 @@ export class FileMessageInteractionSessionStore
     }
   }
 
+  private async readProcessIdentity(pid: number): Promise<string | null> {
+    if (process.platform !== "linux" || !this.processAlive(pid)) return null;
+    try {
+      const [bootId, stat] = await Promise.all([
+        fs.readFile("/proc/sys/kernel/random/boot_id", "utf8"),
+        fs.readFile(`/proc/${pid}/stat`, "utf8"),
+      ]);
+      const commandEnd = stat.lastIndexOf(")");
+      if (commandEnd < 0) return null;
+      const fieldsAfterCommand = stat
+        .slice(commandEnd + 2)
+        .trim()
+        .split(/\s+/);
+      const startTimeTicks = fieldsAfterCommand[19];
+      if (!startTimeTicks || !bootId.trim()) return null;
+      return `${bootId.trim()}:${startTimeTicks}`;
+    } catch (error) {
+      if (isErrno(error, "ENOENT") || isErrno(error, "ESRCH")) return null;
+      // error-policy:J4 Process identity is an optional strengthening signal;
+      // PID liveness plus the absolute recovery ceiling remains authoritative.
+      if (isErrno(error, "EACCES") || isErrno(error, "EPERM")) return null;
+      throw error;
+    }
+  }
+
   private async readLockOwner(): Promise<LockOwner | null> {
     try {
       const ownerPath = path.join(this.lockPath, "owner.json");
@@ -405,6 +448,13 @@ export class FileMessageInteractionSessionStore
         storeError(
           "UNSAFE_INTERACTION_STORE_LOCK",
           "Interaction store lock owner file is unsafe.",
+          {
+            isFile: entry.isFile(),
+            isSymbolicLink: entry.isSymbolicLink(),
+            linkCount: entry.nlink,
+            mode: entry.mode & 0o777,
+            size: entry.size,
+          },
         );
       }
       const handle = await fs.open(
@@ -432,13 +482,18 @@ export class FileMessageInteractionSessionStore
       const value = JSON.parse(raw) as Partial<LockOwner>;
       if (
         !Number.isSafeInteger(value.pid) ||
+        (value.processIdentity !== null &&
+          typeof value.processIdentity !== "string") ||
         typeof value.token !== "string" ||
         !Number.isSafeInteger(value.createdAt) ||
         !Number.isSafeInteger(value.expiresAt)
       ) {
         return null;
       }
-      return value as LockOwner;
+      return {
+        ...(value as LockOwner),
+        processIdentity: value.processIdentity ?? null,
+      };
     } catch (error) {
       if (isErrno(error, "ENOENT")) {
         // error-policy:J4 a creator may exist before its owner file is durable.
@@ -463,9 +518,34 @@ export class FileMessageInteractionSessionStore
       );
     }
     const owner = await this.readLockOwner();
-    const stale = owner
-      ? owner.expiresAt <= now && !this.processAlive(owner.pid)
-      : lockStat.mtimeMs + this.staleLockMs <= now;
+    let stale: boolean;
+    if (!owner) {
+      // A creator publishes owner.json only after the lease is fully synced.
+      // Without an owner identity there is no safe PID-liveness decision, so
+      // incomplete or malformed locks use the same absolute recovery ceiling
+      // as an unqualified legacy owner instead of the short lease interval.
+      stale = lockStat.mtimeMs + this.hardStaleLockMs <= now;
+    } else if (owner.expiresAt > now) {
+      stale = false;
+    } else {
+      const live = this.processAlive(owner.pid);
+      const currentIdentity = live
+        ? await this.readProcessIdentity(owner.pid)
+        : null;
+      const reusedPid = Boolean(
+        live &&
+          owner.processIdentity &&
+          currentIdentity &&
+          owner.processIdentity !== currentIdentity,
+      );
+      const generationQualified = Boolean(
+        owner.processIdentity && currentIdentity,
+      );
+      stale =
+        !live ||
+        reusedPid ||
+        (!generationQualified && owner.createdAt + this.hardStaleLockMs <= now);
+    }
     if (!stale) return false;
     const quarantine = `${this.lockPath}.stale-${process.pid}-${newToken()}`;
     try {
@@ -493,11 +573,20 @@ export class FileMessageInteractionSessionStore
         createdLock = true;
         const owner: LockOwner = {
           pid: process.pid,
+          processIdentity: await this.readProcessIdentity(process.pid),
           token: newToken(),
           createdAt: now,
           expiresAt: now + this.staleLockMs,
         };
-        await this.writeAndSync(path.join(this.lockPath, "owner.json"), owner);
+        const ownerTemp = path.join(
+          this.lockPath,
+          `.owner-${process.pid}-${owner.token}.tmp`,
+        );
+        await this.writeAndSync(ownerTemp, owner);
+        // Publish only the complete, synced lease. Contenders may inspect the
+        // lock directory immediately after mkdir and must never mistake an
+        // empty or partially written owner file for hostile state.
+        await fs.rename(ownerTemp, path.join(this.lockPath, "owner.json"));
         return owner;
       } catch (error) {
         if (createdLock) {
@@ -651,11 +740,14 @@ export class FileMessageInteractionSessionStore
   private prune(document: SessionFile, now: number): number {
     let deleted = 0;
     for (const [reference, session] of Object.entries(document.sessions)) {
-      if (
-        Date.parse(session.expiresAt) + this.retentionMs <= now &&
-        session.consume.state !== "committed" &&
-        session.consume.state !== "completed"
-      ) {
+      const collectAt =
+        session.consume.state === "completed"
+          ? Date.parse(session.consume.completedAt) + this.retentionMs
+          : session.consume.state === "committed"
+            ? Date.parse(session.consume.committedAt) +
+              this.committedRetentionMs
+            : Date.parse(session.expiresAt) + this.retentionMs;
+      if (collectAt <= now) {
         delete document.sessions[reference];
         deleted += 1;
       }
@@ -704,17 +796,44 @@ export class FileMessageInteractionSessionStore
     operation: (document: SessionFile) => T | Promise<T>,
   ): Promise<T> {
     const owner = await this.acquireLock();
+    let result: T | undefined;
+    let operationError: unknown;
     try {
       await this.assertDirectoryIdentity();
       const document = await this.readFile();
       this.prune(document, this.clock());
-      const result = await operation(document);
+      result = await operation(document);
       await this.assertDirectoryIdentity();
       await this.writeFile(document);
-      return result;
-    } finally {
-      await this.releaseLock(owner);
+    } catch (error) {
+      operationError = error;
     }
+    let releaseError: unknown;
+    try {
+      await this.releaseLock(owner);
+    } catch (error) {
+      releaseError = error;
+    }
+    if (operationError && releaseError) {
+      // error-policy:J2 Preserve the transaction failure as the cause when lock
+      // teardown also fails, instead of replacing the useful error.
+      throw new ElizaError(
+        "Interaction transaction failed and lock ownership was lost.",
+        {
+          code: "INTERACTION_STORE_TRANSACTION_AND_RELEASE_FAILED",
+          cause: operationError,
+          context: {
+            releaseError:
+              releaseError instanceof Error
+                ? releaseError.message
+                : String(releaseError),
+          },
+        },
+      );
+    }
+    if (operationError) throw operationError;
+    if (releaseError) throw releaseError;
+    return result as T;
   }
 
   async create(session: MessageInteractionSession): Promise<void> {
@@ -769,6 +888,41 @@ export class FileMessageInteractionSessionStore
     });
   }
 
+  async listCommitted(args: {
+    committedBefore: number;
+    limit: number;
+  }): Promise<MessageInteractionSession[]> {
+    safeInteger(args.committedBefore, "committedBefore", 0);
+    safeInteger(args.limit, "limit", 1);
+    await this.initialize();
+    const document = await this.readFile();
+    return Object.values(document.sessions)
+      .filter(
+        (session) =>
+          session.consume.state === "committed" &&
+          Date.parse(session.consume.committedAt) <= args.committedBefore,
+      )
+      .sort((a, b) => a.reference.localeCompare(b.reference))
+      .slice(0, args.limit)
+      .map((session) => structuredClone(session));
+  }
+
+  async reconcileCommitted(
+    context: MessageInteractionReconcileContext,
+  ): Promise<MessageInteractionSession> {
+    return this.transaction((document) => {
+      const current = document.sessions[context.reference];
+      if (!current)
+        storeError(
+          "MESSAGE_INTERACTION_NOT_FOUND",
+          "Interaction session was not found.",
+        );
+      const completed = applyMessageInteractionReconciliation(current, context);
+      document.sessions[context.reference] = structuredClone(completed);
+      return completed;
+    });
+  }
+
   async commitIfClaimed(
     context: MessageInteractionCommitContext,
   ): Promise<MessageInteractionSession> {
@@ -812,11 +966,13 @@ export class FileMessageInteractionSessionStore
     return this.transaction((document) => {
       let deleted = 0;
       for (const [reference, session] of Object.entries(document.sessions)) {
-        if (
-          Date.parse(session.expiresAt) <= before &&
-          session.consume.state !== "committed" &&
-          session.consume.state !== "completed"
-        ) {
+        const terminalAt =
+          session.consume.state === "completed"
+            ? Date.parse(session.consume.completedAt)
+            : session.consume.state === "committed"
+              ? Date.parse(session.consume.committedAt)
+              : Date.parse(session.expiresAt);
+        if (terminalAt <= before) {
           delete document.sessions[reference];
           deleted += 1;
         }

@@ -27,37 +27,48 @@ async function sourceFiles(directory: string): Promise<string[]> {
 			continue;
 		const fullPath = path.join(directory, entry.name);
 		if (entry.isDirectory()) files.push(...(await sourceFiles(fullPath)));
-		else if (entry.isFile() && entry.name.endsWith(".ts")) files.push(fullPath);
+		else if (entry.isFile() && /[.](?:[cm]?[jt]sx?)$/.test(entry.name))
+			files.push(fullPath);
 	}
 	return files;
 }
 
-async function productionRegistrationPlugins(): Promise<string[]> {
+async function productionRegistrationSites(): Promise<
+	Array<{ site: string; registrations: number }>
+> {
 	const pluginsRoot = path.join(repositoryRoot, "plugins");
-	const found: string[] = [];
+	const found: Array<{ site: string; registrations: number }> = [];
 	for (const entry of await fs.readdir(pluginsRoot, { withFileTypes: true })) {
 		if (!entry.isDirectory() || !entry.name.startsWith("plugin-")) continue;
 		const files = await sourceFiles(path.join(pluginsRoot, entry.name));
 		for (const file of files) {
-			if (
-				(await fs.readFile(file, "utf8")).includes("registerMessageConnector")
-			) {
-				found.push(entry.name);
-				break;
+			const source = await fs.readFile(file, "utf8");
+			const registrations = source.match(
+				/\bregisterMessageConnector\s*\(/g,
+			)?.length;
+			if (registrations) {
+				found.push({
+					site: path.relative(pluginsRoot, file),
+					registrations,
+				});
 			}
 		}
 	}
-	return found.sort();
+	return found.sort((a, b) => a.site.localeCompare(b.site));
 }
 
 describe("first-party interaction capability matrix", () => {
-	it("covers every production message connector plugin root", async () => {
+	it("covers every production registration site and invocation", async () => {
 		const declared = [
 			...new Set(
-				FIRST_PARTY_INTERACTION_CONNECTOR_AUDIT.map((entry) => entry.plugin),
+				FIRST_PARTY_INTERACTION_CONNECTOR_AUDIT.map(
+					(entry) => entry.registrationSite,
+				),
 			),
-		].sort();
-		expect(await productionRegistrationPlugins()).toEqual(declared);
+		]
+			.sort()
+			.map((site) => ({ site, registrations: 1 }));
+		expect(await productionRegistrationSites()).toEqual(declared);
 	});
 
 	it("keeps deliberate unsupported connectors visible and unregistered", async () => {

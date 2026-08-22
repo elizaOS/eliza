@@ -27,7 +27,9 @@ afterEach(async () => {
 });
 
 async function temporaryDirectory(): Promise<string> {
-  const root = await fs.mkdtemp("/private/tmp/eliza-interaction-store-");
+  const root = await fs.mkdtemp(
+    path.join(await fs.realpath(os.tmpdir()), "eliza-interaction-store-"),
+  );
   roots.push(root);
   return root;
 }
@@ -294,6 +296,7 @@ describe("FileMessageInteractionSessionStore", () => {
       path.join(lockPath, "owner.json"),
       JSON.stringify({
         pid: 2_000_000_000,
+        processIdentity: null,
         token: "dead-owner",
         createdAt: now - 10_000,
         expiresAt: now - 1,
@@ -316,6 +319,7 @@ describe("FileMessageInteractionSessionStore", () => {
       path.join(lockPath, "owner.json"),
       JSON.stringify({
         pid: process.pid,
+        processIdentity: null,
         token: "live-owner",
         createdAt: now - 10_000,
         expiresAt: now - 1,
@@ -334,6 +338,83 @@ describe("FileMessageInteractionSessionStore", () => {
     expect(await fs.lstat(lockPath)).toBeDefined();
   });
 
+  it("recovers an expired lock after the recorded PID is reused", async () => {
+    if (process.platform !== "linux") return;
+    const stateDirectory = await temporaryDirectory();
+    const now = Date.parse("2026-08-21T00:00:00.000Z");
+    const lockPath = path.join(
+      stateDirectory,
+      "message-interaction-sessions.v1.json.lock",
+    );
+    await fs.mkdir(lockPath, { mode: 0o700 });
+    await fs.writeFile(
+      path.join(lockPath, "owner.json"),
+      JSON.stringify({
+        pid: process.pid,
+        processIdentity: "different-boot:different-start",
+        token: "reused-pid-owner",
+        createdAt: now - 10_000,
+        expiresAt: now - 1,
+      }),
+      { mode: 0o600 },
+    );
+    const { created } = await seed(stateDirectory, { now });
+    expect(created.session.reference).toBe("0123456789abcdef0123456789abcdef");
+  });
+
+  it("uses the absolute recovery ceiling when process generation is unavailable", async () => {
+    const stateDirectory = await temporaryDirectory();
+    const now = Date.parse("2026-08-21T00:00:00.000Z");
+    const lockPath = path.join(
+      stateDirectory,
+      "message-interaction-sessions.v1.json.lock",
+    );
+    await fs.mkdir(lockPath, { mode: 0o700 });
+    await fs.writeFile(
+      path.join(lockPath, "owner.json"),
+      JSON.stringify({
+        pid: process.pid,
+        processIdentity: null,
+        token: "unqualified-owner",
+        createdAt: now - 101,
+        expiresAt: now - 100,
+      }),
+      { mode: 0o600 },
+    );
+    const store = new FileMessageInteractionSessionStore({
+      stateDirectory,
+      clock: () => now,
+      staleLockMs: 1,
+      hardStaleLockMs: 100,
+    });
+    await expect(store.deleteExpired(now)).resolves.toBe(0);
+  });
+
+  it("uses the absolute recovery ceiling while a lock owner is unpublished", async () => {
+    const stateDirectory = await temporaryDirectory();
+    const now = Date.parse("2026-08-21T00:00:00.000Z");
+    const lockPath = path.join(
+      stateDirectory,
+      "message-interaction-sessions.v1.json.lock",
+    );
+    await fs.mkdir(lockPath, { mode: 0o700 });
+    await fs.utimes(lockPath, new Date(now - 50), new Date(now - 50));
+    const store = new FileMessageInteractionSessionStore({
+      stateDirectory,
+      clock: () => now,
+      lockTimeoutMs: 10,
+      staleLockMs: 1,
+      hardStaleLockMs: 100,
+      pollMs: 1,
+    });
+    await expect(store.deleteExpired(now)).rejects.toMatchObject({
+      code: "INTERACTION_STORE_LOCK_TIMEOUT",
+    });
+
+    await fs.utimes(lockPath, new Date(now - 101), new Date(now - 101));
+    await expect(store.deleteExpired(now)).resolves.toBe(0);
+  });
+
   it("collects expired sessions through the explicit retention/GC boundary", async () => {
     const stateDirectory = await temporaryDirectory();
     const { store, created } = await seed(stateDirectory, { retentionMs: 0 });
@@ -343,7 +424,7 @@ describe("FileMessageInteractionSessionStore", () => {
     expect(await store.get(created.session.reference)).toBeNull();
   });
 
-  it("never collects a committed ambiguous effect or completed receipt", async () => {
+  it("retains terminal outcomes until their explicit collection boundary", async () => {
     const stateDirectory = await temporaryDirectory();
     const { store, created, now } = await seed(stateDirectory, {
       retentionMs: 0,
@@ -364,8 +445,14 @@ describe("FileMessageInteractionSessionStore", () => {
       now,
     });
     expect(
-      await store.deleteExpired(Date.parse(created.session.expiresAt)),
-    ).toBe(0);
+      await store.listCommitted({ committedBefore: now, limit: 10 }),
+    ).toMatchObject([
+      {
+        reference: created.session.reference,
+        consume: { state: "committed", replayKey: "replay-a" },
+      },
+    ]);
+    expect(await store.deleteExpired(now - 1)).toBe(0);
     const reopenedCommitted = new FileMessageInteractionSessionStore({
       stateDirectory,
     });
@@ -374,10 +461,9 @@ describe("FileMessageInteractionSessionStore", () => {
     ).toMatchObject({
       consume: { state: "committed" },
     });
-    await reopenedCommitted.completeIfClaimed({
+    await reopenedCommitted.reconcileCommitted({
       reference: created.session.reference,
       replayKey: "replay-a",
-      claimId: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
       now,
       receipt: {
         receiptId: "receipt-a",
@@ -399,10 +485,53 @@ describe("FileMessageInteractionSessionStore", () => {
         receipt: { receiptId: "receipt-a" },
       },
     });
-    expect(
-      await reopenedCompleted.deleteExpired(
-        Date.parse(created.session.expiresAt),
-      ),
-    ).toBe(0);
+    expect(await reopenedCompleted.deleteExpired(now - 1)).toBe(0);
+    expect(await reopenedCompleted.deleteExpired(now)).toBe(1);
+    expect(await reopenedCompleted.get(created.session.reference)).toBeNull();
+  });
+
+  it("prunes retained completions before enforcing session capacity", async () => {
+    const stateDirectory = await temporaryDirectory();
+    const { store, created, now } = await seed(stateDirectory);
+    await store.claimIfCurrent({
+      ...bindings,
+      reference: created.session.reference,
+      replayKey: "replay-a",
+      claimId: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      now,
+      claimTtlMs: 1,
+    });
+    await store.commitIfClaimed({
+      reference: created.session.reference,
+      replayKey: "replay-a",
+      claimId: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      now,
+    });
+    await store.completeIfClaimed({
+      reference: created.session.reference,
+      replayKey: "replay-a",
+      claimId: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      now,
+      receipt: {
+        receiptId: "receipt-a",
+        idempotencyKey: "replay-a",
+        status: "completed",
+        completedAt: new Date(now).toISOString(),
+        result: { accepted: true },
+      },
+    });
+    const bounded = new FileMessageInteractionSessionStore({
+      stateDirectory,
+      retentionMs: 0,
+      maxSessions: 1,
+      clock: () => now + 1,
+    });
+    const replacement = structuredClone(created.session);
+    replacement.reference = "fedcba9876543210fedcba9876543210";
+    await expect(bounded.create(replacement)).resolves.toBeUndefined();
+    expect(await bounded.get(created.session.reference)).toBeNull();
+    expect(await bounded.get(replacement.reference)).toMatchObject({
+      consume: { state: "pending" },
+    });
   });
 });
