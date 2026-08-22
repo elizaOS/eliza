@@ -14,7 +14,7 @@ export const TWITTER_REQUEST_TIMEOUT_MS = 30_000;
  * A caller signal is composed with the owned deadline rather than replacing
  * it, so a never-aborted caller signal cannot disable the operation bound.
  */
-function twitterFetch(
+export function twitterFetch(
   input: RequestInfo | URL,
   init?: RequestInit,
   timeoutMs: number = TWITTER_REQUEST_TIMEOUT_MS,
@@ -46,9 +46,26 @@ export async function twitterApiRequest<T>(
   });
 
   if (!response.ok) {
-    const error = (await response.json().catch(() => ({}))) as {
-      errors?: Array<{ detail?: string; message?: string }>;
-    };
+    let error: { errors?: Array<{ detail?: string; message?: string }> } = {};
+    try {
+      error = (await response.json()) as {
+        errors?: Array<{ detail?: string; message?: string }>;
+      };
+    } catch (cause) {
+      if (
+        cause instanceof DOMException &&
+        (cause.name === "AbortError" || cause.name === "TimeoutError")
+      ) {
+        throw cause;
+      }
+      if (
+        cause instanceof Error &&
+        (cause.name === "AbortError" || cause.name === "TimeoutError")
+      ) {
+        throw cause;
+      }
+      error = {};
+    }
     const errorMessage =
       error.errors?.[0]?.detail ||
       error.errors?.[0]?.message ||
