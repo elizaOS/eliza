@@ -3146,7 +3146,7 @@ export function ChatOverlay({
         : baseH >= halfH - 1
           ? "OPEN_HALF_OR_OVER"
           : "OPEN_UNDER_HALF";
-  // The actions menu is portaled above the composer. INPUT's shallow 96px
+  // The actions menu is portaled above the composer. INPUT's shallow 64px
   // native desktop host would clip that portal at the window boundary. The
   // dedicated INPUT_MENU host adds height only: it retains INPUT's exact width
   // and bottom anchor so opening the floating menu cannot resize the composer.

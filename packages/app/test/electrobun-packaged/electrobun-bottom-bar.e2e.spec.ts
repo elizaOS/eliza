@@ -146,7 +146,7 @@ test("desktop popup shell exposes the accessible pill, hotkey toggle, and tray l
 
     // DOM state alone cannot prove a transparent native window actually
     // composited the control. Sample the pill's physical screen pixels and
-    // require the short white Flow-style handle to be physically present.
+    // require the complete painted launcher target to be physically present.
     const pillRect = await harness.eval<{
       x: number;
       y: number;
