@@ -38,6 +38,22 @@ const TERMINAL_STATES = new Set<SandboxStatus>([
 const ACTIVE_STATES = new Set<SandboxStatus>(["pending", "provisioning"]);
 const MAX_CONSECUTIVE_ERRORS = 5;
 
+/**
+ * Describe why a status poll failed, so the UI can distinguish a transport
+ * failure from a status it has not loaded yet. The `!res.ok` branch already
+ * reports `HTTP <status>`; a rejected request had no status to report and was
+ * previously left silent.
+ */
+function describePollFailure(err: unknown): string {
+  if (err instanceof DOMException && err.name === "TimeoutError") {
+    return "Status request timed out";
+  }
+  if (err instanceof DOMException && err.name === "AbortError") {
+    return "Status request was interrupted";
+  }
+  return "Status request failed";
+}
+
 export function useSandboxStatusPoll(
   agentId: string | null,
   options: {
@@ -162,12 +178,20 @@ export function useSandboxStatusPoll(
         if (TERMINAL_STATES.has(newStatus)) {
           stop();
         }
-      } catch {
-        // error-policy:J4 A failed status poll clears loading and retries until
-        // the explicit error limit, while superseded requests stay invisible.
+      } catch (err) {
+        // error-policy:J4 A failed status poll clears loading, records why it
+        // failed, and retries until the explicit error limit, while superseded
+        // requests stay invisible. The reason matters: without it a transport
+        // failure is indistinguishable from a status we simply have not loaded
+        // yet, and the operator is left reading a stale screen with no
+        // indication that polling is failing.
         if (isCurrentEffect() && generation === requestGeneration) {
           consecutiveErrors++;
-          setResult((prev) => ({ ...prev, isLoading: false }));
+          setResult((prev) => ({
+            ...prev,
+            isLoading: false,
+            error: describePollFailure(err),
+          }));
           if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
             stop();
           }

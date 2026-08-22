@@ -1,22 +1,19 @@
 /**
- * FILE `read` handler: returns file contents (line-numbered, size- and
- * line-numbered) after validating the path through SandboxService, and records the
- * read with FileStateService so a later write/edit can detect external
- * modification. Supports the `device_filesystem` bridge when reading device files.
+ * FILE `read` handler streams bounded text windows from sandboxed regular files.
+ * Reads expose resumable line or byte coordinates and an opaque file revision.
  */
-import * as fs from "node:fs/promises";
 
+import { createHash } from "node:crypto";
+import * as fs from "node:fs/promises";
 import {
   type ActionResult,
-  CapabilityError,
-  logger as coreLogger,
-  getCapabilityRouter,
+  buildReadView,
   type HandlerCallback,
   type IAgentRuntime,
+  logger,
   type Memory,
   type State,
 } from "@elizaos/core";
-
 import {
   capTranscriptForChat,
   failureToActionResult,
@@ -35,114 +32,203 @@ import {
   SANDBOX_SERVICE,
 } from "../types.js";
 
-type ReadTextPayload = {
-  text: string;
-  size: number;
+const BUFFER_BYTES = 64 * 1024;
+const LINE_BUFFER_BYTES = 256;
+type Unit = "line" | "byte";
+type Window = {
+  content: string;
+  start: number;
+  end: number;
+  hasMore: boolean;
+  total?: number;
+  sourceBytesRead: number;
+  nextByte?: number;
 };
 
-function formatLine(lineNumber: number, content: string): string {
-  return `${String(lineNumber).padStart(6, " ")}\t${content}`;
+const lineCheckpoints = new Map<string, Map<number, number>>();
+
+function revision(stat: Awaited<ReturnType<fs.FileHandle["stat"]>>): string {
+  return createHash("sha256")
+    .update(
+      `${stat.dev}:${stat.ino}:${stat.size}:${stat.mtimeMs}:${stat.ctimeMs}`,
+    )
+    .digest("hex");
 }
 
-async function finalizeReadResult(params: {
-  runtime: IAgentRuntime;
-  callback?: HandlerCallback;
-  conversationId: string;
-  fileState: InstanceType<typeof FileStateService>;
-  resolved: string;
-  text: string;
-  options: unknown;
-}): Promise<ActionResult> {
-  const lines = params.text.split("\n");
-  const totalLines = lines.length;
-
-  const offset = Math.max(
-    0,
-    Math.floor(readNumberParam(params.options, "offset") ?? 0),
-  );
-  const requestedLimit = readNumberParam(params.options, "limit");
-  const limit =
-    requestedLimit === undefined
-      ? totalLines
-      : Math.max(1, Math.floor(requestedLimit));
-
-  const endExclusive = Math.min(totalLines, offset + limit);
-  const slice = lines.slice(offset, endExclusive);
-  const truncated = endExclusive < totalLines || offset > 0;
-
-  const formatted = [
-    params.resolved,
-    ...slice.map((content, idx) => formatLine(offset + idx + 1, content)),
-  ].join("\n");
-
-  await params.fileState.recordRead(params.conversationId, params.resolved);
-  coreLogger.debug(
-    `${CODING_TOOLS_LOG_PREFIX} READ ${params.resolved} offset=${offset} returned=${slice.length}/${totalLines}`,
-  );
-
-  if (params.callback) {
-    // Fenced (#16563): line-numbered file content is the richest preformatted
-    // payload of all — unfenced, Discord's markdown pass eats `*`/`_` pairs
-    // and embedded fences break the message layout. Capped: a 2000-line read
-    // otherwise splits into a flood of follow-up messages; the model still
-    // sees the full content via the ActionResult.
-    await params.callback({
-      text: fencePreformatted(capTranscriptForChat(formatted)),
-      source: "coding-tools",
-    });
-  }
-
-  return successActionResult(formatted, {
-    path: params.resolved,
-    lines: slice.length,
-    totalLines,
-    offset,
-    truncated,
-  });
+function integer(
+  options: unknown,
+  name: string,
+  fallback: number,
+): number | undefined {
+  const value = readNumberParam(options, name) ?? fallback;
+  return Number.isSafeInteger(value) && value >= 0 ? value : undefined;
 }
 
-async function readWithCapabilityRouter(params: {
-  runtime: IAgentRuntime;
-  resolved: string;
-  maxBytes: number;
-}): Promise<
-  | { ok: true; payload: ReadTextPayload }
-  | { ok: false; reason: "unavailable" | "failed"; message: string }
-> {
-  const router = getCapabilityRouter(params.runtime);
-  if (!router) return { ok: false, reason: "unavailable", message: "" };
+function decode(bytes: Uint8Array): string {
+  if (bytes.includes(0))
+    throw new Error(
+      "binary file detected; use SHELL+xxd or similar to inspect",
+    );
   try {
-    const result = await router.fs.readText({
-      path: params.resolved,
-      maxBytes: params.maxBytes,
-    });
-    if (result.size > params.maxBytes || result.truncated) {
-      return {
-        ok: false,
-        reason: "failed",
-        message: `file size ${result.size} exceeds ${params.maxBytes}; use offset/limit to read in chunks`,
-      };
-    }
-    return {
-      ok: true,
-      payload: {
-        text: result.text,
-        size: result.size,
-      },
-    };
-  } catch (error) {
-    // error-policy:J1 capability-router boundary; the routed read is translated
-    // into a typed failure DTO — CAPABILITY_UNAVAILABLE degrades to
-    // "unavailable", any other error to "failed" — never a fabricated payload.
-    if (
-      error instanceof CapabilityError &&
-      error.code === "CAPABILITY_UNAVAILABLE"
-    ) {
-      return { ok: false, reason: "unavailable", message: error.message };
-    }
-    const message = error instanceof Error ? error.message : String(error);
-    return { ok: false, reason: "failed", message };
+    return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  } catch {
+    throw new Error("file is not valid UTF-8 text");
   }
+}
+
+function utf8SequenceLength(lead: number | undefined): number | undefined {
+  if (lead === undefined) return undefined;
+  if (lead >= 0xc2 && lead <= 0xdf) return 2;
+  if (lead >= 0xe0 && lead <= 0xef) return 3;
+  if (lead >= 0xf0 && lead <= 0xf4) return 4;
+  return undefined;
+}
+
+async function byteWindow(
+  handle: fs.FileHandle,
+  size: number,
+  offset: number,
+  limit: number,
+): Promise<Window> {
+  if (offset >= size)
+    return {
+      content: "",
+      start: size,
+      end: size,
+      hasMore: false,
+      total: size,
+      sourceBytesRead: 0,
+    };
+  const requested = Math.min(limit, size - offset);
+  const buffer = Buffer.allocUnsafe(requested + 3);
+  const { bytesRead } = await handle.read(buffer, 0, buffer.length, offset);
+  const available = buffer.subarray(0, bytesRead);
+  if (offset > 0 && (available[0] & 0xc0) === 0x80)
+    throw new Error(`byte offset ${offset} is not a UTF-8 character boundary`);
+  let end = requested;
+  let content: string | undefined;
+  const shortestCandidate = Math.max(1, requested - 3);
+  while (end >= shortestCandidate) {
+    try {
+      content = decode(available.subarray(0, end));
+      if (end < requested) {
+        const sequenceLength = utf8SequenceLength(available[end]);
+        if (
+          sequenceLength === undefined ||
+          end + sequenceLength > available.length
+        ) {
+          content = undefined;
+          break;
+        }
+        decode(available.subarray(end, end + sequenceLength));
+      }
+      break;
+    } catch {
+      end -= 1;
+    }
+  }
+  if (content === undefined) {
+    throw new Error(
+      `byte limit ${limit} cannot produce a valid UTF-8 page at this offset`,
+    );
+  }
+  return {
+    content: content ?? "",
+    start: offset,
+    end: offset + end,
+    hasMore: offset + end < size,
+    total: size,
+    sourceBytesRead: bytesRead,
+  };
+}
+
+async function lineWindow(
+  handle: fs.FileHandle,
+  size: number,
+  offset: number,
+  limit: number,
+  maxBytes: number,
+  startByte: number,
+  startLine: number,
+): Promise<Window> {
+  let position = startByte,
+    line = startLine,
+    endLine = offset,
+    sourceBytesRead = 0;
+  const parts: Buffer[] = [];
+  let selectedBytes = 0,
+    done = false,
+    sourceEndedWithNewline = false;
+  while (!done && position < size) {
+    const buffer = Buffer.allocUnsafe(
+      Math.min(LINE_BUFFER_BYTES, size - position),
+    );
+    const result = await handle.read(buffer, 0, buffer.length, position);
+    if (!result.bytesRead) break;
+    sourceBytesRead += result.bytesRead;
+    const chunk = buffer.subarray(0, result.bytesRead);
+    if (position + result.bytesRead >= size) {
+      sourceEndedWithNewline = chunk.at(-1) === 10;
+    }
+    if (chunk.includes(0))
+      throw new Error(
+        "binary file detected; use SHELL+xxd or similar to inspect",
+      );
+    let segment = 0;
+    for (let i = 0; i < chunk.length; i += 1) {
+      if (chunk[i] !== 10) continue;
+      if (line >= offset && line < offset + limit) {
+        const part = chunk.subarray(segment, i + 1);
+        selectedBytes += part.length;
+        if (selectedBytes > maxBytes)
+          throw new Error(
+            `line window exceeds ${maxBytes} bytes; retry with unit=byte`,
+          );
+        parts.push(part);
+        endLine = line + 1;
+      }
+      line += 1;
+      segment = i + 1;
+      if (line >= offset + limit) {
+        position += i + 1;
+        done = true;
+        break;
+      }
+    }
+    if (!done) {
+      if (line >= offset && line < offset + limit && segment < chunk.length) {
+        const part = chunk.subarray(segment);
+        selectedBytes += part.length;
+        if (selectedBytes > maxBytes)
+          throw new Error(
+            `line window exceeds ${maxBytes} bytes; retry with unit=byte`,
+          );
+        parts.push(part);
+        endLine = line + 1;
+      }
+      position += result.bytesRead;
+    }
+  }
+  const atEof = position >= size;
+  const content = decode(Buffer.concat(parts, selectedBytes));
+  return {
+    content,
+    start: offset,
+    end: endLine,
+    hasMore: !atEof,
+    ...(atEof
+      ? {
+          total:
+            startByte >= size
+              ? startLine
+              : size === 0
+                ? 0
+                : line + (sourceEndedWithNewline ? 0 : 1),
+        }
+      : {}),
+    sourceBytesRead,
+    nextByte: position,
+  };
 }
 
 export async function readFileHandler(
@@ -153,132 +239,197 @@ export async function readFileHandler(
   callback?: HandlerCallback,
 ): Promise<ActionResult> {
   const conversationId =
-    message.roomId !== undefined && message.roomId !== null
-      ? String(message.roomId)
-      : undefined;
-  if (!conversationId) {
+    message.roomId == null ? undefined : String(message.roomId);
+  if (!conversationId)
     return failureToActionResult({
       reason: "missing_param",
       message: "no roomId",
     });
-  }
-
   const filePath = readStringParam(options, "file_path");
-  if (!filePath) {
+  if (!filePath)
     return failureToActionResult({
       reason: "missing_param",
       message: "file_path is required",
     });
-  }
-  const inputPath = resolveInputPath(runtime, conversationId, filePath);
-  if (!inputPath.ok) return failureToActionResult(inputPath.failure);
-
+  const input = resolveInputPath(runtime, conversationId, filePath);
+  if (!input.ok) return failureToActionResult(input.failure);
   const sandbox = runtime.getService(SANDBOX_SERVICE) as InstanceType<
     typeof SandboxService
   > | null;
   const fileState = runtime.getService(FILE_STATE_SERVICE) as InstanceType<
     typeof FileStateService
   > | null;
-  if (!sandbox || !fileState) {
+  if (!sandbox || !fileState)
     return failureToActionResult({
       reason: "internal",
       message: "coding-tools services unavailable",
     });
-  }
-
-  const validated = await sandbox.validatePath(conversationId, inputPath.value);
-  if (validated.ok === false) {
-    const reason =
-      validated.reason === "blocked" ? "path_blocked" : "invalid_param";
-    return failureToActionResult({ reason, message: validated.message });
-  }
-
-  const resolved = validated.resolved;
-
+  const checked = await sandbox.validatePath(conversationId, input.value);
+  if (!checked.ok)
+    return failureToActionResult({
+      reason: checked.reason === "blocked" ? "path_blocked" : "invalid_param",
+      message: checked.message,
+    });
+  const rawUnit = readStringParam(options, "unit") ?? "line";
+  if (rawUnit !== "line" && rawUnit !== "byte")
+    return failureToActionResult({
+      reason: "invalid_param",
+      message: "unit must be line or byte",
+    });
+  const unit: Unit = rawUnit;
+  const offset = integer(options, "offset", 0);
+  const defaultLimit =
+    unit === "line"
+      ? readPositiveIntSetting(runtime, "CODING_TOOLS_MAX_READ_LINES", 2_000)
+      : BUFFER_BYTES;
+  const limit = integer(options, "limit", defaultLimit);
+  if (offset === undefined || limit === undefined || limit === 0)
+    return failureToActionResult({
+      reason: "invalid_param",
+      message:
+        "offset must be non-negative and limit must be positive safe integers",
+    });
   const maxBytes = readPositiveIntSetting(
     runtime,
     "CODING_TOOLS_MAX_FILE_SIZE_BYTES",
     262_144,
   );
-
-  const routed = await readWithCapabilityRouter({
-    runtime,
-    resolved,
-    maxBytes,
-  });
-  if (routed.ok) {
-    return finalizeReadResult({
-      runtime,
-      callback,
-      conversationId,
-      fileState,
-      resolved,
-      text: routed.payload.text,
-      options,
-    });
-  }
-  if (routed.reason === "failed") {
-    return failureToActionResult({
-      reason: "io_error",
-      message: routed.message,
-    });
-  }
-
-  let stat: Awaited<ReturnType<typeof fs.stat>>;
+  let handle: fs.FileHandle | undefined;
   try {
-    stat = await fs.stat(resolved);
-  } catch (err) {
-    // error-policy:J1 action boundary; a stat failure becomes a success:false
-    // ActionResult carrying the real message, surfaced to the model.
-    const msg = err instanceof Error ? err.message : String(err);
+    handle = await fs.open(checked.resolved, "r");
+    const before = await handle.stat();
+    if (!before.isFile())
+      return failureToActionResult({
+        reason: "invalid_param",
+        message: "path is not a regular file",
+      });
+    const currentRevision = revision(before);
+    const expected = readStringParam(options, "expectedRevision");
+    if (offset > 0 && !expected)
+      return failureToActionResult({
+        reason: "invalid_param",
+        message:
+          "expectedRevision is required when continuing from a nonzero offset",
+      });
+    if (expected && expected !== currentRevision)
+      return failureToActionResult(
+        {
+          reason: "stale_read",
+          message: `expected revision ${expected} but found ${currentRevision}`,
+        },
+        { revision: currentRevision },
+      );
+    const checkpointKey = `${checked.resolved}\0${currentRevision}`;
+    let checkpoints = lineCheckpoints.get(checkpointKey);
+    if (!checkpoints) {
+      checkpoints = new Map([[0, 0]]);
+      lineCheckpoints.set(checkpointKey, checkpoints);
+      if (lineCheckpoints.size > 64) {
+        const oldest = lineCheckpoints.keys().next().value;
+        if (oldest !== undefined) lineCheckpoints.delete(oldest);
+      }
+    }
+    let checkpointLine = 0;
+    let checkpointByte = 0;
+    if (unit === "line") {
+      for (const [candidateLine, candidateByte] of checkpoints) {
+        if (candidateLine <= offset && candidateLine >= checkpointLine) {
+          checkpointLine = candidateLine;
+          checkpointByte = candidateByte;
+        }
+      }
+    }
+    const window =
+      unit === "byte"
+        ? await byteWindow(
+            handle,
+            before.size,
+            offset,
+            Math.min(limit, maxBytes),
+          )
+        : await lineWindow(
+            handle,
+            before.size,
+            offset,
+            limit,
+            maxBytes,
+            checkpointByte,
+            checkpointLine,
+          );
+    if (unit === "line" && window.nextByte !== undefined) {
+      checkpoints.set(window.end, window.nextByte);
+    }
+    if (
+      unit === "line" &&
+      window.total !== undefined &&
+      offset > window.total
+    ) {
+      return failureToActionResult({
+        reason: "invalid_param",
+        message: `line offset ${offset} exceeds total ${window.total}`,
+      });
+    }
+    const afterRevision = revision(await handle.stat());
+    if (afterRevision !== currentRevision)
+      return failureToActionResult(
+        {
+          reason: "stale_read",
+          message:
+            "file changed while it was being read; retry from the new revision",
+        },
+        { revision: afterRevision },
+      );
+    const text = window.content;
+    const sliceSha256 = createHash("sha256").update(text).digest("hex");
+    const opaqueRef = `file:${createHash("sha256").update(checked.resolved).digest("hex")}`;
+    const readView = buildReadView({
+      reference: { kind: "file", ref: opaqueRef, revision: currentRevision },
+      slice: {
+        range: {
+          unit,
+          start: window.start,
+          end: window.end,
+          ...(window.total === undefined ? {} : { total: window.total }),
+        },
+        hasPrevious: window.start > 0,
+        hasMore: window.hasMore,
+        ...(window.hasMore ? { nextOffset: window.end } : {}),
+        revision: currentRevision,
+        completeness: window.hasMore ? "partial-recoverable" : "complete",
+        sliceSha256,
+        ...(!window.hasMore && window.start === 0
+          ? { sourceSha256: sliceSha256 }
+          : {}),
+      },
+    });
+    await fileState.recordRead(conversationId, checked.resolved);
+    logger.debug(
+      `${CODING_TOOLS_LOG_PREFIX} READ ${checked.resolved} unit=${unit} offset=${offset} end=${window.end} sourceBytesRead=${window.sourceBytesRead}`,
+    );
+    if (callback)
+      await callback({
+        text: fencePreformatted(capTranscriptForChat(text)),
+        source: "coding-tools",
+      });
+    return {
+      ...successActionResult(text, {
+        readView,
+        diagnostics: {
+          sourceBytesRead: window.sourceBytesRead,
+          bytesReturned: Buffer.byteLength(window.content),
+        },
+      }),
+      promptData: { readView },
+    };
+  } catch (error) {
+    // error-policy:J1 action boundary; read failures become explicit failure results.
     return failureToActionResult({
       reason: "io_error",
-      message: `stat failed: ${msg}`,
+      message: `read failed: ${error instanceof Error ? error.message : String(error)}`,
+    });
+  } finally {
+    await handle?.close().catch(() => {
+      /* error-policy:J6 best-effort descriptor teardown. */
     });
   }
-
-  if (!stat.isFile()) {
-    return failureToActionResult({
-      reason: "invalid_param",
-      message: `path is not a regular file: ${resolved}`,
-    });
-  }
-
-  if (stat.size > maxBytes) {
-    return failureToActionResult({
-      reason: "io_error",
-      message: `file size ${stat.size} exceeds ${maxBytes}; use offset/limit to read in chunks`,
-    });
-  }
-
-  let buffer: Buffer;
-  try {
-    buffer = await fs.readFile(resolved);
-  } catch (err) {
-    // error-policy:J1 action boundary; a read failure becomes a success:false
-    // ActionResult carrying the real message, surfaced to the model.
-    const msg = err instanceof Error ? err.message : String(err);
-    return failureToActionResult({
-      reason: "io_error",
-      message: `read failed: ${msg}`,
-    });
-  }
-
-  if (buffer.includes(0)) {
-    return failureToActionResult({
-      reason: "io_error",
-      message: `binary file detected at ${resolved}; use SHELL+xxd or similar to inspect`,
-    });
-  }
-
-  const text = buffer.toString("utf8");
-  return finalizeReadResult({
-    runtime,
-    callback,
-    conversationId,
-    fileState,
-    resolved,
-    text,
-    options,
-  });
 }

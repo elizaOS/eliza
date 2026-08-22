@@ -51,6 +51,9 @@ function memoryLedger(initial: TelegramDeliveryState | null = null): {
       async readChunk(index) {
         return state.chunks.get(index) ?? null;
       },
+      async readChunkProviderMessageId(index) {
+        return state.providerMessageIds.get(index) ?? null;
+      },
       async claimChunk(index) {
         if (state.chunks.has(index)) return false;
         state.chunks.set(index, "uncertain");
@@ -91,6 +94,23 @@ describe("executeTelegramDelivery", () => {
     expect(memory.state.chunks.get(0)).toBe("delivered");
     expect(memory.state.providerMessageIds.get(0)).toBe("provider-1");
     expect(memory.state.delivery).toBe("delivered");
+  });
+
+  test("recovers a provider id for a chunk accepted by an earlier attempt", async () => {
+    const memory = memoryLedger();
+    memory.state.plan = [
+      "5782b18687e6cf8a482fc32d2db5b196d8821c458a0c069c6acf3953446e7bb5",
+    ];
+    memory.state.chunks.set(0, "delivered");
+    memory.state.providerMessageIds.set(0, "provider-prior");
+
+    await executeTelegramDelivery(memory.ledger, async (hooks) => {
+      await hooks.prepare(["reply"]);
+      expect(await hooks.shouldSend(0, "reply")).toBe(false);
+      expect(await hooks.deliveredProviderMessageId(0, "reply")).toBe(
+        "provider-prior",
+      );
+    });
   });
 
   test("releases processing when generation fails before egress", async () => {

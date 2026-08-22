@@ -160,6 +160,15 @@ export function tierActionResults(
 	);
 	if (narrowSet.size > 0) {
 		const canonicalOwnersByCandidate = new Map<string, Set<string>>();
+		const tokenSetOwnersByCandidate = new Map<string, Set<string>>();
+		for (const parent of input.catalog.parents) {
+			for (const child of parent.childNormalizedNames) {
+				const key = actionNameTokenSetKey(child);
+				const owners = tokenSetOwnersByCandidate.get(key) ?? new Set<string>();
+				owners.add(parent.normalizedName);
+				tokenSetOwnersByCandidate.set(key, owners);
+			}
+		}
 		for (const candidate of narrowSet) {
 			const owners = new Set<string>();
 			for (const parent of input.catalog.parents) {
@@ -196,8 +205,22 @@ export function tierActionResults(
 				if (candidate === catalogParent.normalizedName) {
 					return true;
 				}
+				const candidateTokens = actionNameTokenSetKey(candidate);
+				const tokenSetOwners = tokenSetOwnersByCandidate.get(candidateTokens);
 				for (const child of catalogParent.childNormalizedNames) {
 					if (candidate === child) {
+						return true;
+					}
+					// Stage-1 models emit reversed compound names (live
+					// 2026-08-19: `CANCEL_TASKS` for `TASKS_CANCEL`, so the
+					// cancel surface narrowed to nothing and the planner
+					// honestly reported the tools unavailable). Same tokens,
+					// any order — still that child.
+					if (
+						tokenSetOwners?.size === 1 &&
+						tokenSetOwners.has(catalogParent.normalizedName) &&
+						candidateTokens === actionNameTokenSetKey(child)
+					) {
 						return true;
 					}
 				}
@@ -574,6 +597,10 @@ function sortedUnique(values: readonly string[]): string[] {
 	return Array.from(new Set(values.filter(Boolean))).sort((left, right) =>
 		left.localeCompare(right),
 	);
+}
+
+function actionNameTokenSetKey(normalizedName: string): string {
+	return normalizedName.split("_").filter(Boolean).sort().join("_");
 }
 
 function normalizeCandidateSet(

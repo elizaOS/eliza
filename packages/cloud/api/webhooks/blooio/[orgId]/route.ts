@@ -1,8 +1,7 @@
 /**
- * Blooio Webhook Handler
- *
- * Receives inbound iMessage/SMS messages from Blooio and routes them
- * to the appropriate agent for processing.
+ * Authenticates and processes Blooio webhook deliveries for one organization.
+ * Every production POST passes through Blooio signature validation before
+ * payload parsing, idempotency, or agent routing.
  */
 
 import { Hono } from "hono";
@@ -23,10 +22,6 @@ import {
 import { isAlreadyProcessed, markAsProcessed } from "@/lib/utils/idempotency";
 import { logger } from "@/lib/utils/logger";
 import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
-import {
-  handleBlueBubblesWebhook,
-  handleBlueBubblesWebhookPayload,
-} from "../../bluebubbles/route";
 
 const uuidPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -35,60 +30,12 @@ function boundedOrganizationId(value: string): string {
   return uuidPattern.test(value) ? value : "invalid";
 }
 
-function isBlueBubblesBridgeRequest(
-  c: AppContext,
-  rawBody: string,
-): { payload: unknown } | null {
-  const bridge =
-    c.req.header("x-eliza-bridge") ??
-    c.req.query("bridge") ??
-    new URL(c.req.url).searchParams.get("bridge");
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(rawBody) as unknown;
-  } catch {
-    // error-policy:J3 malformed bridge input is classified without echoing its body.
-    return bridge === "bluebubbles" ? { payload: null } : null;
-  }
-
-  if (bridge === "bluebubbles") {
-    return { payload: parsed };
-  }
-
-  // Blooio v4 and BlueBubbles both use a top-level { type, data } envelope.
-  // Auto-detect only BlueBubbles-specific message fields; treating the shared
-  // envelope shape itself as proof would divert signed Blooio v4 deliveries
-  // into the legacy bridge handler before Blooio signature verification.
-  if (
-    parsed &&
-    typeof parsed === "object" &&
-    "type" in parsed &&
-    "data" in parsed &&
-    parsed.data &&
-    typeof parsed.data === "object" &&
-    ("guid" in parsed.data ||
-      "isFromMe" in parsed.data ||
-      "handle" in parsed.data ||
-      "chats" in parsed.data ||
-      "dateCreated" in parsed.data)
-  ) {
-    return { payload: parsed };
-  }
-
-  return null;
-}
-
 async function handleBlooioWebhook(c: AppContext): Promise<Response> {
   const requestedOrgId = c.req.param("orgId") ?? "";
   const orgId = boundedOrganizationId(requestedOrgId);
 
   try {
     const rawBody = await c.req.text();
-    const blueBubblesRequest = isBlueBubblesBridgeRequest(c, rawBody);
-    if (blueBubblesRequest) {
-      return handleBlueBubblesWebhookPayload(c, blueBubblesRequest.payload);
-    }
-
     if (!requestedOrgId)
       return c.json({ error: "Organization ID is required" }, 400);
 
@@ -231,22 +178,9 @@ async function handleBlooioWebhook(c: AppContext): Promise<Response> {
 }
 
 const app = new Hono<AppEnv>();
-app.post(
-  "/",
-  async (c, next) => {
-    const bridge =
-      c.req.header("x-eliza-bridge") ??
-      c.req.query("bridge") ??
-      new URL(c.req.url).searchParams.get("bridge");
-    if (bridge === "bluebubbles") {
-      return handleBlueBubblesWebhook(c);
-    }
-    await next();
-  },
-  rateLimit(RateLimitPresets.AGGRESSIVE),
-  (c) => handleBlooioWebhook(c),
+app.post("/", rateLimit(RateLimitPresets.AGGRESSIVE), (c) =>
+  handleBlooioWebhook(c),
 );
-app.post("/bluebubbles", (c) => handleBlueBubblesWebhook(c));
 
 /**
  * Handle incoming message from Blooio

@@ -12,8 +12,8 @@ import type {
   AgentNotification,
   IAgentRuntime,
 } from "@elizaos/core";
-import { NOTIFICATION_STREAM, ServiceType } from "@elizaos/core";
-import { beforeEach, describe, expect, it } from "vitest";
+import { logger, NOTIFICATION_STREAM, ServiceType } from "@elizaos/core";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NotificationPushService } from "./notification-push-service.ts";
 import { PushTokenRegistry } from "./push-token-registry.ts";
 import {
@@ -73,6 +73,7 @@ function makeHarness(): Harness {
     },
     deleteCache: async (key: string): Promise<boolean> => cache.delete(key),
     getService: (t: string) => (t === ServiceType.AGENT_EVENT ? bus : null),
+    reportError: () => {},
   } as unknown as IAgentRuntime;
 
   const emitRaw = (event: AgentEventPayload) => {
@@ -243,6 +244,70 @@ describe("NotificationPushService", () => {
     expect(h.listenerCount()).toBe(1);
     await service.stop();
     expect(h.listenerCount()).toBe(0);
+  });
+
+  it("logs and drops fan-out failures from registry list()", async () => {
+    const ios = new FakeProvider("apns", true);
+    const android = new FakeProvider("fcm", true);
+    const service = new NotificationPushService(h.runtime, {
+      registry: h.registry,
+      providers: { ios, android },
+    });
+    await service.attach();
+    const listSpy = vi
+      .spyOn(h.registry, "list")
+      .mockRejectedValueOnce(new Error("db down"));
+    const loggerSpy = vi.spyOn(logger, "error").mockImplementation(() => {});
+    const reportErrorSpy = vi
+      .spyOn(h.runtime, "reportError")
+      .mockImplementation(() => {});
+
+    h.emit(notification());
+    await flush();
+
+    expect(listSpy).toHaveBeenCalledTimes(1);
+    expect(loggerSpy).toHaveBeenCalledWith(
+      { src: "service:notification_push", error: expect.any(Error) },
+      "[NotificationPushService] fan-out failed",
+    );
+    expect(reportErrorSpy).toHaveBeenCalledWith(
+      "NotificationPushService.fanOut",
+      expect.any(Error),
+      { stream: NOTIFICATION_STREAM },
+    );
+    expect(ios.sent).toHaveLength(0);
+  });
+
+  it("logs and drops fan-out failures from dead-token unregister()", async () => {
+    const ios = new FakeProvider("apns", true, new Set(["dead-token"]));
+    const android = new FakeProvider("fcm", false);
+    const service = new NotificationPushService(h.runtime, {
+      registry: h.registry,
+      providers: { ios, android },
+    });
+    await service.attach();
+    await h.registry.register("ios", "dead-token");
+    const unregisterSpy = vi
+      .spyOn(h.registry, "unregister")
+      .mockRejectedValueOnce(new Error("durable write rejected"));
+    const loggerSpy = vi.spyOn(logger, "error").mockImplementation(() => {});
+    const reportErrorSpy = vi
+      .spyOn(h.runtime, "reportError")
+      .mockImplementation(() => {});
+
+    h.emit(notification());
+    await flush();
+
+    expect(unregisterSpy).toHaveBeenCalledWith("dead-token");
+    expect(loggerSpy).toHaveBeenCalledWith(
+      { src: "service:notification_push", error: expect.any(Error) },
+      "[NotificationPushService] fan-out failed",
+    );
+    expect(reportErrorSpy).toHaveBeenCalledWith(
+      "NotificationPushService.fanOut",
+      expect.any(Error),
+      { stream: NOTIFICATION_STREAM },
+    );
   });
 
   it("starts dormant (no throw) when there is no event bus", async () => {

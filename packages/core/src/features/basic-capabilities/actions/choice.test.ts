@@ -1,7 +1,7 @@
 /**
  * Deterministic unit tests for the CHOOSE_OPTION action (`choiceAction`). The
  * runtime is a vi.fn stub (getTasks/getTaskWorker/getRoom) — no live model, no
- * DB — covering full-UUID and short-id task lookup, the #12087 Item 17
+ * DB — covering complete-ID task lookup, the #12087 Item 17
  * authorization contract (validate checks only a pending choice, never a stored
  * world role), and unknown-id rejection.
  */
@@ -49,7 +49,7 @@ function createMessage(): Memory {
 }
 
 describe("CHOOSE_OPTION action", () => {
-	it("accepts the full task UUID as taskId (parameter contract: short or full ID)", async () => {
+	it("accepts the complete task UUID as taskId", async () => {
 		const executed = { options: null as unknown | null };
 		const runtime = createRuntime(executed);
 
@@ -68,7 +68,7 @@ describe("CHOOSE_OPTION action", () => {
 		expect(executed.options).toEqual({ option: "post" });
 	});
 
-	it("still accepts the 8-char short task id", async () => {
+	it("rejects an eight-character prefix instead of guessing between tasks", async () => {
 		const executed = { options: null as unknown | null };
 		const runtime = createRuntime(executed);
 
@@ -84,9 +84,47 @@ describe("CHOOSE_OPTION action", () => {
 			} as HandlerOptions,
 		);
 
+		expect(result?.success).toBe(false);
+		expect(result?.values?.error).toBe("TASK_NOT_FOUND");
+		expect(executed.options).toBeNull();
+	});
+
+	it("renders the complete task ID in the returned choice menu", async () => {
+		const executed = { options: null as unknown | null };
+		const runtime = createRuntime(executed);
+		const callback = vi.fn(async () => {});
+
+		const result = await choiceAction.handler?.(
+			runtime,
+			createMessage(),
+			undefined,
+			undefined,
+			callback,
+		);
+
 		expect(result?.success).toBe(true);
-		expect(result?.values?.taskId).toBe(TASK_ID);
-		expect(executed.options).toEqual({ option: "post" });
+		expect(result?.userFacingText).toContain(TASK_ID);
+		expect(callback).toHaveBeenCalledWith(
+			expect.objectContaining({ text: expect.stringContaining(TASK_ID) }),
+		);
+	});
+
+	it("keeps colliding eight-character prefixes distinguishable", async () => {
+		const first = "aabbccdd-1111-2222-3333-444455556666";
+		const second = "aabbccdd-7777-8888-9999-000011112222";
+		const runtime = {
+			agentId: AGENT_ID,
+			getTasks: vi.fn(async () => [
+				{ id: first, name: "first", metadata: { options: ["yes"] } },
+				{ id: second, name: "second", metadata: { options: ["no"] } },
+			]),
+		} as unknown as IAgentRuntime;
+
+		const result = await choiceAction.handler?.(runtime, createMessage());
+
+		expect(result?.userFacingText).toContain(first);
+		expect(result?.userFacingText).toContain(second);
+		expect(result?.userFacingText?.match(/aabbccdd/g)).toHaveLength(2);
 	});
 
 	// #12087 Item 17: validate() must NOT re-derive authorization from a stored

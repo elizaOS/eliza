@@ -1,16 +1,12 @@
 /**
- * Unit tests for normalizeOwnerName and OWNER_NAME_MAX_LENGTH in packages/shared/src/utils/owner-name.ts.
- * Exercises standard string passthroughs, whitespace trimming, 60-character length capping,
- * empty/whitespace inputs, and non-string coercions to empty string.
+ * Unit tests for lossless owner-name normalization.
+ * Exercises standard strings, whitespace trimming, long content preservation,
+ * empty inputs, and non-string coercion to an empty string.
  */
 import { describe, expect, it } from "vitest";
-import { normalizeOwnerName, OWNER_NAME_MAX_LENGTH } from "./owner-name.js";
+import { normalizeOwnerName } from "./owner-name.js";
 
 describe("normalizeOwnerName", () => {
-  it("exports OWNER_NAME_MAX_LENGTH as 60", () => {
-    expect(OWNER_NAME_MAX_LENGTH).toBe(60);
-  });
-
   it("passes standard owner names through", () => {
     expect(normalizeOwnerName("alice")).toBe("alice");
     expect(normalizeOwnerName("Bob Smith")).toBe("Bob Smith");
@@ -21,18 +17,17 @@ describe("normalizeOwnerName", () => {
     expect(normalizeOwnerName("\n\tBob\t\n")).toBe("Bob");
   });
 
-  it("truncates names exceeding OWNER_NAME_MAX_LENGTH", () => {
-    const longName = "a".repeat(100);
+  it("preserves long names completely", () => {
+    const longName = `${"a".repeat(100)}complete-owner-name-tail`;
     const normalized = normalizeOwnerName(longName);
-    expect(normalized).toHaveLength(60);
-    expect(normalized).toBe("a".repeat(60));
+    expect(normalized).toBe(longName);
+    expect(normalized).toContain("complete-owner-name-tail");
   });
 
-  it("trims before truncating", () => {
+  it("trims without shortening", () => {
     const paddedLongName = `  ${"b".repeat(80)}  `;
     const normalized = normalizeOwnerName(paddedLongName);
-    expect(normalized).toHaveLength(60);
-    expect(normalized).toBe("b".repeat(60));
+    expect(normalized).toBe("b".repeat(80));
   });
 
   it("returns empty string for empty or whitespace-only strings", () => {

@@ -104,72 +104,31 @@ function findStep(
 }
 
 describe("device-e2e workflow trigger reaches both bundle producers (#19640)", () => {
-  test("canonical ci.yml calls the producer workflow behind the ci:device label gate", () => {
-    const caller = ci.jobs?.device;
-    if (!caller) throw new Error("ci.yml is missing the device caller job");
-    expect(caller.uses).toBe("./.github/workflows/device-e2e.yml");
-    expect(caller.if).toContain(
-      "contains(github.event.pull_request.labels.*.name, 'ci:device')",
-    );
-    expect(caller.if).toContain("github.event_name == 'pull_request'");
-  });
-
-  test("the caller grants every permission a nested producer job requests", () => {
-    // GitHub validates the compiled workflow_call graph before evaluating any
-    // job `if`, so a nested job requesting more than the caller allows fails
-    // the whole CI run at startup — this regressed on develop when the
-    // schedule-only notifier gained actions:read/issues:write (#22527).
-    const caller = ci.jobs?.device;
-    if (!caller) throw new Error("ci.yml is missing the device caller job");
-    const granted = caller.permissions ?? {};
-    const rank = (level: string | undefined): number =>
-      level === "write" ? 2 : level === "read" ? 1 : 0;
-    for (const [name, job] of Object.entries(workflow.jobs ?? {})) {
-      const requested = job.permissions ?? workflow.permissions ?? {};
-      for (const [scope, level] of Object.entries(requested)) {
-        if (rank(granted[scope]) < rank(level)) {
-          throw new Error(
-            `ci.yml device caller grants '${scope}: ${granted[scope] ?? "none"}' ` +
-              `but device-e2e job '${name}' requests '${scope}: ${level}'`,
-          );
-        }
-      }
-    }
-  });
-
-  test("an unlabeled PR's skipped device job cannot fail the merge gate", () => {
-    const required = ci.jobs?.required;
-    if (!required) throw new Error("ci.yml is missing the required job");
-    expect(required.needs).not.toContain("device");
+  test("pull-request and develop CI do not invoke device qualification", () => {
+    expect(ci.jobs?.device).toBeUndefined();
   });
 
   test("the producer stays callable and dispatchable but never directly PR/push triggered", () => {
-    expect(workflow.on && "schedule" in workflow.on).toBe(true);
+    expect(workflow.on && "schedule" in workflow.on).toBe(false);
     expect(workflow.on && "workflow_call" in workflow.on).toBe(true);
     expect(workflow.on && "workflow_dispatch" in workflow.on).toBe(true);
     expect(workflow.on && "pull_request" in (workflow.on ?? {})).toBe(false);
     expect(workflow.on && "push" in (workflow.on ?? {})).toBe(false);
   });
 
-  test("scheduled failures have a visible event-filtered workflow badge", () => {
-    expect(workflowReadme).toContain(
-      "actions/workflows/device-e2e.yml/badge.svg?branch=develop&event=schedule",
-    );
-    expect(workflowReadme).toContain(
-      "actions/workflows/device-e2e.yml?query=event%3Aschedule",
-    );
+  test("does not advertise a retired schedule", () => {
+    expect(workflowReadme).not.toContain("event=schedule");
+    expect(workflowReadme).not.toContain("event%3Aschedule");
   });
 
-  test("the weekly schedule spends only Android while calls and dispatches retain iOS", () => {
+  test("calls run both device producers while dispatches can select a platform", () => {
     expect(androidJob?.if).toBe(
       "github.event_name != 'workflow_dispatch' || inputs.platform == 'all' || inputs.platform == 'android'",
     );
     expect(iosJob?.if).toBe(
-      "github.event_name != 'schedule' && (github.event_name != 'workflow_dispatch' || inputs.platform == 'all' || inputs.platform == 'ios')",
+      "github.event_name != 'workflow_dispatch' || inputs.platform == 'all' || inputs.platform == 'ios'",
     );
-    expect(workflowReadme).toContain(
-      "scheduled runs do not allocate the macOS/iOS job",
-    );
+    expect(workflowReadme).toContain("workflow_call");
   });
 
   test("scheduled Android results reconcile one actionable issue with least privilege", () => {
@@ -232,7 +191,7 @@ describe("device-e2e workflow trigger reaches both bundle producers (#19640)", (
   test("the iOS job invokes ios-e2e.mjs with --output inside the artifact root", () => {
     const job = requireJob(iosJob, "ios-simulator-bundle");
     expect(job.if).toBe(
-      "github.event_name != 'schedule' && (github.event_name != 'workflow_dispatch' || inputs.platform == 'all' || inputs.platform == 'ios')",
+      "github.event_name != 'workflow_dispatch' || inputs.platform == 'all' || inputs.platform == 'ios'",
     );
     expect(String(job["runs-on"])).toMatch(/^macos-/);
     const runner = findStep(
@@ -373,8 +332,10 @@ describe("Android probe partitioning (#13580)", () => {
 describe("ARM64 local-runtime workflow (#13580)", () => {
   const armJob = arm64Workflow.jobs?.["android-arm64-local-runtime"];
 
-  test("is schedule-only and cannot execute an arbitrary dispatched ref", () => {
-    expect(arm64Workflow.on && "schedule" in arm64Workflow.on).toBe(true);
+  test("uses trusted repository dispatch and cannot execute an arbitrary dispatched ref", () => {
+    expect(arm64Workflow.on?.repository_dispatch).toEqual({
+      types: ["android_arm64_local_e2e"],
+    });
     expect(arm64Workflow.on && "workflow_dispatch" in arm64Workflow.on).toBe(
       false,
     );

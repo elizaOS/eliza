@@ -1,5 +1,5 @@
 {
-  "uuid": "bbbb1111-aaaa-4000-8000-00000002012d",
+  "uuid": "bbbb1111-aaaa-4000-8000-00000002011d",
   "lastMigration": 33,
   "name": "lifeops-spotify-mock",
   "endpointPrefix": "",
@@ -9,14 +9,14 @@
   "folders": [],
   "routes": [
     {
-      "uuid": "bbbb1111-aaaa-4000-8000-000000020123",
+      "uuid": "bbbb1111-aaaa-4000-8000-000000020113",
       "type": "http",
       "documentation": "GET v1/me",
       "method": "get",
       "endpoint": "v1/me",
       "responses": [
         {
-          "uuid": "bbbb1111-aaaa-4000-8000-000000020124",
+          "uuid": "bbbb1111-aaaa-4000-8000-000000020114",
           "body": "{\n  \"id\": \"shaweliza\",\n  \"display_name\": \"Shaw\",\n  \"email\": \"shaw@eliza.dev\",\n  \"country\": \"US\",\n  \"product\": \"premium\",\n  \"images\": []\n}",
           "latency": 0,
           "statusCode": 200,
@@ -40,7 +40,7 @@
           "callbacks": []
         },
         {
-          "uuid": "bbbb1111-aaaa-4000-8000-000000020125",
+          "uuid": "bbbb1111-aaaa-4000-8000-000000020115",
           "body": "{\n  \"error\": {\n    \"status\": 429,\n    \"message\": \"API rate limit exceeded\"\n  }\n}",
           "latency": 0,
           "statusCode": 429,
@@ -83,7 +83,7 @@
           "callbacks": []
         },
         {
-          "uuid": "bbbb1111-aaaa-4000-8000-000000020126",
+          "uuid": "bbbb1111-aaaa-4000-8000-000000020116",
           "body": "{\n  \"error\": {\n    \"status\": 401,\n    \"message\": \"The access token expired\"\n  }\n}",
           "latency": 0,
           "statusCode": 401,
@@ -122,7 +122,7 @@
           "callbacks": []
         },
         {
-          "uuid": "bbbb1111-aaaa-4000-8000-000000020127",
+          "uuid": "bbbb1111-aaaa-4000-8000-000000020117",
           "body": "{\n  \"error\": \"internal_server_error\"\n}",
           "latency": 0,
           "statusCode": 500,
@@ -164,14 +164,14 @@
       "responseMode": null
     },
     {
-      "uuid": "bbbb1111-aaaa-4000-8000-000000020128",
+      "uuid": "bbbb1111-aaaa-4000-8000-000000020118",
       "type": "http",
       "documentation": "GET v1/me/player/currently-playing",
       "method": "get",
       "endpoint": "v1/me/player/currently-playing",
       "responses": [
         {
-          "uuid": "bbbb1111-aaaa-4000-8000-000000020129",
+          "uuid": "bbbb1111-aaaa-4000-8000-000000020119",
           "body": "{\n  \"timestamp\": 1746810600000,\n  \"progress_ms\": 84210,\n  \"is_playing\": true,\n  \"currently_playing_type\": \"track\",\n  \"item\": {\n    \"id\": \"0V8AZRO3vcmoCJVfXSjynj\",\n    \"name\": \"Sandstorm\",\n    \"artists\": [\n      {\n        \"id\": \"27dt7vDlxdLuF1FycZ51RQ\",\n        \"name\": \"Darude\"\n      }\n    ],\n    \"album\": {\n      \"id\": \"1QqLvzS1d1xqklrTHWWgUe\",\n      \"name\": \"Before the Storm\"\n    },\n    \"duration_ms\": 233000\n  }\n}",
           "latency": 0,
           "statusCode": 200,
@@ -195,7 +195,7 @@
           "callbacks": []
         },
         {
-          "uuid": "bbbb1111-aaaa-4000-8000-00000002012a",
+          "uuid": "bbbb1111-aaaa-4000-8000-00000002011a",
           "body": "{\n  \"error\": {\n    \"status\": 429,\n    \"message\": \"API rate limit exceeded\"\n  }\n}",
           "latency": 0,
           "statusCode": 429,
@@ -238,7 +238,7 @@
           "callbacks": []
         },
         {
-          "uuid": "bbbb1111-aaaa-4000-8000-00000002012b",
+          "uuid": "bbbb1111-aaaa-4000-8000-00000002011b",
           "body": "{\n  \"error\": {\n    \"status\": 401,\n    \"message\": \"The access token expired\"\n  }\n}",
           "latency": 0,
           "statusCode": 401,
@@ -277,7 +277,7 @@
           "callbacks": []
         },
         {
-          "uuid": "bbbb1111-aaaa-4000-8000-00000002012c",
+          "uuid": "bbbb1111-aaaa-4000-8000-00000002011c",
           "body": "{\n  \"error\": \"internal_server_error\"\n}",
           "latency": 0,
           "statusCode": 500,
@@ -322,11 +322,11 @@
   "rootChildren": [
     {
       "type": "route",
-      "uuid": "bbbb1111-aaaa-4000-8000-000000020123"
+      "uuid": "bbbb1111-aaaa-4000-8000-000000020113"
     },
     {
       "type": "route",
-      "uuid": "bbbb1111-aaaa-4000-8000-000000020128"
+      "uuid": "bbbb1111-aaaa-4000-8000-000000020118"
     }
   ],
   "proxyMode": false,

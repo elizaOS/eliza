@@ -9,7 +9,14 @@ import {
   type ScenarioContext,
   scenario,
 } from "@elizaos/scenario-runner/schema";
-import { installMockSeed } from "./_meetings-mock.js";
+import {
+  assertMeetingMockLedger,
+  finalizeMeetingMockLedger,
+  installMockSeed,
+  joinedTranscriptIsReady,
+  MEETINGS_MOCK_REQUIRED_PLUGINS,
+  meetingMockLedgerMatches,
+} from "./_meetings-mock.js";
 
 const NATIVE_ID = "abc-defg-hij";
 const MEET_URL = `https://meet.google.com/${NATIVE_ID}`;
@@ -58,12 +65,25 @@ async function sessionFinalized(
 export default scenario({
   id: "mock-leave-meeting",
   lane: "pr-deterministic",
+  modelFixtures: {
+    mode: "model-free",
+    reason:
+      "Action and wait turns exercise production runtime state without model calls.",
+  },
   title: "Mocked LEAVE_MEETING finalizes an active session (no browser)",
   domain: "meetings",
   tags: ["mock", "meetings", "leave-meeting"],
   isolation: "per-scenario",
-  requires: { plugins: ["@elizaos/plugin-meetings"] },
-  seed: [installMockSeed({ [NATIVE_ID]: { holdUntilLeave: true, turns: [] } })],
+  requires: { plugins: MEETINGS_MOCK_REQUIRED_PLUGINS },
+  seed: [
+    installMockSeed({
+      [NATIVE_ID]: {
+        platform: "google_meet",
+        holdUntilLeave: true,
+        turns: [],
+      },
+    }),
+  ],
   rooms: [{ id: "main", source: "chat", title: "Mock Meeting Leave" }],
   turns: [
     {
@@ -87,8 +107,15 @@ export default scenario({
     },
     {
       kind: "wait",
-      name: "let the finalize path complete",
-      durationMs: 300,
+      name: "wait for the authoritative transcript row to become ready",
+      timeoutMs: 5_000,
+      until: joinedTranscriptIsReady,
+    },
+    {
+      kind: "action",
+      name: "snapshot strict meetings provider ledger",
+      actionName: "ASSERT_MEETING_MOCK_LEDGER",
+      assertTurn: assertMeetingMockLedger,
     },
   ],
   finalChecks: [
@@ -111,5 +138,11 @@ export default scenario({
       name: "session left the active set and transcript finalized to ready",
       predicate: sessionFinalized,
     },
+    {
+      type: "custom",
+      name: "strict meetings provider ledger matches",
+      predicate: meetingMockLedgerMatches,
+    },
   ],
+  cleanup: [finalizeMeetingMockLedger()],
 });

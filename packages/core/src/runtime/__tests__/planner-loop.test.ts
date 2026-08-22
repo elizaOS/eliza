@@ -3748,6 +3748,143 @@ describe("v5 planner loop — evaluator gate", () => {
 		).toBe("post_tool_model_reply");
 	});
 
+	it("falls back to the settled action when post-tool synthesis has a provider outage", async () => {
+		const providerError = Object.assign(new Error("provider unavailable"), {
+			statusCode: 503,
+		});
+		const useModel = vi
+			.fn()
+			.mockResolvedValueOnce({
+				text: "",
+				toolCalls: [
+					{
+						id: "app-1",
+						name: "APP",
+						arguments: { action: "launch", [TURN_SCOPE_ARG]: TURN_SCOPE_FINAL },
+					},
+				],
+			})
+			.mockRejectedValueOnce(providerError);
+
+		const result = await runPlannerLoop({
+			runtime: { useModel, logger: { warn: vi.fn() } },
+			context: { id: "ctx" },
+			tools: [{ name: "APP", description: "Launch an app." }],
+			executeToolCall: vi.fn(async () => ({
+				success: true,
+				text: '{"effect":"app_launch","status":"completed"}',
+				modelReplyFallback:
+					"The app launched successfully. [Open the app](http://127.0.0.1:3000/api/apps/local/demo/)",
+				modelReplyRequired: true,
+			})),
+			evaluate: vi.fn(),
+		});
+
+		expect(result.finalMessage).toContain("The app launched successfully.");
+		expect(useModel).toHaveBeenCalledTimes(2);
+	});
+
+	it("falls back without replaying a directly seeded settled action on provider outage", async () => {
+		const providerError = Object.assign(new Error("provider unavailable"), {
+			statusCode: 503,
+		});
+		const executeToolCall = vi.fn();
+		const result = await runPlannerLoop({
+			runtime: {
+				useModel: vi.fn().mockRejectedValue(providerError),
+				logger: { warn: vi.fn() },
+			},
+			context: { id: "ctx" },
+			postToolReplySeed: {
+				toolCall: {
+					id: "app-settled",
+					name: "APP",
+					arguments: { action: "launch" },
+				},
+				result: {
+					success: true,
+					text: '{"effect":"app_launch","status":"completed"}',
+					modelReplyRequired: true,
+					modelReplyFallback:
+						"The app launched successfully. [Open the app](/api/apps/local/demo/)",
+				},
+			},
+			executeToolCall,
+			evaluate: vi.fn(),
+		});
+
+		expect(result.finalMessage).toBe(
+			"The app launched successfully. [Open the app](/api/apps/local/demo/)",
+		);
+		expect(executeToolCall).not.toHaveBeenCalled();
+	});
+
+	it("does not hide programmer errors during post-tool synthesis", async () => {
+		const useModel = vi
+			.fn()
+			.mockResolvedValueOnce({
+				text: "",
+				toolCalls: [
+					{
+						id: "app-1",
+						name: "APP",
+						arguments: { action: "launch", [TURN_SCOPE_ARG]: TURN_SCOPE_FINAL },
+					},
+				],
+			})
+			.mockRejectedValueOnce(new TypeError("broken planner adapter"));
+
+		await expect(
+			runPlannerLoop({
+				runtime: { useModel },
+				context: { id: "ctx" },
+				tools: [{ name: "APP", description: "Launch an app." }],
+				executeToolCall: vi.fn(async () => ({
+					success: true,
+					text: "internal receipt",
+					userFacingText: "The app launched successfully.",
+					modelReplyRequired: true,
+				})),
+				evaluate: vi.fn(),
+			}),
+		).rejects.toThrow("broken planner adapter");
+	});
+
+	it.each([
+		'{"effect":"app_launch","status":"completed"}',
+		"The tool executed successfully.",
+		"Opening that now.",
+	])("rejects unsafe post-tool synthesis prose: %s", async (synthesisText) => {
+		const useModel = vi
+			.fn()
+			.mockResolvedValueOnce({
+				text: "",
+				toolCalls: [
+					{
+						id: "app-1",
+						name: "APP",
+						arguments: { action: "launch", [TURN_SCOPE_ARG]: TURN_SCOPE_FINAL },
+					},
+				],
+			})
+			.mockResolvedValueOnce({ text: synthesisText, toolCalls: [] });
+
+		const result = await runPlannerLoop({
+			runtime: { useModel },
+			context: { id: "ctx" },
+			tools: [{ name: "APP", description: "Launch an app." }],
+			executeToolCall: vi.fn(async () => ({
+				success: true,
+				text: '{"effect":"app_launch","status":"completed"}',
+				userFacingText: "The app launched successfully.",
+				modelReplyRequired: true,
+			})),
+			evaluate: vi.fn(),
+		});
+
+		expect(result.finalMessage).toBe("The app launched successfully.");
+	});
+
 	it("fails closed on a required-reply synthesis that invents a tool call, routing the completed action through the evaluator (#22609)", async () => {
 		const useModel = vi
 			.fn()

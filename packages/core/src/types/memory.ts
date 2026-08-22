@@ -107,12 +107,16 @@ export interface BaseMetadata {
 export interface DocumentMetadata {
 	base?: BaseMetadata;
 	type?: "document";
+	/** Read-only entity grants that remain valid independently of room membership. */
+	directGrantEntityIds?: UUID[];
 	/** Served original-bytes file (content-addressed) linked to this document. */
 	mediaUrl?: string;
 	/** Served original-bytes file (content-addressed) linked to this document. */
 	mediaHash?: string;
 	/** Served original-bytes file (content-addressed) linked to this document. */
 	mediaFileName?: string;
+	/** Adapter-derived parent source fingerprint used only to build opaque revisions. */
+	sourceFingerprint?: string;
 }
 
 export interface FragmentMetadata {
@@ -120,6 +124,8 @@ export interface FragmentMetadata {
 	documentId: UUID;
 	position: number;
 	type?: "fragment";
+	/** Adapter-derived parent source fingerprint used only to build opaque revisions. */
+	sourceFingerprint?: string;
 }
 
 /**

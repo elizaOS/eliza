@@ -4118,11 +4118,30 @@ function ensureGradleProperty(content, key, value) {
   return `${content.replace(/\s*$/, "")}\n${key}=${value}\n`;
 }
 
-function patchAndroidGradleProperties() {
+export function applyAndroidGeneratedBuildTargetProperties(
+  content,
+  { cloudBuild = false } = {},
+) {
+  const withoutPreviousCloudMarker = content.replace(
+    /^elizaCloudBuild=.*\n?/gm,
+    "",
+  );
+  return cloudBuild
+    ? ensureGradleProperty(
+        withoutPreviousCloudMarker,
+        "elizaCloudBuild",
+        "true",
+      )
+    : withoutPreviousCloudMarker;
+}
+
+function patchAndroidGradleProperties({ cloudBuild = false } = {}) {
   const propertiesPath = path.join(androidDir, "gradle.properties");
   if (!fs.existsSync(propertiesPath)) return;
   const current = fs.readFileSync(propertiesPath, "utf8");
-  let patched = current;
+  let patched = applyAndroidGeneratedBuildTargetProperties(current, {
+    cloudBuild,
+  });
   patched = patched.replace(
     /^android\.enableDexingArtifactTransform\.desugaring=.*\n?/m,
     "",
@@ -4214,10 +4233,10 @@ function patchInstalledLlamaCapacitorBuildGradle() {
   }
 }
 
-function patchAndroidGradle() {
+function patchAndroidGradle({ cloudBuild = false } = {}) {
   assertSharedTreeOnlyForEliza("patch gradle identity");
   patchAndroidGradleWrapperForReleaseCompat();
-  patchAndroidGradleProperties();
+  patchAndroidGradleProperties({ cloudBuild });
   patchInstalledLlamaCapacitorBuildGradle();
   syncAndroidAppActionsResources();
   // Overwrite root build.gradle with our template (Maven mirrors, Kotlin version)
@@ -5707,7 +5726,13 @@ export const ANDROID_CLOUD_REWRITTEN_JAVA_FILES = [
 ];
 
 export const ANDROID_CLOUD_STRIPPED_ASSET_FILES = new Set([
+  "eliza-tasks.js",
   "llama-cpp-kernels.json",
+]);
+
+export const ANDROID_CLOUD_STRIPPED_ASSET_DIRECTORIES = Object.freeze([
+  "agent",
+  "runners",
 ]);
 
 export const ANDROID_CLOUD_STRIPPED_RESOURCE_FILES = [
@@ -5762,7 +5787,6 @@ export const ANDROID_CLOUD_STRIPPED_NATIVE_PLUGINS = [
   ["@elizaos/capacitor-agent", "elizaos-capacitor-agent"],
   ["@elizaos/capacitor-bun-runtime", "elizaos-capacitor-bun-runtime"],
   ["@elizaos/capacitor-appblocker", "elizaos-capacitor-appblocker"],
-  ["@elizaos/capacitor-browser-surface", "elizaos-capacitor-browser-surface"],
   ["@elizaos/capacitor-camera", "elizaos-capacitor-camera"],
   ["@elizaos/capacitor-canvas", "elizaos-capacitor-canvas"],
   ["@elizaos/capacitor-contacts", "elizaos-capacitor-contacts"],
@@ -5795,11 +5819,14 @@ export const ANDROID_PLAY_ALLOWED_NATIVE_PLUGIN_PACKAGES = Object.freeze([
   "@capacitor/preferences",
   "@capacitor/share",
   "@capacitor/status-bar",
+  "@elizaos/capacitor-browser-surface",
+  "@elizaos/capacitor-secure-store",
 ]);
 
 export const ANDROID_PLAY_ALLOWED_PERMISSIONS = Object.freeze([
   "android.permission.ACCESS_NETWORK_STATE",
   "android.permission.INTERNET",
+  "android.permission.MODIFY_AUDIO_SETTINGS",
   "android.permission.RECORD_AUDIO",
   `${APP.appId}.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION`,
 ]);
@@ -6028,7 +6055,7 @@ export function findAndroidCloudPackagedRuntimeOffenders(entries) {
     const isAsset = /(^|\/)assets\//i.test(normalized);
     const isNativeLibrary = /(^|\/)lib\//i.test(normalized);
     return (
-      /(^|\/)assets\/agent\//i.test(normalized) ||
+      /(^|\/)assets\/(?:agent|runners)\//i.test(normalized) ||
       // A local-runtime shared library or a loadable dex under assets/ is the
       // same contraband as one packaged conventionally — cloud thin clients
       // must not ship dynamically-loadable native or DEX code at any path.
@@ -6065,6 +6092,8 @@ import android.webkit.WebSettings;
 import android.webkit.WebView;
 
 import androidx.core.splashscreen.SplashScreen;
+import androidx.core.view.WindowCompat;
+import androidx.core.view.WindowInsetsControllerCompat;
 
 import com.getcapacitor.BridgeActivity;
 
@@ -6108,6 +6137,19 @@ ${cloudBrandUserAgentMarkerLines()}
         registerPlugin(ElizaPlayVoicePlugin.class);
 
         super.onCreate(savedInstanceState);
+
+        // Draw the minimal Cloud shell behind transparent system bars while
+        // keeping both bars visible and user-controlled. This uses only the
+        // public AndroidX edge-to-edge API and avoids white-on-white status
+        // icons on the signed-out screen.
+        WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
+        WindowInsetsControllerCompat systemBars =
+            WindowCompat.getInsetsController(
+                getWindow(), getWindow().getDecorView());
+        if (systemBars != null) {
+            systemBars.setAppearanceLightStatusBars(false);
+            systemBars.setAppearanceLightNavigationBars(false);
+        }
 
         if (getBridge() != null && getBridge().getWebView() != null) {
             WebSettings settings = getBridge().getWebView().getSettings();
@@ -6302,6 +6344,8 @@ export function cloudSafePlayVoicePluginJava(androidPackage) {
 import android.Manifest;
 import android.content.Intent;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.speech.RecognitionListener;
 import android.speech.RecognizerIntent;
 import android.speech.SpeechRecognizer;
@@ -6326,6 +6370,7 @@ import java.util.UUID;
     permissions = @Permission(alias = "microphone", strings = { Manifest.permission.RECORD_AUDIO })
 )
 public final class ElizaPlayVoicePlugin extends Plugin implements RecognitionListener {
+    private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private SpeechRecognizer recognizer;
 
     @PluginMethod
@@ -6348,37 +6393,43 @@ public final class ElizaPlayVoicePlugin extends Plugin implements RecognitionLis
             call.reject("Microphone permission is required.", "MICROPHONE_PERMISSION_REQUIRED");
             return;
         }
+        String language = call.getString("language");
+        runOnMainThread(() -> startDictationOnMainThread(call, language));
+    }
+
+    private void startDictationOnMainThread(PluginCall call, String language) {
         if (!SpeechRecognizer.isRecognitionAvailable(getContext())) {
             call.reject("Speech recognition is unavailable.", "SPEECH_RECOGNITION_UNAVAILABLE");
             return;
         }
-        stopRecognizer();
-        recognizer = SpeechRecognizer.createSpeechRecognizer(getContext());
-        recognizer.setRecognitionListener(this);
-        Intent intent = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
-        intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
-        intent.putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true);
-        intent.putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3);
-        intent.putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, getContext().getPackageName());
-        String language = call.getString("language");
-        if (language != null && !language.trim().isEmpty()) {
-            intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE, language.trim());
-        }
+        stopRecognizerOnMainThread();
         try {
+            recognizer = SpeechRecognizer.createSpeechRecognizer(getContext());
+            recognizer.setRecognitionListener(this);
+            Intent intent = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
+            intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
+            intent.putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true);
+            intent.putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3);
+            intent.putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, getContext().getPackageName());
+            if (language != null && !language.trim().isEmpty()) {
+                intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE, language.trim());
+            }
             recognizer.startListening(intent);
             JSObject result = new JSObject();
             result.put("started", true);
             call.resolve(result);
         } catch (RuntimeException error) {
-            stopRecognizer();
+            stopRecognizerOnMainThread();
             call.reject("Voice dictation could not start.", "SPEECH_RECOGNITION_START_FAILED", error);
         }
     }
 
     @PluginMethod
     public void stopDictation(PluginCall call) {
-        stopRecognizer();
-        call.resolve();
+        runOnMainThread(() -> {
+            stopRecognizerOnMainThread();
+            call.resolve();
+        });
     }
 
     @PluginMethod
@@ -6389,6 +6440,10 @@ public final class ElizaPlayVoicePlugin extends Plugin implements RecognitionLis
             return;
         }
         String language = call.getString("language", Locale.getDefault().toLanguageTag());
+        runOnMainThread(() -> speakOnMainThread(call, text, language));
+    }
+
+    private void speakOnMainThread(PluginCall call, String text, String language) {
         final TextToSpeech[] holder = new TextToSpeech[1];
         holder[0] = new TextToSpeech(getContext(), status -> {
             TextToSpeech tts = holder[0];
@@ -6421,7 +6476,7 @@ public final class ElizaPlayVoicePlugin extends Plugin implements RecognitionLis
 
     @Override
     protected void handleOnDestroy() {
-        stopRecognizer();
+        runOnMainThread(this::stopRecognizerOnMainThread);
         super.handleOnDestroy();
     }
 
@@ -6431,7 +6486,15 @@ public final class ElizaPlayVoicePlugin extends Plugin implements RecognitionLis
         call.resolve(result);
     }
 
-    private void stopRecognizer() {
+    private void runOnMainThread(Runnable action) {
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            action.run();
+        } else {
+            mainHandler.post(action);
+        }
+    }
+
+    private void stopRecognizerOnMainThread() {
         if (recognizer == null) return;
         try { recognizer.stopListening(); } catch (RuntimeException ignored) {}
         recognizer.cancel();
@@ -6461,11 +6524,11 @@ public final class ElizaPlayVoicePlugin extends Plugin implements RecognitionLis
         JSObject event = new JSObject();
         event.put("code", error);
         notifyListeners("error", event);
-        stopRecognizer();
+        stopRecognizerOnMainThread();
     }
     @Override public void onResults(Bundle results) {
         publishTranscript(results, true);
-        stopRecognizer();
+        stopRecognizerOnMainThread();
     }
     @Override public void onPartialResults(Bundle partialResults) {
         publishTranscript(partialResults, false);
@@ -6726,11 +6789,12 @@ export function removeInactiveAndroidJavaSourceRoots(javaRoots, activeRoot) {
 
 function removeCloudNativeArtifacts() {
   const assetsRoot = path.join(androidDir, "app", "src", "main", "assets");
-  const stagedAgentAssets = path.join(assetsRoot, "agent");
-  if (fs.existsSync(stagedAgentAssets)) {
-    rmRecursive(stagedAgentAssets);
+  for (const directory of ANDROID_CLOUD_STRIPPED_ASSET_DIRECTORIES) {
+    const target = path.join(assetsRoot, directory);
+    if (!fs.existsSync(target)) continue;
+    rmRecursive(target);
     console.log(
-      "[mobile-build] Removed staged on-device agent runtime under assets/agent/.",
+      `[mobile-build] Removed cloud-disallowed assets/${directory}/.`,
     );
   }
 
@@ -7022,8 +7086,10 @@ function auditAndroidCloudSource(phase, { env = process.env } = {}) {
   });
 
   const assetsRoot = path.join(androidDir, "app", "src", "main", "assets");
-  if (fs.existsSync(path.join(assetsRoot, "agent"))) {
-    failures.push("app/src/main/assets/agent still exists");
+  for (const directory of ANDROID_CLOUD_STRIPPED_ASSET_DIRECTORIES) {
+    if (fs.existsSync(path.join(assetsRoot, directory))) {
+      failures.push(`app/src/main/assets/${directory} still exists`);
+    }
   }
   walkFiles(assetsRoot, (filePath) => {
     if (isCloudBannedAsset(filePath)) {
@@ -7730,7 +7796,9 @@ export async function runAndroidBuild(
   ensureBunRuntimeRegistered();
   mirrorCapacitorWebPayloadIntoAndroidDir();
 
-  patchAndroidGradle();
+  patchAndroidGradle({
+    cloudBuild: target.env.ELIZA_ANDROID_CLOUD_BUILD === "1",
+  });
   await generateAndroidBrandAssets();
   overlayAndroid(target.overlayOptions);
   sanitizeAndroidManifestWhenPlatformTemplatesMissing();

@@ -27,7 +27,6 @@ export const ORCHESTRATOR_BACKENDS = [
   "pi-agent",
   "claude",
   "codex",
-  "opencode",
 ] as const;
 export type OrchestratorBackend = (typeof ORCHESTRATOR_BACKENDS)[number];
 
@@ -39,7 +38,6 @@ export const ORCHESTRATOR_BACKEND_AUTH: Readonly<
   "pi-agent": ["runtime-routed"],
   claude: ["anthropic-subscription", "anthropic-api"],
   codex: ["openai-codex", "openai-api"],
-  opencode: ["cerebras-api"],
 };
 
 export interface DeviceSupportProfile {

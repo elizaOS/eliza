@@ -15,15 +15,6 @@
 	url = https://github.com/elizaOS/llama.cpp.git
 	branch = main
 
-[submodule "plugins/plugin-agent-orchestrator/vendor/opencode"]
-	# opencode — the elizaOS fork of the opencode AI coding agent.
-	# Used by plugin-agent-orchestrator to spawn opencode sub-agents.
-	# The binary is expected on PATH after build; hasBinaryOnPath("opencode")
-	# in task-agent-frameworks.ts gates its use.
-	path = plugins/plugin-agent-orchestrator/vendor/opencode
-	url = https://github.com/elizaOS/opencode.git
-	branch = dev
-
 [submodule "upstreams/electrobun"]
 	path = upstreams/electrobun
 	url = https://github.com/elizaOS/electrobun.git

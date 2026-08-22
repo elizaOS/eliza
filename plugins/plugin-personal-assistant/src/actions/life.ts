@@ -1811,7 +1811,7 @@ export async function runLifeConnectedQuery(args: {
             startsAt: next.startsAt,
             startsInMinutes: next.startsInMinutes,
             location: next.location,
-            attendeeNames: next.attendeeNames.slice(0, 5),
+            attendeeNames: next.attendeeNames,
           },
         }),
         data: toActionData(next),
@@ -1844,7 +1844,7 @@ export async function runLifeConnectedQuery(args: {
         fallback,
         context: {
           eventCount: feed.events.length,
-          eventTitles: feed.events.slice(0, 10).map((event) => event.title),
+          eventTitles: feed.events.map((event) => event.title),
         },
       }),
       data: toActionData(feed),
@@ -3362,16 +3362,12 @@ function formatWeeklyGoalReview(args: {
   ];
   if (args.atRisk.length > 0) {
     parts.push(
-      `Drifting: ${args.atRisk
-        .slice(0, 3)
-        .map((review) => review.goal.title)
-        .join(", ")}.`,
+      `Drifting: ${args.atRisk.map((review) => review.goal.title).join(", ")}.`,
     );
   }
   if (args.needsAttention.length > 0) {
     parts.push(
       `Needs attention: ${args.needsAttention
-        .slice(0, 3)
         .map((review) => review.goal.title)
         .join(", ")}.`,
     );
@@ -3379,7 +3375,6 @@ function formatWeeklyGoalReview(args: {
   if (args.onTrack.length > 0) {
     parts.push(
       `On track: ${args.onTrack
-        .slice(0, 3)
         .map((review) => review.goal.title)
         .join(", ")}.`,
     );
@@ -4371,12 +4366,10 @@ async function runLifeOperationHandlerInner(
         fallback,
         context: {
           summary: overview.owner.summary,
-          occurrenceTitles: overview.owner.occurrences
-            .slice(0, 6)
-            .map((occurrence) => occurrence.title),
-          goalTitles: overview.owner.goals
-            .slice(0, 3)
-            .map((goal) => goal.title),
+          occurrenceTitles: overview.owner.occurrences.map(
+            (occurrence) => occurrence.title,
+          ),
+          goalTitles: overview.owner.goals.map((goal) => goal.title),
         },
       }),
       data: toActionData({
@@ -6249,7 +6242,7 @@ async function runLifeOperationHandlerInner(
           }),
         };
       }
-      const listed = selected.slice(0, 12).map((record) => ({
+      const listed = selected.map((record) => ({
         title: record.definition.title,
         cadence: summarizeCadence(record.definition.cadence),
         kind: record.definition.kind,
@@ -6300,12 +6293,10 @@ async function runLifeOperationHandlerInner(
               fallback,
               context: {
                 summary: overview.owner.summary,
-                occurrenceTitles: overview.owner.occurrences
-                  .slice(0, 6)
-                  .map((occurrence) => occurrence.title),
-                goalTitles: overview.owner.goals
-                  .slice(0, 3)
-                  .map((goal) => goal.title),
+                occurrenceTitles: overview.owner.occurrences.map(
+                  (occurrence) => occurrence.title,
+                ),
+                goalTitles: overview.owner.goals.map((goal) => goal.title),
               },
             }),
             data: toActionData({
@@ -6327,15 +6318,15 @@ async function runLifeOperationHandlerInner(
             fallback,
             context: {
               summary: weeklyReview.summary,
-              atRiskTitles: weeklyReview.atRisk
-                .slice(0, 3)
-                .map((review) => review.goal.title),
-              needsAttentionTitles: weeklyReview.needsAttention
-                .slice(0, 3)
-                .map((review) => review.goal.title),
-              onTrackTitles: weeklyReview.onTrack
-                .slice(0, 3)
-                .map((review) => review.goal.title),
+              atRiskTitles: weeklyReview.atRisk.map(
+                (review) => review.goal.title,
+              ),
+              needsAttentionTitles: weeklyReview.needsAttention.map(
+                (review) => review.goal.title,
+              ),
+              onTrackTitles: weeklyReview.onTrack.map(
+                (review) => review.goal.title,
+              ),
             },
           }),
           data: toActionData(weeklyReview),

@@ -3,8 +3,9 @@
  * Unicode normalization guarantees.
  */
 
+import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import { normalizeThoughtText } from "./actionState.ts";
+import { actionStateProvider, normalizeThoughtText } from "./actionState.ts";
 
 function isWellFormed(value: string): boolean {
 	for (let index = 0; index < value.length; index += 1) {
@@ -50,5 +51,61 @@ describe("normalizeThoughtText Unicode boundaries", () => {
 		const out = normalizeThoughtText(lone);
 		expect(out).toBe("thought \uFFFD test");
 		expect(isWellFormed(out)).toBe(true);
+	});
+});
+
+describe("ACTION_STATE progressive projection", () => {
+	it("removes recoverable bodies from every provider text carrier", async () => {
+		const canary = `BEGIN_PRIVATE_PAGE_${"x".repeat(20_000)}_END`;
+		const actionResult = {
+			success: true,
+			text: canary,
+			data: { actionName: "FILE", rawBody: canary },
+			promptData: {
+				actionName: "FILE",
+				readView: {
+					reference: { kind: "file", ref: "opaque-file", revision: "r1" },
+					slice: {
+						range: { unit: "byte", start: 0, end: 10, total: 20 },
+						hasPrevious: false,
+						hasMore: true,
+						nextOffset: 10,
+						revision: "r1",
+						completeness: "partial-recoverable",
+						sliceSha256: createHash("sha256").update(canary).digest("hex"),
+					},
+				},
+			},
+		};
+		const result = await actionStateProvider.get(
+			{
+				getSetting: () => true,
+				getMemories: async () => [],
+			} as never,
+			{ roomId: "00000000-0000-0000-0000-000000000001" } as never,
+			{
+				data: {
+					actionResults: [actionResult],
+					workingMemory: {
+						file: { actionName: "FILE", result: actionResult, timestamp: 1 },
+					},
+					actionPlan: {
+						thought: "read",
+						currentStep: 1,
+						totalSteps: 2,
+						steps: [
+							{ action: "FILE", status: "completed", result: actionResult },
+							{ action: "REPLY", status: "pending" },
+						],
+					},
+				},
+				values: {},
+				text: "",
+			} as never,
+		);
+
+		expect(result.text).toContain("opaque-file");
+		expect(result.text).not.toContain("BEGIN_PRIVATE_PAGE");
+		expect(JSON.stringify(result.data)).toContain("BEGIN_PRIVATE_PAGE");
 	});
 });

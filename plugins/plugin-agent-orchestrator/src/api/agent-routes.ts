@@ -310,11 +310,7 @@ export async function handleAgentRoutes(
     }
     const rawAgentType = authMatch[1];
 
-    const SUPPORTED_AGENTS: ReadonlyArray<string> = [
-      "claude",
-      "codex",
-      "opencode",
-    ];
+    const SUPPORTED_AGENTS: ReadonlyArray<string> = ["claude", "codex"];
     if (!SUPPORTED_AGENTS.includes(rawAgentType)) {
       sendError(res, `Unsupported agent type: ${rawAgentType}`, 400);
       return true;
@@ -435,7 +431,7 @@ export async function handleAgentRoutes(
       if (!agentType) {
         sendError(
           res,
-          "agentType query parameter required (claude, codex, opencode)",
+          "agentType query parameter required (claude, codex)",
           400,
         );
         return true;

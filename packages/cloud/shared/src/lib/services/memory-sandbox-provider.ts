@@ -1,4 +1,4 @@
-// Coordinates cloud service memory sandbox provider behavior behind route handlers.
+/** Coordinates the in-memory sandbox runtime used by cloud integration boundaries. */
 import { randomUUID } from "node:crypto";
 import { createServer, type Server } from "node:http";
 import type { Socket } from "node:net";
@@ -10,6 +10,7 @@ import type {
   SandboxHandle,
   SandboxProvider,
 } from "./sandbox-provider-types";
+import { assertContainerBackedExecutionTier } from "./sandbox-provider-types";
 
 interface MemoryAgentState {
   memories: Array<{ role: string; text: string; timestamp: number }>;
@@ -68,6 +69,7 @@ export class MemorySandboxProvider implements SandboxProvider {
   private readonly sandboxes = new Map<string, MemorySandbox>();
 
   async create(config: SandboxCreateConfig): Promise<SandboxHandle> {
+    assertContainerBackedExecutionTier(config.executionTier);
     const runtimeAgent = {
       id: `runtime-${randomUUID()}`,
       name: config.agentName,

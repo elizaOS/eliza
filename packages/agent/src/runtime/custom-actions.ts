@@ -598,7 +598,7 @@ export interface GuardedHttpGetResult {
   ok: boolean;
   /** HTTP status code, or 0 when the request was blocked before sending. */
   status: number;
-  /** Truncated response body text (empty when blocked). */
+  /** Complete response body text within the explicit safety limit (empty when blocked). */
   text: string;
   /** True when the URL was rejected by the SSRF / scheme guard. */
   blocked: boolean;

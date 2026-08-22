@@ -1088,6 +1088,13 @@ export async function handleMemoryRoutes(
         source: HASH_MEMORY_SOURCE,
         channelType: ChannelType.DM,
       },
+      // Hash-memory notes are the agent's personal store: fail closed against
+      // strangers, but keep the AGENT tier readable. `agent-private` (OWNER +
+      // AGENT + RUNTIME) rather than `owner-private` (OWNER + RUNTIME only),
+      // because owner-private would silently deny the agent its own recall
+      // once readers enforce scope. Without an explicit scope the factory
+      // default is `shared` — world-readable — which is wrong for these rows.
+      scope: "agent-private",
     });
     await runtime.createMemory(message, "messages");
     invalidateMemorySearchCache(runtime, roomId);

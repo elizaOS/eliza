@@ -4,9 +4,9 @@
  * Mocks `@elizaos/agent` (`hasOwnerAccess` + `resolveKnowledgeGraphService`)
  * so the suite exercises the action's op dispatch against a fake
  * EntityStore/RelationshipStore without a DB. Asserts create / read / list /
- * log_interaction / set_identity / set_relationship / merge dispatch onto the
- * right store method with the right shape, plus the owner-access and
- * missing-op/-field failure gates.
+ * log_interaction / set_relationship dispatch onto the right store method,
+ * while agent-authored identity verification and merging fail before any
+ * graph mutation.
  */
 
 import type {
@@ -15,7 +15,7 @@ import type {
   Memory,
   UUID,
 } from "@elizaos/core";
-import type { Entity, EntityIdentity, Relationship } from "@elizaos/shared";
+import type { Entity, Relationship } from "@elizaos/shared";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -264,66 +264,8 @@ describe("KNOWLEDGE_GRAPH action", () => {
     );
   });
 
-  it("set_identity observes but does not verify without trusted proof", async () => {
-    const observed = makeEntity({
-      identities: [
-        {
-          platform: "slack",
-          handle: "@pat",
-          verified: false,
-          confidence: 1,
-          addedAt: "2026-01-01T00:00:00.000Z",
-          addedVia: "platform_observation",
-          evidence: ["user_chat"],
-        } satisfies EntityIdentity,
-      ],
-    });
-    stores.entityStore.observeIdentity.mockResolvedValueOnce({
-      entity: observed,
-      mergedFrom: ["ent_2"],
-    });
-
-    const result = await call({
-      op: "set_identity",
-      platform: "slack",
-      handle: "@pat",
-    });
-
-    expect(result?.success).toBe(false);
-    expect(result?.data).toMatchObject({
-      error: "IDENTITY_VERIFICATION_REQUIRED",
-      mergedFrom: ["ent_2"],
-    });
-    expect(stores.entityStore.observeIdentity).toHaveBeenCalledWith(
-      expect.objectContaining({
-        platform: "slack",
-        handle: "@pat",
-        confidence: 1,
-      }),
-    );
-    expect(stores.entityStore.upsert).not.toHaveBeenCalled();
-  });
-
-  it("set_identity marks verified only with trusted matching proof", async () => {
-    const observed = makeEntity({
-      identities: [
-        {
-          platform: "slack",
-          handle: "@pat",
-          verified: false,
-          confidence: 1,
-          addedAt: "2026-01-01T00:00:00.000Z",
-          addedVia: "platform_observation",
-          evidence: ["user_chat"],
-        } satisfies EntityIdentity,
-      ],
-    });
-    stores.entityStore.observeIdentity.mockResolvedValueOnce({
-      entity: observed,
-      mergedFrom: ["ent_2"],
-    });
-
-    const result = await call(
+  it("rejects model-authored identity verification and merge before mutation", async () => {
+    const identity = await call(
       {
         op: "set_identity",
         platform: "slack",
@@ -334,31 +276,23 @@ describe("KNOWLEDGE_GRAPH action", () => {
           platform: "slack",
           handle: "@pat",
           verified: true,
-          evidence: "slack_oauth_subject_match",
+          evidence: "model_fabricated_proof",
         },
       } as Partial<HandlerOptions>,
     );
+    const merge = await call({
+      op: "merge",
+      entityId: "ent_1",
+      sourceEntityIds: ["ent_2"],
+    });
 
-    expect(result?.success).toBe(true);
-    const upsertArg = stores.entityStore.upsert.mock.calls.at(
-      -1,
-    )?.[0] as Entity;
-    const reasserted = upsertArg.identities.find(
-      (identity) => identity.platform === "slack" && identity.handle === "@pat",
-    );
-    expect(reasserted?.verified).toBe(true);
-    expect(reasserted?.evidence).toEqual([
-      "user_chat",
-      "slack_oauth_subject_match",
-    ]);
-    expect(result?.data).toMatchObject({ mergedFrom: ["ent_2"] });
-  });
-
-  it("set_identity fails without platform + handle", async () => {
-    const result = await call({ op: "set_identity", platform: "slack" });
-    expect(result?.success).toBe(false);
-    expect(result?.data).toMatchObject({ error: "MISSING_FIELDS" });
+    expect(identity?.success).toBe(false);
+    expect(identity?.data).toMatchObject({ error: "MISSING_OP" });
+    expect(merge?.success).toBe(false);
+    expect(merge?.data).toMatchObject({ error: "MISSING_OP" });
     expect(stores.entityStore.observeIdentity).not.toHaveBeenCalled();
+    expect(stores.entityStore.merge).not.toHaveBeenCalled();
+    expect(stores.entityStore.upsert).not.toHaveBeenCalled();
   });
 
   it("set_relationship upserts a typed edge, defaulting from to self", async () => {
@@ -396,30 +330,6 @@ describe("KNOWLEDGE_GRAPH action", () => {
     expect(result?.success).toBe(false);
     expect(result?.data).toMatchObject({ error: "MISSING_FIELDS" });
     expect(stores.relationshipStore.upsert).not.toHaveBeenCalled();
-  });
-
-  it("merge folds sources into a target", async () => {
-    stores.entityStore.merge.mockResolvedValueOnce(
-      makeEntity({ entityId: "ent_1", preferredName: "Alice" }),
-    );
-    const result = await call({
-      op: "merge",
-      entityId: "ent_1",
-      sourceEntityIds: ["ent_2", "ent_3"],
-    });
-    expect(result?.success).toBe(true);
-    expect(stores.entityStore.merge).toHaveBeenCalledWith("ent_1", [
-      "ent_2",
-      "ent_3",
-    ]);
-    expect(result?.data).toMatchObject({ sourceEntityIds: ["ent_2", "ent_3"] });
-  });
-
-  it("merge fails without a target + at least one source", async () => {
-    const noSources = await call({ op: "merge", entityId: "ent_1" });
-    expect(noSources?.success).toBe(false);
-    expect(noSources?.data).toMatchObject({ error: "MISSING_FIELDS" });
-    expect(stores.entityStore.merge).not.toHaveBeenCalled();
   });
 
   it("accepts the `action` alias for the op field", async () => {

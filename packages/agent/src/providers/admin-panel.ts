@@ -2,8 +2,8 @@
  * Provider that surfaces the owner's recent Eliza-app (client_chat)
  * conversation into the agent's context so it carries continuity across
  * platforms. Resolves the canonical owner, scans their most-active client_chat
- * rooms, and renders the newest messages oldest-first within a character
- * budget. Gated to ADMIN — returns empty for callers without admin access.
+ * rooms, and renders the complete conversation oldest-first. Gated to ADMIN —
+ * returns empty for callers without admin access.
  */
 import type {
   IAgentRuntime,
@@ -29,7 +29,7 @@ function memoryText(memory: Memory): string {
 
 /**
  * Fetch recent messages from the owner's client_chat rooms.
- * Returns messages newest-first, capped to a sensible limit.
+ * Returns messages newest-first.
  */
 async function fetchOwnerChatMessages(
   runtime: IAgentRuntime,
@@ -48,7 +48,7 @@ async function fetchOwnerChatMessages(
   );
   if (chatRooms.length === 0) return [];
 
-  // Limit how many rooms we scan
+  // Collect every matching client_chat room id.
   const targetRoomIds = chatRooms.map((r) => r.id as UUID);
 
   const memories = await runtime.getMemoriesByRoomIds({

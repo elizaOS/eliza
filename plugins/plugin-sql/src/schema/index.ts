@@ -40,6 +40,7 @@ export {
   identityClaimTable,
   identityMergeConfirmationTable,
   identityMergeJournalTable,
+  identityPersonLinkAttestationTable,
 } from "./identityAuthority";
 export { logTable } from "./log";
 export { longTermMemories } from "./longTermMemories";

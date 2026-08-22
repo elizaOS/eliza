@@ -723,7 +723,7 @@ function summarizePtyEvent(
 			break;
 		}
 		case "plan": {
-			// opencode/todowrite plan snapshot: show progress (done/total) rather
+			// plan/todowrite snapshot: show progress (done/total) rather
 			// than the raw entry list, which the inline checklist renders in full.
 			const entries = Array.isArray(data?.entries) ? data.entries : [];
 			if (entries.length === 0) return null;

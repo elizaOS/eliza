@@ -92,6 +92,8 @@ export type EvaluatorOutput = EvaluationResult & {
 
 export interface PlannerRuntime {
 	getService?(service: string): unknown;
+	/** Optional per-agent setting lookup used by guarded runtime features. */
+	getSetting?(key: string): string | boolean | number | null;
 	reportError?(
 		scope: string,
 		error: unknown,
@@ -203,6 +205,8 @@ export interface PlannerToolResult {
 	 * action whose planner call explicitly declared final scope.
 	 */
 	modelReplyRequired?: boolean;
+	/** Vetted action-owned fallback for a failed required model synthesis. */
+	modelReplyFallback?: string;
 	/**
 	 * Explicit chain-control override. `false` unconditionally aborts the
 	 * remaining planner queue, including for legacy failure and fire-and-forget
@@ -260,6 +264,15 @@ export interface PlannerLoopResult {
 export interface PlannerLoopParams {
 	runtime: PlannerRuntime;
 	context: ContextObject;
+	/**
+	 * A sole tool result that already completed outside the planner loop and
+	 * explicitly requested a model-authored final reply. The loop starts from
+	 * this settled step and performs only the guarded no-tools synthesis round.
+	 */
+	postToolReplySeed?: {
+		toolCall: PlannerToolCall;
+		result: PlannerToolResult;
+	};
 	config?: Partial<ChainingLoopConfig>;
 	executeToolCall: (
 		toolCall: PlannerToolCall,

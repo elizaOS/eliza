@@ -92,7 +92,7 @@ describe("parseShortcutBody", () => {
       shortcutId: "open-command-palette",
     });
   });
-  it("carries an optional context, trimmed + length-capped", () => {
+  it("carries the complete optional context after trimming", () => {
     const r = parseShortcutBody(
       JSON.stringify({ shortcutId: "toggle-terminal", context: "  shell  " }),
     );
@@ -100,7 +100,7 @@ describe("parseShortcutBody", () => {
     const long = parseShortcutBody(
       JSON.stringify({ shortcutId: "x-y", context: "a".repeat(500) }),
     );
-    expect((long?.context ?? "").length).toBe(120);
+    expect(long?.context).toBe("a".repeat(500));
   });
   it("rejects empty / non-kebab / oversized / malformed ids", () => {
     expect(parseShortcutBody("")).toBeNull();
@@ -398,53 +398,53 @@ describe("handleInteractionsRoutes — composer lifecycle (#14679)", () => {
 });
 
 describe("parseShortcutBody surrogate handling", () => {
-  it("keeps surrogate pairs intact at the truncation boundary", () => {
+  it("keeps the complete context and valid surrogate pairs", () => {
     const emoji = String.fromCharCode(0xd83e, 0xdd8a);
     const ctx2 = `${"a".repeat(119)}${emoji}${"b".repeat(10)}`;
     const parsed = parseShortcutBody(
       JSON.stringify({ shortcutId: "open-command-palette", context: ctx2 }),
     );
     expect(parsed?.context).toBeDefined();
-    expect(parsed!.context!.length).toBeLessThanOrEqual(120);
-    expect(parsed!.context!.length).toBe(119);
-    expect(parsed!.context!.isWellFormed()).toBe(true);
-    expect(isWellFormed(parsed!.context!)).toBe(true);
-    expect(parsed!.context).not.toContain(emoji);
+    expect(parsed?.context).toBe(ctx2);
+    expect(parsed?.context?.isWellFormed()).toBe(true);
+    expect(isWellFormed(parsed?.context ?? "")).toBe(true);
+    expect(parsed?.context).toContain(emoji);
   });
 
-  it("preserves a fitting emoji under the cap", () => {
+  it("preserves a fitting emoji", () => {
     const emoji = String.fromCharCode(0xd83e, 0xdd8a);
     const context = `${"a".repeat(118)}${emoji}`;
     const parsed = parseShortcutBody(
       JSON.stringify({ shortcutId: "open-command-palette", context }),
     );
     expect(parsed?.context).toBe(context);
-    expect(parsed!.context!.isWellFormed()).toBe(true);
-    expect(isWellFormed(parsed!.context!)).toBe(true);
+    expect(parsed?.context?.isWellFormed()).toBe(true);
+    expect(isWellFormed(parsed?.context ?? "")).toBe(true);
   });
 
-  it("sanitizes lone surrogates before truncation", () => {
+  it("sanitizes lone surrogates without dropping trailing context", () => {
     const lone = `a${String.fromCharCode(0xd800)}${"b".repeat(200)}`;
     const parsed = parseShortcutBody(
       JSON.stringify({ shortcutId: "open-command-palette", context: lone }),
     );
     expect(parsed?.context).toContain("�");
-    expect(parsed!.context!.isWellFormed()).toBe(true);
-    expect(isWellFormed(parsed!.context!)).toBe(true);
+    expect(parsed?.context).toBe(`a�${"b".repeat(200)}`);
+    expect(parsed?.context?.isWellFormed()).toBe(true);
+    expect(isWellFormed(parsed?.context ?? "")).toBe(true);
   });
 
-  it("sanitizes lone surrogates without truncation when under limit", () => {
+  it("sanitizes lone surrogates in short context", () => {
     const lone = `ok ${String.fromCharCode(0xd800)} end`;
     const parsed = parseShortcutBody(
       JSON.stringify({ shortcutId: "open-command-palette", context: lone }),
     );
     expect(parsed?.context).toBe(`ok � end`);
-    expect(isWellFormed(parsed!.context!)).toBe(true);
+    expect(isWellFormed(parsed?.context ?? "")).toBe(true);
   });
 });
 
 describe("parseComposerBody surrogate handling", () => {
-  it("keeps surrogate pairs intact at conversationId truncation boundary", () => {
+  it("rejects an oversized conversationId instead of silently shortening it", () => {
     const emoji = String.fromCharCode(0xd83e, 0xdd8a);
     const conversationId = `${"a".repeat(127)}${emoji}${"b".repeat(10)}`;
     const parsed = parseComposerBody(
@@ -456,15 +456,10 @@ describe("parseComposerBody surrogate handling", () => {
         occurredAt: "2026-06-01T12:00:00.000Z",
       }),
     );
-    expect(parsed?.conversationId).toBeDefined();
-    expect(parsed!.conversationId!.length).toBeLessThanOrEqual(128);
-    expect(parsed!.conversationId!.length).toBe(127);
-    expect(parsed!.conversationId!.isWellFormed()).toBe(true);
-    expect(isWellFormed(parsed!.conversationId!)).toBe(true);
-    expect(parsed!.conversationId).not.toContain(emoji);
+    expect(parsed).toBeNull();
   });
 
-  it("preserves a fitting emoji in conversationId under cap", () => {
+  it("preserves a fitting emoji in an in-range conversationId", () => {
     const emoji = String.fromCharCode(0xd83e, 0xdd8a);
     const conversationId = `${"a".repeat(126)}${emoji}`;
     const parsed = parseComposerBody(
@@ -477,7 +472,7 @@ describe("parseComposerBody surrogate handling", () => {
       }),
     );
     expect(parsed?.conversationId).toBe(conversationId);
-    expect(isWellFormed(parsed!.conversationId!)).toBe(true);
+    expect(isWellFormed(parsed?.conversationId ?? "")).toBe(true);
   });
 
   it("sanitizes lone surrogates in conversationId", () => {
@@ -492,10 +487,10 @@ describe("parseComposerBody surrogate handling", () => {
       }),
     );
     expect(parsed?.conversationId).toBe(`ok � end`);
-    expect(isWellFormed(parsed!.conversationId!)).toBe(true);
+    expect(isWellFormed(parsed?.conversationId ?? "")).toBe(true);
   });
 
-  it("never emits lone surrogates at every boundary around 128", () => {
+  it("keeps valid in-range identifiers and rejects oversized ones", () => {
     const emoji = String.fromCharCode(0xd83e, 0xdd8a);
     for (let n = 0; n <= 133; n++) {
       const conversationId = `${"x".repeat(n)}${emoji}`;
@@ -508,10 +503,15 @@ describe("parseComposerBody surrogate handling", () => {
           occurredAt: "2026-06-01T12:00:00.000Z",
         }),
       );
-      if (parsed?.conversationId) {
+      if (conversationId.length <= 128) {
+        expect(parsed?.conversationId).toBe(conversationId);
+        if (!parsed?.conversationId) throw new Error("expected conversationId");
         expect(isWellFormed(parsed.conversationId)).toBe(true);
         expect(parsed.conversationId.isWellFormed()).toBe(true);
         expect(parsed.conversationId.length).toBeLessThanOrEqual(128);
+      } else {
+        expect(parsed).toBeNull();
+        expect(conversationId.length).toBeGreaterThan(128);
       }
     }
   });

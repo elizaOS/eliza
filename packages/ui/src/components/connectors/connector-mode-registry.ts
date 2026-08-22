@@ -492,31 +492,6 @@ registerConnectorModes("whatsapp", [
 
 registerConnectorModes("imessage", [
   {
-    id: "blooio",
-    label: "Blooio (Cloud)",
-    labelKey: "connectormode.imessage.blooio.label",
-    description:
-      "Hosted iMessage/SMS transport. No Mac or local relay is required.",
-    descriptionKey: "connectormode.imessage.blooio.description",
-    managementMode: "cloud-managed",
-    setupPluginId: "blooio",
-    channelMode: "bot",
-    cloudOnly: true,
-    defaultPriority: 0,
-  },
-  {
-    id: "cloud-bluebubbles",
-    label: "iPhone Cloud Gateway",
-    description:
-      "Register a Mac-hosted BlueBubbles relay for your real iPhone number; each sender reaches their own Eliza Cloud agent.",
-    managementMode: "cloud-managed",
-    setupPluginId: "bluebubbles",
-    channelMode: "delegate",
-    cloudOnly: true,
-    cloudGatewaySetup: "phone-registration",
-    defaultPriority: 1,
-  },
-  {
     id: "direct",
     label: "Messages on this Mac",
     labelKey: "connectormode.imessage.direct.label",
@@ -527,32 +502,7 @@ registerConnectorModes("imessage", [
     setupPluginId: "imessage",
     channelMode: "delegate",
     hideOnManagedCloud: true,
-    defaultPriority: 2,
-  },
-]);
-
-registerConnectorModes("bluebubbles", [
-  {
-    id: "cloud",
-    label: "iPhone Cloud Gateway",
-    description:
-      "Register this Mac/iPhone bridge with Eliza Cloud so each sender reaches their own agent.",
-    managementMode: "cloud-managed",
-    setupPluginId: "bluebubbles",
-    channelMode: "delegate",
-    cloudOnly: true,
-    cloudGatewaySetup: "phone-registration",
     defaultPriority: 0,
-  },
-  {
-    id: "local",
-    label: "Local Agent",
-    description:
-      "Connect this app directly to a BlueBubbles server on your local network.",
-    managementMode: "local-config",
-    setupPluginId: "bluebubbles",
-    channelMode: "delegate",
-    defaultPriority: 1,
   },
 ]);
 
@@ -578,7 +528,6 @@ for (const connectorId of [
   "tlon",
   "nextcloud-talk",
   "twitch",
-  "blooio",
 ]) {
   registerConnectorChannelModeFallback(connectorId, "bot");
 }

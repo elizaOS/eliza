@@ -111,10 +111,11 @@ export function hasContextSignalSync(
   state: State | undefined,
   strongTerms: readonly string[],
   weakTerms: readonly string[] = [],
-  contextLimit = Number.MAX_SAFE_INTEGER,
+  /** @deprecated Complete state context is always inspected. Retained for source compatibility. */
+  _contextLimit = Number.MAX_SAFE_INTEGER,
 ): boolean {
   const texts = [
-    ...recentConversationTextsFromState(state, contextLimit),
+    ...recentConversationTextsFromState(state),
     messageText(message).trim(),
   ].filter((t) => t.length > 0);
 
@@ -142,6 +143,7 @@ export function hasContextSignalSyncForKey(
   state: State | undefined,
   key: ContextSignalKey,
   options?: {
+    /** @deprecated Complete state context is always inspected. Retained for source compatibility. */
     contextLimit?: number;
     includeAllLocales?: boolean;
     locale?: unknown;
@@ -151,13 +153,7 @@ export function hasContextSignalSyncForKey(
   const spec = resolveContextSignalSpec(key, locale, {
     includeAllLocales: options?.includeAllLocales ?? true,
   });
-  return hasContextSignalSync(
-    message,
-    state,
-    spec.strongTerms,
-    spec.weakTerms,
-    options?.contextLimit ?? Number.MAX_SAFE_INTEGER,
-  );
+  return hasContextSignalSync(message, state, spec.strongTerms, spec.weakTerms);
 }
 
 export function hasSelectedActionContext(
@@ -187,18 +183,13 @@ export function hasSelectedContextOrSignalSync(
   actionContexts: readonly AgentContext[],
   strongTerms: readonly string[],
   weakTerms: readonly string[] = [],
-  contextLimit = Number.MAX_SAFE_INTEGER,
+  /** @deprecated Complete state context is always inspected. Retained for source compatibility. */
+  _contextLimit = Number.MAX_SAFE_INTEGER,
 ): boolean {
   if (hasSelectedActionContext(message, state, actionContexts)) {
     return true;
   }
-  return hasContextSignalSync(
-    message,
-    state,
-    strongTerms,
-    weakTerms,
-    contextLimit,
-  );
+  return hasContextSignalSync(message, state, strongTerms, weakTerms);
 }
 
 /**
@@ -213,7 +204,7 @@ export async function hasContextSignal(
   weakTerms: readonly string[] = [],
   contextLimit = Number.MAX_SAFE_INTEGER,
 ): Promise<boolean> {
-  const stateTexts = recentConversationTextsFromState(state, contextLimit);
+  const stateTexts = recentConversationTextsFromState(state);
   let texts: string[];
 
   if (stateTexts.length >= contextLimit) {
@@ -223,7 +214,6 @@ export async function hasContextSignal(
       runtime,
       message,
       state,
-      limit: contextLimit,
     });
   }
 

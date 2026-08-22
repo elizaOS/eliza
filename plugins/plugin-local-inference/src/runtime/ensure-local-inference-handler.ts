@@ -59,6 +59,7 @@ import {
 	extractPromptCacheKey,
 	resolveLocalCacheKey,
 } from "../services/cache-bridge";
+import { mergeElizaTurnStopSequences } from "../services/eliza-turn-stops";
 import { localInferenceEngine } from "../services/engine";
 import { handlerRegistry } from "../services/handler-registry";
 import { probeHardware } from "../services/hardware";
@@ -380,6 +381,7 @@ function extractThinkingControl(
  * shared `ELIZA_LOCAL_STREAM_TOKENS_PER_STEP` env knob; the runner clamps it.
  */
 const DEFAULT_CHAT_STREAM_TOKENS_PER_STEP = 8;
+
 function resolveChatStreamTokensPerStep(): number {
 	const raw = process.env.ELIZA_LOCAL_STREAM_TOKENS_PER_STEP?.trim();
 	const parsed = raw ? Number.parseInt(raw, 10) : Number.NaN;
@@ -455,7 +457,7 @@ function engineGenerateArgsFromParams(
 			: undefined;
 	return {
 		prompt: params.prompt ?? (promptFromSegments || promptFromMessages),
-		stopSequences: params.stopSequences,
+		stopSequences: mergeElizaTurnStopSequences(params.stopSequences),
 		cacheKey,
 		signal: params.signal,
 		maxTokens: params.maxTokens,

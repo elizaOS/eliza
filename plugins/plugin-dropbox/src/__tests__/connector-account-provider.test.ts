@@ -11,6 +11,7 @@ import type {
   ConnectorAccountManager,
   ConnectorOAuthCallbackRequest,
   ConnectorOAuthStartRequest,
+  ElizaError,
   IAgentRuntime,
 } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
@@ -240,5 +241,20 @@ describe("Dropbox OAuth callback", () => {
     await expect(invalid.completeOAuth?.(callbackRequest("code"), manager)).rejects.toThrow(
       /invalid payload/
     );
+  });
+
+  it("preserves the complete failed token-exchange body", async () => {
+    const suffix = "DISTINGUISHING-TOKEN-SUFFIX";
+    const { runtime } = fakeRuntime(SETTINGS);
+    const provider = createDropboxConnectorAccountProvider(runtime, {
+      fetchImpl: async () => new Response(`${"x".repeat(10_000)}${suffix}`, { status: 400 }),
+    });
+    const { manager } = fakeManager();
+
+    const error = await provider
+      .completeOAuth?.(callbackRequest("bad"), manager)
+      .catch((thrown: unknown) => thrown as ElizaError);
+
+    expect(error?.context?.body).toContain(suffix);
   });
 });

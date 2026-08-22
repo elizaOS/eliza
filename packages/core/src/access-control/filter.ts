@@ -11,7 +11,7 @@
  * change; keep the two in lockstep. An unresolved role fails closed to the
  * least-privileged `USER` tier.
  */
-import { isAdminRank, type RoleName } from "../roles";
+import type { RoleName } from "../roles";
 import type { AccessContext, MemoryScope, UUID } from "../types";
 
 interface AccessScopedRecord {
@@ -42,10 +42,11 @@ function isMemoryScope(value: unknown): value is MemoryScope {
  * Read-side actor role: the core {@link RoleName} widened with the machine
  * tiers the scope ladder recognizes — `AGENT` (an agent reading its own store)
  * and `RUNTIME` (the documents read path that delegates to this ladder).
- * {@link actorFromAccessContext} only ever yields `OWNER`/`USER`/`AGENT`;
- * `RUNTIME` is supplied by the documents plugin, never minted from a message.
+ * {@link actorFromAccessContext} preserves explicit human roles, yields `AGENT`
+ * for self-read, and uses `UNRESOLVED` when authority is absent. `RUNTIME` is
+ * supplied by trusted internal callers, never minted from a message.
  */
-export type ActorRole = RoleName | "AGENT" | "RUNTIME";
+export type ActorRole = RoleName | "AGENT" | "RUNTIME" | "UNRESOLVED";
 
 export interface ScopeActor {
 	entityId: UUID;
@@ -54,10 +55,8 @@ export interface ScopeActor {
 
 /**
  * Collapse an {@link AccessContext} into the scope-ladder actor. A self-read
- * (requester is the agent) is `AGENT`; OWNER/ADMIN manage owner-scoped
- * memories; everyone else (USER/GUEST, or no role at all — e.g. a DM that
- * resolved no world) is `USER`, the least-privileged tier, so an unresolved
- * role fails closed rather than open.
+ * (requester is the agent) is `AGENT`; every explicit role remains distinct.
+ * Missing role authority becomes `UNRESOLVED`, which every scope denies.
  */
 export function actorFromAccessContext(
 	ctx: AccessContext,
@@ -66,10 +65,17 @@ export function actorFromAccessContext(
 	if (ctx.requesterEntityId === agentId) {
 		return { entityId: agentId, role: "AGENT" };
 	}
-	if (ctx.isOwner || isAdminRank(ctx.role)) {
+	if (ctx.isOwner || ctx.role === "OWNER") {
 		return { entityId: ctx.requesterEntityId, role: "OWNER" };
 	}
-	return { entityId: ctx.requesterEntityId, role: "USER" };
+	switch (ctx.role) {
+		case "ADMIN":
+		case "USER":
+		case "GUEST":
+			return { entityId: ctx.requesterEntityId, role: ctx.role };
+		default:
+			return { entityId: ctx.requesterEntityId, role: "UNRESOLVED" };
+	}
 }
 
 /**
@@ -87,6 +93,7 @@ export function canReadScope(
 	actor: ScopeActor,
 	opts?: { scopedToEntityId?: UUID },
 ): boolean {
+	if (actor.role === "UNRESOLVED") return false;
 	switch (scope) {
 		case "global":
 		case "shared":
@@ -103,6 +110,7 @@ export function canReadScope(
 		case "user-private":
 		case "private": {
 			if (!scopedEntityId) return false;
+			if (actor.role === "GUEST") return false;
 			if (actor.role === "AGENT" || actor.role === "RUNTIME") return true;
 			if (actor.role === "OWNER") {
 				return opts?.scopedToEntityId
@@ -118,10 +126,14 @@ export function canReadScope(
  * Filter retrieval records down to those `ctx`'s requester may read. A pure,
  * strictly subtractive `.filter()`: it composes with (never duplicates)
  * Postgres RLS, which gates on `entity_id`/`server_id` while this gates on
- * `metadata.scope`. Scope defaults to `global` only when absent; malformed
- * scopes fail closed. The owning entity is taken from
- * `metadata.scopedToEntityId`, else `metadata.addedBy`, else `entityId`
- * (mirroring the documents plugin).
+ * `metadata.scope`. An ABSENT scope fails CLOSED to `private` (author-scoped):
+ * an unstamped legacy row must never be treated as globally readable, because
+ * a write path that forgot to stamp a scope would otherwise silently publish
+ * private data to every actor. `private` (rather than `owner-private`) keeps
+ * the author's own rows and the agent's self-recall working on legacy
+ * unstamped data while still denying strangers. Malformed scopes also fail
+ * closed. The owning entity is taken from `metadata.scopedToEntityId`, else
+ * `metadata.addedBy`, else `entityId` (mirroring the documents plugin).
  */
 export function filterByAccessContext<T extends AccessScopedRecord>(
 	memories: T[],
@@ -134,7 +146,15 @@ export function filterByAccessContext<T extends AccessScopedRecord>(
 		if (rawScope !== undefined && !isMemoryScope(rawScope)) {
 			return false;
 		}
-		const scope = rawScope ?? "global";
+		// Fail closed: no stamp = `private` (author-scoped), never `global`. The
+		// author (via the scopedToEntityId -> addedBy -> entityId resolution
+		// below), the agent, and the runtime can still read an unstamped row;
+		// strangers (USER/GUEST/unresolved) cannot. This deliberately DIVERGES
+		// from normalizeScope (artifact-disclosure.ts), which defaults absent
+		// scopes to owner-private: artifacts have no agent-self-recall
+		// requirement, but messages do — legacy unstamped message rows must stay
+		// readable to their author and to the agent, or recall silently breaks.
+		const scope = rawScope ?? "private";
 		const meta = memory.metadata;
 		const scopedTo = meta?.scopedToEntityId;
 		const addedBy = meta?.addedBy;

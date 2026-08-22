@@ -47,6 +47,9 @@ it("keeps the existing iOS custom pod include gates", () => {
   expect(defaultPods.get("ElizaosCapacitorAgent")).toBe(
     "@elizaos/capacitor-agent",
   );
+  expect(defaultPods.get("ElizaosCapacitorBrowserSurface")).toBe(
+    "@elizaos/capacitor-browser-surface",
+  );
   expect(defaultPods.has("ElizaosCapacitorBunRuntime")).toBe(false);
   expect(defaultPods.has("ElizaosCapacitorMobileAgentBridge")).toBe(false);
   expect(defaultPods.has("LlamaCpp")).toBe(false);

@@ -43,6 +43,8 @@ import type {
 	UUID,
 } from "../../../types/index.ts";
 import {
+	buildContentReference,
+	buildReadSlice,
 	CANONICAL_MESSAGE_TARGET_KINDS,
 	ChannelType,
 	inspectSendHandlerResult,
@@ -52,6 +54,7 @@ import { MESSAGE_SOURCE_CLIENT_CHAT } from "../../../types/message-source.ts";
 import { hasActionContext } from "../../../utils/action-validation.ts";
 import { requireConfirmation } from "../../../utils/confirmation.ts";
 import { getActiveRoutingContextsForTurn } from "../../../utils/context-routing.ts";
+import { createHash } from "../../../utils/crypto-compat.ts";
 import { isObjectRecord as isRecord } from "../../../utils/type-guards.ts";
 import { toWellFormedUnicode } from "../../../utils/well-formed.ts";
 import { stringToUuid } from "../../../utils.ts";
@@ -64,7 +67,12 @@ import { scheduleDraftSendAction } from "../../messaging/triage/actions/schedule
 import { searchMessagesAction as searchInboxMessagesAction } from "../../messaging/triage/actions/searchMessages.ts";
 import { sendDraftAction } from "../../messaging/triage/actions/sendDraft.ts";
 import { triageMessagesAction } from "../../messaging/triage/actions/triageMessages.ts";
-import { MANAGE_OPERATION_KINDS } from "../../messaging/triage/types.ts";
+import { getDefaultTriageService } from "../../messaging/triage/triage-service.ts";
+import {
+	ALL_MESSAGE_SOURCES,
+	MANAGE_OPERATION_KINDS,
+	type MessageSource,
+} from "../../messaging/triage/types.ts";
 import {
 	refreshMessageConnectorActionDescription,
 	trustedConnectorAccountId,
@@ -79,6 +87,7 @@ export const MESSAGE_OPS = [
 	"send",
 	"read_channel",
 	"read_with_contact",
+	"read_message",
 	"search",
 	"list_channels",
 	"list_servers",
@@ -107,9 +116,9 @@ export type MessageOperation = (typeof MESSAGE_OPS)[number];
 const MESSAGE_CONTEXTS = ["messaging", "email", "contacts", "connectors"];
 
 const MESSAGE_DESCRIPTION =
-	"Addressed messaging action: DMs, groups, channels, rooms, threads, servers, users, inboxes, drafts. Use action. Public feed publishing uses POST.";
+	"Addressed messaging action: DMs, groups, channels, rooms, threads, servers, users, inboxes, drafts. Use read_message to page an exact provider message or email body after a compact inbox result. Public feed publishing uses POST.";
 const MESSAGE_COMPRESSED =
-	"primary message action send read_channel read_with_contact search list_channels list_servers list_connections join leave react edit delete pin get_user triage list_inbox search_inbox draft_reply draft_followup respond send_draft schedule_draft_send manage dm group channel room thread user server inbox draft connections platforms reachable";
+	"primary message action send read_channel read_with_contact read_message search list_channels list_servers list_connections join leave react edit delete pin get_user triage list_inbox search_inbox draft_reply draft_followup respond send_draft schedule_draft_send manage dm group channel room thread user server inbox draft connections platforms reachable";
 
 // ---------------------------------------------------------------------------
 // Param coercion / op normalization
@@ -186,6 +195,9 @@ const OP_ALIASES: Record<string, MessageOperation> = {
 	read_room: "read_channel",
 	read_chat: "read_channel",
 	read_with_contact: "read_with_contact",
+	read_message: "read_message",
+	read_email: "read_message",
+	read_email_body: "read_message",
 	read_dms: "read_with_contact",
 	conversation_with: "read_with_contact",
 	chat_with: "read_with_contact",
@@ -717,7 +729,6 @@ async function resolveOptionalTarget(
 						"TARGET_AMBIGUOUS",
 						`Target ambiguous for ${connector.label}. Choose one of:\n` +
 							sorted
-								.slice(0, 8)
 								.map(
 									(t, i) =>
 										`${i + 1}. ${t.label ?? targetLabel(t.target)} (${t.kind ?? "target"})`,
@@ -2967,6 +2978,213 @@ async function handleSend(
 
 const CHANNEL_READ_DEFAULT_LIMIT = 50;
 const CHANNEL_READ_MAX_LIMIT = 200;
+const MEMORY_READ_DEFAULT_BYTES = 4096;
+const MEMORY_READ_MAX_BYTES = 64 * 1024;
+
+function memoryReadFailure(
+	code: string,
+	text: string,
+	extra?: Record<string, unknown>,
+): ActionResult {
+	const metadata = {
+		actionName: "MESSAGE",
+		operation: "read_channel",
+		error: code,
+		...(extra ?? {}),
+	};
+	return {
+		success: false,
+		text,
+		values: { success: false, error: code },
+		data: metadata,
+		promptData: metadata,
+	};
+}
+
+function memoryScopeAllowsSameRoomRead(
+	stored: Memory,
+	requesterId: UUID,
+	agentId: UUID,
+): boolean {
+	const metadata = (stored.metadata ?? {}) as Record<string, unknown>;
+	const scope = metadata.scope;
+	if (
+		scope === undefined ||
+		scope === "global" ||
+		scope === "shared" ||
+		scope === "room"
+	) {
+		return true;
+	}
+	const scopedTo =
+		typeof metadata.scopedToEntityId === "string"
+			? metadata.scopedToEntityId
+			: typeof metadata.addedBy === "string"
+				? metadata.addedBy
+				: stored.entityId;
+	if (scope === "private" || scope === "user-private") {
+		return scopedTo === requesterId;
+	}
+	if (scope === "agent-private") return requesterId === agentId;
+	// Owner-private needs a live owner-role proof that this narrow same-room
+	// action does not mint. Fail closed rather than infer it from content.
+	return false;
+}
+
+function safeMemoryReadInteger(
+	value: number | undefined,
+	label: "offset" | "limit",
+	fallback: number,
+): number | undefined {
+	if (value === undefined) return fallback;
+	if (!Number.isSafeInteger(value) || value < 0) return undefined;
+	if (label === "limit" && (value < 1 || value > MEMORY_READ_MAX_BYTES)) {
+		return undefined;
+	}
+	return value;
+}
+
+function isUtf8Boundary(bytes: Uint8Array, offset: number): boolean {
+	return (
+		offset === 0 || offset === bytes.length || (bytes[offset] & 0xc0) !== 0x80
+	);
+}
+
+async function handleReadStoredMemory(
+	runtime: IAgentRuntime,
+	message: Memory,
+	params: ParamRecord,
+	memoryReference: string,
+): Promise<ActionResult> {
+	const memoryRef = memoryReference.startsWith("memory:")
+		? memoryReference.slice("memory:".length)
+		: memoryReference;
+	if (!isUuidLike(memoryRef)) {
+		return memoryReadFailure(
+			"MESSAGE_MEMORY_INVALID_REFERENCE",
+			"The stored message reference is invalid.",
+		);
+	}
+	const stored = await runtime.getMemoryById(memoryRef);
+	if (!stored || stored.agentId !== runtime.agentId) {
+		return memoryReadFailure(
+			"MESSAGE_MEMORY_NOT_FOUND",
+			"The stored message was not found.",
+		);
+	}
+	if (stored.roomId !== message.roomId) {
+		return memoryReadFailure(
+			"MESSAGE_MEMORY_ACCESS_DENIED",
+			"The stored message is not readable from this room.",
+		);
+	}
+	let stillParticipant = false;
+	try {
+		stillParticipant = (
+			await runtime.getParticipantsForRoom(stored.roomId)
+		).includes(message.entityId);
+	} catch (error) {
+		// error-policy:J1 The action boundary reports authorization lookup failure
+		// without disclosing whether the referenced memory exists in the room.
+		runtime.reportError("MESSAGE.readStoredMemory.authorization", error, {
+			roomId: stored.roomId,
+		});
+		return memoryReadFailure(
+			"MESSAGE_MEMORY_AUTHORIZATION_UNAVAILABLE",
+			"Stored-message authorization is unavailable.",
+		);
+	}
+	if (
+		!stillParticipant ||
+		!memoryScopeAllowsSameRoomRead(stored, message.entityId, runtime.agentId)
+	) {
+		return memoryReadFailure(
+			"MESSAGE_MEMORY_ACCESS_DENIED",
+			"The stored message is not readable from this room.",
+		);
+	}
+
+	const offset = safeMemoryReadInteger(numberParam(params.offset), "offset", 0);
+	const limit = safeMemoryReadInteger(
+		numberParam(params.limit),
+		"limit",
+		MEMORY_READ_DEFAULT_BYTES,
+	);
+	if (offset === undefined || limit === undefined) {
+		return memoryReadFailure(
+			"MESSAGE_MEMORY_INVALID_RANGE",
+			`Stored-message offset must be a nonnegative safe integer and limit must be 1-${MEMORY_READ_MAX_BYTES} bytes.`,
+		);
+	}
+
+	const sourceText = stored.content.text ?? "";
+	const bytes = new TextEncoder().encode(sourceText);
+	if (offset > bytes.length || !isUtf8Boundary(bytes, offset)) {
+		return memoryReadFailure(
+			"MESSAGE_MEMORY_INVALID_RANGE",
+			"Stored-message offset is outside the content or splits a UTF-8 code point.",
+			{ totalBytes: bytes.length },
+		);
+	}
+	let end = Math.min(offset + limit, bytes.length);
+	while (end > offset && !isUtf8Boundary(bytes, end)) end--;
+	if (end === offset && offset < bytes.length) {
+		return memoryReadFailure(
+			"MESSAGE_MEMORY_INVALID_RANGE",
+			"Stored-message limit is too small to include the next UTF-8 code point.",
+			{ minimumLimit: 4 },
+		);
+	}
+
+	const sourceSha256 = createHash("sha256").update(bytes).digest("hex");
+	const revision = `rev:${sourceSha256}`;
+	const expectedRevision = textParam(params.expectedRevision);
+	if (offset > 0 && !expectedRevision) {
+		return memoryReadFailure(
+			"MESSAGE_MEMORY_EXPECTED_REVISION_REQUIRED",
+			"Stored-message continuation requires expectedRevision.",
+		);
+	}
+	if (expectedRevision && expectedRevision !== revision) {
+		return memoryReadFailure(
+			"MESSAGE_MEMORY_STALE_REVISION",
+			"The stored message changed before this page could be read.",
+			{ currentRevision: revision },
+		);
+	}
+
+	const pageBytes = bytes.slice(offset, end);
+	const text = new TextDecoder("utf-8", { fatal: true }).decode(pageBytes);
+	const readView = {
+		reference: buildContentReference({
+			kind: "memory",
+			ref: `memory:${memoryRef}`,
+			revision,
+		}),
+		slice: buildReadSlice({
+			range: { unit: "byte", start: offset, end, total: bytes.length },
+			completeness: end < bytes.length ? "partial-recoverable" : "complete",
+			revision,
+			sliceSha256: createHash("sha256").update(pageBytes).digest("hex"),
+			sourceSha256,
+		}),
+	};
+	const metadata = {
+		actionName: "MESSAGE",
+		operation: "read_channel",
+		messageRef: readView.reference.ref,
+		readView,
+	};
+	// The exact page has one carrier. Structured fields contain only the opaque
+	// reference and bounded range/digest metadata.
+	return {
+		success: true,
+		text,
+		values: { success: true, readView },
+		data: metadata,
+		promptData: metadata,
+	};
+}
 
 function parseDateParam(value: string | undefined): number | undefined {
 	if (!value) return undefined;
@@ -3048,6 +3266,13 @@ async function handleReadChannel(
 	state: State | undefined,
 	params: ParamRecord,
 ): Promise<ActionResult> {
+	const memoryReference =
+		textParam(params.reference) ??
+		textParam(params.messageId) ??
+		textParam(params.id);
+	if (memoryReference) {
+		return handleReadStoredMemory(runtime, message, params, memoryReference);
+	}
 	const connectors = listMessageConnectors(runtime);
 	const source = sourceFromParams(params, message);
 	const accountId = accountIdFromParams(params, message);
@@ -3392,7 +3617,7 @@ async function handleReadWithContact(
 				conversations.push({
 					platform: roomPlatform,
 					roomId: room.id,
-					roomName: roomRecord.name ?? `Room ${room.id.slice(0, 8)}`,
+					roomName: roomRecord.name ?? `Room ${room.id}`,
 					messageCount: memories.length,
 					lastMessageAt: last?.createdAt
 						? new Date(last.createdAt).toISOString()
@@ -3771,10 +3996,6 @@ async function handleListServers(
 	}
 }
 
-// At most this many connectors in the cross-connector roster, so a deployment
-// wired to many accounts can't produce an unbounded result.
-const MAX_LISTED_CONNECTIONS = 8;
-
 // Cross-connector: unlike list_channels/list_servers (which pick ONE connector
 // via selectConnectorForOp), this iterates EVERY connector exposing listRooms
 // and reports a per-platform summary — platform + label + account + room count,
@@ -3810,8 +4031,6 @@ async function handleListConnections(
 		if (!connector.accountId && sourcesWithAccount.has(connector.source)) {
 			continue;
 		}
-		if (connections.length >= MAX_LISTED_CONNECTIONS) break;
-
 		const context = buildQueryContext(
 			runtime,
 			message,
@@ -4124,6 +4343,69 @@ async function handleGetUser(
 	}
 }
 
+async function handleReadMessage(
+	runtime: IAgentRuntime,
+	_message: Memory,
+	params: ParamRecord,
+): Promise<ActionResult> {
+	const sourceValue = textParam(params.source) ?? "gmail";
+	if (!(ALL_MESSAGE_SOURCES as readonly string[]).includes(sourceValue)) {
+		return opFailure(
+			"read_message",
+			"MESSAGE_READ_INVALID_SOURCE",
+			`MESSAGE op=read_message does not recognize source "${sourceValue}".`,
+		);
+	}
+	const messageId = textParam(params.messageId) ?? textParam(params.id);
+	const reference = textParam(params.reference);
+	if (!messageId && !reference) {
+		return opFailure(
+			"read_message",
+			"MESSAGE_READ_MISSING_REFERENCE",
+			"MESSAGE op=read_message requires messageId for the first page or reference for a continuation.",
+		);
+	}
+	const unitValue = textParam(params.unit) ?? "byte";
+	if (!(["line", "fragment", "byte"] as const).includes(unitValue as never)) {
+		return opFailure(
+			"read_message",
+			"MESSAGE_READ_INVALID_UNIT",
+			"MESSAGE op=read_message unit must be line, fragment, or byte.",
+		);
+	}
+	try {
+		const result = await getDefaultTriageService().readMessage(
+			runtime,
+			sourceValue as MessageSource,
+			{
+				messageId,
+				reference,
+				worldId: textParam(params.accountId),
+				offset: numberParam(params.offset),
+				limit: numberParam(params.limit),
+				unit: unitValue as "line" | "fragment" | "byte",
+				expectedRevision: textParam(params.expectedRevision),
+			},
+		);
+		const projection = {
+			readView: result.readView,
+			...(result.control ? { control: result.control } : {}),
+		};
+		// The exact body page has one carrier. Structured projections contain
+		// only source identity, integrity, range, and continuation metadata.
+		return {
+			success: true,
+			text: result.text,
+			values: { success: true },
+			data: projection,
+			promptData: projection,
+		};
+	} catch (error) {
+		// error-policy:J1 Provider/auth/range failures become explicit action failures.
+		return opErrorWrap("read_message", error);
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Triage / inbox / draft delegations
 // ---------------------------------------------------------------------------
@@ -4241,6 +4523,7 @@ export const MESSAGE_PARAMETERS: ActionParameter[] = [
 			"respond",
 			"send_draft",
 			"manage",
+			"read_message",
 		],
 		schema: { type: "string" },
 	},
@@ -4261,6 +4544,7 @@ export const MESSAGE_PARAMETERS: ActionParameter[] = [
 			"delete",
 			"pin",
 			"get_user",
+			"read_message",
 		],
 		schema: { type: "string" },
 	},
@@ -4676,9 +4960,10 @@ export const MESSAGE_PARAMETERS: ActionParameter[] = [
 	{
 		name: "messageId",
 		description:
-			"Platform/full message ID or stored memory ID for react/edit/delete/pin/respond.",
+			"Platform/full message ID or stored memory ID for read_channel/react/edit/delete/pin/respond. With read_channel, returns an exact byte page of that stored message.",
 		required: false,
 		subactions: [
+			"read_channel",
 			"react",
 			"edit",
 			"delete",
@@ -4686,6 +4971,7 @@ export const MESSAGE_PARAMETERS: ActionParameter[] = [
 			"draft_reply",
 			"respond",
 			"manage",
+			"read_message",
 		],
 		schema: { type: "string" },
 	},
@@ -4701,6 +4987,7 @@ export const MESSAGE_PARAMETERS: ActionParameter[] = [
 		description: "Alias for messageId.",
 		required: false,
 		subactions: [
+			"read_channel",
 			"react",
 			"edit",
 			"delete",
@@ -4710,7 +4997,39 @@ export const MESSAGE_PARAMETERS: ActionParameter[] = [
 			"manage",
 			"send_draft",
 			"schedule_draft_send",
+			"read_message",
 		],
+		schema: { type: "string" },
+	},
+	{
+		name: "reference",
+		description:
+			"Opaque continuation reference returned by read_message or a stored read_channel page.",
+		required: false,
+		subactions: ["read_channel", "read_message"],
+		schema: { type: "string" },
+	},
+	{
+		name: "offset",
+		description:
+			"Zero-based range offset for read_message, or UTF-8 byte offset for read_channel with a stored messageId.",
+		required: false,
+		subactions: ["read_channel", "read_message"],
+		schema: { type: "number", minimum: 0 },
+	},
+	{
+		name: "unit",
+		description: "Paging unit for read_message; byte is the bounded default.",
+		required: false,
+		subactions: ["read_message"],
+		schema: { type: "string", enum: ["line", "fragment", "byte"] },
+	},
+	{
+		name: "expectedRevision",
+		description:
+			"Revision returned by the preceding read_message or stored read_channel page.",
+		required: false,
+		subactions: ["read_channel", "read_message"],
 		schema: { type: "string" },
 	},
 	{
@@ -4795,6 +5114,7 @@ export const MESSAGE_PARAMETERS: ActionParameter[] = [
 			"triage",
 			"list_inbox",
 			"search_inbox",
+			"read_message",
 		],
 		schema: { type: "number" },
 	},
@@ -4940,6 +5260,8 @@ export const messageAction: Action = {
 				return handleReadChannel(runtime, message, state, params);
 			case "read_with_contact":
 				return handleReadWithContact(runtime, message, state, params);
+			case "read_message":
+				return handleReadMessage(runtime, message, params);
 			case "search":
 				return handleSearch(runtime, message, state, params);
 			case "list_channels":

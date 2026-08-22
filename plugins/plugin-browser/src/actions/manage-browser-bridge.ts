@@ -52,7 +52,6 @@ import {
 } from "../service.js";
 
 const ACTION_NAME = "MANAGE_BROWSER_BRIDGE";
-const MAX_BROWSER_BRIDGE_TEXT_LENGTH = 3000;
 const BROWSER_BRIDGE_TIMEOUT_MS = 30_000;
 
 export const BROWSER_BRIDGE_SUBACTIONS = [
@@ -205,11 +204,9 @@ async function runInstall(): Promise<ActionResult> {
       `[${ACTION_NAME}] could not open chrome://extensions: ${describeError(err)}`,
     );
   }
-  const text = (
-    openedManager
-      ? `Chrome is ready. Click Load unpacked and choose ${reveal.path}.`
-      : `The Agent Browser Bridge folder is ready at ${reveal.path}. Open chrome://extensions, click Load unpacked, and choose that folder.`
-  ).slice(0, MAX_BROWSER_BRIDGE_TEXT_LENGTH);
+  const text = openedManager
+    ? `Chrome is ready. Click Load unpacked and choose ${reveal.path}.`
+    : `The Agent Browser Bridge folder is ready at ${reveal.path}. Open chrome://extensions, click Load unpacked, and choose that folder.`;
   return {
     text,
     success: true,
@@ -229,11 +226,7 @@ async function runRevealFolder(): Promise<ActionResult> {
     openBrowserBridgeCompanionPackagePath("chrome_build", { revealOnly: true }),
     "browser bridge reveal",
   );
-  const text =
-    `Revealed the Agent Browser Bridge folder at ${reveal.path}.`.slice(
-      0,
-      MAX_BROWSER_BRIDGE_TEXT_LENGTH,
-    );
+  const text = `Revealed the Agent Browser Bridge folder at ${reveal.path}.`;
   return {
     text,
     success: true,
@@ -252,10 +245,7 @@ async function runOpenManager(): Promise<ActionResult> {
     "browser bridge manager open",
   );
   const text =
-    "Opened Chrome extensions. Click Load unpacked and choose the Agent Browser Bridge folder.".slice(
-      0,
-      MAX_BROWSER_BRIDGE_TEXT_LENGTH,
-    );
+    "Opened Chrome extensions. Click Load unpacked and choose the Agent Browser Bridge folder.";
   return {
     text,
     success: true,
@@ -400,11 +390,7 @@ export const manageBrowserBridgeAction: Action = {
         }
       }
     } catch (err) {
-      const text =
-        `Failed MANAGE_BROWSER_BRIDGE ${subaction}: ${describeError(err)}`.slice(
-          0,
-          MAX_BROWSER_BRIDGE_TEXT_LENGTH,
-        );
+      const text = `Failed MANAGE_BROWSER_BRIDGE ${subaction}: ${describeError(err)}`;
       logger.warn(`[${ACTION_NAME}] ${text}`);
       return {
         text,

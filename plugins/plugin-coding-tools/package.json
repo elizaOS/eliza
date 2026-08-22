@@ -83,6 +83,7 @@
     "dev": "bun --hot build.ts",
     "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist .turbo",
     "test": "vitest run",
+    "bench:progressive-read": "bun scripts/progressive-read-benchmark.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check .",

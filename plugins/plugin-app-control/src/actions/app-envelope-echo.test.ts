@@ -5,7 +5,8 @@
  * launch/stop verb extractors fell back to the raw text while the
  * not-found/ambiguous replies quoted the extracted target verbatim (live leak
  * 2026-08-02, tj-2dc95f75456876). Planner options can carry the same blobs, so
- * the echoes must clamp regardless of which seam the target came through.
+ * user-facing text remains shape-gated while machine-facing data preserves the
+ * complete normalized value.
  */
 
 import type { IAgentRuntime, Memory } from "@elizaos/core";
@@ -67,10 +68,9 @@ function expectNoEnvelope(text: string | undefined) {
 	expect(text).not.toContain("SECURITY NOTICE");
 }
 
-function expectClampedTarget(data: unknown) {
+function expectNormalizedTarget(data: unknown) {
 	const target = (data as { target?: string })?.target;
 	expect(typeof target).toBe("string");
-	expect((target as string).length).toBeLessThanOrEqual(121);
 	expect(target).not.toContain("\n");
 }
 
@@ -80,7 +80,7 @@ const runtime = {
 } as unknown as IAgentRuntime;
 
 describe("APP — hardened-envelope messages never leak the envelope", () => {
-	it("launch: extracts the target from the payload and clamps the not-found echo", async () => {
+	it("launch: extracts the complete target from the payload", async () => {
 		const client = clientWith();
 		const callback = vi.fn();
 		const result = await ownerAction(client).handler(
@@ -96,10 +96,10 @@ describe("APP — hardened-envelope messages never leak the envelope", () => {
 		// The unwrapped user word — not the envelope remainder — is what echoes.
 		expect(result?.text).toContain('"zorptastic"');
 		expectNoEnvelope(callback.mock.calls[0]?.[0]?.text);
-		expectClampedTarget(result?.data);
+		expectNormalizedTarget(result?.data);
 	});
 
-	it("stop: a blob-shaped planner app option renders as the neutral noun and a clamped machine value", async () => {
+	it("stop: a hardened planner app option is explicitly rejected from machine data", async () => {
 		const blob = envelopedMessage("irrelevant").content.text;
 		const client = clientWith();
 		const callback = vi.fn();
@@ -115,7 +115,10 @@ describe("APP — hardened-envelope messages never leak the envelope", () => {
 		expectNoEnvelope(result?.text);
 		expect(result?.text).toContain("that app");
 		expectNoEnvelope(callback.mock.calls[0]?.[0]?.text);
-		expectClampedTarget(result?.data);
+		expectNormalizedTarget(result?.data);
+		expect((result?.data as { target?: string })?.target).toBe(
+			"[external reference rejected]",
+		);
 	});
 
 	it("stop: verb scan runs on the payload, not the warning text", async () => {
@@ -133,7 +136,7 @@ describe("APP — hardened-envelope messages never leak the envelope", () => {
 		expectNoEnvelope(result?.text);
 		expect(result?.text).toContain('"flurbo"');
 		expectNoEnvelope(callback.mock.calls[0]?.[0]?.text);
-		expectClampedTarget(result?.data);
+		expectNormalizedTarget(result?.data);
 	});
 
 	it("create: a blob-shaped editTarget renders as the neutral noun, never verbatim", async () => {

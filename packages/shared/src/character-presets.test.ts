@@ -107,9 +107,10 @@ describe("default Eliza persona safety", () => {
     expect(definition?.messageExamples[0]?.[1]?.content.text).toBe(
       "I'm {{agentName}}.",
     );
-    expect(identity).not.toMatch(
-      /eliza research|san francisco|elizaos|open source|self-host|github\.com|\b(?:shaw|nubs|shad0w)\b/i,
+    expect(identity).toContain(
+      "Eliza is made by Eliza Research in San Francisco.",
     );
+    expect(identity).not.toMatch(/\b(?:shaw|nubs|shad0w)\b/i);
   });
 
   it("keeps consequential ambiguity and side-effect claims receipt-bound", () => {

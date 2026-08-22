@@ -34,7 +34,6 @@ export const CANONICAL_SECRET_KEYS = [
 	"SLACK_BOT_TOKEN",
 	"SLACK_APP_TOKEN",
 	"WHATSAPP_TOKEN",
-	"SIGNAL_CLI_PATH",
 
 	// Twitter/X credentials
 	"TWITTER_USERNAME",
@@ -196,7 +195,6 @@ export const CHANNEL_SECRETS: Record<string, string[]> = {
 	telegram: ["TELEGRAM_BOT_TOKEN"],
 	slack: ["SLACK_BOT_TOKEN", "SLACK_APP_TOKEN"],
 	whatsapp: ["WHATSAPP_TOKEN"],
-	signal: ["SIGNAL_CLI_PATH"],
 	twitter: ["TWITTER_USERNAME", "TWITTER_PASSWORD"],
 };
 

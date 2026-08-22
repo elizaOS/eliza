@@ -53,6 +53,11 @@ import "@elizaos/shared/brand.css";
 | `@elizaos/shared/character-presets` | Built-in character preset definitions |
 | `@elizaos/shared/runtime-env` | Port and security config resolvers |
 | `@elizaos/shared/config/allowed-hosts` | Allowed-hosts config helper |
+| `@elizaos/shared/contracts/synthetic-environment-lease` | Lease, generation, receipt, and guarded-write contract for synthetic environments |
+
+Synthetic environment leases and subprocess control envelopes share the exact
+namespace checked by `isSyntheticEnvironmentNamespace`: 1-512 non-control
+characters with no leading/trailing whitespace normalization.
 
 ## Building
 
@@ -66,4 +71,3 @@ bun run --cwd packages/shared test        # run tests
 
 - The root barrel (`src/index.ts`) must remain importable in both browser and Node.js. Do not add Node.js-only or value-level React imports to it. The only React reference is a type-only `import type { ReactNode }` in `src/config/config-catalog.ts`, which is erased at compile time.
 - Do not import from `@elizaos/agent` inside this package — it creates an ESM cycle that breaks server boot. See comments in `src/config/config.ts`.
-

@@ -51,8 +51,6 @@ const MATCH_THRESHOLD = 0.7;
 // down-weights common stop words ("you"/"are"), so weak/stop-word-only matches
 // score far below a real hit and fall under this floor.
 const MIN_HASH_MEMORY_SCORE = 0.5;
-const _HASH_MEMORY_SNIPPET_LENGTH = 700;
-const _RELEVANT_SNIPPET_LENGTH = 200;
 
 function memoryText(memory: Memory): string {
   return typeof memory.content.text === "string" ? memory.content.text : "";

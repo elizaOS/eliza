@@ -92,6 +92,7 @@ export function parseMessageHandlerOutput(
 		parsed.candidateActionNames,
 		12,
 	);
+	const intents = normalizeStringHints(parsed.intents, 8);
 
 	const extract = parseExtract(parsed);
 
@@ -101,6 +102,9 @@ export function parseMessageHandlerOutput(
 	};
 	if (candidateActions.length > 0) {
 		normalizedPlan.candidateActions = candidateActions;
+	}
+	if (intents.length > 0) {
+		normalizedPlan.intents = intents;
 	}
 
 	return {
@@ -152,6 +156,7 @@ function parseMessageHandlerFieldTranscript(
 		splitTranscriptList(fields.candidateActionNames),
 		12,
 	);
+	const intents = normalizeStringHints(splitTranscriptList(fields.intents), 8);
 
 	const extract = parseExtract({
 		facts: splitTranscriptList(fields.facts),
@@ -165,6 +170,9 @@ function parseMessageHandlerFieldTranscript(
 	};
 	if (candidateActions.length > 0) {
 		normalizedPlan.candidateActions = candidateActions;
+	}
+	if (intents.length > 0) {
+		normalizedPlan.intents = intents;
 	}
 
 	return {

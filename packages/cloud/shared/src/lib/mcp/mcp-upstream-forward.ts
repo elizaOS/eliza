@@ -1,4 +1,4 @@
-// Defines cloud shared mcp upstream forward behavior for backend service consumers.
+/** Proxies bounded MCP transport requests to operator-configured upstream services. */
 import { safeFetch } from "../security/safe-fetch";
 
 const HOP_BY_HOP = new Set([
@@ -12,6 +12,16 @@ const HOP_BY_HOP = new Set([
   "upgrade",
 ]);
 const MCP_UPSTREAM_TIMEOUT_MS = 8_000;
+
+export interface McpUpstreamForwardOptions {
+  readonly timeoutMs?: number;
+}
+
+function resolveTimeoutMs(value: number | undefined): number {
+  return typeof value === "number" && Number.isInteger(value) && value > 0
+    ? value
+    : MCP_UPSTREAM_TIMEOUT_MS;
+}
 
 function forwardOutgoingHeaders(source: Headers): Headers {
   const out = new Headers();
@@ -29,6 +39,7 @@ function forwardOutgoingHeaders(source: Headers): Headers {
 export async function forwardMcpUpstreamRequest(
   request: Request,
   upstreamUrl: string,
+  options: McpUpstreamForwardOptions = {},
 ): Promise<Response> {
   const init: RequestInit = {
     method: request.method,
@@ -39,7 +50,7 @@ export async function forwardMcpUpstreamRequest(
     init.body = request.body;
   }
   try {
-    init.signal = AbortSignal.timeout(MCP_UPSTREAM_TIMEOUT_MS);
+    init.signal = AbortSignal.timeout(resolveTimeoutMs(options.timeoutMs));
     return await safeFetch(upstreamUrl, init);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

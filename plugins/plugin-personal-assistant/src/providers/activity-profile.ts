@@ -36,9 +36,6 @@ import {
   getZonedDateParts,
 } from "../lifeops/time.js";
 
-const MAX_PROFILE_TASKS = 25;
-const ACTIVITY_USAGE_TOP_APPS = 3;
-
 type ActivityProviderValues = NonNullable<ProviderResult["values"]>;
 type ActivityProviderData = NonNullable<ProviderResult["data"]>;
 
@@ -64,10 +61,9 @@ function formatDuration(ms: number): string {
   return remainder === 0 ? `${hours}h` : `${hours}h ${remainder}m`;
 }
 
-function formatTopApps(apps: ActivityAppBreakdown[]): string {
+function formatApps(apps: ActivityAppBreakdown[]): string {
   return apps
     .filter((app) => app.totalMs > 0)
-    .slice(0, ACTIVITY_USAGE_TOP_APPS)
     .map((app) => `${app.appName} ${formatDuration(app.totalMs)}`)
     .join(", ");
 }
@@ -144,7 +140,7 @@ async function readLatestComposerActivity(args: {
   const sinceAt = new Date(args.now.getTime() - 30 * 60_000).toISOString();
   const signals = await repository.listActivitySignals(
     String(args.runtime.agentId),
-    { sinceAt, limit: 25 },
+    { sinceAt },
   );
   for (const signal of signals) {
     const activity = mapComposerSignal(signal);
@@ -166,9 +162,9 @@ export function formatActivityUsageContext(args: {
     );
   }
 
-  const topApps = formatTopApps(args.report.apps);
-  if (topApps) {
-    parts.push(`today apps ${topApps}`);
+  const apps = formatApps(args.report.apps);
+  if (apps) {
+    parts.push(`today apps ${apps}`);
   }
 
   return parts.length > 0 ? parts.join(" | ") : null;
@@ -196,7 +192,6 @@ async function readActivityUsageContext(args: {
     getActivityReportBetween(args.runtime, String(args.runtime.agentId), {
       sinceMs,
       untilMs,
-      limit: ACTIVITY_USAGE_TOP_APPS,
     }),
     getLatestForegroundActivity(args.runtime, String(args.runtime.agentId), {
       sinceMs,
@@ -283,9 +278,10 @@ export const activityProfileProvider: Provider = {
         agentIds: [runtime.agentId],
         tags: [...PROACTIVE_TASK_TAGS],
       });
-      const task = tasks
-        .slice(0, MAX_PROFILE_TASKS)
-        .find((t) => t.name === "PROACTIVE_AGENT" && isRecord(t.metadata));
+      const task = tasks.find(
+        (candidate) =>
+          candidate.name === "PROACTIVE_AGENT" && isRecord(candidate.metadata),
+      );
       const metadata = isRecord(task?.metadata) ? task.metadata : null;
       const profile = readProfileFromMetadata(metadata);
 

@@ -18,7 +18,7 @@ describe("Durable Object deployment contract", () => {
     expect(config.migrations).toBeUndefined();
     expect(config.exports).toEqual({
       AnonymousChatGate: { type: "durable-object", storage: "sqlite" },
-      DoorDashCheckoutGate: { type: "durable-object", state: "deleted" },
+      DoorDashCheckoutGate: { type: "durable-object", storage: "sqlite" },
       InferenceAdmissionGate: { type: "durable-object", storage: "sqlite" },
       InferenceRateLimitV2RollbackFloor: {
         type: "durable-object",

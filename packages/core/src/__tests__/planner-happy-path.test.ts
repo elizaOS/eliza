@@ -1431,6 +1431,109 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 		).toMatchObject({ tool: { name: "VIEWS", success: true } });
 	});
 
+	it("lets the model write the final reply after a deterministic tool completes", async () => {
+		let appCalls = 0;
+		const modelReply =
+			"Done — I opened [Nubs Color Pebble](/api/apps/local/nubs-color-pebble/) for you.";
+		const app = makeMockAction({
+			name: "APP",
+			suppressEarlyReply: true,
+			parameters: [
+				{
+					name: "action",
+					description: "App operation",
+					required: true,
+					schema: { type: "string" },
+				},
+				{
+					name: "app",
+					description: "Installed app name",
+					required: true,
+					schema: { type: "string" },
+				},
+			],
+			handler: async () => {
+				appCalls++;
+				return {
+					success: true,
+					text: '{"effect":"app_launch","status":"completed"}',
+					transcriptVisibility: "internal",
+					modelReplyRequired: true,
+					promptData: {
+						operation: "launch_app",
+						outcome: "success",
+						displayName: "Nubs Color Pebble",
+						link: {
+							label: "Open Nubs Color Pebble",
+							href: "/api/apps/local/nubs-color-pebble/",
+						},
+					},
+				};
+			},
+		});
+		const evaluator = {
+			name: "test.force_deterministic_app_launch",
+			priority: 10,
+			deterministicActions: ["APP"],
+			shouldRun: () => true,
+			evaluate: () => ({
+				requiresTool: true,
+				clearReply: true,
+				deterministicToolCall: {
+					name: "APP",
+					params: { action: "launch", app: "nubs-color-pebble" },
+				},
+			}),
+		} satisfies import("../runtime/response-handler-evaluators").ResponseHandlerEvaluator;
+		const runtime = makeRuntime({
+			actions: [app],
+			responseHandlerEvaluators: [evaluator],
+			responses: [
+				{
+					expectModelType: ModelType.RESPONSE_HANDLER,
+					body: stage1Response({
+						contexts: ["general"],
+						replyText: "Opening that now.",
+					}),
+				},
+				{
+					expectModelType: ModelType.ACTION_PLANNER,
+					body: { text: modelReply, toolCalls: [] },
+				},
+			],
+		});
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage("open Nubs Color Pebble"),
+			state: makeState(),
+			responseId: RESPONSE_ID,
+		});
+
+		expect(appCalls).toBe(1);
+		expect(getCalls(runtime).map((call) => call.modelType)).toEqual([
+			ModelType.RESPONSE_HANDLER,
+			ModelType.ACTION_PLANNER,
+		]);
+		expect(
+			(getCalls(runtime)[1]?.params as Record<string, unknown>)?.tools,
+		).toBeUndefined();
+		expect(JSON.stringify(getCalls(runtime)[1]?.params)).toContain(
+			"already settled and complete",
+		);
+		expect(result.kind).toBe("planned_reply");
+		if (result.kind === "planned_reply") {
+			expect(result.result.responseContent?.text).toBe(modelReply);
+			expect(result.result.actionResults).toMatchObject([
+				{
+					success: true,
+					text: '{"effect":"app_launch","status":"completed"}',
+					transcriptVisibility: "internal",
+				},
+			]);
+		}
+	});
+
 	it("executes an owner-only deterministic call through the canonical gates without planning", async () => {
 		let calls = 0;
 		const ownerAction = makeMockAction({

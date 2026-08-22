@@ -1,5 +1,7 @@
 name: Deploy Apps Worker (Product 2)
 
+run-name: Apps worker ${{ inputs.environment || 'staging' }} ${{ inputs.source_sha || github.sha }} ${{ inputs.effect_digest || 'manual' }}
+
 # SSHes to the apps-control host, fetches the target branch, installs the
 # systemd unit shipped at packages/cloud/scripts/admin/eliza-apps-worker.service,
 # and restarts the eliza-apps-worker daemon (the Product-2 deploy daemon).
@@ -16,21 +18,6 @@ name: Deploy Apps Worker (Product 2)
 # then set the env's ELIZA_APPS_WORKER_HOST + ELIZA_APPS_WORKER_SSH_KEY secrets.
 
 on:
-  push:
-    branches: [develop]
-    paths:
-      - '.github/workflows/deploy-apps-worker.yml'
-      - 'packages/cloud/scripts/admin/daemons/apps-provisioning-worker.ts'
-      - 'packages/cloud/scripts/admin/daemons/provisioning-worker.ts'
-      - 'packages/cloud/scripts/admin/eliza-apps-worker.service'
-      - 'packages/cloud/shared/src/lib/services/provisioning-jobs.ts'
-      - 'packages/cloud/shared/src/lib/services/provisioning-job-types.ts'
-      - 'packages/cloud/shared/src/lib/services/apps-deploy-backend.ts'
-      - 'packages/cloud/shared/src/lib/services/tenant-db/**'
-      - 'packages/cloud/shared/src/lib/services/app-deploy-runner.ts'
-      - 'packages/cloud/sdk/**'
-      - 'packages/core/**'
-      - 'plugins/plugin-sql/**'
   workflow_dispatch:
     inputs:
       environment:
@@ -41,9 +28,19 @@ on:
         options:
           - staging
           - production
+      source_sha:
+        description: Exact develop SHA supplied by the effect reconciler
+        required: false
+        default: ""
+        type: string
+      effect_digest:
+        description: Exact reconciler input digest; empty for manual operation
+        required: false
+        default: ""
+        type: string
 
 concurrency:
-  # One shared group per environment so concurrent pushes QUEUE instead of
+  # One shared group per environment so concurrent dispatches queue instead of
   # racing the host-side flock: the per-SHA groups this replaces let every
   # commit's run start simultaneously on ubuntu-latest, and the losers burned
   # their 9m flock wait against the shared apps-control host and failed red
@@ -127,6 +124,8 @@ jobs:
         if: steps.deploy_config.outputs.configured == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
+          EFFECT_DIGEST: ${{ inputs.effect_digest }}
+          REQUESTED_SHA: ${{ inputs.source_sha }}
           TARGET_BRANCH: ${{ needs.determine-env.outputs.branch }}
         run: |
           set -euo pipefail
@@ -135,7 +134,26 @@ jobs:
             echo "::error::Resolved invalid apps-worker source SHA for $TARGET_BRANCH"
             exit 1
           fi
+          if [ -n "$EFFECT_DIGEST" ]; then
+            [[ "$EFFECT_DIGEST" =~ ^[0-9a-f]{64}$ ]] || { echo "::error::Invalid reconciled effect digest"; exit 1; }
+            [[ "$REQUESTED_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::Invalid reconciled source SHA"; exit 1; }
+            [ "$target_sha" = "$REQUESTED_SHA" ] || {
+              echo "::error::Develop is $target_sha, not reconciled source $REQUESTED_SHA"
+              exit 1
+            }
+            target_sha="$REQUESTED_SHA"
+          fi
           echo "sha=$target_sha" >> "$GITHUB_OUTPUT"
+
+      - name: Fence current develop SHA before host mutation
+        if: ${{ steps.deploy_config.outputs.configured == 'true' && inputs.effect_digest != '' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
+        run: |
+          set -euo pipefail
+          current_sha="$(gh api "/repos/$GITHUB_REPOSITORY/git/ref/heads/develop" --jq '.object.sha')"
+          [ "$current_sha" = "$SOURCE_SHA" ] || { echo "::error::Develop advanced before apps-worker mutation"; exit 1; }
 
       - name: Ensure host prereqs (Node 24, swap, bunx symlink)
         if: steps.deploy_config.outputs.configured == 'true'
@@ -164,6 +182,16 @@ jobs:
               echo "[host-prereqs] creating bunx symlink"
               ln -sf bun /home/deploy/.bun/bin/bunx
             fi
+
+      - name: Recheck current develop SHA before code deployment
+        if: ${{ steps.deploy_config.outputs.configured == 'true' && inputs.effect_digest != '' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
+        run: |
+          set -euo pipefail
+          current_sha="$(gh api "/repos/$GITHUB_REPOSITORY/git/ref/heads/develop" --jq '.object.sha')"
+          [ "$current_sha" = "$SOURCE_SHA" ] || { echo "::error::Develop advanced before apps-worker deploy"; exit 1; }
 
       - name: Deploy and restart apps worker
         if: steps.deploy_config.outputs.configured == 'true'

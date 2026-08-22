@@ -182,6 +182,25 @@ describe("AgentSandboxesRepository", () => {
     expect(new PgDialect().sqlToQuery(capturedWhere).sql).toContain("'sleeping'");
   });
 
+  test("provisioning lock admits only the canonical container-backed tiers", async () => {
+    capturedWhere = undefined;
+
+    const { AgentSandboxesRepository } = await import("./agent-sandboxes");
+
+    await new AgentSandboxesRepository().trySetProvisioning("e06bb509-6c52-4c33-a9f7-66addc43e8c8");
+
+    if (!capturedWhere) throw new Error("trySetProvisioning did not build a where clause");
+    const query = new PgDialect().sqlToQuery(capturedWhere);
+    const sql = query.sql.toLowerCase();
+    expect(sql).toContain("execution_tier");
+    expect(sql).toContain(" in (");
+    expect(sql).not.toContain("<>");
+    expect(query.params).toContain("dedicated-lazy");
+    expect(query.params).toContain("dedicated-always");
+    expect(query.params).toContain("custom");
+    expect(query.params).not.toContain("shared");
+  });
+
   test("provisioning lock clears stale handles only when retrying permanent provision failures", async () => {
     set.mockClear();
 

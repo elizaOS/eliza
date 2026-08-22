@@ -36,6 +36,7 @@ function dedupePreservingOrder(values: string[]): string[] {
 
 export function recentConversationTextsFromState(
   state: State | undefined,
+  /** @deprecated Complete state context is always returned. Retained for source compatibility. */
   _limit = 6,
 ): string[] {
   if (!state || typeof state !== "object") {
@@ -73,6 +74,7 @@ export async function recentConversationTexts(args: {
   runtime: IAgentRuntime;
   message?: Memory;
   state: State | undefined;
+  /** @deprecated Complete conversation context is always returned. Retained for source compatibility. */
   limit?: number;
 }): Promise<string[]> {
   const stateTexts = recentConversationTextsFromState(args.state);

@@ -562,11 +562,11 @@ describe("LifeOps messaging mixin runtime delegation", () => {
     expect(status.inbound).toBe(false);
     expect(status.grant).toBeNull();
     expect(status.degradations?.map((item) => item.code)).toEqual(
-      expect.arrayContaining(["signal_plugin_unavailable"]),
+      expect.arrayContaining(["signal_direct_transport_unavailable"]),
     );
     await expect(service.readSignalInbound()).rejects.toMatchObject({
-      status: 503,
-      message: expect.stringContaining("@elizaos/plugin-signal"),
+      status: 501,
+      message: expect.stringContaining("bundled, in-process Signal transport"),
     });
     await expect(
       service.sendSignalMessage({
@@ -574,78 +574,8 @@ describe("LifeOps messaging mixin runtime delegation", () => {
         text: "hello",
       }),
     ).rejects.toMatchObject({
-      status: 409,
-      message: expect.stringContaining("@elizaos/plugin-signal"),
-    });
-  });
-
-  it("delegates Signal reads and sends through runtime service account ids", async () => {
-    const getRecentMessages = vi.fn(async () => [
-      {
-        id: "signal-1",
-        roomId: "room-1",
-        channelId: "+15550000001",
-        roomName: "Signal DM",
-        speakerName: "Ava",
-        text: "recent",
-        createdAt: 1234,
-        isFromAgent: false,
-        isGroup: false,
-      },
-    ]);
-    const sendMessage = vi.fn(async () => ({ timestamp: 5678 }));
-    const service = serviceWithConnectorGrants({
-      services: {
-        signal: {
-          isServiceConnected: () => true,
-          getAccountNumber: () => "+15551234567",
-          getRecentMessages,
-          sendMessage,
-        },
-      },
-      grants: { signal: connectorGrant("signal") },
-    });
-
-    await expect(service.readSignalInbound(10)).resolves.toMatchObject([
-      { id: "signal-1", text: "recent", isInbound: true },
-    ]);
-    expect(getRecentMessages).toHaveBeenCalledWith(10, "default");
-
-    await expect(
-      service.sendSignalMessage({
-        recipient: "+15550000001",
-        text: "hello",
-      }),
-    ).resolves.toMatchObject({
-      provider: "signal",
-      recipient: "+15550000001",
-      timestamp: 5678,
-    });
-    expect(sendMessage).toHaveBeenCalledWith("+15550000001", "hello", {
-      accountId: "default",
-    });
-  });
-
-  it("reports Signal capabilities from partial runtime service methods", async () => {
-    const sendMessage = vi.fn(async () => ({ timestamp: 5678 }));
-    const service = serviceWithConnectorGrants({
-      services: {
-        signal: {
-          sendMessage,
-        },
-      },
-      grants: { signal: connectorGrant("signal") },
-    });
-
-    await expect(
-      service.getSignalConnectorStatus("owner"),
-    ).resolves.toMatchObject({
-      connected: true,
-      inbound: false,
-      grantedCapabilities: ["signal.send"],
-      degradations: expect.arrayContaining([
-        expect.objectContaining({ code: "signal_plugin_inbound_unavailable" }),
-      ]),
+      status: 501,
+      message: expect.stringContaining("bundled, in-process Signal transport"),
     });
   });
 

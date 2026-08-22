@@ -1,5 +1,5 @@
 /**
- * Regression for owner-name surrogate-safe truncation (60).
+ * Regression for complete, well-formed owner-name normalization.
  */
 
 import { toWellFormedUnicode } from "@elizaos/core";
@@ -25,12 +25,12 @@ function isWellFormed(value: string): boolean {
 }
 
 describe("normalizeOwnerName well-formed", () => {
-  it("keeps surrogate intact at 60 boundary", () => {
+  it("keeps a surrogate and trailing content intact beyond the former boundary", () => {
     const emoji = String.fromCharCode(0xd83d, 0xde00);
     const input = `${"a".repeat(59)}${emoji}${"b".repeat(20)}`;
     const out = normalizeOwnerName(input);
     expect(isWellFormed(out)).toBe(true);
-    expect(out.length).toBeLessThanOrEqual(60);
+    expect(out).toBe(input);
   });
 
   it("preserves fitting emoji", () => {
@@ -54,13 +54,13 @@ describe("normalizeOwnerName well-formed", () => {
     expect(normalizeOwnerName(null)).toBe("");
   });
 
-  it("sweep around 60 well-formed", () => {
+  it("preserves every well-formed sweep input around the former boundary", () => {
     const emoji = String.fromCharCode(0xd83e, 0xdd8a);
     for (let n = 55; n <= 65; n++) {
       const input = `${"x".repeat(n)}${emoji}${"y".repeat(20)}`;
       const out = normalizeOwnerName(input);
       expect(isWellFormed(out)).toBe(true);
-      expect(out.length).toBeLessThanOrEqual(60);
+      expect(out).toBe(input);
     }
   });
 

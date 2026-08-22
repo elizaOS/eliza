@@ -421,6 +421,14 @@ export interface ApprovalQueue {
     input: ApprovalEnqueueInput,
   ): Promise<ApprovalEnqueueResult>;
   /**
+   * Enqueue and await the owner-notification projection. Exact seed/import
+   * workflows use this seam so no background persistence can escape their
+   * receipt and compensation boundary.
+   */
+  enqueueWithResultAndNotification?(
+    input: ApprovalEnqueueInput,
+  ): Promise<ApprovalEnqueueResult>;
+  /**
    * Persist an owner gesture that is already confirmed at an authenticated
    * boundary. Implementations must not emit a redundant approval prompt.
    */

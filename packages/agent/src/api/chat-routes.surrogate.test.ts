@@ -1,19 +1,12 @@
 /**
- * Regression for chat-routes surrogate-safe truncation (700 + 997).
+ * Regression for the surrogate-safe 1,000-character action-value projection.
  */
 
 import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 
-const CHAT_LIMIT = 700;
 const VALUE_LIMIT = 1000;
 const VALUE_TRUNCATE = 997;
-
-function clampChat(text: string): string {
-  const wellFormed = toWellFormedUnicode(text ?? "");
-  if (wellFormed.length <= CHAT_LIMIT) return wellFormed;
-  return truncateWellFormed(wellFormed, CHAT_LIMIT);
-}
 
 function clampActionValue(value: string): string {
   const wellFormed = toWellFormedUnicode(value ?? "");
@@ -28,25 +21,7 @@ function isWellFormed(s: string): boolean {
   return toWellFormedUnicode(s) === s;
 }
 
-describe("chat-routes well-formed", () => {
-  it("backs off astral at 700 boundary (699+fox->699)", () => {
-    const fox = "🦊";
-    const input = `${"a".repeat(699)}${fox}${"b".repeat(20)}`;
-    const out = clampChat(input);
-    expect(isWellFormed(out)).toBe(true);
-    expect(out.length).toBe(699);
-    expect(out).toBe("a".repeat(699));
-  });
-
-  it("preserves fitting astral at 700 (698+fox intact)", () => {
-    const fox = "🦊";
-    const input = `${"a".repeat(698)}${fox}`;
-    const out = clampChat(input);
-    expect(isWellFormed(out)).toBe(true);
-    expect(out).toBe(input);
-    expect(out.length).toBe(700);
-  });
-
+describe("chat-routes action-value projection", () => {
   it("backs off astral at 997 boundary (996+fox->996)", () => {
     const fox = "🦊";
     const input = `${"a".repeat(996)}${fox}${"b".repeat(50)}`;
@@ -68,27 +43,17 @@ describe("chat-routes well-formed", () => {
 
   it("sanitizes lone high surrogate", () => {
     const lone = `chat ${String.fromCharCode(0xd800)} text`;
-    const outChat = clampChat(`${lone}${"x".repeat(800)}`);
     const outVal = clampActionValue(`${lone}${"x".repeat(1200)}`);
-    expect(isWellFormed(outChat)).toBe(true);
     expect(isWellFormed(outVal)).toBe(true);
-    expect(outChat.includes("�")).toBe(true);
     expect(outVal.includes("�")).toBe(true);
   });
 
   it("short passthrough well-formed", () => {
-    expect(clampChat("short chat")).toBe("short chat");
     expect(clampActionValue("short value")).toBe("short value");
   });
 
-  it("sweep around 700 and 997 well-formed", () => {
+  it("sweeps the 997-character boundary without splitting a surrogate", () => {
     const fox = "🦊";
-    for (let n = 695; n <= 705; n++) {
-      const input = `${"x".repeat(n)}${fox}${"y".repeat(20)}`;
-      const out = clampChat(input);
-      expect(isWellFormed(out)).toBe(true);
-      expect(out.length).toBeLessThanOrEqual(700);
-    }
     for (let n = 992; n <= 1002; n++) {
       const input = `${"x".repeat(n)}${fox}${"y".repeat(20)}`;
       const out = clampActionValue(input);

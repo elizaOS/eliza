@@ -11,7 +11,9 @@
  * "No action state available" rather than throwing.
  */
 import { requireProviderSpec } from "../../../generated/spec-helpers.ts";
+import { isProgressiveContentProjectionEnabled } from "../../../runtime/content-projection-policy.ts";
 import { stringifyForDiagnostics } from "../../../runtime/json-output.ts";
+import { renderActionResultsForModel } from "../../../runtime/planner-rendering.js";
 import type {
 	ActionResult,
 	IAgentRuntime,
@@ -57,6 +59,7 @@ export const actionStateProvider: Provider = {
 		state: State,
 	): Promise<ProviderResult> => {
 		try {
+			const projectionEnabled = isProgressiveContentProjectionEnabled(runtime);
 			const actionResults = state.data.actionResults ?? [];
 			const actionPlan = state.data.actionPlan;
 			const workingMemory = state.data.workingMemory;
@@ -101,7 +104,14 @@ export const actionStateProvider: Provider = {
 								stepText += `\n   Error: ${step.error}`;
 							}
 							if (step.result?.text) {
-								stepText += `\n   Result: ${toWellFormedUnicode(step.result.text)}`;
+								stepText += projectionEnabled
+									? `\n   Result: ${
+											renderActionResultsForModel([step.result], {
+												header: "",
+												omitRecoverableText: true,
+											}).text
+										}`
+									: `\n   Result: ${toWellFormedUnicode(step.result.text)}`;
 							}
 
 							return stepText;
@@ -114,9 +124,14 @@ export const actionStateProvider: Provider = {
 			// Format previous action results
 			let resultsText = "";
 			if (actionResults.length > 0) {
-				resultsText = formatActionResultsForPrompt(actionResults, {
-					header: "# Current Chain Action Results",
-				});
+				resultsText = projectionEnabled
+					? renderActionResultsForModel(actionResults, {
+							header: "# Current Chain Action Results",
+							omitRecoverableText: true,
+						}).text
+					: formatActionResultsForPrompt(actionResults, {
+							header: "# Current Chain Action Results",
+						});
 			} else {
 				resultsText = "";
 			}
@@ -131,8 +146,12 @@ export const actionStateProvider: Provider = {
 					.sort((a, b) => b[1].timestamp - a[1].timestamp)
 					.map(([key, entry]) => {
 						const result: ActionResult = entry.result;
-						const resultText =
-							typeof result.text === "string" && result.text.trim().length > 0
+						const resultText = projectionEnabled
+							? renderActionResultsForModel([result], {
+									header: "",
+									omitRecoverableText: true,
+								}).text
+							: typeof result.text === "string" && result.text.trim().length > 0
 								? toWellFormedUnicode(result.text)
 								: result.data
 									? formatDataForPrompt(result.data)

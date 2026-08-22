@@ -171,7 +171,6 @@ function extractSignaturePhrases(texts: readonly string[]): readonly string[] {
   return [...phraseCounts(texts).entries()]
     .filter(([, count]) => count > 1)
     .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
-    .slice(0, 6)
     .map(([phrase]) => phrase);
 }
 

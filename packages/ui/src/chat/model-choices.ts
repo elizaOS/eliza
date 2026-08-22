@@ -21,20 +21,12 @@ import type {
 } from "../api/client-types-core";
 import type { SlashArgChoiceContext } from "./slash-menu";
 
-/** Keeps the arg menu scannable when a provider catalog grows. */
-const MAX_MODEL_CHOICES = 25;
-
 type ChatTarget = "small" | "large";
 
 /** Backend tokens `/model coding <backend>` accepts, in suggestion order. */
-export const CODING_BACKEND_CHOICES = [
-  "codex",
-  "claude",
-  "opencode",
-  "elizaos",
-] as const;
+export const CODING_BACKEND_CHOICES = ["codex", "claude", "elizaos"] as const;
 
-// Catalog provider that carries each backend's model list; opencode/elizaos
+// Catalog provider that carries each backend's model list; elizaos
 // take free-form model ids, so they get no completion source.
 const CODING_BACKEND_CATALOG_PROVIDER: Record<string, string> = {
   codex: "codex",
@@ -47,10 +39,6 @@ function isChatTarget(token: string | undefined): token is ChatTarget {
 
 function callable(entry: ModelCatalogEntry): boolean {
   return entry.apiSupported !== false;
-}
-
-function cap(values: string[]): string[] {
-  return values.slice(0, MAX_MODEL_CHOICES);
 }
 
 function allModelIds(providers: ModelCatalogProviders): string[] {
@@ -200,7 +188,7 @@ export function resolveModelChoices(
 ): string[] {
   if (!providers) return [];
   if (context?.commandKey !== "model") {
-    return cap(allModelIds(providers));
+    return allModelIds(providers);
   }
 
   const first = context.precedingTokens[0]?.toLowerCase();
@@ -208,10 +196,10 @@ export function resolveModelChoices(
     case 0:
       // The static target choices ride on the arg definition; the dynamic side
       // offers model ids for the pre-existing bare-name per-room preference.
-      return cap(allModelIds(providers));
+      return allModelIds(providers);
 
     case 1: {
-      if (isChatTarget(first)) return cap(chatModelValues(providers, first));
+      if (isChatTarget(first)) return chatModelValues(providers, first);
       if (first === "coding") return [...CODING_BACKEND_CHOICES];
       return [];
     }
@@ -220,11 +208,11 @@ export function resolveModelChoices(
       const second = context.precedingTokens[1] ?? "";
       if (isChatTarget(first)) {
         if (isChatProviderToken(providers, first, second)) {
-          return cap(providerModelIds(providers, second.toLowerCase(), first));
+          return providerModelIds(providers, second.toLowerCase(), first);
         }
         return effortUnion(chatEntriesForToken(providers, first, second));
       }
-      if (first === "coding") return cap(codingModelIds(providers, second));
+      if (first === "coding") return codingModelIds(providers, second);
       return [];
     }
 
@@ -259,7 +247,6 @@ const STATIC_MODEL_CHOICE_LABELS: ReadonlyArray<[string, string]> = [
   ["cloud", "Eliza Cloud inference"],
   ["codex", "Codex CLI"],
   ["claude", "Claude Code"],
-  ["opencode", "OpenCode"],
   ["elizaos", "elizaOS coder"],
 ];
 

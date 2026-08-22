@@ -3,13 +3,7 @@
  * approval presets, session status and lifecycle events, spawn options, and the
  * `SessionStore` contract the persistence tiers implement.
  */
-export type AgentType =
-  | "elizaos"
-  | "pi-agent"
-  | "opencode"
-  | "claude"
-  | "codex"
-  | string;
+export type AgentType = "elizaos" | "pi-agent" | "claude" | "codex" | string;
 
 export type ApprovalPreset =
   | "readonly"

@@ -1174,6 +1174,7 @@ export async function createQuoteTweetRequest(
   quotedTweetId: string,
   auth: TwitterAuth,
   _mediaData?: { data: Buffer; mediaType: string }[],
+  mediaIds?: string[],
 ) {
   const v2client = await auth.getV2Client();
   if (!v2client) {
@@ -1185,17 +1186,30 @@ export async function createQuoteTweetRequest(
     const quotedTweetUrl = `https://twitter.com/i/status/${quotedTweetId}`;
     const fullText = `${text} ${quotedTweetUrl}`;
 
-    const result = await v2client.v2.tweet({
+    const tweetConfig: SendTweetV2Params = {
       text: fullText,
-    });
+    };
+    if (mediaIds && mediaIds.length > 0) {
+      tweetConfig.media = {
+        media_ids: toTweetMediaIds(mediaIds),
+      };
+    }
+
+    const result = await v2client.v2.tweet(tweetConfig);
 
     return {
       ok: true,
       json: async () => result,
       data: result,
     };
-  } catch (error) {
-    throw new Error(`Failed to create quote tweet: ${errorMessage(error)}`);
+  } catch (cause) {
+    // error-policy:J2 Preserve the provider or request-assembly failure at the
+    // connector boundary so callers can distinguish it from an accepted write.
+    throw new ElizaError("Failed to create quote tweet", {
+      code: "X_QUOTE_REQUEST_FAILED",
+      cause,
+      context: { quotedTweetId },
+    });
   }
 }
 

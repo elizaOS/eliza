@@ -6,11 +6,13 @@ name: Tests
 # build+core-test gate; this workflow adds the broader integration surface.
 
 on:
-  # Post-merge integration surface. Canonical CI calls the lightweight
-  # lint/typecheck/build gate for `develop` PRs; the full suite runs here once
-  # changes land on `develop`, plus nightly and on demand.
-  push:
-    branches: [develop]
+  workflow_call:
+    inputs:
+      remote_capability_live:
+        description: "Run strict remote-capability Cloud and provider live smokes"
+        required: false
+        default: false
+        type: boolean
   workflow_dispatch:
     inputs:
       remote_capability_live:
@@ -18,13 +20,9 @@ on:
         required: false
         default: false
         type: boolean
-  schedule:
-    # Nightly live smoke for container-backed remote capability plugins.
-    - cron: "17 9 * * *"
 
-# Develop pushes share a stable group so an obsolete tip is superseded before
-# it can starve the fleet. Scheduled and manual runs use per-run groups: an
-# incoming push therefore cannot cancel their independent diagnostic work.
+# Develop Full owns cancellation of superseded tips. Manual runs use a per-run
+# group so an on-demand diagnostic remains independent.
 concurrency:
   group: test-${{ github.event_name == 'push' && github.ref || format('{0}-{1}', github.event_name, github.run_id) }}
   cancel-in-progress: ${{ github.event_name == 'push' }}

@@ -24,8 +24,8 @@ const PATHS = [
   /^\.github\/(workflows|actions)\//,
   /(^|\/)(contracts?|migrations)(\/|$)/i,
 ];
-const REQUIRED_CHECKS = ["gitleaks"];
-const REQUIRED_WORKFLOW_PATHS = [".github/workflows/ci.yml"];
+const REQUIRED_CHECKS = ["All Tests Passed"];
+const REQUIRED_WORKFLOW_PATHS = [".github/workflows/pr-static-smoke.yml"];
 const SUCCESS = new Set(["success"]);
 const TERMINAL = new Set([
   "success",
@@ -273,14 +273,14 @@ export async function canary(name) {
       classify({ labels: [], files: ["packages/core/src/foo.ts"] })
         .protected === false,
     protected: () => classify(protectedInput).protected === true,
-    waiting: () => evaluate([]).waiting.includes("gitleaks"),
+    waiting: () => evaluate([]).waiting.includes("All Tests Passed"),
     success: () =>
       evaluate(REQUIRED_CHECKS.map((x) => ({ name: x, conclusion: "success" })))
         .passed,
     failure: () =>
-      evaluate([{ name: "gitleaks", conclusion: "failure" }]).failed.includes(
-        "gitleaks",
-      ),
+      evaluate([
+        { name: "All Tests Passed", conclusion: "failure" },
+      ]).failed.includes("All Tests Passed"),
   };
   if (!cases[name] || !cases[name]()) throw new Error(`canary failed: ${name}`);
   console.log(`canary passed: ${name}`);

@@ -5,7 +5,7 @@
  * assembles those artifacts into a structured `GoogleMeetReport`.
  * `GOOGLE_MEET_API_SURFACE` records the capability each method requires.
  */
-import { ElizaError, toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
+import { ElizaError, toWellFormedUnicode } from "@elizaos/core";
 import type { meet_v2 } from "googleapis";
 import type { GoogleApiClientFactory } from "./client-factory.js";
 import type {
@@ -563,19 +563,10 @@ export function summarizeTranscript(entries: readonly GoogleMeetTranscript[]): {
   }
 
   const plainText = lines.join(" ");
-  const sentences = plainText
-    .split(/(?<=[.!?])\s+/)
-    .map((sentence) => sentence.trim())
-    .filter(Boolean);
-  const wellFormedPlainText = toWellFormedUnicode(plainText);
-  const rawSummary =
-    sentences.slice(0, 3).join(" ") || truncateWellFormed(wellFormedPlainText, 500);
-  const summary =
-    rawSummary.length > 500 ? truncateWellFormed(toWellFormedUnicode(rawSummary), 500) : rawSummary;
-  const keyPoints = lines.filter((line) => line.length >= 20).slice(0, 6);
+  const summary = toWellFormedUnicode(plainText);
+  const keyPoints = lines.filter((line) => line.length >= 20);
   const actionItems = lines
     .filter((line) => /\b(action item|to[- ]?do|follow up|need to|will|should)\b/i.test(line))
-    .slice(0, 6)
     .map((line) => ({
       description: line,
       priority: "medium" as const,

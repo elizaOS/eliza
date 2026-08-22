@@ -100,6 +100,26 @@ const coordinateSharedHistory = mock(async () => [
     createdAt: 101,
   },
 ]);
+const issueGroupClaim = mock(async () => undefined);
+const consumeGroupClaimAndBind = mock(
+  async (): Promise<
+    | { status: "invalid" }
+    | { status: "already_bound" }
+    | { status: "bound"; binding: Record<string, unknown> }
+  > => ({ status: "invalid" }),
+);
+const resolveGroupBinding = mock(
+  async (): Promise<Record<string, unknown> | null> => null,
+);
+const setGroupResponsePolicy = mock(
+  async (): Promise<Record<string, unknown> | null> => null,
+);
+const revokeGroupBinding = mock(async () => false);
+const applyGroupMembershipChange = mock(
+  async (): Promise<Record<string, unknown> | null> => null,
+);
+const recordGroupDeliveryReceipts = mock(async () => 0);
+const hasGroupDeliveryReceipt = mock(async () => false);
 const namespace = {
   getByName: mock(() => ({ fetch: mock(async () => new Response()) })),
 };
@@ -149,6 +169,18 @@ mock.module("@/lib/services/eliza-sandbox", () => ({
 mock.module("@/lib/services/shared-runtime/conversation-coordinator", () => ({
   coordinateSharedHistory,
 }));
+mock.module("@/db/repositories/personal-shared-groups", () => ({
+  personalSharedGroupsRepository: {
+    issueClaim: issueGroupClaim,
+    consumeClaimAndBind: consumeGroupClaimAndBind,
+    resolveBinding: resolveGroupBinding,
+    setResponsePolicy: setGroupResponsePolicy,
+    revokeBinding: revokeGroupBinding,
+    applyMembershipChange: applyGroupMembershipChange,
+    recordDeliveryReceipts: recordGroupDeliveryReceipts,
+    hasDeliveryReceipt: hasGroupDeliveryReceipt,
+  },
+}));
 mock.module("@/lib/services/shared-runtime/resolve-shared-agent", () => ({
   resolveSharedRuntimeWorkerRequestContext: () => ({
     namespace,
@@ -187,6 +219,7 @@ function request(
 const valid = {
   platform: "telegram",
   project: "eliza-app",
+  connectorAccountId: "telegram:test-bot",
   chatId: "123456789",
   telegramUserId: "123456789",
   telegramUsername: "nubs",
@@ -198,9 +231,41 @@ const valid = {
 const validPhone = {
   platform: "blooio",
   project: "eliza-app",
+  connectorAccountId: "blooio:test-number",
   phoneNumber: "+15551234567",
   messageId: "blooio:eliza:message-42",
   message: "hello from Messages",
+};
+
+const canonicalGroupBinding = {
+  id: "00000000-0000-4000-8000-000000000030",
+  organization_id: "00000000-0000-4000-8000-000000000001",
+  owner_user_id: "00000000-0000-4000-8000-000000000002",
+  personal_agent_id: "personal:3e91680e-2611-5ff5-b759-c16b990967bd",
+  platform: "telegram",
+  project: "eliza-app",
+  connector_account_id: "telegram:test-bot",
+  provider_chat_id: "-100123456789",
+  conversation_id: "group:00000000-0000-5000-8000-000000000030",
+  state: "active",
+  response_policy: "mention_only",
+  created_by_platform_user_id: "123456789",
+};
+
+const validGroup = {
+  platform: "telegram",
+  chatType: "supergroup",
+  project: "eliza-app",
+  connectorAccountId: "telegram:test-bot",
+  chatId: "-100123456789",
+  actor: {
+    platformUserId: "123456789",
+    displayName: "Nubs",
+    role: "administrator",
+  },
+  messageId: "telegram:eliza:group-42",
+  message: "@ElizaIsNotABot hello",
+  invocation: "mention",
 };
 
 describe("personal Shared messaging deliveries", () => {
@@ -216,6 +281,21 @@ describe("personal Shared messaging deliveries", () => {
     bridge.mockClear();
     importCanonicalConversation.mockClear();
     coordinateSharedHistory.mockClear();
+    issueGroupClaim.mockClear();
+    consumeGroupClaimAndBind.mockClear();
+    resolveGroupBinding.mockClear();
+    setGroupResponsePolicy.mockClear();
+    revokeGroupBinding.mockClear();
+    applyGroupMembershipChange.mockClear();
+    recordGroupDeliveryReceipts.mockClear();
+    hasGroupDeliveryReceipt.mockClear();
+    applyGroupMembershipChange.mockImplementation(async () => null);
+    recordGroupDeliveryReceipts.mockImplementation(async () => 0);
+    hasGroupDeliveryReceipt.mockImplementation(async () => false);
+    setGroupResponsePolicy.mockImplementation(
+      async () => canonicalGroupBinding,
+    );
+    revokeGroupBinding.mockImplementation(async () => true);
     enqueueAgentResumeOnce.mockClear();
     enqueueAgentWakeOnce.mockClear();
     triggerImmediate.mockClear();
@@ -700,6 +780,209 @@ describe("personal Shared messaging deliveries", () => {
     const renewedSession = runOnboardingChat.mock.calls[2]?.[0].sessionId;
     expect(firstSession).toBe(retrySession);
     expect(renewedSession).not.toBe(firstSession);
+  });
+
+  test("issues a one-time owner-bound group claim without entering inference", async () => {
+    const response = await request({ ...valid, message: "/group" });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      data: { code: "group_claim_issued" },
+    });
+    expect(issueGroupClaim).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ownerUserId: "00000000-0000-4000-8000-000000000002",
+        platform: "telegram",
+        connectorAccountId: "telegram:test-bot",
+        issuedToPlatformUserId: "123456789",
+        codeHash: expect.stringMatching(/^[0-9a-f]{64}$/),
+      }),
+    );
+    expect(sharedRestMessageSend).not.toHaveBeenCalled();
+  });
+
+  test("fails a Telegram group link closed without verified admin authority", async () => {
+    const response = await request({
+      ...validGroup,
+      actor: { ...validGroup.actor, role: "unknown" },
+      message: "/eliza_link 23456789",
+      invocation: "command",
+    });
+
+    await expect(response.json()).resolves.toMatchObject({
+      data: { code: "group_admin_required" },
+    });
+    expect(consumeGroupClaimAndBind).not.toHaveBeenCalled();
+  });
+
+  test("binds a verified Telegram admin to the pre-existing owner identity", async () => {
+    consumeGroupClaimAndBind.mockImplementationOnce(async () => ({
+      status: "bound" as const,
+      binding: canonicalGroupBinding,
+    }));
+    const response = await request({
+      ...validGroup,
+      message: "/eliza_link 23456789",
+      invocation: "command",
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        code: "group_bound",
+        account: {
+          userId: canonicalGroupBinding.owner_user_id,
+          organizationId: canonicalGroupBinding.organization_id,
+        },
+      },
+    });
+    expect(consumeGroupClaimAndBind).toHaveBeenCalledWith(
+      expect.objectContaining({
+        providerChatId: "-100123456789",
+        actorPlatformUserId: "123456789",
+      }),
+    );
+  });
+
+  test("does not let a second administrator take over an active owner binding", async () => {
+    consumeGroupClaimAndBind.mockImplementationOnce(async () => ({
+      status: "already_bound" as const,
+    }));
+    const response = await request({
+      ...validGroup,
+      message: "/eliza_link 23456789",
+      invocation: "command",
+    });
+
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        code: "group_claim_already_bound",
+        reply: expect.stringContaining("already linked to another Eliza owner"),
+      },
+    });
+    expect(sharedRestMessageSend).not.toHaveBeenCalled();
+  });
+
+  test("routes a bound mention in its stable group conversation", async () => {
+    resolveGroupBinding.mockImplementationOnce(
+      async () => canonicalGroupBinding,
+    );
+    const response = await request(validGroup);
+
+    expect(response.status).toBe(200);
+    expect(prewarmPersonalSharedAgentTurnCaches).toHaveBeenCalledWith(
+      expect.objectContaining({ id: canonicalGroupBinding.personal_agent_id }),
+      namespace,
+      {
+        warmConversation: true,
+        conversationId: canonicalGroupBinding.conversation_id,
+      },
+    );
+    expect(sharedRestMessageSend).toHaveBeenCalledWith(
+      expect.objectContaining({ id: canonicalGroupBinding.personal_agent_id }),
+      canonicalGroupBinding.conversation_id,
+      expect.stringMatching(/^Nubs \[participant [0-9a-f]{8}\]: /),
+      "Eliza",
+      runtimeExecutionCtx,
+      namespace,
+      validGroup.messageId,
+      "platform",
+      undefined,
+      undefined,
+      { type: "GROUP", source: "telegram" },
+    );
+  });
+
+  test("keeps mention-only groups silent for ambient traffic", async () => {
+    resolveGroupBinding.mockImplementationOnce(
+      async () => canonicalGroupBinding,
+    );
+    const response = await request({ ...validGroup, invocation: "ambient" });
+
+    await expect(response.json()).resolves.toMatchObject({
+      data: { code: "group_silent", reply: "" },
+    });
+    expect(sharedRestMessageSend).not.toHaveBeenCalled();
+  });
+
+  test("does not report a policy update after the active binding changed", async () => {
+    resolveGroupBinding.mockImplementationOnce(
+      async () => canonicalGroupBinding,
+    );
+    setGroupResponsePolicy.mockImplementationOnce(async () => null);
+    const response = await request({
+      ...validGroup,
+      message: "Eliza ambient on",
+      invocation: "command",
+    });
+
+    await expect(response.json()).resolves.toMatchObject({
+      data: { code: "group_binding_changed" },
+    });
+    expect(sharedRestMessageSend).not.toHaveBeenCalled();
+  });
+
+  test("does not report a disconnect after the active binding changed", async () => {
+    resolveGroupBinding.mockImplementationOnce(
+      async () => canonicalGroupBinding,
+    );
+    revokeGroupBinding.mockImplementationOnce(async () => false);
+    const response = await request({
+      ...validGroup,
+      message: "Eliza leave",
+      invocation: "command",
+    });
+
+    await expect(response.json()).resolves.toMatchObject({
+      data: { code: "group_binding_changed" },
+    });
+    expect(sharedRestMessageSend).not.toHaveBeenCalled();
+  });
+
+  test("suspends and restores only an existing Telegram group binding", async () => {
+    applyGroupMembershipChange.mockImplementation(
+      async () => canonicalGroupBinding,
+    );
+    const response = await request({
+      eventType: "membership",
+      platform: "telegram",
+      project: "eliza-app",
+      connectorAccountId: "telegram:test-bot",
+      chatId: "-100123456789",
+      messageId: "telegram:membership:42",
+      membershipChange: "removed",
+    });
+
+    await expect(response.json()).resolves.toMatchObject({
+      data: { code: "group_membership_removed", reply: "" },
+    });
+    expect(applyGroupMembershipChange).toHaveBeenCalledWith({
+      platform: "telegram",
+      project: "eliza-app",
+      connectorAccountId: "telegram:test-bot",
+      providerChatId: "-100123456789",
+      membershipChange: "removed",
+    });
+    expect(sharedRestMessageSend).not.toHaveBeenCalled();
+  });
+
+  test("records provider egress receipts without entering inference", async () => {
+    recordGroupDeliveryReceipts.mockImplementationOnce(async () => 1);
+    const response = await request({
+      eventType: "delivery_receipt",
+      platform: "blooio",
+      project: "eliza-app",
+      connectorAccountId: "blooio:test-number",
+      chatId: "chat_group_123",
+      sourceMessageId: "blooio:eliza-app:incoming-42",
+      providerMessageIds: ["outgoing-42"],
+    });
+
+    await expect(response.json()).resolves.toMatchObject({
+      data: { code: "group_delivery_receipt_recorded", inserted: 1 },
+    });
+    expect(recordGroupDeliveryReceipts).toHaveBeenCalledTimes(1);
+    expect(sharedRestMessageSend).not.toHaveBeenCalled();
   });
 
   test("auto-registers a first phone message without provisioning an agent row", async () => {

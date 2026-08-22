@@ -448,6 +448,56 @@ describe("XService trusted account routing", () => {
     expect(getClient).toHaveBeenCalledWith("trusted");
   });
 
+  it("forwards the canonical quote id through the post connector", async () => {
+    const runtime = runtimeWithSettings({});
+    const service = new XService(runtime);
+    const profile = {
+      id: "account-owner",
+      username: "account-owner",
+      screenName: "Account Owner",
+      bio: "",
+      nicknames: [],
+    };
+    const base = {
+      profile,
+      withAuthenticatedSession: async <T>(
+        operation: (session: {
+          client: never;
+          profile: typeof profile;
+          revision: number;
+        }) => Promise<T>,
+      ) => operation({ client: {} as never, profile, revision: 1 }),
+    } as unknown as ClientBase;
+    vi.spyOn(
+      service as unknown as {
+        getTwitterClientForAccount: () => Promise<{ client: ClientBase }>;
+      },
+      "getTwitterClientForAccount",
+    ).mockResolvedValue({ client: base });
+    const createPost = vi
+      .spyOn(TwitterPostService.prototype, "createPost")
+      .mockResolvedValue({
+        id: "quote-1",
+        agentId: runtime.agentId,
+        roomId: "room-1" as never,
+        userId: "account-owner",
+        username: "account-owner",
+        text: "commentary",
+        timestamp: 1,
+        quotedPostId: "source-post-1",
+      });
+
+    await service.handleSendPost(runtime, {
+      text: "commentary",
+      quotedPostId: "source-post-1",
+    } as Content);
+
+    expect(createPost).toHaveBeenCalledWith(
+      expect.objectContaining({ quotedPostId: "source-post-1" }),
+      profile,
+    );
+  });
+
   it("keeps DM recipient lookup and send inside one authenticated session", async () => {
     const runtime = runtimeWithSettings({});
     const service = new XService(runtime);

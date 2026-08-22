@@ -163,11 +163,6 @@ test("calendar decomposed view: day selection and month navigation", async ({
   });
 });
 
-// NOTE: "documents" is intentionally not covered here — its `/documents` view
-// path collides with the built-in "documents" tab (which is /character/documents),
-// so registering it in the stub hijacks that route. Tracked as documented debt in
-// view-interaction-coverage.test.ts.
-
 test("inbox decomposed view: channel filters toggle", async ({ page }) => {
   // /inbox renders the populated triage list from the inbox mock: an Email
   // (gmail) thread and a Discord thread.

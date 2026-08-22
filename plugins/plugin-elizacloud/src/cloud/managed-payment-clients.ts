@@ -85,10 +85,10 @@ async function readPlaidJson<T>(
           error?: string;
           message?: string;
         };
-        detail = parsed.message ?? parsed.error ?? text.slice(0, 240);
+        detail = parsed.message ?? parsed.error ?? text;
         code = typeof parsed.code === "string" ? parsed.code : null;
       } catch {
-        detail = text.slice(0, 240);
+        detail = text;
       }
     }
     for (const secret of secrets) {
@@ -123,10 +123,10 @@ async function readPaypalJson<T>(response: Response): Promise<T> {
           message?: string;
           fallback?: "csv_export" | null;
         };
-        detail = parsed.message ?? parsed.error ?? text.slice(0, 240);
+        detail = parsed.message ?? parsed.error ?? text;
         fallback = parsed.fallback ?? null;
       } catch {
-        detail = text.slice(0, 240);
+        detail = text;
       }
     }
     throw new PaypalManagedClientError(response.status, detail, fallback);

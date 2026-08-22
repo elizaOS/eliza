@@ -1,6 +1,5 @@
 {
   "blooio": "@elizaos/plugin-blooio",
-  "bluebubbles": "@elizaos/plugin-bluebubbles",
   "discord": "@elizaos/plugin-discord",
   "discordLocal": "@elizaos/plugin-discord",
   "googlechat": "@elizaos/plugin-google-workspace",
@@ -8,7 +7,6 @@
   "matrix": "@elizaos/plugin-matrix",
   "mattermost": "@elizaos/plugin-mattermost",
   "msteams": "@elizaos/plugin-msteams",
-  "signal": "@elizaos/plugin-signal",
   "slack": "@elizaos/plugin-slack",
   "telegram": "@elizaos/plugin-telegram",
   "twitter": "@elizaos/plugin-x",

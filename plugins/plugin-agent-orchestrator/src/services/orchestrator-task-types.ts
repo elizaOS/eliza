@@ -219,7 +219,7 @@ export function readRetryBudgetFirstSessionId(
 }
 
 export interface TaskProviderPolicy {
-  /** Preferred sub-agent framework: claude | codex | opencode | elizaos | pi-agent. */
+  /** Preferred sub-agent framework: claude | codex | elizaos | pi-agent. */
   preferredFramework?: string;
   /** Where inference/credentials are sourced: user-claude | user-openai | eliza-cloud | local. */
   providerSource?: string;
