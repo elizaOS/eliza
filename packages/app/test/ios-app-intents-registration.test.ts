@@ -14,6 +14,10 @@ const appIntentsSwift = readFileSync(
   path.join(iosAppRoot, "App/ElizaAppIntents.swift"),
   "utf8",
 );
+const controlIntentsSwift = readFileSync(
+  path.join(iosAppRoot, "App/ElizaControlIntents.swift"),
+  "utf8",
+);
 const pbxproj = readFileSync(
   path.join(iosAppRoot, "App.xcodeproj/project.pbxproj"),
   "utf8",
@@ -472,14 +476,40 @@ describe("native assistant entry contracts", () => {
     expect(widgetControlsSwift).toContain(
       "struct ElizaVoiceControl: ControlWidget",
     );
-    expect(widgetControlsSwift).toContain("ios-control");
-    // Controls foreground the app (mic needs foreground) and deep-link via
-    // OpenURLIntent instead of touching UIKit from the extension process.
-    expect(widgetControlsSwift).toContain("static var openAppWhenRun = true");
-    expect(widgetControlsSwift).toContain("OpenURLIntent");
+    expect(controlIntentsSwift).toContain("ios-control");
+    // Apple requires the intent implementation in both the widget extension
+    // and containing app when a control foregrounds the app. The shared file
+    // remains extension-safe and is compiled into exactly those two targets.
+    expect(controlIntentsSwift).toContain(
+      "struct AskElizaControlIntent: AppIntent",
+    );
+    expect(controlIntentsSwift).toContain(
+      "struct StartElizaVoiceControlIntent: AppIntent",
+    );
+    expect(controlIntentsSwift).toContain("static var openAppWhenRun = true");
+    expect(controlIntentsSwift).toContain("OpenURLIntent");
+    expect(controlIntentsSwift).not.toContain("import UIKit");
+    const controlIntentsFileRef = pbxproj.match(
+      /([A-Z0-9]+) \/\* ElizaControlIntents\.swift \*\/ = \{isa = PBXFileReference/,
+    )?.[1];
+    expect(controlIntentsFileRef).toBeTruthy();
+    expect(
+      pbxproj.match(
+        new RegExp(
+          `isa = PBXBuildFile; fileRef = ${controlIntentsFileRef} `,
+          "g",
+        ),
+      )?.length,
+    ).toBe(2);
+    expect(widgetControlsSwift).not.toContain(
+      "struct AskElizaControlIntent: AppIntent",
+    );
+    expect(widgetControlsSwift).not.toContain(
+      "struct StartElizaVoiceControlIntent: AppIntent",
+    );
     expect(widgetControlsSwift).toContain("@available(iOS 18.0, *)");
     expect(
-      widgetControlsSwift.match(/static var isDiscoverable = false/g),
+      controlIntentsSwift.match(/static var isDiscoverable = false/g),
     ).toHaveLength(2);
   });
 
@@ -513,7 +543,9 @@ describe("native assistant entry contracts", () => {
     );
 
     // The bundle registers the Live Activity behind the iOS 16.1 gate.
-    expect(widgetsSwift).toContain("ElizaDictationLiveActivity()");
+    expect(widgetsSwift.match(/ElizaDictationLiveActivity\(\)/g)).toHaveLength(
+      1,
+    );
     expect(widgetsSwift).toContain('case liveActivity = "ios-live-activity"');
 
     // App-side ActivityKit bridge in the App target (first-party, D2).

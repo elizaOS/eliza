@@ -1,11 +1,11 @@
 /**
  The widget extension presents Eliza quick actions across Home and Lock Screen
- families and routes every interaction through the canonical deep-link spine.
+ families and routes widget interactions through the canonical deep-link spine.
  */
 import SwiftUI
 import WidgetKit
 
-/// Deep-link construction for widget and control entry points. Mirrors
+/// Deep-link construction for widget and Live Activity entry points. Mirrors
 /// `ElizaAppIntentRouter` in the app target: every native entry point mints an
 /// `elizaos://<host>?source=<entry>&action=…` URL that routes through the app
 /// shell's deep-link handler, and the `source` tag proves which surface fired.
@@ -14,7 +14,6 @@ enum ElizaWidgetDeepLink {
 
     enum Source: String {
         case widget = "ios-widget"
-        case control = "ios-control"
         case liveActivity = "ios-live-activity"
     }
 
