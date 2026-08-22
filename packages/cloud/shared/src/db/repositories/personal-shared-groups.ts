@@ -1,5 +1,5 @@
 /** Atomic claim and binding authority for Personal Shared provider groups. */
-import { and, eq, gt, isNull } from "drizzle-orm";
+import { and, eq, gt, isNull, or } from "drizzle-orm";
 import { v5 as uuidv5 } from "uuid";
 import { dbWrite } from "../client";
 import {
@@ -34,7 +34,7 @@ export function personalSharedGroupConversationId(input: {
 
 export type ConsumePersonalSharedGroupClaimResult =
   | { status: "bound"; binding: PersonalSharedGroupBinding }
-  | { status: "invalid" | "expired" | "already_used" };
+  | { status: "invalid" | "expired" | "already_used" | "already_bound" };
 
 export const personalSharedGroupsRepository = {
   async issueClaim(input: {
@@ -122,6 +122,31 @@ export const personalSharedGroupsRepository = {
         connectorAccountId: input.connectorAccountId,
         providerChatId: input.providerChatId,
       });
+      const [existing] = await tx
+        .select()
+        .from(personalSharedGroupBindings)
+        .where(
+          and(
+            eq(personalSharedGroupBindings.platform, input.platform),
+            eq(personalSharedGroupBindings.project, input.project),
+            eq(
+              personalSharedGroupBindings.connector_account_id,
+              input.connectorAccountId,
+            ),
+            eq(
+              personalSharedGroupBindings.provider_chat_id,
+              input.providerChatId,
+            ),
+          ),
+        )
+        .limit(1);
+      if (
+        existing &&
+        existing.owner_user_id !== claim.owner_user_id &&
+        existing.state !== "revoked"
+      ) {
+        return { status: "already_bound" } as const;
+      }
       const [binding] = await tx
         .insert(personalSharedGroupBindings)
         .values({
@@ -157,9 +182,13 @@ export const personalSharedGroupsRepository = {
             last_verified_at: now,
             updated_at: now,
           },
+          setWhere: or(
+            eq(personalSharedGroupBindings.owner_user_id, claim.owner_user_id),
+            eq(personalSharedGroupBindings.state, "revoked"),
+          ),
         })
         .returning();
-      if (!binding) throw new Error("Personal Shared group binding was not returned");
+      if (!binding) return { status: "already_bound" } as const;
       return { status: "bound", binding } as const;
     });
   },

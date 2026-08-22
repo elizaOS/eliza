@@ -837,6 +837,25 @@ describe("personal Shared messaging deliveries", () => {
     );
   });
 
+  test("does not let a second administrator take over an active owner binding", async () => {
+    consumeGroupClaimAndBind.mockImplementationOnce(async () => ({
+      status: "already_bound" as const,
+    }));
+    const response = await request({
+      ...validGroup,
+      message: "/eliza_link 23456789",
+      invocation: "command",
+    });
+
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        code: "group_claim_already_bound",
+        reply: expect.stringContaining("already linked to another Eliza owner"),
+      },
+    });
+    expect(sharedRestMessageSend).not.toHaveBeenCalled();
+  });
+
   test("routes a bound mention in its stable group conversation", async () => {
     resolveGroupBinding.mockImplementationOnce(
       async () => canonicalGroupBinding,

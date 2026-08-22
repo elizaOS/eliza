@@ -456,6 +456,8 @@ app.post("/", async (c) => {
                   ? "That group link expired. DM Eliza `/group` for a fresh code, then paste the new link command here."
                   : claimed.status === "already_used"
                     ? "That group link was already used. DM Eliza `/group` for a new one if you are reconnecting."
+                    : claimed.status === "already_bound"
+                      ? "This group is already linked to another Eliza owner. That owner must disconnect it before a different owner can link it."
                     : "That group link is not valid for this account or sender. DM Eliza `/group` yourself and paste the exact command here.",
             },
           });
