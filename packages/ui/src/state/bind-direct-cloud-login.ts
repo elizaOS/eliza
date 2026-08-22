@@ -1,6 +1,6 @@
 /**
  * Converts a direct Cloud account login into the durable personal-agent target
- * used by desktop startup and chat routing.
+ * used by desktop startup, chat routing, and runtime-switch surfaces.
  */
 
 import { setStorageValue } from "../bridge/storage-bridge";
