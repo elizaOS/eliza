@@ -647,8 +647,9 @@ export async function runCli(
       parsedTimeoutMs <= 0 ||
       parsedTimeoutMs > MAX_TURN_TIMEOUT_MS
     ) {
-      throw new Error(
+      throw new CliUsageError(
         `SCENARIO_TURN_TIMEOUT_MS must be a positive integer no greater than ${MAX_TURN_TIMEOUT_MS} (got '${raw}')`,
+        2,
       );
     }
     return parsedTimeoutMs;
