@@ -86,6 +86,12 @@ webhook registrations, and outbound text/image effects. `deliverWebhook()`
 drives the real authenticated callback server; `enqueueFault()` covers rate
 limits, malformed responses, and latency without replacing client methods.
 
+This mock implements only the third-party JSON proxy contract used by
+`plugin-wechat`. It does not claim compatibility with official WeChat XML
+webhooks, SHA signature/timestamp/nonce replay checks, AES encrypted payloads
+or key rotation, remote media fetching, or live WeChat acceptance. Requests
+must be authenticated JSON and both request and response bodies are bounded.
+
 ### Run standalone
 
 ```bash

@@ -15,6 +15,7 @@ const LOGIN_NEEDED = 1001;
 const REQUEST_TIMEOUT_MS = 30_000;
 const MAX_REQUEST_TIMEOUT_MS = 5 * 60_000;
 const MAX_RETRY_BASE_DELAY_MS = 8_000;
+const MAX_RESPONSE_BODY_BYTES = 1024 * 1024;
 
 export interface ProxyClientOptions {
   requestTimeoutMs?: number;
@@ -55,6 +56,7 @@ export class ProxyClient {
   private async request<T>(
     path: string,
     body?: Record<string, unknown>,
+    retryAmbiguousFailures = true,
   ): Promise<ProxyApiResponse<T>> {
     const url = `${this.baseUrl}${path}`;
     const headers: Record<string, string> = {
@@ -89,7 +91,7 @@ export class ProxyClient {
             this.retryBaseDelayMs,
           );
           // Consume the response body to release the connection
-          await res.text().catch(() => {});
+          await discardBoundedBody(res);
           await sleep(delay, this.signal);
           continue;
         }
@@ -98,11 +100,17 @@ export class ProxyClient {
           // Consume the body to release the connection, but never trust or
           // surface an untrusted error envelope. HTTP status is authoritative:
           // a forged `{ code: 1000 }` on an error status cannot become success.
-          await res.text().catch(() => {});
+          await discardBoundedBody(res);
           throw new ProxyHttpStatusError(res.status);
         }
 
-        const json = (await res.json()) as ProxyApiResponse<T>;
+        if (!isJsonMediaType(res.headers.get("content-type"))) {
+          await discardBoundedBody(res);
+          throw new Error("WeChat proxy response must use application/json");
+        }
+        const json = JSON.parse(
+          await readBoundedBody(res),
+        ) as ProxyApiResponse<T>;
         return json;
       } catch (err) {
         lastError = err instanceof Error ? err : new Error(String(err));
@@ -111,6 +119,9 @@ export class ProxyClient {
         }
         if (err instanceof ProxyHttpStatusError && !err.retryable) {
           throw err;
+        }
+        if (!retryAmbiguousFailures) {
+          throw lastError;
         }
         if (attempt === 2) {
           throw lastError;
@@ -164,7 +175,7 @@ export class ProxyClient {
   }
 
   async sendText(to: string, text: string): Promise<void> {
-    const res = await this.request("/api/send-text", { to, text });
+    const res = await this.request("/api/send-text", { to, text }, false);
     if (res.code === LOGIN_NEEDED) {
       throw new LoginExpiredError();
     }
@@ -174,11 +185,11 @@ export class ProxyClient {
   }
 
   async sendImage(to: string, imagePath: string, text?: string): Promise<void> {
-    const res = await this.request("/api/send-image", {
-      to,
-      imagePath,
-      text,
-    });
+    const res = await this.request(
+      "/api/send-image",
+      { to, imagePath, text },
+      false,
+    );
     if (res.code === LOGIN_NEEDED) {
       throw new LoginExpiredError();
     }
@@ -328,4 +339,49 @@ function requireData<T>(response: ProxyApiResponse<T>, action: string): T {
     throw new Error(`${action} failed: missing response data`);
   }
   return response.data;
+}
+
+function isJsonMediaType(value: string | null): boolean {
+  return value?.split(";", 1)[0]?.trim().toLowerCase() === "application/json";
+}
+
+async function readBoundedBody(response: Response): Promise<string> {
+  const declaredLength = Number(response.headers.get("content-length"));
+  if (
+    Number.isFinite(declaredLength) &&
+    declaredLength > MAX_RESPONSE_BODY_BYTES
+  ) {
+    await response.body?.cancel("response body exceeds client limit");
+    throw new Error("WeChat proxy response body exceeds 1048576 bytes");
+  }
+  if (!response.body) return "";
+
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > MAX_RESPONSE_BODY_BYTES) {
+      await reader.cancel("response body exceeds client limit");
+      throw new Error("WeChat proxy response body exceeds 1048576 bytes");
+    }
+    chunks.push(value);
+  }
+  const bytes = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+}
+
+async function discardBoundedBody(response: Response): Promise<void> {
+  try {
+    await readBoundedBody(response);
+  } catch {
+    // error-policy:J6 draining is connection-reuse cleanup; status remains authoritative.
+  }
 }

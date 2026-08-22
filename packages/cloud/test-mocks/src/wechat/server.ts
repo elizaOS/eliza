@@ -12,6 +12,7 @@ import type {
 } from "./types.js";
 
 const SUCCESS = 1000;
+const MAX_REQUEST_BODY_BYTES = 1024 * 1024;
 
 interface AccountState extends WechatProxyAccountSeed {
   deviceType: "ipad" | "mac";
@@ -47,6 +48,7 @@ export async function startWechatProxyMock(
   const faults = new Map<string, WechatProxyFault[]>();
 
   const server = await startFetchServer(async (request) => {
+    const requestGeneration = generation;
     const url = new URL(request.url);
     const accountId = request.headers.get("x-account-id");
     const deviceType = request.headers.get("x-device-type");
@@ -56,28 +58,56 @@ export async function startWechatProxyMock(
         request.headers.get("x-api-key") === account.apiKey &&
         deviceType === account.deviceType,
     );
-    const body = await readJsonBody(request);
-    requests.push({
+    const observation: WechatProxyRequestObservation = {
       sequence: ++sequence,
       accountId,
       deviceType,
       method: request.method,
       path: url.pathname,
-      body,
+      body: null,
       authenticated,
-    });
-
+    };
+    requests.push(observation);
     if (request.method !== "POST") {
       return envelope(1405, "method not allowed", undefined, 405);
     }
     if (!authenticated || !account) {
       return envelope(1401, "unauthorized", undefined, 401);
     }
+    if (
+      !isJsonMediaType(request.headers.get("content-type")) ||
+      !isIdentityEncoding(request.headers.get("content-encoding"))
+    ) {
+      return envelope(
+        1415,
+        "content-type must be application/json",
+        undefined,
+        415,
+      );
+    }
+
+    const parsedBody = await readJsonBody(request);
+    observation.body = parsedBody.ok ? parsedBody.value : null;
+    if (!parsedBody.ok) {
+      return envelope(
+        parsedBody.tooLarge ? 1413 : 1400,
+        parsedBody.tooLarge ? "payload too large" : "invalid JSON",
+        undefined,
+        parsedBody.tooLarge ? 413 : 400,
+      );
+    }
+    const body = parsedBody.value;
+    if (requestGeneration !== generation) {
+      return envelope(1409, "stale simulator generation", undefined, 409);
+    }
 
     const queued = faults.get(url.pathname);
     const fault = queued?.shift();
     if (fault) {
       if (fault.delayMs) await delay(fault.delayMs);
+      if (requestGeneration !== generation) {
+        return envelope(1409, "stale simulator generation", undefined, 409);
+      }
       const headers = new Headers({ "content-type": "application/json" });
       if (fault.retryAfter !== undefined) {
         headers.set("retry-after", fault.retryAfter);
@@ -195,6 +225,18 @@ export async function startWechatProxyMock(
           `WeChat mock account '${accountId}' has no registered webhook`,
         );
       }
+      const timeoutMs = options.timeoutMs ?? 1000;
+      if (
+        !Number.isSafeInteger(timeoutMs) ||
+        timeoutMs <= 0 ||
+        timeoutMs > 30_000
+      ) {
+        throw new Error("WeChat webhook timeoutMs must be between 1 and 30000");
+      }
+      const timeoutSignal = AbortSignal.timeout(timeoutMs);
+      const signal = options.signal
+        ? AbortSignal.any([options.signal, timeoutSignal])
+        : timeoutSignal;
       return fetch(account.webhookUrl, {
         method: "POST",
         headers: {
@@ -202,6 +244,8 @@ export async function startWechatProxyMock(
           "x-api-key": options.apiKey ?? account.apiKey,
         },
         body: JSON.stringify(payload),
+        redirect: "error",
+        signal,
       });
     },
     stop: server.stop,
@@ -232,14 +276,53 @@ function cloneSeed(seed: WechatProxySeed): WechatProxySeed {
   return structuredClone(seed);
 }
 
-async function readJsonBody(request: Request): Promise<unknown> {
-  const text = await request.text();
-  if (!text) return {};
-  try {
-    return JSON.parse(text);
-  } catch {
-    return null;
+async function readJsonBody(
+  request: Request,
+): Promise<{ ok: true; value: unknown } | { ok: false; tooLarge: boolean }> {
+  const declaredLength = Number(request.headers.get("content-length"));
+  if (
+    Number.isFinite(declaredLength) &&
+    declaredLength > MAX_REQUEST_BODY_BYTES
+  ) {
+    return { ok: false, tooLarge: true };
   }
+  if (!request.body) return { ok: true, value: {} };
+
+  const reader = request.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > MAX_REQUEST_BODY_BYTES) {
+      await reader.cancel("request body exceeds simulator limit");
+      return { ok: false, tooLarge: true };
+    }
+    chunks.push(value);
+  }
+  const bytes = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  try {
+    const text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+    if (!text) return { ok: true, value: {} };
+    return { ok: true, value: JSON.parse(text) };
+  } catch {
+    // error-policy:J3 invalid UTF-8 or JSON is an explicit protocol error.
+    return { ok: false, tooLarge: false };
+  }
+}
+
+function isJsonMediaType(value: string | null): boolean {
+  return value?.split(";", 1)[0]?.trim().toLowerCase() === "application/json";
+}
+
+function isIdentityEncoding(value: string | null): boolean {
+  return value === null || value.trim().toLowerCase() === "identity";
 }
 
 function readString(body: unknown, key: string): string | null {

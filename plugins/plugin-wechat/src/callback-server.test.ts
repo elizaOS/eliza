@@ -329,7 +329,10 @@ describe("webhook server malformed-path handling (#19060)", () => {
     closers.push(handle.close);
 
     const res = await requestRaw(handle.port, "/webhook/wechat/main", {
-      headers: { "x-api-key": "key-main" },
+      headers: {
+        "x-api-key": "key-main",
+        "content-type": "application/json",
+      },
       body: JSON.stringify(basePayload()),
     });
 
@@ -353,7 +356,10 @@ describe("webhook server malformed-path handling (#19060)", () => {
     closers.push(handle.close);
 
     const res = await requestRaw(handle.port, "/webhook/wechat/main", {
-      headers: { "x-api-key": "key-main" },
+      headers: {
+        "x-api-key": "key-main",
+        "content-type": "application/json",
+      },
       body: JSON.stringify(basePayload()),
     });
 
@@ -387,7 +393,10 @@ describe("webhook server malformed-path handling (#19060)", () => {
     });
 
     const options = {
-      headers: { "x-api-key": "key-main" },
+      headers: {
+        "x-api-key": "key-main",
+        "content-type": "application/json",
+      },
       body: JSON.stringify(basePayload({ msgId: "concurrent-success" })),
     };
     const owner = requestRaw(handle.port, "/webhook/wechat/main", options);
@@ -424,7 +433,10 @@ describe("webhook server malformed-path handling (#19060)", () => {
     });
 
     const options = {
-      headers: { "x-api-key": "key-main" },
+      headers: {
+        "x-api-key": "key-main",
+        "content-type": "application/json",
+      },
       body: JSON.stringify(basePayload({ msgId: "concurrent-failure" })),
     };
     const owner = requestRaw(handle.port, "/webhook/wechat/main", options);

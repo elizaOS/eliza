@@ -86,6 +86,15 @@ export async function startCallbackServer(
       res.end("Unauthorized");
       return;
     }
+    if (
+      !isJsonMediaType(readHeaderValue(req.headers["content-type"])) ||
+      !isIdentityEncoding(readHeaderValue(req.headers["content-encoding"]))
+    ) {
+      res.writeHead(415);
+      res.end("Unsupported Media Type");
+      req.destroy();
+      return;
+    }
 
     // Accumulate raw bytes and decode once on "end". Decoding each TCP chunk
     // independently with Buffer.toString() corrupts any multi-byte UTF-8 code
@@ -254,6 +263,14 @@ function readHeaderValue(
     return value[0];
   }
   return value;
+}
+
+function isJsonMediaType(value: string | undefined): boolean {
+  return value?.split(";", 1)[0]?.trim().toLowerCase() === "application/json";
+}
+
+function isIdentityEncoding(value: string | undefined): boolean {
+  return value === undefined || value.trim().toLowerCase() === "identity";
 }
 
 function safeCompare(a: string, b: string): boolean {

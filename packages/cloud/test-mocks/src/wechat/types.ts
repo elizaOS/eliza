@@ -51,4 +51,6 @@ export interface WechatProxySnapshot {
 
 export interface WechatWebhookDeliveryOptions {
   apiKey?: string;
+  signal?: AbortSignal;
+  timeoutMs?: number;
 }
