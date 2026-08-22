@@ -185,7 +185,7 @@ describe("personalAssistantPlugin.init scheduler identity", () => {
     await vi.waitFor(() => {
       expect(
         schedulingMocks.waitForScheduledTaskRunnerService,
-      ).toHaveBeenCalled();
+      ).toHaveBeenCalledTimes(2);
     });
     for (const call of schedulingMocks.waitForScheduledTaskRunnerService.mock
       .calls) {

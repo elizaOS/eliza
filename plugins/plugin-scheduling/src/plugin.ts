@@ -63,6 +63,8 @@ function runnerWaitStopped(
       : undefined;
   return (
     signal?.aborted === true ||
+    (runtime as IAgentRuntime & { stopped?: boolean }).stopped === true ||
+    lifecycle === "failed" ||
     lifecycle === "stopping" ||
     lifecycle === "stopped"
   );

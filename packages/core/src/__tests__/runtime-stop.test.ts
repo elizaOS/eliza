@@ -238,6 +238,7 @@ describe("AgentRuntime.stop", () => {
 		expect(runtime.getLifecycleState()).toBe("stopping");
 		expect(runtime.getStopSignal().aborted).toBe(true);
 		await stopStarted.promise;
+		expect(runtime.getLifecycleState()).toBe("stopping");
 		expect(reentrantStop).not.toBeNull();
 		let secondSettled = false;
 		const second = runtime.stop().then(() => {
@@ -251,6 +252,16 @@ describe("AgentRuntime.stop", () => {
 		expect(stopCalls).toBe(1);
 		expect(secondSettled).toBe(true);
 		expect(runtime.getLifecycleState()).toBe("stopped");
+	});
+
+	it("reports a failed initialization instead of a running lifecycle", async () => {
+		const runtime = new AgentRuntime({ logLevel: "fatal" });
+
+		await expect(
+			runtime.initialize({ skipMigrations: true }),
+		).rejects.toThrow();
+
+		expect(runtime.getLifecycleState()).toBe("failed");
 	});
 
 	it("fails fast without stopping resources beneath a noncooperative room owner", async () => {

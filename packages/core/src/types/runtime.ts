@@ -571,7 +571,12 @@ export interface IAgentRuntime extends RuntimeDatabaseAdapterSurface {
 	serverless?: boolean;
 	initPromise: Promise<void>;
 	/** Optional lifecycle capability for cancellable deferred startup. */
-	getLifecycleState?(): "initializing" | "running" | "stopping" | "stopped";
+	getLifecycleState?():
+		| "initializing"
+		| "running"
+		| "failed"
+		| "stopping"
+		| "stopped";
 	/** Optional signal that aborts when terminal runtime shutdown is requested. */
 	getStopSignal?(): AbortSignal;
 	messageService: IMessageService | null;

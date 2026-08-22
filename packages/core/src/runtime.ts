@@ -1420,6 +1420,8 @@ export class AgentRuntime implements IAgentRuntime {
 	private stopped = false;
 	/** Set permanently at the first stop request, before any drain can yield. */
 	private stopRequested = false;
+	/** Records an initialization attempt that released waiters by failing. */
+	private initializationFailed = false;
 	/** Typed cancellation boundary for deferred plugin/service startup. */
 	private readonly stopController = new AbortController();
 	/** The active stop attempt; concurrent callers await the same teardown. */
@@ -2889,9 +2891,11 @@ export class AgentRuntime implements IAgentRuntime {
 		/** Allow running without a persistent database adapter (benchmarks/tests). */
 		allowNoDatabase?: boolean;
 	}): Promise<void> {
+		this.initializationFailed = false;
 		try {
 			await this._initializeCore(options);
 		} catch (err) {
+			this.initializationFailed = true;
 			// error-policy:J2 Release initialization waiters before preserving
 			// the original initialization failure for the caller.
 			// Always resolve initPromise so eager service starts and stop()
@@ -5862,9 +5866,16 @@ export class AgentRuntime implements IAgentRuntime {
 		return this.serviceRegistrationStatus.get(key) || "unknown";
 	}
 
-	getLifecycleState(): "initializing" | "running" | "stopping" | "stopped" {
-		if (this.stopped) return "stopped";
-		if (this.stopRequested) return "stopping";
+	getLifecycleState():
+		| "initializing"
+		| "running"
+		| "failed"
+		| "stopping"
+		| "stopped" {
+		if (this.stopRequested) {
+			return this.stopped && this.stopPromise === null ? "stopped" : "stopping";
+		}
+		if (this.initializationFailed) return "failed";
 		return this.initResolver ? "initializing" : "running";
 	}
 

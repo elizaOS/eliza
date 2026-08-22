@@ -214,6 +214,43 @@ describe("scheduling plugin boot", () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
+  it("retains shutdown detection for runtimes with the legacy stopped flag", async () => {
+    vi.useFakeTimers();
+    const runtime = {
+      initPromise: Promise.resolve(),
+      stopped: false,
+      hasService: () => false,
+      getServiceRegistrationStatus: () => "unknown",
+      getServiceLoadPromise: vi.fn(),
+    } as unknown as IAgentRuntime & { stopped: boolean };
+
+    const load = waitForScheduledTaskRunnerService(runtime);
+    const outcome = expect(load).rejects.toMatchObject({
+      code: "SCHEDULED_TASK_RUNNER_WAIT_STOPPED",
+    });
+    await vi.advanceTimersByTimeAsync(100);
+    runtime.stopped = true;
+    await vi.advanceTimersByTimeAsync(250);
+
+    await outcome;
+    expect(runtime.getServiceLoadPromise).not.toHaveBeenCalled();
+  });
+
+  it("rejects startup after runtime initialization has failed", async () => {
+    const runtime = {
+      initPromise: Promise.resolve(),
+      getLifecycleState: () => "failed" as const,
+      hasService: vi.fn(),
+      getServiceRegistrationStatus: vi.fn(),
+      getServiceLoadPromise: vi.fn(),
+    } as unknown as IAgentRuntime;
+
+    await expect(
+      waitForScheduledTaskRunnerService(runtime),
+    ).rejects.toMatchObject({ code: "SCHEDULED_TASK_RUNNER_WAIT_STOPPED" });
+    expect(runtime.hasService).not.toHaveBeenCalled();
+  });
+
   it("observes runtime shutdown while initialization is still pending", async () => {
     const stop = new AbortController();
     const runtime = {
