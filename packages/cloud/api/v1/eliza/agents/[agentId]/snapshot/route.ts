@@ -1,5 +1,6 @@
 // Handles v1 cloud API v1 eliza agents agentid snapshot route traffic with route-local auth expectations.
 import { Hono } from "hono";
+import { CONTAINER_BACKED_EXECUTION_TIERS } from "@/db/schemas/agent-sandboxes";
 import { errorToResponse } from "@/lib/api/errors";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
 import { elizaSandboxService } from "@/lib/services/eliza-sandbox";
@@ -39,6 +40,62 @@ async function __hono_POST(
         Response.json(
           { success: false, error: "Agent not found" },
           { status: 404 },
+        ),
+        CORS_METHODS,
+      );
+    }
+
+    // This tenant-scoped primary snapshot is not a lock/CAS. Fence this route
+    // before enqueue; inner enqueue/worker authority remains separate work.
+    if (
+      !CONTAINER_BACKED_EXECUTION_TIERS.some(
+        (tier) => tier === agent.execution_tier,
+      )
+    ) {
+      return applyCorsHeaders(
+        Response.json(
+          {
+            success: false,
+            error: "Agent snapshot requires a container-backed execution tier",
+          },
+          { status: 409 },
+        ),
+        CORS_METHODS,
+      );
+    }
+    if (agent.pool_status !== null) {
+      return applyCorsHeaders(
+        Response.json(
+          {
+            success: false,
+            error: "Agent snapshot cannot target pool-owned capacity",
+          },
+          { status: 409 },
+        ),
+        CORS_METHODS,
+      );
+    }
+    if (agent.deleted_at !== null) {
+      return applyCorsHeaders(
+        Response.json(
+          {
+            success: false,
+            error: "Agent snapshot cannot target a deleted agent",
+          },
+          { status: 409 },
+        ),
+        CORS_METHODS,
+      );
+    }
+    if (agent.deletion_attempt_id !== null) {
+      return applyCorsHeaders(
+        Response.json(
+          {
+            success: false,
+            error:
+              "Agent snapshot cannot start while agent deletion is in progress",
+          },
+          { status: 409 },
         ),
         CORS_METHODS,
       );

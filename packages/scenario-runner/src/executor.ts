@@ -24,9 +24,11 @@ import type {
 import {
   ChannelType,
   createMessageMemory,
+  drainPostDeliveryTasks,
   ElizaError,
   logger,
   MemoryType,
+  postDeliveryTaskQuarantineReason,
   stringToUuid,
 } from "@elizaos/core";
 import type { DeterministicModelDiagnostics } from "@elizaos/core/testing";
@@ -85,6 +87,8 @@ export interface ExecutorOptions {
   attemptId?: string;
   /** Optional bridge to the canonical synthetic-world namespace (#22898). */
   worldId?: string;
+  /** Maximum time to reach post-delivery quiescence before quarantining the runtime. */
+  postDeliveryTimeoutMs?: number;
 }
 
 /**
@@ -241,6 +245,7 @@ export function providerQualifiedScenarioProblems(
 }
 
 const DEFAULT_TURN_TIMEOUT_MS = 120_000;
+const DEFAULT_POST_DELIVERY_TIMEOUT_MS = 10_000;
 
 type TurnMatcher = string | RegExp;
 
@@ -665,6 +670,36 @@ function withTimeout<T>(
       },
     );
   });
+}
+
+async function drainScenarioPostDeliveryTasks(
+  runtime: AgentRuntime,
+  opts: ExecutorOptions,
+): Promise<string | undefined> {
+  const timeoutMs =
+    opts.postDeliveryTimeoutMs ?? DEFAULT_POST_DELIVERY_TIMEOUT_MS;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => {
+    controller.abort(
+      new Error(`post-delivery drain timed out after ${timeoutMs}ms`),
+    );
+  }, timeoutMs);
+  const abortFromCaller = () => {
+    controller.abort(
+      opts.abortSignal?.reason ?? new Error("scenario execution was aborted"),
+    );
+  };
+  opts.abortSignal?.addEventListener("abort", abortFromCaller, { once: true });
+  if (opts.abortSignal?.aborted) abortFromCaller();
+  try {
+    await drainPostDeliveryTasks(runtime, { signal: controller.signal });
+    return undefined;
+  } catch (error) {
+    return error instanceof Error ? error.message : String(error);
+  } finally {
+    clearTimeout(timeout);
+    opts.abortSignal?.removeEventListener("abort", abortFromCaller);
+  }
 }
 
 function normalizeChannelType(value: unknown): ChannelType {
@@ -1660,6 +1695,7 @@ async function executeActionTurn(
   currentNow: Date,
   turnTimeoutMs: number,
 ): Promise<{
+  validation: NonNullable<ScenarioTurnExecution["validation"]>;
   responseText: string;
   responseBody: unknown;
   durationMs: number;
@@ -1729,9 +1765,31 @@ async function executeActionTurn(
     timeoutMs,
     `validateAction(${turn.name})`,
   );
+  const expectedValidation = turn.expectedValidation ?? "accepted";
   if (!validated) {
+    if (expectedValidation === "rejected") {
+      const text = `${actionName} validation rejected the input as expected.`;
+      return {
+        validation: {
+          actionName,
+          accepted: false,
+          expected: "rejected",
+        },
+        responseText: text,
+        responseBody: {
+          actionName,
+          validation: { accepted: false, expected: "rejected" },
+        },
+        durationMs: Date.now() - startedAt,
+      };
+    }
     throw new Error(
       `[executor] action turn '${turn.name}' failed validation for '${actionName}'`,
+    );
+  }
+  if (expectedValidation === "rejected") {
+    throw new Error(
+      `[executor] action turn '${turn.name}' expected validation rejection for '${actionName}', but validation accepted the input`,
     );
   }
   const result = await withTimeout(
@@ -1760,6 +1818,11 @@ async function executeActionTurn(
     responseText = actionResult.userFacingText;
   }
   return {
+    validation: {
+      actionName,
+      accepted: true,
+      expected: "accepted",
+    },
     responseText,
     responseBody: actionResult ?? null,
     durationMs: Date.now() - startedAt,
@@ -1925,31 +1988,79 @@ async function executeTickTurn(args: {
 async function executeWaitTurn(
   turn: ScenarioTurn,
   turnTimeoutMs: number,
+  runtime: AgentRuntime,
+  ctx: RunnerContext,
 ): Promise<{
   statusCode: number;
   responseBody: unknown;
   responseText: string;
   durationMs: number;
 }> {
-  const durationMs = (turn as { durationMs?: unknown }).durationMs;
+  const durationMs = turn.durationMs;
+  const until = turn.until;
   if (
-    typeof durationMs !== "number" ||
-    !Number.isFinite(durationMs) ||
-    durationMs < 0
+    until === undefined &&
+    (typeof durationMs !== "number" ||
+      !Number.isFinite(durationMs) ||
+      durationMs < 0)
   ) {
     throw new Error(
       `[executor] wait turn '${turn.name}' requires non-negative durationMs`,
     );
   }
+  if (until !== undefined && typeof until !== "function") {
+    throw new Error(
+      `[executor] wait turn '${turn.name}' has a non-callable until predicate`,
+    );
+  }
   const timeoutMs =
     typeof turn.timeoutMs === "number" ? turn.timeoutMs : turnTimeoutMs;
   const startedAt = Date.now();
-  await withTimeout(
-    new Promise((resolve) => setTimeout(resolve, durationMs)),
-    timeoutMs,
-    `wait(${turn.name})`,
-  );
-  const responseBody = { success: true, durationMs };
+  if (until) {
+    const pollIntervalMs = turn.pollIntervalMs ?? 25;
+    if (!Number.isFinite(pollIntervalMs) || pollIntervalMs <= 0) {
+      throw new Error(
+        `[executor] wait turn '${turn.name}' requires a positive pollIntervalMs`,
+      );
+    }
+    const deadline = startedAt + timeoutMs;
+    while (true) {
+      const predicateBudgetMs = deadline - Date.now();
+      if (predicateBudgetMs <= 0) {
+        throw new Error(
+          `waitUntil(${turn.name}) timed out after ${timeoutMs}ms`,
+        );
+      }
+      if (
+        await withTimeout(
+          Promise.resolve(until({ ...ctx, runtime })),
+          predicateBudgetMs,
+          `waitUntil(${turn.name})`,
+        )
+      ) {
+        break;
+      }
+      const sleepBudgetMs = deadline - Date.now();
+      if (sleepBudgetMs <= 0) {
+        throw new Error(
+          `waitUntil(${turn.name}) timed out after ${timeoutMs}ms`,
+        );
+      }
+      await new Promise<void>((resolve) =>
+        setTimeout(resolve, Math.min(pollIntervalMs, sleepBudgetMs)),
+      );
+    }
+  } else {
+    await withTimeout(
+      new Promise((resolve) => setTimeout(resolve, durationMs)),
+      timeoutMs,
+      `wait(${turn.name})`,
+    );
+  }
+  const responseBody = {
+    success: true,
+    ...(until ? { condition: "satisfied" } : { durationMs }),
+  };
   return {
     statusCode: 200,
     responseBody,
@@ -2312,6 +2423,31 @@ export async function runScenario(
           },
   };
   if (
+    opts.postDeliveryTimeoutMs !== undefined &&
+    (!Number.isSafeInteger(opts.postDeliveryTimeoutMs) ||
+      opts.postDeliveryTimeoutMs <= 0)
+  ) {
+    report.status = "failed";
+    report.error = `invalid postDeliveryTimeoutMs: ${String(opts.postDeliveryTimeoutMs)}`;
+    report.failedAssertions.push({
+      label: "executorOptions",
+      detail: report.error,
+    });
+    report.durationMs = Date.now() - startedAt;
+    return report;
+  }
+  const quarantineReason = postDeliveryTaskQuarantineReason(runtime);
+  if (quarantineReason) {
+    report.status = "failed";
+    report.error = `runtime is quarantined after incomplete post-delivery work: ${quarantineReason}`;
+    report.failedAssertions.push({
+      label: "runtimeIsolation",
+      detail: report.error,
+    });
+    report.durationMs = Date.now() - startedAt;
+    return report;
+  }
+  if (
     scenario.executionProfile !== undefined &&
     scenario.executionProfile !== executionProfile
   ) {
@@ -2380,8 +2516,6 @@ export async function runScenario(
   const originalGetService = runtime.getService.bind(runtime);
   const scenarioComputerUseService = createScenarioComputerUseService();
   let apiServer: ScenarioApiServer | null = null;
-  let fixtureConsumptionChecked = false;
-
   try {
     beginScenarioModelFixtureAttempt(
       runtime,
@@ -2544,6 +2678,8 @@ export async function runScenario(
                       ...(await executeWaitTurn(
                         turn,
                         opts.turnTimeoutMs || DEFAULT_TURN_TIMEOUT_MS,
+                        runtime,
+                        ctx,
                       )),
                     }
                   : {
@@ -2608,6 +2744,7 @@ export async function runScenario(
         responseText:
           execution.reportResponseText ?? execution.responseText ?? "",
         actionsCalled: actionsThisTurn,
+        ...(execution.validation ? { validation: execution.validation } : {}),
         durationMs: execution.durationMs ?? 0,
         failedAssertions,
         ...(turnJudgeScore !== undefined ? { judgeScore: turnJudgeScore } : {}),
@@ -2679,35 +2816,26 @@ export async function runScenario(
         }
       }
     }
-
-    const fixtureFailure = assertScenarioModelFixturesConsumed(runtime);
-    fixtureConsumptionChecked = true;
-    report.modelFixtureDiagnostics =
-      captureScenarioModelFixtureDiagnostics(runtime);
-    if (fixtureFailure) {
-      report.status = "failed";
-      report.failedAssertions.push({
-        label: "modelFixtures",
-        detail: fixtureFailure,
-      });
-    }
   } catch (err) {
     report.status = "failed";
     report.error = err instanceof Error ? err.message : String(err);
     logger.warn(`[scenario-runner] ${scenario.id} threw: ${report.error}`);
   } finally {
-    if (!fixtureConsumptionChecked) {
-      const fixtureFailure = assertScenarioModelFixturesConsumed(runtime);
-      if (fixtureFailure) {
-        report.status = "failed";
-        report.failedAssertions.push({
-          label: "modelFixtures",
-          detail: fixtureFailure,
-        });
-      }
+    // Tracked post-delivery work can enter the model after the last turn has
+    // returned. Drain it while scenario isolation is still active, then run
+    // cleanup and drain once more so cleanup-spawned work cannot escape the
+    // authoritative fixture assertion.
+    const preCleanupDrainFailure = await drainScenarioPostDeliveryTasks(
+      runtime,
+      opts,
+    );
+    if (preCleanupDrainFailure) {
+      report.status = "failed";
+      report.failedAssertions.push({
+        label: "postDeliveryTasks",
+        detail: preCleanupDrainFailure,
+      });
     }
-    report.modelFixtureDiagnostics =
-      captureScenarioModelFixtureDiagnostics(runtime);
     const cleanupFailures = await runScenarioCleanups(scenario, runtime, ctx);
     if (cleanupFailures.length > 0) {
       report.status = "failed";
@@ -2715,6 +2843,27 @@ export async function runScenario(
         report.failedAssertions.push({ label: "cleanup", detail });
       }
     }
+    const postCleanupDrainFailure = await drainScenarioPostDeliveryTasks(
+      runtime,
+      opts,
+    );
+    if (postCleanupDrainFailure) {
+      report.status = "failed";
+      report.failedAssertions.push({
+        label: "postDeliveryTasks",
+        detail: postCleanupDrainFailure,
+      });
+    }
+    const fixtureFailure = assertScenarioModelFixturesConsumed(runtime);
+    if (fixtureFailure) {
+      report.status = "failed";
+      report.failedAssertions.push({
+        label: "modelFixtures",
+        detail: fixtureFailure,
+      });
+    }
+    report.modelFixtureDiagnostics =
+      captureScenarioModelFixtureDiagnostics(runtime);
     (
       runtime as {
         getService: AgentRuntime["getService"];
