@@ -1,38 +1,9 @@
 /**
- * Extracts recent conversation lines used to ground action replies — pulls text
- * from provider state (recentMessages, state text, recent-message memories),
- * strips speaker-name prefixes, dedupes while preserving order, and optionally
- * backfills from the room's message memories when state is thin.
+ * Extracts complete conversation values used to ground action replies from
+ * provider state and room memories without splitting, trimming, or deduping them.
  */
 import type { IAgentRuntime, Memory, State } from "@elizaos/core";
 import { getRecentMessagesData } from "@elizaos/shared";
-
-const STATE_SPEAKER_PREFIX_RE =
-  /^[a-zA-Z\u00C0-\u024F\u0400-\u04FF\u3000-\u9FFF]{1,20}\s*:\s*/;
-
-function normalizeConversationLine(value: string): string {
-  return value.replace(STATE_SPEAKER_PREFIX_RE, "").trim();
-}
-
-function splitConversationText(value: string): string[] {
-  return value
-    .split(/\n+/)
-    .map((line) => normalizeConversationLine(line))
-    .filter((line) => line.length > 0);
-}
-
-function dedupePreservingOrder(values: string[]): string[] {
-  const seen = new Set<string>();
-  const deduped: string[] = [];
-  for (const value of values) {
-    if (seen.has(value)) {
-      continue;
-    }
-    seen.add(value);
-    deduped.push(value);
-  }
-  return deduped;
-}
 
 export function recentConversationTextsFromState(
   state: State | undefined,
@@ -51,8 +22,8 @@ export function recentConversationTextsFromState(
 
   const collected: string[] = [];
   const pushText = (value: unknown) => {
-    if (typeof value === "string" && value.trim().length > 0) {
-      collected.push(...splitConversationText(value));
+    if (typeof value === "string") {
+      collected.push(value);
     }
   };
 
@@ -67,7 +38,7 @@ export function recentConversationTextsFromState(
     pushText(content.text);
   }
 
-  return dedupePreservingOrder(collected);
+  return collected;
 }
 
 export async function recentConversationTexts(args: {
@@ -85,22 +56,16 @@ export async function recentConversationTexts(args: {
     return stateTexts;
   }
 
-  try {
-    const memories = await args.runtime.getMemories({
-      roomId,
-      tableName: "messages",
-    });
-    const memoryTexts = Array.isArray(memories)
-      ? memories
-          .map((memory) =>
-            memory.content && typeof memory.content.text === "string"
-              ? normalizeConversationLine(memory.content.text)
-              : "",
-          )
-          .filter((text) => text.length > 0)
-      : [];
-    return dedupePreservingOrder([...memoryTexts, ...stateTexts]);
-  } catch {
-    return stateTexts;
-  }
+  const memories = await args.runtime.getMemories({
+    roomId,
+    tableName: "messages",
+  });
+  const memoryTexts = Array.isArray(memories)
+    ? memories.flatMap((memory) =>
+        memory.content && typeof memory.content.text === "string"
+          ? [memory.content.text]
+          : [],
+      )
+    : [];
+  return [...memoryTexts, ...stateTexts];
 }
