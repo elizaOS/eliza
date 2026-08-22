@@ -18,7 +18,12 @@
  *    skip: pause suppresses proactive behavior, and chaining is proactive.
  */
 
-import { ElizaError, stableStringify } from "@elizaos/core/edge";
+import {
+  ElizaError,
+  STABLE_STRINGIFY_UNBOUNDED,
+  StableStringifyUnboundedError,
+  stableStringify,
+} from "@elizaos/core/edge";
 import { decideDispatchPolicy } from "../dispatch-policy.js";
 import type { DispatchResult } from "../dispatch-types.js";
 import type { CompletionCheckRegistry } from "./completion-check-registry.js";
@@ -1152,7 +1157,25 @@ export function createScheduledTaskRunner(
   ): Promise<{ task: ScheduledTask; imported: boolean }> {
     const existing = await deps.store.get(task.taskId);
     const existingReceipt = existing?.metadata?.sharedCutoverImport;
-    const taskDigest = stableStringify(task);
+    let taskDigest: string;
+    try {
+      taskDigest = stableStringify(task);
+    } catch (error) {
+      if (error instanceof StableStringifyUnboundedError) {
+        throw new ElizaError(
+          `scheduled task digest is unbounded (${(error as StableStringifyUnboundedError).message})`,
+          {
+            code: STABLE_STRINGIFY_UNBOUNDED,
+            cause: error,
+            context: {
+              taskId: task.taskId,
+              reason: (error as StableStringifyUnboundedError).message,
+            },
+          },
+        );
+      }
+      throw error;
+    }
     if (existing) {
       if (
         existingReceipt !== null &&

@@ -259,6 +259,44 @@ describe("ScheduledTaskRunner — schedule + idempotency", () => {
     ).rejects.toThrow("does not carry the expected cutover receipt");
   });
 
+  it("rejects an unbounded hosted task digest with a typed code rather than a raw throw", async () => {
+    const h = makeHarness();
+    // Build a task that exceeds stableStringify node budget (2048 + slack) via a wide metadata bag.
+    // This is plain hosted JSON the runner must reject with a typed error, not crash with a raw StableStringifyUnboundedError.
+    const wideMetadata: Record<string, unknown> = {};
+    for (let i = 0; i < 2500; i++) wideMetadata[`k${i}`] = { v: i };
+    const task: ScheduledTask = {
+      ...baseInput({
+        trigger: { kind: "once" as const, atIso: "2026-05-10T09:00:00.000Z" } as never,
+      }),
+      taskId: "shared-reminder-wide",
+      state: { status: "scheduled", followupCount: 0 } as never,
+      metadata: wideMetadata as never,
+    } as ScheduledTask;
+    const receipt = {
+      sourceAgentId: "personal:source",
+      cutoverToken: "cutover-token-wide",
+    };
+    let caught: unknown;
+    try {
+      await h.runner.importTask(task, receipt);
+    } catch (e) {
+      caught = e;
+    }
+    expect(caught).toBeDefined();
+    // Must be a typed ElizaError with STABLE_STRINGIFY_UNBOUNDED, not a raw unbounded throw that blocks the runner
+    const code = (caught as { code?: unknown })?.code ?? (caught as { cause?: { code?: unknown } })?.cause?.code;
+    // Also accept code via ElizaError.code
+    expect(String(code ?? (caught as Error).message)).toContain("STABLE_STRINGIFY_UNBOUNDED");
+    // Runner must still accept a legitimate successor task after the rejection — no global block.
+    const legit = await h.runner.schedule(
+      baseInput({
+        trigger: { kind: "once" as const, atIso: "2026-05-10T09:01:00.000Z" } as never,
+      }),
+    );
+    expect(legit.task.state.status).toBe("scheduled");
+  });
+
   it("logs validation when both pipeline.onSkip and followupAfterMinutes are set", async () => {
     const h = makeHarness();
     const task = await h.runner.schedule(

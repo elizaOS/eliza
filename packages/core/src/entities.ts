@@ -20,6 +20,7 @@ import {
 	normalizeEntityMatches,
 	readEntityResolutionField,
 } from "./entity-matches";
+import { ElizaError } from "./errors";
 import { logger } from "./logger";
 // Type-only (erased at runtime, so no cycle with roles.ts, which imports
 // createUniqueUuid from this module). The role-resolution values are pulled via a
@@ -37,7 +38,11 @@ import {
 	type World,
 } from "./types";
 import * as utils from "./utils";
-import { stableStringify } from "./utils/deterministic";
+import {
+	STABLE_STRINGIFY_UNBOUNDED,
+	StableStringifyUnboundedError,
+	stableStringify,
+} from "./utils/deterministic";
 
 type EntityDetailsRecord = Pick<
 	Entity,
@@ -602,7 +607,22 @@ export async function getEntityDetails({
 						: entity.names[0],
 					names: entity.names,
 					metadata: entity.metadata,
-					data: stableStringify({ ...mergedData, ...entity.metadata }),
+					data: (() => {
+						try {
+							return stableStringify({ ...mergedData, ...entity.metadata });
+						} catch (error) {
+							if (error instanceof StableStringifyUnboundedError) {
+								throw new ElizaError(
+									`entity data is unbounded (${(error as Error).message})`,
+									{
+										code: STABLE_STRINGIFY_UNBOUNDED,
+										cause: error,
+									},
+								);
+							}
+							throw error;
+						}
+					})(),
 				});
 			}
 
@@ -626,7 +646,20 @@ function formatEntityNames(names: string[]): string {
 }
 
 export function formatEntityMetadata(metadata: unknown): string {
-	return stableStringify(metadata);
+	try {
+		return stableStringify(metadata);
+	} catch (error) {
+		if (error instanceof StableStringifyUnboundedError) {
+			throw new ElizaError(
+				`entity metadata is unbounded (${(error as Error).message})`,
+				{
+					code: STABLE_STRINGIFY_UNBOUNDED,
+					cause: error,
+				},
+			);
+		}
+		throw error;
+	}
 }
 
 export function formatEntities({ entities }: { entities: Entity[] }) {
