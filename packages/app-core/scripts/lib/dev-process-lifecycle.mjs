@@ -65,21 +65,34 @@ export function createApiHealthWatchdog({
 }) {
   let timer = null;
   let failures = 0;
-  let checkInFlight = false;
+  let generation = 0;
+  let stopped = false;
+  const inFlightGenerations = new Set();
   /** Epoch ms until which unhealthy probes are boot, not wedge; 0 = off. */
   let recoveringUntil = 0;
 
   const checkNow = async () => {
-    if (checkInFlight || isShuttingDown()) return;
-    checkInFlight = true;
+    const probeGeneration = generation;
+    if (
+      stopped ||
+      isShuttingDown() ||
+      inFlightGenerations.has(probeGeneration)
+    ) {
+      return;
+    }
+    inFlightGenerations.add(probeGeneration);
     let healthy = false;
     try {
       healthy = (await check()) === true;
     } catch {
       healthy = false;
     } finally {
-      checkInFlight = false;
+      inFlightGenerations.delete(probeGeneration);
     }
+    // A probe belongs to the child generation that started it. Its result must
+    // not clear boot grace, add a failure, or restart after that child was
+    // replaced or the supervisor began shutting down.
+    if (stopped || isShuttingDown() || probeGeneration !== generation) return;
     if (healthy) {
       failures = 0;
       recoveringUntil = 0;
@@ -102,17 +115,22 @@ export function createApiHealthWatchdog({
      * watchdog requested itself.
      */
     beginRecovery() {
+      if (stopped || isShuttingDown()) return;
+      generation += 1;
       failures = 0;
       recoveringUntil = now() + recoveryGraceMs;
     },
     start() {
       if (timer) return;
+      stopped = false;
       timer = setInterval(() => void checkNow(), intervalMs);
       timer.unref?.();
     },
     stop() {
       if (timer) clearInterval(timer);
       timer = null;
+      stopped = true;
+      generation += 1;
       failures = 0;
       recoveringUntil = 0;
     },
