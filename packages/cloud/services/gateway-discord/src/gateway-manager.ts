@@ -38,6 +38,7 @@ import {
 } from "./dm-policy";
 import { pollTrackedDiscordDms, type TrackedDiscordDm } from "./dm-polling";
 import { tryConfirmDiscordIdentityLink } from "./identity-link";
+import { invalidIntegerEnvError, parseIntegerEnvValue } from "./integer-env";
 import { logger } from "./logger";
 import {
   createManagedGuildVoiceCloudBridge,
@@ -127,17 +128,14 @@ function parseIntEnv(
   defaultValue: number,
   minValue: number = 1,
 ): number {
-  const value = process.env[name];
-  if (value === undefined) return defaultValue;
-  const parsed = parseInt(value, 10);
-  if (Number.isNaN(parsed)) {
-    throw new Error(
-      `Invalid ${name} environment variable: "${value}" is not a valid integer`,
-    );
-  }
+  const parsed = parseIntegerEnvValue(name, process.env[name]);
+  if (parsed === undefined) return defaultValue;
   if (parsed < minValue) {
-    throw new Error(
-      `Invalid ${name} environment variable: ${parsed} is below minimum value of ${minValue}`,
+    throw invalidIntegerEnvError(
+      name,
+      process.env[name] ?? String(parsed),
+      `${parsed} is below minimum value of ${minValue}`,
+      { parsed, minimum: minValue },
     );
   }
   return parsed;
