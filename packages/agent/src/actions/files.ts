@@ -1,7 +1,7 @@
 /**
  * Registers the FILES agent action, giving an owner-role agent read/CRUD access
  * to the content-addressed media store through the runtime's IFileStorageService
- * (ServiceType.REMOTE_FILES): list (recent files, optional query/limit), get
+ * (ServiceType.REMOTE_FILES): list (every file, optional query), get
  * (details + served URL by filename), and delete (confirm-gated).
  */
 import type {
@@ -23,7 +23,6 @@ interface FilesParams {
   subaction?: string;
   fileName?: string;
   query?: string;
-  limit?: number;
   confirm?: boolean;
 }
 
@@ -44,11 +43,6 @@ function normalizeOp(params: FilesParams): FilesOp | undefined {
   return (FILES_OPS as readonly string[]).includes(candidate)
     ? (candidate as FilesOp)
     : undefined;
-}
-
-function clampLimit(value: number | undefined, fallback: number): number {
-  if (typeof value !== "number" || !Number.isFinite(value)) return fallback;
-  return Math.max(1, Math.min(100, Math.floor(value)));
 }
 
 function humanSize(bytes: number): string {
@@ -82,12 +76,8 @@ async function doList(
   const filtered = params.query
     ? all.filter((file) => matchesQuery(file, params.query ?? ""))
     : all;
-  const limit = clampLimit(params.limit, 20);
-  const top = filtered.slice(0, limit);
-  const text = top.length
-    ? `Found ${filtered.length} file(s).${
-        filtered.length > top.length ? ` Most recent ${top.length}:` : ""
-      }\n${top
+  const text = filtered.length
+    ? `Found all ${filtered.length} file(s).\n${filtered
         .map(
           (file) =>
             `- ${file.fileName} (${file.mimeType}, ${humanSize(file.size)}) ${file.url}`,
@@ -97,7 +87,7 @@ async function doList(
   return {
     success: true,
     text,
-    data: { files: top, total: filtered.length },
+    data: { files: filtered, total: filtered.length },
   };
 }
 
@@ -157,8 +147,8 @@ async function doDelete(
 
 /**
  * FILES action: gives the agent read/CRUD access to the content-addressed file
- * store via {@link IFileStorageService}. op:list shows recent stored files
- * (optional query/limit); op:get returns a file's details + served URL by
+ * store via {@link IFileStorageService}. op:list shows every stored file
+ * (optional query); op:get returns a file's details + served URL by
  * fileName; op:delete removes a file (requires confirm:true).
  */
 export const filesAction: Action = {
@@ -176,7 +166,7 @@ export const filesAction: Action = {
     "REMOVE_FILE",
   ],
   description:
-    "Access stored files. op:list shows recent stored files (optional query/limit); op:get returns a file's details + served URL by fileName; op:delete removes a file (requires confirm:true).",
+    "Access stored files. op:list shows every stored file (optional query); op:get returns a file's details + served URL by fileName; op:delete removes a file (requires confirm:true).",
   descriptionCompressed:
     "list/get/delete stored files; delete requires confirm:true",
   routingHint:
@@ -235,12 +225,6 @@ export const filesAction: Action = {
         "Optional filter for op:list (matches filename or mime type substring)",
       required: false,
       schema: { type: "string" as const },
-    },
-    {
-      name: "limit",
-      description: "Max results for op:list (default 20, max 100)",
-      required: false,
-      schema: { type: "number" as const },
     },
     {
       name: "confirm",

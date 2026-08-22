@@ -2204,6 +2204,55 @@ export class DocumentService extends Service {
 			.sort((a, b) => b.similarity - a.similarity) as StoredDocument[];
 	}
 
+	/**
+	 * Traverse the authorized fragment query in storage-sized pages. `limit` is
+	 * deliberately internal: every matching fragment is reassembled before any
+	 * search mode ranks it, and a repeated row or non-advancing adapter rejects
+	 * instead of returning a complete-looking prefix.
+	 */
+	private async queryAllDocumentFragments(
+		params: Omit<DocumentFragmentQueryParams, "limit" | "offset">,
+	): Promise<Memory[]> {
+		const pageSize = 1_000;
+		const fragments: Memory[] = [];
+		const seen = new Set<string>();
+		let offset = 0;
+		while (true) {
+			const page = await this.runtime.adapter.queryDocumentFragments({
+				...params,
+				limit: pageSize,
+				offset,
+			});
+			if (page.length > pageSize) {
+				throw new ElizaError("Document fragment page exceeded its request", {
+					code: "DOCUMENT_FRAGMENT_TRAVERSAL_PAGE_INVALID",
+					context: { offset, pageLength: page.length, pageSize },
+				});
+			}
+			if (page.length === 0) break;
+			for (const fragment of page) {
+				// Malformed legacy fragments without an identity are not searchable and
+				// were already excluded by every search mode. They still advance the
+				// storage offset, so retaining that compatibility cannot stall paging.
+				if (!fragment.id) continue;
+				if (seen.has(fragment.id)) {
+					throw new ElizaError(
+						"Document fragment traversal repeated an identity",
+						{
+							code: "DOCUMENT_FRAGMENT_TRAVERSAL_NON_ADVANCING",
+							context: { offset, fragmentId: fragment.id },
+						},
+					);
+				}
+				seen.add(fragment.id);
+				fragments.push(fragment);
+			}
+			if (page.length < pageSize) break;
+			offset += page.length;
+		}
+		return fragments;
+	}
+
 	async enrichConversationMemoryWithRAG(
 		memoryId: UUID,
 		ragMetadata: {
