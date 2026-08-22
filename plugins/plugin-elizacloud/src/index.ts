@@ -124,7 +124,12 @@ function isExplicitFalseFlag(value: string | undefined): boolean {
 }
 
 export function registerTextInferenceModels(runtime: IAgentRuntime): void {
-  const flag = getSetting(runtime, "ELIZAOS_CLOUD_USE_INFERENCE");
+  // Host routing policy is process-owned. Read the captured environment first
+  // so a packaged core resolver that lacks dotenv fallback cannot silently
+  // re-enable the priority-50 Cloud brain inside a managed container.
+  const flag =
+    env.ELIZAOS_CLOUD_USE_INFERENCE ??
+    getSetting(runtime, "ELIZAOS_CLOUD_USE_INFERENCE");
   if (flag?.trim().toLowerCase() === "false") {
     logger.info(
       "[ElizaOSCloud] Not registering chat-brain text handlers: ELIZAOS_CLOUD_USE_INFERENCE=false (another provider owns the text brain; image/media/TTS/embedding handlers stay active)"
@@ -143,7 +148,9 @@ export function registerTextInferenceModels(runtime: IAgentRuntime): void {
 }
 
 export function registerCloudEmbeddingModels(runtime: IAgentRuntime): void {
-  const flag = getSetting(runtime, "ELIZAOS_CLOUD_USE_EMBEDDINGS");
+  const flag =
+    env.ELIZAOS_CLOUD_USE_EMBEDDINGS ??
+    getSetting(runtime, "ELIZAOS_CLOUD_USE_EMBEDDINGS");
   if (isExplicitFalseFlag(flag)) {
     logger.info(
       "[ElizaOSCloud] Not registering cloud embedding handlers: ELIZAOS_CLOUD_USE_EMBEDDINGS=false (another provider owns TEXT_EMBEDDING)"
