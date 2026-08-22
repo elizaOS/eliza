@@ -7,6 +7,7 @@
  */
 
 import { logger } from "./logger";
+import { ownedBoundedFetch } from "./owned-bounded-fetch";
 
 const CLOUDFLARE_API_BASE = "https://api.cloudflare.com/client/v4";
 export const CLOUDFLARE_REQUEST_TIMEOUT_MS = 30_000;
@@ -14,16 +15,12 @@ export const CLOUDFLARE_REQUEST_TIMEOUT_MS = 30_000;
 /**
  * Bound every Cloudflare REST hop while preserving caller cancellation.
  */
-export function cloudflareFetch(
+export async function cloudflareFetch(
   input: RequestInfo | URL,
   init?: RequestInit,
   timeoutMs: number = CLOUDFLARE_REQUEST_TIMEOUT_MS,
 ): Promise<Response> {
-  const deadline = AbortSignal.timeout(timeoutMs);
-  return fetch(input, {
-    ...init,
-    signal: init?.signal ? AbortSignal.any([init.signal, deadline]) : deadline,
-  });
+  return ownedBoundedFetch(input, init, { timeoutMs });
 }
 
 interface CloudflareErrorEntry {
