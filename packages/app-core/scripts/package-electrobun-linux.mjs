@@ -9,6 +9,7 @@
 
 import { execFileSync } from "node:child_process";
 import {
+  chmodSync,
   copyFileSync,
   existsSync,
   mkdirSync,
@@ -183,10 +184,26 @@ function writeDesktopFile(dest, execName = namespace) {
       "Categories=Utility;Network;",
       "",
     ].join("\n"),
+    { mode: 0o644 },
   );
 }
 
-async function stagePackageRoot(buildDir, destRoot) {
+function posixShellQuote(value) {
+  if (value.includes("\0")) {
+    throw new Error("Linux launcher path contains a null byte.");
+  }
+  return `'${value.replaceAll("'", `'"'"'`)}'`;
+}
+
+export function renderLinuxLauncherWrapper(absoluteExecutable) {
+  return `#!/usr/bin/env sh\nexec ${posixShellQuote(absoluteExecutable)} "$@"\n`;
+}
+
+export function debArchiveBuildArgs(packageRoot, outputPath) {
+  return ["--root-owner-group", "--build", packageRoot, outputPath];
+}
+
+export async function stagePackageRoot(buildDir, destRoot) {
   removePathRecursive(destRoot);
   mkdirSync(path.join(destRoot, optDir), { recursive: true });
   mkdirSync(path.join(destRoot, "usr/bin"), { recursive: true });
@@ -208,7 +225,9 @@ async function stagePackageRoot(buildDir, destRoot) {
   );
   writeFileSync(
     path.join(destRoot, `usr/bin/${namespace}`),
-    `#!/usr/bin/env sh\nexec ${optPath}/${relativeExecutable} "$@"\n`,
+    renderLinuxLauncherWrapper(
+      path.posix.join(optPath, relativeExecutable.split(path.sep).join("/")),
+    ),
     { mode: 0o755 },
   );
   writeDesktopFile(
@@ -222,6 +241,13 @@ async function stagePackageRoot(buildDir, destRoot) {
         `usr/share/icons/hicolor/512x512/apps/${namespace}.png`,
       ),
     );
+    chmodSync(
+      path.join(
+        destRoot,
+        `usr/share/icons/hicolor/512x512/apps/${namespace}.png`,
+      ),
+      0o644,
+    );
   }
 }
 
@@ -230,7 +256,7 @@ async function buildDeb(buildDir) {
   return withStagingCleanup(root, async () => {
     await stagePackageRoot(buildDir, root);
     const controlDir = path.join(root, "DEBIAN");
-    mkdirSync(controlDir, { recursive: true });
+    mkdirSync(controlDir, { recursive: true, mode: 0o755 });
     writeFileSync(
       path.join(controlDir, "control"),
       [
@@ -244,12 +270,13 @@ async function buildDeb(buildDir) {
         ` The consumer ${displayName} app for desktop chat, account setup, and connected devices.`,
         "",
       ].join("\n"),
+      { mode: 0o644 },
     );
     const out = path.join(
       artifactRoot,
       `${packageName}_${version}_${debArch}.deb`,
     );
-    sh("dpkg-deb", ["--build", root, out]);
+    sh("dpkg-deb", debArchiveBuildArgs(root, out));
     return out;
   });
 }

@@ -1,10 +1,14 @@
 /** Direct Linux package orchestration must be independently selectable and cleanup-safe. */
 
+import { execFileSync } from "node:child_process";
 import {
+  chmodSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readFileSync,
   rmSync,
+  statSync,
   writeFileSync,
 } from "node:fs";
 import os from "node:os";
@@ -13,11 +17,16 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   buildSelectedLinuxPackages,
   DIRECT_LINUX_PACKAGE_FORMATS,
+  debArchiveBuildArgs,
+  renderLinuxLauncherWrapper,
   resolveLinuxPackageFormats,
+  stagePackageRoot,
   withStagingCleanup,
 } from "../package-electrobun-linux.mjs";
 
 const tempDirs: string[] = [];
+const hasDpkgDeb =
+  process.platform === "linux" && existsSync("/usr/bin/dpkg-deb");
 
 function tempDir(): string {
   const directory = mkdtempSync(path.join(os.tmpdir(), "linux-package-test-"));
@@ -140,4 +149,104 @@ describe("direct Linux package staging cleanup", () => {
     ).rejects.toBe(failure);
     expect(existsSync(staging)).toBe(false);
   });
+});
+
+describe("direct Debian payload hardening", () => {
+  it("forces root ownership when dpkg-deb creates the archive", () => {
+    expect(
+      debArchiveBuildArgs("/tmp/eliza-deb", "/artifacts/eliza.deb"),
+    ).toEqual([
+      "--root-owner-group",
+      "--build",
+      "/tmp/eliza-deb",
+      "/artifacts/eliza.deb",
+    ]);
+  });
+
+  it("quotes executable paths and normalizes generated payload modes", async () => {
+    const buildDir = tempDir();
+    const packageRoot = path.join(tempDir(), "package-root");
+    const executable = path.join(
+      buildDir,
+      "Eliza's Desktop $HOME",
+      "bin",
+      "launcher",
+    );
+    mkdirSync(path.dirname(executable), { recursive: true });
+    writeFileSync(executable, '#!/usr/bin/env sh\nprintf "%s\\n" "$@"\n');
+    chmodSync(executable, 0o755);
+
+    await stagePackageRoot(buildDir, packageRoot);
+
+    const wrapper = path.join(packageRoot, "usr/bin/eliza");
+    const desktop = path.join(
+      packageRoot,
+      "usr/share/applications/eliza.desktop",
+    );
+    const icon = path.join(
+      packageRoot,
+      "usr/share/icons/hicolor/512x512/apps/eliza.png",
+    );
+    expect(readFileSync(wrapper, "utf8")).toBe(
+      renderLinuxLauncherWrapper(
+        "/opt/eliza/Eliza's Desktop $HOME/bin/launcher",
+      ),
+    );
+    expect(readFileSync(desktop, "utf8")).toContain("Exec=eliza\nIcon=eliza\n");
+    expect(statSync(wrapper).mode & 0o777).toBe(0o755);
+    expect(statSync(desktop).mode & 0o777).toBe(0o644);
+    expect(statSync(icon).mode & 0o777).toBe(0o644);
+
+    const localWrapper = path.join(tempDir(), "quoted-launcher");
+    writeFileSync(localWrapper, renderLinuxLauncherWrapper(executable), {
+      mode: 0o755,
+    });
+    expect(
+      execFileSync(localWrapper, ["argument with spaces", "$HOME"], {
+        encoding: "utf8",
+      }),
+    ).toBe("argument with spaces\n$HOME\n");
+  });
+
+  it.runIf(hasDpkgDeb)(
+    "writes root-owned control and payload members in a tiny Debian archive",
+    () => {
+      const packageRoot = tempDir();
+      const controlDir = path.join(packageRoot, "DEBIAN");
+      const payloadDir = path.join(packageRoot, "usr/share/eliza-test");
+      const archive = path.join(tempDir(), "ownership-fixture.deb");
+      mkdirSync(controlDir, { recursive: true });
+      mkdirSync(payloadDir, { recursive: true });
+      writeFileSync(
+        path.join(controlDir, "control"),
+        [
+          "Package: eliza-ownership-fixture",
+          "Version: 1.0.0",
+          "Architecture: all",
+          "Maintainer: elizaOS <hello@elizaos.ai>",
+          "Description: ownership fixture",
+          "",
+        ].join("\n"),
+        { mode: 0o644 },
+      );
+      writeFileSync(path.join(payloadDir, "payload"), "fixture\n", {
+        mode: 0o644,
+      });
+
+      execFileSync(
+        "/usr/bin/dpkg-deb",
+        debArchiveBuildArgs(packageRoot, archive),
+      );
+      for (const archivePart of ["--ctrl-tarfile", "--fsys-tarfile"]) {
+        const tar = execFileSync("/usr/bin/dpkg-deb", [archivePart, archive]);
+        const listing = execFileSync("tar", ["--numeric-owner", "-tvf", "-"], {
+          encoding: "utf8",
+          input: tar,
+        });
+        for (const line of listing.trim().split("\n")) {
+          expect(line).toMatch(/^[^ ]+ 0\/0 /);
+        }
+      }
+    },
+  );
 });
