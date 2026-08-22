@@ -3382,6 +3382,9 @@ function buildV5PlannerActionSurface(params: {
 	}
 
 	const toolSearchStartedAt = Date.now();
+	const authorizedActionIdentities = new Set(
+		params.actions.map((action) => action.name.trim()),
+	);
 	const authorizedActionNames = new Set(
 		params.actions.map((action) => normalizeActionIdentifier(action.name)),
 	);
@@ -3393,7 +3396,10 @@ function buildV5PlannerActionSurface(params: {
 		...action,
 		subActions: action.subActions?.filter((child) => {
 			const childName = typeof child === "string" ? child : child.name;
-			return authorizedActionNames.has(normalizeActionIdentifier(childName));
+			// Authorization uses the exact native tool identity. The retrieval
+			// normalizer intentionally collapses separators, so using it here would
+			// let an allowed FOO_BAR disclose a denied FOOBAR child (or vice versa).
+			return authorizedActionIdentities.has(childName.trim());
 		}),
 	}));
 	const catalog = getCachedActionCatalog(
@@ -3438,7 +3444,7 @@ function buildV5PlannerActionSurface(params: {
 		tieredSurface.tierAParents.map((parent) => [
 			parent.name,
 			parent.childNames.filter((childName) =>
-				exposedActionNames.has(normalizeActionIdentifier(childName)),
+				authorizedActionIdentities.has(childName.trim()),
 			),
 		]),
 	);
