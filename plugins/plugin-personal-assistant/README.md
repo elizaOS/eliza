@@ -5,6 +5,28 @@ calendar, email, messaging, follow-ups with people, blockers, watchers, and
 the operational glue around them. This README is the architecture summary
 for contributors.
 
+## Mail and calendar connections
+
+The focused `/lifeops/connections` view owns cross-domain onboarding and
+connection recovery for Gmail, Google Calendar, and Apple Calendar. It does
+not duplicate the inbox or calendar product views. The surface explains OAuth
+capabilities before redirect, exposes EventKit permission recovery, lets the
+owner choose calendars and a bounded 7/30/90-day seed window, and reports
+Gmail History cursor plus per-calendar source health.
+
+Disconnect and local-data purge are deliberately separate operations.
+Disconnect stops credential use while preserving the imported projection;
+purge requires a fresh confirmation, is scoped by provider, side, grant, and
+connector-account identity, and returns a receipt with `providerMutation:
+false`. Provider email and events are never deleted by this purge.
+
+The no-provider browser acceptance harness uses deterministic adapters and an
+isolated port (41873 by default):
+
+```bash
+bun run --cwd plugins/plugin-personal-assistant test:connections:e2e
+```
+
 ## Scheduled items, not generic tasks
 
 Every reminder, check-in, follow-up, watcher, recap, approval surface, and
