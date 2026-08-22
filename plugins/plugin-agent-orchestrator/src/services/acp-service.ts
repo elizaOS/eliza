@@ -2371,7 +2371,7 @@ export class AcpService extends Service {
       await this.store.updateStatus(sessionId, "errored", message);
       this.emitSessionEvent(sessionId, "error", {
         message,
-        ...this.authFailureFields(message, session.agentType),
+        ...this.accountCredentialFailureFields(err, message, session.agentType),
       });
       throw err;
     }
@@ -3558,7 +3558,25 @@ export class AcpService extends Service {
       });
       throw err;
     }
-    const promptCredentials = await this.accountCredentialsForSession(session);
+    let promptCredentials: Record<string, string> | undefined;
+    try {
+      promptCredentials = await this.accountCredentialsForSession(session);
+    } catch (err) {
+      // error-policy:J1 A reconnect minted a short-lived model lease before it
+      // could re-resolve the pinned account. Persist and type the refusal, then
+      // revoke that lease before any native client can inherit ambient auth.
+      const message = errorMessage(err);
+      await this.store.updateStatus(session.id, "errored", message);
+      this.emitSessionEvent(session.id, "error", {
+        message,
+        ...this.accountCredentialFailureFields(err, message, session.agentType),
+      });
+      await this.revokeModelLease(
+        session.id,
+        "native_reconnect:account_exhausted",
+      );
+      throw err;
+    }
     const promptEnv: Record<string, string> = {
       ...(opts.env ?? {}),
       ...(this.gitIndexEnvForSession(session) ?? {}),
@@ -4423,7 +4441,7 @@ export class AcpService extends Service {
    * needs-reauth / disabled / token resolve failed) does this deliberately
    * fail over to a fresh pick — and then re-stamps the session so every
    * account-keyed consumer follows the credential actually injected. Returns
-   * Returns undefined only when the session never had a linked account. A
+   * undefined only when the session never had a linked account. A
    * stamped session with no remaining compatible account fails closed.
    */
   private async accountCredentialsForSession(
@@ -4862,6 +4880,23 @@ export class AcpService extends Service {
     return expired && isClaudeBareToken
       ? { failureKind: "auth", authReason: "token_expired" }
       : { failureKind: "auth" };
+  }
+
+  /** Preserve typed account failures instead of reclassifying only their prose. */
+  private accountCredentialFailureFields(
+    error: unknown,
+    message: string,
+    agentType: AgentType,
+  ): Record<string, string> {
+    const fields: Record<string, string> = {
+      ...this.authFailureFields(message, agentType),
+    };
+    if (!(error instanceof ElizaError)) return fields;
+    fields.code = error.code;
+    if (error.code === "CODING_ACCOUNT_SESSION_EXHAUSTED") {
+      fields.failureKind = "account_exhausted";
+    }
+    return fields;
   }
 
   private classifyExitError(code: number | null, stderr: string): string {

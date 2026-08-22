@@ -112,6 +112,16 @@ type CliBoundaryHarness = {
   runAcpx: ReturnType<typeof vi.fn>;
 };
 
+type NativeBoundaryHarness = {
+  started: boolean;
+  modelLeases: Map<
+    string,
+    { token: string; expiresAt: number; leaseId: string }
+  >;
+  mintModelLease: ReturnType<typeof vi.fn>;
+  attachNativeClientWithManagedCodexFallback: ReturnType<typeof vi.fn>;
+};
+
 describe("follow-up prompt account pinning (cli transport)", () => {
   let store: InMemorySessionStore;
   let service: AcpService;
@@ -247,6 +257,10 @@ describe("follow-up prompt account pinning (cli transport)", () => {
     const harness = service as unknown as CliBoundaryHarness;
     harness.started = true;
     harness.runAcpx = vi.fn();
+    const events: Array<{ event: string; data: unknown }> = [];
+    service.onSessionEvent((sessionId, event, data) => {
+      if (sessionId === session.id) events.push({ event, data });
+    });
     const previousApiKey = process.env.ANTHROPIC_API_KEY;
     process.env.ANTHROPIC_API_KEY = "ambient-payg-must-not-be-used";
     try {
@@ -262,9 +276,63 @@ describe("follow-up prompt account pinning (cli transport)", () => {
         status: "errored",
         metadata: { account: { accountId: "acct-a" } },
       });
+      expect(events.find(({ event }) => event === "error")?.data).toMatchObject(
+        {
+          code: "CODING_ACCOUNT_SESSION_EXHAUSTED",
+          failureKind: "account_exhausted",
+        },
+      );
     } finally {
       if (previousApiKey === undefined) delete process.env.ANTHROPIC_API_KEY;
       else process.env.ANTHROPIC_API_KEY = previousApiKey;
     }
+  });
+
+  it("blocks native reconnect before attach and revokes its freshly minted lease", async () => {
+    const { bridge } = makeBridge({ healthyIds: [] });
+    setCodingAgentSelectorBridge(bridge);
+    const session: SessionInfo = {
+      ...makeSession(),
+      metadata: {
+        account: { ...ACCOUNT_A },
+        transportMode: "native",
+      },
+    };
+    await store.create(session);
+    const harness = service as unknown as NativeBoundaryHarness;
+    harness.started = true;
+    harness.mintModelLease = vi.fn(async () => {
+      harness.modelLeases.set(session.id, {
+        token: "must-be-forgotten",
+        expiresAt: Date.now() + 60_000,
+        leaseId: "lease-native-reconnect",
+      });
+    });
+    harness.attachNativeClientWithManagedCodexFallback = vi.fn();
+    const events: Array<{ event: string; data: unknown }> = [];
+    service.onSessionEvent((sessionId, event, data) => {
+      if (sessionId === session.id) events.push({ event, data });
+    });
+
+    await expect(
+      service.sendPrompt(session.id, "continue"),
+    ).rejects.toMatchObject({
+      code: "CODING_ACCOUNT_SESSION_EXHAUSTED",
+      context: { accountId: "acct-a", sessionId: session.id },
+    });
+
+    expect(harness.mintModelLease).toHaveBeenCalledOnce();
+    expect(
+      harness.attachNativeClientWithManagedCodexFallback,
+    ).not.toHaveBeenCalled();
+    expect(harness.modelLeases.has(session.id)).toBe(false);
+    expect(await store.get(session.id)).toMatchObject({
+      status: "errored",
+      metadata: { account: { accountId: "acct-a" } },
+    });
+    expect(events.find(({ event }) => event === "error")?.data).toMatchObject({
+      code: "CODING_ACCOUNT_SESSION_EXHAUSTED",
+      failureKind: "account_exhausted",
+    });
   });
 });
