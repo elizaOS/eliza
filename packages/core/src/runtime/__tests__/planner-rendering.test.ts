@@ -2,9 +2,11 @@
  * Verifies that planner rendering carries complete tool-result text and data
  * into model messages without mutating the source trajectory.
  */
+import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import type { ChatMessage } from "../../types/model";
 import {
+	projectToolResultForModel,
 	toolMessageContent,
 	trajectoryStepsToMessages,
 } from "../planner-rendering";
@@ -39,6 +41,21 @@ function getRenderedResultValue(messages: ChatMessage[]): string {
 	return part.output.value;
 }
 
+function readViewFor(text: string) {
+	return {
+		reference: { kind: "file" as const, ref: "file_opaque", revision: "r1" },
+		slice: {
+			range: { unit: "line" as const, start: 0, end: 100, total: 200 },
+			hasPrevious: false,
+			hasMore: true,
+			nextOffset: 100,
+			revision: "r1",
+			completeness: "partial-recoverable" as const,
+			sliceSha256: createHash("sha256").update(text).digest("hex"),
+		},
+	};
+}
+
 describe("trajectoryStepsToMessages", () => {
 	it("renders a result larger than the former cap in full", () => {
 		const result = `HEAD_SENTINEL${"x".repeat(150_000)}TAIL_SENTINEL`;
@@ -65,7 +82,7 @@ describe("trajectoryStepsToMessages", () => {
 });
 
 describe("toolMessageContent", () => {
-	it("renders both promptData and the complete machine payload", () => {
+	it("uses promptData as a replacement and does not duplicate machine payload", () => {
 		const memories = Array.from({ length: 17 }, (_, index) => ({
 			id: `id-${index}`,
 			type: "facts",
@@ -78,8 +95,8 @@ describe("toolMessageContent", () => {
 			promptData: { actionName: "MEMORY", op: "search", matchedInWindow: 17 },
 		});
 		expect(rendered).toContain('"matchedInWindow": 17');
-		expect(rendered).toContain("stored fact 0");
-		expect(rendered).toContain("stored fact 16");
+		expect(rendered).not.toContain("stored fact 0");
+		expect(rendered).not.toContain("stored fact 16");
 	});
 
 	it("renders large chaining data completely", () => {
@@ -101,5 +118,206 @@ describe("toolMessageContent", () => {
 		const rendered = toolMessageContent({ success: true, data: { rows } });
 		expect(rendered).toContain("row 1999");
 		expect(rendered).not.toMatch(/truncated|omitted/i);
+	});
+
+	it("omits only recoverable page text when its serialized budget is exceeded", () => {
+		const readView = {
+			reference: { kind: "file" as const, ref: "file_opaque", revision: "r1" },
+			slice: {
+				range: { unit: "line" as const, start: 0, end: 100, total: 200 },
+				hasPrevious: false,
+				hasMore: true,
+				nextOffset: 100,
+				revision: "r1",
+				completeness: "partial-recoverable" as const,
+				sliceSha256: "a".repeat(64),
+			},
+		};
+		const rendered = toolMessageContent(
+			{
+				success: true,
+				text: `BEGIN${"x".repeat(20_000)}END`,
+				data: { readView, body: "must-not-duplicate", path: "/raw/path" },
+				promptData: { readView, actionName: "FILE" },
+			},
+			{ maxSerializedTokens: 500 },
+		);
+		const parsed = JSON.parse(rendered);
+		expect(parsed.text).toBeUndefined();
+		expect(parsed.data).toBeUndefined();
+		expect(parsed.promptData.readView).toEqual(readView);
+		expect(parsed.contentProjection).toEqual({
+			textIncluded: false,
+			reason: "model-input-budget",
+		});
+		expect(rendered).not.toContain("/raw/path");
+		expect(rendered).not.toContain("must-not-duplicate");
+	});
+
+	it("preserves exact page text and its validated slice hash when included", () => {
+		const text = `BEGIN\u0000é🙂\r\n${"exact ".repeat(200)}END`;
+		const readView = readViewFor(text);
+		const parsed = JSON.parse(
+			toolMessageContent(
+				{
+					success: true,
+					text,
+					promptData: { actionName: "FILE", readView },
+				},
+				{ maxSerializedTokens: 10_000 },
+			),
+		);
+		expect(parsed.text).toBe(text);
+		expect(parsed.promptData.readView.slice.sliceSha256).toBe(
+			readView.slice.sliceSha256,
+		);
+	});
+
+	it("retains nested search references when oversized search prose is omitted", () => {
+		const reference = {
+			kind: "document" as const,
+			ref: "document:00000000-0000-0000-0000-000000000001",
+			revision: "rev:stable",
+		};
+		const parsed = JSON.parse(
+			toolMessageContent(
+				{
+					success: true,
+					text: "match ".repeat(10_000),
+					promptData: { results: [{ reference }] },
+				},
+				{ maxSerializedTokens: 100 },
+			),
+		);
+		expect(parsed.text).toBeUndefined();
+		expect(parsed.promptData.results).toEqual([{ reference }]);
+		expect(parsed.contentProjection).toEqual({
+			textIncluded: false,
+			reason: "model-input-budget",
+		});
+	});
+
+	it("does not treat an arbitrary nested reference as proof that result text is recoverable", () => {
+		expect(() =>
+			toolMessageContent(
+				{
+					success: true,
+					text: "nonrecoverable ".repeat(10_000),
+					promptData: {
+						debug: { kind: "file", ref: "opaque_debug_reference" },
+					},
+				},
+				{ maxSerializedTokens: 100 },
+			),
+		).toThrow(/Non-recoverable tool result exceeds/u);
+	});
+
+	it("does not omit mixed search text when any result lacks a recoverable locator", () => {
+		expect(() =>
+			toolMessageContent(
+				{
+					success: true,
+					text: "mixed search result ".repeat(10_000),
+					promptData: {
+						results: [
+							{
+								reference: {
+									kind: "document",
+									ref: "document:recoverable",
+								},
+							},
+							{ coordinateUnavailable: true },
+						],
+					},
+				},
+				{ maxSerializedTokens: 100 },
+			),
+		).toThrow(/Non-recoverable tool result exceeds/u);
+	});
+
+	it("does not grant recoverable omission to a hostile ReadView-like shape", () => {
+		const text = "x".repeat(20_000);
+		const invalidReadView = {
+			...readViewFor(text),
+			rawPath: "/Users/private/secret.txt",
+		};
+		expect(() =>
+			toolMessageContent(
+				{
+					success: true,
+					text,
+					promptData: { readView: invalidReadView },
+				},
+				{ maxSerializedTokens: 100 },
+			),
+		).toThrow(/Non-recoverable tool result exceeds/u);
+	});
+
+	it("reports only aggregate page inclusion and omission reasons", () => {
+		const shortText = "short exact page";
+		const longText = `BEGIN${"x".repeat(20_000)}END`;
+		let stats:
+			| Parameters<
+					NonNullable<
+						Parameters<typeof trajectoryStepsToMessages>[1]["onProjectionStats"]
+					>
+			  >[0]
+			| null = null;
+		trajectoryStepsToMessages(
+			[
+				{
+					...stepWithResult(1, shortText),
+					result: {
+						success: true,
+						text: shortText,
+						promptData: { readView: readViewFor(shortText) },
+					},
+				},
+				{
+					...stepWithResult(2, longText),
+					result: {
+						success: true,
+						text: longText,
+						promptData: { readView: readViewFor(longText) },
+					},
+				},
+			],
+			{
+				projectionBudget: { perResultTokens: 500, aggregateTokens: 1_000 },
+				onProjectionStats: (value) => {
+					stats = value;
+				},
+			},
+		);
+		expect(stats).toEqual({
+			resultCount: 2,
+			pagesIncluded: 1,
+			pagesOmitted: 1,
+			omissionReasons: { "model-input-budget": 1 },
+		});
+		expect(JSON.stringify(stats)).not.toMatch(
+			/short exact page|BEGIN|file_opaque/u,
+		);
+	});
+
+	it("fails explicitly instead of truncating a non-recoverable result", () => {
+		expect(() =>
+			toolMessageContent(
+				{ success: true, text: "x".repeat(20_000) },
+				{ maxSerializedTokens: 100 },
+			),
+		).toThrow(/Non-recoverable tool result exceeds/u);
+	});
+
+	it("does not mutate the complete trajectory result during projection", () => {
+		const result = {
+			success: true,
+			text: "page",
+			data: { complete: "runtime" },
+			promptData: { safe: "model" },
+		};
+		const projected = projectToolResultForModel(result);
+		expect(projected.data).toBeUndefined();
+		expect(result.data).toEqual({ complete: "runtime" });
 	});
 });

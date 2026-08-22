@@ -1,6 +1,9 @@
 /** Exercises exact-input surface invalidation and fail-closed evidence reuse without network or GitHub state. */
 
 import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   computeExpectedManifest,
   createEvidence,
@@ -20,6 +23,7 @@ function graph() {
     schemaVersion: 1,
     graphVersion: "fixture-v1",
     evidenceTtlHours: 24,
+    reusePolicy: "exact-environment",
     environment: { bun: "1.3.14", node: "24.15.0", runner: "fixture" },
     globalInputs: ["toolchain.json", "graph.json"],
     knownNonValidationInputs: [],
@@ -51,8 +55,8 @@ function tracked(overrides: Record<string, string> = {}) {
   const contents = {
     "toolchain.json": "toolchain-v1",
     "graph.json": "graph-v1",
-    "leaf.yml": "leaf-workflow",
-    "consumer.yml": "consumer-workflow",
+    "leaf.yml": "jobs:\n  test:\n    steps: []\n",
+    "consumer.yml": "jobs:\n  test:\n    steps: []\n",
     "packages/shared/package.json": "shared-manifest",
     "packages/shared/src.ts": "shared-source",
     "packages/leaf/package.json": "leaf-manifest",
@@ -71,7 +75,7 @@ function tracked(overrides: Record<string, string> = {}) {
   return new Map(
     Object.entries(contents).map(([path, content]) => [
       path,
-      { contentDigest: sha256(content), mode: "100644" },
+      { content, contentDigest: sha256(content), mode: "100644" },
     ]),
   );
 }
@@ -133,6 +137,37 @@ function digest(expected: ReturnType<typeof manifest>, id: string) {
 }
 
 describe("Develop Full impact graph", () => {
+  test("planner entrypoint remains dependency-free before workspace install", () => {
+    const entry = fileURLToPath(
+      new URL("../develop-impact-evidence.mjs", import.meta.url),
+    );
+    const visited = new Set<string>();
+    const visit = (file: string) => {
+      if (visited.has(file)) return;
+      visited.add(file);
+      const source = readFileSync(file, "utf8");
+      expect(source).not.toContain("createRequire");
+      const imports = [
+        ...source.matchAll(
+          /(?:\bfrom\s*|\bimport\s*(?:\(\s*)?|\brequire\s*\(\s*)["']([^"']+)["']/g,
+        ),
+      ].map((match) => match[1]);
+      for (const specifier of imports) {
+        expect(
+          specifier.startsWith("node:") || specifier.startsWith("./"),
+        ).toBe(true);
+        if (!specifier.startsWith("./")) continue;
+        visit(path.resolve(path.dirname(file), specifier));
+      }
+    };
+    visit(entry);
+    expect([...visited].map((file) => path.basename(file)).sort()).toEqual([
+      "develop-impact-evidence.mjs",
+      "repository-file-integrity.mjs",
+      "workspaces.mjs",
+    ]);
+  });
+
   test("binds a leaf to its complete transitive workspace input closure", () => {
     const expected = manifest(["packages/leaf/src.ts"]);
     const leaf = expected.surfaces.find((surface) => surface.id === "leaf");
@@ -237,7 +272,9 @@ describe("Develop Full impact graph", () => {
       inputs: ["**"],
       catchAll: true,
     });
-    const inputs = tracked({ "audit.yml": "audit-workflow" });
+    const inputs = tracked({
+      "audit.yml": "jobs:\n  test:\n    steps: []\n",
+    });
     const expected = manifest(["unowned/source.ts"], {
       graph: catchAllGraph,
       tracked: inputs,
@@ -268,6 +305,187 @@ describe("Develop Full impact graph", () => {
         digest(baseline, "consumer"),
       );
     }
+  });
+
+  test("hashes transitive local workflows and complete composite action directories", () => {
+    const dependencyGraph = graph();
+    dependencyGraph.surfaces[1].dependsOn = [];
+    const localDependencies = {
+      "leaf.yml":
+        "jobs:\n  test:\n    uses: ./.github/workflows/reusable.yml\n",
+      "consumer.yml":
+        "jobs:\n  test:\n    uses: ./.github/workflows/reusable.yml\n",
+      ".github/workflows/reusable.yml":
+        "jobs:\n  delegated:\n    steps:\n      - uses: ./.github/actions/setup\n",
+      ".github/actions/setup/action.yml":
+        "runs:\n  using: composite\n  steps:\n    - uses: ./.github/actions/nested\n",
+      ".github/actions/setup/run.mjs": "setup-v1",
+      ".github/actions/nested/action.yaml":
+        "runs:\n  using: composite\n  steps: []\n",
+    };
+    const baseline = manifest([], {
+      graph: dependencyGraph,
+      tracked: tracked({
+        ...localDependencies,
+        ".github/actions/nested/run.mjs": "nested-v1",
+      }),
+    });
+    const changed = manifest([".github/actions/nested/run.mjs"], {
+      graph: dependencyGraph,
+      tracked: tracked({
+        ...localDependencies,
+        ".github/actions/nested/run.mjs": "nested-v2",
+      }),
+    });
+    expect(digest(changed, "leaf")).not.toBe(digest(baseline, "leaf"));
+    expect(digest(changed, "consumer")).not.toBe(digest(baseline, "consumer"));
+    expect(changed.unknownPaths).toEqual([]);
+  });
+
+  test("discovers flow-style workflow and composite-action dependencies", () => {
+    const flowGraph = graph();
+    flowGraph.surfaces[1].workflow = ".github/workflows/reusable.yml";
+    flowGraph.surfaces[1].inputs.push(".github/actions/**");
+    const flowRoot =
+      "jobs:\n  call: { uses: ./.github/workflows/reusable.yml }\n  test:\n    steps: [{ uses: ./.github/actions/flow }]\n";
+    const flowInputs = {
+      "leaf.yml": flowRoot,
+      ".github/workflows/reusable.yml": "jobs: { test: { steps: [] } }\n",
+      ".github/actions/flow/action.yml":
+        "runs: { using: composite, steps: [{ run: echo ok, shell: bash }] }\n",
+      ".github/actions/flow/run.mjs": "flow-v1",
+    };
+    const baseline = manifest([], {
+      graph: flowGraph,
+      tracked: tracked(flowInputs),
+    });
+    const workflowChanged = manifest([".github/workflows/reusable.yml"], {
+      graph: flowGraph,
+      tracked: tracked({
+        ...flowInputs,
+        ".github/workflows/reusable.yml":
+          "jobs: { test: { steps: [{ run: echo changed }] } }\n",
+      }),
+    });
+    const actionChanged = manifest([".github/actions/flow/run.mjs"], {
+      graph: flowGraph,
+      tracked: tracked({
+        ...flowInputs,
+        ".github/actions/flow/run.mjs": "flow-v2",
+      }),
+    });
+    expect(digest(workflowChanged, "leaf")).not.toBe(digest(baseline, "leaf"));
+    expect(digest(actionChanged, "leaf")).not.toBe(digest(baseline, "leaf"));
+  });
+
+  test("discovers folded local uses scalars", () => {
+    const foldedGraph = graph();
+    foldedGraph.surfaces[1].workflow = ".github/workflows/reusable.yml";
+    const inputs = {
+      "leaf.yml":
+        "jobs:\n  call:\n    uses: >-\n      ./.github/workflows/reusable.yml\n",
+      ".github/workflows/reusable.yml": "jobs: { test: { steps: [] } }\n",
+    };
+    const baseline = manifest([], {
+      graph: foldedGraph,
+      tracked: tracked(inputs),
+    });
+    const changed = manifest([".github/workflows/reusable.yml"], {
+      graph: foldedGraph,
+      tracked: tracked({
+        ...inputs,
+        ".github/workflows/reusable.yml":
+          "jobs: { test: { steps: [{ run: echo changed }] } }\n",
+      }),
+    });
+    expect(digest(changed, "leaf")).not.toBe(digest(baseline, "leaf"));
+  });
+
+  test("fails closed for missing, invalid, and cyclic local uses targets", () => {
+    const missing = tracked({
+      "leaf.yml": "jobs:\n  test:\n    uses: ./.github/workflows/missing.yml\n",
+    });
+    expect(() => manifest([], { tracked: missing })).toThrow(
+      /missing local target/,
+    );
+
+    const invalid = tracked({
+      "leaf.yml": "jobs:\n  test:\n    uses: ./outside.yml\n",
+      "outside.yml": "jobs: {}\n",
+    });
+    expect(() => manifest([], { tracked: invalid })).toThrow(
+      /outside .github\/workflows/,
+    );
+
+    const missingWorkflowContract = tracked({
+      "leaf.yml":
+        "jobs:\n  test:\n    uses: ./.github/workflows/not-a-workflow.yml\n",
+      ".github/workflows/not-a-workflow.yml": "name: missing jobs\n",
+    });
+    expect(() => manifest([], { tracked: missingWorkflowContract })).toThrow(
+      /must declare top-level jobs/,
+    );
+
+    const missingActionContract = tracked({
+      "leaf.yml":
+        "jobs:\n  test:\n    steps:\n      - uses: ./.github/actions/not-an-action\n",
+      ".github/actions/not-an-action/action.yml": "name: missing runs\n",
+    });
+    expect(() => manifest([], { tracked: missingActionContract })).toThrow(
+      /must declare top-level runs/,
+    );
+
+    const malformed = tracked({
+      "leaf.yml": "jobs:\n  test:\n    uses: './.github/workflows/open.yml\n",
+      ".github/workflows/open.yml": "jobs: {}\n",
+    });
+    expect(() => manifest([], { tracked: malformed })).toThrow(
+      /unterminated YAML scalar/,
+    );
+
+    const cyclic = tracked({
+      "leaf.yml": "jobs:\n  test:\n    uses: ./.github/workflows/first.yml\n",
+      ".github/workflows/first.yml":
+        "jobs:\n  test:\n    uses: ./.github/workflows/second.yml\n",
+      ".github/workflows/second.yml":
+        "jobs:\n  test:\n    uses: ./.github/workflows/first.yml\n",
+    });
+    expect(() => manifest([], { tracked: cyclic })).toThrow(/dependency cycle/);
+  });
+
+  test("does not execute uses-like text inside YAML block scalars", () => {
+    const expected = manifest([], {
+      tracked: tracked({
+        "leaf.yml":
+          "jobs:\n  test:\n    steps:\n      - run: |\n          uses: ./.github/workflows/not-real.yml\n          echo done\n",
+      }),
+    });
+    expect(expected.unknownPaths).toEqual([]);
+    expect(expected.surfaces.some((surface) => surface.id === "leaf")).toBe(
+      true,
+    );
+  });
+
+  test("binds persistently unowned inputs into every immutable cache key", () => {
+    const baseline = manifest([], {
+      tracked: tracked({ "unowned/executable.sh": "v1" }),
+    });
+    const changed = manifest(["unowned/executable.sh"], {
+      tracked: tracked({ "unowned/executable.sh": "v2" }),
+    });
+    expect(changed.unknownPaths).toEqual(["unowned/executable.sh"]);
+    expect(digest(changed, "leaf")).not.toBe(digest(baseline, "leaf"));
+    expect(digest(changed, "consumer")).not.toBe(digest(baseline, "consumer"));
+  });
+
+  test("current-run-only policy refuses cross-run evidence reuse", () => {
+    const policyGraph = graph();
+    policyGraph.reusePolicy = "current-run-only";
+    const expected = manifest([], { graph: policyGraph });
+    expect(resolveEvidenceRuns(expected, evidenceRows(expected), NOW)).toEqual({
+      consumer: true,
+      leaf: true,
+    });
   });
 
   test("rejects duplicate, cyclic, missing, and zero-work graph definitions", () => {

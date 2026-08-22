@@ -550,25 +550,29 @@ export class AppsRepository {
    *
    * The organization row lock serializes concurrent app creates for one org in
    * Postgres, so parallel requests cannot all observe the same pre-insert count.
+   * `NO KEY UPDATE` remains exclusive between contenders while staying compatible
+   * with the foreign-key `KEY SHARE` lock held by their transactional API-key insert.
    */
-  async createIfOrganizationBelowLimit(data: NewApp, maxApps: number): Promise<App | undefined> {
-    return dbWrite.transaction(async (tx) => {
-      await tx.execute(
-        sql`SELECT ${organizations.id} FROM ${organizations} WHERE ${organizations.id} = ${data.organization_id} FOR UPDATE`,
-      );
+  async createIfOrganizationBelowLimit(
+    data: NewApp,
+    maxApps: number,
+    tx: DbTransaction,
+  ): Promise<App | undefined> {
+    await tx.execute(
+      sql`SELECT ${organizations.id} FROM ${organizations} WHERE ${organizations.id} = ${data.organization_id} FOR NO KEY UPDATE`,
+    );
 
-      const [row] = await tx
-        .select({ count: count() })
-        .from(apps)
-        .where(eq(apps.organization_id, data.organization_id));
+    const [row] = await tx
+      .select({ count: count() })
+      .from(apps)
+      .where(eq(apps.organization_id, data.organization_id));
 
-      if ((row?.count ?? 0) >= maxApps) {
-        return undefined;
-      }
+    if ((row?.count ?? 0) >= maxApps) {
+      return undefined;
+    }
 
-      const [app] = await tx.insert(apps).values(data).returning();
-      return app;
-    });
+    const [app] = await tx.insert(apps).values(data).returning();
+    return app;
   }
 
   /**
