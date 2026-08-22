@@ -412,6 +412,43 @@ describe("document-list capability contract", () => {
 		expect(result.map((memory) => memory.id)).toEqual([firstFragments[1]?.id]);
 	});
 
+	it("fences fragment queries at the requested snapshot time", () => {
+		const parent = document(5);
+		const older = {
+			...document(7),
+			createdAt: 2_000,
+			metadata: {
+				type: MemoryType.FRAGMENT,
+				documentId: parent.id,
+				documentRevision: 0,
+				position: 0,
+			},
+		};
+		const newer = {
+			...document(8),
+			createdAt: 4_000,
+			metadata: {
+				type: MemoryType.FRAGMENT,
+				documentId: parent.id,
+				documentRevision: 0,
+				position: 1,
+			},
+		};
+
+		const result = queryDocumentFragmentsInMemory(
+			[parent, older, newer],
+			{
+				...params,
+				requesterRole: "OWNER",
+				documentId: parent.id,
+				limit: 10,
+				snapshotEnd: 3_000,
+			},
+		);
+
+		expect(result.map((memory) => memory.id)).toEqual([older.id]);
+	});
+
 	it("uses locale-independent tokens that preserve punctuation and Unicode", () => {
 		expect(
 			portableDocumentSearchTokens(
