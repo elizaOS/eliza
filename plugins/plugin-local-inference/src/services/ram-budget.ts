@@ -54,8 +54,12 @@ const FALLBACK_DEFAULT_CONTEXT_TOKENS = 32768;
 export function ramHeadroomReserveMb(): number {
 	const raw = process.env.ELIZA_LOCAL_RAM_HEADROOM_MB?.trim();
 	if (raw) {
-		const parsed = Number.parseInt(raw, 10);
-		if (Number.isFinite(parsed) && parsed >= 0) return parsed;
+		// `Number.parseInt` stops at the first non-digit, so "1junk" parsed to a
+		// finite, non-negative 1 and passed the guard — a 1MB headroom reserve
+		// instead of 1536MB, which inflates `usableMb` by ~1.5GB and lets a model
+		// that must be refused report `fits`. Require the whole value to be decimal.
+		const parsed = /^\+?\d+$/.test(raw) ? Number(raw) : Number.NaN;
+		if (Number.isSafeInteger(parsed) && parsed >= 0) return parsed;
 	}
 	return DEFAULT_RAM_HEADROOM_RESERVE_MB;
 }
