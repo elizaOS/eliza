@@ -671,9 +671,7 @@ export async function sendMessageInChunks(
 				if (fence && !(await fence.beforeSend(i))) {
 					return sentMessages;
 				}
-				const options: MessageSendOptions = {
-					content: message.trim(),
-				};
+				const options: MessageSendOptions = { content: message };
 				if (fence) {
 					options.nonce = fence.nonceForChunk(i);
 					options.enforceNonce = true;
@@ -817,15 +815,18 @@ Return format:
 
 		const parsed = parseJsonArrayFromText(response);
 		if (Array.isArray(parsed)) {
-			const validChunks = parsed.filter(
-				(chunk: unknown): chunk is string =>
-					typeof chunk === "string" &&
-					chunk.trim().length > 0 &&
-					chunk.length <= maxLength,
-			);
+			const allValid =
+				parsed.length > 0 &&
+				parsed.every(
+					(chunk: unknown): chunk is string =>
+						typeof chunk === "string" &&
+						chunk.length > 0 &&
+						chunk.length <= maxLength,
+				) &&
+				parsed.join("") === content;
 
-			if (validChunks.length > 0) {
-				return validChunks;
+			if (allValid) {
+				return parsed;
 			}
 
 			runtime.logger.debug(
@@ -850,55 +851,16 @@ export function splitMessage(
 	}
 
 	const messages: string[] = [];
-	let currentMessage = "";
-
-	const rawLines = content.split("\n");
-	const lines = rawLines.flatMap((line) => {
-		const chunks: string[] = [];
-		while (line.length > maxLength) {
-			let splitIdx = maxLength;
-			const lastSpace = line.lastIndexOf(" ", maxLength);
-
-			if (lastSpace > maxLength * 0.7) {
-				splitIdx = lastSpace;
-			} else if (lastSpace > maxLength * 0.3) {
-				splitIdx = lastSpace;
-			}
-
-			// A raw slice() can land between the two UTF-16 code units of a
-			// surrogate pair (most emoji), leaving a lone surrogate at the
-			// chunk boundary that corrupts the character in the delivered
-			// message. truncateWellFormed backs the cut off by one unit
-			// instead.
-			const head = truncateWellFormed(line, splitIdx);
-			if (head.length === 0) {
-				throw new RangeError(
-					"Discord message chunk limit made no UTF-16 progress",
-				);
-			}
-			chunks.push(head);
-			line = line.slice(head.length).trimStart();
+	let remaining = content;
+	while (remaining.length > 0) {
+		const head = truncateWellFormed(remaining, maxLength);
+		if (head.length === 0) {
+			throw new RangeError(
+				"Discord message chunk limit made no UTF-16 progress",
+			);
 		}
-		chunks.push(line);
-		return chunks;
-	});
-
-	for (const line of lines) {
-		if (currentMessage.length + line.length + 1 > maxLength) {
-			if (currentMessage.trim().length > 0) {
-				messages.push(currentMessage.trim());
-			}
-			currentMessage = "";
-		}
-		currentMessage += `${line}\n`;
-	}
-
-	if (currentMessage.trim().length > 0) {
-		messages.push(currentMessage.trim());
-	}
-
-	if (messages.length === 0 && content.length > 0) {
-		messages.push(" ");
+		messages.push(head);
+		remaining = remaining.slice(head.length);
 	}
 
 	return messages;
