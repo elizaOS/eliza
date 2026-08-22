@@ -1006,7 +1006,7 @@ export const coreActionsSpec = {
 					schema: {
 						type: "string",
 					},
-					examples: ["c0a8012e"],
+					examples: ["aabbccdd-1111-2222-3333-444455556666"],
 					descriptionCompressed: "Pending task id.",
 				},
 				{
@@ -2627,7 +2627,7 @@ export const allActionsSpec = {
 					schema: {
 						type: "string",
 					},
-					examples: ["c0a8012e"],
+					examples: ["aabbccdd-1111-2222-3333-444455556666"],
 					descriptionCompressed: "Pending task id.",
 				},
 				{

@@ -92,6 +92,8 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 		/truncateWellFormed/,
 		/text\s*=\s*text\.slice\(/,
 	],
+	"packages/prompts/specs/actions/core.json": [/"c0a8012e"/],
+	"packages/core/src/generated/action-docs.ts": [/"c0a8012e"/],
 	"packages/core/src/runtime/trajectory-recorder.ts": [
 		/resolveTrajectoryFieldCapBytes/,
 		/applyTrajectoryFieldCap/,

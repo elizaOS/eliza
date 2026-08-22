@@ -35,7 +35,10 @@ function _readChoiceParameters(
 			: {};
 	const taskId = params.taskId ?? message.content.taskId;
 	const selectedOption =
-		params.selectedOption ?? message.content.selectedOption;
+		params.selectedOption ??
+		params.option ??
+		message.content.selectedOption ??
+		message.content.option;
 	return {
 		taskId:
 			typeof taskId === "string" && taskId.trim() ? taskId.trim() : undefined,
