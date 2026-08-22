@@ -1,4 +1,10 @@
 #!/usr/bin/env node
+/**
+ * Live credential probes for the LifeOps HITL intake surface. Family and
+ * per-path probes call the cheapest authenticated read boundary and return
+ * redacted diagnostic verdicts without mutating layered environment state.
+ * Local connector probes inspect only their maintained read-only surfaces.
+ */
 import { createHmac, randomBytes } from "node:crypto";
 import { accessSync, constants as fsConstants } from "node:fs";
 import { homedir } from "node:os";
