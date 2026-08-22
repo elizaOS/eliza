@@ -39,6 +39,12 @@ function failure(error: unknown): ActionResult {
   };
 }
 
+function hasNegatedPresentationIntent(text: string): boolean {
+  return /\b(?:do\s+not|don['’]?t|dont|never)\b[^.!?;\n]{0,80}\b(?:notify|notification|desktop\s+alert|open|show|summon)\b/iu.test(
+    text,
+  );
+}
+
 export function createOmarchyDesktopActions(
   bridge: OmarchyBridge = omarchyBridge,
   hostCheck: () => boolean = isOmarchyHost,
@@ -96,11 +102,16 @@ export function createOmarchyDesktopActions(
         schema: { type: "string", enum: ["low", "normal", "critical"] },
       },
     ],
-    validate: async (_runtime, message: Memory) =>
-      hostCheck() &&
-      /\b(notify|notification|desktop alert|show (?:me )?an? alert)\b/i.test(
-        message.content.text ?? "",
-      ),
+    validate: async (_runtime, message: Memory) => {
+      const text = message.content.text ?? "";
+      return (
+        hostCheck() &&
+        !hasNegatedPresentationIntent(text) &&
+        /\b(notify|notification|desktop alert|show (?:me )?an? alert)\b/i.test(
+          text,
+        )
+      );
+    },
     handler: async (
       _runtime,
       _message,
@@ -146,11 +157,16 @@ export function createOmarchyDesktopActions(
     descriptionCompressed: "Open the Eliza Omarchy pill on explicit request.",
     tags: ["capability:send"],
     roleGate: { minRole: "USER" },
-    validate: async (_runtime, message: Memory) =>
-      hostCheck() &&
-      /\b(open|show|summon)\b.*\b(eliza|quick[ -]?chat)\b.*\b(pill|overlay|panel|quick[ -]?chat)\b/i.test(
-        message.content.text ?? "",
-      ),
+    validate: async (_runtime, message: Memory) => {
+      const text = message.content.text ?? "";
+      return (
+        hostCheck() &&
+        !hasNegatedPresentationIntent(text) &&
+        /\b(open|show|summon)\b.*\b(eliza|quick[ -]?chat)\b.*\b(pill|overlay|panel|quick[ -]?chat)\b/i.test(
+          text,
+        )
+      );
+    },
     handler: async (): Promise<ActionResult> => {
       try {
         await bridge.showElizaPill();

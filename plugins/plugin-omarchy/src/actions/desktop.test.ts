@@ -56,6 +56,9 @@ describe("Omarchy desktop actions", () => {
     await expect(
       notify?.validate(runtime, message("show a desktop notification")),
     ).resolves.toBe(true);
+    await expect(
+      notify?.validate(runtime, message("do not show a desktop notification")),
+    ).resolves.toBe(false);
   });
 
   it("sends validated notification parameters as data arguments", async () => {
@@ -126,6 +129,12 @@ describe("Omarchy desktop actions", () => {
     await expect(
       showPill?.validate(runtime, message("open the Eliza quick-chat pill")),
     ).resolves.toBe(true);
+    await expect(
+      showPill?.validate(
+        runtime,
+        message("never open the Eliza quick-chat pill"),
+      ),
+    ).resolves.toBe(false);
     const result = await showPill?.handler(
       runtime,
       message("open the Eliza quick-chat pill"),

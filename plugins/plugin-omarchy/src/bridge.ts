@@ -32,7 +32,10 @@ export interface OmarchySnapshot extends Record<string, ProviderValue> {
   theme?: string;
   plugins?: OmarchyPluginStatus[];
   reason?: string;
-  errorCode?: "OMARCHY_PLUGIN_LIST_INVALID";
+  errorCode?:
+    | "OMARCHY_PLUGIN_LIST_INVALID"
+    | "OMARCHY_THEME_INVALID"
+    | "OMARCHY_VERSION_INVALID";
 }
 
 export type NotificationUrgency = "low" | "normal" | "critical";
@@ -112,34 +115,89 @@ function invalidPluginInventory(message: string, cause?: unknown): ElizaError {
   });
 }
 
+function requiredSingleLine(
+  value: string,
+  field: string,
+  code:
+    | "OMARCHY_PLUGIN_LIST_INVALID"
+    | "OMARCHY_THEME_INVALID"
+    | "OMARCHY_VERSION_INVALID",
+  terminalLineEnding = false,
+): string {
+  const completeValue = terminalLineEnding
+    ? value.replace(/\r?\n$/u, "")
+    : value;
+  const hasControlCharacter = Array.from(completeValue).some((character) => {
+    const codePoint = character.codePointAt(0);
+    return (
+      codePoint !== undefined &&
+      (codePoint < 32 ||
+        codePoint === 127 ||
+        codePoint === 0x2028 ||
+        codePoint === 0x2029)
+    );
+  });
+  if (
+    !completeValue ||
+    completeValue.trim() !== completeValue ||
+    hasControlCharacter
+  ) {
+    throw new ElizaError(`Omarchy returned an invalid ${field}`, {
+      code,
+      context: { field },
+    });
+  }
+  return completeValue;
+}
+
 function requiredInventoryString(
   record: Record<string, unknown>,
   field: "id" | "name",
   index: number,
 ): string {
   const value = record[field];
-  if (typeof value !== "string" || value.trim().length === 0) {
+  if (typeof value !== "string") {
     throw invalidPluginInventory(
       `Omarchy plugin inventory entry ${index} has an invalid ${field}`,
     );
   }
-  return value;
+  try {
+    return requiredSingleLine(
+      value,
+      `plugin ${field}`,
+      "OMARCHY_PLUGIN_LIST_INVALID",
+    );
+  } catch (cause) {
+    throw invalidPluginInventory(
+      `Omarchy plugin inventory entry ${index} has an invalid ${field}`,
+      cause,
+    );
+  }
 }
 
 function requiredInventoryKinds(value: unknown, index: number): string[] {
-  if (!Array.isArray(value)) {
+  if (!Array.isArray(value) || value.length === 0) {
     throw invalidPluginInventory(
       `Omarchy plugin inventory entry ${index} has invalid kinds`,
     );
   }
   const kinds: string[] = [];
   for (const kind of value) {
-    if (typeof kind !== "string" || kind.trim().length === 0) {
+    if (typeof kind !== "string") {
       throw invalidPluginInventory(
         `Omarchy plugin inventory entry ${index} has invalid kinds`,
       );
     }
-    kinds.push(kind);
+    try {
+      kinds.push(
+        requiredSingleLine(kind, "plugin kind", "OMARCHY_PLUGIN_LIST_INVALID"),
+      );
+    } catch (cause) {
+      throw invalidPluginInventory(
+        `Omarchy plugin inventory entry ${index} has invalid kinds`,
+        cause,
+      );
+    }
   }
   return kinds;
 }
@@ -165,6 +223,11 @@ function parsePlugins(raw: string): OmarchyPluginStatus[] {
     }
     const record = entry as Record<string, unknown>;
     const id = requiredInventoryString(record, "id", index);
+    if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/u.test(id) || id.includes("..")) {
+      throw invalidPluginInventory(
+        `Omarchy plugin inventory entry ${index} has an invalid id`,
+      );
+    }
     const name = requiredInventoryString(record, "name", index);
     const kinds = requiredInventoryKinds(record.kinds, index);
     if (
@@ -217,14 +280,22 @@ export class OmarchyBridge {
     let version: string;
     try {
       const output = await this.invoke("omarchy-version");
-      version = output.stdout.trim();
-      if (!version) throw new Error("empty version");
+      version = requiredSingleLine(
+        output.stdout,
+        "version",
+        "OMARCHY_VERSION_INVALID",
+        true,
+      );
     } catch (error) {
       // error-policy:J4 an unavailable Omarchy binary is a designed,
       // visibly-distinct provider state rather than a healthy empty snapshot.
       return {
         available: false,
         reason: error instanceof Error ? error.message : String(error),
+        ...(error instanceof ElizaError &&
+        error.code === "OMARCHY_VERSION_INVALID"
+          ? { errorCode: error.code }
+          : {}),
       };
     }
 
@@ -240,12 +311,20 @@ export class OmarchyBridge {
         reason: "Omarchy theme state is unavailable",
       };
     }
-    const theme = themeResult.value.stdout.trim();
-    if (!theme) {
+    let theme: string;
+    try {
+      theme = requiredSingleLine(
+        themeResult.value.stdout,
+        "theme",
+        "OMARCHY_THEME_INVALID",
+        true,
+      );
+    } catch (error) {
       return {
         available: false,
         version,
-        reason: "Omarchy returned an empty theme",
+        reason: error instanceof Error ? error.message : String(error),
+        errorCode: "OMARCHY_THEME_INVALID",
       };
     }
     if (pluginsResult.status === "rejected") {

@@ -3900,7 +3900,7 @@
         "actions": ["enable"]
       },
       "resources": {
-        "homepage": "https://github.com/NubsCarson/omarchy-eliza",
+        "homepage": "https://github.com/elizaOS/eliza/tree/develop/plugins/plugin-omarchy",
         "repository": "https://github.com/elizaOS/eliza"
       },
       "dependsOn": [],

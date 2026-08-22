@@ -20,6 +20,11 @@ binding; this file defines the narrower safety and verification contract.
   option-shaped headline/body values so `--exec` can never be selected.
 - Side-effecting actions require explicit intent and at least `USER` role.
 - Missing Omarchy binaries are an unavailable state, not empty healthy data.
+- Treat CLI output as untrusted protocol data: reject malformed complete values;
+  never truncate, summarize, or partially accept model-facing state.
+- Do not direct users to install an unsandboxed companion from a contributor-owned
+  repository. First-party installation guidance requires organization ownership,
+  independent review, and native-host acceptance.
 
 ## Verification
 
