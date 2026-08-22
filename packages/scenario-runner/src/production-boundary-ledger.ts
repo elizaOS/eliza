@@ -582,7 +582,25 @@ export async function observeProductionBoundary<TResponse, TReadback>(
       return await options.generationFence.withGeneration(
         identity.generation,
         async (guard) => {
-          if (!(await guard.isCurrent())) {
+          let currentBeforeInvoke: boolean;
+          try {
+            currentBeforeInvoke = await guard.isCurrent();
+          } catch (error) {
+            // error-policy:J1 authoritative generation validation failed after
+            // fence admission but before invocation, so the admitted attempt
+            // is durably unknown and records that no boundary call occurred.
+            return appendObservation(options.ledger, {
+              ...base,
+              completedAt: isoTimestamp(options.now),
+              boundaryCalled: false,
+              acceptance: "unknown",
+              result: "unknown",
+              resultCode: "generation_validation_threw",
+              retryable: false,
+              error: safeError(error, redactText),
+            });
+          }
+          if (!currentBeforeInvoke) {
             return appendObservation(options.ledger, {
               ...base,
               completedAt: isoTimestamp(options.now),
