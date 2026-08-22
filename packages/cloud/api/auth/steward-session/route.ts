@@ -365,7 +365,6 @@ app.post("/", async (c) => {
           email: claims.email,
           walletAddress: claims.walletAddress ?? claims.address,
           walletChainType: claims.walletChain,
-          verifiedTelegramId: claims.telegramId,
           verifiedPhone,
           verifiedTelegramId,
           telegramContinuation: telegramContinuation ?? undefined,
