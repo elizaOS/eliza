@@ -390,6 +390,18 @@ const ROUTES: DevRouteEntry[] = [
     platformGate: null,
   },
   {
+    // Owner-only vault workspace (#23068) — reachable directly at /vault; not
+    // in any ALL_TAB_GROUPS launcher group, like rolodex/desktop/background.
+    tabId: "vault",
+    path: "/vault",
+    label: "Vault",
+    group: "Hidden",
+    visibility: "all",
+    featureFlag: null,
+    requiresAuth: true,
+    platformGate: null,
+  },
+  {
     tabId: "rolodex",
     path: "/rolodex",
     label: "Rolodex",
