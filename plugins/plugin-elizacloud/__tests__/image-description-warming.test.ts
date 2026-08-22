@@ -86,15 +86,23 @@ describe("handleImageDescription warming-503 retry", () => {
     expect(postRaw.mock.calls[0]?.[0]?.json?.max_tokens).toBe(16384);
   });
 
-  it("rejects an invalid explicit image output budget before dispatch", async () => {
-    await expect(
-      handleImageDescription(
-        runtime({ ELIZAOS_CLOUD_IMAGE_DESCRIPTION_MAX_TOKENS: "8192oops" }),
-        "https://example.com/full.png"
-      )
-    ).rejects.toMatchObject({ code: "ELIZAOS_CLOUD_IMAGE_OUTPUT_BUDGET_INVALID" });
-    expect(postRaw).not.toHaveBeenCalled();
-  });
+  it.each(["8192oops", "1e3", "01", "+1", "1.5", "0", "-1"])(
+    "rejects invalid explicit image output budget %s before dispatch",
+    async (configuredMaxTokens) => {
+      await expect(
+        handleImageDescription(
+          runtime({
+            ELIZAOS_CLOUD_IMAGE_DESCRIPTION_MAX_TOKENS: configuredMaxTokens,
+          }),
+          "https://example.com/full.png"
+        )
+      ).rejects.toMatchObject({
+        code: "ELIZAOS_CLOUD_IMAGE_OUTPUT_BUDGET_INVALID",
+        context: { received: configuredMaxTokens },
+      });
+      expect(postRaw).not.toHaveBeenCalled();
+    }
+  );
 
   it("throws (fails closed) on a hard 500 instead of fabricating a description", async () => {
     postRaw.mockResolvedValue(new Response("upstream boom", { status: 500 }));
