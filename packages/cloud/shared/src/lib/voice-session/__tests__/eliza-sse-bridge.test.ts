@@ -895,6 +895,27 @@ describe("eliza sse bridge", () => {
     ).resolves.toEqual({ completed: true, aborted: false });
   });
 
+  test("keeps the navigation handoff when non-navigation VIEWS modes share the frame", async () => {
+    await expect(
+      streamTerminalActionResults([
+        {
+          actionName: "VIEWS",
+          success: true,
+          values: { mode: "create", viewId: "chat" },
+        },
+        {
+          actionName: "VIEWS",
+          success: true,
+          values: { mode: "show", viewId: "chat", viewPath: "/chat" },
+        },
+      ]),
+    ).resolves.toEqual({
+      completed: true,
+      aborted: false,
+      viewHandoff: { viewId: "chat", viewPath: "/chat" },
+    });
+  });
+
   test("does not promote failed or malformed terminal action results", async () => {
     const fetchImpl = (async () =>
       sseResponse([

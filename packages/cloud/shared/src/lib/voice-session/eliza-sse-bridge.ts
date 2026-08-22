@@ -647,11 +647,6 @@ function extractViewHandoff(payload: string): ElizaVoiceViewHandoff | null {
     if (!isRecord(candidate) || candidate.success !== true) continue;
     const actionName = readBoundedString(candidate.actionName)?.toUpperCase();
     if (actionName !== "VIEWS" && actionName !== "APP") continue;
-    successfulNavigationResults += 1;
-    // A terminal frame containing more than one successful navigation result
-    // has no authoritative ordering contract. Fail closed instead of choosing
-    // whichever array position an adapter happened to serialize last.
-    if (successfulNavigationResults > 1) return null;
     if (!isRecord(candidate.values)) {
       continue;
     }
@@ -661,6 +656,11 @@ function extractViewHandoff(payload: string): ElizaVoiceViewHandoff | null {
     const isViewsHandoff = actionName === "VIEWS" && (mode === "show" || mode === "open");
     const isAppBrowserHandoff = actionName === "APP" && mode === "launch" && viewId === "browser";
     if (!isViewsHandoff && !isAppBrowserHandoff) continue;
+    successfulNavigationResults += 1;
+    // A terminal frame containing more than one successful navigation result
+    // has no authoritative ordering contract. Fail closed instead of choosing
+    // whichever array position an adapter happened to serialize last.
+    if (successfulNavigationResults > 1) return null;
     const viewPath = readBoundedString(candidate.values.viewPath);
     const subview = readBoundedString(candidate.values.subview);
     if (isAppBrowserHandoff && (!viewPath || !isCanonicalBrowserLaunchPath(viewPath))) {
