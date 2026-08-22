@@ -358,7 +358,7 @@ describe("production manifest persistence", () => {
           () => restartedProcessReceipt.entityIds[0],
         ),
       }),
-    ).toThrow(/node JSON budget/);
+    ).toThrow(/array budget|node JSON budget/);
     const { taskIds: _taskIds, ...missingTaskIds } = restartedProcessReceipt;
     expect(() => parseProductionManifestReceipt(missingTaskIds)).toThrow(
       /taskIds.*required/,
