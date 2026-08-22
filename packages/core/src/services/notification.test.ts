@@ -111,6 +111,73 @@ describe("NotificationService", () => {
 		expect(event.data.unreadCount).toBe(1);
 	});
 
+	it("does not broadcast success when durable persistence rejects", async () => {
+		const originalSetCache = runtime.setCache.bind(runtime);
+		runtime.setCache = async () => {
+			throw new Error("injected notification persistence failure");
+		};
+		try {
+			await expect(
+				service.notify({ title: "Must not escape", priority: "urgent" }),
+			).rejects.toThrow("injected notification persistence failure");
+			expect(emitted).toEqual([]);
+		} finally {
+			runtime.setCache = originalSetCache;
+		}
+		expect(service.listIncludingExpired()).toEqual([]);
+	});
+
+	it("keeps durable success when a live listener throws", async () => {
+		const eventService = runtime.getService(
+			ServiceType.AGENT_EVENT,
+		) as AgentEventService;
+		const stopThrowing = eventService.subscribe(() => {
+			throw new Error("injected listener failure");
+		});
+		try {
+			const notification = await service.notify({
+				title: "Durable despite listener",
+				priority: "urgent",
+			});
+			expect(service.listIncludingExpired()).toContainEqual(notification);
+		} finally {
+			stopThrowing();
+		}
+	});
+
+	it("serializes overlapping writes across one rejected persistence", async () => {
+		const originalSetCache = runtime.setCache.bind(runtime);
+		let releaseFirst: (() => void) | undefined;
+		const firstBlocked = new Promise<void>((resolve) => {
+			releaseFirst = resolve;
+		});
+		let notificationWrites = 0;
+		runtime.setCache = async (key, value) => {
+			notificationWrites += 1;
+			if (notificationWrites === 1) {
+				await firstBlocked;
+				throw new Error("injected first persistence failure");
+			}
+			return originalSetCache(key, value);
+		};
+		try {
+			const first = service.notify({ title: "Rejected first" });
+			const second = service.notify({ title: "Durable second" });
+			releaseFirst?.();
+			await expect(first).rejects.toThrow("injected first persistence failure");
+			await expect(second).resolves.toMatchObject({ title: "Durable second" });
+			expect(
+				service.listIncludingExpired().map((entry) => entry.title),
+			).toEqual(["Durable second"]);
+			const stored = await runtime.getCache<AgentNotification[]>(
+				`notifications:${runtime.agentId}`,
+			);
+			expect(stored?.map((entry) => entry.title)).toEqual(["Durable second"]);
+		} finally {
+			runtime.setCache = originalSetCache;
+		}
+	});
+
 	it("still records when no event bus is present", async () => {
 		const headless = await createRuntime([NotificationService]);
 		try {

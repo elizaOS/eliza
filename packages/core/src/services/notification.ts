@@ -158,6 +158,7 @@ export class NotificationService extends Service {
 
 	/** Newest-last ordered list (mirrors the persisted store). */
 	private notifications: AgentNotification[] = [];
+	private notificationWriteTail: Promise<void> = Promise.resolve();
 
 	/** Resolved cache key (scoped per agent). */
 	private get cacheKey(): string {
@@ -314,10 +315,38 @@ export class NotificationService extends Service {
 		await this.runtime.setCache(this.cacheKey, this.notifications);
 	}
 
+	private async reconcilePersistFailure(
+		previous: AgentNotification[],
+	): Promise<void> {
+		const stored = await this.runtime.getCache<AgentNotification[]>(this.cacheKey);
+		this.notifications = Array.isArray(stored)
+			? stored
+					.filter((entry) => entry && typeof entry.id === "string" && entry.title)
+					.slice(-MAX_NOTIFICATIONS)
+			: previous;
+	}
+
 	/**
 	 * Create, persist, and broadcast a notification. Returns the stamped record.
 	 */
 	async notify(input: NotificationInput): Promise<AgentNotification> {
+		const operation = this.notificationWriteTail.then(
+			() => this.notifySerialized(input),
+			() => this.notifySerialized(input),
+		);
+		// error-policy:J5 the caller observes `operation`; the tail converts either
+		// outcome to completion so later notifications cannot inherit its failure.
+		this.notificationWriteTail = operation.then(
+			() => undefined,
+			() => undefined,
+		);
+		return operation;
+	}
+
+	private async notifySerialized(
+		input: NotificationInput,
+	): Promise<AgentNotification> {
+		const previousNotifications = [...this.notifications];
 		const title = input.title?.trim();
 		if (!title) {
 			throw new Error("[NotificationService] notification.title is required");
@@ -382,10 +411,24 @@ export class NotificationService extends Service {
 			this.notifications = this.notifications.slice(-MAX_NOTIFICATIONS);
 		}
 
-		// Fan out live before awaiting the DB write so clients aren't gated on disk.
-		this.broadcast(notification);
-
-		await this.persist();
+			try {
+				await this.persist();
+			} catch (error) {
+				try {
+					await this.reconcilePersistFailure(previousNotifications);
+				} catch (reconcileError) {
+					// error-policy:J2 preserve both the write ambiguity and failed
+					// authoritative reconciliation for the receipt-owning caller.
+					throw new AggregateError(
+						[error, reconcileError],
+						"notification persistence and reconciliation failed",
+					);
+				}
+				throw error;
+			}
+			// Durable inbox state is authoritative. Fan out only after persistence so
+			// a failed write cannot expose a ghost success to live clients.
+			this.broadcast(notification);
 		logger.debug(
 			{
 				src: "service:notification",
@@ -411,12 +454,24 @@ export class NotificationService extends Service {
 			notification,
 			unreadCount: this.getUnreadCount(),
 		};
-		bus.emit({
-			runId: notification.id,
-			stream: NOTIFICATION_STREAM,
-			data,
-			agentId: notification.agentId,
-		});
+		try {
+			bus.emit({
+				runId: notification.id,
+				stream: NOTIFICATION_STREAM,
+				data,
+				agentId: notification.agentId,
+			});
+		} catch (error) {
+			// error-policy:J7 durable notification success must not be reversed by
+			// a diagnostic/live-fanout observer failure.
+			this.runtime.reportError("NotificationService.broadcast", error, {
+				notificationId: notification.id,
+			});
+			logger.warn(
+				{ error, notificationId: notification.id },
+				"[NotificationService] live fan-out failed after durable persistence",
+			);
+		}
 	}
 
 	/** List notifications, newest first, with optional filtering. */
@@ -435,6 +490,15 @@ export class NotificationService extends Service {
 			result = result.slice(0, query.limit);
 		}
 		return result;
+	}
+
+	/**
+	 * Enumerate the persisted inbox without applying wall-clock expiry filters.
+	 * Lifecycle owners use this boundary for exact cleanup and residue proofs;
+	 * user-facing inbox reads should continue to call {@link list}.
+	 */
+	listIncludingExpired(): AgentNotification[] {
+		return [...this.notifications].reverse();
 	}
 
 	getUnreadCount(): number {
