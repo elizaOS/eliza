@@ -174,6 +174,23 @@ describe("landing Shared-agent capability contract", () => {
     ).toHaveLength(2);
   });
 
+  test("uses a complete acknowledgment in the Co-parenting chat", () => {
+    const coParenting = LANDING_DEMO_SCENARIOS.find(
+      (scenario) => scenario.id === "co-parenting",
+    );
+
+    expect(
+      coParenting?.steps.some(
+        (step) => step.kind === "user" && step.text === "okay",
+      ),
+    ).toBe(true);
+    expect(
+      coParenting?.steps.some(
+        (step) => step.kind === "user" && step.text === "k",
+      ),
+    ).toBe(false);
+  });
+
   test("ends every room with one distinct native attachment", () => {
     const attachments = LANDING_DEMO_SCENARIOS.map((scenario) =>
       scenario.steps.at(-1),

@@ -366,7 +366,7 @@ const LANDING_DEMO_SCENARIO_DEFINITIONS: readonly LandingDemoScenario[] = [
       },
       {
         kind: "user",
-        text: "k",
+        text: "okay",
       },
       {
         capability: "conversation-memory",
