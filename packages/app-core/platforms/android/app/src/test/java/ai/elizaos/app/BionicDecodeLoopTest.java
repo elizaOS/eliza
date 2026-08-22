@@ -153,6 +153,40 @@ public final class BionicDecodeLoopTest {
         assertEquals(Arrays.asList("done"), frames);
     }
 
+    @Test
+    public void stopSequenceSplitAcrossStepsIsRemovedAndEndsDecode() throws Exception {
+        final List<String> frames = new ArrayList<>();
+        final String[] pieces = {"Ready<end_", "of_turn>ignored", "never reached"};
+        final int[] call = {0};
+        final BionicDecodeLoop.StepFn fn = stepCap ->
+            new BionicDecodeLoop.Step(pieces[call[0]++], 2, false);
+
+        final BionicDecodeLoop.Result r = BionicDecodeLoop.run(
+            fn, 64, 2, Arrays.asList("<end_of_turn>", "<start_of_turn>"), frames::add);
+
+        assertEquals("Ready", r.text);
+        assertEquals(Arrays.asList("Ready"), frames);
+        assertEquals(4, r.produced);
+        assertEquals(2, call[0]);
+    }
+
+    @Test
+    public void partialStopPrefixFlushesWhenDecodeEndsNormally() throws Exception {
+        final List<String> frames = new ArrayList<>();
+        final int[] call = {0};
+        final BionicDecodeLoop.StepFn fn = stepCap -> {
+            call[0]++;
+            return new BionicDecodeLoop.Step("answer<end_", 3, true);
+        };
+
+        final BionicDecodeLoop.Result r = BionicDecodeLoop.run(
+            fn, 64, 8, Arrays.asList("<end_of_turn>"), frames::add);
+
+        assertEquals("answer<end_", r.text);
+        assertEquals(Arrays.asList("answer<end_"), frames);
+        assertEquals(1, call[0]);
+    }
+
     // ── Termination + failure propagation ──────────────────────────────────
 
     @Test
