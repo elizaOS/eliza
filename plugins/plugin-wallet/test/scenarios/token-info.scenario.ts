@@ -9,7 +9,6 @@
  * reports the token's price/volume — no live network, no API keys, no signer.
  */
 import type { AgentRuntime } from "@elizaos/core";
-import { ModelType } from "@elizaos/core";
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 const WALLET = "WALLET";
@@ -18,9 +17,6 @@ const TOKEN_ADDRESS = "0xA0b86991c6218b36c1d19d4a2e9eb0ce3606eb48";
 
 type R = AgentRuntime & {
   setSetting?: (k: string, v: string) => void;
-  scenarioModelFixtures?: {
-    register: (...f: Array<Record<string, unknown>>) => void;
-  };
 };
 
 let restoreFetch: (() => void) | undefined;
@@ -62,6 +58,10 @@ const MOCK_PAIR = {
 
 export default scenario({
   lane: "pr-deterministic",
+  modelFixtures: {
+    mode: "fixtures",
+    fixtures: [],
+  },
   id: "wallet.token-info",
   title:
     "Wallet: token info via WALLET action against a mocked DexScreener API",
@@ -124,67 +124,6 @@ export default scenario({
         }) as typeof fetch;
         globalThis.fetch = dexMockFetch;
 
-        runtime.scenarioModelFixtures?.register(
-          {
-            name: "wallet-stage1",
-            match: {
-              modelType: ModelType.RESPONSE_HANDLER,
-              input: (v: string) => v.includes("USDC"),
-              toolName: "HANDLE_RESPONSE",
-            },
-            response: {
-              contexts: ["wallet"],
-              intents: ["wallet"],
-              replyText: "",
-              threadOps: [],
-              candidateActionNames: [WALLET],
-            },
-            times: 1,
-          },
-          {
-            name: "wallet-planner",
-            match: {
-              modelType: ModelType.ACTION_PLANNER,
-              input: (v: string) => v.includes("USDC"),
-              toolName: WALLET,
-            },
-            response: {
-              text: "",
-              thought: "Look up token info for USDC via DexScreener.",
-              messageToUser: "",
-              completed: true,
-              finishReason: "tool-calls",
-              toolCalls: [
-                {
-                  id: "call-wallet",
-                  name: WALLET,
-                  type: "function",
-                  arguments: {
-                    action: "token_info",
-                    address: TOKEN_ADDRESS,
-                  },
-                },
-              ],
-            },
-            times: 1,
-          },
-          {
-            // After WALLET returns the token info, the runtime makes a final
-            // RESPONSE_HANDLER (no HANDLE_RESPONSE tool) to decide whether to
-            // continue; the token lookup is terminal, so FINISH.
-            name: "wallet-decision",
-            match: (call: { modelType: string; toolNames: string[] }) =>
-              call.modelType === ModelType.RESPONSE_HANDLER &&
-              !call.toolNames.includes("HANDLE_RESPONSE"),
-            response: {
-              success: true,
-              decision: "FINISH",
-              thought: "Token info returned; nothing more to do.",
-              messageToUser: "USDC is trading at $1.00.",
-            },
-            times: 1,
-          },
-        );
         return undefined;
       },
     },
@@ -206,8 +145,12 @@ export default scenario({
 
   turns: [
     {
-      kind: "message",
+      kind: "action",
       name: "lookup",
+      actionName: WALLET,
+      options: {
+        parameters: { action: "token_info", address: TOKEN_ADDRESS },
+      },
       text: `Look up DexScreener market data for USDC at ${TOKEN_ADDRESS}.`,
       // Carry the wallet discriminator on the inbound message so the WALLET
       // action's structural validate() (which has no live LLM at gate time)

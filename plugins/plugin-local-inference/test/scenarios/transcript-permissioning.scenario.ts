@@ -1,6 +1,6 @@
 /**
  * Deterministic per-plugin e2e for the transcript permissioning actions of
- * `@elizaos/plugin-local-inference` (issue #14779): the message -> planner ->
+ * `@elizaos/plugin-local-inference` (issue #14779): the direct
  * `SHARE_TRANSCRIPT` -> `TranscriptStore` path proven end to end, not at the
  * unit boundary.
  *
@@ -22,7 +22,6 @@
  */
 import {
   type AgentRuntime,
-  ModelType,
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
@@ -35,7 +34,7 @@ import type { Transcript } from "@elizaos/shared";
 
 const SHARE_TRANSCRIPT = "SHARE_TRANSCRIPT";
 
-/** Stable ids so the planner fixture can name the transcript + grantee. */
+/** Stable ids so the action turn can name the transcript and grantee. */
 const TRANSCRIPT_ID = stringToUuid(
   "scenario:transcript-permissioning:meeting-1",
 ) as UUID;
@@ -47,11 +46,7 @@ const ALICE_EMAIL = "alice@example.com";
 const ALICE_PHONE = "415-555-0199";
 const BOB_EMAIL = "bob@example.com";
 
-type R = AgentRuntime & {
-  scenarioModelFixtures?: {
-    register: (...f: Array<Record<string, unknown>>) => void;
-  };
-};
+type R = AgentRuntime;
 
 function buildTranscript(ownerHint: string): Transcript {
   return {
@@ -94,6 +89,10 @@ function buildTranscript(ownerHint: string): Transcript {
 
 export default scenario({
   lane: "pr-deterministic",
+  modelFixtures: {
+    mode: "fixtures",
+    fixtures: [],
+  },
   id: "local-inference.transcript-permissioning",
   title: "Local inference: redact a meeting transcript for its room roster",
   domain: "local-inference",
@@ -122,68 +121,6 @@ export default scenario({
           transcript: buildTranscript(owner),
         });
 
-        runtime.scenarioModelFixtures?.register(
-          {
-            name: "transcript-permissioning-stage1",
-            match: {
-              modelType: ModelType.RESPONSE_HANDLER,
-              input: (v: string) =>
-                /\b(?:share|redact)\b/.test(v.toLowerCase()),
-              toolName: "HANDLE_RESPONSE",
-            },
-            response: {
-              contexts: ["voice"],
-              intents: ["share a meeting transcript, redacted"],
-              replyText: "",
-              threadOps: [],
-              candidateActionNames: [SHARE_TRANSCRIPT],
-            },
-            times: 1,
-          },
-          {
-            name: "transcript-permissioning-planner",
-            match: {
-              modelType: ModelType.ACTION_PLANNER,
-              input: (v: string) =>
-                /\b(?:share|redact)\b/.test(v.toLowerCase()),
-              toolName: SHARE_TRANSCRIPT,
-            },
-            response: {
-              text: "",
-              thought:
-                "The requester is an admin, so snapshot the meeting roster and disclose the redacted variant to every participant.",
-              messageToUser: "",
-              completed: true,
-              finishReason: "tool-calls",
-              toolCalls: [
-                {
-                  id: "call-share-transcript",
-                  name: SHARE_TRANSCRIPT,
-                  type: "function",
-                  arguments: {
-                    transcriptId: TRANSCRIPT_ID,
-                    redactForAll: true,
-                    mode: "redacted",
-                  },
-                },
-              ],
-            },
-            times: 1,
-          },
-          {
-            name: "transcript-permissioning-decision",
-            match: (call: { modelType: string; toolNames: string[] }) =>
-              call.modelType === ModelType.RESPONSE_HANDLER &&
-              !call.toolNames.includes("HANDLE_RESPONSE"),
-            response: {
-              success: true,
-              decision: "FINISH",
-              thought: "Redacted transcript shared; nothing more to do.",
-              messageToUser: "Shared the redacted transcript with Alice.",
-            },
-            times: 1,
-          },
-        );
         return undefined;
       },
     },
@@ -200,8 +137,16 @@ export default scenario({
 
   turns: [
     {
-      kind: "message",
+      kind: "action",
       name: "share-redacted",
+      actionName: SHARE_TRANSCRIPT,
+      options: {
+        parameters: {
+          transcriptId: TRANSCRIPT_ID,
+          redactForAll: true,
+          mode: "redacted",
+        },
+      },
       text: `Redact the meeting transcript ${TRANSCRIPT_ID} for everyone in that meeting room. Keep the full original available only to admins.`,
       timeoutMs: 120_000,
       assertTurn: (turn) => {

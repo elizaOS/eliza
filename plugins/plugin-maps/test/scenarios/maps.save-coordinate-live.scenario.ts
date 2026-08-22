@@ -1,13 +1,12 @@
 /**
  * Keyless end-to-end proof for the provider-neutral Maps save path.
  *
- * The deterministic model must select the promoted receipt-enforced action and extract a
- * coordinate-defined place without an external maps provider. The final check
+ * A direct turn calls the promoted receipt-enforced action with a
+ * coordinate-defined place and no external maps provider. The final check
  * then verifies both the action receipt and the saved row through the real
  * scenario runtime's PGlite-backed Maps service.
  */
 
-import { type AgentRuntime, ModelType } from "@elizaos/core";
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 const MAPS_SAVE = "MAPS_SAVE";
@@ -35,12 +34,6 @@ interface RuntimeSurface {
   getService(name: string): unknown;
 }
 
-type RuntimeWithScenarioModelFixtures = AgentRuntime & {
-  scenarioModelFixtures?: {
-    register: (...fixtures: Array<Record<string, unknown>>) => void;
-  };
-};
-
 function record(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -49,99 +42,19 @@ function record(value: unknown): Record<string, unknown> | null {
 
 export default scenario({
   lane: "pr-deterministic",
+  modelFixtures: {
+    mode: "fixtures",
+    fixtures: [],
+  },
   id: "maps.save-coordinate-live",
   title: "Save a coordinate-defined place with Maps",
   domain: "maps",
   tags: ["maps", "saved-place", "deterministic", "receipt", "pglite"],
   description:
-    "Asks the deterministic model to save Pike Place Market from explicit coordinates, then verifies selection, extracted tool arguments, the canonical effect receipt, and durable Maps state.",
+    "Saves Pike Place Market from explicit coordinates, then verifies the direct action arguments, canonical effect receipt, and durable Maps state.",
 
   requires: { plugins: ["@elizaos/plugin-maps"] },
   isolation: "per-scenario",
-
-  seed: [
-    {
-      type: "custom",
-      name: "register-maps-model-fixtures",
-      apply: async (ctx) => {
-        const runtime = ctx.runtime as RuntimeWithScenarioModelFixtures;
-        runtime.scenarioModelFixtures?.register(
-          {
-            name: "maps-save-stage1",
-            match: {
-              modelType: ModelType.RESPONSE_HANDLER,
-              input: (value: string) => value.includes("Pike Place Market"),
-              toolName: "HANDLE_RESPONSE",
-            },
-            response: {
-              contexts: ["location"],
-              intents: ["maps"],
-              replyText: "",
-              threadOps: [],
-              candidateActionNames: [MAPS_SAVE],
-            },
-            times: 1,
-          },
-          {
-            name: "maps-save-planner",
-            match: {
-              modelType: ModelType.ACTION_PLANNER,
-              input: (value: string) => value.includes("Pike Place Market"),
-              toolName: MAPS_SAVE,
-            },
-            response: {
-              text: "",
-              thought: "Save the coordinate-defined place once.",
-              messageToUser: "Saved Pike Place Market as a Favorite.",
-              completed: true,
-              finishReason: "tool-calls",
-              toolCalls: [
-                {
-                  id: "call-maps-save",
-                  name: MAPS_SAVE,
-                  type: "function",
-                  arguments: {
-                    name: "Pike Place Market",
-                    address: "85 Pike Street, Seattle, WA 98101",
-                    latitude: LATITUDE,
-                    longitude: LONGITUDE,
-                    label: "Favorite",
-                    idempotencyKey: "maps-save-pike-place-scenario",
-                  },
-                },
-              ],
-            },
-            times: 1,
-          },
-          {
-            name: "maps-save-post-turn-evaluation",
-            match: {
-              modelType: ModelType.TEXT_SMALL,
-              input: (value: string) =>
-                value.includes("# Task: Post-turn evaluation"),
-            },
-            response: JSON.stringify({
-              factMemory: { ops: [] },
-              preferences: { ops: [] },
-              relationships: { relationships: [] },
-              identities: { identities: [] },
-              success: {
-                completed: true,
-                reason: "MAPS_SAVE persisted the requested place.",
-              },
-              ftu_goal_discovery: {
-                goalFound: false,
-                goal: "",
-                confidence: 0,
-              },
-              experiencePatterns: { experiences: [] },
-            }),
-            times: 1,
-          },
-        );
-      },
-    },
-  ],
 
   rooms: [
     {
@@ -154,8 +67,19 @@ export default scenario({
 
   turns: [
     {
-      kind: "message",
+      kind: "action",
       name: "save-pike-place",
+      actionName: MAPS_SAVE,
+      options: {
+        parameters: {
+          name: "Pike Place Market",
+          address: "85 Pike Street, Seattle, WA 98101",
+          latitude: LATITUDE,
+          longitude: LONGITUDE,
+          label: "Favorite",
+          idempotencyKey: "maps-save-pike-place-scenario",
+        },
+      },
       room: "main",
       text: "Please use my Maps integration to save Pike Place Market as a Favorite. It is at 85 Pike Street, Seattle, WA 98101, at latitude 47.6097 and longitude -122.3425. Avoid creating a duplicate if this request is retried.",
       expectedActions: [MAPS_SAVE],
@@ -184,12 +108,6 @@ export default scenario({
       type: "actionCalled",
       actionName: MAPS_SAVE,
       status: "success",
-      minCount: 1,
-    },
-    {
-      type: "modelCallOccurred",
-      purpose: "action",
-      includesAny: [MAPS_SAVE, "Pike Place Market"],
       minCount: 1,
     },
     {

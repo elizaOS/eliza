@@ -195,7 +195,9 @@ describe("form storage session scans", () => {
 describe("bounded form component data", () => {
   it("serializes normal plain objects cleanly", () => {
     const data = { id: "123", name: "test", count: 42, active: true };
-    expect(toComponentData(data)).toEqual(data);
+    const serialized = toComponentData(data);
+    expect(serialized).toEqual(data);
+    expect(Object.getPrototypeOf(serialized)).toBe(Object.prototype);
   });
 
   it("duplicates honest shared references without treating them as cycles", () => {
@@ -285,11 +287,12 @@ describe("bounded form component data", () => {
       value: { polluted: true },
     });
     const data = toComponentData(value);
-    expect(Object.getPrototypeOf(data)).toBeNull();
+    expect(Object.getPrototypeOf(data)).toBe(Object.prototype);
     expect(Object.hasOwn(data, "__proto__")).toBe(true);
     expect(Object.getOwnPropertyDescriptor(data, "__proto__")?.value).toEqual({
       polluted: true,
     });
+    expect((data as { polluted?: boolean }).polluted).toBeUndefined();
   });
 });
 

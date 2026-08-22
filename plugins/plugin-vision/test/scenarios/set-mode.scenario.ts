@@ -8,7 +8,6 @@
  * service is booted in OFF mode so startup performs no camera/screen probing.
  */
 import type { AgentRuntime, Provider } from "@elizaos/core";
-import { ModelType } from "@elizaos/core";
 import {
   describeCalls,
   successfulActionData,
@@ -19,13 +18,14 @@ const VISION = "VISION";
 type R = AgentRuntime & {
   setSetting?: (k: string, v: string) => void;
   registerProvider?: (provider: Provider) => void;
-  scenarioModelFixtures?: {
-    register: (...f: Array<Record<string, unknown>>) => void;
-  };
 };
 
 export default scenario({
   lane: "pr-deterministic",
+  modelFixtures: {
+    mode: "fixtures",
+    fixtures: [],
+  },
   id: "vision.set-mode",
   title: "Vision: switch vision mode via the VISION action (keyless)",
   domain: "vision",
@@ -64,60 +64,6 @@ export default scenario({
           }),
         });
 
-        runtime.scenarioModelFixtures?.register(
-          {
-            name: "vision-stage1",
-            match: {
-              modelType: ModelType.RESPONSE_HANDLER,
-              input: (v: string) => v.includes("vision"),
-              toolName: "HANDLE_RESPONSE",
-            },
-            response: {
-              contexts: ["media"],
-              intents: ["vision"],
-              replyText: "",
-              threadOps: [],
-              candidateActionNames: [VISION],
-            },
-            times: 1,
-          },
-          {
-            name: "vision-planner",
-            match: {
-              modelType: ModelType.ACTION_PLANNER,
-              toolName: VISION,
-            },
-            response: {
-              text: "",
-              thought: "Turn the agent's vision mode off.",
-              messageToUser: "",
-              completed: true,
-              finishReason: "tool-calls",
-              toolCalls: [
-                {
-                  id: "call-vision",
-                  name: VISION,
-                  type: "function",
-                  arguments: { action: "set_mode", mode: "off" },
-                },
-              ],
-            },
-            times: 1,
-          },
-          {
-            name: "vision-decision",
-            match: (call: { modelType: string; toolNames: string[] }) =>
-              call.modelType === ModelType.RESPONSE_HANDLER &&
-              !call.toolNames.includes("HANDLE_RESPONSE"),
-            response: {
-              success: true,
-              decision: "FINISH",
-              thought: "Vision mode set; nothing more to do.",
-              messageToUser: "Vision has been turned off.",
-            },
-            times: 1,
-          },
-        );
         return undefined;
       },
     },
@@ -129,8 +75,10 @@ export default scenario({
 
   turns: [
     {
-      kind: "message",
+      kind: "action",
       name: "set-mode",
+      actionName: VISION,
+      options: { parameters: { action: "set_mode", mode: "off" } },
       text: "Turn vision mode off.",
       timeoutMs: 120_000,
       assertTurn: (turn) => {

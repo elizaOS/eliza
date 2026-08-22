@@ -9,6 +9,59 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 export default scenario({
   lane: "pr-deterministic",
+  modelFixtures: {
+    mode: "fixtures",
+    fixtures: [
+      {
+        name: "signed-out-cloud-account-reply",
+        match: {
+          modelType: "RESPONSE_HANDLER",
+          input: {
+            includes:
+              "How many credits do I have on Eliza Cloud, and what agents are running?",
+          },
+          toolNames: ["HANDLE_RESPONSE"],
+        },
+        response: {
+          json: {
+            contexts: ["cloud"],
+            intents: ["cloud account status"],
+            replyText: "Sign in to connect your Eliza Cloud account and view credits.",
+            threadOps: [],
+            candidateActionNames: [],
+          },
+        },
+      },
+      {
+        name: "signed-out-cloud-account-planner",
+        match: {
+          modelType: "ACTION_PLANNER",
+          input: {
+            includes:
+              "How many credits do I have on Eliza Cloud, and what agents are running?",
+          },
+        },
+        response: {
+          json: {
+            thought: "Cloud account tools are unavailable while signed out.",
+            messageToUser:
+              "Sign in to connect your Eliza Cloud account and view credits.",
+            completed: true,
+          },
+        },
+      },
+      {
+        name: "signed-out-cloud-account-post-turn-evaluation",
+        match: {
+          modelType: "TEXT_SMALL",
+          input: { includes: "# Task: Post-turn evaluation" },
+        },
+        response: {
+          text: "{\"factMemory\":{\"ops\":[]},\"preferences\":{\"ops\":[]},\"relationships\":{\"relationships\":[]},\"identities\":{\"identities\":[]},\"success\":{\"completed\":true,\"reason\":\"Explained that Cloud account access requires sign-in.\"},\"ftu_goal_discovery\":{\"goalFound\":false,\"goal\":\"\",\"confidence\":0},\"experiencePatterns\":{\"experiences\":[]}}",
+        },
+      },
+    ],
+  },
   id: "cloud-account-signed-out",
   title: "Cloud account actions stay hidden without a Cloud session",
   domain: "elizacloud.account",

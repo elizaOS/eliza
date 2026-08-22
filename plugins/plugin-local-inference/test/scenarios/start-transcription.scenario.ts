@@ -9,13 +9,12 @@
  * `@elizaos/core` (the same real service the API host wires) so the action's
  * `validate` passes and the handler reports successful delivery.
  *
- * Only routing fixtures are needed: the action makes no `useModel` call, and it
- * declares no parameter schema, so the planner tool call carries empty arguments.
+ * A direct action turn makes the model-free boundary explicit while preserving
+ * the production action, service lookup, event emission, and subscriber path.
  */
 import {
   AgentEventService,
   type AgentRuntime,
-  ModelType,
   ServiceType,
 } from "@elizaos/core";
 import { scenario } from "@elizaos/scenario-runner/schema";
@@ -23,11 +22,7 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 const START_TRANSCRIPTION = "START_TRANSCRIPTION";
 const VOICE_CONTROL_STREAM = "voice-control";
 
-type R = AgentRuntime & {
-  scenarioModelFixtures?: {
-    register: (...f: Array<Record<string, unknown>>) => void;
-  };
-};
+type R = AgentRuntime;
 
 type BusEvent = { stream?: string; data?: unknown };
 type SubscribableBus = {
@@ -39,6 +34,10 @@ const observedBusEvents: BusEvent[] = [];
 
 export default scenario({
   lane: "pr-deterministic",
+  modelFixtures: {
+    mode: "fixtures",
+    fixtures: [],
+  },
   id: "local-inference.start-transcription",
   title: "Local inference: start voice transcription via the control bus",
   domain: "local-inference",
@@ -72,61 +71,6 @@ export default scenario({
           observedBusEvents.push(event);
         });
 
-        runtime.scenarioModelFixtures?.register(
-          {
-            name: "local-inference-stage1",
-            match: {
-              modelType: ModelType.RESPONSE_HANDLER,
-              input: (v: string) => v.includes("transcrib"),
-              toolName: "HANDLE_RESPONSE",
-            },
-            response: {
-              contexts: ["voice"],
-              intents: ["start voice transcription"],
-              replyText: "",
-              threadOps: [],
-              candidateActionNames: [START_TRANSCRIPTION],
-            },
-            times: 1,
-          },
-          {
-            name: "local-inference-planner",
-            match: {
-              modelType: ModelType.ACTION_PLANNER,
-              input: (v: string) => v.includes("transcrib"),
-              toolName: START_TRANSCRIPTION,
-            },
-            response: {
-              text: "",
-              thought: "Begin long-form voice transcription on the device.",
-              messageToUser: "",
-              completed: true,
-              finishReason: "tool-calls",
-              toolCalls: [
-                {
-                  id: "call-start-transcription",
-                  name: START_TRANSCRIPTION,
-                  type: "function",
-                  arguments: {},
-                },
-              ],
-            },
-            times: 1,
-          },
-          {
-            name: "local-inference-decision",
-            match: (call: { modelType: string; toolNames: string[] }) =>
-              call.modelType === ModelType.RESPONSE_HANDLER &&
-              !call.toolNames.includes("HANDLE_RESPONSE"),
-            response: {
-              success: true,
-              decision: "FINISH",
-              thought: "Transcription started; nothing more to do.",
-              messageToUser: "Starting transcription.",
-            },
-            times: 1,
-          },
-        );
         return undefined;
       },
     },
@@ -143,8 +87,9 @@ export default scenario({
 
   turns: [
     {
-      kind: "message",
+      kind: "action",
       name: "start",
+      actionName: START_TRANSCRIPTION,
       text: "Start transcribing this conversation.",
       timeoutMs: 120_000,
       assertTurn: (turn) => {

@@ -14,12 +14,12 @@
  * is answered by the same mock so the plugin boots fully offline.
  */
 import type { AgentRuntime } from "@elizaos/core";
-import { ModelType } from "@elizaos/core";
-import { scenario } from "@elizaos/scenario-runner/schema";
+import type { CloudAuthService } from "@elizaos/plugin-elizacloud/services/cloud-auth";
 import {
   describeCalls,
   successfulActionData,
 } from "@elizaos/scenario-runner/scenario-assertions";
+import { scenario } from "@elizaos/scenario-runner/schema";
 
 const CLOUD_ACCOUNT_STATUS = "CLOUD_ACCOUNT_STATUS";
 const CLOUD_BASE_URL = "https://cloud.test.invalid/api/v1";
@@ -27,9 +27,6 @@ const MOCK_BALANCE = 12.5;
 
 type R = AgentRuntime & {
   setSetting?: (k: string, v: string, secret?: boolean) => void;
-  scenarioModelFixtures?: {
-    register: (...f: Array<Record<string, unknown>>) => void;
-  };
 };
 
 let restoreFetch: (() => void) | undefined;
@@ -38,6 +35,10 @@ let balanceMockHit = false;
 
 export default scenario({
   lane: "pr-deterministic",
+  modelFixtures: {
+    mode: "fixtures",
+    fixtures: [],
+  },
   id: "elizacloud.account-status",
   title: "Eliza Cloud: read credit balance against a mocked cloud API",
   domain: "elizacloud",
@@ -107,49 +108,12 @@ export default scenario({
         process.env.ELIZAOS_CLOUD_USE_INFERENCE = "false";
         process.env.ELIZAOS_CLOUD_USE_EMBEDDINGS = "false";
 
-        runtime.scenarioModelFixtures?.register(
-          {
-            name: "elizacloud-stage1",
-            match: {
-              modelType: ModelType.RESPONSE_HANDLER,
-              input: (v: string) => v.includes("credit") || v.includes("cloud"),
-              toolName: "HANDLE_RESPONSE",
-            },
-            response: {
-              contexts: ["cloud", "finance"],
-              intents: ["check my cloud credits"],
-              replyText: "",
-              threadOps: [],
-              candidateActionNames: [CLOUD_ACCOUNT_STATUS],
-            },
-            times: 1,
-          },
-          {
-            name: "elizacloud-planner",
-            match: (call: { modelType: string; toolNames: string[] }) =>
-              call.modelType === ModelType.ACTION_PLANNER &&
-              call.toolNames.includes(CLOUD_ACCOUNT_STATUS),
-            response: {
-              text: "",
-              thought: "Check the Eliza Cloud credit balance.",
-              messageToUser: "",
-              completed: true,
-              finishReason: "tool-calls",
-              toolCalls: [
-                {
-                  id: "call-cloud",
-                  name: CLOUD_ACCOUNT_STATUS,
-                  type: "function",
-                  arguments: {},
-                },
-              ],
-            },
-            times: 1,
-          },
-          // No post-action decision fixture: CLOUD_ACCOUNT_STATUS's verified
-          // read is turnComplete (#18119), so the planner-loop finishes on the
-          // action's own ack and never issues the FINISH decision call.
-        );
+        const auth = runtime.getService<CloudAuthService>("CLOUD_AUTH");
+        if (!auth) {
+          throw new Error("CloudAuthService did not start");
+        }
+        auth.authenticateWithApiKey({ apiKey: "cloud_scenario_key" });
+
         return undefined;
       },
     },
@@ -176,8 +140,9 @@ export default scenario({
 
   turns: [
     {
-      kind: "message",
+      kind: "action",
       name: "balance",
+      actionName: CLOUD_ACCOUNT_STATUS,
       text: "How many Eliza Cloud credits do I have left?",
       timeoutMs: 120_000,
       assertTurn: (turn) => {

@@ -7,15 +7,12 @@
  * `OWNER_FINANCES` umbrella in `@elizaos/plugin-personal-assistant`, whose
  * handler (`runMoneyHandler`) delegates straight into `runPaymentsHandler`
  * here. So the scenario loads both plugins and drives the read-only
- * `dashboard` subaction end to end through the deterministic model provider with
- * zero credentials: routing fixtures select `OWNER_FINANCES`, the planner
- * calls it with `action: "dashboard"`, and the finances back-end reads the
+ * `dashboard` subaction end to end with zero credentials: a direct action turn
+ * calls `OWNER_FINANCES` with `action: "dashboard"`, and the finances back-end reads the
  * (empty) migrated `app_finances` tables and returns the composite dashboard
  * payload. No `useModel` call is made inside the handler, so two route
  * fixtures cover the whole turn.
  */
-import type { AgentRuntime } from "@elizaos/core";
-import { ModelType } from "@elizaos/core";
 import {
   describeCalls,
   successfulActionData,
@@ -26,98 +23,23 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 const FINANCES_INPUT = "Pull up my finances dashboard for the last 30 days.";
 const OWNER_FINANCES = "OWNER_FINANCES";
 
-type RuntimeWithScenarioModelFixtures = AgentRuntime & {
-  scenarioModelFixtures?: {
-    register: (...fixtures: Array<Record<string, unknown>>) => void;
-  };
-};
-
-function financesRouteFixtures(): Array<Record<string, unknown>> {
-  const inputMatches = (value: string) => value.includes("finances dashboard");
-  return [
-    {
-      name: "route-owner-finances-stage1",
-      match: {
-        modelType: ModelType.RESPONSE_HANDLER,
-        input: inputMatches,
-        toolName: "HANDLE_RESPONSE",
-      },
-      response: {
-        contexts: ["finance"],
-        intents: ["finances"],
-        replyText: "",
-        threadOps: [],
-        candidateActionNames: [OWNER_FINANCES],
-      },
-      times: 1,
-    },
-    {
-      name: "route-owner-finances-planner",
-      match: {
-        modelType: ModelType.ACTION_PLANNER,
-        input: inputMatches,
-        toolName: OWNER_FINANCES,
-      },
-      response: {
-        text: "",
-        thought: "Read the owner's finances dashboard.",
-        messageToUser: "",
-        completed: true,
-        finishReason: "tool-calls",
-        toolCalls: [
-          {
-            id: "call-owner-finances",
-            name: OWNER_FINANCES,
-            type: "function",
-            arguments: { action: "dashboard" },
-          },
-        ],
-      },
-      times: 1,
-    },
-    {
-      // Post-action FINISH/CONTINUE decision: a RESPONSE_HANDLER call with no
-      // HANDLE_RESPONSE tool, made after OWNER_FINANCES returns the dashboard.
-      name: "route-owner-finances-decision",
-      match: (call: { modelType: string; toolNames?: string[] }) =>
-        call.modelType === ModelType.RESPONSE_HANDLER &&
-        !(call.toolNames ?? []).includes("HANDLE_RESPONSE"),
-      response: {
-        success: true,
-        decision: "FINISH",
-        thought: "The finances dashboard was returned to the owner.",
-        messageToUser: "Here is your finances dashboard for the last 30 days.",
-      },
-      times: 1,
-    },
-  ];
-}
-
 export default scenario({
   lane: "pr-deterministic",
+  modelFixtures: {
+    mode: "fixtures",
+    fixtures: [],
+  },
   id: "finances.owner-finances-dashboard",
   title: "Finances: OWNER_FINANCES returns the payments dashboard",
   domain: "finances",
   tags: ["smoke", "finances", "owner-finances", "payments"],
   description:
-    "Sends a finances-dashboard request and verifies the OWNER_FINANCES action is selected and the plugin-finances back-end returns the dashboard payload via the deterministic model provider — keyless, no credentials.",
+    "Calls OWNER_FINANCES directly and verifies the plugin-finances back-end returns the dashboard payload — keyless, no credentials or model calls.",
 
   requires: {
     plugins: ["@elizaos/plugin-finances", "@elizaos/plugin-personal-assistant"],
   },
   isolation: "per-scenario",
-
-  seed: [
-    {
-      type: "custom",
-      name: "register-strict-finances-route-fixtures",
-      apply: async (ctx) => {
-        const runtime = ctx.runtime as RuntimeWithScenarioModelFixtures;
-        runtime.scenarioModelFixtures?.register(...financesRouteFixtures());
-        return undefined;
-      },
-    },
-  ],
 
   rooms: [
     {
@@ -130,8 +52,10 @@ export default scenario({
 
   turns: [
     {
-      kind: "message",
+      kind: "action",
       name: "read-finances-dashboard",
+      actionName: OWNER_FINANCES,
+      options: { parameters: { action: "dashboard" } },
       text: FINANCES_INPUT,
       timeoutMs: 120_000,
       assertTurn: (turn) => {

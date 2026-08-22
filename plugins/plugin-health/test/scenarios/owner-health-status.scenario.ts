@@ -5,8 +5,8 @@
  * surface is a set of host-adapted factories (`createOwnerHealthAction` /
  * `createHealthActionRunner`) that `@elizaos/plugin-personal-assistant` wires
  * into the `OWNER_HEALTH` umbrella action (today | trend | by_metric | status).
- * Exercising plugin-health therefore means routing `OWNER_HEALTH` through the
- * deterministic model provider with zero credentials and asserting the health
+ * Exercising plugin-health therefore means calling `OWNER_HEALTH` directly
+ * with zero credentials and asserting the health
  * factory's handler runs and succeeds.
  *
  * The `status` op is the keyless-clean path: it reads the local health-backend
@@ -19,11 +19,6 @@
  * `@elizaos/plugin-scheduling` (its declared runner dependency) mirrors the
  * existing `deterministic-lifeops-scheduled-tasks` keyless scenario.
  */
-import { ModelType } from "@elizaos/core";
-import {
-  type RuntimeWithScenarioModelFixtures,
-  registerStrictActionRouteFixtures,
-} from "@elizaos/core/testing";
 import {
   describeCalls,
   successfulActionData,
@@ -38,12 +33,25 @@ const GROUNDED_REPLY =
 
 export default scenario({
   lane: "pr-deterministic",
+  modelFixtures: {
+    mode: "fixtures",
+    fixtures: [
+      {
+        name: "owner-health-grounded-reply",
+        match: {
+          modelType: "TEXT_SMALL",
+          input: { includes: "Scenario: health_status" },
+        },
+        response: { text: GROUNDED_REPLY },
+      },
+    ],
+  },
   id: "health.owner-health-status",
   title: "Health: OWNER_HEALTH reports backend status keyless",
   domain: "health",
   tags: ["smoke", "health", "owner-health"],
   description:
-    "Routes OWNER_HEALTH (status) through the deterministic model provider and verifies the plugin-health action factory runs and succeeds with no connector configured — keyless, no credentials.",
+    "Calls OWNER_HEALTH (status) directly and verifies the plugin-health action factory runs and succeeds with no connector configured — keyless, no credentials.",
 
   requires: {
     plugins: [
@@ -53,37 +61,6 @@ export default scenario({
     ],
   },
   isolation: "per-scenario",
-
-  seed: [
-    {
-      type: "custom",
-      name: "register-owner-health-fixtures",
-      apply: async (ctx) => {
-        const runtime = ctx.runtime as RuntimeWithScenarioModelFixtures;
-        registerStrictActionRouteFixtures(runtime, [
-          {
-            actionName: OWNER_HEALTH,
-            args: { action: "status" },
-            contextIds: ["health"],
-            input: STATUS_INPUT,
-            messageToUser: "Checking your health backend status.",
-          },
-        ]);
-        // The host re-voices the canonical "no bridge" fallback through one
-        // TEXT_SMALL grounded-reply call (renderGroundedActionReply).
-        runtime.scenarioModelFixtures?.register({
-          name: "owner-health-grounded-reply",
-          match: {
-            modelType: ModelType.TEXT_SMALL,
-            input: (value: string) => value.includes("Scenario: health_status"),
-          },
-          response: GROUNDED_REPLY,
-          times: 1,
-        });
-        return undefined;
-      },
-    },
-  ],
 
   rooms: [
     {
@@ -96,8 +73,10 @@ export default scenario({
 
   turns: [
     {
-      kind: "message",
+      kind: "action",
       name: "health-status",
+      actionName: OWNER_HEALTH,
+      options: { parameters: { action: "status" } },
       text: STATUS_INPUT,
       timeoutMs: 120_000,
       assertTurn: (turn) => {

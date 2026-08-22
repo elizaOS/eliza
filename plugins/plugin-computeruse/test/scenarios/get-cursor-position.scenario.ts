@@ -11,7 +11,6 @@
  * mapping) runs for real, keyless, with zero credentials or hardware.
  */
 import type { AgentRuntime } from "@elizaos/core";
-import { ModelType } from "@elizaos/core";
 import {
   type ComputerActionResult,
   ComputerUseService,
@@ -28,16 +27,16 @@ process.env.COMPUTER_USE_ENABLED = "1";
 
 const COMPUTER_USE = "COMPUTER_USE";
 
-type R = AgentRuntime & {
-  scenarioModelFixtures?: {
-    register: (...f: Array<Record<string, unknown>>) => void;
-  };
-};
+type R = AgentRuntime;
 
 let restore: (() => void) | undefined;
 
 export default scenario({
   lane: "pr-deterministic",
+  modelFixtures: {
+    mode: "fixtures",
+    fixtures: [],
+  },
   id: "computeruse.get-cursor-position",
   title: "Computeruse: read cursor position through a stubbed device boundary",
   domain: "computeruse",
@@ -80,61 +79,6 @@ export default scenario({
           restore = undefined;
         };
 
-        runtime.scenarioModelFixtures?.register(
-          {
-            name: "computeruse-stage1",
-            match: {
-              modelType: ModelType.RESPONSE_HANDLER,
-              input: (v: string) => v.includes("cursor"),
-              toolName: "HANDLE_RESPONSE",
-            },
-            response: {
-              contexts: ["automation"],
-              intents: ["read desktop cursor position"],
-              replyText: "",
-              threadOps: [],
-              candidateActionNames: [COMPUTER_USE],
-            },
-            times: 1,
-          },
-          {
-            name: "computeruse-planner",
-            match: {
-              modelType: ModelType.ACTION_PLANNER,
-              input: (v: string) => v.includes("cursor"),
-              toolName: COMPUTER_USE,
-            },
-            response: {
-              text: "",
-              thought: "Read the current desktop cursor position.",
-              messageToUser: "",
-              completed: true,
-              finishReason: "tool-calls",
-              toolCalls: [
-                {
-                  id: "call-cu",
-                  name: COMPUTER_USE,
-                  type: "function",
-                  arguments: { action: "get_cursor_position" },
-                },
-              ],
-            },
-            times: 1,
-          },
-          {
-            name: "computeruse-decision",
-            match: (call: { modelType: string; toolNames: string[] }) =>
-              call.modelType === ModelType.RESPONSE_HANDLER &&
-              !call.toolNames.includes("HANDLE_RESPONSE"),
-            response: {
-              success: true,
-              decision: "FINISH",
-              thought: "Reported the cursor position; nothing more to do.",
-              messageToUser: "The cursor is at (640, 360).",
-            },
-            times: 1,
-          },
-        );
         return undefined;
       },
     },
@@ -161,8 +105,10 @@ export default scenario({
 
   turns: [
     {
-      kind: "message",
+      kind: "action",
       name: "cursor",
+      actionName: COMPUTER_USE,
+      options: { parameters: { action: "get_cursor_position" } },
       text: "Where is the mouse cursor right now? Read the cursor position.",
       timeoutMs: 120_000,
       assertTurn: (turn) => {

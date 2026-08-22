@@ -5,8 +5,9 @@
  * built-in DETERMINISTIC commands (/help, /commands, /status). This drives the
  * built-in `/help` command end-to-end with zero credentials: the seed
  * initializes the per-runtime command registry (registering the built-ins),
- * then `/help` dispatches its deterministic `HELP_COMMAND` action directly —
- * no LLM routing, no fixtures, no external service.
+ * then `/help` dispatches its deterministic `HELP_COMMAND` action directly.
+ * The only model fixture covers the runtime's post-turn evaluator; command
+ * routing itself remains deterministic and no external service is used.
  */
 import type { AgentRuntime } from "@elizaos/core";
 import { initForRuntime, useRuntime } from "@elizaos/plugin-commands";
@@ -20,6 +21,21 @@ const HELP_COMMAND = "HELP_COMMAND";
 
 export default scenario({
   lane: "pr-deterministic",
+  modelFixtures: {
+    mode: "fixtures",
+    fixtures: [
+      {
+        name: "help-command-post-turn-evaluation",
+        match: {
+          modelType: "TEXT_SMALL",
+          input: { includes: "# Task: Post-turn evaluation" },
+        },
+        response: {
+          text: '{"factMemory":{"ops":[]},"preferences":{"ops":[]},"relationships":{"relationships":[]},"identities":{"identities":[]},"success":{"completed":true,"reason":"HELP_COMMAND completed."},"ftu_goal_discovery":{"goalFound":false,"goal":"","confidence":0},"experiencePatterns":{"experiences":[]}}',
+        },
+      },
+    ],
+  },
   id: "commands.help-command",
   title: "Commands: /help built-in command dispatches HELP_COMMAND",
   domain: "commands",

@@ -18,75 +18,80 @@
  */
 
 import type { AgentRuntime, Plugin } from "@elizaos/core";
-import { ModelType } from "@elizaos/core";
 import { scenario } from "@elizaos/scenario-runner/schema";
 import { greetTestPlugin } from "./_fixtures/greet-test-plugin.ts";
 
 const GREETING_INPUT = "Hello!";
 
-type RuntimeWithScenarioModelFixtures = AgentRuntime & {
-  scenarioModelFixtures?: {
-    register: (...fixtures: Array<Record<string, unknown>>) => void;
-  };
-};
+type RuntimeWithPluginRegistration = AgentRuntime;
 
-function asRuntime(value: unknown): RuntimeWithScenarioModelFixtures {
+function asRuntime(value: unknown): RuntimeWithPluginRegistration {
   if (!value || typeof value !== "object" || !("registerPlugin" in value)) {
     throw new Error(
       "greeting-dynamic seed: runtime did not expose registerPlugin",
     );
   }
-  return value as RuntimeWithScenarioModelFixtures;
-}
-
-function greetingRouteFixtures(): Array<Record<string, unknown>> {
-  const inputMatches = (value: string) => value.includes(GREETING_INPUT);
-  return [
-    {
-      name: "route-greeting-stage1",
-      match: {
-        modelType: ModelType.RESPONSE_HANDLER,
-        input: inputMatches,
-        toolName: "HANDLE_RESPONSE",
-      },
-      response: {
-        contexts: ["general"],
-        intents: ["greeting"],
-        replyText: "Hello there.",
-        threadOps: [],
-        candidateActionNames: ["GREET_USER"],
-      },
-      times: 1,
-    },
-    {
-      name: "route-greeting-planner",
-      match: {
-        modelType: ModelType.ACTION_PLANNER,
-        input: inputMatches,
-        toolName: "GREET_USER",
-      },
-      response: {
-        text: "",
-        thought: "Call GREET_USER to welcome the user.",
-        messageToUser: "Hello there.",
-        completed: true,
-        finishReason: "tool-calls",
-        toolCalls: [
-          {
-            id: "call-greet-user",
-            name: "GREET_USER",
-            type: "function",
-            arguments: {},
-          },
-        ],
-      },
-      times: 1,
-    },
-  ];
+  return value as RuntimeWithPluginRegistration;
 }
 
 export default scenario({
   lane: "pr-deterministic",
+  modelFixtures: {
+    mode: "fixtures",
+    fixtures: [
+      {
+        name: "route-greeting-stage1",
+        match: {
+          modelType: "RESPONSE_HANDLER",
+          input: { includes: GREETING_INPUT },
+          toolNames: ["HANDLE_RESPONSE"],
+        },
+        response: {
+          json: {
+            contexts: ["general"],
+            intents: ["greeting"],
+            replyText: "Hello there.",
+            threadOps: [],
+            candidateActionNames: ["GREET_USER"],
+          },
+        },
+      },
+      {
+        name: "route-greeting-planner",
+        match: {
+          modelType: "ACTION_PLANNER",
+          input: { includes: GREETING_INPUT },
+        },
+        response: {
+          json: {
+            text: "",
+            thought: "Call GREET_USER to welcome the user.",
+            messageToUser: "Hello there.",
+            completed: true,
+            finishReason: "tool-calls",
+            toolCalls: [
+              {
+                id: "call-greet-user",
+                name: "GREET_USER",
+                type: "function",
+                arguments: {},
+              },
+            ],
+          },
+        },
+      },
+      {
+        name: "route-greeting-post-turn-evaluation",
+        match: {
+          modelType: "TEXT_SMALL",
+          input: { includes: "# Task: Post-turn evaluation" },
+        },
+        response: {
+          text: '{"factMemory":{"ops":[]},"preferences":{"ops":[]},"relationships":{"relationships":[]},"identities":{"identities":[]},"success":{"completed":true,"reason":"GREET_USER completed."},"ftu_goal_discovery":{"goalFound":false,"goal":"","confidence":0},"experiencePatterns":{"experiences":[]}}',
+        },
+      },
+    ],
+  },
   id: "convo.greeting-dynamic",
   title: "Convo framework: greeting routes to GREET_USER",
   domain: "convo",
@@ -97,9 +102,6 @@ export default scenario({
   description:
     "Scripted port of the dynamic greeting scenario: sends a single greeting and verifies the GREET_USER action is captured with success=true.",
 
-  requires: {
-    plugins: ["greet-test"],
-  },
   isolation: "per-scenario",
 
   seed: [
@@ -109,7 +111,6 @@ export default scenario({
       apply: async (ctx) => {
         const runtime = asRuntime(ctx.runtime);
         await runtime.registerPlugin(greetTestPlugin satisfies Plugin);
-        runtime.scenarioModelFixtures?.register(...greetingRouteFixtures());
       },
     },
   ],

@@ -288,7 +288,10 @@ function toComponentValue(
         nodes: walk.nodes + keys.length,
       });
     }
-    const result: Record<string, JsonValue> = Object.create(null);
+    // Runtime component adapters inspect ordinary object constructors before
+    // encoding JSON. Define properties explicitly below to retain prototype-
+    // pollution safety while returning a database-compatible plain object.
+    const result: Record<string, JsonValue> = {};
     reserveBytes(walk, 2);
     let properties = 0;
     for (const key of keys) {

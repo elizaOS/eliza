@@ -9,10 +9,6 @@
 
 import type { AgentRuntime } from "@elizaos/core";
 import {
-  type RuntimeWithScenarioModelFixtures,
-  registerStrictActionRouteFixtures,
-} from "@elizaos/core/testing";
-import {
   describeCalls,
   successfulActionData,
   toRecord,
@@ -64,10 +60,14 @@ const taskmarketFetch: typeof fetch = async (input, init) => {
   );
 };
 
-type ScenarioRuntime = AgentRuntime & RuntimeWithScenarioModelFixtures;
+type ScenarioRuntime = AgentRuntime;
 
 export default scenario({
   lane: "pr-deterministic",
+  modelFixtures: {
+    mode: "fixtures",
+    fixtures: [],
+  },
   id: "taskmarket.browse-open-tasks",
   title: "Taskmarket: browse open bounties through the read-only action",
   domain: "taskmarket",
@@ -89,21 +89,6 @@ export default scenario({
           () => new TaskmarketClient(BASE_URL, taskmarketFetch),
         );
         runtime.registerAction({ ...action, override: true });
-        registerStrictActionRouteFixtures(runtime, [
-          {
-            actionName: ACTION,
-            args: {
-              limit: 3,
-              mode: "bounty",
-              sort: "deadline_asc",
-              minRewardBaseUnits: "1000000",
-              deadlineHours: 24,
-            },
-            contextIds: ["automation", "knowledge"],
-            input: INPUT,
-            messageToUser: "I found one open Taskmarket bounty.",
-          },
-        ]);
         return undefined;
       },
     },
@@ -120,8 +105,18 @@ export default scenario({
 
   turns: [
     {
-      kind: "message",
+      kind: "action",
       name: "browse-open-bounties",
+      actionName: ACTION,
+      options: {
+        parameters: {
+          limit: 3,
+          mode: "bounty",
+          sort: "deadline_asc",
+          minRewardBaseUnits: "1000000",
+          deadlineHours: 24,
+        },
+      },
       text: INPUT,
       timeoutMs: 120_000,
       assertTurn: (turn) => {

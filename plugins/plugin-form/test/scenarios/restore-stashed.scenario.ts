@@ -7,12 +7,11 @@
  * package CLAUDE.md "Actions" section). This scenario mirrors that consumer
  * wiring: the seed registers the real `formAction` on the runtime, seeds a
  * stashed `FormSession` straight into plugin-form's component store, then a
- * "resume my form" turn drives the real planner → `FORM` action →
- * `FormService.restore` → component round-trip. Fully keyless: no live model
- * (deterministic model-provider fixtures) and no external API.
+ * direct `FORM` action drives `FormService.restore` → component round-trip.
+ * Fully keyless: no model call and no external API.
  */
 import type { AgentRuntime, UUID } from "@elizaos/core";
-import { ModelType, stringToUuid } from "@elizaos/core";
+import { stringToUuid } from "@elizaos/core";
 import {
   type FormSession,
   formAction,
@@ -34,13 +33,14 @@ const ENTITY_ID = stringToUuid(
 
 type R = AgentRuntime & {
   registerAction?: (action: unknown) => void;
-  scenarioModelFixtures?: {
-    register: (...f: Array<Record<string, unknown>>) => void;
-  };
 };
 
 export default scenario({
   lane: "pr-deterministic",
+  modelFixtures: {
+    mode: "fixtures",
+    fixtures: [],
+  },
   id: "form.restore-stashed",
   title: "Form: restore a stashed form session",
   domain: "form",
@@ -96,61 +96,6 @@ export default scenario({
         };
         await saveSession(runtime as unknown as AgentRuntime, session);
 
-        runtime.scenarioModelFixtures?.register(
-          {
-            name: "form-stage1",
-            match: {
-              modelType: ModelType.RESPONSE_HANDLER,
-              input: (v: string) => v.includes("resume my stashed form"),
-              toolName: "HANDLE_RESPONSE",
-            },
-            response: {
-              contexts: ["memory"],
-              intents: ["form"],
-              replyText: "",
-              threadOps: [],
-              candidateActionNames: [FORM],
-            },
-            times: 1,
-          },
-          {
-            name: "form-planner",
-            match: {
-              modelType: ModelType.ACTION_PLANNER,
-              input: (v: string) => v.includes("resume my stashed form"),
-              toolName: FORM,
-            },
-            response: {
-              text: "",
-              thought: "Restore the most recent stashed form.",
-              messageToUser: "",
-              completed: true,
-              finishReason: "tool-calls",
-              toolCalls: [
-                {
-                  id: "call-form",
-                  name: FORM,
-                  type: "function",
-                  arguments: { action: "restore" },
-                },
-              ],
-            },
-            times: 1,
-          },
-          {
-            name: "form-decision",
-            match: (call: { modelType: string; toolNames: string[] }) =>
-              call.modelType === ModelType.RESPONSE_HANDLER &&
-              !call.toolNames.includes("HANDLE_RESPONSE"),
-            response: {
-              success: true,
-              decision: "FINISH",
-              thought: "Form restored; nothing more to do.",
-              messageToUser: "I've restored your form. Let's continue.",
-            },
-            times: 1,
-          },
-        );
         return undefined;
       },
     },
@@ -158,8 +103,10 @@ export default scenario({
 
   turns: [
     {
-      kind: "message",
+      kind: "action",
       name: "restore",
+      actionName: FORM,
+      options: { parameters: { action: "restore" } },
       text: "Please resume my stashed form.",
       timeoutMs: 120_000,
       assertTurn: (turn) => {
