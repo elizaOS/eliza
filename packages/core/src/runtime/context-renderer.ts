@@ -1,7 +1,7 @@
 /**
  * Replays a `ContextObject` into the wire shape a model stage consumes: chat
  * messages, native tool specs, and labeled prompt segments. Formats each context
- * event (message, memory, provider, tool, instruction, segment, and compacted
+ * event (message, memory, provider, tool, instruction, segment, and complete
  * runtime events) into its prompt representation and assembles the single-system
  * plus single-user plus assistant/tool-suffix message array each planner stage
  * sends.
@@ -38,7 +38,7 @@ export interface RenderedContextObject {
  * them inside the merged Tier 1 / Tier 2 strings.
  */
 export function segmentBlock(segment: PromptSegment): string {
-	const content = segment.content.trim();
+	const content = segment.content;
 	const label = (segment as PromptSegment & { label?: unknown }).label;
 	if (label === "system") {
 		return content;
@@ -57,9 +57,8 @@ export function compactPromptSegments(
 }
 
 /**
- * Trim each segment's content and prefix all but the first with `\n\n` so that
- * `segments.map(s => s.content).join("")` round-trips to a clean concatenated
- * prompt. Empties are dropped.
+ * Prefix all but the first segment with `\n\n` without changing its content.
+ * Exact empty values are dropped because they carry no model-visible bytes.
  */
 export function normalizePromptSegments(
 	segments: PromptSegment[],
@@ -67,7 +66,7 @@ export function normalizePromptSegments(
 	return compactPromptSegments(
 		segments.map((segment, index) => ({
 			...segment,
-			content: `${index === 0 ? "" : "\n\n"}${segment.content.trim()}`,
+			content: `${index === 0 ? "" : "\n\n"}${segment.content}`,
 		})),
 	);
 }
@@ -120,8 +119,7 @@ export function buildStageChatMessages(args: {
 		.filter(Boolean)
 		.join("\n\n");
 	const userContent = [...dynamicContext, ...args.dynamicBlocks]
-		.map((block) => block.trim())
-		.filter(Boolean)
+		.filter((block) => block.length > 0)
 		.join("\n\n");
 	return [
 		{ role: "system", content: systemContent },
@@ -134,14 +132,6 @@ function textFromUnknown(value: unknown): string {
 	if (typeof value === "string") {
 		return value;
 	}
-	if (
-		typeof value === "object" &&
-		value !== null &&
-		"text" in value &&
-		typeof value.text === "string"
-	) {
-		return value.text;
-	}
 	return JSON.stringify(value);
 }
 
@@ -150,7 +140,7 @@ function renderProviderContent(event: ContextProviderEvent): string {
 	// which `segmentBlock` then renders as `provider:<name>:\n<content>`. Do NOT
 	// also bake the provider name into the content body — that produced a
 	// duplicated `provider: <name>` line at the top of every provider block.
-	const text = event.text?.trim();
+	const text = event.text;
 	return text === undefined ? "" : text;
 }
 
@@ -172,7 +162,7 @@ function appendPromptSegment(
 	segment: ContextObjectPromptSegment,
 	role: string | undefined = "system",
 ): void {
-	if (!segment.content.trim()) {
+	if (segment.content.length === 0) {
 		return;
 	}
 	rendered.promptSegments.push(segment);
@@ -229,44 +219,6 @@ function isInstructionEvent(
 
 function isSegmentEvent(event: ContextEvent): event is ContextSegmentEvent {
 	return event.type === "segment" && "segment" in event;
-}
-
-function compactRuntimeEventForPrompt(
-	event: ContextEvent,
-): string | null | undefined {
-	if (event.type === "message_handler") {
-		const metadata =
-			event.metadata && typeof event.metadata === "object"
-				? event.metadata
-				: {};
-		const plan = metadata.plan;
-		const thought =
-			typeof metadata.thought === "string" ? metadata.thought.trim() : "";
-		return [
-			"message_handler:",
-			metadata.processMessage
-				? `processMessage: ${String(metadata.processMessage)}`
-				: "",
-			plan ? `plan: ${textFromUnknown(plan)}` : "",
-			thought ? `thought: ${thought}` : "",
-		]
-			.filter(Boolean)
-			.join("\n");
-	}
-
-	// These runtime events are represented to the model as native
-	// assistant/tool messages or explicit compaction segments. Dumping their
-	// full JSON into the user message duplicates payloads, hurts cache hit rate,
-	// and can keep compacted content alive after compaction.
-	if (
-		event.type === "planned_tool_call" ||
-		event.type === "tool_result" ||
-		event.type === "evaluation"
-	) {
-		return null;
-	}
-
-	return undefined;
 }
 
 function renderEvent(
@@ -349,28 +301,12 @@ function renderEvent(
 		return;
 	}
 
-	const compactRuntimeEvent = compactRuntimeEventForPrompt(event);
-	if (compactRuntimeEvent === null) {
-		return;
-	}
-	if (typeof compactRuntimeEvent === "string") {
-		appendSyntheticSegment(rendered, {
-			id: event.id,
-			label: `event:${event.type}`,
-			content: compactRuntimeEvent,
-			stable: false,
-		});
-		return;
-	}
-
-	if (event.type !== "metadata") {
-		appendSyntheticSegment(rendered, {
-			id: event.id,
-			label: `event:${event.type}`,
-			content: `${event.type}: ${textFromUnknown(event)}`,
-			stable: false,
-		});
-	}
+	appendSyntheticSegment(rendered, {
+		id: event.id,
+		label: `event:${event.type}`,
+		content: `${event.type}: ${textFromUnknown(event)}`,
+		stable: false,
+	});
 }
 
 function renderPrefixTool(

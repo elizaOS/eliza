@@ -81,6 +81,19 @@ describe("trajectoryStepsToMessages", () => {
 		}
 	});
 
+	it("preserves whitespace in planner thoughts", () => {
+		const step = stepWithResult(1, "complete");
+		step.thought = "  exact thought\n  ";
+		const assistant = trajectoryStepsToMessages([step]).find(
+			(message) => message.role === "assistant",
+		);
+		expect(assistant?.content).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({ type: "text", text: step.thought }),
+			]),
+		);
+	});
+
 	it("preserves model-bound result and argument fields beyond diagnostic depth", () => {
 		let deepResult: Record<string, unknown> = { sentinel: "DEEP_RESULT" };
 		let deepArgs: Record<string, unknown> = { sentinel: "DEEP_ARGUMENT" };
@@ -138,7 +151,7 @@ describe("renderActionResultsForModel", () => {
 
 		expect(rendered.text).toContain("file_opaque");
 		expect(rendered.text).toContain(page);
-		expect(rendered.text).not.toContain("SECOND_CARRIER");
+		expect(rendered.text).toContain("SECOND_CARRIER");
 		expect(rendered.stats).toEqual({
 			resultCount: 1,
 			pagesIncluded: 1,
@@ -171,7 +184,7 @@ describe("renderActionResultsForModel", () => {
 });
 
 describe("toolMessageContent", () => {
-	it("uses promptData as a replacement and does not duplicate machine payload", () => {
+	it("keeps complete data alongside supplemental promptData", () => {
 		const memories = Array.from({ length: 17 }, (_, index) => ({
 			id: `id-${index}`,
 			type: "facts",
@@ -184,8 +197,8 @@ describe("toolMessageContent", () => {
 			promptData: { actionName: "MEMORY", op: "search", matchedInWindow: 17 },
 		});
 		expect(rendered).toContain('"matchedInWindow": 17');
-		expect(rendered).not.toContain("stored fact 0");
-		expect(rendered).not.toContain("stored fact 16");
+		expect(rendered).toContain("stored fact 0");
+		expect(rendered).toContain("stored fact 16");
 	});
 
 	it("renders large chaining data completely", () => {
@@ -231,10 +244,14 @@ describe("toolMessageContent", () => {
 		});
 		const parsed = JSON.parse(rendered);
 		expect(parsed.text).toBe(text);
-		expect(parsed.data).toBeUndefined();
+		expect(parsed.data).toEqual({
+			readView,
+			body: "must-not-duplicate",
+			path: "/raw/path",
+		});
 		expect(parsed.promptData.readView).toEqual(readView);
-		expect(rendered).not.toContain("/raw/path");
-		expect(rendered).not.toContain("must-not-duplicate");
+		expect(rendered).toContain("/raw/path");
+		expect(rendered).toContain("must-not-duplicate");
 	});
 
 	it("preserves recoverable legacy-data text and continuation", () => {
@@ -350,7 +367,7 @@ describe("toolMessageContent", () => {
 		);
 	});
 
-	it("does not mutate the complete trajectory result during projection", () => {
+	it("keeps complete data and supplemental promptData without mutation", () => {
 		const result = {
 			success: true,
 			text: "page",
@@ -358,7 +375,8 @@ describe("toolMessageContent", () => {
 			promptData: { safe: "model" },
 		};
 		const projected = projectToolResultForModel(result);
-		expect(projected.data).toBeUndefined();
+		expect(projected.data).toEqual({ complete: "runtime" });
+		expect(projected.promptData).toEqual({ safe: "model" });
 		expect(result.data).toEqual({ complete: "runtime" });
 	});
 });

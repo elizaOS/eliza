@@ -210,7 +210,7 @@ export function formatActionResultsForPrompt(
 			const lines = [
 				`${displayIndex}. ${getActionResultActionName(result)} - ${status}`,
 			];
-			if (typeof result.text === "string" && result.text.trim()) {
+			if (typeof result.text === "string") {
 				lines.push(`Output: ${formatCompleteActionResultText(result.text, 0)}`);
 			}
 
@@ -219,9 +219,17 @@ export function formatActionResultsForPrompt(
 				lines.push(`Error: ${formatCompleteActionResultText(errorText, 0)}`);
 			}
 
-			const modelData = result.promptData ?? result.data;
-			if (includeData && modelData && Object.keys(modelData).length > 0) {
-				lines.push(`Data: ${formatActionResultDataForPrompt(modelData)}`);
+			if (includeData && result.data && Object.keys(result.data).length > 0) {
+				lines.push(`Data: ${formatActionResultDataForPrompt(result.data)}`);
+			}
+			if (
+				includeData &&
+				result.promptData &&
+				Object.keys(result.promptData).length > 0
+			) {
+				lines.push(
+					`Prompt data: ${formatActionResultDataForPrompt(result.promptData)}`,
+				);
 			}
 
 			const outputReference = getActionResultReference(result, "text");
