@@ -5,6 +5,7 @@
 import { expect, type Page, type Route, test } from "@playwright/test";
 import {
   expectExactRootAgentParity,
+  inspectExactRootControls,
   listViewElements,
   viewInteract,
 } from "./agent-bridge-audit";
@@ -757,6 +758,22 @@ test.describe("orchestrator GUI workbench", () => {
         "sub-agent-inspect-session-codex",
       ]),
     );
+    const roomAudit = await inspectExactRootControls(root);
+    expect(roomAudit.humanOnlyIds).toEqual(
+      expect.arrayContaining([
+        "sub-agent-stop-session-codex",
+        "inspector-pause",
+        "inspector-archive",
+        "inspector-fork",
+        "inspector-restart",
+        "inspector-priority",
+        "inspector-delete",
+        "timeline-stop-active",
+      ]),
+    );
+    expect(elements.map(({ id }) => id)).not.toEqual(
+      expect.arrayContaining(roomAudit.humanOnlyIds),
+    );
 
     await viewInteract(page, "orchestrator", "agent-click", {
       id: "inspector-add-agent",
@@ -797,6 +814,11 @@ test.describe("orchestrator GUI workbench", () => {
         "operator-tab-usage",
         "operator-detail-close",
       ]),
+    );
+    const operatorAudit = await inspectExactRootControls(root);
+    expect(operatorAudit.humanOnlyIds).toContain("operator-retry-session");
+    expect(elements.map(({ id }) => id)).not.toContain(
+      "operator-retry-session",
     );
     await viewInteract(page, "orchestrator", "agent-click", {
       id: "operator-tab-output",
