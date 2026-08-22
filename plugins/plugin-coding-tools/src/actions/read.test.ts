@@ -172,6 +172,44 @@ describe("READ", () => {
     ).toEqual({ unit: "line", start: 2, end: 2, total: 2 });
   });
 
+  it("accepts exact EOF from a cold line checkpoint after a byte-mode revision read", async () => {
+    const file = path.join(env.tmpDir, "cold-eof.txt");
+    await fs.writeFile(file, "alpha\nbeta\n", "utf8");
+    const byteRead = await readFileHandler(
+      env.runtime,
+      env.message,
+      undefined,
+      {
+        parameters: { file_path: file, unit: "byte", limit: 1 },
+      },
+    );
+    const revision = (
+      (byteRead.data as Record<string, unknown>).readView as {
+        reference: { revision: string };
+      }
+    ).reference.revision;
+
+    const eof = await readFileHandler(env.runtime, env.message, undefined, {
+      parameters: {
+        file_path: file,
+        unit: "line",
+        offset: 2,
+        limit: 1,
+        expectedRevision: revision,
+      },
+    });
+
+    expect(eof.success).toBe(true);
+    expect(eof.text).toBe("");
+    expect(
+      (
+        (eof.data as Record<string, unknown>).readView as {
+          slice: { range: { start: number; end: number; total: number } };
+        }
+      ).slice.range,
+    ).toEqual({ unit: "line", start: 2, end: 2, total: 2 });
+  });
+
   it("respects offset and limit and marks truncated", async () => {
     const file = path.join(env.tmpDir, "long.txt");
     const lines = Array.from({ length: 50 }, (_, i) => `line ${i + 1}`);

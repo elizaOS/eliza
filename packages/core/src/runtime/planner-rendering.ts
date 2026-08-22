@@ -255,6 +255,21 @@ export interface ToolResultProjectionObservation {
 }
 
 function hasRecoverableContentLocator(value: unknown): boolean {
+	if (value !== null && typeof value === "object" && !Array.isArray(value)) {
+		const results = (value as Record<string, unknown>).results;
+		if (
+			Array.isArray(results) &&
+			results.some(
+				(item) =>
+					item !== null &&
+					typeof item === "object" &&
+					!Array.isArray(item) &&
+					isContentReference((item as Record<string, unknown>).reference),
+			)
+		) {
+			return true;
+		}
+	}
 	const pending: Array<{ value: unknown; depth: number }> = [
 		{ value, depth: 0 },
 	];
@@ -263,7 +278,7 @@ function hasRecoverableContentLocator(value: unknown): boolean {
 		const current = pending.pop();
 		if (!current) break;
 		visited++;
-		if (isReadView(current.value) || isContentReference(current.value)) {
+		if (isReadView(current.value)) {
 			return true;
 		}
 		if (

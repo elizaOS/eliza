@@ -197,6 +197,21 @@ describe("toolMessageContent", () => {
 		});
 	});
 
+	it("does not treat an arbitrary nested reference as proof that result text is recoverable", () => {
+		expect(() =>
+			toolMessageContent(
+				{
+					success: true,
+					text: "nonrecoverable ".repeat(10_000),
+					promptData: {
+						debug: { kind: "file", ref: "opaque_debug_reference" },
+					},
+				},
+				{ maxSerializedTokens: 100 },
+			),
+		).toThrow(/Non-recoverable tool result exceeds/u);
+	});
+
 	it("does not grant recoverable omission to a hostile ReadView-like shape", () => {
 		const text = "x".repeat(20_000);
 		const invalidReadView = {

@@ -158,7 +158,7 @@ async function lineWindow(
   const parts: Buffer[] = [];
   let selectedBytes = 0,
     done = false,
-    endedWithNewline = false;
+    sourceEndedWithNewline = false;
   while (!done && position < size) {
     const buffer = Buffer.allocUnsafe(
       Math.min(LINE_BUFFER_BYTES, size - position),
@@ -167,6 +167,9 @@ async function lineWindow(
     if (!result.bytesRead) break;
     sourceBytesRead += result.bytesRead;
     const chunk = buffer.subarray(0, result.bytesRead);
+    if (position + result.bytesRead >= size) {
+      sourceEndedWithNewline = chunk.at(-1) === 10;
+    }
     if (chunk.includes(0))
       throw new Error(
         "binary file detected; use SHELL+xxd or similar to inspect",
@@ -183,7 +186,6 @@ async function lineWindow(
           );
         parts.push(part);
         endLine = line + 1;
-        endedWithNewline = true;
       }
       line += 1;
       segment = i + 1;
@@ -203,7 +205,6 @@ async function lineWindow(
           );
         parts.push(part);
         endLine = line + 1;
-        endedWithNewline = false;
       }
       position += result.bytesRead;
     }
@@ -222,7 +223,7 @@ async function lineWindow(
               ? startLine
               : size === 0
                 ? 0
-                : line + (endedWithNewline ? 0 : 1),
+                : line + (sourceEndedWithNewline ? 0 : 1),
         }
       : {}),
     sourceBytesRead,

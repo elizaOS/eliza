@@ -39,6 +39,8 @@ const ATOMIC_UPDATE_DOCUMENT_ID =
 const FAILED_UPDATE_DOCUMENT_ID =
 	"f4300000-0000-4000-8000-000000000018" as UUID;
 const GRANT_DOCUMENT_ID = "f4300000-0000-4000-8000-000000000022" as UUID;
+const PRIVATE_GRANT_DOCUMENT_ID =
+	"f4300000-0000-4000-8000-000000000030" as UUID;
 const LARGE_DOCUMENT_ID = "f4300000-0000-4000-8000-000000000029" as UUID;
 
 let runtime: AgentRuntime;
@@ -202,6 +204,13 @@ beforeAll(async () => {
 	);
 	await runtime.createMemories([
 		{
+			memory: userPrivateDocument(
+				PRIVATE_GRANT_DOCUMENT_ID,
+				"Private grantable body",
+			),
+			tableName: "documents",
+		},
+		{
 			memory: {
 				...userPrivateDocument(GRANT_DOCUMENT_ID, "Grantable global body"),
 				metadata: {
@@ -258,6 +267,7 @@ afterAll(async () => {
 describe("DocumentService requester authorization", () => {
 	it("lets a current room admin atomically grant read access without granting mutation", async () => {
 		const service = new DocumentService(runtime);
+		const grantDocumentId = PRIVATE_GRANT_DOCUMENT_ID;
 		const adminContext = {
 			requesterEntityId: ADMIN_ID,
 			role: "ADMIN" as const,
@@ -265,17 +275,17 @@ describe("DocumentService requester authorization", () => {
 		};
 		await expect(
 			service.setDocumentDirectGrantsWithAccessContext(
-				GRANT_DOCUMENT_ID,
+				grantDocumentId,
 				[GRANTEE_ID],
 				adminContext,
 			),
 		).resolves.toMatchObject({
-			id: GRANT_DOCUMENT_ID,
+			id: grantDocumentId,
 			metadata: { directGrantEntityIds: [GRANTEE_ID] },
 		});
 		await expect(
 			service.getDocumentDirectGrantsWithAccessContext(
-				GRANT_DOCUMENT_ID,
+				grantDocumentId,
 				adminContext,
 			),
 		).resolves.toEqual([GRANTEE_ID]);
@@ -283,16 +293,16 @@ describe("DocumentService requester authorization", () => {
 		await expect(
 			runtime.adapter.getDocument({
 				agentId: runtime.agentId,
-				documentId: GRANT_DOCUMENT_ID,
+				documentId: grantDocumentId,
 				requesterEntityId: GRANTEE_ID,
 				requesterRoomIds: [],
 				requesterRole: "USER",
 			}),
-		).resolves.toMatchObject({ id: GRANT_DOCUMENT_ID });
+		).resolves.toMatchObject({ id: grantDocumentId });
 		await expect(
 			runtime.adapter.readDocumentRange?.({
 				agentId: runtime.agentId,
-				documentId: GRANT_DOCUMENT_ID,
+				documentId: grantDocumentId,
 				requesterEntityId: GRANTEE_ID,
 				requesterRoomIds: [],
 				requesterRole: "USER",
@@ -300,11 +310,11 @@ describe("DocumentService requester authorization", () => {
 				offset: 0,
 				limit: 1,
 			}),
-		).resolves.toMatchObject({ text: "Grantable global body", total: 1 });
+		).resolves.toMatchObject({ text: "Private grantable body", total: 1 });
 		await expect(
 			runtime.adapter.readDocumentRange?.({
 				agentId: runtime.agentId,
-				documentId: GRANT_DOCUMENT_ID,
+				documentId: grantDocumentId,
 				requesterEntityId: GRANTEE_ID,
 				requesterRoomIds: [],
 				requesterRole: "GUEST",
@@ -314,14 +324,14 @@ describe("DocumentService requester authorization", () => {
 			}),
 		).resolves.toBeNull();
 		await expect(
-			service.setDocumentDirectGrantsWithAccessContext(GRANT_DOCUMENT_ID, [], {
+			service.setDocumentDirectGrantsWithAccessContext(grantDocumentId, [], {
 				requesterEntityId: GRANTEE_ID,
 				role: "USER",
 				isOwner: false,
 			}),
 		).rejects.toMatchObject({ code: "DOCUMENT_GRANT_MUTATION_FORBIDDEN" });
 		await expect(
-			service.getDocumentDirectGrantsWithAccessContext(GRANT_DOCUMENT_ID, {
+			service.getDocumentDirectGrantsWithAccessContext(grantDocumentId, {
 				requesterEntityId: GRANTEE_ID,
 				role: "USER",
 				isOwner: false,
@@ -329,14 +339,14 @@ describe("DocumentService requester authorization", () => {
 		).rejects.toMatchObject({ code: "DOCUMENT_GRANT_MUTATION_FORBIDDEN" });
 
 		await service.setDocumentDirectGrantsWithAccessContext(
-			GRANT_DOCUMENT_ID,
+			grantDocumentId,
 			[],
 			adminContext,
 		);
 		await expect(
 			runtime.adapter.readDocumentRange?.({
 				agentId: runtime.agentId,
-				documentId: GRANT_DOCUMENT_ID,
+				documentId: grantDocumentId,
 				requesterEntityId: GRANTEE_ID,
 				requesterRoomIds: [],
 				requesterRole: "USER",
@@ -346,7 +356,7 @@ describe("DocumentService requester authorization", () => {
 			}),
 		).resolves.toBeNull();
 		await service.setDocumentDirectGrantsWithAccessContext(
-			GRANT_DOCUMENT_ID,
+			grantDocumentId,
 			[GRANTEE_ID],
 			adminContext,
 		);
