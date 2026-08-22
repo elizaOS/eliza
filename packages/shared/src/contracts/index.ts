@@ -20,6 +20,7 @@ export * from "./chat.js";
 export * from "./cloud-coding-containers.js";
 export * from "./cloud-pair.js";
 export * from "./cloud-topology.js";
+export * from "./coding-agent-capabilities.js";
 export * from "./config.js";
 export * from "./connector-routes.js";
 export * from "./content-pack.js";

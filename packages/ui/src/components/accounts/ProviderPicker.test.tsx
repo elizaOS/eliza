@@ -93,15 +93,19 @@ describe("ProviderPicker", () => {
   it("renders sentence-style capability copy with no interpunct separators", () => {
     renderPicker();
     expect(
-      screen.getAllByText("Chat, using your API key").length,
-    ).toBeGreaterThan(0);
+      screen.getAllByText(
+        "Model inference, using your API key; agent spawn unavailable",
+      ).length,
+    ).toBe(6);
+    expect(screen.getByText("Coding agents, using browser login")).toBeTruthy();
     expect(
-      screen.getByText("Chat and coding agents, using browser login"),
+      screen.getByText("No model inference or coding-agent spawn support"),
     ).toBeTruthy();
-    expect(screen.getByText("Coding agents, using CLI login")).toBeTruthy();
     expect(
-      screen.getAllByText("Coding agents, using a plan key").length,
-    ).toBeGreaterThan(0);
+      screen.getAllByText(
+        "Model inference, using a coding-plan key; agent spawn unavailable",
+      ).length,
+    ).toBe(2);
     // The old "Chat \u00b7 bring your own API key" pill format must not resurface.
     expect(screen.queryByText(/\u00b7/)).toBeNull();
   });

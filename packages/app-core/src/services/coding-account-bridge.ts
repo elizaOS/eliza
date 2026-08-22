@@ -65,7 +65,10 @@ import {
   resolveStateDir,
   setCodingAgentSelectorBridge,
 } from "@elizaos/core";
-import type { LinkedAccountProviderId } from "@elizaos/shared/contracts/service-routing";
+import {
+  CODING_AGENT_BACKEND_PROVIDERS,
+  type LinkedAccountProviderId,
+} from "@elizaos/shared";
 import {
   type AccountPool,
   configuredAccountStrategyForProvider,
@@ -109,8 +112,8 @@ function getEnvCodingStrategy(): Strategy | undefined {
 
 /**
  * Ordered provider candidates per coding-agent type. The first provider with an
- * eligible account wins; a subscription provider is preferred over its direct
- * API equivalent (subscriptions are the primary use case here).
+ * eligible account wins. The shared descriptor only maps credential transports
+ * that the bridge can actually materialize for the selected executable.
  *
  * claude (claude-agent-acp) and codex (codex-acp) are first-party CLIs.
  * z.ai / Kimi / GLM have no first-party coding
@@ -120,8 +123,8 @@ function getEnvCodingStrategy(): Strategy | undefined {
 const AGENT_PROVIDER_CANDIDATES: Readonly<
   Record<string, readonly LinkedAccountProviderId[]>
 > = {
-  claude: ["anthropic-subscription", "anthropic-api"],
-  codex: ["openai-codex", "openai-api"],
+  claude: CODING_AGENT_BACKEND_PROVIDERS.claude,
+  codex: CODING_AGENT_BACKEND_PROVIDERS.codex,
 };
 
 function candidatesFor(agentType: string): readonly LinkedAccountProviderId[] {

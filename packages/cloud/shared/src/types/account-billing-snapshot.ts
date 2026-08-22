@@ -196,6 +196,7 @@ export interface AccountTierSnapshot {
 }
 
 export type ActiveComputeResourceType = "container" | "agent_sandbox";
+export type ActiveComputeBillingInterval = "hour" | "day";
 
 export interface ActiveComputeRateSegmentSnapshot {
   workloadKind: "agent" | "container";
@@ -209,6 +210,10 @@ export interface ActiveComputeResourceSnapshot {
   name: string;
   status: string;
   billingStatus: string;
+  billingInterval: ActiveComputeBillingInterval;
+  lastBilledAt: string | null;
+  nextBillingAt: string | null;
+  estimatedNextBillingAt: string | null;
   rateSegment: Observed<ActiveComputeRateSegmentSnapshot>;
   ratePerHour: Observed<ExactBillingValue & { unit: "usd_per_hour"; currency: "USD" }>;
   estimatedRecurringComputeCostPerDay: Observed<

@@ -4729,6 +4729,50 @@ describe("runV5MessageRuntimeStage1", () => {
 		}
 	});
 
+	it("keeps strict grounding on a shape-only task_complete relay", async () => {
+		// Relay shape (header + subAgent metadata) is routing, not proof: a
+		// child can claim task_complete without having applied anything, so an
+		// unbound relay's "applied" claim buffers exactly like any other
+		// ungrounded claim (#24425 review: task-complete metadata is not proof
+		// that an effect occurred).
+		const runtime = makeRuntime([
+			stage1Response({
+				thought: "Relay the claimed build to the user.",
+				contexts: ["simple"],
+				replyText: "The dice roller app is built and deployed.",
+				extra: { requiresTool: true, replyEffectStatus: "applied" },
+			}),
+			JSON.stringify({
+				thought: "No receipt proved the claimed build.",
+				toolCalls: [],
+				messageToUser: "I couldn't verify that build completed.",
+			}),
+		]);
+		const earlyReply = vi.fn(async () => undefined);
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({
+				text:
+					"[sub-agent: dice roller build (opencode) — task_complete]\n" +
+					"Done. The dice roller app is built and deployed.",
+				source: "sub_agent",
+				metadata: { subAgent: true },
+			}),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+			onResponseHandlerEarlyReply: earlyReply,
+		});
+
+		expect(earlyReply).not.toHaveBeenCalled();
+		expect(result.kind).toBe("planned_reply");
+		if (result.kind === "planned_reply") {
+			expect(result.result.responseContent?.text).toBe(
+				"I couldn't verify that build completed.",
+			);
+		}
+	});
+
 	it("does not let a rejected early completion claim hide the later receipt-grounded confirmation", async () => {
 		const canonicalText = "Done — the pickup reminder is scheduled.";
 		const observedAt = "2026-07-27T18:00:00.000Z";

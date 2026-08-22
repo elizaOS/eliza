@@ -2592,6 +2592,17 @@ function isSubAgentCompletionArtifact(memory: Memory): boolean {
 	return source === MESSAGE_SOURCE_SUB_AGENT && metadata?.subAgent === true;
 }
 
+/** The inbound turn has the routing shape of a finished sub-agent lane. This
+ * classifier controls presentation only; it does not prove that any claimed
+ * effect occurred. */
+function isTaskCompleteRelayTurn(memory: Memory): boolean {
+	return (
+		isSubAgentCompletionArtifact(memory) &&
+		parseSubAgentTaskCompleteRelay(String(memory.content?.text ?? "")) !==
+			undefined
+	);
+}
+
 function looksLikePriorDialogueArtifact(text: string): boolean {
 	if (!text) return false;
 	return /^\s*\[(?:sub-agent|tool output|tool result|command output)\b/im.test(
@@ -3327,10 +3338,7 @@ function buildV5PlannerActionSurface(params: {
 	// of relaying the result). Protocol tools (REPLY/IGNORE/STOP) remain.
 	// Blocked/question/coordination relays keep the full surface — those turns
 	// may legitimately act (answer a child, coordinate a sibling).
-	if (
-		isSubAgentCompletionArtifact(params.message) &&
-		parseSubAgentTaskCompleteRelay(String(params.message.content?.text ?? ""))
-	) {
+	if (isTaskCompleteRelayTurn(params.message)) {
 		return {
 			exposedActionNames: new Set<string>(),
 			summary: {
@@ -11343,6 +11351,39 @@ function looksLikeExplicitDelegationRequest(text: string): boolean {
 	);
 }
 
+const COMPUTED_OBJECT_RE =
+	/[/\\:@]|https?:|\b(?:current|latest|live|today|now|price|prices|contents?|weather|time|date|random|primes?|fibonacci|under|between|from|of|in|at|each|every|all|list|first|last|largest|smallest|sum|count|number|result|output|value|api|file|url|env|variable|ip|address|size|length|temperature|stats?|status|usage|memory|disk|uptime|hostname|version|fetch(?:es|ed)?|read(?:s)?|calculat\w*|comput\w*)\b/iu;
+
+/** The object of "just prints X" is a constant when it is a quoted literal,
+ * a bare numeric literal, or a few bare words naming nothing computed. The
+ * WHOLE object is scanned — a computed continuation after "and"/"then"
+ * ("prints hello and then fetches the weather") is still a real program. */
+function isConstantPrintedObject(object: string): boolean {
+	const trimmed = object.trim().replace(/[.!?]+$/u, "");
+	if (!trimmed) return false;
+	// A quoted constant must be the complete expression. Merely starting with a
+	// quote is insufficient: `"hello" and then fetches the weather` still asks
+	// for computed work. Accept escaped ASCII delimiters and paired typographic
+	// delimiters, including a literal whose contents span lines.
+	if (
+		/^(?:"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`|“[^”]*”|‘[^’]*’)$/su.test(
+			trimmed,
+		)
+	) {
+		return true;
+	}
+	const head =
+		trimmed.split(/\s*(?:,|;|\band\b|\bthen\b|\bwhen\b|\bif\b)\s*/iu)[0] ?? "";
+	// "just prints 42" is a constant, not a computation.
+	if (/^(?:the\s+)?(?:number\s+)?\d+$/u.test(head)) {
+		return !COMPUTED_OBJECT_RE.test(trimmed.replace(/\d+/gu, ""));
+	}
+	const words = head.split(/\s+/u).filter(Boolean);
+	if (words.length === 0 || words.length > 4) return false;
+	if (/\d/u.test(trimmed)) return false;
+	return !COMPUTED_OBJECT_RE.test(trimmed);
+}
+
 function looksLikeInlineCodeSnippetRequest(text: string): boolean {
 	const normalized = text.toLowerCase();
 	if (
@@ -11357,10 +11398,26 @@ function looksLikeInlineCodeSnippetRequest(text: string): boolean {
 	// it through a coding sub-agent spent a 27s build and the user never saw
 	// the one line (live 2026-08-22). Scoped by the just/only/simply marker so
 	// computed deliverables ("prints a random card") still get built and run.
-	const constantOutputScript =
-		/\b(?:script|program)\b[\s\S]{0,40}\b(?:just|only|simply)\s+(?:prints?|says?|outputs?|echo(?:es)?|displays?|returns?)\b/iu.test(
+	// The printed OBJECT must itself be constant: a quoted literal, or a few
+	// bare words with no path, URL, number or computed noun ("the current
+	// bitcoin price", "the contents of /etc/hosts", "the primes under a
+	// million" are real programs however the ask is phrased).
+	// The printed object is captured to the END of the request — a capped
+	// capture (formerly 80 chars) let a computed tail ("… and then fetches the
+	// current bitcoin price") hide beyond the window, while a line-bounded
+	// capture let the same tail hide after a newline. isConstantPrintedObject
+	// scans the whole expression it receives.
+	const constantOutputMatch =
+		/\b(?:script|program)\b[\s\S]{0,40}\b(?:just|only|simply)\s+(?:prints?|says?|outputs?|echo(?:es)?|displays?|returns?)\s+([\s\S]*)/iu.exec(
 			normalized,
 		);
+	const constantOutputScript =
+		constantOutputMatch !== null &&
+		isConstantPrintedObject(constantOutputMatch[1] ?? "");
+	// The explicit just/only/simply form is eligible for inline handling only
+	// when its complete object is constant. Do not let generic words such as
+	// "simple" or "example" override a computed tail.
+	if (constantOutputMatch !== null && !constantOutputScript) return false;
 	const asksForSnippet =
 		constantOutputScript ||
 		/\b(?:write|give me|show me|generate|provide|create|make)\b[\s\S]{0,80}\b(?:code block|snippet|function|class|method|example|program|one[- ]?liner|hello world|fibonacci)\b/iu.test(

@@ -18,10 +18,11 @@
  *   `process.env` — in a multi-tenant process that would leak a host secret into
  *   every agent; hosts fold dotenv into the constructor `settings` map instead.
  * - Embedding width is pinned to whichever TEXT_EMBEDDING provider answered the
- *   boot dimension probe; a later embedding from a different provider can emit a
- *   width the SQL adapter silently drops (#8769). If every provider fails the
- *   probe, `initialize()` catches `EmbeddingDimensionProbeError` non-fatally and
- *   disables embedding generation instead of crashing boot.
+ *   boot dimension probe, including TEXT_EMBEDDING_BATCH; a later embedding from
+ *   a different provider can emit a width the SQL adapter silently drops (#8769).
+ *   If every provider fails the probe, `initialize()` catches
+ *   `EmbeddingDimensionProbeError` non-fatally and disables embedding generation
+ *   instead of crashing boot.
  * - Without a database adapter, `initialize()` falls back to the in-memory
  *   adapter only when `ALLOW_NO_DATABASE` is set.
  */
@@ -6679,17 +6680,19 @@ export class AgentRuntime implements IAgentRuntime {
 			}
 		}
 
-		// TEXT_EMBEDDING calls without an explicit provider are pinned to the
-		// provider that answered the dimension probe: the vector column was sized
-		// from its output, so serving an embedding call from any other
-		// registration (including via rate-limit failover) can emit a
-		// different-width vector that the SQL adapter silently drops (#8769).
-		// Pinning also disables mid-call provider failover for embeddings — an
-		// embedding either comes from the provider the column was sized for, or
-		// the call fails loudly. An explicit provider argument still wins.
+		// TEXT_EMBEDDING and TEXT_EMBEDDING_BATCH calls without an explicit
+		// provider are pinned to the provider that answered the dimension probe:
+		// the vector column was sized from its output, so serving an embedding
+		// call from any other registration (including a higher-priority BATCH
+		// handler, or via rate-limit failover) can emit a different-width vector
+		// that the SQL adapter silently drops (#8769). Pinning also disables
+		// mid-call provider failover for embeddings — an embedding either comes
+		// from the provider the column was sized for, or the call fails loudly.
+		// An explicit provider argument still wins.
 		const requestedProvider =
 			provider === undefined &&
-			requestedModelKey === ModelType.TEXT_EMBEDDING &&
+			(requestedModelKey === ModelType.TEXT_EMBEDDING ||
+				requestedModelKey === ModelType.TEXT_EMBEDDING_BATCH) &&
 			this.pinnedEmbeddingProvider !== undefined
 				? this.pinnedEmbeddingProvider
 				: provider;

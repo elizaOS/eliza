@@ -400,6 +400,41 @@ describe("AgentRuntime.ensureEmbeddingDimension provider failover", () => {
 		expect(ensureDim).not.toHaveBeenCalled();
 		expect(runtime.isEmbeddingGenerationDisabled()).toBe(false);
 	});
+
+	it("pins TEXT_EMBEDDING_BATCH to the probe provider so a higher-priority batch cannot emit a different width", async () => {
+		const runtime = makeRuntime();
+		const localEmbed = vi.fn(async () => new Array(384).fill(0));
+		const localBatch = vi.fn(
+			async (_runtime: AgentRuntime, params: { texts: string[] }) =>
+				params.texts.map(() => new Array(384).fill(0)),
+		);
+		const cloudBatch = vi.fn(
+			async (_runtime: AgentRuntime, params: { texts: string[] }) =>
+				params.texts.map(() => new Array(1536).fill(1)),
+		);
+		runtime.registerModel(ModelType.TEXT_EMBEDDING, localEmbed, "local", 100);
+		runtime.registerModel(
+			ModelType.TEXT_EMBEDDING_BATCH,
+			localBatch,
+			"local",
+			0,
+		);
+		runtime.registerModel(
+			ModelType.TEXT_EMBEDDING_BATCH,
+			cloudBatch,
+			"cloud",
+			100,
+		);
+
+		await runtime.ensureEmbeddingDimension();
+		const vectors = await runtime.useModel(ModelType.TEXT_EMBEDDING_BATCH, {
+			texts: ["hello"],
+		});
+
+		expect(cloudBatch).not.toHaveBeenCalled();
+		expect(localBatch).toHaveBeenCalledTimes(1);
+		expect(vectors[0]).toHaveLength(384);
+	});
 });
 
 describe("AgentRuntime.initialize with a broken TEXT_EMBEDDING provider (#10702)", () => {

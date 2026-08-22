@@ -21,6 +21,20 @@ export class BlooioApiResponseError extends Error {
   }
 }
 
+export class BlooioConfigurationError extends Error {
+  readonly code = "BLOOIO_LEGACY_GROUP_FROM_NUMBER_MISSING";
+  readonly context: Readonly<{ setting: string; chatId: string }>;
+
+  constructor(chatId: string) {
+    super("Missing fromNumber for Blooio legacy group reply");
+    this.name = "BlooioConfigurationError";
+    this.context = {
+      setting: "fromNumber",
+      chatId,
+    };
+  }
+}
+
 const BlooioAttachmentSchema = z.union([
   z.string(),
   z.object({ url: z.string().url(), name: z.string().nullish() }).passthrough(),
@@ -75,9 +89,27 @@ const BlooioV4WebhookEnvelopeSchema = z.object({
 
 type BlooioWebhookEvent = z.infer<typeof BlooioV2WebhookEventSchema>;
 
+function normalizedIdentifier(value: string | null | undefined): string | null {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : null;
+}
+
 function parseWebhookEvent(data: unknown): BlooioWebhookEvent | null {
   const v2 = BlooioV2WebhookEventSchema.safeParse(data);
-  if (v2.success) return v2.data;
+  if (v2.success) {
+    const chatId = normalizedIdentifier(v2.data.chat_id);
+    return {
+      ...v2.data,
+      sender:
+        normalizedIdentifier(v2.data.sender) ??
+        normalizedIdentifier(v2.data.external_id),
+      chat_id: chatId,
+      channel_id:
+        normalizedIdentifier(v2.data.channel_id) ??
+        normalizedIdentifier(v2.data.internal_id),
+      is_group: v2.data.is_group ?? (chatId ? /^grp_/i.test(chatId) : null),
+    };
+  }
 
   const v4 = BlooioV4WebhookEnvelopeSchema.safeParse(data);
   if (!v4.success) return null;
@@ -158,18 +190,33 @@ async function sendBlooioMessage(
     "Idempotency-Key": `gw-reply-${event.messageId}`,
   };
 
-  // A provider chat id is the only safe reply target for a group and is also
-  // the strongest thread-affinity signal for a v4 one-to-one delivery. The
-  // chat already owns its channel and participants, so v4 explicitly forbids
-  // supplying `from` or `to` on this endpoint.
-  const hasProviderChatId =
-    event.chatId !== event.senderId || /^chat_/i.test(event.chatId);
-  const url = hasProviderChatId
+  // Chat ids encode the provider API generation. Current `chat_*` resources
+  // own their participants in v4; legacy `grp_*` resources remain on the v2
+  // chat API and require the configured account sender field.
+  const isV4Chat = /^chat_/i.test(event.chatId);
+  const isLegacyV2Group = /^grp_/i.test(event.chatId);
+  if (isLegacyV2Group) {
+    if (!config.fromNumber) {
+      throw new BlooioConfigurationError(event.chatId);
+    }
+  }
+  const url = isV4Chat
     ? `${BLOOIO_V4_CHATS_URL}/${encodeURIComponent(event.chatId)}/messages`
-    : BLOOIO_V4_MESSAGES_URL;
+    : isLegacyV2Group
+      ? `${BLOOIO_V2_API_BASE}/chats/${encodeURIComponent(event.chatId)}/messages`
+      : BLOOIO_V4_MESSAGES_URL;
   const from = event.channelId ?? config.fromNumber;
-  const body: { text: string; to?: string; from?: string } = { text };
-  if (!hasProviderChatId) {
+  const body: {
+    text: string;
+    to?: string;
+    from?: string;
+    from_number?: string;
+  } = { text };
+  if (isLegacyV2Group) {
+    // Blooio v2 selects an explicit account sender through the JSON field;
+    // X-From-Number is used by read receipts but is not a send-message header.
+    body.from_number = config.fromNumber;
+  } else if (!isV4Chat) {
     body.to = event.senderId;
     if (from) body.from = from;
   }

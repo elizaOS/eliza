@@ -17,6 +17,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { logger } from "@elizaos/core";
 import { assertBrowserExecuteAllowed } from "../security/browser-script-policy.js";
+import { normalizeBrowserTabId } from "../security/browser-tab-id-policy.js";
 import { assertHttpBrowserUrl } from "../security/browser-url-policy.js";
 import type {
   BrowserInfo,
@@ -569,11 +570,12 @@ export async function openBrowserTab(url?: string): Promise<BrowserTab> {
 }
 
 export async function closeBrowserTab(tabId: string): Promise<void> {
+  const normalizedTabId = normalizeBrowserTabId(tabId);
   if (!browser) throw new Error("Browser not open.");
   const pages = await browser.pages();
-  const idx = Number.parseInt(tabId, 10);
+  const idx = Number(normalizedTabId);
   const page = pages[idx];
-  if (!page) throw new Error(`Tab ${tabId} not found.`);
+  if (!page) throw new Error(`Tab ${normalizedTabId} not found.`);
   if (page === activePage) {
     // Switch to another tab before closing
     activePage = pages.find((p) => p !== page) ?? null;
@@ -582,11 +584,12 @@ export async function closeBrowserTab(tabId: string): Promise<void> {
 }
 
 export async function switchBrowserTab(tabId: string): Promise<BrowserState> {
+  const normalizedTabId = normalizeBrowserTabId(tabId);
   if (!browser) throw new Error("Browser not open.");
   const pages = await browser.pages();
-  const idx = Number.parseInt(tabId, 10);
+  const idx = Number(normalizedTabId);
   const page = pages[idx];
-  if (!page) throw new Error(`Tab ${tabId} not found.`);
+  if (!page) throw new Error(`Tab ${normalizedTabId} not found.`);
   activePage = page;
   await page.bringToFront();
   return {

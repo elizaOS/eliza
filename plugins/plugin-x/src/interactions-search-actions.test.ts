@@ -1,7 +1,7 @@
 /** Unit tests for `TwitterInteractionClient` engagement on search-discovered tweets — like/retweet/quote/none per model choice, plus dry-run; mocked runtime. */
 import { type IAgentRuntime, logger, type UUID } from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { ClientBase } from "./base";
+import { type ClientBase, NO_REQUEST_RETRY } from "./base";
 import type { Tweet } from "./client";
 import { TwitterInteractionClient } from "./interactions";
 import type { TwitterClientState } from "./types";
@@ -70,6 +70,7 @@ function createClient(
     bio: "",
     nicknames: [],
   };
+  const requestQueueAdd = vi.fn(async (fn: () => Promise<unknown>) => fn());
   const client = {
     accountId: "default",
     runtime,
@@ -114,7 +115,7 @@ function createClient(
         runtime.setCache(`twitter/default/${profile.id}/${suffix}`, value),
     ),
     twitterClient,
-    requestQueue: { add: <T>(fn: () => Promise<T>) => fn() },
+    requestQueue: { add: requestQueueAdd },
     fetchSearchTweets: vi.fn(),
     fetchHomeTimeline: vi.fn(async () => []),
   };
@@ -215,6 +216,10 @@ describe("Twitter search engagement actions", () => {
     expect(twitterClient.sendQuoteTweet).toHaveBeenCalledWith(
       "sharp take, agreed",
       "500",
+    );
+    expect(clientBase.requestQueue.add).toHaveBeenCalledWith(
+      expect.any(Function),
+      NO_REQUEST_RETRY,
     );
     expect(twitterClient.likeTweet).not.toHaveBeenCalled();
     expect(twitterClient.retweet).not.toHaveBeenCalled();
