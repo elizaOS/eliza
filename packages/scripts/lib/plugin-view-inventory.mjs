@@ -191,9 +191,17 @@ function resolveStaticExpression(expression, context, resolving = new Set()) {
       returns?.length === 1 && returns[0].expression
         ? unwrap(returns[0].expression)
         : null;
+    const returnsViewComposition =
+      returned &&
+      ts.isObjectLiteralExpression(returned) &&
+      returned.properties.some(
+        (property) =>
+          ts.isSpreadAssignment(property) || propertyName(property) === "views",
+      );
     const hasExecutableStatement = statements?.some(
       (statement) =>
-        statement !== returns?.[0] && !ts.isVariableStatement(statement),
+        statement !== returns?.[0] &&
+        (returnsViewComposition || !ts.isVariableStatement(statement)),
     );
     if (
       returned &&

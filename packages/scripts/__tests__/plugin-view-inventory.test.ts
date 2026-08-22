@@ -444,6 +444,28 @@ export const factoryPlugin: Plugin = createPlugin();\n`,
     );
   });
 
+  test("rejects a view factory whose variable initializer can mutate its manifest", () => {
+    const root = makeRoot();
+    const source = addPluginSource(
+      root,
+      "plugin-initializer-side-effect-factory",
+      `const views = [${view("pre-mutation")}];
+function createPlugin(): Plugin {
+  const ignored = mutateViews(views);
+  return {
+    name: "factory",
+    description: "fixture",
+    views,
+  };
+}
+export const factoryPlugin: Plugin = createPlugin();\n`,
+    );
+
+    expect(() => discover(root, [source])).toThrow(
+      /exported Plugin factoryPlugin must resolve statically to an object literal/,
+    );
+  });
+
   test("rejects plugin composition that could hide runtime views", () => {
     const root = makeRoot();
     const source = addPluginSource(
