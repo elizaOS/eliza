@@ -1459,11 +1459,7 @@ describe("ChatOverlay", () => {
     expect(log?.querySelectorAll('[data-testid="thread-line"]').length).toBe(1);
   });
 
-  it("hides the topic chips bar + dividers on a single-topic thread", () => {
-    // The lock-screen leak: a fresh thread whose only Stage-1 topic is
-    // `greeting` was rendering a grey `greeting` chip top-left and a
-    // "— GREETING —" divider above the only message. One topic group must
-    // open clean — no chips rail, no divider.
+  it("renders a single-topic thread without topic chrome", () => {
     render(
       <ChatOverlay
         controller={makeController({
@@ -1490,12 +1486,11 @@ describe("ChatOverlay", () => {
     expect(screen.queryByTestId("topic-chips-bar")).toBeNull();
     expect(screen.queryByTestId("topic-group-header")).toBeNull();
     expect(screen.queryByTestId("topic-group-pill")).toBeNull();
-    // The message still renders — gating only removes the topic chrome.
     const log = document.getElementById("continuous-thread");
     expect(log?.textContent).toContain("how can I help");
   });
 
-  it("shows the chips bar + dividers once the thread spans two topics", () => {
+  it("renders multiple-topic messages as one flat chronological transcript", () => {
     render(
       <ChatOverlay
         controller={makeController({
@@ -1519,15 +1514,13 @@ describe("ChatOverlay", () => {
       />,
     );
     fireEvent.focus(screen.getByLabelText("message"));
-    expect(screen.getByTestId("topic-chips-bar")).toBeTruthy();
-    // Two distinct topics → two group dividers, labels humanized.
-    expect(screen.getAllByTestId("topic-group-header").length).toBe(2);
-    expect(screen.getByTestId("topic-chips-bar").textContent).toContain(
-      "Deployment",
-    );
-    expect(screen.getByTestId("topic-chips-bar").textContent).toContain(
-      "Billing",
-    );
+    expect(screen.queryByTestId("topic-chips-bar")).toBeNull();
+    expect(screen.queryByTestId("topic-group-header")).toBeNull();
+    expect(screen.queryByTestId("topic-group-pill")).toBeNull();
+    const lines = screen.getAllByTestId("thread-line");
+    expect(lines).toHaveLength(2);
+    expect(lines[0]?.textContent).toContain("deploy failing");
+    expect(lines[1]?.textContent).toContain("charged twice");
   });
 
   it("aligns the assistant bubble left and the user bubble right", () => {
@@ -4209,7 +4202,7 @@ describe("ChatOverlay single-thread (no chat swipe, #13531)", () => {
     expect(controller.clearConversation).not.toHaveBeenCalled();
   });
 
-  it("renders the infinite-scroll top sentinel above a populated flat thread (#14279)", () => {
+  it("renders the infinite-scroll top sentinel above a populated thread (#14279)", () => {
     const { controller } = makeSwipeController();
     render(<ChatOverlay controller={controller} />);
     openSheet();
