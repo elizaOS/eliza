@@ -38,6 +38,7 @@ const ELIZA_STORAGE_PREFIXES = [
   "eliza_",
   "elizaos",
   "steward_",
+  "pendant:",
 ] as const;
 const ELIZA_LEGACY_STORAGE_KEYS = [
   ERROR_LOGGING_KEY,

@@ -354,18 +354,23 @@ function ConnectModal({
               htmlFor="connect-agent"
             >
               <SelectPill
-                label={
-                  agentChoices === null
-                    ? "Loading agents…"
-                    : agentChoices.length === 0
-                      ? "No agents available"
-                      : "Choose an agent"
-                }
-                options={(agentChoices ?? []).map((choice) => ({
-                  value: choice.id,
-                  label: choice.name,
-                }))}
-                value={selectedAgentId || undefined}
+                label="Agent"
+                options={[
+                  {
+                    value: "",
+                    label:
+                      agentChoices === null
+                        ? "Loading agents…"
+                        : agentChoices.length === 0
+                          ? "No agents available"
+                          : "Choose an agent",
+                  },
+                  ...(agentChoices ?? []).map((choice) => ({
+                    value: choice.id,
+                    label: choice.name,
+                  })),
+                ]}
+                value={selectedAgentId}
                 onValueChange={setSelectedAgentId}
                 disabled={busy || agentChoices === null}
               />
@@ -541,20 +546,25 @@ function DisconnectDialog({
             htmlFor="disconnect-connection"
           >
             <SelectPill
-              label={
-                choices === null
-                  ? "Loading connections…"
-                  : choices.length === 0
-                    ? "No connections found"
-                    : "Choose a connection"
-              }
-              options={(choices ?? []).map((choice) => ({
-                value: choice.id,
-                label: choice.active
-                  ? choice.label
-                  : `${choice.label} (inactive)`,
-              }))}
-              value={selectedId || undefined}
+              label="Connection"
+              options={[
+                {
+                  value: "",
+                  label:
+                    choices === null
+                      ? "Loading connections…"
+                      : choices.length === 0
+                        ? "No connections found"
+                        : "Choose a connection",
+                },
+                ...(choices ?? []).map((choice) => ({
+                  value: choice.id,
+                  label: choice.active
+                    ? choice.label
+                    : `${choice.label} (inactive)`,
+                })),
+              ]}
+              value={selectedId}
               onValueChange={setSelectedId}
               disabled={busy || choices === null}
             />
