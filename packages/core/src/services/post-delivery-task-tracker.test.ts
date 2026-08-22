@@ -58,6 +58,26 @@ describe("post-delivery task tracker", () => {
 		expect(pendingPostDeliveryTaskCount(runtime)).toBe(0);
 	});
 
+	it("does not quarantine an idle runtime for a pre-aborted drain", async () => {
+		const runtime = runtimeStub();
+		const controller = new AbortController();
+		controller.abort(new Error("owner no longer needs to wait"));
+
+		await expect(
+			drainPostDeliveryTasks(runtime, { signal: controller.signal }),
+		).resolves.toBe(0);
+		expect(postDeliveryTaskQuarantineReason(runtime)).toBeUndefined();
+
+		const reused = trackPostDeliveryTask(
+			runtime,
+			"reuse-after-idle-abort",
+			async () => undefined,
+		);
+		await expect(drainPostDeliveryTasks(runtime)).resolves.toBe(1);
+		await reused;
+		expect(pendingPostDeliveryTaskCount(runtime)).toBe(0);
+	});
+
 	it("cancels cooperative work and quarantines uncooperative work", async () => {
 		const runtime = runtimeStub();
 		let cooperativeAborted = false;

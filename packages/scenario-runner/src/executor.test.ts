@@ -232,6 +232,76 @@ describe("scenario executor wait turns", () => {
     expect(pendingPostDeliveryTaskCount(runtime)).toBe(0);
   });
 
+  it("reuses an idle runtime after a pre-aborted post-delivery wait", async () => {
+    const runtime = createRuntime([]);
+    const preAborted = new AbortController();
+    preAborted.abort(new Error("caller stopped waiting"));
+    let firstExecuted = false;
+    const first = await runScenario(
+      {
+        id: "idle-pre-aborted-drain",
+        title: "Idle pre-aborted drain",
+        domain: "executor",
+        modelFixtures: {
+          mode: "model-free",
+          reason: "The scenario creates no post-delivery work.",
+        },
+        turns: [
+          {
+            kind: "wait",
+            name: "idle turn",
+            durationMs: 0,
+            assertTurn() {
+              firstExecuted = true;
+            },
+          },
+        ],
+      },
+      runtime,
+      {
+        minJudgeScore: 0.8,
+        providerName: "deterministic-fixture-model",
+        turnTimeoutMs: 1_000,
+        abortSignal: preAborted.signal,
+      },
+    );
+
+    expect(first.status).toBe("passed");
+    expect(firstExecuted).toBe(true);
+
+    let secondExecuted = false;
+    const second = await runScenario(
+      {
+        id: "reuse-after-idle-pre-abort",
+        title: "Runtime reuse after idle pre-abort",
+        domain: "executor",
+        modelFixtures: {
+          mode: "model-free",
+          reason: "The idle abort must not quarantine the shared runtime.",
+        },
+        turns: [
+          {
+            kind: "wait",
+            name: "reuse turn",
+            durationMs: 0,
+            assertTurn() {
+              secondExecuted = true;
+            },
+          },
+        ],
+      },
+      runtime,
+      {
+        minJudgeScore: 0.8,
+        providerName: "deterministic-fixture-model",
+        turnTimeoutMs: 1_000,
+      },
+    );
+
+    expect(second.status).toBe("passed");
+    expect(secondExecuted).toBe(true);
+  });
+
   it("rejects an invalid post-delivery deadline before executing the scenario", async () => {
     const runtime = createRuntime([]);
     let executed = false;
