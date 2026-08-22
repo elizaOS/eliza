@@ -949,31 +949,18 @@ export function ElizaAgentsTable({ agents }: { agents: AgentListItemDto[] }) {
             }),
           }}
         />
-        {/* Search and primary navigation for the visible agent set. */}
-        <div className="flex flex-col sm:flex-row gap-3">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted" />
-            <Input
-              placeholder={t("cloud.elizaAgentsTable.searchAgents", {
-                defaultValue: "Search agents…",
-              })}
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-9 h-9 border-border bg-card text-txt placeholder:text-muted"
-            />
-          </div>
-          <Button asChild size="sm" className="h-9">
-            <a
-              href={ELIZA_APP_AGENT_CREATE_URL}
-              target="_blank"
-              rel="noreferrer"
-            >
-              <ExternalLink className="h-4 w-4" />
-              {t("cloud.elizaAgentsTable.openElizaApp", {
-                defaultValue: "Open Eliza app",
-              })}
-            </a>
-          </Button>
+        {/* Search the authoritative agent set. Each runnable row owns its one
+            launch affordance: Open Web UI. */}
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
+          <Input
+            placeholder={t("cloud.elizaAgentsTable.searchAgents", {
+              defaultValue: "Search agents…",
+            })}
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="h-9 border-border bg-card pl-9 text-txt placeholder:text-muted"
+          />
         </div>
 
         {searchQuery && (
@@ -1092,10 +1079,7 @@ export function ElizaAgentsTable({ agents }: { agents: AgentListItemDto[] }) {
                       <TableCell>
                         <div className="space-y-1">
                           <div className="flex flex-wrap items-center gap-2">
-                            <a
-                              href={`/cloud/agents/${sb.id}`}
-                              className="font-medium text-txt-strong hover:text-accent transition-colors"
-                            >
+                            <span className="font-medium text-txt-strong">
                               {getAgentDisplayName(
                                 sb,
                                 t("cloud.elizaAgentsTable.sharedAgentName", {
@@ -1105,7 +1089,7 @@ export function ElizaAgentsTable({ agents }: { agents: AgentListItemDto[] }) {
                                   defaultValue: "Unnamed Agent",
                                 }),
                               )}
-                            </a>
+                            </span>
                             <AgentCostBadge
                               status={displayStatus}
                               executionTier={sb.executionTier}
@@ -1341,10 +1325,7 @@ export function ElizaAgentsTable({ agents }: { agents: AgentListItemDto[] }) {
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0 space-y-1">
-                      <a
-                        href={`/cloud/agents/${sb.id}`}
-                        className="font-medium text-txt-strong hover:text-accent transition-colors block truncate"
-                      >
+                      <span className="block truncate font-medium text-txt-strong">
                         {getAgentDisplayName(
                           sb,
                           t("cloud.elizaAgentsTable.sharedAgentName", {
@@ -1354,7 +1335,7 @@ export function ElizaAgentsTable({ agents }: { agents: AgentListItemDto[] }) {
                             defaultValue: "Unnamed Agent",
                           }),
                         )}
-                      </a>
+                      </span>
                       <AgentCostBadge
                         status={displayStatus}
                         executionTier={sb.executionTier}
