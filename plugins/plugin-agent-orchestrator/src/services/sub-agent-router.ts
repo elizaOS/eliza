@@ -1186,7 +1186,11 @@ export class SubAgentRouter extends Service {
     ) {
       const deferTaskId = await this.completionRelayDeferralTaskId(sessionId);
       if (deferTaskId) {
-        const existing = this.deferredCompletionRelays.get(deferTaskId);
+        // Keyed per lane: two lanes of one task defer independently, and a
+        // lane's verdict releases only its own relay (live 2026-08-22: the
+        // second lane's deferral overwrote the first's).
+        const deferKey = `${deferTaskId}\u0000${sessionId}`;
+        const existing = this.deferredCompletionRelays.get(deferKey);
         if (existing) clearTimeout(existing.timer);
         const timer = setTimeout(
           () => {
@@ -1198,12 +1202,16 @@ export class SubAgentRouter extends Service {
               "deferred completion relay released by timeout — no verification verdict arrived",
               { taskId: deferTaskId, sessionId },
             );
-            this.releaseDeferredCompletionRelay(deferTaskId, "passed");
+            this.releaseDeferredCompletionRelay(
+              deferTaskId,
+              "passed",
+              sessionId,
+            );
           },
           5 * 60 * 1000,
         );
         timer.unref?.();
-        this.deferredCompletionRelays.set(deferTaskId, {
+        this.deferredCompletionRelays.set(deferKey, {
           sessionId,
           data,
           turnId,
@@ -2325,10 +2333,23 @@ export class SubAgentRouter extends Service {
   releaseDeferredCompletionRelay(
     taskId: string,
     verdict: "passed" | "failed",
+    sessionId?: string,
   ): void {
-    const pending = this.deferredCompletionRelays.get(taskId);
+    const keys = [...this.deferredCompletionRelays.keys()].filter((key) => {
+      const [keyTask, keySession] = key.split("\u0000");
+      return keyTask === taskId && (!sessionId || keySession === sessionId);
+    });
+    for (const key of keys) this.releaseDeferredRelayByKey(key, verdict);
+  }
+
+  private releaseDeferredRelayByKey(
+    key: string,
+    verdict: "passed" | "failed",
+  ): void {
+    const pending = this.deferredCompletionRelays.get(key);
     if (!pending) return;
-    this.deferredCompletionRelays.delete(taskId);
+    const taskId = key.split("\u0000")[0];
+    this.deferredCompletionRelays.delete(key);
     clearTimeout(pending.timer);
     if (verdict !== "passed") {
       this.log(

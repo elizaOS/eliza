@@ -242,6 +242,7 @@ import {
   type SpawnResult,
   TERMINAL_SESSION_STATUSES,
 } from "./types.js";
+import { userTaskFromInitialTask } from "./user-task-text.js";
 import {
   WAVE_SUPERVISOR_SERVICE_TYPE,
   WaveConcurrencyCapError,
@@ -4352,9 +4353,10 @@ export class OrchestratorTaskService extends Service {
       verifier?: string;
       humanOverride?: boolean;
     },
+    sessionId?: string,
   ): Promise<TaskThreadDetailDto | null> {
     return this.withTaskWriteLock(taskId, () =>
-      this.validateTaskLocked(taskId, result),
+      this.validateTaskLocked(taskId, result, sessionId),
     );
   }
 
@@ -4368,10 +4370,66 @@ export class OrchestratorTaskService extends Service {
       verifier?: string;
       humanOverride?: boolean;
     },
+    sessionId?: string,
   ): Promise<TaskThreadDetailDto | null> {
     const doc = await this.store.getTask(taskId);
     if (!doc) return null;
     const from = doc.task.status;
+    // A passing LANE of a multi-lane task: record the lane verdict, release
+    // that lane's relay, and keep the task open until every lane has passed
+    // — promoting to `done` on the first lane closed the task under its
+    // siblings (their completions found a done task and verified nothing).
+    if (result.passed && !result.humanOverride && sessionId) {
+      const { laneSessionIds } = this.laneScope(doc, sessionId);
+      if (laneSessionIds.length > 1) {
+        const verdicts = {
+          ...(isRecord(doc.task.metadata?.laneVerdicts)
+            ? (doc.task.metadata.laneVerdicts as Record<string, string>)
+            : {}),
+          [sessionId]: "passed",
+        };
+        const remaining = laneSessionIds.filter(
+          (id) => verdicts[id] !== "passed",
+        );
+        if (remaining.length > 0) {
+          await this.store.addEvent({
+            id: randomUUID(),
+            taskId,
+            sessionId,
+            eventType: "lane_validation_passed",
+            summary: `${result.summary ?? "Lane verified."} (${laneSessionIds.length - remaining.length}/${laneSessionIds.length} lanes verified)`,
+            data: {
+              evidence: result.evidence ?? "",
+              verifier: result.verifier ?? "orchestrator",
+              remainingLanes: remaining,
+            },
+            timestamp: Date.now(),
+            createdAt: nowIso(),
+          });
+          // Back to `active`: the sibling's completion_reported re-enters
+          // validating (the same edge validation_failed takes, without the
+          // failure semantics).
+          await this.store.updateTask(taskId, {
+            status: "active",
+            metadata: { ...(doc.task.metadata ?? {}), laneVerdicts: verdicts },
+          });
+          (
+            this.runtime.getService("ACPX_SUB_AGENT_ROUTER") as {
+              releaseDeferredCompletionRelay?: (
+                taskId: string,
+                verdict: "passed" | "failed",
+                sessionId?: string,
+              ) => void;
+            } | null
+          )?.releaseDeferredCompletionRelay?.(taskId, "passed", sessionId);
+          this.emitChange(taskId);
+          return this.getTask(taskId);
+        }
+        await this.store.updateTask(taskId, {
+          metadata: { ...(doc.task.metadata ?? {}), laneVerdicts: verdicts },
+        });
+      }
+    }
     if (!result.humanOverride && from !== "validating") {
       throw new Error("Task must be validating before validation can finish");
     }
@@ -4521,11 +4579,13 @@ export class OrchestratorTaskService extends Service {
       releaseDeferredCompletionRelay?: (
         taskId: string,
         verdict: "passed" | "failed",
+        sessionId?: string,
       ) => void;
     } | null;
     relayRouter?.releaseDeferredCompletionRelay?.(
       taskId,
       result.passed ? "passed" : "failed",
+      sessionId,
     );
     await this.store.addEvent({
       id: randomUUID(),
@@ -5128,12 +5188,16 @@ export class OrchestratorTaskService extends Service {
         const explicitContract =
           doc.task.metadata.acceptanceCriteriaOrigin === "caller";
         if (detVerdict.allMet && explicitContract) {
-          await this.validateTaskLocked(taskId, {
-            passed: true,
-            summary: `All ${acceptanceCriteria.length} criteria deterministically verified from the write ledger, probed URLs, and captured output.`,
-            evidence: renderDeterministicVerdict(detVerdict),
-            verifier: DETERMINISTIC_LEDGER_VERIFIER_NAME,
-          });
+          await this.validateTaskLocked(
+            taskId,
+            {
+              passed: true,
+              summary: `All ${acceptanceCriteria.length} criteria deterministically verified from the write ledger, probed URLs, and captured output.`,
+              evidence: renderDeterministicVerdict(detVerdict),
+              verifier: DETERMINISTIC_LEDGER_VERIFIER_NAME,
+            },
+            sessionId,
+          );
           this.emitChange(taskId);
           return;
         }
@@ -5227,10 +5291,13 @@ export class OrchestratorTaskService extends Service {
       }
 
       // 4. Text judge (fallback for non-code / criteria-light tasks).
+      const { laneTask } = this.laneScope(doc, sessionId);
       const verdict = await verifyGoalCompletion(
         this.runtime,
         {
-          goal: doc.task.goal,
+          goal: laneTask
+            ? `${doc.task.goal}\n\nThis completion is for ONE lane of a multi-lane task. Judge ONLY this lane's deliverable: ${laneTask}\nSibling lanes are verified separately; their absence from the evidence is not a gap.`
+            : doc.task.goal,
           acceptanceCriteria,
           completionEvidence: evidence,
         },
@@ -5244,12 +5311,16 @@ export class OrchestratorTaskService extends Service {
       );
 
       if (verdict.passed) {
-        await this.validateTaskLocked(taskId, {
-          passed: true,
-          summary: verdict.summary,
-          evidence: verdict.rawResponse || evidence,
-          verifier: LLM_GOAL_VERIFIER_NAME,
-        });
+        await this.validateTaskLocked(
+          taskId,
+          {
+            passed: true,
+            summary: verdict.summary,
+            evidence: verdict.rawResponse || evidence,
+            verifier: LLM_GOAL_VERIFIER_NAME,
+          },
+          sessionId,
+        );
         // Notify live subscribers (SSE/UI) — this is a fire-and-forget hook with
         // no HTTP response to refresh the client, so emitChange is the only
         // signal that the task left `validating`. Every other branch emits too.
@@ -6736,6 +6807,47 @@ export class OrchestratorTaskService extends Service {
       throw err;
     }
     return true;
+  }
+
+  /** Lane fan-out scope for one reporting session. A create that split the
+   * ask into lanes ("two pages: a coin flip page and a dice roll page") runs
+   * N sessions under ONE task record; each session carries `requestVoicePart`
+   * (`part:N`). Verification judged every lane against the WHOLE goal —
+   * the first lane to finish was failed for "the dice roll page is missing"
+   * and coached to build its sibling (live 2026-08-22). */
+  private laneScope(
+    doc: OrchestratorTaskDocument,
+    sessionId: string,
+  ): { laneTask?: string; laneSessionIds: string[] } {
+    const part = (session: OrchestratorTaskSession): string | undefined => {
+      const raw = session.metadata?.requestVoicePart;
+      return typeof raw === "string" && /^part:\d+$/.test(raw)
+        ? raw
+        : undefined;
+    };
+    const laneSessions = doc.sessions.filter((session) => part(session));
+    const parts = new Set(laneSessions.map((session) => part(session)));
+    if (parts.size < 2) return { laneSessionIds: [] };
+    const reporting = doc.sessions.find(
+      (session) => session.sessionId === sessionId,
+    );
+    const laneTask = reporting
+      ? userTaskFromInitialTask(reporting.originalTask ?? "")
+      : "";
+    // One session id per part — the LATEST session of each lane (respawns
+    // replace their predecessor).
+    const latestByPart = new Map<string, OrchestratorTaskSession>();
+    for (const session of laneSessions) {
+      const key = part(session) as string;
+      const current = latestByPart.get(key);
+      if (!current || session.registeredAt >= current.registeredAt) {
+        latestByPart.set(key, session);
+      }
+    }
+    return {
+      ...(laneTask ? { laneTask } : {}),
+      laneSessionIds: [...latestByPart.values()].map((s) => s.sessionId),
+    };
   }
 
   /** Operator/user stop of the whole task: the wave launches no further lane,
