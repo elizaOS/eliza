@@ -1,8 +1,10 @@
 name: Build Agent Image
 
+run-name: Agent image ${{ inputs.source_sha || github.sha }} ${{ inputs.effect_digest || 'manual' }}
+
 # Single source of truth for the cloud-agent container image used by the
-# cloud sandbox provisioner. Publication is explicit through workflow_dispatch
-# until a later current-SHA effect fence can safely reconcile automatic builds.
+# cloud sandbox provisioner. Manual dispatch remains available; Develop Full
+# also dispatches it through the exact-SHA durable effect reconciler.
 # The previous release-only workflow (image.yaml) duplicated this entire
 # pre-build sequence; it's been deleted in favor of this consolidated build.
 
@@ -17,6 +19,16 @@ on:
         options:
           - canonical
           - demo
+      source_sha:
+        description: Exact develop SHA supplied by the effect reconciler
+        required: false
+        default: ""
+        type: string
+      effect_digest:
+        description: Exact reconciler input digest; empty for manual operation
+        required: false
+        default: ""
+        type: string
 
 env:
   REGISTRY: ghcr.io
@@ -45,8 +57,20 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
+          ref: ${{ inputs.source_sha || github.sha }}
           submodules: false
           show-progress: false
+
+      - name: Validate reconciled source
+        if: ${{ inputs.effect_digest != '' }}
+        env:
+          EFFECT_DIGEST: ${{ inputs.effect_digest }}
+          SOURCE_SHA: ${{ inputs.source_sha }}
+        run: |
+          set -euo pipefail
+          [[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::Invalid reconciled source SHA"; exit 1; }
+          [[ "$EFFECT_DIGEST" =~ ^[0-9a-f]{64}$ ]] || { echo "::error::Invalid reconciled effect digest"; exit 1; }
+          [ "$(git rev-parse HEAD)" = "$SOURCE_SHA" ] || { echo "::error::Checkout does not match reconciled source"; exit 1; }
 
       - name: Ensure Docker daemon access
         shell: bash
@@ -344,6 +368,18 @@ jobs:
       # `docker push` it, so the published bytes are byte-for-byte the image
       # that just booted cleanly. No rebuild means no chance of shipping a
       # different image than the one that was verified.
+      - name: Fence current develop SHA before publication
+        if: ${{ inputs.effect_digest != '' }}
+        env:
+          SOURCE_SHA: ${{ inputs.source_sha }}
+        run: |
+          set -euo pipefail
+          current_sha="$(git ls-remote origin refs/heads/develop | awk 'NR == 1 { print $1 }')"
+          [ "$current_sha" = "$SOURCE_SHA" ] || {
+            echo "::error::Develop advanced from reconciled source $SOURCE_SHA to ${current_sha:-unresolved}; refusing publication"
+            exit 1
+          }
+
       - name: Push exact verified image
         id: push
         env:

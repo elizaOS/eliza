@@ -30,8 +30,25 @@ observed manifests are retained as the run's reviewable domain artifact.
 Markdown and `packages/docs` inputs belong to the Quality surface, which checks
 CLAUDE/AGENTS parity, maintained relative-link targets, and formatting before
 their evidence can be reused.
-Publication and deployment workflows remain manual until durable current-SHA
-effect fencing makes cancellation safe.
+After the exact aggregate succeeds, `develop-full.yml` hands its SHA and run ID
+to the non-cancelable, dispatch-only `develop-reconcile.yml` authority. The
+reconciler revalidates the successful Develop Full push and its exact manifests,
+then records agent-image, Cloud staging, apps-worker staging, and provisioning-
+worker staging effects in GitHub Deployments. `.github/develop-effects.json`
+binds every effect to its validation-surface digests, immutable workflow bytes,
+and typed inputs. A current exact success is idempotent; matching prior input is
+re-ledgered for the current SHA. An interrupted dispatch is resumed only when
+its exact workflow run can be rediscovered by workflow, SHA, and input digest;
+an ambiguous gap or failed run fails closed instead of replaying an external
+mutation. Each child rechecks the current develop SHA before accepting an
+external mutation.
+
+Main promotion is the final ledgered effect. It runs only after all four exact-
+SHA effect rows succeed and atomically compares both refs while fast-forwarding
+`main`: `develop` must still equal the verified SHA and `main` must still equal
+the previously compared base at the mutation boundary. An advanced develop tip
+is a neutral stale reconciliation; a behind or divergent main fails instead of
+creating an untested merge commit.
 The delegated `platform-smoke.yml` family preserves macOS and Windows core
 proof without a separate periodic authority.
 
