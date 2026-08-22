@@ -92,6 +92,11 @@ function getBunRuntime(): BunRuntimeLike | null {
   return (globalThis as { Bun?: BunRuntimeLike }).Bun ?? null;
 }
 
+/**
+ * Each signal gets its own grace period: SIGTERM may take 5s, then SIGKILL may
+ * take another 5s. Stop/reset stay blocked for at most 10s while the sidecar
+ * proves the child released its port and wallet database.
+ */
 const PROCESS_TERMINATION_GRACE_MS = 5_000;
 
 /** The spawned steward child, normalized across the Bun and Node spawn paths. */

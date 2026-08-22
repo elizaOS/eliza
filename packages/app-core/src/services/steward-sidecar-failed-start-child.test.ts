@@ -230,6 +230,78 @@ describe("StewardSidecar: a lifecycle that fails after the spawn", () => {
     expect(status.pid).toBe(7001);
   });
 
+  it("runs the SIGTERM-to-SIGKILL ladder and recovery path for a Bun child", async () => {
+    vi.useFakeTimers();
+    vi.mocked(waitForHealthy).mockRejectedValueOnce(
+      new Error("health timeout"),
+    );
+    const firstChild = fakeBunChild(7100);
+    const secondChild = fakeBunChild(7101);
+    const bunSpawn = vi
+      .fn()
+      .mockReturnValueOnce(firstChild)
+      .mockReturnValueOnce(secondChild);
+    vi.stubGlobal("Bun", { spawn: bunSpawn });
+    const sidecar = makeSidecar();
+
+    const firstStart = sidecar.start();
+    const firstFailure = expect(firstStart).rejects.toMatchObject({
+      code: "STEWARD_START_CLEANUP_FAILED",
+    });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(firstChild.kill).toHaveBeenCalledWith("SIGTERM");
+
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(firstChild.kill).toHaveBeenCalledWith("SIGKILL");
+    await vi.advanceTimersByTimeAsync(5_000);
+    await firstFailure;
+
+    await expect(sidecar.start()).rejects.toMatchObject({
+      code: "STEWARD_CHILD_EXIT_UNCONFIRMED",
+    });
+    expect(bunSpawn).toHaveBeenCalledTimes(1);
+
+    firstChild.kill.mockImplementation((signal?: string) => {
+      queueMicrotask(() => firstChild.exit(signal === "SIGKILL" ? 137 : 143));
+      return true;
+    });
+    vi.mocked(waitForHealthy).mockResolvedValue(undefined);
+
+    const recovered = await sidecar.restart();
+    expect(firstChild.kill).toHaveBeenLastCalledWith("SIGTERM");
+    expect(bunSpawn).toHaveBeenCalledTimes(2);
+    expect(recovered).toMatchObject({ state: "running", pid: 7101 });
+  });
+
+  it("reclaims a Bun child when a crash-restart health check fails", async () => {
+    vi.useFakeTimers();
+    const firstChild = fakeBunChild(7200);
+    const secondChild = fakeBunChild(7201);
+    secondChild.kill.mockImplementation((signal?: string) => {
+      queueMicrotask(() => secondChild.exit(signal === "SIGKILL" ? 137 : 143));
+      return true;
+    });
+    const bunSpawn = vi
+      .fn()
+      .mockReturnValueOnce(firstChild)
+      .mockReturnValueOnce(secondChild);
+    vi.stubGlobal("Bun", { spawn: bunSpawn });
+    const sidecar = makeSidecar();
+
+    await sidecar.start();
+    vi.mocked(waitForHealthy).mockRejectedValue(new Error("health timeout"));
+    firstChild.exit(1);
+    await vi.advanceTimersByTimeAsync(60_000);
+
+    expect(bunSpawn).toHaveBeenCalledTimes(2);
+    expect(secondChild.kill).toHaveBeenCalledWith("SIGTERM");
+    expect(sidecar.getStatus()).toMatchObject({
+      state: "error",
+      pid: null,
+      restartCount: 1,
+    });
+  });
+
   it("escalates to SIGKILL when SIGTERM does not produce an exit", async () => {
     vi.useFakeTimers();
     vi.mocked(waitForHealthy).mockRejectedValue(new Error("health timeout"));
@@ -285,6 +357,27 @@ describe("StewardSidecar: a lifecycle that fails after the spawn", () => {
       code: "STEWARD_CHILD_EXIT_UNCONFIRMED",
     });
     expect(spawnedChildren).toHaveLength(1);
+
+    const restart = sidecar.restart();
+    const restartFailure = expect(restart).rejects.toMatchObject({
+      code: "STEWARD_CHILD_TERMINATION_FAILED",
+    });
+    await vi.advanceTimersByTimeAsync(5_000);
+    await vi.advanceTimersByTimeAsync(5_000);
+    await restartFailure;
+    expect(spawnedChildren).toHaveLength(1);
+
+    spawnedChildren[0].kill.mockImplementation((signal?: string) => {
+      queueMicrotask(() =>
+        spawnedChildren[0].exit(signal === "SIGKILL" ? 137 : 143),
+      );
+      return true;
+    });
+    vi.mocked(waitForHealthy).mockResolvedValue(undefined);
+
+    const recovered = await sidecar.restart();
+    expect(spawnedChildren).toHaveLength(2);
+    expect(recovered.state).toBe("running");
   });
 
   it("does not read the reclaimed child's exit as a crash", async () => {
