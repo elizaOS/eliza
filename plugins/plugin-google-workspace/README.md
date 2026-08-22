@@ -10,6 +10,10 @@ The plugin also registers with the elizaOS `ConnectorAccountManager` so the buil
 
 The plugin also ships the Google Chat connector (`src/chat/`): `GoogleChatService` registers a runtime `MessageConnector` for sending and receiving messages in Chat spaces, DMs, and threads. Chat authenticates with a **service account** (`GOOGLE_CHAT_SERVICE_ACCOUNT[_FILE]` or `GOOGLE_APPLICATION_CREDENTIALS`, scope `https://www.googleapis.com/auth/chat.bot`) — a deliberately separate auth model from the Workspace OAuth grant. The plugin auto-enables when a `connectors.googlechat` block is configured (see `auto-enable.ts`); the Workspace side remains opt-in.
 
+Google Chat target resolution, recent-target discovery, roomless reads, and
+searches consider every listed space; the connector does not silently drop
+spaces past a fixed count.
+
 ## Capabilities
 
 ### Gmail

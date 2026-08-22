@@ -393,7 +393,11 @@ export * from "./services/setup-state";
 // TaskService is exported so hosts and tests can `instanceof`-check the
 // runtime-registered instance; a relative src import would create a second
 // class identity against the built package and always fail that check.
-export { TaskService } from "./services/task";
+export {
+	TaskService,
+	type TaskServiceClock,
+	type TaskServiceTimerHandle,
+} from "./services/task";
 export {
 	getTaskSchedulerAdapter,
 	markTaskSchedulerDirty,

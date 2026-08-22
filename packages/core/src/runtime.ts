@@ -11858,6 +11858,17 @@ ${section_end}`;
 		return tasks[0] ?? null;
 	}
 
+	async updatePendingTask(id: UUID, task: Partial<Task>): Promise<boolean> {
+		const updated =
+			(await this.adapter.updatePendingTask?.call(this.adapter, id, task)) ??
+			false;
+		if (updated) {
+			this._markLocalTasksDirty();
+			this._notifyCompanionTasksDirty();
+		}
+		return updated;
+	}
+
 	async updateTask(id: UUID, task: Partial<Task>): Promise<void> {
 		await this.adapter.updateTasks([{ id, task }]);
 		this._markLocalTasksDirty();

@@ -57,7 +57,7 @@ describe("connector-setup contract", () => {
 	});
 
 	it("setupPath composes the canonical /api/setup/<connector>/<action> path", () => {
-		expect(setupPath("signal", "start")).toBe("/api/setup/signal/start");
+		expect(setupPath("telegram", "start")).toBe("/api/setup/telegram/start");
 		expect(setupPath("bluebubbles", "status")).toBe(
 			"/api/setup/bluebubbles/status",
 		);

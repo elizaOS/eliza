@@ -139,6 +139,35 @@ describe("Task Integration Tests", () => {
       expect(retrieved?.metadata).toEqual({ status: "completed" });
     });
 
+    it("allows exactly one pending-task lifecycle transition", async () => {
+      const taskId = uuidv4() as UUID;
+      await adapter.createTask({
+        id: taskId,
+        roomId: testRoomId,
+        worldId: testWorldId,
+        entityId: testEntityId,
+        name: "Contended Task",
+        tags: ["queue", "follow-up"],
+        metadata: { status: "pending" },
+      });
+
+      const [completed, claimed] = await Promise.all([
+        adapter.updatePendingTask(taskId, {
+          tags: ["follow-up"],
+          metadata: { status: "completed" },
+        }),
+        adapter.updatePendingTask(taskId, {
+          tags: ["follow-up"],
+          metadata: { status: "executing" },
+        }),
+      ]);
+
+      expect([completed, claimed].filter(Boolean)).toHaveLength(1);
+      const stored = await adapter.getTask(taskId);
+      expect(stored?.tags).not.toContain("queue");
+      expect(["completed", "executing"]).toContain(stored?.metadata?.status);
+    });
+
     it("should delete a task", async () => {
       const taskId = uuidv4() as UUID;
       const task: Task = {

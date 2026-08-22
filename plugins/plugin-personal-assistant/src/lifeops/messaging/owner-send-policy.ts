@@ -66,7 +66,6 @@ const MESSAGE_SOURCE_GUARD: Record<MessageSource, true> = {
   telegram: true,
   twitter: true,
   imessage: true,
-  signal: true,
   whatsapp: true,
   calendly: true,
   browser_bridge: true,
@@ -268,7 +267,6 @@ const SOURCE_TO_CONNECTOR_KIND: Partial<Record<MessageSource, string>> = {
   telegram: "telegram",
   twitter: "x",
   imessage: "imessage",
-  signal: "signal",
   whatsapp: "whatsapp",
   calendly: "calendly",
 };

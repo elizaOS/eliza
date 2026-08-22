@@ -36,12 +36,6 @@ const EXPECTED: Record<
     defaultPurpose: ["messaging"],
     supportsOAuth: false,
   },
-  signal: {
-    provider: "signal",
-    defaultRole: "OWNER",
-    defaultPurpose: ["messaging"],
-    supportsOAuth: false,
-  },
   google: {
     provider: "google",
     defaultRole: "OWNER",

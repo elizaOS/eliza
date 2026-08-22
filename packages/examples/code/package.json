@@ -28,6 +28,7 @@
     "e2e:subagents": "bun src/e2e/subagents.ts",
     "e2e:games": "bun src/e2e/game-generation.ts",
     "e2e:deterministic-replay": "bun --conditions eliza-source --tsconfig-override ../../../tsconfig.json tests/e2e/deterministic-app-build-replay.mjs",
+    "e2e:owned-runtime-live": "bun run --cwd ../../logger build && bun run --cwd ../../core build:node && bun run --cwd ../../../plugins/plugin-sql build && bun run --cwd ../../../plugins/plugin-coding-tools build && bun run --cwd ../../../plugins/plugin-openai build && bun run build && bun --conditions eliza-source --tsconfig-override ../../../tsconfig.json tests/e2e/owned-runtime-live.mjs",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check .",
     "format": "bunx @biomejs/biome format --write .",

@@ -1338,6 +1338,7 @@ export interface IAgentRuntime extends RuntimeDatabaseAdapterSurface {
 
 	createTask(task: Task): Promise<UUID>;
 	getTask(id: UUID): Promise<Task | null>;
+	updatePendingTask(id: UUID, task: Partial<Task>): Promise<boolean>;
 	updateTask(id: UUID, task: Partial<Task>): Promise<void>;
 	deleteTask(id: UUID): Promise<void>;
 
