@@ -2058,12 +2058,19 @@ export function resolveZeroDeliveryRecovery(args: {
 			.filter((ownedText) => ownedText.length > 0)
 			.at(-1) ?? "";
 	const ackRecoveryText = args.earlyReplySent ? "" : args.stageOneAck;
+	const ranAnySteps = actionSuccessCount > 0 || actionFailureCount > 0;
+	// Effect honesty: the failure-flavored fallbacks may only describe steps
+	// that actually ran. A toolless turn (planner ended with no tool calls —
+	// e.g. a deliberate IGNORE on an addressed turn the delivery floor still
+	// answers) must not fabricate "I ran the steps … they failed".
 	const fallbackRecoveryText =
 		actionSuccessCount > 0 && actionFailureCount > 0
 			? "Some steps completed and some failed, but I could not produce a reliable summary. Check the current state before deciding whether to retry."
 			: actionSuccessCount > 0
 				? "The requested steps completed, but I could not produce a reliable summary. Check the current state before retrying."
-				: "I ran the steps for that but they failed, and I could not compose a useful report — ask again and I will retry.";
+				: ranAnySteps
+					? "I ran the steps for that but they failed, and I could not compose a useful report — ask again and I will retry."
+					: "I don't have a useful answer to that right now — ask again and I will retry.";
 	const text =
 		args.plannedText ||
 		lastActionUserFacingText ||
