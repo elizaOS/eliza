@@ -7,6 +7,7 @@
 import { randomUUID } from "node:crypto";
 import * as fs from "node:fs";
 import {
+  basename as nodePathBasename,
   join as nodePathJoin,
   resolve as nodePathResolve,
   sep as nodePathSep,
@@ -1589,12 +1590,26 @@ async function runCreateLegacy(
       // repo param present on the create path, the sub-agent git-init'd a
       // fresh repo in scratch and could not push).
       let createProvisionedWorkspaceId: string | undefined;
-      const createRequestedRepo = await resolveRequestedRepo(
+      let createRequestedRepo = await resolveRequestedRepo(
         runtime,
         params as Record<string, unknown>,
         [task, requestText(message)],
         requestText(message),
       );
+      // A planner repo that merely re-spells the matched route ("in the
+      // milady-fork repo" → `NubsCarson/milady-fork`) is the same thing the
+      // route already names: the local checkout wins and nothing is cloned
+      // (live 2026-08-22: "Repository not found" for a route that exists).
+      if (
+        createRequestedRepo &&
+        route &&
+        repoNamesRoute(createRequestedRepo, route)
+      ) {
+        logger(runtime).warn(
+          `[TASKS:create] planner repo ${createRequestedRepo} names the matched route ${route.id}; using its workdir instead of cloning`,
+        );
+        createRequestedRepo = undefined;
+      }
       // An explicitly-named repo outranks a keyword route: "put up a pr on
       // my <name> repo" text-matches generic route entries ("pull request"),
       // which silently steered repo asks into unrelated local checkouts and
@@ -3891,6 +3906,25 @@ async function successorInheritance(
     // counts as present instead of predating "session start".
     ...(record?.id ? { parentTaskId: record.id } : {}),
   };
+}
+
+/** Whether a repo reference's name is what a configured route calls itself:
+ *  its id or its workdir's last segment. */
+function repoNamesRoute(
+  repo: string,
+  route: { id?: string; workdir: string },
+): boolean {
+  const name = repo
+    .replace(/^https?:\/\/[^/]+\//i, "")
+    .replace(/^git@[\w.-]+:/i, "")
+    .replace(/\.git$/i, "")
+    .split("/")
+    .pop()
+    ?.toLowerCase();
+  if (!name) return false;
+  return [route.id, nodePathBasename(route.workdir)]
+    .filter((value): value is string => typeof value === "string")
+    .some((value) => value.toLowerCase() === name);
 }
 
 async function runSend(
