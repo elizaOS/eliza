@@ -1,9 +1,9 @@
 /**
  * `eliza auth adopt-codex` drives the real adoption in @elizaos/auth against a
- * temp HOME/ELIZA_HOME/CODEX_HOME — no simulation layer. Covers the explicit
- * --yes confirmation gate, the successful ownership transfer, typed failure
- * surfacing, and the commander wiring (subcommand present under `auth` with the
- * confirmation described).
+ * temp HOME/ELIZA_HOME/ELIZA_STATE_DIR/CODEX_HOME — no simulation layer.
+ * Covers the explicit --yes confirmation gate, the successful ownership
+ * transfer, typed failure surfacing, and the commander wiring (subcommand
+ * present under `auth` with the confirmation described).
  */
 import {
   existsSync,
@@ -47,11 +47,12 @@ function writeCodexAuth(dir: string, refresh: string): string {
 
 beforeEach(() => {
   home = mkdtempSync(path.join(tmpdir(), "adopt-codex-cli-"));
-  for (const key of ["HOME", "ELIZA_HOME", "CODEX_HOME"]) {
+  for (const key of ["HOME", "ELIZA_HOME", "ELIZA_STATE_DIR", "CODEX_HOME"]) {
     savedEnv[key] = process.env[key];
   }
   process.env.HOME = home;
   process.env.ELIZA_HOME = home;
+  process.env.ELIZA_STATE_DIR = home;
   delete process.env.CODEX_HOME;
 });
 
