@@ -255,6 +255,29 @@ describe("shared-utils deadline helpers", () => {
     expect(outcome).toMatchObject({ code: "CLOUD_REST_RESPONSE_TOO_LARGE" });
   });
 
+  it("counts empty stream chunks toward the fragmentation bound", async () => {
+    globalThis.fetch = mock(
+      async () =>
+        new Response(
+          new ReadableStream<Uint8Array>({
+            start(controller) {
+              controller.enqueue(new Uint8Array());
+              controller.enqueue(new Uint8Array());
+              controller.enqueue(new Uint8Array());
+            },
+          }),
+        ),
+    ) as typeof fetch;
+
+    await expect(
+      ownedBoundedFetch("https://example.com", undefined, {
+        maxResponseBytes: 10,
+        maxResponseChunks: 2,
+        timeoutMs: 100,
+      }),
+    ).rejects.toMatchObject({ code: "CLOUD_REST_RESPONSE_TOO_LARGE" });
+  });
+
   it("restores fetch after every case (no mock leak)", async () => {
     installHungFetch();
     await expect(

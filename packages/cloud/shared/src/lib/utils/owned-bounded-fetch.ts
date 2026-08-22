@@ -138,10 +138,21 @@ export async function ownedBoundedFetch(
     while (true) {
       const next = await Promise.race([reader.read(), abortPromise]);
       if (next.done) break;
-      if (next.value.byteLength === 0) continue;
       chunks += 1;
+      if (chunks > maxResponseChunks) {
+        const error = sizeError({
+          chunks,
+          maxResponseBytes,
+          maxResponseChunks,
+          receivedBytes,
+        });
+        cancelReaderDetached(reader, error);
+        reader = undefined;
+        throw error;
+      }
+      if (next.value.byteLength === 0) continue;
       receivedBytes += next.value.byteLength;
-      if (receivedBytes > maxResponseBytes || chunks > maxResponseChunks) {
+      if (receivedBytes > maxResponseBytes) {
         const error = sizeError({
           chunks,
           maxResponseBytes,
