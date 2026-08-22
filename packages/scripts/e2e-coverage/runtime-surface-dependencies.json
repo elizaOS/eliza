@@ -120,7 +120,8 @@
     },
     {
       "packageName": "@elizaos/plugin-anthropic-proxy",
-      "kinds": ["action", "route", "service"],
+      "kinds": ["service"],
+      "surfaceIds": ["@elizaos/plugin-anthropic-proxy:service:anthropic-proxy"],
       "externalServices": [
         {
           "id": "anthropic-api",
@@ -135,8 +136,35 @@
       ]
     },
     {
+      "packageName": "@elizaos/plugin-anthropic-proxy",
+      "kinds": ["action", "route"],
+      "surfaceIds": [
+        "@elizaos/plugin-anthropic-proxy:action:proxy_status",
+        "@elizaos/plugin-anthropic-proxy:route:/api/anthropic-proxy/status"
+      ],
+      "externalServices": [
+        {
+          "id": "anthropic-proxy-health",
+          "protocol": "Configured shared Anthropic proxy health HTTP endpoint",
+          "missingMockReason": "The status surfaces can fetch the configured shared proxy health endpoint, which the Anthropic Messages fixture does not own."
+        }
+      ]
+    },
+    {
       "packageName": "@elizaos/plugin-anthropic",
       "kinds": ["model-handler"],
+      "surfaceIds": [
+        "@elizaos/plugin-anthropic:model-handler:action_planner",
+        "@elizaos/plugin-anthropic:model-handler:image_description",
+        "@elizaos/plugin-anthropic:model-handler:reasoning_large",
+        "@elizaos/plugin-anthropic:model-handler:reasoning_small",
+        "@elizaos/plugin-anthropic:model-handler:response_handler",
+        "@elizaos/plugin-anthropic:model-handler:text_large",
+        "@elizaos/plugin-anthropic:model-handler:text_medium",
+        "@elizaos/plugin-anthropic:model-handler:text_mega",
+        "@elizaos/plugin-anthropic:model-handler:text_nano",
+        "@elizaos/plugin-anthropic:model-handler:text_small"
+      ],
       "externalServices": [
         {
           "id": "anthropic-api",
@@ -191,30 +219,7 @@
         {
           "id": "google-calendar-api",
           "protocol": "Google Calendar API v3",
-          "mockOwner": "google-workspace",
-          "mockSource": "packages/scenario-runner/test/mocks/mockoon/calendar.json",
-          "mockContract": {
-            "kind": "mockoon-http",
-            "operations": [
-              { "method": "GET", "path": "calendar/v3/users/me/calendarList" },
-              {
-                "method": "GET",
-                "path": "calendar/v3/calendars/:calendarId/events"
-              },
-              {
-                "method": "POST",
-                "path": "calendar/v3/calendars/:calendarId/events"
-              },
-              {
-                "method": "PATCH",
-                "path": "calendar/v3/calendars/:calendarId/events/:eventId"
-              },
-              {
-                "method": "DELETE",
-                "path": "calendar/v3/calendars/:calendarId/events/:eventId"
-              }
-            ]
-          }
+          "missingMockReason": "The Calendar fixture omits watch, stop-channel, and other production operations used by the Calendar service boundary."
         },
         {
           "id": "microsoft-graph-calendar",
@@ -243,30 +248,7 @@
         {
           "id": "google-calendar-api",
           "protocol": "Google Calendar API v3",
-          "mockOwner": "google-workspace",
-          "mockSource": "packages/scenario-runner/test/mocks/mockoon/calendar.json",
-          "mockContract": {
-            "kind": "mockoon-http",
-            "operations": [
-              { "method": "GET", "path": "calendar/v3/users/me/calendarList" },
-              {
-                "method": "GET",
-                "path": "calendar/v3/calendars/:calendarId/events"
-              },
-              {
-                "method": "POST",
-                "path": "calendar/v3/calendars/:calendarId/events"
-              },
-              {
-                "method": "PATCH",
-                "path": "calendar/v3/calendars/:calendarId/events/:eventId"
-              },
-              {
-                "method": "DELETE",
-                "path": "calendar/v3/calendars/:calendarId/events/:eventId"
-              }
-            ]
-          }
+          "missingMockReason": "The fixture does not own provider-originated webhook ingress, watch and stop lifecycle calls, and the complete refetch path."
         }
       ]
     },
@@ -389,28 +371,28 @@
     {
       "packageName": "@elizaos/plugin-google-workspace",
       "kinds": ["connector-egress", "connector-ingress", "service"],
+      "surfaceIds": [
+        "@elizaos/plugin-google-workspace:connector-egress:google-chat",
+        "@elizaos/plugin-google-workspace:connector-ingress:google-chat",
+        "@elizaos/plugin-google-workspace:service:google-chat"
+      ],
+      "externalServices": [
+        {
+          "id": "google-chat-api",
+          "protocol": "Google Chat v1 REST, media upload, service-account auth, and inbound event protocol",
+          "missingMockReason": "The Google fixture has no chat.googleapis.com operations, upload endpoints, or inbound Google Chat event transport."
+        }
+      ]
+    },
+    {
+      "packageName": "@elizaos/plugin-google-workspace",
+      "kinds": ["service"],
+      "surfaceIds": ["@elizaos/plugin-google-workspace:service:google"],
       "externalServices": [
         {
           "id": "google-workspace-api",
-          "protocol": "Google Workspace OAuth 2.0, Gmail, and Calendar APIs",
-          "mockOwner": "google-workspace",
-          "mockSource": "packages/scenario-runner/test/mocks/environments/google.json",
-          "mockContract": {
-            "kind": "mockoon-http",
-            "operations": [
-              { "method": "POST", "path": "token" },
-              { "method": "GET", "path": "gmail/v1/users/me/messages" },
-              { "method": "POST", "path": "gmail/v1/users/me/messages/send" },
-              {
-                "method": "GET",
-                "path": "calendar/v3/calendars/:calId/events"
-              },
-              {
-                "method": "POST",
-                "path": "calendar/v3/calendars/:calId/events"
-              }
-            ]
-          }
+          "protocol": "Google Workspace Gmail, Calendar, Drive, Meet, People, and OAuth APIs",
+          "missingMockReason": "The Google fixture owns only a Gmail and Calendar subset and omits Drive, Meet, People, watch, stop, and other service operations."
         }
       ]
     },
@@ -443,12 +425,7 @@
         {
           "id": "linear-api",
           "protocol": "Linear GraphQL API",
-          "mockOwner": "linear",
-          "mockSource": "packages/scenario-runner/test/mocks/environments/linear.json",
-          "mockContract": {
-            "kind": "mockoon-http",
-            "operations": [{ "method": "POST", "path": "graphql" }]
-          }
+          "missingMockReason": "The generic GraphQL response does not implement the production viewer, team, and issue query and mutation contracts."
         }
       ]
     },
@@ -492,23 +469,24 @@
         {
           "id": "notion-api",
           "protocol": "Notion OAuth and workspace REST API",
-          "mockOwner": "notion",
-          "mockSource": "packages/scenario-runner/test/mocks/mockoon/notion.json",
-          "mockContract": {
-            "kind": "mockoon-http",
-            "operations": [
-              { "method": "POST", "path": "v1/search" },
-              { "method": "POST", "path": "v1/pages" },
-              { "method": "PATCH", "path": "v1/blocks/:blockId/children" },
-              { "method": "GET", "path": "v1/databases/:databaseId" }
-            ]
-          }
+          "missingMockReason": "The fixture omits OAuth, page reads, block-child reads, and other production Notion service operations."
         }
       ]
     },
     {
       "packageName": "@elizaos/plugin-openai",
       "kinds": ["model-handler"],
+      "surfaceIds": [
+        "@elizaos/plugin-openai:model-handler:action_planner",
+        "@elizaos/plugin-openai:model-handler:research",
+        "@elizaos/plugin-openai:model-handler:response_handler",
+        "@elizaos/plugin-openai:model-handler:text_embedding",
+        "@elizaos/plugin-openai:model-handler:text_large",
+        "@elizaos/plugin-openai:model-handler:text_medium",
+        "@elizaos/plugin-openai:model-handler:text_mega",
+        "@elizaos/plugin-openai:model-handler:text_nano",
+        "@elizaos/plugin-openai:model-handler:text_small"
+      ],
       "externalServices": [
         {
           "id": "openai-api",
@@ -525,6 +503,15 @@
           }
         }
       ]
+    },
+    {
+      "packageName": "@elizaos/plugin-openai",
+      "kinds": ["model-handler"],
+      "surfaceIds": [
+        "@elizaos/plugin-openai:model-handler:text_tokenizer_decode",
+        "@elizaos/plugin-openai:model-handler:text_tokenizer_encode"
+      ],
+      "noExternalServiceReason": "The exact tokenizer handlers run offline through js-tiktoken and never call the OpenAI API."
     },
     {
       "packageName": "@elizaos/plugin-registry",
@@ -544,16 +531,7 @@
         {
           "id": "slack-api",
           "protocol": "Slack Web API, Events API, and OAuth 2.0",
-          "mockOwner": "messaging-webhook-family",
-          "mockSource": "packages/scenario-runner/test/mocks/environments/slack.json",
-          "mockContract": {
-            "kind": "mockoon-http",
-            "operations": [
-              { "method": "POST", "path": "api/chat.postMessage" },
-              { "method": "POST", "path": "events" },
-              { "method": "POST", "path": "api/auth.test" }
-            ]
-          }
+          "missingMockReason": "The HTTP fixture omits Socket Mode WebSocket ingress and the full Web API operation set used by the Slack service."
         }
       ]
     },
@@ -586,17 +564,7 @@
         {
           "id": "telegram-bot-api",
           "protocol": "Telegram Bot API and webhook protocol",
-          "mockOwner": "messaging-webhook-family",
-          "mockSource": "packages/scenario-runner/test/mocks/environments/telegram.json",
-          "mockContract": {
-            "kind": "mockoon-http",
-            "operations": [
-              { "method": "GET", "path": "bot:token/getMe" },
-              { "method": "GET", "path": "bot:token/getUpdates" },
-              { "method": "POST", "path": "bot:token/sendMessage" },
-              { "method": "POST", "path": "bot:token/setWebhook" }
-            ]
-          }
+          "missingMockReason": "The fixture omits getChat, forum-topic and pin operations, media sends, reactions, and full Telegraf launch and lifecycle behavior."
         }
       ]
     },
@@ -692,20 +660,7 @@
         {
           "id": "x-api",
           "protocol": "X API v2, OAuth 2.0, and direct-message protocol",
-          "mockOwner": "x-twitter",
-          "mockSource": "packages/scenario-runner/test/mocks/environments/x-twitter.json",
-          "mockContract": {
-            "kind": "mockoon-http",
-            "operations": [
-              { "method": "POST", "path": "2/tweets" },
-              {
-                "method": "POST",
-                "path": "2/dm_conversations/with/:id/messages"
-              },
-              { "method": "GET", "path": "2/dm_events" },
-              { "method": "GET", "path": "2/users/:id/mentions" }
-            ]
-          }
+          "missingMockReason": "The partial fixture omits profile lookup, full timelines, search, delete, like, unlike, retweet, unretweet, and OAuth session operations."
         }
       ]
     },

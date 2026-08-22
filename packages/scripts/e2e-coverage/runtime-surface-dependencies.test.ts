@@ -7,11 +7,37 @@
 import { describe, expect, test } from "bun:test";
 import {
   loadRuntimeDependencyCatalog,
+  parseMockoonHttpOperations,
   RUNTIME_DEPENDENCY_SCHEMA,
   type RuntimeDependencyCatalog,
   resolveRuntimeDependencies,
   validateRuntimeDependencyCatalog,
 } from "./runtime-surface-inventory.ts";
+
+function mockoonFixture() {
+  return {
+    endpointPrefix: "/api/",
+    folders: [],
+    routes: [
+      {
+        uuid: "route-1",
+        type: "http",
+        method: "post",
+        endpoint: "/v1/example",
+        responses: [
+          {
+            uuid: "response-1",
+            statusCode: 200,
+            default: true,
+            bodyType: "INLINE",
+            body: "{}",
+          },
+        ],
+      },
+    ],
+    rootChildren: [{ type: "route", uuid: "route-1" }],
+  };
+}
 
 function catalog(
   rules: RuntimeDependencyCatalog["rules"],
@@ -42,7 +68,12 @@ describe("runtime surface dependency catalog", () => {
 
   test("binds an external model protocol to a concrete mock owner and source", () => {
     expect(
-      resolveRuntimeDependencies("@elizaos/plugin-openai", "model-handler"),
+      resolveRuntimeDependencies(
+        "@elizaos/plugin-openai",
+        "model-handler",
+        undefined,
+        "@elizaos/plugin-openai:model-handler:text_small",
+      ),
     ).toEqual({
       externalServiceDependencies: [
         { id: "openai-api", protocol: "OpenAI API v1" },
@@ -335,6 +366,7 @@ describe("runtime surface dependency catalog", () => {
       {
         packageName: "@elizaos/example",
         kinds: ["connector-ingress"],
+        surfaceIds: ["@elizaos/example:connector-ingress:example"],
         externalServices: [
           {
             id: "example-api",
@@ -355,6 +387,7 @@ describe("runtime surface dependency catalog", () => {
           {
             packageName: "@elizaos/example",
             kind: "connector-ingress",
+            id: "@elizaos/example:connector-ingress:example",
           },
         ],
         invalid,
@@ -367,13 +400,14 @@ describe("runtime surface dependency catalog", () => {
       {
         packageName: "@elizaos/example",
         kinds: ["route"],
+        surfaceIds: ["@elizaos/example:route:/example"],
         externalServices: [
           {
             id: "stripe-api",
             protocol: "Stripe checkout API",
             mockOwner: "internal-payments",
             mockSource:
-              "packages/scenario-runner/test/mocks/environments/payments.json",
+              "packages/scenario-runner/test/mocks/environments/openai.json",
             mockContract: {
               kind: "mockoon-http" as const,
               operations: [{ method: "POST", path: "v1/checkout/sessions" }],
@@ -384,10 +418,201 @@ describe("runtime surface dependency catalog", () => {
     ]);
     expect(() =>
       validateRuntimeDependencyCatalog(
-        [{ packageName: "@elizaos/example", kind: "route" }],
+        [
+          {
+            packageName: "@elizaos/example",
+            kind: "route",
+            id: "@elizaos/example:route:/example",
+          },
+        ],
         invalid,
       ),
     ).toThrow(/does not register HTTP operation POST v1\/checkout\/sessions/);
+  });
+
+  test("requires exact surface ids for mock ownership", () => {
+    const invalid = catalog([
+      {
+        packageName: "@elizaos/example",
+        kinds: ["service"],
+        externalServices: [
+          {
+            id: "example-api",
+            protocol: "Example HTTP API",
+            mockOwner: "example",
+            mockSource:
+              "packages/scenario-runner/test/mocks/environments/openai.json",
+            mockContract: {
+              kind: "mockoon-http" as const,
+              operations: [{ method: "POST", path: "v1/chat/completions" }],
+            },
+          },
+        ],
+      },
+    ]);
+    expect(() =>
+      validateRuntimeDependencyCatalog(
+        [{ packageName: "@elizaos/example", kind: "service" }],
+        invalid,
+      ),
+    ).toThrow(/mock ownership requires exact surfaceIds/);
+  });
+
+  test("parses registered prefix-aware Mockoon operations", () => {
+    expect([
+      ...parseMockoonHttpOperations(mockoonFixture(), "example-api"),
+    ]).toEqual(["POST api/v1/example"]);
+  });
+
+  test("rejects malformed Mockoon responses", () => {
+    for (const responses of [
+      [],
+      [null],
+      [{}],
+      [
+        {
+          uuid: "response-1",
+          statusCode: 99,
+          default: true,
+          bodyType: "INLINE",
+          body: "{}",
+        },
+      ],
+      [
+        {
+          uuid: "response-1",
+          statusCode: 200,
+          default: true,
+          bodyType: "INLINE",
+          body: "{}",
+        },
+        {
+          uuid: "response-2",
+          statusCode: 500,
+          default: true,
+          bodyType: "INLINE",
+          body: "{}",
+        },
+      ],
+      [
+        {
+          uuid: "response-1",
+          statusCode: 200,
+          default: false,
+          bodyType: "INLINE",
+          body: "{}",
+        },
+      ],
+    ]) {
+      const fixture = mockoonFixture();
+      fixture.routes[0].responses =
+        responses as (typeof fixture.routes)[0]["responses"];
+      expect(() => parseMockoonHttpOperations(fixture, "example-api")).toThrow(
+        /unserved Mockoon HTTP route/,
+      );
+    }
+  });
+
+  test("accepts an empty inline body for a registered 204 response", () => {
+    const fixture = mockoonFixture();
+    fixture.routes[0].method = "DELETE";
+    fixture.routes[0].responses[0].statusCode = 204;
+    fixture.routes[0].responses[0].body = "";
+    expect([...parseMockoonHttpOperations(fixture, "example-api")]).toEqual([
+      "DELETE api/v1/example",
+    ]);
+  });
+
+  test("rejects bad methods, orphan routes, unknown registrations, and duplicate operations", () => {
+    const badMethod = mockoonFixture();
+    badMethod.routes[0].method = "FAKE";
+    expect(() => parseMockoonHttpOperations(badMethod, "example-api")).toThrow(
+      /unserved Mockoon HTTP route/,
+    );
+
+    const orphan = mockoonFixture();
+    orphan.rootChildren = [];
+    expect(() => parseMockoonHttpOperations(orphan, "example-api")).toThrow(
+      /unserved Mockoon HTTP route/,
+    );
+
+    const unknown = mockoonFixture();
+    unknown.rootChildren[0].uuid = "missing-route";
+    expect(() => parseMockoonHttpOperations(unknown, "example-api")).toThrow(
+      /unserved Mockoon HTTP route/,
+    );
+
+    const duplicate = mockoonFixture();
+    duplicate.routes.push({
+      ...structuredClone(duplicate.routes[0]),
+      uuid: "route-2",
+    });
+    duplicate.rootChildren.push({ type: "route", uuid: "route-2" });
+    expect(() => parseMockoonHttpOperations(duplicate, "example-api")).toThrow(
+      /duplicate Mockoon HTTP operation/,
+    );
+  });
+
+  test("keeps partial connector fixtures and local tokenizers fail-closed", () => {
+    const missingCases = [
+      [
+        "@elizaos/plugin-google-workspace",
+        "connector-ingress",
+        "@elizaos/plugin-google-workspace:connector-ingress:google-chat",
+      ],
+      [
+        "@elizaos/plugin-slack",
+        "connector-ingress",
+        "@elizaos/plugin-slack:connector-ingress:slack",
+      ],
+      [
+        "@elizaos/plugin-telegram",
+        "service",
+        "@elizaos/plugin-telegram:service:telegram",
+      ],
+      ["@elizaos/plugin-x", "service", "@elizaos/plugin-x:service:x"],
+      [
+        "@elizaos/plugin-calendar",
+        "route",
+        "@elizaos/plugin-calendar:route:/api/lifeops/calendar/google/webhook",
+      ],
+      [
+        "@elizaos/plugin-anthropic-proxy",
+        "action",
+        "@elizaos/plugin-anthropic-proxy:action:proxy_status",
+      ],
+    ] as const;
+    for (const [packageName, kind, surfaceId] of missingCases) {
+      expect(
+        resolveRuntimeDependencies(packageName, kind, undefined, surfaceId)
+          .dependencyDisposition,
+      ).toBe("mock-missing");
+    }
+
+    expect(
+      resolveRuntimeDependencies(
+        "@elizaos/plugin-openai",
+        "model-handler",
+        undefined,
+        "@elizaos/plugin-openai:model-handler:text_tokenizer_encode",
+      ).dependencyDisposition,
+    ).toBe("local-only");
+    expect(
+      resolveRuntimeDependencies(
+        "@elizaos/plugin-openai",
+        "model-handler",
+        undefined,
+        "@elizaos/plugin-openai:model-handler:text_small",
+      ).dependencyDisposition,
+    ).toBe("mock-owned");
+    expect(
+      resolveRuntimeDependencies(
+        "@elizaos/plugin-anthropic-proxy",
+        "service",
+        undefined,
+        "@elizaos/plugin-anthropic-proxy:service:anthropic-proxy",
+      ).dependencyDisposition,
+    ).toBe("mock-owned");
   });
 
   test("the committed catalog is versioned and records its closed design reference", () => {
@@ -397,7 +622,7 @@ describe("runtime surface dependency catalog", () => {
       pullRequest: 23185,
       head: "0f14c26c6ae4b28771d984c32e8d1fd79c7929ee",
     });
-    expect(committed.rules).toHaveLength(51);
+    expect(committed.rules).toHaveLength(54);
     expect(Object.keys(committed.localPackages)).toHaveLength(0);
     expect(committed.rules.every((rule) => Array.isArray(rule.kinds))).toBe(
       true,
