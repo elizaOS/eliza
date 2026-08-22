@@ -31,6 +31,7 @@ import {
   EXTERNAL_CANARY_MAX_SIGNATURE_AGE_MS,
   EXTERNAL_PROVIDER_CANARY_CONFIG_SCHEMA,
   EXTERNAL_PROVIDER_CANARY_HELP,
+  EXTERNAL_PROVIDER_CANARY_JOURNAL_SCHEMA,
   loadPinnedExternalProviderCapabilityModule,
   parseExternalProviderCanaryConfig,
   readCanonicalProviderScenarioDefinition,
@@ -330,7 +331,7 @@ describe("external provider-canary CLI", () => {
     const journal = {
       file: path.join(directory, "journal.json"),
       value: {
-        schema: "eliza.external-provider-canary-run-journal.v1" as const,
+        schema: EXTERNAL_PROVIDER_CANARY_JOURNAL_SCHEMA,
         manifestSha256: "e".repeat(64),
         scenarioId: "provider.discord.confirmed-send",
         runId: "run-1",
