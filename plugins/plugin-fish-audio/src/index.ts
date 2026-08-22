@@ -410,13 +410,9 @@ function createFishAudioStream(
     }
   });
   socket.addEventListener("error", (event) => {
-    const diagnosticText = [
-      event.message,
-      event.error instanceof Error ? event.error.message : undefined,
-    ]
-      .filter((value): value is string => typeof value === "string")
-      .join(" ");
-    const statusCode = /\b(401|429)\b/.exec(diagnosticText)?.[1];
+    const statusCode = /^Unexpected server response: (401|429)$/.exec(
+      event.message ?? "",
+    )?.[1];
     const code =
       statusCode === "401"
         ? "FISH_AUDIO_AUTH_FAILED"

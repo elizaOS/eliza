@@ -288,7 +288,10 @@ describe("fishAudioPlugin", () => {
     const secret = "WS_CAUSE_SECRET_do-not-reflect_88fd";
     FakeFishSocket.instances
       .at(-1)
-      ?.emitError(`upgrade 401 ${secret}`, new Error(`cause ${secret}`));
+      ?.emitError(
+        "Unexpected server response: 401",
+        new Error(`cause ${secret}`),
+      );
 
     const failure = await result.bytes.catch((error: unknown) => error);
     expect(failure).toMatchObject({
@@ -309,6 +312,41 @@ describe("fishAudioPlugin", () => {
         JSON.stringify(error.context),
         String(error.cause),
       ].join("\n"),
+    ).not.toContain(secret);
+  });
+
+  test("does not classify injected status digits as an upgrade status", async () => {
+    FakeFishSocket.respondToText = false;
+    useFakeSocket();
+    const result = await handleFishAudioTextToSpeech(
+      runtime({
+        ELIZA_TTS_FISH_ENABLED: "true",
+        FISH_AUDIO_DATA_GOVERNANCE_APPROVED: "true",
+        FISH_AUDIO_API_KEY: "key",
+        FISH_AUDIO_REFERENCE_ID: "voice",
+      }),
+      { text: "ambiguous transport error", audioStream: true },
+    );
+    if (!("bytes" in result)) throw new Error("Expected streaming result");
+    await Promise.resolve();
+    const secret = "WS_STATUS_SECRET_429_then_401_778a";
+    FakeFishSocket.instances
+      .at(-1)
+      ?.emitError(
+        `provider text ${secret}`,
+        new Error(`Unexpected server response: 401 ${secret}`),
+      );
+
+    const failure = await result.bytes.catch((error: unknown) => error);
+    expect(failure).toMatchObject({
+      code: "FISH_AUDIO_WEBSOCKET_ERROR",
+      message: "Fish Audio WebSocket transport failed",
+      context: { retryable: true },
+    });
+    const error = failure as Error & { cause?: unknown };
+    expect(error.cause).toBeUndefined();
+    expect(
+      [String(error), error.stack, JSON.stringify(error)].join("\n"),
     ).not.toContain(secret);
   });
 
