@@ -53,6 +53,34 @@ describe("built-in Codex CLI credential discovery", () => {
     fs.rmSync(home, { recursive: true, force: true });
   });
 
+  it("reports an unreadable auth file as present-but-invalid, not absent", () => {
+    // A credential file the user cannot read is the sharpest "present but
+    // broken" case there is. Collapsing it into `absent` hides the Codex row
+    // entirely, so the user sees nothing rather than something to fix.
+    const directory = path.join(home, ".codex");
+    fs.mkdirSync(directory, { recursive: true });
+    const authPath = path.join(directory, "auth.json");
+    fs.writeFileSync(
+      authPath,
+      JSON.stringify({ tokens: { access_token: "t" } }),
+    );
+    fs.chmodSync(authPath, 0o000);
+    // Root ignores the mode bits, so only assert where the chmod actually bites.
+    let readable = true;
+    try {
+      fs.readFileSync(authPath, "utf-8");
+    } catch {
+      readable = false;
+    }
+    if (readable) return;
+
+    expect(discoverCodexCredential()).toMatchObject({
+      source: "codex-cli",
+      configured: true,
+      valid: false,
+    });
+  });
+
   it.each([
     ["malformed JSON", "{"],
     ["missing token block", JSON.stringify({ auth_mode: "chatgpt" })],
