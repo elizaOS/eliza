@@ -337,6 +337,34 @@ function Stop-WindowsJob {
   Wait-WindowsJobEmpty $Job $jobDrainTimeoutMs
 }
 
+function Disable-WindowsJobKillOnClose {
+  param([IntPtr] $Job)
+
+  $limits =
+    New-Object RunWithDeadlineNative+JOBOBJECT_EXTENDED_LIMIT_INFORMATION
+  $limitsSize = [Runtime.InteropServices.Marshal]::SizeOf($limits)
+  $pointer = [Runtime.InteropServices.Marshal]::AllocHGlobal($limitsSize)
+  try {
+    [Runtime.InteropServices.Marshal]::StructureToPtr(
+      $limits,
+      $pointer,
+      $false
+    )
+    if (-not [RunWithDeadlineNative]::SetInformationJobObject(
+      $Job,
+      9,
+      $pointer,
+      $limitsSize
+    )) {
+      throw [ComponentModel.Win32Exception]::new(
+        [Runtime.InteropServices.Marshal]::GetLastWin32Error()
+      )
+    }
+  } finally {
+    [Runtime.InteropServices.Marshal]::FreeHGlobal($pointer)
+  }
+}
+
 $job = [IntPtr]::Zero
 $attributeList = [IntPtr]::Zero
 $jobPointer = [IntPtr]::Zero
@@ -664,8 +692,12 @@ try {
       [Runtime.InteropServices.Marshal]::GetLastWin32Error()
     )
   }
-  $cleanupAttempted = $true
-  Stop-WindowsJob $job ([ref] $processInformation) $workerExitCode
+  # A normal leader exit is not a deadline. Disarm kill-on-close before this
+  # keeper releases the Job Object so descendants retain the same lifetime
+  # they have under the POSIX wrapper. Failure to disarm enters the catch path,
+  # which terminates and drains the owned job instead of hiding uncertainty.
+  Disable-WindowsJobKillOnClose $job
+  Close-WorkerHandles ([ref] $processInformation)
   $exitCode = [BitConverter]::ToInt32(
     [BitConverter]::GetBytes($workerExitCode),
     0
