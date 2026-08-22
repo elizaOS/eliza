@@ -224,9 +224,7 @@ describe("cross-browser extension build", () => {
     for (const metadata of [chrome, firefox, safari, checklist]) {
       expect(metadata).toMatch(/automatic|automatically|native enrollment/i);
       expect(metadata).toMatch(/recovery/i);
-      expect(metadata).not.toContain(
-        "pairing JSON import is the only credential setup flow",
-      );
+      expect(metadata).not.toMatch(/pairing json/i);
     }
   });
 });
