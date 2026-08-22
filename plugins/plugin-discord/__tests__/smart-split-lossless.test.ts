@@ -4,7 +4,7 @@
  */
 import type { IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
-import { smartSplitMessage, splitMessage } from "../utils";
+import { sendMessageInChunks, smartSplitMessage, splitMessage } from "../utils";
 
 function runtimeReturning(response: string): IAgentRuntime {
 	return {
@@ -66,5 +66,19 @@ describe("smartSplitMessage lossless validation", () => {
 		);
 		expect(chunks.join("")).toBe(source);
 		expect(chunks.every((chunk) => chunk.length <= 9)).toBe(true);
+	});
+});
+
+describe("sendMessageInChunks content preservation", () => {
+	it("sends boundary whitespace without trimming it", async () => {
+		const send = vi.fn(async () => ({ id: "sent" }));
+		const channel = { send } as unknown as Parameters<
+			typeof sendMessageInChunks
+		>[0];
+		const content = "  leading and trailing  ";
+
+		await sendMessageInChunks(channel, content, "", []);
+
+		expect(send).toHaveBeenCalledWith(expect.objectContaining({ content }));
 	});
 });

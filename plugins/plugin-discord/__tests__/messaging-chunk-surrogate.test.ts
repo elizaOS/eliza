@@ -35,7 +35,7 @@ describe("splitMessage surrogate-safe chunking", () => {
 		}
 	});
 
-	it("splits on whitespace when available and stays well-formed", () => {
+	it("preserves whitespace exactly while staying well-formed", () => {
 		const firstLine = "y".repeat(MAX_DISCORD_MESSAGE_LENGTH - 1);
 		const text = `${firstLine} z`;
 
@@ -64,5 +64,16 @@ describe("splitMessage surrogate-safe chunking", () => {
 		}
 		expect(caught).toBeInstanceOf(ElizaError);
 		expect((caught as ElizaError).code).toBe("DISCORD_CHUNK_LIMIT_TOO_SMALL");
+	});
+
+	it("rejects malformed Unicode instead of rewriting it", () => {
+		let caught: unknown;
+		try {
+			splitMessage("before\ud800after", MAX_DISCORD_MESSAGE_LENGTH);
+		} catch (error) {
+			caught = error;
+		}
+		expect(caught).toBeInstanceOf(ElizaError);
+		expect((caught as ElizaError).code).toBe("DISCORD_CONTENT_INVALID_UNICODE");
 	});
 });

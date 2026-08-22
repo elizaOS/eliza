@@ -666,7 +666,7 @@ export async function sendMessageInChunks(
 		for (let i = 0; i < messages.length; i++) {
 			const message = messages[i];
 			if (
-				message.trim().length > 0 ||
+				message.length > 0 ||
 				(i === messages.length - 1 && files && files.length > 0) ||
 				(i === messages.length - 1 && components && components.length > 0)
 			) {
@@ -674,7 +674,7 @@ export async function sendMessageInChunks(
 					return sentMessages;
 				}
 				const options: MessageSendOptions = {
-					content: message.trim(),
+					content: message,
 				};
 				if (fence) {
 					options.nonce = fence.nonceForChunk(i);
@@ -743,7 +743,7 @@ export async function sendMessageInChunks(
 	}
 
 	const attemptedSend =
-		content.trim().length > 0 ||
+		content.length > 0 ||
 		(files && files.length > 0) ||
 		(components && components.length > 0);
 	if (attemptedSend && sentMessages.length === 0) {
@@ -802,14 +802,17 @@ export async function smartSplitMessage(
 			},
 		);
 	}
-	const normalizedContent = toWellFormedUnicode(content);
-	if (normalizedContent.length <= maxLength) {
-		return normalizedContent ? [normalizedContent] : [];
+	if (toWellFormedUnicode(content) !== content) {
+		throw new ElizaError("Discord message content contains invalid Unicode", {
+			code: "DISCORD_CONTENT_INVALID_UNICODE",
+			severity: "fatal",
+		});
+	}
+	if (content.length <= maxLength) {
+		return content ? [content] : [];
 	}
 
-	const estimatedChunks = Math.ceil(
-		normalizedContent.length / Math.max(1, maxLength),
-	);
+	const estimatedChunks = Math.ceil(content.length / maxLength);
 
 	try {
 		runtime.logger.debug(
@@ -822,7 +825,7 @@ Return JSON only, no markdown or explanation.
 
 Text to split:
 """
-${normalizedContent}
+${content}
 """
 
 Return format:
@@ -843,7 +846,7 @@ Return format:
 						chunk.length <= maxLength &&
 						toWellFormedUnicode(chunk) === chunk,
 				) &&
-				parsed.join("") === normalizedContent;
+				parsed.join("") === content;
 
 			if (allValid) {
 				return parsed;
@@ -855,13 +858,12 @@ Return format:
 		}
 	} catch (error) {
 		// error-policy:J4 Model-assisted splitting is optional; the complete
-		// normalized content remains available to the deterministic lossless path.
+		// content remains available to the deterministic lossless path.
 		runtime.logger.debug(
 			`Smart split failed, falling back to simple split: ${error}`,
 		);
 	}
-
-	return splitMessage(normalizedContent, maxLength);
+	return splitMessage(content, maxLength);
 }
 
 export function splitMessage(
@@ -879,7 +881,14 @@ export function splitMessage(
 		);
 	}
 
-	let remaining = toWellFormedUnicode(content);
+	if (toWellFormedUnicode(content) !== content) {
+		throw new ElizaError("Discord message content contains invalid Unicode", {
+			code: "DISCORD_CONTENT_INVALID_UNICODE",
+			severity: "fatal",
+		});
+	}
+
+	let remaining = content;
 	if (!remaining) {
 		return [];
 	}
