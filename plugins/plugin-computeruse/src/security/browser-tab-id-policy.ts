@@ -24,6 +24,11 @@ export class InvalidBrowserTabIdError extends ElizaError {
 }
 
 export function normalizeBrowserTabId(raw: unknown): string {
+  // String(-0) is "0", so reject the noncanonical numeric spelling before
+  // converting numbers to the decimal representation used by the adapter.
+  if (typeof raw === "number" && Object.is(raw, -0)) {
+    throw new InvalidBrowserTabIdError();
+  }
   const candidate = typeof raw === "number" ? String(raw) : raw;
   if (
     typeof candidate !== "string" ||

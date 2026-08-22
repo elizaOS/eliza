@@ -40,6 +40,7 @@ describe("normalizeBrowserTabId", () => {
     "0x1",
     "1junk",
     (Number.MAX_SAFE_INTEGER + 1).toString(),
+    -0,
     -1,
     1.5,
     Number.NaN,
