@@ -642,13 +642,35 @@ describe("DocumentService requester authorization", () => {
 		await runWithTrajectoryContext(
 			{ turnMemo: new Map<string, Promise<unknown>>() },
 			async () => {
-				await expect(
-					service.getDocumentById(UPDATE_DOCUMENT_ID, request),
-				).resolves.toMatchObject({ id: UPDATE_DOCUMENT_ID });
-
+				const originalGetDocument = runtime.adapter.getDocument.bind(
+					runtime.adapter,
+				);
+				let enterAdapter!: () => void;
+				const adapterEntered = new Promise<void>((resolve) => {
+					enterAdapter = resolve;
+				});
+				let releaseAdapter!: () => void;
+				const adapterBarrier = new Promise<void>((resolve) => {
+					releaseAdapter = resolve;
+				});
+				const getDocument = vi
+					.spyOn(runtime.adapter, "getDocument")
+					.mockImplementation(async (params) => {
+						enterAdapter();
+						await adapterBarrier;
+						return originalGetDocument(params);
+					});
+				const inFlightRead = service.getDocumentById(
+					UPDATE_DOCUMENT_ID,
+					request,
+				);
+				await adapterEntered;
 				await expect(runtime.removeParticipant(USER_ID, ROOM_ID)).resolves.toBe(
 					true,
 				);
+				releaseAdapter();
+				await expect(inFlightRead).resolves.toBeNull();
+				getDocument.mockRestore();
 				const revokedRead = await documentAction.handler?.(
 					runtime,
 					request,

@@ -51,6 +51,7 @@ import {
   type GetConnectorAccountCredentialRefParams,
   type GetConnectorAccountParams,
   type IDatabaseAdapter,
+  isCurrentRoomMembershipEvidence,
   type JsonValue,
   type ListConnectorAccountCredentialRefsParams,
   type ListConnectorAccountsParams,
@@ -300,10 +301,26 @@ function documentDirectGrantCondition(
 function documentRoomOrDirectGrantCondition(
   params: DocumentListQueryParams | DocumentGetQueryParams | DocumentFragmentQueryParams,
   roomCondition: SQL,
-  metadata: SQLWrapper = memoryTable.metadata
+  metadata: SQLWrapper = memoryTable.metadata,
+  roomId: SQLWrapper = memoryTable.roomId
 ): SQL {
   return sql`(
-    ${roomCondition}
+    (
+      ${roomCondition}
+      AND EXISTS (
+        SELECT 1
+        FROM ${participantTable} AS current_membership
+        WHERE current_membership.agent_id = ${params.agentId}
+          AND current_membership.entity_id = ${params.requesterEntityId}
+          AND current_membership.room_id = ${roomId}
+          AND current_membership.membership_state = 'member'
+          AND current_membership.membership_observed_at <= now() + interval '5 minutes'
+          AND (
+            current_membership.membership_source = 'runtime:local'
+            OR current_membership.membership_expires_at > now()
+          )
+      )
+    )
     OR ${documentDirectGrantCondition(params, metadata)}
   )`;
 }
@@ -2272,7 +2289,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
   }
 
   private documentStorageConditions(
-    params: DocumentCompareAndSwapParams | DocumentDeleteParams
+    params: DocumentCompareAndSwapParams | DocumentDeleteParams | DocumentDirectGrantUpdateParams
   ): SQL[] {
     return [
       eq(memoryTable.id, params.documentId),
@@ -2280,6 +2297,29 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       eq(memoryTable.agentId, params.agentId),
       sql`${memoryTable.metadata}->>'type' = 'document'`,
     ];
+  }
+
+  private async lockCurrentDocumentMembership(
+    tx: DrizzleDatabase,
+    params: DocumentCompareAndSwapParams | DocumentDeleteParams | DocumentDirectGrantUpdateParams,
+    roomId: UUID | undefined
+  ): Promise<boolean> {
+    if (documentRoleHasGlobalVisibility(params.requesterRole)) return true;
+    if (!roomId || !params.requesterRoomIds.includes(roomId)) return false;
+    const rows = await tx
+      .select()
+      .from(participantTable)
+      .where(
+        and(
+          eq(participantTable.agentId, params.agentId),
+          eq(participantTable.entityId, params.requesterEntityId),
+          eq(participantTable.roomId, roomId)
+        )
+      )
+      .for("update")
+      .limit(1);
+    const evidence = rows[0] ? membershipEvidenceFromRow(rows[0]) : null;
+    return evidence !== null && isCurrentRoomMembershipEvidence(evidence, Date.now());
   }
 
   async getDocument(params: DocumentGetQueryParams): Promise<Memory | null> {
@@ -2438,7 +2478,8 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
             params.requesterRoomIds.length > 0
               ? inArray(parent.roomId, params.requesterRoomIds)
               : sql`false`,
-            parent.metadata
+            parent.metadata,
+            parent.roomId
           )
         );
       }
@@ -2518,7 +2559,22 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       ? params.agentId
       : params.requesterEntityId;
     return this.withEntityContext(entityContext, async (tx) => {
-      params = await this.bindCurrentDocumentRooms(tx, params);
+      const candidates = await tx
+        .select()
+        .from(memoryTable)
+        .where(and(...this.documentStorageConditions(params)))
+        .limit(1);
+      const candidate = candidates[0];
+      if (!candidate) return { status: "not_found" };
+      if (
+        !(await this.lockCurrentDocumentMembership(
+          tx,
+          params,
+          candidate.roomId as UUID | undefined
+        ))
+      ) {
+        return { status: "forbidden" };
+      }
       const rows = await tx
         .select()
         .from(memoryTable)
@@ -2527,6 +2583,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         .limit(1);
       const row = rows[0];
       if (!row) return { status: "not_found" };
+      if (row.roomId !== candidate.roomId) return { status: "conflict" };
       const existing = memoryFromRow(row);
       if (!documentMutationSnapshotMatches(existing, params.expected)) {
         return { status: "conflict" };
@@ -2557,7 +2614,22 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     validateDocumentRequesterContext(params);
     const directGrantEntityIds = validateDocumentDirectGrantEntityIds(params.directGrantEntityIds);
     return this.withEntityContext(params.agentId, async (tx) => {
-      params = await this.bindCurrentDocumentRooms(tx, params);
+      const candidates = await tx
+        .select()
+        .from(memoryTable)
+        .where(and(...this.documentStorageConditions(params)))
+        .limit(1);
+      const candidate = candidates[0];
+      if (!candidate) return { status: "not_found" };
+      if (
+        !(await this.lockCurrentDocumentMembership(
+          tx,
+          params,
+          candidate.roomId as UUID | undefined
+        ))
+      ) {
+        return { status: "forbidden" };
+      }
       const rows = await tx
         .select()
         .from(memoryTable)
@@ -2566,6 +2638,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         .limit(1);
       const row = rows[0];
       if (!row) return { status: "not_found" };
+      if (row.roomId !== candidate.roomId) return { status: "conflict" };
       const existing = memoryFromRow(row);
       if (!documentMutationSnapshotMatches(existing, params.expected)) {
         return { status: "conflict" };
@@ -2615,7 +2688,22 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       ? params.agentId
       : params.requesterEntityId;
     return this.withEntityContext(entityContext, async (tx) => {
-      params = await this.bindCurrentDocumentRooms(tx, params);
+      const candidates = await tx
+        .select()
+        .from(memoryTable)
+        .where(and(...this.documentStorageConditions(params)))
+        .limit(1);
+      const candidate = candidates[0];
+      if (!candidate) return { status: "not_found" };
+      if (
+        !(await this.lockCurrentDocumentMembership(
+          tx,
+          params,
+          candidate.roomId as UUID | undefined
+        ))
+      ) {
+        return { status: "forbidden" };
+      }
       const rows = await tx
         .select()
         .from(memoryTable)
@@ -2624,6 +2712,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         .limit(1);
       const row = rows[0];
       if (!row) return { status: "not_found" };
+      if (row.roomId !== candidate.roomId) return { status: "conflict" };
       const existing = memoryFromRow(row);
       if (!documentMutationSnapshotMatches(existing, params.expected)) {
         return { status: "conflict" };
@@ -2712,7 +2801,22 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       ? params.agentId
       : params.requesterEntityId;
     return this.withEntityContext(entityContext, async (tx) => {
-      params = await this.bindCurrentDocumentRooms(tx, params);
+      const candidates = await tx
+        .select()
+        .from(memoryTable)
+        .where(and(...this.documentStorageConditions(params)))
+        .limit(1);
+      const candidate = candidates[0];
+      if (!candidate) return { status: "not_found" };
+      if (
+        !(await this.lockCurrentDocumentMembership(
+          tx,
+          params,
+          candidate.roomId as UUID | undefined
+        ))
+      ) {
+        return { status: "forbidden" };
+      }
       const rows = await tx
         .select()
         .from(memoryTable)
@@ -2721,6 +2825,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         .limit(1);
       const row = rows[0];
       if (!row) return { status: "not_found" };
+      if (row.roomId !== candidate.roomId) return { status: "conflict" };
       const existing = memoryFromRow(row);
       if (!documentMutationSnapshotMatches(existing, params.expected)) {
         return { status: "conflict" };
