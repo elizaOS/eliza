@@ -111,22 +111,21 @@ SSH.
 Eliza Cloud and Home default to:
 
 ```text
-codex,claude-code,opencode
+codex,claude-code
 ```
 
 Override with:
 
 ```text
-ELIZA_SANDBOX_AGENT_RUNNERS=codex,claude-code,opencode
-SANDBOX_AGENT_RUNNERS=codex,claude-code,opencode
+ELIZA_SANDBOX_AGENT_RUNNERS=codex,claude-code
+SANDBOX_AGENT_RUNNERS=codex,claude-code
 ```
 
-`claude` is normalized to `claude-code`; `open-code` is normalized to
-`opencode`.
+`claude` is normalized to `claude-code`.
 
 These are coding-agent runners, not model providers. The sandbox provider
-starts the runner in the workspace; Codex, Claude Code, and opencode each use
-their own configured auth/model settings inside that runner.
+starts the runner in the workspace; Codex and Claude Code each use their own
+configured auth/model settings inside that runner.
 
 ### Codex server mode
 
@@ -159,33 +158,6 @@ Use `CODEX_BIN` when the binary is not on `PATH`. Use
 `CODEX_APP_SERVER_WS_SHARED_SECRET_FILE` for runner images that manage a
 long-lived app-server process. `codex` remains the runner id; the runner mode is
 `exec` or `app-server`.
-
-### opencode server mode
-
-An opencode-backed sandbox should run opencode as a headless server inside the
-same sandbox workspace:
-
-```text
-opencode serve --hostname 127.0.0.1 --port 4096
-```
-
-Use `OPENCODE_SERVER_PASSWORD` to require HTTP Basic auth. The default username
-is `opencode`; set `OPENCODE_SERVER_USERNAME` only when a runner needs a
-different account name.
-
-The opencode server provides:
-
-| Path | Purpose |
-| --- | --- |
-| `/global/health` | Server health and version. |
-| `/event` | Server-sent event stream. |
-| `/doc` | OpenAPI 3.1 spec. |
-| `/session` and `/session/:id/message` | Programmatic coding-agent sessions. |
-| `/find`, `/find/file`, `/file`, `/file/content`, `/file/status` | Workspace search and file reads. |
-| `/vcs` and `/session/:id/diff` | VCS status and session diff. |
-
-The remote runner HTTP runner remains the outer capability boundary. opencode is an
-agent runner inside Eliza Cloud or Home, not a third sandbox provider.
 
 ## remote runner HTTP Contract
 
