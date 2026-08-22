@@ -433,7 +433,6 @@ export const OPTIONAL_CORE_PLUGINS: readonly string[] = [
   "@elizaos/plugin-vision", // vision/image understanding (feature-gated)
   "@elizaos/plugin-cli", // CLI interface
   "@elizaos/plugin-discord", // Discord bot integration
-  "@elizaos/plugin-bluebubbles", // BlueBubbles-backed iMessage integration for macOS
   "@elizaos/plugin-telegram", // Telegram bot integration
   "@elizaos/plugin-signal", // Signal user-account integration
   "@elizaos/plugin-elevenlabs", // ElevenLabs text-to-speech

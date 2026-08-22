@@ -1707,8 +1707,6 @@ synthesized:
   #   plugin-signal      (5 intents)  GET_USER, LIST_CHANNELS,
   #                           READ_MESSAGES,
   #                           MESSAGE, REACT_TO_MESSAGE
-  #   plugin-bluebubbles (2 intents)  REACT_TO_MESSAGE,
-  #                           MESSAGE
   #   plugin-imessage    (1 intent)   MESSAGE
   #   plugin-whatsapp    (2 intents)  MESSAGE, REACT_TO_MESSAGE
   # 100 records per connector intent (3,400 total). 70% English /

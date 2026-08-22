@@ -1416,21 +1416,6 @@
         "react-dom": "^19.0.0",
       },
     },
-    "plugins/plugin-bluebubbles": {
-      "name": "@elizaos/plugin-bluebubbles",
-      "version": "2.0.3-beta.7",
-      "dependencies": {
-        "@elizaos/core": "workspace:*",
-        "zod": "^4.4.3",
-      },
-      "devDependencies": {
-        "@biomejs/biome": "2.5.8",
-        "@types/node": "^24.0.0",
-        "@typescript/native": "npm:typescript@^7.0.2",
-        "typescript": "^6.0.3",
-        "vitest": "^4.1.10",
-      },
-    },
     "plugins/plugin-browser": {
       "name": "@elizaos/plugin-browser",
       "version": "2.0.3-beta.7",
@@ -4176,8 +4161,6 @@
     "@elizaos/plugin-app-manager": ["@elizaos/plugin-app-manager@workspace:plugins/plugin-app-manager"],
 
     "@elizaos/plugin-blocker": ["@elizaos/plugin-blocker@workspace:plugins/plugin-blocker"],
-
-    "@elizaos/plugin-bluebubbles": ["@elizaos/plugin-bluebubbles@workspace:plugins/plugin-bluebubbles"],
 
     "@elizaos/plugin-browser": ["@elizaos/plugin-browser@workspace:plugins/plugin-browser"],
 

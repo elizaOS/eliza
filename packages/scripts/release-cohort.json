@@ -45,7 +45,6 @@
     "@elizaos/plugin-app-control",
     "@elizaos/plugin-app-manager",
     "@elizaos/plugin-blocker",
-    "@elizaos/plugin-bluebubbles",
     "@elizaos/plugin-browser",
     "@elizaos/plugin-calendar",
     "@elizaos/plugin-capacitor-bridge",

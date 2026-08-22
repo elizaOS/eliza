@@ -207,17 +207,6 @@ Mockoon "rules" select the response. The default response is the happy path.
   - `POST /reminders` (create)
   - `PATCH /reminders/{id}` (complete/update)
 
-### 11. bluebubbles (port 18811, file `bluebubbles.json`)
-
-- Source: `@elizaos/plugin-bluebubbles` connects to a local BlueBubbles server
-  whose base URL the user configures (typically `http://localhost:1234`). The
-  redirect helper exposes `LIFEOPS_BLUEBUBBLES_BASE` which test wiring threads
-  into the plugin config.
-- Endpoints exercised:
-  - `GET /api/v1/chat`
-  - `GET /api/v1/chat/{guid}/message`
-  - `POST /api/v1/message/text`
-
 ### 12. ntfy (port 18812, file `ntfy.json`)
 
 - Source: `eliza/plugins/plugin-personal-assistant/src/lifeops/notifications-push.ts` reads
