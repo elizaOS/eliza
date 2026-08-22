@@ -57,6 +57,30 @@ describe("Matrix plugin connector-source declaration", () => {
 });
 
 describe("Matrix message connector", () => {
+  it("preserves every matching, recent, and roomless-read joined room", async () => {
+    const service = Object.create(MatrixService.prototype) as MatrixService;
+    const rooms = Array.from({ length: 12 }, (_, index) => ({
+      roomId: `!project-${index}:matrix.org`,
+      name: `Project ${index}`,
+    }));
+    vi.spyOn(service, "getJoinedRooms").mockResolvedValue(rooms);
+    const getRoomMessages = vi
+      .spyOn(service, "getRoomMessages")
+      .mockImplementation(async (roomId) => [memory(roomId, roomId, 1)]);
+    const { runtime, registration } = registerAndGetConnector(service);
+
+    const matches = await registration.resolveTargets?.("project", { runtime });
+    const recent = await registration.listRecentTargets?.({ runtime });
+    const messages = await registration.fetchMessages?.(
+      { runtime } as QueryContext,
+      { limit: 50 } as ReadParams
+    );
+
+    expect(matches).toHaveLength(12);
+    expect(recent).toHaveLength(12);
+    expect(getRoomMessages).toHaveBeenCalledTimes(12);
+    expect(messages).toHaveLength(12);
+  });
   it("registers connector metadata and routes sends through Matrix rooms", async () => {
     const runtime = {
       registerMessageConnector: vi.fn(),
