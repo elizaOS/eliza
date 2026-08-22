@@ -54,10 +54,20 @@ export function createApiHealthWatchdog({
   isShuttingDown = () => false,
   intervalMs = 5_000,
   failureThreshold = 3,
+  // A replacement child is not "ready" for the whole of its boot (~35s on a
+  // loaded box) — far longer than threshold × interval. Without a hold, the
+  // watchdog that just restarted a wedged child killed every replacement
+  // 15s into its boot, looping for 30+ restarts (live 2026-08-22). After a
+  // restart, failures are not counted until the first healthy probe, bounded
+  // by this grace so a replacement that never comes up is still restarted.
+  recoveryGraceMs = 180_000,
+  now = Date.now,
 }) {
   let timer = null;
   let failures = 0;
   let checkInFlight = false;
+  /** Epoch ms until which unhealthy probes are boot, not wedge; 0 = off. */
+  let recoveringUntil = 0;
 
   const checkNow = async () => {
     if (checkInFlight || isShuttingDown()) return;
@@ -72,11 +82,15 @@ export function createApiHealthWatchdog({
     }
     if (healthy) {
       failures = 0;
+      recoveringUntil = 0;
       return;
     }
+    if (recoveringUntil > 0 && now() < recoveringUntil) return;
+    recoveringUntil = 0;
     failures += 1;
     if (failures < failureThreshold) return;
     failures = 0;
+    recoveringUntil = now() + recoveryGraceMs;
     restart();
   };
 
