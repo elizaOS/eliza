@@ -235,15 +235,15 @@ describe("Shared capability wall", () => {
     );
   });
 
-  test("bounds untrusted continuation fields before returning the handoff", () => {
+  test("preserves complete continuation fields before returning the handoff", () => {
     const wall = resolveSharedCapabilityWall("open the browser");
     expect(wall).not.toBeNull();
     const handoff = capabilityWallActionResult(wall!, {
       originalIntent: `  ${"a".repeat(4_100)}  `,
       clientMessageId: `  ${"b".repeat(140)}  `,
     }).values.capabilityHandoff;
-    expect(handoff.continuation?.originalIntent).toHaveLength(4_000);
-    expect(handoff.continuation?.clientMessageId).toHaveLength(128);
+    expect(handoff.continuation?.originalIntent).toBe("a".repeat(4_100));
+    expect(handoff.continuation?.clientMessageId).toBe("b".repeat(140));
   });
 
   test("never invents continuation data when the transport did not provide it", () => {
