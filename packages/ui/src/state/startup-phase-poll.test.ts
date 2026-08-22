@@ -7,8 +7,8 @@ import type { FirstRunOptions } from "../api";
 import { ANDROID_LOCAL_AGENT_IPC_BASE } from "../first-run/mobile-runtime-mode";
 import { clearPersistedActiveServer } from "./persistence";
 import {
-  isTerminalDedicatedCloudAgentErrorState,
   isRecoverableRemoteBase,
+  isTerminalDedicatedCloudAgentErrorState,
   type PollingBackendDeps,
   runPollingBackend,
   shouldFallBackToLocalOrigin,
