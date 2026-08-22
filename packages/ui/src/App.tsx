@@ -85,7 +85,7 @@ import {
   useSlashCommandController,
 } from "./chat/useSlashCommandController";
 import { markCompletedActionNavigationHandled } from "./completed-action-navigation";
-import { getOverlayAppLazyComponent } from "./components/apps/AppWindowRenderer.helpers";
+import { OverlayAppSurface } from "./components/apps/AppWindowRenderer";
 import { GameViewOverlay } from "./components/apps/GameViewOverlay";
 import { getOverlayApp } from "./components/apps/overlay-app-registry";
 import { AgentAuthGateSurface } from "./components/auth/AgentAuthGateSurface";
@@ -233,10 +233,12 @@ import { fetchWithCsrf } from "./api/csrf-client";
 // view, so importing through it folds all of them back into the main chunk.
 import {
   type AppShellPageRegistration,
+  appShellAgentSurfaceDescriptor,
   appShellPageIsAvailable,
   appShellPageMatchesPath,
   getAppShellPageRegistrySnapshot,
   listAppShellPages,
+  requireRegisteredAgentSurface,
   subscribeAppShellPages,
 } from "./app-shell-registry";
 import {
@@ -593,6 +595,9 @@ function RegisteredAppShellPage({
 }: {
   registration: AppShellPageRegistration;
 }) {
+  const bridge = requireRegisteredAgentSurface(
+    appShellAgentSurfaceDescriptor(registration),
+  );
   let content: ReactNode;
   if (registration.Component) {
     const Component = registration.Component;
@@ -627,7 +632,7 @@ function RegisteredAppShellPage({
   // capability bridge for them. This keeps registry pages and remote bundles
   // equivalent: controls registered with useAgentElement are live immediately.
   return (
-    <ShellViewAgentSurface viewId={registration.id}>
+    <ShellViewAgentSurface viewId={bridge.viewId} surfaceKind={bridge.kind}>
       {content}
     </ShellViewAgentSurface>
   );
@@ -3366,25 +3371,17 @@ function AppContent() {
           </div>
         </div>
         {/* Full-screen overlay app — renders whichever overlay app is active */}
-        {resolvedOverlayApp &&
-          (() => {
-            const exitToApps = () => {
+        {resolvedOverlayApp ? (
+          <OverlayAppSurface
+            app={resolvedOverlayApp}
+            exitToApps={() => {
               setState("activeOverlayApp", null);
               setTab("apps");
-            };
-            const theme = uiTheme === "dark" ? "dark" : "light";
-            const LazyOverlay = getOverlayAppLazyComponent(resolvedOverlayApp);
-            if (LazyOverlay) {
-              return (
-                <Suspense fallback={null}>
-                  <LazyOverlay exitToApps={exitToApps} uiTheme={theme} t={t} />
-                </Suspense>
-              );
-            }
-            const Component = resolvedOverlayApp.Component;
-            if (!Component) return null;
-            return <Component exitToApps={exitToApps} uiTheme={theme} t={t} />;
-          })()}
+            }}
+            uiTheme={uiTheme === "dark" ? "dark" : "light"}
+            t={t}
+          />
+        ) : null}
 
         {/* Persistent game overlay — stays visible across all tabs */}
         {activeGameViewerUrl &&

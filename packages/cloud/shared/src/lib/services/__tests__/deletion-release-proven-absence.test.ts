@@ -98,6 +98,7 @@ beforeAll(async () => {
       "infrastructure_provider" text,
       "provider_server_id" text,
       "node_incarnation" uuid,
+      "current_node_history_id" uuid,
       "metadata" jsonb NOT NULL DEFAULT '{}'::jsonb,
       "created_at" timestamptz NOT NULL DEFAULT now(),
       "updated_at" timestamptz NOT NULL DEFAULT now(),

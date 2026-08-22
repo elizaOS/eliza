@@ -84,17 +84,29 @@ if (MODE === "replay") {
 }
 
 let seq = 0;
+let testComplete = false;
 const server = createServer((req, res) => {
   let data = "";
   req.on("data", (c) => (data += c));
   req.on("end", async () => {
+    if (req.url === "/__complete") {
+      testComplete = true;
+      res.writeHead(204);
+      return res.end();
+    }
     if (!req.url.includes("/chat/completions")) {
       // Pass /models etc. through (record) or stub (replay).
       if (MODE === "record") {
-        const up = await fetch(`${UPSTREAM}${req.url.replace(/^\/v1/, "")}`, {
-          method: req.method,
-          headers: { Authorization: `Bearer ${KEY}` },
-        }).catch(() => null);
+        let up = null;
+        try {
+          up = await fetch(`${UPSTREAM}${req.url.replace(/^\/v1/, "")}`, {
+            method: req.method,
+            headers: { Authorization: `Bearer ${KEY}` },
+          });
+        } catch (error) {
+          // error-policy:J1 model discovery failure becomes an empty list response.
+          console.warn(`[llm-proxy] model discovery failed: ${String(error)}`);
+        }
         const txt = up ? await up.text() : "{}";
         res.writeHead(up?.status ?? 200, {
           "Content-Type": "application/json",
@@ -103,6 +115,10 @@ const server = createServer((req, res) => {
       }
       res.writeHead(200, { "Content-Type": "application/json" });
       return res.end('{"object":"list","data":[{"id":"gemma-4-31b"}]}');
+    }
+    if (testComplete) {
+      res.writeHead(409, { "Content-Type": "application/json" });
+      return res.end('{"error":"deterministic test already complete"}');
     }
     let body;
     try {

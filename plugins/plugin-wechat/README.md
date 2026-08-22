@@ -14,6 +14,7 @@ receive text and images, resolve contacts, and read chat history.
 - QR-code login flow (prints URL to terminal; scan with WeChat mobile)
 - Webhook-based inbound message delivery with deduplication
 - Automatic session health checks and re-login on expiry
+- Complete connector target discovery across every configured account target
 
 ## Install
 
@@ -92,4 +93,3 @@ npx elizaos plugins add @elizaos/plugin-wechat
   owner account over WeChat therefore extends full OWNER trust to the proxy
   operator — a forged POST naming the owner's wxid produces OWNER-role turns.
   Only pair owners over WeChat with a proxy you control.
-

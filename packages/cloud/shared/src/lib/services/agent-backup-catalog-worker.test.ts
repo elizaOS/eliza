@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import type { AgentBackupGcClaim } from "../../db/repositories/agent-backup-gc";
 import type { AgentBackupObject } from "../../db/schemas/agent-backup-catalog";
 import type {
   AgentBackupObjectStore,
@@ -12,6 +13,7 @@ import {
 } from "../storage/object-store";
 import {
   type AgentBackupObjectUploadRepository,
+  executeAgentBackupGcClaims,
   executeAgentBackupObjectUpload,
   executeAgentBackupSecondaryObjectReplication,
 } from "./agent-backup-catalog-worker";
@@ -655,5 +657,75 @@ describe("secondary backup replication", () => {
     } finally {
       process.off("unhandledRejection", onUnhandled);
     }
+  });
+});
+
+describe("backup GC provider cancellation", () => {
+  test("propagates abort and the lease deadline to delete without settling or starting the next claim", async () => {
+    const keyFingerprint = (await sha256(PRIMARY_KEY)).hex;
+    const authority: AgentBackupStorageAuthority = {
+      provider: "cloudflare-r2",
+      transport: "worker-r2",
+      endpointAlias: "primary-r2",
+      endpointIdentityFingerprint: FINGERPRINT,
+      bucket: "primary-bucket",
+      region: "auto",
+    };
+    const object = objectRow({
+      id: "e0000000-0000-4000-8000-000000000005",
+      role: "primary",
+      provider: "cloudflare-r2",
+      transport: "worker-r2",
+      authority,
+      objectKey: PRIMARY_KEY,
+      keyFingerprint,
+      ciphertextSha256: "a".repeat(64),
+      sizeBytes: 32,
+      state: "verified",
+    });
+    const leaseExpiresAt = new Date(Date.now() + 60_000);
+    const claim = (index: number) =>
+      ({
+        outbox: {
+          id: `f0000000-0000-4000-8000-00000000000${index}`,
+          organization_id: ORGANIZATION_ID,
+          object_id: object.id,
+          action: "delete_object",
+          state: "leased",
+          claim_owner: "gc-worker-1",
+          claim_generation: EXECUTION.generation,
+          lease_expires_at: leaseExpiresAt,
+          attempts: 0,
+        },
+        object: { ...object, id: `e0000000-0000-4000-8000-00000000000${index}` },
+      }) as AgentBackupGcClaim;
+    const controller = new AbortController();
+    let deleteCalls = 0;
+    const store = {
+      authority,
+      async delete(_target, control) {
+        deleteCalls += 1;
+        expect(control?.signal).toBe(controller.signal);
+        expect(control?.deadline?.getTime()).toBe(leaseExpiresAt.getTime() - 1_000);
+        controller.abort(new Error("shutdown during provider delete"));
+        control?.signal?.throwIfAborted();
+        throw new Error("unreachable delete continuation");
+      },
+    } as AgentBackupObjectStore;
+    const registry = {
+      forStoredObject() {
+        return store;
+      },
+    } as AgentBackupObjectStoreRegistry;
+
+    await expect(
+      executeAgentBackupGcClaims({
+        claims: [claim(1), claim(2)],
+        registry,
+        retryDelayMs: 1_000,
+        signal: controller.signal,
+      }),
+    ).rejects.toThrow("shutdown during provider delete");
+    expect(deleteCalls).toBe(1);
   });
 });

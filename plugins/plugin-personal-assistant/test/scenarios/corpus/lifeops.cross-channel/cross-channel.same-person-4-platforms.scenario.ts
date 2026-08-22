@@ -1,5 +1,5 @@
 /**
- * Same person across 4 channels — Gmail + Signal + Telegram + Discord. The
+ * Same person across 4 channels — Gmail + WhatsApp + Telegram + Discord. The
  * agent must surface all four channels in one summary without listing the
  * same person 4x.
  *
@@ -26,7 +26,7 @@ import {
 } from "../../../../test/helpers/lifeops-identity-merge-fixtures.ts";
 
 const PERSON_NAME = "Priya Rao";
-const EXPECTED_CHANNELS = ["gmail", "signal", "telegram", "discord"];
+const EXPECTED_CHANNELS = ["gmail", "whatsapp", "telegram", "discord"];
 
 function checkAllFourChannelsMentioned(
   ctx: ScenarioContext,
@@ -49,7 +49,7 @@ function checkAllFourChannelsMentioned(
 export default scenario({
   lane: "live-only",
   id: "cross-channel.same-person-4-platforms",
-  title: "Same person across Gmail + Signal + Telegram + Discord dedupes",
+  title: "Same person across Gmail + WhatsApp + Telegram + Discord dedupes",
   domain: "lifeops.cross-channel",
   tags: ["lifeops", "cross-channel", "dedup", "identity-merge", "scale"],
   isolation: "per-scenario",
@@ -86,7 +86,7 @@ export default scenario({
       kind: "message",
       name: "ask-priya-across-4",
       room: "main",
-      text: `Show me everywhere Priya Rao has reached out — Gmail, Signal, Telegram, Discord. She's the same person on all four.`,
+      text: `Show me everywhere Priya Rao has reached out — Gmail, WhatsApp, Telegram, Discord. She's the same person on all four.`,
       timeoutMs: 180_000,
     },
   ],
@@ -114,14 +114,14 @@ export default scenario({
       predicate: expectScenarioToCallAction({
         acceptedActions: ["MESSAGE", "READ_MESSAGES", "INBOX_TRIAGE"],
         description: "4-channel lookup for canonical Priya",
-        includesAny: ["priya", "gmail", "signal", "telegram", "discord"],
+        includesAny: ["priya", "gmail", "whatsapp", "telegram", "discord"],
       }),
     },
     judgeRubric({
       name: "cross-channel-4-platforms-rubric",
       threshold: 0.75,
       description:
-        "Agent surfaced Priya context across all 4 channels (Gmail, Signal, Telegram, Discord) as one canonical person.",
+        "Agent surfaced Priya context across all 4 channels (Gmail, WhatsApp, Telegram, Discord) as one canonical person.",
     }),
   ],
 });

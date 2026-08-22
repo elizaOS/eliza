@@ -31,7 +31,7 @@ cp .env.example .env
 # Edit .env and add your OPENAI_API_KEY or ANTHROPIC_API_KEY
 ```
 
-For OpenAI-compatible endpoints, `ELIZA_OPENCODE_*` forwarding, and direct
+For OpenAI-compatible endpoints, `ELIZA_CODE_*` forwarding, and direct
 provider selection, see [MODEL_PROVIDERS.md](MODEL_PROVIDERS.md).
 
 ## Usage

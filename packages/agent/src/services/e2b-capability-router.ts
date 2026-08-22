@@ -77,7 +77,7 @@ const MAX_TIMER_DELAY_MS = 2_147_483_647;
  */
 export const DEFAULT_ELIZA_CLOUD_API_BASE_URL = "https://api.eliza.app/api/v1";
 
-export type CodingAgentRunner = "claude-code" | "codex" | "opencode";
+export type CodingAgentRunner = "claude-code" | "codex";
 
 export type SandboxRunnerProvider = "e2b" | "eliza-cloud" | "home";
 
@@ -88,7 +88,6 @@ type DisabledSandboxRunnerProvider = "cloudflare" | "rivet" | "vercel";
 const DEFAULT_SANDBOX_AGENT_RUNNERS: CodingAgentRunner[] = [
   "codex",
   "claude-code",
-  "opencode",
 ];
 
 export interface E2BRemoteRunnerConfig {
@@ -416,7 +415,7 @@ class RemoteRunnerHttpClient implements E2BSandboxClient {
   }
 }
 
-type CloudCodingAgent = "claude" | "codex" | "opencode";
+type CloudCodingAgent = "claude" | "codex";
 
 type CloudCodingContainerSession = {
   containerId: string;
@@ -1855,7 +1854,6 @@ function agentRunnersSetting(
 function toCodingAgentRunner(value: string): CodingAgentRunner {
   if (value === "codex") return "codex";
   if (value === "claude" || value === "claude-code") return "claude-code";
-  if (value === "opencode" || value === "open-code") return "opencode";
   throw new Error(`Unsupported sandbox agent runner: ${value}`);
 }
 

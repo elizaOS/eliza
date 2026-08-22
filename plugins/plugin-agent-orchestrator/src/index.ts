@@ -101,6 +101,7 @@ import {
 import { WaveSupervisor } from "./services/wave-supervisor.js";
 import { CodingWorkspaceService } from "./services/workspace-service.js";
 import { codingAgentRoutePlugin } from "./setup-routes.js";
+import { AGENT_ORCHESTRATOR_WIDGET_DECLARATIONS } from "./widget-manifest.js";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return (
@@ -171,14 +172,14 @@ export function createAgentOrchestratorPlugin(): Plugin {
           overrides: {
             spawn_agent: {
               description:
-                "Delegate a coding task to a dedicated ACP coding sub-agent (claude / codex / opencode — selected from configured providers). USE THIS when the user explicitly asks to delegate coding work, use a coding adapter by name, or run substantial multi-step coding work that benefits from a dedicated workspace and its own tool loop. The coding sub-agent runs in its own workspace, can read / write / edit files and run tests, and reports back when done. Prefer this over inline FILE / BASH tools whenever delegation is the user's intent — even for single-file tasks if delegation is explicitly requested. IMPORTANT: if `# Active sub-agent sessions` shows a live sub-agent already working on the SAME workdir (or the same logical area of the same workdir), prefer `TASKS_SEND_TO_AGENT` to continue that session instead of spawning a parallel agent in the same workspace. Parallel agents in one workdir race on files and waste tokens — only spawn when the existing session is on a different workdir, is terminal (stopped/errored), or the new task is unrelated to the in-flight work.",
+                "Delegate a coding task to a dedicated ACP coding sub-agent (elizaos / pi-agent / claude / codex — selected from configured providers). USE THIS when the user explicitly asks to delegate coding work, use a coding adapter by name, or run substantial multi-step coding work that benefits from a dedicated workspace and its own tool loop. The coding sub-agent runs in its own workspace, can read / write / edit files and run tests, and reports back when done. Prefer this over inline FILE / BASH tools whenever delegation is the user's intent — even for single-file tasks if delegation is explicitly requested. IMPORTANT: if `# Active sub-agent sessions` shows a live sub-agent already working on the SAME workdir (or the same logical area of the same workdir), prefer `TASKS_SEND_TO_AGENT` to continue that session instead of spawning a parallel agent in the same workspace. Parallel agents in one workdir race on files and waste tokens — only spawn when the existing session is on a different workdir, is terminal (stopped/errored), or the new task is unrelated to the in-flight work.",
               // Compressed blurb is what the planner sees in tier-A
               // summaries; if we don't override it, it inherits the
               // generic parent enum dump and the planner can't tell
               // `TASKS_SPAWN_AGENT` apart from inline `FILE.write` for
               // delegation requests. See the parent comment above.
               descriptionCompressed:
-                "delegate ACP coding sub-agent claude|codex|opencode; multi-step; prefer TASKS_SEND if active session exists on same workdir",
+                "delegate ACP coding sub-agent elizaos|pi-agent|claude|codex; multi-step; prefer TASKS_SEND if active session exists on same workdir",
             },
           },
         }),
@@ -227,35 +228,7 @@ export function createAgentOrchestratorPlugin(): Plugin {
       ? "Orchestrate coding sub-agents via the Agent Client Protocol (acpx) with workspace operations, GitHub integration, task history, sub-agent routing, and skill-recommender support. Single TASKS parent action covers create / spawn_agent / send / stop_agent / list_agents / cancel / history / control / share / provision_workspace / submit_workspace / manage_issues / archive / reopen."
       : (terminalSupport.message ??
         "Coding-agent orchestrator is unavailable in this runtime. Exposes a single TASKS action that explains the limitation when the planner reaches for a coding-agent action."),
-    widgets: [
-      {
-        id: "agent-orchestrator.apps",
-        pluginId: "agent-orchestrator",
-        slot: "chat-sidebar",
-        label: "App Runs",
-        icon: "Activity",
-        order: 150,
-        defaultEnabled: true,
-      },
-      {
-        id: "agent-orchestrator.accounts",
-        pluginId: "agent-orchestrator",
-        slot: "chat-sidebar",
-        label: "Coding accounts",
-        icon: "Zap",
-        order: 250,
-        defaultEnabled: true,
-      },
-      {
-        id: "agent-orchestrator.activity",
-        pluginId: "agent-orchestrator",
-        slot: "chat-sidebar",
-        label: "Activity",
-        icon: "Activity",
-        order: 300,
-        defaultEnabled: true,
-      },
-    ],
+    widgets: [...AGENT_ORCHESTRATOR_WIDGET_DECLARATIONS],
     // Services manage ACPX subprocesses, workspaces, and sub-agent routing.
     services: orchestratorServices,
     actions: orchestratorActions,
@@ -2461,6 +2434,14 @@ export {
 export { AcpService } from "./services/acp-service.js";
 // Terminal-output normalizer for chat surfaces; consumed by live smoke harnesses.
 export { cleanForChat } from "./services/ansi-utils.js";
+export {
+  type ChildDeliveryStatus,
+  type ChildTerminalArtifactRef,
+  type ChildTerminalResultEnvelope,
+  type ChildTerminalStatus,
+  type ChildVerificationStatus,
+  deriveChildTerminalResult,
+} from "./services/child-terminal-result.js";
 export {
   COMPLETION_ENVELOPE_INSTRUCTION,
   type CompletionEnvelope,

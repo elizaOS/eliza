@@ -14,7 +14,7 @@ Aggregates threads across email, Discord, Telegram, WhatsApp, Slack, X, Farcaste
 
 `INBOX` — op-based dispatch. Ops: `list`, `search`, `summarize`, `triage`, `reply`, `snooze`, `archive`, `approve`.
 
-- `list` — fan-out fetch across all connected platform adapters (gmail, discord, telegram, signal, imessage, whatsapp), dedupe by message id and thread topic, return merged feed ordered by recency.
+- `list` — fan-out fetch across all connected platform adapters (gmail, discord, telegram, imessage, whatsapp), dedupe by message id and thread topic, return merged feed ordered by recency.
 - `search` — search across selected platforms by `query`.
 - `summarize` — return a per-platform count plus a single rolled-up summary.
 - `triage` — list persisted unresolved triage queue entries, optionally filtered by classification.

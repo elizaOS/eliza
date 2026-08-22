@@ -63,6 +63,10 @@ import { resolveStateDir } from "../utils/state-dir";
 import { isPlainObject } from "../utils/type-guards";
 import { toWellFormedUnicode } from "../utils/well-formed";
 import {
+	buildContentProjectionDiagnostics,
+	isProgressiveContentProjectionEnabled,
+} from "./content-projection-policy";
+import {
 	computePrefixHashes,
 	hashString,
 	stableJsonStringify,
@@ -90,11 +94,14 @@ import {
 	TrajectoryLimitExceeded,
 } from "./limits";
 import {
+	buildContentProjectionBudget,
 	buildModelInputBudget,
+	type ContentProjectionBudget,
 	withModelInputBudgetProviderOptions,
 } from "./model-input-budget";
 import {
 	cacheProviderOptions,
+	type ToolResultProjectionStats,
 	trajectoryStepsToMessages,
 } from "./planner-rendering";
 import type {
@@ -156,6 +163,28 @@ export type {
 	PlannerTrajectory,
 } from "./planner-types";
 
+/** Minimal stable loop contract for a dedicated coding turn. */
+const CODING_PLANNER_TEMPLATE = `task: Complete the current coding request with native tools.
+
+rules:
+- act with the smallest grounded tool call; do not narrate work that was not performed
+- inspect before editing and preserve unrelated work
+- when the task names a file, READ it directly; use bounded windows for large files
+- prefer EDIT for existing files; never change tests or fixtures only to hide a failure
+- pass only schema-declared arguments; never invent placeholders
+- after a tool result, continue with the next concrete step until the task is complete
+- after WRITE or EDIT, run a successful narrow SHELL verification before finishing
+- do not claim success when a tool failed or verification is still pending
+- use messageToUser only for the final grounded result or a genuinely blocking question
+- every native tool call requires eliza_turn_scope: use more_work_pending until the final tool batch
+- when complete, call no tool and report changed files, verification, and limitations concisely
+
+context_object:
+{{contextObject}}
+
+trajectory:
+{{trajectory}}`;
+
 /**
  * Chat-lane planner output budget. Reasoning models spend completion tokens on
  * deliberation BEFORE the tool call, and with `toolChoice: required` a budget
@@ -172,25 +201,14 @@ export type {
 const DEFAULT_PLANNER_MAX_TOKENS = 4096;
 
 /**
- * Coding/full-surface mode is on when the eliza-code sub-agent sets
- * `ELIZA_PLANNER_FULL_ACTION_SURFACE` (the ACP server does). Centralized so the
- * tool-call ceiling, the queue-drain cadence, and the output-token cap all read
- * the same signal.
- */
-function isCodingFullSurfaceMode(): boolean {
-	const v = process.env.ELIZA_PLANNER_FULL_ACTION_SURFACE?.trim().toLowerCase();
-	return v === "1" || v === "true" || v === "yes" || v === "on";
-}
-
-/**
  * Default per-call output-token ceiling for a coding planner turn. A single
  * FILE/WRITE tool call must carry the entire file as a JSON-escaped argument —
  * a real single-file app (the reference `tetris.html` is ~4.6k tokens once
  * escaped) blows straight past the chat default of {@link DEFAULT_PLANNER_MAX_TOKENS}
  * (1024), which truncates the tool-call argument mid-stream so the model either
- * narrates without ever completing the call or the provider 400s. opencode on
- * the same Cerebras `zai-glm-4.7` builds the same app reliably precisely because
- * it does not clamp the file-emitting completion to a chat-sized budget.
+ * narrates without ever completing the call or the provider 400s. Coding CLIs
+ * on the same Cerebras `zai-glm-4.7` build the same app reliably precisely
+ * because they do not clamp the file-emitting completion to a chat-sized budget.
  * Overridable via `ELIZA_CODING_PLANNER_MAX_TOKENS`. See issue #10132.
  */
 const DEFAULT_CODING_PLANNER_MAX_TOKENS = 16384;
@@ -243,8 +261,8 @@ export function resolvePositivePlannerInt(
  * `ELIZA_CODING_PLANNER_MAX_TOKENS`). A set-but-malformed override throws via
  * {@link resolvePositivePlannerInt} rather than silently defaulting.
  */
-function resolvePlannerMaxTokens(): number {
-	if (!isCodingFullSurfaceMode()) {
+function resolvePlannerMaxTokens(codingMode: boolean): number {
+	if (!codingMode) {
 		return resolvePositivePlannerInt(
 			"ELIZA_PLANNER_MAX_TOKENS",
 			process.env.ELIZA_PLANNER_MAX_TOKENS,
@@ -267,7 +285,7 @@ export function resolveCodingMaxToolCalls(): number {
 	return resolvePositivePlannerInt(
 		"ELIZA_CODING_MAX_TOOL_CALLS",
 		process.env.ELIZA_CODING_MAX_TOOL_CALLS,
-		80,
+		32,
 	);
 }
 
@@ -350,14 +368,13 @@ async function runPlannerLoopIterations(
 	// arguments: runtime-known secrets composed with the shared tool-shape
 	// patterns. The raw calls stay on `trajectory.plannedQueue` for execution.
 	const redactDiagnosticText = composeToolDiagnosticRedactor(params.runtime);
-	// Coding/full-surface mode (the eliza-code sub-agent sets
-	// ELIZA_PLANNER_FULL_ACTION_SURFACE): a real build legitimately makes many
+	// Coding/full-surface mode: a real build legitimately makes many
 	// tool calls (read several files, write several, run tests). The chat default
 	// (maxToolCalls=16) caps that mid-build, ending the turn on a
 	// TrajectoryLimitExceeded with no terminal REPLY → an EMPTY relay to the user.
 	// Raise the ceiling for coding builds (still bounded). Overridable via
 	// ELIZA_CODING_MAX_TOOL_CALLS.
-	const codingMode = isCodingFullSurfaceMode();
+	const codingMode = params.codingMode === true;
 	const codingMaxToolCalls = resolveCodingMaxToolCalls();
 	// Weak coding models (e.g. Cerebras glm-4.7) sometimes answer a trivial build
 	// with a terminal REPLY ("Creating the app now…") instead of calling FILE.
@@ -379,9 +396,38 @@ async function runPlannerLoopIterations(
 				}
 			: merged;
 	})();
+	const postToolReplySeed = params.postToolReplySeed;
+	if (
+		postToolReplySeed &&
+		(postToolReplySeed.result.success !== true ||
+			postToolReplySeed.result.modelReplyRequired !== true)
+	) {
+		throw new Error(
+			"postToolReplySeed requires a successful result with modelReplyRequired",
+		);
+	}
+	const trajectoryContext = postToolReplySeed
+		? appendContextEvent(plannerContext, {
+				id: "post-tool-model-reply",
+				type: "instruction",
+				source: "planner-loop",
+				createdAt: Date.now(),
+				content:
+					"The tool result in this turn is already settled and complete. Write the final user-facing reply in the agent's natural voice from that result. Do not describe the work as starting, opening now, pending, or still in progress. If the result provides a link object, include it as a Markdown link using its label and href. Do not expose internal IDs or raw tool data.",
+			})
+		: plannerContext;
 	const trajectory: PlannerTrajectory = {
-		context: plannerContext,
-		steps: [],
+		context: trajectoryContext,
+		codingMode,
+		steps: postToolReplySeed
+			? [
+					{
+						iteration: 0,
+						toolCall: postToolReplySeed.toolCall,
+						result: postToolReplySeed.result,
+					},
+				]
+			: [],
 		archivedSteps: [],
 		plannedQueue: [],
 		evaluatorOutputs: [],
@@ -493,7 +539,7 @@ async function runPlannerLoopIterations(
 	// reply after its effect completes. This is deliberately narrower than the
 	// evaluator's general CONTINUE path: only an explicit final-scope tool call
 	// can arm it, and any subsequent tool call disarms it.
-	let pendingRequiredModelReply = false;
+	let pendingRequiredModelReply = postToolReplySeed !== undefined;
 	// Captures the most recent terminal-only refusal text the planner produced
 	// across iterations gated by `requireNonTerminalToolCall`. When Stage 1
 	// asserts `requiresTool=true` but no exposed tool can fulfill the request,
@@ -546,7 +592,7 @@ async function runPlannerLoopIterations(
 		return accepted;
 	};
 
-	// Coding/full-surface mode (set above from ELIZA_PLANNER_FULL_ACTION_SURFACE):
+	// Coding/full-surface mode (selected explicitly for this turn):
 	// when the model emits a batch of tool calls in a single response, execute
 	// EVERY queued call before re-evaluating. A real build needs all of its
 	// FILE/SHELL calls to run; a dedicated coding agent drains the whole batch and
@@ -557,41 +603,98 @@ async function runPlannerLoopIterations(
 	for (let iteration = 1; ; iteration++) {
 		if (trajectory.plannedQueue.length === 0) {
 			const synthesizingRequiredModelReply = pendingRequiredModelReply;
-			const plannerOutput = await callPlanner({
-				runtime: params.runtime,
-				context: trajectory.context,
-				trajectory,
-				config,
-				modelType: params.modelType,
-				provider: params.provider,
-				// A successful final-scope action may ask for one natural closing
-				// sentence. That round is synthesis, not planning: remove the tool
-				// catalog entirely so callPlanner cannot default an omitted toolChoice
-				// to "required" and re-run the action. The branch below consumes this
-				// output exactly once, including when a non-compliant provider invents
-				// a tool call despite receiving no tools.
-				tools: synthesizingRequiredModelReply ? undefined : params.tools,
-				// Force a tool call ONLY while the turn's "use a real tool" requirement
-				// is still unmet. Once a non-terminal tool has executed, relax to
-				// "auto" so the planner is free to synthesize a terminal REPLY from
-				// the result instead of being pushed to re-call a tool every
-				// iteration. "auto" must be EXPLICIT: passing the caller's (undefined)
-				// choice would be a no-op because callPlanner defaults undefined back
-				// to "required".
-				toolChoice: synthesizingRequiredModelReply
-					? undefined
-					: requireNonTerminalToolCall
-						? hasExecutedNonTerminalTool(trajectory)
-							? "auto"
-							: "required"
-						: params.toolChoice,
-				recorder: params.recorder,
-				trajectoryId: params.trajectoryId,
-				parentStageId: params.parentStageId,
-				providerAttributionState: params.providerAttributionState,
-				iteration,
-				onUsage: observePlannerUsage,
-			});
+			// Providers occasionally 400 with "Failed to generate tool_calls …
+			// tool_choice = 'required'": the model simply failed to emit a call
+			// this sample (Cerebras/gemma, live 2026-08-20 — a casual "surprise
+			// me" ask died to a canned apology). One bounded retry recovers it;
+			// a second identical failure propagates as before.
+			const callPlannerWithToolChoiceRetry = async (
+				args: Parameters<typeof callPlanner>[0],
+			): ReturnType<typeof callPlanner> => {
+				try {
+					return await callPlanner(args);
+				} catch (error) {
+					// The AI SDK often masks the cause: message says "Bad Request"
+					// while the actionable text lives on responseBody / cause. Match
+					// across all of them or the retry never engages (live 2026-08-20:
+					// two identical 400s, zero retries logged).
+					const detailParts = [
+						error instanceof Error ? error.message : String(error),
+						String((error as { responseBody?: unknown }).responseBody ?? ""),
+						String(
+							(error as { cause?: { message?: unknown } }).cause?.message ?? "",
+						),
+					];
+					if (!/failed to generate tool_call/i.test(detailParts.join(" "))) {
+						throw error;
+					}
+					params.runtime.logger?.warn?.(
+						{ src: "planner-loop", iteration },
+						"provider failed to generate a required tool call; retrying once",
+					);
+					return await callPlanner(args);
+				}
+			};
+			let plannerOutput: Awaited<
+				ReturnType<typeof callPlannerWithToolChoiceRetry>
+			>;
+			try {
+				plannerOutput = await callPlannerWithToolChoiceRetry({
+					runtime: params.runtime,
+					context: trajectory.context,
+					trajectory,
+					config,
+					modelType: params.modelType,
+					provider: params.provider,
+					// A successful final-scope action may ask for one natural closing
+					// sentence. That round is synthesis, not planning: remove the tool
+					// catalog entirely so callPlanner cannot default an omitted toolChoice
+					// to "required" and re-run the action. The branch below consumes this
+					// output exactly once, including when a non-compliant provider invents
+					// a tool call despite receiving no tools.
+					tools: synthesizingRequiredModelReply ? undefined : params.tools,
+					// Force a tool call ONLY while the turn's "use a real tool" requirement
+					// is still unmet. Once a non-terminal tool has executed, relax to
+					// "auto" so the planner is free to synthesize a terminal REPLY from
+					// the result instead of being pushed to re-call a tool every
+					// iteration. "auto" must be EXPLICIT: passing the caller's (undefined)
+					// choice would be a no-op because callPlanner defaults undefined back
+					// to "required".
+					toolChoice: synthesizingRequiredModelReply
+						? undefined
+						: requireNonTerminalToolCall
+							? hasExecutedNonTerminalTool(trajectory)
+								? "auto"
+								: "required"
+							: params.toolChoice,
+					recorder: params.recorder,
+					trajectoryId: params.trajectoryId,
+					parentStageId: params.parentStageId,
+					providerAttributionState: params.providerAttributionState,
+					iteration,
+					onUsage: observePlannerUsage,
+				});
+			} catch (err) {
+				// error-policy:J4 the sole tool already committed; an expected model
+				// provider outage degrades to its vetted action-owned fallback without replay.
+				if (!synthesizingRequiredModelReply || !isModelProviderError(err)) {
+					throw err;
+				}
+				const relay = deterministicSuccessfulToolRelay(trajectory);
+				if (!relay) throw err;
+				params.runtime.logger?.warn?.(
+					{ iteration, err: err instanceof Error ? err.message : String(err) },
+					"[planner-loop] post-tool reply model failed; relaying completed action result",
+				);
+				return {
+					status: "finished",
+					trajectory,
+					finalMessage: userSafeFinalMessage(
+						terminalMessageWithFailureAuthority(trajectory, relay),
+						trajectory,
+					),
+				};
+			}
 			// Treat `messageToUser` as authoritative ONLY when the planner's structured
 			// output carried it as an explicit field. The native-tool-call code path
 			// in `parsePlannerOutput` falls back to `raw.text`, but in native mode
@@ -733,8 +836,18 @@ async function runPlannerLoopIterations(
 				const requiredModelReply = userSafeCapturedAnswerCandidate(
 					plannerOutput.messageToUser,
 				);
-				const finalMessage =
-					requiredModelReply ?? REQUIRED_MODEL_REPLY_FALLBACK_MESSAGE;
+				const finalMessage = userSafeFinalMessage(
+					terminalMessageWithFailureAuthority(
+						trajectory,
+						preferredFinalMessageFromToolOrModel(
+							trajectory,
+							requiredModelReply,
+							deterministicSuccessfulToolRelay(trajectory) ??
+								REQUIRED_MODEL_REPLY_FALLBACK_MESSAGE,
+						),
+					),
+					trajectory,
+				);
 				trajectory.steps.push({
 					iteration,
 					thought: plannerOutput.thought,
@@ -887,6 +1000,16 @@ async function runPlannerLoopIterations(
 					iteration,
 					message: plannerOutput.messageToUser,
 				});
+				if (
+					codingDrainQueue &&
+					deferCodingCompletionUntilMutationVerified({
+						trajectory,
+						iteration,
+						redactDiagnosticText,
+					})
+				) {
+					continue;
+				}
 				if (trajectory.steps.some((step) => step.toolCall)) {
 					// Coding mode: the model emitted a final text summary AFTER
 					// executing build tools — it's signalling completion. Finish with
@@ -1134,6 +1257,16 @@ async function runPlannerLoopIterations(
 						reason: "terminal_only_tool_calls",
 						logger: params.runtime.logger,
 					});
+					continue;
+				}
+				if (
+					codingDrainQueue &&
+					deferCodingCompletionUntilMutationVerified({
+						trajectory,
+						iteration,
+						redactDiagnosticText,
+					})
+				) {
 					continue;
 				}
 				// The messageToUser fallback applies only when a REPLY call is
@@ -1752,19 +1885,40 @@ function renderPlannerModelInput(params: {
 	context: ContextObject;
 	trajectory: PlannerTrajectory;
 	template?: string;
+	codingMode?: boolean;
 	runtime?: PlannerRuntime;
+	projectionBudget?: ContentProjectionBudget;
+	omitRecoverableText?: boolean;
 }): {
 	messages: ChatMessage[];
 	promptSegments: PromptSegment[];
 	cacheKeySegments: PromptSegment[];
+	projectionStats: ToolResultProjectionStats;
 } {
 	const renderedContext = renderContextObject(params.context);
 	const template = params.template ?? plannerTemplate;
-	const instructions = appendMandatoryPlannerPolicy(
-		template.split("context_object:")[0] ?? template,
+	const instructions = (
+		params.codingMode
+			? template.split("context_object:")[0]
+			: appendMandatoryPlannerPolicy(
+					template.split("context_object:")[0] ?? template,
+				)
 	).trim();
+	let projectionStats: ToolResultProjectionStats = {
+		resultCount: 0,
+		pagesIncluded: 0,
+		pagesOmitted: 0,
+		omissionReasons: {},
+	};
 	const stepMessages = trajectoryStepsToMessages(params.trajectory.steps, {
 		redactText: composeToolDiagnosticRedactor(params.runtime),
+		...(params.projectionBudget
+			? { projectionBudget: params.projectionBudget }
+			: {}),
+		...(params.omitRecoverableText ? { omitRecoverableText: true } : {}),
+		onProjectionStats: (stats) => {
+			projectionStats = stats;
+		},
 	});
 	// Action names + parameter schemas now ride directly on the tools array
 	// (each Action is exposed as its own native tool), so there is no separate
@@ -1821,7 +1975,7 @@ function renderPlannerModelInput(params: {
 		dynamicBlocks: [],
 		stepMessages,
 	});
-	return { messages, promptSegments, cacheKeySegments };
+	return { messages, promptSegments, cacheKeySegments, projectionStats };
 }
 
 function compactionReserveForBudget(
@@ -2307,27 +2461,74 @@ async function callPlanner(params: {
 	 */
 	onUsage?: (usage: { promptTokens: number; completionTokens: number }) => void;
 }): Promise<ReturnType<typeof parsePlannerOutput>> {
-	const renderedInput = renderPlannerModelInput({
-		context: params.context,
-		trajectory: params.trajectory,
-		template: resolveOptimizedPlannerTemplate(params.runtime),
-		runtime: params.runtime,
-	});
-	const modelInputBudget = buildModelInputBudget({
-		messages: renderedInput.messages,
-		promptSegments: renderedInput.promptSegments,
+	const budgetOptions = {
 		tools: params.tools,
-		// `modelName` lets the per-model context-window lookup fire.
-		// The lookup result wins over contextWindowTokens (see buildModelInputBudget
-		// resolution order). Note: contextWindowTokens defaults to 128_000 so the
-		// spread is always non-empty; the lookup will still override it when
-		// contextWindowModelName resolves.
 		modelName: params.config.contextWindowModelName,
 		...(params.config.contextWindowTokens
 			? { contextWindowTokens: params.config.contextWindowTokens }
 			: {}),
 		reserveTokens: compactionReserveForBudget(params.config),
+	};
+	const projectionEnabled = isProgressiveContentProjectionEnabled(
+		params.runtime,
+	);
+	const renderArgs = {
+		context: params.context,
+		trajectory: params.trajectory,
+		template:
+			params.trajectory.codingMode === true
+				? CODING_PLANNER_TEMPLATE
+				: resolveOptimizedPlannerTemplate(params.runtime),
+		codingMode: params.trajectory.codingMode === true,
+		runtime: params.runtime,
+	};
+	const baselineInput = renderPlannerModelInput({
+		...renderArgs,
+		...(projectionEnabled ? { omitRecoverableText: true } : {}),
 	});
+	const baselineBudget = buildModelInputBudget({
+		messages: baselineInput.messages,
+		promptSegments: baselineInput.promptSegments,
+		...budgetOptions,
+	});
+	const projectionBudget = projectionEnabled
+		? buildContentProjectionBudget({
+				budget: baselineBudget,
+				resultCount: baselineInput.projectionStats.resultCount,
+			})
+		: undefined;
+	const renderedInput = projectionBudget
+		? renderPlannerModelInput({ ...renderArgs, projectionBudget })
+		: baselineInput;
+	const modelInputBudget = buildModelInputBudget({
+		messages: renderedInput.messages,
+		promptSegments: renderedInput.promptSegments,
+		...budgetOptions,
+	});
+	const contentProjection = buildContentProjectionDiagnostics({
+		enabled: projectionEnabled,
+		baselineBudget,
+		...(projectionBudget ? { projectionBudget } : {}),
+		stats: renderedInput.projectionStats,
+	});
+	params.runtime.logger?.debug?.(
+		{ src: "planner-loop", contentProjection },
+		"Computed progressive content projection",
+	);
+	if (projectionEnabled && modelInputBudget.shouldCompact) {
+		throw new ElizaError(
+			"Planner model input exceeds the resolved context budget after content projection",
+			{
+				code: "PLANNER_INPUT_OVER_BUDGET",
+				context: {
+					estimatedInputTokens: modelInputBudget.estimatedInputTokens,
+					compactionThresholdTokens: modelInputBudget.compactionThresholdTokens,
+					contextWindowTokens: modelInputBudget.contextWindowTokens,
+					resultCount: contentProjection.resultCount,
+				},
+			},
+		);
+	}
 	const prefixHashes = computePrefixHashes(renderedInput.promptSegments);
 	const cachePrefixHashes = computePrefixHashes(renderedInput.cacheKeySegments);
 	const prefixHash =
@@ -2362,7 +2563,7 @@ async function callPlanner(params: {
 		// Chat planner turns stay at the small DEFAULT_PLANNER_MAX_TOKENS; a coding
 		// turn must be able to emit a whole file in one tool call, so coding mode
 		// raises the cap (see resolvePlannerMaxTokens / issue #10132).
-		maxTokens: resolvePlannerMaxTokens(),
+		maxTokens: resolvePlannerMaxTokens(params.trajectory.codingMode === true),
 	};
 	modelParams.providerOptions = {
 		...modelParams.providerOptions,
@@ -2370,6 +2571,7 @@ async function callPlanner(params: {
 			...((modelParams.providerOptions as { eliza?: Record<string, unknown> })
 				.eliza ?? {}),
 			thinking: "off",
+			contentProjection,
 		},
 	};
 	if (hasTools) {
@@ -3525,6 +3727,71 @@ function isTerminalToolCall(toolCall: PlannerToolCall): boolean {
 	return isTerminalPlannerToolName(toolCall.name);
 }
 
+/**
+ * Prevents a coding turn from treating an unverified file mutation as done.
+ * A successful SHELL call after the most recent successful WRITE/EDIT is the
+ * deliberately small, provider-independent proof boundary: the model chooses
+ * the repository-appropriate command, while the runtime verifies that the
+ * command actually ran and exited successfully.
+ */
+function deferCodingCompletionUntilMutationVerified(args: {
+	trajectory: PlannerTrajectory;
+	iteration: number;
+	redactDiagnosticText?: ToolDiagnosticTextRedactor;
+}): boolean {
+	if (!codingMutationRequiresVerification(args.trajectory)) return false;
+
+	const evaluator: EvaluatorOutput = {
+		success: false,
+		decision: "CONTINUE",
+		thought:
+			"A successful WRITE or EDIT has not been followed by a successful SHELL verification.",
+		messageToUser:
+			"Run the narrowest relevant test, typecheck, lint, build, or diff check with SHELL before finishing.",
+	};
+	args.trajectory.evaluatorOutputs.push(
+		projectToolDiagnosticValue(
+			evaluator,
+			args.redactDiagnosticText ?? composeToolDiagnosticRedactor(),
+		) as EvaluatorOutput,
+	);
+	appendEvaluatorContextEvent(
+		args.trajectory,
+		evaluator,
+		args.iteration,
+		args.redactDiagnosticText,
+	);
+	args.trajectory.plannedQueue.length = 0;
+	return true;
+}
+
+function codingMutationRequiresVerification(
+	trajectory: PlannerTrajectory,
+): boolean {
+	let latestMutationIndex = -1;
+	const steps = [...trajectory.archivedSteps, ...trajectory.steps];
+	for (let index = 0; index < steps.length; index++) {
+		const step = steps[index];
+		const name = step?.toolCall?.name.toUpperCase();
+		if (
+			(name === "WRITE" || name === "EDIT") &&
+			step.result?.success === true
+		) {
+			latestMutationIndex = index;
+		}
+	}
+	if (latestMutationIndex < 0) return false;
+
+	const verified = steps
+		.slice(latestMutationIndex + 1)
+		.some(
+			(step) =>
+				step.toolCall?.name.toUpperCase() === "SHELL" &&
+				step.result?.success === true,
+		);
+	return !verified;
+}
+
 function getToolDefinitionName(tool: ToolDefinition): string | undefined {
 	const maybeTool = tool as ToolDefinition & {
 		function?: { name?: unknown };
@@ -3574,15 +3841,94 @@ function latestUnresolvedFailedNonTerminalToolStep(
 		) {
 			continue;
 		}
+		// A tool-declared read-only failure (FILE ls/read/grep/glob miss) leaves
+		// no broken state and must not own the turn's terminal message: an
+		// exploratory first-step miss otherwise reads as "the last step failed"
+		// over a finished deliverable (live 2026-08-20).
+		if (
+			step.result.success === false &&
+			(step.result.data as { readOnlyOperation?: unknown } | undefined)
+				?.readOnlyOperation === true
+		) {
+			continue;
+		}
+		// A tool-declared COACHING failure (read-before-write guard) steers the
+		// model and leaves no broken state either — same authority rule.
+		if (
+			step.result.success === false &&
+			(step.result.data as { coachingFailure?: unknown } | undefined)
+				?.coachingFailure === true
+		) {
+			continue;
+		}
 		const operationKey = plannerToolOperationKey(step.toolCall, step.result);
 		if (step.result.success === false || step.result.error != null) {
 			unresolvedByOperation.delete(operationKey);
 			unresolvedByOperation.set(operationKey, step);
 		} else if (step.result.success === true) {
 			unresolvedByOperation.delete(operationKey);
+			resolveShellFailuresSubsumedBy(step, unresolvedByOperation);
 		}
 	}
 	return [...unresolvedByOperation.values()].at(-1);
+}
+
+/**
+ * A successful SHELL run also resolves an earlier failed run whose exact
+ * command it re-executes with a corrective prefix. The operation key includes
+ * the command payload, so the canonical shell recovery shape — fail on
+ * `git commit …`, retry as `git config … && git commit …` — never matches by
+ * key, the recovered failure stayed "unresolved", and failure authority
+ * replaced the model's truthful terminal REPLY with the generic failed-step
+ * sentence (live 2026-08-18: the sub-agent committed its README change and
+ * the user was told the runtime step failed). Verbatim containment of the
+ * failed command at a token boundary, in the same cwd, is evidence the same
+ * operation re-ran and succeeded; unrelated sibling work still cannot
+ * launder a failure it did not re-execute.
+ */
+function resolveShellFailuresSubsumedBy(
+	step: PlannerStep,
+	unresolvedByOperation: Map<string, PlannerStep>,
+): void {
+	const call = step.toolCall;
+	if (call?.name.toUpperCase() !== "SHELL") return;
+	const command = shellCommandParam(call);
+	if (!command) return;
+	const cwd = shellCwdParam(call);
+	for (const [key, failed] of [...unresolvedByOperation.entries()]) {
+		const failedCall = failed.toolCall;
+		if (failedCall?.name.toUpperCase() !== "SHELL") continue;
+		const failedCommand = shellCommandParam(failedCall);
+		if (!failedCommand || shellCwdParam(failedCall) !== cwd) continue;
+		if (containsCommandVerbatim(command, failedCommand)) {
+			unresolvedByOperation.delete(key);
+		}
+	}
+}
+
+function shellCommandParam(call: PlannerToolCall): string {
+	const value = (call.params as Record<string, unknown> | undefined)?.command;
+	return typeof value === "string" ? value.trim() : "";
+}
+
+function shellCwdParam(call: PlannerToolCall): string {
+	const value = (call.params as Record<string, unknown> | undefined)?.cwd;
+	return typeof value === "string" ? value.trim() : "";
+}
+
+/** True when `needle` appears in `haystack` verbatim on shell token
+ *  boundaries (start/end, whitespace, or a control operator), so a failed
+ *  `git` cannot be "resolved" by an unrelated command that merely contains
+ *  those letters inside a longer word. */
+function containsCommandVerbatim(haystack: string, needle: string): boolean {
+	if (haystack === needle) return true;
+	// A corrective prefix is evidence only when the failed command is the final
+	// shell list element. Mere token-boundary containment is unsafe: a successful
+	// `echo <failed command>` or quoted diagnostic would otherwise launder the
+	// failure without re-executing it.
+	if (!haystack.endsWith(needle)) return false;
+	const prefix = haystack.slice(0, -needle.length).trimEnd();
+	return prefix.endsWith("&&") || prefix.endsWith("||") || prefix.endsWith(";");
 }
 
 /**
@@ -3672,7 +4018,7 @@ function terminalMessageWithFailureAuthority(
 		unresolvedFailure,
 		failureReport,
 	);
-	if (!isCodingFullSurfaceMode()) return failureNote;
+	if (trajectory.codingMode !== true) return failureNote;
 	const successEvidence = toolOwnedSuccessEvidenceAfter(
 		trajectory,
 		unresolvedFailure,
@@ -3829,7 +4175,9 @@ function toolCallIdentity(toolCall: PlannerToolCall): string {
  * deterministic unavailability (e.g. PAGE_DELEGATE's PAGE_CHILD_UNAVAILABLE)
  * that cannot change within the turn. Neither kind is re-executed. Legacy
  * archived steps still count, so a settled call stays settled after loading
- * an older persisted trajectory.
+ * an older persisted trajectory. In coding mode, a successful WRITE/EDIT
+ * invalidates earlier successes because an identical inspection can now
+ * return changed source.
  */
 export function partitionRedundantSucceededCalls(
 	calls: PlannerToolCall[],
@@ -3845,6 +4193,16 @@ export function partitionRedundantSucceededCalls(
 		if (!step.toolCall || !step.result) continue;
 		const identity = toolCallIdentity(step.toolCall);
 		if (step.result.success === true) {
+			// A successful coding mutation can change the answer to any earlier
+			// inspection. Clear those settled identities before recording the
+			// mutation itself so READ-after-EDIT remains executable while an exact
+			// duplicate EDIT is still suppressed.
+			if (
+				trajectory.codingMode === true &&
+				["WRITE", "EDIT"].includes(step.toolCall.name.toUpperCase())
+			) {
+				succeeded.clear();
+			}
 			succeeded.add(identity);
 		} else if (step.result.data?.retryable === false) {
 			failedNonRetryable.add(identity);
@@ -4050,6 +4408,46 @@ async function finishWithForcedSynthesis(params: {
 	failureAware?: boolean;
 }): Promise<PlannerLoopResult> {
 	const { loop, config, trajectory, iteration } = params;
+	if (
+		trajectory.codingMode === true &&
+		codingMutationRequiresVerification(trajectory)
+	) {
+		const message =
+			"I changed files but could not complete the required command verification. The coding task is incomplete.";
+		const evaluator: EvaluatorOutput = {
+			success: false,
+			decision: "FINISH",
+			thought:
+				"Forced synthesis stopped after repeated calls with an unverified coding mutation.",
+			messageToUser: message,
+		};
+		trajectory.steps.push({
+			iteration,
+			terminalMessage: message,
+			terminalOnly: true,
+		});
+		trajectory.evaluatorOutputs.push(evaluator);
+		appendEvaluatorContextEvent(trajectory, evaluator, iteration);
+		const recordedAt = Date.now();
+		await recordGatedEvaluationStage({
+			runtime: loop.runtime,
+			recorder: loop.recorder,
+			trajectoryId: loop.trajectoryId,
+			parentStageId: loop.parentStageId,
+			iteration,
+			startedAt: recordedAt,
+			endedAt: recordedAt,
+			output: evaluator,
+			reason: "coding_mutation_unverified",
+			logger: loop.runtime.logger,
+		});
+		return {
+			status: "finished",
+			trajectory,
+			evaluator,
+			finalMessage: message,
+		};
+	}
 	trajectory.context = appendContextEvent(trajectory.context, {
 		id: `force-synthesis:${iteration}`,
 		type: "instruction",
@@ -4302,7 +4700,7 @@ async function ensureToolTurnFinalMessage(
 ): Promise<PlannerLoopResult> {
 	if (result.status !== "finished") return result;
 	if (result.endedWithDeliberateSilence) return result;
-	if (isCodingFullSurfaceMode()) return result;
+	if (params.codingMode === true) return result;
 	const message = result.finalMessage;
 	const unusable =
 		message === undefined ||
@@ -4383,7 +4781,7 @@ async function ensureFailedTurnFinalMessage(
 	// guarantee: its result feeds the orchestrator (which owns its own summary
 	// fallback), not a chat user, and an extra model call per failed build
 	// step would be pure overhead there.
-	if (isCodingFullSurfaceMode()) return result;
+	if (params.codingMode === true) return result;
 	if (result.finalMessage !== FAILED_TOOL_FALLBACK_MESSAGE) return result;
 	const failedStep =
 		latestUnresolvedFailedNonTerminalToolStep(result.trajectory) ??
@@ -4620,7 +5018,11 @@ function deterministicSuccessfulToolRelay(
 	for (const step of [...trajectory.steps].reverse()) {
 		if (!step.toolCall || step.result?.success !== true) continue;
 		if (isTerminalToolCall(step.toolCall)) continue;
-		const candidate = getNonEmptyString(step.result.userFacingText);
+		const candidate =
+			getNonEmptyString(step.result.userFacingText) ??
+			(step.result.modelReplyRequired === true
+				? getNonEmptyString(step.result.modelReplyFallback)
+				: undefined);
 		if (candidate) return candidate;
 	}
 	return undefined;
@@ -5870,6 +6272,7 @@ export function actionResultToPlannerToolResult(
 		failureProvenance: result.failureProvenance,
 		turnComplete: result.turnComplete,
 		modelReplyRequired: result.modelReplyRequired,
+		modelReplyFallback: result.modelReplyFallback,
 		continueChain: result.continueChain,
 	};
 	if (options.summary) {

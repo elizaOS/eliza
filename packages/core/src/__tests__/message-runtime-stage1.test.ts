@@ -6966,15 +6966,15 @@ describe("sub-agent completion relay vs the direct-candidate injection backstop"
 		}
 	});
 
-	it("lets REPLY through on an envelope-prefix relay turn (plain-text Stage 1 fallback)", async () => {
+	it("lets REPLY through on a canonical relay turn (plain-text Stage 1 fallback)", async () => {
 		const spawnHandler = vi.fn(async () => ({
 			success: true,
 			text: "spawned",
 			data: { actionName: "TASKS_SPAWN_AGENT" },
 		}));
 		// Plain-text Stage 1 output exercises the
-		// applyDirectCurrentCandidateBackstopToMessageHandler path; the relay is
-		// recognized by its envelope prefix alone (no metadata on the memory).
+		// applyDirectCurrentCandidateBackstopToMessageHandler path; the canonical
+		// source and metadata pair keeps unilateral spoofable markers untrusted.
 		const runtime = makeRuntime([
 			"Build finished — the dice roller app is deployed and the link was shared above.",
 		]);
@@ -6985,6 +6985,7 @@ describe("sub-agent completion relay vs the direct-candidate injection backstop"
 			message: makeMessage({
 				text: RELAY_ENVELOPE_TEXT,
 				source: "sub_agent",
+				metadata: { subAgent: true },
 			}),
 			state: makeState(),
 			responseId: "00000000-0000-0000-0000-000000000005" as UUID,

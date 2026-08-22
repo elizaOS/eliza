@@ -174,6 +174,82 @@ describe("AnonymousChatGate", () => {
     ]);
   });
 
+  test("returns authoritative hourly retry advice through the reset boundary", async () => {
+    const windowStartedAt = 1_800_000_000_000;
+    let now = windowStartedAt + 60 * 60 * 1_000 - 1_001;
+    spyOn(Date, "now").mockImplementation(() => now);
+
+    const beforeBoundary = createGate();
+    await hydrate(beforeBoundary, {
+      hourlyMessageCount: 10,
+      hourlyResetAtMs: windowStartedAt,
+      expiresAtMs: windowStartedAt + 2 * 60 * 60 * 1_000,
+    });
+    const twoSeconds = await post(beforeBoundary, "/lease", {
+      requestId: "request-before-boundary",
+    });
+    expect(twoSeconds.status).toBe(429);
+    expect(twoSeconds.headers.get("Retry-After")).toBe("2");
+    expect(await twoSeconds.json()).toMatchObject({
+      admitted: false,
+      reason: "hourly_limit",
+      remaining: 0,
+      limit: 10,
+      retryAfter: 2,
+    });
+
+    now = windowStartedAt + 60 * 60 * 1_000;
+    const atBoundary = createGate();
+    await hydrate(atBoundary, {
+      hourlyMessageCount: 10,
+      hourlyResetAtMs: windowStartedAt,
+      expiresAtMs: windowStartedAt + 2 * 60 * 60 * 1_000,
+    });
+    const oneSecond = await post(atBoundary, "/lease", {
+      requestId: "request-at-boundary",
+    });
+    expect(oneSecond.status).toBe(429);
+    expect(oneSecond.headers.get("Retry-After")).toBe("1");
+    expect(await oneSecond.json()).toHaveProperty("retryAfter", 1);
+
+    now += 1;
+    const afterBoundary = createGate();
+    await hydrate(afterBoundary, {
+      hourlyMessageCount: 10,
+      hourlyResetAtMs: windowStartedAt,
+      expiresAtMs: windowStartedAt + 2 * 60 * 60 * 1_000,
+    });
+    const rolledOver = await post(afterBoundary, "/lease", {
+      requestId: "request-after-boundary",
+    });
+    expect(rolledOver.status).toBe(200);
+    expect(rolledOver.headers.get("Retry-After")).toBeNull();
+    expect(await rolledOver.json()).toMatchObject({
+      admitted: true,
+      snapshot: { hourlyMessageCount: 1 },
+    });
+  });
+
+  test("does not invent retry advice for the lifetime message limit", async () => {
+    const gate = createGate();
+    await hydrate(gate, { messageCount: 1, messagesLimit: 1 });
+
+    const response = await post(gate, "/lease", {
+      requestId: "request-lifetime-limited",
+    });
+    const body = (await response.json()) as Record<string, unknown>;
+
+    expect(response.status).toBe(429);
+    expect(response.headers.get("Retry-After")).toBeNull();
+    expect(body).toMatchObject({
+      admitted: false,
+      reason: "message_limit",
+      remaining: 0,
+      limit: 1,
+    });
+    expect(body).not.toHaveProperty("retryAfter");
+  });
+
   test("commits the quota lease and its recovery alarm atomically", async () => {
     const storage = new TestStorage();
     const gate = createGate(storage);

@@ -64,6 +64,7 @@ function makeService() {
 		listDocumentsDetailed: vi.fn(async () => listResult()),
 		searchDocuments: vi.fn(async () => []),
 		getDocumentById: vi.fn(async () => null),
+		readDocumentRange: vi.fn(async () => null),
 		addDocument: vi.fn(async () => ({
 			clientDocumentId: DOC_ID,
 			fragmentCount: 1,
@@ -94,7 +95,15 @@ function makeRuntime(service: ReturnType<typeof makeService>): IAgentRuntime {
 			return found;
 		}),
 		getSetting: vi.fn(() => undefined),
-		getRoom: vi.fn(async () => null),
+		getRoom: vi.fn(async () => ({
+			id: ROOM_ID,
+			worldId: "00000000-0000-0000-0000-0000000000bb" as UUID,
+		})),
+		getWorld: vi.fn(async () => ({
+			id: "00000000-0000-0000-0000-0000000000bb" as UUID,
+			agentId: AGENT_ID,
+			metadata: { roles: { [USER_ID]: "USER" } },
+		})),
 		reportError: vi.fn(),
 		useModel: vi.fn(async () => {
 			throw new Error("useModel must not be called on the planner-trust path");
@@ -211,7 +220,7 @@ describe("DOCUMENT search/list echo clamping", () => {
 		expect(res.text).toContain("completeness beyond that window is unknown");
 	});
 
-	it("projects transcript audio anchors into planner-facing search results", async () => {
+	it("projects transcript anchors and a document reference without inventing readable fragment coordinates", async () => {
 		const service = makeService();
 		service.searchDocuments.mockResolvedValueOnce([
 			{
@@ -219,6 +228,8 @@ describe("DOCUMENT search/list echo clamping", () => {
 				content: { text: "anchored phrase" },
 				metadata: {
 					documentId: DOC_ID,
+					documentRevision: 3,
+					position: 12,
 					transcriptId: "transcript-1",
 					startMs: 12_500,
 					endMs: 15_000,
@@ -238,7 +249,9 @@ describe("DOCUMENT search/list echo clamping", () => {
 			transcriptId: "transcript-1",
 			startMs: 12_500,
 			endMs: 15_000,
+			reference: { kind: "document", ref: `document:${DOC_ID}` },
 		});
+		expect(results[0]).not.toHaveProperty("readView");
 	});
 });
 
@@ -255,7 +268,11 @@ describe("DOCUMENT structural extraction on hardened messages", () => {
 			undefined,
 			options({ action: "read" }),
 		);
-		expect(service.getDocumentById).toHaveBeenCalledWith(DOC_ID, memory);
+		expect(service.readDocumentRange).toHaveBeenCalledWith(
+			DOC_ID,
+			{ unit: "line", offset: 0, limit: 100 },
+			memory,
+		);
 		expect(res.text).not.toContain("SECURITY NOTICE");
 	});
 
