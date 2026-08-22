@@ -39,6 +39,7 @@
  * to this chunk, never the whole secret artifact and never a real alias.
  */
 
+import { ElizaError } from "../errors.js";
 import type { PiiScrubRequestPayload } from "../types/events.js";
 import type { Memory, UUID } from "../types/index.js";
 import type {
@@ -48,7 +49,6 @@ import type {
 import { ModelType } from "../types/model.js";
 import type { IAgentRuntime } from "../types/runtime.js";
 import type { Service } from "../types/service.js";
-import { toWellFormedUnicode } from "../utils/well-formed.js";
 import { canonicalKind } from "./entity-recognizer.js";
 import type { CorpusPseudonymMap } from "./pii-pseudonym-map.js";
 
@@ -165,7 +165,7 @@ export interface PiiContextPack {
 	readonly assignments: readonly PiiPseudonymAssignment[];
 	/** Entity candidates that resolved with sufficient confidence. */
 	readonly resolvedEntities: readonly PiiResolvedEntity[];
-	/** Candidate surface forms, deduped — the seam's `candidateSpans`. */
+	/** Complete candidate surface forms in source order. */
 	readonly candidateSpans: readonly string[];
 	/** Which sources were queried vs structurally absent (audit). */
 	readonly sourcesQueried: readonly string[];
@@ -188,14 +188,13 @@ export interface AssembleContextPackRequest {
 	 * and leave fuzzy ones to the model.
 	 */
 	readonly minEntityConfidence?: number;
-	/** Max fragments folded into the pack (default 8). */
+	/** @deprecated Complete fragment inventories are always retained. */
 	readonly maxFragments?: number;
 	/** @deprecated Retained for source compatibility; pack text is never clipped. */
 	readonly maxChars?: number;
 }
 
 const DEFAULT_MIN_ENTITY_CONFIDENCE = 0.6;
-const DEFAULT_MAX_FRAGMENTS = 8;
 
 /**
  * Assemble the context pack + pseudonym-assignment slice for one chunk.
@@ -211,7 +210,7 @@ export async function assembleContextPack(
 		map,
 		rulesetVersion,
 		minEntityConfidence = DEFAULT_MIN_ENTITY_CONFIDENCE,
-		maxFragments = DEFAULT_MAX_FRAGMENTS,
+		maxFragments: _maxFragments,
 		maxChars: _maxChars,
 	} = request;
 
@@ -219,16 +218,16 @@ export async function assembleContextPack(
 	const resolvedEntities: PiiResolvedEntity[] = [];
 	const fragments: PiiContextFragment[] = [];
 
-	// Dedupe candidate surface forms (the seam's candidateSpans) while keeping
-	// first-seen order; drop empty/whitespace forms (adversarial input).
+	// Preserve the candidate-mining output exactly. Invalid empty forms reject
+	// the whole pack instead of producing a plausible partial context.
 	const candidateSpans: string[] = [];
-	const seenSpans = new Set<string>();
 	for (const candidate of candidates) {
-		const form = candidate.surfaceForm?.trim();
-		if (!form) continue;
-		if (seenSpans.has(form)) continue;
-		seenSpans.add(form);
-		candidateSpans.push(form);
+		if (!candidate.surfaceForm.trim()) {
+			throw new ElizaError("PII context candidate is empty", {
+				code: "PII_CONTEXT_CANDIDATE_INVALID",
+			});
+		}
+		candidateSpans.push(candidate.surfaceForm);
 	}
 
 	// 1. Entity resolution — the alias backbone. Confident resolutions are
@@ -236,13 +235,9 @@ export async function assembleContextPack(
 	// every other artifact got.
 	if (sources.resolveEntity) {
 		sourcesQueried.push("entities");
-		const seenClusters = new Set<string>();
 		for (const candidate of candidates) {
-			if (!candidate.surfaceForm?.trim()) continue;
 			const resolved = await sources.resolveEntity(candidate);
 			for (const entity of resolved) {
-				if (seenClusters.has(entity.clusterId)) continue;
-				seenClusters.add(entity.clusterId);
 				resolvedEntities.push(entity);
 				if (entity.confidence >= minEntityConfidence) {
 					map.assign({
@@ -273,17 +268,12 @@ export async function assembleContextPack(
 		for (const form of candidateSpans) {
 			const results = await search(form);
 			for (const fragment of results) {
-				if (typeof fragment.text === "string" && fragment.text.trim()) {
+				if (typeof fragment.text === "string") {
 					fragments.push(fragment);
 				}
 			}
 		}
 	}
-
-	// Rank (measured scores first, descending; unscored keep arrival order) and
-	// bound the pack.
-	fragments.sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
-	const kept = fragments.slice(0, maxFragments);
 
 	// 3. The per-chunk assignment slice: clusters whose aliases occur in the
 	// chunk, plus clusters resolved above. NEVER the whole map.
@@ -305,23 +295,15 @@ export async function assembleContextPack(
 			const mapped = map.assignmentFor(entity.clusterId)
 				? " [cluster already pseudonymized — reuse its assignment]"
 				: "";
-			const handles = entity.identities
-				.map((i) => `${i.platform}:${i.handle}`)
-				.join(", ");
-			return `- ${entity.clusterId} (${entity.kind}, confidence ${entity.confidence.toFixed(2)}${
-				handles ? `, identities: ${handles}` : ""
-			})${mapped}`;
+			return `- ${JSON.stringify(entity)}${mapped}`;
 		});
 		sections.push(`Resolved entity candidates:\n${lines.join("\n")}`);
 	}
-	if (kept.length > 0) {
-		const lines = kept.map(
-			(f) => `- [${f.origin}${f.ref ? ` ${f.ref}` : ""}] ${f.text.trim()}`,
-		);
+	if (fragments.length > 0) {
+		const lines = fragments.map((fragment) => `- ${JSON.stringify(fragment)}`);
 		sections.push(`Related context:\n${lines.join("\n")}`);
 	}
-	let contextPack = sections.join("\n\n");
-	contextPack = toWellFormedUnicode(contextPack);
+	const contextPack = sections.join("\n\n");
 
 	return {
 		contextPack,
@@ -340,9 +322,11 @@ export async function assembleContextPack(
  */
 export function entityResolverFromStore(
 	store: PiiEntityResolverStore,
-	options: { maxCandidates?: number } = {},
+	_options: {
+		/** @deprecated Complete resolver results are always retained. */
+		maxCandidates?: number;
+	} = {},
 ): (candidate: PiiScrubCandidate) => Promise<readonly PiiResolvedEntity[]> {
-	const maxCandidates = options.maxCandidates ?? 3;
 	return async (candidate) => {
 		const query: {
 			name?: string;
@@ -351,7 +335,7 @@ export function entityResolverFromStore(
 			? { identity: candidate.identity }
 			: { name: candidate.surfaceForm.trim() };
 		const resolved = await store.resolve(query);
-		return resolved.slice(0, maxCandidates).map((match) => {
+		return resolved.map((match) => {
 			const aliases = [
 				match.entity.preferredName,
 				...(match.entity.fullName ? [match.entity.fullName] : []),

@@ -58,7 +58,7 @@ describe("message handler retrieval hint output", () => {
 		).toBe("To call a tool, the model emits <tool_call> followed by the name.");
 	});
 
-	it("parses, trims, dedupes, and caps canonical action hint arrays", () => {
+	it("preserves every canonical action hint exactly", () => {
 		const parsed = parseMessageHandlerOutput(
 			JSON.stringify({
 				shouldRespond: "RESPOND",
@@ -84,7 +84,8 @@ describe("message handler retrieval hint output", () => {
 		);
 
 		expect(parsed?.plan.candidateActions).toEqual([
-			"send_email",
+			" send_email ",
+			"SEND_EMAIL",
 			"calendar_create_event",
 			"search_documents",
 			"play_music",
@@ -96,7 +97,25 @@ describe("message handler retrieval hint output", () => {
 			"health_steps",
 			"message_contact",
 			"settings_update",
+			"extra_after_cap",
 		]);
+	});
+
+	it("preserves every intent including duplicates and boundary whitespace", () => {
+		const intents = Array.from(
+			{ length: 11 },
+			(_, index) => ` intent-${index} `,
+		);
+		intents.push(intents[0] ?? "");
+		const parsed = parseMessageHandlerOutput(
+			JSON.stringify({
+				shouldRespond: "RESPOND",
+				replyText: "",
+				contexts: ["tasks"],
+				intents,
+			}),
+		);
+		expect(parsed?.plan.intents).toEqual(intents);
 	});
 
 	it("keeps missing hint arrays backward-compatible", () => {

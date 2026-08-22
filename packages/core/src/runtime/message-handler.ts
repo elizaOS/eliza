@@ -11,7 +11,6 @@ import type {
 	MessageHandlerResult,
 } from "../types/components";
 import type { AgentContext } from "../types/contexts";
-import { normalizeTopics } from "./builtin-field-evaluators";
 import { parseJsonObject, stripJsonStructuralJunkReply } from "./json-output";
 import {
 	looksLikeRawFieldTranscript,
@@ -88,11 +87,8 @@ export function parseMessageHandlerOutput(
 		typeof parsed.replyText === "string"
 			? stripJsonStructuralJunkReply(parsed.replyText)
 			: undefined;
-	const candidateActions = normalizeStringHints(
-		parsed.candidateActionNames,
-		12,
-	);
-	const intents = normalizeStringHints(parsed.intents, 8);
+	const candidateActions = preserveStringHints(parsed.candidateActionNames);
+	const intents = preserveStringHints(parsed.intents);
 
 	const extract = parseExtract(parsed);
 
@@ -152,11 +148,10 @@ function parseMessageHandlerFieldTranscript(
 		typeof fields.replyText === "string"
 			? stripJsonStructuralJunkReply(fields.replyText)
 			: undefined;
-	const candidateActions = normalizeStringHints(
+	const candidateActions = preserveStringHints(
 		splitTranscriptList(fields.candidateActionNames),
-		12,
 	);
-	const intents = normalizeStringHints(splitTranscriptList(fields.intents), 8);
+	const intents = preserveStringHints(splitTranscriptList(fields.intents));
 
 	const extract = parseExtract({
 		facts: splitTranscriptList(fields.facts),
@@ -183,31 +178,10 @@ function parseMessageHandlerFieldTranscript(
 	};
 }
 
-function normalizeStringHints(raw: unknown, maxItems: number): string[] {
-	if (!Array.isArray(raw) || maxItems <= 0) {
-		return [];
-	}
-	const seen = new Set<string>();
-	const result: string[] = [];
-	for (const item of raw) {
-		if (typeof item !== "string") {
-			continue;
-		}
-		const value = item.trim();
-		if (!value) {
-			continue;
-		}
-		const dedupeKey = value.toLowerCase();
-		if (seen.has(dedupeKey)) {
-			continue;
-		}
-		seen.add(dedupeKey);
-		result.push(value);
-		if (result.length >= maxItems) {
-			break;
-		}
-	}
-	return result;
+function preserveStringHints(raw: unknown): string[] {
+	return Array.isArray(raw)
+		? raw.filter((item): item is string => typeof item === "string")
+		: [];
 }
 
 function parseExtract(raw: unknown): MessageHandlerExtract | undefined {
@@ -244,7 +218,7 @@ function parseExtract(raw: unknown): MessageHandlerExtract | undefined {
 				.map((entry) => (typeof entry === "string" ? entry.trim() : ""))
 				.filter((entry): entry is string => entry.length > 0)
 		: [];
-	const topics = normalizeTopics(source.topics);
+	const topics = preserveStringHints(source.topics);
 	if (
 		facts.length === 0 &&
 		relationships.length === 0 &&

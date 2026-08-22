@@ -167,6 +167,9 @@ visible.
 - Three build targets share source — Node-only imports in shared modules break the browser/edge bundles. Verify with `build:node` vs full `build`.
 - The model-output contract is `<response>` XML (with `<actions>`/`<providers>`/`<text>`); plain text is tolerated and treated as a `REPLY`.
 - Action, provider, and analytics results preserve complete model-facing records. Detailed trust evaluation returns every evidence record, follow-up suggestions return every qualifying contact, relationship analytics page through every shared message, and channel-topic search returns every matching room. Do not silently slice without a lossless page or reference contract.
+- Response-handler hint arrays and PII scrub context packs preserve every record,
+  duplicate, and exact text value. Legacy count/character hints are ignored;
+  invalid candidates reject the complete pack instead of yielding partial context.
 - DB mutation methods on `IDatabaseAdapter` return `Promise<boolean>` so callers can distinguish success/failure (`types/database.ts`).
 - The task system (`services/task.ts`, `services/task-scheduler.ts`) is the single place scheduled work runs; only tasks tagged `queue` are polled. Three modes: local timer, per-daemon (`startTaskScheduler`), serverless (`{ serverless: true }` + `runDueTasks()`).
 - Document reads use `roomId` as the single room entitlement and join it to the requester's current room set inside the adapter. `directGrantEntityIds` is a bounded, validated read exception that remains valid without room membership; it never opens `agent-private` documents and never grants mutation authority. Only the dedicated adapter CAS may replace grants: OWNER on any valid document, or a current room ADMIN on global and user-private documents, with every grantee validated in the current agent tenant. Malformed or duplicate grant arrays make the parent unreadable.
