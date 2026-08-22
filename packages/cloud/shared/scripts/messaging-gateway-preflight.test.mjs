@@ -94,11 +94,11 @@ test("fails closed when either Blooio delivery or ingress authentication is abse
   }
 });
 
-test("workflow keeps trusted configuration checks manual and source tests on develop", () => {
+test("workflow keeps trusted configuration checks manual and reusable source tests", () => {
   const workflow = readFileSync(WORKFLOW, "utf8");
 
   assert.match(workflow, /workflow_dispatch:/);
-  assert.match(workflow, /branches: \[develop\]/);
+  assert.match(workflow, /workflow_call:/);
   assert.doesNotMatch(workflow, /pull_request/);
   assert.match(workflow, /Enforce trusted messaging gateway configuration/);
   assert.match(workflow, /if: github\.event_name == 'workflow_dispatch'/);

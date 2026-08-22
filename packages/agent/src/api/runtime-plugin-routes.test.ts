@@ -29,6 +29,10 @@ afterEach(async () => {
         new Promise<void>((resolve, reject) => {
           server.closeIdleConnections?.();
           server.closeAllConnections?.();
+          if (!server.listening) {
+            resolve();
+            return;
+          }
           server.close((error) => (error ? reject(error) : resolve()));
         }),
     ),

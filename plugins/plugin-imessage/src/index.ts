@@ -161,9 +161,8 @@ export type {
   RouteHelpers as IMessageRouteHelpers,
   RouteRequestMeta as IMessageRouteRequestMeta,
 } from "@elizaos/core";
-// Legacy HTTP route handlers (mounted by the agent's raw HTTP router).
-// BlueBubbles is deliberately not aliased or re-exported here; its separate
-// plugin owns that legacy/remote transport.
+// Legacy native iMessage HTTP route handlers mounted by the agent's raw HTTP
+// router. The retired remote bridge is deliberately not aliased or re-exported.
 export {
   handleIMessageRoute,
   type IMessageRouteState,
