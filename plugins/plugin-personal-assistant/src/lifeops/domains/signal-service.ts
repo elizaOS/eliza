@@ -32,7 +32,7 @@ export class SignalDomain {
       side: resolvedSide,
       connected: false,
       inbound: false,
-      reason: "unsupported",
+      reason: "disconnected",
       identity: null,
       grantedCapabilities: [],
       pairing: null,

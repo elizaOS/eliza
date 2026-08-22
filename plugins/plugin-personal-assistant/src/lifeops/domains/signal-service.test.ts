@@ -15,7 +15,7 @@ describe("SignalDomain unsupported boundary", () => {
       provider: "signal",
       connected: false,
       inbound: false,
-      reason: "unsupported",
+      reason: "disconnected",
       identity: null,
       grant: null,
       grantedCapabilities: [],
