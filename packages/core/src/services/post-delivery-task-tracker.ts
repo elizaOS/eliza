@@ -182,11 +182,11 @@ export async function drainPostDeliveryTasks(
 	}
 	let drained = 0;
 	while (true) {
+		const pending = pendingByRuntime.get(runtime as object);
+		if (!pending || pending.size === 0) return drained;
 		if (options.signal?.aborted) {
 			throw quarantinePostDeliveryTasks(runtime, options.signal.reason);
 		}
-		const pending = pendingByRuntime.get(runtime as object);
-		if (!pending || pending.size === 0) return drained;
 		const batch = [...pending];
 		drained += batch.length;
 		const settled = Promise.allSettled(batch.map((entry) => entry.promise));
