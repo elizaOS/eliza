@@ -8,6 +8,64 @@ export type AgentType = "elizaos" | "pi-agent" | "claude" | "codex" | string;
 /** Declares whether a subscription coding-agent session has an active user. */
 export type SubscriptionExecutionMode = "user-attended" | "unattended";
 
+export const SUBSCRIPTION_EXECUTION_AUTHORIZATION_METADATA_KEY =
+  "subscriptionExecutionAuthorization";
+
+export interface SubscriptionExecutionAuthorization {
+  version: 1;
+  mode: "user-attended";
+  source:
+    | "interactive-message"
+    | "interactive-http"
+    | "interactive-task-control";
+  requestId: string;
+}
+
+/** Minted only by an interactive product boundary, then persisted for recovery. */
+export function createSubscriptionExecutionAuthorization(
+  source: SubscriptionExecutionAuthorization["source"],
+  requestId: string,
+): SubscriptionExecutionAuthorization | undefined {
+  const normalizedRequestId = requestId.trim();
+  if (!normalizedRequestId) return undefined;
+  return {
+    version: 1,
+    mode: "user-attended",
+    source,
+    requestId: normalizedRequestId,
+  };
+}
+
+/** Validate the durable copy before a recovery spawn can reuse attendance. */
+export function subscriptionExecutionAuthorizationFromMetadata(
+  metadata: Record<string, unknown> | undefined,
+): SubscriptionExecutionAuthorization | undefined {
+  const candidate =
+    metadata?.[SUBSCRIPTION_EXECUTION_AUTHORIZATION_METADATA_KEY];
+  if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) {
+    return undefined;
+  }
+  const record = candidate as Record<string, unknown>;
+  const source = record.source;
+  if (
+    record.version !== 1 ||
+    record.mode !== "user-attended" ||
+    (source !== "interactive-message" &&
+      source !== "interactive-http" &&
+      source !== "interactive-task-control") ||
+    typeof record.requestId !== "string" ||
+    !record.requestId.trim()
+  ) {
+    return undefined;
+  }
+  return {
+    version: 1,
+    mode: "user-attended",
+    source,
+    requestId: record.requestId.trim(),
+  };
+}
+
 export type ApprovalPreset =
   | "readonly"
   | "standard"
@@ -152,10 +210,10 @@ export interface SpawnOptions {
    */
   slotClass?: SessionSlotClass;
   /**
-   * Required by subscription runtimes whose terms permit only user-attended
-   * operation. Kimi Code fails closed when this is omitted or unattended.
+   * Proof minted by an interactive product boundary. Kimi Code fails closed
+   * when this is omitted; the exact object is persisted for valid recovery.
    */
-  subscriptionExecutionMode?: SubscriptionExecutionMode;
+  subscriptionExecutionAuthorization?: SubscriptionExecutionAuthorization;
   /**
    * When true, spawnSession places this session in a per-session subdir of
    * `workdir` (a SHARED scratch root) so concurrent tasks can't collide.
