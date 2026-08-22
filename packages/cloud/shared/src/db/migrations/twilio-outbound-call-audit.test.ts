@@ -19,7 +19,7 @@ afterEach(async () => {
   await Promise.all(databases.splice(0).map((db) => db.close()));
 });
 
-describe("0305 Twilio outbound call audit", () => {
+describe("0307 Twilio outbound call audit", () => {
   test("retains a pre-provider terminal failure without inventing a CallSid", async () => {
     const db = await database();
     await db.exec(`INSERT INTO twilio_outbound_calls (
