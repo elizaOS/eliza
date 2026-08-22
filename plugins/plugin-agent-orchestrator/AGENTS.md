@@ -367,6 +367,11 @@ README → "GitHub credentials".
 - **Session persistence is tiered.** `RuntimeDbSessionStore` → `FileSessionStore`
   → `InMemorySessionStore`. The in-memory fallback logs a warning and sessions
   don't survive restart.
+- **Recommendation context is exhaustive.** Skill recommendation ranking must
+  retain every eligible skill, and trajectory feedback must traverse every
+  storage page while preserving source order and duplicates. Legacy `max`,
+  recency, and relevance options are compatibility-only and must not discard
+  spawn- or model-facing context.
 - **Smithers task path.** By default (`ELIZA_ORCHESTRATOR_SMITHERS` not `0`), task
   execution goes through the smithers runner (`smithers-task-runner.ts`), which
   drives a structured provision→turn→submit loop. `TASKS:create` persists the
