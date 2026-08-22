@@ -5,7 +5,7 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { type IAgentRuntime, type Plugin } from "@elizaos/core";
+import type { IAgentRuntime, Plugin } from "@elizaos/core";
 import type {
   CapturedAction,
   ScenarioContext,
@@ -15,8 +15,8 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 import githubPlugin, {
   GitHubService,
 } from "../../../../plugins/plugin-github/src/index.ts";
-import { strictActionRouteModelFixtures } from "./_helpers/strict-action-route-model-fixtures.ts";
 import { postTurnModelFixtures } from "./_helpers/post-turn-model-fixtures.ts";
+import { strictActionRouteModelFixtures } from "./_helpers/strict-action-route-model-fixtures.ts";
 
 const REPO = "octo/repo";
 const ISSUE_TITLE = "Deterministic issue";

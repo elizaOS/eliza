@@ -8,11 +8,11 @@ import type {
   ScenarioTurnExecution,
 } from "@elizaos/scenario-runner/schema";
 import { scenario } from "@elizaos/scenario-runner/schema";
-import {
-  strictActionRouteModelFixtures,
-  type StrictScenarioActionRoute,
-} from "./_helpers/strict-action-route-model-fixtures.ts";
 import { postTurnModelFixtures } from "./_helpers/post-turn-model-fixtures.ts";
+import {
+  type StrictScenarioActionRoute,
+  strictActionRouteModelFixtures,
+} from "./_helpers/strict-action-route-model-fixtures.ts";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -102,7 +102,7 @@ function setIdDependentParameters(taskId: string): void {
   historyParameters.taskId = taskId;
 }
 
-function seedStrictFixtures(ctx: ScenarioContext): string | undefined {
+function seedStrictFixtures(_ctx: ScenarioContext): string | undefined {
   createdTaskId = null;
   getParameters.taskId = "__created_task_id_unset__";
   snoozeParameters.taskId = "__created_task_id_unset__";

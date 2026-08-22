@@ -13,8 +13,8 @@ import {
   ensureBrowserWorkspaceDefaultTab,
   executeBrowserWorkspaceCommand,
 } from "../../../../plugins/plugin-browser/src/workspace/browser-workspace.ts";
-import { strictActionRouteModelFixtures } from "./_helpers/strict-action-route-model-fixtures.ts";
 import { postTurnModelFixtures } from "./_helpers/post-turn-model-fixtures.ts";
+import { strictActionRouteModelFixtures } from "./_helpers/strict-action-route-model-fixtures.ts";
 
 const strictBrowserRoutes = [
   {

@@ -36,11 +36,11 @@ import type {
   ScenarioTurnExecution,
 } from "@elizaos/scenario-runner/schema";
 import { scenario } from "@elizaos/scenario-runner/schema";
-import {
-  strictActionRouteModelFixtures,
-  type StrictScenarioActionRoute,
-} from "./_helpers/strict-action-route-model-fixtures.ts";
 import { postTurnModelFixtures } from "./_helpers/post-turn-model-fixtures.ts";
+import {
+  type StrictScenarioActionRoute,
+  strictActionRouteModelFixtures,
+} from "./_helpers/strict-action-route-model-fixtures.ts";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -316,11 +316,11 @@ function expectRecalibrateTurn(
     return `expected recalibrate subaction, saw ${JSON.stringify(data.subaction)}`;
   }
   const demoted = stringArray(data.demotedItemClasses);
-  if (!demoted || demoted.length !== 1 || demoted[0] !== NEWSLETTER_CLASS) {
+  if (demoted?.length !== 1 || demoted[0] !== NEWSLETTER_CLASS) {
     return `expected exactly [${NEWSLETTER_CLASS}] demoted, saw ${JSON.stringify(data.demotedItemClasses)}`;
   }
   const already = stringArray(data.alreadyDemotedItemClasses);
-  if (!already || already.length !== 0) {
+  if (already?.length !== 0) {
     return `expected no previously demoted classes, saw ${JSON.stringify(data.alreadyDemotedItemClasses)}`;
   }
   const text = execution.responseText ?? "";
@@ -359,7 +359,7 @@ function expectResetTurn(execution: ScenarioTurnExecution): string | undefined {
     return `expected reset_recalibration subaction, saw ${JSON.stringify(data.subaction)}`;
   }
   const restored = stringArray(data.restoredItemClasses);
-  if (!restored || restored.length !== 1 || restored[0] !== NEWSLETTER_CLASS) {
+  if (restored?.length !== 1 || restored[0] !== NEWSLETTER_CLASS) {
     return `expected exactly [${NEWSLETTER_CLASS}] restored, saw ${JSON.stringify(data.restoredItemClasses)}`;
   }
   return undefined;

@@ -41,11 +41,11 @@ import type {
   ScenarioTurnExecution,
 } from "@elizaos/scenario-runner/schema";
 import { scenario } from "@elizaos/scenario-runner/schema";
-import {
-  strictActionRouteModelFixtures,
-  type StrictScenarioActionRoute,
-} from "./_helpers/strict-action-route-model-fixtures.ts";
 import { scheduledDispatchModelFixtures } from "./_helpers/scheduled-dispatch-model-fixtures.ts";
+import {
+  type StrictScenarioActionRoute,
+  strictActionRouteModelFixtures,
+} from "./_helpers/strict-action-route-model-fixtures.ts";
 
 type JsonRecord = Record<string, unknown>;
 

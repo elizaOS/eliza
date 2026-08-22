@@ -5,8 +5,8 @@
 
 import type { ScenarioContext } from "@elizaos/scenario-runner/schema";
 import { scenario } from "@elizaos/scenario-runner/schema";
-import { strictActionRouteModelFixtures } from "./_helpers/strict-action-route-model-fixtures.ts";
 import { postTurnModelFixtures } from "./_helpers/post-turn-model-fixtures.ts";
+import { strictActionRouteModelFixtures } from "./_helpers/strict-action-route-model-fixtures.ts";
 
 const guidanceSlug = "scenario-guidance";
 const removableSlug = "scenario-removable";

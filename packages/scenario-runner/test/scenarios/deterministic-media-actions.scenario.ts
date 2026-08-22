@@ -10,8 +10,8 @@ import type {
   ScenarioTurnExecution,
 } from "@elizaos/scenario-runner/schema";
 import { scenario } from "@elizaos/scenario-runner/schema";
-import { strictActionRouteModelFixtures } from "./_helpers/strict-action-route-model-fixtures.ts";
 import { postTurnModelFixtures } from "./_helpers/post-turn-model-fixtures.ts";
+import { strictActionRouteModelFixtures } from "./_helpers/strict-action-route-model-fixtures.ts";
 
 const transparentPngDataUrl =
   "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAFgwJ/lbJY7wAAAABJRU5ErkJggg==";

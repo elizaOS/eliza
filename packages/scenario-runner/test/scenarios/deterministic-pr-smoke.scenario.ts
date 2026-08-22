@@ -167,7 +167,7 @@ export default scenario({
     {
       type: "custom",
       name: "local view loopback API for deterministic shell actions",
-      apply: (ctx) => {
+      apply: (_ctx) => {
         resetAppControlHttpLoopback();
         registerAppControlHttpHandler((request) => {
           if (!request.pathname.startsWith("/api/views")) return undefined;
