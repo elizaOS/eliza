@@ -163,6 +163,19 @@ async function snapshotJobs(identity: SandboxIdentity): Promise<Job[]> {
     )) as Job[];
 }
 
+async function deleteJobs(identity: SandboxIdentity): Promise<Job[]> {
+  return (await dbWrite
+    .select()
+    .from(jobs)
+    .where(
+      and(
+        eq(jobs.agent_id, identity.agentId),
+        eq(jobs.organization_id, identity.organizationId),
+        eq(jobs.type, JOB_TYPES.AGENT_DELETE),
+      ),
+    )) as Job[];
+}
+
 async function sandboxState(identity: SandboxIdentity) {
   const [sandbox] = await dbWrite
     .select({
@@ -515,6 +528,147 @@ describe("agent_snapshot worker authority", () => {
       },
       CONTAINER_TIER_REJECTION,
     );
+  });
+
+  test("keeps durable execution ownership while capture blocks a concurrent delete", async () => {
+    const identity = await seedSandbox({
+      executionTier: "dedicated-lazy",
+      status: "running",
+      poolStatus: null,
+      deletedAt: null,
+      deletionAttemptId: null,
+    });
+    const enqueued = await enqueueSnapshot(new ProvisioningJobService(), identity, "manual");
+    const before = await sandboxState(identity);
+    if (!before) throw new Error("Snapshot target disappeared before processing");
+    const captureEntered = Promise.withResolvers<Job>();
+    const releaseCapture = Promise.withResolvers<void>();
+    const service = new ProvisioningJobService({
+      executionOwnerId: OWNER_ID,
+      executeJob: async (job) => {
+        captureEntered.resolve(job);
+        await releaseCapture.promise;
+        await jobsRepository.settleExecution(
+          job,
+          "completed",
+          { completed_at: new Date() },
+          OWNER_ID,
+        );
+      },
+    });
+    const processing = service.processPendingJobs(1, {
+      jobTypes: [JOB_TYPES.AGENT_SNAPSHOT],
+    });
+    let runningGeneration: string | null = null;
+
+    try {
+      const claimed = await Promise.race([
+        captureEntered.promise,
+        processing.then((result) => {
+          throw new Error(
+            `Snapshot processing settled before capture gate: ${JSON.stringify(result)}`,
+          );
+        }),
+      ]);
+      expect(claimed.id).toBe(enqueued.job.id);
+      expect(claimed.execution_generation).toEqual(expect.any(String));
+      runningGeneration = claimed.execution_generation;
+      const [running] = await dbWrite
+        .select({
+          status: jobs.status,
+          executionGeneration: jobs.execution_generation,
+          executionQuiescedAt: jobs.execution_quiesced_at,
+        })
+        .from(jobs)
+        .where(eq(jobs.id, claimed.id));
+      expect(running).toEqual({
+        status: "in_progress",
+        executionGeneration: claimed.execution_generation,
+        executionQuiescedAt: null,
+      });
+      const [lease] = await dbWrite
+        .select({
+          jobId: jobExecutionLeases.job_id,
+          generation: jobExecutionLeases.execution_generation,
+          ownerId: jobExecutionLeases.owner_id,
+          expiresAt: jobExecutionLeases.expires_at,
+        })
+        .from(jobExecutionLeases)
+        .where(eq(jobExecutionLeases.job_id, claimed.id));
+      expect(lease).toMatchObject({
+        jobId: claimed.id,
+        generation: claimed.execution_generation,
+        ownerId: OWNER_ID,
+        expiresAt: expect.any(Date),
+      });
+      expect(lease?.expiresAt.getTime()).toBeGreaterThan(Date.now());
+      expect(await sandboxState(identity)).toEqual(before);
+
+      await expect(
+        new ProvisioningJobService().enqueueAgentDeleteOnce({
+          ...identity,
+          authorization: "user_request",
+        }),
+      ).rejects.toMatchObject({
+        status: 409,
+        code: "session_not_ready",
+        message: expect.stringContaining("non-quiescent agent_snapshot"),
+        details: {
+          conflictingJobId: claimed.id,
+          conflictingJobType: JOB_TYPES.AGENT_SNAPSHOT,
+          conflictingJobStatus: "in_progress",
+        },
+      });
+      expect(await deleteJobs(identity)).toHaveLength(0);
+      const [stillRunning] = await dbWrite
+        .select({
+          status: jobs.status,
+          executionGeneration: jobs.execution_generation,
+          executionQuiescedAt: jobs.execution_quiesced_at,
+        })
+        .from(jobs)
+        .where(eq(jobs.id, claimed.id));
+      expect(stillRunning).toEqual(running);
+      expect(await sandboxState(identity)).toEqual(before);
+    } finally {
+      releaseCapture.resolve();
+    }
+
+    await expect(processing).resolves.toMatchObject({
+      claimed: 1,
+      succeeded: 1,
+      retried: 0,
+      failed: 0,
+    });
+    const [settled] = await dbWrite
+      .select({
+        status: jobs.status,
+        executionGeneration: jobs.execution_generation,
+        executionQuiescedAt: jobs.execution_quiesced_at,
+      })
+      .from(jobs)
+      .where(eq(jobs.id, enqueued.job.id));
+    expect(settled).toMatchObject({
+      status: "completed",
+      executionGeneration: runningGeneration,
+      executionQuiescedAt: expect.any(Date),
+    });
+    expect(await dbWrite.select().from(jobExecutionLeases)).toHaveLength(0);
+    expect(await sandboxState(identity)).toEqual(before);
+
+    const deletion = await new ProvisioningJobService().enqueueAgentDeleteOnce({
+      ...identity,
+      authorization: "user_request",
+    });
+    expect(deletion).toMatchObject({ created: true, job: { status: "pending" } });
+    expect(await deleteJobs(identity)).toHaveLength(1);
+    expect(await sandboxState(identity)).toMatchObject({
+      status: "deletion_pending",
+      deletionAttemptId: expect.any(String),
+      lifecycleJobId: null,
+      lifecycleGeneration: null,
+      lifecycleRevision: before.lifecycleRevision + 1,
+    });
   });
 
   for (const executionTier of CONTAINER_BACKED_EXECUTION_TIERS) {
