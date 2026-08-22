@@ -367,6 +367,7 @@ describe("ConnectorsSection", () => {
     ];
 
     render(<ConnectorsSection />);
+    fireEvent.click(screen.getByTestId("connector-channel-mode-delegate"));
 
     // Slack remains available through its OWNER-role plugin-managed inventory;
     // its app-token modes themselves are still Bot-only.
@@ -380,7 +381,12 @@ describe("ConnectorsSection", () => {
 
     expect(screen.getByText("Slack")).toBeTruthy();
     expect(screen.getByText("Matrix")).toBeTruthy();
-    expect(screen.getByRole("button", { name: /Switch to/ })).toBeTruthy();
+    expect(
+      screen
+        .getByTestId("connector-channel-mode-bot")
+        .getAttribute("aria-pressed"),
+    ).toBe("true");
+    expect(screen.queryByRole("button", { name: /Switch to/ })).toBeNull();
   });
 
   it("keeps unclassified connectors visible under both lenses", () => {
