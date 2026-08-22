@@ -94,6 +94,10 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 		/options\.command\.substring\(/,
 		/options\.command\.slice\(/,
 	],
+	"packages/agent/src/runtime/roles/src/provider.ts": [
+		/id\.slice\(/,
+		/id\.substring\(/,
+	],
 	"packages/agent/src/runtime/prompt-optimization.ts": [
 		/actionCompactionEnabled/,
 	],
