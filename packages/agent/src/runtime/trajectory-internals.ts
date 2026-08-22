@@ -643,7 +643,6 @@ export async function flushObservationBuffer(
 
     const result = await runtime.useModel(ModelType.TEXT_SMALL, {
       prompt,
-      maxTokens: 512,
       temperature: 0,
     });
 

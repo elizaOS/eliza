@@ -258,7 +258,11 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 	"packages/core/src/features/advanced-capabilities/providers/facts.ts": [
 		/EVIDENCE_TEXT_CHAR_CAP/,
 	],
-	"packages/agent/src/api/chat-routes.ts": [/\.slice\(-50\)/],
+	"packages/agent/src/api/chat-routes.ts": [
+		/\.slice\(-50\)/,
+		/maxTokens:\s*260/,
+	],
+	"packages/agent/src/api/fallback-action-helpers.ts": [/maxTokens:\s*260/],
 	"packages/agent/src/api/interactions-routes.ts": [
 		/truncateWellFormed/,
 		/MAX_CONTEXT_CHARS/,
@@ -286,6 +290,7 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 		/actionCompactionEnabled/,
 	],
 	"packages/agent/src/runtime/trajectory-internals.ts": [
+		/maxTokens:\s*512/,
 		/truncateField/,
 		/truncateRecord/,
 		/\[\^\\n\]\{1,1024\}/,

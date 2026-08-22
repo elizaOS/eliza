@@ -63,6 +63,7 @@ describe("executeFallbackParsedActions", () => {
         expect(String((params as { prompt?: string }).prompt)).toContain(
           "stdout: block active for example.com",
         );
+        expect(params).not.toHaveProperty("maxTokens");
         return JSON.stringify({
           response: "I turned on the block for example.com.",
         });
