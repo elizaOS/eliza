@@ -37,6 +37,52 @@ export function mineCandidatePaths(texts: readonly string[]): string[] {
   return [...out];
 }
 
+const ENUMERATE_MAX_DEPTH = 3;
+const ENUMERATE_MAX_ENTRIES = 64;
+/** Orchestration plumbing written into the workdir for the child — never the
+ *  deliverable, so never candidate evidence. */
+const ENUMERATE_SKIP = new Set(["AGENTS.md", "CLAUDE.md", "node_modules"]);
+
+/**
+ * Enumerate the session workdir directly as a candidate source. A worker that
+ * ends its run with an empty final reply leaves NOTHING to mine claims from,
+ * and a working build then parks with "no evidence" (live 2026-08-19: built
+ * dice-roller page reported as ghosted + parked). Enumeration only nominates
+ * candidates; collectFsObservedFiles still applies the mtime-after-start gate
+ * before anything counts as evidence.
+ */
+export function enumerateWorkdirCandidates(workdir: string): string[] {
+  const root = path.resolve(workdir);
+  const out: string[] = [];
+  const walk = (dir: string, depth: number): void => {
+    if (depth > ENUMERATE_MAX_DEPTH || out.length >= ENUMERATE_MAX_ENTRIES) {
+      return;
+    }
+    let entries: fs.Dirent[];
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      // error-policy:J3 an unreadable directory nominates no candidates; the
+      // claim-mining sources still apply.
+      return;
+    }
+    for (const entry of entries) {
+      if (out.length >= ENUMERATE_MAX_ENTRIES) return;
+      if (entry.name.startsWith(".") || ENUMERATE_SKIP.has(entry.name)) {
+        continue;
+      }
+      const absolute = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        walk(absolute, depth + 1);
+      } else if (entry.isFile()) {
+        out.push(path.relative(root, absolute));
+      }
+    }
+  };
+  walk(root, 0);
+  return out.sort();
+}
+
 export interface FsObservedFilesInput {
   workdir: string;
   candidatePaths: readonly string[];

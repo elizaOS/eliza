@@ -269,6 +269,13 @@ export interface SessionStore {
   }): Promise<SessionInfo | null>;
   list(filter?: SessionFilter): Promise<SessionInfo[]>;
   update(id: string, patch: Partial<SessionInfo>): Promise<void>;
+  /** Atomically merge a metadata patch (read+merge+write inside the store's
+   *  write queue). The naive get→merge→update in AcpService lost patches to
+   *  concurrent writers — the admin-stop stamp NEVER survived a racing
+   *  lastChangeSet merge, so every stop narrated as an unexplained death
+   *  (live 2026-08-20). Optional so external store impls keep compiling; the
+   *  service falls back to the racy path when absent. */
+  mergeMetadata?(id: string, patch: Record<string, unknown>): Promise<void>;
   updateStatus(
     id: string,
     status: SessionStatus,

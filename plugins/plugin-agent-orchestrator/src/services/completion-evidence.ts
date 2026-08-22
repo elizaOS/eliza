@@ -99,6 +99,18 @@ export interface ToolOutputEvidence {
 export interface CompletionEvidenceBundle {
   /** The sub-agent's reported result — the fallback/final-reply text. */
   summary: string;
+  /** Tail of the session's captured raw output (tool stdout the transport
+   *  recorded). Script-run criteria are judged by what the run PRINTED; the
+   *  classified tool buckets miss plain interpreter output, and the judge
+   *  rejected a correct prime-numbers run as "no execution logs provided"
+   *  (live 2026-08-20). */
+  runOutput?: string;
+  /** Pull request the ORCHESTRATOR's auto-submit opened for this task. The
+   *  child cannot push or open PRs by design, so its narration never carries
+   *  the URL — without this field the judge kept failing "no pull request
+   *  was opened" against tasks whose PR its own submit had already opened
+   *  (live 2026-08-20: TESTING.md and STYLE.md, three attempts each). */
+  pullRequestUrl?: string;
   /** Human-readable git diff summary (diffstat + changed files + capped diff)
    *  captured at completion, if any. */
   diffSummary?: string;
@@ -224,6 +236,20 @@ export function classifyToolOutput(
   };
   const seen = new Set<string>();
   for (const signal of signals) {
+    // A `[tool output: …]…[/tool output]` envelope IS tool output by
+    // construction — no marker heuristics needed. Without this, a script's
+    // plain stdout (bare numbers) matched no build/test line shape and the
+    // judge failed a correct run for "missing actual shell output"
+    // (live 2026-08-19: squares.py printed 1..36, task marked failed).
+    for (const match of signal.text.matchAll(
+      /\[tool output:[^\]]*\]([\s\S]*?)\[\/tool output\]/g,
+    )) {
+      const inner = (match[1] ?? "").trim().slice(0, 2_000);
+      if (inner && !seen.has(inner)) {
+        seen.add(inner);
+        buckets.raw.push(inner);
+      }
+    }
     const lines = extractToolLines(signal.text, seen);
     if (lines.length === 0) continue;
     const haystack = `${signal.source ?? ""}\n${signal.text}`;
@@ -400,6 +426,28 @@ export function buildCompletionEvidenceString(
 ): string {
   const sections: string[] = [];
   let hasRicherSection = false;
+
+  const runOutput = bundle.runOutput?.trim();
+  if (runOutput) {
+    sections.push(
+      [
+        "## RUN OUTPUT (raw session output captured by the orchestrator)",
+        runOutput,
+      ].join("\n"),
+    );
+    hasRicherSection = true;
+  }
+
+  const pr = bundle.pullRequestUrl?.trim();
+  if (pr) {
+    sections.push(
+      [
+        "## PULL REQUEST (opened by the orchestrator's auto-submit; the sub-agent cannot push or open PRs itself)",
+        pr,
+      ].join("\n"),
+    );
+    hasRicherSection = true;
+  }
 
   const diff = bundle.diffSummary?.trim();
   if (diff) {
