@@ -681,6 +681,12 @@ export async function flushObservationBuffer(
 
     return observations;
   } catch (err) {
+    // error-policy:J7 observation extraction is diagnostic enrichment, but its
+    // failures must remain visible to the runtime error stream without killing
+    // the surrounding message loop.
+    runtime.reportError("TrajectoryPersistence.flushObservationBuffer", err, {
+      agentId: runtime.agentId,
+    });
     warnRuntime(
       runtime,
       "[trajectory-persistence] observation flush failed",

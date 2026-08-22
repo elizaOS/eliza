@@ -338,7 +338,18 @@ export async function queryPastExperience(
         logger.getTrajectoryDetail(summary.id),
         QUERY_TIMEOUT_MS,
       );
-      if (!detail?.steps) continue;
+      if (!detail || !Array.isArray(detail.steps)) {
+        throw new ElizaError(
+          "Trajectory detail is unavailable for complete experience loading",
+          {
+            code: "TRAJECTORY_EXPERIENCE_DETAIL_UNAVAILABLE",
+            context: {
+              trajectoryId: summary.id,
+              reason: detail ? "steps_missing" : "detail_missing",
+            },
+          },
+        );
+      }
 
       for (const step of detail.steps) {
         if (!step.llmCalls) continue;

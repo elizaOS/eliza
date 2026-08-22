@@ -201,6 +201,35 @@ describe("queryPastExperience complete traversal", () => {
     });
   });
 
+  it.each([
+    ["missing detail", null, "detail_missing"],
+    ["missing steps", { trajectoryId: "legacy" }, "steps_missing"],
+  ])(
+    "rejects %s instead of omitting legacy context",
+    async (_label, detail, reason) => {
+      const runtime = makeRuntime({
+        listTrajectories: async () => ({
+          trajectories: [
+            {
+              id: "legacy",
+              source: "orchestrator",
+              startTime: 1,
+              llmCallCount: 1,
+              createdAt: new Date(1).toISOString(),
+            },
+          ],
+          total: 1,
+        }),
+        getTrajectoryDetail: async () => detail,
+      });
+
+      await expect(queryPastExperience(runtime)).rejects.toMatchObject({
+        code: "TRAJECTORY_EXPERIENCE_DETAIL_UNAVAILABLE",
+        context: { trajectoryId: "legacy", reason },
+      });
+    },
+  );
+
   it("traverses every storage page without treating page size as a content cap", async () => {
     const summaries = Array.from({ length: 501 }, (_, index) => ({
       id: `trajectory-${index}`,
