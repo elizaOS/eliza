@@ -1609,11 +1609,7 @@ describe("ChatOverlay", () => {
     expect(log?.querySelectorAll('[data-testid="thread-line"]').length).toBe(1);
   });
 
-  it("hides the topic chips bar + dividers on a single-topic thread", () => {
-    // The lock-screen leak: a fresh thread whose only Stage-1 topic is
-    // `greeting` was rendering a grey `greeting` chip top-left and a
-    // "— GREETING —" divider above the only message. One topic group must
-    // open clean — no chips rail, no divider.
+  it("keeps internal topic metadata out of the compact transcript", () => {
     render(
       <ChatOverlay
         controller={makeController({
@@ -1645,7 +1641,7 @@ describe("ChatOverlay", () => {
     expect(log?.textContent).toContain("how can I help");
   });
 
-  it("shows the chips bar + dividers once the thread spans two topics", () => {
+  it("keeps multi-topic conversations flat and free of classifier chrome", () => {
     render(
       <ChatOverlay
         controller={makeController({
@@ -1669,15 +1665,12 @@ describe("ChatOverlay", () => {
       />,
     );
     fireEvent.focus(screen.getByLabelText("message"));
-    expect(screen.getByTestId("topic-chips-bar")).toBeTruthy();
-    // Two distinct topics → two group dividers, labels humanized.
-    expect(screen.getAllByTestId("topic-group-header").length).toBe(2);
-    expect(screen.getByTestId("topic-chips-bar").textContent).toContain(
-      "Deployment",
-    );
-    expect(screen.getByTestId("topic-chips-bar").textContent).toContain(
-      "Billing",
-    );
+    expect(screen.queryByTestId("topic-chips-bar")).toBeNull();
+    expect(screen.queryByTestId("topic-group-header")).toBeNull();
+    expect(screen.queryByTestId("topic-group-pill")).toBeNull();
+    const log = document.getElementById("continuous-thread");
+    expect(log?.textContent).toContain("deploy failing");
+    expect(log?.textContent).toContain("card was charged twice");
   });
 
   it("aligns the assistant bubble left and the user bubble right", () => {

@@ -179,14 +179,6 @@ import {
   filterRenderableShellMessages,
   type ShellMessage,
 } from "./shell-state";
-import { ShellTopicChipsBar } from "./TopicChipsBar";
-import { TopicGroup } from "./TopicGroup";
-import { findTopicElement } from "./topic-element";
-import {
-  deriveChannelTopics,
-  groupMessagesByTopic,
-  hasMultipleTopicGroups,
-} from "./topic-grouping";
 import { type PullGestureBinding, usePullGesture } from "./use-pull-gesture";
 import type { ConversationNav, ShellController } from "./useShellController";
 import { WALLPAPER_FLOAT_SHADOW, WALLPAPER_TEXT } from "./wallpaper-idiom";
@@ -2377,26 +2369,6 @@ export function ChatOverlay({
     markLayoutShiftIntent,
   ]);
 
-  // Topic grouping + chips bar (#8928). Derived from the per-message Stage-1
-  // topic tags. The chips rail and dividers ONLY earn their pixels once a
-  // transcript genuinely spans MULTIPLE topics — a fresh/single-subject thread
-  // renders flat so the lock-screen chat opens clean (no machine-topic pill
-  // top-left, no "— GREETING —" divider above the only group). See
-  // `hasMultipleTopicGroups`. Chip labels are humanized from the tagger's
-  // machine slugs (`user_greeting` → "User Greeting").
-  const topicSegments = React.useMemo(
-    () => groupMessagesByTopic(visibleMessages),
-    [visibleMessages],
-  );
-  const hasTopics = React.useMemo(
-    () => hasMultipleTopicGroups(topicSegments),
-    [topicSegments],
-  );
-  const channelTopics = React.useMemo(
-    () => deriveChannelTopics(visibleMessages),
-    [visibleMessages],
-  );
-
   // ── Infinite upward scroll (#13532/#14329), wired into the overlay per #14279
   // The overlay is the primary mobile/PWA chat surface. The shadcn
   // MessageScroller owns bottom-follow and streamed growth on `threadRef`; the
@@ -2408,13 +2380,9 @@ export function ChatOverlay({
     scrollRef: threadRef,
     sentinelRef: topSentinelRef,
     onLoadOlder: renderWindow.onLoadOlder,
-    // Topic grouping wraps rows in collapsible segments, which breaks the
-    // sentinel's flat-prepend anchor math; restrict load-older to the flat
-    // transcript (the common case). A topic-grouped thread still shows its
-    // recent window; scroll-up paging there is a follow-up.
-    hasMore: !hasTopics && renderWindow.canLoadOlder,
+    hasMore: renderWindow.canLoadOlder,
     topItemKey: visibleMessages[0]?.id ?? "",
-    enabled: threadPresented && !hasTopics,
+    enabled: threadPresented,
   });
 
   // ── Message search across previous chats (#9955, wired into the overlay per
@@ -2593,35 +2561,6 @@ export function ChatOverlay({
     ],
   );
 
-  const [collapsedTopics, setCollapsedTopics] = React.useState<
-    ReadonlySet<string>
-  >(() => new Set<string>());
-  const setTopicCollapsed = React.useCallback(
-    (key: string, collapsed: boolean) => {
-      setCollapsedTopics((prev) => {
-        if (collapsed === prev.has(key)) return prev;
-        const next = new Set(prev);
-        if (collapsed) next.add(key);
-        else next.delete(key);
-        return next;
-      });
-    },
-    [],
-  );
-  // Tapping a chip expands its group and scrolls its header into view.
-  const scrollToTopic = React.useCallback((topic: string) => {
-    setCollapsedTopics((prev) => {
-      if (!prev.has(topic)) return prev;
-      const next = new Set(prev);
-      next.delete(topic);
-      return next;
-    });
-    if (typeof requestAnimationFrame === "undefined") return;
-    requestAnimationFrame(() => {
-      const el = findTopicElement(threadRef.current, topic);
-      el?.scrollIntoView({ behavior: "smooth", block: "start" });
-    });
-  }, []);
   // The stable body renderer keeps ChatMessage's memo intact while the sheet
   // moves; only the active assistant row receives volatile turn status.
   const renderRowBody = React.useCallback(
@@ -6887,16 +6826,6 @@ export function ChatOverlay({
                             <Loader2 className="h-6 w-6 animate-spin text-accent" />
                           </div>
                         ) : null}
-                        {/* Topic chips bar (#8928): the channel's current topics,
-                      sticky above the scrolling transcript. Tap a chip to jump
-                      to (and expand) its group. Hidden when nothing is tagged. */}
-                        {hasTopics ? (
-                          <ShellTopicChipsBar
-                            topics={channelTopics}
-                            onSelectTopic={scrollToTopic}
-                            className="sticky top-0 z-[2] -mx-5 mb-1 bg-gradient-to-b from-scrim to-transparent px-5"
-                          />
-                        ) : null}
                         {/* Normal chat consumes only the free space in genuinely
                   short threads to keep their latest line near the composer.
                   Once content fills the viewport there is no free space to
@@ -6920,7 +6849,6 @@ export function ChatOverlay({
                         preserves the reader's anchor so the thread never jumps.
                         Only meaningful in the flat (non-topic) transcript. */}
                           {!firstRunOpen &&
-                          !hasTopics &&
                           renderWindow.canLoadOlder &&
                           visibleMessages.length > 0 ? (
                             <div
@@ -6930,57 +6858,13 @@ export function ChatOverlay({
                               className="pointer-events-none h-px w-full shrink-0"
                             />
                           ) : null}
-                          {hasTopics
-                            ? // Topic-grouped transcript: each cluster collapses via a
-                              // gesture on its header (no visible buttons).
-                              (() => {
-                                let lineIndex = 0;
-                                return topicSegments.map((segment) => {
-                                  const lines = segment.messages.map((m) =>
-                                    renderThreadLine(m, lineIndex++),
-                                  );
-                                  return (
-                                    // The React key is the segment's first message id
-                                    // (stable + unique) because a topic can recur in a
-                                    // non-adjacent run (A → B → A). Collapse state stays
-                                    // keyed by topic (`segment.key`) so a chip tap
-                                    // expands every run of that topic.
-                                    <MessageScrollerItem
-                                      key={
-                                        segment.messages[0]?.id ?? segment.key
-                                      }
-                                      messageId={`topic:${segment.messages[0]?.id ?? segment.key}`}
-                                      className="w-full"
-                                    >
-                                      <TopicGroup
-                                        topic={segment.topic}
-                                        count={segment.messages.length}
-                                        collapsed={collapsedTopics.has(
-                                          segment.key,
-                                        )}
-                                        onCollapsedChange={(collapsed) =>
-                                          setTopicCollapsed(
-                                            segment.key,
-                                            collapsed,
-                                          )
-                                        }
-                                      >
-                                        {lines}
-                                      </TopicGroup>
-                                    </MessageScrollerItem>
-                                  );
-                                });
-                              })()
-                            : // Flat transcript (no topic tags) — unchanged behavior.
-                              // Only the LAST, content-less assistant turn (the
-                              // in-flight one) reads turnStatus — every settled bubble
-                              // gets undefined so its memo identity is unchanged.
-                              null}
-                          {hasTopics
-                            ? null
-                            : visibleMessages.map((m, i) =>
-                                renderThreadLine(m, i),
-                              )}
+                          {/* Topic metadata remains available to routing and
+                          search, but the compact transcript is deliberately
+                          flat. Internal classifier labels do not belong in the
+                          user-facing conversation chrome. */}
+                          {visibleMessages.map((m, i) =>
+                            renderThreadLine(m, i),
+                          )}
                         </MessageScrollerContent>
                       </MessageScrollerViewport>
                     </motion.div>

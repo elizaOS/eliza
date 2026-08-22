@@ -87,11 +87,11 @@ beforeEach(() => {
 afterEach(() => vi.clearAllMocks());
 
 describe("hydrateInitialConversation — chat always has a chat (#1)", () => {
-  it("disables synthetic greetings only for native iOS", () => {
+  it("disables synthetic greetings on every chat surface", () => {
     expect(shouldSeedSyntheticConversationGreeting(true, true)).toBe(false);
-    expect(shouldSeedSyntheticConversationGreeting(true, false)).toBe(true);
-    expect(shouldSeedSyntheticConversationGreeting(false, true)).toBe(true);
-    expect(shouldSeedSyntheticConversationGreeting(false, false)).toBe(true);
+    expect(shouldSeedSyntheticConversationGreeting(true, false)).toBe(false);
+    expect(shouldSeedSyntheticConversationGreeting(false, true)).toBe(false);
+    expect(shouldSeedSyntheticConversationGreeting(false, false)).toBe(false);
   });
 
   it("starts native iOS with an active empty conversation and no greeting backfill", async () => {
