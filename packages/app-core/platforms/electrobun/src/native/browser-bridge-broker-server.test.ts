@@ -1,10 +1,16 @@
 /** Exercises bounded Unix broker client/server IPC with a real authenticated enrollment broker. */
 
+import type { ChildProcessWithoutNullStreams, spawn } from "node:child_process";
+import { EventEmitter } from "node:events";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
-import { startBrowserBridgeBrokerServer } from "./browser-bridge-broker-server";
+import { PassThrough } from "node:stream";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  startBrowserBridgeBrokerServer,
+  terminateWindowsSecurePipeHelper,
+} from "./browser-bridge-broker-server";
 import {
   createUnixBrokerTransportDescriptor,
   createWindowsBrokerTransportDescriptor,
@@ -17,6 +23,36 @@ import {
 } from "./browser-bridge-native-protocol";
 
 const roots: string[] = [];
+
+function fakeWindowsHelper(options: { exitOnKill: boolean }): {
+  child: ChildProcessWithoutNullStreams;
+  kill: ReturnType<typeof vi.fn>;
+} {
+  const processEvents = new EventEmitter() as EventEmitter & {
+    exitCode: number | null;
+    signalCode: NodeJS.Signals | null;
+    stdin: PassThrough;
+    stdout: PassThrough;
+    stderr: PassThrough;
+    kill: ReturnType<typeof vi.fn>;
+  };
+  processEvents.exitCode = null;
+  processEvents.signalCode = null;
+  processEvents.stdin = new PassThrough();
+  processEvents.stdout = new PassThrough();
+  processEvents.stderr = new PassThrough();
+  processEvents.kill = vi.fn((signal?: NodeJS.Signals) => {
+    if (options.exitOnKill) {
+      processEvents.signalCode = signal ?? "SIGTERM";
+      processEvents.emit("exit", null, processEvents.signalCode);
+    }
+    return true;
+  });
+  return {
+    child: processEvents as unknown as ChildProcessWithoutNullStreams,
+    kill: processEvents.kill,
+  };
+}
 
 describe("browser bridge broker IPC", () => {
   afterEach(() => {
@@ -143,5 +179,81 @@ describe("browser bridge broker IPC", () => {
     expect(executableProbe).toContain("Invoke-SecurePipeRoundTrip");
     expect(executableProbe).toContain("StandardOutput.BaseStream");
     expect(executableProbe).toContain("StandardInput.BaseStream");
+  });
+
+  it("reaps a Windows helper whose startup readiness times out", async () => {
+    const descriptor = createWindowsBrokerTransportDescriptor(
+      "S-1-5-21-111-222-333-1001",
+      Buffer.alloc(32, 9),
+    );
+    const { child, kill } = fakeWindowsHelper({ exitOnKill: true });
+    const broker = new BrowserBridgeEnrollmentBroker({
+      apiBase: "http://127.0.0.1:31337",
+      ownerSession: async () => null,
+      brokerSecret: Buffer.alloc(32, 9),
+      callerAllowlist: {
+        chromeExtensionIds: [],
+        firefoxExtensionIds: [],
+        safariExtensionIds: [],
+      },
+    });
+    await expect(
+      startBrowserBridgeBrokerServer({
+        descriptor,
+        broker,
+        windowsSecurePipeHelperPath:
+          "C:\\Program Files\\Eliza\\browser-bridge-pipe-host.ps1",
+        windowsSpawn: (() => child) as unknown as typeof spawn,
+        windowsHelperStartupTimeoutMs: 5,
+        windowsHelperShutdownTimeoutMs: 5,
+      }),
+    ).rejects.toThrow("startup timed out");
+    expect(kill).toHaveBeenCalledOnce();
+  });
+
+  it("handles the Windows helper exit race and an already-exited helper", async () => {
+    const racing = fakeWindowsHelper({ exitOnKill: true });
+    await expect(
+      terminateWindowsSecurePipeHelper(racing.child, 5),
+    ).resolves.toBeUndefined();
+    expect(racing.kill).toHaveBeenCalledOnce();
+
+    const exited = fakeWindowsHelper({ exitOnKill: false });
+    (exited.child as unknown as { exitCode: number | null }).exitCode = 1;
+    await expect(
+      terminateWindowsSecurePipeHelper(exited.child, 5),
+    ).resolves.toBeUndefined();
+    expect(exited.kill).not.toHaveBeenCalled();
+  });
+
+  it("surfaces a Windows helper that exits unexpectedly after readiness", async () => {
+    const descriptor = createWindowsBrokerTransportDescriptor(
+      "S-1-5-21-111-222-333-1001",
+      Buffer.alloc(32, 9),
+    );
+    const helper = fakeWindowsHelper({ exitOnKill: false });
+    const broker = new BrowserBridgeEnrollmentBroker({
+      apiBase: "http://127.0.0.1:31337",
+      ownerSession: async () => null,
+      brokerSecret: Buffer.alloc(32, 9),
+      callerAllowlist: {
+        chromeExtensionIds: [],
+        firefoxExtensionIds: [],
+        safariExtensionIds: [],
+      },
+    });
+    queueMicrotask(() => (helper.child.stderr as PassThrough).write("READY\n"));
+    const server = await startBrowserBridgeBrokerServer({
+      descriptor,
+      broker,
+      windowsSecurePipeHelperPath:
+        "C:\\Program Files\\Eliza\\browser-bridge-pipe-host.ps1",
+      windowsSpawn: (() => helper.child) as unknown as typeof spawn,
+      windowsHelperStartupTimeoutMs: 50,
+      windowsHelperShutdownTimeoutMs: 5,
+    });
+    (helper.child as unknown as { exitCode: number | null }).exitCode = 1;
+    helper.child.emit("exit", 1, null);
+    await expect(server.close()).rejects.toThrow("exited unexpectedly");
   });
 });

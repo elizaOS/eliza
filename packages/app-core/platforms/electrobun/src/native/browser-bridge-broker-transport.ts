@@ -23,6 +23,7 @@ export interface UnixBrokerTransportDescriptor {
   directoryMode: 0o700;
   socketMode: 0o600;
   expectedUid: number;
+  directoryPolicy: "managed" | "apple_app_group";
 }
 
 export interface WindowsBrokerTransportDescriptor {
@@ -166,6 +167,7 @@ export function createUnixBrokerTransportDescriptor(
     directoryMode: 0o700,
     socketMode: 0o600,
     expectedUid: uid,
+    directoryPolicy: "managed",
   };
   assertUnixSocketPathLength(descriptor.socketPath);
   return descriptor;
@@ -187,6 +189,7 @@ export function createMacAppGroupBrokerTransportDescriptor(
     directoryMode: 0o700,
     socketMode: 0o600,
     expectedUid: uid,
+    directoryPolicy: "apple_app_group",
   };
   assertUnixSocketPathLength(descriptor.socketPath, "darwin");
   return descriptor;
@@ -196,7 +199,31 @@ export function prepareUnixBrokerSocketDirectory(
   descriptor: UnixBrokerTransportDescriptor,
 ): void {
   const directory = path.dirname(descriptor.socketPath);
-  fs.mkdirSync(directory, { recursive: true, mode: descriptor.directoryMode });
+  if (descriptor.directoryPolicy === "managed") {
+    fs.mkdirSync(directory, {
+      recursive: true,
+      mode: descriptor.directoryMode,
+    });
+  }
+  const absolute = path.resolve(directory);
+  let current = path.parse(absolute).root;
+  for (const component of absolute
+    .slice(current.length)
+    .split(path.sep)
+    .filter(Boolean)) {
+    current = path.join(current, component);
+    const componentStat = fs.lstatSync(current);
+    if (componentStat.isSymbolicLink()) {
+      if (
+        process.platform === "darwin" &&
+        (current === "/var" || current === "/tmp")
+      ) {
+        current = fs.realpathSync(current);
+        continue;
+      }
+      throw new Error("browser bridge broker socket path traverses a symlink");
+    }
+  }
   const stat = fs.lstatSync(directory);
   if (stat.isSymbolicLink() || !stat.isDirectory()) {
     throw new Error(
@@ -208,7 +235,9 @@ export function prepareUnixBrokerSocketDirectory(
       "browser bridge broker socket directory is not owned by the current user",
     );
   }
-  fs.chmodSync(directory, descriptor.directoryMode);
+  if (descriptor.directoryPolicy === "managed") {
+    fs.chmodSync(directory, descriptor.directoryMode);
+  }
 }
 
 export function assertUnixBrokerSocketSecurity(
