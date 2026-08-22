@@ -84,6 +84,8 @@ interface ConsentResponse {
   consentNonce?: unknown;
 }
 
+const DEFAULT_FORCE_PROBE_RETRY_MS = 1_000;
+
 async function fetchConsentNonce(
   doFetch: (url: string, init?: RequestInit) => Promise<Response>,
   consentPath: string,
@@ -126,6 +128,8 @@ export function useRealtimeVoiceMint(options?: {
   consentPath?: string;
   /** Non-consuming availability probe path for force-arm builds. */
   probePath?: string;
+  /** Retry cadence for a force-arm health probe that has not succeeded yet. */
+  probeRetryMs?: number;
   /**
    * Injectable force-arm flag (tests). Defaults to the VITE-side
    * `VITE_VOICE_REALTIME_FORCE` read. When true and normal resolution yields
@@ -137,6 +141,7 @@ export function useRealtimeVoiceMint(options?: {
   const doFetch = options?.fetch ?? defaultConsentFetch;
   const consentPath = options?.consentPath ?? "/api/v1/voice/session/consent";
   const probePath = options?.probePath ?? "/api/v1/voice/session/health";
+  const probeRetryMs = options?.probeRetryMs ?? DEFAULT_FORCE_PROBE_RETRY_MS;
   const forceEnabled = options?.forceEnabled ?? isRealtimeVoiceForceEnabled();
 
   const resolvedAgentId = useMemo(() => {
@@ -163,17 +168,36 @@ export function useRealtimeVoiceMint(options?: {
     }
 
     let cancelled = false;
+    let retryTimer: ReturnType<typeof setTimeout> | null = null;
     setForceProbeArmed(false);
-    void probeRealtimeVoiceAvailability(doFetch, probePath).then(
-      (available) => {
-        if (!cancelled) setForceProbeArmed(available);
-      },
-    );
+
+    const probe = async (): Promise<void> => {
+      const available = await probeRealtimeVoiceAvailability(
+        doFetch,
+        probePath,
+      );
+      if (cancelled) return;
+      if (available) {
+        setForceProbeArmed(true);
+        return;
+      }
+
+      // The local voice gateway is a sibling dev process and can become ready
+      // after the renderer mounts. Keep the batch mic authoritative while it
+      // is unavailable, but re-probe so a normal startup race recovers without
+      // requiring a renderer reload or silently leaving Talk inert forever.
+      retryTimer = setTimeout(() => {
+        retryTimer = null;
+        void probe();
+      }, probeRetryMs);
+    };
+    void probe();
 
     return () => {
       cancelled = true;
+      if (retryTimer !== null) clearTimeout(retryTimer);
     };
-  }, [doFetch, forceProbeEligible, probePath]);
+  }, [doFetch, forceProbeEligible, probePath, probeRetryMs]);
 
   const agentId =
     resolvedAgentId ??

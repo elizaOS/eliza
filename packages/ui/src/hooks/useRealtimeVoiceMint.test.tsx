@@ -186,6 +186,27 @@ describe("useRealtimeVoiceMint", () => {
       expect(result.current.agentId).toBeNull();
     });
 
+    it("recovers when the local gateway becomes ready after the initial probe", async () => {
+      const fetch = vi
+        .fn()
+        .mockResolvedValueOnce(new Response("{}", { status: 503 }))
+        .mockResolvedValueOnce(new Response("{}", { status: 200 }));
+      const { result } = renderHook(() =>
+        useRealtimeVoiceMint({
+          resolveAgentId: () => null,
+          forceEnabled: true,
+          fetch,
+          probeRetryMs: 5,
+        }),
+      );
+
+      expect(result.current.agentId).toBeNull();
+      await waitFor(() => {
+        expect(fetch).toHaveBeenCalledTimes(2);
+        expect(result.current.agentId).toBe(REALTIME_FORCE_SENTINEL_AGENT_ID);
+      });
+    });
+
     it("flag ON + health probe 200 → arms, then fetches fresh consent on first start", async () => {
       const fetch = vi
         .fn()
