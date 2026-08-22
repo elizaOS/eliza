@@ -14,6 +14,7 @@ import type {
   StateValue,
   UUID,
 } from "@elizaos/core";
+import { MESSAGE_SOURCE_SUB_AGENT } from "@elizaos/core";
 import type {
   AcpCapacity,
   AcpJsonRpcMessage,
@@ -218,6 +219,21 @@ export function messageText(message: Memory): string {
  * `messageText()` only reads `content.text`, which is exactly why the terse
  * claude path dropped the route keyword.
  */
+function isGenuineUserTurn(runtime: IAgentRuntime, message: Memory): boolean {
+  if (message.entityId && message.entityId === runtime.agentId) return false;
+  const content = contentRecord(message);
+  const metadata =
+    content.metadata && typeof content.metadata === "object"
+      ? (content.metadata as Record<string, unknown>)
+      : {};
+  if (metadata.subAgent === true) return false;
+  const source = typeof content.source === "string" ? content.source : "";
+  if (source === MESSAGE_SOURCE_SUB_AGENT || source.startsWith("acpx:")) {
+    return false;
+  }
+  return true;
+}
+
 function userRequestFromMessage(message: Memory): string {
   const content = contentRecord(message);
   const raw =
@@ -286,6 +302,13 @@ export async function resolveOriginatingRequestText(
 ): Promise<string> {
   // Primary: the raw request carried on the current message itself.
   const direct = userRequestFromMessage(message);
+  // A genuine human turn routes on ITS OWN words. Unioning the previous user
+  // message steered an unrelated ask by the last request's keywords: "write
+  // me a python script" landed in the milady-fork checkout because the
+  // message before it had asked about milady-fork (live 2026-08-22). The
+  // conversation-window fallbacks exist for synthetic/relayed triggers
+  // (re-plans, sub-agent completions) whose own text is not the user's ask.
+  if (direct && isGenuineUserTurn(runtime, message)) return direct;
 
   // Secondary: the newest genuine (non-agent) request already in the
   // state-composed conversation window. Synchronous; no persistence race.
