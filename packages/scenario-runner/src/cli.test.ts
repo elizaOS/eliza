@@ -734,9 +734,35 @@ describe("scenario-runner CLI", () => {
     writeScenario(tempDir, "cli-timeout-config");
     const dependencies = createDependencies(() => "passed");
 
-    await expect(runCli(["run", tempDir], dependencies)).rejects.toThrow(
-      "SCENARIO_TURN_TIMEOUT_MS must be a positive integer",
+    const error = await runCli(["run", tempDir], dependencies).catch(
+      (caught: unknown) => caught,
     );
+
+    expect(error).toBeInstanceOf(CliUsageError);
+    expect(error).toMatchObject({
+      exitCode: 2,
+      message: expect.stringContaining(
+        "SCENARIO_TURN_TIMEOUT_MS must be a positive integer",
+      ),
+    });
+    expect(dependencies.createScenarioRuntime).not.toHaveBeenCalled();
+    expect(dependencies.runScenario).not.toHaveBeenCalled();
+  });
+
+  it("validates the per-turn timeout before scenario discovery", async () => {
+    process.env.SCENARIO_TURN_TIMEOUT_MS = "0";
+    const missingScenarioDir = path.join(tempDir, "missing");
+    const dependencies = createDependencies(() => "passed");
+
+    await expect(
+      runCli(["run", missingScenarioDir], dependencies),
+    ).rejects.toMatchObject({
+      name: "CliUsageError",
+      exitCode: 2,
+      message: expect.stringContaining(
+        "SCENARIO_TURN_TIMEOUT_MS must be a positive integer",
+      ),
+    });
     expect(dependencies.createScenarioRuntime).not.toHaveBeenCalled();
     expect(dependencies.runScenario).not.toHaveBeenCalled();
   });
