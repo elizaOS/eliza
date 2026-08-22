@@ -801,9 +801,27 @@ const rawPersonalAssistantPlugin: Plugin = {
     anticipationFeedbackEvaluator,
     commitmentExtractionEvaluator,
   ],
-  // No views — the LifeOps overview surface was removed (owner: "no need for an
-  // overview"). Domain views live in the per-domain plugins; the personal
-  // assistant is the chat itself (PERSONAL_ASSISTANT action).
+  // Domain data remains in the per-domain plugins. This one focused view owns
+  // only cross-domain connector onboarding and management; it is not a second
+  // inbox, calendar, or LifeOps overview.
+  views: [
+    {
+      id: "lifeops-connections",
+      label: "Mail & Calendars",
+      description:
+        "Connect, seed, inspect, and recover Gmail, Google Calendar, and Apple Calendar.",
+      icon: "Cable",
+      path: "/lifeops/connections",
+      modalities: ["gui"],
+      bundlePath: "dist/views/bundle.js",
+      surface: { header: "fullscreen", capabilities: ["agent-surface"] },
+      componentExport: "LifeOpsConnectionsView",
+      tags: ["gmail", "email", "calendar", "lifeops", "connections"],
+      relatedActions: ["CONNECTOR", "INBOX", "CALENDAR"],
+      visibleInManager: true,
+      desktopTabEnabled: true,
+    },
+  ],
   events: {
     [EventType.MESSAGE_MUTATED]: [handleBriefMessageMutation],
     // Deterministic completion for fired scheduled tasks awaiting an owner
