@@ -68,7 +68,7 @@ const CONFIRMATION_PATTERN =
 const SENSITIVE_PATTERN =
   /\b(password|passcode|passphrase|secret|token|api[\s_-]*key|private[\s_-]*key|seed[\s_-]*phrase|mnemonic|credential|one[\s_-]*time|otp)\b/i;
 const BUSINESS_MUTATION_PATTERN =
-  /\b(approve|archive|block|capture|connect|create|delete|deny|disable|disconnect|enable|execute|grant|install|purchase|remove|reopen|restart|revoke|run|save|send|start|stop|submit|transfer|unblock|uninstall|update|upload)\b/i;
+  /\b(accept|approve|archive|block|cancel|capture|connect|create|delete|deny|deploy|disable|disconnect|enable|execute|export|grant|import|install|invite|join|leave|link|pair|patch|post|provision|publish|purchase|put|record|reject|remove|rename|reopen|reset|restart|restore|revoke|run|save|schedule|send|start|stop|submit|sync|transfer|trigger|unblock|unlink|uninstall|update|upload|write)\b/i;
 const VIEW_ONLY_JUSTIFICATIONS = Object.freeze({
   "ast-proven-local":
     "The local handler call graph resolves without a known business mutation primitive.",
@@ -816,6 +816,60 @@ function businessMutationRisk(identity, handlerExpression, context) {
   };
 }
 
+function openingHandlerAnalysis(opening, identity, context) {
+  const handlers = opening.attributes.properties.filter(
+    (property) =>
+      ts.isJsxAttribute(property) &&
+      INTERACTION_ATTRIBUTES.has(property.name.text),
+  );
+  const analyses = handlers.map((handler) => {
+    const expression = jsxAttributeExpression(handler);
+    return {
+      event: handler.name.text,
+      text: expression?.getText(context.sourceFile) ?? "",
+      ...businessMutationRisk(identity, expression, context),
+    };
+  });
+  return {
+    mutation: analyses.some((analysis) => analysis.mutation),
+    unresolved: analyses.some((analysis) => analysis.unresolved),
+    handlers: analyses,
+  };
+}
+
+function descriptorHandlerAnalysis(object, identity, context) {
+  const property = objectProperty(object, "onActivate");
+  const expression = objectPropertyExpression(property);
+  if (!expression) return { mutation: false, unresolved: false, handlers: [] };
+  return {
+    ...businessMutationRisk(identity, expression, context),
+    handlers: [
+      {
+        event: "onActivate",
+        text: expression.getText(context.sourceFile),
+        ...businessMutationRisk(identity, expression, context),
+      },
+    ],
+  };
+}
+
+function agentPropsBindingName(call) {
+  const declaration = call.parent;
+  if (
+    !ts.isVariableDeclaration(declaration) ||
+    !ts.isObjectBindingPattern(declaration.name)
+  ) {
+    return null;
+  }
+  const binding = declaration.name.elements.find(
+    (element) =>
+      (element.propertyName
+        ? propertyName(element.propertyName)
+        : propertyName(element.name)) === "agentProps",
+  );
+  return binding && ts.isIdentifier(binding.name) ? binding.name.text : null;
+}
+
 function elementContract({
   surface,
   identity,
@@ -826,10 +880,16 @@ function elementContract({
   line,
   kind,
   scope,
+  handlerAnalysis = { mutation: false, unresolved: false, handlers: [] },
 }) {
   const fillable = FILLABLE_ROLES.has(role);
   const clickable = CLICKABLE_ROLES.has(role);
-  const destructive = CONFIRMATION_PATTERN.test(`${identity.value} ${label}`);
+  const handlerText = handlerAnalysis.handlers
+    .map((handler) => handler.text)
+    .join(" ");
+  const destructive = CONFIRMATION_PATTERN.test(
+    `${identity.value} ${label} ${handlerText}`,
+  );
   const classification = sensitive
     ? "secure-sensitive"
     : fillable || clickable
@@ -889,9 +949,9 @@ function elementContract({
     confirmation: destructive ? "required" : "none",
     channels,
     sensitive,
-    semanticMutation: BUSINESS_MUTATION_PATTERN.test(
-      `${identity.value} ${label}`,
-    ),
+    semanticMutation: handlerAnalysis.mutation,
+    unresolvedMutation: handlerAnalysis.unresolved,
+    semanticEvidence: handlerAnalysis.handlers,
     source: { file: source, line },
   };
 }
@@ -932,19 +992,24 @@ function scanControlsForSurface(surface, files, repoRoot, cache) {
         const sensitive =
           sensitiveValue === true ||
           SENSITIVE_PATTERN.test(`${identity.value} ${label}`);
-        operations.push(
-          elementContract({
-            surface,
-            identity,
-            role,
-            label,
-            sensitive,
-            source,
-            line: lineOf(context, node),
-            kind: "useAgentElement",
-            scope: scopeName(node),
-          }),
-        );
+        const operation = elementContract({
+          surface,
+          identity,
+          role,
+          label,
+          sensitive,
+          source,
+          line: lineOf(context, node),
+          kind: "useAgentElement",
+          scope: scopeName(node),
+          handlerAnalysis: descriptorHandlerAnalysis(
+            object,
+            identity.value,
+            context,
+          ),
+        });
+        operation.agentPropsBinding = agentPropsBindingName(node);
+        operations.push(operation);
       }
       if (ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node)) {
         const dataAgent = jsxAttributeExpression(
@@ -994,6 +1059,11 @@ function scanControlsForSurface(surface, files, repoRoot, cache) {
               line: lineOf(context, node),
               kind: "data-agent-id",
               scope: scopeName(node),
+              handlerAnalysis: openingHandlerAnalysis(
+                node,
+                identity.value,
+                context,
+              ),
             }),
           );
         }
@@ -1028,6 +1098,11 @@ function scanControlsForSurface(surface, files, repoRoot, cache) {
               line: lineOf(context, node),
               kind: "agent-component",
               scope: scopeName(node),
+              handlerAnalysis: openingHandlerAnalysis(
+                node,
+                identity.value,
+                context,
+              ),
             }),
           );
         }
@@ -1067,6 +1142,11 @@ function scanControlsForSurface(surface, files, repoRoot, cache) {
               line: lineOf(context, node),
               kind: "agent-prop",
               scope: scopeName(node),
+              handlerAnalysis: openingHandlerAnalysis(
+                node,
+                identity.value,
+                context,
+              ),
             }),
           );
         }
@@ -1093,6 +1173,11 @@ function scanControlsForSurface(surface, files, repoRoot, cache) {
               line: lineOf(context, node),
               kind: "agent-prop",
               scope: scopeName(node),
+              handlerAnalysis: openingHandlerAnalysis(
+                node,
+                identity.value,
+                context,
+              ),
             }),
           );
         }
@@ -1105,6 +1190,38 @@ function scanControlsForSurface(surface, files, repoRoot, cache) {
               property.expression.getText(context.sourceFile),
             ),
         );
+        if (hasAgentSpread) {
+          const spreadBindings = node.attributes.properties
+            .filter((property) => ts.isJsxSpreadAttribute(property))
+            .map((property) => property.expression.getText(context.sourceFile));
+          const operation = operations.find(
+            (candidate) =>
+              candidate.source.file === source &&
+              candidate.control.scope === scopeName(node) &&
+              candidate.agentPropsBinding &&
+              spreadBindings.includes(candidate.agentPropsBinding),
+          );
+          if (operation) {
+            const analysis = openingHandlerAnalysis(
+              node,
+              operation.control.id,
+              context,
+            );
+            operation.semanticMutation = analysis.mutation;
+            operation.unresolvedMutation = analysis.unresolved;
+            operation.semanticEvidence = analysis.handlers;
+            const handlerText = analysis.handlers
+              .map((handler) => handler.text)
+              .join(" ");
+            if (
+              CONFIRMATION_PATTERN.test(
+                `${operation.control.id} ${operation.control.label} ${handlerText}`,
+              )
+            ) {
+              operation.confirmation = "required";
+            }
+          }
+        }
         if (dataAgent || directAgentId || agentExpression || hasAgentSpread) {
           ts.forEachChild(node, visit);
           return;
@@ -1369,6 +1486,18 @@ function assertLedger(ledger) {
         operationId: operation.operationId,
         message:
           "semantic mutations require widget, chat, and voice parity or a sensitive-boundary exception",
+      });
+    }
+    if (
+      operation.classification === "agent-operation" &&
+      CLICKABLE_ROLES.has(operation.control?.role) &&
+      operation.semanticEvidence?.length === 0
+    ) {
+      findings.push({
+        code: "missing-agent-handler-evidence",
+        operationId: operation.operationId,
+        message:
+          "clickable agent controls require source-backed activation-handler evidence",
       });
     }
     if (operation.classification === "view-only") {
@@ -1691,26 +1820,38 @@ export function discoverViewOperationLedger({ repoRoot, validate = true }) {
           !operation.mutationRisk &&
           !operation.unresolvedMutation,
       ).length,
+      missingHandlerEvidence: operations.filter(
+        (operation) =>
+          operation.classification === "agent-operation" &&
+          CLICKABLE_ROLES.has(operation.control?.role) &&
+          operation.semanticEvidence?.length === 0,
+      ).length,
     },
     unresolvedControls: operations
       .filter(
         (operation) =>
           operation.contractStatus === "declaration-only" ||
           (operation.classification === "view-only" &&
-            (operation.mutationRisk || operation.unresolvedMutation)),
+            (operation.mutationRisk || operation.unresolvedMutation)) ||
+          (operation.classification === "agent-operation" &&
+            CLICKABLE_ROLES.has(operation.control?.role) &&
+            operation.semanticEvidence?.length === 0),
       )
       .map((operation) => ({
         operationId: operation.operationId,
         surfaceId: operation.surfaceId,
         owner: operation.owner,
         domain: sourceDomain(operation.source.file),
-        risk: operation.sensitive
-          ? "sensitive"
-          : operation.contractStatus === "declaration-only"
+        risk:
+          operation.contractStatus === "declaration-only"
             ? "unverified-contract"
-            : operation.mutationRisk
-              ? "business-mutation"
-              : "generic-indirection",
+            : operation.classification === "agent-operation"
+              ? "missing-handler-evidence"
+              : operation.sensitive
+                ? "sensitive"
+                : operation.mutationRisk
+                  ? "business-mutation"
+                  : "generic-indirection",
         source: operation.source,
       })),
     registeredSurfaces: registered.map(({ root, ...surface }) => surface),
@@ -1735,7 +1876,7 @@ export function renderViewOperationLedgerMarkdown(ledger) {
     `- Operations and controls: ${ledger.operationCount}`,
     `- Channel coverage: view ${ledger.channelCounts.view}; widget ${ledger.channelCounts.widget}; chat ${ledger.channelCounts.chat}; voice ${ledger.channelCounts.voice}`,
     `- Semantic mutations: ${ledger.semanticMutationCounts.total}; agent-delivered ${ledger.semanticMutationCounts.agentDelivered}; secure exceptions ${ledger.semanticMutationCounts.secureExceptions}; view-only violations ${ledger.semanticMutationCounts.viewOnlyViolations}`,
-    `- Control risks: business mutation ${ledger.controlRiskCounts.businessMutation}; generic indirection ${ledger.controlRiskCounts.genericIndirection}; sensitive boundary ${ledger.controlRiskCounts.sensitiveBoundary}; local presentation ${ledger.controlRiskCounts.localPresentation}`,
+    `- Control risks: business mutation ${ledger.controlRiskCounts.businessMutation}; generic indirection ${ledger.controlRiskCounts.genericIndirection}; missing handler evidence ${ledger.controlRiskCounts.missingHandlerEvidence}; sensitive boundary ${ledger.controlRiskCounts.sensitiveBoundary}; local presentation ${ledger.controlRiskCounts.localPresentation}`,
     "",
     "## Bounded view-only justifications",
     "",
@@ -1774,4 +1915,5 @@ export const __test = {
   declarationOperations,
   viewOnlyOperationId,
   VIEW_ONLY_JUSTIFICATIONS,
+  isBusinessMutationText: (value) => BUSINESS_MUTATION_PATTERN.test(value),
 };

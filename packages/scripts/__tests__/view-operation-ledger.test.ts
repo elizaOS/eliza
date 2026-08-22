@@ -267,6 +267,37 @@ describe("view operation ledger", () => {
     );
   });
 
+  it("recognizes common mutation verbs before view-only classification", () => {
+    for (const verb of [
+      "rename",
+      "pair",
+      "unlink",
+      "publish",
+      "deploy",
+      "invite",
+      "accept",
+      "reject",
+      "cancel",
+      "reset",
+      "restore",
+      "sync",
+      "import",
+      "export",
+      "record",
+      "join",
+      "leave",
+      "schedule",
+      "trigger",
+      "write",
+      "patch",
+      "put",
+      "post",
+      "provision",
+    ]) {
+      expect(__test.isBusinessMutationText(verb)).toBe(true);
+    }
+  });
+
   it("does not let ambiguous same-verb capabilities excuse a mutation", () => {
     const mutation = {
       operationId: "demo.view-only.save.onClick",
