@@ -23,6 +23,7 @@ import {
   usersRepository,
 } from "../db/repositories/users";
 import type { RuntimeDurableObjectNamespace } from "../types/cloud-worker-env";
+import { isValidStewardTelegramId } from "./auth/steward-client";
 import { apiKeysService } from "./services/api-keys";
 import { charactersService } from "./services/characters/characters";
 import { discordService } from "./services/discord";
@@ -239,7 +240,7 @@ export interface StewardSyncParams {
   name?: string;
   /** Phone independently verified against the current Steward bearer. */
   verifiedPhone?: string;
-  /** Stable Telegram id carried by the server-verified Steward JWT. */
+  /** Telegram sender id carried by a verified Telegram-authenticated Steward JWT. */
   verifiedTelegramId?: string;
   /** Opaque account-bound continuation delivered only inside a Telegram DM. */
   telegramContinuation?: string;
@@ -422,14 +423,21 @@ async function findUserByStoredWalletAddress(
  * 4. Check for wallet-only Steward session -> link to existing wallet user if possible
  * 5. Create new user + organization
  */
-async function syncUserFromStewardBase(params: StewardSyncParams): Promise<StewardSyncedUser> {
+export async function syncUserFromSteward(params: StewardSyncParams): Promise<StewardSyncedUser> {
   const { stewardUserId, walletChainType } = params;
   const email = params.email?.toLowerCase().trim();
   const verifiedPhone = params.verifiedPhone
     ? normalizePhoneNumber(params.verifiedPhone)
     : undefined;
+  const verifiedTelegramId = params.verifiedTelegramId?.trim();
   if (verifiedPhone && !isValidE164(verifiedPhone)) {
     throw new StewardPhoneAccountConflictError("invalid_phone");
+  }
+  if (verifiedTelegramId && !isValidStewardTelegramId(verifiedTelegramId)) {
+    throw new StewardTelegramAccountClaimError("invalid_verified_telegram_id");
+  }
+  if (verifiedTelegramId && params.telegramContinuation) {
+    throw new StewardTelegramAccountClaimError("ambiguous_telegram_authority");
   }
   // Chain-aware, NOT a blanket lowercase: folding a base58 key produces a string
   // that is not the user's wallet, matches no existing row, and is then stored
@@ -452,6 +460,37 @@ async function syncUserFromStewardBase(params: StewardSyncParams): Promise<Stewa
   }
 
   let claimedTelegramUser: UserWithOrganization | undefined;
+
+  // A Telegram-authenticated Steward JWT is already proof of the exact sender
+  // id. Resolve that sender through the same locked personal-account primitive
+  // used by inbound DMs, then promote the resulting synthetic subject. This
+  // ordering makes both browser-first and DM-first arrivals converge on one
+  // user/organization: neither path can insert a second row while the shared
+  // `telegram_personal_account:<id>` transaction lock is held.
+  if (verifiedTelegramId) {
+    const personal = await usersRepository.findOrCreateMessagingPersonalAccount({
+      platform: "telegram",
+      telegramId: verifiedTelegramId,
+      displayName: name,
+      organizationName: `${name}'s Workspace`,
+      organizationSlug: `tg-${verifiedTelegramId}-${Date.now().toString(36)}${Math.random()
+        .toString(36)
+        .slice(2, 8)}`,
+    });
+    const promotion = await usersRepository.promoteTelegramPersonalAccountToSteward({
+      telegramId: verifiedTelegramId,
+      stewardUserId,
+      expectedUserId: personal.user.id,
+      expectedOrganizationId: personal.organization.id,
+    });
+    if (promotion.status !== "promoted" && promotion.status !== "already_promoted") {
+      throw new StewardTelegramAccountClaimError(promotion.status);
+    }
+    claimedTelegramUser = {
+      ...promotion.user,
+      organization: promotion.organization,
+    };
+  }
 
   // Once the database merge commits, the authenticated Steward subject is the
   // durable retry authority. A repeated phone claim narrows that authority but
@@ -1147,73 +1186,6 @@ async function syncUserFromStewardBase(params: StewardSyncParams): Promise<Stewa
     initialCreditsGranted,
     initialFreeCreditsUsd,
   };
-}
-
-/**
- * Converges Steward's signed Telegram subject with the gateway's durable
- * sender identity. A mutable username is never identity authority. Message-
- * first provisional accounts are promoted before generic sync can create a
- * duplicate; website-first accounts are linked after ordinary provisioning.
- */
-export async function syncUserFromSteward(params: StewardSyncParams): Promise<StewardSyncedUser> {
-  const verifiedTelegramId = params.verifiedTelegramId?.trim();
-  if (verifiedTelegramId && !/^\d{1,20}$/.test(verifiedTelegramId)) {
-    throw new StewardTelegramAccountClaimError("invalid_verified_telegram_id");
-  }
-
-  if (verifiedTelegramId) {
-    const [telegramOwner, stewardOwner] = await Promise.all([
-      usersRepository.findByTelegramIdWithOrganizationForWrite(verifiedTelegramId),
-      usersService.getByStewardIdForWrite(params.stewardUserId),
-    ]);
-
-    if (telegramOwner && stewardOwner && telegramOwner.id !== stewardOwner.id) {
-      throw new StewardTelegramAccountClaimError("telegram_owned_by_other_cloud_account");
-    }
-
-    if (telegramOwner && !stewardOwner) {
-      if (!telegramOwner.organization_id) {
-        throw new StewardTelegramAccountClaimError("telegram_account_has_no_organization");
-      }
-      const provisionalStewardId = `telegram:${verifiedTelegramId}`;
-      if (
-        telegramOwner.steward_user_id !== provisionalStewardId &&
-        telegramOwner.steward_user_id !== params.stewardUserId
-      ) {
-        throw new StewardTelegramAccountClaimError("telegram_owned_by_mature_account");
-      }
-      const promotion = await usersRepository.promoteTelegramPersonalAccountToSteward({
-        telegramId: verifiedTelegramId,
-        stewardUserId: params.stewardUserId,
-        expectedUserId: telegramOwner.id,
-        expectedOrganizationId: telegramOwner.organization_id,
-      });
-      if (promotion.status !== "promoted" && promotion.status !== "already_promoted") {
-        throw new StewardTelegramAccountClaimError(promotion.status);
-      }
-    }
-  }
-
-  const user = await syncUserFromStewardBase(params);
-  if (!verifiedTelegramId) return user;
-
-  try {
-    const linked = await usersRepository.linkTelegramIdentity(user.id, {
-      telegram_id: verifiedTelegramId,
-    });
-    if (!linked) {
-      throw new StewardTelegramAccountClaimError("telegram_link_user_not_found");
-    }
-  } catch (error) {
-    if (!isUniqueViolation(error)) throw error;
-    throw new StewardTelegramAccountClaimError("telegram_link_conflict");
-  }
-  await invalidateBoundPersonalDeliveryProjection("telegram", verifiedTelegramId);
-  const linkedUser = await usersService.getByStewardIdForWrite(params.stewardUserId);
-  if (!linkedUser || linkedUser.telegram_id !== verifiedTelegramId) {
-    throw new StewardTelegramAccountClaimError("telegram_link_readback_failed");
-  }
-  return linkedUser;
 }
 
 /**

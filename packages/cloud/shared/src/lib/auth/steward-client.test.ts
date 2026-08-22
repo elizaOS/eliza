@@ -104,27 +104,85 @@ describe("verifyStewardTokenCached — token lifecycle claims", () => {
     expect(claims?.expiration).toBe(minted.expiresAt);
   });
 
-  test("preserves a signed Telegram identity through verification and re-minting", async () => {
-    const source = await mint({
-      telegramId: "7684336618",
-      exp: Math.floor(Date.now() / 1000) + 60,
-    });
-    const sourceClaims = await verify(source);
-    expect(sourceClaims?.telegramId).toBe("7684336618");
-    if (!sourceClaims) return;
+  test("retains a strictly shaped Telegram identity signed by Steward", async () => {
+    const token = await new SignJWT({
+      sub: "steward-telegram-user",
+      authMethod: "telegram",
+      telegramId: "424242",
+    })
+      .setProtectedHeader({ alg: "HS256", typ: "JWT" })
+      .setIssuedAt()
+      .setExpirationTime("5m")
+      .sign(secretKey());
 
-    const reminted = await mintStewardTokenFromClaims(ENV, sourceClaims, 60);
-    expect(reminted).not.toBeNull();
-    if (!reminted) return;
-    expect((await verify(reminted.token))?.telegramId).toBe("7684336618");
+    await expect(verify(token)).resolves.toMatchObject({
+      userId: "steward-telegram-user",
+      authMethod: "telegram",
+      telegramId: "424242",
+    });
   });
 
-  test("rejects malformed Telegram identity claims", async () => {
-    const token = await mint({
-      telegramId: "@mutable-username",
-      exp: Math.floor(Date.now() / 1000) + 60,
+  test("rejects impossible Telegram sessions with missing or malformed sender ids", async () => {
+    for (const telegramId of [undefined, "", "0", "0001", "-1", "123abc", "1".repeat(21)]) {
+      const token = await new SignJWT({
+        sub: `steward-telegram-invalid-${String(telegramId)}`,
+        authMethod: "telegram",
+        ...(telegramId === undefined ? {} : { telegramId }),
+      })
+        .setProtectedHeader({ alg: "HS256", typ: "JWT" })
+        .setIssuedAt()
+        .setExpirationTime("5m")
+        .sign(secretKey());
+      expect(await verify(token)).toBeNull();
+    }
+  });
+
+  test("does not grant Telegram authority from a claim on another auth method", async () => {
+    const token = await new SignJWT({
+      sub: "steward-email-user",
+      authMethod: "email",
+      telegramId: "424242",
+    })
+      .setProtectedHeader({ alg: "HS256", typ: "JWT" })
+      .setIssuedAt()
+      .setExpirationTime("5m")
+      .sign(secretKey());
+
+    await expect(verify(token)).resolves.toMatchObject({
+      userId: "steward-email-user",
+      authMethod: "email",
     });
-    expect(await verify(token)).toBeNull();
+    expect((await verify(token))?.telegramId).toBeUndefined();
+  });
+
+  test("preserves Telegram authority through a verified bearer re-mint", async () => {
+    const minted = await mintStewardTokenFromClaims(ENV, {
+      userId: "steward-telegram-remint",
+      authMethod: "telegram",
+      telegramId: "987654321",
+      expiration: 0,
+      issuedAt: 0,
+    });
+    expect(minted).not.toBeNull();
+    if (!minted) return;
+
+    await expect(verify(minted.token)).resolves.toMatchObject({
+      userId: "steward-telegram-remint",
+      authMethod: "telegram",
+      telegramId: "987654321",
+    });
+  });
+
+  test("refuses to mint an impossible Telegram claims combination", async () => {
+    await expect(
+      mintStewardTokenFromClaims(ENV, {
+        userId: "steward-telegram-invalid-remint",
+        authMethod: "telegram",
+        telegramId: "not-a-sender-id",
+        expiration: 0,
+        issuedAt: 0,
+      }),
+    ).resolves.toBeNull();
   });
 
   test("rejects a token with no exp claim (would never expire)", async () => {
@@ -217,6 +275,7 @@ describe("verifyStewardTokenCached — token lifecycle claims", () => {
       .digest("hex")
       .substring(0, 16);
     distributedCacheValue = {
+      claimsSchemaVersion: 2,
       userId: "cached-user",
       tenantId: "expected-tenant",
       issuedAt: now - 23 * 60 * 60,
@@ -237,6 +296,7 @@ describe("verifyStewardTokenCached — token lifecycle claims", () => {
       .digest("hex")
       .substring(0, 16);
     distributedCacheValue = {
+      claimsSchemaVersion: 2,
       userId: "cached-user",
       tenantId: "wrong-tenant",
       issuedAt: now,
@@ -248,6 +308,36 @@ describe("verifyStewardTokenCached — token lifecycle claims", () => {
     expect(
       await verifyStewardTokenCached({ ...ENV, STEWARD_TENANT_ID: "expected-tenant" }, token),
     ).toBeNull();
+  });
+
+  test("re-verifies tokens when a pre-Telegram claims memo lacks the current schema", async () => {
+    const now = Math.floor(Date.now() / 1000);
+    const signingKeyFingerprint = createHash("sha256")
+      .update(secretKey())
+      .digest("hex")
+      .substring(0, 16);
+    distributedCacheValue = {
+      userId: "stale-cached-user",
+      issuedAt: now,
+      expiration: now + 300,
+      cachedAt: Date.now(),
+      signingKeyFingerprint,
+    };
+    const token = await new SignJWT({
+      sub: "current-telegram-user",
+      authMethod: "telegram",
+      telegramId: "424242",
+    })
+      .setProtectedHeader({ alg: "HS256", typ: "JWT" })
+      .setIssuedAt(now)
+      .setExpirationTime(now + 300)
+      .sign(secretKey());
+
+    await expect(verify(token)).resolves.toMatchObject({
+      userId: "current-telegram-user",
+      authMethod: "telegram",
+      telegramId: "424242",
+    });
   });
 
   test("revalidates lifecycle on an in-memory cache hit", async () => {

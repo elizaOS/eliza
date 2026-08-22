@@ -49,7 +49,10 @@ import {
   useSearchParams,
 } from "react-router-dom";
 import { toast } from "sonner";
-import { DiscordIcon } from "../../../../cloud-ui/components/icons";
+import {
+  DiscordIcon,
+  TelegramIcon,
+} from "../../../../cloud-ui/components/icons";
 import { Alert, AlertDescription } from "../../../../components/primitives";
 import { Button } from "../../../../components/ui/button";
 import { Input } from "../../../../components/ui/input";
@@ -112,9 +115,8 @@ import {
   PHONE_COUNTRY_OPTIONS,
 } from "./phone-country";
 import {
-  getConfiguredTelegramBotId,
-  requestTelegramLogin,
-  TelegramLoginCancelledError,
+  configuredTelegramBotUsername,
+  TelegramLoginWidget,
 } from "./telegram-login-widget";
 
 const Github = ({ className }: { className?: string }) => (
@@ -195,6 +197,7 @@ type Provider =
   | "google"
   | "discord"
   | "github"
+  | "telegram"
   | "twitter"
   | "apple"
   | "telegram"
@@ -506,6 +509,10 @@ export default function StewardLoginSection() {
   const [phoneCountry, setPhoneCountry] = useState<CountryCode>(() =>
     inferPhoneCountry(),
   );
+  const telegramBotUsername = useMemo(
+    () => configuredTelegramBotUsername(),
+    [],
+  );
 
   const auth = useMemo(() => {
     const privateSession = new Map<string, string>();
@@ -545,6 +552,9 @@ export default function StewardLoginSection() {
   const [loading, setLoading] = useState<Provider | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showPasskeyRecovery, setShowPasskeyRecovery] = useState(false);
+  const [telegramIntent, setTelegramIntent] = useState(false);
+  const telegramIntentButtonRef = useRef<HTMLButtonElement>(null);
+  const telegramRegionRef = useRef<HTMLFieldSetElement>(null);
   // Wallet libs mount only on intent: the first wallet-button click renders
   // the (lazy) providers + buttons and auto-starts that wallet's flow.
   const [walletButtonsMounted, setWalletButtonsMounted] = useState(false);
@@ -609,9 +619,8 @@ export default function StewardLoginSection() {
   const enabledOAuthProviders = STEWARD_OAUTH_PROVIDERS.filter((provider) =>
     isStewardOAuthProviderEnabled(providers, provider),
   );
-  const telegramBotId = getConfiguredTelegramBotId();
-  const showTelegram = providers.telegram === true && telegramBotId !== null;
-  const hasIdentityProviders = enabledOAuthProviders.length > 0 || showTelegram;
+  const hasIdentityProviders =
+    enabledOAuthProviders.length > 0 || providers.telegram === true;
   const showWallets = hasAnyWalletProvider(providers);
   const showPasskey =
     providers.passkey !== false && passkeyCapability?.usable === true;
@@ -1375,36 +1384,37 @@ export default function StewardLoginSection() {
     window.location.href = authorizeUrl;
   }
 
-  async function handleTelegram() {
-    if (!telegramBotId) {
-      setError("Telegram sign-in is not configured for this app.");
-      return;
-    }
+  function handleTelegramError(message: string) {
+    setError(message);
+    setLoading(null);
+    setTelegramIntent(false);
+    window.setTimeout(
+      () => telegramIntentButtonRef.current?.focus({ preventScroll: true }),
+      0,
+    );
+  }
 
+  async function handleTelegramAuth(payload: StewardTelegramLoginPayload) {
     setLoading("telegram");
     setError(null);
     try {
-      const payload: StewardTelegramLoginPayload =
-        await requestTelegramLogin(telegramBotId);
       const result = requireCompletedAuth(
         await auth.signInWithTelegram(payload, {
           tenantId: STEWARD_TENANT_ID,
         }),
       );
       await handleSuccess(result.token, result.refreshToken);
-    } catch (telegramError) {
-      // A closed Telegram popup is recoverable and materially different from
-      // a provider/network failure. Keep both states visible and actionable.
+    } catch (telegramError: unknown) {
+      // error-policy:J4 Steward or Cloud session failures remain visibly
+      // distinct and leave the user on the login surface for a safe retry.
       setError(
-        telegramError instanceof TelegramLoginCancelledError
-          ? "Telegram sign-in was cancelled. Try again when you're ready."
-          : getErrorMessage(
-              telegramError,
-              "Telegram sign-in failed. Try again.",
-            ),
+        getErrorMessage(telegramError, "Telegram sign-in failed. Try again."),
       );
-    } finally {
       setLoading(null);
+      window.setTimeout(
+        () => telegramRegionRef.current?.focus({ preventScroll: true }),
+        0,
+      );
     }
   }
 
@@ -1424,6 +1434,11 @@ export default function StewardLoginSection() {
     if (!walletButtonsMounted) return;
     walletOptionsRegionRef.current?.focus({ preventScroll: true });
   }, [walletButtonsMounted]);
+
+  useEffect(() => {
+    if (!telegramIntent) return;
+    telegramRegionRef.current?.focus({ preventScroll: true });
+  }, [telegramIntent]);
 
   if (redirectTo) {
     return <Navigate to={redirectTo} replace />;
@@ -2145,18 +2160,79 @@ export default function StewardLoginSection() {
                 : ` ${stewardOAuthProviderLabel(provider)}`}
             </Button>
           ))}
-          {showTelegram && (
+          {providers.telegram && (
             <Button
+              ref={telegramIntentButtonRef}
               variant="ghost"
               type="button"
-              onClick={handleTelegram}
-              disabled={isLoading}
+              aria-expanded={telegramIntent}
+              aria-controls="steward-telegram-login-widget"
+              onClick={() => {
+                setError(null);
+                setTelegramIntent(true);
+              }}
+              disabled={isLoading || telegramIntent}
               className="hosted-signin-focus-emphasis flex min-h-touch items-center justify-center gap-2 rounded-md border border-border-strong bg-bg-elevated px-4 py-2.5 text-sm font-semibold text-txt transition-[background-color,border-color,transform] hover:border-border-hover hover:bg-bg-hover active:scale-[0.99] disabled:pointer-events-none disabled:border-border/60 disabled:text-muted-strong"
             >
-              {loading === "telegram" ? <Spinner /> : <TelegramIcon />} Telegram
+              {loading === "telegram" ? (
+                <Spinner />
+              ) : (
+                <TelegramIcon className="h-4 w-4" />
+              )}{" "}
+              {t("cloud.login.button.telegram", {
+                defaultValue: "Telegram",
+              })}
             </Button>
           )}
         </div>
+      )}
+
+      {providers.telegram && telegramIntent && (
+        <fieldset
+          id="steward-telegram-login-widget"
+          ref={telegramRegionRef}
+          aria-label={t("cloud.login.telegramRegion", {
+            defaultValue: "Telegram sign-in",
+          })}
+          tabIndex={-1}
+          className="space-y-2 outline-none"
+        >
+          {telegramBotUsername ? (
+            <TelegramLoginWidget
+              botUsername={telegramBotUsername}
+              disabled={isLoading}
+              onAuth={handleTelegramAuth}
+              onError={handleTelegramError}
+            />
+          ) : (
+            <Alert variant="destructive">
+              <AlertCircle />
+              <AlertDescription>
+                Telegram sign-in is not configured for this deployment.
+              </AlertDescription>
+            </Alert>
+          )}
+          <Button
+            variant="ghost"
+            type="button"
+            onClick={() => {
+              setTelegramIntent(false);
+              window.setTimeout(
+                () =>
+                  telegramIntentButtonRef.current?.focus({
+                    preventScroll: true,
+                  }),
+                0,
+              );
+            }}
+            disabled={isLoading}
+            className="min-h-touch w-full rounded-md px-3 text-sm font-medium text-muted hover:text-txt"
+          >
+            {t("cloud.login.button.cancelTelegram", {
+              defaultValue: "Use another sign-in method",
+            })}
+          </Button>
+        </fieldset>
       )}
 
       {showWallets && (
@@ -2325,19 +2401,6 @@ function XIcon() {
       aria-hidden="true"
     >
       <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231 5.45-6.231Zm-1.161 17.52h1.833L7.084 4.126H5.117L17.083 19.77Z" />
-    </svg>
-  );
-}
-
-function TelegramIcon() {
-  return (
-    <svg
-      className="h-4 w-4"
-      viewBox="0 0 24 24"
-      fill="currentColor"
-      aria-hidden="true"
-    >
-      <path d="M21.94 4.67c.29-1.34-.48-1.87-1.37-1.54L2.78 10c-1.21.47-1.2 1.14-.21 1.45l4.57 1.43 10.58-6.68c.5-.3.96-.14.58.2l-8.57 7.74-.33 4.52c.48 0 .69-.22.96-.48l2.19-2.13 4.55 3.36c.84.46 1.44.22 1.65-.78l3.19-13.96Z" />
     </svg>
   );
 }

@@ -232,6 +232,27 @@ app.post("/", async (c) => {
       return c.json(errorBody("Invalid token", "invalid_token"), 401);
     }
 
+    const verifiedTelegramId =
+      claims.authMethod === "telegram" ? claims.telegramId : undefined;
+    if (claims.telegramId && !verifiedTelegramId) {
+      logStewardAuth("telegram-claims-invalid", null);
+      return c.json(errorBody("Invalid token", "invalid_token"), 401);
+    }
+
+    // A signed Telegram login and a browser-supplied DM continuation are two
+    // independent authorities. Never let a caller combine them to select one
+    // Telegram identity while authenticating as another.
+    if (verifiedTelegramId && telegramContinuation) {
+      logStewardAuth("telegram-authority-ambiguous", null);
+      return c.json(
+        errorBody(
+          "Telegram login cannot consume an account continuation",
+          "telegram_claim_conflict",
+        ),
+        409,
+      );
+    }
+
     // Cross-host logout barrier — BRIDGE-ISSUED tokens only. After an explicit
     // logout, the app origin's surviving bridge-minted token must not re-plant
     // the domain-wide cookies via its background session sync (that would
@@ -346,6 +367,7 @@ app.post("/", async (c) => {
           walletChainType: claims.walletChain,
           verifiedTelegramId: claims.telegramId,
           verifiedPhone,
+          verifiedTelegramId,
           telegramContinuation: telegramContinuation ?? undefined,
           sharedRuntimeConversationNamespace:
             c.env.SHARED_RUNTIME_CONVERSATIONS,

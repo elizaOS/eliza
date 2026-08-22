@@ -225,6 +225,26 @@ describe("createStewardThinApp", () => {
     expect(body.oauth).toEqual(["apple", "google"]);
   });
 
+  test.each([true, false])(
+    "preserves upstream Telegram provider state (%s) without inferring it from Eliza OAuth env",
+    async (telegram) => {
+      stubFetch(async () => providersUpstreamResponse({ telegram }));
+
+      const app = createStewardThinApp();
+      const response = await app.request(
+        "https://api.elizacloud.ai/steward/auth/providers",
+        { method: "GET" },
+        stewardEnv,
+      );
+      const body = (await response.json()) as {
+        data?: { google?: boolean; telegram?: boolean };
+      };
+
+      expect(body.data?.google).toBe(true);
+      expect(body.data?.telegram).toBe(telegram);
+    },
+  );
+
   test("serves GET /steward/tenants/config without upstream and defaults no-store", async () => {
     let upstreamCalls = 0;
     stubFetch(async () => {
