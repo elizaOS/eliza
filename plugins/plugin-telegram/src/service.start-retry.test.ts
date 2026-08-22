@@ -20,7 +20,11 @@ const servers: http.Server[] = [];
 const services: TelegramService[] = [];
 
 afterEach(async () => {
-  await Promise.all(services.map((service) => service.stop().catch(() => {})));
+  // error-policy:J6 Teardown failures are collected so every resource is reclaimed, then
+  // surfaced after cleanup instead of being silently swallowed.
+  const stopResults = await Promise.allSettled(
+    services.map((service) => service.stop()),
+  );
   services.length = 0;
   await Promise.all(
     servers.map(
@@ -32,6 +36,12 @@ afterEach(async () => {
     ),
   );
   servers.length = 0;
+  const stopErrors = stopResults.flatMap((result) =>
+    result.status === "rejected" ? [result.reason] : [],
+  );
+  if (stopErrors.length > 0) {
+    throw new AggregateError(stopErrors, "Telegram service teardown failed");
+  }
 });
 
 interface StubBotApi {
@@ -154,10 +164,12 @@ describe("TelegramService.start retry does not strand a long-poll loop", () => {
 
     await service.stop();
     services.length = 0;
-    const before = api.getUpdatesCalls();
-    await settle(800);
-    // At most the one request that was already in flight may still land.
-    expect(api.getUpdatesCalls() - before).toBeLessThanOrEqual(1);
+    // Allow already-dispatched requests to reach the stub, then prove polling
+    // stays quiescent for a substantially longer observation window.
+    await settle(100);
+    const afterStop = api.getUpdatesCalls();
+    await settle(700);
+    expect(api.getUpdatesCalls()).toBe(afterStop);
   });
 
   it("stops polling on stop() with no failure at all (unchanged happy path)", async () => {
@@ -172,8 +184,9 @@ describe("TelegramService.start retry does not strand a long-poll loop", () => {
 
     await service.stop();
     services.length = 0;
-    const before = api.getUpdatesCalls();
-    await settle(800);
-    expect(api.getUpdatesCalls() - before).toBeLessThanOrEqual(1);
+    await settle(100);
+    const afterStop = api.getUpdatesCalls();
+    await settle(700);
+    expect(api.getUpdatesCalls()).toBe(afterStop);
   });
 });
