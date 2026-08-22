@@ -14,7 +14,13 @@
  * model never re-reads its own machinery or paraphrases it as fact on a later
  * turn. Every retained dialogue row is rendered; runtime conversation-length
  * settings and old compaction timestamps must never silently remove prompt
- * history. On any error the provider degrades to an
+ * history. History-recall and recap asks ("summarize the last 100 messages",
+ * "recap this chat", "catch me up") are answered from this same complete
+ * transcript — there is no phrase-gated recall window to expand, and none may
+ * be reintroduced by capping the default fetch: a raw-row fetch limit lets
+ * machinery rows (action results, transient statuses, bridge posts) consume
+ * the window before filtering and silently thins the dialogue the model sees.
+ * On any error the provider degrades to an
  * empty, safe result rather than throwing — a throw here would drop the entire
  * turn's history.
  *

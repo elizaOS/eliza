@@ -1,9 +1,11 @@
 /**
  * Behavioral tests for the RECENT_MESSAGES provider's transcript hygiene:
  * dropping internal bridge / sub-agent / tool / path-dump / synthetic-failure /
- * transient rows, deduping, compaction-ledger inclusion, and the conversation-
- * window cap. Deterministic — drives `recentMessagesProvider.get` against a
- * hand-built in-memory runtime of `vi.fn` stubs; no live model or database.
+ * transient rows, deduping, stale compact-ledger exclusion, and the
+ * complete-retained-history contract (no conversation-window cap: recall/recap
+ * asks and neutral chatter see the same full transcript). Deterministic —
+ * drives `recentMessagesProvider.get` against a hand-built in-memory runtime
+ * of `vi.fn` stubs; no live model or database.
  */
 
 import { describe, expect, it, vi } from "vitest";
@@ -546,6 +548,159 @@ describe("recentMessagesProvider", () => {
 		expect(result.text).toContain("User: whats 23 times 19?");
 		expect(result.text).toContain("User: bitcoin price?");
 	});
+
+	// Live regression (Discord group chat): "what were last like 100 messages in
+	// this chat summary>" rendered only 10 prior messages because the deployed
+	// build clamped the fetch to a 50-row RAW-row window that machinery rows then
+	// consumed before filtering. On this branch the complete-context contract
+	// replaces the window entirely: recap/summary/recall phrasings and ordinary
+	// chatter alike must see every retained dialogue row, regardless of
+	// CONVERSATION_LENGTH.
+	const RECALL_RECAP_PHRASINGS = [
+		"summarize the last 100 messages",
+		"give me a summary of the last 100 messages",
+		"what were the last 100 messages",
+		"what were last like 100 messages in this chat summary>",
+		"recap this chat",
+		"recap this channel",
+		"give me a recap of this conversation",
+		"what has been said here",
+		"what has been discussed here",
+		"catch me up",
+	];
+
+	it.each(RECALL_RECAP_PHRASINGS)(
+		"renders the complete retained history for recall/recap ask: %s",
+		async (phrasing) => {
+			const memories = Array.from({ length: 120 }, (_, index) =>
+				makeMemory(
+					`msg-${index + 1}`,
+					index % 2 === 0 ? USER_ID : AGENT_ID,
+					`history line ${String(index + 1).padStart(3, "0")}`,
+					"discord",
+					(index + 1) * 1000,
+				),
+			);
+			const runtime = makeRuntime(memories, { conversationLength: 10 });
+
+			const result = await recentMessagesProvider.get(
+				runtime,
+				makeMemory("current", USER_ID, phrasing, "discord", 200_000),
+				{ values: {}, data: {}, text: "" },
+			);
+
+			expect(result.data?.recentMessages).toHaveLength(120);
+			expect(result.text).toContain("# Conversation Messages (120 retained)");
+			expect(result.text).toContain("history line 001");
+			expect(result.text).toContain("history line 120");
+			expect(runtime.getMemories).toHaveBeenCalledWith(
+				expect.not.objectContaining({ limit: expect.any(Number) }),
+			);
+		},
+	);
+
+	it("renders the same complete history for a neutral message — no phrase-gated window may shrink or grow the transcript", async () => {
+		const memories = Array.from({ length: 120 }, (_, index) =>
+			makeMemory(
+				`msg-${index + 1}`,
+				index % 2 === 0 ? USER_ID : AGENT_ID,
+				`history line ${String(index + 1).padStart(3, "0")}`,
+				"discord",
+				(index + 1) * 1000,
+			),
+		);
+
+		const result = await recentMessagesProvider.get(
+			makeRuntime(memories, { conversationLength: 10 }),
+			makeMemory("current", USER_ID, "nice weather today", "discord", 200_000),
+			{ values: {}, data: {}, text: "" },
+		);
+
+		expect(result.data?.recentMessages).toHaveLength(120);
+		expect(result.text).toContain("history line 001");
+		expect(result.text).toContain("history line 120");
+	});
+
+	it("machinery rows never consume the dialogue window: a newest burst of action results, transient statuses, bridge rows, and tool transcripts leaves every dialogue row rendered", async () => {
+		// Live failure shape: the deployed build fetched the newest 50 raw rows,
+		// then filtered — machinery consumed the window and only 10 dialogue rows
+		// rendered while older qualifying dialogue existed. Here 40 machinery rows
+		// are newer than 60 dialogue rows; all 60 must still render.
+		const dialogue = Array.from({ length: 60 }, (_, index) =>
+			makeMemory(
+				`dlg-${index + 1}`,
+				index % 2 === 0 ? USER_ID : AGENT_ID,
+				`dialogue ${String(index + 1).padStart(3, "0")}`,
+				"discord",
+				(index + 1) * 1000,
+			),
+		);
+		const machinery = Array.from({ length: 40 }, (_, index) => {
+			const createdAt = 61_000 + index * 1000;
+			switch (index % 4) {
+				case 0: {
+					const actionRow = makeMemory(
+						`act-${index}`,
+						AGENT_ID,
+						`ran step ${index}`,
+						"discord",
+						createdAt,
+					);
+					(actionRow.content as { type?: string }).type = "action_result";
+					return actionRow;
+				}
+				case 1:
+					return makeMemory(
+						`status-${index}`,
+						AGENT_ID,
+						`[worker] step ${index} still going`,
+						"discord",
+						createdAt,
+						{ transient: true },
+					);
+				case 2:
+					return makeMemory(
+						`bridge-${index}`,
+						AGENT_ID,
+						`bridge chunk ${index}`,
+						"swarm_synthesis",
+						createdAt,
+					);
+				default:
+					return makeMemory(
+						`tool-${index}`,
+						AGENT_ID,
+						`[tool output: step ${index}]\nnoise`,
+						"discord",
+						createdAt,
+					);
+			}
+		});
+
+		const result = await recentMessagesProvider.get(
+			makeRuntime([...dialogue, ...machinery], { conversationLength: 10 }),
+			makeMemory(
+				"current",
+				USER_ID,
+				"what were the last 100 messages",
+				"discord",
+				200_000,
+			),
+			{ values: {}, data: {}, text: "" },
+		);
+
+		expect(result.data?.recentMessages).toHaveLength(60);
+		expect(result.data?.actionResults).toHaveLength(10);
+		expect(result.text).toContain("# Conversation Messages (60 retained)");
+		expect(result.text).toContain("dialogue 001");
+		expect(result.text).toContain("dialogue 060");
+		expect(result.text).not.toContain("[tool output:");
+		expect(result.text).not.toContain("bridge chunk");
+		expect(result.text).not.toContain("still going");
+		expect(result.text).not.toContain("ran step");
+	});
+
+	it("skips the cross-room interactions fetch on the first compose of a turn", async () => {
 
 	it("renders authorized cross-room interactions on the first compose of a turn", async () => {
 		expect(recentMessagesProvider.alwaysInResponseState).toBe(true);
