@@ -47,6 +47,17 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 		/MAX_EVALUATOR_INPUT_CHARS/,
 		/chars truncated/,
 	],
+	"packages/core/src/runtime/message-handler.ts": [
+		/normalizeStringHints/,
+		/candidateActionNames[\s\S]{0,100}\b12\b/,
+		/intents[\s\S]{0,100}\b8\b/,
+	],
+	"packages/core/src/security/pii-context-pack.ts": [
+		/DEFAULT_MAX_FRAGMENTS/,
+		/fragments\.slice\(/,
+		/resolved\.slice\(/,
+		/toWellFormedUnicode\(contextPack\)/,
+	],
 	"packages/core/src/runtime/planner-loop.ts": [
 		/maybeCompactPlannerTrajectory/,
 		/CONTEXT_COMPACTION/,
