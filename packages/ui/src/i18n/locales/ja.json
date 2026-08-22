@@ -5175,7 +5175,6 @@
   "capabilities.cloud.bioAria": "ケーパビリティクラウドサンドボックスの説明",
   "capabilities.endpoint.providerLabel": "ケーパビリティエンドポイントプロバイダー",
   "capabilities.provider.direct": "ダイレクトエンドポイント",
-  "capabilities.provider.e2b": "E2B サンドボックス",
   "capabilities.provider.homeMachine": "ホームマシン",
   "capabilities.provider.mobileCompanion": "モバイルコンパニオン",
   "capabilities.provider.desktopCompanion": "デスクトップコンパニオン",

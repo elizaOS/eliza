@@ -14,7 +14,6 @@ Active providers:
 
 | Provider | Runner | Use |
 | --- | --- | --- |
-| `e2b` | E2B SDK sandbox | Hosted coding sandbox when E2B credentials are configured. |
 | `eliza-cloud` | Eliza Cloud remote runner HTTP runner | Managed cloud runner and coding-agent container path. |
 | `home` | Home remote runner HTTP runner | User-owned machine reachable directly, through Eliza Cloud routing, or through SSH tunnel. |
 
@@ -26,38 +25,15 @@ until they are exposed through Eliza Cloud or another reviewed product option.
 Select the provider:
 
 ```text
-ELIZA_CODING_REMOTE_RUNNER=e2b
 ELIZA_CODING_REMOTE_RUNNER=eliza-cloud
 ELIZA_CODING_REMOTE_RUNNER=home
 ```
 
-`ELIZA_REMOTE_RUNNER` is also accepted. E2B additionally accepts the legacy
-flag:
-
-```text
-ELIZA_E2B_REMOTE_RUNNER=1
-```
+`ELIZA_REMOTE_RUNNER` is also accepted.
 
 If no provider is selected, the router auto-selects `eliza-cloud` when a direct
 cloud runner URL is present, `home` when home runner settings are present, and
-otherwise stays disabled unless E2B is explicitly enabled.
-
-## E2B
-
-```text
-E2B_API_KEY
-E2B_ACCESS_TOKEN
-E2B_DOMAIN
-E2B_SANDBOX_ID
-E2B_TEMPLATE
-ELIZA_E2B_WORKDIR
-ELIZA_E2B_HOST_WORKSPACE_ROOT
-ELIZA_E2B_BOOTSTRAP_GIT_URL
-ELIZA_E2B_BOOTSTRAP_GIT_REF
-ELIZA_E2B_KEEP_ALIVE=1
-ELIZA_E2B_TIMEOUT_MS
-ELIZA_E2B_REQUEST_TIMEOUT_MS
-```
+otherwise stays disabled.
 
 ## Eliza Cloud
 
@@ -209,7 +185,7 @@ The opencode server provides:
 | `/vcs` and `/session/:id/diff` | VCS status and session diff. |
 
 The remote runner HTTP runner remains the outer capability boundary. opencode is an
-agent runner inside E2B, Eliza Cloud, or Home, not a fourth sandbox provider.
+agent runner inside Eliza Cloud or Home, not a third sandbox provider.
 
 ## remote runner HTTP Contract
 
@@ -283,7 +259,6 @@ Paths outside the mapped root fail with `CAPABILITY_UNAVAILABLE`.
 Mobile does not need Electrobun. It talks to the same Eliza agent runtime, and
 the runtime routes coding capabilities to a reachable provider:
 
-- E2B for hosted sandbox execution.
 - Eliza Cloud for managed cloud remote runner execution.
 - Home for a user-owned machine reachable by direct URL, cloud routing, or SSH tunnel.
 
@@ -297,13 +272,12 @@ Run the live smoke harness from the repo root:
 bun run --cwd packages/agent test:sandbox-live
 ```
 
-Without provider credentials, E2B, Eliza Cloud, and Home are reported as
+Without provider credentials, Eliza Cloud and Home are reported as
 skipped. Codex app-server is always tested locally when `codex` is available.
 
 To require a configured provider:
 
 ```text
-bun run --cwd packages/agent test:sandbox-live -- --target=e2b --strict
 bun run --cwd packages/agent test:sandbox-live -- --target=eliza-cloud --strict
 bun run --cwd packages/agent test:sandbox-live -- --target=home --strict
 ```

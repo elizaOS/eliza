@@ -3,7 +3,7 @@
  * capability-router `fetch`: trust-policy construction, adapting a
  * provider-specific provisioner into the canonical router + plugin-sync path,
  * allowlist gating (skip/unload of shared-endpoint modules), the uniform
- * endpoint contract across E2B/home-machine/mobile/direct providers, and
+ * endpoint contract across home-machine/mobile/direct providers, and
  * endpoint URL normalization/validation.
  */
 import {
@@ -23,7 +23,6 @@ import {
   type RemoteCapabilityEndpointProvider,
 } from "./remote-capability-endpoint-provider.ts";
 import {
-  e2bCapabilityEndpointProvider,
   homeMachineCapabilityEndpointProvider,
   mobileCompanionCapabilityEndpointProvider,
 } from "./remote-capability-url-endpoint-providers.ts";
@@ -487,21 +486,16 @@ describe("remote capability endpoint providers", () => {
     ]);
   });
 
-  it("treats E2B, home-machine, and mobile companion providers as the same plugin endpoint contract", async () => {
+  it("treats home-machine and mobile companion providers as the same plugin endpoint contract", async () => {
     const runtime = makeRuntime();
     const families = [
-      { id: "e2b", provider: e2bCapabilityEndpointProvider },
       { id: "home", provider: homeMachineCapabilityEndpointProvider },
       { id: "mobile", provider: mobileCompanionCapabilityEndpointProvider },
     ] as const;
     const calls: Array<{ method?: string; endpointId: string }> = [];
     globalThis.fetch = vi.fn(async (url: string | URL, init?: RequestInit) => {
       const href = String(url);
-      const endpointId = href.includes("e2b")
-        ? "e2b"
-        : href.includes("home")
-          ? "home"
-          : "mobile";
+      const endpointId = href.includes("home") ? "home" : "mobile";
       const body = init?.body
         ? (JSON.parse(String(init.body)) as {
             method?: string;
@@ -597,7 +591,6 @@ describe("remote capability endpoint providers", () => {
     }
 
     expect(runtime.plugins.map((plugin) => plugin.name)).toEqual([
-      "@remote/e2b",
       "@remote/home",
       "@remote/mobile",
     ]);
@@ -652,7 +645,7 @@ describe("remote capability endpoint providers", () => {
       calls
         .filter((call) => call.method === "plugin.modules.list")
         .map((call) => call.endpointId),
-    ).toEqual(["e2b", "home", "mobile"]);
+    ).toEqual(["home", "mobile"]);
   });
 
   it("keeps direct endpoints as one provider implementation, not a special runtime path", async () => {
@@ -764,23 +757,6 @@ describe("remote capability endpoint providers", () => {
   });
 
   it("normalizes and validates URL-backed provider endpoints before sync", async () => {
-    await expect(
-      e2bCapabilityEndpointProvider.provision({
-        baseUrl: " https://runner.example.test/root?token=leak#frag ",
-        endpointId: " e2b-runner ",
-        token: " secret ",
-        allowedModuleIds: [" runner-plugin ", "runner-plugin"],
-      }),
-    ).resolves.toEqual({
-      providerId: "e2b",
-      endpoint: {
-        id: "e2b-runner",
-        baseUrl: "https://runner.example.test/root",
-        token: "secret",
-      },
-      allowedModuleIds: ["runner-plugin"],
-    });
-
     await expect(
       homeMachineCapabilityEndpointProvider.provision({
         baseUrl: "https://home.example.test/capability/",

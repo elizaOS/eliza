@@ -1,12 +1,11 @@
 /**
  * ElizaCapabilityRouter implementation that routes filesystem, terminal (pty),
  * and Git capabilities to a remote coding runner instead of the local host.
- * Three backends sit behind one provider-neutral surface: the `e2b` sandbox
- * (via the @elizaos/plugin-e2b-sandbox factory service), an `eliza-cloud`
+ * Two backends sit behind one provider-neutral surface: an `eliza-cloud`
  * coding container (provisioned over the Cloud API, then driven over its HTTP
- * runner contract), and a `home` machine HTTP runner. `resolveE2BRemoteRunnerConfig`
+ * runner contract), and a `home` machine HTTP runner. `resolveRemoteCodingRunnerConfig`
  * reads provider selection and credentials from runtime settings / env, and
- * `registerE2BRemoteCapabilityRouterIfEnabled` installs the service under
+ * `registerRemoteCodingCapabilityRouterIfEnabled` installs the service under
  * CAPABILITY_ROUTER_SERVICE_TYPE. Every path is mapped from the host workspace
  * root into the remote workdir and rejected if it escapes that root; model and
  * remote-plugin capabilities are intentionally unavailable on this router.
@@ -18,9 +17,6 @@ import {
   type CapabilityAvailability,
   CapabilityError,
   type CapabilityName,
-  E2B_SANDBOX_FACTORY_SERVICE_TYPE,
-  type E2BSandboxClient,
-  type E2BSandboxFactoryService,
   type ElizaCapabilityRouter,
   ElizaError,
   type FileListParams,
@@ -44,6 +40,7 @@ import {
   logger,
   normalizeSandboxEntryType,
   type RemotePluginCapability,
+  type RemoteRunnerClient,
   type SandboxCommandResult,
   type SandboxCommandRunOptions,
   type SandboxEntryInfo,
@@ -53,14 +50,13 @@ import {
 } from "@elizaos/core";
 
 export type {
-  E2BSandboxClient,
+  RemoteRunnerClient,
   SandboxCommandResult,
   SandboxCommandRunOptions,
   SandboxEntryInfo,
 } from "@elizaos/core";
 
-const LOG_CONTEXT = { src: "service:e2b_remote_capability_router" } as const;
-const DEFAULT_E2B_WORKDIR = "/home/user";
+const LOG_CONTEXT = { src: "service:remote_coding_capability_router" } as const;
 const DEFAULT_REMOTE_WORKDIR = "/workspace";
 const DEFAULT_TIMEOUT_MS = 30 * 60 * 1000;
 const DEFAULT_REQUEST_TIMEOUT_MS = 60 * 1000;
@@ -79,25 +75,21 @@ export const DEFAULT_ELIZA_CLOUD_API_BASE_URL = "https://api.eliza.app/api/v1";
 
 export type CodingAgentRunner = "claude-code" | "codex";
 
-export type SandboxRunnerProvider = "e2b" | "eliza-cloud" | "home";
+export type RemoteRunnerProvider = "eliza-cloud" | "home";
 
 // Third-party sandbox backends should sit behind Eliza Cloud until we expose
 // them as reviewed product options instead of direct user-facing providers.
-type DisabledSandboxRunnerProvider = "cloudflare" | "rivet" | "vercel";
+type DisabledRemoteRunnerProvider = "cloudflare" | "rivet" | "vercel";
 
 const DEFAULT_SANDBOX_AGENT_RUNNERS: CodingAgentRunner[] = [
   "codex",
   "claude-code",
 ];
 
-export interface E2BRemoteRunnerConfig {
+export interface RemoteCodingRunnerConfig {
   enabled: boolean;
-  provider: SandboxRunnerProvider;
-  apiKey?: string;
-  accessToken?: string;
-  domain?: string;
+  provider: RemoteRunnerProvider;
   sandboxId?: string;
-  template?: string;
   cloudApiBaseUrl?: string;
   cloudApiToken?: string;
   cloudContainerImage?: string;
@@ -117,51 +109,29 @@ export interface E2BRemoteRunnerConfig {
   metadata: Record<string, string>;
 }
 
-export interface E2BSandboxFactory {
-  create(config: E2BRemoteRunnerConfig): Promise<E2BSandboxClient>;
+export interface RemoteRunnerFactory {
+  create(config: RemoteCodingRunnerConfig): Promise<RemoteRunnerClient>;
 }
 
-// The e2b (`e2b.dev`) SDK backend lives in `@elizaos/plugin-e2b-sandbox`, which
-// registers an `E2BSandboxFactoryService` under `E2B_SANDBOX_FACTORY_SERVICE_TYPE`.
-// The router keeps the provider-neutral selection here and the eliza-cloud /
-// home HTTP runners below; the `e2b` provider is only reachable when the plugin
-// service is registered.
-class DefaultSandboxFactory implements E2BSandboxFactory {
+class DefaultRemoteRunnerFactory implements RemoteRunnerFactory {
   private readonly remoteHttpFactory = new RemoteRunnerHttpFactory();
   private readonly cloudFactory = new ElizaCloudCodingContainerFactory(
     this.remoteHttpFactory,
   );
 
-  constructor(private readonly runtime: IAgentRuntime) {}
-
-  async create(config: E2BRemoteRunnerConfig): Promise<E2BSandboxClient> {
+  async create(config: RemoteCodingRunnerConfig): Promise<RemoteRunnerClient> {
     if (config.provider === "eliza-cloud") {
       if (config.remoteHttpBaseUrl) {
         return this.remoteHttpFactory.create(config);
       }
       return this.cloudFactory.create(config);
     }
-    if (config.provider === "home") {
-      return this.remoteHttpFactory.create(config);
-    }
-    const factory = this.runtime.getService<E2BSandboxFactoryService>(
-      E2B_SANDBOX_FACTORY_SERVICE_TYPE,
-    );
-    if (!factory) {
-      throw new CapabilityError({
-        code: "CAPABILITY_UNAVAILABLE",
-        capability: "fs",
-        method: "sandbox.create",
-        message:
-          "E2B sandbox provider requires the @elizaos/plugin-e2b-sandbox plugin. Add it to the agent's plugins, or select the eliza-cloud or home remote runner instead.",
-      });
-    }
-    return factory.create(config);
+    return this.remoteHttpFactory.create(config);
   }
 }
 
-class RemoteRunnerHttpFactory implements E2BSandboxFactory {
-  async create(config: E2BRemoteRunnerConfig): Promise<E2BSandboxClient> {
+class RemoteRunnerHttpFactory implements RemoteRunnerFactory {
+  async create(config: RemoteCodingRunnerConfig): Promise<RemoteRunnerClient> {
     if (!config.remoteHttpBaseUrl) {
       throw new Error(
         `${config.provider} runner requires a remote runner URL.`,
@@ -192,7 +162,7 @@ class RemoteRunnerHttpFactory implements E2BSandboxFactory {
   }
 }
 
-class RemoteRunnerHttpClient implements E2BSandboxClient {
+class RemoteRunnerHttpClient implements RemoteRunnerClient {
   readonly workspacePrepared = true;
   readonly files = {
     list: (
@@ -428,10 +398,10 @@ type CloudEnvelope = {
   polling?: unknown;
 };
 
-class ElizaCloudCodingContainerFactory implements E2BSandboxFactory {
+class ElizaCloudCodingContainerFactory implements RemoteRunnerFactory {
   constructor(private readonly remoteHttpFactory: RemoteRunnerHttpFactory) {}
 
-  async create(config: E2BRemoteRunnerConfig): Promise<E2BSandboxClient> {
+  async create(config: RemoteCodingRunnerConfig): Promise<RemoteRunnerClient> {
     if (!config.cloudApiBaseUrl || !config.cloudApiToken) {
       throw new Error(
         "Eliza Cloud runner requires a Cloud API base URL and API key.",
@@ -460,7 +430,7 @@ class ElizaCloudCodingContainerFactory implements E2BSandboxFactory {
   }
 
   private async requestCodingContainer(
-    config: E2BRemoteRunnerConfig,
+    config: RemoteCodingRunnerConfig,
     remoteToken: string,
     deadline: number,
   ): Promise<CloudCodingContainerSession> {
@@ -510,7 +480,7 @@ class ElizaCloudCodingContainerFactory implements E2BSandboxFactory {
   }
 
   private async pollCodingContainer(
-    config: E2BRemoteRunnerConfig,
+    config: RemoteCodingRunnerConfig,
     session: CloudCodingContainerSession,
     deadline: number,
   ): Promise<CloudCodingContainerSession> {
@@ -552,7 +522,7 @@ class ElizaCloudCodingContainerFactory implements E2BSandboxFactory {
   }
 }
 
-export class E2BRemoteCapabilityRouterService
+export class RemoteCodingCapabilityRouterService
   extends Service
   implements ElizaCapabilityRouter
 {
@@ -605,48 +575,50 @@ export class E2BRemoteCapabilityRouterService
     callAppBridge: () => this.pluginUnavailable("plugin.appBridge.call"),
   };
 
-  private sandboxPromise: Promise<E2BSandboxClient> | null = null;
-  private preparePromise: Promise<void> | null = null;
-  private createdSandbox = false;
-  private readonly routerConfig: E2BRemoteRunnerConfig;
-  private readonly factory: E2BSandboxFactory;
+  private runnerPromise: Promise<RemoteRunnerClient> | null = null;
+  private prepareRunnerPromise: Promise<void> | null = null;
+  private createdRunner = false;
+  private readonly routerConfig: RemoteCodingRunnerConfig;
+  private readonly factory: RemoteRunnerFactory;
 
   constructor(
     runtime?: IAgentRuntime,
-    routerConfig?: E2BRemoteRunnerConfig,
-    factory?: E2BSandboxFactory,
+    routerConfig?: RemoteCodingRunnerConfig,
+    factory?: RemoteRunnerFactory,
   ) {
     if (!runtime) {
-      throw new Error("E2BRemoteCapabilityRouterService requires a runtime.");
+      throw new Error(
+        "RemoteCodingCapabilityRouterService requires a runtime.",
+      );
     }
     super(runtime);
-    this.routerConfig = routerConfig ?? resolveE2BRemoteRunnerConfig(runtime);
-    this.factory = factory ?? new DefaultSandboxFactory(runtime);
+    this.routerConfig =
+      routerConfig ?? resolveRemoteCodingRunnerConfig(runtime);
+    this.factory = factory ?? new DefaultRemoteRunnerFactory();
   }
 
   static async start(runtime: IAgentRuntime): Promise<Service> {
-    const config = resolveE2BRemoteRunnerConfig(runtime);
-    const service = new E2BRemoteCapabilityRouterService(runtime, config);
+    const config = resolveRemoteCodingRunnerConfig(runtime);
+    const service = new RemoteCodingCapabilityRouterService(runtime, config);
     logger.info(
       {
         ...LOG_CONTEXT,
         provider: config.provider,
         workdir: config.workdir,
-        template: config.template ?? null,
         hasSandboxId: Boolean(config.sandboxId),
         hasBootstrapGitUrl: Boolean(config.bootstrapGitUrl),
         agentRunners: config.agentRunners,
       },
-      "[E2BRemoteCapabilityRouter] Service started",
+      "[RemoteCodingCapabilityRouter] Service started",
     );
     return service;
   }
 
   async stop(): Promise<void> {
-    const sandbox = await this.sandboxPromise?.catch(() => null);
-    this.sandboxPromise = null;
-    this.preparePromise = null;
-    if (!sandbox || this.routerConfig.keepAlive || !this.createdSandbox) return;
+    const sandbox = await this.runnerPromise?.catch(() => null);
+    this.runnerPromise = null;
+    this.prepareRunnerPromise = null;
+    if (!sandbox || this.routerConfig.keepAlive || !this.createdRunner) return;
     await sandbox.kill({
       requestTimeoutMs: this.routerConfig.requestTimeoutMs,
     });
@@ -674,7 +646,7 @@ export class E2BRemoteCapabilityRouterService
 
   private async list(params: FileListParams = {}): Promise<FileListResult> {
     await this.requireAvailable("fs", "fs.list");
-    const sandbox = await this.getSandbox();
+    const sandbox = await this.getRunner();
     const target = this.mapPath(params.path ?? this.routerConfig.workdir);
     const limit = params.limit ?? Number.MAX_SAFE_INTEGER;
     const entries = await sandbox.files.list(target, {
@@ -711,7 +683,7 @@ export class E2BRemoteCapabilityRouterService
         message: "fs.readText maxBytes must be a positive safe integer.",
       });
     }
-    const sandbox = await this.getSandbox();
+    const sandbox = await this.getRunner();
     const target = this.mapPath(params.path);
     const content = await sandbox.files.read(target, {
       format: "text",
@@ -748,7 +720,7 @@ export class E2BRemoteCapabilityRouterService
         });
       }
     }
-    const sandbox = await this.getSandbox();
+    const sandbox = await this.getRunner();
     const target = this.mapPath(params.path);
     await sandbox.files.write(target, params.text, {
       requestTimeoutMs: this.routerConfig.requestTimeoutMs,
@@ -763,7 +735,7 @@ export class E2BRemoteCapabilityRouterService
     params: TerminalRunParams,
   ): Promise<TerminalRunResult> {
     await this.requireAvailable("pty", "pty.command.run");
-    const sandbox = await this.getSandbox();
+    const sandbox = await this.getRunner();
     const command = commandLine(params.command, params.args ?? []);
     const cwd = this.mapPath(params.cwd ?? this.routerConfig.workdir);
     const opts: SandboxCommandRunOptions = {
@@ -901,7 +873,7 @@ export class E2BRemoteCapabilityRouterService
 
   private async pathExists(path: string): Promise<boolean> {
     try {
-      const sandbox = await this.getSandbox();
+      const sandbox = await this.getRunner();
       await sandbox.files.read(this.mapPath(path), {
         format: "bytes",
         requestTimeoutMs: this.routerConfig.requestTimeoutMs,
@@ -935,7 +907,7 @@ export class E2BRemoteCapabilityRouterService
   }
 
   /**
-   * Caches the sandbox and its one-time preparation, but only caches SUCCESS.
+   * Caches the runner and its one-time preparation, but only caches success.
    * A rejected promise left in either field would be re-awaited by every later
    * call — one transient create/prepare failure would take `fs.*`, `pty.*` and
    * `git.*` down for the service's lifetime, with `stop()` the only reset. Each
@@ -943,32 +915,32 @@ export class E2BRemoteCapabilityRouterService
    * current attempt, so a concurrent retry is never discarded), so the next
    * call starts a fresh one.
    */
-  private async getSandbox(): Promise<E2BSandboxClient> {
-    if (!this.sandboxPromise) {
+  private async getRunner(): Promise<RemoteRunnerClient> {
+    if (!this.runnerPromise) {
       const pending = this.factory.create(this.routerConfig);
-      this.sandboxPromise = pending;
+      this.runnerPromise = pending;
       // error-policy:J5 every caller observes this rejection by awaiting `pending`; this sidecar only evicts the failed cache entry.
       void pending.then(undefined, () => {
-        if (this.sandboxPromise === pending) this.sandboxPromise = null;
+        if (this.runnerPromise === pending) this.runnerPromise = null;
       });
-      this.createdSandbox = !this.routerConfig.sandboxId;
+      this.createdRunner = !this.routerConfig.sandboxId;
     }
-    const sandbox = await this.sandboxPromise;
-    if (!this.preparePromise) {
-      const pendingPrepare = this.prepareSandbox(sandbox);
-      this.preparePromise = pendingPrepare;
+    const sandbox = await this.runnerPromise;
+    if (!this.prepareRunnerPromise) {
+      const pendingPrepare = this.prepareRunner(sandbox);
+      this.prepareRunnerPromise = pendingPrepare;
       // error-policy:J5 every caller observes this rejection by awaiting `pendingPrepare`; this sidecar only evicts the failed cache entry.
       void pendingPrepare.then(undefined, () => {
-        if (this.preparePromise === pendingPrepare) {
-          this.preparePromise = null;
+        if (this.prepareRunnerPromise === pendingPrepare) {
+          this.prepareRunnerPromise = null;
         }
       });
     }
-    await this.preparePromise;
+    await this.prepareRunnerPromise;
     return sandbox;
   }
 
-  private async prepareSandbox(sandbox: E2BSandboxClient): Promise<void> {
+  private async prepareRunner(sandbox: RemoteRunnerClient): Promise<void> {
     if (!sandbox.workspacePrepared) {
       await sandbox.commands.run(
         `mkdir -p ${shellQuote(this.routerConfig.workdir)}`,
@@ -1057,37 +1029,37 @@ export class E2BRemoteCapabilityRouterService
   }
 }
 
-export type E2BRegistrationResult =
-  | { registered: true; provider: SandboxRunnerProvider }
+export type RemoteCodingRunnerRegistrationResult =
+  | { registered: true; provider: RemoteRunnerProvider }
   | { registered: false; reason: "disabled" | "already-registered" };
 
-export async function registerE2BRemoteCapabilityRouterIfEnabled(
+export async function registerRemoteCodingCapabilityRouterIfEnabled(
   runtime: IAgentRuntime,
-): Promise<E2BRegistrationResult> {
-  const config = resolveE2BRemoteRunnerConfig(runtime);
+): Promise<RemoteCodingRunnerRegistrationResult> {
+  const config = resolveRemoteCodingRunnerConfig(runtime);
   if (!config.enabled) return { registered: false, reason: "disabled" };
   if (runtime.getService(CAPABILITY_ROUTER_SERVICE_TYPE)) {
     return { registered: false, reason: "already-registered" };
   }
-  await runtime.registerService(E2BRemoteCapabilityRouterService);
+  await runtime.registerService(RemoteCodingCapabilityRouterService);
   return { registered: true, provider: config.provider };
 }
 
-export function resolveE2BRemoteRunnerConfig(
+export function resolveRemoteCodingRunnerConfig(
   runtime: IAgentRuntime,
-): E2BRemoteRunnerConfig {
+): RemoteCodingRunnerConfig {
   const codingRunner = normalizeRunnerSetting(
     readSetting(runtime, "ELIZA_CODING_REMOTE_RUNNER"),
   );
   const runner = normalizeRunnerSetting(
     readSetting(runtime, "ELIZA_REMOTE_RUNNER"),
   );
-  const direct = readSetting(runtime, "ELIZA_E2B_REMOTE_RUNNER");
-  const provider = resolveRunnerProvider(runtime, codingRunner ?? runner);
-  const enabled =
-    provider === "eliza-cloud" || provider === "home"
-      ? true
-      : codingRunner === "e2b" || runner === "e2b" || isTruthy(direct);
+  const resolvedProvider = resolveRunnerProvider(
+    runtime,
+    codingRunner ?? runner,
+  );
+  const enabled = resolvedProvider !== undefined;
+  const provider = resolvedProvider ?? "eliza-cloud";
   const workdir = normalizeSandboxPath(
     readSetting(runtime, "ELIZA_SANDBOX_WORKDIR") ??
       readSetting(runtime, providerSettingKey(provider, "WORKDIR")) ??
@@ -1102,18 +1074,10 @@ export function resolveE2BRemoteRunnerConfig(
   return {
     enabled,
     provider,
-    apiKey: readSetting(runtime, "E2B_API_KEY"),
-    accessToken: readSetting(runtime, "E2B_ACCESS_TOKEN"),
-    domain: readSetting(runtime, "E2B_DOMAIN"),
     sandboxId:
       provider === "eliza-cloud"
         ? readSetting(runtime, "ELIZA_CLOUD_SANDBOX_ID")
-        : provider === "home"
-          ? readSetting(runtime, "ELIZA_HOME_REMOTE_RUNNER_ID")
-          : readSetting(runtime, "E2B_SANDBOX_ID"),
-    template:
-      readSetting(runtime, "E2B_TEMPLATE") ??
-      readSetting(runtime, "ELIZA_E2B_TEMPLATE"),
+        : readSetting(runtime, "ELIZA_HOME_REMOTE_RUNNER_ID"),
     cloudApiBaseUrl: cloudApiBaseUrl(runtime, provider),
     cloudApiToken: cloudApiToken(runtime, provider),
     cloudContainerImage: cloudContainerImage(runtime, provider),
@@ -1158,27 +1122,21 @@ export function resolveE2BRemoteRunnerConfig(
   };
 }
 
-function hasRunnerCredentials(config: E2BRemoteRunnerConfig): boolean {
+function hasRunnerCredentials(config: RemoteCodingRunnerConfig): boolean {
   if (config.provider === "eliza-cloud") {
     return Boolean(
       config.remoteHttpBaseUrl ||
         (config.cloudApiBaseUrl && config.cloudApiToken),
     );
   }
-  if (config.provider === "home") {
-    return Boolean(config.remoteHttpBaseUrl);
-  }
-  return Boolean(config.apiKey || config.accessToken);
+  return Boolean(config.remoteHttpBaseUrl);
 }
 
-function runnerUnavailableReason(config: E2BRemoteRunnerConfig): string {
+function runnerUnavailableReason(config: RemoteCodingRunnerConfig): string {
   if (config.provider === "eliza-cloud") {
     return "Eliza Cloud runner requires a direct remote runner URL or ELIZA_CLOUD_API_KEY/ELIZACLOUD_API_KEY for coding-container provisioning.";
   }
-  if (config.provider === "home") {
-    return "Home runner requires ELIZA_HOME_REMOTE_RUNNER_URL.";
-  }
-  return "E2B remote runner requires E2B_API_KEY, E2B_ACCESS_TOKEN, or matching runtime setting.";
+  return "Home runner requires ELIZA_HOME_REMOTE_RUNNER_URL.";
 }
 
 function authHeaders(apiKey: string | undefined): Record<string, string> {
@@ -1337,14 +1295,14 @@ function cancelResponseBody(response: Response, reason: Error): void {
     void response.body.cancel(reason).catch((error: unknown) => {
       logger.debug(
         { ...LOG_CONTEXT, error },
-        "[E2BRemoteCapabilityRouter] Failed to cancel rejected response body",
+        "[RemoteCodingCapabilityRouter] Failed to cancel rejected response body",
       );
     });
   } catch (error) {
     // error-policy:J6 cancellation is teardown after a rejected response.
     logger.debug(
       { ...LOG_CONTEXT, error },
-      "[E2BRemoteCapabilityRouter] Failed to cancel rejected response body",
+      "[RemoteCodingCapabilityRouter] Failed to cancel rejected response body",
     );
   }
 }
@@ -1360,14 +1318,14 @@ function cancelReader(
     void reader.cancel(reason).catch((error: unknown) => {
       logger.debug(
         { ...LOG_CONTEXT, error },
-        "[E2BRemoteCapabilityRouter] Failed to cancel oversized response stream",
+        "[RemoteCodingCapabilityRouter] Failed to cancel oversized response stream",
       );
     });
   } catch (error) {
     // error-policy:J6 cancellation is teardown after the response exceeded its cap.
     logger.debug(
       { ...LOG_CONTEXT, error },
-      "[E2BRemoteCapabilityRouter] Failed to cancel oversized response stream",
+      "[RemoteCodingCapabilityRouter] Failed to cancel oversized response stream",
     );
   }
 }
@@ -1590,10 +1548,9 @@ function readSetting(runtime: IAgentRuntime, key: string): string | undefined {
 
 function normalizeRunnerSetting(
   value: string | undefined,
-): SandboxRunnerProvider | DisabledSandboxRunnerProvider | undefined {
+): RemoteRunnerProvider | DisabledRemoteRunnerProvider | undefined {
   if (!value) return undefined;
   const normalized = value.trim().toLowerCase();
-  if (normalized === "e2b") return "e2b";
   if (normalized === "eliza-cloud" || normalized === "elizacloud") {
     return "eliza-cloud";
   }
@@ -1606,15 +1563,15 @@ function normalizeRunnerSetting(
 
 function resolveRunnerProvider(
   runtime: IAgentRuntime,
-  requested: SandboxRunnerProvider | DisabledSandboxRunnerProvider | undefined,
-): SandboxRunnerProvider {
+  requested: RemoteRunnerProvider | DisabledRemoteRunnerProvider | undefined,
+): RemoteRunnerProvider | undefined {
   if (
     requested === "cloudflare" ||
     requested === "rivet" ||
     requested === "vercel"
   ) {
     throw new Error(
-      `${requested} runner is disabled; use eliza-cloud, home, or e2b.`,
+      `${requested} runner is disabled; use eliza-cloud or home.`,
     );
   }
   if (requested) return requested;
@@ -1635,7 +1592,7 @@ function resolveRunnerProvider(
   ) {
     return "home";
   }
-  return "e2b";
+  return undefined;
 }
 
 function hasAnySetting(runtime: IAgentRuntime, keys: string[]): boolean {
@@ -1643,21 +1600,21 @@ function hasAnySetting(runtime: IAgentRuntime, keys: string[]): boolean {
 }
 
 function providerSettingKey(
-  provider: SandboxRunnerProvider,
+  provider: RemoteRunnerProvider,
   suffix: string,
 ): string {
-  if (provider === "eliza-cloud") return `ELIZA_CLOUD_SANDBOX_${suffix}`;
-  if (provider === "home") return `ELIZA_HOME_REMOTE_RUNNER_${suffix}`;
-  return `ELIZA_E2B_${suffix}`;
+  return provider === "eliza-cloud"
+    ? `ELIZA_CLOUD_SANDBOX_${suffix}`
+    : `ELIZA_HOME_REMOTE_RUNNER_${suffix}`;
 }
 
-function defaultWorkdir(provider: SandboxRunnerProvider): string {
-  return provider === "e2b" ? DEFAULT_E2B_WORKDIR : DEFAULT_REMOTE_WORKDIR;
+function defaultWorkdir(_provider: RemoteRunnerProvider): string {
+  return DEFAULT_REMOTE_WORKDIR;
 }
 
 function remoteHttpBaseUrl(
   runtime: IAgentRuntime,
-  provider: SandboxRunnerProvider,
+  provider: RemoteRunnerProvider,
 ): string | undefined {
   if (provider === "eliza-cloud") {
     return (
@@ -1677,7 +1634,7 @@ function remoteHttpBaseUrl(
 
 function cloudApiBaseUrl(
   runtime: IAgentRuntime,
-  provider: SandboxRunnerProvider,
+  provider: RemoteRunnerProvider,
 ): string | undefined {
   if (provider !== "eliza-cloud") return undefined;
   return normalizeCloudApiBaseUrl(
@@ -1691,7 +1648,7 @@ function cloudApiBaseUrl(
 
 function cloudApiToken(
   runtime: IAgentRuntime,
-  provider: SandboxRunnerProvider,
+  provider: RemoteRunnerProvider,
 ): string | undefined {
   if (provider !== "eliza-cloud") return undefined;
   return (
@@ -1705,7 +1662,7 @@ function cloudApiToken(
 
 function cloudContainerImage(
   runtime: IAgentRuntime,
-  provider: SandboxRunnerProvider,
+  provider: RemoteRunnerProvider,
 ): string | undefined {
   if (provider !== "eliza-cloud") return undefined;
   return (
@@ -1718,7 +1675,7 @@ function cloudContainerImage(
 
 function remoteHttpToken(
   runtime: IAgentRuntime,
-  provider: SandboxRunnerProvider,
+  provider: RemoteRunnerProvider,
 ): string | undefined {
   if (provider === "eliza-cloud") {
     return (
@@ -1808,7 +1765,7 @@ function normalizeProvisionedRunnerUrl(
 
 function remoteAccessUrl(
   runtime: IAgentRuntime,
-  provider: SandboxRunnerProvider,
+  provider: RemoteRunnerProvider,
 ): string | undefined {
   if (provider === "eliza-cloud") {
     return readSetting(runtime, "ELIZA_CLOUD_SANDBOX_ACCESS_URL");
@@ -1855,7 +1812,7 @@ function positiveIntSetting(
 
 function agentRunnersSetting(
   runtime: IAgentRuntime,
-  provider: SandboxRunnerProvider,
+  provider: RemoteRunnerProvider,
 ): CodingAgentRunner[] {
   const value =
     readSetting(runtime, "ELIZA_SANDBOX_AGENT_RUNNERS") ??
@@ -1940,7 +1897,7 @@ function normalizeSandboxPath(input: string): string {
 }
 
 function isSandboxUri(value: string): boolean {
-  return /^(e2b|eliza-cloud|home|sandbox):\/\//.test(value);
+  return /^(eliza-cloud|home|sandbox):\/\//.test(value);
 }
 
 function posixJoin(...parts: string[]): string {

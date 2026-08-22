@@ -5168,7 +5168,6 @@
   "capabilities.cloud.bioAria": "Mô tả sandbox cloud khả năng",
   "capabilities.endpoint.providerLabel": "Nhà cung cấp điểm cuối khả năng",
   "capabilities.provider.direct": "Điểm cuối trực tiếp",
-  "capabilities.provider.e2b": "Sandbox E2B",
   "capabilities.provider.homeMachine": "Máy tại nhà",
   "capabilities.provider.mobileCompanion": "Ứng dụng đồng hành di động",
   "capabilities.provider.desktopCompanion": "Ứng dụng đồng hành desktop",

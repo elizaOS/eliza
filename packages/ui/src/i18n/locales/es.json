@@ -5175,7 +5175,6 @@
   "capabilities.cloud.bioAria": "Descripción del sandbox de la nube de capacidades",
   "capabilities.endpoint.providerLabel": "Proveedor del endpoint de capacidades",
   "capabilities.provider.direct": "Endpoint directo",
-  "capabilities.provider.e2b": "Sandbox E2B",
   "capabilities.provider.homeMachine": "Máquina local",
   "capabilities.provider.mobileCompanion": "Acompañante móvil",
   "capabilities.provider.desktopCompanion": "Acompañante de escritorio",
