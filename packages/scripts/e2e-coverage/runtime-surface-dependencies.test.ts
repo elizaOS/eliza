@@ -26,6 +26,7 @@ function catalog(
         "Fixture relationship is explicit and long enough to remain reviewable.",
     },
     rules,
+    localPackages: {},
   };
 }
 
@@ -104,6 +105,63 @@ describe("runtime surface dependency catalog", () => {
     ).toThrow(/duplicate=/);
   });
 
+  test("requires an explicit disposition for actions, services, and workers", () => {
+    const allKindsRule = {
+      packageName: "@elizaos/example",
+      kinds: "all" as const,
+      noExternalServiceReason:
+        "The example package uses only deterministic local production boundaries.",
+    };
+    expect(() =>
+      validateRuntimeDependencyCatalog(
+        [
+          { packageName: "@elizaos/example", kind: "action" },
+          { packageName: "@elizaos/example", kind: "service" },
+          { packageName: "@elizaos/example", kind: "scheduled-worker" },
+        ],
+        catalog([allKindsRule]),
+      ),
+    ).not.toThrow();
+    expect(() =>
+      validateRuntimeDependencyCatalog(
+        [{ packageName: "@elizaos/missing", kind: "service" }],
+        catalog([allKindsRule]),
+      ),
+    ).toThrow(/missing=.*@elizaos\/missing:service/);
+  });
+
+  test("applies external package boundaries to actions, services, and Cloud workers", () => {
+    for (const kind of ["action", "service"] as const) {
+      expect(
+        resolveRuntimeDependencies("@elizaos/plugin-calendar", kind),
+      ).toMatchObject({
+        dependencyDisposition: "mock-owned",
+        externalServiceDependencies: [
+          { id: "google-calendar-api", protocol: "Google Calendar API v3" },
+        ],
+      });
+    }
+    expect(
+      resolveRuntimeDependencies("@elizaos/cloud-api", "scheduled-worker"),
+    ).toMatchObject({
+      dependencyDisposition: "mock-missing",
+      externalServiceDependencies: expect.arrayContaining([
+        expect.objectContaining({ id: "postgresql" }),
+        expect.objectContaining({ id: "cloudflare-r2" }),
+        expect.objectContaining({ id: "redis" }),
+        expect.objectContaining({ id: "stripe-api" }),
+        expect.objectContaining({ id: "container-control-plane" }),
+      ]),
+    });
+    expect(
+      resolveRuntimeDependencies("@elizaos/plugin-goals", "service"),
+    ).toEqual({
+      externalServiceDependencies: [],
+      mockDependencies: [],
+      dependencyDisposition: "local-only",
+    });
+  });
+
   test("rejects a claimed mock whose source does not exist", () => {
     const invalid = catalog([
       {
@@ -139,9 +197,25 @@ describe("runtime surface dependency catalog", () => {
       pullRequest: 23185,
       head: "0f14c26c6ae4b28771d984c32e8d1fd79c7929ee",
     });
-    expect(committed.rules).toHaveLength(61);
+    expect(committed.rules).toHaveLength(76);
+    expect(Object.keys(committed.localPackages)).toHaveLength(40);
     expect(
-      committed.rules.reduce((count, rule) => count + rule.kinds.length, 0),
-    ).toBe(94);
+      new Set([
+        ...committed.rules.map((rule) => rule.packageName),
+        ...Object.keys(committed.localPackages),
+      ]).size,
+    ).toBe(115);
+    expect(
+      resolveRuntimeDependencies(
+        "@elizaos/cloud-api",
+        "route",
+        committed,
+        "@elizaos/cloud-api:route:get-/api/i18n/locale",
+      ),
+    ).toEqual({
+      externalServiceDependencies: [],
+      mockDependencies: [],
+      dependencyDisposition: "local-only",
+    });
   });
 });

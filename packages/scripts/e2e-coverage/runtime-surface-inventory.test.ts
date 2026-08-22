@@ -771,12 +771,33 @@ crons = ["0 * * * *", "30 * * * *"]
         path.join(root, "src", "bin.ts"),
         "export const bin = true;\n",
       );
+      writeFileSync(
+        path.join(root, "src", "plugin.ts"),
+        "export const deadPlugin = true;\n",
+      );
+      writeFileSync(
+        path.join(root, "src", "edge.ts"),
+        "export const deadEdge = true;\n",
+      );
+      writeFileSync(
+        path.join(root, "src", "index.ts"),
+        "export const deadSourceIndex = true;\n",
+      );
       expect(packageEntryPoints(root)).toContain(path.join(root, "index.ts"));
       expect(packageEntryPoints(root)).toContain(
         path.join(root, "src", "entry.ts"),
       );
       expect(packageEntryPoints(root)).toContain(
         path.join(root, "src", "bin.ts"),
+      );
+      expect(packageEntryPoints(root)).not.toContain(
+        path.join(root, "src", "plugin.ts"),
+      );
+      expect(packageEntryPoints(root)).not.toContain(
+        path.join(root, "src", "edge.ts"),
+      );
+      expect(packageEntryPoints(root)).not.toContain(
+        path.join(root, "src", "index.ts"),
       );
       expect(reachableProductionFiles(root)).toEqual(
         expect.arrayContaining([
@@ -787,6 +808,90 @@ crons = ["0 * * * *", "30 * * * *"]
       expect(reachableProductionFiles(root)).not.toContain(
         path.join(root, "dead.ts"),
       );
+      expect(reachableProductionFiles(root)).not.toContain(
+        path.join(root, "src", "plugin.ts"),
+      );
+      expect(reachableProductionFiles(root)).not.toContain(
+        path.join(root, "src", "edge.ts"),
+      );
+      expect(reachableProductionFiles(root)).not.toContain(
+        path.join(root, "src", "index.ts"),
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("includes only manifest-exported platform entrypoints", () => {
+    const root = mkdtempSync(
+      path.join(os.tmpdir(), "surface-platform-entrypoints-"),
+    );
+    try {
+      mkdirSync(path.join(root, "src"));
+      writeFileSync(
+        path.join(root, "package.json"),
+        JSON.stringify({
+          name: "@elizaos/platform-fixture",
+          exports: {
+            ".": {
+              browser: "./src/index.browser.ts",
+              node: "./src/index.node.ts",
+              default: "./src/index.ts",
+            },
+          },
+        }),
+      );
+      for (const file of ["index.browser.ts", "index.node.ts", "index.ts"]) {
+        writeFileSync(
+          path.join(root, "src", file),
+          `export const platform = ${JSON.stringify(file)};\n`,
+        );
+      }
+      writeFileSync(
+        path.join(root, "index.ts"),
+        "export const rootDecoy = true;\n",
+      );
+      expect(packageEntryPoints(root)).toEqual([
+        path.join(root, "src", "index.browser.ts"),
+        path.join(root, "src", "index.node.ts"),
+        path.join(root, "src", "index.ts"),
+      ]);
+      expect(reachableProductionFiles(root)).not.toContain(
+        path.join(root, "index.ts"),
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("does not collapse arbitrary dist paths onto index decoys", () => {
+    const root = mkdtempSync(path.join(os.tmpdir(), "surface-dist-decoy-"));
+    try {
+      mkdirSync(path.join(root, "src"));
+      writeFileSync(
+        path.join(root, "package.json"),
+        JSON.stringify({
+          exports: {
+            ".": "./dist/platform/index.js",
+            "./edge": "./dist/edge/index.edge.js",
+          },
+        }),
+      );
+      writeFileSync(
+        path.join(root, "index.ts"),
+        "export const decoy = true;\n",
+      );
+      writeFileSync(
+        path.join(root, "src", "index.ts"),
+        "export const sourceDecoy = true;\n",
+      );
+      writeFileSync(
+        path.join(root, "src", "index.edge.ts"),
+        "export const edge = true;\n",
+      );
+      expect(packageEntryPoints(root)).toEqual([
+        path.join(root, "src", "index.edge.ts"),
+      ]);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
