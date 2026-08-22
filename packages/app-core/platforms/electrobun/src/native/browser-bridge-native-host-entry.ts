@@ -1,5 +1,6 @@
 /** Runs the browser native-messaging stdin/stdout loop without starting desktop UI. */
 
+import { createHash, createPublicKey } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import type { Readable, Writable } from "node:stream";
@@ -50,6 +51,9 @@ function loadCommittedBrowserBridgeIds(moduleDir: string): {
   safariExtensionId: string;
 } {
   const candidates = [
+    // A compiled Bun executable runs from /$bunfs/root, so import.meta paths
+    // cannot reach the release identity copied beside the packaged host.
+    path.resolve(path.dirname(process.execPath), "browser-bridge-release.json"),
     path.resolve(moduleDir, "..", "browser-bridge-release.json"),
     path.resolve(moduleDir, "..", "..", "build", "browser-bridge-release.json"),
     path.resolve(
@@ -75,9 +79,27 @@ function loadCommittedBrowserBridgeIds(moduleDir: string): {
     string,
     unknown
   >;
-  const chromeExtensionId = parsed.chromeExtensionId;
+  let chromeExtensionId = parsed.chromeExtensionId;
   const firefoxExtensionId = parsed.firefoxExtensionId;
   const safariExtensionId = parsed.safariExtensionId;
+  if (
+    chromeExtensionId === undefined &&
+    typeof parsed.chromeDevManifestKey === "string" &&
+    typeof parsed.chromeDevExtensionId === "string"
+  ) {
+    const publicKey = Buffer.from(parsed.chromeDevManifestKey, "base64");
+    createPublicKey({ key: publicKey, format: "der", type: "spki" });
+    const derivedId = [
+      ...createHash("sha256").update(publicKey).digest().subarray(0, 16),
+    ]
+      .flatMap((byte) => [byte >> 4, byte & 15])
+      .map((nibble) => String.fromCharCode(97 + nibble))
+      .join("");
+    if (derivedId !== parsed.chromeDevExtensionId) {
+      throw new Error("committed Chrome development identity is invalid");
+    }
+    chromeExtensionId = parsed.chromeDevExtensionId;
+  }
   if (
     typeof chromeExtensionId !== "string" ||
     !/^[a-p]{32}$/.test(chromeExtensionId) ||
