@@ -82,6 +82,10 @@ function createDbSourceLoader(): ConnectedCapabilitySourceLoader {
         dbRead
           .select({
             id: phoneGatewayDevices.id,
+            isRetiredBlueBubbles: sql<boolean>`
+              lower(btrim(coalesce(${phoneGatewayDevices.send_method}, ''))) = 'bluebubbles-local-bridge'
+              or lower(btrim(coalesce(${phoneGatewayDevices.metadata} ->> 'gatewayKind', ''))) = 'bluebubbles'
+            `,
             is_active: phoneGatewayDevices.is_active,
             can_send_sms: phoneGatewayDevices.can_send_sms,
             can_receive_sms: phoneGatewayDevices.can_receive_sms,

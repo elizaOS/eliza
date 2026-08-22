@@ -70,6 +70,7 @@ function discordConnectionRow(overrides: Partial<DiscordConnectionRow>): Discord
 function phoneGatewayDeviceRow(overrides: Partial<PhoneGatewayDeviceRow>): PhoneGatewayDeviceRow {
   return {
     id: "33333333-3333-4333-8333-333333333334",
+    isRetiredBlueBubbles: false,
     phone_account_label: "Personal iPhone",
     friendly_name: null,
     is_active: true,
@@ -173,6 +174,36 @@ describe("projectConnectedAccounts", () => {
         status: "available",
       },
     ]);
+  });
+
+  test("excludes retired BlueBubbles rows while preserving genuine Blooio and native gateways", async () => {
+    const rows = {
+      ...emptyRows(),
+      phoneGatewayDevices: [
+        phoneGatewayDeviceRow({
+          id: "63333333-3333-4333-8333-333333333331",
+          isRetiredBlueBubbles: true,
+        }),
+        phoneGatewayDeviceRow({
+          id: "63333333-3333-4333-8333-333333333332",
+          isRetiredBlueBubbles: true,
+        }),
+        phoneGatewayDeviceRow({
+          id: "63333333-3333-4333-8333-333333333333",
+        }),
+        phoneGatewayDeviceRow({
+          id: "63333333-3333-4333-8333-333333333334",
+        }),
+      ],
+    } satisfies ConnectedCapabilitySourceRows;
+
+    const accounts = await projectConnectedAccounts(rows, NOW);
+
+    expect(accounts).toHaveLength(2);
+    expect(accounts.every((account) => account.status === "connected")).toBe(true);
+    expect(
+      accounts.every((account) => account.capabilities.some((c) => c.status === "available")),
+    ).toBe(true);
   });
 
   test("never leaks raw storage row IDs", async () => {

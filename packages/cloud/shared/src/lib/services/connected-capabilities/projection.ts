@@ -70,7 +70,7 @@ export type PhoneGatewayDeviceRow = Pick<
   | "friendly_name"
   | "phone_account_label"
   | "last_seen_at"
->;
+> & { isRetiredBlueBubbles: boolean };
 
 /** One organization's raw connection rows across every projected source table. */
 export interface ConnectedCapabilitySourceRows {
@@ -326,7 +326,9 @@ export async function projectConnectedAccounts(
       .map((row) => projectPlatformCredential(row)),
     ...rows.vendorConnections.map((row) => projectVendorConnection(row, now)),
     ...rows.discordConnections.map((row) => projectDiscordConnection(row)),
-    ...rows.phoneGatewayDevices.map((row) => projectPhoneGatewayDevice(row)),
+    ...rows.phoneGatewayDevices
+      .filter((row) => !row.isRetiredBlueBubbles)
+      .map((row) => projectPhoneGatewayDevice(row)),
   ]);
   return accounts.sort(
     (a, b) => a.providerId.localeCompare(b.providerId) || a.accountId.localeCompare(b.accountId),

@@ -154,6 +154,7 @@ describe("createDbSourceLoader — query shape (#19883 follow-up)", () => {
     // widen this read path.
     expect(phoneQuery?.columns).toEqual([
       "id",
+      "isRetiredBlueBubbles",
       "is_active",
       "can_send_sms",
       "can_receive_sms",
