@@ -64,17 +64,27 @@ app.post("/", async (c) => {
       MAX_MULTIPART_BODY_BYTES,
       (reason, cancelError) => {
         // error-policy:J6 best-effort teardown for an upload already rejected.
-        logger.warn(
-          "[Character Avatar] Failed to cancel oversized upload body",
-          {
-            errorType:
-              cancelError instanceof Error ? cancelError.name : "unknown",
-            reason,
-          },
-        );
+        logger.warn("[Character Avatar] Failed to cancel upload body", {
+          errorType:
+            cancelError instanceof Error ? cancelError.name : "unknown",
+          reason,
+        });
       },
     );
     if (!budgeted.ok) {
+      if (budgeted.outcome === "incomplete") {
+        // error-policy:J4 a body that was aborted or never completed is a
+        // visibly distinct client-side failure, not an internal error.
+        logger.warn("[Character Avatar] Multipart body read did not complete", {
+          reason: budgeted.reason,
+          errorType:
+            budgeted.error instanceof Error ? budgeted.error.name : "unknown",
+        });
+        return c.json(
+          { success: false, error: "Upload body could not be read" },
+          408,
+        );
+      }
       return c.json(
         {
           success: false,
