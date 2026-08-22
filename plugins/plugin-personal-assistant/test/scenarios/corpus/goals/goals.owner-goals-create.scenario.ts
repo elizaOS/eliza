@@ -129,6 +129,19 @@ export default scenario({
         },
         cardinality: 1,
       },
+      {
+        name: "owner-goals-post-turn-evaluator",
+        match: {
+          modelType: "TEXT_SMALL",
+          input: {
+            pattern:
+              "# Task: Post-turn evaluation[\\s\\S]*Latest message:\\nAdd a goal to run a marathon next year, and save it\\.[\\s\\S]*## Active Evaluators",
+          },
+          toolNames: [],
+        },
+        response: { json: {} },
+        cardinality: 1,
+      },
     ],
   },
   id: "goals.owner-goals-create",

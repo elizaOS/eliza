@@ -213,6 +213,34 @@ export default scenario({
         response: { text: "Heads up: you have an update from your assistant." },
         cardinality: 3,
       },
+      {
+        name: "boot-world-project-atlas-plan-render",
+        match: {
+          modelType: "TEXT_SMALL",
+          prompt: {
+            pattern:
+              "^Write a short reminder nudge[\\s\\S]*- title: Review Project Atlas launch checklist\\n[\\s\\S]*- lifecycle: plan\\n[\\s\\S]*$",
+          },
+          toolNames: [],
+        },
+        response: { text: "Review the Project Atlas launch checklist." },
+        cardinality: 1,
+      },
+      {
+        name: "boot-world-project-atlas-escalation-render",
+        match: {
+          modelType: "TEXT_SMALL",
+          prompt: {
+            pattern:
+              "^Write a short reminder nudge[\\s\\S]*- title: Review Project Atlas launch checklist\\n[\\s\\S]*- lifecycle: escalation\\n[\\s\\S]*$",
+          },
+          toolNames: [],
+        },
+        response: {
+          text: "Please review the Project Atlas launch checklist now.",
+        },
+        cardinality: 3,
+      },
     ],
   },
   title:

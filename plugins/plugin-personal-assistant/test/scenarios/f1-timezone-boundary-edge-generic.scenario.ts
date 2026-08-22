@@ -277,6 +277,96 @@ export default scenario({
         response: { text: "Heads up: you have an update from your assistant." },
         cardinality: 1,
       },
+      {
+        name: "boot-world-inbox-priority-score",
+        match: {
+          modelType: "TEXT_SMALL",
+          prompt: {
+            pattern:
+              "^Score each inbox message\\.[\\s\\S]*Return exactly 10 zero-based scores records[\\s\\S]*$",
+          },
+          toolNames: [],
+        },
+        response: {
+          json: {
+            scores: Array.from({ length: 10 }, () => ({
+              score: 80,
+              category: "important",
+              flags: ["ask"],
+            })),
+          },
+        },
+        cardinality: 1,
+      },
+      {
+        name: "boot-world-morning-summary",
+        match: {
+          modelType: "TEXT_LARGE",
+          prompt: {
+            pattern:
+              "^Write the owner's morning personal-assistant intro summary\\.[\\s\\S]*Summary:$",
+          },
+          toolNames: [],
+        },
+        response: {
+          text: "Review the important inbox items and today's schedule.",
+        },
+        cardinality: 1,
+      },
+      {
+        name: "boot-world-project-atlas-reminder-render",
+        match: {
+          modelType: "TEXT_SMALL",
+          prompt: {
+            pattern:
+              "^Write a short reminder nudge[\\s\\S]*- title: Review Project Atlas launch checklist\\n[\\s\\S]*- lifecycle: plan\\n[\\s\\S]*$",
+          },
+          toolNames: [],
+        },
+        response: { text: "Review the Project Atlas launch checklist." },
+        cardinality: 1,
+      },
+      {
+        name: "boot-world-diligence-reminder-render",
+        match: {
+          modelType: "TEXT_SMALL",
+          prompt: {
+            pattern:
+              "^Write a short reminder nudge[\\s\\S]*- title: Send diligence packet comments\\n[\\s\\S]*- lifecycle: plan\\n[\\s\\S]*$",
+          },
+          toolNames: [],
+        },
+        response: { text: "Send the diligence packet comments." },
+        cardinality: 1,
+      },
+      {
+        name: "boot-world-project-atlas-escalation-render",
+        match: {
+          modelType: "TEXT_SMALL",
+          prompt: {
+            pattern:
+              "^Write a short reminder nudge[\\s\\S]*- title: Review Project Atlas launch checklist\\n[\\s\\S]*- lifecycle: escalation\\n[\\s\\S]*$",
+          },
+          toolNames: [],
+        },
+        response: {
+          text: "Please review the Project Atlas launch checklist now.",
+        },
+        cardinality: 1,
+      },
+      {
+        name: "boot-world-diligence-escalation-render",
+        match: {
+          modelType: "TEXT_SMALL",
+          prompt: {
+            pattern:
+              "^Write a short reminder nudge[\\s\\S]*- title: Send diligence packet comments\\n[\\s\\S]*- lifecycle: escalation\\n[\\s\\S]*$",
+          },
+          toolNames: [],
+        },
+        response: { text: "Please send the diligence packet comments now." },
+        cardinality: 1,
+      },
     ],
   },
   title:
