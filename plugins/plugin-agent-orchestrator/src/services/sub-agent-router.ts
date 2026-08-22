@@ -12,6 +12,10 @@
  * narration, so one task yields one user-facing completion rather than one per
  * lineage generation.
  */
+import { redactLoopbackUrls } from "./loopback-urls.js";
+
+export { redactLoopbackUrls } from "./loopback-urls.js";
+
 import { createHash, randomUUID } from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -570,25 +574,8 @@ function supervisorAllowedLoopbackPorts(
 // (localhost / 127.x.x.x / ::1) and strip trailing whitespace cleanly so
 // the surrounding sentence stays readable; if a line becomes only a
 // dangling colon / dash after stripping, drop the line.
-const LOOPBACK_URL_PATTERN =
-  /https?:\/\/(?:localhost|127\.\d{1,3}\.\d{1,3}\.\d{1,3}|\[?::1\]?)(?::\d{1,5})?(?:\/[^\s)<>"`]*)?/gi;
-export function redactLoopbackUrls(text: string): string {
-  if (!text) return text;
-  LOOPBACK_URL_PATTERN.lastIndex = 0;
-  if (!LOOPBACK_URL_PATTERN.test(text)) return text;
-  LOOPBACK_URL_PATTERN.lastIndex = 0;
-  const stripped = text
-    .replace(LOOPBACK_URL_PATTERN, "")
-    .replace(/[ \t]+\n/g, "\n");
-  // Drop lines that became orphan punctuation after the URL was removed
-  // (e.g. "- " or "* " markdown list bullets pointing at nothing).
-  return stripped
-    .split("\n")
-    .filter((line) => !/^[-*\s]*[:>→\->]?[\s]*$/.test(line) || line === "")
-    .join("\n")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
-}
+// redactLoopbackUrls lives in ./loopback-urls.ts (shared with the completion
+// evaluator); re-exported here for existing callers.
 
 function isTelemetryReportUrl(url: string): boolean {
   try {

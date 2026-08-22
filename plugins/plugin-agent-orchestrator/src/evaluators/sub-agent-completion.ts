@@ -26,6 +26,7 @@ import {
   type ResponseHandlerEvaluator,
   SIMPLE_CONTEXT_ID,
 } from "@elizaos/core";
+import { redactLoopbackUrls } from "../services/loopback-urls.js";
 
 const SUB_AGENT_SOURCE = MESSAGE_SOURCE_SUB_AGENT;
 const EMPTY_COMPLETION_PLACEHOLDER =
@@ -757,8 +758,15 @@ export const subAgentCompletionResponseEvaluator: ResponseHandlerEvaluator = {
     const verificationCaveat = completionHasVerificationFailure(completionText)
       ? "Note: some resources referenced by the build failed verification — parts of the page may be broken."
       : undefined;
-    const withVerificationCaveat = (reply: string): string =>
-      verificationCaveat ? `${reply}\n\n${verificationCaveat}` : reply;
+    // Delivery funnel for every relay branch below: whatever authored the
+    // body, a loopback verification URL never reaches chat (live 2026-08-22:
+    // "serving correctly at `http://127.0.0.1:6900/apps/snake-game-2/`").
+    const withVerificationCaveat = (reply: string): string => {
+      const scrubbed = redactLoopbackUrls(reply);
+      return verificationCaveat
+        ? `${scrubbed}\n\n${verificationCaveat}`
+        : scrubbed;
+    };
     // The deliverable IS the sub-agent's printed/tool output (short, single
     // block; the router stripped it from the narration). Relay it verbatim
     // rather than letting the parent model re-summarize or truncate it.
