@@ -15,7 +15,7 @@ export async function waitForLandingIntro(page: Page) {
   await page.evaluate(() => document.fonts.ready);
   await expect(
     page.getByRole("heading", {
-      name: /four hours of your time back every week/i,
+      name: /eliza is everywhere you are/i,
     }),
   ).toBeAttached({ timeout: READINESS_TIMEOUT_MS });
 
