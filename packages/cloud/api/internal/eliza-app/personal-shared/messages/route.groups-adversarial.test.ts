@@ -352,7 +352,11 @@ describe("adversarial Personal Shared group routing", () => {
       namespace,
       validBlooioGroup.messageId,
       "platform",
-      undefined,
+      expect.objectContaining({
+        kind: "group",
+        platform: "blooio",
+        groupBindingId: blooioGroupBinding.id,
+      }),
       undefined,
       { type: "GROUP", source: "blooio" },
     );
