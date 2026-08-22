@@ -1004,6 +1004,7 @@ export function useShellController(): ShellController {
         cached.content === message.text &&
         cached.interrupted === (message.interrupted || undefined) &&
         cached.failureKind === message.failureKind &&
+        cached.terminalFailure === message.terminalFailure &&
         (cached.reasoning || undefined) === (message.reasoning || undefined) &&
         cached.secretRequest === message.secretRequest &&
         // Tool-event merges return a NEW array reference each step, so a
@@ -1024,6 +1025,7 @@ export function useShellController(): ShellController {
         // can omit it. Drives the suggestion affordance (#8792).
         ...(message.source ? { source: message.source } : {}),
         failureKind: message.failureKind,
+        terminalFailure: message.terminalFailure,
         ...(message.reasoning ? { reasoning: message.reasoning } : {}),
         ...(message.toolEvents?.length
           ? { toolEvents: message.toolEvents }

@@ -204,6 +204,42 @@ describe("runBenchmarkTask", () => {
       error: "reply gate declined",
     });
   });
+
+  it("does not report callback-delivered terminal failure prose as success", async () => {
+    const runtime = createRuntime();
+    installCodingActions(runtime);
+    vi.spyOn(getMessageService(runtime), "handleMessage").mockImplementation(
+      async (_runtime, _message, callback) => {
+        await callback?.({
+          text: "I changed files but could not verify the coding task.",
+        });
+        return {
+          didRespond: true,
+          responseContent: null,
+          responseMessages: [],
+          terminalFailure: {
+            kind: "coding_mutation_unverified",
+            transient: false,
+            message: "Coding changes were not verified.",
+          },
+        };
+      },
+    );
+
+    await expect(
+      runBenchmarkTask(
+        runtime,
+        { id: "typed-failure", type: "coding", prompt: "Fix the parser" },
+        new AbortController().signal,
+      ),
+    ).resolves.toMatchObject({
+      response: "I changed files but could not verify the coding task.",
+      success: false,
+      error: "Coding changes were not verified.",
+      failure_kind: "coding_mutation_unverified",
+      transient: false,
+    });
+  });
 });
 
 describe("parseBenchmarkTask", () => {

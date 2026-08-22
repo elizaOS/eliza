@@ -140,6 +140,44 @@ describe("ChatTranscript memoization", () => {
     expect(screen.getByTestId("content-msg-2").textContent).toBe("completed");
   });
 
+  it("re-renders when terminal failure policy lands without changing text or kind", () => {
+    const assistant: ChatMessageData = {
+      ...makeMessage("msg-2", "assistant", "The planner cannot continue."),
+      failureKind: "planner_exhaustion",
+    };
+    const renderMessageContent = vi.fn((message: ChatMessageData) => (
+      <span data-testid="terminal-policy">
+        {message.terminalFailure?.transient === false ? "permanent" : "static"}
+      </span>
+    ));
+    const rendered = render(
+      <ChatTranscript
+        messages={[assistant]}
+        renderMessageContent={renderMessageContent}
+      />,
+    );
+    expect(screen.getByTestId("terminal-policy").textContent).toBe("static");
+
+    rendered.rerender(
+      <ChatTranscript
+        messages={[
+          {
+            ...assistant,
+            terminalFailure: {
+              kind: "planner_exhaustion",
+              message: "The planner cannot continue.",
+              transient: false,
+            },
+          },
+        ]}
+        renderMessageContent={renderMessageContent}
+      />,
+    );
+
+    expect(renderMessageContent).toHaveBeenCalledTimes(2);
+    expect(screen.getByTestId("terminal-policy").textContent).toBe("permanent");
+  });
+
   it("does NOT re-render a row whose toolEvents reference is unchanged", () => {
     // The transcript rebuilds message OBJECTS every parent render; a row whose
     // toolEvents array is the SAME reference (no tool change) must still be
