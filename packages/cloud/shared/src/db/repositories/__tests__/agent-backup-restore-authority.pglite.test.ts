@@ -28,6 +28,7 @@ process.env.MOCK_REDIS = "1";
 process.env.SKIP_AGENT_SANDBOX_ENSURE = "1";
 
 import { pushSchema } from "drizzle-kit/api";
+import { installAgentNodeOccurrenceTriggerForTests } from "../../agent-node-occurrence-test-support";
 import { closeDatabaseConnectionsForTests, dbWrite } from "../../client";
 import {
   agentBackupCatalogAuthorities,
@@ -94,12 +95,14 @@ const VAULT_GENERATION = "00000000-0000-4000-8000-00000000d006";
 const ROTATED_VAULT_GENERATION = "00000000-0000-4000-8000-00000000d030";
 const STALE_VAULT_GENERATION = "00000000-0000-4000-8000-00000000d031";
 const USER_ID = "00000000-0000-4000-8000-00000000d032";
-const TARGET_ACTIVATION_GENERATION = "00000000-0000-4000-8000-00000000d042";
+const SOURCE_NODE_INCARNATION = "00000000-0000-4000-8000-00000000d034";
+const SOURCE_NODE_RECORD_ID = "00000000-0000-4000-8000-00000000d035";
+const NON_RESTORE_PUBLICATION_ID = "00000000-0000-4000-8000-00000000d036";
+const TARGET_ACTIVATION_GENERATION = "00000000-0000-4000-8000-00000000d048";
 const TARGET_NODE_RECORD_ID = "00000000-0000-4000-8000-00000000d043";
 const TARGET_NODE_INCARNATION = "00000000-0000-4000-8000-00000000d044";
 const REARMED_TARGET_NODE_INCARNATION = "00000000-0000-4000-8000-00000000d065";
 const TARGET_NODE_CREATED_AT = new Date("2026-08-19T23:59:59.000Z");
-const TARGET_NODE_ATTESTED_AT = new Date("2026-08-20T00:00:00.000Z");
 const ACTIVATION_PUBLICATION_ID = "00000000-0000-4000-8000-00000000d045";
 const SEED_RECEIPT_ID = "00000000-0000-4000-8000-00000000d046";
 const FINAL_RECEIPT_ID = "00000000-0000-4000-8000-00000000d047";
@@ -197,7 +200,7 @@ async function insertActiveSandbox(): Promise<void> {
     activation_image_digest: `sha256:${SHA}`,
     activation_token_hash: SHA,
     activation_token_ciphertext: "sealed-restore-authority-token",
-    activation_boot_id: "00000000-0000-4000-8000-00000000d034",
+    activation_boot_id: SOURCE_NODE_INCARNATION,
     activation_funding_revision: 1n,
     activation_authority_published_at: new Date("2026-08-17T00:00:00.000Z"),
     activation_dispatched_at: new Date("2026-08-17T00:00:01.000Z"),
@@ -660,7 +663,7 @@ async function acquireVaultPassphraseFixture(
     ownerId: acquired.authority.ownerId,
     claimMs: 60_000,
   });
-  await dbWrite.insert(dockerNodes).values({
+  const targetNode = await dockerNodesRepository.create({
     id: TARGET_NODE_RECORD_ID,
     node_id: "vault-restore-target-node",
     hostname: "vault-restore-target-node.internal",
@@ -676,16 +679,8 @@ async function acquireVaultPassphraseFixture(
     metadata: {},
     created_at: TARGET_NODE_CREATED_AT,
   });
-  await dbWrite.insert(agentNodeIncarnationHistories).values({
-    docker_node_record_id: TARGET_NODE_RECORD_ID,
-    node_id: "vault-restore-target-node",
-    node_incarnation: TARGET_NODE_INCARNATION,
-    fleet_kind: "robot",
-    infrastructure_provider: "hetzner",
-    provider_server_id: null,
-    host_key_fingerprint: `SHA256:${SHA}`,
-    attested_at: TARGET_NODE_ATTESTED_AT,
-  });
+  const targetNodeHistoryId = targetNode.current_node_history_id;
+  if (!targetNodeHistoryId) throw new Error("vault target occurrence token fixture is missing");
   if (options.reserveTarget !== false) {
     await reserveAgentBackupRestoreTarget({
       operationId: opened.operation.id,
@@ -693,6 +688,7 @@ async function acquireVaultPassphraseFixture(
       claimGeneration: claimed.claimGeneration,
       targetNodeRecordId: TARGET_NODE_RECORD_ID,
       targetNodeIncarnation: TARGET_NODE_INCARNATION,
+      targetNodeHistoryId,
     });
   }
   return {
@@ -705,41 +701,37 @@ async function acquireVaultPassphraseFixture(
       restoreClaimGeneration: claimed.claimGeneration,
       targetNodeRecordId: TARGET_NODE_RECORD_ID,
       targetNodeIncarnation: TARGET_NODE_INCARNATION,
+      targetNodeHistoryId,
       vaultKeyGenerationId: generation.authority.generationId,
       vaultKeyAuthorityReceiptDigest: generation.authority.receiptDigest,
     },
   } as const;
 }
 
-async function rearmVaultTargetNodeThroughIncarnation(
-  nextIncarnation: string,
-  timing: "later" | "backdated" = "later",
-): Promise<void> {
-  const [originalHistory] = await dbWrite
-    .select()
-    .from(agentNodeIncarnationHistories)
-    .where(eq(agentNodeIncarnationHistories.docker_node_record_id, TARGET_NODE_RECORD_ID));
-  if (!originalHistory) throw new Error("vault target history fixture is missing");
-  await dbWrite
-    .update(dockerNodes)
-    .set({ node_incarnation: nextIncarnation })
-    .where(eq(dockerNodes.id, TARGET_NODE_RECORD_ID));
-  await dbWrite.insert(agentNodeIncarnationHistories).values({
-    docker_node_record_id: TARGET_NODE_RECORD_ID,
-    node_id: originalHistory.node_id,
-    node_incarnation: nextIncarnation,
-    fleet_kind: originalHistory.fleet_kind,
-    infrastructure_provider: originalHistory.infrastructure_provider,
-    provider_server_id: originalHistory.provider_server_id,
-    host_key_fingerprint: originalHistory.host_key_fingerprint,
-    attested_at: new Date(
-      originalHistory.attested_at.getTime() + (timing === "backdated" ? -1_000 : 1_000),
-    ),
+async function rearmVaultTargetNodeThroughActualAba(): Promise<{
+  bHistoryId: string;
+  a2HistoryId: string;
+}> {
+  const b = await dockerNodesRepository.attestNodeIncarnation({
+    id: TARGET_NODE_RECORD_ID,
+    nodeId: "vault-restore-target-node",
+    expectedIncarnation: TARGET_NODE_INCARNATION,
+    expectedHostKeyFingerprint: `SHA256:${SHA}`,
+    observedIncarnation: REARMED_TARGET_NODE_INCARNATION,
   });
-  await dbWrite
-    .update(dockerNodes)
-    .set({ node_incarnation: TARGET_NODE_INCARNATION })
-    .where(eq(dockerNodes.id, TARGET_NODE_RECORD_ID));
+  if (!b.current_node_history_id) throw new Error("vault target B occurrence token is missing");
+  const a2 = await dockerNodesRepository.attestNodeIncarnation({
+    id: TARGET_NODE_RECORD_ID,
+    nodeId: "vault-restore-target-node",
+    expectedIncarnation: REARMED_TARGET_NODE_INCARNATION,
+    expectedHostKeyFingerprint: `SHA256:${SHA}`,
+    observedIncarnation: TARGET_NODE_INCARNATION,
+  });
+  if (!a2.current_node_history_id) throw new Error("vault target A2 occurrence token is missing");
+  return {
+    bHistoryId: b.current_node_history_id,
+    a2HistoryId: a2.current_node_history_id,
+  };
 }
 
 beforeAll(async () => {
@@ -767,6 +759,9 @@ beforeAll(async () => {
       dbWrite as never,
     );
     await apply();
+    await installAgentNodeOccurrenceTriggerForTests((statement) =>
+      dbWrite.execute(sql.raw(statement)),
+    );
     // error-policy:J1 setup failure is retained for the test boundary assertion.
   } catch (error) {
     schemaFailure = error instanceof Error ? error.message : String(error);
@@ -778,7 +773,6 @@ beforeEach(async () => {
   await dbWrite.delete(agentBackupRestoreReceipts);
   await dbWrite.delete(agentVaultKeySeedReceipts);
   await dbWrite.delete(agentActivationPublications);
-  await dbWrite.delete(agentNodeIncarnationHistories);
   await dbWrite.delete(agentVaultKeyBackupBindings);
   await dbWrite.delete(agentBackupRestoreOperations);
   await dbWrite.delete(agentBackupRestoreLeases);
@@ -789,6 +783,7 @@ beforeEach(async () => {
   await dbWrite.delete(agentBackupCatalogAuthorities);
   await dbWrite.delete(agentSandboxes);
   await dbWrite.delete(dockerNodes);
+  await dbWrite.delete(agentNodeIncarnationHistories);
   await dbWrite.delete(userCharacters);
   await dbWrite.delete(users);
   await dbWrite.delete(organizations);
@@ -805,6 +800,54 @@ afterAll(async () => {
 });
 
 describe("strict restore catalogue authority", () => {
+  test("publishes, replays, and dispatch-authorizes a non-restore node occurrence", async () => {
+    const sourceNode = await dockerNodesRepository.create({
+      id: SOURCE_NODE_RECORD_ID,
+      node_id: "restore-source-node",
+      hostname: "restore-source-node.internal",
+      capacity: 2,
+      enabled: true,
+      placement_state: "open",
+      status: "healthy",
+      host_key_fingerprint: `SHA256:${SHA}`,
+      fleet_kind: "robot",
+      infrastructure_provider: "hetzner",
+      provider_server_id: null,
+      node_incarnation: SOURCE_NODE_INCARNATION,
+      metadata: {},
+    });
+    if (!sourceNode.current_node_history_id) {
+      throw new Error("non-restore source occurrence token is missing");
+    }
+    const input = {
+      publicationId: NON_RESTORE_PUBLICATION_ID,
+      organizationId: ORG_ID,
+      agentId: AGENT_ID,
+      activationGeneration: ACTIVATION_GENERATION,
+      expectedActivationReceiptSha256: RECEIPT_SHA,
+      expectedContainerId: "c".repeat(64),
+      expectedNodeRecordId: SOURCE_NODE_RECORD_ID,
+      expectedNodeIncarnation: SOURCE_NODE_INCARNATION,
+      expectedNodeHistoryId: sourceNode.current_node_history_id,
+      expectedTokenSha256: SHA,
+    };
+
+    const first = await recordAgentActivationPublication(input);
+    const replay = await recordAgentActivationPublication(input);
+    expect(first.replayed).toBe(false);
+    expect(replay.replayed).toBe(true);
+    expect(first.publication).toMatchObject({
+      purpose: "provision",
+      docker_node_record_id: SOURCE_NODE_RECORD_ID,
+      node_incarnation: SOURCE_NODE_INCARNATION,
+      node_history_id: sourceNode.current_node_history_id,
+    });
+    await expect(authorizeAgentActivationDispatch(input)).resolves.toMatchObject({
+      id: NON_RESTORE_PUBLICATION_ID,
+      node_history_id: sourceNode.current_node_history_id,
+    });
+  });
+
   test("creates, replays, rotates, zeroizes, and retains vault-key authority", async () => {
     const kms = new MemoryKmsAdapter({ seed: () => new Uint8Array(32).fill(0x91) });
     let entropyCalls = 0;
@@ -1241,16 +1284,56 @@ describe("strict restore catalogue authority", () => {
     );
     generation.secret.release();
     const { exact } = await insertExactProtectedSource(generation.authority);
-    await dbWrite.insert(dockerNodes).values({
+    const restoreTargetNode = await dockerNodesRepository.create({
       id: TARGET_NODE_RECORD_ID,
       node_id: "restore-target-node",
       hostname: "restore-target-node.internal",
+      capacity: 2,
+      enabled: true,
+      placement_state: "open",
+      status: "healthy",
       host_key_fingerprint: `SHA256:${SHA}`,
       fleet_kind: "robot",
       infrastructure_provider: "hetzner",
       provider_server_id: null,
       node_incarnation: TARGET_NODE_INCARNATION,
     });
+    const restoreTargetHistoryId = restoreTargetNode.current_node_history_id;
+    if (!restoreTargetHistoryId) throw new Error("restore target occurrence token is missing");
+    const acquired = await acquireAgentBackupRestoreLease({
+      organizationId: ORG_ID,
+      backupId: BACKUP_ID,
+      operationId: OPERATION_ID,
+      sourceActivationGeneration: ACTIVATION_GENERATION,
+      sourceLifecycleRevision: "7",
+      expectedManifestSha256: exact.manifest.integrity.manifestSha256,
+      copyRole: "primary",
+      restoreAttemptId: RESTORE_ATTEMPT_ID,
+      ownerId: "immutable-restore-worker",
+      fencingToken: "00000000-0000-4000-8000-00000000d051",
+      leaseMs: 60_000,
+    });
+    const opened = await openAgentBackupRestoreOperation({
+      authority: acquired.authority,
+      leaseId: acquired.authority.leaseId,
+    });
+    const claimed = await claimAgentBackupRestoreOperation({
+      operationId: opened.operation.id,
+      ownerId: acquired.authority.ownerId,
+      claimMs: 60_000,
+    });
+    await reserveAgentBackupRestoreTarget({
+      operationId: opened.operation.id,
+      ownerId: acquired.authority.ownerId,
+      claimGeneration: claimed.claimGeneration,
+      targetNodeRecordId: TARGET_NODE_RECORD_ID,
+      targetNodeIncarnation: TARGET_NODE_INCARNATION,
+      targetNodeHistoryId: restoreTargetHistoryId,
+    });
+    await dbWrite
+      .update(agentBackupRestoreOperations)
+      .set({ expected_container_id: RESTORE_CONTAINER_ID })
+      .where(eq(agentBackupRestoreOperations.id, opened.operation.id));
     await dbWrite
       .update(agentSandboxes)
       .set({
@@ -1306,6 +1389,7 @@ describe("strict restore catalogue authority", () => {
       expectedContainerId: RESTORE_CONTAINER_ID,
       expectedNodeRecordId: TARGET_NODE_RECORD_ID,
       expectedNodeIncarnation: TARGET_NODE_INCARNATION,
+      expectedNodeHistoryId: restoreTargetHistoryId,
       expectedTokenSha256: SHA,
     } as const;
     const [publicationFirst, publicationReplay] = await Promise.all([
@@ -1327,33 +1411,6 @@ describe("strict restore catalogue authority", () => {
       .update(agentSandboxes)
       .set({ activation_boot_id: TARGET_NODE_INCARNATION })
       .where(eq(agentSandboxes.id, AGENT_ID));
-    await dbWrite
-      .update(dockerNodes)
-      .set({ node_incarnation: "00000000-0000-4000-8000-00000000d050" })
-      .where(eq(dockerNodes.id, TARGET_NODE_RECORD_ID));
-    await expect(authorizeAgentActivationDispatch(publicationInput)).rejects.toThrow(
-      "Target node incarnation is absent",
-    );
-    await dbWrite
-      .update(dockerNodes)
-      .set({ node_incarnation: TARGET_NODE_INCARNATION })
-      .where(eq(dockerNodes.id, TARGET_NODE_RECORD_ID));
-    // This direct mutation did not publish a B history. Journaled A -> B -> A
-    // is covered separately and remains rejected after the mutable row rewinds.
-
-    const acquired = await acquireAgentBackupRestoreLease({
-      organizationId: ORG_ID,
-      backupId: BACKUP_ID,
-      operationId: OPERATION_ID,
-      sourceActivationGeneration: ACTIVATION_GENERATION,
-      sourceLifecycleRevision: "7",
-      expectedManifestSha256: exact.manifest.integrity.manifestSha256,
-      copyRole: "primary",
-      restoreAttemptId: RESTORE_ATTEMPT_ID,
-      ownerId: "immutable-restore-worker",
-      fencingToken: "00000000-0000-4000-8000-00000000d051",
-      leaseMs: 60_000,
-    });
     const seedInput = {
       receiptId: SEED_RECEIPT_ID,
       receiptDigest: CONTENT_SHA,
@@ -1367,6 +1424,7 @@ describe("strict restore catalogue authority", () => {
       targetActivationGeneration: TARGET_ACTIVATION_GENERATION,
       targetNodeRecordId: TARGET_NODE_RECORD_ID,
       targetNodeIncarnation: TARGET_NODE_INCARNATION,
+      targetNodeHistoryId: restoreTargetHistoryId,
     } as const;
     await expect(
       recordAgentVaultKeySeedReceipt({
@@ -1374,7 +1432,7 @@ describe("strict restore catalogue authority", () => {
         receiptId: "00000000-0000-4000-8000-00000000d052",
         targetNodeIncarnation: "00000000-0000-4000-8000-00000000d050",
       }),
-    ).rejects.toThrow("unattested, changed, or blocked");
+    ).rejects.toThrow("durable operation target");
     // The seed receipt is append-only (0250), so a stale catalogue epoch must be
     // refused BEFORE the row exists rather than left as an unremovable record.
     const [epochBefore] = await dbWrite
@@ -1449,20 +1507,6 @@ describe("strict restore catalogue authority", () => {
       .set({ expires_at: originalLeaseExpiry })
       .where(eq(agentBackupRestoreLeases.id, acquired.authority.leaseId));
 
-    // A target that reboots between publication and commit must not earn a
-    // permanent receipt naming an incarnation that no longer exists.
-    await dbWrite
-      .update(dockerNodes)
-      .set({ node_incarnation: "00000000-0000-4000-8000-00000000d055" })
-      .where(eq(dockerNodes.id, TARGET_NODE_RECORD_ID));
-    await expect(commitAgentBackupRestore(finalInput)).rejects.toThrow(
-      "Target node incarnation is absent",
-    );
-    await dbWrite
-      .update(dockerNodes)
-      .set({ node_incarnation: TARGET_NODE_INCARNATION })
-      .where(eq(dockerNodes.id, TARGET_NODE_RECORD_ID));
-
     await releaseAgentBackupRestoreLease(acquired.authority);
     await expect(commitAgentBackupRestore(finalInput)).rejects.toThrow(
       "lost its exact live restore lease",
@@ -1534,6 +1578,246 @@ describe("strict restore catalogue authority", () => {
       generation: 1n,
       receiptDigest: CIPHERTEXT_SHA,
     });
+
+    await dockerNodesRepository.attestNodeIncarnation({
+      id: TARGET_NODE_RECORD_ID,
+      nodeId: "restore-target-node",
+      expectedIncarnation: TARGET_NODE_INCARNATION,
+      expectedHostKeyFingerprint: `SHA256:${SHA}`,
+      observedIncarnation: "00000000-0000-4000-8000-00000000d055",
+    });
+    await expect(authorizeAgentActivationDispatch(publicationInput)).rejects.toThrow(
+      "exact current node-occurrence authority",
+    );
+  });
+
+  test("rejects caller-substituted current A2 when the restore operation reserved A1", async () => {
+    const kms = new MemoryKmsAdapter({ seed: () => new Uint8Array(32).fill(0x95) });
+    const generation = await createOrRotateAgentVaultKeyGeneration(
+      {
+        organizationId: ORG_ID,
+        agentId: AGENT_ID,
+        generationId: VAULT_GENERATION,
+        sourceActivationGeneration: ACTIVATION_GENERATION,
+        expectedCurrentGenerationId: null,
+      },
+      {
+        kmsClient: kms,
+        randomBytes: (size) => new Uint8Array(size).fill(0x45),
+      },
+    );
+    generation.secret.release();
+    const { exact } = await insertExactProtectedSource(generation.authority);
+    const targetA1 = await dockerNodesRepository.create({
+      id: TARGET_NODE_RECORD_ID,
+      node_id: "vault-restore-target-node",
+      hostname: "vault-restore-target-node.internal",
+      capacity: 2,
+      enabled: true,
+      placement_state: "open",
+      status: "healthy",
+      host_key_fingerprint: `SHA256:${SHA}`,
+      fleet_kind: "robot",
+      infrastructure_provider: "hetzner",
+      provider_server_id: null,
+      node_incarnation: TARGET_NODE_INCARNATION,
+    });
+    if (!targetA1.current_node_history_id) throw new Error("target A1 token is missing");
+    const acquired = await acquireAgentBackupRestoreLease({
+      organizationId: ORG_ID,
+      backupId: BACKUP_ID,
+      operationId: OPERATION_ID,
+      sourceActivationGeneration: ACTIVATION_GENERATION,
+      sourceLifecycleRevision: "7",
+      expectedManifestSha256: exact.manifest.integrity.manifestSha256,
+      copyRole: "primary",
+      restoreAttemptId: RESTORE_ATTEMPT_ID,
+      ownerId: "aba-restore-worker",
+      fencingToken: "00000000-0000-4000-8000-00000000d051",
+      leaseMs: 60_000,
+    });
+    const opened = await openAgentBackupRestoreOperation({
+      authority: acquired.authority,
+      leaseId: acquired.authority.leaseId,
+    });
+    const claimed = await claimAgentBackupRestoreOperation({
+      operationId: opened.operation.id,
+      ownerId: acquired.authority.ownerId,
+      claimMs: 60_000,
+    });
+    await reserveAgentBackupRestoreTarget({
+      operationId: opened.operation.id,
+      ownerId: acquired.authority.ownerId,
+      claimGeneration: claimed.claimGeneration,
+      targetNodeRecordId: TARGET_NODE_RECORD_ID,
+      targetNodeIncarnation: TARGET_NODE_INCARNATION,
+      targetNodeHistoryId: targetA1.current_node_history_id,
+    });
+    await dbWrite
+      .update(agentBackupRestoreOperations)
+      .set({ expected_container_id: RESTORE_CONTAINER_ID })
+      .where(eq(agentBackupRestoreOperations.id, opened.operation.id));
+
+    const { a2HistoryId } = await rearmVaultTargetNodeThroughActualAba();
+    expect(a2HistoryId).not.toBe(targetA1.current_node_history_id);
+    const activationReceipt = {
+      schemaVersion: 1,
+      generation: TARGET_ACTIVATION_GENERATION,
+      purpose: "restore",
+      agentId: AGENT_ID,
+      organizationId: ORG_ID,
+      lifecycleRevision: "8",
+      backupId: BACKUP_ID,
+      backupHash: exact.manifest.integrity.manifestSha256,
+      manifestHash: exact.manifest.integrity.manifestSha256,
+      componentHashes: null,
+      freshAuthorization: null,
+      containerId: RESTORE_CONTAINER_ID,
+      imageDigest: `sha256:${SHA}`,
+      receiptId: "00000000-0000-4000-8000-00000000d049",
+      receiptHash: RECEIPT_SHA,
+      receiptMac: CONTENT_SHA,
+      appliedAt: "2026-08-17T02:00:00.000Z",
+      restored: true,
+      requiresRestart: true,
+    } as const;
+    await dbWrite
+      .update(agentSandboxes)
+      .set({
+        lifecycle_revision: 8,
+        activation_generation: TARGET_ACTIVATION_GENERATION,
+        activation_previous_generation: ACTIVATION_GENERATION,
+        activation_lifecycle_revision: 8n,
+        activation_purpose: "restore",
+        activation_phase: "restart_attested",
+        activation_backup_id: BACKUP_ID,
+        activation_backup_hash: exact.manifest.integrity.manifestSha256,
+        activation_receipt: activationReceipt,
+        activation_receipt_hash: RECEIPT_SHA,
+        activation_container_id: RESTORE_CONTAINER_ID,
+        activation_node_id: "vault-restore-target-node",
+        activation_image_digest: `sha256:${SHA}`,
+        activation_token_hash: SHA,
+        activation_token_ciphertext: "sealed-aba-restore-token",
+        activation_boot_id: TARGET_NODE_INCARNATION,
+        activation_funding_revision: 2n,
+        activation_authority_published_at: null,
+        activation_dispatched_at: null,
+        activation_completed_at: null,
+      })
+      .where(eq(agentSandboxes.id, AGENT_ID));
+
+    const publicationInput = {
+      publicationId: ACTIVATION_PUBLICATION_ID,
+      organizationId: ORG_ID,
+      agentId: AGENT_ID,
+      activationGeneration: TARGET_ACTIVATION_GENERATION,
+      expectedActivationReceiptSha256: RECEIPT_SHA,
+      expectedContainerId: RESTORE_CONTAINER_ID,
+      expectedNodeRecordId: TARGET_NODE_RECORD_ID,
+      expectedNodeIncarnation: TARGET_NODE_INCARNATION,
+      expectedNodeHistoryId: a2HistoryId,
+      expectedTokenSha256: SHA,
+    } as const;
+    await expect(recordAgentActivationPublication(publicationInput)).rejects.toThrow(
+      "durable operation target",
+    );
+    const seedInput = {
+      receiptId: SEED_RECEIPT_ID,
+      receiptDigest: CONTENT_SHA,
+      organizationId: ORG_ID,
+      agentId: AGENT_ID,
+      backupId: BACKUP_ID,
+      restoreAttemptId: RESTORE_ATTEMPT_ID,
+      leaseId: acquired.authority.leaseId,
+      leaseOwnerId: acquired.authority.ownerId,
+      leaseFencingToken: acquired.authority.fencingToken,
+      targetActivationGeneration: TARGET_ACTIVATION_GENERATION,
+      targetNodeRecordId: TARGET_NODE_RECORD_ID,
+      targetNodeIncarnation: TARGET_NODE_INCARNATION,
+      targetNodeHistoryId: a2HistoryId,
+    } as const;
+    await expect(recordAgentVaultKeySeedReceipt(seedInput)).rejects.toThrow(
+      "durable operation target",
+    );
+
+    const [publication] = await dbWrite
+      .insert(agentActivationPublications)
+      .values({
+        id: ACTIVATION_PUBLICATION_ID,
+        organization_id: ORG_ID,
+        agent_id: AGENT_ID,
+        activation_generation: TARGET_ACTIVATION_GENERATION,
+        previous_activation_generation: ACTIVATION_GENERATION,
+        lifecycle_revision: 8n,
+        purpose: "restore",
+        backup_id: BACKUP_ID,
+        backup_manifest_sha256: exact.manifest.integrity.manifestSha256,
+        activation_receipt: activationReceipt,
+        activation_receipt_sha256: RECEIPT_SHA,
+        container_id: RESTORE_CONTAINER_ID,
+        node_history_id: a2HistoryId,
+        docker_node_record_id: TARGET_NODE_RECORD_ID,
+        node_id: "vault-restore-target-node",
+        node_incarnation: TARGET_NODE_INCARNATION,
+        image_digest: `sha256:${SHA}`,
+        token_sha256: SHA,
+        funding_revision: 2n,
+      })
+      .returning();
+    if (!publication) throw new Error("adversarial A2 publication fixture is missing");
+    await dbWrite.insert(agentVaultKeySeedReceipts).values({
+      id: SEED_RECEIPT_ID,
+      receipt_digest: CONTENT_SHA,
+      organization_id: ORG_ID,
+      agent_id: AGENT_ID,
+      backup_id: BACKUP_ID,
+      restore_attempt_id: RESTORE_ATTEMPT_ID,
+      lease_id: acquired.authority.leaseId,
+      lease_owner_id: acquired.authority.ownerId,
+      lease_fencing_token: acquired.authority.fencingToken,
+      lease_expires_at: acquired.authority.expiresAt,
+      operation_id: OPERATION_ID,
+      source_activation_generation: ACTIVATION_GENERATION,
+      source_lifecycle_revision: 7n,
+      manifest_sha256: exact.manifest.integrity.manifestSha256,
+      vault_key_generation_id: generation.authority.generationId,
+      vault_key_authority_receipt_digest: generation.authority.receiptDigest,
+      target_activation_generation: TARGET_ACTIVATION_GENERATION,
+      node_history_id: a2HistoryId,
+      docker_node_record_id: TARGET_NODE_RECORD_ID,
+      node_incarnation: TARGET_NODE_INCARNATION,
+    });
+    const dispatchedAt = new Date(publication.published_at.getTime() + 1_000);
+    await dbWrite
+      .update(agentSandboxes)
+      .set({
+        status: "running",
+        sandbox_id: "restored-aba-provider-handle",
+        node_id: "vault-restore-target-node",
+        image_digest: `sha256:${SHA}`,
+        activation_phase: "active",
+        activation_authority_published_at: publication.published_at,
+        activation_dispatched_at: dispatchedAt,
+        activation_completed_at: new Date(dispatchedAt.getTime() + 1_000),
+      })
+      .where(eq(agentSandboxes.id, AGENT_ID));
+    await expect(
+      commitAgentBackupRestore({
+        receiptId: FINAL_RECEIPT_ID,
+        receiptDigest: CIPHERTEXT_SHA,
+        organizationId: ORG_ID,
+        agentId: AGENT_ID,
+        backupId: BACKUP_ID,
+        restoreAttemptId: RESTORE_ATTEMPT_ID,
+        seedReceiptId: SEED_RECEIPT_ID,
+        seedReceiptDigest: CONTENT_SHA,
+        activationPublicationId: ACTIVATION_PUBLICATION_ID,
+        targetActivationGeneration: TARGET_ACTIVATION_GENERATION,
+        expectedActivationReceiptSha256: RECEIPT_SHA,
+      }),
+    ).rejects.toThrow("durable operation target");
+    expect(await dbWrite.select().from(agentBackupRestoreReceipts)).toHaveLength(0);
   });
 
   test("rechecks the live DB clock after expensive restore-source validation", async () => {
@@ -1593,7 +1877,7 @@ describe("strict restore catalogue authority", () => {
       ".from(agentBackupRestoreOperations)",
       ".from(agentBackupRestoreLeases)",
       ".from(dockerNodes)",
-      "proveUnambiguousAgentNodeIncarnationForLockedNode(",
+      "proveExactAgentNodeOccurrenceForLockedNode(",
       "lockAgentBackupCatalogAuthority(",
       "readPostLockDatabaseNow(",
     ]);
@@ -1650,6 +1934,7 @@ describe("strict restore catalogue authority", () => {
       { ...fixture.input, restoreClaimGeneration: "00000000-0000-4000-8000-00000000d061" },
       { ...fixture.input, targetNodeRecordId: "00000000-0000-4000-8000-00000000d062" },
       { ...fixture.input, targetNodeIncarnation: "00000000-0000-4000-8000-00000000d063" },
+      { ...fixture.input, targetNodeHistoryId: "00000000-0000-4000-8000-00000000d064" },
     ] as const;
     try {
       for (const input of mismatches) {
@@ -1717,9 +2002,18 @@ describe("strict restore catalogue authority", () => {
     }
   });
 
-  test("rejects a backdated target B history before KMS", async () => {
+  test("rejects reserved A1 before KMS after a real A to B to A2 occurrence transition", async () => {
     const fixture = await acquireVaultPassphraseFixture();
-    await rearmVaultTargetNodeThroughIncarnation(REARMED_TARGET_NODE_INCARNATION, "backdated");
+    const { bHistoryId, a2HistoryId } = await rearmVaultTargetNodeThroughActualAba();
+    expect(a2HistoryId).not.toBe(fixture.input.targetNodeHistoryId);
+    expect(bHistoryId).not.toBe(a2HistoryId);
+    const histories = await dbWrite
+      .select({ id: agentNodeIncarnationHistories.id })
+      .from(agentNodeIncarnationHistories)
+      .where(eq(agentNodeIncarnationHistories.docker_node_record_id, TARGET_NODE_RECORD_ID));
+    expect(histories.map(({ id }) => id).sort()).toEqual(
+      [fixture.input.targetNodeHistoryId, bHistoryId, a2HistoryId].sort(),
+    );
     const decryptSpy = spyOn(fixture.kms, "decrypt");
     let useCalls = 0;
     try {
@@ -1731,7 +2025,7 @@ describe("strict restore catalogue authority", () => {
           },
           { kmsClient: fixture.kms },
         ),
-      ).rejects.toThrow("ambiguous multi-incarnation history");
+      ).rejects.toThrow("target node occurrence was lost");
       expect(decryptSpy).toHaveBeenCalledTimes(0);
       expect(useCalls).toBe(0);
     } finally {
@@ -1739,37 +2033,24 @@ describe("strict restore catalogue authority", () => {
     }
   });
 
-  test("fails while incarnation is NULL and resumes after exact host-key CAS re-attestation", async () => {
+  test("preserves the A1 occurrence token on same-incarnation A to A replay", async () => {
     const fixture = await acquireVaultPassphraseFixture(0x4a);
     const decryptSpy = spyOn(fixture.kms, "decrypt");
     let useCalls = 0;
     try {
-      await dockerNodesRepository.invalidateNodeIncarnation({
+      const replayed = await dockerNodesRepository.attestNodeIncarnation({
         id: fixture.input.targetNodeRecordId,
         nodeId: "vault-restore-target-node",
         expectedIncarnation: TARGET_NODE_INCARNATION,
         expectedHostKeyFingerprint: `SHA256:${SHA}`,
-      });
-      await expect(
-        withAgentBackupRestoreVaultPassphrase(
-          fixture.input,
-          () => {
-            useCalls += 1;
-          },
-          { kmsClient: fixture.kms },
-        ),
-      ).rejects.toThrow("target node record or incarnation was lost");
-      expect(decryptSpy).toHaveBeenCalledTimes(0);
-      expect(useCalls).toBe(0);
-
-      const reattested = await dockerNodesRepository.attestNodeIncarnation({
-        id: fixture.input.targetNodeRecordId,
-        nodeId: "vault-restore-target-node",
-        expectedIncarnation: null,
-        expectedHostKeyFingerprint: `SHA256:${SHA}`,
         observedIncarnation: TARGET_NODE_INCARNATION,
       });
-      expect(reattested.id).toBe(TARGET_NODE_RECORD_ID);
+      expect(replayed.current_node_history_id).toBe(fixture.input.targetNodeHistoryId);
+      const histories = await dbWrite
+        .select({ id: agentNodeIncarnationHistories.id })
+        .from(agentNodeIncarnationHistories)
+        .where(eq(agentNodeIncarnationHistories.docker_node_record_id, TARGET_NODE_RECORD_ID));
+      expect(histories).toEqual([{ id: fixture.input.targetNodeHistoryId }]);
       const result = await withAgentBackupRestoreVaultPassphrase(
         fixture.input,
         (passphrase) => {
@@ -1781,6 +2062,43 @@ describe("strict restore catalogue authority", () => {
       expect(result).toBe("4a".repeat(32));
       expect(decryptSpy).toHaveBeenCalledTimes(1);
       expect(useCalls).toBe(1);
+    } finally {
+      decryptSpy.mockRestore();
+    }
+  });
+
+  test("rejects reserved A1 before KMS after A to NULL to A2 re-attestation", async () => {
+    const fixture = await acquireVaultPassphraseFixture();
+    const invalidated = await dockerNodesRepository.invalidateNodeIncarnation({
+      id: fixture.input.targetNodeRecordId,
+      nodeId: "vault-restore-target-node",
+      expectedIncarnation: TARGET_NODE_INCARNATION,
+      expectedHostKeyFingerprint: `SHA256:${SHA}`,
+    });
+    expect(invalidated.current_node_history_id).toBeNull();
+    const a2 = await dockerNodesRepository.attestNodeIncarnation({
+      id: fixture.input.targetNodeRecordId,
+      nodeId: "vault-restore-target-node",
+      expectedIncarnation: null,
+      expectedHostKeyFingerprint: `SHA256:${SHA}`,
+      observedIncarnation: TARGET_NODE_INCARNATION,
+    });
+    expect(a2.current_node_history_id).not.toBe(fixture.input.targetNodeHistoryId);
+
+    const decryptSpy = spyOn(fixture.kms, "decrypt");
+    let useCalls = 0;
+    try {
+      await expect(
+        withAgentBackupRestoreVaultPassphrase(
+          fixture.input,
+          () => {
+            useCalls += 1;
+          },
+          { kmsClient: fixture.kms },
+        ),
+      ).rejects.toThrow("target node occurrence was lost");
+      expect(decryptSpy).toHaveBeenCalledTimes(0);
+      expect(useCalls).toBe(0);
     } finally {
       decryptSpy.mockRestore();
     }
@@ -1859,7 +2177,7 @@ describe("strict restore catalogue authority", () => {
     }
   });
 
-  test("revalidates after KMS and zeroizes plaintext when the target incarnation is lost", async () => {
+  test("revalidates after KMS and zeroizes plaintext when the target occurrence is lost", async () => {
     const fixture = await acquireVaultPassphraseFixture();
     const secretRelease = captureVaultRawKeyAtRelease();
     const originalDecrypt = fixture.kms.decrypt.bind(fixture.kms);
@@ -1869,10 +2187,13 @@ describe("strict restore catalogue authority", () => {
       async (keyId, ciphertext, nonce, authTag, aad, keyVersion) => {
         const plaintext = await originalDecrypt(keyId, ciphertext, nonce, authTag, aad, keyVersion);
         borrowedPlaintext = plaintext;
-        await dbWrite
-          .update(dockerNodes)
-          .set({ node_incarnation: "00000000-0000-4000-8000-00000000d065" })
-          .where(eq(dockerNodes.id, fixture.input.targetNodeRecordId));
+        await dockerNodesRepository.attestNodeIncarnation({
+          id: fixture.input.targetNodeRecordId,
+          nodeId: "vault-restore-target-node",
+          expectedIncarnation: TARGET_NODE_INCARNATION,
+          expectedHostKeyFingerprint: `SHA256:${SHA}`,
+          observedIncarnation: REARMED_TARGET_NODE_INCARNATION,
+        });
         return plaintext;
       },
     );
@@ -1885,7 +2206,7 @@ describe("strict restore catalogue authority", () => {
           },
           { kmsClient: fixture.kms },
         ),
-      ).rejects.toThrow("target node record or incarnation was lost");
+      ).rejects.toThrow("target node occurrence was lost");
 
       expect(decryptSpy).toHaveBeenCalledTimes(1);
       expect(useCalls).toBe(0);
@@ -1897,7 +2218,7 @@ describe("strict restore catalogue authority", () => {
     }
   });
 
-  test("revalidates after KMS and zeroizes plaintext after a backdated B history", async () => {
+  test("revalidates after KMS and zeroizes plaintext after a real A to B to A2 transition", async () => {
     const fixture = await acquireVaultPassphraseFixture();
     const secretRelease = captureVaultRawKeyAtRelease();
     const originalDecrypt = fixture.kms.decrypt.bind(fixture.kms);
@@ -1907,7 +2228,8 @@ describe("strict restore catalogue authority", () => {
       async (keyId, ciphertext, nonce, authTag, aad, keyVersion) => {
         const plaintext = await originalDecrypt(keyId, ciphertext, nonce, authTag, aad, keyVersion);
         borrowedPlaintext = plaintext;
-        await rearmVaultTargetNodeThroughIncarnation(REARMED_TARGET_NODE_INCARNATION, "backdated");
+        const { a2HistoryId } = await rearmVaultTargetNodeThroughActualAba();
+        expect(a2HistoryId).not.toBe(fixture.input.targetNodeHistoryId);
         return plaintext;
       },
     );
@@ -1920,7 +2242,7 @@ describe("strict restore catalogue authority", () => {
           },
           { kmsClient: fixture.kms },
         ),
-      ).rejects.toThrow("ambiguous multi-incarnation history");
+      ).rejects.toThrow("target node occurrence was lost");
 
       expect(decryptSpy).toHaveBeenCalledTimes(1);
       expect(useCalls).toBe(0);
