@@ -34,6 +34,7 @@ import {
   readNumberParam,
   readStringParam,
   successActionResult,
+  truncate,
 } from "../lib/format.js";
 import { runShell, type ShellResult } from "../lib/run-shell.js";
 import { resolveHostShell } from "../lib/terminal-capabilities.js";
@@ -54,6 +55,9 @@ const TIMEOUT_MIN_MS = 100;
 const TIMEOUT_MAX_MS = 600_000;
 const DEFAULT_TIMEOUT_MS = 120_000;
 const USER_FACING_STDOUT_CAP_CHARS = 8_000;
+// Match Pi's model-facing shell budget: preserve the command plus useful head
+// output while preventing one noisy test/build from consuming the next turn.
+const MODEL_FACING_SHELL_OUTPUT_CHARS = 50_000;
 const SHELL_HISTORY_DEFAULT_LIMIT = 20;
 const URL_PREFIXES = ["https://", "http://"] as const;
 const SHELL_URL_METACHARS = new Set(["&", ";", "(", ")", "<", ">", "|"]);
@@ -1263,7 +1267,7 @@ export const shellAction: Action = {
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,
-    _state?: State,
+    state?: State,
     options?: unknown,
     callback?: HandlerCallback,
   ): Promise<ActionResult> => {
@@ -1634,11 +1638,13 @@ export const shellAction: Action = {
     // of real output and inflating a 30s build past 90s. Skip all
     // message-text-keyed rewrites for the coding sub-agent; its commands run
     // verbatim.
-    const codingSubAgentShell = ((): boolean => {
-      const v =
-        process.env.ELIZA_PLANNER_FULL_ACTION_SURFACE?.trim().toLowerCase();
-      return v === "1" || v === "true" || v === "yes" || v === "on";
-    })();
+    const codingSubAgentShell =
+      state?.data?.elizaTrustedCodingMode === true ||
+      ((): boolean => {
+        const v =
+          process.env.ELIZA_PLANNER_FULL_ACTION_SURFACE?.trim().toLowerCase();
+        return v === "1" || v === "true" || v === "yes" || v === "on";
+      })();
     const destructiveGateEnabled = ((): boolean => {
       const v =
         process.env.ELIZA_SHELL_DESTRUCTIVE_CONFIRM?.trim().toLowerCase();
@@ -1872,7 +1878,9 @@ export const shellAction: Action = {
     const streams = formatStreams(redactedStdout, redactedStderr, {
       showEmptyStreams: !result.stdout && !result.stderr,
     });
-    const text = streams.length > 0 ? `${head}\n${streams}` : head;
+    const fullText = streams.length > 0 ? `${head}\n${streams}` : head;
+    const bounded = truncate(fullText, MODEL_FACING_SHELL_OUTPUT_CHARS);
+    const text = bounded.text;
 
     const echoTranscript =
       process.env.ELIZA_SHELL_ECHO_TRANSCRIPT?.trim().toLowerCase();
@@ -1885,7 +1893,12 @@ export const shellAction: Action = {
     if (timedOut) {
       return failureToActionResult(
         { reason: "timeout", message: `command timed out after ${timeout}ms` },
-        { command: redactedCommand, cwd: redactedCwd, output: text },
+        {
+          command: redactedCommand,
+          cwd: redactedCwd,
+          output: text,
+          output_truncated: bounded.truncated,
+        },
       );
     }
     if (result.exitCode !== 0) {
@@ -1899,6 +1912,7 @@ export const shellAction: Action = {
           exit_code: result.exitCode,
           cwd: redactedCwd,
           output: text,
+          output_truncated: bounded.truncated,
         },
       );
     }
@@ -1909,6 +1923,7 @@ export const shellAction: Action = {
       execution_route: result.sandbox === "host" ? "host" : "sandbox",
       sandbox_backend: result.sandbox,
       signal,
+      output_truncated: bounded.truncated,
     });
     // The crypto / disk / memory / status projections are CHAT conveniences
     // keyed on the *message text*, and the coding sub-agent's message text is

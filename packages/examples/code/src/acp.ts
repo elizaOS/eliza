@@ -114,11 +114,6 @@ async function ensureRuntime(cwd?: string): Promise<AgentRuntime> {
       // the role resolver sees the owner at boot.
       identity = ensureSessionIdentity();
       process.env.ELIZA_ADMIN_ENTITY_ID ??= identity.userId;
-      // A coding sub-agent has a small, all-relevant tool set (FILE/SHELL/READ/
-      // EDIT/…); expose them ALL as native tools (full surface, no chat-style
-      // tiering) so the model can actually CALL them instead of only seeing them
-      // described in the prompt and narrating.
-      process.env.ELIZA_PLANNER_FULL_ACTION_SURFACE ??= "1";
       // Headless coding sub-agent: only sql + provider + shell + coding-tools.
       // codingOnly drops mcp/goals AND the orchestrator (recursion guard).
       const runtime = await initializeAgent({
@@ -340,6 +335,7 @@ const _connection = new AgentSideConnection(
         text,
         identity,
         source: "acp",
+        codingMode: true,
       });
       await publishParsedReply(params.sessionId, response, (update) =>
         conn.sessionUpdate(update),

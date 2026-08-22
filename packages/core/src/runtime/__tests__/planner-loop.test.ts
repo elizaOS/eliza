@@ -518,7 +518,7 @@ describe("v5 planner loop skeleton", () => {
 	});
 
 	// #10132: in chat mode the planner's 1024-token output cap is fine, but a
-	// coding sub-agent (ELIZA_PLANNER_FULL_ACTION_SURFACE=1) must emit a whole
+	// coding sub-agent (selected through per-turn codingMode) must emit a whole
 	// file as a single FILE/WRITE tool-call argument — a real single-file app is
 	// ~4.6k+ tokens once JSON-escaped, so 1024 truncates it mid-stream and the
 	// build silently fails. Coding mode lifts the cap.
@@ -567,16 +567,11 @@ describe("v5 planner loop skeleton", () => {
 	const withCodingRequiredToolDefaults = async <T>(
 		run: () => Promise<T>,
 	): Promise<T> => {
-		const prevSurface = process.env.ELIZA_PLANNER_FULL_ACTION_SURFACE;
 		const prevMisses = process.env.ELIZA_CODING_MAX_REQUIRED_TOOL_MISSES;
-		process.env.ELIZA_PLANNER_FULL_ACTION_SURFACE = "1";
 		delete process.env.ELIZA_CODING_MAX_REQUIRED_TOOL_MISSES;
 		try {
 			return await run();
 		} finally {
-			if (prevSurface === undefined)
-				delete process.env.ELIZA_PLANNER_FULL_ACTION_SURFACE;
-			else process.env.ELIZA_PLANNER_FULL_ACTION_SURFACE = prevSurface;
 			if (prevMisses === undefined)
 				delete process.env.ELIZA_CODING_MAX_REQUIRED_TOOL_MISSES;
 			else process.env.ELIZA_CODING_MAX_REQUIRED_TOOL_MISSES = prevMisses;
@@ -584,15 +579,14 @@ describe("v5 planner loop skeleton", () => {
 	};
 
 	it("raises the planner output-token cap in coding/full-surface mode (#10132)", async () => {
-		const prevSurface = process.env.ELIZA_PLANNER_FULL_ACTION_SURFACE;
 		const prevMax = process.env.ELIZA_CODING_PLANNER_MAX_TOKENS;
-		process.env.ELIZA_PLANNER_FULL_ACTION_SURFACE = "1";
 		delete process.env.ELIZA_CODING_PLANNER_MAX_TOKENS;
 		try {
 			const runtime = buildCodingPlannerRuntime();
 			await runPlannerLoop({
 				runtime,
 				context: codingPlannerContext,
+				codingMode: true,
 				executeToolCall: vi.fn(async () => ({ success: true, text: "ok" })),
 				evaluate: vi.fn(async () => ({
 					success: true,
@@ -604,9 +598,6 @@ describe("v5 planner loop skeleton", () => {
 			const plannerParams = runtime.useModel.mock.calls[0][1];
 			expect(plannerParams.maxTokens).toBe(16384);
 		} finally {
-			if (prevSurface === undefined)
-				delete process.env.ELIZA_PLANNER_FULL_ACTION_SURFACE;
-			else process.env.ELIZA_PLANNER_FULL_ACTION_SURFACE = prevSurface;
 			if (prevMax === undefined)
 				delete process.env.ELIZA_CODING_PLANNER_MAX_TOKENS;
 			else process.env.ELIZA_CODING_PLANNER_MAX_TOKENS = prevMax;
@@ -614,15 +605,14 @@ describe("v5 planner loop skeleton", () => {
 	});
 
 	it("honors ELIZA_CODING_PLANNER_MAX_TOKENS in coding mode (#10132)", async () => {
-		const prevSurface = process.env.ELIZA_PLANNER_FULL_ACTION_SURFACE;
 		const prevMax = process.env.ELIZA_CODING_PLANNER_MAX_TOKENS;
-		process.env.ELIZA_PLANNER_FULL_ACTION_SURFACE = "1";
 		process.env.ELIZA_CODING_PLANNER_MAX_TOKENS = "32768";
 		try {
 			const runtime = buildCodingPlannerRuntime();
 			await runPlannerLoop({
 				runtime,
 				context: codingPlannerContext,
+				codingMode: true,
 				executeToolCall: vi.fn(async () => ({ success: true, text: "ok" })),
 				evaluate: vi.fn(async () => ({
 					success: true,
@@ -634,9 +624,6 @@ describe("v5 planner loop skeleton", () => {
 			const plannerParams = runtime.useModel.mock.calls[0][1];
 			expect(plannerParams.maxTokens).toBe(32768);
 		} finally {
-			if (prevSurface === undefined)
-				delete process.env.ELIZA_PLANNER_FULL_ACTION_SURFACE;
-			else process.env.ELIZA_PLANNER_FULL_ACTION_SURFACE = prevSurface;
 			if (prevMax === undefined)
 				delete process.env.ELIZA_CODING_PLANNER_MAX_TOKENS;
 			else process.env.ELIZA_CODING_PLANNER_MAX_TOKENS = prevMax;
@@ -669,6 +656,7 @@ describe("v5 planner loop skeleton", () => {
 			const result = await runPlannerLoop({
 				runtime,
 				context: codingPlannerContext,
+				codingMode: true,
 				tools: codingPlannerTools,
 				executeToolCall,
 				evaluate,
@@ -713,6 +701,7 @@ describe("v5 planner loop skeleton", () => {
 			const result = await runPlannerLoop({
 				runtime,
 				context: codingPlannerContext,
+				codingMode: true,
 				tools: codingPlannerTools,
 				config: { maxRequiredToolMisses: 1 },
 				executeToolCall,
@@ -722,6 +711,154 @@ describe("v5 planner loop skeleton", () => {
 			expect(runtime.useModel).toHaveBeenCalledTimes(4);
 			expect(executeToolCall).toHaveBeenCalledTimes(1);
 			expect(result.finalMessage).toBe("Built dice.html.");
+		});
+	});
+
+	it("requires successful shell verification after a coding mutation", async () => {
+		await withCodingRequiredToolDefaults(async () => {
+			const runtime = {
+				useModel: vi
+					.fn()
+					.mockResolvedValueOnce({
+						text: "",
+						toolCalls: [
+							{
+								id: "write-1",
+								name: "WRITE",
+								arguments: { path: "dice.html", content: "ok" },
+							},
+						],
+					})
+					.mockResolvedValueOnce(
+						codingReply("reply-unverified", "Built dice.html."),
+					)
+					.mockResolvedValueOnce({
+						text: "",
+						toolCalls: [
+							{
+								id: "shell-1",
+								name: "SHELL",
+								arguments: { command: "test -s dice.html" },
+							},
+						],
+					})
+					.mockResolvedValueOnce(
+						codingReply("reply-verified", "Built and verified dice.html."),
+					),
+				logger: { warn: vi.fn() },
+			};
+			const executeToolCall = vi.fn(async (toolCall) => ({
+				success: true,
+				text: `${toolCall.name} succeeded`,
+			}));
+
+			const result = await runPlannerLoop({
+				runtime,
+				context: codingPlannerContext,
+				codingMode: true,
+				tools: [
+					{ name: "WRITE", description: "Write a file." },
+					{ name: "SHELL", description: "Run a command." },
+					{ name: "REPLY", description: "Reply to the user." },
+				],
+				executeToolCall,
+				evaluate: vi.fn(),
+			});
+
+			expect(runtime.useModel).toHaveBeenCalledTimes(4);
+			expect(executeToolCall).toHaveBeenCalledTimes(2);
+			expect(result.finalMessage).toBe("Built and verified dice.html.");
+			expect(result.trajectory.evaluatorOutputs).toEqual(
+				expect.arrayContaining([
+					expect.objectContaining({
+						decision: "CONTINUE",
+						success: false,
+					}),
+				]),
+			);
+		});
+	});
+
+	it("lets final verification supersede failed intermediate coding commands", async () => {
+		await withCodingRequiredToolDefaults(async () => {
+			const toolResult = (success: boolean, text: string) => ({
+				success,
+				text,
+			});
+			const runtime = {
+				useModel: vi
+					.fn()
+					.mockResolvedValueOnce({
+						text: "",
+						toolCalls: [
+							{
+								id: "write-1",
+								name: "WRITE",
+								arguments: { path: "dice.html", content: "draft" },
+							},
+						],
+					})
+					.mockResolvedValueOnce({
+						text: "",
+						toolCalls: [
+							{
+								id: "shell-failed",
+								name: "SHELL",
+								arguments: { command: "test -s dice.html" },
+							},
+						],
+					})
+					.mockResolvedValueOnce({
+						text: "",
+						toolCalls: [
+							{
+								id: "edit-1",
+								name: "EDIT",
+								arguments: {
+									path: "dice.html",
+									old_string: "draft",
+									new_string: "fixed",
+								},
+							},
+						],
+					})
+					.mockResolvedValueOnce({
+						text: "",
+						toolCalls: [
+							{
+								id: "shell-passed",
+								name: "SHELL",
+								arguments: { command: "test -s dice.html" },
+							},
+						],
+					})
+					.mockResolvedValueOnce(
+						codingReply("reply-verified", "Built and verified dice.html."),
+					),
+			};
+			const executeToolCall = vi
+				.fn()
+				.mockResolvedValueOnce(toolResult(true, "wrote draft"))
+				.mockResolvedValueOnce(toolResult(false, "test failed"))
+				.mockResolvedValueOnce(toolResult(true, "fixed file"))
+				.mockResolvedValueOnce(toolResult(true, "test passed"));
+
+			const result = await runPlannerLoop({
+				runtime,
+				context: codingPlannerContext,
+				codingMode: true,
+				tools: [
+					{ name: "WRITE", description: "Write a file." },
+					{ name: "EDIT", description: "Edit a file." },
+					{ name: "SHELL", description: "Run a command." },
+					{ name: "REPLY", description: "Reply to the user." },
+				],
+				executeToolCall,
+				evaluate: vi.fn(),
+			});
+
+			expect(result.finalMessage).toBe("Built and verified dice.html.");
+			expect(executeToolCall).toHaveBeenCalledTimes(4);
 		});
 	});
 
@@ -760,6 +897,7 @@ describe("v5 planner loop skeleton", () => {
 			const result = await runPlannerLoop({
 				runtime,
 				context: codingPlannerContext,
+				codingMode: true,
 				tools: [
 					{ name: "CUSTOM_BUILD_TOOL", description: "Builds something." },
 					{ name: "REPLY", description: "Reply to the user." },
