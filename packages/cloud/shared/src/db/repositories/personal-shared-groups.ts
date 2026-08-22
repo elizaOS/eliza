@@ -67,7 +67,7 @@ const AUTHORITY_MUTATION_WAIT_MS = 5_000;
 
 export class PersonalSharedGroupDeliveryPendingError extends ElizaError {
   constructor() {
-    super("A committed group delivery has no durable provider receipt", {
+    super("A live group delivery reservation is still pending", {
       code: "PERSONAL_SHARED_GROUP_DELIVERY_PENDING",
       severity: "fatal",
     });
@@ -84,9 +84,17 @@ function deliveryLeaseAvailable(now: Date) {
   );
 }
 
-function deliveryLeaseBlocksAuthority(now: Date) {
+function deliveryLeaseAllowsAuthorityMutation(now: Date) {
   return or(
+    isNull(personalSharedGroupBindings.delivery_lease_source_id),
     isNotNull(personalSharedGroupBindings.delivery_lease_committed_at),
+    lte(personalSharedGroupBindings.delivery_lease_expires_at, now),
+  );
+}
+
+function deliveryLeaseBlocksAuthorityMutation(now: Date) {
+  return and(
+    isNull(personalSharedGroupBindings.delivery_lease_committed_at),
     gt(personalSharedGroupBindings.delivery_lease_expires_at, now),
   );
 }
@@ -261,10 +269,9 @@ export const personalSharedGroupsRepository = {
             state: "active",
             response_policy: "mention_only",
             authority_version: sql`${personalSharedGroupBindings.authority_version} + 1`,
-            delivery_lease_source_id: null,
-            delivery_lease_token: null,
-            delivery_lease_expires_at: null,
-            delivery_lease_committed_at: null,
+            delivery_lease_source_id: sql`CASE WHEN ${personalSharedGroupBindings.delivery_lease_committed_at} IS NULL THEN NULL ELSE ${personalSharedGroupBindings.delivery_lease_source_id} END`,
+            delivery_lease_token: sql`CASE WHEN ${personalSharedGroupBindings.delivery_lease_committed_at} IS NULL THEN NULL ELSE ${personalSharedGroupBindings.delivery_lease_token} END`,
+            delivery_lease_expires_at: sql`CASE WHEN ${personalSharedGroupBindings.delivery_lease_committed_at} IS NULL THEN NULL ELSE ${personalSharedGroupBindings.delivery_lease_expires_at} END`,
             created_by_platform_user_id: input.actorPlatformUserId,
             last_verified_at: now,
             updated_at: now,
@@ -282,7 +289,7 @@ export const personalSharedGroupsRepository = {
               ),
               eq(personalSharedGroupBindings.state, "revoked"),
             ),
-            deliveryLeaseAvailable(leaseNow),
+            deliveryLeaseAllowsAuthorityMutation(leaseNow),
           ),
         })
         .returning();
@@ -368,7 +375,7 @@ export const personalSharedGroupsRepository = {
               eq(personalSharedGroupBindings.id, input.bindingId),
               eq(personalSharedGroupBindings.owner_user_id, input.ownerUserId),
               eq(personalSharedGroupBindings.state, "active"),
-              deliveryLeaseAvailable(now),
+              deliveryLeaseAllowsAuthorityMutation(now),
             ),
           )
           .returning();
@@ -382,7 +389,7 @@ export const personalSharedGroupsRepository = {
             and(
               eq(personalSharedGroupBindings.id, input.bindingId),
               eq(personalSharedGroupBindings.owner_user_id, input.ownerUserId),
-              deliveryLeaseBlocksAuthority(now),
+              deliveryLeaseBlocksAuthorityMutation(now),
             ),
           )
           .limit(1);
@@ -412,7 +419,7 @@ export const personalSharedGroupsRepository = {
                   personalSharedGroupBindings.owner_user_id,
                   input.ownerUserId,
                 ),
-                deliveryLeaseAvailable(now),
+                deliveryLeaseAllowsAuthorityMutation(now),
               ),
             )
             .returning({ id: personalSharedGroupBindings.id });
@@ -429,7 +436,7 @@ export const personalSharedGroupsRepository = {
                   personalSharedGroupBindings.owner_user_id,
                   input.ownerUserId,
                 ),
-                deliveryLeaseBlocksAuthority(now),
+                deliveryLeaseBlocksAuthorityMutation(now),
               ),
             )
             .limit(1);
@@ -475,7 +482,7 @@ export const personalSharedGroupsRepository = {
                 personalSharedGroupBindings.state,
                 input.membershipChange === "joined" ? "suspended" : "active",
               ),
-              deliveryLeaseAvailable(leaseNow),
+              deliveryLeaseAllowsAuthorityMutation(leaseNow),
             ),
           )
           .returning();
@@ -497,7 +504,7 @@ export const personalSharedGroupsRepository = {
                 personalSharedGroupBindings.provider_chat_id,
                 input.providerChatId,
               ),
-              deliveryLeaseBlocksAuthority(now),
+              deliveryLeaseBlocksAuthorityMutation(now),
             ),
           )
           .limit(1);
@@ -600,9 +607,9 @@ export const personalSharedGroupsRepository = {
 
   /**
    * Commits the exact reserved delivery immediately before provider egress.
-   * Once committed, authority changes wait for its receipt instead of taking
-   * over by wall-clock expiry. A crash after this point therefore fails closed
-   * rather than allowing another worker to create an ambiguous second send.
+   * Once committed, the source/token pair is the immutable authorization
+   * point. Authority may change afterward, but another delivery cannot take
+   * over this slot until its exact provider receipt is reconciled.
    */
   async commitDelivery(input: {
     authority: PersonalSharedGroupDeliveryAuthority;
@@ -710,24 +717,15 @@ export const personalSharedGroupsRepository = {
           return { recorded: true, inserted: 0 };
         }
       }
+      // The source/token pair was durably committed before provider egress.
+      // It remains authoritative for receipt reconciliation even if policy,
+      // membership, revocation, or owner rebind advanced the live generation.
       const [binding] = await tx
         .select({ id: personalSharedGroupBindings.id })
         .from(personalSharedGroupBindings)
         .where(
           and(
             eq(personalSharedGroupBindings.id, input.authority.bindingId),
-            eq(
-              personalSharedGroupBindings.owner_user_id,
-              input.authority.ownerUserId,
-            ),
-            eq(
-              personalSharedGroupBindings.personal_agent_id,
-              input.authority.personalAgentId,
-            ),
-            eq(
-              personalSharedGroupBindings.authority_version,
-              input.authority.version,
-            ),
             eq(personalSharedGroupBindings.platform, input.platform),
             eq(personalSharedGroupBindings.project, input.project),
             eq(
@@ -738,7 +736,6 @@ export const personalSharedGroupsRepository = {
               personalSharedGroupBindings.provider_chat_id,
               input.providerChatId,
             ),
-            eq(personalSharedGroupBindings.state, "active"),
             eq(
               personalSharedGroupBindings.delivery_lease_source_id,
               input.sourceMessageId,

@@ -82,14 +82,14 @@ beforeAll(async () => {
   await database.exec(migration);
   const authorityMigration = await Bun.file(
     new URL(
-      "../migrations/0299_personal_shared_group_authority_version.sql",
+      "../migrations/0300_personal_shared_group_authority_version.sql",
       import.meta.url,
     ),
   ).text();
   await database.exec(authorityMigration);
   const leaseMigration = await Bun.file(
     new URL(
-      "../migrations/0300_personal_shared_group_delivery_lease.sql",
+      "../migrations/0301_personal_shared_group_delivery_lease.sql",
       import.meta.url,
     ),
   ).text();
@@ -299,7 +299,7 @@ describe("personalSharedGroupsRepository", () => {
     });
   });
 
-  test("serializes committed delivery before reconnect and revoked-owner takeover", async () => {
+  test("lets authority change after commit and reconciles only the exact late receipt", async () => {
     await issue({
       codeHash: "claim-committed-initial",
       organizationId: ORG_A,
@@ -329,30 +329,38 @@ describe("personalSharedGroupsRepository", () => {
     });
     expect(await repository.commitDelivery(delivery)).toBe(true);
 
-    await issue({
-      codeHash: "claim-committed-retry",
-      organizationId: ORG_A,
+    const policy = await repository.setResponsePolicy({
+      bindingId: initial.binding.id,
       ownerUserId: USER_A,
-      personalAgentId: "personal:owner-a",
-      platformUserId: "+15551110001",
+      policy: "ambient",
     });
-    await expect(
-      consume("claim-committed-retry", "+15551110001"),
-    ).rejects.toMatchObject({
-      code: "PERSONAL_SHARED_GROUP_DELIVERY_PENDING",
+    expect(policy).toMatchObject({
+      response_policy: "ambient",
+      authority_version: initial.binding.authority_version + 1,
     });
     expect(
-      await repository.recordDeliveryReceipts({
-        ...delivery,
-        providerMessageIds: ["outgoing-committed-reconnect"],
+      await repository.applyMembershipChange({
+        platform: "blooio",
+        project: "eliza-app",
+        connectorAccountId: CONNECTOR_ID,
+        providerChatId: CHAT_ID,
+        membershipChange: "removed",
+        verifiedAt: NOW,
       }),
-    ).toEqual({ recorded: true, inserted: 1 });
-    const reconnected = await consume("claim-committed-retry", "+15551110001");
-    if (reconnected.status !== "bound")
-      throw new Error("expected committed reconnect retry");
+    ).toMatchObject({ state: "suspended" });
+    expect(
+      await repository.applyMembershipChange({
+        platform: "blooio",
+        project: "eliza-app",
+        connectorAccountId: CONNECTOR_ID,
+        providerChatId: CHAT_ID,
+        membershipChange: "joined",
+        verifiedAt: new Date(NOW.getTime() + 1),
+      }),
+    ).toMatchObject({ state: "active" });
     expect(
       await repository.revokeBinding({
-        bindingId: reconnected.binding.id,
+        bindingId: initial.binding.id,
         ownerUserId: USER_A,
       }),
     ).toBe(true);
@@ -370,9 +378,42 @@ describe("personalSharedGroupsRepository", () => {
     expect(takeover.binding).toMatchObject({
       owner_user_id: USER_B,
       personal_agent_id: "personal:owner-b",
-      authority_version: reconnected.binding.authority_version + 2,
-      delivery_lease_source_id: null,
-      delivery_lease_committed_at: null,
+      authority_version: initial.binding.authority_version + 5,
+      delivery_lease_source_id: delivery.sourceMessageId,
+      delivery_lease_token: delivery.leaseToken,
+    });
+    expect(takeover.binding.delivery_lease_committed_at).not.toBeNull();
+
+    const nextDelivery = {
+      ...delivery,
+      authority: {
+        bindingId: takeover.binding.id,
+        ownerUserId: USER_B,
+        personalAgentId: "personal:owner-b",
+        version: takeover.binding.authority_version,
+      },
+      sourceMessageId: "incoming-after-takeover",
+      leaseToken: "71000000-0000-4000-8000-000000000093",
+    };
+    expect(await repository.authorizeDelivery(nextDelivery)).toMatchObject({
+      authorized: false,
+    });
+    expect(
+      await repository.recordDeliveryReceipts({
+        ...delivery,
+        leaseToken: "71000000-0000-4000-8000-000000000094",
+        providerMessageIds: ["outgoing-mismatched-worker"],
+      }),
+    ).toEqual({ recorded: false, inserted: 0 });
+    expect(
+      await repository.recordDeliveryReceipts({
+        ...delivery,
+        providerMessageIds: ["outgoing-committed-reconnect"],
+      }),
+    ).toEqual({ recorded: true, inserted: 1 });
+    expect(await repository.authorizeDelivery(nextDelivery)).toMatchObject({
+      authorized: true,
+      leaseToken: nextDelivery.leaseToken,
     });
   });
 
@@ -493,12 +534,6 @@ describe("personalSharedGroupsRepository", () => {
     expect(await repository.authorizeDelivery(refreshedRequest)).toMatchObject({
       authorized: true,
     });
-    expect(await repository.commitDelivery(refreshedRequest)).toBe(true);
-    await getPgliteClientForTests().exec(`
-      UPDATE personal_shared_group_bindings
-      SET delivery_lease_expires_at = now() - interval '1 second'
-      WHERE id = '${bound.binding.id}';
-    `);
     let removalSettled = false;
     const removal = repository.applyMembershipChange({
       platform: "blooio",
@@ -513,6 +548,12 @@ describe("personalSharedGroupsRepository", () => {
     });
     await Bun.sleep(30);
     expect(removalSettled).toBe(false);
+    await getPgliteClientForTests().exec(`
+      UPDATE personal_shared_group_bindings
+      SET delivery_lease_expires_at = now() - interval '1 second'
+      WHERE id = '${bound.binding.id}';
+    `);
+    await removal;
     expect(
       await repository.authorizeDelivery({
         ...refreshedRequest,
@@ -526,14 +567,7 @@ describe("personalSharedGroupsRepository", () => {
         providerMessageIds: ["outgoing-wrong-worker"],
       }),
     ).toEqual({ recorded: false, inserted: 0 });
-    await Bun.sleep(30);
-    expect(removalSettled).toBe(false);
-    await repository.recordDeliveryReceipts({
-      ...refreshedRequest,
-      sourceMessageId: refreshedRequest.sourceMessageId,
-      providerMessageIds: ["outgoing-authority"],
-    });
-    await removal;
+    expect(removalSettled).toBe(true);
     expect(await repository.authorizeDelivery(refreshedRequest)).toMatchObject({
       authorized: false,
     });
@@ -569,31 +603,18 @@ describe("personalSharedGroupsRepository", () => {
       authorized: true,
     });
     expect(await repository.commitDelivery(leasedRestoredRequest)).toBe(true);
-    const revocation = repository.revokeBinding({
-      bindingId: restored.id,
-      ownerUserId: USER_A,
-    });
-    await expect(revocation).rejects.toMatchObject({
-      code: "PERSONAL_SHARED_GROUP_DELIVERY_PENDING",
-    });
-    expect(
-      await repository.resolveBinding({
-        platform: "blooio",
-        project: "eliza-app",
-        connectorAccountId: CONNECTOR_ID,
-        providerChatId: CHAT_ID,
-      }),
-    ).toMatchObject({ state: "active" });
-    await repository.recordDeliveryReceipts({
-      ...leasedRestoredRequest,
-      providerMessageIds: ["outgoing-restored"],
-    });
     expect(
       await repository.revokeBinding({
         bindingId: restored.id,
         ownerUserId: USER_A,
       }),
     ).toBe(true);
+    expect(
+      await repository.recordDeliveryReceipts({
+        ...leasedRestoredRequest,
+        providerMessageIds: ["outgoing-restored"],
+      }),
+    ).toEqual({ recorded: true, inserted: 1 });
     expect(
       await repository.authorizeDelivery(leasedRestoredRequest),
     ).toMatchObject({

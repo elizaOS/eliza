@@ -376,6 +376,7 @@ describe("gateway webhook handler e2e routing", () => {
           return Response.json({
             success: true,
             data: {
+              code: "group_delivery_authorization",
               authorized: true,
               leaseToken: body.leaseToken,
               expiresAt: new Date(Date.now() + 60_000).toISOString(),
@@ -385,14 +386,18 @@ describe("gateway webhook handler e2e routing", () => {
         if (body.eventType === "delivery_commit") {
           return Response.json({
             success: true,
-            data: { committed: true },
+            data: { code: "group_delivery_committed", committed: true },
           });
         }
         if (body.eventType === "delivery_receipt") {
           receiptBody = body;
           return Response.json({
             success: true,
-            data: { recorded: true, inserted: 1 },
+            data: {
+              code: "group_delivery_receipt_recorded",
+              recorded: true,
+              inserted: 1,
+            },
           });
         }
         turnBody = body;
@@ -581,6 +586,7 @@ describe("gateway webhook handler e2e routing", () => {
           return Response.json({
             success: true,
             data: {
+              code: "group_delivery_authorization",
               authorized: true,
               leaseToken: body.leaseToken,
               expiresAt: new Date(Date.now() + 60_000).toISOString(),
@@ -589,7 +595,10 @@ describe("gateway webhook handler e2e routing", () => {
         }
         if (body.eventType === "delivery_commit") {
           commitChecks += 1;
-          return Response.json({ success: true, data: { committed: false } });
+          return Response.json({
+            success: true,
+            data: { code: "group_delivery_committed", committed: false },
+          });
         }
         return Response.json({
           success: true,
@@ -672,8 +681,14 @@ describe("gateway webhook handler e2e routing", () => {
           success: true,
           data:
             committed || receiptPersisted
-              ? { authorized: false, leaseToken: null, expiresAt: null }
+              ? {
+                  code: "group_delivery_authorization",
+                  authorized: false,
+                  leaseToken: null,
+                  expiresAt: null,
+                }
               : {
+                  code: "group_delivery_authorization",
                   authorized: true,
                   leaseToken: body.leaseToken,
                   expiresAt: new Date(Date.now() + 60_000).toISOString(),
@@ -682,7 +697,10 @@ describe("gateway webhook handler e2e routing", () => {
       }
       if (body.eventType === "delivery_commit") {
         committed = true;
-        return Response.json({ success: true, data: { committed: true } });
+        return Response.json({
+          success: true,
+          data: { code: "group_delivery_committed", committed: true },
+        });
       }
       if (body.eventType === "delivery_receipt") {
         receiptPersisted = true;

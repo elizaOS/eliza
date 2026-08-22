@@ -1237,6 +1237,8 @@ async function sendPersonalSharedReply(
     const authorizationData =
       authorizationResult !== null &&
       typeof authorizationResult === "object" &&
+      "success" in authorizationResult &&
+      authorizationResult.success === true &&
       "data" in authorizationResult &&
       authorizationResult.data !== null &&
       typeof authorizationResult.data === "object" &&
@@ -1249,6 +1251,7 @@ async function sendPersonalSharedReply(
     const authorizationObservedAt = Date.now();
     if (
       authorizationData === false ||
+      authorizationData.code !== "group_delivery_authorization" ||
       authorizationData.authorized !== true ||
       authorizationData.leaseToken !== deliveryLeaseToken ||
       !Number.isFinite(leaseExpiresAtMs) ||
@@ -1310,9 +1313,13 @@ async function sendPersonalSharedReply(
     const committed =
       commitResult !== null &&
       typeof commitResult === "object" &&
+      "success" in commitResult &&
+      commitResult.success === true &&
       "data" in commitResult &&
       commitResult.data !== null &&
       typeof commitResult.data === "object" &&
+      "code" in commitResult.data &&
+      commitResult.data.code === "group_delivery_committed" &&
       "committed" in commitResult.data &&
       commitResult.data.committed === true;
     if (!committed) {
@@ -1377,9 +1384,13 @@ async function sendPersonalSharedReply(
     const recorded =
       receiptResult !== null &&
       typeof receiptResult === "object" &&
+      "success" in receiptResult &&
+      receiptResult.success === true &&
       "data" in receiptResult &&
       receiptResult.data !== null &&
       typeof receiptResult.data === "object" &&
+      "code" in receiptResult.data &&
+      receiptResult.data.code === "group_delivery_receipt_recorded" &&
       "recorded" in receiptResult.data &&
       receiptResult.data.recorded === true;
     if (!recorded) {

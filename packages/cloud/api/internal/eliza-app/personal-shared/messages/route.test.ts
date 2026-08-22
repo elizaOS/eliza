@@ -118,11 +118,17 @@ const revokeGroupBinding = mock(async () => false);
 const applyGroupMembershipChange = mock(
   async (): Promise<Record<string, unknown> | null> => null,
 );
-const authorizeGroupDelivery = mock(async () => ({
-  authorized: false,
-  leaseToken: null,
-  expiresAt: null,
-}));
+const authorizeGroupDelivery = mock(
+  async (): Promise<{
+    authorized: boolean;
+    leaseToken: string | null;
+    expiresAt: string | null;
+  }> => ({
+    authorized: false,
+    leaseToken: null,
+    expiresAt: null,
+  }),
+);
 const commitGroupDelivery = mock(async () => false);
 const recordGroupDeliveryReceipts = mock(async () => ({
   recorded: false,
@@ -304,7 +310,11 @@ describe("personal Shared messaging deliveries", () => {
     recordGroupDeliveryReceipts.mockClear();
     hasGroupDeliveryReceipt.mockClear();
     applyGroupMembershipChange.mockImplementation(async () => null);
-    authorizeGroupDelivery.mockImplementation(async () => false);
+    authorizeGroupDelivery.mockImplementation(async () => ({
+      authorized: false,
+      leaseToken: null,
+      expiresAt: null,
+    }));
     commitGroupDelivery.mockImplementation(async () => false);
     recordGroupDeliveryReceipts.mockImplementation(async () => ({
       recorded: false,
@@ -1066,7 +1076,7 @@ describe("personal Shared messaging deliveries", () => {
     expect(sharedRestMessageSend).not.toHaveBeenCalled();
   });
 
-  test("reports committed delivery ambiguity without fabricating membership removal", async () => {
+  test("reports a live delivery reservation without fabricating membership removal", async () => {
     applyGroupMembershipChange.mockImplementationOnce(async () => {
       throw Object.assign(new Error("internal delivery state"), {
         code: "PERSONAL_SHARED_GROUP_DELIVERY_PENDING",
@@ -1087,7 +1097,7 @@ describe("personal Shared messaging deliveries", () => {
     await expect(response.json()).resolves.toEqual({
       success: false,
       error:
-        "A provider delivery outcome is pending. Group authority was not changed; retry after reconciliation or contact support.",
+        "A provider delivery reservation is still active. Group authority was not changed; retry shortly.",
       code: "group_delivery_pending",
       retryable: true,
     });
@@ -1208,11 +1218,10 @@ describe("personal Shared messaging deliveries", () => {
       },
     });
     expect(authorizeGroupDelivery).toHaveBeenCalledWith({
-      eventType: "delivery_authorization",
       platform: "telegram",
       project: "eliza-app",
       connectorAccountId: "telegram:test-bot",
-      chatId: "-100123456789",
+      providerChatId: "-100123456789",
       sourceMessageId: "telegram:eliza-app:source-1",
       leaseToken,
       invocation: "ambient",

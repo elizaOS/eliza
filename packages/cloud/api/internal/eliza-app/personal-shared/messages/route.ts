@@ -438,7 +438,13 @@ app.post("/", async (c) => {
       }
       if (parsed.data.eventType === "delivery_authorization") {
         const lease = await personalSharedGroupsRepository.authorizeDelivery({
-          ...parsed.data,
+          platform: parsed.data.platform,
+          project: parsed.data.project,
+          connectorAccountId: parsed.data.connectorAccountId,
+          providerChatId: parsed.data.chatId,
+          sourceMessageId: parsed.data.sourceMessageId,
+          leaseToken: parsed.data.leaseToken,
+          invocation: parsed.data.invocation,
           authority: parsed.data.authority,
         });
         return c.json({
@@ -1224,9 +1230,9 @@ app.post("/", async (c) => {
         : {}),
       ...(isGroupDeliveryPendingError(error)
         ? {
-            deliveryState: "committed_receipt_pending",
+            deliveryState: "live_reservation_pending",
             operatorAction:
-              "reconcile exact source/token with provider and persist exact receipt; never clear or transfer automatically",
+              "retry after the active uncommitted delivery lease expires",
           }
         : {}),
     });
@@ -1268,7 +1274,7 @@ app.post("/", async (c) => {
         {
           success: false,
           error:
-            "A provider delivery outcome is pending. Group authority was not changed; retry after reconciliation or contact support.",
+            "A provider delivery reservation is still active. Group authority was not changed; retry shortly.",
           code: "group_delivery_pending",
           retryable: true,
         },
