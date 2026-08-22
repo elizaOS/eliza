@@ -25,7 +25,7 @@ describe("direct provider authority", () => {
     expect(directProviderBaseUrl("xai-api")).toBe("https://api.x.ai/v1");
   });
 
-  it("returns a bounded, deduplicated model catalog without the credential", async () => {
+  it("returns the complete deduplicated model catalog without the credential", async () => {
     const models = Array.from({ length: 120 }, (_, index) => ({
       id: `vendor/model-${index}`,
     }));
@@ -52,8 +52,9 @@ describe("direct provider authority", () => {
       "https://openrouter.ai/api/v1/models",
       expect.objectContaining({ method: "GET" }),
     );
-    expect(result.modelIds).toHaveLength(100);
-    expect(result.modelCatalogTruncated).toBe(true);
+    expect(result.modelIds).toHaveLength(120);
+    expect(result.modelIds).toContain("vendor/model-119");
+    expect(result.modelCatalogTruncated).toBeUndefined();
     expect(JSON.stringify(result)).not.toContain("secret-value");
   });
 
