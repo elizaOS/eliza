@@ -16,9 +16,7 @@ import {
 } from "../params.js";
 import { formatAppCandidates, resolveInstalledApp } from "../resolve.js";
 import {
-	appLaunchViewClientId,
-	type BrowserViewNavigationResult,
-	isRealtimeVoiceAppLaunch,
+	type BrowserNavigationResult,
 	openLaunchUrlInBrowserView,
 } from "../services/browser-view-navigation.js";
 
@@ -29,8 +27,8 @@ export interface RunLaunchInput {
 	callback?: HandlerCallback;
 	openBrowserView?: (
 		launchUrl: string,
-		options: { originatingClientId?: string; realtimeVoice?: boolean },
-	) => Promise<BrowserViewNavigationResult>;
+		message: Memory,
+	) => Promise<BrowserNavigationResult>;
 }
 
 export async function runLaunch({
@@ -116,13 +114,9 @@ export async function runLaunch({
 	}
 	const runId = result.run?.runId ?? null;
 	const launchUrl = result.launchUrl?.trim() || null;
-	const browserNavigation = launchUrl
-		? await openBrowserView(launchUrl, {
-				originatingClientId: appLaunchViewClientId(message),
-				realtimeVoice: isRealtimeVoiceAppLaunch(message),
-			})
-		: undefined;
-	const opened = browserNavigation?.completedActionDelivered === true;
+	const browserNavigation: BrowserNavigationResult = launchUrl
+		? await openBrowserView(launchUrl, message)
+		: { status: "target-unavailable", openedInBrowser: false };
 
 	logger.info(
 		`[plugin-app-control] APP/launch ${appName} runId=${runId ?? "<none>"}`,
@@ -140,12 +134,16 @@ export async function runLaunch({
 			appName,
 			displayName: result.displayName,
 			runId,
-			openedInBrowser: opened,
-			...(browserNavigation?.completedActionHandoffId
+			openedInBrowser: browserNavigation.openedInBrowser,
+			browserNavigationStatus: browserNavigation.status,
+			...(browserNavigation.viewPath
+				? { viewId: "browser", viewPath: browserNavigation.viewPath }
+				: {}),
+			...(browserNavigation.completedActionDelivered
+				? { completedActionDelivered: true }
+				: {}),
+			...(browserNavigation.completedActionHandoffId
 				? {
-						viewId: "browser",
-						viewPath: browserNavigation.path,
-						viewType: "gui",
 						completedActionHandoffId:
 							browserNavigation.completedActionHandoffId,
 					}
@@ -156,13 +154,8 @@ export async function runLaunch({
 			outcome: "success",
 			appName,
 			displayName: result.displayName,
-			openedInBrowser: opened,
-			browserNavigationStatus:
-				browserNavigation?.status ??
-				(launchUrl ? "unavailable" : "not-requested"),
-			...(browserNavigation?.errorCode
-				? { browserNavigationError: browserNavigation.errorCode }
-				: {}),
+			openedInBrowser: browserNavigation.openedInBrowser,
+			browserNavigationStatus: browserNavigation.status,
 			...(launchUrl
 				? {
 						link: {

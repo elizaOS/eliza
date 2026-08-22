@@ -1,194 +1,194 @@
-/**
- * Verifies app launch navigation at the caller-owned loopback boundary with a
- * mocked HTTP transport and no renderer or network dependency.
- */
+/** Exercises Browser launch delivery through the real caller-owned navigation request contract. */
 
 import type { Memory } from "@elizaos/core";
+import { REALTIME_VOICE_CLIENT_TRANSPORT } from "@elizaos/shared";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import {
-	appLaunchViewClientId,
-	isRealtimeVoiceAppLaunch,
-	openLaunchUrlInBrowserView,
-} from "./browser-view-navigation.js";
+import { openLaunchUrlInBrowserView } from "./browser-view-navigation.js";
 
-function response(body: unknown, status = 200): Response {
-	return new Response(JSON.stringify(body), {
-		status,
-		headers: { "content-type": "application/json" },
-	});
+const originalFetch = globalThis.fetch;
+
+function setFetch(mock: ReturnType<typeof vi.fn>): void {
+	globalThis.fetch = mock as typeof fetch;
+}
+
+function message(clientId?: string, voice = false): Memory {
+	return {
+		content: {
+			text: "launch demo",
+			metadata: {
+				...(clientId ? { viewClientId: clientId } : {}),
+				...(voice ? { clientTransport: REALTIME_VOICE_CLIENT_TRANSPORT } : {}),
+			},
+		},
+	} as Memory;
 }
 
 afterEach(() => {
-	vi.unstubAllGlobals();
-	vi.restoreAllMocks();
+	globalThis.fetch = originalFetch;
 });
 
-describe("app launch Browser navigation", () => {
-	it("does not issue a global request without a valid originating client", async () => {
-		const fetchMock = vi.fn();
-		vi.stubGlobal("fetch", fetchMock);
-
-		await expect(
-			openLaunchUrlInBrowserView("/api/apps/local/demo/"),
-		).resolves.toMatchObject({
-			status: "unavailable",
-			completedActionDelivered: false,
-			errorCode: "NO_ORIGINATING_CLIENT",
-		});
-		expect(fetchMock).not.toHaveBeenCalled();
-	});
-
-	it("requires an own delivered marker and matching handoff receipt", async () => {
-		const fetchMock = vi.fn(async () =>
-			response({
-				ok: true,
-				completedActionDelivered: true,
-				completedActionHandoffId: "handoff-a",
-			}),
+describe("Browser launch navigation", () => {
+	it("targets the originating app renderer and trusts only its matching receipt", async () => {
+		const fetchMock = vi.fn(
+			async (_url: string | URL | Request, init?: RequestInit) => {
+				const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+				return new Response(
+					JSON.stringify({
+						ok: true,
+						completedActionDelivered: true,
+						completedActionHandoffId: body.completedActionHandoffId,
+					}),
+					{ status: 200 },
+				);
+			},
 		);
-		vi.stubGlobal("fetch", fetchMock);
+		setFetch(fetchMock);
 
-		await expect(
-			openLaunchUrlInBrowserView("/api/apps/local/demo/", {
-				originatingClientId: "client-a",
-				completedActionHandoffId: "handoff-a",
-			}),
-		).resolves.toMatchObject({
-			status: "delivered",
-			completedActionDelivered: true,
-			completedActionHandoffId: "handoff-a",
-		});
-		const request = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body));
-		expect(request).toMatchObject({
-			delivery: "completed-action",
+		const result = await openLaunchUrlInBrowserView(
+			"/api/apps/local/demo/",
+			message("client-a"),
+		);
+
+		const body = JSON.parse(
+			String(fetchMock.mock.calls[0]?.[1]?.body),
+		) as Record<string, unknown>;
+		expect(body).toMatchObject({
 			clientId: "client-a",
-			completedActionHandoffId: "handoff-a",
+			delivery: "completed-action",
+			path: "/browser?browse=%2Fapi%2Fapps%2Flocal%2Fdemo%2F",
+		});
+		expect(body.completedActionHandoffId).toEqual(expect.any(String));
+		expect(result).toMatchObject({
+			status: "renderer-delivered",
+			openedInBrowser: true,
+			completedActionDelivered: true,
+			completedActionHandoffId: body.completedActionHandoffId,
 		});
 	});
 
-	it("retains the terminal fallback for a stale renderer", async () => {
-		vi.stubGlobal(
-			"fetch",
-			vi.fn(async () =>
-				response({
-					ok: true,
-					completedActionDelivered: false,
-					completedActionHandoffId: "handoff-stale",
-				}),
-			),
+	it("uses the completed action without issuing a global request when no client id exists", async () => {
+		const fetchMock = vi.fn();
+		setFetch(fetchMock);
+
+		const result = await openLaunchUrlInBrowserView(
+			"/api/apps/local/demo/",
+			message(),
 		);
 
-		await expect(
-			openLaunchUrlInBrowserView("/api/apps/local/demo/", {
-				originatingClientId: "stale-client",
-				completedActionHandoffId: "handoff-stale",
-			}),
-		).resolves.toMatchObject({
-			status: "fallback",
-			completedActionDelivered: false,
-			completedActionHandoffId: "handoff-stale",
+		expect(fetchMock).not.toHaveBeenCalled();
+		expect(result).toMatchObject({
+			status: "terminal-fallback",
+			openedInBrowser: false,
+			completedActionHandoffId: expect.any(String),
 		});
 	});
 
-	it("rejects malformed receipts and translates transport timeouts", async () => {
-		vi.stubGlobal(
-			"fetch",
-			vi.fn(async () => new Response("not-json", { status: 200 })),
-		);
-		await expect(
-			openLaunchUrlInBrowserView("/api/apps/local/demo/", {
-				originatingClientId: "client-a",
+	it.each([
+		[
+			"stale renderer",
+			new Response('{"ok":true,"completedActionDelivered":false}', {
+				status: 200,
 			}),
-		).resolves.toMatchObject({ errorCode: "INVALID_RECEIPT" });
+			undefined,
+		],
+		[
+			"malformed receipt",
+			new Response("{", { status: 200 }),
+			"malformed-receipt",
+		],
+	] as const)(
+		"retains terminal fallback for a %s",
+		async (_name, response, failure) => {
+			setFetch(vi.fn(async () => response));
+			const result = await openLaunchUrlInBrowserView(
+				"/api/apps/local/demo/",
+				message("client-stale"),
+			);
+			expect(result).toMatchObject({
+				status: "terminal-fallback",
+				openedInBrowser: false,
+				completedActionHandoffId: expect.any(String),
+				...(failure ? { navigationFailure: failure } : {}),
+			});
+		},
+	);
 
-		vi.stubGlobal(
-			"fetch",
+	it("reports a timed-out early delivery while preserving terminal fallback", async () => {
+		setFetch(
 			vi.fn(async () => {
 				throw new DOMException("timed out", "TimeoutError");
 			}),
 		);
-		await expect(
-			openLaunchUrlInBrowserView("/api/apps/local/demo/", {
-				originatingClientId: "client-a",
-			}),
-		).resolves.toMatchObject({ errorCode: "TRANSPORT_FAILURE" });
+		const result = await openLaunchUrlInBrowserView(
+			"/api/apps/local/demo/",
+			message("client-timeout"),
+		);
+		expect(result).toMatchObject({
+			status: "terminal-fallback",
+			openedInBrowser: false,
+			navigationFailure: "transport-error",
+		});
 	});
 
-	it("translates a malformed launch URL before any transport call", async () => {
-		const fetchMock = vi.fn();
-		vi.stubGlobal("fetch", fetchMock);
-		await expect(
-			openLaunchUrlInBrowserView("http://[", {
-				originatingClientId: "client-a",
-			}),
-		).resolves.toMatchObject({ errorCode: "INVALID_LAUNCH_URL" });
-		expect(fetchMock).not.toHaveBeenCalled();
+	it("uses originating-client delivery for voice and never creates a terminal handoff", async () => {
+		const fetchMock = vi.fn(
+			async () => new Response('{"ok":true}', { status: 200 }),
+		);
+		setFetch(fetchMock);
+		const result = await openLaunchUrlInBrowserView(
+			"/api/apps/local/demo/",
+			message("voice-client", true),
+		);
+		const body = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body));
+		expect(body).toMatchObject({
+			clientId: "voice-client",
+			delivery: "originating-client",
+		});
+		expect(body).not.toHaveProperty("completedActionHandoffId");
+		expect(result).toMatchObject({
+			status: "renderer-delivered",
+			openedInBrowser: true,
+		});
+		expect(result).not.toHaveProperty("completedActionHandoffId");
 	});
 
-	it("scopes concurrent requests to their respective clients", async () => {
-		const bodies: Array<Record<string, unknown>> = [];
-		vi.stubGlobal(
-			"fetch",
-			vi.fn(async (_url: string, init?: RequestInit) => {
+	it("keeps concurrent renderer requests isolated", async () => {
+		const bodies: Record<string, unknown>[] = [];
+		setFetch(
+			vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
 				const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
 				bodies.push(body);
-				return response({
-					ok: true,
-					completedActionDelivered: true,
-					completedActionHandoffId: body.completedActionHandoffId,
-				});
+				return new Response(
+					JSON.stringify({
+						ok: true,
+						completedActionDelivered: true,
+						completedActionHandoffId: body.completedActionHandoffId,
+					}),
+					{ status: 200 },
+				);
 			}),
 		);
 
-		await Promise.all([
-			openLaunchUrlInBrowserView("/api/apps/local/a/", {
-				originatingClientId: "client-a",
-			}),
-			openLaunchUrlInBrowserView("/api/apps/local/b/", {
-				originatingClientId: "client-b",
-			}),
+		const [first, second] = await Promise.all([
+			openLaunchUrlInBrowserView("/api/apps/local/one/", message("client-one")),
+			openLaunchUrlInBrowserView("/api/apps/local/two/", message("client-two")),
 		]);
+
 		expect(bodies.map((body) => body.clientId).sort()).toEqual([
-			"client-a",
-			"client-b",
+			"client-one",
+			"client-two",
 		]);
+		expect(first.completedActionHandoffId).not.toBe(
+			second.completedActionHandoffId,
+		);
 	});
 
-	it("uses originating-client delivery for realtime voice", async () => {
-		const fetchMock = vi.fn(async () => response({ ok: true }));
-		vi.stubGlobal("fetch", fetchMock);
+	it("rejects malformed launch URLs before delivery", async () => {
+		const fetchMock = vi.fn();
+		setFetch(fetchMock);
 		await expect(
-			openLaunchUrlInBrowserView("/api/apps/local/demo/", {
-				originatingClientId: "voice-client",
-				realtimeVoice: true,
-			}),
-		).resolves.toMatchObject({
-			status: "delivered",
-			completedActionDelivered: true,
-		});
-		const request = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body));
-		expect(request).toMatchObject({
-			delivery: "originating-client",
-			clientId: "voice-client",
-		});
-		expect(request).not.toHaveProperty("completedActionHandoffId");
-	});
-
-	it("reads only safe caller and voice metadata", () => {
-		const message = {
-			content: {
-				metadata: {
-					viewClientId: "client.1",
-					clientTransport: "realtime_voice",
-				},
-			},
-		} as Memory;
-		expect(appLaunchViewClientId(message)).toBe("client.1");
-		expect(isRealtimeVoiceAppLaunch(message)).toBe(true);
-		expect(
-			appLaunchViewClientId({
-				content: { metadata: { viewClientId: "bad client" } },
-			} as Memory),
-		).toBeUndefined();
+			openLaunchUrlInBrowserView("http://[", message("client-a")),
+		).resolves.toEqual({ status: "invalid-url", openedInBrowser: false });
+		expect(fetchMock).not.toHaveBeenCalled();
 	});
 });

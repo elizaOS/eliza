@@ -12,7 +12,6 @@ import type {
 	ViewType,
 } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import { REALTIME_VOICE_CLIENT_TRANSPORT } from "@elizaos/shared";
 import { SHARED_NAV_TARGETS } from "@elizaos/shared/views/shared-nav-targets";
 import { resolveSettingsSectionToken } from "@elizaos/ui/components/settings/settings-section-tokens";
 import { getAppControlApiBase } from "../loopback-api.js";
@@ -22,6 +21,7 @@ import {
 	userRequestMessageText,
 } from "../params.js";
 import { matchViewCommand } from "./view-command-matcher.js";
+import { isRealtimeVoiceTurn } from "./view-delivery.js";
 import type { ViewSummary, ViewsClient } from "./views-client.js";
 import { createViewsRequestHeaders } from "./views-request-auth.js";
 import { scoreView } from "./views-search.js";
@@ -57,16 +57,6 @@ const FILLER_WORDS = new Set([
 const DOCUMENT_SURFACE_WORDS =
 	/\b(?:documents?|docs?|files?|knowledge|uploads?|retrieval|papers?)\b/i;
 
-function isRealtimeVoiceTurn(message: Memory): boolean {
-	const metadata = message.content.metadata;
-	return (
-		typeof metadata === "object" &&
-		metadata !== null &&
-		!Array.isArray(metadata) &&
-		(metadata as Record<string, unknown>).clientTransport ===
-			REALTIME_VOICE_CLIENT_TRANSPORT
-	);
-}
 const NOTES_SURFACE_WORD = /\bnotes?\b/i;
 
 // Match a show-verb on WORD BOUNDARIES at the earliest position in the text.
@@ -372,6 +362,8 @@ function resolveRegisteredNotesView(
 
 export interface NavigateResult {
 	ok: boolean;
+	status: "accepted" | "unsupported-route" | "http-error" | "transport-error";
+	receiptStatus?: "delivered" | "not-delivered" | "malformed" | "not-requested";
 	/** Internal tool receipt for post-tool reasoning; never assistant prose. */
 	text: string;
 	/** Resolved sub-section the renderer was asked to focus (settings only). */
@@ -380,7 +372,6 @@ export interface NavigateResult {
 	completedActionDelivered?: true;
 	/** Renderer-observed idempotency key echoed by a supporting server. */
 	completedActionHandoffId?: string;
-	failureKind?: "unsupported-route" | "navigation-rejected" | "transport";
 }
 
 function navigationEffectReceipt({
@@ -473,6 +464,7 @@ export async function navigateToView(
 		);
 		if (resp.ok) {
 			let responseBody: unknown;
+			let malformedReceipt = false;
 			try {
 				responseBody = await resp.json();
 			} catch (error) {
@@ -480,6 +472,7 @@ export async function navigateToView(
 				// navigation fallback enabled; transport/body failures remain failures.
 				if (!(error instanceof SyntaxError)) throw error;
 				responseBody = null;
+				malformedReceipt = true;
 			}
 			const echoedCompletedActionHandoffId =
 				completedActionHandoffId &&
@@ -494,6 +487,15 @@ export async function navigateToView(
 					: undefined;
 			return {
 				ok: true,
+				status: "accepted",
+				receiptStatus: malformedReceipt
+					? "malformed"
+					: delivery === "completed-action"
+						? confirmsCompletedActionDelivery(responseBody) &&
+							(!completedActionHandoffId || echoedCompletedActionHandoffId)
+							? "delivered"
+							: "not-delivered"
+						: "not-requested",
 				text: navigationEffectReceipt({
 					status: "accepted",
 					view,
@@ -515,7 +517,7 @@ export async function navigateToView(
 		if (resp.status === 501 || resp.status === 404)
 			return {
 				ok: false,
-				failureKind: "unsupported-route",
+				status: "unsupported-route",
 				text: navigationEffectReceipt({
 					status: "unsupported-route",
 					view,
@@ -525,13 +527,23 @@ export async function navigateToView(
 				subview: resolvedSubview,
 			};
 
-		const body = await resp.text().catch(() => "");
+		let body = "";
+		try {
+			body = await resp.text();
+		} catch (error) {
+			// error-policy:J4 response diagnostics are optional; navigation already
+			// has an explicit HTTP failure and must remain failed.
+			logger.warn(
+				{ error },
+				"[plugin-app-control] Could not read navigation error body",
+			);
+		}
 		logger.warn(
 			`[plugin-app-control] VIEWS/show navigate returned ${resp.status}: ${body}`,
 		);
 		return {
 			ok: false,
-			failureKind: "navigation-rejected",
+			status: "http-error",
 			text: navigationEffectReceipt({
 				status: "unconfirmed",
 				view,
@@ -540,6 +552,8 @@ export async function navigateToView(
 			}),
 		};
 	} catch (err) {
+		// error-policy:J4 navigation transport failures preserve a visibly distinct
+		// failed action so the planner can recover without claiming the effect.
 		logger.warn(
 			`[plugin-app-control] VIEWS/show navigate failed: ${err instanceof Error ? err.message : String(err)}`,
 		);
@@ -547,7 +561,7 @@ export async function navigateToView(
 
 	return {
 		ok: false,
-		failureKind: "transport",
+		status: "transport-error",
 		text: navigationEffectReceipt({
 			status: "unconfirmed",
 			view,
