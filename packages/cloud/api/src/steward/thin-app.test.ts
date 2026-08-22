@@ -237,11 +237,12 @@ describe("createStewardThinApp", () => {
         stewardEnv,
       );
       const body = (await response.json()) as {
-        data?: { google?: boolean; telegram?: boolean };
+        google?: boolean;
+        telegram?: boolean;
       };
 
-      expect(body.data?.google).toBe(true);
-      expect(body.data?.telegram).toBe(telegram);
+      expect(body.google).toBe(true);
+      expect(body.telegram).toBe(telegram);
     },
   );
 
