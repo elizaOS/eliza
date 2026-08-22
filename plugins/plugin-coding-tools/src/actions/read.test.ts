@@ -725,6 +725,21 @@ describe("READ", () => {
 
     expect(result.success).toBe(false);
     expect(result.text).toContain("expected revision");
+
+    const refreshed = await readFileHandler(
+      env.runtime,
+      env.message,
+      undefined,
+      { parameters: { file_path: file, offset: 0, limit: 1 } },
+    );
+    expect(refreshed.success).toBe(true);
+    expect(refreshed.text).toBe("alpha\n");
+
+    const resumed = await readFileHandler(env.runtime, env.message, undefined, {
+      parameters: { file_path: file, offset: 1, limit: 1 },
+    });
+    expect(resumed.success).toBe(true);
+    expect(resumed.text).toBe("beta\n");
   });
 
   it("rejects binary files containing NUL bytes", async () => {

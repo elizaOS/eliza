@@ -779,6 +779,63 @@ describe("v5 planner loop skeleton", () => {
 		});
 	});
 
+	it("fails honestly instead of synthesizing success after repeated calls leave a mutation unverified", async () => {
+		await withCodingRequiredToolDefaults(async () => {
+			const readCall = {
+				id: "read-1",
+				name: "READ",
+				arguments: { file_path: "/workspace/dice.html" },
+			};
+			const runtime = {
+				useModel: vi
+					.fn()
+					.mockResolvedValueOnce({ text: "", toolCalls: [readCall] })
+					.mockResolvedValueOnce({
+						text: "",
+						toolCalls: [
+							{
+								id: "edit-1",
+								name: "EDIT",
+								arguments: {
+									file_path: "/workspace/dice.html",
+									old_string: "draft",
+									new_string: "fixed",
+								},
+							},
+						],
+					})
+					.mockResolvedValue({ text: "", toolCalls: [readCall] }),
+				logger: { debug: vi.fn(), warn: vi.fn() },
+			};
+			const executeToolCall = vi.fn(async () => ({
+				success: true,
+				text: "ok",
+			}));
+
+			const result = await runPlannerLoop({
+				runtime,
+				context: codingPlannerContext,
+				codingMode: true,
+				config: { maxRepeatedToolCalls: 1 },
+				tools: [
+					{ name: "READ", description: "Read a file." },
+					{ name: "EDIT", description: "Edit a file." },
+					{ name: "SHELL", description: "Run a command." },
+				],
+				executeToolCall,
+				evaluate: vi.fn(),
+			});
+
+			expect(executeToolCall).toHaveBeenCalledTimes(3);
+			expect(runtime.useModel).toHaveBeenCalledTimes(5);
+			expect(result.evaluator).toMatchObject({
+				success: false,
+				decision: "FINISH",
+			});
+			expect(result.finalMessage).toContain("coding task is incomplete");
+		});
+	});
+
 	it("lets final verification supersede failed intermediate coding commands", async () => {
 		await withCodingRequiredToolDefaults(async () => {
 			const toolResult = (success: boolean, text: string) => ({
@@ -2002,6 +2059,47 @@ describe("v5 planner loop skeleton", () => {
 		expect(partitioned.redundant).toEqual([archivedSuccess]);
 		expect(partitioned.nonRetryable).toEqual([archivedDeadEnd]);
 		expect(partitioned.fresh).toEqual([freshCall]);
+	});
+
+	it("allows a coding inspection to repeat after a successful mutation", () => {
+		const readCall = {
+			name: "READ",
+			params: { file_path: "/workspace/config.go" },
+		};
+		const editCall = {
+			name: "EDIT",
+			params: {
+				file_path: "/workspace/config.go",
+				old_string: "old",
+				new_string: "new",
+			},
+		};
+		const trajectory = {
+			context: { id: "ctx" },
+			codingMode: true,
+			steps: [
+				{
+					iteration: 1,
+					toolCall: readCall,
+					result: { success: true, text: "old" },
+				},
+				{
+					iteration: 2,
+					toolCall: editCall,
+					result: { success: true, text: "edited" },
+				},
+			],
+			archivedSteps: [],
+			plannedQueue: [],
+			evaluatorOutputs: [],
+		};
+
+		const partitioned = partitionRedundantSucceededCalls(
+			[readCall, editCall],
+			trajectory,
+		);
+		expect(partitioned.fresh).toEqual([readCall]);
+		expect(partitioned.redundant).toEqual([editCall]);
 	});
 
 	it("does not capture native text fallback as a required-tool refusal", async () => {

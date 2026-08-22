@@ -303,7 +303,9 @@ export async function readFileHandler(
     const explicitExpected = readStringParam(options, "expectedRevision");
     const expected =
       explicitExpected ??
-      fileState.get(conversationId, checked.resolved)?.revision;
+      (offset > 0
+        ? fileState.get(conversationId, checked.resolved)?.revision
+        : undefined);
     if (offset > 0 && !expected)
       return failureToActionResult({
         reason: "invalid_param",
