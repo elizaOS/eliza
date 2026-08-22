@@ -1,4 +1,4 @@
-// Coordinates cloud service meta behavior behind route handlers.
+/** Coordinates Meta advertising operations and their bounded Graph API transport. */
 import { extractErrorMessage } from "../../../utils/error-handling";
 import { logger } from "../../../utils/logger";
 import { assertSafeAdMediaUrl, downloadAdMedia, mediaFileName } from "../media-utils";
