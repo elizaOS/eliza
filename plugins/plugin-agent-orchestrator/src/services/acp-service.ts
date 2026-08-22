@@ -20,7 +20,7 @@ import {
   spawnSync,
 } from "node:child_process";
 import { randomBytes, randomUUID } from "node:crypto";
-import { existsSync } from "node:fs";
+import { accessSync, constants, existsSync, statSync } from "node:fs";
 import {
   chmod,
   copyFile,
@@ -43,7 +43,12 @@ import {
   toWellFormedUnicode,
   truncateWellFormed,
 } from "@elizaos/core";
-import { isAndroidMobile } from "@elizaos/shared";
+import {
+  CODING_AGENT_BACKEND_PREFLIGHTS,
+  CODING_AGENT_BACKENDS,
+  isAndroidMobile,
+  isCodingAgentBackend,
+} from "@elizaos/shared";
 import { getHostExecutionBaseline } from "@elizaos/shared/host-execution-env";
 import { NativeAcpClient } from "./acp-native-transport.js";
 import { augmentTaskWithDeployGuidance } from "./app-deploy-guidance.js";
@@ -350,8 +355,26 @@ function findGitBinaryForAcp(): string {
 function findExecutableOnPath(name: string): string | undefined {
   for (const dir of (process.env.PATH ?? "").split(delimiter)) {
     if (!dir) continue;
-    const candidate = join(dir, name);
-    if (existsSync(candidate)) return candidate;
+    const candidates = new Set([join(dir, name)]);
+    if (process.platform === "win32") {
+      for (const extension of (process.env.PATHEXT ?? ".EXE;.CMD;.BAT")
+        .split(";")
+        .map((value) => value.trim())
+        .filter(Boolean)) {
+        candidates.add(join(dir, `${name}${extension.toLowerCase()}`));
+        candidates.add(join(dir, `${name}${extension.toUpperCase()}`));
+      }
+    }
+    for (const candidate of candidates) {
+      try {
+        if (!statSync(candidate).isFile()) continue;
+        accessSync(candidate, constants.X_OK);
+        return candidate;
+      } catch {
+        // error-policy:J3 PATH entries that are missing or non-executable are
+        // explicit preflight misses; continue looking for a runnable candidate.
+      }
+    }
   }
   return undefined;
 }
@@ -798,7 +821,7 @@ export function resolveInitialTaskPromptTimeoutMs(
 ): number | undefined {
   return explicitTimeoutMs ?? 0;
 }
-const DEFAULT_AGENTS: AgentType[] = ["elizaos", "codex", "claude"];
+const DEFAULT_AGENTS: readonly AgentType[] = CODING_AGENT_BACKENDS;
 // Path segment for Codex homes whose auth.json carries a selected ChatGPT
 // subscription. The marker stays in sync with
 // coding-account-bridge.ts:codexHomeDir; ordinary CODEX_HOME paths may instead
@@ -1820,11 +1843,11 @@ export class AcpService extends Service {
 
   // The acpx transport persists session state as `<acpxSessionId>.json` under
   // <stateRoot>/sessions. The old probe checked `<acpxSessionId>.stream.ndjson`
-  // which NEVER exists for opencode/native sessions (verified: 0 such files on
-  // disk, only ses_*.json) — a permanent false-negative that made every healthy
+  // which does not exist for native sessions (only ses_*.json is persisted) —
+  // a permanent false-negative that made every healthy
   // session look "state lost", triggering a runaway "spawn a fresh sub-agent"
   // respawn cascade AND spuriously throwing on the first real prompt to any
-  // opencode session. Probe the artifact the transport actually writes.
+  // ACP session. Probe the artifact the transport actually writes.
   private acpxSessionStateFile(acpxSessionId: string): string {
     return join(this.acpxStateRoot(), "sessions", `${acpxSessionId}.json`);
   }
@@ -2821,12 +2844,16 @@ export class AcpService extends Service {
   }
 
   async getAvailableAgents(): Promise<AvailableAgentInfo[]> {
-    return DEFAULT_AGENTS.map((agentType) => ({
-      adapter: agentType,
-      agentType,
-      installed: true,
-      auth: { status: "unknown" },
-    }));
+    return DEFAULT_AGENTS.map((agentType) => {
+      const command = this.agentCommandAvailability(agentType);
+      return {
+        adapter: agentType,
+        agentType,
+        installed: command.available,
+        ...(command.reason ? { unavailableReason: command.reason } : {}),
+        auth: { status: "unknown" },
+      };
+    });
   }
 
   async checkAvailableAgents(types?: string[]): Promise<AvailableAgentInfo[]> {
@@ -3627,27 +3654,81 @@ export class AcpService extends Service {
   private nativeAgentCommand(agentType: AgentType): string {
     const normalizedAgentType =
       normalizeTaskAgentAdapter(agentType) ?? agentType;
-    if (normalizedAgentType === "codex") return this.codexAgentCommand();
-    const override = this.setting(
-      `ELIZA_${String(normalizedAgentType)
-        .toUpperCase()
-        .replace(/[^A-Z0-9]/g, "_")}_ACP_COMMAND`,
-    );
-    if (override?.trim()) return override.trim();
-    if (normalizedAgentType === "claude")
-      return (
-        this.setting("ELIZA_CLAUDE_ACP_COMMAND") ??
-        "npx -y @agentclientprotocol/claude-agent-acp@0.34.0"
+    if (!isCodingAgentBackend(normalizedAgentType)) {
+      throw new ElizaError(
+        `No verified ACP backend is registered for ${String(normalizedAgentType)}`,
+        {
+          code: "ACP_BACKEND_UNAVAILABLE",
+          context: { agentType: String(normalizedAgentType) },
+        },
       );
-    // The elizaOS CLI has no ACP mode; the separately installed eliza-code ACP
-    // server is the native adapter for this agent type.
-    if (normalizedAgentType === "elizaos")
-      return (
-        this.setting("ELIZA_ELIZAOS_ACP_COMMAND") ??
-        findExecutableOnPath("eliza-code-acp") ??
-        "eliza-code-acp"
-      );
-    return String(normalizedAgentType);
+    }
+    const preflight = CODING_AGENT_BACKEND_PREFLIGHTS[normalizedAgentType];
+    if (preflight.commandResolution === "managed-codex") {
+      return this.codexAgentCommand();
+    }
+    const configured = this.setting(preflight.commandConfigKey);
+    return configured?.trim() || preflight.defaultCommand;
+  }
+
+  private agentCommandAvailability(agentType: AgentType): {
+    available: boolean;
+    reason?: string;
+  } {
+    let commandLines: string[];
+    try {
+      if (this.transportMode === "native") {
+        commandLines = [this.nativeAgentCommand(agentType)];
+      } else {
+        const adapter = this.legacyAcpxAdapter(agentType);
+        commandLines = [
+          this.cliPath,
+          ...(adapter.command ? [adapter.command] : []),
+        ];
+      }
+    } catch (error) {
+      // error-policy:J4 invalid adapter configuration is an explicit
+      // unavailable inventory row; one bad row must not hide the rest.
+      return { available: false, reason: errorMessage(error) };
+    }
+    for (const commandLine of commandLines) {
+      const [token] =
+        commandLine.match(/(?:[^\s"']+|"[^"]*"|'[^']*')+/gu) ?? [];
+      const command = token?.replace(/^(['"])(.*)\1$/u, "$2") ?? "";
+      if (!command) {
+        return {
+          available: false,
+          reason: "No executable command is configured.",
+        };
+      }
+      if (command.includes("/") || command.includes("\\")) {
+        try {
+          const commandPath = resolve(command);
+          if (!statSync(commandPath).isFile()) {
+            return {
+              available: false,
+              reason: `Configured command is not a file: ${command}`,
+            };
+          }
+          accessSync(commandPath, constants.X_OK);
+          continue;
+        } catch {
+          // error-policy:J3 configured command paths fail closed when absent or
+          // non-executable; the preflight row reports installed=false.
+          return {
+            available: false,
+            reason: `Configured command is missing or not executable: ${command}`,
+          };
+        }
+      }
+      if (!findExecutableOnPath(command)) {
+        return {
+          available: false,
+          reason: `Command is not available on PATH: ${command}`,
+        };
+      }
+    }
+    return { available: true };
   }
 
   private async stopNativeClient(sessionId: string): Promise<void> {
@@ -3664,7 +3745,34 @@ export class AcpService extends Service {
   }
 
   private agentCommandArgs(agentType: AgentType, args: string[]): string[] {
-    return [agentType, ...args];
+    return [...this.legacyAcpxAdapter(agentType).args, ...args];
+  }
+
+  /** Resolve only acpx adapters whose invocation contract is known here. */
+  private legacyAcpxAdapter(agentType: AgentType): {
+    args: readonly string[];
+    command?: string;
+  } {
+    const normalized = normalizeTaskAgentAdapter(agentType) ?? agentType;
+    switch (normalized) {
+      case "pi-agent":
+        return { args: ["pi"], command: "pi" };
+      case "claude":
+      case "codex":
+        return { args: [normalized], command: normalized };
+      case "elizaos": {
+        const command = this.nativeAgentCommand(normalized);
+        return { args: ["--agent", command], command };
+      }
+      default:
+        throw new ElizaError(
+          `No verified legacy acpx adapter is registered for ${String(normalized)}`,
+          {
+            code: "ACP_LEGACY_ADAPTER_UNAVAILABLE",
+            context: { agentType: String(normalized) },
+          },
+        );
+    }
   }
 
   private runAcpx(opts: RunOptions): Promise<RunResult> {
@@ -4045,8 +4153,8 @@ export class AcpService extends Service {
         this.emitSessionEvent(sessionId, "message", { text: content.text });
       }
       // agent_thought_chunk: the model's reasoning / chain-of-thought streams
-      // in the SAME payload shape as agent_message_chunk (opencode emits it for
-      // `reasoning` parts). Forward the text as a dedicated `reasoning` event so
+      // in the same payload shape as agent_message_chunk. Forward the text as a
+      // dedicated `reasoning` event so
       // the UI can surface it, but do NOT add it to finalText/appendOutput:
       // reasoning is not the deliverable response, and folding it into the turn
       // text would corrupt the task_complete summary and tool-output capture.
@@ -4057,8 +4165,8 @@ export class AcpService extends Service {
       ) {
         this.emitSessionEvent(sessionId, "reasoning", { text: content.text });
       }
-      // plan: opencode emits the agent's checklist/plan list as a `plan` update with
-      // entries [{content, status, priority}] (driven by its todowrite tool).
+      // Some ACP adapters emit checklist entries as a `plan` update with
+      // entries [{content, status, priority}].
       // Forward a sanitized snapshot as a `plan` event so the task's currentPlan
       // can drive the plan/checklist dock. Validated at this boundary (raw -> typed);
       // an adapter that never emits a plan simply does not enter this branch.

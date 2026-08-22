@@ -19,7 +19,12 @@ import {
   resolveStateDir,
   resolveUserPath,
 } from "@elizaos/core";
-import { readAliasedEnv } from "@elizaos/shared";
+import {
+  CODING_AGENT_BACKEND_PREFLIGHTS,
+  CODING_AGENT_BACKENDS,
+  type CodingAgentBackend,
+  readAliasedEnv,
+} from "@elizaos/shared";
 import { readConfigCloudKey, readConfigEnvKey } from "./config-env.js";
 
 type AgentMetricsSummary = {
@@ -37,11 +42,7 @@ type TaskAgentPreflightResult = {
   auth?: { status?: unknown };
 };
 
-export type SupportedTaskAgentAdapter =
-  | "elizaos"
-  | "pi-agent"
-  | "claude"
-  | "codex";
+export type SupportedTaskAgentAdapter = CodingAgentBackend;
 export type TaskAgentFrameworkId = SupportedTaskAgentAdapter;
 
 export interface TaskAgentModelPrefs {
@@ -198,12 +199,8 @@ const FRAMEWORK_LABELS: Record<TaskAgentFrameworkId, string> = {
   codex: "Codex",
 };
 
-const STANDARD_FRAMEWORKS: SupportedTaskAgentAdapter[] = [
-  "elizaos",
-  "pi-agent",
-  "claude",
-  "codex",
-];
+const STANDARD_FRAMEWORKS: readonly SupportedTaskAgentAdapter[] =
+  CODING_AGENT_BACKENDS;
 
 const DEFAULT_FRAMEWORK_PREFLIGHT_TIMEOUT_MS = 5_000;
 const MAX_FRAMEWORK_PREFLIGHT_TIMEOUT_MS = 2_147_483_647;
@@ -629,28 +626,12 @@ function isCommandExecutableAvailable(command: string | undefined): boolean {
 }
 
 function hasFrameworkBinary(id: SupportedTaskAgentAdapter): boolean {
-  switch (id) {
-    case "elizaos": {
-      const configured = readConfigEnvKey("ELIZA_ELIZAOS_ACP_COMMAND");
-      return configured
-        ? isCommandExecutableAvailable(configured)
-        : hasBinaryOnPath("eliza-code-acp");
-    }
-    case "pi-agent": {
-      const configured = readConfigEnvKey("ELIZA_PI_AGENT_ACP_COMMAND");
-      return configured
-        ? isCommandExecutableAvailable(configured)
-        : hasBinaryOnPath("pi-agent");
-    }
-    case "claude":
-      return hasBinaryOnPath("claude");
-    case "codex": {
-      const configured = readConfigEnvKey("ELIZA_CODEX_ACP_COMMAND");
-      return configured
-        ? isCommandExecutableAvailable(configured)
-        : hasBinaryOnPath("codex");
-    }
-  }
+  const preflight = CODING_AGENT_BACKEND_PREFLIGHTS[id];
+  const configured = readConfigEnvKey(preflight.commandConfigKey);
+  if (configured) return isCommandExecutableAvailable(configured);
+  return preflight.commandResolution === "managed-codex"
+    ? hasBinaryOnPath("npx")
+    : isCommandExecutableAvailable(preflight.defaultCommand);
 }
 
 async function computeTaskAgentFrameworkState(
@@ -668,7 +649,7 @@ async function computeTaskAgentFrameworkState(
     const preflightTimeoutMs = resolveFrameworkPreflightTimeoutMs();
     try {
       const results = await withTimeout(
-        probe.checkAvailableAgents(STANDARD_FRAMEWORKS),
+        probe.checkAvailableAgents([...STANDARD_FRAMEWORKS]),
         preflightTimeoutMs,
         "task-agent framework preflight",
       );
@@ -724,26 +705,24 @@ async function computeTaskAgentFrameworkState(
   const inventory: TaskAgentFrameworkAvailability[] = STANDARD_FRAMEWORKS.map(
     (id) => {
       const preflight = preflightByAdapter.get(id);
-      const nativeExplicit =
-        (id === "elizaos" || id === "pi-agent") && explicitDefault === id;
-      const installed =
-        preflight?.installed === true ||
-        hasFrameworkBinary(id) ||
-        nativeExplicit;
+      const installed = preflight?.installed === true || hasFrameworkBinary(id);
       const subscriptionReady =
         id === "claude"
           ? claudeSubscriptionReady
           : id === "codex"
             ? codexSubscriptionReady
             : false;
-      const authReady =
+      const credentialsReady =
         id === "elizaos" || id === "pi-agent"
-          ? installed
+          ? preflight
+            ? getPreflightAuthStatus(preflight) === "authenticated"
+            : installed
           : id === "claude"
             ? claudeAuthReady
             : id === "codex"
               ? codexAuthReady
               : false;
+      const authReady = installed && credentialsReady;
       const reason =
         id === "elizaos" && installed
           ? "ready to use the configured native ElizaOS ACP adapter"

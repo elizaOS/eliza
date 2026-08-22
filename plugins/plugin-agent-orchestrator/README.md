@@ -4,7 +4,7 @@
 [![CI](https://github.com/elizaos/eliza/actions/workflows/ci.yml/badge.svg)](https://github.com/elizaos/eliza/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-The canonical orchestration plugin for elizaOS task agents. Spawns local coding agents (elizaos, pi-agent, opencode, codex, claude) through Agent Client Protocol transports, routes their output back through the runtime so the main agent decides what to do, and bundles workspace lifecycle, GitHub PR integration, task share, and supporting services in a single package.
+The canonical orchestration plugin for elizaOS task agents. Spawns local coding agents (elizaos, pi-agent, codex, claude) through Agent Client Protocol transports, routes their output back through the runtime so the main agent decides what to do, and bundles workspace lifecycle, GitHub PR integration, task share, and supporting services in a single package.
 
 > Naming: this plugin is *not* the same thing as `@elizaos/plugin-acp`. That package is Shaw's ACP gateway client (IDE bridge over a remote ACP gateway). `@elizaos/plugin-agent-orchestrator` is the *task backend* that runs coding agents as subprocesses on the same host as the runtime.
 
@@ -24,7 +24,7 @@ The plugin combines three concerns:
 npm install @elizaos/plugin-agent-orchestrator
 ```
 
-Native TypeScript ACP is the default transport. Set the default coding agent with `ELIZA_ACP_DEFAULT_AGENT` (`elizaos`, `pi-agent`, or `opencode` are the primary supported defaults):
+Native TypeScript ACP is the default transport. Set the default coding agent with `ELIZA_ACP_DEFAULT_AGENT` (`elizaos`, `pi-agent`, `claude`, or `codex`):
 
 ```bash
 export ELIZA_ACP_TRANSPORT=native
@@ -44,9 +44,11 @@ npm install -g acpx@latest
 export ELIZA_ACP_TRANSPORT=cli
 ```
 
-Adapter packaging decision: this release does not vendor the Codex or Claude ACP adapter packages. Native transport is the default; Codex and Claude use pinned `npx` commands unless deployment config overrides them. OpenCode is the exception: the package prefers the bundled OpenCode shim when available, then falls back to `opencode acp`.
+Adapter packaging decision: this release does not vendor the Codex or Claude ACP adapter packages. Native transport is the default; Codex and Claude use pinned `npx` commands unless deployment config overrides them.
 
 `coding-agent-adapters` is a runtime registry/API dependency used by this plugin's agent inventory and routes; it is not a bundled Codex or Claude ACP adapter executable.
+
+Linked-account enrollment and model inference are separate from executable coding-agent spawn. Claude subscription and OpenAI Codex accounts are the only linked-account transports currently bridged into coding sessions. Kimi and Z.AI coding-plan accounts can be enrolled for inference but do not register native spawn adapters; Grok/xAI has no linked-account or native spawn adapter yet. DeepSeek API credentials are inference-only, while its coding subscription remains unavailable. OpenRouter remains a generic model-routing option rather than a coding-account or spawn backend. Native Kimi, Z.AI, and Grok routes are tracked in #24096.
 
 ## Quick start
 
@@ -147,7 +149,7 @@ second credential broker, and child trajectories retain their session join key.
 | --- | --- | --- |
 | `ELIZA_ACP_TRANSPORT` | `native` | Transport mode. Accepted values include `native`/`direct` and `cli`/`acpx`. |
 | `ELIZA_ACP_CLI` | `acpx` | ACPX executable name or absolute path for the CLI transport. |
-| `ELIZA_ACP_DEFAULT_AGENT` | `elizaos` | Default agent type. Primary choices: `elizaos`, `pi-agent`, `opencode`. |
+| `ELIZA_ACP_DEFAULT_AGENT` | `elizaos` | Default agent type. Choices: `elizaos`, `pi-agent`, `claude`, or `codex`. |
 | `ELIZA_ACP_WARM_SPAWN` | unset | Set to `1` to keep one pre-initialized native `elizaos` child ready. It starts without session credentials, accepts one authenticated environment claim, and is disposed after that session; unclaimed children are recycled after two minutes. |
 | `ELIZA_ELIZAOS_ACP_COMMAND` | `eliza-code-acp` | Native elizaOS ACP command. |
 | `ELIZA_PI_AGENT_ACP_COMMAND` | `pi-agent` | Native Pi Agent ACP command. |
@@ -157,7 +159,6 @@ second credential broker, and child trajectories retain their session join key.
 | `ELIZA_CODEX_ACP_APPROVAL_POLICY` / `ELIZA_CODEX_APPROVAL_POLICY` | `never` for no-Landlock fallback, otherwise unset | Optional managed Codex ACP approval policy. Setting it requires an explicit sandbox mode; the successor supports the fixed pairs `read-only`/`on-request`, `workspace-write`/`on-request`, and `danger-full-access`/`never`. |
 | `ELIZA_CODEX_ACP_LANDLOCK` / `ELIZA_CODEX_LANDLOCK` | auto-detect | Force Landlock detection for containers/tests: `1`/`true` or `0`/`false`. |
 | `ELIZA_CLAUDE_ACP_COMMAND` | `npx -y @agentclientprotocol/claude-agent-acp@0.34.0` | Native Claude ACP command. |
-| `ELIZA_OPENCODE_ACP_COMMAND` | bundled shim or `opencode acp` | Native OpenCode ACP command override. |
 | `ELIZA_ACP_DEFAULT_APPROVAL` | `autonomous` | Approval preset (`read-only`, `auto`, `permissive`, `autonomous`, `full-access`). |
 | `ELIZA_ACP_PROMPT_TIMEOUT_MS` / `ACPX_DEFAULT_TIMEOUT_MS` | `300000` (5m) | Per-prompt timeout. |
 | `ELIZA_FRAMEWORK_PREFLIGHT_TIMEOUT_MS` | `5000` (5s) | Maximum adapter-availability preflight wait. Values must be exact decimal integers from `250` through `2147483647`; missing/blank uses the default, and invalid values fail before the adapter probe starts. |
@@ -249,7 +250,6 @@ and an installed/authenticated `acpx` + Codex environment.
 
 ```bash
 RUN_LIVE_NATIVE_ACP=1 LIVE_NATIVE_ACP_AGENT=claude ELIZA_CLAUDE_ACP_COMMAND="npx -y @agentclientprotocol/claude-agent-acp@0.34.0" node tests/e2e/live-native-acp-smoke.mjs
-RUN_LIVE_NATIVE_ACP=1 LIVE_NATIVE_ACP_AGENT=opencode ELIZA_OPENCODE_ACP_COMMAND="opencode acp" node tests/e2e/live-native-acp-smoke.mjs
 ```
 
 The native smoke skips successfully when `RUN_LIVE_NATIVE_ACP` is unset, when an optional provider command is not configured, or when the adapter reports missing authentication/credentials. Use `RUN_LIVE_NATIVE_ACP=1 bun run test -- __tests__/live/native-acp-smoke.live.test.ts` to run the same smoke through Vitest.
