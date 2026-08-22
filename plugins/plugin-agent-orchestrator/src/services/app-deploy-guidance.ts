@@ -333,6 +333,10 @@ export function augmentTaskWithDeployGuidance(
       // the failed check led the completion as a task failure while the
       // script itself ran clean (live 2026-08-21, 2 of 4 runs).
       "Do not run linters, type checkers, or test frameworks (mypy, flake8, eslint, tsc, pytest) unless the workspace already has them installed and configured — a failing check you introduced is not a task failure.",
+      // A missing input got replaced by a hand-written stand-in and a made-up
+      // value shipped as the answer (live 2026-08-22). The honest result of a
+      // script whose input is absent IS the error.
+      "If a file, endpoint, or dataset the task names does not exist or cannot be reached from here, report that as the result — never create a stand-in for it or change the script to read something else.",
       "End your final message with the captured run output.",
     ].join("\n");
   }
