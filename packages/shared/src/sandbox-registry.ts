@@ -243,9 +243,10 @@ export class SandboxRegistry {
   }
 
   /**
-   * Renew exact ownership, or recover only when the complete registration has
-   * expired. Mixed or foreign state belongs to another lifecycle generation
-   * and must never be overwritten by this instance.
+   * Renew only exact ownership. Missing state is not authority: after complete
+   * expiry an older live generation and its successor are indistinguishable,
+   * so recovery must wait for the provisioner-owned handshake tracked in
+   * #24767 rather than letting whichever heartbeat arrives first take over.
    */
   private async refreshOwnedKeys(): Promise<void> {
     const { serverName, serverUrl, agentId, ttlSeconds } = this.config;
@@ -254,8 +255,7 @@ export class SandboxRegistry {
       "-- refresh\nlocal u=redis.call('GET',KEYS[1]) local s=redis.call('GET',KEYS[2]) " +
         "local g=redis.call('GET',KEYS[3]) " +
         "local owned=u==ARGV[1] and s==ARGV[2] and g==ARGV[3] " +
-        "local unclaimed=not u and not s and not g " +
-        "if owned or unclaimed then " +
+        "if owned then " +
         "redis.call('SET',KEYS[1],ARGV[1],'EX',ARGV[4]) " +
         "redis.call('SET',KEYS[2],ARGV[2],'EX',ARGV[4]) " +
         "redis.call('SET',KEYS[3],ARGV[3],'EX',ARGV[4]) return 1 end return 0",
