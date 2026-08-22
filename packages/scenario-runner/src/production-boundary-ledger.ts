@@ -855,13 +855,9 @@ export async function observeProductionBoundary<TResponse, TReadback>(
             }
           }
 
-          return appendObservation(options.ledger, {
-            ...base,
-            completedAt: isoTimestamp(options.now),
-            boundaryCalled: true,
-            acceptance: classification.acceptance,
-            result,
-            resultCode:
+          let resultCode: string;
+          try {
+            resultCode =
               scriptedPostCallResult === "partial_failure"
                 ? "synthetic_partial_failure"
                 : scriptedPostCallResult === "unknown"
@@ -871,7 +867,31 @@ export async function observeProductionBoundary<TResponse, TReadback>(
                     : requireNonEmpty(
                         redactText(classification.code),
                         "classification.code",
-                      ),
+                      );
+          } catch (error) {
+            // error-policy:J1 result-code sanitization happens after the real
+            // effect, so its failure must become a durable unknown receipt.
+            return appendObservation(options.ledger, {
+              ...base,
+              completedAt: isoTimestamp(options.now),
+              boundaryCalled: true,
+              acceptance: "unknown",
+              result: "unknown",
+              resultCode: "classification_code_redaction_threw",
+              retryable: false,
+              responseSha256,
+              ...(readbackSha256 ? { readbackSha256 } : {}),
+              error: safeError(error, redactText),
+            });
+          }
+
+          return appendObservation(options.ledger, {
+            ...base,
+            completedAt: isoTimestamp(options.now),
+            boundaryCalled: true,
+            acceptance: classification.acceptance,
+            result,
+            resultCode,
             retryable: classification.retryable,
             ...(options.fault?.retryAfterMs !== undefined
               ? { retryAfterMs: options.fault.retryAfterMs }
