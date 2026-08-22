@@ -38,14 +38,7 @@ export default scenario({
         name: "signed-out-cloud-account-planner",
         match: {
           modelType: "ACTION_PLANNER",
-          toolNames: [
-            "CLOUD_ACCOUNT_STATUS",
-            "CLOUD_LIST_AGENTS",
-            "CLOUD_CREATE_API_KEY",
-            "REPLY",
-            "IGNORE",
-            "STOP",
-          ],
+          toolNames: [],
           input: {
             includes:
               "How many credits do I have on Eliza Cloud, and what agents are running?",
