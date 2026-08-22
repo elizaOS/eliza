@@ -767,22 +767,34 @@ async function ensureSshRuntimeRehydrated(runtimeId: string): Promise<boolean> {
   });
 }
 
-export async function desktopRehydrateSshRuntimes(): Promise<{
+interface SshRuntimeBatchRehydrationDependencies {
+  listIntents: () => Promise<SshRuntimeConnectionIntent[]>;
+  ensure: (runtimeId: string) => Promise<boolean>;
+  isRunning: (runtimeId: string) => boolean;
+  getLastError: (runtimeId: string) => string | null;
+}
+
+export async function desktopRehydrateSshRuntimes(
+  dependencies: SshRuntimeBatchRehydrationDependencies = {
+    listIntents: () => connectionIntents.list(),
+    ensure: ensureSshRuntimeRehydrated,
+    isRunning: (runtimeId) => tunnels.get(runtimeId)?.child.exitCode === null,
+    getLastError: (runtimeId) => reconnectErrors.get(runtimeId) ?? null,
+  },
+): Promise<{
   restored: string[];
   blocked: Array<{ runtimeId: string; error: string }>;
 }> {
-  const intents = await connectionIntents.list();
+  const intents = await dependencies.listIntents();
   await Promise.all(
-    intents.map((intent) => ensureSshRuntimeRehydrated(intent.runtimeId)),
+    intents.map((intent) => dependencies.ensure(intent.runtimeId)),
   );
   return {
     restored: intents
-      .filter(
-        (intent) => tunnels.get(intent.runtimeId)?.child.exitCode === null,
-      )
+      .filter((intent) => dependencies.isRunning(intent.runtimeId))
       .map((intent) => intent.runtimeId),
     blocked: intents.flatMap((intent) => {
-      const error = reconnectErrors.get(intent.runtimeId);
+      const error = dependencies.getLastError(intent.runtimeId);
       return error ? [{ runtimeId: intent.runtimeId, error }] : [];
     }),
   };
@@ -827,24 +839,39 @@ export async function desktopStopSshRuntime(
   });
 }
 
+interface SshRuntimeStatusDependencies {
+  getTunnel: (runtimeId: string) => SshTunnel | undefined;
+  deleteTunnel: (runtimeId: string) => void;
+  ensure: (runtimeId: string) => Promise<boolean>;
+  getLastError: (runtimeId: string) => string | null;
+}
+
 export async function desktopGetSshRuntimeStatus(
   params: unknown,
+  dependencies: SshRuntimeStatusDependencies = {
+    getTunnel: (runtimeId) => tunnels.get(runtimeId),
+    deleteTunnel: (runtimeId) => {
+      tunnels.delete(runtimeId);
+    },
+    ensure: ensureSshRuntimeRehydrated,
+    getLastError: (runtimeId) => reconnectErrors.get(runtimeId) ?? null,
+  },
 ): Promise<SshRuntimeStatus> {
   if (typeof params !== "object" || params === null || Array.isArray(params)) {
     throw new Error("SSH runtime parameters are required.");
   }
   const runtimeId = requireRuntimeId(Reflect.get(params, "runtimeId"));
-  let tunnel = tunnels.get(runtimeId);
+  let tunnel = dependencies.getTunnel(runtimeId);
   if (tunnel?.child.exitCode !== null) {
-    tunnels.delete(runtimeId);
+    dependencies.deleteTunnel(runtimeId);
     tunnel = undefined;
   }
   if (!tunnel) {
-    await ensureSshRuntimeRehydrated(runtimeId);
-    tunnel = tunnels.get(runtimeId);
+    await dependencies.ensure(runtimeId);
+    tunnel = dependencies.getTunnel(runtimeId);
   }
   const running = tunnel?.child.exitCode === null;
-  const lastError = reconnectErrors.get(runtimeId) ?? null;
+  const lastError = dependencies.getLastError(runtimeId);
   return {
     running,
     localPort: running && tunnel ? tunnel.localPort : null,

@@ -21,6 +21,14 @@ export interface SshRuntimeEnrollment {
   credentialRef: string;
 }
 
+export interface SshRuntimeStatus {
+  running: boolean;
+  localPort: number | null;
+  startedAt: number | null;
+  reconnectState: "stopped" | "running" | "blocked";
+  lastError: string | null;
+}
+
 export async function inspectSshHost(input: {
   runtimeId: string;
   target: string;
@@ -64,20 +72,10 @@ export async function stopSshRuntime(runtimeId: string): Promise<boolean> {
   return result?.stopped ?? false;
 }
 
-export async function getSshRuntimeStatus(runtimeId: string): Promise<{
-  running: boolean;
-  localPort: number | null;
-  startedAt: number | null;
-  reconnectState: "stopped" | "running" | "blocked";
-  lastError: string | null;
-}> {
-  const result = await invokeDesktopBridgeRequest<{
-    running: boolean;
-    localPort: number | null;
-    startedAt: number | null;
-    reconnectState: "stopped" | "running" | "blocked";
-    lastError: string | null;
-  }>({
+export async function getSshRuntimeStatus(
+  runtimeId: string,
+): Promise<SshRuntimeStatus> {
+  const result = await invokeDesktopBridgeRequest<SshRuntimeStatus>({
     rpcMethod: "sshRuntimeStatus",
     ipcChannel: "sshRuntime:status",
     params: { runtimeId },

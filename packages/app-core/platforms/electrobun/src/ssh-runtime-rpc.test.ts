@@ -4,9 +4,11 @@ import { EventEmitter } from "node:events";
 import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { SshRuntimeConnectionIntent } from "./ssh-runtime-intent-store";
 import {
+  desktopGetSshRuntimeStatus,
+  desktopRehydrateSshRuntimes,
   normalizeSshRuntimeRequest,
   parseSshKeyscanOutput,
   sshRuntimeInternals,
@@ -298,5 +300,84 @@ describe("SSH runtime RPC", () => {
         },
       }),
     ).rejects.toThrow("host key changed");
+  });
+
+  it("reports restored and blocked restart intents through the public boot seam", async () => {
+    const restored = new Set<string>();
+    const errors = new Map([
+      [
+        "blocked-vps",
+        "The trusted SSH host fingerprint no longer matches this runtime.",
+      ],
+    ]);
+    const intents = [
+      {
+        ...RESTART_INTENT,
+        runtimeId: "restored-vps",
+        credentialRef: "restored-vps",
+      },
+      {
+        ...RESTART_INTENT,
+        runtimeId: "blocked-vps",
+        credentialRef: "blocked-vps",
+      },
+    ];
+
+    await expect(
+      desktopRehydrateSshRuntimes({
+        listIntents: async () => intents,
+        ensure: async (runtimeId) => {
+          if (runtimeId === "restored-vps") restored.add(runtimeId);
+          return restored.has(runtimeId);
+        },
+        isRunning: (runtimeId) => restored.has(runtimeId),
+        getLastError: (runtimeId) => errors.get(runtimeId) ?? null,
+      }),
+    ).resolves.toEqual({
+      restored: ["restored-vps"],
+      blocked: [
+        {
+          runtimeId: "blocked-vps",
+          error:
+            "The trusted SSH host fingerprint no longer matches this runtime.",
+        },
+      ],
+    });
+  });
+
+  it("returns the public blocked reason after an exited SSH tunnel cannot rehydrate", async () => {
+    const exitedChild = fakeTunnelChild();
+    exitedChild.exitCode = 255;
+    const exitedTunnel = await createFakeTunnel(
+      exitedChild as unknown as ChildProcess,
+    );
+    let tunnel: typeof exitedTunnel | undefined = exitedTunnel;
+    const ensure = vi.fn(async () => false);
+    const deleteTunnel = vi.fn(() => {
+      tunnel = undefined;
+    });
+
+    await expect(
+      desktopGetSshRuntimeStatus(
+        { runtimeId: "vps" },
+        {
+          getTunnel: () => tunnel,
+          deleteTunnel,
+          ensure,
+          getLastError: () =>
+            "The SSH identity file is unavailable. Restore it and reconnect manually.",
+        },
+      ),
+    ).resolves.toEqual({
+      running: false,
+      localPort: null,
+      startedAt: null,
+      reconnectState: "blocked",
+      lastError:
+        "The SSH identity file is unavailable. Restore it and reconnect manually.",
+    });
+    expect(deleteTunnel).toHaveBeenCalledWith("vps");
+    expect(ensure).toHaveBeenCalledWith("vps");
+    await fs.rm(exitedTunnel.tempDir, { force: true, recursive: true });
   });
 });
