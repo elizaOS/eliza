@@ -6,7 +6,16 @@
  * participant rows automatically.
  */
 import { sql } from "drizzle-orm";
-import { foreignKey, index, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import {
+  foreignKey,
+  index,
+  integer,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from "drizzle-orm/pg-core";
 import { agentTable } from "./agent";
 import { entityTable } from "./entity";
 import { roomTable } from "./room";
@@ -26,10 +35,21 @@ export const participantTable = pgTable(
       onDelete: "cascade",
     }),
     roomState: text("room_state"),
+    membershipState: text("membership_state"),
+    membershipSource: text("membership_source"),
+    membershipObservedAt: timestamp("membership_observed_at", { withTimezone: true }),
+    membershipExpiresAt: timestamp("membership_expires_at", { withTimezone: true }),
+    membershipCursor: text("membership_cursor"),
+    membershipGeneration: integer("membership_generation"),
   },
   (table) => [
     index("idx_participants_user").on(table.entityId),
     index("idx_participants_room").on(table.roomId),
+    uniqueIndex("participants_agent_room_entity_unique").on(
+      table.agentId,
+      table.roomId,
+      table.entityId
+    ),
     foreignKey({
       name: "fk_room",
       columns: [table.roomId],

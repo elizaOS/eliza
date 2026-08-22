@@ -51,7 +51,10 @@ import {
 	setInferenceModelProvider,
 } from "./inference-timing";
 import { createLogger } from "./logger";
-import { installRuntimePluginLifecycle } from "./plugin-lifecycle";
+import {
+	installRuntimePluginLifecycle,
+	registerRoomMembershipEvidencePublisherForActivePlugin,
+} from "./plugin-lifecycle";
 import { createCoreSecurityHooksPlugin } from "./plugins/core-security-hooks";
 import {
 	getNativeRuntimeFeaturePlugin,
@@ -257,6 +260,8 @@ import {
 	type ResolvedPipelineHook,
 	type ResponseSkeleton,
 	type Room,
+	type RoomMembershipEvidence,
+	type RoomMembershipEvidencePublisher,
 	type Route,
 	type RuntimeEventStorage,
 	type RuntimeSettings,
@@ -4766,6 +4771,23 @@ export class AgentRuntime implements IAgentRuntime {
 		const ids = await this.adapter.createRoomParticipants([entityId], roomId);
 		this.invalidateTurnEntityDetails();
 		return ids.length > 0;
+	}
+
+	registerRoomMembershipEvidencePublisher(
+		source: string,
+		accountId: string,
+	): RoomMembershipEvidencePublisher {
+		return registerRoomMembershipEvidencePublisherForActivePlugin(
+			this,
+			source,
+			accountId,
+		);
+	}
+
+	async getCurrentRoomMemberships(
+		entityId: UUID,
+	): Promise<RoomMembershipEvidence[]> {
+		return this.adapter.getCurrentRoomMemberships(entityId);
 	}
 
 	async createRoomParticipants(

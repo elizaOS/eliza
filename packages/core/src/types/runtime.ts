@@ -29,7 +29,13 @@ import type {
 	Provider,
 	StreamChunkCallback,
 } from "./components";
-import type { IDatabaseAdapter, LogBody, PatchOp } from "./database";
+import type {
+	IDatabaseAdapter,
+	LogBody,
+	PatchOp,
+	RoomMembershipEvidence,
+	RoomMembershipEvidencePublisher,
+} from "./database";
 import type {
 	Component,
 	Entity,
@@ -558,6 +564,7 @@ type RuntimeDatabaseAdapterSurface = Omit<
 	| "updateDocumentDirectGrants"
 	| "replaceDocumentRevision"
 	| "deleteDocumentWithSnapshot"
+	| "updateRoomMembershipEvidence"
 >;
 
 export interface IAgentRuntime extends RuntimeDatabaseAdapterSurface {
@@ -1313,6 +1320,11 @@ export interface IAgentRuntime extends RuntimeDatabaseAdapterSurface {
 		worldId,
 	}: Room): Promise<UUID>;
 	addParticipant(entityId: UUID, roomId: UUID): Promise<boolean>;
+	registerRoomMembershipEvidencePublisher(
+		source: string,
+		accountId: string,
+	): RoomMembershipEvidencePublisher;
+	getCurrentRoomMemberships(entityId: UUID): Promise<RoomMembershipEvidence[]>;
 	getParticipantsForRoom(roomId: UUID): Promise<UUID[]>;
 	getParticipantUserState(
 		roomId: UUID,

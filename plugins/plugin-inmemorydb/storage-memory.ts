@@ -3,6 +3,7 @@ import type { IStorage } from "./types";
 
 export class MemoryStorage implements IStorage {
   private collections: Map<string, Map<string, unknown>> = new Map();
+  private readonly operationTails = new Map<string, Promise<void>>();
   private ready = false;
 
   async init(): Promise<void> {
@@ -107,6 +108,25 @@ export class MemoryStorage implements IStorage {
   async clear(): Promise<void> {
     this.assertReady();
     this.collections.clear();
+  }
+
+  async runExclusive<T>(key: string, operation: () => Promise<T>): Promise<T> {
+    const previous = this.operationTails.get(key) ?? Promise.resolve();
+    let release: () => void = () => undefined;
+    const current = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const tail = previous.then(() => current);
+    this.operationTails.set(key, tail);
+    await previous;
+    try {
+      return await operation();
+    } finally {
+      release();
+      if (this.operationTails.get(key) === tail) {
+        this.operationTails.delete(key);
+      }
+    }
   }
 
   async applyBatch(batch: {

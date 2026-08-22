@@ -18,6 +18,8 @@ export interface IStorage {
     predicate?: (item: T) => boolean
   ): Promise<number>;
   clear(): Promise<void>;
+  /** Serializes one named operation across every adapter sharing this storage. */
+  runExclusive<T>(key: string, operation: () => Promise<T>): Promise<T>;
   /** Applies one collection mutation without exposing intermediate state. */
   applyBatch?(batch: {
     collection: string;

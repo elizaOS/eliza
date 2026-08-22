@@ -4,11 +4,21 @@ A pure in-memory, ephemeral database adapter for elizaOS. All data is completely
 
 Intended for tests, stateless deployments, prototyping, and scenarios where zero setup and zero persistence are the goal. Not suitable for production agents that need to remember past interactions.
 
-Custom `IStorage` implementations must provide `applyBatch` to support document
-updates. The adapter fails closed when that primitive is absent because a
+Custom `IStorage` implementations must provide `applyBatch` for atomic document
+updates and `runExclusive` for authorization serialization across every adapter
+sharing that storage. The adapter fails closed when either primitive is absent because a
 parent document and all fragments of its new revision must become visible
 together. Replacement fragment IDs must be fresh and cannot reuse IDs from the
 committed generation.
+
+Room membership is also fail-closed: participant records are associations, not
+grants. Direct plugins publish generation-fenced evidence through a source-bound
+capability that derives account provenance, and only a fresh positive
+observation is returned as a current room entitlement. Document operations
+rebind every supplied room id to that stored current evidence before applying
+visibility, so a forged `requesterRoomIds` array grants nothing. Participant
+evidence and its authorization lock are agent-scoped even when multiple adapters
+share the process-global storage instance.
 
 ## Installation
 

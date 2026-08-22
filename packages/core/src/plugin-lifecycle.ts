@@ -25,9 +25,11 @@
  * permission bypass, #12089).
  */
 import { unregisterConnectorSourceMetadataOwner } from "./connectors";
+import { ElizaError } from "./errors";
 import { roleRank } from "./runtime/context-gates";
 import type { ContextRegistry } from "./runtime/context-registry";
 import type { AgentContext, RoleGate, RoleGateRole } from "./types/contexts";
+import type { RoomMembershipEvidencePublisher } from "./types/database";
 import type { RegisteredEvaluator } from "./types/evaluator";
 import type { ModelRegistrationMetadata } from "./types/model";
 import type {
@@ -40,6 +42,7 @@ import type {
 import type { IAgentRuntime } from "./types/runtime";
 import type { Service, ServiceTypeName } from "./types/service";
 import type { ShortcutDefinition } from "./types/shortcut";
+import { stringToUuid } from "./utils";
 import {
 	lookupProviderCatalogContexts,
 	resolveActionContexts,
@@ -200,6 +203,36 @@ const pluginRegistrationContext =
 	createAsyncContextStorage<RuntimePluginRegistrationCapture>();
 const pluginServiceStartContext =
 	createAsyncContextStorage<RuntimePluginServiceStartCapture>();
+
+interface MembershipPublisherLease {
+	revoked: boolean;
+	inFlight: Set<Promise<unknown>>;
+}
+
+const membershipPublisherLeases = new WeakMap<
+	PluginOwnership,
+	MembershipPublisherLease
+>();
+
+function getMembershipPublisherLease(
+	ownership: PluginOwnership,
+): MembershipPublisherLease {
+	let lease = membershipPublisherLeases.get(ownership);
+	if (!lease) {
+		lease = { revoked: false, inFlight: new Set() };
+		membershipPublisherLeases.set(ownership, lease);
+	}
+	return lease;
+}
+
+async function revokeAndDrainMembershipPublishers(
+	ownership: PluginOwnership,
+): Promise<void> {
+	const lease = membershipPublisherLeases.get(ownership);
+	if (!lease) return;
+	lease.revoked = true;
+	await Promise.allSettled([...lease.inFlight]);
+}
 const serviceClassOwners = new WeakMap<RuntimeServiceClass, string>();
 
 function getServiceClassLabel(serviceClass: RuntimeServiceClass): string {
@@ -254,6 +287,103 @@ function getPluginOwnershipStore(
 		runtime.__elizaPluginOwnership = new Map();
 	}
 	return runtime.__elizaPluginOwnership;
+}
+
+/**
+ * Issues a source-bound membership publisher only to the direct plugin whose
+ * init is currently executing. The returned capability remains valid only
+ * while that exact plugin ownership record is installed.
+ */
+export function registerRoomMembershipEvidencePublisherForActivePlugin(
+	runtime: IAgentRuntime,
+	source: string,
+	accountIdInput: string,
+): RoomMembershipEvidencePublisher {
+	const runtimeWithLifecycle = runtime as RuntimeWithPluginLifecycle;
+	const capture = pluginRegistrationContext.getStore();
+	if (!capture) {
+		throw new ElizaError(
+			"Room membership publishers may only be registered during plugin init",
+			{ code: "ROOM_MEMBERSHIP_PUBLISHER_REGISTRATION_FORBIDDEN" },
+		);
+	}
+	const plugin = capture.ownership.plugin;
+	if (plugin.mode === "remote") {
+		throw new ElizaError(
+			"Remote plugins cannot publish room membership evidence",
+			{
+				code: "ROOM_MEMBERSHIP_PUBLISHER_REGISTRATION_FORBIDDEN",
+				context: { plugin: plugin.name },
+			},
+		);
+	}
+	const requested = source.trim().toLowerCase();
+	const definition = plugin.connectorSources?.find((candidate) => {
+		const declared = candidate.source.trim().toLowerCase();
+		return (
+			requested === declared ||
+			(candidate.aliases ?? []).some(
+				(alias) => alias.trim().toLowerCase() === requested,
+			)
+		);
+	});
+	if (!definition) {
+		throw new ElizaError("Plugin does not own the requested connector source", {
+			code: "ROOM_MEMBERSHIP_PUBLISHER_SOURCE_FORBIDDEN",
+			context: { plugin: plugin.name, source: requested },
+		});
+	}
+	const canonicalSource = definition.source.trim().toLowerCase();
+	const accountId = accountIdInput.trim();
+	if (!accountId || accountId.length > 256) {
+		throw new ElizaError(
+			"Membership evidence account id must contain 1 to 256 characters",
+			{
+				code: "ROOM_MEMBERSHIP_PUBLISHER_ACCOUNT_INVALID",
+				context: { plugin: plugin.name, source: canonicalSource },
+			},
+		);
+	}
+	const ownedRoomSources = [
+		definition.source,
+		...(definition.aliases ?? []),
+	].map((value) => value.trim().toLowerCase());
+	const ownership = capture.ownership;
+	const lease = getMembershipPublisherLease(ownership);
+	const publisher: RoomMembershipEvidencePublisher = {
+		source: canonicalSource,
+		accountId,
+		async publish(update) {
+			const installedOwnership = getPluginOwnershipStore(
+				runtimeWithLifecycle,
+			).get(plugin.name);
+			if (installedOwnership !== ownership || lease.revoked) {
+				throw new ElizaError("Room membership publisher is no longer active", {
+					code: "ROOM_MEMBERSHIP_PUBLISHER_REVOKED",
+					context: { plugin: plugin.name, source: canonicalSource },
+				});
+			}
+			const operation = runtime.adapter.updateRoomMembershipEvidence({
+				evidence: {
+					...update.evidence,
+					source: `transport:${canonicalSource}.${stringToUuid(accountId)}`,
+				},
+				expectedGeneration: update.expectedGeneration,
+				authority: {
+					agentId: runtime.agentId,
+					connectorSources: ownedRoomSources,
+					connectorAccountId: accountId,
+				},
+			});
+			lease.inFlight.add(operation);
+			try {
+				return await operation;
+			} finally {
+				lease.inFlight.delete(operation);
+			}
+		},
+	};
+	return Object.freeze(publisher);
 }
 
 function getOwnershipTarget(
@@ -790,6 +920,7 @@ async function teardownPluginOwnership(
 			`Plugin "${ownership.pluginName}" provides a database adapter and requires a runtime reload`,
 		);
 	}
+	await revokeAndDrainMembershipPublishers(ownership);
 
 	const errors: Error[] = [];
 	const lifecyclePlugin = ownership.registeredPlugin ?? ownership.plugin;

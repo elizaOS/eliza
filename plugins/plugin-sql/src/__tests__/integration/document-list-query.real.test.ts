@@ -15,12 +15,12 @@ import {
   type UUID,
   type World,
 } from "@elizaos/core";
-import { sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { v4 } from "uuid";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { PgDatabaseAdapter } from "../../pg/adapter";
 import type { PgliteDatabaseAdapter } from "../../pglite/adapter";
-import { embeddingTable, memoryTable } from "../../schema";
+import { embeddingTable, memoryTable, participantTable } from "../../schema";
 import type { DrizzleDatabase } from "../../types";
 import { createIsolatedTestDatabase } from "../test-helpers";
 
@@ -79,6 +79,20 @@ describe("document list query (real SQL parity)", () => {
     ]);
     await adapter.addParticipant(REQUESTER_ID, roomId);
     await adapter.addParticipant(OTHER_ENTITY_ID, roomId);
+    const observedAt = Date.now();
+    const membership = await adapter.updateRoomMembershipEvidence({
+      evidence: {
+        entityId: REQUESTER_ID,
+        roomId,
+        source: "transport:test.00000000-0000-4000-8000-000000000999",
+        state: "member",
+        observedAt,
+        expiresAt: observedAt + 60_000,
+        generation: 1,
+      },
+      expectedGeneration: null,
+    });
+    if (membership.status !== "updated") throw new Error("SQL membership seed failed");
   }, 120_000);
 
   afterAll(async () => {
@@ -125,12 +139,84 @@ describe("document list query (real SQL parity)", () => {
   async function seedInMemory(documents: Memory[]): Promise<InMemoryDatabaseAdapter> {
     const inMemory = new InMemoryDatabaseAdapter();
     await inMemory.initialize();
+    await inMemory.createRoomParticipants([REQUESTER_ID], roomId);
+    const observedAt = Date.now();
+    const membership = await inMemory.updateRoomMembershipEvidence({
+      evidence: {
+        entityId: REQUESTER_ID,
+        roomId,
+        source: "transport:test.00000000-0000-4000-8000-000000000999",
+        state: "member",
+        observedAt,
+        expiresAt: observedAt + 60_000,
+        generation: 1,
+      },
+      expectedGeneration: null,
+    });
+    if (membership.status !== "updated") {
+      throw new Error("in-memory membership seed failed");
+    }
     await inMemory.createMemories(documents.map((memory) => ({ memory, tableName: "documents" })));
     return inMemory;
   }
 
   const ids = (memories: Memory[]): UUID[] =>
     memories.map((memory) => memory.id).filter((id): id is UUID => typeof id === "string");
+
+  it("rejects caller-supplied room ids without current stored evidence", async () => {
+    await seedSql([document(99)]);
+    await expect(
+      adapter.queryDocuments({
+        agentId,
+        requesterEntityId: OTHER_ENTITY_ID,
+        requesterRoomIds: [roomId],
+        requesterRole: "USER",
+        limit: 10,
+        offset: 0,
+      })
+    ).resolves.toMatchObject({ documents: [], totalVisible: 0 });
+  });
+
+  it("fails closed when a current-looking membership row is malformed", async () => {
+    const db = adapter.getDatabase() as DrizzleDatabase;
+    await seedSql([document(100)]);
+    await db
+      .update(participantTable)
+      .set({ membershipSource: "caller-forged" })
+      .where(
+        and(
+          eq(participantTable.agentId, agentId),
+          eq(participantTable.entityId, REQUESTER_ID),
+          eq(participantTable.roomId, roomId)
+        )
+      );
+
+    try {
+      await expect(
+        adapter.queryDocuments({
+          agentId,
+          requesterEntityId: REQUESTER_ID,
+          requesterRoomIds: [roomId],
+          requesterRole: "USER",
+          limit: 10,
+          offset: 0,
+        })
+      ).rejects.toMatchObject({ code: "ROOM_MEMBERSHIP_EVIDENCE_INVALID" });
+    } finally {
+      await db
+        .update(participantTable)
+        .set({
+          membershipSource: "transport:test.00000000-0000-4000-8000-000000000999",
+        })
+        .where(
+          and(
+            eq(participantTable.agentId, agentId),
+            eq(participantTable.entityId, REQUESTER_ID),
+            eq(participantTable.roomId, roomId)
+          )
+        );
+    }
+  });
 
   it("keeps entityId as isolation context instead of a row predicate", async () => {
     const documents = [document(1), document(2, { entityId: OTHER_ENTITY_ID })];

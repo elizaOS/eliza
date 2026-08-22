@@ -160,7 +160,17 @@ function buildRuntime(opts: { hasEmbedding: boolean; fragments?: Memory[] }) {
 		}),
 		searchMemories: vi.fn(async (_params: unknown) => fragments),
 		getMemories: vi.fn(async (_params: unknown) => fragments),
-		getRoomsForParticipants: vi.fn(async () => ["room-1" as UUID]),
+		getCurrentRoomMemberships: vi.fn(async (entityId: UUID) => [
+			{
+				entityId,
+				roomId: "room-1" as UUID,
+				source: "transport:test.00000000-0000-4000-8000-000000000999",
+				state: "member" as const,
+				observedAt: 1,
+				expiresAt: Number.MAX_SAFE_INTEGER,
+				generation: 1,
+			},
+		]),
 		getRoom: vi.fn(async () => ({
 			id: "room-1" as UUID,
 			agentId,

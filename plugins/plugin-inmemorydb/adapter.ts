@@ -32,12 +32,15 @@ import {
   type DocumentListQueryParams,
   type DocumentListQueryResult,
   type DocumentMutationResult,
+  type DocumentRequesterContext,
   type DocumentRevisionReplaceParams,
   documentMutationSnapshotMatches,
+  documentRoleHasGlobalVisibility,
   ElizaError,
   type EntitiesForRoomsResult,
   type Entity,
   type IDatabaseAdapter,
+  isCurrentRoomMembershipEvidence,
   isDocumentVisibleToRequester,
   type JsonValue,
   type Log,
@@ -64,12 +67,18 @@ import {
   queryDocumentsInMemory,
   type Relationship,
   type Room,
+  type RoomMembershipEvidence,
+  type RoomMembershipEvidenceUpdate,
+  type RoomMembershipEvidenceUpdateResult,
   rankMessageSearch,
   type Task,
   type UUID,
   validateDocumentDirectGrantEntityIds,
   validateDocumentRevisionReplacement,
   validateQueryEntitiesPagination,
+  validateRoomMembershipEvidenceAuthority,
+  validateRoomMembershipEvidenceSuccessor,
+  validateRoomMembershipEvidenceUpdate,
   type World,
   withinCreatedAtWindow,
 } from "@elizaos/core";
@@ -83,10 +92,12 @@ import { COLLECTIONS, type IStorage } from "./types";
 
 interface StoredParticipant {
   id: string;
+  agentId: UUID;
   entityId: string;
   roomId: string;
   userState?: ParticipantUserState;
   metadata?: Record<string, unknown>;
+  membershipEvidence?: RoomMembershipEvidence;
 }
 
 interface StoredMemory {
@@ -370,7 +381,6 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
   private embeddingDimension = 384;
   private ready = false;
   private readonly agentId: UUID;
-  private documentMutationTail: Promise<void> = Promise.resolve();
   private taskMutationTail: Promise<void> = Promise.resolve();
 
   constructor(storage: IStorage, agentId: UUID) {
@@ -470,24 +480,35 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
   // ── Entity CRUD ───────────────────────────────────────────────────────
 
   async createEntities(entities: Entity[]): Promise<UUID[]> {
-    const ids: UUID[] = [];
-    for (const entity of entities) {
-      const id = (entity.id ?? randomUUID()) as UUID;
-      await this.storage.set(COLLECTIONS.ENTITIES, id, { ...entity, id });
-      ids.push(id);
-    }
-    return ids;
+    return this.withAuthorizationOperationLock(async () => {
+      const ids: UUID[] = [];
+      for (const entity of entities) {
+        const id = (entity.id ?? randomUUID()) as UUID;
+        await this.assertTenantWriteAllowed(COLLECTIONS.ENTITIES, id, entity.agentId);
+        await this.storage.set(COLLECTIONS.ENTITIES, id, {
+          ...entity,
+          id,
+          agentId: this.agentId,
+        });
+        ids.push(id);
+      }
+      return ids;
+    });
   }
 
   async upsertEntities(entities: Entity[]): Promise<void> {
-    for (const entity of entities) {
-      if (!entity.id) continue;
-      const existing = await this.storage.get<Entity>(COLLECTIONS.ENTITIES, entity.id);
-      await this.storage.set(COLLECTIONS.ENTITIES, entity.id, {
-        ...(existing ?? {}),
-        ...entity,
-      });
-    }
+    return this.withAuthorizationOperationLock(async () => {
+      for (const entity of entities) {
+        if (!entity.id) continue;
+        await this.assertTenantWriteAllowed(COLLECTIONS.ENTITIES, entity.id, entity.agentId);
+        const existing = await this.storage.get<Entity>(COLLECTIONS.ENTITIES, entity.id);
+        await this.storage.set(COLLECTIONS.ENTITIES, entity.id, {
+          ...(existing ?? {}),
+          ...entity,
+          agentId: this.agentId,
+        });
+      }
+    });
   }
 
   async getEntitiesByIds(entityIds: UUID[]): Promise<Entity[]> {
@@ -500,21 +521,38 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
   }
 
   async updateEntities(entities: Entity[]): Promise<void> {
-    for (const entity of entities) {
-      if (!entity.id) continue;
-      const existing = await this.storage.get<Entity>(COLLECTIONS.ENTITIES, entity.id);
-      if (!existing) continue;
-      await this.storage.set(COLLECTIONS.ENTITIES, entity.id, {
-        ...existing,
-        ...entity,
-      });
-    }
+    return this.withAuthorizationOperationLock(async () => {
+      for (const entity of entities) {
+        if (!entity.id) continue;
+        await this.assertTenantWriteAllowed(COLLECTIONS.ENTITIES, entity.id, entity.agentId);
+        const existing = await this.storage.get<Entity>(COLLECTIONS.ENTITIES, entity.id);
+        if (!existing) continue;
+        await this.storage.set(COLLECTIONS.ENTITIES, entity.id, {
+          ...existing,
+          ...entity,
+          agentId: this.agentId,
+        });
+      }
+    });
   }
 
   async deleteEntities(entityIds: UUID[]): Promise<void> {
-    for (const id of entityIds) {
-      await this.storage.delete(COLLECTIONS.ENTITIES, id);
-    }
+    return this.withAuthorizationOperationLock(async () => {
+      const requested = new Set(entityIds);
+      const ownedEntities = await this.storage.getWhere<Entity>(
+        COLLECTIONS.ENTITIES,
+        (entity) =>
+          entity.agentId === this.agentId && entity.id !== undefined && requested.has(entity.id)
+      );
+      const ownedIds = new Set(ownedEntities.map((entity) => entity.id as UUID));
+      if (ownedIds.size === 0) return;
+      await this.storage.deleteWhere<StoredParticipant>(
+        COLLECTIONS.PARTICIPANTS,
+        (participant) =>
+          participant.agentId === this.agentId && ownedIds.has(participant.entityId as UUID)
+      );
+      for (const id of ownedIds) await this.storage.delete(COLLECTIONS.ENTITIES, id);
+    });
   }
 
   async getEntitiesForRooms(
@@ -525,7 +563,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     for (const roomId of roomIds) {
       const participants = await this.storage.getWhere<StoredParticipant>(
         COLLECTIONS.PARTICIPANTS,
-        (p) => p.roomId === roomId
+        (p) => p.agentId === this.agentId && p.roomId === roomId
       );
       const entityIds = [...new Set(participants.map((p) => p.entityId))] as UUID[];
       const entities = await this.getEntitiesByIds(entityIds);
@@ -774,51 +812,105 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
   // ── Memory CRUD ───────────────────────────────────────────────────────
 
   async queryDocuments(params: DocumentListQueryParams): Promise<DocumentListQueryResult> {
-    const memories = await this.storage.getWhere<StoredMemory>(
-      COLLECTIONS.MEMORIES,
-      (memory) =>
-        storedMemoryTableName(memory) === "documents" ||
-        storedMemoryTableName(memory) === "document_fragments"
-    );
-    return queryDocumentsInMemory(memories.map(toMemory), params);
+    return this.withAuthorizationOperationLock(async () => {
+      params = await this.bindCurrentDocumentRooms(params);
+      const memories = await this.storage.getWhere<StoredMemory>(
+        COLLECTIONS.MEMORIES,
+        (memory) =>
+          storedMemoryTableName(memory) === "documents" ||
+          storedMemoryTableName(memory) === "document_fragments"
+      );
+      return queryDocumentsInMemory(memories.map(toMemory), params);
+    });
   }
 
   async getDocument(params: DocumentGetQueryParams): Promise<Memory | null> {
-    const stored = await this.storage.get<StoredMemory>(COLLECTIONS.MEMORIES, params.documentId);
-    if (
-      !stored ||
-      storedMemoryTableName(stored) !== "documents" ||
-      stored.agentId !== params.agentId
-    ) {
-      return null;
-    }
-    const memory = toMemory(stored);
-    return isDocumentVisibleToRequester(memory, params) ? memory : null;
+    return this.withAuthorizationOperationLock(async () => {
+      params = await this.bindCurrentDocumentRooms(params);
+      const stored = await this.storage.get<StoredMemory>(COLLECTIONS.MEMORIES, params.documentId);
+      if (
+        !stored ||
+        storedMemoryTableName(stored) !== "documents" ||
+        stored.agentId !== params.agentId
+      ) {
+        return null;
+      }
+      const memory = toMemory(stored);
+      return isDocumentVisibleToRequester(memory, params) ? memory : null;
+    });
   }
 
   async queryDocumentFragments(params: DocumentFragmentQueryParams): Promise<Memory[]> {
-    const memories = await this.storage.getWhere<StoredMemory>(
-      COLLECTIONS.MEMORIES,
-      (memory) =>
-        storedMemoryTableName(memory) === "documents" ||
-        storedMemoryTableName(memory) === "document_fragments"
-    );
-    return queryDocumentFragmentsInMemory(memories.map(toMemory), params, this.embeddingDimension);
+    return this.withAuthorizationOperationLock(async () => {
+      params = await this.bindCurrentDocumentRooms(params);
+      const memories = await this.storage.getWhere<StoredMemory>(
+        COLLECTIONS.MEMORIES,
+        (memory) =>
+          storedMemoryTableName(memory) === "documents" ||
+          storedMemoryTableName(memory) === "document_fragments"
+      );
+      return queryDocumentFragmentsInMemory(
+        memories.map(toMemory),
+        params,
+        this.embeddingDimension
+      );
+    });
   }
 
-  private withDocumentMutationLock<T>(operation: () => Promise<T>): Promise<T> {
-    const run = this.documentMutationTail.then(operation, operation);
-    this.documentMutationTail = run.then(
-      () => undefined,
-      () => undefined
+  private withAuthorizationOperationLock<T>(operation: () => Promise<T>): Promise<T> {
+    return this.storage.runExclusive("authorization", operation);
+  }
+
+  private async assertTenantWriteAllowed(
+    collection: typeof COLLECTIONS.ENTITIES | typeof COLLECTIONS.ROOMS,
+    id: UUID,
+    suppliedAgentId: UUID | undefined
+  ): Promise<void> {
+    const existing = await this.storage.get<{ agentId?: UUID }>(collection, id);
+    if (
+      suppliedAgentId !== this.agentId ||
+      (existing !== null && existing.agentId !== this.agentId)
+    ) {
+      throw new ElizaError("Shared in-memory record belongs to another agent", {
+        code: "INMEMORY_TENANT_FORBIDDEN",
+        context: { collection, id, agentId: this.agentId },
+      });
+    }
+  }
+
+  private async deleteRoomsWithoutAuthorizationLock(roomIds: UUID[]): Promise<void> {
+    if (roomIds.length === 0) return;
+    const requested = new Set(roomIds);
+    const persistedRooms = await this.storage.getWhere<Room>(
+      COLLECTIONS.ROOMS,
+      (room) => room.id !== undefined && requested.has(room.id as UUID)
     );
-    return run;
+    const foreignRoomIds = new Set(
+      persistedRooms.filter((room) => room.agentId !== this.agentId).map((room) => room.id as UUID)
+    );
+    const ownedRoomIds = new Set([...requested].filter((roomId) => !foreignRoomIds.has(roomId)));
+    if (ownedRoomIds.size === 0) return;
+    const memories = await this.storage.getWhere<StoredMemory>(
+      COLLECTIONS.MEMORIES,
+      (memory) => memory.agentId === this.agentId && ownedRoomIds.has(memory.roomId as UUID)
+    );
+    const memoryIds = memories
+      .map((memory) => memory.id)
+      .filter((id): id is UUID => id !== undefined);
+    for (const id of ownedRoomIds) await this.storage.delete(COLLECTIONS.ROOMS, id);
+    await this.storage.deleteWhere<StoredParticipant>(
+      COLLECTIONS.PARTICIPANTS,
+      (participant) =>
+        participant.agentId === this.agentId && ownedRoomIds.has(participant.roomId as UUID)
+    );
+    await this.deleteMemories(memoryIds);
   }
 
   async compareAndSwapDocument(
     params: DocumentCompareAndSwapParams
   ): Promise<DocumentMutationResult> {
-    return this.withDocumentMutationLock(async () => {
+    return this.withAuthorizationOperationLock(async () => {
+      params = await this.bindCurrentDocumentRooms(params);
       const stored = await this.storage.get<StoredMemory>(COLLECTIONS.MEMORIES, params.documentId);
       if (
         !stored ||
@@ -850,7 +942,8 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     params: DocumentDirectGrantUpdateParams
   ): Promise<DocumentMutationResult> {
     const directGrantEntityIds = validateDocumentDirectGrantEntityIds(params.directGrantEntityIds);
-    return this.withDocumentMutationLock(async () => {
+    return this.withAuthorizationOperationLock(async () => {
+      params = await this.bindCurrentDocumentRooms(params);
       const stored = await this.storage.get<StoredMemory>(COLLECTIONS.MEMORIES, params.documentId);
       if (
         !stored ||
@@ -892,7 +985,8 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     params: DocumentRevisionReplaceParams
   ): Promise<DocumentMutationResult> {
     validateDocumentRevisionReplacement(params);
-    return this.withDocumentMutationLock(async () => {
+    return this.withAuthorizationOperationLock(async () => {
+      params = await this.bindCurrentDocumentRooms(params);
       const stored = await this.storage.get<StoredMemory>(COLLECTIONS.MEMORIES, params.documentId);
       if (
         !stored ||
@@ -983,7 +1077,8 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
   }
 
   async deleteDocumentWithSnapshot(params: DocumentDeleteParams): Promise<DocumentMutationResult> {
-    return this.withDocumentMutationLock(async () => {
+    return this.withAuthorizationOperationLock(async () => {
+      params = await this.bindCurrentDocumentRooms(params);
       const stored = await this.storage.get<StoredMemory>(COLLECTIONS.MEMORIES, params.documentId);
       if (
         !stored ||
@@ -1016,6 +1111,20 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
       await Promise.all(fragmentIds.map((id) => this.vectorIndex.remove(id)));
       return { status: "deleted", document: existing };
     });
+  }
+
+  private async bindCurrentDocumentRooms<T extends DocumentRequesterContext>(
+    params: T
+  ): Promise<T> {
+    if (documentRoleHasGlobalVisibility(params.requesterRole)) return params;
+    const requested = new Set(params.requesterRoomIds);
+    const evidence = await this.getCurrentRoomMemberships(params.requesterEntityId);
+    return {
+      ...params,
+      requesterRoomIds: evidence
+        .map(({ roomId }) => roomId)
+        .filter((roomId) => requested.has(roomId)),
+    };
   }
 
   async getMemories(params: {
@@ -1222,7 +1331,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     entityId?: UUID;
     accessContext?: AccessContext;
   }): Promise<Memory[]> {
-    return this.withDocumentMutationLock(async () => {
+    return this.withAuthorizationOperationLock(async () => {
       const threshold = params.match_threshold ?? 0.5;
       const limit = params.count ?? params.limit ?? 10;
 
@@ -1534,13 +1643,19 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
   }
 
   async deleteRoomsByWorldIds(worldIds: UUID[]): Promise<void> {
-    if (worldIds.length === 0) return;
-    const worldSet = new Set(worldIds);
-    const rooms = await this.storage.getWhere<Room>(COLLECTIONS.ROOMS, (r) =>
-      r.worldId ? worldSet.has(r.worldId as UUID) : false
-    );
-    const roomIds = rooms.map((r) => r.id).filter((id): id is UUID => id !== undefined);
-    await this.deleteRooms(roomIds);
+    return this.withAuthorizationOperationLock(async () => {
+      if (worldIds.length === 0) return;
+      const worldSet = new Set(worldIds);
+      const rooms = await this.storage.getWhere<Room>(
+        COLLECTIONS.ROOMS,
+        (room) =>
+          room.agentId === this.agentId &&
+          room.worldId !== undefined &&
+          worldSet.has(room.worldId as UUID)
+      );
+      const roomIds = rooms.map((room) => room.id).filter((id): id is UUID => id !== undefined);
+      await this.deleteRoomsWithoutAuthorizationLock(roomIds);
+    });
   }
 
   async getRoomsForParticipants(entityIds: UUID[]): Promise<UUID[]> {
@@ -1548,7 +1663,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     const entitySet = new Set(entityIds);
     const participants = await this.storage.getWhere<StoredParticipant>(
       COLLECTIONS.PARTICIPANTS,
-      (p) => entitySet.has(p.entityId as UUID)
+      (p) => p.agentId === this.agentId && entitySet.has(p.entityId as UUID)
     );
     return [...new Set(participants.map((p) => p.roomId as UUID))];
   }
@@ -1566,97 +1681,157 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
   }
 
   async createRooms(rooms: Room[]): Promise<UUID[]> {
-    const ids: UUID[] = [];
-    for (const room of rooms) {
-      const id = room.id as UUID;
-      await this.storage.set(COLLECTIONS.ROOMS, id, { ...room, id });
-      ids.push(id);
-    }
-    return ids;
+    return this.withAuthorizationOperationLock(async () => {
+      const ids: UUID[] = [];
+      for (const room of rooms) {
+        const id = room.id as UUID;
+        await this.assertTenantWriteAllowed(COLLECTIONS.ROOMS, id, room.agentId);
+        await this.storage.set(COLLECTIONS.ROOMS, id, {
+          ...room,
+          id,
+          agentId: this.agentId,
+        });
+        ids.push(id);
+      }
+      return ids;
+    });
   }
 
   async upsertRooms(rooms: Room[]): Promise<void> {
-    for (const room of rooms) {
-      const id = room.id as UUID;
-      const existing = await this.storage.get<Room>(COLLECTIONS.ROOMS, id);
-      await this.storage.set(COLLECTIONS.ROOMS, id, {
-        ...(existing ?? {}),
-        ...room,
-        id,
-      });
-    }
+    return this.withAuthorizationOperationLock(async () => {
+      for (const room of rooms) {
+        const id = room.id as UUID;
+        await this.assertTenantWriteAllowed(COLLECTIONS.ROOMS, id, room.agentId);
+        const existing = await this.storage.get<Room>(COLLECTIONS.ROOMS, id);
+        await this.storage.set(COLLECTIONS.ROOMS, id, {
+          ...(existing ?? {}),
+          ...room,
+          id,
+          agentId: this.agentId,
+        });
+      }
+    });
   }
 
   async updateRooms(rooms: Room[]): Promise<void> {
-    for (const room of rooms) {
-      if (!room.id) continue;
-      const existing = await this.storage.get<Room>(COLLECTIONS.ROOMS, room.id);
-      if (!existing) continue;
-      await this.storage.set(COLLECTIONS.ROOMS, room.id, {
-        ...existing,
-        ...room,
-      });
-    }
+    return this.withAuthorizationOperationLock(async () => {
+      for (const room of rooms) {
+        if (!room.id) continue;
+        await this.assertTenantWriteAllowed(COLLECTIONS.ROOMS, room.id, room.agentId);
+        const existing = await this.storage.get<Room>(COLLECTIONS.ROOMS, room.id);
+        if (!existing) continue;
+        await this.storage.set(COLLECTIONS.ROOMS, room.id, {
+          ...existing,
+          ...room,
+          agentId: this.agentId,
+        });
+      }
+    });
   }
 
   async deleteRooms(roomIds: UUID[]): Promise<void> {
-    if (roomIds.length === 0) return;
-    const set = new Set(roomIds);
-    const memories = await this.storage.getWhere<StoredMemory>(COLLECTIONS.MEMORIES, (m) =>
-      set.has(m.roomId as UUID)
-    );
-    const memoryIds = memories
-      .map((memory) => memory.id)
-      .filter((id): id is UUID => id !== undefined);
-    for (const id of roomIds) {
-      await this.storage.delete(COLLECTIONS.ROOMS, id);
-    }
-    // Cascade: drop participants and memories belonging to these rooms.
-    await this.storage.deleteWhere<StoredParticipant>(COLLECTIONS.PARTICIPANTS, (p) =>
-      set.has(p.roomId as UUID)
-    );
-    await this.deleteMemories(memoryIds);
+    return this.withAuthorizationOperationLock(async () => {
+      await this.deleteRoomsWithoutAuthorizationLock(roomIds);
+    });
   }
 
   // ── Participant CRUD ──────────────────────────────────────────────────
 
   async createRoomParticipants(entityIds: UUID[], roomId: UUID): Promise<UUID[]> {
-    const ids: UUID[] = [];
-    for (const entityId of entityIds) {
-      const existing = await this.storage.getWhere<StoredParticipant>(
-        COLLECTIONS.PARTICIPANTS,
-        (p) => p.entityId === entityId && p.roomId === roomId
-      );
-      const existingParticipant = existing[0];
-      if (existingParticipant) {
-        ids.push(existingParticipant.id as UUID);
-        continue;
+    return this.withAuthorizationOperationLock(async () => {
+      const ids: UUID[] = [];
+      for (const entityId of entityIds) {
+        const existing = await this.storage.getWhere<StoredParticipant>(
+          COLLECTIONS.PARTICIPANTS,
+          (p) => p.agentId === this.agentId && p.entityId === entityId && p.roomId === roomId
+        );
+        const existingParticipant = existing[0];
+        if (existingParticipant) {
+          ids.push(existingParticipant.id as UUID);
+          continue;
+        }
+        const id = randomUUID() as UUID;
+        const participant: StoredParticipant = { id, agentId: this.agentId, entityId, roomId };
+        await this.storage.set(COLLECTIONS.PARTICIPANTS, id, participant);
+        ids.push(id);
       }
-      const id = randomUUID() as UUID;
-      const participant: StoredParticipant = { id, entityId, roomId };
-      await this.storage.set(COLLECTIONS.PARTICIPANTS, id, participant);
-      ids.push(id);
-    }
-    return ids;
+      return ids;
+    });
+  }
+
+  async updateRoomMembershipEvidence(
+    update: RoomMembershipEvidenceUpdate
+  ): Promise<RoomMembershipEvidenceUpdateResult> {
+    validateRoomMembershipEvidenceUpdate(update);
+    const operation = async (): Promise<RoomMembershipEvidenceUpdateResult> => {
+      const { entityId, roomId } = update.evidence;
+      if (update.authority) {
+        if (update.authority.agentId !== this.agentId) {
+          throw new Error("Membership publisher authority is outside this adapter agent");
+        }
+        const [room, entity] = await Promise.all([
+          this.storage.get<Room>(COLLECTIONS.ROOMS, roomId),
+          this.storage.get<Entity>(COLLECTIONS.ENTITIES, entityId),
+        ]);
+        validateRoomMembershipEvidenceAuthority(update.authority, room, entity);
+      }
+      const matches = await this.storage.getWhere<StoredParticipant>(
+        COLLECTIONS.PARTICIPANTS,
+        (participant) =>
+          participant.agentId === this.agentId &&
+          participant.entityId === entityId &&
+          participant.roomId === roomId
+      );
+      const participant = matches[0];
+      if (!participant) return { status: "not_found", current: null };
+      const current = participant.membershipEvidence ?? null;
+      if ((current?.generation ?? null) !== update.expectedGeneration) {
+        return { status: "conflict", current };
+      }
+      validateRoomMembershipEvidenceSuccessor(current, update.evidence);
+      const evidence = structuredClone(update.evidence);
+      await this.storage.set(COLLECTIONS.PARTICIPANTS, participant.id, {
+        ...participant,
+        membershipEvidence: evidence,
+      });
+      return { status: "updated", evidence: structuredClone(evidence) };
+    };
+    return this.withAuthorizationOperationLock(operation);
+  }
+
+  async getCurrentRoomMemberships(entityId: UUID): Promise<RoomMembershipEvidence[]> {
+    const participants = await this.storage.getWhere<StoredParticipant>(
+      COLLECTIONS.PARTICIPANTS,
+      (participant) => participant.agentId === this.agentId && participant.entityId === entityId
+    );
+    const now = Date.now();
+    return participants.flatMap((participant) => {
+      const evidence = participant.membershipEvidence;
+      return evidence && isCurrentRoomMembershipEvidence(evidence, now)
+        ? [structuredClone(evidence)]
+        : [];
+    });
   }
 
   async deleteParticipants(
     participants: Array<{ entityId: UUID; roomId: UUID }>
   ): Promise<boolean> {
-    let removed = false;
-    for (const { entityId, roomId } of participants) {
-      const matches = await this.storage.getWhere<StoredParticipant>(
-        COLLECTIONS.PARTICIPANTS,
-        (p) => p.entityId === entityId && p.roomId === roomId
-      );
-      for (const p of matches) {
-        if (p.id) {
-          await this.storage.delete(COLLECTIONS.PARTICIPANTS, p.id);
-          removed = true;
+    return this.withAuthorizationOperationLock(async () => {
+      let removed = false;
+      for (const { entityId, roomId } of participants) {
+        const matches = await this.storage.getWhere<StoredParticipant>(
+          COLLECTIONS.PARTICIPANTS,
+          (p) => p.agentId === this.agentId && p.entityId === entityId && p.roomId === roomId
+        );
+        for (const p of matches) {
+          if (p.id) {
+            await this.storage.delete(COLLECTIONS.PARTICIPANTS, p.id);
+            removed = true;
+          }
         }
       }
-    }
-    return removed;
+      return removed;
+    });
   }
 
   async updateParticipants(
@@ -1666,28 +1841,31 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
       updates: ParticipantUpdateFields;
     }>
   ): Promise<void> {
-    for (const { entityId, roomId, updates } of participants) {
-      const matches = await this.storage.getWhere<StoredParticipant>(
-        COLLECTIONS.PARTICIPANTS,
-        (p) => p.entityId === entityId && p.roomId === roomId
-      );
-      for (const p of matches) {
-        if (!p.id) continue;
-        const next: StoredParticipant = {
-          ...p,
-          userState: updates.roomState ?? p.userState,
-          metadata: { ...(p.metadata ?? {}), ...(updates.metadata ?? {}) },
-        };
-        await this.storage.set(COLLECTIONS.PARTICIPANTS, p.id, next);
+    return this.withAuthorizationOperationLock(async () => {
+      for (const { entityId, roomId, updates } of participants) {
+        const matches = await this.storage.getWhere<StoredParticipant>(
+          COLLECTIONS.PARTICIPANTS,
+          (p) => p.agentId === this.agentId && p.entityId === entityId && p.roomId === roomId
+        );
+        for (const participant of matches) {
+          if (!participant.id) continue;
+          const next: StoredParticipant = {
+            ...participant,
+            userState: updates.roomState ?? participant.userState,
+            metadata: { ...(participant.metadata ?? {}), ...(updates.metadata ?? {}) },
+          };
+          await this.storage.set(COLLECTIONS.PARTICIPANTS, participant.id, next);
+        }
       }
-    }
+    });
   }
 
   async getParticipantsForEntities(entityIds: UUID[]): Promise<Participant[]> {
     if (entityIds.length === 0) return [];
     const set = new Set(entityIds);
-    const stored = await this.storage.getWhere<StoredParticipant>(COLLECTIONS.PARTICIPANTS, (p) =>
-      set.has(p.entityId as UUID)
+    const stored = await this.storage.getWhere<StoredParticipant>(
+      COLLECTIONS.PARTICIPANTS,
+      (p) => p.agentId === this.agentId && set.has(p.entityId as UUID)
     );
     const participants: Participant[] = [];
     for (const p of stored) {
@@ -1702,7 +1880,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     for (const roomId of roomIds) {
       const stored = await this.storage.getWhere<StoredParticipant>(
         COLLECTIONS.PARTICIPANTS,
-        (p) => p.roomId === roomId
+        (p) => p.agentId === this.agentId && p.roomId === roomId
       );
       result.push({
         roomId,
@@ -1717,7 +1895,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     for (const { roomId, entityId } of pairs) {
       const matches = await this.storage.getWhere<StoredParticipant>(
         COLLECTIONS.PARTICIPANTS,
-        (p) => p.roomId === roomId && p.entityId === entityId
+        (p) => p.agentId === this.agentId && p.roomId === roomId && p.entityId === entityId
       );
       result.push(matches.length > 0);
     }
@@ -1731,7 +1909,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     for (const { roomId, entityId } of pairs) {
       const matches = await this.storage.getWhere<StoredParticipant>(
         COLLECTIONS.PARTICIPANTS,
-        (p) => p.roomId === roomId && p.entityId === entityId
+        (p) => p.agentId === this.agentId && p.roomId === roomId && p.entityId === entityId
       );
       const state = matches[0]?.userState ?? null;
       result.push(state);
@@ -1746,19 +1924,21 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
       state: ParticipantUserState;
     }>
   ): Promise<void> {
-    for (const { roomId, entityId, state } of updates) {
-      const matches = await this.storage.getWhere<StoredParticipant>(
-        COLLECTIONS.PARTICIPANTS,
-        (p) => p.roomId === roomId && p.entityId === entityId
-      );
-      for (const p of matches) {
-        if (!p.id) continue;
-        await this.storage.set(COLLECTIONS.PARTICIPANTS, p.id, {
-          ...p,
-          userState: state,
-        });
+    return this.withAuthorizationOperationLock(async () => {
+      for (const { roomId, entityId, state } of updates) {
+        const matches = await this.storage.getWhere<StoredParticipant>(
+          COLLECTIONS.PARTICIPANTS,
+          (p) => p.agentId === this.agentId && p.roomId === roomId && p.entityId === entityId
+        );
+        for (const participant of matches) {
+          if (!participant.id) continue;
+          await this.storage.set(COLLECTIONS.PARTICIPANTS, participant.id, {
+            ...participant,
+            userState: state,
+          });
+        }
       }
-    }
+    });
   }
 
   // ── Relationship CRUD ─────────────────────────────────────────────────

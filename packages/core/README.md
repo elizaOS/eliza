@@ -14,6 +14,18 @@ or by a current room ADMIN for global and user-private documents. Every grantee
 must be an entity in the current agent tenant. Invalid or duplicate grant arrays
 fail closed.
 
+Room membership is evidence-backed. A participant association alone grants
+nothing; only a direct plugin's source- and account-bound publisher can derive
+provenance on a fresh generation-fenced `member` observation and contribute its
+room to document authorization. The publisher verifies the room's persisted
+`metadata.connectorAccountId` in the same adapter transaction/lock that checks
+the participant and advances the generation fence. Publisher consumers cannot
+supply or switch provenance directly; the adapter CAS remains the trusted storage
+boundary for host code and tests. Transport observations have a hard 15-minute
+maximum TTL. Explicit leave, indeterminate, unsupported,
+unavailable, missing, and expired evidence suspend room access while preserving
+the association and observation for reconciliation.
+
 ## Key concepts
 
 - **AgentRuntime:** Central orchestrator for the agent lifecycle, plugin loading, and the message loop.

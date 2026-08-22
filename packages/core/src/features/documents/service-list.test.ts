@@ -7,6 +7,7 @@ import { InMemoryDatabaseAdapter } from "../../database/inMemoryAdapter";
 import { AgentRuntime } from "../../runtime";
 import {
 	type AccessContext,
+	ChannelType,
 	type Character,
 	type Memory,
 	MemoryType,
@@ -15,7 +16,7 @@ import {
 	type UUID,
 	type World,
 } from "../../types";
-import { DocumentService } from "./service";
+import { DocumentService, resolveDocumentRequester } from "./service";
 
 const AGENT_ID = "00000000-0000-0000-0000-00000000a9e7" as UUID;
 const OTHER_AGENT_ID = "00000000-0000-0000-0000-00000000b0b0" as UUID;
@@ -24,6 +25,27 @@ const OTHER_USER_ID = "00000000-0000-0000-0000-00000000face" as UUID;
 const ROOM_A = "00000000-0000-0000-0000-00000000d00d" as UUID;
 const ROOM_B = "00000000-0000-0000-0000-00000000d00e" as UUID;
 const WORLD_ID = "00000000-0000-0000-0000-00000000abcd" as UUID;
+
+async function grantCurrentMembership(
+	adapter: InMemoryDatabaseAdapter,
+	entityId: UUID,
+	roomId: UUID,
+): Promise<void> {
+	const observedAt = Date.now();
+	const result = await adapter.updateRoomMembershipEvidence({
+		evidence: {
+			entityId,
+			roomId,
+			source: "transport:test.00000000-0000-4000-8000-000000000999",
+			state: "member",
+			observedAt,
+			expiresAt: observedAt + 60_000,
+			generation: 1,
+		},
+		expectedGeneration: null,
+	});
+	if (result.status !== "updated") throw new Error("membership seed failed");
+}
 
 async function makeHarness(): Promise<{
 	adapter: InMemoryDatabaseAdapter;
@@ -42,8 +64,34 @@ async function makeHarness(): Promise<{
 		adapter,
 		logLevel: "fatal",
 	});
+	await adapter.createWorlds([
+		{
+			id: WORLD_ID,
+			agentId: AGENT_ID,
+			name: "Document test world",
+			metadata: { roles: { [USER_ID]: "USER" } },
+		} as World,
+	]);
+	await adapter.createRooms([
+		{
+			id: ROOM_A,
+			agentId: AGENT_ID,
+			worldId: WORLD_ID,
+			source: "test",
+			type: ChannelType.GROUP,
+		},
+		{
+			id: ROOM_B,
+			agentId: AGENT_ID,
+			worldId: WORLD_ID,
+			source: "test",
+			type: ChannelType.GROUP,
+		},
+	]);
 	await adapter.createRoomParticipants([AGENT_ID, USER_ID], ROOM_A);
 	await adapter.createRoomParticipants([AGENT_ID, USER_ID], ROOM_B);
+	await grantCurrentMembership(adapter, USER_ID, ROOM_A);
+	await grantCurrentMembership(adapter, USER_ID, ROOM_B);
 	return {
 		adapter,
 		runtime,
@@ -104,14 +152,13 @@ function userMessage(): Memory {
 describe("DocumentService list semantics", () => {
 	it("excludes room documents immediately after membership revocation", async () => {
 		const { adapter, runtime, service } = await makeHarness();
-		const revocationUserId =
-			"00000000-0000-0000-0000-00000000cafe" as UUID;
-		const revocationRoomId =
-			"00000000-0000-0000-0000-00000000da7a" as UUID;
+		const revocationUserId = "00000000-0000-0000-0000-00000000cafe" as UUID;
+		const revocationRoomId = "00000000-0000-0000-0000-00000000da7a" as UUID;
 		await adapter.createRoomParticipants(
 			[AGENT_ID, revocationUserId],
 			revocationRoomId,
 		);
+		await grantCurrentMembership(adapter, revocationUserId, revocationRoomId);
 		const roomDocument = documentMemory(700, { roomId: revocationRoomId });
 		await seedDocuments(runtime, [roomDocument]);
 		const accessContext = {
@@ -344,6 +391,14 @@ describe("DocumentService list semantics", () => {
 
 	it("composes visible pinned documents beyond the recent page without leaking private pins", async () => {
 		const { runtime, service } = await makeHarness();
+		expect(await runtime.getCurrentRoomMemberships(USER_ID)).toHaveLength(2);
+		expect(
+			await resolveDocumentRequester(runtime, userMessage()),
+		).toMatchObject({
+			entityId: USER_ID,
+			roomIds: expect.arrayContaining([ROOM_A, ROOM_B]),
+			role: "USER",
+		});
 		const documents = Array.from({ length: 126 }, (_, index) =>
 			documentMemory(index, { metadata: { pinned: index === 0 } }),
 		);
@@ -352,6 +407,9 @@ describe("DocumentService list semantics", () => {
 			metadata: { pinned: true, scope: "owner-private" },
 		});
 		await seedDocuments(runtime, [...documents, privatePinned]);
+		expect(
+			(await service.listDocumentsDetailed(userMessage())).documents,
+		).toHaveLength(25);
 
 		const composed = await service.composeProviderDocuments(userMessage(), {
 			limit: 25,
@@ -396,9 +454,9 @@ describe("DocumentService list semantics", () => {
 		const roomADocument = documentMemory(2);
 		const roomBDocument = documentMemory(3);
 		await seedDocuments(runtime, [roomADocument, roomBDocument]);
-		const getRoomsForParticipants = vi.spyOn(
+		const getCurrentRoomMemberships = vi.spyOn(
 			runtime,
-			"getRoomsForParticipants",
+			"getCurrentRoomMemberships",
 		);
 		vi.spyOn(runtime, "getRoom").mockResolvedValue({
 			id: ROOM_A,
@@ -438,7 +496,7 @@ describe("DocumentService list semantics", () => {
 			);
 			expect(result.totalVisible).toBe(2);
 		}
-		expect(getRoomsForParticipants).toHaveBeenCalledTimes(1);
+		expect(getCurrentRoomMemberships).toHaveBeenCalledTimes(1);
 	});
 
 	it("matches room-scoped RLS semantics and ignores non-document rows", async () => {
@@ -513,7 +571,7 @@ describe("DocumentService list semantics", () => {
 
 		await expect(
 			service.deleteDocument(hiddenDocument.id as UUID, userMessage()),
-		).rejects.toMatchObject({ code: "DOCUMENT_MUTATION_FORBIDDEN" });
+		).rejects.toMatchObject({ code: "DOCUMENT_NOT_FOUND" });
 		for (const memory of [foreignDocument, nonDocument]) {
 			await expect(
 				service.deleteDocument(memory.id as UUID, userMessage()),
@@ -564,7 +622,7 @@ describe("DocumentService list semantics", () => {
 
 	it("reports and throws a typed participant-room lookup failure", async () => {
 		const { runtime, service } = await makeHarness();
-		vi.spyOn(runtime, "getRoomsForParticipants").mockRejectedValue(
+		vi.spyOn(runtime, "getCurrentRoomMemberships").mockRejectedValue(
 			new Error("participant storage unavailable"),
 		);
 
