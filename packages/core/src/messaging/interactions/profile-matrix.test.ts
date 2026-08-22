@@ -7,10 +7,13 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
+	createFirstPartyInteractionProfile,
 	FIRST_PARTY_INTERACTION_CONNECTOR_AUDIT,
 	FIRST_PARTY_INTERACTION_CONNECTOR_EXCLUSIONS,
 	renderFirstPartyInteractionCapabilityMatrix,
+	resolveFirstPartyInteractionProfile,
 } from "./profile-catalog";
+import { INTERACTION_BLOCK_KINDS } from "./profiles";
 
 const repositoryRoot = path.resolve(import.meta.dirname, "../../../../..");
 
@@ -58,6 +61,59 @@ describe("first-party interaction capability matrix", () => {
 			),
 		].sort();
 		expect(await productionRegistrationPlugins()).toEqual(declared);
+	});
+
+	it("requires every audited source registration to expose a concrete resolver", async () => {
+		const pluginsRoot = path.join(repositoryRoot, "plugins");
+		for (const plugin of new Set(
+			FIRST_PARTY_INTERACTION_CONNECTOR_AUDIT.map((entry) => entry.plugin),
+		)) {
+			const expected = FIRST_PARTY_INTERACTION_CONNECTOR_AUDIT.filter(
+				(entry) => entry.plugin === plugin,
+			).length;
+			const files = await sourceFiles(path.join(pluginsRoot, plugin));
+			const sources = await Promise.all(
+				files.map((file) => fs.readFile(file, "utf8")),
+			);
+			const combined = sources.join("\n");
+			expect(
+				combined.match(/resolveInteractionProfile\s*:/g)?.length ?? 0,
+				`${plugin} must declare one resolver per audited source`,
+			).toBeGreaterThanOrEqual(expected);
+		}
+	});
+
+	it("materializes exhaustive behavior for every block kind and source", () => {
+		for (const entry of FIRST_PARTY_INTERACTION_CONNECTOR_AUDIT) {
+			const profile = createFirstPartyInteractionProfile({
+				source: entry.source,
+				accountId: "account",
+				targetKind: entry.targetKind,
+				targetId: "target",
+			});
+			expect(Object.keys(profile.blocks).sort()).toEqual(
+				[...INTERACTION_BLOCK_KINDS].sort(),
+			);
+		}
+	});
+
+	it("fails closed when trusted account or target identity is absent", () => {
+		expect(() =>
+			resolveFirstPartyInteractionProfile({
+				source: "gmail",
+				defaultAccountId: "",
+				defaultTargetKind: "email",
+				target: { source: "gmail", channelId: "user@example.test" },
+			}),
+		).toThrow(/trusted connector identity/i);
+		expect(() =>
+			resolveFirstPartyInteractionProfile({
+				source: "slack",
+				defaultAccountId: "default",
+				defaultTargetKind: "channel",
+				target: { source: "slack" },
+			}),
+		).toThrow(/stable provider identity/i);
 	});
 
 	it("keeps deliberate unsupported connectors visible and unregistered", async () => {

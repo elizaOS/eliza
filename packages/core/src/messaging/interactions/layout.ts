@@ -363,6 +363,26 @@ export function renderContentInteractionsAsPlainText(
 }
 
 /**
+ * Safe text projection for a connector delivery boundary. Deployment URLs are
+ * resolved from runtime settings, while typed out-of-band secret blocks remain
+ * links or an explicit unavailable notice and never become marker text.
+ */
+export function renderContentInteractionsForConnector(
+	runtime: { getSetting(key: string): unknown },
+	content: Pick<Content, "text" | "interactions"> | undefined | null,
+): { text: string; hadBlocks: boolean } {
+	const rawAppUrl =
+		runtime.getSetting("ELIZA_APP_URL") ??
+		runtime.getSetting("ELIZA_CLOUD_URL");
+	return renderContentInteractionsAsPlainText(
+		content,
+		buildInteractionUrlResolver(
+			typeof rawAppUrl === "string" ? rawAppUrl : undefined,
+		),
+	);
+}
+
+/**
  * Build the canonical link-out resolvers connectors pass to {@link toNeutralLayout}
  * so Telegram, Discord, and any other surface produce identical URLs for task
  * and navigate blocks. `appBaseUrl` is the deployment's app/dashboard origin

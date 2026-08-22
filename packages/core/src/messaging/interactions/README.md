@@ -137,11 +137,27 @@ specs are not persisted server-side), so `buildInteractionUrlResolver` resolves
 no URL for them and the layout degrades to the form's title/description plus a
 "Reply with your answer." invite. Secret-bearing input must never use a form —
 it goes through the sensitive-request flow, which has a real hosted page.
-Choice/followups round-trip works on **both** connectors:
+The exhaustive production inventory is generated in
+[`CAPABILITY_MATRIX.md`](./CAPABILITY_MATRIX.md). Discord, Slack, Telegram, and
+WhatsApp Cloud API declare the provider-native controls their adapters actually
+emit. Gmail, Google Chat, iMessage, Instagram, Matrix, WeChat, X DMs, and
+WhatsApp Baileys declare semantic conversational delivery for unsupported
+controls. Signal is deliberately listed as an exclusion because the first-party
+package fails with `SIGNAL_DIRECT_TRANSPORT_UNAVAILABLE` and registers no message
+connector. A connector may not advertise a stronger family than its exact
+account transport supports.
+
+Legacy untrusted choice/followup callbacks are normalized on Discord, Telegram,
+Slack, and WhatsApp Cloud API. Durable state-changing round-trips require the
+host-owned session dispatcher described above:
 - **Telegram**: `handleCallbackQuery` decodes the tap and replays it through
   `handleMessage` as a user turn (`plugin-telegram/src/messageManager.ts`).
 - **Discord**: the `isButton` handler in `discord-interactions.ts` decodes the
   `customId` with `decodeCallback` and dispatches via `messageService.handleMessage`.
+- **Slack**: the Block Kit action handler acknowledges the event, applies the
+  normal inbound workspace/policy gate, and dispatches the decoded reply.
+- **WhatsApp Cloud API**: interactive button/list reply IDs decode at webhook
+  normalization; Baileys stays on conversational fallback.
 
 The floating chat overlay (`ChatOverlay`) also renders these widgets.
 It does **not** route through `MessageContent`: it renders assistant turns via

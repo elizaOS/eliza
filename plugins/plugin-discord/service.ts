@@ -32,6 +32,7 @@ import {
 	type MessageConnectorUserContext,
 	parseBooleanFromText,
 	type Room,
+	resolveFirstPartyInteractionProfile,
 	resolveStateDir,
 	type SendHandlerOutcome,
 	type SendHandlerPersistence,
@@ -3794,6 +3795,14 @@ export class DiscordService extends Service implements IDiscordService {
 							defaultAccountId,
 							...(accountId ? { accountId } : {}),
 						},
+						resolveInteractionProfile: (target, context) =>
+							resolveFirstPartyInteractionProfile({
+								source: "discord",
+								defaultAccountId,
+								defaultTargetKind: "channel",
+								target: scopedTarget(target),
+								accountId: accountId ?? context.accountId,
+							}),
 						resolveTargets: (query, context) =>
 							serviceInstance.resolveConnectorTargets(
 								query,

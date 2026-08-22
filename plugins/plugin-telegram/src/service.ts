@@ -30,6 +30,7 @@ import {
   type MessageConnectorUserContext,
   Role,
   type Room,
+  resolveFirstPartyInteractionProfile,
   Service,
   type TargetInfo,
   type ThreadHandle,
@@ -2783,6 +2784,14 @@ export class TelegramService extends Service {
             service: TELEGRAM_SERVICE_NAME,
             ...(normalizedAccountId ? { accountId: normalizedAccountId } : {}),
           },
+          resolveInteractionProfile: (target, context) =>
+            resolveFirstPartyInteractionProfile({
+              source: "telegram",
+              defaultAccountId: normalizedAccountId ?? DEFAULT_ACCOUNT_ID,
+              defaultTargetKind: "room",
+              target,
+              accountId: normalizedAccountId ?? context.accountId,
+            }),
           createThreadHandler: (runtime, params) =>
             serviceInstance.createConnectorThread(runtime, params),
           postToThreadHandler: (runtime, params) =>

@@ -4,6 +4,8 @@
  * account/target profiles, never this source-name catalog.
  */
 
+import { ElizaError } from "../../errors";
+import type { TargetInfo } from "../../types/messaging";
 import {
 	createConnectorInteractionCapabilityProfile,
 	type InteractionProfileTemplate,
@@ -57,6 +59,22 @@ export const CONVERSATIONAL_INTERACTION_PROFILE: InteractionProfileTemplate = {
 	nonSecretFallbacks: ["conversational", "signed-hosted"],
 };
 
+/** Text-first transports that also accept one native file attachment. */
+export const CONVERSATIONAL_MEDIA_INTERACTION_PROFILE: InteractionProfileTemplate =
+	{
+		...CONVERSATIONAL_INTERACTION_PROFILE,
+		templateId: "conversational-media-v1",
+		limits: {
+			...CONVERSATIONAL_INTERACTION_PROFILE.limits,
+			attachments: {
+				supported: true,
+				maxCount: 1,
+				maxBytesEach: 50 * 1024 * 1024,
+				mimeTypes: ["*/*"],
+			},
+		},
+	};
+
 export const BUTTON_INTERACTION_PROFILE: InteractionProfileTemplate = {
 	...CONVERSATIONAL_INTERACTION_PROFILE,
 	templateId: "button-native-v1",
@@ -86,6 +104,131 @@ export const BUTTON_INTERACTION_PROFILE: InteractionProfileTemplate = {
 	},
 	nonSecretFallbacks: ["native", "conversational", "signed-hosted"],
 };
+
+/** Discord's documented message-component and message-size boundaries. */
+export const DISCORD_INTERACTION_PROFILE: InteractionProfileTemplate = {
+	...BUTTON_INTERACTION_PROFILE,
+	templateId: "discord-native-v1",
+	limits: {
+		...BUTTON_INTERACTION_PROFILE.limits,
+		buttons: {
+			supported: true,
+			maxPerRow: 5,
+			maxPerMessage: 25,
+			maxLabelBytes: 80,
+			maxCallbackBytes: 100,
+		},
+		text: { maxMessageBytes: 2_000 },
+		attachments: {
+			supported: true,
+			maxCount: 10,
+			maxBytesEach: 10_000_000,
+			mimeTypes: ["*/*"],
+		},
+	},
+};
+
+/** Telegram Bot API inline-keyboard and message boundaries. */
+export const TELEGRAM_INTERACTION_PROFILE: InteractionProfileTemplate = {
+	...BUTTON_INTERACTION_PROFILE,
+	templateId: "telegram-native-v1",
+	limits: {
+		...BUTTON_INTERACTION_PROFILE.limits,
+		buttons: {
+			supported: true,
+			maxPerRow: 8,
+			maxPerMessage: 100,
+			maxLabelBytes: 64,
+			maxCallbackBytes: 64,
+		},
+		threads: { supported: true, maxTitleBytes: 128 },
+		text: { maxMessageBytes: 4_096 },
+		attachments: {
+			supported: true,
+			maxCount: 10,
+			maxBytesEach: 20_000_000,
+			mimeTypes: ["*/*"],
+		},
+	},
+};
+
+/** Slack Block Kit actions used by outbound messages. */
+export const SLACK_INTERACTION_PROFILE: InteractionProfileTemplate = {
+	...BUTTON_INTERACTION_PROFILE,
+	templateId: "slack-native-v1",
+	limits: {
+		...BUTTON_INTERACTION_PROFILE.limits,
+		buttons: {
+			supported: true,
+			maxPerRow: 5,
+			maxPerMessage: 25,
+			maxLabelBytes: 75,
+			maxCallbackBytes: 2_000,
+		},
+		edits: { supported: true, windowMs: null },
+		threads: { supported: true, maxTitleBytes: 255 },
+		text: { maxMessageBytes: 40_000 },
+		attachments: {
+			supported: true,
+			maxCount: 10,
+			maxBytesEach: 20_000_000,
+			mimeTypes: ["*/*"],
+		},
+	},
+};
+
+/** WhatsApp interactive reply/list messages; forms remain conversational. */
+export const WHATSAPP_INTERACTION_PROFILE: InteractionProfileTemplate = {
+	...BUTTON_INTERACTION_PROFILE,
+	templateId: "whatsapp-native-v1",
+	blocks: {
+		...BUTTON_INTERACTION_PROFILE.blocks,
+		task: {
+			modes: ["conversational", "signed-hosted"],
+			maxSessionTtlMs: 24 * TTL,
+		},
+	},
+	limits: {
+		...BUTTON_INTERACTION_PROFILE.limits,
+		buttons: {
+			supported: true,
+			maxPerRow: 3,
+			maxPerMessage: 3,
+			maxLabelBytes: 20,
+			maxCallbackBytes: 200,
+		},
+		lists: {
+			supported: true,
+			maxItems: 10,
+			maxLabelBytes: 24,
+			maxDescriptionBytes: 72,
+		},
+		text: { maxMessageBytes: 4_096 },
+		attachments: {
+			supported: true,
+			maxCount: 1,
+			maxBytesEach: 16_000_000,
+			mimeTypes: ["*/*"],
+		},
+	},
+};
+
+/** WhatsApp Baileys has media delivery but no supported interactive payload. */
+export const WHATSAPP_CONVERSATIONAL_INTERACTION_PROFILE: InteractionProfileTemplate =
+	{
+		...CONVERSATIONAL_INTERACTION_PROFILE,
+		templateId: "whatsapp-conversational-v1",
+		limits: {
+			...CONVERSATIONAL_INTERACTION_PROFILE.limits,
+			text: { maxMessageBytes: 4_096 },
+			attachments: {
+				supported: true,
+				maxCount: 1,
+				maxBytesEach: 16_000_000,
+				mimeTypes: ["*/*"],
+			},
+		},
+	};
 
 export const RICH_INTERACTION_PROFILE: InteractionProfileTemplate = {
 	...BUTTON_INTERACTION_PROFILE,
@@ -138,6 +281,11 @@ export const RICH_INTERACTION_PROFILE: InteractionProfileTemplate = {
 
 export type FirstPartyInteractionProfileFamily =
 	| "button-native"
+	| "discord-native"
+	| "slack-native"
+	| "telegram-native"
+	| "whatsapp-native"
+	| "conversational-media"
 	| "conversational";
 
 export interface FirstPartyInteractionConnectorAuditEntry {
@@ -157,8 +305,8 @@ export const FIRST_PARTY_INTERACTION_CONNECTOR_AUDIT = [
 		plugin: "plugin-discord",
 		source: "discord",
 		targetKind: "channel",
-		profileFamily: "button-native",
-		note: "native buttons already exist",
+		profileFamily: "discord-native",
+		note: "native action-row buttons with conversational form fallback",
 	},
 	{
 		plugin: "plugin-google-workspace",
@@ -171,15 +319,15 @@ export const FIRST_PARTY_INTERACTION_CONNECTOR_AUDIT = [
 		plugin: "plugin-google-workspace",
 		source: "google-chat",
 		targetKind: "room",
-		profileFamily: "conversational",
-		note: "chat spaces and threads",
+		profileFamily: "conversational-media",
+		note: "chat spaces, threads, and one uploaded attachment",
 	},
 	{
 		plugin: "plugin-imessage",
 		source: "imessage",
 		targetKind: "user",
-		profileFamily: "conversational",
-		note: "text and attachment transport",
+		profileFamily: "conversational-media",
+		note: "semantic text controls and one native attachment",
 	},
 	{
 		plugin: "plugin-instagram",
@@ -199,15 +347,15 @@ export const FIRST_PARTY_INTERACTION_CONNECTOR_AUDIT = [
 		plugin: "plugin-slack",
 		source: "slack",
 		targetKind: "channel",
-		profileFamily: "conversational",
-		note: "channels, threads, users",
+		profileFamily: "slack-native",
+		note: "native Block Kit actions with conversational form fallback",
 	},
 	{
 		plugin: "plugin-telegram",
 		source: "telegram",
 		targetKind: "room",
-		profileFamily: "button-native",
-		note: "inline keyboard already exists",
+		profileFamily: "telegram-native",
+		note: "native inline keyboards with conversational form fallback",
 	},
 	{
 		plugin: "plugin-wechat",
@@ -220,8 +368,8 @@ export const FIRST_PARTY_INTERACTION_CONNECTOR_AUDIT = [
 		plugin: "plugin-whatsapp",
 		source: "whatsapp",
 		targetKind: "phone",
-		profileFamily: "conversational",
-		note: "Cloud API messages",
+		profileFamily: "whatsapp-native",
+		note: "native reply buttons/lists with conversational form/task fallback",
 	},
 	{
 		plugin: "plugin-x",
@@ -241,14 +389,106 @@ export const FIRST_PARTY_INTERACTION_CONNECTOR_EXCLUSIONS = [
 	},
 ] as const;
 
+const PROFILE_BY_FAMILY: Record<
+	FirstPartyInteractionProfileFamily,
+	InteractionProfileTemplate
+> = {
+	"button-native": BUTTON_INTERACTION_PROFILE,
+	"discord-native": DISCORD_INTERACTION_PROFILE,
+	"slack-native": SLACK_INTERACTION_PROFILE,
+	"telegram-native": TELEGRAM_INTERACTION_PROFILE,
+	"whatsapp-native": WHATSAPP_INTERACTION_PROFILE,
+	"conversational-media": CONVERSATIONAL_MEDIA_INTERACTION_PROFILE,
+	conversational: CONVERSATIONAL_INTERACTION_PROFILE,
+};
+
+/** Materialize the audited declaration for one production connector target. */
+export function createFirstPartyInteractionProfile(args: {
+	source: string;
+	accountId: string;
+	targetKind: string;
+	targetId: string;
+}) {
+	const entry = FIRST_PARTY_INTERACTION_CONNECTOR_AUDIT.find(
+		(candidate) => candidate.source === args.source,
+	);
+	if (!entry) {
+		throw new Error(
+			`No audited first-party interaction profile for ${args.source}.`,
+		);
+	}
+	return createConnectorInteractionCapabilityProfile({
+		template: PROFILE_BY_FAMILY[entry.profileFamily],
+		...args,
+	});
+}
+
+function firstTargetIdentity(target: TargetInfo): string | undefined {
+	const values = [
+		target.channelId,
+		target.entityId,
+		target.roomId,
+		target.serverId,
+	]
+		.map((value) => (value === undefined ? "" : String(value).trim()))
+		.filter(Boolean);
+	if (target.threadId?.trim()) {
+		const parent = values[0];
+		return parent
+			? `${parent}:thread:${target.threadId.trim()}`
+			: target.threadId.trim();
+	}
+	return values[0];
+}
+
+/**
+ * Materialize a connector's audited profile without trusting caller metadata to
+ * invent an account or target identity. Registrations pass their own fixed
+ * source and default target kind; the concrete target remains part of the ID.
+ */
+export function resolveFirstPartyInteractionProfile(args: {
+	source: string;
+	defaultAccountId: string;
+	defaultTargetKind: string;
+	target: TargetInfo;
+	accountId?: string;
+}) {
+	const accountId =
+		args.accountId?.trim() ||
+		args.target.accountId?.trim() ||
+		args.defaultAccountId;
+	if (!accountId.trim()) {
+		throw new ElizaError(
+			"Interaction account has no trusted connector identity.",
+			{
+				code: "INTERACTION_ACCOUNT_IDENTITY_MISSING",
+				context: { source: args.source },
+			},
+		);
+	}
+	const targetId = firstTargetIdentity(args.target);
+	if (!targetId) {
+		throw new ElizaError(
+			"Interaction target has no stable provider identity.",
+			{
+				code: "INTERACTION_TARGET_IDENTITY_MISSING",
+				context: { source: args.source },
+			},
+		);
+	}
+	return createFirstPartyInteractionProfile({
+		source: args.source,
+		accountId,
+		targetKind: args.target.threadId ? "thread" : args.defaultTargetKind,
+		targetId,
+	});
+}
+
 /** Deterministic handoff artifact for connector implementers and reviewers. */
 export function renderFirstPartyInteractionCapabilityMatrix(): string {
 	const profiles = FIRST_PARTY_INTERACTION_CONNECTOR_AUDIT.map((entry) =>
 		createConnectorInteractionCapabilityProfile({
-			template:
-				entry.profileFamily === "button-native"
-					? BUTTON_INTERACTION_PROFILE
-					: CONVERSATIONAL_INTERACTION_PROFILE,
+			template: PROFILE_BY_FAMILY[entry.profileFamily],
 			source: entry.source,
 			accountId: "<account>",
 			targetKind: entry.targetKind,
@@ -258,7 +498,7 @@ export function renderFirstPartyInteractionCapabilityMatrix(): string {
 	return [
 		"# First-party interaction capability baseline",
 		"",
-		"This generated baseline is conservative. Each runtime registration materializes the family for its concrete account and target; #24288 may advertise stronger limits only with adapter tests.",
+		"This generated matrix is the production declaration. Each runtime registration materializes the family for its concrete account and target; native claims are backed by adapter tests and every other block has an explicit semantic fallback.",
 		"",
 		renderInteractionCapabilityMatrix(profiles),
 		"",
