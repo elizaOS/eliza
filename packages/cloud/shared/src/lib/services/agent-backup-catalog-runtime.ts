@@ -1,12 +1,12 @@
 /**
  * Runs one bounded scheduler tick for the durable sandbox-backup catalogue.
  *
- * The caller owns cadence and logging. Production daemon composition is
- * intentionally absent until activation/vault authorities and a dedicated
- * sub-minute lane exist. This service owns feature-gated storage authority
- * resolution, fair operation leases, retry deferral for pipeline stages that
- * do not yet have an executor, and isolated exact-object GC. It never logs
- * credentials, endpoint URLs, object keys, or locators.
+ * The dedicated daemon owns cadence and logging, and imports its production
+ * composition only after the disabled-first gate boundary. This service owns
+ * feature-gated storage authority resolution, fair operation leases, retry
+ * deferral for pipeline stages that do not yet have an executor, and isolated
+ * exact-object GC. It never logs credentials, endpoint URLs, object keys, or
+ * locators.
  */
 
 import {
@@ -14,6 +14,7 @@ import {
   type AgentBackupOperationExecution,
   claimDueAgentBackupOperations,
   failAgentBackupOperation,
+  handoffCapturedAgentBackupOperation,
   heartbeatAgentBackupOperation,
   transitionAgentBackupOperation,
 } from "../../db/repositories/agent-backup-catalog";
@@ -49,15 +50,16 @@ import type {
 } from "./agent-backup-capture-v3-spool-cleanup";
 import { executeAgentBackupGcClaims } from "./agent-backup-catalog-worker";
 
-const MAX_OPERATION_BATCH = 100;
+// Repeated fair-SQL claims reset tenant ordering. Keep one operation per tick
+// until a durable cross-tick tenant cursor can prove starvation freedom.
+const MAX_OPERATION_BATCH = 1;
 const MAX_SCHEDULE_BATCH = 100;
 const MAX_GC_BATCH = 100;
 const MAX_LEASE_MS = 5 * 60_000;
 const MAX_OPERATION_RETRY_MS = 24 * 60 * 60_000;
 const MAX_GC_RETRY_MS = 6 * 60 * 60_000;
 
-// Start deliberately serial. Operators may raise the bounded override after
-// observing provider quotas and memory pressure in their own deployment.
+// Deliberately fixed, not merely a default; see MAX_OPERATION_BATCH.
 const DEFAULT_OPERATION_BATCH = 1;
 const DEFAULT_SCHEDULE_BATCH = 32;
 const DEFAULT_SCHEDULE_LEASE_MS = 2 * 60_000;
@@ -177,6 +179,7 @@ export interface AgentBackupCatalogRuntimeDependencies {
     execution: AgentBackupOperationExecution;
     leaseMs: number;
   }): Promise<unknown>;
+  handoffCapturedOperation: typeof handoffCapturedAgentBackupOperation;
   transitionOperation: typeof transitionAgentBackupOperation;
   failOperation: typeof failAgentBackupOperation;
   listDueDeletions: typeof listDueAgentBackupDeletions;
@@ -208,7 +211,11 @@ export type AgentBackupCatalogRuntimePublicationState =
   | "secondary_pending";
 
 export interface AgentBackupCatalogRuntimePublicationExecutor {
-  execute(params: { claim: Readonly<AgentBackupOperationClaim>; leaseMs: number }): Promise<
+  execute(params: {
+    claim: Readonly<AgentBackupOperationClaim>;
+    leaseMs: number;
+    signal?: AbortSignal;
+  }): Promise<
     | { state: "protected" }
     | {
         state: "retryable-failure";
@@ -230,6 +237,7 @@ const DEFAULT_DEPENDENCIES: AgentBackupCatalogRuntimeDependencies = {
   countOverdueSchedules: countOverdueAgentBackupSchedules,
   claimOperations: claimDueAgentBackupOperations,
   heartbeatOperation: heartbeatAgentBackupOperation,
+  handoffCapturedOperation: handoffCapturedAgentBackupOperation,
   transitionOperation: transitionAgentBackupOperation,
   failOperation: failAgentBackupOperation,
   listDueDeletions: listDueAgentBackupDeletions,
@@ -261,7 +269,7 @@ function readBoundedInteger(params: {
 
 function requiredEnv(env: NodeJS.ProcessEnv, name: string): string {
   const value = env[name];
-  if (!value || value.trim() !== value || value.includes("\0")) {
+  if (!value || value.trim() !== value || /[\u0000-\u001f\u007f]/.test(value)) {
     throw new Error(
       `${name} must be explicitly configured when backup catalogue runtime is enabled`,
     );
@@ -558,6 +566,13 @@ interface CaptureFailureDisposition {
 
 function classifyCaptureFailure(error: unknown): CaptureFailureDisposition {
   if (!isTrustedAgentBackupCaptureV2TerminalDisposition(error)) return { terminal: false };
+  // A stale runtime generation is irreversible only after the concrete
+  // pipeline opened a spool and attached the exact cleanup authority. Stale
+  // evidence raised during context resolution has no local artifact proof and
+  // therefore remains retryable.
+  if (error.code === "AGENT_BACKUP_V3_RUNTIME_AUTHORITY_STALE" && !error.terminalSpoolCleanup) {
+    return { terminal: false };
+  }
   return {
     terminal: true,
     terminalSpoolCleanup: error.terminalSpoolCleanup,
@@ -672,6 +687,8 @@ export async function runAgentBackupCatalogRuntimeCycle(params: {
   if (!params.registry) {
     throw new Error("Backup catalogue runtime requires both configured storage authorities");
   }
+  const throwIfAborted = (): void => params.signal?.throwIfAborted();
+  throwIfAborted();
 
   const dependencies = params.dependencies ?? DEFAULT_DEPENDENCIES;
   const alertCodes = new Set<string>();
@@ -684,6 +701,7 @@ export async function runAgentBackupCatalogRuntimeCycle(params: {
       summary.scheduleProtected += reconciled.protected;
       summary.scheduleRecycled += reconciled.recycled;
     } catch {
+      throwIfAborted();
       summary.scheduleIndeterminate += 1;
       alertCodes.add(SCHEDULE_RECONCILE_CODE);
     }
@@ -696,18 +714,21 @@ export async function runAgentBackupCatalogRuntimeCycle(params: {
         alertCodes.add(SCHEDULE_RPO_OVERDUE_CODE);
       }
     } catch {
+      throwIfAborted();
       summary.scheduleIndeterminate += 1;
       alertCodes.add(SCHEDULE_RECONCILE_CODE);
     }
   };
 
   if (params.config.scheduleEnabled) {
+    throwIfAborted();
     await reconcileSchedules();
     try {
       summary.scheduleEnrolled = await dependencies.enrollSchedules({
         limit: params.config.scheduleBatchSize,
       });
     } catch {
+      throwIfAborted();
       summary.scheduleIndeterminate += 1;
       alertCodes.add(SCHEDULE_RECONCILE_CODE);
     }
@@ -721,14 +742,17 @@ export async function runAgentBackupCatalogRuntimeCycle(params: {
       });
       summary.scheduleClaimed = scheduleClaims.length;
     } catch {
+      throwIfAborted();
       summary.scheduleIndeterminate += 1;
       alertCodes.add(SCHEDULE_RECONCILE_CODE);
     }
     for (const claim of scheduleClaims) {
+      throwIfAborted();
       try {
         await dependencies.reserveSchedule({ claim });
         summary.scheduleReserved += 1;
       } catch {
+        throwIfAborted();
         try {
           if (
             await dependencies.deferSchedule({
@@ -744,6 +768,7 @@ export async function runAgentBackupCatalogRuntimeCycle(params: {
             alertCodes.add(SCHEDULE_RECONCILE_CODE);
           }
         } catch {
+          throwIfAborted();
           summary.scheduleIndeterminate += 1;
           alertCodes.add(SCHEDULE_RECONCILE_CODE);
         }
@@ -753,27 +778,46 @@ export async function runAgentBackupCatalogRuntimeCycle(params: {
 
   // Emit the strict RPO signal before unrelated catalogue/GC dependencies can
   // fail. A later pass refreshes it when this tick may have published proof.
+  throwIfAborted();
   await countOverdueSchedules();
 
-  let operationClaims: AgentBackupOperationClaim[] = [];
-  try {
-    operationClaims = await dependencies.claimOperations({
-      ownerId: params.config.ownerId,
-      limit: params.config.operationBatchSize,
-      leaseMs: params.config.operationLeaseMs,
-    });
-    summary.operationClaimed = operationClaims.length;
-  } catch (error) {
-    if (!params.config.scheduleEnabled) throw error;
-    summary.operationIndeterminate += 1;
-    alertCodes.add(OPERATION_RECONCILE_CODE);
-  }
-  for (const claim of operationClaims) {
+  // Each serial processing slot acquires its own lease immediately before use.
+  // A slow or poisoned first operation can therefore never idle-lease the rest
+  // of the configured batch while it waits behind that operation.
+  for (
+    let operationSlot = 0;
+    operationSlot < params.config.operationBatchSize;
+    operationSlot += 1
+  ) {
+    throwIfAborted();
+    let operationClaims: AgentBackupOperationClaim[];
+    try {
+      operationClaims = await dependencies.claimOperations({
+        ownerId: params.config.ownerId,
+        limit: 1,
+        leaseMs: params.config.operationLeaseMs,
+      });
+      throwIfAborted();
+      if (operationClaims.length > 1) {
+        throw new Error("Backup operation claimant exceeded the single-slot lease contract");
+      }
+    } catch (error) {
+      throwIfAborted();
+      if (!params.config.scheduleEnabled) throw error;
+      summary.operationIndeterminate += 1;
+      alertCodes.add(OPERATION_RECONCILE_CODE);
+      break;
+    }
+    const claim = operationClaims[0];
+    if (!claim) break;
+    summary.operationClaimed += 1;
     if (params.captureExecutor && isCaptureOperationClaim(claim)) {
       let normalized: AgentBackupOperationClaim;
       try {
         normalized = await normalizeCaptureOperationClaim({ claim, dependencies });
+        throwIfAborted();
       } catch {
+        throwIfAborted();
         // A lost transition response is indeterminate. The exact lease/state
         // will reconcile on a later claim without running a second executor.
         summary.operationIndeterminate += 1;
@@ -781,16 +825,46 @@ export async function runAgentBackupCatalogRuntimeCycle(params: {
         continue;
       }
       try {
+        throwIfAborted();
         const result = await params.captureExecutor.execute({
           claim: normalized,
           leaseMs: params.config.operationLeaseMs,
           signal: params.signal,
         });
+        throwIfAborted();
         if (result.state !== "captured-upload-pending") {
           throw new Error("Capture executor crossed an unsupported publication boundary");
         }
+        const identity = claimIdentity(normalized);
+        if (!identity) {
+          summary.operationIndeterminate += 1;
+          alertCodes.add(OPERATION_RECONCILE_CODE);
+          continue;
+        }
+        try {
+          throwIfAborted();
+          await dependencies.handoffCapturedOperation({
+            organizationId: identity.organizationId,
+            backupId: identity.backupId,
+            operationId: identity.operationId,
+            lifecycleGeneration: identity.lifecycleGeneration,
+            execution: {
+              ownerId: normalized.ownerId,
+              generation: normalized.generation,
+            },
+          });
+          throwIfAborted();
+        } catch {
+          throwIfAborted();
+          // The release CAS may have committed before its response was lost.
+          // Never synthesize publication success or overwrite captured state.
+          summary.operationIndeterminate += 1;
+          alertCodes.add(OPERATION_RECONCILE_CODE);
+          continue;
+        }
         summary.operationCaptured += 1;
       } catch (error) {
+        throwIfAborted();
         const identity = claimIdentity(normalized);
         if (!identity) {
           summary.operationIndeterminate += 1;
@@ -812,7 +886,9 @@ export async function runAgentBackupCatalogRuntimeCycle(params: {
               authority: disposition.terminalSpoolCleanup,
               terminalErrorCode: OPERATION_CAPTURE_TERMINAL_CODE,
             });
+            throwIfAborted();
           } catch {
+            throwIfAborted();
             // The non-authorizing local candidate is the crash bridge between
             // the terminal database CAS and cleanup. Never commit terminal when
             // that bridge is not durably confirmed.
@@ -824,6 +900,7 @@ export async function runAgentBackupCatalogRuntimeCycle(params: {
           }
         }
         try {
+          throwIfAborted();
           await dependencies.failOperation({
             ...identity,
             expectedState: "capturing",
@@ -857,6 +934,7 @@ export async function runAgentBackupCatalogRuntimeCycle(params: {
             alertCodes.add(OPERATION_CAPTURE_RETRY_CODE);
           }
         } catch {
+          throwIfAborted();
           // recordCaptured or the failure write may have committed before a lost
           // response. Never overwrite that ambiguity with a synthetic success.
           summary.operationIndeterminate += 1;
@@ -867,10 +945,13 @@ export async function runAgentBackupCatalogRuntimeCycle(params: {
     }
     if (params.publicationExecutor && isPublicationOperationClaim(claim)) {
       try {
+        throwIfAborted();
         const result = await params.publicationExecutor.execute({
           claim,
           leaseMs: params.config.operationLeaseMs,
+          signal: params.signal,
         });
+        throwIfAborted();
         if (result.state === "protected") {
           summary.operationProtected += 1;
           continue;
@@ -900,6 +981,7 @@ export async function runAgentBackupCatalogRuntimeCycle(params: {
         summary.operationPublicationRetryScheduled += 1;
         alertCodes.add(OPERATION_PUBLICATION_RETRY_CODE);
       } catch {
+        throwIfAborted();
         // A transition or retry write may have committed before response loss.
         // Leave the exact leased row for reconciliation rather than guessing.
         summary.operationIndeterminate += 1;
@@ -923,6 +1005,7 @@ export async function runAgentBackupCatalogRuntimeCycle(params: {
         alertCodes.add(OPERATION_RECONCILE_CODE);
       }
     } catch {
+      throwIfAborted();
       // error-policy:J1 the daemon receives static aggregate evidence; the
       // durable lease/state is reconciled after expiry without leaking locator data.
       summary.operationIndeterminate += 1;
@@ -933,12 +1016,15 @@ export async function runAgentBackupCatalogRuntimeCycle(params: {
   // A publication executor may have reached `protected` in this cycle. Run a
   // second bounded exact-proof pass so its DB-clock RPO deadline is visible
   // immediately; response-loss cases are picked up here as well.
+  throwIfAborted();
   await reconcileSchedules();
-  if (operationClaims.length > 0) await countOverdueSchedules();
+  if (summary.operationClaimed > 0) await countOverdueSchedules();
 
+  throwIfAborted();
   if (params.spoolCleanupJanitor) {
     try {
-      const cleanup = await params.spoolCleanupJanitor.runCycle();
+      const cleanup = await params.spoolCleanupJanitor.runCycle(params.signal);
+      throwIfAborted();
       summary.spoolCleanup = {
         discovered: summary.spoolCleanup.discovered + cleanup.discovered,
         authorized: summary.spoolCleanup.authorized + cleanup.authorized,
@@ -951,27 +1037,32 @@ export async function runAgentBackupCatalogRuntimeCycle(params: {
         alertCodes.add(SPOOL_CLEANUP_RECONCILE_CODE);
       }
     } catch {
+      throwIfAborted();
       summary.spoolCleanup.indeterminate += 1;
       alertCodes.add(SPOOL_CLEANUP_RECONCILE_CODE);
     }
   }
 
   let dueDeletions: AgentBackupDeletionCandidate[] = [];
+  throwIfAborted();
   try {
     dueDeletions = await dependencies.listDueDeletions({
       limit: params.config.deletionBatchSize,
     });
     summary.deletionCandidates = dueDeletions.length;
   } catch (error) {
+    throwIfAborted();
     if (!params.config.scheduleEnabled) throw error;
     summary.deletionEnqueueIndeterminate += 1;
     alertCodes.add(DELETION_ENQUEUE_RECONCILE_CODE);
   }
   for (const candidate of dueDeletions) {
+    throwIfAborted();
     try {
       const result = await dependencies.enqueueDeletion(candidate);
       summary.deletionEnqueued += result.enqueued;
     } catch {
+      throwIfAborted();
       // error-policy:J1 enqueue revalidates under lock; a stale or lost response
       // is retried from durable catalogue state without logging its locator.
       summary.deletionEnqueueIndeterminate += 1;
@@ -980,23 +1071,28 @@ export async function runAgentBackupCatalogRuntimeCycle(params: {
   }
 
   let gcClaims: AgentBackupGcClaim[] = [];
+  throwIfAborted();
   try {
     gcClaims = await dependencies.claimGc({
       ownerId: params.config.ownerId,
       limit: params.config.gcBatchSize,
       leaseMs: params.config.gcLeaseMs,
     });
+    throwIfAborted();
     summary.gcClaimed = gcClaims.length;
   } catch (error) {
+    throwIfAborted();
     if (!params.config.scheduleEnabled) throw error;
     summary.gcIndeterminate += 1;
     alertCodes.add(GC_RECONCILE_CODE);
   }
   for (const claim of gcClaims) {
+    throwIfAborted();
     try {
       const result = await dependencies.executeGcClaims({
         claims: [claim],
         registry: params.registry,
+        signal: params.signal,
         retryDelayMs: agentBackupCatalogRetryDelay({
           attempt: claim.outbox.attempts,
           baseMs: params.config.gcRetryBaseMs,
@@ -1004,10 +1100,12 @@ export async function runAgentBackupCatalogRuntimeCycle(params: {
           random: params.random,
         }),
       });
+      throwIfAborted();
       summary.gcCompleted += result.completed;
       summary.gcFailed += result.failed;
       if (result.failed > 0) alertCodes.add(GC_RETRY_CODE);
     } catch {
+      throwIfAborted();
       // A lost settlement response is deliberately indeterminate: the durable
       // completed row wins, or the lease expires and the exact claim is retried.
       summary.gcIndeterminate += 1;
@@ -1016,20 +1114,24 @@ export async function runAgentBackupCatalogRuntimeCycle(params: {
   }
 
   let finalizable: AgentBackupDeletionCandidate[] = [];
+  throwIfAborted();
   try {
     finalizable = await dependencies.listFinalizableDeletions({
       limit: params.config.deletionBatchSize,
     });
   } catch (error) {
+    throwIfAborted();
     if (!params.config.scheduleEnabled) throw error;
     summary.deletionFinalizeIndeterminate += 1;
     alertCodes.add(DELETION_FINALIZE_RECONCILE_CODE);
   }
   for (const candidate of finalizable) {
+    throwIfAborted();
     try {
       await dependencies.finalizeDeletion(candidate);
       summary.deletionFinalized += 1;
     } catch {
+      throwIfAborted();
       // error-policy:J1 finalization is receipt/CAS guarded; an ambiguous
       // response is harmless and a later bounded tick reconciles the tombstone.
       summary.deletionFinalizeIndeterminate += 1;

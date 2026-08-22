@@ -24,6 +24,7 @@ process.env.SKIP_AGENT_SANDBOX_ENSURE = "1";
 
 import { closeDatabaseConnectionsForTests, dbWrite } from "@/db/client";
 import { pushSchema } from "@/db/push-schema-for-tests";
+import { agentNodeIncarnationHistories } from "@/db/schemas/agent-node-incarnation-histories";
 import { agentSandboxes } from "@/db/schemas/agent-sandboxes";
 import { apiKeys } from "@/db/schemas/api-keys";
 import { dockerNodes } from "@/db/schemas/docker-nodes";
@@ -176,6 +177,7 @@ beforeAll(async () => {
         apiKeys,
         usageRecords,
         generations,
+        agentNodeIncarnationHistories,
         dockerNodes,
         agentSandboxes,
         jobs,

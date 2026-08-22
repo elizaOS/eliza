@@ -159,6 +159,7 @@ async function resolveTelegramFileBytes(
 }
 
 const MAX_MESSAGE_LENGTH = 4096; // Telegram's max message length
+const MAX_MEDIA_CAPTION_LENGTH = 1024;
 const INTERACTION_ONLY_FALLBACK_TEXT = "Choose an option:";
 const ACTION_PROGRESS_SOURCE = "action_progress";
 const COMPUTER_USE_APPROVAL_CALLBACK_RE =
@@ -1322,8 +1323,12 @@ export class MessageManager {
       if (!ctx.chat) {
         throw new Error("sendMedia: ctx.chat is undefined");
       }
+      const chatId = ctx.chat.id;
+      const captionNeedsFollowUp =
+        typeof caption === "string" &&
+        caption.length > MAX_MEDIA_CAPTION_LENGTH;
       const sendOptions = {
-        caption,
+        caption: captionNeedsFollowUp ? undefined : caption,
         ...(messageThreadId !== undefined
           ? { message_thread_id: messageThreadId }
           : {}),
@@ -1353,6 +1358,19 @@ export class MessageManager {
           await sendFunction(ctx.chat.id, { source: fileStream }, sendOptions);
         } finally {
           fileStream.destroy();
+        }
+      }
+
+      if (captionNeedsFollowUp) {
+        // Telegram's media-caption field is limited to 1024 UTF-16 units. Send
+        // the media first, then preserve the complete caption as ordinary text
+        // messages instead of reporting success after silently clipping it.
+        for (const chunk of this.splitMessage(caption)) {
+          await this.sendWithRetry(() =>
+            ctx.telegram.sendMessage(chatId, chunk, {
+              message_thread_id: messageThreadId,
+            }),
+          );
         }
       }
 
@@ -1392,62 +1410,16 @@ export class MessageManager {
       return chunks;
     }
 
-    let currentChunk = "";
-
-    const appendSegment = (segment: string) => {
-      let remaining = segment;
-
-      while (remaining.length > 0) {
-        const availableLength = MAX_MESSAGE_LENGTH - currentChunk.length;
-
-        if (remaining.length <= availableLength) {
-          currentChunk += remaining;
-          return;
-        }
-
-        if (availableLength > 0) {
-          // A raw slice() can land between the two UTF-16 code units of a
-          // surrogate pair (most emoji), leaving a lone surrogate at the
-          // chunk boundary that corrupts the character on the wire.
-          // truncateWellFormed backs the cut off by one unit instead.
-          const head = truncateWellFormed(remaining, availableLength);
-          if (head.length > 0) {
-            currentChunk += head;
-            remaining = remaining.slice(head.length);
-          }
-        }
-
-        if (currentChunk) {
-          chunks.push(currentChunk);
-          currentChunk = "";
-        }
+    let remaining = toWellFormedUnicode(text);
+    while (remaining.length > 0) {
+      // This is lossless transport chunking: every returned chunk is sent and
+      // concatenating them reconstructs the complete well-formed input.
+      const chunk = truncateWellFormed(remaining, MAX_MESSAGE_LENGTH);
+      if (chunk.length === 0) {
+        throw new Error("Unable to split Telegram message without data loss");
       }
-    };
-
-    const lines = text.split("\n");
-    for (const line of lines) {
-      let segment = currentChunk ? `\n${line}` : line;
-      if (!segment) {
-        continue;
-      }
-
-      if (
-        currentChunk &&
-        currentChunk.length + segment.length > MAX_MESSAGE_LENGTH
-      ) {
-        chunks.push(currentChunk);
-        currentChunk = "";
-        segment = line;
-        if (!segment) {
-          continue;
-        }
-      }
-
-      appendSegment(segment);
-    }
-
-    if (currentChunk) {
-      chunks.push(currentChunk);
+      chunks.push(chunk);
+      remaining = remaining.slice(chunk.length);
     }
     return chunks;
   }
@@ -2320,37 +2292,38 @@ export class MessageManager {
       // Create callback for handling reaction responses
       const callback: HandlerCallback = async (content: Content) => {
         try {
-          const replyText = truncateWellFormed(
-            toWellFormedUnicode(content.text ?? ""),
-            MAX_MESSAGE_LENGTH,
+          const sentMessages = await this.sendMessageInChunks(
+            ctx,
+            { ...content, text: content.text ?? "" } as TelegramContent,
+            reaction.message_id,
           );
-          const sentMessage = await ctx.reply(replyText);
-          const responseMemory: Memory = {
-            id: createUniqueUuid(
-              this.runtime,
-              this.telegramMessageMemoryKey(
-                sentMessage.chat.id,
-                sentMessage.message_id,
+          return sentMessages.map(
+            (sentMessage): Memory => ({
+              id: createUniqueUuid(
+                this.runtime,
+                this.telegramMessageMemoryKey(
+                  sentMessage.chat.id,
+                  sentMessage.message_id,
+                ),
               ),
-            ),
-            entityId: this.runtime.agentId,
-            agentId: this.runtime.agentId,
-            roomId,
-            content: {
-              ...content,
-              text: sentMessage.text,
-              inReplyTo: reactionId,
-              metadata: { accountId: this.accountId },
-            },
-            metadata: {
-              type: "message",
-              source: "telegram",
-              accountId: this.accountId,
-              provider: "telegram",
-            } satisfies Memory["metadata"],
-            createdAt: sentMessage.date * 1000,
-          };
-          return [responseMemory];
+              entityId: this.runtime.agentId,
+              agentId: this.runtime.agentId,
+              roomId,
+              content: {
+                ...content,
+                text: sentMessage.text,
+                inReplyTo: reactionId,
+                metadata: { accountId: this.accountId },
+              },
+              metadata: {
+                type: "message",
+                source: "telegram",
+                accountId: this.accountId,
+                provider: "telegram",
+              } satisfies Memory["metadata"],
+              createdAt: sentMessage.date * 1000,
+            }),
+          );
         } catch (error) {
           logger.error(
             {
