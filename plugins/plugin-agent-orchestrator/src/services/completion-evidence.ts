@@ -147,7 +147,7 @@ export interface CompletionEvidenceBundle {
   unverifiedClaimedFiles?: Array<{
     path: string;
     reason: "rejected-write" | "no-write-observed";
-}>;
+  }>;
   /** Files verified by direct fs inspection of the session workdir (exists +
    *  mtime after session start) when the structured tool ledger is absent —
    *  observation-grade evidence for adapters that fold tool results into

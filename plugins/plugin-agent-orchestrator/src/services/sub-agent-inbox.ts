@@ -12,10 +12,7 @@
 
 const DEFAULT_CAP = 16;
 
-/**
- * Called when enqueue drops entries past the cap. `droppedNow` is the count
- * dropped by this enqueue; `droppedTotal` the session's cumulative drops.
- */
+/** Legacy observer shape retained for callers while the inbox is lossless. */
 export type InboxOverflowObserver = (
   sessionId: string,
   droppedNow: number,
@@ -25,19 +22,14 @@ export type InboxOverflowObserver = (
 export class SubAgentInbox {
   private readonly pending = new Map<string, string[]>();
   private readonly droppedTotals = new Map<string, number>();
-  private onOverflow: InboxOverflowObserver | undefined;
 
   constructor(cap: number = DEFAULT_CAP) {
     void cap;
   }
 
-  /**
-   * Register the overflow observer. The inbox is constructed at plugin-factory
-   * scope before any runtime exists, so the runtime-bound warn/reportError
-   * hookup happens later, in plugin init.
-   */
+  /** Compatibility no-op: a lossless queue cannot overflow. */
   setOverflowObserver(observer: InboxOverflowObserver | undefined): void {
-    this.onOverflow = observer;
+    void observer;
   }
 
   /** Queue a message for a session without evicting earlier input. */
