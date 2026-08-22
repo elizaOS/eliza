@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /**
- * Enforces develop-only automated pushes and one canonical pull-request and
- * merge-group aggregate. Other PR-adjacent triggers remain forbidden; the
- * merge-candidate Biome workflow may retain its defense-in-depth queue check.
+ * Enforces develop-only automated pushes and one lightweight pull-request and
+ * merge-group authority. Other PR-adjacent triggers remain forbidden while
+ * develop validation is consolidated behind its own top-level authority.
  */
 
 import { readdirSync, readFileSync } from "node:fs";
@@ -16,19 +16,13 @@ const FORBIDDEN_EVENTS = new Set([
   "pull_request_review_comment",
   "pull_request_target",
 ]);
-const CANONICAL_ADMISSION_WORKFLOW = "ci.yml";
-const MERGE_GROUP_WORKFLOWS = new Set([
-  CANONICAL_ADMISSION_WORKFLOW,
-  "merge-candidate-biome.yml",
-]);
+const CANONICAL_ADMISSION_WORKFLOW = "pr-static-smoke.yml";
 const REQUIRED_PR_BRANCHES = ["develop", "main"];
 const REQUIRED_PR_TYPES = [
-  "labeled",
   "opened",
   "ready_for_review",
   "reopened",
   "synchronize",
-  "unlabeled",
 ];
 
 function triggerEntries(value) {
@@ -104,20 +98,19 @@ export function validateWorkflowTriggerPolicy(repoRoot) {
       }
 
       if (eventName === "merge_group") {
-        if (!MERGE_GROUP_WORKFLOWS.has(name)) {
+        if (name !== CANONICAL_ADMISSION_WORKFLOW) {
           failures.push(
-            `${name}: merge_group is reserved for ${[...MERGE_GROUP_WORKFLOWS].join(" and ")}`,
+            `${name}: merge_group is reserved for ${CANONICAL_ADMISSION_WORKFLOW}`,
           );
           continue;
         }
         if (!sameStrings(stringList(config?.types), ["checks_requested"])) {
           failures.push(
-            `${name}: merge_group types must be exactly [\"checks_requested\"]`,
+            `${name}: merge_group types must be exactly ["checks_requested"]`,
           );
           continue;
         }
-        if (name === CANONICAL_ADMISSION_WORKFLOW)
-          sawCanonicalMergeGroup = true;
+        sawCanonicalMergeGroup = true;
       }
 
       if (eventName !== "push") continue;
@@ -162,7 +155,7 @@ export function validateWorkflowTriggerPolicy(repoRoot) {
   if (failures.length > 0) {
     throw new Error(
       [
-        "GitHub workflow triggers must expose only the canonical PR/merge aggregate, reserve other PR-adjacent events, and target automated branch pushes to develop:",
+        "GitHub workflow triggers must expose only the PR Static Smoke authority, reserve other PR-adjacent events, and target automated branch pushes to develop:",
         ...failures,
       ].join("\n"),
     );

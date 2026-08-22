@@ -1,29 +1,19 @@
-# This workflow is the canonical required merge-candidate and develop branch-health
-# validation entry point. Every pull request and merge-group candidate publishes
-# the stable fail-closed `CI / All Tests Passed` admission context.
+# This reusable workflow is the current develop validation graph. Pull requests
+# use pr-static-smoke.yml; a subsequent trigger-authority slice will call this
+# graph and the other validation families from one Develop Full entry point.
 name: CI
 
 on:
-  pull_request:
-    branches: [develop, main]
-    types: [opened, synchronize, reopened, ready_for_review, labeled, unlabeled]
   push:
     branches: [develop]
-  merge_group:
-    types: [checks_requested]
   workflow_call:
   workflow_dispatch:
 
-# Manual diagnostics keep a run-scoped identity, while PR and merge-queue runs
-# still supersede stale work. A develop push uses a stable terminal-v2 group
-# with the default single-pending queue: the running verification finishes and
-# GitHub retains only the newest waiting tip. The versioned group also avoids
-# inheriting the pre-fix ci-refs/heads/develop run that can remain retained.
-# Do not add queue: max here; it is incompatible with cancellable PR/merge
-# events and would retain every merge-wave push instead of only the latest.
+# A newer develop tip invalidates read-only verification of an older tip. Manual
+# diagnostics retain a run-scoped group and never collide with branch health.
 concurrency:
-  group: ci-${{ github.event_name == 'workflow_dispatch' && format('dispatch-{0}', github.run_id) || github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.event_name == 'push' && format('terminal-v2-{0}', github.ref) || github.ref || github.run_id }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'merge_group' }}
+  group: ci-${{ github.event_name == 'workflow_dispatch' && format('dispatch-{0}', github.run_id) || github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'push' }}
 
 permissions:
   contents: read
@@ -43,7 +33,7 @@ jobs:
       config: test
       run_windows_contract: true
       # ci.yml was unconditionally hosted before consolidation — keep it
-      # hosted for ALL events (push, merge_group, dispatch) to preserve the
+      # hosted for ALL events (push, workflow_call, dispatch) to preserve the
       # SPOF guard (#13617): a drained self-hosted fleet must never leave the
       # merge-gate classifier queued.
       force_hosted: true
@@ -503,28 +493,8 @@ jobs:
           retention-days: 3
           if-no-files-found: warn
 
-  # Exact-head device-bundle proof (#19640, #14336). Opt-in only: a PR carries
-  # the heavy Android-emulator and iOS-simulator bundle producers exactly when
-  # it wears the `ci:device` label at event time. Intentionally absent from
-  # `required` — an unlabeled PR skips this and the merge gate is unaffected.
-  device:
-    name: Device bundles
-    if: github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'ci:device')
-    # A workflow_call caller must grant every permission any nested job
-    # requests, even jobs whose `if` can never fire on this event: GitHub
-    # validates the compiled graph before evaluating conditions, and an
-    # uncovered nested request fails the entire CI run at startup. These
-    # mirror the schedule-only reconcile-scheduled-android-status job; the
-    # label gate above keeps the grant off unlabeled PRs entirely.
-    permissions:
-      actions: read
-      contents: read
-      issues: write
-    uses: ./.github/workflows/device-e2e.yml
-
   secrets:
-    # Preserve the stable check context consumed by branch protection and the
-    # security advisory gate while canonical CI owns PR dispatch.
+    # Post-merge scan of commits introduced by the develop push.
     name: gitleaks
     runs-on: ubuntu-24.04
     timeout-minutes: 10
@@ -546,35 +516,12 @@ jobs:
       - name: Scan changed commits
         shell: bash
         env:
-          EVENT_NAME: ${{ github.event_name }}
-          BASE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event_name == 'merge_group' && github.event.merge_group.base_sha || github.event.before }}
-          HEAD_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.event_name == 'merge_group' && github.event.merge_group.head_sha || github.sha }}
+          BASE_SHA: ${{ github.event.before }}
+          HEAD_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
           if [ -n "$BASE_SHA" ] && [ "$BASE_SHA" != "0000000000000000000000000000000000000000" ]; then
-            if [ "$EVENT_NAME" = "pull_request" ]; then
-              # Scan only what THIS PR introduced: merge-base(base,head)..head.
-              # `gitleaks --log-opts` feeds `git log`, where a three-dot range
-              # A...B is the symmetric difference and also traverses commits
-              # reachable only from the base side. `pull_request.base.sha` is
-              # the base tip at event time, not the merge base, so a PR whose
-              # base branch advanced after the branch point would scan the
-              # base-only commits it never added (#17971/#17984/#19687).
-              # Resolve the real merge base and use a two-dot range so `git
-              # log` traverses exactly the PR-introduced commits. Fail closed
-              # with an actionable error if the merge base cannot be resolved
-              # (empty result or non-zero exit, e.g. an unexpected shallow or
-              # incomplete graph): scanning only the head commit would silently
-              # leave earlier PR commits unscanned while this required security
-              # job still passed.
-              if ! MERGE_BASE="$(git merge-base "$BASE_SHA" "$HEAD_SHA")" || [ -z "$MERGE_BASE" ]; then
-                echo "::error::gitleaks: could not resolve the merge base of base ${BASE_SHA} and head ${HEAD_SHA}; refusing to scan an incomplete commit range. Ensure the checkout has full history (fetch-depth: 0)." >&2
-                exit 1
-              fi
-              range="${MERGE_BASE}..${HEAD_SHA}"
-            else
-              range="${BASE_SHA}..${HEAD_SHA}"
-            fi
+            range="${BASE_SHA}..${HEAD_SHA}"
           else
             range="-1 ${HEAD_SHA}"
           fi
@@ -619,7 +566,6 @@ jobs:
         run: |
           set -euo pipefail
           for pair in $RESULTS; do
-            name="${pair%%=*}"
             result="${pair#*=}"
             if [ "$result" != "success" ]; then
               echo "::error::$pair"
