@@ -23,12 +23,14 @@ import {
   type ConnectorOwnerBindingRecord,
   type ConsumeOAuthFlowStateParams,
   type CreateOAuthFlowStateParams,
+  canRequesterManageDocumentDirectGrants,
   canRequesterMutateDocument,
   DatabaseAdapter,
   type DeleteConnectorAccountParams,
   DOCUMENT_LIST_QUERY_CAPABILITY_VERSION,
   type DocumentCompareAndSwapParams,
   type DocumentDeleteParams,
+  type DocumentDirectGrantUpdateParams,
   type DocumentFragmentQueryParams,
   type DocumentGetQueryParams,
   type DocumentListCursor,
@@ -78,6 +80,7 @@ import {
   type TaskMetadata,
   type UpsertConnectorAccountParams,
   type UUID,
+  validateDocumentDirectGrantEntityIds,
   validateDocumentFragmentQueryParams,
   validateDocumentListQueryParams,
   validateDocumentRequesterContext,
@@ -2336,6 +2339,58 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
           unique: replacement.unique ?? row.unique,
           metadata: replacement.metadata ?? {},
         })
+        .where(eq(memoryTable.id, params.documentId))
+        .returning();
+      return updated[0]
+        ? { status: "updated", document: memoryFromRow(updated[0]) }
+        : { status: "conflict" };
+    });
+  }
+
+  async updateDocumentDirectGrants(
+    params: DocumentDirectGrantUpdateParams
+  ): Promise<DocumentMutationResult> {
+    validateDocumentRequesterContext(params);
+    const directGrantEntityIds = validateDocumentDirectGrantEntityIds(params.directGrantEntityIds);
+    return this.withEntityContext(params.agentId, async (tx) => {
+      const rows = await tx
+        .select()
+        .from(memoryTable)
+        .where(and(...this.documentStorageConditions(params)))
+        .for("update")
+        .limit(1);
+      const row = rows[0];
+      if (!row) return { status: "not_found" };
+      const existing = memoryFromRow(row);
+      if (!documentMutationSnapshotMatches(existing, params.expected)) {
+        return { status: "conflict" };
+      }
+      if (!canRequesterManageDocumentDirectGrants(existing, params)) {
+        return { status: "forbidden" };
+      }
+      if (directGrantEntityIds.length > 0) {
+        const grantees = await tx
+          .select({ id: entityTable.id })
+          .from(entityTable)
+          .where(
+            and(
+              inArray(entityTable.id, directGrantEntityIds),
+              eq(entityTable.agentId, params.agentId)
+            )
+          );
+        if (grantees.length !== directGrantEntityIds.length) {
+          return { status: "not_found" };
+        }
+      }
+      const metadata = { ...((row.metadata ?? {}) as Record<string, unknown>) };
+      if (directGrantEntityIds.length > 0) {
+        metadata.directGrantEntityIds = directGrantEntityIds;
+      } else {
+        delete metadata.directGrantEntityIds;
+      }
+      const updated = await tx
+        .update(memoryTable)
+        .set({ metadata })
         .where(eq(memoryTable.id, params.documentId))
         .returning();
       return updated[0]

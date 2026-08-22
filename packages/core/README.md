@@ -7,9 +7,12 @@
 Document authorization treats a document's `roomId` as its single room
 entitlement and evaluates it against current requester membership inside the
 adapter before rows, counts, fragments, or ranking are produced. Explicit
-`directGrantEntityIds` are read-only and independent of room membership; they
-cannot expose `agent-private` documents or confer mutation authority. Invalid
-or duplicate grant arrays fail closed.
+`directGrantEntityIds` are independent of room membership for reads; they
+cannot expose `agent-private` documents or confer mutation authority. They can
+only be replaced through the dedicated storage-enforced CAS operation by OWNER,
+or by a current room ADMIN for global and user-private documents. Every grantee
+must be an entity in the current agent tenant. Invalid or duplicate grant arrays
+fail closed.
 
 ## Key concepts
 

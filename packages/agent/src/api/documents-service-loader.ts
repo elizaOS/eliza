@@ -98,6 +98,15 @@ export interface DocumentsServiceLike {
     documentId: UUID,
     accessContext: AccessContext,
   ): Promise<Memory | null>;
+  setDocumentDirectGrantsWithAccessContext?(
+    documentId: UUID,
+    directGrantEntityIds: UUID[],
+    accessContext: AccessContext,
+  ): Promise<Memory>;
+  getDocumentDirectGrantsWithAccessContext?(
+    documentId: UUID,
+    accessContext: AccessContext,
+  ): Promise<UUID[]>;
   listDocumentFragmentsWithAccessContext?(
     documentId: UUID,
     accessContext: AccessContext,

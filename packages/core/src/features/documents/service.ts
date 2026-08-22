@@ -17,6 +17,7 @@
 import { existsSync, statSync } from "node:fs";
 import { filterByAccessContext } from "../../access-control/filter";
 import {
+	canRequesterManageDocumentDirectGrants,
 	canRequesterMutateDocument,
 	DOCUMENT_LIST_MAX_LIMIT,
 	DOCUMENT_LIST_MAX_OFFSET,
@@ -24,6 +25,7 @@ import {
 	isDocumentVisibleToRequester,
 	queryDocumentsWithCapability,
 	readDocumentMutationSnapshot,
+	validateDocumentDirectGrantEntityIds,
 } from "../../database/document-list-query";
 import { createUniqueUuid } from "../../entities";
 import { ElizaError } from "../../errors";
@@ -593,6 +595,96 @@ export class DocumentService extends Service {
 		return document && canRequesterMutateDocument(document, requestContext)
 			? document
 			: null;
+	}
+
+	async setDocumentDirectGrantsWithAccessContext(
+		documentId: UUID,
+		directGrantEntityIds: UUID[],
+		accessContext: AccessContext,
+	): Promise<Memory> {
+		const grants = validateDocumentDirectGrantEntityIds(directGrantEntityIds);
+		const { snapshot, requestContext } =
+			await this.getDocumentDirectGrantManagementTarget(
+				documentId,
+				accessContext,
+			);
+		const result = await this.runtime.adapter.updateDocumentDirectGrants({
+			...requestContext,
+			documentId,
+			expected: snapshot,
+			directGrantEntityIds: grants,
+		});
+		if (result.status !== "updated") {
+			throw new ElizaError("Document grant authority changed before mutation", {
+				code:
+					result.status === "not_found"
+						? "DOCUMENT_GRANT_TARGET_NOT_FOUND"
+						: result.status === "forbidden"
+							? "DOCUMENT_GRANT_MUTATION_FORBIDDEN"
+							: "DOCUMENT_GRANT_MUTATION_CONFLICT",
+				context: { documentId, status: result.status },
+			});
+		}
+		return result.document;
+	}
+
+	async getDocumentDirectGrantsWithAccessContext(
+		documentId: UUID,
+		accessContext: AccessContext,
+	): Promise<UUID[]> {
+		const { snapshot } = await this.getDocumentDirectGrantManagementTarget(
+			documentId,
+			accessContext,
+		);
+		return snapshot.directGrantEntityIds ?? [];
+	}
+
+	private async getDocumentDirectGrantManagementTarget(
+		documentId: UUID,
+		accessContext: AccessContext,
+	) {
+		const requester = await resolveDocumentRequesterFromAccessContext(
+			this.runtime,
+			accessContext,
+		);
+		const requestContext = {
+			agentId: this.runtime.agentId,
+			requesterEntityId: requester.entityId,
+			requesterRoomIds: requester.roomIds,
+			requesterRole: requester.role,
+		};
+		const document = await this.runtime.adapter.getDocument({
+			...requestContext,
+			documentId,
+		});
+		if (!document) {
+			throw new ElizaError(`Document ${documentId} not found`, {
+				code: "DOCUMENT_NOT_FOUND",
+				context: { documentId },
+			});
+		}
+		const snapshot = readDocumentMutationSnapshot(document);
+		if (!snapshot) {
+			throw new ElizaError(
+				"Stored document authorization metadata is invalid",
+				{
+					code: "DOCUMENT_AUTHORIZATION_INVALID",
+					context: { documentId },
+					severity: "fatal",
+				},
+			);
+		}
+		if (!canRequesterManageDocumentDirectGrants(document, requestContext)) {
+			throw new ElizaError("Requester cannot manage document grants", {
+				code: "DOCUMENT_GRANT_MUTATION_FORBIDDEN",
+				context: {
+					documentId,
+					requesterEntityId: requester.entityId,
+					requesterRole: requester.role,
+				},
+			});
+		}
+		return { snapshot, requestContext };
 	}
 
 	async listDocumentFragmentsWithAccessContext(

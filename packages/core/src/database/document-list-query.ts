@@ -19,7 +19,7 @@ import {
 	type UUID,
 } from "../types";
 
-export const DOCUMENT_LIST_QUERY_CAPABILITY_VERSION = 3 as const;
+export const DOCUMENT_LIST_QUERY_CAPABILITY_VERSION = 4 as const;
 export const DOCUMENT_LIST_MAX_LIMIT = 100;
 export const DOCUMENT_LIST_MAX_OFFSET = 10_000;
 export const DOCUMENT_LIST_MAX_QUERY_LENGTH = 512;
@@ -27,6 +27,7 @@ export const DOCUMENT_LIST_MAX_TAGS = 32;
 export const DOCUMENT_LIST_MAX_TAG_LENGTH = 128;
 export const DOCUMENT_LIST_MAX_REQUESTER_ROOMS = 1_000;
 export const DOCUMENT_REVISION_MAX_FRAGMENTS = 10_000;
+export const DOCUMENT_DIRECT_GRANT_LIMIT = 1_000;
 
 export interface DocumentListQueryCapableAdapter {
 	readonly documentListQueryCapability: typeof DOCUMENT_LIST_QUERY_CAPABILITY_VERSION;
@@ -269,8 +270,6 @@ function readUuidMetadata(
 	return isUuid(value) ? value : undefined;
 }
 
-const DOCUMENT_DIRECT_GRANT_LIMIT = 1_000;
-
 function readDirectGrantEntityIds(
 	metadata: Record<string, unknown>,
 ): UUID[] | null {
@@ -282,11 +281,36 @@ function readDirectGrantEntityIds(
 	const grants: UUID[] = [];
 	const seen = new Set<string>();
 	for (const entityId of value) {
-		if (!isUuid(entityId) || seen.has(entityId)) return null;
-		seen.add(entityId);
-		grants.push(entityId);
+		if (!isUuid(entityId)) return null;
+		const normalized = entityId.toLowerCase() as UUID;
+		if (seen.has(normalized)) return null;
+		seen.add(normalized);
+		grants.push(normalized);
 	}
 	return grants;
+}
+
+/** Validates and canonicalizes the bounded ACL payload used by adapter writes. */
+export function validateDocumentDirectGrantEntityIds(value: unknown): UUID[] {
+	if (!Array.isArray(value) || value.length > DOCUMENT_DIRECT_GRANT_LIMIT) {
+		throw new ElizaError(
+			"Document direct grants must be a bounded UUID array",
+			{
+				code: "DOCUMENT_DIRECT_GRANTS_INVALID",
+				context: { limit: DOCUMENT_DIRECT_GRANT_LIMIT },
+			},
+		);
+	}
+	const grants = readDirectGrantEntityIds({ directGrantEntityIds: value });
+	if (!grants || grants.length !== value.length) {
+		throw new ElizaError(
+			"Document direct grants contain an invalid or duplicate entity id",
+			{
+				code: "DOCUMENT_DIRECT_GRANTS_INVALID",
+			},
+		);
+	}
+	return [...grants].sort();
 }
 
 function readDocumentRevision(metadata: unknown): number | null {
@@ -494,6 +518,23 @@ export function canRequesterMutateDocument(
 	return (
 		params.requesterRole === "ADMIN" ||
 		snapshot.scopedToEntityId === params.requesterEntityId
+	);
+}
+
+/** Canonical authority for changing explicit document read grants. */
+export function canRequesterManageDocumentDirectGrants(
+	memory: Memory,
+	params: DocumentRequesterContext,
+): boolean {
+	if (params.requesterRole === "OWNER") {
+		return readDocumentMutationSnapshot(memory) !== null;
+	}
+	if (params.requesterRole !== "ADMIN") return false;
+	const snapshot = readDocumentMutationSnapshot(memory);
+	return (
+		snapshot !== null &&
+		params.requesterRoomIds.includes(snapshot.roomId) &&
+		(snapshot.scope === "global" || snapshot.scope === "user-private")
 	);
 }
 
@@ -1039,6 +1080,7 @@ export function hasDocumentListQueryCapability(
 		getDocument?: unknown;
 		queryDocumentFragments?: unknown;
 		compareAndSwapDocument?: unknown;
+		updateDocumentDirectGrants?: unknown;
 		replaceDocumentRevision?: unknown;
 		deleteDocumentWithSnapshot?: unknown;
 	};
@@ -1049,6 +1091,7 @@ export function hasDocumentListQueryCapability(
 		typeof candidate.getDocument === "function" &&
 		typeof candidate.queryDocumentFragments === "function" &&
 		typeof candidate.compareAndSwapDocument === "function" &&
+		typeof candidate.updateDocumentDirectGrants === "function" &&
 		typeof candidate.replaceDocumentRevision === "function" &&
 		typeof candidate.deleteDocumentWithSnapshot === "function"
 	);
@@ -1061,7 +1104,7 @@ function requireDocumentListQueryCapability(adapter: IDatabaseAdapter): void {
 		queryDocuments?: unknown;
 	};
 	throw new ElizaError(
-		"Database adapter must implement document-store capability v3; migrate by adding authorized list, lookup, fragment search, atomic revision replacement, CAS update, and CAS delete methods",
+		"Database adapter must implement document-store capability v4; migrate by adding authorized list, lookup, fragment search, atomic revision replacement, CAS update/delete, and direct-grant CAS methods",
 		{
 			code: "DOCUMENT_STORE_CAPABILITY_REQUIRED",
 			context: {
@@ -1070,7 +1113,7 @@ function requireDocumentListQueryCapability(adapter: IDatabaseAdapter): void {
 				advertisedVersion: candidate.documentListQueryCapability,
 				hasQueryMethod: typeof candidate.queryDocuments === "function",
 				migrationGuide:
-					"Implement IDatabaseAdapter documentListQueryCapability=3 and all document-store methods, including replaceDocumentRevision; no compatibility scan is supported.",
+					"Implement IDatabaseAdapter documentListQueryCapability=4 and every document-store method, including replaceDocumentRevision and updateDocumentDirectGrants; no compatibility scan is supported.",
 			},
 			severity: "fatal",
 		},

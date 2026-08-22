@@ -19,12 +19,14 @@ import {
   type Agent,
   type Component,
   type Content,
+  canRequesterManageDocumentDirectGrants,
   canRequesterMutateDocument,
   compareMemoryIds,
   DatabaseAdapter,
   DOCUMENT_LIST_QUERY_CAPABILITY_VERSION,
   type DocumentCompareAndSwapParams,
   type DocumentDeleteParams,
+  type DocumentDirectGrantUpdateParams,
   type DocumentFragmentQueryParams,
   type DocumentGetQueryParams,
   type DocumentListQueryParams,
@@ -65,6 +67,7 @@ import {
   rankMessageSearch,
   type Task,
   type UUID,
+  validateDocumentDirectGrantEntityIds,
   validateDocumentRevisionReplacement,
   validateQueryEntitiesPagination,
   type World,
@@ -839,6 +842,48 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
       };
       await this.storage.set(COLLECTIONS.MEMORIES, params.documentId, replacement);
       return { status: "updated", document: toMemory(replacement) };
+    });
+  }
+
+  async updateDocumentDirectGrants(
+    params: DocumentDirectGrantUpdateParams
+  ): Promise<DocumentMutationResult> {
+    const directGrantEntityIds = validateDocumentDirectGrantEntityIds(params.directGrantEntityIds);
+    return this.withDocumentMutationLock(async () => {
+      const stored = await this.storage.get<StoredMemory>(COLLECTIONS.MEMORIES, params.documentId);
+      if (
+        !stored ||
+        storedMemoryTableName(stored) !== "documents" ||
+        stored.agentId !== params.agentId
+      ) {
+        return { status: "not_found" };
+      }
+      const existing = toMemory(stored);
+      if (!documentMutationSnapshotMatches(existing, params.expected)) {
+        return { status: "conflict" };
+      }
+      if (!canRequesterManageDocumentDirectGrants(existing, params)) {
+        return { status: "forbidden" };
+      }
+      const grantees = await this.getEntitiesByIds(directGrantEntityIds);
+      if (
+        grantees.length !== directGrantEntityIds.length ||
+        grantees.some((entity) => entity.agentId !== params.agentId)
+      ) {
+        return { status: "not_found" };
+      }
+      const metadata = { ...((stored.metadata ?? {}) as Record<string, unknown>) };
+      if (directGrantEntityIds.length > 0) {
+        metadata.directGrantEntityIds = directGrantEntityIds;
+      } else {
+        delete metadata.directGrantEntityIds;
+      }
+      const updated: StoredMemory = {
+        ...stored,
+        metadata: metadata as MemoryMetadata,
+      };
+      await this.storage.set(COLLECTIONS.MEMORIES, params.documentId, updated);
+      return { status: "updated", document: toMemory(updated) };
     });
   }
 
