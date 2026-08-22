@@ -64,6 +64,14 @@ declared capabilities and nonce-bound observations emitted by the executed
 suite. Normal CI is fully offline and credential-free; live/sandbox lanes
 remain optional.
 
+## Synthetic environment leases
+
+`@elizaos/cloud-test-mocks/synthetic-environment` exposes a file-backed SQLite
+lease store for standalone scenario and mock-service processes. Acquisition,
+reset rollover, heartbeat, release, and `withActiveGeneration` use the same
+OS-visible transaction boundary; pass the callback's database handle to local
+synthetic writes instead of checking authority separately.
+
 ## Hetzner Cloud mock
 
 Implements the subset of the Hetzner Cloud API that the autoscaler client in
