@@ -134,6 +134,10 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 		/maxHistoryPerConversation/,
 		/history\.shift\(\)/,
 	],
+	"plugins/plugin-computeruse/src/mobile/android-trajectory.ts": [
+		/MAX_ERROR_MSG/,
+		/errorMessage\s*=\s*[^;]*\.slice\(/,
+	],
 	"plugins/plugin-cli-inference/src/prompt-flatten.ts": [
 		/MAX_TOOL_PAYLOAD_(?:DEPTH|NODES|CHARS)/,
 		/TOOL_PAYLOAD_.*MARKER/,
