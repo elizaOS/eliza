@@ -101,6 +101,13 @@ mock.module("@/lib/services/shared-runtime/agent-tier", () => ({
 }));
 mock.module("@/lib/api/cloud-worker-errors", () => ({
   ApiError: class ApiError extends Error {},
+  ForbiddenError: (message = "Access denied") => {
+    return Object.assign(new Error(message), {
+      name: "ApiError",
+      status: 403,
+      code: "access_denied",
+    });
+  },
   NotFoundError: class NotFoundError extends Error {},
   ValidationError: (message: string) => {
     const error = new Error(message);

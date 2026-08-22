@@ -69,6 +69,8 @@ mock.module("@/lib/services/org-rate-limits", () => ({
   invalidateOrgTierCache: mock(async () => undefined),
 }));
 mock.module("@/lib/services/provisioning-jobs", () => ({
+  CONTAINER_BACKED_TARGET_REJECTION_REASON:
+    "agent_job_target_not_container_backed",
   provisioningJobService: {},
 }));
 mock.module("@/lib/services/redeemable-earnings", () => ({
