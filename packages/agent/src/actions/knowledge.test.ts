@@ -73,8 +73,14 @@ const CORPUS: DocRecord[] = [
 function makeService(records: DocRecord[] = CORPUS) {
   return {
     searchDocuments: vi.fn(async () => records),
-    getMemories: vi.fn(async ({ offset = 0 }: { offset?: number }) =>
-      offset === 0 ? records : [],
+    getMemories: vi.fn(
+      async ({
+        offset = 0,
+        count = records.length,
+      }: {
+        offset?: number;
+        count?: number;
+      }) => records.slice(offset, offset + count),
     ),
     getDocumentById: vi.fn(
       async (id: UUID) => records.find((r) => r.id === id) ?? null,
@@ -196,6 +202,47 @@ describe("SEARCH_KNOWLEDGE", () => {
     );
     expect(res.success).toBe(true);
     expect((res.data as { count: number }).count).toBeGreaterThan(0);
+  });
+
+  it("filter-only search traverses beyond the former 2000-row ceiling", async () => {
+    const records = Array.from({ length: 2_051 }, (_, index) =>
+      doc(
+        `00000000-0000-4000-8000-${index.toString().padStart(12, "0")}` as UUID,
+        "global",
+      ),
+    );
+    const runtime = makeRuntime({ service: makeService(records) });
+    const res = await call(
+      searchKnowledgeAction,
+      runtime,
+      msg(OWNER_ENTITY, DM_ROOM),
+      { tags: ["media-format:pdf"] },
+    );
+
+    expect(res.success).toBe(true);
+    const items = (res.data as { items: Array<{ id: UUID }> }).items;
+    expect(items).toHaveLength(records.length);
+    expect(items.map((item) => item.id)).toEqual(
+      records.map((item) => item.id),
+    );
+  });
+
+  it("rejects a non-advancing facet adapter instead of returning a prefix", async () => {
+    const records = Array.from({ length: 200 }, (_, index) =>
+      doc(
+        `00000000-0000-4000-8000-${index.toString().padStart(12, "0")}` as UUID,
+        "global",
+      ),
+    );
+    const service = makeService(records);
+    service.getMemories.mockImplementation(async () => records);
+    const runtime = makeRuntime({ service });
+
+    await expect(
+      call(searchKnowledgeAction, runtime, msg(OWNER_ENTITY, DM_ROOM), {
+        tags: ["media-format:pdf"],
+      }),
+    ).rejects.toMatchObject({ code: "KNOWLEDGE_TRAVERSAL_NON_ADVANCING" });
   });
 
   it("free-text search composes with the help tag on fragment metadata", async () => {

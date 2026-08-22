@@ -35,6 +35,7 @@ import {
 	type AccessContext,
 	type Content,
 	type CustomMetadata,
+	type DocumentFragmentQueryParams,
 	type DocumentListCursor,
 	type DocumentListQueryParams,
 	type DocumentListRequesterRole,
@@ -1939,14 +1940,13 @@ export class DocumentService extends Service {
 			return this._keywordSearch(queryText, filterScope, requester);
 		}
 
-		const fragments = await this.runtime.adapter.queryDocumentFragments({
+		const fragments = await this.queryAllDocumentFragments({
 			agentId: this.runtime.agentId,
 			requesterEntityId: requester.entityId,
 			requesterRoomIds: requester.roomIds,
 			requesterRole: requester.role,
 			embedding,
 			...filterScope,
-			limit: 20,
 			matchThreshold: 0.1,
 		});
 
@@ -1971,13 +1971,12 @@ export class DocumentService extends Service {
 		filterScope: { roomId?: UUID; worldId?: UUID; entityId?: UUID },
 		requester: DocumentRequester,
 	): Promise<StoredDocument[]> {
-		const allFragments = await this.runtime.adapter.queryDocumentFragments({
+		const allFragments = await this.queryAllDocumentFragments({
 			agentId: this.runtime.agentId,
 			requesterEntityId: requester.entityId,
 			requesterRoomIds: requester.roomIds,
 			requesterRole: requester.role,
 			...filterScope,
-			limit: 1_000,
 		});
 		const valid = allFragments.filter(
 			(f) => f.id !== undefined && f.content.text,
@@ -2037,14 +2036,13 @@ export class DocumentService extends Service {
 		// 0.6·vector + 0.4·bm25 combine never sees the semantic-only matches. And
 		// use `count` (the adapter honours it; `limit` was ignored → pool capped at
 		// the default 10, defeating "fetch a larger candidate set").
-		const candidates = await this.runtime.adapter.queryDocumentFragments({
+		const candidates = await this.queryAllDocumentFragments({
 			agentId: this.runtime.agentId,
 			requesterEntityId: requester.entityId,
 			requesterRoomIds: requester.roomIds,
 			requesterRole: requester.role,
 			embedding,
 			...filterScope,
-			limit: 40,
 			matchThreshold: 0.05,
 		});
 		const valid = candidates.filter(
@@ -2090,6 +2088,55 @@ export class DocumentService extends Service {
 				};
 			})
 			.sort((a, b) => b.similarity - a.similarity) as StoredDocument[];
+	}
+
+	/**
+	 * Traverse the authorized fragment query in storage-sized pages. `limit` is
+	 * deliberately internal: every matching fragment is reassembled before any
+	 * search mode ranks it, and a repeated row or non-advancing adapter rejects
+	 * instead of returning a complete-looking prefix.
+	 */
+	private async queryAllDocumentFragments(
+		params: Omit<DocumentFragmentQueryParams, "limit" | "offset">,
+	): Promise<Memory[]> {
+		const pageSize = 1_000;
+		const fragments: Memory[] = [];
+		const seen = new Set<string>();
+		let offset = 0;
+		while (true) {
+			const page = await this.runtime.adapter.queryDocumentFragments({
+				...params,
+				limit: pageSize,
+				offset,
+			});
+			if (page.length > pageSize) {
+				throw new ElizaError("Document fragment page exceeded its request", {
+					code: "DOCUMENT_FRAGMENT_TRAVERSAL_PAGE_INVALID",
+					context: { offset, pageLength: page.length, pageSize },
+				});
+			}
+			if (page.length === 0) break;
+			for (const fragment of page) {
+				// Malformed legacy fragments without an identity are not searchable and
+				// were already excluded by every search mode. They still advance the
+				// storage offset, so retaining that compatibility cannot stall paging.
+				if (!fragment.id) continue;
+				if (seen.has(fragment.id)) {
+					throw new ElizaError(
+						"Document fragment traversal repeated an identity",
+						{
+							code: "DOCUMENT_FRAGMENT_TRAVERSAL_NON_ADVANCING",
+							context: { offset, fragmentId: fragment.id },
+						},
+					);
+				}
+				seen.add(fragment.id);
+				fragments.push(fragment);
+			}
+			if (page.length < pageSize) break;
+			offset += page.length;
+		}
+		return fragments;
 	}
 
 	async enrichConversationMemoryWithRAG(

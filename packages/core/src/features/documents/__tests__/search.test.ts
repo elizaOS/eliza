@@ -133,16 +133,22 @@ function buildRuntime(opts: { hasEmbedding: boolean; fragments?: Memory[] }) {
 	const fragments = opts.fragments ?? [];
 	const agentId = "agent-1" as UUID;
 	const queryDocumentFragments = vi.fn(
-		async (params: { requesterEntityId: UUID }) =>
-			fragments.filter((fragment) => {
-				const metadata = fragment.metadata as
-					| Record<string, unknown>
-					| undefined;
-				return (
-					metadata?.scope !== "user-private" ||
-					metadata.scopedToEntityId === params.requesterEntityId
-				);
-			}),
+		async (params: {
+			requesterEntityId: UUID;
+			offset?: number;
+			limit: number;
+		}) =>
+			fragments
+				.filter((fragment) => {
+					const metadata = fragment.metadata as
+						| Record<string, unknown>
+						| undefined;
+					return (
+						metadata?.scope !== "user-private" ||
+						metadata.scopedToEntityId === params.requesterEntityId
+					);
+				})
+				.slice(params.offset ?? 0, (params.offset ?? 0) + params.limit),
 	);
 
 	return {
@@ -255,6 +261,47 @@ describe("DocumentService.searchDocuments", () => {
 	});
 
 	describe("keyword-only mode", () => {
+		it("traverses and ranks every fragment beyond one storage page", async () => {
+			const fragments = Array.from({ length: 1_205 }, (_, index) =>
+				makeFragment(`frag-${index}`, `complete corpus match ${index}`),
+			);
+			const rt = buildRuntime({ hasEmbedding: false, fragments });
+			const svc = buildService(rt);
+
+			const results = await svc.searchDocuments(
+				makeMessage("complete corpus match"),
+				undefined,
+				"keyword",
+			);
+
+			expect(results).toHaveLength(fragments.length);
+			expect(new Set(results.map((result) => result.id)).size).toBe(
+				fragments.length,
+			);
+			expect(rt.adapter.queryDocumentFragments).toHaveBeenCalledTimes(2);
+		});
+
+		it("rejects a non-advancing fragment adapter instead of ranking a prefix", async () => {
+			const fragments = Array.from({ length: 1_000 }, (_, index) =>
+				makeFragment(`frag-${index}`, `complete match ${index}`),
+			);
+			const rt = buildRuntime({ hasEmbedding: false, fragments });
+			rt.adapter.queryDocumentFragments.mockImplementation(
+				async () => fragments,
+			);
+			const svc = buildService(rt);
+
+			await expect(
+				svc.searchDocuments(
+					makeMessage("complete match"),
+					undefined,
+					"keyword",
+				),
+			).rejects.toMatchObject({
+				code: "DOCUMENT_FRAGMENT_TRAVERSAL_NON_ADVANCING",
+			});
+		});
+
 		it("uses the authorized fragment query and scores via BM25", async () => {
 			const fragments = [
 				makeFragment("frag-a", "quantum computing and qubits"),

@@ -23,6 +23,7 @@ import {
   type Action,
   type ActionResult,
   type Content,
+  ElizaError,
   type HandlerCallback,
   type HandlerOptions,
   type IAgentRuntime,
@@ -186,10 +187,7 @@ async function resolveItem(
     // it was ingested from rather than its document id.
     const fileName = mediaFileNameFromRef(itemRef);
     if (fileName && service) {
-      const docs = await service.getMemories({
-        tableName: "documents",
-        count: 1000,
-      });
+      const docs = await readStableCompleteDocumentRows(service);
       memory =
         docs.find((doc) => {
           const meta = asRecord(doc.metadata);
@@ -267,8 +265,81 @@ type KnowledgeSearchRow = {
 
 /** How many document rows to pull per scan batch in the facet-list path. */
 const DOCUMENT_SCAN_BATCH = 200;
-/** Cap the facet scan so a huge corpus can't unbounded-loop an action. */
-const DOCUMENT_SCAN_MAX = 2000;
+
+function knowledgeTraversalError(
+  code: string,
+  context: Record<string, unknown>,
+): ElizaError {
+  return new ElizaError(
+    "Knowledge traversal could not prove a complete snapshot",
+    { code, context },
+  );
+}
+
+async function scanAllDocumentRows(
+  service: DocumentsServiceLike,
+): Promise<Memory[]> {
+  const rows: Memory[] = [];
+  const seen = new Set<string>();
+  let offset = 0;
+  while (true) {
+    const batch = await service.getMemories({
+      tableName: "documents",
+      count: DOCUMENT_SCAN_BATCH,
+      offset,
+    });
+    if (batch.length > DOCUMENT_SCAN_BATCH) {
+      throw knowledgeTraversalError("KNOWLEDGE_TRAVERSAL_PAGE_INVALID", {
+        offset,
+        pageLength: batch.length,
+      });
+    }
+    if (batch.length === 0) break;
+    for (const memory of batch) {
+      if (!memory.id || seen.has(memory.id)) {
+        throw knowledgeTraversalError("KNOWLEDGE_TRAVERSAL_NON_ADVANCING", {
+          offset,
+          memoryId: memory.id,
+        });
+      }
+      seen.add(memory.id);
+      rows.push(memory);
+    }
+    if (batch.length < DOCUMENT_SCAN_BATCH) break;
+    offset += batch.length;
+  }
+  return rows;
+}
+
+async function readStableCompleteDocumentRows(
+  service: DocumentsServiceLike,
+): Promise<Memory[]> {
+  const before = await service.countMemories({ tableName: "documents" });
+  const first = await scanAllDocumentRows(service);
+  const between = await service.countMemories({ tableName: "documents" });
+  const second = await scanAllDocumentRows(service);
+  const after = await service.countMemories({ tableName: "documents" });
+  const firstIds = first.map((memory) => memory.id);
+  const secondIds = second.map((memory) => memory.id);
+  if (
+    !Number.isSafeInteger(before) ||
+    before < 0 ||
+    before !== between ||
+    before !== after ||
+    first.length !== before ||
+    second.length !== before ||
+    firstIds.some((id, index) => id !== secondIds[index])
+  ) {
+    throw knowledgeTraversalError("KNOWLEDGE_TRAVERSAL_INVENTORY_CHANGED", {
+      before,
+      between,
+      after,
+      firstLength: first.length,
+      secondLength: second.length,
+    });
+  }
+  return second;
+}
 
 /**
  * Free-text retrieval path: semantic/hybrid search over the document store,
@@ -314,27 +385,17 @@ async function listByFacets(
   _filters: DocumentFilter,
 ): Promise<KnowledgeSearchRow[]> {
   const rows: KnowledgeSearchRow[] = [];
-  let offset = 0;
-  while (offset < DOCUMENT_SCAN_MAX) {
-    const batch = await service.getMemories({
-      tableName: "documents",
-      count: DOCUMENT_SCAN_BATCH,
-      offset,
+  const memories = await readStableCompleteDocumentRows(service);
+  for (const memory of memories) {
+    const meta = asRecord(memory.metadata);
+    // Only real document memories for this agent (mirrors isDocumentMemory).
+    if (meta?.type !== "document" && meta?.documentId === undefined) continue;
+    if (memory.agentId && memory.agentId !== agentId) continue;
+    rows.push({
+      id: memory.id as UUID,
+      content: { text: memory.content?.text },
+      metadata: meta,
     });
-    if (batch.length === 0) break;
-    for (const memory of batch) {
-      const meta = asRecord(memory.metadata);
-      // Only real document memories for this agent (mirrors isDocumentMemory).
-      if (meta?.type !== "document" && meta?.documentId === undefined) continue;
-      if (memory.agentId && memory.agentId !== agentId) continue;
-      rows.push({
-        id: memory.id as UUID,
-        content: { text: memory.content?.text },
-        metadata: meta,
-      });
-    }
-    if (batch.length < DOCUMENT_SCAN_BATCH) break;
-    offset += DOCUMENT_SCAN_BATCH;
   }
   return rows;
 }
@@ -393,10 +454,6 @@ export const searchKnowledgeAction: Action = {
       );
     }
 
-    const limit =
-      typeof params.limit === "number" && Number.isFinite(params.limit)
-        ? Math.max(1, Math.min(50, Math.floor(params.limit)))
-        : 10;
     const searchMode = parseSearchMode(params.searchMode);
 
     // The surfacing wall (#13974): SEARCH renders snippets INTO the active room.
@@ -419,7 +476,6 @@ export const searchKnowledgeAction: Action = {
       .filter((r) => matchesDocumentFilter(r, { ...filters, query: undefined }))
       .filter((r) => canReadDocumentMemory(r, actor, filters))
       .filter((r) => canSurfaceDocumentInRoom(r, activeRoomIsPublic).ok)
-      .slice(0, limit)
       .map((r) => {
         const meta = asRecord(r.metadata);
         const tags = documentTags(meta);
@@ -509,12 +565,6 @@ export const searchKnowledgeAction: Action = {
       description: "Optional retrieval mode: hybrid | vector | keyword",
       required: false,
       schema: { type: "string" as const },
-    },
-    {
-      name: "limit",
-      description: "Max results (default 10, max 50)",
-      required: false,
-      schema: { type: "number" as const },
     },
   ],
 };
