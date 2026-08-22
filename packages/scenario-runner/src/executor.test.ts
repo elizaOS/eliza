@@ -320,6 +320,7 @@ describe("scenario executor wait turns", () => {
           durationMs: 0,
           assertTurn() {
             executed = true;
+            return undefined;
           },
         },
       ],
