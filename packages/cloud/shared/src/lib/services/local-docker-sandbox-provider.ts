@@ -12,6 +12,7 @@ import { Buffer } from "node:buffer";
 import { execFile } from "node:child_process";
 import nodeCrypto from "node:crypto";
 import { chmodSync, existsSync, mkdirSync, rmSync } from "node:fs";
+import { isIP } from "node:net";
 import path from "node:path";
 import { promisify } from "node:util";
 
@@ -281,6 +282,44 @@ const HEALTH_WAIT_TOTAL_MS = 60_000;
 
 const LOG_PREFIX = "[LocalDockerSandboxProvider]";
 
+/**
+ * Convert Docker's default-bridge gateway list into exact host CIDRs. The
+ * pairing relay admits only these single addresses; it never trusts Host or
+ * forwarded headers and never opens the surrounding bridge/LAN range.
+ */
+export function parseLocalDockerBridgeGatewayCidrs(output: string): string {
+  const cidrs = new Set<string>();
+  for (const rawLine of output.split(/\r?\n/)) {
+    const address = rawLine.trim();
+    if (!address) continue;
+    const family = isIP(address);
+    if (family === 4) cidrs.add(`${address}/32`);
+    else if (family === 6) cidrs.add(`${address}/128`);
+    else {
+      throw new Error(`${LOG_PREFIX} Docker bridge returned an invalid gateway address.`);
+    }
+  }
+  if (cidrs.size === 0) {
+    throw new Error(`${LOG_PREFIX} Docker bridge did not report a gateway address.`);
+  }
+  return [...cidrs].join(",");
+}
+
+async function resolveLocalDockerBridgeGatewayCidrs(): Promise<string> {
+  const { stdout } = await execFileAsync(
+    DOCKER_BIN,
+    [
+      "network",
+      "inspect",
+      "bridge",
+      "--format",
+      "{{range .IPAM.Config}}{{println .Gateway}}{{end}}",
+    ],
+    { timeout: DOCKER_CMD_TIMEOUT_MS },
+  );
+  return parseLocalDockerBridgeGatewayCidrs(stdout);
+}
+
 function resolveContainerPort(config: SandboxCreateConfig): string {
   const requested =
     typeof config.environmentVars.PORT === "string" && config.environmentVars.PORT.trim()
@@ -462,6 +501,11 @@ export class LocalDockerSandboxProvider implements SandboxProvider {
       );
     }
 
+    // Resolve this before removing an existing container. If Docker's local
+    // bridge cannot be classified exactly, fail closed while the healthy
+    // runtime and its persisted data remain untouched.
+    const pairingAllowedPeerCidrs = await resolveLocalDockerBridgeGatewayCidrs();
+
     // If a container with this name already exists from a prior run, remove it
     // so we can re-create cleanly. Local dev is single-tenant per agentId.
     await this.removeExistingContainer(containerName);
@@ -510,8 +554,7 @@ export class LocalDockerSandboxProvider implements SandboxProvider {
     // environmentVars to win.
     const llmPassthrough = collectLocalDockerLlmPassthrough(process.env, rewrittenEnv);
     const cerebrasApiKey = rewrittenEnv.CEREBRAS_API_KEY || llmPassthrough.CEREBRAS_API_KEY;
-    const cerebrasBaseUrl =
-      rewrittenEnv.CEREBRAS_BASE_URL || llmPassthrough.CEREBRAS_BASE_URL;
+    const cerebrasBaseUrl = rewrittenEnv.CEREBRAS_BASE_URL || llmPassthrough.CEREBRAS_BASE_URL;
     const cerebrasSmallModel =
       rewrittenEnv.CEREBRAS_SMALL_MODEL ||
       rewrittenEnv.CEREBRAS_MODEL ||
@@ -525,50 +568,56 @@ export class LocalDockerSandboxProvider implements SandboxProvider {
       llmPassthrough.CEREBRAS_MODEL ||
       "gemma-4-31b";
 
-    const allEnv = applyLocalDockerRuntimeMode({
-      ...llmPassthrough,
-      ...rewrittenEnv,
-      // plugin-openai is the OpenAI-compatible transport used for Cerebras.
-      // These are aliases of the same Cerebras credential/base, not a second
-      // provider; the Cerebras model roles remain authoritative below.
-      ...(cerebrasApiKey
-        ? {
-            OPENAI_API_KEY: cerebrasApiKey,
-            OPENAI_BASE_URL: cerebrasBaseUrl || "https://api.cerebras.ai/v1",
-            OPENAI_NANO_MODEL: cerebrasSmallModel,
-            OPENAI_SMALL_MODEL: cerebrasSmallModel,
-            OPENAI_MEDIUM_MODEL: cerebrasSmallModel,
-            OPENAI_ACTION_PLANNER_MODEL: cerebrasSmallModel,
-            OPENAI_RESPONSE_HANDLER_MODEL: cerebrasSmallModel,
-            OPENAI_SHOULD_RESPOND_MODEL: cerebrasSmallModel,
-            OPENAI_LARGE_MODEL: cerebrasLargeModel,
-            OPENAI_MEGA_MODEL: cerebrasLargeModel,
-          }
-        : {}),
-      AGENT_NAME: agentName,
-      AGENT_ID: agentId,
-      ELIZA_PORT: agentPort,
-      PORT: agentPort,
-      BRIDGE_PORT: agentBridgePort,
-      AGENT_API_BIND: "0.0.0.0",
-      ELIZA_API_BIND: "0.0.0.0",
-      AGENT_DISABLE_AUTO_API_TOKEN: "1",
-      ELIZA_DISABLE_AUTO_API_TOKEN: "1",
-      JWT_SECRET: rewrittenEnv.JWT_SECRET || crypto.randomUUID(),
-      ELIZA_VAULT_PASSPHRASE:
-        rewrittenEnv.ELIZA_VAULT_PASSPHRASE || crypto.randomUUID().replace(/-/g, ""),
-      ELIZA_API_TOKEN: apiToken,
-      BRIDGE_SECRET: apiToken,
-      // plugin-sql throws under NODE_ENV=production without a SECRET_SALT.
-      // Generate a per-sandbox value so two agents on the same host don't
-      // share encrypted-state keys. Stable per agentId so restarts decrypt.
-      SECRET_SALT:
-        rewrittenEnv.SECRET_SALT ||
-        nodeCrypto.createHash("sha256").update(`local-docker-secret-salt:${agentId}`).digest("hex"),
-      ELIZA_STATE_DIR: "/home/agent/.eliza",
-      ELIZA_AGENT_LOCAL_STATE: "/home/agent/.eliza",
-      PGLITE_DATA_DIR: "/home/agent/.eliza/.pgdata",
-    });
+    const allEnv = applyLocalDockerRuntimeMode(
+      {
+        ...llmPassthrough,
+        ...rewrittenEnv,
+        // plugin-openai is the OpenAI-compatible transport used for Cerebras.
+        // These are aliases of the same Cerebras credential/base, not a second
+        // provider; the Cerebras model roles remain authoritative below.
+        ...(cerebrasApiKey
+          ? {
+              OPENAI_API_KEY: cerebrasApiKey,
+              OPENAI_BASE_URL: cerebrasBaseUrl || "https://api.cerebras.ai/v1",
+              OPENAI_NANO_MODEL: cerebrasSmallModel,
+              OPENAI_SMALL_MODEL: cerebrasSmallModel,
+              OPENAI_MEDIUM_MODEL: cerebrasSmallModel,
+              OPENAI_ACTION_PLANNER_MODEL: cerebrasSmallModel,
+              OPENAI_RESPONSE_HANDLER_MODEL: cerebrasSmallModel,
+              OPENAI_SHOULD_RESPOND_MODEL: cerebrasSmallModel,
+              OPENAI_LARGE_MODEL: cerebrasLargeModel,
+              OPENAI_MEGA_MODEL: cerebrasLargeModel,
+            }
+          : {}),
+        AGENT_NAME: agentName,
+        AGENT_ID: agentId,
+        ELIZA_PORT: agentPort,
+        PORT: agentPort,
+        BRIDGE_PORT: agentBridgePort,
+        AGENT_API_BIND: "0.0.0.0",
+        ELIZA_API_BIND: "0.0.0.0",
+        AGENT_DISABLE_AUTO_API_TOKEN: "1",
+        ELIZA_DISABLE_AUTO_API_TOKEN: "1",
+        JWT_SECRET: rewrittenEnv.JWT_SECRET || crypto.randomUUID(),
+        ELIZA_VAULT_PASSPHRASE:
+          rewrittenEnv.ELIZA_VAULT_PASSPHRASE || crypto.randomUUID().replace(/-/g, ""),
+        ELIZA_API_TOKEN: apiToken,
+        BRIDGE_SECRET: apiToken,
+        // plugin-sql throws under NODE_ENV=production without a SECRET_SALT.
+        // Generate a per-sandbox value so two agents on the same host don't
+        // share encrypted-state keys. Stable per agentId so restarts decrypt.
+        SECRET_SALT:
+          rewrittenEnv.SECRET_SALT ||
+          nodeCrypto
+            .createHash("sha256")
+            .update(`local-docker-secret-salt:${agentId}`)
+            .digest("hex"),
+        ELIZA_STATE_DIR: "/home/agent/.eliza",
+        ELIZA_AGENT_LOCAL_STATE: "/home/agent/.eliza",
+        PGLITE_DATA_DIR: "/home/agent/.eliza/.pgdata",
+      },
+      pairingAllowedPeerCidrs,
+    );
 
     for (const [key, value] of Object.entries(allEnv)) {
       validateEnvKey(key);
