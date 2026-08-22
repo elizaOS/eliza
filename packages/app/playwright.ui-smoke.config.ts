@@ -354,6 +354,11 @@ export default defineConfig({
             testMatch: [AUDIT_CLOUD_SPEC, AUDIT_PROJECT_WORKER_CONTRACT_SPEC],
             use: {
               ...devices["Desktop Chrome"],
+              // Cloud audit assertions depend on per-page API fixtures. A
+              // controlling worker can issue agent-origin fetches outside
+              // Playwright routing and turn deterministic empty states into
+              // CORS failures; service-worker behavior has dedicated tests.
+              ...BLOCK_PRODUCTION_SERVICE_WORKER,
               ...withChromiumLaunchOptions(),
             },
           },
