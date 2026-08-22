@@ -148,13 +148,29 @@ export function resolveMaxAuthRetries(raw: string | undefined): number {
  * Class representing a request queue for handling asynchronous requests in a controlled manner.
  */
 
-type QueuedRequest = () => Promise<unknown>;
+type QueuedItem = {
+  run: () => Promise<void>;
+  reject: (error: unknown) => void;
+  retrySafe: boolean;
+};
 
-class RequestQueue {
-  private queue: QueuedRequest[] = [];
+export type RequestQueueOptions = {
+  /** Retry only operations that are safe to repeat after an ambiguous failure. */
+  retry?: "safe";
+};
+
+export class RequestQueue {
+  private queue: QueuedItem[] = [];
   private processing = false;
   private maxRetries = 3;
-  private retryAttempts = new Map<QueuedRequest, number>();
+  private retryAttempts = new Map<QueuedItem, number>();
+
+  constructor(
+    private readonly waits: {
+      backoff?: (retryCount: number) => Promise<void>;
+      jitter?: () => Promise<void>;
+    } = {},
+  ) {}
 
   /**
    * Asynchronously adds a request to the queue, then processes the queue.
@@ -163,17 +179,20 @@ class RequestQueue {
    * @param {() => Promise<T>} request - The request to be added to the queue
    * @returns {Promise<T>} - A promise that resolves with the result of the request or rejects with an error
    */
-  async add<T>(request: () => Promise<T>): Promise<T> {
+  async add<T>(
+    request: () => Promise<T>,
+    options: RequestQueueOptions = {},
+  ): Promise<T> {
     return new Promise((resolve, reject) => {
-      this.queue.push(async () => {
-        try {
+      this.queue.push({
+        run: async () => {
           const result = await request();
           resolve(result);
-        } catch (error) {
-          reject(error);
-        }
+        },
+        reject,
+        retrySafe: options.retry === "safe",
       });
-      this.processQueue();
+      void this.processQueue();
     });
   }
 
@@ -189,38 +208,39 @@ class RequestQueue {
     this.processing = true;
 
     while (this.queue.length > 0) {
-      const request = this.queue.shift();
-      if (!request) break;
+      const item = this.queue.shift();
+      if (!item) break;
       try {
-        await request();
-        // Clear retry count on success
-        this.retryAttempts.delete(request);
+        await item.run();
+        this.retryAttempts.delete(item);
       } catch (error) {
+        // error-policy:J1 queue boundary retries only explicitly repeat-safe
+        // work and rejects the original caller when no retry is authorized.
         logger.error("Error processing request:", errorDetail(error));
 
-        const retryCount = (this.retryAttempts.get(request) || 0) + 1;
+        const retryCount = (this.retryAttempts.get(item) || 0) + 1;
 
-        if (retryCount < this.maxRetries) {
-          this.retryAttempts.set(request, retryCount);
-          this.queue.unshift(request);
+        if (item.retrySafe && retryCount < this.maxRetries) {
+          this.retryAttempts.set(item, retryCount);
+          this.queue.unshift(item);
           await this.exponentialBackoff(retryCount);
-          // Break the loop to allow exponential backoff to take effect
-          break;
-        } else {
+          continue;
+        }
+        if (item.retrySafe) {
           logger.error(
             `Max retries (${this.maxRetries}) exceeded for request, skipping`,
           );
-          this.retryAttempts.delete(request);
         }
+        this.retryAttempts.delete(item);
+        item.reject(error);
       }
       await this.randomDelay();
     }
 
     this.processing = false;
 
-    // If there are still items in the queue, restart processing
     if (this.queue.length > 0) {
-      this.processQueue();
+      void this.processQueue();
     }
   }
 
@@ -230,6 +250,10 @@ class RequestQueue {
    * @returns {Promise<void>} - A promise that resolves after a delay based on the retry count.
    */
   private async exponentialBackoff(retryCount: number): Promise<void> {
+    if (this.waits.backoff) {
+      await this.waits.backoff(retryCount);
+      return;
+    }
     const delay = 2 ** retryCount * 1000;
     await new Promise((resolve) => setTimeout(resolve, delay));
   }
@@ -240,6 +264,10 @@ class RequestQueue {
    * @returns A Promise that resolves after the random delay has passed.
    */
   private async randomDelay(): Promise<void> {
+    if (this.waits.jitter) {
+      await this.waits.jitter();
+      return;
+    }
     const delay = Math.floor(Math.random() * 2000) + 1500;
     await new Promise((resolve) => setTimeout(resolve, delay));
   }
@@ -336,8 +364,9 @@ export class ClientBase {
       return cachedTweet;
     }
 
-    const tweet = await this.requestQueue.add(() =>
-      this.twitterClient.getTweet(tweetId),
+    const tweet = await this.requestQueue.add(
+      () => this.twitterClient.getTweet(tweetId),
+      { retry: "safe" },
     );
 
     if (!tweet) {
@@ -683,16 +712,18 @@ export class ClientBase {
           15_000,
         );
       });
-      const result = await this.requestQueue.add(() =>
-        Promise.race([
-          this.twitterClient.fetchSearchTweets(
-            query,
-            maxTweets,
-            searchMode,
-            cursor,
-          ),
-          timeoutPromise,
-        ]),
+      const result = await this.requestQueue.add(
+        () =>
+          Promise.race([
+            this.twitterClient.fetchSearchTweets(
+              query,
+              maxTweets,
+              searchMode,
+              cursor,
+            ),
+            timeoutPromise,
+          ]),
+        { retry: "safe" },
       );
       if (!result) {
         throw new ElizaError("X search returned no response", {
@@ -1095,43 +1126,46 @@ export class ClientBase {
 
   async fetchProfile(username: string): Promise<TwitterProfile> {
     try {
-      const profile = await this.requestQueue.add(async () => {
-        const profile = await this.twitterClient.getProfile(username);
+      const profile = await this.requestQueue.add(
+        async () => {
+          const profile = await this.twitterClient.getProfile(username);
 
-        // Handle case where runtime.character might be undefined
-        const defaultName = "AI Assistant";
-        const defaultBio = "";
+          // Handle case where runtime.character might be undefined
+          const defaultName = "AI Assistant";
+          const defaultBio = "";
 
-        let characterName = defaultName;
-        let characterBio = defaultBio;
+          let characterName = defaultName;
+          let characterBio = defaultBio;
 
-        if (this.runtime?.character) {
-          characterName = this.runtime.character.name || defaultName;
+          if (this.runtime?.character) {
+            characterName = this.runtime.character.name || defaultName;
 
-          if (typeof this.runtime.character.bio === "string") {
-            characterBio = this.runtime.character.bio;
-          } else if (
-            Array.isArray(this.runtime.character.bio) &&
-            this.runtime.character.bio.length > 0
-          ) {
-            characterBio = this.runtime.character.bio[0] ?? defaultBio;
+            if (typeof this.runtime.character.bio === "string") {
+              characterBio = this.runtime.character.bio;
+            } else if (
+              Array.isArray(this.runtime.character.bio) &&
+              this.runtime.character.bio.length > 0
+            ) {
+              characterBio = this.runtime.character.bio[0] ?? defaultBio;
+            }
           }
-        }
 
-        if (!profile.userId) {
-          throw new Error(
-            `Twitter profile for ${username} is missing a user id`,
-          );
-        }
+          if (!profile.userId) {
+            throw new Error(
+              `Twitter profile for ${username} is missing a user id`,
+            );
+          }
 
-        return {
-          id: profile.userId,
-          username,
-          screenName: profile.name || characterName,
-          bio: profile.biography || characterBio,
-          nicknames: [],
-        } satisfies TwitterProfile;
-      });
+          return {
+            id: profile.userId,
+            username,
+            screenName: profile.name || characterName,
+            bio: profile.biography || characterBio,
+            nicknames: [],
+          } satisfies TwitterProfile;
+        },
+        { retry: "safe" },
+      );
 
       return profile;
     } catch (error) {
@@ -1167,12 +1201,14 @@ export class ClientBase {
     try {
       return await this.withAuthenticatedSession(async ({ profile }) => {
         // Use fetchSearchTweets to get mentions instead of the non-existent get method
-        const mentionsResponse = await this.requestQueue.add(() =>
-          this.twitterClient.fetchSearchTweets(
-            `@${profile.username}`,
-            100,
-            SearchMode.Latest,
-          ),
+        const mentionsResponse = await this.requestQueue.add(
+          () =>
+            this.twitterClient.fetchSearchTweets(
+              `@${profile.username}`,
+              100,
+              SearchMode.Latest,
+            ),
+          { retry: "safe" },
         );
 
         // Process tweets directly into the expected interaction format
