@@ -1252,7 +1252,7 @@ async function sendPersonalSharedReply(
     if (
       authorizationData !== false &&
       authorizationData.authorized === false &&
-      authorizationData.reason === "source_already_attempted"
+      authorizationData.reason === "source_delivery_uncertain"
     ) {
       logger.warn("Personal Shared delivery outcome remains uncertain", {
         project,

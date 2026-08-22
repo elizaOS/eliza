@@ -687,7 +687,7 @@ describe("gateway webhook handler e2e routing", () => {
                   authorized: false,
                   leaseToken: null,
                   expiresAt: null,
-                  reason: "source_already_attempted",
+                  reason: "source_delivery_uncertain",
                 }
               : {
                   code: "group_delivery_authorization",

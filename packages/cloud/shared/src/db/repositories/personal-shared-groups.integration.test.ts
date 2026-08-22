@@ -667,6 +667,52 @@ describe("personalSharedGroupsRepository", () => {
     ).resolves.toEqual({ recorded: true, inserted: 1 });
   });
 
+  test("materializes an old-writer commit before recording its receipt", async () => {
+    await issue({
+      codeHash: "claim-old-writer-receipt",
+      organizationId: ORG_A,
+      ownerUserId: USER_A,
+      personalAgentId: "personal:owner-a",
+      platformUserId: "+15551110001",
+    });
+    const bound = await consume("claim-old-writer-receipt", "+15551110001");
+    if (bound.status !== "bound") throw new Error("expected lease binding");
+    const delivery = {
+      authority: {
+        bindingId: bound.binding.id,
+        ownerUserId: bound.binding.owner_user_id,
+        personalAgentId: bound.binding.personal_agent_id,
+        version: bound.binding.authority_version,
+      },
+      platform: "blooio" as const,
+      project: "eliza-app",
+      connectorAccountId: CONNECTOR_ID,
+      providerChatId: CHAT_ID,
+      invocation: "mention" as const,
+      sourceMessageId: "incoming-old-writer",
+      leaseToken: "71000000-0000-4000-8000-0000000000b1",
+    };
+    expect(await repository.authorizeDelivery(delivery)).toMatchObject({ authorized: true });
+    expect(await repository.commitDelivery(delivery)).toBe(true);
+    // Migration can be live while the previous application revision still
+    // commits only the binding columns.
+    await getPgliteClientForTests().exec(`
+      DELETE FROM personal_shared_group_delivery_attempts
+      WHERE binding_id = '${bound.binding.id}';
+    `);
+
+    expect(
+      await repository.recordDeliveryReceipts({
+        ...delivery,
+        providerMessageIds: ["outgoing-old-writer"],
+      }),
+    ).toEqual({ recorded: true, inserted: 1 });
+    expect(await repository.authorizeDelivery(delivery)).toMatchObject({
+      authorized: false,
+      reason: "source_already_attempted",
+    });
+  });
+
   test("preserves an uncertain accepted send while allowing distinct future delivery and late reconciliation", async () => {
     await issue({
       codeHash: "claim-orphan-initial",
@@ -732,7 +778,7 @@ describe("personalSharedGroupsRepository", () => {
       }),
     ).toMatchObject({
       authorized: false,
-      reason: "source_already_attempted",
+      reason: "source_delivery_uncertain",
     });
     expect(await repository.authorizeDelivery(fresh)).toMatchObject({
       authorized: true,

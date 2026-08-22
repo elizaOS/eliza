@@ -61,7 +61,7 @@ export interface PersonalSharedGroupDeliveryLease {
   authorized: boolean;
   leaseToken: string | null;
   expiresAt: string | null;
-  reason: "source_already_attempted" | "not_authorized" | null;
+  reason: "source_already_attempted" | "source_delivery_uncertain" | "not_authorized" | null;
 }
 
 const DELIVERY_LEASE_MS = 90_000;
@@ -652,7 +652,7 @@ export const personalSharedGroupsRepository = {
         };
       }
       const [priorAttempt] = await tx
-        .select({ id: personalSharedGroupDeliveryAttempts.id })
+        .select({ state: personalSharedGroupDeliveryAttempts.state })
         .from(personalSharedGroupDeliveryAttempts)
         .where(
           and(
@@ -677,7 +677,12 @@ export const personalSharedGroupsRepository = {
         authorized: false,
         leaseToken: null,
         expiresAt: null,
-        reason: priorAttempt || priorReceipt ? "source_already_attempted" : "not_authorized",
+        reason:
+          priorAttempt?.state === "uncertain"
+            ? "source_delivery_uncertain"
+            : priorAttempt || priorReceipt
+              ? "source_already_attempted"
+              : "not_authorized",
       };
     });
   },
@@ -778,7 +783,7 @@ export const personalSharedGroupsRepository = {
       // The source/token pair was durably committed before provider egress.
       // Its attempt remains authoritative even after the live slot is released
       // for a distinct source, so late provider receipts stay reconcilable.
-      const [attempt] = await tx
+      let [attempt] = await tx
         .select({ bindingId: personalSharedGroupDeliveryAttempts.binding_id })
         .from(personalSharedGroupDeliveryAttempts)
         .where(
@@ -798,6 +803,57 @@ export const personalSharedGroupsRepository = {
           ),
         )
         .limit(1);
+      if (!attempt) {
+        // Migration precedes the application rollout, so an old writer may
+        // commit the live binding without creating an attempt. Materialize
+        // that exact authority before accepting its receipt.
+        const [legacyBinding] = await tx
+          .select({
+            bindingId: personalSharedGroupBindings.id,
+            committedAt: personalSharedGroupBindings.delivery_lease_committed_at,
+          })
+          .from(personalSharedGroupBindings)
+          .where(
+            and(
+              eq(personalSharedGroupBindings.id, input.authority.bindingId),
+              eq(personalSharedGroupBindings.platform, input.platform),
+              eq(personalSharedGroupBindings.project, input.project),
+              eq(personalSharedGroupBindings.connector_account_id, input.connectorAccountId),
+              eq(personalSharedGroupBindings.provider_chat_id, input.providerChatId),
+              eq(personalSharedGroupBindings.delivery_lease_source_id, input.sourceMessageId),
+              eq(personalSharedGroupBindings.delivery_lease_token, input.leaseToken),
+              isNotNull(personalSharedGroupBindings.delivery_lease_committed_at),
+            ),
+          )
+          .limit(1);
+        if (legacyBinding?.committedAt) {
+          await tx
+            .insert(personalSharedGroupDeliveryAttempts)
+            .values({
+              binding_id: legacyBinding.bindingId,
+              platform: input.platform,
+              project: input.project,
+              connector_account_id: input.connectorAccountId,
+              provider_chat_id: input.providerChatId,
+              source_message_id: input.sourceMessageId,
+              lease_token: input.leaseToken,
+              state: "committed",
+              committed_at: legacyBinding.committedAt,
+            })
+            .onConflictDoNothing();
+          [attempt] = await tx
+            .select({ bindingId: personalSharedGroupDeliveryAttempts.binding_id })
+            .from(personalSharedGroupDeliveryAttempts)
+            .where(
+              and(
+                eq(personalSharedGroupDeliveryAttempts.binding_id, input.authority.bindingId),
+                eq(personalSharedGroupDeliveryAttempts.source_message_id, input.sourceMessageId),
+                eq(personalSharedGroupDeliveryAttempts.lease_token, input.leaseToken),
+              ),
+            )
+            .limit(1);
+        }
+      }
       if (!attempt || input.providerMessageIds.length === 0) {
         return { recorded: false, inserted: 0 };
       }
