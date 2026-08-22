@@ -15,6 +15,21 @@ used different UI containers, SQL series, remote-target models, and SSH/relay
 lifecycle code. The invariant manifest in
 `devices-runtimes-unification-manifest.tsv` is the review map.
 
+The publication checkpoint comparison was run as:
+
+```sh
+git range-diff \
+  2342e22a882d5ef8a77ff239cb2d61049d88f631..c15175dfbf45eb22655cb5a2c4daf6ee4b085201 \
+  origin/develop..181ebacd476fe1aa091da86b708b32eb6e7eff9a
+```
+
+It maps all seven old publication patches as removed and all eight unified
+patches as added, with no `=` patch-identity rows. That is the expected and
+review-relevant result: the old private branch is rollback evidence, while the
+new series is a semantic merge on top of the already-merged #24414 model. The
+manifest and focused failure-sensitive proof below establish retained
+invariants; the range-diff must not be misrepresented as blob identity.
+
 ## Canonical architecture
 
 - `DevicesRuntimesContainer` is the only stateful Devices & Runtimes UI.
