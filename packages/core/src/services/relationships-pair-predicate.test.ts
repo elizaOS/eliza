@@ -61,4 +61,56 @@ describe("RelationshipsService.analyzeRelationship pair predicate", () => {
 		]);
 		expect(writes[0]?.targetEntityId).not.toBe(C);
 	});
+
+	it("paginates every shared message and preserves every distinct topic", async () => {
+		const roomId = "dddddddd-dddd-4ddd-8ddd-dddddddddddd" as UUID;
+		const topics = [
+			"Alpha",
+			"Bravo",
+			"Charlie",
+			"Delta",
+			"Echo",
+			"Foxtrot",
+			"Golf",
+			"Hotel",
+			"India",
+			"Juliet",
+			"Kilo",
+			"Lima",
+			"Mike",
+			"November",
+			"Oscar",
+		];
+		const messages = Array.from({ length: 205 }, (_, index) => ({
+			id: `memory-${index}` as UUID,
+			entityId: index % 2 === 0 ? A : B,
+			roomId,
+			createdAt: index,
+			content: { text: topics[index % topics.length] },
+		}));
+		const offsets: number[] = [];
+		const runtime = {
+			agentId: "11111111-1111-4111-8111-111111111111" as UUID,
+			async getRelationships() {
+				return [];
+			},
+			async getRoomsForParticipant() {
+				return [roomId];
+			},
+			async getMemoriesByRoomIds(params: { limit?: number; offset?: number }) {
+				const offset = params.offset ?? 0;
+				offsets.push(offset);
+				return messages.slice(offset, offset + (params.limit ?? 20));
+			},
+			async createComponent() {
+				return true;
+			},
+		};
+
+		const service = new RelationshipsService(runtime as never);
+		const analytics = await service.analyzeRelationship(A, B);
+
+		expect(offsets).toEqual([0, 200]);
+		expect(analytics?.topicsDiscussed).toEqual(topics);
+	});
 });

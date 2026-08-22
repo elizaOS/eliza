@@ -381,7 +381,7 @@ export class FollowUpService extends Service {
 			return scoreB - scoreA;
 		});
 
-		return suggestions.slice(0, 10); // Return top 10 suggestions
+		return suggestions;
 	}
 
 	// Task Workers
