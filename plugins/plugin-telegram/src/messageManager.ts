@@ -2670,22 +2670,20 @@ export class MessageManager {
       // send. Returning [] would look like "nothing sent" and invite a retry
       // that duplicates the visible message; rethrow with the provider ids in
       // context so the connector boundary can fail without claiming silence.
-      throw error instanceof ElizaError
-        ? error
-        : new ElizaError(
-            "Telegram accepted the send but local delivery evidence failed",
-            {
-              code: "TELEGRAM_OUTBOUND_PERSIST_FAILED",
-              cause: error,
-              context: {
-                accountId: this.accountId,
-                chatId: String(chatId),
-                providerMessageIds: sentMessages.map((message) =>
-                  message.message_id.toString(),
-                ),
-              },
-            },
-          );
+      throw new ElizaError(
+        "Telegram accepted the send but local delivery evidence failed",
+        {
+          code: "TELEGRAM_OUTBOUND_PERSIST_FAILED",
+          cause: error,
+          context: {
+            accountId: this.accountId,
+            chatId: String(chatId),
+            providerMessageIds: sentMessages.map((message) =>
+              message.message_id.toString(),
+            ),
+          },
+        },
+      );
     }
   }
 }

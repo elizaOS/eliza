@@ -11,6 +11,7 @@
  */
 import {
   type Content,
+  ElizaError,
   type IAgentRuntime,
   logger,
   type Memory,
@@ -1161,6 +1162,37 @@ describe("MessageManager.sendMessage transport failure", () => {
       expect(sent.length).toBeGreaterThan(0);
     }
     expect(sentBodies).toHaveLength(corpus.length);
+  });
+
+  it("preserves provider ids when persistence throws an ElizaError after send", async () => {
+    const sendMessage = vi.fn(
+      async (chatId: number | string, text: string) => ({
+        message_id: 73,
+        date: 1_700_000_000,
+        text,
+        chat: { id: chatId, type: "private" },
+      }),
+    );
+    const persistenceError = new ElizaError("database unavailable", {
+      code: "DATABASE_UNAVAILABLE",
+    });
+    const manager = managerForSend(sendMessage, {
+      createMemory: vi.fn(async () => {
+        throw persistenceError;
+      }),
+    });
+
+    await expect(
+      manager.sendMessage(4242, { text: "accepted" }),
+    ).rejects.toMatchObject({
+      code: "TELEGRAM_OUTBOUND_PERSIST_FAILED",
+      cause: persistenceError,
+      context: {
+        chatId: "4242",
+        providerMessageIds: ["73"],
+      },
+    });
+    expect(sendMessage).toHaveBeenCalledTimes(1);
   });
 });
 
