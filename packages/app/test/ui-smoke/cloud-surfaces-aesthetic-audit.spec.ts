@@ -788,7 +788,15 @@ test.describe("cloud-surfaces aesthetic audit (#10725/#11342)", () => {
         readableChars = await readPaintAfterNavigation(10);
 
         const restPath = path.join(shotDir, `${auditCase.slug}.png`);
-        let buffer = await page.screenshot({ path: restPath, fullPage: false });
+        // Billing's server-authoritative resource fields sit below the initial
+        // viewport. Preserve the whole affected surface in both rest and hover
+        // evidence instead of green-lighting a screenshot that only shows the
+        // credit form above it.
+        const captureFullPage = auditCase.slug === "cloud-billing";
+        let buffer = await page.screenshot({
+          path: restPath,
+          fullPage: captureFullPage,
+        });
         let quality = await analyzeScreenshot(buffer).catch(() => null);
         for (
           let attempt = 0;
@@ -796,7 +804,10 @@ test.describe("cloud-surfaces aesthetic audit (#10725/#11342)", () => {
           attempt += 1
         ) {
           await page.waitForTimeout(800);
-          buffer = await page.screenshot({ path: restPath, fullPage: false });
+          buffer = await page.screenshot({
+            path: restPath,
+            fullPage: captureFullPage,
+          });
           quality = await analyzeScreenshot(buffer).catch(() => null);
         }
         const qualityIssues = quality
@@ -825,7 +836,7 @@ test.describe("cloud-surfaces aesthetic audit (#10725/#11342)", () => {
           if (hovered) {
             await page.screenshot({
               path: path.join(shotDir, `${auditCase.slug}--hover.png`),
-              fullPage: false,
+              fullPage: captureFullPage,
             });
           }
         }
