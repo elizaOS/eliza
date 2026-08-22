@@ -15,9 +15,11 @@ const creditsService = {
   listTransactionsByOrganization: mock(),
 };
 const executeCloudCapabilityRest = mock();
+const requireCurrentBillingManagerSession = mock();
 const requireUserOrApiKeyWithOrg = mock();
 const taskStoreSet = mock();
 const loggerError = mock();
+const cancelResource = mock();
 
 mock.module("../../cloud-capabilities", () => ({
   executeCloudCapabilityRest,
@@ -44,6 +46,7 @@ mock.module("../../../db/repositories", () => ({
 
 mock.module("../../auth/workers-hono-auth", () => ({
   requireAdmin: mock(async () => undefined),
+  requireCurrentBillingManagerSession,
   requireUserOrApiKeyWithOrg,
 }));
 
@@ -55,7 +58,7 @@ mock.module("../../services/active-billing", () => ({
   activeBillingService: {
     listActiveResources: mock(),
     listLedger: mock(),
-    cancelResource: mock(),
+    cancelResource,
   },
 }));
 
@@ -117,10 +120,17 @@ beforeEach(() => {
   organizationsRepository.findById.mockReset();
   creditsService.listTransactionsByOrganization.mockReset();
   requireUserOrApiKeyWithOrg.mockReset();
+  requireCurrentBillingManagerSession.mockReset();
   taskStoreSet.mockReset();
+  cancelResource.mockReset();
   loggerError.mockReset();
 
   requireUserOrApiKeyWithOrg.mockResolvedValue(user);
+  requireCurrentBillingManagerSession.mockResolvedValue({
+    ...user,
+    organization_id: "org-current",
+    role: "owner",
+  });
   creditsService.listTransactionsByOrganization.mockResolvedValue([{ id: "txn-1" }]);
   taskStoreSet.mockResolvedValue(undefined);
 });
@@ -231,5 +241,63 @@ describe("Cloud platform A2A credits summary", () => {
         error: "Organization not found for credits summary: org-1",
       }),
     );
+  });
+});
+
+describe("Cloud platform A2A billing cancellation authority", () => {
+  function cancellationParams() {
+    return {
+      message: {
+        role: "user",
+        parts: [
+          {
+            type: "data",
+            data: {
+              skill: "cloud.billing.cancel_resource",
+              params: {
+                resourceId: "resource-1",
+                resourceType: "container",
+                mode: "delete",
+              },
+            },
+          },
+        ],
+      },
+    };
+  }
+
+  test("persists success only after cancellation uses current authorized tenant", async () => {
+    cancelResource.mockImplementation(async (options) => {
+      await options.authorizeInfrastructureMutation();
+      return { status: "cancelled" };
+    });
+
+    const task = await handlePlatformMessageSend(context, cancellationParams());
+
+    expect(task.status.state).toBe("completed");
+    expect(cancelResource).toHaveBeenCalledTimes(1);
+    expect(cancelResource).toHaveBeenCalledWith({
+      organizationId: "org-current",
+      resourceId: "resource-1",
+      resourceType: "container",
+      mode: "delete",
+      authorizeInfrastructureMutation: expect.any(Function),
+    });
+    expect(requireCurrentBillingManagerSession).toHaveBeenCalledTimes(2);
+    expect(taskStoreSet).toHaveBeenCalledTimes(1);
+  });
+
+  test("makes zero cancellation and task-persistence calls on authority denial", async () => {
+    for (const status of [401, 403, 503]) {
+      requireCurrentBillingManagerSession.mockRejectedValueOnce(
+        Object.assign(new Error("denied"), { status }),
+      );
+      await expect(handlePlatformMessageSend(context, cancellationParams())).rejects.toThrow(
+        "denied",
+      );
+    }
+
+    expect(cancelResource).not.toHaveBeenCalled();
+    expect(taskStoreSet).not.toHaveBeenCalled();
   });
 });

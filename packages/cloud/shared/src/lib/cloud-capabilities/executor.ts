@@ -1,6 +1,10 @@
 // Registers cloud capability executor behavior for hosted agent execution.
 import type { AppContext } from "../../types/cloud-worker-env";
-import { requireAdmin, requireUserOrApiKeyWithOrg } from "../auth/workers-hono-auth";
+import {
+  requireAdmin,
+  requireCurrentBillingManagerSession,
+  requireUserOrApiKeyWithOrg,
+} from "../auth/workers-hono-auth";
 import { type CloudCapability, type CloudCapabilityStatus, getCloudCapabilities } from "./registry";
 
 type CapabilityArgs = Record<string, unknown>;
@@ -124,6 +128,11 @@ async function authorizeCapability(c: AppContext, capability: CloudCapability) {
   }
 
   if (capability.category === "auth" || capability.auth.modes.includes("public")) {
+    return;
+  }
+
+  if (capability.auth.organizationRoles?.length) {
+    await requireCurrentBillingManagerSession(c);
     return;
   }
 

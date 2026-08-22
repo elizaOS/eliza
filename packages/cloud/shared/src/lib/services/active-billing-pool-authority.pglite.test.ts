@@ -136,6 +136,7 @@ describe("active billing warm-pool authority", () => {
         organizationId,
         resourceId: poolId,
         resourceType: "agent_sandbox",
+        authorizeInfrastructureMutation: async () => undefined,
       }),
     ).rejects.toThrow("Billable resource not found");
     expect(enqueueSuspendCalls).toBe(0);
@@ -156,6 +157,7 @@ describe("active billing warm-pool authority", () => {
         organizationId,
         resourceId: claimedId,
         resourceType: "agent_sandbox",
+        authorizeInfrastructureMutation: async () => undefined,
       }),
     ).resolves.toMatchObject({ stoppedBilling: true });
     expect(enqueueSuspendCalls).toBe(1);
