@@ -129,7 +129,7 @@ describe("DOCUMENT search/list echo clamping", () => {
 		expect(res.text).toContain(
 			"No document fragments matching that search were returned",
 		);
-		expect(res.text).toContain("completeness beyond that window is unknown");
+		expect(res.text).toContain("Searched all 0 authorized fragment(s)");
 		const query = (res.data as { query: string }).query;
 		expect(query).not.toContain("\n");
 		expect(query.length).toBeLessThanOrEqual(121);
@@ -186,7 +186,7 @@ describe("DOCUMENT search/list echo clamping", () => {
 		expect(res.text).not.toContain("whole store");
 	});
 
-	it("reports overflow only within the bounded retrieved window", async () => {
+	it("ignores a legacy result limit and returns every authorized match", async () => {
 		const service = makeService();
 		service.searchDocuments.mockResolvedValueOnce(
 			Array.from({ length: 3 }, (_, index) => ({
@@ -209,15 +209,13 @@ describe("DOCUMENT search/list echo clamping", () => {
 		const scope = (res.data as { scope: Record<string, unknown> }).scope;
 		expect(scope).toMatchObject({
 			retrieved: 3,
-			matchedInWindow: 3,
-			shown: 2,
-			limit: 2,
-			hasMoreInWindow: true,
-			retrievalCompleteness: "unknown_beyond_ranked_window",
+			matched: 3,
+			shown: 3,
+			retrievalCompleteness: "complete_authorized_matches",
 			filtersApplied: ["tags"],
 		});
-		expect(res.text).toContain("More filtered matches exist within");
-		expect(res.text).toContain("completeness beyond that window is unknown");
+		expect(res.text).toContain("fragment 2");
+		expect(res.text).toContain("Searched all 3 authorized fragment(s)");
 	});
 
 	it("projects transcript anchors and a document reference without inventing readable fragment coordinates", async () => {

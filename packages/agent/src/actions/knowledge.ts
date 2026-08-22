@@ -31,6 +31,7 @@ import {
   logger,
   type Media,
   type Memory,
+  stableStringify,
   toWellFormedUnicode,
   type UUID,
 } from "@elizaos/core";
@@ -319,8 +320,17 @@ async function readStableCompleteDocumentRows(
   const between = await service.countMemories({ tableName: "documents" });
   const second = await scanAllDocumentRows(service);
   const after = await service.countMemories({ tableName: "documents" });
-  const firstIds = first.map((memory) => memory.id);
-  const secondIds = second.map((memory) => memory.id);
+  let firstFingerprints: string[];
+  let secondFingerprints: string[];
+  try {
+    firstFingerprints = first.map((memory) => stableStringify(memory));
+    secondFingerprints = second.map((memory) => stableStringify(memory));
+  } catch (cause) {
+    throw new ElizaError("Knowledge row cannot be fingerprinted", {
+      code: "KNOWLEDGE_TRAVERSAL_FINGERPRINT_FAILED",
+      cause,
+    });
+  }
   if (
     !Number.isSafeInteger(before) ||
     before < 0 ||
@@ -328,7 +338,9 @@ async function readStableCompleteDocumentRows(
     before !== after ||
     first.length !== before ||
     second.length !== before ||
-    firstIds.some((id, index) => id !== secondIds[index])
+    firstFingerprints.some(
+      (fingerprint, index) => fingerprint !== secondFingerprints[index],
+    )
   ) {
     throw knowledgeTraversalError("KNOWLEDGE_TRAVERSAL_INVENTORY_CHANGED", {
       before,

@@ -20,6 +20,7 @@ import {
   getRelatedEntityIds,
   logger,
   ModelType,
+  stableStringify,
   toWellFormedUnicode,
   validateUuid,
 } from "@elizaos/core";
@@ -336,8 +337,18 @@ async function readStableCompleteMemoryTable(
   const between = await runtime.countMemories(countParams);
   const second = await scanCompleteMemoryTable(runtime, tableName, roomId);
   const after = await runtime.countMemories(countParams);
-  const firstIds = first.map((memory) => memory.id);
-  const secondIds = second.map((memory) => memory.id);
+  let firstFingerprints: string[];
+  let secondFingerprints: string[];
+  try {
+    firstFingerprints = first.map((memory) => stableStringify(memory));
+    secondFingerprints = second.map((memory) => stableStringify(memory));
+  } catch (cause) {
+    throw new ElizaError("Memory row cannot be fingerprinted", {
+      code: "MEMORY_TRAVERSAL_FINGERPRINT_FAILED",
+      context: { tableName },
+      cause,
+    });
+  }
   if (
     !Number.isSafeInteger(before) ||
     before < 0 ||
@@ -345,7 +356,9 @@ async function readStableCompleteMemoryTable(
     before !== after ||
     first.length !== before ||
     second.length !== before ||
-    firstIds.some((id, index) => id !== secondIds[index])
+    firstFingerprints.some(
+      (fingerprint, index) => fingerprint !== secondFingerprints[index],
+    )
   ) {
     throw traversalError("MEMORY_TRAVERSAL_INVENTORY_CHANGED", {
       tableName,
