@@ -398,7 +398,7 @@ async function runPlannerLoopIterations(
 				source: "planner-loop",
 				createdAt: Date.now(),
 				content:
-					"The tool result in this turn is authoritative. Write the final user-facing reply in the agent's natural voice from its promptData. Respect the reported outcome exactly: a started or pending operation is underway but not complete; a completed or successful operation is done and must not be described as starting or pending. Do not promise a future message or ETA. If the result provides a link object, include it as a Markdown link using its label and href. Do not expose internal IDs or raw tool data.",
+					"The tool result in this turn is authoritative. Write the final user-facing reply in the agent's natural voice from its promptData. Respect the reported outcome exactly: a started or pending operation is underway but not complete; a completed or successful operation is done and must not be described as starting or pending. Follow any replyGuidance in promptData. Do not promise a future message or ETA. If the result provides a link object, include it as a Markdown link using its label and href. Do not expose internal IDs or raw tool data.",
 			})
 		: plannerContext;
 	const trajectory: PlannerTrajectory = {

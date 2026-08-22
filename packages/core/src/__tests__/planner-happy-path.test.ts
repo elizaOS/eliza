@@ -712,6 +712,7 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 					outcome: "started",
 					displayName: "Nubs Color Pebble",
 					verification: "pending",
+					replyGuidance: "Use one short present-tense sentence.",
 				},
 				data: {
 					workdir: "/private/worktree/must-not-leak",
@@ -770,6 +771,8 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 		expect(followUpPrompt).toContain("started");
 		expect(followUpPrompt).toContain("verification");
 		expect(followUpPrompt).toContain("pending");
+		expect(followUpPrompt).toContain("replyGuidance");
+		expect(followUpPrompt).toContain("one short present-tense sentence");
 		expect(followUpPrompt).not.toContain("must-not-leak");
 		expect(result.kind).toBe("planned_reply");
 		if (result.kind === "planned_reply") {

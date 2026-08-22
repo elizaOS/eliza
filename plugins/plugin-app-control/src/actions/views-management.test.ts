@@ -4772,6 +4772,14 @@ describe("view management actions", () => {
 				subMode: "edit",
 				name: "nubs-color-pebble",
 			});
+			expect(result.promptData).toMatchObject({
+				operation: "edit_app",
+				outcome: "started",
+				verification: "pending",
+				replyGuidance: expect.stringContaining(
+					"one short present-tense sentence",
+				),
+			});
 			expect(codingHandler).toHaveBeenCalledTimes(1);
 			const handlerOptions = codingHandler.mock.calls[0][3] as {
 				parameters: Record<string, unknown>;

@@ -1041,6 +1041,8 @@ async function createNewApp({
 			outcome: "started",
 			displayName,
 			verification: "pending",
+			replyGuidance:
+				"Use one short present-tense sentence saying the work is underway. Do not mention a future message, ETA, or link.",
 		},
 		values: {
 			mode: "create",
@@ -1155,6 +1157,8 @@ async function editExistingApp({
 			outcome: "started",
 			displayName: app.displayName,
 			verification: "pending",
+			replyGuidance:
+				"Use one short present-tense sentence saying the edit is underway. Do not mention a future message, ETA, or link.",
 		},
 		values: {
 			mode: "create",
