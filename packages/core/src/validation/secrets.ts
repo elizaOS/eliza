@@ -253,7 +253,6 @@ export const SECRET_VALIDATION_PATTERNS: Record<
 		description: "Ollama base URL must be a valid HTTP(S) URL",
 		example: "http://localhost:11434",
 	},
-
 };
 
 // ═══════════════════════════════════════════════════════════════════════════════
