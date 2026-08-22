@@ -66,6 +66,7 @@ const baseAgent: AgentDetailDto = {
   dockerImage: null,
   executionTier: "shared",
   webUiUrl: null,
+  activeJob: null,
   bridgeUrl: null,
   errorCount: 0,
   walletAddress: null,

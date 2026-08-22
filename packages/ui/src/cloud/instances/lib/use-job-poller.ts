@@ -10,6 +10,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { api } from "../../lib/api-client";
 
 export type JobStatus = "pending" | "in_progress" | "completed" | "failed";
 
@@ -19,6 +20,9 @@ export interface TrackedJob {
   status: JobStatus;
   error?: string | null;
   startedAt: number;
+  attempts?: number;
+  maxAttempts?: number;
+  estimatedCompletionAt?: string | null;
 }
 
 interface UseJobPollerOptions {
@@ -31,6 +35,15 @@ interface UseJobPollerOptions {
 
 function isActiveStatus(status: JobStatus) {
   return status === "pending" || status === "in_progress";
+}
+
+function isJobStatus(value: unknown): value is JobStatus {
+  return (
+    value === "pending" ||
+    value === "in_progress" ||
+    value === "completed" ||
+    value === "failed"
+  );
 }
 
 export function useJobPoller(options: UseJobPollerOptions = {}) {
@@ -64,19 +77,38 @@ export function useJobPoller(options: UseJobPollerOptions = {}) {
   );
   const hasActiveJobs = activeJobs.length > 0;
 
-  const track = useCallback((key: string, jobId: string) => {
-    setJobMap((prev) => {
-      const next = new Map(prev);
-      next.set(key, {
-        key,
-        jobId,
-        status: "pending",
-        error: null,
-        startedAt: Date.now(),
+  const track = useCallback(
+    (
+      key: string,
+      jobId: string,
+      initial?: Pick<
+        TrackedJob,
+        | "status"
+        | "startedAt"
+        | "attempts"
+        | "maxAttempts"
+        | "estimatedCompletionAt"
+      >,
+    ) => {
+      setJobMap((prev) => {
+        const existing = prev.get(key);
+        if (existing?.jobId === jobId) return prev;
+        const next = new Map(prev);
+        next.set(key, {
+          key,
+          jobId,
+          status: initial?.status ?? "pending",
+          error: null,
+          startedAt: initial?.startedAt ?? Date.now(),
+          attempts: initial?.attempts,
+          maxAttempts: initial?.maxAttempts,
+          estimatedCompletionAt: initial?.estimatedCompletionAt,
+        });
+        return next;
       });
-      return next;
-    });
-  }, []);
+    },
+    [],
+  );
 
   const getStatus = useCallback((key: string) => jobMap.get(key), [jobMap]);
 
@@ -140,20 +172,21 @@ export function useJobPoller(options: UseJobPollerOptions = {}) {
           try {
             // Bound each poll hop so a hung job endpoint cannot pin
             // pollInFlightRef forever and silently kill the poller.
-            const res = await fetch(`/api/v1/jobs/${job.jobId}`, {
+            const data = await api<{
+              data?: {
+                status?: JobStatus;
+                error?: string | { message?: string } | null;
+                attempts?: number;
+                maxAttempts?: number;
+                estimatedCompletionAt?: string | null;
+              };
+            }>(`/api/v1/jobs/${job.jobId}`, {
               signal: AbortSignal.timeout(10_000),
             });
-            if (!res.ok) {
-              continue;
-            }
-
-            // error-policy:J3 parse-sanitize — non-JSON/empty body becomes null;
-            // a missing status below simply skips this poll tick (continue).
-            const data = await res.json().catch(() => null);
-            const nextStatus = data?.data?.status as JobStatus | undefined;
+            const nextStatus = data?.data?.status;
             const nextError = data?.data?.error;
 
-            if (!nextStatus) {
+            if (!isJobStatus(nextStatus)) {
               continue;
             }
 
@@ -164,6 +197,19 @@ export function useJobPoller(options: UseJobPollerOptions = {}) {
                 typeof nextError === "string"
                   ? nextError
                   : (nextError?.message ?? null),
+              attempts:
+                typeof data?.data?.attempts === "number"
+                  ? data.data.attempts
+                  : job.attempts,
+              maxAttempts:
+                typeof data?.data?.maxAttempts === "number"
+                  ? data.data.maxAttempts
+                  : job.maxAttempts,
+              estimatedCompletionAt:
+                typeof data?.data?.estimatedCompletionAt === "string" ||
+                data?.data?.estimatedCompletionAt === null
+                  ? data.data.estimatedCompletionAt
+                  : job.estimatedCompletionAt,
             };
 
             setJobMap((prev) => {
@@ -180,7 +226,8 @@ export function useJobPoller(options: UseJobPollerOptions = {}) {
               needsRefresh = true;
             }
           } catch {
-            // transient fetch failure — retried on the next poll tick
+            // error-policy:J4 transient status-read failure preserves the
+            // visible in-progress state and retries on the next poll tick.
           }
         }
 
