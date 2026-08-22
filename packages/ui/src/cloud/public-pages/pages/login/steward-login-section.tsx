@@ -200,7 +200,6 @@ type Provider =
   | "telegram"
   | "twitter"
   | "apple"
-  | "telegram"
   | "ethereum"
   | "solana";
 
@@ -1955,7 +1954,7 @@ export default function StewardLoginSection() {
                 <SelectContent
                   position="popper"
                   align="start"
-                  className="!max-h-72 !w-[min(20rem,calc(100vw-2rem))] border-input !bg-black text-white [&_[data-radix-select-viewport]]:!w-full [&_[data-radix-select-viewport]]:!max-w-none"
+                  className="!max-h-72 !w-[min(20rem,calc(100vw-2rem))] border-input !bg-bg-elevated text-txt [&_[data-radix-select-viewport]]:!w-full [&_[data-radix-select-viewport]]:!max-w-none"
                 >
                   {PHONE_COUNTRY_OPTIONS.map((option) => (
                     <SelectItem
