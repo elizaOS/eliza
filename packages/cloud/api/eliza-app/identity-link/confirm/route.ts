@@ -17,8 +17,8 @@ import { requireInternalAuth } from "../../../internal/_auth";
 
 const confirmSchema = z.object({
   code: z.string().trim().min(4).max(32),
-  // Transport platform as the gateway names it (telegram/whatsapp/twilio/...).
-  platform: z.string().trim().min(1).max(32),
+  // Transport platform as the gateway names it (telegram/twilio/...).
+  platform: z.enum(["telegram", "discord", "phone"]),
   platformId: z.string().trim().min(1).max(256),
   platformName: z.string().trim().max(255).optional(),
 });

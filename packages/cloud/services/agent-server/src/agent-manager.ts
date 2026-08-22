@@ -43,7 +43,7 @@ type AgentEntry = RunningAgentEntry | StoppedAgentEntry;
  * provide platform context (e.g. direct API calls, older gateway versions).
  */
 export interface MessageMetadata {
-  /** Originating platform (e.g. "discord", "telegram", "whatsapp", "twilio", "blooio"). */
+  /** Originating platform (e.g. "discord", "telegram", "twilio", "blooio"). */
   platformName?: string;
   /** Display name of the sender as reported by the platform adapter. */
   senderName?: string;
@@ -62,7 +62,6 @@ export interface MessageMetadata {
 const KNOWN_PLATFORMS: ReadonlySet<string> = new Set([
   "discord",
   "telegram",
-  "whatsapp",
   "twilio",
   "blooio",
 ]);

@@ -126,7 +126,6 @@ export const KNOWN_ROUTE_SHARD_KEYS: readonly string[] = [
   "v1/voice",
   "v1/voice-models",
   "v1/web-push",
-  "v1/whatsapp",
   "v1/x",
   "v1/x402",
   "webhooks",

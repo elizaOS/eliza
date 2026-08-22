@@ -864,7 +864,6 @@ const STUB_RULES: StubRule[] = [
   { match: path_("/api/v1/discord/connections"), body: { connections: [] } },
   { match: path_("/api/v1/twilio/status"), body: { connected: false } },
   { match: path_("/api/v1/telegram/status"), body: { connected: false } },
-  { match: path_("/api/v1/whatsapp/status"), body: { connected: false } },
   { match: path_("/api/v1/blooio/status"), body: { connected: false } },
 ];
 

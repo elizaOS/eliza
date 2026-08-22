@@ -150,7 +150,7 @@ describe("resolveWebhookConfig re-bootstraps once on 401", () => {
       new MemoryRedis(),
       "https://api.test",
       STALE,
-      "whatsapp",
+      "telegram",
       "eliza-app",
       "agent-42",
       reauth,

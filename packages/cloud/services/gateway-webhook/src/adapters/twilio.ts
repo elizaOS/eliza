@@ -42,24 +42,6 @@ const TwilioWebhookEventSchema = z
 type TwilioEvent = z.infer<typeof TwilioWebhookEventSchema>;
 
 const ALLOWED_MEDIA_DOMAINS = ["api.twilio.com", "media.twiliocdn.com"];
-const WHATSAPP_ADDRESS_PREFIX = "whatsapp:";
-
-function normalizeSenderIdentity(address: string): string {
-  return address.toLowerCase().startsWith(WHATSAPP_ADDRESS_PREFIX)
-    ? address.slice(WHATSAPP_ADDRESS_PREFIX.length)
-    : address;
-}
-
-function replyAddress(senderId: string, fromAddress: string): string {
-  if (
-    fromAddress.toLowerCase().startsWith(WHATSAPP_ADDRESS_PREFIX) &&
-    !senderId.toLowerCase().startsWith(WHATSAPP_ADDRESS_PREFIX)
-  ) {
-    return `${WHATSAPP_ADDRESS_PREFIX}${senderId}`;
-  }
-  return senderId;
-}
-
 function isValidMediaUrl(url: string): boolean {
   try {
     const parsed = new URL(url);
@@ -193,6 +175,15 @@ export const twilioAdapter: PlatformAdapter = {
     }
 
     const event = parsed.data;
+    if (
+      event.From.toLowerCase().startsWith("whatsapp:") ||
+      event.To.toLowerCase().startsWith("whatsapp:")
+    ) {
+      logger.warn("Rejected unsupported Twilio channel", {
+        channel: "whatsapp",
+      });
+      return null;
+    }
     const text = event.Body ?? "";
     const mediaUrls = extractMediaUrls(event);
 
@@ -202,7 +193,7 @@ export const twilioAdapter: PlatformAdapter = {
       platform: "twilio",
       messageId: event.MessageSid,
       chatId: event.From,
-      senderId: normalizeSenderIdentity(event.From),
+      senderId: event.From,
       senderName: event.ProfileName,
       text:
         mediaUrls.length > 0 && !text
@@ -228,7 +219,7 @@ export const twilioAdapter: PlatformAdapter = {
     ).toString("base64");
 
     const body = new URLSearchParams({
-      To: replyAddress(event.senderId, config.phoneNumber),
+      To: event.senderId,
       From: config.phoneNumber,
       Body: text,
     });
@@ -267,6 +258,6 @@ export const twilioAdapter: PlatformAdapter = {
   },
 
   async sendTypingIndicator(): Promise<void> {
-    // Twilio has no typing indicator API for SMS/WhatsApp
+    // Twilio has no typing indicator API for SMS/MMS.
   },
 };

@@ -29,7 +29,7 @@ const CLOUD_CONNECTOR_FEATURES = [
     key: "alwaysOnGateway",
     label: "Always-on gateway hosting",
     description:
-      "Keep Discord, Telegram, WhatsApp, Twilio, Google, and Microsoft routes online without depending on this Mac staying awake.",
+      "Keep Discord, Telegram, Twilio, Google, and Microsoft routes online without depending on this Mac staying awake.",
   },
   {
     icon: Bot,

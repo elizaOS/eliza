@@ -1,8 +1,8 @@
 # @elizaos/gateway-webhook
 
 Stateless multi-platform webhook gateway for Eliza Cloud. It receives inbound
-webhooks from chat/messaging platforms (Telegram, Blooio, Twilio, WhatsApp
-Cloud API), verifies and deduplicates them, resolves the sender's Eliza
+webhooks from chat/messaging platforms (Telegram, Blooio, Twilio), verifies and
+deduplicates them, resolves the sender's Eliza
 identity, and forwards the message to the correct agent-server pod over a
 hash-ring router. It also accepts internal events (cron / notification /
 system) from trusted in-cluster callers and forwards those to agents.
@@ -18,11 +18,9 @@ system) from trusted in-cluster callers and forwards those to agents.
     a headerless 401 is reserved for an enforced gate on that project.
   - `POST /internal/event` — internal event delivery (auth via
     `X-Internal-Secret`).
-  - `GET /webhook/:project/whatsapp[/:agentId]` — WhatsApp `hub.challenge`
-    verification handshake.
   - `POST /webhook/:project/:platform[/:agentId]` — platform message webhooks.
 - `src/adapters/` — one `PlatformAdapter` per platform (`telegram`, `blooio`,
-  `twilio`, `whatsapp`) plus `types.ts` (the `Platform`, `ChatEvent`,
+  `twilio`) plus `types.ts` (the `Platform`, `ChatEvent`,
   `PlatformAdapter`, `WebhookConfig` contracts). An adapter implements
   `verifyWebhook` / `extractEvent` / `sendReply` / `sendTypingIndicator`.
 - `src/webhook-handler.ts` — the core flow: sync phase (resolve config → verify
@@ -186,7 +184,7 @@ Other:
 - Per-project secrets are read via `getProjectEnv(project, KEY)`: labeled k8s
   Secrets first, else `<PROJECT_UPPER>_<KEY>` env vars (e.g. `eliza-app` →
   `ELIZA_APP_TELEGRAM_BOT_TOKEN`). Keys include
-  `TELEGRAM_BOT_TOKEN`/`_WEBHOOK_SECRET`, `BLOOIO_*`, `TWILIO_*`, `WHATSAPP_*`.
+  `TELEGRAM_BOT_TOKEN`/`_WEBHOOK_SECRET`, `BLOOIO_*`, and `TWILIO_*`.
 
 ## Conventions / gotchas
 

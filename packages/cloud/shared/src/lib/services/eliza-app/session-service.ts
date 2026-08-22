@@ -14,7 +14,6 @@ export interface ElizaAppSessionPayload extends JWTPayload {
   organizationId: string;
   telegramId?: string;
   discordId?: string;
-  whatsappId?: string;
   phoneNumber?: string;
 }
 
@@ -28,7 +27,6 @@ export interface ValidatedSession {
   organizationId: string;
   telegramId?: string;
   discordId?: string;
-  whatsappId?: string;
   phoneNumber?: string;
 }
 
@@ -56,7 +54,6 @@ class ElizaAppSessionService {
     identifiers?: {
       telegramId?: string;
       discordId?: string;
-      whatsappId?: string;
       phoneNumber?: string;
     },
   ): Promise<SessionResult> {
@@ -68,7 +65,6 @@ class ElizaAppSessionService {
       organizationId,
       ...(identifiers?.telegramId && { telegramId: identifiers.telegramId }),
       ...(identifiers?.discordId && { discordId: identifiers.discordId }),
-      ...(identifiers?.whatsappId && { whatsappId: identifiers.whatsappId }),
       ...(identifiers?.phoneNumber && { phoneNumber: identifiers.phoneNumber }),
     };
 
@@ -111,7 +107,6 @@ class ElizaAppSessionService {
         organizationId: payload.organizationId,
         telegramId: payload.telegramId,
         discordId: payload.discordId,
-        whatsappId: payload.whatsappId,
         phoneNumber: payload.phoneNumber,
       };
     } catch (error) {

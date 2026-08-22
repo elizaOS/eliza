@@ -1,6 +1,6 @@
 /** Defines normalized webhook events, configuration, and platform adapters. */
 import type { TelegramDeliveryHooks } from "@elizaos/cloud-services-common/telegram-delivery";
-export type Platform = "telegram" | "blooio" | "twilio" | "whatsapp";
+export type Platform = "telegram" | "blooio" | "twilio";
 
 export interface ChatEvent {
   platform: Platform;
@@ -100,10 +100,4 @@ export interface WebhookConfig {
   accountSid?: string;
   authToken?: string;
   phoneNumber?: string;
-  // WhatsApp Cloud API
-  accessToken?: string;
-  phoneNumberId?: string;
-  appSecret?: string;
-  verifyToken?: string;
-  businessPhone?: string;
 }

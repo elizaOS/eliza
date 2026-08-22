@@ -54,8 +54,10 @@ await upstream.stop();
 ```
 
 See `fixtures/provider-contract/README.md` and
-`provider-contract-inventory.json`. Every inventory ID must also appear in the
-append-only `provider-contract-protected-integrations.json` ledger. The
+`provider-contract-inventory.json`. Every active or retired inventory ID must
+also appear in the append-only `provider-contract-protected-integrations.json`
+ledger. Retiring a production integration removes its suite and promoted
+capability claim while preserving its ID and a reason. The
 `audit:provider-contracts` command rejects
 missing suites, undeclared promotions, focused/skipped suites, unknown
 or duplicate capabilities, removal of any integration ID visible in reachable

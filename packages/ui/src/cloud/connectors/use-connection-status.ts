@@ -1,6 +1,6 @@
 /**
  * Generic GET-status hook for token-credential cloud connectors (Twilio,
- * Blooio, WhatsApp, Telegram).
+ * Blooio and Telegram).
  *
  * Three-state contract (#12784/#13419): a status fetch resolves into exactly
  * one of

@@ -35,10 +35,10 @@ export interface IncomingMessage {
   from: string;
   to: string;
   body: string;
-  provider: "twilio" | "blooio" | "whatsapp";
+  provider: "twilio" | "blooio";
   providerMessageId?: string;
   mediaUrls?: string[];
-  messageType?: "sms" | "mms" | "voice" | "imessage" | "whatsapp";
+  messageType?: "sms" | "mms" | "voice" | "imessage";
   metadata?: Record<string, unknown>;
 }
 
@@ -60,7 +60,7 @@ export interface SendMessageParams {
   to: string;
   from: string;
   body: string;
-  provider: "twilio" | "blooio" | "whatsapp";
+  provider: "twilio" | "blooio";
   mediaUrls?: string[];
   organizationId: string;
   agentId?: string;
@@ -70,7 +70,7 @@ export interface SendMessageParams {
 }
 
 function providerDiagnostic(value: unknown): string {
-  return value === "twilio" || value === "blooio" || value === "whatsapp" ? value : "unknown";
+  return value === "twilio" || value === "blooio" ? value : "unknown";
 }
 
 class MessageRouterService {
@@ -362,7 +362,7 @@ class MessageRouterService {
    * Send a message through the appropriate provider
    */
   async sendMessage(params: SendMessageParams): Promise<boolean> {
-    if (!(["twilio", "blooio", "whatsapp"] as const).includes(params.provider)) {
+    if (!(["twilio", "blooio"] as const).includes(params.provider)) {
       logger.error("[MessageRouter] Unsupported message provider", {
         organizationId: params.organizationId,
       });
@@ -378,9 +378,7 @@ class MessageRouterService {
     const delivered =
       params.provider === "twilio"
         ? await this.sendViaTwilio(params)
-        : params.provider === "blooio"
-          ? await this.sendViaBlooio(params)
-          : await this.sendViaWhatsApp(params);
+        : await this.sendViaBlooio(params);
     if (!delivered) return false;
     if (!contactRequired) return true;
 
@@ -567,53 +565,6 @@ class MessageRouterService {
   }
 
   /**
-   * Send message via WhatsApp Cloud API.
-   * Tries org-specific credentials from secrets service first,
-   * falls back to global elizaAppConfig for the public bot.
-   */
-  private async sendViaWhatsApp(params: SendMessageParams): Promise<boolean> {
-    try {
-      const { sendWhatsAppMessage } = await import("../../utils/whatsapp-api");
-      const { secretsService } = await import("../secrets");
-      const { WHATSAPP_ACCESS_TOKEN, WHATSAPP_PHONE_NUMBER_ID } = await import(
-        "../../constants/secrets"
-      );
-
-      // Try org-specific credentials first (from secrets service)
-      let accessToken = await secretsService.get(params.organizationId, WHATSAPP_ACCESS_TOKEN);
-      let phoneNumberId = await secretsService.get(params.organizationId, WHATSAPP_PHONE_NUMBER_ID);
-
-      // Fall back to global config (for eliza-app public bot)
-      if (!accessToken || !phoneNumberId) {
-        const { elizaAppConfig } = await import("../eliza-app/config");
-        accessToken = accessToken || elizaAppConfig.whatsapp.accessToken;
-        phoneNumberId = phoneNumberId || elizaAppConfig.whatsapp.phoneNumberId;
-      }
-
-      if (!accessToken || !phoneNumberId) {
-        logger.error("[MessageRouter] Missing WhatsApp credentials", {
-          organizationId: params.organizationId,
-        });
-        return false;
-      }
-
-      await sendWhatsAppMessage(accessToken, phoneNumberId, params.to, params.body);
-
-      logger.info("[MessageRouter] WhatsApp message sent successfully", {
-        organizationId: params.organizationId,
-      });
-      return true;
-    } catch (error) {
-      // error-policy:J4 provider errors become a typed delivery outcome at the caller.
-      logger.error("[MessageRouter] WhatsApp send error", {
-        organizationId: params.organizationId,
-        ...phoneErrorDiagnostic(error),
-      });
-      return false;
-    }
-  }
-
-  /**
    * Log a message to the phone_message_log table
    */
   private async logMessage(params: {
@@ -707,8 +658,8 @@ class MessageRouterService {
     organizationId: string;
     agentId: string;
     phoneNumber: string;
-    provider: "twilio" | "blooio" | "whatsapp";
-    phoneType?: "sms" | "voice" | "both" | "imessage" | "whatsapp";
+    provider: "twilio" | "blooio";
+    phoneType?: "sms" | "voice" | "both" | "imessage";
     friendlyName?: string;
     capabilities?: {
       canSendSms?: boolean;

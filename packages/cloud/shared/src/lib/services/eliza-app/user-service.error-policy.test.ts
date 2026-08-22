@@ -26,7 +26,6 @@ mock.module("../../../db/repositories/users", () => ({
     findByPhoneNumberWithOrganization,
     findByTelegramIdWithOrganization: mock(),
     findByEmailWithOrganization: mock(),
-    findByWhatsAppIdWithOrganization: mock(),
     findWithOrganization: mock(),
     update,
     linkVerifiedPhone,

@@ -65,8 +65,6 @@ app.get("/", rateLimit(RateLimitPresets.STANDARD), async (c) => {
       discord_username: user.discord_username,
       discord_global_name: user.discord_global_name,
       discord_avatar_url: user.discord_avatar_url,
-      whatsapp_id: user.whatsapp_id,
-      whatsapp_name: user.whatsapp_name,
       phone_number: user.phone_number,
       name: user.name,
       avatar: user.avatar,

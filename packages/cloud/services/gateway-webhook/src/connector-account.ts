@@ -28,8 +28,6 @@ export function resolveConnectorAccountId(
         ? `bot:${botId}`
         : `bot:${credentialFingerprint(config.botToken)}`;
     }
-    case "whatsapp":
-      return config.phoneNumberId ?? config.businessPhone;
     case "twilio":
       return config.phoneNumber ?? config.accountSid;
     case "blooio":

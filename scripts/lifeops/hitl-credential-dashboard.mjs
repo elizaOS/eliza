@@ -107,7 +107,6 @@ const FAMILY_LABELS = {
   telegram: "Telegram",
   discord: "Discord",
   slack: "Slack",
-  whatsapp: "WhatsApp",
   imessage: "iMessage",
   x: "X",
   twilio: "Phone / SMS / Voice (Twilio)",
@@ -127,14 +126,8 @@ const FAMILY_LABELS = {
   }
 }
 
-// Spellings that must stay in sync: the WhatsApp connector reads ELIZA_* while
-// the Graph tooling reads bare names; the cloud SDK accepts either cloud-key
-// spelling and probes prefer ELIZAOS_*.
+// Cloud-key spellings must stay in sync for the SDK and operator probes.
 const WRITE_ALIASES = {
-  ELIZA_WHATSAPP_ACCESS_TOKEN: ["WHATSAPP_ACCESS_TOKEN"],
-  WHATSAPP_ACCESS_TOKEN: ["ELIZA_WHATSAPP_ACCESS_TOKEN"],
-  ELIZA_WHATSAPP_PHONE_NUMBER_ID: ["WHATSAPP_PHONE_NUMBER_ID"],
-  WHATSAPP_PHONE_NUMBER_ID: ["ELIZA_WHATSAPP_PHONE_NUMBER_ID"],
   ELIZAOS_CLOUD_API_KEY: ["ELIZA_CLOUD_API_KEY"],
   ELIZA_CLOUD_API_KEY: ["ELIZAOS_CLOUD_API_KEY"],
 };

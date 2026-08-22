@@ -11,7 +11,7 @@ this patch.
 ## Problem
 
 Eliza Cloud needs one messaging onboarding gateway that accepts first contact
-from iMessage, Telegram, Discord, and WhatsApp, runs the same chat-first
+from iMessage, Telegram, and Discord, runs the same chat-first
 onboarding flow, links the platform identity to an authenticated cloud identity,
 observes an explicitly created user agent, copies the onboarding transcript
 into that agent once it is running, and then routes later messages from the
@@ -23,7 +23,7 @@ preserve the gateway separation already present in the repo.
 ## Existing Surfaces
 
 - `packages/cloud/services/gateway-webhook/src/index.ts` exposes shared webhook
-  routes for `telegram`, `blooio`, `twilio`, and `whatsapp`, plus per-agent
+  routes for `telegram`, `blooio`, and `twilio`, plus per-agent
   routes under `/webhook/:project/:platform/:agentId`.
 - `packages/cloud/services/gateway-webhook/src/webhook-handler.ts` already
   implements the required high-level branch: verify webhook, extract event,
@@ -31,8 +31,7 @@ preserve the gateway separation already present in the repo.
   unlinked users to `/api/eliza-app/onboarding/chat`.
 - `packages/cloud/services/gateway-webhook/src/adapters/types.ts` defines the
   current `PlatformAdapter`, `ChatEvent`, and `WebhookConfig` shape.
-- `packages/cloud/services/gateway-webhook/src/adapters/telegram.ts` and
-  `packages/cloud/services/gateway-webhook/src/adapters/whatsapp.ts` are the
+- `packages/cloud/services/gateway-webhook/src/adapters/telegram.ts` is the
   webhook adapter patterns for signed inbound DMs and outbound replies.
 - `packages/cloud/services/gateway-webhook/src/adapters/blooio.ts` is the
   existing cloud iMessage-style adapter. It should be treated as the current
@@ -42,7 +41,7 @@ preserve the gateway separation already present in the repo.
   forwarding. Discord should remain a gateway service, not be forced through
   webhook-only code.
 - `packages/cloud/shared/src/lib/services/agent-gateway-router.ts` contains
-  post-link routing logic for Discord, Telegram, WhatsApp, Twilio, and Blooio,
+  post-link routing logic for Discord, Telegram, Twilio, and Blooio,
   including room IDs, sender metadata, and sandbox/local-session dispatch.
 - `packages/cloud/api/internal/identity/resolve/route.ts` is the internal
   identity lookup used by the webhook gateway.
@@ -65,10 +64,8 @@ preserve the gateway separation already present in the repo.
   `packages/cloud/services/tunnel-proxy/README.md` define the current Headscale
   and tunnel-proxy tag model.
 - Gateway smoke scenarios already cover linked-user routing in
-  `packages/test/scenarios/gateway/telegram-gateway.bot-routes-to-user-agent.scenario.ts`,
-  `packages/test/scenarios/gateway/discord-gateway.bot-routes-to-user-agent.scenario.ts`,
-  and
-  `packages/test/scenarios/gateway/whatsapp-gateway.bot-routes-to-user-agent.scenario.ts`.
+  `packages/test/scenarios/gateway/telegram-gateway.bot-routes-to-user-agent.scenario.ts`
+  and `packages/test/scenarios/gateway/discord-gateway.bot-routes-to-user-agent.scenario.ts`.
 
 ## Implementation Gaps Blocking Launch
 
@@ -81,7 +78,7 @@ complete until these gaps are closed:
   must fall back to canonical columns until projection sync is guaranteed.
 - Explicit identity-link start/confirm routes are required before production
   binding. Messaging possession alone must not bind Telegram, Discord,
-  WhatsApp, or phone/iMessage handles to an existing cloud account.
+  or phone/iMessage handles to an existing cloud account.
 - Discord system-bot DMs need an unlinked-user fallback. If route resolution
   returns `handled:false` because the Discord identity is unknown, the cloud
   route should call the shared onboarding worker and return the onboarding
@@ -158,20 +155,6 @@ Use the existing webhook adapter pattern in
   - `platformDisplayName: first_name`
 - Durable linking must happen through Telegram Login/OAuth or another
   Telegram-signed authentication payload before `telegram_id` is written.
-
-### WhatsApp
-
-Use the existing webhook adapter pattern in
-`packages/cloud/services/gateway-webhook/src/adapters/whatsapp.ts`.
-
-- Verify `x-hub-signature-256` with the configured app secret.
-- Accept text messages from WhatsApp Cloud API webhooks.
-- Normalize `senderId` and `chatId` to the WhatsApp ID/phone.
-- WhatsApp is a phone-verified channel, but durable linking should still be
-  explicit:
-  - If the WhatsApp account already maps to a user, route to that user.
-  - If not, onboarding may create a pending user record, but completing account
-    linking must require a signed app session or a one-time link token.
 
 ### Discord
 
@@ -314,7 +297,6 @@ for a trusted onboarding session. It returns a short code or OAuth URL.
 
 - Telegram: Telegram Login/OAuth signed payload.
 - Discord: OAuth2 callback with state bound to the onboarding session.
-- WhatsApp: Meta-verified webhook identity plus app session or one-time code.
 - BlueBubbles/iMessage: registered relay attestation plus one-time code from
   the same handle, or authenticated setup confirmation.
 
@@ -407,7 +389,6 @@ continue onboarding.
 ### Webhook And Gateway Authentication
 
 - Telegram: require constant-time comparison of Telegram secret token.
-- WhatsApp: require HMAC verification with Meta app secret.
 - Discord: gateway service authenticates to cloud with JWT acquired from
   `GATEWAY_BOOTSTRAP_SECRET`.
 - Webhook gateway: service-to-service calls use internal auth as in
@@ -422,12 +403,11 @@ continue onboarding.
 
 ### Secret Handling
 
-- Platform bot tokens, WhatsApp access tokens, BlueBubbles passwords, relay
+- Platform bot tokens access tokens, BlueBubbles passwords, relay
   keys, OAuth client secrets, Headscale auth keys, and agent-server shared
   secrets must be encrypted at rest or kept in the relevant secret manager.
 - Logs must redact:
   - Discord bot tokens;
-  - WhatsApp access tokens;
   - Telegram bot tokens;
   - BlueBubbles passwords;
   - OAuth codes;
@@ -562,7 +542,6 @@ as an agent-server routing target.
 - Gateway scenario tests:
   - Telegram unlinked DM starts onboarding, OAuth link routes next DM to agent.
   - Discord system bot DM starts onboarding, OAuth link routes next DM to agent.
-  - WhatsApp unlinked message starts onboarding, confirmed link routes next
     message to agent.
   - BlueBubbles relay message starts onboarding, code confirmation routes next
     iMessage to agent.
@@ -580,7 +559,6 @@ as an agent-server routing target.
 - Whether unsolicited outbound messages (not replies to an inbound turn) need
   a future Headscale or outbound WebSocket/long-poll transport. Inbound-turn
   replies use the current synchronous HTTPS response and require neither.
-- Whether WhatsApp first contact can create a full non-anonymous account, or
   should always create a pending account until app-session confirmation.
 - Whether the same onboarding session should support multiple platform
   identities before an explicit lifecycle flow creates the first agent.

@@ -369,9 +369,6 @@ export function createCloudSensitiveRequestAuthorizationAdapter(
         case "telegram":
           user = await usersRepository.findByTelegramIdWithOrganization(externalId);
           break;
-        case "whatsapp":
-          user = await usersRepository.findByWhatsAppIdWithOrganization(externalId);
-          break;
         case "phone":
         case "sms":
           user = await usersRepository.findByPhoneNumberWithOrganization(externalId);

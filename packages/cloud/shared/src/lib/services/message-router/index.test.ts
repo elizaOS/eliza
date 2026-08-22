@@ -106,8 +106,6 @@ mock.module("../../constants/secrets", () => ({
   BLOOIO_API_KEY: "BLOOIO_API_KEY",
   TWILIO_ACCOUNT_SID: "TWILIO_ACCOUNT_SID",
   TWILIO_AUTH_TOKEN: "TWILIO_AUTH_TOKEN",
-  WHATSAPP_ACCESS_TOKEN: "WHATSAPP_ACCESS_TOKEN",
-  WHATSAPP_PHONE_NUMBER_ID: "WHATSAPP_PHONE_NUMBER_ID",
 }));
 
 mock.module("../../utils/blooio-api", () => ({
@@ -403,7 +401,7 @@ describe("MessageRouterService contact recording", () => {
 
     await expect(
       messageRouterService.routeIncomingMessage({
-        provider: "whatsapp",
+        provider: "twilio",
         from: "+19995550999",
         to: "+19995550123",
         body: "private inbound body",
@@ -430,7 +428,7 @@ describe("MessageRouterService contact recording", () => {
 
     await expect(
       messageRouterService.routeIncomingMessage({
-        provider: "whatsapp",
+        provider: "twilio",
         from: "+19995550999",
         to: "+19995550123",
         body: "private inbound body",

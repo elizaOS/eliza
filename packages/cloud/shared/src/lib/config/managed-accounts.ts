@@ -233,21 +233,6 @@ export const MANAGED_ACCOUNTS: readonly ManagedAccountSpec[] = [
     requirement: { kind: "required" },
   },
   {
-    id: "meta-whatsapp",
-    name: "Meta (WhatsApp Business Platform)",
-    category: "social_communications",
-    console: "https://developers.facebook.com",
-    credentialSets: [
-      ["WHATSAPP_ACCESS_TOKEN", "WHATSAPP_APP_SECRET", "WHATSAPP_VERIFY_TOKEN"],
-      [
-        "ELIZA_APP_WHATSAPP_ACCESS_TOKEN",
-        "ELIZA_APP_WHATSAPP_APP_SECRET",
-        "ELIZA_APP_WHATSAPP_VERIFY_TOKEN",
-      ],
-    ],
-    requirement: { kind: "optional" },
-  },
-  {
     id: "tiktok",
     name: "TikTok",
     category: "social_communications",

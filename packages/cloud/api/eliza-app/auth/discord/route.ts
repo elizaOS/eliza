@@ -325,7 +325,6 @@ async function handleDiscordAuth(
       discordId: discordUser.id,
       ...(user.phone_number && { phoneNumber: user.phone_number }),
       ...(user.telegram_id && { telegramId: user.telegram_id }),
-      ...(user.whatsapp_id && { whatsappId: user.whatsapp_id }),
     },
   );
 

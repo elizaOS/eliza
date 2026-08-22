@@ -43,7 +43,19 @@ describe("provider contract inventory audit", () => {
         ),
       );
       expect(result.count).toBeGreaterThanOrEqual(2);
-      expect(result.ids).toEqual([...ledger.integrationIds].sort());
+      const inventory = JSON.parse(
+        await readFile(
+          path.join(
+            process.cwd(),
+            "packages/cloud/test-mocks/provider-contract-inventory.json",
+          ),
+          "utf8",
+        ),
+      );
+      expect(result.ids).toEqual(
+        inventory.integrations.map((entry: { id: string }) => entry.id).sort(),
+      );
+      expect(ledger.integrationIds).toContain("whatsapp-cloud-webhook");
     },
     FULL_REPOSITORY_AUDIT_TIMEOUT_MS,
   );
@@ -57,6 +69,7 @@ describe("provider contract inventory audit", () => {
       path.join(inventoryDirectory, "provider-contract-inventory.json"),
       JSON.stringify({
         version: 1,
+        retiredIntegrations: [],
         integrations: [],
       }),
     );
@@ -104,7 +117,7 @@ describe("provider contract inventory audit", () => {
     }
     await writeFile(
       path.join(inventoryDirectory, "provider-contract-inventory.json"),
-      JSON.stringify({ version: 1, integrations }),
+      JSON.stringify({ version: 1, retiredIntegrations: [], integrations }),
     );
     await writeProtectedLedger(root, ["eliza-cloud-api", "hetzner-cloud"]);
     await expect(auditProviderContracts(root)).rejects.toThrow(
@@ -185,7 +198,7 @@ test("emits observations", () => {
     }
     await writeFile(
       path.join(inventoryDirectory, "provider-contract-inventory.json"),
-      JSON.stringify({ version: 1, integrations }),
+      JSON.stringify({ version: 1, retiredIntegrations: [], integrations }),
     );
     await writeProtectedLedger(root, ["eliza-cloud-api", "hetzner-cloud"]);
     await expect(auditProviderContracts(root)).rejects.toThrow(
@@ -202,6 +215,7 @@ test("emits observations", () => {
       path.join(inventoryDirectory, "provider-contract-inventory.json"),
       JSON.stringify({
         version: 1,
+        retiredIntegrations: [],
         integrations: [
           {
             id: "eliza-cloud-api",
@@ -241,6 +255,7 @@ test("emits observations", () => {
       path.join(inventoryDirectory, "provider-contract-inventory.json"),
       JSON.stringify({
         version: 1,
+        retiredIntegrations: [],
         integrations: [
           { id: "eliza-cloud-api" },
           { id: "hetzner-cloud" },
@@ -263,6 +278,7 @@ test("emits observations", () => {
       path.join(inventoryDirectory, "provider-contract-inventory.json"),
       JSON.stringify({
         version: 1,
+        retiredIntegrations: [],
         integrations: [{ id: "eliza-cloud-api" }, { id: "hetzner-cloud" }],
       }),
     );
@@ -294,6 +310,7 @@ test("emits observations", () => {
       inventoryPath,
       JSON.stringify({
         version: 1,
+        retiredIntegrations: [],
         integrations: initialIds.map((id) => ({ id })),
       }),
     );
@@ -313,6 +330,7 @@ test("emits observations", () => {
       inventoryPath,
       JSON.stringify({
         version: 1,
+        retiredIntegrations: [],
         integrations: finalIds.map((id) => ({ id })),
       }),
     );

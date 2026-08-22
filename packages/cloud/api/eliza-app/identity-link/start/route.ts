@@ -17,7 +17,7 @@ import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 const startSchema = z.object({
-  platform: z.enum(["telegram", "discord", "whatsapp", "phone"]),
+  platform: z.enum(["telegram", "discord", "phone"]),
 });
 
 const app = new Hono<AppEnv>();
@@ -52,7 +52,7 @@ app.post("/", rateLimit(RateLimitPresets.STRICT), async (c) => {
       return c.json(
         {
           success: false,
-          error: "platform must be one of telegram, discord, whatsapp, phone",
+          error: "platform must be one of telegram, discord, phone",
           code: "VALIDATION_ERROR",
         },
         400,

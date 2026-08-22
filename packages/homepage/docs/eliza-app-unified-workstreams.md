@@ -47,7 +47,6 @@ same runtime target, and same handoff semantics.
   `packages/cloud/api/eliza-app/webhook/_forward.ts`,
   `packages/cloud/api/eliza-app/webhook/discord/route.ts`,
   `packages/cloud/api/eliza-app/webhook/telegram/route.ts`,
-  `packages/cloud/api/eliza-app/webhook/whatsapp/route.ts`,
   `packages/cloud/services/gateway-discord/src/index.ts`,
   `packages/cloud/services/gateway-webhook/src/webhook-handler.ts`.
 

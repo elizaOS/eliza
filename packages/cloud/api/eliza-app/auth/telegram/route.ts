@@ -596,7 +596,6 @@ export async function handleTelegramAuth(
     telegramId: String(authData.id),
     phoneNumber: user.phone_number,
     ...(user.discord_id && { discordId: user.discord_id }),
-    ...(user.whatsapp_id && { whatsappId: user.whatsapp_id }),
   });
 
   return Response.json({

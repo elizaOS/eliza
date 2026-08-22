@@ -38,8 +38,6 @@ export interface CurrentUserDto {
   discord_username: string | null;
   discord_global_name: string | null;
   discord_avatar_url: string | null;
-  whatsapp_id: string | null;
-  whatsapp_name: string | null;
   phone_number: string | null;
   phone_verified: boolean | null;
   is_anonymous: boolean;

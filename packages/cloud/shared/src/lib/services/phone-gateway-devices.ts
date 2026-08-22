@@ -12,7 +12,7 @@ import { normalizePhoneNumber } from "../utils/phone-normalization";
 import { isPostgresUndefinedTableError, phoneErrorDiagnostic } from "./phone-error-diagnostics";
 import { PHONE_GATEWAY_METADATA_INVALID, requirePhoneJsonObject } from "./phone-payload-validation";
 
-export type PhoneGatewayProvider = "twilio" | "blooio" | "vonage" | "whatsapp" | "other";
+export type PhoneGatewayProvider = "twilio" | "blooio" | "vonage" | "other";
 
 export interface RegisterPhoneGatewayDeviceInput {
   organizationId?: string | null;
@@ -59,11 +59,7 @@ interface BlueBubblesGatewayMetadataV2 extends Record<string, unknown> {
 type BlueBubblesGatewayMetadata = LegacyBlueBubblesGatewayMetadata | BlueBubblesGatewayMetadataV2;
 
 function providerDiagnostic(value: unknown): string {
-  return value === "twilio" ||
-    value === "blooio" ||
-    value === "vonage" ||
-    value === "whatsapp" ||
-    value === "other"
+  return value === "twilio" || value === "blooio" || value === "vonage" || value === "other"
     ? value
     : "unknown";
 }

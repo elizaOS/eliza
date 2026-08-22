@@ -47,11 +47,10 @@ and swap against the prior pointer/value. Concurrent losers and SQL failures
 can leave an unreferenced generation for lifecycle cleanup, but cannot replace
 the authoritative object or hydrate another writer's body.
 
-This storage migration deliberately leaves WhatsApp delivery, replay, and
-idempotency behavior unchanged. Canonical storage failures are typed and
-bounded at the repository/service boundary, but this change does not claim an
-exactly-once provider contract or a durable receipt/outbox. That broader
-provider boundary remains outside #22984 under the #22359 overlap fence.
+Canonical storage failures are typed and bounded at the repository/service
+boundary, but this change does not claim an exactly-once provider contract or
+a durable receipt/outbox. That broader provider boundary remains outside
+#22984 under the #22359 overlap fence.
 
 The administrative database copy follows the same phone-key rule and finishes
 external object writes before opening its destination SQL transaction. It

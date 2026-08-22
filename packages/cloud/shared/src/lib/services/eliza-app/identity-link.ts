@@ -1,6 +1,6 @@
 /**
  * Mints and confirms the short-lived link codes that bind a messaging-platform
- * handle (iMessage/phone, WhatsApp, Telegram, Discord) to an authenticated
+ * handle (iMessage/phone, Telegram, Discord) to an authenticated
  * eliza.app account (#17344, design doc "Authenticated Identity Linking").
  *
  * `start` runs under the caller's own session; `confirm` runs under gateway
@@ -47,7 +47,7 @@ export interface StartIdentityLinkResult {
 export interface ConfirmIdentityLinkInput {
   /** Raw user-typed code; the LINK- prefix and case are both tolerated. */
   code: string;
-  /** Provider derived from the transport (telegram/discord/whatsapp/phone). */
+  /** Provider derived from the transport (telegram/discord/phone). */
   platform: IdentityLinkCodePlatform;
   /** Gateway-attested platform handle of the sender. */
   platformId: string;

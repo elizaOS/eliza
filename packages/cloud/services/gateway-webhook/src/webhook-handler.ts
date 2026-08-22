@@ -739,7 +739,7 @@ async function processMessage(
 
   // An empty responseText is a deliberate no-response from the agent (mute /
   // shouldRespond=no), not content: forwarding it would make platform adapters
-  // (WhatsApp/Twilio/Telegram) attempt an invalid empty send. Skip the reply so
+  // (Twilio/Telegram) attempt an invalid empty send. Skip the reply so
   // "agent chose silence" sends nothing, staying distinct from a forward
   // failure (which returned above) and from a real reply.
   // error-policy:J5 no-op — deliberate agent silence, nothing to deliver.

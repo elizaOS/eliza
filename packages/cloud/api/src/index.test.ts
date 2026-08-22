@@ -102,7 +102,6 @@ test("matches only supported provider webhook routes", () => {
   expect(isElizaAppWebhookPath("/api/eliza-app/webhook/telegram/agent-1")).toBe(
     true,
   );
-  expect(isElizaAppWebhookPath("/api/eliza-app/webhook/whatsapp/")).toBe(true);
   expect(isElizaAppWebhookPath("/api/eliza-app/webhook/telegram-admin")).toBe(
     false,
   );

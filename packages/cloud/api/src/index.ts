@@ -333,7 +333,7 @@ async function getCliSessionThinApp(): Promise<Hono<AppEnv>> {
 }
 
 const ELIZA_APP_WEBHOOK_PATH =
-  /^\/api\/eliza-app\/webhook\/(?:blooio|discord|telegram|twilio|whatsapp)(?:\/|$)/;
+  /^\/api\/eliza-app\/webhook\/(?:blooio|discord|telegram|twilio)(?:\/|$)/;
 
 export function isElizaAppWebhookPath(pathname: string): boolean {
   return ELIZA_APP_WEBHOOK_PATH.test(pathname);

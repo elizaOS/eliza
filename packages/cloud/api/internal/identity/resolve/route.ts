@@ -20,7 +20,6 @@ const identityProviderSchema = z.enum([
   "steward",
   "telegram",
   "discord",
-  "whatsapp",
   "phone",
 ]);
 
@@ -128,7 +127,6 @@ app.post("/", async (c) => {
               stewardUserId: identity.steward_user_id,
               telegramId: identity.telegram_id,
               discordId: identity.discord_id,
-              whatsappId: identity.whatsapp_id,
               phoneNumber: identity.phone_number,
               isAnonymous: identity.is_anonymous,
             }

@@ -101,16 +101,16 @@ describe("useConnectionStatus — three-state probe (#12784/#13419)", () => {
 
     const { result } = renderHook(() =>
       useConnectionStatus<FakeStatus>(
-        "/api/v1/whatsapp/status",
-        "Failed to fetch WhatsApp status",
+        "/api/v1/twilio/status",
+        "Failed to fetch Twilio status",
       ),
     );
 
     await waitFor(() => expect(result.current.isError).toBe(true));
 
-    expect(result.current.errorMessage).toBe("Failed to fetch WhatsApp status");
+    expect(result.current.errorMessage).toBe("Failed to fetch Twilio status");
     expect(toastErrorMock).toHaveBeenCalledWith(
-      "Failed to fetch WhatsApp status",
+      "Failed to fetch Twilio status",
     );
   });
 

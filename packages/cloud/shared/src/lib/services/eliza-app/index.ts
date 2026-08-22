@@ -24,4 +24,3 @@ export {
 } from "./session-service";
 export { type TelegramAuthData, telegramAuthService } from "./telegram-auth";
 export { elizaAppUserService, type FindOrCreateResult } from "./user-service";
-export { whatsAppAuthService } from "./whatsapp-auth";

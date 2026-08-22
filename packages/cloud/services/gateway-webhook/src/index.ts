@@ -4,7 +4,6 @@ import { blooioAdapter } from "./adapters/blooio";
 import { telegramAdapter } from "./adapters/telegram";
 import { twilioAdapter } from "./adapters/twilio";
 import type { Platform, PlatformAdapter } from "./adapters/types";
-import { whatsappAdapter } from "./adapters/whatsapp";
 import { getAuthHeader, initAuth, shutdownAuth } from "./auth";
 import { registerForwarderAuthReadinessRoute } from "./forwarder-auth-readiness";
 import {
@@ -17,10 +16,6 @@ import { logger } from "./logger";
 import { initProjectConfig, shutdownProjectConfig } from "./project-config";
 import { createRedis } from "./redis";
 import { requireCanonicalAgentRoutingConfiguration } from "./server-router";
-import {
-  getSharedWhatsAppVerifyToken,
-  resolveWebhookConfig,
-} from "./webhook-config";
 import { handleWebhook } from "./webhook-handler";
 
 const PORT = Number(process.env.PORT ?? 3000);
@@ -42,7 +37,6 @@ const adapters: Record<Platform, PlatformAdapter> = {
   telegram: telegramAdapter,
   blooio: blooioAdapter,
   twilio: twilioAdapter,
-  whatsapp: whatsappAdapter,
 };
 
 const SUPPORTED_PLATFORMS = new Set<string>(Object.keys(adapters));
@@ -91,46 +85,6 @@ app.post("/internal/deliver", async (c) => {
 });
 
 // ── Platform webhooks ──
-
-app.get("/webhook/:project/whatsapp", async (c) => {
-  const mode = c.req.query("hub.mode");
-  const token = c.req.query("hub.verify_token");
-  const challenge = c.req.query("hub.challenge");
-
-  const verifyToken = getSharedWhatsAppVerifyToken(c.req.param("project"));
-  if (mode === "subscribe" && token === verifyToken && challenge) {
-    logger.info("WhatsApp webhook verified (shared)");
-    return c.text(challenge, 200);
-  }
-  return c.text("Forbidden", 403);
-});
-
-app.get("/webhook/:project/whatsapp/:agentId", async (c) => {
-  const mode = c.req.query("hub.mode");
-  const token = c.req.query("hub.verify_token");
-  const challenge = c.req.query("hub.challenge");
-  const agentId = c.req.param("agentId");
-
-  const config = await resolveWebhookConfig(
-    redis,
-    ELIZA_CLOUD_URL,
-    getAuthHeader(),
-    "whatsapp",
-    c.req.param("project"),
-    agentId,
-  );
-
-  if (
-    mode === "subscribe" &&
-    config?.verifyToken &&
-    token === config.verifyToken &&
-    challenge
-  ) {
-    logger.info("WhatsApp webhook verified", { agentId });
-    return c.text(challenge, 200);
-  }
-  return c.text("Forbidden", 403);
-});
 
 app.post("/webhook/:project/:platform", async (c) => {
   const platform = c.req.param("platform");

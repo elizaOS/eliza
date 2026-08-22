@@ -48,7 +48,7 @@ export function onboardingFetch(
 }
 
 export type OnboardingChatRole = "user" | "assistant";
-export type OnboardingPlatform = "web" | "telegram" | "discord" | "whatsapp" | "twilio" | "blooio";
+export type OnboardingPlatform = "web" | "telegram" | "discord" | "twilio" | "blooio";
 
 export interface OnboardingChatMessage {
   /** Stable marker used to reconstruct idempotent response snapshots. */

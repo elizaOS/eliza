@@ -39,8 +39,10 @@ exits.
 - `provider-contract-inventory.json` — promoted managed-integration ratchet;
   audited by `bun run audit:provider-contracts` and the cloud CI workflow.
 - `provider-contract-protected-integrations.json` — append-only integration ID
-  ledger; it must exactly match the inventory and may never remove an ID that
-  appears in reachable repository history.
+  ledger; it must exactly match the inventory's active and retired IDs and may
+  never remove an ID that appears in reachable repository history. A removed
+  production integration moves to `retiredIntegrations` with a reason; it does
+  not retain a mock suite or promoted capability claim.
 - `bin/hetzner-mock.ts`, `bin/control-plane-mock.ts` — standalone runnable
   entrypoints (bin names `hetzner-mock`, `control-plane-mock`).
 - `mockoon/*.json` — **stateless** Mockoon environments for read-only endpoints

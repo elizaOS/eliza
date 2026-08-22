@@ -8,7 +8,7 @@ import {
 import { logger } from "@/lib/utils/logger";
 import type { AppContext } from "@/types/cloud-worker-env";
 
-type GatewayPlatform = "telegram" | "blooio" | "twilio" | "whatsapp";
+type GatewayPlatform = "telegram" | "blooio" | "twilio";
 
 const WEBHOOK_GATEWAY_ENV_KEYS = [
   "ELIZA_APP_WEBHOOK_GATEWAY_URL",
@@ -110,11 +110,6 @@ function platformSecret(
         "ELIZA_APP_TWILIO_AUTH_TOKEN",
         "TWILIO_AUTH_TOKEN",
       ]);
-    case "whatsapp":
-      return readStringEnv(c, [
-        "ELIZA_APP_WHATSAPP_APP_SECRET",
-        "WHATSAPP_APP_SECRET",
-      ]);
   }
 }
 
@@ -186,18 +181,6 @@ async function verifyBlooioSignature(
   return constantTimeHexEqual(computed, expected);
 }
 
-async function verifyWhatsAppSignature(
-  request: Request,
-  rawBody: string,
-  secret: string,
-): Promise<boolean> {
-  const header = request.headers.get("x-hub-signature-256") ?? "";
-  if (!header.startsWith("sha256=")) return false;
-  const expected = header.slice("sha256=".length);
-  const computed = await hmacHex(secret, rawBody, "SHA-256");
-  return constantTimeHexEqual(computed, expected);
-}
-
 async function verifyTwilioSignature(
   request: Request,
   rawBody: string,
@@ -242,8 +225,6 @@ export async function verifyLocalWebhookSignature(
       return verifyBlooioSignature(request, rawBody, secret);
     case "twilio":
       return verifyTwilioSignature(request, rawBody, secret);
-    case "whatsapp":
-      return verifyWhatsAppSignature(request, rawBody, secret);
   }
 }
 
@@ -306,31 +287,6 @@ async function validateLocalWebhookSignature(
   }
 
   return { body };
-}
-
-/**
- * Meta verifies a WhatsApp callback URL by calling it with a `GET` carrying
- * `hub.mode=subscribe`, `hub.verify_token` and `hub.challenge`, and no
- * signature header — there is no body to sign. Running the HMAC check on that
- * request can therefore only ever fail, which is what made the callback URL
- * impossible to register: Meta's challenge was answered 401 before it was read.
- *
- * The handshake carries its own credential. The gateway compares
- * `hub.verify_token` against the token configured for the project (or the
- * agent) and echoes the challenge, so skipping the body signature here removes
- * a check that proves nothing and leaves the one that does.
- */
-function isWhatsAppVerificationHandshake(
-  c: AppContext,
-  platform: GatewayPlatform,
-): boolean {
-  return (
-    platform === "whatsapp" &&
-    c.req.method === "GET" &&
-    c.req.query("hub.mode") === "subscribe" &&
-    Boolean(c.req.query("hub.verify_token")) &&
-    Boolean(c.req.query("hub.challenge"))
-  );
 }
 
 interface ForwardOptions {
@@ -474,14 +430,9 @@ export async function forwardToWebhookGateway(
     );
   }
 
-  let signedBody: string | undefined;
-  if (isWhatsAppVerificationHandshake(c, platform)) {
-    logger.info("[ElizaAppWebhook] forwarding WhatsApp verification handshake");
-  } else {
-    const validation = await validateLocalWebhookSignature(c, platform);
-    if (validation.response) return validation.response;
-    signedBody = validation.body;
-  }
+  const validation = await validateLocalWebhookSignature(c, platform);
+  if (validation.response) return validation.response;
+  const signedBody = validation.body;
 
   const project =
     readStringEnv(c, ["ELIZA_APP_WEBHOOK_PROJECT"]) ?? "eliza-app";

@@ -12,7 +12,6 @@ import { z } from "zod";
  * - Medium: Publication API deprecated, requires Partner Program access
  * - DEV.to: Article API (not social posting, different use case)
  * - Threads: API not publicly available
- * - WhatsApp: Business API requires Meta verification, template-based messaging
  */
 export type SocialPlatform =
   | "twitter"

@@ -13,18 +13,13 @@ import {
   TWILIO_ACCOUNT_SID,
   TWILIO_AUTH_TOKEN,
   TWILIO_PHONE_NUMBER,
-  WHATSAPP_ACCESS_TOKEN,
-  WHATSAPP_APP_SECRET,
-  WHATSAPP_BUSINESS_PHONE,
-  WHATSAPP_PHONE_NUMBER_ID,
-  WHATSAPP_VERIFY_TOKEN,
 } from "@/lib/constants/secrets";
 import { secretsService } from "@/lib/services/secrets";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 import { requireInternalAuth } from "../../_auth";
 
-const platformSchema = z.enum(["telegram", "blooio", "twilio", "whatsapp"]);
+const platformSchema = z.enum(["telegram", "blooio", "twilio"]);
 
 const querySchema = z.object({
   agentId: z.string().uuid(),
@@ -41,11 +36,6 @@ type WebhookConfig = {
   accountSid?: string;
   authToken?: string;
   phoneNumber?: string;
-  accessToken?: string;
-  phoneNumberId?: string;
-  appSecret?: string;
-  verifyToken?: string;
-  businessPhone?: string;
 };
 
 const app = new Hono<AppEnv>();
@@ -100,31 +90,6 @@ async function buildWebhookConfig(
       ]);
       if (!accountSid || !authToken || !phoneNumber) return null;
       return { agentId, accountSid, authToken, phoneNumber };
-    }
-    case "whatsapp": {
-      const [
-        accessToken,
-        phoneNumberId,
-        appSecret,
-        verifyToken,
-        businessPhone,
-      ] = await Promise.all([
-        getSecret(organizationId, WHATSAPP_ACCESS_TOKEN),
-        getSecret(organizationId, WHATSAPP_PHONE_NUMBER_ID),
-        getSecret(organizationId, WHATSAPP_APP_SECRET),
-        getSecret(organizationId, WHATSAPP_VERIFY_TOKEN),
-        getSecret(organizationId, WHATSAPP_BUSINESS_PHONE),
-      ]);
-      if (!accessToken || !phoneNumberId || !appSecret || !verifyToken)
-        return null;
-      return {
-        agentId,
-        accessToken,
-        phoneNumberId,
-        appSecret,
-        verifyToken,
-        businessPhone,
-      };
     }
   }
 }

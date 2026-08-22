@@ -38,8 +38,6 @@ export interface UserProfile {
   discord_username: string | null;
   discord_global_name: string | null;
   discord_avatar_url: string | null;
-  whatsapp_id: string | null;
-  whatsapp_name: string | null;
   phone_number: string | null;
   phone_verified: boolean | null;
   is_anonymous: boolean;
@@ -87,8 +85,6 @@ function adapt(payload: CurrentUserDto): UserProfile {
     discord_username: payload.discord_username,
     discord_global_name: payload.discord_global_name,
     discord_avatar_url: payload.discord_avatar_url,
-    whatsapp_id: payload.whatsapp_id,
-    whatsapp_name: payload.whatsapp_name,
     phone_number: payload.phone_number,
     phone_verified: payload.phone_verified,
     is_anonymous: payload.is_anonymous,

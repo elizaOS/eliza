@@ -215,7 +215,6 @@ test("every required family is present with multiple-path families intact", () =
     "telegram",
     "discord",
     "slack",
-    "whatsapp",
     "imessage",
     "x",
     "twilio",

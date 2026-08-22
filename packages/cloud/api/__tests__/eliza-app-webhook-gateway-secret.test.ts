@@ -127,11 +127,11 @@ describe("forwardToWebhookGateway — gateway shared secret (L3)", () => {
   test("re-signs Twilio form data for the rewritten gateway route", async () => {
     const secret = "twilio-secret";
     const body = new URLSearchParams({
-      MessageSid: "SM_whatsapp_inbound",
+      MessageSid: "SM_sms_inbound",
       AccountSid: "AC_test",
-      From: "whatsapp:+15551234567",
-      To: "whatsapp:+14155238886",
-      Body: "hello from WhatsApp",
+      From: "+15551234567",
+      To: "+14155238886",
+      Body: "hello from SMS",
     }).toString();
     const publicUrl = "https://api.example.test/api/eliza-app/webhook/twilio";
     const sorted = Array.from(new URLSearchParams(body).entries())

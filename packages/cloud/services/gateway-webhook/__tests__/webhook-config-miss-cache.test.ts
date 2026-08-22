@@ -53,14 +53,14 @@ class MemoryRedis implements GatewayRedis {
 
 const originalFetch = globalThis.fetch;
 const AUTH = { Authorization: "Bearer gateway-jwt" };
-const CACHE_KEY = "webhook-config:whatsapp:agent:agent-42";
+const CACHE_KEY = "webhook-config:telegram:agent:agent-42";
 
 function resolve(redis: GatewayRedis, agentId = "agent-42") {
   return resolveWebhookConfig(
     redis,
     "https://api.elizacloud.ai",
     AUTH,
-    "whatsapp",
+    "telegram",
     "eliza-app",
     agentId,
   );
@@ -138,7 +138,7 @@ describe("per-agent webhook config cache", () => {
         redis,
         "https://api.elizacloud.ai",
         AUTH,
-        "whatsapp",
+        "telegram",
         "eliza-app",
       ),
     ).not.toBeNull();

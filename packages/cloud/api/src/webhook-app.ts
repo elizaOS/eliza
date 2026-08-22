@@ -21,7 +21,6 @@ import blooioWebhook from "../eliza-app/webhook/blooio/route";
 import discordWebhook from "../eliza-app/webhook/discord/route";
 import telegramWebhook from "../eliza-app/webhook/telegram/route";
 import twilioWebhook from "../eliza-app/webhook/twilio/route";
-import whatsappWebhook from "../eliza-app/webhook/whatsapp/route";
 
 export function createWebhookApp(): Hono<AppEnv> {
   const app = new Hono<AppEnv>({ strict: false });
@@ -65,7 +64,6 @@ export function createWebhookApp(): Hono<AppEnv> {
   app.route("/api/eliza-app/webhook/discord", discordWebhook);
   app.route("/api/eliza-app/webhook/telegram", telegramWebhook);
   app.route("/api/eliza-app/webhook/twilio", twilioWebhook);
-  app.route("/api/eliza-app/webhook/whatsapp", whatsappWebhook);
 
   app.notFound((c) =>
     c.json(

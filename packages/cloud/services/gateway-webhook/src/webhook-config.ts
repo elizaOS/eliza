@@ -42,13 +42,6 @@ export function resolveSharedWebhookConfig(
       base.authToken = getProjectEnv(project, "TWILIO_AUTH_TOKEN");
       base.phoneNumber = getProjectEnv(project, "TWILIO_PHONE_NUMBER");
       break;
-    case "whatsapp":
-      base.accessToken = getProjectEnv(project, "WHATSAPP_ACCESS_TOKEN");
-      base.phoneNumberId = getProjectEnv(project, "WHATSAPP_PHONE_NUMBER_ID");
-      base.appSecret = getProjectEnv(project, "WHATSAPP_APP_SECRET");
-      base.verifyToken = getProjectEnv(project, "WHATSAPP_VERIFY_TOKEN");
-      base.businessPhone = getProjectEnv(project, "WHATSAPP_PHONE_NUMBER");
-      break;
   }
   return base;
 }
@@ -120,8 +113,4 @@ export async function resolveWebhookConfig(
     });
     return null;
   }
-}
-
-export function getSharedWhatsAppVerifyToken(project: string): string | null {
-  return getProjectEnv(project, "WHATSAPP_VERIFY_TOKEN") || null;
 }

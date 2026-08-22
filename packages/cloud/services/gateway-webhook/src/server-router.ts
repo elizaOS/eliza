@@ -380,7 +380,7 @@ export function observeWakeServer(
  * and route proactive replies back to the correct chat.
  */
 export interface ForwardMessageOptions {
-  /** Originating platform identifier (e.g. "telegram", "whatsapp", "twilio", "blooio"). */
+  /** Originating platform identifier (e.g. "telegram", "twilio", "blooio"). */
   platformName?: string;
   /** Display name of the sender as reported by the platform adapter. */
   senderName?: string;
@@ -424,7 +424,7 @@ export function buildForwardBody(
 /**
  * Forwards a chat message to the correct agent-server pod via hash-ring routing.
  * Parses the agent-server response to extract the `.response` field expected
- * by platform adapters (e.g. Telegram, WhatsApp sendReply).
+ * by platform adapters (for example Telegram sendReply).
  *
  * @param options - Optional platform metadata enriching the POST body with
  *   `platformName`, `senderName`, and `chatId` for downstream personalization

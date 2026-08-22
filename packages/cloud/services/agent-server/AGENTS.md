@@ -91,7 +91,7 @@ for status and admission until the process exits.
   uses `runtime.emitEvent("cron" | "config-reload", …)`; plugins opt in via
   `Plugin.events`. Event bodies are validated with `EventBodySchema` (zod);
   `userId` is regex-constrained to prevent path traversal.
-- **Known platforms** (`telegram`, `whatsapp`, `twilio`, `blooio`) are duplicated
+- **Known platforms** (`telegram`, `twilio`, `blooio`) are duplicated
   here and must stay in sync with the gateway-webhook adapters and the app
   webhook config; unrecognized `platformName` falls back to source `agent-server`.
 - **PII discipline:** `senderName` and `chatId` are never logged.

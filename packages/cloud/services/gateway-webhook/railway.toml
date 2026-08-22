@@ -1,6 +1,6 @@
 # Railway deploy config for gateway-webhook.
 #
-# Multi-platform webhook gateway (Telegram, Blooio, Twilio, WhatsApp). Stateless
+# Multi-platform webhook gateway (Telegram, Blooio, Twilio). Stateless
 # Hono HTTP handler on port 3000 (PORT env overrides).
 #
 # Required env vars / secrets:

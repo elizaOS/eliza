@@ -36,8 +36,6 @@ function makeUser(overrides: Partial<UserProfile> = {}): UserProfile {
     discord_username: null,
     discord_global_name: null,
     discord_avatar_url: null,
-    whatsapp_id: null,
-    whatsapp_name: null,
     phone_number: null,
     phone_verified: null,
     is_anonymous: false,

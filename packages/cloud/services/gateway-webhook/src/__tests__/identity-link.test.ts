@@ -51,7 +51,7 @@ describe("tryConfirmIdentityLink", () => {
     const { deps, fetchCalls } = makeDeps(new Response("{}", { status: 200 }));
     const result = await tryConfirmIdentityLink(
       deps,
-      "whatsapp",
+      "telegram",
       "1555",
       "Sam",
       "hi there",
@@ -72,7 +72,7 @@ describe("tryConfirmIdentityLink", () => {
 
     const result = await tryConfirmIdentityLink(
       deps,
-      "whatsapp",
+      "telegram",
       "15551230001",
       "Sam",
       "LINK-7KQ2M4XW",
@@ -80,13 +80,13 @@ describe("tryConfirmIdentityLink", () => {
 
     expect(result).toMatchObject({ handled: true, linked: true });
     expect(result.reply).toContain("linked");
-    expect(delCalls).toEqual(["identity:whatsapp:15551230001"]);
+    expect(delCalls).toEqual(["identity:telegram:15551230001"]);
     expect(fetchCalls[0].url).toBe(
       "https://cloud.example/api/eliza-app/identity-link/confirm",
     );
     expect(fetchCalls[0].body).toMatchObject({
       code: "LINK-7KQ2M4XW",
-      platform: "whatsapp",
+      platform: "telegram",
       platformId: "15551230001",
       platformName: "Sam",
     });
@@ -117,7 +117,7 @@ describe("tryConfirmIdentityLink", () => {
     await expect(
       tryConfirmIdentityLink(
         deps,
-        "whatsapp",
+        "telegram",
         "1555",
         undefined,
         "LINK-ABCDEFGH",

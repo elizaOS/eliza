@@ -20,7 +20,6 @@ source <(grep -v '^\s*#' "$ENV_FILE" | grep -v '^\s*$' | sed 's/^/export /')
 
 BOT_TOKEN="${ELIZA_APP_TELEGRAM_BOT_TOKEN:-}"
 WEBHOOK_SECRET="${ELIZA_APP_TELEGRAM_WEBHOOK_SECRET:-}"
-WA_VERIFY_TOKEN="${ELIZA_APP_WHATSAPP_VERIFY_TOKEN:-}"
 
 # ── Cleanup on exit ──────────────────────────────────────────────
 PIDS=()
@@ -107,18 +106,6 @@ else
   echo "SKIP: No ELIZA_APP_TELEGRAM_BOT_TOKEN set"
 fi
 
-# ── WhatsApp instructions ────────────────────────────────────────
-if [[ -n "$WA_VERIFY_TOKEN" ]]; then
-  echo ""
-  echo "── WhatsApp Cloud API ─────────────────────────────────────"
-  echo "  Configure in Meta App Dashboard → WhatsApp → Configuration:"
-  echo ""
-  echo "  Callback URL:   $NGROK_URL/webhook/$PROJECT/whatsapp"
-  echo "  Verify token:   $WA_VERIFY_TOKEN"
-  echo ""
-  echo "  Subscribe to: messages"
-  echo "────────────────────────────────────────────────────────────"
-fi
 
 # ── Wait ─────────────────────────────────────────────────────────
 echo ""

@@ -90,17 +90,6 @@ export const elizaAppConfig = {
     };
   },
 
-  // WhatsApp configuration
-  get whatsapp() {
-    return {
-      accessToken: optionalRuntimeEnv("ELIZA_APP_WHATSAPP_ACCESS_TOKEN"),
-      phoneNumberId: optionalRuntimeEnv("ELIZA_APP_WHATSAPP_PHONE_NUMBER_ID"),
-      appSecret: optionalRuntimeEnv("ELIZA_APP_WHATSAPP_APP_SECRET"),
-      verifyToken: optionalRuntimeEnv("ELIZA_APP_WHATSAPP_VERIFY_TOKEN"),
-      phoneNumber: optionalRuntimeEnv("ELIZA_APP_WHATSAPP_PHONE_NUMBER"),
-    };
-  },
-
   // Discord configuration
   get discord() {
     return {
@@ -144,26 +133,5 @@ export function validateElizaAppConfig() {
       !process.env.ELIZA_APP_DISCORD_CLIENT_SECRET)
   ) {
     throw new Error("Discord is enabled but required Discord env vars are not set in production");
-  }
-
-  const whatsappEnabled =
-    process.env.ELIZA_APP_WHATSAPP_ENABLED === "true" ||
-    Boolean(
-      process.env.ELIZA_APP_WHATSAPP_ACCESS_TOKEN ||
-        process.env.ELIZA_APP_WHATSAPP_PHONE_NUMBER_ID ||
-        process.env.ELIZA_APP_WHATSAPP_APP_SECRET ||
-        process.env.ELIZA_APP_WHATSAPP_VERIFY_TOKEN ||
-        process.env.ELIZA_APP_WHATSAPP_PHONE_NUMBER,
-    );
-
-  if (
-    whatsappEnabled &&
-    (!process.env.ELIZA_APP_WHATSAPP_ACCESS_TOKEN ||
-      !process.env.ELIZA_APP_WHATSAPP_PHONE_NUMBER_ID ||
-      !process.env.ELIZA_APP_WHATSAPP_APP_SECRET ||
-      !process.env.ELIZA_APP_WHATSAPP_VERIFY_TOKEN ||
-      !process.env.ELIZA_APP_WHATSAPP_PHONE_NUMBER)
-  ) {
-    throw new Error("WhatsApp is enabled but required WhatsApp env vars are not set in production");
   }
 }

@@ -121,30 +121,6 @@ async function sendTelegramAlert(
   });
 }
 
-async function sendWhatsAppAlert(
-  apiUrl: string,
-  apiKey: string,
-  to: string,
-  payload: AlertPayload,
-): Promise<void> {
-  const { emoji } = SEVERITY_COLORS[payload.severity];
-  const text = [
-    `${emoji} ${payload.title}`,
-    "",
-    payload.message,
-    ...(payload.platforms?.length ? ["", `Platforms: ${payload.platforms.join(", ")}`] : []),
-  ].join("\n");
-
-  await alertFetch(apiUrl, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({ to, message: text }),
-  });
-}
-
 export async function sendSocialMediaAlert(payload: AlertPayload): Promise<void> {
   const sends: Promise<void>[] = [];
 
@@ -152,14 +128,10 @@ export async function sendSocialMediaAlert(payload: AlertPayload): Promise<void>
   const slackWebhook = process.env.SOCIAL_ALERTS_SLACK_WEBHOOK;
   const tgToken = process.env.SOCIAL_ALERTS_TELEGRAM_BOT_TOKEN;
   const tgChat = process.env.SOCIAL_ALERTS_TELEGRAM_CHAT_ID;
-  const waUrl = process.env.SOCIAL_ALERTS_WHATSAPP_API_URL;
-  const waKey = process.env.SOCIAL_ALERTS_WHATSAPP_API_KEY;
-  const waTo = process.env.SOCIAL_ALERTS_WHATSAPP_TO;
 
   if (discordWebhook) sends.push(sendDiscordAlert(discordWebhook, payload));
   if (slackWebhook) sends.push(sendSlackAlert(slackWebhook, payload));
   if (tgToken && tgChat) sends.push(sendTelegramAlert(tgToken, tgChat, payload));
-  if (waUrl && waKey && waTo) sends.push(sendWhatsAppAlert(waUrl, waKey, waTo, payload));
 
   if (sends.length === 0) {
     logger.warn("[SocialMediaAlerts] No alert channels configured");

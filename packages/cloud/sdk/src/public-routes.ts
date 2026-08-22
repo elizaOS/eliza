@@ -358,15 +358,6 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     catchAllPathParams: [],
     file: "packages/cloud/api/v1/oauth/connections/[id]/route.ts",
   },
-  "DELETE /api/v1/phone-gateways/bluebubbles/{id}": {
-    method: "DELETE",
-    path: "/api/v1/phone-gateways/bluebubbles/{id}",
-    methodName: "deleteApiV1PhoneGatewaysBluebubblesById",
-    responseMode: "json",
-    pathParams: ["id"],
-    catchAllPathParams: [],
-    file: "packages/cloud/api/v1/phone-gateways/bluebubbles/[id]/route.ts",
-  },
   "DELETE /api/v1/proxy/birdeye/{path}": {
     method: "DELETE",
     path: "/api/v1/proxy/birdeye/{path}",
@@ -429,15 +420,6 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     pathParams: [],
     catchAllPathParams: [],
     file: "packages/cloud/api/v1/web-push/subscriptions/route.ts",
-  },
-  "DELETE /api/v1/whatsapp/disconnect": {
-    method: "DELETE",
-    path: "/api/v1/whatsapp/disconnect",
-    methodName: "deleteApiV1WhatsappDisconnect",
-    responseMode: "json",
-    pathParams: [],
-    catchAllPathParams: [],
-    file: "packages/cloud/api/v1/whatsapp/disconnect/route.ts",
   },
   "GET /api/elevenlabs/voices": {
     method: "GET",
@@ -2124,15 +2106,6 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     catchAllPathParams: [],
     file: "packages/cloud/api/v1/payment-requests/[id]/route.ts",
   },
-  "GET /api/v1/phone-gateways/bluebubbles": {
-    method: "GET",
-    path: "/api/v1/phone-gateways/bluebubbles",
-    methodName: "getApiV1PhoneGatewaysBluebubbles",
-    responseMode: "json",
-    pathParams: [],
-    catchAllPathParams: [],
-    file: "packages/cloud/api/v1/phone-gateways/bluebubbles/route.ts",
-  },
   "GET /api/v1/pii-scrub/jobs/{id}": {
     method: "GET",
     path: "/api/v1/pii-scrub/jobs/{id}",
@@ -2447,15 +2420,6 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     pathParams: [],
     catchAllPathParams: [],
     file: "packages/cloud/api/v1/voice/session/ws/route.ts",
-  },
-  "GET /api/v1/whatsapp/status": {
-    method: "GET",
-    path: "/api/v1/whatsapp/status",
-    methodName: "getApiV1WhatsappStatus",
-    responseMode: "json",
-    pathParams: [],
-    catchAllPathParams: [],
-    file: "packages/cloud/api/v1/whatsapp/status/route.ts",
   },
   "GET /api/v1/x/dms/digest": {
     method: "GET",
@@ -4334,15 +4298,6 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     catchAllPathParams: [],
     file: "packages/cloud/api/v1/payment-requests/[id]/expire/route.ts",
   },
-  "POST /api/v1/phone-gateways/bluebubbles": {
-    method: "POST",
-    path: "/api/v1/phone-gateways/bluebubbles",
-    methodName: "postApiV1PhoneGatewaysBluebubbles",
-    responseMode: "json",
-    pathParams: [],
-    catchAllPathParams: [],
-    file: "packages/cloud/api/v1/phone-gateways/bluebubbles/route.ts",
-  },
   "POST /api/v1/pii-scrub/jobs": {
     method: "POST",
     path: "/api/v1/pii-scrub/jobs",
@@ -4721,24 +4676,6 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     catchAllPathParams: [],
     file: "packages/cloud/api/v1/web-push/subscriptions/route.ts",
   },
-  "POST /api/v1/whatsapp/connect": {
-    method: "POST",
-    path: "/api/v1/whatsapp/connect",
-    methodName: "postApiV1WhatsappConnect",
-    responseMode: "json",
-    pathParams: [],
-    catchAllPathParams: [],
-    file: "packages/cloud/api/v1/whatsapp/connect/route.ts",
-  },
-  "POST /api/v1/whatsapp/disconnect": {
-    method: "POST",
-    path: "/api/v1/whatsapp/disconnect",
-    methodName: "postApiV1WhatsappDisconnect",
-    responseMode: "json",
-    pathParams: [],
-    catchAllPathParams: [],
-    file: "packages/cloud/api/v1/whatsapp/disconnect/route.ts",
-  },
   "POST /api/v1/x/dms/conversations/send": {
     method: "POST",
     path: "/api/v1/x/dms/conversations/send",
@@ -5050,7 +4987,6 @@ export interface PublicRoutePathParams {
   "DELETE /api/v1/mcps/{mcpId}": { mcpId: string | number };
   "DELETE /api/v1/mcps/{mcpId}/publish": { mcpId: string | number };
   "DELETE /api/v1/oauth/connections/{id}": { id: string | number };
-  "DELETE /api/v1/phone-gateways/bluebubbles/{id}": { id: string | number };
   "DELETE /api/v1/proxy/birdeye/{path}": {
     path: string | number | readonly (string | number)[];
   };
@@ -5060,7 +4996,6 @@ export interface PublicRoutePathParams {
   "DELETE /api/v1/twitter/disconnect": Record<never, never>;
   "DELETE /api/v1/voice/{id}": { id: string | number };
   "DELETE /api/v1/web-push/subscriptions": Record<never, never>;
-  "DELETE /api/v1/whatsapp/disconnect": Record<never, never>;
   "GET /api/elevenlabs/voices": Record<never, never>;
   "GET /api/elevenlabs/voices/{id}": { id: string | number };
   "GET /api/elevenlabs/voices/jobs": Record<never, never>;
@@ -5346,7 +5281,6 @@ export interface PublicRoutePathParams {
   "GET /api/v1/oauth/token/{platform}": { platform: string | number };
   "GET /api/v1/payment-requests": Record<never, never>;
   "GET /api/v1/payment-requests/{id}": { id: string | number };
-  "GET /api/v1/phone-gateways/bluebubbles": Record<never, never>;
   "GET /api/v1/pii-scrub/jobs/{id}": { id: string | number };
   "GET /api/v1/pricing/summary": Record<never, never>;
   "GET /api/v1/proxy/birdeye/{path}": {
@@ -5384,7 +5318,6 @@ export interface PublicRoutePathParams {
   "GET /api/v1/voice/jobs": Record<never, never>;
   "GET /api/v1/voice/list": Record<never, never>;
   "GET /api/v1/voice/session/ws": Record<never, never>;
-  "GET /api/v1/whatsapp/status": Record<never, never>;
   "GET /api/v1/x/dms/digest": Record<never, never>;
   "GET /api/v1/x/feed": Record<never, never>;
   "GET /api/v1/x/status": Record<never, never>;
@@ -5677,7 +5610,6 @@ export interface PublicRoutePathParams {
   "POST /api/v1/payment-requests": Record<never, never>;
   "POST /api/v1/payment-requests/{id}/cancel": { id: string | number };
   "POST /api/v1/payment-requests/{id}/expire": { id: string | number };
-  "POST /api/v1/phone-gateways/bluebubbles": Record<never, never>;
   "POST /api/v1/pii-scrub/jobs": Record<never, never>;
   "POST /api/v1/proxy/birdeye/{path}": {
     path: string | number | readonly (string | number)[];
@@ -5722,8 +5654,6 @@ export interface PublicRoutePathParams {
   "POST /api/v1/voice/stt": Record<never, never>;
   "POST /api/v1/voice/tts": Record<never, never>;
   "POST /api/v1/web-push/subscriptions": Record<never, never>;
-  "POST /api/v1/whatsapp/connect": Record<never, never>;
-  "POST /api/v1/whatsapp/disconnect": Record<never, never>;
   "POST /api/v1/x/dms/conversations/send": Record<never, never>;
   "POST /api/v1/x/dms/curate": Record<never, never>;
   "POST /api/v1/x/dms/groups": Record<never, never>;
@@ -5808,7 +5738,6 @@ export interface PublicRouteHeaders {
   "DELETE /api/v1/mcps/{mcpId}": never;
   "DELETE /api/v1/mcps/{mcpId}/publish": never;
   "DELETE /api/v1/oauth/connections/{id}": never;
-  "DELETE /api/v1/phone-gateways/bluebubbles/{id}": never;
   "DELETE /api/v1/proxy/birdeye/{path}": never;
   "DELETE /api/v1/sessions/{id}": never;
   "DELETE /api/v1/telegram/disconnect": never;
@@ -5816,7 +5745,6 @@ export interface PublicRouteHeaders {
   "DELETE /api/v1/twitter/disconnect": never;
   "DELETE /api/v1/voice/{id}": never;
   "DELETE /api/v1/web-push/subscriptions": never;
-  "DELETE /api/v1/whatsapp/disconnect": never;
   "GET /api/elevenlabs/voices": never;
   "GET /api/elevenlabs/voices/{id}": never;
   "GET /api/elevenlabs/voices/jobs": never;
@@ -6012,7 +5940,6 @@ export interface PublicRouteHeaders {
   "GET /api/v1/oauth/token/{platform}": never;
   "GET /api/v1/payment-requests": never;
   "GET /api/v1/payment-requests/{id}": never;
-  "GET /api/v1/phone-gateways/bluebubbles": never;
   "GET /api/v1/pii-scrub/jobs/{id}": never;
   "GET /api/v1/pricing/summary": never;
   "GET /api/v1/proxy/birdeye/{path}": never;
@@ -6048,7 +5975,6 @@ export interface PublicRouteHeaders {
   "GET /api/v1/voice/jobs": never;
   "GET /api/v1/voice/list": never;
   "GET /api/v1/voice/session/ws": never;
-  "GET /api/v1/whatsapp/status": never;
   "GET /api/v1/x/dms/digest": never;
   "GET /api/v1/x/feed": never;
   "GET /api/v1/x/status": never;
@@ -6265,7 +6191,6 @@ export interface PublicRouteHeaders {
   "POST /api/v1/payment-requests": never;
   "POST /api/v1/payment-requests/{id}/cancel": never;
   "POST /api/v1/payment-requests/{id}/expire": never;
-  "POST /api/v1/phone-gateways/bluebubbles": never;
   "POST /api/v1/pii-scrub/jobs": never;
   "POST /api/v1/proxy/birdeye/{path}": never;
   "POST /api/v1/proxy/evm-rpc/{chain}": never;
@@ -6308,8 +6233,6 @@ export interface PublicRouteHeaders {
   "POST /api/v1/voice/stt": never;
   "POST /api/v1/voice/tts": never;
   "POST /api/v1/web-push/subscriptions": never;
-  "POST /api/v1/whatsapp/connect": never;
-  "POST /api/v1/whatsapp/disconnect": never;
   "POST /api/v1/x/dms/conversations/send": never;
   "POST /api/v1/x/dms/curate": never;
   "POST /api/v1/x/dms/groups": never;
@@ -6842,15 +6765,6 @@ export class ElizaCloudPublicRoutesClient {
     );
   }
 
-  deleteApiV1PhoneGatewaysBluebubblesById<TResponse = unknown>(
-    options: PublicRouteCallOptions<"DELETE /api/v1/phone-gateways/bluebubbles/{id}">,
-  ): Promise<TResponse> {
-    return this.call<
-      "DELETE /api/v1/phone-gateways/bluebubbles/{id}",
-      TResponse
-    >("DELETE /api/v1/phone-gateways/bluebubbles/{id}", options);
-  }
-
   deleteApiV1ProxyBirdeyeByPath<TResponse = unknown>(
     options: PublicRouteCallOptions<"DELETE /api/v1/proxy/birdeye/{path}">,
   ): Promise<TResponse> {
@@ -6910,15 +6824,6 @@ export class ElizaCloudPublicRoutesClient {
   ): Promise<TResponse> {
     return this.call<"DELETE /api/v1/web-push/subscriptions", TResponse>(
       "DELETE /api/v1/web-push/subscriptions",
-      options,
-    );
-  }
-
-  deleteApiV1WhatsappDisconnect<TResponse = unknown>(
-    options: PublicRouteCallOptions<"DELETE /api/v1/whatsapp/disconnect"> = {},
-  ): Promise<TResponse> {
-    return this.call<"DELETE /api/v1/whatsapp/disconnect", TResponse>(
-      "DELETE /api/v1/whatsapp/disconnect",
       options,
     );
   }
@@ -8611,15 +8516,6 @@ export class ElizaCloudPublicRoutesClient {
     );
   }
 
-  getApiV1PhoneGatewaysBluebubbles<TResponse = unknown>(
-    options: PublicRouteCallOptions<"GET /api/v1/phone-gateways/bluebubbles"> = {},
-  ): Promise<TResponse> {
-    return this.call<"GET /api/v1/phone-gateways/bluebubbles", TResponse>(
-      "GET /api/v1/phone-gateways/bluebubbles",
-      options,
-    );
-  }
-
   getApiV1PiiScrubJobsById<TResponse = unknown>(
     options: PublicRouteCallOptions<"GET /api/v1/pii-scrub/jobs/{id}">,
   ): Promise<TResponse> {
@@ -8931,15 +8827,6 @@ export class ElizaCloudPublicRoutesClient {
   ): Promise<TResponse> {
     return this.call<"GET /api/v1/voice/session/ws", TResponse>(
       "GET /api/v1/voice/session/ws",
-      options,
-    );
-  }
-
-  getApiV1WhatsappStatus<TResponse = unknown>(
-    options: PublicRouteCallOptions<"GET /api/v1/whatsapp/status"> = {},
-  ): Promise<TResponse> {
-    return this.call<"GET /api/v1/whatsapp/status", TResponse>(
-      "GET /api/v1/whatsapp/status",
       options,
     );
   }
@@ -10843,15 +10730,6 @@ export class ElizaCloudPublicRoutesClient {
     );
   }
 
-  postApiV1PhoneGatewaysBluebubbles<TResponse = unknown>(
-    options: PublicRouteCallOptions<"POST /api/v1/phone-gateways/bluebubbles"> = {},
-  ): Promise<TResponse> {
-    return this.call<"POST /api/v1/phone-gateways/bluebubbles", TResponse>(
-      "POST /api/v1/phone-gateways/bluebubbles",
-      options,
-    );
-  }
-
   postApiV1PiiScrubJobs<TResponse = unknown>(
     options: PublicRouteCallOptions<"POST /api/v1/pii-scrub/jobs"> = {},
   ): Promise<TResponse> {
@@ -11223,24 +11101,6 @@ export class ElizaCloudPublicRoutesClient {
   ): Promise<TResponse> {
     return this.call<"POST /api/v1/web-push/subscriptions", TResponse>(
       "POST /api/v1/web-push/subscriptions",
-      options,
-    );
-  }
-
-  postApiV1WhatsappConnect<TResponse = unknown>(
-    options: PublicRouteCallOptions<"POST /api/v1/whatsapp/connect"> = {},
-  ): Promise<TResponse> {
-    return this.call<"POST /api/v1/whatsapp/connect", TResponse>(
-      "POST /api/v1/whatsapp/connect",
-      options,
-    );
-  }
-
-  postApiV1WhatsappDisconnect<TResponse = unknown>(
-    options: PublicRouteCallOptions<"POST /api/v1/whatsapp/disconnect"> = {},
-  ): Promise<TResponse> {
-    return this.call<"POST /api/v1/whatsapp/disconnect", TResponse>(
-      "POST /api/v1/whatsapp/disconnect",
       options,
     );
   }
@@ -11743,15 +11603,6 @@ export class ElizaCloudPublicRoutesClient {
     return this.callRaw("DELETE /api/v1/oauth/connections/{id}", options);
   }
 
-  deleteApiV1PhoneGatewaysBluebubblesByIdRaw(
-    options: PublicRouteCallOptions<"DELETE /api/v1/phone-gateways/bluebubbles/{id}">,
-  ): Promise<Response> {
-    return this.callRaw(
-      "DELETE /api/v1/phone-gateways/bluebubbles/{id}",
-      options,
-    );
-  }
-
   deleteApiV1ProxyBirdeyeByPathRaw(
     options: PublicRouteCallOptions<"DELETE /api/v1/proxy/birdeye/{path}">,
   ): Promise<Response> {
@@ -11792,12 +11643,6 @@ export class ElizaCloudPublicRoutesClient {
     options: PublicRouteCallOptions<"DELETE /api/v1/web-push/subscriptions"> = {},
   ): Promise<Response> {
     return this.callRaw("DELETE /api/v1/web-push/subscriptions", options);
-  }
-
-  deleteApiV1WhatsappDisconnectRaw(
-    options: PublicRouteCallOptions<"DELETE /api/v1/whatsapp/disconnect"> = {},
-  ): Promise<Response> {
-    return this.callRaw("DELETE /api/v1/whatsapp/disconnect", options);
   }
 
   getApiElevenlabsVoicesRaw(
@@ -13027,12 +12872,6 @@ export class ElizaCloudPublicRoutesClient {
     return this.callRaw("GET /api/v1/payment-requests/{id}", options);
   }
 
-  getApiV1PhoneGatewaysBluebubblesRaw(
-    options: PublicRouteCallOptions<"GET /api/v1/phone-gateways/bluebubbles"> = {},
-  ): Promise<Response> {
-    return this.callRaw("GET /api/v1/phone-gateways/bluebubbles", options);
-  }
-
   getApiV1PiiScrubJobsByIdRaw(
     options: PublicRouteCallOptions<"GET /api/v1/pii-scrub/jobs/{id}">,
   ): Promise<Response> {
@@ -13241,12 +13080,6 @@ export class ElizaCloudPublicRoutesClient {
     options: PublicRouteCallOptions<"GET /api/v1/voice/session/ws"> = {},
   ): Promise<Response> {
     return this.callRaw("GET /api/v1/voice/session/ws", options);
-  }
-
-  getApiV1WhatsappStatusRaw(
-    options: PublicRouteCallOptions<"GET /api/v1/whatsapp/status"> = {},
-  ): Promise<Response> {
-    return this.callRaw("GET /api/v1/whatsapp/status", options);
   }
 
   getApiV1XDmsDigestRaw(
@@ -14647,12 +14480,6 @@ export class ElizaCloudPublicRoutesClient {
     return this.callRaw("POST /api/v1/payment-requests/{id}/expire", options);
   }
 
-  postApiV1PhoneGatewaysBluebubblesRaw(
-    options: PublicRouteCallOptions<"POST /api/v1/phone-gateways/bluebubbles"> = {},
-  ): Promise<Response> {
-    return this.callRaw("POST /api/v1/phone-gateways/bluebubbles", options);
-  }
-
   postApiV1PiiScrubJobsRaw(
     options: PublicRouteCallOptions<"POST /api/v1/pii-scrub/jobs"> = {},
   ): Promise<Response> {
@@ -14903,18 +14730,6 @@ export class ElizaCloudPublicRoutesClient {
     options: PublicRouteCallOptions<"POST /api/v1/web-push/subscriptions"> = {},
   ): Promise<Response> {
     return this.callRaw("POST /api/v1/web-push/subscriptions", options);
-  }
-
-  postApiV1WhatsappConnectRaw(
-    options: PublicRouteCallOptions<"POST /api/v1/whatsapp/connect"> = {},
-  ): Promise<Response> {
-    return this.callRaw("POST /api/v1/whatsapp/connect", options);
-  }
-
-  postApiV1WhatsappDisconnectRaw(
-    options: PublicRouteCallOptions<"POST /api/v1/whatsapp/disconnect"> = {},
-  ): Promise<Response> {
-    return this.callRaw("POST /api/v1/whatsapp/disconnect", options);
   }
 
   postApiV1XDmsConversationsSendRaw(

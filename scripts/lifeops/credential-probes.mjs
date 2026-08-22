@@ -1,29 +1,4 @@
 #!/usr/bin/env node
-/**
- * Live credential probes for the LifeOps HITL intake surface (#11632). Each
- * probe hits the provider's cheapest authenticated read endpoint and resolves
- * to { family, ok, detail } — detail carries HTTP status plus
- * provider-reported identity (bot username, account status, model count),
- * never a secret: every detail string passes through redactSecrets(), which
- * replaces any secret-shaped env value by its last-4 mask, so even a provider
- * echoing a token back cannot leak it. All probes are plain global fetch with
- * a 10s abort; the local iMessage path uses a read-only chat.db access check.
- *
- * Two probe granularities coexist. PROBES/probeFamily keep the family-level
- * sweep (one verdict per connector family; CLI:
- * node scripts/lifeops/credential-probes.mjs [family ...]). PATH_PROBES /
- * probeConnectorPath wire one probe per CONNECTOR_PATHS auth-path id
- * (github.pat probes the OWNER and AGENT slots separately; x.bearer-app and
- * x.oauth1-user get distinct verdicts) — this is what the v2 dashboard fires.
- *
- * Probes read credentials through an explicit env map (defaulting to
- * process.env) so the dashboard can pass the merged layered env from
- * env-layers.mjs without mutating the process — mutation would destroy the
- * per-layer source attribution the UI displays. Every env map handed in is
- * also registered into the redaction set, so values that live only in a .env
- * file layer are masked in details exactly like process.env values.
- */
-import { spawnSync } from "node:child_process";
 import { createHmac, randomBytes } from "node:crypto";
 import { accessSync, constants as fsConstants } from "node:fs";
 import { homedir } from "node:os";
@@ -339,32 +314,6 @@ async function probeX(e) {
   return missing(
     "x",
     "TWITTER_API_KEY + TWITTER_API_SECRET_KEY + TWITTER_ACCESS_TOKEN + TWITTER_ACCESS_TOKEN_SECRET (or TWITTER_BEARER_TOKEN)",
-  );
-}
-
-async function probeWhatsapp(e) {
-  const token = e("ELIZA_WHATSAPP_ACCESS_TOKEN") ?? e("WHATSAPP_ACCESS_TOKEN");
-  const phoneId =
-    e("ELIZA_WHATSAPP_PHONE_NUMBER_ID") ?? e("WHATSAPP_PHONE_NUMBER_ID");
-  if (!token || !phoneId) {
-    return missing(
-      "whatsapp",
-      "ELIZA_WHATSAPP_ACCESS_TOKEN + ELIZA_WHATSAPP_PHONE_NUMBER_ID",
-    );
-  }
-  const r = await fetchJson(
-    `https://graph.facebook.com/v19.0/${encodeURIComponent(phoneId)}?fields=display_phone_number`,
-    { headers: { Authorization: `Bearer ${token}` } },
-  );
-  if (!r.httpOk)
-    return fail(
-      "whatsapp",
-      `phone-number lookup HTTP ${r.status}: ${errorSnippet(r)}`,
-    );
-  const digits = String(r.body?.display_phone_number ?? "").replace(/\D/g, "");
-  return pass(
-    "whatsapp",
-    `phone number verified (…${digits.slice(-4) || "????"})`,
   );
 }
 
@@ -777,7 +726,6 @@ const PROBES = {
   discord: probeDiscord,
   slack: probeSlack,
   x: probeX,
-  whatsapp: probeWhatsapp,
   twilio: probeTwilio,
   model: probeModel,
   health: probeHealth,
@@ -855,7 +803,6 @@ export const PATH_PROBES = {
   "discord.user-token": probeDiscordUserToken,
   "slack.bot": probeSlack,
   "slack.user-token": probeSlackUserToken,
-  "whatsapp.cloud-api": probeWhatsapp,
   "imessage.macos": probeImessageMacos,
   "imessage.bluebubbles": probeBlueBubbles,
   "x.oauth1-user": probeXOauth1,

@@ -163,26 +163,6 @@ describe("verifyLocalWebhookSignature", () => {
     ).resolves.toBe(true);
   });
 
-  test("accepts and rejects WhatsApp sha256 signatures", async () => {
-    const body = JSON.stringify({ object: "whatsapp_business_account" });
-    const signature = await hmacHex("whatsapp-secret", body);
-    const request = new Request(
-      "https://api.example.test/api/eliza-app/webhook/whatsapp",
-      {
-        method: "POST",
-        headers: { "x-hub-signature-256": `sha256=${signature}` },
-        body,
-      },
-    );
-
-    await expect(
-      verifyLocalWebhookSignature(request, "whatsapp", body, "whatsapp-secret"),
-    ).resolves.toBe(true);
-    await expect(
-      verifyLocalWebhookSignature(request, "whatsapp", body, "wrong-secret"),
-    ).resolves.toBe(false);
-  });
-
   test("accepts and rejects Twilio signatures over URL plus sorted form params", async () => {
     const body = new URLSearchParams({
       From: "+15551234567",

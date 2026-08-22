@@ -318,7 +318,7 @@ export class AgentGatewayRouterService {
 
   private async resolvePhoneTarget(args: {
     organizationId: string;
-    provider: "twilio" | "blooio" | "whatsapp";
+    provider: "twilio" | "blooio";
     senderId: string;
   }): Promise<PhoneTargetResolution> {
     const senderId = args.senderId.trim();
@@ -364,7 +364,7 @@ export class AgentGatewayRouterService {
 
   private async resolvePhoneTargetUncached(args: {
     organizationId: string;
-    provider: "twilio" | "blooio" | "whatsapp";
+    provider: "twilio" | "blooio";
     senderId: string;
     lookupId: string;
   }): Promise<PhoneTargetResolution> {
@@ -422,7 +422,7 @@ export class AgentGatewayRouterService {
 
   private async resolveLoggedPhoneContactTarget(
     lookupId: string,
-    provider: "twilio" | "blooio" | "whatsapp",
+    provider: "twilio" | "blooio",
   ): Promise<PhoneTargetResolution> {
     const normalizedPhone = lookupId.includes("@")
       ? lookupId.toLowerCase()
@@ -499,7 +499,7 @@ export class AgentGatewayRouterService {
   }
 
   private async markPhoneContactInbound(args: {
-    provider: "twilio" | "blooio" | "whatsapp";
+    provider: "twilio" | "blooio";
     contactIdentifier: string;
     agentId: string;
   }): Promise<void> {
@@ -1257,106 +1257,6 @@ export class AgentGatewayRouterService {
     return {
       ...routed,
       userId: owner.id,
-    };
-  }
-
-  async routeWhatsAppMessage(args: {
-    organizationId: string;
-    from: string;
-    to: string;
-    body: string;
-    providerMessageId?: string;
-    mediaUrls?: string[];
-    metadata?: Record<string, unknown>;
-    senderName?: string;
-  }): Promise<AgentGatewayRouteResult> {
-    const senderWhatsAppId = args.from.trim();
-    const normalizedPhone = normalizePhoneNumber(senderWhatsAppId);
-    const owner =
-      (await usersRepository.findByWhatsAppIdWithOrganization(senderWhatsAppId)) ??
-      (normalizedPhone
-        ? await usersRepository.findByPhoneNumberWithOrganization(normalizedPhone)
-        : undefined);
-
-    let resolved: PhoneTargetResolution;
-    if (owner?.organization_id) {
-      const owned = await this.resolveOwnedRuntimeTarget(owner.organization_id, owner.id);
-      resolved = owned.target
-        ? { ...owned, organizationId: owner.organization_id }
-        : await this.resolveLoggedPhoneContactTarget(
-            normalizedPhone || senderWhatsAppId,
-            "whatsapp",
-          );
-      if (!resolved.target) {
-        resolved = {
-          ...owned,
-          organizationId: owner.organization_id,
-        };
-      }
-    } else {
-      resolved = await this.resolveLoggedPhoneContactTarget(
-        normalizedPhone || senderWhatsAppId,
-        "whatsapp",
-      );
-    }
-
-    if (!resolved.target) {
-      return {
-        handled: false,
-        reason: resolved.reason,
-        agentId: resolved.agentId,
-        userId: resolved.userId,
-        organizationId: resolved.organizationId,
-      };
-    }
-
-    const targetAgentId =
-      resolved.target.kind === "local-session" && resolved.target.session
-        ? resolved.target.session.runtimeAgentId
-        : (resolved.target.sandbox?.id ?? resolved.agentId ?? normalizedPhone ?? senderWhatsAppId);
-    const roomId = buildDirectConversationRoomIdFromIds(
-      targetAgentId,
-      "whatsapp",
-      normalizedPhone || senderWhatsAppId,
-      args.to.trim(),
-    );
-    const attachments = buildMediaAttachments(args.mediaUrls);
-    const rpcRequest: BridgeRequest = {
-      jsonrpc: "2.0",
-      id: randomUUID(),
-      method: "message.send",
-      params: {
-        text: args.body,
-        roomId,
-        channelType: "DM",
-        source: "whatsapp",
-        sender: {
-          id: normalizedPhone || senderWhatsAppId,
-          username: normalizedPhone || senderWhatsAppId,
-          ...(args.senderName ? { displayName: args.senderName } : {}),
-          metadata: {
-            whatsapp: {
-              sender: normalizedPhone || senderWhatsAppId,
-              recipient: args.to.trim(),
-            },
-          },
-        },
-        ...(attachments ? { attachments } : {}),
-        metadata: {
-          provider: "whatsapp",
-          from: normalizedPhone || senderWhatsAppId,
-          to: args.to.trim(),
-          ...(args.providerMessageId ? { providerMessageId: args.providerMessageId } : {}),
-          ...(args.metadata ? args.metadata : {}),
-        },
-      },
-    };
-
-    const routed = await this.routeToTarget(resolved.target, rpcRequest);
-    return {
-      ...routed,
-      userId: resolved.userId,
-      organizationId: routed.organizationId ?? resolved.organizationId,
     };
   }
 }

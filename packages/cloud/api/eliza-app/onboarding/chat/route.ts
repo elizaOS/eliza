@@ -37,7 +37,6 @@ const platformSchema = z.enum([
   "web",
   "telegram",
   "discord",
-  "whatsapp",
   "twilio",
   "blooio",
 ]);

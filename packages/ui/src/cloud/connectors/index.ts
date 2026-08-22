@@ -11,7 +11,6 @@
  *   - OAuth-redirect: `GET/POST/DELETE /api/v1/oauth/{connections,<platform>/initiate}`
  *   - Twilio:    `GET /api/v1/twilio/status`, `POST /api/v1/twilio/connect`, `DELETE /api/v1/twilio/disconnect`
  *   - Blooio:    `GET /api/v1/blooio/status`, `POST /api/v1/blooio/{connect,webhook-secret}`, `DELETE /api/v1/blooio/disconnect`
- *   - WhatsApp:  `GET /api/v1/whatsapp/status`, `POST /api/v1/whatsapp/connect`, `DELETE /api/v1/whatsapp/disconnect`
  *   - Telegram:  `GET /api/v1/telegram/status`, `POST /api/v1/telegram/connect`, `DELETE /api/v1/telegram/disconnect`
  *   - Discord:   `GET/POST /api/v1/discord/connections`, `PATCH/DELETE /api/v1/discord/connections/:id`, `GET /api/v1/dashboard` (character list)
  */

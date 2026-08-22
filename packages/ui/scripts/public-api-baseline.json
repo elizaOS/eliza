@@ -1844,10 +1844,6 @@
       "source": "src/cloud/connectors/use-connection-status.ts"
     },
     {
-      "specifier": "@elizaos/ui/cloud/connectors/whatsapp-connection",
-      "source": "src/cloud/connectors/whatsapp-connection.tsx"
-    },
-    {
       "specifier": "@elizaos/ui/cloud/handoff/cloud-handoff-supervisor",
       "source": "src/cloud/handoff/cloud-handoff-supervisor.ts"
     },

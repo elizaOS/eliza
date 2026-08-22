@@ -1,5 +1,5 @@
 /**
- * Group F — Eliza-app connectors + integration webhooks (16 routes)
+ * Group F — Eliza-app connectors + integration webhooks (14 routes)
  *
  * Routes covered:
  *   /api/eliza-app/connections
@@ -10,14 +10,12 @@
  *   /api/eliza-app/webhook/discord       (forwards to Discord webhook handler)
  *   /api/eliza-app/webhook/telegram      (forwards to webhook gateway)
  *   /api/eliza-app/webhook/twilio        (forwards to webhook gateway)
- *   /api/eliza-app/webhook/whatsapp      (forwards to webhook gateway)
  *   /api/eliza/rooms/:roomId             (legacy room route — 501)
  *   /api/eliza/rooms/:roomId/messages    (legacy room route — 501)
  *   /api/eliza/rooms/:roomId/messages/stream (legacy room route — 501)
  *   /api/eliza/rooms/:roomId/welcome
  *   /api/webhooks/blooio/:orgId
  *   /api/webhooks/twilio/:orgId
- *   /api/webhooks/whatsapp/:orgId
  *
  * Auth notes (from auth.ts publicPathPrefixes):
  *   - /api/eliza-app/webhook/* — public (no global auth gate)
@@ -30,8 +28,7 @@
  * Worker-compatible webhook routes should fail closed with a configuration
  * error when their upstream gateway URL is absent.
  *
- * Webhook signing tests (Blooio, Twilio, WhatsApp) run without a real DB
- *     because the handlers can skip signature verification when
+ * Webhook signing tests can skip signature verification when
  *     SKIP_WEBHOOK_VERIFICATION=true and NODE_ENV != "production". When that
  *     env is absent we assert the correct rejection code instead of 200.
  */
@@ -111,31 +108,6 @@ async function buildTwilioSignature(
   );
   const sigBuf = await crypto.subtle.sign("HMAC", key, encoder.encode(data));
   return btoa(String.fromCharCode(...new Uint8Array(sigBuf)));
-}
-
-/**
- * Build a WhatsApp x-hub-signature-256 header (sha256=<hex>).
- * Uses the Web Crypto API (SHA-256 HMAC), matching what the handler expects
- * in Workers runtime (the handler's verifyWebhookSignature delegates to
- * whatsappAutomationService, which ultimately calls verifyWhatsAppSignature).
- */
-async function buildWhatsAppSignature(
-  secret: string,
-  body: string,
-): Promise<string> {
-  const encoder = new TextEncoder();
-  const key = await crypto.subtle.importKey(
-    "raw",
-    encoder.encode(secret),
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["sign"],
-  );
-  const sig = await crypto.subtle.sign("HMAC", key, encoder.encode(body));
-  const hex = Array.from(new Uint8Array(sig))
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
-  return `sha256=${hex}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -316,17 +288,6 @@ describeE2E("POST /api/eliza-app/webhook/twilio", () => {
       From: "+15551234567",
       To: "+15550000000",
       Body: "hello",
-    });
-    expect(res.status).toBe(503);
-    const body = (await res.json()) as { code?: string };
-    expect(body.code).toBe("WEBHOOK_GATEWAY_NOT_CONFIGURED");
-  });
-});
-
-describeE2E("POST /api/eliza-app/webhook/whatsapp", () => {
-  test("without gateway URL → 503 WEBHOOK_GATEWAY_NOT_CONFIGURED", async () => {
-    const res = await api.post("/api/eliza-app/webhook/whatsapp", {
-      object: "whatsapp_business_account",
     });
     expect(res.status).toBe(503);
     const body = (await res.json()) as { code?: string };
@@ -593,94 +554,5 @@ describeE2E("POST /api/webhooks/twilio/:orgId", () => {
     // verifier throws → 500. (SKIP_WEBHOOK_VERIFICATION=true would yield the
     // 200 TwiML path.)
     expect(res.status).toBe(500);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// /api/webhooks/whatsapp/:orgId
-// ---------------------------------------------------------------------------
-
-describeE2E(
-  "GET /api/webhooks/whatsapp/:orgId (Meta verification handshake)",
-  () => {
-    test("missing hub.mode query param → 403 (verification fails)", async () => {
-      // Without hub.mode, hub.verify_token, hub.challenge the service
-      // returns null → handler sends 403.
-      const res = await api.get("/api/webhooks/whatsapp/test-org-wa");
-      expect(res.status).toBe(403);
-    });
-
-    test("correct challenge params but unknown org → 403", async () => {
-      const res = await api.get(
-        "/api/webhooks/whatsapp/test-org-wa?" +
-          "hub.mode=subscribe&hub.verify_token=any-token&hub.challenge=echo-this",
-      );
-      // Unknown org has no verify_token stored, so verification fails → 403.
-      expect(res.status).toBe(403);
-    });
-  },
-);
-
-describeE2E("POST /api/webhooks/whatsapp/:orgId", () => {
-  test("invalid signature with non-UUID orgId → 400 before signature handling", async () => {
-    const body = JSON.stringify({
-      object: "whatsapp_business_account",
-      entry: [],
-    });
-    const res = await fetch(
-      `${getBaseUrl()}/api/webhooks/whatsapp/test-org-wa`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-hub-signature-256": "sha256=invalidsig",
-        },
-        body,
-      },
-    );
-    // "test-org-wa" fails the route's UUID validation before any signature
-    // handling → exactly 400.
-    expect(res.status).toBe(400);
-    const errBody = (await res.json()) as { error?: string };
-    expect(errBody.error).toBe("Invalid organization ID");
-  });
-
-  test("invalid JSON body → 400", async () => {
-    const res = await fetch(
-      `${getBaseUrl()}/api/webhooks/whatsapp/test-org-wa`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-hub-signature-256": "sha256=invalidsig",
-        },
-        body: "not-json{{",
-      },
-    );
-    // UUID validation still fires first — the malformed JSON is never read.
-    expect(res.status).toBe(400);
-  });
-
-  test("valid signed payload with SKIP_WEBHOOK_VERIFICATION → 200 or 400/401/500", async () => {
-    const secret = "test-whatsapp-app-secret";
-    const bodyJson = JSON.stringify({
-      object: "whatsapp_business_account",
-      entry: [],
-    });
-    const sig = await buildWhatsAppSignature(secret, bodyJson);
-    const res = await fetch(
-      `${getBaseUrl()}/api/webhooks/whatsapp/test-org-wa`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-hub-signature-256": sig,
-        },
-        body: bodyJson,
-      },
-    );
-    // "test-org-wa" fails the route's UUID validation before any signature
-    // handling — even a well-formed signature → exactly 400.
-    expect(res.status).toBe(400);
   });
 });

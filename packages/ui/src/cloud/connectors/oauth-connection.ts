@@ -4,7 +4,7 @@
  * Handles listing connections (`GET /api/v1/oauth/connections?platform=`),
  * initiating the OAuth redirect (`POST /api/v1/oauth/<platform>/initiate`), and
  * revoking a connection (`DELETE /api/v1/oauth/connections/:id`).
- * Token/credential connectors (Telegram, Twilio, WhatsApp, Blooio) use a
+ * Token/credential connectors (Telegram, Twilio, Blooio) use a
  * different connect flow and are intentionally not covered here.
  */
 

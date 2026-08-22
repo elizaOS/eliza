@@ -15,7 +15,6 @@ import { GoogleConnection } from "./google-connection";
 import { MicrosoftConnection } from "./microsoft-connection";
 import { TelegramConnection } from "./telegram-connection";
 import { TwilioConnection } from "./twilio-connection";
-import { WhatsAppConnection } from "./whatsapp-connection";
 
 export function CloudConnectorsSection() {
   const t = useCloudT();
@@ -37,7 +36,6 @@ export function CloudConnectorsSection() {
           <MicrosoftConnection />
           <TwilioConnection />
           <BlooioConnection />
-          <WhatsAppConnection />
         </div>
       </div>
 

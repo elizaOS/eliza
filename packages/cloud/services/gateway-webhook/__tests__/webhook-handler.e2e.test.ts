@@ -1130,7 +1130,7 @@ describe("gateway webhook handler e2e routing", () => {
     // A deliberate agent silence surfaces as an empty `response` string (the
     // agent-server no longer fabricates a "No response generated." reply). The
     // gateway must NOT forward the empty string to the platform adapter — an
-    // empty send is invalid on WhatsApp/Twilio/Telegram — and must stay
+    // empty send is invalid on Twilio/Telegram — and must stay
     // distinct from a forward failure (which returns without a reply too, but
     // is logged as an error). Here the forward SUCCEEDS with an empty body, so
     // no reply is sent and no error is raised.

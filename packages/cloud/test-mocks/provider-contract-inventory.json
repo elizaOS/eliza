@@ -1,5 +1,11 @@
 {
   "version": 1,
+  "retiredIntegrations": [
+    {
+      "id": "whatsapp-cloud-webhook",
+      "reason": "Hosted Meta Cloud API and webhook authority was removed; personal WhatsApp is owned by the bundled in-process connector."
+    }
+  ],
   "integrations": [
     {
       "id": "eliza-cloud-api",
@@ -29,16 +35,6 @@
       "suite": "packages/cloud/test-mocks/test/provider-contract/github-connector-oauth.contract.test.ts",
       "fixtureDirectory": "packages/cloud/test-mocks/fixtures/provider-contract",
       "capabilities": ["oauth"],
-      "liveLaneRequiredInForks": false
-    },
-    {
-      "id": "whatsapp-cloud-webhook",
-      "adapterName": "WhatsAppWebhookRoute",
-      "profile": "inbound-webhook",
-      "package": "plugins/plugin-whatsapp",
-      "suite": "packages/cloud/test-mocks/test/provider-contract/whatsapp-cloud-webhook.contract.test.ts",
-      "fixtureDirectory": "packages/cloud/test-mocks/fixtures/provider-contract",
-      "capabilities": ["tenant-isolation", "webhooks"],
       "liveLaneRequiredInForks": false
     }
   ]

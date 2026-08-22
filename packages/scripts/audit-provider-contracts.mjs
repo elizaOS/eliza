@@ -157,7 +157,7 @@ function reachableProtectedIntegrationIds(root) {
   return protectedIds;
 }
 
-async function assertProtectedLedger(root, inventoryIds) {
+async function assertProtectedLedger(root, inventoryIds, retiredIds) {
   const ledger = JSON.parse(
     await readFile(path.join(root, PROTECTED_LEDGER_PATH), "utf8"),
   );
@@ -175,13 +175,14 @@ async function assertProtectedLedger(root, inventoryIds) {
     }
     ledgerIds.add(id);
   }
-  const absentFromLedger = [...inventoryIds].filter((id) => !ledgerIds.has(id));
+  const declaredIds = new Set([...inventoryIds, ...retiredIds]);
+  const absentFromLedger = [...declaredIds].filter((id) => !ledgerIds.has(id));
   const absentFromInventory = [...ledgerIds].filter(
-    (id) => !inventoryIds.has(id),
+    (id) => !declaredIds.has(id),
   );
   if (absentFromLedger.length > 0 || absentFromInventory.length > 0) {
     throw new Error(
-      `provider contract inventory and protected ledger must contain exactly the same ids (missing from ledger: ${absentFromLedger.join(", ") || "none"}; missing from inventory: ${absentFromInventory.join(", ") || "none"})`,
+      `provider contract active/retired inventory and protected ledger must contain exactly the same ids (missing from ledger: ${absentFromLedger.join(", ") || "none"}; missing from inventory: ${absentFromInventory.join(", ") || "none"})`,
     );
   }
   for (const protectedId of reachableProtectedIntegrationIds(root)) {
@@ -201,6 +202,28 @@ export async function auditProviderContracts(root = process.cwd()) {
     throw new Error("provider contract inventory must use schema version 1");
   }
 
+  if (!Array.isArray(inventory.retiredIntegrations)) {
+    throw new Error(
+      "provider contract inventory must declare retiredIntegrations",
+    );
+  }
+
+  const retiredIds = new Set();
+  for (const entry of inventory.retiredIntegrations) {
+    if (
+      typeof entry.id !== "string" ||
+      !entry.id ||
+      retiredIds.has(entry.id) ||
+      typeof entry.reason !== "string" ||
+      !entry.reason.trim()
+    ) {
+      throw new Error(
+        "provider contract retired integration must have a unique id and reason",
+      );
+    }
+    retiredIds.add(entry.id);
+  }
+
   const ids = new Set();
   for (const entry of inventory.integrations) {
     if (!entry.id || ids.has(entry.id)) {
@@ -210,7 +233,13 @@ export async function auditProviderContracts(root = process.cwd()) {
     }
     ids.add(entry.id);
   }
-  await assertProtectedLedger(root, ids);
+  const activeRetiredOverlap = [...ids].filter((id) => retiredIds.has(id));
+  if (activeRetiredOverlap.length > 0) {
+    throw new Error(
+      `provider contract ids cannot be both active and retired: ${activeRetiredOverlap.join(", ")}`,
+    );
+  }
+  await assertProtectedLedger(root, ids, retiredIds);
 
   const packages = new Map();
   for (const entry of inventory.integrations) {

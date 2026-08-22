@@ -38,7 +38,7 @@ describe("resolveSource", () => {
   });
 
   test("accepts all known platforms", () => {
-    for (const p of ["discord", "telegram", "whatsapp", "twilio", "blooio"]) {
+    for (const p of ["discord", "telegram", "twilio", "blooio"]) {
       expect(resolveSource({ platformName: p })).toBe(p);
     }
   });
@@ -140,8 +140,8 @@ describe("buildConnectionMetadata", () => {
   });
 
   test("returns only platformName when chatId is absent", () => {
-    expect(buildConnectionMetadata({ platformName: "whatsapp" })).toEqual({
-      platformName: "whatsapp",
+    expect(buildConnectionMetadata({ platformName: "telegram" })).toEqual({
+      platformName: "telegram",
     });
   });
 
@@ -181,12 +181,12 @@ describe("buildConnectionMetadata", () => {
   test("truncates chatId exceeding 128 characters", () => {
     const longId = "x".repeat(200);
     const result = buildConnectionMetadata({
-      platformName: "whatsapp",
+      platformName: "telegram",
       chatId: longId,
     });
     expect(result?.chatId?.length).toBe(128);
     expect(result).toEqual({
-      platformName: "whatsapp",
+      platformName: "telegram",
       chatId: "x".repeat(128),
     });
   });
@@ -195,12 +195,12 @@ describe("buildConnectionMetadata", () => {
     // 129 UTF-16 units: the emoji's surrogate pair straddles the cut at 128.
     const longId = `${"x".repeat(127)}\u{1F600}`;
     const result = buildConnectionMetadata({
-      platformName: "whatsapp",
+      platformName: "telegram",
       chatId: longId,
     });
     // Backs off before the split pair rather than truncating to a lone surrogate.
     expect(result).toEqual({
-      platformName: "whatsapp",
+      platformName: "telegram",
       chatId: "x".repeat(127),
     });
   });
