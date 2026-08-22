@@ -285,22 +285,25 @@ describe("ROLE bounded ADMIN authority", () => {
 					assignments: [
 						{ entityId: IDS.guest, newRole: "USER" },
 						{ entityId: IDS.user, newRole: "ADMIN" },
+						{ entityId: IDS.peerAdmin, newRole: "USER" },
 					],
 				},
 			},
 			callback,
 		);
 
-		expect(result).toMatchObject({
+		expect(result).toEqual({
 			success: true,
-			text: "Updated 1 role; 1 failed.",
-			userFacingText: "Updated 1 role; 1 failed.",
+			text: "Updated 1 role; 2 failed.",
+			userFacingText: "Updated 1 role; 2 failed.",
 			verifiedUserFacing: true,
 			turnComplete: true,
-			values: { successCount: 1, failureCount: 1 },
+			values: { successCount: 1, failureCount: 2 },
 			data: {
+				actionName: "ROLE",
+				op: "assign",
 				successCount: 1,
-				failureCount: 1,
+				failureCount: 2,
 				authorizationStop: {
 					entityId: IDS.user,
 					error: "INSUFFICIENT_PERMISSIONS",
@@ -311,15 +314,27 @@ describe("ROLE bounded ADMIN authority", () => {
 						entityId: IDS.user,
 						error: "INSUFFICIENT_PERMISSIONS",
 						requesterRole: "USER",
+						skipped: true,
+						reason:
+							"Only OWNERs and ADMINs can manage roles; tell the user they lack permission.",
+					},
+					{
+						entityId: IDS.peerAdmin,
+						error: "ROLE_BATCH_STOPPED_AFTER_AUTHORIZATION_CHANGE",
+						requesterRole: "USER",
+						skipped: true,
+						reason:
+							"Not attempted because role management authority changed earlier in the batch.",
 					},
 				],
+				worldId: IDS.world,
 			},
 		});
 		expect(test.getWorld).toHaveBeenCalledTimes(3);
 		expect(test.updateWorld).toHaveBeenCalledTimes(1);
 		expect(callback).toHaveBeenCalledOnce();
 		expect(callback).toHaveBeenCalledWith({
-			text: "Updated 1 role; 1 failed.",
+			text: "Updated 1 role; 2 failed.",
 			actions: ["ROLE"],
 		});
 		expect(
@@ -332,6 +347,11 @@ describe("ROLE bounded ADMIN authority", () => {
 				IDS.user
 			],
 		).toBe("USER");
+		expect(
+			(authorizedWorld.metadata as { roles: Record<string, string> }).roles[
+				IDS.peerAdmin
+			],
+		).toBe("ADMIN");
 	});
 
 	it.each([

@@ -447,6 +447,7 @@ async function applyAssignments(args: {
 		reason: string;
 		error?: string;
 		requesterRole?: RoleName;
+		skipped?: boolean;
 	}> = [];
 	let authorizationStop:
 		| { entityId: UUID; error: string; requesterRole?: RoleName }
@@ -483,10 +484,23 @@ async function applyAssignments(args: {
 			};
 			failures.push({
 				...authorizationStop,
+				skipped: true,
 				reason:
 					currentAuthorization.text ??
 					"Role management authority changed before this assignment.",
 			});
+			for (const skippedAssignment of assignments.slice(index + 1)) {
+				failures.push({
+					entityId: skippedAssignment.entityId,
+					error: "ROLE_BATCH_STOPPED_AFTER_AUTHORIZATION_CHANGE",
+					...(authorizationStop.requesterRole
+						? { requesterRole: authorizationStop.requesterRole }
+						: {}),
+					skipped: true,
+					reason:
+						"Not attempted because role management authority changed earlier in the batch.",
+				});
+			}
 			break;
 		}
 		const { world, metadata } = currentAuthorization.resolved;
