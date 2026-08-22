@@ -64,22 +64,58 @@ export async function alertFetch(
     throw new RangeError("Payout alert request body exceeds the 64 KiB limit");
   }
 
-  const deadline = AbortSignal.timeout(timeoutMs);
-  const response = await transport(url.toString(), {
-    ...init,
-    redirect: "manual",
-    signal: init.signal ? AbortSignal.any([init.signal, deadline]) : deadline,
+  init.signal?.throwIfAborted();
+  const deadlineController = new AbortController();
+  const deadlineTimer = setTimeout(() => {
+    deadlineController.abort(
+      new DOMException("The operation was aborted by the payout alert timeout", "TimeoutError"),
+    );
+  }, timeoutMs);
+  const signal = init.signal
+    ? AbortSignal.any([init.signal, deadlineController.signal])
+    : deadlineController.signal;
+  signal.throwIfAborted();
+
+  let acceptResponse = true;
+  let onAbort: (() => void) | undefined;
+  const aborted = new Promise<never>((_resolve, reject) => {
+    onAbort = () => reject(signal.reason ?? new DOMException("Aborted", "AbortError"));
+    signal.addEventListener("abort", onAbort, { once: true });
   });
-  if (REDIRECT_STATUSES.has(response.status)) {
-    await releaseAlertResponse(response, "redirect");
-    throw new Error(`Payout alert endpoint redirected with status ${response.status}`);
+  const pendingResponse = Promise.resolve()
+    .then(() =>
+      transport(url.toString(), {
+        ...init,
+        redirect: "manual",
+        signal,
+      }),
+    )
+    .then((response) => {
+      if (!acceptResponse) releaseAlertResponse(response, "late");
+      return response;
+    });
+
+  try {
+    const response = await Promise.race([pendingResponse, aborted]);
+    signal.throwIfAborted();
+    if (REDIRECT_STATUSES.has(response.status)) {
+      releaseAlertResponse(response, "redirect");
+      throw new Error(`Payout alert endpoint redirected with status ${response.status}`);
+    }
+    return response;
+  } finally {
+    acceptResponse = false;
+    clearTimeout(deadlineTimer);
+    if (onAbort) signal.removeEventListener("abort", onAbort);
   }
-  return response;
 }
 
-async function releaseAlertResponse(response: Response, channel: string): Promise<void> {
+function releaseAlertResponse(response: Response, channel: string): void {
   try {
-    await response.body?.cancel();
+    void response.body?.cancel().catch((error) => {
+      // error-policy:J6 Response disposal is best-effort after delivery completed.
+      logger.warn(`[PayoutAlerts] Failed to release ${channel} response body`, { error });
+    });
   } catch (error) {
     // error-policy:J6 Response disposal is best-effort after delivery completed.
     logger.warn(`[PayoutAlerts] Failed to release ${channel} response body`, { error });
@@ -222,7 +258,7 @@ export class PayoutAlertsService {
       // error-policy:J7 Alert diagnostics must not stop payout processing.
       logger.error("[PayoutAlerts] Failed to send Slack alert", { error });
     } finally {
-      if (response) await releaseAlertResponse(response, "Slack");
+      if (response) releaseAlertResponse(response, "Slack");
     }
   }
 
@@ -272,7 +308,7 @@ export class PayoutAlertsService {
       // error-policy:J7 Alert diagnostics must not stop payout processing.
       logger.error("[PayoutAlerts] Failed to send PagerDuty alert", { error });
     } finally {
-      if (response) await releaseAlertResponse(response, "PagerDuty");
+      if (response) releaseAlertResponse(response, "PagerDuty");
     }
   }
 

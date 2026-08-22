@@ -19,6 +19,22 @@ afterEach(() => {
 });
 
 describe("alertFetch", () => {
+  test("does not dispatch a pre-aborted request", async () => {
+    const transport = mock(async () => new Response(null, { status: 204 }));
+    const controller = new AbortController();
+    controller.abort();
+
+    await expect(
+      alertFetch(
+        "https://events.pagerduty.com/v2/enqueue",
+        { signal: controller.signal },
+        25,
+        transport as AlertTransport,
+      ),
+    ).rejects.toMatchObject({ name: "AbortError" });
+    expect(transport).not.toHaveBeenCalled();
+  });
+
   test("aborts a hung alert hop at the configured timeout", async () => {
     const transport = mock(
       (_input: RequestInfo | URL, init?: RequestInit) =>
@@ -53,6 +69,26 @@ describe("alertFetch", () => {
         transport,
       ),
     ).rejects.toThrow(/aborted/i);
+  });
+
+  test("enforces the deadline when the transport ignores its signal", async () => {
+    const transport = mock(() => new Promise<Response>(() => undefined)) as AlertTransport;
+
+    await expect(
+      alertFetch("https://events.pagerduty.com/v2/enqueue", undefined, 25, transport),
+    ).rejects.toMatchObject({ name: "TimeoutError" });
+  });
+
+  test("clears the owned deadline after a fast response", async () => {
+    let receivedSignal: AbortSignal | undefined;
+    const transport = mock(async (_input: string, init?: RequestInit) => {
+      receivedSignal = init?.signal;
+      return new Response(null, { status: 204 });
+    }) as AlertTransport;
+
+    await alertFetch("https://events.pagerduty.com/v2/enqueue", undefined, 25, transport);
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    expect(receivedSignal?.aborted).toBe(false);
   });
 
   test("propagates caller cancellation through the composed signal", async () => {
@@ -144,6 +180,50 @@ describe("alertFetch", () => {
       }),
     ).resolves.toBeUndefined();
     expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  test("a hostile Slack cancellation cannot suppress PagerDuty or completion", async () => {
+    process.env[slackWebhookEnv] = "https://hooks.slack.com/services/T/B/secret";
+    process.env[pagerDutyKeyEnv] = "pager-key";
+    const requests: string[] = [];
+    const transport = mock(async (input: string) => {
+      requests.push(input);
+      return new Response(
+        new ReadableStream({
+          cancel: () =>
+            input.includes("slack") ? new Promise<void>(() => undefined) : Promise.resolve(),
+        }),
+        { status: 202 },
+      );
+    }) as AlertTransport;
+
+    await expect(
+      new PayoutAlertsService(transport).sendAlert({
+        severity: "critical",
+        title: "Emergency Pause",
+        message: "Payouts paused",
+      }),
+    ).resolves.toBeUndefined();
+    expect(requests).toEqual([
+      "https://hooks.slack.com/services/T/B/secret",
+      "https://events.pagerduty.com/v2/enqueue",
+    ]);
+  });
+
+  test("a rejecting cancellation does not replace the selected response outcome", async () => {
+    const transport = mock(
+      async () =>
+        new Response(
+          new ReadableStream({
+            cancel: () => Promise.reject(new Error("cleanup failed")),
+          }),
+          { status: 302 },
+        ),
+    ) as AlertTransport;
+
+    await expect(
+      alertFetch("https://events.pagerduty.com/v2/enqueue", undefined, 25, transport),
+    ).rejects.toThrow("redirected with status 302");
   });
 
   test("pins real Slack and PagerDuty shapes and releases both responses", async () => {
