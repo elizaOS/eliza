@@ -121,20 +121,76 @@ function listTrackedRepositoryFiles(repoRoot) {
 function validateEvidenceReferences(
   value,
   label,
-  { repoRoot, trackedFiles, required = false, allowedSources },
+  {
+    repoRoot,
+    trackedFiles,
+    required = false,
+    allowedSources,
+    requiredSupports = [],
+  },
 ) {
-  const references = requireStringArray(value, label, {
-    allowEmpty: !required,
-  }).map((reference) => normalizeGitRepositoryPath(reference, label));
-  for (const reference of references) {
+  if (!Array.isArray(value) || (required && value.length === 0)) {
+    throw new Error(
+      `${label} must be ${required ? "a non-empty" : "an"} array`,
+    );
+  }
+  const references = value.map((candidate, index) => {
+    const entry = requireObject(candidate, `${label}[${index}]`);
+    requireExactKeys(
+      entry,
+      ["path", "supports", "contains"],
+      `${label}[${index}]`,
+    );
+    const reference = normalizeGitRepositoryPath(
+      requireString(entry.path, `${label}[${index}].path`),
+      `${label}[${index}].path`,
+    );
     if (!trackedFiles.has(reference)) {
       throw new Error(
-        `${label} is not a tracked repository file: ${reference}`,
+        `${label}[${index}].path is not a tracked repository file: ${reference}`,
       );
     }
-    assertContainedRegularFile(repoRoot, reference, label);
+    const source = assertContainedRegularFile(
+      repoRoot,
+      reference,
+      `${label}[${index}].path`,
+    );
     if (allowedSources && !allowedSources.has(reference)) {
-      throw new Error(`${label} is not an asset source: ${reference}`);
+      throw new Error(
+        `${label}[${index}].path is not an allowed asset source: ${reference}`,
+      );
+    }
+    const supports = requireStringArray(
+      entry.supports,
+      `${label}[${index}].supports`,
+    );
+    const contains = requireStringArray(
+      entry.contains,
+      `${label}[${index}].contains`,
+    );
+    const sourceText = readFileSync(source.absolute, "utf8");
+    for (const assertion of contains) {
+      if (!sourceText.includes(assertion)) {
+        throw new Error(
+          `${label}[${index}].contains is not present in ${reference}: ${JSON.stringify(assertion)}`,
+        );
+      }
+    }
+    return { path: reference, supports, contains };
+  });
+  assertUniqueRepositoryIdentities(
+    references.map((entry) => entry.path),
+    `${label} contains duplicate evidence paths`,
+  );
+  const supported = new Set(references.flatMap((entry) => entry.supports));
+  for (const claim of requiredSupports) {
+    if (!supported.has(claim)) {
+      throw new Error(`${label} does not support asserted value: ${claim}`);
+    }
+  }
+  for (const claim of supported) {
+    if (!requiredSupports.includes(claim)) {
+      throw new Error(`${label} supports an unasserted value: ${claim}`);
     }
   }
   return references;
@@ -170,6 +226,7 @@ function validateAssertion(
       trackedFiles,
       required: status === "source-verified",
       allowedSources: sourceSet,
+      requiredSupports: status === "source-verified" ? values : [],
     },
   );
   return { status, values, evidence, hold: assertion.hold };
@@ -268,6 +325,8 @@ export function validateComplianceInventory(raw, { repoRoot, discovered }) {
       `stale registered deployment descriptors: ${stale.join(", ")}`,
     );
 
+  const registeredSourceSet = new Set(registeredSources.keys());
+
   const flows = Array.isArray(inventory.flows) ? inventory.flows : null;
   if (!flows) throw new Error("inventory.flows must be an array");
   const flowIds = new Set();
@@ -311,6 +370,14 @@ export function validateComplianceInventory(raw, { repoRoot, discovered }) {
         repoRoot,
         trackedFiles,
         required: status === "source-verified",
+        allowedSources: new Set([
+          ...normalizedAssets.find((asset) => asset.id === source).sources,
+          ...normalizedAssets.find((asset) => asset.id === destination).sources,
+        ]),
+        requiredSupports:
+          status === "source-verified"
+            ? [source, destination, ...dataClasses]
+            : [],
       },
     );
     const hold =
@@ -357,6 +424,9 @@ export function validateComplianceInventory(raw, { repoRoot, discovered }) {
         repoRoot,
         trackedFiles,
         required: status === "source-verified",
+        allowedSources: registeredSourceSet,
+        requiredSupports:
+          status === "source-verified" ? [id, framework, owner] : [],
       },
     );
     const hold =
@@ -413,7 +483,7 @@ export function renderComplianceInventoryMarkdown(report) {
     "| --- | --- | --- |",
     ...report.flows.map(
       (flow) =>
-        `| ${flow.id} | ${flow.status} | ${flow.evidence.join("<br>") || "none recorded"} |`,
+        `| ${flow.id} | ${flow.status} | ${flow.evidence.map((entry) => entry.path).join("<br>") || "none recorded"} |`,
     ),
     "",
     "## Control and evidence ownership",
@@ -422,7 +492,7 @@ export function renderComplianceInventoryMarkdown(report) {
     "| --- | --- | --- | --- | --- |",
     ...report.controls.map(
       (control) =>
-        `| ${control.id} | ${control.framework} | ${control.owner} | ${control.status} | ${control.evidence.join("<br>") || "none recorded"} |`,
+        `| ${control.id} | ${control.framework} | ${control.owner} | ${control.status} | ${control.evidence.map((entry) => entry.path).join("<br>") || "none recorded"} |`,
     ),
     "",
     "## Protected acceptance holds",

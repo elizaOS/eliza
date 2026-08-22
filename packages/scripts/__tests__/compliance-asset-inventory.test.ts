@@ -29,6 +29,10 @@ function rawInventory() {
   return JSON.parse(readFileSync(INVENTORY_FILE, "utf8"));
 }
 
+function evidence(pathname: string, supports: string[], contains: string[]) {
+  return { path: pathname, supports, contains };
+}
+
 describe("compliance asset inventory", () => {
   test("classifies every tracked deployment descriptor exactly once", () => {
     const report = runComplianceInventoryAudit({ repoRoot: REPO_ROOT });
@@ -171,13 +175,39 @@ describe("compliance asset inventory", () => {
     );
 
     const factWithBogusEvidence = rawInventory();
-    factWithBogusEvidence.assets[0].facts.lifecycle.evidence = ["package.json"];
+    factWithBogusEvidence.assets[0].facts.lifecycle.evidence = [
+      evidence("package.json", ["repository-tracked"], ['"name"']),
+    ];
     expect(() =>
       validateComplianceInventory(factWithBogusEvidence, {
         repoRoot: REPO_ROOT,
         discovered,
       }),
-    ).toThrow("is not an asset source: package.json");
+    ).toThrow("is not an allowed asset source: package.json");
+
+    const unsupportedValue = rawInventory();
+    unsupportedValue.assets[0].facts.provider.values = [
+      "fabricated-provider-certification",
+    ];
+    expect(() =>
+      validateComplianceInventory(unsupportedValue, {
+        repoRoot: REPO_ROOT,
+        discovered,
+      }),
+    ).toThrow(
+      "does not support asserted value: fabricated-provider-certification",
+    );
+
+    const absentSourceAssertion = rawInventory();
+    absentSourceAssertion.assets[0].facts.provider.evidence[0].contains = [
+      "fabricated provider receipt",
+    ];
+    expect(() =>
+      validateComplianceInventory(absentSourceAssertion, {
+        repoRoot: REPO_ROOT,
+        discovered,
+      }),
+    ).toThrow("is not present in packages/cloud/api/wrangler.toml");
   });
 
   test("requires explicit tracked evidence for source-verified flows", () => {
@@ -202,6 +232,29 @@ describe("compliance asset inventory", () => {
         discovered,
       }),
     ).toThrow("flow native-to-edge.evidence must be an array");
+
+    const flowWithUnscopedEvidence = rawInventory();
+    flowWithUnscopedEvidence.flows[0].status = "source-verified";
+    flowWithUnscopedEvidence.flows[0].evidence = [
+      evidence(
+        "package.json",
+        [
+          "android-clients",
+          "cloudflare-edge",
+          "account-data",
+          "credentials",
+          "user-content",
+        ],
+        ['"name"'],
+      ),
+    ];
+    delete flowWithUnscopedEvidence.flows[0].hold;
+    expect(() =>
+      validateComplianceInventory(flowWithUnscopedEvidence, {
+        repoRoot: REPO_ROOT,
+        discovered,
+      }),
+    ).toThrow("is not an allowed asset source: package.json");
   });
 
   test("requires tracked evidence for source-verified controls", () => {
@@ -221,7 +274,15 @@ describe("compliance asset inventory", () => {
     const controlWithBogusEvidence = rawInventory();
     controlWithBogusEvidence.controls[0].status = "source-verified";
     controlWithBogusEvidence.controls[0].evidence = [
-      "https://example.com/proof",
+      evidence(
+        "package.json",
+        [
+          "HIPAA-164.308",
+          "HIPAA administrative safeguards",
+          "unassigned-protected-operator",
+        ],
+        ['"name"'],
+      ),
     ];
     delete controlWithBogusEvidence.controls[0].hold;
     expect(() =>
@@ -229,7 +290,7 @@ describe("compliance asset inventory", () => {
         repoRoot: REPO_ROOT,
         discovered,
       }),
-    ).toThrow("control HIPAA-164.308.evidence");
+    ).toThrow("is not an allowed asset source: package.json");
   });
 
   test("rejects protected holds on non-operator facts, flows, and controls", () => {

@@ -45,7 +45,13 @@
         "provider": {
           "status": "source-verified",
           "values": ["cloudflare"],
-          "evidence": ["packages/cloud/api/wrangler.toml"]
+          "evidence": [
+            {
+              "path": "packages/cloud/api/wrangler.toml",
+              "supports": ["cloudflare"],
+              "contains": ["# eliza-cloud-api — Cloudflare Worker config"]
+            }
+          ]
         },
         "regions": {
           "status": "operator-review-required",
@@ -98,7 +104,13 @@
         "lifecycle": {
           "status": "source-verified",
           "values": ["repository-tracked"],
-          "evidence": ["packages/cloud/api/wrangler.toml"]
+          "evidence": [
+            {
+              "path": "packages/cloud/api/wrangler.toml",
+              "supports": ["repository-tracked"],
+              "contains": ["name = \"eliza-cloud-api\""]
+            }
+          ]
         },
         "ephiHandling": {
           "status": "policy",
@@ -229,7 +241,13 @@
         "lifecycle": {
           "status": "source-verified",
           "values": ["repository-tracked"],
-          "evidence": ["packages/cloud/services/agent-server/Dockerfile"]
+          "evidence": [
+            {
+              "path": "packages/cloud/services/agent-server/Dockerfile",
+              "supports": ["repository-tracked"],
+              "contains": ["# Agent Server Service"]
+            }
+          ]
         },
         "ephiHandling": {
           "status": "policy",
@@ -324,9 +342,21 @@
           "status": "source-verified",
           "values": ["cloudflare", "gcp", "hetzner"],
           "evidence": [
-            "packages/cloud/infra/cloud/terraform/cloudflare/pages-domains/providers.tf",
-            "packages/cloud/infra/cloud/terraform/gcp/01-foundation/providers.tf",
-            "packages/cloud/infra/cloud/terraform/hetzner/control-plane/providers.tf"
+            {
+              "path": "packages/cloud/infra/cloud/terraform/cloudflare/pages-domains/providers.tf",
+              "supports": ["cloudflare"],
+              "contains": ["provider \"cloudflare\" {"]
+            },
+            {
+              "path": "packages/cloud/infra/cloud/terraform/gcp/01-foundation/providers.tf",
+              "supports": ["gcp"],
+              "contains": ["provider \"google\" {"]
+            },
+            {
+              "path": "packages/cloud/infra/cloud/terraform/hetzner/control-plane/providers.tf",
+              "supports": ["hetzner"],
+              "contains": ["provider \"hcloud\" {"]
+            }
           ]
         },
         "regions": {
@@ -381,9 +411,21 @@
           "status": "source-verified",
           "values": ["terraform-managed"],
           "evidence": [
-            "packages/cloud/infra/cloud/terraform/cloudflare/pages-domains/main.tf",
-            "packages/cloud/infra/cloud/terraform/gcp/01-foundation/main.tf",
-            "packages/cloud/infra/cloud/terraform/hetzner/control-plane/main.tf"
+            {
+              "path": "packages/cloud/infra/cloud/terraform/cloudflare/pages-domains/main.tf",
+              "supports": ["terraform-managed"],
+              "contains": ["locals {"]
+            },
+            {
+              "path": "packages/cloud/infra/cloud/terraform/gcp/01-foundation/main.tf",
+              "supports": ["terraform-managed"],
+              "contains": ["resource \"google_project_service\" \"apis\" {"]
+            },
+            {
+              "path": "packages/cloud/infra/cloud/terraform/hetzner/control-plane/main.tf",
+              "supports": ["terraform-managed"],
+              "contains": ["resource \"hcloud_network\" \"data_plane\" {"]
+            }
           ]
         },
         "ephiHandling": {
@@ -517,7 +559,13 @@
           "status": "source-verified",
           "values": ["repository-tracked"],
           "evidence": [
-            "packages/app-core/platforms/android/app/src/main/AndroidManifest.xml"
+            {
+              "path": "packages/app-core/platforms/android/app/src/main/AndroidManifest.xml",
+              "supports": ["repository-tracked"],
+              "contains": [
+                "<manifest xmlns:android=\"http://schemas.android.com/apk/res/android\">"
+              ]
+            }
           ]
         },
         "ephiHandling": {
@@ -635,7 +683,13 @@
         "lifecycle": {
           "status": "source-verified",
           "values": ["repository-tracked"],
-          "evidence": ["packages/app-core/platforms/ios/App/App/Info.plist"]
+          "evidence": [
+            {
+              "path": "packages/app-core/platforms/ios/App/App/Info.plist",
+              "supports": ["repository-tracked"],
+              "contains": ["<key>CFBundleDisplayName</key>"]
+            }
+          ]
         },
         "ephiHandling": {
           "status": "policy",
