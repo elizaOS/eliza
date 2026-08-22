@@ -168,12 +168,20 @@ describe("DocumentService list semantics", () => {
 			roomId: ROOM_A,
 			count: 10,
 		});
-		expect(fragments).toHaveLength(1);
-		expect(fragments[0]).toMatchObject({
+		const embeddingFragments = fragments.filter(
+			(fragment) => fragment.metadata?.fragmentRole !== "source-segment",
+		);
+		expect(embeddingFragments).toHaveLength(1);
+		expect(embeddingFragments[0]).toMatchObject({
 			content: { text: "Revised keyword-only standing draft" },
 			metadata: { documentId: added.storedDocumentMemoryId },
 		});
-		expect(fragments[0]?.embedding).toBeUndefined();
+		expect(embeddingFragments[0]?.embedding).toBeUndefined();
+		expect(
+			fragments.filter(
+				(fragment) => fragment.metadata?.fragmentRole === "source-segment",
+			),
+		).toHaveLength(1);
 	});
 
 	it("filters and paginates through one bounded adapter query", async () => {

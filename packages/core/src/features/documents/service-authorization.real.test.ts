@@ -21,6 +21,12 @@ import {
 import { documentAction } from "./actions.ts";
 import { documentsProvider } from "./provider.ts";
 import { DocumentService } from "./service.ts";
+import {
+	buildDocumentSourceProjection,
+	DOCUMENT_SOURCE_READ_LOOKAHEAD_SEGMENTS,
+	DOCUMENT_SOURCE_SEGMENT_MAX_BYTES,
+} from "./source-segments.ts";
+import type { DocumentMemoryMetadata } from "./types.ts";
 
 const USER_ID = "f4300000-0000-4000-8000-000000000001" as UUID;
 const OTHER_USER_ID = "f4300000-0000-4000-8000-000000000007" as UUID;
@@ -42,6 +48,7 @@ const GRANT_DOCUMENT_ID = "f4300000-0000-4000-8000-000000000022" as UUID;
 const PRIVATE_GRANT_DOCUMENT_ID =
 	"f4300000-0000-4000-8000-000000000030" as UUID;
 const LARGE_DOCUMENT_ID = "f4300000-0000-4000-8000-000000000029" as UUID;
+const PLAN_DOCUMENT_ID = "f4300000-0000-4000-8000-000000000031" as UUID;
 
 let runtime: AgentRuntime;
 let cleanup: () => Promise<void>;
@@ -118,6 +125,34 @@ function documentFragment(document: Memory, text: string, id: UUID): Memory {
 			position: 0,
 		},
 	};
+}
+
+function sourceBackedRecords(document: Memory): Array<{
+	memory: Memory;
+	tableName: "documents" | "document_fragments";
+}> {
+	const projection = buildDocumentSourceProjection({
+		text: document.content.text ?? "",
+		documentId: document.id as UUID,
+		agentId: document.agentId,
+		roomId: document.roomId as UUID,
+		entityId: document.entityId as UUID,
+		worldId: document.worldId,
+		documentMetadata: document.metadata as DocumentMemoryMetadata,
+	});
+	return [
+		{
+			memory: {
+				...document,
+				metadata: { ...document.metadata, ...projection.metadata },
+			},
+			tableName: "documents",
+		},
+		...projection.segments.map((memory) => ({
+			memory,
+			tableName: "document_fragments" as const,
+		})),
+	];
 }
 
 beforeAll(async () => {
@@ -202,37 +237,31 @@ beforeAll(async () => {
 			title: "HIDDEN_FOREIGN_TENANT_DOCUMENT",
 		},
 	);
+	const privateGrantDocument = userPrivateDocument(
+		PRIVATE_GRANT_DOCUMENT_ID,
+		"Private grantable body",
+	);
+	const globalGrantDocument = {
+		...userPrivateDocument(GRANT_DOCUMENT_ID, "Grantable global body"),
+		metadata: {
+			...userPrivateDocument(GRANT_DOCUMENT_ID, "Grantable global body")
+				.metadata,
+			scope: "global",
+			scopedToEntityId: undefined,
+		},
+	} as Memory;
 	await runtime.createMemories([
-		{
-			memory: userPrivateDocument(
-				PRIVATE_GRANT_DOCUMENT_ID,
-				"Private grantable body",
-			),
-			tableName: "documents",
-		},
-		{
-			memory: {
-				...userPrivateDocument(GRANT_DOCUMENT_ID, "Grantable global body"),
-				metadata: {
-					...userPrivateDocument(GRANT_DOCUMENT_ID, "Grantable global body")
-						.metadata,
-					scope: "global",
-					scopedToEntityId: undefined,
-				},
-			},
-			tableName: "documents",
-		},
-		{
-			memory: userPrivateDocument(UPDATE_DOCUMENT_ID, "Original update body"),
-			tableName: "documents",
-		},
-		{
-			memory: userPrivateDocument(DELETE_DOCUMENT_ID, "Original delete body"),
-			tableName: "documents",
-		},
-		{ memory: visibleDocument, tableName: "documents" },
-		{ memory: hiddenUserDocument, tableName: "documents" },
-		{ memory: foreignDocument, tableName: "documents" },
+		...sourceBackedRecords(privateGrantDocument),
+		...sourceBackedRecords(globalGrantDocument),
+		...sourceBackedRecords(
+			userPrivateDocument(UPDATE_DOCUMENT_ID, "Original update body"),
+		),
+		...sourceBackedRecords(
+			userPrivateDocument(DELETE_DOCUMENT_ID, "Original delete body"),
+		),
+		...sourceBackedRecords(visibleDocument),
+		...sourceBackedRecords(hiddenUserDocument),
+		...sourceBackedRecords(foreignDocument),
 		{
 			memory: documentFragment(
 				visibleDocument,
@@ -363,18 +392,157 @@ describe("DocumentService requester authorization", () => {
 	});
 
 	it("reads a late page from a 10 MiB PGLite document without returning a source-sized projection", async () => {
+		const raw = (
+			runtime.adapter as unknown as {
+				getRawConnection?: () => {
+					query: (
+						statement: string,
+					) => Promise<{ rows: Array<Record<string, unknown>> }>;
+				};
+			}
+		).getRawConnection?.();
+		if (!raw)
+			throw new Error("bounded source test requires the PGLite adapter");
+		const indexRows = await raw.query(`
+			SELECT indexname, indexdef
+			FROM pg_indexes
+			WHERE indexname IN (
+				'idx_document_source_byte_seek',
+				'idx_document_source_line_seek',
+				'idx_document_source_fragment_seek'
+			)
+			ORDER BY indexname
+		`);
+		expect(indexRows.rows.map((row) => row.indexname)).toEqual([
+			"idx_document_source_byte_seek",
+			"idx_document_source_fragment_seek",
+			"idx_document_source_line_seek",
+		]);
+		for (const row of indexRows.rows) {
+			expect(String(row.indexdef)).toContain("documentId");
+			expect(String(row.indexdef)).toContain("source-segment");
+		}
 		const ordinaryLine = `${"x".repeat(1_023)}\n`;
 		const lateLine = `${"LATE-EVIDENCE".padEnd(1_023, "z")}\n`;
 		const source = ordinaryLine.repeat(10_239) + lateLine;
 		expect(Buffer.byteLength(source)).toBe(10 * 1024 * 1024);
 		await runtime.createMemories([
-			{
-				memory: userPrivateDocument(LARGE_DOCUMENT_ID, source, {
+			...sourceBackedRecords(
+				userPrivateDocument(LARGE_DOCUMENT_ID, source, {
 					title: "Large bounded-read document",
 				}),
-				tableName: "documents",
-			},
+			),
 		]);
+		const planSource = `${"p".repeat(1_022)}\n\n`.repeat(2_048);
+		const planRecords = sourceBackedRecords(
+			userPrivateDocument(PLAN_DOCUMENT_ID, planSource, {
+				title: "Coordinate seek plan document",
+			}),
+		);
+		await runtime.createMemories(planRecords);
+		const planMetadata = planRecords[0].memory.metadata as Record<
+			string,
+			unknown
+		>;
+		type ExplainNode = {
+			"Node Type"?: string;
+			"Index Name"?: string;
+			Alias?: string;
+			"Actual Rows"?: number;
+			"Rows Removed by Filter"?: number;
+			"Rows Removed by Index Recheck"?: number;
+			Plans?: ExplainNode[];
+		};
+		const flattenPlan = (node: ExplainNode): ExplainNode[] => [
+			node,
+			...(node.Plans ?? []).flatMap(flattenPlan),
+		];
+		const explainSeek = async (args: {
+			unit: "Byte" | "Line" | "Fragment";
+			offset: number;
+			total: number;
+			indexName: string;
+		}) => {
+			const explained = await raw.query(`
+				EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)
+				SELECT source_segment.id
+				FROM memories AS source_parent
+				LEFT JOIN memories AS source_segment ON (
+					source_segment.type = 'document_fragments'
+					AND source_segment.agent_id = '${runtime.agentId}'::uuid
+					AND source_segment.metadata->>'type' = 'fragment'
+					AND source_segment.metadata->>'fragmentRole' = 'source-segment'
+					AND source_segment.metadata->>'sourceSegmentVersion' = '1'
+					AND source_segment.metadata->>'documentId' = '${PLAN_DOCUMENT_ID}'
+					AND (source_segment.metadata->>'documentRevision')::bigint = 0
+					AND NOT (source_segment.metadata ? 'revisionAttemptId')
+					AND (source_segment.metadata->>'source${args.unit}End')::bigint > ${args.offset}
+					AND (source_segment.metadata->>'source${args.unit}Start')::bigint < ${args.total}
+				)
+				WHERE source_parent.id = '${PLAN_DOCUMENT_ID}'::uuid
+					AND source_parent.type = 'documents'
+					AND source_parent.agent_id = '${runtime.agentId}'::uuid
+					AND source_parent.metadata->>'type' = 'document'
+				ORDER BY (source_segment.metadata->>'position')::bigint ASC NULLS LAST
+				LIMIT ${DOCUMENT_SOURCE_READ_LOOKAHEAD_SEGMENTS}
+			`);
+			const rawPlan = explained.rows[0]?.["QUERY PLAN"];
+			const envelope = Array.isArray(rawPlan) ? rawPlan[0] : rawPlan;
+			const root = (envelope as { Plan?: ExplainNode } | undefined)?.Plan;
+			if (!root)
+				throw new Error(
+					`PGLite returned an invalid EXPLAIN plan for ${args.unit}`,
+				);
+			const nodes = flattenPlan(root);
+			expect(nodes.some((node) => node["Index Name"] === args.indexName)).toBe(
+				true,
+			);
+			expect(
+				nodes.some(
+					(node) =>
+						node.Alias === "source_segment" && node["Node Type"] === "Seq Scan",
+				),
+			).toBe(false);
+			const sourceScans = nodes.filter(
+				(node) =>
+					node.Alias === "source_segment" &&
+					node["Node Type"]?.includes("Scan"),
+			);
+			expect(sourceScans.length).toBeGreaterThan(0);
+			for (const node of sourceScans) {
+				const visited =
+					(node["Actual Rows"] ?? 0) +
+					(node["Rows Removed by Filter"] ?? 0) +
+					(node["Rows Removed by Index Recheck"] ?? 0);
+				expect(visited).toBeLessThanOrEqual(
+					DOCUMENT_SOURCE_READ_LOOKAHEAD_SEGMENTS,
+				);
+			}
+		};
+		await raw.query("ANALYZE memories");
+		await raw.query("SET enable_seqscan = off");
+		try {
+			await explainSeek({
+				unit: "Byte",
+				offset: Number(planMetadata.sourceByteLength) - 1,
+				total: Number(planMetadata.sourceByteLength),
+				indexName: "idx_document_source_byte_seek",
+			});
+			await explainSeek({
+				unit: "Line",
+				offset: Number(planMetadata.sourceLineCount) - 1,
+				total: Number(planMetadata.sourceLineCount),
+				indexName: "idx_document_source_line_seek",
+			});
+			await explainSeek({
+				unit: "Fragment",
+				offset: Number(planMetadata.sourceFragmentCount) - 1,
+				total: Number(planMetadata.sourceFragmentCount),
+				indexName: "idx_document_source_fragment_seek",
+			});
+		} finally {
+			await raw.query("RESET enable_seqscan");
+		}
 		const wholeRead = vi
 			.spyOn(runtime.adapter, "getDocument")
 			.mockRejectedValue(
@@ -424,8 +592,8 @@ describe("DocumentService requester authorization", () => {
 			}
 			expect(result?.text).toBe(lateLine);
 			expect(wholeRead).not.toHaveBeenCalled();
-			// Query/result-byte oracle: the adapter may scan the source inside the DB,
-			// but only the requested page and continuation metadata cross into JS.
+			// Query/result-byte oracle: indexed source segments keep the complete
+			// parent body out of both the database read path and the JS projection.
 			expect(Buffer.byteLength(JSON.stringify(result))).toBeLessThan(16 * 1024);
 			expect(result?.data).toMatchObject({
 				readView: {
@@ -439,6 +607,51 @@ describe("DocumentService requester authorization", () => {
 					},
 				},
 			});
+			const directPage = await runtime.adapter.readDocumentRange?.({
+				agentId: runtime.agentId,
+				documentId: LARGE_DOCUMENT_ID,
+				requesterEntityId: USER_ID,
+				requesterRoomIds: [ROOM_ID],
+				requesterRole: "USER",
+				unit: "line",
+				offset: 10_239,
+				limit: 1,
+			});
+			expect(directPage).toMatchObject({
+				text: lateLine,
+				sourceQueryCount: 2,
+			});
+			expect(directPage?.examinedSourceSegments).toBeLessThanOrEqual(
+				DOCUMENT_SOURCE_READ_LOOKAHEAD_SEGMENTS,
+			);
+			expect(directPage?.sourceBytesRead).toBeLessThanOrEqual(
+				DOCUMENT_SOURCE_READ_LOOKAHEAD_SEGMENTS *
+					DOCUMENT_SOURCE_SEGMENT_MAX_BYTES,
+			);
+			await expect(
+				runtime.adapter.readDocumentRange?.({
+					agentId: runtime.agentId,
+					documentId: LARGE_DOCUMENT_ID,
+					requesterEntityId: USER_ID,
+					requesterRoomIds: [ROOM_ID],
+					requesterRole: "USER",
+					unit: "line",
+					offset: 10_240,
+					limit: 1,
+				}),
+			).resolves.toMatchObject({ text: "", start: 10_240, end: 10_240 });
+			await expect(
+				runtime.adapter.readDocumentRange?.({
+					agentId: runtime.agentId,
+					documentId: LARGE_DOCUMENT_ID,
+					requesterEntityId: USER_ID,
+					requesterRoomIds: [ROOM_ID],
+					requesterRole: "USER",
+					unit: "line",
+					offset: 10_241,
+					limit: 1,
+				}),
+			).rejects.toMatchObject({ code: "DOCUMENT_READ_INVALID_RANGE" });
 		} finally {
 			getService.mockRestore();
 			wholeRead.mockRestore();
@@ -542,6 +755,18 @@ describe("DocumentService requester authorization", () => {
 		await expect(
 			runtime.adapter.getMemoryById(oldFragmentId),
 		).resolves.toMatchObject({ content: { text: "Failure old fragment" } });
+		await expect(
+			runtime.adapter.readDocumentRange?.({
+				agentId: runtime.agentId,
+				documentId: FAILED_UPDATE_DOCUMENT_ID,
+				requesterEntityId: USER_ID,
+				requesterRoomIds: [ROOM_ID],
+				requesterRole: "USER",
+				unit: "line",
+				offset: 0,
+				limit: 1,
+			}),
+		).rejects.toMatchObject({ code: "DOCUMENT_REINDEX_REQUIRED" });
 	});
 
 	it("commits a parent and its replacement fragments as one revision", async () => {
@@ -595,6 +820,19 @@ describe("DocumentService requester authorization", () => {
 		expect(replacementFragments[0]).toMatchObject({
 			content: { text: "Atomic replacement body" },
 			metadata: { documentRevision: 1, position: 0 },
+		});
+		await expect(
+			runtime.adapter.readDocumentRange?.({
+				...context,
+				documentId: ATOMIC_UPDATE_DOCUMENT_ID,
+				unit: "line",
+				offset: 0,
+				limit: 1,
+			}),
+		).resolves.toMatchObject({
+			text: "Atomic replacement body",
+			documentRevision: 1,
+			sourceQueryCount: 2,
 		});
 		await expect(
 			runtime.adapter.getMemoryById(oldFragmentId),

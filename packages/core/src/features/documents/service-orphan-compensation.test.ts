@@ -37,7 +37,7 @@ async function fragmentsFor(documentId: string): Promise<number> {
 	return memories.filter(
 		(memory) =>
 			(memory.metadata as { documentId?: string } | undefined)?.documentId ===
-			documentId,
+				documentId && memory.metadata?.fragmentRole !== "source-segment",
 	).length;
 }
 

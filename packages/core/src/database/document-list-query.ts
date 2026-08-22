@@ -429,10 +429,17 @@ export function validateDocumentRevisionReplacement(
 		});
 	}
 	const ids = new Set<string>();
+	let sourcePosition = 0;
+	let embeddingPosition = 0;
 	for (let index = 0; index < params.fragments.length; index++) {
 		const fragment = params.fragments[index];
 		const fragmentId = fragment.id;
 		const metadata = fragment.metadata as Record<string, unknown> | undefined;
+		const fragmentRole = metadata?.fragmentRole;
+		const expectedPosition =
+			fragmentRole === "source-segment"
+				? sourcePosition++
+				: embeddingPosition++;
 		if (
 			!isUuid(fragmentId) ||
 			fragmentId === params.documentId ||
@@ -444,7 +451,10 @@ export function validateDocumentRevisionReplacement(
 			metadata?.type !== MemoryType.FRAGMENT ||
 			metadata.documentId !== params.documentId ||
 			metadata.documentRevision !== revision ||
-			metadata.position !== index ||
+			(fragmentRole !== undefined &&
+				fragmentRole !== "source-segment" &&
+				fragmentRole !== "embedding-chunk") ||
+			metadata.position !== expectedPosition ||
 			typeof fragment.content.text !== "string" ||
 			(fragment.embedding !== undefined &&
 				(!Array.isArray(fragment.embedding) ||
@@ -1007,6 +1017,12 @@ export function queryDocumentFragmentsInMemory(
 			if (
 				memory.agentId !== params.agentId ||
 				memory.metadata?.type !== MemoryType.FRAGMENT
+			) {
+				return false;
+			}
+			if (
+				(memory.metadata as unknown as Record<string, unknown>).fragmentRole ===
+				"source-segment"
 			) {
 				return false;
 			}

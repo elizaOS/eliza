@@ -1,9 +1,9 @@
 /**
  * Proves updateDocument publishes document revisions atomically (#16021): the
- * replacement fragment generation is staged reader-invisible before the parent
- * compare-and-swap commits, every failure (embed outage, Nth insert, CAS
- * conflict, discard outage) preserves the complete prior committed revision,
- * and readers never observe zero, partial, or mixed fragment generations.
+ * source segments and embedding chunks are prepared reader-invisible before the
+ * adapter transaction commits them with the parent. Embed, insertion, and CAS
+ * failures preserve the prior complete revision, and readers never observe a
+ * zero, partial, or mixed fragment generation.
  * Integration-backed: a real AgentRuntime over a real PGLite SQL adapter
  * (plugin-sql); only the embedding model handler is injected.
  */
@@ -70,6 +70,18 @@ async function rawFragmentsFor(documentId: UUID): Promise<Memory[]> {
 		(memory) =>
 			(memory.metadata as { documentId?: string } | undefined)?.documentId ===
 			documentId,
+	);
+}
+
+function embeddingRows(memories: Memory[]): Memory[] {
+	return memories.filter(
+		(memory) => memory.metadata?.fragmentRole !== "source-segment",
+	);
+}
+
+function sourceRows(memories: Memory[]): Memory[] {
+	return memories.filter(
+		(memory) => memory.metadata?.fragmentRole === "source-segment",
 	);
 }
 
@@ -157,9 +169,9 @@ describe("updateDocument atomic revision publication (#16021)", () => {
 		expect(visible.join(" ")).toContain("Version two alpha");
 		expect(visible.join(" ")).not.toContain("Version one");
 		// Superseded generation is physically gone, not just invisible.
-		expect(await rawFragmentsFor(documentId)).toHaveLength(
-			updated.fragmentCount,
-		);
+		const raw = await rawFragmentsFor(documentId);
+		expect(embeddingRows(raw)).toHaveLength(updated.fragmentCount);
+		expect(sourceRows(raw).length).toBeGreaterThan(0);
 	}, 120_000);
 
 	it("preserves the complete old revision when embedding fails mid-update", async () => {
@@ -168,7 +180,7 @@ describe("updateDocument atomic revision publication (#16021)", () => {
 		try {
 			await expect(
 				service.updateDocument({ documentId, content: V2_TEXT }),
-			).rejects.toThrow(/stage replacement fragments/);
+			).rejects.toThrow("injected embedding provider outage");
 		} finally {
 			embedShouldFail = false;
 		}
@@ -188,26 +200,43 @@ describe("updateDocument atomic revision publication (#16021)", () => {
 			{ length: 200 },
 			(_, i) => `Version two long paragraph ${i}: ${V2_TEXT}`,
 		).join("\n\n");
-		const realCreateMemory = runtime.createMemory.bind(runtime);
+		const adapterRecord = runtime.adapter as unknown as Record<string, unknown>;
+		const insertMemory = Reflect.get(
+			adapterRecord,
+			"insertMemoryInTransaction",
+		);
+		if (typeof insertMemory !== "function") {
+			throw new Error("SQL adapter insertion seam is unavailable");
+		}
+		const realInsertMemory = insertMemory.bind(runtime.adapter) as (
+			...args: unknown[]
+		) => Promise<unknown>;
 		let fragmentWrites = 0;
-		runtime.createMemory = async (memory, tableName, unique) => {
-			if (
-				tableName === DOCUMENT_FRAGMENTS_TABLE &&
-				memory.content.text?.includes("Version two")
-			) {
-				fragmentWrites += 1;
-				if (fragmentWrites >= 2) {
-					throw new Error("injected Nth fragment insert outage");
+		Reflect.set(
+			adapterRecord,
+			"insertMemoryInTransaction",
+			async (...args: unknown[]) => {
+				const memory = args[1] as Memory | undefined;
+				const tableName = args[2];
+				if (
+					tableName === DOCUMENT_FRAGMENTS_TABLE &&
+					memory?.metadata?.documentId === documentId &&
+					memory.metadata.documentRevision === 1
+				) {
+					fragmentWrites += 1;
+					if (fragmentWrites >= 2) {
+						throw new Error("injected Nth fragment insert outage");
+					}
 				}
-			}
-			return realCreateMemory(memory, tableName, unique);
-		};
+				return realInsertMemory(...args);
+			},
+		);
 		try {
 			await expect(
 				service.updateDocument({ documentId, content: longV2 }),
-			).rejects.toThrow(/stage replacement fragments/);
+			).rejects.toThrow("injected Nth fragment insert outage");
 		} finally {
-			runtime.createMemory = realCreateMemory;
+			Reflect.set(adapterRecord, "insertMemoryInTransaction", insertMemory);
 		}
 		expect(fragmentWrites).toBeGreaterThanOrEqual(2);
 		await expectCommittedV1(documentId);
@@ -220,14 +249,14 @@ describe("updateDocument atomic revision publication (#16021)", () => {
 	it("keeps the old revision committed when a concurrent writer wins the CAS", async () => {
 		const documentId = await seedDocument();
 		const adapter = runtime.adapter;
-		const realCompareAndSwap = adapter.compareAndSwapDocument.bind(adapter);
-		adapter.compareAndSwapDocument = async () => ({ status: "conflict" });
+		const realReplace = adapter.replaceDocumentRevision.bind(adapter);
+		adapter.replaceDocumentRevision = async () => ({ status: "conflict" });
 		try {
 			await expect(
 				service.updateDocument({ documentId, content: V2_TEXT }),
 			).rejects.toThrow(/authorization changed before update/);
 		} finally {
-			adapter.compareAndSwapDocument = realCompareAndSwap;
+			adapter.replaceDocumentRevision = realReplace;
 		}
 		await expectCommittedV1(documentId);
 		const raw = await rawFragmentsFor(documentId);
@@ -271,42 +300,35 @@ describe("updateDocument atomic revision publication (#16021)", () => {
 		expect(after.join(" ")).not.toContain("Version one");
 	}, 120_000);
 
-	it("leaves discard leftovers invisible when staged cleanup is unavailable", async () => {
+	it("leaves no replacement rows when the atomic publication loses its CAS", async () => {
 		const documentId = await seedDocument();
-		const realDeleteMemory = runtime.deleteMemory.bind(runtime);
-		const realCompareAndSwap = runtime.adapter.compareAndSwapDocument.bind(
+		const realReplace = runtime.adapter.replaceDocumentRevision.bind(
 			runtime.adapter,
 		);
-		runtime.adapter.compareAndSwapDocument = async () => ({
+		runtime.adapter.replaceDocumentRevision = async () => ({
 			status: "conflict",
 		});
-		runtime.deleteMemory = async () => {
-			throw new Error("injected discard outage");
-		};
 		try {
 			await expect(
 				service.updateDocument({ documentId, content: V2_TEXT }),
 			).rejects.toThrow(/authorization changed before update/);
 		} finally {
-			runtime.deleteMemory = realDeleteMemory;
-			runtime.adapter.compareAndSwapDocument = realCompareAndSwap;
+			runtime.adapter.replaceDocumentRevision = realReplace;
 		}
-		// Leftover staged rows exist in storage but never reach readers: the
-		// committed parent still declares revision 0 with no attempt token.
 		const raw = await rawFragmentsFor(documentId);
 		expect(
-			raw.filter((memory) => memory.content.text?.includes("Version two"))
-				.length,
-		).toBeGreaterThan(0);
+			raw.filter((memory) => memory.content.text?.includes("Version two")),
+		).toHaveLength(0);
 		await expectCommittedV1(documentId);
 
-		// The next successful update sweeps the stale staged generation.
+		// The next successful update replaces both source and embedding views.
 		const recovered = await service.updateDocument({
 			documentId,
 			content: V2_TEXT,
 		});
 		const swept = await rawFragmentsFor(documentId);
-		expect(swept).toHaveLength(recovered.fragmentCount);
+		expect(embeddingRows(swept)).toHaveLength(recovered.fragmentCount);
+		expect(sourceRows(swept).length).toBeGreaterThan(0);
 		const visible = await visibleFragmentTexts(documentId);
 		expect(visible).toHaveLength(recovered.fragmentCount);
 		expect(visible.join(" ")).not.toContain("Version one");

@@ -45,8 +45,35 @@ function harness(text: string) {
 		readDocumentRange: vi.fn(
 			async (
 				_documentId: UUID,
-				params: { unit: "line" | "fragment"; offset: number; limit: number },
+				params: {
+					unit: "line" | "fragment" | "byte";
+					offset: number;
+					limit: number;
+				},
 			) => {
+				if (params.unit === "byte") {
+					const bytes = Buffer.from(currentText, "utf8");
+					const text = bytes
+						.subarray(params.offset, params.offset + params.limit)
+						.toString("utf8");
+					return {
+						unit: "byte" as const,
+						text,
+						start: params.offset,
+						end: params.offset + Buffer.byteLength(text, "utf8"),
+						total: bytes.length,
+						documentRevision: currentRevision,
+						revisionAttemptId: `native-secret-${currentRevision}`,
+						sourceFingerprint: `sha256:${createHash("sha256")
+							.update(currentText)
+							.digest("hex")}`,
+						examinedSourceSegments: 1,
+						returnedSourceSegments: 1,
+						sourceBytesRead: text.length,
+						returnedSourceBytes: text.length,
+						sourceQueryCount: 2,
+					};
+				}
 				const lines =
 					currentText.match(/[^\r\n]*(?:\r\n|\r|\n)|[^\r\n]+$/gu) ?? [];
 				const units =
@@ -63,10 +90,12 @@ function harness(text: string) {
 									return fragments;
 								}, [])
 								.filter(Boolean);
+				const pageText = units
+					.slice(params.offset, params.offset + params.limit)
+					.join("");
 				return {
-					text: units
-						.slice(params.offset, params.offset + params.limit)
-						.join(""),
+					unit: params.unit,
+					text: pageText,
 					start: params.offset,
 					end: Math.min(params.offset + params.limit, units.length),
 					total: units.length,
@@ -75,6 +104,11 @@ function harness(text: string) {
 					sourceFingerprint: `sha256:${createHash("sha256")
 						.update(currentText)
 						.digest("hex")}`,
+					examinedSourceSegments: 1,
+					returnedSourceSegments: 1,
+					sourceBytesRead: Buffer.byteLength(pageText, "utf8"),
+					returnedSourceBytes: Buffer.byteLength(pageText, "utf8"),
+					sourceQueryCount: 2,
 				};
 			},
 		),
@@ -192,6 +226,42 @@ describe("DOCUMENT progressive read", () => {
 			offset = view.slice.nextOffset as number;
 		}
 		expect(pages.join("")).toBe(source);
+	});
+
+	it("exposes giant-unit fallback as an advancing partial byte page", async () => {
+		const { runtime, service } = harness("unused");
+		service.readDocumentRange.mockResolvedValueOnce({
+			unit: "byte",
+			text: "bounded prefix",
+			start: 0,
+			end: 14,
+			total: 1_000_000,
+			documentRevision: 7,
+			revisionAttemptId: "native-secret-7",
+			sourceFingerprint: `sha256:${"a".repeat(64)}`,
+			examinedSourceSegments: 5,
+			returnedSourceSegments: 3,
+			sourceBytesRead: 256 * 1024,
+			returnedSourceBytes: 14,
+			sourceQueryCount: 2,
+		});
+		const result = await documentAction.handler?.(
+			runtime,
+			request(),
+			undefined,
+			options({ action: "read", documentId: DOCUMENT_ID, unit: "line" }),
+		);
+		expect(result?.text).toBe("bounded prefix");
+		expect(result?.data).toMatchObject({
+			readView: {
+				slice: {
+					range: { unit: "byte", start: 0, end: 14, total: 1_000_000 },
+					completeness: "partial-recoverable",
+					hasMore: true,
+					nextOffset: 14,
+				},
+			},
+		});
 	});
 
 	it("fails explicitly when the source changes between pages", async () => {

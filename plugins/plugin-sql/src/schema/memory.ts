@@ -88,6 +88,33 @@ export const memoryTable = pgTable(
       sql`((metadata->>'documentId'))`,
       sql`((metadata->>'position'))`
     ),
+    index("idx_document_source_byte_seek")
+      .on(
+        sql`((metadata->>'documentId'))`,
+        sql`((metadata->>'sourceByteEnd')::bigint)`,
+        sql`((metadata->>'position')::bigint)`
+      )
+      .where(
+        sql`${table.type} = 'document_fragments' AND ${table.metadata}->>'fragmentRole' = 'source-segment'`
+      ),
+    index("idx_document_source_line_seek")
+      .on(
+        sql`((metadata->>'documentId'))`,
+        sql`((metadata->>'sourceLineEnd')::bigint)`,
+        sql`((metadata->>'position')::bigint)`
+      )
+      .where(
+        sql`${table.type} = 'document_fragments' AND ${table.metadata}->>'fragmentRole' = 'source-segment'`
+      ),
+    index("idx_document_source_fragment_seek")
+      .on(
+        sql`((metadata->>'documentId'))`,
+        sql`((metadata->>'sourceFragmentEnd')::bigint)`,
+        sql`((metadata->>'position')::bigint)`
+      )
+      .where(
+        sql`${table.type} = 'document_fragments' AND ${table.metadata}->>'fragmentRole' = 'source-segment'`
+      ),
     check(
       "fragment_metadata_check",
       sql`

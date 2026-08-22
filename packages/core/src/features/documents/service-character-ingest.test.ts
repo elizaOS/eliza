@@ -185,18 +185,30 @@ describe("DocumentService character document ingestion boot races", () => {
 		});
 
 		expect(result.fragmentCount).toBe(2);
-		expect(createMemories).toHaveBeenCalledTimes(1);
-		expect(createMemories.mock.calls[0]?.[0]).toHaveLength(2);
+		expect(createMemories).toHaveBeenCalledTimes(2);
+		expect(createMemories.mock.calls[0]?.[0]).toHaveLength(1);
+		expect(
+			createMemories.mock.calls[0]?.[0]?.[0]?.memory.metadata,
+		).toMatchObject({
+			fragmentRole: "source-segment",
+			position: 0,
+		});
+		expect(createMemories.mock.calls[1]?.[0]).toHaveLength(2);
 		const documents = await getStoredMemories(runtime, DOCUMENTS_TABLE);
 		const fragments = await getStoredMemories(
 			runtime,
 			DOCUMENT_FRAGMENTS_TABLE,
 		);
 		expect(documents).toHaveLength(1);
-		expect(fragments).toHaveLength(2);
+		expect(fragments).toHaveLength(3);
 		expect(
 			fragments.every((fragment) => fragment.embedding === undefined),
 		).toBe(true);
+		expect(
+			fragments.filter(
+				(fragment) => fragment.metadata?.fragmentRole === "source-segment",
+			),
+		).toHaveLength(1);
 		expect(fragments).toEqual(
 			expect.arrayContaining([
 				expect.objectContaining({

@@ -62,6 +62,7 @@ import {
 	processFragmentsSynchronously,
 } from "./document-processor.ts";
 import { embedRecallQuery } from "./recall-embed.ts";
+import { buildDocumentSourceProjection } from "./source-segments.ts";
 import type {
 	AddDocumentOptions,
 	DocumentAddedFrom,
@@ -726,7 +727,7 @@ export class DocumentService extends Service {
 	): Promise<DocumentRangeReadResult | null> {
 		const adapter = this.runtime.adapter;
 		if (
-			adapter.documentRangeReadCapability !== 1 ||
+			adapter.documentRangeReadCapability !== 2 ||
 			typeof adapter.readDocumentRange !== "function"
 		) {
 			throw new ElizaError(
@@ -1492,6 +1493,8 @@ export class DocumentService extends Service {
 				addedAt: Date.now(),
 				ingestionAttemptId,
 				ingestionState: "pending" as const,
+				documentRevision: 0,
+				revisionAttemptId: ingestionAttemptId,
 				pinned,
 			};
 
@@ -1509,7 +1512,7 @@ export class DocumentService extends Service {
 				customMetadata: scopedMetadata,
 			});
 
-			const memoryWithScope = {
+			const memoryWithScope: Memory = {
 				...documentMemory,
 				id: clientDocumentId,
 				agentId: agentId,
@@ -1518,11 +1521,34 @@ export class DocumentService extends Service {
 				roomId: roomId || agentId,
 				entityId: targetEntityId,
 			};
+			const canonicalSourceText =
+				fragments !== undefined
+					? this.runtime.redactSecrets(extractedText)
+					: extractedText;
 			if (fragments !== undefined) {
 				memoryWithScope.content = {
 					...memoryWithScope.content,
-					text: this.runtime.redactSecrets(extractedText),
+					text: canonicalSourceText,
 				};
+			}
+			const sourceProjection = buildDocumentSourceProjection({
+				text: canonicalSourceText,
+				documentId: clientDocumentId,
+				agentId,
+				roomId: roomId || agentId,
+				entityId: targetEntityId,
+				worldId: worldId ?? agentId,
+				documentMetadata: memoryWithScope.metadata as DocumentMemoryMetadata,
+			});
+			memoryWithScope.metadata = {
+				...(memoryWithScope.metadata ?? {}),
+				...sourceProjection.metadata,
+			} as Metadata;
+			for (const segment of sourceProjection.segments) {
+				segment.metadata = {
+					...(segment.metadata ?? {}),
+					...sourceProjection.metadata,
+				} as Metadata;
 			}
 
 			await this.runtime.createMemory(memoryWithScope, DOCUMENTS_TABLE);
@@ -1563,6 +1589,13 @@ export class DocumentService extends Service {
 
 			let fragmentCount: number;
 			try {
+				await this.runtime.createMemories(
+					sourceProjection.segments.map((memory) => ({
+						memory,
+						tableName: DOCUMENT_FRAGMENTS_TABLE,
+						unique: false,
+					})),
+				);
 				if (fragments !== undefined) {
 					const fragmentMemories = await preparePreChunkedFragmentMemories({
 						runtime: this.runtime,
@@ -1576,7 +1609,8 @@ export class DocumentService extends Service {
 						worldId: worldId ?? agentId,
 						documentTitle: originalFilename,
 						documentMetadata:
-							(documentMemory.metadata as Record<string, unknown>) ?? undefined,
+							(memoryWithScope.metadata as Record<string, unknown>) ??
+							undefined,
 					});
 					await this.runtime.createMemories(
 						fragmentMemories.map((memory) => ({
@@ -1598,7 +1632,8 @@ export class DocumentService extends Service {
 						worldId: worldId ?? agentId,
 						documentTitle: originalFilename,
 						documentMetadata:
-							(documentMemory.metadata as Record<string, unknown>) ?? undefined,
+							(memoryWithScope.metadata as Record<string, unknown>) ??
+							undefined,
 					});
 				}
 				if (fragmentCount === 0) {
@@ -2525,6 +2560,16 @@ export class DocumentService extends Service {
 			// same revision number, so readers additionally match this token.
 			revisionAttemptId: this.runtime.createRunId(),
 		};
+		const sourceProjection = buildDocumentSourceProjection({
+			text: options.content,
+			documentId: options.documentId,
+			agentId: this.runtime.agentId,
+			roomId: existingDocument.roomId,
+			entityId: existingDocument.entityId,
+			worldId: existingDocument.worldId ?? this.runtime.agentId,
+			documentMetadata: updatedMetadata,
+		});
+		Object.assign(updatedMetadata, sourceProjection.metadata);
 
 		const replacement: Memory = {
 			id: options.documentId,
@@ -2536,7 +2581,7 @@ export class DocumentService extends Service {
 			metadata: updatedMetadata,
 			createdAt: existingDocument.createdAt,
 		};
-		const fragments = await this.splitAndCreateFragments(
+		const embeddingFragments = await this.splitAndCreateFragments(
 			{
 				id: options.documentId,
 				content: { text: options.content },
@@ -2553,7 +2598,8 @@ export class DocumentService extends Service {
 				entityId: existingDocument.entityId,
 			},
 		);
-		await this.prepareDocumentFragmentEmbeddings(fragments);
+		await this.prepareDocumentFragmentEmbeddings(embeddingFragments);
+		const fragments = [...sourceProjection.segments, ...embeddingFragments];
 		const mutation = await this.runtime.adapter.replaceDocumentRevision({
 			...requestContext,
 			documentId: options.documentId,
@@ -2575,7 +2621,7 @@ export class DocumentService extends Service {
 
 		return {
 			documentId: options.documentId,
-			fragmentCount: fragments.length,
+			fragmentCount: embeddingFragments.length,
 		};
 	}
 
@@ -2928,6 +2974,7 @@ export class DocumentService extends Service {
 				...(document.metadata || {}),
 				type: MemoryType.FRAGMENT,
 				documentId: document.id,
+				fragmentRole: "embedding-chunk",
 				position: index,
 				timestamp: Date.now(),
 			};
