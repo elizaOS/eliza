@@ -1,6 +1,7 @@
 /** Exports shared cloud mock helpers for deterministic local provider API tests. */
 import http from "node:http";
 import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
 
 export interface FetchServerOptions {
   port?: number;
@@ -90,10 +91,16 @@ async function handleNodeRequest(
   incoming: http.IncomingMessage,
   outgoing: http.ServerResponse,
 ) {
-  const requestAbort = new AbortController();
-  const abortRequest = () => requestAbort.abort();
-  incoming.once("aborted", abortRequest);
-  outgoing.once("close", abortRequest);
+  const abortController = new AbortController();
+  const abortIncoming = () =>
+    abortController.abort(
+      new DOMException("Client disconnected", "AbortError"),
+    );
+  const abortOutgoing = () => {
+    if (!outgoing.writableEnded) abortIncoming();
+  };
+  incoming.once("aborted", abortIncoming);
+  outgoing.once("close", abortOutgoing);
   try {
     const headers = new Headers();
     for (const [key, value] of Object.entries(incoming.headers)) {
@@ -112,7 +119,7 @@ async function handleNodeRequest(
       headers,
       body: hasBody ? Readable.toWeb(incoming) : undefined,
       duplex: hasBody ? "half" : undefined,
-      signal: requestAbort.signal,
+      signal: abortController.signal,
     } as RequestInit & { duplex?: "half" });
 
     const response = await fetch(request);
@@ -120,16 +127,25 @@ async function handleNodeRequest(
     response.headers.forEach((value, key) => {
       outgoing.setHeader(key, value);
     });
-    outgoing.end(Buffer.from(await response.arrayBuffer()));
-  } catch (error) {
-    if (!outgoing.destroyed) {
-      outgoing.statusCode = 500;
-      outgoing.end(
-        error instanceof Error ? error.message : "mock server error",
+    if (!response.body) {
+      outgoing.end();
+    } else {
+      await pipeline(
+        Readable.fromWeb(
+          response.body as unknown as import("node:stream/web").ReadableStream,
+        ),
+        outgoing,
       );
     }
+  } catch (error) {
+    if (!outgoing.headersSent && !outgoing.destroyed) {
+      outgoing.statusCode = 500;
+      outgoing.end("mock server error");
+    } else if (!outgoing.destroyed) {
+      outgoing.destroy(error instanceof Error ? error : undefined);
+    }
   } finally {
-    incoming.off("aborted", abortRequest);
-    outgoing.off("close", abortRequest);
+    incoming.off("aborted", abortIncoming);
+    outgoing.off("close", abortOutgoing);
   }
 }

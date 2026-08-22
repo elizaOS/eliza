@@ -73,6 +73,10 @@ effects before emitting success receipts, emits reverted receipts without an
 effect, and rolls mined state and receipts back during a reorg. Seed/reset,
 auth, rate-limit/provider/malformed/stall faults, generation fencing, and
 credential/raw-transaction-redacted readback are available through the store.
+The HTTP boundary accepts only uncompressed UTF-8 `application/json`, caps the
+body at 64 KiB and the decoded graph at 16 levels/2,048 nodes, and returns only
+stable allowlisted protocol errors; dependency failures and adapter exceptions
+cannot reflect raw requests or credentials.
 
 The simulator intentionally implements a focused native-transfer subset, not
 a general EVM. Contract execution, logs, gas charging, and multichain behavior

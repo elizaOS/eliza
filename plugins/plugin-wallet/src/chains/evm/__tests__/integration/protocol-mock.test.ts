@@ -6,7 +6,10 @@
 import type { IAgentRuntime } from "@elizaos/core";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { afterEach, describe, expect, test } from "vitest";
-import { startEvmRpcMock } from "../../../../../../../packages/cloud/test-mocks/src/wallet-evm";
+import {
+  EVM_RPC_MAX_REQUEST_BYTES,
+  startEvmRpcMock,
+} from "../../../../../../../packages/cloud/test-mocks/src/wallet-evm";
 import { WalletProvider } from "../../providers/wallet";
 
 const RECIPIENT = "0x2222222222222222222222222222222222222222" as const;
@@ -313,6 +316,71 @@ describe("wallet EVM JSON-RPC protocol mock", () => {
     ).toEqual(expect.arrayContaining(["rate_limited", "provider_error", "malformed"]));
     mock.store.reset();
     expect(mock.store.pendingResponseCount).toBe(0);
+  });
+
+  test("bounds request admission and never reflects raw transactions or credentials", async () => {
+    const bearerToken = "BOUNDARY_BEARER_SECRET_7f92";
+    const mock = await startMock({}, bearerToken);
+    const rpc = (
+      body: BodyInit,
+      headers: Record<string, string> = { "content-type": "application/json" }
+    ) =>
+      fetch(mock.url, {
+        method: "POST",
+        headers: { authorization: `Bearer ${bearerToken}`, ...headers },
+        body,
+      });
+    const envelope = (params: unknown[]) =>
+      JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_sendRawTransaction", params });
+
+    const wrongType = await rpc(envelope([]), { "content-type": "text/plain" });
+    expect(wrongType.status).toBe(415);
+    const encoded = await rpc(envelope([]), {
+      "content-type": "application/json",
+      "content-encoding": "gzip",
+    });
+    expect(encoded.status).toBe(415);
+    const oversized = await rpc(
+      JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "eth_chainId",
+        params: [],
+        padding: "x".repeat(EVM_RPC_MAX_REQUEST_BYTES),
+      })
+    );
+    expect(oversized.status).toBe(413);
+    const invalidUtf8 = await rpc(new Uint8Array([0xff, 0xfe]));
+    expect(invalidUtf8.status).toBe(400);
+
+    let deeplyNested: unknown = "leaf";
+    for (let depth = 0; depth < 20; depth += 1) deeplyNested = [deeplyNested];
+    const deep = await rpc(
+      JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_call", params: [deeplyNested] })
+    );
+    expect(deep.status).toBe(400);
+    const wide = await rpc(
+      JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "eth_call",
+        params: [Array.from({ length: 2_100 }, () => 0)],
+      })
+    );
+    expect(wide.status).toBe(400);
+
+    const distinctiveRaw = `0x${"deadbeef".repeat(40)}`;
+    const invalidTransaction = await rpc(envelope([distinctiveRaw]));
+    expect(invalidTransaction.status).toBe(200);
+    const invalidTransactionBody = await invalidTransaction.text();
+    expect(invalidTransactionBody).toContain("Invalid signed transaction encoding");
+    expect(invalidTransactionBody).not.toContain(distinctiveRaw);
+    expect(invalidTransactionBody).not.toContain(bearerToken);
+
+    const serializedReadback = JSON.stringify(mock.store.readback());
+    expect(mock.store.readback().transactions).toEqual([]);
+    expect(serializedReadback).not.toContain(distinctiveRaw);
+    expect(serializedReadback).not.toContain(bearerToken);
   });
 
   test("generation-fences a stalled request across reset", async () => {

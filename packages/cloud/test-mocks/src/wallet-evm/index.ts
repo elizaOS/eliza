@@ -94,6 +94,10 @@ const DEFAULT_SEED: EvmRpcMockSeed = {
   revertRecipients: [],
 };
 
+export const EVM_RPC_MAX_REQUEST_BYTES = 64 * 1024;
+const EVM_RPC_MAX_JSON_DEPTH = 16;
+const EVM_RPC_MAX_JSON_NODES = 2_048;
+
 const ZERO_HASH = `0x${"0".repeat(64)}` as Hex;
 const ZERO_BLOOM = `0x${"0".repeat(512)}` as Hex;
 const ZERO_ADDRESS = `0x${"0".repeat(40)}` as Address;
@@ -246,13 +250,16 @@ export class EvmRpcMockStore {
     }
     let payload: JsonRpcRequest;
     try {
-      payload = parseRequest(await request.json());
+      payload = parseRequest(await readBoundedJsonRpcBody(request));
     } catch (error) {
       // error-policy:J3 untrusted JSON-RPC input becomes an explicit parse
       // error response and is never interpreted as a valid method call.
+      if (error instanceof JsonRpcAdmissionError) {
+        return jsonRpcHttpError(error.status, error.publicMessage);
+      }
       return jsonRpcResponse(null, undefined, {
         code: -32700,
-        message: error instanceof Error ? error.message : "Invalid JSON-RPC",
+        message: "Invalid JSON-RPC request",
       });
     }
 
@@ -327,10 +334,10 @@ export class EvmRpcMockStore {
       // error-policy:J1 the synthetic provider boundary translates execution
       // failures into canonical JSON-RPC errors rather than successful results.
       this.#observeFault(payload, "provider_error", generation);
+      const failure = publicRpcFailure(error);
       return jsonRpcResponse(payload.id, undefined, {
-        code: -32000,
-        message:
-          error instanceof Error ? error.message : "RPC execution failed",
+        code: failure.code,
+        message: failure.message,
       });
     }
   }
@@ -436,7 +443,7 @@ export class EvmRpcMockStore {
         );
       }
       default:
-        throw new Error(`Method not found: ${payload.method}`);
+        throw new JsonRpcProtocolError(-32601, "Method not found");
     }
   }
 
@@ -451,16 +458,35 @@ export class EvmRpcMockStore {
     if (this.#transactions.has(hash)) {
       return { result: hash, outcome: "duplicate", transactionHash: hash };
     }
-    const parsed = parseTransaction(serialized);
+    let parsed: ReturnType<typeof parseTransaction>;
+    try {
+      parsed = parseTransaction(serialized);
+    } catch {
+      throw new JsonRpcProtocolError(
+        -32602,
+        "Invalid signed transaction encoding",
+      );
+    }
     if (parsed.chainId !== this.#seed.chainId) {
-      throw new Error(`Wrong chain ID: ${parsed.chainId ?? "missing"}`);
+      throw new JsonRpcProtocolError(-32602, "Wrong chain ID");
     }
     if (parsed.nonce === undefined) {
-      throw new Error("Signed transaction nonce is required");
+      throw new JsonRpcProtocolError(
+        -32602,
+        "Signed transaction nonce is required",
+      );
     }
-    const from = await recoverTransactionAddress({
-      serializedTransaction: serialized,
-    });
+    let from: Address;
+    try {
+      from = await recoverTransactionAddress({
+        serializedTransaction: serialized,
+      });
+    } catch {
+      throw new JsonRpcProtocolError(
+        -32602,
+        "Invalid signed transaction signature",
+      );
+    }
     const fromKey = normalizeAddress(from);
     const pendingFrom = [...this.#transactions.values()].filter(
       (transaction) =>
@@ -469,7 +495,8 @@ export class EvmRpcMockStore {
     );
     const expectedNonce = (this.#nonces.get(fromKey) ?? 0) + pendingFrom.length;
     if (parsed.nonce !== expectedNonce) {
-      throw new Error(
+      throw new JsonRpcProtocolError(
+        -32602,
         `Invalid nonce: expected ${expectedNonce}, received ${parsed.nonce}`,
       );
     }
@@ -479,7 +506,10 @@ export class EvmRpcMockStore {
     );
     const balance = this.#balances.get(fromKey) ?? 0n;
     if (balance < reservedValue + (parsed.value ?? 0n)) {
-      throw new Error("Insufficient funds for transaction value");
+      throw new JsonRpcProtocolError(
+        -32000,
+        "Insufficient funds for transaction value",
+      );
     }
     const transaction: StoredTransaction = {
       hash,
@@ -704,6 +734,123 @@ interface JsonRpcRequest {
   params: unknown[];
 }
 
+class JsonRpcAdmissionError extends Error {
+  constructor(
+    readonly status: number,
+    readonly publicMessage: string,
+  ) {
+    super(publicMessage);
+    this.name = "JsonRpcAdmissionError";
+  }
+}
+
+class JsonRpcProtocolError extends Error {
+  constructor(
+    readonly code: number,
+    message: string,
+  ) {
+    super(message);
+    this.name = "JsonRpcProtocolError";
+  }
+}
+
+async function readBoundedJsonRpcBody(request: Request): Promise<unknown> {
+  const contentType = request.headers
+    .get("content-type")
+    ?.split(";", 1)[0]
+    ?.trim()
+    .toLowerCase();
+  if (contentType !== "application/json") {
+    throw new JsonRpcAdmissionError(415, "JSON-RPC requires application/json");
+  }
+  const contentEncoding = request.headers
+    .get("content-encoding")
+    ?.trim()
+    .toLowerCase();
+  if (contentEncoding && contentEncoding !== "identity") {
+    throw new JsonRpcAdmissionError(
+      415,
+      "Compressed JSON-RPC bodies are unsupported",
+    );
+  }
+  const declaredLength = request.headers.get("content-length");
+  if (declaredLength !== null) {
+    if (!/^\d+$/.test(declaredLength)) {
+      throw new JsonRpcAdmissionError(400, "Invalid Content-Length");
+    }
+    if (Number(declaredLength) > EVM_RPC_MAX_REQUEST_BYTES) {
+      throw new JsonRpcAdmissionError(413, "JSON-RPC body is too large");
+    }
+  }
+  if (!request.body) {
+    throw new JsonRpcAdmissionError(400, "JSON-RPC body is required");
+  }
+
+  const reader = request.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let byteLength = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      byteLength += value.byteLength;
+      if (byteLength > EVM_RPC_MAX_REQUEST_BYTES) {
+        await reader.cancel("JSON-RPC body is too large");
+        throw new JsonRpcAdmissionError(413, "JSON-RPC body is too large");
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+
+  const bytes = new Uint8Array(byteLength);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  let text: string;
+  try {
+    text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  } catch {
+    throw new JsonRpcAdmissionError(400, "JSON-RPC body must be UTF-8");
+  }
+  const value = JSON.parse(text) as unknown;
+  assertJsonRpcComplexity(value);
+  return value;
+}
+
+function assertJsonRpcComplexity(value: unknown): void {
+  const pending: Array<{ value: unknown; depth: number }> = [
+    { value, depth: 1 },
+  ];
+  let nodes = 0;
+  while (pending.length > 0) {
+    const current = pending.pop();
+    if (!current) break;
+    nodes += 1;
+    if (
+      nodes > EVM_RPC_MAX_JSON_NODES ||
+      current.depth > EVM_RPC_MAX_JSON_DEPTH
+    ) {
+      throw new JsonRpcAdmissionError(
+        400,
+        "JSON-RPC body exceeds structural limits",
+      );
+    }
+    if (Array.isArray(current.value)) {
+      for (const item of current.value) {
+        pending.push({ value: item, depth: current.depth + 1 });
+      }
+    } else if (typeof current.value === "object" && current.value !== null) {
+      for (const item of Object.values(current.value)) {
+        pending.push({ value: item, depth: current.depth + 1 });
+      }
+    }
+  }
+}
+
 function parseRequest(value: unknown): JsonRpcRequest {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     throw new Error("JSON-RPC request must be an object");
@@ -752,21 +899,27 @@ function normalizeSeed(
 
 function normalizeAddress(value: unknown): string {
   if (typeof value !== "string" || !/^0x[0-9a-fA-F]{40}$/.test(value)) {
-    throw new Error("Expected a 20-byte EVM address");
+    throw new JsonRpcProtocolError(-32602, "Expected a 20-byte EVM address");
   }
   return value.toLowerCase();
 }
 
 function normalizeRawTransaction(value: unknown): Hex {
   if (typeof value !== "string" || !/^0x(?:[0-9a-fA-F]{2})+$/.test(value)) {
-    throw new Error("Expected non-empty, even-length raw transaction bytes");
+    throw new JsonRpcProtocolError(
+      -32602,
+      "Expected non-empty, even-length raw transaction bytes",
+    );
   }
   return value.toLowerCase() as Hex;
 }
 
 function normalizeTransactionHash(value: unknown): Hex {
   if (typeof value !== "string" || !/^0x[0-9a-fA-F]{64}$/.test(value)) {
-    throw new Error("Expected a 32-byte transaction hash");
+    throw new JsonRpcProtocolError(
+      -32602,
+      "Expected a 32-byte transaction hash",
+    );
   }
   return value.toLowerCase() as Hex;
 }
@@ -788,6 +941,16 @@ function rawTransactionBytes(value: unknown): number {
   return typeof value === "string" && /^0x[0-9a-fA-F]*$/.test(value)
     ? (value.length - 2) / 2
     : 0;
+}
+
+function publicRpcFailure(error: unknown): {
+  code: number;
+  message: string;
+} {
+  if (error instanceof JsonRpcProtocolError) {
+    return { code: error.code, message: error.message };
+  }
+  return { code: -32603, message: "Synthetic RPC execution failed" };
 }
 
 function jsonRpcResponse(
