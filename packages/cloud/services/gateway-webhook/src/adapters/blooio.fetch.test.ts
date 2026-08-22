@@ -65,19 +65,28 @@ describe("blooioFetch — bounded Blooio hops fail closed and compose caller sig
     globalThis.fetch = vi
       .fn()
       .mockImplementation(
-        async (_input: RequestInfo | URL, init?: RequestInit) => {
-          seen = init?.signal ?? undefined;
-          return new Response("{}", { status: 200 });
-        },
+        (_input: RequestInfo | URL, init?: RequestInit) =>
+          new Promise<Response>((resolve, reject) => {
+            seen = init?.signal ?? undefined;
+            seen?.addEventListener("abort", () => {
+              reject(
+                new DOMException("The operation was aborted.", "AbortError"),
+              );
+            });
+            setTimeout(() => resolve(new Response("{}", { status: 200 })), 500);
+          }),
       ) as unknown as typeof fetch;
 
     const { blooioFetch } = await import("./blooio");
     const controller = new AbortController();
-    await blooioFetch("https://api.blooio.com/v4/messages", {
+    const pending = blooioFetch("https://api.blooio.com/v4/messages", {
       signal: controller.signal,
     });
     expect(seen?.aborted).toBe(false);
     controller.abort();
+    // The caller signal is composed with the owned deadline rather than
+    // substituted for it, so cancelling the caller cancels the provider hop.
     expect(seen?.aborted).toBe(true);
+    await expect(pending).rejects.toThrow(/abort|cancel/i);
   });
 });

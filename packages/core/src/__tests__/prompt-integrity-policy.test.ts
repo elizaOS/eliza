@@ -74,6 +74,7 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 	],
 	"packages/core/src/services/message.ts": [
 		/slice\(0,\s*400\)[\s\S]{0,120}task_complete/,
+		/CODING_DIRECT_ACTIONS/,
 	],
 	"packages/core/src/services/relationships.ts": [
 		/MAX_INTERACTION_HISTORY/,

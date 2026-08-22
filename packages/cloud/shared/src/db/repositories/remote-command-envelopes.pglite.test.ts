@@ -206,8 +206,8 @@ beforeAll(async () => {
   for (const migration of [
     "0068_add_remote_sessions",
     "0275_remote_sessions_first_class_expiry",
-    "0300_secure_remote_hosts",
-    "0301_secure_remote_command_relay",
+    "0305_secure_remote_hosts",
+    "0306_secure_remote_command_relay",
   ]) {
     await applyMigration(migration);
   }
@@ -524,6 +524,27 @@ describe("secure remote relay repositories", () => {
     const [stored] = await database.select().from(remoteCommandEnvelopes);
     expect(stored?.status).toBe("execution_ambiguous");
     expect((await commands.claimNext({ sessionId, hostId, hostToken })).kind).toBe("not_found");
+  });
+
+  it("lets the exact host bearer revoke and continue its own bounded cleanup", async () => {
+    await enrollAndPair();
+    await expect(
+      hosts.revokeAuthenticated(hostId, `rhost_v1_${"B".repeat(43)}`),
+    ).resolves.toBeUndefined();
+    await expect(hosts.authenticate(hostId, hostToken)).resolves.toMatchObject({
+      status: "active",
+    });
+
+    await expect(hosts.revokeAuthenticated(hostId, hostToken)).resolves.toMatchObject({
+      alreadyRevoked: false,
+      host: { id: hostId, status: "revoked" },
+      cleanup: { sessions: 1, more: false },
+    });
+    await expect(hosts.revokeAuthenticated(hostId, hostToken)).resolves.toMatchObject({
+      alreadyRevoked: true,
+      host: { id: hostId, status: "revoked" },
+      cleanup: { sessions: 0, commands: 0, more: false },
+    });
   });
 
   it("serializes revoke against enqueue and leaves no executable command", async () => {

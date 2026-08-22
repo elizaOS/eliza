@@ -812,6 +812,7 @@ export async function buildNode(
 		buildOptions: {
 			entrypoints: [
 				`${TS_SRC}/index.node.ts`,
+				`${TS_SRC}/errors.ts`,
 				`${TS_SRC}/roles.ts`,
 				`${TS_SRC}/client-public.ts`,
 				`${TS_SRC}/security/kms/index.ts`,

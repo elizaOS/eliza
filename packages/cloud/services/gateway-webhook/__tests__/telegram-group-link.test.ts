@@ -40,6 +40,9 @@ describe("telegram group-link authority", () => {
     ["slash", "/eliza_link 23456789"],
     ["natural language", "Eliza link 23456789"],
     ["bot-suffixed slash", "/eliza_link@ElizaBot 23456789"],
+    ["trimmed slash", "  /eliza_link 23456789\n"],
+    ["trimmed natural language", "\tEliza link 23456789  "],
+    ["trimmed bot-suffixed slash", "\n/eliza_link@ElizaBot 23456789\t"],
   ])("verifies %s syntax through current membership", async (_case, text) => {
     const requests: Request[] = [];
     globalThis.fetch = (async (input, init) => {
@@ -60,6 +63,7 @@ describe("telegram group-link authority", () => {
     expect(event).toMatchObject({
       chatId: "-100123456789",
       senderId: "42",
+      text,
       groupActorRole: "administrator",
     });
     expect(requests).toHaveLength(1);
@@ -104,18 +108,53 @@ describe("telegram group-link authority", () => {
     expect(requests).toBe(0);
   });
 
+  test.each([
+    ["ambient", "  /eliza_ambient@OtherBot on\n"],
+    ["leave", "\t/eliza_leave@OtherBot  "],
+  ])(
+    "drops a foreign %s command at the adapter boundary",
+    async (_case, text) => {
+      let requests = 0;
+      globalThis.fetch = (async () => {
+        requests += 1;
+        return Response.json({ ok: true, result: {} });
+      }) as typeof fetch;
+
+      const event = await telegramAdapter.extractEvent(
+        groupUpdate(text),
+        config,
+      );
+
+      expect(event).toBeNull();
+      expect(requests).toBe(0);
+    },
+  );
+
+  test("drops a whitespace-padded link command addressed to another bot", async () => {
+    let requests = 0;
+    globalThis.fetch = (async () => {
+      requests += 1;
+      return Response.json({ ok: true, result: { status: "creator" } });
+    }) as typeof fetch;
+    const text = "  /eliza_link@OtherBot 23456789\n";
+
+    const event = await telegramAdapter.extractEvent(groupUpdate(text), config);
+
+    expect(event).toBeNull();
+    expect(requests).toBe(0);
+  });
+
   test("drops a suffixed link command when bot identity is unavailable", async () => {
     let requests = 0;
     globalThis.fetch = (async () => {
       requests += 1;
       throw new Error("Telegram unavailable");
     }) as typeof fetch;
-    const text = "/eliza_link@ElizaBot 23456789";
+    const text = " \t/eliza_link@ElizaBot 23456789\n";
 
-    const event = await telegramAdapter.extractEvent(
-      groupUpdate(text, text.indexOf(" ")),
-      { botToken: "telegram-test-token" },
-    );
+    const event = await telegramAdapter.extractEvent(groupUpdate(text), {
+      botToken: "telegram-test-token",
+    });
 
     expect(event).toBeNull();
     expect(requests).toBe(1);

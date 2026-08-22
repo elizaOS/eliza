@@ -289,9 +289,9 @@ export type PlannerToolActionShape = Pick<
 function actionToPlannerTool(action: PlannerToolActionShape): ToolDefinition {
 	assertNativeToolName(action.name);
 	const baseDescription =
+		action.description ??
 		action.descriptionCompressed ??
-		action.compressedDescription ??
-		action.description;
+		action.compressedDescription;
 	const routingHint = action.routingHint?.trim();
 	const description = routingHint
 		? `${routingHint}\n${baseDescription}`.trim()
@@ -317,7 +317,7 @@ function actionToPlannerTool(action: PlannerToolActionShape): ToolDefinition {
  *
  * Tool description is composed from (in order):
  *   - the action's `routingHint` (if present, on its own line)
- *   - `descriptionCompressed ?? description`
+ *   - the complete `description` (legacy compressed text is fallback-only)
  *
  * The order of `actions` is preserved in the output (callers control
  * tool ordering by ordering the input). Names are validated against
@@ -346,8 +346,9 @@ export interface BuildPlannerToolsFromTieredActionsOptions {
 	 * skipped silently — string refs are advisory and the parent's handler
 	 * can still dispatch to them internally if the planner picks the parent.
 	 *
-	 * Inline-Action sub-actions (where `parent.subActions[i]` is an Action
-	 * object, not a string) are always expanded regardless of this map.
+	 * When provided, inline-Action sub-actions must also resolve through this
+	 * map. Runtime callers pass the already-authorized per-turn action set, so
+	 * expanding an absent inline object would disclose a rejected child.
 	 */
 	actionLookup?:
 		| ReadonlyMap<string, PlannerToolActionShape>
@@ -470,7 +471,9 @@ function resolveActionLookup(
  * alongside the parent, so relevance metadata cannot hide a callable action.
  *
  * Sub-action resolution:
- *   - Inline `Action` sub-actions on `parent.subActions` are always expanded.
+ *   - Inline `Action` sub-actions are resolved through an explicitly supplied
+ *     authorized lookup before expansion; standalone callers without a lookup
+ *     retain the inline object.
  *   - String-only sub-action references are resolved through `actionLookup`
  *     when provided; references that cannot be resolved are skipped silently
  *     (the parent's handler can still route to them).
@@ -486,6 +489,7 @@ export function buildPlannerToolsFromTieredActions(
 	options: BuildPlannerToolsFromTieredActionsOptions = {},
 ): ToolDefinition[] {
 	const actionLookup = resolveActionLookup(options.actionLookup);
+	const requireAuthorizedChild = options.actionLookup !== undefined;
 
 	// Top up the lookup with anything already in `actions` so children that
 	// appear inline elsewhere in the input remain resolvable from a string ref.
@@ -521,14 +525,16 @@ export function buildPlannerToolsFromTieredActions(
 				subActionName = subAction;
 			} else if (subAction && typeof subAction === "object") {
 				subActionName = subAction.name;
-				child = subAction;
+				child = requireAuthorizedChild
+					? actionLookup.get(subAction.name)
+					: subAction;
 			}
-			if (typeof subAction === "string") {
-				child = actionLookup.get(subAction);
+			if (typeof subAction === "string" || (requireAuthorizedChild && !child)) {
+				child = actionLookup.get(subActionName);
 				if (!child) {
 					onUnresolved({
 						parentName: action.name,
-						subActionName: subAction,
+						subActionName,
 					});
 					continue;
 				}
@@ -584,9 +590,9 @@ export function actionToTool(action: Action): PlannerToolDefinition {
 		function: {
 			name: action.name,
 			description:
+				action.description ??
 				action.descriptionCompressed ??
-				action.compressedDescription ??
-				action.description,
+				action.compressedDescription,
 			parameters: actionToJsonSchema(action),
 			strict: action.toolSchemaStrict ?? true,
 		},

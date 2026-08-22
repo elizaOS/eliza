@@ -747,6 +747,64 @@ describe("v5 tiered action surface", () => {
 		expect(prompt).toContain("MESSAGE_OP_9");
 	});
 
+	it("keeps a denied inline child's metadata out of model context (#24699)", async () => {
+		// The parent keeps inline metadata for every registered child, but this
+		// turn's gate denies one. Its name is not enough to check: the leak this
+		// guards is the denied child's DESCRIPTION reaching retrieval, tiering,
+		// and the rendered action section through the catalog.
+		process.env.ACTION_ROLE_POLICY = JSON.stringify({ FILES: "GUEST" });
+		_resetActionRolePolicyCacheForTests();
+
+		const allowedChild = makeAction({
+			name: "FILES_READ",
+			description: "Read a workspace file that the owner allowed.",
+		});
+		const deniedChild = makeAction({
+			name: "FILES_PURGE",
+			description: "Irreversibly purge every workspace file forever.",
+			roleGate: { minRole: "OWNER" },
+		});
+		const parent = makeAction({
+			name: "FILES",
+			description: "Workspace file management parent action.",
+			subActions: [allowedChild, deniedChild],
+		});
+		const runtime = makeRuntime({
+			actions: [parent, allowedChild],
+			responses: [
+				stage1Response({
+					contexts: ["general"],
+					intents: ["read a workspace file"],
+					candidateActionNames: ["FILES_READ"],
+				}),
+				plannerToolResponse("FILES_READ"),
+				finishEvaluatorResponse("Read the file."),
+			],
+		});
+
+		await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage("read the workspace file"),
+			state: makeState(),
+			responseId: RESPONSE_ID,
+		});
+
+		const plannerCall = getCalls(runtime).find(
+			(call) => call.modelType === ModelType.ACTION_PLANNER,
+		);
+		const tools = (
+			plannerCall?.params as { tools?: Array<{ name?: string }> } | undefined
+		)?.tools;
+		const toolNames = tools?.map((tool) => tool.name).filter(Boolean) ?? [];
+		expect(toolNames).toContain("FILES_READ");
+		expect(toolNames).not.toContain("FILES_PURGE");
+		// The description is the payload — a denied child must not describe
+		// itself to the model through the catalog either.
+		const prompt = availableActionsSection(runtime);
+		expect(prompt).toContain("FILES_READ");
+		expect(prompt).not.toContain("Irreversibly purge every workspace file");
+	});
+
 	it("omits planner tools that execution would reject for the selected context", async () => {
 		// ACTION_ROLE_POLICY authorizes by exact action name only — similes
 		// intentionally do not authorize (action-role-policy.ts), so the key must
@@ -813,6 +871,56 @@ describe("v5 tiered action surface", () => {
 				gate: "resolved-to-no-runtime-action",
 			}),
 			"Explicit stage-1 candidate resolved to no runtime action",
+		);
+	});
+
+	it("does not disclose an unauthorized inline child through tools or prompt metadata", async () => {
+		const allowedChild = makeAction({
+			name: "SAFE_CHILD",
+			description: "Allowed child description.",
+			contexts: ["general" as AgentContext],
+			contextGate: { anyOf: ["general"] },
+		});
+		const deniedChild = makeAction({
+			name: "PRIVATE_CHILD",
+			description: "Private child description must never reach the model.",
+			contexts: ["general" as AgentContext],
+			contextGate: { anyOf: ["general"] },
+			roleGate: { minRole: "OWNER" },
+		});
+		const parent = makeAction({
+			name: "PARENT",
+			description: "Parent action.",
+			contexts: ["general" as AgentContext],
+			contextGate: { anyOf: ["general"] },
+			subActions: [allowedChild, deniedChild],
+		});
+		const runtime = makeRuntime({
+			actions: [parent, allowedChild, deniedChild],
+			responses: [
+				stage1Response({ contexts: ["general"] }),
+				plannerToolResponse("SAFE_CHILD"),
+				finishEvaluatorResponse("Allowed child completed."),
+			],
+		});
+
+		await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage("use the safe child"),
+			state: makeState(),
+			responseId: RESPONSE_ID,
+		});
+
+		const modelContext = [
+			availableActionsSection(runtime),
+			plannerUserContent(runtime),
+		].join("\n");
+		expect(plannerToolNames(runtime)).toContain("SAFE_CHILD");
+		expect(plannerToolNames(runtime)).not.toContain("PRIVATE_CHILD");
+		expect(modelContext).toContain("SAFE_CHILD");
+		expect(modelContext).not.toContain("PRIVATE_CHILD");
+		expect(modelContext).not.toContain(
+			"Private child description must never reach the model.",
 		);
 	});
 

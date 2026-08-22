@@ -42,7 +42,6 @@ import {
 	shouldSurfaceContextCapabilities,
 } from "../../../utils/context-routing.ts";
 import { buildDeterministicSeed } from "../../../utils/deterministic";
-import { compressPromptDescription } from "../../../utils/prompt-compression.ts";
 import { looksLikeRelationshipFollowUpReminder } from "./non-actionable-chatter.ts";
 
 // Get text content from centralized specs
@@ -126,21 +125,18 @@ function collapseGroupedActionsForMainChat(
 	});
 }
 
-function renderCompressedDescription(item: {
+function renderCompleteDescription(item: {
 	description?: string;
 	descriptionCompressed?: string;
 }): string {
-	return (
-		item.descriptionCompressed ??
-		(item.description ? compressPromptDescription(item.description) : "")
-	);
+	return item.description ?? item.descriptionCompressed ?? "";
 }
 
 function actionCapabilityItem(action: Action): ContextCapabilityItem {
 	return {
 		name: action.name,
 		description:
-			renderCompressedDescription(action) || "No description available",
+			renderCompleteDescription(action) || "No description available",
 		contexts: normalizeContextList(resolveActionContexts(action)),
 	};
 }
@@ -149,7 +145,7 @@ function providerCapabilityItem(provider: Provider): ContextCapabilityItem {
 	return {
 		name: provider.name,
 		description:
-			renderCompressedDescription(provider) || "No description available",
+			renderCompleteDescription(provider) || "No description available",
 		contexts: normalizeContextList(resolveProviderContexts(provider)),
 		dynamic: provider.dynamic === true,
 	};
@@ -171,8 +167,7 @@ function expandActionDescription(
 	action: Action,
 	group: ContextCapabilityGroup,
 ): string {
-	const base =
-		renderCompressedDescription(action) || "No description available";
+	const base = renderCompleteDescription(action) || "No description available";
 	const sections = [
 		formatCapabilityItems("subactions", group.actions),
 		formatCapabilityItems("providers", group.providers),

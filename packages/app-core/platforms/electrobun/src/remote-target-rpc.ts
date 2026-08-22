@@ -4,6 +4,7 @@
  * the host bearer and private JWKs never cross this boundary.
  */
 import { createHash } from "node:crypto";
+import { ElizaError } from "@elizaos/core";
 import type { RemoteTargetPublicIdentity } from "@elizaos/shared/contracts/remote-control";
 import {
   LoopbackRemoteTargetExecutor,
@@ -260,23 +261,45 @@ export class RemoteTargetDesktopService {
   async finalizeHostRevoke(params: unknown): Promise<{ cleaned: true }> {
     const value = requireObject(params);
     const hostId = requireString(value.hostId, "host id", 256);
-    if (value.cloudRevoked !== true) {
-      throw new Error(
-        "Cloud host revocation must complete before local cleanup.",
+    const enrollment = await this.vault.load();
+    if (enrollment?.status !== "enrolled") {
+      throw new ElizaError("Remote host enrollment is unavailable", {
+        code: "REMOTE_HOST_ENROLLMENT_UNAVAILABLE",
+        context: { hostId },
+      });
+    }
+    if (enrollment.identity.runtimeId !== hostId) {
+      throw new ElizaError(
+        "Remote host cleanup target does not match this device",
+        {
+          code: "REMOTE_HOST_CLEANUP_TARGET_MISMATCH",
+          context: { hostId, enrolledHostId: enrollment.identity.runtimeId },
+        },
       );
     }
-    const enrollment = await this.vault.load();
-    if (
-      enrollment?.status === "enrolled" &&
-      enrollment.identity.runtimeId !== hostId
-    ) {
-      throw new Error("Remote host cleanup target does not match this device.");
+    while (true) {
+      const page = await this.transport.revokeHost({ enrollment });
+      if (!page.cleanup.more) break;
+      if (page.cleanup.sessions === 0 && page.cleanup.commands === 0) {
+        throw new ElizaError(
+          "Remote host revocation made no cleanup progress",
+          {
+            code: "REMOTE_HOST_CLEANUP_PROGRESS_INVALID",
+            context: { hostId, reason: "non_progressing_page" },
+          },
+        );
+      }
     }
     await this.stop();
     this.runner = null;
     this.loopbackConfigurationKey = null;
     await this.stateStore.clear();
-    await this.vault.delete();
+    if (!(await this.vault.delete())) {
+      throw new ElizaError("Remote host credentials could not be deleted", {
+        code: "REMOTE_HOST_CREDENTIAL_DELETE_FAILED",
+        context: { hostId },
+      });
+    }
     return { cleaned: true };
   }
 
