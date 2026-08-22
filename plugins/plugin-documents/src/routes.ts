@@ -11,7 +11,6 @@ import {
   actorCanManageOwnerDocuments,
   asRecord,
   asUuid,
-  canReadDocumentMemory,
   type DocumentReadableMemory,
   documentMediaFormat,
   documentTags,
@@ -72,7 +71,6 @@ export interface DocumentRouteContext extends RouteRequestContext {
 
 const DOCUMENTS_TABLE = "documents";
 const DOCUMENT_FRAGMENTS_TABLE = "document_fragments";
-const FRAGMENT_BATCH_SIZE = 500;
 const DOCUMENT_UPLOAD_MAX_BODY_BYTES = 32 * 1_048_576; // 32 MB
 const MAX_BULK_DOCUMENTS = 100;
 const DOCUMENT_CONTENT_TYPE_VALIDATION_ERROR =
@@ -504,97 +502,35 @@ function decodeMatchedPathComponent(
   }
 }
 
-async function mapDocumentFragmentsByDocumentId(
-  documentsService: DocumentsServiceLike,
-  roomId: UUID | undefined,
-  documentIds: readonly UUID[],
-): Promise<Map<UUID, number>> {
-  const fragmentCounts = new Map<UUID, number>();
-  const trackedDocumentIds = new Set(documentIds);
-  for (const documentId of trackedDocumentIds) {
-    fragmentCounts.set(documentId, 0);
-  }
-
-  if (trackedDocumentIds.size === 0) return fragmentCounts;
-
-  let offset = 0;
-  while (true) {
-    const fragmentBatch = await documentsService.getMemories({
-      tableName: DOCUMENT_FRAGMENTS_TABLE,
-      roomId,
-      count: FRAGMENT_BATCH_SIZE,
-      offset,
-    });
-
-    if (fragmentBatch.length === 0) break;
-
-    for (const memory of fragmentBatch) {
-      const metadata = asRecord(memory.metadata);
-      const documentId = metadata?.documentId;
-      if (
-        typeof documentId === "string" &&
-        trackedDocumentIds.has(documentId as UUID)
-      ) {
-        const currentCount = fragmentCounts.get(documentId as UUID) ?? 0;
-        fragmentCounts.set(documentId as UUID, currentCount + 1);
-      }
-    }
-
-    if (fragmentBatch.length < FRAGMENT_BATCH_SIZE) break;
-    offset += FRAGMENT_BATCH_SIZE;
-  }
-
-  return fragmentCounts;
-}
-
 async function listDocumentMemories({
   documentsService,
   agentId,
-  actor,
+  accessContext,
   filters,
   limit,
   offset,
 }: {
   documentsService: DocumentsServiceLike;
   agentId: UUID;
-  actor: RouteActor;
+  accessContext: AccessContext;
   filters: DocumentFilter;
   limit: number;
   offset: number;
 }): Promise<{ documents: Memory[]; total: number }> {
-  let scanOffset = 0;
-  let total = 0;
-  const documents: Memory[] = [];
-
-  while (true) {
-    const batch = await documentsService.getMemories({
-      tableName: DOCUMENTS_TABLE,
-      count: FRAGMENT_BATCH_SIZE,
-      offset: scanOffset,
-    });
-
-    if (batch.length === 0) break;
-
-    for (const memory of batch) {
-      if (
-        !isDocumentMemory(memory, agentId) ||
-        !matchesDocumentFilter(memory, filters) ||
-        !canReadDocumentMemory(memory, actor, filters)
-      ) {
-        continue;
-      }
-
-      if (total >= offset && documents.length < limit) {
-        documents.push(memory);
-      }
-      total += 1;
-    }
-
-    if (batch.length < FRAGMENT_BATCH_SIZE) break;
-    scanOffset += FRAGMENT_BATCH_SIZE;
+  if (!documentsService.listAllDocumentsWithAccessContext) {
+    throw new Error("Canonical document listing is unavailable");
   }
-
-  return { documents, total };
+  const matching = (
+    await documentsService.listAllDocumentsWithAccessContext(accessContext)
+  ).filter(
+    (memory) =>
+      isDocumentMemory(memory, agentId) &&
+      matchesDocumentFilter(memory, filters),
+  );
+  return {
+    documents: matching.slice(offset, offset + limit),
+    total: matching.length,
+  };
 }
 
 /**
@@ -608,12 +544,12 @@ async function listDocumentMemories({
 async function countDocumentFacets({
   documentsService,
   agentId,
-  actor,
+  accessContext,
   filters,
 }: {
   documentsService: DocumentsServiceLike;
   agentId: UUID;
-  actor: RouteActor;
+  accessContext: AccessContext;
   filters: DocumentFilter;
 }): Promise<Record<KnowledgeHubFacet, number>> {
   const counts: Record<KnowledgeHubFacet, number> = {
@@ -627,36 +563,26 @@ async function countDocumentFacets({
   // Drop the hub facet so the scan sees every bucket; keep the rest of the
   // narrowing (scope/room/tag/search) so counts match the visible list.
   const { knowledgeFacet: _ignored, ...baseFilters } = filters;
-  let scanOffset = 0;
-
-  while (true) {
-    const batch = await documentsService.getMemories({
-      tableName: DOCUMENTS_TABLE,
-      count: FRAGMENT_BATCH_SIZE,
-      offset: scanOffset,
-    });
-    if (batch.length === 0) break;
-
-    for (const memory of batch) {
-      if (
-        !isDocumentMemory(memory, agentId) ||
-        !matchesDocumentFilter(memory, baseFilters) ||
-        !canReadDocumentMemory(memory, actor, baseFilters)
-      ) {
-        continue;
-      }
-      const metadata = asRecord(memory.metadata);
-      const documentTags = Array.isArray(metadata?.tags)
-        ? metadata.tags.filter(
-            (value): value is string => typeof value === "string",
-          )
-        : [];
-      counts[documentHubFacet(metadata, documentTags)] += 1;
-      counts.all += 1;
+  if (!documentsService.listAllDocumentsWithAccessContext) {
+    throw new Error("Canonical document listing is unavailable");
+  }
+  const authorized =
+    await documentsService.listAllDocumentsWithAccessContext(accessContext);
+  for (const memory of authorized) {
+    if (
+      !isDocumentMemory(memory, agentId) ||
+      !matchesDocumentFilter(memory, baseFilters)
+    ) {
+      continue;
     }
-
-    if (batch.length < FRAGMENT_BATCH_SIZE) break;
-    scanOffset += FRAGMENT_BATCH_SIZE;
+    const metadata = asRecord(memory.metadata);
+    const documentTags = Array.isArray(metadata?.tags)
+      ? metadata.tags.filter(
+          (value): value is string => typeof value === "string",
+        )
+      : [];
+    counts[documentHubFacet(metadata, documentTags)] += 1;
+    counts.all += 1;
   }
 
   return counts;
@@ -839,10 +765,14 @@ export async function handleDocumentsRoutes(
     // every bucket is counted; the remaining scope/room/tag/search filters are
     // honored so the counts describe the current narrowing.
     const filters = filtersFromSearchParams(url, { includeTextQuery: true });
+    if (!documentsService.listAllDocumentsWithAccessContext) {
+      error(res, "Canonical document authorization is unavailable", 503);
+      return true;
+    }
     const counts = await countDocumentFacets({
       documentsService,
       agentId,
-      actor: routeActor,
+      accessContext,
       filters,
     });
     json(res, {
@@ -859,20 +789,38 @@ export async function handleDocumentsRoutes(
     const offset = parsePositiveInteger(url.searchParams.get("offset"), 0);
     const filters = filtersFromSearchParams(url, { includeTextQuery: true });
 
+    if (
+      !documentsService.listAllDocumentsWithAccessContext ||
+      !documentsService.listDocumentFragmentsWithAccessContext
+    ) {
+      error(res, "Canonical document authorization is unavailable", 503);
+      return true;
+    }
+    const listAuthorizedFragments =
+      documentsService.listDocumentFragmentsWithAccessContext.bind(
+        documentsService,
+      );
+
     const { documents, total } = await listDocumentMemories({
       documentsService,
       agentId,
-      actor: routeActor,
+      accessContext,
       filters,
       limit,
       offset,
     });
-    const documentIds = documents.filter(hasUuidId).map((doc) => doc.id);
-    const fragmentCounts = await mapDocumentFragmentsByDocumentId(
-      documentsService,
-      undefined,
-      documentIds,
+    const fragmentCountEntries = await Promise.all(
+      documents
+        .filter(hasUuidId)
+        .map(
+          async (doc) =>
+            [
+              doc.id,
+              (await listAuthorizedFragments(doc.id, accessContext)).length,
+            ] as const,
+        ),
     );
+    const fragmentCounts = new Map(fragmentCountEntries);
     const cleanedDocuments = documents.map((doc) =>
       presentDocument(
         doc,
@@ -933,12 +881,12 @@ export async function handleDocumentsRoutes(
       searchMessage,
       serviceSearchScope(filters),
       searchMode,
+      accessContext,
     );
 
     const filteredResults = results
       .filter((result) => (result.similarity ?? 0) >= threshold)
       .filter((result) => matchesDocumentFilter(result, filters))
-      .filter((result) => canReadDocumentMemory(result, routeActor, filters))
       .slice(0, limit)
       .map((result) => {
         const meta = asRecord(result.metadata);

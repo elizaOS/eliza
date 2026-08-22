@@ -48,6 +48,7 @@ const fragment: Memory = {
 };
 
 const service = vi.hoisted(() => ({
+  listAllDocumentsWithAccessContext: vi.fn(),
   getDocumentByIdWithAccessContext: vi.fn(),
   getMutableDocumentWithAccessContext: vi.fn(),
   listDocumentFragmentsWithAccessContext: vi.fn(),
@@ -103,6 +104,7 @@ describe("canonical document REST reads", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     service.getDocumentByIdWithAccessContext.mockResolvedValue(document);
+    service.listAllDocumentsWithAccessContext.mockResolvedValue([document]);
     service.getMutableDocumentWithAccessContext.mockResolvedValue(document);
     service.listDocumentFragmentsWithAccessContext.mockResolvedValue([
       fragment,
@@ -113,6 +115,40 @@ describe("canonical document REST reads", () => {
       fragmentCount: 1,
     });
     service.deleteDocumentWithAccessContext.mockResolvedValue(undefined);
+  });
+
+  it("lists parents and counts fragments only through authorized service methods", async () => {
+    const { ctx, response, getMemoryById } = context("/api/documents");
+
+    await expect(handleDocumentsRoutes(ctx)).resolves.toBe(true);
+
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({
+      total: 1,
+      documents: [{ id: DOCUMENT_ID, fragmentCount: 1 }],
+    });
+    expect(service.listAllDocumentsWithAccessContext).toHaveBeenCalledWith(
+      accessContext,
+    );
+    expect(service.listDocumentFragmentsWithAccessContext).toHaveBeenCalledWith(
+      DOCUMENT_ID,
+      accessContext,
+    );
+    expect(getMemoryById).not.toHaveBeenCalled();
+    expect(service.getMemories).not.toHaveBeenCalled();
+  });
+
+  it("computes facets only from the canonically authorized document set", async () => {
+    const { ctx, response } = context("/api/documents/facets");
+
+    await expect(handleDocumentsRoutes(ctx)).resolves.toBe(true);
+
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({ counts: { all: 1, doc: 1 } });
+    expect(service.listAllDocumentsWithAccessContext).toHaveBeenCalledWith(
+      accessContext,
+    );
+    expect(service.getMemories).not.toHaveBeenCalled();
   });
 
   it("reads a parent and its count only through authorized service methods", async () => {
