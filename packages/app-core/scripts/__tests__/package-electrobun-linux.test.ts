@@ -18,6 +18,7 @@ import {
   buildSelectedLinuxPackages,
   DIRECT_LINUX_PACKAGE_FORMATS,
   debArchiveBuildArgs,
+  findElectrobunLauncher,
   renderLinuxLauncherWrapper,
   resolveLinuxPackageFormats,
   stagePackageRoot,
@@ -175,6 +176,12 @@ describe("direct Debian payload hardening", () => {
     mkdirSync(path.dirname(executable), { recursive: true });
     writeFileSync(executable, '#!/usr/bin/env sh\nprintf "%s\\n" "$@"\n');
     chmodSync(executable, 0o755);
+    const decoy = path.join(buildDir, "bin", "bspatch");
+    mkdirSync(path.dirname(decoy), { recursive: true });
+    writeFileSync(decoy, "#!/usr/bin/env sh\nexit 99\n");
+    chmodSync(decoy, 0o755);
+
+    expect(findElectrobunLauncher(buildDir)).toBe(executable);
 
     await stagePackageRoot(buildDir, packageRoot);
 
@@ -206,6 +213,21 @@ describe("direct Debian payload hardening", () => {
         encoding: "utf8",
       }),
     ).toBe("argument with spaces\n$HOME\n");
+  });
+
+  it("selects the direct Electrobun launcher instead of sibling tools", () => {
+    const buildDir = tempDir();
+    const binDir = path.join(buildDir, "bin");
+    mkdirSync(binDir);
+    for (const name of ["bspatch", "launcher"]) {
+      const candidate = path.join(binDir, name);
+      writeFileSync(candidate, `#!/usr/bin/env sh\necho ${name}\n`);
+      chmodSync(candidate, 0o755);
+    }
+
+    expect(findElectrobunLauncher(buildDir)).toBe(
+      path.join(binDir, "launcher"),
+    );
   });
 
   it.runIf(hasDpkgDeb)(
