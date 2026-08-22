@@ -102,6 +102,11 @@ export interface BoundaryObservationLedger {
   readAll(): Promise<ProductionBoundaryObservation[]>;
 }
 
+export interface BoundaryLedgerDurabilityHooks {
+  /** Fault-injection seam after file sync/close and before directory sync. */
+  afterFileSync?: () => Promise<void>;
+}
+
 export interface BoundaryGenerationFence {
   /**
    * Runs the callback while reset/rollover is excluded. The production-owned
@@ -350,6 +355,81 @@ function requireClassification(
   return value;
 }
 
+type RetryIdentity = Pick<
+  PendingObservation,
+  | "observationId"
+  | "surface"
+  | "target"
+  | "payloadSha256"
+  | "idempotencyKey"
+  | "generation"
+  | "workerId"
+  | "taskId"
+  | "attempt"
+  | "retryOfObservationId"
+>;
+
+function sameAttemptIdentity(
+  left: RetryIdentity,
+  right: RetryIdentity,
+): boolean {
+  return (
+    left.observationId === right.observationId &&
+    left.surface === right.surface &&
+    left.target === right.target &&
+    left.payloadSha256 === right.payloadSha256 &&
+    left.idempotencyKey === right.idempotencyKey &&
+    left.generation === right.generation &&
+    left.workerId === right.workerId &&
+    left.taskId === right.taskId &&
+    left.attempt === right.attempt &&
+    left.retryOfObservationId === right.retryOfObservationId
+  );
+}
+
+function assertRetryLineage(
+  records: ProductionBoundaryObservation[],
+  observation: RetryIdentity,
+): void {
+  if (observation.attempt === 1) {
+    if (observation.retryOfObservationId !== undefined) {
+      throw new ElizaError(
+        "first boundary attempt cannot name a retry parent",
+        {
+          code: "BOUNDARY_RETRY_LINEAGE_INVALID",
+        },
+      );
+    }
+    return;
+  }
+  const parentId = observation.retryOfObservationId;
+  const parent = parentId
+    ? records.find((record) => record.observationId === parentId)
+    : undefined;
+  if (
+    !parent?.retryable ||
+    parent.attempt !== observation.attempt - 1 ||
+    parent.surface !== observation.surface ||
+    parent.target !== observation.target ||
+    parent.payloadSha256 !== observation.payloadSha256 ||
+    parent.idempotencyKey !== observation.idempotencyKey ||
+    parent.generation !== observation.generation ||
+    parent.workerId !== observation.workerId ||
+    parent.taskId !== observation.taskId
+  ) {
+    throw new ElizaError(
+      "boundary retry does not continue a matching retryable attempt",
+      {
+        code: "BOUNDARY_RETRY_LINEAGE_INVALID",
+        context: {
+          attempt: observation.attempt,
+          retryOfObservationId: parentId,
+        },
+      },
+    );
+  }
+}
+
 /**
  * Invoke one real consumer boundary and append the outcome only after its
  * authoritative readback has been checked. An accepted adapter response alone
@@ -419,6 +499,24 @@ export async function observeProductionBoundary<TResponse, TReadback>(
       : {}),
     startedAt,
   };
+
+  // Preflight prevents invalid or already-committed attempts from invoking the
+  // external boundary. The private append path repeats lineage validation
+  // under its single-writer queue to close the read-to-append race.
+  const existingRecords = await options.ledger.readAll();
+  const existing = existingRecords.find(
+    (record) => record.observationId === observationId,
+  );
+  if (existing) {
+    if (!sameAttemptIdentity(existing, base)) {
+      throw new ElizaError(
+        "boundary observation identity conflicts with committed evidence",
+        { code: "BOUNDARY_LEDGER_DUPLICATE_OBSERVATION" },
+      );
+    }
+    return existing;
+  }
+  assertRetryLineage(existingRecords, base);
 
   try {
     return await options.generationFence.withGeneration(
@@ -937,15 +1035,50 @@ function parseLedgerLine(
   return raw as unknown as ProductionBoundaryObservation;
 }
 
+const UNSUPPORTED_DIRECTORY_SYNC_CODES = new Set([
+  "EACCES",
+  "EBADF",
+  "EISDIR",
+  "EINVAL",
+  "ENOSYS",
+  "ENOTSUP",
+  "EPERM",
+]);
+
+async function syncParentDirectory(filePath: string): Promise<void> {
+  if (process.platform === "win32") return;
+  let directoryHandle: Awaited<ReturnType<typeof open>> | undefined;
+  try {
+    directoryHandle = await open(dirname(filePath), "r");
+    await directoryHandle.sync();
+  } catch (error) {
+    if (
+      UNSUPPORTED_DIRECTORY_SYNC_CODES.has(
+        (error as NodeJS.ErrnoException).code ?? "",
+      )
+    ) {
+      return;
+    }
+    throw error;
+  } finally {
+    await directoryHandle?.close();
+  }
+}
+
 /** Durable JSONL observation store. Production state remains authoritative. */
 export class JsonlBoundaryObservationLedger
   implements BoundaryObservationLedger
 {
   readonly #filePath: string;
+  readonly #durabilityHooks: BoundaryLedgerDurabilityHooks;
   #pending: Promise<unknown> = Promise.resolve();
 
-  constructor(filePath: string) {
+  constructor(
+    filePath: string,
+    durabilityHooks: BoundaryLedgerDurabilityHooks = {},
+  ) {
     this.#filePath = requireNonEmpty(filePath, "filePath");
+    this.#durabilityHooks = durabilityHooks;
     ledgerAppenders.set(this, (observation) => this.#append(observation));
   }
 
@@ -991,6 +1124,7 @@ export class JsonlBoundaryObservationLedger
   ): Promise<ProductionBoundaryObservation> {
     const appendPromise = this.#pending.then(async () => {
       const records = await this.#readFromDisk();
+      assertRetryLineage(records, observation);
       if (
         records.some(
           (record) => record.observationId === observation.observationId,
@@ -1030,18 +1164,24 @@ export class JsonlBoundaryObservationLedger
         } finally {
           await handle.close();
         }
-        const directoryHandle = await open(dirname(this.#filePath), "r");
-        try {
-          await directoryHandle.sync();
-        } finally {
-          await directoryHandle.close();
-        }
+        await this.#durabilityHooks.afterFileSync?.();
+        await syncParentDirectory(this.#filePath);
       } catch (error) {
+        let appendCause: unknown = error;
+        try {
+          const reconciled = await this.#readFromDisk();
+          const committed = reconciled.find(
+            (candidate) => candidate.observationId === record.observationId,
+          );
+          if (committed?.recordSha256 === record.recordSha256) return committed;
+        } catch (reconciliationError) {
+          appendCause = new AggregateError([error, reconciliationError]);
+        }
         // error-policy:J2 durable append failures preserve the filesystem
-        // cause and never return a successful observation.
+        // cause unless exact disk readback proves the record committed.
         throw new ElizaError("failed to append boundary observation", {
           code: "BOUNDARY_LEDGER_APPEND_FAILED",
-          cause: error,
+          cause: appendCause,
           context: {
             filePath: this.#filePath,
             observationId: observation.observationId,

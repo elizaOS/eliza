@@ -31,6 +31,7 @@ export type {
   BoundaryFaultKind,
   BoundaryGenerationFence,
   BoundaryGenerationGuard,
+  BoundaryLedgerDurabilityHooks,
   BoundaryObservationLedger,
   BoundaryObservationResult,
   BoundaryResultClassification,
