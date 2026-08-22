@@ -62,6 +62,8 @@ async function cleanupHarnessOnce(): Promise<void> {
     try {
       await operation();
     } catch (error) {
+      // error-policy:J6 Teardown continues through every resource so the first
+      // cleanup failure does not leak the database or PostgreSQL process.
       firstError ??= error;
     }
   };
@@ -171,9 +173,11 @@ afterAll(cleanupHarness, 60_000);
 try {
   await initializeHarness();
 } catch (error) {
+  // error-policy:J2 Preserve initialization and cleanup failures together.
   try {
     await cleanupHarness();
   } catch (cleanupError) {
+    // error-policy:J2 Aggregate both causes instead of masking either failure.
     throw new AggregateError(
       [error, cleanupError],
       "PostgreSQL agent-billing harness initialization and cleanup both failed",
