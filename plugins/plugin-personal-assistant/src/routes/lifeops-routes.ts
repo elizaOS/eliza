@@ -172,10 +172,11 @@ function getService(ctx: LifeOpsRouteContext): LifeOpsService | null {
     return null;
   }
   // `runtime` is non-null after the guard above. The service derives the
-  // owner entity from `ctx.state.adminEntityId` when present,
-  // otherwise from `defaultOwnerEntityId(runtime)` (a stable per-agent UUID
-  // derived from `agentId`). That keeps tenant scoping intact even when the
-  // route dispatcher does not surface an explicit admin entity.
+  // owner entity from `ctx.state.adminEntityId` when present, otherwise from
+  // `defaultOwnerEntityId(runtime)` (configured canonical owner, else the
+  // stable agent-id seed — the same precedence the chat write surface and the
+  // scheduler use). That keeps tenant scoping intact even when the route
+  // dispatcher does not surface an explicit admin entity.
   const runtime = ctx.state.runtime;
   if (!runtime) {
     return null;
@@ -2860,7 +2861,10 @@ export async function handleLifeOpsRoutes(
         ctx.error(res, "senderEmail is required", 400);
         return;
       }
-      const entityId = String(ctx.state.adminEntityId ?? "lifeops-owner");
+      // Owner identity must match the service's scope (one derivation:
+      // configured canonical owner, else the agent-id seed) — never an ad-hoc
+      // literal that forks the LifeOps `subject_id`.
+      const entityId = service.ownerEntityId();
       const confirmMessage = {
         entityId,
         roomId: entityId,
