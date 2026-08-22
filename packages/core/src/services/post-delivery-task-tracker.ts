@@ -17,6 +17,10 @@ type TrackedPostDeliveryTask = {
 	promise: Promise<void>;
 };
 
+type PostDeliveryTaskQuarantine = {
+	reason: string;
+};
+
 export type PostDeliveryTaskKind = "room-state" | "diagnostic";
 
 export type PostDeliveryTaskOptions =
@@ -36,7 +40,7 @@ const pendingByRuntimeRoom = new WeakMap<
 	object,
 	Map<string, Set<TrackedPostDeliveryTask>>
 >();
-const quarantineByRuntime = new WeakMap<object, string>();
+const quarantineByRuntime = new WeakMap<object, PostDeliveryTaskQuarantine>();
 
 function pendingSet(runtime: TrackableRuntime): Set<TrackedPostDeliveryTask> {
 	const identity = runtime as object;
@@ -54,13 +58,13 @@ export function trackPostDeliveryTask(
 	task: (signal: AbortSignal) => Promise<unknown>,
 	options: PostDeliveryTaskOptions = { kind: "room-state" },
 ): Promise<void> {
-	const quarantineReason = postDeliveryTaskQuarantineReason(runtime);
-	if (quarantineReason) {
+	const quarantine = quarantineByRuntime.get(runtime as object);
+	if (quarantine) {
 		throw new ElizaError(
 			"Post-delivery work cannot start on a quarantined runtime",
 			{
 				code: "POST_DELIVERY_RUNTIME_QUARANTINED",
-				context: { label, quarantineReason },
+				context: { label, quarantineReason: quarantine.reason },
 			},
 		);
 	}
@@ -172,9 +176,9 @@ export async function drainPostDeliveryTasks(
 	runtime: TrackableRuntime,
 	options: { signal?: AbortSignal } = {},
 ): Promise<number> {
-	const quarantineReason = postDeliveryTaskQuarantineReason(runtime);
-	if (quarantineReason) {
-		throw quarantinedDrainError(runtime, quarantineReason);
+	const quarantine = quarantineByRuntime.get(runtime as object);
+	if (quarantine) {
+		throw quarantinedDrainError(runtime, quarantine.reason);
 	}
 	let drained = 0;
 	while (true) {
@@ -221,19 +225,23 @@ export function quarantinePostDeliveryTasks(
 	const identity = runtime as object;
 	const requestedDetail =
 		reason instanceof Error
-			? reason.message
-			: typeof reason === "string" && reason.trim()
-				? reason
-				: "post-delivery drain was cancelled";
-	const detail = quarantineByRuntime.get(identity) ?? requestedDetail;
-	quarantineByRuntime.set(identity, detail);
+			? reason.message.trim()
+			: typeof reason === "string"
+				? reason.trim()
+				: "";
+	const quarantine =
+		quarantineByRuntime.get(identity) ??
+		({
+			reason: requestedDetail || "post-delivery drain was cancelled",
+		} satisfies PostDeliveryTaskQuarantine);
+	quarantineByRuntime.set(identity, quarantine);
 	const pending = pendingByRuntime.get(identity);
 	for (const entry of pending ?? []) {
 		if (!entry.controller.signal.aborted) {
-			entry.controller.abort(new Error(detail));
+			entry.controller.abort(new Error(quarantine.reason));
 		}
 	}
-	return quarantinedDrainError(runtime, detail);
+	return quarantinedDrainError(runtime, quarantine.reason);
 }
 
 function quarantinedDrainError(
@@ -256,7 +264,7 @@ function quarantinedDrainError(
 export function postDeliveryTaskQuarantineReason(
 	runtime: TrackableRuntime,
 ): string | undefined {
-	return quarantineByRuntime.get(runtime as object);
+	return quarantineByRuntime.get(runtime as object)?.reason;
 }
 
 /** Drain every post-delivery task spawned under one live room owner. */
@@ -264,9 +272,9 @@ export async function drainRoomPostDeliveryTasks(
 	runtime: TrackableRuntime,
 	roomId: string,
 ): Promise<number> {
-	const quarantineReason = postDeliveryTaskQuarantineReason(runtime);
-	if (quarantineReason) {
-		throw quarantinedDrainError(runtime, quarantineReason);
+	const quarantine = quarantineByRuntime.get(runtime as object);
+	if (quarantine) {
+		throw quarantinedDrainError(runtime, quarantine.reason);
 	}
 	let drained = 0;
 	while (true) {
