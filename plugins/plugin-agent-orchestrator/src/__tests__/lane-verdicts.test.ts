@@ -89,7 +89,9 @@ describe("lane verdicts", () => {
     ).toBe(true);
     expect(released).toEqual(["passed:coin"]);
 
-    await store.updateTask(taskId, { status: "validating" });
+    // A sibling's failed verdict moved the task to active meanwhile; the
+    // remaining lane's pass must still land and close the task.
+    await store.updateTask(taskId, { status: "active" });
     await service.validateTask(
       taskId,
       { passed: true, summary: "dice ok" },
