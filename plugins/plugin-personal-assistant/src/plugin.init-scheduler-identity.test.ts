@@ -38,6 +38,10 @@ vi.mock("@elizaos/plugin-health", async (importOriginal) => ({
   registerCircadianInsightContract: vi.fn(),
   createDefaultCircadianInsightContract: vi.fn(() => ({})),
 }));
+vi.mock("./lifeops/app-state.js", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  loadLifeOpsAppState: vi.fn(async () => ({ enabled: true })),
+}));
 // Replace only the deferred scheduler-task ensure so the boot-ordering test
 // below can observe when init reaches it; worker registration stays real.
 vi.mock("./lifeops/runtime.js", async (importOriginal) => ({
@@ -177,9 +181,9 @@ describe("personalAssistantPlugin.init scheduler identity", () => {
     expect(typeof worker?.shouldRun).toBe("function");
   });
 
-  it("installs the workflow-run claim schema before ensuring the scheduler task", async () => {
+  it("gates a persisted scheduler worker until claim schema installation completes", async () => {
     delete process.env.ELIZA_DISABLE_LIFEOPS_SCHEDULER;
-    const { runtime } = createRecordingRuntime();
+    const { runtime, taskWorkers } = createRecordingRuntime();
 
     // The bootstrap spy resolves on a later tick so a scheduler ensure that
     // does not await the index install would record its event first (#23835).
@@ -197,6 +201,11 @@ describe("personalAssistantPlugin.init scheduler identity", () => {
 
     try {
       await personalAssistantPlugin.init?.({}, runtime);
+      const worker = taskWorkers.get(LIFEOPS_TASK_NAME);
+      expect(worker).toBeDefined();
+      await expect(
+        worker?.shouldRun?.(runtime, { name: LIFEOPS_TASK_NAME }),
+      ).resolves.toBe(false);
       await vi.waitFor(() => {
         expect(events).toContain("scheduler-task");
       });
@@ -204,6 +213,9 @@ describe("personalAssistantPlugin.init scheduler identity", () => {
       expect(events.indexOf("bootstrap-schema")).toBeLessThan(
         events.indexOf("scheduler-task"),
       );
+      await expect(
+        worker?.shouldRun?.(runtime, { name: LIFEOPS_TASK_NAME }),
+      ).resolves.toBe(true);
     } finally {
       bootstrapSpy.mockRestore();
     }

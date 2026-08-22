@@ -309,6 +309,21 @@ describe("LifeOps workflow-run idempotency storage (real PGlite)", () => {
     ).rejects.toThrow(/ON CONFLICT|unique or exclusion constraint/i);
   });
 
+  it("rejects an already-marked impostor index instead of trusting its marker", async () => {
+    await pg.exec(`
+      CREATE INDEX idx_life_workflow_runs_idempotency
+        ON app_lifeops.life_workflow_runs (agent_id);
+      COMMENT ON INDEX app_lifeops.idx_life_workflow_runs_idempotency
+        IS 'elizaos:life_workflow_runs:idempotency-backfill:v1';
+    `);
+
+    await expect(
+      LifeOpsRepository.ensureWorkflowRunIdempotencyKey(runtime),
+    ).rejects.toMatchObject({
+      code: "LIFEOPS_WORKFLOW_RUN_IDEMPOTENCY_INDEX_MISMATCH",
+    });
+  });
+
   it("elects one concurrent keyed claimant, scopes keys, and CAS-finalizes only the winner", async () => {
     await LifeOpsRepository.ensureWorkflowRunIdempotencyKey(runtime);
     const contenders = Array.from({ length: 8 }, (_, index) =>
