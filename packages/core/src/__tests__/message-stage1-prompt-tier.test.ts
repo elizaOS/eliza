@@ -312,6 +312,18 @@ describe("Stage-1 complete prompt rendering", () => {
 		expect(isUnaddressedTextGroupTurn(message, addressed)).toBe(true);
 	});
 
+	it.each([
+		["test the build before release", "Alpha Teſt"],
+		["assistant check the queue", "Alpha Aſsistant"],
+		["system restart pending", "Alpha ſystem"],
+		["---- pending", "Alpha ----"],
+	])(
+		"rejects compatibility-fold and symbol-only token collisions: %s",
+		(text, name) => {
+			expect(textContainsAgentName(text, [name])).toBe(false);
+		},
+	);
+
 	it("preserves full names, explicit aliases, and distinctive name tokens", () => {
 		expect(textContainsAgentName("Test Agent check this", ["Test Agent"])).toBe(
 			true,

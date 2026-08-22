@@ -481,6 +481,17 @@ const NON_DISTINCTIVE_AGENT_NAME_TOKENS = new Set([
 	"test",
 ]);
 
+function isDistinctiveAgentNameToken(token: string): boolean {
+	// Match the compatibility folding used by the case-insensitive RegExp. If
+	// the denylist examined the raw spelling, variants such as the long-s in
+	// `Teſt` would evade this check while still matching ordinary ASCII `test`.
+	const canonical = token.normalize("NFKC").toLowerCase();
+	const wordCharacterCount = [...canonical.matchAll(/[\p{L}\p{N}]/gu)].length;
+	return (
+		wordCharacterCount >= 4 && !NON_DISTINCTIVE_AGENT_NAME_TOKENS.has(canonical)
+	);
+}
+
 /** Returns whether text names the agent through a complete configured alias or
  * a distinctive token from a multi-word alias. */
 export function textContainsAgentName(
@@ -505,10 +516,7 @@ export function textContainsAgentName(
 		if (!candidate) continue;
 		candidates.add(candidate);
 		for (const token of candidate.split(/\s+/u)) {
-			if (
-				token.length >= 4 &&
-				!NON_DISTINCTIVE_AGENT_NAME_TOKENS.has(token.toLowerCase())
-			) {
+			if (isDistinctiveAgentNameToken(token)) {
 				candidates.add(token);
 			}
 		}
