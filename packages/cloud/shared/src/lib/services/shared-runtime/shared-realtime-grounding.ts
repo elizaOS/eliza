@@ -36,6 +36,8 @@ const PUBLIC_MUTABLE_FACT =
 const SOURCE_MARKER = /\[\[SOURCE_URL:(https?:\/\/[^\]\s]+)\]\]/giu;
 const CURRENCY = /\b(?:USD|EUR|GBP|JPY|CAD|AUD|BTC|ETH)\b/giu;
 const ATTRIBUTION = /\b(?:according to|reported by)\s+([^,.;\n]{1,80})/giu;
+const NEGATION =
+  /\b(?:no|not|never|neither|nor|isn['’]t|aren['’]t|wasn['’]t|weren['’]t|hasn['’]t|haven['’]t|hadn['’]t|won['’]t|wouldn['’]t|didn['’]t|doesn['’]t|don['’]t)\b/iu;
 const CLAIM_STOP_WORDS = new Set([
   "about",
   "according",
@@ -235,10 +237,10 @@ function claimSupported(claim: string, source: SourceEvidence): boolean {
   for (const match of normalized.matchAll(ATTRIBUTION)) {
     if (!source.text.toLowerCase().includes(match[1].trim().toLowerCase())) return false;
   }
+  if (NEGATION.test(normalized) !== NEGATION.test(source.text)) return false;
   const words = claimWords(normalized);
   const evidence = new Set(claimWords(source.text));
-  const supported = words.filter((word) => evidence.has(word)).length;
-  return words.length === 0 || supported >= Math.min(2, Math.ceil(words.length / 2));
+  return words.length === 0 || words.every((word) => evidence.has(word));
 }
 
 /** Every delivered claim segment must bind to and match one structured result. */
