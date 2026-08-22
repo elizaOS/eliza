@@ -37,7 +37,9 @@ function onboardingAbortError(message: string, name: "AbortError" | "TimeoutErro
 async function bufferOnboardingResponse(
   response: Response,
   signal: AbortSignal,
+  throwIfAbortedOrExpired: () => void,
 ): Promise<Response> {
+  throwIfAbortedOrExpired();
   const rawContentLength = response.headers.get("content-length");
   if (rawContentLength !== null && /^\d+$/.test(rawContentLength)) {
     const declaredLength = Number(rawContentLength);
@@ -57,7 +59,10 @@ async function bufferOnboardingResponse(
       throw error;
     }
   }
-  if (!response.body) return response;
+  if (!response.body) {
+    throwIfAbortedOrExpired();
+    return response;
+  }
 
   const reader = response.body.getReader();
   const chunks: Uint8Array[] = [];
@@ -73,7 +78,12 @@ async function bufferOnboardingResponse(
   signal.addEventListener("abort", cancelBody, { once: true });
   try {
     while (true) {
+      // An immediately-ready stream can starve the timer queue with an
+      // unbounded microtask chain, especially when chunks are empty. Enforce
+      // the monotonic wall-clock deadline inside the read loop as well.
+      throwIfAbortedOrExpired();
       const next = await reader.read();
+      throwIfAbortedOrExpired();
       if (next.done) break;
       receivedBytes += next.value.byteLength;
       if (receivedBytes > ONBOARDING_RESPONSE_MAX_BYTES) {
@@ -93,6 +103,16 @@ async function bufferOnboardingResponse(
       }
       chunks.push(next.value);
     }
+  } catch (error) {
+    try {
+      await reader.cancel(error);
+    } catch (cause) {
+      // error-policy:J6 The bounded read already failed; cancellation only releases the stream.
+      logger.debug("[onboarding-chat] Failed to cancel rejected onboarding response body", {
+        cause,
+      });
+    }
+    throw error;
   } finally {
     signal.removeEventListener("abort", cancelBody);
     try {
@@ -109,6 +129,7 @@ async function bufferOnboardingResponse(
     body.set(chunk, offset);
     offset += chunk.byteLength;
   }
+  throwIfAbortedOrExpired();
   return new Response(body.buffer, {
     status: response.status,
     statusText: response.statusText,
@@ -136,6 +157,11 @@ export async function onboardingFetch(
   }
 
   const controller = new AbortController();
+  const deadlineAt = performance.now() + timeoutMs;
+  const timeoutError = onboardingAbortError(
+    "The onboarding request deadline expired.",
+    "TimeoutError",
+  );
   let rejectAbort!: (reason: unknown) => void;
   const abortPromise = new Promise<never>((_resolve, reject) => {
     rejectAbort = reject;
@@ -146,28 +172,34 @@ export async function onboardingFetch(
     rejectAbort(reason);
   };
   const onCallerAbort = (): void => {
-    abort(
-      init?.signal?.reason ??
-        onboardingAbortError("The onboarding request was aborted.", "AbortError"),
-    );
+    if (!init?.signal) return;
+    abort(init.signal.reason);
   };
   init?.signal?.addEventListener("abort", onCallerAbort, { once: true });
   if (init?.signal?.aborted) onCallerAbort();
-  const timeout = setTimeout(
-    () => abort(onboardingAbortError("The onboarding request deadline expired.", "TimeoutError")),
-    timeoutMs,
-  );
+  const timeout = setTimeout(() => abort(timeoutError), timeoutMs);
+  const throwIfAbortedOrExpired = (): void => {
+    if (controller.signal.aborted) throw controller.signal.reason;
+    if (performance.now() >= deadlineAt) {
+      abort(timeoutError);
+      throw timeoutError;
+    }
+  };
 
   try {
     if (controller.signal.aborted) return await abortPromise;
+    throwIfAbortedOrExpired();
     const response = await Promise.race([
       stub.fetch(input, { ...init, signal: controller.signal }),
       abortPromise,
     ]);
-    return await Promise.race([
-      bufferOnboardingResponse(response, controller.signal),
+    throwIfAbortedOrExpired();
+    const buffered = await Promise.race([
+      bufferOnboardingResponse(response, controller.signal, throwIfAbortedOrExpired),
       abortPromise,
     ]);
+    throwIfAbortedOrExpired();
+    return buffered;
   } finally {
     clearTimeout(timeout);
     init?.signal?.removeEventListener("abort", onCallerAbort);

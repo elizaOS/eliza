@@ -211,6 +211,54 @@ describe("onboardingFetch — bounded hops fail closed and keep caller signals",
     expect(cancelled).toBe(true);
   });
 
+  test("enforces the wall-clock deadline across immediately-ready empty chunks", async () => {
+    let cancelled = false;
+    let emitted = 0;
+    const stub = {
+      fetch: async () =>
+        new Response(
+          new ReadableStream<Uint8Array>({
+            pull(controller) {
+              if (emitted < 100_000) {
+                emitted += 1;
+                controller.enqueue(new Uint8Array(0));
+                return;
+              }
+              controller.close();
+            },
+            cancel() {
+              cancelled = true;
+            },
+          }),
+        ),
+    };
+    const startedAt = performance.now();
+    await expect(
+      onboardingFetch(stub, "https://onboarding.internal/resolve", undefined, 1),
+    ).rejects.toMatchObject({ name: "TimeoutError" });
+    expect(performance.now() - startedAt).toBeLessThan(1_000);
+    expect(emitted).toBeLessThan(100_000);
+    expect(cancelled).toBe(true);
+  });
+
+  test("does not let a bodyless response win over caller cancellation", async () => {
+    const controller = new AbortController();
+    const reason = new DOMException("caller stopped after headers", "AbortError");
+    const stub = {
+      fetch: async () => {
+        const response = new Response(null, { status: 204 });
+        queueMicrotask(() => controller.abort(reason));
+        return response;
+      },
+    };
+
+    await expect(
+      onboardingFetch(stub, "https://onboarding.internal/resolve", {
+        signal: controller.signal,
+      }),
+    ).rejects.toBe(reason);
+  });
+
   test("clears the deadline and caller listener after a successful bounded body read", async () => {
     let seen: AbortSignal | undefined;
     const controller = new AbortController();
@@ -278,6 +326,23 @@ describe("onboardingFetch — bounded hops fail closed and keep caller signals",
         signal: controller.signal,
       }),
     ).rejects.toBe(reason);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  test("preserves an explicit null caller-abort reason", async () => {
+    const controller = new AbortController();
+    controller.abort(null);
+    const fetch = mock(async () => new Response("{}"));
+
+    let rejection: unknown = Symbol("not rejected");
+    try {
+      await onboardingFetch({ fetch }, "https://onboarding.internal/resolve", {
+        signal: controller.signal,
+      });
+    } catch (reason) {
+      rejection = reason;
+    }
+    expect(rejection).toBeNull();
     expect(fetch).not.toHaveBeenCalled();
   });
 
