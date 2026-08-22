@@ -62,11 +62,11 @@ describe("ElizaClient account replacement transport", () => {
           providerId: "kimi-coding",
           strategy: "priority",
           runtimeEligibility: {
-            chat: { available: true, credentialPath: "direct-api" },
+            chat: { available: true, credentialPath: "account-pool" },
             codingAgent: {
               available: true,
               backend: "opencode",
-              credentialPath: "direct-api",
+              credentialPath: "account-pool",
             },
           },
           accounts: [],
