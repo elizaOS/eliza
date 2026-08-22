@@ -32,6 +32,10 @@ export interface MessageInteractionHostServiceOptions {
   clock?: () => number;
   referenceFactory?: () => string;
   claimTtlMs?: number;
+  validateSignedHostedUrl?: (
+    url: string,
+    request: PrepareMessageInteractionRequest,
+  ) => boolean;
 }
 
 function requiredText(value: string, pathName: string): string {
@@ -51,6 +55,22 @@ function canonicalTimestamp(value: string): number {
     ? parsed
     : Number.NaN;
 }
+
+const DENIED_INTERACTION_CODES = new Set([
+  "INVALID_MESSAGE_INTERACTION_REFERENCE",
+  "MESSAGE_INTERACTION_NOT_FOUND",
+  "MESSAGE_INTERACTION_PROVIDER_RECEIPT_MISMATCH",
+  "INVALID_MESSAGE_INTERACTION_PROVIDER_RECEIPT",
+  "MESSAGE_INTERACTION_BINDING_MISMATCH",
+  "MESSAGE_INTERACTION_REFERENCE_MISMATCH",
+  "MESSAGE_INTERACTION_AUTHORIZATION_REVOKED",
+  "MESSAGE_INTERACTION_EXPIRED",
+  "INVALID_MESSAGE_INTERACTION_RESPONSE",
+  "MESSAGE_INTERACTION_TAMPERED",
+  "MESSAGE_INTERACTION_ALREADY_CONSUMED",
+  "MESSAGE_INTERACTION_ALREADY_COMMITTED",
+  "MESSAGE_INTERACTION_ALREADY_CLAIMED",
+]);
 
 function assertSafeResult(
   value: unknown,
@@ -175,6 +195,7 @@ export class MessageInteractionHostService
     MessageInteractionHostEffectHandler
   >();
   private readonly clock: () => number;
+  private readonly validateSignedHostedUrl?: MessageInteractionHostServiceOptions["validateSignedHostedUrl"];
 
   constructor(
     runtime: IAgentRuntime,
@@ -182,6 +203,7 @@ export class MessageInteractionHostService
   ) {
     super(runtime);
     this.clock = options.clock ?? Date.now;
+    this.validateSignedHostedUrl = options.validateSignedHostedUrl;
     const agentId = requiredText(runtime.agentId, "runtime.agentId");
     if (
       path.basename(agentId) !== agentId ||
@@ -253,23 +275,34 @@ export class MessageInteractionHostService
         code: "MESSAGE_INTERACTION_AGENT_MISMATCH",
       });
     }
+    const signedHostedUrl = request.negotiationContext?.signedHostedUrl;
+    const negotiationContext = {
+      ...request.negotiationContext,
+      ...(signedHostedUrl
+        ? {
+            signedHostedUrlVerified:
+              this.validateSignedHostedUrl?.(signedHostedUrl, request) === true,
+          }
+        : {}),
+    };
     const delivery = negotiateInteractionDelivery(
       request.block,
       request.profile,
       {
-        ...request.negotiationContext,
+        ...negotiationContext,
         callbackBytes: MESSAGE_INTERACTION_CALLBACK_BYTES,
       },
     );
     const created = await this.authority.create({
       ...request,
+      negotiationContext,
       flow: delivery.mode,
     });
     return {
       block: structuredClone(request.block),
       delivery,
       ...(delivery.mode === "signed-hosted"
-        ? { hostedUrl: request.negotiationContext?.signedHostedUrl }
+        ? { hostedUrl: signedHostedUrl }
         : {}),
       callbackData: created.callbackData,
       expiresAt: created.session.expiresAt,
@@ -342,7 +375,7 @@ export class MessageInteractionHostService
           context: { kind: prior.effect.kind },
         });
       }
-      const consumed = await this.authority.consume({
+      const consumed = await this.authority.consumeWithOutcome({
         callbackData: request.callbackData,
         // The original outbound message binding is host-retained state. Provider
         // callbacks authenticate the actor/room/account but cannot reconstruct it.
@@ -383,12 +416,12 @@ export class MessageInteractionHostService
           },
         },
       });
-      if ("status" in consumed && consumed.status === "in_progress") {
+      if (consumed.status === "in_progress") {
         return consumed;
       }
       return {
-        status: prior.consume.state === "completed" ? "replay" : "completed",
-        receipt: hostReceipt(consumed, provider, (text) =>
+        status: consumed.status,
+        receipt: hostReceipt(consumed.receipt, provider, (text) =>
           this.runtime.redactSecrets(text),
         ),
       };
@@ -396,7 +429,18 @@ export class MessageInteractionHostService
       // error-policy:J1 Connector callbacks are an untrusted transport
       // boundary; stable domain failures become explicit denied outcomes.
       if (error instanceof ElizaError) {
-        return { status: "denied", code: error.code, message: error.message };
+        if (DENIED_INTERACTION_CODES.has(error.code)) {
+          return { status: "denied", code: error.code, message: error.message };
+        }
+        this.runtime.reportError("message_interaction.consume", error, {
+          connectorSource: request.bindings.connector.source,
+          connectorAccountId: request.bindings.connector.accountId,
+        });
+        return {
+          status: "unavailable",
+          code: error.code,
+          message: error.message,
+        };
       }
       throw error;
     }

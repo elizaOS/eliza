@@ -99,7 +99,7 @@ export type MessageInteractionHostConsumeOutcome =
 			receipt: MessageInteractionHostReceipt;
 	  }
 	| { status: "in_progress" }
-	| { status: "denied"; code: string; message: string };
+	| { status: "denied" | "unavailable"; code: string; message: string };
 
 export interface ConsumeMessageInteractionRequest {
 	callbackData: string;

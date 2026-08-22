@@ -60,6 +60,7 @@ function runtime(): IAgentRuntime {
     agentId: "agent-a",
     logger: { debug() {}, info() {}, warn() {}, error() {} },
     redactSecrets: (text: string) => text,
+    reportError() {},
   } as never;
 }
 
@@ -152,7 +153,12 @@ describe("MessageInteractionHostService", () => {
   });
 
   it("returns a validated hosted URL without retained authority fields", async () => {
-    const { service } = fixture();
+    const validatingService = new MessageInteractionHostService(runtime(), {
+      store: new InMemoryMessageInteractionSessionStore(),
+      clock: () => START,
+      referenceFactory: () => "0123456789abcdef0123456789abcdef",
+      validateSignedHostedUrl: (url) => url === "https://example.test/form/a",
+    });
     const hostedProfile = createConnectorInteractionCapabilityProfile({
       template: {
         ...BUTTON_INTERACTION_PROFILE,
@@ -170,7 +176,7 @@ describe("MessageInteractionHostService", () => {
       targetKind: "room",
       targetId: "room-a",
     });
-    const prepared = await service.prepare({
+    const prepared = await validatingService.prepare({
       block,
       profile: hostedProfile,
       bindings,
@@ -318,7 +324,7 @@ describe("MessageInteractionHostService", () => {
     };
 
     await expect(fixtureValue.service.consume(request)).resolves.toMatchObject({
-      status: "denied",
+      status: "unavailable",
       code: "MESSAGE_INTERACTION_EFFECT_HANDLER_UNAVAILABLE",
     });
     fixtureValue.setNow(START + 101);
@@ -372,7 +378,7 @@ describe("MessageInteractionHostService", () => {
         providerReceipt: unsafe.providerReceipt(),
       }),
     ).resolves.toMatchObject({
-      status: "denied",
+      status: "unavailable",
       code: "MESSAGE_INTERACTION_SECRET_FORBIDDEN",
     });
   });

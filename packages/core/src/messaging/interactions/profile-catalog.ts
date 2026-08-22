@@ -142,6 +142,7 @@ export type FirstPartyInteractionProfileFamily =
 
 export interface FirstPartyInteractionConnectorAuditEntry {
 	plugin: string;
+	registrationSite: string;
 	source: string;
 	targetKind: string;
 	profileFamily: FirstPartyInteractionProfileFamily;
@@ -155,6 +156,7 @@ export interface FirstPartyInteractionConnectorAuditEntry {
 export const FIRST_PARTY_INTERACTION_CONNECTOR_AUDIT = [
 	{
 		plugin: "plugin-discord",
+		registrationSite: "plugin-discord/service.ts",
 		source: "discord",
 		targetKind: "channel",
 		profileFamily: "button-native",
@@ -162,6 +164,7 @@ export const FIRST_PARTY_INTERACTION_CONNECTOR_AUDIT = [
 	},
 	{
 		plugin: "plugin-google-workspace",
+		registrationSite: "plugin-google-workspace/src/chat/service.ts",
 		source: "gmail",
 		targetKind: "email",
 		profileFamily: "conversational",
@@ -169,6 +172,7 @@ export const FIRST_PARTY_INTERACTION_CONNECTOR_AUDIT = [
 	},
 	{
 		plugin: "plugin-google-workspace",
+		registrationSite: "plugin-google-workspace/src/chat/service.ts",
 		source: "google-chat",
 		targetKind: "room",
 		profileFamily: "conversational",
@@ -176,6 +180,7 @@ export const FIRST_PARTY_INTERACTION_CONNECTOR_AUDIT = [
 	},
 	{
 		plugin: "plugin-imessage",
+		registrationSite: "plugin-imessage/src/service.ts",
 		source: "imessage",
 		targetKind: "user",
 		profileFamily: "conversational",
@@ -183,6 +188,7 @@ export const FIRST_PARTY_INTERACTION_CONNECTOR_AUDIT = [
 	},
 	{
 		plugin: "plugin-instagram",
+		registrationSite: "plugin-instagram/src/service.ts",
 		source: "instagram",
 		targetKind: "thread",
 		profileFamily: "conversational",
@@ -190,6 +196,7 @@ export const FIRST_PARTY_INTERACTION_CONNECTOR_AUDIT = [
 	},
 	{
 		plugin: "plugin-matrix",
+		registrationSite: "plugin-matrix/src/service.ts",
 		source: "matrix",
 		targetKind: "room",
 		profileFamily: "conversational",
@@ -197,6 +204,7 @@ export const FIRST_PARTY_INTERACTION_CONNECTOR_AUDIT = [
 	},
 	{
 		plugin: "plugin-slack",
+		registrationSite: "plugin-slack/src/service.ts",
 		source: "slack",
 		targetKind: "channel",
 		profileFamily: "conversational",
@@ -204,6 +212,7 @@ export const FIRST_PARTY_INTERACTION_CONNECTOR_AUDIT = [
 	},
 	{
 		plugin: "plugin-telegram",
+		registrationSite: "plugin-telegram/src/service.ts",
 		source: "telegram",
 		targetKind: "room",
 		profileFamily: "button-native",
@@ -211,6 +220,7 @@ export const FIRST_PARTY_INTERACTION_CONNECTOR_AUDIT = [
 	},
 	{
 		plugin: "plugin-wechat",
+		registrationSite: "plugin-wechat/src/index.ts",
 		source: "wechat",
 		targetKind: "room",
 		profileFamily: "conversational",
@@ -218,6 +228,7 @@ export const FIRST_PARTY_INTERACTION_CONNECTOR_AUDIT = [
 	},
 	{
 		plugin: "plugin-whatsapp",
+		registrationSite: "plugin-whatsapp/src/runtime-service.ts",
 		source: "whatsapp",
 		targetKind: "phone",
 		profileFamily: "conversational",
@@ -225,6 +236,7 @@ export const FIRST_PARTY_INTERACTION_CONNECTOR_AUDIT = [
 	},
 	{
 		plugin: "plugin-x",
+		registrationSite: "plugin-x/src/services/x.service.ts",
 		source: "x",
 		targetKind: "user",
 		profileFamily: "conversational",

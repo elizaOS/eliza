@@ -164,6 +164,7 @@ describe("connector interaction profiles", () => {
 		const rich = profile(RICH_INTERACTION_PROFILE);
 		const result = negotiateInteractionDelivery(form, rich, {
 			signedHostedUrl: `https://example.test/${"a".repeat(8_200)}`,
+			signedHostedUrlVerified: true,
 			requiresEdit: true,
 			requiresThread: true,
 			now: 2_000,
@@ -178,6 +179,44 @@ describe("connector interaction profiles", () => {
 				signedHostedUrl: `https://example.test/${"x".repeat(3_000)}`,
 			}),
 		).toMatchObject({ mode: "native", limitations: [] });
+	});
+
+	it("rejects an oversized conversational payload instead of delegating truncation", () => {
+		const constrained = structuredClone(
+			profile(CONVERSATIONAL_INTERACTION_PROFILE),
+		);
+		constrained.limits.text.maxMessageBytes = 64;
+		expect(() =>
+			negotiateInteractionDelivery(
+				{ ...choice, options: [{ value: "v", label: "✅".repeat(80) }] },
+				constrained,
+			),
+		).toThrowError(
+			expect.objectContaining({
+				code: "INTERACTION_DELIVERY_UNAVAILABLE",
+				context: expect.objectContaining({
+					limitations: expect.arrayContaining(["message bytes"]),
+				}),
+			}),
+		);
+	});
+
+	it("requires host verification before accepting a signed hosted URL", () => {
+		const signedOnly = structuredClone(profile(RICH_INTERACTION_PROFILE));
+		signedOnly.blocks.choice.modes = ["signed-hosted"];
+		expect(() =>
+			negotiateInteractionDelivery(choice, signedOnly, {
+				signedHostedUrl: "https://example.test/form/a",
+			}),
+		).toThrowError(
+			expect.objectContaining({ code: "INTERACTION_DELIVERY_UNAVAILABLE" }),
+		);
+		expect(
+			negotiateInteractionDelivery(choice, signedOnly, {
+				signedHostedUrl: "https://example.test/form/a",
+				signedHostedUrlVerified: true,
+			}),
+		).toMatchObject({ mode: "signed-hosted" });
 	});
 });
 
@@ -347,6 +386,29 @@ describe("message interaction session authority", () => {
 		expect(execute).toHaveBeenCalledTimes(1);
 	});
 
+	it("reports replay from the atomic claim outcome", async () => {
+		const { authority, callbackData } = await created({
+			preset: { value: "approve" },
+		});
+		const executor = { execute: async () => receipt("replay-a") };
+		await expect(
+			authority.consumeWithOutcome({
+				callbackData,
+				bindings,
+				replayKey: "replay-a",
+				executor,
+			}),
+		).resolves.toMatchObject({ status: "completed" });
+		await expect(
+			authority.consumeWithOutcome({
+				callbackData,
+				bindings,
+				replayKey: "replay-a",
+				executor,
+			}),
+		).resolves.toMatchObject({ status: "replay" });
+	});
+
 	it("fails closed after an effect succeeds but its durable completion is lost", async () => {
 		let now = Date.parse("2026-08-21T00:00:00.000Z");
 		const backing = new InMemoryMessageInteractionSessionStore();
@@ -357,6 +419,8 @@ describe("message interaction session authority", () => {
 			get: backing.get.bind(backing),
 			claimIfCurrent: backing.claimIfCurrent.bind(backing),
 			commitIfClaimed: backing.commitIfClaimed.bind(backing),
+			listCommitted: backing.listCommitted.bind(backing),
+			reconcileCommitted: backing.reconcileCommitted.bind(backing),
 			revokeAuthorization: backing.revokeAuthorization.bind(backing),
 			deleteExpired: backing.deleteExpired.bind(backing),
 			completeIfClaimed: async (context) => {
@@ -492,6 +556,8 @@ describe("message interaction session authority", () => {
 					return backing.commitIfClaimed(context);
 				},
 				completeIfClaimed: backing.completeIfClaimed.bind(backing),
+				listCommitted: backing.listCommitted.bind(backing),
+				reconcileCommitted: backing.reconcileCommitted.bind(backing),
 				revokeAuthorization: backing.revokeAuthorization.bind(backing),
 				deleteExpired: backing.deleteExpired.bind(backing),
 			};

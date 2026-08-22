@@ -421,6 +421,8 @@ export interface InteractionNegotiationContext {
 	callbackBytes?: number;
 	buttonsPerRow?: number;
 	signedHostedUrl?: string;
+	/** True only after the owning host verifies this URL's signature and authority. */
+	signedHostedUrlVerified?: boolean;
 	requiresEdit?: boolean;
 	sourceMessageCreatedAt?: number;
 	now?: number;
@@ -586,10 +588,19 @@ function nativeBlockLimitations(
 		)
 			issues.push("edit window expired");
 	}
-	const visible = JSON.stringify(block);
-	if (utf8Bytes(visible) > limits.text.maxMessageBytes)
-		issues.push("message bytes");
 	return [...new Set(issues)].sort();
+}
+
+function conversationalBlockLimitations(
+	block: InteractionBlock,
+	profile: ConnectorInteractionCapabilityProfile,
+): string[] {
+	// Conversational renderers receive the complete canonical block. Bounding its
+	// deterministic wire representation proves they never have to truncate an
+	// accepted payload to fit the connector's message limit.
+	return utf8Bytes(stableStringify(block)) > profile.limits.text.maxMessageBytes
+		? ["message bytes"]
+		: [];
 }
 
 function signedHostedLimitations(
@@ -598,6 +609,20 @@ function signedHostedLimitations(
 ): string[] {
 	if (!profile.limits.links.supported) return ["links unsupported"];
 	if (!context.signedHostedUrl) return ["signed hosted URL unavailable"];
+	if (!context.signedHostedUrlVerified) return ["signed hosted URL unverified"];
+	try {
+		const parsed = new URL(context.signedHostedUrl);
+		if (
+			parsed.protocol !== "https:" ||
+			parsed.username ||
+			parsed.password ||
+			parsed.hash
+		)
+			return ["signed hosted URL unsafe"];
+	} catch {
+		// error-policy:J3 malformed URLs are explicit negotiation failures.
+		return ["signed hosted URL unsafe"];
+	}
 	if (utf8Bytes(context.signedHostedUrl) > profile.limits.links.maxUrlBytes)
 		return ["link URL bytes"];
 	return [];
@@ -646,7 +671,16 @@ export function negotiateInteractionDelivery(
 			for (const issue of hostedIssues) fallbackLimitations.add(issue);
 			continue;
 		}
-		if (mode !== "sensitive-request") {
+		if (mode === "conversational") {
+			const conversationalIssues = conversationalBlockLimitations(
+				block,
+				profile,
+			);
+			if (conversationalIssues.length > 0) {
+				for (const issue of conversationalIssues)
+					fallbackLimitations.add(issue);
+				continue;
+			}
 			return {
 				mode,
 				reason: modes.includes("native")
@@ -658,7 +692,11 @@ export function negotiateInteractionDelivery(
 	}
 	throw new ElizaError("No safe interaction delivery mode was negotiated.", {
 		code: "INTERACTION_DELIVERY_UNAVAILABLE",
-		context: { kind: block.kind, profileId: profile.profileId },
+		context: {
+			kind: block.kind,
+			profileId: profile.profileId,
+			limitations: [...fallbackLimitations].sort(),
+		},
 	});
 }
 

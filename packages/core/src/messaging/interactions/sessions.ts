@@ -190,6 +190,13 @@ export interface MessageInteractionCommitContext {
 	now: number;
 }
 
+export interface MessageInteractionReconcileContext {
+	reference: string;
+	replayKey: string;
+	receipt: MessageInteractionReceipt;
+	now: number;
+}
+
 /**
  * Storage transaction boundary. Implementations must make every method atomic;
  * a distributed implementation maps these operations to one row transaction.
@@ -205,6 +212,15 @@ export interface MessageInteractionSessionStore {
 	): Promise<MessageInteractionSession>;
 	completeIfClaimed(
 		context: MessageInteractionCompleteContext,
+	): Promise<MessageInteractionSession>;
+	/** Discover committed outcomes that require provider/outbox reconciliation. */
+	listCommitted(args: {
+		committedBefore: number;
+		limit: number;
+	}): Promise<MessageInteractionSession[]>;
+	/** Retain a verified external outcome without re-executing its effect. */
+	reconcileCommitted(
+		context: MessageInteractionReconcileContext,
 	): Promise<MessageInteractionSession>;
 	revokeAuthorization(args: {
 		reference: string;
@@ -226,6 +242,10 @@ export interface MessageInteractionEffectExecutor {
 		session: MessageInteractionSession;
 	}): Promise<MessageInteractionReceipt>;
 }
+
+export type MessageInteractionAuthorityConsumeOutcome =
+	| { status: "completed" | "replay"; receipt: MessageInteractionReceipt }
+	| { status: "in_progress" };
 
 function fail(
 	code: string,
@@ -738,6 +758,29 @@ export function applyMessageInteractionCompletion(
 	return session;
 }
 
+export function applyMessageInteractionReconciliation(
+	sessionValue: MessageInteractionSession,
+	context: MessageInteractionReconcileContext,
+): MessageInteractionSession {
+	const session = cloneSession(sessionValue);
+	if (session.consume.state !== "committed") {
+		return fail(
+			"MESSAGE_INTERACTION_NOT_COMMITTED",
+			"Only a committed ambiguous interaction can be reconciled.",
+		);
+	}
+	if (session.consume.replayKey !== context.replayKey) {
+		return fail(
+			"MESSAGE_INTERACTION_REPLAY_KEY_MISMATCH",
+			"Reconciliation receipt belongs to another replay key.",
+		);
+	}
+	return applyMessageInteractionCompletion(session, {
+		...context,
+		claimId: session.consume.claimId,
+	});
+}
+
 /** Durably linearize one effect before crossing the external side-effect boundary. */
 export function applyMessageInteractionCommit(
 	sessionValue: MessageInteractionSession,
@@ -875,6 +918,46 @@ export class InMemoryMessageInteractionSessionStore
 		});
 	}
 
+	async listCommitted(args: {
+		committedBefore: number;
+		limit: number;
+	}): Promise<MessageInteractionSession[]> {
+		validClock(args.committedBefore);
+		if (!Number.isSafeInteger(args.limit) || args.limit < 1) {
+			return fail(
+				"INVALID_MESSAGE_INTERACTION_RECONCILIATION_LIMIT",
+				"Reconciliation limit must be a positive safe integer.",
+			);
+		}
+		return this.atomic(() =>
+			[...this.sessions.values()]
+				.filter(
+					(session) =>
+						session.consume.state === "committed" &&
+						Date.parse(session.consume.committedAt) <= args.committedBefore,
+				)
+				.sort((a, b) => a.reference.localeCompare(b.reference))
+				.slice(0, args.limit)
+				.map(cloneSession),
+		);
+	}
+
+	async reconcileCommitted(
+		context: MessageInteractionReconcileContext,
+	): Promise<MessageInteractionSession> {
+		return this.atomic(() => {
+			const current = this.sessions.get(context.reference);
+			if (!current)
+				return fail(
+					"MESSAGE_INTERACTION_NOT_FOUND",
+					"Interaction session was not found.",
+				);
+			const completed = applyMessageInteractionReconciliation(current, context);
+			this.sessions.set(context.reference, cloneSession(completed));
+			return completed;
+		});
+	}
+
 	async commitIfClaimed(
 		context: MessageInteractionCommitContext,
 	): Promise<MessageInteractionSession> {
@@ -918,11 +1001,13 @@ export class InMemoryMessageInteractionSessionStore
 		return this.atomic(() => {
 			let deleted = 0;
 			for (const [reference, session] of this.sessions) {
-				if (
-					Date.parse(session.expiresAt) <= before &&
-					session.consume.state !== "committed" &&
-					session.consume.state !== "completed"
-				) {
+				const terminalAt =
+					session.consume.state === "completed"
+						? Date.parse(session.consume.completedAt)
+						: session.consume.state === "committed"
+							? Date.parse(session.consume.committedAt)
+							: Date.parse(session.expiresAt);
+				if (terminalAt <= before) {
 					this.sessions.delete(reference);
 					deleted += 1;
 				}
@@ -1087,13 +1172,13 @@ export class MessageInteractionSessionAuthority {
 		};
 	}
 
-	async consume(args: {
+	private async consumeOutcome(args: {
 		callbackData: string;
 		bindings: MessageInteractionBindings;
 		replayKey: string;
 		response?: MessageInteractionResponse;
 		executor: MessageInteractionEffectExecutor;
-	}): Promise<MessageInteractionReceipt | { status: "in_progress" }> {
+	}): Promise<MessageInteractionAuthorityConsumeOutcome> {
 		const reference = decodeMessageInteractionCallback(args.callbackData);
 		if (!reference)
 			return fail(
@@ -1112,7 +1197,9 @@ export class MessageInteractionSessionAuthority {
 			now,
 			claimTtlMs: this.options.claimTtlMs ?? 30_000,
 		});
-		if (claim.status === "replay") return claim.receipt;
+		if (claim.status === "replay") {
+			return { status: "replay", receipt: claim.receipt };
+		}
 		if (claim.status === "in_progress") return { status: "in_progress" };
 		if (claim.session.consume.state !== "claimed")
 			return fail(
@@ -1148,6 +1235,29 @@ export class MessageInteractionSessionAuthority {
 				"MESSAGE_INTERACTION_STORE_PROTOCOL",
 				"Store did not retain the completion receipt.",
 			);
-		return completed.consume.receipt;
+		return { status: "completed", receipt: completed.consume.receipt };
+	}
+
+	/** Return the atomic claim disposition together with any retained receipt. */
+	async consumeWithOutcome(args: {
+		callbackData: string;
+		bindings: MessageInteractionBindings;
+		replayKey: string;
+		response?: MessageInteractionResponse;
+		executor: MessageInteractionEffectExecutor;
+	}): Promise<MessageInteractionAuthorityConsumeOutcome> {
+		return this.consumeOutcome(args);
+	}
+
+	/** Backward-compatible receipt API for callers that do not classify replay. */
+	async consume(args: {
+		callbackData: string;
+		bindings: MessageInteractionBindings;
+		replayKey: string;
+		response?: MessageInteractionResponse;
+		executor: MessageInteractionEffectExecutor;
+	}): Promise<MessageInteractionReceipt | { status: "in_progress" }> {
+		const outcome = await this.consumeOutcome(args);
+		return outcome.status === "in_progress" ? outcome : outcome.receipt;
 	}
 }
