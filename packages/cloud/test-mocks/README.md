@@ -2,6 +2,29 @@
 
 Stateful, in-process mocks of third-party cloud APIs used by Eliza Cloud. Designed for use in unit / integration tests and local development without hitting real provider APIs.
 
+## Plugin registry mock
+
+`@elizaos/cloud-test-mocks/registry` starts a real loopback HTTP marketplace
+and npm-compatible package upstream. It is designed for the production
+`RegistryClient` and plugin installer, not a substitute client. The mock serves
+generated registry metadata with flat-index fallback, conditional ETags and
+304 responses, npm packuments, and deterministic tar artifacts with SHA-512
+integrity metadata.
+
+The controller exposes a virtual clock, resettable seeded state, queued HTTP,
+malformed, delay, stall, redirect, and artifact faults, plus redacted request
+observations. Reset advances a generation fence so a request admitted before
+reset cannot publish into the new world; stale request observations remain
+separately inspectable.
+
+```ts
+import { startRegistryMock } from "@elizaos/cloud-test-mocks/registry";
+
+const upstream = await startRegistryMock({ seed: "scenario-a" });
+// Construct the real RegistryClient and installer with upstream.urls.
+await upstream.stop();
+```
+
 ## Managed provider contract harness
 
 `@elizaos/cloud-test-mocks/provider-contract` provides a reusable real-HTTP

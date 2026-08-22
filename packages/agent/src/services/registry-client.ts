@@ -7,7 +7,6 @@
  * @module services/registry-client
  */
 
-import fs from "node:fs/promises";
 import path from "node:path";
 import { logger } from "@elizaos/core";
 import { loadElizaConfig, saveElizaConfig } from "../config/config.ts";
@@ -29,10 +28,6 @@ import {
   applyNodeModulePlugins,
 } from "./registry-client-local.ts";
 import {
-  fetchFromNetwork as fetchRegistryFromNetwork,
-  isExpectedRegistryNetworkFallback,
-} from "./registry-client-network.ts";
-import {
   getPluginInfoFromRegistry,
   normalizePluginLookupAlias,
   scoreEntries,
@@ -41,6 +36,13 @@ import {
   toPluginListItem,
   toSearchResults,
 } from "./registry-client-queries.ts";
+import {
+  createFileRegistryCacheStore,
+  type RegistryCacheRecord,
+  type RegistryCacheStore,
+  RegistryClient,
+  type RegistryClientOptions,
+} from "./registry-client-runtime.ts";
 import type {
   RegistryAppInfo,
   RegistryPluginInfo,
@@ -55,7 +57,6 @@ import type {
 const GENERATED_REGISTRY_URL =
   "https://plugins.eliza.app/generated-registry.json";
 const INDEX_REGISTRY_URL = "https://plugins.eliza.app/index.json";
-const CACHE_TTL_MS = 3_600_000; // 1 hour
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -70,98 +71,17 @@ export type {
   RegistrySearchResult,
 } from "./registry-client-types.ts";
 
-// ---------------------------------------------------------------------------
-// Cache state
-// ---------------------------------------------------------------------------
-
-let memoryCache: {
-  plugins: Map<string, RegistryPluginInfo>;
-  fetchedAt: number;
-  ttlMs?: number;
-} | null = null;
-let registryLoadPromise: Promise<Map<string, RegistryPluginInfo>> | null = null;
-/**
- * Bumped every time the registry caches are invalidated. A load that started
- * before the bump carries a pre-invalidation snapshot, so it must not publish
- * that snapshot (or stamp a fresh TTL over it) once it finally resolves.
- */
-let registryGeneration = 0;
-
-const LOCAL_FALLBACK_CACHE_TTL_MS = 5 * 60_000;
-
-// ---------------------------------------------------------------------------
-// Network fetch + parse (inlined wire types — not exported)
-// ---------------------------------------------------------------------------
-
-async function fetchFromNetwork(): Promise<Map<string, RegistryPluginInfo>> {
-  try {
-    return await fetchRegistryFromNetwork({
-      generatedRegistryUrl: GENERATED_REGISTRY_URL,
-      indexRegistryUrl: INDEX_REGISTRY_URL,
-      applyLocalWorkspaceApps,
-      applyNodeModulePlugins,
-      sanitizeSandbox,
-    });
-  } catch (err) {
-    if (!isExpectedRegistryNetworkFallback(err)) {
-      logger.warn(
-        `[registry-client] generated-registry/index fallback failed: ${String(err)}`,
-      );
-    }
-    throw err;
-  }
-}
-
-async function buildLocalRegistrySnapshot(): Promise<
-  Map<string, RegistryPluginInfo>
-> {
-  const plugins = new Map<string, RegistryPluginInfo>();
-  await applyLocalWorkspaceApps(plugins);
-  await applyNodeModulePlugins(plugins);
-  return plugins;
-}
-
-// ---------------------------------------------------------------------------
-// File cache
-// ---------------------------------------------------------------------------
-
 function cacheFilePath(): string {
   return path.join(resolveStateDir(), "cache", "registry.json");
 }
 
-async function readFileCache(): Promise<Map<
-  string,
-  RegistryPluginInfo
-> | null> {
-  try {
-    const raw = await fs.readFile(cacheFilePath(), "utf-8");
-    const parsed = JSON.parse(raw) as {
-      fetchedAt: number;
-      plugins: Array<[string, RegistryPluginInfo]>;
-    };
-    if (typeof parsed.fetchedAt !== "number" || !Array.isArray(parsed.plugins))
-      return null;
-    if (Date.now() - parsed.fetchedAt > CACHE_TTL_MS) return null;
-    return new Map(parsed.plugins);
-  } catch {
-    return null;
-  }
-}
-
-async function writeFileCache(
-  plugins: Map<string, RegistryPluginInfo>,
-): Promise<void> {
-  const filePath = cacheFilePath();
-  await fs.mkdir(path.dirname(filePath), { recursive: true });
-  await fs.writeFile(
-    filePath,
-    JSON.stringify({
-      fetchedAt: Date.now(),
-      plugins: [...plugins.entries()],
-    }),
-    "utf-8",
-  );
-}
+export {
+  createFileRegistryCacheStore,
+  type RegistryCacheRecord,
+  type RegistryCacheStore,
+  RegistryClient,
+  type RegistryClientOptions,
+};
 
 // ---------------------------------------------------------------------------
 // Multi-endpoint management
@@ -200,7 +120,7 @@ export function addRegistryEndpoint(label: string, url: string): void {
     { label, url: normalised, enabled: true },
   ];
   saveElizaConfig(cfg);
-  memoryCache = null;
+  defaultRegistryClient.invalidateMemory();
 }
 
 /** Remove a custom registry endpoint by URL. Cannot remove the default. */
@@ -220,7 +140,7 @@ export function removeRegistryEndpoint(url: string): void {
   if (!cfg.plugins) cfg.plugins = {};
   cfg.plugins.registryEndpoints = updated;
   saveElizaConfig(cfg);
-  memoryCache = null;
+  defaultRegistryClient.invalidateMemory();
 }
 
 /** Toggle an endpoint's enabled status. */
@@ -234,12 +154,23 @@ export function toggleRegistryEndpoint(url: string, enabled: boolean): void {
   if (!cfg.plugins) cfg.plugins = {};
   cfg.plugins.registryEndpoints = endpoints;
   saveElizaConfig(cfg);
-  memoryCache = null;
+  defaultRegistryClient.invalidateMemory();
 }
 
 export function isDefaultEndpoint(url: string): boolean {
   return isDefaultEndpointForUrl(url, GENERATED_REGISTRY_URL);
 }
+
+const defaultRegistryClient = new RegistryClient({
+  generatedRegistryUrl: GENERATED_REGISTRY_URL,
+  indexRegistryUrl: INDEX_REGISTRY_URL,
+  cacheStore: createFileRegistryCacheStore(cacheFilePath),
+  applyLocalWorkspaceApps,
+  applyNodeModulePlugins,
+  sanitizeSandbox,
+  getConfiguredEndpoints,
+  mergeCustomEndpoints,
+});
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -249,100 +180,14 @@ export function isDefaultEndpoint(url: string): boolean {
 export async function getRegistryPlugins(): Promise<
   Map<string, RegistryPluginInfo>
 > {
-  if (
-    memoryCache &&
-    Date.now() - memoryCache.fetchedAt < (memoryCache.ttlMs ?? CACHE_TTL_MS)
-  ) {
-    return memoryCache.plugins;
-  }
-
-  const fromFile = await readFileCache();
-  if (fromFile) {
-    await applyLocalWorkspaceApps(fromFile);
-    await applyNodeModulePlugins(fromFile);
-    await mergeCustomEndpoints(fromFile, getConfiguredEndpoints());
-    memoryCache = { plugins: fromFile, fetchedAt: Date.now() };
-    return fromFile;
-  }
-
-  if (registryLoadPromise) {
-    return registryLoadPromise;
-  }
-
-  const generation = registryGeneration;
-  const load: Promise<Map<string, RegistryPluginInfo>> = (async () => {
-    logger.info("[registry-client] Fetching plugin registry...");
-    let plugins: Map<string, RegistryPluginInfo>;
-    let usedLocalFallback = false;
-    try {
-      plugins = await fetchFromNetwork();
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      if (isExpectedRegistryNetworkFallback(err)) {
-        logger.debug(
-          `[registry-client] Remote registry unavailable; using local registry discovery: ${message}`,
-        );
-      } else {
-        logger.warn(
-          `[registry-client] Falling back to local registry discovery: ${message}`,
-        );
-      }
-      plugins = await buildLocalRegistrySnapshot();
-      usedLocalFallback = true;
-    }
-    await mergeCustomEndpoints(plugins, getConfiguredEndpoints());
-    logger.info(`[registry-client] Loaded ${plugins.size} plugins`);
-
-    // The caches were invalidated after this load started, so this snapshot is
-    // already known to be stale. Hand it to the callers that are awaiting it,
-    // but never publish it.
-    if (generation !== registryGeneration) return plugins;
-
-    memoryCache = {
-      plugins,
-      fetchedAt: Date.now(),
-      ttlMs: usedLocalFallback ? LOCAL_FALLBACK_CACHE_TTL_MS : CACHE_TTL_MS,
-    };
-    if (!usedLocalFallback) {
-      writeFileCache(plugins).catch((err) =>
-        logger.warn(`[registry-client] Cache write failed: ${String(err)}`),
-      );
-    }
-
-    return plugins;
-  })().finally(() => {
-    // Only clear the slot if it is still this load's; an invalidation may have
-    // already replaced it with a newer one.
-    if (registryLoadPromise === load) registryLoadPromise = null;
-  });
-  registryLoadPromise = load;
-
-  return load;
-}
-
-/**
- * Drop every cached registry snapshot, including one that is still loading.
- * Clearing `memoryCache` alone is not enough: an in-flight load returns its
- * pre-invalidation snapshot to the refresher and then republishes it with a
- * fresh TTL, which suppresses later refreshes for the full cache lifetime.
- */
-function invalidateRegistryCaches(): void {
-  memoryCache = null;
-  registryLoadPromise = null;
-  registryGeneration += 1;
+  return defaultRegistryClient.getRegistryPlugins();
 }
 
 /** Force-refresh from network. */
 export async function refreshRegistry(): Promise<
   Map<string, RegistryPluginInfo>
 > {
-  invalidateRegistryCaches();
-  try {
-    await fs.unlink(cacheFilePath());
-  } catch {
-    // Missing cache files are fine; the network refresh below repopulates it.
-  }
-  return getRegistryPlugins();
+  return defaultRegistryClient.refreshRegistry();
 }
 
 /** Look up a plugin by name (exact → @elizaos/ prefix → bare suffix). */

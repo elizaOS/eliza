@@ -32,16 +32,35 @@ vi.mock("./registry-client-local.ts", () => ({
 }));
 
 vi.mock("./registry-client-network.ts", () => ({
-  fetchFromNetwork: async () => {
+  fetchRegistrySnapshot: async () => {
     fetchCalls += 1;
-    return fetchImpl();
+    return {
+      sourceUrl: "https://plugins.eliza.app/generated-registry.json",
+      etag: '"fixture"',
+      plugins: await fetchImpl(),
+      notModified: false,
+    };
   },
   isExpectedRegistryNetworkFallback: () => true,
 }));
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-const PAYLOAD_A = () => new Map([["plugin-a", { name: "plugin-a" }]]);
-const PAYLOAD_B = () => new Map([["plugin-b", { name: "plugin-b" }]]);
+const plugin = (name: string) => ({
+  name,
+  gitRepo: `fixture/${name}`,
+  gitUrl: `https://github.com/fixture/${name}.git`,
+  directory: null,
+  description: "fixture",
+  homepage: null,
+  topics: [],
+  stars: 0,
+  language: "TypeScript",
+  npm: { package: name, v0Version: null, v1Version: null, v2Version: "1.0.0" },
+  git: { v0Branch: null, v1Branch: null, v2Branch: "main" },
+  supports: { v0: false, v1: false, v2: true },
+});
+const PAYLOAD_A = () => new Map([["plugin-a", plugin("plugin-a")]]);
+const PAYLOAD_B = () => new Map([["plugin-b", plugin("plugin-b")]]);
 
 async function loadModule() {
   vi.resetModules();
@@ -112,7 +131,9 @@ describe("refreshRegistry", () => {
       path.join(stateDir, "cache", "registry.json"),
       JSON.stringify({
         fetchedAt: Date.now(),
-        plugins: [["plugin-file", { name: "plugin-file" }]],
+        sourceUrl: "https://plugins.eliza.app/generated-registry.json",
+        etag: '"fixture"',
+        plugins: [["plugin-file", plugin("plugin-file")]],
       }),
     );
     const { getRegistryPlugins } = await loadModule();

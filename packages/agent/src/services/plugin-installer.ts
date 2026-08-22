@@ -132,6 +132,19 @@ export interface PluginInstallOptions {
   expected?: PluginInstallExpectation;
 }
 
+/**
+ * Instance-local boundaries used by Cloud synthetic worlds. Production callers
+ * omit this object and retain the canonical registry plus detected package
+ * manager; a custom package registry is restricted to HTTPS or literal
+ * loopback HTTP and is passed as an argument, never process-global npm config.
+ */
+export interface PluginInstallerRuntime {
+  getPluginInfo: typeof getPluginInfo;
+  packageRegistryUrl?: string;
+  packageManager?: "bun" | "npm";
+  packageManagerTimeoutMs?: number;
+}
+
 export type InstallProvenance =
   | {
       source: "local";
@@ -424,8 +437,23 @@ export function installPlugin(
   onProgress?: ProgressCallback,
   requestedVersionOrOptions?: string | PluginInstallOptions,
 ): Promise<InstallResult> {
+  return installPluginWithRuntime(
+    pluginName,
+    onProgress,
+    requestedVersionOrOptions,
+    { getPluginInfo },
+  );
+}
+
+/** Exercise the production installer with an isolated registry/runtime. */
+export function installPluginWithRuntime(
+  pluginName: string,
+  onProgress: ProgressCallback | undefined,
+  requestedVersionOrOptions: string | PluginInstallOptions | undefined,
+  runtime: PluginInstallerRuntime,
+): Promise<InstallResult> {
   return serialise(() =>
-    _installPlugin(pluginName, onProgress, requestedVersionOrOptions),
+    _installPlugin(pluginName, onProgress, requestedVersionOrOptions, runtime),
   );
 }
 
@@ -433,13 +461,14 @@ async function _installPlugin(
   pluginName: string,
   onProgress?: ProgressCallback,
   requestedVersionOrOptions?: string | PluginInstallOptions,
+  runtime: PluginInstallerRuntime = { getPluginInfo },
 ): Promise<InstallResult> {
   const emit = (phase: InstallPhase, message: string) =>
     onProgress?.({ phase, pluginName, message });
 
   emit("resolving", `Looking up ${pluginName} in registry...`);
 
-  const info = await getPluginInfo(pluginName);
+  const info = await runtime.getPluginInfo(pluginName);
   if (!info) {
     return {
       success: false,
@@ -454,8 +483,16 @@ async function _installPlugin(
   // Resolve and approval-check the canonical npm package before any install
   // directory is created or child process can execute.
   let plan: PluginInstallPlan;
+  let packageRegistryUrl: string | undefined;
+  let packageManagerTimeoutMs: number | undefined;
   try {
     plan = resolvePluginInstallPlan(info, requestedVersionOrOptions);
+    packageRegistryUrl = runtime.packageRegistryUrl
+      ? validatePackageRegistryUrl(runtime.packageRegistryUrl)
+      : undefined;
+    packageManagerTimeoutMs = validatePackageManagerTimeout(
+      runtime.packageManagerTimeoutMs,
+    );
   } catch (err) {
     // error-policy:J1 installPlugin translates validation failures into its
     // established structured result boundary.
@@ -495,7 +532,7 @@ async function _installPlugin(
   let installedVersion = npmVersion;
   let installSource: "npm" | "path" = "npm";
   let provenance: InstallProvenance | undefined;
-  const pm = await detectPackageManager();
+  const pm = runtime.packageManager ?? (await detectPackageManager());
   let installed = false;
 
   // Approval-bound installs intentionally use the exact npm package/version.
@@ -544,6 +581,8 @@ async function _installPlugin(
         canonicalName,
         npmVersion,
         targetDir,
+        packageRegistryUrl,
+        packageManagerTimeoutMs,
       );
       installedVersion = await readInstalledVersion(
         targetDir,
@@ -575,8 +614,13 @@ async function _installPlugin(
         `[plugin-installer] npm failed for ${canonicalName}: ${npmErr instanceof Error ? npmErr.message : String(npmErr)}`,
       );
       await cleanupInstallTarget(targetDir);
-      if (plan.approvalBound) {
-        const msg = `Approved npm install failed for ${canonicalName}@${npmVersion}; refusing local or Git fallback`;
+      if (
+        plan.approvalBound ||
+        packageRegistryUrl !== undefined ||
+        isIntegrityFailure(npmErr)
+      ) {
+        const authority = plan.approvalBound ? "Approved" : "Authoritative";
+        const msg = `${authority} npm install failed for ${canonicalName}@${npmVersion}; refusing local or Git fallback`;
         emit("error", msg);
         return {
           success: false,
@@ -801,11 +845,19 @@ async function runPackageInstall(
   packageName: string,
   version: string,
   targetDir: string,
+  packageRegistryUrl?: string,
+  timeoutMs?: number,
 ): Promise<"bun" | "npm"> {
   assertValidPackageName(packageName);
   assertValidVersion(version);
   const spec = `${packageName}@${version}`;
-  return installSpecWithFallback(pm, spec, targetDir);
+  return installSpecWithFallback(
+    pm,
+    spec,
+    targetDir,
+    packageRegistryUrl,
+    timeoutMs,
+  );
 }
 
 async function runLocalPathInstall(
@@ -826,16 +878,18 @@ async function installSpecWithFallback(
   pm: "bun" | "npm",
   spec: string,
   targetDir: string,
+  packageRegistryUrl?: string,
+  timeoutMs?: number,
 ): Promise<"bun" | "npm"> {
   try {
-    await runInstallSpec(pm, spec, targetDir);
+    await runInstallSpec(pm, spec, targetDir, packageRegistryUrl, timeoutMs);
     return pm;
   } catch (primaryErr) {
     if (pm === "npm") throw primaryErr;
     logger.warn(
       `[plugin-installer] ${pm} install failed for ${spec}; retrying with npm: ${primaryErr instanceof Error ? primaryErr.message : String(primaryErr)}`,
     );
-    await runInstallSpec("npm", spec, targetDir);
+    await runInstallSpec("npm", spec, targetDir, packageRegistryUrl, timeoutMs);
     return "npm";
   }
 }
@@ -844,7 +898,21 @@ async function runInstallSpec(
   pm: "bun" | "npm",
   spec: string,
   targetDir: string,
+  packageRegistryUrl?: string,
+  timeoutMs?: number,
 ): Promise<void> {
+  const registryArgs = packageRegistryUrl
+    ? ["--registry", validatePackageRegistryUrl(packageRegistryUrl)]
+    : [];
+  const isolatedRegistryArgs = packageRegistryUrl
+    ? [
+        "--prefer-online",
+        "--fetch-retries",
+        "0",
+        "--cache",
+        path.join(targetDir, ".npm-cache"),
+      ]
+    : [];
   // SECURITY: --ignore-scripts prevents npm postinstall/preinstall scripts
   // from executing arbitrary code on the host. Without this flag, any
   // package (including compromised registered plugins) can run shell
@@ -852,19 +920,86 @@ async function runInstallSpec(
   // backdoors, or exfiltrating credentials.
   switch (pm) {
     case "bun":
-      await execFileAsync("bun", ["add", "--ignore-scripts", spec], {
-        cwd: targetDir,
-      });
+      await execFileAsync(
+        "bun",
+        ["add", "--ignore-scripts", ...registryArgs, spec],
+        { cwd: targetDir, timeout: timeoutMs },
+      );
       break;
     default:
       await execFileAsync(
         "npm",
-        ["install", "--ignore-scripts", spec, "--prefix", targetDir],
+        [
+          "install",
+          "--ignore-scripts",
+          "--no-audit",
+          "--no-fund",
+          ...isolatedRegistryArgs,
+          ...registryArgs,
+          spec,
+          "--prefix",
+          targetDir,
+        ],
         // npm is a `.cmd` shim on Windows; Node can't spawn it without a shell.
         // `spec` is validated by assertValidPackageName/assertValidVersion.
-        { shell: process.platform === "win32" },
+        { shell: process.platform === "win32", timeout: timeoutMs },
       );
   }
+}
+
+function validatePackageManagerTimeout(
+  value: number | undefined,
+): number | undefined {
+  if (value === undefined) return undefined;
+  if (!Number.isInteger(value) || value < 1 || value > 300_000) {
+    throw new ElizaError(
+      "Package manager timeout must be an integer from 1 to 300000ms",
+      {
+        code: "PLUGIN_INSTALL_INVALID_TIMEOUT",
+        context: {},
+      },
+    );
+  }
+  return value;
+}
+
+function isIntegrityFailure(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return /\bEINTEGRITY\b|integrity checksum failed/i.test(message);
+}
+
+function validatePackageRegistryUrl(raw: string): string {
+  let parsed: URL;
+  try {
+    parsed = new URL(raw);
+  } catch (cause) {
+    throw new ElizaError("Package registry URL must be absolute", {
+      code: "PLUGIN_INSTALL_INVALID_REGISTRY_URL",
+      context: {},
+      cause,
+    });
+  }
+  const loopback =
+    parsed.hostname === "127.0.0.1" ||
+    parsed.hostname === "::1" ||
+    parsed.hostname === "[::1]";
+  if (
+    (parsed.protocol !== "https:" &&
+      !(parsed.protocol === "http:" && loopback)) ||
+    parsed.username ||
+    parsed.password ||
+    parsed.search ||
+    parsed.hash
+  ) {
+    throw new ElizaError(
+      "Package registry URL must use HTTPS or literal loopback HTTP and contain no credentials, query, or fragment",
+      {
+        code: "PLUGIN_INSTALL_INVALID_REGISTRY_URL",
+        context: {},
+      },
+    );
+  }
+  return parsed.toString();
 }
 
 async function cleanupInstallTarget(targetDir: string): Promise<void> {
@@ -959,10 +1094,18 @@ export function extractNpmLockProvenance(
   const packageKey = `node_modules/${packageName}`;
   const packages = isRecord(lock.packages) ? lock.packages : null;
   const dependencies = isRecord(lock.dependencies) ? lock.dependencies : null;
+  const packageCandidates = packages
+    ? Object.entries(packages)
+        .filter(
+          ([key, value]) =>
+            isRecord(value) &&
+            (key === packageKey ||
+              key.replaceAll("\\", "/").endsWith(`/${packageKey}`)),
+        )
+        .map(([, value]) => value as Record<string, unknown>)
+    : [];
   const candidate =
-    (packages && isRecord(packages[packageKey])
-      ? packages[packageKey]
-      : null) ??
+    (packageCandidates.length === 1 ? packageCandidates[0] : null) ??
     (dependencies && isRecord(dependencies[packageName])
       ? dependencies[packageName]
       : null);

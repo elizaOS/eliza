@@ -25,6 +25,12 @@ exits.
   `Job`/`JobStatus`/`JobType`/`Sandbox`/`SandboxStatus` types.
 - `src/steward/` (export `./steward`) — stateful loopback mock for authenticated
   Steward platform-user deactivation and deletion calls used by account lifecycle E2E.
+- `src/registry/` (export `./registry`) — resettable loopback marketplace and
+  npm-package upstream. It serves the generated and index registry protocols,
+  conditional ETags, npm packuments, and deterministic tarballs to the real
+  `@elizaos/agent` registry client and installer. Its virtual clock, queued
+  faults, generation fence, and redacted observation log support repeatable
+  cache, reset, cancellation, and artifact-integrity scenarios.
 - `src/fetch-server.ts` — shared `startFetchServer(fetch, opts)`; uses
   `Bun.serve` when running under Bun, falls back to a `node:http` adapter
   otherwise.
@@ -67,6 +73,12 @@ mockoon-cli start --data packages/cloud/test-mocks/mockoon/control-plane-static.
 Use programmatically by awaiting `startHetznerMock` / `startControlPlaneMock`,
 pointing the real client at the returned `url`, then calling `stop()` in
 teardown.
+
+Use `startRegistryMock()` for marketplace scenarios. Pass its generated,
+index, and package-registry URLs to instance-local agent collaborators; do not
+mutate process-wide fetch or npm configuration. `reset()` advances the server
+generation and clears current observations, while requests admitted by an old
+generation remain available through stale-observation readback for assertions.
 
 ## Conventions / gotchas
 

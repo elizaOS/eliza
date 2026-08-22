@@ -360,6 +360,27 @@ describe("package-manager lock provenance", () => {
     });
   });
 
+  it("extracts npm prefix-install provenance from an absolute package-lock key", () => {
+    expect(
+      extractNpmLockProvenance(
+        {
+          packages: {
+            "/tmp/install/node_modules/@vendor/canonical-plugin": {
+              version: "2.4.1",
+              resolved: "https://registry.example/canonical-plugin-2.4.1.tgz",
+              integrity: "sha512-YXBwcm92ZWQ=",
+            },
+          },
+        },
+        "@vendor/canonical-plugin",
+        "2.4.1",
+      ),
+    ).toEqual({
+      resolved: "https://registry.example/canonical-plugin-2.4.1.tgz",
+      integrity: "sha512-YXBwcm92ZWQ=",
+    });
+  });
+
   it("extracts Bun SRI without fabricating an unavailable tarball URL", () => {
     expect(
       extractBunLockProvenance(
