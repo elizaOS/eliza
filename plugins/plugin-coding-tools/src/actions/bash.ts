@@ -1707,6 +1707,7 @@ export const shellAction: Action = {
             runtime,
             token: readStringParam(options, "confirmation_challenge"),
             command,
+            executionDirectory: cwd,
             message,
           })
         : ({ authorized: false, reason: "missing" } as const);
@@ -1714,6 +1715,7 @@ export const shellAction: Action = {
         const challenge = issueDestructiveChallenge({
           runtime,
           command,
+          executionDirectory: cwd,
           message,
         });
         const redactedReason = verdict.reason
