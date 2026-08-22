@@ -13,7 +13,7 @@
  * to reconcile.
  */
 
-import { Button as NuphyButton } from "@extrastu/nuphy-ui";
+import { Button as NuphyButton, SelectPill } from "@extrastu/nuphy-ui";
 import { Loader2, Plus } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { ApiError, api, apiFetch } from "../../../../cloud/lib/api-client";
@@ -353,26 +353,22 @@ function ConnectModal({
               description="The agent this Discord bot responds as."
               htmlFor="connect-agent"
             >
-              <select
-                id="connect-agent"
-                className="w-full rounded-md border border-[var(--hairline)] bg-[var(--surface)] px-3 py-2 text-[14px] text-[var(--foreground)]"
-                value={selectedAgentId}
-                onChange={(event) => setSelectedAgentId(event.target.value)}
-                disabled={busy || agentChoices === null}
-              >
-                <option value="" disabled>
-                  {agentChoices === null
+              <SelectPill
+                label={
+                  agentChoices === null
                     ? "Loading agents…"
                     : agentChoices.length === 0
                       ? "No agents available"
-                      : "Choose an agent"}
-                </option>
-                {(agentChoices ?? []).map((choice) => (
-                  <option key={choice.id} value={choice.id}>
-                    {choice.name}
-                  </option>
-                ))}
-              </select>
+                      : "Choose an agent"
+                }
+                options={(agentChoices ?? []).map((choice) => ({
+                  value: choice.id,
+                  label: choice.name,
+                }))}
+                value={selectedAgentId || undefined}
+                onValueChange={setSelectedAgentId}
+                disabled={busy || agentChoices === null}
+              />
             </NuphyFormField>
           )}
         </div>
@@ -544,27 +540,24 @@ function DisconnectDialog({
             description="Exactly this connection will be disconnected."
             htmlFor="disconnect-connection"
           >
-            <select
-              id="disconnect-connection"
-              className="w-full rounded-md border border-[var(--hairline)] bg-[var(--surface)] px-3 py-2 text-[14px] text-[var(--foreground)]"
-              value={selectedId}
-              onChange={(event) => setSelectedId(event.target.value)}
-              disabled={busy || choices === null}
-            >
-              <option value="" disabled>
-                {choices === null
+            <SelectPill
+              label={
+                choices === null
                   ? "Loading connections…"
                   : choices.length === 0
                     ? "No connections found"
-                    : "Choose a connection"}
-              </option>
-              {(choices ?? []).map((choice) => (
-                <option key={choice.id} value={choice.id}>
-                  {choice.label}
-                  {choice.active ? "" : " (inactive)"}
-                </option>
-              ))}
-            </select>
+                    : "Choose a connection"
+              }
+              options={(choices ?? []).map((choice) => ({
+                value: choice.id,
+                label: choice.active
+                  ? choice.label
+                  : `${choice.label} (inactive)`,
+              }))}
+              value={selectedId || undefined}
+              onValueChange={setSelectedId}
+              disabled={busy || choices === null}
+            />
           </NuphyFormField>
         )}
       </div>
