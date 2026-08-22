@@ -1,7 +1,7 @@
 /**
  * Exercises the v5 tiered action surface through `runV5MessageRuntimeStage1`:
  * Stage-1 hints promoting a parent to Tier A, sub-actions surfaced as
- * first-class planner tools, hot-parent child capping, role-gated tool omission,
+ * first-class planner tools, complete hot-parent children, role-gated omission,
  * and Tier-B sub-planner execution. Deterministic: a canned-response stub
  * runtime, no live model.
  */
@@ -665,12 +665,9 @@ describe("v5 tiered action surface", () => {
 		expect(toolNames).not.toContain("SEND_EMAIL");
 	});
 
-	it("caps a hot parent's sub-action flood to the turn-relevant children", async () => {
-		// One hot tier-A parent must not expose its whole namespace (observed
-		// live: all 24 MESSAGE_* children on a two-intent turn). The per-parent
-		// child narrow keeps the Stage-1 candidate plus the best query-token
-		// matches under the default cap of 8; everything else stays reachable
-		// only through the MESSAGE umbrella, whose handler routes any subaction.
+	it("keeps every authorized child of a hot parent callable", async () => {
+		// Relevance still orders the surface, but it cannot hide registered and
+		// authorized children behind an umbrella or a fixed per-parent cap.
 		const reviewQueue = makeAction({
 			name: "MESSAGE_REVIEW_QUEUE",
 			description: "Review channel messages awaiting a response.",
@@ -726,17 +723,15 @@ describe("v5 tiered action surface", () => {
 		expect(toolNames).toContain("MESSAGE");
 		expect(toolNames).toContain("MESSAGE_REVIEW_QUEUE");
 		expect(toolNames).toContain("MESSAGE_SEND_REPLY");
-		// Lean when not: the namespace is capped, not fully expanded.
+		// Every authorized child remains a first-class tool.
 		const childTools = toolNames.filter((name) =>
 			String(name).startsWith("MESSAGE_"),
 		);
-		expect(childTools.length).toBeLessThanOrEqual(8);
-		expect(toolNames).not.toContain("MESSAGE_OP_9");
-		// Prompt footprint drops with the tool surface: the narrowed-out child
-		// no longer appears in the rendered action section either.
+		expect(childTools).toHaveLength(12);
+		expect(toolNames).toContain("MESSAGE_OP_9");
 		const prompt = availableActionsSection(runtime);
 		expect(prompt).toContain("MESSAGE_REVIEW_QUEUE");
-		expect(prompt).not.toContain("MESSAGE_OP_9");
+		expect(prompt).toContain("MESSAGE_OP_9");
 	});
 
 	it("omits planner tools that execution would reject for the selected context", async () => {
