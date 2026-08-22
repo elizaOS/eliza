@@ -71,6 +71,24 @@ describe("messageHandlerFromFieldResult — bogus candidate actions", () => {
 		expect(warnings).toEqual([]);
 	});
 
+	it("preserves exact action identity before separator-insensitive fallback", () => {
+		const underscored = makeAction("GMAIL_CREATE_DRAFT");
+		const compact = makeAction("GMAILCREATEDRAFT");
+		const warnings: unknown[] = [];
+		const runtime = {
+			actions: [underscored, compact],
+			logger: { warn: (...args: unknown[]) => warnings.push(args) },
+		};
+
+		expect(
+			resolvePlannerActionName(runtime, undefined, "GMAIL_CREATE_DRAFT"),
+		).toEqual(["GMAIL_CREATE_DRAFT"]);
+		expect(
+			resolvePlannerActionName(runtime, undefined, "GMAILCREATEDRAFT"),
+		).toEqual(["GMAILCREATEDRAFT"]);
+		expect(warnings).toEqual([]);
+	});
+
 	it("does not promote a `[simple]` route to planning when ALL candidateActionNames are bogus", () => {
 		const handler = messageHandlerFromFieldResult(
 			{
