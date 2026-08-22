@@ -15,7 +15,10 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { IAgentRuntime, UUID } from "../../types/index.ts";
-import { TaskClipboardService } from "./taskClipboardService.ts";
+import {
+	type AddTaskClipboardItemInput,
+	TaskClipboardService,
+} from "./taskClipboardService.ts";
 
 const runtime = {
 	getSetting: () => undefined,
@@ -109,13 +112,27 @@ describe("TaskClipboardService concurrent store mutations", () => {
 		expect(missing.removed).toBe(false);
 	});
 
-	it("still rejects an add past the capacity bound", async () => {
+	it("continues the mutation chain after a rejected operation", async () => {
 		const service = new TaskClipboardService(runtime, { basePath });
-		for (const content of ["a", "b", "c", "d", "e"]) {
-			await service.addItem({ content, sourceType: "manual" }, entityId);
-		}
-		await expect(
-			service.addItem({ content: "f", sourceType: "manual" }, entityId),
-		).rejects.toThrow(/Clipboard is full/);
+		const rejectedInput: AddTaskClipboardItemInput = {
+			content: "rejected",
+			get sourceType() {
+				throw new Error("injected mutation failure");
+			},
+		};
+
+		const rejected = service.addItem(rejectedInput, entityId);
+		const successor = service.addItem(
+			{ content: "successor", sourceType: "manual" },
+			entityId,
+		);
+
+		await expect(rejected).rejects.toThrow("injected mutation failure");
+		await expect(successor).resolves.toMatchObject({
+			item: { content: "successor" },
+		});
+		expect(
+			(await service.listItems(entityId)).map((item) => item.content),
+		).toEqual(["successor"]);
 	});
 });
