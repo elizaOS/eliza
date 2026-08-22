@@ -73,6 +73,15 @@ async function harness() {
       idempotency_key text,
       PRIMARY KEY (agent_id, id)
     );
+    CREATE TABLE workflow.embedded_tags (
+      agent_id text NOT NULL,
+      id text NOT NULL,
+      name text NOT NULL,
+      created_at text NOT NULL,
+      updated_at text NOT NULL,
+      PRIMARY KEY (agent_id, id),
+      UNIQUE (agent_id, name)
+    );
   `);
   const tasks: Task[] = [];
   const emittedEvents: Array<{ type: string; payload: unknown }> = [];
@@ -109,6 +118,29 @@ afterEach(async () => {
 });
 
 describe('embedded native workflow lifecycle', () => {
+  test('gets or creates one durable tenant tag across duplicates and restart', async () => {
+    const { service, runtime } = await harness();
+
+    await expect(service.getOrCreateTag('   ')).rejects.toMatchObject({ statusCode: 400 });
+
+    const [first, duplicate] = await Promise.all([
+      service.getOrCreateTag(' scenario-owner '),
+      service.getOrCreateTag('scenario-owner'),
+    ]);
+    expect(duplicate).toEqual(first);
+    expect((await service.listTags()).data).toEqual([first]);
+
+    const restarted = new EmbeddedWorkflowService(runtime);
+    expect(await restarted.getOrCreateTag('scenario-owner')).toEqual(first);
+
+    const workflow = await service.createWorkflow({ ...definition('Tagged'), id: 'tagged' });
+    await expect(service.updateWorkflowTags(workflow.id, ['missing-tag'])).rejects.toMatchObject({
+      statusCode: 404,
+    });
+    expect(await service.updateWorkflowTags(workflow.id, [first.id])).toEqual([first]);
+    expect((await service.getWorkflow(workflow.id)).tags).toEqual([first]);
+  });
+
   test('snapshots required fields before reads or persistence', async () => {
     const { service } = await harness();
     await expect(

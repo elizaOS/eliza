@@ -35,7 +35,7 @@ import {
   loadAgentBackupRestoreSourceV3,
 } from "./agent-backup-restore";
 import { hasAgentBackupRestoreAuthority } from "./agent-backup-restore-authority";
-import { proveUnambiguousAgentNodeIncarnationForLockedNode } from "./agent-backup-restore-history";
+import { proveExactAgentNodeOccurrenceForLockedNode } from "./agent-backup-restore-history";
 import { readPostLockDatabaseNow } from "./primary-database-clock";
 
 const RAW_KEY_BYTES = 32;
@@ -867,6 +867,8 @@ export interface AgentBackupRestoreVaultPassphraseInput extends AgentBackupResto
   restoreClaimGeneration: string;
   targetNodeRecordId: string;
   targetNodeIncarnation: string;
+  /** Exact durable occurrence token for this node record and boot incarnation. */
+  targetNodeHistoryId: string;
   vaultKeyGenerationId: string;
   vaultKeyAuthorityReceiptDigest: string;
 }
@@ -1001,6 +1003,10 @@ async function proveAgentBackupRestoreVaultTargetAuthority(
     input.targetNodeIncarnation,
     "targetNodeIncarnation",
   );
+  const targetNodeHistoryId = requireCanonicalUuid(
+    input.targetNodeHistoryId,
+    "targetNodeHistoryId",
+  );
   const sourceLifecycleRevision = requireCanonicalUint64(
     input.sourceLifecycleRevision,
     "sourceLifecycleRevision",
@@ -1082,6 +1088,7 @@ async function proveAgentBackupRestoreVaultTargetAuthority(
     if (
       operation.expected_node_record_id !== targetNodeRecordId ||
       operation.expected_node_incarnation !== targetNodeIncarnation ||
+      operation.expected_node_history_id !== targetNodeHistoryId ||
       operation.expected_image_digest !== manifestImageDigest
     ) {
       throw new AgentBackupCatalogConflictError(
@@ -1121,12 +1128,19 @@ async function proveAgentBackupRestoreVaultTargetAuthority(
       .where(eq(dockerNodes.id, targetNodeRecordId))
       .for("update")
       .limit(1);
-    if (!node || node.node_incarnation !== targetNodeIncarnation) {
-      throw new AgentBackupCatalogConflictError(
-        "Restore vault target node record or incarnation was lost",
-      );
+    if (
+      !node ||
+      node.node_incarnation !== targetNodeIncarnation ||
+      node.current_node_history_id !== targetNodeHistoryId
+    ) {
+      throw new AgentBackupCatalogConflictError("Restore vault target node occurrence was lost");
     }
-    await proveUnambiguousAgentNodeIncarnationForLockedNode(tx, node, targetNodeIncarnation);
+    await proveExactAgentNodeOccurrenceForLockedNode(
+      tx,
+      node,
+      targetNodeIncarnation,
+      targetNodeHistoryId,
+    );
 
     const catalogAuthority = await lockAgentBackupCatalogAuthority(
       tx,

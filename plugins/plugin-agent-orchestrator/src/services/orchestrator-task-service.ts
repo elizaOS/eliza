@@ -1169,7 +1169,7 @@ export class OrchestratorTaskService extends Service {
   private subscribeToAcp(acp: AcpService): void {
     this.unsubscribe = acp.onSessionEvent(
       (sessionId, event, data, sessionSnapshot, turnId) => {
-        void this.onSessionEvent(
+        return this.onSessionEvent(
           sessionId,
           event,
           data,
@@ -1635,6 +1635,10 @@ export class OrchestratorTaskService extends Service {
           note: "further event-record failures for this session are suppressed",
         });
       }
+      // Account identity is an authority boundary: its caller awaits this
+      // consumer before exposing failover credentials to a child. Other
+      // telemetry events retain their established diagnostics-only behavior.
+      if (event === "account_switched") throw err;
     }
   }
 
