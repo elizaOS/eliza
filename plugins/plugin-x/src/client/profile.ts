@@ -1,4 +1,5 @@
 import type { UserV2 } from "twitter-api-v2";
+import { normalizeTwitterProviderError } from "../utils/error-handler";
 import type { RequestApiResult } from "./api-types";
 import type { TwitterAuth } from "./auth";
 import type { TwitterApiErrorRaw } from "./errors";
@@ -263,7 +264,9 @@ export async function getProfile(
     const message = error instanceof Error ? error.message : String(error);
     return {
       success: false,
-      err: new Error(message || "Failed to fetch profile"),
+      err:
+        normalizeTwitterProviderError(error) ??
+        new Error(message || "Failed to fetch profile", { cause: error }),
     };
   }
 }

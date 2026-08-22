@@ -21,7 +21,12 @@ import {
   ModelType,
   parseJSONObjectFromText,
 } from "@elizaos/core";
-import type { ClientBase, TwitterAccountSession, TwitterProfile } from "./base";
+import {
+  type ClientBase,
+  NO_REQUEST_RETRY,
+  type TwitterAccountSession,
+  type TwitterProfile,
+} from "./base";
 import { SearchMode } from "./client/index";
 import type { Tweet as ClientTweet } from "./client/tweets";
 import {
@@ -727,8 +732,9 @@ ${tweet.text}`;
       }
 
       this.assertCurrentSession(session);
-      await this.client.requestQueue.add(() =>
-        this.client.twitterClient.sendQuoteTweet(post, tweet.id),
+      await this.client.requestQueue.add(
+        () => this.client.twitterClient.sendQuoteTweet(post, tweet.id),
+        NO_REQUEST_RETRY,
       );
       logger.info(`Quoted tweet ${tweet.id}`);
       return true;
