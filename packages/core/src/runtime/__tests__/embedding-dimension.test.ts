@@ -435,6 +435,40 @@ describe("AgentRuntime.ensureEmbeddingDimension provider failover", () => {
 		expect(localBatch).toHaveBeenCalledTimes(1);
 		expect(vectors[0]).toHaveLength(384);
 	});
+
+	it("does not advertise or retry another provider's batch handler when the pinned provider lacks one", async () => {
+		const runtime = makeRuntime();
+		const localEmbed = vi.fn(async () => new Array(384).fill(0));
+		const cloudBatch = vi.fn(
+			async (_runtime: AgentRuntime, params: { texts: string[] }) =>
+				params.texts.map(() => new Array(1536).fill(1)),
+		);
+		runtime.registerModel(ModelType.TEXT_EMBEDDING, localEmbed, "local", 100);
+		runtime.registerModel(
+			ModelType.TEXT_EMBEDDING_BATCH,
+			cloudBatch,
+			"cloud",
+			100,
+		);
+
+		// Before the dimension probe chooses an owner, the cloud registration is
+		// discoverable. Afterwards, capability lookup must reflect the same pin as
+		// dispatch rather than selecting an incompatible provider.
+		expect(runtime.getModel(ModelType.TEXT_EMBEDDING_BATCH)).toBeDefined();
+		await runtime.ensureEmbeddingDimension();
+		expect(runtime.getModel(ModelType.TEXT_EMBEDDING_BATCH)).toBeUndefined();
+
+		for (let attempt = 0; attempt < 2; attempt++) {
+			await expect(
+				runtime.useModel(ModelType.TEXT_EMBEDDING_BATCH, {
+					texts: ["hello"],
+				}),
+			).rejects.toThrow(
+				`No handler found for delegate type: ${ModelType.TEXT_EMBEDDING_BATCH}`,
+			);
+		}
+		expect(cloudBatch).not.toHaveBeenCalled();
+	});
 });
 
 describe("AgentRuntime.initialize with a broken TEXT_EMBEDDING provider (#10702)", () => {
