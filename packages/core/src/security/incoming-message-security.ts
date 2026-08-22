@@ -143,7 +143,7 @@ function isBoundConnectorPayload(
 	const payload = payloadText.trim();
 	if (!payload) return false;
 	if (rendered === payload) return true;
-	if (!(source ?? "").trim().toLowerCase().includes("discord")) return false;
+	if ((source ?? "").trim().toLowerCase() !== "discord") return false;
 	let offset = rendered.indexOf(payload);
 	while (offset >= 0) {
 		const prefix = rendered.slice(0, offset);
