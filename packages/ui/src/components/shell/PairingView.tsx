@@ -4,6 +4,8 @@
  * busy) from the app store and submits the entered code via
  * `handlePairingSubmit`. Blocks the rest of the shell until pairing succeeds.
  */
+
+import { useEffect } from "react";
 import { client } from "../../api";
 import { appNameInterpolationVars, useBranding } from "../../config/branding";
 import { startFreshFirstRunReload } from "../../platform";
@@ -49,6 +51,30 @@ export function PairingView() {
   }));
   const branding = useBranding();
   const pairingCode = pairingCodeInput.trim();
+
+  // PairingView can be selected by the independent /api/auth/me gate after
+  // startup has already advanced to a paintable shell. In that path the
+  // startup poll never populated the pairing slice, so its initial `false`
+  // must not be mistaken for an authoritative "pairing disabled" response.
+  // Hydrate from the public, secret-free auth-status contract whenever this
+  // surface mounts; this is also the source of truth for code expiry.
+  useEffect(() => {
+    let active = true;
+    void client
+      .getAuthStatus()
+      .then((status) => {
+        if (!active) return;
+        setState("pairingEnabled", status.pairingEnabled === true);
+        setState("pairingExpiresAt", status.expiresAt);
+      })
+      .catch(() => {
+        // The existing disabled state is the fail-closed, actionable fallback.
+        // A later remount/retry probes again; never surface a raw network stack.
+      });
+    return () => {
+      active = false;
+    };
+  }, [setState]);
 
   function formatExpiry(timestamp: number | null): string {
     if (!timestamp) return "";
