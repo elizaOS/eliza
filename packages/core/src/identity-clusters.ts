@@ -12,7 +12,7 @@ import {
 	invalidateTurnMemoPrefix,
 	memoizeTurnWork,
 } from "./trajectory-context.ts";
-import type { IdentityResolutionService } from "./types/identity.ts";
+import type { PrincipalService } from "./types/identity.ts";
 import {
 	type IAgentRuntime,
 	type Service,
@@ -46,12 +46,8 @@ function getIdentityClusterResolver(
 	return service as IdentityClusterResolver;
 }
 
-function getIdentityAuthority(
-	runtime: IAgentRuntime,
-): IdentityResolutionService | null {
-	return runtime.getService<IdentityResolutionService>(
-		ServiceType.IDENTITY_RESOLUTION,
-	);
+function getIdentityAuthority(runtime: IAgentRuntime): PrincipalService | null {
+	return runtime.getService<PrincipalService>(ServiceType.PRINCIPAL);
 }
 
 export async function getRelatedEntityIds(

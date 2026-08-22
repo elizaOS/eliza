@@ -9,10 +9,10 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 function verifyTopologyDiscovery(ctx: ScenarioContext): string | undefined {
   const discovery = ctx.actionsCalled.find((call) => {
     if (call.actionName !== "MESSAGE") return false;
-    const parameters = call.parameters?.parameters as
-      | Record<string, unknown>
+    const captured = call.parameters as
+      | { parameters?: Record<string, unknown> }
       | undefined;
-    return parameters?.action === "list_worlds";
+    return captured?.parameters?.action === "list_worlds";
   });
   if (!discovery) return "expected MESSAGE action=list_worlds";
   if (discovery.result?.success !== true) {
