@@ -5,7 +5,9 @@
 
 import { startFishAudioMock } from "@elizaos/cloud-test-mocks/fish-audio";
 import type { IAgentRuntime } from "@elizaos/core";
+import { decode, encode } from "@msgpack/msgpack";
 import { afterEach, describe, expect, test } from "vitest";
+import WebSocket from "ws";
 import { createFishAudioNodeWebSocketFactory } from "../node-transport";
 import {
   classifyFishAudioFailure,
@@ -27,8 +29,8 @@ function runtime(apiKey = "synthetic-fish-key"): IAgentRuntime {
   } as IAgentRuntime;
 }
 
-async function startMock() {
-  const mock = await startFishAudioMock();
+async function startMock(seed: Parameters<typeof startFishAudioMock>[0] = {}) {
+  const mock = await startFishAudioMock(seed);
   runningMocks.push(mock);
   configureFishAudioWebSocketFactory(
     createFishAudioNodeWebSocketFactory(mock.url),
@@ -126,6 +128,7 @@ describe("Fish Audio protocol mock", () => {
         model: "s2.1-pro",
         referenceId: "synthetic-voice",
         text: "synthetic hello",
+        requestValid: true,
       }),
     );
     expect(JSON.stringify(readback)).not.toContain("synthetic-fish-key");
@@ -139,6 +142,72 @@ describe("Fish Audio protocol mock", () => {
       observations: [],
     });
     expect(mock.store.seed.audioChunks).toEqual([new Uint8Array([9, 8])]);
+  });
+
+  test("rejects out-of-order client frames instead of fabricating synthesis", async () => {
+    const mock = await startMock();
+    const socket = new WebSocket(mock.url, {
+      headers: {
+        Authorization: "Bearer synthetic-fish-key",
+        model: "s2.1-pro",
+      },
+    });
+    await new Promise<void>((resolve, reject) => {
+      socket.once("open", resolve);
+      socket.once("error", reject);
+    });
+    const response = new Promise<Record<string, unknown>>((resolve, reject) => {
+      socket.once("message", (data) => {
+        try {
+          resolve(
+            decode(new Uint8Array(data as Buffer)) as Record<string, unknown>,
+          );
+        } catch (error) {
+          reject(error);
+        }
+      });
+      socket.once("error", reject);
+    });
+
+    socket.send(encode({ event: "stop" }));
+
+    await expect(response).resolves.toMatchObject({
+      event: "error",
+      error: "invalid_request",
+    });
+    await waitFor(() => mock.store.openConnectionCount === 0);
+    expect(mock.store.readback().observations).toContainEqual(
+      expect.objectContaining({ event: "protocol_rejected" }),
+    );
+    expect(
+      mock.store
+        .readback()
+        .observations.some((entry) => entry.event === "request"),
+    ).toBe(false);
+  });
+
+  test("stops provider work when a streaming consumer closes its iterator", async () => {
+    const mock = await startMock({
+      audioChunks: [
+        new Uint8Array([1, 2]),
+        new Uint8Array([3, 4]),
+        new Uint8Array([5, 6]),
+      ],
+      chunkDelayMs: 25,
+    });
+    const result = await streamingResult({ text: "consume one chunk" });
+    const iterator = result.audioStream[Symbol.asyncIterator]();
+
+    await expect(iterator.next()).resolves.toEqual({
+      done: false,
+      value: new Uint8Array([1, 2]),
+    });
+    await iterator.return?.();
+
+    await expect(result.bytes).rejects.toMatchObject({
+      code: "FISH_AUDIO_STREAM_ABORTED",
+    });
+    await waitFor(() => mock.store.openConnectionCount === 0);
   });
 
   test("rejects authentication without recording the credential", async () => {
@@ -163,6 +232,26 @@ describe("Fish Audio protocol mock", () => {
     );
     expect(JSON.stringify(mock.store.readback())).not.toContain(
       "secret-wrong-key",
+    );
+  });
+
+  test("does not let a configured rate-limit fault mask invalid credentials", async () => {
+    const mock = await startMock();
+    mock.store.setFault("rate_limit");
+    const result = await streamingResult(
+      { text: "wrong key during provider throttling" },
+      "secret-wrong-key",
+    );
+
+    await expect(result.bytes).rejects.toMatchObject({
+      code: "FISH_AUDIO_AUTH_FAILED",
+    });
+    expect(mock.store.readback().observations).toContainEqual(
+      expect.objectContaining({
+        event: "upgrade_rejected",
+        authorized: false,
+        status: 401,
+      }),
     );
   });
 

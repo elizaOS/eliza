@@ -32,13 +32,19 @@ export interface FishAudioMockFaultDetails {
 export interface FishAudioMockObservation {
   order: number;
   generation: number;
-  event: "upgrade_rejected" | "frame" | "request" | "closed";
+  event:
+    | "upgrade_rejected"
+    | "frame"
+    | "request"
+    | "protocol_rejected"
+    | "closed";
   authorized?: boolean;
   status?: number;
   frameEvent?: string;
   model?: string;
   referenceId?: string;
   text?: string;
+  requestValid?: boolean;
   closeCode?: number;
 }
 
@@ -158,9 +164,15 @@ export async function startFishAudioMock(
     const authorization = request.headers.authorization;
     const model = singleHeader(request.headers.model);
     const authorized = authorization === `Bearer ${store.seed.apiKey}`;
-    const status = !authorized || model !== store.seed.model ? 401 : 101;
+    const pathMatches = request.url === "/v1/tts/live";
+    const status = !pathMatches
+      ? 404
+      : !authorized || model !== store.seed.model
+        ? 401
+        : 101;
     if (status !== 101 || store.fault === "rate_limit") {
-      const rejectedStatus = store.fault === "rate_limit" ? 429 : status;
+      const rejectedStatus =
+        status === 101 && store.fault === "rate_limit" ? 429 : status;
       store.observe({
         event: "upgrade_rejected",
         authorized,
@@ -169,8 +181,14 @@ export async function startFishAudioMock(
       });
       const retryAfter = rejectedStatus === 429 ? "Retry-After: 1\r\n" : "";
       const statusText =
-        store.responsePlan(store.generation)?.faultDetails.upgradeStatusText ??
-        (rejectedStatus === 429 ? "Too Many Requests" : "Unauthorized");
+        (rejectedStatus === 429
+          ? store.responsePlan(store.generation)?.faultDetails.upgradeStatusText
+          : undefined) ??
+        (rejectedStatus === 429
+          ? "Too Many Requests"
+          : rejectedStatus === 404
+            ? "Not Found"
+            : "Unauthorized");
       socket.write(
         `HTTP/1.1 ${rejectedStatus} ${sanitizeHttpStatusText(statusText)}\r\n${retryAfter}Connection: close\r\nContent-Type: text/plain\r\n\r\n${statusText}`,
       );
@@ -188,35 +206,75 @@ export async function startFishAudioMock(
     const model = singleHeader(request.headers.model);
     let referenceId: string | undefined;
     let text: string | undefined;
+    let requestState: "start" | "text" | "flush" | "stop" | "complete" =
+      "start";
+    const rejectProtocol = () => {
+      store.observe(
+        { event: "protocol_rejected", model },
+        connectionGeneration,
+      );
+      if (connection.readyState === WebSocket.OPEN) {
+        connection.send(encode({ event: "error", error: "invalid_request" }));
+        connection.close(1002, "invalid protocol sequence");
+      }
+    };
     connection.on("message", (raw) => {
-      const frame = decode(new Uint8Array(raw as Buffer)) as Record<
-        string,
-        unknown
-      >;
+      let frame: Record<string, unknown>;
+      try {
+        const decoded = decode(new Uint8Array(raw as Buffer));
+        if (
+          typeof decoded !== "object" ||
+          decoded === null ||
+          Array.isArray(decoded)
+        ) {
+          rejectProtocol();
+          return;
+        }
+        frame = decoded as Record<string, unknown>;
+      } catch {
+        // error-policy:J3 malformed client frames are rejected as invalid
+        // protocol input instead of escaping the mock server event loop.
+        rejectProtocol();
+        return;
+      }
       const frameEvent = typeof frame.event === "string" ? frame.event : "";
       store.observe(
         { event: "frame", frameEvent, model },
         connectionGeneration,
       );
-      if (frameEvent === "start") {
+      if (requestState === "start" && frameEvent === "start") {
         const requestFrame = frame.request as
           | Record<string, unknown>
           | undefined;
+        if (!validStartRequest(requestFrame)) {
+          rejectProtocol();
+          return;
+        }
         referenceId =
           typeof requestFrame?.reference_id === "string"
             ? requestFrame.reference_id
             : undefined;
-      }
-      if (frameEvent === "text" && typeof frame.text === "string") {
+        requestState = "text";
+      } else if (
+        requestState === "text" &&
+        frameEvent === "text" &&
+        typeof frame.text === "string" &&
+        frame.text.length > 0
+      ) {
         text = frame.text;
-      }
-      if (frameEvent === "stop") {
+        requestState = "flush";
+      } else if (requestState === "flush" && frameEvent === "flush") {
+        requestState = "stop";
+      } else if (requestState === "stop" && frameEvent === "stop") {
+        requestState = "complete";
         store.observe(
-          { event: "request", model, referenceId, text },
+          { event: "request", model, referenceId, text, requestValid: true },
           connectionGeneration,
         );
         const responsePlan = store.responsePlan(connectionGeneration);
         if (responsePlan) void respond(connection, responsePlan);
+      } else {
+        rejectProtocol();
       }
     });
     connection.on("close", (code) => {
@@ -329,4 +387,18 @@ function singleHeader(
 
 function sanitizeHttpStatusText(value: string): string {
   return value.replaceAll(/[\r\n]/g, " ").slice(0, 123);
+}
+
+function validStartRequest(
+  request: Record<string, unknown> | undefined,
+): boolean {
+  return (
+    request?.text === "" &&
+    typeof request.reference_id === "string" &&
+    request.reference_id.length > 0 &&
+    request.format === "pcm" &&
+    request.sample_rate === 24_000 &&
+    request.latency === "balanced" &&
+    request.chunk_length === 100
+  );
 }

@@ -294,6 +294,10 @@ function createFishAudioStream(
     resolveBytes = resolve;
     rejectBytes = reject;
   });
+  // error-policy:J5 stream-only consumers observe the same failure through
+  // iterator.next(); this handler prevents the parallel bytes view from
+  // becoming an unhandled rejection when they intentionally never await it.
+  void bytes.catch(() => undefined);
   const socket = openSocket(config.apiKey, config.model);
   socket.binaryType = "arraybuffer";
   let deadlineTimer: ReturnType<typeof setTimeout> | undefined;
@@ -475,6 +479,10 @@ function createFishAudioStream(
               failure ? reject(failure) : resolve(result),
             );
           });
+        },
+        return(): Promise<IteratorResult<Uint8Array>> {
+          if (!done) abort();
+          return Promise.resolve({ done: true, value: undefined });
         },
       };
     },
