@@ -8,6 +8,7 @@
     ".": "./src/index.ts",
     "./hetzner": "./src/hetzner/index.ts",
     "./control-plane": "./src/control-plane/index.ts",
+    "./fish-audio": "./src/fish-audio/index.ts",
     "./steward": "./src/steward/index.ts",
     "./provider-contract": "./src/provider-contract/index.ts"
   },
@@ -28,12 +29,15 @@
     "@elizaos/core": "workspace:*",
     "@elizaos/cloud-shared": "workspace:*",
     "@elizaos/shared": "workspace:*",
-    "hono": "4.13.1"
+    "@msgpack/msgpack": "3.1.3",
+    "hono": "4.13.1",
+    "ws": "^8.21.3"
   },
   "devDependencies": {
     "@elizaos/cloud-sdk": "workspace:*",
     "@elizaos/plugin-github": "workspace:*",
     "@elizaos/plugin-whatsapp": "workspace:*",
+    "@types/ws": "^8.18.1",
     "@typescript/native": "npm:typescript@^7.0.2",
     "bun-types": "*"
   },

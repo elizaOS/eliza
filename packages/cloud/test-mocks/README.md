@@ -64,6 +64,25 @@ declared capabilities and nonce-bound observations emitted by the executed
 suite. Normal CI is fully offline and credential-free; live/sandbox lanes
 remain optional.
 
+## Fish Audio protocol mock
+
+`@elizaos/cloud-test-mocks/fish-audio` runs a resettable local WebSocket server
+that speaks the production Fish Audio MessagePack protocol. Tests point the
+real plugin transport at `mock.url`, seed deterministic PCM chunks, select
+auth/rate-limit/malformed/provider/close/stall faults, and inspect ordered
+credential-redacted observations through `mock.store.readback()`.
+
+```ts
+import { startFishAudioMock } from "@elizaos/cloud-test-mocks/fish-audio";
+
+const mock = await startFishAudioMock({
+  audioChunks: [new Uint8Array([1, 2, 3, 4])],
+});
+mock.store.setFault("rate_limit");
+mock.store.reset();
+await mock.stop();
+```
+
 ## Hetzner Cloud mock
 
 Implements the subset of the Hetzner Cloud API that the autoscaler client in

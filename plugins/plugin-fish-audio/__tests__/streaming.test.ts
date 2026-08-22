@@ -102,6 +102,12 @@ function runtime(
   } as unknown as IAgentRuntime;
 }
 
+function useFakeSocket(): void {
+  configureFishAudioWebSocketFactory(
+    (url, options) => new FakeFishSocket(url, undefined, options),
+  );
+}
+
 function wrapPcm16MonoAsWav(pcm: Uint8Array, sampleRate: number): Uint8Array {
   const header = Buffer.alloc(44);
   header.write("RIFF", 0, "ascii");
@@ -182,10 +188,7 @@ describe("fishAudioPlugin", () => {
   });
 
   test("returns AudioStreamResult when audioStream is true and sends MessagePack frames", async () => {
-    Object.defineProperty(globalThis, "WebSocket", {
-      value: FakeFishSocket,
-      configurable: true,
-    });
+    useFakeSocket();
     const rt = runtime({
       ELIZA_TTS_FISH_ENABLED: "true",
       FISH_AUDIO_DATA_GOVERNANCE_APPROVED: "true",
@@ -245,10 +248,7 @@ describe("fishAudioPlugin", () => {
 
   test("rejects when Fish closes before a finish frame", async () => {
     FakeFishSocket.respondToText = false;
-    Object.defineProperty(globalThis, "WebSocket", {
-      value: FakeFishSocket,
-      configurable: true,
-    });
+    useFakeSocket();
     const result = await handleFishAudioTextToSpeech(
       runtime({
         ELIZA_TTS_FISH_ENABLED: "true",
@@ -269,10 +269,7 @@ describe("fishAudioPlugin", () => {
 
   test("rejects a provider finish frame whose reason is error", async () => {
     FakeFishSocket.finishReason = "error";
-    Object.defineProperty(globalThis, "WebSocket", {
-      value: FakeFishSocket,
-      configurable: true,
-    });
+    useFakeSocket();
     const result = await handleFishAudioTextToSpeech(
       runtime({
         ELIZA_TTS_FISH_ENABLED: "true",
@@ -290,10 +287,7 @@ describe("fishAudioPlugin", () => {
   });
 
   test("rejects an already-aborted request", async () => {
-    Object.defineProperty(globalThis, "WebSocket", {
-      value: FakeFishSocket,
-      configurable: true,
-    });
+    useFakeSocket();
     const controller = new AbortController();
     controller.abort();
     const result = await handleFishAudioTextToSpeech(
@@ -311,10 +305,7 @@ describe("fishAudioPlugin", () => {
   });
 
   test("detaches the abort listener once synthesis finishes on its own", async () => {
-    Object.defineProperty(globalThis, "WebSocket", {
-      value: FakeFishSocket,
-      configurable: true,
-    });
+    useFakeSocket();
     const controller = new AbortController();
     const remove = vi.spyOn(controller.signal, "removeEventListener");
 
@@ -334,10 +325,7 @@ describe("fishAudioPlugin", () => {
   });
 
   test("buffers bytes when audioStream is false", async () => {
-    Object.defineProperty(globalThis, "WebSocket", {
-      value: FakeFishSocket,
-      configurable: true,
-    });
+    useFakeSocket();
     const rt = runtime({
       ELIZA_TTS_FISH_ENABLED: "true",
       FISH_AUDIO_DATA_GOVERNANCE_APPROVED: "true",
@@ -352,10 +340,7 @@ describe("fishAudioPlugin", () => {
 
   test("accepts audio exactly at the configured buffer ceiling", async () => {
     FakeFishSocket.respondToText = false;
-    Object.defineProperty(globalThis, "WebSocket", {
-      value: FakeFishSocket,
-      configurable: true,
-    });
+    useFakeSocket();
     const result = await handleFishAudioTextToSpeech(
       runtime({
         ELIZA_TTS_FISH_ENABLED: "true",
@@ -378,10 +363,7 @@ describe("fishAudioPlugin", () => {
 
   test("rejects both result surfaces and closes when audio exceeds the buffer ceiling", async () => {
     FakeFishSocket.respondToText = false;
-    Object.defineProperty(globalThis, "WebSocket", {
-      value: FakeFishSocket,
-      configurable: true,
-    });
+    useFakeSocket();
     const result = await handleFishAudioTextToSpeech(
       runtime({
         ELIZA_TTS_FISH_ENABLED: "true",
@@ -415,10 +397,7 @@ describe("fishAudioPlugin", () => {
   test("rejects and closes a stalled synthesis at the wall-clock deadline", async () => {
     vi.useFakeTimers();
     FakeFishSocket.respondToText = false;
-    Object.defineProperty(globalThis, "WebSocket", {
-      value: FakeFishSocket,
-      configurable: true,
-    });
+    useFakeSocket();
     const result = await handleFishAudioTextToSpeech(
       runtime({
         ELIZA_TTS_FISH_ENABLED: "true",
@@ -441,10 +420,7 @@ describe("fishAudioPlugin", () => {
   test("suppresses provider frames and deadline work after cancellation", async () => {
     vi.useFakeTimers();
     FakeFishSocket.respondToText = false;
-    Object.defineProperty(globalThis, "WebSocket", {
-      value: FakeFishSocket,
-      configurable: true,
-    });
+    useFakeSocket();
     const controller = new AbortController();
     const result = await handleFishAudioTextToSpeech(
       runtime({

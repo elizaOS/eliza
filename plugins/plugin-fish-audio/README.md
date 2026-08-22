@@ -47,3 +47,11 @@ response into one frame instead of streaming audio before completion. When
 belongs outside the repository and must not contain the API key.
 
 The live WebSocket uses `Authorization: Bearer <FISH_AUDIO_API_KEY>` and a `model` connection header. It sends MessagePack frames in this order: `{ event: "start", request: { text: "", reference_id, format: "pcm", sample_rate: 24000, latency: "balanced", chunk_length: 100 } }`, one `{ event: "text", text }`, `{ event: "flush" }`, then `{ event: "stop" }`. This benchmarked configuration produced multiple playable frames with substantially lower time to first audio than Fish's `normal` latency mode.
+
+## Offline protocol integration
+
+Offline integration tests use the resettable Fish Audio protocol service from
+`@elizaos/cloud-test-mocks/fish-audio`. They exercise the production
+WebSocket/MessagePack client with seeded chunks, cancellation, authentication,
+rate limiting, malformed frames, provider failures, stalls, deterministic
+reset, and credential-redacted ordered readback without provider traffic.

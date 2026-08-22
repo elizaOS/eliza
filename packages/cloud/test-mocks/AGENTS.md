@@ -25,6 +25,11 @@ exits.
   `Job`/`JobStatus`/`JobType`/`Sandbox`/`SandboxStatus` types.
 - `src/steward/` (export `./steward`) — stateful loopback mock for authenticated
   Steward platform-user deactivation and deletion calls used by account lifecycle E2E.
+- `src/fish-audio/` (export `./fish-audio`) — resettable WebSocket/MessagePack
+  upstream for the production Fish Audio realtime TTS client. It supports
+  seeded PCM chunks, cancellation, auth rejection, rate limits, malformed
+  frames, provider errors, early close, stalls, and credential-redacted
+  ordered readback.
 - `src/fetch-server.ts` — shared `startFetchServer(fetch, opts)`; uses
   `Bun.serve` when running under Bun, falls back to a `node:http` adapter
   otherwise.

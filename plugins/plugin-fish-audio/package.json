@@ -50,6 +50,7 @@
   "devDependencies": {
     "@biomejs/biome": "2.5.8",
     "@elizaos/core": "workspace:*",
+    "@elizaos/cloud-test-mocks": "workspace:*",
     "@types/bun": "^1.3.8",
     "@types/node": "^25.0.3",
     "@types/ws": "^8.18.1",

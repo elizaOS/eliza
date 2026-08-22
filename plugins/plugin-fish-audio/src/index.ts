@@ -41,6 +41,51 @@ type TtsInput =
       synthesisTimeoutMs?: number;
     });
 
+export interface FishAudioFailureClassification {
+  category:
+    | "auth"
+    | "rate_limit"
+    | "timeout"
+    | "cancelled"
+    | "provider"
+    | "transport"
+    | "invalid_response"
+    | "configuration";
+  retryable: boolean;
+}
+
+/** Classifies Fish failures for bounded caller-owned retry policy. */
+export function classifyFishAudioFailure(
+  error: unknown,
+): FishAudioFailureClassification {
+  const code = error instanceof ElizaError ? error.code : "";
+  if (code === "FISH_AUDIO_AUTH_FAILED") {
+    return { category: "auth", retryable: false };
+  }
+  if (code === "FISH_AUDIO_RATE_LIMITED") {
+    return { category: "rate_limit", retryable: true };
+  }
+  if (code === "FISH_AUDIO_SYNTHESIS_TIMEOUT") {
+    return { category: "timeout", retryable: true };
+  }
+  if (code === "FISH_AUDIO_STREAM_ABORTED") {
+    return { category: "cancelled", retryable: false };
+  }
+  if (code === "FISH_AUDIO_PROVIDER_MESSAGE_INVALID") {
+    return { category: "invalid_response", retryable: false };
+  }
+  if (
+    code === "FISH_AUDIO_WEBSOCKET_ERROR" ||
+    code === "FISH_AUDIO_WEBSOCKET_CLOSED_EARLY"
+  ) {
+    return { category: "transport", retryable: true };
+  }
+  if (code.startsWith("FISH_AUDIO_PROVIDER_")) {
+    return { category: "provider", retryable: false };
+  }
+  return { category: "configuration", retryable: false };
+}
+
 interface FishAudioWebSocketLike {
   readonly readyState: number;
   binaryType?: string;
@@ -259,16 +304,22 @@ function createFishAudioStream(
     done = true;
     if (deadlineTimer) clearTimeout(deadlineTimer);
     unlistenAbort?.();
+    socket.close(1000, "synthesis complete");
     resolveBytes(concatBytes(bufferedChunks, totalBytes));
     while (waiters.length > 0) {
       waiters.shift()?.({ done: true, value: undefined });
     }
   };
-  const fail = (error: unknown) => {
+  const fail = (
+    error: unknown,
+    closeCode = 1011,
+    closeReason = "synthesis failed",
+  ) => {
     if (done) return;
     done = true;
     if (deadlineTimer) clearTimeout(deadlineTimer);
     unlistenAbort?.();
+    socket.close(closeCode, closeReason);
     failure = error;
     rejectBytes(error);
     while (waiters.length > 0) {
@@ -286,8 +337,9 @@ function createFishAudioStream(
             receivedBytes: totalBytes + chunk.byteLength,
           },
         }),
+        1009,
+        "audio limit exceeded",
       );
-      socket.close(1009, "audio limit exceeded");
       return;
     }
     bufferedChunks.push(chunk);
@@ -305,8 +357,9 @@ function createFishAudioStream(
         code: "FISH_AUDIO_SYNTHESIS_TIMEOUT",
         context: { synthesisTimeoutMs: config.synthesisTimeoutMs },
       }),
+      1013,
+      "synthesis timeout",
     );
-    socket.close(1013, "synthesis timeout");
   }, config.synthesisTimeoutMs);
 
   socket.addEventListener("open", () => {
@@ -360,20 +413,31 @@ function createFishAudioStream(
       fail(error);
     }
   });
-  socket.addEventListener("error", (event) =>
+  socket.addEventListener("error", (event) => {
+    const message =
+      event.message ??
+      (event.error instanceof Error
+        ? event.error.message
+        : "Fish Audio WebSocket error");
+    const statusCode = /\b(401|429)\b/.exec(message)?.[1];
+    const code =
+      statusCode === "401"
+        ? "FISH_AUDIO_AUTH_FAILED"
+        : statusCode === "429"
+          ? "FISH_AUDIO_RATE_LIMITED"
+          : "FISH_AUDIO_WEBSOCKET_ERROR";
     fail(
-      new ElizaError(
-        event.message ??
-          (event.error instanceof Error
-            ? event.error.message
-            : "Fish Audio WebSocket error"),
-        {
-          code: "FISH_AUDIO_WEBSOCKET_ERROR",
-          cause: event.error,
+      new ElizaError(message, {
+        code,
+        cause: event.error,
+        severity: statusCode === "401" ? "fatal" : "ephemeral",
+        context: {
+          retryable: statusCode !== "401",
+          ...(statusCode ? { statusCode: Number(statusCode) } : {}),
         },
-      ),
-    ),
-  );
+      }),
+    );
+  });
   socket.addEventListener("close", (event) => {
     if (done) return;
     const detail = event.reason ? `: ${event.reason}` : "";
@@ -389,8 +453,9 @@ function createFishAudioStream(
       new ElizaError("Fish Audio TTS aborted", {
         code: "FISH_AUDIO_STREAM_ABORTED",
       }),
+      1000,
+      "aborted",
     );
-    socket.close(1000, "aborted");
   };
   if (config.signal?.aborted) {
     abort();
@@ -436,40 +501,33 @@ function openSocket(
   if (configuredWebSocketFactory) {
     return configuredWebSocketFactory(FISH_AUDIO_TTS_WEBSOCKET_URL, options);
   }
-  const WebSocketCtor = (
-    globalThis as {
-      WebSocket?: new (
-        url: string,
-        protocolsOrOptions?:
-          | string
-          | string[]
-          | { headers?: Record<string, string> },
-        options?: { headers?: Record<string, string> },
-      ) => FishAudioWebSocketLike;
-    }
-  ).WebSocket;
-  if (!WebSocketCtor) {
-    throw new ElizaError("WebSocket is not available for Fish Audio TTS", {
-      code: "FISH_AUDIO_WEBSOCKET_UNAVAILABLE",
-    });
-  }
-  try {
-    return new WebSocketCtor(FISH_AUDIO_TTS_WEBSOCKET_URL, undefined, options);
-  } catch {
-    // error-policy:J1 boundary translation — runtimes differ on whether WS
-    // headers are accepted as the second or third constructor argument.
-    return new WebSocketCtor(FISH_AUDIO_TTS_WEBSOCKET_URL, options);
-  }
+  throw new ElizaError(
+    "Fish Audio requires the authenticated platform WebSocket transport",
+    { code: "FISH_AUDIO_WEBSOCKET_UNAVAILABLE" },
+  );
 }
 
 function decodeFrame(data: unknown): Record<string, unknown> {
-  const frame =
-    data instanceof ArrayBuffer
-      ? decode(new Uint8Array(data))
-      : ArrayBuffer.isView(data)
-        ? decode(new Uint8Array(data.buffer, data.byteOffset, data.byteLength))
-        : decode(data as Uint8Array);
-  if (typeof frame !== "object" || frame === null) {
+  let frame: unknown;
+  try {
+    frame =
+      data instanceof ArrayBuffer
+        ? decode(new Uint8Array(data))
+        : ArrayBuffer.isView(data)
+          ? decode(
+              new Uint8Array(data.buffer, data.byteOffset, data.byteLength),
+            )
+          : decode(data as Uint8Array);
+  } catch (error) {
+    // error-policy:J1 malformed provider bytes are translated at the transport
+    // boundary and never reach callers as an unclassified decoder exception.
+    throw new ElizaError("Fish Audio returned an invalid MessagePack frame", {
+      code: "FISH_AUDIO_PROVIDER_MESSAGE_INVALID",
+      cause: error,
+      severity: "fatal",
+    });
+  }
+  if (typeof frame !== "object" || frame === null || Array.isArray(frame)) {
     throw new ElizaError("Fish Audio frame must be an object", {
       code: "FISH_AUDIO_PROVIDER_MESSAGE_INVALID",
     });
