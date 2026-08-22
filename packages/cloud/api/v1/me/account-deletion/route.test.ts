@@ -15,18 +15,18 @@ class AccountDeletionConflictError extends Error {
   }
 }
 
-const requireUserWithOrg = mock(async () => ({
+const requireRecentSessionUserWithOrg = mock(async () => ({
   id: "11111111-1111-4111-8111-111111111111",
   organization_id: "22222222-2222-4222-8222-222222222222",
   steward_id: "steward-user-1",
 }));
 const requestAccountDeletion = mock(async () => ({
-  id: "33333333-3333-4333-8333-333333333333",
-  status: "scheduled",
-  requested_at: new Date("2026-08-19T00:00:00Z"),
-  execute_after: new Date("2026-09-18T00:00:00Z"),
-  identity_deactivated_at: new Date("2026-08-19T00:00:00Z"),
-  completed_at: null,
+  request: {
+    requestId: "33333333-3333-4333-8333-333333333333",
+    status: "reserved",
+  },
+  statusCredential: "status-capability",
+  recoveryCredential: "recovery-capability",
 }));
 const getAccountDeletionStatus = mock(async () => ({
   state: "lifecycle_unavailable" as const,
@@ -35,7 +35,9 @@ const getAccountDeletionStatus = mock(async () => ({
   message: "Lifecycle reservation required",
 }));
 
-mock.module("@/lib/auth/workers-hono-auth", () => ({ requireUserWithOrg }));
+mock.module("@/lib/auth/workers-hono-auth", () => ({
+  requireRecentSessionUserWithOrg,
+}));
 mock.module("@/lib/auth/browser-origin-policy", () => ({
   checkElizaMutatingRequestOrigin: () => ({ ok: true }),
 }));

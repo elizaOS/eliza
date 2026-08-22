@@ -5,6 +5,8 @@
  */
 
 export * from "./account-deletion-requests";
+export * from "./account-deletion-exports";
+export * from "./account-deletion-phase-receipts";
 export * from "./ad-accounts";
 export * from "./ad-audience-segments";
 export * from "./ad-campaigns";

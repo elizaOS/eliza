@@ -153,6 +153,15 @@ export async function deactivateStewardPlatformUser(
   });
 }
 
+/** Restores Steward login only after a deletion recovery credential is consumed. */
+export async function reactivateStewardPlatformUser(
+  userId: string,
+): Promise<StewardPlatformUserLifecycleResult> {
+  return await mutateStewardPlatformUser(userId, "PATCH", "/deactivate", {
+    deactivated: false,
+  });
+}
+
 async function deleteStewardPersonalTenant(userId: string): Promise<void> {
   const tenantId = `personal-${userId}`;
   const response = await fetch(

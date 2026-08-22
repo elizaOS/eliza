@@ -18,7 +18,9 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 
-export const organizationBalanceRevisionSequence = pgSequence("organization_balance_revision_seq");
+export const organizationBalanceRevisionSequence = pgSequence(
+  "organization_balance_revision_seq",
+);
 
 /**
  * Organizations table schema (core).
@@ -50,11 +52,15 @@ export const organizations = pgTable(
     // delayed stale snapshots that arrive after a newer debit or top-up. Zero
     // is the per-organization initial revision; only mutations need a globally
     // monotonic sequence value.
-    balance_revision: bigint("balance_revision", { mode: "number" }).notNull().default(0),
+    balance_revision: bigint("balance_revision", { mode: "number" })
+      .notNull()
+      .default(0),
     // Durable auto-top-up re-arms only after a balance decrease. Existing
     // organizations are conservatively fenced during migration; newly created
     // organizations start without a fence so their first eligible top-up can run.
-    balance_decrease_revision: bigint("balance_decrease_revision", { mode: "number" })
+    balance_decrease_revision: bigint("balance_decrease_revision", {
+      mode: "number",
+    })
       .notNull()
       .default(0),
     auto_top_up_covered_balance_decrease_revision: bigint(
@@ -84,12 +90,28 @@ export const organizations = pgTable(
     // redeemable_earnings before falling through to credit_balance.
     // When false, hosting is paid purely from credits for compatibility,
     // leaving earnings untouched for token cashout.
-    pay_as_you_go_from_earnings: boolean("pay_as_you_go_from_earnings").default(true).notNull(),
+    pay_as_you_go_from_earnings: boolean("pay_as_you_go_from_earnings")
+      .default(true)
+      .notNull(),
 
     // Steward auth tenant credentials for this organization.
     // Populated when an org is onboarded onto Steward-backed auth.
     steward_tenant_id: text("steward_tenant_id").unique(),
     steward_tenant_api_key: text("steward_tenant_api_key"),
+
+    // Account-level authority checked immediately before paid/provider work.
+    // Workers must capture both state and revision, then recheck under the
+    // primary writer immediately before their final external boundary.
+    account_lifecycle_state: text("account_lifecycle_state")
+      .notNull()
+      .default("active"),
+    account_lifecycle_revision: bigint("account_lifecycle_revision", {
+      mode: "number",
+    })
+      .notNull()
+      .default(0),
+    account_deletion_request_id: uuid("account_deletion_request_id"),
+    paid_work_fenced_at: timestamp("paid_work_fenced_at"),
 
     is_active: boolean("is_active").default(true).notNull(),
     created_at: timestamp("created_at").notNull().defaultNow(),
@@ -97,7 +119,9 @@ export const organizations = pgTable(
   },
   (table) => ({
     slug_idx: index("organizations_slug_idx").on(table.slug),
-    stripe_customer_authority_unique: uniqueIndex("organizations_stripe_customer_authority_unique")
+    stripe_customer_authority_unique: uniqueIndex(
+      "organizations_stripe_customer_authority_unique",
+    )
       .on(table.stripe_customer_id)
       .where(sql`${table.stripe_customer_id} IS NOT NULL`),
     // CHECK constraint to prevent negative credit balances at database level
@@ -105,6 +129,13 @@ export const organizations = pgTable(
       "credit_balance_non_negative",
       sql`${table.credit_balance} >= 0`,
     ),
+    account_lifecycle_state_check: check(
+      "organizations_account_lifecycle_state_check",
+      sql`${table.account_lifecycle_state} IN ('active', 'deletion_recovery', 'deletion_irreversible')`,
+    ),
+    account_deletion_request_idx: index(
+      "organizations_account_deletion_request_idx",
+    ).on(table.account_deletion_request_id),
   }),
 );
 
