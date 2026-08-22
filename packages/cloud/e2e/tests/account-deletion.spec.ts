@@ -77,9 +77,25 @@ test.describe("account deletion", () => {
       seededUser.organizationId,
     );
     const [keyBefore] = await apiKeysRepository.listByUser(seededUser.userId);
+    const [otherKeyBefore] = await apiKeysRepository.listByUser(other.userId);
+    const otherStewardStateBefore = stack.mocks.steward.users.get(
+      other.stewardUserId,
+    );
+    expect(
+      await accountDeletionRequestsRepository.findOpenByUserId(
+        other.userId,
+        true,
+      ),
+    ).toBeUndefined();
 
     const unconfirmed = await request("POST", "delete");
-    expect(unconfirmed.status).toBe(400);
+    expect(unconfirmed).toEqual({
+      status: 400,
+      body: {
+        error: "Type DELETE to confirm permanent account deletion",
+        code: "confirmation_required",
+      },
+    });
     const refused = await request("POST", "DELETE");
     expect(refused).toEqual({
       status: 409,
@@ -95,6 +111,7 @@ test.describe("account deletion", () => {
       seededUser.organizationId,
     );
     const [keyAfter] = await apiKeysRepository.listByUser(seededUser.userId);
+    const [otherKeyAfter] = await apiKeysRepository.listByUser(other.userId);
     const otherUser = await usersRepository.findByIdForWrite(other.userId);
     const otherOrganization = await organizationsRepository.findById(
       other.organizationId,
@@ -119,6 +136,19 @@ test.describe("account deletion", () => {
     ).toBeUndefined();
     expect(otherUser).toMatchObject({ is_active: true });
     expect(otherOrganization).toMatchObject({ is_active: true });
+    expect(otherKeyAfter).toMatchObject({
+      id: otherKeyBefore?.id,
+      is_active: otherKeyBefore?.is_active,
+    });
+    expect(stack.mocks.steward.users.get(other.stewardUserId)).toBe(
+      otherStewardStateBefore,
+    );
+    expect(
+      await accountDeletionRequestsRepository.findOpenByUserId(
+        other.userId,
+        true,
+      ),
+    ).toBeUndefined();
 
     const after = await request("GET");
     expect(after).toEqual(initial);
