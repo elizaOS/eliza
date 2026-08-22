@@ -10,6 +10,7 @@ import {
   ElizaError,
   getTrajectoryContext,
   ModelType,
+  parseJSONObjectFromText,
   renderActionResultsForModel,
 } from "@elizaos/core";
 import { asRecord } from "@elizaos/shared";
@@ -46,6 +47,18 @@ function stringifyPromptValue(value: unknown): string {
       cause: error,
     });
   }
+}
+
+function invalidReplyShape(raw: string): string | undefined {
+  const trimmed = raw.trim();
+  if (!trimmed) return "empty";
+  if (/^<[^>]+>/.test(trimmed)) return "markup";
+  if (parseJSONObjectFromText(trimmed)) return "json-object";
+  return /^(?:subaction|shouldAct|response|operation|confidence|missing)\s*:/m.test(
+    trimmed,
+  )
+    ? "schema-fields"
+    : undefined;
 }
 
 function extractActionResultCandidates(state: State | undefined): unknown[][] {
@@ -146,7 +159,10 @@ export async function summarizeActiveTrajectory(
   try {
     const trajectory = await loadTrajectoryByStepId(runtime, trajectoryStepId);
     if (!trajectory) {
-      return `active trajectory step ${trajectoryStepId}`;
+      throw new ElizaError("Grounded reply trajectory is unavailable", {
+        code: "GROUNDED_REPLY_TRAJECTORY_UNAVAILABLE",
+        context: { trajectoryStepId },
+      });
     }
 
     return stringifyPromptValue(trajectory);
@@ -229,6 +245,16 @@ export async function renderGroundedActionReply(
       code: "GROUNDED_REPLY_OUTPUT_INVALID",
       context: { outputType: typeof result },
     });
+  }
+  const invalidShape = invalidReplyShape(result);
+  if (invalidShape) {
+    throw new ElizaError(
+      "Grounded reply model output is not user-facing text",
+      {
+        code: "GROUNDED_REPLY_OUTPUT_INVALID",
+        context: { invalidShape },
+      },
+    );
   }
   return result;
 }
