@@ -370,7 +370,7 @@ function resolveRegisteredNotesView(
 	return resolution.view.id === "documents" ? { kind: "none" } : resolution;
 }
 
-interface NavigateResult {
+export interface NavigateResult {
 	ok: boolean;
 	/** Internal tool receipt for post-tool reasoning; never assistant prose. */
 	text: string;
@@ -380,6 +380,7 @@ interface NavigateResult {
 	completedActionDelivered?: true;
 	/** Renderer-observed idempotency key echoed by a supporting server. */
 	completedActionHandoffId?: string;
+	failureKind?: "unsupported-route" | "navigation-rejected" | "transport";
 }
 
 function navigationEffectReceipt({
@@ -434,7 +435,7 @@ function resolveSubviewForView(
 	return token;
 }
 
-async function navigateToView(
+export async function navigateToView(
 	view: ViewSummary,
 	requestedViewType?: ViewType,
 	subview?: string,
@@ -514,6 +515,7 @@ async function navigateToView(
 		if (resp.status === 501 || resp.status === 404)
 			return {
 				ok: false,
+				failureKind: "unsupported-route",
 				text: navigationEffectReceipt({
 					status: "unsupported-route",
 					view,
@@ -527,6 +529,16 @@ async function navigateToView(
 		logger.warn(
 			`[plugin-app-control] VIEWS/show navigate returned ${resp.status}: ${body}`,
 		);
+		return {
+			ok: false,
+			failureKind: "navigation-rejected",
+			text: navigationEffectReceipt({
+				status: "unconfirmed",
+				view,
+				navigationLabel,
+				subview: resolvedSubview,
+			}),
+		};
 	} catch (err) {
 		logger.warn(
 			`[plugin-app-control] VIEWS/show navigate failed: ${err instanceof Error ? err.message : String(err)}`,
@@ -535,6 +547,7 @@ async function navigateToView(
 
 	return {
 		ok: false,
+		failureKind: "transport",
 		text: navigationEffectReceipt({
 			status: "unconfirmed",
 			view,

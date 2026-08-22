@@ -2,9 +2,8 @@
 
 import { randomUUID } from "node:crypto";
 import type { Memory } from "@elizaos/core";
-import { logger } from "@elizaos/core";
 import { REALTIME_VOICE_CLIENT_TRANSPORT } from "@elizaos/shared";
-import { createViewsRequestHeaders } from "../actions/views-request-auth.js";
+import { navigateToView } from "../actions/views-show.js";
 import { getAppControlApiBase } from "../loopback-api.js";
 
 export function browserViewPathForLaunchUrl(launchUrl: string): string {
@@ -56,10 +55,6 @@ export interface BrowserViewNavigationResult {
 		| "TRANSPORT_FAILURE";
 }
 
-function ownValue(body: object, key: string): unknown {
-	return Object.getOwnPropertyDescriptor(body, key)?.value;
-}
-
 export async function openLaunchUrlInBrowserView(
 	launchUrl: string,
 	options: {
@@ -72,11 +67,9 @@ export async function openLaunchUrlInBrowserView(
 	try {
 		path = browserViewPathForLaunchUrl(launchUrl);
 	} catch (error) {
-		// error-policy:J4 a malformed launch receipt cannot navigate a renderer;
-		// retain an explicit result so the action can still present the raw link.
-		logger.warn(
-			`[plugin-app-control] Invalid app launch URL: ${error instanceof Error ? error.message : String(error)}`,
-		);
+		// error-policy:J4 malformed launch receipts become an explicit unavailable
+		// result so the action can retain the raw link without claiming navigation.
+		void error;
 		return {
 			path: "/browser",
 			status: "unavailable",
@@ -99,95 +92,52 @@ export async function openLaunchUrlInBrowserView(
 	const completedActionHandoffId = options.realtimeVoice
 		? undefined
 		: (options.completedActionHandoffId ?? randomUUID());
-	try {
-		const response = await fetch(
-			`${getAppControlApiBase()}/api/views/browser/navigate`,
-			{
-				method: "POST",
-				headers: createViewsRequestHeaders(),
-				body: JSON.stringify({
-					path,
-					viewType: "gui",
-					source: "agent",
-					delivery,
-					clientId: originatingClientId,
-					...(completedActionHandoffId ? { completedActionHandoffId } : {}),
-				}),
-				signal: AbortSignal.timeout(5_000),
-			},
-		);
-		if (!response.ok) {
-			return {
-				path,
-				status: "unavailable",
-				completedActionDelivered: false,
-				errorCode:
-					response.status === 409
-						? "RENDERER_UNAVAILABLE"
-						: "NAVIGATION_REJECTED",
-			};
-		}
-		let body: unknown;
-		try {
-			body = await response.json();
-		} catch (error) {
-			// error-policy:J3 a malformed server receipt is an explicit unconfirmed
-			// result; it must never be promoted to renderer-observed delivery.
-			if (!(error instanceof SyntaxError)) throw error;
-			return {
-				path,
-				status: "unavailable",
-				completedActionDelivered: false,
-				errorCode: "INVALID_RECEIPT",
-			};
-		}
-		if (typeof body !== "object" || body === null || Array.isArray(body)) {
-			return {
-				path,
-				status: "unavailable",
-				completedActionDelivered: false,
-				errorCode: "INVALID_RECEIPT",
-			};
-		}
-		if (ownValue(body, "ok") !== true) {
-			return {
-				path,
-				status: "unavailable",
-				completedActionDelivered: false,
-				errorCode: "INVALID_RECEIPT",
-			};
-		}
-		if (options.realtimeVoice) {
-			return {
-				path,
-				status: "delivered",
-				completedActionDelivered: true,
-			};
-		}
-		const handoffEchoed =
-			ownValue(body, "completedActionHandoffId") === completedActionHandoffId;
-		const delivered =
-			ownValue(body, "completedActionDelivered") === true && handoffEchoed;
-		return {
+	const result = await navigateToView(
+		{
+			id: "browser",
+			label: "Browser",
+			pluginName: "plugin-app-control",
 			path,
-			status: delivered ? "delivered" : "fallback",
-			completedActionDelivered: delivered,
-			...(handoffEchoed && completedActionHandoffId
-				? { completedActionHandoffId }
-				: {}),
-			...(!handoffEchoed ? { errorCode: "INVALID_RECEIPT" as const } : {}),
-		};
-	} catch (err) {
-		// error-policy:J4 Browser navigation is an optional user-facing degrade;
-		// the action retains the launch link and reports the distinct failure.
-		logger.warn(
-			`[plugin-app-control] Browser view navigation failed: ${err instanceof Error ? err.message : String(err)}`,
-		);
+			viewType: "gui",
+			available: true,
+		},
+		"gui",
+		undefined,
+		"Browser",
+		delivery,
+		originatingClientId,
+		completedActionHandoffId,
+	);
+	if (!result.ok) {
 		return {
 			path,
 			status: "unavailable",
 			completedActionDelivered: false,
-			errorCode: "TRANSPORT_FAILURE",
+			errorCode:
+				result.failureKind === "transport"
+					? "TRANSPORT_FAILURE"
+					: result.failureKind === "navigation-rejected"
+						? "NAVIGATION_REJECTED"
+						: "RENDERER_UNAVAILABLE",
 		};
 	}
+	if (options.realtimeVoice) {
+		return { path, status: "delivered", completedActionDelivered: true };
+	}
+	const handoffEchoed =
+		result.completedActionHandoffId === completedActionHandoffId;
+	const delivered = result.completedActionDelivered === true && handoffEchoed;
+	return {
+		path,
+		status: delivered
+			? "delivered"
+			: handoffEchoed
+				? "fallback"
+				: "unavailable",
+		completedActionDelivered: delivered,
+		...(handoffEchoed && completedActionHandoffId
+			? { completedActionHandoffId }
+			: {}),
+		...(!handoffEchoed ? { errorCode: "INVALID_RECEIPT" as const } : {}),
+	};
 }
