@@ -115,14 +115,18 @@ function providerSentAtMs(event: BlooioWebhookEvent): number | undefined {
   return Number.isSafeInteger(milliseconds) ? milliseconds : undefined;
 }
 
-const ALLOWED_MEDIA_DOMAINS = [
+// Runtime-local copy of the canonical allowlist in
+// `@elizaos/cloud-shared/lib/services/eliza-app/blooio-media-allowlist` (this
+// service must not depend on cloud-shared at runtime); the adapter parity test
+// pins the two to each other.
+export const ALLOWED_MEDIA_DOMAINS = [
   "blooio.com",
   "backend.blooio.com",
   "api.blooio.com",
   "media.blooio.com",
 ];
 
-function isValidMediaUrl(url: string): boolean {
+export function isValidMediaUrl(url: string): boolean {
   try {
     const parsed = new URL(url);
     if (parsed.protocol !== "https:") return false;

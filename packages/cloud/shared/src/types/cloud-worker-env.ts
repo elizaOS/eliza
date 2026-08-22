@@ -477,6 +477,11 @@ export interface Bindings {
   WEBHOOK_GATEWAY_URL?: string;
   GATEWAY_WEBHOOK_URL?: string;
   ELIZA_APP_WEBHOOK_PROJECT?: string;
+  /**
+   * Exactly `"true"` enables vision descriptions of inbound Blooio image media
+   * on Personal Shared turns; any other value keeps the raw media-URL text.
+   */
+  ELIZA_APP_INBOUND_MEDIA_VISION?: string;
   /** Moves only the official Personal Shared Telegram transport to the Worker edge. */
   PERSONAL_SHARED_TELEGRAM_EDGE_ENABLED?: string;
   /** Collision-free secret used by the protected staging edge cutover. */
