@@ -209,4 +209,24 @@ describe("Apple Calendar Swift bridge contract", () => {
       '"availability": eventAvailability(event.availability)',
     );
   });
+
+  it("emits portable identity, recurrence, reminder, and source provenance", () => {
+    for (const token of [
+      "calendarItemExternalIdentifier",
+      "occurrenceDate",
+      "lastModifiedDate",
+      "recurrenceRules",
+      "event.alarms",
+      "sourceIdentifier",
+      "sourceType",
+    ]) {
+      expect(swiftSource).toContain(token);
+    }
+  });
+
+  it("publishes EventKit store-change observations for cache invalidation", () => {
+    expect(swiftSource).toContain("name: .EKEventStoreChanged");
+    expect(swiftSource).toContain('notifyListeners( "calendarStoreChanged"');
+    expect(definitionsSource).toContain('eventName: "calendarStoreChanged"');
+  });
 });

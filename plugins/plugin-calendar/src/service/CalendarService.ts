@@ -71,6 +71,7 @@ import {
   getNativeAppleCalendarPermissionStatus,
   isAppleCalendarGrant,
   listNativeAppleCalendars,
+  subscribeNativeAppleCalendarChanges,
   updateNativeAppleCalendarEvent,
 } from "../apple-calendar.js";
 import {
@@ -1167,6 +1168,8 @@ export class CalendarService extends Service {
   private readonly googleSyncLocks = new Map<string, Promise<void>>();
   private readonly microsoftSyncLocks = new Map<string, Promise<void>>();
   private icsSecretCleanupDrain: Promise<void> | null = null;
+  private appleCalendarChangeListener: { remove: () => Promise<void> } | null =
+    null;
 
   constructor(runtime?: IAgentRuntime) {
     super(runtime);
@@ -1188,10 +1191,51 @@ export class CalendarService extends Service {
     void service.restoreMeetingAutoJoinAnchorsOnBoot();
     void service.installGoogleWatchMaintenanceOnBoot();
     void service.drainIcsSecretCleanupOnBoot();
+    void service.installAppleCalendarChangeObserver();
     return service;
   }
 
-  override async stop(): Promise<void> {}
+  override async stop(): Promise<void> {
+    try {
+      await this.appleCalendarChangeListener?.remove();
+    } catch (error) {
+      // error-policy:J6 Listener teardown is best-effort during service stop.
+      logger.warn(
+        { src: "calendar:apple-change-observer", error },
+        "[CalendarService] Apple Calendar change observer teardown failed.",
+      );
+    }
+    this.appleCalendarChangeListener = null;
+  }
+
+  private async installAppleCalendarChangeObserver(): Promise<void> {
+    try {
+      this.appleCalendarChangeListener =
+        await subscribeNativeAppleCalendarChanges(() => {
+          void this.invalidateAppleCalendarCache();
+        });
+    } catch (error) {
+      // error-policy:J5 Service.start launches native observation in the
+      // background; this handler observes and reports its rejection.
+      this.runtime.reportError("calendar:apple-change-observer", error);
+    }
+  }
+
+  private async invalidateAppleCalendarCache(): Promise<void> {
+    try {
+      await this.repo.deleteCalendarSyncState(
+        this.agentId(),
+        APPLE_CALENDAR_PROVIDER,
+        undefined,
+        "owner",
+        APPLE_CALENDAR_GRANT_ID,
+      );
+    } catch (error) {
+      // error-policy:J7 Cache invalidation failure is diagnostic and must not
+      // terminate EventKit's change-notification delivery loop.
+      this.runtime.reportError("calendar:apple-change-invalidation", error);
+    }
+  }
 
   private async installGoogleWatchMaintenanceOnBoot(): Promise<void> {
     try {
