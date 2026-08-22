@@ -20,6 +20,8 @@ const removedCompactionModules = [
 	"packages/agent/src/runtime/conversation-compactor.ts",
 	"packages/agent/src/runtime/prompt-compaction.ts",
 	"packages/core/src/runtime/conversation-compaction-hook.ts",
+	"packages/core/src/runtime/content-projection-policy.ts",
+	"packages/core/src/runtime/content-projection-policy.test.ts",
 	"packages/training/scripts/transform_drop_oversized.py",
 ];
 
@@ -65,6 +67,7 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 		/DEFAULT_EVALUATOR_MAX_TOKENS/,
 		/maxTokens\s*:/,
 		/retryMaxTokens/,
+		/contentProjection/,
 	],
 	"packages/core/src/runtime/message-handler.ts": [
 		/normalizeStringHints/,
@@ -88,6 +91,17 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 		/projectStepForFinalSynthesis/,
 		/DEFAULT_(?:CODING_)?PLANNER_MAX_TOKENS/,
 		/maxTokens:\s*\d+/,
+		/ELIZA_PROMPT_COMPRESS/,
+		/contentProjection/,
+		/maxToolResultChars/,
+	],
+	"packages/core/src/runtime/planner-rendering.ts": [
+		/truncateToolResultText/,
+		/maxToolResultChars/,
+		/contentProjection/,
+	],
+	"packages/core/src/services/optimized-prompt-resolver.ts": [
+		/ELIZA_PROMPT_COMPRESS/,
 	],
 	"packages/core/src/services/message/bot-noise-triage.ts": [
 		/MAX_HISTORY_MESSAGES/,
@@ -100,6 +114,10 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 	"packages/core/src/services/message.ts": [
 		/slice\(0,\s*400\)[\s\S]{0,120}task_complete/,
 		/CODING_DIRECT_ACTIONS/,
+		/ELIZA_DISABLE_ACTION_RESULT_PROJECTION/,
+	],
+	"packages/core/src/services/evaluator.ts": [
+		/ELIZA_DISABLE_ACTION_RESULT_PROJECTION/,
 	],
 	"packages/core/src/services/relationships.ts": [
 		/MAX_INTERACTION_HISTORY/,
@@ -148,6 +166,7 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 	],
 	"packages/core/src/runtime/action-retrieval.ts": [
 		/results\.slice\(0,\s*limit\)/,
+		/ELIZA_PROMPT_COMPRESS/,
 		/COMPRESS_MODE_TOP_K_CAP/,
 	],
 	"packages/core/src/runtime/action-tiering.ts": [
