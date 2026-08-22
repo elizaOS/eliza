@@ -108,6 +108,8 @@ export interface DocumentGetQueryParams extends DocumentRequesterContext {
  */
 export interface DocumentFragmentQueryParams extends DocumentRequesterContext {
 	limit: number;
+	offset?: number;
+	documentId?: UUID;
 	roomId?: UUID;
 	worldId?: UUID;
 	entityId?: UUID;

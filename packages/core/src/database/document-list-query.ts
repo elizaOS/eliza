@@ -663,6 +663,24 @@ export function validateDocumentFragmentQueryParams(
 			},
 		);
 	}
+	if (
+		params.offset !== undefined &&
+		(!Number.isSafeInteger(params.offset) || params.offset < 0)
+	) {
+		throw new ElizaError(
+			"Document fragment offset must be a non-negative integer",
+			{
+				code: "DOCUMENT_FRAGMENT_QUERY_INVALID",
+				context: { offset: params.offset },
+			},
+		);
+	}
+	if (params.documentId !== undefined && !isUuid(params.documentId)) {
+		throw new ElizaError("Document fragment parent id is invalid", {
+			code: "DOCUMENT_FRAGMENT_QUERY_INVALID",
+			context: { documentId: params.documentId },
+		});
+	}
 	if (params.embedding === undefined) {
 		if (params.matchThreshold !== undefined) {
 			throw new ElizaError(
@@ -902,6 +920,7 @@ export function queryDocumentFragmentsInMemory(
 			}
 			const documentId = memory.metadata?.documentId;
 			if (!isUuid(documentId)) return false;
+			if (params.documentId && documentId !== params.documentId) return false;
 			const parent = parents.get(documentId);
 			if (!parent || !isDocumentVisibleToRequester(parent, params))
 				return false;
@@ -956,7 +975,8 @@ export function queryDocumentFragmentsInMemory(
 	} else {
 		fragments.sort(compareDocumentOrder);
 	}
-	return fragments.slice(0, params.limit);
+	const offset = params.offset ?? 0;
+	return fragments.slice(offset, offset + params.limit);
 }
 
 export function hasDocumentListQueryCapability(

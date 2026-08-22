@@ -47,6 +47,9 @@ headers and `ELIZA_ADMIN_ENTITY_ID` never create an authenticated caller. Roles
 remain exact at this boundary: ADMIN is not OWNER, GUEST is not USER, and an
 unresolved role is rejected. Guests may read global documents in rooms where
 they are current members, but cannot read private scopes or mutate documents.
+Single-document and fragment reads are resolved by `DocumentService` with that
+authenticated context; routes never fetch a parent row or scan fragment bytes
+and then attempt to filter the result locally.
 
 ## Configuration
 

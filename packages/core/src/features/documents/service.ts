@@ -555,6 +555,48 @@ export class DocumentService extends Service {
 		});
 	}
 
+	async getDocumentByIdWithAccessContext(
+		documentId: UUID,
+		accessContext: AccessContext,
+	): Promise<Memory | null> {
+		const requester = await resolveDocumentRequesterFromAccessContext(
+			this.runtime,
+			accessContext,
+		);
+		return this.runtime.adapter.getDocument({
+			agentId: this.runtime.agentId,
+			documentId,
+			requesterEntityId: requester.entityId,
+			requesterRoomIds: requester.roomIds,
+			requesterRole: requester.role,
+		});
+	}
+
+	async listDocumentFragmentsWithAccessContext(
+		documentId: UUID,
+		accessContext: AccessContext,
+	): Promise<Memory[]> {
+		const requester = await resolveDocumentRequesterFromAccessContext(
+			this.runtime,
+			accessContext,
+		);
+		const fragments: Memory[] = [];
+		const pageSize = 1_000;
+		for (let offset = 0; ; offset += pageSize) {
+			const page = await this.runtime.adapter.queryDocumentFragments({
+				agentId: this.runtime.agentId,
+				documentId,
+				requesterEntityId: requester.entityId,
+				requesterRoomIds: requester.roomIds,
+				requesterRole: requester.role,
+				limit: pageSize,
+				offset,
+			});
+			fragments.push(...page);
+			if (page.length < pageSize) return fragments;
+		}
+	}
+
 	async listDocuments(
 		message?: Memory,
 		options: DocumentListOptions = {},

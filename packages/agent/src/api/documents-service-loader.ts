@@ -87,6 +87,14 @@ export interface DocumentsServiceLike {
     options?: Record<string, unknown>,
   ): Promise<Memory[]>;
   getDocumentById?(documentId: UUID, message?: Memory): Promise<Memory | null>;
+  getDocumentByIdWithAccessContext?(
+    documentId: UUID,
+    accessContext: AccessContext,
+  ): Promise<Memory | null>;
+  listDocumentFragmentsWithAccessContext?(
+    documentId: UUID,
+    accessContext: AccessContext,
+  ): Promise<Memory[]>;
   getMemories(params: {
     tableName: string;
     roomId?: UUID;
