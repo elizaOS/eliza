@@ -19,9 +19,8 @@
  *    the clock. A server flips `new → active` because ticks were *advanced* past
  *    its `activeAtTick`, not because `getServer` was *called*.
  *  - `waitForAction` does NOT sleep. It force-resolves the action to terminal
- *    (`completed`, or `errored` for a poisoned id) and returns it. Poisoned
- *    actions resolve to an `error` action WITHOUT throwing (mirrors the real
- *    Hetzner client returning the error action rather than rejecting).
+ *    success, while poisoned ids reject with the same fail-fast contract as
+ *    production providers.
  *
  * Status vocabulary (DO-native, self-consistent; the interface only requires
  * `status: string`, so the fake is free to pick its own strings):
@@ -65,7 +64,7 @@ export const ACTION_STATUS_ERRORED = "errored";
  */
 export class ComputeFakeError extends Error {
   constructor(
-    public readonly code: "no_capacity" | "not_found" | "invalid_input",
+    public readonly code: "no_capacity" | "not_found" | "invalid_input" | "action_failed",
     message: string,
   ) {
     super(message);
@@ -332,9 +331,8 @@ export class InMemoryComputeProvider implements ComputeProvider {
   // ----------------------------------------------------------------------
 
   /**
-   * Resolve an action to terminal WITHOUT sleeping. A poisoned id resolves to
-   * `errored` (and returns it; does not throw). An unknown action id throws
-   * `ComputeFakeError("not_found")`.
+   * Resolve an action to terminal WITHOUT sleeping. Poisoned and unknown ids
+   * reject so consumer tests exercise the same failure contract as production.
    */
   async waitForAction(actionId: number, _timeoutMs?: number): Promise<ComputeAction> {
     const rec = this.actions.get(actionId);
@@ -344,6 +342,7 @@ export class InMemoryComputeProvider implements ComputeProvider {
     if (this.poisonedActionIds.has(actionId)) {
       rec.status = ACTION_STATUS_ERRORED;
       rec.error = { code: "action_failed", message: `action ${actionId} failed (poisoned)` };
+      throw new ComputeFakeError("action_failed", rec.error.message);
     } else {
       rec.status = ACTION_STATUS_COMPLETED;
       rec.error = null;

@@ -5,7 +5,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
-import { HetznerCloudClient } from "./hetzner-cloud-api";
+import { HetznerAcceptedResourceError, HetznerCloudClient } from "./hetzner-cloud-api";
 
 type ResponseFactory = (init: RequestInit | undefined) => Response | Promise<Response>;
 
@@ -91,11 +91,15 @@ afterEach(() => {
 describe("Hetzner lifecycle envelopes", () => {
   test("rejects incomplete create acceptance before polling or readback", async () => {
     json({ server: server(41), root_password: null, next_actions: [] }, 201);
+    json({ error: { code: "not_found", message: "server missing" } }, 404);
 
     await expect(client().createServer(createServerInput())).rejects.toMatchObject({
       code: "server_error",
+      resourceType: "server",
+      resourceId: 41,
+      compensation: "succeeded",
     });
-    expect(requests).toHaveLength(1);
+    expect(requests.map(({ path }) => path)).toEqual(["/v1/servers", "/v1/servers/41"]);
   });
 
   test("awaits every returned action and returns only exact running readback", async () => {
@@ -134,11 +138,16 @@ describe("Hetzner lifecycle envelopes", () => {
       201,
     );
     json({ action: action(4, "create_server", "success", { id: 41, type: "server" }) });
+    json({ error: { code: "not_found", message: "server missing" } }, 404);
 
     await expect(client().createServer(createServerInput())).rejects.toMatchObject({
       code: "server_error",
     });
-    expect(requests.map(({ path }) => path)).toEqual(["/v1/servers", "/v1/actions/3"]);
+    expect(requests.map(({ path }) => path)).toEqual([
+      "/v1/servers",
+      "/v1/actions/3",
+      "/v1/servers/41",
+    ]);
 
     responses = [];
     requests = [];
@@ -171,6 +180,7 @@ describe("Hetzner lifecycle deadlines and absence", () => {
           }),
       } as Response;
     });
+    json({ error: { code: "not_found", message: "server missing" } }, 404);
 
     await expect(client({ requestTimeoutMs: 10 }).listServers()).rejects.toMatchObject({
       code: "transport_error",
@@ -230,7 +240,123 @@ describe("Hetzner lifecycle deadlines and absence", () => {
       "/v1/servers",
       "/v1/actions/11",
       "/v1/actions/12",
+      "/v1/servers/41",
     ]);
+  });
+
+  test("polls accepted server readback through initializing", async () => {
+    json(
+      {
+        server: server(41, "initializing"),
+        action: action(13, "create_server", "success", {
+          id: 41,
+          type: "server",
+        }),
+        next_actions: [],
+        root_password: null,
+      },
+      201,
+    );
+    json({ server: server(41, "initializing") });
+    json({ server: server(41, "running") });
+
+    await expect(
+      client({ lifecycleTimeoutMs: 1_000 }).createServer(createServerInput()),
+    ).resolves.toMatchObject({ server: { id: 41, status: "running" } });
+    expect(requests.map(({ path }) => path)).toEqual([
+      "/v1/servers",
+      "/v1/servers/41",
+      "/v1/servers/41",
+    ]);
+  });
+
+  test("retains the accepted server ID and both failures when cleanup fails", async () => {
+    json(
+      {
+        server: server(41, "initializing"),
+        action: action(14, "create_server", "error", {
+          id: 41,
+          type: "server",
+        }),
+        next_actions: [],
+        root_password: null,
+      },
+      201,
+    );
+    json({ error: { code: "provider_error", message: "delete failed" } }, 500);
+
+    const failure = await client()
+      .createServer(createServerInput())
+      .catch((error: unknown) => error);
+    expect(failure).toBeInstanceOf(HetznerAcceptedResourceError);
+    expect(failure).toMatchObject({
+      resourceType: "server",
+      resourceId: 41,
+      compensation: "failed",
+      primaryError: { code: "server_error" },
+      compensationError: { code: "server_error" },
+    });
+    expect((failure as Error).cause).toBeInstanceOf(AggregateError);
+  });
+
+  test("compensates an accepted volume after attachment readback mismatch", async () => {
+    json({
+      volume: volume(51, 41),
+      action: action(15, "create_volume", "success", {
+        id: 51,
+        type: "volume",
+      }),
+      next_actions: [],
+    });
+    json({ volume: volume(51, null) });
+    empty();
+    json({ error: { code: "not_found", message: "volume missing" } }, 404);
+
+    const failure = await client()
+      .createVolume({
+        name: "volume-51",
+        sizeGb: 10,
+        location: "fsn1",
+        serverId: 41,
+        automount: true,
+      })
+      .catch((error: unknown) => error);
+    expect(failure).toMatchObject({
+      resourceType: "volume",
+      resourceId: 51,
+      compensation: "succeeded",
+      primaryError: { code: "server_error" },
+    });
+    expect(requests.map(({ path }) => path)).toEqual([
+      "/v1/volumes",
+      "/v1/volumes/51",
+      "/v1/volumes/51",
+      "/v1/volumes/51",
+    ]);
+  });
+
+  test("retains accepted volume settlement and cleanup failures", async () => {
+    json({
+      volume: volume(51),
+      action: action(16, "create_volume", "error", {
+        id: 51,
+        type: "volume",
+      }),
+      next_actions: [],
+    });
+    json({ error: { code: "provider_error", message: "delete failed" } }, 500);
+
+    const failure = await client()
+      .createVolume({ name: "volume-51", sizeGb: 10, location: "fsn1" })
+      .catch((error: unknown) => error);
+    expect(failure).toMatchObject({
+      resourceType: "volume",
+      resourceId: 51,
+      compensation: "failed",
+      primaryError: { code: "server_error" },
+      compensationError: { code: "server_error" },
+    });
+    expect((failure as Error).cause).toBeInstanceOf(AggregateError);
   });
 
   test("does not treat action-poll 404 as target absence", async () => {
