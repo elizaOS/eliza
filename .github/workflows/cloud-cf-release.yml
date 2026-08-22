@@ -1918,6 +1918,11 @@ jobs:
       CHECKOUT_MATERIALIZE_TIMEOUT_SECONDS: ${{ vars.CLOUD_CF_CHECKOUT_MATERIALIZE_TIMEOUT_SECONDS || '600' }}
     outputs:
       pages_deployed: ${{ steps.pages-deploy.outputs.deployed }}
+      # Attempt-pinned artifact name. rerun --failed re-runs the verify job at a
+      # new run_attempt while this job's attempt-1 artifact keeps its old name,
+      # so the consumer must download by the producer's name, never its own
+      # github.run_attempt.
+      pages_authority_artifact: pages-deployment-authority-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
       - name: Reclaim disk from leaked checkouts of prior runs
         continue-on-error: true
@@ -2585,7 +2590,7 @@ jobs:
       - name: Download exact Pages deployment authority
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
-          name: pages-deployment-authority-${{ github.run_id }}-${{ github.run_attempt }}
+          name: ${{ needs.deploy-app.outputs.pages_authority_artifact }}
           path: ${{ runner.temp }}/deployed-renderer-proof-${{ github.run_id }}-${{ github.run_attempt }}/authority
 
       - name: Verify public deployment before browser auth
