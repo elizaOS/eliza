@@ -124,6 +124,10 @@ function harness(channelType: ChannelType = ChannelType.DM): Harness {
 						capabilityDescription: "linked identity test service",
 						stop: async () => undefined,
 						getMemberEntityIds: async () => [DISCORD_OWNER, TELEGRAM_OWNER],
+						getVerifiedMemberEntityIds: async () => [
+							DISCORD_OWNER,
+							TELEGRAM_OWNER,
+						],
 					}
 				: null,
 		),

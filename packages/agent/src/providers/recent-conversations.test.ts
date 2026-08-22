@@ -8,7 +8,7 @@
 import type { IAgentRuntime, Memory, State, UUID } from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const getRelatedEntityIds =
+const getVerifiedRelatedEntityIds =
   vi.fn<(runtime: IAgentRuntime, entityId: UUID) => Promise<UUID[]>>();
 const revalidateOwnerExclusiveDisclosure = vi.fn(
   async (): Promise<Record<string, unknown>> => ({
@@ -23,7 +23,7 @@ vi.mock("@elizaos/core", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@elizaos/core")>();
   return {
     ...actual,
-    getRelatedEntityIds,
+    getVerifiedRelatedEntityIds,
     revalidateOwnerExclusiveDisclosure,
     recordOwnerExclusiveSuppression,
     markOwnerExclusiveDisclosureUsed,
@@ -76,7 +76,7 @@ function makeRuntime(overrides: Record<string, unknown> = {}): IAgentRuntime {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  getRelatedEntityIds.mockResolvedValue([ENTITY_ID]);
+  getVerifiedRelatedEntityIds.mockResolvedValue([ENTITY_ID]);
   revalidateOwnerExclusiveDisclosure.mockResolvedValue({
     allowed: true,
     basis: "owner_private_destination",
@@ -102,7 +102,7 @@ describe("recentConversationsProvider", () => {
   });
 
   it("expands linked aliases, dedupes rooms, batches tags, and retains every eligible message", async () => {
-    getRelatedEntityIds.mockResolvedValue([ENTITY_ID, ALIAS_ENTITY_ID]);
+    getVerifiedRelatedEntityIds.mockResolvedValue([ENTITY_ID, ALIAS_ENTITY_ID]);
     const completeTexts = Array.from(
       { length: 15 },
       (_, index) => `linked message ${index + 1}`,
@@ -144,7 +144,10 @@ describe("recentConversationsProvider", () => {
       EMPTY_STATE,
     );
 
-    expect(getRelatedEntityIds).toHaveBeenCalledWith(runtime, ENTITY_ID);
+    expect(getVerifiedRelatedEntityIds).toHaveBeenCalledWith(
+      runtime,
+      ENTITY_ID,
+    );
     expect(getRoomsForParticipants).toHaveBeenCalledWith([
       ENTITY_ID,
       ALIAS_ENTITY_ID,
@@ -226,7 +229,7 @@ describe("recentConversationsProvider", () => {
       expect.objectContaining({ entityId: ENTITY_ID }),
       "destination_not_private",
     );
-    expect(getRelatedEntityIds).not.toHaveBeenCalled();
+    expect(getVerifiedRelatedEntityIds).not.toHaveBeenCalled();
     expect(runtime.getRoomsForParticipants).not.toHaveBeenCalled();
     expect(runtime.getRoomsForParticipant).not.toHaveBeenCalled();
     expect(runtime.getMemoriesByRoomIds).not.toHaveBeenCalled();

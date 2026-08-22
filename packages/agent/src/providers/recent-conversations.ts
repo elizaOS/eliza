@@ -17,7 +17,7 @@ import type {
   UUID,
 } from "@elizaos/core";
 import {
-  getRelatedEntityIds,
+  getVerifiedRelatedEntityIds,
   markOwnerExclusiveDisclosureUsed,
   OWNER_PRIVATE_DESTINATION_DISCLOSURE_BASIS,
   recordOwnerExclusiveSuppression,
@@ -111,7 +111,10 @@ export const recentConversationsProvider: Provider = {
         return { text: "", values: {}, data: {} };
       }
 
-      const relatedEntityIds = await getRelatedEntityIds(runtime, entityId);
+      const relatedEntityIds = await getVerifiedRelatedEntityIds(
+        runtime,
+        entityId,
+      );
       const [requesterRoomIds, agentRoomIds] = await Promise.all([
         runtime.getRoomsForParticipants(relatedEntityIds),
         runtime.getRoomsForParticipant(runtime.agentId),

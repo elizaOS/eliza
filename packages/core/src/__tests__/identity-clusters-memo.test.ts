@@ -4,13 +4,14 @@
  * turn. Verifies in-flight sharing, turn isolation, explicit invalidation, and
  * rejection eviction against a counting fake resolver — no DB, no model.
  */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
 	getRelatedEntityIds,
+	getVerifiedRelatedEntityIds,
 	invalidateRelatedEntityIds,
 } from "../identity-clusters";
 import { runWithTrajectoryContext } from "../trajectory-context.ts";
-import type { IAgentRuntime, UUID } from "../types/index.ts";
+import { type IAgentRuntime, ServiceType, type UUID } from "../types/index.ts";
 
 const AGENT = "00000000-0000-0000-0000-0000000000aa" as UUID;
 const SENDER = "11111111-1111-1111-1111-111111111111" as UUID;
@@ -119,5 +120,92 @@ describe("getRelatedEntityIds memo", () => {
 			getService: () => null,
 		} as unknown as IAgentRuntime;
 		expect(await getRelatedEntityIds(runtime, SENDER)).toEqual([SENDER]);
+	});
+});
+
+describe("getVerifiedRelatedEntityIds", () => {
+	it("prefers the canonical identity authority cluster", async () => {
+		const getMemberEntityIds = vi.fn(async () => [
+			"33333333-3333-3333-3333-333333333333" as UUID,
+		]);
+		const runtime = {
+			agentId: AGENT,
+			getService: (name: string) => {
+				if (name === ServiceType.IDENTITY_RESOLUTION) {
+					return {
+						getCluster: async () => ({
+							contractVersion: 1,
+							agentId: AGENT,
+							canonicalPrincipalId: SENDER,
+							principalIds: [SENDER, ALIAS],
+							claims: [],
+							generation: 4,
+							readAt: new Date(0).toISOString(),
+						}),
+					};
+				}
+				return name === "relationships" ? { getMemberEntityIds } : null;
+			},
+		} as unknown as IAgentRuntime;
+
+		expect(
+			await inTurn(() => getVerifiedRelatedEntityIds(runtime, SENDER)),
+		).toEqual([SENDER, ALIAS]);
+		expect(getMemberEntityIds).not.toHaveBeenCalled();
+	});
+
+	it("rejects malformed authority output without falling back to weaker inference", async () => {
+		const getVerifiedMemberEntityIds = vi.fn(async () => [ALIAS]);
+		const runtime = {
+			agentId: AGENT,
+			getService: (name: string) => {
+				if (name === ServiceType.IDENTITY_RESOLUTION) {
+					return {
+						getCluster: async () => ({
+							contractVersion: 1,
+							agentId: AGENT,
+							canonicalPrincipalId: ALIAS,
+							principalIds: [ALIAS],
+							claims: [],
+							generation: 1,
+							readAt: new Date(0).toISOString(),
+						}),
+					};
+				}
+				return name === "relationships" ? { getVerifiedMemberEntityIds } : null;
+			},
+		} as unknown as IAgentRuntime;
+
+		await expect(
+			inTurn(() => getVerifiedRelatedEntityIds(runtime, SENDER)),
+		).rejects.toMatchObject({ code: "IDENTITY_CLUSTER_INVALID" });
+		expect(getVerifiedMemberEntityIds).not.toHaveBeenCalled();
+	});
+
+	it("uses only confirmed-link resolution when no authority is registered", async () => {
+		const getMemberEntityIds = vi.fn(async () => [
+			"33333333-3333-3333-3333-333333333333" as UUID,
+		]);
+		const getVerifiedMemberEntityIds = vi.fn(async () => [ALIAS]);
+		const runtime = {
+			agentId: AGENT,
+			getService: (name: string) =>
+				name === "relationships"
+					? { getMemberEntityIds, getVerifiedMemberEntityIds }
+					: null,
+		} as unknown as IAgentRuntime;
+
+		expect(
+			await inTurn(() => getVerifiedRelatedEntityIds(runtime, SENDER)),
+		).toEqual([SENDER, ALIAS]);
+		expect(getMemberEntityIds).not.toHaveBeenCalled();
+		expect(getVerifiedMemberEntityIds).toHaveBeenCalledWith(SENDER);
+	});
+
+	it("fails closed to the requester when no verified resolver exists", async () => {
+		const runtime = runtimeWith(async () => [ALIAS]);
+		expect(
+			await inTurn(() => getVerifiedRelatedEntityIds(runtime, SENDER)),
+		).toEqual([SENDER]);
 	});
 });

@@ -2181,6 +2181,40 @@ export class RelationshipsService extends Service {
 	}
 
 	/**
+	 * Return the connected component formed only by explicitly confirmed
+	 * `identity_link` relationships. Sensitive disclosure paths use this legacy
+	 * fallback when the canonical identity-resolution authority is unavailable;
+	 * inferred same-handle matches are deliberately excluded.
+	 */
+	async getVerifiedMemberEntityIds(primaryEntityId: UUID): Promise<UUID[]> {
+		const uf = new UnionFind<UUID>([primaryEntityId]);
+		const visited = new Set<UUID>();
+		let frontier: UUID[] = [primaryEntityId];
+		while (frontier.length > 0) {
+			const pending = frontier.filter((id) => !visited.has(id));
+			if (pending.length === 0) break;
+			for (const id of pending) visited.add(id);
+			const nextFrontier = new Set<UUID>();
+			const relationships = await this.runtime.getRelationships({
+				entityIds: pending,
+			});
+			for (const relationship of relationships) {
+				if (!isConfirmedIdentityLinkLike(relationship)) continue;
+				uf.union(relationship.sourceEntityId, relationship.targetEntityId);
+				if (!visited.has(relationship.sourceEntityId)) {
+					nextFrontier.add(relationship.sourceEntityId);
+				}
+				if (!visited.has(relationship.targetEntityId)) {
+					nextFrontier.add(relationship.targetEntityId);
+				}
+			}
+			frontier = Array.from(nextFrontier);
+		}
+		const members = uf.componentOf(primaryEntityId);
+		return members.length > 0 ? members : [primaryEntityId];
+	}
+
+	/**
 	 * Resolve an entity to its cluster's primary entity.
 	 *
 	 * The primary is the member with a contact_info component if one

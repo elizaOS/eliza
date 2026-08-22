@@ -16,7 +16,7 @@ import { searchCanonicalConversationMemories } from "../../../access-control/pro
 import { getConnectorAccountManager } from "../../../connectors/account-manager.ts";
 import { createUniqueUuid, findEntityByName } from "../../../entities.ts";
 import { getActionSpec } from "../../../generated/spec-helpers.ts";
-import { getRelatedEntityIds } from "../../../identity-clusters.ts";
+import { getVerifiedRelatedEntityIds } from "../../../identity-clusters.ts";
 import { logger } from "../../../logger.ts";
 import { resolveCanonicalOwnerIdForMessage } from "../../../roles.ts";
 import { runWithActionRoutingContext } from "../../../runtime/action-routing-context.ts";
@@ -4169,7 +4169,7 @@ async function loadAuthorizedTopology(
 		);
 	}
 
-	const requesterEntityIds = await getRelatedEntityIds(
+	const requesterEntityIds = await getVerifiedRelatedEntityIds(
 		runtime,
 		message.entityId,
 	);

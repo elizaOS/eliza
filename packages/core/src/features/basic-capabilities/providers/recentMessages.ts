@@ -27,7 +27,7 @@
 
 import { getEntityDetails } from "../../../entities.ts";
 import { requireProviderSpec } from "../../../generated/spec-helpers.ts";
-import { getRelatedEntityIds } from "../../../identity-clusters.ts";
+import { getVerifiedRelatedEntityIds } from "../../../identity-clusters.ts";
 import { isInternalBridgeMessage } from "../../../messaging/automated-turns.ts";
 import type {
 	CustomMetadata,
@@ -316,7 +316,10 @@ const getRecentInteractions = async (
 	targetEntityId: UUID,
 	excludeRoomId: UUID,
 ): Promise<Memory[]> => {
-	const sourceEntityIds = await getRelatedEntityIds(runtime, sourceEntityId);
+	const sourceEntityIds = await getVerifiedRelatedEntityIds(
+		runtime,
+		sourceEntityId,
+	);
 	// getRoomsForParticipants is a union query (rooms containing ANY supplied
 	// entity), so intersect the identity-cluster rooms with the target's rooms.
 	// Passing both sides to one call would leak unrelated participant rooms into
