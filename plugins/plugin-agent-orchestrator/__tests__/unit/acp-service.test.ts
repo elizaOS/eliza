@@ -15,7 +15,10 @@ import {
   CODING_AGENT_BACKEND_PREFLIGHTS,
   CODING_AGENT_BACKENDS,
 } from "@elizaos/shared";
-import { getHostExecutionBaseline } from "@elizaos/shared/host-execution-env";
+import {
+  captureHostExecutionBaseline,
+  getHostExecutionBaseline,
+} from "@elizaos/shared/host-execution-env";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // The ACP implementation runs every workdir through `path.resolve`, which on
@@ -330,6 +333,33 @@ async function waitForNativeClients(count: number): Promise<void> {
   throw new Error(
     `expected ${count} native clients, got ${nativeClientMock.instances.length}`,
   );
+}
+
+async function waitForMockCalls(
+  mock: ReturnType<typeof vi.fn>,
+  count: number,
+  timeoutMs = 1_000,
+): Promise<void> {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < timeoutMs) {
+    if (mock.mock.calls.length >= count) return;
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+  throw new Error(
+    `expected ${count} mock calls, got ${mock.mock.calls.length}`,
+  );
+}
+
+async function waitForWarmClientReady(service: AcpService): Promise<void> {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < 1_000) {
+    const internal = service as AcpService & {
+      warmNativeClient?: unknown;
+    };
+    if (internal.warmNativeClient) return;
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+  throw new Error("expected warm native client to become ready");
 }
 
 beforeEach(() => {
@@ -848,6 +878,7 @@ describe("AcpService", () => {
   });
 
   it("single-claims warm elizaos children without credentials at process spawn", async () => {
+    captureHostExecutionBaseline();
     const previous = process.env.OPENAI_API_KEY;
     process.env.OPENAI_API_KEY = "host-credential-must-not-reach-warm-child";
     const service = new AcpService(
@@ -861,6 +892,7 @@ describe("AcpService", () => {
     try {
       await service.start();
       await waitForNativeClients(1);
+      await waitForWarmClientReady(service);
       const firstWarm = nativeClientMock.instances[0];
       const firstToken = firstWarm?.opts.env?.ELIZA_ACP_WARM_CLAIM_TOKEN;
       expect(firstToken).toMatch(/^[a-f0-9]{64}$/);
@@ -3268,7 +3300,7 @@ describe("AcpService.runHealthCheck state_lost guards", () => {
     );
 
     const promptA = service.sendPrompt(sessionId, "task A");
-    await vi.waitFor(() => expect(client.prompt).toHaveBeenCalledTimes(1));
+    await waitForMockCalls(client.prompt, 1);
     await service.updateSessionMetadata(sessionId, { taskId: "task-b" });
     await expect(service.sendPrompt(sessionId, "task B")).rejects.toThrow(
       /already busy/,
