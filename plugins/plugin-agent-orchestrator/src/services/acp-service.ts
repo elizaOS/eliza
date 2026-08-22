@@ -2311,9 +2311,49 @@ export class AcpService extends Service {
       },
     };
     this.promptTurns.set(sessionId, turn);
+    // Whole-turn watchdog. The JSON-RPC request timer bounds only the
+    // session/prompt exchange; every await AROUND it (reconnect attach, lease
+    // mint, workspace build, store writes) was unbounded, and one hang held
+    // the busy flag forever — a queued follow-up wedged its session for 10+
+    // minutes with no child process and no error (live 2026-08-22,
+    // coin-flip-streak-counter). The inner timer is 5 min; +60s grace keeps
+    // the watchdog strictly a backstop, never the primary bound.
+    const watchdogMs =
+      (opts.timeoutMs ?? this.sessionTimeoutMs ?? 300_000) + 60_000;
+    let watchdogTimer: ReturnType<typeof setTimeout> | undefined;
+    const watchdog = new Promise<never>((_, reject) => {
+      watchdogTimer = setTimeout(() => {
+        reject(
+          new ElizaError(
+            `ACP prompt turn exceeded ${watchdogMs}ms with no result; releasing the session`,
+            {
+              code: "ACP_PROMPT_TURN_WEDGED",
+              context: { sessionId, watchdogMs },
+            },
+          ),
+        );
+      }, watchdogMs);
+      watchdogTimer.unref?.();
+    });
     try {
-      return await this.sendPromptTurn(session, text, opts);
+      const turnRun = this.sendPromptTurn(session, text, opts);
+      // The abandoned turn may still settle later; observe its rejection so a
+      // late failure never surfaces as an unhandled rejection.
+      turnRun.catch(() => undefined);
+      return await Promise.race([turnRun, watchdog]);
+    } catch (err) {
+      if (err instanceof ElizaError && err.code === "ACP_PROMPT_TURN_WEDGED") {
+        // error-policy:J1 watchdog boundary — the wedge becomes a structured
+        // errored turn; the busy flag is released by the finally below.
+        await this.store
+          .updateStatus(sessionId, "errored", err.message)
+          .catch(() => undefined);
+        this.emitSessionEvent(sessionId, "error", { message: err.message });
+        this.nativePromptSessionIds.delete(sessionId);
+      }
+      throw err;
     } finally {
+      if (watchdogTimer) clearTimeout(watchdogTimer);
       if (this.promptTurns.get(sessionId)?.id === turn.id) {
         this.promptTurns.delete(sessionId);
       }

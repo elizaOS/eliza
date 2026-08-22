@@ -4,9 +4,21 @@
  * runners enforce access, routing, lifecycle, and session-event invariants.
  */
 
+import {
+  ANAPHOR_RE,
+  FOLLOW_UP_SHAPE_RE,
+  NEW_DELIVERABLE_RE,
+} from "../services/ask-shapes.js";
+import {
+  activateFollowUpOrigin,
+  notePendingFollowUpOrigin,
+  readFollowUpOrigin,
+  restoreFollowUpOrigin,
+} from "../services/follow-up-origin.js";
 import { randomUUID } from "node:crypto";
 import * as fs from "node:fs";
 import {
+  basename as nodePathBasename,
   join as nodePathJoin,
   resolve as nodePathResolve,
   sep as nodePathSep,
@@ -343,6 +355,10 @@ export function collapsePlannerLanes(
     /\b(?:pr|pull request)\b/i.test(text);
   const pluralDeliverableAsk =
     /\b(?:\d+|two|three|four|five|six|several|multiple|a few|a couple of)\s+(?:[\w-]+\s+){0,2}(?:pages|apps|sites|games|scripts|tools|widgets)\b/i.test(
+      text,
+    ) ||
+    // "a coin flip page and a dice roll page": two named deliverables.
+    /\b(?:page|app|site|game|script|tool|widget)\b[^.!?\n]{0,60}\band\b[^.!?\n]{0,60}\b(?:page|app|site|game|script|tool|widget)\b/i.test(
       text,
     );
   const singleDeliverableBuild =
@@ -1027,6 +1043,164 @@ async function runPromptAndClose(
   }
 }
 
+export function looksLikeFollowUpToInFlightWork(text: string): boolean {
+  return FOLLOW_UP_SHAPE_RE.test(text) && !NEW_DELIVERABLE_RE.test(text);
+}
+
+const STOPWORDS = new Set([
+  "that",
+  "this",
+  "with",
+  "from",
+  "into",
+  "then",
+  "them",
+  "what",
+  "when",
+  "will",
+  "make",
+  "build",
+  "create",
+  "write",
+  "script",
+  "page",
+  "file",
+  "files",
+  "please",
+  "under",
+  "over",
+  "some",
+  "also",
+  "just",
+  "only",
+  "have",
+  "does",
+  "print",
+  "prints",
+  "show",
+  "again",
+  "python",
+  "bash",
+  "shell",
+]);
+
+function contentWords(text: string): Set<string> {
+  return new Set(
+    text
+      .toLowerCase()
+      .replace(/<@!?\d+>|@\S+/g, " ")
+      .split(/[^a-z0-9]+/)
+      .filter((word) => word.length > 3 && !STOPWORDS.has(word)),
+  );
+}
+
+/** A send into a FINISHED lane continues that lane only when the text reads
+ *  as a follow-up ("run it again", "add a footer to it") or names the prior
+ *  work. A new-deliverable ask sharing no content word with the finished task
+ *  ("write me a python script that prints a random prime" into the
+ *  count-ts-files lane, live 2026-08-22) is a fresh build: no inherited
+ *  title, acceptance criteria, lineage or workdir — the judge graded the
+ *  prime script against the .ts-count criteria and the file landed in the
+ *  repo checkout. */
+export type FinishedWorkRelation = "follow_up" | "related" | "fresh";
+
+export function continuesFinishedWork(
+  text: string,
+  priorTask: string,
+): boolean {
+  return finishedWorkRelation(text, priorTask) !== "fresh";
+}
+
+/** follow_up: an instruction about the finished deliverable itself (inherits
+ *  title, criteria, lineage, workdir). related: a NEW deliverable that
+ *  relates to the prior work (lineage only — its criteria, title and workdir
+ *  are its own; chaining the predecessor's criteria graded a prime script
+ *  against .ts-count criteria twice, live 2026-08-22). fresh: nothing
+ *  inherited. A new-deliverable sentence built around an anaphor ("make me a
+ *  dark version of it") is still about the prior work — related, not fresh. */
+export function finishedWorkRelation(
+  text: string,
+  priorTask: string,
+): FinishedWorkRelation {
+  if (!NEW_DELIVERABLE_RE.test(text)) return "follow_up";
+  if (FOLLOW_UP_SHAPE_RE.test(text) || ANAPHOR_RE.test(text)) {
+    return "related";
+  }
+  const prior = contentWords(priorTask);
+  for (const word of contentWords(text)) {
+    if (prior.has(word)) return "related";
+  }
+  return "fresh";
+}
+
+const FOLLOW_UP_SIBLING_WINDOW_MS = 3 * 60_000;
+const FOLLOW_UP_SESSION_WAIT_MS = 20_000;
+
+/** The newest in-flight task of this room from a DIFFERENT origin message,
+ *  created within the follow-up window, and its live (or just-spawned)
+ *  session — polled briefly because the spawn may still be in flight. */
+async function inFlightSiblingSessionForFollowUp(
+  runtime: IAgentRuntime,
+  message: Memory,
+): Promise<{ taskId: string; sessionId: string } | undefined> {
+  const taskService = runtime.getService?.(
+    OrchestratorTaskService.serviceType,
+  ) as OrchestratorTaskService | null | undefined;
+  const roomId = typeof message.roomId === "string" ? message.roomId : "";
+  if (!taskService || !roomId) return undefined;
+  const origin = spawnRootIdFor(message, {}) ?? "";
+  // The sibling's create may still be running (both asks dispatch within a
+  // second of each other): its claim exists from dispatch, its task record a
+  // few seconds later. Only a recent other-origin claim earns the wait.
+  if (!hasRecentCreateClaimFromOtherOrigin(runtime, origin)) return undefined;
+  const listDeadline = Date.now() + FOLLOW_UP_SESSION_WAIT_MS;
+  let candidates: Array<{ id: string; createdAt: string }> = [];
+  while (Date.now() < listDeadline && candidates.length === 0) {
+    const now = Date.now();
+    try {
+      const tasks = await taskService.listTasks({ includeArchived: false });
+      candidates = tasks
+        .filter(
+          (task) =>
+            ["open", "active", "validating"].includes(String(task.status)) &&
+            now - new Date(task.createdAt).getTime() <
+              FOLLOW_UP_SIBLING_WINDOW_MS &&
+            String(task.originalRequest ?? "") !== requestText(message),
+        )
+        .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+    } catch {
+      // error-policy:J4 a listing failure keeps today's behavior (fresh create).
+      return undefined;
+    }
+    if (candidates.length === 0) {
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+  }
+  for (const candidate of candidates) {
+    const doc = await taskService.getTask(candidate.id).catch(() => null);
+    if (!doc) continue;
+    if (origin && String(doc.metadata?.spawnRootMessageId ?? "") === origin) {
+      continue;
+    }
+    const target = await taskService
+      .getTaskOriginTarget(candidate.id)
+      .catch(() => null);
+    if (target?.roomId !== roomId) continue;
+    const deadline = Date.now() + FOLLOW_UP_SESSION_WAIT_MS;
+    while (Date.now() < deadline) {
+      const fresh = await taskService.getTask(candidate.id).catch(() => null);
+      // Latest session whatever its status: runSend queues on a busy lane
+      // and redirects a finished one to a merged successor.
+      const latest = [...(fresh?.sessions ?? [])].sort(
+        (a, b) => b.registeredAt - a.registeredAt,
+      )[0];
+      if (latest) return { taskId: candidate.id, sessionId: latest.sessionId };
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+  }
+  return undefined;
+}
+
 async function runCreateLegacy(
   runtime: IAgentRuntime,
   message: Memory,
@@ -1058,9 +1232,47 @@ async function runCreateLegacy(
   }
 
   const text = requestText(message);
+  // A follow-up to a build that is still spawning ("oh also add a dark mode
+  // toggle to it", 7s after the ask) has no session to interrupt and no lane
+  // to queue on, so the planner minted a SECOND page in `<slug>-2` (live
+  // 2026-08-22). Fold it into the in-flight sibling instead: wait for its
+  // session, then the send path queues it (busy) or builds a merged successor.
+  if (
+    !routedSubAgentCompletion(content) &&
+    // A redirect successor (runSend → create) carries lineage; folding it
+    // back into runSend would recurse until the sibling window closed.
+    typeof params.parentTaskId !== "string" &&
+    looksLikeFollowUpToInFlightWork(text)
+  ) {
+    const sibling = await inFlightSiblingSessionForFollowUp(runtime, message);
+    if (sibling) {
+      logger(runtime).warn(
+        `[TASKS:create] follow-up folded into in-flight lane ${sibling.sessionId} (task ${sibling.taskId})`,
+      );
+      // This origin's create claim (recorded at dispatch) would make the send
+      // read as a redundant same-origin send and queue nothing.
+      releaseCreateClaimForMessage(
+        runtime,
+        spawnRootIdFor(message, content) ?? "",
+      );
+      return runSend(
+        runtime,
+        message,
+        state,
+        { action: "send", sessionId: sibling.sessionId, input: text },
+        content,
+        callback,
+      );
+    }
+  }
   // The create turn's own abort signal (a user stop); checked once the spawn
   // returns, the only point at which a session exists to stop.
   const createTurnSignal = getStreamingContext()?.abortSignal;
+  // Workdirs of every session the orchestrator knows: a planner workdir that
+  // continues a finished lane is grounded by them (see resolveSpawnWorkdir).
+  const knownWorkdirs = (await Promise.resolve(service.listSessions()))
+    .map((session) => session.workdir)
+    .filter((workdir): workdir is string => typeof workdir === "string");
   // Genuine user request for workdir-route matching — see runSpawnAgent and
   // resolveOriginatingRequestText. Keeps routing planner-independent.
   const routingRequest = await resolveOriginatingRequestText(
@@ -1129,7 +1341,7 @@ async function runCreateLegacy(
   // web-app-2 as a published URL (live 2026-08-19). Treat them like absent
   // labels so labelFrom derives identity from the task text.
   const GENERIC_LABEL_RE =
-    /^(?:web\s*app|webapp|web\s*page|webpage|app|page|site|website|task|build|project)$/i;
+    /^(?:(?:interactive[- ])?(?:web\s*apps?|webapps?|web\s*pages?|webpages?|apps?|pages?|sites?|websites?)|tasks?|builds?|projects?|scripts?)$/i;
   const baseLabelSane =
     baseLabelParam &&
     /[a-z0-9]/i.test(baseLabelParam) &&
@@ -1195,8 +1407,17 @@ async function runCreateLegacy(
   // blob); clamp at the persist/display seam — the stored task title and the
   // [TASK:] widget block both render it. labelFrom's fallback is already
   // 80-clamped, so only the params-derived branch needs bounding.
+  // Planner titles arrive corrupted on occasion — a task literally titled
+  // "»,title:" (a JSON fragment) became the durable goal the verifier judged
+  // against (live 2026-08-22). A title with no letters or digits, or shaped
+  // like a stray key/fragment, names nothing: derive from the task instead.
+  const saneTitle = (value: string | undefined): string | undefined =>
+    value && /[a-z0-9]/i.test(value) && !/^[^a-z0-9]*\w+:\s*$/i.test(value)
+      ? value
+      : undefined;
   const plannerTitle =
-    pickString(params, content, "title") ?? pickString(params, content, "goal");
+    saneTitle(pickString(params, content, "title")) ??
+    saneTitle(pickString(params, content, "goal"));
   const taskTitle = plannerTitle
     ? userReferenceLogView(plannerTitle)
     : tasks[0]
@@ -1342,6 +1563,7 @@ async function runCreateLegacy(
       const boundWorkdir = first
         ? resolveSpawnWorkdir(runtime, first, routingRequest, explicitWorkdir, {
             lockWorkdir: pickBoolean(params, content, "lockWorkdir") === true,
+            knownWorkdirs,
           }).workdir
         : explicitWorkdir;
       const detail = await taskService.createTask({
@@ -1463,6 +1685,7 @@ async function runCreateLegacy(
         isolate: resolvedCreateIsolate,
       } = resolveSpawnWorkdir(runtime, task, routingRequest, explicitWorkdir, {
         lockWorkdir: pickBoolean(params, content, "lockWorkdir") === true,
+        knownWorkdirs,
       });
       let sessionWorkdir = resolvedSessionWorkdir;
       let isolateWorkdir = resolvedCreateIsolate;
@@ -1471,12 +1694,26 @@ async function runCreateLegacy(
       // repo param present on the create path, the sub-agent git-init'd a
       // fresh repo in scratch and could not push).
       let createProvisionedWorkspaceId: string | undefined;
-      const createRequestedRepo = await resolveRequestedRepo(
+      let createRequestedRepo = await resolveRequestedRepo(
         runtime,
         params as Record<string, unknown>,
         [task, requestText(message)],
         requestText(message),
       );
+      // A planner repo that merely re-spells the matched route ("in the
+      // milady-fork repo" → `NubsCarson/milady-fork`) is the same thing the
+      // route already names: the local checkout wins and nothing is cloned
+      // (live 2026-08-22: "Repository not found" for a route that exists).
+      if (
+        createRequestedRepo &&
+        route &&
+        repoNamesRoute(createRequestedRepo, route)
+      ) {
+        logger(runtime).warn(
+          `[TASKS:create] planner repo ${createRequestedRepo} names the matched route ${route.id}; using its workdir instead of cloning`,
+        );
+        createRequestedRepo = undefined;
+      }
       // An explicitly-named repo outranks a keyword route: "put up a pr on
       // my <name> repo" text-matches generic route entries ("pull request"),
       // which silently steered repo asks into unrelated local checkouts and
@@ -1687,12 +1924,12 @@ async function runCreateLegacy(
       // completion nobody wanted 25s after "stopping the build" (live
       // 2026-08-22, breakout). The newborn session is stopped before its
       // first prompt and the task reads interrupted.
-      const taskInterruptedMeanwhile =
+      const interruptedMeanwhile = async (): Promise<boolean> =>
         threadId && typeof taskService?.getTask === "function"
           ? (await taskService.getTask(threadId).catch(() => null))?.status ===
             "interrupted"
           : false;
-      if (createTurnSignal?.aborted || taskInterruptedMeanwhile) {
+      const stopNewbornLane = async (): Promise<never> => {
         await markSessionAdministrativelyStopped(
           service,
           session.sessionId,
@@ -1714,6 +1951,9 @@ async function runCreateLegacy(
           context: { sessionId: session.sessionId },
           severity: "ephemeral",
         });
+      };
+      if (createTurnSignal?.aborted || (await interruptedMeanwhile())) {
+        await stopNewbornLane();
       }
 
       if (ackPostedOutOfBand) {
@@ -1795,6 +2035,12 @@ async function runCreateLegacy(
         }
       }
 
+      // Second look after the attach: a cancel that landed between the first
+      // check and here found a registered session to stop, but this prompt
+      // would still go out and the build would run anyway.
+      if (createTurnSignal?.aborted || (await interruptedMeanwhile())) {
+        await stopNewbornLane();
+      }
       if (durableRun) {
         const runningRun: SmithersDurableRunLink = {
           ...durableRun,
@@ -2658,6 +2904,81 @@ function retargetPlannerAppPaths(task: string, assignedDir: string): string {
   return task.replace(re, assignedDir);
 }
 
+/** Slug = short noun phrase, not the whole imperative sentence: planner
+ * labels like "Build an interactive magic 8 ball page w…" produced public
+ * URLs such as /apps/build-an-interactive-magic-8-ball-page-w/ complete with
+ * a mid-word chop (live 2026-08-20). Strip leading verb/filler tokens, stop
+ * at the first clause boundary ("tip calculator page WITH input for bill
+ * amount…" served as tip-calculator-page-with-input, live 2026-08-22), keep
+ * at most five meaningful tokens, never cut inside a token. */
+const SLUG_FILLER = new Set([
+  "build",
+  "create",
+  "make",
+  "design",
+  "generate",
+  "ship",
+  "add",
+  "an",
+  "a",
+  "the",
+  "me",
+  "us",
+  "my",
+  "lil",
+  "little",
+  "simple",
+  "basic",
+  "interactive",
+  "working",
+  "fully",
+  "functional",
+]);
+const SLUG_BOUNDARY = new Set([
+  "with",
+  "that",
+  "which",
+  "where",
+  "for",
+  "to",
+  "showing",
+  "shows",
+  "using",
+  "displaying",
+  "featuring",
+  "including",
+  "containing",
+  "having",
+  "in",
+  "on",
+  "into",
+  "from",
+  "so",
+  "via",
+  "w",
+]);
+
+export function deliverableSlugFromLabel(label: string): string {
+  const slugTokens = label
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  while (slugTokens.length > 1 && SLUG_FILLER.has(slugTokens[0] as string)) {
+    slugTokens.shift();
+  }
+  const boundary = slugTokens.findIndex(
+    (token, index) => index > 0 && SLUG_BOUNDARY.has(token),
+  );
+  const phrase = boundary > 0 ? slugTokens.slice(0, boundary) : slugTokens;
+  const keptTokens = phrase.slice(0, 5);
+  while (keptTokens.length > 1 && keptTokens.join("-").length > 48) {
+    keptTokens.pop();
+  }
+  return keptTokens.join("-");
+}
+
 function appBuildSlugWorkdir(
   task: string,
   label: string,
@@ -2711,48 +3032,7 @@ function appBuildSlugWorkdir(
       );
     }
   }
-  // Slug = short noun phrase, not the whole imperative sentence: planner
-  // labels like "Build an interactive magic 8 ball page w…" produced public
-  // URLs such as /apps/build-an-interactive-magic-8-ball-page-w/ complete
-  // with a mid-word chop (live 2026-08-20). Strip leading verb/filler
-  // tokens, keep at most five meaningful ones, never cut inside a token.
-  const SLUG_FILLER = new Set([
-    "build",
-    "create",
-    "make",
-    "design",
-    "generate",
-    "ship",
-    "add",
-    "an",
-    "a",
-    "the",
-    "me",
-    "us",
-    "my",
-    "lil",
-    "little",
-    "simple",
-    "basic",
-    "interactive",
-    "working",
-    "fully",
-    "functional",
-  ]);
-  const slugTokens = label
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, " ")
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean);
-  while (slugTokens.length > 1 && SLUG_FILLER.has(slugTokens[0] as string)) {
-    slugTokens.shift();
-  }
-  const keptTokens = slugTokens.slice(0, 5);
-  while (keptTokens.length > 1 && keptTokens.join("-").length > 48) {
-    keptTokens.pop();
-  }
-  const baseSlug = keptTokens.join("-") || "app";
+  const baseSlug = deliverableSlugFromLabel(label) || "app";
   // Edit-shaped asks reuse the newest EXISTING app in the slug family instead
   // of minting the next free slot: "make the unit converter dark mode, same
   // link" re-derived the slug from its label, landed on the STALE bare
@@ -3255,12 +3535,24 @@ async function runSpawnAgent(
     // repo is requested, provision the workspace clone here and bind to it.
     let provisionedRepo: string | undefined;
     let provisionedWorkspaceId: string | undefined;
-    const requestedRepo = await resolveRequestedRepo(
+    let requestedRepo = await resolveRequestedRepo(
       runtime,
       params as Record<string, unknown>,
       [task, requestText(message)],
       requestText(message),
     );
+    // Same rule as the create path: a repo that re-spells the matched route
+    // is the route — use its checkout, never clone (live 2026-08-22).
+    if (
+      requestedRepo &&
+      effectiveRoute &&
+      repoNamesRoute(requestedRepo, effectiveRoute)
+    ) {
+      logger(runtime).warn(
+        `[TASKS:spawn_agent] planner repo ${requestedRepo} names the matched route ${effectiveRoute.id}; using its workdir instead of cloning`,
+      );
+      requestedRepo = undefined;
+    }
     if (requestedRepo && effectiveRoute) {
       logger(runtime).info(
         `[TASKS:spawn_agent] explicit repo ${requestedRepo} outranks route ${effectiveRoute.id ?? effectiveRoute.workdir}; provisioning a clone`,
@@ -3751,6 +4043,7 @@ async function runSpawnAgent(
 async function successorInheritance(
   runtime: IAgentRuntime,
   session: SessionInfo,
+  relation: FinishedWorkRelation = "follow_up",
 ): Promise<Record<string, unknown>> {
   const meta = session.metadata as Record<string, unknown> | undefined;
   const taskService = runtime.getService?.(
@@ -3760,12 +4053,13 @@ async function successorInheritance(
     taskService && typeof taskService.getTaskForSession === "function"
       ? await taskService.getTaskForSession(session.id).catch(() => null)
       : null;
+  const sameDeliverable = relation === "follow_up";
   return {
-    ...(typeof meta?.label === "string" && meta.label
+    ...(sameDeliverable && typeof meta?.label === "string" && meta.label
       ? { label: meta.label }
       : {}),
-    ...(record?.title ? { title: record.title } : {}),
-    ...(record?.acceptanceCriteria?.length
+    ...(sameDeliverable && record?.title ? { title: record.title } : {}),
+    ...(sameDeliverable && record?.acceptanceCriteria?.length
       ? { acceptanceCriteria: [...record.acceptanceCriteria] }
       : {}),
     // Lineage: completion evidence observes the predecessor's workdir from
@@ -3773,6 +4067,25 @@ async function successorInheritance(
     // counts as present instead of predating "session start".
     ...(record?.id ? { parentTaskId: record.id } : {}),
   };
+}
+
+/** Whether a repo reference's name is what a configured route calls itself:
+ *  its id or its workdir's last segment. */
+function repoNamesRoute(
+  repo: string,
+  route: { id?: string; workdir: string },
+): boolean {
+  const name = repo
+    .replace(/^https?:\/\/[^/]+\//i, "")
+    .replace(/^git@[\w.-]+:/i, "")
+    .replace(/\.git$/i, "")
+    .split("/")
+    .pop()
+    ?.toLowerCase();
+  if (!name) return false;
+  return [route.id, nodePathBasename(route.workdir)]
+    .filter((value): value is string => typeof value === "string")
+    .some((value) => value.toLowerCase() === name);
 }
 
 async function runSend(
@@ -3925,8 +4238,20 @@ async function runSend(
       )
         ? ""
         : rawPriorTask;
+      // Classify on the USER'S words when the turn carries them — the
+      // planner's paraphrase drops the anaphors ("run it again" arrived as
+      // "Execute the number-sorting script") that mark a follow-up. An
+      // empty/junk priorTask cannot ground a relation; shape alone decides
+      // (the old behaviour: a follow-up shape keeps the workdir).
+      const relationText = requestText(_message).trim() || textInput;
+      const relation: FinishedWorkRelation = priorTask
+        ? finishedWorkRelation(relationText, priorTask)
+        : NEW_DELIVERABLE_RE.test(relationText)
+          ? "fresh"
+          : "follow_up";
+      const continuesPrior = relation !== "fresh";
       logger(runtime).info(
-        `[TASKS:send] target session ${target.session.id} is terminal (${target.session.status}); redirecting follow-up to a successor create`,
+        `[TASKS:send] target session ${target.session.id} is terminal (${target.session.status}); redirecting to a ${relation} create`,
       );
       // Same claim as the interrupt redirect: the successor create below is
       // the launch for this origin; a second redirect or planner create for
@@ -3949,8 +4274,8 @@ async function runSend(
         state,
         {
           ...params,
-          ...(priorTask
-            ? await successorInheritance(runtime, target.session)
+          ...(continuesPrior
+            ? await successorInheritance(runtime, target.session, relation)
             : {}),
           action: "create",
           goal: textInput,
@@ -3958,13 +4283,21 @@ async function runSend(
           // re-execute it verbatim — "Write a python script…" re-wrote the
           // existing file (tripping the read-first guard) when the user only
           // asked to run it again (live 2026-08-21).
-          task: priorTask
-            ? `${textInput}
+          task:
+            relation === "follow_up"
+              ? `${textInput}
 
 Context: this continues a FINISHED task whose deliverable already exists in the workdir. The original task was: ${priorTask}
 Build on the existing files; do not recreate them.`
-            : textInput,
-          ...(target.session.workdir
+              : relation === "related"
+                ? `${textInput}
+
+Context: a NEW standalone deliverable. Build it fresh in this workspace.`
+                : textInput,
+          // Only a follow-up lands in the predecessor's workdir; a related
+          // new deliverable resolves its own (the predecessor's route
+          // checkout is not where a new script belongs).
+          ...(relation === "follow_up" && target.session.workdir
             ? { workdir: target.session.workdir }
             : {}),
         },
@@ -4005,11 +4338,22 @@ Build on the existing files; do not recreate them.`
         return {
           success: true,
           text: "The lane just launched for this request already carries these instructions; nothing further was queued.",
-          data: { sessionId: target.session.id, redundantSameOriginSend: true },
+          data: {
+            sessionId: target.session.id,
+            redundantSameOriginSend: true,
+            // Bookkeeping, not an answer: the kickoff ack already covered
+            // this origin (the line reached chat verbatim, live 2026-08-22).
+            suppressPlannerReply: true,
+          },
           continueChain: false,
         };
       }
       if (smithersActive && queueInbox) {
+        await notePendingFollowUpOrigin(
+          service,
+          target.session.id,
+          sendOriginId || undefined,
+        );
         queueInbox.enqueue(target.session.id, textInput);
         return {
           success: true,
@@ -4023,6 +4367,17 @@ Build on the existing files; do not recreate them.`
         };
       }
       let prompt: PromptResult | undefined;
+      // The follow-up's completion must claim ITS OWN voice slot, not the
+      // original build's (see follow-up-origin.ts).
+      const previousFollowUpOrigin = await readFollowUpOrigin(
+        service,
+        target.session.id,
+      );
+      await activateFollowUpOrigin(
+        service,
+        target.session.id,
+        sendOriginId || undefined,
+      );
       try {
         prompt = await service.sendToSession(target.session.id, textInput);
       } catch (error) {
@@ -4039,6 +4394,14 @@ Build on the existing files; do not recreate them.`
           }
         ).__orchestratorSubAgentInbox;
         if (isSessionBusyError(error) && inbox) {
+          // The in-flight turn keeps its key; the queued follow-up's origin
+          // is promoted when the flush delivers it.
+          await restoreFollowUpOrigin(
+            service,
+            target.session.id,
+            previousFollowUpOrigin,
+            sendOriginId || undefined,
+          );
           inbox.enqueue(target.session.id, textInput);
           return {
             success: true,
@@ -4249,6 +4612,7 @@ async function runStopAgent(
     // coordinator-synthesized "stopped before completion" would be a duplicate.
     await markSessionAdministrativelyStopped(service, target.id, "user_stop");
     await service.stopSession(target.id);
+    await interruptOwningTask(runtime, target.id, "user_stop");
     if (
       (state as { codingSession?: { id?: string } } | undefined)?.codingSession
         ?.id === target.id
@@ -4351,6 +4715,28 @@ async function runListAgents(
 
 // ── action: cancel (CANCEL_TASK) ────────────────────────────────────────────
 
+/** A stopped/cancelled session's durable task must read user-interrupted too:
+ * with only the session stopped, a sibling lane's completion still verified
+ * and relayed, and the wave launched further lanes. Best-effort — the stop
+ * confirmation stands even when the task lookup fails. */
+async function interruptOwningTask(
+  runtime: IAgentRuntime,
+  sessionId: string,
+  reason: string,
+): Promise<void> {
+  const taskService = runtime.getService?.(
+    OrchestratorTaskService.serviceType,
+  ) as OrchestratorTaskService | null | undefined;
+  if (!taskService?.getTaskForSession) return;
+  try {
+    const record = await taskService.getTaskForSession(sessionId);
+    if (record?.id) await taskService.interruptTask(record.id, reason);
+  } catch {
+    // error-policy:J4 the session stop already succeeded; task marking is
+    // reinforcement, not a gate.
+  }
+}
+
 async function runCancel(
   runtime: IAgentRuntime,
   _message: Memory,
@@ -4386,6 +4772,7 @@ async function runCancel(
         );
         await (service.cancelSession?.(session.id) ??
           service.stopSession(session.id));
+        await interruptOwningTask(runtime, session.id, "user_cancel");
         stoppedSessions.push(session.id);
       }
       // The cancel confirmation is the complete answer to a single-operation
@@ -4419,9 +4806,10 @@ async function runCancel(
           )
         : newestSession(sessions);
 
-    if (!target && !sessionId && _message.roomId) {
+    if (!target && !sessionId && !search && _message.roomId) {
       // No session yet, but the room's build may still be spawning: the
-      // durable task exists and is what the user wants stopped.
+      // durable task exists and is what the user wants stopped. An unmatched
+      // `search` is a miss, not a room-wide stop.
       const taskService = runtime.getService?.(
         OrchestratorTaskService.serviceType,
       ) as OrchestratorTaskService | null | undefined;
@@ -4472,6 +4860,7 @@ async function runCancel(
     await markSessionAdministrativelyStopped(service, target.id, "user_cancel");
     await (service.cancelSession?.(target.id) ??
       service.stopSession(target.id));
+    await interruptOwningTask(runtime, target.id, "user_cancel");
     // Chat gets the task LABEL (findInFlightWork naming), never the raw
     // session/thread id — structural ids stay in data as receipts.
     const label = labelFor(target);
@@ -4930,6 +5319,38 @@ function claimCreateForMessage(
   claims.set(messageId, now);
   logger(runtime).warn(`[TASKS] create claim recorded for origin ${messageId}`);
   return true;
+}
+
+/** Another origin message claimed a create within the follow-up window —
+ *  the signal that a sibling build is in flight even before its task record
+ *  exists. */
+function hasRecentCreateClaimFromOtherOrigin(
+  runtime: IAgentRuntime,
+  originId: string,
+  windowMs = 90_000,
+): boolean {
+  const claims = (
+    runtime as IAgentRuntime & {
+      __orchestratorCreateClaims?: Map<string, number>;
+    }
+  ).__orchestratorCreateClaims;
+  if (!claims) return false;
+  const now = Date.now();
+  for (const [id, at] of claims) {
+    if (id !== originId && now - at < windowMs) return true;
+  }
+  return false;
+}
+
+function releaseCreateClaimForMessage(
+  runtime: IAgentRuntime,
+  messageId: string,
+): void {
+  (
+    runtime as IAgentRuntime & {
+      __orchestratorCreateClaims?: Map<string, number>;
+    }
+  ).__orchestratorCreateClaims?.delete(messageId);
 }
 
 function hasCreateClaimForMessage(
@@ -7618,7 +8039,7 @@ export const tasksAction: Action & {
   ],
   description:
     "Planner surface for orchestrator workspace operations and coding task delegation to dedicated ACP coding sub-agents (elizaos / pi-agent / claude / codex). " +
-    "Available operations (pick via `action`): create or spawn_agent (delegate new coding work), send (forward a message to an existing coding sub-agent), list_agents / history (read state), " +
+    'Available operations (pick via `action`): create or spawn_agent (delegate new coding work — ANY new script/page/app/tool ask is create, even when an earlier session exists), send (forward a follow-up about work a coding sub-agent already did or is doing: "run it again", "add a footer to it" — never a new deliverable), list_agents / history (read state), ' +
     "control (pause | resume | continue | archive | reopen a task), share (surface task output), provision_workspace / submit_workspace (workspace setup and PR submission), manage_issues (GitHub issue operations), cancel / stop_agent (end a coding sub-agent run when the user asks to). " +
     "Choose this when the user asks to delegate coding work, use a coding adapter by name, or run multi-step development work — it is the canonical path for coding sub-agents and is preferred over inline FILE / BASH for delegated work. " +
     // Page/site builds ARE tasks now: the spawn pipeline places the build in
@@ -7712,7 +8133,7 @@ export const tasksAction: Action & {
     {
       name: "agents",
       description:
-        "Pipe-delimited multi-agent task list for action=create. When lane planner is enabled, each part becomes lane-N in order.",
+        'Pipe-delimited multi-agent task list for action=create: ONE part per INDEPENDENT deliverable the user asked for ("two pages: a coin flip page and a dice roll page" → two parts, each a complete page). Never split one deliverable into phases (logic | styling | tests) — phases are the sub-agent\'s own plan. Omit for a single deliverable and use `task`. When lane planner is enabled, each part becomes lane-N in order.',
       required: false,
       schema: { type: "string" as const },
     },
@@ -7754,7 +8175,7 @@ export const tasksAction: Action & {
     {
       name: "label",
       description:
-        "Task label for action=create / action=spawn_agent / action=send.",
+        'Task label for action=create / action=spawn_agent / action=send: a short kebab-case name of THE deliverable ("dice-roll-page"), never a generic word ("pages", "app") — it becomes the served slug.',
       required: false,
       schema: { type: "string" as const },
     },
@@ -7777,7 +8198,8 @@ export const tasksAction: Action & {
     // send
     {
       name: "input",
-      description: "Text input to send to a running session for action=send.",
+      description:
+        "Text to send to an existing session for action=send: a follow-up about THAT session's work. A new deliverable is action=create with a task, not a send.",
       required: false,
       schema: { type: "string" as const },
     },
@@ -7791,7 +8213,7 @@ export const tasksAction: Action & {
     {
       name: "sessionId",
       description:
-        "Exact ACP session id for action=send / action=stop_agent / action=cancel / action=control / action=share / action=history. For history, returns the durable task containing that session even when it is not the task's latest session.",
+        "Exact ACP session id for action=send / action=stop_agent / action=cancel / action=control / action=share / action=history. For send, only the session whose work the user is following up on; never reuse an unrelated finished session for a new ask. For history, returns the durable task containing that session even when it is not the task's latest session.",
       required: false,
       schema: { type: "string" as const },
     },

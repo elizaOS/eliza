@@ -8,6 +8,7 @@
  * @module @elizaos/plugin-agent-orchestrator
  */
 
+import { activateFollowUpOrigin } from "./services/follow-up-origin.js";
 import { randomUUID } from "node:crypto";
 import type {
   Character,
@@ -72,6 +73,7 @@ import {
 import { tasksAction } from "./actions/tasks.js";
 import { durableCancelRoutingEvaluator } from "./evaluators/durable-cancel-routing.js";
 import { finishedWorkFollowUpRoutingEvaluator } from "./evaluators/finished-work-followup-routing.js";
+import { routeScopedWorkRoutingEvaluator } from "./evaluators/route-scoped-work-routing.js";
 import { subAgentCompletionResponseEvaluator } from "./evaluators/sub-agent-completion.js";
 import { subAgentFailureResponseEvaluator } from "./evaluators/sub-agent-failure.js";
 import { codingAgentExamplesProvider } from "./providers/action-examples.js";
@@ -276,6 +278,7 @@ export function createAgentOrchestratorPlugin(): Plugin {
           subAgentFailureResponseEvaluator,
           durableCancelRoutingEvaluator,
           finishedWorkFollowUpRoutingEvaluator,
+          routeScopedWorkRoutingEvaluator,
         ]
       : [],
     // Eager-start the orchestrator's services. They're declared in `services:`
@@ -547,6 +550,9 @@ export function createAgentOrchestratorPlugin(): Plugin {
                   const queued = subAgentInbox.drain(sessionId);
                   if (!queued) return;
                   try {
+                    // The queued follow-up's origin becomes the session's
+                    // voice key so its completion posts (follow-up-origin.ts).
+                    if (svc) await activateFollowUpOrigin(svc, sessionId);
                     await svc?.sendPrompt(sessionId, queued);
                   } catch (err) {
                     // error-policy:J7 inbox-flush loop must survive a transient

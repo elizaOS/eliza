@@ -73,12 +73,16 @@ describe("finished-work follow-up routing", () => {
     expect(result).toBeUndefined();
   });
 
-  it("does not fire for a fresh coding ask", () => {
-    const message = discordMessage(
+  it('does not fire for a fresh coding ask — even one that says "and run it"', () => {
+    for (const text of [
       "write me a python script that picks a card",
-    );
-    expect(
-      finishedWorkFollowUpRoutingEvaluator.shouldRun?.({ message } as never),
-    ).toBe(false);
+      "write me a python script that prints a random prime under 1000 and run it",
+      "build me a script that counts words in a file and execute it",
+    ]) {
+      const message = discordMessage(text);
+      expect(
+        finishedWorkFollowUpRoutingEvaluator.shouldRun?.({ message } as never),
+      ).toBe(false);
+    }
   });
 });

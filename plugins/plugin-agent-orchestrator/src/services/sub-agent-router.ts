@@ -68,6 +68,7 @@ import {
   collectFsObservedFiles,
   deriveRouteMappedUrls,
   enumerateWorkdirCandidates,
+  probeMappedUrls,
 } from "./quick-app-evidence.js";
 import {
   applyResumePreamble,
@@ -1185,8 +1186,13 @@ export class SubAgentRouter extends Service {
       !this.releasingDeferredRelaySessions.has(sessionId)
     ) {
       const deferTaskId = await this.completionRelayDeferralTaskId(sessionId);
+      if (deferTaskId === "drop") return;
       if (deferTaskId) {
-        const existing = this.deferredCompletionRelays.get(deferTaskId);
+        // Keyed per lane: two lanes of one task defer independently, and a
+        // lane's verdict releases only its own relay (live 2026-08-22: the
+        // second lane's deferral overwrote the first's).
+        const deferKey = `${deferTaskId}\u0000${sessionId}`;
+        const existing = this.deferredCompletionRelays.get(deferKey);
         if (existing) clearTimeout(existing.timer);
         const timer = setTimeout(
           () => {
@@ -1198,12 +1204,16 @@ export class SubAgentRouter extends Service {
               "deferred completion relay released by timeout — no verification verdict arrived",
               { taskId: deferTaskId, sessionId },
             );
-            this.releaseDeferredCompletionRelay(deferTaskId, "passed");
+            this.releaseDeferredCompletionRelay(
+              deferTaskId,
+              "passed",
+              sessionId,
+            );
           },
           5 * 60 * 1000,
         );
         timer.unref?.();
-        this.deferredCompletionRelays.set(deferTaskId, {
+        this.deferredCompletionRelays.set(deferKey, {
           sessionId,
           data,
           turnId,
@@ -1731,6 +1741,16 @@ export class SubAgentRouter extends Service {
       text = redactLoopbackUrls(verified.text);
       deadUrls = verified.dead;
       verifiedUrls = verified.verifiedUrls;
+      // A child that never NAMES its page leaves nothing to verify, and the
+      // relay then shipped "it's all in index.html" with no link (live
+      // 2026-08-22, two-lane build). The served dir is known: probe it.
+      if (verifiedUrls.length === 0) {
+        const servedUrl = publicUrlForServedWorkdir(session.workdir);
+        if (servedUrl) {
+          const probed = await probeMappedUrls([servedUrl]);
+          if (probed.length > 0) verifiedUrls = probed;
+        }
+      }
       // The task service's evidence bundle reads `subAgentVerifiedUrls` off
       // the session — until now only the relay Memory carried it, so the
       // verifier never saw the URL this probe had just confirmed and demanded
@@ -2286,31 +2306,72 @@ export class SubAgentRouter extends Service {
    *  body decides internally is covered by the release fallback timer. */
   private async completionRelayDeferralTaskId(
     sessionId: string,
-  ): Promise<string | null> {
-    if (process.env.ELIZA_RELAY_AFTER_VERIFY === "0") return null;
-    if (!shouldAutoVerifyGoal()) return null;
+  ): Promise<string | null | "drop"> {
+    const deferralEnabled =
+      process.env.ELIZA_RELAY_AFTER_VERIFY !== "0" && shouldAutoVerifyGoal();
     const tasks = this.runtime.getService("ORCHESTRATOR_TASK_SERVICE") as {
       getTaskForSession?: (sessionId: string) => Promise<{
         id?: string;
         status?: string;
         acceptanceCriteria?: string[];
+        metadata?: Record<string, unknown> | null;
       } | null>;
     } | null;
     if (!tasks?.getTaskForSession) return null;
     try {
       const record = await tasks.getTaskForSession(sessionId);
-      if (!record?.id) return null;
+      // Kept at warn: an undeferred relay ships before the verdict, and the
+      // only trace of why is here (plugin info never reaches bot.log).
+      if (!record?.id) {
+        if (!deferralEnabled) return null;
+        this.log("warn", "completion relay not deferred: no task record", {
+          sessionId,
+        });
+        return null;
+      }
+      const interruptReason = record.metadata?.interruptReason;
+      if (
+        record.status === "interrupted" &&
+        typeof interruptReason === "string" &&
+        interruptReason.startsWith("user")
+      ) {
+        // The user stopped the task; the child's last turn still reported a
+        // completion. "it's ready" for a cancelled build is never right —
+        // whether or not verification/deferral is enabled.
+        this.log("info", "completion relay dropped: task stopped by user", {
+          sessionId,
+          taskId: record.id,
+        });
+        return "drop";
+      }
+      if (!deferralEnabled) return null;
       if (
         ["done", "parked", "failed", "cancelled", "archived"].includes(
           String(record.status),
         )
       ) {
+        this.log("warn", "completion relay not deferred: task is terminal", {
+          sessionId,
+          taskId: record.id,
+          status: record.status,
+        });
         return null;
       }
       const criteria = Array.isArray(record.acceptanceCriteria)
         ? record.acceptanceCriteria
         : [];
-      return criteria.length > 0 ? record.id : null;
+      if (criteria.length === 0) {
+        this.log(
+          "warn",
+          "completion relay not deferred: task has no criteria",
+          {
+            sessionId,
+            taskId: record.id,
+          },
+        );
+        return null;
+      }
+      return record.id;
     } catch {
       // error-policy:J4 a lookup failure must degrade to the immediate relay,
       // never to a swallowed completion.
@@ -2325,10 +2386,23 @@ export class SubAgentRouter extends Service {
   releaseDeferredCompletionRelay(
     taskId: string,
     verdict: "passed" | "failed",
+    sessionId?: string,
   ): void {
-    const pending = this.deferredCompletionRelays.get(taskId);
+    const keys = [...this.deferredCompletionRelays.keys()].filter((key) => {
+      const [keyTask, keySession] = key.split("\u0000");
+      return keyTask === taskId && (!sessionId || keySession === sessionId);
+    });
+    for (const key of keys) this.releaseDeferredRelayByKey(key, verdict);
+  }
+
+  private releaseDeferredRelayByKey(
+    key: string,
+    verdict: "passed" | "failed",
+  ): void {
+    const pending = this.deferredCompletionRelays.get(key);
     if (!pending) return;
-    this.deferredCompletionRelays.delete(taskId);
+    const taskId = key.split("\u0000")[0];
+    this.deferredCompletionRelays.delete(key);
     clearTimeout(pending.timer);
     if (verdict !== "passed") {
       this.log(
@@ -3842,6 +3916,24 @@ function pickRouteUrlMappings(value: unknown): RouteUrlMapping[] {
       };
     })
     .filter((entry): entry is RouteUrlMapping => entry !== undefined);
+}
+
+/** The public URL of a session workdir directly under the configured
+ *  published-apps dir, when it holds an index page. */
+function publicUrlForServedWorkdir(workdir: string): string | undefined {
+  if (!workdir || !fs.existsSync(path.join(workdir, "index.html"))) {
+    return undefined;
+  }
+  const deploy = resolveAppDeployConfig();
+  if (
+    deploy.target !== "custom" ||
+    !deploy.customAppsDir ||
+    !deploy.customBaseUrl ||
+    path.dirname(path.resolve(workdir)) !== path.resolve(deploy.customAppsDir)
+  ) {
+    return undefined;
+  }
+  return `${deploy.customBaseUrl.replace(/\/+$/, "")}/apps/${path.basename(workdir)}/`;
 }
 
 function routeVerificationForSession(

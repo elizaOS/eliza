@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { collapsePlannerLanes } from "../actions/tasks.js";
+import {
+  collapsePlannerLanes,
+  looksLikeFollowUpToInFlightWork,
+} from "../actions/tasks.js";
 
 const PHASES = [
   "Build Tetris game logic and UI",
@@ -62,5 +65,22 @@ describe("collapsePlannerLanes", () => {
         undefined,
       ),
     ).toHaveLength(1);
+  });
+
+  it("recognizes a follow-up to work already under way", () => {
+    for (const text of [
+      "oh also add a dark mode toggle to it",
+      "also make the buttons bigger",
+      "make it print 3 numbers instead",
+      "add a reset button to the page",
+    ]) {
+      expect(looksLikeFollowUpToInFlightWork(text)).toBe(true);
+    }
+    for (const text of [
+      "make me a lil page that shows a random compliment",
+      "write a python script that picks a random card",
+    ]) {
+      expect(looksLikeFollowUpToInFlightWork(text)).toBe(false);
+    }
   });
 });

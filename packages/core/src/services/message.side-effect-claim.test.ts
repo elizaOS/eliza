@@ -1607,4 +1607,20 @@ describe("locale clause scoping through the real consumer paths", () => {
 		});
 		expect(decision.verdict).not.toBe("reject");
 	});
+	it("allows a completed-side-effect claim on a sub-agent completion relay turn", () => {
+		const reply =
+			"the bmi calculator is ready for you. i've set up the `index.html` file to handle everything.";
+		expect(
+			evaluatePlannedReplyEgress({
+				reply,
+				actionResults: [],
+				actions: [],
+				completionRelay: true,
+			}).verdict,
+		).toBe("allow");
+		expect(
+			evaluatePlannedReplyEgress({ reply, actionResults: [], actions: [] })
+				.verdict,
+		).toBe("reject");
+	});
 });

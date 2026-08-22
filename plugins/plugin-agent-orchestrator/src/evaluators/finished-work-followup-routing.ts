@@ -14,6 +14,7 @@
 import type { Memory, ResponseHandlerEvaluator } from "@elizaos/core";
 import { unwrapUserMessageText } from "@elizaos/core";
 import { getAcpService } from "../actions/common.js";
+import { looksLikeNewDeliverableAsk } from "../services/ask-shapes.js";
 import { TERMINAL_SESSION_STATUSES } from "../services/types.js";
 
 /** Run/show verb aimed at prior work ("it", "again", the/that <thing>) or an
@@ -45,7 +46,13 @@ export const finishedWorkFollowUpRoutingEvaluator: ResponseHandlerEvaluator = {
     "Routes run-it/show-me follow-ups on finished sub-agent work to the TASKS surface deterministically.",
   priority: 20,
   deterministicActions: ["TASKS"],
-  shouldRun: ({ message }) => RUN_FOLLOWUP_RE.test(messageText(message)),
+  // "write me a script … and run it" is a NEW build that happens to say
+  // "run it"; sending it into the latest finished lane inherited that lane's
+  // title, criteria and repo workdir (live 2026-08-22, count-ts-files).
+  shouldRun: ({ message }) => {
+    const text = messageText(message);
+    return RUN_FOLLOWUP_RE.test(text) && !looksLikeNewDeliverableAsk(text);
+  },
   evaluate: async ({ runtime, message, messageHandler }) => {
     if (messageHandler.processMessage !== "RESPOND") return undefined;
     const service = getAcpService(runtime);

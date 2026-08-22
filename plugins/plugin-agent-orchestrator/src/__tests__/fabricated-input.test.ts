@@ -64,4 +64,24 @@ describe("fabricated input detection", () => {
       shellWriteTargets("echo hi > out.txt && cat x | tee -a log.txt"),
     ).toEqual(["out.txt", "log.txt"]);
   });
+
+  it("does not treat produced files as read targets, nor a same-stem script as the input", () => {
+    expect(
+      readTargetsFromTask("read sales.csv and write a summary to report.json"),
+    ).toEqual(["sales.csv"]);
+    expect(
+      detectFabricatedInput(
+        "write a script that reads config.json and prints it",
+        ["/ws/config.py"],
+        [],
+      ),
+    ).toBeUndefined();
+    expect(
+      detectFabricatedInput(
+        "write a script that reads config.json and prints it",
+        ["/ws/config.json"],
+        [],
+      ),
+    ).toEqual({ target: "config.json", wrote: "/ws/config.json" });
+  });
 });

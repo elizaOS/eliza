@@ -5,19 +5,28 @@
  */
 import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { basename, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 import { resolveSpawnWorkdir } from "../services/task-agent-routing.js";
 
 const root = mkdtempSync(join(tmpdir(), "workdir-grounding-"));
-const invented = join(root, "agent-home");
+// A configured route lives under `projects/`; its parent is a protected
+// location a planner must not invent a build into.
+const projects = join(root, "projects");
+const routeRepo = join(projects, "agent-home");
+const invented = projects;
 const laneDir = join(root, "dad-joke-page");
-for (const d of [invented, laneDir]) mkdirSync(d, { recursive: true });
+for (const d of [routeRepo, laneDir]) mkdirSync(d, { recursive: true });
 afterAll(() => rmSync(root, { recursive: true, force: true }));
 
 function runtimeWithSessions(workdirs: string[]) {
   return {
-    getSetting: () => undefined,
+    getSetting: (key: string) =>
+      key === "TASK_AGENT_WORKDIR_ROUTES"
+        ? JSON.stringify([
+            { id: "agent-home", workdir: routeRepo, matchAny: ["agent-home"] },
+          ])
+        : undefined,
     getService: (name: string) =>
       name === "ACP_SERVICE"
         ? { listSessions: () => workdirs.map((workdir) => ({ workdir })) }
@@ -26,7 +35,7 @@ function runtimeWithSessions(workdirs: string[]) {
 }
 
 describe("explicit workdir grounding", () => {
-  it("ignores an existing directory the planner invented for a fresh build", () => {
+  it("ignores a protected directory (a route's parent) the planner invented for a fresh build", () => {
     const r = resolveSpawnWorkdir(
       runtimeWithSessions([]),
       "Write a python script that picks a random card and prints it.",
@@ -36,14 +45,26 @@ describe("explicit workdir grounding", () => {
     expect(r.workdir).not.toBe(invented);
   });
 
-  it("honors a directory the user named", () => {
+  it("honors a protected directory the user named", () => {
     const r = resolveSpawnWorkdir(
       runtimeWithSessions([]),
-      `Fix the readme in ${basename(invented)}`,
-      `fix the readme in my ${basename(invented)} folder`,
+      `List the repos in ${basename(invented)}`,
+      `list the repos in my ${basename(invented)} folder`,
       invented,
     );
     expect(r.workdir).toBe(invented);
+  });
+
+  it("still trusts an existing scratch directory (the established contract)", () => {
+    const scratch = join(root, "scratch-xyz");
+    mkdirSync(scratch, { recursive: true });
+    const r = resolveSpawnWorkdir(
+      runtimeWithSessions([]),
+      "Write a python script that picks a random card.",
+      "write me a python script that picks a random card",
+      scratch,
+    );
+    expect(r.workdir).toBe(scratch);
   });
 
   it("honors a known lane's workdir (continuing finished work)", () => {
