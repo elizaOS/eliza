@@ -283,36 +283,39 @@ export class TwitterInteractionClient {
   private async handleMentions(session: TwitterAccountSession) {
     const { profile } = session;
     const twitterUsername = profile.username;
-    const cachedCursor =
-      (await this.client.getIdentityCache<string>(profile, "mention_cursor")) ??
-      "";
-
-    const searchResult = await this.client.fetchSearchTweets(
-      `@${twitterUsername}`,
-      20,
-      SearchMode.Latest,
-      String(cachedCursor),
-    );
-
-    const mentionCandidates = searchResult.tweets;
+    const lastCheckedTweetId = this.client.getLatestCheckedTweetId(profile.id);
+    const mentionCandidates: ClientTweet[] = [];
+    let cursor: string | undefined;
+    // Stay inside the recent-search window without silently dropping mentions
+    // that sit past the first page. Stop at the snowflake watermark so already
+    // processed ids are not re-fetched on later pages.
+    const maxMentionPages = 5;
+    for (let page = 0; page < maxMentionPages; page++) {
+      const searchResult = await this.client.fetchSearchTweets(
+        `@${twitterUsername}`,
+        20,
+        SearchMode.Latest,
+        cursor,
+      );
+      let hitWatermark = false;
+      for (const tweet of searchResult.tweets) {
+        mentionCandidates.push(tweet);
+        if (
+          lastCheckedTweetId !== null &&
+          typeof tweet.id === "string" &&
+          tweet.id.length > 0 &&
+          BigInt(tweet.id) <= lastCheckedTweetId
+        ) {
+          hitWatermark = true;
+        }
+      }
+      if (hitWatermark || !searchResult.next) {
+        break;
+      }
+      cursor = searchResult.next;
+    }
 
     await this.processMentionTweetsForSession(mentionCandidates, session);
-    this.assertCurrentSession(session);
-    if (mentionCandidates.length > 0 && searchResult.previous) {
-      await this.client.setIdentityCache(
-        profile,
-        "mention_cursor",
-        searchResult.previous,
-        session,
-      );
-    } else if (!searchResult.previous && !searchResult.next) {
-      await this.client.setIdentityCache(
-        profile,
-        "mention_cursor",
-        "",
-        session,
-      );
-    }
   }
 
   /**
