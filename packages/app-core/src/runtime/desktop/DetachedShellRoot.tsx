@@ -11,6 +11,7 @@ import type { PageScope } from "@elizaos/ui/components/pages/page-scoped-convers
 import { PairingView } from "@elizaos/ui/components/shell/PairingView";
 import { StartupFailureView } from "@elizaos/ui/components/shell/StartupFailureView";
 import { AppWorkspaceChrome } from "@elizaos/ui/components/workspace/AppWorkspaceChrome";
+import { getBootConfig } from "@elizaos/ui/config/boot-config-store";
 import {
   resolveDetachedShellTarget,
   type WindowShellRoute,
@@ -133,7 +134,11 @@ function DetachedSettingsSectionView({
     case "ai-model":
       return <ProviderSwitcher />;
     case "cloud":
-      return <CloudDashboard />;
+      return getBootConfig().branding.cloudOnly === true ? (
+        <SettingsView initialSection={section} />
+      ) : (
+        <CloudDashboard />
+      );
     case "coding-agents":
       return <CodingAgentSettingsSection />;
     case "wallet-rpc":

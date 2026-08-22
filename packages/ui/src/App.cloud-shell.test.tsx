@@ -47,6 +47,13 @@ const CHATVIEW_TSX = readFileSync(
   resolve(__dirname, "./components/pages/ChatView.tsx"),
   "utf8",
 );
+const DETACHED_SHELL_ROOT_TSX = readFileSync(
+  resolve(
+    __dirname,
+    "../../app-core/src/runtime/desktop/DetachedShellRoot.tsx",
+  ),
+  "utf8",
+);
 
 /**
  * Collapses runs of whitespace so a JSX-wiring assertion stays true when the
@@ -270,6 +277,15 @@ describe("App standalone chat-overlay wiring", () => {
 // Behavioral coverage of the window-shell classification the wiring above only
 // asserts textually — these are pure functions, so we exercise the real logic.
 describe("window-shell route classification (behavioral)", () => {
+  it("routes the detached cloud section through consolidated settings in cloud-only builds", () => {
+    expect(DETACHED_SHELL_ROOT_TSX).toContain(
+      "getBootConfig().branding.cloudOnly === true",
+    );
+    expect(collapseWhitespace(DETACHED_SHELL_ROOT_TSX)).toContain(
+      collapseWhitespace("<SettingsView initialSection={section} />"),
+    );
+  });
+
   it("parses the chat-overlay shellMode under both param spellings", () => {
     expect(parseWindowShellRoute("?shellMode=chat-overlay")).toEqual({
       mode: "chat-overlay",
