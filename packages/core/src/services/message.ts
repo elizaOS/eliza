@@ -1855,17 +1855,19 @@ export type ZeroDeliveryRecoverySource =
 	| "fallbackText";
 
 /**
- * Decides whether — and with what text — a RESPOND turn that ran tools but
- * delivered nothing terminal recovers instead of ending silent (#20083,
- * corrected by #20086). Source precedence: the planner's surviving terminal
- * text, then the last explicit action-owned `userFacingText`, then the
- * Stage-1 ack ONLY when no early ack already shipped it, then a hardcoded
- * fallback whose wording is failure-aware — it claims completion only when at
- * least one tool actually succeeded. After an early progress ack the turn
- * recovers only when grounded text exists or any tool failed: a successful
- * async handoff reports through a later completion relay, so manufacturing a
- * "finished" line behind its ack would be a lie, while a failed handoff will
- * never relay anything and the ack's promise must be corrected.
+ * Decides whether — and with what text — a turn that owes the user a terminal
+ * response but delivered nothing recovers instead of ending silent (#20083,
+ * corrected by #20086). The turn may have run tools or may be an addressed,
+ * toolless turn covered by the delivery floor. Source precedence is the
+ * planner's surviving terminal text, then the last explicit action-owned
+ * `userFacingText`, then the Stage-1 ack ONLY when no early ack already shipped
+ * it, then a hardcoded fallback. Fallback wording is effect-aware: it claims
+ * completion only when a tool succeeded, failure only when a tool ran, and
+ * otherwise gives a neutral no-answer response. After an early progress ack,
+ * the turn recovers only when grounded text exists or any tool failed: a
+ * successful async handoff reports through a later completion relay, so
+ * manufacturing a "finished" line behind its ack would be a lie, while a failed
+ * handoff will never relay anything and the ack's promise must be corrected.
  * `plannedText` must arrive pre-blanked when it merely repeats the early ack.
  */
 export function resolveZeroDeliveryRecovery(args: {
@@ -1898,12 +1900,19 @@ export function resolveZeroDeliveryRecovery(args: {
 			.filter((ownedText) => ownedText.length > 0)
 			.at(-1) ?? "";
 	const ackRecoveryText = args.earlyReplySent ? "" : args.stageOneAck;
+	const ranAnySteps = args.actionResults.length > 0;
+	// Effect honesty: the failure-flavored fallbacks may only describe steps
+	// that actually ran. A toolless turn (planner ended with no tool calls —
+	// e.g. a deliberate IGNORE on an addressed turn the delivery floor still
+	// answers) must not fabricate "I ran the steps … they failed".
 	const fallbackRecoveryText =
 		actionSuccessCount > 0 && actionFailureCount > 0
 			? "Some steps completed and some failed, but I could not produce a reliable summary. Check the current state before deciding whether to retry."
 			: actionSuccessCount > 0
 				? "The requested steps completed, but I could not produce a reliable summary. Check the current state before retrying."
-				: "I ran the steps for that but they failed, and I could not compose a useful report — ask again and I will retry.";
+				: ranAnySteps
+					? "I ran the steps for that but they failed, and I could not compose a useful report — ask again and I will retry."
+					: "I don't have a useful answer to that right now — ask again and I will retry.";
 	const text =
 		args.plannedText ||
 		lastActionUserFacingText ||
