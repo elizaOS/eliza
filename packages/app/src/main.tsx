@@ -3491,6 +3491,22 @@ async function main(): Promise<void> {
   measureStartup("app-modules", "app-modules:start", "app-modules:end");
   setupPlatformStyles();
   applyBuildTimeIosConnection();
+  injectWaifuChatAccessToken();
+
+  // Kick the hashed @elizaos/ui/voice chunk fetch off NOW — before any
+  // storage-bridge await — so it downloads concurrently with the native
+  // Preferences hydration below instead of serializing after it. The module
+  // is only consumed at the per-platform await sites further down; load
+  // failure resolves null there (never gates mounting the app).
+  const voiceModuleReady = startVoiceModuleLoad();
+
+  // A native host can replay its retained, tokenless remote-connect URL after
+  // pairing reloads the renderer. Hydrate protected storage before applying
+  // that URL so browser-launch can see and preserve the Keychain-backed bearer
+  // already bound to the same host. Applying the replay first observes an
+  // empty localStorage mirror and replaces the paired record with a tokenless
+  // connection, sending the device straight back to Pairing Required.
+  await initializeStorageBridge();
 
   try {
     await applyLaunchConnectionFromUrl();
@@ -3502,15 +3518,6 @@ async function main(): Promise<void> {
       err instanceof Error ? err.message : err,
     );
   }
-
-  injectWaifuChatAccessToken();
-
-  // Kick the hashed @elizaos/ui/voice chunk fetch off NOW — before any
-  // storage-bridge await — so it downloads concurrently with the native
-  // Preferences hydration below instead of serializing after it. The module
-  // is only consumed at the per-platform await sites further down; load
-  // failure resolves null there (never gates mounting the app).
-  const voiceModuleReady = startVoiceModuleLoad();
 
   if (isPopoutWindow()) {
     injectPopoutApiBase();
