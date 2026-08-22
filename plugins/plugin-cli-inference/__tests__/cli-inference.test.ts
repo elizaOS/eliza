@@ -6,6 +6,7 @@
  * so no real model runs; the few real-binary cases are skipped unless
  * `claude`/`codex` resolve through the SOC2 allowlist on this box.
  */
+import { readFileSync } from "node:fs";
 import type { ChatMessage, IAgentRuntime, PluginAutoEnableContext } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { shouldEnable } from "../auto-enable";
@@ -22,6 +23,7 @@ import {
   cliInferencePlugin,
   findHandleResponseTool,
   LARGE_TIER_MODEL_TYPES,
+  parseTimeout,
   parseTurnTimeout,
   resolveCliBackend,
   resolveSdkEffort,
@@ -69,13 +71,21 @@ const FAKE_CODEX = "/usr/local/bin/codex";
 interface Captured {
   argv: string[];
   opts: SpawnOptions;
+  stdinText: string;
+  systemText?: string;
 }
 
 /** A mock spawner that records the call and returns a canned result. */
 function recordingSpawn(result: Partial<SpawnResult>) {
   const calls: Captured[] = [];
   const fn = async (argv: string[], opts: SpawnOptions): Promise<SpawnResult> => {
-    calls.push({ argv, opts });
+    const systemIndex = argv.indexOf("--system-prompt-file");
+    calls.push({
+      argv,
+      opts,
+      stdinText: readFileSync(opts.stdinPath, "utf8"),
+      systemText: systemIndex >= 0 ? readFileSync(argv[systemIndex + 1], "utf8") : undefined,
+    });
     return {
       code: result.code ?? 0,
       signal: result.signal ?? null,
@@ -125,7 +135,7 @@ describe("flattenPrompt", () => {
 });
 
 describe("claude CLI variant", () => {
-  it("assembles argv: -p<body>, --system-prompt<verbatim>, --output-format text, --model; stdin /dev/null; isolated cwd", async () => {
+  it("streams the complete body and system from private files instead of process arguments", async () => {
     const { calls, fn } = recordingSpawn({ stdout: "hello world\n" });
     const restore = __setClaudeSpawn(fn);
     try {
@@ -140,17 +150,17 @@ describe("claude CLI variant", () => {
       });
       expect(out).toBe("hello world");
       expect(calls).toHaveLength(1);
-      const { argv, opts } = calls[0];
+      const { argv, opts, stdinText, systemText } = calls[0];
 
-      // -p carries the flattened body (the messages)
+      // `-p` selects print mode; the complete body arrives on stdin.
       const pIdx = argv.indexOf("-p");
       expect(pIdx).toBeGreaterThanOrEqual(0);
-      expect(argv[pIdx + 1]).toContain("hi there");
+      expect(stdinText).toContain("hi there");
 
-      // --system-prompt carries the system VERBATIM (full replace)
-      const sysIdx = argv.indexOf("--system-prompt");
+      // The system prompt is a full replacement loaded from a file.
+      const sysIdx = argv.indexOf("--system-prompt-file");
       expect(sysIdx).toBeGreaterThanOrEqual(0);
-      expect(argv[sysIdx + 1]).toBe("SYSTEM PROMPT VERBATIM");
+      expect(systemText).toBe("SYSTEM PROMPT VERBATIM");
 
       // output format + model + dynamic-section suppression
       const ofIdx = argv.indexOf("--output-format");
@@ -164,8 +174,9 @@ describe("claude CLI variant", () => {
       expect(toolsIdx).toBeGreaterThanOrEqual(0);
       expect(argv[toolsIdx + 1]).toBe("");
 
-      // stdin from /dev/null, isolated tmpdir cwd
-      expect(opts.stdinPath).toBe("/dev/null");
+      // Both files live inside the isolated per-call directory.
+      expect(opts.stdinPath).toBe(`${opts.cwd}/prompt.txt`);
+      expect(argv[sysIdx + 1]).toBe(`${opts.cwd}/system-prompt.txt`);
       expect(opts.cwd).toContain("eliza-cli-inference-");
     } finally {
       restore();
@@ -197,7 +208,7 @@ describe("claude CLI variant", () => {
     }
   });
 
-  it("threads system+user+assistant messages: system -> --system-prompt, rest -> body, none dropped", async () => {
+  it("threads system+user+assistant messages through files with none dropped", async () => {
     const { calls, fn } = recordingSpawn({ stdout: "answer" });
     const restore = __setClaudeSpawn(fn);
     try {
@@ -210,13 +221,28 @@ describe("claude CLI variant", () => {
           { role: "user", content: "USER-B" },
         ],
       });
-      const { argv } = calls[0];
-      const system = argv[argv.indexOf("--system-prompt") + 1];
-      const body = argv[argv.indexOf("-p") + 1];
+      const { stdinText: body, systemText: system } = calls[0];
       expect(system).toContain("SYS-A");
       expect(body).toContain("USER-A");
       expect(body).toContain("ASSIST-A");
       expect(body).toContain("USER-B");
+    } finally {
+      restore();
+    }
+  });
+
+  it("keeps million-character prompts intact and out of argv", async () => {
+    const { calls, fn } = recordingSpawn({ stdout: "answer" });
+    const restore = __setClaudeSpawn(fn);
+    try {
+      const cli = new ClaudeCli({ env: { PATH: process.env.PATH }, binaryPath: FAKE_CLAUDE });
+      const system = `SYSTEM-${"s".repeat(1_100_000)}`;
+      const body = `BODY-${"b".repeat(1_100_000)}`;
+      await cli.generate({ system, prompt: body });
+      expect(calls[0].systemText).toBe(system);
+      expect(calls[0].stdinText).toBe(body);
+      expect(calls[0].argv.join(" ")).not.toContain(system);
+      expect(calls[0].argv.join(" ")).not.toContain(body);
     } finally {
       restore();
     }
@@ -316,7 +342,7 @@ describe("codex CLI variant", () => {
       });
       const out = await cli.generate({ system: "SYS", prompt: "do a thing" });
       expect(out).toBe("codex says hi");
-      const { argv, opts } = calls[0];
+      const { argv, opts, stdinText } = calls[0];
       expect(argv).toContain("exec");
       expect(argv[argv.indexOf("-m") + 1]).toBe("gpt-5.5");
       expect(argv[argv.indexOf("-s") + 1]).toBe("read-only");
@@ -324,11 +350,28 @@ describe("codex CLI variant", () => {
       expect(argv).toContain("-C");
       expect(argv[argv.indexOf("--color") + 1]).toBe("never");
       expect(argv).toContain("--json");
-      // system is folded into the single positional prompt
-      const prompt = argv[argv.length - 1];
-      expect(prompt).toContain("SYS");
-      expect(prompt).toContain("do a thing");
-      expect(opts.stdinPath).toBe("/dev/null");
+      // system is folded into one complete stdin prompt; `-` requests stdin.
+      expect(argv[argv.length - 1]).toBe("-");
+      expect(stdinText).toContain("SYS");
+      expect(stdinText).toContain("do a thing");
+      expect(opts.stdinPath).toBe(`${opts.cwd}/prompt.txt`);
+    } finally {
+      restore();
+    }
+  });
+
+  it("keeps a million-character prompt intact and out of argv", async () => {
+    const jsonl = `{"type":"item.completed","item":{"type":"agent_message","text":"ok"}}\n`;
+    const { calls, fn } = recordingSpawn({ stdout: jsonl });
+    const restore = __setCodexSpawn(fn);
+    try {
+      const cli = new CodexCli({ env: { PATH: process.env.PATH }, binaryPath: FAKE_CODEX });
+      const system = `SYSTEM-${"s".repeat(1_100_000)}`;
+      const body = `BODY-${"b".repeat(1_100_000)}`;
+      await cli.generate({ system, prompt: body });
+      expect(calls[0].stdinText).toBe(`${system}\n\n${body}`);
+      expect(calls[0].argv.join(" ")).not.toContain(system);
+      expect(calls[0].argv.join(" ")).not.toContain(body);
     } finally {
       restore();
     }
@@ -1238,5 +1281,30 @@ describe("parseTurnTimeout (#16553)", () => {
     expect(parseTurnTimeout(undefined)).toBeUndefined();
     expect(parseTurnTimeout("abc")).toBeUndefined();
     expect(parseTurnTimeout("-5")).toBeUndefined();
+  });
+
+  it("rejects prefix-parsed, fractional, and unsafe values", () => {
+    expect(parseTurnTimeout("0junk")).toBeUndefined();
+    expect(parseTurnTimeout("0.5")).toBeUndefined();
+    expect(parseTurnTimeout("120000junk")).toBeUndefined();
+    expect(parseTurnTimeout("9007199254740993")).toBeUndefined();
+  });
+
+  it("preserves the previously accepted explicit plus sign", () => {
+    expect(parseTurnTimeout("+120000")).toBe(120_000);
+  });
+});
+
+describe("parseTimeout", () => {
+  it("accepts only whole, safe, strictly positive values", () => {
+    expect(parseTimeout("120000")).toBe(120_000);
+    expect(parseTimeout("+120000")).toBe(120_000);
+    expect(parseTimeout(" 120000 ")).toBe(120_000);
+    expect(parseTimeout(undefined)).toBeUndefined();
+    expect(parseTimeout("0")).toBeUndefined();
+    expect(parseTimeout("-5")).toBeUndefined();
+    expect(parseTimeout("120000junk")).toBeUndefined();
+    expect(parseTimeout("120000.5")).toBeUndefined();
+    expect(parseTimeout("9007199254740993")).toBeUndefined();
   });
 });

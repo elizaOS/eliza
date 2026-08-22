@@ -115,7 +115,7 @@ describe("getTaskAgentFrameworkState", () => {
     fs.rmSync(tempHome, { recursive: true, force: true });
   });
 
-  it("defaults Cerebras-backed benchmark runs to OpenCode", async () => {
+  it("does not expose OpenCode for Cerebras-backed benchmark runs", async () => {
     setEnv({
       BENCHMARK_MODEL_PROVIDER: "cerebras",
       CEREBRAS_API_KEY: "csk-test",
@@ -123,20 +123,13 @@ describe("getTaskAgentFrameworkState", () => {
 
     const state = await getTaskAgentFrameworkState(runtime(), installedProbe());
 
-    expect(state.preferred.id).toBe("opencode");
-    expect(
-      state.frameworks.find((item) => item.id === "opencode")?.authReady,
-    ).toBe(true);
+    expect(state.frameworks.some((item) => item.id === "opencode")).toBe(false);
     expect(
       state.frameworks.find((item) => item.id === "codex")?.authReady,
     ).toBe(false);
   });
 
-  it("prefers eliza-code over OpenCode as the BYO default once eliza-code is installed", async () => {
-    // With a native ElizaOS ACP command configured, eliza-code is a real
-    // candidate. It shares OpenCode's BYO provider thumb (no Claude/Codex key is
-    // set), and its dominant capability-profile fit makes it the default over
-    // OpenCode — which stays the fallback for hosts without eliza-code.
+  it("prefers eliza-code as the BYO default once eliza-code is installed", async () => {
     writeExecutable(path.join(tempHome, "eliza-code-acp"));
     setEnv({
       ELIZA_ELIZAOS_ACP_COMMAND: "eliza-code-acp",
@@ -150,9 +143,7 @@ describe("getTaskAgentFrameworkState", () => {
     expect(
       state.frameworks.find((item) => item.id === "elizaos")?.installed,
     ).toBe(true);
-    expect(
-      state.frameworks.find((item) => item.id === "opencode")?.installed,
-    ).toBe(true);
+    expect(state.frameworks.some((item) => item.id === "opencode")).toBe(false);
   });
 
   it("honors ElizaOS as an explicit native task-agent default", async () => {
@@ -242,7 +233,7 @@ describe("getTaskAgentFrameworkState", () => {
 
     const state = await getTaskAgentFrameworkState(runtime(), installedProbe());
 
-    expect(state.preferred.id).toBe("opencode");
+    expect(state.frameworks.some((item) => item.id === "opencode")).toBe(false);
     expect(
       state.frameworks.find((item) => item.id === "codex")?.authReady,
     ).toBe(false);

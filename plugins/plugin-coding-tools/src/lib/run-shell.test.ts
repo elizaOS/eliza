@@ -120,6 +120,31 @@ describe("plugin-coding-tools runShell mobile routing", () => {
     });
   });
 
+  it("rejects over-limit capability-router output without returning a prefix", async () => {
+    process.env.ELIZA_PLATFORM = "ios";
+    process.env.ELIZA_BUILD_VARIANT = "store";
+    process.env.ELIZA_RUNTIME_MODE = "local-yolo";
+    const { router, runCommand } = remoteRouter();
+    runCommand.mockResolvedValueOnce({
+      output: "x".repeat(1_000_001),
+      exitCode: 0,
+      timedOut: false,
+    });
+
+    const result = await runShell(runtimeWithRouter(router), {
+      command: "noisy-command",
+      cwd: "/workspace",
+      timeoutMs: 10_000,
+    });
+
+    expect(result).toMatchObject({
+      stdout: "",
+      stderr: "",
+      outputLimitExceeded: true,
+      sandbox: "capability-router",
+    });
+  });
+
   it("rejects iOS coding commands when no Remote capability router is available", async () => {
     process.env.ELIZA_PLATFORM = "ios";
     process.env.ELIZA_RUNTIME_MODE = "local-yolo";
@@ -178,6 +203,36 @@ describe("plugin-coding-tools runShell local-safe sandbox routing", () => {
       durationMs: 7,
       sandbox: "docker",
       timedOut: false,
+    });
+  });
+
+  it("rejects over-limit sandbox output without returning a prefix", async () => {
+    process.env.ELIZA_RUNTIME_MODE = "local-safe";
+    const runtime = {
+      getService: () => null,
+      getSandboxManager: () => ({
+        engine: { engineType: "docker" },
+        exec: vi.fn(async () => ({
+          exitCode: 0,
+          stdout: "x".repeat(1_000_001),
+          stderr: "",
+          durationMs: 7,
+          executedInSandbox: true,
+        })),
+      }),
+    } as unknown as IAgentRuntime;
+
+    const result = await runShell(runtime, {
+      command: "noisy-command",
+      cwd: process.cwd(),
+      timeoutMs: 10_000,
+    });
+
+    expect(result).toMatchObject({
+      stdout: "",
+      stderr: "",
+      outputLimitExceeded: true,
+      sandbox: "docker",
     });
   });
 });

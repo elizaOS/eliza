@@ -316,9 +316,8 @@ function validateEmail(
   control: FormControl,
 ): ValidationResult {
   const rawValue = String(value);
-  const strValue = rawValue.length > 320 ? rawValue.slice(0, 320) : rawValue;
 
-  if (!strictEmailValid(strValue)) {
+  if (!strictEmailValid(rawValue)) {
     return {
       valid: false,
       error: `${control.label || control.key} must be a valid email address`,

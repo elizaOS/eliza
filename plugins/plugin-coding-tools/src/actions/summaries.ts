@@ -3,18 +3,15 @@
  * human-readable summary line for action results. Pure string formatting, shared
  * by the file and bash actions.
  */
-import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
+import { toWellFormedUnicode } from "@elizaos/core";
 
 export function basename(path: string): string {
   return path.split("/").pop() || path;
 }
 
-export function compactSummaryText(text: string, maxLength: number): string {
+export function preserveSummaryText(text: string): string {
   const normalized = text.replace(/\s+/g, " ").trim();
-  const wellFormed = toWellFormedUnicode(normalized);
-  if (wellFormed.length <= maxLength) return wellFormed;
-  const budget = Math.max(0, maxLength - 1);
-  return `${truncateWellFormed(wellFormed, budget).trimEnd()}…`;
+  return toWellFormedUnicode(normalized);
 }
 
 export function summarizeFileOperation(
@@ -40,5 +37,5 @@ export function summarizeShellCommand(
   if (typeof command !== "string" || command.trim().length === 0) {
     return undefined;
   }
-  return `ran \`${compactSummaryText(command, 60)}\``;
+  return `ran \`${preserveSummaryText(command)}\``;
 }

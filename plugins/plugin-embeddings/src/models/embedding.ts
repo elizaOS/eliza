@@ -3,7 +3,7 @@
  * `${EMBEDDING_BASE_URL}/embeddings` with raw fetch (no @ai-sdk), optionally
  * retry one configured fallback endpoint, validate the returned vector width
  * against the configured VECTOR_DIMS dimension, and emit a MODEL_USED event.
- * Input is capped at MAX_EMBEDDING_CHARS. Registered by the plugin in
+ * The complete input is sent to the configured endpoint. Registered by the plugin in
  * ../index.ts; see the package CLAUDE.md for the routing priority.
  */
 import type { IAgentRuntime, TextEmbeddingParams } from "@elizaos/core";
@@ -30,10 +30,6 @@ type EmbeddingEndpoint = {
   apiKey: string | undefined;
   model: string;
 };
-
-// OpenAI embedding models support up to 8191 tokens per input; 8000 provides a
-// safe buffer at the conventional ~4 chars/token estimate.
-const MAX_EMBEDDING_CHARS = 8_000 * 4;
 
 const EMBEDDING_TIMEOUT_MS = 30_000;
 
@@ -116,22 +112,6 @@ function getEmbeddingEndpoints(runtime: IAgentRuntime): EmbeddingEndpoint[] {
       model: getEmbeddingFallbackModel(runtime),
     },
   ];
-}
-
-function truncate(text: string): string {
-  if (text.length <= MAX_EMBEDDING_CHARS) {
-    return text;
-  }
-  logger.warn(
-    `[Embeddings] Input too long (~${Math.ceil(text.length / 4)} tokens), truncating to ~8000 tokens`
-  );
-  // Never cut between the halves of a surrogate pair: a trailing lone high
-  // surrogate is not valid Unicode, so it reaches the endpoint as U+FFFD (or a
-  // hard reject on strict JSON parsers) and corrupts the embedded text.
-  const lastKept = text.charCodeAt(MAX_EMBEDDING_CHARS - 1);
-  const end =
-    lastKept >= 0xd800 && lastKept <= 0xdbff ? MAX_EMBEDDING_CHARS - 1 : MAX_EMBEDDING_CHARS;
-  return text.slice(0, end);
 }
 
 /**
@@ -301,7 +281,7 @@ export async function handleTextEmbedding(
     throw new Error("Cannot generate embedding for empty text");
   }
 
-  const vectors = await requestEmbeddings(runtime, truncate(trimmed), embeddingDimension, signal);
+  const vectors = await requestEmbeddings(runtime, trimmed, embeddingDimension, signal);
   const vector = vectors[0];
   if (!vector) {
     throw new Error("Embedding provider returned no vector for the input");
@@ -328,7 +308,7 @@ export async function handleBatchTextEmbedding(
     if (typeof text !== "string" || text.trim().length === 0) {
       throw new Error(`Cannot generate embedding for empty text at index ${i}`);
     }
-    return truncate(text.trim());
+    return text.trim();
   });
 
   return requestEmbeddings(runtime, prepared, embeddingDimension, undefined);

@@ -19,7 +19,6 @@ const TARGET = Object.freeze({
   sourceCidrs: ["0.0.0.0/0", "::/0"] as const,
 });
 const SOURCE_SHA = /^[a-f0-9]{40}$/;
-const MAX_PROVIDER_PAGES = 10;
 const MAX_RESPONSE_BYTES = 8 * 1024 * 1024;
 const MAX_ACTION_POLLS = 30;
 const ACTION_POLL_DELAY_MS = 2_000;
@@ -194,7 +193,8 @@ async function listHetzner(
   request: Request,
 ): Promise<unknown[]> {
   const values: unknown[] = [];
-  for (let page = 1; page <= MAX_PROVIDER_PAGES; page += 1) {
+  let terminalPage: number | null = null;
+  for (let page = 1; ; page += 1) {
     const separator = path.includes("?") ? "&" : "?";
     const response = await hetznerRequest(
       `${path}${separator}page=${page}&per_page=50`,
@@ -207,12 +207,19 @@ async function listHetzner(
       "pagination",
     );
     const lastPage = integer(pagination.last_page, "pagination.last_page");
-    if (lastPage > MAX_PROVIDER_PAGES) {
-      throw new RangeError(`Hetzner ${field} exceeds the page limit`);
+    if (lastPage < page) {
+      throw new RangeError(
+        `Hetzner ${field} returned invalid pagination metadata`,
+      );
     }
-    if (page >= lastPage) return values;
+    terminalPage ??= lastPage;
+    if (lastPage !== terminalPage) {
+      throw new RangeError(
+        `Hetzner ${field} changed its terminal page during traversal`,
+      );
+    }
+    if (page >= terminalPage) return values;
   }
-  throw new RangeError(`Hetzner ${field} pagination did not terminate`);
 }
 
 function parseDnsRecord(value: unknown): DnsRecord {

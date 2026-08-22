@@ -385,6 +385,13 @@ export interface ScheduledTaskRunner {
     task: Omit<ScheduledTask, "taskId" | "state">,
   ): Promise<ScheduledTask>;
   list(filter?: ScheduledTaskFilter): Promise<ScheduledTask[]>;
+  /**
+   * Permanently remove one scheduled item through the owning runner boundary.
+   * This is intentionally separate from lifecycle verbs such as `dismiss`:
+   * namespace reset and account deletion must be able to prove that the
+   * production row is absent rather than merely terminal.
+   */
+  remove?(taskId: string): Promise<boolean>;
   apply(
     taskId: string,
     verb: ScheduledTaskVerb,

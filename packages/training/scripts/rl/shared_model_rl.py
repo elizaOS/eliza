@@ -37,6 +37,8 @@ import torch
 import torch.nn.functional as F
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
+from training.tokenization import tokenize_with_explicit_limit
+
 from .simulation_bridge import ActionOutcome, Scenario, SimulationBridge
 from .turboquant import TurboQuantSettings, build_generation_cache
 
@@ -597,11 +599,11 @@ class SharedModelTrainer:
     ) -> tuple[str, torch.Tensor, torch.Tensor]:
         """Generate an action for the given NPC using the shared model."""
         prompt = self.build_prompt(npc_id, scenario)
-        enc = self.tokenizer(
+        enc = tokenize_with_explicit_limit(
+            self.tokenizer,
             prompt,
+            max_tokens=2048,
             return_tensors="pt",
-            truncation=True,
-            max_length=2048,
         ).to(self.config.device)
 
         past_kv = None
@@ -661,12 +663,12 @@ class SharedModelTrainer:
 
         # Tokenize with left-padding for batched generation
         self.tokenizer.padding_side = "left"
-        encodings = self.tokenizer(
+        encodings = tokenize_with_explicit_limit(
+            self.tokenizer,
             prompts,
+            max_tokens=2048,
             return_tensors="pt",
             padding=True,
-            truncation=True,
-            max_length=2048,
         ).to(self.config.device)
 
         generate_kwargs: dict[str, Any] = {
@@ -1760,17 +1762,17 @@ def tokenize_trajectory(
 
         full_text = prompt_text + response
 
-        prompt_enc = tokenizer(
+        prompt_enc = tokenize_with_explicit_limit(
+            tokenizer,
             prompt_text,
+            max_tokens=max_length,
             return_tensors="pt",
-            truncation=True,
-            max_length=max_length,
         )
-        full_enc = tokenizer(
+        full_enc = tokenize_with_explicit_limit(
+            tokenizer,
             full_text,
+            max_tokens=max_length,
             return_tensors="pt",
-            truncation=True,
-            max_length=max_length,
         )
 
         prompt_len = prompt_enc["input_ids"].shape[1]

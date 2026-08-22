@@ -9,27 +9,20 @@
  *    pending-prompts store itself cannot serve as the evaluator's signal:
  *    inbound-reply completion resolves those entries on `MESSAGE_RECEIVED`,
  *    *before* post-turn evaluation runs, so by evaluator time the prompt is
- *    gone. Markers live per room, are bounded, age out after
+ *    gone. Markers live per room, age out after
  *    {@link MARKER_RETENTION_HOURS}, and are removed exactly once when
  *    feedback for them is recorded — that removal is what makes the evaluator
  *    idempotent (no marker => `shouldRun` false => no double-processing).
  *
  * 2. **Rolling stats** — accepted / rejected / ignored counters plus a
- *    bounded recent-outcome ring, durable across restarts, so proactivity
+ *    recent outcomes, durable across restarts, so proactivity
  *    (frequency, intensity) can be tuned from observed owner reception.
  */
 
-import {
-  type IAgentRuntime,
-  toWellFormedUnicode,
-  truncateWellFormed,
-} from "@elizaos/core";
+import { type IAgentRuntime, toWellFormedUnicode } from "@elizaos/core";
 import { asCacheRuntime } from "../runtime-cache.js";
 
 export const MARKER_RETENTION_HOURS = 24;
-const MAX_MARKERS_PER_ROOM = 8;
-const MAX_RECENT_OUTCOMES = 20;
-const SNIPPET_MAX_LENGTH = 160;
 
 const STATS_CACHE_KEY = "eliza:lifeops:anticipation:stats:v1";
 
@@ -59,7 +52,7 @@ export interface AnticipationStats {
   rejected: number;
   ignored: number;
   updatedAt: string;
-  /** Newest-last bounded ring of individual outcomes. */
+  /** Newest-last history of individual outcomes. */
   recent: AnticipationOutcomeEntry[];
 }
 
@@ -79,12 +72,8 @@ function isOutcome(value: unknown): value is AnticipationOutcome {
   return value === "accepted" || value === "rejected" || value === "ignored";
 }
 
-function clampSnippet(value: string): string {
-  const wellFormed = toWellFormedUnicode(value.trim());
-  if (wellFormed.length <= SNIPPET_MAX_LENGTH) {
-    return wellFormed;
-  }
-  return `${truncateWellFormed(wellFormed, SNIPPET_MAX_LENGTH - 1).trimEnd()}…`;
+function normalizeSnippet(value: string): string {
+  return toWellFormedUnicode(value.trim());
 }
 
 function normalizeMarkers(value: unknown): ProactiveDispatchMarker[] {
@@ -141,9 +130,6 @@ function normalizeStats(value: unknown, now: Date): AnticipationStats {
         recordedAt: entry.recordedAt,
       });
     }
-    if (base.recent.length > MAX_RECENT_OUTCOMES) {
-      base.recent = base.recent.slice(-MAX_RECENT_OUTCOMES);
-    }
   }
   return base;
 }
@@ -191,17 +177,11 @@ export async function recordProactiveDispatch(
   next.push({
     taskId: input.taskId,
     firedAt: input.firedAt,
-    snippet: clampSnippet(input.snippet),
+    snippet: normalizeSnippet(input.snippet),
   });
-  const bounded =
-    next.length > MAX_MARKERS_PER_ROOM
-      ? next
-          .sort((a, b) => Date.parse(a.firedAt) - Date.parse(b.firedAt))
-          .slice(-MAX_MARKERS_PER_ROOM)
-      : next;
   await cache.setCache<ProactiveDispatchMarker[]>(
     markersCacheKey(input.roomId),
-    bounded,
+    next,
   );
 }
 
@@ -275,9 +255,6 @@ export async function recordAnticipationFeedback(
       outcome,
       recordedAt,
     });
-  }
-  if (stats.recent.length > MAX_RECENT_OUTCOMES) {
-    stats.recent = stats.recent.slice(-MAX_RECENT_OUTCOMES);
   }
   stats.updatedAt = recordedAt;
   await cache.setCache<AnticipationStats>(STATS_CACHE_KEY, stats);

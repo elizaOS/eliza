@@ -54,15 +54,13 @@ const SUBSCRIPTION_SCAN_QUERY_DEFAULT =
 const GMAIL_LIST_PAGE_SIZE = 500;
 const GMAIL_METADATA_CONCURRENCY = 25;
 const MAX_GMAIL_RESULTS = 1000;
-const MAX_GMAIL_PAGES = 1_000;
 
 interface GmailPaginationState {
-  pageCount: number;
   seenPageTokens: Set<string>;
 }
 
 function createGmailPaginationState(): GmailPaginationState {
-  return { pageCount: 0, seenPageTokens: new Set<string>() };
+  return { seenPageTokens: new Set<string>() };
 }
 
 // Both searchGmailMessages and getGmailSubscriptionHeaders loop `while
@@ -75,7 +73,6 @@ function nextGmailPageToken(
   state: GmailPaginationState,
   resource: string
 ): string | undefined {
-  state.pageCount += 1;
   if (!value?.trim()) {
     return undefined;
   }
@@ -86,13 +83,6 @@ function nextGmailPageToken(
     throw new ElizaError(`Gmail repeated a ${resource} page token.`, {
       code: "GOOGLE_GMAIL_PAGINATION_LOOP",
       context: { resource },
-      severity: "fatal",
-    });
-  }
-  if (state.pageCount >= MAX_GMAIL_PAGES) {
-    throw new ElizaError(`Gmail ${resource} pagination exceeded ${MAX_GMAIL_PAGES} pages.`, {
-      code: "GOOGLE_GMAIL_PAGINATION_LIMIT_EXCEEDED",
-      context: { maxPages: MAX_GMAIL_PAGES, resource },
       severity: "fatal",
     });
   }

@@ -148,7 +148,7 @@ function formatApiErrorBody(text: string): string | null {
     /* plain text */
   }
 
-  return text.slice(0, 200) || null;
+  return text || null;
 }
 
 function isRedirectResponse(response: Response): boolean {
@@ -274,7 +274,7 @@ export class ElizaCloudClient {
     if (!response.ok) {
       const errorText = await response.text().catch(() => "");
       throw new Error(
-        `Bridge request failed: HTTP ${response.status} ${errorText.slice(0, 200)}`,
+        `Bridge request failed: HTTP ${response.status} ${errorText}`,
       );
     }
 
@@ -553,7 +553,7 @@ export class ElizaCloudClient {
       const parsed = JSON.parse(text) as { error?: string };
       if (parsed.error) errMessage = parsed.error;
     } catch {
-      if (text) errMessage = text.slice(0, 200);
+      if (text) errMessage = text;
     }
 
     if (response.status === 401) {

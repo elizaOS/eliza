@@ -21,6 +21,7 @@ import {
   handleAgentSurfaceCapability,
   isAgentSurfaceCapability,
 } from "../../agent-surface";
+import type { RegisteredAgentSurfaceKind } from "../../app-shell-registry";
 import { registerViewInteractHandler } from "./view-interact-registry";
 
 function idParam(params: Record<string, unknown> | undefined): string | null {
@@ -32,12 +33,15 @@ export interface ShellViewAgentSurfaceProps {
   /** Stable builtin view id (matches the entry in builtin-views.ts). */
   viewId: string;
   viewType?: AgentViewType;
+  /** Registry family that generated this bridge owner, when applicable. */
+  surfaceKind?: RegisteredAgentSurfaceKind | "builtin";
   children: ReactNode;
 }
 
 export function ShellViewAgentSurface({
   viewId,
   viewType = "gui",
+  surfaceKind = "builtin",
   children,
 }: ShellViewAgentSurfaceProps) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -101,7 +105,12 @@ export function ShellViewAgentSurface({
 
   return (
     <AgentSurfaceProvider viewId={viewId} viewType={viewType}>
-      <div ref={containerRef} className="contents">
+      <div
+        ref={containerRef}
+        className="contents"
+        data-agent-surface-kind={surfaceKind}
+        data-agent-surface-view-id={viewId}
+      >
         {children}
       </div>
       <AgentElementOverlay />

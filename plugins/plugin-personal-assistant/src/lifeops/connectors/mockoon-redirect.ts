@@ -38,7 +38,6 @@ const PORTS = {
   cerebras: 18815,
   "eliza-cloud": 18816,
   spotify: 18817,
-  signal: 18818,
 } as const satisfies Record<string, number>;
 
 export type MockoonConnector = keyof typeof PORTS;
@@ -92,11 +91,6 @@ export function applyMockoonEnvOverrides(
     env.ELIZAOS_CLOUD_BASE_URL = getMockoonBaseUrl("eliza-cloud");
     // eliza-cloud also covers plaid + paypal + schedule-sync via the relay.
     applied.push("eliza-cloud", "plaid");
-  }
-
-  if (!env.SIGNAL_HTTP_URL) {
-    env.SIGNAL_HTTP_URL = getMockoonBaseUrl("signal");
-    applied.push("signal");
   }
 
   if (!env.LIFEOPS_DUFFEL_API_BASE) {

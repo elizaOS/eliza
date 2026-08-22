@@ -15,7 +15,6 @@ import {
   type ResponseHandlerEvaluator,
   SIMPLE_CONTEXT_ID,
   toWellFormedUnicode,
-  truncateWellFormed,
 } from "@elizaos/core";
 import {
   completionHasVerificationFailure,
@@ -118,14 +117,7 @@ export function extractFailureReason(errorOutput: string): string {
     )
     .find((line) => line.length > 0 && /\s/.test(line));
   if (!firstLine) return "";
-  const clause = firstLine
-    .split(/(?<=[.!?])\s/)[0]
-    .replace(/[.!?]+$/, "")
-    .trim();
-  const wellFormed = toWellFormedUnicode(clause);
-  return wellFormed.length > 160
-    ? `${truncateWellFormed(wellFormed, 157)}…`
-    : wellFormed;
+  return toWellFormedUnicode(firstLine);
 }
 const shortReason = extractFailureReason;
 

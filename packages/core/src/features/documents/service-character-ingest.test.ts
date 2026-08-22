@@ -132,7 +132,6 @@ describe("DocumentService character document ingestion boot races", () => {
 			{
 				includeFilename: options.originalFilename,
 				contentType: options.contentType,
-				maxChars: 2_000,
 			},
 		) as UUID;
 		await runtime.createMemory(
@@ -224,7 +223,6 @@ describe("DocumentService character document ingestion boot races", () => {
 		const documentId = generateContentBasedId("first\nsecond", MOCK_AGENT_ID, {
 			includeFilename: "meeting.txt",
 			contentType: "text/plain",
-			maxChars: 2000,
 		});
 		let embeddings = 0;
 		const runtime = await createRealRuntime();
@@ -306,7 +304,6 @@ describe("DocumentService character document ingestion boot races", () => {
 		const documentId = generateContentBasedId("first", MOCK_AGENT_ID, {
 			includeFilename: "disabled-embedding.txt",
 			contentType: "text/plain",
-			maxChars: 2000,
 		});
 		const runtime = await createRealRuntime();
 		runtime.registerModel(

@@ -14,7 +14,6 @@ import {
 import {
   getLifeOpsSimulatorPerson,
   LIFEOPS_SIMULATOR_CHANNEL_MESSAGES,
-  LIFEOPS_SIMULATOR_OWNER,
   LIFEOPS_SIMULATOR_OWNER_IDENTITIES,
   type LifeOpsSimulatorChannelMessage,
   lifeOpsSimulatorMessageTime,
@@ -41,7 +40,6 @@ import { MockHttpError } from "./mock-http-error.ts";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ENVS_DIR = path.resolve(__dirname, "..", "environments");
 const MOCK_BROWSER_WORKSPACE_TOKEN = "mock-browser-workspace-token";
-const MOCK_BLUEBUBBLES_PASSWORD = "mock-bluebubbles-password";
 
 export const MOCK_PROVIDER_ENVIRONMENTS = [
   "google",
@@ -50,9 +48,7 @@ export const MOCK_PROVIDER_ENVIRONMENTS = [
   "x-twitter",
   "calendly",
   "cloud-managed",
-  "signal",
   "browser-workspace",
-  "bluebubbles",
   "imessage",
   "github",
   "discord",
@@ -142,9 +138,7 @@ export interface MockRequestLedgerEntry {
   calendar?: GoogleCalendarRequestLedgerMetadata;
   x?: XRequestLedgerMetadata;
   whatsapp?: WhatsAppRequestLedgerMetadata;
-  signal?: SignalRequestLedgerMetadata;
   browserWorkspace?: BrowserWorkspaceRequestLedgerMetadata;
-  bluebubbles?: BlueBubblesRequestLedgerMetadata;
   github?: GitHubRequestLedgerMetadata;
   payment?: PaymentRequestLedgerMetadata;
   lifeopsPresenceActive?: LifeOpsPresenceActiveRequestLedgerMetadata;
@@ -170,28 +164,11 @@ interface WhatsAppRequestLedgerMetadata {
   runId?: string;
 }
 
-interface SignalRequestLedgerMetadata {
-  action: string;
-  account?: string;
-  recipients?: string[];
-  groupId?: string;
-  timestamp?: number;
-  runId?: string;
-}
-
 interface BrowserWorkspaceRequestLedgerMetadata {
   action: string;
   tabId?: string;
   partition?: string;
   url?: string;
-  runId?: string;
-}
-
-interface BlueBubblesRequestLedgerMetadata {
-  action: string;
-  chatGuid?: string;
-  messageGuid?: string;
-  query?: string;
   runId?: string;
 }
 
@@ -252,28 +229,10 @@ function envVarsFor(
     out.ELIZA_MOCK_CALENDLY_BASE = baseUrls.calendly;
   if (envs.includes("cloud-managed"))
     out.ELIZA_CLOUD_BASE_URL = baseUrls["cloud-managed"];
-  if (envs.includes("signal")) {
-    out.SIGNAL_HTTP_URL = baseUrls.signal;
-    out.SIGNAL_ACCOUNT_NUMBER = LIFEOPS_SIMULATOR_OWNER.phone;
-  }
   if (envs.includes("browser-workspace")) {
     out.ELIZA_BROWSER_WORKSPACE_URL = baseUrls["browser-workspace"];
     out.ELIZA_BROWSER_WORKSPACE_TOKEN = MOCK_BROWSER_WORKSPACE_TOKEN;
     out.ELIZA_DISABLE_DISCORD_DESKTOP_CDP = "1";
-  }
-  if (envs.includes("bluebubbles")) {
-    out.ELIZA_IMESSAGE_BACKEND = "bluebubbles";
-    out.ELIZA_BLUEBUBBLES_URL = baseUrls.bluebubbles;
-    out.BLUEBUBBLES_SERVER_URL = baseUrls.bluebubbles;
-    out.ELIZA_BLUEBUBBLES_PASSWORD = MOCK_BLUEBUBBLES_PASSWORD;
-    out.BLUEBUBBLES_PASSWORD = MOCK_BLUEBUBBLES_PASSWORD;
-  }
-  if (envs.includes("imessage")) {
-    out.ELIZA_IMESSAGE_BACKEND = "bluebubbles";
-    out.ELIZA_BLUEBUBBLES_URL = baseUrls.imessage;
-    out.BLUEBUBBLES_SERVER_URL = baseUrls.imessage;
-    out.ELIZA_BLUEBUBBLES_PASSWORD = MOCK_BLUEBUBBLES_PASSWORD;
-    out.BLUEBUBBLES_PASSWORD = MOCK_BLUEBUBBLES_PASSWORD;
   }
   if (envs.includes("github")) {
     out.ELIZA_MOCK_GITHUB_BASE = baseUrls.github;
@@ -1051,215 +1010,6 @@ function whatsappDynamicFixture(
   return null;
 }
 
-interface SignalEnvelopeMessage {
-  envelope: {
-    source: string;
-    sourceNumber: string;
-    sourceName: string;
-    timestamp: number;
-    dataMessage: {
-      timestamp: number;
-      message: string;
-      groupInfo?: { groupId: string; type: string };
-    };
-  };
-  account: string;
-}
-
-function signalEnvelopeMessageToJson(
-  message: SignalEnvelopeMessage,
-): JsonValue {
-  return {
-    account: message.account,
-    envelope: {
-      source: message.envelope.source,
-      sourceNumber: message.envelope.sourceNumber,
-      sourceName: message.envelope.sourceName,
-      timestamp: message.envelope.timestamp,
-      dataMessage: {
-        timestamp: message.envelope.dataMessage.timestamp,
-        message: message.envelope.dataMessage.message,
-        ...(message.envelope.dataMessage.groupInfo
-          ? { groupInfo: { ...message.envelope.dataMessage.groupInfo } }
-          : {}),
-      },
-    },
-  };
-}
-
-interface SignalMockState {
-  receiveQueue: SignalEnvelopeMessage[];
-}
-
-function simulatorSignalMessage(
-  message: LifeOpsSimulatorChannelMessage,
-): SignalEnvelopeMessage {
-  const person = getLifeOpsSimulatorPerson(message.fromPersonKey);
-  const timestamp = Date.parse(
-    lifeOpsSimulatorMessageTime(message.sentAtOffsetMs),
-  );
-  const isGroup = message.threadType === "group";
-  return {
-    envelope: {
-      source: person.signalNumber,
-      sourceNumber: person.signalNumber,
-      sourceName: isGroup ? message.threadName : `${person.name} Signal`,
-      timestamp,
-      dataMessage: {
-        timestamp,
-        message: message.text,
-        ...(isGroup
-          ? { groupInfo: { groupId: message.threadId, type: "DELIVER" } }
-          : {}),
-      },
-    },
-    account: LIFEOPS_SIMULATOR_OWNER.phone,
-  };
-}
-
-function createSignalMockState(opts?: MockFixtureOptions): SignalMockState {
-  const now = Date.parse("2026-04-25T12:00:00.000Z");
-  return {
-    receiveQueue: opts?.simulator
-      ? LIFEOPS_SIMULATOR_CHANNEL_MESSAGES.filter(
-          (message) => message.channel === "signal",
-        ).map(simulatorSignalMessage)
-      : [
-          {
-            envelope: {
-              source: "+15551110001",
-              sourceNumber: "+15551110001",
-              sourceName: "Alice Signal",
-              timestamp: now,
-              dataMessage: {
-                timestamp: now,
-                message: "Signal fixture inbound message",
-              },
-            },
-            account: LIFEOPS_SIMULATOR_OWNER.phone,
-          },
-          {
-            envelope: {
-              source: "+15551110002",
-              sourceNumber: "+15551110002",
-              sourceName: "Ops Group",
-              timestamp: now + 1_000,
-              dataMessage: {
-                timestamp: now + 1_000,
-                message: "Signal group fixture message",
-                groupInfo: { groupId: "group-signal-fixture", type: "DELIVER" },
-              },
-            },
-            account: LIFEOPS_SIMULATOR_OWNER.phone,
-          },
-        ],
-  };
-}
-
-function signalRpcResponse(
-  requestBody: RequestBody,
-  result: JsonValue,
-): DynamicFixtureResponse {
-  return jsonFixture({
-    jsonrpc: "2.0",
-    id: requestBody.id ?? null,
-    result,
-  });
-}
-
-function signalDynamicFixture(
-  state: SignalMockState,
-  method: string,
-  pathname: string,
-  requestBody: RequestBody,
-  ledgerEntry: MockRequestLedgerEntry,
-): DynamicFixtureResponse | null {
-  if (method === "GET" && pathname === "/api/v1/check") {
-    ledgerEntry.signal = withRunId<SignalRequestLedgerMetadata>(ledgerEntry, {
-      action: "check",
-    });
-    return jsonFixture({ ok: true });
-  }
-
-  if (method === "POST" && pathname === "/api/v1/rpc") {
-    const rpcMethod = readRequiredFixtureString(requestBody, "method");
-    const params = readNestedRecord(requestBody.params) ?? {};
-    const account =
-      typeof params.account === "string"
-        ? params.account
-        : LIFEOPS_SIMULATOR_OWNER.phone;
-    ledgerEntry.signal = withRunId<SignalRequestLedgerMetadata>(ledgerEntry, {
-      action: `rpc.${rpcMethod}`,
-      account,
-      recipients: Array.isArray(params.recipients)
-        ? params.recipients.filter(
-            (entry): entry is string => typeof entry === "string",
-          )
-        : undefined,
-      groupId: typeof params.groupId === "string" ? params.groupId : undefined,
-      timestamp: Date.now(),
-    });
-    if (rpcMethod === "version")
-      return signalRpcResponse(requestBody, "mock-signal-cli");
-    if (rpcMethod === "listAccounts") {
-      return signalRpcResponse(requestBody, [
-        {
-          number: LIFEOPS_SIMULATOR_OWNER.phone,
-          uuid: LIFEOPS_SIMULATOR_OWNER_IDENTITIES.signal.uuid,
-        },
-      ]);
-    }
-    if (rpcMethod === "listContacts") {
-      return signalRpcResponse(requestBody, [
-        {
-          number: "+15551110001",
-          uuid: "mock-contact-alice",
-          name: "Alice Signal",
-        },
-      ]);
-    }
-    if (rpcMethod === "listGroups") {
-      return signalRpcResponse(requestBody, [
-        {
-          id: "group-signal-fixture",
-          name: "Ops Group",
-          isMember: true,
-          isBlocked: false,
-          members: [{ uuid: "mock-contact-alice", number: "+15551110001" }],
-        },
-      ]);
-    }
-    if (rpcMethod === "send") {
-      return signalRpcResponse(requestBody, { timestamp: Date.now() });
-    }
-    return signalRpcResponse(requestBody, {});
-  }
-
-  const receiveAccount = routeParam(pathname, /^\/v1\/receive\/([^/]+)\/?$/);
-  if (method === "GET" && receiveAccount) {
-    const messages = state.receiveQueue.splice(0, state.receiveQueue.length);
-    ledgerEntry.signal = withRunId<SignalRequestLedgerMetadata>(ledgerEntry, {
-      action: "receive",
-      account: receiveAccount,
-    });
-    return jsonFixture(messages.map(signalEnvelopeMessageToJson));
-  }
-
-  if (method === "POST" && pathname === "/v2/send") {
-    const recipients = readStringArray(requestBody, "recipients");
-    const timestamp = Date.now();
-    ledgerEntry.signal = withRunId<SignalRequestLedgerMetadata>(ledgerEntry, {
-      action: "send",
-      account: readOptionalString(requestBody, "number") ?? undefined,
-      recipients,
-      timestamp,
-    });
-    return jsonFixture({ timestamp });
-  }
-
-  return null;
-}
-
 const MOCK_SCREENSHOT_BASE64 =
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO7+R4QAAAAASUVORK5CYII=";
 
@@ -1532,234 +1282,6 @@ function browserWorkspaceDynamicFixture(
   }
 
   return mockJsonError(405, "method not allowed");
-}
-
-interface BlueBubblesChatFixture {
-  guid: string;
-  displayName: string;
-  chatIdentifier: string;
-  participants: Array<{ address: string }>;
-  lastMessageAt: number;
-}
-
-interface BlueBubblesMessageFixture {
-  guid: string;
-  text: string;
-  handle: { address: string } | null;
-  chatGuid: string;
-  chats: Array<{ guid: string }>;
-  isFromMe: boolean;
-  dateCreated: number;
-  isRead?: boolean;
-  isDelivered?: boolean;
-  error?: number | null;
-  errorDescription?: string | null;
-}
-
-interface BlueBubblesMockState {
-  chats: BlueBubblesChatFixture[];
-  messages: BlueBubblesMessageFixture[];
-}
-
-function simulatorBlueBubblesChat(
-  message: LifeOpsSimulatorChannelMessage,
-): BlueBubblesChatFixture {
-  const person = getLifeOpsSimulatorPerson(message.fromPersonKey);
-  return {
-    guid: message.threadId,
-    displayName: message.threadName,
-    chatIdentifier: person.phone,
-    participants: [{ address: person.phone }],
-    lastMessageAt: Date.parse(
-      lifeOpsSimulatorMessageTime(message.sentAtOffsetMs),
-    ),
-  };
-}
-
-function simulatorBlueBubblesMessage(
-  message: LifeOpsSimulatorChannelMessage,
-): BlueBubblesMessageFixture {
-  const person = getLifeOpsSimulatorPerson(message.fromPersonKey);
-  return {
-    guid: message.id,
-    text: message.text,
-    handle: { address: person.phone },
-    chatGuid: message.threadId,
-    chats: [{ guid: message.threadId }],
-    isFromMe: message.outgoing === true,
-    dateCreated: Date.parse(
-      lifeOpsSimulatorMessageTime(message.sentAtOffsetMs),
-    ),
-    isRead: message.unread !== true,
-    isDelivered: true,
-  };
-}
-
-function createBlueBubblesMockState(
-  opts?: MockFixtureOptions,
-): BlueBubblesMockState {
-  if (opts?.simulator) {
-    const messages = LIFEOPS_SIMULATOR_CHANNEL_MESSAGES.filter(
-      (message) => message.channel === "imessage",
-    );
-    return {
-      chats: messages.map(simulatorBlueBubblesChat),
-      messages: messages.map(simulatorBlueBubblesMessage),
-    };
-  }
-  const chatGuid = "iMessage;-;+15551112222";
-  return {
-    chats: [
-      {
-        guid: chatGuid,
-        displayName: "Alice iMessage",
-        chatIdentifier: "+15551112222",
-        participants: [{ address: "+15551112222" }],
-        lastMessageAt: Date.parse("2026-04-25T12:00:00.000Z"),
-      },
-    ],
-    messages: [
-      {
-        guid: "imsg-fixture-1",
-        text: "Can you review the BlueBubbles fixture?",
-        handle: { address: "+15551112222" },
-        chatGuid,
-        chats: [{ guid: chatGuid }],
-        isFromMe: false,
-        dateCreated: Date.parse("2026-04-25T12:00:00.000Z"),
-        isRead: true,
-        isDelivered: true,
-      },
-    ],
-  };
-}
-
-function bluebubblesResponse(data: JsonValue | object): DynamicFixtureResponse {
-  return jsonFixture({ status: 200, data });
-}
-
-function bluebubblesDynamicFixture(
-  state: BlueBubblesMockState,
-  method: string,
-  pathname: string,
-  requestBody: RequestBody,
-  headers: http.IncomingHttpHeaders,
-  ledgerEntry: MockRequestLedgerEntry,
-): DynamicFixtureResponse | null {
-  const authFailure = requireBearerToken(headers, MOCK_BLUEBUBBLES_PASSWORD);
-  if (authFailure) return authFailure;
-
-  if (method === "GET" && pathname === "/api/v1/server/info") {
-    ledgerEntry.bluebubbles = withRunId<BlueBubblesRequestLedgerMetadata>(
-      ledgerEntry,
-      {
-        action: "server.info",
-      },
-    );
-    return bluebubblesResponse({
-      private_api: true,
-      helper_connected: true,
-      detected_imessage: LIFEOPS_SIMULATOR_OWNER.email,
-      detected_icloud: "owner@icloud.test",
-    });
-  }
-
-  if (method === "POST" && pathname === "/api/v1/chat/query") {
-    ledgerEntry.bluebubbles = withRunId<BlueBubblesRequestLedgerMetadata>(
-      ledgerEntry,
-      {
-        action: "chat.query",
-      },
-    );
-    return bluebubblesResponse(state.chats);
-  }
-
-  if (method === "POST" && pathname === "/api/v1/message/query") {
-    const search = readOptionalString(requestBody, "search");
-    const chatGuid = readOptionalString(requestBody, "chatGuid");
-    const messages = state.messages.filter((message) => {
-      if (chatGuid && message.chatGuid !== chatGuid) return false;
-      if (
-        search &&
-        !message.text.toLowerCase().includes(search.toLowerCase())
-      ) {
-        return false;
-      }
-      return true;
-    });
-    ledgerEntry.bluebubbles = withRunId<BlueBubblesRequestLedgerMetadata>(
-      ledgerEntry,
-      {
-        action: search ? "message.search" : "message.query",
-        ...(chatGuid ? { chatGuid } : {}),
-        ...(search ? { query: search } : {}),
-      },
-    );
-    return bluebubblesResponse(messages);
-  }
-
-  const chatMessageId = routeParam(
-    pathname,
-    /^\/api\/v1\/chat\/([^/]+)\/message\/?$/,
-  );
-  if (method === "GET" && chatMessageId) {
-    const messages = state.messages.filter(
-      (message) => message.chatGuid === chatMessageId,
-    );
-    ledgerEntry.bluebubbles = withRunId<BlueBubblesRequestLedgerMetadata>(
-      ledgerEntry,
-      {
-        action: "chat.messages",
-        chatGuid: chatMessageId,
-      },
-    );
-    return bluebubblesResponse(messages);
-  }
-
-  if (method === "POST" && pathname === "/api/v1/message/text") {
-    const chatGuid = readRequiredFixtureString(requestBody, "chatGuid");
-    const text = readRequiredFixtureString(requestBody, "message");
-    const message: BlueBubblesMessageFixture = {
-      guid: `imsg-${randomFromAlphabet("0123456789abcdef", 12)}`,
-      text,
-      handle: null,
-      chatGuid,
-      chats: [{ guid: chatGuid }],
-      isFromMe: true,
-      dateCreated: Date.now(),
-      isRead: false,
-      isDelivered: true,
-    };
-    state.messages.unshift(message);
-    ledgerEntry.bluebubbles = withRunId<BlueBubblesRequestLedgerMetadata>(
-      ledgerEntry,
-      {
-        action: "message.text",
-        chatGuid,
-        messageGuid: message.guid,
-      },
-    );
-    return bluebubblesResponse(message);
-  }
-
-  const messageGuid = routeParam(pathname, /^\/api\/v1\/message\/([^/]+)\/?$/);
-  if (method === "GET" && messageGuid) {
-    const message = state.messages.find(
-      (candidate) => candidate.guid === messageGuid,
-    );
-    ledgerEntry.bluebubbles = withRunId<BlueBubblesRequestLedgerMetadata>(
-      ledgerEntry,
-      {
-        action: "message.get",
-        messageGuid,
-      },
-    );
-    return message
-      ? bluebubblesResponse(message)
-      : mockJsonError(404, "message not found");
-  }
-
-  return null;
 }
 
 interface GitHubIssueFixture {
@@ -3861,9 +3383,7 @@ type DynamicProviderState =
   | { kind: "google"; state: GoogleMockState }
   | { kind: "x-twitter"; state: XMockState }
   | { kind: "whatsapp"; state: WhatsAppMockState }
-  | { kind: "signal"; state: SignalMockState }
   | { kind: "browser-workspace"; state: BrowserWorkspaceMockState }
-  | { kind: "bluebubbles"; state: BlueBubblesMockState }
   | { kind: "github"; state: GitHubMockState }
   | { kind: "discord"; state: DiscordMockState }
   | { kind: "slack"; state: SlackMockState }
@@ -3898,17 +3418,11 @@ async function createDynamicProviderState(
   if (environmentName === "WhatsApp") {
     return { kind: "whatsapp", state: createWhatsAppMockState(opts) };
   }
-  if (environmentName === "Signal HTTP") {
-    return { kind: "signal", state: createSignalMockState(opts) };
-  }
   if (environmentName === "Browser Workspace") {
     return {
       kind: "browser-workspace",
       state: createBrowserWorkspaceMockState(opts),
     };
-  }
-  if (environmentName === "BlueBubbles" || environmentName === "iMessage") {
-    return { kind: "bluebubbles", state: createBlueBubblesMockState(opts) };
   }
   if (environmentName === "GitHub REST") {
     return { kind: "github", state: createGitHubMockState() };
@@ -4055,25 +3569,8 @@ async function dynamicProviderFixture(args: {
         args.requestBody,
         args.ledgerEntry,
       );
-    case "signal":
-      return signalDynamicFixture(
-        args.provider.state,
-        args.method,
-        args.pathname,
-        args.requestBody,
-        args.ledgerEntry,
-      );
     case "browser-workspace":
       return browserWorkspaceDynamicFixture(
-        args.provider.state,
-        args.method,
-        args.pathname,
-        args.requestBody,
-        args.headers,
-        args.ledgerEntry,
-      );
-    case "bluebubbles":
-      return bluebubblesDynamicFixture(
         args.provider.state,
         args.method,
         args.pathname,

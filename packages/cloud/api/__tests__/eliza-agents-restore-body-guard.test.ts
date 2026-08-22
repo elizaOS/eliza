@@ -7,12 +7,21 @@
  * /stream on an empty or malformed body. /restore also surfaced the
  * service's "Backup does not belong to this agent" ownership check as a 500
  * with a distinct message, making backup ids a cross-agent/cross-org
- * existence oracle. Real route modules + real repositories against
- * in-process PGlite; the only mocked seam is `requireAuthOrApiKeyWithOrg`
- * (same pattern as org-credentials-routes / my-agents-characters-search).
+ * existence oracle. The restore front door also admits only current,
+ * user-owned container authority. Real route modules + real repositories run
+ * against in-process PGlite; auth is mocked, and the restore method is spied
+ * only where a zero-call barrier or canonical-tier admission is the contract.
  */
 
-import { afterAll, beforeAll, describe, expect, mock, test } from "bun:test";
+import {
+  afterAll,
+  beforeAll,
+  describe,
+  expect,
+  mock,
+  spyOn,
+  test,
+} from "bun:test";
 
 process.env.DATABASE_URL = "pglite://memory";
 process.env.TEST_DATABASE_URL = "pglite://memory";
@@ -29,6 +38,7 @@ const USER_A = "aaaaaaaa-1111-4111-8111-111111111111";
 const USER_B = "bbbbbbbb-1111-4111-8111-111111111111";
 const AGENT_A = "cccccccc-1111-4111-8111-111111111111";
 const AGENT_B = "cccccccc-2222-4222-8222-222222222222";
+const DELETION_ATTEMPT = "eeeeeeee-2222-4222-8222-222222222222";
 const BACKUP_B = "dddddddd-1111-4111-8111-111111111111";
 const BACKUP_A_OLD = "dddddddd-2222-4222-8222-222222222222";
 const BACKUP_A_NEW = "dddddddd-3333-4333-8333-333333333333";
@@ -223,6 +233,51 @@ function directHandlerRequest(body?: BodyInit): Request {
   });
 }
 
+async function setAgentARestoreAuthority({
+  executionTier,
+  poolStatus = null,
+  deletedAt = null,
+  deletionAttemptId = null,
+}: {
+  executionTier: "shared" | "dedicated-lazy" | "dedicated-always" | "custom";
+  poolStatus?: "unclaimed" | null;
+  deletedAt?: Date | null;
+  deletionAttemptId?: string | null;
+}) {
+  const { eq } = await import("drizzle-orm");
+  const { dbWrite } = await import("@/db/client");
+  const { agentSandboxes } = await import("@/db/schemas/agent-sandboxes");
+  await dbWrite
+    .update(agentSandboxes)
+    .set({
+      execution_tier: executionTier,
+      pool_status: poolStatus,
+      deleted_at: deletedAt,
+      deletion_attempt_id: deletionAttemptId,
+      deletion_started_at:
+        deletionAttemptId === null
+          ? null
+          : new Date("2026-08-22T00:00:00.000Z"),
+    })
+    .where(eq(agentSandboxes.id, AGENT_A));
+}
+
+async function setAgentAUnknownRestoreTier() {
+  const { sql } = await import("drizzle-orm");
+  const { dbWrite } = await import("@/db/client");
+  const { agentSandboxes } = await import("@/db/schemas/agent-sandboxes");
+  await dbWrite.execute(sql`
+    UPDATE ${agentSandboxes}
+    SET
+      execution_tier = 'future-container-tier',
+      pool_status = NULL,
+      deleted_at = NULL,
+      deletion_attempt_id = NULL,
+      deletion_started_at = NULL
+    WHERE id = ${AGENT_A}
+  `);
+}
+
 const directHandlerScope = {
   agent: {},
   namespace: {},
@@ -255,11 +310,168 @@ describe("POST /api/v1/eliza/agents/:agentId/restore — body + ownership guards
   test("malformed JSON body is a typed 400, not a 500", async () => {
     expect(pgliteReady).toBe(true);
 
-    const res = await post(`/api/v1/eliza/agents/${AGENT_A}/restore`, "{nope");
-    expect(res.status).toBe(400);
-    const body = (await res.json()) as { success: boolean; error: string };
-    expect(body.success).toBe(false);
-    expect(body.error).toBe("Invalid JSON body");
+    const { elizaSandboxService } = await import(
+      "@/lib/services/eliza-sandbox"
+    );
+    const primaryLookup = spyOn(elizaSandboxService, "getAgentForWrite");
+    const restore = spyOn(elizaSandboxService, "restore");
+    try {
+      const res = await post(
+        `/api/v1/eliza/agents/${AGENT_A}/restore`,
+        "{nope",
+      );
+      expect(res.status).toBe(400);
+      const body = (await res.json()) as { success: boolean; error: string };
+      expect(body.success).toBe(false);
+      expect(body.error).toBe("Invalid JSON body");
+      expect(primaryLookup).toHaveBeenCalledTimes(0);
+      expect(restore).toHaveBeenCalledTimes(0);
+    } finally {
+      primaryLookup.mockRestore();
+      restore.mockRestore();
+    }
+  });
+
+  test("valid JSON with an invalid backupId is rejected before authority lookup", async () => {
+    expect(pgliteReady).toBe(true);
+
+    const { elizaSandboxService } = await import(
+      "@/lib/services/eliza-sandbox"
+    );
+    const primaryLookup = spyOn(elizaSandboxService, "getAgentForWrite");
+    const restore = spyOn(elizaSandboxService, "restore");
+    try {
+      const res = await post(
+        `/api/v1/eliza/agents/${AGENT_A}/restore`,
+        JSON.stringify({ backupId: "not-a-uuid" }),
+      );
+      expect(res.status).toBe(400);
+      const body = (await res.json()) as { success: boolean; error: string };
+      expect(body.success).toBe(false);
+      expect(body.error).toBe("Invalid request");
+      expect(primaryLookup).toHaveBeenCalledTimes(0);
+      expect(restore).toHaveBeenCalledTimes(0);
+    } finally {
+      primaryLookup.mockRestore();
+      restore.mockRestore();
+    }
+  });
+
+  test("tenant-scoped primary lookup hides another org's agent before restore", async () => {
+    expect(pgliteReady).toBe(true);
+
+    const { elizaSandboxService } = await import(
+      "@/lib/services/eliza-sandbox"
+    );
+    const primaryLookup = spyOn(elizaSandboxService, "getAgentForWrite");
+    const restore = spyOn(elizaSandboxService, "restore");
+    try {
+      const res = await post(`/api/v1/eliza/agents/${AGENT_B}/restore`);
+      expect(res.status).toBe(404);
+      const body = (await res.json()) as { success: boolean; error: string };
+      expect(body.success).toBe(false);
+      expect(body.error).toBe("Agent not found");
+      expect(primaryLookup).toHaveBeenCalledTimes(1);
+      expect(primaryLookup).toHaveBeenCalledWith(AGENT_B, ORG_A);
+      expect(restore).toHaveBeenCalledTimes(0);
+    } finally {
+      primaryLookup.mockRestore();
+      restore.mockRestore();
+    }
+  });
+
+  test("ineligible restore authority returns 409 before the restore service", async () => {
+    expect(pgliteReady).toBe(true);
+
+    const { elizaSandboxService } = await import(
+      "@/lib/services/eliza-sandbox"
+    );
+    const restore = spyOn(elizaSandboxService, "restore");
+    const rejected = [
+      {
+        arrange: () => setAgentAUnknownRestoreTier(),
+        error: "Agent restore requires a container-backed execution tier",
+      },
+      {
+        arrange: () => setAgentARestoreAuthority({ executionTier: "shared" }),
+        error: "Agent restore requires a container-backed execution tier",
+      },
+      {
+        arrange: () =>
+          setAgentARestoreAuthority({
+            executionTier: "dedicated-lazy",
+            poolStatus: "unclaimed",
+          }),
+        error: "Agent restore cannot target pool-owned capacity",
+      },
+      {
+        arrange: () =>
+          setAgentARestoreAuthority({
+            executionTier: "dedicated-lazy",
+            deletedAt: new Date("2026-08-22T00:00:00.000Z"),
+          }),
+        error: "Agent restore cannot target a deleted agent",
+      },
+      {
+        arrange: () =>
+          setAgentARestoreAuthority({
+            executionTier: "dedicated-lazy",
+            deletionAttemptId: DELETION_ATTEMPT,
+          }),
+        error: "Agent restore cannot start while agent deletion is in progress",
+      },
+    ];
+
+    try {
+      for (const scenario of rejected) {
+        await scenario.arrange();
+        restore.mockClear();
+
+        const res = await post(`/api/v1/eliza/agents/${AGENT_A}/restore`);
+        expect(res.status).toBe(409);
+        const body = (await res.json()) as {
+          success: boolean;
+          error: string;
+        };
+        expect(body.success).toBe(false);
+        expect(body.error).toBe(scenario.error);
+        expect(restore).toHaveBeenCalledTimes(0);
+      }
+    } finally {
+      await setAgentARestoreAuthority({ executionTier: "dedicated-lazy" });
+      restore.mockRestore();
+    }
+  });
+
+  test("every canonical container-backed tier reaches the restore service", async () => {
+    expect(pgliteReady).toBe(true);
+
+    const { CONTAINER_BACKED_EXECUTION_TIERS } = await import(
+      "@/db/schemas/agent-sandboxes"
+    );
+    const { elizaSandboxService } = await import(
+      "@/lib/services/eliza-sandbox"
+    );
+    const restore = spyOn(elizaSandboxService, "restore").mockImplementation(
+      async () => ({ success: false, error: "No backup found" }),
+    );
+
+    try {
+      for (const executionTier of CONTAINER_BACKED_EXECUTION_TIERS) {
+        await setAgentARestoreAuthority({ executionTier });
+        restore.mockClear();
+
+        const res = await post(`/api/v1/eliza/agents/${AGENT_A}/restore`);
+        expect(res.status).toBe(404);
+        const body = (await res.json()) as { error: string };
+        expect(body.error).toBe("No backup found");
+        expect(restore).toHaveBeenCalledTimes(1);
+        expect(restore).toHaveBeenCalledWith(AGENT_A, ORG_A, undefined);
+      }
+    } finally {
+      await setAgentARestoreAuthority({ executionTier: "dedicated-lazy" });
+      restore.mockRestore();
+    }
   });
 
   test("another org's backupId is indistinguishable from a nonexistent one (404, no oracle)", async () => {

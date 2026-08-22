@@ -21,12 +21,9 @@
  *     messageExamples, postExamples (everything else — plugins, settings,
  *     secrets, connectors, knowledge — is dropped; secrets must NEVER ride
  *     along on this call anyway);
- *   - length caps mirrored from the schema (name 100, username 50,
- *     system 10000, adjective/topic items 100), so an oversized field degrades
- *     to a truncated push instead of a 422 that would forfeit the whole
- *     character. The cut is surrogate-safe (`truncateWellFormed`) and every
- *     projected string is normalised with `toWellFormedUnicode`, because this
- *     payload is persisted by the container — see `capWellFormed` below;
+ *   - strings are Unicode-normalized but never shortened. If a downstream
+ *     schema cannot accept the complete character, that boundary rejects the
+ *     payload explicitly instead of silently changing the character;
  *   - messageExamples are included ONLY when they already match the strict
  *     `[{ examples: [{ name, content: { text, actions? } }] }]` group form
  *     (extra content keys are stripped); the legacy `[[{user,content}]]` form
@@ -36,7 +33,7 @@
  * agent_name), in which case the caller skips the push entirely.
  */
 
-import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
+import { toWellFormedUnicode } from "@elizaos/core";
 
 import { applyRemoteDockerRuntimeMode } from "./remote-docker-runtime-mode";
 
@@ -84,44 +81,14 @@ export function mergeWarmClaimEnvironmentVars(
   return applyRemoteDockerRuntimeMode(merged);
 }
 
-const NAME_MAX = 100;
-const USERNAME_MAX = 50;
-const SYSTEM_MAX = 10_000;
-const LIST_ITEM_MAX = 100;
-
 /** Bounded timeout for the post-claim character push HTTP call. */
 export const WARM_CLAIM_CHARACTER_PUSH_TIMEOUT_MS = 10_000;
 
-/**
- * Every string that leaves this builder crosses an HTTP boundary as
- * `JSON.stringify(payload)` and is then applied to the live runtime, persisted
- * via `updateAgent` metadata and journaled to character history. `agent_config`
- * is a loose user-supplied blob, so a value can already carry a lone surrogate;
- * and the schema caps below are `slice()`d by UTF-16 code unit, which splits an
- * astral character (emoji, CJK ext-B, most non-BMP scripts) whose surrogate
- * pair straddles the cap. Either way the container receives an ill-formed
- * string that becomes a permanent U+FFFD the moment it is UTF-8 encoded for
- * storage, and that throws `URIError` in any downstream that re-encodes it into
- * a URI.
- *
- * `toWellFormedUnicode` + `truncateWellFormed` are core's shared primitives for
- * exactly this (`packages/core/src/utils/well-formed.ts`), already used on the
- * same shape by `packages/cloud/services/agent-server/src/agent-manager.ts:90`
- * and `plugin-cloud-bootstrap/providers/action-state.ts:21`. Truncation still
- * happens at the same cap — the boundary just backs off one code unit rather
- * than cutting a pair in half — so no value the schema accepts today is
- * rejected.
- */
-function capWellFormed(value: string, max?: number): string {
-  const wellFormed = toWellFormedUnicode(value);
-  return max === undefined ? wellFormed : truncateWellFormed(wellFormed, max);
-}
-
-function cleanStringArray(value: unknown, itemMax?: number): string[] | undefined {
+function cleanStringArray(value: unknown): string[] | undefined {
   if (!Array.isArray(value)) return undefined;
   const items = value
     .filter((v): v is string => typeof v === "string" && v.trim().length > 0)
-    .map((v) => capWellFormed(v, itemMax));
+    .map(toWellFormedUnicode);
   return items.length > 0 ? items : undefined;
 }
 
@@ -155,12 +122,10 @@ function sanitizeMessageExampleGroups(value: unknown): MessageExampleGroup[] | u
         ? rawActions.filter((a): a is string => typeof a === "string" && a.length > 0)
         : undefined;
       examples.push({
-        name: capWellFormed(name),
+        name: toWellFormedUnicode(name),
         content: {
-          text: capWellFormed(text),
-          ...(actions && actions.length > 0
-            ? { actions: actions.map((a) => capWellFormed(a)) }
-            : {}),
+          text: toWellFormedUnicode(text),
+          ...(actions && actions.length > 0 ? { actions: actions.map(toWellFormedUnicode) } : {}),
         },
       });
     }
@@ -189,25 +154,25 @@ export function buildWarmClaimCharacterPayload(
       : (agentName?.trim() ?? "");
   if (!name) return null;
 
-  const payload: Record<string, unknown> = { name: capWellFormed(name, NAME_MAX) };
+  const payload: Record<string, unknown> = { name: toWellFormedUnicode(name) };
 
   if (typeof config.username === "string" && config.username.trim()) {
-    payload.username = capWellFormed(config.username.trim(), USERNAME_MAX);
+    payload.username = toWellFormedUnicode(config.username.trim());
   }
   if (typeof config.system === "string" && config.system.trim()) {
-    payload.system = capWellFormed(config.system, SYSTEM_MAX);
+    payload.system = toWellFormedUnicode(config.system);
   }
 
   const bio =
     typeof config.bio === "string" && config.bio.trim()
-      ? [capWellFormed(config.bio)]
+      ? [toWellFormedUnicode(config.bio)]
       : cleanStringArray(config.bio);
   if (bio) payload.bio = bio;
 
-  const adjectives = cleanStringArray(config.adjectives, LIST_ITEM_MAX);
+  const adjectives = cleanStringArray(config.adjectives);
   if (adjectives) payload.adjectives = adjectives;
 
-  const topics = cleanStringArray(config.topics, LIST_ITEM_MAX);
+  const topics = cleanStringArray(config.topics);
   if (topics) payload.topics = topics;
 
   if (config.style && typeof config.style === "object" && !Array.isArray(config.style)) {

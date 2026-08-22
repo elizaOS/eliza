@@ -340,14 +340,14 @@ describe("runBotNoiseTriage — cheap-tier verdict", () => {
 });
 
 describe("buildBotNoiseTriagePrompt", () => {
-	it("clips oversized embed bodies so triage stays cheap", () => {
+	it("preserves oversized embed bodies in the model request", () => {
+		const messageText = "x".repeat(10_000);
 		const prompt = buildBotNoiseTriagePrompt({
 			agentName: "Remilio",
 			senderName: "ZenithProxy",
-			messageText: "x".repeat(10_000),
+			messageText,
 			historyLines: [],
 		});
-		expect(prompt.length).toBeLessThan(2_500);
-		expect(prompt).toContain("…");
+		expect(prompt).toContain(messageText);
 	});
 });

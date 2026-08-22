@@ -1,9 +1,10 @@
 /**
  * Factory and type guards for {@link Memory} records: `createMessageMemory`
- * stamps a MESSAGE-metadata memory (scope derived from whether an `agentId` is
- * present), and the `is*Metadata` / `is*Memory` guards discriminate a record's
- * kind by its `MemoryType` tag so storage, embedding, and retrieval can branch
- * on it. `isCustomMetadata` is the catch-all for any type outside the four known
+ * stamps a MESSAGE-metadata memory (scope from the explicit `scope` param,
+ * else derived from whether an `agentId` is present), and the `is*Metadata` /
+ * `is*Memory` guards discriminate a record's kind by its `MemoryType` tag so
+ * storage, embedding, and retrieval can branch on it. `isCustomMetadata` is
+ * the catch-all for any type outside the four known
  * kinds. The types come from `./types` (`types/memory.ts`); this module holds
  * only the runtime helpers over them.
  */
@@ -16,12 +17,22 @@ import {
 	type FragmentMetadata,
 	type Memory,
 	type MemoryMetadata,
+	type MemoryScope,
 	MemoryType,
 	type MessageMemory,
 	type MessageMetadata,
 	type UUID,
 } from "./types";
 
+/**
+ * Build a MESSAGE-metadata memory. When `scope` is omitted the historical
+ * defaults apply: `private` with an `agentId`, `shared` without one. Those
+ * defaults are intentional — omit-`agentId` callers (inbound chat, cloud
+ * events, CLI chat) rely on `shared` so a non-owner's own message stays
+ * readable to them and to the agent. Writers that need a tighter tier (e.g.
+ * the `/api/memory/remember` hash-memory route, which stamps `agent-private`)
+ * pass `scope` explicitly instead of the factory guessing for them.
+ */
 export function createMessageMemory(params: {
 	id?: UUID;
 	entityId: UUID;
@@ -29,15 +40,17 @@ export function createMessageMemory(params: {
 	roomId: UUID;
 	content: Content & { text: string };
 	embedding?: number[];
+	scope?: MemoryScope;
 }): MessageMemory {
+	const { scope, ...memoryFields } = params;
 	const now = Date.now();
 	return {
-		...params,
+		...memoryFields,
 		createdAt: now,
 		metadata: {
 			type: MemoryType.MESSAGE,
 			timestamp: now,
-			scope: params.agentId ? "private" : "shared",
+			scope: scope ?? (params.agentId ? "private" : "shared"),
 		},
 	};
 }

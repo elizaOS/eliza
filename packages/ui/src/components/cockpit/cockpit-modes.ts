@@ -6,11 +6,10 @@
  * lowering and the display metadata both live here, unambiguously. There is no
  * server-side copy to drift against.
  *
- * The four modes (locked product vision):
+ * The three modes (locked product vision):
  *   1. Eliza Cloud = eliza-code on Cerebras, fast/smart tier (gemma-4-31b)
- *   2. OpenCode on Cerebras
- *   3. Claude / Codex via the TOS-safe subscription connector
- *   4. Experimental TOS-unsafe Claude / Codex (gated)
+ *   2. Claude / Codex via the TOS-safe subscription connector
+ *   3. Experimental TOS-unsafe Claude / Codex (gated)
  */
 
 import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
@@ -39,7 +38,6 @@ export const ELIZA_CLOUD_TIER_MODEL: Record<ElizaCloudTier, string> = {
 /** One cockpit session's mode. */
 export type CockpitModeConfig =
   | { mode: "eliza-cloud"; agentType: "elizaos"; tier: ElizaCloudTier }
-  | { mode: "opencode"; agentType: "opencode"; model?: string }
   | {
       mode: "subscription";
       agentType: "claude" | "codex";
@@ -56,7 +54,6 @@ export type CockpitModeConfig =
 /** Stable id for one selectable picker option (tier is chosen separately). */
 export type CockpitModeOptionId =
   | "eliza-cloud"
-  | "opencode"
   | "claude"
   | "codex"
   | "claude-experimental"
@@ -86,13 +83,6 @@ export const COCKPIT_MODE_OPTIONS: readonly CockpitModeOption[] = [
     subtitle: "eliza-code · Cerebras",
     badge: "cloud",
     toConfig: (tier) => ({ mode: "eliza-cloud", agentType: "elizaos", tier }),
-  },
-  {
-    id: "opencode",
-    title: "OpenCode",
-    subtitle: "Cerebras",
-    badge: "cloud",
-    toConfig: () => ({ mode: "opencode", agentType: "opencode" }),
   },
   {
     id: "claude",
@@ -150,8 +140,6 @@ export function optionIdForConfig(
   switch (config.mode) {
     case "eliza-cloud":
       return "eliza-cloud";
-    case "opencode":
-      return "opencode";
     case "subscription":
       return config.agentType;
     case "experimental":
@@ -179,8 +167,6 @@ export function cockpitModeProviderSource(
 ): ProviderSource {
   switch (config.mode) {
     case "eliza-cloud":
-    case "opencode":
-      // Both run on Eliza Cloud / Cerebras.
       return "eliza-cloud";
     case "subscription":
     case "experimental":

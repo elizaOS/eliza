@@ -601,15 +601,15 @@ describe("TwitterDirectMessageClient", () => {
     await dmClient.stop();
   });
 
-  it("paginates beyond twenty pages without advancing past unseen events", async () => {
+  it("paginates beyond the former thousand-page ceiling without advancing past unseen events", async () => {
     vi.useFakeTimers();
     const paginator = {
       events: [
         {
-          id: "122",
+          id: "1102",
           sender_id: "person-1",
           dm_conversation_id: "conversation-1",
-          text: "message 122",
+          text: "message 1102",
           event_type: "MessageCreate",
         },
       ],
@@ -618,7 +618,7 @@ describe("TwitterDirectMessageClient", () => {
       },
       done: false,
       fetchNext: vi.fn(async () => {
-        const oldest = Number(paginator.events.at(-1)?.id ?? "122");
+        const oldest = Number(paginator.events.at(-1)?.id ?? "1102");
         paginator.events.push({
           id: String(oldest - 1),
           sender_id: "person-1",
@@ -675,9 +675,9 @@ describe("TwitterDirectMessageClient", () => {
     } as unknown as TwitterClientState);
 
     await dmClient.start();
-    expect(paginator.fetchNext).toHaveBeenCalledTimes(22);
-    expect(handleMessage).toHaveBeenCalledTimes(22);
-    expect(cache.get("twitter/agent/agent-user-id/dm_cursor")).toBe("122");
+    expect(paginator.fetchNext).toHaveBeenCalledTimes(1002);
+    expect(handleMessage).toHaveBeenCalledTimes(1002);
+    expect(cache.get("twitter/agent/agent-user-id/dm_cursor")).toBe("1102");
     await dmClient.stop();
   });
 

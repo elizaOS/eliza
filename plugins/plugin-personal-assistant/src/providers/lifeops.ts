@@ -23,7 +23,6 @@ import {
   type ProviderResult,
   type State,
   toWellFormedUnicode,
-  truncateWellFormed,
 } from "@elizaos/core";
 import type {
   LifeOpsGmailTriageSummary,
@@ -56,9 +55,6 @@ import {
 import { LifeOpsService } from "../lifeops/service.js";
 
 const INTERNAL_URL = new URL("http://127.0.0.1/");
-export const GOAL_TITLE_MAX_LENGTH = 80;
-const GOAL_TITLES_MAX_DISPLAYED = 5;
-const MAX_ACCOUNT_LINES = 5;
 
 function formatCount(label: string, count: number): string {
   return `${label}: ${count}`;
@@ -113,12 +109,8 @@ async function summarizeConnectorDegradation(
   return lines;
 }
 
-export function truncateGoalTitle(title: string): string {
-  const wellFormed = toWellFormedUnicode(title.trim());
-  if (wellFormed.length <= GOAL_TITLE_MAX_LENGTH) {
-    return wellFormed;
-  }
-  return `${truncateWellFormed(wellFormed, GOAL_TITLE_MAX_LENGTH - 1).trimEnd()}…`;
+export function normalizeGoalTitle(title: string): string {
+  return toWellFormedUnicode(title.trim());
 }
 
 function readGoalReviewedAt(goal: LifeOpsGoalDefinition): string | null {
@@ -185,21 +177,14 @@ function summarizeActiveGoals(
     const rightSafe = Number.isFinite(rightMs) ? rightMs : 0;
     return rightSafe - leftSafe;
   });
-  const top = sorted.slice(0, GOAL_TITLES_MAX_DISPLAYED);
-  const lines = top.map((goal) => {
+  return sorted.map((goal) => {
     const reviewedAtIso = readGoalReviewedAt(goal);
     const lastReviewedFragment = reviewedAtIso
       ? `last reviewed ${formatRelativePast(reviewedAtIso, now)}`
       : "review pending";
-    return `- ${truncateGoalTitle(goal.title)} (${goal.reviewState}, ${lastReviewedFragment})`;
+    return `- ${normalizeGoalTitle(goal.title)} (${goal.reviewState}, ${lastReviewedFragment})`;
   });
-  if (active.length > top.length) {
-    lines.push(`- (+${active.length - top.length} more active goals)`);
-  }
-  return lines;
 }
-
-const MAX_COMPLETED_TODAY_LINES = 6;
 
 /**
  * "Completed today" context lines for the owner. Recap turns ("how did today
@@ -213,15 +198,10 @@ function summarizeCompletedToday(
   if (occurrences.length === 0) {
     return [];
   }
-  const shown = occurrences.slice(0, MAX_COMPLETED_TODAY_LINES);
-  const lines = [
+  return [
     "Owner completed today:",
-    ...shown.map((occurrence) => `- ${occurrence.title} (completed)`),
+    ...occurrences.map((occurrence) => `- ${occurrence.title} (completed)`),
   ];
-  if (occurrences.length > shown.length) {
-    lines.push(`- (+${occurrences.length - shown.length} more completed)`);
-  }
-  return lines;
 }
 
 function summarizeOccurrences(
@@ -242,7 +222,7 @@ function summarizeOccurrences(
   }
   return [
     title,
-    ...occurrences.slice(0, 3).map((occurrence) => {
+    ...occurrences.map((occurrence) => {
       const progress = occurrence.progress;
       return progress
         ? `- ${occurrence.title} (${progress.completedCount}/${progress.targetCount} ${progress.unit}${progress.targetCount === 1 ? "" : "s"}; ${progress.remainingCount} remaining)`
@@ -273,7 +253,7 @@ function summarizeNextEvent(
       : "";
   const lines = [`Next event: ${event.title}${timing}`];
   if (context.attendeeNames.length > 0) {
-    lines.push(`  With: ${context.attendeeNames.slice(0, 3).join(", ")}`);
+    lines.push(`  With: ${context.attendeeNames.join(", ")}`);
   }
   if (context.location) {
     lines.push(`  At: ${context.location}`);
@@ -500,7 +480,7 @@ export const lifeOpsProvider: Provider = {
 
         if (connectedAccounts.length > 1) {
           accountLines.push("Available Google accounts:");
-          for (const account of connectedAccounts.slice(0, MAX_ACCOUNT_LINES)) {
+          for (const account of connectedAccounts) {
             const connectorAccountId = account.grant
               ? (account.grant.connectorAccountId ??
                 deriveConnectorAccountIdFromGrant(account.grant))
@@ -698,7 +678,7 @@ export const lifeOpsProvider: Provider = {
           "When the owner retracts something that was just saved ('actually don't save that', 'cancel that one', 'never mind'), call the owning surface with action=delete and the item title — never answer with a bare reply or a review call: a saved row stays saved until a delete runs.",
           "Use CALENDAR for live calendar reads, calendar writes, availability, proposed meeting times, scheduling preferences, and scheduling negotiation. Examples: 'what's my next meeting?', 'show me my calendar for today', 'what does my week look like?', 'schedule a dentist appointment next Tuesday at 3pm', 'find meeting options with Alice', or 'protect my sleep window from calls'. Do not answer these from provider context alone.",
           "Use MESSAGE action=triage/list_inbox/search_inbox for Gmail, email, and cross-channel inbox review: 'triage my Gmail inbox', 'summarize my unread emails', 'triage my inbox', 'give me my inbox digest', daily briefs, missed-call repair, and group-chat handoff. Use MESSAGE action=draft_reply when the owner asks to draft a reply to an existing message, MESSAGE action=respond when the owner asks to send/respond to an existing message, and MESSAGE action=manage for unsubscribe, block, archive, trash, spam, label, or mark-read requests. Do not use MESSAGE just because the user mentioned email or messages while venting.",
-          "Use MESSAGE action=send_draft for owner-scoped outbound messages and drafts on the owner's behalf. Examples: 'send a Telegram message to Jane saying I am running late', 'send a Signal message to Priya saying thanks', 'email alice@example.com the notes', 'DM Bob on Discord', or 'text Sam that I am outside'. Always prefer MESSAGE action=send_draft over CALENDAR for relaying a message, even if the message text mentions a meeting.",
+          "Use MESSAGE action=send_draft for owner-scoped outbound messages and drafts on the owner's behalf. Examples: 'send a Telegram message to Jane saying I am running late', 'send a WhatsApp message to Priya saying thanks', 'email alice@example.com the notes', 'DM Bob on Discord', or 'text Sam that I am outside'. Always prefer MESSAGE action=send_draft over CALENDAR for relaying a message, even if the message text mentions a meeting.",
           "Use CREDENTIALS for credential lookup, saved-login requests, and trusted-page autofill. Examples: 'look up my GitHub password', 'show me my saved logins for github.com', 'copy my AWS password to clipboard', 'log me into github on this sign-in page'. Do not surface raw secrets in chat.",
           "Use ENTITY for Rolodex contacts and typed relationships (add a contact, log an interaction, set an identity, set a relationship, merge duplicates). Examples: 'who are my closest contacts?', 'add Sam to my Rolodex', 'Pat is my manager'. Use SCHEDULED_TASKS only for follow-up cadence STATUS questions: 'how long has it been since I talked to David?', 'who is overdue for follow-up?'. Every 'remind me…' ask — including reminders about people ('remind me to follow up with David next week') — routes to OWNER_REMINDERS, never SCHEDULED_TASKS.",
           "Use OWNER_SCREENTIME for quantitative device/app/website usage questions. Examples: 'how much screen time have I used today?', 'break down my screen time by app this week', 'what websites did I spend the most time on?'. If the owner is only reflecting or venting like 'I spend too much time on my phone', stay in chat instead of calling OWNER_SCREENTIME.",
@@ -721,7 +701,7 @@ export const lifeOpsProvider: Provider = {
           "Reminder and scheduling confirmations to the owner must be plain everyday words: name the thing and the time ('I'll remind you the morning of the 27th'). Never expose internal ids, trigger kinds, cron/ISO timestamp formats, schema or field names, or storage details, and never describe a saved reminder as session-only, temporary, or at risk of being lost — saved reminders persist.",
           "Treat owner instructions phrased as standing policies, triggers, or conditionals like 'if this happens, do x' or 'when that arrives, handle it' as executable requests, not hypotheticals.",
           "When the owner clearly asks for one of these LifeOps executive-assistant operations, call the best-fit action instead of staying in advice-only chat. If details are missing, let the action ask the minimum follow-up question.",
-          "Route examples: sleep/no-call windows -> CALENDAR; daily brief additions, missed-call repair, or group-chat handoff -> MESSAGE action=triage; 'if direct relaying gets messy here, suggest making a group chat handoff instead' -> MESSAGE action=triage; outbound Telegram/Signal/email/Discord/SMS drafts -> MESSAGE action=send_draft; subscription audits or cancellations -> OWNER_FINANCES; travel preference memory -> automatic owner profile extraction; portal upload or browser filing -> COMPUTER_USE; if the agent gets stuck and should phone the owner -> VOICE_CALL.",
+          "Route examples: sleep/no-call windows -> CALENDAR; daily brief additions, missed-call repair, or group-chat handoff -> MESSAGE action=triage; 'if direct relaying gets messy here, suggest making a group chat handoff instead' -> MESSAGE action=triage; outbound Telegram/WhatsApp/email/Discord/SMS drafts -> MESSAGE action=send_draft; subscription audits or cancellations -> OWNER_FINANCES; travel preference memory -> automatic owner profile extraction; portal upload or browser filing -> COMPUTER_USE; if the agent gets stuck and should phone the owner -> VOICE_CALL.",
           "When the owner asks about their stable personal details for LifeOps, answer from the stored owner profile values below. If a field is not n/a, treat it as known instead of saying it is missing.",
           "Owner life-ops are private to the owner and the agent. Agent ops are internal and should stay separated unless explicitly requested.",
           ...summarizeOwnerProfile(ownerProfile),
@@ -762,7 +742,6 @@ export const lifeOpsProvider: Provider = {
           ownerActiveGoals: overview.owner.summary.activeGoalCount,
           ownerActiveGoalTitles: overview.owner.goals
             .filter((goal) => goal.status === "active")
-            .slice(0, GOAL_TITLES_MAX_DISPLAYED)
             .map((goal) => goal.title),
           ownerProfileName: ownerProfile.name,
           ownerRelationshipStatus: ownerProfile.relationshipStatus,
@@ -780,12 +759,12 @@ export const lifeOpsProvider: Provider = {
             ...overview,
             owner: {
               ...overview.owner,
-              goals: overview.owner.goals.slice(0, GOAL_TITLES_MAX_DISPLAYED),
-              occurrences: overview.owner.occurrences.slice(0, 5),
+              goals: overview.owner.goals,
+              occurrences: overview.owner.occurrences,
             },
             agentOps: {
               ...overview.agentOps,
-              occurrences: overview.agentOps.occurrences.slice(0, 5),
+              occurrences: overview.agentOps.occurrences,
             },
           },
           nextEventContext,

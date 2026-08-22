@@ -107,7 +107,7 @@ export default scenario({
   finalChecks: [
     {
       type: "draftExists",
-      channel: ["gmail", "telegram", "discord", "signal"],
+      channel: ["gmail", "telegram", "discord", "whatsapp"],
       expected: true,
     },
     {
@@ -129,7 +129,7 @@ export default scenario({
     },
     {
       type: "connectorDispatchOccurred",
-      channel: ["gmail", "telegram", "discord", "signal"],
+      channel: ["gmail", "telegram", "discord", "whatsapp"],
       actionName: ["MESSAGE", "MESSAGE", "MESSAGE"],
     },
     {
@@ -178,7 +178,7 @@ export default scenario({
       type: "custom",
       name: "ea-repair-missed-call-dispatch",
       predicate: expectConnectorDispatch({
-        channel: ["gmail", "telegram", "discord", "signal"],
+        channel: ["gmail", "telegram", "discord", "whatsapp"],
         description: "repair note reaches the counterparty on a real channel",
       }),
     },

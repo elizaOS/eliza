@@ -1,7 +1,7 @@
 /**
  * Shared helper for auto-populating owner contacts when a connector
  * successfully pairs. Called by the per-platform setup routes
- * (signal-routes, whatsapp-routes, telegram-setup-routes, etc.).
+ * (whatsapp-routes, telegram-setup-routes, etc.).
  *
  * Writes to `config.agents.defaults.ownerContacts[source]` so LifeOps
  * reminder delivery can immediately find the owner on the newly
@@ -22,7 +22,7 @@ type MinimalConfig = Record<string, unknown> & {
 };
 
 export interface OwnerContactUpdate {
-  /** Canonical connector source name (e.g. "signal", "telegram", "discord", "whatsapp", "imessage"). */
+  /** Canonical connector source name (e.g. "telegram", "discord", "whatsapp", "imessage"). */
   source: string;
   /** Platform-specific channel/chat ID (phone number, chat id, etc.). */
   channelId?: string;

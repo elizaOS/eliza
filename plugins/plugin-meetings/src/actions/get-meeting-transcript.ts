@@ -23,9 +23,6 @@ import {
   resolveTargetSession,
 } from "./shared.js";
 
-/** Cap the inline reply; the full record lives in the Transcripts view. */
-const MAX_REPLY_CHARS = 4_000;
-
 async function handler(
   runtime: IAgentRuntime,
   message: Memory,
@@ -70,14 +67,10 @@ async function handler(
       `No speech has been transcribed in the ${label} meeting yet (status: ${transcript.status}).`,
     );
   }
-  const clipped =
-    text.length > MAX_REPLY_CHARS
-      ? `${text.slice(0, MAX_REPLY_CHARS)}\n… (truncated — open transcript ${transcript.id} in the Transcripts view for the full record)`
-      : text;
   return reply(
     callback,
     true,
-    `Transcript of the ${label} meeting (${transcript.status}):\n\n${clipped}`,
+    `Transcript of the ${label} meeting (${transcript.status}):\n\n${text}`,
     { sessionId: target.id, transcriptId: transcript.id },
   );
 }

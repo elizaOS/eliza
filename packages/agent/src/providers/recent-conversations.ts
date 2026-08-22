@@ -14,8 +14,8 @@ import type {
   State,
   UUID,
 } from "@elizaos/core";
+import { toWellFormedUnicode } from "@elizaos/core";
 import { getValidationKeywordTerms } from "@elizaos/shared";
-import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import {
   extractConversationMetadataFromRoom,
   isAutomationConversationMetadata,
@@ -26,9 +26,6 @@ import {
   formatSpeakerLabel,
   roomSourceTag,
 } from "../shared/conversation-format.ts";
-
-const MAX_RECENT_MESSAGES = 10;
-const MAX_ROOMS_TO_SCAN = 10;
 
 export const recentConversationsProvider: Provider = {
   name: "recent-conversations",
@@ -77,13 +74,9 @@ export const recentConversationsProvider: Provider = {
         return { text: "", values: {}, data: {} };
       }
 
-      // Take most recent rooms (limited to avoid scanning too many)
-      const scanRoomIds = roomIds.slice(0, MAX_ROOMS_TO_SCAN);
-
       const memories = await runtime.getMemoriesByRoomIds({
         tableName: "messages",
-        roomIds: scanRoomIds,
-        limit: MAX_RECENT_MESSAGES,
+        roomIds,
       });
 
       if (!memories || memories.length === 0) {
@@ -93,8 +86,7 @@ export const recentConversationsProvider: Provider = {
       // Sort newest first
       const sorted = memories
         .filter((m) => m.content.text)
-        .sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0))
-        .slice(0, MAX_RECENT_MESSAGES);
+        .sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
 
       if (sorted.length === 0) {
         return { text: "", values: {}, data: {} };
@@ -119,7 +111,7 @@ export const recentConversationsProvider: Provider = {
         const tag = roomSourceTag(room);
         const age = formatRelativeTimestampPrefix(mem.createdAt);
         const speaker = formatSpeakerLabel(runtime, mem);
-        const text = truncateWellFormed(toWellFormedUnicode(mem.content.text ?? ""), 200);
+        const text = toWellFormedUnicode(mem.content.text ?? "");
         lines.push(`${tag} ${age}${speaker}: ${text}`);
       }
 

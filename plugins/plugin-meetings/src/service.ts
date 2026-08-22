@@ -167,6 +167,23 @@ export class MeetingService extends Service {
   static dependencyFactory:
     | ((runtime: IAgentRuntime) => MeetingServiceDependencies)
     | null = null;
+  private static readonly runtimeDependencyFactories = new WeakMap<
+    IAgentRuntime,
+    (runtime: IAgentRuntime) => MeetingServiceDependencies
+  >();
+
+  /** Install a dependency override for exactly one runtime, primarily for scenario boundaries. */
+  static setRuntimeDependencyFactory(
+    runtime: IAgentRuntime,
+    factory: (runtime: IAgentRuntime) => MeetingServiceDependencies,
+  ): void {
+    MeetingService.runtimeDependencyFactories.set(runtime, factory);
+  }
+
+  /** Remove a runtime-scoped override without changing production defaults or other runtimes. */
+  static clearRuntimeDependencyFactory(runtime: IAgentRuntime): void {
+    MeetingService.runtimeDependencyFactories.delete(runtime);
+  }
 
   private readonly sessions = new Map<UUID, InternalSession>();
   /**
@@ -185,7 +202,10 @@ export class MeetingService extends Service {
       throw new Error("[MeetingService] runtime is required");
     }
     super(runtime);
-    const resolved = deps ?? MeetingService.dependencyFactory?.(runtime);
+    const resolved =
+      deps ??
+      MeetingService.runtimeDependencyFactories.get(runtime)?.(runtime) ??
+      MeetingService.dependencyFactory?.(runtime);
     if (!resolved) {
       throw new Error(
         "[MeetingService] no dependencies wired — import the plugin entry (src/index.ts) or inject MeetingServiceDependencies",
@@ -481,6 +501,29 @@ export class MeetingService extends Service {
     const live = [...this.sessions.values()].map((s) => this.toDto(s));
     const all = options?.active ? live : [...live, ...this.terminated.values()];
     return all.sort((a, b) => b.requestedAt - a.requestedAt);
+  }
+
+  /** Await the complete production lifecycle, including persistence, billing, events, and eviction. */
+  async waitForSessionCompletion(sessionId: UUID): Promise<MeetingSession> {
+    const completed = this.terminated.get(sessionId);
+    if (completed) return completed;
+    const live = this.sessions.get(sessionId);
+    if (!live) {
+      throw new Error(`[MeetingService] unknown session ${sessionId}`);
+    }
+    await live.done;
+    const terminal = this.terminated.get(sessionId);
+    if (!terminal) {
+      throw new Error(
+        `[MeetingService] session ${sessionId} completed without a terminal snapshot`,
+      );
+    }
+    return terminal;
+  }
+
+  /** Number of retained internal sessions whose lifecycle work is not fully evicted. */
+  pendingSessionWorkCount(): number {
+    return this.sessions.size;
   }
 
   /** Import one completed Zoom cloud meeting into canonical media/transcripts. */
