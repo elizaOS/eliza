@@ -12,7 +12,6 @@
  * keyless runtime (mirrors plugin-goals' own goals.harness.test.ts).
  */
 import type { AgentRuntime } from "@elizaos/core";
-import { ModelType } from "@elizaos/core";
 import { scenario } from "@elizaos/scenario-runner/schema";
 import { executeRawSql } from "../../../../../../plugins/plugin-goals/src/db/sql.ts";
 import { createOwnerGoalsService } from "../../../../../../plugins/plugin-goals/src/goals-runtime.ts";
@@ -25,113 +24,113 @@ import { createOwnerGoalsService } from "../../../../../../plugins/plugin-goals/
 const GOAL_INPUT = "Add a goal to run a marathon next year, and save it.";
 const OWNER_GOALS = "OWNER_GOALS";
 
-type RuntimeWithScenarioModelFixtures = AgentRuntime & {
-  scenarioModelFixtures?: {
-    register: (...fixtures: Array<Record<string, unknown>>) => void;
-  };
-};
-
-function goalsRouteFixtures(): Array<Record<string, unknown>> {
-  const inputMatches = (value: string) => value.includes("marathon");
-  return [
-    {
-      name: "route-owner-goals-stage1",
-      match: {
-        modelType: ModelType.RESPONSE_HANDLER,
-        input: inputMatches,
-        toolName: "HANDLE_RESPONSE",
-      },
-      response: {
-        contexts: ["general"],
-        intents: ["goal"],
-        replyText: "",
-        threadOps: [],
-        candidateActionNames: [OWNER_GOALS],
-      },
-      times: 1,
-    },
-    {
-      name: "route-owner-goals-planner",
-      match: {
-        modelType: ModelType.ACTION_PLANNER,
-        input: inputMatches,
-        toolName: OWNER_GOALS,
-      },
-      response: {
-        text: "",
-        // Non-empty so the planner-loop gate synthesizes a FINISH after the
-        // successful create instead of firing an (unfixtured) in-loop evaluator.
-        thought: "Create the owner's marathon life goal.",
-        messageToUser: "Added your goal.",
-        completed: true,
-        finishReason: "tool-calls",
-        toolCalls: [
-          {
-            id: "call-owner-goals",
-            name: OWNER_GOALS,
-            type: "function",
-            arguments: {
-              action: "create",
-              title: "Run a marathon",
-              confirmed: true,
-            },
-          },
-        ],
-      },
-      times: 1,
-    },
-    {
-      // The action's own resolveActionArgs extraction. Excludes the grounding
-      // prompt (below) so the two TEXT_LARGE fixtures are mutually exclusive, and
-      // is optional because the planner already supplied the create args.
-      name: "owner-goals-extraction-create",
-      match: {
-        modelType: ModelType.TEXT_LARGE,
-        prompt: (v: string) => !v.includes("missingCriticalFields"),
-      },
-      response: JSON.stringify({
-        action: "create",
-        params: { title: "Run a marathon", confirmed: true },
-        missing: [],
-        confidence: 0.95,
-      }),
-      times: { min: 0, max: 1 },
-    },
-    {
-      // #14459's second TEXT_LARGE grounding extractor
-      // (extractGoalCreatePlanWithLlm). Without a grounded plan the create is a
-      // NOOP_GOAL_UNGROUNDED and never persists. successCriteria/supportStrategy
-      // MUST be objects — a string/null re-triggers the NOOP gate.
-      name: "owner-goals-grounding-create",
-      match: {
-        modelType: ModelType.TEXT_LARGE,
-        prompt: (v: string) => v.includes("missingCriticalFields"),
-      },
-      response: JSON.stringify({
-        mode: "create",
-        response: null,
-        title: "Run a marathon",
-        description: "Train for and complete a marathon within the next year.",
-        cadence: { kind: "weekly" },
-        successCriteria: {
-          summary: "Finish a full 42.2km marathon within the next year.",
-        },
-        supportStrategy: {
-          summary: "Follow a progressive weekly long-run training plan.",
-        },
-        groundingState: "grounded",
-        missingCriticalFields: [],
-        confidence: 0.95,
-        evaluationSummary: "Completing a marathon within the next year.",
-        targetDomain: "fitness",
-      }),
-      times: 1,
-    },
-  ];
-}
-
 export default scenario({
   lane: "pr-deterministic",
+  modelFixtures: {
+    mode: "fixtures",
+    fixtures: [
+      {
+        name: "route-owner-goals-stage1",
+        match: {
+          modelType: "RESPONSE_HANDLER",
+          input: { includes: "marathon" },
+        },
+        response: {
+          json: {
+            contexts: ["general"],
+            intents: ["goal"],
+            replyText: "",
+            threadOps: [],
+            candidateActionNames: [OWNER_GOALS],
+          },
+        },
+        cardinality: 1,
+      },
+      {
+        name: "route-owner-goals-planner",
+        match: {
+          modelType: "ACTION_PLANNER",
+          input: { includes: "marathon" },
+        },
+        response: {
+          json: {
+            text: "",
+            // Non-empty so the planner-loop gate synthesizes a FINISH after the
+            // successful create instead of firing an (unfixtured) in-loop evaluator.
+            thought: "Create the owner's marathon life goal.",
+            messageToUser: "Added your goal.",
+            completed: true,
+            finishReason: "tool-calls",
+            toolCalls: [
+              {
+                id: "call-owner-goals",
+                name: OWNER_GOALS,
+                type: "function",
+                arguments: {
+                  action: "create",
+                  title: "Run a marathon",
+                  confirmed: true,
+                },
+              },
+            ],
+          },
+        },
+        cardinality: 1,
+      },
+      {
+        // The action's own resolveActionArgs extraction. Excludes the grounding
+        // prompt (below) so the two TEXT_LARGE fixtures are mutually exclusive, and
+        // is optional because the planner already supplied the create args.
+        name: "owner-goals-extraction-create",
+        match: {
+          modelType: "TEXT_LARGE",
+          prompt: { pattern: "^((?!missingCriticalFields)[\\s\\S])*$" },
+        },
+        response: {
+          text: JSON.stringify({
+            action: "create",
+            params: { title: "Run a marathon", confirmed: true },
+            missing: [],
+            confidence: 0.95,
+          }),
+        },
+        cardinality: { min: 0, max: 1 },
+      },
+      {
+        // #14459's second TEXT_LARGE grounding extractor
+        // (extractGoalCreatePlanWithLlm). Without a grounded plan the create is a
+        // NOOP_GOAL_UNGROUNDED and never persists. successCriteria/supportStrategy
+        // MUST be objects — a string/null re-triggers the NOOP gate.
+        name: "owner-goals-grounding-create",
+        match: {
+          modelType: "TEXT_LARGE",
+          prompt: { includes: "missingCriticalFields" },
+        },
+        response: {
+          text: JSON.stringify({
+            mode: "create",
+            response: null,
+            title: "Run a marathon",
+            description:
+              "Train for and complete a marathon within the next year.",
+            cadence: { kind: "weekly" },
+            successCriteria: {
+              summary: "Finish a full 42.2km marathon within the next year.",
+            },
+            supportStrategy: {
+              summary: "Follow a progressive weekly long-run training plan.",
+            },
+            groundingState: "grounded",
+            missingCriticalFields: [],
+            confidence: 0.95,
+            evaluationSummary: "Completing a marathon within the next year.",
+            targetDomain: "fitness",
+          }),
+        },
+        cardinality: 1,
+      },
+    ],
+  },
   id: "goals.owner-goals-create",
   title: "Goals: OWNER_GOALS creates a goal from natural language",
   domain: "goals",
@@ -149,7 +148,7 @@ export default scenario({
       type: "custom",
       name: "provision-audit-table-and-fixtures",
       apply: async (ctx) => {
-        const runtime = ctx.runtime as RuntimeWithScenarioModelFixtures;
+        const runtime = ctx.runtime as AgentRuntime;
         await executeRawSql(runtime, "CREATE SCHEMA IF NOT EXISTS app_lifeops");
         await executeRawSql(
           runtime,
@@ -166,7 +165,6 @@ export default scenario({
              created_at text NOT NULL
            )`,
         );
-        runtime.scenarioModelFixtures?.register(...goalsRouteFixtures());
         return undefined;
       },
     },

@@ -240,6 +240,20 @@ function assertNoEscalationAfterAck(
 export default scenario({
   id: "adhd-followthrough-reply-breaks-escalation",
   lane: "pr-deterministic",
+  modelFixtures: {
+    mode: "fixtures",
+    fixtures: [
+      {
+        name: "dispatch-body",
+        match: {
+          modelType: "TEXT_SMALL",
+          prompt: { includes: "\nInstruction:\n" },
+        },
+        response: { text: "Heads up: you have an update from your assistant." },
+        cardinality: 1,
+      },
+    ],
+  },
   title:
     "ADHD follow-through: acknowledging a reminder retires the no-reply ladder — chasing stops on engagement",
   domain: "lifeops",

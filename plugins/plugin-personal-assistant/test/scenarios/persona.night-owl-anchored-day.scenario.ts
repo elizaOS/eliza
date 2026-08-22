@@ -272,6 +272,20 @@ export default scenario({
   // the id statically, resolve it.
   id: "persona.night-owl-anchored-day",
   lane: "pr-deterministic",
+  modelFixtures: {
+    mode: "fixtures",
+    fixtures: [
+      {
+        name: "dispatch-body",
+        match: {
+          modelType: "TEXT_SMALL",
+          prompt: { includes: "\nInstruction:\n" },
+        },
+        response: { text: "Heads up: you have an update from your assistant." },
+        cardinality: 2,
+      },
+    ],
+  },
   title:
     "Night owl anchored day: brief fires in her noon window and a wake-anchored reminder fires relative to wake — never at 9am",
   domain: "lifeops",

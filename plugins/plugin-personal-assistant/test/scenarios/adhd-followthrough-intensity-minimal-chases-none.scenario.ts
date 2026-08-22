@@ -243,6 +243,20 @@ function assertQuietAfterTerminal(
 export default scenario({
   id: "adhd-followthrough-intensity-minimal-chases-none",
   lane: "pr-deterministic",
+  modelFixtures: {
+    mode: "fixtures",
+    fixtures: [
+      {
+        name: "dispatch-body",
+        match: {
+          modelType: "TEXT_SMALL",
+          prompt: { includes: "\nInstruction:\n" },
+        },
+        response: { text: "Heads up: you have an update from your assistant." },
+        cardinality: 1,
+      },
+    ],
+  },
   title:
     "ADHD follow-through: minimal reminderIntensity drops the no-reply retry entirely — fires once, then stops",
   domain: "lifeops",

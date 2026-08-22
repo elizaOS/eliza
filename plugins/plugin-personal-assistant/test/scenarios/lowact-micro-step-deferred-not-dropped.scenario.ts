@@ -216,6 +216,20 @@ function assertResurfacesOnce(
 export default scenario({
   id: "lowact-micro-step-deferred-not-dropped",
   lane: "pr-deterministic",
+  modelFixtures: {
+    mode: "fixtures",
+    fixtures: [
+      {
+        name: "dispatch-body",
+        match: {
+          modelType: "TEXT_SMALL",
+          prompt: { includes: "\nInstruction:\n" },
+        },
+        response: { text: "Heads up: you have an update from your assistant." },
+        cardinality: 1,
+      },
+    ],
+  },
   title:
     "Low activation: a parked one-small-step resurfaces once at its gentle later time, never dropped or early",
   domain: "lifeops",

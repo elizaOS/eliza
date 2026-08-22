@@ -259,6 +259,20 @@ function deferredFor(
 export default scenario({
   id: "persona.flexible-scheduling",
   lane: "pr-deterministic",
+  modelFixtures: {
+    mode: "fixtures",
+    fixtures: [
+      {
+        name: "dispatch-body",
+        match: {
+          modelType: "TEXT_SMALL",
+          prompt: { includes: "\nInstruction:\n" },
+        },
+        response: { text: "Heads up: you have an update from your assistant." },
+        cardinality: 5,
+      },
+    ],
+  },
   title:
     "LifeOps persona scheduling: during_window / anchor firing, quiet_hours defer, activity-gated poke allow",
   domain: "lifeops",

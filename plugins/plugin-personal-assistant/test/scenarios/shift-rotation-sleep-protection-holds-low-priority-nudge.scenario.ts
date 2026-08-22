@@ -254,6 +254,20 @@ function protectedSleepTick(
 export default scenario({
   id: "shift-rotation-sleep-protection-holds-low-priority-nudge",
   lane: "pr-deterministic",
+  modelFixtures: {
+    mode: "fixtures",
+    fixtures: [
+      {
+        name: "dispatch-body",
+        match: {
+          modelType: "TEXT_SMALL",
+          prompt: { includes: "\nInstruction:\n" },
+        },
+        response: { text: "Heads up: you have an update from your assistant." },
+        cardinality: 1,
+      },
+    ],
+  },
   title:
     "Protected post-night-shift sleep holds a low-value ping while an important reminder breaks through",
   domain: "lifeops",

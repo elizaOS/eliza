@@ -262,6 +262,20 @@ function bothAtPreTick(_status: number, body: unknown): string | undefined {
 export default scenario({
   id: "adhd-hyperfocus-guardrail-protects-standup",
   lane: "pr-deterministic",
+  modelFixtures: {
+    mode: "fixtures",
+    fixtures: [
+      {
+        name: "dispatch-body",
+        match: {
+          modelType: "TEXT_SMALL",
+          prompt: { includes: "\nInstruction:\n" },
+        },
+        response: { text: "Heads up: you have an update from your assistant." },
+        cardinality: 1,
+      },
+    ],
+  },
   title:
     "ADHD hyperfocus guardrail: important standup nudge breaks through, low-value ping held",
   domain: "lifeops",

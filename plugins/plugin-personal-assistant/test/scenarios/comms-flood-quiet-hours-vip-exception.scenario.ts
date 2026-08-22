@@ -270,6 +270,20 @@ function bothHeldAtPreTick(_status: number, body: unknown): string | undefined {
 export default scenario({
   id: "comms-flood-quiet-hours-vip-exception",
   lane: "pr-deterministic",
+  modelFixtures: {
+    mode: "fixtures",
+    fixtures: [
+      {
+        name: "dispatch-body",
+        match: {
+          modelType: "TEXT_SMALL",
+          prompt: { includes: "\nInstruction:\n" },
+        },
+        response: { text: "Heads up: you have an update from your assistant." },
+        cardinality: 1,
+      },
+    ],
+  },
   title:
     "Comms flood quiet-hours VIP exception: VIP nudge breaks through, non-VIP digest ping held",
   domain: "lifeops",

@@ -207,6 +207,20 @@ function deferredOutOfWindow(
 export default scenario({
   id: "lowact-values-anchored-activity-fires-in-window",
   lane: "pr-deterministic",
+  modelFixtures: {
+    mode: "fixtures",
+    fixtures: [
+      {
+        name: "dispatch-body",
+        match: {
+          modelType: "TEXT_SMALL",
+          prompt: { includes: "\nInstruction:\n" },
+        },
+        response: { text: "Heads up: you have an update from your assistant." },
+        cardinality: 1,
+      },
+    ],
+  },
   title:
     "Low activation: a values-anchored activity fires inside the owner's evening window, defers outside it",
   domain: "lifeops",

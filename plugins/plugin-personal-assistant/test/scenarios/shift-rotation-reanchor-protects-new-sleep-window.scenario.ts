@@ -280,6 +280,20 @@ function deferredFor(
 export default scenario({
   id: "shift-rotation-reanchor-protects-new-sleep-window",
   lane: "pr-deterministic",
+  modelFixtures: {
+    mode: "fixtures",
+    fixtures: [
+      {
+        name: "dispatch-body",
+        match: {
+          modelType: "TEXT_SMALL",
+          prompt: { includes: "\nInstruction:\n" },
+        },
+        response: { text: "Heads up: you have an update from your assistant." },
+        cardinality: 2,
+      },
+    ],
+  },
   title:
     "Shift rotation re-anchors a habit reminder to the shifted waking window and never fires it inside the newly-protected sleep block",
   domain: "lifeops",
