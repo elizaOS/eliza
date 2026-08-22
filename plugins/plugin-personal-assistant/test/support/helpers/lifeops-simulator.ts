@@ -41,7 +41,6 @@ type RuntimeSendHandler = Parameters<AgentRuntime["registerSendHandler"]>[1];
 interface WhatsAppMockService {
   connected: boolean;
   phoneNumber: string;
-  handleWebhook(payload: Record<string, unknown>): Promise<void>;
   fetchConnectorMessages(limit?: number): Promise<Memory[]>;
 }
 
@@ -61,7 +60,6 @@ export interface LifeOpsSimulatorSeedResult {
   chatMemories: number;
   passiveChatMemoryIds: UUID[];
   reminders: number;
-  whatsappBuffered: number;
   telegramTokenRef: string;
 }
 
@@ -98,20 +96,15 @@ function registeredSendHandlers(
 function installWhatsAppMockService(runtime: AgentRuntime): Cleanup {
   const services = servicesMap(runtime);
   const previous = services.get("whatsapp");
-  const buffered: Record<string, unknown>[] = [];
   const whatsappService: WhatsAppMockService = {
     connected: true,
     phoneNumber: LIFEOPS_SIMULATOR_OWNER.phone,
-    async handleWebhook(payload) {
-      buffered.push(payload);
-    },
     async fetchConnectorMessages(_limit = 25) {
       return [];
     },
   };
   services.set("whatsapp", [whatsappService]);
   return () => {
-    buffered.length = 0;
     if (previous) {
       services.set("whatsapp", previous);
     } else {
@@ -504,56 +497,6 @@ async function seedReminders(service: LifeOpsService): Promise<number> {
   return LIFEOPS_SIMULATOR_REMINDERS.length;
 }
 
-function whatsappWebhookPayload() {
-  const whatsappMessages = LIFEOPS_SIMULATOR_CHANNEL_MESSAGES.filter(
-    (message) => message.channel === "whatsapp",
-  );
-  return {
-    object: "whatsapp_business_account",
-    entry: [
-      {
-        id: LIFEOPS_SIMULATOR_OWNER_IDENTITIES.whatsapp.businessAccountId,
-        changes: [
-          {
-            field: "messages",
-            value: {
-              messaging_product: "whatsapp",
-              metadata: {
-                display_phone_number: LIFEOPS_SIMULATOR_OWNER.phone,
-                phone_number_id:
-                  LIFEOPS_SIMULATOR_OWNER_IDENTITIES.whatsapp.phoneNumberId,
-              },
-              contacts: whatsappMessages.map((message) => {
-                const person = getLifeOpsSimulatorPerson(message.fromPersonKey);
-                return {
-                  profile: { name: person.name },
-                  wa_id: person.whatsappNumber.replace(/^\+/, ""),
-                };
-              }),
-              messages: whatsappMessages.map((message) => {
-                const person = getLifeOpsSimulatorPerson(message.fromPersonKey);
-                return {
-                  id: message.id,
-                  from: person.whatsappNumber.replace(/^\+/, ""),
-                  timestamp: String(
-                    Math.floor(
-                      Date.parse(
-                        lifeOpsSimulatorMessageTime(message.sentAtOffsetMs),
-                      ) / 1000,
-                    ),
-                  ),
-                  type: "text",
-                  text: { body: message.text },
-                };
-              }),
-            },
-          },
-        ],
-      },
-    ],
-  };
-}
-
 export async function seedLifeOpsSimulatorRuntime(
   runtime: AgentRuntime,
 ): Promise<LifeOpsSimulatorSeedResult> {
@@ -572,17 +515,12 @@ export async function seedLifeOpsSimulatorRuntime(
   for (const message of LIFEOPS_SIMULATOR_CHANNEL_MESSAGES) {
     passiveChatMemoryIds.push(await seedChatMemory(runtime, message));
   }
-  const whatsapp = await service.ingestWhatsAppWebhook(
-    whatsappWebhookPayload(),
-  );
-
   return {
     summary: lifeOpsSimulatorSummary(),
     relationships,
     chatMemories: LIFEOPS_SIMULATOR_CHANNEL_MESSAGES.length,
     passiveChatMemoryIds,
     reminders,
-    whatsappBuffered: whatsapp.ingested,
     telegramTokenRef,
   };
 }

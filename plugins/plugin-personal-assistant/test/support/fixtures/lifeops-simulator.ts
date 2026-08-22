@@ -89,10 +89,6 @@ export const LIFEOPS_SIMULATOR_OWNER_IDENTITIES = {
     username: "mocked_owner",
     discriminator: "0001",
   },
-  whatsapp: {
-    businessAccountId: "lifeops-simulator-whatsapp",
-    phoneNumberId: "lifeops-simulator-whatsapp-phone",
-  },
 } as const;
 
 export const LIFEOPS_SIMULATOR_PEOPLE: LifeOpsSimulatorPerson[] = [

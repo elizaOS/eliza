@@ -8,6 +8,18 @@ import type { IAgentRuntime, Media, UUID } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { WhatsAppConnectorService } from "../src/runtime-service";
 
+const mediaMocks = vi.hoisted(() => ({
+  stageWhatsAppMedia: vi.fn(async () => ({
+    buffer: Buffer.from("guarded-media"),
+    contentType: "application/octet-stream",
+  })),
+}));
+
+vi.mock("../src/media", async (importActual) => ({
+  ...(await importActual<typeof import("../src/media")>()),
+  stageWhatsAppMedia: mediaMocks.stageWhatsAppMedia,
+}));
+
 type RuntimeSendHandler = Parameters<IAgentRuntime["registerSendHandler"]>[1];
 type ConnectorTargetInfo = Parameters<RuntimeSendHandler>[1];
 type ConnectorContent = Parameters<RuntimeSendHandler>[2];
@@ -118,6 +130,7 @@ describe("WhatsApp sendMediaMessage — transport-agnostic media call", () => {
       WhatsAppConnectorService.prototype,
     ) as WhatsAppConnectorService & {
       getClientForAccount: ReturnType<typeof vi.fn>;
+      getConfigForAccount: ReturnType<typeof vi.fn>;
       sendMediaMessage: (
         accountId: string | null | undefined,
         to: string,
@@ -127,10 +140,11 @@ describe("WhatsApp sendMediaMessage — transport-agnostic media call", () => {
     (svc as { getClientForAccount: unknown }).getClientForAccount = vi.fn(() => ({
       sendMessage: clientSend,
     }));
+    (svc as { getConfigForAccount: unknown }).getConfigForAccount = vi.fn(() => null);
     return { svc, clientSend };
   }
 
-  it("maps coarse content type → WhatsApp media type and calls the client by link", async () => {
+  it("maps coarse content type and gives the client only guarded bytes", async () => {
     const { svc, clientSend } = realServiceWithClient();
     await svc.sendMediaMessage("default", "+14155552671", {
       id: "img",
@@ -142,8 +156,16 @@ describe("WhatsApp sendMediaMessage — transport-agnostic media call", () => {
     expect(clientSend).toHaveBeenCalledWith({
       type: "image",
       to: "+14155552671",
-      content: { link: "https://cdn.example.com/cat.png", caption: "a cat" },
+      content: {
+        data: Buffer.from("guarded-media"),
+        mimeType: "application/octet-stream",
+        caption: "a cat",
+      },
     });
+    expect(mediaMocks.stageWhatsAppMedia).toHaveBeenCalledWith(
+      "https://cdn.example.com/cat.png",
+      expect.objectContaining({ maxBytes: 20 * 1024 * 1024 }),
+    );
   });
 
   it("derives type from mimeType and sets a document filename", async () => {
@@ -159,7 +181,8 @@ describe("WhatsApp sendMediaMessage — transport-agnostic media call", () => {
       type: "document",
       to: "+14155552671",
       content: {
-        link: "https://cdn.example.com/report.pdf",
+        data: Buffer.from("guarded-media"),
+        mimeType: "application/octet-stream",
         filename: "report.pdf",
       },
     });

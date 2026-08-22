@@ -678,37 +678,6 @@ describe("LifeOps messaging mixin runtime delegation", () => {
     );
   });
 
-  it("delegates WhatsApp webhooks to plugin-whatsapp and rejects LifeOps parsing", async () => {
-    const handleWebhook = vi.fn(async () => undefined);
-    const service = serviceWithConnectorGrants({
-      services: {
-        whatsapp: {
-          connected: true,
-          handleWebhook,
-        },
-      },
-    });
-
-    await expect(
-      service.ingestWhatsAppWebhook({ object: "whatsapp_business_account" }),
-    ).resolves.toEqual({ ingested: 0, messages: [] });
-    expect(handleWebhook).toHaveBeenCalledWith({
-      object: "whatsapp_business_account",
-    });
-
-    const withoutWebhook = serviceWithConnectorGrants({
-      services: { whatsapp: { connected: true } },
-    });
-    await expect(
-      withoutWebhook.ingestWhatsAppWebhook({
-        object: "whatsapp_business_account",
-      }),
-    ).rejects.toMatchObject({
-      status: 503,
-      message: expect.stringContaining("@elizaos/plugin-whatsapp"),
-    });
-  });
-
   it("reports WhatsApp missing hooks when the runtime service is connected but missing send hooks", async () => {
     const service = serviceWithConnectorGrants({
       services: {

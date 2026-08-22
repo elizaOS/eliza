@@ -46,6 +46,7 @@ import {
   type InboundClaimState,
   tryClaim,
 } from "./inbound-claim";
+import { DEFAULT_WHATSAPP_MEDIA_MAX_BYTES, stageWhatsAppMedia } from "./media";
 import {
   chunkWhatsAppText,
   isWhatsAppGroupJid,
@@ -70,6 +71,7 @@ type RuntimeServiceConfig = {
   groupPolicy?: "open" | "allowlist" | "disabled";
   allowFrom?: string[];
   groupAllowFrom?: string[];
+  mediaMaxMb?: number;
 };
 
 function readStringSetting(runtime: IAgentRuntime, key: string): string | undefined {
@@ -147,6 +149,7 @@ function resolveRuntimeConfigs(runtime: IAgentRuntime): RuntimeServiceConfig[] {
         groupPolicy: accountConfig.groupPolicy,
         allowFrom: accountConfig.allowFrom?.map(String),
         groupAllowFrom: accountConfig.groupAllowFrom?.map(String),
+        mediaMaxMb: accountConfig.mediaMaxMb,
       });
     }
   }
@@ -1261,10 +1264,7 @@ export class WhatsAppConnectorService extends Service {
     return "document";
   }
 
-  /**
-   * Sends an agent attachment as a native WhatsApp media message (#8876).
-   * Baileys fetches the media URL while constructing its native payload.
-   */
+  /** Sends guarded, size-capped attachment bytes as a native Baileys message. */
   async sendMediaMessage(
     accountId: string | null | undefined,
     to: string,
@@ -1277,10 +1277,22 @@ export class WhatsAppConnectorService extends Service {
     }
     const type = this.whatsappMediaType(media);
     const filename = media.filename ?? media.title ?? undefined;
+    const configuredMaxMb = this.getConfigForAccount(accountId)?.mediaMaxMb;
+    const maxBytes =
+      typeof configuredMaxMb === "number" && Number.isFinite(configuredMaxMb) && configuredMaxMb > 0
+        ? Math.floor(configuredMaxMb * 1024 * 1024)
+        : DEFAULT_WHATSAPP_MEDIA_MAX_BYTES;
+    const staged = await stageWhatsAppMedia(media.url, {
+      maxBytes,
+      filePathHint: filename,
+    });
     const mediaContent: WhatsAppMediaMessage = {
-      link: media.url,
+      data: staged.buffer,
+      mimeType: staged.contentType ?? media.mimeType,
       ...(media.description ? { caption: media.description } : {}),
-      ...(type === "document" && filename ? { filename } : {}),
+      ...(type === "document" && (filename ?? staged.fileName)
+        ? { filename: filename ?? staged.fileName }
+        : {}),
     };
     await client.sendMessage({ type, to, content: mediaContent });
   }
