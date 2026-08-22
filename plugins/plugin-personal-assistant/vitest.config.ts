@@ -389,6 +389,16 @@ export default defineConfig({
           "renderer-services.ts",
         ),
       },
+      {
+        find: /^@elizaos\/ui\/app-shell-registry$/,
+        replacement: path.join(
+          elizaRoot,
+          "packages",
+          "ui",
+          "src",
+          "app-shell-registry.ts",
+        ),
+      },
       // Pure-data settings-section metadata consumed by app-control's settings
       // action (#14804) — React-free by design, so anchor the real module
       // ahead of the broad ui stub alias.

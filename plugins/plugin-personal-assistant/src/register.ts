@@ -13,8 +13,25 @@
  * serialize a successor's start behind this instance's async cleanup
  * (#17110).
  */
+
+import { registerAppShellPage } from "@elizaos/ui/app-shell-registry";
 import { registerRendererService } from "@elizaos/ui/platform/renderer-services";
 import { startLifeOpsActivitySignalCapture } from "./lifeops/activity-signals-capture.js";
+
+registerAppShellPage({
+  id: "lifeops-connections",
+  pluginId: "@elizaos/plugin-personal-assistant",
+  label: "Mail & Calendars",
+  icon: "Cable",
+  path: "/lifeops/connections",
+  order: 905,
+  viewKind: "release",
+  surface: { header: "fullscreen", capabilities: ["agent-surface"] },
+  loader: () =>
+    import("./components/lifeops-connections/LifeOpsConnectionsView.tsx").then(
+      (module) => ({ default: module.LifeOpsConnectionsView }),
+    ),
+});
 
 registerRendererService({
   id: "personal-assistant.lifeops-activity-signals",
