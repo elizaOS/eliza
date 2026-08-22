@@ -17,11 +17,11 @@ import {
   useIsPreviewMode,
 } from "../../../../state";
 import {
-  NuphyActionButton,
-  NuphySwitchRow,
+  CloudSettingsActionButton,
+  CloudSettingsSwitchRow,
   SettingsGroup,
   SettingsStack,
-} from "../nuphy-settings-primitives";
+} from "../settings-primitives";
 
 const ERROR_LOGGING_KEY = "errorLogging";
 
@@ -115,7 +115,7 @@ export function AdvancedSection() {
         title="Developer"
         footer="Toggle hidden views and diagnostic logging."
       >
-        <NuphySwitchRow
+        <CloudSettingsSwitchRow
           agentId="cloud-developer-mode"
           group="cloud-advanced"
           icon={SlidersHorizontal}
@@ -124,7 +124,7 @@ export function AdvancedSection() {
           checked={developerMode}
           onCheckedChange={(checked) => setDeveloperMode(checked)}
         />
-        <NuphySwitchRow
+        <CloudSettingsSwitchRow
           agentId="cloud-preview-mode"
           group="cloud-advanced"
           label="Preview mode"
@@ -132,7 +132,7 @@ export function AdvancedSection() {
           checked={previewMode}
           onCheckedChange={(checked) => setPreviewMode(checked)}
         />
-        <NuphySwitchRow
+        <CloudSettingsSwitchRow
           agentId="cloud-error-logging"
           group="cloud-advanced"
           label="Error logging"
@@ -146,7 +146,7 @@ export function AdvancedSection() {
         title="Reset"
         footer="Destructive actions. These cannot be undone."
       >
-        <NuphyActionButton
+        <CloudSettingsActionButton
           agentId="cloud-reset-app-state"
           group="cloud-advanced"
           agentLabel="Reset app state"
@@ -157,7 +157,7 @@ export function AdvancedSection() {
           size="sm"
           onActivate={handleResetAppState}
         />
-        <NuphyActionButton
+        <CloudSettingsActionButton
           agentId="cloud-clear-cache"
           group="cloud-advanced"
           agentLabel="Clear cache"
@@ -168,7 +168,7 @@ export function AdvancedSection() {
           size="sm"
           onActivate={() => void handleClearCache()}
         />
-        <NuphyActionButton
+        <CloudSettingsActionButton
           agentId="cloud-sign-out"
           group="cloud-advanced"
           agentLabel="Sign out of Cloud"

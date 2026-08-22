@@ -2,7 +2,7 @@
  * Cloud settings panel — the main shell for the cloud-only desktop settings.
  *
  * Replaces the legacy registry-driven SettingsView for cloud-only builds.
- * Uses an invisible top drag strip (no HTML window controls) and a NuPhy UI
+ * Uses an invisible top drag strip (no HTML window controls) and a elizaOS UI
  * sidebar + content layout. Responsive: below 700px collapses to a hub list
  * with a back button.
  */
@@ -29,7 +29,7 @@ export function CloudSettingsDragStrip() {
   return (
     <div
       aria-hidden="true"
-      className="nuphy-window-drag-strip"
+      className="cloud-settings-window-drag-strip"
       data-window-titlebar="true"
     />
   );
@@ -109,6 +109,9 @@ function HubList({
   return (
     <div className="flex h-full flex-col">
       <div className="flex-1 overflow-y-auto px-4 py-4">
+        <h1 className="mb-5 text-xl font-semibold tracking-tight text-[var(--foreground)]">
+          Settings
+        </h1>
         {Object.entries(grouped).map(([groupId, sections]) => (
           <div key={groupId} className="mb-5 last:mb-0">
             <h2 className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-[var(--muted-foreground)]">
@@ -125,14 +128,16 @@ function HubList({
                     onClick={() => onSelect(section.id)}
                     className={cn(
                       "flex w-full items-start gap-3 rounded-lg px-3 py-2.5 text-left transition-colors",
-                      active ? "bg-[var(--accent)]" : "hover:bg-[var(--fill)]",
+                      active
+                        ? "bg-[var(--accent)] text-[var(--accent-foreground)]"
+                        : "hover:bg-[var(--fill)]",
                     )}
                   >
                     <Icon
                       className={cn(
                         "mt-0.5 h-5 w-5 shrink-0",
                         active
-                          ? "text-[var(--foreground)]"
+                          ? "text-[var(--accent-foreground)]"
                           : "text-[var(--muted-foreground)]",
                       )}
                     />
@@ -141,7 +146,7 @@ function HubList({
                         className={cn(
                           "text-sm",
                           active
-                            ? "font-medium text-[var(--foreground)]"
+                            ? "font-medium text-[var(--accent-foreground)]"
                             : "text-[var(--foreground)]",
                         )}
                       >
@@ -178,7 +183,7 @@ export function CloudSettingsPanel() {
   }, []);
 
   // Track the app's theme (data-theme attribute on <html>) to toggle the
-  // .nuphy-dark class. LightningCSS transforms .dark and [data-theme="dark"]
+  // .cloud-settings-dark class. LightningCSS transforms .dark and [data-theme="dark"]
   // selectors, so we use a custom class name it won't recognize.
   useEffect(() => {
     if (typeof document === "undefined") return;
@@ -206,7 +211,9 @@ export function CloudSettingsPanel() {
   };
 
   const section = CLOUD_PANEL_SECTIONS.find((s) => s.id === sectionId);
-  const scopeClass = isDark ? "nuphy-scope nuphy-dark" : "nuphy-scope";
+  const scopeClass = isDark
+    ? "cloud-settings-scope cloud-settings-dark"
+    : "cloud-settings-scope";
 
   // Narrow layout: hub list → back-button subview.
   if (!isWide) {

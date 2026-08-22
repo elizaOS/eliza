@@ -12,12 +12,12 @@ import { invokeDesktopBridgeRequest } from "../../../../bridge";
 import { isDesktopPlatform } from "../../../../platform";
 import { useWebPush } from "../../../../state/notifications/useWebPush";
 import {
-  NuphyActionButton,
-  NuphyRow,
-  NuphySwitchRow,
+  CloudSettingsActionButton,
+  CloudSettingsRow,
+  CloudSettingsSwitchRow,
   SettingsGroup,
   SettingsStack,
-} from "../nuphy-settings-primitives";
+} from "../settings-primitives";
 
 /** Coarse push-permission copy, mirroring WebPushSettingsSection. */
 function describePushState(state: ReturnType<typeof useWebPush>["state"]): {
@@ -106,7 +106,7 @@ export function NotificationsSection() {
         title="Push Notifications"
         footer="Enable macOS push notifications for agent messages and alerts."
       >
-        <NuphySwitchRow
+        <CloudSettingsSwitchRow
           agentId="notifications-push-toggle"
           agentLabel="Toggle push notifications"
           icon={Bell}
@@ -119,14 +119,14 @@ export function NotificationsSection() {
           }
           onCheckedChange={onPushToggle}
         />
-        <NuphyRow label="Status" description={push.label} />
+        <CloudSettingsRow label="Status" description={push.label} />
       </SettingsGroup>
 
       <SettingsGroup
         title="Test"
         footer="Verify notifications are working end-to-end."
       >
-        <NuphyActionButton
+        <CloudSettingsActionButton
           agentId="notifications-send-test"
           agentLabel="Send test notification"
           label="Send test notification"

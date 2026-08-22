@@ -1,27 +1,15 @@
 /**
  * Verifies the deterministic DOM contract used to draw Cloud Settings row
- * separators without relying on NuPhy's generated Tailwind divide utilities.
+ * separators without relying on elizaOS's generated Tailwind divide utilities.
  * @vitest-environment jsdom
  */
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { type ReactNode, useState } from "react";
-import { describe, expect, it, vi } from "vitest";
-
-vi.mock("@extrastu/nuphy-ui", () => ({
-  Button: ({ children }: { children?: ReactNode }) => (
-    <button type="button">{children}</button>
-  ),
-  Input: () => <input />,
-  IosToggle: () => <button type="button">Toggle</button>,
-  Segmented: () => <div />,
-  SelectPill: () => <div />,
-  SettingRow: ({ title }: { title: string }) => <div>{title}</div>,
-  Slider: () => <input type="range" />,
-}));
+import { useState } from "react";
+import { describe, expect, it } from "vitest";
 
 import { CloudSettingsDragStrip } from "./CloudSettingsPanel";
-import { NuphyModal, SettingsGroup } from "./nuphy-settings-primitives";
+import { CloudSettingsModal, SettingsGroup } from "./settings-primitives";
 
 describe("SettingsGroup", () => {
   it("uses the scoped sibling-row separator contract", () => {
@@ -33,7 +21,7 @@ describe("SettingsGroup", () => {
     );
 
     expect(screen.getByRole("heading", { name: "Shortcuts" })).toBeTruthy();
-    const rows = container.querySelector(".nuphy-settings-group-rows");
+    const rows = container.querySelector(".cloud-settings-group-rows");
     expect(rows).toBeTruthy();
     expect(rows?.classList.contains("divide-y")).toBe(false);
     expect(rows?.children).toHaveLength(2);
@@ -46,7 +34,9 @@ describe("CloudSettingsDragStrip", () => {
 
     const strip = container.querySelector('[data-window-titlebar="true"]');
     expect(strip).toBeTruthy();
-    expect(strip?.classList.contains("nuphy-window-drag-strip")).toBe(true);
+    expect(strip?.classList.contains("cloud-settings-window-drag-strip")).toBe(
+      true,
+    );
     expect(strip?.getAttribute("aria-hidden")).toBe("true");
   });
 });
@@ -59,7 +49,7 @@ function ModalHarness() {
         Open connector
       </button>
       <button type="button">Background action</button>
-      <NuphyModal
+      <CloudSettingsModal
         open={open}
         title="Add connector"
         description="Enter connector details."
@@ -67,12 +57,12 @@ function ModalHarness() {
       >
         <input aria-label="Connector name" />
         <button type="button">Save connector</button>
-      </NuphyModal>
+      </CloudSettingsModal>
     </div>
   );
 }
 
-describe("NuphyModal", () => {
+describe("CloudSettingsModal", () => {
   it("contains focus and restores it to the opener when closed", async () => {
     const user = userEvent.setup();
     render(<ModalHarness />);

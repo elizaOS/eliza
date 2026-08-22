@@ -9,11 +9,11 @@ import { invokeDesktopBridgeRequest } from "../../../../bridge";
 import { isDesktopPlatform } from "../../../../platform";
 import { useAppSelector } from "../../../../state";
 import {
-  NuphySelectRow,
-  NuphySwitchRow,
+  CloudSettingsSelectRow,
+  CloudSettingsSwitchRow,
   SettingsGroup,
   SettingsStack,
-} from "../nuphy-settings-primitives";
+} from "../settings-primitives";
 
 const TRAY_CLICK_OPTIONS = [
   { value: "full-menu", label: "Full menu" },
@@ -134,7 +134,7 @@ export function GeneralSection() {
         title={t("settings.desktop", { defaultValue: "Desktop" })}
         footer="Control how Eliza integrates with macOS."
       >
-        <NuphySwitchRow
+        <CloudSettingsSwitchRow
           agentId="general-launch-on-login"
           group="general"
           label={t("settings.launchOnLogin", {
@@ -143,14 +143,14 @@ export function GeneralSection() {
           checked={launchOnLogin}
           onCheckedChange={setLaunchOnLogin}
         />
-        <NuphySwitchRow
+        <CloudSettingsSwitchRow
           agentId="general-show-in-dock"
           group="general"
           label={t("settings.showInDock", { defaultValue: "Show in Dock" })}
           checked={showInDock}
           onCheckedChange={setShowInDock}
         />
-        <NuphySwitchRow
+        <CloudSettingsSwitchRow
           agentId="general-record-on-tray-click"
           group="general"
           label={t("settings.recordOnTrayClick", {
@@ -160,7 +160,7 @@ export function GeneralSection() {
           onCheckedChange={setRecordOnTrayClick}
         />
         {recordOnTrayClick ? (
-          <NuphySelectRow
+          <CloudSettingsSelectRow
             agentId="general-tray-click-action"
             group="general"
             label={t("settings.trayClickAction", {

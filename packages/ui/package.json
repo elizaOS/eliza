@@ -426,7 +426,6 @@
     "@elizaos/core": "workspace:*",
     "@elizaos/logger": "workspace:*",
     "@elizaos/shared": "workspace:*",
-    "@extrastu/nuphy-ui": "^0.3.0",
     "@fontsource/poppins": "^5.2.7",
     "@json-render/core": "0.19.0",
     "@json-render/react": "0.19.0",

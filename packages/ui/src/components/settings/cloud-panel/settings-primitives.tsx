@@ -1,34 +1,81 @@
 /**
- * NuPhy UI–based settings primitives for the cloud-only settings panel.
+ * elizaOS-owned settings primitives for the cloud-only desktop panel.
  *
- * Wraps @extrastu/nuphy-ui components with agent-surface instrumentation so
- * rows remain addressable from chat/voice (useAgentElement). The API mirrors
- * the shared settings-agent-rows but renders NuPhy's macOS-inspired controls
- * (IosToggle, SelectPill, Segmented, Slider, Button) instead of the legacy
- * Switch/Select/SegmentedGroup. This is the package's only dependency boundary:
- * application behavior remains in these wrappers and all package styling is
- * confined to the `.nuphy-scope` settings root.
+ * These compositions preserve the cloud panel's compact native spacing and
+ * typography while using the canonical component layer, elizaOS tokens, and
+ * agent-surface instrumentation. Feature sections own behavior; this module
+ * owns only consistent row geometry and control presentation.
  */
-
-import {
-  IosToggle,
-  Button as NuphyButton,
-  Input as NuphyInput,
-  SettingRow as NuphySettingRow,
-  Slider as NuphySlider,
-  Segmented,
-  SelectPill,
-} from "@extrastu/nuphy-ui";
 import type { LucideIcon } from "lucide-react";
 import * as React from "react";
 import { useAgentElement } from "../../../agent-surface";
 import { cn } from "../../../lib/utils";
+import { Button } from "../../ui/button";
 import {
   Dialog,
   DialogContent,
   DialogDescription,
   DialogTitle,
 } from "../../ui/dialog";
+import { Input } from "../../ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../../ui/select";
+import { Slider } from "../../ui/slider";
+import { Switch } from "../../ui/switch";
+
+type CloudSettingsButtonProps = Omit<
+  React.ComponentProps<typeof Button>,
+  "size" | "variant"
+> & {
+  variant?: "primary" | "secondary" | "ghost" | "destructive";
+  size?: "sm" | "md" | "lg";
+};
+
+/** Canonical elizaOS button with the cloud panel's compact size vocabulary. */
+export const CloudSettingsButton = React.forwardRef<
+  HTMLButtonElement,
+  CloudSettingsButtonProps
+>(({ variant = "primary", size = "md", className, ...props }, ref) => (
+  <Button
+    ref={ref}
+    variant={variant === "primary" ? "default" : variant}
+    size={size === "md" ? "default" : size}
+    className={cn("rounded-lg", className)}
+    {...props}
+  />
+));
+CloudSettingsButton.displayName = "CloudSettingsButton";
+
+function SettingsRow({
+  title,
+  description,
+  control,
+}: {
+  title: string;
+  description?: string;
+  control?: React.ReactNode;
+}) {
+  return (
+    <div className="flex min-w-0 items-center justify-between gap-6 py-4">
+      <div className="min-w-0">
+        <p className="text-[15px] font-medium leading-6 text-foreground">
+          {title}
+        </p>
+        {description ? (
+          <p className="mt-0.5 text-pretty text-[13px] leading-5 text-muted-foreground">
+            {description}
+          </p>
+        ) : null}
+      </div>
+      {control ? <div className="shrink-0">{control}</div> : null}
+    </div>
+  );
+}
 
 interface SettingsGroupProps {
   children: React.ReactNode;
@@ -52,7 +99,7 @@ export function SettingsGroup({
         </h2>
       ) : null}
       <div className="rounded-2xl border border-hairline bg-surface px-5 py-1">
-        <div className="nuphy-settings-group-rows">{children}</div>
+        <div className="cloud-settings-group-rows">{children}</div>
       </div>
       {footer ? (
         <p className="mt-2 px-1 text-pretty text-[12px] leading-5 text-muted-foreground">
@@ -79,9 +126,9 @@ export function SettingsStack({
 export function DestructiveSecondaryButton({
   className,
   ...props
-}: React.ComponentProps<typeof NuphyButton>) {
+}: React.ComponentProps<typeof CloudSettingsButton>) {
   return (
-    <NuphyButton
+    <CloudSettingsButton
       variant="secondary"
       className={cn(
         "bg-fill text-destructive",
@@ -99,7 +146,7 @@ function labelToString(label: React.ReactNode, fallback: string): string {
 
 // ── Switch row ──────────────────────────────────────────────────────────
 
-export interface NuphySwitchRowProps {
+export interface CloudSettingsSwitchRowProps {
   agentId: string;
   label: React.ReactNode;
   agentLabel?: string;
@@ -115,7 +162,7 @@ export interface NuphySwitchRowProps {
   testId?: string;
 }
 
-export function NuphySwitchRow({
+export function CloudSettingsSwitchRow({
   agentId,
   label,
   agentLabel,
@@ -127,7 +174,7 @@ export function NuphySwitchRow({
   agentStatus,
   className,
   testId,
-}: NuphySwitchRowProps) {
+}: CloudSettingsSwitchRowProps) {
   const resolvedLabel = agentLabel ?? labelToString(label, agentId);
   const { ref, agentProps } = useAgentElement<HTMLDivElement>({
     id: agentId,
@@ -143,14 +190,14 @@ export function NuphySwitchRow({
 
   return (
     <div className={className}>
-      <NuphySettingRow
+      <SettingsRow
         title={
           typeof label === "string" ? label : labelToString(label, agentId)
         }
         description={typeof description === "string" ? description : undefined}
         control={
           <div ref={ref} {...toggleAgentProps} data-testid={testId}>
-            <IosToggle
+            <Switch
               id={agentId}
               checked={checked}
               onCheckedChange={onCheckedChange}
@@ -166,12 +213,12 @@ export function NuphySwitchRow({
 
 // ── Select row ──────────────────────────────────────────────────────────
 
-export interface NuphySelectRowOption {
+export interface CloudSettingsSelectRowOption {
   value: string;
   label: string;
 }
 
-export interface NuphySelectRowProps {
+export interface CloudSettingsSelectRowProps {
   agentId: string;
   label: React.ReactNode;
   agentLabel?: string;
@@ -180,14 +227,14 @@ export interface NuphySelectRowProps {
   iconClassName?: string;
   value: string;
   onValueChange: (value: string) => void;
-  options: NuphySelectRowOption[];
+  options: CloudSettingsSelectRowOption[];
   disabled?: boolean;
   group?: string;
   className?: string;
   testId?: string;
 }
 
-export function NuphySelectRow({
+export function CloudSettingsSelectRow({
   agentId,
   label,
   agentLabel,
@@ -199,7 +246,7 @@ export function NuphySelectRow({
   group = "settings",
   className,
   testId,
-}: NuphySelectRowProps) {
+}: CloudSettingsSelectRowProps) {
   const resolvedLabel = agentLabel ?? labelToString(label, agentId);
   const { ref, agentProps } = useAgentElement<HTMLDivElement>({
     id: agentId,
@@ -215,20 +262,32 @@ export function NuphySelectRow({
 
   return (
     <div className={className}>
-      <NuphySettingRow
+      <SettingsRow
         title={
           typeof label === "string" ? label : labelToString(label, agentId)
         }
         description={typeof description === "string" ? description : undefined}
         control={
           <div ref={ref} {...selectAgentProps} data-testid={testId}>
-            <SelectPill
-              options={options}
+            <Select
               value={value}
               onValueChange={onValueChange}
               disabled={disabled}
-              aria-label={resolvedLabel}
-            />
+            >
+              <SelectTrigger
+                className="h-9 min-w-36 rounded-lg"
+                aria-label={resolvedLabel}
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {options.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
         }
       />
@@ -238,24 +297,24 @@ export function NuphySelectRow({
 
 // ── Segmented row ───────────────────────────────────────────────────────
 
-export interface NuphySegmentedRowOption {
+export interface CloudSettingsSegmentedRowOption {
   value: string;
   label: string;
 }
 
-export interface NuphySegmentedRowProps {
+export interface CloudSettingsSegmentedRowProps {
   agentId: string;
   label: React.ReactNode;
   agentLabel?: string;
   description?: React.ReactNode;
   value: string;
   onValueChange: (value: string) => void;
-  options: NuphySegmentedRowOption[];
+  options: CloudSettingsSegmentedRowOption[];
   group?: string;
   className?: string;
 }
 
-export function NuphySegmentedRow({
+export function CloudSettingsSegmentedRow({
   agentId,
   label,
   agentLabel,
@@ -264,7 +323,7 @@ export function NuphySegmentedRow({
   onValueChange,
   options,
   group = "settings",
-}: NuphySegmentedRowProps) {
+}: CloudSettingsSegmentedRowProps) {
   const resolvedLabel = agentLabel ?? labelToString(label, agentId);
   const { ref, agentProps } = useAgentElement<HTMLDivElement>({
     id: agentId,
@@ -278,17 +337,34 @@ export function NuphySegmentedRow({
   });
 
   return (
-    <NuphySettingRow
+    <SettingsRow
       title={typeof label === "string" ? label : labelToString(label, agentId)}
       description={typeof description === "string" ? description : undefined}
       control={
         <div ref={ref} {...agentProps}>
-          <Segmented
-            options={options}
-            value={value}
-            onValueChange={onValueChange}
+          <div
+            role="tablist"
             aria-label={resolvedLabel}
-          />
+            className="inline-flex rounded-xl bg-fill p-1"
+          >
+            {options.map((option) => (
+              <button
+                key={option.value}
+                type="button"
+                role="tab"
+                aria-selected={option.value === value}
+                onClick={() => onValueChange(option.value)}
+                className={cn(
+                  "rounded-lg px-3 py-1.5 text-[14px] font-medium transition-colors",
+                  option.value === value
+                    ? "bg-surface text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground",
+                )}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
         </div>
       }
     />
@@ -297,7 +373,7 @@ export function NuphySegmentedRow({
 
 // ── Slider row ──────────────────────────────────────────────────────────
 
-export interface NuphySliderRowProps {
+export interface CloudSettingsSliderRowProps {
   agentId: string;
   label: React.ReactNode;
   agentLabel?: string;
@@ -314,7 +390,7 @@ export interface NuphySliderRowProps {
   className?: string;
 }
 
-export function NuphySliderRow({
+export function CloudSettingsSliderRow({
   agentId,
   label,
   agentLabel,
@@ -328,7 +404,7 @@ export function NuphySliderRow({
   unit,
   disabled = false,
   group = "settings",
-}: NuphySliderRowProps) {
+}: CloudSettingsSliderRowProps) {
   const resolvedLabel = agentLabel ?? labelToString(label, agentId);
   const { agentProps } = useAgentElement<HTMLDivElement>({
     id: agentId,
@@ -342,22 +418,30 @@ export function NuphySliderRow({
   });
 
   return (
-    <NuphySettingRow
+    <SettingsRow
       title={typeof label === "string" ? label : labelToString(label, agentId)}
       description={typeof description === "string" ? description : undefined}
       control={
-        <NuphySlider
-          value={value}
-          onValueChange={onValueChange}
-          min={min}
-          max={max}
-          step={step}
-          showValue={showValue}
-          unit={unit}
-          disabled={disabled}
-          label={resolvedLabel}
-          {...agentProps}
-        />
+        <div className="flex min-w-48 items-center gap-3">
+          <Slider
+            value={[value]}
+            onValueChange={([next]) => {
+              if (next !== undefined) onValueChange(next);
+            }}
+            min={min}
+            max={max}
+            step={step}
+            disabled={disabled}
+            aria-label={resolvedLabel}
+            {...agentProps}
+          />
+          {showValue ? (
+            <output className="min-w-12 text-end text-[13px] tabular-nums text-muted-foreground">
+              {value}
+              {unit ?? ""}
+            </output>
+          ) : null}
+        </div>
       }
     />
   );
@@ -365,7 +449,7 @@ export function NuphySliderRow({
 
 // ── Input row ───────────────────────────────────────────────────────────
 
-export interface NuphyInputRowProps {
+export interface CloudSettingsInputRowProps {
   agentId: string;
   label: React.ReactNode;
   agentLabel?: string;
@@ -379,7 +463,7 @@ export interface NuphyInputRowProps {
   className?: string;
 }
 
-export function NuphyInputRow({
+export function CloudSettingsInputRow({
   agentId,
   label,
   agentLabel,
@@ -390,7 +474,7 @@ export function NuphyInputRow({
   disabled = false,
   type = "text",
   group = "settings",
-}: NuphyInputRowProps) {
+}: CloudSettingsInputRowProps) {
   const resolvedLabel = agentLabel ?? labelToString(label, agentId);
   const { ref, agentProps } = useAgentElement<HTMLInputElement>({
     id: agentId,
@@ -405,11 +489,11 @@ export function NuphyInputRow({
   const { "aria-label": _ignored, ...inputAgentProps } = agentProps;
 
   return (
-    <NuphySettingRow
+    <SettingsRow
       title={typeof label === "string" ? label : labelToString(label, agentId)}
       description={typeof description === "string" ? description : undefined}
       control={
-        <NuphyInput
+        <Input
           ref={ref as React.Ref<HTMLInputElement>}
           id={agentId}
           type={type}
@@ -417,6 +501,7 @@ export function NuphyInputRow({
           onChange={(e) => onValueChange(e.target.value)}
           placeholder={placeholder}
           disabled={disabled}
+          aria-label={resolvedLabel}
           {...(inputAgentProps as Record<string, unknown>)}
         />
       }
@@ -426,7 +511,7 @@ export function NuphyInputRow({
 
 // ── Action button row ───────────────────────────────────────────────────
 
-export interface NuphyActionButtonProps {
+export interface CloudSettingsActionButtonProps {
   agentId: string;
   label: React.ReactNode;
   agentLabel?: string;
@@ -440,7 +525,7 @@ export interface NuphyActionButtonProps {
   className?: string;
 }
 
-export function NuphyActionButton({
+export function CloudSettingsActionButton({
   agentId,
   label,
   agentLabel,
@@ -451,7 +536,7 @@ export function NuphyActionButton({
   variant = "secondary",
   size = "sm",
   group = "settings",
-}: NuphyActionButtonProps) {
+}: CloudSettingsActionButtonProps) {
   const resolvedLabel = agentLabel ?? labelToString(label, agentId);
   const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
     id: agentId,
@@ -465,11 +550,11 @@ export function NuphyActionButton({
   const { "aria-label": _ignored, ...btnAgentProps } = agentProps;
 
   return (
-    <NuphySettingRow
+    <SettingsRow
       title={typeof label === "string" ? label : labelToString(label, agentId)}
       description={typeof description === "string" ? description : undefined}
       control={
-        <NuphyButton
+        <CloudSettingsButton
           ref={ref}
           variant={variant}
           size={size}
@@ -478,7 +563,7 @@ export function NuphyActionButton({
           {...(btnAgentProps as Record<string, unknown>)}
         >
           {buttonLabel}
-        </NuphyButton>
+        </CloudSettingsButton>
       }
     />
   );
@@ -486,7 +571,7 @@ export function NuphyActionButton({
 
 // ── Plain row (for custom content / non-standard controls) ──────────────
 
-export interface NuphyRowProps {
+export interface CloudSettingsRowProps {
   label: React.ReactNode;
   description?: React.ReactNode;
   control?: React.ReactNode;
@@ -496,7 +581,7 @@ export interface NuphyRowProps {
   "data-testid"?: string;
 }
 
-export function NuphyRow({
+export function CloudSettingsRow({
   label,
   description,
   control,
@@ -504,15 +589,15 @@ export function NuphyRow({
   below,
   className,
   ...rest
-}: NuphyRowProps) {
+}: CloudSettingsRowProps) {
   const effectiveControl = children ?? control ?? null;
   const labelIsString = typeof label === "string";
   const descIsString = typeof description === "string";
 
-  // Fast path: plain string label/description → delegate to NuPhy SettingRow.
+  // Fast path: plain string label/description → delegate to elizaOS SettingRow.
   if (labelIsString && descIsString && !below && !className) {
     return (
-      <NuphySettingRow
+      <SettingsRow
         title={label}
         description={description}
         control={effectiveControl}
@@ -546,7 +631,7 @@ export function NuphyRow({
 
 // ── Modal / dialog primitives ───────────────────────────────────────────
 
-export interface NuphyModalProps {
+export interface CloudSettingsModalProps {
   open: boolean;
   title: string;
   description?: string;
@@ -557,8 +642,8 @@ export interface NuphyModalProps {
   maxWidth?: string;
 }
 
-/** A NuPhy-styled composition of the shared modal dialog primitive. */
-export function NuphyModal({
+/** A elizaOS-styled composition of the shared modal dialog primitive. */
+export function CloudSettingsModal({
   open,
   title,
   description,
@@ -566,7 +651,7 @@ export function NuphyModal({
   children,
   footer,
   maxWidth = "max-w-md",
-}: NuphyModalProps) {
+}: CloudSettingsModalProps) {
   const returnFocusRef = React.useRef<HTMLElement | null>(null);
   const wasOpenRef = React.useRef(false);
   if (
@@ -643,7 +728,7 @@ export function NuphyModal({
   );
 }
 
-export interface NuphyConfirmDialogProps {
+export interface CloudSettingsConfirmDialogProps {
   open: boolean;
   title: string;
   description: string;
@@ -657,7 +742,7 @@ export interface NuphyConfirmDialogProps {
 /**
  * A simple confirmation dialog for destructive actions (disconnect, remove).
  */
-export function NuphyConfirmDialog({
+export function CloudSettingsConfirmDialog({
   open,
   title,
   description,
@@ -666,19 +751,19 @@ export function NuphyConfirmDialog({
   destructive = false,
   onConfirm,
   onClose,
-}: NuphyConfirmDialogProps) {
+}: CloudSettingsConfirmDialogProps) {
   return (
-    <NuphyModal
+    <CloudSettingsModal
       open={open}
       title={title}
       onClose={onClose}
       maxWidth="max-w-sm"
       footer={
         <div className="flex justify-end gap-2">
-          <NuphyButton variant="ghost" size="sm" onClick={onClose}>
+          <CloudSettingsButton variant="ghost" size="sm" onClick={onClose}>
             {cancelLabel}
-          </NuphyButton>
-          <NuphyButton
+          </CloudSettingsButton>
+          <CloudSettingsButton
             variant={destructive ? "destructive" : "primary"}
             size="sm"
             onClick={() => {
@@ -687,19 +772,19 @@ export function NuphyConfirmDialog({
             }}
           >
             {confirmLabel}
-          </NuphyButton>
+          </CloudSettingsButton>
         </div>
       }
     >
       <p className="text-[14px] leading-5 text-muted-foreground">
         {description}
       </p>
-    </NuphyModal>
+    </CloudSettingsModal>
   );
 }
 
 /** A labeled form field wrapper for use inside modals. */
-export function NuphyFormField({
+export function CloudSettingsFormField({
   label,
   description,
   children,
@@ -728,8 +813,8 @@ export function NuphyFormField({
   );
 }
 
-/** A text input styled to match the NuPhy settings panel. */
-export function NuphyTextInput({
+/** A text input styled to match the elizaOS settings panel. */
+export function CloudSettingsTextInput({
   id,
   type = "text",
   value,
