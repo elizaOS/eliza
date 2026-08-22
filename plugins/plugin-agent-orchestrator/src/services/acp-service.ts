@@ -3735,10 +3735,10 @@ export class AcpService extends Service {
     const normalized = normalizeTaskAgentAdapter(agentType) ?? agentType;
     switch (normalized) {
       case "pi-agent":
-        return { args: ["pi"] };
+        return { args: ["pi"], command: "pi" };
       case "claude":
       case "codex":
-        return { args: [normalized] };
+        return { args: [normalized], command: normalized };
       case "elizaos":
       case "opencode": {
         const command = this.nativeAgentCommand(normalized);

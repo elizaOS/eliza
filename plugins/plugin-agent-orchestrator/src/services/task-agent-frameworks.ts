@@ -775,9 +775,12 @@ async function computeTaskAgentFrameworkState(
           : id === "codex"
             ? codexSubscriptionReady
             : false;
+      const preflightAuth = getPreflightAuthStatus(preflight);
       const credentialsReady =
         id === "elizaos" || id === "pi-agent"
-          ? installed
+          ? preflight
+            ? preflightAuth === "authenticated"
+            : installed
           : id === "claude"
             ? claudeAuthReady
             : id === "codex"

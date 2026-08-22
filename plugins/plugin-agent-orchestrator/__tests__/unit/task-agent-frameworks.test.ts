@@ -318,6 +318,23 @@ describe("getTaskAgentFrameworkState", () => {
     expect(codex?.authReady).toBe(false);
   });
 
+  it.each(["elizaos", "pi-agent"] as const)(
+    "keeps %s auth unknown from becoming ready",
+    async (agentType) => {
+      const probe: TaskAgentFrameworkProbe = {
+        checkAvailableAgents: vi.fn(async () => [
+          { adapter: agentType, installed: true, auth: { status: "unknown" } },
+        ]),
+      };
+
+      const state = await getTaskAgentFrameworkState(runtime(), probe);
+      const framework = state.frameworks.find((item) => item.id === agentType);
+
+      expect(framework?.installed).toBe(true);
+      expect(framework?.authReady).toBe(false);
+    },
+  );
+
   it("rejects a configured Codex ACP command when the file is not executable", async () => {
     const commandPath = path.join(tempHome, "codex-acp");
     fs.writeFileSync(commandPath, "#!/bin/sh\nexit 0\n");

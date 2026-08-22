@@ -72,6 +72,7 @@ import type { RouteRequestContext } from "@elizaos/shared";
 import {
   CODING_PROVIDER_DESCRIPTORS,
   codingAgentSpawnCapabilityForProvider,
+  codingProviderCredentialPathForProvider,
   codingProviderDescriptorForProvider,
   isLinkedAccountProviderId,
   type LinkedAccountConfig,
@@ -377,12 +378,14 @@ function runtimeEligibilityForProvider(
       },
     );
   }
-  const credentialPath =
-    descriptor.authMode === "external-cli"
-      ? "external-cli"
-      : descriptor.accountKind === "api-key"
-        ? "direct-api"
-        : "account-pool";
+  const credentialPath = codingProviderCredentialPathForProvider(providerId);
+  if (!credentialPath) {
+    throw new ElizaError("Linked account provider has no credential path", {
+      code: "ACCOUNT_PROVIDER_CREDENTIAL_PATH_MISSING",
+      context: { providerId },
+      severity: "fatal",
+    });
+  }
   const chatDefaultModel =
     providerId === "anthropic-subscription" || providerId === "anthropic-api"
       ? "claude-fable-5"

@@ -407,72 +407,80 @@ describe("AcpService", () => {
   });
 
   it("resolves verified acpx profiles and preflights raw command adapters", async () => {
+    const prerequisiteDirectory = mkdtempSync(
+      join(tmpdir(), "eliza-acpx-profiles-"),
+    );
+    const previousEnv = snapshotEnv(["PATH"]);
     const configuredCommands = Object.fromEntries(
       CODING_AGENT_BACKENDS.map((backend) => [
         CODING_AGENT_BACKEND_PREFLIGHTS[backend].commandConfigKey,
         process.execPath,
       ]),
     );
-    const available = new AcpService(
-      runtime({
-        ELIZA_ACP_TRANSPORT: "cli",
-        ELIZA_ACP_CLI: process.execPath,
-        ...configuredCommands,
-      }),
-    );
-    expect(
-      (await available.checkAvailableAgents()).every(
-        (entry) => entry.installed,
-      ),
-    ).toBe(true);
+    try {
+      for (const command of ["pi", "claude", "codex"]) {
+        const executable = join(prerequisiteDirectory, command);
+        await fs.writeFile(executable, "#!/bin/sh\nexit 0\n");
+        await fs.chmod(executable, 0o755);
+      }
+      process.env.PATH = [prerequisiteDirectory, previousEnv.PATH]
+        .filter(Boolean)
+        .join(path.delimiter);
+      const available = new AcpService(
+        runtime({
+          ELIZA_ACP_TRANSPORT: "cli",
+          ELIZA_ACP_CLI: process.execPath,
+          ...configuredCommands,
+        }),
+      );
+      expect(
+        (await available.checkAvailableAgents()).every(
+          (entry) => entry.installed,
+        ),
+      ).toBe(true);
 
-    const service = new AcpService(
-      runtime({
-        ELIZA_ACP_TRANSPORT: "cli",
-        ELIZA_ACP_CLI: process.execPath,
-        ...configuredCommands,
-        ELIZA_ELIZAOS_ACP_COMMAND: "/missing/elizaos",
-        ELIZA_OPENCODE_ACP_COMMAND: "/missing/opencode",
-        ELIZA_PI_AGENT_ACP_COMMAND: "/missing/ignored-pi-native-command",
-        ELIZA_CLAUDE_ACP_COMMAND: "/missing/ignored-claude-native-command",
-        ELIZA_CODEX_ACP_COMMAND: "/missing/ignored-codex-native-command",
-      }),
-    );
-    const byAgent = new Map(
-      (await service.checkAvailableAgents()).map((entry) => [
-        entry.agentType,
-        entry,
-      ]),
-    );
+      process.env.PATH = "/missing/profile-prerequisites";
+      const service = new AcpService(
+        runtime({
+          ELIZA_ACP_TRANSPORT: "cli",
+          ELIZA_ACP_CLI: process.execPath,
+          ...configuredCommands,
+          ELIZA_ELIZAOS_ACP_COMMAND: "/missing/elizaos",
+          ELIZA_OPENCODE_ACP_COMMAND: "/missing/opencode",
+        }),
+      );
+      const byAgent = new Map(
+        (await service.checkAvailableAgents()).map((entry) => [
+          entry.agentType,
+          entry,
+        ]),
+      );
 
-    expect(byAgent.get("pi-agent")?.installed).toBe(true);
-    expect(byAgent.get("claude")?.installed).toBe(true);
-    expect(byAgent.get("codex")?.installed).toBe(true);
-    expect(byAgent.get("elizaos")?.installed).toBe(false);
-    expect(byAgent.get("opencode")?.installed).toBe(false);
-    expect(byAgent.get("elizaos")?.unavailableReason).toContain(
-      "/missing/elizaos",
-    );
-    expect(byAgent.get("opencode")?.unavailableReason).toContain(
-      "/missing/opencode",
-    );
+      for (const backend of CODING_AGENT_BACKENDS) {
+        expect(byAgent.get(backend)?.installed).toBe(false);
+        expect(byAgent.get(backend)?.unavailableReason).toBeTruthy();
+      }
 
-    const resolveArgs = service as unknown as {
-      agentCommandArgs(agentType: AgentType, args: string[]): string[];
-    };
-    expect(resolveArgs.agentCommandArgs("pi-agent", ["--cwd", "/tmp"])).toEqual(
-      ["pi", "--cwd", "/tmp"],
-    );
-    expect(resolveArgs.agentCommandArgs("claude", [])).toEqual(["claude"]);
-    expect(resolveArgs.agentCommandArgs("codex", [])).toEqual(["codex"]);
-    expect(resolveArgs.agentCommandArgs("elizaos", [])).toEqual([
-      "--agent",
-      "/missing/elizaos",
-    ]);
-    expect(resolveArgs.agentCommandArgs("opencode", [])).toEqual([
-      "--agent",
-      "/missing/opencode",
-    ]);
+      const resolveArgs = service as unknown as {
+        agentCommandArgs(agentType: AgentType, args: string[]): string[];
+      };
+      expect(
+        resolveArgs.agentCommandArgs("pi-agent", ["--cwd", "/tmp"]),
+      ).toEqual(["pi", "--cwd", "/tmp"]);
+      expect(resolveArgs.agentCommandArgs("claude", [])).toEqual(["claude"]);
+      expect(resolveArgs.agentCommandArgs("codex", [])).toEqual(["codex"]);
+      expect(resolveArgs.agentCommandArgs("elizaos", [])).toEqual([
+        "--agent",
+        "/missing/elizaos",
+      ]);
+      expect(resolveArgs.agentCommandArgs("opencode", [])).toEqual([
+        "--agent",
+        "/missing/opencode",
+      ]);
+    } finally {
+      restoreEnv(previousEnv);
+      rmSync(prerequisiteDirectory, { recursive: true, force: true });
+    }
   });
 
   it("honors Windows PATHEXT when preflighting canonical backend commands", async () => {

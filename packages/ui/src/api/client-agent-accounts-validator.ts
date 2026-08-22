@@ -15,6 +15,8 @@ import {
 import {
   CODING_AGENT_BACKENDS,
   codingAgentSpawnCapabilityForProvider,
+  codingProviderCredentialPathForProvider,
+  codingProviderDescriptorForProvider,
   type LinkedAccountProviderId,
 } from "@elizaos/shared";
 import type { AccountsListResponse } from "./client-agent";
@@ -154,6 +156,27 @@ function assertRuntimeEligibility(
   assertRuntimeCapability(value.codingAgent, `${path}.codingAgent`);
 
   const codingAgent = value.codingAgent as Record<string, unknown>;
+  const chat = value.chat as Record<string, unknown>;
+  const descriptor = codingProviderDescriptorForProvider(providerId);
+  const credentialPath = codingProviderCredentialPathForProvider(providerId);
+  if (!descriptor || !credentialPath) {
+    invalid(path, `a canonical runtime contract for provider "${providerId}"`);
+  }
+  const expectedChatCredentialPath = descriptor.inferenceSupport
+    ? credentialPath
+    : "none";
+  if (chat.available !== descriptor.inferenceSupport) {
+    invalid(
+      `${path}.chat.available`,
+      `the canonical inference availability for provider "${providerId}"`,
+    );
+  }
+  if (chat.credentialPath !== expectedChatCredentialPath) {
+    invalid(
+      `${path}.chat.credentialPath`,
+      `the canonical credential path "${expectedChatCredentialPath}"`,
+    );
+  }
   const canonical = codingAgentSpawnCapabilityForProvider(providerId);
   if (codingAgent.available !== canonical.available) {
     invalid(
@@ -165,6 +188,21 @@ function assertRuntimeEligibility(
     invalid(
       `${path}.codingAgent.backend`,
       `the canonical backend "${canonical.backend}"`,
+    );
+  }
+  if (!canonical.available && codingAgent.backend !== undefined) {
+    invalid(
+      `${path}.codingAgent.backend`,
+      "no backend for an unavailable provider",
+    );
+  }
+  const expectedCodingCredentialPath = canonical.available
+    ? credentialPath
+    : "none";
+  if (codingAgent.credentialPath !== expectedCodingCredentialPath) {
+    invalid(
+      `${path}.codingAgent.credentialPath`,
+      `the canonical credential path "${expectedCodingCredentialPath}"`,
     );
   }
 }

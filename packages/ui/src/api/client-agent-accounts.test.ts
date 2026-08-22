@@ -27,8 +27,12 @@ describe("ElizaClient account replacement transport", () => {
           providerId: "openai-api",
           strategy: "priority",
           runtimeEligibility: {
-            chat: { available: true },
-            codingAgent: { available: true, backend: "codex" },
+            chat: { available: true, credentialPath: "direct-api" },
+            codingAgent: {
+              available: true,
+              backend: "codex",
+              credentialPath: "direct-api",
+            },
           },
           accounts: [
             {
@@ -58,8 +62,12 @@ describe("ElizaClient account replacement transport", () => {
           providerId: "deepseek-api",
           strategy: "priority",
           runtimeEligibility: {
-            chat: { available: true },
-            codingAgent: { available: true, backend: "opencode" },
+            chat: { available: true, credentialPath: "direct-api" },
+            codingAgent: {
+              available: true,
+              backend: "opencode",
+              credentialPath: "direct-api",
+            },
           },
           accounts: [],
         },
@@ -73,6 +81,64 @@ describe("ElizaClient account replacement transport", () => {
       },
     });
   });
+
+  it.each([
+    [
+      "chat availability",
+      {
+        chat: { available: false, credentialPath: "none" },
+        codingAgent: {
+          available: true,
+          backend: "codex",
+          credentialPath: "direct-api",
+        },
+      },
+      "response.providers[0].runtimeEligibility.chat.available",
+    ],
+    [
+      "chat credential path",
+      {
+        chat: { available: true, credentialPath: "account-pool" },
+        codingAgent: {
+          available: true,
+          backend: "codex",
+          credentialPath: "direct-api",
+        },
+      },
+      "response.providers[0].runtimeEligibility.chat.credentialPath",
+    ],
+    [
+      "coding credential path",
+      {
+        chat: { available: true, credentialPath: "direct-api" },
+        codingAgent: {
+          available: true,
+          backend: "codex",
+          credentialPath: "account-pool",
+        },
+      },
+      "response.providers[0].runtimeEligibility.codingAgent.credentialPath",
+    ],
+  ])(
+    "rejects contradictory descriptor-derived %s",
+    async (_label, eligibility, path) => {
+      const body = {
+        providers: [
+          {
+            providerId: "openai-api",
+            strategy: "priority",
+            runtimeEligibility: eligibility,
+            accounts: [],
+          },
+        ],
+      };
+
+      await expect(accountsClient(body).listAccounts()).rejects.toMatchObject({
+        code: ACCOUNTS_RESPONSE_INVALID_CODE,
+        context: { path },
+      });
+    },
+  );
 
   it.each([
     [

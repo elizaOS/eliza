@@ -385,6 +385,21 @@ export interface ProviderRuntimeCapability {
   unavailableReason?: string;
 }
 
+export type ProviderCredentialPath = Exclude<
+  NonNullable<ProviderRuntimeCapability["credentialPath"]>,
+  "none"
+>;
+
+/** Resolve where runtime consumers may obtain a linked provider credential. */
+export function codingProviderCredentialPathForProvider(
+  providerId: string,
+): ProviderCredentialPath | undefined {
+  const descriptor = codingProviderDescriptorForProvider(providerId);
+  if (!descriptor) return undefined;
+  if (descriptor.authMode === "external-cli") return "external-cli";
+  return descriptor.accountKind === "api-key" ? "direct-api" : "account-pool";
+}
+
 export interface ProviderRuntimeEligibility {
   chat: ProviderRuntimeCapability;
   codingAgent: ProviderRuntimeCapability;
