@@ -25,7 +25,19 @@ export interface AcpToolCallUpdate {
 }
 
 /** FILE operations that only observe the workspace — never ledger material. */
-const FILE_READ_OPERATIONS = new Set(["read", "ls", "list", "stat", "search"]);
+const FILE_MUTATION_OPERATIONS = new Set([
+  "write",
+  "edit",
+  "create",
+  "delete",
+  "rm",
+  "move",
+  "mv",
+  "copy",
+  "cp",
+  "mkdir",
+  "touch",
+]);
 
 function record(value: unknown): Record<string, unknown> | undefined {
   return value && typeof value === "object" && !Array.isArray(value)
@@ -74,7 +86,7 @@ export function toolCallUpdateFromAction(
   if (name === "FILE") {
     const path = str(data?.path);
     const operation = str(data?.operation)?.toLowerCase();
-    if (!path || (operation && FILE_READ_OPERATIONS.has(operation))) {
+    if (!path || !operation || !FILE_MUTATION_OPERATIONS.has(operation)) {
       return undefined;
     }
     const kind =

@@ -31,6 +31,7 @@
 // per-session Git wrapper.
 // biome-ignore assist/source/organizeImports: dependency evaluation order is the credential boundary.
 import { consumeWarmClaimToken } from "./acp-bootstrap.js";
+import { AsyncLocalStorage } from "node:async_hooks";
 import { randomUUID } from "node:crypto";
 import { AgentSideConnection, ndJsonStream } from "@agentclientprotocol/sdk";
 import {
@@ -76,10 +77,12 @@ let identity: SessionIdentity | null = null;
 // The prompt whose turn is running. Every ACP session shares one inner room,
 // so completed actions are attributed by the prompt window, not the room —
 // the orchestrator drives one prompt per process at a time (busy-claim).
-let activePrompt: {
+interface ActivePrompt {
   sessionId: string;
   publish: (update: AcpToolCallUpdate) => Promise<unknown>;
-} | null = null;
+}
+const activePrompt = new AsyncLocalStorage<ActivePrompt>();
+const activePromptControllers = new Map<string, AbortController>();
 const warmSessionClaim = new AcpWarmSessionClaim(consumeWarmClaimToken());
 
 async function ensureRuntime(cwd?: string): Promise<AgentRuntime> {
@@ -153,7 +156,7 @@ async function ensureRuntime(cwd?: string): Promise<AgentRuntime> {
       runtime.registerEvent(
         EventType.ACTION_COMPLETED,
         async (payload: ActionEventPayload) => {
-          const target = activePrompt;
+          const target = activePrompt.getStore();
           if (!target) return;
           const update = toolCallUpdateFromAction(
             target.sessionId,
@@ -374,30 +377,38 @@ const _connection = new AgentSideConnection(
       // is how a Discord user ends up seeing ```json {"response":...} instead
       // of the answer. The parsed user-facing reply only exists once the turn
       // completes, so emit exactly one authoritative chunk with it.
-      activePrompt = {
+      const promptContext = {
         sessionId: params.sessionId,
         publish: (update) => conn.sessionUpdate(update),
       };
+      const abortController = new AbortController();
+      activePromptControllers.set(params.sessionId, abortController);
       let response: string;
       try {
-        response = await getAgentClient().sendMessage({
-          room,
-          text,
-          identity,
-          source: "acp",
-        });
+        response = await activePrompt.run(promptContext, () =>
+          getAgentClient().sendMessage({
+            room,
+            text,
+            identity,
+            source: "acp",
+            abortSignal: abortController.signal,
+          }),
+        );
       } finally {
-        activePrompt = null;
+        if (activePromptControllers.get(params.sessionId) === abortController) {
+          activePromptControllers.delete(params.sessionId);
+        }
       }
+      if (abortController.signal.aborted) return { stopReason: "cancelled" };
       await publishParsedReply(params.sessionId, response, (update) =>
         conn.sessionUpdate(update),
       );
       log("prompt done", { response: response.length });
       return { stopReason: "end_turn" };
     },
-    async cancel() {
-      // Best-effort: the runtime turn isn't externally cancellable here; the next
-      // prompt simply starts a new turn. (Hook into runtime abort when available.)
+    async cancel(params: { sessionId?: string }) {
+      const sessionId = params?.sessionId;
+      if (sessionId) activePromptControllers.get(sessionId)?.abort();
     },
     // The elizaOS orchestrator's native ACP transport sends `session/close` on
     // teardown. It IS a standard ACP method (schema.AGENT_METHODS.session_close),

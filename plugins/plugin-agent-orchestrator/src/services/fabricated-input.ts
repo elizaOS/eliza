@@ -5,7 +5,8 @@
  * own `nubs-secret-config.yaml` with `version: 1.2.3`, pointed the script at
  * it, and the judge passed "1.2.3" to the user (live 2026-08-22). The task's
  * read targets are compared against the session's write ledger and shell
- * redirections by file stem; a hit is a fabricated input, never a pass.
+ * redirections by normalized path. Filename similarity is not evidence: two
+ * different directories commonly contain the same configuration filename.
  */
 
 const READ_TARGET_RE =
@@ -21,9 +22,8 @@ export interface FabricatedInput {
   wrote: string;
 }
 
-function stem(path: string): string {
-  const base = path.replace(/\\/g, "/").split("/").pop() ?? path;
-  return base.replace(/\.[^.]+$/, "").toLowerCase();
+function normalizedPath(path: string): string {
+  return path.replace(/\\/g, "/").replace(/\/+/g, "/").toLowerCase();
 }
 
 /** File-like tokens the task text asks the worker to READ. */
@@ -60,9 +60,11 @@ export function detectFabricatedInput(
     ...shellCommands.flatMap((command) => shellWriteTargets(command)),
   ];
   for (const target of targets) {
-    const targetStem = stem(target);
-    if (!targetStem) continue;
-    const wrote = writes.find((path) => stem(path) === targetStem);
+    const normalizedTarget = normalizedPath(target);
+    if (!normalizedTarget) continue;
+    const wrote = writes.find(
+      (path) => normalizedPath(path) === normalizedTarget,
+    );
     if (wrote) return { target, wrote };
   }
   return undefined;

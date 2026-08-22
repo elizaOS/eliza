@@ -4365,6 +4365,13 @@ async function runCancel(
   }
 
   try {
+    const taskService = runtime.getService?.(
+      OrchestratorTaskService.serviceType,
+    ) as OrchestratorTaskService | null | undefined;
+    const interruptForSession = async (selectedSessionId: string) => {
+      const task = await taskService?.getTaskForSession(selectedSessionId);
+      if (task) await taskService?.interruptTask(task.id, "user_cancel");
+    };
     const all = pickBoolean(params, content, "all") ?? false;
     const threadId = pickString(params, content, "threadId");
     const sessionId =
@@ -4377,6 +4384,7 @@ async function runCancel(
     if (all) {
       const stoppedSessions: string[] = [];
       for (const session of sessions) {
+        await interruptForSession(session.id);
         // Mark BEFORE cancelling so the terminal relay suppresses its own
         // stop notice — the cancel confirmation below is the single notice.
         await markSessionAdministrativelyStopped(
@@ -4422,15 +4430,13 @@ async function runCancel(
     if (!target && !sessionId && _message.roomId) {
       // No session yet, but the room's build may still be spawning: the
       // durable task exists and is what the user wants stopped.
-      const taskService = runtime.getService?.(
-        OrchestratorTaskService.serviceType,
-      ) as OrchestratorTaskService | null | undefined;
       const titles =
         typeof taskService?.interruptInFlightTasksForRoom === "function"
           ? await taskService
               .interruptInFlightTasksForRoom(
                 String(_message.roomId),
                 "user_cancel",
+                String(_message.entityId),
               )
               .catch(() => [] as string[])
           : [];
@@ -4469,6 +4475,7 @@ async function runCancel(
     }
 
     // Mark BEFORE cancelling (see the all-sessions branch above).
+    await interruptForSession(target.id);
     await markSessionAdministrativelyStopped(service, target.id, "user_cancel");
     await (service.cancelSession?.(target.id) ??
       service.stopSession(target.id));

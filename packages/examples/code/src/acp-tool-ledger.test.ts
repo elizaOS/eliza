@@ -92,6 +92,18 @@ describe("ACP tool ledger bridge", () => {
         "c",
       ),
     ).toBeUndefined();
+    for (const operation of ["grep", "glob", "search", "stat", "ls"]) {
+      expect(
+        toolCallUpdateFromAction(
+          "s1",
+          completed("FILE", "observed", {
+            operation,
+            path: "/ws/pick.py",
+          }),
+          `read-${operation}`,
+        ),
+      ).toBeUndefined();
+    }
     expect(
       toolCallUpdateFromAction(
         "s1",

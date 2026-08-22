@@ -19,26 +19,25 @@ describe("fabricated input detection", () => {
     ).toEqual([]);
   });
 
-  it("flags a ledger write of the read target by stem, with or without extension", () => {
+  it("requires an exact normalized path, not a matching filename stem", () => {
     expect(
       detectFabricatedInput(
         TASK,
         ["/ws/read_version.py", "/ws/nubs-secret-config.yaml"],
         [],
       ),
-    ).toEqual({
-      target: "/etc/nubs-secret-config.yaml",
-      wrote: "/ws/nubs-secret-config.yaml",
-    });
+    ).toBeUndefined();
     expect(
       detectFabricatedInput(
         TASK,
         ["/ws/read_version.py"],
-        ["python3 -c \"print('version: 1.2.3')\" > /ws/nubs-secret-config"],
+        [
+          "python3 -c \"print('version: 1.2.3')\" > /etc/nubs-secret-config.yaml",
+        ],
       ),
     ).toEqual({
       target: "/etc/nubs-secret-config.yaml",
-      wrote: "/ws/nubs-secret-config",
+      wrote: "/etc/nubs-secret-config.yaml",
     });
   });
 

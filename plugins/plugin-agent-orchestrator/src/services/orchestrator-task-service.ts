@@ -6768,6 +6768,7 @@ export class OrchestratorTaskService extends Service {
   async interruptInFlightTasksForRoom(
     roomId: string,
     reason: string,
+    ownerUserId?: string,
   ): Promise<string[]> {
     const titles: string[] = [];
     const records = await this.store.listTasks({ includeArchived: false });
@@ -6778,6 +6779,7 @@ export class OrchestratorTaskService extends Service {
       if (doc.task.roomId !== roomId && doc.task.taskRoomId !== roomId) {
         continue;
       }
+      if (ownerUserId && doc.task.ownerUserId !== ownerUserId) continue;
       if (await this.interruptTask(record.id, reason)) {
         titles.push(doc.task.title);
       }

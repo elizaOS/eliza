@@ -37,14 +37,14 @@ function Harness({
 }
 
 describe("CockpitModePicker", () => {
-  it("renders the four TOS-clean modes and hides experimental by default", () => {
+  it("renders the three supported TOS-clean modes and hides experimental by default", () => {
     render(
       <Harness
         initial={{ mode: "eliza-cloud", agentType: "elizaos", tier: "small" }}
       />,
     );
     expect(screen.getByTestId("cockpit-mode-eliza-cloud")).toBeTruthy();
-    expect(screen.getByTestId("cockpit-mode-opencode")).toBeTruthy();
+    expect(screen.queryByTestId("cockpit-mode-opencode")).toBeNull();
     expect(screen.getByTestId("cockpit-mode-claude")).toBeTruthy();
     expect(screen.getByTestId("cockpit-mode-codex")).toBeTruthy();
     expect(screen.queryByTestId("cockpit-mode-claude-experimental")).toBeNull();
@@ -121,7 +121,7 @@ describe("CockpitModePicker", () => {
     const onChange = vi.fn();
     render(
       <CockpitModePicker
-        value={{ mode: "opencode", agentType: "opencode" }}
+        value={{ mode: "subscription", agentType: "codex" }}
         onChange={onChange}
         disabled
       />,
