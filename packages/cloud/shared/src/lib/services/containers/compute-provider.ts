@@ -197,7 +197,7 @@ export interface ComputeProvider {
   deleteVolume(id: number): Promise<void>;
 
   // -- The load-bearing async primitive ------------------------------------
-  /** Returns a terminal action; strict providers reject terminal provider failures. */
+  /** Returns terminal success and rejects terminal provider failures. */
   waitForAction(actionId: number, timeoutMs?: number): Promise<ComputeAction>;
 
   // -- Catalog (read-only) -------------------------------------------------

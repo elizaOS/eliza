@@ -30,6 +30,7 @@ const OFFICIAL_HCLOUD_API_BASE = "https://api.hetzner.cloud/v1";
 const REQUEST_TIMEOUT_MS = 30_000;
 const LIFECYCLE_TIMEOUT_MS = 60_000;
 const ACTION_POLL_INTERVAL_MS = 1_500;
+const RESOURCE_READBACK_POLL_INTERVAL_MS = 250;
 const MAX_REQUEST_TIMEOUT_MS = 2_147_483_647;
 const NO_CONTENT = Symbol("hetzner-no-content");
 
@@ -57,6 +58,33 @@ export class HetznerCloudError extends Error {
   ) {
     super(message);
     this.name = "HetznerCloudError";
+  }
+}
+
+export class HetznerAcceptedResourceError extends HetznerCloudError {
+  readonly compensation: "succeeded" | "failed";
+
+  constructor(
+    public readonly resourceType: "server" | "volume",
+    public readonly resourceId: number,
+    public readonly primaryError: unknown,
+    public readonly compensationError?: unknown,
+  ) {
+    const compensation = compensationError ? "failed" : "succeeded";
+    const cause = compensationError
+      ? new AggregateError(
+          [primaryError, compensationError],
+          `Hetzner ${resourceType} ${resourceId} create and compensation both failed`,
+        )
+      : primaryError;
+    super(
+      primaryError instanceof HetznerCloudError ? primaryError.code : "server_error",
+      `Hetzner accepted ${resourceType} ${resourceId}, but settlement failed and compensation ${compensation}`,
+      primaryError instanceof HetznerCloudError ? primaryError.status : undefined,
+      cause,
+    );
+    this.name = "HetznerAcceptedResourceError";
+    this.compensation = compensation;
   }
 }
 
@@ -346,35 +374,57 @@ export class HetznerCloudClient implements ComputeProvider {
     );
     const createdServer = requireObject(data.server, "created server");
     const serverId = requireResourceId(createdServer.id, "created server");
-    if (data.root_password !== null && typeof data.root_password !== "string") {
-      throw malformedEnvelope("create server root_password is invalid");
-    }
-    await this.settleReturnedActions(
-      data.action,
-      data.next_actions,
-      deadline,
-      { id: serverId, type: "server" },
-      true,
-    );
-    const server = await this.getServerWithin(serverId, deadline);
-    if (!server || server.status !== "running") {
-      throw new HetznerCloudError(
-        "server_error",
-        `Hetzner Cloud API created server ${serverId} but exact readback was not running`,
+    try {
+      if (data.root_password !== null && typeof data.root_password !== "string") {
+        throw malformedEnvelope("create server root_password is invalid");
+      }
+      await this.settleReturnedActions(
+        data.action,
+        data.next_actions,
+        deadline,
+        { id: serverId, type: "server" },
+        true,
       );
+      const server = await this.waitForServerRunningWithin(serverId, deadline);
+
+      logger.info("[hcloud] Created server", {
+        serverId,
+        name: server.name,
+        type: input.serverType,
+        location: input.location,
+      });
+
+      return {
+        server,
+        rootPassword: data.root_password,
+      };
+    } catch (error) {
+      // error-policy:J2 the provider already accepted a billable resource. A
+      // fresh bounded delete is the only safe compensation authority, and the
+      // typed wrapper retains both the settlement and cleanup failures.
+      return this.compensateAcceptedResource("server", serverId, error);
     }
+  }
 
-    logger.info("[hcloud] Created server", {
-      serverId,
-      name: server.name,
-      type: input.serverType,
-      location: input.location,
-    });
-
-    return {
-      server,
-      rootPassword: data.root_password,
-    };
+  private async waitForServerRunningWithin(
+    serverId: number,
+    deadline: number,
+  ): Promise<HetznerServer> {
+    while (Date.now() < deadline) {
+      const server = await this.getServerWithin(serverId, deadline);
+      if (server?.status === "running") return server;
+      if (!server || !["initializing", "starting"].includes(server.status)) {
+        throw new HetznerCloudError(
+          "server_error",
+          `Hetzner Cloud API created server ${serverId} but exact readback entered ${server?.status ?? "absent"}`,
+        );
+      }
+      await waitWithinDeadline(deadline);
+    }
+    throw new HetznerCloudError(
+      "transport_error",
+      `Hetzner Cloud API created server ${serverId} but it did not reach running before the operation deadline`,
+    );
   }
 
   async deleteServer(serverId: number): Promise<void> {
@@ -504,44 +554,87 @@ export class HetznerCloudClient implements ComputeProvider {
     );
     const createdVolume = requireObject(data.volume, "created volume");
     const volumeId = requireResourceId(createdVolume.id, "created volume");
-    await this.settleReturnedActions(
-      data.action,
-      data.next_actions,
-      deadline,
-      { id: volumeId, type: "volume" },
-      false,
+    try {
+      await this.settleReturnedActions(
+        data.action,
+        data.next_actions,
+        deadline,
+        { id: volumeId, type: "volume" },
+        false,
+      );
+      const volume = await this.waitForVolumeAvailableWithin(volumeId, deadline);
+      const expectedServer = input.serverId ?? null;
+      if (volume.server !== expectedServer) {
+        throw new HetznerCloudError(
+          "server_error",
+          `Hetzner Cloud API created volume ${volumeId} with unexpected server attachment`,
+        );
+      }
+      const hasDevice = typeof volume.linux_device === "string" && volume.linux_device.length > 0;
+      if (
+        (expectedServer === null && volume.linux_device !== null) ||
+        (expectedServer !== null && !hasDevice)
+      ) {
+        throw new HetznerCloudError(
+          "server_error",
+          `Hetzner Cloud API created volume ${volumeId} with inconsistent device state`,
+        );
+      }
+      logger.info("[hcloud] Created volume", {
+        volumeId,
+        name: volume.name,
+        sizeGb: input.sizeGb,
+        location: input.location,
+      });
+      return volume;
+    } catch (error) {
+      // error-policy:J2 see createServer: the accepted volume ID authorizes an
+      // independent compensating delete and the wrapper preserves both errors.
+      return this.compensateAcceptedResource("volume", volumeId, error);
+    }
+  }
+
+  private async waitForVolumeAvailableWithin(
+    volumeId: number,
+    deadline: number,
+  ): Promise<HetznerVolume> {
+    while (Date.now() < deadline) {
+      const volume = await this.getVolumeWithin(volumeId, deadline);
+      if (volume?.status === "available") return volume;
+      if (!volume || volume.status !== "creating") {
+        throw new HetznerCloudError(
+          "server_error",
+          `Hetzner Cloud API created volume ${volumeId} but exact readback entered ${volume?.status ?? "absent"}`,
+        );
+      }
+      await waitWithinDeadline(deadline);
+    }
+    throw new HetznerCloudError(
+      "transport_error",
+      `Hetzner Cloud API created volume ${volumeId} but it did not reach available before the operation deadline`,
     );
-    const volume = await this.getVolumeWithin(volumeId, deadline);
-    if (!volume || volume.status !== "available") {
-      throw new HetznerCloudError(
-        "server_error",
-        `Hetzner Cloud API created volume ${volumeId} but exact readback was not available`,
-      );
+  }
+
+  private async compensateAcceptedResource<T>(
+    resourceType: "server" | "volume",
+    resourceId: number,
+    primaryError: unknown,
+  ): Promise<T> {
+    let compensationError: unknown;
+    try {
+      if (resourceType === "server") await this.deleteServer(resourceId);
+      else await this.deleteVolume(resourceId);
+    } catch (error) {
+      // error-policy:J2 the typed accepted-resource error below carries both
+      // failures so the primary settlement fault cannot be masked by cleanup.
+      compensationError = error;
     }
-    const expectedServer = input.serverId ?? null;
-    if (volume.server !== expectedServer) {
-      throw new HetznerCloudError(
-        "server_error",
-        `Hetzner Cloud API created volume ${volumeId} with unexpected server attachment`,
-      );
-    }
-    const hasDevice = typeof volume.linux_device === "string" && volume.linux_device.length > 0;
-    if (
-      (expectedServer === null && volume.linux_device !== null) ||
-      (expectedServer !== null && !hasDevice)
-    ) {
-      throw new HetznerCloudError(
-        "server_error",
-        `Hetzner Cloud API created volume ${volumeId} with inconsistent device state`,
-      );
-    }
-    logger.info("[hcloud] Created volume", {
-      volumeId,
-      name: volume.name,
-      sizeGb: input.sizeGb,
-      location: input.location,
-    });
-    return volume;
+    throw new HetznerAcceptedResourceError(
+      resourceType,
+      resourceId,
+      primaryError,
+      compensationError,
+    );
   }
 
   async attachVolume(
@@ -948,6 +1041,14 @@ function assertExactResourceId(value: unknown, expected: number, resource: strin
 
 function deadlineAfter(timeoutMs: number): number {
   return Date.now() + timeoutMs;
+}
+
+async function waitWithinDeadline(deadline: number): Promise<void> {
+  const remaining = deadline - Date.now();
+  if (remaining <= 0) return;
+  await new Promise((resolve) =>
+    setTimeout(resolve, Math.min(RESOURCE_READBACK_POLL_INTERVAL_MS, remaining)),
+  );
 }
 
 function assertRequestWithinDeadline(

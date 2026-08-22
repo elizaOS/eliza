@@ -15,12 +15,7 @@
 
 import { describe, expect, test } from "bun:test";
 import type { CreateServerInput, CreateVolumeInput } from "./compute-provider";
-import {
-  ACTION_STATUS_COMPLETED,
-  ACTION_STATUS_ERRORED,
-  ComputeFakeError,
-  InMemoryComputeProvider,
-} from "./compute-provider-fake";
+import { ComputeFakeError, InMemoryComputeProvider } from "./compute-provider-fake";
 
 function serverInput(over: Partial<CreateServerInput> = {}): CreateServerInput {
   return {
@@ -84,19 +79,15 @@ describe("internal failure propagates (fail-closed)", () => {
     await expect(p.waitForAction(424242)).rejects.toMatchObject({ code: "not_found" });
   });
 
-  test("waitForAction on a poisoned id surfaces `errored` observably — not fabricated `completed`", async () => {
+  test("waitForAction on a poisoned id rejects instead of fabricating completion", async () => {
     const p = new InMemoryComputeProvider();
     const { server } = await p.createServer(serverInput());
     const action = await p.powerOff(server.id as number);
     p.poisonAction(action.id as number);
 
-    const done = await p.waitForAction(action.id as number);
-    // Mirrors the real Hetzner client returning the error action (not throwing),
-    // but the failure MUST remain observable: status errored + populated error.
-    expect(done.status).toBe(ACTION_STATUS_ERRORED);
-    expect(done.status).not.toBe(ACTION_STATUS_COMPLETED);
-    expect(done.error).not.toBeNull();
-    expect(done.error).toMatchObject({ code: "action_failed" });
+    await expect(p.waitForAction(action.id as number)).rejects.toMatchObject({
+      code: "action_failed",
+    });
   });
 
   test("tick with invalid input throws invalid_input — the clock never silently no-ops", () => {

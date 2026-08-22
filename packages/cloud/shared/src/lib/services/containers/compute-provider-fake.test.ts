@@ -19,7 +19,6 @@ import { beforeEach, describe, expect, test } from "bun:test";
 import type { CreateServerInput, CreateVolumeInput } from "./compute-provider";
 import {
   ACTION_STATUS_COMPLETED,
-  ACTION_STATUS_ERRORED,
   ACTION_STATUS_IN_PROGRESS,
   ComputeFakeError,
   InMemoryComputeProvider,
@@ -229,18 +228,18 @@ describe("actions", () => {
     expect((await provider.waitForAction(on.id as number)).status).toBe(ACTION_STATUS_COMPLETED);
   });
 
-  test("waitForAction resolves a poisoned id to `errored` WITHOUT throwing", async () => {
+  test("waitForAction rejects a poisoned id", async () => {
     const { server } = await provider.createServer(serverInput());
     const vol = await provider.createVolume(volumeInput());
     const action = await provider.attachVolume(vol.id as number, server.id as number);
 
     provider.poisonAction(action.id as number);
-    const done = await provider.waitForAction(action.id as number);
-    expect(done.status).toBe(ACTION_STATUS_ERRORED);
-    expect(done.error).toMatchObject({ code: "action_failed" });
+    await expect(provider.waitForAction(action.id as number)).rejects.toMatchObject({
+      code: "action_failed",
+    });
   });
 
-  test("pre-seeded poisonedActionIds also resolve errored", async () => {
+  test("pre-seeded poisonedActionIds also reject", async () => {
     // First minted action id under default seeding is deterministic; create a
     // server (id 1) then an action — but rather than guess, poison by capture.
     const p = new InMemoryComputeProvider();
@@ -253,7 +252,9 @@ describe("actions", () => {
     const v2 = await seeded.createVolume(volumeInput());
     const a2 = await seeded.attachVolume(v2.id as number, s2.id as number);
     expect(a2.id).toBe(action.id); // deterministic id reuse
-    expect((await seeded.waitForAction(a2.id as number)).status).toBe(ACTION_STATUS_ERRORED);
+    await expect(seeded.waitForAction(a2.id as number)).rejects.toMatchObject({
+      code: "action_failed",
+    });
   });
 
   test("waitForAction on an unknown action id throws not_found", async () => {
