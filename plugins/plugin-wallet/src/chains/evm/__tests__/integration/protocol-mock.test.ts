@@ -14,9 +14,10 @@ const runningMocks: Awaited<ReturnType<typeof startEvmRpcMock>>[] = [];
 
 async function startMock(
   balances: Record<string, bigint> = {},
-  bearerToken = "synthetic-rpc-token"
+  bearerToken = "synthetic-rpc-token",
+  revertRecipients: string[] = []
 ) {
-  const mock = await startEvmRpcMock({ balances, bearerToken });
+  const mock = await startEvmRpcMock({ balances, bearerToken, revertRecipients });
   runningMocks.push(mock);
   return mock;
 }
@@ -64,6 +65,7 @@ describe("wallet EVM JSON-RPC protocol mock", () => {
     const provider = providerFor(mock.url, account);
     const publicClient = provider.getPublicClient("base");
     const walletClient = provider.getWalletClient("base");
+    const initialState = mock.store.readback();
 
     await expect(publicClient.getChainId()).resolves.toBe(8453);
     await expect(publicClient.getBlockNumber()).resolves.toBe(100n);
@@ -142,11 +144,28 @@ describe("wallet EVM JSON-RPC protocol mock", () => {
     ).toEqual(["accepted", "duplicate"]);
     expect(JSON.stringify(readback)).not.toContain(raw);
     expect(JSON.stringify(readback)).not.toContain("synthetic-rpc-token");
+
+    mock.store.reset();
+    const replayState = mock.store.readback();
+    const { generation: _initialGeneration, ...initialWorld } = initialState;
+    const { generation: _replayGeneration, ...replayedWorld } = replayState;
+    expect(replayedWorld).toEqual(initialWorld);
+    const replayedBlock = await publicClient.getBlock({ blockTag: "latest" });
+    expect(replayedBlock.hash).toBe(block.hash);
+    expect(replayedBlock.timestamp).toBe(block.timestamp);
+    await expect(publicClient.getBalance({ address: account.address })).resolves.toBe(
+      openingBalance
+    );
   });
 
   test("mines an explicit reverted receipt without applying a fabricated effect", async () => {
     const account = privateKeyToAccount(generatePrivateKey());
-    const mock = await startMock({ [account.address]: 10n, [RECIPIENT]: 0n });
+    const openingBalance = 100n;
+    const mock = await startMock(
+      { [account.address]: openingBalance, [RECIPIENT]: 0n },
+      "synthetic-rpc-token",
+      [RECIPIENT]
+    );
     const provider = providerFor(mock.url, account);
     const publicClient = provider.getPublicClient("base");
     const walletClient = provider.getWalletClient("base");
@@ -169,9 +188,93 @@ describe("wallet EVM JSON-RPC protocol mock", () => {
     await expect(publicClient.getTransactionReceipt({ hash })).resolves.toMatchObject({
       status: "reverted",
     });
-    await expect(publicClient.getBalance({ address: account.address })).resolves.toBe(10n);
+    await expect(publicClient.getBalance({ address: account.address })).resolves.toBe(
+      openingBalance
+    );
     await expect(publicClient.getBalance({ address: RECIPIENT })).resolves.toBe(0n);
+    await expect(publicClient.getTransactionCount({ address: account.address })).resolves.toBe(1);
+
+    const insufficient = await account.signTransaction({
+      chainId: 8453,
+      type: "eip1559",
+      nonce: 1,
+      gas: 21_000n,
+      maxFeePerGas: 2_000_000_000n,
+      maxPriorityFeePerGas: 1_000_000_000n,
+      to: "0x3333333333333333333333333333333333333333",
+      value: openingBalance + 1n,
+    });
+    await expect(
+      walletClient.sendRawTransaction({ serializedTransaction: insufficient })
+    ).rejects.toThrow("Insufficient funds");
+    expect(mock.store.readback().transactions).toHaveLength(1);
+    await expect(
+      publicClient.request({
+        method: "eth_getTransactionReceipt",
+        params: ["0x01"],
+      })
+    ).rejects.toThrow("32-byte transaction hash");
+    await expect(
+      walletClient.sendRawTransaction({
+        serializedTransaction: "0x1" as `0x02${string}`,
+      })
+    ).rejects.toThrow("even-length raw transaction bytes");
   });
+
+  test("deduplicates a retry after an ambiguous post-accept timeout", async () => {
+    const account = privateKeyToAccount(generatePrivateKey());
+    const mock = await startMock({
+      [account.address]: 1_000n,
+      [RECIPIENT]: 0n,
+    });
+    const provider = providerFor(mock.url, account);
+    const publicClient = provider.getPublicClient("base");
+    const walletClient = provider.getWalletClient("base");
+    const raw = await account.signTransaction({
+      chainId: 8453,
+      type: "eip1559",
+      nonce: 0,
+      gas: 21_000n,
+      maxFeePerGas: 2_000_000_000n,
+      maxPriorityFeePerGas: 1_000_000_000n,
+      to: RECIPIENT,
+      value: 100n,
+    });
+    mock.store.setFault("stall_after_accept", "eth_sendRawTransaction");
+
+    await expect(walletClient.sendRawTransaction({ serializedTransaction: raw })).rejects.toThrow();
+    await waitFor(() => mock.store.pendingResponseCount === 0);
+    const accepted = mock.store.readback();
+    expect(accepted.transactions).toHaveLength(1);
+    expect(accepted.observations).toContainEqual(
+      expect.objectContaining({
+        method: "eth_sendRawTransaction",
+        outcome: "accepted",
+        responseFault: "stalled",
+      })
+    );
+    expect(accepted.observations).toContainEqual(
+      expect.objectContaining({
+        method: "eth_sendRawTransaction",
+        outcome: "cancelled",
+      })
+    );
+    const hash = accepted.transactions[0]?.hash;
+    if (!hash) throw new Error("Expected admitted transaction hash");
+
+    mock.store.setFault(null);
+    await expect(walletClient.sendRawTransaction({ serializedTransaction: raw })).resolves.toBe(
+      hash
+    );
+    expect(mock.store.readback().transactions).toHaveLength(1);
+    mock.store.mine();
+    await expect(publicClient.getTransactionReceipt({ hash })).resolves.toMatchObject({
+      status: "success",
+    });
+    await expect(publicClient.getBalance({ address: RECIPIENT })).resolves.toBe(100n);
+
+    expect(mock.store.pendingResponseCount).toBe(0);
+  }, 10_000);
 
   test("enforces synthetic auth without retaining credentials", async () => {
     const account = privateKeyToAccount(generatePrivateKey());
@@ -191,7 +294,7 @@ describe("wallet EVM JSON-RPC protocol mock", () => {
     expect(serialized).not.toContain("wrong-synthetic-token");
   });
 
-  test("surfaces rate-limit, provider, malformed, and timeout failures from real HTTP", async () => {
+  test("surfaces rate-limit, provider, and malformed failures from real HTTP", async () => {
     const account = privateKeyToAccount(generatePrivateKey());
     const mock = await startMock();
     const client = providerFor(mock.url, account).getPublicClient("base");
@@ -202,24 +305,15 @@ describe("wallet EVM JSON-RPC protocol mock", () => {
     await expect(client.getBlockNumber()).rejects.toThrow("Synthetic provider failure");
     mock.store.setFault("malformed_json", "eth_blockNumber");
     await expect(client.getBlockNumber()).rejects.toThrow();
-    mock.store.setFault("stall", "eth_blockNumber");
-    await expect(client.getBlockNumber()).rejects.toThrow();
     expect(
       mock.store
         .readback()
         .observations.filter((entry) => entry.method === "eth_blockNumber")
-        .map((entry) => entry.outcome),
-    ).toEqual(
-      expect.arrayContaining([
-        "rate_limited",
-        "provider_error",
-        "malformed",
-        "stalled",
-      ]),
-    );
+        .map((entry) => entry.outcome)
+    ).toEqual(expect.arrayContaining(["rate_limited", "provider_error", "malformed"]));
     mock.store.reset();
     expect(mock.store.pendingResponseCount).toBe(0);
-  }, 10_000);
+  });
 
   test("generation-fences a stalled request across reset", async () => {
     const account = privateKeyToAccount(generatePrivateKey());

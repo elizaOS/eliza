@@ -18,7 +18,8 @@ export type EvmRpcMockFault =
   | "rate_limit"
   | "provider_error"
   | "malformed_json"
-  | "stall";
+  | "stall"
+  | "stall_after_accept";
 
 export interface EvmRpcMockSeed {
   chainId: number;
@@ -26,6 +27,7 @@ export interface EvmRpcMockSeed {
   timestamp: number;
   blockTimeSeconds: number;
   balances: Record<string, bigint>;
+  revertRecipients: string[];
   bearerToken?: string;
 }
 
@@ -49,6 +51,7 @@ export interface EvmRpcMockObservation {
   params?: unknown[];
   transactionHash?: Hex;
   rawTransactionBytes?: number;
+  responseFault?: "stalled";
 }
 
 interface StoredTransaction {
@@ -79,7 +82,7 @@ interface MinedBlock {
 
 interface PendingResponse {
   generation: number;
-  resolve: (response: Response) => void;
+  settle: (response: Response) => void;
 }
 
 const DEFAULT_SEED: EvmRpcMockSeed = {
@@ -88,6 +91,7 @@ const DEFAULT_SEED: EvmRpcMockSeed = {
   timestamp: 1_800_000_000,
   blockTimeSeconds: 2,
   balances: {},
+  revertRecipients: [],
 };
 
 const ZERO_HASH = `0x${"0".repeat(64)}` as Hex;
@@ -131,7 +135,7 @@ export class EvmRpcMockStore {
   reset(seed: Partial<EvmRpcMockSeed> = {}): void {
     const staleResponses = [...this.#pendingResponses];
     this.#generation += 1;
-    this.#seed = normalizeSeed(seed);
+    this.#seed = normalizeSeed(seed, this.#seed);
     this.#blockNumber = this.#seed.blockNumber;
     this.#timestamp = this.#seed.timestamp;
     this.#fork = 0;
@@ -142,7 +146,7 @@ export class EvmRpcMockStore {
     this.#pendingResponses.clear();
     this.#loadSeed();
     for (const pending of staleResponses) {
-      pending.resolve(
+      pending.settle(
         jsonRpcHttpError(503, "Synthetic chain environment reset"),
       );
     }
@@ -288,19 +292,7 @@ export class EvmRpcMockStore {
     }
     if (fault === "stall") {
       this.#observeFault(payload, "stalled", generation);
-      return new Promise<Response>((resolve) => {
-        const pending: PendingResponse = { generation, resolve };
-        this.#pendingResponses.add(pending);
-        request.signal.addEventListener(
-          "abort",
-          () => {
-            this.#pendingResponses.delete(pending);
-            this.#observeFault(payload, "cancelled", generation);
-            resolve(jsonRpcHttpError(499, "Client closed request"));
-          },
-          { once: true },
-        );
-      });
+      return this.#stall(request, payload, generation);
     }
 
     try {
@@ -317,9 +309,19 @@ export class EvmRpcMockStore {
           ...(payload.method === "eth_sendRawTransaction"
             ? { rawTransactionBytes: rawTransactionBytes(payload.params[0]) }
             : {}),
+          ...(fault === "stall_after_accept" &&
+          payload.method === "eth_sendRawTransaction"
+            ? { responseFault: "stalled" as const }
+            : {}),
         },
         generation,
       );
+      if (
+        fault === "stall_after_accept" &&
+        payload.method === "eth_sendRawTransaction"
+      ) {
+        return this.#stall(request, payload, generation);
+      }
       return jsonRpcResponse(payload.id, result);
     } catch (error) {
       // error-policy:J1 the synthetic provider boundary translates execution
@@ -335,7 +337,7 @@ export class EvmRpcMockStore {
 
   shutdown(): void {
     for (const pending of this.#pendingResponses) {
-      pending.resolve(jsonRpcHttpError(503, "Synthetic RPC stopped"));
+      pending.settle(jsonRpcHttpError(503, "Synthetic RPC stopped"));
     }
     this.#pendingResponses.clear();
   }
@@ -352,7 +354,7 @@ export class EvmRpcMockStore {
     this.#blockHashes.set(
       this.#blockNumber,
       deterministicHash(
-        `generation:${this.#generation}:fork:0:block:${this.#blockNumber}`,
+        `chain:${this.#seed.chainId}:block:${this.#blockNumber}:timestamp:${this.#timestamp}`,
       ),
     );
   }
@@ -422,12 +424,12 @@ export class EvmRpcMockStore {
         return this.#submit(payload.params[0]);
       case "eth_getTransactionReceipt":
         return success(
-          this.#transactions.get(normalizeHash(payload.params[0]))?.receipt ??
-            null,
+          this.#transactions.get(normalizeTransactionHash(payload.params[0]))
+            ?.receipt ?? null,
         );
       case "eth_getTransactionByHash": {
         const transaction = this.#transactions.get(
-          normalizeHash(payload.params[0]),
+          normalizeTransactionHash(payload.params[0]),
         );
         return success(
           transaction ? this.#transactionResponse(transaction) : null,
@@ -443,7 +445,7 @@ export class EvmRpcMockStore {
     outcome: "accepted" | "duplicate";
     transactionHash: Hex;
   }> {
-    const raw = normalizeHash(rawValue);
+    const raw = normalizeRawTransaction(rawValue);
     const serialized = raw as TransactionSerialized;
     const hash = keccak256(raw);
     if (this.#transactions.has(hash)) {
@@ -459,6 +461,26 @@ export class EvmRpcMockStore {
     const from = await recoverTransactionAddress({
       serializedTransaction: serialized,
     });
+    const fromKey = normalizeAddress(from);
+    const pendingFrom = [...this.#transactions.values()].filter(
+      (transaction) =>
+        transaction.state === "pending" &&
+        normalizeAddress(transaction.from) === fromKey,
+    );
+    const expectedNonce = (this.#nonces.get(fromKey) ?? 0) + pendingFrom.length;
+    if (parsed.nonce !== expectedNonce) {
+      throw new Error(
+        `Invalid nonce: expected ${expectedNonce}, received ${parsed.nonce}`,
+      );
+    }
+    const reservedValue = pendingFrom.reduce(
+      (total, transaction) => total + transaction.value,
+      0n,
+    );
+    const balance = this.#balances.get(fromKey) ?? 0n;
+    if (balance < reservedValue + (parsed.value ?? 0n)) {
+      throw new Error("Insufficient funds for transaction value");
+    }
     const transaction: StoredTransaction = {
       hash,
       raw,
@@ -479,7 +501,7 @@ export class EvmRpcMockStore {
     const parentHash =
       this.#blockHashes.get(this.#blockNumber - 1) ?? ZERO_HASH;
     const blockHash = deterministicHash(
-      `generation:${this.#generation}:fork:${this.#fork}:block:${this.#blockNumber}:parent:${parentHash}`,
+      `chain:${this.#seed.chainId}:fork:${this.#fork}:block:${this.#blockNumber}:parent:${parentHash}`,
     );
     this.#blockHashes.set(this.#blockNumber, blockHash);
     const effects: AppliedEffect[] = [];
@@ -494,15 +516,21 @@ export class EvmRpcMockStore {
         ? (this.#balances.get(toKey) ?? 0n)
         : undefined;
       const previousNonce = this.#nonces.get(fromKey) ?? 0;
-      const succeeds =
+      const admitted =
         transaction.nonce === previousNonce &&
         previousFromBalance >= transaction.value;
+      const executionReverted =
+        transaction.to !== undefined &&
+        this.#seed.revertRecipients.includes(normalizeAddress(transaction.to));
+      const succeeds = admitted && !executionReverted;
+      if (admitted) {
+        this.#nonces.set(fromKey, previousNonce + 1);
+      }
       if (succeeds) {
         this.#balances.set(fromKey, previousFromBalance - transaction.value);
         if (toKey && previousToBalance !== undefined) {
           this.#balances.set(toKey, previousToBalance + transaction.value);
         }
-        this.#nonces.set(fromKey, previousNonce + 1);
       }
       effects.push({
         transactionHash: transaction.hash,
@@ -622,6 +650,32 @@ export class EvmRpcMockStore {
       order: this.#observations.length + 1,
     });
   }
+
+  #stall(
+    request: Request,
+    payload: JsonRpcRequest,
+    generation: number,
+  ): Promise<Response> {
+    return new Promise<Response>((resolve) => {
+      let settled = false;
+      let pending: PendingResponse;
+      const onAbort = () => {
+        this.#observeFault(payload, "cancelled", generation);
+        pending.settle(jsonRpcHttpError(499, "Client closed request"));
+      };
+      const settle = (response: Response) => {
+        if (settled) return;
+        settled = true;
+        request.signal.removeEventListener("abort", onAbort);
+        this.#pendingResponses.delete(pending);
+        resolve(response);
+      };
+      pending = { generation, settle };
+      this.#pendingResponses.add(pending);
+      if (request.signal.aborted) onAbort();
+      else request.signal.addEventListener("abort", onAbort, { once: true });
+    });
+  }
 }
 
 export async function startEvmRpcMock(
@@ -673,18 +727,26 @@ function parseRequest(value: unknown): JsonRpcRequest {
   };
 }
 
-function normalizeSeed(seed: Partial<EvmRpcMockSeed>): EvmRpcMockSeed {
+function normalizeSeed(
+  seed: Partial<EvmRpcMockSeed>,
+  base: EvmRpcMockSeed = DEFAULT_SEED,
+): EvmRpcMockSeed {
   return {
-    chainId: seed.chainId ?? DEFAULT_SEED.chainId,
-    blockNumber: seed.blockNumber ?? DEFAULT_SEED.blockNumber,
-    timestamp: seed.timestamp ?? DEFAULT_SEED.timestamp,
-    blockTimeSeconds: seed.blockTimeSeconds ?? DEFAULT_SEED.blockTimeSeconds,
+    chainId: seed.chainId ?? base.chainId,
+    blockNumber: seed.blockNumber ?? base.blockNumber,
+    timestamp: seed.timestamp ?? base.timestamp,
+    blockTimeSeconds: seed.blockTimeSeconds ?? base.blockTimeSeconds,
     balances: Object.fromEntries(
-      Object.entries(seed.balances ?? DEFAULT_SEED.balances).map(
+      Object.entries(seed.balances ?? base.balances).map(
         ([address, balance]) => [normalizeAddress(address), BigInt(balance)],
       ),
     ),
-    ...(seed.bearerToken ? { bearerToken: seed.bearerToken } : {}),
+    revertRecipients: (seed.revertRecipients ?? base.revertRecipients).map(
+      normalizeAddress,
+    ),
+    ...((seed.bearerToken ?? base.bearerToken)
+      ? { bearerToken: seed.bearerToken ?? base.bearerToken }
+      : {}),
   };
 }
 
@@ -695,9 +757,16 @@ function normalizeAddress(value: unknown): string {
   return value.toLowerCase();
 }
 
-function normalizeHash(value: unknown): Hex {
-  if (typeof value !== "string" || !/^0x[0-9a-fA-F]+$/.test(value)) {
-    throw new Error("Expected hex data");
+function normalizeRawTransaction(value: unknown): Hex {
+  if (typeof value !== "string" || !/^0x(?:[0-9a-fA-F]{2})+$/.test(value)) {
+    throw new Error("Expected non-empty, even-length raw transaction bytes");
+  }
+  return value.toLowerCase() as Hex;
+}
+
+function normalizeTransactionHash(value: unknown): Hex {
+  if (typeof value !== "string" || !/^0x[0-9a-fA-F]{64}$/.test(value)) {
+    throw new Error("Expected a 32-byte transaction hash");
   }
   return value.toLowerCase() as Hex;
 }

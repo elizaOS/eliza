@@ -90,6 +90,10 @@ async function handleNodeRequest(
   incoming: http.IncomingMessage,
   outgoing: http.ServerResponse,
 ) {
+  const requestAbort = new AbortController();
+  const abortRequest = () => requestAbort.abort();
+  incoming.once("aborted", abortRequest);
+  outgoing.once("close", abortRequest);
   try {
     const headers = new Headers();
     for (const [key, value] of Object.entries(incoming.headers)) {
@@ -108,6 +112,7 @@ async function handleNodeRequest(
       headers,
       body: hasBody ? Readable.toWeb(incoming) : undefined,
       duplex: hasBody ? "half" : undefined,
+      signal: requestAbort.signal,
     } as RequestInit & { duplex?: "half" });
 
     const response = await fetch(request);
@@ -117,7 +122,14 @@ async function handleNodeRequest(
     });
     outgoing.end(Buffer.from(await response.arrayBuffer()));
   } catch (error) {
-    outgoing.statusCode = 500;
-    outgoing.end(error instanceof Error ? error.message : "mock server error");
+    if (!outgoing.destroyed) {
+      outgoing.statusCode = 500;
+      outgoing.end(
+        error instanceof Error ? error.message : "mock server error",
+      );
+    }
+  } finally {
+    incoming.off("aborted", abortRequest);
+    outgoing.off("close", abortRequest);
   }
 }
