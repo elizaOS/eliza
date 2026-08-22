@@ -77,6 +77,37 @@ describe("PstnCallButton", () => {
     expect(await screen.findByRole("button", { name: "Hang up" })).toBeTruthy();
   });
 
+  it("exposes consent and verified-number authority through accessible dialog semantics", async () => {
+    mocks.api.mockResolvedValueOnce({
+      phone_number: "+14155550100",
+      phone_verified: true,
+    });
+    const user = userEvent.setup();
+    render(<PstnCallButton />);
+
+    await user.click(
+      await screen.findByRole("button", { name: "Have Eliza call me" }),
+    );
+    const dialog = await screen.findByRole("dialog", { name: "Call me" });
+    const describedBy = dialog.getAttribute("aria-describedby");
+    const phoneInput = screen.getByLabelText(
+      "Phone number",
+    ) as HTMLInputElement;
+
+    expect(describedBy).toEqual(expect.any(String));
+    expect(document.getElementById(describedBy ?? "")?.textContent).toMatch(
+      /verified account phone[\s\S]*AI-generated voice/i,
+    );
+    expect(phoneInput.value).toBe("+14155550100");
+    expect(phoneInput.readOnly).toBe(true);
+    expect(phoneInput.getAttribute("inputmode")).toBe("tel");
+    expect(phoneInput.getAttribute("autocomplete")).toBe("tel");
+    expect(
+      (screen.getByRole("button", { name: "Call me" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(false);
+  });
+
   it("hangs up the active call with a separate idempotency key", async () => {
     mocks.api
       .mockResolvedValueOnce({

@@ -270,6 +270,16 @@ const canonicalGroupBinding = {
   authority_version: 7,
 };
 
+const canonicalBlooioGroupBinding = {
+  ...canonicalGroupBinding,
+  id: "00000000-0000-4000-8000-000000000031",
+  platform: "blooio",
+  connector_account_id: "blooio:test-number",
+  provider_chat_id: "chat_group_123",
+  conversation_id: "group:00000000-0000-5000-8000-000000000031",
+  created_by_platform_user_id: "+15551234567",
+};
+
 const validGroup = {
   platform: "telegram",
   chatType: "supergroup",
@@ -283,6 +293,22 @@ const validGroup = {
   },
   messageId: "telegram:eliza:group-42",
   message: "@ElizaIsNotABot hello",
+  invocation: "mention",
+};
+
+const validBlooioGroup = {
+  platform: "blooio",
+  chatType: "group",
+  project: "eliza-app",
+  connectorAccountId: "blooio:test-number",
+  chatId: "chat_group_123",
+  actor: {
+    platformUserId: "+15551234567",
+    displayName: "Nubs",
+    role: "possessor",
+  },
+  messageId: "blooio:eliza:group-42",
+  message: "Eliza hello",
   invocation: "mention",
 };
 
@@ -442,6 +468,34 @@ describe("personal Shared messaging deliveries", () => {
         chatId: "123456789",
       },
     );
+  });
+
+  test("reuses one Personal Shared identity across Telegram and Blooio DMs", async () => {
+    const telegramResponse = await request(valid);
+    const blooioResponse = await request(validPhone);
+    const telegramBody = (await telegramResponse.json()) as {
+      data: { identity: { id: string }; account: { userId: string } };
+    };
+    const blooioBody = (await blooioResponse.json()) as {
+      data: { identity: { id: string }; account: { userId: string } };
+    };
+
+    expect(telegramResponse.status).toBe(200);
+    expect(blooioResponse.status).toBe(200);
+    expect(blooioBody.data.identity.id).toBe(telegramBody.data.identity.id);
+    expect(blooioBody.data.account.userId).toBe(
+      telegramBody.data.account.userId,
+    );
+    expect(resolvePersonalDelivery).toHaveBeenNthCalledWith(1, {
+      platform: "telegram",
+      telegramId: "123456789",
+      username: "nubs",
+      displayName: "Nubs",
+    });
+    expect(resolvePersonalDelivery).toHaveBeenNthCalledWith(2, {
+      platform: "phone",
+      phoneNumber: "+15551234567",
+    });
   });
 
   test("warms a newly auto-registered personal account before its first turn", async () => {
@@ -854,6 +908,87 @@ describe("personal Shared messaging deliveries", () => {
         issuedToPlatformUserId: "+15551234567",
       }),
     );
+    expect(sharedRestMessageSend).not.toHaveBeenCalled();
+  });
+
+  test("binds a Blooio group through the requesting iMessage possessor", async () => {
+    consumeGroupClaimAndBind.mockImplementationOnce(async () => ({
+      status: "bound" as const,
+      binding: canonicalBlooioGroupBinding,
+    }));
+    const response = await request({
+      ...validBlooioGroup,
+      message: "Eliza link ABCD2345",
+      invocation: "command",
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        code: "group_bound",
+        identity: {
+          id: canonicalBlooioGroupBinding.personal_agent_id,
+          runtime: "shared",
+        },
+        account: {
+          userId: canonicalBlooioGroupBinding.owner_user_id,
+          organizationId: canonicalBlooioGroupBinding.organization_id,
+        },
+        reply: expect.stringContaining(
+          "explicit mentions, commands, and replies",
+        ),
+      },
+    });
+    expect(consumeGroupClaimAndBind).toHaveBeenCalledWith({
+      codeHash: expect.stringMatching(/^[0-9a-f]{64}$/),
+      platform: "blooio",
+      project: "eliza-app",
+      connectorAccountId: "blooio:test-number",
+      providerChatId: "chat_group_123",
+      actorPlatformUserId: "+15551234567",
+    });
+    expect(sharedRestMessageSend).not.toHaveBeenCalled();
+  });
+
+  test("fails a mismatched Blooio group claimant closed", async () => {
+    consumeGroupClaimAndBind.mockImplementationOnce(async () => ({
+      status: "invalid" as const,
+    }));
+    const response = await request({
+      ...validBlooioGroup,
+      actor: {
+        ...validBlooioGroup.actor,
+        platformUserId: "+15557654321",
+      },
+      message: "Eliza link ABCD2345",
+      invocation: "command",
+    });
+
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        code: "group_claim_invalid",
+        reply: expect.stringContaining("not valid for this account or sender"),
+      },
+    });
+    expect(consumeGroupClaimAndBind).toHaveBeenCalledWith(
+      expect.objectContaining({ actorPlatformUserId: "+15557654321" }),
+    );
+    expect(sharedRestMessageSend).not.toHaveBeenCalled();
+  });
+
+  test("guides a suspended Blooio group through owner reconnect", async () => {
+    resolveGroupBinding.mockImplementationOnce(async () => ({
+      ...canonicalBlooioGroupBinding,
+      state: "suspended",
+    }));
+    const response = await request(validBlooioGroup);
+
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        code: "group_binding_suspended",
+        reply: expect.stringMatching(/owner.*DM Eliza `\/group`.*reconnect/i),
+      },
+    });
     expect(sharedRestMessageSend).not.toHaveBeenCalled();
   });
 
