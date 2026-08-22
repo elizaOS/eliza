@@ -7,10 +7,9 @@
  * router/tool-transcript noise — captured `[tool output: …]` envelopes, raw
  * path/transcript leaks, loopback-vs-user-facing URLs, empty-completion
  * placeholders, and failure markers reported without positive evidence. A short
- * clean answer is relayed. An incomplete (`length` / `content_filter`) result
- * is rejected explicitly rather than presenting partial text as a completed
- * answer or re-spawning it; that is the guard against the weak-model re-spawn
- * loop (elizaOS/eliza#8875). Its failure-side twin is
+ * clean answer, or a degenerate (`length` / `content_filter`) completion, is
+ * relayed once instead of re-spawned; that is the guard against the weak-model
+ * re-spawn loop (elizaOS/eliza#8875). Its failure-side twin is
  * `sub-agent-failure.ts`.
  *
  * Relayed replies are verification-aware: when the durable task behind the
@@ -27,6 +26,7 @@ import {
   type ResponseHandlerEvaluator,
   SIMPLE_CONTEXT_ID,
 } from "@elizaos/core";
+import { redactLoopbackUrls } from "../services/loopback-urls.js";
 
 const SUB_AGENT_SOURCE = MESSAGE_SOURCE_SUB_AGENT;
 const EMPTY_COMPLETION_PLACEHOLDER =
@@ -407,8 +407,9 @@ function deliverableFromMetadata(message: Memory): string | undefined {
 // `length` (ran out of token / turn budget mid-answer — truncated) or
 // `content_filter` (refused / blocked). The ACP `stopReason` is normalized to
 // one of these by the router (subAgentFinishReason metadata) before it reaches
-// here. Re-spawning the SAME root request repeats the failure, while relaying
-// the prefix falsely presents an incomplete answer as complete. Reject it.
+// here. Re-spawning the SAME root request on a degenerate completion just
+// truncates/blocks again — the ~70x weak-model re-spawn loop (issue
+// elizaOS/eliza#8875). We relay the best partial once instead.
 const DEGENERATE_FINISH_REASONS = new Set(["length", "content_filter"]);
 
 function finishReasonFromMetadata(message: Memory): string | undefined {
@@ -423,7 +424,9 @@ function isDegenerateFinishReason(reason: string | undefined): boolean {
 // Longest completion body we treat as a bare "answer value" worth relaying over
 // a planner re-spawn. Tight on purpose: a price / short sentence qualifies; a
 // multi-line build report or transcript does not and keeps the existing
-// step-aside-for-follow-up routing.
+// step-aside-for-follow-up routing. Pure CLASSIFICATION threshold, not a
+// content cap: neither branch cuts or drops text — the complete body flows
+// through whichever routing wins.
 const SHORT_CLEAN_COMPLETION_BODY_MAX_CHARS = 120;
 
 // Continuing the EXISTING session (TASKS_SEND_TO_AGENT / TASKS_SEND) is the only
@@ -660,6 +663,21 @@ function respondIfNeeded(messageHandler: MessageHandlerResult) {
     : { processMessage: "RESPOND" as const };
 }
 
+/** The relay body when it is orchestrator-composed OBSERVATION (workdir
+ *  file verification and/or the served URL). Undefined for
+ *  worker-authored prose — that still goes through normal routing. */
+function orchestratorObservedBody(completionText: string): string | undefined {
+  const trimmed = completionText.trimStart();
+  if (!trimmed.startsWith("[sub-agent:")) return undefined;
+  const headerEnd = trimmed.indexOf("]");
+  if (headerEnd < 0) return undefined;
+  const body = trimmed.slice(headerEnd + 1).trim();
+  if (!body?.includes("Files written (verified on disk)")) {
+    return undefined;
+  }
+  return body;
+}
+
 export const subAgentCompletionResponseEvaluator: ResponseHandlerEvaluator = {
   name: "agent-orchestrator.sub-agent-completion",
   description:
@@ -680,6 +698,7 @@ export const subAgentCompletionResponseEvaluator: ResponseHandlerEvaluator = {
       return true;
     }
     if (deliverableFromMetadata(message) !== undefined) return true;
+    if (orchestratorObservedBody(completionText) !== undefined) return true;
     if (hasVerifiedCompletionReply(currentReply, completionText, verifiedUrls))
       return true;
     if (hasCleanFinalProseAfterToolOutput(completionText)) return true;
@@ -703,12 +722,12 @@ export const subAgentCompletionResponseEvaluator: ResponseHandlerEvaluator = {
     ) {
       return true;
     }
-    // An output-limited (`length`) or content-filtered (`content_filter`) sub-agent
+    // A truncated (`length`) or content-filtered (`content_filter`) sub-agent
     // completion is TERMINAL for the planner: the model ran out of room or was
     // blocked mid-answer, so a fresh TASKS_SPAWN_AGENT on the SAME root request
     // just truncates/blocks again — the ~70x weak-model re-spawn loop the cap
     // only bounds (issue elizaOS/eliza#8875). The ACP completion's stopReason is
-    // threaded here as subAgentFinishReason. Reject the partial, UNLESS
+    // threaded here as subAgentFinishReason. Relay the best partial once, UNLESS
     // the plan is feeding the still-running session more input
     // (TASKS_SEND_TO_AGENT), which is the one legitimate non-relay follow-up.
     if (
@@ -741,8 +760,15 @@ export const subAgentCompletionResponseEvaluator: ResponseHandlerEvaluator = {
     const verificationCaveat = completionHasVerificationFailure(completionText)
       ? "Note: some resources referenced by the build failed verification — parts of the page may be broken."
       : undefined;
-    const withVerificationCaveat = (reply: string): string =>
-      verificationCaveat ? `${reply}\n\n${verificationCaveat}` : reply;
+    // Delivery funnel for every relay branch below: whatever authored the
+    // body, a loopback verification URL never reaches chat (live 2026-08-22:
+    // "serving correctly at `http://127.0.0.1:6900/apps/snake-game-2/`").
+    const withVerificationCaveat = (reply: string): string => {
+      const scrubbed = redactLoopbackUrls(reply);
+      return verificationCaveat
+        ? `${scrubbed}\n\n${verificationCaveat}`
+        : scrubbed;
+    };
     // The deliverable IS the sub-agent's printed/tool output (short, single
     // block; the router stripped it from the narration). Relay it verbatim
     // rather than letting the parent model re-summarize or truncate it.
@@ -763,9 +789,34 @@ export const subAgentCompletionResponseEvaluator: ResponseHandlerEvaluator = {
         ],
       };
     }
+    // Orchestrator-OBSERVED completion body (the router's direct workdir
+    // observation — "Files written (verified on disk): …" plus the served
+    // URL): these lines are verified fact, composed for delivery. Letting the
+    // planner re-phrase them produced a confident fabrication ("your
+    // static-noise app is live and the tv static effect is working" for a
+    // water-tracker build, live 2026-08-19). Relay verbatim.
+    const observedBody = orchestratorObservedBody(completionText);
+    if (observedBody !== undefined) {
+      return {
+        ...respondIfNeeded(messageHandler),
+        requiresTool: false,
+        setContexts: [SIMPLE_CONTEXT_ID],
+        clearCandidateActions: true,
+        clearParentActionHints: true,
+        reply: frameReplyWithVerification(
+          withVerificationCaveat(observedBody),
+          verification,
+        ),
+        debug: [
+          "completion body carries orchestrator-observed facts; relaying verbatim instead of re-phrasing",
+        ],
+      };
+    }
     // Incomplete completion (output-limited / content-filtered): reject it and
     // clear planner actions so neither a partial answer nor a re-spawn loop can
-    // masquerade as success (issue elizaOS/eliza#8875).
+    // masquerade as success (issue elizaOS/eliza#8875). Prompt-integrity: a
+    // paraphrased partial presented as the result is worse than an explicit
+    // failure the user can act on.
     const finishReason = finishReasonFromMetadata(message);
     if (
       isDegenerateFinishReason(finishReason) &&
