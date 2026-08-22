@@ -321,6 +321,111 @@ describe("FileMessageInteractionSessionStore", () => {
     await expect(successorTransaction).resolves.toBe(0);
   });
 
+  it("does not start a transaction when recovery claims after the publish check", async () => {
+    const stateDirectory = await temporaryDirectory();
+    const now = Date.parse("2026-08-21T00:00:00.000Z");
+    const lockPath = path.join(
+      stateDirectory,
+      "message-interaction-sessions.v1.json.lock",
+    );
+    await writeLock(lockPath, {
+      pid: 2_000_000_000,
+      processIdentity: null,
+      token: "dead-owner-before-publish-check",
+      createdAt: now - 10_000,
+      expiresAt: now - 1,
+    });
+
+    const afterCheck = barrier();
+    let markPublished: () => void = () => {};
+    const published = new Promise<void>((resolve) => {
+      markPublished = resolve;
+    });
+    const creator = new FileMessageInteractionSessionStore({
+      stateDirectory,
+      clock: () => now,
+      lockTimeoutMs: 50,
+      pollMs: 1,
+      lockRaceHooks: {
+        afterTransitionCheckBeforeLockPublish: afterCheck.hook,
+        afterLockPublishBeforeCandidateCleanup: async () => markPublished(),
+      },
+    }).deleteExpired(now);
+    await afterCheck.entered;
+
+    const recoveryCleanup = barrier();
+    const recoverer = new FileMessageInteractionSessionStore({
+      stateDirectory,
+      clock: () => now,
+      lockRaceHooks: {
+        beforeTransitionMarkerCleanup: async () => {
+          await recoveryCleanup.hook();
+          throw new Error("simulated stale-recovery marker cleanup failure");
+        },
+      },
+    }).deleteExpired(now);
+    await recoveryCleanup.entered;
+    afterCheck.release();
+    await published;
+    recoveryCleanup.release();
+
+    await expect(recoverer).rejects.toMatchObject({
+      code: "INTERACTION_STORE_RECOVERY_CLEANUP_FAILED",
+      context: { committed: false },
+    });
+    await expect(creator).rejects.toMatchObject({
+      code: "INTERACTION_STORE_RECOVERY_REQUIRED",
+      context: {
+        committed: false,
+        lockPath,
+        markerPath: `${lockPath}.transition`,
+        recovery:
+          "Stop all store users, verify lockPath still has lockIdentity and ownerToken, remove markerPath and lockPath, fsync their parent directory, then restart.",
+        retrySafeAfterRecovery: true,
+      },
+    });
+    await expect(
+      fs.lstat(
+        path.join(stateDirectory, "message-interaction-sessions.v1.json"),
+      ),
+    ).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("cleans a published lock when owner candidate cleanup fails", async () => {
+    const stateDirectory = await temporaryDirectory();
+    const now = Date.parse("2026-08-21T00:00:00.000Z");
+    const lockPath = path.join(
+      stateDirectory,
+      "message-interaction-sessions.v1.json.lock",
+    );
+    const store = new FileMessageInteractionSessionStore({
+      stateDirectory,
+      clock: () => now,
+      lockRaceHooks: {
+        beforeOwnerCandidateCleanup: async () => {
+          throw new Error("simulated owner candidate cleanup failure");
+        },
+      },
+    });
+    await expect(store.deleteExpired(now)).rejects.toMatchObject({
+      code: "INTERACTION_STORE_OWNER_CANDIDATE_CLEANUP_FAILED",
+      context: {
+        committed: false,
+        lockPath,
+        markerPath: `${lockPath}.transition`,
+        recoveryRequired: false,
+        retrySafeAfterRecovery: true,
+        retrySafeNow: true,
+      },
+    });
+    await expect(fs.lstat(lockPath)).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(
+      fs.lstat(
+        path.join(stateDirectory, "message-interaction-sessions.v1.json"),
+      ),
+    ).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
   it("writes a 0600 regular file and retains state across store instances", async () => {
     const stateDirectory = await temporaryDirectory();
     const { created } = await seed(stateDirectory);
@@ -806,7 +911,12 @@ describe("FileMessageInteractionSessionStore", () => {
 
     oldRelease.release();
     await expect(oldTransaction).rejects.toMatchObject({
-      code: "INTERACTION_STORE_LOCK_LOST",
+      code: "INTERACTION_STORE_COMMITTED_RELEASE_FAILED",
+      context: {
+        committed: true,
+        releaseErrorCode: "INTERACTION_STORE_LOCK_LOST",
+        retrySafeAfterRecovery: false,
+      },
     });
     expect(await lockIdentity(lockPath)).toBe(successorIdentity);
     successorRelease.release();
@@ -829,9 +939,10 @@ describe("FileMessageInteractionSessionStore", () => {
         },
       },
     });
-    await expect(store.deleteExpired(now)).rejects.toThrow(
-      "simulated lock unlink failure",
-    );
+    await expect(store.deleteExpired(now)).rejects.toMatchObject({
+      code: "INTERACTION_STORE_COMMITTED_RELEASE_FAILED",
+      context: { committed: true, retrySafeAfterRecovery: false },
+    });
     expect(await fs.lstat(lockPath)).toBeDefined();
     await expect(fs.lstat(`${lockPath}.transition`)).rejects.toMatchObject({
       code: "ENOENT",
@@ -989,7 +1100,7 @@ describe("FileMessageInteractionSessionStore", () => {
     ).rejects.toMatchObject({
       code: "INTERACTION_STORE_COMMITTED_CLEANUP_FAILED",
       message:
-        "Interaction transaction committed but transition cleanup failed; stop all store users before recovery.",
+        "Interaction transaction committed but lock release failed; do not retry the mutation.",
       context: {
         committed: true,
         markerPath: `${lockPath}.transition`,
@@ -1016,6 +1127,32 @@ describe("FileMessageInteractionSessionStore", () => {
       context: { markerPath: `${lockPath}.transition` },
     });
     expect(await fs.readFile(filePath, "utf8")).toBe(committedState);
+  });
+
+  it("preserves structured release recovery beside an operation failure", async () => {
+    const stateDirectory = await temporaryDirectory();
+    const { created, now } = await seed(stateDirectory);
+    const lockPath = path.join(
+      stateDirectory,
+      "message-interaction-sessions.v1.json.lock",
+    );
+    const failing = new FileMessageInteractionSessionStore({
+      stateDirectory,
+      clock: () => now,
+      lockRaceHooks: {
+        beforeTransitionMarkerCleanup: async () => {
+          throw new Error("simulated release cleanup failure");
+        },
+      },
+    });
+    await expect(failing.create(created.session)).rejects.toMatchObject({
+      code: "INTERACTION_STORE_TRANSACTION_AND_RELEASE_FAILED",
+      cause: { code: "MESSAGE_INTERACTION_REFERENCE_COLLISION" },
+      context: {
+        releaseErrorCode: "INTERACTION_STORE_RELEASE_CLEANUP_FAILED",
+        releaseErrorContext: { markerPath: `${lockPath}.transition` },
+      },
+    });
   });
 
   it("collects expired sessions through the explicit retention/GC boundary", async () => {
