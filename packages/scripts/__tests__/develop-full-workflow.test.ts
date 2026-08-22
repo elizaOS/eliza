@@ -43,6 +43,7 @@ const surfaceGraph = JSON.parse(
   ),
 ) as {
   knownNonValidationInputs?: string[];
+  reusePolicy?: string;
   surfaces: Array<{ id: string; workflow: string; inputs: string[] }>;
 };
 
@@ -109,6 +110,7 @@ describe("Develop Full workflow authority", () => {
   });
 
   test("fails closed unless every delegated family has current evidence", () => {
+    expect(surfaceGraph.reusePolicy).toBe("current-run-only");
     const complete = workflow.jobs?.complete;
     expect(complete?.if).toBe(
       `\${{ always() && needs.plan.result == 'success' }}`,

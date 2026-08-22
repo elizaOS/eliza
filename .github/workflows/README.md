@@ -21,12 +21,20 @@ manifest` only when every registered family has current green evidence.
 `.github/develop-surface-graph.json` owns the reviewed surface DAG, workspace
 roots, non-workspace inputs, environment identity, and evidence lifetime.
 `packages/scripts/develop-impact-evidence.mjs` hashes exact tracked bytes plus
-each surface's transitive workspace and surface dependencies. A prior verdict is
-reused only from an immutable exact-digest cache key after its SHA-256 record,
-graph, environment, input closure, and expiry verify. Missing, malformed,
+each surface's transitive workspace, surface, reusable-workflow, and composite-
+action dependencies. Missing, invalid, or cyclic repository-local `uses:`
+targets fail closed. Persistently unowned tracked inputs are also bound into
+every surface digest, so a force-run input cannot later collide with evidence
+from before that input existed. Missing, malformed,
 duplicate, unexpected, stale, or ambiguous evidence fails closed or reruns the
 surface; unknown changed-path ownership forces the full graph. The expected and
 observed manifests are retained as the run's reviewable domain artifact.
+The hosted runner image is mutable and is not yet measured by this graph, so
+the reviewed `current-run-only` policy disables cross-run verdict reuse. The
+environment digest identifies declared toolchain and runner policy only; it is
+not represented as an exact hosted-image match. Cross-run cache reuse may be
+enabled only after every delegated runner's immutable image identity is bound
+to its surface evidence.
 Markdown and `packages/docs` inputs belong to the Quality surface, which checks
 CLAUDE/AGENTS parity, maintained relative-link targets, and formatting before
 their evidence can be reused.
