@@ -426,17 +426,16 @@ type SeedRunResult = {
   error?: string;
 };
 
-function stringifyForJudge(value: unknown, maxLength = 1_200): string {
+function stringifyForJudge(value: unknown): string {
   try {
     const serialized = JSON.stringify(value);
-    if (serialized.length <= maxLength) {
-      return serialized;
-    }
-    return `${serialized.slice(0, maxLength - 3)}...`;
+    return serialized === undefined ? String(value) : serialized;
   } catch {
     return String(value);
   }
 }
+
+export const __INTERNAL_stringifyForJudge = stringifyForJudge;
 
 /**
  * Wipe the shared LifeOps scheduling + owner-fact state before a scenario runs.
@@ -521,7 +520,7 @@ function summarizeActionForJudge(
 ): string {
   const lines = [`Action: ${action.actionName}`];
   if (action.parameters !== undefined) {
-    lines.push(`Parameters: ${stringifyForJudge(action.parameters, 800)}`);
+    lines.push(`Parameters: ${stringifyForJudge(action.parameters)}`);
   }
   if (action.error?.message) {
     lines.push(`Error: ${action.error.message}`);
@@ -560,10 +559,10 @@ function summarizeActionForJudge(
       lines.push(`Artifacts: ${artifacts}`);
     }
     if (action.result.values !== undefined) {
-      lines.push(`Values: ${stringifyForJudge(action.result.values, 500)}`);
+      lines.push(`Values: ${stringifyForJudge(action.result.values)}`);
     }
     if (data) {
-      lines.push(`Data: ${stringifyForJudge(data, 900)}`);
+      lines.push(`Data: ${stringifyForJudge(data)}`);
     }
   }
   return lines.join("\n");
@@ -624,21 +623,21 @@ function buildScenarioJudgeCandidate(
   if (ctx.connectorDispatches.length > 0) {
     sections.push(
       `Connector dispatches:\n${ctx.connectorDispatches
-        .map((dispatch) => stringifyForJudge(dispatch, 500))
+        .map((dispatch) => stringifyForJudge(dispatch))
         .join("\n")}`,
     );
   }
   if (ctx.stateTransitions.length > 0) {
     sections.push(
       `State transitions:\n${ctx.stateTransitions
-        .map((transition) => stringifyForJudge(transition, 400))
+        .map((transition) => stringifyForJudge(transition))
         .join("\n")}`,
     );
   }
   if (ctx.artifacts.length > 0) {
     sections.push(
       `Artifacts:\n${ctx.artifacts
-        .map((artifact) => stringifyForJudge(artifact, 400))
+        .map((artifact) => stringifyForJudge(artifact))
         .join("\n")}`,
     );
   }

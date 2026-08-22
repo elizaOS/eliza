@@ -10,7 +10,7 @@
  * on each `MessageRef` via `worldId` so triage stays multi-account.
  */
 
-import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
+import { toWellFormedUnicode } from "@elizaos/core";
 import {
   BaseMessageAdapter,
   type DraftRequest,
@@ -46,13 +46,6 @@ type GoogleGmailAdapterService = Pick<IGoogleGmailService, (typeof GMAIL_ADAPTER
 interface GmailDraftContext {
   readonly request: DraftRequest;
   readonly preview: string;
-}
-
-function clip(value: string, maxLength: number): string {
-  const wellFormedValue = toWellFormedUnicode(value);
-  return wellFormedValue.length > maxLength
-    ? `${truncateWellFormed(wellFormedValue, maxLength - 3)}...`
-    : wellFormedValue;
 }
 
 function refId(messageId: string): string {
@@ -292,7 +285,7 @@ export class GoogleGmailAdapter extends BaseMessageAdapter {
     runtime: IAgentRuntime,
     draft: DraftRequest
   ): Promise<{ draftId: string; preview: string }> {
-    const preview = clip(draft.body, 240);
+    const preview = toWellFormedUnicode(draft.body);
     if (!draft.inReplyToId) {
       // New outbound email (draft_followup): recipients must be literal
       // addresses — Gmail has no in-thread sender to fall back to.

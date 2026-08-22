@@ -3284,9 +3284,7 @@ function buildV5PlannerActionSurface(params: {
 	// may legitimately act (answer a child, coordinate a sibling).
 	if (
 		isSubAgentCompletionArtifact(params.message) &&
-		String(params.message.content?.text ?? "")
-			.slice(0, 400)
-			.includes("task_complete")
+		String(params.message.content?.text ?? "").includes("task_complete")
 	) {
 		return {
 			exposedActionNames: new Set<string>(),
