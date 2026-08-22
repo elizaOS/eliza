@@ -29,6 +29,8 @@ import type {
 const DISCORD_API_BASE = "https://discord.com/api/v10";
 const _DISCORD_CDN_BASE = "https://cdn.discordapp.com";
 const MAX_DISCORD_MESSAGE_CHUNKS = 25;
+const MAX_DISCORD_MESSAGE_WORK_UNITS =
+  MAX_DISCORD_MESSAGE_CHUNKS * DISCORD_RATE_LIMITS.MAX_MESSAGE_LENGTH;
 
 export { discordFetch };
 
@@ -563,6 +565,16 @@ class DiscordAutomationService {
   ): Promise<SendMessageResult> {
     if (!DISCORD_BOT_TOKEN) {
       return { success: false, error: "Bot token not configured" };
+    }
+
+    // Reject oversized work before splitMessage scans and slices the complete
+    // input. The post-split guard remains authoritative for boundary effects
+    // such as Unicode-safe chunking and whitespace break selection.
+    if (content.length > MAX_DISCORD_MESSAGE_WORK_UNITS) {
+      return {
+        success: false,
+        error: `Message exceeds the ${MAX_DISCORD_MESSAGE_CHUNKS}-chunk delivery limit`,
+      };
     }
 
     const deadline = new AbortController();

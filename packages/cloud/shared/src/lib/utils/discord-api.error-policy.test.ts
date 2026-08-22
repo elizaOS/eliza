@@ -141,6 +141,51 @@ describe("discordFetch", () => {
     expect(cancelled).toBe(true);
   });
 
+  it("enforces the wall-clock deadline across immediately-ready empty chunks", async () => {
+    let cancelled = false;
+    let emitted = 0;
+    globalThis.fetch = mock(
+      async () =>
+        new Response(
+          new ReadableStream<Uint8Array>({
+            pull(controller) {
+              if (emitted < 100_000) {
+                emitted += 1;
+                controller.enqueue(new Uint8Array(0));
+                return;
+              }
+              controller.close();
+            },
+            cancel() {
+              cancelled = true;
+            },
+          }),
+        ),
+    ) as unknown as typeof fetch;
+
+    await expect(
+      discordFetch("https://discord.com/api/v10/users/@me", undefined, 1),
+    ).rejects.toMatchObject({ name: "TimeoutError" });
+    expect(emitted).toBeLessThan(100_000);
+    expect(cancelled).toBe(true);
+  });
+
+  it("does not let a bodyless response win over caller cancellation", async () => {
+    const controller = new AbortController();
+    const reason = new DOMException("caller stopped after headers", "AbortError");
+    globalThis.fetch = mock(async () => {
+      const response = new Response(null, { status: 204 });
+      queueMicrotask(() => controller.abort(reason));
+      return response;
+    }) as unknown as typeof fetch;
+
+    await expect(
+      discordFetch("https://discord.com/api/v10/users/@me", {
+        signal: controller.signal,
+      }),
+    ).rejects.toBe(reason);
+  });
+
   it("rejects and cancels a declared oversized response", async () => {
     let cancelled = false;
     const body = new ReadableStream<Uint8Array>({
@@ -188,6 +233,24 @@ describe("discordFetch", () => {
         discordFetch("https://discord.com/api/v10/users/@me", undefined, timeout),
       ).rejects.toMatchObject({ code: "INVALID_DISCORD_TIMEOUT" });
     }
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("preserves an explicit null caller-abort reason", async () => {
+    const controller = new AbortController();
+    controller.abort(null);
+    const fetchMock = mock(async () => new Response());
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+    let rejection: unknown = Symbol("not rejected");
+    try {
+      await discordFetch("https://discord.com/api/v10/users/@me", {
+        signal: controller.signal,
+      });
+    } catch (reason) {
+      rejection = reason;
+    }
+    expect(rejection).toBeNull();
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });

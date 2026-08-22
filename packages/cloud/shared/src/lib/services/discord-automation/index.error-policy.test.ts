@@ -283,6 +283,21 @@ describe("sendMessage — shared Discord deadline boundary", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it("bounds raw whitespace work before split normalization", async () => {
+    const fetchMock = mock(async () => jsonResponse({ id: "unexpected" }));
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+    const result = await discordAutomationService.sendMessage(
+      "channel-1",
+      `${" ".repeat(2_000 * 25 + 1)}x`,
+    );
+    expect(result).toEqual({
+      success: false,
+      error: "Message exceeds the 25-chunk delivery limit",
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it("does not report full success after a later chunk fails", async () => {
     let requestCount = 0;
     globalThis.fetch = mock(async () => {

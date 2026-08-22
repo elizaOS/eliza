@@ -14,7 +14,12 @@ export const DISCORD_REQUEST_TIMEOUT_MS = 25_000;
 const DISCORD_RESPONSE_MAX_BYTES = 4 * 1024 * 1024;
 const MAX_TIMER_DELAY_MS = 2_147_483_647;
 
-async function bufferDiscordResponse(response: Response, signal: AbortSignal): Promise<Response> {
+async function bufferDiscordResponse(
+  response: Response,
+  signal: AbortSignal,
+  throwIfAbortedOrExpired: () => void,
+): Promise<Response> {
+  throwIfAbortedOrExpired();
   const contentLength = response.headers.get("content-length");
   if (contentLength !== null && /^\d+$/.test(contentLength)) {
     const declaredBytes = Number(contentLength);
@@ -32,21 +37,34 @@ async function bufferDiscordResponse(response: Response, signal: AbortSignal): P
       throw error;
     }
   }
-  if (!response.body) return response;
+  if (!response.body) {
+    throwIfAbortedOrExpired();
+    return response;
+  }
 
   const reader = response.body.getReader();
   const chunks: Uint8Array[] = [];
   let receivedBytes = 0;
-  const onAbort = (): void => {
-    reader.cancel(signal.reason).catch((cause: unknown) => {
+  let cancellationPromise: Promise<void> | null = null;
+  const cancelReader = (reason: unknown): Promise<void> => {
+    if (cancellationPromise) return cancellationPromise;
+    cancellationPromise = reader.cancel(reason).catch((cause: unknown) => {
       // error-policy:J6 The request failed; cancellation only releases transport.
-      logger.debug("[Discord] Failed to cancel aborted response body", { cause });
+      logger.debug("[Discord] Failed to cancel response body", { cause });
     });
+    return cancellationPromise;
+  };
+  const onAbort = (): void => {
+    void cancelReader(signal.reason);
   };
   signal.addEventListener("abort", onAbort, { once: true });
   try {
     while (true) {
+      // Immediately-ready or empty chunks can starve the timer queue. Check
+      // the monotonic operation deadline inside the read loop as well.
+      throwIfAbortedOrExpired();
       const next = await reader.read();
+      throwIfAbortedOrExpired();
       if (next.done) break;
       receivedBytes += next.value.byteLength;
       if (receivedBytes > DISCORD_RESPONSE_MAX_BYTES) {
@@ -54,19 +72,22 @@ async function bufferDiscordResponse(response: Response, signal: AbortSignal): P
           code: "DISCORD_RESPONSE_TOO_LARGE",
           context: { receivedBytes, maxBytes: DISCORD_RESPONSE_MAX_BYTES },
         });
-        try {
-          await reader.cancel(error);
-        } catch (cause) {
-          // error-policy:J6 The bounded read failed; cancellation only releases transport.
-          logger.debug("[Discord] Failed to cancel oversized response body", { cause });
-        }
+        await cancelReader(error);
         throw error;
       }
       chunks.push(next.value);
     }
+  } catch (error) {
+    await cancelReader(error);
+    throw error;
   } finally {
     signal.removeEventListener("abort", onAbort);
-    reader.releaseLock();
+    try {
+      reader.releaseLock();
+    } catch (cause) {
+      // error-policy:J6 Stream lock release is best-effort transport teardown.
+      logger.debug("[Discord] Failed to release response body lock", { cause });
+    }
   }
 
   const body = new Uint8Array(receivedBytes);
@@ -75,6 +96,7 @@ async function bufferDiscordResponse(response: Response, signal: AbortSignal): P
     body.set(chunk, offset);
     offset += chunk.byteLength;
   }
+  throwIfAbortedOrExpired();
   return new Response(body.buffer, {
     status: response.status,
     statusText: response.statusText,
@@ -101,6 +123,8 @@ export async function discordFetch(
   }
 
   const controller = new AbortController();
+  const deadlineAt = performance.now() + timeoutMs;
+  const timeoutError = new DOMException("Discord API request timed out", "TimeoutError");
   let rejectAbort!: (reason: unknown) => void;
   const abortPromise = new Promise<never>((_resolve, reject) => {
     rejectAbort = reject;
@@ -110,22 +134,35 @@ export async function discordFetch(
     controller.abort(reason);
     rejectAbort(reason);
   };
-  const onCallerAbort = (): void =>
-    abort(init?.signal?.reason ?? new DOMException("Discord request aborted", "AbortError"));
+  const onCallerAbort = (): void => {
+    if (!init?.signal) return;
+    abort(init.signal.reason);
+  };
   init?.signal?.addEventListener("abort", onCallerAbort, { once: true });
   if (init?.signal?.aborted) onCallerAbort();
-  const timeoutId = setTimeout(
-    () => abort(new DOMException("Discord API request timed out", "TimeoutError")),
-    timeoutMs,
-  );
+  const timeoutId = setTimeout(() => abort(timeoutError), timeoutMs);
+  const throwIfAbortedOrExpired = (): void => {
+    if (controller.signal.aborted) throw controller.signal.reason;
+    if (performance.now() >= deadlineAt) {
+      abort(timeoutError);
+      throw timeoutError;
+    }
+  };
 
   try {
     if (controller.signal.aborted) return await abortPromise;
+    throwIfAbortedOrExpired();
     const response = await Promise.race([
       fetch(input, { ...init, signal: controller.signal }),
       abortPromise,
     ]);
-    return await Promise.race([bufferDiscordResponse(response, controller.signal), abortPromise]);
+    throwIfAbortedOrExpired();
+    const buffered = await Promise.race([
+      bufferDiscordResponse(response, controller.signal, throwIfAbortedOrExpired),
+      abortPromise,
+    ]);
+    throwIfAbortedOrExpired();
+    return buffered;
   } finally {
     clearTimeout(timeoutId);
     init?.signal?.removeEventListener("abort", onCallerAbort);

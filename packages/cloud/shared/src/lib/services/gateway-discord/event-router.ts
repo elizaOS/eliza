@@ -24,7 +24,7 @@ import { discordConnectionsRepository, userCharactersRepository } from "../../..
 import { AgentMode } from "../../eliza/agent-mode-types";
 import { runtimeFactory } from "../../eliza/runtime-factory";
 import { userContextService } from "../../eliza/user-context";
-import { DISCORD_API_BASE, discordBotHeaders } from "../../utils/discord-api";
+import { DISCORD_API_BASE, discordBotHeaders, discordFetch } from "../../utils/discord-api";
 import { logger } from "../../utils/logger";
 import { getEncryptionService } from "../secrets/encryption";
 import {
@@ -84,9 +84,6 @@ function truncateUtf16Safe(str: string, maxLength: number): string {
 
   return truncated;
 }
-
-/** HTTP request timeout for Discord API calls */
-const DISCORD_API_TIMEOUT_MS = 10_000;
 
 // ============================================
 // Rate Limiter
@@ -706,19 +703,11 @@ async function sendDiscordResponse(
   await discordRateLimiter.acquire(botToken);
 
   const makeRequest = async (): Promise<Response> => {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), DISCORD_API_TIMEOUT_MS);
-
-    try {
-      return await fetch(`${DISCORD_API_BASE}/channels/${channelId}/messages`, {
-        method: "POST",
-        headers: discordBotHeaders(botToken),
-        body: JSON.stringify(payload),
-        signal: controller.signal,
-      });
-    } finally {
-      clearTimeout(timeoutId);
-    }
+    return discordFetch(`${DISCORD_API_BASE}/channels/${channelId}/messages`, {
+      method: "POST",
+      headers: discordBotHeaders(botToken),
+      body: JSON.stringify(payload),
+    });
   };
 
   let response = await makeRequest();
