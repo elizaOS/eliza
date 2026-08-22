@@ -105,6 +105,7 @@ describe("agent-orchestrator sandbox gating", () => {
       "agent-orchestrator.sub-agent-failure",
       "agent-orchestrator.durable-cancel-routing",
       "agent-orchestrator.finished-work-followup-routing",
+      "agent-orchestrator.route-scoped-work-routing",
     ]);
   });
 
