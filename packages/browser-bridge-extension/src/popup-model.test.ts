@@ -137,7 +137,7 @@ describe("derivePopupStatusModel", () => {
       ),
     ).toMatchObject({
       kind: "error",
-      label: "Reconnect this browser in Eliza",
+      label: "Reset in Eliza, then reconnect",
       action: { kind: "recover", label: "Reconnect" },
     });
   });
