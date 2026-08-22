@@ -48,11 +48,13 @@ describe("runBenchmarkTask", () => {
     const runtime = createRuntime();
     const controller = new AbortController();
     let receivedSignal: AbortSignal | undefined;
+    let receivedCodingMode: boolean | undefined;
     let receivedText: string | undefined;
     let receivedBenchmarkContext: string | undefined;
     vi.spyOn(getMessageService(runtime), "handleMessage").mockImplementation(
       async (_runtime, message, callback, options) => {
         receivedSignal = options?.abortSignal;
+        receivedCodingMode = options?.codingMode;
         receivedText = message.content.text;
         receivedBenchmarkContext =
           message.metadata?.type === "message"
@@ -82,6 +84,7 @@ describe("runBenchmarkTask", () => {
     );
 
     expect(receivedSignal).toBe(controller.signal);
+    expect(receivedCodingMode).toBeUndefined();
     expect(receivedText).toBe("Explain the result");
     expect(receivedBenchmarkContext).toBe('{"fixture":"ground truth"}');
     expect(result).toMatchObject({
@@ -90,6 +93,30 @@ describe("runBenchmarkTask", () => {
       actions_taken: ["SEARCH"],
       success: true,
     });
+  });
+
+  it("routes explicit coding tasks through the coding message loop", async () => {
+    const runtime = createRuntime();
+    let receivedCodingMode: boolean | undefined;
+    vi.spyOn(getMessageService(runtime), "handleMessage").mockImplementation(
+      async (_runtime, _message, _callback, options) => {
+        receivedCodingMode = options?.codingMode;
+        return {
+          didRespond: true,
+          responseContent: { text: "implemented and verified" },
+          responseMessages: [],
+        };
+      },
+    );
+
+    const result = await runBenchmarkTask(
+      runtime,
+      { id: "coding", type: "coding", prompt: "Fix the parser" },
+      new AbortController().signal,
+    );
+
+    expect(receivedCodingMode).toBe(true);
+    expect(result).toMatchObject({ task_type: "coding", success: true });
   });
 
   it("returns partial streamed output when the owner cancels without late completion", async () => {
