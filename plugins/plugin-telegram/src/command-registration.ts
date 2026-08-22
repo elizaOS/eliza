@@ -28,9 +28,11 @@
  * Auth gating: `requiresAuth` / `requiresElevated` commands are gated at the
  * connector boundary using the agent's role model (`hasRoleAccess`) — the same
  * mechanism every surface uses. The Telegram sender is mapped to a runtime
- * entity through `resolveTelegramRuntimeEntityId` (matching inbound
- * `handleMessage`), and a command is refused with a clear reply when the
- * sender is not an owner (for `requiresAuth`) or admin (for `requiresElevated`).
+ * entity once through `resolveTelegramRuntimeEntityId` (matching inbound
+ * `handleMessage`); that snapshot is bound through authorization and dispatch
+ * so a pairing change cannot authorize A and execute as B. A command is
+ * refused with a clear reply when the sender is not an owner (for
+ * `requiresAuth`) or admin (for `requiresElevated`).
  *
  * A matched `bot.command` handler never calls `next()`, so the catch-all
  * message handler registered in `service.ts` does not also process command
@@ -84,6 +86,15 @@ export function truncateTelegramCommandReply(reply: string): string {
 const TELEGRAM_SURFACE = "telegram";
 const DEFAULT_ACCOUNT_ID = "default";
 const TELEGRAM_EMBED_COMMAND = "app";
+
+/**
+ * Sender trust plus the runtime entity used to decide it. Authorization and
+ * dispatch must share this snapshot: a second identity lookup can observe a
+ * different pairing and run a privileged command as a different actor.
+ */
+export type TelegramSenderAuth = ConnectorSenderAuth & {
+  entityId?: UUID;
+};
 
 /** A catalog command projected onto Telegram's native command surface. */
 export interface TelegramCommandDescriptor {
@@ -210,12 +221,14 @@ export function resolveTelegramEmbedUrl(runtime: IAgentRuntime): string | null {
  * Telegram user id is mapped through `resolveTelegramRuntimeEntityId`
  * (matching inbound `handleMessage`), so role resolution reads the
  * canonical-owner / world-role state the inbound pipeline established.
+ * The resolved entity is returned with the auth result and must be reused
+ * for dispatch — never looked up again after the role check awaits.
  */
 export async function resolveTelegramSenderAuth(
   ctx: Context,
   runtime: IAgentRuntime,
   accountId: string,
-): Promise<ConnectorSenderAuth> {
+): Promise<TelegramSenderAuth> {
   const fromId = ctx.from?.id;
   const chatId = ctx.chat?.id;
   if (fromId === undefined || chatId === undefined) {
@@ -249,7 +262,12 @@ export async function resolveTelegramSenderAuth(
 
   const senderName =
     ctx.from?.username ?? ctx.from?.first_name ?? String(fromId);
-  return { isAuthorized: isOwner, isElevated: isAdmin, senderName };
+  return {
+    isAuthorized: isOwner,
+    isElevated: isAdmin,
+    senderName,
+    entityId,
+  };
 }
 
 /**
@@ -264,16 +282,12 @@ async function dispatchAgentCommand(
   messageManager: MessageManager,
   accountId: string,
   descriptor: TelegramCommandDescriptor,
-  sender: ConnectorSenderAuth,
+  sender: TelegramSenderAuth,
 ): Promise<void> {
   const fromId = ctx.from?.id;
   const chatId = ctx.chat?.id;
-  if (fromId !== undefined && chatId !== undefined) {
-    const entityId = await resolveTelegramRuntimeEntityId(
-      runtime,
-      accountId,
-      String(fromId),
-    );
+  const entityId = sender.entityId;
+  if (fromId !== undefined && chatId !== undefined && entityId) {
     const roomId = createUniqueUuid(
       runtime,
       scopedTelegramKey(String(chatId), accountId),
@@ -300,7 +314,10 @@ async function dispatchAgentCommand(
     }
   }
 
-  await messageManager.handleMessage(ctx, { forceReply: true });
+  await messageManager.handleMessage(ctx, {
+    forceReply: true,
+    ...(entityId ? { entityId } : {}),
+  });
   logger.debug(
     {
       src: "plugin:telegram",

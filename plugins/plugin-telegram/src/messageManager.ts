@@ -1446,11 +1446,13 @@ export class MessageManager {
    *   through the agent and force a reply, bypassing the TELEGRAM_AUTO_REPLY gate.
    *   Used for explicit slash-command invocations where the user intent to get a
    *   response is unambiguous.
+   * @param {UUID} [options.entityId] - Actor already resolved for this turn
+   *   (slash-command auth). When set, identity is not looked up again.
    * @returns {Promise<void>}
    */
   public async handleMessage(
     ctx: Context,
-    options?: { forceReply?: boolean },
+    options?: { forceReply?: boolean; entityId?: UUID },
   ): Promise<void> {
     if (!ctx.message || !ctx.from) {
       return;
@@ -1460,11 +1462,13 @@ export class MessageManager {
 
     try {
       const telegramUserId = ctx.from.id.toString();
-      const entityId = await resolveTelegramRuntimeEntityId(
-        this.runtime,
-        this.accountId,
-        telegramUserId,
-      );
+      const entityId =
+        options?.entityId ??
+        (await resolveTelegramRuntimeEntityId(
+          this.runtime,
+          this.accountId,
+          telegramUserId,
+        ));
 
       const threadId =
         "is_topic_message" in message && message.is_topic_message
@@ -1882,11 +1886,40 @@ export class MessageManager {
     const sourceMessage = query.message;
     const chat = sourceMessage.chat as Chat;
     const telegramUserId = ctx.from.id.toString();
-    const entityId = await resolveTelegramRuntimeEntityId(
-      this.runtime,
-      this.accountId,
-      telegramUserId,
-    );
+    let entityId: UUID;
+    try {
+      entityId = await resolveTelegramRuntimeEntityId(
+        this.runtime,
+        this.accountId,
+        telegramUserId,
+      );
+    } catch (error) {
+      // error-policy:J4 identity store failure is a user-visible unavailable
+      // state: fail closed, acknowledge so Telegram clears the spinner, then
+      // report. Do not throw before answerCbQuery — the service catch only logs.
+      try {
+        await ctx.answerCbQuery("Could not verify your identity. Try again.", {
+          show_alert: true,
+        });
+      } catch {
+        // error-policy:J6 best-effort: a stale callback may already have expired
+      }
+      this.runtime.reportError("telegram:callback-identity", error, {
+        accountId: this.accountId,
+        telegramUserId,
+      });
+      logger.error(
+        {
+          src: "plugin:telegram",
+          agentId: this.runtime.agentId,
+          accountId: this.accountId,
+          telegramUserId,
+          error: error instanceof Error ? error.message : String(error),
+        },
+        "Telegram callback identity lookup failed",
+      );
+      return;
+    }
 
     const threadId =
       "is_topic_message" in sourceMessage && sourceMessage.is_topic_message
