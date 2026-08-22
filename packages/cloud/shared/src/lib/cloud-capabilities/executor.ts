@@ -1,6 +1,10 @@
 // Registers cloud capability executor behavior for hosted agent execution.
 import type { AppContext } from "../../types/cloud-worker-env";
-import { requireAdmin, requireUserOrApiKeyWithOrg } from "../auth/workers-hono-auth";
+import {
+  requireAdmin,
+  requireCurrentBillingManagerSession,
+  requireUserOrApiKeyWithOrg,
+} from "../auth/workers-hono-auth";
 import { type CloudCapability, type CloudCapabilityStatus, getCloudCapabilities } from "./registry";
 
 type CapabilityArgs = Record<string, unknown>;
@@ -88,6 +92,9 @@ function copyRequestHeaders(c: AppContext, input: CapabilityArgs): Headers {
     "idempotency-key",
     "x-idempotency-key",
     "cookie",
+    "origin",
+    "referer",
+    "x-eliza-csrf",
   ]) {
     const value = c.req.header(name);
     if (value) headers.set(name, value);
@@ -124,6 +131,11 @@ async function authorizeCapability(c: AppContext, capability: CloudCapability) {
   }
 
   if (capability.category === "auth" || capability.auth.modes.includes("public")) {
+    return;
+  }
+
+  if (capability.auth.organizationRoles?.length) {
+    await requireCurrentBillingManagerSession(c);
     return;
   }
 

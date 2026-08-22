@@ -6,7 +6,7 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
+import { requireCurrentBillingManagerSession } from "@/lib/auth/workers-hono-auth";
 import {
   moneyRateLimit,
   RateLimitPresets,
@@ -29,7 +29,6 @@ app.use("*", moneyRateLimit(RateLimitPresets.STANDARD));
 
 app.post("/", async (c) => {
   try {
-    const user = await requireUserOrApiKeyWithOrg(c);
     const resourceId = c.req.param("id");
     if (!resourceId) {
       return c.json({ success: false, error: "Resource id required" }, 400);
@@ -55,6 +54,7 @@ app.post("/", async (c) => {
       );
     }
 
+    const user = await requireCurrentBillingManagerSession(c);
     const result = await activeBillingService.cancelResource({
       organizationId: user.organization_id,
       resourceId,
@@ -63,6 +63,9 @@ app.post("/", async (c) => {
         | undefined,
       mode: parsed.data.mode,
       triggerEnv: c.env,
+      authorizeInfrastructureMutation: async () => {
+        await requireCurrentBillingManagerSession(c);
+      },
     });
 
     return c.json({ success: true, ...result });
