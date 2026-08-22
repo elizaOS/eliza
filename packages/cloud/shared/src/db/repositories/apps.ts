@@ -583,6 +583,8 @@ export class AppsRepository {
    *
    * The correlated ownership and lifecycle predicates keep this repository
    * boundary fail-closed even when it is called outside `AppsService.create`.
+   * Expiry uses the wall clock projected to UTC so it matches the
+   * timestamp-without-time-zone column without transaction or session drift.
    */
   async attachInitialApiKey(
     appId: string,
@@ -607,7 +609,10 @@ export class AppsRepository {
               AND ${apiKeys.is_active} = TRUE
               AND ${apiKeys.deleted_at} IS NULL
               AND ${apiKeys.source_app_id} IS NULL
-              AND (${apiKeys.expires_at} IS NULL OR ${apiKeys.expires_at} > CURRENT_TIMESTAMP)
+              AND (
+                ${apiKeys.expires_at} IS NULL
+                OR ${apiKeys.expires_at} > (clock_timestamp() AT TIME ZONE 'UTC')
+              )
           )`,
         ),
       )
