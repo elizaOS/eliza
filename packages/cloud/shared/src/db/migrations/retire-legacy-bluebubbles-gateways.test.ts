@@ -9,7 +9,7 @@ import {
 } from "../../lib/services/connected-capabilities/projection";
 
 const migration = await readFile(
-  new URL("./0307_retire_legacy_bluebubbles_gateways.sql", import.meta.url),
+  new URL("./0308_retire_legacy_bluebubbles_gateways.sql", import.meta.url),
   "utf8",
 );
 
@@ -42,7 +42,7 @@ afterEach(async () => {
   await Promise.all(databases.splice(0).map((db) => db.close()));
 });
 
-describe("0307 retire legacy BlueBubbles gateways", () => {
+describe("0308 retire legacy BlueBubbles gateways", () => {
   test("deactivates schema-v1 and schema-v2 legacy rows without touching supported gateways", async () => {
     const db = await database();
     await db.exec(`
