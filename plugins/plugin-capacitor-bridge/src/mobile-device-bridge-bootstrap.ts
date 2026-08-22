@@ -1756,9 +1756,10 @@ function bionicHostGenerateStream(
 }
 
 /**
- * Clamp a background-priority request to the device-class budget and resolve
- * its bounded lane wait (#11914). Interactive requests pass through untouched
- * with an unbounded lane wait (their transport timeout governs the total).
+ * Validate a background-priority request against the device-class budget and
+ * resolve its bounded lane wait (#11914). Interactive requests pass through
+ * untouched with an unbounded lane wait (their transport timeout governs the
+ * total).
  */
 function resolveMobileLaneBudget(
 	priority: LocalInferencePriority,
@@ -1771,15 +1772,13 @@ function resolveMobileLaneBudget(
 	const budget = resolveBackgroundInferenceBudget(
 		inferenceRamClassFromEnv() ?? "standard",
 	);
-	const clamped = applyBackgroundInferenceBudget({ prompt, maxTokens }, budget);
-	if (clamped.clamped.length > 0) {
-		logger.info(
-			`[mobile-device-bridge] background generate clamped to the device-class budget: ${clamped.clamped.join(", ")} (#11914)`,
-		);
-	}
+	const budgeted = applyBackgroundInferenceBudget(
+		{ prompt, maxTokens },
+		budget,
+	);
 	return {
-		prompt: clamped.prompt,
-		maxTokens: clamped.maxTokens,
+		prompt: budgeted.prompt,
+		maxTokens: budgeted.maxTokens,
 		lockWaitMs: budget.lockWaitMs,
 	};
 }
@@ -1791,7 +1790,7 @@ function makeGenerateHandler(slot: "TEXT_SMALL" | "TEXT_LARGE") {
 		// generate goes through the process-wide interactive-over-background
 		// lane (#11914): interactive turns dispatch ahead of queued background
 		// jobs; background jobs run only when the lane is idle, wait a bounded
-		// time, and are clamped to the device-class budget. Without this, one
+		// time, and reject unsupported explicit device-class budgets. Without this, one
 		// long autonomous job self-queues on the host lock and starves chat.
 		const priority = params.priority ?? "interactive";
 

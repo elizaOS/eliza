@@ -573,6 +573,53 @@ describe("AcpService", () => {
     await service.stop();
   });
 
+  it("spawns a quoted single-token ELIZA_ACP_CLI as the parsed executable (#24684)", async () => {
+    const reg = nextProc();
+    // A quoted single token is quote-stripped by the availability walker and by
+    // missingCliMessage(), but cliPath previously kept the raw literal, so
+    // spawn() received `"acpx"` with the quotes and ENOENTed (there is no shell
+    // to strip them). Asserting the spawn argv pins the actual defect site:
+    // restoring the old normalization makes this expectation see '"acpx"'.
+    const service = new AcpService(runtime({ ELIZA_ACP_CLI: '"acpx"' }));
+    await service.start();
+
+    const promise = service.spawnSession({
+      name: "quoted",
+      agentType: "codex",
+      workdir: "/tmp/acp-test",
+    });
+    await waitForSpawn(reg);
+    reg.proc.stdout.emit(
+      "data",
+      Buffer.from(
+        '{"jsonrpc":"2.0","method":"session_started","params":{"sessionId":"quoted"}}\n',
+      ),
+    );
+    closeOk(reg);
+    await promise;
+
+    expect(spawnMock.mock.calls[0]?.[0]).toBe("acpx");
+    await service.stop();
+  });
+
+  it("rejects a whitespace-only ELIZA_ACP_CLI instead of spawning the empty string (#24684)", async () => {
+    // An empty parsed command previously fell through to spawn() as a PATH
+    // lookup of "" instead of failing closed.
+    const service = new AcpService(runtime({ ELIZA_ACP_CLI: "   " }));
+    await service.start();
+
+    await expect(
+      service.spawnSession({
+        name: "empty-cli",
+        agentType: "codex",
+        workdir: "/tmp/acp-test",
+      }),
+    ).rejects.toThrow(/No executable command is configured/);
+
+    expect(spawnMock).not.toHaveBeenCalled();
+    await service.stop();
+  });
+
   it("spawns a session, emits ready, and stores the session", async () => {
     const reg = nextProc();
     const service = new AcpService(runtime());

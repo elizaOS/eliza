@@ -572,6 +572,12 @@ export default function StewardLoginSection() {
   const walletOptionsRegionRef = useRef<HTMLDivElement>(null);
   const [callbackError, setCallbackError] = useState<string | null>(null);
   const [redirectTo, setRedirectTo] = useState<string | null>(null);
+  // Do not expose fresh-login controls while an older session is still being
+  // restored. Otherwise a delayed restore can overtake an OTP request and make
+  // requesting a code look like successful authentication.
+  const [sessionRecoveryComplete, setSessionRecoveryComplete] = useState(
+    PLAYWRIGHT_TEST_AUTH_ENABLED,
+  );
   const [externalSuccessDestination, setExternalSuccessDestination] = useState<
     string | null
   >(null);
@@ -827,8 +833,10 @@ export default function StewardLoginSection() {
 
   useEffect(() => {
     if (PLAYWRIGHT_TEST_AUTH_ENABLED) return;
-    if (searchParams.get("code")) return;
-    if (searchParams.get("error")) return;
+    if (searchParams.get("code") || searchParams.get("error")) {
+      setSessionRecoveryComplete(true);
+      return;
+    }
 
     let cancelled = false;
 
@@ -872,6 +880,8 @@ export default function StewardLoginSection() {
             ),
           );
         }
+      } finally {
+        if (!cancelled) setSessionRecoveryComplete(true);
       }
     };
 
@@ -1891,7 +1901,7 @@ export default function StewardLoginSection() {
   // Provider discovery in flight: a pulsing skeleton with the final option
   // stack's exact geometry, so the real options materialize in place with no
   // card resize (#18256) instead of replacing a short spinner block.
-  if (!providersLoaded) {
+  if (!providersLoaded || !sessionRecoveryComplete) {
     return (
       <div
         role="status"

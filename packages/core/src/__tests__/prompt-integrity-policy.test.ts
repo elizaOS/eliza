@@ -74,6 +74,7 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 	],
 	"packages/core/src/services/message.ts": [
 		/slice\(0,\s*400\)[\s\S]{0,120}task_complete/,
+		/CODING_DIRECT_ACTIONS/,
 	],
 	"packages/core/src/services/relationships.ts": [
 		/MAX_INTERACTION_HISTORY/,
@@ -115,6 +116,15 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 		/max_tokens:\s*options\.maxTokens\s*\?\?\s*1024/,
 		/this\.maxTokens\s*=\s*config\.maxTokens\s*\?\?\s*1024/,
 		/num_predict:\s*this\.maxTokens/,
+	],
+	"packages/core/src/runtime/action-retrieval.ts": [
+		/results\.slice\(0,\s*limit\)/,
+		/COMPRESS_MODE_TOP_K_CAP/,
+	],
+	"packages/core/src/runtime/action-tiering.ts": [
+		/tierAParents\.splice\(/,
+		/tierBParents\.splice\(/,
+		/children[^\n]*\.slice\(0,/,
 	],
 	"plugins/plugin-coding-tools/src/actions/summaries.ts": [
 		/compactSummaryText/,

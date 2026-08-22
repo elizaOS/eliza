@@ -3921,7 +3921,7 @@
       "config": {
         "OPENAI_API_KEY": {
           "type": "secret",
-          "required": true,
+          "required": false,
           "sensitive": true,
           "label": "Api Key",
           "help": "API key used to authenticate requests to the OpenAI API.",

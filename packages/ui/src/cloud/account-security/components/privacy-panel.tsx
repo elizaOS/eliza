@@ -3,7 +3,7 @@
  *   - vision / screen-capture consent toggle (local consent store)
  *   - trajectory logging toggle (local consent store)
  *
- * Account deletion is backed by the Worker and Steward lifecycle coordinator.
+ * Account deletion renders the Worker's read-only lifecycle admission state.
  * Data export remains visible but unavailable until its export job ships.
  */
 
@@ -120,9 +120,9 @@ export function PrivacyPanel() {
           label={t("cloud.privacyPanel.deleteTitle", {
             defaultValue: "Delete my account",
           })}
-          description={t("cloud.privacyPanel.deleteDescription", {
+          description={t("cloud.privacyPanel.deleteAvailabilityDescription", {
             defaultValue:
-              "Disables access immediately and schedules your Steward identity and associated Eliza Cloud data for deletion within 30 days. Records required for legal, tax, fraud, or security purposes may be retained only as necessary.",
+              "Checks whether the verified account-deletion lifecycle is available. Shared resources may need transfer first; unavailable requests are routed to support without changing your account.",
           })}
           control={<AccountDeletionDialog />}
         />

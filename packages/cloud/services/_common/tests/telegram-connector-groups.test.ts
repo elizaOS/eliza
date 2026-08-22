@@ -83,6 +83,75 @@ describe("parseTelegramWebhook group policy", () => {
     ).toBeNull();
   });
 
+  test.each([
+    [
+      "ambient before a reply",
+      {
+        text: "  /eliza_ambient@AnotherBot on\n",
+        entities: [{ type: "bot_command", offset: 2, length: 25 }],
+        reply_to_message: {
+          message_id: 77,
+          from: { is_bot: true, username: "ElizaIsNotABot" },
+        },
+      },
+    ],
+    [
+      "leave before a mention",
+      {
+        text: "\t/eliza_leave@AnotherBot @ElizaIsNotABot  ",
+        entities: [
+          { type: "bot_command", offset: 1, length: 23 },
+          { type: "mention", offset: 25, length: 15 },
+        ],
+      },
+    ],
+    [
+      "link before ambient fallback with a misaligned entity",
+      {
+        text: "  /eliza_link@AnotherBot 23456789  ",
+        entities: [{ type: "bot_command", offset: 0, length: 22 }],
+      },
+    ],
+  ])("rejects a foreign %s", (_case, message) => {
+    expect(
+      parseTelegramWebhook(update(message), undefined, {
+        ...policy,
+        allowAmbient: true,
+      }),
+    ).toBeNull();
+  });
+
+  test.each([
+    ["current-bot ambient", "  /eliza_ambient@ElizaIsNotABot on\n"],
+    ["unqualified ambient", "\t/eliza_ambient off  "],
+    ["current-bot leave", "\n/eliza_leave@ElizaIsNotABot  "],
+    ["unqualified leave", "  /eliza_leave\t"],
+    ["current-bot link", "\t/eliza_link@ElizaIsNotABot 23456789  "],
+    ["unqualified link", "  /eliza_link 23456789\n"],
+  ])("recognizes a trimmed %s command without entities", (_case, text) => {
+    expect(
+      parseTelegramWebhook(update({ text }), undefined, {
+        ...policy,
+        allowAmbient: true,
+      }),
+    ).toMatchObject({ groupInvocation: "command", text });
+  });
+
+  test.each([
+    ["unqualified", " /eliza_leave "],
+    ["suffixed", " /eliza_link@ElizaIsNotABot 23456789 "],
+  ])(
+    "keeps a trimmed %s command fail-closed without bot identity",
+    (_case, text) => {
+      expect(
+        parseTelegramWebhook(update({ text }), undefined, {
+          botUsername: "  ",
+          allowAmbient: true,
+        }),
+      ).toBeNull();
+    },
+  );
+
   test("accepts a reply to this bot but not an arbitrary bot", () => {
     expect(
       parseTelegramWebhook(

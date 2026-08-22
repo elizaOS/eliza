@@ -37,6 +37,7 @@ const createOwned = mock();
 const recoverHostCredential = mock();
 const listOwned = mock();
 const revokeHost = mock();
+const revokeAuthenticatedHost = mock();
 const createPendingForOwnedAgent = mock();
 const createPendingForOwnedHost = mock();
 const activatePendingHost = mock();
@@ -58,6 +59,7 @@ mock.module("@/db/repositories/remote-hosts", () => ({
     recoverCredential: recoverHostCredential,
     listOwned,
     revoke: revokeHost,
+    revokeAuthenticated: revokeAuthenticatedHost,
   },
 }));
 mock.module("@/db/repositories/remote-sessions", () => ({
@@ -182,6 +184,7 @@ beforeEach(() => {
     recoverHostCredential,
     listOwned,
     revokeHost,
+    revokeAuthenticatedHost,
     createPendingForOwnedAgent,
     createPendingForOwnedHost,
     activatePendingHost,
@@ -606,5 +609,31 @@ describe("secure remote relay routes", () => {
       },
     });
     expect(revokeHost).toHaveBeenCalledWith(hostId, organizationId, ownerId);
+  });
+
+  test("lets a host bearer revoke only its bound host for native cleanup", async () => {
+    requireUserOrApiKeyWithOrg.mockClear();
+    revokeAuthenticatedHost.mockResolvedValue({
+      host: { id: hostId, status: "revoked" },
+      alreadyRevoked: false,
+      cleanup: { sessions: 1, commands: 2, more: false },
+    });
+    const response = await request(
+      `/api/v1/remote/hosts/${hostId}/revoke`,
+      {},
+      hostHeaders(),
+    );
+    expect(response.status).toBe(200);
+    expect(revokeAuthenticatedHost).toHaveBeenCalledWith(hostId, hostToken);
+    expect(requireUserOrApiKeyWithOrg).not.toHaveBeenCalled();
+
+    const wrongHost = "40000000-0000-4000-8000-000000000002";
+    const rejected = await request(
+      `/api/v1/remote/hosts/${wrongHost}/revoke`,
+      {},
+      hostHeaders(),
+    );
+    expect(rejected.status).toBe(404);
+    expect(revokeAuthenticatedHost).toHaveBeenCalledTimes(1);
   });
 });
