@@ -76,7 +76,7 @@ Mock/reset evidence remains row-specific and is not inferred from catalog
 ownership. The catalog records closed draft PR #23185 only as a design reference
 for a richer provider conformance catalog; it does not treat that unmerged work
 as present evidence or a required stack. The
-current-develop migration has 54 selected rules across 43 packages and zero
+current-develop migration has 55 selected rules across 43 packages and zero
 package-wide local fallbacks. Every unmatched surface remains unresolved.
 No rule uses a package-wide `all` selector. Calendar's selected operational
 surfaces declare Google Calendar, Microsoft Graph, Apple EventKit, and guarded
