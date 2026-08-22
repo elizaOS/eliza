@@ -214,14 +214,24 @@ function TaskList({
         <Field
           placeholder="Search tasks"
           value={search}
-          agent="search"
+          agent={{
+            id: "search",
+            role: "text-input",
+            label: "Search tasks",
+            value: search,
+          }}
           grow={1}
           onChange={(value) => onAction?.(`search:${value}`)}
         />
         <Button
           variant={showArchived ? "solid" : "outline"}
           tone="default"
-          agent="toggle-archived"
+          agent={{
+            id: "toggle-archived",
+            role: "toggle",
+            label: showArchived ? "Hide archived" : "Show archived",
+            value: showArchived,
+          }}
           onPress={dispatch("toggle-archived")}
         >
           {showArchived ? "Hide archived" : "Show archived"}
@@ -229,7 +239,7 @@ function TaskList({
         <Button
           variant="ghost"
           tone="default"
-          agent="refresh"
+          agent={{ id: "refresh", role: "button", label: "Refresh tasks" }}
           onPress={dispatch("refresh")}
         >
           Refresh
@@ -260,7 +270,14 @@ function TaskRow({
   dispatch: (action: string) => () => void;
 }) {
   return (
-    <VStack gap={0} agent={`task-${thread.id}`}>
+    <VStack
+      gap={0}
+      agent={{
+        id: `task-${thread.id}`,
+        role: "list-item",
+        label: thread.title,
+      }}
+    >
       <HStack gap={1} align="center">
         <Text tone={statusTone(thread.status)}>
           {statusMark(thread.status)}
@@ -271,7 +288,11 @@ function TaskRow({
         <Button
           variant="outline"
           tone="default"
-          agent={`open-${thread.id}`}
+          agent={{
+            id: `open-${thread.id}`,
+            role: "button",
+            label: `Open ${thread.title}`,
+          }}
           onPress={dispatch(`open:${thread.id}`)}
         >
           Open
@@ -315,7 +336,7 @@ function TaskDetail({
         <Button
           variant="ghost"
           tone="default"
-          agent="back"
+          agent={{ id: "back", role: "button", label: "Back to tasks" }}
           onPress={dispatch("back")}
         >
           {"< Tasks"}
@@ -336,14 +357,25 @@ function TaskDetail({
 
       <HStack gap={1} wrap>
         {detail.status === "archived" ? (
-          <Button agent="reopen-thread" onPress={dispatch("reopen-thread")}>
+          <Button
+            agent={{
+              id: "reopen-thread",
+              role: "button",
+              label: "Reopen task",
+            }}
+            onPress={dispatch("reopen-thread")}
+          >
             Reopen
           </Button>
         ) : (
           <Button
             variant="ghost"
             tone="danger"
-            agent="delete-thread"
+            agent={{
+              id: "delete-thread",
+              role: "button",
+              label: "Delete task",
+            }}
             onPress={dispatch("delete-thread")}
           >
             Delete
@@ -405,7 +437,15 @@ function SessionsSection({
             .slice(-6)
             .reverse()
             .map((session) => (
-              <VStack key={session.id} gap={0} agent={`session-${session.id}`}>
+              <VStack
+                key={session.id}
+                gap={0}
+                agent={{
+                  id: `session-${session.id}`,
+                  role: "list-item",
+                  label: session.label,
+                }}
+              >
                 <Text bold wrap={false}>
                   {session.label}
                 </Text>
@@ -445,7 +485,11 @@ function ArtifactsSection({
               key={artifact.id}
               gap={1}
               align="center"
-              agent={`artifact-${artifact.id}`}
+              agent={{
+                id: `artifact-${artifact.id}`,
+                role: "list-item",
+                label: artifact.title,
+              }}
             >
               <Text grow={1} wrap={false}>
                 {artifact.title}
@@ -477,7 +521,11 @@ function DecisionsSection({
               key={decision.id}
               gap={1}
               align="center"
-              agent={`decision-${decision.id}`}
+              agent={{
+                id: `decision-${decision.id}`,
+                role: "list-item",
+                label: decision.decision,
+              }}
             >
               <Text tone="primary" wrap={false}>
                 {decision.decision}
@@ -505,7 +553,11 @@ function EventsSection({ events }: { events: CodingAgentTaskEventRecord[] }) {
               key={event.id}
               gap={1}
               align="center"
-              agent={`event-${event.id}`}
+              agent={{
+                id: `event-${event.id}`,
+                role: "list-item",
+                label: event.summary || event.eventType.replace(/_/g, " "),
+              }}
             >
               <Text style="caption" tone="muted" wrap={false}>
                 {event.eventType.replace(/_/g, " ")}
