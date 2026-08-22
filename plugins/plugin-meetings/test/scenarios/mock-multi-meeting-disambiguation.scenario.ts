@@ -11,8 +11,10 @@ import {
 } from "@elizaos/scenario-runner/schema";
 import {
   assertMeetingMockLedger,
+  finalizeMeetingMockLedger,
   installMockSeed,
   MEETINGS_MOCK_REQUIRED_PLUGINS,
+  meetingMockLedgerMatches,
 } from "./_meetings-mock.js";
 
 const MEET_ID = "abc-defg-hij";
@@ -89,7 +91,7 @@ export default scenario({
     },
     {
       kind: "action",
-      name: "strict meetings provider ledger matches",
+      name: "snapshot strict meetings provider ledger",
       actionName: "ASSERT_MEETING_MOCK_LEDGER",
       assertTurn: assertMeetingMockLedger,
     },
@@ -107,5 +109,11 @@ export default scenario({
       name: "both meetings remain active (none left on an ambiguous request)",
       predicate: bothStillActive,
     },
+    {
+      type: "custom",
+      name: "strict meetings provider ledger matches",
+      predicate: meetingMockLedgerMatches,
+    },
   ],
+  cleanup: [finalizeMeetingMockLedger()],
 });

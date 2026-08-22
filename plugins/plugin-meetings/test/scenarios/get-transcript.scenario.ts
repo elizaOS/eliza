@@ -17,9 +17,11 @@ import {
 } from "@elizaos/scenario-runner/schema";
 import {
   assertMeetingMockLedger,
+  finalizeMeetingMockLedger,
   installMockSeed,
   joinedTranscriptIsReady,
   MEETINGS_MOCK_REQUIRED_PLUGINS,
+  meetingMockLedgerMatches,
 } from "./_meetings-mock.js";
 
 const GET_MEETING_TRANSCRIPT = "GET_MEETING_TRANSCRIPT";
@@ -218,7 +220,7 @@ export default scenario({
     },
     {
       kind: "action",
-      name: "strict meetings provider ledger matches",
+      name: "snapshot strict meetings provider ledger",
       actionName: "ASSERT_MEETING_MOCK_LEDGER",
       assertTurn: assertMeetingMockLedger,
     },
@@ -235,5 +237,11 @@ export default scenario({
       name: "transcript result matches the authoritative ready row",
       predicate: transcriptEffect,
     },
+    {
+      type: "custom",
+      name: "strict meetings provider ledger matches",
+      predicate: meetingMockLedgerMatches,
+    },
   ],
+  cleanup: [finalizeMeetingMockLedger()],
 });

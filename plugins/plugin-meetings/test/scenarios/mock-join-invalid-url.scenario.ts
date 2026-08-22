@@ -12,8 +12,10 @@ import {
 } from "@elizaos/scenario-runner/schema";
 import {
   assertMeetingMockLedger,
+  finalizeMeetingMockLedger,
   installMockSeed,
   MEETINGS_MOCK_REQUIRED_PLUGINS,
+  meetingMockLedgerMatches,
 } from "./_meetings-mock.js";
 
 const BAD_URL = "https://example.com/notameeting";
@@ -62,20 +64,18 @@ export default scenario({
       text: `join this: ${BAD_URL}`,
       expectedValidation: "rejected",
       assertTurn(turn) {
-        const validation = turn.actionsCalled.find(
-          (action) => action.actionName === "JOIN_MEETING",
-        );
-        const data = validation?.result?.data as
-          | { phase?: unknown; accepted?: unknown }
-          | undefined;
-        return data?.phase === "validation" && data.accepted === false
+        const validation = turn.validation;
+        return validation?.actionName === "JOIN_MEETING" &&
+          validation.accepted === false &&
+          validation.expected === "rejected" &&
+          turn.actionsCalled.length === 0
           ? undefined
           : `expected registered validation rejection, saw ${JSON.stringify(validation ?? null)}`;
       },
     },
     {
       kind: "action",
-      name: "strict meetings provider ledger matches",
+      name: "snapshot strict meetings provider ledger",
       actionName: "ASSERT_MEETING_MOCK_LEDGER",
       assertTurn: assertMeetingMockLedger,
     },
@@ -86,5 +86,11 @@ export default scenario({
       name: "no meeting joined after registered validation rejection",
       predicate: gracefulInvalidUrl,
     },
+    {
+      type: "custom",
+      name: "strict meetings provider ledger matches",
+      predicate: meetingMockLedgerMatches,
+    },
   ],
+  cleanup: [finalizeMeetingMockLedger()],
 });

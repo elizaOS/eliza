@@ -1660,7 +1660,7 @@ async function executeActionTurn(
   currentNow: Date,
   turnTimeoutMs: number,
 ): Promise<{
-  actionsCalled?: CapturedAction[];
+  validation: NonNullable<ScenarioTurnExecution["validation"]>;
   responseText: string;
   responseBody: unknown;
   durationMs: number;
@@ -1735,21 +1735,11 @@ async function executeActionTurn(
     if (expectedValidation === "rejected") {
       const text = `${actionName} validation rejected the input as expected.`;
       return {
-        actionsCalled: [
-          {
-            actionName,
-            parameters: options,
-            result: {
-              success: false,
-              text,
-              data: {
-                phase: "validation",
-                accepted: false,
-                expected: "rejected",
-              },
-            },
-          },
-        ],
+        validation: {
+          actionName,
+          accepted: false,
+          expected: "rejected",
+        },
         responseText: text,
         responseBody: {
           actionName,
@@ -1793,6 +1783,11 @@ async function executeActionTurn(
     responseText = actionResult.userFacingText;
   }
   return {
+    validation: {
+      actionName,
+      accepted: true,
+      expected: "accepted",
+    },
     responseText,
     responseBody: actionResult ?? null,
     durationMs: Date.now() - startedAt,
@@ -2641,14 +2636,7 @@ export async function runScenario(
                         ctx.runId,
                       )),
                     };
-      const validationActions = execution.actionsCalled;
-      let actionsThisTurn = [
-        ...validationActions,
-        ...interceptor.actions.slice(actionsBefore),
-      ];
-      if (validationActions.length > 0) {
-        interceptor.actions.push(...validationActions);
-      }
+      let actionsThisTurn = interceptor.actions.slice(actionsBefore);
       // Synthesize an implicit REPLY capture when the runtime emitted text
       // via the message callback but the LLM failed to select REPLY in its
       // structured response. This happens regularly
@@ -2698,6 +2686,7 @@ export async function runScenario(
         responseText:
           execution.reportResponseText ?? execution.responseText ?? "",
         actionsCalled: actionsThisTurn,
+        ...(execution.validation ? { validation: execution.validation } : {}),
         durationMs: execution.durationMs ?? 0,
         failedAssertions,
         ...(turnJudgeScore !== undefined ? { judgeScore: turnJudgeScore } : {}),

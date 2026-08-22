@@ -197,6 +197,50 @@ describe("scenario executor wait turns", () => {
   });
 });
 
+describe("scenario finalization", () => {
+  it("runs cleanup invariants even when scenario work throws", async () => {
+    let finalizations = 0;
+    const report = await runScenario(
+      {
+        id: "failed-work-finalizes",
+        title: "Failed work finalizes",
+        domain: "executor",
+        turns: [
+          {
+            kind: "action",
+            name: "unknown action aborts scenario work",
+            actionName: "DOES_NOT_EXIST",
+          },
+        ],
+        cleanup: [
+          {
+            type: "custom",
+            name: "exact provider ledger",
+            apply: () => {
+              finalizations += 1;
+              return "provider ledger consumed 0/1";
+            },
+          },
+        ],
+      },
+      createRuntime([]),
+      {
+        minJudgeScore: 0.8,
+        providerName: "unit-test",
+        turnTimeoutMs: 1_000,
+      },
+    );
+
+    expect(report.status).toBe("failed");
+    expect(report.error).toContain("unknown action");
+    expect(finalizations).toBe(1);
+    expect(report.failedAssertions).toContainEqual({
+      label: "cleanup",
+      detail: "cleanup exact provider ledger: provider ledger consumed 0/1",
+    });
+  });
+});
+
 describe("provider-qualified execution boundary", () => {
   it("fails before creating synthetic users or dispatching through the in-process runtime", async () => {
     const ensureConnection = vi.fn(async () => undefined);
@@ -747,7 +791,7 @@ describe("scenario executor action turns", () => {
     expect(runtime.actions[0].handler).not.toHaveBeenCalled();
   });
 
-  it("records an expected validation rejection through the registered action", async () => {
+  it("records validation rejection without synthesizing an action call", async () => {
     const handler = vi.fn(async () => ({ success: true }));
     const runtime = createRuntime([
       {
@@ -771,6 +815,54 @@ describe("scenario executor action turns", () => {
             expectedValidation: "rejected",
           },
         ],
+        finalChecks: [],
+      },
+      runtime,
+      {
+        minJudgeScore: 0.8,
+        providerName: "unit-test",
+        turnTimeoutMs: 1_000,
+      },
+    );
+
+    expect(report.status).toBe("passed");
+    expect(handler).not.toHaveBeenCalled();
+    expect(report.actionsCalled).toEqual([]);
+    expect(report.turns[0]).toEqual(
+      expect.objectContaining({
+        actionsCalled: [],
+        validation: {
+          actionName: "VIEWS",
+          accepted: false,
+          expected: "rejected",
+        },
+      }),
+    );
+  });
+
+  it("does not let rejected validation satisfy actionCalled", async () => {
+    const runtime = createRuntime([
+      {
+        name: "VIEWS",
+        description: "test action",
+        validate: vi.fn(async () => false),
+        handler: vi.fn(async () => ({ success: true })),
+      } as Action,
+    ]);
+
+    const report = await runScenario(
+      {
+        id: "rejection-is-not-action-call",
+        title: "Rejection is not an action call",
+        domain: "executor",
+        turns: [
+          {
+            kind: "action",
+            name: "invalid",
+            actionName: "VIEWS",
+            expectedValidation: "rejected",
+          },
+        ],
         finalChecks: [
           { type: "actionCalled", actionName: "VIEWS", minCount: 1 },
         ],
@@ -783,21 +875,11 @@ describe("scenario executor action turns", () => {
       },
     );
 
-    expect(report.status).toBe("passed");
-    expect(handler).not.toHaveBeenCalled();
-    expect(report.actionsCalled).toEqual([
-      expect.objectContaining({
-        actionName: "VIEWS",
-        result: expect.objectContaining({
-          success: false,
-          data: {
-            phase: "validation",
-            accepted: false,
-            expected: "rejected",
-          },
-        }),
-      }),
-    ]);
+    expect(report.status).toBe("failed");
+    expect(report.actionsCalled).toEqual([]);
+    expect(report.finalChecks).toContainEqual(
+      expect.objectContaining({ type: "actionCalled", status: "failed" }),
+    );
   });
 
   it("reports expected and actual response text for responseIncludesAny failures", async () => {
