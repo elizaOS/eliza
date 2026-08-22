@@ -114,7 +114,7 @@ describe("voice TTS chunking config from env", () => {
     expect(config.maxChars).toBe(120);
   });
 
-  it("keeps a signed limit and rejects one past the safe range", () => {
+  it("keeps an explicit leading plus and rejects one past the safe range", () => {
     // `parseInt` accepted "+120"; rejecting it would be a regression.
     expect(
       getVoiceTtsChunkingConfigFromEnv({
