@@ -49,6 +49,8 @@ const LIVE_PROVIDER_NAMES = [
   "cli",
 ] as const satisfies readonly LiveProviderName[];
 
+const MAX_TURN_TIMEOUT_MS = 2_147_483_647;
+
 function isScenarioLane(value: string): value is ScenarioLane {
   return (SCENARIO_LANES as readonly string[]).includes(value);
 }
@@ -628,6 +630,26 @@ export async function runCli(
     return 2;
   }
 
+  // A real local model on a CPU backend may need a larger per-turn budget than
+  // the 120s default, but the configured value must remain an exact timer
+  // delay. Number.parseInt would accept prefixes such as "500junk", while
+  // delays above Node's timer ceiling are clamped and fire almost immediately.
+  const turnTimeoutMs = (() => {
+    const raw = process.env.SCENARIO_TURN_TIMEOUT_MS?.trim();
+    if (!raw) return 120_000;
+    const parsedTimeoutMs = /^\+?\d+$/.test(raw) ? Number(raw) : Number.NaN;
+    if (
+      !Number.isSafeInteger(parsedTimeoutMs) ||
+      parsedTimeoutMs <= 0 ||
+      parsedTimeoutMs > MAX_TURN_TIMEOUT_MS
+    ) {
+      throw new Error(
+        `SCENARIO_TURN_TIMEOUT_MS must be a positive integer no greater than ${MAX_TURN_TIMEOUT_MS} (got '${raw}')`,
+      );
+    }
+    return parsedTimeoutMs;
+  })();
+
   const loaded = await loadAllScenarios(
     parsed.dir,
     parsed.filter,
@@ -725,25 +747,6 @@ export async function runCli(
   logger.info(
     `[eliza-scenarios] provider: ${providerName}; execution profile: ${executionProfile}`,
   );
-
-  // Per-turn timeout. Defaults to 120s (fast hosted providers), but a real
-  // local model on a CPU backend needs a larger budget; expose it via env so
-  // the local-model bench lane can run without editing this file.
-  const turnTimeoutMs = (() => {
-    const raw = process.env.SCENARIO_TURN_TIMEOUT_MS?.trim();
-    if (!raw) return 120_000;
-    // `Number.parseInt` stops at the first non-digit, so "500junk" parsed to a
-    // finite, positive 500 and slipped past the guard below — silently running
-    // every turn on a 500ms budget instead of failing the way this check
-    // already intends to.
-    const parsed = /^\+?\d+$/.test(raw) ? Number(raw) : Number.NaN;
-    if (!Number.isSafeInteger(parsed) || parsed <= 0) {
-      throw new Error(
-        `SCENARIO_TURN_TIMEOUT_MS must be a positive integer (got '${raw}')`,
-      );
-    }
-    return parsed;
-  })();
 
   const reports: ScenarioReport[] = [];
   let interruptedSignal: NodeJS.Signals | undefined;
