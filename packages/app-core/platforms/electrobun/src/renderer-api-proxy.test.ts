@@ -102,7 +102,7 @@ describe("renderer API proxy", () => {
     ).toBe(30);
   });
 
-  it("keeps accepting a signed timeout and rejects one past the safe range", () => {
+  it("keeps accepting an explicit leading plus and rejects one past the safe range", () => {
     // `parseInt` accepted "+30"; rejecting it would be a regression.
     expect(
       resolveRendererProxyIdleTimeoutSeconds({
