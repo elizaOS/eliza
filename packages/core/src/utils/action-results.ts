@@ -1,19 +1,11 @@
 /**
- * Bounds how much of a (potentially huge) action/tool result reaches prompt
- * state. Estimates token cost from character length, truncates the text and
- * error fields in the middle while preserving head and tail, and surfaces a
- * filesystem reference (e.g. `fullOutputPath`) to the complete output when one
- * is present in the result data. `collectActionResultSizeWarnings` flags fields
- * over a token threshold, and `formatActionResultsForPrompt` renders the most
- * recent results (capped at `MAX_PROMPTED_ACTION_RESULTS`) into the prompt block.
+ * Projects action and tool results into model context without discarding their
+ * text, errors, structured data, or earlier results. Size warnings remain
+ * diagnostic only: model/provider boundaries must reject unsupported request
+ * sizes explicitly instead of silently changing the prompt.
  */
 import type { ActionResult, ProviderDataRecord } from "../types/components";
-import { tailWellFormed, truncateWellFormed } from "./well-formed";
 
-export const MAX_PROMPTED_ACTION_RESULTS = 8;
-export const MAX_ACTION_RESULT_TEXT_CHARS = 4000;
-export const MAX_ACTION_RESULT_ERROR_CHARS = 2000;
-export const MAX_ACTION_RESULT_DATA_CHARS = 4000;
 export const ACTION_RESULT_OVERSIZE_WARNING_TOKENS = 10000;
 export const ACTION_RESULT_TOKEN_ESTIMATE_CHARS = 4;
 
@@ -57,81 +49,15 @@ export interface ActionResultReferences {
 	error?: string;
 }
 
-const PROMPT_DATA_PRIORITY_KEYS = [
-	"actionName",
-	"awaitingUserInput",
-	"slug",
-	"op",
-	"status",
-	"id",
-] as const;
-
-function compactPromptDataValue(value: unknown, depth = 0): unknown {
-	if (typeof value === "string") {
-		return value.length <= 512
-			? value
-			: `${truncateWellFormed(value, 496)}...[truncated]`;
-	}
-	if (
-		value === null ||
-		typeof value === "number" ||
-		typeof value === "boolean"
-	) {
-		return value;
-	}
-	if (depth >= 2) {
-		return Array.isArray(value)
-			? `[array with ${value.length} item(s)]`
-			: "[nested object omitted]";
-	}
-	if (Array.isArray(value)) {
-		const retained = value
-			.slice(0, 4)
-			.map((entry) => compactPromptDataValue(entry, depth + 1));
-		if (value.length > retained.length) {
-			retained.push(`[${value.length - retained.length} item(s) omitted]`);
-		}
-		return retained;
-	}
-	if (value && typeof value === "object") {
-		return Object.fromEntries(
-			Object.entries(value as Record<string, unknown>)
-				.slice(0, 8)
-				.map(([key, entry]) => [key, compactPromptDataValue(entry, depth + 1)]),
-		);
-	}
-	return String(value);
-}
-
 /**
- * Serializes action data as complete JSON within the evaluator prompt budget.
- * Small payloads remain byte-for-byte complete. Oversized payloads retain
- * control scalars first and replace bulky nested values with explicit markers.
+ * Serializes complete action data for model context. `maxChars` remains in the
+ * signature for source compatibility but no longer authorizes content loss.
  */
 export function formatActionResultDataForPrompt(
 	data: ProviderDataRecord,
-	maxChars = MAX_ACTION_RESULT_DATA_CHARS,
+	_maxChars?: number,
 ): string {
-	const full = JSON.stringify(data);
-	if (full.length <= maxChars) return full;
-
-	const priority = new Set<string>(PROMPT_DATA_PRIORITY_KEYS);
-	const orderedEntries = [
-		...PROMPT_DATA_PRIORITY_KEYS.flatMap((key) =>
-			Object.hasOwn(data, key) ? [[key, data[key]] as const] : [],
-		),
-		...Object.entries(data).filter(([key]) => !priority.has(key)),
-	];
-	const projected: Record<string, unknown> = {};
-	for (const [key, value] of orderedEntries) {
-		const compact = compactPromptDataValue(value);
-		const candidate = { ...projected, [key]: compact, __truncated: true };
-		if (JSON.stringify(candidate).length <= maxChars) {
-			projected[key] = compact;
-		}
-	}
-	projected.__truncated = true;
-	return JSON.stringify(projected);
+	return JSON.stringify(data);
 }
 
 export function estimateActionResultTokens(text: string): number {
@@ -182,35 +108,13 @@ export function getActionResultReference(
 	);
 }
 
-export function truncateMiddle(
+export function formatCompleteActionResultText(
 	text: string,
-	maxChars: number,
+	_maxChars: number,
 	reference?: string,
 ): string {
 	const trimmed = text.trim();
-	if (trimmed.length <= maxChars) {
-		return trimmed;
-	}
-
-	const markerFor = (omittedChars: number) =>
-		`\n\n[... ${omittedChars} chars omitted ...]\n\n`;
-
-	// Reserve space using the largest possible count. Safe cuts may retain one
-	// fewer code unit at either boundary, so derive the displayed count from the
-	// actual slices rather than the requested budget.
-	const retainedBudget = Math.max(
-		0,
-		maxChars - markerFor(trimmed.length).length,
-	);
-	const head = truncateWellFormed(trimmed, Math.ceil(retainedBudget / 2));
-	const tail = tailWellFormed(trimmed, Math.floor(retainedBudget / 2));
-	const marker = markerFor(trimmed.length - head.length - tail.length);
-	const rendered =
-		head.length + marker.length + tail.length <= maxChars
-			? `${head}${marker}${tail}`
-			: truncateWellFormed(trimmed, maxChars);
-
-	return reference ? `${rendered}\n\nFull output: ${reference}` : rendered;
+	return reference ? `${trimmed}\n\nFull output: ${reference}` : trimmed;
 }
 
 export function collectActionResultSizeWarnings(
@@ -260,17 +164,13 @@ export function trimActionResultForPromptState<T extends ActionResult>(
 
 	const text =
 		typeof result.text === "string"
-			? truncateMiddle(result.text, MAX_ACTION_RESULT_TEXT_CHARS, textReference)
+			? formatCompleteActionResultText(result.text, 0, textReference)
 			: result.text;
 	const errorText = stringifyActionResultError(result.error);
 	const error =
 		errorText === undefined
 			? result.error
-			: truncateMiddle(
-					errorText,
-					MAX_ACTION_RESULT_ERROR_CHARS,
-					errorReference,
-				);
+			: formatCompleteActionResultText(errorText, 0, errorReference);
 
 	return {
 		...result,
@@ -291,8 +191,8 @@ export function formatActionResultsForPrompt(
 ): string {
 	const {
 		header = "# Current Chain Action Results",
-		maxResults = MAX_PROMPTED_ACTION_RESULTS,
-		preserveAbsoluteIndex = true,
+		maxResults: _maxResults,
+		preserveAbsoluteIndex: _preserveAbsoluteIndex = true,
 		includeData = false,
 	} = options;
 
@@ -300,38 +200,23 @@ export function formatActionResultsForPrompt(
 		return "No action results available.";
 	}
 
-	const rendered =
-		actionResults.length > maxResults
-			? actionResults.slice(-maxResults)
-			: actionResults;
-	const truncatedCount = actionResults.length - rendered.length;
-	const omittedNote =
-		truncatedCount > 0
-			? [`(${truncatedCount} earlier action result(s) omitted.)`]
-			: [];
+	const rendered = actionResults;
 
 	return [
 		header,
-		...omittedNote,
 		...rendered.map((result, index) => {
-			const displayIndex = preserveAbsoluteIndex
-				? truncatedCount + index + 1
-				: index + 1;
+			const displayIndex = index + 1;
 			const status = result.success === false ? "failed" : "succeeded";
 			const lines = [
 				`${displayIndex}. ${getActionResultActionName(result)} - ${status}`,
 			];
 			if (typeof result.text === "string" && result.text.trim()) {
-				lines.push(
-					`Output: ${truncateMiddle(result.text, MAX_ACTION_RESULT_TEXT_CHARS)}`,
-				);
+				lines.push(`Output: ${formatCompleteActionResultText(result.text, 0)}`);
 			}
 
 			const errorText = stringifyActionResultError(result.error);
 			if (errorText) {
-				lines.push(
-					`Error: ${truncateMiddle(errorText, MAX_ACTION_RESULT_ERROR_CHARS)}`,
-				);
+				lines.push(`Error: ${formatCompleteActionResultText(errorText, 0)}`);
 			}
 
 			const modelData = result.promptData ?? result.data;

@@ -106,6 +106,9 @@ crons = [
 binding = "BLOB"
 bucket_name = "eliza-cloud-blob"
 
+[browser]
+binding = "BROWSER"
+
 [[ratelimits]]
 name = "GLOBAL_RATE_LIMITER"
 namespace_id = "1615301"
@@ -135,6 +138,10 @@ name = "INFERENCE_ADMISSION_GATES"
 class_name = "InferenceAdmissionGate"
 
 [[durable_objects.bindings]]
+name = "DOORDASH_CHECKOUT_GATES"
+class_name = "DoorDashCheckoutGate"
+
+[[durable_objects.bindings]]
 name = "ANONYMOUS_CHAT_GATES"
 class_name = "AnonymousChatGate"
 
@@ -154,37 +161,43 @@ class_name = "PersonalDeliveryProjection"
 name = "PERSONAL_TELEGRAM_DELIVERIES"
 class_name = "PersonalTelegramDelivery"
 
-[[migrations]]
-tag = "shared-runtime-conversations-v1"
-new_sqlite_classes = ["SharedRuntimeConversation"]
+# Declarative exports preserve the existing namespaces without replaying the
+# Worker's historical migration tags. Do not mix this with `[[migrations]]`.
+[exports.SharedRuntimeConversation]
+type = "durable-object"
+storage = "sqlite"
 
-[[migrations]]
-tag = "inference-admission-gates-v1"
-new_sqlite_classes = ["InferenceAdmissionGate"]
+[exports.InferenceAdmissionGate]
+type = "durable-object"
+storage = "sqlite"
 
-[[migrations]]
-tag = "anonymous-chat-gates-v1"
-new_sqlite_classes = ["AnonymousChatGate"]
+[exports.AnonymousChatGate]
+type = "durable-object"
+storage = "sqlite"
 
-[[migrations]]
-tag = "onboarding-session-coordinator-v1"
-new_sqlite_classes = ["OnboardingSessionCoordinator"]
+[exports.OnboardingSessionCoordinator]
+type = "durable-object"
+storage = "sqlite"
 
-[[migrations]]
-tag = "twitter-oauth-refresh-coordinator-v1"
-new_sqlite_classes = ["TwitterOAuthRefreshCoordinator"]
+[exports.TwitterOAuthRefreshCoordinator]
+type = "durable-object"
+storage = "sqlite"
 
-[[migrations]]
-tag = "personal-delivery-projection-v1"
-new_sqlite_classes = ["PersonalDeliveryProjection"]
+[exports.PersonalDeliveryProjection]
+type = "durable-object"
+storage = "sqlite"
 
-[[migrations]]
-tag = "personal-telegram-delivery-v1"
-new_sqlite_classes = ["PersonalTelegramDelivery"]
+[exports.PersonalTelegramDelivery]
+type = "durable-object"
+storage = "sqlite"
 
-[[migrations]]
-tag = "inference-rate-limit-v2-rollback-floor-v1"
-new_sqlite_classes = ["InferenceRateLimitV2RollbackFloor"]
+[exports.InferenceRateLimitV2RollbackFloor]
+type = "durable-object"
+storage = "sqlite"
+
+[exports.DoorDashCheckoutGate]
+type = "durable-object"
+storage = "sqlite"
 
 # General API limits and queues may use Railway Redis via REDIS_URL. Inference
 # routes never connect to it: Cloudflare Rate Limiting bindings protect ingress,
@@ -506,6 +519,9 @@ routes = [
 __dirname = '"/"'
 __filename = '"/worker.js"'
 
+[env.staging.browser]
+binding = "BROWSER"
+
 [env.staging.vars]
 NODE_ENV = "production"
 # Capture every staging turn while validating voice and cross-channel routing.
@@ -721,6 +737,10 @@ name = "INFERENCE_ADMISSION_GATES"
 class_name = "InferenceAdmissionGate"
 
 [[env.staging.durable_objects.bindings]]
+name = "DOORDASH_CHECKOUT_GATES"
+class_name = "DoorDashCheckoutGate"
+
+[[env.staging.durable_objects.bindings]]
 name = "ANONYMOUS_CHAT_GATES"
 class_name = "AnonymousChatGate"
 
@@ -799,6 +819,9 @@ routes = [
 [env.production.define]
 __dirname = '"/"'
 __filename = '"/worker.js"'
+
+[env.production.browser]
+binding = "BROWSER"
 
 [env.production.vars]
 NODE_ENV = "production"
@@ -971,6 +994,10 @@ class_name = "SharedRuntimeConversation"
 [[env.production.durable_objects.bindings]]
 name = "INFERENCE_ADMISSION_GATES"
 class_name = "InferenceAdmissionGate"
+
+[[env.production.durable_objects.bindings]]
+name = "DOORDASH_CHECKOUT_GATES"
+class_name = "DoorDashCheckoutGate"
 
 [[env.production.durable_objects.bindings]]
 name = "ANONYMOUS_CHAT_GATES"

@@ -28,11 +28,6 @@ import type {
 
 export const CURATED_CODING_MEMORY_FILENAME = "NOTES.eliza.md";
 
-const MAX_NOTE_TEXT_CHARS = 280;
-const MAX_NOTE_COUNT_DEFAULT = 40;
-const MAX_FILE_BYTES_DEFAULT = 24_000;
-const MAX_INJECTED_NOTES_DEFAULT = 6;
-const MAX_INJECTED_TOKENS_DEFAULT = 500;
 const LOCK_ACQUIRE_TIMEOUT_MS = 30_000;
 const LOCK_STALE_MS = 10_000;
 const MIN_TOKEN_LENGTH = 3;
@@ -58,10 +53,6 @@ export interface CuratedCodingMemoryNote {
 export interface CuratedCodingMemoryPolicy {
   enabled: boolean;
   injectEnabled: boolean;
-  maxNotes: number;
-  maxFileBytes: number;
-  maxInjectedNotes: number;
-  maxInjectedTokens: number;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -79,21 +70,6 @@ function settingEnabled(
   return defaultValue;
 }
 
-function numericSetting(
-  runtime: IAgentRuntime,
-  key: string,
-  defaultValue: number,
-): number {
-  const raw = runtime.getSetting?.(key);
-  const parsed =
-    typeof raw === "number"
-      ? raw
-      : typeof raw === "string"
-        ? Number.parseInt(raw, 10)
-        : NaN;
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : defaultValue;
-}
-
 export function curatedCodingMemoryPolicy(
   runtime: IAgentRuntime,
 ): CuratedCodingMemoryPolicy {
@@ -103,26 +79,6 @@ export function curatedCodingMemoryPolicy(
       runtime,
       "ELIZA_CURATED_CODING_MEMORY_INJECT",
       true,
-    ),
-    maxNotes: numericSetting(
-      runtime,
-      "ELIZA_CURATED_CODING_MEMORY_MAX_NOTES",
-      MAX_NOTE_COUNT_DEFAULT,
-    ),
-    maxFileBytes: numericSetting(
-      runtime,
-      "ELIZA_CURATED_CODING_MEMORY_MAX_FILE_BYTES",
-      MAX_FILE_BYTES_DEFAULT,
-    ),
-    maxInjectedNotes: numericSetting(
-      runtime,
-      "ELIZA_CURATED_CODING_MEMORY_MAX_INJECTED",
-      MAX_INJECTED_NOTES_DEFAULT,
-    ),
-    maxInjectedTokens: numericSetting(
-      runtime,
-      "ELIZA_CURATED_CODING_MEMORY_TOKEN_BUDGET",
-      MAX_INJECTED_TOKENS_DEFAULT,
     ),
   };
 }
@@ -308,9 +264,7 @@ export function redactCodingMemoryText(input: string): string {
 }
 
 function boundedNoteText(input: string): string {
-  const redacted = redactCodingMemoryText(input);
-  if (redacted.length <= MAX_NOTE_TEXT_CHARS) return redacted;
-  return `${redacted.slice(0, MAX_NOTE_TEXT_CHARS - 1).trimEnd()}…`;
+  return redactCodingMemoryText(input);
 }
 
 function normalizeNoteKey(text: string): string {
@@ -552,9 +506,9 @@ function mergeNotes(
     }
     merged.push(note);
   }
+  void policy;
   return merged
     .sort((a, b) => a.timestamp.localeCompare(b.timestamp))
-    .slice(-policy.maxNotes)
     .reverse();
 }
 
@@ -562,14 +516,8 @@ function enforceByteBound(
   notes: CuratedCodingMemoryNote[],
   policy: CuratedCodingMemoryPolicy,
 ): CuratedCodingMemoryNote[] {
-  let bounded = [...notes];
-  while (
-    bounded.length > 0 &&
-    Buffer.byteLength(renderNotes(bounded), "utf8") > policy.maxFileBytes
-  ) {
-    bounded = bounded.slice(0, -1);
-  }
-  return bounded;
+  void policy;
+  return notes;
 }
 
 async function readExistingNotes(
@@ -762,20 +710,8 @@ export class CuratedCodingMemoryService {
           b.note.confidence - a.note.confidence ||
           b.note.timestamp.localeCompare(a.note.timestamp),
       );
-    const selected: CuratedCodingMemoryNote[] = [];
-    let tokenEstimate = 0;
-    for (const { note } of ranked) {
-      if (selected.length >= policy.maxInjectedNotes) break;
-      // A conservative character-based estimate avoids pulling in a tokenizer
-      // dependency while still enforcing an explicit prompt token budget.
-      const noteTokens = Math.ceil(
-        (note.text.length + note.provenance.join(", ").length + 32) / 3,
-      );
-      if (tokenEstimate + noteTokens > policy.maxInjectedTokens) continue;
-      selected.push(note);
-      tokenEstimate += noteTokens;
-    }
-    return selected;
+    void policy;
+    return ranked.map(({ note }) => note);
   }
 
   private enqueueWrite(

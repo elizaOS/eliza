@@ -55,6 +55,9 @@ export function formatSkillEntriesForPrompt(entries: SkillEntry[]): string {
   return formatSkillsForPrompt(visibleSkills);
 }
 
+// Discord slash-command wire limits. These fields are registration metadata,
+// not the skill text injected into model context; formatSkillsForPrompt above
+// preserves the complete name and description.
 const SKILL_COMMAND_MAX_LENGTH = 32;
 
 const SKILL_COMMAND_FALLBACK = "skill";
@@ -62,8 +65,7 @@ const SKILL_COMMAND_FALLBACK = "skill";
 const SKILL_COMMAND_DESCRIPTION_MAX_LENGTH = 100;
 
 function sanitizeSkillCommandName(raw: string): string {
-  const clamped = raw.length > 1024 ? raw.slice(0, 1024) : raw;
-  const normalized = clamped
+  const normalized = raw
     .toLowerCase()
     .replace(/[^a-z0-9_]+/g, "_")
     .replace(/_+/g, "_")

@@ -6,10 +6,8 @@
  * strict schema rejects on other routes (and so embedding stays on the documented
  * EmbedRequest shape).
  *
- * Input length is capped to the embedding model's advertised context (probed
- * from `/api/tags`) — embeddinggemma's 2048 window rejects English prose well
- * below the old ~32k soft char cap, and zerollama returns 400 rather than
- * truncating further.
+ * Inputs that exceed the embedding model's advertised context fail explicitly;
+ * no prefix is silently substituted for the requested embedding.
  */
 import type { IAgentRuntime, TextEmbeddingParams } from "@elizaos/core";
 import { logger, ModelType } from "@elizaos/core";
@@ -17,11 +15,7 @@ import { type EmbeddingModel, embed } from "ai";
 import { createOllama } from "ollama-ai-provider-v2";
 
 import { getBaseURL, getEmbeddingModel, getSetting } from "../utils/config";
-import {
-  isEmbedContextOverflow,
-  resolveEmbedMaxChars,
-  truncateEmbedInput,
-} from "../utils/embed-context";
+import { resolveEmbedMaxChars, validateEmbedInput } from "../utils/embed-context";
 import { isZerollamaFlavor, resolveOllamaHostFlavor } from "../utils/host-flavor";
 import { emitModelUsed, estimateEmbeddingUsage, normalizeTokenUsage } from "../utils/modelUsage";
 import { resolveOllamaFetch } from "../utils/ollama-chat-compat-fetch";
@@ -29,7 +23,6 @@ import { zerollamaEmbed, zerollamaEmbedMany } from "../utils/zerollama-native";
 import { ensureModelAvailable } from "./availability";
 
 const INIT_PROBE_TEXT = "dimension probe";
-const MAX_OVERFLOW_RETRIES = 3;
 
 function extractText(
   params: TextEmbeddingParams | string | null | { texts?: string[] }
@@ -57,12 +50,6 @@ function extractText(
   );
 }
 
-function longestInputChars(input: string | string[]): number {
-  return typeof input === "string"
-    ? input.length
-    : input.reduce((max, text) => Math.max(max, text.length), 0);
-}
-
 export async function handleTextEmbedding(
   runtime: IAgentRuntime,
   params: TextEmbeddingParams | string | null
@@ -88,13 +75,13 @@ export async function handleTextEmbedding(
     await ensureModelAvailable(modelName, baseURL, customFetch, signal);
 
     const apiBase = baseURL.endsWith("/api") ? baseURL.slice(0, -4) : baseURL;
-    let maxChars = await resolveEmbedMaxChars({
+    const maxChars = await resolveEmbedMaxChars({
       apiBase,
       model: modelName,
       fetchImpl: customFetch,
       envMaxChars: getSetting(runtime, "OLLAMA_EMBED_MAX_CHARS"),
     });
-    let embeddingText = truncateEmbedInput(isInitProbe ? INIT_PROBE_TEXT : text, maxChars);
+    const embeddingText = validateEmbedInput(isInitProbe ? INIT_PROBE_TEXT : text, maxChars);
 
     const flavor = await resolveOllamaHostFlavor(baseURL, customFetch);
     const runZerollama = async (value: string | string[]): Promise<number[]> => {
@@ -158,29 +145,7 @@ export async function handleTextEmbedding(
       logger.log(`[Ollama] Using TEXT_EMBEDDING model: ${modelName}`);
     }
 
-    for (let attempt = 0; attempt <= MAX_OVERFLOW_RETRIES; attempt++) {
-      try {
-        return await runOnce(embeddingText);
-      } catch (error) {
-        // error-policy:J3 a recognized provider context-overflow response
-        // sanitizes the explicit input size and retries; all other errors throw.
-        if (!isEmbedContextOverflow(error) || attempt === MAX_OVERFLOW_RETRIES) {
-          throw error;
-        }
-        const current = longestInputChars(embeddingText);
-        const nextCap = Math.max(256, Math.floor(current / 2));
-        if (nextCap >= current) {
-          throw error;
-        }
-        logger.warn(
-          `[Ollama] Embedding rejected as over-context (${current} chars); retrying at ${nextCap}`
-        );
-        maxChars = nextCap;
-        embeddingText = truncateEmbedInput(isInitProbe ? INIT_PROBE_TEXT : text, maxChars);
-      }
-    }
-
-    throw new Error("Embedding failed after context-overflow retries");
+    return await runOnce(embeddingText);
   } catch (error) {
     // error-policy:J2 context-adding rethrow — log then rethrow. Fabricating a
     // zero/empty embedding on failure would silently poison the vector store and

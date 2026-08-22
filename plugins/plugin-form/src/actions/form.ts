@@ -25,21 +25,14 @@ import {
   type Memory,
   type State,
   toWellFormedUnicode,
-  truncateWellFormed,
   type UUID,
 } from "@elizaos/core";
 import type { FormService } from "../service";
 
 const FORM_SUBACTIONS = ["restore"] as const;
 
-const RESTORE_FIELD_LIMIT = 12;
-const RESTORE_RESPONSE_MAX_CHARS = 4_000;
-
-export function truncateRestoreResponse(text: string): string {
-  const wellFormed = toWellFormedUnicode(text);
-  return wellFormed.length <= RESTORE_RESPONSE_MAX_CHARS
-    ? wellFormed
-    : `${truncateWellFormed(wellFormed, RESTORE_RESPONSE_MAX_CHARS)}\n\n[truncated restored form summary]`;
+export function normalizeRestoreResponse(text: string): string {
+  return toWellFormedUnicode(text);
 }
 
 async function handleRestore(
@@ -104,7 +97,7 @@ async function handleRestore(
 
     if (context.filledFields.length > 0) {
       responseText += `\n\nHere's what I have so far:\n`;
-      for (const field of context.filledFields.slice(0, RESTORE_FIELD_LIMIT)) {
+      for (const field of context.filledFields) {
         responseText += `• ${field.label}: ${field.displayValue}\n`;
       }
     }
@@ -119,7 +112,7 @@ async function handleRestore(
     }
 
     await callback?.({
-      text: truncateRestoreResponse(responseText),
+      text: normalizeRestoreResponse(responseText),
     });
 
     return {

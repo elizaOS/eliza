@@ -88,7 +88,6 @@ const VALID_SOURCE_KINDS: readonly LifeOpsPaymentSourceKind[] = [
 
 const EMAIL_SOURCE_LABEL = "Email bills";
 const SENSITIVE_PAYMENT_SOURCE_METADATA_KEYS = new Set(["plaid", "paypal"]);
-const PLAID_SYNC_PAGE_LIMIT = 20;
 const PLAID_SYNC_MUTATION_RESTART_LIMIT = 3;
 const PLAID_RELINK_CODES = new Set([
   "ITEM_LOGIN_REQUIRED",
@@ -1142,9 +1141,13 @@ export class FinancesService {
       modified = [];
       removedExternalIds = [];
       let hasMore = true;
-      let pageGuard = 0;
+      const seenPageCursors = new Set<string>();
       let restartRequired = false;
-      while (hasMore && pageGuard < PLAID_SYNC_PAGE_LIMIT) {
+      while (hasMore) {
+        if (seenPageCursors.has(pageCursor)) {
+          fail(502, "Plaid sync returned a repeated pagination cursor.");
+        }
+        seenPageCursors.add(pageCursor);
         let delta: PlaidSyncResponse;
         try {
           delta = await this.getPlaidManagedClient().syncTransactions({
@@ -1173,15 +1176,8 @@ export class FinancesService {
         );
         pageCursor = delta.nextCursor;
         hasMore = delta.hasMore;
-        pageGuard += 1;
       }
       if (restartRequired) continue;
-      if (hasMore) {
-        fail(
-          502,
-          "Plaid sync exceeded the 20-page safety limit; retry from the stored cursor.",
-        );
-      }
       completed = true;
       break;
     }
@@ -1446,7 +1442,7 @@ export class FinancesService {
     let inserted = 0;
     let skipped = 0;
     let page = 1;
-    let totalPages = 1;
+    let totalPages: number | null = null;
     try {
       do {
         const result = await this.getPaypalManagedClient().searchTransactions({
@@ -1455,7 +1451,9 @@ export class FinancesService {
           endDate,
           page,
         });
-        totalPages = result.totalPages;
+        if (totalPages === null) {
+          totalPages = result.totalPages;
+        }
         for (const transaction of result.transactions) {
           const wasInserted = await this.upsertPaypalTransaction({
             sourceId,
@@ -1468,7 +1466,7 @@ export class FinancesService {
           }
         }
         page += 1;
-      } while (page <= totalPages && page <= 50);
+      } while (page <= (totalPages ?? 0));
     } catch (error) {
       if (
         error instanceof PaypalManagedClientError &&

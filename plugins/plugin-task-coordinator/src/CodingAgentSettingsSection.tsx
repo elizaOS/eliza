@@ -1,6 +1,6 @@
 /**
  * Per-framework coding-agent settings panel — the tabbed configuration surface
- * (elizaOS, Pi Agent, OpenCode, Claude, Codex) for auth, model, and
+ * (elizaOS, Pi Agent, Claude, Codex) for auth, model, and
  * approval-preset settings. Fills the `@elizaos/ui` settings-section slot and
  * composes AgentTabsSection, GlobalPrefsSection, LlmProviderSection,
  * ModelConfigSection, and GitHubConnectionCard. Preferences persist through the
@@ -99,7 +99,7 @@ export function CodingAgentSettingsSection() {
         if (cloud.apiKey) {
           loaded._CLOUD_API_KEY = cloud.apiKey;
         }
-        for (const agent of ["CLAUDE", "CODEX", "OPENCODE"] as const) {
+        for (const agent of ["CLAUDE", "CODEX"] as const) {
           const prefix = `ELIZA_${agent}`;
           if (env[`${prefix}_MODEL_POWERFUL`]) {
             loaded[`${prefix}_MODEL_POWERFUL`] =
@@ -125,9 +125,6 @@ export function CodingAgentSettingsSection() {
           "OPENAI_API_KEY",
           "ANTHROPIC_BASE_URL",
           "OPENAI_BASE_URL",
-          "ELIZA_OPENCODE_API_KEY",
-          "ELIZA_OPENCODE_BASE_URL",
-          "ELIZA_OPENCODE_LOCAL",
         ] as const) {
           if (env[key]) loaded[key] = env[key];
         }

@@ -6,15 +6,7 @@
  */
 import type { PluginAutoEnableContext } from "@elizaos/core";
 
-/** Enable when a `signal` connector block is present and not explicitly disabled. */
-export function shouldEnable(ctx: PluginAutoEnableContext): boolean {
-  const c = (ctx.config.connectors as Record<string, unknown> | undefined)?.signal;
-  if (!c || typeof c !== "object") return false;
-  const config = c as Record<string, unknown>;
-  if (config.enabled === false) return false;
-  // The full per-connector field check (signal-cli endpoint / phone number)
-  // lives in the central engine's isConnectorConfigured. This module only
-  // checks "block present + not explicitly disabled"; the central engine's
-  // stricter check remains the authoritative gate.
-  return true;
+/** The retired bridge never auto-enables. */
+export function shouldEnable(_ctx: PluginAutoEnableContext): boolean {
+  return false;
 }

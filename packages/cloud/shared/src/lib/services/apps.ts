@@ -4,6 +4,7 @@
 
 import { ElizaError } from "@elizaos/core";
 import crypto from "crypto";
+import { writeTransaction } from "../../db/helpers";
 import {
   type App,
   type AppUser,
@@ -455,19 +456,20 @@ export class AppsService {
       throw new Error("Failed to generate unique slug");
     }
 
-    const { limit } = await this.assertCanCreateForOrganization(data.organization_id);
+    const limit = getMaxAppsPerOrg();
+    const created = await writeTransaction(async (tx) => {
+      const { apiKey, plainKey } = await apiKeysService.create(
+        {
+          name: `${data.name} - App API Key`,
+          description: `API key for app: ${data.name}`,
+          organization_id: data.organization_id,
+          user_id: data.created_by_user_id,
+          rate_limit: 10000,
+        },
+        tx,
+      );
 
-    const { apiKey, plainKey } = await apiKeysService.create({
-      name: `${data.name} - App API Key`,
-      description: `API key for app: ${data.name}`,
-      organization_id: data.organization_id,
-      user_id: data.created_by_user_id,
-      rate_limit: 10000,
-    });
-
-    let app: App | undefined;
-    try {
-      app = await appsRepository.createIfOrganizationBelowLimit(
+      const app = await appsRepository.createIfOrganizationBelowLimit(
         {
           name: data.name,
           description: data.description,
@@ -482,40 +484,23 @@ export class AppsService {
           contact_email: data.contact_email,
         },
         limit,
+        tx,
       );
-    } catch (error) {
-      // error-policy:J2 — remove the provisional API key, then preserve the
-      // original atomic app-create failure for the caller.
-      await apiKeysService.delete(apiKey.id).catch((cleanupError) => {
-        // error-policy:J6 — key rollback is best-effort after the primary app
-        // create failure and cannot replace that failure.
-        logger.warn("[Apps] Failed to clean up API key after app create failure", {
-          apiKeyId: apiKey.id,
-          error: cleanupError instanceof Error ? cleanupError.message : String(cleanupError),
-        });
-      });
-      throw error;
-    }
 
-    if (!app) {
-      await apiKeysService.delete(apiKey.id).catch((cleanupError) => {
-        // error-policy:J6 — key rollback is best-effort after the authoritative
-        // cap rejection; the typed cap error remains the result.
-        logger.warn("[Apps] Failed to clean up API key after app cap rejection", {
-          apiKeyId: apiKey.id,
-          error: cleanupError instanceof Error ? cleanupError.message : String(cleanupError),
-        });
-      });
-      throw new AppCreationLimitError(data.organization_id, limit);
-    }
+      if (!app) {
+        throw new AppCreationLimitError(data.organization_id, limit);
+      }
 
-    logger.info(`Created app: ${app.name} (${app.id})`, {
-      appId: app.id,
-      slug: app.slug,
-      organizationId: app.organization_id,
+      return { app, apiKey: plainKey };
     });
 
-    return { app, apiKey: plainKey };
+    logger.info(`Created app: ${created.app.name} (${created.app.id})`, {
+      appId: created.app.id,
+      slug: created.app.slug,
+      organizationId: created.app.organization_id,
+    });
+
+    return created;
   }
 
   async update(id: string, data: Partial<NewApp>): Promise<App | undefined> {

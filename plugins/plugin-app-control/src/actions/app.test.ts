@@ -209,3 +209,78 @@ describe("APP stop mode", () => {
 		);
 	});
 });
+
+describe("APP launch handler delivery", () => {
+	it("carries the originating renderer through the real action handler", async () => {
+		const originalFetch = globalThis.fetch;
+		const requests: Record<string, unknown>[] = [];
+		globalThis.fetch = vi.fn(async (_url, init) => {
+			const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+			requests.push(body);
+			return new Response(
+				JSON.stringify({
+					ok: true,
+					completedActionDelivered: true,
+					completedActionHandoffId: body.completedActionHandoffId,
+				}),
+				{ status: 200 },
+			);
+		}) as typeof fetch;
+		const client: AppControlClient = {
+			listInstalledApps: async () => [
+				{
+					name: "demo",
+					displayName: "Demo",
+					pluginName: "demo",
+					version: "1.0.0",
+					installedAt: "2026-08-21T00:00:00.000Z",
+				},
+			],
+			listAppRuns: vi.fn(),
+			launchApp: async () => ({
+				pluginInstalled: true,
+				needsRestart: false,
+				displayName: "Demo",
+				launchType: "local",
+				launchUrl: "/api/apps/local/demo/",
+				run: null,
+			}),
+			stopApp: vi.fn(),
+			stopAppRun: vi.fn(),
+		};
+
+		try {
+			const action = createAppAction({
+				client,
+				hasOwnerAccess: async () => true,
+			});
+			const result = await action.handler(
+				{ agentId: "agent-1" } as IAgentRuntime,
+				{
+					entityId: "owner-1",
+					content: {
+						text: "launch demo",
+						metadata: { viewClientId: "origin-renderer" },
+					},
+				} as Memory,
+				undefined,
+				{ parameters: { action: "launch", app: "demo" } },
+				undefined,
+			);
+
+			expect(requests).toHaveLength(1);
+			expect(requests[0]).toMatchObject({
+				clientId: "origin-renderer",
+				delivery: "completed-action",
+			});
+			expect(result.values).toMatchObject({
+				mode: "launch",
+				viewId: "browser",
+				openedInBrowser: true,
+				completedActionDelivered: true,
+			});
+		} finally {
+			globalThis.fetch = originalFetch;
+		}
+	});
+});

@@ -1,6 +1,6 @@
 /**
  * Zod schemas validating the messaging-connector (`channels.*`) config for each
- * supported platform: Telegram, Discord, Google Chat, Slack, Signal, iMessage,
+ * supported platform: Telegram, Discord, Google Chat, Slack, iMessage,
  * MS Teams, WhatsApp, Twitter/X, Twitch, and the live-streaming destinations
  * (Twitch/YouTube/custom-RTMP/Pumpfun/X). Each connector carries account,
  * group/channel, DM/group policy, per-scope tool policy, and delivery/streaming
@@ -239,24 +239,6 @@ export const TelegramAccountConnectorSchema = z
     appHash: z.string().optional(),
     deviceModel: z.string().optional(),
     systemVersion: z.string().optional(),
-  })
-  .strict();
-
-export const BlueBubblesConnectorConfigSchema = z
-  .object({
-    enabled: z.boolean().optional(),
-    serverUrl: z.string().url().optional(),
-    password: z.string().optional(),
-    webhookPath: z.string().optional(),
-    autoStartCommand: z.string().optional(),
-    autoStartArgs: z.array(z.string()).optional(),
-    autoStartCwd: z.string().optional(),
-    autoStartWaitMs: z.number().int().nonnegative().optional(),
-    dmPolicy: DmPolicySchema.optional(),
-    groupPolicy: GroupPolicySchema.optional(),
-    allowFrom: z.array(z.string()).optional(),
-    groupAllowFrom: z.array(z.string()).optional(),
-    sendReadReceipts: z.boolean().optional(),
   })
   .strict();
 
@@ -626,79 +608,6 @@ export const SlackConfigSchema = SlackAccountSchema.extend({
       });
     }
   }
-});
-
-export const SignalAccountSchemaBase = z
-  .object({
-    name: z.string().optional(),
-    capabilities: z.array(z.string()).optional(),
-    markdown: MarkdownConfigSchema,
-    enabled: z.boolean().optional(),
-    configWrites: z.boolean().optional(),
-    account: z.string().optional(),
-    httpUrl: z.string().optional(),
-    httpHost: z.string().optional(),
-    httpPort: z.number().int().positive().optional(),
-    cliPath: ExecutableTokenSchema.optional(),
-    autoStart: z.boolean().optional(),
-    startupTimeoutMs: z.number().int().min(1000).max(120000).optional(),
-    receiveMode: z
-      .union([z.literal("on-start"), z.literal("manual")])
-      .optional(),
-    ignoreAttachments: z.boolean().optional(),
-    ignoreStories: z.boolean().optional(),
-    sendReadReceipts: z.boolean().optional(),
-    dmPolicy: DmPolicySchema.optional().default("pairing"),
-    allowFrom: z.array(z.union([z.string(), z.number()])).optional(),
-    groupAllowFrom: z.array(z.union([z.string(), z.number()])).optional(),
-    groupPolicy: GroupPolicySchema.optional().default("allowlist"),
-    historyLimit: z.number().int().min(0).optional(),
-    dmHistoryLimit: z.number().int().min(0).optional(),
-    dms: z.record(z.string(), DmConfigSchema.optional()).optional(),
-    textChunkLimit: z.number().int().positive().optional(),
-    chunkMode: z.enum(["length", "newline"]).optional(),
-    blockStreaming: z.boolean().optional(),
-    blockStreamingCoalesce: BlockStreamingCoalesceSchema.optional(),
-    mediaMaxMb: z.number().int().positive().optional(),
-    reactionNotifications: z
-      .enum(["off", "own", "all", "allowlist"])
-      .optional(),
-    reactionAllowlist: z.array(z.union([z.string(), z.number()])).optional(),
-    actions: z
-      .object({
-        reactions: z.boolean().optional(),
-      })
-      .strict()
-      .optional(),
-    reactionLevel: z.enum(["off", "ack", "minimal", "extensive"]).optional(),
-    heartbeat: ChannelHeartbeatVisibilitySchema,
-  })
-  .strict();
-
-export const SignalAccountSchema = SignalAccountSchemaBase.superRefine(
-  (value, ctx) => {
-    requireOpenAllowFrom({
-      policy: value.dmPolicy,
-      allowFrom: value.allowFrom,
-      ctx,
-      path: ["allowFrom"],
-      message:
-        'channels.signal.dmPolicy="open" requires channels.signal.allowFrom to include "*"',
-    });
-  },
-);
-
-export const SignalConfigSchema = SignalAccountSchemaBase.extend({
-  accounts: z.record(z.string(), SignalAccountSchema.optional()).optional(),
-}).superRefine((value, ctx) => {
-  requireOpenAllowFrom({
-    policy: value.dmPolicy,
-    allowFrom: value.allowFrom,
-    ctx,
-    path: ["allowFrom"],
-    message:
-      'channels.signal.dmPolicy="open" requires channels.signal.allowFrom to include "*"',
-  });
 });
 
 export const IMessageAccountSchemaBase = z

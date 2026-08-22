@@ -54,9 +54,10 @@ export default {
 | Kind | What it does |
 |---|---|
 | `message` | Sends text through `runtime.messageService.handleMessage` (full conversational path) |
-| `action` | Calls a named action's `validate` + `handler` directly (bypasses LLM routing) |
+| `action` | Calls a runtime-registered action's `validate` + `handler` directly; `expectedValidation: "rejected"` proves an invalid input is refused without invoking the handler |
 | `api` | Makes an HTTP request to the agent's registered routes via a loopback server |
 | `tick` | Invokes the lifeops scheduler at a logical clock time |
+| `wait` | Waits for `durationMs`, or polls a bounded `until(ctx)` state predicate |
 
 ### Assertions
 
@@ -143,14 +144,14 @@ ambiguous, over-consumed, and unused required fixtures fail the attempt. There
 is no fallback for a declared manifest. Direct action/API scenarios that never
 enter a model path may instead declare
 `modelFixtures: { mode: "model-free", reason: "..." }`; message, voice, tick,
-or judge work makes that declaration invalid.
+or judge work makes that declaration invalid. Wait turns are also model-free.
 
 The rollout is staged: undeclared scenarios temporarily retain the legacy
 resolver and reports mark them `legacy-fallback`; declared attempts report
-`strict-fixtures` or `model-free`. The migration ratchet currently records 40
-explicitly model-free and 79 legacy `pr-deterministic` scenario sources across
+`strict-fixtures` or `model-free`. The migration ratchet currently records 46
+strict or explicitly model-free and 74 legacy `pr-deterministic` scenario sources across
 the repository. The declared rows contain only direct action/API work or
-seed/final checks and are validated again by the real executor before each
+wait/seed/final checks and are validated again by the real executor before each
 attempt. The legacy count may only decrease, and the epic is complete only when
 it reaches zero.
 
@@ -175,6 +176,6 @@ await cleanup();
 
 ## Notes
 
-- A simulated CLI invocation runs its scenarios in one shared runtime because PGLite cannot be recreated in-process. Provider-qualified definitions are restricted to one scenario and still require an external production controller; the ordinary executor deliberately refuses to qualify them.
+- A simulated CLI invocation runs its scenarios in one shared runtime because PGLite cannot be recreated in-process. All declared plugins are registered before runtime initialization, preserving service availability for existing seeds. Test companions must scope dependency overrides and ledgers to the runtime, dispose them at shutdown, and declare a guaranteed cleanup assertion for exact completeness. The CLI rejects a shared batch that mixes the meetings test companion with production-only meetings scenarios; use process isolation for that selection. Provider-qualified definitions are restricted to one scenario and still require an external production controller; the ordinary executor deliberately refuses to qualify them.
 - Schema types (`ScenarioDefinition`, `CapturedAction`, etc.) come from `@elizaos/scenario-runner/schema`, not from the main export.
 - Scenarios starting with `_` or in directories starting with `_` are skipped by the loader.

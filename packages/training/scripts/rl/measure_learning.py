@@ -29,6 +29,8 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 PYTHON_ROOT = SCRIPT_DIR.parent
 sys.path.insert(0, str(PYTHON_ROOT))
 
+from training.tokenization import tokenize_with_explicit_limit  # noqa: E402
+
 from src.training.deterministic_eval import (
     ACTION_REASON_ALIGNMENT_SAMPLES,
     ACTION_REASON_ASSISTANT_PREFIX,
@@ -65,9 +67,12 @@ def eval_team(team: TeamModel, device: str) -> dict:
             add_generation_prompt=True,
         )
         prompt_text += ACTION_REASON_ASSISTANT_PREFIX
-        enc = team.tokenizer(prompt_text, return_tensors="pt", truncation=True, max_length=1024).to(
-            device
-        )
+        enc = tokenize_with_explicit_limit(
+            team.tokenizer,
+            prompt_text,
+            max_tokens=1024,
+            return_tensors="pt",
+        ).to(device)
         with torch.no_grad():
             out = team.model.generate(
                 enc["input_ids"],
@@ -119,11 +124,17 @@ def sft_warmup(team: TeamModel, device: str, epochs: int = 2) -> list[float]:
                 add_generation_prompt=True,
             )
             full_text = prompt_text + sample["response"]
-            enc = team.tokenizer(
-                full_text, return_tensors="pt", truncation=True, max_length=512
+            enc = tokenize_with_explicit_limit(
+                team.tokenizer,
+                full_text,
+                max_tokens=512,
+                return_tensors="pt",
             ).to(device)
-            prompt_enc = team.tokenizer(
-                prompt_text, return_tensors="pt", truncation=True, max_length=512
+            prompt_enc = tokenize_with_explicit_limit(
+                team.tokenizer,
+                prompt_text,
+                max_tokens=512,
+                return_tensors="pt",
             )
             prompt_len = prompt_enc["input_ids"].shape[1]
             input_ids = enc["input_ids"][:, :-1]

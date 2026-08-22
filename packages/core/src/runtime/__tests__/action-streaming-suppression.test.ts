@@ -3,7 +3,7 @@
  * turn's visible reply channel (#16230). The visible token stream is scoped to
  * the top-level RESPONSE_HANDLER generation; an action delivers its own output
  * through the HandlerCallback, and any model call it makes to produce that
- * output (e.g. the conversation compactor's ledger extraction) is an
+ * output is an
  * implementation detail the user must never see. `executePlannedToolCall`
  * enforces this through the handler-settlement boundary, which keeps both the
  * handler and its deferred callback delivery inside
@@ -26,7 +26,7 @@ import { ModelType } from "../../types/model";
 import { executePlannedToolCall } from "../execute-planned-tool-call";
 
 const LEDGER_JSON = '```json\n{ "state": { "facts": ["internal fact"] } }\n```';
-const CLEAN_SUMMARY = "Compacted 8 older message(s); preserved the latest 4.";
+const CLEAN_SUMMARY = "Inspection completed.";
 const VOICE_REWRITE_JSON = '```json\n{"response":"opened notes."}\n```';
 
 function makeMessage(): Memory {
@@ -34,20 +34,20 @@ function makeMessage(): Memory {
 		id: "message-id",
 		entityId: "entity-id",
 		roomId: "room-id",
-		content: { text: "/compact" },
+		content: { text: "/inspect" },
 	} as Memory;
 }
 
 /**
- * An action that mirrors COMPACT_CONVERSATION: it makes an internal TEXT_LARGE
+ * An action that makes an internal TEXT_LARGE
  * call whose stubbed handler streams intermediate ledger JSON into whatever
  * streaming context is active, then delivers its designed reply through the
  * HandlerCallback.
  */
-function makeCompactorLikeAction(): Action {
+function makeModelUsingAction(): Action {
 	return {
-		name: "COMPACT_CONVERSATION",
-		description: "Compact the conversation",
+		name: "INSPECT",
+		description: "Inspect runtime state",
 		validate: async () => true,
 		handler: async (runtime, _message, _state, _options, callback) => {
 			// Internal model call: streaming happens inside useModel, which reads
@@ -81,7 +81,7 @@ describe("action streaming suppression (#16230)", () => {
 	it("keeps an action's internal useModel tokens off the visible reply stream, delivering only the callback reply", async () => {
 		const visibleSink = vi.fn();
 		const callbackReplies: string[] = [];
-		const action = makeCompactorLikeAction();
+		const action = makeModelUsingAction();
 		const runtime = makeRuntime(action);
 
 		const result = await runWithStreamingContext(
@@ -103,7 +103,7 @@ describe("action streaming suppression (#16230)", () => {
 							return [];
 						},
 					},
-					{ name: "COMPACT_CONVERSATION", params: {} },
+					{ name: "INSPECT", params: {} },
 				),
 		);
 
@@ -183,7 +183,7 @@ describe("action streaming suppression (#16230)", () => {
 
 	it("positive control: the same internal emission DOES reach the sink at the top level (outside the action seam)", async () => {
 		const visibleSink = vi.fn();
-		const runtime = makeRuntime(makeCompactorLikeAction());
+		const runtime = makeRuntime(makeModelUsingAction());
 
 		await runWithStreamingContext(
 			{

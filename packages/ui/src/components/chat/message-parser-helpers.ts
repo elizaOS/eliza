@@ -111,13 +111,6 @@ export const HIDDEN_TAG_BLOCK_RE =
 export const TRAILING_PARTIAL_TAG_RE = /<\/?[a-zA-Z][^>]*$|<\/?$/s;
 
 /**
- * Longest input the display normalizer will consider; beyond this the passes
- * are truncated so an adversarial 1 MB single line can't make the regexes
- * super-linear. Exported so the streaming wrapper knows the frozen-target point.
- */
-export const MAX_DISPLAY_LEN = 200_000;
-
-/**
  * Test-only accounting of how many characters the parse pipeline scans, so the
  * streaming-parse regression test can assert O(delta) work instead of O(N·L).
  * Plain integer adds — negligible in production, never read by render code.
@@ -145,8 +138,7 @@ export function resetParserWork(): void {
  */
 export function normalizeDisplayCore(text: string): string {
   parserWork.normalizedChars += text.length;
-  let normalized =
-    text.length > MAX_DISPLAY_LEN ? text.slice(0, MAX_DISPLAY_LEN) : text;
+  let normalized = text;
 
   // Hide hidden reasoning/tool blocks from chat bubbles.
   normalized = normalized.replace(HIDDEN_TAG_BLOCK_RE, " ");

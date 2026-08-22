@@ -24,6 +24,7 @@ import {
   type AgentSandboxBackupMetadata,
   type AgentSandboxStatus,
   agentSandboxesRepository,
+  hydrateAgentSandboxBackup,
   PRE_DELETE_BACKUP_RETENTION_MS,
   prepareAgentBackupInsertData,
 } from "../../db/repositories/agent-sandboxes";
@@ -38,6 +39,7 @@ import {
   agentSandboxes,
   type NewAgentSandbox,
   type NewAgentSandboxBackup,
+  type StoredAgentSandboxBackup,
   WARM_POOL_ORG_ID,
 } from "../../db/schemas/agent-sandboxes";
 import { dockerNodes } from "../../db/schemas/docker-nodes";
@@ -114,6 +116,7 @@ import {
   type SandboxProvider,
 } from "./sandbox-provider";
 import {
+  isContainerBackedExecutionTier,
   type SandboxDeletionStopOutcome,
   SandboxReplacementCleanupUnresolvedError,
 } from "./sandbox-provider-types";
@@ -423,6 +426,19 @@ export type ProvisionResult =
       retryable?: boolean;
     };
 
+function rejectNonContainerBackedProvision(
+  rec: AgentSandbox,
+): Extract<ProvisionResult, { success: false }> | undefined {
+  if (isContainerBackedExecutionTier(rec.execution_tier)) {
+    return undefined;
+  }
+  return {
+    success: false,
+    sandboxRecord: rec,
+    error: "Sandbox provisioning requires an explicit container-backed execution tier",
+  };
+}
+
 /**
  * Restore-source override for `provision()`. `from-backup` restores a specific
  * backup (validated upstream by the wake integrity gate) instead of the latest,
@@ -534,6 +550,64 @@ export interface SnapshotResult {
   backup?: AgentSandboxBackup;
   error?: string;
   retryable?: boolean;
+}
+
+type SnapshotAuthorityCapture = Pick<
+  AgentSandbox,
+  | "id"
+  | "organization_id"
+  | "status"
+  | "execution_tier"
+  | "pool_status"
+  | "deleted_at"
+  | "deletion_attempt_id"
+  | "sandbox_id"
+  | "node_id"
+  | "container_name"
+  | "bridge_url"
+  | "health_url"
+  | "bridge_port"
+  | "web_ui_port"
+  | "headscale_ip"
+  | "environment_revision"
+  | "lifecycle_revision"
+>;
+
+const SNAPSHOT_AUTHORITY_CHANGED = "Sandbox changed while snapshot was being captured";
+
+function snapshotAuthorityRejection(rec: SnapshotAuthorityCapture): string | undefined {
+  if (!isContainerBackedExecutionTier(rec.execution_tier)) {
+    return "Agent snapshot requires a container-backed execution tier";
+  }
+  if (rec.pool_status !== null) {
+    return "Agent snapshot cannot target pool-owned capacity";
+  }
+  if (rec.deleted_at !== null) {
+    return "Agent snapshot cannot target a deleted agent";
+  }
+  if (rec.deletion_attempt_id !== null) {
+    return "Agent snapshot cannot start while agent deletion is in progress";
+  }
+  return undefined;
+}
+
+function snapshotCaptureStillCanonical(
+  current: SnapshotAuthorityCapture,
+  captured: SnapshotAuthorityCapture,
+): boolean {
+  return (
+    current.execution_tier === captured.execution_tier &&
+    current.sandbox_id === captured.sandbox_id &&
+    current.node_id === captured.node_id &&
+    current.container_name === captured.container_name &&
+    current.bridge_url === captured.bridge_url &&
+    current.health_url === captured.health_url &&
+    current.bridge_port === captured.bridge_port &&
+    current.web_ui_port === captured.web_ui_port &&
+    current.headscale_ip === captured.headscale_ip &&
+    current.environment_revision === captured.environment_revision &&
+    current.lifecycle_revision === captured.lifecycle_revision
+  );
 }
 
 /**
@@ -3069,6 +3143,8 @@ export class ElizaSandboxService {
   ): Promise<ProvisionResult> {
     let rec = await agentSandboxesRepository.findByIdAndOrg(agentId, orgId);
     if (!rec) return { success: false, error: "Agent not found" } as ProvisionResult;
+    const initialTierRejection = rejectNonContainerBackedProvision(rec);
+    if (initialTierRejection) return initialTierRejection;
     if (rec.claimed_at && rec.warm_claim_credential_state === "failed") {
       const retryPreparation = await this.retireFailedWarmClaimForRetry(agentId, orgId);
       if (!retryPreparation.success) {
@@ -3080,6 +3156,8 @@ export class ElizaSandboxService {
       }
       rec = await agentSandboxesRepository.findByIdAndOrg(agentId, orgId);
       if (!rec) return { success: false, error: "Agent not found" } as ProvisionResult;
+      const retryTierRejection = rejectNonContainerBackedProvision(rec);
+      if (retryTierRejection) return retryTierRejection;
     }
     if (this.getReplacementCleanupLocator(rec)) {
       try {
@@ -3098,6 +3176,8 @@ export class ElizaSandboxService {
       }
       rec = await agentSandboxesRepository.findByIdAndOrg(agentId, orgId);
       if (!rec) return { success: false, error: "Agent not found" } as ProvisionResult;
+      const cleanupTierRejection = rejectNonContainerBackedProvision(rec);
+      if (cleanupTierRejection) return cleanupTierRejection;
     }
 
     const previousStatus = rec.status;
@@ -3248,6 +3328,7 @@ export class ElizaSandboxService {
             agentId: rec.id,
             agentName: rec.agent_name ?? "CloudAgent",
             organizationId: rec.organization_id,
+            executionTier: rec.execution_tier,
             environmentVars: applyRemoteDockerRuntimeMode({
               ...callerEnv,
               ...dbEnv,
@@ -4187,14 +4268,10 @@ export class ElizaSandboxService {
     channelId: string,
     history: SharedTurnMessage[],
   ): Promise<void> {
-    const capped =
-      history.length > SHARED_RUNTIME_HISTORY_MAX_MESSAGES
-        ? history.slice(history.length - SHARED_RUNTIME_HISTORY_MAX_MESSAGES)
-        : history;
     await sharedRuntimeHistoryRepository.merge(
       agentId,
       channelId,
-      capped,
+      history,
       SHARED_RUNTIME_HISTORY_MAX_MESSAGES,
     );
   }
@@ -7181,8 +7258,21 @@ export class ElizaSandboxService {
     orgId: string,
     type: AgentBackupSnapshotType = "manual",
   ): Promise<SnapshotResult> {
-    const rec = await agentSandboxesRepository.findRunningSandbox(agentId, orgId);
-    if (!rec?.bridge_url) return { success: false, error: "Sandbox is not running" };
+    // Both repository seams read the tenant-scoped primary. This is only an
+    // early snapshot for avoiding network work, never a lock or CAS: authority
+    // is re-read under the lifecycle lock after capture and backup planning.
+    const rec =
+      (await agentSandboxesRepository.findRunningSandbox(agentId, orgId)) ??
+      (await agentSandboxesRepository.findByIdAndOrgForWrite(agentId, orgId));
+    if (!rec) return { success: false, error: "Sandbox is not running" };
+
+    const initialAuthorityRejection = snapshotAuthorityRejection(rec);
+    if (initialAuthorityRejection) {
+      return { success: false, error: initialAuthorityRejection };
+    }
+    if (rec.status !== "running" || !rec.bridge_url) {
+      return { success: false, error: "Sandbox is not running" };
+    }
 
     let stateData: AgentBackupStateData;
     let sizeBytes: number;
@@ -7219,13 +7309,42 @@ export class ElizaSandboxService {
       };
     }
 
-    const backup = await agentSandboxesRepository.createBackup(
-      await this.buildBackupInput(rec.id, type, stateData, sizeBytes),
-    );
+    // Capture and incremental/full planning intentionally stay outside the
+    // lifecycle transaction. No durable backup preparation or write begins
+    // until the locked canonical row proves this exact capture still owns the
+    // same running container generation.
+    const plannedInput = await this.buildBackupInput(rec.id, type, stateData, sizeBytes);
+    const persisted = await dbWrite.transaction(async (tx) => {
+      await this.lockLifecycle(tx, agentId, orgId);
+      const current = await this.getAgentForLifecycleMutation(tx, agentId, orgId);
+      if (!current) {
+        return { success: false as const, error: SNAPSHOT_AUTHORITY_CHANGED };
+      }
 
-    await agentSandboxesRepository.update(rec.id, {
-      last_backup_at: new Date(),
+      const currentAuthorityRejection = snapshotAuthorityRejection(current);
+      if (currentAuthorityRejection) {
+        return { success: false as const, error: currentAuthorityRejection };
+      }
+      if (current.status !== "running") {
+        return { success: false as const, error: "Sandbox is not running" };
+      }
+      if (!snapshotCaptureStillCanonical(current, rec)) {
+        return { success: false as const, error: SNAPSHOT_AUTHORITY_CHANGED };
+      }
+
+      const storedBackup = await this.persistAuthorizedSnapshotWithinTransaction(
+        tx,
+        current,
+        orgId,
+        type,
+        plannedInput,
+      );
+      return { success: true as const, storedBackup };
     });
+
+    if (!persisted.success) return persisted;
+
+    const backup = await hydrateAgentSandboxBackup(persisted.storedBackup);
     await agentSandboxesRepository.pruneBackups(rec.id, MAX_BACKUPS);
     logger.info("[agent-sandbox] Backup created", {
       agentId,
@@ -8744,6 +8863,16 @@ export class ElizaSandboxService {
         reprovisioned: false,
         error: "Agent not found",
       };
+    const tierRejection = rejectNonContainerBackedProvision(rec);
+    if (tierRejection) {
+      return {
+        success: false,
+        containerStarted: false,
+        reprovisioned: false,
+        error: tierRejection.error,
+      };
+    }
+
     if (rec.status === "running")
       return { success: true, containerStarted: true, reprovisioned: false };
 
@@ -9439,6 +9568,7 @@ export class ElizaSandboxService {
       agentId,
       agentName: agent.agent_name ?? "",
       organizationId: orgId,
+      executionTier: agent.execution_tier,
       // Re-apply the cloud-managed inference defaults on top of the stored env so
       // an agent provisioned BEFORE the embedding-dimension / model pins landed
       // heals on upgrade instead of freezing a stale config (e.g. 1536-d cloud
@@ -9952,6 +10082,7 @@ export class ElizaSandboxService {
       agentId,
       agentName: agent.agent_name ?? "",
       organizationId: orgId,
+      executionTier: agent.execution_tier,
       environmentVars: applyRemoteDockerRuntimeMode({
         ...rollbackEnv,
         ...applyManagedAgentInferenceEnvDefaults(rollbackEnv),
@@ -11293,6 +11424,62 @@ export class ElizaSandboxService {
       sizeBytes,
       bridgeUrl: rec.bridge_url,
     };
+  }
+
+  private async persistAuthorizedSnapshotWithinTransaction(
+    tx: LifecycleTx,
+    rec: SnapshotAuthorityCapture,
+    organizationId: string,
+    type: AgentBackupSnapshotType,
+    plannedInput: NewAgentSandboxBackup,
+  ): Promise<StoredAgentSandboxBackup> {
+    const [sandbox] = await tx
+      .update(agentSandboxes)
+      .set({ last_backup_at: new Date(), updated_at: new Date() })
+      .where(
+        and(
+          eq(agentSandboxes.id, rec.id),
+          eq(agentSandboxes.organization_id, organizationId),
+          eq(agentSandboxes.status, "running"),
+          eq(agentSandboxes.execution_tier, rec.execution_tier),
+          sql`${agentSandboxes.pool_status} IS NULL`,
+          sql`${agentSandboxes.deleted_at} IS NULL`,
+          sql`${agentSandboxes.deletion_attempt_id} IS NULL`,
+          sql`${agentSandboxes.sandbox_id} IS NOT DISTINCT FROM ${rec.sandbox_id}`,
+          sql`${agentSandboxes.node_id} IS NOT DISTINCT FROM ${rec.node_id}`,
+          sql`${agentSandboxes.container_name} IS NOT DISTINCT FROM ${rec.container_name}`,
+          sql`${agentSandboxes.bridge_url} IS NOT DISTINCT FROM ${rec.bridge_url}`,
+          sql`${agentSandboxes.health_url} IS NOT DISTINCT FROM ${rec.health_url}`,
+          sql`${agentSandboxes.bridge_port} IS NOT DISTINCT FROM ${rec.bridge_port}`,
+          sql`${agentSandboxes.web_ui_port} IS NOT DISTINCT FROM ${rec.web_ui_port}`,
+          sql`${agentSandboxes.headscale_ip} IS NOT DISTINCT FROM ${rec.headscale_ip}`,
+          eq(agentSandboxes.environment_revision, rec.environment_revision),
+          eq(agentSandboxes.lifecycle_revision, rec.lifecycle_revision),
+        ),
+      )
+      .returning({ id: agentSandboxes.id });
+    if (!sandbox) {
+      throw new ElizaError("Backup metadata update lost its sandbox row", {
+        code: "AGENT_BACKUP_SANDBOX_MISSING",
+        context: { sandboxRecordId: rec.id, organizationId, snapshotType: type },
+        severity: "fatal",
+      });
+    }
+
+    // Preparation is deliberately after the locked metadata CAS so lost
+    // authority cannot reach encryption or object storage. A provider PUT
+    // cannot be rolled back if the later SQL insert/commit fails; that remains
+    // the existing object-GC residual, not cross-system atomicity.
+    const insertData = await prepareAgentBackupInsertData(plannedInput, organizationId);
+    const [backup] = await tx.insert(agentSandboxBackups).values(insertData).returning();
+    if (!backup) {
+      throw new ElizaError("Backup insert did not return the persisted row", {
+        code: "AGENT_BACKUP_INSERT_MISSING",
+        context: { sandboxRecordId: rec.id, organizationId, snapshotType: type },
+        severity: "fatal",
+      });
+    }
+    return backup;
   }
 
   private async persistSnapshotWithinTransaction(

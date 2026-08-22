@@ -70,7 +70,7 @@ provider can return authoritative acceptance evidence.
 
 ### Provider
 
-`browser_workspace` — Injects the current dispatch mode (`desktop` / `web`) and a capped list of open tabs into agent context. Active when the `browser` or `web` context is selected.
+`browser_workspace` — Injects the current dispatch mode (`desktop` / `web`) and the complete list of open tabs into agent context. Active when the `browser` or `web` context is selected.
 
 ### Routes
 

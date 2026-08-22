@@ -142,7 +142,7 @@ Config block in character settings:
 - **Attachment ownership.** Downloaded inbound files are copied from the Messages attachment directory into `IFileStorageService` before Memory creation, so only canonical `/api/media/<sha256>.<ext>` handles enter runtime state. Outbound media-store handles use `runtime.fetch`; remote URLs use the core SSRF-guarded connector resolver; both paths are byte-capped and staged only for the duration of the Messages send.
 - **DM `pairing` uses the core PairingService.** The connector has no pairing handshake of its own; unknown DM senders are held until the owner approves their pairing code. The pairing-code reply is an autonomous outbound text, so it is only sent when `IMESSAGE_AUTO_REPLY=true` (the same consent gate as agent-generated replies); pending requests are always visible in the pairing UI.
 - **Message chunking.** Messages over 4000 chars (`MAX_IMESSAGE_MESSAGE_LENGTH`) are split at newlines or spaces and sent as sequential AppleScript calls. A supplied attachment is sent exactly once after all text chunks succeed.
-- **Transport ownership.** This plugin has no BlueBubbles or auxiliary-CLI configuration. The separate `@elizaos/plugin-bluebubbles` package retains legacy/remote deployments; it is not an alias of this connector.
+- **Transport ownership.** This plugin is the only supported iMessage connector. It has no external bridge, daemon, relay, or auxiliary-CLI configuration.
 - **No npm build deps.** Only `@elizaos/core` and `zod` at runtime. The build uses `build.ts` (not a tsdown config file) invoked via `bun run build.ts`.
 
 ## Verification

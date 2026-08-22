@@ -42,16 +42,16 @@ describe("connectorSupportsChannelMode", () => {
     expect(connectorSupportsChannelMode("slack", "delegate")).toBe(true);
   });
 
-  it("classifies delegate-only connectors without mixed inventory out of Bot", () => {
-    expect(connectorSupportsChannelMode("bluebubbles", "delegate")).toBe(true);
-    expect(connectorSupportsChannelMode("bluebubbles", "bot")).toBe(false);
-  });
-
   it("keeps dual-identity connectors in both lenses", () => {
-    for (const connector of ["discord", "telegram", "whatsapp", "imessage"]) {
+    for (const connector of ["discord", "telegram", "whatsapp"]) {
       expect(connectorSupportsChannelMode(connector, "delegate")).toBe(true);
       expect(connectorSupportsChannelMode(connector, "bot")).toBe(true);
     }
+  });
+
+  it("classifies native iMessage as delegate-only", () => {
+    expect(connectorSupportsChannelMode("imessage", "delegate")).toBe(true);
+    expect(connectorSupportsChannelMode("imessage", "bot")).toBe(false);
   });
 
   it("classifies single-form connectors through the registered fallback", () => {

@@ -307,13 +307,11 @@ describe("curated coding memory", () => {
     }
   });
 
-  it("evicts old notes to bounded retention", async () => {
+  it("retains every harvested note", async () => {
     const workdir = await tempWorkspace();
     try {
       const service = new CuratedCodingMemoryService(
-        memoryRuntime(workdir, "tenant-a", {
-          ELIZA_CURATED_CODING_MEMORY_MAX_NOTES: "2",
-        }),
+        memoryRuntime(workdir, "tenant-a"),
       );
       await service.harvestVerifiedTask(
         doc({
@@ -339,8 +337,8 @@ describe("curated coding memory", () => {
         }),
       );
       const file = await readFile(memoryPath(workdir), "utf8");
-      expect(file.match(/### note:/g)).toHaveLength(2);
-      expect(file).not.toContain("Alpha module");
+      expect(file.match(/### note:/g)).toHaveLength(3);
+      expect(file).toContain("Alpha module");
     } finally {
       await rm(workdir, { recursive: true, force: true });
     }
@@ -401,14 +399,11 @@ describe("curated coding memory", () => {
     }
   });
 
-  it("retrieves only relevant notes within budget", async () => {
+  it("retrieves every relevant note without a token budget", async () => {
     const workdir = await tempWorkspace();
     try {
       const service = new CuratedCodingMemoryService(
-        memoryRuntime(workdir, "tenant-a", {
-          ELIZA_CURATED_CODING_MEMORY_MAX_INJECTED: "6",
-          ELIZA_CURATED_CODING_MEMORY_TOKEN_BUDGET: "55",
-        }),
+        memoryRuntime(workdir, "tenant-a"),
       );
       await service.harvestVerifiedTask(
         doc({
@@ -429,8 +424,13 @@ describe("curated coding memory", () => {
         text: "How should MemoryProvider filter tenant memory?",
         repoKey: "https://github.com/elizaOS/eliza.git",
       });
-      expect(notes).toHaveLength(1);
-      expect(notes[0]?.text).toContain("MemoryProvider");
+      expect(notes).toHaveLength(2);
+      expect(notes.map((note) => note.text).join("\n")).toContain(
+        "MemoryProvider",
+      );
+      expect(notes.map((note) => note.text).join("\n")).toContain(
+        "retrieval stays bounded",
+      );
     } finally {
       await rm(workdir, { recursive: true, force: true });
     }

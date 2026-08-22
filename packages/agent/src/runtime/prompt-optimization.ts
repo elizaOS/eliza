@@ -1,8 +1,8 @@
 /**
  * Prompt optimization layer for eliza.
  *
- * Wraps `runtime.useModel()` to apply context-aware action compaction
- * and optional prompt tracing/capture. Controlled via ELIZA_* env vars.
+ * Wraps `runtime.useModel()` to capture complete prompt and usage telemetry and
+ * inject active-view awareness. Controlled via ELIZA_* env vars.
  */
 
 import { AsyncLocalStorage } from "node:async_hooks";
@@ -26,27 +26,25 @@ import {
 import type { ElizaConfig } from "../config/types.ts";
 
 import type { TrajectoryLlmCall } from "../types/trajectory.ts";
-import type {
-  CompactorMessage,
-  CompactorModelCall,
-} from "./conversation-compactor.types.ts";
-import {
-  type ApplyConversationCompactionResult,
-  type ApplyConversationMessageCompactionResult,
-  applyConversationCompaction,
-  applyConversationMessageCompaction,
-  getConversationCompactionLedger,
-  installMessageHistoryCompactionHook,
-  type StrategyName,
-  selectStrategyFromEnv,
-  setConversationCompactionLedger,
-} from "./conversation-compactor-runtime.ts";
-import {
-  compactActionsForIntent,
-  compactCodingExamplesForIntent,
-  compactConversationHistory,
-  compactModelPrompt,
-} from "./prompt-compaction.ts";
+
+type CompactorRole = "system" | "developer" | "user" | "assistant" | "tool";
+
+type CompactorToolCall = {
+  id: string;
+  name: string;
+  arguments: Record<string, unknown>;
+};
+
+type CompactorMessage = {
+  role: CompactorRole;
+  content: string;
+  toolCalls?: CompactorToolCall[];
+  toolCallId?: string;
+  toolName?: string;
+  timestamp?: number;
+  tags?: string[];
+};
+
 import {
   enrichTrajectoryLlmCall,
   ensureTrajectoriesTable,
@@ -59,26 +57,11 @@ import {
 import {
   applyActiveViewAwareness,
   getActiveViewContext,
-  viewScopedActionNames,
 } from "./view-action-affinity.ts";
-
-export {
-  buildFullParamActionSet,
-  compactActionsForIntent,
-  detectIntentCategories,
-} from "./prompt-compaction.ts";
 
 // ---------------------------------------------------------------------------
 // Env-var driven configuration (evaluated once at import time)
 // ---------------------------------------------------------------------------
-
-const ELIZA_PROMPT_OPT_MODE = (
-  process.env.ELIZA_PROMPT_OPT_MODE ?? "baseline"
-).toLowerCase();
-
-const ELIZA_PROMPT_TRACE =
-  process.env.ELIZA_PROMPT_TRACE === "1" ||
-  process.env.ELIZA_PROMPT_TRACE?.toLowerCase() === "true";
 
 /**
  * Dump raw prompts to .tmp/prompt-captures/ for analysis. Dev-only.
@@ -147,7 +130,7 @@ type RuntimeWithEmitEvent = AgentRuntime & {
 
 type PromptOptimizationTelemetry = {
   mode: string;
-  actionCompactionEnabled: boolean;
+  contextPreserved: boolean;
   originalPromptChars: number;
   finalPromptChars: number;
   originalPromptTokens: number;
@@ -155,9 +138,6 @@ type PromptOptimizationTelemetry = {
   budgetTokens?: number;
   outputReserveTokens?: number;
   transformations: string[];
-  conversationCompaction?:
-    | Omit<ApplyConversationCompactionResult, "prompt">
-    | Omit<ApplyConversationMessageCompactionResult, "messages">;
 };
 
 export interface CapturedModelUsage {
@@ -193,14 +173,6 @@ interface PromptBudget {
   metadata: ModelTokenMetadata;
   outputReserveTokens: number;
   promptBudgetTokens: number;
-}
-
-export interface PromptBudgetResult {
-  prompt: string;
-  originalPromptTokens: number;
-  promptTokens: number;
-  budgetTokens: number;
-  truncated: boolean;
 }
 
 export function shouldPreserveFullPromptForTrajectoryCapture(): boolean {
@@ -1081,48 +1053,6 @@ function providerOptionsWithPromptOptimization(
   return providerOptions;
 }
 
-function getNestedString(
-  record: Record<string, unknown>,
-  pathParts: readonly string[],
-): string | null {
-  let cursor: unknown = record;
-  for (const part of pathParts) {
-    if (!cursor || typeof cursor !== "object" || Array.isArray(cursor)) {
-      return null;
-    }
-    cursor = (cursor as Record<string, unknown>)[part];
-  }
-  return typeof cursor === "string" && cursor.trim().length > 0
-    ? cursor.trim()
-    : null;
-}
-
-function resolveConversationCompactionKey(
-  payloadRecord: Record<string, unknown>,
-  renderedPrompt: string,
-): string | undefined {
-  const candidates = [
-    getNestedString(payloadRecord, ["roomId"]),
-    getNestedString(payloadRecord, ["providerOptions", "eliza", "roomId"]),
-    getNestedString(payloadRecord, ["providerOptions", "roomId"]),
-    getNestedString(payloadRecord, ["metadata", "roomId"]),
-    getNestedString(payloadRecord, [
-      "providerOptions",
-      "eliza",
-      "conversationId",
-    ]),
-    getNestedString(payloadRecord, ["providerOptions", "conversationId"]),
-    getNestedString(payloadRecord, ["conversationId"]),
-    getNestedString(payloadRecord, ["metadata", "conversationId"]),
-  ];
-  for (const candidate of candidates) {
-    if (candidate) return candidate;
-  }
-  const sessionMatch = renderedPrompt.match(/^Session:\s*([^\n]+)/im);
-  const sessionKey = sessionMatch?.[1]?.trim();
-  return sessionKey && sessionKey.length > 0 ? sessionKey : undefined;
-}
-
 function isModelUsedEvent(event: unknown): boolean {
   if (event === EventType.MODEL_USED) {
     return true;
@@ -1374,258 +1304,6 @@ function shouldApplyPromptBudget(modelType: string): boolean {
   return isTextGenerationModelType(modelType);
 }
 
-function truncatePromptToTokenBudget(
-  prompt: string,
-  budgetTokens: number,
-): string {
-  const charBudget = Math.max(0, budgetTokens * 4);
-  if (prompt.length <= charBudget) return prompt;
-  if (charBudget <= 0) return "";
-
-  const marker =
-    "\n\n[... context truncated to fit model context window ...]\n\n";
-  const receivedMessageStart = prompt.search(/\n#{1,3}\s*Received Message\b/i);
-  const tail =
-    receivedMessageStart >= 0
-      ? prompt.slice(receivedMessageStart)
-      : prompt.slice(-Math.floor(charBudget * 0.7));
-  if (tail.length >= charBudget) {
-    return tail.slice(-charBudget);
-  }
-
-  const headBudget = charBudget - tail.length - marker.length;
-  if (headBudget <= 0) {
-    return tail.slice(-charBudget);
-  }
-
-  return `${prompt.slice(0, headBudget)}${marker}${tail}`;
-}
-
-/**
- * Resolve the configured conversation compactor strategy lazily (per call)
- * so tests can mutate `process.env` without re-importing the module.
- * Throws on an invalid env value — handled by the caller.
- */
-function resolveConversationCompactionStrategy(): StrategyName | null {
-  return selectStrategyFromEnv();
-}
-
-/**
- * Build a `CompactorModelCall` that delegates to `runtime.useModel`.
- * Bypasses the wrapped `useModel` (we use the original closure) to avoid
- * recursion when the summarization call itself triggers prompt
- * optimization. Falls back to the wrapped `useModel` if no original is
- * supplied (e.g. when called from tests).
- */
-function buildRuntimeCompactorModelCall(
-  runtime: AgentRuntime,
-  originalUseModel: AgentRuntime["useModel"] | null,
-): CompactorModelCall {
-  const useModel = (originalUseModel ?? runtime.useModel.bind(runtime)) as (
-    modelType: string,
-    payload: unknown,
-  ) => Promise<unknown>;
-  return async ({
-    systemPrompt,
-    messages,
-    maxOutputTokens,
-  }: {
-    systemPrompt: string;
-    messages: CompactorMessage[];
-    maxOutputTokens?: number;
-  }) => {
-    const userText = messages.map((m) => m.content).join("\n");
-    const result = await useModel("TEXT_LARGE", {
-      system: systemPrompt,
-      prompt: userText,
-      ...(maxOutputTokens !== undefined ? { maxTokens: maxOutputTokens } : {}),
-    });
-    if (typeof result === "string") return result;
-    if (result == null) return "";
-    try {
-      return JSON.stringify(result);
-    } catch {
-      return String(result);
-    }
-  };
-}
-
-/**
- * Async pre-step that runs a conversation-compactor strategy when
- * `ELIZA_CONVERSATION_COMPACTOR` is set and the prompt is over budget.
- * Returns the original prompt when the env var is unset, the prompt is under
- * budget, or the compactor cannot reduce the prompt.
- *
- * Logs `[eliza] conversation-compaction strategy=X originalTokens=N
- * compactedTokens=M latencyMs=L` on a successful compaction.
- */
-export async function maybeApplyConversationCompaction(
-  runtime: AgentRuntime,
-  prompt: string,
-  budgetTokens: number,
-  callModel: CompactorModelCall,
-  conversationKeyOrOnResult?:
-    | string
-    | ((result: ApplyConversationCompactionResult) => void),
-  maybeOnResult?: (result: ApplyConversationCompactionResult) => void,
-): Promise<string> {
-  const conversationKey =
-    typeof conversationKeyOrOnResult === "string"
-      ? conversationKeyOrOnResult
-      : undefined;
-  const onResult =
-    typeof conversationKeyOrOnResult === "function"
-      ? conversationKeyOrOnResult
-      : maybeOnResult;
-  let strategy: StrategyName | null;
-  try {
-    strategy = resolveConversationCompactionStrategy();
-  } catch (error) {
-    runtime.logger.warn(String((error as Error).message));
-    return prompt;
-  }
-  if (!strategy) return prompt;
-
-  const currentTokens = estimateTokenCount(prompt);
-  if (currentTokens <= budgetTokens) return prompt;
-  const priorLedger = await getConversationCompactionLedger(
-    runtime,
-    conversationKey,
-  );
-
-  const result = await applyConversationCompaction({
-    prompt,
-    strategy,
-    currentTokens,
-    targetTokens: budgetTokens,
-    callModel,
-    runtime,
-    metadata: {
-      ...(conversationKey ? { conversationKey } : {}),
-      ...(priorLedger ? { priorLedger } : {}),
-    },
-  });
-  onResult?.(result);
-  if (!result.didCompact) return prompt;
-
-  const renderedLedger = result.artifact?.stats.extra?.renderedLedger;
-  if (typeof renderedLedger === "string" && renderedLedger.trim().length > 0) {
-    await setConversationCompactionLedger(
-      runtime,
-      conversationKey,
-      renderedLedger,
-      { strategy, source: "runtime-prompt" },
-    );
-  }
-
-  runtime.logger.info(
-    `[eliza] conversation-compaction strategy=${strategy} originalTokens=${result.originalTokens} compactedTokens=${result.compactedTokens} latencyMs=${result.latencyMs}`,
-  );
-  return result.prompt;
-}
-
-export async function maybeApplyConversationMessageCompaction(
-  runtime: AgentRuntime,
-  messages: CompactorMessage[],
-  budgetTokens: number,
-  callModel: CompactorModelCall,
-  conversationKeyOrOnResult?:
-    | string
-    | ((result: ApplyConversationMessageCompactionResult) => void),
-  maybeOnResult?: (result: ApplyConversationMessageCompactionResult) => void,
-): Promise<CompactorMessage[]> {
-  const conversationKey =
-    typeof conversationKeyOrOnResult === "string"
-      ? conversationKeyOrOnResult
-      : undefined;
-  const onResult =
-    typeof conversationKeyOrOnResult === "function"
-      ? conversationKeyOrOnResult
-      : maybeOnResult;
-  let strategy: StrategyName | null;
-  try {
-    strategy = resolveConversationCompactionStrategy();
-  } catch (error) {
-    runtime.logger.warn(String((error as Error).message));
-    return messages;
-  }
-  if (!strategy) return messages;
-
-  const rendered = renderMessagesForTelemetry(messages);
-  const currentTokens = estimateTokenCount(rendered);
-  if (currentTokens <= budgetTokens) return messages;
-  const priorLedger = await getConversationCompactionLedger(
-    runtime,
-    conversationKey,
-  );
-
-  const result = await applyConversationMessageCompaction({
-    messages,
-    strategy,
-    currentTokens,
-    targetTokens: budgetTokens,
-    callModel,
-    metadata: {
-      ...(conversationKey ? { conversationKey } : {}),
-      ...(priorLedger ? { priorLedger } : {}),
-    },
-  });
-  onResult?.(result);
-  if (!result.didCompact) return messages;
-
-  const renderedLedger = result.artifact?.stats.extra?.renderedLedger;
-  if (typeof renderedLedger === "string" && renderedLedger.trim().length > 0) {
-    await setConversationCompactionLedger(
-      runtime,
-      conversationKey,
-      renderedLedger,
-      { strategy, source: "runtime-messages" },
-    );
-  }
-
-  runtime.logger.info(
-    `[eliza] conversation-message-compaction strategy=${strategy} originalTokens=${result.originalTokens} compactedTokens=${result.compactedTokens} latencyMs=${result.latencyMs}`,
-  );
-  return result.messages;
-}
-
-export function fitPromptToTokenBudget(
-  prompt: string,
-  budgetTokens: number,
-): PromptBudgetResult {
-  const originalPromptTokens = estimateTokenCount(prompt);
-  if (originalPromptTokens <= budgetTokens) {
-    return {
-      prompt,
-      originalPromptTokens,
-      promptTokens: originalPromptTokens,
-      budgetTokens,
-      truncated: false,
-    };
-  }
-
-  let nextPrompt = compactActionsForIntent(prompt);
-  nextPrompt = compactCodingExamplesForIntent(nextPrompt);
-  nextPrompt = compactConversationHistory(nextPrompt);
-  nextPrompt = compactModelPrompt(nextPrompt);
-
-  let promptTokens = estimateTokenCount(nextPrompt);
-  let truncated = false;
-  if (promptTokens > budgetTokens) {
-    nextPrompt = truncatePromptToTokenBudget(nextPrompt, budgetTokens);
-    promptTokens = estimateTokenCount(nextPrompt);
-    truncated = true;
-  }
-
-  return {
-    prompt: nextPrompt,
-    originalPromptTokens,
-    promptTokens,
-    budgetTokens,
-    truncated,
-  };
-}
-
 function isGenericTrajectoryModel(model: string): boolean {
   const normalized = model.trim().toUpperCase();
   return (
@@ -1688,7 +1366,6 @@ export function installPromptOptimizations(
   installedRuntimes.add(runtime);
 
   const originalUseModel = runtime.useModel.bind(runtime);
-  installMessageHistoryCompactionHook(runtime, { originalUseModel });
 
   runtime.useModel = (async (...args: Parameters<typeof originalUseModel>) => {
     const modelType = String(args[0] ?? "").toUpperCase();
@@ -1714,7 +1391,6 @@ export function installPromptOptimizations(
     const startedAt = Date.now();
 
     const payload = args[1];
-    const isTextLarge = modelType.includes("TEXT_LARGE");
     if (!payload || typeof payload !== "object") {
       const { result } = await withModelUsageCapture(runtime, () =>
         originalUseModel(...args),
@@ -1745,8 +1421,8 @@ export function installPromptOptimizations(
       ? String(promptRecord[promptKey] ?? "")
       : renderMessagesForTelemetry(originalMessages ?? []);
     const promptOptimizationTelemetry: PromptOptimizationTelemetry = {
-      mode: ELIZA_PROMPT_OPT_MODE,
-      actionCompactionEnabled: true,
+      mode: "lossless",
+      contextPreserved: true,
       originalPromptChars: originalPrompt.length,
       finalPromptChars: originalPrompt.length,
       originalPromptTokens: estimateTokenCount(originalPrompt),
@@ -1784,69 +1460,6 @@ export function installPromptOptimizations(
     // and the awareness block below stay consistent for this prompt.
     const activeView = getActiveViewContext();
 
-    // Skip intent compaction while trajectory capture is active; hard model
-    // budgets still apply because providers cannot accept overflow prompts.
-    if (
-      promptKey &&
-      isTextLarge &&
-      !shouldPreserveFullPromptForTrajectoryCapture()
-    ) {
-      // --- Context-aware action compaction (when enabled) ---
-      // Strips param detail from actions not relevant to the user's intent.
-      // All action names remain visible — only param detail is stripped.
-      let workingPrompt = compactActionsForIntent(
-        originalPrompt,
-        viewScopedActionNames(activeView?.viewId),
-      );
-      if (workingPrompt !== originalPrompt) {
-        promptOptimizationTelemetry.transformations.push(
-          `action-compaction:${originalPrompt.length}->${workingPrompt.length}`,
-        );
-      }
-
-      // Strip coding agent examples when no coding intent is detected.
-      // These are ~4k chars of provider-injected examples that are only
-      // useful when the user is asking about code/repos/agents.
-      const beforeCoding = workingPrompt;
-      workingPrompt = compactCodingExamplesForIntent(workingPrompt);
-      if (workingPrompt !== beforeCoding) {
-        promptOptimizationTelemetry.transformations.push(
-          `coding-example-compaction:${beforeCoding.length}->${workingPrompt.length}`,
-        );
-      }
-      const beforeHistory = workingPrompt;
-      workingPrompt = compactConversationHistory(workingPrompt);
-      if (workingPrompt !== beforeHistory) {
-        promptOptimizationTelemetry.transformations.push(
-          `conversation-history-presentation-compaction:${beforeHistory.length}->${workingPrompt.length}`,
-        );
-      }
-
-      // --- Full prompt compaction (compact mode only) ---
-      nextPrompt = workingPrompt;
-      if (ELIZA_PROMPT_OPT_MODE === "compact") {
-        nextPrompt = compactModelPrompt(workingPrompt);
-        if (nextPrompt !== workingPrompt) {
-          promptOptimizationTelemetry.transformations.push(
-            `model-prompt-compaction:${workingPrompt.length}->${nextPrompt.length}`,
-          );
-        }
-        if (ELIZA_PROMPT_TRACE && nextPrompt.length !== originalPrompt.length) {
-          runtime.logger.info(
-            `[eliza] Compact prompt rewrite: ${originalPrompt.length} -> ${nextPrompt.length} chars`,
-          );
-        }
-      } else if (workingPrompt !== originalPrompt && ELIZA_PROMPT_TRACE) {
-        runtime.logger.info(
-          `[eliza] Action compaction: ${originalPrompt.length} -> ${workingPrompt.length} chars (saved ${originalPrompt.length - workingPrompt.length})`,
-        );
-      }
-    }
-
-    // Active View awareness is applied *after* budget/compaction below so
-    // conversation compaction and fitPromptToTokenBudget cannot strip the
-    // addressable-element block from multi-turn planner prompts (#17918).
-
     if (shouldApplyPromptBudget(modelType)) {
       const budget = resolvePromptBudget(runtime, modelType, {
         ...promptRecord,
@@ -1859,104 +1472,11 @@ export function installPromptOptimizations(
       promptOptimizationTelemetry.budgetTokens = budget.promptBudgetTokens;
       promptOptimizationTelemetry.outputReserveTokens =
         budget.outputReserveTokens;
-      const conversationCompactionKey = resolveConversationCompactionKey(
-        promptRecord,
-        promptKey ? nextPrompt : renderMessagesForTelemetry(nextMessages ?? []),
-      );
-
-      if (promptKey) {
-        // Conversation-level compaction (opt-in via env). Runs before the
-        // truncation-based fitter so summarization gets first crack at
-        // shrinking the conversation history. If it can't get the prompt
-        // under budget, the existing tail-truncation pipeline still kicks in.
-        try {
-          const beforeConversationCompaction = nextPrompt;
-          let conversationCompactionSkipReason: string | undefined;
-          nextPrompt = await maybeApplyConversationCompaction(
-            runtime,
-            nextPrompt,
-            budget.promptBudgetTokens,
-            buildRuntimeCompactorModelCall(runtime, originalUseModel),
-            conversationCompactionKey,
-            (result) => {
-              const { prompt: _prompt, ...rest } = result;
-              promptOptimizationTelemetry.conversationCompaction = rest;
-              conversationCompactionSkipReason = result.skipReason;
-            },
-          );
-          if (nextPrompt !== beforeConversationCompaction) {
-            promptOptimizationTelemetry.transformations.push(
-              `conversation-compaction:${beforeConversationCompaction.length}->${nextPrompt.length}`,
-            );
-          } else if (conversationCompactionSkipReason) {
-            promptOptimizationTelemetry.transformations.push(
-              `conversation-compaction-skipped:${conversationCompactionSkipReason}`,
-            );
-          }
-        } catch (error) {
-          runtime.logger.warn(
-            `[eliza] conversation-compaction failed: ${String(
-              (error as Error).message,
-            )}`,
-          );
-        }
-
-        const budgetedPrompt = fitPromptToTokenBudget(
-          nextPrompt,
-          budget.promptBudgetTokens,
-        );
-        if (budgetedPrompt.prompt !== nextPrompt) {
-          promptOptimizationTelemetry.transformations.push(
-            `budget-fit:${nextPrompt.length}->${budgetedPrompt.prompt.length}`,
-          );
-          nextPrompt = budgetedPrompt.prompt;
-          if (ELIZA_PROMPT_TRACE) {
-            runtime.logger.info(
-              `[eliza] Budget prompt rewrite (${budget.metadata.source}:${budget.metadata.modelId}): ${budgetedPrompt.originalPromptTokens} -> ${budgetedPrompt.promptTokens} tokens`,
-            );
-          }
-        }
-      } else if (nextMessages) {
-        try {
-          const beforeRendered = renderMessagesForTelemetry(nextMessages);
-          let conversationCompactionSkipReason: string | undefined;
-          nextMessages = await maybeApplyConversationMessageCompaction(
-            runtime,
-            nextMessages,
-            budget.promptBudgetTokens,
-            buildRuntimeCompactorModelCall(runtime, originalUseModel),
-            conversationCompactionKey,
-            (result) => {
-              const { messages: _messages, ...rest } = result;
-              promptOptimizationTelemetry.conversationCompaction = rest;
-              conversationCompactionSkipReason = result.skipReason;
-            },
-          );
-          const afterRendered = renderMessagesForTelemetry(nextMessages);
-          if (afterRendered !== beforeRendered) {
-            promptOptimizationTelemetry.transformations.push(
-              `conversation-message-compaction:${beforeRendered.length}->${afterRendered.length}`,
-            );
-          } else if (conversationCompactionSkipReason) {
-            promptOptimizationTelemetry.transformations.push(
-              `conversation-message-compaction-skipped:${conversationCompactionSkipReason}`,
-            );
-          }
-        } catch (error) {
-          runtime.logger.warn(
-            `[eliza] conversation-message-compaction failed: ${String(
-              (error as Error).message,
-            )}`,
-          );
-        }
-      }
     }
 
     // Inject the "# Active View" awareness block into planner prompts so the
     // model knows which surface the user is looking at and that it can drive
-    // every element through the view-interact capabilities. Runs after budget
-    // compaction so multi-turn history shrinkage cannot erase the element
-    // snapshot. Only applied to planner / action-catalogue prompts.
+    // every element through the view-interact capabilities.
     if (
       activeView &&
       (nextPrompt.includes("# Available Actions") ||

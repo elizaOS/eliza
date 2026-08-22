@@ -68,12 +68,62 @@ The branch must be rebased on `origin/develop` before review. Resolve every
 conflict, run the relevant package checks, and run `bun run verify` when the
 change is ready for full validation.
 
+### Maintainer CI exception
+
+A maintainer explicitly named as a bypass actor by the live repository ruleset
+may merge an exact pull request head while the canonical required hosted check
+is queued or failing only when the check is unavailable for infrastructure
+reasons or its failure is proven unrelated to the pull request diff. Repository
+write or administration access alone is not bypass authorization. The reviewed
+ruleset manifest currently grants no bypass actors, so this exception remains
+documentary unless a separate reviewed ruleset change and live readback grant
+that authority. A passing check on an older head, an unexplained failure, a
+flaky retry, or an assertion that the change is low risk is not sufficient.
+
+Before using the exception, the maintainer must record in the pull request:
+
+- the exact 40-character pull request head SHA and the `origin/develop` SHA
+  used for validation;
+- a live ruleset readback naming the bypass authorizer as an eligible actor;
+- every queued or failing check, its run URL, and concrete evidence that the
+  condition is infrastructure-only or unrelated;
+- exact-head results for all tests, typechecks, lint, builds, security scans,
+  and real-behavior evidence applicable to the changed surface, including
+  commands, exit status, and artifact links;
+- an independent approving reviewer, and explicit bypass authorization from a
+  maintainer other than the pull request author; and
+- the merge method, rollback owner, and any post-merge validation that must run
+  on `develop`.
+
+The exception is invalid as soon as the pull request head or validated
+`origin/develop` changes, the pull request is no longer conflict-free, or an
+affected-path check reports a substantive failure. It never waives failed
+affected tests, unresolved conflicts, missing applicable evidence, or the
+second-lane rules for money, schema, deploy, credentials, and other protected
+levers. Applicable security and secret scans, plus release/build provenance and
+source-SHA attestations, must complete successfully for the exact head; they
+cannot be classified away as unrelated or left queued under this exception. If
+a full repository command fails outside the affected surface, the record must
+include a clean reproduction on `origin/develop` at the documented base SHA and
+the narrower exact-head commands that prove the changed contract. Immediately
+before merging, the authorizer must re-read the remote head, current
+`origin/develop`, mergeability, approval, and exception record. A pull request
+that changes this exception may not rely on the new wording for its own merge.
+
+After an exception merge, the author or designated rollback owner must inspect
+the resulting `develop` run. A substantive regression attributable to the
+merge requires immediate revert or repair; queued or infrastructure-only
+post-merge checks remain documented until resolved.
+
+This creates an auditable maintainer exception; it does not change GitHub
+rulesets or grant bypass permission.
+
 ## Contribution Provenance
 
-Every AI-assisted contribution records the exact provider and model identifier
-reported by the active runtime. The pull request body must preserve and complete
-the `Contribution provenance` block from the repository template. Every
-AI-authored issue comment, pull request comment, and review body must end with:
+Provider, model, and agent-tooling disclosure is optional. Contributors must
+not be blocked, prompted, or asked to reveal runtime metadata in order to open
+an issue, comment, review, or pull request. When a contributor voluntarily
+includes machine provenance, use the following interoperable footer:
 
 ```text
 AI provider/model: <provider> / <exact-model-id>
@@ -84,38 +134,12 @@ Attribution status: self-reported
 <!-- eliza-computer-attribution:v1 {"provider":"<provider-slug>","model":"<exact-model-id>","client":"<client>","skill_revision":"elizaOS/eliza@<full-commit-sha>:packages/skills/skills/contribute-to-eliza"} -->
 ```
 
-Do not infer or abbreviate the model, and do not substitute a model family such
-as `GPT`, `Claude`, or `Gemini`. If the runtime cannot expose its exact provider
-and model identifier, stop before posting and ask the operator to supply it.
-The hidden marker contains valid JSON and matches the visible fields.
-The lane signature is required immediately before the hidden marker.
-AI-assisted issue bodies fill the visible provenance rows once, then append
-only that signature and the matching marker at the end of the body; repeating
-the visible footer fields is invalid. Human-only work says so explicitly in the
-PR or issue template.
-
-Attribution is self-reported provenance, not a verified attestation and not a
-request for chain-of-thought. Never publish hidden reasoning, private prompts,
-session IDs, credentials, access tokens, or other secrets as attribution.
-When no generative model participated, say `no - human-only contribution` or
-`no - deterministic workflow` and use a matching `None - <specific reason>` for
-both model and client rows. Do not attribute deterministic automation to a
-fictional model or describe it as human work.
-
-New and edited `CLAIMING:`, `CLAIMING REVIEW:`, and `CLAIMING LEVER:` comments
-on issues, pull requests, and Discussions are mechanically checked. New and
-edited issue bodies are checked as well. A human claim with no AI assistance
-ends with:
-
-```text
-AI assistance: no - human-only claim
-Attribution status: self-reported
-```
-
-Ordinary human discussion does not need an attribution footer. Reviews and
-comments that declare AI provenance are also checked for a terminal,
-internally-consistent JSON marker; the public leaderboard reports missing or
-invalid disclosure across every eligible non-bot source.
+Voluntary attribution is self-reported provenance, not a verified attestation
+or a request for chain-of-thought. If supplied, it must be concrete,
+internally consistent, and free of hidden reasoning, private prompts, session
+IDs, credentials, access tokens, and other secrets. Repository validators
+accept contributions with no attribution and validate only an attribution
+block that an author chooses to provide.
 
 ## Evidence
 

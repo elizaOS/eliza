@@ -318,15 +318,9 @@ QUOTED_REFERENCE_TEMPLATES = [
 ]
 
 
-def _shorten_body(text: str, max_chars: int = 160) -> str:
-    """Trim a chat turn to a short, clean body fragment we can drop into a
-    template. Lowercases the leading character only when it's a word
-    starter to avoid weirdness like ``@bob YeahLikeISaid``.
-    """
-    body = text.strip().rstrip(".!?")
-    if len(body) > max_chars:
-        body = body[:max_chars].rstrip()
-    return body
+def _clean_body(text: str) -> str:
+    """Trim surrounding punctuation without shortening the source turn."""
+    return text.strip().rstrip(".!?")
 
 
 # ───────────────────────── augmentation strategies ─────────────────────────
@@ -334,7 +328,7 @@ def _shorten_body(text: str, max_chars: int = 160) -> str:
 def augment_direct_mention(
     base: dict[str, Any], agent: str, rng: random.Random,
 ) -> tuple[dict[str, Any], str, str]:
-    body = _shorten_body(base["content"])
+    body = _clean_body(base["content"])
     template = rng.choice(DIRECT_MENTION_TEMPLATES)
     new_text = template.format(agent=agent, body=body).strip()
     reasoning = f"direct mention of {agent} in the latest message — addressed to the agent."
@@ -350,7 +344,7 @@ def augment_username_match(
     handle = handle_template.format(agent=agent)
     # Speaker mentions the agent's handle (someone else is the speaker, the
     # agent's @handle appears in the message).
-    body = _shorten_body(base["content"])
+    body = _clean_body(base["content"])
     template = rng.choice(USERNAME_MENTION_TEMPLATES)
     new_text = template.format(handle=handle, body=body).strip()
     reasoning = f"message contains @{handle} which matches the agent username '{agent}' — addressed to the agent."
@@ -362,7 +356,7 @@ def augment_username_match(
 def augment_role_address(
     base: dict[str, Any], agent: str, rng: random.Random,
 ) -> tuple[dict[str, Any], str, str]:
-    body = _shorten_body(base["content"])
+    body = _clean_body(base["content"])
     template = rng.choice(ROLE_ADDRESS_TEMPLATES)
     new_text = template.format(body=body).strip()
     reasoning = "role-style address ('the assistant should ...') invokes the AI even without a name token."
@@ -386,7 +380,7 @@ def augment_different_addressee(
     base: dict[str, Any], agent: str, rng: random.Random,
 ) -> tuple[dict[str, Any], str, str]:
     other = rng.choice(OTHER_NAMES)
-    body = _shorten_body(base["content"])
+    body = _clean_body(base["content"])
     template = rng.choice(DIFFERENT_ADDRESSEE_TEMPLATES)
     new_text = template.format(other=other, body=body).strip()
     reasoning = f"message is addressed to {other}, not {agent} — the agent should not respond."
@@ -417,7 +411,7 @@ def augment_self(
 def augment_quoted_reference(
     base: dict[str, Any], agent: str, rng: random.Random,
 ) -> tuple[dict[str, Any], str, str]:
-    body = _shorten_body(base["content"], max_chars=120)
+    body = _clean_body(base["content"])
     template = rng.choice(QUOTED_REFERENCE_TEMPLATES)
     new_text = template.format(agent=agent, body=body).strip()
     reasoning = (

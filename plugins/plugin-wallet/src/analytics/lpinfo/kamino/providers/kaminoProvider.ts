@@ -15,11 +15,6 @@ import { ModelType } from "@elizaos/core";
 import type { KaminoService } from "../services/kaminoService";
 
 const KAMINO_LEND_PROGRAM_ID = "GzFgdRJXmawPhGeBsyRCDLx4jAKPsvbUqoqitzppkzkW";
-const MAX_KAMINO_WALLETS = 5;
-const MAX_KAMINO_POSITIONS = 10;
-const MAX_KAMINO_MARKETS = 10;
-const MAX_KAMINO_REPORT_CHARS = 8000;
-
 type AccountLike = {
   id?: unknown;
   username?: unknown;
@@ -121,7 +116,7 @@ function formatAccountForPrompt(account: unknown): string {
 
   const solanaWallets = getSolanaWalletAddresses(account);
   lines.push(`solana_wallet_count: ${solanaWallets.length}`);
-  solanaWallets.slice(0, MAX_KAMINO_WALLETS).forEach((wallet, index) => {
+  solanaWallets.forEach((wallet, index) => {
     lines.push(`solana_wallets[${index}]: ${wallet}`);
   });
 
@@ -206,7 +201,7 @@ export const kaminoProvider: Provider = {
           },
         );
 
-        kaminoInfo += enhancedReport.slice(0, MAX_KAMINO_REPORT_CHARS);
+        kaminoInfo += enhancedReport;
       } else {
         kaminoInfo =
           "Kamino lending protocol information is only available in private messages.";
@@ -220,7 +215,7 @@ export const kaminoProvider: Provider = {
       kaminoLending: kaminoInfo,
     };
 
-    const text = `${kaminoInfo}\n`.slice(0, MAX_KAMINO_REPORT_CHARS);
+    const text = `${kaminoInfo}\n`;
 
     return {
       data,
@@ -244,8 +239,8 @@ async function getUserKaminoPositions(
       return positionsInfo;
     }
 
-    for (const walletAddress of walletAddresses.slice(0, MAX_KAMINO_WALLETS)) {
-      positionsInfo += `🔸 Wallet: ${walletAddress.slice(0, 8)}...${walletAddress.slice(-8)}\n`;
+    for (const walletAddress of walletAddresses) {
+      positionsInfo += `🔸 Wallet: ${walletAddress}\n`;
 
       try {
         const positions = await kaminoService.getUserPositions(walletAddress);
@@ -266,30 +261,24 @@ async function getUserKaminoPositions(
           if (positions.lending.length > 0) {
             positionsInfo += `   💰 LENDING POSITIONS (${positions.lending.length}):\n\n`;
 
-            for (const position of positions.lending.slice(
-              0,
-              MAX_KAMINO_POSITIONS,
-            )) {
+            for (const position of positions.lending) {
               positionsInfo += `   📈 ${position.token || "Unknown Token"}\n`;
               positionsInfo += `      Amount: ${position.amount?.toFixed(6) || "N/A"}\n`;
               positionsInfo += `      Value: $${position.value?.toFixed(2) || "N/A"}\n`;
               positionsInfo += `      APY: ${position.apy?.toFixed(2) || "N/A"}%\n`;
-              positionsInfo += `      Market: ${position.market?.slice(0, 8)}...${position.market?.slice(-8) || "N/A"}\n\n`;
+              positionsInfo += `      Market: ${position.market || "N/A"}\n\n`;
             }
           }
 
           if (positions.borrowing.length > 0) {
             positionsInfo += `   💳 BORROWING POSITIONS (${positions.borrowing.length}):\n\n`;
 
-            for (const position of positions.borrowing.slice(
-              0,
-              MAX_KAMINO_POSITIONS,
-            )) {
+            for (const position of positions.borrowing) {
               positionsInfo += `   📉 ${position.token || "Unknown Token"}\n`;
               positionsInfo += `      Amount: ${position.amount?.toFixed(6) || "N/A"}\n`;
               positionsInfo += `      Value: $${position.value?.toFixed(2) || "N/A"}\n`;
               positionsInfo += `      APY: ${position.apy?.toFixed(2) || "N/A"}%\n`;
-              positionsInfo += `      Market: ${position.market?.slice(0, 8)}...${position.market?.slice(-8) || "N/A"}\n\n`;
+              positionsInfo += `      Market: ${position.market || "N/A"}\n\n`;
             }
           }
 
@@ -332,8 +321,7 @@ async function getAvailableKaminoReserves(
 
     const topLendingReserves = reserves
       .filter((r) => r.supplyApy > 0)
-      .sort((a, b) => (b.supplyApy || 0) - (a.supplyApy || 0))
-      .slice(0, 5);
+      .sort((a, b) => (b.supplyApy || 0) - (a.supplyApy || 0));
 
     if (topLendingReserves.length > 0) {
       reservesInfo += "💰 TOP LENDING OPPORTUNITIES:\n\n";
@@ -382,9 +370,9 @@ async function getKaminoMarketOverview(
     if (overview.markets && overview.markets.length > 0) {
       marketInfo += "🏆 TOP MARKETS BY TVL:\n\n";
 
-      const topMarkets = overview.markets
-        .sort((a, b) => (b.lamports || 0) - (a.lamports || 0))
-        .slice(0, 3);
+      const topMarkets = overview.markets.sort(
+        (a, b) => (b.lamports || 0) - (a.lamports || 0),
+      );
 
       for (const market of topMarkets) {
         marketInfo += `🔸 ${market.marketName || "Unknown Market"}\n`;
@@ -419,7 +407,7 @@ async function getDiscoveredKaminoMarkets(
 
     marketsInfo += "🏪 DISCOVERED MARKET ADDRESSES:\n\n";
 
-    for (let i = 0; i < Math.min(markets.length, MAX_KAMINO_MARKETS); i++) {
+    for (let i = 0; i < markets.length; i++) {
       const market = markets[i];
       marketsInfo += `${i + 1}. ${market.toString()}\n`;
     }

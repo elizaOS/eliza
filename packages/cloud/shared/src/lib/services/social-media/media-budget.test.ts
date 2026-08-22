@@ -20,6 +20,7 @@ import { ElizaError } from "@elizaos/core";
 import {
   SOCIAL_MEDIA_MEDIA_MAX_BASE64_LENGTH,
   SOCIAL_MEDIA_MEDIA_MAX_BYTES,
+  SOCIAL_MEDIA_VIDEO_MAX_BASE64_BYTES,
   SOCIAL_MEDIA_VIDEO_MAX_BYTES,
 } from "../../types/social-media";
 import { assertSocialMediaBytesWithinBudget, decodeSocialMediaBase64 } from "./media-download";
@@ -145,19 +146,28 @@ describe("assertSocialMediaBytesWithinBudget", () => {
   });
 });
 
-// TikTok chunk-uploads video, so the 10 MiB image ceiling would reject
-// ordinary posts — but the decode is still one allocation inside the Worker
-// isolate. It takes the larger video ceiling rather than no bound at all.
+// TikTok accepts larger URL-backed videos, but inline video keeps the encoded
+// input and decoded bytes resident together in the Worker isolate.
 describe("video budget", () => {
-  test("accepts a payload above the image ceiling but under the video ceiling", () => {
-    const bytes = SOCIAL_MEDIA_MEDIA_MAX_BYTES + 1024;
+  test("keeps the decoded binary ceiling at 32 MiB for reachable multi-range uploads", () => {
+    expect(SOCIAL_MEDIA_VIDEO_MAX_BYTES).toBe(32 * 1024 * 1024);
     expect(() =>
       assertSocialMediaBytesWithinBudget(
-        bytes,
+        SOCIAL_MEDIA_VIDEO_MAX_BYTES,
         { platform: "tiktok" },
         SOCIAL_MEDIA_VIDEO_MAX_BYTES,
       ),
     ).not.toThrow();
+  });
+
+  test("uses the shared 10 MiB ceiling for base64 video and accepts it exactly", () => {
+    expect(SOCIAL_MEDIA_VIDEO_MAX_BASE64_BYTES).toBe(SOCIAL_MEDIA_MEDIA_MAX_BYTES);
+    const bytes = decodeSocialMediaBase64(
+      base64Of(SOCIAL_MEDIA_VIDEO_MAX_BASE64_BYTES),
+      { platform: "tiktok" },
+      SOCIAL_MEDIA_VIDEO_MAX_BASE64_BYTES,
+    );
+    expect(bytes.length).toBe(SOCIAL_MEDIA_VIDEO_MAX_BASE64_BYTES);
   });
 
   test("still rejects a payload above the video ceiling", () => {
@@ -172,12 +182,42 @@ describe("video budget", () => {
     expect(rejected.context?.maxBytes).toBe(SOCIAL_MEDIA_VIDEO_MAX_BYTES);
   });
 
-  test("rejects an oversize video before the decode allocates", () => {
-    const encoded = "A".repeat(Math.ceil(SOCIAL_MEDIA_VIDEO_MAX_BYTES / 3) * 4 + 4);
+  test("rejects an oversize base64 video before the decode allocates", () => {
+    const encoded = "A".repeat(Math.ceil(SOCIAL_MEDIA_VIDEO_MAX_BASE64_BYTES / 3) * 4 + 4);
     const rejected = rejection(() =>
-      decodeSocialMediaBase64(encoded, { platform: "tiktok" }, SOCIAL_MEDIA_VIDEO_MAX_BYTES),
+      decodeSocialMediaBase64(encoded, { platform: "tiktok" }, SOCIAL_MEDIA_VIDEO_MAX_BASE64_BYTES),
     );
     expect(rejected.code).toBe("SOCIAL_MEDIA_MEDIA_TOO_LARGE");
     expect(rejected.context?.encodedLength).toBeGreaterThan(0);
+  });
+
+  test("rejects whitespace stuffing beyond RFC 2045 wrapping before decode", () => {
+    const maxEncodedLength = Math.ceil(SOCIAL_MEDIA_VIDEO_MAX_BASE64_BYTES / 3) * 4;
+    const maxRawEncodedLength =
+      maxEncodedLength + Math.max(0, Math.ceil(maxEncodedLength / 76) - 1) * 2;
+    const rejected = rejection(() =>
+      decodeSocialMediaBase64(
+        " ".repeat(maxRawEncodedLength + 1),
+        { platform: "tiktok" },
+        SOCIAL_MEDIA_VIDEO_MAX_BASE64_BYTES,
+      ),
+    );
+    expect(rejected.context).toMatchObject({
+      rawEncodedLength: maxRawEncodedLength + 1,
+      maxRawEncodedLength,
+    });
+    expect(rejected.context).not.toHaveProperty("receivedBytes");
+  });
+
+  test("bounds two overlapping binary or base64 uploads below a 128 MiB isolate", () => {
+    const workerLimit = 128 * 1024 * 1024;
+    const maxChunkCopy = 10_000_000;
+    const maxBase64Encoded = Math.ceil(SOCIAL_MEDIA_VIDEO_MAX_BASE64_BYTES / 3) * 4;
+    const maxBase64Raw = maxBase64Encoded + Math.max(0, Math.ceil(maxBase64Encoded / 76) - 1) * 2;
+
+    expect(2 * (SOCIAL_MEDIA_VIDEO_MAX_BYTES + maxChunkCopy)).toBeLessThan(workerLimit);
+    expect(2 * (maxBase64Raw + SOCIAL_MEDIA_VIDEO_MAX_BASE64_BYTES + maxChunkCopy)).toBeLessThan(
+      workerLimit,
+    );
   });
 });

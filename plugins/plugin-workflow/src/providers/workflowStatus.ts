@@ -50,7 +50,7 @@ export const workflowStatusProvider: Provider = {
 
       let status = `Current workflows (${workflows.length}):\n\n`;
 
-      for (const workflow of workflows.slice(0, 10)) {
+      for (const workflow of workflows) {
         const statusEmoji = workflow.active ? '✅' : '⏸️';
         status += `${statusEmoji} ${workflow.name} (ID: ${workflow.id})\n`;
         status += `   Smithers steps: ${workflow.steps?.length ?? 0}\n`;
@@ -78,10 +78,6 @@ export const workflowStatusProvider: Provider = {
         }
 
         status += '\n';
-      }
-
-      if (workflows.length > 10) {
-        status += `\n... and ${workflows.length - 10} more workflows.`;
       }
 
       return {

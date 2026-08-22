@@ -426,17 +426,16 @@ type SeedRunResult = {
   error?: string;
 };
 
-function stringifyForJudge(value: unknown, maxLength = 1_200): string {
+function stringifyForJudge(value: unknown): string {
   try {
     const serialized = JSON.stringify(value);
-    if (serialized.length <= maxLength) {
-      return serialized;
-    }
-    return `${serialized.slice(0, maxLength - 3)}...`;
+    return serialized === undefined ? String(value) : serialized;
   } catch {
     return String(value);
   }
 }
+
+export const __INTERNAL_stringifyForJudge = stringifyForJudge;
 
 /**
  * Wipe the shared LifeOps scheduling + owner-fact state before a scenario runs.
@@ -521,7 +520,7 @@ function summarizeActionForJudge(
 ): string {
   const lines = [`Action: ${action.actionName}`];
   if (action.parameters !== undefined) {
-    lines.push(`Parameters: ${stringifyForJudge(action.parameters, 800)}`);
+    lines.push(`Parameters: ${stringifyForJudge(action.parameters)}`);
   }
   if (action.error?.message) {
     lines.push(`Error: ${action.error.message}`);
@@ -560,10 +559,10 @@ function summarizeActionForJudge(
       lines.push(`Artifacts: ${artifacts}`);
     }
     if (action.result.values !== undefined) {
-      lines.push(`Values: ${stringifyForJudge(action.result.values, 500)}`);
+      lines.push(`Values: ${stringifyForJudge(action.result.values)}`);
     }
     if (data) {
-      lines.push(`Data: ${stringifyForJudge(data, 900)}`);
+      lines.push(`Data: ${stringifyForJudge(data)}`);
     }
   }
   return lines.join("\n");
@@ -624,21 +623,21 @@ function buildScenarioJudgeCandidate(
   if (ctx.connectorDispatches.length > 0) {
     sections.push(
       `Connector dispatches:\n${ctx.connectorDispatches
-        .map((dispatch) => stringifyForJudge(dispatch, 500))
+        .map((dispatch) => stringifyForJudge(dispatch))
         .join("\n")}`,
     );
   }
   if (ctx.stateTransitions.length > 0) {
     sections.push(
       `State transitions:\n${ctx.stateTransitions
-        .map((transition) => stringifyForJudge(transition, 400))
+        .map((transition) => stringifyForJudge(transition))
         .join("\n")}`,
     );
   }
   if (ctx.artifacts.length > 0) {
     sections.push(
       `Artifacts:\n${ctx.artifacts
-        .map((artifact) => stringifyForJudge(artifact, 400))
+        .map((artifact) => stringifyForJudge(artifact))
         .join("\n")}`,
     );
   }
@@ -1661,6 +1660,7 @@ async function executeActionTurn(
   currentNow: Date,
   turnTimeoutMs: number,
 ): Promise<{
+  validation: NonNullable<ScenarioTurnExecution["validation"]>;
   responseText: string;
   responseBody: unknown;
   durationMs: number;
@@ -1730,9 +1730,31 @@ async function executeActionTurn(
     timeoutMs,
     `validateAction(${turn.name})`,
   );
+  const expectedValidation = turn.expectedValidation ?? "accepted";
   if (!validated) {
+    if (expectedValidation === "rejected") {
+      const text = `${actionName} validation rejected the input as expected.`;
+      return {
+        validation: {
+          actionName,
+          accepted: false,
+          expected: "rejected",
+        },
+        responseText: text,
+        responseBody: {
+          actionName,
+          validation: { accepted: false, expected: "rejected" },
+        },
+        durationMs: Date.now() - startedAt,
+      };
+    }
     throw new Error(
       `[executor] action turn '${turn.name}' failed validation for '${actionName}'`,
+    );
+  }
+  if (expectedValidation === "rejected") {
+    throw new Error(
+      `[executor] action turn '${turn.name}' expected validation rejection for '${actionName}', but validation accepted the input`,
     );
   }
   const result = await withTimeout(
@@ -1761,6 +1783,11 @@ async function executeActionTurn(
     responseText = actionResult.userFacingText;
   }
   return {
+    validation: {
+      actionName,
+      accepted: true,
+      expected: "accepted",
+    },
     responseText,
     responseBody: actionResult ?? null,
     durationMs: Date.now() - startedAt,
@@ -1926,31 +1953,79 @@ async function executeTickTurn(args: {
 async function executeWaitTurn(
   turn: ScenarioTurn,
   turnTimeoutMs: number,
+  runtime: AgentRuntime,
+  ctx: RunnerContext,
 ): Promise<{
   statusCode: number;
   responseBody: unknown;
   responseText: string;
   durationMs: number;
 }> {
-  const durationMs = (turn as { durationMs?: unknown }).durationMs;
+  const durationMs = turn.durationMs;
+  const until = turn.until;
   if (
-    typeof durationMs !== "number" ||
-    !Number.isFinite(durationMs) ||
-    durationMs < 0
+    until === undefined &&
+    (typeof durationMs !== "number" ||
+      !Number.isFinite(durationMs) ||
+      durationMs < 0)
   ) {
     throw new Error(
       `[executor] wait turn '${turn.name}' requires non-negative durationMs`,
     );
   }
+  if (until !== undefined && typeof until !== "function") {
+    throw new Error(
+      `[executor] wait turn '${turn.name}' has a non-callable until predicate`,
+    );
+  }
   const timeoutMs =
     typeof turn.timeoutMs === "number" ? turn.timeoutMs : turnTimeoutMs;
   const startedAt = Date.now();
-  await withTimeout(
-    new Promise((resolve) => setTimeout(resolve, durationMs)),
-    timeoutMs,
-    `wait(${turn.name})`,
-  );
-  const responseBody = { success: true, durationMs };
+  if (until) {
+    const pollIntervalMs = turn.pollIntervalMs ?? 25;
+    if (!Number.isFinite(pollIntervalMs) || pollIntervalMs <= 0) {
+      throw new Error(
+        `[executor] wait turn '${turn.name}' requires a positive pollIntervalMs`,
+      );
+    }
+    const deadline = startedAt + timeoutMs;
+    while (true) {
+      const predicateBudgetMs = deadline - Date.now();
+      if (predicateBudgetMs <= 0) {
+        throw new Error(
+          `waitUntil(${turn.name}) timed out after ${timeoutMs}ms`,
+        );
+      }
+      if (
+        await withTimeout(
+          Promise.resolve(until({ ...ctx, runtime })),
+          predicateBudgetMs,
+          `waitUntil(${turn.name})`,
+        )
+      ) {
+        break;
+      }
+      const sleepBudgetMs = deadline - Date.now();
+      if (sleepBudgetMs <= 0) {
+        throw new Error(
+          `waitUntil(${turn.name}) timed out after ${timeoutMs}ms`,
+        );
+      }
+      await new Promise<void>((resolve) =>
+        setTimeout(resolve, Math.min(pollIntervalMs, sleepBudgetMs)),
+      );
+    }
+  } else {
+    await withTimeout(
+      new Promise((resolve) => setTimeout(resolve, durationMs)),
+      timeoutMs,
+      `wait(${turn.name})`,
+    );
+  }
+  const responseBody = {
+    success: true,
+    ...(until ? { condition: "satisfied" } : { durationMs }),
+  };
   return {
     statusCode: 200,
     responseBody,
@@ -2545,6 +2620,8 @@ export async function runScenario(
                       ...(await executeWaitTurn(
                         turn,
                         opts.turnTimeoutMs || DEFAULT_TURN_TIMEOUT_MS,
+                        runtime,
+                        ctx,
                       )),
                     }
                   : {
@@ -2609,6 +2686,7 @@ export async function runScenario(
         responseText:
           execution.reportResponseText ?? execution.responseText ?? "",
         actionsCalled: actionsThisTurn,
+        ...(execution.validation ? { validation: execution.validation } : {}),
         durationMs: execution.durationMs ?? 0,
         failedAssertions,
         ...(turnJudgeScore !== undefined ? { judgeScore: turnJudgeScore } : {}),

@@ -259,7 +259,7 @@ describe("SKILL install with security-enveloped input", () => {
 		});
 	});
 
-	it("keeps surrogate pairs intact when truncating install results", async () => {
+	it("preserves complete long install results", async () => {
 		const longInstructions = `${"a".repeat(2999)}🦊${"b".repeat(50)}`;
 		const service = {
 			getLoadedSkills: vi.fn(() => []),
@@ -285,7 +285,6 @@ describe("SKILL install with security-enveloped input", () => {
 		expect(result.success).toBe(true);
 		const echoed = callback.mock.calls.at(-1)?.[0]?.text ?? "";
 		expect(echoed.isWellFormed()).toBe(true);
-		expect(echoed).toContain("[truncated install result]");
-		expect(echoed.endsWith("\n\n[truncated install result]")).toBe(true);
+		expect(echoed).toContain(longInstructions);
 	});
 });

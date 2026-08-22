@@ -2,9 +2,10 @@
  * Browser capability gate for Steward web passkeys.
  *
  * The embedded native WebView cannot use Steward's browser WebAuthn path unless
- * a native bridge supplies it. Regular browsers still get passkeys, but only
- * after the platform authenticator probe succeeds; until then the login page
- * must present non-passkey options.
+ * a native bridge supplies it. Regular secure browsers get passkeys whenever
+ * the WebAuthn credential APIs exist. UVPAA is deliberately not an overall
+ * capability gate: it reports only built-in platform authenticators and may be
+ * false even when a roaming security key or another passkey transport works.
  */
 
 type CapacitorLike = {
@@ -18,9 +19,7 @@ export type WebPasskeyCapability = {
     | "native-without-bridge"
     | "insecure-context"
     | "missing-credentials-api"
-    | "missing-public-key-credential"
-    | "platform-authenticator-unavailable"
-    | "platform-authenticator-probe-failed";
+    | "missing-public-key-credential";
 };
 
 export type WebPasskeyCapabilityEnvironment = {
@@ -58,9 +57,10 @@ function resolveDefaultEnvironment(): WebPasskeyCapabilityEnvironment {
 }
 
 /**
- * Resolve whether the current browser can genuinely complete Steward's web
- * passkey calls. This is async because UVPAA is the browser-owned truth for
- * user-verifying platform authenticators.
+ * Resolve whether the current browser can attempt Steward's WebAuthn calls.
+ * The platform-authenticator probe is not used here because WebAuthn also
+ * supports roaming authenticators; interaction-time browser errors are already
+ * translated into actionable recovery by the login state machine.
  */
 export async function resolveWebPasskeyCapability(
   env: WebPasskeyCapabilityEnvironment = resolveDefaultEnvironment(),
@@ -80,23 +80,8 @@ export async function resolveWebPasskeyCapability(
   ) {
     return { usable: false, reason: "missing-credentials-api" };
   }
-  const probe =
-    env.publicKeyCredential?.isUserVerifyingPlatformAuthenticatorAvailable;
-  if (typeof probe !== "function") {
+  if (!env.publicKeyCredential) {
     return { usable: false, reason: "missing-public-key-credential" };
   }
-
-  try {
-    const available = await probe.call(env.publicKeyCredential);
-    return available
-      ? { usable: true, reason: "available" }
-      : {
-          usable: false,
-          reason: "platform-authenticator-unavailable",
-        };
-  } catch {
-    // error-policy:J4 A rejected browser capability probe is an expected,
-    // visibly unavailable login state; it must never enable the passkey path.
-    return { usable: false, reason: "platform-authenticator-probe-failed" };
-  }
+  return { usable: true, reason: "available" };
 }

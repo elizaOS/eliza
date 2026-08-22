@@ -227,7 +227,7 @@ describe("PAGE_DELEGATE structured child-unavailable failure", () => {
     );
   });
 
-  it("caps the listed actions at 40 and keeps the list sorted and deduplicated", async () => {
+  it("lists every available action in sorted order", async () => {
     const children = Array.from({ length: 45 }, (_value, index) =>
       makeChildAction({
         name: `CHILD_${String(index).padStart(2, "0")}`,
@@ -243,9 +243,9 @@ describe("PAGE_DELEGATE structured child-unavailable failure", () => {
     expect(result.success).toBe(false);
     const availableActions = (result.data as { availableActions: string[] })
       .availableActions;
-    expect(availableActions).toHaveLength(40);
+    expect(availableActions).toHaveLength(45);
     expect(availableActions[0]).toBe("CHILD_00");
-    expect(availableActions[39]).toBe("CHILD_39");
+    expect(availableActions[44]).toBe("CHILD_44");
     expect([...availableActions].sort()).toEqual(availableActions);
   });
 

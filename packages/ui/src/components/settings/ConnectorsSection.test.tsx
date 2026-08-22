@@ -37,17 +37,11 @@ vi.mock("../../state", () => ({
     sel(appMock.value),
 }));
 
-vi.mock("../connectors/BlueBubblesStatusPanel", () => ({
-  BlueBubblesStatusPanel: () => <div />,
-}));
 vi.mock("../connectors/DiscordLocalConnectorPanel", () => ({
   DiscordLocalConnectorPanel: () => <div />,
 }));
 vi.mock("../connectors/IMessageStatusPanel", () => ({
   IMessageStatusPanel: () => <div />,
-}));
-vi.mock("../connectors/SignalQrOverlay", () => ({
-  SignalQrOverlay: () => <div />,
 }));
 vi.mock("../connectors/TelegramAccountConnectorPanel", () => ({
   TelegramAccountConnectorPanel: () => <div />,
@@ -369,13 +363,11 @@ describe("ConnectorsSection", () => {
   it("hides bot-only connectors under the delegate lens and restores them via the footnote switch", () => {
     appMock.value.plugins = [
       plugin({ id: "slack", name: "Slack" }),
-      plugin({ id: "bluebubbles", name: "BlueBubbles" }),
       plugin({ id: "matrix", name: "Matrix" }),
     ];
 
     render(<ConnectorsSection />);
 
-    expect(screen.getByText("BlueBubbles")).toBeTruthy();
     // Slack remains available through its OWNER-role plugin-managed inventory;
     // its app-token modes themselves are still Bot-only.
     expect(screen.getByText("Slack")).toBeTruthy();
@@ -388,7 +380,6 @@ describe("ConnectorsSection", () => {
 
     expect(screen.getByText("Slack")).toBeTruthy();
     expect(screen.getByText("Matrix")).toBeTruthy();
-    expect(screen.queryByText("BlueBubbles")).toBeNull();
     expect(screen.getByRole("button", { name: /Switch to/ })).toBeTruthy();
   });
 

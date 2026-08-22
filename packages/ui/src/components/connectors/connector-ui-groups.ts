@@ -42,7 +42,6 @@ const GROUP_BY_ID: Readonly<Record<string, ConnectorUiGroupId>> = {
   signal: "messaging",
   whatsapp: "messaging",
   imessage: "messaging",
-  bluebubbles: "messaging",
   blooio: "messaging",
   slack: "messaging",
   msteams: "messaging",

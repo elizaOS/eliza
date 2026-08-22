@@ -91,7 +91,7 @@ describe("SKILL details with security-enveloped input", () => {
 		expect(echoed.length).toBeLessThan(300);
 	});
 
-	it("keeps surrogate pairs intact when truncating long skill details", async () => {
+	it("preserves complete long skill details", async () => {
 		const longReadme = `${"a".repeat(3999)}🦊${"b".repeat(50)}`;
 		const service = {
 			getSkillDetails: vi.fn(async () => ({
@@ -123,7 +123,6 @@ describe("SKILL details with security-enveloped input", () => {
 		expect(result.success).toBe(true);
 		const echoed = callback.mock.calls.at(-1)?.[0]?.text ?? "";
 		expect(echoed.isWellFormed()).toBe(true);
-		expect(echoed).toContain("[truncated skill details]");
-		expect(echoed.endsWith("\n\n[truncated skill details]")).toBe(true);
+		expect(echoed).toContain(longReadme);
 	});
 });

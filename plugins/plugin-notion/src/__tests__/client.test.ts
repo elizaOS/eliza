@@ -265,6 +265,94 @@ describe("NotionClient.getPageContent", () => {
     // page read + two block pages
     expect(requests).toHaveLength(3);
   });
+
+  it("follows block cursors until the provider reaches a terminal page", async () => {
+    const pageId = "11111111-2222-3333-4444-555555555555";
+    let blockPage = 0;
+    const { fetchImpl, requests } = fakeNotion((request) => {
+      if (request.url.includes("/v1/pages/")) {
+        return { status: 200, body: page(pageId, "Long Doc") };
+      }
+      blockPage += 1;
+      return {
+        status: 200,
+        body: {
+          object: "list",
+          results: [
+            {
+              object: "block",
+              type: "paragraph",
+              paragraph: { rich_text: [{ plain_text: `line-${blockPage}` }] },
+            },
+          ],
+          next_cursor: blockPage <= 20 ? `cursor-${blockPage + 1}` : null,
+          has_more: blockPage <= 20,
+        },
+      };
+    });
+
+    const content = await client(fetchImpl).getPageContent({ accountId: "acct", pageId });
+
+    expect(content.plainText.split("\n")).toHaveLength(21);
+    expect(content.plainText).toContain("line-21");
+    expect(requests).toHaveLength(22);
+  });
+
+  it("rejects a repeated block continuation cursor", async () => {
+    const pageId = "11111111-2222-3333-4444-555555555555";
+    const { fetchImpl } = fakeNotion((request) => {
+      if (request.url.includes("/v1/pages/")) {
+        return { status: 200, body: page(pageId, "Looping Doc") };
+      }
+      return {
+        status: 200,
+        body: { object: "list", results: [], next_cursor: "same-cursor", has_more: true },
+      };
+    });
+
+    const error = await client(fetchImpl)
+      .getPageContent({ accountId: "acct", pageId })
+      .catch((cause: unknown) => cause);
+
+    expect(error).toBeInstanceOf(ElizaError);
+    expect((error as ElizaError).code).toBe("NOTION_MALFORMED_RESPONSE");
+  });
+
+  it("bounds endlessly advancing block cursors by one operation deadline", async () => {
+    const pageId = "11111111-2222-3333-4444-555555555555";
+    let clock = 0;
+    let blockPage = 0;
+    const { fetchImpl } = fakeNotion((request) => {
+      if (request.url.includes("/v1/pages/")) {
+        return { status: 200, body: page(pageId, "Endless Doc") };
+      }
+      blockPage += 1;
+      clock += 1;
+      return {
+        status: 200,
+        body: {
+          object: "list",
+          results: [],
+          next_cursor: `unique-${blockPage}`,
+          has_more: true,
+        },
+      };
+    });
+    const notion = new NotionClient(resolver, {
+      baseUrl: "https://notion.test",
+      fetchImpl,
+      operationTimeoutMs: 3,
+      now: () => clock,
+    });
+
+    const error = await notion
+      .getPageContent({ accountId: "acct", pageId })
+      .catch((cause: unknown) => cause);
+
+    expect(error).toBeInstanceOf(ElizaError);
+    expect((error as ElizaError).code).toBe("NOTION_UPSTREAM_FAILURE");
+    expect(blockPage).toBe(3);
+  });
 });
 
 describe("NotionClient writes", () => {

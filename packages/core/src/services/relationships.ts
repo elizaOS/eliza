@@ -127,9 +127,6 @@ export interface ContactInfo {
 	relationshipStatus: RelationshipStatus;
 }
 
-/** Max interactions kept in contact component to avoid unbounded growth. */
-const MAX_INTERACTION_HISTORY = 50;
-
 interface RecordInteractionInput {
 	contactId: UUID;
 	platform: string;
@@ -1431,9 +1428,9 @@ export class RelationshipsService extends Service {
 	}
 
 	/**
-	 * Record an interaction with a contact. Trims interaction history to
-	 * MAX_INTERACTION_HISTORY entries (most recent kept). Updates
-	 * lastInteractionAt so followup thresholds stay accurate.
+	 * Record an interaction with a contact while preserving the complete
+	 * interaction history. Updates lastInteractionAt so followup thresholds
+	 * stay accurate.
 	 */
 	async recordInteraction(
 		input: RecordInteractionInput,
@@ -1465,12 +1462,7 @@ export class RelationshipsService extends Service {
 			(a, b) =>
 				new Date(a.occurredAt).getTime() - new Date(b.occurredAt).getTime(),
 		);
-		const trimmed =
-			appended.length > MAX_INTERACTION_HISTORY
-				? appended.slice(appended.length - MAX_INTERACTION_HISTORY)
-				: appended;
-
-		const latestAt = trimmed[trimmed.length - 1]?.occurredAt;
+		const latestAt = appended[appended.length - 1]?.occurredAt;
 		const currentLatest = contact.lastInteractionAt
 			? new Date(contact.lastInteractionAt).getTime()
 			: 0;
@@ -1481,7 +1473,7 @@ export class RelationshipsService extends Service {
 
 		await this.persistContactInfo({
 			...contact,
-			interactions: trimmed,
+			interactions: appended,
 			lastInteractionAt: nextLastInteractionAt,
 		});
 
@@ -1552,13 +1544,6 @@ export class RelationshipsService extends Service {
 			(a, b) =>
 				new Date(a.occurredAt).getTime() - new Date(b.occurredAt).getTime(),
 		);
-		const trimmedInteractions =
-			mergedInteractions.length > MAX_INTERACTION_HISTORY
-				? mergedInteractions.slice(
-						mergedInteractions.length - MAX_INTERACTION_HISTORY,
-					)
-				: mergedInteractions;
-
 		const mergedCategories = Array.from(
 			new Set([...primary.categories, ...secondary.categories]),
 		);
@@ -1582,7 +1567,7 @@ export class RelationshipsService extends Service {
 			categories: mergedCategories,
 			tags: mergedTags,
 			handles: Array.from(mergedHandlesMap.values()),
-			interactions: trimmedInteractions,
+			interactions: mergedInteractions,
 			lastInteractionAt: latestInteractionAt,
 			relationshipGoal: primary.relationshipGoal ?? secondary.relationshipGoal,
 			followupThresholdDays:

@@ -12,8 +12,6 @@ import type {
 } from "@elizaos/core";
 import type { LifeOpsHealthSummaryResponse } from "../contracts/health.js";
 
-const HEALTH_DAILY_LIMIT = 4;
-
 export type HealthProviderAccessCheck = (
   runtime: IAgentRuntime,
   message: Memory,
@@ -41,8 +39,7 @@ export function buildHealthProviderResult(
 ): ProviderResult {
   const connectedProviders = summary.providers
     .filter((provider) => provider.connected)
-    .map((provider) => provider.provider)
-    .slice(0, 8);
+    .map((provider) => provider.provider);
   const lines: string[] = [
     connectedProviders.length > 0
       ? `Health connectors: ${connectedProviders.join(", ")}`
@@ -50,7 +47,7 @@ export function buildHealthProviderResult(
     "Use HEALTH for wearable metrics, workouts, readiness, sleep, weight, blood pressure, and vitals.",
   ];
 
-  for (const daily of summary.summaries.slice(0, HEALTH_DAILY_LIMIT)) {
+  for (const daily of summary.summaries) {
     const parts = [
       `${daily.provider} ${daily.date}`,
       daily.steps > 0 ? `${Math.round(daily.steps)} steps` : null,
@@ -82,11 +79,11 @@ export function buildHealthProviderResult(
     data: {
       healthSummary: {
         ...summary,
-        providers: summary.providers.slice(0, 8),
-        summaries: summary.summaries.slice(0, HEALTH_DAILY_LIMIT),
-        workouts: summary.workouts.slice(0, 10),
-        sleepEpisodes: summary.sleepEpisodes.slice(0, 10),
-        samples: summary.samples.slice(0, 25),
+        providers: summary.providers,
+        summaries: summary.summaries,
+        workouts: summary.workouts,
+        sleepEpisodes: summary.sleepEpisodes,
+        samples: summary.samples,
       },
     },
   };

@@ -16,7 +16,7 @@ Adds filesystem operations, shell command execution, and git worktree management
 
 ### Providers
 
-- **SHELL_HISTORY** (`src/shell/providers/shellHistoryProvider.ts`, position `99`) — injects the last 10 commands (stdout/stderr/exit code), cwd, allowed directory, and recent file operations into context; fires only in `terminal`/`code` contexts.
+- **SHELL_HISTORY** (`src/shell/providers/shellHistoryProvider.ts`, position `99`) — injects the complete retained command history (stdout/stderr/exit code), cwd, allowed directory, and file operations into context; fires only in `terminal`/`code` contexts.
 - **AVAILABLE_CODING_TOOLS** — injects the list of available tool names (`FILE`, `SHELL`, `WORKTREE`) into agent state at position `-10`. Stable/agent-scoped cache.
 
 ### Services

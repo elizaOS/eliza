@@ -732,7 +732,6 @@ export const AgentDefaultsSchema = z
     escalation: EscalationSchema,
     repoRoot: z.string().optional(),
     skipInit: z.boolean().optional(),
-    initMaxChars: z.number().int().positive().optional(),
     enableInitProviders: z.boolean().optional(),
     userTimezone: z.string().optional(),
     timeFormat: z

@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { openSync } from "node:fs";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { logger } from "@elizaos/core";
@@ -50,7 +50,7 @@ export interface SpawnOptions {
   cwd: string;
   env: Record<string, string>;
   timeoutMs: number;
-  /** Absolute path used as stdin (always `/dev/null` in production). */
+  /** Absolute path streamed to the child as stdin. */
   stdinPath: string;
 }
 
@@ -78,7 +78,7 @@ export interface ClaudeGenerateParams {
 const SIGKILL_GRACE_MS = 2_000;
 
 /**
- * Default spawner: runs argv with `/dev/null` stdin, captures stdout/stderr,
+ * Default spawner: streams the configured input file to stdin, captures stdout/stderr,
  * and enforces a hard timeout. On expiry it SIGTERMs the whole process group
  * (the child is spawned `detached` so it leads its own group), then escalates
  * to SIGKILL after a short grace window so a child that ignores SIGTERM cannot
@@ -89,8 +89,6 @@ export const defaultSpawn: SpawnFn = (argv, opts) =>
   new Promise<SpawnResult>((resolve, reject) => {
     let stdinFd: number;
     try {
-      // `/dev/null` stdin is REQUIRED: without it the CLI waits ~3s for stdin
-      // before falling through to the `-p` arg.
       stdinFd = openSync(opts.stdinPath, "r");
     } catch (err) {
       // error-policy:J1 boundary — cannot open the required stdin fd; reject the
@@ -196,7 +194,9 @@ export class ClaudeCli {
     const cwd = resolveSafeCwd(rawCwd, [tmpdir()]);
 
     try {
-      const argv = [binary, "-p", body];
+      const bodyPath = join(cwd, "prompt.txt");
+      await writeFile(bodyPath, body, { encoding: "utf8", mode: 0o600, flag: "wx" });
+      const argv = [binary, "-p"];
       // Only override the system prompt when the runtime actually supplied one.
       // Passing `--system-prompt ''` together with
       // `--exclude-dynamic-system-prompt-sections` would strip ALL steering
@@ -204,12 +204,18 @@ export class ClaudeCli {
       // flattened system is empty we leave Claude Code's default sections in
       // place rather than blank everything out.
       if (system.trim().length > 0) {
+        const systemPath = join(cwd, "system-prompt.txt");
+        await writeFile(systemPath, system, {
+          encoding: "utf8",
+          mode: 0o600,
+          flag: "wx",
+        });
         argv.push(
           // FULL REPLACE of the system prompt: suppresses Claude Code's own
           // identity and lets the runtime grammar (`<response><thought><text>`
           // + do-not-invent rules) take over.
-          "--system-prompt",
-          system,
+          "--system-prompt-file",
+          systemPath,
           // Drop Claude Code's dynamic system-prompt sections (repo/tool
           // context) so only our system prompt governs the turn.
           "--exclude-dynamic-system-prompt-sections"
@@ -233,7 +239,7 @@ export class ClaudeCli {
         // from ~/.claude/.credentials.json.
         env: filterEnv(this.env),
         timeoutMs: this.timeoutMs,
-        stdinPath: "/dev/null",
+        stdinPath: bodyPath,
       });
 
       if (result.timedOut) {

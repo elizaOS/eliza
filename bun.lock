@@ -134,7 +134,6 @@
         "@elizaos/plugin-pty": "workspace:*",
         "@elizaos/plugin-registry": "workspace:*",
         "@elizaos/plugin-scheduling": "workspace:*",
-        "@elizaos/plugin-signal": "workspace:*",
         "@elizaos/plugin-sql": "workspace:*",
         "@elizaos/plugin-task-coordinator": "workspace:*",
         "@elizaos/plugin-video": "workspace:*",
@@ -436,6 +435,7 @@
         "@elizaos/plugin-local-inference": "workspace:*",
         "@elizaos/plugin-registry": "workspace:*",
         "@elizaos/shared": "workspace:*",
+        "@napi-rs/keyring": "^1.1.6",
         "bonjour-service": "1.4.2",
         "electrobun": "^1.18.1",
       },
@@ -713,12 +713,14 @@
         "@aws-sdk/client-kms": "^3.1047.0",
         "@aws-sdk/client-s3": "^3.1039.0",
         "@brighter/storage-adapter-s3": "^1.6.3",
+        "@cloudflare/playwright": "1.3.6",
         "@electric-sql/pglite": "^0.4.5",
         "@electric-sql/pglite-socket": "0.1.6",
         "@elevenlabs/elevenlabs-js": "^2.45.0",
         "@elizaos/cloud-sdk": "workspace:*",
         "@elizaos/core": "workspace:*",
         "@elizaos/plugin-cloud-apps": "workspace:*",
+        "@elizaos/plugin-doordash": "workspace:*",
         "@elizaos/plugin-elizacloud": "workspace:*",
         "@elizaos/plugin-scheduling": "workspace:*",
         "@elizaos/plugin-sql": "workspace:*",
@@ -1049,6 +1051,7 @@
         "@elizaos/plugin-video": "workspace:*",
         "@elizaos/plugin-wallet": "workspace:*",
         "@elizaos/plugin-workflow": "workspace:*",
+        "@elizaos/shared": "workspace:*",
         "ws": "^8.21.3",
       },
       "devDependencies": {
@@ -1159,6 +1162,7 @@
         "cron-parser": "^5.5.0",
         "date-fns": "^4.1.0",
         "embla-carousel-react": "^8.6.0",
+        "libphonenumber-js": "^1.12.35",
         "lucide-react": "^1.0.0",
         "motion": "^12.38.0",
         "nprogress": "^0.2.0",
@@ -1414,21 +1418,6 @@
         "@elizaos/plugin-sql": "workspace:*",
         "react": "^19.0.0",
         "react-dom": "^19.0.0",
-      },
-    },
-    "plugins/plugin-bluebubbles": {
-      "name": "@elizaos/plugin-bluebubbles",
-      "version": "2.0.3-beta.7",
-      "dependencies": {
-        "@elizaos/core": "workspace:*",
-        "zod": "^4.4.3",
-      },
-      "devDependencies": {
-        "@biomejs/biome": "2.5.8",
-        "@types/node": "^24.0.0",
-        "@typescript/native": "npm:typescript@^7.0.2",
-        "typescript": "^6.0.3",
-        "vitest": "^4.1.10",
       },
     },
     "plugins/plugin-browser": {
@@ -1750,11 +1739,26 @@
         "react-dom": "^19.0.0",
         "tsup": "^8.5.1",
         "typescript": "^6.0.3",
-        "vite": "^8.0.0",
       },
       "peerDependencies": {
         "react": "^19.0.0",
         "react-dom": "^19.0.0",
+      },
+    },
+    "plugins/plugin-doordash": {
+      "name": "@elizaos/plugin-doordash",
+      "version": "2.0.3-beta.7",
+      "dependencies": {
+        "@elizaos/core": "workspace:*",
+        "@elizaos/plugin-mcp": "workspace:*",
+      },
+      "devDependencies": {
+        "@biomejs/biome": "2.5.8",
+        "@types/node": "^25.0.3",
+        "@typescript/native": "npm:typescript@^7.0.2",
+        "tsup": "^8.5.1",
+        "typescript": "^6.0.3",
+        "vitest": "^4.1.10",
       },
     },
     "plugins/plugin-dropbox": {
@@ -2863,7 +2867,6 @@
         "@elizaos/plugin-phone": "workspace:*",
         "@elizaos/plugin-reminders": "workspace:*",
         "@elizaos/plugin-scheduling": "workspace:*",
-        "@elizaos/plugin-signal": "workspace:*",
         "@elizaos/plugin-telegram": "workspace:*",
         "@elizaos/plugin-whatsapp": "workspace:*",
         "@elizaos/plugin-x": "workspace:*",
@@ -3054,12 +3057,10 @@
       "version": "2.0.3-beta.7",
       "dependencies": {
         "@elizaos/core": "workspace:*",
-        "qrcode": "^1.5.4",
       },
       "devDependencies": {
         "@biomejs/biome": "2.5.8",
         "@types/node": "^25.0.3",
-        "@types/qrcode": "^1.5.5",
         "@typescript/native": "npm:typescript@^7.0.2",
         "bun-types": "^1.2.25",
         "typescript": "^6.0.3",
@@ -3067,11 +3068,7 @@
       },
       "peerDependencies": {
         "@elizaos/core": "workspace:*",
-        "@elizaos/signal-native": "latest",
       },
-      "optionalPeers": [
-        "@elizaos/signal-native",
-      ],
     },
     "plugins/plugin-slack": {
       "name": "@elizaos/plugin-slack",
@@ -3866,6 +3863,8 @@
 
     "@cloudflare/kv-asset-handler": ["@cloudflare/kv-asset-handler@0.5.0", "", {}, "sha512-jxQYkj8dSIzc0cD6cMMNdOc1UVjqSqu8BZdor5s8cGjW2I8BjODt/kWPVdY+u9zj3ms75Q5qaZgnxUad83+eAg=="],
 
+    "@cloudflare/playwright": ["@cloudflare/playwright@1.3.6", "", { "peerDependencies": { "playwright-core": "*" }, "optionalPeers": ["playwright-core"] }, "sha512-pwNuh5/eUTcVVhXComAWfS9Im0mqBBVoU73dBXPv5cbUyOIuPGxd3bD2GrTgMOe6jJEK4ZHgQBYctYEwkzPH8w=="],
+
     "@cloudflare/unenv-preset": ["@cloudflare/unenv-preset@2.16.1", "", { "peerDependencies": { "unenv": "2.0.0-rc.24", "workerd": ">1.20260305.0 <2.0.0-0" }, "optionalPeers": ["workerd"] }, "sha512-ECxObrMfyTl5bhQf/lZCXwo5G6xX9IAUo+nDMKK4SZ8m4Jvvxp52vilxyySSWh2YTZz8+HQ07qGH/2rEom1vDw=="],
 
     "@cloudflare/workerd-darwin-64": ["@cloudflare/workerd-darwin-64@1.20260730.1", "", { "os": "darwin", "cpu": "x64" }, "sha512-+MBHmPaiTe2KajryW0T24rZvWFxb41hD3d8anNzQqHzft6vSEb18+sp0znSwxgij7ApPhSM1+vhkNg4f3YMguA=="],
@@ -4178,8 +4177,6 @@
 
     "@elizaos/plugin-blocker": ["@elizaos/plugin-blocker@workspace:plugins/plugin-blocker"],
 
-    "@elizaos/plugin-bluebubbles": ["@elizaos/plugin-bluebubbles@workspace:plugins/plugin-bluebubbles"],
-
     "@elizaos/plugin-browser": ["@elizaos/plugin-browser@workspace:plugins/plugin-browser"],
 
     "@elizaos/plugin-calendar": ["@elizaos/plugin-calendar@workspace:plugins/plugin-calendar"],
@@ -4207,6 +4204,8 @@
     "@elizaos/plugin-discord": ["@elizaos/plugin-discord@workspace:plugins/plugin-discord"],
 
     "@elizaos/plugin-documents": ["@elizaos/plugin-documents@workspace:plugins/plugin-documents"],
+
+    "@elizaos/plugin-doordash": ["@elizaos/plugin-doordash@workspace:plugins/plugin-doordash"],
 
     "@elizaos/plugin-dropbox": ["@elizaos/plugin-dropbox@workspace:plugins/plugin-dropbox"],
 

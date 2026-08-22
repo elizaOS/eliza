@@ -142,9 +142,7 @@ export class ResponseHandlerFieldRegistry {
 
 	/**
 	 * Compose the per-turn system-prompt slices. Each active evaluator
-	 * contributes its `description` verbatim — or its `descriptionCompressed`
-	 * when the caller asks for the `compact` variant (compact Stage-1 tiers;
-	 * schema composition is unaffected). The composition is one big
+	 * contributes its complete `description` verbatim. The composition is one big
 	 * markdown block of `### {name}\n{description}` sections in priority
 	 * order — matching how the post-turn EvaluatorService composes its prompt
 	 * at services/evaluator.ts:327-333.
@@ -170,10 +168,7 @@ export class ResponseHandlerFieldRegistry {
 				: true;
 			if (should) {
 				active.push(evaluator.name);
-				const slice =
-					options.compact && evaluator.descriptionCompressed?.trim()
-						? evaluator.descriptionCompressed
-						: evaluator.description;
+				const slice = evaluator.description;
 				sections.push(`### ${evaluator.name}\n${slice}`);
 			} else {
 				skipped.push(evaluator.name);
@@ -384,13 +379,6 @@ export class ResponseHandlerFieldRegistry {
 
 export interface ResponseHandlerFieldSelectionOptions {
 	includeFieldNames?: ReadonlySet<string> | readonly string[];
-	/**
-	 * Render `descriptionCompressed` prompt slices when available (compact
-	 * Stage-1 tiers). Prompt-only: field selection, schema composition, and
-	 * schema signatures ignore this flag, so the composed HANDLE_RESPONSE
-	 * schema stays byte-identical across tiers.
-	 */
-	compact?: boolean;
 }
 
 function normalizeFieldSelection(

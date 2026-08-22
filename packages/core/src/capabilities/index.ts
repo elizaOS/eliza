@@ -83,7 +83,7 @@ export class CapabilityError extends Error {
 
 export type FileReadTextParams = CapabilityEndpointSelection & {
 	path: string;
-	/** Positive safe-integer byte cap; omitted uses the router's default cap. */
+	/** Positive safe-integer acceptance ceiling; over-limit files are rejected. */
 	maxBytes?: number;
 	traceSessionId?: string;
 };
@@ -92,7 +92,8 @@ export type FileReadTextResult = {
 	path: string;
 	text: string;
 	size: number;
-	truncated: boolean;
+	/** Compatibility field. Successful reads always return complete text. */
+	truncated: false;
 };
 
 export type FileEntryKind = "file" | "directory" | "symlink" | "other";
@@ -1334,11 +1335,19 @@ export class RuntimeBrokerCapabilityRouter implements ElizaCapabilityRouter {
 				: { endpointId: params.endpointId }),
 		});
 		const object = requireObject(result, "fs.readText");
+		if (requireBoolean(object, "truncated", "fs.readText")) {
+			throw new CapabilityError({
+				code: "CAPABILITY_REQUEST_FAILED",
+				capability: "fs",
+				method: "fs.readText",
+				message: "fs.readText endpoint returned partial content.",
+			});
+		}
 		return {
 			path: requireString(object, "path", "fs.readText"),
 			text: requireString(object, "text", "fs.readText"),
 			size: requireNumber(object, "size", "fs.readText"),
-			truncated: requireBoolean(object, "truncated", "fs.readText"),
+			truncated: false,
 		};
 	}
 

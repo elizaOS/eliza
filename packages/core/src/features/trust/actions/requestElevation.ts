@@ -142,7 +142,7 @@ Please use these permissions responsibly. All actions will be logged for audit.`
 
 		denialMessage += `\n\nYour current trust score is ${trustProfile.overallTrust}/100.`;
 
-		const suggestions = result.suggestions?.slice(0, 5) ?? [];
+		const suggestions = result.suggestions ?? [];
 		if (suggestions.length > 0) {
 			denialMessage += `\n\nSuggestions:\n${suggestions.map((s: string) => `- ${s}`).join("\n")}`;
 		}

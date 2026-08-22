@@ -837,7 +837,7 @@ describeIfPosix("shellAction", () => {
     expect(posts[0].text.length).toBeLessThan(1700);
   });
 
-  it("reports buffer truncation when background output exceeds the cap", async () => {
+  it("rejects background output beyond the complete-capture ceiling", async () => {
     const { runtime } = await makeRuntime({ backgroundBufferChars: 20 });
     const message = makeMessage();
     const start = await shellAction.handler?.(runtime, message, undefined, {
@@ -847,20 +847,12 @@ describeIfPosix("shellAction", () => {
     const handle = (requireActionResult(start).data as Record<string, unknown>)
       .handle as string;
 
-    const poll = await pollUntil(runtime, message, handle, (data) => {
-      const stdout = data.stdout as Record<string, unknown> | undefined;
-      return (
-        data.status === "exited" &&
-        typeof stdout?.truncatedBefore === "number" &&
-        stdout.truncatedBefore > 0
-      );
-    });
-    const data = poll.data as Record<string, unknown>;
-    const stdout = data.stdout as Record<string, unknown>;
-    expect(stdout.text).toBe("ghijklmnopqrstuvwxyz");
-    expect(stdout.startOffset).toBe(6);
-    expect(stdout.endOffset).toBe(26);
-    expect(stdout.truncatedBefore).toBe(6);
+    const poll = await pollUntil(runtime, message, handle, (_data, text) =>
+      text.includes("no partial output is available"),
+    );
+    expect(poll.success).toBe(false);
+    expect(poll.text).toContain("no partial output is available");
+    expect(poll.text).not.toContain("ghijklmnopqrstuvwxyz");
   });
 
   it("reaps background sessions during service teardown", async () => {
@@ -3579,6 +3571,47 @@ describe("destructive-bulk confirm gate", () => {
     expect((result.data as Record<string, unknown>).confirmation_failure).toBe(
       "same_message",
     );
+  });
+
+  it("rejects a confirmation when the resolved execution directory changes", async () => {
+    const runCommand = vi.fn(async () => ({
+      output: "",
+      exitCode: 0,
+      timedOut: false,
+    }));
+    const { runtime, session } = await makeRuntime({
+      capabilityRouter: makeShellRouter(runCommand),
+    });
+    const command = "rm -rf ./relative-target";
+    const originalDirectory = process.cwd();
+    const changedDirectory = path.join(process.cwd(), "src");
+    const original = makeMessage(
+      undefined,
+      `remove the relative target in ${originalDirectory}`,
+    );
+    const blocked = requireActionResult(
+      await shellAction.handler?.(runtime, original, undefined, {
+        command,
+        cwd: originalDirectory,
+      }),
+    );
+    const challenge = confirmationChallenge(blocked);
+    session.setCwd(String(original.roomId), changedDirectory);
+
+    const result = requireActionResult(
+      await shellAction.handler?.(
+        runtime,
+        confirmationMessage(original, challenge),
+        undefined,
+        { command, confirm: true, confirmation_challenge: challenge },
+      ),
+    );
+
+    expect(result.success).toBe(false);
+    expect((result.data as Record<string, unknown>).confirmation_failure).toBe(
+      "cwd_mismatch",
+    );
+    expect(runCommand).not.toHaveBeenCalled();
   });
 
   it("expires challenges and consumes a successful challenge exactly once", async () => {

@@ -1,14 +1,14 @@
 /**
  * Keyword and regex matchers over recent message history, used by action
  * `validate()` paths to gate on message content. Both scan the current message
- * plus the last five recent messages; keyword matching is case-insensitive.
+ * plus every retained recent message; keyword matching is case-insensitive.
  */
 import type { Memory } from "../types";
 
 /**
  * Validates if any of the given keywords are present in the recent message history.
  *
- * This function checks the current message content and the last 5 messages in the provided
+ * This function checks the current message content and every message in the provided
  * list for the presence of any of the provided keywords. The check is case-insensitive.
  *
  * @param message The current message memory
@@ -39,13 +39,8 @@ export function validateActionKeywords(
 		relevantText.push(message.content.text);
 	}
 
-	// 2. Recent messages (last 5)
-	const recentSubset =
-		recentMessages && recentMessages.length > 5
-			? recentMessages.slice(-5)
-			: recentMessages || [];
-
-	for (const msg of recentSubset) {
+	// 2. Every retained recent message
+	for (const msg of recentMessages || []) {
 		if (msg.content.text) {
 			relevantText.push(msg.content.text);
 		}
@@ -69,7 +64,7 @@ export function validateActionKeywords(
 /**
  * Validates if any of the recent message history matches the given regex.
  *
- * This function checks the current message content and the last 5 messages in the provided
+ * This function checks the current message content and every message in the provided
  * list against the provided regex pattern.
  *
  * @param message The current message memory
@@ -93,13 +88,8 @@ export function validateActionRegex(
 		relevantText.push(message.content.text);
 	}
 
-	// 2. Recent messages (last 5)
-	const recentSubset =
-		recentMessages && recentMessages.length > 5
-			? recentMessages.slice(-5)
-			: recentMessages || [];
-
-	for (const msg of recentSubset) {
+	// 2. Every retained recent message
+	for (const msg of recentMessages || []) {
 		if (msg.content.text) {
 			relevantText.push(msg.content.text);
 		}

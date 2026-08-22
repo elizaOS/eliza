@@ -10,7 +10,7 @@
  * with a still-green pipeline and no reviewer signal.
  *
  * This is a static YAML census — it never executes a workflow. It parses the
- * `run:` steps of `jobs.platform-smoke` in `.github/workflows/nightly.yml`
+ * `run:` steps of `jobs.platform-smoke` in `.github/workflows/platform-smoke.yml`
  * (whose matrix includes windows-2025), flattens them into a set, and asserts
  * every command in the committed inventory `.github/ci-windows-command-inventory.json`
  * is still wired there. If any inventoried command is missing, Windows
@@ -31,7 +31,7 @@ const DEFAULT_REPO_ROOT = resolve(
   "..",
 );
 
-const WORKFLOW_FILE = ".github/workflows/nightly.yml";
+const WORKFLOW_FILE = ".github/workflows/platform-smoke.yml";
 const INVENTORY_FILE = ".github/ci-windows-command-inventory.json";
 const JOB_KEY = "platform-smoke";
 

@@ -135,7 +135,6 @@ export class ShellService extends Service {
   private shellConfig: ShellConfig;
   private currentDirectory: string;
   private commandHistory: Map<string, CommandHistoryEntry[]>;
-  private maxHistoryPerConversation = 100;
   private scopeKey?: string;
 
   constructor(runtime?: IAgentRuntime) {
@@ -1848,10 +1847,6 @@ export class ShellService extends Service {
       throw new Error(`No history found for conversation ${conversationId}`);
     }
     history.push(historyEntry);
-
-    if (history.length > this.maxHistoryPerConversation) {
-      history.shift();
-    }
   }
 
   private detectFileOperations(

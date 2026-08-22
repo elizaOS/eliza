@@ -1,13 +1,11 @@
 /**
  * `trendingProvider` — Birdeye trending-token provider, reading cached
  * per-chain trending snapshots (Solana/Ethereum/Base, populated elsewhere)
- * and injecting a bounded price/market-cap/volume/liquidity table into
+ * and injecting the complete price/market-cap/volume/liquidity table into
  * planner context. Skipped entirely when `BIRDEYE_NO_TRENDING=true`.
  */
 import type { IAgentRuntime, Memory, Provider, State } from "@elizaos/core";
 import { formatJsonScalar, formatJsonTable } from "../utils";
-
-const TRENDING_ROW_LIMIT = 18;
 
 interface TrendingToken {
   address: string;
@@ -116,13 +114,13 @@ export const trendingProvider: Provider = {
         );
       }
 
-      const topSolanaTokens = solanaTokens.slice(0, 33);
-      let tokens = [...topSolanaTokens];
+      const allSolanaTokens = solanaTokens;
+      let tokens = [...allSolanaTokens];
 
       let supplies: SupplyMap = {};
       if (solanaService && typeof solanaService.getSupply === "function") {
         try {
-          const CAs = topSolanaTokens.map((t) => t.address);
+          const CAs = allSolanaTokens.map((t) => t.address);
           supplies = await solanaService.getSupply(CAs);
         } catch (error) {
           runtime.logger.warn(
@@ -131,7 +129,7 @@ export const trendingProvider: Provider = {
         }
       }
 
-      for (const token of topSolanaTokens) {
+      for (const token of allSolanaTokens) {
         // has a marketcap but seems to always be 0
         //console.log('token', token)
         const rugKey = `rugcheck_solana_${token.address}`;
@@ -170,7 +168,7 @@ export const trendingProvider: Provider = {
         setAt: number;
       }>("tokens_v2_ethereum");
       if (ethCache?.data) {
-        const ethTokens = ethCache.data.slice(0, 33);
+        const ethTokens = ethCache.data;
         tokens = [...tokens, ...ethTokens];
         for (const token of ethTokens) {
           rows.push({
@@ -190,7 +188,7 @@ export const trendingProvider: Provider = {
         setAt: number;
       }>("tokens_v2_base");
       if (baseCache?.data) {
-        const baseTokens = baseCache.data.slice(0, 33);
+        const baseTokens = baseCache.data;
         tokens = [...tokens, ...baseTokens];
         for (const token of baseTokens) {
           rows.push({
@@ -206,9 +204,8 @@ export const trendingProvider: Provider = {
         }
       }
 
-      const boundedRows = rows.slice(0, TRENDING_ROW_LIMIT);
       const data = {
-        tokens: tokens.slice(0, TRENDING_ROW_LIMIT),
+        tokens,
       };
 
       const values = {};
@@ -216,7 +213,7 @@ export const trendingProvider: Provider = {
       const text = [
         "birdeye_trending_tokens:",
         "  status: ok",
-        formatJsonTable("  tokens", boundedRows, [
+        formatJsonTable("  tokens", rows, [
           "chain",
           "address",
           "symbol",

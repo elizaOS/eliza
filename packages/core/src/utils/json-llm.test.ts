@@ -19,6 +19,14 @@ describe("extractAndParseJSONObjectFromText", () => {
 		expect(extractAndParseJSONObjectFromText("[1, 2, 3]")).toEqual([1, 2, 3]);
 	});
 
+	it("parses a model JSON value beyond the former 100,000-character boundary", () => {
+		const sentinel = "END_OF_COMPLETE_MODEL_OUTPUT";
+		const value = `${"x".repeat(1_100_000)}${sentinel}`;
+		expect(
+			extractAndParseJSONObjectFromText(JSON.stringify({ value })),
+		).toEqual({ value });
+	});
+
 	it("extracts JSON from a ```json fenced block surrounded by prose", () => {
 		expect(
 			extractAndParseJSONObjectFromText(

@@ -5,8 +5,8 @@
  * restricted linker namespace cannot load the bionic Android Vulkan driver (its
  * HIDL/HAL closure) — so the musl agent can only run inference on the CPU. The
  * GPU is reachable only from the normal bionic `ai.elizaos.app` process, where
- * `ElizaBionicInferenceServer` (Java) has loaded `libelizainference.so` +
- * `libggml-vulkan.so` and offloads the model to the Mali GPU.
+ * `ElizaBionicInferenceServer` (Java) has loaded the fused
+ * `libelizainference.so` and offloads the model to the Mali GPU.
  *
  * This loader implements the standard {@link LocalInferenceLoader} contract, so
  * the TEXT_SMALL / TEXT_LARGE handlers in `ensure-local-inference-handler.ts`
@@ -42,6 +42,7 @@ import {
 	bundleHasAsrModelFiles,
 	readBundleAsrProvenanceBlockers,
 } from "./asr-provenance";
+import { mergeElizaTurnStopSequences } from "./eliza-turn-stops";
 
 /** Connect + full round-trip budget. A cold GPU decode of a long reply fits. */
 const REQUEST_TIMEOUT_MS = 120_000;
@@ -162,11 +163,16 @@ export class BionicHostLoader implements LocalInferenceLoader {
 		onTextChunk?: (chunk: string) => void | Promise<void>;
 		maxTokensPerStep?: number;
 	}): Promise<string> {
+		// This is the final agent-side boundary before native decoding. Keep the
+		// Eliza turn markers mandatory here even if an alternate runtime route
+		// omitted them upstream, so the host cannot decode into the next role.
+		const stopSequences = mergeElizaTurnStopSequences(args.stopSequences);
 		const request = {
 			bundleDir: this.bundleDir,
 			prompt: args.prompt,
 			maxTokens: args.maxTokens ?? 256,
 			temperature: args.temperature ?? 0,
+			stopSequences,
 		};
 		// Streaming shape when the runtime wired a chunk callback (chat SSE /
 		// voice): the host pushes one frame per bounded decode step, so the

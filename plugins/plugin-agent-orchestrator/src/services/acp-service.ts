@@ -1,7 +1,7 @@
 /**
  * `AcpService` (serviceType `ACP_SUBPROCESS_SERVICE`) owns the lifecycle of
  * coding-agent subprocesses driven over the Agent Client Protocol (ACP). It
- * spawns a chosen backend CLI (elizaos, pi-agent, claude, codex, opencode),
+ * spawns a chosen backend CLI (elizaos, pi-agent, claude, codex),
  * speaks ACP over the native transport, tracks per-session state and emits the
  * session events the SubAgentRouter and task store consume, and cancels or tears
  * sessions down on stop or process shutdown.
@@ -85,10 +85,6 @@ import {
   mintSpawnLease,
   resolveLeaseBroker,
 } from "./model-gateway-lease.js";
-import {
-  buildOpencodeAcpEnv,
-  resolveVendoredOpencodeAcpCommand,
-} from "./opencode-config.js";
 import {
   createOwnedArtifactRecord,
   ORCHESTRATOR_OWNED_ARTIFACTS_METADATA_KEY,
@@ -449,7 +445,7 @@ const ACP_METADATA_GIT_INDEX_FILE = "gitIndexFile";
 const ACP_METADATA_GIT_INDEX_BASE_FILE = "gitIndexBaseFile";
 const ACP_METADATA_GIT_WRAPPER_DIR = "gitWrapperDir";
 const ACP_METADATA_SPAWN_MODEL = "spawnModel";
-const MAX_CAPTURED_TOOL_OUTPUT_CHARS = 12_000;
+const _MAX_CAPTURED_TOOL_OUTPUT_CHARS = 12_000;
 const TOOL_OUTPUT_END_MARKER = "[/tool output]";
 const SESSION_GIT_WRAPPER_BODY = `const { spawn, spawnSync } = require("node:child_process");
 const { randomUUID } = require("node:crypto");
@@ -802,7 +798,7 @@ export function resolveInitialTaskPromptTimeoutMs(
 ): number | undefined {
   return explicitTimeoutMs ?? 0;
 }
-const DEFAULT_AGENTS: AgentType[] = ["elizaos", "codex", "claude", "opencode"];
+const DEFAULT_AGENTS: AgentType[] = ["elizaos", "codex", "claude"];
 // Path segment for Codex homes whose auth.json carries a selected ChatGPT
 // subscription. The marker stays in sync with
 // coding-account-bridge.ts:codexHomeDir; ordinary CODEX_HOME paths may instead
@@ -2904,12 +2900,6 @@ export class AcpService extends Service {
     return args;
   }
 
-  private opencodeAgentCommand(): string | undefined {
-    const configured = this.setting("ELIZA_OPENCODE_ACP_COMMAND")?.trim();
-    if (configured) return configured;
-    return resolveVendoredOpencodeAcpCommand();
-  }
-
   private codexAcpSandboxMode(): CodexSandboxMode | undefined {
     const raw =
       this.setting("ELIZA_CODEX_ACP_SANDBOX_MODE") ??
@@ -3606,11 +3596,6 @@ export class AcpService extends Service {
   private nativeAgentCommand(agentType: AgentType): string {
     const normalizedAgentType =
       normalizeTaskAgentAdapter(agentType) ?? agentType;
-    if (normalizedAgentType === "opencode") {
-      const command = this.opencodeAgentCommand();
-      if (command) return command;
-      return this.setting("ELIZA_OPENCODE_ACP_COMMAND") ?? "opencode acp";
-    }
     if (normalizedAgentType === "codex") return this.codexAgentCommand();
     const override = this.setting(
       `ELIZA_${String(normalizedAgentType)
@@ -3648,10 +3633,7 @@ export class AcpService extends Service {
   }
 
   private agentCommandArgs(agentType: AgentType, args: string[]): string[] {
-    if (agentType !== "opencode") return [agentType, ...args];
-    const command = this.opencodeAgentCommand();
-    if (!command) return [agentType, ...args];
-    return ["--agent", command, ...args];
+    return [agentType, ...args];
   }
 
   private runAcpx(opts: RunOptions): Promise<RunResult> {
@@ -4556,7 +4538,6 @@ export class AcpService extends Service {
       if (agentType === "claude" && normalizedModel) {
         env.ANTHROPIC_MODEL = normalizedModel;
       }
-      if (agentType === "opencode") env.OPENCODE_MODEL = model;
     } else if (agentType === "claude") {
       // No per-spawn model: fall back to the app-configured claude coding
       // model (what POST /api/models/config writes). Config-env read, so a
@@ -4653,18 +4634,6 @@ export class AcpService extends Service {
           "debug",
           "Dropped inherited OPENAI_MODEL for codex subscription sub-agent (lets Codex use its ChatGPT-compatible default)",
         );
-      }
-    }
-    if (agentType === "opencode") {
-      const opencode = buildOpencodeAcpEnv(this.runtime, env, model);
-      Object.assign(env, opencode.env);
-      if (opencode.config) {
-        this.log("info", "OpenCode ACP provider configured", {
-          provider: opencode.config.providerLabel,
-          model: opencode.config.model,
-          smallModel: opencode.config.smallModel,
-          vendored: Boolean(opencode.vendoredShimDir),
-        });
       }
     }
     // Per-spawn git identity: pin an explicit author/committer for every agent
@@ -4870,10 +4839,7 @@ export class AcpService extends Service {
     if (code === 5) return "acpx permission denied.";
     if (code === 3) return "acpx prompt timed out.";
     if (stderr.trim()) {
-      const wellFormed = toWellFormedUnicode(stderr.trim());
-      return wellFormed.length > 500
-        ? truncateWellFormed(wellFormed, 500)
-        : wellFormed;
+      return toWellFormedUnicode(stderr.trim());
     }
     return `acpx subprocess exited with code ${code ?? "unknown"}`;
   }
@@ -5416,12 +5382,8 @@ function captureTerminalToolOutput(
   if (capturedToolOutputs.has(key)) return undefined;
   capturedToolOutputs.add(key);
   const wellFormed = toWellFormedUnicode(output);
-  const truncated =
-    wellFormed.length > MAX_CAPTURED_TOOL_OUTPUT_CHARS
-      ? `${truncateWellFormed(wellFormed, MAX_CAPTURED_TOOL_OUTPUT_CHARS)}\n[tool output truncated]`
-      : wellFormed;
   const title = toolCall.title?.trim() || "tool output";
-  return `[tool output: ${title}]\n${truncated}\n${TOOL_OUTPUT_END_MARKER}`;
+  return `[tool output: ${title}]\n${wellFormed}\n${TOOL_OUTPUT_END_MARKER}`;
 }
 
 // Exported for unit coverage of the exec-record one-liner path (issue #11578).
@@ -5476,17 +5438,13 @@ function execRecordOneLiner(value: unknown): string | undefined {
   return line;
 }
 
-/** Extract a capped (≤200 char) stdout/stderr tail from an exec record. */
+/** Extract complete stdout/stderr text from an exec record. */
 function execRecordOutputTail(record: Record<string, unknown>): string {
   const candidates = [record.stdout, record.stderr, record.output]
     .map((entry) => (typeof entry === "string" ? entry.trim() : ""))
     .filter((entry) => entry.length > 0);
   if (candidates.length === 0) return "";
-  const joined = candidates.join("\n").trim();
-  const wellFormed = toWellFormedUnicode(joined);
-  return wellFormed.length > 200
-    ? `${truncateWellFormed(wellFormed, 200)}…`
-    : wellFormed;
+  return toWellFormedUnicode(candidates.join("\n").trim());
 }
 
 function parseJsonRecord(text: string): Record<string, unknown> | undefined {

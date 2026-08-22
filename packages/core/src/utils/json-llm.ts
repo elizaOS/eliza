@@ -25,10 +25,9 @@ export function extractAndParseJSONObjectFromText(
 		throw new Error("Invalid input: text must be a non-empty string");
 	}
 
-	const safeText = text.length > 100_000 ? text.slice(0, 100_000) : text;
 	// First try to extract JSON from code blocks if present
-	const match = safeText.match(jsonBlockPattern);
-	const textToParse = match ? match[1].trim() : safeText.trim();
+	const match = text.match(jsonBlockPattern);
+	const textToParse = match ? match[1].trim() : text.trim();
 
 	// Use JSON5.parse directly - it already handles unquoted keys, single quotes, trailing commas
 	try {

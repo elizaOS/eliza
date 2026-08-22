@@ -5,6 +5,7 @@
  * invented zero exit code, and a hung loopback fetch must fail closed.
  */
 
+import { createHash } from "node:crypto";
 import {
   ElizaError,
   type HandlerOptions,
@@ -114,6 +115,94 @@ describe("terminal action effect proof", () => {
           },
         },
       ],
+    });
+  });
+
+  it("projects only a complete attachment ReadView, without duplicated output", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_input: string | URL | Request, init?: RequestInit) =>
+        terminalResponseForRequest(init, { stdout: "private output\n" }),
+      ),
+    );
+    const result = await terminalAction.handler(
+      runtime(),
+      message(),
+      undefined,
+      options(),
+    );
+    const prompt = result?.promptData as Record<string, unknown>;
+    const view = prompt.readView as {
+      reference: { kind: string; ref: string };
+      slice: { completeness: string; sourceSha256?: string };
+    };
+    expect(view.reference.kind).toBe("attachment");
+    expect(view.reference.ref).not.toContain("memory://");
+    expect(view.slice.completeness).toBe("complete");
+    expect(view.slice.sourceSha256).toMatch(/^[0-9a-f]{64}$/u);
+    expect(
+      createHash("sha256")
+        .update(result?.text ?? "")
+        .digest("hex"),
+    ).toBe(view.slice.sourceSha256);
+    expect(JSON.stringify(prompt)).not.toContain("private output");
+  });
+
+  it("classifies provider truncation as unrecoverable source loss", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_input: string | URL | Request, init?: RequestInit) =>
+        terminalResponseForRequest(init, {
+          stdout: "failure tail",
+          truncated: true,
+          exitCode: 7,
+        }),
+      ),
+    );
+    const result = await terminalAction.handler(
+      runtime(),
+      message(),
+      undefined,
+      options(),
+    );
+    const view = ((result?.promptData ?? {}) as Record<string, unknown>)
+      .readView as {
+      slice: {
+        completeness: string;
+        hasMore: boolean;
+        nextOffset?: number;
+        sourceSha256?: string;
+      };
+    };
+    expect(view.slice).toMatchObject({
+      completeness: "partial-source-loss",
+      hasMore: false,
+    });
+    expect(view.slice.nextOffset).toBeUndefined();
+    expect(view.slice.sourceSha256).toBeUndefined();
+  });
+
+  it("does not mint a restart-unsafe reference when attachment persistence fails", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_input: string | URL | Request, init?: RequestInit) =>
+        terminalResponseForRequest(init),
+      ),
+    );
+    const failingRuntime = runtime();
+    failingRuntime.createMemory = vi.fn(async () => {
+      throw new Error("database unavailable");
+    });
+    const result = await terminalAction.handler(
+      failingRuntime,
+      message(),
+      undefined,
+      options(),
+    );
+    const prompt = result?.promptData as Record<string, unknown>;
+    expect(prompt.readView).toBeUndefined();
+    expect(prompt).toMatchObject({
+      terminal: { outputReferenceAvailable: false },
     });
   });
 
@@ -460,7 +549,7 @@ describe("terminal action effect proof", () => {
             }),
             {
               status: 200,
-              headers: { "Content-Length": String(2 * 1024 * 1024 + 1) },
+              headers: { "Content-Length": String(8 * 1024 * 1024 + 1) },
             },
           ),
       ),

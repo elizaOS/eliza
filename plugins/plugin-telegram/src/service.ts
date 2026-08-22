@@ -2468,7 +2468,7 @@ export class TelegramService extends Service {
       }
     }
 
-    return this.dedupeConnectorTargets(targets).slice(0, 25);
+    return this.dedupeConnectorTargets(targets);
   }
 
   async listConnectorRooms(
@@ -2504,7 +2504,7 @@ export class TelegramService extends Service {
       }
     }
 
-    return this.dedupeConnectorTargets(targets).slice(0, 50);
+    return this.dedupeConnectorTargets(targets);
   }
 
   async listRecentConnectorTargets(
@@ -2538,10 +2538,7 @@ export class TelegramService extends Service {
       });
     }
 
-    const targets = (await this.listRecentConnectorTargets(context)).slice(
-      0,
-      10,
-    );
+    const targets = await this.listRecentConnectorTargets(context);
     const roomIds = Array.from(
       new Set(
         targets

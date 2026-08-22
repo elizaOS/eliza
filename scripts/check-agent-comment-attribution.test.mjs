@@ -115,15 +115,16 @@ describe("agent comment attribution", () => {
     assert.equal(result.attribution.model, "anthropic/claude-sonnet-4");
   });
 
-  it("requires attribution on implementation, review, and lever claims", () => {
+  it("accepts implementation, review, and lever claims without attribution", () => {
     for (const claim of [
       "CLAIMING: issue scope",
       "CLAIMING REVIEW: PR scope",
       "CLAIMING LEVER: production deploy",
     ]) {
       const result = evaluateCommentAttribution(claim);
-      assert.equal(result.ok, false);
-      assert.ok(result.findings.some((finding) => finding.id === "marker"));
+      assert.equal(result.ok, true);
+      assert.equal(result.skipped, true);
+      assert.equal(result.attribution, null);
     }
   });
 
@@ -275,7 +276,7 @@ Attribution status: self-reported`);
     }
   });
 
-  it("accepts every issue template unmodified as a human-only default", () => {
+  it("accepts every issue template without an attribution default", () => {
     for (const path of [
       ".github/ISSUE_TEMPLATE/agent_work_item.md",
       ".github/ISSUE_TEMPLATE/bug_report.md",
@@ -289,11 +290,12 @@ Attribution status: self-reported`);
         true,
         `${path}: ${result.findings.map((finding) => finding.message).join("; ")}`,
       );
-      assert.equal(result.attribution?.kind, "no-ai", path);
+      assert.equal(result.skipped, true, path);
+      assert.equal(result.attribution, null, path);
     }
   });
 
-  it("warns instead of failing on pristine or absent issue attribution blocks", () => {
+  it("accepts pristine, absent, and explicitly required issue attribution", () => {
     const pristine = evaluateCommentAttribution(
       `## Contribution provenance
 
@@ -310,7 +312,7 @@ The button does nothing.`,
     );
     assert.equal(pristine.ok, true);
     assert.equal(pristine.skipped, true);
-    assert.match(pristine.notice, /pristine template placeholders/);
+    assert.equal(pristine.notice, undefined);
 
     const absent = evaluateCommentAttribution(
       "The app crashes on launch. Logs attached.",
@@ -318,15 +320,16 @@ The button does nothing.`,
     );
     assert.equal(absent.ok, true);
     assert.equal(absent.skipped, true);
-    assert.match(absent.notice, /no attribution block/);
+    assert.equal(absent.notice, undefined);
 
-    // A claim, an edited assistance row, or explicit --required keeps the gate
-    // strict even when the rest of the block is still placeholder text.
+    // Claims and the legacy required option cannot force a disclosure. An
+    // author-supplied malformed attribution signal is still validated.
     const claimed = evaluateCommentAttribution(
       "CLAIMING: fix the crash\n\nNo footer here.",
       { issueBody: true },
     );
-    assert.equal(claimed.ok, false);
+    assert.equal(claimed.ok, true);
+    assert.equal(claimed.skipped, true);
 
     const edited = evaluateCommentAttribution(
       `- AI assistance: yes
@@ -340,7 +343,8 @@ The button does nothing.`,
       issueBody: true,
       required: true,
     });
-    assert.equal(required.ok, false);
+    assert.equal(required.ok, true);
+    assert.equal(required.skipped, true);
   });
 
   it("validates a machine-assisted issue body with a terminal signed footer", () => {
@@ -459,10 +463,10 @@ ${machineFooter()}`;
     assert.equal(fenced.skipped, true);
   });
 
-  it("rejects incomplete or conflicting human-only declarations", () => {
+  it("accepts unattributed human prose and rejects conflicting declarations", () => {
     assert.equal(
       evaluateCommentAttribution("CLAIMING: work\n\nhuman-only").ok,
-      false,
+      true,
     );
     const conflicting = evaluateCommentAttribution(
       `${machineFooter()}\nAI assistance: no - human-only claim\nAttribution status: self-reported`,

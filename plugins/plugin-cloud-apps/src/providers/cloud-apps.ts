@@ -23,7 +23,6 @@ import {
 } from "../client.js";
 
 const TTL = 60_000;
-const MAX_APPS_RENDERED = 10;
 const appsCaches = new WeakMap<IAgentRuntime, { apps: AppDto[]; at: number }>();
 
 /**
@@ -47,15 +46,10 @@ function render(apps: AppDto[]): ProviderResult {
     };
   }
 
-  const shown = apps.slice(0, MAX_APPS_RENDERED);
-  const lines = shown.map((a) => {
+  const lines = apps.map((a) => {
     const url = appUrl(a);
     return `- ${a.name}${url ? ` (${url})` : ""} — ${appStatus(a)}`;
   });
-  if (apps.length > shown.length) {
-    lines.push(`…and ${apps.length - shown.length} more`);
-  }
-
   const header =
     apps.length === 1
       ? "The user has 1 Eliza Cloud app:"
@@ -65,7 +59,7 @@ function render(apps: AppDto[]): ProviderResult {
     text: `${header}\n${lines.join("\n")}`,
     values: { cloudAppCount: apps.length },
     data: {
-      apps: shown.map((a) => ({
+      apps: apps.map((a) => ({
         id: a.id,
         name: a.name,
         slug: a.slug,

@@ -61,16 +61,6 @@ export function formatRelativeTime(timestamp: number | string): string {
 }
 
 /**
- * Truncate text to a maximum length
- */
-export function truncateText(text: string, maxLength: number = 200): string {
-  if (text.length <= maxLength) {
-    return text;
-  }
-  return `${text.substring(0, maxLength)}...`;
-}
-
-/**
  * Get sentiment emoji
  */
 export function getSentimentEmoji(sentiment?: string): string {

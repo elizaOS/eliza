@@ -16,7 +16,6 @@ import {
 } from "@elizaos/core";
 import { Connection, type PublicKey } from "@solana/web3.js";
 
-const POSITION_LIMIT = 20;
 const DEFAULT_SOLANA_RPC_URL = "https://api.mainnet-beta.solana.com";
 
 type RaydiumClmmPoolInfo = {
@@ -158,8 +157,8 @@ export const raydiumPositionProvider: Provider = {
       const connection = new Connection(rpcUrl);
       const positions = await fetchPositions(connection, ownerAddress);
       return {
-        text: formatPositionsForPrompt(positions.slice(0, POSITION_LIMIT)),
-        data: { positions: positions.slice(0, POSITION_LIMIT) },
+        text: formatPositionsForPrompt(positions),
+        data: { positions },
       };
     } catch (error) {
       logger.error(`Error in Raydium position provider: ${formatUnknownError(error)}`);

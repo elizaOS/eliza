@@ -153,7 +153,7 @@ describe("experiencePatternEvaluator", () => {
 
 		expect(shouldRun).toBe(true);
 		expect(runtime.getMemories).toHaveBeenCalledWith(
-			expect.objectContaining({ tableName: "messages", limit: 12 }),
+			expect.objectContaining({ tableName: "messages" }),
 		);
 	});
 

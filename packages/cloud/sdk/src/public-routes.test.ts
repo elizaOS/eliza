@@ -71,6 +71,24 @@ describe("ElizaCloudPublicRoutesClient path building", () => {
     expect(response).toBeInstanceOf(Response);
   });
 
+  it("requires upload integrity metadata on the typed PUT surface", async () => {
+    const transport = new TestTransport();
+    const client = new ElizaCloudPublicRoutesClient(transport);
+    await client.putApiV1ApisStorageObjects({
+      headers: {
+        "X-Storage-Object-Key": "folder/file.txt",
+        "Idempotency-Key": "put-1",
+        "X-Content-Length": "7",
+        "X-Content-SHA256": "a".repeat(64),
+      },
+      body: "payload",
+    });
+    expect(transport.requests[0]?.options?.headers).toMatchObject({
+      "X-Content-Length": "7",
+      "X-Content-SHA256": "a".repeat(64),
+    });
+  });
+
   it("rejects unexpected params and arrays for non-catch-all params", async () => {
     const client = new ElizaCloudPublicRoutesClient(new TestTransport());
 

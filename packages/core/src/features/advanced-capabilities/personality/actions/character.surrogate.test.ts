@@ -1,9 +1,6 @@
-/** Surrogate safety for character action messageText and originalRequest truncation: must never emit lone surrogates. */
+/** Surrogate safety for complete character identity strings: must never emit lone surrogates. */
 import { describe, expect, test } from "vitest";
-import {
-	toWellFormedUnicode,
-	truncateWellFormed,
-} from "../../../../utils/well-formed.ts";
+import { toWellFormedUnicode } from "../../../../utils/well-formed.ts";
 import { trimToString } from "./character.ts";
 
 function isWellFormed(value: string): boolean {
@@ -13,96 +10,24 @@ function isWellFormed(value: string): boolean {
 	return toWellFormedUnicode(value) === value;
 }
 
-function clampText(text: string, max: number): string {
-	return truncateWellFormed(toWellFormedUnicode(text), max);
-}
-
-describe("character action surrogate safety", () => {
-	test("emoji at 99 boundary backs off to 99 without lone surrogate at 100 cap", () => {
-		const input = `${"a".repeat(99)}🦊${"b".repeat(50)}`;
-		const out = clampText(input, 100);
-		expect(isWellFormed(out)).toBe(true);
-		expect(out.length).toBe(99);
-		expect(() => JSON.stringify({ messageText: out })).not.toThrow();
-		expect(out.endsWith("🦊")).toBe(false);
-	});
-
-	test("fitting emoji ending at 100 kept intact", () => {
-		const input = `${"a".repeat(98)}🦊`;
-		const out = clampText(input, 100);
-		expect(isWellFormed(out)).toBe(true);
-		expect(out.length).toBe(100);
-		expect(out.endsWith("🦊")).toBe(true);
-	});
-
-	test("emoji at 199 boundary backs off to 199 at 200 cap", () => {
-		const input = `${"a".repeat(199)}🦊${"b".repeat(50)}`;
-		const out = clampText(input, 200);
-		expect(isWellFormed(out)).toBe(true);
-		expect(out.length).toBe(199);
-		expect(() => JSON.stringify({ originalRequest: out })).not.toThrow();
-		expect(out.endsWith("🦊")).toBe(false);
-	});
-
-	test("fitting emoji ending at 200 kept intact", () => {
-		const input = `${"a".repeat(198)}🦊`;
-		const out = clampText(input, 200);
-		expect(isWellFormed(out)).toBe(true);
-		expect(out.length).toBe(200);
-		expect(out.endsWith("🦊")).toBe(true);
-	});
-
-	test("lone high surrogate is sanitized before truncation", () => {
-		const input = `bad \ud800 surrogate ${"x".repeat(150)}`;
-		const out = clampText(input, 100);
-		expect(isWellFormed(out)).toBe(true);
-		expect(out.includes("\ud800")).toBe(false);
-		expect(out.length).toBeLessThanOrEqual(100);
-	});
-
-	test("sweep 95..105 emoji offsets at 100 cap all stay well-formed", () => {
-		const fox = "🦊";
-		for (let n = 95; n <= 105; n++) {
-			const input = `${"a".repeat(n)}${fox}${"b".repeat(50)}`;
-			const out = clampText(input, 100);
-			expect(isWellFormed(out)).toBe(true);
-			expect(out.length).toBeLessThanOrEqual(100);
-			expect(() => JSON.stringify({ text: out })).not.toThrow();
-		}
-	});
-});
-
-// trimToString feeds runtime.character.name and .system, which are persisted by
-// persistCharacter and rendered back in the action's user-facing text, so a
-// pair split at the cap is both durable and visible. These call the real
-// exported function rather than re-deriving the clamp, so a change to
-// trimToString cannot leave them passing.
 describe("trimToString", () => {
-	test("backs off an emoji straddling the cap", () => {
-		const trimmed = trimToString(`${"a".repeat(63)}🦊 tail`, 64);
+	test("preserves a complete long string", () => {
+		const input = `${"a".repeat(150_000)}🦊 tail`;
+		const trimmed = trimToString(input);
 
-		expect(trimmed).toBeDefined();
-		expect(isWellFormed(trimmed as string)).toBe(true);
-		expect(trimmed).toBe("a".repeat(63));
-	});
-
-	test("keeps an emoji that ends exactly on the cap", () => {
-		const trimmed = trimToString(`${"a".repeat(62)}🦊 tail`, 64);
-
-		expect(trimmed).toBe(`${"a".repeat(62)}🦊`);
+		expect(trimmed).toBe(input);
 		expect(isWellFormed(trimmed as string)).toBe(true);
 	});
 
-	test("sanitizes a lone surrogate that arrives well inside the cap", () => {
-		const trimmed = trimToString("name \uD800 here", 64);
+	test("sanitizes a lone surrogate without dropping surrounding content", () => {
+		const trimmed = trimToString("name \uD800 here");
 
-		expect(trimmed).toBeDefined();
+		expect(trimmed).toBe("name � here");
 		expect(isWellFormed(trimmed as string)).toBe(true);
-		expect((trimmed as string).includes("\uD800")).toBe(false);
 	});
 
 	test("still rejects non-strings and blank input", () => {
-		expect(trimToString(42, 64)).toBeUndefined();
-		expect(trimToString("   ", 64)).toBeUndefined();
+		expect(trimToString(42)).toBeUndefined();
+		expect(trimToString("   ")).toBeUndefined();
 	});
 });

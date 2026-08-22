@@ -22,8 +22,8 @@ function clearBridge() {
 afterEach(clearBridge);
 
 describe("isMultiAccountAgentType", () => {
-  it("is true for pool-rotated coding agents (claude/codex + opencode→cerebras)", () => {
-    for (const t of ["claude", "codex", "opencode", "CLAUDE", "Codex"]) {
+  it("is true for pool-rotated coding agents (claude/codex)", () => {
+    for (const t of ["claude", "codex", "CLAUDE", "Codex"]) {
       expect(isMultiAccountAgentType(t)).toBe(true);
     }
   });

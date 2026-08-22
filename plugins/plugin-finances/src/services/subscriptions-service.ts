@@ -609,7 +609,7 @@ function summarizeCancellationStatus(
 function extractEvidenceMessages(
   messages: LifeOpsGmailMessageSummary[],
 ): Array<Record<string, unknown>> {
-  return messages.slice(0, 5).map((message) => ({
+  return messages.map((message) => ({
     messageId: message.id,
     subject: message.subject,
     from: message.from,
@@ -1323,7 +1323,7 @@ export class SubscriptionsService {
     }
     return [
       summary.audit.summary,
-      ...summary.candidates.slice(0, 5).map((candidate) => {
+      ...summary.candidates.map((candidate) => {
         const annual =
           candidate.annualCostEstimateUsd === null
             ? ""

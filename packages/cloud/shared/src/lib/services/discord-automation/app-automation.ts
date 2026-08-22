@@ -6,12 +6,7 @@ import { discordChannelsRepository } from "../../../db/repositories/discord-chan
 import { discordGuildsRepository } from "../../../db/repositories/discord-guilds";
 import type { App } from "../../../db/schemas/apps";
 import { DISCORD_POST_COST } from "../../promotion-pricing";
-import {
-  createActionRow,
-  createEmbed,
-  DISCORD_BLURPLE,
-  truncate,
-} from "../../utils/discord-helpers";
+import { createActionRow, createEmbed, DISCORD_BLURPLE } from "../../utils/discord-helpers";
 import { logger } from "../../utils/logger";
 import { DISCORD_AUTOMATION_DEFAULTS, getDiscordConfigWithDefaults } from "../automation-constants";
 import { buildCharacterSystemPrompt, getCharacterPromptContext } from "../character-prompt-helper";
@@ -21,7 +16,6 @@ import type { DiscordAutomationConfig, DiscordAutomationStatus, PostResult } fro
 
 // Content length constants
 const MAX_ANNOUNCEMENT_LENGTH = 300; // Max chars for AI-generated announcement
-const TRUNCATE_LENGTH = 500; // Max chars after truncation
 
 class DiscordAppAutomationService {
   /**
@@ -249,7 +243,7 @@ Maximum ${MAX_ANNOUNCEMENT_LENGTH} characters. Do not include the URL in your re
         maxOutputTokens: 150,
       });
 
-      return truncate(result.text, TRUNCATE_LENGTH);
+      return result.text;
     } catch (error) {
       await creditsService.refundCredits({
         organizationId,

@@ -95,7 +95,7 @@ export const userAuthStatusProvider: Provider = {
             userId,
             organizationId,
             creditBalance,
-            connections: active.slice(0, 20).map((c) => ({
+            connections: active.map((c) => ({
               platform: c.platform,
               email: c.email,
               username: c.username,

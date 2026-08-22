@@ -23,6 +23,7 @@ import {
   type ScenarioLane,
   scenarioExecutionProfile,
 } from "@elizaos/scenario-runner/schema";
+import { captureHostExecutionBaseline } from "@elizaos/shared/host-execution-env";
 import {
   countScenarioCorpus,
   listScenarioMetadata,
@@ -31,7 +32,10 @@ import {
 } from "./loader.ts";
 import { canonicalJsonValue } from "./provider-qualified/manifest.ts";
 import { redactForScenarioReport } from "./redaction.ts";
-import { resolveRequiredPluginPackages } from "./required-plugins.ts";
+import {
+  assertSharedRuntimePluginBatchSafe,
+  resolveRequiredPluginPackages,
+} from "./required-plugins.ts";
 import { shouldOptInScenarioTrajectoryLogging } from "./trajectory-opt-in.ts";
 import type { AggregateReport, ScenarioReport } from "./types.ts";
 
@@ -705,6 +709,7 @@ export async function runCli(
   // PGLite is process-scoped. Simulated compatibility runs may share one
   // runtime, while provider-qualified runs are constrained above to a single
   // scenario so the observer interval and database cannot cross-contaminate.
+  assertSharedRuntimePluginBatchSafe(loaded.map(({ scenario }) => scenario));
   const requiredPlugins = [
     ...new Set(
       loaded.flatMap(({ scenario }) => resolveRequiredPluginPackages(scenario)),
@@ -885,6 +890,7 @@ export async function runCli(
 export function runCliAndExit(
   argv: readonly string[] = process.argv.slice(2),
 ): void {
+  captureHostExecutionBaseline();
   runCli(argv)
     .then((code) => {
       process.exit(code);

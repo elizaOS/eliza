@@ -149,10 +149,12 @@ import {
 	resolveDiscordRuntimeEntityId,
 	resolveElizaOwnerEntityId,
 } from "./identity";
+import { buildDiscordReplyPayload } from "./interactions";
 import {
 	beginDiscordOutboundDelivery,
 	createDiscordMessageMemoryOnce,
 	type DiscordOutboundDeliveryReservation,
+	INTERACTION_ONLY_FALLBACK_TEXT,
 	MessageManager,
 } from "./messages";
 import { chunkDiscordText } from "./messaging";
@@ -180,6 +182,7 @@ import type {
 } from "./types";
 import { DiscordEventTypes } from "./types";
 import {
+	buildDiscordComponents,
 	buildOutboundDiscordAttachment,
 	MAX_MESSAGE_LENGTH,
 	normalizeDiscordMessageText,
@@ -1967,7 +1970,26 @@ export class DiscordService extends Service implements IDiscordService {
 						? targetChannelGuild.name
 						: undefined;
 
-					const textContent = normalizeDiscordMessageText(content.text);
+					// Project embedded interaction blocks the same way the reply path
+					// does. This handler serves runtime.sendMessageToTarget — the
+					// sub-agent relay / progress / notice path — and sending
+					// `content.text` raw leaked literal `[FOLLOWUPS]…[/FOLLOWUPS]`
+					// markup to Discord (live 2026-08-17, wind-chimes relay). Blocks
+					// become action rows on the final chunk; block-free text is
+					// byte-identical to the previous behavior.
+					const rendered = buildDiscordReplyPayload(runtime, content);
+					const renderedComponents =
+						rendered.components.length > 0
+							? buildDiscordComponents(rendered.components)
+							: undefined;
+					const hasComponents = rendered.components.length > 0;
+					const interactionIdentity = hasComponents
+						? JSON.stringify(rendered.components)
+						: undefined;
+					let textContent = normalizeDiscordMessageText(rendered.text);
+					if (textContent.trim().length === 0 && hasComponents) {
+						textContent = INTERACTION_ONLY_FALLBACK_TEXT;
+					}
 					const outboundReplyToMessageId =
 						discordReplyReferenceFromContent(content);
 					if (textContent || files.length > 0) {
@@ -2005,6 +2027,7 @@ export class DiscordService extends Service implements IDiscordService {
 							attachmentUrls: content.attachments
 								?.map((media) => media.url)
 								.filter((url): url is string => typeof url === "string"),
+							interactionIdentity,
 						};
 						let outboundDedupe = beginDiscordOutboundDelivery(dedupeParams);
 						while (outboundDedupe.kind === "in_flight") {
@@ -2061,6 +2084,9 @@ export class DiscordService extends Service implements IDiscordService {
 									const sent = await targetChannel.send({
 										content: chunks[chunks.length - 1],
 										files: files.length > 0 ? files : undefined,
+										...(renderedComponents
+											? { components: renderedComponents }
+											: {}),
 										...(outboundReplyToMessageId && chunks.length === 1
 											? {
 													reply: {
@@ -2076,6 +2102,9 @@ export class DiscordService extends Service implements IDiscordService {
 									const sent = await targetChannel.send({
 										content: chunks[0],
 										files: files.length > 0 ? files : undefined,
+										...(renderedComponents
+											? { components: renderedComponents }
+											: {}),
 										...(outboundReplyToMessageId
 											? {
 													reply: {
@@ -2613,7 +2642,7 @@ export class DiscordService extends Service implements IDiscordService {
 			}
 		}
 
-		return this.dedupeConnectorTargets(results).slice(0, 25);
+		return this.dedupeConnectorTargets(results);
 	}
 
 	public async listConnectorRooms(
@@ -2679,7 +2708,7 @@ export class DiscordService extends Service implements IDiscordService {
 		}
 
 		targets.push(...(await this.listConnectorRooms(context)));
-		return this.dedupeConnectorTargets(targets).slice(0, 25);
+		return this.dedupeConnectorTargets(targets);
 	}
 
 	public async getConnectorChatContext(

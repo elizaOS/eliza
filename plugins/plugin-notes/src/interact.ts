@@ -37,9 +37,6 @@ const EXPECTED_FAILURE_CODES = new Set([
   "NOTES_STORE_UNAVAILABLE",
 ]);
 
-const PLANNER_SUMMARY_ITEM_LIMIT = 20;
-const PLANNER_SUMMARY_EXCERPT_LENGTH = 160;
-
 function quoted(value: string): string {
   return `“${value}”`;
 }
@@ -51,9 +48,7 @@ function sentence(value: string): string {
 
 function humanDetails(value: string): string {
   const details = value.trim();
-  return details.length > 0
-    ? ` — ${details.slice(0, PLANNER_SUMMARY_EXCERPT_LENGTH)}`
-    : "";
+  return details.length > 0 ? ` — ${details}` : "";
 }
 
 function noteSummary(note: StickyNote): string {
@@ -92,12 +87,7 @@ function assertOnlyParams(
 
 function summarizeNotes(notes: StickyNote[]): string {
   if (notes.length === 0) return "You don't have any notes yet.";
-  const visible = notes
-    .slice(0, PLANNER_SUMMARY_ITEM_LIMIT)
-    .map((note) => noteSummary(note));
-  if (notes.length > visible.length) {
-    visible.push(`Plus ${notes.length - visible.length} more.`);
-  }
+  const visible = notes.map((note) => noteSummary(note));
   return notes.length === 1
     ? visible.join("")
     : `Here are your notes:\n${visible.map((note) => `• ${note}`).join("\n")}`;

@@ -47,17 +47,15 @@ function providersUpstreamResponse(
 ): Response {
   return Response.json({
     ok: true,
-    data: {
-      passkey: true,
-      email: true,
-      siwe: false,
-      siws: false,
-      google: false,
-      discord: false,
-      github: false,
-      oauth: [],
-      ...overrides,
-    },
+    passkey: true,
+    email: true,
+    siwe: false,
+    siws: false,
+    google: false,
+    discord: false,
+    github: false,
+    oauth: [],
+    ...overrides,
   });
 }
 
@@ -192,7 +190,10 @@ describe("createStewardThinApp", () => {
             ? input.toString()
             : input.url;
       expect(url).toBe(`${UPSTREAM}/auth/providers`);
-      return providersUpstreamResponse();
+      return providersUpstreamResponse({
+        telegram: true,
+        oauth: ["apple"],
+      });
     });
 
     const app = createStewardThinApp();
@@ -212,11 +213,60 @@ describe("createStewardThinApp", () => {
     );
     const body = (await response.json()) as {
       ok?: boolean;
-      data?: { google?: boolean; passkey?: boolean };
+      google?: boolean;
+      passkey?: boolean;
+      telegram?: boolean;
+      oauth?: string[];
     };
     expect(body.ok).toBe(true);
-    expect(body.data?.passkey).toBe(true);
-    expect(body.data?.google).toBe(true);
+    expect(body.passkey).toBe(true);
+    expect(body.google).toBe(true);
+    expect(body.telegram).toBe(true);
+    expect(body.oauth).toEqual(["apple", "google"]);
+  });
+
+  test.each([true, false])(
+    "preserves upstream Telegram provider state (%s) without inferring it from Eliza OAuth env",
+    async (telegram) => {
+      stubFetch(async () => providersUpstreamResponse({ telegram }));
+
+      const app = createStewardThinApp();
+      const response = await app.request(
+        "https://api.elizacloud.ai/steward/auth/providers",
+        { method: "GET" },
+        stewardEnv,
+      );
+      const body = (await response.json()) as {
+        google?: boolean;
+        telegram?: boolean;
+      };
+
+      expect(body.google).toBe(true);
+      expect(body.telegram).toBe(telegram);
+    },
+  );
+
+  test.each([
+    ["nested scalar provider data", { data: "telegram" }],
+    ["nested array provider data", { data: ["telegram"] }],
+    ["non-array oauth", { oauth: { google: true } }],
+    ["oauth entries with non-string values", { oauth: ["google", 42] }],
+  ])("fails closed on %s", async (_case, malformedProviders) => {
+    stubFetch(async () => providersUpstreamResponse(malformedProviders));
+
+    const app = createStewardThinApp();
+    const response = await app.request(
+      "https://api.elizacloud.ai/steward/auth/providers",
+      { method: "GET" },
+      stewardEnv,
+    );
+
+    expect(response.status).toBe(502);
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    expect(response.headers.get("x-eliza-providers-cache")).toBeNull();
+    await expect(response.json()).resolves.toMatchObject({
+      code: "steward_upstream_invalid_response",
+    });
   });
 
   test("serves GET /steward/tenants/config without upstream and defaults no-store", async () => {

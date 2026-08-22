@@ -42,11 +42,6 @@ interface SkillWithSource {
 	sourceDir: string;
 }
 
-const MAX_SKILL_ELIGIBLE_LIST = 10;
-const MAX_SKILL_INELIGIBLE_LIST = 12;
-const MAX_SKILL_REASON_ITEMS = 5;
-const MAX_SKILL_COMPACT_LIST = 12;
-
 interface AgentSkillsServiceLike extends Service {
 	getLoadedSkills(): SkillWithSource[];
 	checkSkillEligibility(slug: string): Promise<SkillEligibility>;
@@ -127,13 +122,8 @@ export const skillEligibilityProvider: Provider = {
 			// Eligible skills
 			if (eligible.length > 0) {
 				lines.push(`### Ready to Use (${eligible.length})`);
-				for (const skill of eligible.slice(0, MAX_SKILL_ELIGIBLE_LIST)) {
+				for (const skill of eligible) {
 					lines.push(`- **${skill.name}** (${skill.slug})`);
-				}
-				if (eligible.length > MAX_SKILL_ELIGIBLE_LIST) {
-					lines.push(
-						`- ...and ${eligible.length - MAX_SKILL_ELIGIBLE_LIST} more`,
-					);
 				}
 				lines.push("");
 			}
@@ -142,10 +132,7 @@ export const skillEligibilityProvider: Provider = {
 			lines.push(`### Missing Dependencies (${ineligible.length})`);
 			lines.push("");
 
-			for (const { skill, eligibility } of ineligible.slice(
-				0,
-				MAX_SKILL_INELIGIBLE_LIST,
-			)) {
+			for (const { skill, eligibility } of ineligible) {
 				lines.push(`#### ${skill.name} (${skill.slug})`);
 
 				// Group reasons by type
@@ -158,7 +145,6 @@ export const skillEligibilityProvider: Provider = {
 				if (binReasons.length > 0) {
 					lines.push(
 						`- Missing binaries: ${binReasons
-							.slice(0, MAX_SKILL_REASON_ITEMS)
 							.map((r) => r.missing)
 							.join(", ")}`,
 					);
@@ -173,7 +159,6 @@ export const skillEligibilityProvider: Provider = {
 				if (envReasons.length > 0) {
 					lines.push(
 						`- Missing env vars: ${envReasons
-							.slice(0, MAX_SKILL_REASON_ITEMS)
 							.map((r) => r.missing)
 							.join(", ")}`,
 					);
@@ -182,7 +167,6 @@ export const skillEligibilityProvider: Provider = {
 				if (configReasons.length > 0) {
 					lines.push(
 						`- Missing config: ${configReasons
-							.slice(0, MAX_SKILL_REASON_ITEMS)
 							.map((r) => r.missing)
 							.join(", ")}`,
 					);
@@ -207,14 +191,10 @@ export const skillEligibilityProvider: Provider = {
 			if (missingBins.length > 0 || missingEnv.length > 0) {
 				lines.push("### To enable more skills:");
 				if (missingBins.length > 0) {
-					lines.push(
-						`- Install: ${missingBins.slice(0, 5).join(", ")}${missingBins.length > 5 ? ` (+${missingBins.length - 5} more)` : ""}`,
-					);
+					lines.push(`- Install: ${missingBins.join(", ")}`);
 				}
 				if (missingEnv.length > 0) {
-					lines.push(
-						`- Set env: ${missingEnv.slice(0, 5).join(", ")}${missingEnv.length > 5 ? ` (+${missingEnv.length - 5} more)` : ""}`,
-					);
+					lines.push(`- Set env: ${missingEnv.join(", ")}`);
 				}
 			}
 
@@ -228,13 +208,11 @@ export const skillEligibilityProvider: Provider = {
 				},
 				data: {
 					eligible: eligible.map((s) => s.slug),
-					ineligible: ineligible
-						.slice(0, MAX_SKILL_INELIGIBLE_LIST)
-						.map((i) => ({
-							slug: i.skill.slug,
-							reasons: i.eligibility.reasons.slice(0, MAX_SKILL_REASON_ITEMS),
-						})),
-					truncated: ineligible.length > MAX_SKILL_INELIGIBLE_LIST,
+					ineligible: ineligible.map((i) => ({
+						slug: i.skill.slug,
+						reasons: i.eligibility.reasons,
+					})),
+					truncated: false,
 				},
 			};
 		} catch (error) {
@@ -290,7 +268,7 @@ export const skillEligibilityCompactProvider: Provider = {
 				return { text: "", values: {}, data: { ineligible: [] } }; // All skills ready, no need to mention
 			}
 
-			const visibleIneligible = ineligible.slice(0, MAX_SKILL_COMPACT_LIST);
+			const visibleIneligible = ineligible;
 			const skillNames = visibleIneligible.map((i) => i.skill.slug).join(", ");
 			const missingBins = [
 				...new Set(
@@ -300,12 +278,9 @@ export const skillEligibilityCompactProvider: Provider = {
 							.map((r) => r.missing),
 					),
 				),
-			].slice(0, MAX_SKILL_REASON_ITEMS);
+			];
 
 			let text = `⚠️ Skills unavailable: ${skillNames}`;
-			if (ineligible.length > visibleIneligible.length) {
-				text += ` (+${ineligible.length - visibleIneligible.length} more)`;
-			}
 			if (missingBins.length > 0) {
 				text += ` (missing: ${missingBins.join(", ")})`;
 			}

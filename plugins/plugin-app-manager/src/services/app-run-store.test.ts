@@ -183,7 +183,7 @@ describe("app run store", () => {
         },
       }),
     );
-    expect(first?.recentEvents).toHaveLength(20);
+    expect(first?.recentEvents).toHaveLength(25);
     expect(first?.recentEvents[0]).toEqual(
       expect.objectContaining({
         eventId: "event-24",
@@ -192,7 +192,7 @@ describe("app run store", () => {
         status: "running",
       }),
     );
-    expect(first?.recentEvents.at(-1)?.eventId).toBe("event-5");
+    expect(first?.recentEvents.at(-1)?.eventId).toBe("event-0");
     expect(
       first?.recentEvents.find((item) => item.eventId === "event-23"),
     ).toEqual(

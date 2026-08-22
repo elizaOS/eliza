@@ -28,9 +28,6 @@ import type { InboundMessage } from "./types.js";
  */
 const PUBLIC_CHANNEL_PARTICIPANT_THRESHOLD = 15;
 
-const MAX_ROOMS_SCANNED = 200;
-const THREAD_CONTEXT_LIMIT = 5;
-const SNIPPET_MAX_LENGTH = 200;
 const INTERNAL_URL = new URL("http://127.0.0.1/");
 
 const PHONE_BACKED_SOURCES = new Set([
@@ -308,7 +305,7 @@ export async function fetchChatMessages(
   const allRoomIds = await runtime.getRoomsForParticipant(runtime.agentId);
   if (allRoomIds.length === 0) return [];
 
-  const roomIds = allRoomIds.slice(0, MAX_ROOMS_SCANNED) as UUID[];
+  const roomIds = allRoomIds as UUID[];
   const rooms = await Promise.all(roomIds.map((id) => runtime.getRoom(id)));
   const sourceRooms: Room[] = [];
   for (const room of rooms) {
@@ -419,10 +416,9 @@ export async function fetchChatMessages(
           parseRequiredTimestamp(m.createdAt, "chat memory createdAt") <=
             createdAt,
       )
-      .slice(0, THREAD_CONTEXT_LIMIT)
       .map((m) => {
         const name = extractSenderName(m) ?? "Unknown";
-        return `${name}: ${extractText(m).slice(0, 100)}`;
+        return `${name}: ${extractText(m)}`;
       });
 
     results.push({
@@ -434,7 +430,7 @@ export async function fetchChatMessages(
       channelName,
       channelType,
       text,
-      snippet: text.slice(0, SNIPPET_MAX_LENGTH),
+      snippet: text,
       timestamp: createdAt,
       deepLink: deepLink ?? undefined,
       threadMessages: threadMessages.length > 0 ? threadMessages : undefined,
@@ -599,7 +595,7 @@ export async function fetchGmailMessages(
       channelName: `Email from ${from}`,
       channelType: "dm",
       text: msg.snippet || msg.subject || "",
-      snippet: (msg.snippet || msg.subject || "").slice(0, SNIPPET_MAX_LENGTH),
+      snippet: msg.snippet || msg.subject || "",
       timestamp: receivedMs,
       deepLink: gmailLink,
       gmailMessageId: externalId,
@@ -680,7 +676,7 @@ export async function fetchXDmMessages(
       channelName: isGroup ? "X group DM" : `X DM from ${sender || "unknown"}`,
       channelType: isGroup ? "group" : "dm",
       text: dm.text,
-      snippet: dm.text.slice(0, SNIPPET_MAX_LENGTH),
+      snippet: dm.text,
       timestamp: receivedMs,
       threadId: dm.conversationId,
       chatType: isGroup ? "group" : "dm",

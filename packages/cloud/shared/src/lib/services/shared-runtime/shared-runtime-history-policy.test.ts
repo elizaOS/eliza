@@ -8,9 +8,7 @@ import { logger } from "../../utils/logger";
 import {
   encodeSharedPublicWebGrounding,
   insertSharedRuntimeGroundingMessages,
-  MAX_HISTORY_MESSAGES,
   MAX_PUBLIC_WEB_GROUNDING_AGE_MS,
-  MAX_PUBLIC_WEB_GROUNDING_ENCODED_BYTES,
   MAX_PUBLIC_WEB_GROUNDING_FUTURE_SKEW_MS,
   mergeSharedRuntimeHistoryMessages,
   parseSharedPublicWebGrounding,
@@ -76,7 +74,7 @@ describe("shared runtime history merge policy", () => {
     ).toEqual([grounded]);
   });
 
-  test("stale snapshots merge by id, reject invalid entries, and cap oldest turns", () => {
+  test("stale snapshots merge by id, reject invalid entries, and retain every turn", () => {
     const current = [
       { id: "one", role: "user" as const, content: "one", createdAt: 1 },
       { id: "two", role: "assistant" as const, content: "two", createdAt: 2 },
@@ -88,6 +86,7 @@ describe("shared runtime history merge policy", () => {
     ];
 
     expect(mergeSharedRuntimeHistoryMessages(current, incoming, 2)).toEqual([
+      current[0],
       current[1],
       incoming[1],
     ]);
@@ -106,7 +105,7 @@ describe("shared runtime history merge policy", () => {
 });
 
 describe("shared runtime long-term transcript context", () => {
-  test("persists only bounded successful public-search output", () => {
+  test("persists complete successful public-search output", () => {
     const grounding = sharedPublicWebGrounding([
       {
         success: true,
@@ -124,10 +123,10 @@ describe("shared runtime long-term transcript context", () => {
     if (!grounding || grounding.kind !== "web_search") {
       throw new Error("grounding was rejected");
     }
-    expect(grounding.truncated).toBe(true);
-    expect(
-      new TextEncoder().encode(encodeSharedPublicWebGrounding(grounding)).byteLength,
-    ).toBeLessThanOrEqual(MAX_PUBLIC_WEB_GROUNDING_ENCODED_BYTES);
+    expect(grounding.query).toBe("🔎".repeat(1_000));
+    expect(grounding.text).toBe("界".repeat(10_000));
+    expect(grounding.truncated).toBe(false);
+    expect(encodeSharedPublicWebGrounding(grounding)).toContain("界".repeat(10_000));
     expect(sharedPublicWebGrounding([{ success: false }])).toBeUndefined();
     expect(
       sharedPublicWebGrounding([
@@ -182,7 +181,7 @@ describe("shared runtime long-term transcript context", () => {
     });
   });
 
-  test("UTF-8 truncation never persists half of an astral code point", () => {
+  test("preserves complete astral code points beyond the retired byte cap", () => {
     const grounding = parseSharedPublicWebGrounding({
       kind: "web_search",
       query: "unicode boundary",
@@ -192,8 +191,8 @@ describe("shared runtime long-term transcript context", () => {
       truncated: false,
     });
 
-    expect(grounding?.text).toBe("a".repeat(3_997));
-    expect(grounding?.truncated).toBe(true);
+    expect(grounding?.text).toBe(`${"a".repeat(3_997)}😀`);
+    expect(grounding?.truncated).toBe(false);
   });
 
   test("inserts persisted evidence before the live user/tool exchange", () => {
@@ -811,19 +810,15 @@ describe("shared runtime long-term transcript context", () => {
       createdAt: index,
     }));
 
-    const context = selectSharedRuntimeContext(
-      history,
-      "What was my favorite wine?",
-      MAX_HISTORY_MESSAGES,
-    );
+    const context = selectSharedRuntimeContext(history, "What was my favorite wine?", 40);
 
-    expect(context.length).toBeLessThanOrEqual(MAX_HISTORY_MESSAGES);
+    expect(context).toHaveLength(history.length);
     expect(context.map((message) => message.id)).toContain("message-4");
     expect(context.map((message) => message.id)).toContain("message-5");
     expect(context.at(-1)?.id).toBe("message-59");
   });
 
-  test("does not displace recent context for unrelated old chatter", () => {
+  test("retains old and recent context for unrelated chatter", () => {
     const history = Array.from({ length: 80 }, (_, index) => ({
       id: `message-${index}`,
       role: index % 2 === 0 ? ("user" as const) : ("assistant" as const),
@@ -833,7 +828,7 @@ describe("shared runtime long-term transcript context", () => {
 
     const context = selectSharedRuntimeContext(history, "completely unrelated", 24);
     expect(context.map((message) => message.id)).toEqual(
-      Array.from({ length: 24 }, (_, index) => `message-${index + 56}`),
+      Array.from({ length: 80 }, (_, index) => `message-${index}`),
     );
   });
 
@@ -856,20 +851,16 @@ describe("shared runtime long-term transcript context", () => {
     // Scoring the union of prose and grounding query keeps ordinary lexical
     // recall intact instead of narrowing a grounded reply to its query alone.
     expect(
-      selectSharedRuntimeContext(
-        history,
-        "Tell me about Nebbiolo from Piedmont",
-        MAX_HISTORY_MESSAGES,
-      ).map((message) => message.id),
+      selectSharedRuntimeContext(history, "Tell me about Nebbiolo from Piedmont", 40).map(
+        (message) => message.id,
+      ),
     ).toContain("message-5");
 
     // The same reply is still reachable through what it searched for.
     expect(
-      selectSharedRuntimeContext(
-        history,
-        "Turin airport transfer schedule",
-        MAX_HISTORY_MESSAGES,
-      ).map((message) => message.id),
+      selectSharedRuntimeContext(history, "Turin airport transfer schedule", 40).map(
+        (message) => message.id,
+      ),
     ).toContain("message-5");
   });
 

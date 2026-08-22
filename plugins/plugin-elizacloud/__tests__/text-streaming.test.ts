@@ -1117,6 +1117,21 @@ describe("resolveTextTimeoutMs", () => {
     process.env.ELIZAOS_CLOUD_TEXT_TIMEOUT_MS = "abc";
     expect(resolveTextTimeoutMs()).toBe(120_000);
   });
+
+  it("rejects a prefix-parsed timeout instead of installing a 500ms deadline", () => {
+    process.env.ELIZAOS_CLOUD_TEXT_TIMEOUT_MS = "500junk";
+    expect(resolveTextTimeoutMs()).toBe(120_000);
+  });
+
+  it("preserves an explicitly signed positive timeout", () => {
+    process.env.ELIZAOS_CLOUD_TEXT_TIMEOUT_MS = "+5000";
+    expect(resolveTextTimeoutMs()).toBe(5_000);
+  });
+
+  it("rejects an integer beyond Number.MAX_SAFE_INTEGER", () => {
+    process.env.ELIZAOS_CLOUD_TEXT_TIMEOUT_MS = "9007199254740993";
+    expect(resolveTextTimeoutMs()).toBe(120_000);
+  });
 });
 
 /**

@@ -16,34 +16,6 @@ Definition of Done: full standard in [`CONTRIBUTING.md`](../CONTRIBUTING.md).
 - [ ] A reviewer can confirm the change works without reading the code, from the
       evidence attached below.
 
-# Contribution provenance
-
-Declare the actual assistance used for implementation and review. This is
-self-reported provenance, not a request for chain-of-thought. Never include
-prompts containing secrets, tokens, private session IDs, or hidden reasoning.
-Use exact `provider/model-id` values; `GPT`, `Claude`, or `AI` are not specific
-enough. Human-only work must say so explicitly.
-
-The row labels below must **not** reuse the terminal eliza.army footer labels
-(`Client / agent tooling`, `Skill revision` / `Contribution skill revision`,
-`Attribution status`). Duplicating those strings makes the scoring validator
-reject the machine marker (#17855). Keep the `<!-- attribution-row:* -->`
-markers; only the human-readable prefixes changed. After filling these rows,
-append the standard footer once at the end of the PR body (do not repeat the
-visible footer lines here).
-
-<!-- contribution-attribution:v1 -->
-<!-- attribution-row:ai-assistance -->
-- AI assistance: `yes` / `no - human-only contribution`
-<!-- attribution-row:models -->
-- Model(s) used: `provider/model-id` / `None - human-only contribution`
-<!-- attribution-row:client -->
-- Agent tooling: `client-name` / `None - human-only contribution`
-<!-- attribution-row:skill-revision -->
-- Skill path: `owner/repo@full-commit-sha:path` / `N/A - no contribution skill used`
-<!-- attribution-row:status -->
-- Provenance status: `self-reported`
-
 # Sync with develop
 
 - [ ] Rebased/merged onto the latest `origin/develop`; zero conflicts.
@@ -205,6 +177,29 @@ the real round-trip plus a narrated walkthrough. Or write `N/A - <reason>`.
 List any command failure, missing artifact, unavailable device, unavailable live
 service, or evidence row marked N/A. Include the exact reason and why it is not a
 blocker for this PR.
+
+## Maintainer CI exception record
+
+Write `N/A - no exception requested` unless a maintainer is invoking the narrow
+[Maintainer CI exception](../CONTRIBUTING.md#maintainer-ci-exception). When it
+applies, preserve every field below and link the exact evidence.
+
+- PR head SHA: `N/A - no exception requested`
+- Validated `origin/develop` SHA: `N/A - no exception requested`
+- Live ruleset readback and named bypass eligibility:
+  `N/A - no exception requested`
+- Queued or failing checks and run URLs: `N/A - no exception requested`
+- Infrastructure-only or unrelated-failure proof: `N/A - no exception requested`
+- Exact-head commands, exit status, and artifacts: `N/A - no exception requested`
+- Exact-head security, secret-scan, and provenance results:
+  `N/A - no exception requested`
+- Conflict-free and affected-path failure attestation:
+  `N/A - no exception requested`
+- Independent approving reviewer: `N/A - no exception requested`
+- Bypass authorizer: `N/A - no exception requested`
+- Merge method: `N/A - no exception requested`
+- Rollback owner: `N/A - no exception requested`
+- Post-merge `develop` validation: `N/A - no exception requested`
 
 <!-- If there is anything about the deployment, please make a note. -->
 <!--

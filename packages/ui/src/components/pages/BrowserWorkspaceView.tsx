@@ -43,6 +43,7 @@ import { deriveSurfacePlacement } from "../../surface/native-surface-shell";
 import { useMobileNativeTabSurfaces } from "../../surface/use-mobile-native-tab-surfaces";
 import { resolveBrowserTabRenderPath } from "../../surface-embedding";
 import { openExternalUrl } from "../../utils";
+import { resolveApiUrl } from "../../utils/asset-url";
 import {
   BROWSER_TAB_PRELOAD_SCRIPT,
   setBrowserTabsRendererImpl,
@@ -309,17 +310,26 @@ function isBrowserWorkspaceSessionMode(
   return mode === "cloud";
 }
 
-function normalizeBrowserWorkspaceInputUrl(
+export function normalizeBrowserWorkspaceInputUrl(
   rawUrl: string,
   t: TranslateFn,
 ): string | null {
   const trimmed = rawUrl.trim();
   if (!trimmed) return null;
   if (trimmed === "about:blank") return trimmed;
+  if (/^\/[\\/]/.test(trimmed)) {
+    throw new Error(
+      t("browserworkspace.InvalidUrl", {
+        defaultValue: "Enter a valid http or https URL.",
+      }),
+    );
+  }
 
-  const candidate = /^[a-zA-Z][a-zA-Z\d+.-]*:/.test(trimmed)
-    ? trimmed
-    : `https://${trimmed}`;
+  const candidate = trimmed.startsWith("/")
+    ? new URL(resolveApiUrl(trimmed), window.location.origin).toString()
+    : /^[a-zA-Z][a-zA-Z\d+.-]*:/.test(trimmed)
+      ? trimmed
+      : `https://${trimmed}`;
 
   let parsed: URL;
   try {
@@ -583,6 +593,8 @@ export function BrowserWorkspaceView(): React.JSX.Element {
   >([]);
   const [browserBridgePackageStatus, setBrowserBridgePackageStatus] =
     useState<BrowserBridgeCompanionPackageStatus | null>(null);
+  const [browserBridgeControlsOpen, setBrowserBridgeControlsOpen] =
+    useState(false);
   const [mobileRuntimeMode, setMobileRuntimeMode] = useState(
     readPersistedMobileRuntimeMode,
   );
@@ -2849,26 +2861,6 @@ export function BrowserWorkspaceView(): React.JSX.Element {
                 title={t("browserworkspace.EmptyTitle", {
                   defaultValue: "No page open",
                 })}
-                action={
-                  <Button
-                    variant="default"
-                    size="sm"
-                    className="min-h-11 gap-1.5"
-                    onClick={() =>
-                      void runBrowserWorkspaceAction("open:home", async () => {
-                        await openNewBrowserWorkspaceTab(
-                          BROWSER_WORKSPACE_DEFAULT_HOME_URL,
-                          "user",
-                        );
-                      })
-                    }
-                  >
-                    <Plus className="h-4 w-4" aria-hidden />
-                    {t("browserworkspace.OpenWebsite", {
-                      defaultValue: "Open a website",
-                    })}
-                  </Button>
-                }
               />
               {/* Bottom + side chat clearance is reserved once, on the scroller
                 above — repeating it on this grid double-counted the inset in
@@ -2876,89 +2868,98 @@ export function BrowserWorkspaceView(): React.JSX.Element {
               {workspace.mode === "web" &&
               browserBridgeSupported &&
               !browserBridgeUnsupportedInNativeLocalMode ? (
-                <div className="grid w-full max-w-xl grid-cols-1 items-stretch gap-1.5 px-6 sm:grid-cols-3">
-                  <div className="text-center text-[11px] text-muted sm:col-span-3">
-                    {browserBridgeConnected
-                      ? t("browserworkspace.BrowserBridgeConnected", {
-                          defaultValue: "Browser Bridge connected",
-                        })
-                      : browserBridgeAvailable
-                        ? t("browserworkspace.BrowserBridgeAvailable", {
-                            defaultValue: "Browser Bridge available",
-                          })
-                        : t("browserworkspace.BrowserBridgeNotConnected", {
-                            defaultValue:
-                              "Let the agent drive your real Chrome tabs",
-                          })}
-                  </div>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    disabled={busyAction !== null}
-                    onClick={() => void installBrowserBridgeExtension()}
-                    className="min-h-11 sm:col-span-3"
-                  >
-                    {t("browserworkspace.InstallBrowserBridge", {
-                      defaultValue: "Install Agent Browser Bridge",
-                    })}
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    disabled={
-                      busyAction !== null ||
-                      !browserBridgePackageStatus?.chromeBuildPath
+                <>
+                  <details
+                    data-testid="browser-bridge-controls"
+                    className="w-full max-w-xl px-6 text-xs text-muted"
+                    onToggle={(event) =>
+                      setBrowserBridgeControlsOpen(event.currentTarget.open)
                     }
-                    onClick={() => void revealBrowserBridgeFolder()}
-                    className="min-h-11 min-w-0"
                   >
-                    <FolderOpen className="h-4 w-4" />
-                    <span className="truncate">
-                      {t("browserworkspace.OpenBrowserBridgeFolder", {
-                        defaultValue: "Open extension folder",
+                    <summary className="mx-auto w-fit cursor-pointer py-2 font-medium">
+                      {browserBridgeConnected
+                        ? t("browserworkspace.BrowserBridgeConnected", {
+                            defaultValue: "Browser Bridge connected",
+                          })
+                        : browserBridgeAvailable
+                          ? t("browserworkspace.BrowserBridgeAvailable", {
+                              defaultValue: "Browser Bridge available",
+                            })
+                          : t("browserworkspace.BrowserBridgeNotConnected", {
+                              defaultValue: "Browser Bridge",
+                            })}
+                    </summary>
+                    {browserBridgeControlsOpen ? (
+                      <div className="grid grid-cols-1 items-stretch gap-1.5 sm:grid-cols-3">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={busyAction !== null}
+                          onClick={() => void installBrowserBridgeExtension()}
+                          className="min-h-11 sm:col-span-3"
+                        >
+                          {t("browserworkspace.InstallBrowserBridge", {
+                            defaultValue: "Install Agent Browser Bridge",
+                          })}
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          disabled={
+                            busyAction !== null ||
+                            !browserBridgePackageStatus?.chromeBuildPath
+                          }
+                          onClick={() => void revealBrowserBridgeFolder()}
+                          className="min-h-11 min-w-0"
+                        >
+                          <FolderOpen className="h-4 w-4" />
+                          <span className="truncate">
+                            {t("browserworkspace.OpenBrowserBridgeFolder", {
+                              defaultValue: "Open extension folder",
+                            })}
+                          </span>
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          disabled={busyAction !== null}
+                          onClick={() =>
+                            void openBrowserBridgeChromeExtensions()
+                          }
+                          className="min-h-11 min-w-0"
+                        >
+                          <span className="truncate">
+                            {t("browserworkspace.OpenChromeExtensions", {
+                              defaultValue: "Open Chrome extensions",
+                            })}
+                          </span>
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          disabled={browserBridgeLoading || busyAction !== null}
+                          onClick={() => void refreshBrowserBridgeConnection()}
+                          className="min-h-11 min-w-0"
+                        >
+                          <RefreshCw className="h-4 w-4" />
+                          <span className="truncate">
+                            {t("browserworkspace.RefreshBrowserBridge", {
+                              defaultValue: "Refresh connection",
+                            })}
+                          </span>
+                        </Button>
+                      </div>
+                    ) : null}
+                  </details>
+                  <div className="mt-2 flex w-full max-w-xl flex-col gap-2 px-6 pb-4">
+                    <div className="text-[11px] font-medium uppercase tracking-wide text-muted">
+                      {t("browserworkspace.AgentBrowserSessions", {
+                        defaultValue: "Agent browser sessions",
                       })}
-                    </span>
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    disabled={busyAction !== null}
-                    onClick={() => void openBrowserBridgeChromeExtensions()}
-                    className="min-h-11 min-w-0"
-                  >
-                    <span className="truncate">
-                      {t("browserworkspace.OpenChromeExtensions", {
-                        defaultValue: "Open Chrome extensions",
-                      })}
-                    </span>
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    disabled={browserBridgeLoading || busyAction !== null}
-                    onClick={() => void refreshBrowserBridgeConnection()}
-                    className="min-h-11 min-w-0"
-                  >
-                    <RefreshCw className="h-4 w-4" />
-                    <span className="truncate">
-                      {t("browserworkspace.RefreshBrowserBridge", {
-                        defaultValue: "Refresh connection",
-                      })}
-                    </span>
-                  </Button>
-                </div>
-              ) : null}
-              {workspace.mode === "web" &&
-              browserBridgeSupported &&
-              !browserBridgeUnsupportedInNativeLocalMode ? (
-                <div className="mt-4 flex w-full max-w-xl flex-col gap-2 px-6 pb-4">
-                  <div className="text-[11px] font-medium uppercase tracking-wide text-muted">
-                    {t("browserworkspace.AgentBrowserSessions", {
-                      defaultValue: "Agent browser sessions",
-                    })}
+                    </div>
+                    <BrowserSessionPolicyPanel api={client} />
                   </div>
-                  <BrowserSessionPolicyPanel api={client} />
-                </div>
+                </>
               ) : null}
             </div>
           </div>

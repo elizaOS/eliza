@@ -24,7 +24,7 @@
  * Secrets never leave the machine and are never echoed: responses carry
  * last-4 masks only, probe details are redacted upstream, and one-click
  * acquisitions (gh CLI token, GitHub device flow, Discord loopback OAuth,
- * headless SIWE cloud login, signal-cli link)
+ * headless SIWE cloud login)
  * run server-side and save without rendering the credential. Zero
  * dependencies: node:http on 127.0.0.1, first free port from 43117, with
  * same-origin JSON POSTs bound to a per-process session token so another local
@@ -107,7 +107,6 @@ const FAMILY_LABELS = {
   telegram: "Telegram",
   discord: "Discord",
   slack: "Slack",
-  signal: "Signal",
   whatsapp: "WhatsApp",
   imessage: "iMessage",
   x: "X",
@@ -729,71 +728,6 @@ async function handleSiweLogin(body) {
   };
 }
 
-// signal-cli link prints the pairing URI within seconds, then must stay alive
-// for the phone scan to complete — so this resolves on the URI and leaves the
-// child running inside a bounded scan window.
-const SIGNAL_LINK_URI_WAIT_MS = 20_000;
-const SIGNAL_LINK_SCAN_WINDOW_MS = 180_000;
-
-function handleSignalLink() {
-  return new Promise((resolvePromise, rejectPromise) => {
-    const child = spawn("signal-cli", ["link", "-n", "eliza-hitl-dashboard"], {
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-    let output = "";
-    let settled = false;
-    const settle = (fn, value) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(uriTimer);
-      fn(value);
-    };
-    const uriTimer = setTimeout(() => {
-      child.kill("SIGKILL");
-      settle(
-        rejectPromise,
-        new HttpError(
-          502,
-          `signal-cli link emitted no URI within ${SIGNAL_LINK_URI_WAIT_MS / 1000}s: ${output.trim().slice(-300)}`,
-        ),
-      );
-    }, SIGNAL_LINK_URI_WAIT_MS);
-    const scanWindow = setTimeout(
-      () => child.kill("SIGKILL"),
-      SIGNAL_LINK_SCAN_WINDOW_MS,
-    );
-    scanWindow.unref();
-    const onData = (chunk) => {
-      output += chunk;
-      const match = /(sgnl:\/\/linkdevice\S+)/.exec(output);
-      if (match) {
-        settle(resolvePromise, {
-          ok: true,
-          uri: match[1],
-          note: `scan from the phone (Signal → Settings → Linked devices → Link new device); pairing window stays open ${SIGNAL_LINK_SCAN_WINDOW_MS / 60_000} minutes`,
-        });
-      }
-    };
-    child.stdout.on("data", onData);
-    child.stderr.on("data", onData);
-    child.on("error", (error) => {
-      settle(
-        rejectPromise,
-        new HttpError(502, `signal-cli spawn failed: ${error.message}`),
-      );
-    });
-    child.on("close", (status) => {
-      settle(
-        rejectPromise,
-        new HttpError(
-          502,
-          `signal-cli link exited (status ${status}) before emitting a URI: ${output.trim().slice(-300)}`,
-        ),
-      );
-    });
-  });
-}
-
 // --- HTTP plumbing -------------------------------------------------------------------
 
 function sendJson(res, status, payload) {
@@ -937,10 +871,6 @@ async function handle(req, res) {
   }
   if (req.method === "POST" && url.pathname === "/api/oneclick/siwe") {
     sendJson(res, 200, await handleSiweLogin(await readJsonBody(req)));
-    return;
-  }
-  if (req.method === "POST" && url.pathname === "/api/oneclick/signal-link") {
-    sendJson(res, 200, await handleSignalLink());
     return;
   }
   throw new HttpError(404, "route not found");
@@ -1241,18 +1171,6 @@ const PAGE_HTML = `<!doctype html>
         }));
       });
       controls.push(siwe);
-    }
-    if (oc && oc.type === 'shell' && path.id === 'signal.cli') {
-      var link = el('button', null, 'Link via signal-cli');
-      link.title = oc.detail;
-      link.addEventListener('click', function () {
-        busyRun(link, 'linking…', api('POST', '/api/oneclick/signal-link').then(function (payload) {
-          var box = el('p', 'uri-box', payload.uri + ' — ' + payload.note);
-          card.appendChild(box);
-          toast('link URI emitted — scan it from the phone', false);
-        }));
-      });
-      controls.push(link);
     }
     if (oc && oc.type === 'deep-link' && oc.href) {
       var a = el('a', 'btn', 'Open app settings');

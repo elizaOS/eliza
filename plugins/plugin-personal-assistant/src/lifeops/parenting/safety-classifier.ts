@@ -120,7 +120,7 @@ function unknownSignals(): ModelSignals {
 export function deterministicParentingRiskSignals(
   text: string,
 ): Partial<Record<ParentingRiskField, "present">> {
-  const normalized = text.normalize("NFKC").slice(0, 65_536);
+  const normalized = text.normalize("NFKC");
   const signals: Partial<Record<ParentingRiskField, "present">> = {};
   for (const field of RISK_FIELDS) {
     if (

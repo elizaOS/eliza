@@ -34,6 +34,7 @@ ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
 from training.model_registry import get as registry_get  # noqa: E402
+from training.tokenization import tokenize_with_explicit_limit  # noqa: E402
 
 logging.basicConfig(level=logging.INFO,
                     format="%(asctime)s [%(levelname)s] %(message)s")
@@ -63,7 +64,7 @@ def main() -> int:
     ap.add_argument("--max-new-tokens", type=int, default=None,
                     help="Default: registry infer_max_out.")
     ap.add_argument("--max-prompt-tokens", type=int, default=None,
-                    help="Default: registry infer_max_in. Truncates left.")
+                    help="Default: registry infer_max_in. Oversized prompts are rejected unchanged.")
     ap.add_argument("--temperature", type=float, default=0.0)
     ap.add_argument("--out-file", default=None)
     ap.add_argument("--entropix", action="store_true",
@@ -153,8 +154,12 @@ def main() -> int:
     prompt_text = tokenizer.apply_chat_template(
         messages, tokenize=False, add_generation_prompt=True,
     )
-    inputs = tokenizer(prompt_text, return_tensors="pt", truncation=True,
-                       max_length=max_in).to(model.device)
+    inputs = tokenize_with_explicit_limit(
+        tokenizer,
+        prompt_text,
+        max_tokens=max_in,
+        return_tensors="pt",
+    ).to(model.device)
     actual_in = inputs["input_ids"].shape[1]
     log.info("prompt tokens: %d (cap %d)", actual_in, max_in)
 

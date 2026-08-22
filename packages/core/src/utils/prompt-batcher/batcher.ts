@@ -505,10 +505,6 @@ export class PromptBatcher {
 	private _pushMessage(key: string, message: Memory): void {
 		const buffer = this.messageBuffers.get(key) ?? [];
 		buffer.push(message);
-		const maxBufferedMessages = Math.max(this.settings.batchSize * 4, 50);
-		if (buffer.length > maxBufferedMessages) {
-			buffer.splice(0, buffer.length - maxBufferedMessages);
-		}
 		this.messageBuffers.set(key, buffer);
 	}
 

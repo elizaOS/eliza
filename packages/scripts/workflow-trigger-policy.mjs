@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /**
- * Enforces develop-only automated pushes and one canonical pull-request and
- * merge-group aggregate. Other PR-adjacent triggers remain forbidden; the
- * merge-candidate Biome workflow may retain its defense-in-depth queue check.
+ * Enforces one lightweight pull-request authority and one latest-tip develop
+ * authority. Periodic and completion-chained triggers remain forbidden so a
+ * merged develop tip is the repository's only automatic full-validation event.
  */
 
 import { readdirSync, readFileSync } from "node:fs";
@@ -16,19 +16,15 @@ const FORBIDDEN_EVENTS = new Set([
   "pull_request_review_comment",
   "pull_request_target",
 ]);
-const CANONICAL_ADMISSION_WORKFLOW = "ci.yml";
-const MERGE_GROUP_WORKFLOWS = new Set([
-  CANONICAL_ADMISSION_WORKFLOW,
-  "merge-candidate-biome.yml",
-]);
+const CANONICAL_ADMISSION_WORKFLOW = "pr-static-smoke.yml";
+const DEVELOP_AUTHORITY_WORKFLOW = "develop-full.yml";
+const FORBIDDEN_AUTOMATION_EVENTS = new Set(["schedule", "workflow_run"]);
 const REQUIRED_PR_BRANCHES = ["develop", "main"];
 const REQUIRED_PR_TYPES = [
-  "labeled",
   "opened",
   "ready_for_review",
   "reopened",
   "synchronize",
-  "unlabeled",
 ];
 
 function triggerEntries(value) {
@@ -76,6 +72,11 @@ export function validateWorkflowTriggerPolicy(repoRoot) {
     if (name === CANONICAL_ADMISSION_WORKFLOW) sawCanonicalWorkflow = true;
 
     for (const [eventName, config] of entries) {
+      if (FORBIDDEN_AUTOMATION_EVENTS.has(eventName)) {
+        failures.push(
+          `${name}: ${eventName} is forbidden; Develop Full owns automatic post-merge validation`,
+        );
+      }
       if (FORBIDDEN_EVENTS.has(eventName)) {
         failures.push(
           `${name}: forbidden pull-request event trigger: ${eventName}`,
@@ -104,20 +105,19 @@ export function validateWorkflowTriggerPolicy(repoRoot) {
       }
 
       if (eventName === "merge_group") {
-        if (!MERGE_GROUP_WORKFLOWS.has(name)) {
+        if (name !== CANONICAL_ADMISSION_WORKFLOW) {
           failures.push(
-            `${name}: merge_group is reserved for ${[...MERGE_GROUP_WORKFLOWS].join(" and ")}`,
+            `${name}: merge_group is reserved for ${CANONICAL_ADMISSION_WORKFLOW}`,
           );
           continue;
         }
         if (!sameStrings(stringList(config?.types), ["checks_requested"])) {
           failures.push(
-            `${name}: merge_group types must be exactly [\"checks_requested\"]`,
+            `${name}: merge_group types must be exactly ["checks_requested"]`,
           );
           continue;
         }
-        if (name === CANONICAL_ADMISSION_WORKFLOW)
-          sawCanonicalMergeGroup = true;
+        sawCanonicalMergeGroup = true;
       }
 
       if (eventName !== "push") continue;
@@ -143,12 +143,19 @@ export function validateWorkflowTriggerPolicy(repoRoot) {
         continue;
       }
       developPushWorkflows += 1;
+      if (name !== DEVELOP_AUTHORITY_WORKFLOW) {
+        failures.push(
+          `${name}: develop push is reserved for ${DEVELOP_AUTHORITY_WORKFLOW}`,
+        );
+      }
     }
   }
 
   if (files === 0) failures.push("No workflow files were found.");
-  if (developPushWorkflows === 0)
-    failures.push("No develop push workflows were found.");
+  if (developPushWorkflows !== 1)
+    failures.push(
+      `Expected exactly one develop push workflow (${DEVELOP_AUTHORITY_WORKFLOW}); found ${developPushWorkflows}.`,
+    );
   if (sawCanonicalWorkflow && !sawCanonicalPullRequest) {
     failures.push(
       `${CANONICAL_ADMISSION_WORKFLOW}: canonical pull_request trigger is absent or invalid`,
@@ -162,7 +169,7 @@ export function validateWorkflowTriggerPolicy(repoRoot) {
   if (failures.length > 0) {
     throw new Error(
       [
-        "GitHub workflow triggers must expose only the canonical PR/merge aggregate, reserve other PR-adjacent events, and target automated branch pushes to develop:",
+        "GitHub workflow triggers must expose only PR Static Smoke and Develop Full as automatic validation authorities:",
         ...failures,
       ].join("\n"),
     );

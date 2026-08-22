@@ -8,13 +8,7 @@
  * Discord, and Telegram.
  */
 
-import type {
-	Action,
-	HandlerCallback,
-	IAgentRuntime,
-	Memory,
-	UUID,
-} from "@elizaos/core";
+import type { IAgentRuntime, UUID } from "@elizaos/core";
 import { resolveServerOnlyPort } from "@elizaos/core";
 import {
 	findCommandByKeyForRuntime,
@@ -61,7 +55,6 @@ export const DETERMINISTIC_COMMAND_KEYS: readonly string[] = [
 	"context",
 	"reset",
 	"new",
-	"compact",
 	"usage",
 	"think",
 	"verbose",
@@ -183,30 +176,6 @@ async function clearRoomMessages(
 	if (typeof runtime.deleteAllMemories !== "function") return null;
 	await runtime.deleteAllMemories([roomId as UUID], "messages");
 	return before;
-}
-
-function findAction(runtime: IAgentRuntime, name: string): Action | undefined {
-	return runtime.actions?.find((action) => action.name === name);
-}
-
-async function runCompactAction(
-	runtime: IAgentRuntime,
-	message: Memory | undefined,
-	callback?: HandlerCallback,
-): Promise<CommandResult> {
-	const action = findAction(runtime, "COMPACT_CONVERSATION");
-	if (!action || !message) {
-		return reply("Conversation compaction is not available in this runtime.");
-	}
-	const result = await action.handler(
-		runtime,
-		message,
-		undefined,
-		undefined,
-		callback,
-	);
-	if (result?.text && result.text.trim().length > 0) return reply(result.text);
-	return reply("Conversation compaction completed.");
 }
 
 /**
@@ -513,9 +482,6 @@ export async function runCommand(
 		case "new":
 			await clearCommandSettings(runtime, roomId);
 			return reply("Started a new conversation context for this room.");
-
-		case "compact":
-			return runCompactAction(runtime, context.message, context.callback);
 
 		default:
 			return { handled: false, shouldContinue: true };

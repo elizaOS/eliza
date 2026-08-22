@@ -26,7 +26,6 @@ import {
   ModelType,
   runWithTrajectoryPurpose,
   toWellFormedUnicode,
-  truncateWellFormed,
 } from "@elizaos/core";
 
 type RelationshipsPersonSummary = {
@@ -435,9 +434,7 @@ async function searchGmail(
       text: msg.snippet,
       citation: {
         platform: "gmail",
-        label:
-          msg.subject ||
-          truncateWellFormed(toWellFormedUnicode(msg.snippet), 80),
+        label: msg.subject || toWellFormedUnicode(msg.snippet),
         url: msg.htmlLink ?? undefined,
       },
     });
@@ -476,9 +473,7 @@ async function searchTelegram(
       continue;
     }
     const sourceRef =
-      msg.id ??
-      msg.dialogId ??
-      truncateWellFormed(toWellFormedUnicode(msg.content), 48);
+      msg.id ?? msg.dialogId ?? toWellFormedUnicode(msg.content);
     hits.push({
       channel: "telegram",
       id: `telegram:${sourceRef}`,
@@ -522,9 +517,7 @@ async function searchDiscord(
       continue;
     }
     const sourceRef =
-      msg.id ??
-      msg.channelId ??
-      truncateWellFormed(toWellFormedUnicode(msg.content), 48);
+      msg.id ?? msg.channelId ?? toWellFormedUnicode(msg.content);
     hits.push({
       channel: "discord",
       id: `discord:${sourceRef}`,
@@ -971,10 +964,10 @@ async function memoriesToHits(
       sourceRef: memId,
       timestamp: iso,
       speaker: speakerEntity ?? "unknown",
-      text: truncateWellFormed(toWellFormedUnicode(text), 600),
+      text: toWellFormedUnicode(text),
       citation: {
         platform: KNOWN_PLATFORM_FOR_CHANNEL[channel],
-        label: roomRecord?.name ?? `room:${(roomId ?? "").slice(0, 8)}`,
+        label: roomRecord?.name ?? `room:${roomId ?? ""}`,
       },
     });
   }

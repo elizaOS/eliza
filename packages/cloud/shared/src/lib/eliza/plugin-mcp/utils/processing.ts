@@ -12,7 +12,6 @@ import {
 import { resourceAnalysisTemplate } from "../templates/resourceAnalysisTemplate";
 import { createMcpMemory } from "./mcp";
 
-const MAX_TOOL_OUTPUT_CHARS = 12_000;
 const MAX_TOOL_ATTACHMENTS = 4;
 
 function getMimeTypeToContentType(mimeType?: string): ContentType | undefined {
@@ -72,12 +71,7 @@ export function processToolResult(
   let attachmentIndex = 0;
 
   const appendToolOutput = (text: string) => {
-    if (!text || toolOutput.length >= MAX_TOOL_OUTPUT_CHARS) return;
-    const remaining = MAX_TOOL_OUTPUT_CHARS - toolOutput.length;
-    toolOutput += text.slice(0, remaining);
-    if (text.length > remaining) {
-      toolOutput += "\n\n[Tool output truncated]";
-    }
+    if (text) toolOutput += text;
   };
 
   for (const content of result.content) {

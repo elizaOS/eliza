@@ -30,6 +30,8 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 PYTHON_ROOT = SCRIPT_DIR.parent
 sys.path.insert(0, str(PYTHON_ROOT))
 
+from training.tokenization import tokenize_with_explicit_limit  # noqa: E402
+
 from src.training.adversarial_game import (
     evaluate_adversarial,
 )
@@ -64,7 +66,12 @@ def make_generator(model, tokenizer, device, role_prompt: str = ""):
             tokenize=False,
             add_generation_prompt=True,
         )
-        enc = tokenizer(text, return_tensors="pt", truncation=True, max_length=2048).to(device)
+        enc = tokenize_with_explicit_limit(
+            tokenizer,
+            text,
+            max_tokens=2048,
+            return_tensors="pt",
+        ).to(device)
         model.eval()
         with torch.no_grad():
             out = model.generate(

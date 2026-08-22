@@ -3,7 +3,10 @@
  * an unrelated prior topic to keep injecting its instructions.
  */
 import { describe, expect, it } from "vitest";
-import { createDynamicSkillProvider, truncateDesc } from "./skill-provider.ts";
+import {
+  createDynamicSkillProvider,
+  normalizeDescription,
+} from "./skill-provider.ts";
 
 function isWellFormed(value: string): boolean {
   for (let index = 0; index < value.length; index += 1) {
@@ -86,35 +89,32 @@ describe("dynamic skill current-turn relevance", () => {
   });
 });
 
-describe("truncateDesc well-formed Unicode boundaries", () => {
-  it("keeps surrogate pairs intact when truncating description at boundary", () => {
-    const max = 80;
-    const budget = max - 3;
-    const text = `${"a".repeat(budget - 1)}🦊${"b".repeat(50)}`;
-    const out = truncateDesc(text, max);
-    expect(out.length).toBeLessThanOrEqual(max);
+describe("normalizeDescription Unicode handling", () => {
+  it("keeps a complete description beyond the former boundary", () => {
+    const text = `${"a".repeat(76)}🦊${"b".repeat(50)}`;
+    const out = normalizeDescription(text);
     expect(isWellFormed(out)).toBe(true);
-    expect(out.endsWith("...")).toBe(true);
+    expect(out).toBe(text);
   });
 
   it("preserves fitting emoji under limit", () => {
     const text = `${"a".repeat(70)}🦊`;
-    const out = truncateDesc(text, 80);
+    const out = normalizeDescription(text);
     expect(out).toBe(text);
     expect(isWellFormed(out)).toBe(true);
   });
 
-  it("sanitizes lone surrogates before truncation", () => {
+  it("sanitizes lone surrogates without shortening", () => {
     const lone = `a\uD800${"b".repeat(100)}`;
-    const out = truncateDesc(lone, 80);
-    expect(out).toContain("");
+    const out = normalizeDescription(lone);
+    expect(out).toContain("�");
     expect(isWellFormed(out)).toBe(true);
-    expect(out.length).toBeLessThanOrEqual(80);
+    expect(out.length).toBe(lone.length);
   });
 });
 
 describe("createDynamicSkillProvider instructions well-formed Unicode", () => {
-  it("keeps surrogate pairs intact when truncating active skill instructions", async () => {
+  it("keeps complete active skill instructions", async () => {
     const longBody = `${"a".repeat(1999)}🦊${"b".repeat(50)}`;
     const customRuntime = {
       getService: () => ({
@@ -122,7 +122,7 @@ describe("createDynamicSkillProvider instructions well-formed Unicode", () => {
           {
             slug: "test-skill",
             name: "Test Skill",
-            description: "A test skill for instructions truncation",
+            description: "A test skill with long instructions",
           },
         ],
         getSkillInstructions: () => ({
@@ -144,8 +144,6 @@ describe("createDynamicSkillProvider instructions well-formed Unicode", () => {
       throw new Error("expected provider result text to be a string");
     }
     expect(isWellFormed(result.text)).toBe(true);
-    expect(result.text).toContain(
-      "[truncated — use USE_SKILL for full instructions]",
-    );
+    expect(result.text).toContain(longBody);
   });
 });

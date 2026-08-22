@@ -20,9 +20,6 @@ import {
 	PLUGIN_MANAGER_BASE_KEYWORDS,
 } from "./relevance.ts";
 
-const MAX_PLUGIN_STATUS_ITEMS = 20;
-const MAX_MISSING_KEYS = 8;
-
 const PLUGIN_CONFIGURATION_STATUS_KEYWORDS = buildProviderKeywords(
 	PLUGIN_MANAGER_BASE_KEYWORDS,
 	COMMON_CONNECTOR_KEYWORDS,
@@ -134,7 +131,7 @@ export const pluginConfigurationStatusProvider: Provider & {
 					name: pluginState.name,
 					status: pluginState.status,
 					configured: configStatus.configured,
-					missingKeys: configStatus.missingKeys.slice(0, MAX_MISSING_KEYS),
+					missingKeys: configStatus.missingKeys,
 					totalKeys: configStatus.totalKeys,
 				});
 
@@ -154,9 +151,7 @@ export const pluginConfigurationStatusProvider: Provider & {
 
 				if (needsConfigCount > 0) {
 					statusText += `\nPlugins needing configuration:\n`;
-					for (const ps of pluginStatuses
-						.filter((p) => !p.configured)
-						.slice(0, MAX_PLUGIN_STATUS_ITEMS)) {
+					for (const ps of pluginStatuses.filter((p) => !p.configured)) {
 						statusText += `- ${ps.name}: missing ${ps.missingKeys.join(", ")}\n`;
 					}
 				}
@@ -165,8 +160,8 @@ export const pluginConfigurationStatusProvider: Provider & {
 			return {
 				text: statusText,
 				data: {
-					plugins: pluginStatuses.slice(0, MAX_PLUGIN_STATUS_ITEMS),
-					truncated: pluginStatuses.length > MAX_PLUGIN_STATUS_ITEMS,
+					plugins: pluginStatuses,
+					truncated: false,
 				},
 				values: {
 					configurationServicesAvailable: true,

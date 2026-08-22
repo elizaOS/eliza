@@ -15,7 +15,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { validateTrajectory } from "../../../../scripts/lib/trajectory-validate";
 import { TRACE_ENV } from "../trace-correlation";
 import {
-	applyTrajectoryFieldCap,
 	captureSkillInvocationIO,
 	captureToolStageIO,
 	createJsonFileTrajectoryRecorder,
@@ -23,7 +22,6 @@ import {
 	finalizeTrajectoryRecording,
 	type RecordedStage,
 	type RecordedTrajectory,
-	resolveTrajectoryFieldCapBytes,
 } from "../trajectory-recorder";
 
 let tmpDir: string;
@@ -272,16 +270,14 @@ describe("JsonFileTrajectoryRecorder", () => {
 			  }
 			| undefined;
 
-		expect(model?.messages?.[0]?.content?.endsWith("...[truncated]")).toBe(
-			true,
-		);
+		expect(model?.messages?.[0]?.content).toBe("m".repeat(120_000));
 		expect(model?.messages?.[0]?.meta?.self).toBe("[Circular]");
 		expect(model?.providerOptions?.self).toBe("[Circular]");
-		expect(model?.tools).toHaveLength(251);
-		expect(model?.providerOptions?.long).toMatch(/\.{3}\[truncated\]$/);
+		expect(model?.tools).toHaveLength(400);
+		expect(model?.providerOptions?.long).toBe("x".repeat(120_000));
 	});
 
-	it("startTrajectory stores a bounded copy of the root message", async () => {
+	it("startTrajectory stores a complete copy of the root message", async () => {
 		const recorder = createJsonFileTrajectoryRecorder({ rootDir: tmpDir });
 		const rootMessage = {
 			id: "msg-root",
@@ -299,7 +295,7 @@ describe("JsonFileTrajectoryRecorder", () => {
 		const reloaded = await recorder.load(id);
 		expect(reloaded?.rootMessage.id).toBe("msg-root");
 		expect(reloaded?.rootMessage.text).not.toBe("mutated after start");
-		expect(reloaded?.rootMessage.text.endsWith("...[truncated]")).toBe(true);
+		expect(reloaded?.rootMessage.text).toBe("r".repeat(120_000));
 		expect(reloaded?.rootMessage.sender).toBe("user-1");
 	});
 
@@ -1085,33 +1081,6 @@ describe("JsonFileTrajectoryRecorder", () => {
 });
 
 describe("action exec input/output/error capture (M12)", () => {
-	const originalCap = process.env.ELIZA_TRAJECTORY_FIELD_CAP_BYTES;
-
-	afterEach(() => {
-		if (originalCap === undefined) {
-			delete process.env.ELIZA_TRAJECTORY_FIELD_CAP_BYTES;
-		} else {
-			process.env.ELIZA_TRAJECTORY_FIELD_CAP_BYTES = originalCap;
-		}
-	});
-
-	it("defaults to a 64KB per-field cap when the env var is unset", () => {
-		delete process.env.ELIZA_TRAJECTORY_FIELD_CAP_BYTES;
-		expect(resolveTrajectoryFieldCapBytes()).toBe(64 * 1024);
-	});
-
-	it("respects ELIZA_TRAJECTORY_FIELD_CAP_BYTES when set to a sane value", () => {
-		process.env.ELIZA_TRAJECTORY_FIELD_CAP_BYTES = "8192";
-		expect(resolveTrajectoryFieldCapBytes()).toBe(8192);
-	});
-
-	it("ignores invalid or sub-1KB caps and falls back to the default", () => {
-		process.env.ELIZA_TRAJECTORY_FIELD_CAP_BYTES = "abc";
-		expect(resolveTrajectoryFieldCapBytes()).toBe(64 * 1024);
-		process.env.ELIZA_TRAJECTORY_FIELD_CAP_BYTES = "100";
-		expect(resolveTrajectoryFieldCapBytes()).toBe(64 * 1024);
-	});
-
 	it("encodes objects to JSON and strings pass through unchanged", () => {
 		expect(encodeTrajectoryFieldValue({ a: 1, b: "two" })).toBe(
 			'{"a":1,"b":"two"}',
@@ -1133,40 +1102,7 @@ describe("action exec input/output/error capture (M12)", () => {
 		expect(encoded).toContain('"message"');
 	});
 
-	it("returns the original value when under the cap with no marker", () => {
-		const { value, marker } = applyTrajectoryFieldCap("input", "small", 1024);
-		expect(value).toBe("small");
-		expect(marker).toBeNull();
-	});
-
-	it.each([17.5, Number.NaN, Number.POSITIVE_INFINITY, -1, 2 ** 53])(
-		"rejects invalid byte cap %s before truncating",
-		(capBytes) => {
-			expect(() =>
-				applyTrajectoryFieldCap("output", "🦊".repeat(10), capBytes),
-			).toThrowError(
-				expect.objectContaining({
-					name: "ElizaError",
-					code: "TRAJECTORY_FIELD_CAP_INVALID",
-					context: { capBytes: String(capBytes) },
-				}),
-			);
-		},
-	);
-
-	it("truncates oversize values and emits a structured marker", () => {
-		const big = "a".repeat(2048);
-		const { value, marker } = applyTrajectoryFieldCap("output", big, 256);
-		expect(Buffer.byteLength(value, "utf8")).toBeLessThanOrEqual(256);
-		expect(value.endsWith("...[truncated]")).toBe(true);
-		expect(marker).toEqual({
-			field: "output",
-			originalBytes: 2048,
-			capBytes: 256,
-		});
-	});
-
-	it("captureToolStageIO encodes + caps input/output/error and omits unset fields", () => {
+	it("captureToolStageIO encodes input/output/error and omits unset fields", () => {
 		const captured = captureToolStageIO({
 			input: { q: "weather in Brooklyn" },
 			output: { success: true, data: { temp: 72 } },
@@ -1174,7 +1110,6 @@ describe("action exec input/output/error capture (M12)", () => {
 		expect(captured.input).toBe('{"q":"weather in Brooklyn"}');
 		expect(captured.output).toBe('{"success":true,"data":{"temp":72}}');
 		expect(captured.errorText).toBeUndefined();
-		expect(captured.truncated).toBeUndefined();
 	});
 
 	it("captureToolStageIO preserves empty plain records as JSON objects", () => {
@@ -1186,40 +1121,28 @@ describe("action exec input/output/error capture (M12)", () => {
 		expect(captured.output).toBe('{"args":{}}');
 	});
 
-	it("captureToolStageIO attaches a truncated[] marker only for capped fields", () => {
+	it("captureToolStageIO preserves every field regardless of legacy cap", () => {
 		const huge = "z".repeat(200_000);
 		const captured = captureToolStageIO({
 			input: { q: "small" },
 			output: huge,
 			error: "oops",
-			capBytes: 1024,
 		});
 		expect(captured.input).toBe('{"q":"small"}');
-		expect(captured.output?.endsWith("...[truncated]")).toBe(true);
+		expect(captured.output).toBe(huge);
 		expect(captured.errorText).toBe("oops");
-		expect(captured.truncated).toEqual([
-			{ field: "output", originalBytes: 200_000, capBytes: 1024 },
-		]);
 	});
 
-	it("captureToolStageIO captures all three when all three exceed the cap", () => {
+	it("captureToolStageIO preserves all three fields", () => {
 		const big = "x".repeat(200_000);
 		const captured = captureToolStageIO({
 			input: big,
 			output: big,
 			error: big,
-			capBytes: 2048,
 		});
-		expect(captured.truncated).toHaveLength(3);
-		expect(captured.truncated?.map((t) => t.field).sort()).toEqual([
-			"error",
-			"input",
-			"output",
-		]);
-		for (const marker of captured.truncated ?? []) {
-			expect(marker.originalBytes).toBe(200_000);
-			expect(marker.capBytes).toBe(2048);
-		}
+		expect(captured.input).toBe(big);
+		expect(captured.output).toBe(big);
+		expect(captured.errorText).toBe(big);
 	});
 });
 
@@ -1233,46 +1156,31 @@ describe("skill invocation capture (W1-T5 / M13)", () => {
 		expect(captured.result).toBe(
 			'{"instructions":"use the api","estimatedTokens":12}',
 		);
-		expect(captured.truncated).toBeUndefined();
 	});
 
-	it("respects an explicit capBytes and attaches per-field markers", () => {
+	it("preserves complete skill results", () => {
 		const big = "z".repeat(200_000);
 		const captured = captureSkillInvocationIO({
 			args: { mode: "script" },
 			result: big,
-			capBytes: 2048,
 		});
 		expect(captured.args).toBe('{"mode":"script"}');
-		expect(captured.result?.endsWith("...[truncated]")).toBe(true);
-		expect(
-			Buffer.byteLength(captured.result ?? "", "utf8"),
-		).toBeLessThanOrEqual(2048);
-		expect(captured.truncated).toEqual([
-			{ field: "result", originalBytes: 200_000, capBytes: 2048 },
-		]);
+		expect(captured.result).toBe(big);
 	});
 
-	it("defaults to the 64KB shared cap when capBytes is omitted", () => {
+	it("preserves complete results when capBytes is omitted", () => {
 		const big = "y".repeat(100_000);
 		const captured = captureSkillInvocationIO({
 			args: { q: "small" },
 			result: big,
 		});
-		expect(
-			Buffer.byteLength(captured.result ?? "", "utf8"),
-		).toBeLessThanOrEqual(64 * 1024);
-		expect(captured.truncated?.[0]).toMatchObject({
-			field: "result",
-			capBytes: 64 * 1024,
-		});
+		expect(captured.result).toBe(big);
 	});
 
 	it("omits args/result when input fields are undefined", () => {
 		const captured = captureSkillInvocationIO({});
 		expect(captured.args).toBeUndefined();
 		expect(captured.result).toBeUndefined();
-		expect(captured.truncated).toBeUndefined();
 	});
 });
 
@@ -1316,7 +1224,6 @@ describe("integration: action stage records input/output/error (M12)", () => {
 				input: captured.input,
 				output: captured.output,
 				errorText: captured.errorText,
-				truncated: captured.truncated,
 			},
 		};
 		await recorder.recordStage(id, stage);
@@ -1333,7 +1240,7 @@ describe("integration: action stage records input/output/error (M12)", () => {
 		expect(tool?.truncated).toBeUndefined();
 	});
 
-	it("persists structured truncation markers when output exceeds the cap", async () => {
+	it("persists complete output when it exceeds a legacy cap", async () => {
 		const recorder = createJsonFileTrajectoryRecorder({ rootDir: intTmpDir });
 		const id = recorder.startTrajectory({
 			agentId: "agent-action-trunc",
@@ -1345,7 +1252,6 @@ describe("integration: action stage records input/output/error (M12)", () => {
 			input: { q: "small" },
 			output: huge,
 			error: undefined,
-			capBytes: 4096,
 		});
 
 		await recorder.recordStage(id, {
@@ -1363,20 +1269,14 @@ describe("integration: action stage records input/output/error (M12)", () => {
 				input: captured.input,
 				output: captured.output,
 				errorText: captured.errorText,
-				truncated: captured.truncated,
 			},
 		});
 		await recorder.endTrajectory(id, "finished");
 
 		const loaded = await recorder.load(id);
 		const tool = loaded?.stages[0]?.tool;
-		expect(tool?.output?.endsWith("...[truncated]")).toBe(true);
-		expect(Buffer.byteLength(tool?.output ?? "", "utf8")).toBeLessThanOrEqual(
-			4096,
-		);
-		expect(tool?.truncated).toEqual([
-			{ field: "output", originalBytes: 150_000, capBytes: 4096 },
-		]);
+		expect(tool?.output).toBe(huge);
+		expect(tool?.truncated).toBeUndefined();
 	});
 
 	it("persists captured action error when the action fails", async () => {
@@ -1407,7 +1307,6 @@ describe("integration: action stage records input/output/error (M12)", () => {
 				input: captured.input,
 				output: captured.output,
 				errorText: captured.errorText,
-				truncated: captured.truncated,
 			},
 		});
 		await recorder.endTrajectory(id, "finished");

@@ -356,7 +356,6 @@ import {
   applyPluginRoleGating,
   installProviderRoleGatingChokepoint,
 } from "./plugin-role-gating.ts";
-import { validateIntentActionMap } from "./prompt-compaction.ts";
 import rolesPlugin from "./roles.ts";
 import { shouldRegisterSubAgentCredentialsPlugin } from "./sub-agent-credentials-runtime-policy.ts";
 import {
@@ -4412,7 +4411,7 @@ export async function startEliza(
     recursive: true,
   });
 
-  // 5. Create the Eliza bridge plugin (workspace context + session keys + compaction)
+  // 5. Create the Eliza bridge plugin (workspace context + session keys)
   const agentId = character.name?.toLowerCase().replace(/\s+/g, "-") ?? "main";
 
   // 5-pre0. Apply per-agent vault profile overrides to process.env.
@@ -4986,7 +4985,7 @@ export async function startEliza(
         logger.warn(message);
       }
     }
-    // Fast-path, no-wait: wrap useModel for compaction/tracing now so the very
+    // Fast-path, no-wait: wrap useModel for prompt optimization/tracing so the
     // first turn runs through the optimized prompt path.
     await installPromptOptimizationLayer(
       runtime,
@@ -5906,13 +5905,6 @@ export async function startEliza(
     }
     bootTimer.lap("deferred:autonomy+warmup");
 
-    // Same timing reason: validate the intent→action map only once the deferred
-    // plugins have registered. Run during blocking init it would warn about
-    // actions like TASKS (agent-orchestrator) that simply hadn't loaded yet.
-    validateIntentActionMap(
-      runtime.actions.map((a) => a.name),
-      runtime.logger,
-    );
     // Validate live affinity only after deferred actions have registered.
     // Completeness coverage remains a static repository audit: several shell
     // and diagnostic views intentionally use universal element capabilities,

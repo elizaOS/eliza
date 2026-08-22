@@ -28,9 +28,6 @@ import type { VisionService } from "./service";
 import { hasReadyInputForMode, VisionMode } from "./types";
 
 const VISION_ACTION_TIMEOUT_MS = 10_000;
-const MAX_VISION_TEXT_LENGTH = 4000;
-const MAX_VISION_ENTITIES = 25;
-
 const ALL_VISION_CONTEXTS = [
   "media",
   "screen_time",
@@ -334,8 +331,8 @@ async function runDescribe(
 
     const peopleCount = scene.people.length;
     const objectCount = scene.objects.length;
-    const people = scene.people.slice(0, MAX_VISION_ENTITIES);
-    const objects = scene.objects.slice(0, MAX_VISION_ENTITIES);
+    const people = scene.people;
+    const objects = scene.objects;
     const timestamp = new Date(scene.timestamp).toLocaleString();
     const detailLevel =
       options.detailLevel === "summary" ? "summary" : "detailed";
@@ -393,7 +390,7 @@ async function runDescribe(
     }
 
     const thought = `Analyzed the visual scene at ${timestamp}.`;
-    const text = description.slice(0, MAX_VISION_TEXT_LENGTH);
+    const text = description;
 
     await saveExecutionRecord(runtime, message, thought, text, ["VISION"]);
     if (callback) {
@@ -418,7 +415,7 @@ async function runDescribe(
         actionName: "VISION",
         op: "describe",
         sceneTimestamp: scene.timestamp,
-        sceneDescription: scene.description.slice(0, MAX_VISION_TEXT_LENGTH),
+        sceneDescription: scene.description,
         sceneChanged: scene.sceneChanged,
         changePercentage: scene.changePercentage,
         audioTranscription: scene.audioTranscription || undefined,
@@ -877,8 +874,8 @@ async function runNameEntity(
     const entityTracker = visionService.getEntityTracker();
 
     await entityTracker.updateEntities(
-      scene.objects.slice(0, MAX_VISION_ENTITIES),
-      scene.people.slice(0, MAX_VISION_ENTITIES),
+      scene.objects,
+      scene.people,
       undefined,
       runtime,
     );
@@ -1022,8 +1019,8 @@ async function runIdentifyPerson(
     const entityTracker = visionService.getEntityTracker();
 
     await entityTracker.updateEntities(
-      scene.objects.slice(0, MAX_VISION_ENTITIES),
-      scene.people.slice(0, MAX_VISION_ENTITIES),
+      scene.objects,
+      scene.people,
       undefined,
       runtime,
     );
@@ -1103,7 +1100,7 @@ async function runIdentifyPerson(
         text,
         actions: ["VISION"],
         data: {
-          identifications: people.slice(0, MAX_VISION_ENTITIES).map((p) => ({
+          identifications: people.map((p) => ({
             id: p.id,
             entityType: p.entityType,
             name: p.attributes.name || undefined,
@@ -1184,8 +1181,8 @@ async function runTrackEntity(
 
     const entityTracker = visionService.getEntityTracker();
     await entityTracker.updateEntities(
-      scene.objects.slice(0, MAX_VISION_ENTITIES),
-      scene.people.slice(0, MAX_VISION_ENTITIES),
+      scene.objects,
+      scene.people,
       undefined,
       runtime,
     );

@@ -17,11 +17,7 @@ import type {
   Logger,
   Memory,
 } from "@elizaos/core";
-import {
-  requireConfirmation,
-  toWellFormedUnicode,
-  truncateWellFormed,
-} from "@elizaos/core";
+import { requireConfirmation, toWellFormedUnicode } from "@elizaos/core";
 import { readConfigCloudKey, readConfigEnvKey } from "./config-env.js";
 import { bindProjectCloudApp } from "./project-binding.js";
 import {
@@ -36,10 +32,8 @@ import {
 import type { SessionInfo } from "./types.js";
 
 const LOG_PREFIX = "[ParentAgentBroker]";
-const REQUEST_MAX_CHARS = 4000;
 const ACTION_LIST_LIMIT_DEFAULT = 60;
 const ACTION_LIST_LIMIT_MAX = 200;
-const CLOUD_RESPONSE_MAX_CHARS = 8000;
 const DEFAULT_CLOUD_BASE_URL = "https://api.eliza.app";
 /** Bound for Cloud command `fetch` so a hung peer cannot stall the broker. */
 export const PARENT_AGENT_CLOUD_FETCH_TIMEOUT_MS = 30_000;
@@ -781,11 +775,8 @@ function normalizeArgs(raw: unknown): ParentAgentBrokerArgs {
   };
 }
 
-export function truncate(value: string, maxChars: number): string {
-  const compact = toWellFormedUnicode(value.replace(/\s+/g, " ").trim());
-  if (compact.length <= maxChars) return compact;
-  const budget = Math.max(0, maxChars - 3);
-  return `${truncateWellFormed(compact, budget).trimEnd()}...`;
+export function normalizePromptText(value: string): string {
+  return toWellFormedUnicode(value);
 }
 
 function actionDescription(action: {
@@ -832,7 +823,7 @@ function listActions(
 
   const lines = filtered.map((action) => {
     const mode = action.mode ? ` mode=${action.mode}` : "";
-    const desc = truncate(actionDescription(action), 180);
+    const desc = normalizePromptText(actionDescription(action));
     return `- ${action.name}${mode}${desc ? `: ${desc}` : ""}`;
   });
   return [
@@ -1340,7 +1331,7 @@ async function runCloudCommand(args: {
   const text = [
     `Eliza Cloud command ${definition.command} ${response.ok ? "succeeded" : "failed"} (${response.status}).`,
     "",
-    truncate(payloadText, CLOUD_RESPONSE_MAX_CHARS),
+    payloadText,
   ].join("\n");
 
   // Bind the created Cloud app to the task's Project so the next task on this
@@ -1587,7 +1578,7 @@ async function runSpawnSubAgent(request: {
     );
     return {
       success: true,
-      text: `Spawned a sub-agent (depth ${childDepth}) on task ${parentTaskId}${request.label ? ` named "${request.label}"` : ""}. It runs in parallel on: ${truncate(prompt, 200)}. Its progress appears in this task's thread — check back rather than blocking on it.`,
+      text: `Spawned a sub-agent (depth ${childDepth}) on task ${parentTaskId}${request.label ? ` named "${request.label}"` : ""}. It runs in parallel on: ${normalizePromptText(prompt)}. Its progress appears in this task's thread — check back rather than blocking on it.`,
       data: { ...data, parentTaskId, nestingDepth: childDepth },
     };
   } catch (error) {
@@ -1712,7 +1703,7 @@ export async function runParentAgentBroker(
     };
   }
 
-  const requestText = truncate(args.request, REQUEST_MAX_CHARS);
+  const requestText = toWellFormedUnicode(args.request);
   try {
     const text = await askParentAgent({
       runtime: request.runtime,

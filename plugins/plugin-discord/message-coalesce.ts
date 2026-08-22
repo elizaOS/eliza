@@ -116,12 +116,12 @@ export function makeCoalescedDiscordMessage(
 		return anchor ?? messages[0];
 	}
 
-	const capped = messages.slice(0, config.maxBatch);
-	const base = anchor ?? capped[capped.length - 1] ?? messages[0];
-	const meta = capped.map(getDiscordMessageMeta);
+	void config.maxBatch;
+	const base = anchor ?? messages[messages.length - 1] ?? messages[0];
+	const meta = messages.map(getDiscordMessageMeta);
 	return Object.create(base, {
 		content: {
-			value: formatCoalescedDiscordMessages(capped),
+			value: formatCoalescedDiscordMessages(messages),
 			writable: true,
 			enumerable: true,
 			configurable: true,

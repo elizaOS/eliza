@@ -106,7 +106,7 @@ describe("connector mode registry seam", () => {
         elizaCloudConnected: true,
         cloudProvisioned: true,
       }).map((mode) => mode.id),
-    ).toEqual(["blooio", "cloud-bluebubbles"]);
+    ).toEqual([]);
 
     expect(
       getConnectorModes("telegram", {
@@ -124,11 +124,6 @@ describe("connector mode registry seam", () => {
         (mode) => mode.id,
       ),
     ).toContain("qr");
-    expect(
-      getConnectorModes("bluebubbles", { cloudProvisioned: true }).map(
-        (mode) => mode.id,
-      ),
-    ).toContain("local");
   });
 
   it("keeps co-located desktop modes outside managed Cloud containers", () => {
@@ -184,38 +179,7 @@ describe("connector mode registry seam", () => {
     ).toEqual(["cloud", "always"]);
   });
 
-  it("offers BlueBubbles phone registration only when Eliza Cloud is connected", () => {
-    const offline = getConnectorModes("bluebubbles", {
-      elizaCloudConnected: false,
-    });
-    expect(offline.map((mode) => mode.id)).toEqual(["local"]);
-    expect(getDefaultConnectorModeId("bluebubbles", offline)).toBe("local");
-
-    const online = getConnectorModes("bluebubbles", {
-      elizaCloudConnected: true,
-    });
-    expect(online.map((mode) => mode.id)).toEqual(["cloud", "local"]);
-    expect(getDefaultConnectorModeId("bluebubbles", online)).toBe("cloud");
-    expect(getConnectorModeCloudGatewaySetup("bluebubbles", "cloud")).toBe(
-      "phone-registration",
-    );
-
-    expect(
-      getConnectorModes("imessage", { elizaCloudConnected: false }).map(
-        (mode) => mode.id,
-      ),
-    ).toEqual(["direct"]);
-    expect(
-      getConnectorModes("imessage", { elizaCloudConnected: true }).map(
-        (mode) => mode.id,
-      ),
-    ).toEqual(["blooio", "cloud-bluebubbles", "direct"]);
-    expect(
-      getConnectorModeCloudGatewaySetup("imessage", "cloud-bluebubbles"),
-    ).toBe("phone-registration");
-  });
-
-  it("defaults iMessage to Blooio in Cloud and direct chat.db offline", () => {
+  it("offers only native direct iMessage outside managed cloud", () => {
     const offline = getConnectorModes("imessage", {
       elizaCloudConnected: false,
     });
@@ -225,12 +189,8 @@ describe("connector mode registry seam", () => {
     const online = getConnectorModes("imessage", {
       elizaCloudConnected: true,
     });
-    expect(online.map((mode) => mode.id)).toEqual([
-      "blooio",
-      "cloud-bluebubbles",
-      "direct",
-    ]);
-    expect(getDefaultConnectorModeId("imessage", online)).toBe("blooio");
+    expect(online.map((mode) => mode.id)).toEqual(["direct"]);
+    expect(getDefaultConnectorModeId("imessage", online)).toBe("direct");
   });
 
   it("treats twitter as an alias of x (dead case is gone, not the behavior)", () => {
@@ -243,7 +203,6 @@ describe("connector mode registry seam", () => {
   it("resolves the built-in setup panels for declared local-setup modes", () => {
     expect(hasConnectorSetupPanel("discordlocal")).toBe(true);
     expect(hasConnectorSetupPanel("telegramaccount")).toBe(true);
-    expect(hasConnectorSetupPanel("bluebubbles")).toBe(true);
     // A namespaced telegram plugin id still resolves to the bot panel.
     expect(hasConnectorSetupPanel("@elizaos/plugin-telegram")).toBe(true);
     // A connector with no built-in panel and no declared modes stays false.

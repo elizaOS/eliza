@@ -42,9 +42,6 @@ import type {
   CloudBillingSettings,
   CloudBillingSettingsUpdateRequest,
   CloudBillingSummary,
-  CloudBlueBubblesGateway,
-  CloudBlueBubblesRegistration,
-  CloudBlueBubblesRegistrationRequest,
   CloudCompatAgent,
   CloudCompatAgentProvisionResponse,
   CloudCompatAgentStatus,
@@ -1476,19 +1473,6 @@ declare module "./client-base" {
       data: CloudCompatAgent[];
       error?: string;
     }>;
-    listCloudBlueBubblesGateways(): Promise<{
-      success: true;
-      data: { gateways: CloudBlueBubblesGateway[] };
-    }>;
-    registerCloudBlueBubblesGateway(
-      request: CloudBlueBubblesRegistrationRequest,
-    ): Promise<{
-      success: true;
-      data: CloudBlueBubblesRegistration;
-    }>;
-    revokeCloudBlueBubblesGateway(gatewayId: string): Promise<{
-      success: true;
-    }>;
     createCloudCompatAgent(opts: {
       agentName: string;
       agentConfig?: Record<string, unknown>;
@@ -2254,52 +2238,6 @@ ElizaClient.prototype.getCloudCompatAgents = async function (
   }
 
   return this.fetch("/api/cloud/compat/agents");
-};
-
-function requireDirectBlueBubblesCloudResponse<T>(response: T | null): T {
-  if (response) return response;
-  throw new Error(
-    "Connect Eliza Cloud with a signed-in session before managing an iPhone gateway.",
-  );
-}
-
-ElizaClient.prototype.listCloudBlueBubblesGateways = async function (
-  this: ElizaClient,
-) {
-  return requireDirectBlueBubblesCloudResponse(
-    await directCloudRequest<{
-      success: true;
-      data: { gateways: CloudBlueBubblesGateway[] };
-    }>(this, "/api/v1/phone-gateways/bluebubbles"),
-  );
-};
-
-ElizaClient.prototype.registerCloudBlueBubblesGateway = async function (
-  this: ElizaClient,
-  request,
-) {
-  return requireDirectBlueBubblesCloudResponse(
-    await directCloudRequest<{
-      success: true;
-      data: CloudBlueBubblesRegistration;
-    }>(this, "/api/v1/phone-gateways/bluebubbles", {
-      method: "POST",
-      body: JSON.stringify(request),
-    }),
-  );
-};
-
-ElizaClient.prototype.revokeCloudBlueBubblesGateway = async function (
-  this: ElizaClient,
-  gatewayId,
-) {
-  return requireDirectBlueBubblesCloudResponse(
-    await directCloudRequest<{ success: true }>(
-      this,
-      `/api/v1/phone-gateways/bluebubbles/${encodeURIComponent(gatewayId)}`,
-      { method: "DELETE" },
-    ),
-  );
 };
 
 ElizaClient.prototype.createCloudCompatAgent = async function (

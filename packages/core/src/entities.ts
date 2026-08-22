@@ -38,7 +38,6 @@ import {
 } from "./types";
 import * as utils from "./utils";
 import { stableStringify } from "./utils/deterministic";
-import { truncateWellFormed } from "./utils/well-formed";
 
 type EntityDetailsRecord = Pick<
 	Entity,
@@ -93,9 +92,6 @@ export async function resolveTrustedComponentSourceIds(
 	return trusted;
 }
 
-const MAX_ENTITY_DISPLAY_NAMES = 8;
-const MAX_ENTITY_DISPLAY_COUNT = 10;
-const MAX_ENTITY_METADATA_CHARS = 2_000;
 interface ParsedResolution {
 	resolvedId?: string;
 	confidence?: string;
@@ -264,7 +260,7 @@ async function getRecentInteractions(
 		const uniqueInteractions = [...new Set(interactions)];
 		results.push({
 			entity,
-			interactions: uniqueInteractions.slice(-5),
+			interactions: uniqueInteractions,
 			count: Math.round(interactionScore),
 		});
 	}
@@ -624,24 +620,13 @@ export async function getEntityDetails({
 
 function formatEntityNames(names: string[]): string {
 	const uniqueNames = [...new Set(names.filter(Boolean))];
-	const visibleNames = uniqueNames.slice(0, MAX_ENTITY_DISPLAY_NAMES);
-	const omittedCount = uniqueNames.length - visibleNames.length;
 	const renderedNames =
-		visibleNames.length > 0
-			? `"${visibleNames.join('" aka "')}"`
-			: '"(unnamed)"';
-	return omittedCount > 0
-		? `${renderedNames} (+${omittedCount} aliases omitted)`
-		: renderedNames;
+		uniqueNames.length > 0 ? `"${uniqueNames.join('" aka "')}"` : '"(unnamed)"';
+	return renderedNames;
 }
 
-export function truncateEntityMetadata(metadata: unknown): string {
-	const rendered = stableStringify(metadata);
-	if (rendered.length <= MAX_ENTITY_METADATA_CHARS) {
-		return rendered;
-	}
-	const suffix = "... (truncated)";
-	return `${truncateWellFormed(rendered, MAX_ENTITY_METADATA_CHARS - suffix.length)}${suffix}`;
+export function formatEntityMetadata(metadata: unknown): string {
+	return stableStringify(metadata);
 }
 
 export function formatEntities({ entities }: { entities: Entity[] }) {
@@ -654,19 +639,13 @@ export function formatEntities({ entities }: { entities: Entity[] }) {
 		);
 	});
 
-	const visibleEntities = sortedEntities.slice(0, MAX_ENTITY_DISPLAY_COUNT);
-	const omittedEntityCount = sortedEntities.length - visibleEntities.length;
-
-	const entityStrings = visibleEntities.map((entity: Entity) => {
+	const entityStrings = sortedEntities.map((entity: Entity) => {
 		const header = `${formatEntityNames(entity.names)}\nID: ${entity.id}${
 			entity.metadata && Object.keys(entity.metadata).length > 0
-				? `\nData: ${truncateEntityMetadata(entity.metadata)}\n`
+				? `\nData: ${formatEntityMetadata(entity.metadata)}\n`
 				: "\n"
 		}`;
 		return header;
 	});
-	if (omittedEntityCount > 0) {
-		entityStrings.push(`... (+${omittedEntityCount} entities omitted)`);
-	}
 	return entityStrings.join("\n");
 }

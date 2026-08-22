@@ -1,6 +1,6 @@
 /**
  * The two evaluators of the advanced-memory capability. `summaryEvaluator` rolls
- * the room's compact conversation summary forward; `longTermMemoryEvaluator`
+ * the room's conversation summary forward; `longTermMemoryEvaluator`
  * extracts high-confidence, durable facts about the user from recent dialogue.
  * Both are bundled as `memoryItems` and registered by
  * `createAdvancedMemoryPlugin`; each resolves `MemoryService` via
@@ -8,12 +8,10 @@
  * summaries, facts as long-term memories).
  *
  * Dialogue counting keys off the canonical `MemoryType.MESSAGE` (plus two legacy
- * metadata strings for back-compat) and excludes synthetic-compaction and
- * action_result rows, so summarization thresholds reflect real turns. Both the
- * summary prompt and its store operate on a bounded slice of new dialogue
- * (`summaryMaxNewMessages`) and advance `lastMessageOffset` by exactly that
- * slice, so busy rooms never over-send and the rolling summary catches up across
- * runs.
+ * metadata strings for back-compat) and excludes synthetic historical artifacts
+ * and action_result rows, so summarization thresholds reflect real turns. The
+ * evaluator always supplies every unsummarized retained dialogue message to the
+ * model and advances `lastMessageOffset` by exactly that complete set.
  */
 import { logger } from "../../../logger.ts";
 import { EvaluatorPriority } from "../../../services/evaluator-priorities.ts";
@@ -227,11 +225,15 @@ async function prepareSummary(
 ): Promise<SummaryPrepared> {
 	const memoryService = runtime.getService("memory") as MemoryService | null;
 	if (!memoryService) throw new Error("MemoryService not found");
-	const config = memoryService.getConfig();
+	const retainedMessageCount = await runtime.countMemories({
+		roomIds: [message.roomId],
+		unique: false,
+		tableName: "messages",
+	});
 	const allMessages = await runtime.getMemories({
 		tableName: "messages",
 		roomId: message.roomId,
-		limit: 1000,
+		limit: Math.max(1, retainedMessageCount),
 		unique: false,
 	});
 	const allDialogueMessages = allMessages
@@ -243,12 +245,8 @@ async function prepareSummary(
 	const lastOffset = existingSummary?.lastMessageOffset || 0;
 	const totalDialogueCount = allDialogueMessages.length;
 	const newDialogueCount = totalDialogueCount - lastOffset;
-	const maxNewMessages = config.summaryMaxNewMessages || 50;
-	const messagesToProcess = Math.min(newDialogueCount, maxNewMessages);
 	const summarizationMessages =
-		newDialogueCount > 0
-			? allDialogueMessages.slice(lastOffset, lastOffset + messagesToProcess)
-			: [];
+		newDialogueCount > 0 ? allDialogueMessages.slice(lastOffset) : [];
 	return {
 		memoryService,
 		summarizationMessages,
@@ -265,21 +263,21 @@ async function prepareLongTermMemory(
 ): Promise<LongTermMemoryPrepared> {
 	const memoryService = runtime.getService("memory") as MemoryService | null;
 	if (!memoryService) throw new Error("MemoryService not found");
-	const [recentRaw, existingLongTerm, currentMessageCount] = await Promise.all([
+	const currentMessageCount = await runtime.countMemories({
+		roomIds: [message.roomId],
+		unique: false,
+		tableName: "messages",
+	});
+	const [recentRaw, existingLongTerm] = await Promise.all([
 		runtime.getMemories({
 			tableName: "messages",
 			roomId: message.roomId,
-			limit: 20,
+			limit: Math.max(1, currentMessageCount),
 			unique: false,
 		}),
 		message.entityId
-			? memoryService.getLongTermMemories(message.entityId, undefined, 30)
+			? memoryService.getLongTermMemories(message.entityId)
 			: Promise.resolve([]),
-		runtime.countMemories({
-			roomIds: [message.roomId],
-			unique: false,
-			tableName: "messages",
-		}),
 	]);
 	const existingMemories =
 		existingLongTerm.length > 0
@@ -302,7 +300,7 @@ async function prepareLongTermMemory(
 
 export const summaryEvaluator: Evaluator<SummaryOutput, SummaryPrepared> = {
 	name: "summary",
-	description: "Rolls forward the room's compact conversation summary.",
+	description: "Rolls forward the room's conversation summary.",
 	priority: EvaluatorPriority.MEMORY_SUMMARY,
 	schema: summarySchema,
 	async shouldRun({ runtime, message }) {
@@ -315,12 +313,6 @@ export const summaryEvaluator: Evaluator<SummaryOutput, SummaryPrepared> = {
 		return prepareSummary(runtime, message);
 	},
 	prompt({ runtime, prepared }) {
-		// Always prompt with the bounded summarizationMessages slice. The stored
-		// lastMessageOffset only advances by this slice, so prompting with the full
-		// allDialogueMessages (up to 1000 fetched) on the first summary both
-		// over-sends — context_length_exceeded in busy rooms, the summary never
-		// stores, so the same oversized request retries forever — and double-counts
-		// messages on the next run. The rolling summary builds up across runs.
 		const recentMessages = prepared.summarizationMessages;
 		return `Update rolling summary. Merge recent messages into existing summary/topics. Keep key info, decisions, open questions, main topics. If nothing useful: text="", topics=[], keyPoints=[].
 
@@ -388,11 +380,6 @@ ${formatMessages(runtime, recentMessages)}`;
 								? message.entityId
 								: undefined,
 						summary: summaryText,
-						// Advance by the bounded slice we actually summarized, not the full
-						// backlog — otherwise the first summary covers only the first
-						// summaryMaxNewMessages messages but jumps the offset past the rest,
-						// silently dropping them. Mirrors the existing-summary branch
-						// (newOffset) so the rolling summary catches up over runs.
 						messageCount: prepared.summarizationMessages.length,
 						lastMessageOffset: newOffset,
 						startTime,

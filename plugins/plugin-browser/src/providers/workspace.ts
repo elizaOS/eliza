@@ -14,12 +14,11 @@ import {
 } from "../workspace/browser-workspace.js";
 
 const PROVIDER_NAME = "browser_workspace";
-const MAX_TABS_IN_SUMMARY = 8;
 
 export const browserWorkspaceProvider: Provider = {
   name: PROVIDER_NAME,
   description:
-    "Live summary of the Eliza browser workspace — current dispatch mode and the open tab list, capped to the first 8 tabs.",
+    "Live summary of the Eliza browser workspace — current dispatch mode and the complete open tab list.",
   descriptionCompressed: "Browser workspace mode + open tab list.",
   contexts: ["browser", "web"],
   contextGate: { anyOf: ["browser", "web"] },
@@ -38,7 +37,7 @@ export const browserWorkspaceProvider: Provider = {
           [PROVIDER_NAME]: {
             mode,
             tabCount: tabs.length,
-            tabs: tabs.slice(0, MAX_TABS_IN_SUMMARY).map((tab) => ({
+            tabs: tabs.map((tab) => ({
               id: tab.id,
               visible: tab.visible,
               url: tab.url,

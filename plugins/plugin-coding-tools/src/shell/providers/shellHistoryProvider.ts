@@ -18,9 +18,6 @@ import { redactShellText } from "../redaction";
 import type { ShellService } from "../services/shellService";
 import type { CommandHistoryEntry, FileOperation } from "../types";
 
-const MAX_OUTPUT_LENGTH = 8000;
-const TRUNCATE_SEGMENT_LENGTH = 4000;
-
 const spec = requireProviderSpec("SHELL_HISTORY");
 
 export const shellHistoryProvider: Provider = {
@@ -63,7 +60,7 @@ export const shellHistoryProvider: Provider = {
           data: { historyCount: 0, cwd: "N/A", allowedDir: "N/A" },
         };
       }
-      const history = shellService.getCommandHistory(conversationId, 10);
+      const history = shellService.getCommandHistory(conversationId);
       const cwd = redactShellText(
         runtime,
         shellService.getCurrentDirectory(conversationId),
@@ -85,19 +82,11 @@ export const shellHistoryProvider: Provider = {
             );
 
             if (stdout) {
-              if (stdout.length > MAX_OUTPUT_LENGTH) {
-                entryStr += `\n  Output: ${stdout.substring(0, TRUNCATE_SEGMENT_LENGTH)}\n  ... [TRUNCATED] ...\n  ${stdout.substring(stdout.length - TRUNCATE_SEGMENT_LENGTH)}`;
-              } else {
-                entryStr += `\n  Output: ${stdout}`;
-              }
+              entryStr += `\n  Output: ${stdout}`;
             }
 
             if (stderr) {
-              if (stderr.length > MAX_OUTPUT_LENGTH) {
-                entryStr += `\n  Error: ${stderr.substring(0, TRUNCATE_SEGMENT_LENGTH)}\n  ... [TRUNCATED] ...\n  ${stderr.substring(stderr.length - TRUNCATE_SEGMENT_LENGTH)}`;
-              } else {
-                entryStr += `\n  Error: ${stderr}`;
-              }
+              entryStr += `\n  Error: ${stderr}`;
             }
 
             entryStr += `\n  Exit Code: ${entry.exitCode}`;
@@ -123,8 +112,7 @@ export const shellHistoryProvider: Provider = {
           (entry: CommandHistoryEntry) =>
             entry.fileOperations && entry.fileOperations.length > 0,
         )
-        .flatMap((entry: CommandHistoryEntry) => entry.fileOperations ?? [])
-        .slice(-5);
+        .flatMap((entry: CommandHistoryEntry) => entry.fileOperations ?? []);
 
       let fileOpsText = "";
       if (recentFileOps.length > 0) {
@@ -146,7 +134,7 @@ export const shellHistoryProvider: Provider = {
       const text = `Current Directory: ${cwd}
 Allowed Directory: ${allowedDir}
 
-${addHeader("# Shell History (Last 10)", historyText)}${fileOpsText}`;
+${addHeader("# Shell History", historyText)}${fileOpsText}`;
 
       return {
         values: {

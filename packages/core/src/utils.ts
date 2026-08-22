@@ -28,7 +28,6 @@ import { replaceIndexedNameTokens } from "./name-tokens";
 import type { TemplateType } from "./types/agent";
 import type { Entity } from "./types/environment";
 import type { Memory } from "./types/memory";
-import { ModelType } from "./types/model";
 import { type Content, ContentType, type UUID } from "./types/primitives";
 import type { IAgentRuntime } from "./types/runtime";
 import type { State } from "./types/state";
@@ -52,7 +51,7 @@ export const DEFAULT_MAX_EMBEDDING_TOKENS = 8_000;
 /** Max character equivalent for embedding text (tokens * ~4 chars/token) */
 export const DEFAULT_MAX_EMBEDDING_CHARS = DEFAULT_MAX_EMBEDDING_TOKENS * 4;
 /** Default max tokens for the assembled prompt sent to the model */
-export const DEFAULT_MAX_PROMPT_TOKENS = 128_000;
+export const DEFAULT_MAX_PROMPT_TOKENS = 1_000_000;
 
 // Text Utils
 
@@ -376,7 +375,7 @@ export const addHeader = (header: string, body: string) => {
  * @returns {string} The annotated section header.
  */
 export const conversationMessagesHeader = (visibleCount: number): string =>
-	`# Conversation Messages (most recent ${visibleCount}; older history is not shown here)`;
+	`# Conversation Messages (${visibleCount} retained)`;
 
 /**
  * Generates a string with random user names populated in a template.
@@ -531,8 +530,6 @@ export const formatMessages = ({
 }) => {
 	const entityById = new Map(entities.map((entity) => [entity.id, entity]));
 	const messageStrings: string[] = [];
-	let remainingAttachmentContext = 3;
-	let omittedAttachmentCount = 0;
 
 	for (let i = messages.length - 1; i >= 0; i -= 1) {
 		const message = messages[i];
@@ -563,17 +560,7 @@ export const formatMessages = ({
 		const formattedName = senderIsBot ? `${baseName} (bot)` : baseName;
 
 		const attachments = (message.content as Content).attachments;
-		const visibleAttachments =
-			attachments && attachments.length > 0
-				? attachments.slice(0, Math.max(0, remainingAttachmentContext))
-				: [];
-		if (attachments && attachments.length > 0) {
-			remainingAttachmentContext = Math.max(
-				0,
-				remainingAttachmentContext - visibleAttachments.length,
-			);
-			omittedAttachmentCount += attachments.length - visibleAttachments.length;
-		}
+		const visibleAttachments = attachments ?? [];
 
 		const attachmentString =
 			visibleAttachments.length > 0
@@ -647,16 +634,7 @@ export const formatMessages = ({
 	}
 
 	const formattedMessages = messageStrings.join("\n");
-	if (omittedAttachmentCount === 0) {
-		return formattedMessages;
-	}
-
-	return [
-		formattedMessages,
-		`Note: ${omittedAttachmentCount} older attachment${omittedAttachmentCount === 1 ? "" : "s"} omitted from context. Use ATTACHMENT action=read to inspect additional attachments.`,
-	]
-		.filter(Boolean)
-		.join("\n");
+	return formattedMessages;
 };
 
 export const formatTimestamp = formatTimestampBase;
@@ -772,7 +750,7 @@ export function parseKeyValueXml<T = Record<string, unknown>>(
 	}
 
 	if (!xmlContent) {
-		const safeText = truncateWellFormed(toWellFormedUnicode(text), 100_000);
+		const safeText = toWellFormedUnicode(text);
 		const looksLikeXml = /<[/!?A-Za-z_][^>\n]*>/.test(safeText);
 		if (!looksLikeXml) {
 			return null;
@@ -1087,39 +1065,14 @@ export async function splitChunks(
 	return chunks;
 }
 
-/**
- * Trims the provided text prompt to a specified token limit using a tokenizer model and type.
- */
+/** @deprecated Prompt inputs are preserved; provider boundaries reject unsupported sizes. */
 export async function trimTokens(
 	prompt: string,
-	maxTokens: number,
-	runtime: IAgentRuntime,
+	_maxTokens: number,
+	_runtime: IAgentRuntime,
 ) {
 	if (!prompt) throw new Error("Trim tokens received a null prompt");
-
-	// if prompt is less than of maxtokens / 5, skip
-	if (prompt.length < maxTokens / 5) return prompt;
-
-	if (maxTokens <= 0) throw new Error("maxTokens must be positive");
-
-	const tokens = await runtime.useModel(ModelType.TEXT_TOKENIZER_ENCODE, {
-		prompt,
-		modelType: ModelType.TEXT_TOKENIZER_ENCODE,
-	});
-
-	// If already within limits, return unchanged
-	if (tokens.length <= maxTokens) {
-		return prompt;
-	}
-
-	// Keep the most recent tokens by slicing from the end
-	const truncatedTokens = tokens.slice(-maxTokens);
-
-	// Decode back to text
-	return runtime.useModel(ModelType.TEXT_TOKENIZER_DECODE, {
-		tokens: truncatedTokens,
-		modelType: ModelType.TEXT_TOKENIZER_DECODE,
-	});
+	return prompt;
 }
 
 /**

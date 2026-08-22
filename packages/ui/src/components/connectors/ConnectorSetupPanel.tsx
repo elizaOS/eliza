@@ -6,7 +6,6 @@
  */
 
 import { getBootConfig } from "../../config/boot-config";
-import { BlueBubblesStatusPanel } from "./BlueBubblesStatusPanel";
 import { ConnectorAccountSetupScope } from "./ConnectorAccountSetupScope";
 import {
   connectorSetupRegistry,
@@ -22,7 +21,6 @@ import { resolveConnectorSetupPanelToken } from "./connector-setup-panel-registr
 import { DiscordLocalConnectorPanel } from "./DiscordLocalConnectorPanel";
 import { IMessageStatusPanel } from "./IMessageStatusPanel";
 import { OwnerAgentConnectorSetupPanel } from "./OwnerAgentConnectorSetupPanel";
-import { SignalQrOverlay } from "./SignalQrOverlay";
 import { TelegramAccountConnectorPanel } from "./TelegramAccountConnectorPanel";
 import { TelegramBotSetupPanel } from "./TelegramBotSetupPanel";
 import { WhatsAppQrOverlay } from "./WhatsAppQrOverlay";
@@ -59,7 +57,6 @@ function ConnectorAccountManagementPanel({
 
 export function ConnectorSetupPanel({
   pluginId,
-  modeId,
 }: {
   pluginId: string;
   modeId?: string;
@@ -98,18 +95,8 @@ export function ConnectorSetupPanel({
           )}
         </ConnectorAccountSetupScope>
       );
-    case "signal":
-      return (
-        <ConnectorAccountSetupScope provider="signal" connectorId={pluginId}>
-          {(accountId) => (
-            <SignalQrOverlay accountId={accountId ?? undefined} />
-          )}
-        </ConnectorAccountSetupScope>
-      );
     case "discord-local":
       return <DiscordLocalConnectorPanel />;
-    case "bluebubbles":
-      return <BlueBubblesStatusPanel modeId={modeId} />;
     case "imessage":
       return <IMessageStatusPanel />;
     default:

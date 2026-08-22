@@ -96,7 +96,7 @@ export interface RuntimeR2Bucket {
   get(key: string, options?: RuntimeR2GetOptions): Promise<RuntimeR2Object | null>;
   put(
     key: string,
-    value: string | ArrayBuffer | ArrayBufferView | Blob | null,
+    value: string | ArrayBuffer | ArrayBufferView | Blob | ReadableStream<Uint8Array> | null,
     options?: RuntimeR2PutOptions,
   ): Promise<unknown>;
   delete(key: string): Promise<unknown>;

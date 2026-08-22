@@ -36,7 +36,6 @@ import {
   type TriggerType,
   type TriggerWakeMode,
   toWellFormedUnicode,
-  truncateWellFormed,
   type UUID,
   validateUuid,
 } from "@elizaos/core";
@@ -590,7 +589,7 @@ async function opCreate(
       : deriveTriggerType({ ...params, scheduledAtIso });
   const displayName =
     readString(params.displayName) ??
-    `Trigger: ${truncateWellFormed(toWellFormedUnicode(instructions), 64)}`;
+    `Trigger: ${toWellFormedUnicode(instructions)}`;
   const wakeMode: TriggerWakeMode =
     params.wakeMode?.trim().toLowerCase() === "next_autonomy_cycle"
       ? "next_autonomy_cycle"

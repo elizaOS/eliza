@@ -411,19 +411,19 @@ describe("ocr-triage CLI (end-to-end provenance)", () => {
   it("invalidates a missing-bundle exemption once that remote bundle loads", async () => {
     const rows: ReportEntry[] = [
       {
-        slug: "plugin-documents-gui",
+        slug: "plugin-lifeops-live-test-gui",
         viewport: "desktop-landscape",
         verdict: "good",
         bundleProvenance: "real-dist",
       },
     ];
-    shot(dir, "desktop-landscape", "plugin-documents-gui");
+    shot(dir, "desktop-landscape", "plugin-lifeops-live-test-gui");
     writeFileSync(join(dir, "report.json"), JSON.stringify(rows));
     writeFileSync(
       join(dir, "ocr.ndjson"),
       ocrLine(
         "desktop-landscape",
-        "plugin-documents-gui",
+        "plugin-lifeops-live-test-gui",
         "Views Refresh 24/24 ready views",
       ),
     );
@@ -431,7 +431,7 @@ describe("ocr-triage CLI (end-to-end provenance)", () => {
     await expect(
       runOcrTriage(["--audit-dir", dir, "--ocr", join(dir, "ocr.ndjson")]),
     ).rejects.toThrow(
-      /exemption for plugin-documents-gui no longer applies.*real-dist/,
+      /exemption for plugin-lifeops-live-test-gui no longer applies.*real-dist/,
     );
   });
 

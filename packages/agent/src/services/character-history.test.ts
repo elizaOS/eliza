@@ -25,8 +25,8 @@ function makeMemory(timestamp: number) {
       historySource: "manual",
       fieldsChanged: ["name"],
       changes: [{ field: "name", before: "a", after: `b-${timestamp}` }],
-      before: { name: "a" },
-      after: { name: `b-${timestamp}` },
+      before: { name: "a" } as Record<string, unknown>,
+      after: { name: `b-${timestamp}` } as Record<string, unknown>,
     },
   };
 }
@@ -111,7 +111,7 @@ describe("listCharacterHistory limit guard", () => {
     const poisoned = makeMemory(2000);
     const cyclic: Record<string, unknown> = { name: "poisoned" };
     cyclic.self = cyclic;
-    poisoned.metadata.before = cyclic;
+    poisoned.metadata.before = cyclic as never;
     const valid = [makeMemory(1999), makeMemory(1998), makeMemory(1997)];
     const getMemories = vi.fn(async () => [poisoned, ...valid]);
     const runtime = { agentId: "agent-123", getMemories } as never;
@@ -125,7 +125,7 @@ describe("listCharacterHistory limit guard", () => {
   it("omits over-depth and over-node rows while filling the requested limit", async () => {
     const overDepth = makeMemory(2001);
     let nested: Record<string, unknown> = {};
-    overDepth.metadata.before = nested;
+    overDepth.metadata.before = nested as never;
     for (let depth = 0; depth <= 64; depth += 1) {
       const child: Record<string, unknown> = {};
       nested.child = child;
@@ -134,7 +134,7 @@ describe("listCharacterHistory limit guard", () => {
     const overNode = makeMemory(2000);
     const sparse: unknown[] = [];
     sparse.length = 100_001;
-    overNode.metadata.before = { messageExamples: sparse };
+    overNode.metadata.before = { messageExamples: sparse } as never;
     const valid = [makeMemory(1999), makeMemory(1998), makeMemory(1997)];
     const getMemories = vi.fn(async () => [overDepth, overNode, ...valid]);
     const runtime = { agentId: "agent-123", getMemories } as never;

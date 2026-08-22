@@ -132,9 +132,7 @@ the inbox.
 |---|---|---|---|---|---|
 | `agent-orchestrator.activity` | chat-sidebar | `useActivityEvents` <- WS `pty-session-event` / `proactive-message` / `agent_event` | `agent-orchestrator.tsx` `OrchestratorActivityWidget` | TasksEventsPanel | wired |
 | `agent-orchestrator.apps` | chat-sidebar | poll `listAppRuns()` 5s | `agent-orchestrator.tsx` `AppRunsWidget` | TasksEventsPanel | wired |
-| `agent-orchestrator.tasks` | chat-sidebar | initial `GET /api/orchestrator/widgets` + live `/api/orchestrator/widgets/stream` snapshots | `orchestrator-task-widget.tsx` | TasksEventsPanel | wired |
-| `agent-orchestrator.accounts` | chat-sidebar | poll `listAccounts()`/`getOrchestratorAccounts()`/`getOrchestratorRooms()` 15s | `agent-orchestrator-accounts-view.tsx` | TasksEventsPanel | wired |
-| `agent-orchestrator.rooms` | chat-sidebar | poll `getOrchestratorRooms()` 15s | `agent-orchestrator.tsx` `OrchestratorRoomWidget` | TasksEventsPanel | wired |
+| `agent-orchestrator.accounts` | chat-sidebar | poll `listAccounts()`/`getOrchestratorAccounts()`/`getOrchestratorRooms()` 15s | `agent-orchestrator.tsx` `OrchestratorAccountsWidget` + `agent-orchestrator-accounts-view.tsx` | TasksEventsPanel | wired |
 | `browser.status` | chat-sidebar | browser-workspace status | `browser-status.tsx` | TasksEventsPanel | wired |
 | `music-player.stream` | chat-sidebar | music-player state | `music-player.tsx` | TasksEventsPanel | wired |
 | `todo.items` | home | todo store + goals store (one at-risk goal row) | `todo.tsx` | ViewCatalog | wired |
@@ -151,7 +149,7 @@ home because its at-risk row is rendered inside `todo.items`.
 | Slot | Host mounted? | Widgets registered? | Verdict |
 |---|---|---|---|
 | `home` | yes, HomeScreen | yes, curated ≤5 residents (tutorial launcher removed) | active |
-| `chat-sidebar` | yes, TasksEventsPanel | yes, 7 | active |
+| `chat-sidebar` | yes, TasksEventsPanel | yes, 5 | active |
 | `character` | yes, CharacterHubView | yes, 1 | active |
 | `nav-page` | no WidgetHost mount | no component widgets | active app-navigation contract |
 

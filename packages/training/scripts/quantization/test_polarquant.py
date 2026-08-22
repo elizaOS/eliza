@@ -43,6 +43,10 @@ import torch
 _HERE = Path(__file__).resolve().parent
 if str(_HERE) not in sys.path:
     sys.path.insert(0, str(_HERE))
+if str(_HERE.parent) not in sys.path:
+    sys.path.insert(0, str(_HERE.parent))
+
+from training.tokenization import tokenize_with_explicit_limit  # noqa: E402
 
 from polarquant_apply import (  # type: ignore  # noqa: E402
     PolarQuantRecipe,
@@ -185,7 +189,12 @@ def _run_generation(
         prompt = tokenizer.apply_chat_template(
             msgs, tokenize=False, add_generation_prompt=True,
         )
-        inputs = tokenizer(prompt, return_tensors="pt", truncation=True, max_length=2048)
+        inputs = tokenize_with_explicit_limit(
+            tokenizer,
+            prompt,
+            max_tokens=2048,
+            return_tensors="pt",
+        )
         inputs = {k: v.to(device) for k, v in inputs.items()}
 
         with torch.no_grad():

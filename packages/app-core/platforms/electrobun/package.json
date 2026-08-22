@@ -35,6 +35,7 @@
     "@elizaos/plugin-local-inference": "workspace:*",
     "@elizaos/plugin-registry": "workspace:*",
     "@elizaos/shared": "workspace:*",
+    "@napi-rs/keyring": "^1.1.6",
     "bonjour-service": "1.4.2",
     "electrobun": "^1.18.1"
   },

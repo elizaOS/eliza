@@ -11,7 +11,6 @@ import {
   type IAgentRuntime,
   ModelType,
   toWellFormedUnicode,
-  truncateWellFormed,
 } from "@elizaos/core";
 import { staticAcceptanceCriteria } from "./acceptance-criteria.js";
 import { parseJsonObjectResponse } from "./json-model-output.js";
@@ -420,7 +419,7 @@ function buildLane(
       : staticAcceptanceCriteria(laneTask);
   return {
     id: `lane-${index + 1}`,
-    title: truncateWellFormed(toWellFormedUnicode(input.title ?? laneTask), 80),
+    title: toWellFormedUnicode(input.title ?? laneTask),
     branchName,
     dependencies: [...dependencies],
     scopePaths: scopes,
@@ -529,7 +528,7 @@ function applyRefinement(plan: LanePlan, raw: string): LanePlan {
         ...lane,
         title:
           typeof refined.title === "string" && refined.title.trim()
-            ? truncateWellFormed(toWellFormedUnicode(refined.title.trim()), 80)
+            ? toWellFormedUnicode(refined.title.trim())
             : lane.title,
         initialPrompt:
           typeof refined.initialPrompt === "string" &&

@@ -305,7 +305,7 @@ describe("recentMessagesProvider", () => {
 		expect(result.text).toContain("User: next task");
 	});
 
-	it("includes persisted compact ledger even when raw history is not pruned", async () => {
+	it("ignores a stale compact ledger and renders retained history directly", async () => {
 		const memories = [
 			makeMemory("msg-1", USER_ID, "current tail", "discord", 1000),
 		];
@@ -322,12 +322,12 @@ describe("recentMessagesProvider", () => {
 			{ values: {}, data: {}, text: "" },
 		);
 
-		expect(result.text).toContain("# Conversation Compact Ledger");
-		expect(result.text).toContain("LIME-4421");
+		expect(result.text).not.toContain("# Conversation Compact Ledger");
+		expect(result.text).not.toContain("LIME-4421");
 		expect(result.text).toContain("User: current tail");
 	});
 
-	it("includes compact ledger in feed/thread post-format prompts", async () => {
+	it("ignores stale compact metadata in feed/thread post-format prompts", async () => {
 		const memories = [
 			makeMemory("msg-1", USER_ID, "thread post", "discord", 1000),
 		];
@@ -346,10 +346,10 @@ describe("recentMessagesProvider", () => {
 			{ values: {}, data: {}, text: "" },
 		);
 
-		expect(result.values?.recentPosts).toContain(
+		expect(result.values?.recentPosts).not.toContain(
 			"# Conversation Compact Ledger",
 		);
-		expect(result.text).toContain("BLUE-77");
+		expect(result.text).not.toContain("BLUE-77");
 		expect(result.text).toContain("# Posts in Thread");
 	});
 
@@ -430,7 +430,7 @@ describe("recentMessagesProvider", () => {
 		expect(result.text).not.toBe("No recent messages available");
 	});
 
-	it("sorts memories by timestamp before applying the conversation window", async () => {
+	it("sorts and retains every memory regardless of the configured conversation length", async () => {
 		const memories = Array.from({ length: 12 }, (_, index) => {
 			const n = 12 - index;
 			return makeMemory(
@@ -449,16 +449,14 @@ describe("recentMessagesProvider", () => {
 		);
 
 		const recentMessages = result.data?.recentMessages as Memory[];
-		expect(recentMessages.map((memory) => memory.id)).toEqual([
-			"msg-10",
-			"msg-11",
-			"msg-12",
-		]);
+		expect(recentMessages.map((memory) => memory.id)).toEqual(
+			Array.from({ length: 12 }, (_, index) => `msg-${index + 1}`),
+		);
 		expect(result.text).toContain("User: message 12");
-		expect(result.text).not.toContain("User: message 9");
+		expect(result.text).toContain("User: message 1");
 	});
 
-	it("deepens same-room history for recall-referential questions", async () => {
+	it("always loads complete same-room history", async () => {
 		const memories = [
 			makeMemory("msg-1", USER_ID, "whats 23 times 19?", "discord", 1000),
 			makeMemory("msg-2", AGENT_ID, "23 times 19 is 437.", "discord", 2000),
@@ -511,10 +509,12 @@ describe("recentMessagesProvider", () => {
 
 		expect(runtime.getMemories).toHaveBeenCalledWith(
 			expect.objectContaining({
-				limit: 50,
 				roomId: ROOM_ID,
 				tableName: "messages",
 			}),
+		);
+		expect(runtime.getMemories).toHaveBeenCalledWith(
+			expect.not.objectContaining({ limit: expect.any(Number) }),
 		);
 		const recentMessages = result.data?.recentMessages as Memory[];
 		expect(recentMessages.map((memory) => memory.id)).toContain("msg-1");
@@ -600,7 +600,6 @@ describe("recentMessagesProvider", () => {
 		expect(runtime.getMemoriesByRoomIds).toHaveBeenCalledWith({
 			tableName: "messages",
 			roomIds: [OTHER_ROOM_ID],
-			limit: 20,
 		});
 		expect(result.data?.recentInteractions).toHaveLength(1);
 		expect(result.values?.recentMessageInteractions).toContain(
@@ -609,8 +608,8 @@ describe("recentMessagesProvider", () => {
 	});
 });
 
-describe("recentMessages window disclosure", () => {
-	it("names the window in the header so history questions are not answered from it alone", async () => {
+describe("recentMessages retained-history disclosure", () => {
+	it("states that every retained message is present", async () => {
 		const memories = [
 			makeMemory("msg-1", USER_ID, "bitcoin is up", "discord", 1000),
 			makeMemory("msg-2", AGENT_ID, "noted", "discord", 2000),
@@ -629,8 +628,8 @@ describe("recentMessages window disclosure", () => {
 		);
 
 		const text = result.text ?? "";
-		expect(text).toContain("# Conversation Messages (most recent");
-		expect(text).toContain("older history is not shown here");
+		expect(text).toContain("# Conversation Messages (2 retained)");
+		expect(text).not.toContain("older history is not shown here");
 		expect(text).not.toContain("MEMORY op:search");
 	});
 });

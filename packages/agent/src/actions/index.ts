@@ -2,7 +2,6 @@
  * Barrel for the Eliza plugin's action modules — re-exports every action and its
  * shared helpers for registration in createElizaPlugin.
  */
-export * from "./compact-conversation.ts";
 export * from "./connect-account.ts";
 export * from "./contact.ts";
 export * from "./context-signal.ts";

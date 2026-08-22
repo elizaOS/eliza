@@ -315,7 +315,7 @@ export async function handleMiscRoutes(
         : body.url
           ? `Can you analyze this: ${body.url}`
           : body.text
-            ? `What are your thoughts on: ${body.text.slice(0, 100)}`
+            ? `What are your thoughts on: ${body.text}`
             : "What do you think about this shared content?",
       receivedAt: Date.now(),
     };
@@ -504,7 +504,7 @@ export async function handleMiscRoutes(
     };
 
     const captureOutput = body.captureOutput === true;
-    const MAX_CAPTURE_BYTES = 128 * 1024;
+    const MAX_CAPTURE_BYTES = 4 * 1024 * 1024;
 
     const runId = resolveRequestedTerminalRunId(
       req.headers["x-eliza-terminal-run-id"],
@@ -565,16 +565,16 @@ export async function handleMiscRoutes(
     let timedOut = false;
     let stdout = "";
     let stderr = "";
-    let truncated = false;
+    let captureOverflowed = false;
 
     let capturedBytes = 0;
     const appendOutput = (current: string, chunkText: string): string => {
-      if (!captureOutput || truncated || !chunkText) {
+      if (!captureOutput || captureOverflowed || !chunkText) {
         return current;
       }
       const remaining = MAX_CAPTURE_BYTES - capturedBytes;
       if (remaining <= 0) {
-        truncated = true;
+        captureOverflowed = true;
         return current;
       }
       const chunkBytes = Buffer.byteLength(chunkText, "utf8");
@@ -582,22 +582,8 @@ export async function handleMiscRoutes(
         capturedBytes += chunkBytes;
         return current + chunkText;
       }
-      truncated = true;
-      const bytes = Buffer.from(chunkText, "utf8");
-      let prefixBytes = remaining;
-      let prefix = "";
-      while (prefixBytes > 0) {
-        try {
-          prefix = new TextDecoder("utf-8", { fatal: true }).decode(
-            bytes.subarray(0, prefixBytes),
-          );
-          break;
-        } catch {
-          prefixBytes -= 1;
-        }
-      }
-      capturedBytes += prefixBytes;
-      return current + prefix;
+      captureOverflowed = true;
+      return current;
     };
 
     const finalize = () => {
@@ -656,6 +642,14 @@ export async function handleMiscRoutes(
           code: result.exitCode,
         });
         if (captureOutput) {
+          if (captureOverflowed) {
+            error(
+              res,
+              `Terminal output exceeded the ${MAX_CAPTURE_BYTES}-byte complete-capture safety limit; no partial result was returned.`,
+              413,
+            );
+            return;
+          }
           json(res, {
             ok: true,
             runId,
@@ -664,7 +658,7 @@ export async function handleMiscRoutes(
             stdout,
             stderr,
             timedOut: timedOut || result.exitCode === 124,
-            truncated,
+            truncated: false,
             maxDurationMs,
             sandbox: result.sandbox,
             durationMs: result.durationMs,

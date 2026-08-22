@@ -35,10 +35,7 @@ import type {
 } from "../../../types/index.ts";
 import { ChannelType } from "../../../types/index.ts";
 import { asRecord } from "../../../utils/type-guards.ts";
-import {
-	toWellFormedUnicode,
-	truncateWellFormed,
-} from "../../../utils/well-formed.js";
+import { toWellFormedUnicode } from "../../../utils/well-formed.js";
 
 const ROLE_OPS = ["assign", "revoke", "list"] as const;
 type RoleOp = (typeof ROLE_OPS)[number];
@@ -46,7 +43,6 @@ type RoleOp = (typeof ROLE_OPS)[number];
 const ROLE_NAMES: readonly RoleName[] = ["OWNER", "ADMIN", "USER", "GUEST"];
 
 const MAX_USERNAME_LENGTH = 64;
-const RECENT_ROOM_MESSAGE_LIMIT = 100;
 const AMBIGUOUS_MATCH_SCORE_GAP = 10;
 const MIN_CONFIDENT_MATCH_SCORE = 70;
 
@@ -195,8 +191,7 @@ function normalizeAssignmentArray(raw: unknown): AssignmentJson[] {
 }
 
 function normalizeEntityLookupName(raw: string): string | null {
-	const safeRaw = truncateWellFormed(toWellFormedUnicode(raw), 1024);
-	const normalized = safeRaw
+	const normalized = toWellFormedUnicode(raw)
 		.trim()
 		.replace(/^@{1,1024}/, "")
 		.replace(/[.!?,;:]{1,1024}$/g, "")
@@ -278,7 +273,6 @@ async function getRecentRoomActivity(
 	const memories = await runtime.getMemoriesByRoomIds({
 		tableName: "messages",
 		roomIds: [roomId],
-		limit: RECENT_ROOM_MESSAGE_LIMIT,
 	});
 	for (const memory of memories) {
 		if (!memory.entityId || typeof memory.createdAt !== "number") continue;

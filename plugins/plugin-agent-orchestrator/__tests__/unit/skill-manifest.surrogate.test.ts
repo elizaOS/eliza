@@ -1,18 +1,7 @@
-/**
- * Regression for skill manifest description truncation surrogate safety (200).
- */
+/** Skill manifest descriptions remain complete while invalid Unicode is repaired. */
 
-import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
-
-const MAX_DESCRIPTION_CHARS = 200;
-
-function truncateDescription(value: string): string {
-  const cleaned = toWellFormedUnicode(value.replace(/\s+/g, " ").trim());
-  if (cleaned.length <= MAX_DESCRIPTION_CHARS) return cleaned;
-  const budget = Math.max(0, MAX_DESCRIPTION_CHARS - 1);
-  return `${truncateWellFormed(cleaned, budget).trimEnd()}…`;
-}
+import { normalizeDescription } from "../../src/services/skill-manifest.ts";
 
 function isWellFormed(v: string): boolean {
   if (!v) return true;
@@ -32,37 +21,36 @@ function isWellFormed(v: string): boolean {
   return true;
 }
 
-describe("skill-manifest truncateDescription well-formed", () => {
-  it("keeps surrogate pair intact at 200-char boundary", () => {
-    const budget = MAX_DESCRIPTION_CHARS - 1; // 199
+describe("skill-manifest normalizeDescription", () => {
+  it("preserves the complete description across the former boundary", () => {
+    const formerBudget = 199;
     const fox = String.fromCharCode(0xd83e, 0xdd8a);
-    const input = `${"a".repeat(budget - 1)}${fox}${"b".repeat(50)}`;
-    const out = truncateDescription(input);
+    const input = `${"a".repeat(formerBudget - 1)}${fox}${"b".repeat(50)}`;
+    const out = normalizeDescription(input);
     expect(isWellFormed(out)).toBe(true);
-    expect(out.length).toBeLessThanOrEqual(MAX_DESCRIPTION_CHARS);
-    expect(out.endsWith("…")).toBe(true);
-    expect(out).not.toContain("\uD83E");
+    expect(out).toBe(input);
   });
 
   it("preserves fitting emoji under limit", () => {
     const fox = String.fromCharCode(0xd83e, 0xdd8a);
     const input = `${"a".repeat(150)}${fox}`;
-    const out = truncateDescription(input);
+    const out = normalizeDescription(input);
     expect(isWellFormed(out)).toBe(true);
     expect(out).toBe(input);
   });
 
-  it("sanitizes lone surrogate before truncation", () => {
+  it("sanitizes a lone surrogate without shortening the description", () => {
     const lone = `manifest ${String.fromCharCode(0xd800)} ${"a".repeat(300)}`;
-    const out = truncateDescription(lone);
+    const out = normalizeDescription(lone);
     expect(isWellFormed(out)).toBe(true);
     expect(out.includes("\uFFFD")).toBe(true);
-    expect(out.length).toBeLessThanOrEqual(MAX_DESCRIPTION_CHARS);
+    expect(out.length).toBe(lone.length);
+    expect(out.endsWith("a".repeat(300))).toBe(true);
   });
 
   it("sanitizes lone surrogate without truncation when fitting", () => {
     const lone = `manifest ${String.fromCharCode(0xd800)} test`;
-    const out = truncateDescription(lone);
+    const out = normalizeDescription(lone);
     expect(isWellFormed(out)).toBe(true);
     expect(out).toBe("manifest \uFFFD test");
   });

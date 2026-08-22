@@ -248,6 +248,12 @@ describe("native cerebras concurrency limiter", () => {
       { raw: "0", expected: 8 },
       { raw: "abc", expected: 8 },
       { raw: undefined, expected: 8 },
+      // `Number.parseInt` stopped at the first non-digit, so "2junk" silently
+      // tightened the semaphore to 2 instead of falling back.
+      { raw: "2junk", expected: 8 },
+      // A leading sign was accepted by `parseInt` and must stay accepted.
+      { raw: "+2", expected: 2 },
+      { raw: "9007199254740993", expected: 8 },
     ];
 
     for (const { raw, expected } of cases) {

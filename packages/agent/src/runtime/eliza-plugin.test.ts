@@ -115,7 +115,6 @@ describe("createElizaPlugin — config resolution", () => {
       workspaceDir: "/explicit/workspace",
       agentId: "cfg-agent",
       sessionStorePath: "/explicit/sessions.json",
-      initMaxChars: 1234,
     });
     expect(plugin.name).toBe("eliza");
     // The workspace provider is constructed from the config; presence proves

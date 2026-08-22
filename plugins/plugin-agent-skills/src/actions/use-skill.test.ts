@@ -417,14 +417,12 @@ describe("useSkillAction", () => {
 		expect(typeof invocation.startedAt).toBe("number");
 	});
 
-	it("emits a structured truncation marker when result exceeds the 64KB cap (W1-T5)", async () => {
+	it("preserves a result beyond the former 64KB trajectory cap (W1-T5)", async () => {
 		mockedGetTrajectoryContext.mockReturnValue({
 			trajectoryStepId: "step-skill-trunc",
 		});
 
-		// 150KB of instructions: well over the 64KB cap. The first 3500 chars
-		// are returned to the user but the full body is captured into the
-		// invocation record before the cap is applied.
+		// 150KB of instructions exercises complete user and trajectory capture.
 		const hugeBody = "x".repeat(150_000);
 		const skill = {
 			slug: "huge",
@@ -480,18 +478,8 @@ describe("useSkillAction", () => {
 			}>;
 		};
 		const invocation = annotateParams.appendSkillInvocations[0];
-		expect(invocation.result?.endsWith("...[truncated]")).toBe(true);
-		// 64KB cap: 65_536 bytes (no override env set in tests).
-		expect(Buffer.byteLength(invocation.result ?? "", "utf8")).toBeLessThanOrEqual(
-			65_536,
-		);
-		expect(invocation.truncated).toBeDefined();
-		const resultMarker = invocation.truncated?.find(
-			(t) => t.field === "result",
-		);
-		expect(resultMarker).toBeDefined();
-		expect(resultMarker?.capBytes).toBe(65_536);
-		expect(resultMarker?.originalBytes).toBeGreaterThan(65_536);
+		expect(invocation.result).toContain(hugeBody);
+		expect(invocation.truncated).toBeUndefined();
 	});
 
 	it("skips invocation capture when no trajectory step is active", async () => {
@@ -583,7 +571,6 @@ describe("useSkillAction", () => {
 		expect(result?.success).toBe(true);
 		const text = callback.mock.calls.at(-1)?.[0]?.text ?? "";
 		expect(text.isWellFormed()).toBe(true);
-		expect(text).toContain("...[truncated]");
-		expect(text).toContain(`${"a".repeat(3499)}\n\n...[truncated]`);
+		expect(text).toContain(longInstructions);
 	});
 });

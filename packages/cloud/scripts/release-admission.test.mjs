@@ -49,6 +49,12 @@ describe("decideReleaseAdmission", () => {
       ref: "refs/heads/develop",
       force: true,
     },
+    {
+      eventName: "workflow_dispatch",
+      targetEnvironment: "staging",
+      ref: "refs/heads/develop",
+      force: false,
+    },
   ])("always admits non-supersedable releases", (input) => {
     expect(
       decideReleaseAdmission({

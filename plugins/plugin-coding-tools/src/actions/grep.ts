@@ -1,7 +1,6 @@
 /**
  * FILE `grep` handler: content search over the workspace via RipgrepService,
- * rooted at an explicit path or the conversation's SessionCwdService cwd. Output is
- * capped by `head_limit` (default `CODING_TOOLS_GREP_HEAD_LIMIT`).
+ * rooted at an explicit path or the conversation's SessionCwdService cwd.
  */
 import {
   type ActionResult,
@@ -16,7 +15,6 @@ import {
   failureToActionResult,
   readBoolParam,
   readNumberParam,
-  readPositiveIntSetting,
   readStringParam,
   successActionResult,
 } from "../lib/format.js";
@@ -33,8 +31,6 @@ import {
   SANDBOX_SERVICE,
   SESSION_CWD_SERVICE,
 } from "../types.js";
-
-const DEFAULT_HEAD_LIMIT = 250;
 
 function isValidMode(value: string | undefined): value is RipgrepMode {
   return (
@@ -151,20 +147,20 @@ export async function grepHandler(
     if (result.exitCode !== 0) {
       return failureToActionResult({
         reason: "command_failed",
-        message: `ripgrep exited ${result.exitCode}: ${result.output.slice(0, 500)}`,
+        message: `ripgrep exited ${result.exitCode}: ${result.output}`,
+      });
+    }
+
+    if (result.truncated) {
+      return failureToActionResult({
+        reason: "io_error",
+        message:
+          "ripgrep returned incomplete output; narrow the query instead of using a partial result",
       });
     }
 
     const headLimitRequested = readNumberParam(options, "head_limit");
-    const headLimitDefault = readPositiveIntSetting(
-      runtime,
-      "CODING_TOOLS_GREP_HEAD_LIMIT",
-      DEFAULT_HEAD_LIMIT,
-    );
-    const headLimit =
-      headLimitRequested === undefined
-        ? headLimitDefault
-        : Math.max(0, Math.floor(headLimitRequested));
+    const headLimit = Math.max(0, Math.floor(headLimitRequested ?? 0));
 
     const rawLines =
       result.output.length === 0
@@ -178,7 +174,7 @@ export async function grepHandler(
       headTruncated = true;
     }
 
-    const truncated = headTruncated || result.truncated;
+    const truncated = headTruncated;
     const text =
       outputLines.length === 0 ? "no matches" : outputLines.join("\n");
     coreLogger.debug(
@@ -196,7 +192,7 @@ export async function grepHandler(
     const messageText = error instanceof Error ? error.message : String(error);
     return failureToActionResult({
       reason: "internal",
-      message: `grep failed: ${messageText.slice(0, 500)}`,
+      message: `grep failed: ${messageText}`,
     });
   }
 }

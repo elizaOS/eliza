@@ -2,7 +2,10 @@
  * Coordinates managed agent launch, credential refresh, provisioning, and
  * onboarding behind Cloud route handlers.
  */
-import type { AgentSandbox } from "../../db/schemas/agent-sandboxes";
+import {
+  type AgentSandbox,
+  CONTAINER_BACKED_EXECUTION_TIERS,
+} from "../../db/schemas/agent-sandboxes";
 import { cache } from "../cache/client";
 import { CEREBRAS_DEFAULT_TEXT_LARGE_MODEL, CEREBRAS_DEFAULT_TEXT_SMALL_MODEL } from "../models";
 import { logger } from "../utils/logger";
@@ -48,6 +51,27 @@ export class ManagedElizaLaunchError extends Error {
   ) {
     super(message);
     this.name = "ManagedElizaLaunchError";
+  }
+}
+
+function assertManagedElizaLaunchAuthority(sandbox: AgentSandbox): void {
+  if (!CONTAINER_BACKED_EXECUTION_TIERS.some((tier) => tier === sandbox.execution_tier)) {
+    throw new ManagedElizaLaunchError(
+      "Managed launch requires a container-backed execution tier",
+      409,
+    );
+  }
+  if (sandbox.pool_status !== null) {
+    throw new ManagedElizaLaunchError("Managed launch cannot target pool-owned capacity", 409);
+  }
+  if (sandbox.deleted_at !== null) {
+    throw new ManagedElizaLaunchError("Managed launch cannot target a deleted agent", 409);
+  }
+  if (sandbox.deletion_attempt_id !== null) {
+    throw new ManagedElizaLaunchError(
+      "Managed launch cannot start while agent deletion is in progress",
+      409,
+    );
   }
 }
 
@@ -224,10 +248,11 @@ export async function launchManagedElizaAgent(params: {
   organizationId: string;
   userId: string;
 }): Promise<ManagedLaunchResult> {
-  let sandbox = await elizaSandboxService.getAgent(params.agentId, params.organizationId);
+  let sandbox = await elizaSandboxService.getAgentForWrite(params.agentId, params.organizationId);
   if (!sandbox) {
     throw new ManagedElizaLaunchError("Agent not found", 404);
   }
+  assertManagedElizaLaunchAuthority(sandbox);
   if (sandbox.claimed_at && !hasReadyWarmClaimCredential(sandbox)) {
     throw new ManagedElizaLaunchError("Agent credential recovery is still in progress", 409);
   }

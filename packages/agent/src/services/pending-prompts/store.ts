@@ -11,15 +11,11 @@
  * (default 24h) so late inbound replies still correlate. After the reopen
  * window the entry is purged.
  *
- * Backing storage: runtime cache, keyed per room. Bounded per-room slot count
- * to defend against unbounded growth in a noisy chat.
+ * Backing storage: runtime cache, keyed per room. Time-based retention removes
+ * expired entries without discarding live prompts or changing their content.
  */
 
-import {
-  type IAgentRuntime,
-  toWellFormedUnicode,
-  truncateWellFormed,
-} from "@elizaos/core";
+import { type IAgentRuntime, toWellFormedUnicode } from "@elizaos/core";
 
 type RuntimeCacheLike = Pick<
   IAgentRuntime,
@@ -128,21 +124,15 @@ export interface PendingPromptsStore {
   clearAll(): Promise<void>;
 }
 
-const PROMPT_SNIPPET_MAX_LENGTH = 120;
 const DEFAULT_REOPEN_WINDOW_HOURS = 24;
-const PER_ROOM_MAX_PROMPTS = 16;
 const ROOM_INDEX_KEY = "eliza:lifeops:pending-prompts:rooms:v1";
 
 function roomCacheKey(roomId: string): string {
   return `eliza:lifeops:pending-prompts:room:${roomId}:v1`;
 }
 
-function clampSnippet(value: string): string {
-  const wellFormed = toWellFormedUnicode(value.trim());
-  if (wellFormed.length <= PROMPT_SNIPPET_MAX_LENGTH) {
-    return wellFormed;
-  }
-  return `${truncateWellFormed(wellFormed, PROMPT_SNIPPET_MAX_LENGTH - 1).trimEnd()}…`;
+function normalizePrompt(value: string): string {
+  return toWellFormedUnicode(value.trim());
 }
 
 function isValidIso(value: unknown): value is string {
@@ -227,7 +217,7 @@ export function createPendingPromptsStore(
       const recorded: RecordedPendingPrompt = {
         roomId: input.roomId,
         taskId: input.taskId,
-        promptSnippet: clampSnippet(input.promptSnippet),
+        promptSnippet: normalizePrompt(input.promptSnippet),
         firedAt: input.firedAt,
         expectedReplyKind: input.expectedReplyKind ?? "any",
         retainUntilIso: computeRetainUntil(
@@ -245,12 +235,7 @@ export function createPendingPromptsStore(
           (entry) => entry.taskId !== input.taskId,
         );
         filtered.push(recorded);
-        // Bound per-room growth: keep newest N entries (FIFO eviction).
-        const trimmed =
-          filtered.length > PER_ROOM_MAX_PROMPTS
-            ? filtered.slice(-PER_ROOM_MAX_PROMPTS)
-            : filtered;
-        await saveRoom(cache, input.roomId, trimmed);
+        await saveRoom(cache, input.roomId, filtered);
       });
       return recorded;
     },

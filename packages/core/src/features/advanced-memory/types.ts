@@ -63,7 +63,6 @@ export interface MemoryConfig {
 	longTermExtractionInterval: number;
 	summaryModelType?: TextGenerationModelType;
 	summaryMaxTokens?: number;
-	summaryMaxNewMessages?: number;
 }
 
 export interface MemoryExtraction {

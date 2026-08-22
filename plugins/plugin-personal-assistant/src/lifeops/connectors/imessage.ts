@@ -2,8 +2,8 @@
  * iMessage connector contribution.
  *
  * Wraps the LifeOps iMessage mixin (`service-mixin-imessage.ts`). Local-only;
- * the iMessage runtime service is provided by `@elizaos/plugin-imessage` /
- * `plugin-bluebubbles` on macOS.
+ * the iMessage runtime service is provided by `@elizaos/plugin-imessage` on
+ * macOS.
  */
 import type { IAgentRuntime } from "@elizaos/core";
 import { formatError } from "@elizaos/core";

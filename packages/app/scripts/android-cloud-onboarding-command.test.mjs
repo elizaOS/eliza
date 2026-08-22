@@ -16,13 +16,27 @@ const packageJson = JSON.parse(
 );
 
 describe("Android cloud-onboarding command", () => {
-  it("builds, installs, and drives first-run without a local-agent gate", () => {
+  it("builds, installs, and drives authenticated chat without a local-agent gate", () => {
     const command = packageJson.scripts["test:e2e:android:cloud-onboarding"];
 
     expect(command).toMatch(/build:android:cloud:debug/);
     expect(command).toMatch(/install:android:adb/);
     expect(command).toMatch(/ELIZA_ANDROID_ALLOW_FIRST_RUN=1/);
     expect(command).toMatch(/ELIZA_ANDROID_REQUIRE_AGENT=0/);
+    expect(command).toMatch(/ELIZA_ANDROID_CLEAR_APP_DATA=1/);
     expect(command).toMatch(/cloud-onboarding\.android\.spec\.ts/);
+  });
+
+  it("keeps browser-handoff smoke and authenticated onboarding distinct in the live spec", () => {
+    const spec = fs.readFileSync(
+      path.join(appRoot, "test/android/cloud-onboarding.android.spec.ts"),
+      "utf8",
+    );
+
+    expect(spec).toContain("browser-handoff smoke");
+    expect(spec).toContain("authenticated browser return");
+    expect(spec).toContain("ELIZA_CLOUD_AUTH_TOKEN");
+    expect(spec).toContain("buildAndroidCloudLoginCompletionRequest");
+    expect(spec).toContain('trace: "off"');
   });
 });

@@ -25,7 +25,6 @@ import {
 	type State,
 	type TrajectorySkillInvocationRecord,
 	toWellFormedUnicode,
-	truncateWellFormed,
 } from "@elizaos/core";
 import type { AgentSkillsService } from "../services/skills";
 
@@ -46,10 +45,6 @@ interface ScriptResult {
 	stdout: string;
 	stderr: string;
 }
-
-type SkillTruncationMarker = NonNullable<
-	TrajectorySkillInvocationRecord["truncated"]
->[number];
 
 export const USE_SKILL_ACTION_NAME = "USE_SKILL";
 
@@ -214,12 +209,6 @@ function unwrapSkillStdoutEnvelope(stdout: string): string | undefined {
 	return undefined;
 }
 
-function isSkillTruncationMarker(
-	marker: { field: string; originalBytes: number; capBytes: number },
-): marker is SkillTruncationMarker {
-	return marker.field === "args" || marker.field === "result";
-}
-
 function executeScript(
 	scriptPath: string,
 	args: string[],
@@ -287,9 +276,8 @@ function executeScript(
 
 /**
  * Build a per-skill invocation record and append it to the active
- * trajectory step (W1-T5 / M13). Mirrors the action-step shape from W1-T4:
- * args + result are encoded via `captureSkillInvocationIO`, which caps
- * each field at 64KB and emits a structured truncation marker on overflow.
+ * trajectory step (W1-T5 / M13). Args and result are encoded completely via
+ * `captureSkillInvocationIO`.
  *
  * Skips when no active trajectory step is in scope. Annotation errors
  * propagate, matching the contract of `annotateActiveTrajectoryStep`.
@@ -313,7 +301,6 @@ async function recordSkillInvocation(
 		args: params.args,
 		result: params.result,
 	});
-	const truncated = captured.truncated?.filter(isSkillTruncationMarker);
 	const record: TrajectorySkillInvocationRecord = {
 		skillSlug: params.skillSlug,
 		args: captured.args,
@@ -324,9 +311,6 @@ async function recordSkillInvocation(
 		success: params.success,
 		startedAt: params.startedAt,
 	};
-	if (truncated && truncated.length > 0) {
-		record.truncated = truncated;
-	}
 	if (params.script !== undefined) {
 		record.script = params.script;
 	}
@@ -400,8 +384,7 @@ export const useSkillAction: Action = {
 		if (!skill) {
 			const installed = service
 				.getLoadedSkills()
-				.map((s) => s.slug)
-				.slice(0, 10);
+				.map((s) => s.slug);
 			const errorText =
 				`Skill \`${rawSlug}\` is not installed. ` +
 				`Installed skills: ${installed.join(", ") || "(none)"}. ` +
@@ -531,14 +514,9 @@ export const useSkillAction: Action = {
 			return { success: false, error: new Error(errorText) };
 		}
 
-		const maxLen = 3500;
 		const wellFormedBody = toWellFormedUnicode(instructions.body);
-		const truncatedBody =
-			wellFormedBody.length > maxLen
-				? `${truncateWellFormed(wellFormedBody, maxLen)}\n\n...[truncated]`
-				: wellFormedBody;
 
-		const text = `## ${skill.name}\n\n${skill.description}\n\n### Instructions\n\n${truncatedBody}`;
+		const text = `## ${skill.name}\n\n${skill.description}\n\n### Instructions\n\n${wellFormedBody}`;
 
 		if (callback) await callback({ text, actions: ["USE_SKILL"] });
 

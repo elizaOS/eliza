@@ -39,7 +39,7 @@ import type { EvaluationResult } from "../types/components";
 import type { ChatMessage, ToolChoice } from "../types/model";
 import { readEnv } from "../utils/read-env";
 import { resolveStateDir } from "../utils/state-dir";
-import { toWellFormedUnicode, truncateWellFormed } from "../utils/well-formed";
+import { toWellFormedUnicode } from "../utils/well-formed";
 import { stringifyForDiagnostics } from "./json-output";
 import {
 	resolveTraceCorrelationFromEnv,
@@ -116,16 +116,7 @@ export interface RecordedModelCall {
 	providerAttributions?: TrajectoryProviderAttribution[];
 }
 
-/**
- * Marker emitted when one of `input`, `output`, `error`, `args`, or
- * `result` exceeds the configured byte cap. The original payload is
- * replaced with a string preview followed by an annotation; the metadata
- * block here surfaces the original size so reviewers and downstream
- * training pipelines can decide how to treat the truncation.
- *
- * `input` / `output` / `error` are used by tool (action) stages; `args`
- * and `result` are used by per-skill invocation records (W1-T5 / M13).
- */
+/** Legacy marker retained so historical trajectory rows remain readable. */
 export interface RecordedTruncationMarker {
 	field: "input" | "output" | "error" | "args" | "result";
 	originalBytes: number;
@@ -149,28 +140,21 @@ export interface RecordedToolStage {
 	 */
 	description?: string;
 	error?: string;
-	/**
-	 * Captured action-handler input (the resolved params passed into the
-	 * action). Encoded as JSON when possible. Capped at
-	 * `ELIZA_TRAJECTORY_FIELD_CAP_BYTES` (default 64KB); oversize values
-	 * are truncated and a marker is added to `truncated[]`.
-	 */
+	/** Complete action-handler input, encoded as JSON when possible. */
 	input?: string;
 	/**
 	 * Captured action-handler output (the full result the action returned,
-	 * not just the planner-shaped summary). Same encoding and cap as
-	 * `input`.
+	 * not just the planner-shaped summary).
 	 */
 	output?: string;
 	/**
-	 * Captured action-handler error text. Same cap as `input`/`output`.
+	 * Captured action-handler error text.
 	 * Mirrors `error` for free-text reads; structured `error` above is kept
 	 * for backwards compatibility with existing readers.
 	 */
 	errorText?: string;
 	/**
-	 * Per-field truncation markers. Present only when at least one of
-	 * `input`, `output`, or `errorText` was truncated by the byte cap.
+	 * Legacy loss markers read from historical rows; new captures omit them.
 	 */
 	truncated?: RecordedTruncationMarker[];
 }
@@ -791,19 +775,9 @@ function applyMetricsForStage(
 }
 
 const RECORD_SANITIZE_MAX_DEPTH = 40;
-const RECORD_SANITIZE_MAX_ARRAY_ITEMS = 250;
-const RECORD_SANITIZE_MAX_OBJECT_KEYS = 200;
-const RECORD_SANITIZE_MAX_STRING_CHARS = 64 * 1024;
-const RECORD_SANITIZE_TRUNCATION_SUFFIX = "...[truncated]";
 
-function truncateRecordString(value: string): string {
-	const wellFormed = toWellFormedUnicode(value);
-	if (wellFormed.length <= RECORD_SANITIZE_MAX_STRING_CHARS) return wellFormed;
-	const previewLength = Math.max(
-		0,
-		RECORD_SANITIZE_MAX_STRING_CHARS - RECORD_SANITIZE_TRUNCATION_SUFFIX.length,
-	);
-	return `${truncateWellFormed(wellFormed, previewLength)}${RECORD_SANITIZE_TRUNCATION_SUFFIX}`;
+function normalizeRecordString(value: string): string {
+	return toWellFormedUnicode(value);
 }
 
 function sanitizeForRecord(
@@ -815,7 +789,7 @@ function sanitizeForRecord(
 		return "[MaxDepth]";
 	}
 	if (value === null) return null;
-	if (typeof value === "string") return truncateRecordString(value);
+	if (typeof value === "string") return normalizeRecordString(value);
 	if (typeof value === "number") {
 		return Number.isFinite(value) ? value : null;
 	}
@@ -861,17 +835,11 @@ function sanitizeForRecord(
 		if (seen.has(value)) return "[Circular]";
 		seen.add(value);
 		const output: Record<string, unknown> = {};
-		let index = 0;
 		for (const [key, entry] of value.entries()) {
-			if (index >= RECORD_SANITIZE_MAX_OBJECT_KEYS) break;
 			const sanitized = sanitizeForRecord(entry, seen, depth + 1);
 			if (sanitized !== undefined) {
 				output[String(key)] = sanitized;
 			}
-			index++;
-		}
-		if (value.size > RECORD_SANITIZE_MAX_OBJECT_KEYS) {
-			output.__truncatedKeys = value.size - RECORD_SANITIZE_MAX_OBJECT_KEYS;
 		}
 		seen.delete(value);
 		return output;
@@ -880,16 +848,8 @@ function sanitizeForRecord(
 		if (seen.has(value)) return "[Circular]";
 		seen.add(value);
 		const output: unknown[] = [];
-		let index = 0;
 		for (const entry of value.values()) {
-			if (index >= RECORD_SANITIZE_MAX_ARRAY_ITEMS) break;
 			output.push(sanitizeForRecord(entry, seen, depth + 1) ?? null);
-			index++;
-		}
-		if (value.size > RECORD_SANITIZE_MAX_ARRAY_ITEMS) {
-			output.push({
-				__truncatedItems: value.size - RECORD_SANITIZE_MAX_ARRAY_ITEMS,
-			});
 		}
 		seen.delete(value);
 		return output;
@@ -898,14 +858,9 @@ function sanitizeForRecord(
 		if (seen.has(value)) return "[Circular]";
 		seen.add(value);
 		const output: unknown[] = [];
-		const length = Math.min(value.length, RECORD_SANITIZE_MAX_ARRAY_ITEMS);
+		const length = value.length;
 		for (let i = 0; i < length; i++) {
 			output.push(sanitizeForRecord(value[i], seen, depth + 1) ?? null);
-		}
-		if (value.length > RECORD_SANITIZE_MAX_ARRAY_ITEMS) {
-			output.push({
-				__truncatedItems: value.length - RECORD_SANITIZE_MAX_ARRAY_ITEMS,
-			});
 		}
 		seen.delete(value);
 		return output;
@@ -926,17 +881,11 @@ function sanitizeForRecord(
 			return String(value);
 		}
 		const output: Record<string, unknown> = {};
-		for (const [key, entry] of entries.slice(
-			0,
-			RECORD_SANITIZE_MAX_OBJECT_KEYS,
-		)) {
+		for (const [key, entry] of entries) {
 			const sanitized = sanitizeForRecord(entry, seen, depth + 1);
 			if (sanitized !== undefined) {
 				output[key] = sanitized;
 			}
-		}
-		if (entries.length > RECORD_SANITIZE_MAX_OBJECT_KEYS) {
-			output.__truncatedKeys = entries.length - RECORD_SANITIZE_MAX_OBJECT_KEYS;
 		}
 		seen.delete(value);
 		return output;
@@ -953,43 +902,12 @@ function cloneRootMessageForRecord(
 ): RecordedTrajectory["rootMessage"] {
 	return {
 		id: String(rootMessage.id),
-		text: truncateRecordString(String(rootMessage.text)),
+		text: normalizeRecordString(String(rootMessage.text)),
 		sender:
 			rootMessage.sender === undefined
 				? undefined
-				: truncateRecordString(String(rootMessage.sender)),
+				: normalizeRecordString(String(rootMessage.sender)),
 	};
-}
-
-// ---------------------------------------------------------------------------
-// Field cap / truncation (M12 — action exec input/output/error capture)
-// ---------------------------------------------------------------------------
-
-const DEFAULT_FIELD_CAP_BYTES = 64 * 1024;
-const TRUNCATION_SUFFIX = "...[truncated]";
-
-/**
- * UTF-8 continuation bytes are `0b10xxxxxx`. A byte cut that lands on one is
- * mid-character; see {@link applyTrajectoryFieldCap}.
- */
-function isUtf8ContinuationByte(byte: number): boolean {
-	return (byte & 0xc0) === 0x80;
-}
-
-/**
- * Resolve the per-field byte cap for `input` / `output` / `errorText`. The
- * recorder uses this for action-step capture (M12). Override with
- * `ELIZA_TRAJECTORY_FIELD_CAP_BYTES`; values below 1KB or non-integer are
- * rejected as invalid and the default is used.
- */
-export function resolveTrajectoryFieldCapBytes(): number {
-	const raw = process.env.ELIZA_TRAJECTORY_FIELD_CAP_BYTES?.trim();
-	if (!raw) return DEFAULT_FIELD_CAP_BYTES;
-	const parsed = Number.parseInt(raw, 10);
-	if (!Number.isFinite(parsed) || parsed < 1024) {
-		return DEFAULT_FIELD_CAP_BYTES;
-	}
-	return parsed;
 }
 
 /**
@@ -1009,116 +927,35 @@ export function encodeTrajectoryFieldValue(value: unknown): string {
 	return serialized;
 }
 
-/**
- * Truncate `value` to at most `capBytes` UTF-8 bytes. Returns the original
- * string and `null` marker when no truncation is needed, or the truncated
- * preview plus a structured marker when the cap was exceeded.
- *
- * The cut always lands on a UTF-8 character boundary, so the preview never
- * gains a U+FFFD REPLACEMENT CHARACTER that the recorded agent did not emit.
- *
- * The marker is the caller's responsibility to attach to the stage (see
- * `captureToolStageIO`).
- */
-export function applyTrajectoryFieldCap(
-	field: RecordedTruncationMarker["field"],
-	value: string,
-	capBytes: number,
-): { value: string; marker: RecordedTruncationMarker | null } {
-	if (!Number.isSafeInteger(capBytes) || capBytes < 0) {
-		throw new ElizaError(
-			"Trajectory field cap must be a non-negative safe integer",
-			{
-				code: "TRAJECTORY_FIELD_CAP_INVALID",
-				context: { capBytes: String(capBytes) },
-			},
-		);
-	}
-	const byteLength = Buffer.byteLength(value, "utf8");
-	if (byteLength <= capBytes) {
-		return { value, marker: null };
-	}
-	const suffixBytes = Buffer.byteLength(TRUNCATION_SUFFIX, "utf8");
-	const sliceBudget = Math.max(0, capBytes - suffixBytes);
-	const buffer = Buffer.from(value, "utf8");
-	// Node's UTF-8 decoder does NOT drop a trailing partial sequence: it
-	// substitutes U+FFFD REPLACEMENT CHARACTER for it. Decoding a raw byte
-	// slice therefore writes a character the agent never emitted into the
-	// persisted trajectory, and the `RecordedTruncationMarker` below reports
-	// only byte counts, so the corruption is served as a successful capture.
-	// Back the cut off to the start of the straddled character first so the
-	// decode is lossless for everything that survives the cap.
-	let end = Math.min(sliceBudget, buffer.length);
-	while (end > 0 && isUtf8ContinuationByte(buffer[end] ?? 0)) {
-		end--;
-	}
-	let preview = buffer.subarray(0, end).toString("utf8");
-	// Defence in depth: the boundary back-off above already keeps the preview
-	// within `sliceBudget`, but if that invariant ever regresses, trim through
-	// `truncateWellFormed` so shrinking can never split a surrogate pair the
-	// way a bare `preview.slice(0, -1)` would.
-	while (
-		Buffer.byteLength(preview, "utf8") + suffixBytes > capBytes &&
-		preview.length > 0
-	) {
-		preview = truncateWellFormed(preview, preview.length - 1);
-	}
-	return {
-		value: `${preview}${TRUNCATION_SUFFIX}`,
-		marker: {
-			field,
-			originalBytes: byteLength,
-			capBytes,
-		},
-	};
-}
-
 export interface ToolStageIOInput {
 	input?: unknown;
 	output?: unknown;
 	error?: unknown;
-	capBytes?: number;
 }
 
 export interface ToolStageIOCapture {
 	input?: string;
 	output?: string;
 	errorText?: string;
-	truncated?: RecordedTruncationMarker[];
 }
 
 /**
- * Encode + cap action input/output/error for a tool stage. The result is
+ * Encode complete action input/output/error for a tool stage. The result is
  * suitable for assignment into a `RecordedToolStage`. Fields that are
  * `undefined` after encoding are omitted so the on-disk schema stays
  * minimal for steps that have nothing to capture.
  */
 export function captureToolStageIO(args: ToolStageIOInput): ToolStageIOCapture {
-	const cap = args.capBytes ?? resolveTrajectoryFieldCapBytes();
 	const out: ToolStageIOCapture = {};
-	const markers: RecordedTruncationMarker[] = [];
 
 	if (args.input !== undefined) {
-		const encoded = encodeTrajectoryFieldValue(args.input);
-		const { value, marker } = applyTrajectoryFieldCap("input", encoded, cap);
-		out.input = value;
-		if (marker) markers.push(marker);
+		out.input = toWellFormedUnicode(encodeTrajectoryFieldValue(args.input));
 	}
 	if (args.output !== undefined) {
-		const encoded = encodeTrajectoryFieldValue(args.output);
-		const { value, marker } = applyTrajectoryFieldCap("output", encoded, cap);
-		out.output = value;
-		if (marker) markers.push(marker);
+		out.output = toWellFormedUnicode(encodeTrajectoryFieldValue(args.output));
 	}
 	if (args.error !== undefined) {
-		const encoded = encodeTrajectoryFieldValue(args.error);
-		const { value, marker } = applyTrajectoryFieldCap("error", encoded, cap);
-		out.errorText = value;
-		if (marker) markers.push(marker);
-	}
-
-	if (markers.length > 0) {
-		out.truncated = markers;
+		out.errorText = toWellFormedUnicode(encodeTrajectoryFieldValue(args.error));
 	}
 	return out;
 }
@@ -1126,58 +963,34 @@ export function captureToolStageIO(args: ToolStageIOInput): ToolStageIOCapture {
 // ---------------------------------------------------------------------------
 // Skill invocation I/O capture (W1-T5 / M13)
 //
-// Mirrors `captureToolStageIO` but at the skill (USE_SKILL) seam. Args and
-// result are encoded + capped using the same primitives so all callers share
-// one canonical truncation contract.
+// Mirrors `captureToolStageIO` at the skill (USE_SKILL) seam.
 // ---------------------------------------------------------------------------
 
 export interface SkillInvocationIOInput {
 	args?: unknown;
 	result?: unknown;
-	capBytes?: number;
 }
-
-export type SkillInvocationTruncationMarker = Omit<
-	RecordedTruncationMarker,
-	"field"
-> & {
-	field: "args" | "result";
-};
 
 export interface SkillInvocationIOCapture {
 	args?: string;
 	result?: string;
-	truncated?: SkillInvocationTruncationMarker[];
 }
 
 /**
- * Encode + cap skill invocation args/result for a per-skill trajectory
+ * Encode complete skill invocation args/result for a per-skill trajectory
  * record. Fields that are `undefined` after encoding are omitted so the
- * persisted shape stays minimal. Caps default to
- * `ELIZA_TRAJECTORY_FIELD_CAP_BYTES` (64KB).
+ * persisted shape stays minimal.
  */
 export function captureSkillInvocationIO(
 	input: SkillInvocationIOInput,
 ): SkillInvocationIOCapture {
-	const cap = input.capBytes ?? resolveTrajectoryFieldCapBytes();
 	const out: SkillInvocationIOCapture = {};
-	const markers: SkillInvocationTruncationMarker[] = [];
 
 	if (input.args !== undefined) {
-		const encoded = encodeTrajectoryFieldValue(input.args);
-		const { value, marker } = applyTrajectoryFieldCap("args", encoded, cap);
-		out.args = value;
-		if (marker) markers.push(marker as SkillInvocationTruncationMarker);
+		out.args = toWellFormedUnicode(encodeTrajectoryFieldValue(input.args));
 	}
 	if (input.result !== undefined) {
-		const encoded = encodeTrajectoryFieldValue(input.result);
-		const { value, marker } = applyTrajectoryFieldCap("result", encoded, cap);
-		out.result = value;
-		if (marker) markers.push(marker as SkillInvocationTruncationMarker);
-	}
-
-	if (markers.length > 0) {
-		out.truncated = markers;
+		out.result = toWellFormedUnicode(encodeTrajectoryFieldValue(input.result));
 	}
 	return out;
 }

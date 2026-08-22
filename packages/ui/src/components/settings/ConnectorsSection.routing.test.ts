@@ -55,16 +55,6 @@ describe("ConnectorsSection mode routing", () => {
     }
   });
 
-  it("keeps the separate cloud BlueBubbles gateway routed to its own panel", () => {
-    const route = routeFor("imessage", "cloud-bluebubbles", true);
-    expect(route.managementMode).toBe("cloud-managed");
-    expect(route.setupPluginId).toBe("bluebubbles");
-    // The cloud gateway remains a distinct plugin; the local iMessage row no
-    // longer exposes a BlueBubbles mode or its environment-variable form.
-    expect(route.showForm).toBe(false);
-    expect(hasConnectorSetupPanel("bluebubbles")).toBe(true);
-  });
-
   it("never shows the env form for a local-setup mode even with parameters", () => {
     expect(
       shouldRenderConnectorConfigForm({

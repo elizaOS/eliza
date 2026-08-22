@@ -65,12 +65,10 @@ export const computerStateProvider: Provider = {
             approvals: {
               mode: approvals.mode,
               pendingCount: approvals.pendingCount,
-              pending: approvals.pendingApprovals
-                .slice(0, 5)
-                .map((approval) => ({
-                  id: approval.id,
-                  command: approval.command,
-                })),
+              pending: approvals.pendingApprovals.map((approval) => ({
+                id: approval.id,
+                command: approval.command,
+              })),
             },
             capabilities: {
               screenshot: caps.screenshot.available
@@ -92,7 +90,7 @@ export const computerStateProvider: Provider = {
                 ? caps.fileSystem.tool
                 : "unavailable",
             },
-            recentActions: recent.slice(-5).map((entry) => ({
+            recentActions: recent.map((entry) => ({
               action: entry.action,
               success: entry.success,
             })),
@@ -114,12 +112,12 @@ export const computerStateProvider: Provider = {
         data: {
           approvals: {
             ...approvals,
-            pendingApprovals: approvals.pendingApprovals.slice(0, 5),
+            pendingApprovals: approvals.pendingApprovals,
           },
           capabilities: caps,
           screenSize: screen,
           displays,
-          recentActions: recent.slice(-5),
+          recentActions: recent,
         },
       };
     } catch (error) {

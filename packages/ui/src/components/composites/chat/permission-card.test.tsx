@@ -344,6 +344,16 @@ describe("PermissionCard", () => {
     expect(result?.payload.fallbackLabel).toBe("Use internal reminders");
   });
 
+  it("preserves a permission card and its display after a 100k response prefix", () => {
+    const display = "A".repeat(120_000);
+    const result = parsePermissionRequestFromText(
+      `${display}\n\`\`\`json\n{"action":"permission_request","permission":"reminders","reason":"add groceries","feature":"lifeops.reminders.create"}\n\`\`\``,
+    );
+
+    expect(result?.display).toBe(display);
+    expect(result?.payload.permission).toBe("reminders");
+  });
+
   it("parsePermissionRequestFromText returns null for non-permission actions", () => {
     expect(
       parsePermissionRequestFromText(

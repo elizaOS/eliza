@@ -43,6 +43,12 @@ import sys
 from pathlib import Path
 from typing import Any, Final, Iterable, Mapping
 
+SCRIPTS_DIR = Path(__file__).resolve().parent.parent
+if str(SCRIPTS_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPTS_DIR))
+
+from training.tokenization import tokenize_with_explicit_limit  # noqa: E402
+
 DEFAULT_REPO_EN: Final[str] = "livekit/turn-detector"
 DEFAULT_REVISION_EN: Final[str] = "v1.2.2-en"
 DEFAULT_REVISION_INTL: Final[str] = "v0.4.1-intl"
@@ -896,10 +902,10 @@ def build_examples(
             if label is None:
                 continue
             text = _format_livekit_prompt(tokenizer, utterance)
-            encoded = tokenizer(
+            encoded = tokenize_with_explicit_limit(
+                tokenizer,
                 text,
-                max_length=max_length,
-                truncation=True,
+                max_tokens=max_length,
                 padding="max_length",
                 add_special_tokens=False,
                 return_attention_mask=True,

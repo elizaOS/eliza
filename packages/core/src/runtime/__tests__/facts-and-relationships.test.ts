@@ -448,7 +448,7 @@ describe("runFactsAndRelationshipsStage", () => {
 	// display cap), so a busy room must not flood the room_entities: prompt
 	// block. The grounding set is bounded to 12, prioritizing entities whose
 	// names match a candidate relationship subject/object.
-	it("bounds room_entities to 12 and prioritizes candidate-named entities in a large room (#13196 P2)", async () => {
+	it("preserves every room entity in relationship validation context", async () => {
 		const runtime = makeRuntime(
 			JSON.stringify({
 				facts: [],
@@ -459,7 +459,7 @@ describe("runFactsAndRelationshipsStage", () => {
 			}),
 		);
 		// 40 participants; "Zoey" (candidate object) is intentionally last so a
-		// naive slice(0,12) would drop it. The bounding must still surface it.
+		// prefix cap would drop it.
 		const many = Array.from({ length: 39 }, (_, i) => ({
 			id: `00000000-0000-0000-0000-0000000${String(i).padStart(5, "0")}` as UUID,
 			names: [`Person${i}`],
@@ -503,9 +503,8 @@ describe("runFactsAndRelationshipsStage", () => {
 		const entityLines = roomBlock
 			.split("\n")
 			.filter((line) => line.startsWith("- "));
-		// Capped at 12 lines.
-		expect(entityLines.length).toBe(12);
-		// The candidate-named entity survived the cap.
+		expect(entityLines.length).toBe(40);
+		// The candidate-named entity remains present without prioritization loss.
 		expect(content).toContain("Zoey (id:");
 	});
 

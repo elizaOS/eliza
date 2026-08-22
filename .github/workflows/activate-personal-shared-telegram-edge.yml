@@ -441,7 +441,7 @@ jobs:
 
           activation_cli_confirmed=false
           for attempt in 1 2 3; do
-            if printf '%s' 'true' | bunx wrangler@4.100.0 secret put \
+            if printf '%s' 'true' | bunx wrangler@4.116.0 secret put \
               "$EDGE_SECRET_NAME" --env "$TARGET_ENVIRONMENT"; then
               activation_cli_confirmed=true
               break

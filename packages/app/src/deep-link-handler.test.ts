@@ -86,6 +86,16 @@ describe("isTrustedAppLink", () => {
 });
 
 describe("createDeepLinkHandler — top-level-surface navigation intents", () => {
+  it("routes a trusted Cloudflare Live View into the built-in Browser", () => {
+    const liveView = "https://live.browser.run/session?token=secret";
+    const { handle, dispatchNavigationIntent } = makeHandler();
+    handle(`elizaos://browser?browse=${encodeURIComponent(liveView)}`);
+    expect(dispatchNavigationIntent).toHaveBeenCalledWith({
+      viewId: "browser",
+      viewPath: `/browser?browse=${encodeURIComponent(liveView)}`,
+    });
+  });
+
   it("routes wallet links (custom scheme AND universal) onto the navigation bus, not the hash", () => {
     const { handle, dispatchNavigationIntent } = makeHandler();
     handle("elizaos://wallet");

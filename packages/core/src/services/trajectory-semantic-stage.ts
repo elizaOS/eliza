@@ -16,12 +16,8 @@ import { sanitizeTrajectoryJsonObject } from "./trajectory-json";
 
 export const TRAJECTORY_SEMANTIC_STAGE_SCHEMA_VERSION = 1 as const;
 
-export const TRAJECTORY_SEMANTIC_STAGES_MAX_ITEMS = 250;
 const TRAJECTORY_SEMANTIC_STAGE_MAX_DEPTH = 20;
-const TRAJECTORY_SEMANTIC_STAGE_MAX_NODES = 5_000;
-const TRAJECTORY_SEMANTIC_STAGE_MAX_STRING_CHARS = 64 * 1024;
 const TRAJECTORY_SEMANTIC_STAGE_MAX_ID_CHARS = 256;
-const TRAJECTORY_SEMANTIC_STAGES_MAX_JSON_BYTES = 1024 * 1024;
 const utf8Encoder = new TextEncoder();
 
 const SEMANTIC_STAGE_KEYS = new Set([
@@ -48,7 +44,7 @@ const SEMANTIC_STAGE_PAYLOAD_KEYS = new Set([
 
 const RECORDED_STAGE_KIND_SET = new Set<string>(RECORDED_STAGE_KINDS);
 
-/** A bounded, transport-safe semantic stage attached to a trajectory step. */
+/** A transport-safe semantic stage attached to a trajectory step. */
 export interface TrajectorySemanticStageRecord {
 	schemaVersion: typeof TRAJECTORY_SEMANTIC_STAGE_SCHEMA_VERSION;
 	stageId: string;
@@ -126,10 +122,7 @@ function isJsonValue(
 	depth = 0,
 ): value is JsonValue {
 	state.nodes += 1;
-	if (
-		state.nodes > TRAJECTORY_SEMANTIC_STAGE_MAX_NODES ||
-		depth > TRAJECTORY_SEMANTIC_STAGE_MAX_DEPTH
-	) {
+	if (depth > TRAJECTORY_SEMANTIC_STAGE_MAX_DEPTH) {
 		return false;
 	}
 	const serializedScalarBytes = (scalar: string | number | boolean | null) =>
@@ -139,20 +132,18 @@ function isJsonValue(
 		return state.remainingBytes >= 0;
 	}
 	if (typeof value === "string") {
-		if (value.length > TRAJECTORY_SEMANTIC_STAGE_MAX_STRING_CHARS) return false;
 		state.remainingBytes -= serializedScalarBytes(value);
-		return state.remainingBytes >= 0;
+		return true;
 	}
 	if (typeof value === "number") {
 		if (!Number.isFinite(value)) return false;
 		state.remainingBytes -= serializedScalarBytes(value);
-		return state.remainingBytes >= 0;
+		return true;
 	}
 	if (typeof value !== "object") return false;
 	if (state.seen.has(value)) return false;
 	state.seen.add(value);
 	if (Array.isArray(value)) {
-		if (value.length > TRAJECTORY_SEMANTIC_STAGES_MAX_ITEMS) return false;
 		const valid = value.every((entry) => isJsonValue(entry, state, depth + 1));
 		state.seen.delete(value);
 		return valid;
@@ -160,10 +151,10 @@ function isJsonValue(
 	const prototype = Object.getPrototypeOf(value);
 	if (prototype !== Object.prototype && prototype !== null) return false;
 	const record = asRecord(value);
-	if (!record || Object.keys(record).length > 200) return false;
+	if (!record) return false;
 	const valid = Object.entries(record).every(([key, entry]) => {
 		state.remainingBytes -= serializedScalarBytes(key) + 1;
-		return state.remainingBytes >= 0 && isJsonValue(entry, state, depth + 1);
+		return isJsonValue(entry, state, depth + 1);
 	});
 	state.seen.delete(value);
 	return valid;
@@ -177,7 +168,7 @@ function createSemanticStageValidationState(): {
 	return {
 		seen: new WeakSet(),
 		nodes: 0,
-		remainingBytes: TRAJECTORY_SEMANTIC_STAGES_MAX_JSON_BYTES,
+		remainingBytes: Number.POSITIVE_INFINITY,
 	};
 }
 
@@ -297,9 +288,6 @@ export function parseTrajectorySemanticStages(
 ): TrajectorySemanticStageRecord[] | undefined {
 	if (value === undefined) return undefined;
 	if (!Array.isArray(value)) throw invalidSemanticStage("semanticStages");
-	if (value.length > TRAJECTORY_SEMANTIC_STAGES_MAX_ITEMS) {
-		throw invalidSemanticStage("semanticStages.length", value.length);
-	}
 	const validationState = createSemanticStageValidationState();
 	const stageIds = new Set<string>();
 	return value.map((stage) => {

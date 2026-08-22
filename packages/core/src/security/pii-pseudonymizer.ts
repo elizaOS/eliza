@@ -55,7 +55,9 @@ import type { EntitySpan, PiiEntityRecognizer } from "./entity-recognizer";
 export const MAX_PII_PSEUDONYM_WALK_DEPTH = 64;
 export const MAX_PII_PSEUDONYM_WALK_NODES = 100_000;
 /** Total UTF-16 code units charged for keys + string leaves (not a JSON size). */
-export const MAX_PII_PSEUDONYM_WALK_BYTES = 4 * 1024 * 1024;
+// Supports multi-million-character inputs from current long-context models while
+// retaining a fail-closed guard against adversarial object graphs.
+export const MAX_PII_PSEUDONYM_WALK_BYTES = 16 * 1024 * 1024;
 /** Per-key UTF-16 code-unit cap. Huge keys cannot hide behind a 1-visit object. */
 export const MAX_PII_PSEUDONYM_KEY_BYTES = 1024;
 export const PII_PSEUDONYM_UNBOUNDED = "PII_PSEUDONYM_UNBOUNDED";
@@ -561,7 +563,7 @@ function walkPiiPseudonymValue(
 }
 
 /**
- * Bounded prompt-text collection used by {@link AgentRuntime.useModel} before
+ * Complete prompt-text collection used by {@link AgentRuntime.useModel} before
  * `learn` / `substituteInValue`. Shares the same descriptor-safe walker and
  * budgets so cyclic, over-deep, sparse, accessor, or Proxy graphs fail closed
  * with {@link PII_PSEUDONYM_UNBOUNDED} instead of RangeError / TypeError on

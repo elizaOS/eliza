@@ -153,20 +153,41 @@ function resolveStewardUpstream(
   return null;
 }
 
-type ProvidersBody = {
-  ok?: boolean;
-  data?: {
-    passkey?: boolean;
-    email?: boolean;
-    siwe?: boolean;
-    siws?: boolean;
-    google?: boolean;
-    discord?: boolean;
-    github?: boolean;
-    oauth?: string[];
-    [key: string]: unknown;
-  };
+type ProvidersData = {
+  passkey?: boolean;
+  email?: boolean;
+  siwe?: boolean;
+  siws?: boolean;
+  google?: boolean;
+  discord?: boolean;
+  github?: boolean;
+  oauth?: string[];
+  [key: string]: unknown;
 };
+
+type ProvidersBody = ProvidersData & {
+  ok?: boolean;
+  data?: ProvidersData;
+};
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function invalidProvidersResponse(): Response {
+  return Response.json(
+    {
+      success: false,
+      error: "steward_upstream_invalid_response",
+      code: "steward_upstream_invalid_response",
+      message: "Steward providers response is malformed",
+    },
+    {
+      status: 502,
+      headers: { "cache-control": "no-store" },
+    },
+  );
+}
 
 function hasOAuthCreds(
   env: AppEnv["Bindings"],
@@ -322,10 +343,21 @@ async function patchProvidersResponse(
   } catch {
     return upstream;
   }
-  if (!parsed?.data) return upstream;
+  if (!isRecord(parsed)) return invalidProvidersResponse();
 
-  const oauth = new Set<string>(parsed.data.oauth ?? []);
-  const patched: ProvidersBody["data"] = { ...parsed.data };
+  const hasNestedData = Object.hasOwn(parsed, "data");
+  const providerData = hasNestedData ? parsed.data : parsed;
+  if (!isRecord(providerData)) return invalidProvidersResponse();
+  if (
+    Object.hasOwn(providerData, "oauth") &&
+    (!Array.isArray(providerData.oauth) ||
+      !providerData.oauth.every((provider) => typeof provider === "string"))
+  ) {
+    return invalidProvidersResponse();
+  }
+
+  const oauth = new Set<string>(providerData.oauth ?? []);
+  const patched: ProvidersData = { ...providerData };
 
   for (const provider of ["google", "discord", "github"] as const) {
     if (!patched[provider] && hasOAuthCreds(env, provider)) {
@@ -335,13 +367,13 @@ async function patchProvidersResponse(
   }
   patched.oauth = [...oauth];
 
-  return Response.json(
-    { ...parsed, data: patched },
-    {
-      status: upstream.status,
-      headers: upstream.headers,
-    },
-  );
+  const body = hasNestedData
+    ? { ...parsed, data: patched }
+    : { ...parsed, ...patched };
+  return Response.json(body, {
+    status: upstream.status,
+    headers: upstream.headers,
+  });
 }
 
 export const embeddedStewardHandler: MiddlewareHandler<AppEnv> = async (c) => {

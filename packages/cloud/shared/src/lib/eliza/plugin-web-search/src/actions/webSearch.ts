@@ -29,8 +29,6 @@ interface WebSearchParams {
   end_date?: string;
 }
 
-const DEFAULT_MAX_WEB_SEARCH_CHARS = 16000;
-
 /**
  * Build the extraction template with the appropriate conversation context.
  * Prefers conversationLog if available, falls back to recentMessages.
@@ -56,11 +54,6 @@ Respond using JSON only. No markdown, no prose, no XML.
   "query": "the exact query to search",
   "topic": "general or finance"
 }`;
-}
-
-function MaxTokens(data: string, maxTokens: number = DEFAULT_MAX_WEB_SEARCH_CHARS): string {
-  // Character-based truncation to cap response length
-  return data.length > maxTokens ? data.slice(0, maxTokens) : data;
 }
 
 function toCallbackData(
@@ -402,7 +395,7 @@ export const webSearch: Action & Record<string, unknown> = {
         const callbackData = toCallbackData(searchResponse, reasoningSteps, searchMetadata);
 
         const result: ActionResult = {
-          text: MaxTokens(responseList, DEFAULT_MAX_WEB_SEARCH_CHARS),
+          text: responseList,
           success: true,
           data: callbackData,
           input: inputParams,

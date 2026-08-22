@@ -1,6 +1,6 @@
 /**
- * Unit tests for the shared skill-action parsing and display-clamp helpers,
- * focused on the bounded quoted-span capture and the reference clamps.
+ * Unit tests for shared skill-action parsing and complete normalized machine
+ * references.
  */
 
 import { describe, expect, it } from "vitest";
@@ -34,7 +34,7 @@ describe("extractSlugFromMessage", () => {
 	});
 });
 
-describe("skill reference clamps", () => {
+describe("skill reference rendering", () => {
 	it("quotes name-shaped references and falls back on blobs", () => {
 		expect(describeSkillReference("weather")).toBe('"weather"');
 		expect(describeSkillReference("line one\nline two")).toBe("that skill");
@@ -42,19 +42,18 @@ describe("skill reference clamps", () => {
 		expect(describeSkillReference("", "that request")).toBe("that request");
 	});
 
-	it("log view collapses whitespace and clamps to 120 chars", () => {
+	it("log view collapses whitespace and preserves complete content", () => {
 		expect(skillReferenceLogView("a\n\n b\tc")).toBe("a b c");
 		const long = "x".repeat(300);
 		const view = skillReferenceLogView(long);
-		expect(view.length).toBe(121);
-		expect(view.endsWith("…")).toBe(true);
+		expect(view).toBe(long);
 	});
 
 	it("keeps surrogate pairs intact and sanitizes lone surrogates in log view", () => {
 		const longWithEmoji = `${"a".repeat(119)}🦊${"b".repeat(50)}`;
 		const view = skillReferenceLogView(longWithEmoji);
 		expect(view.isWellFormed()).toBe(true);
-		expect(view).toBe(`${"a".repeat(119)}…`);
+		expect(view).toBe(longWithEmoji);
 
 		const lone = `bad ${String.fromCharCode(0xd800)} ref`;
 		const loneView = skillReferenceLogView(lone);

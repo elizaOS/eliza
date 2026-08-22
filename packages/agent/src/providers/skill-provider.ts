@@ -9,8 +9,8 @@
  *
  * Three tiers of injection:
  *   - No match:  1-line footer (~25 tokens)
- *   - Moderate:  Compact top-3 list (~150 tokens)
- *   - Strong:    Full instructions of #1 match, capped at 2000 chars
+ *   - Moderate:  Every relevant skill with its complete description
+ *   - Strong:    Complete instructions of the best match
  */
 
 import {
@@ -21,7 +21,6 @@ import {
   type Service,
   type State,
   toWellFormedUnicode,
-  truncateWellFormed,
 } from "@elizaos/core";
 
 // ── Stopwords ────────────────────────────────────────────────────────────────
@@ -285,20 +284,14 @@ function scoreQuery(index: BM25Index, queryText: string): ScoredSkill[] {
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-export function truncateDesc(desc: string, maxLen: number): string {
-  const wellFormed = toWellFormedUnicode(desc);
-  if (wellFormed.length <= maxLen) return wellFormed;
-  if (maxLen <= 3) return truncateWellFormed(wellFormed, maxLen);
-  const budget = Math.max(0, maxLen - 3);
-  return `${truncateWellFormed(wellFormed, budget)}...`;
+export function normalizeDescription(desc: string): string {
+  return toWellFormedUnicode(desc);
 }
 
 // ── Thresholds ───────────────────────────────────────────────────────────────
 
 const THRESHOLD_RELEVANT = 3;
 const THRESHOLD_HIGHLY_RELEVANT = 8;
-const MAX_INSTRUCTION_CHARS = 2000;
-const MAX_SKILL_MATCHES = 3;
 
 // ── Provider ─────────────────────────────────────────────────────────────────
 
@@ -365,14 +358,12 @@ export function createDynamicSkillProvider(): Provider {
           };
         }
 
-        // Tier 1: Moderate match — compact top-3 list
-        const topMatches = scored
-          .slice(0, MAX_SKILL_MATCHES)
-          .filter((s) => s.score >= THRESHOLD_RELEVANT);
+        // Tier 1: Moderate match — include every relevant skill.
+        const topMatches = scored.filter((s) => s.score >= THRESHOLD_RELEVANT);
         const compactList = topMatches
           .map(
             (s) =>
-              `- **${s.name}** (${s.slug}): ${truncateDesc(s.description, 80)}`,
+              `- **${s.name}** (${s.slug}): ${toWellFormedUnicode(s.description)}`,
           )
           .join("\n");
 
@@ -392,15 +383,12 @@ export function createDynamicSkillProvider(): Provider {
           };
         }
 
-        // Tier 2: Strong match — full instructions of #1, capped
+        // Tier 2: Strong match — complete instructions of #1.
         const instructions = service.getSkillInstructions(topMatch.slug);
         let body = "";
         if (instructions?.body) {
           const wellFormed = toWellFormedUnicode(instructions.body);
-          body =
-            wellFormed.length > MAX_INSTRUCTION_CHARS
-              ? `${truncateWellFormed(wellFormed, MAX_INSTRUCTION_CHARS)}\n\n...[truncated — use USE_SKILL for full instructions]`
-              : wellFormed;
+          body = wellFormed;
         }
 
         const otherMatches =

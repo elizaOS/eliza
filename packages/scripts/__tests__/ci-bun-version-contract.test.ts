@@ -59,7 +59,7 @@ const SHA = "0c5077e51419868618aeaa5fe8019c62421857d6";
 
 const GATE_WORKFLOWS = [
   "test.yml",
-  "develop-pr.yml",
+  "pr-static-smoke.yml",
   "cloud-cf-deploy.yml",
   "cloud-cf-release.yml",
 ];
@@ -586,17 +586,17 @@ jobs:
     );
   });
 
-  test("fails when the required develop PR gate drops contract enforcement", () => {
+  test("fails when PR Static Smoke drops contract enforcement", () => {
     expectViolation(
       buildRepo({
         overrides: {
-          "develop-pr.yml": gateStub().replace(
+          "pr-static-smoke.yml": gateStub().replace(
             /\s+- run: node packages\/scripts\/ci-bun-version-contract\.mjs --inventory[^\n]+/,
             "",
           ),
         },
       }),
-      /develop-pr\.yml: required lane does not execute the Bun contract/,
+      /pr-static-smoke\.yml: required lane does not execute the Bun contract/,
     );
   });
 

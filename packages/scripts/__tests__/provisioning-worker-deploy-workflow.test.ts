@@ -7,6 +7,14 @@ const workflow = readFileSync(
   join(root, ".github/workflows/deploy-eliza-provisioning-worker.yml"),
   "utf8",
 );
+const effectRegistry = readFileSync(
+  join(root, ".github/develop-effects.json"),
+  "utf8",
+);
+const surfaceGraph = readFileSync(
+  join(root, ".github/develop-surface-graph.json"),
+  "utf8",
+);
 const provisioningService = readFileSync(
   join(root, "packages/cloud/scripts/admin/eliza-provisioning-worker.service"),
   "utf8",
@@ -227,7 +235,9 @@ describe("provisioning worker deployment contract", () => {
       ["Setup Node for migration gate", 5],
       ["Setup Bun for migration gate", 5],
       ["Install exact migration dependencies", 10],
+      ["Fence current develop SHA before database mutation", 1],
       ["Run exact-SHA canonical database migrations", 10],
+      ["Recheck current develop SHA before host deployment", 1],
     ]);
     let totalPreSshMinutes = 0;
     for (const [name, expectedMinutes] of expectedBounds) {
@@ -236,7 +246,7 @@ describe("provisioning worker deployment contract", () => {
       totalPreSshMinutes += bound ?? 0;
     }
 
-    expect(totalPreSshMinutes).toBe(38);
+    expect(totalPreSshMinutes).toBe(40);
     expect(workflow).toContain("timeout-minutes: 95");
     expect(totalPreSshMinutes + 5 + 40 + 5).toBeLessThan(95);
   });
@@ -256,7 +266,9 @@ describe("provisioning worker deployment contract", () => {
   it("fails checkout cleanup loudly and covers all shared-package changes", () => {
     expect(workflow).toContain("git reset --hard HEAD\n");
     expect(workflow).not.toContain("git reset --hard HEAD 2>/dev/null || true");
-    expect(workflow).toContain("- 'packages/shared/**'");
+    expect(effectRegistry).toContain('"id": "provisioning-worker-staging"');
+    expect(effectRegistry).toContain('"surfaces": ["canonical", "cloud"]');
+    expect(surfaceGraph).toContain('"packages/shared"');
   });
 
   it("serializes the SSH mutation on the target host after runner cancellation", () => {

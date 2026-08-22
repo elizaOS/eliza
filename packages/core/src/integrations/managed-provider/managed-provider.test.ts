@@ -425,6 +425,20 @@ describe("collectProviderPages", () => {
 		).resolves.toEqual([]);
 	});
 
+	it("follows provider cursors beyond the former default page ceiling", async () => {
+		let calls = 0;
+		const items = await collectProviderPages(async () => {
+			calls += 1;
+			return {
+				items: calls === 21 ? ["complete"] : [],
+				nextCursor: calls === 21 ? null : `cursor-${calls}`,
+			};
+		});
+
+		expect(calls).toBe(21);
+		expect(items).toEqual(["complete"]);
+	});
+
 	it("rejects cursor loops, empty cursors, and limit overflows", async () => {
 		await expect(
 			collectProviderPages(async () => ({ items: ["x"], nextCursor: "same" }), {

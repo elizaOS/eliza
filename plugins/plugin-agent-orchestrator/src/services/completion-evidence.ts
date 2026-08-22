@@ -31,7 +31,7 @@
  * @module services/completion-evidence
  */
 
-import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
+import { toWellFormedUnicode } from "@elizaos/core";
 import type { WorkspaceChangeSet } from "./workspace-diff.js";
 
 /** One recorded signal (a durable event or sub-agent message) the assembler
@@ -131,7 +131,7 @@ export interface CompletionEvidenceBundle {
   /** Check classes runnable where the verified deliverable lives (tooling
    *  manifests observed in its own directories); absent = unknown. */
   checkSurfaces?: { typecheck: boolean; lint: boolean; test: boolean };
-  /** Capped contents of small fs-verified static files, READ BY THE
+  /** Contents of small fs-verified static files, READ BY THE
    *  ORCHESTRATOR from the session workdir — so content criteria ("the CSS
    *  includes …") are judged against the real file text instead of failing as
    *  unproven narration (#20794 reed-marsh). */
@@ -142,23 +142,9 @@ export interface CompletionEvidenceBundle {
   trajectoryPath?: string;
 }
 
-/** Total cap for the assembled evidence string. Sits under the verifier's own
- *  {@link trimEvidence} budget so the section structure survives intact. */
-const MAX_EVIDENCE_CHARS = 24_000;
-const MAX_DIFF_CHARS = 3_000;
-const MAX_DELIVERABLE_CHARS = 1_500;
-const MAX_REPLY_CHARS = 1_500;
-const MAX_SIGNAL_LINES = 40;
-const MAX_SIGNAL_CHARS = 2_000;
-const MAX_URLS = 12;
-const MAX_ARTIFACTS = 20;
-/** Per-tool-output-field cap (test/build/lint/raw each). */
-const MAX_TOOL_OUTPUT_CHARS = 2_000;
-
 /**
  * Append a verifier-produced section without replacing the evidence assembled
- * above. When the combined string exceeds the prompt budget, preserve the new
- * (usually highest-value) section and trim only the older evidence prefix.
+ * above without changing either section's content.
  */
 export function appendCompletionEvidenceSection(
   evidence: string,
@@ -167,23 +153,8 @@ export function appendCompletionEvidenceSection(
   const base = evidence.trim();
   const addition = section.trim();
   if (!addition) return base;
-  if (!base) return clamp(addition, MAX_EVIDENCE_CHARS);
-  const separator = "\n\n";
-  if (base.length + separator.length + addition.length <= MAX_EVIDENCE_CHARS) {
-    return `${base}${separator}${addition}`;
-  }
-  if (addition.length >= MAX_EVIDENCE_CHARS) {
-    const marker = "\n… [truncated]";
-    const wellFormedAddition = toWellFormedUnicode(addition);
-    return `${truncateWellFormed(wellFormedAddition, MAX_EVIDENCE_CHARS - marker.length)}${marker}`;
-  }
-  const marker = "\n… [evidence truncated]";
-  const available = Math.max(
-    0,
-    MAX_EVIDENCE_CHARS - addition.length - separator.length - marker.length,
-  );
-  const wellFormedBase = toWellFormedUnicode(base);
-  return `${truncateWellFormed(wellFormedBase, available)}${marker}${separator}${addition}`;
+  if (!base) return toWellFormedUnicode(addition);
+  return `${toWellFormedUnicode(base)}\n\n${toWellFormedUnicode(addition)}`;
 }
 
 /**
@@ -206,11 +177,8 @@ function isLoopbackUrl(value: string): boolean {
   }
 }
 
-export function clamp(text: string, max: number): string {
-  const trimmed = text.trim();
-  const wellFormed = toWellFormedUnicode(trimmed);
-  if (wellFormed.length <= max) return wellFormed;
-  return `${truncateWellFormed(wellFormed, max)}\n… [truncated]`;
+export function normalizeEvidenceText(text: string): string {
+  return toWellFormedUnicode(text.trim());
 }
 
 /** Markers that class a signal as TEST output (vitest/jest run, suite result). */
@@ -223,7 +191,7 @@ const BUILD_MARKER_RE =
 const LINT_MARKER_RE = /\b(?:biome|eslint|\blint\b)\b/;
 
 /** Extract just the build/test-looking lines from one signal body, deduped and
- *  bounded, so a noisy tool transcript collapses to its run-result lines. */
+ *  so a noisy tool transcript collapses to its run-result lines. */
 function extractToolLines(text: string, seen: Set<string>): string[] {
   const out: string[] = [];
   for (const rawLine of text.replace(/\r\n/g, "\n").split("\n")) {
@@ -233,7 +201,6 @@ function extractToolLines(text: string, seen: Set<string>): string[] {
     if (seen.has(line)) continue;
     seen.add(line);
     out.push(line);
-    if (out.length >= MAX_SIGNAL_LINES) break;
   }
   return out;
 }
@@ -289,7 +256,6 @@ function extractBuildTestLines(signals: readonly EvidenceSignal[]): string[] {
       if (seen.has(key)) continue;
       seen.add(key);
       out.push(key);
-      if (out.length >= MAX_SIGNAL_LINES) return out;
     }
   }
   return out;
@@ -312,7 +278,7 @@ export function renderChangeSetBody(changeSet: WorkspaceChangeSet): string {
   ];
   if (changeSet.diff && changeSet.diff.trim().length > 0) {
     lines.push("diff:");
-    lines.push(clamp(changeSet.diff, MAX_DIFF_CHARS));
+    lines.push(normalizeEvidenceText(changeSet.diff));
   }
   if (changeSet.truncated) lines.push("(changeset truncated)");
   return lines.join("\n");
@@ -326,10 +292,7 @@ function renderChangeSetSection(changeSet: WorkspaceChangeSet): string {
 }
 
 function renderUrlsSection(urls: readonly string[]): string {
-  const unique = [...new Set(urls.map((u) => u.trim()).filter(Boolean))].slice(
-    0,
-    MAX_URLS,
-  );
+  const unique = [...new Set(urls.map((u) => u.trim()).filter(Boolean))];
   const lines = ["## VERIFIED URLS (probed at completion)"];
   for (const url of unique) {
     // Every URL here answered a probe the ORCHESTRATOR ran. A loopback hit is
@@ -347,10 +310,7 @@ function renderUrlsSection(urls: readonly string[]): string {
  *  UN-verified status explicit — so the judge treats a pasted link as a claim,
  *  not as proof of a reachable deploy. */
 function renderMentionedUrlsSection(urls: readonly string[]): string {
-  const unique = [...new Set(urls.map((u) => u.trim()).filter(Boolean))].slice(
-    0,
-    MAX_URLS,
-  );
+  const unique = [...new Set(urls.map((u) => u.trim()).filter(Boolean))];
   const lines = [
     "## CLAIMED URLS (mentioned by the sub-agent — NOT probe-verified; treat as an unproven claim)",
   ];
@@ -376,7 +336,7 @@ function renderUnverifiedFilesSection(
   const lines = [
     "## UNVERIFIED FILE CLAIMS (no successful write in the tool ledger — treat each as NOT delivered until re-verified)",
   ];
-  for (const file of files.slice(0, MAX_ARTIFACTS)) {
+  for (const file of files) {
     lines.push(
       `- ${file.path} (${
         file.reason === "rejected-write"
@@ -391,7 +351,7 @@ function renderUnverifiedFilesSection(
 function renderArtifactsSection(
   artifacts: readonly EvidenceArtifactRef[],
 ): string {
-  const shown = artifacts.slice(0, MAX_ARTIFACTS);
+  const shown = artifacts;
   const lines = ["## ARTIFACTS (screenshots / trajectories / other refs)"];
   for (const artifact of shown) {
     const ref = artifact.ref ? ` — ${artifact.ref}` : "";
@@ -412,7 +372,7 @@ function renderToolOutputSection(toolOutput: ToolOutputEvidence): string {
     const text = value?.trim();
     if (!text) continue;
     lines.push(`### ${label}`);
-    lines.push(clamp(text, MAX_TOOL_OUTPUT_CHARS));
+    lines.push(normalizeEvidenceText(text));
   }
   return lines.join("\n");
 }
@@ -454,7 +414,7 @@ export function buildCompletionEvidenceString(
     sections.push(
       [
         "## FINAL REPLY (sub-agent's reported result)",
-        clamp(reply, MAX_REPLY_CHARS),
+        normalizeEvidenceText(reply),
       ].join("\n"),
     );
   }
@@ -548,11 +508,7 @@ export function buildCompletionEvidenceString(
     return reply;
   }
 
-  const assembled = sections.join("\n\n");
-  const wellFormed = toWellFormedUnicode(assembled);
-  return wellFormed.length > MAX_EVIDENCE_CHARS
-    ? `${truncateWellFormed(wellFormed, MAX_EVIDENCE_CHARS)}\n… [evidence truncated]`
-    : wellFormed;
+  return toWellFormedUnicode(sections.join("\n\n"));
 }
 
 /**
@@ -587,7 +543,7 @@ export function buildEvidenceStringFromInput(
     sections.push(
       [
         "## DELIVERABLE (captured sub-agent output)",
-        clamp(deliverable, MAX_DELIVERABLE_CHARS),
+        normalizeEvidenceText(deliverable),
       ].join("\n"),
     );
     hasRicherSection = true;
@@ -598,7 +554,7 @@ export function buildEvidenceStringFromInput(
     sections.push(
       [
         "## FINAL REPLY (sub-agent's reported result)",
-        clamp(reply, MAX_REPLY_CHARS),
+        normalizeEvidenceText(reply),
       ].join("\n"),
     );
     // A reply that says more than the bare fallback is itself richer signal.
@@ -615,7 +571,7 @@ export function buildEvidenceStringFromInput(
     sections.push(
       [
         "## TEST / BUILD / TYPECHECK OUTPUT (mined from recorded session output)",
-        clamp(buildTestLines.join("\n"), MAX_SIGNAL_CHARS),
+        normalizeEvidenceText(buildTestLines.join("\n")),
       ].join("\n"),
     );
     hasRicherSection = true;
@@ -631,8 +587,5 @@ export function buildEvidenceStringFromInput(
     return input.fallbackSummary.trim();
   }
 
-  const assembled = sections.join("\n\n");
-  return assembled.length > MAX_EVIDENCE_CHARS
-    ? `${assembled.slice(0, MAX_EVIDENCE_CHARS)}\n… [evidence truncated]`
-    : assembled;
+  return sections.join("\n\n");
 }

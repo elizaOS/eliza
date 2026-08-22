@@ -19,7 +19,6 @@ import { join } from "node:path";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
 import {
   collectCompletionResiduals,
-  MAX_RESIDUAL_PATHS,
   residualDetails,
   residualsCorrection,
   residualsGateEnabled,
@@ -103,9 +102,10 @@ describe("collectCompletionResiduals — real git legs", () => {
     expect(residual?.items?.join("\n")).toContain("untracked.ts");
   });
 
-  it("caps the reported dirty-path list", async () => {
+  it("reports every dirty path", async () => {
     const { workdir } = makeRepo();
-    for (let i = 0; i < MAX_RESIDUAL_PATHS + 5; i += 1) {
+    const pathCount = 125;
+    for (let i = 0; i < pathCount; i += 1) {
       writeFileSync(join(workdir, `file-${i}.txt`), `${i}\n`);
     }
     const result = await collectCompletionResiduals({
@@ -115,10 +115,9 @@ describe("collectCompletionResiduals — real git legs", () => {
     const residual = result.residuals.find(
       (row) => row.kind === "uncommitted_changes",
     );
-    expect(residual?.detail).toContain(
-      `${MAX_RESIDUAL_PATHS + 5} uncommitted path(s)`,
-    );
-    expect(residual?.items).toHaveLength(MAX_RESIDUAL_PATHS);
+    expect(residual?.detail).toContain(`${pathCount} uncommitted path(s)`);
+    expect(residual?.items).toHaveLength(pathCount);
+    expect(residual?.items).toContain(`?? file-${pathCount - 1}.txt`);
   });
 
   it("flags committed-but-unpushed work against a real bare upstream", async () => {

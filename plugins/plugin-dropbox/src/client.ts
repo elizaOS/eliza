@@ -371,7 +371,7 @@ async function dropboxHttpError(
   }
   if (response.status === 400) {
     return new ElizaError(
-      `DropboxClient: request rejected: ${summary ?? (bodyText.slice(0, 200) || "bad input")}`,
+      `DropboxClient: request rejected: ${summary ?? (bodyText || "bad input")}`,
       { code: "DROPBOX_INVALID_REQUEST", context: base }
     );
   }

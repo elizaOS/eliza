@@ -62,9 +62,6 @@ export interface VisionAugmenterDetectors {
 }
 
 const DEFAULT_DESCRIBE_PROMPT = "Describe what is in this image.";
-const MAX_OBJECTS = 12;
-const MAX_OCR_BLOCKS = 24;
-
 /**
  * Keep only OCR fragments that carry real signal. Tesseract run over a natural
  * photo (vs a clean document) emits per-glyph noise — `|`, `=`, `—`, stray
@@ -108,8 +105,7 @@ export class FusedVisionContextAugmenter {
         });
         const lines = res.blocks
           .map((b) => b.text.trim())
-          .filter(isMeaningfulOcrText)
-          .slice(0, MAX_OCR_BLOCKS);
+          .filter(isMeaningfulOcrText);
         if (lines.length > 0) {
           fused.ocrText = lines.map((t) => `"${t}"`).join(", ");
         }
@@ -123,7 +119,6 @@ export class FusedVisionContextAugmenter {
         const objs = await this.deps.detectObjects(bytes);
         if (objs.length > 0) {
           fused.objects = objs
-            .slice(0, MAX_OBJECTS)
             .map((o) => `${o.type} (${o.confidence.toFixed(2)})`)
             .join(", ");
         }

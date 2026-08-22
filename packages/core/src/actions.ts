@@ -38,8 +38,8 @@ import {
 } from "./utils/deterministic";
 import { compressPromptDescription } from "./utils/prompt-compression";
 import {
+	deepToWellFormedUnicode,
 	toWellFormedUnicode,
-	truncateWellFormed,
 } from "./utils/well-formed.ts";
 
 export {
@@ -491,7 +491,7 @@ function coerceActionParamValue(
 			// delimited-string form; malformed JSON remains untrusted string input.
 		}
 		if (Array.isArray(parsed)) {
-			return toActionParameterValue(parsed);
+			return toActionParameterValue(deepToWellFormedUnicode(parsed));
 		}
 	}
 
@@ -499,13 +499,7 @@ function coerceActionParamValue(
 		return value;
 	}
 
-	const SAFE_SPLIT_LIMIT = 10_000;
-	const wellFormedTrimmed = toWellFormedUnicode(trimmed);
-	const safeTrimmed =
-		wellFormedTrimmed.length > SAFE_SPLIT_LIMIT
-			? truncateWellFormed(wellFormedTrimmed, SAFE_SPLIT_LIMIT)
-			: wellFormedTrimmed;
-	const splitValues = safeTrimmed
+	const splitValues = toWellFormedUnicode(trimmed)
 		.split(/\|\||,|\n/)
 		.map((entry) => entry.trim())
 		.filter((entry) => entry.length > 0);

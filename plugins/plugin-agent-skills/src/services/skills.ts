@@ -114,7 +114,6 @@ function skillScanReportDigest(report: SkillScanReport): string {
  * Prevents hammering the API when it returns errors (e.g. 429 rate-limit).
  */
 const FETCH_ERROR_COOLDOWN = 1000 * 60 * 5;
-const MAX_CATALOG_PAGES = 100;
 
 class CatalogPaginationError extends Error {
 	constructor(message: string) {
@@ -2210,14 +2209,8 @@ export class AgentSkillsService extends Service {
 			const entries: SkillCatalogEntry[] = [];
 			let cursor: string | undefined;
 			const requestedCursors = new Set<string>();
-			let pageCount = 0;
 
 			do {
-				if (pageCount >= MAX_CATALOG_PAGES) {
-					throw new CatalogPaginationError(
-						`Catalog pagination exceeded ${MAX_CATALOG_PAGES} pages`,
-					);
-				}
 				if (cursor) {
 					if (requestedCursors.has(cursor)) {
 						throw new CatalogPaginationError(
@@ -2271,7 +2264,6 @@ export class AgentSkillsService extends Service {
 					typeof data.nextCursor === "string" && data.nextCursor.trim()
 						? data.nextCursor
 						: undefined;
-				pageCount += 1;
 			} while (cursor);
 
 			this.catalogCache = { data: entries, cachedAt: Date.now() };

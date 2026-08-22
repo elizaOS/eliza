@@ -2,8 +2,8 @@
  * Provider that surfaces the owner's recent Eliza-app (client_chat)
  * conversation into the agent's context so it carries continuity across
  * platforms. Resolves the canonical owner, scans their most-active client_chat
- * rooms, and renders the newest messages oldest-first within a character
- * budget. Gated to ADMIN — returns empty for callers without admin access.
+ * rooms, and renders the complete conversation oldest-first. Gated to ADMIN —
+ * returns empty for callers without admin access.
  */
 import type {
   IAgentRuntime,
@@ -19,15 +19,6 @@ import {
 } from "@elizaos/core";
 import { hasAdminAccess } from "../security/access.ts";
 
-/** Maximum total characters for the provider text output. */
-const MAX_TEXT_LENGTH = 2000;
-
-/** Maximum messages to fetch per client_chat room. */
-const MESSAGES_PER_ROOM = 10;
-
-/** Maximum client_chat rooms to scan (most recent activity wins). */
-const MAX_ROOMS = 3;
-
 function memoryCreatedAt(memory: Memory): number {
   return typeof memory.createdAt === "number" ? memory.createdAt : 0;
 }
@@ -38,7 +29,7 @@ function memoryText(memory: Memory): string {
 
 /**
  * Fetch recent messages from the owner's client_chat rooms.
- * Returns messages newest-first, capped to a sensible limit.
+ * Returns messages newest-first.
  */
 async function fetchOwnerChatMessages(
   runtime: IAgentRuntime,
@@ -57,14 +48,12 @@ async function fetchOwnerChatMessages(
   );
   if (chatRooms.length === 0) return [];
 
-  // Limit how many rooms we scan
-  const targetRooms = chatRooms.slice(0, MAX_ROOMS);
-  const targetRoomIds = targetRooms.map((r) => r.id as UUID);
+  // Collect every matching client_chat room id.
+  const targetRoomIds = chatRooms.map((r) => r.id as UUID);
 
   const memories = await runtime.getMemoriesByRoomIds({
     tableName: "messages",
     roomIds: targetRoomIds,
-    limit: MESSAGES_PER_ROOM * MAX_ROOMS,
   });
 
   // Sort newest-first (getMemoriesByRoomIds default may vary)
@@ -74,7 +63,7 @@ async function fetchOwnerChatMessages(
     return tb - ta;
   });
 
-  return memories.slice(0, MESSAGES_PER_ROOM * MAX_ROOMS);
+  return memories;
 }
 
 function formatMessages(messages: Memory[], agentId: string): string {
@@ -86,14 +75,10 @@ function formatMessages(messages: Memory[], agentId: string): string {
   const lines = ordered.map((m) => {
     const sender = m.entityId === agentId ? "Agent" : "Owner";
     const text = memoryText(m);
-    return `[${sender}] ${text.substring(0, 200)}`;
+    return `[${sender}] ${text}`;
   });
 
-  let result = `# Recent Owner Conversation (Eliza App)\n${lines.join("\n")}`;
-  if (result.length > MAX_TEXT_LENGTH) {
-    result = `${result.substring(0, MAX_TEXT_LENGTH - 3)}...`;
-  }
-  return result;
+  return `# Recent Owner Conversation (Eliza App)\n${lines.join("\n")}`;
 }
 
 export const adminPanelProvider: Provider = createAdminPanelProvider();

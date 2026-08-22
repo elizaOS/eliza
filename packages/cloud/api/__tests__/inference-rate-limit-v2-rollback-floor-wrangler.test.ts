@@ -10,14 +10,11 @@ type WorkerConfig = {
     staging?: { durable_objects?: DurableConfig };
     production?: { durable_objects?: DurableConfig };
   };
-  migrations?: Array<{
-    tag?: string;
-    new_sqlite_classes?: string[];
-  }>;
+  exports?: Record<string, { type?: string; storage?: string }>;
 };
 
 describe("inference rate-limit v2 rollback floor", () => {
-  test("exports a migration-only Durable Object class without a runtime binding", async () => {
+  test("exports a binding-free Durable Object class", async () => {
     const config = Bun.TOML.parse(
       await Bun.file(new URL("../wrangler.toml", import.meta.url)).text(),
     ) as WorkerConfig;
@@ -25,9 +22,9 @@ describe("inference rate-limit v2 rollback floor", () => {
       new URL("../src/index.ts", import.meta.url),
     ).text();
 
-    expect(config.migrations).toContainEqual({
-      tag: "inference-rate-limit-v2-rollback-floor-v1",
-      new_sqlite_classes: ["InferenceRateLimitV2RollbackFloor"],
+    expect(config.exports?.InferenceRateLimitV2RollbackFloor).toEqual({
+      type: "durable-object",
+      storage: "sqlite",
     });
     expect(entrypoint).toContain(
       'export { InferenceRateLimitV2RollbackFloor } from "./inference-rate-limit-v2-rollback-floor";',

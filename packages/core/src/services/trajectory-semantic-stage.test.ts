@@ -99,7 +99,7 @@ describe("trajectory semantic stages", () => {
 		).toThrow(/semantic stage is invalid/i);
 	});
 
-	it("rejects unknown, non-JSON, cyclic, and over-bounded payloads", () => {
+	it("rejects unknown, non-JSON, and cyclic payloads", () => {
 		const semantic = recordedStageToSemanticStage(toolSearchStage);
 		expect(() =>
 			parseTrajectorySemanticStage({
@@ -122,14 +122,9 @@ describe("trajectory semantic stages", () => {
 				payload: { toolSearch: cyclic },
 			}),
 		).toThrow(/semantic stage is invalid/i);
-		expect(() =>
-			parseTrajectorySemanticStages(
-				Array.from({ length: 251 }, () => semantic),
-			),
-		).toThrow(/semantic stage is invalid/i);
 	});
 
-	it("applies node and byte budgets across the complete stage array", () => {
+	it("rejects duplicate ids while preserving large complete stage arrays", () => {
 		const semantic = recordedStageToSemanticStage(toolSearchStage);
 		expect(() =>
 			parseTrajectorySemanticStages([
@@ -139,18 +134,13 @@ describe("trajectory semantic stages", () => {
 		).toThrow(/semantic stage is invalid/i);
 
 		const largePayload = {
-			model: Object.fromEntries(
-				Array.from({ length: 10 }, (_, index) => [
-					`field-${index}`,
-					"x".repeat(60_000),
-				]),
-			),
+			model: { prompt: "x".repeat(70_000) },
 		};
-		expect(() =>
-			parseTrajectorySemanticStages([
-				{ ...semantic, stageId: "large-1", payload: largePayload },
-				{ ...semantic, stageId: "large-2", payload: largePayload },
-			]),
-		).toThrow(/semantic stage is invalid/i);
+		const stages = Array.from({ length: 260 }, (_, index) => ({
+			...semantic,
+			stageId: `large-${index}`,
+			payload: largePayload,
+		}));
+		expect(parseTrajectorySemanticStages(stages)).toEqual(stages);
 	});
 });

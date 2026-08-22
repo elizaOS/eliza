@@ -345,6 +345,39 @@ describe("Microsoft Graph calendar HTTP contract", () => {
     expect(deltaRequest?.headers.prefer).toContain('outlook.timezone="UTC"');
   });
 
+  it("follows calendar continuation links beyond the former fixed page ceiling", async () => {
+    let page = 0;
+    handler = () => {
+      page += 1;
+      return {
+        body: {
+          value:
+            page === 1_001
+              ? [
+                  {
+                    id: "late-calendar",
+                    name: "Late calendar",
+                    owner: { address: "owner@example.test" },
+                  },
+                ]
+              : [],
+          ...(page === 1_001
+            ? {}
+            : {
+                "@odata.nextLink": `${baseUrl}me/calendars?$skiptoken=page-${page + 1}`,
+              }),
+        },
+      };
+    };
+
+    const calendars = await port().listCalendars(microsoftAccount());
+
+    expect(page).toBe(1_001);
+    expect(calendars).toEqual([
+      expect.objectContaining({ id: "late-calendar", name: "Late calendar" }),
+    ]);
+  });
+
   it("creates one-off events with a stable transaction id and explicit invitation approval", async () => {
     handler = (request) => {
       expect(request.method).toBe("POST");

@@ -5,16 +5,12 @@ name: UI Story Gate
 # aggregate job remains fail-closed when a shard is cancelled or incomplete.
 
 on:
-  push:
-    branches: [develop]
-    paths:
-      - "packages/ui/**"
-      - ".github/workflows/ui-story-gate.yml"
+  workflow_call:
   workflow_dispatch:
 
 concurrency:
   group: ui-story-gate-${{ github.ref || github.run_id }}
-  cancel-in-progress: false
+  cancel-in-progress: ${{ github.event_name == 'push' }}
 
 permissions:
   contents: read

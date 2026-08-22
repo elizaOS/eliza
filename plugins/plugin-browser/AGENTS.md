@@ -15,7 +15,7 @@ Owns the Eliza browser workspace (electrobun-embedded `BrowserView` on desktop, 
 
 ### Providers
 
-- **browser_workspace** (`src/providers/workspace.ts`) — Injects live workspace mode (`desktop` / `web`) and open tab list (capped at 8 tabs) into agent context. Active when `browser` or `web` context is selected.
+- **browser_workspace** (`src/providers/workspace.ts`) — Injects live workspace mode (`desktop` / `web`) and the complete open tab list into agent context. Active when `browser` or `web` context is selected.
 
 ### Services
 

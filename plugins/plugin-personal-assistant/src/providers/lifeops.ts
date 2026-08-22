@@ -23,7 +23,6 @@ import {
   type ProviderResult,
   type State,
   toWellFormedUnicode,
-  truncateWellFormed,
 } from "@elizaos/core";
 import type {
   LifeOpsGmailTriageSummary,
@@ -56,9 +55,6 @@ import {
 import { LifeOpsService } from "../lifeops/service.js";
 
 const INTERNAL_URL = new URL("http://127.0.0.1/");
-export const GOAL_TITLE_MAX_LENGTH = 80;
-const GOAL_TITLES_MAX_DISPLAYED = 5;
-const MAX_ACCOUNT_LINES = 5;
 
 function formatCount(label: string, count: number): string {
   return `${label}: ${count}`;
@@ -113,12 +109,8 @@ async function summarizeConnectorDegradation(
   return lines;
 }
 
-export function truncateGoalTitle(title: string): string {
-  const wellFormed = toWellFormedUnicode(title.trim());
-  if (wellFormed.length <= GOAL_TITLE_MAX_LENGTH) {
-    return wellFormed;
-  }
-  return `${truncateWellFormed(wellFormed, GOAL_TITLE_MAX_LENGTH - 1).trimEnd()}…`;
+export function normalizeGoalTitle(title: string): string {
+  return toWellFormedUnicode(title.trim());
 }
 
 function readGoalReviewedAt(goal: LifeOpsGoalDefinition): string | null {
@@ -185,21 +177,14 @@ function summarizeActiveGoals(
     const rightSafe = Number.isFinite(rightMs) ? rightMs : 0;
     return rightSafe - leftSafe;
   });
-  const top = sorted.slice(0, GOAL_TITLES_MAX_DISPLAYED);
-  const lines = top.map((goal) => {
+  return sorted.map((goal) => {
     const reviewedAtIso = readGoalReviewedAt(goal);
     const lastReviewedFragment = reviewedAtIso
       ? `last reviewed ${formatRelativePast(reviewedAtIso, now)}`
       : "review pending";
-    return `- ${truncateGoalTitle(goal.title)} (${goal.reviewState}, ${lastReviewedFragment})`;
+    return `- ${normalizeGoalTitle(goal.title)} (${goal.reviewState}, ${lastReviewedFragment})`;
   });
-  if (active.length > top.length) {
-    lines.push(`- (+${active.length - top.length} more active goals)`);
-  }
-  return lines;
 }
-
-const MAX_COMPLETED_TODAY_LINES = 6;
 
 /**
  * "Completed today" context lines for the owner. Recap turns ("how did today
@@ -213,15 +198,10 @@ function summarizeCompletedToday(
   if (occurrences.length === 0) {
     return [];
   }
-  const shown = occurrences.slice(0, MAX_COMPLETED_TODAY_LINES);
-  const lines = [
+  return [
     "Owner completed today:",
-    ...shown.map((occurrence) => `- ${occurrence.title} (completed)`),
+    ...occurrences.map((occurrence) => `- ${occurrence.title} (completed)`),
   ];
-  if (occurrences.length > shown.length) {
-    lines.push(`- (+${occurrences.length - shown.length} more completed)`);
-  }
-  return lines;
 }
 
 function summarizeOccurrences(
@@ -242,7 +222,7 @@ function summarizeOccurrences(
   }
   return [
     title,
-    ...occurrences.slice(0, 3).map((occurrence) => {
+    ...occurrences.map((occurrence) => {
       const progress = occurrence.progress;
       return progress
         ? `- ${occurrence.title} (${progress.completedCount}/${progress.targetCount} ${progress.unit}${progress.targetCount === 1 ? "" : "s"}; ${progress.remainingCount} remaining)`
@@ -273,7 +253,7 @@ function summarizeNextEvent(
       : "";
   const lines = [`Next event: ${event.title}${timing}`];
   if (context.attendeeNames.length > 0) {
-    lines.push(`  With: ${context.attendeeNames.slice(0, 3).join(", ")}`);
+    lines.push(`  With: ${context.attendeeNames.join(", ")}`);
   }
   if (context.location) {
     lines.push(`  At: ${context.location}`);
@@ -500,7 +480,7 @@ export const lifeOpsProvider: Provider = {
 
         if (connectedAccounts.length > 1) {
           accountLines.push("Available Google accounts:");
-          for (const account of connectedAccounts.slice(0, MAX_ACCOUNT_LINES)) {
+          for (const account of connectedAccounts) {
             const connectorAccountId = account.grant
               ? (account.grant.connectorAccountId ??
                 deriveConnectorAccountIdFromGrant(account.grant))
@@ -762,7 +742,6 @@ export const lifeOpsProvider: Provider = {
           ownerActiveGoals: overview.owner.summary.activeGoalCount,
           ownerActiveGoalTitles: overview.owner.goals
             .filter((goal) => goal.status === "active")
-            .slice(0, GOAL_TITLES_MAX_DISPLAYED)
             .map((goal) => goal.title),
           ownerProfileName: ownerProfile.name,
           ownerRelationshipStatus: ownerProfile.relationshipStatus,
@@ -780,12 +759,12 @@ export const lifeOpsProvider: Provider = {
             ...overview,
             owner: {
               ...overview.owner,
-              goals: overview.owner.goals.slice(0, GOAL_TITLES_MAX_DISPLAYED),
-              occurrences: overview.owner.occurrences.slice(0, 5),
+              goals: overview.owner.goals,
+              occurrences: overview.owner.occurrences,
             },
             agentOps: {
               ...overview.agentOps,
-              occurrences: overview.agentOps.occurrences.slice(0, 5),
+              occurrences: overview.agentOps.occurrences,
             },
           },
           nextEventContext,
