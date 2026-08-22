@@ -3,6 +3,7 @@
  * changing the connector's existing fixed-choice registration semantics.
  */
 
+import { ElizaError } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import { mapOption } from "../catalog-commands";
 import { buildCommandArgMenu } from "../native-commands";
@@ -90,13 +91,46 @@ describe("Discord command projection Unicode safety", () => {
 			value: `choice-${index}`,
 		}));
 
-		expect(() =>
+		let caught: unknown;
+		try {
 			buildCommandArgMenu({
 				commandName: "mode",
 				arg: { name: "level", description: "Mode level", type: "string" },
 				choices,
 				userId: "user-123",
-			}),
-		).toThrow("use pagination or autocomplete instead");
+			});
+		} catch (error) {
+			caught = error;
+		}
+		expect(caught).toBeInstanceOf(ElizaError);
+		const typed = caught as ElizaError;
+		expect(typed.code).toBe("DISCORD_COMMAND_MENU_CHOICES_EXCEED_CAPACITY");
+		expect(typed.message).toContain("use pagination or autocomplete instead");
+		expect(typed.context).toMatchObject({
+			commandName: "mode",
+			arg: "level",
+			choiceCount: 26,
+			maxChoices: 25,
+			buttonsPerRow: 5,
+		});
+	});
+
+	it("rejects an out-of-range buttonsPerRow with a typed error", () => {
+		let caught: unknown;
+		try {
+			buildCommandArgMenu({
+				commandName: "mode",
+				arg: { name: "level", description: "Mode level", type: "string" },
+				choices: [{ label: "A", value: "a" }],
+				userId: "user-123",
+				buttonsPerRow: 6,
+			});
+		} catch (error) {
+			caught = error;
+		}
+		expect(caught).toBeInstanceOf(ElizaError);
+		expect((caught as ElizaError).code).toBe(
+			"DISCORD_COMMAND_MENU_INVALID_ROW_WIDTH",
+		);
 	});
 });
