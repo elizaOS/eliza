@@ -3,11 +3,10 @@
 
  This suite is intentionally separate from WidgetGalleryCaptureUITests: the
  capture harness keeps `continueAfterFailure = true` and only produces
- screenshots, while this suite fails when an expected simulator-reachable
- surface disappears. Hardware-only verification remains out of scope here:
- Action Button physical press, device signing/profile faults, and custom
- keyboard enablement still require the provisioned-device lane called out in
- #13567/#13563.
+ screenshots, while this suite fails when an expected surface disappears.
+ App-owned background and terminated-process notification delivery runs only
+ on a provisioned iPhone; Action Button physical press, signing/profile faults,
+ and custom-keyboard enablement remain separate device acceptance boundaries.
  */
 import UserNotifications
 import XCTest
@@ -106,6 +105,85 @@ final class DeviceExtensionSurfaceUITests: XCTestCase {
                 ["deepLinkOnTap": 42]["deepLinkOnTap"]
             )
         )
+    }
+
+    func testNotificationUITestLaunchRequiresExactOptIn() {
+        XCTAssertFalse(ElizaNotificationUITestLaunchPolicy.isRequested(environment: [:]))
+        XCTAssertFalse(
+            ElizaNotificationUITestLaunchPolicy.isRequested(
+                environment: [ElizaNotificationUITestLaunchPolicy.enabledEnvironmentKey: "true"]
+            )
+        )
+        XCTAssertTrue(
+            ElizaNotificationUITestLaunchPolicy.isRequested(
+                environment: [ElizaNotificationUITestLaunchPolicy.enabledEnvironmentKey: "1"]
+            )
+        )
+    }
+
+    func testAppOwnedLocalNotificationDeliversFromBackground() throws {
+        guard ProcessInfo.processInfo.environment["SIMULATOR_UDID"] == nil else {
+            throw XCTSkip("Physical background notification evidence requires a provisioned iPhone.")
+        }
+
+        let app = launchAppSchedulingNotification()
+        XCUIDevice.shared.press(.home)
+        XCTAssertTrue(
+            springboard.wait(for: .runningForeground, timeout: 10),
+            "SpringBoard must foreground while the app-owned local notification fires."
+        )
+        let notification = springboard.staticTexts[ElizaNotificationUITestLaunchPolicy.title].firstMatch
+        XCTAssertTrue(
+            notification.waitForExistence(timeout: 15),
+            "The production scheduler must deliver a visible app-owned notification while Eliza is backgrounded."
+        )
+        attachElementScreenshot(
+            notification,
+            named: "local-notification-00-background-banner-element"
+        )
+        attachAccessibilitySnapshot(named: "local-notification-background-banner")
+        attachScreenshot(named: "local-notification-00-background-banner")
+        notification.tap()
+        XCTAssertTrue(
+            app.wait(for: .runningForeground, timeout: 15),
+            "Tapping the local notification must foreground Eliza."
+        )
+        assertRendererSettlesAfterNotificationTap(app)
+        attachAccessibilitySnapshot(of: app, named: "local-notification-background-tap")
+        attachScreenshot(named: "local-notification-01-background-tap")
+    }
+
+    func testAppOwnedLocalNotificationSurvivesTermination() throws {
+        guard ProcessInfo.processInfo.environment["SIMULATOR_UDID"] == nil else {
+            throw XCTSkip("Physical killed-app notification evidence requires a provisioned iPhone.")
+        }
+
+        let app = launchAppSchedulingNotification()
+        Thread.sleep(forTimeInterval: 1)
+        app.terminate()
+        XCTAssertTrue(
+            springboard.wait(for: .runningForeground, timeout: 10),
+            "SpringBoard must remain available after terminating Eliza."
+        )
+        let notification = springboard.staticTexts[ElizaNotificationUITestLaunchPolicy.title].firstMatch
+        XCTAssertTrue(
+            notification.waitForExistence(timeout: 15),
+            "The production scheduler must deliver after the scheduling process terminates."
+        )
+        attachElementScreenshot(
+            notification,
+            named: "local-notification-02-killed-banner-element"
+        )
+        attachAccessibilitySnapshot(named: "local-notification-killed-banner")
+        attachScreenshot(named: "local-notification-02-killed-banner")
+        notification.tap()
+        XCTAssertTrue(
+            app.wait(for: .runningForeground, timeout: 15),
+            "Tapping the killed-app notification must relaunch Eliza."
+        )
+        assertRendererSettlesAfterNotificationTap(app)
+        attachAccessibilitySnapshot(of: app, named: "local-notification-killed-tap")
+        attachScreenshot(named: "local-notification-03-killed-tap")
     }
 
     func testAppShortcutsListsV1Actions() throws {
@@ -374,6 +452,48 @@ final class DeviceExtensionSurfaceUITests: XCTestCase {
         }
     }
 
+    private func launchAppSchedulingNotification() -> XCUIApplication {
+        let app = XCUIApplication()
+        app.launchEnvironment[ElizaNotificationUITestLaunchPolicy.enabledEnvironmentKey] = "1"
+        app.launch()
+        XCTAssertTrue(
+            app.wait(for: .runningForeground, timeout: 20),
+            "The signed Eliza app must launch before scheduling the native notification."
+        )
+        allowContextualPermissionPromptsIfPresent()
+        return app
+    }
+
+    private func assertRendererSettlesAfterNotificationTap(_ app: XCUIApplication) {
+        XCTAssertTrue(
+            app.webViews.firstMatch.waitForExistence(timeout: 20),
+            "A notification tap must reach Eliza's rendered web view."
+        )
+        let booting = app.staticTexts["Booting up…"]
+        if booting.exists {
+            XCTAssertTrue(
+                booting.waitForNonExistence(timeout: 20),
+                "The relaunched app must settle beyond its transient boot screen."
+            )
+        }
+        let stableLabels = [
+            "Sign in",
+            "Sign in with your password.",
+            "How can I help?",
+            "Connected",
+            "Message Eliza",
+            "Can't connect",
+        ]
+        let stableSurface = app.descendants(matching: .any).matching(
+            NSPredicate(format: "label IN %@", stableLabels)
+        ).firstMatch
+        XCTAssertTrue(
+            stableSurface.waitForExistence(timeout: 20),
+            "A notification tap must settle on a real signed-out, authenticated, or explicit error surface, not a blank transition frame."
+        )
+        Thread.sleep(forTimeInterval: 0.5)
+    }
+
     @available(iOS 18.0, *)
     private func openControlGalleryAndSearchEliza() throws {
         goHome()
@@ -561,6 +681,16 @@ final class DeviceExtensionSurfaceUITests: XCTestCase {
 
     private func attachScreenshot(named name: String) {
         let attachment = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        attachment.name = name
+        attachment.lifetime = .keepAlways
+        add(attachment)
+    }
+
+    private func attachElementScreenshot(
+        _ element: XCUIElement,
+        named name: String
+    ) {
+        let attachment = XCTAttachment(screenshot: element.screenshot())
         attachment.name = name
         attachment.lifetime = .keepAlways
         add(attachment)
