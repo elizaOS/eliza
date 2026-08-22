@@ -96,6 +96,23 @@ describe("TaskmarketClient", () => {
     ).rejects.toThrow("without a continuation cursor");
   });
 
+  it.each(["", 17, { page: 2 }])(
+    "rejects an invalid opaque cursor before dispatch: %j",
+    async (cursor) => {
+      const fetcher = vi.fn(async () =>
+        response({ tasks: [validTask], hasMore: false, nextCursor: null }),
+      );
+
+      await expect(
+        new TaskmarketClient(
+          "https://example.test",
+          fetcher as typeof fetch,
+        ).listTasks({ cursor: cursor as never }),
+      ).rejects.toThrow("cursor must be a non-empty string");
+      expect(fetcher).not.toHaveBeenCalled();
+    },
+  );
+
   it("rejects invalid remote task shapes", async () => {
     const fetcher = vi.fn(async () =>
       response({

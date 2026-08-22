@@ -172,6 +172,12 @@ export class TaskmarketClient {
       throw new RangeError("Taskmarket sort order is not supported");
     }
     if (
+      options.cursor !== undefined &&
+      (typeof options.cursor !== "string" || options.cursor.length === 0)
+    ) {
+      throw new RangeError("Taskmarket cursor must be a non-empty string");
+    }
+    if (
       options.minRewardBaseUnits !== undefined &&
       !/^\d+$/.test(options.minRewardBaseUnits)
     ) {
@@ -186,7 +192,8 @@ export class TaskmarketClient {
     url.searchParams.set("status", requestedStatus);
     url.searchParams.set("sort", options.sort ?? "reward_desc");
     url.searchParams.set("limit", String(limit));
-    if (options.cursor) url.searchParams.set("cursor", options.cursor);
+    if (options.cursor !== undefined)
+      url.searchParams.set("cursor", options.cursor);
     if (options.mode) url.searchParams.set("mode", options.mode);
     if (options.minRewardBaseUnits)
       url.searchParams.set("minReward", options.minRewardBaseUnits);
