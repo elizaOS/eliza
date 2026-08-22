@@ -864,6 +864,7 @@ describe("v5 planner loop skeleton", () => {
 				"reply-unverified",
 				"Implemented the change, but tests did not pass.",
 			);
+			let plannerModelCalls = 0;
 			const runtime = {
 				useModel: vi
 					.fn()
@@ -887,7 +888,19 @@ describe("v5 planner loop skeleton", () => {
 							},
 						],
 					})
-					.mockResolvedValue(unverifiedReply),
+					// Bounded on purpose: without the deferral limit the loop spins
+					// forever, and an infinite mock hangs the runner instead of
+					// failing. The fix needs 4 calls, so this never trips while the
+					// bound holds — and trips immediately if the bound is removed.
+					.mockImplementation(async () => {
+						plannerModelCalls += 1;
+						if (plannerModelCalls > 12) {
+							throw new Error(
+								"planner loop exceeded 12 model calls: coding verification deferral is unbounded",
+							);
+						}
+						return unverifiedReply;
+					}),
 				logger: { warn: vi.fn() },
 			};
 			const executeToolCall = vi
@@ -930,6 +943,7 @@ describe("v5 planner loop skeleton", () => {
 
 	it("bounds repeated free-text terminals while a coding mutation remains unverified", async () => {
 		await withCodingRequiredToolDefaults(async () => {
+			let freeTextTerminalCalls = 0;
 			const runtime = {
 				useModel: vi
 					.fn()
@@ -943,9 +957,20 @@ describe("v5 planner loop skeleton", () => {
 							},
 						],
 					})
-					.mockResolvedValue({
-						text: "Implemented the change, but verification is unavailable.",
-						toolCalls: [],
+					// Bounded for the same reason as the deferral test above: an
+					// infinite mock turns a lost bound into a runner hang or OOM
+					// rather than a failure naming the cause.
+					.mockImplementation(async () => {
+						freeTextTerminalCalls += 1;
+						if (freeTextTerminalCalls > 12) {
+							throw new Error(
+								"planner loop exceeded 12 model calls: free-text terminal continuation is unbounded",
+							);
+						}
+						return {
+							text: "Implemented the change, but verification is unavailable.",
+							toolCalls: [],
+						};
 					}),
 				logger: { warn: vi.fn() },
 			};
