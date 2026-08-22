@@ -447,7 +447,9 @@ final class BootCaptureUITests: XCTestCase {
         let env = ProcessInfo.processInfo.environment
         let bootTimeout = Double(env["ELIZA_BOOT_TIMEOUT_SECONDS"] ?? "") ?? 180
         let replyTimeout = Double(env["ELIZA_CHAT_REPLY_TIMEOUT_SECONDS"] ?? "") ?? 120
-        let replyMarker = "IOS_CEREBRAS_CHAT_202_OK"
+        let replyMarker = try validatedChatReplyMarker(
+            env["ELIZA_TEST_CHAT_REPLY_MARKER"]
+        )
         let prompt = "Reply with exactly: \(replyMarker)"
 
         let app = XCUIApplication()
@@ -514,6 +516,29 @@ final class BootCaptureUITests: XCTestCase {
             replyArrived,
             "the paired remote session did not render the required Cerebras reply marker"
         )
+    }
+
+    private func validatedChatReplyMarker(_ configured: String?) throws -> String {
+        let defaultMarker = "IOS_CEREBRAS_CHAT_202_OK"
+        guard let configured else { return defaultMarker }
+        guard !configured.isEmpty else { return defaultMarker }
+
+        let isAllowedAscii: (UInt8) -> Bool = { byte in
+            (48...57).contains(byte)
+                || (65...90).contains(byte)
+                || (97...122).contains(byte)
+                || byte == 45
+                || byte == 95
+        }
+        let isValid = configured.count >= 8
+            && configured.count <= 96
+            && configured.utf8.allSatisfy(isAllowedAscii)
+        guard isValid else {
+            throw StrictGateFailure(
+                message: "ELIZA_TEST_CHAT_REPLY_MARKER must be 8-96 ASCII letters, digits, underscores, or hyphens"
+            )
+        }
+        return configured
     }
 
     // MARK: - Full onboarding → chat → voice (cloud + local)

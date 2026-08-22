@@ -846,12 +846,14 @@ describe("buildIosXcuitestForwardedEnvironment", () => {
     expect(
       buildIosXcuitestForwardedEnvironment({
         ELIZA_TEST_PAIRING_CODE: "ABCD-EFGH-IJKL",
+        ELIZA_TEST_CHAT_REPLY_MARKER: "IOS_GEMMA_FRESH_123_OK",
         ELIZA_TEST_REMOTE_API_BASE: "http://192.0.2.10:31338",
         ELIZA_VIEW_PROMPT: "Open the Notes view now.",
         ELIZA_VIEW_ROUTE_TIMEOUT_SECONDS: "45",
       }),
     ).toEqual({
       TEST_RUNNER_ELIZA_TEST_PAIRING_CODE: "ABCD-EFGH-IJKL",
+      TEST_RUNNER_ELIZA_TEST_CHAT_REPLY_MARKER: "IOS_GEMMA_FRESH_123_OK",
       TEST_RUNNER_ELIZA_TEST_REMOTE_API_BASE: "http://192.0.2.10:31338",
       TEST_RUNNER_ELIZA_VIEW_PROMPT: "Open the Notes view now.",
       TEST_RUNNER_ELIZA_VIEW_ROUTE_TIMEOUT_SECONDS: "45",

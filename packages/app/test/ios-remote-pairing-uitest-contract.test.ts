@@ -57,4 +57,14 @@ describe("physical iPhone remote pairing harness", () => {
       'let allow = springboard.buttons["Allow"]',
     );
   });
+
+  it("uses a validated per-run reply marker instead of stale transcript text", () => {
+    expect(harnessUnderTest).toContain('env["ELIZA_TEST_CHAT_REPLY_MARKER"]');
+    expect(harnessUnderTest).toContain(
+      "configured.utf8.allSatisfy(isAllowedAscii)",
+    );
+    expect(harnessUnderTest).toContain(
+      "ELIZA_TEST_CHAT_REPLY_MARKER must be 8-96 ASCII letters",
+    );
+  });
 });
