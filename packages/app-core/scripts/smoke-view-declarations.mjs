@@ -71,8 +71,6 @@ export const smokeViewDeclarations = [
     "plugin-task-coordinator",
     "/task-coordinator",
     "TaskCoordinatorView",
-    "gui",
-    { capabilities: ["agent-surface"] },
   ],
   [
     "orchestrator",

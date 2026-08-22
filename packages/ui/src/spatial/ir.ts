@@ -69,6 +69,8 @@ export interface SpatialAgentMeta {
   label?: string;
   /** Current value for inputs/toggles. */
   value?: string | number | boolean | null;
+  /** Human-authority controls are inventoried but never exposed for activation. */
+  authority?: "agent" | "human";
 }
 
 /** Fields shared by every layout participant. */

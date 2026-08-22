@@ -404,6 +404,12 @@ function agentDataProps(
   agent: SpatialAgentMeta | undefined,
 ): Record<string, string> {
   if (!agent) return {};
+  if (agent.authority === "human") {
+    return {
+      "data-agent-authority": "human",
+      "data-agent-human-id": agent.id,
+    };
+  }
   const out: Record<string, string> = { "data-agent-id": agent.id };
   if (agent.role) out["data-agent-role"] = agent.role;
   if (agent.label) out["data-agent-label"] = agent.label;

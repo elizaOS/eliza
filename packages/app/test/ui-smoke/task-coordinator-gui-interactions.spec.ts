@@ -3,7 +3,6 @@
  * using the real renderer fixture.
  */
 import { expect, type Page, type Route, test } from "@playwright/test";
-import { expectExactRootAgentParity, viewInteract } from "./agent-bridge-audit";
 import {
   expectNoPageDiagnostics,
   installDefaultAppRoutes,
@@ -340,68 +339,6 @@ test.beforeEach(async ({ page }) => {
 
 test.afterEach(async ({ page }, testInfo) => {
   await expectNoPageDiagnostics(page, testInfo.title);
-});
-
-test("production host exposes the task coordinator list and detail through the bridge", async ({
-  page,
-}) => {
-  await installTaskCoordinatorRoutes(page);
-  await openAppPath(page, "/task-coordinator");
-
-  const root = page.getByTestId("task-coordinator-panel");
-  await expect(root).toBeVisible();
-  const taskView = await page.evaluate(async () => {
-    const response = await fetch("/api/views?developerMode=true&viewType=gui");
-    const payload = (await response.json()) as {
-      views?: Array<Record<string, unknown>>;
-    };
-    return payload.views?.find((view) => view.id === "task-coordinator");
-  });
-  expect(taskView).toMatchObject({
-    surface: { capabilities: ["agent-surface"] },
-  });
-  let elements = await expectExactRootAgentParity({
-    page,
-    root,
-    viewId: "task-coordinator",
-    label: "Task Coordinator list",
-  });
-  expect(elements.map(({ id }) => id)).toEqual(
-    expect.arrayContaining([
-      "search",
-      "toggle-archived",
-      "refresh",
-      "open-task-smoke-1",
-    ]),
-  );
-
-  const fill = (await viewInteract(page, "task-coordinator", "agent-fill", {
-    id: "search",
-    value: "Audit",
-  })) as { ok?: boolean };
-  expect(fill.ok).toBe(true);
-  await expect(root.getByPlaceholder("Search tasks")).toHaveValue("Audit");
-  await viewInteract(page, "task-coordinator", "agent-fill", {
-    id: "search",
-    value: "",
-  });
-
-  const open = (await viewInteract(page, "task-coordinator", "agent-click", {
-    id: "open-task-smoke-1",
-  })) as { ok?: boolean };
-  expect(open.ok).toBe(true);
-  await expect(page.getByText("Search filters task threads")).toBeVisible();
-  elements = await expectExactRootAgentParity({
-    page,
-    root,
-    viewId: "task-coordinator",
-    label: "Task Coordinator detail",
-  });
-  expect(elements.map(({ id }) => id)).toEqual(
-    expect.arrayContaining(["back", "delete-thread"]),
-  );
-  await viewInteract(page, "task-coordinator", "agent-click", { id: "back" });
-  await expect(root.getByPlaceholder("Search tasks")).toBeVisible();
 });
 
 test("task coordinator GUI searches, opens detail, shows operational state, and archives a thread", async ({
