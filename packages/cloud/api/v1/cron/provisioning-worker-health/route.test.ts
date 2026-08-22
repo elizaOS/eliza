@@ -75,12 +75,35 @@ const summarizeOutcomesByTypeSince = mock(
   async (): Promise<Array<{ status: string; count: number }>> => [],
 );
 
+const unsupportedRepositoryHelper = (name: string) => () => {
+  throw new Error(
+    `${name} is outside the provisioning-worker-health test fixture`,
+  );
+};
+
 mock.module("@/db/repositories/agent-sandboxes", () => ({
+  PRE_DELETE_BACKUP_RETENTION_MS: 30 * 24 * 60 * 60 * 1000,
   agentSandboxesRepository: { summarizeDedicatedFleet },
+  prepareAgentBackupInsertData: unsupportedRepositoryHelper(
+    "prepareAgentBackupInsertData",
+  ),
 }));
 
 mock.module("@/db/repositories/jobs", () => ({
+  StaleJobExecutionError: class StaleJobExecutionError extends Error {},
+  cutoverResumeWindowAllows: ({
+    cutoverAtMs,
+    rowStartedAtMs,
+    rowUpdatedAtMs,
+  }: {
+    cutoverAtMs: number;
+    rowStartedAtMs: number;
+    rowUpdatedAtMs: number;
+  }) => cutoverAtMs <= rowStartedAtMs && rowStartedAtMs <= rowUpdatedAtMs,
+  hydrateJob: unsupportedRepositoryHelper("hydrateJob"),
   jobsRepository: { summarizeOutcomesByTypeSince },
+  msWindowTimestampMatch: unsupportedRepositoryHelper("msWindowTimestampMatch"),
+  prepareJobInsertData: unsupportedRepositoryHelper("prepareJobInsertData"),
 }));
 
 mock.module("@/lib/utils/logger", () => ({
