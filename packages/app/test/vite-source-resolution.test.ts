@@ -109,6 +109,34 @@ describe("workspace package resolution", () => {
     }
   });
 
+  test.each(["serve", "build"] as const)(
+    "resolves Cloud shared wildcard exports from workspace source while %s config resolves",
+    async (command) => {
+      const { server } = await createAppResolutionServer(command);
+
+      try {
+        const resolved =
+          await server.environments.client.pluginContainer.resolveId(
+            "@elizaos/cloud-shared/types/redemption-contract",
+            path.resolve(
+              appRoot,
+              "../ui/src/cloud/monetization/earnings/EarningsPageClient.tsx",
+            ),
+          );
+        expect(resolved?.id).toBe(
+          normalizePath(
+            path.resolve(
+              appRoot,
+              "../cloud/shared/src/types/redemption-contract.ts",
+            ),
+          ),
+        );
+      } finally {
+        await server.close();
+      }
+    },
+  );
+
   test("resolves the shared terminal palette from workspace source while serving", async () => {
     const { server } = await createAppResolutionServer("serve");
 

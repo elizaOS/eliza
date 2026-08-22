@@ -1,5 +1,7 @@
 name: Deploy Eliza Provisioning Worker
 
+run-name: Provisioning worker ${{ inputs.environment || 'staging' }} ${{ inputs.deployment_sha || github.sha }} ${{ inputs.effect_digest || 'manual' }}
+
 # SSHes to the Hetzner provisioning host and deploys one immutable commit,
 # installs the systemd unit shipped at packages/cloud/scripts/admin/eliza-provisioning-worker.service,
 # and restarts the eliza-provisioning-worker daemon.
@@ -8,26 +10,6 @@ name: Deploy Eliza Provisioning Worker
 #   HCLOUD_TOKEN=... bun run packages/cloud/scripts/admin/bootstrap-provisioning-worker-host.mjs
 
 on:
-  push:
-    branches: [develop]
-    paths:
-      - '.github/workflows/deploy-eliza-provisioning-worker.yml'
-      - 'packages/cloud/scripts/admin/daemons/provisioning-worker.ts'
-      - 'packages/cloud/scripts/admin/daemons/agent-router.ts'
-      - 'packages/cloud/scripts/admin/eliza-provisioning-worker.service'
-      - 'packages/cloud/scripts/admin/eliza-agent-router.service'
-      - 'packages/cloud/scripts/admin/ensure-generated-keywords.sh'
-      - 'packages/cloud/scripts/admin/preflight-job-execution-interruptions.ts'
-      - 'packages/cloud/scripts/admin/error-preserving-cleanup.ts'
-      - 'packages/cloud/shared/src/lib/services/provisioning-jobs.ts'
-      - 'packages/cloud/shared/src/lib/services/docker-sandbox-provider.ts'
-      - 'packages/cloud/shared/src/lib/services/eliza-sandbox.ts'
-      - 'packages/cloud/shared/src/db/repositories/agent-sandboxes.ts'
-      - 'packages/cloud/shared/**'
-      - 'packages/cloud/sdk/**'
-      - 'packages/shared/**'
-      - 'packages/core/**'
-      - 'plugins/plugin-sql/**'
   workflow_dispatch:
     inputs:
       environment:
@@ -41,6 +23,11 @@ on:
       deployment_sha:
         description: 'Optional exact repository commit for protected staging acceptance'
         required: false
+        type: string
+      effect_digest:
+        description: Exact reconciler input digest; empty for manual operation
+        required: false
+        default: ""
         type: string
 
 # Per-run admission so two dispatches of the same SHA both reach
@@ -78,6 +65,7 @@ jobs:
       - id: snapshot
         env:
           BRANCH: ${{ steps.env.outputs.branch }}
+          EFFECT_DIGEST: ${{ inputs.effect_digest }}
           PUSH_SHA: ${{ github.sha }}
           REQUESTED_SHA: ${{ github.event.inputs.deployment_sha }}
           TARGET_ENVIRONMENT: ${{ steps.env.outputs.environment }}
@@ -108,6 +96,15 @@ jobs:
             deployment_sha=$(git ls-remote "https://github.com/${GITHUB_REPOSITORY}.git" "refs/heads/$BRANCH" | awk 'NR == 1 { print $1 }')
           fi
           [[ "$deployment_sha" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::Could not resolve immutable deployment SHA for $BRANCH"; exit 1; }
+          if [ -n "$EFFECT_DIGEST" ]; then
+            [[ "$EFFECT_DIGEST" =~ ^[0-9a-f]{64}$ ]] || { echo "::error::Invalid reconciled effect digest"; exit 1; }
+            [ -n "$REQUESTED_SHA" ] || { echo "::error::Reconciled deploy requires deployment_sha"; exit 1; }
+            current_sha="$(git ls-remote "https://github.com/${GITHUB_REPOSITORY}.git" "refs/heads/$BRANCH" | awk 'NR == 1 { print $1 }')"
+            [ "$current_sha" = "$deployment_sha" ] || {
+              echo "::error::$BRANCH is $current_sha, not reconciled source $deployment_sha"
+              exit 1
+            }
+          fi
           echo "deployment_sha=$deployment_sha" >> "$GITHUB_OUTPUT"
           echo "Resolved immutable deployment snapshot: $deployment_sha"
 
@@ -120,7 +117,7 @@ jobs:
       cancel-in-progress: false
       queue: max
     environment: ${{ needs.determine-env.outputs.environment }}
-    # Every pre-SSH step has its own fence (38m worst case total). The three
+    # Every pre-SSH step has its own fence (40m worst case total). The three
     # bounded remote phases (5m prerequisites, 40m deploy including a possible
     # wait for an orphaned prior SSH process, 5m health) can then each use their
     # ceiling without the enclosing job becoming the first timeout; the
@@ -317,6 +314,19 @@ jobs:
           done
           exit 1
 
+      - name: Fence current develop SHA before database mutation
+        if: ${{ steps.deploy_config.outputs.configured == 'true' && inputs.effect_digest != '' }}
+        timeout-minutes: 1
+        env:
+          EXPECTED_DEPLOY_SHA: ${{ needs.determine-env.outputs.deployment_sha }}
+        run: |
+          set -euo pipefail
+          current_sha="$(git ls-remote origin refs/heads/develop | awk 'NR == 1 { print $1 }')"
+          [ "$current_sha" = "$EXPECTED_DEPLOY_SHA" ] || {
+            echo "::error::Develop advanced before provisioning-worker migration"
+            exit 1
+          }
+
       - name: Run exact-SHA canonical database migrations
         if: steps.deploy_config.outputs.configured == 'true'
         timeout-minutes: 10
@@ -336,6 +346,19 @@ jobs:
           }
           node packages/shared/scripts/generate-keywords.mjs
           bun run db:cloud:migrate
+
+      - name: Recheck current develop SHA before host deployment
+        if: ${{ steps.deploy_config.outputs.configured == 'true' && inputs.effect_digest != '' }}
+        timeout-minutes: 1
+        env:
+          EXPECTED_DEPLOY_SHA: ${{ needs.determine-env.outputs.deployment_sha }}
+        run: |
+          set -euo pipefail
+          current_sha="$(git ls-remote origin refs/heads/develop | awk 'NR == 1 { print $1 }')"
+          [ "$current_sha" = "$EXPECTED_DEPLOY_SHA" ] || {
+            echo "::error::Develop advanced before provisioning-worker host deploy"
+            exit 1
+          }
 
       - name: Ensure host prereqs (Node 24, swap, bunx symlink)
         if: steps.deploy_config.outputs.configured == 'true'

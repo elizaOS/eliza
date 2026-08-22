@@ -6,12 +6,16 @@ import { describe, expect, it, vi } from "vitest";
 import type { DocumentListQueryParams, Memory, UUID } from "../types";
 import { MemoryType } from "../types";
 import {
+	canRequesterManageDocumentDirectGrants,
+	canRequesterMutateDocument,
 	documentMutationSnapshotMatches,
 	isDocumentVisibleToRequester,
 	portableDocumentSearchTokens,
+	queryDocumentFragmentsInMemory,
 	queryDocumentsInMemory,
 	queryDocumentsWithCapability,
 	readDocumentMutationSnapshot,
+	validateDocumentDirectGrantEntityIds,
 } from "./document-list-query";
 import { InMemoryDatabaseAdapter } from "./inMemoryAdapter";
 
@@ -119,7 +123,7 @@ describe("document-list capability contract", () => {
 		const adapter = new InMemoryDatabaseAdapter();
 		Object.defineProperty(adapter, "documentListQueryCapability", {
 			configurable: true,
-			value: 4,
+			value: 3,
 		});
 		const queryDocuments = vi.spyOn(adapter, "queryDocuments");
 
@@ -128,10 +132,24 @@ describe("document-list capability contract", () => {
 		).rejects.toMatchObject({
 			code: "DOCUMENT_STORE_CAPABILITY_REQUIRED",
 			context: expect.objectContaining({
-				expectedVersion: 3,
-				advertisedVersion: 4,
+				expectedVersion: 4,
+				advertisedVersion: 3,
 			}),
 		});
+		expect(queryDocuments).not.toHaveBeenCalled();
+	});
+
+	it("rejects v4 adapters missing the direct-grant CAS before reading", async () => {
+		const adapter = new InMemoryDatabaseAdapter();
+		Object.defineProperty(adapter, "updateDocumentDirectGrants", {
+			configurable: true,
+			value: undefined,
+		});
+		const queryDocuments = vi.spyOn(adapter, "queryDocuments");
+
+		await expect(
+			queryDocumentsWithCapability(adapter, params),
+		).rejects.toMatchObject({ code: "DOCUMENT_STORE_CAPABILITY_REQUIRED" });
 		expect(queryDocuments).not.toHaveBeenCalled();
 	});
 
@@ -202,6 +220,198 @@ describe("document-list capability contract", () => {
 		);
 	});
 
+	it("keeps direct grants independent from room membership without opening agent-private data", () => {
+		const granted = {
+			...document(30),
+			metadata: {
+				type: MemoryType.DOCUMENT,
+				scope: "owner-private",
+				directGrantEntityIds: [REQUESTER_ID],
+			},
+		};
+		const agentOnly = {
+			...document(31),
+			metadata: {
+				type: MemoryType.DOCUMENT,
+				scope: "agent-private",
+				directGrantEntityIds: [REQUESTER_ID],
+			},
+		};
+		const userParams = {
+			...params,
+			requesterRole: "USER" as const,
+			requesterRoomIds: [],
+		};
+
+		expect(isDocumentVisibleToRequester(granted, userParams)).toBe(true);
+		expect(isDocumentVisibleToRequester(agentOnly, userParams)).toBe(false);
+		expect(
+			isDocumentVisibleToRequester(granted, {
+				...userParams,
+				requesterRole: "GUEST",
+			}),
+		).toBe(false);
+		expect(canRequesterMutateDocument(granted, userParams)).toBe(false);
+	});
+
+	it("limits grant management to owner or a current room admin on shareable scopes", () => {
+		const global = document(33);
+		const userPrivate = {
+			...document(34),
+			metadata: {
+				type: MemoryType.DOCUMENT,
+				scope: "user-private",
+				scopedToEntityId: REQUESTER_ID,
+			},
+		};
+		const ownerPrivate = {
+			...document(35),
+			metadata: { type: MemoryType.DOCUMENT, scope: "owner-private" },
+		};
+		const owner = { ...params, requesterRole: "OWNER" as const };
+		const admin = {
+			...params,
+			requesterRole: "ADMIN" as const,
+			requesterRoomIds: [ROOM_ID],
+		};
+
+		expect(canRequesterManageDocumentDirectGrants(global, owner)).toBe(true);
+		expect(canRequesterManageDocumentDirectGrants(global, admin)).toBe(true);
+		expect(canRequesterManageDocumentDirectGrants(userPrivate, admin)).toBe(
+			true,
+		);
+		expect(canRequesterManageDocumentDirectGrants(ownerPrivate, admin)).toBe(
+			false,
+		);
+		expect(
+			canRequesterManageDocumentDirectGrants(global, {
+				...admin,
+				requesterRoomIds: [],
+			}),
+		).toBe(false);
+		for (const requesterRole of [
+			"USER",
+			"GUEST",
+			"AGENT",
+			"RUNTIME",
+			"UNRESOLVED",
+		] as const) {
+			expect(
+				canRequesterManageDocumentDirectGrants(global, {
+					...admin,
+					requesterRole,
+				}),
+			).toBe(false);
+		}
+	});
+
+	it("canonicalizes valid grant arrays and rejects duplicates, malformed ids, and overflow", () => {
+		const other = "00000000-0000-0000-0000-000000000001" as UUID;
+		expect(validateDocumentDirectGrantEntityIds([REQUESTER_ID, other])).toEqual(
+			[other, REQUESTER_ID],
+		);
+		for (const grants of [
+			[REQUESTER_ID, REQUESTER_ID],
+			[REQUESTER_ID, REQUESTER_ID.toUpperCase()],
+			["not-a-uuid"],
+			Array.from(
+				{ length: 1_001 },
+				(_, index) =>
+					`10000000-0000-4000-8000-${index.toString().padStart(12, "0")}`,
+			),
+		]) {
+			expect(() => validateDocumentDirectGrantEntityIds(grants)).toThrowError(
+				expect.objectContaining({ code: "DOCUMENT_DIRECT_GRANTS_INVALID" }),
+			);
+		}
+	});
+
+	it("fails closed on malformed or duplicate direct grants", () => {
+		for (const directGrantEntityIds of [
+			["not-a-uuid"],
+			[REQUESTER_ID, REQUESTER_ID],
+			"not-an-array",
+		]) {
+			const malformed = {
+				...document(32),
+				metadata: {
+					type: MemoryType.DOCUMENT,
+					scope: "global",
+					directGrantEntityIds,
+				},
+			};
+			expect(readDocumentMutationSnapshot(malformed)).toBeNull();
+			expect(isDocumentVisibleToRequester(malformed, params)).toBe(false);
+		}
+	});
+
+	it("keeps guest and unresolved document authority fail-closed", () => {
+		const global = document(3);
+		const privateDocument = {
+			...document(4),
+			metadata: {
+				type: MemoryType.DOCUMENT,
+				scope: "user-private",
+				scopedToEntityId: REQUESTER_ID,
+			},
+		};
+		const guestParams = {
+			...params,
+			requesterRole: "GUEST" as const,
+			requesterRoomIds: [ROOM_ID],
+		};
+		const unresolvedParams = {
+			...params,
+			requesterRole: "UNRESOLVED" as const,
+			requesterRoomIds: [ROOM_ID],
+		};
+
+		expect(isDocumentVisibleToRequester(global, guestParams)).toBe(true);
+		expect(isDocumentVisibleToRequester(privateDocument, guestParams)).toBe(
+			false,
+		);
+		expect(isDocumentVisibleToRequester(global, unresolvedParams)).toBe(false);
+		expect(canRequesterMutateDocument(global, guestParams)).toBe(false);
+		expect(canRequesterMutateDocument(global, unresolvedParams)).toBe(false);
+	});
+
+	it("filters fragments by authorized parent before applying offset and limit", () => {
+		const firstParent = document(5);
+		const secondParent = document(6);
+		const fragment = (
+			index: number,
+			documentId: UUID,
+			createdAt: number,
+		): Memory => ({
+			...document(index),
+			createdAt,
+			metadata: {
+				type: MemoryType.FRAGMENT,
+				documentId,
+				documentRevision: 0,
+				position: index,
+			},
+		});
+		const firstFragments = [
+			fragment(7, firstParent.id as UUID, 3_000),
+			fragment(8, firstParent.id as UUID, 2_000),
+		];
+		const otherFragment = fragment(9, secondParent.id as UUID, 4_000);
+
+		const result = queryDocumentFragmentsInMemory(
+			[firstParent, secondParent, ...firstFragments, otherFragment],
+			{
+				...params,
+				requesterRole: "OWNER",
+				documentId: firstParent.id,
+				limit: 1,
+				offset: 1,
+			},
+		);
+
+		expect(result.map((memory) => memory.id)).toEqual([firstFragments[1]?.id]);
+	});
+
 	it("uses locale-independent tokens that preserve punctuation and Unicode", () => {
 		expect(
 			portableDocumentSearchTokens(
@@ -248,17 +458,31 @@ describe("document-list capability contract", () => {
 			...document(10),
 			metadata: {
 				...document(10).metadata,
+				directGrantEntityIds: [REQUESTER_ID],
 				ingestionAttemptId,
 				ingestionState: "pending",
 			},
 		} as Memory;
 		const snapshot = readDocumentMutationSnapshot(pending);
 		expect(snapshot).toMatchObject({
+			directGrantEntityIds: [REQUESTER_ID],
 			ingestionAttemptId,
 			ingestionState: "pending",
 		});
 		if (!snapshot) throw new Error("expected a valid ingestion snapshot");
 		expect(documentMutationSnapshotMatches(pending, snapshot)).toBe(true);
+		expect(
+			documentMutationSnapshotMatches(
+				{
+					...pending,
+					metadata: {
+						...pending.metadata,
+						directGrantEntityIds: [],
+					} as Memory["metadata"],
+				},
+				snapshot,
+			),
+		).toBe(false);
 		expect(
 			documentMutationSnapshotMatches(
 				{

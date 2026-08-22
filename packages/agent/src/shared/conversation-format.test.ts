@@ -76,4 +76,22 @@ describe("roomSourceTag", () => {
       } as never),
     ).toBe("[discord] general");
   });
+
+  it("preserves complete room UUID without eight-character truncation when name is missing", () => {
+    expect(
+      roomSourceTag({
+        id: "11111111-2222-3333-4444-555566667777",
+        source: "slack",
+        type: "GROUP",
+      } as never),
+    ).toBe("[slack] 11111111-2222-3333-4444-555566667777");
+
+    expect(
+      roomSourceTag({
+        id: "11111111-2222-3333-4444-555566667777",
+        name: "",
+        type: "DIRECT",
+      } as never),
+    ).toBe("[DIRECT] 11111111-2222-3333-4444-555566667777");
+  });
 });

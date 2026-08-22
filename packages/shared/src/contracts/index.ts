@@ -46,6 +46,7 @@ export * from "./scheduled-task-execution.js";
 export * from "./service-routing.js";
 export * from "./skills-routes.js";
 export * from "./subscription-routes.js";
+export * from "./synthetic-environment-lease.js";
 export * from "./tail-routes.js";
 export * from "./update-status.js";
 export * from "./verification.js";

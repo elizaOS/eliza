@@ -3340,14 +3340,6 @@
       "source": "src/components/config-ui/ui-renderer.helpers.ts"
     },
     {
-      "specifier": "@elizaos/ui/components/connectors/BlueBubblesCloudGatewayPanel",
-      "source": "src/components/connectors/BlueBubblesCloudGatewayPanel.tsx"
-    },
-    {
-      "specifier": "@elizaos/ui/components/connectors/BlueBubblesStatusPanel",
-      "source": "src/components/connectors/BlueBubblesStatusPanel.tsx"
-    },
-    {
       "specifier": "@elizaos/ui/components/connectors/connector-account-options",
       "source": "src/components/connectors/connector-account-options.ts"
     },
@@ -3434,10 +3426,6 @@
     {
       "specifier": "@elizaos/ui/components/connectors/OwnerAgentConnectorSetupPanel",
       "source": "src/components/connectors/OwnerAgentConnectorSetupPanel.tsx"
-    },
-    {
-      "specifier": "@elizaos/ui/components/connectors/SignalQrOverlay",
-      "source": "src/components/connectors/SignalQrOverlay.tsx"
     },
     {
       "specifier": "@elizaos/ui/components/connectors/TelegramAccountConnectorPanel",

@@ -12,6 +12,12 @@ import {
 } from "./assistant-text";
 
 describe("assistant text helpers", () => {
+  it("preserves complete assistant text beyond 200k characters", () => {
+    const text = `${"complete line\n".repeat(16_000)}final line`;
+    expect(text.length).toBeGreaterThan(200_000);
+    expect(stripAssistantStageDirections(text)).toBe(text);
+  });
+
   it("extracts replyText from leaked response-handler object content", () => {
     expect(
       extractAssistantReplyText(

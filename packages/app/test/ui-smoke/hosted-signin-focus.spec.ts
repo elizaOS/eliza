@@ -77,9 +77,7 @@ for (const viewport of VIEWPORTS) {
     );
 
     await page.goto("/login");
-    await expect(
-      page.getByRole("heading", { name: "Sign in to Eliza" }),
-    ).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible();
 
     // Wallet methods are collapsed behind the single "Continue with a wallet"
     // toggle (#19217): the EVM/Solana peer buttons only join the tab order once

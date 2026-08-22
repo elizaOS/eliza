@@ -53,6 +53,16 @@ let tempUserDataDir: string | null = null;
 let browserHeadless = false;
 const BROWSER_LAUNCH_ATTEMPTS = 3;
 
+export function admitCompleteBrowserDom(html: string): string {
+  return html;
+}
+
+export function admitCompleteBrowserClickables(
+  elements: ClickableElement[],
+): ClickableElement[] {
+  return elements;
+}
+
 export function setBrowserRuntimeOptions(options: {
   headless?: boolean;
 }): void {
@@ -417,15 +427,14 @@ export async function getBrowserInfo(): Promise<BrowserInfo> {
 export async function getBrowserDom(): Promise<string> {
   const page = await ensureBrowser();
   const html = await page.content();
-  // Limit to first 5000 chars to prevent context overflow
-  return html.slice(0, 5000);
+  return admitCompleteBrowserDom(html);
 }
 
 // ── Clickable Elements ──────────────────────────────────────────────────────
 
 export async function getBrowserClickables(): Promise<ClickableElement[]> {
   const page = await ensureBrowser();
-  return page.evaluate(() => {
+  const elements = await page.evaluate(() => {
     const selectors =
       "a, button, input, select, textarea, [role='button'], [role='link'], [onclick]";
     const elements = document.querySelectorAll(selectors);
@@ -439,9 +448,8 @@ export async function getBrowserClickables(): Promise<ClickableElement[]> {
     }> = [];
 
     for (const el of elements) {
-      if (result.length >= 50) break;
       const tag = el.tagName.toLowerCase();
-      const text = el.textContent.trim().slice(0, 100);
+      const text = el.textContent.trim();
       const id = el.id ? `#${el.id}` : "";
       const cls =
         el.className && typeof el.className === "string"
@@ -458,6 +466,7 @@ export async function getBrowserClickables(): Promise<ClickableElement[]> {
     }
     return result;
   });
+  return admitCompleteBrowserClickables(elements);
 }
 
 // ── Screenshot ──────────────────────────────────────────────────────────────

@@ -26,10 +26,14 @@
 
 import { BRAND_COLORS } from "@elizaos/shared/brand";
 import {
+  connectorsForWallets,
   darkTheme,
-  getDefaultConfig,
   RainbowKitProvider,
 } from "@rainbow-me/rainbowkit";
+import {
+  injectedWallet,
+  walletConnectWallet,
+} from "@rainbow-me/rainbowkit/wallets";
 import { PhantomWalletAdapter } from "@solana/wallet-adapter-phantom";
 import {
   ConnectionProvider,
@@ -69,13 +73,25 @@ export function buildStewardEvmConfig(options: {
   const transports = buildEvmTransports(options.alchemyKey);
 
   if (options.walletConnectProjectId) {
-    return getDefaultConfig({
-      appName: "Eliza Cloud",
-      appDescription:
-        "Sign in to chat with your Eliza Cloud agent and manage your account",
-      appUrl: options.appUrl,
-      projectId: options.walletConnectProjectId,
+    const connectors = connectorsForWallets(
+      [
+        {
+          groupName: "Available wallets",
+          wallets: [injectedWallet, walletConnectWallet],
+        },
+      ],
+      {
+        appName: "Eliza Cloud",
+        appDescription:
+          "Sign in to chat with your Eliza Cloud agent and manage your account",
+        appUrl: options.appUrl,
+        projectId: options.walletConnectProjectId,
+      },
+    );
+
+    return createConfig({
       chains: [base, bsc],
+      connectors,
       transports,
       ssr: false,
     });
