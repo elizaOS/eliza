@@ -25,6 +25,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import { defaultLifeOpsConnectionsAdapter } from "./adapter.js";
@@ -331,6 +332,45 @@ export function LifeOpsConnectionsView({
   const [confirmation, setConfirmation] = useState<
     "disconnect" | "purge-google" | "purge-apple" | null
   >(null);
+  const cancelConfirmationRef = useRef<HTMLButtonElement>(null);
+  const confirmationDialogRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!confirmation) return;
+    const previouslyFocused =
+      document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null;
+    cancelConfirmationRef.current?.focus();
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setConfirmation(null);
+        return;
+      }
+      if (event.key !== "Tab") return;
+      const focusable = Array.from(
+        confirmationDialogRef.current?.querySelectorAll<HTMLButtonElement>(
+          "button:not(:disabled)",
+        ) ?? [],
+      );
+      const first = focusable[0];
+      const last = focusable.at(-1);
+      if (!first || !last) return;
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("keydown", closeOnEscape);
+      previouslyFocused?.focus();
+    };
+  }, [confirmation]);
 
   const refresh = useCallback(
     async (forceSync = false) => {
@@ -382,10 +422,6 @@ export function LifeOpsConnectionsView({
   const selectedAccount = connectedAccounts.find(
     (account) => grantId(account) === selectedGrantId,
   );
-  const selectedCalendars =
-    snapshot?.calendars.filter((calendar) =>
-      selectedCalendarKeys.has(calendarKey(calendar)),
-    ) ?? [];
   const googleCalendars =
     snapshot?.calendars.filter(
       (calendar) =>
@@ -396,9 +432,21 @@ export function LifeOpsConnectionsView({
     snapshot?.calendars.filter(
       (calendar) => calendar.provider === "apple_calendar",
     ) ?? [];
+  const selectedCalendars = [...googleCalendars, ...appleCalendars].filter(
+    (calendar) => selectedCalendarKeys.has(calendarKey(calendar)),
+  );
   const permission = snapshot
     ? permissionPresentation(snapshot.applePermission)
     : null;
+  const selectedAccountLabel = selectedAccount
+    ? accountEmail(selectedAccount)
+    : "selected Google account";
+  const confirmationTitle =
+    confirmation === "disconnect"
+      ? `Disconnect ${selectedAccountLabel}?`
+      : confirmation === "purge-google"
+        ? `Remove imported Google data for ${selectedAccountLabel}?`
+        : "Remove imported Apple Calendar data from Eliza?";
 
   const connect = async () => {
     setBusy("connect");
@@ -448,14 +496,14 @@ export function LifeOpsConnectionsView({
   };
 
   const seed = async () => {
-    if (!selectedGrantId) return;
+    if (!selectedGrantId && selectedCalendars.length === 0) return;
     setBusy("seed");
     setError(null);
     setSeedReceipt(null);
     try {
       const receipt = await adapter.seed(
         {
-          grantId: selectedGrantId,
+          grantId: selectedGrantId || null,
           rangeDays,
           includeGmail: Boolean(
             selectedAccount?.grantedCapabilities.includes(
@@ -487,6 +535,22 @@ export function LifeOpsConnectionsView({
     } catch (cause) {
       setError(
         cause instanceof Error ? cause.message : "Calendar permission failed.",
+      );
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const openAppleSettings = async () => {
+    setBusy("apple-settings");
+    setError(null);
+    try {
+      await adapter.openApplePermissionSettings();
+    } catch (cause) {
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : "System Settings could not be opened.",
       );
     } finally {
       setBusy(null);
@@ -683,7 +747,8 @@ export function LifeOpsConnectionsView({
                 <button
                   type="button"
                   style={BUTTON_STYLE}
-                  onClick={() => void adapter.openApplePermissionSettings()}
+                  onClick={() => void openAppleSettings()}
+                  disabled={busy !== null}
                 >
                   Open System Settings
                 </button>
@@ -736,7 +801,10 @@ export function LifeOpsConnectionsView({
               type="button"
               className="lifeops-primary"
               onClick={() => void seed()}
-              disabled={!selectedGrantId || busy !== null}
+              disabled={
+                (!selectedGrantId && selectedCalendars.length === 0) ||
+                busy !== null
+              }
             >
               Seed selected context
             </button>
@@ -753,8 +821,12 @@ export function LifeOpsConnectionsView({
                 <span>
                   {seedReceipt.gmailMessageCount} Gmail messages and{" "}
                   {seedReceipt.calendarEventCount} calendar events from{" "}
-                  {seedReceipt.calendarSourceCount} sources.{" "}
-                  {seedReceipt.duplicateEventCount} duplicate deliveries
+                  {seedReceipt.calendarSourceCount}{" "}
+                  {seedReceipt.calendarSourceCount === 1 ? "source" : "sources"}
+                  . {seedReceipt.duplicateEventCount} duplicate{" "}
+                  {seedReceipt.duplicateEventCount === 1
+                    ? "delivery"
+                    : "deliveries"}{" "}
                   ignored.
                 </span>
               </div>
@@ -926,16 +998,13 @@ export function LifeOpsConnectionsView({
         <div className="lifeops-dialog-backdrop" role="presentation">
           <div
             className="lifeops-dialog"
+            ref={confirmationDialogRef}
             role="alertdialog"
             aria-modal="true"
             aria-labelledby="lifeops-confirm-title"
             aria-describedby="lifeops-confirm-description"
           >
-            <h2 id="lifeops-confirm-title">
-              {confirmation === "disconnect"
-                ? "Disconnect this Google account?"
-                : "Remove imported data from Eliza?"}
-            </h2>
+            <h2 id="lifeops-confirm-title">{confirmationTitle}</h2>
             <p id="lifeops-confirm-description">
               {confirmation === "disconnect"
                 ? "Future Gmail and Google Calendar sync will stop. Provider data is unchanged; imported data can be purged separately."
@@ -945,6 +1014,7 @@ export function LifeOpsConnectionsView({
               <button
                 type="button"
                 style={BUTTON_STYLE}
+                ref={cancelConfirmationRef}
                 onClick={() => setConfirmation(null)}
               >
                 Cancel

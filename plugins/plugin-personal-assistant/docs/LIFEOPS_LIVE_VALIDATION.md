@@ -51,6 +51,114 @@ default because it requires real credentials and devices.
 > inference endpoint) before a live session. This is the single most common
 > blocker — confirm a model round-trips before validating connectors.
 
+## Supervised mail and calendar acceptance
+
+Run this section only from a reviewed candidate whose exact commit is recorded
+in the session report. Use a disposable Gmail thread and disposable Google and
+Apple calendars. Never capture tokens, message bodies, attendee addresses, or
+private event text. Every chooser, consent, MFA, native permission, send,
+archive/trash/label operation, or external calendar write is an action-time
+user gate; stop immediately before it and name the exact pending effect.
+
+### Google connection and bounded seed
+
+1. Open `/lifeops/connections` and capture the disconnected desktop and mobile
+   states. Confirm Apple-only seeding remains available when an Apple calendar
+   is selected.
+2. Under **OAuth access requested**, leave only **Read and search Gmail**,
+   **Create drafts**, and **Read Google Calendar** selected. Confirm Gmail send,
+   mailbox management, and Calendar write remain off.
+3. Click **Continue to Google**, then stop. The user completes the Google
+   account chooser, consent, password, and MFA prompts. Record only the account
+   alias used for the disposable test, never an address or token in durable
+   evidence.
+4. After callback, confirm the chosen account is displayed, the expected
+   calendars are discoverable, and the granted capabilities match step 2.
+5. Select only the disposable Google calendar plus any disposable Apple
+   calendar, choose **7 days**, and click **Seed selected context**. Confirm the
+   progress phases complete and the receipt reports Gmail messages, calendar
+   events, source count, and duplicate count. It must not send mail, invite
+   attendees, or write either provider.
+6. Confirm Gmail shows a History cursor status and last-success timestamp.
+   Confirm each calendar source shows independent freshness and update mode.
+7. In Gmail and Google Calendar directly, create one new disposable message or
+   event as the user. Return to Eliza and click **Refresh health**. Verify only
+   the incremental item appears and the seed totals do not duplicate.
+8. For a second Google account, repeat connection with another disposable
+   account. Switch **Active Google account**, seed, and verify the request and
+   receipt include that account's Google calendars plus selected Apple
+   calendars, never hidden calendars from the other Google grant.
+
+### Gmail drafts versus effects
+
+1. Ask Eliza to prepare a self-addressed reply draft. Verify the review surface
+   and provider draft receipt; no message may be sent.
+2. If send acceptance is explicitly authorized, enable **Send approved email**,
+   review the exact recipient/subject/body, and stop at the final confirmation.
+   The user authorizes that one disposable send. Verify the provider receipt and
+   Sent state, then confirm incremental History sync imports it once.
+3. Repeat separately for reply and forward. A draft receipt is never accepted
+   as a send receipt.
+4. If mailbox-mutation acceptance is explicitly authorized, enable **Manage
+   labels and mailbox state** and test one disposable label, archive, and trash
+   operation. Stop before each final confirmation. Verify success and failure
+   receipts independently and retry only failed items.
+
+### Google Calendar read and optional writes
+
+1. In a disposable Google calendar, create externally: a timed event, an
+   all-day event, a recurrence with one exception, and a timezone/DST case.
+   Refresh Eliza and verify identities, instances, cancellation state, timezone,
+   reminders, and attendees are preserved without fuzzy title/time merging.
+2. Ask Eliza to propose an event. Confirm the proposal does not create it.
+3. If Calendar writes are explicitly authorized, enable **Change Google
+   Calendar** and stop at each final create/update/invite/delete confirmation.
+   Verify a provider receipt and read-back after every effect. Use only the
+   disposable calendar and test attendee.
+4. Revoke the test grant in Google, then refresh Eliza. Verify a recoverable
+   disconnected/expired state rather than cached success. Reconnect the same
+   account and verify stable identities prevent duplicates.
+
+### Apple Calendar and overlap
+
+1. Use a packaged macOS build and an iOS simulator or physical device. Open
+   `/lifeops/connections`; at **Request permission**, stop and let the user
+   accept or deny the native EventKit prompt.
+2. For denial, verify **Permission denied** and **Open System Settings**. The
+   user changes Calendar permission in System Settings, returns to Eliza, and
+   clicks **Refresh health**. Verify the state becomes **Full access**. Also
+   record restricted, limited, not-determined, and not-applicable states where
+   the target supports them.
+3. Select only a disposable Apple calendar, choose **7 days**, and seed without
+   any Google grant. Verify the receipt says one source and contains no Gmail
+   import.
+4. Create and edit disposable timed, all-day, recurring/exception, timezone,
+   reminder, and attendee events in Apple Calendar. Verify EventKit store-change
+   delivery or polling recovery imports each change once.
+5. Surface the disposable Google calendar through Apple Calendar while the
+   direct Google grant remains connected. Verify both provenances are visible,
+   each logical event is read once, and no write is sent back twice.
+6. If Apple writes are explicitly authorized, stop at each final
+   create/update/delete confirmation and verify the EventKit receipt plus native
+   read-back.
+
+### Local lifecycle and recovery
+
+1. Open each purge dialog and verify its title names the exact Google account or
+   Apple provider. Cancel with Escape and confirm no receipt appears.
+2. Confirm **Purge imported Google data** or **Purge imported Apple data** only
+   when authorized. Verify `providerMutation: false`, then check the disposable
+   provider data still exists.
+3. Disconnect Google without purging. Verify future Google sync stops while
+   Apple-only seed remains available and imported Google context remains until
+   separately purged.
+4. Reconnect the same account, reseed the same range, and verify counts and
+   canonical identities do not duplicate.
+5. Exercise offline/reconnect, expired History and Calendar cursors, quota/rate
+   limits, partial seed, app restart between phases, and failed permission or
+   System Settings launches. Every failure must remain visible, retain healthy
+   cached sources, re-enable safe retry, and emit no fabricated success receipt.
+
 ## OWNER vs USER permission matrix (run for every connector/action)
 
 For each owner-only action surface, exercise and record evidence for:

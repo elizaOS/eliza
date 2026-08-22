@@ -93,6 +93,24 @@ function googleStatus(): LifeOpsGoogleConnectorStatus {
   };
 }
 
+function secondGoogleStatus(): LifeOpsGoogleConnectorStatus {
+  const first = googleStatus();
+  const secondGrantId = "connector-account:account-2";
+  return {
+    ...first,
+    identity: { email: "second@example.test" },
+    grant: first.grant
+      ? {
+          ...first.grant,
+          id: secondGrantId,
+          connectorAccountId: "account-2",
+          identity: { email: "second@example.test" },
+          identityEmail: "second@example.test",
+        }
+      : null,
+  };
+}
+
 function calendar(
   provider: "google" | "apple_calendar",
 ): LifeOpsCalendarSummary {
@@ -323,7 +341,7 @@ describe("LifeOpsConnectionsView", () => {
       expect.any(Function),
     );
     expect((await screen.findByTestId("seed-receipt")).textContent).toContain(
-      "12 Gmail messages and 8 calendar events from 2 sources. 1 duplicate deliveries ignored.",
+      "12 Gmail messages and 8 calendar events from 2 sources. 1 duplicate delivery ignored.",
     );
   });
 
@@ -358,6 +376,141 @@ describe("LifeOpsConnectionsView", () => {
     fireEvent.click(screen.getByRole("button", { name: "Confirm disconnect" }));
     await waitFor(() =>
       expect(localAdapter.disconnectGoogle).toHaveBeenCalledWith(GRANT_ID),
+    );
+  });
+
+  it("seeds only the active Google account plus selected Apple calendars", async () => {
+    const localAdapter = adapter();
+    const firstSnapshot = snapshot();
+    const secondCalendar: LifeOpsCalendarSummary = {
+      ...calendar("google"),
+      grantId: "connector-account:account-2",
+      connectorAccountId: "account-2",
+      accountEmail: "second@example.test",
+      calendarId: "second-primary",
+      summary: "Second primary",
+    };
+    vi.mocked(localAdapter.load).mockResolvedValue({
+      ...firstSnapshot,
+      googleAccounts: [googleStatus(), secondGoogleStatus()],
+      calendars: [...firstSnapshot.calendars, secondCalendar],
+    });
+    render(<LifeOpsConnectionsView adapter={localAdapter} />);
+    await screen.findByText("owner@example.test");
+
+    fireEvent.change(
+      screen.getByRole("combobox", { name: "Active Google account" }),
+      { target: { value: "connector-account:account-2" } },
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "Seed selected context" }),
+    );
+
+    await waitFor(() => expect(localAdapter.seed).toHaveBeenCalledOnce());
+    const request = vi.mocked(localAdapter.seed).mock.calls[0]?.[0];
+    expect(request?.grantId).toBe("connector-account:account-2");
+    expect(request?.calendarKeys).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining("second-primary"),
+        expect.stringContaining("apple-personal"),
+      ]),
+    );
+    expect(request?.calendarKeys).not.toContain(
+      JSON.stringify([
+        "google",
+        "owner",
+        GRANT_ID,
+        CONNECTOR_ACCOUNT_ID,
+        "primary",
+      ]),
+    );
+  });
+
+  it("supports an Apple-only bounded seed without fabricating a Google grant", async () => {
+    const localAdapter = adapter();
+    const apple = calendar("apple_calendar");
+    const appleOnly = snapshot();
+    vi.mocked(localAdapter.load).mockResolvedValue({
+      ...appleOnly,
+      googleAccounts: [],
+      calendars: [apple],
+      calendarFeed: {
+        ...appleOnly.calendarFeed,
+        state: "complete",
+        sources: [source(apple)],
+      },
+      gmailHealthByGrantId: {},
+      applePermission: {
+        ...appleOnly.applePermission,
+        status: "granted",
+        canRequest: false,
+      },
+    });
+    render(<LifeOpsConnectionsView adapter={localAdapter} />);
+    await screen.findByText("No Google account is connected.");
+
+    const seedButton = screen.getByRole("button", {
+      name: "Seed selected context",
+    });
+    expect((seedButton as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(seedButton);
+
+    await waitFor(() => expect(localAdapter.seed).toHaveBeenCalledOnce());
+    expect(localAdapter.seed).toHaveBeenCalledWith(
+      expect.objectContaining({
+        grantId: null,
+        includeGmail: false,
+        calendarKeys: [expect.stringContaining("apple-personal")],
+      }),
+      expect.any(Function),
+    );
+    expect((await screen.findByTestId("seed-receipt")).textContent).toContain(
+      "from 1 source",
+    );
+  });
+
+  it("focuses destructive confirmation and lets Escape cancel it", async () => {
+    const localAdapter = adapter();
+    render(<LifeOpsConnectionsView adapter={localAdapter} />);
+    await screen.findByText("owner@example.test");
+
+    fireEvent.click(
+      screen.getByRole("button", { name: /Purge imported Google data/ }),
+    );
+    expect(
+      screen.getByRole("heading", {
+        name: "Remove imported Google data for owner@example.test?",
+      }),
+    ).toBeTruthy();
+    const cancel = screen.getByRole("button", { name: "Cancel" });
+    await waitFor(() => expect(document.activeElement).toBe(cancel));
+
+    fireEvent.keyDown(document, { key: "Tab", shiftKey: true });
+    expect(document.activeElement).toBe(
+      screen.getByRole("button", { name: "Confirm purge" }),
+    );
+    fireEvent.keyDown(document, { key: "Tab" });
+    expect(document.activeElement).toBe(cancel);
+
+    fireEvent.keyDown(document, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+    expect(localAdapter.purgeImportedData).not.toHaveBeenCalled();
+  });
+
+  it("surfaces System Settings launch failures as recoverable UI errors", async () => {
+    const localAdapter = adapter();
+    vi.mocked(localAdapter.openApplePermissionSettings).mockRejectedValue(
+      new Error("System Settings is unavailable."),
+    );
+    render(<LifeOpsConnectionsView adapter={localAdapter} />);
+    await screen.findByText("owner@example.test");
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Open System Settings" }),
+    );
+
+    expect((await screen.findByRole("alert")).textContent).toContain(
+      "System Settings is unavailable.",
     );
   });
 });
