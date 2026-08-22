@@ -95,6 +95,16 @@ export function createApiHealthWatchdog({
   };
 
   return {
+    /**
+     * Mark a replacement child as booting. Supervisors must call this for
+     * every new generation, including source reloads and child-requested
+     * relaunches, because those replacements are just as unready as one the
+     * watchdog requested itself.
+     */
+    beginRecovery() {
+      failures = 0;
+      recoveringUntil = now() + recoveryGraceMs;
+    },
     start() {
       if (timer) return;
       timer = setInterval(() => void checkNow(), intervalMs);
@@ -104,6 +114,7 @@ export function createApiHealthWatchdog({
       if (timer) clearInterval(timer);
       timer = null;
       failures = 0;
+      recoveringUntil = 0;
     },
     checkNow,
   };

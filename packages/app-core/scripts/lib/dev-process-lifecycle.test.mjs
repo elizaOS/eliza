@@ -99,4 +99,32 @@ describe("createApiHealthWatchdog", () => {
     for (let i = 0; i < 3; i++) await watchdog.checkNow();
     expect(restart).toHaveBeenCalledTimes(2);
   });
+
+  it("holds unhealthy probes for a replacement started outside the watchdog", async () => {
+    let clock = 10_000;
+    let healthy = false;
+    const restart = vi.fn();
+    const watchdog = createApiHealthWatchdog({
+      check: async () => healthy,
+      restart,
+      failureThreshold: 3,
+      recoveryGraceMs: 60_000,
+      now: () => clock,
+    });
+
+    // Source reloads, child-requested restarts, and crash relaunches all enter
+    // through the supervisor's onSpawn hook rather than watchdog.restart().
+    watchdog.beginRecovery();
+    for (let i = 0; i < 10; i++) {
+      clock += 5_000;
+      await watchdog.checkNow();
+    }
+    expect(restart).not.toHaveBeenCalled();
+
+    healthy = true;
+    await watchdog.checkNow();
+    healthy = false;
+    for (let i = 0; i < 3; i++) await watchdog.checkNow();
+    expect(restart).toHaveBeenCalledTimes(1);
+  });
 });
