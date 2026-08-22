@@ -2360,7 +2360,15 @@ export class MessageManager {
             },
             "Error in reaction callback",
           );
-          return [];
+          // error-policy:J2 A failed reaction reply is not an empty successful
+          // turn; the inbound message callback already rethrows this way.
+          throw error instanceof ElizaError
+            ? error
+            : new ElizaError("Telegram reaction reply failed", {
+                code: "TELEGRAM_REACTION_REPLY_FAILED",
+                cause: error,
+                context: { accountId: this.accountId, roomId },
+              });
         }
       };
 
@@ -2483,7 +2491,12 @@ export class MessageManager {
    * @param {number | string} chatId - The Telegram chat ID to send the message to
    * @param {Content} content - The content to send
    * @param {number} [replyToMessageId] - Optional message ID to reply to
-   * @returns {Promise<Message.TextMessage[]>} The sent messages
+   * @returns {Promise<Message.TextMessage[]>} The sent messages. An empty
+   *   array means there was nothing to send (attachments-only or blank text),
+   *   not that Telegram rejected the send.
+   * @throws {ElizaError} `TELEGRAM_OUTBOUND_SEND_FAILED` when the Bot API
+   *   rejects the send; `TELEGRAM_OUTBOUND_PERSIST_FAILED` when Telegram
+   *   accepted the send but local memory/event evidence could not be written.
    */
   public async sendMessage(
     chatId: number | string,
@@ -2491,6 +2504,7 @@ export class MessageManager {
     replyToMessageId?: number,
     messageThreadId?: number,
   ): Promise<Message.TextMessage[]> {
+    let sentMessages: Message.TextMessage[];
     try {
       // Create a context-like object for sending
       const ctx = {
@@ -2498,17 +2512,43 @@ export class MessageManager {
         telegram: this.bot.telegram,
       };
 
-      const sentMessages = await this.sendMessageInChunks(
+      sentMessages = await this.sendMessageInChunks(
         ctx as Context,
         content,
         replyToMessageId,
         messageThreadId,
       );
+    } catch (error) {
+      logger.error(
+        {
+          src: "plugin:telegram",
+          agentId: this.runtime.agentId,
+          chatId,
+          error: error instanceof Error ? error.message : String(error),
+        },
+        "Error sending message to Telegram",
+      );
+      // error-policy:J2 Transport failure must not collapse to the same empty
+      // array `sendMessageInChunks` returns when there is nothing to send.
+      // `TelegramService.handleSendMessage` only rethrows if we throw here;
+      // returning [] made a 403/400 look like a successful no-op send.
+      throw error instanceof ElizaError
+        ? error
+        : new ElizaError("Telegram outbound send failed", {
+            code: "TELEGRAM_OUTBOUND_SEND_FAILED",
+            cause: error,
+            context: {
+              accountId: this.accountId,
+              chatId: String(chatId),
+            },
+          });
+    }
 
-      if (!sentMessages.length) {
-        return [];
-      }
+    if (!sentMessages.length) {
+      return [];
+    }
 
+    try {
       // Create group ID
       const roomKey = messageThreadId
         ? `${chatId.toString()}-${messageThreadId}`
@@ -2624,9 +2664,28 @@ export class MessageManager {
           chatId,
           error: error instanceof Error ? error.message : String(error),
         },
-        "Error sending message to Telegram",
+        "Error persisting a Telegram message that the Bot API already accepted",
       );
-      return [];
+      // error-policy:J2 Local persist/event failure after Telegram accepted the
+      // send. Returning [] would look like "nothing sent" and invite a retry
+      // that duplicates the visible message; rethrow with the provider ids in
+      // context so the connector boundary can fail without claiming silence.
+      throw error instanceof ElizaError
+        ? error
+        : new ElizaError(
+            "Telegram accepted the send but local delivery evidence failed",
+            {
+              code: "TELEGRAM_OUTBOUND_PERSIST_FAILED",
+              cause: error,
+              context: {
+                accountId: this.accountId,
+                chatId: String(chatId),
+                providerMessageIds: sentMessages.map((message) =>
+                  message.message_id.toString(),
+                ),
+              },
+            },
+          );
     }
   }
 }
