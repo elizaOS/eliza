@@ -11,9 +11,9 @@ export const TWILIO_API_BASE = "https://api.twilio.com/2010-04-01";
 export const TWILIO_REQUEST_TIMEOUT_MS = 30_000;
 
 /**
- * Bound every Twilio REST hop while preserving caller cancellation.
+ * Bound every Twilio REST hop with an owned deadline. This helper is deadline-only (no caller signal exposure); callers cannot disable the bound.
  */
-function twilioFetch(
+export function twilioFetch(
   input: RequestInfo | URL,
   init?: RequestInit,
   timeoutMs: number = TWILIO_REQUEST_TIMEOUT_MS,

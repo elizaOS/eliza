@@ -14,7 +14,7 @@ export const CLOUDFLARE_REQUEST_TIMEOUT_MS = 30_000;
 /**
  * Bound every Cloudflare REST hop while preserving caller cancellation.
  */
-function cloudflareFetch(
+export function cloudflareFetch(
   input: RequestInfo | URL,
   init?: RequestInit,
   timeoutMs: number = CLOUDFLARE_REQUEST_TIMEOUT_MS,
