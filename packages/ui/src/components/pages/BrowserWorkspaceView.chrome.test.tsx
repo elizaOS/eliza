@@ -18,6 +18,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const walletStateHarness = vi.hoisted(() => ({
   connected: false,
   pendingApprovals: 0,
+  plugins: [] as Array<{ name: string }>,
 }));
 
 vi.mock("../../state", async (importOriginal) => {
@@ -45,7 +46,7 @@ vi.mock("../../state", async (importOriginal) => {
       typeof options.defaultValue === "string"
         ? options.defaultValue
         : _key,
-    plugins: [],
+    plugins: walletStateHarness.plugins,
     uiTheme: "dark",
     walletAddresses: [],
     walletConfig: null,
@@ -147,6 +148,7 @@ function deferred<T>(): {
 beforeEach(() => {
   walletStateHarness.connected = false;
   walletStateHarness.pendingApprovals = 0;
+  walletStateHarness.plugins.splice(0);
   vi.mocked(client.getBrowserWorkspace).mockResolvedValue({
     mode: "web",
     tabs: [],
@@ -179,6 +181,28 @@ describe("BrowserWorkspaceView fullscreen chrome (Notes/Calendar parity)", () =>
     // The fullscreen framing owns its chrome: the shared back-arrow ViewHeader
     // must not render (the shell no longer stacks a host top bar either).
     expect(screen.queryByTestId("view-header")).toBeNull();
+  });
+
+  it("defers Browser Bridge administration until its disclosure opens", async () => {
+    walletStateHarness.plugins.push({ name: "@elizaos/plugin-browser" });
+    render(<BrowserWorkspaceView />);
+
+    expect(await screen.findByText("No page open")).not.toBeNull();
+    const disclosure = screen.getByTestId(
+      "browser-bridge-controls",
+    ) as HTMLDetailsElement;
+    expect(disclosure.open).toBe(false);
+    expect(screen.queryByText("Install Agent Browser Bridge")).toBeNull();
+    expect(screen.queryByTestId("browser-session-policy-loading")).toBeNull();
+
+    disclosure.open = true;
+    fireEvent(disclosure, new Event("toggle"));
+    expect(
+      await screen.findByText("Install Agent Browser Bridge"),
+    ).not.toBeNull();
+    expect(
+      await screen.findByTestId("browser-session-policy-error"),
+    ).not.toBeNull();
   });
 
   it("floats the navigation toolbar as its own glass panel above the web surface", async () => {
