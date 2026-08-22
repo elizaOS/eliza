@@ -79,7 +79,7 @@ const chromeSubmission = {
   shortDescription:
     "Connect your real browser to your Eliza agent so it can read the page you are on and carry out owner-approved actions.",
   description:
-    "Agent Browser Bridge securely enrolls your Chrome profile through the authenticated native Eliza app. It keeps the current page available to the agent and can execute owner-approved browser actions such as opening tabs, navigating, clicking, typing, and reading page content. Pairing JSON import remains available only as an explicit recovery path.",
+    "Agent Browser Bridge securely enrolls your Chrome profile through the authenticated native Eliza app. It keeps the current page available to the agent and can execute owner-approved browser actions such as opening tabs, navigating, clicking, typing, and reading page content. Recovery retries authenticated native enrollment without exposing connection credentials.",
   packageFileName: chromePackageFile,
   version: metadata.chromeVersion,
   versionName: metadata.chromeVersionName,
@@ -122,7 +122,7 @@ const chromeSubmission = {
     },
   ],
   reviewerNotes: [
-    "With the signed Eliza desktop app running and authenticated, the extension enrolls automatically through the browser native-messaging channel; pairing JSON import is a recovery-only fallback.",
+    "With the signed Eliza desktop app running and authenticated, the extension enrolls automatically through the browser native-messaging channel; recovery retries that authenticated enrollment flow.",
     "Browser control is disabled by default unless the user enables it in agent settings.",
     "The retired zero-config auto-pair endpoint returns 410 and never mints credentials from loopback reachability or an extension Origin.",
   ],
@@ -145,13 +145,13 @@ const safariSubmission = {
   capabilities: [
     "Safari Web Extension",
     "Automatic enrollment through the authenticated containing Eliza app",
-    "Authenticated pairing JSON import as an explicit recovery path",
+    "Credential-free recovery through authenticated native re-enrollment",
     "Optional browser control for owner-approved sessions",
   ],
   reviewerNotes: [
     "The app bundle is generated from the same extension source as Chrome and is intended for App Store signing/export downstream.",
     "Privacy policy URL is required before submission if it is still null in this artifact.",
-    "Reviewers should launch and authenticate the signed Eliza containing app; the Safari extension then enrolls automatically through the App Group broker. Pairing JSON import is available only for recovery.",
+    "Reviewers should launch and authenticate the signed Eliza containing app; the Safari extension then enrolls automatically through the App Group broker and uses that same authenticated path for recovery.",
   ],
 };
 
@@ -171,7 +171,7 @@ const firefoxSubmission = {
   dataCollectionPermissions: { required: ["none"] },
   reviewerNotes: [
     "The package declares a stable Gecko extension ID and supports Firefox 142 or later.",
-    "With the authenticated Eliza desktop app running, Firefox enrolls automatically through native messaging. Pairing JSON import is retained only as a recovery path.",
+    "With the authenticated Eliza desktop app running, Firefox enrolls automatically through native messaging and uses that same authenticated path for recovery.",
     "The package passes web-ext lint in self-hosted mode with no errors, warnings, or notices.",
   ],
 };
@@ -211,7 +211,7 @@ const checklistLines = [
   "",
   "## Notes",
   "",
-  "- Authenticated native enrollment through the signed Eliza desktop app is the primary credential setup flow; pairing JSON import is recovery-only.",
+  "- Authenticated native enrollment through the signed Eliza desktop app is the only user-facing credential setup and recovery flow.",
   "- The retired unauthenticated HTTP loopback auto-pair endpoint remains disabled and cannot mint credentials.",
   "- Re-sign the Safari app bundle and export through App Store Connect before submission.",
   "- Review the JSON metadata files in this artifacts directory for permission text and reviewer notes.",
