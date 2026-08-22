@@ -1,26 +1,10 @@
-// @vitest-environment jsdom
-//
-// Behavioral tests for the terminal-task action-bar guards in
-// `TaskInspector` (src/OrchestratorWorkbench.tsx). We test it directly via the
-// exported `TaskInspector` symbol with a hand-built detail fixture so the test
-// is fast and does not need the
-// surrounding workbench, network mocks, or the conversation timeline.
-//
-// What's locked here (see
-// `plugins/plugin-agent-orchestrator/docs/orchestrator-dashboard-task-widget-secrets-design.md`
-// section 3):
-//
-//  * When `detail.status` is terminal (done, failed, archived), the entire
-//    Edit-group action bar (Fork, Restart, Add Agent) is hidden and the
-//    priority dropdown is hidden. Only Reopen (when archived) and Delete
-//    (and Copy link) remain as primary affordances.
-//  * For non-terminal statuses (e.g. `active`), all of those buttons render
-//    as before — the change is purely additive guards, no regression.
-//
-// The Playwright spec
-// `packages/app/test/ui-smoke/orchestrator-gui-workbench.spec.ts` exercises
-// these same buttons against a task in `status: "active"`, so the active-task
-// guard test here mirrors what that spec depends on.
+/**
+ * Exercises TaskInspector's terminal-state guards and control callbacks with
+ * deterministic UI collaborators. Authority-changing controls remain usable
+ * by people but are excluded from generic agent activation.
+ *
+ * @vitest-environment jsdom
+ */
 
 import {
   cleanup,
@@ -467,12 +451,15 @@ describe("TaskInspector — control behavior (callbacks fire)", () => {
     expect(cb.onValidate).toHaveBeenCalledWith(false);
   });
 
-  it("agent-filling the priority select fires onSetPriority with the new value", () => {
-    const { cb } = renderWithSpies({ status: "active", priority: "normal" });
-    const descriptor = agentDescriptors.get("inspector-priority");
-    expect(descriptor?.onFill).toBeTypeOf("function");
-    descriptor?.onFill?.("high");
-    expect(cb.onSetPriority).toHaveBeenCalledWith("high");
+  it("keeps priority selection human-only instead of registering agent fill", () => {
+    renderWithSpies({ status: "active", priority: "normal" });
+    expect(agentDescriptors.has("inspector-priority")).toBe(false);
+    const priority = screen.getByTestId("orchestrator-priority-select");
+    expect(priority.getAttribute("data-agent-authority")).toBe("human");
+    expect(priority.getAttribute("data-agent-human-id")).toBe(
+      "inspector-priority",
+    );
+    expect(priority.hasAttribute("data-agent-id")).toBe(false);
   });
 
   it("Add agent toggles the add-agent form via onToggleAddAgent", () => {
