@@ -14,7 +14,6 @@ import {
 import {
   getLifeOpsSimulatorPerson,
   LIFEOPS_SIMULATOR_CHANNEL_MESSAGES,
-  LIFEOPS_SIMULATOR_OWNER,
   LIFEOPS_SIMULATOR_OWNER_IDENTITIES,
   type LifeOpsSimulatorChannelMessage,
   lifeOpsSimulatorMessageTime,
@@ -49,7 +48,6 @@ export const MOCK_PROVIDER_ENVIRONMENTS = [
   "x-twitter",
   "calendly",
   "cloud-managed",
-  "signal",
   "browser-workspace",
   "imessage",
   "github",
@@ -140,7 +138,6 @@ export interface MockRequestLedgerEntry {
   calendar?: GoogleCalendarRequestLedgerMetadata;
   x?: XRequestLedgerMetadata;
   whatsapp?: WhatsAppRequestLedgerMetadata;
-  signal?: SignalRequestLedgerMetadata;
   browserWorkspace?: BrowserWorkspaceRequestLedgerMetadata;
   github?: GitHubRequestLedgerMetadata;
   payment?: PaymentRequestLedgerMetadata;
@@ -164,15 +161,6 @@ interface WhatsAppRequestLedgerMetadata {
   recipient?: string;
   messageId?: string;
   ingested?: number;
-  runId?: string;
-}
-
-interface SignalRequestLedgerMetadata {
-  action: string;
-  account?: string;
-  recipients?: string[];
-  groupId?: string;
-  timestamp?: number;
   runId?: string;
 }
 
@@ -241,10 +229,6 @@ function envVarsFor(
     out.ELIZA_MOCK_CALENDLY_BASE = baseUrls.calendly;
   if (envs.includes("cloud-managed"))
     out.ELIZA_CLOUD_BASE_URL = baseUrls["cloud-managed"];
-  if (envs.includes("signal")) {
-    out.SIGNAL_HTTP_URL = baseUrls.signal;
-    out.SIGNAL_ACCOUNT_NUMBER = LIFEOPS_SIMULATOR_OWNER.phone;
-  }
   if (envs.includes("browser-workspace")) {
     out.ELIZA_BROWSER_WORKSPACE_URL = baseUrls["browser-workspace"];
     out.ELIZA_BROWSER_WORKSPACE_TOKEN = MOCK_BROWSER_WORKSPACE_TOKEN;
@@ -1021,215 +1005,6 @@ function whatsappDynamicFixture(
         messages: drained.map(whatsappInboundMessageToJson),
       });
     }
-  }
-
-  return null;
-}
-
-interface SignalEnvelopeMessage {
-  envelope: {
-    source: string;
-    sourceNumber: string;
-    sourceName: string;
-    timestamp: number;
-    dataMessage: {
-      timestamp: number;
-      message: string;
-      groupInfo?: { groupId: string; type: string };
-    };
-  };
-  account: string;
-}
-
-function signalEnvelopeMessageToJson(
-  message: SignalEnvelopeMessage,
-): JsonValue {
-  return {
-    account: message.account,
-    envelope: {
-      source: message.envelope.source,
-      sourceNumber: message.envelope.sourceNumber,
-      sourceName: message.envelope.sourceName,
-      timestamp: message.envelope.timestamp,
-      dataMessage: {
-        timestamp: message.envelope.dataMessage.timestamp,
-        message: message.envelope.dataMessage.message,
-        ...(message.envelope.dataMessage.groupInfo
-          ? { groupInfo: { ...message.envelope.dataMessage.groupInfo } }
-          : {}),
-      },
-    },
-  };
-}
-
-interface SignalMockState {
-  receiveQueue: SignalEnvelopeMessage[];
-}
-
-function simulatorSignalMessage(
-  message: LifeOpsSimulatorChannelMessage,
-): SignalEnvelopeMessage {
-  const person = getLifeOpsSimulatorPerson(message.fromPersonKey);
-  const timestamp = Date.parse(
-    lifeOpsSimulatorMessageTime(message.sentAtOffsetMs),
-  );
-  const isGroup = message.threadType === "group";
-  return {
-    envelope: {
-      source: person.signalNumber,
-      sourceNumber: person.signalNumber,
-      sourceName: isGroup ? message.threadName : `${person.name} Signal`,
-      timestamp,
-      dataMessage: {
-        timestamp,
-        message: message.text,
-        ...(isGroup
-          ? { groupInfo: { groupId: message.threadId, type: "DELIVER" } }
-          : {}),
-      },
-    },
-    account: LIFEOPS_SIMULATOR_OWNER.phone,
-  };
-}
-
-function createSignalMockState(opts?: MockFixtureOptions): SignalMockState {
-  const now = Date.parse("2026-04-25T12:00:00.000Z");
-  return {
-    receiveQueue: opts?.simulator
-      ? LIFEOPS_SIMULATOR_CHANNEL_MESSAGES.filter(
-          (message) => message.channel === "signal",
-        ).map(simulatorSignalMessage)
-      : [
-          {
-            envelope: {
-              source: "+15551110001",
-              sourceNumber: "+15551110001",
-              sourceName: "Alice Signal",
-              timestamp: now,
-              dataMessage: {
-                timestamp: now,
-                message: "Signal fixture inbound message",
-              },
-            },
-            account: LIFEOPS_SIMULATOR_OWNER.phone,
-          },
-          {
-            envelope: {
-              source: "+15551110002",
-              sourceNumber: "+15551110002",
-              sourceName: "Ops Group",
-              timestamp: now + 1_000,
-              dataMessage: {
-                timestamp: now + 1_000,
-                message: "Signal group fixture message",
-                groupInfo: { groupId: "group-signal-fixture", type: "DELIVER" },
-              },
-            },
-            account: LIFEOPS_SIMULATOR_OWNER.phone,
-          },
-        ],
-  };
-}
-
-function signalRpcResponse(
-  requestBody: RequestBody,
-  result: JsonValue,
-): DynamicFixtureResponse {
-  return jsonFixture({
-    jsonrpc: "2.0",
-    id: requestBody.id ?? null,
-    result,
-  });
-}
-
-function signalDynamicFixture(
-  state: SignalMockState,
-  method: string,
-  pathname: string,
-  requestBody: RequestBody,
-  ledgerEntry: MockRequestLedgerEntry,
-): DynamicFixtureResponse | null {
-  if (method === "GET" && pathname === "/api/v1/check") {
-    ledgerEntry.signal = withRunId<SignalRequestLedgerMetadata>(ledgerEntry, {
-      action: "check",
-    });
-    return jsonFixture({ ok: true });
-  }
-
-  if (method === "POST" && pathname === "/api/v1/rpc") {
-    const rpcMethod = readRequiredFixtureString(requestBody, "method");
-    const params = readNestedRecord(requestBody.params) ?? {};
-    const account =
-      typeof params.account === "string"
-        ? params.account
-        : LIFEOPS_SIMULATOR_OWNER.phone;
-    ledgerEntry.signal = withRunId<SignalRequestLedgerMetadata>(ledgerEntry, {
-      action: `rpc.${rpcMethod}`,
-      account,
-      recipients: Array.isArray(params.recipients)
-        ? params.recipients.filter(
-            (entry): entry is string => typeof entry === "string",
-          )
-        : undefined,
-      groupId: typeof params.groupId === "string" ? params.groupId : undefined,
-      timestamp: Date.now(),
-    });
-    if (rpcMethod === "version")
-      return signalRpcResponse(requestBody, "mock-signal-cli");
-    if (rpcMethod === "listAccounts") {
-      return signalRpcResponse(requestBody, [
-        {
-          number: LIFEOPS_SIMULATOR_OWNER.phone,
-          uuid: LIFEOPS_SIMULATOR_OWNER_IDENTITIES.signal.uuid,
-        },
-      ]);
-    }
-    if (rpcMethod === "listContacts") {
-      return signalRpcResponse(requestBody, [
-        {
-          number: "+15551110001",
-          uuid: "mock-contact-alice",
-          name: "Alice Signal",
-        },
-      ]);
-    }
-    if (rpcMethod === "listGroups") {
-      return signalRpcResponse(requestBody, [
-        {
-          id: "group-signal-fixture",
-          name: "Ops Group",
-          isMember: true,
-          isBlocked: false,
-          members: [{ uuid: "mock-contact-alice", number: "+15551110001" }],
-        },
-      ]);
-    }
-    if (rpcMethod === "send") {
-      return signalRpcResponse(requestBody, { timestamp: Date.now() });
-    }
-    return signalRpcResponse(requestBody, {});
-  }
-
-  const receiveAccount = routeParam(pathname, /^\/v1\/receive\/([^/]+)\/?$/);
-  if (method === "GET" && receiveAccount) {
-    const messages = state.receiveQueue.splice(0, state.receiveQueue.length);
-    ledgerEntry.signal = withRunId<SignalRequestLedgerMetadata>(ledgerEntry, {
-      action: "receive",
-      account: receiveAccount,
-    });
-    return jsonFixture(messages.map(signalEnvelopeMessageToJson));
-  }
-
-  if (method === "POST" && pathname === "/v2/send") {
-    const recipients = readStringArray(requestBody, "recipients");
-    const timestamp = Date.now();
-    ledgerEntry.signal = withRunId<SignalRequestLedgerMetadata>(ledgerEntry, {
-      action: "send",
-      account: readOptionalString(requestBody, "number") ?? undefined,
-      recipients,
-      timestamp,
-    });
-    return jsonFixture({ timestamp });
   }
 
   return null;
@@ -3608,7 +3383,6 @@ type DynamicProviderState =
   | { kind: "google"; state: GoogleMockState }
   | { kind: "x-twitter"; state: XMockState }
   | { kind: "whatsapp"; state: WhatsAppMockState }
-  | { kind: "signal"; state: SignalMockState }
   | { kind: "browser-workspace"; state: BrowserWorkspaceMockState }
   | { kind: "github"; state: GitHubMockState }
   | { kind: "discord"; state: DiscordMockState }
@@ -3643,9 +3417,6 @@ async function createDynamicProviderState(
   }
   if (environmentName === "WhatsApp") {
     return { kind: "whatsapp", state: createWhatsAppMockState(opts) };
-  }
-  if (environmentName === "Signal HTTP") {
-    return { kind: "signal", state: createSignalMockState(opts) };
   }
   if (environmentName === "Browser Workspace") {
     return {
@@ -3792,14 +3563,6 @@ async function dynamicProviderFixture(args: {
       );
     case "whatsapp":
       return whatsappDynamicFixture(
-        args.provider.state,
-        args.method,
-        args.pathname,
-        args.requestBody,
-        args.ledgerEntry,
-      );
-    case "signal":
-      return signalDynamicFixture(
         args.provider.state,
         args.method,
         args.pathname,

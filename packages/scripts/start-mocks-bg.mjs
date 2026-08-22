@@ -39,7 +39,6 @@ const ENV_LIST = [
   "whatsapp",
   "calendly",
   "x-twitter",
-  "signal",
   "browser-workspace",
   "github",
   "cloud-managed",

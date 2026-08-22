@@ -7,7 +7,6 @@
   "matrix": "@elizaos/plugin-matrix",
   "mattermost": "@elizaos/plugin-mattermost",
   "msteams": "@elizaos/plugin-msteams",
-  "signal": "@elizaos/plugin-signal",
   "slack": "@elizaos/plugin-slack",
   "telegram": "@elizaos/plugin-telegram",
   "twitter": "@elizaos/plugin-x",

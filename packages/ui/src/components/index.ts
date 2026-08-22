@@ -211,7 +211,6 @@ export * from "./connectors/ConnectorSetupPanel";
 export * from "./connectors/ConnectorSetupPanel.helpers";
 export * from "./connectors/DiscordLocalConnectorPanel";
 export * from "./connectors/OwnerAgentConnectorSetupPanel";
-export * from "./connectors/SignalQrOverlay";
 export * from "./connectors/WhatsAppQrOverlay";
 export * from "./conversations/ConversationsSidebar";
 export * from "./conversations/conversation-utils";
