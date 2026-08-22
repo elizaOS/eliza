@@ -6,11 +6,10 @@
  */
 import { Check, ChevronUp, Circle } from "lucide-react";
 import { useState } from "react";
-import { useAppSelector } from "../../../state";
 import { cn } from "../../../lib/utils";
-import {
-  CLOUD_PANEL_GROUPS,
-} from "./cloud-panel-groups";
+import { useAppSelector } from "../../../state";
+import { hasCloudManagementCredential } from "./cloud-management-auth";
+import { CLOUD_PANEL_GROUPS } from "./cloud-panel-groups";
 import {
   type CloudPanelSection,
   groupedCloudPanelSections,
@@ -20,7 +19,7 @@ function CloudAccountFooter() {
   const elizaCloudConnected = useAppSelector((s) => s.elizaCloudConnected);
   const [open, setOpen] = useState(false);
 
-  if (!elizaCloudConnected) {
+  if (!elizaCloudConnected && !hasCloudManagementCredential()) {
     return (
       <div className="border-t border-[var(--hairline)] px-3 py-3">
         <button
@@ -48,7 +47,9 @@ function CloudAccountFooter() {
       >
         <span className="flex items-center gap-2 truncate">
           <Circle className="h-2.5 w-2.5 shrink-0 text-[var(--success)]" />
-          <span className="truncate text-[var(--muted-foreground)]">Connected</span>
+          <span className="truncate text-[var(--muted-foreground)]">
+            Connected
+          </span>
         </span>
         <ChevronUp
           className={cn(
@@ -124,7 +125,9 @@ function SectionItem({
         )}
       />
       <span className="truncate">{section.label}</span>
-      {active && <Check className="ml-auto h-3.5 w-3.5 shrink-0 text-[var(--foreground)]" />}
+      {active && (
+        <Check className="ml-auto h-3.5 w-3.5 shrink-0 text-[var(--foreground)]" />
+      )}
     </button>
   );
 }

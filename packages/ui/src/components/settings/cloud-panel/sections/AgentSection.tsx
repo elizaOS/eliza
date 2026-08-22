@@ -19,10 +19,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { client, ElizaClient } from "../../../../api";
-import {
-  getCloudAuthToken,
-  resolveCloudAgentApiBase,
-} from "../../../../api/client-cloud";
+import { resolveCloudAgentApiBase } from "../../../../api/client-cloud";
 import type { CloudCompatAgent } from "../../../../api/client-types-cloud";
 import { getBootConfig } from "../../../../config/boot-config";
 import { useBranding } from "../../../../config/branding";
@@ -41,7 +38,12 @@ import {
   agentLifecycleLabel,
   statusToneForState,
 } from "../../../ui/status-badge.helpers";
-import { NuphyRow, SettingsGroup, SettingsStack } from "../nuphy-settings-primitives";
+import { currentCloudManagementToken } from "../cloud-management-auth";
+import {
+  NuphyRow,
+  SettingsGroup,
+  SettingsStack,
+} from "../nuphy-settings-primitives";
 
 /** Maximum length accepted for a (new or edited) cloud agent name. */
 const AGENT_NAME_MAX_LENGTH = 60;
@@ -77,10 +79,7 @@ function activeCloudAgentId(): string | null {
 
 /** The cloud access token for the current session. */
 function currentCloudToken(): string {
-  // Agent management crosses the control-plane boundary, so only the
-  // independently stored Steward session is admissible. The active server's
-  // access token authenticates its container and must never substitute here.
-  return getCloudAuthToken() ?? "";
+  return currentCloudManagementToken();
 }
 
 /** Tailwind text color for a status dot: green/amber/red/muted by lifecycle. */
@@ -743,9 +742,7 @@ export function AgentSection() {
                     ) : (
                       <StatusBadge
                         tone={
-                          errored
-                            ? "danger"
-                            : statusToneForState(agent.status)
+                          errored ? "danger" : statusToneForState(agent.status)
                         }
                         label={agentLifecycleLabel(agent.status)}
                       />

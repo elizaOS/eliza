@@ -4,11 +4,8 @@
 @import "@fontsource/poppins/700.css";
 @import "@fontsource/poppins/800.css";
 @import "tailwindcss";
-/* NuPhy UI — only the @theme inline block for Tailwind utility class
-   generation. The :root/.dark variable values from tokens.css are NOT
-   imported globally (they would override Eliza's theme). Instead, NuPhy
-   token values are scoped to .nuphy-scope in nuphy-scope.css. */
-@import "./nuphy-tailwind-theme.css";
+/* NuPhy tokens and its package-specific utilities remain inside the settings
+   container; no NuPhy @theme or :root declarations enter the shared app. */
 @import "./nuphy-scope.css";
 @import "./shadcn-utilities.css";
 @import "./base.css";

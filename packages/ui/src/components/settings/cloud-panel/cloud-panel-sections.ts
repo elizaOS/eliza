@@ -41,7 +41,9 @@ export interface CloudPanelSection {
 
 // Lazy-load each section so only the active one is in the initial chunk.
 const GeneralSection = lazy(() =>
-  import("./sections/GeneralSection").then((m) => ({ default: m.GeneralSection })),
+  import("./sections/GeneralSection").then((m) => ({
+    default: m.GeneralSection,
+  })),
 );
 const VoiceSection = lazy(() =>
   import("./sections/VoiceSection").then((m) => ({ default: m.VoiceSection })),
@@ -187,7 +189,9 @@ export function groupedCloudPanelSections(): Record<
 > {
   const groups: Record<string, CloudPanelSection[]> = {};
   for (const section of CLOUD_PANEL_SECTIONS) {
-    (groups[section.group] ??= []).push(section);
+    const group = groups[section.group] ?? [];
+    group.push(section);
+    groups[section.group] = group;
   }
   for (const key of Object.keys(groups)) {
     groups[key].sort((a, b) => a.order - b.order);

@@ -827,28 +827,24 @@ export function useRealtimeVoiceSession(
  * `import.meta.env.VITE_*` at build time, so this MUST be a literal member read
  * (not a dynamic key).
  *
- * Default ON for cloud-only builds (where the cloud realtime WS endpoint is
- * available); OFF for local/embedded builds unless explicitly opted in.
- * An explicit `VITE_VOICE_REALTIME_WS=0|false|no|off` always wins.
+ * Realtime is opt-in on every runtime target so an unrelated build mode cannot
+ * silently replace the established batch voice path.
  */
 export function isRealtimeVoiceFlagEnabled(): boolean {
   try {
     const raw = import.meta.env?.VITE_VOICE_REALTIME_WS as unknown;
-    if (typeof raw === "string") {
-      const v = raw.trim().toLowerCase();
-      // Explicit opt-out always wins.
-      if (v === "0" || v === "false" || v === "no" || v === "off" || v === "") {
-        return false;
-      }
-      return true;
-    }
-    // Unset flag: default ON for cloud-only builds, OFF otherwise.
-    const runtimeMode = import.meta.env?.VITE_ELIZA_DESKTOP_RUNTIME_MODE as unknown;
-    return typeof runtimeMode === "string" && runtimeMode.trim().toLowerCase() === "cloud";
+    return parseRealtimeVoiceFlag(raw);
   } catch {
     // error-policy:J4 An unreadable build flag explicitly leaves realtime unavailable.
     return false;
   }
+}
+
+/** Parse the build-time realtime voice switch without accepting typos as opt-ins. */
+export function parseRealtimeVoiceFlag(raw: unknown): boolean {
+  if (typeof raw !== "string") return false;
+  const value = raw.trim().toLowerCase();
+  return value === "1" || value === "true" || value === "yes" || value === "on";
 }
 
 // Re-export the mint-error type so the barrel/consumers get it from one place.

@@ -35,16 +35,16 @@ import {
   ELEVENLABS_VOICE_GROUPS,
 } from "../../../character/character-voice-config";
 import { SaveFooter } from "../../../ui/save-footer";
+import { useSettingsSave } from "../../settings-control-primitives.hooks";
 import {
+  NuphyActionButton,
+  NuphyInputRow,
+  NuphySelectRow,
+  NuphySliderRow,
+  NuphySwitchRow,
   SettingsGroup,
   SettingsStack,
-  NuphySwitchRow,
-  NuphySelectRow,
-  NuphyInputRow,
-  NuphyActionButton,
-  NuphySliderRow,
 } from "../nuphy-settings-primitives";
-import { useSettingsSave } from "../../settings-control-primitives.hooks";
 
 const TTS_CONFIG_KEY = "tts";
 const VOICE_PREFS_CONFIG_KEY = "voice";

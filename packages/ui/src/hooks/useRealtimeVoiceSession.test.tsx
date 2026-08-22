@@ -25,6 +25,7 @@ import {
 } from "../voice/__tests__/voice-session-fakes";
 import {
   isRealtimeVoiceFlagEnabled,
+  parseRealtimeVoiceFlag,
   useRealtimeVoiceSession,
 } from "./useRealtimeVoiceSession";
 
@@ -871,4 +872,18 @@ describe("isRealtimeVoiceFlagEnabled", () => {
     // VITE_ELIZA_DESKTOP_RUNTIME_MODE are unset → the flag reads false.
     expect(isRealtimeVoiceFlagEnabled()).toBe(false);
   });
+
+  it.each(["1", "true", "TRUE", " yes ", "on"])(
+    "accepts the explicit opt-in value %j",
+    (value) => {
+      expect(parseRealtimeVoiceFlag(value)).toBe(true);
+    },
+  );
+
+  it.each([undefined, null, "", "0", "false", "off", "cloud", "enabled", 1])(
+    "rejects absent, disabled, and unknown value %j",
+    (value) => {
+      expect(parseRealtimeVoiceFlag(value)).toBe(false);
+    },
+  );
 });

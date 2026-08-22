@@ -10,6 +10,7 @@ export type DetachedSurface =
   | "connectors"
   | "cloud";
 export type ManagedSurface = DetachedSurface | "settings" | "app";
+export type ManagedWindowTitleBarStyle = "default" | "hidden" | "hiddenInset";
 
 export interface ManagedWindowSnapshot {
   id: string;
@@ -60,7 +61,7 @@ export interface CreateManagedWindowOptions {
   url: string;
   preload: string;
   frame: ManagedWindowFrame;
-  titleBarStyle: "default" | "hidden" | "hiddenInset";
+  titleBarStyle: ManagedWindowTitleBarStyle;
   transparent: boolean;
 }
 
@@ -113,6 +114,13 @@ const SURFACE_FRAMES: Record<ManagedSurface, ManagedWindowFrame> = {
   settings: { x: 220, y: 160, width: 760, height: 560 },
   app: { x: 180, y: 120, width: 1280, height: 900 },
 };
+
+/** Keep custom macOS chrome confined to the settings window that owns its inset layout. */
+export function resolveManagedWindowTitleBarStyle(
+  surface: ManagedSurface,
+): ManagedWindowTitleBarStyle {
+  return surface === "settings" ? "hiddenInset" : "default";
+}
 
 export function isDetachedSurface(value: string): value is DetachedSurface {
   return (
@@ -482,10 +490,7 @@ export class SurfaceWindowManager {
       url,
       preload,
       frame,
-      // hiddenInset: no titlebar text, but macOS still renders the native
-      // traffic lights (close/minimize/zoom) inset from the top-left corner.
-      // The webview adds top padding (pt-8) so content doesn't sit under them.
-      titleBarStyle: "hiddenInset",
+      titleBarStyle: resolveManagedWindowTitleBarStyle(surface),
       transparent: false,
     });
     if (alwaysOnTop) {

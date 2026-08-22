@@ -10,19 +10,19 @@
  * `ChatHotkeySettingsGroup.syncChatOverlayShortcut`.
  */
 
+import { Button as NuphyButton } from "@extrastu/nuphy-ui";
 import { AlertTriangle, Keyboard, Mouse, RotateCcw } from "lucide-react";
 import * as React from "react";
 import { invokeDesktopBridgeRequest } from "../../../../bridge";
-import { isDesktopPlatform } from "../../../../platform";
 import { cn } from "../../../../lib/utils";
+import { isDesktopPlatform } from "../../../../platform";
 import {
+  NuphyRow,
+  NuphySelectRow,
+  NuphySwitchRow,
   SettingsGroup,
   SettingsStack,
-  NuphySwitchRow,
-  NuphySelectRow,
-  NuphyRow,
 } from "../nuphy-settings-primitives";
-import { Button as NuphyButton } from "@extrastu/nuphy-ui";
 
 /** Internal canonical combo form: lowercase modifier names + key, joined by `+`. */
 type Combo = string;
@@ -97,10 +97,14 @@ function comboToAccelerator(combo: Combo): string {
   const key = parts[parts.length - 1];
   const mods = parts.slice(0, -1);
   const out: string[] = [];
-  if (mods.includes("cmd") || mods.includes("ctrl")) out.push("CommandOrControl");
+  if (mods.includes("cmd") || mods.includes("ctrl"))
+    out.push("CommandOrControl");
   if (mods.includes("alt")) out.push("Alt");
   if (mods.includes("shift")) out.push("Shift");
-  const keyLabel = key.length === 1 ? key.toUpperCase() : key.charAt(0).toUpperCase() + key.slice(1);
+  const keyLabel =
+    key.length === 1
+      ? key.toUpperCase()
+      : key.charAt(0).toUpperCase() + key.slice(1);
   out.push(keyLabel);
   return out.join("+");
 }
@@ -366,7 +370,10 @@ export function ShortcutsSection() {
                     className="mt-2 flex flex-wrap items-center gap-2 rounded-sm border border-warning/40 bg-warning/10 px-3 py-2 text-xs text-warning"
                     role="alert"
                   >
-                    <AlertTriangle className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                    <AlertTriangle
+                      className="h-3.5 w-3.5 shrink-0"
+                      aria-hidden
+                    />
                     <span className="flex-1">
                       This combo is used by “{conflictForThis.label}”. Override?
                     </span>
