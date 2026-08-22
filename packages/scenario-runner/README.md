@@ -216,9 +216,12 @@ injected at this consumer boundary and record timeout, retryable/permanent,
 rate-limit, partial, ambiguous, and stale-completion outcomes without inventing
 successful effects. Its public surface is read-only; only the observer holds
 the module-private append capability. Records use strict schema validation and
-a SHA-256 chain, and each newline-framed append is synced before it resolves.
-Malformed, edited, blank, or truncated frames fail closed rather than being
-returned as evidence. The chain is tamper-evident, not signed proof.
+a SHA-256 internal-consistency chain, and each newline-framed append is synced
+before it resolves. Malformed, locally edited, blank, or truncated frames fail
+closed rather than being returned as evidence. This unsealed local chain is not
+tamper-evident against an actor that can rewrite the complete file or remove a
+valid tail and recompute hashes; an independent signed/remote head seal is
+required for that claim.
 
 `JsonlBoundaryObservationLedger` remains a single-writer primitive. #24076 and
 its draft implementation #24204 must supply an adapter for this stricter

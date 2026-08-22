@@ -9,7 +9,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import type { IAgentRuntime } from "@elizaos/core";
+import type { IAgentRuntime, UUID } from "@elizaos/core";
 import type { DispatchResult } from "@elizaos/plugin-scheduling";
 import { dispatchViaMessageConnector } from "@elizaos/plugin-scheduling/scheduled-task/connector-dispatch";
 import type { ScheduledTaskDispatchRecord } from "@elizaos/plugin-scheduling/scheduled-task/runner";
@@ -24,6 +24,7 @@ import {
   type ProductionBoundaryIdentity,
 } from "./production-boundary-ledger.ts";
 import { canonicalSha256 } from "./provider-qualified/manifest.ts";
+import { createScenarioRuntime } from "./runtime-factory.ts";
 
 const temporaryDirectories: string[] = [];
 
@@ -245,6 +246,54 @@ describe("production boundary observation ledger", () => {
     expect(persisted).not.toContain("raw-key");
   });
 
+  it("records success only after independent PGlite repository readback", async () => {
+    const { ledger } = await createLedger();
+    const runtimeResult = await createScenarioRuntime({
+      useDeterministicModel: true,
+    });
+    const taskId = "8a611d10-c2c1-4e90-a6a1-45f250d8ca31" as UUID;
+    try {
+      const observation = await observeProductionBoundary({
+        ledger,
+        identity: identity({
+          surface: "task.create",
+          target: taskId,
+          idempotencyKey: `task-create:${taskId}`,
+        }),
+        payload: { id: taskId, name: "BOUNDARY_PGLITE_READBACK" },
+        now: clock("2026-08-21T12:00:00.000Z", "2026-08-21T12:00:02.000Z"),
+        generationFence: generationFence(),
+        invoke: async () => {
+          await runtimeResult.runtime.createTask({
+            id: taskId,
+            name: "BOUNDARY_PGLITE_READBACK",
+            agentId: runtimeResult.runtime.agentId,
+            tags: ["scenario-boundary"],
+          });
+          return { taskId };
+        },
+        classify: () => ({
+          acceptance: "accepted",
+          code: "task_created",
+          retryable: false,
+        }),
+        readback: () => runtimeResult.runtime.getTask(taskId),
+        verifyReadback: (response, task) =>
+          task.id === response.taskId &&
+          task.name === "BOUNDARY_PGLITE_READBACK",
+      });
+      expect(observation.result).toBe("succeeded");
+      await expect(
+        runtimeResult.runtime.getTask(taskId),
+      ).resolves.toMatchObject({
+        id: taskId,
+        name: "BOUNDARY_PGLITE_READBACK",
+      });
+    } finally {
+      await runtimeResult.cleanup();
+    }
+  }, 120_000);
+
   it("cannot record success when the adapter was not called or readback is absent/mismatched", async () => {
     const { ledger } = await createLedger();
     let calls = 0;
@@ -294,7 +343,7 @@ describe("production boundary observation ledger", () => {
     const mismatch = await observeProductionBoundary({
       ...common,
       identity: identity({
-        retry: { attempt: 3, retryOfObservationId: missing.observationId },
+        idempotencyKey: "task-2:2026-08-21T12:00:00.000Z",
       }),
       readback: async () => ({ id: "different-effect" }),
     });
@@ -302,6 +351,118 @@ describe("production boundary observation ledger", () => {
     expect((await ledger.readAll()).map((entry) => entry.order)).toEqual([
       1, 2, 3,
     ]);
+  });
+
+  it("rejects invalid retry lineage before invoking the boundary", async () => {
+    const { ledger } = await createLedger();
+    let calls = 0;
+    const common = {
+      ledger,
+      payload: { text: "payload" },
+      now: clock("2026-08-21T12:00:00.000Z"),
+      generationFence: generationFence(),
+      invoke: async () => {
+        calls += 1;
+        return { id: "effect" };
+      },
+      classify: () => ({
+        acceptance: "accepted" as const,
+        code: "accepted",
+        retryable: false,
+      }),
+      readback: async () => ({ id: "effect" }),
+      verifyReadback: () => true,
+    };
+
+    await expect(
+      observeProductionBoundary({
+        ...common,
+        identity: identity({
+          retry: {
+            attempt: 2,
+            retryOfObservationId: "0".repeat(64),
+          },
+        }),
+      }),
+    ).rejects.toMatchObject({ code: "BOUNDARY_RETRY_LINEAGE_INVALID" });
+    expect(calls).toBe(0);
+
+    const terminal = await observeProductionBoundary({
+      ...common,
+      identity: identity(),
+    });
+    expect(terminal.retryable).toBe(false);
+    await expect(
+      observeProductionBoundary({
+        ...common,
+        identity: identity({
+          retry: {
+            attempt: 2,
+            retryOfObservationId: terminal.observationId,
+          },
+        }),
+      }),
+    ).rejects.toMatchObject({ code: "BOUNDARY_RETRY_LINEAGE_INVALID" });
+    expect(calls).toBe(1);
+  });
+
+  it("returns an already committed identical attempt without reinvoking", async () => {
+    const { ledger } = await createLedger();
+    let calls = 0;
+    const options = {
+      ledger,
+      identity: identity(),
+      payload: { text: "payload" },
+      now: clock("2026-08-21T12:00:00.000Z"),
+      generationFence: generationFence(),
+      invoke: async () => {
+        calls += 1;
+        return { id: "effect" };
+      },
+      classify: () => ({
+        acceptance: "accepted" as const,
+        code: "accepted",
+        retryable: false,
+      }),
+      readback: async () => ({ id: "effect" }),
+      verifyReadback: () => true,
+    };
+    const first = await observeProductionBoundary(options);
+    const replay = await observeProductionBoundary(options);
+    expect(replay).toEqual(first);
+    expect(calls).toBe(1);
+  });
+
+  it("reconciles an exact receipt after a post-commit durability error", async () => {
+    const { path } = await createLedger();
+    const ledger = new JsonlBoundaryObservationLedger(path, {
+      afterFileSync: async () => {
+        const error = new Error(
+          "directory sync unsupported",
+        ) as NodeJS.ErrnoException;
+        error.code = "ENOTSUP";
+        throw error;
+      },
+    });
+    const observation = await observeProductionBoundary({
+      ledger,
+      identity: identity(),
+      payload: { text: "payload" },
+      now: clock("2026-08-21T12:00:00.000Z"),
+      generationFence: generationFence(),
+      invoke: async () => ({ id: "effect" }),
+      classify: () => ({
+        acceptance: "accepted",
+        code: "accepted",
+        retryable: false,
+      }),
+      readback: async () => ({ id: "effect" }),
+      verifyReadback: () => true,
+    });
+    expect(observation.result).toBe("succeeded");
+    await expect(
+      new JsonlBoundaryObservationLedger(path).readAll(),
+    ).resolves.toEqual([observation]);
   });
 
   it("fails closed on a forged success and a truncated restart frame", async () => {
@@ -358,6 +519,48 @@ describe("production boundary observation ledger", () => {
     ).rejects.toMatchObject({ code: "BOUNDARY_LEDGER_CORRUPT" });
   });
 
+  it("documents that an unsealed chain cannot detect full rewrites or tail deletion", async () => {
+    const { ledger, path } = await createLedger();
+    const options = {
+      ledger,
+      payload: { text: "payload" },
+      now: clock("2026-08-21T12:00:00.000Z"),
+      generationFence: generationFence(),
+      invoke: async () => ({ id: "effect" }),
+      classify: () => ({
+        acceptance: "accepted" as const,
+        code: "accepted",
+        retryable: false,
+      }),
+      readback: async () => ({ id: "effect" }),
+      verifyReadback: () => true,
+    };
+    const first = await observeProductionBoundary({
+      ...options,
+      identity: identity(),
+    });
+    await observeProductionBoundary({
+      ...options,
+      identity: identity({ idempotencyKey: "task-2:2026-08-21T12:00:00.000Z" }),
+    });
+
+    await writeFile(path, `${JSON.stringify(first)}\n`, "utf8");
+    await expect(
+      new JsonlBoundaryObservationLedger(path).readAll(),
+    ).resolves.toEqual([first]);
+
+    const rewritten = { ...first, resultCode: "rewritten-history" };
+    const { recordSha256: _oldHash, ...rewrittenWithoutHash } = rewritten;
+    rewritten.recordSha256 = canonicalSha256(
+      rewrittenWithoutHash,
+      "boundaryObservationRecord",
+    );
+    await writeFile(path, `${JSON.stringify(rewritten)}\n`, "utf8");
+    await expect(
+      new JsonlBoundaryObservationLedger(path).readAll(),
+    ).resolves.toEqual([rewritten]);
+  });
+
   it("records classifier and verifier exceptions as sanitized non-success", async () => {
     const { ledger } = await createLedger();
     const common = {
@@ -386,7 +589,9 @@ describe("production boundary observation ledger", () => {
 
     const verified = await observeProductionBoundary({
       ...common,
-      identity: identity({ retry: { attempt: 2 } }),
+      identity: identity({
+        idempotencyKey: "task-2:2026-08-21T12:00:00.000Z",
+      }),
       classify: () => ({
         acceptance: "accepted",
         code: "accepted",
@@ -473,7 +678,9 @@ describe("production boundary observation ledger", () => {
     let generation = "generation-7";
     const stale = await observeProductionBoundary({
       ledger,
-      identity: identity({ retry: { attempt: 2 } }),
+      identity: identity({
+        idempotencyKey: "task-2:2026-08-21T12:01:00.000Z",
+      }),
       payload: { value: 2 },
       now: clock("2026-08-21T12:01:00.000Z"),
       generationFence: generationFence(() => generation),
@@ -687,7 +894,9 @@ describe("production boundary observation ledger", () => {
     let staleCalls = 0;
     const stale = await observeProductionBoundary({
       ledger,
-      identity: identity({ retry: { attempt: 2 } }),
+      identity: identity({
+        idempotencyKey: "task-stale:2026-08-21T12:00:30.000Z",
+      }),
       payload: { value: "stale" },
       now: clock("2026-08-21T12:00:30.000Z"),
       generationFence: generationFence(() => generation),
