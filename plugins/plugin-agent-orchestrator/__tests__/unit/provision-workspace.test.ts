@@ -53,6 +53,11 @@ describe("TASKS:provision_workspace", () => {
       callback(),
     );
 
+    // Core's virtual-pin contract (promote-subactions): the parent declares
+    // `subaction` with the full ops enum (it carries the pinned
+    // "provision_workspace" value), so a conflicting discriminator returns a
+    // structured redirect before the parent handler runs — the load-bearing
+    // pin is that provision never ran.
     expect(result).toMatchObject({
       success: false,
       text: expect.stringContaining("Call TASKS_SEND"),

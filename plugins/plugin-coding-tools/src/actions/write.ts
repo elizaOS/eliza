@@ -127,7 +127,15 @@ export async function writeFileHandler(
   if (gate.ok === false) {
     const reason =
       gate.reason === "stale_read" ? "stale_read" : "invalid_param";
-    return failureToActionResult({ reason, message: gate.message });
+    // Coaching failure: the guard exists to steer the model (read, then
+    // write) and leaves no broken state. Without the marker this failed step
+    // OWNED the completion — a rerun successor that pointlessly rewrote an
+    // existing script reported "runtime step failed" over a clean, verified
+    // run (live 2026-08-21).
+    return failureToActionResult(
+      { reason, message: gate.message },
+      { coachingFailure: true },
+    );
   }
 
   const secrets = detectSecrets(content);

@@ -22,10 +22,9 @@
  *    a dead-end error text.
  */
 
-import { existsSync, promises as fs, constants as fsConstants } from "node:fs";
+import { promises as fs, constants as fsConstants } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import type { IAgentRuntime } from "@elizaos/core";
 import { findCodingDelegationActionName, resolveStateDir } from "@elizaos/core";
 
@@ -46,16 +45,15 @@ const PLUGINS_DIR_CANDIDATES = ["eliza/plugins", "plugins"] as const;
  * preflight. Mirrors the per-adapter binaries in `hasFrameworkBinary`
  * (@elizaos/plugin-agent-orchestrator): the orchestrator's DEFAULT backend is
  * `elizaos`, whose binary is `eliza-code-acp`; `pi-agent` is the native Pi
- * backend; then the third-party CLIs claude / codex / opencode. Probing only
- * the last three (the old behavior) falsely blocked stock deployments running
- * on the default `elizaos` backend.
+ * backend; then the third-party CLIs claude / codex. Probing only the
+ * third-party CLIs (the old behavior) falsely blocked stock deployments
+ * running on the default `elizaos` backend.
  */
 const CODING_CLI_BINARIES = [
 	"eliza-code-acp",
 	"pi-agent",
 	"claude",
 	"codex",
-	"opencode",
 ] as const;
 
 /**
@@ -183,52 +181,6 @@ async function isExecutable(file: string): Promise<boolean> {
 	}
 }
 
-/**
- * Roots searched for the orchestrator's vendored opencode shim: every ancestor
- * of the cwd and of this module. Mirrors `candidateRoots` behind
- * `resolveVendoredOpencodeShim` in @elizaos/plugin-agent-orchestrator.
- */
-function vendoredOpencodeShimRoots(): string[] {
-	const roots = new Set<string>();
-	const walkUp = (start: string): void => {
-		let current = path.resolve(start);
-		while (!roots.has(current)) {
-			roots.add(current);
-			const next = path.dirname(current);
-			if (next === current) break;
-			current = next;
-		}
-	};
-	walkUp(process.cwd());
-	walkUp(path.dirname(fileURLToPath(import.meta.url)));
-	return [...roots];
-}
-
-/**
- * Whether the orchestrator's vendored opencode shim is present on disk — a
- * usable coding backend in a checkout even when no CLI is on PATH. Mirrors
- * `resolveVendoredOpencodeShim` (@elizaos/plugin-agent-orchestrator), which
- * looks for `plugins/plugin-agent-orchestrator/bin/opencode` under any ancestor
- * of the cwd or module dir. The `roots` seam lets tests exercise the
- * packaged-install case where no shim exists.
- */
-export function hasVendoredOpencodeShim(
-	roots: string[] = vendoredOpencodeShimRoots(),
-): boolean {
-	const executable = process.platform === "win32" ? "opencode.cmd" : "opencode";
-	return roots.some((root) =>
-		existsSync(
-			path.join(
-				root,
-				"plugins",
-				"plugin-agent-orchestrator",
-				"bin",
-				executable,
-			),
-		),
-	);
-}
-
 /** Find the first known coding CLI present on PATH, if any. */
 export async function findCodingCliOnPath(): Promise<string | undefined> {
 	const dirs = (process.env.PATH ?? "")
@@ -258,15 +210,6 @@ export interface CodingDispatchPreflight {
 	guidance: string[];
 }
 
-export interface CodingDispatchPreflightOptions {
-	/**
-	 * Override the roots searched for the vendored opencode shim. Tests pass an
-	 * empty (or shim-free) list to exercise the packaged-install path where no
-	 * backend is present; production leaves it unset to walk the real tree.
-	 */
-	shimRoots?: string[];
-}
-
 function readSetting(runtime: IAgentRuntime, key: string): string | undefined {
 	const fromRuntime = runtime.getSetting?.(key);
 	const value =
@@ -286,7 +229,6 @@ function readSetting(runtime: IAgentRuntime, key: string): string | undefined {
  */
 export async function preflightCodingDispatch(
 	runtime: IAgentRuntime,
-	options: CodingDispatchPreflightOptions = {},
 ): Promise<CodingDispatchPreflight> {
 	const guidance: string[] = [];
 
@@ -305,16 +247,12 @@ export async function preflightCodingDispatch(
 	//      a custom ACP CLI, or a native ACP command (possibly a managed/remote
 	//      executor whose binary is not on THIS process's PATH); trust it;
 	//  (b) one of the orchestrator's backend binaries — including the DEFAULT
-	//      `eliza-code-acp` — is on PATH; or
-	//  (c) the orchestrator's vendored opencode shim is present (checkout).
-	// Only when none of these hold is a local backend genuinely missing.
+	//      `eliza-code-acp` — is on PATH.
+	// Only when neither holds is a local backend genuinely missing.
 	const configured = CONFIGURED_BACKEND_ENV_KEYS.some((key) =>
 		readSetting(runtime, key),
 	);
-	const backendAvailable =
-		configured ||
-		Boolean(await findCodingCliOnPath()) ||
-		hasVendoredOpencodeShim(options.shimRoots);
+	const backendAvailable = configured || Boolean(await findCodingCliOnPath());
 	if (!backendAvailable) {
 		guidance.push(
 			`No coding-agent backend was found on PATH (looked for ${CODING_CLI_BINARIES.join(", ")}). ` +

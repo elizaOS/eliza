@@ -22,8 +22,7 @@ ELIZA_CODING_WORKSPACE=/workspace
 ```
 
 The image includes `git`, `ripgrep`, `python3`, `openssh-client`, Codex CLI,
-and Claude Code by default. Disable individual CLI installs at build
-time:
+and Claude Code by default. Disable individual CLI installs at build time:
 
 ```bash
 docker build \

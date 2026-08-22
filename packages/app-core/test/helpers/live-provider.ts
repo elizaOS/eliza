@@ -292,7 +292,7 @@ const PROVIDERS: Array<{
   {
     // Local OpenAI-compatible server (mtp llama-server fork or Ollama).
     // The mtp fork at ~/.cache/eliza-mtp/eliza-llama-cpp is preferred
-    // when present; otherwise ELIZA_OPENCODE_BASE_URL points at Ollama
+    // when present; otherwise OPENAI_BASE_URL points at Ollama
     // (default http://localhost:11434/v1). No real API key is required, but
     // the selector requires a non-empty key string, so callers must set
     // LOCAL_LLAMA_CPP_API_KEY=local (or rely on the explicit

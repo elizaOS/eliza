@@ -15,7 +15,7 @@
  * file — which outlives the session — can never leak the model key the
  * sub-agent echoed to stdout.
  */
-import { appendFile, mkdir, rename, stat } from "node:fs/promises";
+import { appendFile, mkdir, readFile, rename, stat } from "node:fs/promises";
 import { join } from "node:path";
 import {
   isTrajectoryRecordingEnabled,
@@ -74,6 +74,73 @@ export async function appendSubagentStdout(
   });
   await appendFile(path, `${record}\n`, "utf8");
   return path;
+}
+
+/** One decoded chunk window read back from the durable log. */
+export interface SubagentStdoutWindow {
+  /** Concatenated chunk text for the requested window. */
+  text: string;
+  /** Zero-based index of the first chunk in the window. */
+  offset: number;
+  /** Total chunks currently in the log (current generation only). */
+  totalChunks: number;
+  /** True when chunks exist after the window (continuation available). */
+  hasMore: boolean;
+  /** True when a rotated `.1` generation exists — older content was
+   *  discarded from THIS reader's view but may survive in that file. */
+  rotated: boolean;
+}
+
+/**
+ * Read a window of the durable per-session stdout log — the continuation
+ * resolver for `acpx-session-output:<sessionId>` content references. Chunk
+ * indexed (one NDJSON record per captured chunk); a negative `offset` counts
+ * from the end (tail semantics). Returns undefined when no log exists (
+ * recording disabled, or the session never wrote output).
+ */
+export async function readSubagentStdout(
+  sessionId: string,
+  opts: { offset?: number; limit?: number } = {},
+): Promise<SubagentStdoutWindow | undefined> {
+  const path = subagentStdoutLogPath(sessionId);
+  const raw = await readFile(path, "utf8").catch(
+    (err: NodeJS.ErrnoException) => {
+      // error-policy:J3 ENOENT is the explicit "no durable log" signal the
+      // caller branches on; any other read failure is a real fault.
+      if (err?.code === "ENOENT") return undefined;
+      throw err;
+    },
+  );
+  if (raw === undefined) return undefined;
+  const rotated = await stat(`${path}.1`).then(
+    () => true,
+    () => false,
+  );
+  const chunks: string[] = [];
+  for (const line of raw.split("\n")) {
+    if (!line.trim()) continue;
+    try {
+      const record = JSON.parse(line) as { text?: unknown };
+      if (typeof record.text === "string") chunks.push(record.text);
+    } catch {
+      // error-policy:J3 a torn tail line (crash mid-append) is expected in an
+      // append-only log; skip it rather than fail the whole read.
+    }
+  }
+  const limit = Math.max(1, Math.min(opts.limit ?? 200, 10_000));
+  const requested = opts.offset ?? -limit;
+  const start =
+    requested < 0
+      ? Math.max(0, chunks.length + requested)
+      : Math.min(requested, chunks.length);
+  const window = chunks.slice(start, start + limit);
+  return {
+    text: window.join(""),
+    offset: start,
+    totalChunks: chunks.length,
+    hasMore: start + window.length < chunks.length,
+    rotated,
+  };
 }
 
 // A session id flows in from ACP and could in principle contain path separators;

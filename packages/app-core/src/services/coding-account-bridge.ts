@@ -2,7 +2,7 @@
  * Coding-agent account-selector bridge.
  *
  * The orchestrator plugin (`@elizaos/plugin-agent-orchestrator`) spawns Claude
- * Claude Code / Codex sub-agents but depends only on `@elizaos/core` — it
+ * Code / Codex sub-agents but depends only on `@elizaos/core` — it
  * cannot import the `AccountPool` or the credential store. So, exactly like the
  * Anthropic and subscription-selector bridges in `account-pool.ts`, we publish a
  * narrow contract on a `globalThis` symbol that the plugin reads at spawn time.
@@ -113,9 +113,9 @@ function getEnvCodingStrategy(): Strategy | undefined {
  * API equivalent (subscriptions are the primary use case here).
  *
  * claude (claude-agent-acp) and codex (codex-acp) are first-party CLIs.
- * z.ai / Kimi / GLM have no first-party coding
- * CLI — their accounts serve the main runtime's API-key routing — so they are
- * deliberately absent (advertising them would offer an unspawnable path).
+ * z.ai / Kimi / GLM have no first-party coding CLI — their accounts serve the
+ * main runtime's API-key routing — so they are deliberately absent
+ * (advertising them would offer an unspawnable path).
  */
 const AGENT_PROVIDER_CANDIDATES: Readonly<
   Record<string, readonly LinkedAccountProviderId[]>
@@ -828,7 +828,7 @@ async function buildEnvPatch(
     case "anthropic-subscription":
       return { CLAUDE_CODE_OAUTH_TOKEN: accessToken };
     default: {
-      // Direct API providers map to their corresponding injected API keys.
+      // Direct API providers (e.g. anthropic-api → ANTHROPIC_API_KEY)
       // inject under their canonical env key; run-main.ts normalizes aliases
       // (Z_AI_API_KEY → ZAI_API_KEY, KIMI_API_KEY → MOONSHOT_API_KEY).
       const envKey =

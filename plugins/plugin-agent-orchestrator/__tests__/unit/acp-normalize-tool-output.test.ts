@@ -34,7 +34,7 @@ describe("normalizeToolOutput — exec records (#11578)", () => {
     expect(normalizeToolOutput(record)).toBe("$ ls /nope → exit 2");
   });
 
-  it("appends a capped stdout/stderr tail when present", () => {
+  it("appends the stdout/stderr tail when present", () => {
     const record = {
       call_id: "c2",
       command: "echo hi",
@@ -45,7 +45,12 @@ describe("normalizeToolOutput — exec records (#11578)", () => {
     expect(out).toBe("$ echo hi → exit 0\nhi there");
   });
 
-  it("caps a long stdout tail to 200 chars", () => {
+  it("preserves a long stdout tail in full (no irreversible cap)", () => {
+    // Durable-content contract (#24262 close-out): this extraction never
+    // applies an irreversible cap. Bounded MODEL views are derived downstream
+    // from durable content and carry a continuation reference
+    // (services/durable-content.ts boundedContentView) — matching develop's
+    // uncapped execRecordOutputTail.
     const record = {
       call_id: "c3",
       command: "cat big",
@@ -54,8 +59,8 @@ describe("normalizeToolOutput — exec records (#11578)", () => {
     };
     const out = normalizeToolOutput(record);
     const tail = out.split("\n")[1];
-    expect(tail.length).toBe(201); // 200 chars + ellipsis
-    expect(tail.endsWith("…")).toBe(true);
+    expect(tail).toBe("A".repeat(500));
+    expect(tail).not.toContain("…");
   });
 
   it("parses a STRINGIFIED exec record back to a one-liner", () => {

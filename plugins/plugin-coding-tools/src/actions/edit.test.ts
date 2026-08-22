@@ -97,6 +97,24 @@ describe("EDIT", () => {
     expect(await fs.readFile(file, "utf8")).toBe("alpha\nBETA\ngamma");
   });
 
+  it("returns a replayed no-op when old_string is absent but new_string already present", async () => {
+    const file = await seedFile("app.js", "const x = 2;\n");
+    const result = await editFileHandler(env.runtime, env.message, undefined, {
+      parameters: {
+        file_path: file,
+        old_string: "const x = 1;",
+        new_string: "const x = 2;",
+      },
+    });
+    expect(result.success).toBe(true);
+    expect(result.data).toMatchObject({
+      alreadyApplied: true,
+      replacements: 0,
+    });
+    expect(String(result.text)).toContain("already present");
+    expect(await fs.readFile(file, "utf8")).toBe("const x = 2;\n");
+  });
+
   it("fails on no_match when old_string isn't in the file", async () => {
     const file = await seedFile("b.txt", "the quick brown fox");
 

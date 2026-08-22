@@ -476,6 +476,24 @@ export const fileAction: Action = {
       options as HandlerOptions | undefined,
       callback,
     );
+    // A failed read-only operation (ls/read/grep/glob) leaves no broken
+    // state behind — it must not carry failure authority over the turn's
+    // terminal message. Without the marker, a first-step exploratory miss
+    // (`ls` with an unsupported pattern arg, corrected on the very next
+    // step) made the child's final reply lead with "the last step failed"
+    // over a finished deliverable (live 2026-08-20, dark-mode edit run).
+    if (
+      result.success === false &&
+      (operation === "ls" ||
+        operation === "read" ||
+        operation === "grep" ||
+        operation === "glob")
+    ) {
+      return {
+        ...result,
+        data: { ...(result.data ?? {}), readOnlyOperation: true },
+      };
+    }
     return result;
   },
   examples: [

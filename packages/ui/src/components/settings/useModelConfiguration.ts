@@ -324,7 +324,7 @@ function resolveCodingDraft(
     ? effective(config, "coding", effortKey)?.value
     : undefined;
   const model = configured?.value ?? "";
-  const entry = codingModelOptions(backend, catalog, model).find(
+  const entry = codingModelOptions(backend, catalog).find(
     (item) => item.id === model,
   );
   const effortOptions = entry ? codingEffortOptions(backend, entry) : [];
@@ -343,14 +343,12 @@ function resolveCodingDraft(
 function codingModelOptions(
   backend: ModelsConfigCodingBackend,
   catalog: ModelCatalog,
-  _configuredModel: string,
 ): ModelCatalogEntry[] {
   const provider = CODING_CATALOG_PROVIDERS[backend];
   if (!provider) return [];
   // No role filter here: the write route validates coding models against the
   // whole provider slice.
-  const options = catalog.providers[provider] ?? [];
-  return options;
+  return catalog.providers[provider] ?? [];
 }
 
 function codingEffortOptions(
@@ -764,11 +762,7 @@ export function useModelConfiguration(
     (data: ReadyData): ModelConfigCodingGroup => {
       const draft = codingDrafts[codingBackend];
       const freeFormModel = codingBackend === "eliza-code";
-      const modelOptions = codingModelOptions(
-        codingBackend,
-        data.catalog,
-        draft.configured?.model ?? "",
-      );
+      const modelOptions = codingModelOptions(codingBackend, data.catalog);
       const selectedEntry =
         modelOptions.find((entry) => entry.id === draft.model) ?? null;
       const effortOptions = selectedEntry
@@ -783,11 +777,9 @@ export function useModelConfiguration(
       };
       const setModel = (model: string) => {
         setCodingDrafts((prev) => {
-          const entry = codingModelOptions(
-            codingBackend,
-            data.catalog,
-            prev[codingBackend].configured?.model ?? "",
-          ).find((item) => item.id === model);
+          const entry = codingModelOptions(codingBackend, data.catalog).find(
+            (item) => item.id === model,
+          );
           const nextEfforts = entry
             ? codingEffortOptions(codingBackend, entry)
             : [];

@@ -7,8 +7,8 @@
  * IGNORED (ambient chatter not meant for this agent).
  *
  * Eliza participants already have this faculty: the core `shouldRespond`
- * evaluator (RESPOND / IGNORE / STOP). Coding sub-agents (Claude Code, Codex,
- * OpenCode) have no such gate — left alone, every keystroke in the room is
+ * evaluator (RESPOND / IGNORE / STOP). Coding sub-agents (Claude Code, Codex)
+ * have no such gate — left alone, every keystroke in the room is
  * injected into a running turn, derailing it. This module gives them an
  * equivalent structural decision, and threads an Eliza participant's
  * `shouldRespond` verdict through unchanged when one is supplied.
@@ -34,7 +34,7 @@ export interface InterruptionDecision {
 export interface InterruptionInput {
   /** The incoming user message text. */
   text: string;
-  /** Sub-agent framework: claude / codex / opencode / elizaos / … */
+  /** Sub-agent framework: claude / codex / elizaos / … */
   agentType: string;
   /** True when the sub-agent is mid-turn (ACP status `busy`). */
   sessionBusy: boolean;

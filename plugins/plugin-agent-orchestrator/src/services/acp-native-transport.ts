@@ -235,9 +235,9 @@ export class NativeAcpClient {
           version: "2.0.0",
         },
       },
-      // The first opencode spawn compiles its TS tree and installs the provider
-      // npm package (e.g. @ai-sdk/cerebras), which can exceed the 300s default.
-      // Honor the configured session timeout for the handshake too.
+      // A slow first spawn (toolchain compile, provider npm install) can
+      // exceed the 300s default. Honor the configured session timeout for the
+      // handshake too.
       this.opts.timeoutMs && this.opts.timeoutMs > 0
         ? this.opts.timeoutMs
         : DEFAULT_TIMEOUT_MS,

@@ -504,9 +504,8 @@ export async function createRealTestRuntime(
     // are intentionally optional in a given test stay best-effort.
     for (const plugin of options?.plugins ?? []) {
       for (const service of plugin.services ?? []) {
-        const serviceType = (
-          service as unknown as { serviceType?: string }
-        ).serviceType;
+        const serviceType = (service as unknown as { serviceType?: string })
+          .serviceType;
         if (!serviceType) continue;
         try {
           await runtime.getServiceLoadPromise(serviceType);

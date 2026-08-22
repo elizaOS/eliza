@@ -8,6 +8,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import type { IAgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
+import { resolveAppDeployConfig } from "./app-deploy-guidance.js";
 import { readConfigEnvKey } from "./config-env.js";
 
 export const KNOWN_ADAPTER_TYPES = new Set([
@@ -26,6 +27,13 @@ export function normalizeTaskAgentAdapter(
     case "elizaos":
     case "eliza-os":
     case "eliza":
+    case "eliza-code":
+    case "eliza code":
+    // "opencode" is a retired backend name; requests naming it route to the
+    // eliza-code (elizaos) adapter.
+    case "opencode":
+    case "open-code":
+    case "open code":
       return "elizaos";
     case "pi-agent":
     case "pi agent":
@@ -93,12 +101,77 @@ export function resolvePinnedAdapter(
   return KNOWN_ADAPTER_TYPES.has(raw) ? raw : undefined;
 }
 
+/** Directories a build must never land in by planner invention: the home
+ *  directory itself, any ancestor of a configured route's workdir (the
+ *  projects folder that holds real repos), and the runtime's own checkout. */
+function isProtectedLocation(
+  runtime: IAgentRuntime | undefined,
+  workdir: string,
+): boolean {
+  const resolved = path.resolve(workdir);
+  const home = path.resolve(os.homedir());
+  if (resolved === home) return true;
+  const cwdRoot = path.resolve(process.cwd());
+  if (resolved === cwdRoot || cwdRoot.startsWith(`${resolved}${path.sep}`)) {
+    return true;
+  }
+  for (const route of configuredWorkdirRoutes(runtime)) {
+    const routeDir = path.resolve(expandHomePath(route.workdir));
+    if (
+      routeDir !== resolved &&
+      routeDir.startsWith(`${resolved}${path.sep}`)
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/** Whether an explicit existing workdir has a reason to be honored: it sits
+ *  inside a configured route tree or the published-apps dir, the user named
+ *  it (path or last segment) in the request or task text, or it is the
+ *  workdir of a session the orchestrator knows (a finished lane being
+ *  continued). Anything else is a planner-invented path. */
+function explicitWorkdirIsGrounded(
+  runtime: IAgentRuntime | undefined,
+  workdir: string,
+  userRequest: string,
+  task: string,
+  knownWorkdirs: readonly string[],
+): boolean {
+  const resolved = path.resolve(workdir);
+  if (resolveRouteForWorkdir(runtime, resolved)) return true;
+  const deploy = resolveAppDeployConfig();
+  if (
+    deploy.target === "custom" &&
+    deploy.customAppsDir &&
+    resolved.startsWith(`${path.resolve(deploy.customAppsDir)}${path.sep}`)
+  ) {
+    return true;
+  }
+  const mentioned = `${userRequest}\n${task}`;
+  const base = path.basename(resolved);
+  if (
+    mentioned.toLowerCase().includes(resolved.toLowerCase()) ||
+    mentioned.toLowerCase().includes(workdir.toLowerCase()) ||
+    (base.length >= 3 && containsPhrase(mentioned, base))
+  ) {
+    return true;
+  }
+  return knownWorkdirs.some((known) => path.resolve(known) === resolved);
+}
+
 export function resolveSpawnWorkdir(
   runtime: IAgentRuntime | undefined,
   task: string,
   userRequest: string,
   explicitWorkdir: string | undefined,
-  opts: { lockWorkdir?: boolean } = {},
+  opts: {
+    lockWorkdir?: boolean;
+    /** Workdirs of sessions the orchestrator knows (a finished lane being
+     *  continued); the caller resolves them because session listing is async. */
+    knownWorkdirs?: readonly string[];
+  } = {},
 ): { workdir: string; route?: ResolvedWorkdirRoute; isolate?: boolean } {
   const expandedExplicit = explicitWorkdir
     ? expandHomePath(explicitWorkdir)
@@ -127,6 +200,31 @@ export function resolveSpawnWorkdir(
   const detected = resolveWorkdirByConvention(runtime, task, userRequest);
   if (detected) return withContainedRoute({ workdir: detected });
   const fallback = resolveDefaultSpawnWorkdir(runtime);
+  if (
+    expandedExplicit &&
+    fs.existsSync(expandedExplicit) &&
+    isProtectedLocation(runtime, expandedExplicit) &&
+    !explicitWorkdirIsGrounded(
+      runtime,
+      expandedExplicit,
+      userRequest,
+      task,
+      opts.knownWorkdirs ?? [],
+    )
+  ) {
+    // The planner fills `workdir` on every create ("/home/milady/<label>",
+    // live 2026-08-22 on every build). An existing scratch dir stays trusted
+    // (the established contract), but a PROTECTED location — the home dir,
+    // the parent of a configured route, the agent's own checkout — that
+    // nothing grounds (not a route tree, not named by the user, not a known
+    // lane's dir) would land a fresh build in an unrelated real directory.
+    logger.warn(
+      `[workdir-routes] Planner workdir is a protected location nothing grounds; ignoring it: ${expandedExplicit} — falling back to ${fallback.workdir}`,
+    );
+    return fallback.isolate
+      ? { workdir: fallback.workdir, isolate: true }
+      : { workdir: fallback.workdir };
+  }
   if (expandedExplicit && fs.existsSync(expandedExplicit)) {
     if (
       fallback.isolate &&
@@ -140,6 +238,25 @@ export function resolveSpawnWorkdir(
     return withContainedRoute({ workdir: expandedExplicit });
   }
   if (expandedExplicit) {
+    // A nonexistent explicit workdir directly under the configured published-
+    // apps dir is the PLANNER DOING THE RIGHT THING — naming the fresh slug
+    // dir for a new app. Rejecting it dropped the build into a scratch
+    // workspace with no served URL and verification parked a working page
+    // (live 2026-08-19: …/data/apps/moon-phase-page). Create and use it.
+    const deploy = resolveAppDeployConfig();
+    if (
+      deploy.target === "custom" &&
+      deploy.customAppsDir &&
+      path.dirname(path.resolve(expandedExplicit)) ===
+        path.resolve(deploy.customAppsDir)
+    ) {
+      try {
+        fs.mkdirSync(expandedExplicit, { recursive: true });
+        return withContainedRoute({ workdir: expandedExplicit });
+      } catch {
+        // error-policy:J4 mkdir failure falls through to the scratch fallback.
+      }
+    }
     logger.warn(
       `[workdir-routes] Planner workdir does not exist, ignoring it: ${expandedExplicit} — falling back to ${fallback.workdir}`,
     );

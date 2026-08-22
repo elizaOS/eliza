@@ -20,7 +20,7 @@ export function multiTaskViews(): SupervisorTaskView[] {
       label: "Refactor auth",
       status: "active",
       activeSessions: 1,
-      sessionLabel: "opencode · acct-1",
+      sessionLabel: "codex · acct-1",
       origin: { roomId: ROOM_A, source: "telegram" },
     },
     {
