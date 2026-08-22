@@ -662,6 +662,50 @@ describe("live routing regressions", () => {
 		}
 	});
 
+	it("a snippet ask routed code+SPAWN_AGENT by stage-1 does not commit to delegation and loses the spawn candidate", () => {
+		const actions = [
+			{ name: "TASKS", similes: ["TASKS_SPAWN_AGENT", "SPAWN_AGENT"] },
+			{ name: "REPLY" },
+		] as unknown as ReadonlyArray<Pick<Action, "name" | "similes" | "tags">>;
+		const output = messageHandlerFromFieldResult(
+			{
+				shouldRespond: "RESPOND",
+				contexts: ["code"],
+				intents: [],
+				replyText: "on it. i'll get that set up for you.",
+				candidateActionNames: ["SPAWN_AGENT"],
+				facts: [],
+				relationships: [],
+				addressedTo: [],
+			},
+			undefined,
+			{ actions, messageText: "write a python script that just prints nubs" },
+		);
+		expect(output.plan.candidateActions ?? []).not.toContain("SPAWN_AGENT");
+		expect(output.plan.candidateActions ?? []).not.toContain("TASKS");
+		// A genuine build keeps its delegation commitment.
+		const build = messageHandlerFromFieldResult(
+			{
+				shouldRespond: "RESPOND",
+				contexts: ["code"],
+				intents: [],
+				replyText: "on it. kicking off the build.",
+				candidateActionNames: ["SPAWN_AGENT"],
+				facts: [],
+				relationships: [],
+				addressedTo: [],
+			},
+			undefined,
+			{
+				actions,
+				messageText:
+					"write me a python script that picks a random card from a deck and prints it",
+			},
+		);
+		expect(build.plan.candidateActions).toContain("SPAWN_AGENT");
+		expect(build.plan.requiresTool).toBe(true);
+	});
+
 	it("a script that just prints a constant is an inline snippet, not coding work", () => {
 		const actions: Array<Pick<Action, "name" | "similes" | "tags">> = [
 			{ name: "TASKS", similes: ["TASKS_SPAWN_AGENT"] },

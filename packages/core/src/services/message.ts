@@ -5893,13 +5893,27 @@ export function messageHandlerFromFieldResult(
 		directCurrentCandidateActions.length > 0
 			? directCurrentCandidateActions
 			: [];
-	const effectiveCandidateActions = preferDirectCurrentCandidateActions
+	const candidateActionsBeforeSnippetGate = preferDirectCurrentCandidateActions
 		? directCurrentCandidateActions
 		: uniqueActionNames([
 				...candidateActions,
 				...inferredAckCandidateActions,
 				...inferredDirectCandidateActions,
 			]);
+	// The planner answers a one-line snippet ask itself (inline code, or a
+	// quick local FILE/SHELL); a delegation-class candidate would hand it to a
+	// coding sub-agent instead. Stripped structurally, never by regex on the
+	// reply (see inlineSnippetAsk below for the routing side).
+	const effectiveCandidateActions =
+		looksLikeInlineCodeSnippetRequest(currentMessageText) &&
+		!looksLikeExplicitDelegationRequest(currentMessageText)
+			? candidateActionsBeforeSnippetGate.filter(
+					(name) =>
+						!delegationCandidateNames(runtimeContext?.actions ?? []).has(
+							normalizeActionIdentifier(name),
+						),
+				)
+			: candidateActionsBeforeSnippetGate;
 	const runnableCandidateActions = filterRunnableCandidateActions(
 		effectiveCandidateActions,
 		runtimeContext,
@@ -6010,8 +6024,15 @@ export function messageHandlerFromFieldResult(
 	// ("Let me take another pass…") as the whole turn. In the contradictory
 	// contexts=[simple] shape the candidate is the only signal, so the message
 	// itself must still look like coding work.
+	// A one-line snippet ask is a class delegation never serves: a 25s
+	// sub-agent build for `print("nubs")` whose code the user never even saw
+	// (live 2026-08-22). Without an explicit "spawn/delegate" ask the model's
+	// routing does not commit the turn to delegation.
+	const inlineSnippetAsk =
+		looksLikeInlineCodeSnippetRequest(currentMessageText) &&
+		!looksLikeExplicitDelegationRequest(currentMessageText);
 	const delegationTextGate = modelRoutedPlanningContext
-		? !looksLikeDelegationExcludedAsk(currentMessageText)
+		? !looksLikeDelegationExcludedAsk(currentMessageText) && !inlineSnippetAsk
 		: looksLikeCodingWorkRequest(currentMessageText);
 	const modelCommittedToDelegation =
 		!preemptDirect &&
@@ -6470,26 +6491,33 @@ function shouldPreferCompleteDirectReply(args: {
 // TASKS_SPAWN_AGENT (or simile) counts and a bogus/unexposed name does not. Used
 // to detect that the model committed to delegation on purpose, so a verbose ack
 // is not mistaken for a finished direct reply.
+/** Normalized names that hand a turn to a coding sub-agent: the registered
+ *  delegation action plus the legacy aliases. Bare "TASKS" is the one alias
+ *  that is ambiguous (task-list management as readily as delegation); callers
+ *  that need an unambiguous commitment drop it. */
+function delegationCandidateNames(
+	actions: ReadonlyArray<Pick<Action, "name" | "similes" | "tags">>,
+	opts?: { requireUnambiguous?: boolean },
+): Set<string> {
+	const delegationActionName = findCodingDelegationActionName(actions);
+	if (!delegationActionName) return new Set();
+	const legacyNames = opts?.requireUnambiguous
+		? LEGACY_CODING_DELEGATION_ACTION_NAMES.filter((name) => name !== "TASKS")
+		: LEGACY_CODING_DELEGATION_ACTION_NAMES;
+	return new Set<string>([
+		normalizeActionIdentifier(delegationActionName),
+		...legacyNames.map(normalizeActionIdentifier),
+	]);
+}
+
 function modelProvidedRunnableDelegationCandidate(
 	candidateActions: readonly string[],
 	actions: ReadonlyArray<Pick<Action, "name" | "similes" | "tags">>,
 	opts?: { requireUnambiguous?: boolean },
 ): boolean {
 	if (candidateActions.length === 0) return false;
-	const delegationActionName = findCodingDelegationActionName(actions);
-	if (!delegationActionName) return false;
-	// Bare "TASKS" is the one legacy alias that is ambiguous — it names task-list
-	// management as readily as coding delegation. When the caller needs an
-	// unambiguous commitment (no planning context backing the candidate), it only
-	// counts if the REGISTERED delegation action is itself named TASKS (then the
-	// model named the real action, not the ambiguous alias).
-	const legacyNames = opts?.requireUnambiguous
-		? LEGACY_CODING_DELEGATION_ACTION_NAMES.filter((name) => name !== "TASKS")
-		: LEGACY_CODING_DELEGATION_ACTION_NAMES;
-	const wanted = new Set<string>([
-		normalizeActionIdentifier(delegationActionName),
-		...legacyNames.map(normalizeActionIdentifier),
-	]);
+	const wanted = delegationCandidateNames(actions, opts);
+	if (wanted.size === 0) return false;
 	return candidateActions.some((name) =>
 		wanted.has(normalizeActionIdentifier(name)),
 	);
