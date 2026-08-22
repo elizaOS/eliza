@@ -108,6 +108,50 @@ describe("AndroidCloudApp", () => {
     ).toBeTruthy();
   });
 
+  it("does not open the browser when sign-in is canceled while session creation is pending", async () => {
+    const client = createClient();
+    vi.spyOn(client, "restoreSession").mockResolvedValue(null);
+    let resolveLogin!: (value: {
+      sessionId: string;
+      browserUrl: string;
+    }) => void;
+    let loginSignal: AbortSignal | undefined;
+    vi.spyOn(client, "beginLogin").mockImplementation(
+      (signal) =>
+        new Promise((resolve) => {
+          loginSignal = signal;
+          resolveLogin = resolve;
+        }),
+    );
+    const openExternal = vi.fn();
+    render(
+      <AndroidCloudApp
+        client={client}
+        openExternal={openExternal}
+        voice={createVoice()}
+      />,
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: "Sign in" }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Cancel sign-in" }),
+    );
+    expect(loginSignal?.aborted).toBe(true);
+
+    await act(async () => {
+      resolveLogin({
+        sessionId: "10000000-0000-4000-8000-000000000001",
+        browserUrl:
+          "https://cloud.eliza.app/auth/cli-login?session=10000000-0000-4000-8000-000000000001",
+      });
+      await Promise.resolve();
+    });
+
+    expect(openExternal).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "Sign in" })).toBeTruthy();
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
   it("accepts a native share/deep-link compose event without auto-sending", async () => {
     const client = createClient();
     vi.spyOn(client, "restoreSession").mockResolvedValue(session);

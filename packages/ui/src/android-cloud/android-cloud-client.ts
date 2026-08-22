@@ -219,7 +219,7 @@ export class AndroidCloudClient {
     return { identity: { id, displayName }, token, chatApiBase };
   }
 
-  async beginLogin(): Promise<AndroidCloudLoginAttempt> {
+  async beginLogin(signal?: AbortSignal): Promise<AndroidCloudLoginAttempt> {
     const requestId = globalThis.crypto?.randomUUID?.();
     if (!requestId || !SESSION_ID_PATTERN.test(requestId)) {
       throw new Error("Secure sign-in is unavailable on this device.");
@@ -230,6 +230,7 @@ export class AndroidCloudClient {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ sessionId: requestId }),
+        signal,
       },
     );
     const body = await responseJson(response);
@@ -253,12 +254,16 @@ export class AndroidCloudClient {
     return { sessionId, browserUrl: url.toString() };
   }
 
-  async pollLogin(sessionId: string): Promise<AndroidCloudLoginPoll> {
+  async pollLogin(
+    sessionId: string,
+    signal?: AbortSignal,
+  ): Promise<AndroidCloudLoginPoll> {
     if (!SESSION_ID_PATTERN.test(sessionId)) {
       throw new Error("The sign-in session is invalid.");
     }
     const response = await this.fetchImpl(
       `${this.apiBase}/api/auth/cli-session/${encodeURIComponent(sessionId)}`,
+      { signal },
     );
     if (response.status === 404) {
       return { status: "expired", error: "Sign-in expired. Please try again." };
