@@ -141,6 +141,13 @@ describe("WhatsApp connector outbound media — send handler", () => {
 describe("WhatsApp sendMediaMessage — transport-agnostic media call", () => {
   function realServiceWithClient() {
     const clientSend = vi.fn(async () => ({ messages: [{ id: "x" }] }));
+    const canonicalStore = {
+      read: vi.fn(async () => ({
+        bytes: Buffer.from("stored-media"),
+        mimeType: "image/png",
+        size: 12,
+      })),
+    };
     const svc = Object.create(
       WhatsAppConnectorService.prototype,
     ) as WhatsAppConnectorService & {
@@ -157,9 +164,9 @@ describe("WhatsApp sendMediaMessage — transport-agnostic media call", () => {
     }));
     (svc as { getConfigForAccount: unknown }).getConfigForAccount = vi.fn(() => null);
     (svc as unknown as { runtime: IAgentRuntime }).runtime = {
-      fetch: vi.fn(),
+      getService: vi.fn(() => canonicalStore),
     } as never as IAgentRuntime;
-    return { svc, clientSend };
+    return { svc, clientSend, canonicalStore };
   }
 
   it("maps coarse content type and gives the client only guarded bytes", async () => {
@@ -183,24 +190,16 @@ describe("WhatsApp sendMediaMessage — transport-agnostic media call", () => {
     expect(mediaMocks.stageWhatsAppMedia).toHaveBeenCalledWith(
       "https://cdn.example.com/cat.png",
       expect.objectContaining({ maxBytes: 20 * 1024 * 1024 }),
-      expect.any(Function),
+      expect.objectContaining({ read: expect.any(Function) }),
     );
   });
 
   it("reads a canonical content-addressed handle only through runtime.fetch", async () => {
-    const { svc, clientSend } = realServiceWithClient();
+    const { svc, clientSend, canonicalStore } = realServiceWithClient();
     const storedUrl = `/api/media/${"a".repeat(64)}.png`;
-    const runtimeFetch = vi.fn(async () =>
-      new Response(Buffer.from("stored-media"), {
-        headers: { "content-type": "image/png", "content-length": "12" },
-      }),
-    );
-    (svc as unknown as { runtime: IAgentRuntime }).runtime = {
-      fetch: runtimeFetch,
-    } as never as IAgentRuntime;
-    mediaMocks.stageWhatsAppMedia.mockImplementationOnce(async (_url, _options, localFetch) => {
-      const response = await localFetch?.(storedUrl);
-      return { buffer: Buffer.from(await response!.arrayBuffer()), contentType: "image/png" };
+    mediaMocks.stageWhatsAppMedia.mockImplementationOnce(async (_url, _options, store) => {
+      const stored = await store?.read(`${"a".repeat(64)}.png`, 20 * 1024 * 1024);
+      return { buffer: stored!.bytes, contentType: stored!.mimeType };
     });
 
     await svc.sendMediaMessage("default", "+14155552671", {
@@ -212,7 +211,7 @@ describe("WhatsApp sendMediaMessage — transport-agnostic media call", () => {
     expect(mediaMocks.stageWhatsAppMedia).toHaveBeenCalledWith(
       storedUrl,
       expect.objectContaining({ maxBytes: 20 * 1024 * 1024 }),
-      runtimeFetch,
+      canonicalStore,
     );
     expect(clientSend).toHaveBeenCalledWith(
       expect.objectContaining({ content: expect.objectContaining({ data: Buffer.from("stored-media") }) }),

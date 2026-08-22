@@ -170,13 +170,6 @@ export const SECRET_VALIDATION_PATTERNS: Record<
 		example: "xapp-1-A0123456789-1234567890123-xxxxxxxxxxxxxxxx",
 	},
 
-	WHATSAPP_TOKEN: {
-		pattern: /^[a-zA-Z0-9]{50,}$/,
-		description: "WhatsApp token must be at least 50 characters",
-		minLength: 50,
-		example: "EAAxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
-	},
-
 	// ─────────────────────────────────────────────────────────────────────────────
 	// Twitter/X Credentials
 	// ─────────────────────────────────────────────────────────────────────────────
@@ -253,7 +246,6 @@ export const SECRET_VALIDATION_PATTERNS: Record<
 		description: "Ollama base URL must be a valid HTTP(S) URL",
 		example: "http://localhost:11434",
 	},
-
 };
 
 // ═══════════════════════════════════════════════════════════════════════════════

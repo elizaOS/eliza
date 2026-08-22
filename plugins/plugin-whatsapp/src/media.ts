@@ -6,7 +6,7 @@ import {
   type FetchMediaOptions,
   type FetchMediaResult,
   fetchRemoteMedia,
-  readResponseWithLimit,
+  type IFileStorageService,
 } from "@elizaos/core";
 
 export const DEFAULT_WHATSAPP_MEDIA_MAX_BYTES = 20 * 1024 * 1024;
@@ -25,26 +25,19 @@ export function isCanonicalStoredMediaUrl(url: string): boolean {
 export async function stageWhatsAppMedia(
   url: string,
   overrides: WhatsAppMediaFetchOverrides = {},
-  trustedLocalFetch?: typeof fetch | null
+  canonicalStore?: Pick<IFileStorageService, "read"> | null
 ): Promise<FetchMediaResult> {
   const localMatch = CANONICAL_STORED_MEDIA_URL.exec(url);
   if (localMatch) {
-    if (!trustedLocalFetch) {
-      throw new Error("Canonical WhatsApp media requires the runtime local fetch boundary");
+    if (!canonicalStore) {
+      throw new Error("Canonical WhatsApp media requires the runtime file-storage boundary");
     }
     const maxBytes = overrides.maxBytes ?? DEFAULT_WHATSAPP_MEDIA_MAX_BYTES;
-    const timeoutMs = overrides.timeoutMs ?? DEFAULT_WHATSAPP_MEDIA_TIMEOUT_MS;
-    const response = await trustedLocalFetch(url, { signal: AbortSignal.timeout(timeoutMs) });
-    if (!response.ok) {
-      throw new Error(`Canonical WhatsApp media fetch failed with HTTP ${response.status}`);
-    }
-    const contentLength = Number(response.headers.get("content-length"));
-    if (Number.isFinite(contentLength) && contentLength > maxBytes) {
-      throw new Error(`Canonical WhatsApp media exceeds maxBytes ${maxBytes}`);
-    }
+    const stored = await canonicalStore.read(localMatch[1], maxBytes);
+    if (!stored) throw new Error("Canonical WhatsApp media is absent from the runtime store");
     return {
-      buffer: await readResponseWithLimit(response, maxBytes),
-      contentType: response.headers.get("content-type") ?? undefined,
+      buffer: stored.bytes,
+      contentType: stored.mimeType,
       fileName: localMatch[1],
     };
   }

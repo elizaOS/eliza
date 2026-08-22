@@ -104,7 +104,12 @@ export class BaileysConnection extends EventEmitter {
 
     socket.ev.on("creds.update", async () => {
       if (this.socket !== socket) return;
-      await this.authManager.save();
+      try {
+        await this.authManager.save();
+      } catch (error) {
+        // error-policy:J1 The connector event boundary reports persistence failure.
+        this.emit("error", error);
+      }
     });
 
     socket.ev.on("messages.upsert", ({ messages }) => {

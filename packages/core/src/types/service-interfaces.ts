@@ -499,6 +499,13 @@ export interface StoredFileListItem extends StoredFile {
 	createdAt: number;
 }
 
+/** Bounded bytes read from the canonical content-addressed store. */
+export interface StoredFileContents {
+	bytes: Buffer;
+	mimeType: string;
+	size: number;
+}
+
 /**
  * Content-addressed file storage: the single contract the rest of the system
  * codes against for storing, serving, listing, and deleting attachment bytes.
@@ -528,6 +535,12 @@ export abstract class IFileStorageService extends Service {
 
 	/** True when a stored file with this filename exists. */
 	abstract exists(fileName: string): Promise<boolean>;
+
+	/** Read one stored file under a mandatory byte cap, or null when absent. */
+	abstract read(
+		fileName: string,
+		maxBytes: number,
+	): Promise<StoredFileContents | null>;
 
 	/** List all stored files (for the Files surface). */
 	abstract list(): Promise<StoredFileListItem[]>;
