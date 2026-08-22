@@ -57,6 +57,7 @@ export {
   ScenarioRequiredServicePreflightError,
   waitForScenarioRequiredServices,
 } from "./required-services.ts";
+export * from "./synthetic-control.ts";
 export type {
   AggregateReport,
   FinalCheckReport,
