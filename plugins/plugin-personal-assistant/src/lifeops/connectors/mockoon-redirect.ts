@@ -38,7 +38,6 @@ const PORTS = {
   cerebras: 18815,
   "eliza-cloud": 18816,
   spotify: 18817,
-  signal: 18818,
 } as const satisfies Record<string, number>;
 
 export type MockoonConnector = keyof typeof PORTS;

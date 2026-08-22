@@ -3,11 +3,29 @@
  * Node's response writer to materialize one giant outgoing buffer.
  */
 
-import { once } from "node:events";
 import type http from "node:http";
+import { ElizaError } from "@elizaos/core";
 import type { AgentBackupStateData } from "../services/agent-backup.ts";
 
 const STRING_CHUNK_CODE_UNITS = 256 * 1024;
+
+/**
+ * Thrown when the backup download transport dies mid-stream (client disconnect
+ * or socket error) instead of parking forever on a `drain` that can never
+ * arrive. Mirrors the v2 capture writer's AGENT_BACKUP_V2_CLIENT_DISCONNECTED
+ * policy: ephemeral, not a server fault.
+ */
+export class AgentBackupClientDisconnectedError extends ElizaError {
+  override readonly name = "AgentBackupClientDisconnectedError";
+
+  constructor(message: string, options?: { cause?: unknown }) {
+    super(message, {
+      code: "AGENT_BACKUP_CLIENT_DISCONNECTED",
+      cause: options?.cause,
+      severity: "ephemeral",
+    });
+  }
+}
 
 function isUnsupportedJsonValue(value: unknown): boolean {
   return (
@@ -106,6 +124,45 @@ async function* encodeJsonValue(
   }
 }
 
+/**
+ * Resolves on `drain`; rejects with a typed error if the transport closes or
+ * errors first, so an aborted download can never park this writer forever on
+ * a backpressure wait that will never complete (the v2 capture writer in
+ * backup-v2-stream-response.ts applies the same close/error racing).
+ */
+function waitForDrain(res: http.ServerResponse): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    const cleanup = (): void => {
+      res.off("drain", onDrain);
+      res.off("close", onClose);
+      res.off("error", onError);
+    };
+    const onDrain = (): void => {
+      cleanup();
+      resolve();
+    };
+    const onClose = (): void => {
+      cleanup();
+      reject(
+        new AgentBackupClientDisconnectedError(
+          "Agent backup client disconnected while the JSON snapshot was backpressured",
+        ),
+      );
+    };
+    const onError = (error: unknown): void => {
+      cleanup();
+      reject(
+        error instanceof Error
+          ? error
+          : new Error("Agent backup response stream failed", { cause: error }),
+      );
+    };
+    res.once("drain", onDrain);
+    res.once("close", onClose);
+    res.once("error", onError);
+  });
+}
+
 /** Writes a restorable snapshot as chunked JSON while honoring backpressure. */
 export async function writeAgentBackupJsonResponse(
   res: http.ServerResponse,
@@ -113,8 +170,29 @@ export async function writeAgentBackupJsonResponse(
 ): Promise<void> {
   res.statusCode = 200;
   res.setHeader("Content-Type", "application/json");
-  for await (const chunk of encodeJsonValue(snapshot, new Set())) {
-    if (!res.write(chunk)) await once(res, "drain");
+  // Capture transport errors raised outside the drain wait (a write can emit
+  // "error" asynchronously between chunks) instead of letting them surface as
+  // an unhandled stream event; the loop checks the capture after every write.
+  let streamError: unknown;
+  const captureStreamError = (error: unknown): void => {
+    streamError ??=
+      error instanceof Error
+        ? error
+        : new Error("Agent backup response stream failed", { cause: error });
+  };
+  res.on("error", captureStreamError);
+  try {
+    for await (const chunk of encodeJsonValue(snapshot, new Set())) {
+      if (!res.write(chunk)) await waitForDrain(res);
+      if (streamError) throw streamError;
+      if (res.destroyed) {
+        throw new AgentBackupClientDisconnectedError(
+          "Agent backup response transport closed mid-stream",
+        );
+      }
+    }
+  } finally {
+    res.off("error", captureStreamError);
   }
   res.end();
 }

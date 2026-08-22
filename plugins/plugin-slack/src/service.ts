@@ -2853,7 +2853,7 @@ export class SlackService extends Service implements ISlackService {
       }
     }
 
-    return this.dedupeConnectorTargets(targets).slice(0, 25);
+    return this.dedupeConnectorTargets(targets);
   }
 
   async listConnectorRooms(
@@ -2881,7 +2881,7 @@ export class SlackService extends Service implements ISlackService {
           ),
       );
     }
-    return this.dedupeConnectorTargets(targets).slice(0, 50);
+    return this.dedupeConnectorTargets(targets);
   }
 
   async listRecentConnectorTargets(
@@ -2939,7 +2939,7 @@ export class SlackService extends Service implements ISlackService {
         accountId,
       } as MessageConnectorQueryContext)),
     );
-    return this.dedupeConnectorTargets(targets).slice(0, 25);
+    return this.dedupeConnectorTargets(targets);
   }
 
   async getConnectorChatContext(

@@ -1,10 +1,26 @@
 /**
  * Contract tests for the staging Cloud live receipt's closed, secret-free schema.
  */
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import {
+  createDeployedRendererProof,
+  DEPLOYED_BROWSER_SMOKE_SCHEMA,
+  PAGES_AUTHORITY_SCHEMA,
+  PAGES_PUBLIC_CHECK_SCHEMA,
+} from "../../cloud/scripts/pages-deployment-authority.mjs";
 import { createStagingCloudReceipt } from "../write-staging-cloud-receipt.mjs";
 
 const exactSha = "87da9c8ba169440f0fb21dc613f7bc425c8014b6";
+const tempRoots: string[] = [];
+
+afterEach(() => {
+  for (const root of tempRoots.splice(0)) {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
 
 function args(overrides: Record<string, string> = {}): string[] {
   const values = {
@@ -23,6 +39,91 @@ function args(overrides: Record<string, string> = {}): string[] {
     `--${name}`,
     value,
   ]);
+}
+
+function deployedProofFile(
+  overrides: { sourceSha?: string; latency?: number } = {},
+): string {
+  const sourceSha = overrides.sourceSha ?? exactSha;
+  const aliasUrl = "https://develop.eliza-app.pages.dev";
+  const apiOrigin = "https://api-staging.eliza.app";
+  const buildId = "a".repeat(64);
+  const renderer = {
+    origin: aliasUrl,
+    manifestSchema: "elizaos.renderer.build/v1",
+    commit: sourceSha,
+    buildId,
+    indexHtmlSha256: "b".repeat(64),
+    assetCount: 42,
+  };
+  const api = { origin: apiOrigin, commit: sourceSha, environment: "staging" };
+  const authority = {
+    schema: PAGES_AUTHORITY_SCHEMA,
+    sourceSha,
+    workflow: { runId: 32237956456, runAttempt: 1 },
+    project: "eliza-app",
+    branch: "develop",
+    pagesEnvironment: "preview",
+    productionBranch: "main",
+    deploymentUrl: "https://5f02a912.eliza-app.pages.dev",
+    aliasUrl,
+    deploymentIdSha256: "c".repeat(64),
+  };
+  const proof = createDeployedRendererProof({
+    authority,
+    preflight: {
+      schema: PAGES_PUBLIC_CHECK_SCHEMA,
+      phase: "preflight",
+      sourceSha,
+      renderer,
+      api,
+    },
+    remoteSmoke: {
+      schema: DEPLOYED_BROWSER_SMOKE_SCHEMA,
+      sourceSha,
+      rendererOrigin: aliasUrl,
+      rendererManifestCommit: sourceSha,
+      rendererBuildId: buildId,
+      cloudApiOrigin: apiOrigin,
+      cloudEnvironment: "staging",
+      outcome: "success",
+    },
+    latency: {
+      schemaVersion: 1,
+      lane: "app-live-e2e-cloud-staging",
+      metric: "first-turn-latency",
+      definition:
+        "composer-send-click-to-settled-valid-assistant-turn: starts immediately before the UI send click; ends after the same fresh non-empty assistant row settles and passes the liveness contract; not first-token latency",
+      firstTurnLatencyMs: overrides.latency ?? 12345,
+    },
+    continuity: {
+      schemaVersion: 1,
+      lane: "app-live-e2e-cloud-staging",
+      challengeTurnCount: 1,
+      noAdditionalChatSendAfterChallenge: true,
+      personalIdentityEndpointPassed: true,
+      reloadHistoryPassed: true,
+      freshContextHistoryPassed: true,
+      personalIdentityReused: true,
+      runtimeBindingReused: true,
+      apiBaseReused: true,
+      forbiddenAgentMutationCount: 0,
+      cleanupDisposition: "no-test-owned-agent",
+      conversationHistoryDisposition: "preserved",
+    },
+    postflight: {
+      schema: PAGES_PUBLIC_CHECK_SCHEMA,
+      phase: "postflight",
+      sourceSha,
+      renderer,
+      api,
+    },
+  });
+  const root = mkdtempSync(join(tmpdir(), "deployed-renderer-proof-"));
+  tempRoots.push(root);
+  const path = join(root, "proof.json");
+  writeFileSync(path, `${JSON.stringify(proof, null, 2)}\n`, { mode: 0o600 });
+  return path;
 }
 
 describe("staging Cloud live receipt", () => {
@@ -98,6 +199,59 @@ describe("staging Cloud live receipt", () => {
     });
     expect(receipt.annotations.loginPersonalIdentityChatPassed).toBe(false);
     expect(receipt.annotations.historyContinuityPassed).toBe(false);
+  });
+
+  test("sets schema v3 and deployedRendererTested only from a closed proof file", () => {
+    const receipt = createStagingCloudReceipt(
+      args({ "deployed-proof-file": deployedProofFile() }),
+    );
+    expect(receipt.schemaVersion).toBe(3);
+    expect(receipt.annotations).toEqual({
+      cloudApiOrigin: "https://api-staging.eliza.app",
+      cloudEnvironment: "staging",
+      rendererSource: "cloudflare-pages-alias",
+      deployedRendererTested: true,
+      loginPersonalIdentityChatPassed: true,
+      historyContinuityPassed: true,
+      cloudflarePagesAlias: "https://develop.eliza-app.pages.dev",
+    });
+    expect(receipt.deployment).toMatchObject({
+      cloudflarePagesAlias: "https://develop.eliza-app.pages.dev",
+      deploymentUrl: "https://5f02a912.eliza-app.pages.dev",
+      deploymentIdSha256: "c".repeat(64),
+      rendererBuildId: "a".repeat(64),
+      rendererManifestCommit: exactSha,
+      publicPreflightPassed: true,
+      remoteBrowserSmokePassed: true,
+      publicPostflightPassed: true,
+    });
+    expect(receipt.deployment.proofSha256).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  test("rejects boolean claims and proof/source/latency mismatches", () => {
+    expect(() =>
+      createStagingCloudReceipt([
+        ...args(),
+        "--deployed-renderer-tested",
+        "true",
+      ]),
+    ).toThrow("unsupported argument");
+    expect(() =>
+      createStagingCloudReceipt(
+        args({
+          "deployed-proof-file": deployedProofFile({
+            sourceSha: "a".repeat(40),
+          }),
+        }),
+      ),
+    ).toThrow("does not match the receipt source/run identity");
+    expect(() =>
+      createStagingCloudReceipt(
+        args({
+          "deployed-proof-file": deployedProofFile({ latency: 12346 }),
+        }),
+      ),
+    ).toThrow("latency does not match");
   });
 
   test("requires independently verified continuity on success and forbids it on failure", () => {

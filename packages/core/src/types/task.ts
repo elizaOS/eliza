@@ -139,7 +139,8 @@ export interface Task {
 	metadata?: TaskMetadata;
 	createdAt?: number | bigint;
 	updatedAt?: number | bigint;
-	dueAt?: number | bigint;
+	/** Millisecond deadline; null explicitly clears a previously persisted deadline. */
+	dueAt?: number | bigint | null;
 	status?: TaskStatus;
 }
 

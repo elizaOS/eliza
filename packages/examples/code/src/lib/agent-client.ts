@@ -3,6 +3,8 @@ import {
   ChannelType,
   type Content,
   createMessageMemory,
+  ElizaError,
+  FAILED_TOOL_FALLBACK_MESSAGE,
   type IAgentRuntime,
   type Memory,
   type StreamChunkCallback,
@@ -23,6 +25,8 @@ interface SendMessageParams {
   room: ChatRoom;
   text: string;
   identity: SessionIdentity;
+  /** Enter the runtime's trusted direct coding loop for this turn. */
+  codingMode?: boolean;
   userName?: string;
   source?: string;
   channelType?: ChannelType;
@@ -166,19 +170,54 @@ class AgentClient {
     }
 
     const options =
-      params.abortSignal || onDelta
+      params.codingMode || params.abortSignal || onDelta
         ? {
+            ...(params.codingMode ? { codingMode: true } : {}),
             ...(params.abortSignal ? { abortSignal: params.abortSignal } : {}),
             ...(onDelta ? { onStreamChunk: handleStreamChunk } : {}),
           }
         : undefined;
 
-    await runtime.messageService.handleMessage(
+    const result = await runtime.messageService.handleMessage(
       runtime,
       messageMemory,
       callback,
       options,
     );
+
+    const resultContent = result.responseContent;
+    const resultRecord =
+      resultContent && typeof resultContent === "object"
+        ? resultContent
+        : undefined;
+    const resultText =
+      resultRecord && typeof resultRecord.text === "string"
+        ? resultRecord.text
+        : undefined;
+    if (
+      resultRecord?.elizaSyntheticFailure === true ||
+      resultText?.startsWith(FAILED_TOOL_FALLBACK_MESSAGE) === true
+    ) {
+      const failureKind =
+        typeof resultRecord?.failureKind === "string"
+          ? resultRecord.failureKind
+          : "unknown";
+      const transient = resultRecord?.transient === true;
+      throw new ElizaError(
+        resultText?.trim()
+          ? resultText
+          : "The coding-agent turn failed before producing a result.",
+        {
+          code: "ELIZA_CODE_SYNTHETIC_TURN_FAILURE",
+          context: { failureKind, transient },
+          severity: transient ? "ephemeral" : "fatal",
+        },
+      );
+    }
+
+    if (!response && resultRecord && resultText !== undefined) {
+      response = resultText;
+    }
 
     return response;
   }

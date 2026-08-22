@@ -32,6 +32,10 @@ This plugin targets z.ai's general API only. Do not point it at
 `https://api.z.ai/api/coding/paas/v4` or `https://api.z.ai/api/anthropic`; those
 paths are reserved for z.ai's coding tools and `getBaseURL` rejects them.
 
+The general API accepts at most one stop sequence. Calls that provide more
+than one fail with `ZAI_STOP_SEQUENCE_LIMIT_EXCEEDED` before provider dispatch;
+the plugin never silently drops extra sequences.
+
 ## Usage
 
 ```ts

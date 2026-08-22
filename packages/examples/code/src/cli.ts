@@ -15,7 +15,7 @@
 import { readFileSync } from "node:fs";
 import * as fs from "node:fs/promises";
 import * as readline from "node:readline";
-import type { AgentRuntime } from "@elizaos/core";
+import { type AgentRuntime, ElizaError } from "@elizaos/core";
 import { v4 as uuidv4 } from "uuid";
 import { getAgentClient } from "./lib/agent-client.js";
 import { getCwd, setCwd } from "./lib/cwd.js";
@@ -42,6 +42,7 @@ interface CLIOptions {
   cwd: string | null;
   message: string | null;
   interactive: boolean;
+  codingOnly: boolean;
 }
 
 interface CLIResult {
@@ -95,6 +96,8 @@ Options:
   -f, --file <path>       Read message from file
   -c, --cwd <path>        Set working directory
   -i, --interactive       Force interactive mode (TUI)
+      --coding-only       Load only the direct coding runtime (no orchestrator)
+      --no-orchestrator   Alias for --coding-only
 
 Examples:
   eliza-code "What files are in the current directory?"
@@ -124,6 +127,7 @@ function parseArgs(args: string[]): CLIOptions {
     cwd: null,
     message: null,
     interactive: false,
+    codingOnly: false,
   };
 
   let i = 0;
@@ -156,6 +160,11 @@ function parseArgs(args: string[]): CLIOptions {
       case "-i":
       case "--interactive":
         options.interactive = true;
+        break;
+
+      case "--coding-only":
+      case "--no-orchestrator":
+        options.codingOnly = true;
         break;
 
       case "-f":
@@ -330,8 +339,7 @@ async function runCLI(options: CLIOptions): Promise<CLIResult> {
     // step." loops). The env seeds boot-time reads; the runtime setting is
     // what getConfiguredOwnerEntityIds actually resolves per turn.
     process.env.ELIZA_ADMIN_ENTITY_ID ??= session.identity.userId;
-    process.env.ELIZA_PLANNER_FULL_ACTION_SURFACE ??= "1";
-    runtime = await initializeAgent();
+    runtime = await initializeAgent({ codingOnly: options.codingOnly });
     (
       runtime as unknown as { setSetting?: (k: string, v: unknown) => void }
     ).setSetting?.("ELIZA_ADMIN_ENTITY_ID", session.identity.userId);
@@ -349,6 +357,7 @@ async function runCLI(options: CLIOptions): Promise<CLIResult> {
       room,
       text: message,
       identity: session.identity,
+      codingMode: true,
       onDelta: shouldStream
         ? (delta) => {
             // Write deltas directly for real-time streaming.
@@ -357,6 +366,16 @@ async function runCLI(options: CLIOptions): Promise<CLIResult> {
           }
         : undefined,
     });
+
+    if (!response.trim()) {
+      throw new ElizaError(
+        "The coding-agent turn ended without a final response.",
+        {
+          code: "ELIZA_CODE_EMPTY_RESPONSE",
+          severity: "fatal",
+        },
+      );
+    }
 
     if (didPrintStreaming) {
       process.stdout.write("\n");
@@ -373,6 +392,19 @@ async function runCLI(options: CLIOptions): Promise<CLIResult> {
     return {
       success: true,
       response,
+      timing: {
+        startedAt,
+        completedAt,
+        durationMs: completedAt - startedAt,
+      },
+    };
+  } catch (error) {
+    // error-policy:J1 The one-shot CLI translates typed/runtime turn failures
+    // into a non-success result so JSON callers and shell exit status agree.
+    const completedAt = Date.now();
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : String(error),
       timing: {
         startedAt,
         completedAt,

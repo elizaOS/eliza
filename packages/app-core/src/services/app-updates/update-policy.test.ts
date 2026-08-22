@@ -84,6 +84,8 @@ describe("resolveAppUpdatePolicy", () => {
       channel: "android-sideload",
       authority: "github",
       canAutoUpdate: false,
+      canManualCheck: false,
+      actionLabel: null,
     });
 
     expect(

@@ -312,8 +312,29 @@ export const setupMissingProvider: Provider = {
 				};
 			}
 
+			// Same gates as SETUP_PROGRESS above: setup state is a DM-only
+			// surface, and a missing world or a world without metadata is a
+			// normal designed-empty case — not a load failure. Reading
+			// `.setupStateMachine` off an undefined metadata object here used
+			// to throw and misroute every such turn into reportError plus a
+			// fabricated "unavailable" state.
+			if (room.type !== ChannelType.DM) {
+				return {
+					data: { missing: [] },
+					values: { setupMissing: "" },
+					text: "",
+				};
+			}
+
 			const world = await runtime.getWorld(room.worldId);
-			const metadata = world?.metadata as {
+			if (!world?.metadata) {
+				return {
+					data: { missing: [] },
+					values: { setupMissing: "" },
+					text: "",
+				};
+			}
+			const metadata = world.metadata as {
 				setupStateMachine?: SerializedSetupState;
 			};
 

@@ -13,7 +13,6 @@ export type PairingChannel =
 	| "telegram"
 	| "discord"
 	| "whatsapp"
-	| "signal"
 	| "slack"
 	| "imessage"
 	| "googlechat"

@@ -709,6 +709,61 @@ describe("DesktopManager main window controls", () => {
     );
   });
 
+  it("restores the prior global shortcut when its replacement is rejected", async () => {
+    const manager = new DesktopManager();
+    const sendToWebview = vi.fn();
+    manager.setSendToWebview(sendToWebview);
+    electrobunMock.GlobalShortcut.register
+      .mockReturnValueOnce(true)
+      .mockReturnValueOnce(false)
+      .mockReturnValueOnce(true);
+
+    await manager.registerShortcut({
+      id: "chat-overlay",
+      accelerator: "CommandOrControl+Shift+C",
+    });
+    await expect(
+      manager.registerShortcut({
+        id: "chat-overlay",
+        accelerator: "CommandOrControl+J",
+      }),
+    ).resolves.toEqual({ success: false });
+
+    expect(manager.pressRegisteredShortcut({ id: "chat-overlay" })).toBe(true);
+    expect(sendToWebview).toHaveBeenCalledWith("desktopShortcutPressed", {
+      id: "chat-overlay",
+      accelerator: "CommandOrControl+Shift+C",
+    });
+    await manager.unregisterShortcut({ id: "chat-overlay" });
+    expect(electrobunMock.GlobalShortcut.unregister).toHaveBeenLastCalledWith(
+      "CommandOrControl+Shift+C",
+    );
+  });
+
+  it("removes stale shortcut ownership when replacement and rollback both fail", async () => {
+    const manager = new DesktopManager();
+    electrobunMock.GlobalShortcut.register
+      .mockReturnValueOnce(true)
+      .mockReturnValueOnce(false)
+      .mockReturnValueOnce(false);
+
+    await manager.registerShortcut({
+      id: "chat-overlay",
+      accelerator: "CommandOrControl+Shift+C",
+    });
+    await expect(
+      manager.registerShortcut({
+        id: "chat-overlay",
+        accelerator: "CommandOrControl+J",
+      }),
+    ).resolves.toEqual({ success: false });
+
+    expect(manager.pressRegisteredShortcut({ id: "chat-overlay" })).toBe(false);
+    electrobunMock.GlobalShortcut.unregister.mockClear();
+    await manager.unregisterShortcut({ id: "chat-overlay" });
+    expect(electrobunMock.GlobalShortcut.unregister).not.toHaveBeenCalled();
+  });
+
   it("presses a registered shortcut through the test seam", async () => {
     const manager = new DesktopManager();
     const sendToWebview = vi.fn();

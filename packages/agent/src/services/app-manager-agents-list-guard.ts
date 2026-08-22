@@ -17,7 +17,7 @@ export function shouldRestoreAgentsListAfterAppLaunch(
   if (!Array.isArray(after)) {
     return false;
   }
-  if (!before) {
+  if (!before || before.length === 0) {
     return after.length > 0;
   }
   if (after.length < before.length) {

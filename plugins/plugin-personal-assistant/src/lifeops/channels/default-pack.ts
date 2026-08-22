@@ -133,20 +133,6 @@ const CHANNEL_DESCRIPTORS: readonly ChannelDescriptor[] = [
     connectorKind: "discord",
   },
   {
-    kind: "signal",
-    label: "Signal",
-    capabilities: {
-      ...NULL_CAPABILITIES,
-      send: true,
-      read: true,
-      reminders: true,
-      attachments: true,
-      quietHoursAware: true,
-    },
-    connectorKind: "signal",
-    receiptContract: "provider_receipt_id",
-  },
-  {
     kind: "whatsapp",
     label: "WhatsApp",
     capabilities: {

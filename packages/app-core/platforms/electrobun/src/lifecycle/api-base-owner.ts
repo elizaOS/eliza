@@ -35,6 +35,7 @@ import {
   resolveDesktopRuntimeMode,
   resolveDesktopRuntimeModeSignal,
 } from "../api-base";
+import { getPersistedDeployment } from "../persisted-deployment";
 import { getStartupTraceConfig } from "../startup-trace";
 
 interface ApiBaseSnapshot {
@@ -146,11 +147,19 @@ export function injectIntoHtml(html: string): string {
   const desktopTestBridgeInject = shouldInjectDesktopTestBridgeMarker()
     ? "window.__ELIZA_DESKTOP_TEST_BRIDGE_ENABLED__=true;"
     : "";
+  const runtimeModeSignal = resolveDesktopRuntimeModeSignal(
+    process.env,
+    getPersistedDeployment(),
+  );
+  const runtimeModeInject = runtimeModeSignal
+    ? `window.__ELIZA_DESKTOP_RUNTIME_MODE__=${safeJsonForHtml(runtimeModeSignal)};`
+    : "";
   if (
     !current.base &&
     !startupTraceInject &&
     !runtimeChooserTestInject &&
-    !desktopTestBridgeInject
+    !desktopTestBridgeInject &&
+    !runtimeModeInject
   )
     return html;
 
@@ -164,18 +173,14 @@ export function injectIntoHtml(html: string): string {
     // (shouldUseCloudOnlyBranding) resolves correctly at module-eval time. Only
     // injected when explicitly cloud, so the default desktop/web behavior is
     // unchanged.
-    const runtimeModeSignal = resolveDesktopRuntimeModeSignal(process.env);
-    const runtimeModeInject = runtimeModeSignal
-      ? `window.__ELIZA_DESKTOP_RUNTIME_MODE__=${safeJsonForHtml(runtimeModeSignal)};`
-      : "";
     const externalApiBase = resolveCurrentExternalApiBase();
     const externalApiBaseInject = externalApiBase
       ? `window.__ELIZA_DESKTOP_EXTERNAL_API_BASE__=${safeJsonForHtml(externalApiBase)};`
       : "";
-    apiBaseInject = `${runtimeModeInject}${externalApiBaseInject}${bootConfigInject}`;
+    apiBaseInject = `${externalApiBaseInject}${bootConfigInject}`;
   }
 
-  const script = `<script>${startupTraceInject}${runtimeChooserTestInject}${desktopTestBridgeInject}${apiBaseInject}</script>`;
+  const script = `<script>${startupTraceInject}${runtimeChooserTestInject}${desktopTestBridgeInject}${runtimeModeInject}${apiBaseInject}</script>`;
   if (html.includes("</head>")) {
     return html.replace("</head>", `${script}</head>`);
   }

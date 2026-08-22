@@ -57,7 +57,14 @@ beforeEach(() => {
 vi.mock("ai", () => ({
   generateText: aiMocks.generateText,
   streamText: aiMocks.streamText,
-  jsonSchema: (schema: unknown) => ({ jsonSchema: schema }),
+  // Mirror AI SDK v6's accessor-backed schema wrapper. The provider transport
+  // owns this object; Eliza must sanitize the plain schema before wrapping and
+  // must not deep-walk the wrapper afterward.
+  jsonSchema: (schema: unknown) =>
+    Object.defineProperty({}, "jsonSchema", {
+      enumerable: true,
+      get: () => schema,
+    }),
   Output: {
     object: ({
       schema,
@@ -686,6 +693,41 @@ describe("OpenAI native text plumbing", () => {
       },
     });
   }, 180_000);
+
+  it("reaches the response-handler transport with accessor-backed native tool schemas", async () => {
+    aiMocks.generateText.mockResolvedValue({
+      text: "ok",
+      finishReason: "stop",
+      usage: { inputTokens: 2, outputTokens: 1 },
+    });
+
+    const { handleResponseHandler } = await import("../models/text");
+    await handleResponseHandler(createRuntime(), {
+      messages: [{ role: "user", content: "decide whether to respond" }],
+      tools: [
+        {
+          name: "HANDLE_RESPONSE",
+          description: "Return the turn decision.",
+          parameters: {
+            type: "object",
+            properties: { action: { type: "string" } },
+            required: ["action"],
+          },
+        },
+      ],
+    } as never);
+
+    expect(aiMocks.generateText).toHaveBeenCalledTimes(1);
+    const call = aiMocks.generateText.mock.calls[0][0] as {
+      tools: Record<string, { inputSchema: { jsonSchema: unknown } }>;
+    };
+    expect(call.tools.HANDLE_RESPONSE.inputSchema.jsonSchema).toMatchObject({
+      type: "object",
+      properties: { action: { type: "string" } },
+      required: ["action"],
+      additionalProperties: false,
+    });
+  });
 
   it("honors a per-call model override before slot defaults", async () => {
     aiMocks.generateText.mockResolvedValue({

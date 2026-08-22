@@ -39,6 +39,14 @@ describe("Apple secure-store bridge contract", () => {
     );
   });
 
+  it("verifies an exact Keychain read-back before reporting a write", () => {
+    expect(source).toContain(
+      "SecItemCopyMatching(verificationQuery as CFDictionary, &storedItem)",
+    );
+    expect(source).toContain("storedData == valueData");
+    expect(source).toContain("Apple Keychain write could not be verified.");
+  });
+
   it("allowlists accounts and never accepts an arbitrary service", () => {
     for (const key of [
       "session.device_auth",
@@ -53,9 +61,23 @@ describe("Apple secure-store bridge contract", () => {
     expect(source).toContain("!value.isEmpty");
   });
 
-  it("distinguishes deleted and already-absent items", () => {
-    expect(source).toContain('["ok": true, "deleted": true]');
-    expect(source).toContain('["ok": true, "deleted": false]');
+  it("distinguishes deletion outcomes only after verifying absence", () => {
+    expect(source).toContain(
+      "SecItemCopyMatching(verificationQuery as CFDictionary, nil)",
+    );
+    expect(source).toContain(
+      '["ok": true, "deleted": status == errSecSuccess]',
+    );
+    expect(source).toContain("Apple Keychain deletion could not be verified.");
+  });
+
+  it("maps locked, unavailable, authentication, and cancellation outcomes", () => {
+    expect(source).toContain("errSecInteractionNotAllowed");
+    expect(source).toContain("errSecAuthFailed");
+    expect(source).toContain("errSecUserCanceled");
+    expect(source).toContain("errSecNotAvailable");
+    expect(source).toContain('errorResult("denied"');
+    expect(source).toContain('errorResult("unavailable"');
   });
 
   it("does not grant Keychain Sharing to the app or its extensions", () => {

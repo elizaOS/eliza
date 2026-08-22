@@ -1073,10 +1073,15 @@ export async function handleDocumentsRoutes(
           requestedGrants,
           accessContext,
         );
-      const directGrantEntityIds = Array.isArray(
-        document.metadata?.directGrantEntityIds,
-      )
-        ? document.metadata.directGrantEntityIds
+      // `metadata` is the MemoryMetadata union; only DocumentMetadata carries
+      // the grants, so narrow with `in` before reading.
+      const metadata = document.metadata;
+      const directGrantCandidate =
+        metadata &&
+        "directGrantEntityIds" in metadata &&
+        (metadata as { directGrantEntityIds?: unknown }).directGrantEntityIds;
+      const directGrantEntityIds = Array.isArray(directGrantCandidate)
+        ? directGrantCandidate
         : [];
       json(res, { ok: true, documentId: document.id, directGrantEntityIds });
     } catch (cause) {

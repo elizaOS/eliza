@@ -53,6 +53,7 @@ import {
   yieldHttpAfterNativeMessageBox,
 } from "../utils";
 import { scrubPersistedAgentProfileTokens } from "./agent-profiles";
+import { bindDirectCloudLoginToPersonalAgent } from "./bind-direct-cloud-login";
 import {
   CLOUD_LOGIN_POPUP_NAME,
   navigateToSameTabCloudLogin,
@@ -1081,10 +1082,18 @@ export function useCloudState({
                   );
                   return;
                 }
-                client.setBaseUrl(authenticatedCloudApiBase, {
-                  persist: false,
-                });
-                client.setToken(poll.token);
+                if (isElectrobunRuntime()) {
+                  await bindDirectCloudLoginToPersonalAgent({
+                    client,
+                    cloudApiBase: authenticatedCloudApiBase,
+                    token: poll.token,
+                  });
+                } else {
+                  client.setBaseUrl(authenticatedCloudApiBase, {
+                    persist: false,
+                  });
+                  client.setToken(poll.token);
+                }
               }
 
               closePrePoppedWindow();

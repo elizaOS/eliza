@@ -20,6 +20,33 @@ if [[ ! -d "$ARTIFACTS_DIR" ]]; then
   exit 1
 fi
 
+# Notarization is gated on all three Apple credentials being present. The three
+# arrive from separate CI secrets, so one that is unset, renamed, or rotated out
+# expands to an empty string and silently turns the whole notarize+staple block
+# into a no-op -- while the DMG is still published under the same filename. The
+# release then ships un-notarized and Gatekeeper blocks it on first launch.
+# Decide this here, before ditto/hdiutil do minutes of work, and refuse a
+# half-configured credential set instead of quietly downgrading the artifact.
+notary_credentials_present=""
+notary_credentials_missing=""
+for notary_credential_name in ELECTROBUN_APPLEID ELECTROBUN_APPLEIDPASS ELECTROBUN_TEAMID; do
+  if [[ -n "${!notary_credential_name:-}" ]]; then
+    notary_credentials_present="${notary_credentials_present:+$notary_credentials_present }$notary_credential_name"
+  else
+    notary_credentials_missing="${notary_credentials_missing:+$notary_credentials_missing }$notary_credential_name"
+  fi
+done
+
+if [[ "$SKIP_SIGNATURE_CHECK" != "1" ]]; then
+  if [[ -n "$notary_credentials_present" && -n "$notary_credentials_missing" ]]; then
+    echo "stage-macos-release-artifacts: incomplete notarization credentials (present: $notary_credentials_present; missing: $notary_credentials_missing); set all three or none" >&2
+    exit 1
+  fi
+  if [[ -z "$notary_credentials_present" ]]; then
+    echo "stage-macos-release-artifacts: notarization credentials not set; the DMG will not be notarized" >&2
+  fi
+fi
+
 TMP_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/eliza-macos-artifacts.XXXXXX")"
 EXTRACT_DIR="$TMP_ROOT/extracted"
 DMG_STAGING_DIR="$TMP_ROOT/dmg-staging"

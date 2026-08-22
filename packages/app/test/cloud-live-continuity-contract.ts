@@ -40,6 +40,46 @@ export interface CloudLiveHistoryObservation {
   challengeAssistantLinePresent: boolean;
 }
 
+export interface CloudLiveBoundedResponseBody {
+  /** Response media type only. Headers and response URLs must not be retained. */
+  contentType: string | null | undefined;
+  /**
+   * Return at most maxBytes, or null when the response cannot be read within
+   * that budget. The audit checks the returned size again before parsing.
+   */
+  read(maxBytes: number): Promise<Uint8Array | null>;
+}
+
+export interface CloudLiveNetworkAuditSnapshot {
+  forbiddenAgentMutationCount: number;
+  chatSendAttemptCount: number;
+  logicalChatSendCount: number;
+  unidentifiedChatSendAttemptCount: number;
+  namedWarmingResponseCount: number;
+  successfulChatSendResponseCount: number;
+  clientErrorChatSendResponseCount: number;
+  serverErrorChatSendResponseCount: number;
+  otherChatSendResponseCount: number;
+  successfulPersonalIdentityGetCount: number;
+  successfulHistoryGetCount: number;
+}
+
+export interface CloudLiveNamedWarmingModeInput {
+  required: boolean;
+  deployedRenderer: boolean;
+  cloudEnvironment: string;
+}
+
+export interface CloudLiveNamedWarmingProofInput {
+  required: boolean;
+  terminalLivenessPassed: boolean;
+  chatSendAttemptCount: number;
+  logicalChatSendCount: number;
+  unidentifiedChatSendAttemptCount: number;
+  namedWarmingResponseCount: number;
+  retryChipEverObserved: boolean;
+}
+
 export interface CloudLiveContinuityEvidenceInput {
   challengeTurnCount: number;
   noAdditionalChatSendAfterChallenge: boolean;
@@ -170,6 +210,216 @@ function chatClientMessageId(postData: string | null | undefined): string {
   }
 }
 
+const NAMED_WARMING_CODES = new Set([
+  "agent_cache_warming",
+  "shared_runtime_cache_warming",
+]);
+const MAX_WARMING_RESPONSE_BYTES = 4 * 1024;
+
+function isJsonContentType(contentType: string | null | undefined): boolean {
+  return (
+    contentType?.split(";", 1)[0]?.trim().toLowerCase() === "application/json"
+  );
+}
+
+async function isNamedWarmingResponse(
+  responseBody: CloudLiveBoundedResponseBody,
+): Promise<boolean> {
+  if (!isJsonContentType(responseBody.contentType)) return false;
+  const bytes = await responseBody.read(MAX_WARMING_RESPONSE_BYTES);
+  if (
+    !bytes ||
+    bytes.byteLength === 0 ||
+    bytes.byteLength > MAX_WARMING_RESPONSE_BYTES
+  ) {
+    return false;
+  }
+  try {
+    const parsed = JSON.parse(
+      new TextDecoder("utf-8", { fatal: true }).decode(bytes),
+    ) as unknown;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed))
+      return false;
+    const code = (parsed as Record<string, unknown>).code;
+    return typeof code === "string" && NAMED_WARMING_CODES.has(code);
+  } catch {
+    // error-policy:J3 malformed or non-UTF-8 diagnostic bodies are simply not
+    // named warming proof; the real browser response remains authoritative.
+    return false;
+  }
+}
+
+export function assertCloudLiveNamedWarmingMode(
+  input: CloudLiveNamedWarmingModeInput,
+): void {
+  if (!input.required) return;
+  if (!input.deployedRenderer) {
+    fail("named warming proof requires a deployed renderer");
+  }
+  if (input.cloudEnvironment !== "staging") {
+    fail("named warming proof requires the staging Cloud environment");
+  }
+}
+
+export function assertCloudLiveNamedWarmingProof(
+  input: CloudLiveNamedWarmingProofInput,
+): void {
+  if (!input.required) return;
+  requireTrue(
+    input.terminalLivenessPassed,
+    "namedWarming.terminalLivenessPassed",
+  );
+  if (input.chatSendAttemptCount <= 1) {
+    fail("namedWarming.chatSendAttemptCount must be greater than one");
+  }
+  if (input.logicalChatSendCount !== 1) {
+    fail("namedWarming.logicalChatSendCount must be one");
+  }
+  if (input.unidentifiedChatSendAttemptCount !== 0) {
+    fail("namedWarming.unidentifiedChatSendAttemptCount must be zero");
+  }
+  if (input.namedWarmingResponseCount <= 0) {
+    fail("namedWarming.namedWarmingResponseCount must be greater than zero");
+  }
+  if (input.retryChipEverObserved) {
+    fail("namedWarming.retryChipEverObserved must be false");
+  }
+}
+
+/**
+ * Observe the assistant row owned by one anchored user turn. Mutation records,
+ * not just the final DOM, close the add-then-remove gap for a transient Retry
+ * chip. Kept closure-free so Playwright can serialize it into the page.
+ */
+export function installCloudLiveAnchoredRetryChipObserver(
+  turnAnchorToken: string,
+  rootDocument: Document = document,
+): { stop(): boolean } {
+  const rowSelector = '[data-testid="thread-line"]';
+  const retrySelector = '[data-testid="thread-line-retry"]';
+  const normalizedAnchor = turnAnchorToken.trim().toLowerCase();
+  if (!normalizedAnchor) {
+    throw new Error("[cloud-live-continuity] turn anchor must not be empty");
+  }
+  const view = rootDocument.defaultView;
+  if (!view) {
+    throw new Error("[cloud-live-continuity] document view is unavailable");
+  }
+  let retryChipEverObserved = false;
+  let lastOwner: Element | null = null;
+
+  const anchoredRows = (): [HTMLElement | null, HTMLElement | null] => {
+    const rows = Array.from(
+      rootDocument.querySelectorAll<HTMLElement>(rowSelector),
+    );
+    const userIndex = rows.findIndex(
+      (row) =>
+        row.dataset.role === "user" &&
+        (row.textContent ?? "").toLowerCase().includes(normalizedAnchor),
+    );
+    if (userIndex < 0) return [null, null];
+    for (let index = userIndex + 1; index < rows.length; index += 1) {
+      const row = rows[index];
+      if (row.dataset.role === "user") break;
+      if (row.dataset.role === "assistant") return [rows[userIndex], row];
+    }
+    return [rows[userIndex], null];
+  };
+
+  const containsRetryChip = (node: Node): boolean =>
+    node instanceof view.Element &&
+    (node.matches(retrySelector) || Boolean(node.querySelector(retrySelector)));
+
+  const lastRowAtOrBefore = (node: Node | null): Element | null => {
+    for (let cursor = node; cursor; cursor = cursor.previousSibling) {
+      if (!(cursor instanceof view.Element)) continue;
+      if (cursor.matches(rowSelector)) return cursor;
+      const nestedRows = cursor.querySelectorAll(rowSelector);
+      if (nestedRows.length > 0) return nestedRows[nestedRows.length - 1];
+    }
+    return null;
+  };
+
+  const inspect = (records: readonly MutationRecord[] = []) => {
+    if (retryChipEverObserved) return;
+    const [anchor, currentOwner] = anchoredRows();
+    if (!anchor) return;
+    if (currentOwner) lastOwner = currentOwner;
+    if (currentOwner?.querySelector(retrySelector)) {
+      retryChipEverObserved = true;
+      return;
+    }
+
+    const candidates = new Set<Element>();
+    if (currentOwner) candidates.add(currentOwner);
+    if (lastOwner) candidates.add(lastOwner);
+    for (const record of records) {
+      let followsAnchor = lastRowAtOrBefore(record.previousSibling) === anchor;
+      for (const addedNode of record.addedNodes) {
+        if (!(addedNode instanceof view.Element)) continue;
+        const addedRows = addedNode.matches(rowSelector)
+          ? [addedNode]
+          : [...addedNode.querySelectorAll(rowSelector)];
+        for (const row of addedRows) {
+          if (row === anchor) {
+            followsAnchor = true;
+          } else if (row.getAttribute("data-role") === "user") {
+            followsAnchor = false;
+          } else if (
+            followsAnchor &&
+            row.getAttribute("data-role") === "assistant"
+          ) {
+            candidates.add(row);
+            lastOwner = row;
+            followsAnchor = false;
+          }
+        }
+      }
+    }
+    if ([...candidates].some(containsRetryChip)) {
+      retryChipEverObserved = true;
+      return;
+    }
+
+    for (const record of records) {
+      const mutationNodes = [...record.addedNodes, ...record.removedNodes];
+      const target =
+        record.target instanceof view.Element
+          ? record.target
+          : record.target.parentElement;
+      const targetRow = target?.closest(rowSelector);
+      if (
+        targetRow &&
+        candidates.has(targetRow) &&
+        (mutationNodes.some(containsRetryChip) ||
+          (record.attributeName === "data-testid" &&
+            record.oldValue === "thread-line-retry"))
+      ) {
+        retryChipEverObserved = true;
+        return;
+      }
+    }
+  };
+
+  const observer = new view.MutationObserver(inspect);
+  observer.observe(rootDocument.documentElement, {
+    attributeOldValue: true,
+    attributes: true,
+    attributeFilter: ["data-role", "data-testid"],
+    characterData: true,
+    childList: true,
+    subtree: true,
+  });
+  inspect();
+  return {
+    stop() {
+      inspect(observer.takeRecords());
+      observer.disconnect();
+      return retryChipEverObserved;
+    },
+  };
+}
+
 /** Counts only; request URLs and their embedded IDs are never retained. */
 export function createCloudLiveNetworkAudit(): {
   observeRequest(
@@ -177,30 +427,49 @@ export function createCloudLiveNetworkAudit(): {
     rawUrl: string,
     postData?: string | null,
   ): void;
-  observeResponse(method: string, rawUrl: string, status: number): void;
-  snapshot(): {
-    forbiddenAgentMutationCount: number;
-    chatSendAttemptCount: number;
-    logicalChatSendCount: number;
-    unidentifiedChatSendAttemptCount: number;
-    successfulChatSendResponseCount: number;
-    clientErrorChatSendResponseCount: number;
-    serverErrorChatSendResponseCount: number;
-    otherChatSendResponseCount: number;
-    successfulPersonalIdentityGetCount: number;
-    successfulHistoryGetCount: number;
-  };
+  observeResponse(
+    method: string,
+    rawUrl: string,
+    status: number,
+    responseBody?: CloudLiveBoundedResponseBody,
+  ): void;
+  snapshot(): Promise<CloudLiveNetworkAuditSnapshot>;
 } {
   let forbiddenAgentMutationCount = 0;
   let chatSendAttemptCount = 0;
   let unidentifiedChatSendAttemptCount = 0;
   const logicalChatSendIds = new Set<string>();
+  let namedWarmingResponseCount = 0;
   let successfulChatSendResponseCount = 0;
   let clientErrorChatSendResponseCount = 0;
   let serverErrorChatSendResponseCount = 0;
   let otherChatSendResponseCount = 0;
   let successfulPersonalIdentityGetCount = 0;
   let successfulHistoryGetCount = 0;
+  const pendingResponseHandlers = new Set<Promise<void>>();
+
+  const trackResponseHandler = (handler: () => Promise<void>) => {
+    // Start on the next microtask so the promise is always registered before
+    // its completion callback can remove it, including immediate test readers.
+    const pending = Promise.resolve()
+      .then(handler)
+      .catch(() => {
+        // error-policy:J3 unreadable diagnostics contribute no named-warming
+        // proof and must never disturb the real browser request lifecycle.
+      });
+    pendingResponseHandlers.add(pending);
+    void pending.then(() => pendingResponseHandlers.delete(pending));
+  };
+
+  const drainResponseHandlers = async () => {
+    // A handler can schedule while an earlier body is draining. Loop until the
+    // tracked set is empty so every response observed before the snapshot is
+    // reduced before callers make assertions.
+    while (pendingResponseHandlers.size > 0) {
+      await Promise.all([...pendingResponseHandlers]);
+    }
+  };
+
   return {
     observeRequest(method, rawUrl, postData) {
       if (classifyForbiddenAgentMutation(method, rawUrl)) {
@@ -217,8 +486,9 @@ export function createCloudLiveNetworkAudit(): {
         } else unidentifiedChatSendAttemptCount += 1;
       }
     },
-    observeResponse(method, rawUrl, status) {
-      if (chatSendScope(method, rawUrl)) {
+    observeResponse(method, rawUrl, status, responseBody) {
+      const chatScope = chatSendScope(method, rawUrl);
+      if (chatScope) {
         if (status >= 200 && status < 300) {
           successfulChatSendResponseCount += 1;
         } else if (status >= 400 && status < 500) {
@@ -227,6 +497,13 @@ export function createCloudLiveNetworkAudit(): {
           serverErrorChatSendResponseCount += 1;
         } else {
           otherChatSendResponseCount += 1;
+        }
+        if (status === 503 && responseBody) {
+          trackResponseHandler(async () => {
+            if (await isNamedWarmingResponse(responseBody)) {
+              namedWarmingResponseCount += 1;
+            }
+          });
         }
       }
       if (status >= 200 && status < 300 && isHistoryGet(method, rawUrl)) {
@@ -240,18 +517,22 @@ export function createCloudLiveNetworkAudit(): {
         successfulPersonalIdentityGetCount += 1;
       }
     },
-    snapshot: () => ({
-      forbiddenAgentMutationCount,
-      chatSendAttemptCount,
-      logicalChatSendCount: logicalChatSendIds.size,
-      unidentifiedChatSendAttemptCount,
-      successfulChatSendResponseCount,
-      clientErrorChatSendResponseCount,
-      serverErrorChatSendResponseCount,
-      otherChatSendResponseCount,
-      successfulPersonalIdentityGetCount,
-      successfulHistoryGetCount,
-    }),
+    snapshot: async () => {
+      await drainResponseHandlers();
+      return {
+        forbiddenAgentMutationCount,
+        chatSendAttemptCount,
+        logicalChatSendCount: logicalChatSendIds.size,
+        unidentifiedChatSendAttemptCount,
+        namedWarmingResponseCount,
+        successfulChatSendResponseCount,
+        clientErrorChatSendResponseCount,
+        serverErrorChatSendResponseCount,
+        otherChatSendResponseCount,
+        successfulPersonalIdentityGetCount,
+        successfulHistoryGetCount,
+      };
+    },
   };
 }
 

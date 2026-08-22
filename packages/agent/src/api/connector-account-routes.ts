@@ -12,12 +12,15 @@
  */
 import type http from "node:http";
 import {
+  CONNECTOR_JSON_UNBOUNDED,
   type ConnectorAccount,
+  type ConnectorAccountJsonObject,
   type ConnectorAccountPatch,
   type ConnectorAccountPurpose,
   type ConnectorAccountRole,
   type ConnectorAccountStatus,
   type ConnectorOAuthFlow,
+  cloneConnectorJsonObject,
   DEFAULT_PRIVACY_LEVEL,
   ElizaError,
   getConnectorAccountManager,
@@ -364,8 +367,28 @@ function cleanMetadata(value: unknown): Metadata | undefined {
 
 function isUnboundedMetadataGraph(error: unknown): boolean {
   return (
-    error instanceof ElizaError && error.code === BLOCKED_OBJECT_GRAPH_UNBOUNDED
+    error instanceof ElizaError &&
+    (error.code === BLOCKED_OBJECT_GRAPH_UNBOUNDED ||
+      error.code === CONNECTOR_JSON_UNBOUNDED)
   );
+}
+
+/**
+ * Validate sanitized metadata against the stricter durable-storage projection
+ * before the manager can invoke a registered provider callback. The route
+ * walker intentionally has a looser budget, so relying on the adapter alone
+ * would allow a provider side effect before persistence rejects the patch.
+ */
+function validatePatchMetadataForStorage(
+  patch: ConnectorAccountPatch,
+): ConnectorAccountPatch {
+  if (patch.metadata === undefined) return patch;
+  return {
+    ...patch,
+    metadata: cloneConnectorJsonObject(
+      patch.metadata as ConnectorAccountJsonObject,
+    ),
+  };
 }
 
 function redactAuditMetadata(value: unknown): unknown {
@@ -758,12 +781,13 @@ export async function handleConnectorAccountRoutes(
       }
       let createPatch: ConnectorAccountPatch;
       try {
-        createPatch = accountPatchFromBody(parsed.data);
+        createPatch = validatePatchMetadataForStorage(
+          accountPatchFromBody(parsed.data),
+        );
       } catch (err) {
-        // error-policy:J1 route boundary — an over-budget caller body becomes a
-        // 400 rather than escaping the handler with no response written. Any
-        // other error is rethrown, so this narrows one shape rather than
-        // swallowing the class.
+        // error-policy:J1 route boundary — an over-budget caller body at either
+        // the route-walk or durable-storage budget becomes a 400 before any
+        // provider callback. Every other error is rethrown.
         if (!isUnboundedMetadataGraph(err)) throw err;
         error(res, UNBOUNDED_METADATA_MESSAGE, 400);
         return true;
@@ -812,11 +836,12 @@ export async function handleConnectorAccountRoutes(
         }
         let patch: ConnectorAccountPatch;
         try {
-          patch = accountPatchFromBody(parsed.data, existing.metadata);
+          patch = validatePatchMetadataForStorage(
+            accountPatchFromBody(parsed.data, existing.metadata),
+          );
         } catch (err) {
-          // error-policy:J1 route boundary — same translation as the POST path
-          // above; an over-budget patch body becomes a 400 and every other
-          // error is rethrown.
+          // error-policy:J1 route boundary — same pre-provider translation as
+          // the POST path above; every unrelated failure is rethrown.
           if (!isUnboundedMetadataGraph(err)) throw err;
           error(res, UNBOUNDED_METADATA_MESSAGE, 400);
           return true;

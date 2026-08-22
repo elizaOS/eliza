@@ -17,7 +17,7 @@ const PERSON_NAME = "Priya Rao";
 export default scenario({
   lane: "live-only",
   id: "cross-platform.same-person-multi-platform",
-  title: "Recognize one person across Gmail, Signal, Telegram, and WhatsApp",
+  title: "Recognize one person across Gmail, Discord, Telegram, and WhatsApp",
   domain: "messaging.cross-platform",
   tags: [
     "cross-platform",
@@ -62,14 +62,14 @@ export default scenario({
       kind: "message",
       name: "ask about priyas cross-platform messages",
       room: "main",
-      text: "Show me everywhere Priya Rao has messaged me recently. She is the same person across Gmail, Signal, Telegram, and WhatsApp.",
+      text: "Show me everywhere Priya Rao has messaged me recently. She is the same person across Gmail, Discord, Telegram, and WhatsApp.",
       assertTurn: expectTurnToCallAction({
         acceptedActions: ["READ_MESSAGES", "MESSAGE", "MESSAGE"],
         description:
           "cross-platform conversation lookup for one canonical person",
-        includesAny: ["priya", "gmail", "signal", "telegram", "whatsapp"],
+        includesAny: ["priya", "gmail", "discord", "telegram", "whatsapp"],
       }),
-      // De-echoed (#9310): the old keywords ("Priya", "Gmail", "Signal",
+      // De-echoed (#9310): the old keywords ("Priya", "Gmail", "Discord",
       // "Telegram", "WhatsApp") all appeared in the user's own turn text
       // (which also says "same person", so that phrase is excluded too). The
       // reply must express the canonical-identity outcome in derived words.
@@ -84,7 +84,7 @@ export default scenario({
       responseJudge: {
         minimumScore: 0.75,
         rubric:
-          "The assistant must treat Priya Rao as one person, not multiple disconnected contacts, and summarize cross-platform message context across Gmail, Signal, Telegram, and WhatsApp.",
+          "The assistant must treat Priya Rao as one person, not multiple disconnected contacts, and summarize cross-platform message context across Gmail, Discord, Telegram, and WhatsApp.",
       },
     },
   ],
@@ -110,14 +110,14 @@ export default scenario({
         acceptedActions: ["READ_MESSAGES", "MESSAGE", "MESSAGE"],
         description:
           "cross-platform conversation lookup for one canonical person",
-        includesAny: ["priya", "gmail", "signal", "telegram", "whatsapp"],
+        includesAny: ["priya", "gmail", "discord", "telegram", "whatsapp"],
       }),
     },
     judgeRubric({
       name: "cross-platform-same-person-rubric",
       threshold: 0.75,
       description:
-        "End-to-end: Priya Rao is handled as one canonical person whose conversation context spans Gmail, Signal, Telegram, and WhatsApp.",
+        "End-to-end: Priya Rao is handled as one canonical person whose conversation context spans Gmail, Discord, Telegram, and WhatsApp.",
     }),
   ],
 });

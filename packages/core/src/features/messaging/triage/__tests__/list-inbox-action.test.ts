@@ -54,10 +54,10 @@ describe("listInboxAction", () => {
 				receivedAtMs: 2_000,
 			}),
 			messageRef({
-				id: "signal-1",
-				source: "signal",
-				externalId: "signal-external-1",
-				snippet: "signal hit",
+				id: "whatsapp-1",
+				source: "whatsapp",
+				externalId: "whatsapp-external-1",
+				snippet: "WhatsApp hit",
 			}),
 		]);
 
@@ -65,7 +65,7 @@ describe("listInboxAction", () => {
 			createFakeRuntime(),
 			messageRef({ id: "turn", source: "gmail" }) as never,
 			undefined,
-			{ parameters: { sources: ["gmail", "signal"] } } as never,
+			{ parameters: { sources: ["gmail", "whatsapp"] } } as never,
 		);
 
 		expect(result.success).toBe(true);
@@ -77,6 +77,6 @@ describe("listInboxAction", () => {
 		}
 		expect(
 			(messages as Array<{ id: string }>).map((message) => message.id),
-		).toEqual(["gmail-1", "signal-1"]);
+		).toEqual(["gmail-1", "whatsapp-1"]);
 	});
 });

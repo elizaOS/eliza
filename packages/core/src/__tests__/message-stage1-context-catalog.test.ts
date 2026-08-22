@@ -173,7 +173,7 @@ describe("formatAvailableContextsForPrompt", () => {
 		);
 	});
 
-	it("compact mode renders descriptionCompressed and never the full description", () => {
+	it("renders the COMPLETE description even when a compressed hint exists (compact tier retired by #24134)", () => {
 		const contexts: readonly ContextDefinition[] = [
 			{
 				id: "general",
@@ -183,18 +183,18 @@ describe("formatAvailableContextsForPrompt", () => {
 			{
 				id: "tasks",
 				label: "Tasks",
-				description: "A very long routing description that must not render.",
+				description: "The complete long-form routing description.",
 				descriptionCompressed: "reminders/habits/todos",
 			},
 		];
-		const block = formatAvailableContextsForPrompt(contexts, {
-			compact: true,
-		});
-		// Compressed hint when present; bare id line when absent.
-		expect(block).toContain("- tasks [label=Tasks]: reminders/habits/todos");
-		expect(block).toContain("- general [label=General]");
-		expect(block).not.toContain("Normal conversation.");
-		expect(block).not.toContain("must not render");
+		const block = formatAvailableContextsForPrompt(contexts);
+		// The complete description always renders; the compressed hint never
+		// substitutes for it in model-facing context (prompt-integrity).
+		expect(block).toContain(
+			"- tasks [label=Tasks]: The complete long-form routing description.",
+		);
+		expect(block).toContain("- general [label=General]: Normal conversation.");
+		expect(block).not.toContain("reminders/habits/todos");
 	});
 });
 

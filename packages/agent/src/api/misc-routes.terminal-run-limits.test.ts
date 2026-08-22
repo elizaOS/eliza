@@ -137,6 +137,12 @@ function makeContext(
   return { ctx, json, error };
 }
 
+function broadcastCalls(ctx: MiscRouteContext) {
+  const broadcast = ctx.state.broadcastWsToClientId;
+  if (!broadcast) throw new Error("test route requires a targeted broadcaster");
+  return vi.mocked(broadcast).mock.calls;
+}
+
 afterEach(() => {
   vi.unstubAllEnvs();
   runShellMock.mockReset();
@@ -192,8 +198,69 @@ describe("terminal run limits", () => {
       expect.stringContaining("no partial result was returned"),
       413,
     );
+    const events = broadcastCalls(route.ctx);
+    expect(
+      events.some((call) =>
+        ["stdout", "stderr"].includes(
+          String((call[1] as { event?: unknown } | undefined)?.event),
+        ),
+      ),
+    ).toBe(false);
     expect(gate.active()).toBe(0);
   });
+
+  it("does not broadcast buffered partial output from a timed-out capture", async () => {
+    const gate = createLeaseGate();
+    runShellMock.mockImplementationOnce(async (request: ShellRequest) => {
+      request.onStdout?.("partial secret");
+      return shellResult({ exitCode: 124 });
+    });
+    const route = makeContext("run-00000000-0000-4000-8000-000000000014", gate);
+
+    expect(await handleMiscRoutes(route.ctx)).toBe(true);
+    await vi.waitFor(() => expect(route.error).toHaveBeenCalledOnce());
+    const events = broadcastCalls(route.ctx);
+    expect(
+      events.some((call) =>
+        ["stdout", "stderr"].includes(
+          String((call[1] as { event?: unknown } | undefined)?.event),
+        ),
+      ),
+    ).toBe(false);
+    expect(route.json).not.toHaveBeenCalled();
+    expect(route.error).toHaveBeenCalledWith(
+      route.ctx.res,
+      "Terminal execution timed out; no partial result was returned.",
+      504,
+    );
+  });
+
+  it.each(["unsafe\u0000output", "invalid\ufffdutf8", "bidi\u202eoverride"])(
+    "rejects unsafe captured text without publishing it: %j",
+    async (unsafeOutput) => {
+      const gate = createLeaseGate();
+      runShellMock.mockImplementationOnce(async (request: ShellRequest) => {
+        request.onStdout?.(unsafeOutput);
+        return shellResult({ stdout: unsafeOutput });
+      });
+      const route = makeContext(
+        `run-00000000-0000-4000-8000-0000000000${15 + unsafeOutput.length}`,
+        gate,
+      );
+
+      expect(await handleMiscRoutes(route.ctx)).toBe(true);
+      await vi.waitFor(() => expect(route.error).toHaveBeenCalledOnce());
+      expect(route.json).not.toHaveBeenCalled();
+      expect(route.error).toHaveBeenCalledWith(
+        route.ctx.res,
+        "Terminal output was not valid safe text; no result was returned.",
+        422,
+      );
+      expect(JSON.stringify(broadcastCalls(route.ctx))).not.toContain(
+        unsafeOutput,
+      );
+    },
+  );
 
   it("releases admission when the shell launcher throws synchronously", async () => {
     const gate = createLeaseGate();
@@ -204,6 +271,14 @@ describe("terminal run limits", () => {
 
     expect(await handleMiscRoutes(route.ctx)).toBe(true);
     await vi.waitFor(() => expect(route.error).toHaveBeenCalledOnce());
+    expect(route.error).toHaveBeenCalledWith(
+      route.ctx.res,
+      "Terminal execution failed",
+      500,
+    );
+    expect(JSON.stringify(broadcastCalls(route.ctx))).not.toContain(
+      "launch failed",
+    );
     expect(gate.active()).toBe(0);
   });
 

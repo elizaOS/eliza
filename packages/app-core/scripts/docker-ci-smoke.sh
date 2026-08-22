@@ -758,7 +758,6 @@ for plugin in \
   plugin-imessage \
   plugin-local-inference \
   plugin-mcp \
-  plugin-signal \
   plugin-telegram \
   plugin-whatsapp \
   plugin-workflow; do

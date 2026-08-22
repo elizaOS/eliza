@@ -89,6 +89,40 @@ describe("blooio verifyWebhook", () => {
     expect(ok).toBe(true);
   });
 
+  test("rejects a malformed timestamp instead of skipping the replay window", async () => {
+    // `parseInt("")` is NaN, and every comparison against NaN is false, so
+    // `Math.abs(now - timestamp) > TOLERANCE` did not reject — the replay-window
+    // check silently fell through for any non-numeric `t=`.
+    const body = inboundPayload();
+    const hmac = crypto
+      .createHmac("sha256", SECRET)
+      .update(`NaN.${body}`)
+      .digest("hex");
+    const ok = await blooioAdapter.verifyWebhook(
+      makeRequest(`t=,v1=${hmac}`),
+      body,
+      makeConfig(),
+    );
+    expect(ok).toBe(false);
+  });
+
+  test("rejects a prefix-parsed timestamp rather than the value the sender signed", async () => {
+    // `parseInt("<ts>junk")` yields <ts>, so a mutated header still produced the
+    // signed payload the sender authenticated.
+    const body = inboundPayload();
+    const timestamp = Math.floor(Date.now() / 1000);
+    const hmac = crypto
+      .createHmac("sha256", SECRET)
+      .update(`${timestamp}.${body}`)
+      .digest("hex");
+    const ok = await blooioAdapter.verifyWebhook(
+      makeRequest(`t=${timestamp}junk,v1=${hmac}`),
+      body,
+      makeConfig(),
+    );
+    expect(ok).toBe(false);
+  });
+
   test("accepts a delivery signed 200s ago (inside Blooio's documented 300s window)", async () => {
     // Bidirectional: fails against the previous 120s tolerance, which dropped
     // legitimately retried deliveries.

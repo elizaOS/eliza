@@ -421,7 +421,13 @@ export function loadDefaultMasterKeySync(opts: OsKeychainOptions = {}): Buffer {
       return key;
     }
     const created = generateMasterKey();
-    entry.setPassword(created.toString("base64"));
+    const encoded = created.toString("base64");
+    entry.setPassword(encoded);
+    if (entry.getPassword() !== encoded) {
+      throw new MasterKeyUnavailableError(
+        `OS keychain write could not be verified (${service}/${account})`,
+      );
+    }
     return created;
   } catch (keychainError) {
     if (passphrase) {
@@ -507,12 +513,16 @@ export function osKeychainMasterKey(
         return buf;
       }
       const created = generateMasterKey();
+      const encoded = created.toString("base64");
       try {
-        entry.setPassword(created.toString("base64"));
+        entry.setPassword(encoded);
+        if (entry.getPassword() !== encoded) {
+          throw new Error("exact read-back mismatch");
+        }
       } catch (err) {
         // error-policy:J2 context-adding rethrow — a freshly-generated key that
-        // cannot be persisted must fail loudly; returning it un-stored would
-        // mint a new key on every boot and orphan prior ciphertext.
+        // cannot be persisted and read back exactly must fail loudly; returning
+        // it un-stored would mint a new key on every boot and orphan ciphertext.
         throw new MasterKeyUnavailableError(
           `OS keychain write failed (${service}/${account}): ${
             err instanceof Error ? err.message : String(err)

@@ -61,8 +61,8 @@ strongest signals:
 
 `SetupState = "idle" | "configuring" | "paired" | "error"` was a literal-set
 cluster: declared verbatim in `@elizaos/app-core/api/setup-contract.ts` and
-re-mirrored in seven connector setup-routes files (bluebubbles, discord,
-discord-local, imessage, signal, telegram bot + account). Every connector
+re-mirrored in six connector setup-routes files (bluebubbles, discord,
+discord-local, imessage, telegram bot + account). Every connector
 already imports from `@elizaos/core`, and `core` already hosts the
 `Route` / `RouteRequest` / `RouteResponse` types — so the contract's inward home
 is `core`, not the host. Consolidation:
