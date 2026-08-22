@@ -270,6 +270,7 @@ import type {
 } from "../types/message-service";
 import {
 	MESSAGE_SOURCE_CLIENT_CHAT,
+	MESSAGE_SOURCE_SUB_AGENT,
 	MESSAGE_SOURCE_TRIGGER_PROMPT,
 } from "../types/message-source";
 import type {
@@ -2571,8 +2572,14 @@ function replyReferenceEventForContext(message: Memory): ContextEvent | null {
 function isSubAgentCompletionArtifact(memory: Memory): boolean {
 	const content = memory.content;
 	if (!content || typeof content !== "object") return false;
+	const metadata =
+		content.metadata &&
+		typeof content.metadata === "object" &&
+		!Array.isArray(content.metadata)
+			? (content.metadata as Record<string, unknown>)
+			: undefined;
 	const source = typeof content.source === "string" ? content.source : "";
-	return source.startsWith("acpx:sub-agent-router");
+	return source === MESSAGE_SOURCE_SUB_AGENT && metadata?.subAgent === true;
 }
 
 function looksLikePriorDialogueArtifact(text: string): boolean {
