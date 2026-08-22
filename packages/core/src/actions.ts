@@ -37,7 +37,10 @@ import {
 	getDeterministicNames,
 } from "./utils/deterministic";
 import { compressPromptDescription } from "./utils/prompt-compression";
-import { toWellFormedUnicode } from "./utils/well-formed.ts";
+import {
+	deepToWellFormedUnicode,
+	toWellFormedUnicode,
+} from "./utils/well-formed.ts";
 
 export {
 	type ExtractorPipelineResult,
@@ -488,7 +491,7 @@ function coerceActionParamValue(
 			// delimited-string form; malformed JSON remains untrusted string input.
 		}
 		if (Array.isArray(parsed)) {
-			return toActionParameterValue(parsed);
+			return toActionParameterValue(deepToWellFormedUnicode(parsed));
 		}
 	}
 
