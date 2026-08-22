@@ -120,10 +120,15 @@ function installFetch(): void {
         return { ok: true, json: async () => ({ result: 1 }) } as Response;
       }
       if (script.includes("-- refresh")) {
+        // Honor the script rather than assume it: each guard is applied only
+        // when the Lua actually carries it, so deleting a check from the real
+        // script makes this double stop enforcing it and the ownership tests
+        // fail. Otherwise the script — the thing Redis runs — is untested.
         const owned =
-          store.get(key1) === value1 &&
-          store.get(key2) === value2 &&
-          store.get(generationKey) === generation;
+          (!script.includes("u==ARGV[1]") || store.get(key1) === value1) &&
+          (!script.includes("s==ARGV[2]") || store.get(key2) === value2) &&
+          (!script.includes("g==ARGV[3]") ||
+            store.get(generationKey) === generation);
         if (owned) {
           store.set(key1, value1);
           store.set(key2, value2);
@@ -134,10 +139,14 @@ function installFetch(): void {
           json: async () => ({ result: owned ? 1 : 0 }),
         } as Response;
       }
-      const owned = store.get(generationKey) === generation;
+      const owned =
+        !script.includes("KEYS[3])~=ARGV[3]") ||
+        store.get(generationKey) === generation;
       if (owned) {
-        if (store.get(key1) === value1) store.delete(key1);
-        if (store.get(key2) === value2) store.delete(key2);
+        if (!script.includes("KEYS[1])==ARGV[1]") || store.get(key1) === value1)
+          store.delete(key1);
+        if (!script.includes("KEYS[2])==ARGV[2]") || store.get(key2) === value2)
+          store.delete(key2);
         store.delete(generationKey);
       }
       return {
