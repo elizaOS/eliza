@@ -31,7 +31,7 @@ describe("contextSummaryProvider content manifest", () => {
 								{
 									reference: {
 										kind: "document",
-										ref: "document-opaque-1",
+										ref: "document:77777777-7777-4777-8777-777777777777",
 									},
 									reason: "SOURCE BODY MUST STAY OUT OF CONTEXT",
 									rangesUsed: [{ unit: "fragment", start: 2, end: 5 }],
@@ -68,7 +68,9 @@ describe("contextSummaryProvider content manifest", () => {
 		);
 
 		expect(result.text).toContain("The user chose the review workflow.");
-		expect(result.text).toContain("document:document-opaque-1");
+		expect(result.text).toContain(
+			"DOCUMENT action=read documentId=77777777-7777-4777-8777-777777777777",
+		);
 		expect(result.text).toContain("fragment:2-5");
 		expect(result.text).not.toContain("SOURCE BODY MUST STAY OUT OF CONTEXT");
 		expect(result.text).not.toContain("legacy metadata must be ignored");

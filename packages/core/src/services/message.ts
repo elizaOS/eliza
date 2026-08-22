@@ -34,6 +34,7 @@ import {
 	resolveEffectiveReplyGate,
 } from "../features/advanced-capabilities/personality";
 import { getPersonalityStore } from "../features/advanced-capabilities/personality/services/personality-store.ts";
+import { isRestartResolvableContentReference } from "../features/advanced-memory/session-summary-content-manifest.ts";
 import {
 	aliasRecallQuery,
 	embedRecallQuery,
@@ -251,7 +252,6 @@ import type {
 	ProviderValue,
 	StreamChunkCallback,
 } from "../types/components";
-import type { ContentReference } from "../types/content";
 import type { ContextEvent, ContextObject } from "../types/context-object";
 import type { ContextDefinition, RoleGateRole } from "../types/contexts";
 import {
@@ -2198,25 +2198,7 @@ function createV5ReplyStrategyResult(args: {
 	};
 }
 
-const RESTART_RESOLVABLE_CONTENT_REFERENCE_KINDS = new Set([
-	"document",
-	"attachment",
-	"memory",
-]);
 const PROGRESSIVE_CONTENT_METADATA_KEY = "elizaos:progressiveContent";
-const UUID_REFERENCE =
-	/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
-
-function hasRestartResolverCoordinates(reference: ContentReference): boolean {
-	if (!RESTART_RESOLVABLE_CONTENT_REFERENCE_KINDS.has(reference.kind)) {
-		return false;
-	}
-	const prefix = `${reference.kind}:`;
-	if (!reference.ref.startsWith(prefix)) return false;
-	const coordinate = reference.ref.slice(prefix.length);
-	if (reference.kind === "attachment") return coordinate.length > 0;
-	return UUID_REFERENCE.test(coordinate);
-}
 
 function jsonValuesEqual(
 	left: JsonValue | undefined,
@@ -2250,8 +2232,8 @@ function jsonValuesEqual(
 /**
  * Build dialogue-memory metadata that the rolling-summary evaluator can merge.
  * FILE references are path hashes while FILE reads require `file_path`; Gmail
- * references currently depend on an in-process lookup map; and tool-result has
- * no durable resolver. Excluding those kinds is deliberate: persisting an
+ * and attachment references currently require room scans or in-process lookup
+ * maps; tool-result has no durable resolver. Excluding those kinds is deliberate: persisting an
  * opaque token is not the same thing as preserving authorized recoverability.
  */
 export function plannerTrajectoryContentManifestMetadata(args: {
@@ -2262,7 +2244,7 @@ export function plannerTrajectoryContentManifestMetadata(args: {
 	if (!args.enabled) return undefined;
 	const manifest = deriveCompactionContentManifest(args.trajectory, {
 		lastUsedAt: args.lastUsedAt,
-		includeReference: hasRestartResolverCoordinates,
+		includeReference: isRestartResolvableContentReference,
 	});
 	if (
 		manifest.contentRefs.length === 0 &&

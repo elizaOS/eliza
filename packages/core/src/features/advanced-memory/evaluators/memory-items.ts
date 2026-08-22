@@ -336,13 +336,33 @@ ${formatMessages(runtime, recentMessages)}`;
 			async process({ runtime, message, prepared, output }) {
 				if (!prepared.canSummarize) return undefined;
 				const summaryText = output.text;
-				if (
+				const manifestCandidates = messageContentManifestCandidates(
+					prepared.summarizationMessages,
+				);
+				const hasSummaryText = !(
 					!summaryText ||
 					summaryText === SUMMARY_PLACEHOLDER ||
 					summaryText.trim().length === 0
-				) {
+				);
+				if (!hasSummaryText && manifestCandidates.length === 0) {
 					return undefined;
 				}
+				const effectiveSummaryText = hasSummaryText
+					? summaryText
+					: (prepared.existingSummary?.summary ?? SUMMARY_PLACEHOLDER);
+				const effectiveTopics = hasSummaryText
+					? output.topics
+					: (prepared.existingSummary?.topics ?? []);
+				const existingKeyPoints = Array.isArray(
+					prepared.existingSummary?.metadata?.keyPoints,
+				)
+					? prepared.existingSummary.metadata.keyPoints.filter(
+							(value): value is string => typeof value === "string",
+						)
+					: [];
+				const effectiveKeyPoints = hasSummaryText
+					? output.keyPoints
+					: existingKeyPoints;
 				const firstMessage = prepared.summarizationMessages[0];
 				const lastMessage =
 					prepared.summarizationMessages[
@@ -361,8 +381,8 @@ ${formatMessages(runtime, recentMessages)}`;
 					prepared.lastOffset + prepared.summarizationMessages.length;
 				const metadata = mergeSessionSummaryMetadata(
 					prepared.existingSummary?.metadata,
-					output.keyPoints,
-					messageContentManifestCandidates(prepared.summarizationMessages),
+					effectiveKeyPoints,
+					manifestCandidates,
 				);
 
 				if (prepared.existingSummary) {
@@ -370,13 +390,13 @@ ${formatMessages(runtime, recentMessages)}`;
 						prepared.existingSummary.id,
 						message.roomId,
 						{
-							summary: summaryText,
+							summary: effectiveSummaryText,
 							messageCount:
 								prepared.existingSummary.messageCount +
 								prepared.summarizationMessages.length,
 							lastMessageOffset: newOffset,
 							endTime,
-							topics: output.topics,
+							topics: effectiveTopics,
 							metadata,
 						},
 					);
@@ -388,12 +408,12 @@ ${formatMessages(runtime, recentMessages)}`;
 							message.entityId !== runtime.agentId
 								? message.entityId
 								: undefined,
-						summary: summaryText,
+						summary: effectiveSummaryText,
 						messageCount: prepared.summarizationMessages.length,
 						lastMessageOffset: newOffset,
 						startTime,
 						endTime,
-						topics: output.topics,
+						topics: effectiveTopics,
 						metadata,
 					});
 				}
@@ -407,8 +427,8 @@ ${formatMessages(runtime, recentMessages)}`;
 						hasExistingSummary: !!prepared.existingSummary,
 						processedDialogueMessages: prepared.summarizationMessages.length,
 						totalDialogueMessages: prepared.totalDialogueCount,
-						topicCount: output.topics.length,
-						keyPointCount: output.keyPoints.length,
+						topicCount: effectiveTopics.length,
+						keyPointCount: effectiveKeyPoints.length,
 					},
 					query: { roomId: message.roomId },
 				});
