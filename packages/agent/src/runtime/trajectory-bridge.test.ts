@@ -883,6 +883,11 @@ describe("installDatabaseTrajectoryLogger (capture bridge)", () => {
       activeOwners: 0,
     });
 
+    // The bridge deliberately treats sub-two-second capture/terminalization
+    // races as debug-only. Age this closed step beyond that window so this
+    // assertion exercises the late-capture diagnostic contract.
+    const lateCaptureNow = Date.now() + 2_001;
+    const nowSpy = vi.spyOn(Date, "now").mockReturnValue(lateCaptureNow);
     execute.mockClear();
     standalone.logLlmCall({
       stepId: childStepId,
@@ -910,6 +915,7 @@ describe("installDatabaseTrajectoryLogger (capture bridge)", () => {
     expect(String((lateReports[0][1] as Error).message)).toMatch(
       /step=\S+ type=llm purpose=action age=\d+s/,
     );
+    nowSpy.mockRestore();
 
     await standalone.stop();
     execute.mockClear();
