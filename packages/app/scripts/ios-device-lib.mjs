@@ -531,6 +531,9 @@ const PROFILE_DERIVED_SIGNING_KEYS = Object.freeze([
 ]);
 
 function arrayGrantCovers(key, required, granted) {
+  if (key === "com.apple.developer.associated-domains" && granted === "*") {
+    return true;
+  }
   if (!Array.isArray(granted)) return false;
   if (key === "com.apple.security.application-groups") {
     return required.every((item) => granted.includes(item));

@@ -522,6 +522,20 @@ describe("deriveSigningEntitlements", () => {
 });
 
 describe("deriveTargetSigningEntitlements", () => {
+  it("accepts Apple's scalar wildcard grant for associated domains", () => {
+    const profile = normalized({
+      extraEntitlements: {
+        "com.apple.developer.associated-domains": "*",
+      },
+    });
+    const claims = deriveTargetSigningEntitlements(profile, "ai.elizaos.app", {
+      "com.apple.developer.associated-domains": ["applinks:eliza.app"],
+    });
+    expect(claims["com.apple.developer.associated-domains"]).toEqual([
+      "applinks:eliza.app",
+    ]);
+  });
+
   it("signs target claims plus identity keys, never the whole profile allowlist", () => {
     const profile = normalized({
       extraEntitlements: {
