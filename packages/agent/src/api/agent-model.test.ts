@@ -21,6 +21,7 @@ type RuntimeOpts = {
   /** Provider core recorded as having served the last chat call. */
   lastServingProvider?: string;
   settings?: Record<string, string>;
+  textProvider?: string;
 };
 
 function makeRuntime(opts: RuntimeOpts = {}): AgentRuntime {
@@ -39,6 +40,14 @@ function makeRuntime(opts: RuntimeOpts = {}): AgentRuntime {
       provider: LOCAL_INFERENCE_PROVIDER_NAME,
       priority: 0,
       registrationOrder: 2,
+    });
+  }
+  if (opts.textProvider) {
+    registrations.push({
+      modelType: ModelType.TEXT_SMALL,
+      provider: opts.textProvider,
+      priority: 10,
+      registrationOrder: registrations.length + 1,
     });
   }
   const runtime = {
@@ -77,18 +86,22 @@ describe("detectRuntimeModel — cloud-proxy branch", () => {
     });
     const model = detectRuntimeModel(runtime, cloudProxyConfig);
     expect(model).not.toBe("elizacloud");
-    // Falls through to the plugin-name path (PROVIDER_HINTS includes none of
-    // the local-inference plugin names, so the env-signal path is reached).
-    // Without ELIZA_LOCAL_LLAMA or any provider env var set, returns undefined.
-    expect(model).toBeUndefined();
+    // A concrete registered local text handler is runtime evidence, unlike a
+    // coincidentally named feature plugin.
+    expect(model).toBe(LOCAL_INFERENCE_PROVIDER_NAME);
   });
 
-  it("falls through to a local provider plugin name when cloud handlers are absent", () => {
+  it("falls through to a registered local provider when cloud handlers are absent", () => {
     const runtime = makeRuntime({
       cloudTextHandlerRegistered: false,
-      plugins: [{ name: "anthropic" }],
+      textProvider: "anthropic",
     });
     expect(detectRuntimeModel(runtime, cloudProxyConfig)).toBe("anthropic");
+  });
+
+  it("does not mistake a non-provider Google Workspace plugin for the active model", () => {
+    const runtime = makeRuntime({ plugins: [{ name: "google" }] });
+    expect(detectRuntimeModel(runtime)).toBeUndefined();
   });
 
   it("returns elizacloud even when local handlers are also registered (cloud wins)", () => {

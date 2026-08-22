@@ -32,6 +32,38 @@ import type { ElizaConfig } from "../config/config.ts";
  */
 const ELIZA_CLOUD_PROVIDER_NAME = "elizaOSCloud";
 
+const CHAT_TEXT_MODEL_TYPES = new Set<string>([
+  ModelType.TEXT_LARGE,
+  ModelType.TEXT_SMALL,
+  ModelType.TEXT_MEDIUM,
+  ModelType.TEXT_NANO,
+  ModelType.TEXT_MEGA,
+]);
+
+/**
+ * Return the provider behind a directly registered normal-chat text model.
+ * Planner and response-handler delegates may themselves depend on TEXT_SMALL;
+ * counting those wrappers made provider-less runtimes look ready.
+ */
+export function registeredChatTextProvider(
+  runtime: AgentRuntime,
+): string | undefined {
+  if (typeof runtime.getModelRegistrations !== "function") return undefined;
+  try {
+    const registration = runtime
+      .getModelRegistrations()
+      .find(
+        (entry) =>
+          CHAT_TEXT_MODEL_TYPES.has(String(entry.modelType)) &&
+          typeof entry.provider === "string" &&
+          entry.provider.trim().length > 0,
+      );
+    return registration?.provider.trim() || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 /**
  * The provider that served the most recent successful chat `useModel` call, or
  * undefined before any call has completed. This is evidence rather than
@@ -123,36 +155,6 @@ export function hasCloudTextHandlerRegistered(runtime: AgentRuntime): boolean {
 }
 
 const MODEL_PLACEHOLDERS = new Set(["", "n/a", "na", "unknown", "provided"]);
-
-const PROVIDER_HINTS = [
-  "openai-codex",
-  "openai-subscription",
-  "anthropic-subscription",
-  "gemini-subscription",
-  "gemini-cli",
-  "zai-coding-subscription",
-  "zai-coding",
-  "kimi-coding-subscription",
-  "kimi-coding",
-  "deepseek-coding-subscription",
-  "deepseek-coding",
-  "openrouter",
-  "moonshot",
-  "kimi",
-  "deepseek",
-  "anthropic",
-  "openai",
-  "groq",
-  "gemini",
-  "google",
-  "grok",
-  "xai",
-  "ollama",
-  "mistral",
-  "together",
-  "nearai",
-  "zai",
-] as const;
 
 const ENV_PROVIDER_SIGNALS: ReadonlyArray<{
   envVar: string;
@@ -281,26 +283,15 @@ export function detectRuntimeModel(
     );
   }
 
+  const registeredProvider = registeredChatTextProvider(runtime);
+  if (registeredProvider) {
+    return resolveCompatibleTextBackend(runtime, registeredProvider);
+  }
+
   const configModel = normalizeModelSpec(
     config?.agents?.defaults?.model?.primary,
   );
   if (configModel) return configModel;
-
-  const pluginNames = Array.isArray(runtime.plugins)
-    ? runtime.plugins
-        .map((plugin) =>
-          typeof plugin.name === "string" ? plugin.name.trim() : "",
-        )
-        .filter((name): name is string => name.length > 0)
-    : [];
-
-  if (pluginNames.length > 0) {
-    const lowerPluginNames = pluginNames.map((name) => name.toLowerCase());
-    for (const hint of PROVIDER_HINTS) {
-      const index = lowerPluginNames.findIndex((name) => name.includes(hint));
-      if (index >= 0) return pluginNames[index];
-    }
-  }
 
   for (const { envVar, label } of ENV_PROVIDER_SIGNALS) {
     const value = process.env[envVar]?.trim();

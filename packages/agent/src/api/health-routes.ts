@@ -28,7 +28,10 @@ import {
 } from "@elizaos/shared";
 import type { ElizaConfig } from "../config/config.ts";
 import { getDeferredBootStatus } from "../runtime/deferred-boot-status.ts";
-import { detectRuntimeModel } from "./agent-model.ts";
+import {
+  detectRuntimeModel,
+  registeredChatTextProvider,
+} from "./agent-model.ts";
 import type { ConnectorHealthMonitor } from "./connector-health.ts";
 import { probeRuntimeDatabaseLiveness } from "./database-liveness.ts";
 import { loadLocalInferenceRouteApi } from "./local-inference-server-api.ts";
@@ -469,6 +472,9 @@ export function computeCanRespond(
     return false;
   }
   try {
+    if (typeof runtime.getModelRegistrations === "function") {
+      return Boolean(registeredChatTextProvider(runtime));
+    }
     return hasTextGenerationHandler(runtime);
   } catch {
     return false;
