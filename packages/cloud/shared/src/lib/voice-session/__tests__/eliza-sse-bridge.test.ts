@@ -32,9 +32,13 @@ function sseResponse(
 }
 
 async function streamTerminalActionResult(actionResult: Record<string, unknown>) {
+  return streamTerminalActionResults([actionResult]);
+}
+
+async function streamTerminalActionResults(actionResults: Record<string, unknown>[]) {
   const fetchImpl = (async () =>
     sseResponse([
-      `event: done\ndata: ${JSON.stringify({ actionResults: [actionResult] })}\n\n`,
+      `event: done\ndata: ${JSON.stringify({ actionResults })}\n\n`,
     ])) as unknown as typeof fetch;
   return streamElizaConversation(
     {
@@ -829,6 +833,66 @@ describe("eliza sse bridge", () => {
         aborted: false,
       });
     }
+  });
+
+  test("rejects non-canonical APP Browser paths and malformed terminal shapes", async () => {
+    const rejectedPaths = [
+      "/browser",
+      "/wallet?browse=https%3A%2F%2Fexample.com",
+      "/browser?browse=javascript%3Aalert(1)",
+      "/browser?browse=%2Fapi%2Fapps%2Flocal%2F..%2Fsecret",
+      "/browser?browse=%2F%2Fevil.example",
+      "/browser?browse=https%3A%2F%2Fuser%3Asecret%40example.com",
+      "/browser?browse=https%3A%2F%2Fexample.com&browse=https%3A%2F%2Fevil.example",
+      "/browser?browse=https%3A%2F%2Fexample.com%2F%250Ainject",
+      `/${"a".repeat(257)}`,
+    ];
+    for (const viewPath of rejectedPaths) {
+      await expect(
+        streamTerminalActionResult({
+          actionName: "APP",
+          success: true,
+          values: { mode: "launch", viewId: "browser", viewPath },
+        }),
+      ).resolves.toEqual({ completed: true, aborted: false });
+    }
+
+    await expect(
+      streamTerminalActionResult({
+        data: { actionName: "APP" },
+        success: true,
+        values: {
+          mode: "launch",
+          viewId: "browser",
+          viewPath: "/browser?browse=https%3A%2F%2Fexample.com",
+        },
+      }),
+    ).resolves.toEqual({ completed: true, aborted: false });
+  });
+
+  test("fails closed when a terminal frame contains multiple successful navigations", async () => {
+    await expect(
+      streamTerminalActionResults([
+        {
+          actionName: "APP",
+          success: true,
+          values: {
+            mode: "launch",
+            viewId: "browser",
+            viewPath: "/browser?browse=https%3A%2F%2Fone.example",
+          },
+        },
+        {
+          actionName: "APP",
+          success: true,
+          values: {
+            mode: "launch",
+            viewId: "browser",
+            viewPath: "/browser?browse=https%3A%2F%2Ftwo.example",
+          },
+        },
+      ]),
+    ).resolves.toEqual({ completed: true, aborted: false });
   });
 
   test("does not promote failed or malformed terminal action results", async () => {

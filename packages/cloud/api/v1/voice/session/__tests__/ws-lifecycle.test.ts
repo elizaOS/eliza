@@ -1091,6 +1091,56 @@ describe("voice-session WS lifecycle", () => {
     ]);
   });
 
+  test("does not forward ambiguous or non-canonical APP launch handoffs", async () => {
+    for (const actionResults of [
+      [
+        {
+          actionName: "APP",
+          success: true,
+          values: {
+            mode: "launch",
+            viewId: "browser",
+            viewPath: "/browser?browse=javascript%3Aalert(1)",
+          },
+        },
+      ],
+      [
+        {
+          actionName: "APP",
+          success: true,
+          values: {
+            mode: "launch",
+            viewId: "browser",
+            viewPath: "/browser?browse=https%3A%2F%2Fone.example",
+          },
+        },
+        {
+          actionName: "APP",
+          success: true,
+          values: {
+            mode: "launch",
+            viewId: "browser",
+            viewPath: "/browser?browse=https%3A%2F%2Ftwo.example",
+          },
+        },
+      ],
+    ]) {
+      const client = new FakeClientSocket();
+      await connectSession({
+        client,
+        fetchImpl: makeCanonicalChunkFetch(["Opened Demo."], { actionResults }),
+      });
+      const ink = FakeInkSocket.instances.at(-1)!;
+      ink.emitTurn("turn.start");
+      ink.emitTurn("turn.end", "launch demo");
+      await flush();
+      await flush();
+      expect(
+        client.controlFrames.filter((frame) => frame.t === "navigate_view"),
+      ).toEqual([]);
+    }
+  });
+
   test("prewarms Eliza tenancy context when the live session starts", async () => {
     let prewarmCalls = 0;
     const client = new FakeClientSocket();

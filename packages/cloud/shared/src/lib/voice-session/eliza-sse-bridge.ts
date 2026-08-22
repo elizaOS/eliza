@@ -640,42 +640,121 @@ function extractViewHandoff(payload: string): ElizaVoiceViewHandoff | null {
   }
   if (!isRecord(parsed) || !Array.isArray(parsed.actionResults)) return null;
 
+  let selected: ElizaVoiceViewHandoff | null = null;
+  let successfulNavigationResults = 0;
   for (let index = parsed.actionResults.length - 1; index >= 0; index--) {
     const candidate = parsed.actionResults[index];
     if (!isRecord(candidate) || candidate.success !== true) continue;
-    const data = isRecord(candidate.data) ? candidate.data : null;
-    const actionName =
-      typeof candidate.actionName === "string"
-        ? candidate.actionName
-        : typeof data?.actionName === "string"
-          ? data.actionName
-          : null;
+    const actionName = readBoundedString(candidate.actionName)?.toUpperCase();
+    if (actionName !== "VIEWS" && actionName !== "APP") continue;
+    successfulNavigationResults += 1;
+    // A terminal frame containing more than one successful navigation result
+    // has no authoritative ordering contract. Fail closed instead of choosing
+    // whichever array position an adapter happened to serialize last.
+    if (successfulNavigationResults > 1) return null;
     if (!isRecord(candidate.values)) {
       continue;
     }
-    const normalizedActionName = actionName?.toUpperCase();
     const mode = readBoundedString(candidate.values.mode)?.toLowerCase();
     const viewId = readBoundedString(candidate.values.viewId);
     if (!viewId) continue;
-    const isViewsHandoff = normalizedActionName === "VIEWS" && (mode === "show" || mode === "open");
-    const isAppBrowserHandoff =
-      normalizedActionName === "APP" && mode === "launch" && viewId === "browser";
+    const isViewsHandoff = actionName === "VIEWS" && (mode === "show" || mode === "open");
+    const isAppBrowserHandoff = actionName === "APP" && mode === "launch" && viewId === "browser";
     if (!isViewsHandoff && !isAppBrowserHandoff) continue;
     const viewPath = readBoundedString(candidate.values.viewPath);
     const subview = readBoundedString(candidate.values.subview);
-    return {
+    if (isAppBrowserHandoff && (!viewPath || !isCanonicalBrowserLaunchPath(viewPath))) {
+      continue;
+    }
+    selected = {
       viewId,
       ...(viewPath ? { viewPath } : {}),
       ...(subview ? { subview } : {}),
     };
   }
-  return null;
+  return selected;
 }
+
+const UNSAFE_HANDOFF_CHARACTERS = /[\u0000-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/u;
 
 function readBoundedString(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const normalized = value.trim();
-  return normalized.length > 0 && normalized.length <= 256 ? normalized : null;
+  return normalized.length > 0 &&
+    normalized.length <= 256 &&
+    !UNSAFE_HANDOFF_CHARACTERS.test(normalized)
+    ? normalized
+    : null;
+}
+
+/** Validate the canonical path emitted by plugin-app-control, not a generic URL. */
+function isCanonicalBrowserLaunchPath(viewPath: string): boolean {
+  if (!viewPath.startsWith("/browser?") || /[^\x20-\x7e]/u.test(viewPath)) return false;
+  let browserUrl: URL;
+  try {
+    browserUrl = new URL(viewPath, "https://voice-handoff.invalid");
+  } catch (ignoredError) {
+    void ignoredError;
+    // error-policy:J3 malformed navigation metadata is an absent handoff.
+    return false;
+  }
+  const query = [...browserUrl.searchParams.entries()];
+  if (
+    browserUrl.origin !== "https://voice-handoff.invalid" ||
+    browserUrl.pathname !== "/browser" ||
+    browserUrl.hash !== "" ||
+    query.length !== 1 ||
+    query[0]?.[0] !== "browse"
+  ) {
+    return false;
+  }
+  const target = query[0]?.[1];
+  if (
+    !target ||
+    UNSAFE_HANDOFF_CHARACTERS.test(target) ||
+    target.includes("\\") ||
+    hasUnsafeHandoffEncoding(target)
+  ) {
+    return false;
+  }
+  try {
+    if (target.startsWith("/")) {
+      if (target.startsWith("//")) return false;
+      const relative = new URL(target, "https://app-launch.invalid");
+      return (
+        relative.origin === "https://app-launch.invalid" &&
+        relative.pathname.startsWith("/api/apps/local/")
+      );
+    }
+    const absolute = new URL(target);
+    return (
+      (absolute.protocol === "http:" || absolute.protocol === "https:") &&
+      absolute.username === "" &&
+      absolute.password === ""
+    );
+  } catch (ignoredError) {
+    void ignoredError;
+    // error-policy:J3 malformed embedded launch URLs are never delivered.
+    return false;
+  }
+}
+
+function hasUnsafeHandoffEncoding(value: string): boolean {
+  let decoded = value;
+  for (let depth = 0; depth < 2; depth++) {
+    let next: string;
+    try {
+      next = decodeURIComponent(decoded);
+    } catch (ignoredError) {
+      void ignoredError;
+      // error-policy:J3 non-canonical percent encoding is not navigation data.
+      return true;
+    }
+    if (UNSAFE_HANDOFF_CHARACTERS.test(next)) return true;
+    if (next === decoded) return false;
+    decoded = next;
+  }
+  return false;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
