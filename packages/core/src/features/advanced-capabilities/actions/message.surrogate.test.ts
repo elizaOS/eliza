@@ -1,6 +1,23 @@
-/** Surrogate safety for connector prefix and suffix splitting in message.ts. */
+/** Surrogate safety for connector target routing and splitting in message.ts. */
 import { describe, expect, test } from "vitest";
-import { splitConnectorPrefix, splitConnectorSuffix } from "./message.ts";
+import type { MessageConnector } from "../../../types/index.ts";
+import {
+	inferSourceFromTarget,
+	splitConnectorPrefix,
+	splitConnectorSuffix,
+} from "./message.ts";
+
+function connector(source: string): MessageConnector {
+	return {
+		source,
+		label: source,
+		capabilities: ["send_message"],
+		supportedTargetKinds: [],
+		contexts: [],
+	};
+}
+
+const connectors = [connector("discord"), connector("slack")];
 
 describe("message action connector split surrogate safety", () => {
 	test("prefix split with emoji in target remainder stays well-formed", () => {
@@ -19,17 +36,34 @@ describe("message action connector split surrogate safety", () => {
 
 	test("lone surrogates in prefix and suffix targets are replaced exactly", () => {
 		for (const surrogate of ["\ud800", "\udfff"]) {
-			expect(splitConnectorPrefix(`discord:bad ${surrogate} channel`)).toEqual({
+			expect(
+				inferSourceFromTarget(`discord:bad ${surrogate} channel`, connectors),
+			).toEqual({
 				source: "discord",
 				target: "bad � channel",
 			});
 			expect(
-				splitConnectorSuffix(`bad ${surrogate} channel on discord`),
+				inferSourceFromTarget(
+					`bad ${surrogate} channel on discord`,
+					connectors,
+				),
 			).toEqual({
 				source: "discord",
 				target: "bad � channel",
 			});
 		}
+	});
+
+	test("targets matching no connector are still sanitized", () => {
+		for (const surrogate of ["\ud800", "\udfff"]) {
+			const res = inferSourceFromTarget(`bad ${surrogate} channel`, connectors);
+			expect(res).toEqual({ target: "bad � channel" });
+			expect(() => JSON.stringify(res)).not.toThrow();
+		}
+		// A connector-shaped prefix whose source matches nothing falls through too.
+		expect(
+			inferSourceFromTarget("nowhere:bad \ud800 channel", connectors),
+		).toEqual({ target: "nowhere:bad � channel" });
 	});
 
 	test("sweep whitespace offsets with emojis stay well-formed", () => {

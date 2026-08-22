@@ -56,10 +56,7 @@ import { requireConfirmation } from "../../../utils/confirmation.ts";
 import { getActiveRoutingContextsForTurn } from "../../../utils/context-routing.ts";
 import { createHash } from "../../../utils/crypto-compat.ts";
 import { isObjectRecord as isRecord } from "../../../utils/type-guards.ts";
-import {
-	toWellFormedUnicode,
-	truncateWellFormed,
-} from "../../../utils/well-formed.ts";
+import { toWellFormedUnicode } from "../../../utils/well-formed.ts";
 import { stringToUuid } from "../../../utils.ts";
 import { draftFollowupAction } from "../../messaging/triage/actions/draftFollowup.ts";
 import { draftReplyAction } from "../../messaging/triage/actions/draftReply.ts";
@@ -933,22 +930,25 @@ function connectorSupportsKind(
 	);
 }
 
-function inferSourceFromTarget(
+export function inferSourceFromTarget(
 	target: string | undefined,
 	connectors: ConnectorWithHooks[],
 ): { target?: string; source?: string } {
 	if (!target) return {};
-	const prefix = splitConnectorPrefix(target);
+	// Sanitize once at the routing entry point so every branch below — including
+	// the unmatched fallthrough — yields a target that survives JSON transport.
+	const safeTarget = toWellFormedUnicode(target);
+	const prefix = splitConnectorPrefix(safeTarget);
 	if (prefix) {
 		const connector = findConnectorBySource(connectors, prefix.source);
 		if (connector) return { source: connector.source, target: prefix.target };
 	}
-	const suffix = splitConnectorSuffix(target);
+	const suffix = splitConnectorSuffix(safeTarget);
 	if (suffix) {
 		const connector = findConnectorBySource(connectors, suffix.source);
 		if (connector) return { source: connector.source, target: suffix.target };
 	}
-	return { target };
+	return { target: safeTarget };
 }
 
 function isConnectorName(value: string, min: number, max: number): boolean {
@@ -960,12 +960,11 @@ function isConnectorName(value: string, min: number, max: number): boolean {
 }
 
 export function splitConnectorPrefix(
-	targetInput: string,
+	target: string,
 ): { source: string; target: string } | null {
-	const target = toWellFormedUnicode(targetInput);
 	for (let cursor = 1; cursor < target.length && cursor <= 42; cursor += 1) {
 		if (target[cursor] !== ":" && target[cursor] !== "/") continue;
-		const source = truncateWellFormed(target, cursor).trimEnd();
+		const source = target.slice(0, cursor).trimEnd();
 		const remainder = target.slice(cursor + 1).trim();
 		if (
 			remainder &&
@@ -979,9 +978,8 @@ export function splitConnectorPrefix(
 }
 
 export function splitConnectorSuffix(
-	targetInput: string,
+	target: string,
 ): { source: string; target: string } | null {
-	const target = toWellFormedUnicode(targetInput);
 	const lower = target.toLowerCase();
 	for (let cursor = 1; cursor < target.length; cursor += 1) {
 		if (!/\s/u.test(target[cursor - 1])) continue;
@@ -991,7 +989,7 @@ export function splitConnectorSuffix(
 				!/(?:\s)/u.test(target[cursor + keyword.length] ?? "")
 			)
 				continue;
-			const left = truncateWellFormed(target, cursor).trim();
+			const left = target.slice(0, cursor).trim();
 			const source = target.slice(cursor + keyword.length).trim();
 			if (left && isConnectorName(source, 2, 40))
 				return { source, target: left };
