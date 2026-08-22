@@ -2,7 +2,7 @@
 
 import { afterEach, describe, expect, test } from "bun:test";
 import { Bot, ProxyClient } from "@elizaos/plugin-wechat";
-import { startCallbackServer } from "@elizaos/plugin-wechat/callback-server";
+import { startCallbackServer } from "../../../../plugins/plugin-wechat/src/callback-server";
 import { startWechatProxyMock } from "../src/wechat";
 
 const API_KEY = "wechat-contract-key";
@@ -53,6 +53,32 @@ function inboundPayload(messageId = "wechat-msg-1") {
       msgId: messageId,
     },
   };
+}
+
+async function captureError(operation: Promise<unknown>): Promise<Error> {
+  try {
+    await operation;
+  } catch (error) {
+    // error-policy:J1 The contract captures the public client error for redaction assertions.
+    if (error instanceof Error) return error;
+    throw error;
+  }
+  throw new Error("expected WeChat proxy operation to reject");
+}
+
+function exposedErrorRepresentations(error: Error): string[] {
+  return [
+    error.message,
+    error.stack ?? "",
+    String(error),
+    JSON.stringify(error),
+    JSON.stringify(error, Object.getOwnPropertyNames(error)),
+    JSON.stringify({
+      context: (error as Error & { context?: unknown }).context,
+      cause: error.cause,
+    }),
+    Bun.inspect(error),
+  ];
 }
 
 describe("WeChat proxy production boundary", () => {
@@ -171,6 +197,140 @@ describe("WeChat proxy production boundary", () => {
     expect(proxy.snapshot().requests).toEqual([
       expect.objectContaining({ authenticated: false, path: "/api/send-text" }),
     ]);
+  });
+
+  test("strictly decodes every success shape before returning or accepting an effect", async () => {
+    const proxy = await startWechatProxyMock(seed);
+    stops.push(proxy.stop);
+    const productionClient = client(proxy.url);
+    const malformed: Array<{
+      path: string;
+      body: unknown;
+      invoke: () => Promise<unknown>;
+    }> = [
+      {
+        path: "/api/status",
+        body: {
+          code: 1000,
+          data: { valid: true, loginState: "logged_in", unexpected: true },
+        },
+        invoke: () => productionClient.getStatus(),
+      },
+      {
+        path: "/api/qrcode",
+        body: { code: 1000, data: { qrCodeUrl: 42 } },
+        invoke: () => productionClient.getQRCode(),
+      },
+      {
+        path: "/api/check-login",
+        body: { code: 1000, data: { status: "provider-secret-state" } },
+        invoke: () => productionClient.checkLogin(),
+      },
+      {
+        path: "/api/contacts",
+        body: {
+          code: 1000,
+          data: {
+            friends: [{ wxid: "wxid_alice", name: "Alice", extra: true }],
+            chatrooms: [],
+          },
+        },
+        invoke: () => productionClient.getContacts(),
+      },
+      {
+        path: "/api/send-text",
+        body: { code: 1000 },
+        invoke: () => productionClient.sendText("wxid_alice", "invalid ack"),
+      },
+      {
+        path: "/api/send-image",
+        body: { code: 1000, data: { accepted: true, operation: "sendText" } },
+        invoke: () =>
+          productionClient.sendImage("wxid_alice", "/invalid-ack.png"),
+      },
+      {
+        path: "/api/webhook/register",
+        body: { code: 1000, data: { registered: false } },
+        invoke: () =>
+          productionClient.registerWebhook(
+            "http://127.0.0.1:18790/webhook/wechat/main",
+          ),
+      },
+    ];
+    for (const item of malformed) {
+      proxy.enqueueFault(item.path, { status: 200, body: item.body });
+      await expect(item.invoke()).rejects.toThrow(
+        "WeChat proxy returned an invalid response",
+      );
+    }
+    expect(proxy.snapshot().outboundMessages).toEqual([]);
+    expect(proxy.snapshot().webhooks).toEqual({});
+  });
+
+  test("redacts provider failure messages from every public error representation", async () => {
+    const proxy = await startWechatProxyMock(seed);
+    stops.push(proxy.stop);
+    const productionClient = client(proxy.url);
+    const secret = "provider_api_key=wechat-upstream-secret-8437";
+    const failures: Array<{ path: string; invoke: () => Promise<unknown> }> = [
+      { path: "/api/status", invoke: () => productionClient.getStatus() },
+      { path: "/api/qrcode", invoke: () => productionClient.getQRCode() },
+      {
+        path: "/api/check-login",
+        invoke: () => productionClient.checkLogin(),
+      },
+      { path: "/api/contacts", invoke: () => productionClient.getContacts() },
+      {
+        path: "/api/send-text",
+        invoke: () => productionClient.sendText("wxid_alice", "redact"),
+      },
+      {
+        path: "/api/send-image",
+        invoke: () => productionClient.sendImage("wxid_alice", "/redact.png"),
+      },
+      {
+        path: "/api/webhook/register",
+        invoke: () =>
+          productionClient.registerWebhook(
+            "http://127.0.0.1:18790/webhook/wechat/main",
+          ),
+      },
+    ];
+    for (const failure of failures) {
+      proxy.enqueueFault(failure.path, {
+        status: 200,
+        body: { code: 1500, message: secret },
+      });
+      const error = await captureError(failure.invoke());
+      expect(error.cause).toBeUndefined();
+      expect((error as Error & { context?: unknown }).context).toBeUndefined();
+      for (const exposed of exposedErrorRepresentations(error))
+        expect(exposed).not.toContain(secret);
+    }
+    expect(proxy.snapshot().outboundMessages).toEqual([]);
+    expect(proxy.snapshot().webhooks).toEqual({});
+  });
+
+  test("rejects webhook callback query and fragment components without storing them", async () => {
+    const proxy = await startWechatProxyMock(seed);
+    stops.push(proxy.stop);
+    const headers = {
+      "content-type": "application/json",
+      "x-api-key": API_KEY,
+      "x-account-id": ACCOUNT_ID,
+      "x-device-type": "ipad",
+    };
+    for (const suffix of ["?token=callback-secret", "#callback-secret"]) {
+      const response = await fetch(`${proxy.url}/api/webhook/register`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          webhookUrl: `http://127.0.0.1:18790/webhook/wechat/main${suffix}`,
+        }),
+      });
+      expect(response.status).toBe(400);
+    }
+    expect(proxy.snapshot().webhooks).toEqual({});
   });
 
   test("rejects non-JSON and oversized chunked requests before applying effects", async () => {

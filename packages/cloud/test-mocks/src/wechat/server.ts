@@ -153,7 +153,7 @@ export async function startWechatProxyMock(
           return envelope(1400, "invalid webhookUrl", undefined, 400);
         }
         account.webhookUrl = webhookUrl;
-        return envelope(SUCCESS, "registered");
+        return envelope(SUCCESS, "registered", { registered: true });
       }
       case "/api/send-text": {
         const to = readString(body, "to");
@@ -167,7 +167,10 @@ export async function startWechatProxyMock(
           to,
           text,
         });
-        return envelope(SUCCESS, "sent");
+        return envelope(SUCCESS, "sent", {
+          accepted: true,
+          operation: "sendText",
+        });
       }
       case "/api/send-image": {
         const to = readString(body, "to");
@@ -182,7 +185,10 @@ export async function startWechatProxyMock(
           imagePath,
           text: readString(body, "text") ?? undefined,
         });
-        return envelope(SUCCESS, "sent");
+        return envelope(SUCCESS, "sent", {
+          accepted: true,
+          operation: "sendImage",
+        });
       }
       default:
         return envelope(1404, "not found", undefined, 404);
@@ -351,6 +357,8 @@ function isAllowedWebhookUrl(value: string, accountId: string): boolean {
       (url.hostname === "127.0.0.1" || url.hostname === "[::1]") &&
       url.username === "" &&
       url.password === "" &&
+      url.search === "" &&
+      url.hash === "" &&
       url.pathname === `/webhook/wechat/${encodeURIComponent(accountId)}`
     );
   } catch {

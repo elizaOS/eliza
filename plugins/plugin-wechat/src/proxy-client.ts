@@ -108,10 +108,15 @@ export class ProxyClient {
           await discardBoundedBody(res);
           throw new Error("WeChat proxy response must use application/json");
         }
-        const json = JSON.parse(
-          await readBoundedBody(res),
-        ) as ProxyApiResponse<T>;
-        return json;
+        let json: unknown;
+        const responseBody = await readBoundedBody(res);
+        try {
+          json = JSON.parse(responseBody);
+        } catch {
+          // error-policy:J1 Provider-controlled parser details are redacted at the client boundary.
+          throw new ProxyResponseError();
+        }
+        return parseEnvelope(json) as ProxyApiResponse<T>;
       } catch (err) {
         lastError = err instanceof Error ? err : new Error(String(err));
         if (this.signal?.aborted) {
@@ -143,17 +148,17 @@ export class ProxyClient {
       };
     }
     if (res.code !== SUCCESS && res.code !== 1002) {
-      throw new Error(`getStatus failed: ${res.message ?? res.code}`);
+      throw new ProxyProviderError("getStatus", res.code);
     }
-    return requireData(res, "getStatus");
+    return parseAccountStatus(requireData(res));
   }
 
   async getQRCode(): Promise<string> {
     const res = await this.request<{ qrCodeUrl: string }>("/api/qrcode");
     if (res.code !== SUCCESS) {
-      throw new Error(`getQRCode failed: ${res.message ?? res.code}`);
+      throw new ProxyProviderError("getQRCode", res.code);
     }
-    return requireData(res, "getQRCode").qrCodeUrl;
+    return parseQrCode(requireData(res));
   }
 
   async checkLogin(): Promise<{
@@ -169,9 +174,9 @@ export class ProxyClient {
       nickName?: string;
     }>("/api/check-login");
     if (res.code !== SUCCESS && res.code !== 1002) {
-      throw new Error(`checkLogin failed: ${res.message ?? res.code}`);
+      throw new ProxyProviderError("checkLogin", res.code);
     }
-    return requireData(res, "checkLogin");
+    return parseLoginStatus(requireData(res));
   }
 
   async sendText(to: string, text: string): Promise<void> {
@@ -180,8 +185,9 @@ export class ProxyClient {
       throw new LoginExpiredError();
     }
     if (res.code !== SUCCESS && res.code !== 1002) {
-      throw new Error(`sendText failed: ${res.message ?? res.code}`);
+      throw new ProxyProviderError("sendText", res.code);
     }
+    parseAcceptedMutation(requireData(res), "sendText");
   }
 
   async sendImage(to: string, imagePath: string, text?: string): Promise<void> {
@@ -194,8 +200,9 @@ export class ProxyClient {
       throw new LoginExpiredError();
     }
     if (res.code !== SUCCESS && res.code !== 1002) {
-      throw new Error(`sendImage failed: ${res.message ?? res.code}`);
+      throw new ProxyProviderError("sendImage", res.code);
     }
+    parseAcceptedMutation(requireData(res), "sendImage");
   }
 
   async getContacts(): Promise<{
@@ -207,9 +214,9 @@ export class ProxyClient {
       chatrooms: Array<{ wxid: string; name: string }>;
     }>("/api/contacts");
     if (res.code !== SUCCESS) {
-      throw new Error(`getContacts failed: ${res.message ?? res.code}`);
+      throw new ProxyProviderError("getContacts", res.code);
     }
-    return requireData(res, "getContacts");
+    return parseContacts(requireData(res));
   }
 
   async registerWebhook(url: string): Promise<void> {
@@ -217,8 +224,9 @@ export class ProxyClient {
       webhookUrl: url,
     });
     if (res.code !== SUCCESS && res.code !== 1002) {
-      throw new Error(`registerWebhook failed: ${res.message ?? res.code}`);
+      throw new ProxyProviderError("registerWebhook", res.code);
     }
+    parseRegisteredWebhook(requireData(res));
   }
 
   get needsLogin(): boolean {
@@ -230,6 +238,23 @@ export class LoginExpiredError extends Error {
   constructor() {
     super("WeChat login expired — re-login required");
     this.name = "LoginExpiredError";
+  }
+}
+
+export class ProxyProviderError extends Error {
+  constructor(
+    readonly operation: string,
+    readonly providerCode: number,
+  ) {
+    super(`WeChat proxy ${operation} failed with code ${providerCode}`);
+    this.name = "ProxyProviderError";
+  }
+}
+
+class ProxyResponseError extends Error {
+  constructor() {
+    super("WeChat proxy returned an invalid response");
+    this.name = "ProxyResponseError";
   }
 }
 
@@ -317,7 +342,9 @@ function normalizeProxyUrl(proxyUrl: string): string {
   if (parsed.search) {
     throw new Error("[wechat] proxyUrl must not include query parameters");
   }
-  parsed.hash = "";
+  if (parsed.hash) {
+    throw new Error("[wechat] proxyUrl must not include a fragment");
+  }
   return parsed.toString().replace(/\/$/, "");
 }
 
@@ -334,11 +361,145 @@ function requireBoundedPositiveInteger(
   return value;
 }
 
-function requireData<T>(response: ProxyApiResponse<T>, action: string): T {
+function requireData<T>(response: ProxyApiResponse<T>): T {
   if (response.data === undefined) {
-    throw new Error(`${action} failed: missing response data`);
+    throw new ProxyResponseError();
   }
   return response.data;
+}
+
+function parseEnvelope(value: unknown): ProxyApiResponse<unknown> {
+  const record = strictRecord(value, ["code"], ["message", "data"]);
+  if (!Number.isSafeInteger(record.code)) throw new ProxyResponseError();
+  if (
+    record.message !== undefined &&
+    (typeof record.message !== "string" || record.message.length > 4096)
+  ) {
+    throw new ProxyResponseError();
+  }
+  return {
+    code: record.code as number,
+    ...(record.message === undefined
+      ? {}
+      : { message: record.message as string }),
+    ...(record.data === undefined ? {} : { data: record.data }),
+  };
+}
+
+function parseAccountStatus(value: unknown): AccountStatus {
+  const record = strictRecord(
+    value,
+    ["valid", "loginState"],
+    ["wcId", "nickName", "tier", "quota"],
+  );
+  if (typeof record.valid !== "boolean") throw new ProxyResponseError();
+  if (!isLoginStatus(record.loginState)) throw new ProxyResponseError();
+  optionalStrings(record, ["wcId", "nickName", "tier"]);
+  if (
+    record.quota !== undefined &&
+    (typeof record.quota !== "number" || !Number.isFinite(record.quota))
+  ) {
+    throw new ProxyResponseError();
+  }
+  return record as unknown as AccountStatus;
+}
+
+function parseQrCode(value: unknown): string {
+  const record = strictRecord(value, ["qrCodeUrl"], []);
+  return requiredString(record.qrCodeUrl);
+}
+
+function parseLoginStatus(value: unknown): {
+  status: "waiting" | "need_verify" | "logged_in";
+  verifyUrl?: string;
+  wcId?: string;
+  nickName?: string;
+} {
+  const record = strictRecord(
+    value,
+    ["status"],
+    ["verifyUrl", "wcId", "nickName"],
+  );
+  if (!isLoginStatus(record.status)) throw new ProxyResponseError();
+  optionalStrings(record, ["verifyUrl", "wcId", "nickName"]);
+  return record as ReturnType<typeof parseLoginStatus>;
+}
+
+function parseContacts(value: unknown): {
+  friends: Array<{ wxid: string; name: string }>;
+  chatrooms: Array<{ wxid: string; name: string }>;
+} {
+  const record = strictRecord(value, ["friends", "chatrooms"], []);
+  return {
+    friends: parseContactList(record.friends),
+    chatrooms: parseContactList(record.chatrooms),
+  };
+}
+
+function parseContactList(
+  value: unknown,
+): Array<{ wxid: string; name: string }> {
+  if (!Array.isArray(value) || value.length > 100_000)
+    throw new ProxyResponseError();
+  return value.map((item) => {
+    const record = strictRecord(item, ["wxid", "name"], []);
+    return {
+      wxid: requiredString(record.wxid),
+      name: requiredString(record.name),
+    };
+  });
+}
+
+function parseAcceptedMutation(value: unknown, operation: string): void {
+  const record = strictRecord(value, ["accepted", "operation"], []);
+  if (record.accepted !== true || record.operation !== operation)
+    throw new ProxyResponseError();
+}
+
+function parseRegisteredWebhook(value: unknown): void {
+  const record = strictRecord(value, ["registered"], []);
+  if (record.registered !== true) throw new ProxyResponseError();
+}
+
+function strictRecord(
+  value: unknown,
+  required: readonly string[],
+  optional: readonly string[],
+): Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value))
+    throw new ProxyResponseError();
+  const record = value as Record<string, unknown>;
+  const allowed = new Set([...required, ...optional]);
+  if (
+    required.some((key) => !(key in record)) ||
+    Object.keys(record).some((key) => !allowed.has(key))
+  ) {
+    throw new ProxyResponseError();
+  }
+  return record;
+}
+
+function requiredString(value: unknown): string {
+  if (typeof value !== "string" || !value.trim() || value.length > 4096)
+    throw new ProxyResponseError();
+  return value;
+}
+
+function optionalStrings(
+  record: Record<string, unknown>,
+  keys: readonly string[],
+): void {
+  for (const key of keys) {
+    if (record[key] !== undefined) requiredString(record[key]);
+  }
+}
+
+function isLoginStatus(
+  value: unknown,
+): value is "waiting" | "need_verify" | "logged_in" {
+  return (
+    value === "waiting" || value === "need_verify" || value === "logged_in"
+  );
 }
 
 function isJsonMediaType(value: string | null): boolean {

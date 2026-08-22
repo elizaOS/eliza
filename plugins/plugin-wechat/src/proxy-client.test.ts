@@ -119,4 +119,14 @@ describe("ProxyClient transport policy", () => {
         }),
     ).toThrow("proxyUrl must not include query parameters");
   });
+
+  it("rejects base URL fragments instead of silently discarding them", () => {
+    expect(
+      () =>
+        new ProxyClient({
+          ...account,
+          proxyUrl: "https://proxy.example.test#provider-secret",
+        }),
+    ).toThrow("proxyUrl must not include a fragment");
+  });
 });
