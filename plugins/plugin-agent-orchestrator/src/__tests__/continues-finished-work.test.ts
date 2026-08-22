@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { continuesFinishedWork } from "../actions/tasks.js";
+import {
+  continuesFinishedWork,
+  finishedWorkRelation,
+} from "../actions/tasks.js";
 
 const COUNT = "count the .ts files in apps/ and tell me the number";
 
@@ -31,5 +34,21 @@ describe("continuesFinishedWork", () => {
         "build me a dice roller page",
       ),
     ).toBe(true);
+  });
+
+  it("distinguishes a follow-up from a related new deliverable", () => {
+    expect(finishedWorkRelation("run it again", COUNT)).toBe("follow_up");
+    expect(
+      finishedWorkRelation(
+        "make a second script that counts .tsx files in apps/",
+        COUNT,
+      ),
+    ).toBe("related");
+    expect(
+      finishedWorkRelation(
+        "write me a python script that prints a random prime",
+        COUNT,
+      ),
+    ).toBe("fresh");
   });
 });

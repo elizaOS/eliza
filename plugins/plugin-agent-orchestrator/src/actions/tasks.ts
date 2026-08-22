@@ -1103,16 +1103,30 @@ function contentWords(text: string): Set<string> {
  *  title, acceptance criteria, lineage or workdir — the judge graded the
  *  prime script against the .ts-count criteria and the file landed in the
  *  repo checkout. */
+export type FinishedWorkRelation = "follow_up" | "related" | "fresh";
+
 export function continuesFinishedWork(
   text: string,
   priorTask: string,
 ): boolean {
-  if (!NEW_DELIVERABLE_RE.test(text)) return true;
+  return finishedWorkRelation(text, priorTask) !== "fresh";
+}
+
+/** follow_up: an instruction about the finished deliverable itself (inherits
+ *  title, criteria, lineage, workdir). related: a NEW deliverable that names
+ *  the prior work (lineage + workdir only — its criteria and title are its
+ *  own; chaining the predecessor's criteria graded a prime script against
+ *  .ts-count criteria twice, live 2026-08-22). fresh: nothing inherited. */
+export function finishedWorkRelation(
+  text: string,
+  priorTask: string,
+): FinishedWorkRelation {
+  if (!NEW_DELIVERABLE_RE.test(text)) return "follow_up";
   const prior = contentWords(priorTask);
   for (const word of contentWords(text)) {
-    if (prior.has(word)) return true;
+    if (prior.has(word)) return "related";
   }
-  return false;
+  return "fresh";
 }
 
 const FOLLOW_UP_SIBLING_WINDOW_MS = 3 * 60_000;
@@ -3991,6 +4005,7 @@ async function runSpawnAgent(
 async function successorInheritance(
   runtime: IAgentRuntime,
   session: SessionInfo,
+  relation: FinishedWorkRelation = "follow_up",
 ): Promise<Record<string, unknown>> {
   const meta = session.metadata as Record<string, unknown> | undefined;
   const taskService = runtime.getService?.(
@@ -4000,12 +4015,13 @@ async function successorInheritance(
     taskService && typeof taskService.getTaskForSession === "function"
       ? await taskService.getTaskForSession(session.id).catch(() => null)
       : null;
+  const sameDeliverable = relation === "follow_up";
   return {
-    ...(typeof meta?.label === "string" && meta.label
+    ...(sameDeliverable && typeof meta?.label === "string" && meta.label
       ? { label: meta.label }
       : {}),
-    ...(record?.title ? { title: record.title } : {}),
-    ...(record?.acceptanceCriteria?.length
+    ...(sameDeliverable && record?.title ? { title: record.title } : {}),
+    ...(sameDeliverable && record?.acceptanceCriteria?.length
       ? { acceptanceCriteria: [...record.acceptanceCriteria] }
       : {}),
     // Lineage: completion evidence observes the predecessor's workdir from
@@ -4184,10 +4200,12 @@ async function runSend(
       )
         ? ""
         : rawPriorTask;
-      const continuesPrior =
-        Boolean(priorTask) && continuesFinishedWork(textInput, priorTask);
+      const relation: FinishedWorkRelation = priorTask
+        ? finishedWorkRelation(textInput, priorTask)
+        : "fresh";
+      const continuesPrior = relation !== "fresh";
       logger(runtime).info(
-        `[TASKS:send] target session ${target.session.id} is terminal (${target.session.status}); redirecting to a ${continuesPrior ? "successor" : "fresh"} create`,
+        `[TASKS:send] target session ${target.session.id} is terminal (${target.session.status}); redirecting to a ${relation} create`,
       );
       // Same claim as the interrupt redirect: the successor create below is
       // the launch for this origin; a second redirect or planner create for
@@ -4211,7 +4229,7 @@ async function runSend(
         {
           ...params,
           ...(continuesPrior
-            ? await successorInheritance(runtime, target.session)
+            ? await successorInheritance(runtime, target.session, relation)
             : {}),
           action: "create",
           goal: textInput,
@@ -7919,7 +7937,7 @@ export const tasksAction: Action & {
   ],
   description:
     "Planner surface for orchestrator workspace operations and coding task delegation to dedicated ACP coding sub-agents (elizaos / pi-agent / claude / codex). " +
-    "Available operations (pick via `action`): create or spawn_agent (delegate new coding work), send (forward a message to an existing coding sub-agent), list_agents / history (read state), " +
+    'Available operations (pick via `action`): create or spawn_agent (delegate new coding work — ANY new script/page/app/tool ask is create, even when an earlier session exists), send (forward a follow-up about work a coding sub-agent already did or is doing: "run it again", "add a footer to it" — never a new deliverable), list_agents / history (read state), ' +
     "control (pause | resume | continue | archive | reopen a task), share (surface task output), provision_workspace / submit_workspace (workspace setup and PR submission), manage_issues (GitHub issue operations), cancel / stop_agent (end a coding sub-agent run when the user asks to). " +
     "Choose this when the user asks to delegate coding work, use a coding adapter by name, or run multi-step development work — it is the canonical path for coding sub-agents and is preferred over inline FILE / BASH for delegated work. " +
     // Page/site builds ARE tasks now: the spawn pipeline places the build in
@@ -8078,7 +8096,8 @@ export const tasksAction: Action & {
     // send
     {
       name: "input",
-      description: "Text input to send to a running session for action=send.",
+      description:
+        "Text to send to an existing session for action=send: a follow-up about THAT session's work. A new deliverable is action=create with a task, not a send.",
       required: false,
       schema: { type: "string" as const },
     },
@@ -8092,7 +8111,7 @@ export const tasksAction: Action & {
     {
       name: "sessionId",
       description:
-        "Exact ACP session id for action=send / action=stop_agent / action=cancel / action=control / action=share / action=history. For history, returns the durable task containing that session even when it is not the task's latest session.",
+        "Exact ACP session id for action=send / action=stop_agent / action=cancel / action=control / action=share / action=history. For send, only the session whose work the user is following up on; never reuse an unrelated finished session for a new ask. For history, returns the durable task containing that session even when it is not the task's latest session.",
       required: false,
       schema: { type: "string" as const },
     },
