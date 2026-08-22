@@ -1618,6 +1618,7 @@ export interface IDatabaseAdapter<DB extends object = object> {
 	 */
 	getTasks(params: {
 		roomId?: UUID;
+		worldId?: UUID;
 		tags?: string[];
 		entityId?: UUID;
 		/** Required. Only tasks with agentId in this array are returned. Single agent = [id]. WHY: multi-tenant safety; schema indexes by agent_id; daemon batches one getTasks(agentIds) for many agents. */
@@ -1633,6 +1634,12 @@ export interface IDatabaseAdapter<DB extends object = object> {
 	// getTasksByName() are query methods (filter by room, tags, name).
 	createTasks(tasks: Task[]): Promise<UUID[]>;
 	getTasksByIds(taskIds: UUID[]): Promise<Task[]>;
+	/**
+	 * Atomically updates a queued task only while its lifecycle status is
+	 * pending (or absent for legacy rows). The queue tag and status predicate
+	 * are evaluated by storage in the same mutation that applies `task`.
+	 */
+	updatePendingTask?(id: UUID, task: Partial<Task>): Promise<boolean>;
 	updateTasks(updates: Array<{ id: UUID; task: Partial<Task> }>): Promise<void>;
 	deleteTasks(taskIds: UUID[]): Promise<void>;
 

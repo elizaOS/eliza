@@ -38,6 +38,7 @@ let dbWriteUpdateRows: Array<Record<string, unknown>> | null = null;
 let containerInfrastructureCalls = 0;
 let agentInfrastructureCalls = 0;
 let lastAgentSuspendParams: Record<string, unknown> | null = null;
+let agentInfrastructureMutation: (() => Promise<void>) | null = null;
 
 // Identify which fixture a `.from(table)` call wants without importing the real
 // drizzle table objects: the schema modules export named tables, and the real
@@ -124,6 +125,7 @@ mock.module("./provisioning-jobs", () => ({
     enqueueAgentSuspendOnce: async (params: Record<string, unknown>) => {
       agentInfrastructureCalls += 1;
       lastAgentSuspendParams = params;
+      await agentInfrastructureMutation?.();
     },
     enqueueAgentDeleteOnce: async () => {
       agentInfrastructureCalls += 1;
@@ -176,7 +178,7 @@ const baseAgent = (overrides: Record<string, unknown> = {}) => ({
   last_billed_at: null,
   last_backup_at: null,
   scheduled_shutdown_at: null,
-  execution_tier: "dedicated",
+  execution_tier: "dedicated-always",
   ...overrides,
 });
 
@@ -199,6 +201,7 @@ beforeEach(() => {
   containerInfrastructureCalls = 0;
   agentInfrastructureCalls = 0;
   lastAgentSuspendParams = null;
+  agentInfrastructureMutation = null;
 });
 
 // ── Parser boundary (exhaustive) ─────────────────────────────────────────────
@@ -410,14 +413,17 @@ describe("cancelResource fail-closed before side effects", () => {
   });
 
   test("deletion winning the billing CAS returns an explicit conflict instead of fake suspension", async () => {
-    agentRows = [
-      baseAgent({
-        deletion_attempt_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
-        deletion_started_at: new Date("2026-07-23T12:30:00.000Z"),
-        status: "deletion_pending",
-        billing_status: "active",
-      }),
-    ];
+    agentRows = [baseAgent()];
+    agentInfrastructureMutation = async () => {
+      agentRows = [
+        baseAgent({
+          deletion_attempt_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+          deletion_started_at: new Date("2026-07-23T12:30:00.000Z"),
+          status: "deletion_pending",
+          billing_status: "active",
+        }),
+      ];
+    };
     dbWriteUpdateRows = [];
 
     try {

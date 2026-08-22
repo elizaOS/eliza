@@ -15,8 +15,10 @@
  */
 import {
 	compareMemoryIds,
+	compareTasksForQuery,
 	DatabaseAdapter,
 	validateQueryEntitiesPagination,
+	validateTaskQueryPagination,
 } from "../database";
 import { ElizaError } from "../errors";
 import { rankMessageSearch, withinCreatedAtWindow } from "../search";
@@ -130,6 +132,37 @@ function memoryMatchesMetadata(
 		if (JSON.stringify(metadata[key]) !== JSON.stringify(value)) return false;
 	}
 	return true;
+}
+
+/**
+ * Cosine similarity for in-process vector recall. Returns null when the vectors
+ * cannot be compared (empty, mixed width, non-finite components, or a zero
+ * vector) so a search can skip them instead of inventing a score. A genuine
+ * negative similarity is a valid score, not a sentinel, which is why the
+ * incomparable case is null rather than -1.
+ */
+function cosineSimilarity(left: number[], right: number[]): number | null {
+	if (left.length !== right.length || left.length === 0) return null;
+	let dot = 0;
+	let leftMagnitude = 0;
+	let rightMagnitude = 0;
+	for (let index = 0; index < left.length; index++) {
+		const leftValue = left[index];
+		const rightValue = right[index];
+		if (
+			typeof leftValue !== "number" ||
+			typeof rightValue !== "number" ||
+			!Number.isFinite(leftValue) ||
+			!Number.isFinite(rightValue)
+		) {
+			return null;
+		}
+		dot += leftValue * rightValue;
+		leftMagnitude += leftValue * leftValue;
+		rightMagnitude += rightValue * rightValue;
+	}
+	if (leftMagnitude === 0 || rightMagnitude === 0) return null;
+	return dot / (Math.sqrt(leftMagnitude) * Math.sqrt(rightMagnitude));
 }
 
 function connectorAccountKey(params: {
@@ -287,6 +320,8 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 	private memoriesById = new Map<string, Memory>();
 	private memoriesByRoom = new Map<string, Memory[]>();
 	private cache = new Map<string, string>();
+	/** Width last passed to {@link ensureEmbeddingDimension}; used to reclaim stale vectors. */
+	private embeddingDimension: number | undefined;
 
 	private participantsByRoom = new Map<string, Set<string>>();
 	private roomsByParticipant = new Map<string, Set<string>>();
@@ -489,14 +524,34 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 		return Array.from(this.agents.values());
 	}
 
-	async ensureEmbeddingDimension(_dimension: number): Promise<void> {
-		// In-memory vectors are not schema-bound, so there is no dimension migration to apply.
+	async ensureEmbeddingDimension(dimension: number): Promise<void> {
+		this.embeddingDimension = dimension;
 	}
 
 	async clearEmbeddingsOutsideActiveDimension(): Promise<UUID[]> {
-		// In-memory vectors are not schema-bound to a fixed-width column, so there
-		// is no stale-dimension row to reclaim.
-		return [];
+		if (
+			this.embeddingDimension === undefined ||
+			!Number.isFinite(this.embeddingDimension) ||
+			this.embeddingDimension <= 0
+		) {
+			return [];
+		}
+		const active = this.embeddingDimension;
+		const reclaimed: UUID[] = [];
+		for (const memory of this.memoriesById.values()) {
+			if (!Array.isArray(memory.embedding) || memory.embedding.length === 0) {
+				continue;
+			}
+			if (memory.embedding.length === active) {
+				continue;
+			}
+			if (!memory.id) {
+				continue;
+			}
+			delete memory.embedding;
+			reclaimed.push(memory.id);
+		}
+		return reclaimed;
 	}
 
 	async transaction<T>(
@@ -1369,7 +1424,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 		this.logs = this.logs.filter((l) => !idSet.has(String(l.id)));
 	}
 
-	async searchMemories(_params: {
+	async searchMemories(params: {
 		tableName: string;
 		embedding: number[];
 		match_threshold?: number;
@@ -1382,7 +1437,44 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 		entityId?: UUID;
 		accessContext?: AccessContext;
 	}): Promise<Memory[]> {
-		return [];
+		// Scope eligibility first, then the top-K cut — the plugin-sql contract.
+		// A global top-K followed by a post-hoc room/world/entity filter silently
+		// drops eligible matches whenever closer out-of-scope vectors outnumber
+		// the candidate pool. `entityId` is a row predicate here (as in the SQL
+		// vector search), unlike getMemories where it only names the RLS context.
+		const candidates = (
+			await this.getMemories({
+				tableName: params.tableName,
+				roomId: params.roomId,
+				worldId: params.worldId,
+				unique: params.unique,
+				accessContext: params.accessContext,
+			})
+		).filter(
+			(memory) => !params.entityId || memory.entityId === params.entityId,
+		);
+		const limit = params.count ?? params.limit ?? 10;
+		// Same truthiness contract as plugin-sql: an absent or zero threshold
+		// applies no similarity floor.
+		const threshold = params.match_threshold;
+		const scored: Memory[] = [];
+		for (const memory of candidates) {
+			if (!Array.isArray(memory.embedding) || memory.embedding.length === 0) {
+				continue;
+			}
+			const similarity = cosineSimilarity(memory.embedding, params.embedding);
+			if (similarity === null) {
+				continue;
+			}
+			if (threshold && similarity < threshold) {
+				continue;
+			}
+			scored.push({ ...memory, similarity });
+		}
+		scored.sort(
+			(left, right) => (right.similarity ?? -1) - (left.similarity ?? -1),
+		);
+		return scored.slice(0, limit);
 	}
 
 	// Batch memory methods
@@ -1918,16 +2010,19 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 
 	async getTasks(params: {
 		roomId?: UUID;
+		worldId?: UUID;
 		tags?: string[];
 		entityId?: UUID;
 		agentIds: UUID[];
 		limit?: number;
 		offset?: number;
 	}): Promise<Task[]> {
+		validateTaskQueryPagination(params);
 		if (params.agentIds.length === 0) return [];
 		const all = Array.from(this.tasks.values());
 		let filtered = all.filter((t) => {
 			if (params.roomId && t.roomId !== params.roomId) return false;
+			if (params.worldId && t.worldId !== params.worldId) return false;
 			if (params.entityId && t.entityId !== params.entityId) return false;
 			if (t.agentId == null || !params.agentIds.includes(t.agentId))
 				return false;
@@ -1938,6 +2033,8 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 			}
 			return true;
 		});
+
+		filtered.sort(compareTasksForQuery);
 
 		// Paginate to bound result size.
 		const offset = params.offset ?? 0;
@@ -1973,6 +2070,19 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 			if (task) tasks.push(task);
 		}
 		return tasks;
+	}
+
+	async updatePendingTask(id: UUID, task: Partial<Task>): Promise<boolean> {
+		const existing = this.tasks.get(String(id));
+		if (
+			!existing?.tags?.includes("queue") ||
+			(existing.metadata?.status != null &&
+				existing.metadata.status !== "pending")
+		) {
+			return false;
+		}
+		this.tasks.set(String(id), { ...existing, ...task, id });
+		return true;
 	}
 
 	async updateTasks(

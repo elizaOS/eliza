@@ -5,7 +5,12 @@
  * coerce loosely-typed handler options into validated values. Keeps every action's
  * success/failure shape identical.
  */
-import type { ActionResult, IAgentRuntime } from "@elizaos/core";
+import {
+  type ActionResult,
+  type IAgentRuntime,
+  toWellFormedUnicode,
+  truncateWellFormed,
+} from "@elizaos/core";
 import {
   type ActionResultData,
   FAILURE_TEXT_PREFIX,
@@ -19,7 +24,8 @@ import {
  * get mangled — Discord eats `*` pairs as italics, turning `-name "*.md"`
  * into `-name ".md"` in the rendered message. The fence length adapts to the
  * longest backtick run in the payload so embedded fences cannot break out.
- * Planner-facing ActionResult text stays raw — fence only what users see.
+ * Planner-facing ActionResult text stays unfenced and is bounded separately by
+ * the action that owns the model-context budget.
  */
 export function fencePreformatted(text: string): string {
   const longestRun =
@@ -34,7 +40,9 @@ export function fencePreformatted(text: string): string {
  * anything over their message limit into a flood of follow-up messages (a bare
  * `ls -la` becomes 8+ Discord posts), so the visible copy keeps the head and
  * tail on line boundaries with an elision marker. The planner-facing
- * ActionResult text is never capped — the model always sees the full output.
+ * ActionResult text is bounded separately for model context; when SHELL output
+ * crosses that limit, the complete redacted streams are available by artifact
+ * handle rather than injected into the prompt.
  */
 export function capTranscriptForChat(text: string, maxChars = 1500): string {
   if (text.length <= maxChars) return text;
@@ -52,6 +60,26 @@ export function capTranscriptForChat(text: string, maxChars = 1500): string {
     .replace(/\n$/, "");
   const omitted = middle.split("\n").length;
   return `${headPart}\n… [${omitted} lines omitted — ask to see more] …\n${tailPart}`;
+}
+
+/**
+ * Keep a model-facing tool result within a character budget without splitting
+ * UTF-16 surrogate pairs. The omitted count describes the sanitized string so
+ * malformed provider or process output cannot leak invalid Unicode downstream.
+ */
+export function truncate(
+  text: string,
+  maxChars: number,
+): { text: string; truncated: boolean } {
+  const sanitized = toWellFormedUnicode(text);
+  if (sanitized.length <= maxChars) {
+    return { text: sanitized, truncated: false };
+  }
+  const prefix = truncateWellFormed(sanitized, Math.max(0, maxChars));
+  return {
+    text: `${prefix}\n… [${sanitized.length - prefix.length} more chars omitted]`,
+    truncated: true,
+  };
 }
 
 export function failureToActionResult(

@@ -4,7 +4,7 @@
  * Two service calls run on independent pool sessions while an external holder
  * owns the organization row lock. Both calls must be blocked in open
  * transactions before the holder releases them; with one slot remaining,
- * exactly one linked app/key pair commits and the losing key rolls back.
+ * exactly one linked app/key pair commits and the loser never reaches minting.
  */
 
 import { afterAll, beforeAll, describe, expect, spyOn, test } from "bun:test";
@@ -216,6 +216,9 @@ realPostgres("app and initial API-key atomicity", () => {
     ) {
       throw new Error("real PostgreSQL harness was not initialized");
     }
+    const initializedAppsService = appsService;
+    const initializedApiKeysRepository = apiKeysRepository;
+    const initializedApiKeysService = apiKeysService;
 
     const suffix = randomUUID();
     const [organization] = await dbWrite
@@ -247,9 +250,10 @@ realPostgres("app and initial API-key atomicity", () => {
       organization.id,
     ]);
 
-    const deleteKey = spyOn(apiKeysService, "delete");
+    const createKey = spyOn(initializedApiKeysService, "create");
+    const deleteKey = spyOn(initializedApiKeysService, "delete");
     const creates = names.map((name, index) =>
-      appsService.create({
+      initializedAppsService.create({
         name,
         organization_id: organization.id,
         created_by_user_id: user.id,
@@ -287,7 +291,7 @@ realPostgres("app and initial API-key atomicity", () => {
       const durableKeys = (
         await Promise.all(
           names.map((name) =>
-            apiKeysRepository.findByUserAndName(user.id, `${name} - App API Key`),
+            initializedApiKeysRepository.findByUserAndName(user.id, `${name} - App API Key`),
           ),
         )
       ).flat();
@@ -303,11 +307,15 @@ realPostgres("app and initial API-key atomicity", () => {
       expect(durableApp.api_key_id).toBe(durableKey.id);
       expect(winner.value.app.id).toBe(durableApp.id);
       expect(winner.value.app.api_key_id).toBe(durableKey.id);
-      expect((await apiKeysService.validateApiKey(winner.value.apiKey))?.id).toBe(durableKey.id);
+      expect((await initializedApiKeysService.validateApiKey(winner.value.apiKey))?.id).toBe(
+        durableKey.id,
+      );
+      expect(createKey).toHaveBeenCalledTimes(1);
       expect(deleteKey).not.toHaveBeenCalled();
     } finally {
       if (!holderReleased) await holder.query("ROLLBACK");
       await Promise.allSettled(creates);
+      createKey.mockRestore();
       deleteKey.mockRestore();
       await Promise.all([holder.end(), observer.end()]);
     }

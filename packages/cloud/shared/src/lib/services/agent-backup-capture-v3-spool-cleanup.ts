@@ -75,6 +75,7 @@ const TerminalIntentSchema = z.strictObject({
   lifecycleRevision: z.string().regex(/^(?:0|[1-9][0-9]{0,19})$/),
   requestSha256: z.string().regex(SHA256_PATTERN),
   authoritySha256: z.string().regex(SHA256_PATTERN),
+  runtimePrincipalSha256: z.string().regex(SHA256_PATTERN),
   terminalErrorCode: z
     .string()
     .min(1)
@@ -104,6 +105,7 @@ export interface AgentBackupCaptureV3TerminalSpoolCleanupAuthority {
   lifecycleRevision: string;
   requestSha256: string;
   authoritySha256: string;
+  runtimePrincipalSha256: string;
 }
 
 export interface AgentBackupCaptureV3SpoolCleanupDependencies {
@@ -130,6 +132,7 @@ export interface AgentBackupCaptureV3SpoolCleanupDependencies {
       executionToken: string;
       requestSha256: string;
       authoritySha256: string;
+      runtimePrincipalSha256?: string;
     },
   ): Promise<AgentBackupCaptureV3Spool | undefined>;
   now(): number;
@@ -168,7 +171,7 @@ export interface AgentBackupCaptureV3SpoolCleanupJanitor {
     authority: Readonly<AgentBackupCaptureV3TerminalSpoolCleanupAuthority>;
     terminalErrorCode: string;
   }): Promise<"pending">;
-  runCycle(): Promise<AgentBackupCaptureV3SpoolCleanupSummary>;
+  runCycle(signal?: AbortSignal): Promise<AgentBackupCaptureV3SpoolCleanupSummary>;
 }
 
 function batchSize(value: number | undefined): number {
@@ -222,6 +225,7 @@ function terminalCleanupAuthority(
     lifecycleRevision: evidence.lifecycleRevision,
     requestSha256: evidence.requestSha256,
     authoritySha256: evidence.authoritySha256,
+    runtimePrincipalSha256: evidence.runtimePrincipalSha256,
   };
 }
 
@@ -447,6 +451,7 @@ function sameTerminalIntent(
     left.lifecycleRevision === right.lifecycleRevision &&
     left.requestSha256 === right.requestSha256 &&
     left.authoritySha256 === right.authoritySha256 &&
+    left.runtimePrincipalSha256 === right.runtimePrincipalSha256 &&
     left.terminalErrorCode === right.terminalErrorCode
   );
 }
@@ -526,6 +531,7 @@ function sameTerminalCandidate(
     left.lifecycleRevision === right.lifecycleRevision &&
     left.requestSha256 === right.requestSha256 &&
     left.authoritySha256 === right.authoritySha256 &&
+    left.runtimePrincipalSha256 === right.runtimePrincipalSha256 &&
     left.terminalErrorCode === right.terminalErrorCode
   );
 }
@@ -731,6 +737,7 @@ function assertTerminalCleanupAuthorization(params: {
     lifecycleRevision: true,
     requestSha256: true,
     authoritySha256: true,
+    runtimePrincipalSha256: true,
     terminalErrorCode: true,
   }).parse({ ...authority, terminalErrorCode: params.terminalErrorCode });
 }
@@ -745,18 +752,24 @@ export function createAgentBackupCaptureV3SpoolCleanupJanitor(
   const authorizeAndPersist = async (
     outbox: string,
     authority: Readonly<AgentBackupCaptureV3SpoolAuthority>,
+    signal?: AbortSignal,
   ): Promise<void> => {
+    signal?.throwIfAborted();
     const authorized = await dependencies.authorize(authorizationInput(authority));
+    signal?.throwIfAborted();
     const rederived = await dependencies.deriveAuthority(authorized);
+    signal?.throwIfAborted();
     if (!sameAuthority(authority, rederived)) {
       throw new Error("Protected cleanup repository returned different spool authority");
     }
+    signal?.throwIfAborted();
     await persistIntent({
       outbox,
       authority,
       authorizedAt: canonicalAuthorizedAt(dependencies.now()),
       nonce: dependencies.executionToken(),
     });
+    signal?.throwIfAborted();
   };
 
   return {
@@ -783,6 +796,7 @@ export function createAgentBackupCaptureV3SpoolCleanupJanitor(
         lifecycleRevision: true,
         requestSha256: true,
         authoritySha256: true,
+        runtimePrincipalSha256: true,
         terminalErrorCode: true,
       }).parse({ ...input.authority, terminalErrorCode: input.terminalErrorCode });
       const durable = await dependencies.listDurableOperations(config.spool);
@@ -793,6 +807,7 @@ export function createAgentBackupCaptureV3SpoolCleanupJanitor(
         operation &&
         (operation.requestSha256 !== input.authority.requestSha256 ||
           operation.authoritySha256 !== input.authority.authoritySha256 ||
+          operation.runtimePrincipalSha256 !== input.authority.runtimePrincipalSha256 ||
           operation.recordCaptured)
       ) {
         throw new Error("Terminal spool cleanup candidate differs from durable capture state");
@@ -811,7 +826,9 @@ export function createAgentBackupCaptureV3SpoolCleanupJanitor(
       return "pending";
     },
 
-    async runCycle() {
+    async runCycle(signal) {
+      const throwIfAborted = (): void => signal?.throwIfAborted();
+      throwIfAborted();
       const summary: AgentBackupCaptureV3SpoolCleanupSummary = {
         discovered: 0,
         authorized: 0,
@@ -820,50 +837,65 @@ export function createAgentBackupCaptureV3SpoolCleanupJanitor(
         skippedUnprotected: 0,
         indeterminate: 0,
       };
+      throwIfAborted();
       const durable = await dependencies.listDurableOperations(config.spool);
+      throwIfAborted();
       const outbox = await ensureOutboxDirectory(config.spool.stateDirectory);
+      throwIfAborted();
       const terminalOutbox = await ensureOutboxDirectory(
         config.spool.stateDirectory,
         TERMINAL_OUTBOX_DIRECTORY,
       );
+      throwIfAborted();
       const terminalCandidateOutbox = await ensureOutboxDirectory(
         config.spool.stateDirectory,
         TERMINAL_CANDIDATE_DIRECTORY,
       );
+      throwIfAborted();
       summary.discovered = durable.length;
       const terminalCandidates = await listTerminalCandidates(terminalCandidateOutbox, limit);
+      throwIfAborted();
       for (const candidate of terminalCandidates) {
+        throwIfAborted();
         const operation = durable.find(
           (durableOperation) => durableOperation.operationId === candidate.operationId,
         );
         if (!operation) {
+          throwIfAborted();
           await removeIntent(terminalCandidateOutbox, candidate.operationId);
+          throwIfAborted();
           continue;
         }
         if (operation.recordCaptured) {
           // A confirmed local handoff is written only after exact catalogue
           // proof. The stale pre-CAS candidate must never block publication or
           // the later protected-spool cleanup path.
+          throwIfAborted();
           await removeIntent(terminalCandidateOutbox, candidate.operationId);
+          throwIfAborted();
           continue;
         }
         if (
           operation.requestSha256 !== candidate.requestSha256 ||
-          operation.authoritySha256 !== candidate.authoritySha256
+          operation.authoritySha256 !== candidate.authoritySha256 ||
+          operation.runtimePrincipalSha256 !== candidate.runtimePrincipalSha256
         ) {
           summary.indeterminate += 1;
           continue;
         }
         try {
+          throwIfAborted();
           const authority = terminalCleanupAuthority(candidate);
           const authorized = await dependencies.authorizeTerminal(
             terminalAuthorizationInput(candidate),
           );
+          throwIfAborted();
           assertTerminalCleanupAuthorization({
             backup: authorized,
             authority,
             terminalErrorCode: candidate.terminalErrorCode,
           });
+          throwIfAborted();
           await persistTerminalIntent({
             outbox: terminalOutbox,
             authority,
@@ -871,21 +903,27 @@ export function createAgentBackupCaptureV3SpoolCleanupJanitor(
             authorizedAt: canonicalAuthorizedAt(dependencies.now()),
             nonce: dependencies.executionToken(),
           });
+          throwIfAborted();
           await removeIntent(terminalCandidateOutbox, candidate.operationId);
+          throwIfAborted();
           summary.authorized += 1;
         } catch {
+          throwIfAborted();
           // A staged candidate is deliberately non-authorizing. Keep it until
           // the exact terminal row becomes visible or a confirmed handoff makes
           // the candidate stale.
           summary.pending += 1;
         }
       }
+      throwIfAborted();
       const terminalIntents = await listTerminalIntents(terminalOutbox, limit);
+      throwIfAborted();
       const terminalOperationIds = new Set(terminalIntents.map((intent) => intent.operationId));
-      const existingIntents = new Set(
-        (await listIntents(outbox, MAX_BATCH_SIZE)).map((intent) => intent.operationId),
-      );
+      const protectedIntents = await listIntents(outbox, MAX_BATCH_SIZE);
+      throwIfAborted();
+      const existingIntents = new Set(protectedIntents.map((intent) => intent.operationId));
       for (const operation of durable.slice(0, limit)) {
+        throwIfAborted();
         if (
           existingIntents.has(operation.operationId) ||
           terminalOperationIds.has(operation.operationId)
@@ -897,12 +935,16 @@ export function createAgentBackupCaptureV3SpoolCleanupJanitor(
           continue;
         }
         try {
+          throwIfAborted();
           const candidates = await dependencies.listCandidates({
             operationId: operation.operationId,
           });
+          throwIfAborted();
           const matches: AgentBackupCaptureV3SpoolAuthority[] = [];
           for (const candidate of candidates) {
+            throwIfAborted();
             const authority = await dependencies.deriveAuthority(candidate);
+            throwIfAborted();
             if (
               authority.operationId === operation.operationId &&
               authority.requestSha256 === operation.requestSha256 &&
@@ -916,100 +958,137 @@ export function createAgentBackupCaptureV3SpoolCleanupJanitor(
             continue;
           }
           if (matches.length !== 1) throw new Error("Protected cleanup authority is ambiguous");
-          await authorizeAndPersist(outbox, matches[0]!);
+          throwIfAborted();
+          await authorizeAndPersist(outbox, matches[0]!, signal);
+          throwIfAborted();
           await removeIntent(terminalCandidateOutbox, operation.operationId);
+          throwIfAborted();
           existingIntents.add(operation.operationId);
           summary.authorized += 1;
         } catch {
+          throwIfAborted();
           summary.indeterminate += 1;
         }
       }
 
       for (const intent of terminalIntents) {
+        throwIfAborted();
         let spool: AgentBackupCaptureV3Spool | undefined;
         try {
+          throwIfAborted();
           const authority = terminalCleanupAuthority(intent);
           const authorized = await dependencies.authorizeTerminal(
             terminalAuthorizationInput(intent),
           );
+          throwIfAborted();
           assertTerminalCleanupAuthorization({
             backup: authorized,
             authority,
             terminalErrorCode: intent.terminalErrorCode,
           });
+          throwIfAborted();
           spool = await dependencies.openExisting(config.spool, {
             operationId: intent.operationId,
             executionToken: dependencies.executionToken(),
             requestSha256: intent.requestSha256,
             authoritySha256: intent.authoritySha256,
+            runtimePrincipalSha256: intent.runtimePrincipalSha256,
           });
+          throwIfAborted();
           if (!spool) {
             await removeIntent(terminalOutbox, intent.operationId);
+            throwIfAborted();
             summary.completed += 1;
             continue;
           }
           if (spool.recordCaptured) {
             await spool.close();
+            throwIfAborted();
             summary.indeterminate += 1;
             continue;
           }
+          throwIfAborted();
           const receipt = await spool.cleanup();
+          throwIfAborted();
           if (receipt.status === "complete") {
             await removeIntent(terminalOutbox, intent.operationId);
+            throwIfAborted();
             summary.completed += 1;
           } else {
             await spool.close();
+            throwIfAborted();
             summary.pending += 1;
           }
         } catch {
+          throwIfAborted();
           if (spool) await spool.close().catch(() => undefined);
+          throwIfAborted();
           summary.pending += 1;
         }
       }
 
+      throwIfAborted();
       const protectedCleanupLimit = Math.max(0, limit - terminalIntents.length);
       const intents =
         protectedCleanupLimit > 0 ? await listIntents(outbox, protectedCleanupLimit) : [];
+      throwIfAborted();
       for (const intent of intents) {
+        throwIfAborted();
         const authority = intentAuthority(intent);
         let spool: AgentBackupCaptureV3Spool | undefined;
         try {
+          throwIfAborted();
           const authorized = await dependencies.authorize(authorizationInput(authority));
+          throwIfAborted();
           const rederived = await dependencies.deriveAuthority(authorized);
+          throwIfAborted();
           if (!sameAuthority(authority, rederived)) {
             throw new Error("Protected cleanup intent no longer matches catalogue authority");
           }
+          throwIfAborted();
           spool = await dependencies.openExisting(config.spool, {
             operationId: authority.operationId,
             executionToken: dependencies.executionToken(),
             requestSha256: authority.requestSha256,
             authoritySha256: authority.authoritySha256,
           });
+          throwIfAborted();
           if (!spool) {
             await removeIntent(outbox, authority.operationId);
+            throwIfAborted();
             await removeIntent(terminalCandidateOutbox, authority.operationId);
+            throwIfAborted();
             summary.completed += 1;
             continue;
           }
           if (!spool.recordCaptured || spool.phase !== "published") {
             await spool.close();
+            throwIfAborted();
             summary.pending += 1;
             continue;
           }
+          throwIfAborted();
           const receipt = await spool.cleanup();
+          throwIfAborted();
           if (receipt.status === "complete") {
             await removeIntent(outbox, authority.operationId);
+            throwIfAborted();
             await removeIntent(terminalCandidateOutbox, authority.operationId);
+            throwIfAborted();
             summary.completed += 1;
           } else {
             await spool.close();
+            throwIfAborted();
             summary.pending += 1;
           }
         } catch {
+          throwIfAborted();
           if (spool) await spool.close().catch(() => undefined);
+          throwIfAborted();
           summary.pending += 1;
         }
       }
+      throwIfAborted();
       return summary;
     },
   };

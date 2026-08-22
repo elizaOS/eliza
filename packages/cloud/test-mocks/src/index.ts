@@ -4,3 +4,4 @@ export * as fishAudio from "./fish-audio";
 export * from "./hetzner";
 export * as providerContract from "./provider-contract";
 export * from "./steward";
+export * as syntheticEnvironment from "./synthetic-environment";

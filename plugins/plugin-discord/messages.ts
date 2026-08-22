@@ -26,6 +26,7 @@ import {
 	type Service,
 	ServiceType,
 	stringToUuid,
+	TurnAbortedError,
 	type UUID,
 } from "@elizaos/core";
 import {
@@ -121,7 +122,7 @@ import {
 	sendMessageInChunks,
 } from "./utils";
 
-const INTERACTION_ONLY_FALLBACK_TEXT = "Choose an option:";
+export const INTERACTION_ONLY_FALLBACK_TEXT = "Choose an option:";
 
 // Filler tokens carrying no answer content — two single-fact replies differing
 // only in these words are the same fact reworded.
@@ -427,6 +428,7 @@ export interface DiscordOutboundDeliveryParams {
 	replyToMessageId?: string;
 	text?: string;
 	attachmentUrls?: readonly string[];
+	interactionIdentity?: string;
 	now?: number;
 	windowMs?: number;
 	state?: Map<string, DiscordOutboundDeliveryState>;
@@ -488,7 +490,8 @@ export function beginDiscordOutboundDelivery(
 ): BeginDiscordOutboundDeliveryResult {
 	const text = normalizeOutboundText(params.text);
 	const attachments = outboundAttachmentIdentity(params.attachmentUrls);
-	if (!text && !attachments) {
+	const interactionIdentity = params.interactionIdentity?.trim() ?? "";
+	if (!text && !attachments && !interactionIdentity) {
 		return {
 			kind: "deliver",
 			reservation: {
@@ -509,6 +512,7 @@ export function beginDiscordOutboundDelivery(
 		params.channelId,
 		params.replyToMessageId ?? "",
 		attachments,
+		interactionIdentity,
 		text,
 	].join("\u0000");
 
@@ -636,6 +640,19 @@ export interface AbortableTimeoutResult {
 	timedOut: boolean;
 	settled: boolean;
 	error?: unknown;
+}
+
+/**
+ * Reads core's designed TurnAbortedError contract. Both user cancellation and
+ * runtime lifecycle shutdown use TURN_ABORTED, so callers preserve the reason
+ * instead of misclassifying every designed abort as user-requested. Designed
+ * aborts are control flow, not provider failures, and must not emit retry text.
+ */
+export function designedTurnAbortReason(error: unknown): string | null {
+	if (error instanceof TurnAbortedError && error.reason.trim().length > 0) {
+		return error.reason;
+	}
+	return null;
 }
 
 /**
@@ -843,6 +860,7 @@ export class MessageManager {
 	private discordService: IDiscordService;
 	private accountId: string;
 	private statusReactionScope: StatusReactionScope;
+	private readonly draftStreamFactory: typeof createDraftStreamController;
 	private envelopeEnabled: boolean;
 	private draftStreamingEnabled: boolean;
 	private stalenessConfig: DiscordStalenessConfig;
@@ -859,7 +877,13 @@ export class MessageManager {
 	 * @param {ICompatRuntime} runtime - The agent runtime instance (with cross-core compat).
 	 * @throws {Error} If the Discord client is not initialized
 	 */
-	constructor(discordService: IDiscordService, runtime: ICompatRuntime) {
+	constructor(
+		discordService: IDiscordService,
+		runtime: ICompatRuntime,
+		options: {
+			draftStreamFactory?: typeof createDraftStreamController;
+		} = {},
+	) {
 		// Guard against null client - fail fast with a clear error
 		if (!discordService.client) {
 			const errorMsg =
@@ -873,6 +897,8 @@ export class MessageManager {
 
 		this.client = discordService.client;
 		this.runtime = runtime;
+		this.draftStreamFactory =
+			options.draftStreamFactory ?? createDraftStreamController;
 		this.attachmentManager = new AttachmentManager(this.runtime);
 		this.getChannelType = discordService.getChannelType;
 		this.discordService = discordService;
@@ -2075,7 +2101,7 @@ export class MessageManager {
 				this.discordService.trackStatusReaction?.(message.id, statusReactions);
 			}
 			const draftStream = this.draftStreamingEnabled
-				? createDraftStreamController({
+				? this.draftStreamFactory({
 						log: (entry) =>
 							this.runtime.logger.debug(
 								{ src: "plugin:discord", agentId: this.runtime.agentId },
@@ -2361,6 +2387,9 @@ export class MessageManager {
 					// native Discord components, and strip their markers from the prose.
 					const rendered = buildDiscordReplyPayload(this.runtime, content);
 					const hasComponents = rendered.components.length > 0;
+					const interactionIdentity = hasComponents
+						? JSON.stringify(rendered.components)
+						: undefined;
 					let textContent = normalizeDiscordMessageText(rendered.text);
 					if (textContent.trim().length === 0 && hasComponents) {
 						textContent = INTERACTION_ONLY_FALLBACK_TEXT;
@@ -2406,7 +2435,7 @@ export class MessageManager {
 					// twice in response to the same inbound message (e.g.
 					// planner follow-up repeating action output).
 					if (hasText && content.inReplyTo) {
-						const dedupKey = `${content.inReplyTo}::${textContent.replace(/\s+/g, " ").trim()}`;
+						const dedupKey = `${content.inReplyTo}::${textContent.replace(/\s+/g, " ").trim()}::${interactionIdentity ?? ""}`;
 						const callbackDedup = message as DiscordMessage & {
 							_elizaSentReplyKeys?: Set<string>;
 							_elizaSentFactSignatures?: Array<Set<string>>;
@@ -2424,6 +2453,7 @@ export class MessageManager {
 						// lacks) through, regardless of delivery order.
 						const factSignature = numericFactSignatureTokens(textContent);
 						const repeatsPriorFact =
+							!hasComponents &&
 							factSignature !== null &&
 							callbackDedup._elizaSentFactSignatures.some((prior) =>
 								isSubsetOrEqual(factSignature, prior),
@@ -2465,6 +2495,7 @@ export class MessageManager {
 						attachmentUrls: content.attachments
 							?.map((media) => media.url)
 							.filter((url): url is string => typeof url === "string"),
+						interactionIdentity,
 					};
 					let outboundDedupe = beginDiscordOutboundDelivery(dedupeParams);
 					while (outboundDedupe.kind === "in_flight") {
@@ -2944,6 +2975,46 @@ export class MessageManager {
 					generationTimedOut &&
 					!!messageId &&
 					hasActiveTaskAgentWorkForMessage(this.runtime, messageId);
+				const designedAbortReason = designedTurnAbortReason(generationError);
+				if (designedAbortReason) {
+					typingController.stop();
+					statusReactions?.setDone();
+					await draftStream?.discard();
+					if (speakerLease) {
+						await releaseSpeakerLease(
+							this.runtime,
+							speakerLease,
+							"designed-turn-abort",
+						);
+					}
+					this.runtime.logger.info(
+						{
+							src: "plugin:discord",
+							agentId: this.runtime.agentId,
+							messageId: message.id,
+							memoryId: messageId,
+							roomId,
+							reason: designedAbortReason,
+						},
+						"Suppressing Discord failure reply for a designed turn abort",
+					);
+					if (!inboundMemoryCommitted) {
+						inboundMemoryCommitted =
+							await this.releaseMessageProcessingIfInboundNotPersisted(
+								message.id,
+								inboundMemoryId,
+							);
+					}
+					// A designed abort is terminal only once the inbound message is
+					// durable. If generation was cancelled before ingress persisted,
+					// leave the durable turn DISPATCHED and release the local admission
+					// slot so a gateway redelivery / crash sweep can retry without data
+					// loss. Marking REPLIED first made that retry impossible.
+					if (inboundMemoryCommitted) {
+						turnRecord = await this.closeTurnAsIngestOnly(turnRecord);
+					}
+					return;
+				}
 				this.runtime.logger.error(
 					{
 						src: "plugin:discord",

@@ -18,7 +18,10 @@ import { organizations } from "../../db/schemas/organizations";
 import { users } from "../../db/schemas/users";
 import { PROVISIONING_JOB_TEST_TABLES } from "./__tests__/tier-upgrade-pglite-schema";
 import { JOB_TYPES, type ProvisioningJobType } from "./provisioning-job-types";
-import { ProvisioningJobService } from "./provisioning-jobs";
+import {
+  CONTAINER_BACKED_TARGET_REJECTION_REASON,
+  ProvisioningJobService,
+} from "./provisioning-jobs";
 
 const AMBIENT_DATABASE_URL = process.env.DATABASE_URL ?? "";
 const CAN_USE_ISOLATED_PGLITE =
@@ -188,6 +191,7 @@ beforeAll(async () => {
       await dbWrite.execute(sql.raw(ddl));
     }
   } catch {
+    // error-policy:J1 The harness boundary records setup failure for the mandatory readiness assertion.
     pgliteReady = false;
   }
 }, PGLITE_TIMEOUT);
@@ -221,7 +225,14 @@ describe("container-backed enqueue admission", () => {
       .where(eq(agentSandboxes.id, dedicated.agentId));
     await expect(
       service.enqueueAgentProvisionOnce({ ...dedicated, agentName: "Dedicated Agent" }),
-    ).rejects.toMatchObject({ status: 409, code: "session_not_ready" });
+    ).rejects.toMatchObject({
+      status: 409,
+      code: "session_not_ready",
+      details: {
+        reason: CONTAINER_BACKED_TARGET_REJECTION_REASON,
+        jobType: JOB_TYPES.AGENT_PROVISION,
+      },
+    });
     const active = await dbWrite
       .select()
       .from(jobs)
@@ -237,7 +248,31 @@ describe("container-backed enqueue admission", () => {
           agentName: "Shared Agent",
         }),
       ),
-    ).rejects.toMatchObject({ status: 409, code: "session_not_ready" });
+    ).rejects.toMatchObject({
+      status: 409,
+      code: "session_not_ready",
+      details: {
+        reason: CONTAINER_BACKED_TARGET_REJECTION_REASON,
+        jobType: JOB_TYPES.AGENT_PROVISION,
+      },
+    });
+    const sharedJobs = await dbWrite.select().from(jobs).where(eq(jobs.agent_id, shared.agentId));
+    expect(sharedJobs).toHaveLength(0);
+  });
+
+  test("tags a Shared restart rejection before inserting the job", async () => {
+    const service = new ProvisioningJobService();
+    const shared = await seedSandbox("shared");
+
+    await expect(service.enqueueAgentRestartOnce(shared)).rejects.toMatchObject({
+      status: 409,
+      code: "session_not_ready",
+      details: {
+        reason: CONTAINER_BACKED_TARGET_REJECTION_REASON,
+        jobType: JOB_TYPES.AGENT_RESTART,
+      },
+    });
+
     const sharedJobs = await dbWrite.select().from(jobs).where(eq(jobs.agent_id, shared.agentId));
     expect(sharedJobs).toHaveLength(0);
   });

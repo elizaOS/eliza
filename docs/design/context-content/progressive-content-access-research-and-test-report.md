@@ -1,8 +1,8 @@
 # Progressive content access research and test report
 
-Date: 2026-08-21
+Date: 2026-08-22
 
-Implementation branch rebased onto: `ce20804092dc9503a772d7d9ab6d135939b5bb0e`
+Third-pass research snapshot: `b82b9f4ca37e19036eb2f0282364b9f2a3382d14`; exact-head implementation evidence lives on each PR because `develop` is moving continuously
 
 Canonical tracking issue: [#24286](https://github.com/elizaOS/eliza/issues/24286)
 
@@ -23,7 +23,7 @@ The accompanying feature branch implements the coherent, keyless v1 slice rather
 - Production paging for coding FILE, stored DOCUMENT text, stored ATTACHMENT text, stored MESSAGE memories, Gmail bodies, and persisted terminal-output attachments. Continuations reauthorize and/or re-resolve the native source.
 - Native positioned FILE reads with bounded lookahead and revision-keyed sparse line checkpoints. A 10 MiB page does not call whole-file `readFile`.
 - A database-adapter document range capability that bounds runtime transfer and rechecks document authorization. Because the current document parent is one JSON text value, the SQL implementation still scans/splits that value server-side to count units and fingerprint revisions; genuinely source-independent document I/O requires indexed fragment/line storage and is not claimed here.
-- A deterministic streamed corpus generator covering exact legacy thresholds, LF/CRLF/no-final-newline, single-line/minified content, invalid UTF-8, planted canaries, scopes, hashes, and micro/PR/nightly/release profiles.
+- A deterministic streamed corpus generator covering exact legacy thresholds, LF/CRLF/no-final-newline, single-line/minified content, invalid UTF-8, planted canaries, scopes, hashes, and micro/PR/nightly/release profiles. The corpus-v2 follow-up adds minimal real Markdown/HTML/CSV/JSONL/PDF/DOCX/MIME goldens, image-only OCR-required and unsupported-binary states, exact normalized-text canary coordinates, and a byte-backed verifier.
 - A bounded isolated-scenario runner and a 13-turn, model-free production-action scenario. It proves exact late-page access, revisions, mutation rejection, cross-room denial, Gmail reauthorization, and absence of duplicate page carriers; it does not prove autonomous model planning.
 - Canonical `reports/content-context/` evidence ingestion and a fresh-child-process FILE benchmark with revision, corpus, latency, throughput, I/O, CPU/event-loop, memory, descriptor, traversal-hash, and prompt-amplification fields.
 
@@ -31,18 +31,57 @@ Focused proof after the final rebase included 153 core contract/action tests wit
 
 The first 1,000-operation 10 MiB FILE benchmark was a calibration run, not a CI budget: p50 0.987 ms, p95 4.726 ms, p99 21.231 ms, 1,485 operations/second, and 97.34 MiB/second. A 64 KiB request read 65,539 bytes including bounded UTF-8 lookahead for both 1 MiB and 10 MiB sources, and full traversal matched the source SHA. This establishes serialization/I/O invariance, not yet RSS invariance; final reports preserve the raw memory samples and are rerun on the exact PR head.
 
-Deliberate remaining boundaries are explicit: legacy prompt builders using `formatActionResultsForPrompt` are not yet routed through the final-request budget, and there is no private shell-output spill lifecycle, generic content URI/action, restored conversation compaction or manifest, context-inspector UI, live-provider trajectory, or soak/Postgres matrix in the keyless PR lane. Stored memory and attachment reads still materialize their existing database row, Gmail fetches the provider body before slicing, and richer PDF/DOCX/OCR/MIME corpus producers are follow-up adapter lanes. These are not described as complete central-projection or bounded-source-I/O proof.
+Deliberate remaining boundaries are explicit: legacy prompt builders using `formatActionResultsForPrompt` are not yet routed through the final-request budget, and there is no private shell-output spill lifecycle, generic content URI/action, context-inspector UI, live-provider trajectory, or soak/Postgres matrix in the keyless PR lane. Stored memory and attachment reads still materialize their existing database row, Gmail fetches the provider body before slicing, and the small real-format goldens do not yet cover rotated/footnoted/table PDFs, encrypted or malformed files, production OCR output, long MIME alternatives, inline images, attachment cardinalities, oversized trees, or threads. These are not described as complete central-projection, production-extractor, or bounded-source-I/O proof.
+
+### Second-pass completion audit
+
+The post-merge audit found four priority corrections for M4. First, the native trajectory projector was not yet the only model-facing ActionResult serializer: ActionState, post-turn evaluation, reflection, message state, and grounded action replies retained full-body bypasses. Second, no runtime-derived content manifest existed for an archive or future compaction seam. Third, multi-attachment results retained only the first `ReadView`, and oversized pinned documents could disappear without an item-specific identity/reference. Fourth, the FILE benchmark and deterministic action scenario were useful but materially narrower than the goal's performance and autonomous-planning acceptance.
+
+The M4 follow-up therefore stays deliberately small:
+
+- Share one feature-gated legacy/native ActionResult projection implementation, with `promptData` replacing `data` and typed failure for nonrecoverable overflow.
+- Add a versioned, strict, content-free reference/range manifest derived identically from active and archived trajectory steps; do not restore automatic compaction or add storage.
+- Retain every attachment `ReadView` and give every oversized pinned document a fair excerpt plus its document identity/reference.
+- Keep private tool-output spill in M5, after authorization, retention, atomic publication, redaction, and reference-aware GC over the existing content-addressed byte layer are approved.
+
+This does not close the full goal. The completion audit still requires truly bounded document/message/attachment storage reads, measured Gmail acquisition caching, fresh-process database readback of the room-scoped manifest, deterministic autonomous planning, credentialed live-model trials, broad production-extractor format matrices, context-inspector E2E, real Postgres, the full architectural mutant catalog, and soak/performance evidence.
+
+### Third-pass testing and architecture audit
+
+The 2026-08-22 pass re-read the production adapters, database implementations, scenario/evidence infrastructure, performance benchmark, current PR heads, and the Pi, Claude Code, Hermes, and OpenViking findings. Two bounded lanes are now independently reviewed but deliberately incomplete:
+
+- Closed [#24498](https://github.com/elizaOS/eliza/pull/24498) proved same-runtime sanitization and session-summary metadata plumbing for document and stored-memory references, but maintainer review correctly rejected its lossy canonical rollover. Its 31 focused core tests, 20 scenario fixture/coverage tests, core typecheck, FILE benchmark test, static checks, and independent patch-equivalence review did not prove fresh-process continuity or overflow recovery; those missing oracles are now P0.
+- [#24496](https://github.com/elizaOS/eliza/pull/24496) publishes corpus schema v2 with private manifest-last atomicity, prior-verified-manifest ownership, code-derived format oracles, full deterministic streamed hashes, and mutation-sensitive tests. Minimal Markdown/HTML/CSV/JSONL/PDF/DOCX/MIME/OCR-required/failed fixtures passed independent tools. It is fixture-publication proof, not production-extractor or native-adapter proof.
+
+The dominant remaining gap is now measurable: a bounded response is not a bounded system. Stored MESSAGE and ATTACHMENT readers still materialize/hash their complete row or extracted text. DOCUMENT bounds JS transfer but can scan, split, count, and fingerprint the complete parent JSON value for each page. Gmail refetches/decodes the body and relies on process-local continuation state. These are P0 acceptance failures for large-source behavior, even when the returned `ReadSlice` is correct.
+
+Maintainer review closed #24498 on a separate semantic-loss defect: its persisted canonical union applies fixed reference/range/count/byte ceilings and keeps only omission high-water counters for evicted entries. That is destructive truncation of the traversal index. The required repair is lossless ordered shards in the existing authorized memory/database domain, with a restart-safe head/next reference and integrity metadata. Storage records and model projection stay bounded; the logical canonical ledger does not drop entries. Acceptance recovers every reference/range after repeated count and serialization rollover and after a fresh-process restart.
+
+| Proof boundary | Current proof | Required next proof |
+| --- | --- | --- |
+| Corpus publication | Deterministic v2 files and strict trusted oracles | Realize the same objects through native memory/document/media/Gmail/tool services and emit an object-to-reference/revision/scope ledger |
+| Handler behavior | Direct production-action scenario and focused adapter tests | One shared production adapter conformance harness with I/O, auth, revision, reassembly, cleanup, and mutation counters |
+| Planner behavior | Strict fixture planning scenario under review; direct-action scenario is model-free | Prompt omits offsets/canaries; assert discovered continuations, fairness, no-progress handling, exact final provenance, and fixture consumption |
+| Durability | Sanitized summary manifest persistence in one runtime; current capped union is lossy | Lossless addressable shard rollover; writer child terminates; reader child reopens PGLite, traverses every entry, reauthorizes, and reaches late canaries; repeat vectors on Postgres |
+| Source work | FILE performs positioned bounded reads | Indexed document/message/attachment/email segments; constant page-query count with bounded rows; no repeated parent scan/hash/refetch or source-sized allocation |
+| Mutation/faults | Corpus publisher kills four re-signed/security mutations | Versioned runtime mutant registry with 100% required-ID execution/kill plus resolve/auth/stat/read/persist/commit/cleanup fault matrix |
+| Product behavior | No context inspector | Authenticated redacted inspector API/UI and real-local Playwright desktop/mobile proof with raw content absent from DOM/network/console |
+| Operational acceptance | FILE calibration report | All-source pinned-host baseline, concurrency 1/8/32/64, real Postgres, provider-qualified repetitions, six-hour/100K-op soak, canonical evidence bundle |
+
+The simplification is one corpus with two layers (trusted source/oracle manifest and native-realization ledger), one parametrized adapter conformance suite, one checked-in threshold policy, one content-context result schema, and one run coordinator. Existing scenario isolation, Gmail fault controls, real-local Playwright, Postgres runner, and evidence bundle tooling remain the execution engines. Separate generators, report roots, adapter-local truncators, or a universal filesystem would add complexity without strengthening proof.
 
 ## Method and limits
 
 - Audited maintained source and tests in core, agent, app-core, coding tools, documents, Google Workspace/inbox, scenario runner, evidence, and root test orchestration.
-- Reviewed current open PR findings from the preceding pass, including PRs #24020 and #24017.
+- Re-queried current PR/issue state, including the closed surrogate-only truncation PR wave, corpus PR #24496, rejected/closed continuity PRs #24387/#24498, and open issue #24286.
 - Compared pinned source/docs from OpenViking, Pi, Hermes Agent, and official Claude Code documentation.
 - Distinguished prompt/display caps, recoverable projections, transport/security bounds, and destructive truncation.
 - Made no claims about Claude Code internals that its official documentation does not expose.
-- The shared checkout was already dirty. This documentation pass added only the three new files in `docs/design/context-content/`.
+- Work was performed in isolated worktrees; no claim is based on the dirty shared checkout.
 
-## Current elizaOS findings
+## Pre-implementation baseline findings
+
+This table records the truncation inventory that motivated the initial implementation. It is historical, not a claim about current `develop`: bounded coding FILE I/O, the shared slice contract, and opt-in projection have since landed. The third-pass audit above is the current gap authority.
 
 | Surface | Current behavior | Assessment | Required change |
 | --- | --- | --- | --- |
@@ -138,6 +177,8 @@ Unit tests alone cannot prove agent behavior. Live-model tests alone cannot prov
 
 Extend the existing `@elizaos/corpus-tools` ownership boundary with a deterministic progressive-content generator and checked-in manifest schema, not a repository full of giant blobs. Generate into a temporary run directory and record SHA-256 plus planted-answer coordinates. Large writers and loaders must stream; the current corpus loader's whole-shard materialization cannot be the scale path being benchmarked.
 
+The corpus has two explicit layers. The source/oracle manifest defines deterministic bytes, relations, canaries, revisions, and expected scopes. A native-realization layer consumes that manifest, seeds production services/APIs, and emits a ledger mapping every corpus object ID to its native reference, revision, authorization scope, extraction status, and cleanup identity. Filesystem family labels alone do not prove a memory row, document service, media attachment, Gmail adapter, or private artifact path.
+
 Content families:
 
 - Text/code: 0 B, 1 B, exactly-at-limit, limit ±1, 256 KiB ±1, 1 MiB, 10 MiB, CRLF/LF, no final newline, sparse and dense matches.
@@ -168,9 +209,9 @@ Generation tiers:
 | `release` | 50K objects, 1M memories, 100K emails, 10 GiB logical content | Pinned-host release |
 | `soak` | Six hours and at least 100K mixed operations | Dedicated runner |
 
-The manifest records schema version, generator revision, root seed, fixed anchor time, resolved profile, and manifest SHA-256. Family seeds/IDs derive independently from the schema, root seed, family, and index; benchmark mode never uses `randomUUID`. MIME boundaries, archive timestamps, PDF IDs, attachment IDs, revisions, and mutations are deterministic. Sparse files are valid only for filesystem I/O tests; parser, extraction, search, semantic, and reassembly evidence uses fully generated streamed bytes.
+The v2 manifest records schema version, generator revision, root seed, fixed anchor time, resolved profile, publication contract, per-object coordinate system/revision/scope, format extraction normalization, logical bytes including format fixtures, and manifest SHA-256. Family seeds/IDs derive independently from the schema, root seed, family, and index; benchmark mode never uses `randomUUID`. MIME boundaries, archive timestamps, PDF structure, attachment payloads, revisions, and mutations are deterministic. Publication uses owner-only temporary files, no-follow/exclusive creation, atomic rename, prior-manifest-scoped stale-file sweeping, unsafe-mode rejection, and manifest-last verification. Sparse files are valid only for filesystem I/O tests; parser, extraction, search, semantic, and reassembly evidence uses fully generated streamed bytes.
 
-Current positive format expectations are text/code, JSON/JSONL, Markdown, CSV, PDF text extraction, and DOCX. XLSX/sheet ranges remain typed unsupported until implemented. OCR-needed, encrypted, malformed, pending, and failed extraction are explicit states rather than empty success.
+The mechanically verified minimal format set is Markdown, HTML without script/style text, quoted CSV, canonicalized JSONL, a three-page text PDF, a heading-and-table DOCX, nested multipart MIME with a skipped attachment, an image-only PDF classified `ocr-required`, and an unsupported binary classified `failed`. These are corpus-extractor goldens, not proof of each production adapter. XLSX/sheet ranges, encrypted/malformed/pending files, production OCR output, and the broader PDF/DOCX/MIME matrix above remain required.
 
 Mandatory mechanical oracles include full traversal SHA reassembly; no gaps or duplicates; exact search postings/ranges and decoys; before/after revision hashes; absence of unauthorized bytes from results, prompts, trajectories, logs, caches, and inspector output; absence of full-body duplication; fair minimum identity/retrievability for every item; and cleanup back to declared DB/disk/cache/FD/stream baselines. Deterministic model fixtures may choose actions but may not contain planted answers or canary text.
 
@@ -227,6 +268,17 @@ Concurrency cases include many readers at one revision; writer/continuation race
 - Record distributions, not averages alone.
 - Compare against the previous accepted baseline; do not hard-code speculative universal milliseconds in the initial PR.
 - Establish budgets after at least five stable repetitions on a pinned CI host. Report p99 only with at least 1,000 measured local operations; otherwise label it insufficient-sample.
+
+The second pass identified two measurement corrections. The measured child currently retains its generated source buffer, so it cannot prove source-size-independent RSS; scale runs must generate/write outside the measured reader process or release the generator buffer before the baseline sample. Also, a 1,000-operation run leaves 999 warm samples after separating the cold sample, while the current percentile helper reports null below 1,000. Percentiles must be defined for every nonempty sample set, and the report must record cold sample count separately from warm p50/p95/p99.
+
+| Lane | Required proof |
+| --- | --- |
+| PR deterministic | Contract/property/conformance tests, tiny real-format goldens, PGLite, strict fixture planner, mutation catalog, source-I/O counters |
+| Post-merge | Fresh-process restart/readback, real local API/UI, generated medium corpus, concurrency 1/8/32/64, five pinned benchmark repetitions |
+| Nightly/release | Real Postgres, full format/extraction shards, provider-qualified live models, fault/concurrency matrix, storage/cleanup evidence |
+| Scheduled soak | At least six hours and at least 100,000 mixed operations, positive leaking control, RSS/heap/external/FD/DB/WAL series, abort/revoke/mutate/restart/expire cycles |
+
+Every lane records generator schema/revision/seed/manifest SHA, exact commit, runtime versions, machine/OS/CPU/RAM, database/provider, sample count, concurrency, warm/cold state, latency distribution, throughput, memory series, source bytes, serialized bytes, cleanup inventory, and failures. A selected live lane treats missing credentials as failure, while keyless PR lanes remain deterministic and provider-free.
 - PR gates catch large regressions; nightly lanes use tighter statistical comparisons and larger corpora.
 
 Initial invariant budgets, which are architecture-independent:
@@ -239,6 +291,14 @@ Initial invariant budgets, which are architecture-independent:
 - Externalization must not add more than one durable copy of identical content.
 - Cleanup returns handles/files/DB rows to the expected retention baseline.
 
+Initial measurement gates for ratcheting on pinned hosts:
+
+- Across 1, 10, and 100 MiB sources, peak RSS spread for the same page is at most `max(16 MiB, 4 × page size)` and external/array-buffer spread is at most `max(2 MiB, 4 × page size)`; generate source bytes outside the measured reader.
+- Pure database reads perform no application DML, use a constant query count per page, return and examine bounded rows, and show an indexed seek plan. Measure and attribute WAL deltas rather than assuming PostgreSQL emits none. Warm late-page p95 for 100 MiB is no more than twice the 10 MiB result before tighter baselines exist.
+- After five pinned-host repetitions, p95 latency—and p99 only with at least 1,000 measured warm samples—is at most `max(1.25 × accepted baseline, baseline + measured noise band)`, throughput is at least 80% of baseline, and peak memory is at most baseline plus `max(10%, 16 MiB)`.
+- Soak executes at least six hours and at least 100,000 mixed operations. After warm-up, RSS/heap/external p95 drift is at most `max(5%, 16 MiB)`; FD/temp/row deltas are zero. A deliberately leaking positive control must fail the detector.
+- Percentiles are calculated for every nonempty sample set, but p99 is labeled authoritative only with at least 1,000 measured warm samples.
+
 ## Existing harness integration
 
 - Use `packages/scenario-runner` as the canonical real-runtime behavior harness.
@@ -248,6 +308,7 @@ Initial invariant budgets, which are architecture-independent:
 - Run isolation-sensitive scenarios through `packages/scripts/run-scenarios-isolated.mjs`; the ordinary CLI intentionally shares one runtime.
 - Add scenario reports, trajectories, benchmark JSON, heap/RSS summaries, and UI recordings through the existing evidence bundle architecture rather than a separate evidence system.
 - Add one named `reports/content-context/` producer/ingestor with an ingestor regression test; the evidence package deliberately does not scan arbitrary roots.
+- Add `packages/scripts/run-content-context.mjs` as one named producer coordinator invoked by `test:matrix:review`. It validates its declared corpus/realization/test/benchmark/UI sub-artifacts under the assigned run root and writes a strict completeness manifest. The existing matrix command remains the sole owner of pre-run inventory, producer execution, exact bundle creation, verification, and review; sub-producers do not create competing report roots or invoke evidence ingestion themselves.
 - UI changes use the app's existing Playwright/audit and recording paths.
 - Use PGLite in PR lanes and real Postgres for nightly/release scale evidence.
 
@@ -257,14 +318,14 @@ The existing real-LLM attachment smoke calls a provider with content already emb
 
 ## Rollout recommendation
 
-1. Land the implemented internal `ReadSlice` contract, conformance tests, central budget accounting, and telemetry behind the opt-in feature flag.
-2. Land the implemented bounded coding FILE range I/O with expected revision and invariant benchmark.
-3. Land authorized document/runtime-range transfer and per-attachment paging, while tracking indexed document source I/O separately.
-4. Land native connector-authorized Gmail body paging and retain compact triage previews.
-5. Tune the implemented planner/evaluator aggregate projection from exact-head trajectories before enabling it by default.
-6. Add mechanical compaction locator/range manifests.
-7. Design private tool-output spill only after authorization, retention, reference-aware GC, and atomicity are accepted.
-8. Convert remaining destructive truncation sites and tune budgets from measured trajectories.
+1. Land the implemented internal `ReadSlice` contract, conformance tests, central budget accounting, telemetry, and bounded coding FILE I/O behind the opt-in feature flag.
+2. Land corpus v2, then add its native-realization ledger and shared adapter conformance/mutant harness.
+3. Complete fresh-process summary-manifest readback and run identical persistence semantics on PGLite and scheduled Postgres.
+4. Replace repeated whole-parent work with indexed document/message/attachment segments and durable owner-bound attachment locators.
+5. Replace process-local Gmail continuations with stable connector/body revisions and bounded private segments while retaining compact triage previews.
+6. Move token projection to final provider request preparation and tune fair allocations from exact-head trajectories.
+7. Design private tool-output spill only after authorization, retention, reference-aware GC, atomicity, and cleanup fault tests are accepted.
+8. Add the redacted inspector, native autonomous/live scenarios, all-source performance/soak, one evidence coordinator, and explicit CI ownership before enabling projection by default.
 
 Do not raise all constants as an interim fix. It increases memory, token cost, cache churn, and prompt-injection surface while leaving the tail inaccessible at the next threshold.
 

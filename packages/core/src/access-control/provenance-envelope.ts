@@ -385,8 +385,10 @@ export function deriveCanonicalProvenance(
 }
 
 /**
- * Stable idempotency key for a canonical item:
- * `source:account:room:platformRecordId`.
+ * Stable idempotency key for a canonical item. Separator-free identifiers keep
+ * the legacy `source:account:room:platformRecordId` form; delimiter-bearing
+ * account or record identifiers use a versioned JSON tuple so distinct tuples
+ * cannot serialize to the same key.
  *
  * Redelivery of one webhook collapses to one key. The same text arriving under
  * two connector accounts yields two keys, so account identity survives
@@ -395,6 +397,21 @@ export function deriveCanonicalProvenance(
  * scoped to a chat, so the same id in two chats is two records, not one.
  */
 export function canonicalDedupeKey(provenance: CanonicalProvenance): string {
+	if (
+		provenance.accountId.includes(":") ||
+		provenance.platformMessageId.includes(":")
+	) {
+		// The legacy key is retained byte-for-byte for its unambiguous input
+		// domain. Delimiter-bearing identifiers use a versioned JSON tuple: JSON
+		// string encoding is injective for strings, and `|` cannot occur in a
+		// validated canonical source, so a v2 key cannot collide with a legacy key.
+		return `v2|${JSON.stringify([
+			provenance.source,
+			provenance.accountId,
+			provenance.roomId,
+			provenance.platformMessageId,
+		])}`;
+	}
 	return `${provenance.source}:${provenance.accountId}:${provenance.roomId}:${provenance.platformMessageId}`;
 }
 

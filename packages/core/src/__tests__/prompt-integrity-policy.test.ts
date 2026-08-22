@@ -40,6 +40,7 @@ const removedPromptCapCloneTests = [
 ];
 
 const guardedSources: Record<string, readonly RegExp[]> = {
+	"packages/core/src/entities.ts": [/getMemories\([\s\S]{0,240}limit:\s*20/],
 	"packages/core/src/utils/json-llm.ts": [/text\.slice\(0,\s*100_000\)/],
 	"packages/core/src/utils/message-text.ts": [/MAX_MESSAGE_TEXT_LENGTH/],
 	"packages/core/src/runtime/evaluator.ts": [
@@ -86,6 +87,10 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 	"packages/core/src/features/advanced-capabilities/actions/message.ts": [
 		/sorted\s*\.slice\(0,\s*8\)/,
 		/room\.id\.slice\(0,\s*8\)/,
+	],
+	"packages/core/src/features/advanced-capabilities/actions/post.ts": [
+		/truncateWellFormed/,
+		/text\s*=\s*text\.slice\(/,
 	],
 	"packages/core/src/runtime/trajectory-recorder.ts": [
 		/resolveTrajectoryFieldCapBytes/,

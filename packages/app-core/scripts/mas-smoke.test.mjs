@@ -28,6 +28,7 @@ import { resolveElizaWorkspaceRootFromImportMeta } from "./lib/repo-root.mjs";
 import {
   findMachOFiles,
   isMachO,
+  mayOmitChildEntitlements,
   parseEntitlementsPlist,
   walkBundleFiles,
 } from "./mas-smoke.mjs";
@@ -152,6 +153,14 @@ test("parseEntitlementsPlist decodes XML entities in keys and string values", ()
   const ents = parseEntitlementsPlist(xml);
   assert.equal(ents.has("com.apple.foo&bar"), true);
   assert.equal(ents.get("com.apple.foo&bar"), 'a "quoted" & thing');
+});
+
+test("only non-executable dynamic libraries may omit child entitlements", () => {
+  assert.equal(mayOmitChildEntitlements("libNativeWrapper.dylib"), true);
+  assert.equal(mayOmitChildEntitlements("keyring.darwin-arm64.node"), true);
+  assert.equal(mayOmitChildEntitlements("libhelper.so"), true);
+  assert.equal(mayOmitChildEntitlements("Contents/MacOS/bspatch"), false);
+  assert.equal(mayOmitChildEntitlements("Contents/MacOS/zig-zstd"), false);
 });
 
 // Bytes for a 64-bit little-endian Mach-O magic (0xfeedfacf in big-endian wire order).

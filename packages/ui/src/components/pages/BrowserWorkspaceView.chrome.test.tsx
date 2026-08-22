@@ -21,6 +21,14 @@ const walletStateHarness = vi.hoisted(() => ({
   plugins: [] as Array<{ name: string }>,
 }));
 
+const apiBaseHarness = vi.hoisted(() => ({
+  base: "https://remote-agent.example/api-root",
+}));
+
+vi.mock("../../utils/asset-url", () => ({
+  resolveApiUrl: (path: string) => `${apiBaseHarness.base}${path}`,
+}));
+
 vi.mock("../../state", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../state")>();
   const state = {
@@ -86,7 +94,10 @@ vi.mock("../../api", async (importOriginal) => {
 
 import { client } from "../../api";
 import { shellHistory } from "../../surface-realm-channel";
-import { BrowserWorkspaceView } from "./BrowserWorkspaceView";
+import {
+  BrowserWorkspaceView,
+  normalizeBrowserWorkspaceInputUrl,
+} from "./BrowserWorkspaceView";
 import {
   BROWSER_WALLET_READY_TYPE,
   BROWSER_WALLET_REQUEST_TYPE,
@@ -167,6 +178,36 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
+});
+
+describe("Browser workspace URL normalization", () => {
+  const translate = (key: string, vars?: Record<string, unknown>): string =>
+    String(vars?.defaultValue ?? key);
+
+  it("resolves local app paths against the active remote agent API base", () => {
+    expect(
+      normalizeBrowserWorkspaceInputUrl("/api/apps/local/demo/", translate),
+    ).toBe("https://remote-agent.example/api-root/api/apps/local/demo/");
+  });
+
+  it("preserves external http(s) and adds https to a schemeless host", () => {
+    expect(
+      normalizeBrowserWorkspaceInputUrl("https://example.com/a", translate),
+    ).toBe("https://example.com/a");
+    expect(normalizeBrowserWorkspaceInputUrl("example.com/a", translate)).toBe(
+      "https://example.com/a",
+    );
+  });
+
+  it.each([
+    "javascript:alert(1)",
+    "data:text/html,no",
+    "http://[",
+    "//evil.example/path",
+    "/\\evil.example/path",
+  ])("rejects an unsafe or malformed target: %s", (url) => {
+    expect(() => normalizeBrowserWorkspaceInputUrl(url, translate)).toThrow();
+  });
 });
 
 describe("BrowserWorkspaceView fullscreen chrome (Notes/Calendar parity)", () => {

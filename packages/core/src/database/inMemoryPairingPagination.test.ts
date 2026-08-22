@@ -12,7 +12,7 @@ function id(index: number): UUID {
 function request(index: number, createdAt: number): PairingRequest {
 	return {
 		id: id(index),
-		channel: "signal",
+		channel: "telegram",
 		senderId: `requester-${index}`,
 		code: `CODE${index}`,
 		createdAt: new Date(createdAt),
@@ -24,7 +24,7 @@ function request(index: number, createdAt: number): PairingRequest {
 function entry(index: number, createdAt: number): PairingAllowlistEntry {
 	return {
 		id: id(index),
-		channel: "signal",
+		channel: "telegram",
 		senderId: `allowed-${index}`,
 		createdAt: new Date(createdAt),
 		agentId: AGENT_ID,
@@ -42,7 +42,7 @@ describe("InMemoryDatabaseAdapter pairing pagination", () => {
 		]);
 
 		const [legacy] = await adapter.getPairingRequests([
-			{ channel: "signal", agentId: AGENT_ID },
+			{ channel: "telegram", agentId: AGENT_ID },
 		]);
 		expect(legacy.requests.map((item) => item.id)).toEqual([
 			id(1),
@@ -53,7 +53,7 @@ describe("InMemoryDatabaseAdapter pairing pagination", () => {
 
 		const [firstPage] = await adapter.getPairingRequests([
 			{
-				channel: "signal",
+				channel: "telegram",
 				agentId: AGENT_ID,
 				createdAfter: new Date(1_500),
 				order: "newest",
@@ -71,7 +71,7 @@ describe("InMemoryDatabaseAdapter pairing pagination", () => {
 
 		const [lastPage] = await adapter.getPairingRequests([
 			{
-				channel: "signal",
+				channel: "telegram",
 				agentId: AGENT_ID,
 				createdAfter: new Date(1_500),
 				order: "newest",
@@ -93,7 +93,7 @@ describe("InMemoryDatabaseAdapter pairing pagination", () => {
 		]);
 
 		const [legacy] = await adapter.getPairingAllowlists([
-			{ channel: "signal", agentId: AGENT_ID },
+			{ channel: "telegram", agentId: AGENT_ID },
 		]);
 		expect(legacy.entries.map((item) => item.id)).toEqual([
 			id(4),
@@ -103,7 +103,7 @@ describe("InMemoryDatabaseAdapter pairing pagination", () => {
 
 		const [page] = await adapter.getPairingAllowlists([
 			{
-				channel: "signal",
+				channel: "telegram",
 				agentId: AGENT_ID,
 				order: "newest",
 				limit: 2,
@@ -120,7 +120,7 @@ describe("InMemoryDatabaseAdapter pairing pagination", () => {
 
 		await expect(
 			adapter.getPairingAllowlists([
-				{ channel: "signal", agentId: AGENT_ID, limit: 101 },
+				{ channel: "telegram", agentId: AGENT_ID, limit: 101 },
 			]),
 		).rejects.toBeInstanceOf(RangeError);
 	});

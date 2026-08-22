@@ -56,16 +56,20 @@ export function findViewActionHandoff(
   if (!Array.isArray(actionResults)) return null;
   for (let index = actionResults.length - 1; index >= 0; index--) {
     const result = actionResults[index];
-    if (
-      readOwnValue(result, "success") !== true ||
-      readString(readOwnValue(result, "actionName"))?.toUpperCase() !== "VIEWS"
-    ) {
+    if (readOwnValue(result, "success") !== true) {
       continue;
     }
+    const actionName = readString(
+      readOwnValue(result, "actionName"),
+    )?.toUpperCase();
     const values = readOwnValue(result, "values");
     const mode = readString(readOwnValue(values, "mode"))?.toLowerCase();
     const viewId = readString(readOwnValue(values, "viewId"));
-    if ((mode === "show" || mode === "open") && viewId) {
+    const isViewsHandoff =
+      actionName === "VIEWS" && (mode === "show" || mode === "open");
+    const isAppBrowserHandoff =
+      actionName === "APP" && mode === "launch" && viewId === "browser";
+    if ((isViewsHandoff || isAppBrowserHandoff) && viewId) {
       const viewPath = readString(readOwnValue(values, "viewPath"));
       const subview = readString(readOwnValue(values, "subview"));
       const completedActionHandoffId = normalizeCompletedActionHandoffId(

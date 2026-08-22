@@ -107,6 +107,7 @@ function createResponseHandlerFieldRegistry(): ResponseHandlerFieldRegistry {
 function makeRuntime(opts: {
 	actions: Action[];
 	responses: CannedResponse[];
+	owner?: boolean;
 	contextRegistry?: ContextRegistry;
 	responseHandlerEvaluators?: import("../runtime/response-handler-evaluators").ResponseHandlerEvaluator[];
 }): IAgentRuntime {
@@ -138,7 +139,9 @@ function makeRuntime(opts: {
 			: {}),
 		emitEvent: vi.fn(async () => undefined),
 		runActionsByMode: vi.fn(async () => undefined),
-		getSetting: vi.fn(() => undefined),
+		getSetting: vi.fn((key: string) =>
+			opts.owner && key === "ELIZA_ADMIN_ENTITY_ID" ? SENDER_ID : undefined,
+		),
 		useModel: vi.fn(
 			async (modelType: unknown, params: unknown, provider: unknown) => {
 				calls.push({ modelType, params, provider });
@@ -266,6 +269,190 @@ function readRecordedTrajectories(agentId: string): unknown[] {
 }
 
 describe("v5 happy path — message handler → planner → executor → evaluator", () => {
+	it("enters the coding planner directly without a HANDLE_RESPONSE model call", async () => {
+		const fileHandler = vi.fn(async () => ({
+			success: true,
+			text: "wrote index.ts",
+			data: { actionName: "FILE" },
+		}));
+		const fileAction = makeMockAction({
+			name: "READ",
+			contexts: ["code", "files"],
+			parameters: [
+				{
+					name: "path",
+					description: "File path",
+					required: true,
+					schema: { type: "string" },
+				},
+			],
+			handler: fileHandler,
+		});
+		const mediaAction = makeMockAction({
+			name: "GENERATE_MEDIA",
+			contexts: ["files"],
+			handler: async () => ({ success: true }),
+		});
+		const runtime = makeRuntime({
+			actions: [fileAction, mediaAction],
+			owner: true,
+			responses: [
+				{
+					expectModelType: ModelType.ACTION_PLANNER,
+					body: {
+						text: "",
+						completed: true,
+						toolCalls: [
+							{
+								id: "write-1",
+								name: "READ",
+								args: { path: "index.ts" },
+							},
+						],
+					},
+				},
+				{
+					expectModelType: ModelType.ACTION_PLANNER,
+					body: {
+						text: "",
+						toolCalls: [
+							{
+								id: "reply-1",
+								name: "REPLY",
+								args: { text: "Created index.ts." },
+							},
+						],
+					},
+				},
+			],
+		});
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage("create index.ts"),
+			state: makeState(),
+			responseId: RESPONSE_ID,
+			codingMode: true,
+		});
+
+		expect(result.kind).toBe("planned_reply");
+		if (result.kind !== "planned_reply") throw new Error("expected reply");
+		expect(result.result.responseContent?.text).toBe("Created index.ts.");
+		expect(fileHandler).toHaveBeenCalledTimes(1);
+		expect(getCalls(runtime).map((call) => call.modelType)).toEqual([
+			ModelType.ACTION_PLANNER,
+			ModelType.ACTION_PLANNER,
+		]);
+		const actionModes = (
+			runtime.runActionsByMode as ReturnType<typeof vi.fn>
+		).mock.calls.map(([mode]) => mode);
+		expect(actionModes).not.toContain("RESPONSE_HANDLER_BEFORE");
+		expect(actionModes).not.toContain("RESPONSE_HANDLER_DURING");
+		expect(actionModes).not.toContain("RESPONSE_HANDLER_AFTER");
+		const plannerTools = getCalls(runtime).flatMap((call) =>
+			((call.params as { tools?: Array<{ name?: string }> }).tools ?? []).map(
+				(tool) => tool.name,
+			),
+		);
+		expect(plannerTools).toContain("READ");
+		expect(plannerTools).not.toContain("GENERATE_MEDIA");
+		const firstPlannerMessages = (
+			getCalls(runtime)[0]?.params as
+				| {
+						messages?: Array<{ content?: string }>;
+				  }
+				| undefined
+		)?.messages;
+		expect(firstPlannerMessages?.[0]?.content).toContain(
+			"Complete the current coding request",
+		);
+		expect(firstPlannerMessages?.[0]?.content).not.toContain(
+			"Owner life-management side effects",
+		);
+	});
+
+	it("does not leak coding mode into the next ordinary turn", async () => {
+		const replyAction = makeMockAction({
+			name: "REPLY",
+			handler: async () => ({ success: true }),
+		});
+		const runtime = makeRuntime({
+			actions: [replyAction],
+			owner: true,
+			responses: [
+				{
+					expectModelType: ModelType.ACTION_PLANNER,
+					body: {
+						text: "",
+						toolCalls: [
+							{ id: "reply-1", name: "REPLY", args: { text: "coded" } },
+						],
+					},
+				},
+				{
+					expectModelType: ModelType.RESPONSE_HANDLER,
+					body: stage1Response({ contexts: ["simple"], replyText: "hello" }),
+				},
+			],
+		});
+
+		await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage("answer from the coding loop"),
+			state: makeState(),
+			responseId: RESPONSE_ID,
+			codingMode: true,
+		});
+		await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage("say hello"),
+			state: makeState(),
+			responseId: RESPONSE_ID,
+		});
+
+		expect(getCalls(runtime).map((call) => call.modelType)).toEqual([
+			ModelType.ACTION_PLANNER,
+			ModelType.RESPONSE_HANDLER,
+		]);
+	});
+
+	it("propagates a coding-loop failure instead of rescuing partial tool work", async () => {
+		const readAction = makeMockAction({
+			name: "READ",
+			contexts: ["code", "files"],
+			handler: async () => ({
+				success: true,
+				text: "partial source",
+				userFacingText: "partial source",
+			}),
+		});
+		const runtime = makeRuntime({
+			actions: [readAction],
+			owner: true,
+			responses: [
+				{
+					expectModelType: ModelType.ACTION_PLANNER,
+					body: {
+						text: "",
+						toolCalls: [
+							{ id: "read-1", name: "READ", args: { path: "index.ts" } },
+						],
+					},
+				},
+			],
+		});
+
+		await expect(
+			runV5MessageRuntimeStage1({
+				runtime,
+				message: makeMessage("fix index.ts"),
+				state: makeState(),
+				responseId: RESPONSE_ID,
+				codingMode: true,
+			}),
+		).rejects.toThrow("queue empty");
+	});
+
 	it("runs the full pipeline and records every stage to disk", async () => {
 		let webSearchCalls = 0;
 		const webSearch = makeMockAction({
@@ -1429,6 +1616,109 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 				(stage) => stage.kind === "tool" && stage.tool?.name === "VIEWS",
 			),
 		).toMatchObject({ tool: { name: "VIEWS", success: true } });
+	});
+
+	it("lets the model write the final reply after a deterministic tool completes", async () => {
+		let appCalls = 0;
+		const modelReply =
+			"Done — I opened [Nubs Color Pebble](/api/apps/local/nubs-color-pebble/) for you.";
+		const app = makeMockAction({
+			name: "APP",
+			suppressEarlyReply: true,
+			parameters: [
+				{
+					name: "action",
+					description: "App operation",
+					required: true,
+					schema: { type: "string" },
+				},
+				{
+					name: "app",
+					description: "Installed app name",
+					required: true,
+					schema: { type: "string" },
+				},
+			],
+			handler: async () => {
+				appCalls++;
+				return {
+					success: true,
+					text: '{"effect":"app_launch","status":"completed"}',
+					transcriptVisibility: "internal",
+					modelReplyRequired: true,
+					promptData: {
+						operation: "launch_app",
+						outcome: "success",
+						displayName: "Nubs Color Pebble",
+						link: {
+							label: "Open Nubs Color Pebble",
+							href: "/api/apps/local/nubs-color-pebble/",
+						},
+					},
+				};
+			},
+		});
+		const evaluator = {
+			name: "test.force_deterministic_app_launch",
+			priority: 10,
+			deterministicActions: ["APP"],
+			shouldRun: () => true,
+			evaluate: () => ({
+				requiresTool: true,
+				clearReply: true,
+				deterministicToolCall: {
+					name: "APP",
+					params: { action: "launch", app: "nubs-color-pebble" },
+				},
+			}),
+		} satisfies import("../runtime/response-handler-evaluators").ResponseHandlerEvaluator;
+		const runtime = makeRuntime({
+			actions: [app],
+			responseHandlerEvaluators: [evaluator],
+			responses: [
+				{
+					expectModelType: ModelType.RESPONSE_HANDLER,
+					body: stage1Response({
+						contexts: ["general"],
+						replyText: "Opening that now.",
+					}),
+				},
+				{
+					expectModelType: ModelType.ACTION_PLANNER,
+					body: { text: modelReply, toolCalls: [] },
+				},
+			],
+		});
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage("open Nubs Color Pebble"),
+			state: makeState(),
+			responseId: RESPONSE_ID,
+		});
+
+		expect(appCalls).toBe(1);
+		expect(getCalls(runtime).map((call) => call.modelType)).toEqual([
+			ModelType.RESPONSE_HANDLER,
+			ModelType.ACTION_PLANNER,
+		]);
+		expect(
+			(getCalls(runtime)[1]?.params as Record<string, unknown>)?.tools,
+		).toBeUndefined();
+		expect(JSON.stringify(getCalls(runtime)[1]?.params)).toContain(
+			"already settled and complete",
+		);
+		expect(result.kind).toBe("planned_reply");
+		if (result.kind === "planned_reply") {
+			expect(result.result.responseContent?.text).toBe(modelReply);
+			expect(result.result.actionResults).toMatchObject([
+				{
+					success: true,
+					text: '{"effect":"app_launch","status":"completed"}',
+					transcriptVisibility: "internal",
+				},
+			]);
+		}
 	});
 
 	it("executes an owner-only deterministic call through the canonical gates without planning", async () => {

@@ -201,7 +201,7 @@ describe("XService account status", () => {
     });
   });
 
-  it("reports accountId-first env capabilities without making a network call", async () => {
+  it("reports default-account env capabilities without making a network call", async () => {
     const service = serviceWithRuntime({
       TWITTER_AUTH_MODE: "env",
       TWITTER_API_KEY: "api-key",
@@ -210,12 +210,32 @@ describe("XService account status", () => {
       TWITTER_ACCESS_TOKEN_SECRET: "access-secret",
     });
 
-    await expect(service.getAccountStatus("primary")).resolves.toMatchObject({
-      accountId: "primary",
+    await expect(service.getAccountStatus("default")).resolves.toMatchObject({
+      accountId: "default",
       configured: true,
       connected: true,
       reason: "connected",
       grantedCapabilities: ["x.read", "x.write", "x.dm.read", "x.dm.write"],
+      authMode: "env",
+    });
+  });
+
+  it("does not leak default env credentials to an unknown explicit account", async () => {
+    const service = serviceWithRuntime({
+      TWITTER_AUTH_MODE: "env",
+      TWITTER_API_KEY: "api-key",
+      TWITTER_API_SECRET_KEY: "api-secret",
+      TWITTER_ACCESS_TOKEN: "access-token",
+      TWITTER_ACCESS_TOKEN_SECRET: "access-secret",
+    });
+
+    await expect(service.getAccountStatus("secondary")).resolves.toMatchObject({
+      accountId: "secondary",
+      configured: false,
+      connected: false,
+      reason: "config_missing",
+      grantedCapabilities: [],
+      grantedScopes: [],
       authMode: "env",
     });
   });
@@ -228,10 +248,8 @@ describe("XService account status", () => {
       TWITTER_SCOPES: "tweet.read users.read dm.read",
     });
 
-    await expect(
-      service.getAccountStatus("oauth-account"),
-    ).resolves.toMatchObject({
-      accountId: "oauth-account",
+    await expect(service.getAccountStatus("default")).resolves.toMatchObject({
+      accountId: "default",
       configured: true,
       connected: true,
       grantedCapabilities: ["x.read", "x.dm.read"],
