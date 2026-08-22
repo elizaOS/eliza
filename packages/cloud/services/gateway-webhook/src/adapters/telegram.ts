@@ -100,6 +100,8 @@ export const telegramAdapter: PlatformAdapter = {
     try {
       botUsername = await resolveTelegramBotUsername(config ?? {});
     } catch (error) {
+      // error-policy:J4 unresolved bot identity is a visible fail-closed
+      // unavailable state: group mentions remain silent instead of guessing.
       logger.warn(
         "Telegram bot identity lookup failed; group mentions will remain silent",
         {
@@ -121,6 +123,8 @@ export const telegramAdapter: PlatformAdapter = {
           event.senderId,
         );
       } catch (error) {
+        // error-policy:J4 provider membership failure is preserved as the
+        // explicit unknown authority state; linking cannot proceed from it.
         logger.warn(
           "Telegram group authority lookup failed; link remains fail-closed",
           { error: error instanceof Error ? error.name : "OtherError" },

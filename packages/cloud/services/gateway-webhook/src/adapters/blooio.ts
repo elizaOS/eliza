@@ -185,7 +185,6 @@ async function sendBlooioMessage(
     if (!config.fromNumber) {
       throw new Error("Missing fromNumber for Blooio legacy group reply");
     }
-    headers["X-From-Number"] = config.fromNumber;
   }
   const url = isV4Chat
     ? `${BLOOIO_V4_CHATS_URL}/${encodeURIComponent(event.chatId)}/messages`
@@ -193,8 +192,17 @@ async function sendBlooioMessage(
       ? `${BLOOIO_V2_API_BASE}/chats/${encodeURIComponent(event.chatId)}/messages`
       : BLOOIO_V4_MESSAGES_URL;
   const from = event.channelId ?? config.fromNumber;
-  const body: { text: string; to?: string; from?: string } = { text };
-  if (!isV4Chat && !isLegacyV2Group) {
+  const body: {
+    text: string;
+    to?: string;
+    from?: string;
+    from_number?: string;
+  } = { text };
+  if (isLegacyV2Group) {
+    // Blooio v2 selects an explicit account sender through the JSON field;
+    // X-From-Number is used by read receipts but is not a send-message header.
+    body.from_number = config.fromNumber;
+  } else if (!isV4Chat) {
     body.to = event.senderId;
     if (from) body.from = from;
   }

@@ -539,10 +539,45 @@ describe("blooio sendReply", () => {
       Authorization: "Bearer bl_live_test",
       "Content-Type": "application/json",
       "Idempotency-Key": "gw-reply-msg_legacy_group_1",
-      "X-From-Number": "+15550001111",
     });
+    expect(init.headers).not.toHaveProperty("X-From-Number");
     expect(JSON.parse(String(init.body))).toEqual({
       text: "hello legacy group",
+      from_number: "+15550001111",
+    });
+  });
+
+  test("routes an unprefixed legacy chat id through recipient send, not a v4 chat resource", async () => {
+    let captured: { url: string; body: Record<string, unknown> } | null = null;
+    globalThis.fetch = (async (
+      url: string | URL | Request,
+      init?: RequestInit,
+    ) => {
+      captured = {
+        url: String(url),
+        body: JSON.parse(String(init?.body)) as Record<string, unknown>,
+      };
+      return Response.json({ message_id: "out_unprefixed_1" });
+    }) as typeof fetch;
+
+    await blooioAdapter.sendReply(
+      makeConfig(),
+      {
+        ...chatEvent,
+        chatId: "legacy-thread-without-prefix",
+        senderId: "+15557654321",
+        channelId: "+15550001111",
+      },
+      "hello legacy contact",
+    );
+
+    expect(captured).toEqual({
+      url: "https://api.blooio.com/v4/messages",
+      body: {
+        text: "hello legacy contact",
+        to: "+15557654321",
+        from: "+15550001111",
+      },
     });
   });
 
