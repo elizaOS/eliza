@@ -10,10 +10,38 @@
  * cycles. The runtime serializes handler work per room, so two rooms sharing an
  * entity or a world overlap freely.
  */
-import { describe, expect, it } from "vitest";
-import { ensureConnection } from "./connection";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { ensureConnection, ensureConnections } from "./connection";
 import { InMemoryDatabaseAdapter } from "./database/inMemoryAdapter";
+import { logger } from "./logger";
+import type { Entity } from "./types";
 import { stringToUuid } from "./utils";
+
+function deferred<T = void>() {
+	let resolve!: (value: T | PromiseLike<T>) => void;
+	let reject!: (reason?: unknown) => void;
+	const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+		resolve = resolvePromise;
+		reject = rejectPromise;
+	});
+	return { promise, reject, resolve };
+}
+
+class HoldingEntityAdapter extends InMemoryDatabaseAdapter {
+	readonly entityWriteStarted = deferred();
+	readonly releaseEntityWrite = deferred();
+
+	override async upsertEntities(entities: Entity[]): Promise<void> {
+		this.entityWriteStarted.resolve();
+		await this.releaseEntityWrite.promise;
+		await super.upsertEntities(entities);
+	}
+}
+
+afterEach(() => {
+	vi.useRealTimers();
+	vi.restoreAllMocks();
+});
 
 describe("ensureConnection under concurrency", () => {
 	it("preserves both connections' per-source entity identity", async () => {
@@ -158,5 +186,178 @@ describe("ensureConnection under concurrency", () => {
 			expect(room.entityIds).toContain(agentId);
 			expect(room.entityIds).toHaveLength(2);
 		}
+	});
+
+	it("warns when a reconciliation holds a record lock past the diagnostic threshold", async () => {
+		vi.useFakeTimers();
+		const warn = vi.spyOn(logger, "warn").mockImplementation(() => undefined);
+		const adapter = new HoldingEntityAdapter();
+		const entityId = stringToUuid("stuck-lock-entity");
+		const reconciliation = ensureConnection(adapter, {
+			agentId: stringToUuid("stuck-lock-agent"),
+			entityId,
+			roomId: stringToUuid("stuck-lock-room"),
+			worldId: stringToUuid("stuck-lock-world"),
+			source: "client_chat",
+		});
+
+		try {
+			await vi.advanceTimersByTimeAsync(0);
+			await adapter.entityWriteStarted.promise;
+			await vi.advanceTimersByTimeAsync(30_000);
+
+			expect(warn).toHaveBeenCalledWith(
+				expect.objectContaining({
+					key: `entity:${entityId}`,
+					thresholdMs: 30_000,
+				}),
+				"Connection reconciliation lock is still held",
+			);
+		} finally {
+			adapter.releaseEntityWrite.resolve();
+			await vi.advanceTimersByTimeAsync(0);
+			await reconciliation;
+		}
+	});
+
+	it("does not serialize identical record ids across independent adapters", async () => {
+		const firstAdapter = new HoldingEntityAdapter();
+		const secondAdapter = new InMemoryDatabaseAdapter();
+		const secondWriteStarted = deferred();
+		const originalSecondUpsert =
+			secondAdapter.upsertEntities.bind(secondAdapter);
+		secondAdapter.upsertEntities = async (entities: Entity[]) => {
+			secondWriteStarted.resolve();
+			await originalSecondUpsert(entities);
+		};
+		const shared = {
+			agentId: stringToUuid("adapter-scope-agent"),
+			entityId: stringToUuid("adapter-scope-entity"),
+			roomId: stringToUuid("adapter-scope-room"),
+			worldId: stringToUuid("adapter-scope-world"),
+			source: "client_chat",
+		};
+
+		const first = ensureConnection(firstAdapter, shared);
+		await firstAdapter.entityWriteStarted.promise;
+		const second = ensureConnection(secondAdapter, shared);
+
+		try {
+			const independentWriteStarted = await Promise.race([
+				secondWriteStarted.promise.then(() => true),
+				new Promise<false>((resolve) => setTimeout(() => resolve(false), 250)),
+			]);
+			expect(independentWriteStarted).toBe(true);
+		} finally {
+			firstAdapter.releaseEntityWrite.resolve();
+			await Promise.all([first, second]);
+		}
+	});
+
+	it("allows a successor reconciliation after the predecessor rejects", async () => {
+		class RejectFirstEntityWriteAdapter extends InMemoryDatabaseAdapter {
+			private entityWrites = 0;
+
+			override async upsertEntities(entities: Entity[]): Promise<void> {
+				this.entityWrites += 1;
+				if (this.entityWrites === 1) {
+					throw new Error("injected first entity write failure");
+				}
+				await super.upsertEntities(entities);
+			}
+		}
+
+		const adapter = new RejectFirstEntityWriteAdapter();
+		const shared = {
+			agentId: stringToUuid("reject-successor-agent"),
+			entityId: stringToUuid("reject-successor-entity"),
+			worldId: stringToUuid("reject-successor-world"),
+			source: "client_chat",
+		};
+		const results = await Promise.allSettled([
+			ensureConnection(adapter, {
+				...shared,
+				roomId: stringToUuid("reject-successor-first-room"),
+			}),
+			ensureConnection(adapter, {
+				...shared,
+				roomId: stringToUuid("reject-successor-second-room"),
+			}),
+		]);
+
+		expect(results[0]).toMatchObject({
+			status: "rejected",
+			reason: new Error("injected first entity write failure"),
+		});
+		expect(results[1]).toMatchObject({ status: "fulfilled" });
+	});
+
+	it("acquires reverse-overlap batches in sorted order without deadlock", async () => {
+		const adapter = new InMemoryDatabaseAdapter();
+		const agentId = stringToUuid("reverse-overlap-agent");
+		const firstEntityId = stringToUuid("reverse-overlap-first-entity");
+		const secondEntityId = stringToUuid("reverse-overlap-second-entity");
+		const firstWorldId = stringToUuid("reverse-overlap-first-world");
+		const secondWorldId = stringToUuid("reverse-overlap-second-world");
+		const makeConnection = (
+			entityId: typeof firstEntityId,
+			suffix: string,
+		) => ({
+			agentId,
+			entityId,
+			roomId: stringToUuid(`reverse-overlap-${suffix}-room`),
+			worldId: suffix.includes("first") ? firstWorldId : secondWorldId,
+			source: "client_chat",
+		});
+
+		const batches = Promise.all([
+			ensureConnections(adapter, {
+				agentId,
+				connections: [
+					makeConnection(firstEntityId, "first-a"),
+					makeConnection(secondEntityId, "second-a"),
+				],
+			}),
+			ensureConnections(adapter, {
+				agentId,
+				connections: [
+					makeConnection(secondEntityId, "second-b"),
+					makeConnection(firstEntityId, "first-b"),
+				],
+			}),
+		]);
+		const completed = await Promise.race([
+			batches.then(() => true),
+			new Promise<false>((resolve) => setTimeout(() => resolve(false), 500)),
+		]);
+
+		expect(completed).toBe(true);
+	});
+
+	it("retires the adapter's reconciliation registry after settlement", async () => {
+		const connectionModule = (await import("./connection")) as Record<
+			string,
+			unknown
+		>;
+		const getRegistrySize =
+			connectionModule.__getConnectionReconciliationRegistrySizeForTests;
+		expect(typeof getRegistrySize).toBe("function");
+		if (typeof getRegistrySize !== "function") return;
+
+		const adapter = new HoldingEntityAdapter();
+		const reconciliation = ensureConnection(adapter, {
+			agentId: stringToUuid("registry-retirement-agent"),
+			entityId: stringToUuid("registry-retirement-entity"),
+			roomId: stringToUuid("registry-retirement-room"),
+			worldId: stringToUuid("registry-retirement-world"),
+			source: "client_chat",
+		});
+
+		await adapter.entityWriteStarted.promise;
+		expect(getRegistrySize(adapter)).toBe(1);
+		adapter.releaseEntityWrite.resolve();
+		await reconciliation;
+		await Promise.resolve();
+		expect(getRegistrySize(adapter)).toBe(0);
 	});
 });

@@ -8,6 +8,7 @@
  * the runtime; batch APIs reduce DB round-trips. Safe to use from both Node and edge entry points.
  */
 
+import { logger } from "./logger";
 import type { Entity, JsonValue, Metadata, Room, UUID, World } from "./types";
 import { ChannelType } from "./types";
 import type { IDatabaseAdapter } from "./types/database";
@@ -71,7 +72,8 @@ function mergeEntitySourceMetadata(
 }
 
 /**
- * Serializes the read-merge-write cycles that reconcile one entity or world.
+ * Serializes the read-merge-write cycles that reconcile one entity or world
+ * within this process and for one adapter instance.
  *
  * The merges above exist because a connection contributes fields without owning
  * the record — but they read with `getEntitiesByIds`/`getWorldsByIds`, merge,
@@ -81,12 +83,66 @@ function mergeEntitySourceMetadata(
  * same pre-write snapshot, and the later write silently discards whatever the
  * earlier one contributed. The runtime serializes handler work per room, so two
  * rooms that share an entity or a world overlap freely.
+ *
+ * This is not durable cross-process serialization: hosts or workers using
+ * separate adapter instances can still race on the same database record. That
+ * requires an adapter-level atomic merge or conditional update.
  */
-const recordReconciliations = new Map<string, Promise<void>>();
+const RECORD_RECONCILIATION_WARN_MS = 30_000;
+const recordReconciliationsByAdapter = new WeakMap<
+	IDatabaseAdapter,
+	Map<string, Promise<void>>
+>();
 
-function withRecordLock<T>(key: string, run: () => Promise<T>): Promise<T> {
+function getRecordReconciliations(
+	adapter: IDatabaseAdapter,
+): Map<string, Promise<void>> {
+	const existing = recordReconciliationsByAdapter.get(adapter);
+	if (existing) return existing;
+	const registry = new Map<string, Promise<void>>();
+	recordReconciliationsByAdapter.set(adapter, registry);
+	return registry;
+}
+
+/** Exposes per-adapter registry size for lifecycle regression tests. */
+export function __getConnectionReconciliationRegistrySizeForTests(
+	adapter: IDatabaseAdapter,
+): number {
+	return recordReconciliationsByAdapter.get(adapter)?.size ?? 0;
+}
+
+function withRecordLock<T>(
+	adapter: IDatabaseAdapter,
+	key: string,
+	run: () => Promise<T>,
+): Promise<T> {
+	const recordReconciliations = getRecordReconciliations(adapter);
 	const predecessor = recordReconciliations.get(key) ?? Promise.resolve();
-	const operation = predecessor.then(() => run());
+	const operation = predecessor.then(async () => {
+		// This timer is diagnostic only. Releasing the lock on a deadline would let
+		// a successor write while the uncancellable adapter write can still finish,
+		// recreating the lost update this registry prevents.
+		const warningTimer = setTimeout(() => {
+			logger.warn(
+				{
+					key,
+					src: "core:connection",
+					thresholdMs: RECORD_RECONCILIATION_WARN_MS,
+				},
+				"Connection reconciliation lock is still held",
+			);
+		}, RECORD_RECONCILIATION_WARN_MS);
+		(
+			warningTimer as unknown as {
+				unref?: () => void;
+			}
+		).unref?.();
+		try {
+			return await run();
+		} finally {
+			clearTimeout(warningTimer);
+		}
+	});
 	const tail = operation.then(
 		() => undefined,
 		() => undefined,
@@ -98,6 +154,9 @@ function withRecordLock<T>(key: string, run: () => Promise<T>): Promise<T> {
 	void tail.then(() => {
 		if (recordReconciliations.get(key) === tail) {
 			recordReconciliations.delete(key);
+			if (recordReconciliations.size === 0) {
+				recordReconciliationsByAdapter.delete(adapter);
+			}
 		}
 	});
 	return operation;
@@ -108,12 +167,16 @@ function withRecordLock<T>(key: string, run: () => Promise<T>): Promise<T> {
  * stable sorted order so two batches with overlapping records can never take
  * them in opposite orders.
  */
-function withRecordLocks<T>(keys: string[], run: () => Promise<T>): Promise<T> {
+function withRecordLocks<T>(
+	adapter: IDatabaseAdapter,
+	keys: string[],
+	run: () => Promise<T>,
+): Promise<T> {
 	const ordered = [...new Set(keys)].sort();
 	const acquire = (index: number): Promise<T> => {
 		const key = ordered[index];
 		if (key === undefined) return run();
-		return withRecordLock(key, () => acquire(index + 1));
+		return withRecordLock(adapter, key, () => acquire(index + 1));
 	};
 	return acquire(0);
 }
@@ -236,6 +299,7 @@ export async function ensureConnections(
 	// reconciliation that reads the same pre-write snapshot would otherwise
 	// overwrite this one's contribution wholesale.
 	await withRecordLocks(
+		adapter,
 		entityIds.map((id) => `entity:${id}`),
 		async () => {
 			const existingEntities =
@@ -270,6 +334,7 @@ export async function ensureConnections(
 
 	const worldIds = [...worldMap.keys()] as UUID[];
 	await withRecordLocks(
+		adapter,
 		worldIds.map((id) => `world:${id}`),
 		async () => {
 			const existingWorlds =
