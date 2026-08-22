@@ -928,6 +928,10 @@ export class DiscordLocalService extends Service {
 			const error = new Error("Discord local RPC connection closed");
 			this.connected = false;
 			this.authenticated = false;
+			// SUBSCRIBE subscriptions are bound to the IPC connection and die
+			// with the socket; the idempotency latch must reset with them or
+			// the reconnect path skips every channel and the service goes deaf.
+			this.subscribedChannelIds.clear();
 			this.connectedIpcPath = null;
 			this.socket = null;
 			this.rejectPendingRequests(error);
