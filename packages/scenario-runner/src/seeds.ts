@@ -278,6 +278,7 @@ type ContactSeed = {
 
 type MemorySeed = {
   type: "memory";
+  roomId?: unknown;
   content?: unknown;
 };
 
@@ -2239,6 +2240,10 @@ async function seedMemory(
   ctx: ScenarioContext,
   seed: MemorySeed,
 ): Promise<string | undefined> {
+  const scopedContext = resolveMemorySeedContext(ctx, seed);
+  if (typeof scopedContext === "string") {
+    return scopedContext;
+  }
   const content = seed.content as MemoryContactSeed | undefined;
   if (!content || typeof content !== "object") {
     return "memory seed requires a content object";
@@ -2250,46 +2255,61 @@ async function seedMemory(
     memoryType === "rolodex-entity" ||
     memoryType === "merged-entity"
   ) {
-    return seedContact(ctx, memoryEntityToContactSeed(content, memoryType));
+    return seedContact(
+      scopedContext,
+      memoryEntityToContactSeed(content, memoryType),
+    );
   }
   if (memoryType === "user-state") {
-    return seedUserStateMemory(ctx, content as UserStateMemorySeed);
+    return seedUserStateMemory(scopedContext, content as UserStateMemorySeed);
   }
   if (memoryType === "focus-window-active") {
     const userStateSeed = focusWindowToUserStateSeed(
-      ctx,
+      scopedContext,
       content as FocusWindowMemorySeed,
     );
     if (typeof userStateSeed === "string") return userStateSeed;
-    return seedUserStateMemory(ctx, userStateSeed);
+    return seedUserStateMemory(scopedContext, userStateSeed);
   }
   if (memoryType === "queued-push") {
-    return seedQueuedPushMemory(ctx, content as QueuedPushMemorySeed);
+    return seedQueuedPushMemory(scopedContext, content as QueuedPushMemorySeed);
   }
   if (memoryType === "device-intent") {
-    return seedDeviceIntentMemory(ctx, content as DeviceIntentMemorySeed);
+    return seedDeviceIntentMemory(
+      scopedContext,
+      content as DeviceIntentMemorySeed,
+    );
   }
   if (
     memoryType === "push-delivery-attempt" ||
     memoryType === "outbound-push-attempt"
   ) {
-    return seedReminderAttemptMemory(ctx, content as ReminderAttemptMemorySeed);
+    return seedReminderAttemptMemory(
+      scopedContext,
+      content as ReminderAttemptMemorySeed,
+    );
   }
   if (memoryType === "ladder-state") {
-    return seedLadderStateMemory(ctx, content as LadderStateMemorySeed);
+    return seedLadderStateMemory(
+      scopedContext,
+      content as LadderStateMemorySeed,
+    );
   }
   if (memoryType === "scheduled-push-ladder") {
     return seedScheduledPushLadderMemory(
-      ctx,
+      scopedContext,
       content as ScheduledPushLadderSeed,
     );
   }
   if (memoryType === "appointment") {
-    return seedAppointmentMemory(ctx, content as AppointmentMemorySeed);
+    return seedAppointmentMemory(
+      scopedContext,
+      content as AppointmentMemorySeed,
+    );
   }
   if (memoryType === "browser-task-state") {
     return seedBrowserTaskStateMemory(
-      ctx,
+      scopedContext,
       content as BrowserTaskStateMemorySeed,
     );
   }
@@ -2301,29 +2321,39 @@ async function seedMemory(
     memoryType === "overdue-followup" ||
     memoryType === "stalled-thread"
   ) {
-    return seedFollowupMemory(ctx, content as FollowupMemorySeed, memoryType);
+    return seedFollowupMemory(
+      scopedContext,
+      content as FollowupMemorySeed,
+      memoryType,
+    );
   }
   if (memoryType === "pending-low-urgency-pushes") {
     return seedPendingLowUrgencyPushesMemory(
-      ctx,
+      scopedContext,
       content as Record<string, unknown>,
     );
   }
   if (memoryType === "voice-call-attempt") {
     return seedVoiceCallAttemptMemory(
-      ctx,
+      scopedContext,
       content as ReminderAttemptMemorySeed & Record<string, unknown>,
     );
   }
   if (memoryType && TRAVEL_FACT_MEMORY_KINDS.has(memoryType)) {
     const text = formatStructuredMemoryFact(memoryType, content);
-    return writeDurableFact(ctx, text, { seedKind: memoryType });
+    return writeDurableFact(scopedContext, text, { seedKind: memoryType });
   }
   if (memoryType === "calendar-event") {
-    return seedCalendarEventMemory(ctx, content as CalendarEventMemorySeed);
+    return seedCalendarEventMemory(
+      scopedContext,
+      content as CalendarEventMemorySeed,
+    );
   }
   if (memoryType === "inbound-message") {
-    return seedInboundMessageMemory(ctx, content as InboundMessageMemorySeed);
+    return seedInboundMessageMemory(
+      scopedContext,
+      content as InboundMessageMemorySeed,
+    );
   }
   if (memoryType !== null) {
     // A seed the runner cannot land must fail the scenario, never no-op:
@@ -2335,7 +2365,39 @@ async function seedMemory(
   if (!text) {
     return "memory seed content must carry non-empty text or a contact-like kind";
   }
-  return writeDurableFact(ctx, text);
+  return writeDurableFact(scopedContext, text);
+}
+
+function resolveMemorySeedContext(
+  ctx: ScenarioContext,
+  seed: MemorySeed,
+): ScenarioContext | string {
+  const target = readNonEmptyString(seed.roomId);
+  if (!target) {
+    return ctx;
+  }
+
+  const roomEntries = Object.entries(ctx.roomIds ?? {});
+  const logicalRoomId = Object.hasOwn(ctx.roomIds ?? {}, target)
+    ? target
+    : roomEntries.find(([, runtimeRoomId]) => runtimeRoomId === target)?.[0];
+  if (!logicalRoomId) {
+    if (roomEntries.length === 0) {
+      return { ...ctx, primaryRoomId: target };
+    }
+    return `memory seed references unknown logical room "${target}"`;
+  }
+
+  const roomId = ctx.roomIds?.[logicalRoomId];
+  const entityId = ctx.roomEntityIds?.[logicalRoomId];
+  if (!roomId || !entityId) {
+    return `memory seed logical room "${logicalRoomId}" is missing resolved room/entity topology`;
+  }
+  return {
+    ...ctx,
+    primaryRoomId: roomId,
+    primaryUserId: entityId,
+  };
 }
 
 function formatStructuredMemoryFact(

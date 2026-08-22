@@ -114,6 +114,14 @@ export type ScenarioContext = {
    */
   primaryRoomId?: string;
   primaryUserId?: string;
+  /** Runtime IDs keyed by the logical identifiers authored in `rooms`. */
+  roomIds?: Record<string, string>;
+  worldIds?: Record<string, string>;
+  entityIds?: Record<string, string>;
+  accountEntityIds?: Record<string, string>;
+  /** Per-room topology for seeds that need the room's canonical owner/world. */
+  roomWorldIds?: Record<string, string>;
+  roomEntityIds?: Record<string, string>;
   actionsCalled: CapturedAction[];
   turns?: ScenarioTurnExecution[];
   approvalRequests?: CapturedApprovalRequest[];
@@ -167,6 +175,8 @@ export type ScenarioSeedStep =
   | {
       type: "memory";
       name?: string;
+      /** Logical `rooms[].id`, or an already-resolved runtime room UUID. */
+      roomId?: string;
       content?: Record<string, unknown>;
     }
   | {
@@ -533,7 +543,18 @@ export type ScenarioDeferral = {
 /** A room a multi-room scenario message turn can target (`turns[].room`). */
 export type ScenarioRoomSpec = {
   id?: string;
+  /** Logical world key. Rooms with the same key share a deterministic world. */
+  world?: string;
+  /**
+   * Connector-account key. Preserves the legacy behavior of coalescing rooms
+   * that use the same account when no explicit canonical entity is supplied.
+   */
   account?: string;
+  /**
+   * Canonical logical entity key. Distinct connector accounts may name the
+   * same entity to model verified linked identities across platforms.
+   */
+  entity?: string;
   title?: string;
   source?: string;
   channelType?: string;

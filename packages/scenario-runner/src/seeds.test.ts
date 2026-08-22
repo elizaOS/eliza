@@ -725,6 +725,7 @@ describe("scenario memory seeds", () => {
     });
     try {
       const roomId = stringToUuid("scenario-inbound-seed-room");
+      const remoteRoomId = stringToUuid("scenario-inbound-seed-remote-room");
       const ownerId = stringToUuid("scenario-inbound-seed-owner");
       await harness.runtime.ensureConnection({
         entityId: ownerId,
@@ -735,16 +736,29 @@ describe("scenario memory seeds", () => {
         channelId: roomId,
         type: "DM",
       });
+      await harness.runtime.ensureConnection({
+        entityId: ownerId,
+        roomId: remoteRoomId,
+        worldId: stringToUuid("scenario-inbound-seed-remote-world"),
+        userName: "Scenario owner",
+        source: "discord",
+        channelId: remoteRoomId,
+        type: "DM",
+      });
       const ctx = {
         runtime: harness.runtime,
         scenarioId: "identity.detect-impersonation-attempt",
         now: "2026-07-06T14:00:00.000Z",
         primaryRoomId: roomId,
         primaryUserId: ownerId,
+        roomIds: { main: roomId, remote: remoteRoomId },
+        roomEntityIds: { main: ownerId, remote: ownerId },
+        actionsCalled: [],
       } as ScenarioContext;
 
       const result = await applyScenarioSeedStep(ctx, {
         type: "memory",
+        roomId: "remote",
         content: {
           kind: "inbound-message",
           platform: "telegram",
@@ -758,7 +772,7 @@ describe("scenario memory seeds", () => {
 
       expect(result).toBeUndefined();
       const memories = await harness.runtime.getMemories({
-        roomId,
+        roomId: remoteRoomId,
         tableName: "messages",
         count: 5,
       });
@@ -789,6 +803,13 @@ describe("scenario memory seeds", () => {
           id: "tg-99887",
         },
       });
+      expect(
+        await harness.runtime.getMemories({
+          roomId,
+          tableName: "messages",
+          count: 5,
+        }),
+      ).toHaveLength(0);
     } finally {
       await harness.cleanup();
     }
@@ -1321,6 +1342,53 @@ describe("scenario memory seeds", () => {
       kind: "durable",
       source: "scenario-seed",
     });
+  });
+
+  it("writes a plain-text memory seed to its logical room and linked entity", async () => {
+    const { ctx, createMemory } = createSeedHarness();
+    const remoteRoomId = "00000000-0000-0000-0000-0000000000cc";
+    const linkedOwnerId = "00000000-0000-0000-0000-0000000000dd";
+    const primaryRoomId = ctx.primaryRoomId;
+    const primaryUserId = ctx.primaryUserId;
+    if (!primaryRoomId || !primaryUserId) {
+      throw new Error("seed harness requires a primary room and user");
+    }
+    ctx.roomIds = { main: primaryRoomId, remote: remoteRoomId };
+    ctx.roomEntityIds = {
+      main: primaryUserId,
+      remote: linkedOwnerId,
+    };
+
+    const result = await applyScenarioSeedStep(ctx, {
+      type: "memory",
+      roomId: "remote",
+      content: { text: "Remote-world fact for the linked owner." },
+    } satisfies ScenarioSeedStep);
+
+    expect(result).toBeUndefined();
+    const [memory] = createMemory.mock.calls[0];
+    expect(memory.roomId).toBe(remoteRoomId);
+    expect(memory.entityId).toBe(linkedOwnerId);
+  });
+
+  it("fails a memory seed that names an unknown logical room", async () => {
+    const { ctx, createMemory } = createSeedHarness();
+    const primaryRoomId = ctx.primaryRoomId;
+    const primaryUserId = ctx.primaryUserId;
+    if (!primaryRoomId || !primaryUserId) {
+      throw new Error("seed harness requires a primary room and user");
+    }
+    ctx.roomIds = { main: primaryRoomId };
+    ctx.roomEntityIds = { main: primaryUserId };
+
+    const result = await applyScenarioSeedStep(ctx, {
+      type: "memory",
+      roomId: "missing-room",
+      content: { text: "This premise must not land in the wrong room." },
+    } satisfies ScenarioSeedStep);
+
+    expect(result).toMatch(/unknown logical room "missing-room"/);
+    expect(createMemory).not.toHaveBeenCalled();
   });
 
   it("fails the seed (never silently no-ops) on unsupported memory kinds", async () => {
