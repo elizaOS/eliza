@@ -296,6 +296,19 @@ describe("Stage-1 complete prompt rendering", () => {
 		expect(systemContent).toContain("Sticky Notes -> NOTES");
 	});
 
+	it("a single TOKEN of a multi-word agent name counts as addressed (live 2026-08-22)", async () => {
+		// "nubilio whats the setting …" was classified ambient because only the
+		// full phrase "remilio nubilio" matched; any distinctive name token
+		// (>= 4 chars) must structurally address the agent.
+		const { systemContent } = await renderedSystemPrompt(
+			makeMessage({
+				channelType: String(ChannelType.GROUP),
+				text: "Agent whats the setting we use to make u always respond",
+			}),
+		);
+		expect(systemContent).toContain(FULL_TEMPLATE_MARKER);
+	});
+
 	it("renders the full rule block when channel type is missing (fail-open)", async () => {
 		const { systemContent } = await renderedSystemPrompt(makeMessage());
 		expect(systemContent).toContain(FULL_TEMPLATE_MARKER);
