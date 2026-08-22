@@ -99,6 +99,16 @@ claim to resume after a crash without repeating the effect. Revocation after
 render, expiry, mismatched context, response tampering, stale claims, and a
 different replay key all fail closed.
 
+Connector plugins access that authority through the registered
+`MessageInteractionHost` service. `prepare` accepts the resolved profile plus
+trusted bindings, authorization, and effect, but returns only the block,
+negotiated delivery, opaque callback, expiry, and profile id needed to render.
+`consume` accepts connector-authenticated bindings and the provider's inbound
+event id, then dispatches through a host-registered effect handler using that id
+as the idempotency key. Its retained receipt carries the provider receipt,
+canonical inbound event id, audit id, and app-state result. Connectors must not
+construct their own authority, store, or effect dispatcher.
+
 `InMemoryMessageInteractionSessionStore` is for deterministic tests and embedded
 processes. The agent host's `FileMessageInteractionSessionStore` is durable and
 cross-process safe on one machine. It uses a same-filesystem fsync-and-rename
@@ -186,11 +196,11 @@ mounts `SensitiveRequestBlock` itself for the secret/OAuth card.
 ## Adding a new surface
 
 Register the connector's mechanically verified capability template, resolve a
-concrete profile for each account/target, and render the mode returned by
-`negotiateInteractionDelivery`. For state-changing callbacks, create a durable
-session and place only its opaque callback reference in the native control. On
-receipt, pass the connector-authenticated actor/account/room/message context to
-the session authority and execute the retained typed effect with its replay key.
+concrete profile for each account/target, and ask the registered
+`MessageInteractionHost` to prepare the delivery. Place only its opaque callback
+reference in the native control. On receipt, pass the connector-authenticated
+actor/account/room/message context and provider event receipt back to the host;
+the host owns authorization, replay, effect dispatch, and durable receipts.
 Conversational fallback must explain the accepted reply shape; signed-hosted
 fallback must use a short-lived authenticated URL; secret/OAuth input must use
 the sensitive-request service.

@@ -75,6 +75,7 @@ import {
   knowledgeGraphSchema,
 } from "../services/knowledge-graph/index.ts";
 import { AgentMediaGenerationService } from "../services/media-generation.ts";
+import { MessageInteractionHostService } from "../services/message-interaction-host.ts";
 import { OwnerBindingService } from "../services/owner-binding.ts";
 import { pendantSessionSchema } from "../services/pendant-session/index.ts";
 import { PendingPromptsService } from "../services/pending-prompts/index.ts";
@@ -130,6 +131,7 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
       NotificationPushService as ServiceClass,
       ElizaCharacterPersistenceService as ServiceClass,
       AgentMediaGenerationService as ServiceClass,
+      MessageInteractionHostService as ServiceClass,
       LocalFileStorageService as ServiceClass,
       PermissionRegistry as ServiceClass,
       KnowledgeGraphService as ServiceClass,
