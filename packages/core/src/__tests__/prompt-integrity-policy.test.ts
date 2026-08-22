@@ -275,6 +275,15 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 	"plugins/plugin-elizacloud/src/cloud/bridge-client.ts": [
 		/(?:text|errorText)\.slice\(/,
 	],
+	"plugins/plugin-elizacloud/src/models/text.ts": [
+		/max_tokens\s*=\s*params\.maxTokens\s*\?\?/,
+		/max_output_tokens\s*=\s*params\.maxTokens\s*\?\?/,
+		/(?:max_tokens|max_output_tokens)\s*[:=]\s*8192/,
+	],
+	"plugins/plugin-elizacloud/src/models/image.ts": [
+		/IMAGE_DESCRIPTION_MAX_TOKENS[^\n]*["']8192["']/,
+		/max_tokens\s*:\s*maxTokens/,
+	],
 	"packages/core/src/runtime/limits.ts": [
 		/compactionEnabled/,
 		/compactionKeepSteps/,
