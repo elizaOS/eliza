@@ -129,6 +129,28 @@ function normalizeContent(content: string): string {
 	return content.replace(/\r\n/g, "\n").trim();
 }
 
+/** Serializes complete read-modify-write cycles for one clipboard file. */
+const storeMutations = new Map<string, Promise<void>>();
+
+function withStoreMutation<T>(
+	storePath: string,
+	mutate: () => Promise<T>,
+): Promise<T> {
+	const predecessor = storeMutations.get(storePath) ?? Promise.resolve();
+	const operation = predecessor.then(mutate);
+	const tail = operation.then(
+		() => undefined,
+		() => undefined,
+	);
+	storeMutations.set(storePath, tail);
+	void tail.then(() => {
+		if (storeMutations.get(storePath) === tail) {
+			storeMutations.delete(storePath);
+		}
+	});
+	return operation;
+}
+
 export class TaskClipboardService {
 	private readonly config: WorkingMemoryConfig;
 
@@ -245,6 +267,19 @@ export class TaskClipboardService {
 		replaced: boolean;
 		snapshot: TaskClipboardSnapshot;
 	}> {
+		return withStoreMutation(this.getStorePath(entityId), () =>
+			this.addItemUnlocked(input, entityId),
+		);
+	}
+
+	private async addItemUnlocked(
+		input: AddTaskClipboardItemInput,
+		entityId?: string,
+	): Promise<{
+		item: TaskClipboardItem;
+		replaced: boolean;
+		snapshot: TaskClipboardSnapshot;
+	}> {
 		const content = normalizeContent(input.content);
 		if (!content) {
 			throw new Error("Clipboard items require non-empty content.");
@@ -303,6 +338,18 @@ export class TaskClipboardService {
 	}
 
 	async removeItem(
+		id: string,
+		entityId?: string,
+	): Promise<{
+		removed: boolean;
+		snapshot: TaskClipboardSnapshot;
+	}> {
+		return withStoreMutation(this.getStorePath(entityId), () =>
+			this.removeItemUnlocked(id, entityId),
+		);
+	}
+
+	private async removeItemUnlocked(
 		id: string,
 		entityId?: string,
 	): Promise<{
