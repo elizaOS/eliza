@@ -2,7 +2,7 @@
  * Sidebar for the cloud settings panel.
  *
  * Renders grouped section items with an account footer pinned to the bottom.
- * Uses NuPhy UI design tokens for the macOS settings aesthetic.
+ * Uses elizaOS UI design tokens for the macOS settings aesthetic.
  */
 import { Check, ChevronUp, Circle } from "lucide-react";
 import { useState } from "react";
@@ -112,7 +112,7 @@ function SectionItem({
       className={cn(
         "flex w-full items-center gap-2.5 rounded-md px-2.5 py-1.5 text-left text-sm transition-colors",
         active
-          ? "bg-[var(--accent)] font-medium text-[var(--foreground)]"
+          ? "bg-[var(--accent)] font-medium text-[var(--accent-foreground)]"
           : "text-[var(--muted-foreground)] hover:bg-[var(--fill)] hover:text-[var(--foreground)]",
       )}
     >
@@ -120,13 +120,13 @@ function SectionItem({
         className={cn(
           "h-4 w-4 shrink-0",
           active
-            ? "text-[var(--foreground)]"
+            ? "text-[var(--accent-foreground)]"
             : "text-[var(--muted-foreground)]",
         )}
       />
       <span className="truncate">{section.label}</span>
       {active && (
-        <Check className="ml-auto h-3.5 w-3.5 shrink-0 text-[var(--foreground)]" />
+        <Check className="ml-auto h-3.5 w-3.5 shrink-0 text-[var(--accent-foreground)]" />
       )}
     </button>
   );
