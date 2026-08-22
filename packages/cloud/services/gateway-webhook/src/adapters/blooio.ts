@@ -32,6 +32,20 @@ const BLOOIO_V2_API_BASE = "https://api.blooio.com/v2/api";
 const BLOOIO_V4_MESSAGES_URL = "https://api.blooio.com/v4/messages";
 const BLOOIO_V4_CHATS_URL = "https://api.blooio.com/v4/chats";
 
+export const BLOOIO_GATEWAY_REQUEST_TIMEOUT_MS = 30_000;
+
+export function blooioGatewayFetch(
+  input: RequestInfo | URL,
+  init?: RequestInit,
+  timeoutMs: number = BLOOIO_GATEWAY_REQUEST_TIMEOUT_MS,
+): Promise<Response> {
+  const deadline = AbortSignal.timeout(timeoutMs);
+  return fetch(input, {
+    ...init,
+    signal: init?.signal ? AbortSignal.any([init.signal, deadline]) : deadline,
+  });
+}
+
 export class BlooioApiResponseError extends Error {
   constructor(
     readonly status: number,

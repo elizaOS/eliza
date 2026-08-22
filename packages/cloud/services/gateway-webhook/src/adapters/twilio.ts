@@ -11,6 +11,20 @@ import type { ChatEvent, PlatformAdapter, WebhookConfig } from "./types";
 
 const TWILIO_API_BASE = "https://api.twilio.com/2010-04-01";
 
+export const TWILIO_GATEWAY_REQUEST_TIMEOUT_MS = 30_000;
+
+export function twilioGatewayFetch(
+  input: RequestInfo | URL,
+  init?: RequestInit,
+  timeoutMs: number = TWILIO_GATEWAY_REQUEST_TIMEOUT_MS,
+): Promise<Response> {
+  const deadline = AbortSignal.timeout(timeoutMs);
+  return fetch(input, {
+    ...init,
+    signal: init?.signal ? AbortSignal.any([init.signal, deadline]) : deadline,
+  });
+}
+
 function resolveSmsCostPerSegment(): number {
   const raw = process.env.TWILIO_SMS_COST_PER_SEGMENT_USD;
   if (classifyTwilioSmsCostConfig(raw).status === "invalid") {
@@ -233,7 +247,7 @@ export const twilioAdapter: PlatformAdapter = {
       Body: text,
     });
 
-    const response = await fetch(url, {
+    const response = await twilioGatewayFetch(url, {
       method: "POST",
       headers: {
         Authorization: `Basic ${auth}`,

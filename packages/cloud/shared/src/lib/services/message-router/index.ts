@@ -17,6 +17,21 @@ import {
 import { agentPhoneContacts } from "../../../db/schemas/agent-phone-contacts";
 import { agentPhoneNumbers, type PhoneMessageLog } from "../../../db/schemas/agent-phone-numbers";
 import { logger } from "../../utils/logger";
+
+export const MESSAGE_ROUTER_TWILIO_TIMEOUT_MS = 30_000;
+
+export function messageRouterTwilioFetch(
+  input: RequestInfo | URL,
+  init?: RequestInit,
+  timeoutMs: number = MESSAGE_ROUTER_TWILIO_TIMEOUT_MS,
+): Promise<Response> {
+  const deadline = AbortSignal.timeout(timeoutMs);
+  return fetch(input, {
+    ...init,
+    signal: init?.signal ? AbortSignal.any([init.signal, deadline]) : deadline,
+  });
+}
+
 import { normalizePhoneNumber } from "../../utils/phone-normalization";
 import {
   isPhoneMessagePersistenceFailure,
@@ -496,7 +511,7 @@ class MessageRouterService {
       }
 
       // Twilio REST API
-      const response = await fetch(
+      const response = await messageRouterTwilioFetch(
         `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`,
         {
           method: "POST",
