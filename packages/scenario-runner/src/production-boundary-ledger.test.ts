@@ -921,6 +921,47 @@ describe("production boundary observation ledger", () => {
     await expect(ledger.readAll()).resolves.toEqual([]);
   });
 
+  it("records an admitted pre-invocation generation validation exception", async () => {
+    const { ledger } = await createLedger();
+    let calls = 0;
+    const observation = await observeProductionBoundary({
+      ledger,
+      identity: identity(),
+      payload: { value: 1 },
+      now: clock("2026-08-21T12:00:00.000Z"),
+      generationFence: {
+        withGeneration: async (_expected, operation) =>
+          operation({
+            isCurrent: async () => {
+              throw new Error("generation token=secret-generation");
+            },
+          }),
+      },
+      invoke: async () => {
+        calls += 1;
+        return { id: "forbidden-effect" };
+      },
+      classify: () => ({
+        acceptance: "accepted",
+        code: "accepted",
+        retryable: false,
+      }),
+      readback: async () => ({ id: "forbidden-effect" }),
+      verifyReadback: () => true,
+      redactText: (text) => text.replace("secret-generation", REDACTED_TEST),
+    });
+
+    expect(calls).toBe(0);
+    expect(observation).toMatchObject({
+      boundaryCalled: false,
+      acceptance: "unknown",
+      result: "unknown",
+      resultCode: "generation_validation_threw",
+    });
+    expect(JSON.stringify(observation)).not.toContain("secret-generation");
+    await expect(ledger.readAll()).resolves.toEqual([observation]);
+  });
+
   it.each([
     ["retryable_failure", "rejected", false],
     ["permanent_failure", "rejected", false],
