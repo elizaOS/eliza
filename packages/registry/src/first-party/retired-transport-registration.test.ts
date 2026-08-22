@@ -25,7 +25,6 @@ const retainedReferenceFiles = new Set([
   "plugins/plugin-imessage/AGENTS.md",
   "plugins/plugin-imessage/CLAUDE.md",
   "plugins/plugin-imessage/README.md",
-  "plugins/plugin-imessage/src/index.ts",
   "plugins/plugin-inbox/src/inbox/message-fetcher.ts",
 ]);
 
