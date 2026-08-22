@@ -43,6 +43,13 @@ Private, redacted ledger for the Gmail, Google Calendar, and Apple Calendar cand
 - Apple cleanup is complete. The UI removed exactly 3 local calendar projections and reported that providers were unchanged; the three disposable events and dedicated `LifeOps QA 2026-08-22` calendar were then deleted, and an exact-name inventory check reports the target absent. No existing Apple calendar or event was changed.
 - Google OAuth and provider access remain unstarted because the three protected OAuth settings are absent. No Gmail message was read or sent and no Google Calendar event was created, changed, or deleted.
 
+### Publication checkpoint
+
+- Clean current-base candidate `e9527804e3ce239d0505e570ad98f71e70c522e6` was pushed normally to `origin/codex/lifeops-current-base-live-qa-20260822`.
+- Draft PR: `https://github.com/elizaOS/eliza/pull/24809`.
+- Local annotated tag: `lifeops-current-base-supervised-publication-20260822`. The tag was not pushed.
+- The draft PR records the exact focused proof and the protected-Google, native EventKit recurrence, unrelated aggregate app-audit, hosted CI/review, and deployment gates. It was not merged or deployed.
+
 ## Workspace and exact checkpoints
 
 - Canonical candidate worktree: `/Users/nubs/.codex/worktrees/lifeops-current-develop-20260822/eliza`
@@ -144,8 +151,8 @@ Legend: deterministic means fixture/unit/integration/local-browser evidence. Rea
 
 ## Doing
 
-- Seal this exact current-base evidence as a mode-0600 ledger checkpoint and annotated tag.
-- Push the clean review branch and open a draft PR with the protected-Google, native-recurrence, and unrelated aggregate-audit gates stated explicitly. Merge and deployment remain prohibited.
+- Keep draft PR `#24809` unmerged while the external/provider gates below remain open.
+- Resume supervised Google acceptance only after the protected OAuth settings are installed; pause for the user's chooser/consent/password/MFA action.
 
 ## Next: true external gates only
 
