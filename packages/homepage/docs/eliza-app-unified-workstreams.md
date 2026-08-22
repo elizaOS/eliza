@@ -38,7 +38,6 @@ same runtime target, and same handoff semantics.
 - Messaging gateways:
   `plugins/plugin-imessage/src/service.ts`,
   `plugins/plugin-imessage/src/chatdb-reader.ts`,
-  `packages/ui/src/components/connectors/BlueBubblesStatusPanel.tsx`,
   `packages/ui/src/components/connectors/IMessageStatusPanel.tsx`,
   `packages/ui/src/components/connectors/DiscordLocalConnectorPanel.tsx`,
   `packages/ui/src/components/connectors/TelegramBotSetupPanel.tsx`,

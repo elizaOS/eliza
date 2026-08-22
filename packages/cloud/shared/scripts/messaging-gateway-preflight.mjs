@@ -96,33 +96,17 @@ function checkWhatsApp() {
 function checkIMessage() {
   addCheck(
     "imessage",
-    "BlueBubbles relay URL",
-    hasAny([
-      "BLUEBUBBLES_RELAY_URL",
-      "IMESSAGE_RELAY_URL",
-      "ELIZA_APP_BLOOIO_API_URL",
-      "ELIZA_APP_BLOOIO_API_KEY",
-    ]),
-    "BlueBubbles relay URL or hosted Blooio API key is configured",
-    "Register the Mac relay and set BLUEBUBBLES_RELAY_URL, or configure ELIZA_APP_BLOOIO_API_KEY for the hosted iMessage bridge.",
+    "Blooio API key",
+    hasAny(["ELIZA_APP_BLOOIO_API_KEY"]),
+    "Hosted Blooio API key is configured",
+    "Set ELIZA_APP_BLOOIO_API_KEY for authenticated hosted iMessage delivery.",
   );
   addCheck(
     "imessage",
-    "relay signing secret",
-    hasAny([
-      "BLUEBUBBLES_RELAY_SIGNING_SECRET",
-      "IMESSAGE_RELAY_SIGNING_SECRET",
-      "ELIZA_APP_BLOOIO_API_KEY",
-    ]),
-    "BlueBubbles relay signing secret is configured",
-    "Generate a relay signing secret and store only the hash/server secret in cloud.",
-  );
-  addCheck(
-    "imessage",
-    "Headscale gateway tag",
-    hasAny(["HEADSCALE_IMESSAGE_GATEWAY_TAG"]),
-    "Headscale iMessage gateway tag is configured",
-    "Use a dedicated tag such as tag:imessage-gateway and restrict ACLs to the gateway/proxy service.",
+    "Blooio webhook signing secret",
+    hasAny(["ELIZA_APP_BLOOIO_WEBHOOK_SECRET", "BLOOIO_WEBHOOK_SECRET"]),
+    "Hosted Blooio webhook signing secret is configured",
+    "Set ELIZA_APP_BLOOIO_WEBHOOK_SECRET (or BLOOIO_WEBHOOK_SECRET) for signed iMessage ingress.",
   );
 }
 

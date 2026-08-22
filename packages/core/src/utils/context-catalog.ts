@@ -240,7 +240,6 @@ export const PROVIDER_CONTEXT_MAP: Record<string, AgentContext[]> = {
 	webSearch: ["documents", "browser"],
 	imessageContacts: ["contacts", "messaging", "connectors"],
 	imessageChatContext: ["messaging", "connectors"],
-	bluebubblesChatContext: ["messaging", "connectors"],
 	slackChannelState: ["messaging", "connectors"],
 	twitchChannelState: ["messaging", "connectors"],
 	signalConversationState: ["messaging", "connectors"],

@@ -1129,7 +1129,7 @@ async function dispatchIMessage(
       const status = await service.getIMessageConnectorStatus();
       const base = status.connected
         ? "iMessage is connected through the native macOS bridge."
-        : "Set up iMessage below — read chat.db directly (Full Disk Access), bridge via BlueBubbles, or use the Blooio cloud gateway.";
+        : "Set up iMessage below — use native Messages access (Full Disk Access), or use the signed Blooio cloud gateway.";
       return {
         success: status.connected,
         text: status.connected

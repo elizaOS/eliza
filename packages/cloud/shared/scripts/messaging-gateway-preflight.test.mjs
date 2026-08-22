@@ -70,6 +70,30 @@ test("channel scoping does not require unrelated connector credentials", () => {
   assert.doesNotMatch(result.stdout, /telegram|whatsapp|imessage/i);
 });
 
+test("accepts the supported signed Blooio configuration without an invented URL", () => {
+  for (const secretName of ["ELIZA_APP_BLOOIO_WEBHOOK_SECRET", "BLOOIO_WEBHOOK_SECRET"]) {
+    const result = runStrict("imessage", {
+      ELIZA_APP_BLOOIO_API_KEY: "contract-value",
+      [secretName]: "contract-value",
+    });
+
+    assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+    assert.doesNotMatch(result.stdout, /API URL/);
+  }
+});
+
+test("fails closed when either Blooio delivery or ingress authentication is absent", () => {
+  for (const env of [
+    { ELIZA_APP_BLOOIO_WEBHOOK_SECRET: "contract-value" },
+    { ELIZA_APP_BLOOIO_API_KEY: "contract-value" },
+  ]) {
+    const result = runStrict("imessage", env);
+
+    assert.equal(result.status, 1, `${result.stdout}\n${result.stderr}`);
+    assert.match(result.stdout, /\[fail\] imessage: Blooio/);
+  }
+});
+
 test("workflow keeps trusted configuration checks manual and source tests on develop", () => {
   const workflow = readFileSync(WORKFLOW, "utf8");
 

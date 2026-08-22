@@ -493,40 +493,6 @@ export const CONNECTOR_PATHS = [
       ],
     },
   }),
-  definePath({
-    id: "imessage.bluebubbles",
-    family: "imessage",
-    group: "native_ios_macos",
-    kind: "local-bridge",
-    label: "BlueBubbles server",
-    requiredAll: ["BLUEBUBBLES_SERVER_URL", "BLUEBUBBLES_PASSWORD"],
-    probeId: "imessage",
-    probeEndpoint:
-      "GET {BLUEBUBBLES_SERVER_URL|http://localhost:1234}/api/v1/ping?password=<password>",
-    availability: {
-      type: "any-of",
-      specs: [
-        {
-          type: "env-all",
-          names: ["BLUEBUBBLES_SERVER_URL", "BLUEBUBBLES_PASSWORD"],
-          reason: "BlueBubbles server URL/password not configured",
-        },
-        {
-          type: "dir-exists",
-          path: "~/Library/Application Support/bluebubbles-server",
-          reason: "no BlueBubbles server profile",
-        },
-        {
-          type: "dir-exists",
-          path: "/Applications/BlueBubbles.app",
-          reason: "BlueBubbles not installed",
-        },
-      ],
-    },
-    notes:
-      "An installed-but-stopped server is 'available' (row shows, probe reports connection refused with the start hint); the password lives in the server's config.db.",
-  }),
-
   // --- X ---------------------------------------------------------------------------------
   definePath({
     id: "x.oauth1-user",

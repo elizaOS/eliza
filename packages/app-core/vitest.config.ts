@@ -166,7 +166,6 @@ export default defineConfig({
       // (chained from `test`) so the exclusion no longer means "runs nowhere".
       // Uses Node.js built-in test runner (node:test), not vitest.
       "scripts/mobile-auth-simulator-smoke-endstate.test.mjs",
-      "scripts/android-sms-gateway-template.test.mjs",
       "scripts/stage-android-agent.test.mjs",
       "scripts/stage-desktop-fused-lib-staleness.test.mjs",
       "scripts/build-helpers/arm64-simd.test.mjs",

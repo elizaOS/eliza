@@ -125,7 +125,6 @@ export const COMMON_CONNECTOR_KEYWORDS = [
 	"teams",
 	"twilio",
 	"imessage",
-	"bluebubbles",
 	"bluesky",
 	"twitch",
 	"instagram",

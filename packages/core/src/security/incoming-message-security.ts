@@ -21,7 +21,6 @@ const PUBLIC_CHANNEL_SOURCES = new Set([
 	"twitter",
 	"slack",
 	"whatsapp",
-	"bluebubbles",
 	"imessage",
 	"sms",
 	"webhook",

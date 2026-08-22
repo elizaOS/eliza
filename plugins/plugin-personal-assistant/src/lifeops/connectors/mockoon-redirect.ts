@@ -15,7 +15,7 @@
  * plugin's entry point calls it once, idempotently.
  *
  * Connectors with no existing env-var override (slack, discord, github,
- * notion, bluebubbles, apple-reminders, spotify) export a getter via
+ * notion, apple-reminders, spotify) export a getter via
  * `getMockoonBaseUrl()`; tests that want to point those plugins at the mock
  * thread the URL through manually.
  */
@@ -31,7 +31,6 @@ const PORTS = {
   twilio: 18808,
   plaid: 18809,
   "apple-reminders": 18810,
-  bluebubbles: 18811,
   ntfy: 18812,
   duffel: 18813,
   anthropic: 18814,

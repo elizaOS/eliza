@@ -329,10 +329,6 @@ const ALLOWLIST: Record<string, string> = {
   "/api/whatsapp/webhook (whatsapp-webhook-event)":
     "Meta webhook delivery must bypass auth",
 
-  // plugin-bluebubbles
-  "bluebubbles-webhook":
-    "BlueBubbles webhook delivery must bypass auth (path is a runtime const)",
-
   // @elizaos/ui cloud public pages — reachable by external/unauthenticated users.
   "payment/:paymentRequestId":
     "cloud public page: external payer; the request id is the capability link",

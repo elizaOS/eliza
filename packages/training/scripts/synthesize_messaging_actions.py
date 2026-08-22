@@ -1,6 +1,5 @@
-"""Synthesize ~3,400 supervised JSON tool_call records for elizaOS
-messaging-plugin actions (Discord, Twitter/X, BlueBubbles, iMessage,
-WhatsApp).
+"""Synthesize ~2,700 supervised JSON tool_call records for elizaOS
+messaging-plugin actions (Discord, Twitter/X, iMessage, WhatsApp).
 
 Output: data/synthesized/action_examples/messaging.jsonl
 
@@ -92,7 +91,7 @@ STYLES: list[str] = [
 # The actions-catalog.json mostly carries `parameters: null` for
 # messaging actions because the runtime extracts params via LLM. We
 # pulled the actual param shapes from the action handlers under
-# eliza/plugins/plugin-{discord,twitter,bluebubbles,imessage,whatsapp}.
+# eliza/plugins/plugin-{discord,twitter,imessage,whatsapp}.
 
 ParamSpec = dict[str, Any]
 
@@ -247,25 +246,6 @@ TWITTER_PARAMS: dict[str, list[ParamSpec]] = {
     ],
 }
 
-# BlueBubbles 2 connector intents mapped to canonical actions
-BLUEBUBBLES_PARAMS: dict[str, list[ParamSpec]] = {
-    "bluebubbles_reaction": [
-        _ps("emoji", "string", required=True,
-            description="Reaction (heart, thumbsup, thumbsdown, haha, "
-            "exclamation, question, or any emoji)."),
-        _ps("messageId", "string", required=True,
-            description="Message ID to react to (or 'last')."),
-        _ps("remove", "boolean",
-            description="True to remove the reaction; false to add it."),
-    ],
-    "bluebubbles_message": [
-        _ps("text", "string", required=True,
-            description="The iMessage body to send."),
-        _ps("chatGuid", "string",
-            description="BlueBubbles chat GUID (default: current chat)."),
-    ],
-}
-
 # iMessage 1 connector intent mapped to canonical actions
 IMESSAGE_PARAMS: dict[str, list[ParamSpec]] = {
     "imessage_message": [
@@ -295,7 +275,6 @@ WHATSAPP_PARAMS: dict[str, list[ParamSpec]] = {
 ALL_PARAMS: dict[str, list[ParamSpec]] = {
     **DISCORD_PARAMS,
     **TWITTER_PARAMS,
-    **BLUEBUBBLES_PARAMS,
     **IMESSAGE_PARAMS,
     **WHATSAPP_PARAMS,
 }
@@ -537,20 +516,6 @@ TRANSLATIONS: dict[str, dict[str, list[str]]] = {
         "pt": ["manda iMessage pro {to}: {text}",
                "envia um iMessage: {text}"],
     },
-    "bluebubbles_message": {
-        "zh": ["通过 BlueBubbles 发 iMessage：{text}",
-               "用 BlueBubbles 发：{text}"],
-        "es": ["envía vía BlueBubbles: {text}",
-               "manda iMessage por BlueBubbles: {text}"],
-        "fr": ["envoie via BlueBubbles : {text}",
-               "iMessage par BlueBubbles : {text}"],
-        "ja": ["BlueBubbles で送って：{text}",
-               "BlueBubbles 経由で iMessage：{text}"],
-        "de": ["sende über BlueBubbles: {text}",
-               "BlueBubbles iMessage: {text}"],
-        "pt": ["manda pelo BlueBubbles: {text}",
-               "iMessage via BlueBubbles: {text}"],
-    },
     "x_search_posts": {
         "zh": ["在 X 上搜：{query}", "X 搜索：{query}"],
         "es": ["busca en X: {query}", "haz una búsqueda en X: {query}"],
@@ -699,7 +664,7 @@ def _sample_value(action: str, param_key: str, p: ParamSpec, idx: int,
             return SAMPLE_TWEETS[idx % len(SAMPLE_TWEETS)]
         if param_key in {
             "discord_private_message", "x_direct_message",
-            "bluebubbles_message", "imessage_message", "whatsapp_message",
+            "imessage_message", "whatsapp_message",
         }:
             return DM_BODIES[idx % len(DM_BODIES)]
         msgs = [
@@ -998,18 +963,6 @@ def _en_phrasings(action: str, param_key: str, args: dict[str, Any],
             "what unread DMs do I have on X",
         ]
 
-    # BlueBubbles
-    if param_key == "bluebubbles_reaction":
-        return [
-            f"react with {emoji} to message {msg_id}",
-            f"add a {emoji} on that iMessage ({msg_id})",
-        ]
-    if param_key == "bluebubbles_message":
-        return [
-            f"send iMessage via BlueBubbles: {text}",
-            f"text via BlueBubbles: {text}",
-        ]
-
     # iMessage
     if param_key == "imessage_message":
         to = args.get("to", "current")
@@ -1231,8 +1184,6 @@ def _canonicalize_connector_args(
         "discord_unpin_message": "pin",
         "x_read_messages": "read",
         "x_direct_message": "send",
-        "bluebubbles_reaction": "react",
-        "bluebubbles_message": "send",
         "imessage_message": "send",
         "whatsapp_message": "send",
         "whatsapp_reaction": "react",

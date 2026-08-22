@@ -45,8 +45,8 @@ function encodeConnectorKeySegment(value: string): string {
 /**
  * True when a connector configuration block is present and "configured
  * enough" for the connector plugin to do real work. The exact criteria are
- * connector-specific (e.g. bluebubbles needs both serverUrl and password,
- * imessage just needs cliPath OR dbPath OR enabled:true) but the broad
+ * connector-specific (for example, imessage needs cliPath OR dbPath OR
+ * enabled:true) but the broad
  * pattern is:
  *   - block exists, is an object, and isn't `enabled: false`
  *   - has at least one of { botToken, token, apiKey } — the universal case
@@ -96,8 +96,6 @@ export function isConnectorConfigured(
 	}
 
 	switch (connectorName) {
-		case "bluebubbles":
-			return Boolean(config.serverUrl && config.password);
 		case "discordLocal":
 			return Boolean(config.clientId && config.clientSecret);
 		case "imessage":

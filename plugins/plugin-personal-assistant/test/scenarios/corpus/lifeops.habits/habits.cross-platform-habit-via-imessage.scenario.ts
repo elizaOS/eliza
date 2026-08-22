@@ -1,6 +1,6 @@
 /**
  * Habits: cross-platform habit acknowledgment — habit was created via
- * Telegram but the user acks completion from iMessage (BlueBubbles). Both
+ * Telegram but the user acks completion from native iMessage. Both
  * sources should converge to the same definition.
  */
 
@@ -20,7 +20,7 @@ export default scenario({
   rooms: [
     {
       id: "main",
-      source: "bluebubbles",
+      source: "imessage",
       title: "iMessage Habit Ack",
     },
   ],

@@ -632,10 +632,6 @@
       "destination": "/tracks/agent/connect-channels"
     },
     {
-      "source": "/connectors/bluebubbles",
-      "destination": "/tracks/agent/connect-channels"
-    },
-    {
       "source": "/connectors/discord",
       "destination": "/tracks/agent/connect-channels"
     },

@@ -54,12 +54,13 @@ describe("isPublicRuntimePluginRoute", () => {
       },
       {
         type: "POST",
-        path: "/webhooks/bluebubbles",
+        path: "/webhooks/signed-provider",
         public: true,
-        name: "bluebubbles-webhook",
-        publicReason: "BlueBubbles webhook callback is externally delivered.",
+        name: "signed-provider-webhook",
+        publicReason:
+          "Signed provider webhook callback is externally delivered.",
         publicWrite:
-          "Inbound BlueBubbles webhook POST authenticated by payload validation, not the local gate.",
+          "Inbound provider webhook POST authenticated by payload validation, not the local gate.",
       },
     ] as Route[]);
 
@@ -74,7 +75,7 @@ describe("isPublicRuntimePluginRoute", () => {
       isPublicRuntimePluginRoute({
         runtime,
         method: "POST",
-        pathname: "/webhooks/bluebubbles",
+        pathname: "/webhooks/signed-provider",
       }),
     ).toBe(true);
   });
@@ -82,7 +83,7 @@ describe("isPublicRuntimePluginRoute", () => {
   it("does not exempt matching webhook paths unless the route is public", () => {
     const runtime = runtimeWithRoutes([
       { type: "POST", path: "/api/whatsapp/webhook" },
-      { type: "POST", path: "/webhooks/bluebubbles", public: false },
+      { type: "POST", path: "/webhooks/signed-provider", public: false },
     ] as Route[]);
 
     expect(
@@ -96,7 +97,7 @@ describe("isPublicRuntimePluginRoute", () => {
       isPublicRuntimePluginRoute({
         runtime,
         method: "POST",
-        pathname: "/webhooks/bluebubbles",
+        pathname: "/webhooks/signed-provider",
       }),
     ).toBe(false);
   });

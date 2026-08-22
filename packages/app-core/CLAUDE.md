@@ -52,7 +52,7 @@ src/
   services/                 auth-store, steward-credentials/sidecar, vault-mirror/bootstrap, account-pool, task-host-capabilities, sensitive-requests, …
   platform/                 ios-runtime-*, native-plugin-entrypoints, empty-node-module (browser-build alias target), *-browser-stub.ts
   permissions/types.ts, diagnostics/integration-observability.ts, connectors/ (capacitor sqlite/jsc/quickjs)
-scripts/                    build/packaging/sms-gateway/voice scripts (namespaced in package.json scripts)
+scripts/                    build/packaging/voice scripts (namespaced in package.json scripts)
 platforms/{android,ios,electrobun}/   native shell projects + Apple Store entitlements
 ```
 
@@ -73,7 +73,7 @@ Run from repo root with `--cwd packages/app-core`:
 - `bun run --cwd packages/app-core lint` / `lint:check` / `format` / `format:check` — Biome
 - Real local-provisioning checks use `test:local-provisioning`,
   `test:local-chat`, `test:local-reset`, and `test:app-real-e2e`.
-- SMS-gateway, Flatpak, code-signing, fused-inference, and voice scripts are
+- Flatpak, code-signing, fused-inference, and voice scripts are
   namespaced in `package.json`; inspect the live manifest before running one.
 
 ## Config / env vars

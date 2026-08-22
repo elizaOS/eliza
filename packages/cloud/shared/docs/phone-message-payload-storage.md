@@ -81,7 +81,7 @@ path.
    conversion rolls back all five columns; never continue to application
    deployment after a migration failure.
 4. Deploy the exact application revision, restore traffic, then verify one
-   inline read, one pointer-backed read, and BlueBubbles authentication without
+   inline read, one pointer-backed read, and gateway authentication without
    sending a provider message. Roll back the application and schema together
    if verification fails.
 

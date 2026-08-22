@@ -78,7 +78,7 @@ const NON_MODEL_EXCLUSION_RULES = [
     reason:
       "External device, hardware, OS, or mobile gateway validation; evidence is environment logs/device traces, not model-call artifacts.",
     matches: (row) =>
-      /bluebubbles|android-sms|riscv64|usb|virtual-usb|simulator|evenhub|sandbox-live|live-sandbox|mobile/i.test(
+      /android-sms|riscv64|usb|virtual-usb|simulator|evenhub|sandbox-live|live-sandbox|mobile/i.test(
         row.value,
       ),
   },
