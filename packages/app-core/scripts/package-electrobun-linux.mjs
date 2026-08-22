@@ -3,7 +3,8 @@
  * Packages the Linux Electrobun build into distributable artifacts (.deb via
  * dpkg-deb, .rpm via rpmbuild, AppImage via appimagetool) under
  * platforms/electrobun/artifacts, normalizing package names to each format's
- * rules.
+ * rules. Pass --format=deb, --format=rpm, or --format=appimage to build one;
+ * omitting --format (or using --format=all) preserves the all-format build.
  */
 
 import { execFileSync } from "node:child_process";
@@ -19,7 +20,7 @@ import {
 import { cp } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import {
   assertLinuxDistributionClaim,
   LINUX_DISTRIBUTION_CLAIMS,
@@ -57,6 +58,22 @@ const arch = args.get("arch") ?? "x64";
 const debArch = arch === "arm64" ? "arm64" : "amd64";
 const rpmArch = arch === "arm64" ? "aarch64" : "x86_64";
 
+export const DIRECT_LINUX_PACKAGE_FORMATS = ["deb", "rpm", "appimage"];
+
+/** Preserve the historical all-format build unless one format is requested. */
+export function resolveLinuxPackageFormats(requestedFormat) {
+  if (requestedFormat === undefined || requestedFormat === "all") {
+    return [...DIRECT_LINUX_PACKAGE_FORMATS];
+  }
+  if (!DIRECT_LINUX_PACKAGE_FORMATS.includes(requestedFormat)) {
+    throw new Error(
+      `Unsupported Linux package format "${requestedFormat}". ` +
+        `Expected one of: ${DIRECT_LINUX_PACKAGE_FORMATS.join(", ")}, all.`,
+    );
+  }
+  return [requestedFormat];
+}
+
 // App identity is env-driven (mirroring the Electrobun shell's brand-config
 // resolution) and defaults to the existing elizaOS values when unset, so the
 // produced packages stay byte-identical unless the brand env is provided.
@@ -92,6 +109,15 @@ function sh(command, commandArgs, options = {}) {
 
 function removePathRecursive(targetPath) {
   sh(process.execPath, [cleanupHelperScript, targetPath]);
+}
+
+/** Always reclaim the potentially multi-gigabyte package staging tree. */
+export async function withStagingCleanup(targetPath, operation) {
+  try {
+    return await operation();
+  } finally {
+    if (existsSync(targetPath)) removePathRecursive(targetPath);
+  }
 }
 
 function latestBuildDir() {
@@ -201,135 +227,161 @@ async function stagePackageRoot(buildDir, destRoot) {
 
 async function buildDeb(buildDir) {
   const root = path.join(os.tmpdir(), `${namespace}-deb-${process.pid}`);
-  await stagePackageRoot(buildDir, root);
-  const controlDir = path.join(root, "DEBIAN");
-  mkdirSync(controlDir, { recursive: true });
-  writeFileSync(
-    path.join(controlDir, "control"),
-    [
-      `Package: ${packageName}`,
-      `Version: ${version.replace(/-/g, "~")}`,
-      "Section: utils",
-      "Priority: optional",
-      `Architecture: ${debArch}`,
-      "Maintainer: elizaOS <hello@elizaos.ai>",
-      `Description: ${displayName} desktop app`,
-      ` The consumer ${displayName} app for desktop chat, account setup, and connected devices.`,
-      "",
-    ].join("\n"),
-  );
-  const out = path.join(
-    artifactRoot,
-    `${packageName}_${version}_${debArch}.deb`,
-  );
-  sh("dpkg-deb", ["--build", root, out]);
-  removePathRecursive(root);
-  return out;
+  return withStagingCleanup(root, async () => {
+    await stagePackageRoot(buildDir, root);
+    const controlDir = path.join(root, "DEBIAN");
+    mkdirSync(controlDir, { recursive: true });
+    writeFileSync(
+      path.join(controlDir, "control"),
+      [
+        `Package: ${packageName}`,
+        `Version: ${version.replace(/-/g, "~")}`,
+        "Section: utils",
+        "Priority: optional",
+        `Architecture: ${debArch}`,
+        "Maintainer: elizaOS <hello@elizaos.ai>",
+        `Description: ${displayName} desktop app`,
+        ` The consumer ${displayName} app for desktop chat, account setup, and connected devices.`,
+        "",
+      ].join("\n"),
+    );
+    const out = path.join(
+      artifactRoot,
+      `${packageName}_${version}_${debArch}.deb`,
+    );
+    sh("dpkg-deb", ["--build", root, out]);
+    return out;
+  });
 }
 
 async function buildRpm(buildDir) {
   const top = path.join(os.tmpdir(), `${namespace}-rpm-${process.pid}`);
   const buildroot = path.join(top, `BUILDROOT/${packageName}`);
-  await stagePackageRoot(buildDir, buildroot);
-  for (const dir of ["BUILD", "RPMS", "SOURCES", "SPECS", "SRPMS"]) {
-    mkdirSync(path.join(top, dir), { recursive: true });
-  }
-  const rpmVersion = version.replace(/-.*/, "");
-  const rpmRelease = version.includes("-")
-    ? version.replace(/^[^-]+-/, "").replace(/[^A-Za-z0-9.]/g, ".")
-    : "1";
-  const spec = path.join(top, `SPECS/${packageName}.spec`);
-  writeFileSync(
-    spec,
-    [
-      `Name: ${packageName}`,
-      `Version: ${rpmVersion}`,
-      `Release: ${rpmRelease}%{?dist}`,
-      `Summary: ${displayName} desktop app`,
-      "License: MIT",
-      `BuildArch: ${rpmArch}`,
-      "",
-      "%description",
-      `The consumer ${displayName} app for desktop chat, account setup, and connected devices.`,
-      "",
-      "%install",
-      "mkdir -p %{buildroot}",
-      `cp -a ${buildroot}/* %{buildroot}/`,
-      "",
-      "%files",
-      optPath,
-      `/usr/bin/${namespace}`,
-      `/usr/share/applications/${namespace}.desktop`,
-      `/usr/share/icons/hicolor/512x512/apps/${namespace}.png`,
-      "",
-    ].join("\n"),
-  );
-  sh("rpmbuild", ["--define", `_topdir ${top}`, "-bb", spec]);
-  const rpmDir = path.join(top, "RPMS", rpmArch);
-  const rpm = readdirSync(rpmDir).find((name) => name.endsWith(".rpm"));
-  if (!rpm) throw new Error("rpmbuild did not produce an rpm");
-  const out = path.join(
-    artifactRoot,
-    `${packageName}-${version}.${rpmArch}.rpm`,
-  );
-  copyFileSync(path.join(rpmDir, rpm), out);
-  removePathRecursive(top);
-  return out;
+  return withStagingCleanup(top, async () => {
+    await stagePackageRoot(buildDir, buildroot);
+    for (const dir of ["BUILD", "RPMS", "SOURCES", "SPECS", "SRPMS"]) {
+      mkdirSync(path.join(top, dir), { recursive: true });
+    }
+    const rpmVersion = version.replace(/-.*/, "");
+    const rpmRelease = version.includes("-")
+      ? version.replace(/^[^-]+-/, "").replace(/[^A-Za-z0-9.]/g, ".")
+      : "1";
+    const spec = path.join(top, `SPECS/${packageName}.spec`);
+    writeFileSync(
+      spec,
+      [
+        `Name: ${packageName}`,
+        `Version: ${rpmVersion}`,
+        `Release: ${rpmRelease}%{?dist}`,
+        `Summary: ${displayName} desktop app`,
+        "License: MIT",
+        `BuildArch: ${rpmArch}`,
+        "",
+        "%description",
+        `The consumer ${displayName} app for desktop chat, account setup, and connected devices.`,
+        "",
+        "%install",
+        "mkdir -p %{buildroot}",
+        `cp -a ${buildroot}/* %{buildroot}/`,
+        "",
+        "%files",
+        optPath,
+        `/usr/bin/${namespace}`,
+        `/usr/share/applications/${namespace}.desktop`,
+        `/usr/share/icons/hicolor/512x512/apps/${namespace}.png`,
+        "",
+      ].join("\n"),
+    );
+    sh("rpmbuild", ["--define", `_topdir ${top}`, "-bb", spec]);
+    const rpmDir = path.join(top, "RPMS", rpmArch);
+    const rpm = readdirSync(rpmDir).find((name) => name.endsWith(".rpm"));
+    if (!rpm) throw new Error("rpmbuild did not produce an rpm");
+    const out = path.join(
+      artifactRoot,
+      `${packageName}-${version}.${rpmArch}.rpm`,
+    );
+    copyFileSync(path.join(rpmDir, rpm), out);
+    return out;
+  });
 }
 
 async function buildAppImage(buildDir) {
   const appDir = path.join(os.tmpdir(), `${displayName}.AppDir-${process.pid}`);
-  await stagePackageRoot(buildDir, appDir);
-  copyFileSync(
-    path.join(appDir, `usr/share/applications/${namespace}.desktop`),
-    path.join(appDir, `${namespace}.desktop`),
-  );
-  if (existsSync(iconPath))
-    copyFileSync(iconPath, path.join(appDir, `${namespace}.png`));
-  writeFileSync(
-    path.join(appDir, "AppRun"),
-    `#!/usr/bin/env sh\nHERE="$(dirname "$(readlink -f "$0")")"\nexec "$HERE/usr/bin/${namespace}" "$@"\n`,
-    { mode: 0o755 },
-  );
+  return withStagingCleanup(appDir, async () => {
+    await stagePackageRoot(buildDir, appDir);
+    copyFileSync(
+      path.join(appDir, `usr/share/applications/${namespace}.desktop`),
+      path.join(appDir, `${namespace}.desktop`),
+    );
+    if (existsSync(iconPath))
+      copyFileSync(iconPath, path.join(appDir, `${namespace}.png`));
+    writeFileSync(
+      path.join(appDir, "AppRun"),
+      `#!/usr/bin/env sh\nHERE="$(dirname "$(readlink -f "$0")")"\nexec "$HERE/usr/bin/${namespace}" "$@"\n`,
+      { mode: 0o755 },
+    );
 
-  const tool = path.join(os.tmpdir(), "appimagetool-x86_64.AppImage");
-  if (!existsSync(tool)) {
-    sh("curl", [
-      "-fsSL",
-      "https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage",
-      "-o",
-      tool,
-    ]);
-    sh("chmod", ["+x", tool]);
-  }
-  const out = path.join(
-    artifactRoot,
-    `${displayName}-${version}-linux-${arch}.AppImage`,
-  );
-  sh(tool, [appDir, out], {
-    env: { ...process.env, ARCH: rpmArch, APPIMAGE_EXTRACT_AND_RUN: "1" },
+    const tool = path.join(os.tmpdir(), "appimagetool-x86_64.AppImage");
+    if (!existsSync(tool)) {
+      sh("curl", [
+        "-fsSL",
+        "https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage",
+        "-o",
+        tool,
+      ]);
+      sh("chmod", ["+x", tool]);
+    }
+    const out = path.join(
+      artifactRoot,
+      `${displayName}-${version}-linux-${arch}.AppImage`,
+    );
+    sh(tool, [appDir, out], {
+      env: { ...process.env, ARCH: rpmArch, APPIMAGE_EXTRACT_AND_RUN: "1" },
+    });
+    return out;
   });
-  removePathRecursive(appDir);
-  return out;
 }
 
-mkdirSync(artifactRoot, { recursive: true });
-const buildDir = latestBuildDir();
-const inspection = assertLinuxDistributionClaim({
+export async function buildSelectedLinuxPackages(
   buildDir,
-  claim: LINUX_DISTRIBUTION_CLAIMS.PRODUCTION_DIRECT,
-});
-console.log(`Packaging Linux Electrobun build: ${buildDir}`);
-console.log(`Version: ${version}; channel: ${channel}; arch: ${arch}`);
-console.log(
-  `ELF ABI: ${inspection.glibcCompatibility.elfFileCount} files, maximum GLIBC_${inspection.glibcCompatibility.maxRequiredVersion ?? "none"} (ceiling GLIBC_${inspection.glibcCompatibility.maxAllowedVersion})`,
-);
+  formats,
+  builders = {
+    deb: buildDeb,
+    rpm: buildRpm,
+    appimage: buildAppImage,
+  },
+) {
+  const outputs = [];
+  for (const format of formats) {
+    outputs.push(await builders[format](buildDir));
+  }
+  return outputs;
+}
 
-const outputs = [];
-outputs.push(await buildDeb(buildDir));
-outputs.push(await buildRpm(buildDir));
-outputs.push(await buildAppImage(buildDir));
+async function main() {
+  const formats = resolveLinuxPackageFormats(args.get("format"));
+  mkdirSync(artifactRoot, { recursive: true });
+  const buildDir = latestBuildDir();
+  const inspection = assertLinuxDistributionClaim({
+    buildDir,
+    claim: LINUX_DISTRIBUTION_CLAIMS.PRODUCTION_DIRECT,
+  });
+  console.log(`Packaging Linux Electrobun build: ${buildDir}`);
+  console.log(`Version: ${version}; channel: ${channel}; arch: ${arch}`);
+  console.log(`Formats: ${formats.join(", ")}`);
+  console.log(
+    `ELF ABI: ${inspection.glibcCompatibility.elfFileCount} files, maximum GLIBC_${inspection.glibcCompatibility.maxRequiredVersion ?? "none"} (ceiling GLIBC_${inspection.glibcCompatibility.maxAllowedVersion})`,
+  );
 
-for (const output of outputs) {
-  console.log(`Wrote ${path.relative(repoRoot, output)}`);
+  const outputs = await buildSelectedLinuxPackages(buildDir, formats);
+  for (const output of outputs) {
+    console.log(`Wrote ${path.relative(repoRoot, output)}`);
+  }
+}
+
+if (
+  process.argv[1] &&
+  import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href
+) {
+  await main();
 }

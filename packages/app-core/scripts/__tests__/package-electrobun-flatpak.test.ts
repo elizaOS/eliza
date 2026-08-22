@@ -6,10 +6,12 @@
 
 import {
   chmodSync,
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import os from "node:os";
@@ -17,11 +19,14 @@ import path from "node:path";
 import sharp from "sharp";
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  assertFlatpakArtifactDirectoryOutsideBuild,
   FLATPAK_BUNDLED_LIBRARIES,
   FLATPAK_FINISH_ARGS,
   FLATPAK_RUNTIME,
   requireLauncher,
+  resolveFlatpakArtifactDirectory,
   resolveFlatpakRefs,
+  withFlatpakStagingCleanup,
   writeMetadata,
 } from "../package-electrobun-flatpak.mjs";
 
@@ -76,6 +81,70 @@ describe("Electrobun Flatpak packaging", () => {
         runtimeRef: "org.gnome.Platform/aarch64/50",
       }),
     ).toThrow(/requested architecture/);
+  });
+
+  it("preserves the in-repository artifact directory by default", () => {
+    const baseDirectory = tempDir();
+    const defaultDirectory = path.join(baseDirectory, "artifacts");
+    expect(
+      resolveFlatpakArtifactDirectory(undefined, {
+        baseDirectory,
+        defaultDirectory,
+        defaultCapacityDirectory: baseDirectory,
+      }),
+    ).toEqual({
+      artifactDirectory: defaultDirectory,
+      capacityDirectory: baseDirectory,
+    });
+  });
+
+  it("resolves an external output and preflights its existing filesystem", () => {
+    const baseDirectory = tempDir();
+    const externalRoot = tempDir();
+    const requested = path.join(externalRoot, "nested", "artifacts");
+
+    expect(
+      resolveFlatpakArtifactDirectory(requested, { baseDirectory }),
+    ).toEqual({
+      artifactDirectory: requested,
+      capacityDirectory: externalRoot,
+    });
+  });
+
+  it("rejects missing, root, file, and symlink artifact targets", () => {
+    const baseDirectory = tempDir();
+    const fileTarget = path.join(baseDirectory, "file");
+    const realDirectory = tempDir();
+    const linkTarget = path.join(baseDirectory, "link");
+    writeFileSync(fileTarget, "not a directory");
+    symlinkSync(realDirectory, linkTarget);
+
+    expect(() =>
+      resolveFlatpakArtifactDirectory("true", { baseDirectory }),
+    ).toThrow(/requires a non-empty directory path/);
+    expect(() =>
+      resolveFlatpakArtifactDirectory(path.parse(baseDirectory).root, {
+        baseDirectory,
+      }),
+    ).toThrow(/filesystem root/);
+    expect(() =>
+      resolveFlatpakArtifactDirectory(fileTarget, { baseDirectory }),
+    ).toThrow(/not a directory/);
+    expect(() =>
+      resolveFlatpakArtifactDirectory(path.join(linkTarget, "nested"), {
+        baseDirectory,
+      }),
+    ).toThrow(/must not traverse a symlink/);
+  });
+
+  it("rejects an artifact directory inside the copied build tree", () => {
+    const buildDirectory = tempDir();
+    expect(() =>
+      assertFlatpakArtifactDirectoryOutsideBuild(
+        path.join(buildDirectory, "artifacts"),
+        buildDirectory,
+      ),
+    ).toThrow(/must not be inside the build tree/);
   });
 
   it("requires the packaged Electrobun launcher", () => {
@@ -138,5 +207,28 @@ describe("Electrobun Flatpak packaging", () => {
     expect(FLATPAK_FINISH_ARGS).not.toContain(
       "--talk-name=org.freedesktop.Flatpak",
     );
+  });
+
+  it("removes Flatpak staging after success and failure", async () => {
+    const successRoot = path.join(tempDir(), "success-stage");
+    await expect(
+      withFlatpakStagingCleanup(successRoot, async () => {
+        mkdirSync(successRoot);
+        writeFileSync(path.join(successRoot, "payload"), "data");
+        return "complete";
+      }),
+    ).resolves.toBe("complete");
+    expect(existsSync(successRoot)).toBe(false);
+
+    const failureRoot = path.join(tempDir(), "failure-stage");
+    const failure = new Error("flatpak failed");
+    await expect(
+      withFlatpakStagingCleanup(failureRoot, async () => {
+        mkdirSync(failureRoot);
+        writeFileSync(path.join(failureRoot, "payload"), "data");
+        throw failure;
+      }),
+    ).rejects.toBe(failure);
+    expect(existsSync(failureRoot)).toBe(false);
   });
 });
