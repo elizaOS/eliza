@@ -80,6 +80,9 @@ let memoryCache: {
   ttlMs?: number;
 } | null = null;
 let registryLoadPromise: Promise<Map<string, RegistryPluginInfo>> | null = null;
+let registryFileWritePromise: Promise<void> | null = null;
+let registryRefreshPromise: Promise<Map<string, RegistryPluginInfo>> | null =
+  null;
 /**
  * Bumped every time the registry caches are invalidated. A load that started
  * before the bump carries a pre-invalidation snapshot, so it must not publish
@@ -161,6 +164,18 @@ async function writeFileCache(
     }),
     "utf-8",
   );
+}
+
+function persistFileCache(plugins: Map<string, RegistryPluginInfo>): void {
+  // error-policy:J6 The registry file is a derived cache; persistence failure
+  // is warned while the complete in-memory network snapshot remains usable.
+  const write = writeFileCache(plugins).catch((err) => {
+    logger.warn(`[registry-client] Cache write failed: ${String(err)}`);
+  });
+  registryFileWritePromise = write;
+  void write.then(() => {
+    if (registryFileWritePromise === write) registryFileWritePromise = null;
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -312,9 +327,7 @@ async function loadRegistryPlugins(
       ttlMs: usedLocalFallback ? LOCAL_FALLBACK_CACHE_TTL_MS : CACHE_TTL_MS,
     };
     if (!usedLocalFallback) {
-      writeFileCache(plugins).catch((err) =>
-        logger.warn(`[registry-client] Cache write failed: ${String(err)}`),
-      );
+      persistFileCache(plugins);
     }
 
     return plugins;
@@ -357,6 +370,10 @@ function hasFilesystemErrorCode(error: unknown, code: string): boolean {
 }
 
 async function removeRegistryFileCache(): Promise<void> {
+  // A prior generation publishes memory before its best-effort file write
+  // finishes. Drain that write before unlinking so it cannot recreate stale
+  // disk state after this refresh has installed a newer snapshot.
+  if (registryFileWritePromise) await registryFileWritePromise;
   const filePath = cacheFilePath();
   try {
     await fs.unlink(filePath);
@@ -374,11 +391,19 @@ async function removeRegistryFileCache(): Promise<void> {
 export async function refreshRegistry(): Promise<
   Map<string, RegistryPluginInfo>
 > {
-  // Removal is useful persistent cleanup but is not required for correctness:
-  // the refresh explicitly bypasses the file tier even when unlink is denied.
-  await removeRegistryFileCache();
-  invalidateRegistryCaches();
-  return loadRegistryPlugins(true);
+  if (registryRefreshPromise) return registryRefreshPromise;
+
+  const refresh = (async () => {
+    // Removal is useful persistent cleanup but is not required for correctness:
+    // the refresh explicitly bypasses the file tier even when unlink is denied.
+    await removeRegistryFileCache();
+    invalidateRegistryCaches();
+    return loadRegistryPlugins(true);
+  })().finally(() => {
+    if (registryRefreshPromise === refresh) registryRefreshPromise = null;
+  });
+  registryRefreshPromise = refresh;
+  return refresh;
 }
 
 /** Look up a plugin by name (exact → @elizaos/ prefix → bare suffix). */

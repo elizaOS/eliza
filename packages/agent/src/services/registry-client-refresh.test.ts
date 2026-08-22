@@ -115,6 +115,28 @@ describe("refreshRegistry", () => {
     expect(second).toBe(third);
   });
 
+  it("shares one refresh between concurrent refresh callers", async () => {
+    let releaseFetch: (() => void) | undefined;
+    const fetchGate = new Promise<void>((resolve) => {
+      releaseFetch = resolve;
+    });
+    fetchImpl = async () => {
+      await fetchGate;
+      return PAYLOAD_A();
+    };
+    const { refreshRegistry } = await loadModule();
+
+    const first = refreshRegistry();
+    while (fetchCalls === 0) await sleep(1);
+    const second = refreshRegistry();
+    expect(fetchCalls).toBe(1);
+    releaseFetch?.();
+
+    const [firstResult, secondResult] = await Promise.all([first, second]);
+    expect(fetchCalls).toBe(1);
+    expect(firstResult).toBe(secondResult);
+  });
+
   it("still serves a fresh file cache without a network call", async () => {
     await fsp.mkdir(path.join(stateDir, "cache"), { recursive: true });
     await fsp.writeFile(
@@ -271,5 +293,47 @@ describe("refreshRegistry", () => {
     expect([...(await registry.getRegistryPlugins()).keys()]).toEqual([
       "plugin-b",
     ]);
+  });
+
+  it("does not let an older generation finish its cache write after refresh", async () => {
+    let signalWriteStarted: (() => void) | undefined;
+    const writeStarted = new Promise<void>((resolve) => {
+      signalWriteStarted = resolve;
+    });
+    let releaseWrite: (() => void) | undefined;
+    const writeGate = new Promise<void>((resolve) => {
+      releaseWrite = resolve;
+    });
+    const writeFile = fsp.writeFile.bind(fsp);
+    vi.spyOn(fsp, "writeFile").mockImplementationOnce(async (...args) => {
+      signalWriteStarted?.();
+      await writeGate;
+      return writeFile(...args);
+    });
+    const registry = await loadModule();
+
+    await registry.refreshRegistry();
+    await writeStarted;
+
+    fetchImpl = async () => PAYLOAD_B();
+    const refresh = registry.refreshRegistry();
+    await sleep(20);
+    expect(fetchCalls).toBe(1);
+
+    releaseWrite?.();
+    await refresh;
+
+    const cachePath = path.join(stateDir, "cache", "registry.json");
+    let cached = "";
+    while (!cached.includes("plugin-b")) {
+      cached = await fsp.readFile(cachePath, "utf8").catch(() => "");
+      await sleep(1);
+    }
+
+    const restarted = await loadModule();
+    expect([...(await restarted.getRegistryPlugins()).keys()]).toEqual([
+      "plugin-b",
+    ]);
+    expect(fetchCalls).toBe(2);
   });
 });
