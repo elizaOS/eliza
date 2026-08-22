@@ -506,4 +506,34 @@ describe("wave supervisor pure policy", () => {
     expect(service.created).toHaveLength(1);
     expect(service.spawned).toEqual(["created-1"]);
   });
+
+  it("carries the terminal lane's request-voice keys onto the replacement task", async () => {
+    // The refill continues the SAME user-request lineage: without the carry
+    // the replacement task fell back to a fresh task:<id> voice key and the
+    // park-notice dedupe (notifyVerifyEscalation) re-opened the double-park
+    // window for that request.
+    const service = makeTaskService([
+      task("failed", "failed", {
+        waveId: "w",
+        lane: { id: "lane-1", scopePaths: ["src/a.ts"] },
+        spawnRootMessageId: "req-1",
+        requestVoicePart: "lane:w:lane-1",
+      }),
+    ]);
+    const planner = {
+      planReplacement: async () => ({
+        title: "replacement",
+        goal: "fix it",
+        initialPrompt: "fix src/a.ts",
+        scope: ["src/a.ts"],
+      }),
+    };
+    const supervisor = new WaveSupervisor(makeRuntime(service), { planner });
+    await supervisor.runOnce();
+    expect(service.created).toHaveLength(1);
+    expect(service.created[0]?.metadata).toMatchObject({
+      spawnRootMessageId: "req-1",
+      requestVoicePart: "lane:w:lane-1",
+    });
+  });
 });

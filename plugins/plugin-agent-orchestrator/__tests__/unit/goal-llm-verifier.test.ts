@@ -7,7 +7,7 @@
  * never reaches a real provider.
  */
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   buildAutoVerifyCorrection,
   buildVerificationPrompt,
@@ -24,13 +24,16 @@ interface MockRuntimeOptions {
 }
 
 function makeMockRuntime(opts: MockRuntimeOptions = {}) {
-  return {
+  const reportError = vi.fn();
+  const runtime = {
     useModel: async (modelType: unknown, params: unknown) => {
       opts.recordCall?.({ modelType, params });
       if (opts.shouldThrow) throw opts.shouldThrow;
       return opts.response ?? "";
     },
+    reportError,
   } as unknown as Parameters<typeof verifyGoalCompletion>[0];
+  return Object.assign(runtime, { reportError });
 }
 
 describe("LLM_GOAL_VERIFIER_NAME", () => {
@@ -436,8 +439,31 @@ describe("verifyGoalCompletion (orchestration paths)", () => {
     });
     expect(result.passed).toBe(false);
     expect(result.summary).toMatch(/provider down/);
+    // A short error fits the summary whole — no preview marker.
+    expect(result.summary).not.toContain("[error preview");
     expect(result.missing).toEqual(["c1"]);
     expect(result.rawResponse).toBe("");
+  });
+
+  it("durably records the complete model-call error; the summary is a named preview", async () => {
+    const longMessage = `provider exploded: ${"x".repeat(500)}COMPLETE-TAIL`;
+    const runtime = makeMockRuntime({ shouldThrow: new Error(longMessage) });
+    const result = await verifyGoalCompletion(runtime, {
+      goal: "x",
+      acceptanceCriteria: ["c1"],
+      completionEvidence: "evidence",
+    });
+    expect(result.passed).toBe(false);
+    // The bounded summary names itself a preview of the durable record …
+    expect(result.summary).toContain(
+      "[error preview — complete detail in the reported-error log]",
+    );
+    expect(result.summary).not.toContain("COMPLETE-TAIL");
+    // … and the COMPLETE error reached runtime.reportError first.
+    expect(runtime.reportError).toHaveBeenCalledTimes(1);
+    const [scope, err] = runtime.reportError.mock.calls[0] as [string, Error];
+    expect(scope).toBe("[goal-llm-verifier]");
+    expect(err.message).toBe(longMessage);
   });
 
   it("returns a passed verdict on a clean model response", async () => {

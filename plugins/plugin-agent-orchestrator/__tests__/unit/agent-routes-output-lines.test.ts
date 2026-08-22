@@ -88,7 +88,14 @@ describe("GET /api/coding-agents/:id/output lines query", () => {
 
     expect(result.handled).toBe(true);
     expect(result.status).toBe(200);
-    expect(result.body).toEqual({ sessionId: "sess-1", output: "ok" });
+    // Named bounded tail (cap-audit): the response now declares the tail
+    // window explicitly instead of presenting it as the whole output.
+    expect(result.body).toEqual({
+      sessionId: "sess-1",
+      output: "ok",
+      tail: true,
+      lines: 100,
+    });
     expect(getSessionOutput).toHaveBeenCalledWith("sess-1", 100);
   });
 

@@ -308,12 +308,24 @@ describe("spawn-cap fallback message (TASKS spawn_agent)", () => {
     router.noteSpawnForOrigin(key); // default cap = 3 → next spawn is capped
 
     const { replyText, result } = await runCappedSpawn(router, msgId);
-    expect((result.data as Record<string, unknown>)?.spawnCapped).toBe(true);
-    // The dishonest message implied the task was still in flight.
+    const data = result.data as Record<string, unknown>;
+    expect(data?.spawnCapped).toBe(true);
+    // The cap terminates the turn (continueChain:false — no later planner
+    // call exists to phrase anything), so the guard itself delivers ONE
+    // model-phrased message; with this harness's junk model output ("{}",
+    // missing the mustInclude attempt count) it degrades to the factual
+    // fallback. Never a silent turn, never a canned "no result" floor.
+    expect(data).toMatchObject({
+      attempts: 3,
+      outcome: "exhausted",
+    });
+    expect(replyText).not.toBe("");
+    expect(result.text).toBe(replyText);
+    expect(result.userFacingText).toBe(replyText);
+    // The delivered text is honest: capped-and-failed, not still in flight.
     expect(replyText).not.toMatch(/still working/i);
-    expect(replyText).toBe(
-      "I attempted this task 3 times but couldn't complete it. Try giving me more specific instructions, or breaking it into smaller steps.",
-    );
+    expect(replyText).toContain("3 times");
+    expect(replyText).toContain("nothing is still running");
   });
 
   it("relays the captured deliverable at the cap when one exists", async () => {

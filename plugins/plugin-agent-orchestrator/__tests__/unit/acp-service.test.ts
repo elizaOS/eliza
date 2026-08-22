@@ -1306,63 +1306,6 @@ describe("AcpService", () => {
     expect(events).not.toContain("task_complete");
   });
 
-  it("prepares OpenCode ACP environment for Cerebras", async () => {
-    const reg = nextProc();
-    const service = new AcpService(
-      runtime({
-        ELIZA_OPENCODE_BASE_URL: "https://api.cerebras.ai/v1",
-        ELIZA_OPENCODE_API_KEY: "csk_test",
-        ELIZA_OPENCODE_MODEL_POWERFUL: "gpt-oss-120b",
-      }),
-    );
-    await service.start();
-
-    const spawned = service.spawnSession({
-      name: "opencode-cerebras",
-      agentType: "opencode",
-      workdir: "/tmp/acp-test",
-    });
-    await waitForSpawn(reg);
-    closeOk(reg);
-    await spawned;
-
-    const args = spawnMock.mock.calls[0]?.[1] as string[] | undefined;
-    const agentArgIndex = args?.indexOf("--agent") ?? -1;
-    expect(agentArgIndex).toBeGreaterThanOrEqual(0);
-    // The shim script lives at `<plugin>/bin/opencode*` and is referenced
-    // with platform-native path separators (`\` on Windows, `/` on POSIX).
-    // On Windows the spawn target is wrapped in double quotes (paths can
-    // contain spaces) and uses the `.cmd` shim, so accept either
-    // separator after `plugin-agent-orchestrator`, any extension on the
-    // opencode shim, and tolerate surrounding quotes / trailing tokens
-    // around the trailing `acp` subcommand.
-    const shimArg = args?.[agentArgIndex + 1];
-    expect(shimArg).toBeDefined();
-    expect(shimArg).toContain("plugin-agent-orchestrator");
-    expect(shimArg).toContain("opencode");
-    expect(shimArg).toMatch(/\sacp(\s|$)/);
-    expect(args).not.toContain("opencode");
-
-    const env = spawnMock.mock.calls[0]?.[2]?.env as
-      | Record<string, string>
-      | undefined;
-    const config = JSON.parse(env?.OPENCODE_CONFIG_CONTENT ?? "{}") as {
-      provider?: Record<
-        string,
-        { npm?: string; options?: { baseURL?: string; apiKey?: string } }
-      >;
-      model?: string;
-    };
-    expect(env?.OPENCODE_MODEL).toBe("cerebras/gpt-oss-120b");
-    expect(env?.OPENCODE_DISABLE_AUTOUPDATE).toBe("1");
-    expect(config.model).toBe("cerebras/gpt-oss-120b");
-    expect(config.provider?.cerebras?.options?.baseURL).toBe(
-      "https://api.cerebras.ai/v1",
-    );
-    expect(config.provider?.cerebras?.npm).toBe("@ai-sdk/cerebras");
-    expect(config.provider?.cerebras?.options?.apiKey).toBe("csk_test");
-  });
-
   it("keeps BENCHMARK_TASK_AGENT=elizaos as the native default adapter", async () => {
     const reg = nextProc();
     const service = new AcpService(
@@ -1385,12 +1328,10 @@ describe("AcpService", () => {
     expect(session.agentType).toBe("elizaos");
     const args = spawnMock.mock.calls[0]?.[1] as string[] | undefined;
     expect(args).toContain("elizaos");
-    expect(args).not.toContain("opencode");
 
     const env = spawnMock.mock.calls[0]?.[2]?.env as
       | Record<string, string>
       | undefined;
-    expect(env?.OPENCODE_MODEL).toBeUndefined();
     expect(env?.OPENAI_MODEL).toBeUndefined();
   });
 
@@ -1693,51 +1634,6 @@ describe("AcpService", () => {
         process.env.ELIZA_CODEX_ACP_LANDLOCK = previousOverride;
       }
     }
-  });
-
-  it("uses an explicit OpenCode ACP command override when configured", async () => {
-    const reg = nextProc();
-    const service = new AcpService(
-      runtime({
-        ELIZA_OPENCODE_ACP_COMMAND: "/opt/opencode/bin/opencode acp",
-      }),
-    );
-    await service.start();
-
-    const spawned = service.spawnSession({
-      name: "opencode-command",
-      agentType: "opencode",
-      workdir: "/tmp/acp-test",
-    });
-    await waitForSpawn(reg);
-    closeOk(reg);
-    const { sessionId } = await spawned;
-
-    const args = spawnMock.mock.calls[0]?.[1] as string[] | undefined;
-    const agentArgIndex = args?.indexOf("--agent") ?? -1;
-    expect(agentArgIndex).toBeGreaterThanOrEqual(0);
-    expect(args?.[agentArgIndex + 1]).toBe("/opt/opencode/bin/opencode acp");
-    expect(args).not.toContain("opencode");
-
-    const prompt = nextProc();
-    const sent = service.sendPrompt(sessionId, "write a tiny static page");
-    await waitForSpawn(prompt);
-    prompt.proc.stdout.emit(
-      "data",
-      Buffer.from(
-        '{"jsonrpc":"2.0","id":"prompt","result":{"stopReason":"end_turn"},"sessionId":"protocol-session"}\n',
-      ),
-    );
-    closeOk(prompt);
-    await sent;
-
-    const promptArgs = spawnMock.mock.calls[1]?.[1] as string[] | undefined;
-    const promptAgentArgIndex = promptArgs?.indexOf("--agent") ?? -1;
-    expect(promptAgentArgIndex).toBeGreaterThanOrEqual(0);
-    expect(promptArgs?.[promptAgentArgIndex + 1]).toBe(
-      "/opt/opencode/bin/opencode acp",
-    );
-    expect(promptArgs).not.toContain("opencode");
   });
 
   it("sendPrompt emits message, tool_running, task_complete and resolves PromptResult", async () => {
@@ -2216,7 +2112,7 @@ describe("AcpService", () => {
     await service.start();
     const { sessionId } = await service.spawnSession({
       name: "native-reasoning",
-      agentType: "opencode",
+      agentType: "elizaos",
       workdir: "/tmp/acp-test",
     });
     const client = firstNativeClient();
@@ -2273,7 +2169,7 @@ describe("AcpService", () => {
     await service.start();
     const { sessionId } = await service.spawnSession({
       name: "native-plan",
-      agentType: "opencode",
+      agentType: "elizaos",
       workdir: "/tmp/acp-test",
     });
     const client = firstNativeClient();
@@ -2571,7 +2467,7 @@ describe("AcpService", () => {
     await service.start();
     const spawned = service.spawnSession({
       name: "route-prefixed",
-      agentType: "opencode",
+      agentType: "elizaos",
       workdir: "/tmp/acp-test",
     });
     await waitForSpawn(create);
@@ -2602,7 +2498,7 @@ describe("AcpService", () => {
     await service.start();
     const spawned = service.spawnSession({
       name: "ignore-echo",
-      agentType: "opencode",
+      agentType: "elizaos",
       workdir: "/tmp/acp-test",
     });
     await waitForSpawn(create);
@@ -2970,7 +2866,7 @@ describe("AcpService.runHealthCheck state_lost guards", () => {
     return {
       id: over.id ?? "00000000-0000-0000-0000-0000000000aa",
       name: "hc",
-      agentType: "opencode" as const,
+      agentType: "elizaos" as const,
       workdir: "/tmp/acp-test",
       status: "ready" as const,
       approvalPreset: "standard" as const,

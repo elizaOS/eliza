@@ -489,11 +489,14 @@ describe("emitProgress routing ladder + cadence", () => {
     expect(
       (rt.sendMessageToTarget.mock.calls[0][1] as { text: string }).text,
     ).toBe("C'est parti.");
+    // The shared phrase-for-user helper carries the facts (including the task
+    // text, the language signal) in the SYSTEM prompt; the user turn is a
+    // fixed trigger line.
     const [, params] = rt.useModel.mock.calls[0] as [
       unknown,
-      { prompt: string },
+      { system: string; prompt: string },
     ];
-    expect(params.prompt).toContain(
+    expect(params.system).toContain(
       "construis-moi un site vitrine en français",
     );
 
@@ -659,7 +662,19 @@ describe("emitProgress routing ladder + cadence", () => {
     const spawnText = (
       rt.sendMessageToTarget.mock.calls[0][1] as { text: string }
     ).text;
-    expect(spawnText).toBe("🚀 [feature-x] running");
+    // The 🚀 [label] marker is composed by the site (never by the model); the
+    // status prose after it is model-phrased via phraseForUser — here the
+    // mocked model's line. Model failure falls back to the literal "running"
+    // (covered separately below).
+    expect(spawnText).toBe(
+      "🚀 [feature-x] Editing src/index.ts and running tests.",
+    );
+    // Converted sends are stamped agent-voiced so the core transport voice
+    // gate cannot re-phrase them (which would strip the marker).
+    expect(
+      (rt.sendMessageToTarget.mock.calls[0][1] as { agentVoiced?: boolean })
+        .agentVoiced,
+    ).toBe(true);
     expect(rt.createThreadOnTarget).toHaveBeenCalledTimes(1);
     expect(rt.postToThreadOnTarget).toHaveBeenCalled();
 
@@ -670,6 +685,114 @@ describe("emitProgress routing ladder + cadence", () => {
     for (let i = 0; i < 8; i++) await Promise.resolve();
     expect(rt.createThreadOnTarget).toHaveBeenCalledTimes(1);
     expect(rt.sendMessageToTarget).toHaveBeenCalledTimes(1);
+
+    await rt.dispose();
+  });
+
+  it("threaded first post falls back to the literal 'running' when the phrase model fails, keeping the marker", async () => {
+    process.env.ACPX_PROGRESS_MODE = "threaded";
+    process.env.ACPX_PROGRESS_DELAY_MS = "0";
+    const rt = await buildHookedRuntime([
+      {
+        source: SOURCE,
+        capabilities: ["create_thread", "post_to_thread", "edit_message"],
+      },
+    ]);
+    // Distinct agentType so the phrase memo (keyed per agentType) cannot serve
+    // the previous test's cached line.
+    rt.sessions.set("s-thread-fb", {
+      status: "running",
+      metadata: {
+        source: SOURCE,
+        roomId: ROOM,
+        label: "feature-y",
+        agentType: "codex",
+      },
+    });
+    rt.useModel.mockRejectedValue(new Error("model down"));
+
+    await fire(rt, "s-thread-fb", "message", { text: "Starting work." });
+    await advanceTimersByTime(1_600);
+    for (let i = 0; i < 8; i++) await Promise.resolve();
+    expect(rt.sendMessageToTarget).toHaveBeenCalledTimes(1);
+    const spawnText = (
+      rt.sendMessageToTarget.mock.calls[0][1] as { text: string }
+    ).text;
+    expect(spawnText).toBe("🚀 [feature-y] running");
+
+    await rt.dispose();
+  });
+
+  it("compact completion edit carries the model-phrased line (falling back to 'Completed label: summary' on model failure), bypassing no guards", async () => {
+    process.env.ACPX_PROGRESS_MODE = "compact";
+    process.env.ACPX_PROGRESS_DELAY_MS = "0";
+    const rt = await buildHookedRuntime([
+      { source: SOURCE, capabilities: ["edit_message"] },
+    ]);
+    seedSession(rt, "s-done", "build-site");
+
+    // First narration flush records the editable main message (no model call —
+    // the compact first post is the narration itself).
+    await fire(rt, "s-done", "message", { text: "Building the site now." });
+    await advanceTimersByTime(1_600);
+    for (let i = 0; i < 8; i++) await Promise.resolve();
+    expect(rt.sendMessageToTarget).toHaveBeenCalledTimes(1);
+
+    // Completion: the edit path bypasses the core voice gate, so the line is
+    // phrased HERE. Phrased path first.
+    rt.useModel.mockResolvedValue("All done — the site is built.");
+    await fire(rt, "s-done", "task_complete", { response: "Built the site." });
+    expect(rt.editMessageOnTarget).toHaveBeenCalledTimes(1);
+    const editContent = rt.editMessageOnTarget.mock.calls[0][2] as {
+      text: string;
+      agentVoiced?: boolean;
+      metadata?: { transient?: boolean };
+    };
+    expect(editContent.text).toBe("All done — the site is built.");
+    expect(editContent.agentVoiced).toBe(true);
+    expect(editContent.metadata?.transient).toBe(true);
+    // Exactly one completion signal: the edit; no extra fresh send.
+    expect(rt.sendMessageToTarget).toHaveBeenCalledTimes(1);
+
+    // Model failure on a second session: the deterministic frame survives.
+    seedSession(rt, "s-done-fb", "other-site");
+    rt.useModel.mockRejectedValue(new Error("model down"));
+    await fire(rt, "s-done-fb", "message", { text: "Working." });
+    await advanceTimersByTime(1_600);
+    for (let i = 0; i < 8; i++) await Promise.resolve();
+    await fire(rt, "s-done-fb", "task_complete", { response: "Shipped it." });
+    expect(rt.editMessageOnTarget).toHaveBeenCalledTimes(2);
+    expect(
+      (rt.editMessageOnTarget.mock.calls[1][2] as { text: string }).text,
+    ).toBe("Completed other-site: Shipped it.");
+
+    await rt.dispose();
+  });
+
+  it("compact failure post uses the phrased line with 'Failed label.' as the model-failure fallback, count unchanged", async () => {
+    process.env.ACPX_PROGRESS_MODE = "compact";
+    process.env.ACPX_PROGRESS_DELAY_MS = "0";
+    // No edit/react caps → the terminal failure lands as one fresh message.
+    const rt = await buildHookedRuntime([{ source: SOURCE, capabilities: [] }]);
+    seedSession(rt, "s-fail", "build-site");
+
+    await fire(rt, "s-fail", "message", { text: "Trying the build." });
+    await advanceTimersByTime(1_600);
+    for (let i = 0; i < 8; i++) await Promise.resolve();
+    expect(rt.sendMessageToTarget).toHaveBeenCalledTimes(1);
+
+    rt.useModel.mockRejectedValue(new Error("model down"));
+    await fire(rt, "s-fail", "cancelled");
+    // Exactly ONE terminal failure post, using the factual fallback.
+    expect(rt.sendMessageToTarget).toHaveBeenCalledTimes(2);
+    const failContent = rt.sendMessageToTarget.mock.calls[1][1] as {
+      text: string;
+      agentVoiced?: boolean;
+      metadata?: { transient?: boolean };
+    };
+    expect(failContent.text).toBe("Failed build-site.");
+    expect(failContent.agentVoiced).toBe(true);
+    expect(failContent.metadata?.transient).toBe(true);
 
     await rt.dispose();
   });
@@ -724,6 +847,16 @@ describe("emitProgress routing ladder + cadence", () => {
       rt.sendMessageToTarget.mock.calls.length +
       rt.editMessageOnTarget.mock.calls.length;
     expect(postsAfterFirst).toBe(1);
+    // The heartbeat content keeps transient:true (recentMessages skips it) and
+    // is stamped agent-voiced (the summary is already model text — the core
+    // gate must not re-phrase it and strip the ⏳ marker).
+    const hbContent = (rt.sendMessageToTarget.mock.calls[0]?.[1] ??
+      rt.editMessageOnTarget.mock.calls[0]?.[2]) as {
+      agentVoiced?: boolean;
+      metadata?: { transient?: boolean };
+    };
+    expect(hbContent.metadata?.transient).toBe(true);
+    expect(hbContent.agentVoiced).toBe(true);
 
     // Two more ticks producing the identical summary → no additional posts.
     await advanceTimersByTime(25_000);

@@ -385,12 +385,22 @@ describe("workspace-diff — unborn-HEAD scoop flood (#11605)", () => {
     expect(cs?.truncated).toBe(false);
   }, 20_000);
 
-  it("parseLsFiles drops the truncated garbage tail of an over-maxBuffer listing", () => {
+  it("parseLsFiles surfaces a maxBuffer cut honestly instead of silently dropping it", () => {
     // A complete `git ls-files` listing always ends with a newline; output cut
-    // at maxBuffer (ENOBUFS) ends mid-path instead.
-    expect(parseLsFiles("a.txt\nb.txt\nnode_mod")).toEqual(["a.txt", "b.txt"]);
-    expect(parseLsFiles("a.txt\nb.txt\n")).toEqual(["a.txt", "b.txt"]);
-    expect(parseLsFiles("partial-only-no-newline")).toEqual([]);
-    expect(parseLsFiles(undefined)).toEqual([]);
+    // at maxBuffer (ENOBUFS) ends mid-path instead. The cut is REPORTED, not
+    // swallowed (cap-audit): callers must see truncated:true.
+    expect(parseLsFiles("a.txt\nb.txt\nnode_mod")).toEqual({
+      files: ["a.txt", "b.txt"],
+      truncated: true,
+    });
+    expect(parseLsFiles("a.txt\nb.txt\n")).toEqual({
+      files: ["a.txt", "b.txt"],
+      truncated: false,
+    });
+    expect(parseLsFiles("partial-only-no-newline")).toEqual({
+      files: [],
+      truncated: true,
+    });
+    expect(parseLsFiles(undefined)).toEqual({ files: [], truncated: false });
   });
 });

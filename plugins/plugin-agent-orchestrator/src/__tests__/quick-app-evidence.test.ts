@@ -11,10 +11,13 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { describe, expect, it } from "vitest";
+import { readDurableContent } from "../services/durable-content-store.js";
 import {
   collectFsObservedFiles,
   deriveRouteMappedUrls,
   detectCheckSurfaces,
+  enumerateWorkdirCandidates,
+  enumerateWorkdirCandidatesDetailed,
   mineCandidatePaths,
   probeMappedUrls,
   readFsVerifiedContents,
@@ -157,6 +160,72 @@ describe("detectCheckSurfaces (dawn-mesa boundary)", () => {
   });
 });
 
+describe("enumerateWorkdirCandidates (exhaustive walk, named exclusions)", () => {
+  it("nominates deep and dot-path deliverables; skips plumbing and vendor dirs", () => {
+    const workdir = fs.mkdtempSync(path.join(os.tmpdir(), "enumerate-"));
+    try {
+      // 5 directories deep — the old depth-3 cap silently dropped this.
+      const deep = path.join(workdir, "a", "b", "c", "d", "e");
+      fs.mkdirSync(deep, { recursive: true });
+      fs.writeFileSync(path.join(deep, "deep.html"), "<html></html>");
+      // Dot-path deliverable — the old blanket dot-skip silently dropped it.
+      const workflows = path.join(workdir, ".github", "workflows");
+      fs.mkdirSync(workflows, { recursive: true });
+      fs.writeFileSync(path.join(workflows, "ci.yml"), "on: push\n");
+      // Named exclusions stay excluded.
+      fs.writeFileSync(path.join(workdir, "AGENTS.md"), "plumbing");
+      fs.mkdirSync(path.join(workdir, "node_modules"));
+      fs.writeFileSync(path.join(workdir, "node_modules", "x.js"), "noise");
+      fs.mkdirSync(path.join(workdir, ".git"));
+      fs.writeFileSync(path.join(workdir, ".git", "config"), "[core]");
+
+      const files = enumerateWorkdirCandidates(workdir);
+      expect(files).toContain(path.join("a", "b", "c", "d", "e", "deep.html"));
+      expect(files).toContain(path.join(".github", "workflows", "ci.yml"));
+      expect(files).not.toContain("AGENTS.md");
+      expect(files.some((f) => f.startsWith("node_modules"))).toBe(false);
+      expect(files.some((f) => f.startsWith(".git/"))).toBe(false);
+    } finally {
+      fs.rmSync(workdir, { recursive: true, force: true });
+    }
+  });
+
+  it("a tripped sanity ceiling records the explicit continuation note (nothing silent)", () => {
+    const workdir = fs.mkdtempSync(path.join(os.tmpdir(), "enumerate-cap-"));
+    try {
+      for (const name of ["a.txt", "b.txt", "c.txt", "d.txt"]) {
+        fs.writeFileSync(path.join(workdir, name), name);
+      }
+      fs.mkdirSync(path.join(workdir, "sub"));
+      fs.writeFileSync(path.join(workdir, "sub", "e.txt"), "e");
+
+      const capped = enumerateWorkdirCandidatesDetailed(workdir, {
+        maxEntries: 2,
+      });
+      expect(capped.truncated).toBe(true);
+      expect(capped.candidates).toHaveLength(2);
+      // Every file is accounted for: nominated OR named as not traversed.
+      expect(
+        capped.candidates.length + capped.notTraversed.length,
+      ).toBeGreaterThanOrEqual(5);
+      // Deterministic cut: sorted visit order decides which entries survive.
+      expect(capped.candidates).toEqual(["a.txt", "b.txt"]);
+
+      const shallow = enumerateWorkdirCandidatesDetailed(workdir, {
+        maxDepth: 0,
+      });
+      expect(shallow.truncated).toBe(true);
+      expect(shallow.notTraversed).toContain("sub/");
+
+      const exhaustive = enumerateWorkdirCandidatesDetailed(workdir);
+      expect(exhaustive.truncated).toBe(false);
+      expect(exhaustive.notTraversed).toEqual([]);
+    } finally {
+      fs.rmSync(workdir, { recursive: true, force: true });
+    }
+  });
+});
+
 describe("readFsVerifiedContents (reed-marsh content criteria)", () => {
   it("reads complete real file text, skipping binaries and traversal", () => {
     const workdir = fs.mkdtempSync(path.join(os.tmpdir(), "content-"));
@@ -202,5 +271,62 @@ describe("readFsVerifiedContents (reed-marsh content criteria)", () => {
       () => undefined,
     );
     expect(contents).toEqual([]);
+  });
+
+  it("inlines source/config text (sniffed, not extension-allowlisted) and skips real binaries", () => {
+    const workdir = fs.mkdtempSync(path.join(os.tmpdir(), "content-sniff-"));
+    try {
+      fs.writeFileSync(path.join(workdir, "app.py"), "print('hello')\n");
+      fs.writeFileSync(path.join(workdir, "config.yml"), "port: 8080\n");
+      fs.writeFileSync(path.join(workdir, "Makefile"), "all:\n\techo ok\n");
+      // Text-extension-free blob with a NUL byte — the sniff, not the name,
+      // classifies it as binary.
+      fs.writeFileSync(
+        path.join(workdir, "blob.dat"),
+        Buffer.from([0x41, 0x00, 0x42]),
+      );
+
+      const contents = readFsVerifiedContents(workdir, [
+        "app.py",
+        "config.yml",
+        "Makefile",
+        "blob.dat",
+      ]);
+      expect(contents.map((c) => c.path)).toEqual([
+        "app.py",
+        "config.yml",
+        "Makefile",
+      ]);
+      expect(contents[0]?.content).toBe("print('hello')\n");
+    } finally {
+      fs.rmSync(workdir, { recursive: true, force: true });
+    }
+  });
+
+  it("an oversized text file is paged with a durable continuation reference, never cut silently", () => {
+    const workdir = fs.mkdtempSync(path.join(os.tmpdir(), "content-big-"));
+    const trajectoryDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "content-traj-"),
+    );
+    const savedEnv = process.env.ELIZA_TRAJECTORY_DIR;
+    process.env.ELIZA_TRAJECTORY_DIR = trajectoryDir;
+    try {
+      const text = `console.log(1);\n${"z".repeat(30_000)}`;
+      fs.writeFileSync(path.join(workdir, "big.js"), text);
+      const [entry] = readFsVerifiedContents(workdir, ["big.js"]);
+      expect(entry?.content.length).toBeLessThanOrEqual(24_000);
+      const sha = /\/api\/orchestrator\/content\/([0-9a-f]{64})/.exec(
+        entry?.content ?? "",
+      )?.[1];
+      expect(sha).toBeTruthy();
+      // The reference resolves to the COMPLETE file text.
+      const window = readDurableContent(sha ?? "", { limit: 1_048_576 });
+      expect(window?.text).toBe(text);
+    } finally {
+      if (savedEnv === undefined) delete process.env.ELIZA_TRAJECTORY_DIR;
+      else process.env.ELIZA_TRAJECTORY_DIR = savedEnv;
+      fs.rmSync(workdir, { recursive: true, force: true });
+      fs.rmSync(trajectoryDir, { recursive: true, force: true });
+    }
   });
 });

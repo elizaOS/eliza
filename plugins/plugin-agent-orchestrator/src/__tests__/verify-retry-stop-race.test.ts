@@ -442,7 +442,10 @@ describe("URL extraction trims trailing sentence punctuation (the cascade trigge
     savedSettle = process.env.ELIZA_URL_VERIFY_SETTLE_MS;
     process.env.ELIZA_URL_VERIFY_SETTLE_MS = "0";
     host = createServer((req, res) => {
-      if (req.url === "/apps/color-pop/") {
+      if (
+        req.url === "/apps/color-pop/" ||
+        /^\/apps\/live-\d+\/$/.test(req.url ?? "")
+      ) {
         res.writeHead(200, { "content-type": "text/plain" });
         res.end("app");
         return;
@@ -479,6 +482,33 @@ describe("URL extraction trims trailing sentence punctuation (the cascade trigge
     );
     expect(verified.dead).toEqual([]);
     expect(verified.verifiedUrls).toContain(baseUrl);
+  });
+
+  it("probes EVERY mentioned URL — a dead 7th URL past the old 5-URL cap is still caught", async () => {
+    // Regression for the retired `extractVerifiableUrls` slice(0, 5): a dead
+    // URL in 6th+ position escaped liveness verification entirely and the
+    // completion relayed as fully verified. Batched probing must cover all.
+    const { port } = host.address() as AddressInfo;
+    const liveUrls = Array.from(
+      { length: 6 },
+      (_, i) => `http://127.0.0.1:${port}/apps/live-${i + 1}/`,
+    );
+    const deadUrl = `http://127.0.0.1:${port}/apps/dead-app/`;
+    const text = `All pages are up: ${liveUrls.join(" , ")} and ${deadUrl}`;
+    const verified = await annotateUnverifiedUrls(
+      text,
+      undefined,
+      "Build the apps and give me the live urls",
+      undefined,
+      undefined,
+      undefined,
+      new Set([port]),
+    );
+    expect(verified.dead.map((d) => d.url)).toContain(deadUrl);
+    // Every live page was probed and verified — none silently skipped.
+    for (const url of liveUrls) {
+      expect(verified.verifiedUrls).toContain(url);
+    }
   });
 
   it("leaves a loopback URL on a non-sanctioned port unprobed (W1-048)", async () => {

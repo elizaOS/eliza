@@ -16,6 +16,7 @@ import {
   getAcpService,
   reportProviderFetchFailure,
 } from "../actions/common.js";
+import { persistDurableContent } from "../services/durable-content-store.js";
 import type { SessionInfo } from "../services/types.js";
 import type { WorkspaceChangeSet } from "../services/workspace-diff.js";
 
@@ -126,15 +127,22 @@ export const codingSessionChangesProvider: Provider = {
     ];
     if (changeSet.diffStat) lines.push(`  stat: ${changeSet.diffStat}`);
     if (changeSet.diff) {
-      // Cap the rendered diff: this block is injected into every Stage-1 turn
-      // for the recency window, so keep it lean (the full diff lives on
-      // session metadata). Small site/app edits fit well under this.
+      // The captured diff renders WHOLE — model-facing content flows complete
+      // (the change set is already session-scoped and the same record lives on
+      // session metadata lastChangeSet). Only a capture-level cut
+      // (changeSet.truncated) can make it partial, and that is disclosed
+      // explicitly below rather than silently re-presented as complete.
       const diffLines = changeSet.diff.split("\n");
       lines.push("  diff: |");
       for (const diffLine of diffLines) lines.push(`    ${diffLine}`);
     }
+    if (changeSet.truncated) {
+      lines.push(renderTruncationDisclosure(changeSet.diff));
+    }
     lines.push(
-      "  note: The files and diff above ARE the real change set from your own coding work in this conversation — you have them right here. When the user asks what you changed or to see the diff, answer directly from this with a short, chat-friendly summary: name the file(s) and describe what changed, quoting the key changed line(s) when helpful. Keep it concise (a few lines). Do NOT say you lack the files, the source, the repository, or access — the change set is provided above. Never invent edits beyond it.",
+      changeSet.truncated
+        ? "  note: The files and diff above are from your own real coding work in this conversation, but the captured diff is PARTIAL — it was cut when captured from git, so files or hunks may be missing. When the user asks what you changed or to see the diff, answer from what is shown AND say explicitly that the captured diff is partial. Do NOT present it as the complete change set, and never invent edits beyond it."
+        : "  note: The files and diff above ARE the real change set from your own coding work in this conversation — you have them right here. When the user asks what you changed or to see the diff, answer directly from this with a short, chat-friendly summary: name the file(s) and describe what changed, quoting the key changed line(s) when helpful. Keep it concise (a few lines). Do NOT say you lack the files, the source, the repository, or access — the change set is provided above. Never invent edits beyond it.",
     );
 
     const text = lines.join("\n");
@@ -152,6 +160,21 @@ export const codingSessionChangesProvider: Provider = {
     };
   },
 };
+
+/** Disclose a capture-level cut in the model-facing text WITH a durable
+ *  continuation: the fullest captured diff is persisted content-addressed so
+ *  the marker names a resolvable record, not a dead-end textual note. */
+function renderTruncationDisclosure(diff: string): string {
+  try {
+    const reference = persistDurableContent(diff);
+    const sha = reference.ref.slice("acpx-content:".length);
+    return `  truncated: true  # the diff above was CUT at capture (git read buffer) — files/hunks may be missing; the fullest captured diff is durably recorded (GET /api/orchestrator/content/${sha}) and on session metadata lastChangeSet`;
+  } catch {
+    // error-policy:J4 durable persistence failing must not sink the provider
+    // — the disclosure still names the loss honestly and the metadata copy.
+    return "  truncated: true  # the diff above was CUT at capture (git read buffer) — files/hunks may be missing; the captured diff also lives on session metadata lastChangeSet";
+  }
+}
 
 function dateMs(value: Date | string | number | undefined): number {
   if (value instanceof Date) return value.getTime();
