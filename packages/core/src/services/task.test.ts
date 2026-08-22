@@ -20,7 +20,9 @@ const T0 = new Date("2026-01-01T00:00:00.000Z").getTime();
  * Deliberately does NOT auto-markDirty on mutation — the tests below exercise
  * exactly when the tick re-queries without external nudges.
  */
-function makeTaskRuntime() {
+function makeTaskRuntime(options?: {
+	getTasks?: (params: { tags?: string[]; agentIds?: UUID[] }) => Promise<Task[]>;
+}) {
 	const tasks = new Map<string, Task>();
 	const workers = new Map<string, TaskWorker>();
 	const noop = () => undefined;
@@ -33,8 +35,10 @@ function makeTaskRuntime() {
 			workers.set(worker.name, worker);
 		},
 		getTaskWorker: (name: string) => workers.get(name),
-		getTasks: async (_params: { tags?: string[]; agentIds?: UUID[] }) =>
-			Array.from(tasks.values()),
+		getTasks:
+			options?.getTasks ??
+			(async (_params: { tags?: string[]; agentIds?: UUID[] }) =>
+				Array.from(tasks.values())),
 		getTask: async (id: UUID) => tasks.get(id) ?? null,
 		getTasksByName: async (name: string) =>
 			Array.from(tasks.values()).filter((t) => t.name === name),
@@ -738,6 +742,52 @@ describe("TaskService orphaned-task self-heal (missing worker)", () => {
 		await vi.advanceTimersByTimeAsync(30_000);
 		expect(tasks.get("op-paused")?.metadata?.paused).toBe(true);
 		expect(execute).not.toHaveBeenCalled();
+	});
+
+	it("runs at most one already-selected execution when pauseTask lands mid-tick", async () => {
+		const { runtime, tasks, workers } = makeTaskRuntime();
+		const execute = vi.fn(async () => undefined);
+		workers.set("ONE_SHOT", { name: "ONE_SHOT", execute });
+		tasks.set("mid-tick-pause", {
+			id: "mid-tick-pause" as UUID,
+			name: "ONE_SHOT",
+			agentId: AGENT_ID,
+			tags: ["queue"],
+			dueAt: T0 - 1,
+		});
+
+		// Gate the FIRST getTasks (the in-flight tick) so pauseTask can land
+		// while the tick holds a stale, pre-pause snapshot — the production
+		// interleaving the already-selected-work semantics describe.
+		let releaseTick: ((snapshot: Task[]) => void) | null = null;
+		const tickSnapshot = new Promise<Task[]>((resolve) => {
+			releaseTick = resolve;
+		});
+		let firstCall = true;
+		(runtime as unknown as { getTasks: unknown }).getTasks = async () => {
+			if (!firstCall) return Array.from(tasks.values());
+			firstCall = false;
+			return await tickSnapshot;
+		};
+
+		service = (await TaskService.start(runtime)) as TaskService;
+		await vi.advanceTimersByTimeAsync(1_000);
+
+		// Stale snapshot captured BEFORE the pause persists.
+		const stale = Array.from(tasks.values());
+		await service.pauseTask("mid-tick-pause" as UUID);
+		expect(tasks.get("mid-tick-pause")?.metadata?.paused).toBe(true);
+
+		releaseTick?.(stale);
+		await vi.advanceTimersByTimeAsync(2_000);
+		// The already-selected execution completes its lifecycle exactly once…
+		expect(execute).toHaveBeenCalledTimes(1);
+		// …including the normal one-shot delete (documented semantics).
+		expect(tasks.has("mid-tick-pause")).toBe(false);
+
+		// Every subsequent tick observes the pause state and selects nothing.
+		await vi.advanceTimersByTimeAsync(30_000);
+		expect(execute).toHaveBeenCalledTimes(1);
 	});
 
 	it("does not execute a paused one-shot task when it becomes due, and keeps the row", async () => {
