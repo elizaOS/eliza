@@ -100,7 +100,7 @@ describe("action tiering", () => {
 		);
 	});
 
-	it("keeps Tier B parents parent-only for nested planner expansion", () => {
+	it("keeps Tier B diagnostic while preserving every callable child", () => {
 		const catalog = buildActionCatalog(actions);
 		const calendar = catalog.parentByName.get("CALENDAR");
 		if (!calendar) {
@@ -119,10 +119,11 @@ describe("action tiering", () => {
 		expect(surface.exposedActionNames).toEqual(
 			expect.arrayContaining(["CALENDAR"]),
 		);
-		expect(surface.exposedActionNames).not.toContain("CREATE_EVENT");
+		expect(surface.exposedActionNames).toContain("CREATE_EVENT");
+		expect(surface.callableChildrenByParent.CALENDAR).toEqual(["CREATE_EVENT"]);
 	});
 
-	it("omits Tier C parents from the exposed action surface", () => {
+	it("keeps Tier C diagnostic without omitting its callable surface", () => {
 		const catalog = buildActionCatalog(actions);
 		const email = catalog.parentByName.get("EMAIL");
 		if (!email) {
@@ -137,9 +138,9 @@ describe("action tiering", () => {
 		expect(surface.tierCParents.map((parent) => parent.name)).toContain(
 			"EMAIL",
 		);
-		expect(surface.omittedParentNames).toContain("EMAIL");
-		expect(surface.exposedActionNames).not.toContain("EMAIL");
-		expect(surface.exposedActionNames).not.toContain("SEND_EMAIL");
+		expect(surface.omittedParentNames).toEqual([]);
+		expect(surface.exposedActionNames).toContain("EMAIL");
+		expect(surface.exposedActionNames).toContain("SEND_EMAIL");
 	});
 
 	it("promotes a candidate parent from Tier C into Tier A, with children restored", () => {
@@ -328,8 +329,8 @@ describe("action tiering", () => {
 		expect(surface.tierAParents.map((parent) => parent.name)).toEqual([
 			"VIEWS",
 		]);
-		expect(surface.exposedActionNames).not.toContain("HOUSEHOLD_OPERATIONS");
-		expect(surface.exposedActionNames).not.toContain("SCHOOL_SOURCES");
+		expect(surface.exposedActionNames).toContain("HOUSEHOLD_OPERATIONS");
+		expect(surface.exposedActionNames).toContain("SCHOOL_SOURCES");
 	});
 
 	it("does not collapse an unmatched candidate to an arbitrary saturated winner", () => {
@@ -390,7 +391,7 @@ describe("action tiering", () => {
 			narrowToCandidateActions: ["SEND_EMAIL"],
 		});
 
-		expect(surface.exposedActionNames).not.toContain("MUSIC");
+		expect(surface.exposedActionNames).toContain("MUSIC");
 		expect(surface.exposedActionNames).toEqual(
 			expect.arrayContaining(["EMAIL"]),
 		);
@@ -479,7 +480,7 @@ describe("action tiering", () => {
 		expect(surface.exposedActionNames).toEqual(
 			expect.arrayContaining(["TASKS", "TASKS_SPAWN_AGENT"]),
 		);
-		expect(surface.exposedActionNames).not.toContain("SCHEDULED_TASKS");
+		expect(surface.exposedActionNames).toContain("SCHEDULED_TASKS");
 	});
 
 	it("keeps simile candidate matching when there is no canonical name collision", () => {
@@ -579,8 +580,8 @@ describe("action tiering", () => {
 		expect(surface.tierAParents.map((parent) => parent.name)).toEqual([
 			"MUSIC",
 		]);
-		expect(surface.exposedActionNames).not.toContain("TASKS_CANCEL_NOW");
-		expect(surface.exposedActionNames).not.toContain("CANCEL_NOW_TASKS");
+		expect(surface.exposedActionNames).toContain("TASKS_CANCEL_NOW");
+		expect(surface.exposedActionNames).toContain("CANCEL_NOW_TASKS");
 	});
 
 	it("demotes non-candidate Tier A parents when a candidate is promoted", () => {
@@ -602,8 +603,8 @@ describe("action tiering", () => {
 		expect(surface.tierAParents.map((parent) => parent.name)).toEqual([
 			"EMAIL",
 		]);
-		expect(surface.exposedActionNames).not.toContain("MUSIC");
-		expect(surface.omittedParentNames).toContain("MUSIC");
+		expect(surface.exposedActionNames).toContain("MUSIC");
+		expect(surface.omittedParentNames).toEqual([]);
 	});
 
 	it("leaves the surface untouched when no parent matches any candidate", () => {
@@ -682,8 +683,9 @@ describe("action tiering", () => {
 			expect(tierA.childNames).toContain("MESSAGE_SEND_REPLY");
 			// The parent umbrella stays exposed as the catch-all dispatcher.
 			expect(surface.exposedActionNames).toContain("MESSAGE");
-			// Narrowed-out children leave the exposed surface entirely.
-			expect(surface.exposedActionNames).not.toContain("MESSAGE_OP_9");
+			// Diagnostic narrowing never removes children from the callable surface.
+			expect(surface.exposedActionNames).toContain("MESSAGE_OP_9");
+			expect(surface.callableChildrenByParent.MESSAGE).toHaveLength(12);
 		});
 
 		it("always keeps Stage-1 candidate children even when token ranking misses them", () => {

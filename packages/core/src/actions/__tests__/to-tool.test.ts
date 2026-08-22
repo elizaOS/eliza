@@ -58,6 +58,8 @@ describe("actionToTool", () => {
 				{
 					name: "limit",
 					description: "Maximum number of results",
+					descriptionCompressed: "Max results",
+					examples: [1, 2, 3, 4, 5],
 					required: false,
 					schema: { type: "integer", minimum: 1, maximum: 20, default: 5 },
 				},
@@ -71,7 +73,7 @@ describe("actionToTool", () => {
 			type: "function",
 			function: {
 				name: "DOCUMENT",
-				description: "Search knowledge",
+				description: "Search indexed knowledge",
 				strict: true,
 				parameters: {
 					type: "object",
@@ -84,7 +86,7 @@ describe("actionToTool", () => {
 						},
 						limit: {
 							type: "integer",
-							description: "Maximum number of results",
+							description: "Maximum number of results (e.g. 1, 2, 3, 4, 5)",
 							minimum: 1,
 							maximum: 20,
 							default: 5,

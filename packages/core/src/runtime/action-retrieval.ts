@@ -2,7 +2,7 @@
  * Multi-stage action retrieval for the planner: scores catalog parents by
  * exact-hint, candidate-regex, keyword, BM25, embedding tie-breaker, and
  * context-match signals, then fuses the per-stage rankings with reciprocal-rank
- * fusion into a tier-sized candidate set.
+ * fusion into a complete, relevance-ordered candidate set.
  */
 import { countActionSearchKeywordMatches } from "../i18n/action-search-keywords";
 import { logger } from "../logger";
@@ -170,9 +170,8 @@ const RETRIEVAL_TIER_DEFAULTS: Record<
 	},
 };
 
-// Cerebras "compress" mode caps top-K at 8 regardless of tier default.
-// When `ELIZA_PROMPT_COMPRESS=1` is set we trade retrieval breadth for a
-// tighter token budget on the available-actions block.
+// Retained only as a benchmark-tuning value. Runtime retrieval never applies
+// this as a model-facing cap: every authorized catalog parent remains present.
 const COMPRESS_MODE_TOP_K_CAP = 8;
 // A candidate name can hint MORE than one parent when the phrasing is genuinely
 // ambiguous between surfaces. "OPEN_APP" can mean the apps *page* (VIEWS) or
@@ -776,16 +775,11 @@ export function retrieveActions(
 		);
 	});
 
-	const effectiveLimit =
-		effectiveOverrides?.topK ??
-		(Number.isFinite(input.limit) ? input.limit : undefined);
-	const limit = Number.isFinite(effectiveLimit)
-		? Math.max(0, effectiveLimit ?? 0)
-		: 0;
-	const limited = limit > 0 ? results.slice(0, limit) : results;
-
-	for (let index = 0; index < limited.length; index += 1) {
-		limited[index].rank = index + 1;
+	// `limit` and tier `topK` remain accepted for compatibility with benchmark
+	// callers, but they cannot remove registered actions from model context.
+	// Relevance is an ordering signal only.
+	for (let index = 0; index < results.length; index += 1) {
+		results[index].rank = index + 1;
 	}
 
 	let measurement: RetrievalMeasurement | undefined;
@@ -834,7 +828,7 @@ export function retrieveActions(
 	}
 
 	return {
-		results: limited,
+		results,
 		warnings: input.catalog.warnings,
 		query: {
 			text: queryText,

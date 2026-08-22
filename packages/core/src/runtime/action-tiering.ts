@@ -1,9 +1,9 @@
 /**
  * Tier-aware action catalog assembly for the planner. Partitions
  * retrieval-ranked catalog parents into protocol (tier 0), first-class (tier A),
- * umbrella-only (tier B), and omitted (tier C) bands, narrows tier A to the
- * Stage-1 candidate actions, caps parents and per-parent children, and emits the
- * exposed action surface plus a stable hash for cache and trajectory keying.
+ * umbrella-only (tier B), and low-relevance (tier C) diagnostic bands while a
+ * separate complete callable surface preserves every authorized parent and
+ * child. Tiers affect diagnostics and ordering only; they never remove tools.
  */
 import {
 	type ActionCatalog,
@@ -36,14 +36,6 @@ export type Tier0ProtocolAction = (typeof TIER0_PROTOCOL_ACTIONS)[number];
 const RETRIEVAL_OVERRIDE_SCORE = 0.97;
 const DOMINANT_LEXICAL_STAGE_SCORE = 0.99;
 
-// Per-parent cap on children exposed as first-class planner tools. Symmetric
-// with the maxTierAParents default: without it a single hot parent floods the
-// surface with its whole namespace regardless of turn intent (observed live:
-// all 24 MESSAGE_* children on a two-intent turn, all 33 BROWSER_* children on
-// a browser turn). Narrowing never removes capability — the parent umbrella
-// tool stays exposed and its handler dispatches ANY subaction, exposed or not.
-const DEFAULT_MAX_TIER_A_CHILDREN_PER_PARENT = 8;
-
 export type ActionTier = "tier0" | "tierA" | "tierB" | "tierC";
 
 export type TieredParentAction = {
@@ -66,23 +58,16 @@ export type TierActionResultsInput = {
 	/**
 	 * When provided, tier-A is narrowed to parents matching at least one
 	 * candidate name (by parent normalized name OR any child normalized name,
-	 * so TASKS_SPAWN_AGENT maps back to TASKS). Non-matching tier-A and tier-B
-	 * parents go to tier-C (omitted entirely — not tier-B, which would still
-	 * expose umbrella parent names to the planner). No-op when no tier-A
-	 * parent matches, to prevent accidental surface collapse.
+	 * so TASKS_SPAWN_AGENT maps back to TASKS). This changes diagnostic bands,
+	 * never the complete callable surface. No-op when no tier-A parent matches.
 	 *
 	 * Applied before the maxTierAParents cap so a candidate parent ranked
 	 * outside the cap isn't silently displaced before the narrow runs.
 	 */
 	narrowToCandidateActions?: readonly string[];
 	/**
-	 * Cap on sub-actions exposed as first-class planner tools per tier-A
-	 * parent (parents themselves are capped by `maxTierAParents`). Children
-	 * are ranked against the turn's Stage-1 signals: candidate-named children
-	 * always survive (explicit routing decision), remaining slots go to the
-	 * best `queryTokens` overlap with each child's catalog search text.
-	 * Narrowed-out children remain reachable through the parent umbrella
-	 * tool, whose handler routes any subaction.
+	 * Legacy diagnostic-band hint. The callable surface separately preserves
+	 * every child; relevance only changes diagnostic selection and ordering.
 	 */
 	maxTierAChildrenPerParent?: number;
 	/**
@@ -102,6 +87,8 @@ export type TieredActionSurface = {
 	tierCParents: TieredParentAction[];
 	exposedParentNames: string[];
 	exposedActionNames: string[];
+	callableParentNames: string[];
+	callableChildrenByParent: Record<string, string[]>;
 	omittedParentNames: string[];
 	sortedTierAParentNames: string[];
 	sortedTierBParentNames: string[];
@@ -113,6 +100,8 @@ export function tierActionResults(
 ): TieredActionSurface {
 	const tierAThreshold = input.tierAThreshold ?? 0.7;
 	const tierBThreshold = input.tierBThreshold ?? 0.3;
+	// These limits shape diagnostic relevance bands only. The complete callable
+	// surface assembled below is independent of them.
 	const maxTierAParents = normalizedLimit(input.maxTierAParents ?? 8);
 	const maxTierBParents = normalizedLimit(input.maxTierBParents ?? 16);
 	const protocolActions = [
@@ -240,14 +229,10 @@ export function tierActionResults(
 			return false;
 		};
 
-		// Promote candidate-matching parents up into tier-A from tier-B /
-		// tier-C. Stage-1's candidate selection is an explicit, high-confidence
-		// routing decision — it must guarantee the action reaches the planner's
-		// surface even when the fuzzy retrieval scored the parent below the
-		// tier-A threshold. Without this, a build request whose `TASKS` parent
-		// ranked into tier-C is omitted entirely and the planner physically
-		// cannot pick `TASKS_SPAWN_AGENT`. Children are restored on promotion
-		// (tier-B / tier-C entries are stored parent-only).
+		// Promote candidate-matching parents into the tier-A diagnostic band so
+		// routing and measurement explain the Stage-1 decision even when fuzzy
+		// retrieval scored the parent below the threshold. This does not control
+		// callable-tool membership; the complete surface is assembled below.
 		for (const lowerTier of [tierBParents, tierCParents]) {
 			for (let index = lowerTier.length - 1; index >= 0; index -= 1) {
 				const parent = lowerTier[index];
@@ -377,29 +362,32 @@ export function tierActionResults(
 		tierCParents.sort(compareTieredParents);
 	}
 
-	// Runs after the parent narrow + caps so it sees the final tier-A set
-	// (including candidate-promoted parents, whose children were restored on
-	// promotion) and narrows within each parent to the turn-relevant children.
+	// Rank and select children for the tier-A diagnostic band after parent
+	// selection. The callable child map below remains complete.
 	narrowTierAChildrenPerParent(tierAParents, {
-		cap: normalizedLimit(
-			input.maxTierAChildrenPerParent ?? DEFAULT_MAX_TIER_A_CHILDREN_PER_PARENT,
-		),
+		cap: normalizedLimit(input.maxTierAChildrenPerParent ?? 8),
 		candidateSet: narrowSet,
 		queryTokens: input.queryTokens,
 	});
 
-	const exposedParentNames = sortedUnique([
-		...tierAParents.map((parent) => parent.name),
-		...tierBParents.map((parent) => parent.name),
-	]);
+	const callableParentNames = sortedUnique(
+		input.catalog.parents.map((parent) => parent.name),
+	);
+	const callableChildrenByParent = Object.fromEntries(
+		input.catalog.parents.map((parent) => [
+			parent.name,
+			[...parent.childNames],
+		]),
+	);
+	const exposedParentNames = callableParentNames;
 	const exposedActionNames = sortedUnique([
 		...protocolActions,
-		...tierAParents.flatMap((parent) => [parent.name, ...parent.childNames]),
-		...tierBParents.map((parent) => parent.name),
+		...input.catalog.parents.flatMap((parent) => [
+			parent.name,
+			...parent.childNames,
+		]),
 	]);
-	const omittedParentNames = sortedUnique(
-		tierCParents.map((parent) => parent.name),
-	);
+	const omittedParentNames: string[] = [];
 	const sortedTierAParentNames = sortedUnique(
 		tierAParents.map((parent) => parent.name),
 	);
@@ -414,6 +402,8 @@ export function tierActionResults(
 		tierCParents,
 		exposedParentNames,
 		exposedActionNames,
+		callableParentNames,
+		callableChildrenByParent,
 		omittedParentNames,
 		sortedTierAParentNames,
 		sortedTierBParentNames,
@@ -422,7 +412,7 @@ export function tierActionResults(
 			tierAParentNames: sortedTierAParentNames,
 			tierBParentNames: sortedTierBParentNames,
 			tierAChildNames: sortedUnique(
-				tierAParents.flatMap((parent) => parent.childNames),
+				input.catalog.parents.flatMap((parent) => parent.childNames),
 			),
 		}),
 	};
@@ -546,13 +536,9 @@ function narrowTierAChildrenPerParent(
 				overlap,
 			};
 		});
-		// Candidate-named children always survive — Stage-1's explicit routing
-		// decision, and the planner surface force-exposes registered candidates
-		// downstream, so dropping them here would only desynchronize the two.
-		// They may exceed the cap; the cap bounds the UNRANKED tail, not the
-		// explicit picks. Ties break on catalog child order (name-sorted at
-		// catalog build) so the narrow — and the surface hash derived from it —
-		// stays deterministic.
+		// Candidate-named children always survive in the diagnostic band. They may
+		// exceed its cap; the cap bounds only the unranked diagnostic tail. Ties
+		// break on catalog order so measurement stays deterministic.
 		const candidates = scored.filter((child) => child.candidate);
 		const rest = scored
 			.filter((child) => !child.candidate)

@@ -290,9 +290,9 @@ export type PlannerToolActionShape = Pick<
 function actionToPlannerTool(action: PlannerToolActionShape): ToolDefinition {
 	assertNativeToolName(action.name);
 	const baseDescription =
+		action.description ??
 		action.descriptionCompressed ??
-		action.compressedDescription ??
-		action.description;
+		action.compressedDescription;
 	const routingHint = action.routingHint?.trim();
 	const description = routingHint
 		? `${routingHint}\n${baseDescription}`.trim()
@@ -311,14 +311,14 @@ function actionToPlannerTool(action: PlannerToolActionShape): ToolDefinition {
 }
 
 /**
- * Build a per-turn list of `ToolDefinition`s from the narrowed Stage 2
+ * Build a per-turn list of `ToolDefinition`s from the authorized Stage 2
  * action surface. Each action becomes a native tool whose name is the
  * action name and whose `parameters` is the action's parameter
  * JSONSchema, so the LLM calls each action directly by name.
  *
  * Tool description is composed from (in order):
  *   - the action's `routingHint` (if present, on its own line)
- *   - `descriptionCompressed ?? description`
+ *   - the complete `description` (legacy compressed text is fallback-only)
  *
  * The order of `actions` is preserved in the output (callers control
  * tool ordering by ordering the input). Names are validated against
@@ -373,14 +373,9 @@ export interface BuildPlannerToolsFromTieredActionsOptions {
 		subActionName: string;
 	}) => void;
 	/**
-	 * Per-parent allow-list of sub-action names (case-insensitive) to expand
-	 * for tier-A parents. Produced by the tiering surface's per-parent child
-	 * narrowing (`maxTierAChildrenPerParent` in `tierActionResults`): when a
-	 * parent has an entry, only the listed children become first-class tools;
-	 * every other subaction stays reachable through the parent umbrella tool,
-	 * whose handler dispatches any subaction. Parents WITHOUT an entry expand
-	 * all sub-actions, so full-surface mode and callers that never narrow are
-	 * unaffected.
+	 * Per-parent list of sub-action names (case-insensitive) to expand. Runtime
+	 * action surfaces provide the complete child list; narrower lists remain
+	 * accepted only for non-model diagnostic/test callers.
 	 */
 	tierAChildrenByParent?:
 		| ReadonlyMap<string, readonly string[]>
@@ -676,9 +671,9 @@ export function actionToTool(action: Action): PlannerToolDefinition {
 		function: {
 			name: action.name,
 			description:
+				action.description ??
 				action.descriptionCompressed ??
-				action.compressedDescription ??
-				action.description,
+				action.compressedDescription,
 			parameters: actionToJsonSchema(action),
 			strict: action.toolSchemaStrict ?? true,
 		},

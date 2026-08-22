@@ -2804,13 +2804,7 @@ type V5PlannerActionSurfaceSummary = {
 	catalogParentCount: number;
 	exposedActionCount: number;
 	tierAParents: string[];
-	/**
-	 * Children exposed as first-class planner tools per tier-A parent, after
-	 * the per-parent child narrowing (`maxTierAChildrenPerParent`). Read back
-	 * by `collectPlannerTools` so the native-tool expansion matches the tiered
-	 * surface instead of re-expanding every subaction of a hot parent. Absent
-	 * in full-surface mode, where every subaction expands.
-	 */
+	/** Every authorized child exposed under each callable parent. */
 	tierAChildrenByParent?: Record<string, string[]>;
 	tierBParents: string[];
 	omittedParentCount: number;
@@ -3153,32 +3147,6 @@ const CODING_SUB_AGENT_CONTEXTS: readonly AgentContext[] = [
 	"automation",
 ];
 
-/**
- * Exact action surface for a direct coding turn. Context overlap is too broad:
- * attachment and media actions also carry file/automation contexts, and each
- * extra tool schema enlarges the request. A large tool set + a large file
- * generation is exactly what makes weaker hosted models (Cerebras glm-4.7)
- * intermittently reject the request (server_error / 400) or narrate instead of
- * emitting FILE. Keep the surface aligned with the tools that actually do the
- * work (FILE/SHELL/WORKTREE/WEB plus terminal controls).
- */
-const CODING_DIRECT_ACTIONS: ReadonlySet<string> = new Set(
-	// Stored in normalizeActionIdentifier() form (uppercase, underscores
-	// stripped), since that is what the filter compares against.
-	[
-		"READ",
-		"WRITE",
-		"EDIT",
-		"SHELL",
-		"WORKTREE",
-		"WEBFETCH",
-		"WEBSEARCH",
-		"REPLY",
-		"STOP",
-		"IGNORE",
-	],
-);
-
 function actionNameTokenKey(name: string): string {
 	return normalizeActionName(name).split("_").filter(Boolean).sort().join("_");
 }
@@ -3428,21 +3396,18 @@ function buildV5PlannerActionSurface(params: {
 		catalog,
 		results: retrieval.results,
 		narrowToCandidateActions: candidateActions,
-		// Message-text + candidate tokens rank children WITHIN each tier-A
-		// parent so a hot parent exposes its turn-relevant children instead of
-		// its whole namespace (maxTierAChildrenPerParent).
+		// Message-text + candidate tokens rank children within the tier-A
+		// diagnostic band. Callable children remain complete.
 		queryTokens: retrieval.query.tokens,
 	});
 	const toolSearchEndedAt = Date.now();
 	const exposedActionNames = new Set(
 		tieredSurface.exposedActionNames.map(normalizeActionIdentifier),
 	);
-	if (params.restrictToCandidateActions && candidateActions.length > 0) {
-		const allowed = new Set(candidateActions.map(normalizeActionIdentifier));
-		for (const exposed of exposedActionNames) {
-			if (!allowed.has(exposed)) exposedActionNames.delete(exposed);
-		}
-	}
+	// A legacy evaluator may ask to restrict the surface to Stage-1 candidates.
+	// Keep the signal source-compatible, but do not let a fallible earlier model
+	// decision remove authorized tools from the planner.
+	void params.restrictToCandidateActions;
 
 	let fallback: string | undefined;
 	if (
@@ -3593,13 +3558,8 @@ function buildV5PlannerActionSurface(params: {
 			candidateActionCount: params.actions.length,
 			catalogParentCount: catalog.parents.length,
 			exposedActionCount,
-			tierAParents: tieredSurface.sortedTierAParentNames,
-			tierAChildrenByParent: Object.fromEntries(
-				tieredSurface.tierAParents.map((parent) => [
-					parent.name,
-					[...parent.childNames],
-				]),
-			),
+			tierAParents: tieredSurface.callableParentNames,
+			tierAChildrenByParent: tieredSurface.callableChildrenByParent,
 			tierBParents: tieredSurface.sortedTierBParentNames,
 			omittedParentCount: tieredSurface.omittedParentNames.length,
 			omittedParentNamesPreview: tieredSurface.omittedParentNames,
@@ -9014,36 +8974,25 @@ export async function runV5MessageRuntimeStage1(args: {
 				elizaTrustedCodingMode: true,
 			};
 		}
-		// Full-surface mode (a focused coding sub-agent): skip the relevance/role
-		// narrowing entirely and hand the planner EVERY action whose execution gates
-		// pass. The narrowing is built for big chat catalogs (retrieve the relevant
-		// few); a coding agent's whole small tool set is relevant, and narrowing was
-		// returning zero candidates → planner got no native tools → model narrated.
+		// Full-surface mode (a focused coding sub-agent): hand the planner every
+		// action whose ordinary execution gates pass for the coding contexts.
 		const useFullSurface = args.codingMode === true;
 		const plannerCandidateActions = useFullSurface
-			? (args.runtime.actions ?? []).filter(
-					(action) =>
-						// Full-surface = a trusted coding turn. It must NOT receive the
-						// whole chat action catalog (MESSAGE_*/POST_*/…) — 40 tools drowns
-						// the model and it never calls FILE. Instead treat the coding
-						// contexts (code/files/terminal/automation) as active and run the
-						// normal execution gates: that admits the coding tools
-						// (FILE/SHELL/WORKTREE, which gate on a coding context) plus
-						// context-free control actions (REPLY/STOP/…) and drops the
-						// messaging/social chat actions. Role still applies (FILE=ADMIN,
-						// SHELL=OWNER; the coding sub-agent runs as OWNER). UI/orchestration
-						// parents that pass the gate but a coder never needs are dropped
-						// too (see CODING_DIRECT_ACTIONS) to keep the request
-						// small enough for weaker hosted models to handle large builds.
-						CODING_DIRECT_ACTIONS.has(normalizeActionIdentifier(action.name)) &&
-						// Static candidate-action set for a coding sub-agent — no concrete
-						// turn message here, so skip the private-action gate; the eventual
-						// execution still enforces it through the executor.
-						canActionRun(action, {
-							activeContexts: CODING_SUB_AGENT_CONTEXTS,
-							userRoles: [senderRole],
-							skipPrivateGate: true,
-						}),
+			? (args.runtime.actions ?? []).filter((action) =>
+					// Treat the coding contexts (code/files/terminal/automation) as
+					// active and run the normal execution gates. That admits coding tools
+					// (FILE/SHELL/WORKTREE, which gate on a coding context) plus
+					// context-free control actions (REPLY/STOP/…) and drops the
+					// messaging/social chat actions. Role still applies (FILE=ADMIN,
+					// SHELL=OWNER; the coding sub-agent runs as OWNER).
+					// Static candidate-action set for a coding sub-agent — no concrete
+					// turn message here, so skip the private-action gate; the eventual
+					// execution still enforces it through the executor.
+					canActionRun(action, {
+						activeContexts: CODING_SUB_AGENT_CONTEXTS,
+						userRoles: [senderRole],
+						skipPrivateGate: true,
+					}),
 				)
 			: await collectV5PlannerCandidateActions({
 					runtime: args.runtime,
