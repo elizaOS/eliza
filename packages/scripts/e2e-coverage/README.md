@@ -65,16 +65,18 @@ remain visible rather than inheriting every dependency used anywhere in Cloud
 API. Package imports such as React, Zod, SDKs, parsers, and database drivers
 remain visible under `packageDependencies`, but never imply an external service
 or mock. A service rule names its protocol and either a repository-local mock
-source plus owner or a concrete missing-mock reason. Mock ownership also
-requires exact HTTP method/path operations that are parsed from registered
-Mockoon routes with configured responses; file existence or marker text never
-establishes protocol fidelity. Partial REST fixtures therefore cannot claim
+source plus owner or a concrete missing-mock reason. Mock ownership is limited
+to exact canonical surface ids and exact HTTP method/path operations parsed
+from UUID-registered Mockoon routes. The parser accounts for endpoint prefixes,
+supported verbs, unique served operations, and one valid default inline
+response; file existence or marker text never establishes protocol fidelity.
+Partial REST fixtures therefore cannot claim
 unowned WebSocket, webhook, OAuth, mutation, or external PostgreSQL boundaries.
 Mock/reset evidence remains row-specific and is not inferred from catalog
 ownership. The catalog records closed draft PR #23185 only as a design reference
 for a richer provider conformance catalog; it does not treat that unmerged work
 as present evidence or a required stack. The
-current-develop migration has 51 selected rules across 43 packages and zero
+current-develop migration has 54 selected rules across 43 packages and zero
 package-wide local fallbacks. Every unmatched surface remains unresolved.
 No rule uses a package-wide `all` selector. Calendar's selected operational
 surfaces declare Google Calendar, Microsoft Graph, Apple EventKit, and guarded

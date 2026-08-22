@@ -109,6 +109,142 @@ export interface RuntimeDependencyCatalog {
   localPackages: Record<string, string>;
 }
 
+const MOCKOON_HTTP_METHODS = new Set([
+  "DELETE",
+  "GET",
+  "HEAD",
+  "OPTIONS",
+  "PATCH",
+  "POST",
+  "PUT",
+]);
+
+function canonicalMockoonPath(...parts: string[]): string {
+  return parts
+    .map((part) => part.trim().replace(/^\/+|\/+$/g, ""))
+    .filter(Boolean)
+    .join("/");
+}
+
+/** Parses only registered Mockoon HTTP routes with one executable default response. */
+export function parseMockoonHttpOperations(
+  fixture: unknown,
+  serviceId: string,
+): Set<string> {
+  if (!fixture || typeof fixture !== "object") {
+    throw new Error(`${serviceId} mockSource is not a Mockoon environment`);
+  }
+  const environment = fixture as {
+    endpointPrefix?: unknown;
+    folders?: unknown;
+    rootChildren?: unknown;
+    routes?: unknown;
+  };
+  if (
+    typeof environment.endpointPrefix !== "string" ||
+    !Array.isArray(environment.routes) ||
+    !Array.isArray(environment.rootChildren) ||
+    (environment.folders !== undefined &&
+      (!Array.isArray(environment.folders) || environment.folders.length > 0))
+  ) {
+    throw new Error(
+      `${serviceId} mockSource requires flat registered Mockoon HTTP routes`,
+    );
+  }
+
+  const registeredRouteIds = new Set<string>();
+  for (const child of environment.rootChildren) {
+    if (!child || typeof child !== "object") {
+      throw new Error(`${serviceId} has an invalid Mockoon route registration`);
+    }
+    const candidate = child as { type?: unknown; uuid?: unknown };
+    if (
+      candidate.type !== "route" ||
+      typeof candidate.uuid !== "string" ||
+      candidate.uuid.trim().length === 0 ||
+      registeredRouteIds.has(candidate.uuid)
+    ) {
+      throw new Error(`${serviceId} has an invalid Mockoon route registration`);
+    }
+    registeredRouteIds.add(candidate.uuid);
+  }
+
+  const routeIds = new Set<string>();
+  const operations = new Set<string>();
+  for (const route of environment.routes) {
+    if (!route || typeof route !== "object") {
+      throw new Error(`${serviceId} has an invalid Mockoon route`);
+    }
+    const candidate = route as {
+      uuid?: unknown;
+      type?: unknown;
+      method?: unknown;
+      endpoint?: unknown;
+      responses?: unknown;
+    };
+    const method =
+      typeof candidate.method === "string"
+        ? candidate.method.trim().toUpperCase()
+        : "";
+    const uuid =
+      typeof candidate.uuid === "string" ? candidate.uuid.trim() : "";
+    const endpoint =
+      typeof candidate.endpoint === "string"
+        ? canonicalMockoonPath(environment.endpointPrefix, candidate.endpoint)
+        : "";
+    const responses = Array.isArray(candidate.responses)
+      ? candidate.responses
+      : [];
+    const validResponses = responses.filter((response) => {
+      if (!response || typeof response !== "object") return false;
+      const value = response as {
+        uuid?: unknown;
+        statusCode?: unknown;
+        default?: unknown;
+        body?: unknown;
+        bodyType?: unknown;
+      };
+      return (
+        typeof value.uuid === "string" &&
+        value.uuid.trim().length > 0 &&
+        Number.isInteger(value.statusCode) &&
+        (value.statusCode as number) >= 100 &&
+        (value.statusCode as number) <= 599 &&
+        typeof value.default === "boolean" &&
+        value.bodyType === "INLINE" &&
+        typeof value.body === "string"
+      );
+    });
+    if (
+      candidate.type !== "http" ||
+      !uuid ||
+      routeIds.has(uuid) ||
+      !registeredRouteIds.has(uuid) ||
+      !MOCKOON_HTTP_METHODS.has(method) ||
+      !endpoint ||
+      validResponses.length !== responses.length ||
+      validResponses.filter(
+        (response) => (response as { default: boolean }).default,
+      ).length !== 1
+    ) {
+      throw new Error(`${serviceId} has an unserved Mockoon HTTP route`);
+    }
+    routeIds.add(uuid);
+    const operation = `${method} ${endpoint}`;
+    if (operations.has(operation)) {
+      throw new Error(`${serviceId} has a duplicate Mockoon HTTP operation`);
+    }
+    operations.add(operation);
+  }
+  if (
+    routeIds.size !== registeredRouteIds.size ||
+    ![...registeredRouteIds].every((uuid) => routeIds.has(uuid))
+  ) {
+    throw new Error(`${serviceId} has an orphan Mockoon route registration`);
+  }
+  return operations;
+}
+
 export interface RuntimeSurfaceRow {
   id: string;
   kind: RuntimeSurfaceKind;
@@ -539,6 +675,14 @@ function validateDependencyRule(rule: RuntimeDependencyRule): void {
         `${service.id} must declare both mockOwner and mockSource`,
       );
     }
+    if (
+      hasMock &&
+      (!rule.surfaceIds?.length ||
+        Boolean(rule.surfaceIdPrefixes?.length) ||
+        Boolean(rule.sourcePathPrefixes?.length))
+    ) {
+      throw new Error(`${service.id} mock ownership requires exact surfaceIds`);
+    }
     if (hasMock && service.mockContract?.kind !== "mockoon-http") {
       throw new Error(
         `${service.id} requires a parsed Mockoon HTTP operation contract`,
@@ -592,39 +736,9 @@ function validateDependencyRule(rule: RuntimeDependencyRule): void {
           cause,
         });
       }
-      const routes =
-        fixture &&
-        typeof fixture === "object" &&
-        Array.isArray((fixture as { routes?: unknown }).routes)
-          ? (fixture as { routes: unknown[] }).routes
-          : null;
-      if (!routes) {
-        throw new Error(`${service.id} mockSource has no Mockoon routes`);
-      }
-      const registeredOperations = new Set(
-        routes.flatMap((route) => {
-          if (!route || typeof route !== "object") return [];
-          const candidate = route as {
-            type?: unknown;
-            method?: unknown;
-            endpoint?: unknown;
-            responses?: unknown;
-          };
-          if (
-            candidate.type !== "http" ||
-            typeof candidate.method !== "string" ||
-            typeof candidate.endpoint !== "string" ||
-            !Array.isArray(candidate.responses) ||
-            candidate.responses.length === 0
-          ) {
-            return [];
-          }
-          return [
-            `${candidate.method.trim().toUpperCase()} ${candidate.endpoint
-              .trim()
-              .replace(/^\/+/, "")}`,
-          ];
-        }),
+      const registeredOperations = parseMockoonHttpOperations(
+        fixture,
+        service.id,
       );
       for (const operation of operationKeys) {
         if (!registeredOperations.has(operation)) {
