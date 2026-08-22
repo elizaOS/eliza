@@ -65,15 +65,14 @@ export function installMockSeed(
 export async function joinedTranscriptIsReady(
   ctx: ScenarioContext,
 ): Promise<boolean> {
-  const joined = [...ctx.actionsCalled]
-    .reverse()
-    .find(
-      (action) =>
-        action.actionName === "JOIN_MEETING" && action.result?.success === true,
-    );
-  const transcriptId = (
-    joined?.result?.data as { transcriptId?: unknown } | undefined
-  )?.transcriptId;
+  const service = (
+    ctx.runtime as {
+      getService(name: string): {
+        listSessions(): Array<{ transcriptId?: unknown }>;
+      } | null;
+    }
+  ).getService("meetings");
+  const transcriptId = service?.listSessions()[0]?.transcriptId;
   if (typeof transcriptId !== "string") return false;
   const runtime = ctx.runtime as {
     getMemoryById(id: UUID): Promise<{ content?: unknown } | null>;
