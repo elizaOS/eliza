@@ -2610,6 +2610,14 @@ jobs:
       - name: Install Playwright Chromium
         run: .github/scripts/install-playwright-browsers.sh chromium
 
+      - name: Generate shared i18n assets
+        run: bun run --cwd packages/shared build:i18n
+
+      # cloud-live-origin.ts imports @elizaos/shared/dist/elizacloud; a fresh
+      # checkout has no dist, so build the same bundles app-live-e2e.yml does.
+      - name: Build @elizaos/core + @elizaos/shared browser bundles
+        run: bunx turbo run build --filter=@elizaos/core --filter=@elizaos/shared
+
       - name: Run deployed Personal identity, chat, and continuity trajectory
         id: deployed-browser
         working-directory: packages/app
