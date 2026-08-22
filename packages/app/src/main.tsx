@@ -2038,6 +2038,7 @@ function connectFirstRunRemoteDeepLink(rawApiBase: string): void {
     kind: "remote",
     label: validatedUrl.hostname || "Remote agent",
     apiBase: connection.apiBase,
+    ...(connection.token ? { accessToken: connection.token } : {}),
   });
   // error-policy:J6 best-effort persist — the connect below still lands;
   // only re-selection after restart is lost, and the failure is logged
