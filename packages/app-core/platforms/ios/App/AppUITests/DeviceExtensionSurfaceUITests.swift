@@ -258,10 +258,69 @@ final class DeviceExtensionSurfaceUITests: XCTestCase {
         attachScreenshot(named: "widget-assert-01-app-foregrounded")
     }
 
-    func testKeyboardDictationSurfaceNeedsProvisionedDeviceLane() throws {
-        throw XCTSkip(
-            "The custom keyboard requires a provisioned device lane to verify enablement, Full Access/App Group round-trip, and dictation delivery."
+    func testKeyboardDictationStartsAndEndsLiveActivityOnDevice() throws {
+        guard ProcessInfo.processInfo.environment["SIMULATOR_UDID"] == nil else {
+            throw XCTSkip("Real microphone and Dynamic Island evidence requires a provisioned iPhone.")
+        }
+        guard #available(iOS 16.4, *) else {
+            throw XCTSkip("Opening the keyboard-dictation deep link requires iOS 16.4 or newer.")
+        }
+        let app = XCUIApplication()
+        let session = UUID().uuidString
+        let deepLink = try XCTUnwrap(
+            URL(string: "elizaos://keyboard-dictation?source=ios-keyboard&session=\(session)")
         )
+
+        app.open(deepLink)
+        XCTAssertTrue(
+            app.wait(for: .runningForeground, timeout: 20),
+            "The keyboard dictation handoff must foreground the signed Eliza app."
+        )
+        allowContextualPermissionPromptsIfPresent()
+        XCTAssertTrue(
+            app.otherElements["Keyboard dictation, web dialog"].waitForExistence(timeout: 20),
+            "The real keyboard dictation route must expose its accessible recording dialog."
+        )
+        XCTAssertTrue(
+            app.staticTexts["Listening… speak now."].waitForExistence(timeout: 10),
+            "Keyboard dictation must reach its truthful listening state before ActivityKit evidence is captured."
+        )
+        attachScreenshot(named: "keyboard-dictation-00-listening")
+
+        XCUIDevice.shared.press(.home)
+        XCTAssertTrue(
+            springboard.wait(for: .runningForeground, timeout: 10),
+            "SpringBoard must foreground before the Dynamic Island surface is inspected."
+        )
+        springboard
+            .coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.04))
+            .press(forDuration: 1.0)
+        XCTAssertTrue(
+            springboard.staticTexts["Keyboard dictation"].waitForExistence(timeout: 10),
+            "The expanded Dynamic Island must render the real keyboard-dictation Live Activity."
+        )
+        XCTAssertTrue(
+            springboard.staticTexts["Recording"].waitForExistence(timeout: 5),
+            "The Live Activity must truthfully expose its recording phase."
+        )
+        attachAccessibilitySnapshot(named: "keyboard-dictation-live-activity")
+        attachScreenshot(named: "keyboard-dictation-01-live-activity")
+
+        app.activate()
+        XCTAssertTrue(
+            app.wait(for: .runningForeground, timeout: 10),
+            "Eliza must return foreground so the dictation session can be cancelled cleanly."
+        )
+        let cancel = app.buttons["Cancel"]
+        XCTAssertTrue(cancel.waitForExistence(timeout: 10) && cancel.isHittable)
+        cancel.tap()
+        XCUIDevice.shared.press(.home)
+        _ = springboard.wait(for: .runningForeground, timeout: 10)
+        XCTAssertFalse(
+            springboard.staticTexts["Keyboard dictation"].waitForExistence(timeout: 5),
+            "Cancelling keyboard dictation must end and remove the Live Activity."
+        )
+        attachScreenshot(named: "keyboard-dictation-02-ended")
     }
 
     // MARK: - Control Center controls
@@ -305,6 +364,14 @@ final class DeviceExtensionSurfaceUITests: XCTestCase {
         )
         attachAccessibilitySnapshot(of: app, named: "\(screenshotName)-ax")
         attachScreenshot(named: screenshotName)
+    }
+
+    private func allowContextualPermissionPromptsIfPresent() {
+        for _ in 0..<3 {
+            let allow = springboard.buttons["Allow"].firstMatch
+            guard allow.waitForExistence(timeout: 2), allow.isHittable else { return }
+            allow.tap()
+        }
     }
 
     @available(iOS 18.0, *)

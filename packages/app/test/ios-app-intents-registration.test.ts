@@ -637,13 +637,20 @@ describe("native assistant entry contracts", () => {
     expect(deviceExtensionSurfaceUITestsSwift).toContain(
       "label CONTAINS[c] 'local networks'",
     );
-    // The custom keyboard and hardware Action Button pieces are documented as
-    // device-lane only instead of being faked in simulator evidence.
+    // The custom keyboard's local dictation + ActivityKit path has a real
+    // provisioned-device shard; hardware Action Button assignment remains a
+    // device-only manual gate rather than a false simulator pass.
     expect(deviceExtensionSurfaceUITestsSwift).toContain(
       "Action Button physical press",
     );
     expect(deviceExtensionSurfaceUITestsSwift).toContain(
-      "custom keyboard requires a provisioned device lane",
+      "testKeyboardDictationStartsAndEndsLiveActivityOnDevice",
+    );
+    expect(deviceExtensionSurfaceUITestsSwift).toContain(
+      'app.otherElements["Keyboard dictation, web dialog"]',
+    );
+    expect(deviceExtensionSurfaceUITestsSwift).toContain(
+      'springboard.staticTexts["Recording"]',
     );
     // Brand-aware widget gallery: stale hard-coded display name must be gone.
     expect(deviceExtensionSurfaceUITestsSwift).toContain(
