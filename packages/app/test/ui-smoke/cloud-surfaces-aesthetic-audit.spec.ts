@@ -610,7 +610,9 @@ test.describe("cloud-surfaces aesthetic audit (#10725/#11342)", () => {
         {
           message:
             "complete cloud-route registry populated by the running shell",
-          timeout: 30_000,
+          // Match the audit's cold-start budget: the production renderer can
+          // still be compiling/loading its private route chunks after DOMContentLoaded.
+          timeout: 120_000,
         },
       )
       .toBe(true);
