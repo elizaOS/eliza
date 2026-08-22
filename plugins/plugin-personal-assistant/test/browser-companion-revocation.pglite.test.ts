@@ -5,8 +5,8 @@
 
 import type { AgentRuntime } from "@elizaos/core";
 import {
-  browserBridgeSchema,
   type BrowserBridgeCompanionPairingResponse,
+  browserBridgeSchema,
   createBrowserBridgeCompanionStatus,
   MAX_NATIVE_BROWSER_COMPANION_PAIRING_TOKEN_TTL_MS,
 } from "@elizaos/plugin-browser";
