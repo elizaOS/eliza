@@ -1,7 +1,7 @@
 /** Exercises overlay app registration and platform availability with mocked host boundaries. */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { OverlayApp } from "../overlay-app-registry.ts";
+import type { OverlayApp } from "../overlay-app-api.ts";
 import {
   getAllOverlayApps,
   getAvailableOverlayApps,
