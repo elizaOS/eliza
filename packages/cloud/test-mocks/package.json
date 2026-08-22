@@ -8,6 +8,7 @@
     ".": "./src/index.ts",
     "./hetzner": "./src/hetzner/index.ts",
     "./control-plane": "./src/control-plane/index.ts",
+    "./matrix": "./src/matrix/index.ts",
     "./steward": "./src/steward/index.ts",
     "./provider-contract": "./src/provider-contract/index.ts"
   },
@@ -33,9 +34,11 @@
   "devDependencies": {
     "@elizaos/cloud-sdk": "workspace:*",
     "@elizaos/plugin-github": "workspace:*",
+    "@elizaos/plugin-matrix": "workspace:*",
     "@elizaos/plugin-whatsapp": "workspace:*",
     "@typescript/native": "npm:typescript@^7.0.2",
-    "bun-types": "*"
+    "bun-types": "*",
+    "matrix-js-sdk": "^41.4.0"
   },
   "elizaos": {
     "scripts": {

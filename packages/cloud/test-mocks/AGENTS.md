@@ -25,6 +25,10 @@ exits.
   `Job`/`JobStatus`/`JobType`/`Sandbox`/`SandboxStatus` types.
 - `src/steward/` (export `./steward`) — stateful loopback mock for authenticated
   Steward platform-user deactivation and deletion calls used by account lifecycle E2E.
+- `src/matrix/` (export `./matrix`) — resettable Matrix Client-Server API subset
+  exercised by the real `matrix-js-sdk` and plugin service. It owns seeded users,
+  rooms, state/timeline events, sync and pagination cursors, joins, sends, faults,
+  request observations, and generation-safe long-poll invalidation.
 - `src/fetch-server.ts` — shared `startFetchServer(fetch, opts)`; uses
   `Bun.serve` when running under Bun, falls back to a `node:http` adapter
   otherwise.
@@ -89,6 +93,10 @@ teardown.
   (default 8791), `HOST`, `CONTROL_PLANE_TICK_MS`, `HCLOUD_API_BASE_URL`.
 - **Mockoon files are stateless** read-only fixtures — they do not share state
   with the Hono mocks; use the Hono mocks when behavior depends on prior writes.
+- **Matrix state is generation-bound.** `startMatrixClientServerMock()` uses
+  deterministic logical timestamps and transaction deduplication. Reset aborts
+  active long polls with `M_UNKNOWN_POS`, so an admitted old cursor cannot read
+  replacement-generation rooms. Canonical snapshots omit internal transaction IDs.
 
 ## Managed provider contract suites
 

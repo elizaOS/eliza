@@ -76,6 +76,17 @@ Implements the subset of the Hetzner Cloud API that the autoscaler client in
 
 State is kept in memory and resets when the process exits.
 
+## Matrix Client-Server API mock
+
+`startMatrixClientServerMock()` from `@elizaos/cloud-test-mocks/matrix`
+starts a resettable loopback homeserver subset used through the real
+`matrix-js-sdk`. It implements version/capability discovery, access-token
+authentication, filters, `/sync` cursors, room state and live timelines,
+create/join, transaction-deduplicated sends, backward pagination, rate-limit
+metadata, faults, and authoritative snapshots. Reset cancels pre-reset long
+polls with `M_UNKNOWN_POS`; deterministic timestamps make reset/replay state
+byte-equivalent.
+
 ### Run standalone
 
 ```bash
