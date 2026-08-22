@@ -53,7 +53,7 @@ import "@elizaos/shared/brand.css";
 | `@elizaos/shared/brand-classic.css` | Eliza Classic CSS custom properties |
 | `@elizaos/shared/character-presets` | Built-in character preset definitions |
 | `@elizaos/shared/runtime-env` | Port and security config resolvers |
-| `@elizaos/shared/synthetic-control` | Versioned mock subprocess control contract and client |
+| `@elizaos/shared/synthetic-control` | Versioned, namespace-bound mock subprocess control contract and client |
 | `@elizaos/shared/config/allowed-hosts` | Allowed-hosts config helper |
 | `@elizaos/shared/contracts/synthetic-environment-lease` | Lease, generation, receipt, and guarded-write contract for synthetic environments |
 

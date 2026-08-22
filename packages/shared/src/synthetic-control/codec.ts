@@ -8,6 +8,9 @@ import type {
   SyntheticControlResponse,
 } from "./types.js";
 
+const MAX_JSON_DEPTH = 64;
+const MAX_JSON_NODES = 100_000;
+
 function record(value: unknown, label: string): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new Error(`${label} must be an object`);
@@ -52,6 +55,7 @@ function integer(
 ): number {
   if (
     !Number.isSafeInteger(value) ||
+    Object.is(value, -0) ||
     (value as number) < minimum ||
     (value as number) > maximum
   ) {
@@ -67,39 +71,114 @@ export function assertJsonValue(
   label = "value",
 ): asserts value is JsonValue {
   const active = new Set<object>();
-  const visit = (candidate: unknown, path: string): void => {
+  const pending: Array<
+    { candidate: unknown; depth: number; path: string } | { exit: object }
+  > = [{ candidate: value, depth: 0, path: label }];
+  let nodes = 0;
+  while (pending.length > 0) {
+    const next = pending.pop();
+    if (!next) break;
+    if ("exit" in next) {
+      active.delete(next.exit);
+      continue;
+    }
+    const { candidate, depth, path } = next;
+    nodes += 1;
+    if (nodes > MAX_JSON_NODES) {
+      throw new Error(`${label} exceeds the JSON node limit`);
+    }
+    if (depth > MAX_JSON_DEPTH) {
+      throw new Error(`${path} exceeds the JSON depth limit`);
+    }
     if (
       candidate === null ||
       typeof candidate === "string" ||
       typeof candidate === "boolean"
     ) {
-      return;
+      continue;
     }
     if (typeof candidate === "number") {
       if (!Number.isFinite(candidate))
         throw new Error(`${path} must be finite`);
-      return;
+      if (Object.is(candidate, -0)) {
+        throw new Error(`${path} must not contain negative zero`);
+      }
+      continue;
     }
     if (!candidate || typeof candidate !== "object") {
       throw new Error(`${path} must contain JSON-only values`);
     }
     if (active.has(candidate)) throw new Error(`${path} must not be cyclic`);
     active.add(candidate);
+    pending.push({ exit: candidate });
     if (Array.isArray(candidate)) {
-      candidate.forEach((item, index) => {
-        visit(item, `${path}[${index}]`);
-      });
+      for (let index = candidate.length - 1; index >= 0; index -= 1) {
+        pending.push({
+          candidate: candidate[index],
+          depth: depth + 1,
+          path: `${path}[${index}]`,
+        });
+      }
     } else {
       if (Object.getPrototypeOf(candidate) !== Object.prototype) {
         throw new Error(`${path} must contain plain JSON objects`);
       }
-      for (const [key, item] of Object.entries(candidate)) {
-        visit(item, `${path}.${key}`);
+      for (const [key, item] of Object.entries(candidate).reverse()) {
+        pending.push({
+          candidate: item,
+          depth: depth + 1,
+          path: `${path}.${key}`,
+        });
       }
     }
-    active.delete(candidate);
-  };
-  visit(value, label);
+  }
+}
+
+export async function readBoundedJson(
+  message: Request | Response,
+  maximumBytes: number,
+  label: string,
+): Promise<unknown> {
+  const contentType = message.headers.get("content-type") ?? "";
+  if (!/^application\/json(?:\s*;|$)/i.test(contentType)) {
+    throw new Error(`${label} content-type must be application/json`);
+  }
+  const contentEncoding = message.headers.get("content-encoding");
+  if (contentEncoding && contentEncoding.toLowerCase() !== "identity") {
+    throw new Error(`${label} content-encoding is unsupported`);
+  }
+  const declaredLength = message.headers.get("content-length");
+  if (declaredLength && !/^\d+$/.test(declaredLength)) {
+    throw new Error(`${label} content-length is invalid`);
+  }
+  if (declaredLength) {
+    const bytes = Number(declaredLength);
+    if (!Number.isSafeInteger(bytes) || bytes > maximumBytes) {
+      throw new Error(`${label} exceeds ${maximumBytes} bytes`);
+    }
+  }
+  if (!message.body) throw new Error(`${label} body is required`);
+
+  const reader = message.body.getReader();
+  const decoder = new TextDecoder("utf-8", { fatal: true });
+  const chunks: string[] = [];
+  let bytes = 0;
+  try {
+    while (true) {
+      const next = await reader.read();
+      if (next.done) break;
+      bytes += next.value.byteLength;
+      if (bytes > maximumBytes) {
+        await reader.cancel();
+        throw new Error(`${label} exceeds ${maximumBytes} bytes`);
+      }
+      chunks.push(decoder.decode(next.value, { stream: true }));
+    }
+    chunks.push(decoder.decode());
+  } finally {
+    reader.releaseLock();
+  }
+  return JSON.parse(chunks.join("")) as unknown;
 }
 
 function manifest(
@@ -247,13 +326,14 @@ export function parseSyntheticControlRequest(
   const item = record(value, "request");
   keys(
     item,
-    ["version", "commandId", "command"],
+    ["version", "namespace", "commandId", "command"],
     ["expectedGeneration", "leaseId"],
     "request",
   );
   if (item.version !== 1) throw new Error("request.version must be 1");
   return {
     version: 1,
+    namespace: text(item.namespace, "request.namespace"),
     commandId: text(item.commandId, "request.commandId"),
     command: command(item.command),
     ...(item.expectedGeneration === undefined
@@ -275,22 +355,34 @@ export function parseSyntheticControlResponse(
 ): SyntheticControlResponse {
   const item = record(value, "response");
   if (item.version !== 1) throw new Error("response.version must be 1");
+  const namespace = text(item.namespace, "response.namespace");
   const commandId = text(item.commandId, "response.commandId");
-  const generation = integer(item.generation, "response.generation");
   if (item.ok === true) {
+    const generation = integer(item.generation, "response.generation");
     keys(
       item,
-      ["version", "commandId", "ok", "generation", "data"],
+      ["version", "namespace", "commandId", "ok", "generation", "data"],
       [],
       "success response",
     );
     assertJsonValue(item.data, "response.data");
-    return { version: 1, commandId, ok: true, generation, data: item.data };
+    return {
+      version: 1,
+      namespace,
+      commandId,
+      ok: true,
+      generation,
+      data: item.data,
+    };
   }
   if (item.ok !== false) throw new Error("response.ok must be boolean");
+  const generation =
+    item.generation === null
+      ? null
+      : integer(item.generation, "response.generation");
   keys(
     item,
-    ["version", "commandId", "ok", "generation", "error"],
+    ["version", "namespace", "commandId", "ok", "generation", "error"],
     [],
     "failure response",
   );
@@ -318,6 +410,7 @@ export function parseSyntheticControlResponse(
     assertJsonValue(failure.details, "response.error.details");
   return {
     version: 1,
+    namespace,
     commandId,
     ok: false,
     generation,

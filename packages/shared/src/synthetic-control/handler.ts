@@ -1,8 +1,10 @@
 /** Translates authenticated HTTP requests into calls on the owning synthetic-state authority. */
 
 import { createHash, timingSafeEqual } from "node:crypto";
-import { parseSyntheticControlRequest } from "./codec.js";
+import { parseSyntheticControlRequest, readBoundedJson } from "./codec.js";
 import {
+  SYNTHETIC_CONTROL_MAX_REQUEST_BYTES,
+  SYNTHETIC_CONTROL_MAX_RESPONSE_BYTES,
   SYNTHETIC_CONTROL_PATH,
   type SyntheticControlAuthority,
   type SyntheticControlFailure,
@@ -12,11 +14,24 @@ import {
 
 export interface SyntheticControlHandlerOptions {
   token: string;
+  namespace: string;
   authority: SyntheticControlAuthority;
 }
 
 function json(body: SyntheticControlResponse, status: number): Response {
-  return Response.json(body, { status });
+  const serialized = JSON.stringify(body);
+  if (
+    new TextEncoder().encode(serialized).byteLength >
+    SYNTHETIC_CONTROL_MAX_RESPONSE_BYTES
+  ) {
+    throw new Error(
+      `synthetic control response exceeds ${SYNTHETIC_CONTROL_MAX_RESPONSE_BYTES} bytes`,
+    );
+  }
+  return new Response(serialized, {
+    status,
+    headers: { "content-type": "application/json" },
+  });
 }
 
 function publicFailureMessage(
@@ -42,12 +57,15 @@ function publicFailureMessage(
 
 async function safeGeneration(
   authority: SyntheticControlAuthority,
-): Promise<number> {
+): Promise<number | null> {
   try {
     const generation = await authority.generation();
-    return Number.isSafeInteger(generation) && generation >= 0 ? generation : 0;
+    return Number.isSafeInteger(generation) && generation >= 0
+      ? generation
+      : null;
   } catch {
-    return 0;
+    // error-policy:J1 Generation lookup failure is translated at the HTTP boundary.
+    return null;
   }
 }
 
@@ -59,6 +77,12 @@ export function createSyntheticControlHandler(
       "synthetic control token must contain at least 16 characters",
     );
   }
+  const namespace = options.namespace.trim();
+  if (namespace.length === 0 || namespace.length > 512) {
+    throw new Error(
+      "synthetic control namespace must contain at most 512 characters",
+    );
+  }
   const expectedTokenHash = createHash("sha256").update(options.token).digest();
   return async (request) => {
     const url = new URL(request.url);
@@ -68,9 +92,10 @@ export function createSyntheticControlHandler(
       return json(
         {
           version: 1,
+          namespace,
           commandId: anonymousCommandId,
           ok: false,
-          generation: 0,
+          generation: null,
           error: {
             code: "INVALID_REQUEST",
             message: "control endpoint accepts POST only",
@@ -91,9 +116,10 @@ export function createSyntheticControlHandler(
       return json(
         {
           version: 1,
+          namespace,
           commandId: anonymousCommandId,
           ok: false,
-          generation: 0,
+          generation: null,
           error: {
             code: "AUTH_REQUIRED",
             message: "control authorization failed",
@@ -110,12 +136,14 @@ export function createSyntheticControlHandler(
         throw new Error("authority generation is invalid");
       }
     } catch {
+      // error-policy:J1 Authority availability is translated into a redacted HTTP failure.
       return json(
         {
           version: 1,
+          namespace,
           commandId: anonymousCommandId,
           ok: false,
-          generation: 0,
+          generation: null,
           error: {
             code: "COMMAND_FAILED",
             message: publicFailureMessage("COMMAND_FAILED"),
@@ -127,11 +155,19 @@ export function createSyntheticControlHandler(
     }
     let parsed: ReturnType<typeof parseSyntheticControlRequest>;
     try {
-      parsed = parseSyntheticControlRequest(await request.json());
+      parsed = parseSyntheticControlRequest(
+        await readBoundedJson(
+          request,
+          SYNTHETIC_CONTROL_MAX_REQUEST_BYTES,
+          "synthetic control request",
+        ),
+      );
     } catch {
+      // error-policy:J3 Untrusted wire input is rejected as invalid without fabricating a command.
       return json(
         {
           version: 1,
+          namespace,
           commandId: anonymousCommandId,
           ok: false,
           generation: initialGeneration,
@@ -144,48 +180,96 @@ export function createSyntheticControlHandler(
         400,
       );
     }
-    try {
-      const data = await options.authority.execute(parsed.command, {
-        commandId: parsed.commandId,
-        expectedGeneration: parsed.expectedGeneration,
-        leaseId: parsed.leaseId,
-        signal: request.signal,
-      });
+    if (
+      parsed.namespace !== namespace ||
+      (parsed.command.type === "seed" &&
+        parsed.command.manifest.namespace !== namespace) ||
+      (parsed.command.type === "reset" &&
+        parsed.command.receipt.namespace !== namespace)
+    ) {
       return json(
         {
           version: 1,
+          namespace,
           commandId: parsed.commandId,
-          ok: true,
-          generation: await options.authority.generation(),
-          data,
+          ok: false,
+          generation: initialGeneration,
+          error: {
+            code: "AUTH_REQUIRED",
+            message: publicFailureMessage("AUTH_REQUIRED"),
+            retryable: false,
+          },
         },
-        200,
+        401,
       );
-    } catch (error) {
-      const normalized =
-        error instanceof SyntheticControlProtocolError
-          ? error
-          : new SyntheticControlProtocolError({
-              code: "COMMAND_FAILED",
-              message: error instanceof Error ? error.message : String(error),
-            });
-      const failure: SyntheticControlFailure = {
-        version: 1,
-        commandId: parsed.commandId,
-        ok: false,
-        generation: await safeGeneration(options.authority),
-        error: {
-          code: normalized.code,
-          message: publicFailureMessage(normalized.code),
-          retryable: normalized.retryable,
-        },
-      };
-      const status =
-        normalized.code === "STALE_GENERATION" ||
-        normalized.code === "LEASE_CONFLICT"
-          ? 409
-          : 400;
-      return json(failure, status);
     }
+
+    const dispatch = async (): Promise<Response> => {
+      if (request.signal.aborted) {
+        return json(
+          {
+            version: 1,
+            namespace,
+            commandId: parsed.commandId,
+            ok: false,
+            generation: await safeGeneration(options.authority),
+            error: {
+              code: "COMMAND_FAILED",
+              message: publicFailureMessage("COMMAND_FAILED"),
+              retryable: true,
+            },
+          },
+          400,
+        );
+      }
+      try {
+        const data = await options.authority.execute(parsed.command, {
+          namespace,
+          commandId: parsed.commandId,
+          expectedGeneration: parsed.expectedGeneration,
+          leaseId: parsed.leaseId,
+          signal: request.signal,
+        });
+        return json(
+          {
+            version: 1,
+            namespace,
+            commandId: parsed.commandId,
+            ok: true,
+            generation: await options.authority.generation(),
+            data,
+          },
+          200,
+        );
+      } catch (error) {
+        // error-policy:J1 Authority errors are redacted and translated at the authenticated HTTP boundary.
+        const normalized =
+          error instanceof SyntheticControlProtocolError
+            ? error
+            : new SyntheticControlProtocolError({
+                code: "COMMAND_FAILED",
+                message: error instanceof Error ? error.message : String(error),
+              });
+        const failure: SyntheticControlFailure = {
+          version: 1,
+          namespace,
+          commandId: parsed.commandId,
+          ok: false,
+          generation: await safeGeneration(options.authority),
+          error: {
+            code: normalized.code,
+            message: publicFailureMessage(normalized.code),
+            retryable: normalized.retryable,
+          },
+        };
+        const status =
+          normalized.code === "STALE_GENERATION" ||
+          normalized.code === "LEASE_CONFLICT"
+            ? 409
+            : 400;
+        return json(failure, status);
+      }
+    };
+    return dispatch();
   };
 }

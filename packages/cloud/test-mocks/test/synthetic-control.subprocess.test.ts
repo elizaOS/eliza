@@ -1,9 +1,12 @@
 /** Proves the shared control client against a real control-plane mock in an independent OS process. */
 
 import { afterEach, describe, expect, test } from "bun:test";
+import { resolve } from "node:path";
 import {
   createSyntheticControlHandler,
   type JsonValue,
+  SYNTHETIC_CONTROL_MAX_REQUEST_BYTES,
+  SYNTHETIC_CONTROL_MAX_RESPONSE_BYTES,
   SyntheticControlClient,
   SyntheticControlDirtySessionError,
   SyntheticControlProtocolError,
@@ -14,7 +17,7 @@ import {
 const TOKEN = "synthetic-control-test-token-0001";
 const children: Array<ReturnType<typeof Bun.spawn>> = [];
 
-async function startAuthority(): Promise<{
+async function startAuthority(namespace: string): Promise<{
   child: ReturnType<typeof Bun.spawn>;
   client: SyntheticControlClient;
   url: string;
@@ -24,11 +27,15 @@ async function startAuthority(): Promise<{
     [
       process.execPath,
       "--conditions=eliza-source",
-      "test/fixtures/synthetic-control-authority.ts",
+      resolve(import.meta.dir, "fixtures/synthetic-control-authority.ts"),
     ],
     {
-      cwd: import.meta.dir.replace(/\/test$/, ""),
-      env: { ...process.env, SYNTHETIC_CONTROL_TOKEN: TOKEN },
+      cwd: resolve(import.meta.dir, ".."),
+      env: {
+        ...process.env,
+        SYNTHETIC_CONTROL_NAMESPACE: namespace,
+        SYNTHETIC_CONTROL_TOKEN: TOKEN,
+      },
       stdout: "pipe",
       stderr: "pipe",
     },
@@ -44,6 +51,10 @@ async function startAuthority(): Promise<{
       throw new Error(`authority exited before ready: ${stderr}`);
     }
     buffered += decoder.decode(chunk.value, { stream: true });
+    if (buffered.length > 4_096) {
+      child.kill("SIGKILL");
+      throw new Error("authority ready record exceeded 4096 characters");
+    }
   }
   reader.releaseLock();
   const ready = JSON.parse(buffered.slice(0, buffered.indexOf("\n"))) as {
@@ -55,7 +66,11 @@ async function startAuthority(): Promise<{
     throw new Error("authority emitted invalid ready record");
   return {
     child,
-    client: new SyntheticControlClient({ baseUrl: ready.url, token: TOKEN }),
+    client: new SyntheticControlClient({
+      baseUrl: ready.url,
+      namespace,
+      token: TOKEN,
+    }),
     url: ready.url,
     pid: ready.pid,
   };
@@ -67,6 +82,7 @@ async function rejectionCode(
   try {
     await promise;
   } catch (error) {
+    // error-policy:J1 The test helper translates only the expected protocol rejection shape.
     if (error instanceof SyntheticControlProtocolError) return error.code;
     throw error;
   }
@@ -88,13 +104,23 @@ describe("synthetic control subprocess protocol", () => {
       () =>
         new SyntheticControlClient({
           baseUrl: "http://127.0.0.1:1",
+          namespace: "boundary-test",
           token: TOKEN,
           timeoutMs: 0,
         }),
     ).toThrow("between 1 and 300000");
+    expect(
+      () =>
+        new SyntheticControlClient({
+          baseUrl: "http://example.com",
+          namespace: "boundary-test",
+          token: TOKEN,
+        }),
+    ).toThrow("loopback host");
 
     const secret = "provider_api_key=do-not-return-this";
     const handler = createSyntheticControlHandler({
+      namespace: "boundary-test",
       token: TOKEN,
       authority: {
         generation: () => 7,
@@ -112,6 +138,7 @@ describe("synthetic control subprocess protocol", () => {
         },
         body: JSON.stringify({
           version: 1,
+          namespace: "boundary-test",
           commandId: "secret-failure",
           command: { type: "health" },
         }),
@@ -129,6 +156,7 @@ describe("synthetic control subprocess protocol", () => {
     });
 
     const generationFailure = createSyntheticControlHandler({
+      namespace: "boundary-test",
       token: TOKEN,
       authority: {
         generation: () => {
@@ -146,13 +174,20 @@ describe("synthetic control subprocess protocol", () => {
         },
         body: JSON.stringify({
           version: 1,
+          namespace: "boundary-test",
           commandId: "generation-failure",
           command: { type: "health" },
         }),
       }),
     );
     expect(failedHealth?.status).toBe(503);
-    expect(await failedHealth?.text()).not.toContain(secret);
+    const failedHealthText = await failedHealth?.text();
+    expect(failedHealthText).not.toContain(secret);
+    expect(JSON.parse(failedHealthText ?? "{}")).toMatchObject({
+      ok: false,
+      generation: null,
+      error: { code: "COMMAND_FAILED" },
+    });
 
     const invalidRequest = await handler(
       new Request("http://127.0.0.1/__eliza/synthetic-control/v1", {
@@ -163,6 +198,7 @@ describe("synthetic control subprocess protocol", () => {
         },
         body: JSON.stringify({
           version: 1,
+          namespace: "boundary-test",
           commandId: "invalid-secret-command",
           command: { type: secret },
         }),
@@ -180,10 +216,226 @@ describe("synthetic control subprocess protocol", () => {
     });
   });
 
+  test("binds one bearer token to one namespace before authority execution", async () => {
+    let executions = 0;
+    const handler = createSyntheticControlHandler({
+      namespace: "namespace-a",
+      token: TOKEN,
+      authority: {
+        generation: () => 0,
+        execute: async () => {
+          executions += 1;
+          return { status: "ready" };
+        },
+      },
+    });
+    const wrongNamespace = new SyntheticControlClient({
+      baseUrl: "http://127.0.0.1",
+      namespace: "namespace-b",
+      token: TOKEN,
+      fetch: async (input, init) => {
+        const response = await handler(new Request(input, init));
+        if (!response) throw new Error("control handler declined request");
+        return response;
+      },
+    });
+    expect(
+      await rejectionCode(wrongNamespace.command({ type: "health" })),
+    ).toBe("COMMAND_FAILED");
+
+    const mismatchedManifest = await handler(
+      new Request("http://127.0.0.1/__eliza/synthetic-control/v1", {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${TOKEN}`,
+          "content-type": "application/json; charset=utf-8",
+        },
+        body: JSON.stringify({
+          version: 1,
+          namespace: "namespace-a",
+          commandId: "wrong-manifest-namespace",
+          command: {
+            type: "seed",
+            manifest: {
+              version: 1,
+              namespace: "namespace-b",
+              manifestId: "wrong-namespace",
+              domains: {},
+            },
+          },
+        }),
+      }),
+    );
+    expect(mismatchedManifest?.status).toBe(401);
+    expect(executions).toBe(0);
+  });
+
+  test("bounds decoded request and response bodies and rejects lossy/deep JSON", async () => {
+    let executions = 0;
+    const handler = createSyntheticControlHandler({
+      namespace: "bounded-json",
+      token: TOKEN,
+      authority: {
+        generation: () => 0,
+        execute: async () => {
+          executions += 1;
+          return { status: "ready" };
+        },
+      },
+    });
+    const oversized = await handler(
+      new Request("http://127.0.0.1/__eliza/synthetic-control/v1", {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${TOKEN}`,
+          "content-type": "application/json",
+        },
+        body: `"${"x".repeat(SYNTHETIC_CONTROL_MAX_REQUEST_BYTES)}"`,
+      }),
+    );
+    expect(oversized?.status).toBe(400);
+    expect(executions).toBe(0);
+
+    const encoded = await handler(
+      new Request("http://127.0.0.1/__eliza/synthetic-control/v1", {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${TOKEN}`,
+          "content-encoding": "gzip",
+          "content-type": "application/json",
+        },
+        body: "not-actually-gzip",
+      }),
+    );
+    expect(encoded?.status).toBe(400);
+    expect(executions).toBe(0);
+
+    const responseClient = new SyntheticControlClient({
+      baseUrl: "http://127.0.0.1",
+      namespace: "bounded-json",
+      token: TOKEN,
+      fetch: async () =>
+        new Response(`"${"x".repeat(SYNTHETIC_CONTROL_MAX_RESPONSE_BYTES)}"`, {
+          headers: { "content-type": "application/json" },
+        }),
+    });
+    expect(
+      await rejectionCode(responseClient.command({ type: "health" })),
+    ).toBe("COMMAND_FAILED");
+
+    const mismatchedResponseClient = new SyntheticControlClient({
+      baseUrl: "http://127.0.0.1",
+      namespace: "bounded-json",
+      token: TOKEN,
+      fetch: async () =>
+        Response.json({
+          version: 1,
+          namespace: "bounded-json",
+          commandId: "different-command",
+          ok: true,
+          generation: 99,
+          data: {},
+        }),
+    });
+    await expect(
+      mismatchedResponseClient.command(
+        { type: "health" },
+        { commandId: "expected-command" },
+      ),
+    ).rejects.toMatchObject({
+      code: "COMMAND_FAILED",
+      generation: undefined,
+    });
+
+    const oversizedAuthority = createSyntheticControlHandler({
+      namespace: "bounded-json",
+      token: TOKEN,
+      authority: {
+        generation: () => 0,
+        execute: async () => ({
+          payload: "x".repeat(SYNTHETIC_CONTROL_MAX_RESPONSE_BYTES),
+        }),
+      },
+    });
+    const boundedServerResponse = await oversizedAuthority(
+      new Request("http://127.0.0.1/__eliza/synthetic-control/v1", {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${TOKEN}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          version: 1,
+          namespace: "bounded-json",
+          commandId: "oversized-authority-response",
+          command: { type: "health" },
+        }),
+      }),
+    );
+    expect(await boundedServerResponse?.json()).toMatchObject({
+      ok: false,
+      generation: 0,
+      error: { code: "COMMAND_FAILED" },
+    });
+
+    let nested: unknown = {};
+    for (let index = 0; index < 70; index += 1) nested = { nested };
+    let fetchCalls = 0;
+    const preflightClient = new SyntheticControlClient({
+      baseUrl: "http://127.0.0.1",
+      namespace: "bounded-json",
+      token: TOKEN,
+      fetch: async () => {
+        fetchCalls += 1;
+        throw new Error("invalid JSON must not be sent");
+      },
+    });
+    await expect(
+      preflightClient.command({
+        type: "seed",
+        manifest: {
+          version: 1,
+          namespace: "bounded-json",
+          manifestId: "too-deep",
+          domains: nested as never,
+        },
+      }),
+    ).rejects.toThrow("depth limit");
+    await expect(
+      preflightClient.command({
+        type: "seed",
+        manifest: {
+          version: 1,
+          namespace: "bounded-json",
+          manifestId: "negative-zero",
+          domains: { value: -0 },
+        },
+      }),
+    ).rejects.toThrow("negative zero");
+    await expect(
+      preflightClient.command({
+        type: "seed",
+        manifest: {
+          version: 1,
+          namespace: "bounded-json",
+          manifestId: "too-large",
+          domains: {
+            payload: "x".repeat(SYNTHETIC_CONTROL_MAX_REQUEST_BYTES),
+          },
+        },
+      }),
+    ).rejects.toThrow("request exceeds");
+    await expect(
+      preflightClient.command({ type: "health" }, { expectedGeneration: -0 }),
+    ).rejects.toThrow("expectedGeneration must be an integer");
+    expect(fetchCalls).toBe(0);
+  });
+
   test("marks post-mutation seed failures dirty instead of fabricating cleanup", async () => {
     let generation = 0;
     let leaseHeld = false;
     const handler = createSyntheticControlHandler({
+      namespace: "partial-seed",
       token: TOKEN,
       authority: {
         generation: () => generation,
@@ -209,6 +461,7 @@ describe("synthetic control subprocess protocol", () => {
     });
     const client = new SyntheticControlClient({
       baseUrl: "http://127.0.0.1",
+      namespace: "partial-seed",
       token: TOKEN,
       fetch: async (input, init) => {
         const response = await handler(new Request(input, init));
@@ -228,6 +481,7 @@ describe("synthetic control subprocess protocol", () => {
         },
       });
     } catch (error) {
+      // error-policy:J1 The test captures the expected dirty-session boundary for assertions.
       if (error instanceof SyntheticControlDirtySessionError) dirty = error;
       else throw error;
     }
@@ -242,6 +496,7 @@ describe("synthetic control subprocess protocol", () => {
     let fetchCalls = 0;
     const client = new SyntheticControlClient({
       baseUrl: "http://127.0.0.1:1",
+      namespace: "invalid",
       token: TOKEN,
       fetch: async () => {
         fetchCalls += 1;
@@ -259,6 +514,7 @@ describe("synthetic control subprocess protocol", () => {
         } as never,
       }),
     ).catch((error) => {
+      // error-policy:J1 The test translates the expected local validation error for a single assertion.
       expect(String(error)).toContain("JSON-only");
       return "INVALID_REQUEST" as const;
     });
@@ -267,7 +523,7 @@ describe("synthetic control subprocess protocol", () => {
   });
 
   test("runs the shared scenario and Cloud manifest session with reset-bound teardown", async () => {
-    const { child, client } = await startAuthority();
+    const { child, client } = await startAuthority("shared-session");
     const session = await SyntheticControlSession.open({
       client,
       owner: "shared-harness",
@@ -285,8 +541,118 @@ describe("synthetic control subprocess protocol", () => {
     expect(await child.exited).toBe(0);
   });
 
+  test("serializes concurrent session commands and close behind accepted work", async () => {
+    const { child, client } = await startAuthority("serialized-session");
+    const session = await SyntheticControlSession.open({
+      client,
+      manifest: {
+        version: 1,
+        namespace: "serialized-session",
+        manifestId: "serialized-session",
+        domains: {},
+      },
+    });
+    const first = session.execute({ type: "time.advance", milliseconds: 1 });
+    const second = session.execute({ type: "time.advance", milliseconds: 2 });
+    const closing = session.close({ teardown: true, reason: "serialized" });
+    await expect(Promise.all([first, second])).resolves.toEqual([
+      { logicalTimeMs: 1 },
+      { logicalTimeMs: 3 },
+    ]);
+    await closing;
+    expect(await child.exited).toBe(0);
+    await expect(session.execute({ type: "snapshot" })).rejects.toThrow(
+      "closed",
+    );
+  });
+
+  test("poisons a session after a post-mutation timeout and skips unsafe cleanup", async () => {
+    let generation = 0;
+    let resets = 0;
+    let releases = 0;
+    const leaseId = "ambiguous-timeout-lease";
+    const handler = createSyntheticControlHandler({
+      namespace: "ambiguous-timeout",
+      token: TOKEN,
+      authority: {
+        generation: () => generation,
+        execute: async (command): Promise<JsonValue> => {
+          if (command.type === "health") return { status: "ready" };
+          if (command.type === "lease.acquire") {
+            generation += 1;
+            return { leaseId };
+          }
+          if (command.type === "seed") {
+            generation += 1;
+            return {
+              receipt: {
+                version: 1,
+                namespace: command.manifest.namespace,
+                manifestId: command.manifest.manifestId,
+                generation,
+                receipt: {},
+              },
+            };
+          }
+          if (command.type === "time.advance") {
+            generation += 1;
+            await Bun.sleep(50);
+            return { logicalTimeMs: command.milliseconds };
+          }
+          if (command.type === "reset") resets += 1;
+          if (command.type === "lease.release") releases += 1;
+          return {};
+        },
+      },
+    });
+    const client = new SyntheticControlClient({
+      baseUrl: "http://127.0.0.1",
+      namespace: "ambiguous-timeout",
+      token: TOKEN,
+      timeoutMs: 10,
+      fetch: async (input, init) => {
+        const signal = init?.signal;
+        const response = handler(new Request(input, init)).then((value) => {
+          if (!value) throw new Error("control handler declined request");
+          return value;
+        });
+        if (!signal) return response;
+        return Promise.race([
+          response,
+          new Promise<Response>((_, reject) => {
+            signal.addEventListener("abort", () => reject(signal.reason), {
+              once: true,
+            });
+          }),
+        ]);
+      },
+    });
+    const session = await SyntheticControlSession.open({
+      client,
+      manifest: {
+        version: 1,
+        namespace: "ambiguous-timeout",
+        manifestId: "ambiguous-timeout",
+        domains: {},
+      },
+    });
+    await expect(
+      session.execute({ type: "time.advance", milliseconds: 1 }),
+    ).rejects.toBeInstanceOf(SyntheticControlDirtySessionError);
+    await expect(session.execute({ type: "snapshot" })).rejects.toBeInstanceOf(
+      SyntheticControlDirtySessionError,
+    );
+    await expect(session.close()).rejects.toBeInstanceOf(
+      SyntheticControlDirtySessionError,
+    );
+    await Bun.sleep(60);
+    expect(generation).toBe(3);
+    expect(resets).toBe(0);
+    expect(releases).toBe(0);
+  });
+
   test("shares one manifest lifecycle with the real control-plane mock HTTP process", async () => {
-    const { child, client, url, pid } = await startAuthority();
+    const { child, client, url, pid } = await startAuthority("scenario-24078");
 
     const productionHealth = await fetch(`${url}/health`);
     expect(productionHealth.status).toBe(200);
@@ -378,7 +744,7 @@ describe("synthetic control subprocess protocol", () => {
   });
 
   test("fences concurrent commands and reset during an awaited operation", async () => {
-    const { client } = await startAuthority();
+    const { client } = await startAuthority("concurrency");
     const health = await client.command({ type: "health" });
     const lease = await client.command(
       { type: "lease.acquire", owner: "cloud-e2e", ttlMs: 60_000 },
@@ -440,11 +806,19 @@ describe("synthetic control subprocess protocol", () => {
     const concurrent = await Promise.allSettled([
       client.command(
         { type: "time.advance", milliseconds: 1 },
-        { expectedGeneration: reseeded.generation, leaseId },
+        {
+          commandId: "duplicate-generation-fenced-command",
+          expectedGeneration: reseeded.generation,
+          leaseId,
+        },
       ),
       client.command(
         { type: "time.advance", milliseconds: 2 },
-        { expectedGeneration: reseeded.generation, leaseId },
+        {
+          commandId: "duplicate-generation-fenced-command",
+          expectedGeneration: reseeded.generation,
+          leaseId,
+        },
       ),
     ]);
     expect(
@@ -457,12 +831,13 @@ describe("synthetic control subprocess protocol", () => {
   });
 
   test("reports auth, crash, restart, and stale-generation failures without fabricated success", async () => {
-    const first = await startAuthority();
+    const first = await startAuthority("crash-test");
     const unauthorized = await fetch(first.client.endpoint, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         version: 1,
+        namespace: "crash-test",
         commandId: "auth",
         command: { type: "health" },
       }),
@@ -484,7 +859,7 @@ describe("synthetic control subprocess protocol", () => {
       "COMMAND_FAILED",
     );
 
-    const restarted = await startAuthority();
+    const restarted = await startAuthority("crash-test");
     const restartedHealth = await restarted.client.command({ type: "health" });
     expect(restartedHealth.generation).toBe(0);
     expect(

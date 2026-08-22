@@ -25,6 +25,7 @@ export interface StartControlPlaneMockOptions
   tickMs?: number;
   /** Optional authenticated control transport; state remains owned by the supplied authority. */
   syntheticControl?: {
+    namespace: string;
     token: string;
     authority: SyntheticControlAuthority;
   };
@@ -88,7 +89,7 @@ export async function startControlPlaneMock(
   if (tickMs > 0) {
     interval = setInterval(() => {
       tick().catch(() => {
-        /* swallowed; surfaced via job state */
+        // error-policy:J5 The same rejection is surfaced through the persisted job state.
       });
     }, tickMs);
   }
