@@ -466,7 +466,7 @@ export function parseTurnTimeout(value: string | undefined): number | undefined 
   // default. An explicit "0" is still honoured.
   const trimmed = value.trim();
   if (trimmed === "0") return 0;
-  return parseTimeout(trimmed);
+  return parseTimerTimeout(trimmed);
 }
 
 type TimeoutSettingKey =
@@ -488,6 +488,12 @@ interface CodexSdkTimeoutConfiguration {
 }
 
 const MAX_RENDERED_INVALID_SETTING_LENGTH = 96;
+const MAX_NODE_TIMER_DELAY_MS = 2_147_483_647;
+
+function parseTimerTimeout(value: string | undefined): number | undefined {
+  const parsed = parseTimeout(value);
+  return parsed !== undefined && parsed <= MAX_NODE_TIMER_DELAY_MS ? parsed : undefined;
+}
 
 function renderInvalidSettingValue(value: string | boolean | number): {
   rendered: string;
@@ -547,8 +553,8 @@ function resolveColdTimeoutConfiguration(runtime: IAgentRuntime): ColdTimeoutCon
     cliTimeoutMs: resolveNumericSetting(
       runtime,
       "ELIZA_CLI_TIMEOUT_MS",
-      parseTimeout,
-      "a positive safe integer"
+      parseTimerTimeout,
+      `a positive integer no greater than ${MAX_NODE_TIMER_DELAY_MS}`
     ),
   };
 }
@@ -569,7 +575,7 @@ function resolveClaudeSdkTimeoutConfiguration(
     runtime,
     "ELIZA_CLI_SDK_TURN_TIMEOUT_MS",
     parseTurnTimeout,
-    'the exact literal "0" opt-out or a positive safe integer'
+    `the exact literal "0" opt-out or a positive integer no greater than ${MAX_NODE_TIMER_DELAY_MS}`
   );
   return {
     sdkRestartAfterTurns,

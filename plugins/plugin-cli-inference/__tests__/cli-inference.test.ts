@@ -588,7 +588,7 @@ describe("models map gating (large-tier only)", () => {
     }
   });
 
-  it.each(["", "abc", "1.5", "9007199254740993", "0", "-1", "-0"])(
+  it.each(["", "abc", "1.5", "2147483648", "9007199254740993", "0", "-1", "-0"])(
     "rejects an explicitly invalid cold timeout %j before any spawn",
     async (invalid) => {
       const { calls, fn } = recordingSpawn({ stdout: "must not run" });
@@ -731,6 +731,7 @@ describe("models map gating (large-tier only)", () => {
     ["ELIZA_CLI_SDK_RESTART_AFTER_TURNS", "-0"],
     ["ELIZA_CLI_SDK_TURN_TIMEOUT_MS", "abc"],
     ["ELIZA_CLI_SDK_TURN_TIMEOUT_MS", "0.5"],
+    ["ELIZA_CLI_SDK_TURN_TIMEOUT_MS", "2147483648"],
     ["ELIZA_CLI_SDK_TURN_TIMEOUT_MS", "-0"],
     ["ELIZA_CLI_SDK_TURN_TIMEOUT_MS", "+0"],
   ] as const)("rejects invalid warm setting %s=%j before session creation", async (key, value) => {
@@ -1773,6 +1774,7 @@ describe("parseTurnTimeout (#16553)", () => {
     expect(parseTurnTimeout("0junk")).toBeUndefined();
     expect(parseTurnTimeout("0.5")).toBeUndefined();
     expect(parseTurnTimeout("120000junk")).toBeUndefined();
+    expect(parseTurnTimeout("2147483648")).toBeUndefined();
     expect(parseTurnTimeout("9007199254740993")).toBeUndefined();
   });
 

@@ -148,7 +148,7 @@ plugins/plugin-cli-inference/
 | `ELIZA_CLI_CLAUDE_PLANNER_MODEL` | No | (falls back to large) | `claude-sdk` small/planner tier model (e.g. sonnet) |
 | `ELIZA_CLI_CLAUDE_BIN` | No | (SDK default / allowlist lookup) | path to the claude executable: drives the `claude-sdk` session AND pins the cold `claude` spawn (deploys outside the SOC2 launcher allowlist) |
 | `ELIZA_CLI_SDK_RESTART_AFTER_TURNS` | No | `20` | `claude-sdk` / `codex-sdk`: restart a warm session after a positive safe-integer number of turns (bounds context) |
-| `ELIZA_CLI_SDK_TURN_TIMEOUT_MS` | No | `90000` | `claude-sdk`: positive safe-integer per-turn timeout; falls back to `ELIZA_CLI_TIMEOUT_MS` when unset; the exact literal `0` is the only unbounded-turn opt-out |
+| `ELIZA_CLI_SDK_TURN_TIMEOUT_MS` | No | `90000` | `claude-sdk`: positive integer per-turn timeout up to Node's `2147483647`ms timer ceiling; falls back to `ELIZA_CLI_TIMEOUT_MS` when unset; the exact literal `0` is the only unbounded-turn opt-out |
 | `ELIZA_CLI_CLAUDE_EFFORT` | No | (SDK default: high) | `claude-sdk`: reasoning effort forwarded to the SDK `effort` option (`low`/`medium`/`high`/`xhigh`/`max`); an unsupported level for the model is silently downgraded by the SDK |
 | `ELIZA_CLI_CLAUDE_PLANNER_EFFORT` | No | (falls back to `ELIZA_CLI_CLAUDE_EFFORT`) | `claude-sdk`: effort for the ROUTE-mode planner tier, so routing depth tunes independently of reply depth |
 | `ELIZA_CLI_CLAUDE_ALL_TIERS` | No | (unset = large tiers only) | `claude-sdk`: also serve the high-frequency triage tiers (TEXT_SMALL/NANO/MEDIUM) on this route so the ENTIRE text brain runs on the one subscription (no cerebras/gemma fallthrough). Higher subscription usage; triage defaults to the cheaper large-tier model, not the planner tier |
@@ -157,7 +157,7 @@ plugins/plugin-cli-inference/
 | `ELIZA_CLI_CODEX_PLANNER_MODEL` | No | (falls back to large) | `codex-sdk` small/planner tier model |
 | `ELIZA_CLI_CODEX_REASONING_EFFORT` | No | (sdk default) | `codex-sdk`: `modelReasoningEffort` (minimal..xhigh) |
 | `ELIZA_CLI_CODEX_BIN` | No | (sdk bundled / allowlist lookup) | path to the system codex binary: REQUIRED for `codex-sdk` (bundled 0.80.0 rejects current models); also pins the cold `codex` spawn |
-| `ELIZA_CLI_TIMEOUT_MS` | No | `120000` | positive safe-integer per-call spawn timeout (SIGTERM on expiry; cold CLI backends), also the `claude-sdk` turn-timeout fallback when its dedicated setting is absent |
+| `ELIZA_CLI_TIMEOUT_MS` | No | `120000` | positive per-call spawn timeout up to Node's `2147483647`ms timer ceiling (SIGTERM on expiry; cold CLI backends), also the `claude-sdk` turn-timeout fallback when its dedicated setting is absent |
 
 ## Errors
 
