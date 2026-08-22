@@ -14,6 +14,7 @@ import {
   type BrowserBridgeCallerAllowlist,
   type BrowserBridgeNativeCaller,
   type BrowserBridgeNativeErrorCode,
+  BrowserBridgeNativeProtocolError,
   encodeNativeMessage,
   NativeMessageDecoder,
   parseNativeEnrollmentRequest,
@@ -128,9 +129,24 @@ export function resolveNativeHostInvocation(
 function externalError(
   requestId: string,
   code: BrowserBridgeNativeErrorCode,
-  retryable: boolean,
 ): Record<string, unknown> {
+  const retryable =
+    code === "app_not_running" ||
+    code === "app_not_authenticated" ||
+    code === "broker_unavailable";
   return { v: 1, type: "browser_bridge.error", requestId, code, retryable };
+}
+
+function nativeHostBoundaryErrorCode(
+  error: unknown,
+): BrowserBridgeNativeErrorCode {
+  if (
+    error instanceof BrowserBridgeNativeProtocolError &&
+    error.code === "unsupported_protocol"
+  ) {
+    return "unsupported_version";
+  }
+  return "broker_unavailable";
 }
 
 export async function runBrowserBridgeNativeHostStdio(options: {
@@ -172,7 +188,7 @@ export async function runBrowserBridgeNativeHostStdio(options: {
       try {
         if (!host) {
           const request = parseNativeEnrollmentRequest(message);
-          response = externalError(request.requestId, "app_not_running", true);
+          response = externalError(request.requestId, "app_not_running");
         } else {
           response = await host.handle(message);
         }
@@ -192,7 +208,7 @@ export async function runBrowserBridgeNativeHostStdio(options: {
         ) {
           throw error;
         }
-        response = externalError(requestId, "app_not_running", true);
+        response = externalError(requestId, nativeHostBoundaryErrorCode(error));
       }
       stdout.write(encodeNativeMessage(response));
     }

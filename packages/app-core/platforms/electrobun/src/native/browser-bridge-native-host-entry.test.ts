@@ -199,4 +199,84 @@ describe("browser bridge native-host executable", () => {
     ]);
     expect(JSON.stringify(responses)).not.toContain("nonce");
   });
+
+  it("maps unsupported requests to the canonical non-retryable error", async () => {
+    const stateDir = fs.mkdtempSync(path.join(os.tmpdir(), "bb-version-"));
+    roots.push(stateDir);
+    const extensionId = "pmldpcoefklbdbgmggcejkfoinmjfeio";
+    const requestId = "123e4567-e89b-42d3-a456-426614174000";
+    const stdout = new PassThrough();
+    const chunks: Buffer[] = [];
+    stdout.on("data", (chunk) => chunks.push(Buffer.from(chunk)));
+    await runBrowserBridgeNativeHostStdio({
+      caller: { browser: "chrome", id: extensionId },
+      allowlist: browserBridgeCallerAllowlistFromEnv({}),
+      env: { ELIZA_STATE_DIR: stateDir },
+      stdin: Readable.from([
+        encodeNativeMessage({
+          v: 2,
+          type: "browser_bridge.enroll",
+          requestId,
+          nonce: Buffer.alloc(32, 3).toString("base64url"),
+          browser: "chrome",
+          extensionId,
+          extensionVersion: "1.2.3",
+          profileId: "123e4567-e89b-42d3-a456-426614174001",
+        }),
+      ]),
+      stdout,
+    });
+    const decoder = new NativeMessageDecoder();
+    expect(decoder.push(Buffer.concat(chunks))).toEqual([
+      {
+        v: 1,
+        type: "browser_bridge.error",
+        requestId,
+        code: "unsupported_version",
+        retryable: false,
+      },
+    ]);
+    decoder.finish();
+  });
+
+  it("maps an unavailable authenticated broker to broker_unavailable", async () => {
+    const stateDir = fs.mkdtempSync(path.join(os.tmpdir(), "bb-broker-down-"));
+    roots.push(stateDir);
+    const env = { ELIZA_STATE_DIR: stateDir };
+    loadOrCreateBrowserBridgeBrokerSecret(env, () => Buffer.alloc(32, 21));
+    const extensionId = "pmldpcoefklbdbgmggcejkfoinmjfeio";
+    const requestId = "123e4567-e89b-42d3-a456-426614174000";
+    const stdout = new PassThrough();
+    const chunks: Buffer[] = [];
+    stdout.on("data", (chunk) => chunks.push(Buffer.from(chunk)));
+    await runBrowserBridgeNativeHostStdio({
+      caller: { browser: "chrome", id: extensionId },
+      allowlist: browserBridgeCallerAllowlistFromEnv({}),
+      env,
+      stdin: Readable.from([
+        encodeNativeMessage({
+          v: 1,
+          type: "browser_bridge.enroll",
+          requestId,
+          nonce: Buffer.alloc(32, 3).toString("base64url"),
+          browser: "chrome",
+          extensionId,
+          extensionVersion: "1.2.3",
+          profileId: "123e4567-e89b-42d3-a456-426614174001",
+        }),
+      ]),
+      stdout,
+    });
+    const decoder = new NativeMessageDecoder();
+    expect(decoder.push(Buffer.concat(chunks))).toEqual([
+      {
+        v: 1,
+        type: "browser_bridge.error",
+        requestId,
+        code: "broker_unavailable",
+        retryable: true,
+      },
+    ]);
+    decoder.finish();
+  });
 });

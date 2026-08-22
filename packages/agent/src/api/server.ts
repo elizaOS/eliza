@@ -20,6 +20,32 @@ function tokenMatches(expected: string, provided: string): boolean {
   );
 }
 
+function isBrowserCompanionOwnerMutation(
+  method: string,
+  pathname: string,
+): boolean {
+  return (
+    method === "POST" &&
+    (pathname === "/api/browser-bridge/companions/pair" ||
+      /^\/api\/browser-bridge\/companions\/[^/]+\/(?:revoke|reset-revocation)$/.test(
+        pathname,
+      ))
+  );
+}
+
+function hasBrowserCompanionOwnerSessionCookie(
+  req: http.IncomingMessage,
+): boolean {
+  const cookie =
+    typeof req.headers.cookie === "string" ? req.headers.cookie : "";
+  return /(?:^|;\s*)eliza_session=[^;]+/.test(cookie);
+}
+
+function hasBrowserCompanionCsrfHeader(req: http.IncomingMessage): boolean {
+  const csrf = req.headers["x-eliza-csrf"];
+  return typeof csrf === "string" && csrf.trim().length > 0;
+}
+
 const MAX_BODY_BYTES = 1024 * 1024; // 1 MB
 /**
  * Restore's request-body cap IS the v1 restorable ceiling: anything retained
@@ -1797,6 +1823,26 @@ async function handleRequest(
     (await handleRuntimeModePreDispatch(req, res, state.runtime))
   ) {
     return;
+  }
+
+  if (isBrowserCompanionOwnerMutation(method, pathname)) {
+    if (!hasBrowserCompanionOwnerSessionCookie(req)) {
+      json(res, { error: "Owner session required" }, 401);
+      return;
+    }
+    if (!hasBrowserCompanionCsrfHeader(req)) {
+      json(res, { error: "CSRF token required" }, 403);
+      return;
+    }
+    const ownerAuthorization = await resolveHostSessionAuthorization();
+    if (!ownerAuthorization.ok) {
+      json(res, { error: "Invalid owner session or CSRF token" }, 401);
+      return;
+    }
+    if (ownerAuthorization.role !== "OWNER") {
+      json(res, { error: "Owner role required" }, 403);
+      return;
+    }
   }
 
   if (

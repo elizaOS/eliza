@@ -36,7 +36,11 @@ export type BackgroundState = {
   activeSessionId: string | null;
   rememberedTabCount: number;
   settingsSummary: string | null;
-  connectionIssue: "app_not_running" | "app_not_authenticated" | null;
+  connectionIssue:
+    | "app_not_running"
+    | "app_not_authenticated"
+    | "recovery_required"
+    | null;
 };
 
 export type PopupRequest =

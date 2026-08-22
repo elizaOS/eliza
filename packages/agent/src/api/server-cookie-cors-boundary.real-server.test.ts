@@ -19,6 +19,7 @@ type ApiServer = Awaited<ReturnType<typeof startApiServer>>;
 
 const TRUSTED_ORIGIN = "https://trusted.example";
 const HOSTILE_ORIGIN = "https://hostile.example";
+const EXTENSION_ORIGIN = "chrome-extension://abcdefghijklmnopabcdefghijklmnop";
 const REMOTE_HEADERS = { "x-forwarded-for": "203.0.113.10" } as const;
 const touchedEnv = [
   "ELIZA_ALLOWED_ORIGINS",
@@ -71,6 +72,9 @@ beforeEach(async () => {
       if (!options.allowCookieAuth) return { ok: false, role: "NONE" };
       const cookie =
         typeof req.headers.cookie === "string" ? req.headers.cookie : "";
+      if (cookie.includes("eliza_session=machine-session")) {
+        return { ok: true, role: "USER", identityId: "machine" };
+      }
       if (!cookie.includes("eliza_session=browser-session")) {
         return { ok: false, role: "NONE" };
       }
@@ -95,14 +99,25 @@ afterEach(async () => {
   await api?.close();
   api = null;
   _resetAgentHostBridge();
-  if (stateDir) await rm(stateDir, { recursive: true, force: true });
+  if (stateDir) {
+    await rm(stateDir, {
+      recursive: true,
+      force: true,
+      maxRetries: 5,
+      retryDelay: 50,
+    });
+  }
   stateDir = null;
   restoreEnvironment();
 }, 30_000);
 
 function endpoint(): string {
+  return endpointPath("/api/cors-auth-probe");
+}
+
+function endpointPath(pathname: string): string {
   if (!api) throw new Error("test server is not running");
-  return `http://127.0.0.1:${api.port}/api/cors-auth-probe`;
+  return `http://127.0.0.1:${api.port}${pathname}`;
 }
 
 function browserHeaders(
@@ -209,5 +224,78 @@ describe("cookie authentication follows credentialed CORS trust", () => {
       HOSTILE_ORIGIN,
     );
     expect(hostile.headers.get("access-control-allow-credentials")).toBeNull();
+  });
+});
+
+describe("browser companion owner enrollment boundary", () => {
+  it("does not allow trusted loopback to replace an owner session", async () => {
+    const response = await fetch(
+      endpointPath("/api/browser-bridge/companions/pair"),
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: "{}",
+      },
+    );
+    expect(response.status).toBe(401);
+    await expect(response.json()).resolves.toMatchObject({
+      error: "Owner session required",
+    });
+  });
+
+  it("requires CSRF and OWNER role for pair, owner revoke, and reset", async () => {
+    const paths = [
+      "/api/browser-bridge/companions/pair",
+      "/api/browser-bridge/companions/companion-1/revoke",
+      "/api/browser-bridge/companions/companion-1/reset-revocation",
+    ];
+    for (const pathname of paths) {
+      const missingCsrf = await fetch(endpointPath(pathname), {
+        method: "POST",
+        headers: { Cookie: "eliza_session=browser-session" },
+      });
+      expect(missingCsrf.status).toBe(403);
+
+      const nonOwner = await fetch(endpointPath(pathname), {
+        method: "POST",
+        headers: {
+          Cookie: "eliza_session=machine-session",
+          "X-Eliza-CSRF": "valid-csrf",
+        },
+      });
+      expect(nonOwner.status).toBe(403);
+
+      const owner = await fetch(endpointPath(pathname), {
+        method: "POST",
+        headers: {
+          Cookie: "eliza_session=browser-session",
+          "X-Eliza-CSRF": "valid-csrf",
+        },
+      });
+      expect(owner.status).not.toBe(401);
+      expect(owner.status).not.toBe(403);
+    }
+  });
+
+  it("grants extension CORS only to companion-authenticated capability routes", async () => {
+    const preflight = async (pathname: string) =>
+      fetch(endpointPath(pathname), {
+        method: "OPTIONS",
+        headers: {
+          Origin: EXTENSION_ORIGIN,
+          "Access-Control-Request-Headers": "authorization, content-type",
+          "Access-Control-Request-Method": "POST",
+        },
+      });
+
+    const capability = await preflight("/api/browser-bridge/companions/sync");
+    expect(capability.status).toBe(204);
+    expect(capability.headers.get("access-control-allow-origin")).toBe(
+      EXTENSION_ORIGIN,
+    );
+
+    const ownerPairing = await preflight("/api/browser-bridge/companions/pair");
+    expect(ownerPairing.status).toBe(403);
+    expect(ownerPairing.headers.get("access-control-allow-origin")).toBeNull();
   });
 });
