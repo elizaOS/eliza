@@ -1101,8 +1101,8 @@ function PillHandle({
   desktopMorphScaleY = 1,
 }: {
   binding: PullGestureBinding;
-  // Inverse of the panel's pill-morph scale. It wraps the complete painted
-  // target so the visible surface and hit geometry remain identical.
+  // Inverse of the panel's pill-morph scale. It keeps the detached target at a
+  // stable physical size while the panel underneath it morphs.
   counterScale: MotionValue<number> | number;
   onOpen: () => void;
   breathing: boolean;
@@ -1124,9 +1124,13 @@ function PillHandle({
       className="h-1.5 w-12 origin-bottom"
       style={{
         scale: counterScale,
-        scaleX: desktopMorphScaleX,
-        scaleY: desktopMorphScaleY,
         transformOrigin: desktopOverlayHost ? "center" : "bottom center",
+        ...(!desktopOverlayHost
+          ? {
+              scaleX: desktopMorphScaleX,
+              scaleY: desktopMorphScaleY,
+            }
+          : {}),
         ...(desktopOverlayHost
           ? {
               width: CHAT_OVERLAY_RESTING_WINDOW_WIDTH,
@@ -1137,7 +1141,7 @@ function PillHandle({
     >
       <RestingPillButton
         data-testid="chat-pill"
-        markTestId="chat-pill-mark"
+        markTestId={desktopOverlayHost ? undefined : "chat-pill-mark"}
         aria-label="open chat"
         breathing={breathing}
         style={
@@ -1194,7 +1198,23 @@ function PillHandle({
           "cursor-grab touch-none select-none active:cursor-grabbing",
           interactive ? "pointer-events-auto" : "pointer-events-none",
         )}
-      />
+      >
+        {desktopOverlayHost ? (
+          <motion.span
+            aria-hidden="true"
+            data-testid="chat-pill-mark"
+            className={cn(
+              "pointer-events-none h-full w-full rounded-full opacity-100",
+              breathing && "eliza-chat-handle-breathe",
+            )}
+            style={{
+              scaleX: desktopMorphScaleX,
+              scaleY: desktopMorphScaleY,
+              backgroundColor: HANDLE_BAR_COLOR,
+            }}
+          />
+        ) : undefined}
+      </RestingPillButton>
     </motion.div>
   );
 }
@@ -6403,10 +6423,10 @@ export function ChatOverlay({
             opacity={
               desktopOverlayHost ? desktopGrabberOpacity : grabberOpacity
             }
-            // In detached INPUT this remains an invisible, broad hit lane
-            // behind the single visible traveler. Disable it only in PILL,
-            // where the traveler owns the complete visible/interactive target.
-            pilled={pilled}
+            // The persistent detached traveler owns INPUT and PILL directly on
+            // the white bar. Keep this broad sheet lane inert at both endpoints;
+            // it becomes the handle only once a transcript is actually open.
+            pilled={pilled || desktopTravelerOwnsHandle}
           />
         ) : null}
         <motion.fieldset
@@ -7569,8 +7589,8 @@ export function ChatOverlay({
           // Keep the detached rest button OUTSIDE the panel's pill-morph
           // transform. It is the one visible traveling mark during pill ->
           // composer: bottom 64x12 at rest, inset 48x6 at the measured composer
-          // top. The broad invisible SheetGrabber owns INPUT gestures without
-          // replacing this visual node; the traveler owns gestures in PILL.
+          // top. The same bar-centered 64x12 control owns gestures at both
+          // endpoints, so a drag cannot begin from an unrelated invisible lane.
           <motion.div
             data-testid="chat-desktop-pill-traveler"
             className="pointer-events-none absolute inset-x-0 bottom-0 z-30 flex justify-center"
@@ -7585,7 +7605,7 @@ export function ChatOverlay({
               onOpen={pilled ? openFromPill : openFromGrabber}
               breathing={listening || responding || recording}
               pilled={pilled}
-              interactive={pilled}
+              interactive={desktopTravelerOwnsHandle}
               desktopOverlayHost
               desktopMorphScaleX={desktopPillTravelerScaleX}
               desktopMorphScaleY={desktopPillTravelerScaleY}

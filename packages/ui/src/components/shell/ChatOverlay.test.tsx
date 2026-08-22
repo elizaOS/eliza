@@ -4403,7 +4403,7 @@ describe("ChatOverlay single-thread (no chat swipe, #13531)", () => {
     expect(onWindowSizeClassChange).toHaveBeenLastCalledWith("input");
   });
 
-  it("keeps one inset traveler while the input grabber owns the broad hit lane", async () => {
+  it("keeps one bar-centered traveler interactive from input to pill", async () => {
     const offsetHeight = vi
       .spyOn(HTMLElement.prototype, "offsetHeight", "get")
       .mockImplementation(function measuredComposerHeight(this: HTMLElement) {
@@ -4419,31 +4419,36 @@ describe("ChatOverlay single-thread (no chat swipe, #13531)", () => {
       );
       const fixedGrabber = screen.getByTestId("chat-sheet-grabber");
       const traveler = screen.getByTestId("chat-pill");
+      const mark = screen.getByTestId("chat-pill-mark");
 
-      expect(fixedGrabber.style.pointerEvents).toBe("auto");
-      expect(fixedGrabber.getAttribute("aria-hidden")).toBeNull();
+      expect(fixedGrabber.style.pointerEvents).toBe("none");
+      expect(fixedGrabber.getAttribute("aria-hidden")).toBe("true");
       expect(fixedGrabber.style.opacity).toBe("0");
-      expect(traveler.className).toContain("pointer-events-none");
-      expect(traveler.getAttribute("aria-hidden")).toBe("true");
+      expect(traveler.className).toContain("pointer-events-auto");
+      expect(traveler.getAttribute("aria-hidden")).toBeNull();
+      expect(traveler.style.width).toBe("64px");
+      expect(traveler.style.height).toBe("12px");
       await waitFor(() => {
         expect(
           screen.getByTestId("chat-desktop-pill-traveler").style.transform,
         ).toContain("translateY(-36px)");
+        expect(mark.style.transform).toContain("scaleX(0.75)");
+        expect(mark.style.transform).toContain("scaleY(0.5)");
       });
 
-      const handleDown = createEvent.pointerDown(fixedGrabber, {
+      const handleDown = createEvent.pointerDown(traveler, {
         clientY: 400,
         screenY: 400,
         pointerId: 93,
       });
-      fireEvent(fixedGrabber, handleDown);
+      fireEvent(traveler, handleDown);
       expect(handleDown.defaultPrevented).toBe(true);
-      fireEvent.pointerMove(fixedGrabber, {
+      fireEvent.pointerMove(traveler, {
         clientY: 480,
         screenY: 480,
         pointerId: 93,
       });
-      fireEvent.pointerUp(fixedGrabber, {
+      fireEvent.pointerUp(traveler, {
         clientY: 480,
         screenY: 480,
         pointerId: 93,
@@ -4884,17 +4889,16 @@ describe("ChatOverlay single-thread (no chat swipe, #13531)", () => {
       });
       expect(screen.getByTestId("chat-sheet").dataset.detent).toBe("collapsed");
       expect(screen.getByTestId("chat-sheet").dataset.chatState).toBe("INPUT");
-      // INPUT and PILL intentionally share the same visible traveler. The
-      // transparent inset grabber owns this INPUT endpoint so the mark stays
-      // still while the user gets a forgiving drag target.
-      expect(screen.getByTestId("chat-pill").getAttribute("aria-hidden")).toBe(
-        "true",
-      );
+      // INPUT and PILL intentionally share one bar-centered interactive
+      // traveler. The broad sheet grabber stays inert until a transcript opens.
+      expect(
+        screen.getByTestId("chat-pill").getAttribute("aria-hidden"),
+      ).toBeNull();
       expect(screen.getByTestId("chat-pill").className).toContain(
-        "pointer-events-none",
+        "pointer-events-auto",
       );
       expect(screen.getByTestId("chat-sheet-grabber").style.pointerEvents).toBe(
-        "auto",
+        "none",
       );
       // This drag already carried the rendered transcript completely to zero,
       // so release must retire the preview and native sheet envelope instead
