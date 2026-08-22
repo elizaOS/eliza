@@ -9008,8 +9008,14 @@ export async function runV5MessageRuntimeStage1(args: {
 				: undefined;
 		const prePatchStageOneReplyEffectStatus =
 			messageHandler.plan.replyEffectStatus;
+		// A sub-agent completion relay IS the effect receipt: the build it
+		// reports was done and verified by the child. Treating the relay's
+		// "applied" as ungrounded withheld the good reply and the planner
+		// shipped "i'm not sure if that change actually went through" for a
+		// verified, live page (2026-08-22, two-lane build).
 		const prePatchStageOneReplyIsUngroundedAppliedClaim =
-			prePatchStageOneReplyEffectStatus === "applied";
+			prePatchStageOneReplyEffectStatus === "applied" &&
+			!isSubAgentCompletionArtifact(args.message);
 		const responseHandlerEvaluation = fieldRunResult?.preempt
 			? {
 					activeEvaluators: [],
