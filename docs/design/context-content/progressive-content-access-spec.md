@@ -227,7 +227,17 @@ interface CompactionContentManifest {
 
 The runtime derives this from the access ledger and actual mutations. It is schema-validated, redacted, size-bounded, and authorization-covered. Recoverability must not depend on prose mentioning every reference.
 
-The M4 follow-up introduces the versioned strict schema and a deterministic trajectory-derived snapshot across active and archived steps. The snapshot rejects unknown fields, native paths, revision conflicts, excessive references/ranges/processes, and oversized serialized manifests. It does not grant access, extend retention, restore removed automatic compaction, or claim restart durability. Room-scoped capture, persistence in existing session-summary metadata, reauthorization, and fresh-process readback remain required before compaction continuity is complete.
+The M4 follow-up introduces the versioned strict schema and a deterministic trajectory-derived snapshot across active and archived steps. The subsequent continuity slice stores it in the namespaced `metadata["elizaos:progressiveContent"]` envelope on the inbound dialogue memory before summary evaluation and on the assistant reply. Ordinary session summaries union the envelope without erasing unrelated metadata. Count, range, modified-file, pending-process, and 256 KiB serialized-byte pressure use deterministic rollover with explicit high-water counters; a new revision supersedes obsolete revision-bound ranges.
+
+Persistence is limited to coordinates backed by current restart-capable,
+authorization-enforcing resolvers: document and memory UUIDs and opaque
+attachment coordinates. FILE, email/Gmail, and tool-result references remain
+excluded until their durable resolver and retention contract exists. Manifest
+derivation and persistence are best-effort diagnostics after planner effects:
+their failure must never fail the completed reply or cause effect replay. The
+envelope does not grant access, extend retention, restore removed automatic
+compaction, or by itself prove restart durability. Fresh-process readback and
+successful authorized resolution remain acceptance requirements.
 
 ## 9. Security and failure semantics
 
@@ -268,7 +278,7 @@ The feature is not complete until all of the following are demonstrated:
 - Model-safe references/revisions remain usable across later turns while retention and access remain valid.
 - Raw bodies are absent from prompt `data` when a bounded projection is present.
 - Deterministic production-action scenario, evidence ingestion, and the invariant performance gate pass at the same revision.
-- A scheduled live-model planning lane, context-inspector UI/API, future compaction manifest, provider soak, and real-Postgres scale lane are follow-up rollout gates before enabling projection by default.
+- A scheduled live-model planning lane, context-inspector UI/API, fresh-process manifest readback, provider soak, and real-Postgres scale lane are follow-up rollout gates before enabling projection by default.
 
 A future inspector exposes only redacted reference, kind, included range, completeness/omission reason, token budget/use, and retention state—never raw source text, paths, provider IDs, or unauthorized metadata.
 

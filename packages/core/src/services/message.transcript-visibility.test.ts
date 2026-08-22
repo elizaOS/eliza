@@ -17,6 +17,7 @@ import type {
 	UUID,
 } from "../types";
 import { ModelType } from "../types";
+import { buildReadSlice, buildReadView } from "../types/content";
 import { ChannelType } from "../types/primitives";
 import { DefaultMessageService } from "./message";
 
@@ -104,13 +105,16 @@ const activeRuntimes: AgentRuntime[] = [];
 async function createHarness(
 	finalText: string,
 	actionCallbackText?: string,
+	actionPromptData?: Record<string, unknown>,
 ): Promise<Harness> {
 	const runtime = new AgentRuntime({
 		character: createCharacter({
 			id: AGENT_ID,
 			name: "Transcript Visibility Integration",
 			bio: "Exercises the real message-service delivery boundary.",
-			settings: {},
+			settings: actionPromptData
+				? { ELIZA_PROGRESSIVE_CONTENT_PROJECTION: true }
+				: {},
 		}),
 		adapter: new InMemoryDatabaseAdapter(),
 		logLevel: "fatal",
@@ -150,6 +154,7 @@ async function createHarness(
 				text: INTERNAL_DIAGNOSTIC,
 				transcriptVisibility: "internal" as const,
 				data: { views: [] },
+				...(actionPromptData ? { promptData: actionPromptData } : {}),
 			};
 		},
 	);
@@ -347,5 +352,95 @@ describe("DefaultMessageService transcript visibility integration", () => {
 		]);
 		expect(harness.callbacks).not.toHaveLength(0);
 		expect(harness.callbackActionNames).toContain("VIEWS");
+	});
+
+	it("persists the live planner content manifest before delivery and mirrors it onto the assistant reply", async () => {
+		const documentView = buildReadView({
+			reference: {
+				kind: "document",
+				ref: "document:44444444-4444-4444-8444-444444444444",
+				revision: "rev-1",
+			},
+			slice: buildReadSlice({
+				range: { unit: "byte", start: 0, end: 10, total: 20 },
+				completeness: "partial-recoverable",
+				revision: "rev-1",
+				sliceSha256: "a".repeat(64),
+			}),
+		});
+		const visibleSummary = "The requested document page is available.";
+		const harness = await createHarness(visibleSummary, undefined, {
+			document: documentView,
+		});
+		const message = makeMessage(harness.runtime, "Inspect the document.");
+		const originalUpdateMemory = harness.runtime.updateMemory.bind(
+			harness.runtime,
+		);
+		const originalGetMemoryById = harness.runtime.getMemoryById.bind(
+			harness.runtime,
+		);
+		let manifestUpdateSettled = false;
+		let manifestReadbackSettled = false;
+		const updateMemory = vi
+			.spyOn(harness.runtime, "updateMemory")
+			.mockImplementation(async (memory) => {
+				const updated = await originalUpdateMemory(memory);
+				if (
+					(memory.metadata as Record<string, unknown> | undefined)?.[
+						"elizaos:progressiveContent"
+					]
+				) {
+					manifestUpdateSettled = true;
+				}
+				return updated;
+			});
+		const getMemoryById = vi
+			.spyOn(harness.runtime, "getMemoryById")
+			.mockImplementation(async (id) => {
+				const stored = await originalGetMemoryById(id);
+				if (
+					(stored?.metadata as Record<string, unknown> | undefined)?.[
+						"elizaos:progressiveContent"
+					]
+				) {
+					manifestReadbackSettled = true;
+				}
+				return stored;
+			});
+
+		let callbackObservedSettledBridge = false;
+		const callback: HandlerCallback = async (content, actionName) => {
+			expect(manifestUpdateSettled).toBe(true);
+			expect(manifestReadbackSettled).toBe(true);
+			callbackObservedSettledBridge = true;
+			return harness.callback(content, actionName);
+		};
+		const result = await new DefaultMessageService().handleMessage(
+			harness.runtime,
+			message,
+			callback,
+		);
+
+		expect(callbackObservedSettledBridge).toBe(true);
+		expect(updateMemory).toHaveBeenCalledWith(
+			expect.objectContaining({
+				id: message.id,
+				metadata: expect.objectContaining({
+					"elizaos:progressiveContent": expect.any(Object),
+				}),
+			}),
+		);
+		expect(getMemoryById).toHaveBeenCalledWith(message.id);
+		const incomingEnvelope = (
+			message.metadata as Record<string, unknown> | undefined
+		)?.["elizaos:progressiveContent"];
+		const assistantEnvelope = (
+			result.responseMessages.at(-1)?.metadata as
+				| Record<string, unknown>
+				| undefined
+		)?.["elizaos:progressiveContent"];
+		expect(incomingEnvelope).toEqual(expect.any(Object));
+		expect(assistantEnvelope).toEqual(incomingEnvelope);
+		expect(harness.callbacks).toHaveLength(1);
 	});
 });

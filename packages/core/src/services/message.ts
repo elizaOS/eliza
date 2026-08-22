@@ -91,6 +91,7 @@ import {
 	getCandidateActionBackstopRules,
 } from "../runtime/candidate-action-backstop";
 import { isCanonicalModelCapabilityDisabled } from "../runtime/canonical-model-capabilities.ts";
+import { deriveCompactionContentManifest } from "../runtime/content-access-manifest";
 import { isProgressiveContentProjectionEnabled } from "../runtime/content-projection-policy";
 import { filterProvidersByContextGate } from "../runtime/context-gates.ts";
 import { computePrefixHashes, hashString } from "../runtime/context-hash";
@@ -250,6 +251,7 @@ import type {
 	ProviderValue,
 	StreamChunkCallback,
 } from "../types/components";
+import type { ContentReference } from "../types/content";
 import type { ContextEvent, ContextObject } from "../types/context-object";
 import type { ContextDefinition, RoleGateRole } from "../types/contexts";
 import {
@@ -2151,6 +2153,8 @@ function createV5ReplyStrategyResult(args: {
 	 * planner text so the gate can still rewrite canned strings.
 	 */
 	agentVoiced?: boolean;
+	/** Body-free continuation ledger copied onto the persisted dialogue memory. */
+	metadata?: Record<string, JsonValue>;
 }): StrategyResult {
 	let responseContent: Content = {
 		thought: args.thought,
@@ -2186,11 +2190,193 @@ function createV5ReplyStrategyResult(args: {
 				content: responseContent,
 				roomId: args.message.roomId,
 				createdAt: Date.now(),
+				...(args.metadata ? { metadata: args.metadata } : {}),
 			},
 		],
 		state: args.state,
 		mode: args.mode ?? "simple",
 	};
+}
+
+const RESTART_RESOLVABLE_CONTENT_REFERENCE_KINDS = new Set([
+	"document",
+	"attachment",
+	"memory",
+]);
+const PROGRESSIVE_CONTENT_METADATA_KEY = "elizaos:progressiveContent";
+const UUID_REFERENCE =
+	/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
+
+function hasRestartResolverCoordinates(reference: ContentReference): boolean {
+	if (!RESTART_RESOLVABLE_CONTENT_REFERENCE_KINDS.has(reference.kind)) {
+		return false;
+	}
+	const prefix = `${reference.kind}:`;
+	if (!reference.ref.startsWith(prefix)) return false;
+	const coordinate = reference.ref.slice(prefix.length);
+	if (reference.kind === "attachment") return coordinate.length > 0;
+	return UUID_REFERENCE.test(coordinate);
+}
+
+function jsonValuesEqual(
+	left: JsonValue | undefined,
+	right: JsonValue,
+): boolean {
+	if (left === right) return true;
+	if (left === null || right === null) return false;
+	if (Array.isArray(left) || Array.isArray(right)) {
+		return (
+			Array.isArray(left) &&
+			Array.isArray(right) &&
+			left.length === right.length &&
+			left.every((value, index) => jsonValuesEqual(value, right[index]))
+		);
+	}
+	if (typeof left !== "object" || typeof right !== "object") return false;
+	const leftRecord = left as Record<string, JsonValue>;
+	const rightRecord = right as Record<string, JsonValue>;
+	const leftKeys = Object.keys(leftRecord).sort();
+	const rightKeys = Object.keys(rightRecord).sort();
+	return (
+		leftKeys.length === rightKeys.length &&
+		leftKeys.every(
+			(key, index) =>
+				key === rightKeys[index] &&
+				jsonValuesEqual(leftRecord[key], rightRecord[key] as JsonValue),
+		)
+	);
+}
+
+/**
+ * Build dialogue-memory metadata that the rolling-summary evaluator can merge.
+ * FILE references are path hashes while FILE reads require `file_path`; Gmail
+ * references currently depend on an in-process lookup map; and tool-result has
+ * no durable resolver. Excluding those kinds is deliberate: persisting an
+ * opaque token is not the same thing as preserving authorized recoverability.
+ */
+export function plannerTrajectoryContentManifestMetadata(args: {
+	trajectory: PlannerTrajectory;
+	enabled: boolean;
+	lastUsedAt: string;
+}): Record<string, JsonValue> | undefined {
+	if (!args.enabled) return undefined;
+	const manifest = deriveCompactionContentManifest(args.trajectory, {
+		lastUsedAt: args.lastUsedAt,
+		includeReference: hasRestartResolverCoordinates,
+	});
+	if (
+		manifest.contentRefs.length === 0 &&
+		manifest.modifiedFiles.length === 0 &&
+		manifest.pendingProcesses.length === 0
+	) {
+		return undefined;
+	}
+	return {
+		[PROGRESSIVE_CONTENT_METADATA_KEY]: {
+			schemaVersion: 1,
+			contentManifest: manifest,
+		} as unknown as JsonValue,
+	};
+}
+
+/** Attach the ledger to the live message and synchronously persist it for the
+ * post-turn summary query. Failed or unverifiable persistence is reported while
+ * the returned metadata still follows the assistant response memory path. */
+export async function persistPlannerTrajectoryContentManifest(args: {
+	runtime: IAgentRuntime;
+	message: Memory;
+	trajectory: PlannerTrajectory;
+	lastUsedAt: string;
+}): Promise<Record<string, JsonValue> | undefined> {
+	let contentManifestMetadata: Record<string, JsonValue> | undefined;
+	try {
+		contentManifestMetadata = plannerTrajectoryContentManifestMetadata({
+			trajectory: args.trajectory,
+			enabled: isProgressiveContentProjectionEnabled(args.runtime),
+			lastUsedAt: args.lastUsedAt,
+		});
+	} catch (cause) {
+		// error-policy:J4 manifest continuity is auxiliary to the completed planner
+		// turn, so a bounded-derivation failure is reported without replaying effects.
+		const derivationError = new ElizaError(
+			"Planner content manifest derivation failed",
+			{
+				code: "CONTENT_MANIFEST_DERIVATION_FAILED",
+				context: { messageId: args.message.id },
+				cause,
+			},
+		);
+		args.runtime.reportError(
+			"MessageService.persistContentManifest",
+			derivationError,
+			{ messageId: args.message.id },
+		);
+		args.runtime.logger.warn(
+			{ src: "service:message", messageId: args.message.id },
+			"Planner content manifest could not be derived",
+		);
+		return undefined;
+	}
+	if (!contentManifestMetadata || !args.message.id) {
+		return contentManifestMetadata;
+	}
+	const metadata = {
+		...(args.message.metadata ?? {}),
+		type: "message" as const,
+		...contentManifestMetadata,
+	};
+	args.message.metadata = metadata;
+	let persistenceError: ElizaError | undefined;
+	try {
+		const persisted = await args.runtime.updateMemory({
+			id: args.message.id,
+			metadata,
+		});
+		const readback = persisted
+			? await args.runtime.getMemoryById(args.message.id)
+			: null;
+		const expectedEnvelope = contentManifestMetadata[
+			PROGRESSIVE_CONTENT_METADATA_KEY
+		] as JsonValue;
+		const actualEnvelope = (
+			readback?.metadata as Record<string, JsonValue> | undefined
+		)?.[PROGRESSIVE_CONTENT_METADATA_KEY];
+		if (!persisted || !jsonValuesEqual(actualEnvelope, expectedEnvelope)) {
+			persistenceError = new ElizaError(
+				"Planner content manifest persistence could not be verified",
+				{
+					code: "CONTENT_MANIFEST_PERSISTENCE_FAILED",
+					context: { messageId: args.message.id },
+				},
+			);
+		}
+	} catch (cause) {
+		// error-policy:J4 the completed planner turn still returns its response;
+		// diagnostics make the continuity loss explicit and the assistant reply
+		// carries the same manifest through its normal persistence path.
+		persistenceError = new ElizaError(
+			"Planner content manifest persistence failed",
+			{
+				code: "CONTENT_MANIFEST_PERSISTENCE_FAILED",
+				context: { messageId: args.message.id },
+				cause,
+			},
+		);
+	}
+	if (persistenceError) {
+		args.runtime.reportError(
+			"MessageService.persistContentManifest",
+			persistenceError,
+			{
+				messageId: args.message.id,
+			},
+		);
+		args.runtime.logger.warn(
+			{ src: "service:message", messageId: args.message.id },
+			"Planner content manifest persistence could not be verified",
+		);
+	}
+	return contentManifestMetadata;
 }
 
 /**
@@ -10158,6 +10344,13 @@ export async function runV5MessageRuntimeStage1(args: {
 			plannedTextRaw || effectiveReplyText,
 			actionResults,
 		);
+		const contentManifestMetadata =
+			await persistPlannerTrajectoryContentManifest({
+				runtime: args.runtime,
+				message: args.message,
+				trajectory: plannerResult.trajectory,
+				lastUsedAt: new Date().toISOString(),
+			});
 
 		return {
 			kind: "planned_reply",
@@ -10179,6 +10372,9 @@ export async function runV5MessageRuntimeStage1(args: {
 								? { effectReceiptIds: effectiveReplyReceiptIds }
 								: {}),
 							...(transcriptVisibility ? { transcriptVisibility } : {}),
+							...(contentManifestMetadata
+								? { metadata: contentManifestMetadata }
+								: {}),
 						}),
 						...(actionResults.length > 0 ? { actionResults } : {}),
 					}

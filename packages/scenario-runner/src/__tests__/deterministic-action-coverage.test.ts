@@ -693,6 +693,10 @@ const STRICT_LLM_ROUTING_SCENARIOS: Record<
     actionNames: ["FILE", "SHELL", "WORKTREE"],
     minMessageTurns: 5,
   },
+  "deterministic-progressive-content-planning": {
+    actionNames: ["FILE"],
+    minMessageTurns: 1,
+  },
   "deterministic-github-actions-routes": {
     actionNames: [
       "GITHUB",
