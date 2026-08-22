@@ -4808,13 +4808,13 @@ describe("view management actions", () => {
 		const { runtime } = createRuntime();
 		const callback = vi.fn();
 		const appClient = {
-			listInstalledApps: vi.fn(async () => [
-				{
-					name: "notes",
-					displayName: "Notes",
-					pluginName: "@local/app-notes",
-				},
-			]),
+			listInstalledApps: vi.fn(async () =>
+				Array.from({ length: 7 }, (_, index) => ({
+					name: `notes-${index + 1}`,
+					displayName: `Notes ${index + 1}`,
+					pluginName: `@local/app-notes-${index + 1}`,
+				})),
+			),
 		};
 
 		const appResult = await runCreate({
@@ -4830,14 +4830,22 @@ describe("view management actions", () => {
 			text: expect.stringContaining("[CHOICE:app-create"),
 			userFacingText: expect.stringContaining("[CHOICE:app-create"),
 			verifiedUserFacing: true,
-			values: { mode: "create", subMode: "choice", matchCount: 1 },
+			values: { mode: "create", subMode: "choice", matchCount: 7 },
 		});
 		expect(appResult.text).toContain("cancel = Cancel");
+		expect(appResult.text).toContain("edit-7 = Edit existing: Notes 7");
+
+		const matchingViews = Array.from({ length: 7 }, (_, index) => ({
+			...view(),
+			id: `remote-ledger-${index + 1}`,
+			label: `Remote Ledger ${index + 1}`,
+			pluginName: `@local/plugin-remote-ledger-${index + 1}`,
+		}));
 
 		const viewResult = await runViewsCreate({
 			runtime: runtime as never,
 			message: message("create a remote ledger view") as never,
-			views: [view()],
+			views: matchingViews,
 			callback,
 			repoRoot: "/tmp/no-view-create",
 		});
@@ -4847,8 +4855,11 @@ describe("view management actions", () => {
 			text: expect.stringContaining("[CHOICE:views-create"),
 			userFacingText: expect.stringContaining("[CHOICE:views-create"),
 			verifiedUserFacing: true,
-			values: { mode: "create", subMode: "choice", matchCount: 1 },
+			values: { mode: "create", subMode: "choice", matchCount: 7 },
 		});
 		expect(viewResult.text).toContain("cancel = Cancel");
+		expect(viewResult.text).toContain(
+			"edit-7 = Edit existing: Remote Ledger 7",
+		);
 	});
 });
