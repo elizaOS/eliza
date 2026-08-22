@@ -1,7 +1,7 @@
 /**
  * Installs schema-qualified append-only guards for identity claim history after
  * migration. Agent deletion remains the lifecycle boundary, but this module
- * deliberately emits no correlatable deletion receipt.
+ * deliberately emits no separately persisted deletion evidence.
  */
 
 import { sql } from "drizzle-orm";

@@ -136,9 +136,8 @@ Message-search DDL is also guarded on production Postgres. The generated column 
 Claim journal rows are append-only for ordinary database roles. Direct update,
 delete, and truncate operations fail; deleting an agent remains the sole
 supported lifecycle cascade. This foundation deliberately emits no deletion
-receipt or erasure proof: a row written by the deletion transaction remains
-correlatable through PostgreSQL transaction metadata, WAL, replicas, backups,
-and query logs even if its application columns are opaque.
+evidence: anything written by the deletion transaction would remain correlatable
+through PostgreSQL transaction metadata, WAL, replicas, backups, and query logs.
 
 Deletion evidence is therefore unavailable pending #23098 and an
 out-of-transaction lifecycle saga with a separately governed correlation-secret

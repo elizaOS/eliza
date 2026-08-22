@@ -132,22 +132,31 @@ const enabled =
       code: "55000",
     });
 
-    const unavailable = await admin.query(`
-      SELECT to_regclass('public.identity_claim_retention_ledger') AS ledger,
-             to_regprocedure('public.retain_identity_claim_deletion_receipt()') AS producer
+    const deletionArtifacts = await admin.query(`
+      SELECT relname AS name, 'relation' AS kind
+        FROM pg_catalog.pg_class c
+        JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+       WHERE n.nspname = 'public'
+         AND c.relname LIKE 'identity_claim_%'
+         AND (c.relname LIKE '%deletion%' OR c.relname LIKE '%retention%')
+      UNION ALL
+      SELECT proname AS name, 'function' AS kind
+        FROM pg_catalog.pg_proc p
+        JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+       WHERE n.nspname = 'public'
+         AND p.proname LIKE 'identity_claim_%'
+         AND (p.proname LIKE '%deletion%' OR p.proname LIKE '%retention%')
     `);
-    expect(unavailable.rows[0]).toEqual({ ledger: null, producer: null });
-    const grants = await admin.query(
-      "SELECT privilege_type FROM information_schema.role_table_grants WHERE grantee = $1 AND table_name = 'identity_claim_retention_ledger'",
+    expect(deletionArtifacts.rows).toHaveLength(0);
+    const deletionArtifactGrants = await admin.query(
+      `SELECT table_name, privilege_type
+         FROM information_schema.role_table_grants
+        WHERE grantee = $1
+          AND table_name LIKE 'identity_claim_%'
+          AND (table_name LIKE '%deletion%' OR table_name LIKE '%retention%')`,
       [roleName]
     );
-    expect(grants.rows).toHaveLength(0);
-    await expect(
-      restricted.query("INSERT INTO identity_claim_retention_ledger DEFAULT VALUES")
-    ).rejects.toMatchObject({ code: "42P01" });
-    await expect(
-      restricted.query("SELECT retain_identity_claim_deletion_receipt()")
-    ).rejects.toMatchObject({ code: "42883" });
+    expect(deletionArtifactGrants.rows).toHaveLength(0);
 
     await restricted.query("BEGIN");
     await restricted.query("DELETE FROM agents WHERE id = $1", [deletionAgentId]);
