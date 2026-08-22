@@ -1,65 +1,104 @@
 # Progressive content access specification
 
-Status: experimental; core/file slices are implemented behind an opt-in projection; lossless restart continuity requires redesign; corpus v2 is under review
+Status: core contracts, bounded FILE reads, model-input accounting, archive/reference
+support, and corpus v2 are merged; prompt-integrity correction, bounded native
+DOCUMENT reads, and durable continuity are active
 
 Date: 2026-08-22
 
-Owners: core runtime, agent host, coding tools, documents, connector adapters, scenario runner, evidence
+Owners: core runtime, agent host, coding tools, documents, connector adapters,
+scenario runner, evidence, and training/evaluation pipelines
+
+Tracking: [#24286](https://github.com/elizaOS/eliza/issues/24286) and
+[#24592](https://github.com/elizaOS/eliza/issues/24592)
 
 ## 1. Objective
 
-elizaOS must be able to work with large files, email bodies, attachments, documents, memories, and tool outputs without placing all source content in every model request and without irreversibly discarding content behind fixed character limits.
+elizaOS must inspect large authorized files, emails, attachments, documents,
+memories, and tool outputs without silently discarding model context or requiring
+whole-source work for every small read.
 
-The system uses one small slice/continuation contract across its existing domain actions. Each source remains owned and authorized by its native service. Each model turn can receive a bounded projection appropriate to the active model and remaining context budget, and the agent can request additional exact ranges later. A future compaction/archive seam must preserve those references mechanically; this change does not restore the removed compaction subsystem.
+Progressive content access is an explicit retrieval contract. A caller requests a
+bounded page, receives that exact page plus machine-readable continuation state,
+and may request another page later. Once content is selected for a model call,
+prompt construction, provider output, action/tool results, conversation history,
+evaluator input, model output, and training rows remain complete.
 
-The governing rule is:
+The governing rules are:
 
-> A prompt projection may be partial. The authoritative content must remain addressable, and partialness must be machine-readable.
+> A caller-requested source page may be partial. The model request assembled from
+> that page and all other selected context may not be silently partial.
 
-This design does not copy another framework. It uses elizaOS's existing `ActionResult.promptData`, planner loop, model-input budget, memory/database contracts, document service, media metadata/store where appropriate, connector authorization, trajectories, scenario runner, and evidence bundles.
+> Dispatch the complete final serialized request only when it fits the selected
+> provider/model boundary. Otherwise reject before provider dispatch with a typed,
+> actionable error and preserve complete protected diagnostic evidence.
+
+This design uses elizaOS native actions, authorization, memory/database contracts,
+document and media ownership, planner/evaluator paths, trajectories, scenarios,
+and evidence bundles. It does not adopt another framework or create a universal
+content store.
 
 ## 2. Scope and non-goals
 
 In scope:
 
-- Files available through coding tools or capability routers.
-- Tool and subprocess output.
-- Email messages, threads, MIME parts, and attachments.
-- Conversation attachments and extracted media text.
-- Stored documents and their existing chunks.
-- Memories or database-backed records whose complete representation is too large for a prompt.
-- Prompt projection, compaction survival, authorization, observability, and testing.
+- Bounded, exact reads for FILE, DOCUMENT, ATTACHMENT, email/message, memory,
+  and SHELL/tool-result sources.
+- Source-backed references, ranges, revisions, continuation, and reassembly.
+- Complete planner, evaluator, action/tool, history, provider, and training
+  serialization with pre-dispatch size rejection.
+- Durable, explicitly readable continuity records that survive restart without
+  being injected into summaries or model context.
+- Authorization, isolation, mutation, performance, memory, database, cleanup,
+  scenario, E2E, live-model, and evidence proof.
 
 Non-goals:
 
-- Creating a second attachment or byte store. The media-store invariant remains authoritative.
-- Loading an entire object merely because a model advertises a 1M-token context window.
-- Replacing exact content with an LLM summary.
-- Treating vector search as a completeness guarantee.
-- Removing transport, security, database, or display limits that intentionally fail closed.
-- Replacing the established FILE, DOCUMENT, ATTACHMENT, email/message, and SHELL actions with a generic public action in v1.
+- Creating a second attachment or byte store, a `files` table, reference counting,
+  a second garbage collector, or a `fileId` field on `Media`.
+- Automatically filling a 1M-token window.
+- Summarizing, compacting, truncating, slicing, taking a recent window, limiting
+  item count, or omitting selected model-facing content to make a request fit.
+- Reintroducing conversation compaction or `/compact`.
+- Treating vector search, a preview, or a summary as authoritative content.
+- Replacing established native actions with a generic CONTENT action in v1.
 
 ## 3. Design principles
 
-1. **Resolve before projecting.** Establish an authorized, later-resolvable native reference before projection. Persist first only when the source is ephemeral.
-2. **One slice contract, native adapters.** Files, email, documents, attachments, memories, and tool output share range/continuation semantics while retaining their native actions, identifiers, units, and authorization.
-3. **Exact reads under semantic navigation.** Summaries and search find likely evidence; exact ranges remain the authority.
-4. **Explicit partialness.** Every incomplete view reports its range, unit, total when known, continuation, digest/version, and omission reason.
-5. **Model-aware budgets.** Prompt budgets are token-based and account for wrappers and aggregate turn cost. Byte/character limits remain safety ceilings only.
-6. **Authorization on every read.** A locator is not ambient authority. Native resolution rechecks the caller, room/world scope, connector grant, and retention state.
-7. **Revision-bound continuation.** Internal offsets carry an expected revision. Changed content yields a typed stale-source conflict; external APIs may later wrap this state in opaque signed cursors.
-8. **Mechanical future compaction state.** Any future compaction implementation must preserve references and ranges through a runtime-derived manifest, not through summarizer memory alone.
-9. **No hidden duplication.** Prompt serializers use the bounded projection and must not serialize the full body again through `data`.
-10. **Measure real behavior.** Acceptance includes whether agents request and use later content, not only whether an API supports pagination.
-11. **Bound source work, not only responses.** A small returned page is insufficient when the adapter still fetches, decodes, scans, hashes, or allocates the complete source for every read.
+1. **Complete model input.** Every selected model-facing field and item is
+   serialized in stable order without hidden caps, omission, summary, or windows.
+2. **Reject before dispatch.** Measure the complete final provider payload. If it
+   cannot be accepted, do not call the provider; return a typed error naming the
+   measured size, supported limit, model/provider, and safe recovery choices.
+3. **Explicit pagination only.** Paging occurs only because the caller requested a
+   bounded native read. A partial page identifies itself as partial and provides a
+   clear continuation; it is never presented as the complete source.
+4. **One slice contract, native adapters.** Sources share range and continuation
+   semantics while retaining native identities, storage, units, and authorization.
+5. **Exact reads under navigation.** Metadata, search, and optional summaries may
+   help choose a source, but claims resolve to exact authorized ranges.
+6. **Authorization on every read.** A reference is not ambient authority. Resolve
+   it again under current room/world/owner/connector and retention policy.
+7. **Revision-bound continuation.** A changed source returns a typed stale-source
+   conflict rather than shifted content.
+8. **Durable continuity without prompt injection.** A content-free head and
+   immutable bounded shards preserve the complete logical access ledger. They are
+   read only through an explicit authorized operation.
+9. **Bound source work.** A small result is insufficient if the adapter still
+   fetches, decodes, scans, hashes, or allocates the complete source for each page.
+10. **One authoritative carrier.** Runtime-only data may remain structured, but
+    serializers must not duplicate or replace selected model content through an
+    alternate field.
+11. **Training integrity.** A trainer with a smaller sequence boundary rejects the
+    complete row. It never trains on an unrecorded prefix, suffix, summary, or
+    compacted variant.
 
-## 4. Minimal v1 model
+## 4. Minimal v1 contracts
 
 ### 4.1 Native locator and model-safe reference
 
-V1 does not introduce a global URI grammar or copy authorization/lifecycle fields into a new public handle. Each adapter retains its native runtime-only locator—such as a validated path, document ID, or provider account/message ID—behind its authorization boundary.
-
-Only this small opaque reference may enter `promptData`, protected trajectories, or compaction state:
+Each adapter retains its native runtime-only locator behind its authorization
+boundary. The model-safe reference is a redacted resolution token:
 
 ```ts
 interface ContentReference {
@@ -69,13 +108,15 @@ interface ContentReference {
 }
 ```
 
-`ref` is a redacted native-service token, not ambient authority. Every read resolves it through the domain's normal authorization. Raw paths, provider account IDs, and cross-room identifiers stay inside the adapter.
+`ref` reveals no raw path, account ID, provider token, or cross-room identifier.
+References are classified internally:
 
-The runtime classifies references by continuation lifetime without widening this public type:
+- **Restart-safe:** a fresh process can resolve and reauthorize it.
+- **Session-safe:** current-process/session state is required.
+- **Non-resumable:** the upstream source is already lost; no continuation is
+  offered and the result says `partial-source-loss`.
 
-- **Restart-safe:** a durable native resolver exists and reauthorizes in a fresh process; only this class may enter a persisted compaction/session-summary manifest.
-- **Session-safe:** resolution depends on current-process or current-session state; it may guide the active runtime but is removed before durable persistence.
-- **Non-resumable:** the upstream source was already lost or truncated; it reports `partial-source-loss` and is never presented as a continuation.
+Only restart-safe references may enter durable continuity shards.
 
 ### 4.2 Shared `ReadSlice`
 
@@ -107,17 +148,16 @@ interface ReadView {
 }
 ```
 
-The exact returned source text remains only in `ActionResult.text`. It is not decorated with gutters/notices before hashing; callbacks and prompt serializers may render those around the canonical page. `ReadView` appears in `data` and `promptData`; complete bodies and raw locators do not. `nextOffset` is required and equals `range.end` only for `partial-recoverable`. `complete` implies `range.end === total` when total is known. `partial-source-loss` reports the upstream captured size/loss boundary. Mutable recoverable sources carry a revision and require `expectedRevision` on continuation; immutable sources carry digest/version identity. Signed opaque cursors are deferred for external HTTP boundaries.
+The returned page text is canonical source content. Rendering may surround it
+with metadata but may not cut or rewrite it. `nextOffset` exists only for
+`partial-recoverable`, equals `range.end`, and advances. Empty sources return
+`[0,0)`. At one revision, sequential pages reconstruct the normalized source
+exactly once without gaps or overlap. UTF-8 and JavaScript UTF-16 boundaries
+never emit malformed text or skip/duplicate code points.
 
-Offsets/limits are nonnegative safe integers; overflow is rejected and limits are clamped. When total is known, `0 <= start <= end <= total`. `hasPrevious === (start > 0)`. `nextOffset` exists iff more recoverable source follows, equals `end`, and advances. Empty sources return `[0,0)`. At one revision, sequential slices reconstruct the normalized source exactly once without gaps or overlap. Byte reads decode only complete UTF-8 sequences; JavaScript slicing never emits malformed surrogates or skips/duplicates code points.
+### 4.3 Explicit operation shape
 
-### 4.3 Future navigational views
-
-V1 requires native exact paging. Layered summaries, universal outlines, semantic navigation, and a cross-source relation graph are future work. Existing domain metadata/search remain usable, but any hit used as evidence resolves to an exact model-safe reference and range.
-
-## 5. Existing actions and operations
-
-V1 keeps current model-facing action names and adds compatible parameters/results:
+V1 keeps current action names and adds compatible paging arguments:
 
 ```text
 FILE action=read file_path [offset] [limit] [unit] [expectedRevision]
@@ -126,197 +166,304 @@ ATTACHMENT action=read attachmentId [offset] [limit] [expectedRevision]
 provider email/message read accountId messageId [offset] [limit] [expectedRevision]
 ```
 
-Search stays domain-owned. Search hits resolve to exact model-safe references/ranges. Page, MIME-part, sheet, or time selectors may remain domain-specific and map to a v1 line/fragment/byte slice. A generic CONTENT dispatcher, global URI, universal outline, and cross-source relation graph are deferred.
+The presence of `offset`/`limit` is a caller request for pagination. The action
+result reports exact range, total when known, completeness, and continuation.
+Search remains domain-owned and returns exact readable ranges only when its index
+uses the same coordinate system as the native reader.
 
-Requirements:
+## 5. Complete serialization and pre-dispatch rejection
 
-- A page read performs bounded I/O. Line paging must not call whole-file `readFile` first.
-- `search` returns exact ranges only when the search index and native reader share the same coordinate system. Otherwise it returns the authorized parent reference plus ranking or media anchors and never invents readable coordinates or source completeness.
-- A readback page from an externalized result retains the original artifact identity; it is not externalized again as a new unrelated object.
+### 5.1 Final-wire authority
 
-## 6. Prompt projection and budgets
+There is one acceptance point immediately before provider dispatch. It receives
+the complete request after tool schemas, system/user messages, history, action and
+tool results, evaluator material, wrappers, and provider-specific serialization
+are final.
 
-### 6.1 Budget computation
+The acceptance point:
 
-Actions use conservative retrieval-page limits. The central projection layer uses the existing `buildModelInputBudget` result to decide what reaches a particular model request. Page sizing and prompt projection are separate: an action does not know the final tool-schema, history, reserve, or selected-model cost.
-The actual inline allowance is the minimum of the remaining request capacity after reserves, the per-result budget, the aggregate per-turn content budget, and safety limits. Larger-context models can receive larger projections after measurement, but no independent “percentage of context” formula is embedded in each action.
+1. Serializes the exact payload that would be dispatched.
+2. Measures with the provider/model tokenizer when available and a conservative,
+   versioned estimator otherwise.
+3. Accounts for the provider's advertised input boundary and required output
+   reserve without altering the input.
+4. Dispatches the payload unchanged when it fits.
+5. Otherwise throws a typed `ElizaError` before any provider call.
 
-Budgets are computed after final serialization, including JSON, line-number gutters, XML/fences, and omission notices. Tokenizer-backed counts are preferred; a model-family estimator is the fallback. Character count alone is not a prompt budget.
+The error contains an actionable code, measured tokens/bytes, supported limit,
+reserve, model/provider identity, and recovery guidance such as requesting a
+smaller source page or starting a deliberately narrower task. It contains no raw
+secrets or unauthorized content.
 
-The current experimental implementation applies this policy to native trajectory planner/evaluator rendering. Legacy prompt builders that serialize `ActionResult` values directly must migrate to the same final-request projector before the feature can be described as central across all model-facing paths or enabled by default.
+No feature flag, provider failover path, legacy formatter, evaluator retry,
+message-state builder, reflection path, grounded action reply, training exporter,
+or compatibility layer may re-enable omission, summary, compaction, recent-only
+history, item limits, or prefix/suffix cuts. Failover may rerender provider syntax,
+but it must carry the same complete logical content and repeat the final-wire check.
 
-The M4 follow-up uses `renderActionResultsForModel` as the migration bridge for legacy prompt builders. When the rollout flag is enabled, ActionState, post-turn evaluation, reflection, message-state injection, and grounded action replies apply the same `promptData`-over-`data` rule and omit only validated recoverable pages. The legacy display formatter remains the disabled-rollout compatibility path. Native planner requests reject an over-budget post-projection request explicitly. Per-provider planner failover rerendering and tokenizer-backed final-wire counts remain rollout gates; the runtime must not truncate an opaque prompt after typed ActionResults have been serialized.
+### 5.2 `ActionResult` integration
 
-### 6.2 Per-result and aggregate policy
+- `text` contains the complete caller-requested page or complete small result.
+- `promptData` may provide the canonical model-facing structured representation.
+- When `promptData` replaces runtime-only `data`, every model-relevant field from
+  the declared model contract must be present; this is a schema choice, not a
+  budget-driven deletion.
+- `data` must not cause the same source body to be serialized a second time.
+- Error text and structured failures are complete.
+- Result order and field order remain deterministic and testable.
 
-- Apply a per-result inline budget.
-- Apply an aggregate budget across all tool results in one assistant turn.
-- Reduce already-recoverable native sources to their reference/slice metadata first.
-- Ephemeral output may be externalized only after the approved private artifact lifecycle exists; otherwise fail explicitly before dropping source content.
-- Once private spill exists, reduce largest results first while retaining a small synopsis/reference for each.
-- Fair-share multiple attachments/documents so one early object cannot consume the whole budget.
-- Preserve control fields required by the planner even when content is externalized.
+### 5.3 Protected rejection trajectory
 
-### 6.3 `ActionResult` integration
+An over-boundary attempt records a protected, access-controlled trajectory event
+that proves what happened without creating a second public content leak. The event
+binds the complete prepared-request digest, serialization/schema version, ordered
+message/result counts, measured tokens/bytes, provider/model limit, reserve, error
+code, and dispatch-attempt count (`0`). When policy permits protected raw request
+capture, it must be the exact complete rejected request. Otherwise the original
+authorized sources remain the content authority and the digest plus structural
+metadata proves identity; no truncated diagnostic copy is substituted.
 
-Rules:
+Production logs and ordinary telemetry remain content-free.
 
-- `text` is the page; `promptData` carries its model-safe reference/slice metadata and bounded structured values.
-- `data` is structured control/result data, not a second carrier for complete bodies.
-- When `promptData` exists, planner rendering must not fall back to or additionally serialize full `data` content.
-- Full bodies remain in native sources or a specifically authorized private artifact store. SQL JSON limits remain fail-closed.
-- The existing action-result omission marker is retained but enriched with a model-safe reference, range, and continuation.
+## 6. Native source adapters
 
-## 7. Source adapters
+### 6.1 Coding files
 
-### 7.1 Coding files
+- Use positioned reads with bounded lookahead; do not call whole-file `readFile`
+  before returning a page.
+- Support byte mode for minified files and multi-megabyte lines.
+- Bind continuation to stat generation and digest/version when available.
+- Reject binary-as-text explicitly while preserving an authorized parser path.
 
-- Remove the source-size rejection from ranged text reads.
-- Open/stat the file, read only the requested byte/line window, and return `nextOffset` plus revision.
-- Support byte mode for minified files and pathological single lines, with well-formed incremental decoding.
-- Bind continuation to stat generation plus content digest when available.
-- Continue to reject binary-as-text, but return a model-safe reference for an authorized inspector/parser where available.
+### 6.2 Tool and process output
 
-### 7.2 Tool and process output
+- Record stdout/stderr, exit state, source byte/line counts, and upstream loss
+  independently.
+- Preserve complete ephemeral output only through an approved private lifecycle
+  with authorization, retention, atomic publication, redaction, reference-aware
+  GC, and cleanup proof.
+- Until that lifecycle exists, fail explicitly before discarding source output.
+- Never label an upstream capture cap as recoverable pagination.
 
-- Stream output through bounded in-memory head/tail buffers. Preserve complete output through a private host-owned artifact interface only after its authorization, retention, GC, redaction, and atomicity contract is accepted.
-- Record stdout/stderr independently, exit state, byte counts, line counts, and truncation before persistence.
-- Background-process absolute offsets remain a valid adapter implementation.
-- The current media store is not automatically that interface: it is agent-host owned, capability-URL readable, FIFO-evicted, and may leave broken references. Adapt its content-addressed byte layer; do not declare its current public media lifecycle durable for sensitive tool output.
-- An upstream capture cap must be reported as irreversible source loss; it cannot be mislabeled as a recoverable prompt projection.
+### 6.3 Documents
 
-### 7.3 Documents
+- Reuse current document storage and media ownership; do not add a parallel store.
+- Store large canonical text as immutable, non-overlapping UTF-8 byte segments
+  indexed by document, revision, ordinal, start, and end.
+- Select intersecting segments plus bounded lookahead. Embedding chunks are derived
+  search views, not the exact paging authority.
+- Reindex legacy unsegmented large documents transactionally or return typed
+  `DOCUMENT_REINDEX_REQUIRED`; do not repeatedly scan/hash the parent JSON value.
 
-- Reuse current document storage and chunk embeddings; do not add a second document store.
-- Exact reads support fragment, adjacent-fragment, line, and byte ranges. Parser page metadata may map a PDF page to exact text ranges, but a first-class page range unit remains deferred.
-- Search returns document ID, fragment index/range, score components, and exact continuation.
-- A pinned oversized document contributes at least identity metadata, a fair excerpt, and its model-safe reference; it may not disappear entirely because one block does not fit.
-- Canonical large-document storage uses immutable, non-overlapping UTF-8 byte segments with document/revision/ordinal/start/end metadata and an index that selects only intersecting segments plus bounded lookahead. Overlapping semantic embedding chunks are derived views, not the paging authority.
-- A legacy unsegmented document is transactionally reindexed or returns typed `DOCUMENT_REINDEX_REQUIRED`; it must not silently full-scan, split, and fingerprint the parent body on every page.
+### 6.4 Email and attachments
 
-### 7.4 Email and attachments
+- A triage list may be explicitly named and rendered as a preview, provided its
+  complete body is never passed later as model context under that preview label.
+- Body reads use stable account/message/revision coordinates, bounded private
+  segments after limited acquisition, and current connector authorization.
+- Attachment locators bind the owner/message and reauthorize before resolving
+  immutable extracted-text segments.
+- Process-local random tokens are session-safe and never enter durable shards.
 
-- Inbox triage remains a compact envelope/snippet list.
-- Every message exposes a model-safe body reference that later re-enters provider authorization for text ranges; existing thread and attachment IDs remain domain-owned selectors.
-- Stored attachment text is paged independently; canonical media bytes remain governed by the existing media-store contract.
-- Multiple items use fair per-item budgets.
-- Revoked connector scopes fail explicitly on later reads.
-- A durable attachment locator binds the owning message and a hash of the attachment ID. Resolution fetches that message directly, rechecks room/participant/disclosure authorization, then resolves immutable extracted-text segments. Room-wide attachment scans are not an accepted durable resolver.
-- Connector bodies use stable account/message/revision coordinates and private bounded local segments after one strictly limited acquisition. Process-local random-token maps remain session-safe and may not enter persisted manifests.
+### 6.5 Memories and database records
 
-### 7.5 Memories and database records
+- Small structured memories remain complete when selected for a model request.
+- Large source fields remain native and are accessed through explicit pages.
+- Retrieval and continuity reads recheck room/world/owner scope.
+- Semantic recall points to exact source references and ranges rather than storing
+  a cut copy as if it were the original memory.
 
-- Small structured memories remain inline.
-- Large fields retain model-safe native references while the memory keeps typed metadata and provenance.
-- Retrieval remains room/world/owner scoped.
-- Semantic recall points to exact source ranges; it does not duplicate an arbitrarily truncated body into memory JSON.
+## 7. Durable explicit continuity ledger
 
-## 8. Compaction and session continuity
+There is no automatic conversation compaction, `/compact`, LLM summary injection,
+session-summary metadata carrier, or automatic model-context restoration in this
+design.
 
-Current `develop` no longer contains the former automatic conversation-compaction modules. V1 must not restore them as a side effect of progressive reads. The following manifest is the contract for any current archive/session-summary seam and for a future compaction implementation; native references already present in retained planner steps remain authoritative meanwhile.
-
-Compaction produces two outputs:
-
-1. An LLM-generated semantic summary.
-2. A runtime-generated, schema-validated content manifest.
+Continuity is a content-free, authorized data structure in the existing
+memory/database domain:
 
 ```ts
-interface CompactionContentManifest {
-  contentRefs: Array<{
+interface ContentAccessLedgerHead {
+  schemaVersion: 1;
+  ownerScope: string;
+  firstShardRef?: string;
+  lastShardRef?: string;
+  entryCount: number;
+  ledgerSha256: string;
+  generation: string;
+}
+
+interface ContentAccessLedgerShard {
+  schemaVersion: 1;
+  ordinal: number;
+  previousShardRef?: string;
+  nextShardRef?: string;
+  entries: Array<{
     reference: ContentReference;
-    revision?: string;
-    reason: string;
-    rangesUsed: Array<{ unit: ReadSlice["range"]["unit"]; start: number; end: number }>;
+    rangesUsed: Array<{
+      unit: ReadSlice["range"]["unit"];
+      start: number;
+      end: number;
+    }>;
     lastUsedAt: string;
-    retained: boolean;
-    expiresAt?: string;
   }>;
-  modifiedFiles: Array<{ reference: ContentReference; revision?: string }>;
-  pendingProcesses: Array<{ id: string; outputReference?: ContentReference; offset?: number }>;
+  shardSha256: string;
 }
 ```
 
-The runtime derives this from the access ledger and actual mutations. The logical durable ledger is complete, schema-validated, redacted, and authorization-covered. Individual storage records and model-facing projections are bounded, but count or byte pressure may not evict canonical references/ranges and replace them with omission counters. Overflow is written first into ordered, authorized, addressable shards in the existing memory/database domain; the current summary retains a restart-safe head reference and integrity metadata. Recoverability must not depend on prose mentioning every reference.
+The head is small and content-free. Shards are immutable and individually bounded;
+overflow appends another ordered shard. The logical ledger has no count or byte
+ceiling that drops references/ranges. Publication is atomic and concurrent writers
+cannot lose disjoint entries. Every link, ordinal, digest, schema, scope, and entry
+is validated. Broken, missing, repeated, reordered, cyclic, or digest-mismatched
+chains fail explicitly.
 
-The M4 follow-up introduces the versioned strict schema and a deterministic trajectory-derived snapshot across active and archived steps. Each shard rejects unknown fields, native paths, revision conflicts, oversized entries, and unsafe references; fixed record ceilings trigger lossless rollover rather than deletion. It does not grant access, extend retention, or restore removed automatic compaction. Persistence is accepted only after tests recover every entry and range following count pressure, byte pressure, repeated rollover, and process termination. A parent test starts a second runtime over the same explicit PGLite directory, reloads the shard head, traverses the complete ledger, reauthorizes, and continues to late canaries through production actions. The same semantic vectors run against real Postgres in the scheduled lane.
+The ledger is never automatically placed in a prompt, summary, history, provider
+request, or evaluator input. A caller may explicitly request an authorized ledger
+page, which is then subject to the same exact paging and complete-request rules.
+Reading an entry does not grant source access; the native source reauthorizes it.
 
-## 9. Security and failure semantics
+Acceptance requires count rollover, byte rollover, repeated rollover, serialization
+pressure, concurrent disjoint writers, writer-process termination, fresh child
+process readback over PGLite, complete ordered traversal, late-canary reread through
+production actions, and the same semantic vectors on scheduled real Postgres.
 
-- Resolution rechecks authorization and SSRF/media policies on every operation.
-- Model-safe references and external cursors must not expose filesystem paths, connector tokens, account IDs, or cross-room identifiers.
-- Stale generation returns a typed conflict with fresh stat metadata.
-- Ephemeral-output persistence failure before projection returns a typed error; native sources need not be copied.
-- Extraction failure preserves bytes and exposes status, allowing another parser/OCR path later.
-- Search/rerank failure leaves deterministic browse and exact reads available.
-- Oversized single lines fall back to byte paging with incremental decoding.
-- Aggregate exhaustion reduces recoverable native projections first. Ephemeral output fails explicitly if approved private spill is unavailable.
-- Retention/expiry must be visible in `stat`; compaction cannot extend authorization or retention.
-- Prompt-injection defenses apply to every late-loaded page exactly as they do to initial external content.
+## 8. Security and failure semantics
 
-## 10. Telemetry contract
+- Reauthorize every source and ledger operation; expiry and revocation are visible.
+- References expose no path, account, provider credential, or cross-scope ID.
+- Stale revision, malformed cursor, unsafe range, extraction failure, source loss,
+  reindex requirement, oversize final request, and unavailable private persistence
+  are distinct typed errors.
+- Resolve/stat/read TOCTOU cannot produce a falsely complete page.
+- Prompt-injection defenses apply to every explicitly loaded page.
+- UI previews and log summaries are clearly named and never reused as model input.
+- A rejected request has zero provider dispatch attempts and no fallback that sends
+  a partial payload.
 
-The v1 projection records a content-free aggregate for each model request:
+## 9. Telemetry and evidence
 
-- Whether projection was enabled and the result count.
-- Baseline and remaining estimated request tokens.
-- Per-result and aggregate estimated-token budgets.
-- Included and omitted page counts.
-- Numeric omission-reason counts.
+Production telemetry is content-free and records:
 
-It is attached to the existing structured log and model-call/trajectory metadata seams. It excludes raw content, source references, paths, IDs, provider/account metadata, and hashes. Adapter and benchmark lanes may record source kind, ranges, sizes, latency, I/O, memory, cache, and typed failures in their protected test artifacts; promoting those fields to production telemetry requires a separate privacy review.
+- Complete prepared-request token/byte measurements and limit/reserve.
+- Dispatch or typed rejection outcome and error code.
+- Ordered message/action/tool-result counts and serializer version.
+- Provider/model identity under existing privacy policy.
+- Native read kind, requested/returned range sizes, latency, I/O counters, and
+  typed failures where privacy review permits.
 
-## 11. Acceptance contract
+It does not report "included" versus "omitted" model pages because omission is not
+an allowed prompt behavior. Protected evidence binds exact request/source hashes,
+full trajectories where authorized, corpus revision, access ledger, source I/O,
+benchmarks, memory/FD series, cleanup, scenario reports, E2E artifacts, and bundle
+integrity at the same commit.
+
+## 10. Acceptance contract
 
 The feature is not complete until all of the following are demonstrated:
 
-- A file larger than 256 KiB can be read to its end through bounded pages without whole-file materialization.
-- A fact placed only near the end of a large email, attachment, document, memory, and tool result is found and cited correctly.
-- Multiple large attachments receive fair discovery and later reads.
-- A single-line multi-megabyte JSON/log can be navigated losslessly.
-- UTF-8 decoding and JavaScript UTF-16 slicing never emit malformed surrogates or skip/duplicate code points.
-- Mutation between pages returns stale-source conflict rather than shifted content.
-- Revoked authorization blocks later retrieval without leaking prior unseen content.
-- Model-safe references/revisions remain usable across later turns while retention and access remain valid.
-- Canonical continuity survives count/byte rollover without omitted references or ranges; only the model-facing view is truncated and it carries an addressable next-shard continuation.
-- Raw bodies are absent from prompt `data` when a bounded projection is present.
-- Every accepted corpus family is realized through its production native service and recorded in a verified object-to-native-reference/revision/scope ledger; family labels or filesystem lookalikes are not native-path proof.
-- Per-page and full-traversal source work are bounded: no repeated parent-body scan, whole-source digest, provider refetch, or source-sized allocation hides behind a small response.
-- Deterministic production-action scenario, evidence ingestion, and the invariant performance gate pass at the same revision.
-- A scheduled live-model planning lane, context-inspector UI/API, future compaction manifest, provider soak, and real-Postgres scale lane are follow-up rollout gates before enabling projection by default.
+- Every model-facing serializer preserves complete selected prompt, action/tool,
+  history, evaluator, provider, output, and training content in stable order.
+- A complete final request that fits is dispatched byte-for-byte; one that does
+  not fit returns a typed actionable error before provider invocation.
+- Feature flags and provider fallback cannot re-enable hidden content loss.
+- Caller-requested pages identify partialness and reassemble exactly without gaps,
+  duplicates, malformed Unicode, or false completeness.
+- Late facts are found in FILE, DOCUMENT, email, attachment, memory, and tool
+  output through production native actions.
+- Small pages have bounded I/O, allocation, query count, and rows examined across
+  increasing source sizes.
+- Source mutation and authorization revocation fail explicitly.
+- Durable continuity recovers every ordered entry/range after rollover, concurrent
+  writes, and fresh-process restart, without automatic model injection.
+- Unauthorized bytes are absent from prompts, trajectories, logs, caches, UI,
+  and continuity records.
+- Deterministic scenarios, provider-qualified live scenarios, real-stack E2E,
+  PGLite/Postgres conformance, performance, soak, evidence integrity, exact-head
+  repository gates, and hosted CI pass.
 
-A future inspector exposes only redacted reference, kind, included range, completeness/omission reason, token budget/use, and retention state—never raw source text, paths, provider IDs, or unauthorized metadata.
+### 10.1 Required mutants
 
-### 11.1 Normative verification
+The checked-in mutant registry must execute and kill every required mutant,
+including:
 
-Delivery requires shared adapter conformance and seeded property suites; temp-filesystem and real PGLite integration; fresh-child-process restart/readback; deterministic isolated scenarios; scheduled live/provider-qualified scenarios; real-stack API/UI E2E; authorization/fault/concurrency tests; performance/soak; and canonical evidence ingestion. PGLite and Postgres execute the same semantic conformance vectors; backend-specific tests may add cases but may not replace the shared vectors.
+- Restore whole-source materialization or repeated parent scan/hash/refetch.
+- Drop expected-revision or continuation authorization validation.
+- Split UTF-8/UTF-16 incorrectly, skip/duplicate a middle page, or falsely report
+  completeness.
+- Re-enable an item cap, recent window, prefix/suffix cut, summary, compaction,
+  omission flag, or compatibility formatter that discards model content.
+- Measure before final serialization, skip the oversize check, send the oversize
+  request anyway, or call a fallback provider with partial input.
+- Duplicate source content through `data`, `promptData`, or another carrier.
+- Replace ledger shards with omission counters, lose a concurrent writer, or
+  break/skip/repeat/reorder/cycle a shard link or digest.
+- Convert missing credentials in a selected live lane into a skip.
 
-Behavioral acceptance tests must kill 100% of this explicit mutant catalog: restore whole-file materialization; drop expected-revision validation; split UTF-8/UTF-16 text incorrectly; falsely report completeness; omit a middle page; skip authorization on continuation; duplicate a body through `data`; let the first item starve others; budget before final serialization; reuse artifact identity incorrectly; evict canonical references/ranges under count or byte pressure while retaining only omission counters; break, skip, repeat, or loop a manifest shard next-link; or turn a selected live lane's missing credentials into a skip.
+### 10.2 Scenario and performance proof
 
-The mutant catalog is a checked-in, versioned executable registry. Each required mutant ID names a production seam and a killing test; CI emits `mutant-kills.json` and fails unless every required ID executed and was killed. Shard tests force count rollover, byte rollover, repeated rollover, and fresh-process traversal; they recover every ordered entry/range and detect missing, duplicate, reordered, cyclic, or integrity-mismatched links.
+Required scenarios cover late evidence, multi-item reads, huge single lines,
+stale revisions, revocation, extraction pending/failure, restart, adversarial late
+instructions, explicit ledger browsing, final-wire rejection, and complete
+successful dispatch. They assert tool arguments/ranges and exact canary provenance,
+not only final prose.
 
-Required evidence includes corpus manifest/seed/SHA/coordinates, native-realization ledger, page access/hash ledger, final prompt-token ledger, source-I/O counters, mutant-kill report, fault report, benchmark/environment JSON, heap/RSS/external-memory/FD series, cleanup inventory, scenario report/native export/full trajectories, real E2E backend/browser/network/DB/artifact evidence, and bundle integrity result. The content-context named producer validates its declared sub-artifacts and writes a strict completeness manifest under the run root assigned by `test:matrix:review`. The existing matrix command remains the sole owner of pre-run inventory, producer execution, exact bundle creation, verification, and review. No sub-producer invents another report root or invokes ingestion itself. The named producer has a producer-to-bundle regression test and the exact bundle is inspected.
+Benchmarks record p50/p95/p99 with sample qualification, throughput, source bytes,
+serialized request bytes/tokens, RSS/heap/external/array buffers, CPU/event-loop/GC,
+FD/streams, DB queries/rows/plan/WAL, storage/cache growth, concurrency 1/8/32/64,
+cleanup, and cost per recovered canary. Peak resource use for the same page must
+scale with page/stream buffers rather than source size. Soak runs for at least six
+hours and 100,000 mixed operations with a positive leaking control.
 
-Selected credentialed lanes fail when credentials are absent. Optional discovery jobs may skip, but a skip cannot satisfy live-model acceptance.
+## 11. Current delivery status and merge order
 
-The corpus manifest is `elizaos.progressive-content.v2`. A valid publication is owner-only and manifest-last; contains no undeclared files under its owned `objects/` and `formats/` trees; rejects symlink/hardlink targets and unsafe modes; deletes only stale paths declared by a prior verified manifest; records exact source and normalized-text hashes, revisions, authorization scopes, UTF-8 byte coordinates, extraction states, and total logical bytes; and passes a fresh byte-backed verifier against code-derived deterministic bytes and declarations. Tests must include changed-seed stale-file cleanup, unsafe-mode rejection, preservation of unowned files, a symlink victim that remains unchanged, a resigned manifest with a missing extraction oracle, and fully resigned format and streamed-source tampering.
+Merged foundations:
+
+- [#24305](https://github.com/elizaOS/eliza/pull/24305): shared progressive
+  content contracts and bounded native foundations.
+- [#24345](https://github.com/elizaOS/eliza/pull/24345): archive/reference-related
+  follow-up.
+- [#24521](https://github.com/elizaOS/eliza/pull/24521): refreshed design,
+  corpus, scenario, and evidence foundation.
+- [#24496](https://github.com/elizaOS/eliza/pull/24496): deterministic corpus v2.
+
+Closed designs not to revive:
+
+- [#24498](https://github.com/elizaOS/eliza/pull/24498): rejected because capped
+  canonical rollover lost references/ranges and summary metadata was the wrong
+  carrier.
+- [#24387](https://github.com/elizaOS/eliza/pull/24387): closed continuity attempt.
+
+Active work:
+
+1. [#24592](https://github.com/elizaOS/eliza/issues/24592): remove prompt
+   projection/omission paths and enforce complete final-wire serialization with
+   typed rejection.
+2. Truly bounded native DOCUMENT segments and adapter conformance.
+3. Content-free head plus immutable, lossless continuity shards with restart and
+   concurrency proof.
+4. Native corpus realization, full mutant/fault/scenario/E2E/Postgres/performance/
+   soak evidence, and final truncation-inventory disposition.
 
 ## 12. Recommended decisions
 
-- Retain raw content according to existing security/retention policy: **yes**.
-- Use a fixed 10K-character cap: **only as an optional preview safety cap, never as the sole representation**.
-- Fill a 1M-token window automatically: **no; increase adaptive pages and evidence breadth, but preserve retrieval discipline**.
-- One chunk size for every source: **no; share the slice envelope, not the physical segmentation**.
-- Separate source stores for files/email/documents: **no; use native source-backed adapters**. Private ephemeral-output metadata may adapt existing content-addressed byte primitives only after authorization, retention, and reference-aware GC are approved.
-- Summaries as authority: **no; they are navigation aids**.
-- Vector-only retrieval: **no; combine hierarchy, lexical/semantic search, and exact reads**.
-- First implementation target: **shared `ReadSlice`, central prompt projection, and bounded FILE reads**. Private tool-output spill follows only after the host storage lifecycle is explicit.
+- Fixed 10K cap as model content: **no**.
+- Complete caller-requested page plus explicit continuation: **yes**.
+- Automatically reduce selected context to fit: **no; reject before dispatch**.
+- Automatically fill a 1M context: **no**.
+- Summaries as authority or fit mechanism: **no**.
+- Automatic compaction or `/compact`: **no**.
+- Durable continuity automatically injected into prompts: **no; explicit reads**.
+- One physical segmentation for all sources: **no; share only the slice envelope**.
+- Separate source stores: **no; preserve native ownership and the media-store
+  invariant**.
+- Vector-only retrieval: **no; use search/navigation plus exact reads**.
 
 ## 13. Deferred decisions
 
 - A generic CONTENT action and global content URI grammar.
-- A universal public `ContentHandle` that duplicates native source metadata.
-- Signed cursors for trusted internal action calls.
-- New content database tables or a second byte store.
-- Universal semantic outline/search/related operations.
-- Page, MIME-part, sheet-range, and transcript-time units before stable native coordinates exist.
-- Automatic spill of every large tool result before private authorization, retention, and reference-aware GC are solved.
+- Signed external cursors for trusted internal action calls.
+- Universal semantic outlines or cross-source relation graphs.
+- Additional range units before stable native coordinate systems exist.
+- Private automatic tool-output persistence before its complete lifecycle passes
+  authorization, retention, atomicity, redaction, GC, fault, and cleanup review.
