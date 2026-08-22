@@ -53,6 +53,16 @@
       "import": "./dist/todo-cutover.js",
       "default": "./dist/todo-cutover.js"
     },
+    "./synthetic-control": {
+      "types": "./dist/synthetic-control/index.d.ts",
+      "eliza-source": {
+        "types": "./src/synthetic-control/index.ts",
+        "import": "./src/synthetic-control/index.ts",
+        "default": "./src/synthetic-control/index.ts"
+      },
+      "import": "./dist/synthetic-control/index.js",
+      "default": "./dist/synthetic-control/index.js"
+    },
     ".": {
       "types": "./dist/index.d.ts",
       "eliza-source": {
