@@ -130,7 +130,7 @@ export async function alertFetch(
 async function readBoundedResponseBody(
   response: Response,
   aborted: Promise<never>,
-): Promise<Uint8Array | null> {
+): Promise<Uint8Array<ArrayBuffer> | null> {
   const declaredLength = response.headers.get("content-length");
   if (declaredLength !== null) {
     const declared = Number(declaredLength);
@@ -179,7 +179,7 @@ async function readBoundedResponseBody(
   }
   reader.releaseLock();
   if (total === 0) return null;
-  const body = new Uint8Array(total);
+  const body = new Uint8Array(new ArrayBuffer(total));
   let offset = 0;
   for (const chunk of chunks) {
     body.set(chunk, offset);
