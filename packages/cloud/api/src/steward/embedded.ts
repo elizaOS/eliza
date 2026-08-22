@@ -153,25 +153,133 @@ function resolveStewardUpstream(
   return null;
 }
 
-type ProvidersData = {
-  passkey?: boolean;
-  email?: boolean;
-  siwe?: boolean;
-  siws?: boolean;
-  google?: boolean;
-  discord?: boolean;
-  github?: boolean;
-  oauth?: string[];
+type ProvidersCaptcha = {
+  enabled?: boolean;
+  provider?: "turnstile" | "hcaptcha";
+  siteKey?: string;
+  requiredFor?: Array<"email_otp" | "sms_otp">;
   [key: string]: unknown;
 };
 
-type ProvidersBody = ProvidersData & {
-  ok?: boolean;
-  data?: ProvidersData;
+type ProvidersData = {
+  passkey: boolean;
+  email: boolean;
+  sms?: boolean;
+  whatsapp?: boolean;
+  totp?: boolean;
+  siwe: boolean;
+  siws: boolean;
+  google: boolean;
+  discord: boolean;
+  github: boolean;
+  twitter: boolean;
+  telegram?: boolean;
+  farcaster?: boolean;
+  linkedin?: boolean;
+  spotify?: boolean;
+  twitch?: boolean;
+  instagram?: boolean;
+  line?: boolean;
+  jwt?: boolean;
+  oidc?: string[];
+  captcha?: ProvidersCaptcha;
+  oauth: string[];
+  disabled?: string[];
+  [key: string]: unknown;
 };
+
+const REQUIRED_PROVIDER_BOOLEAN_FIELDS = [
+  "passkey",
+  "email",
+  "siwe",
+  "siws",
+  "google",
+  "discord",
+  "github",
+  "twitter",
+] as const;
+
+const OPTIONAL_PROVIDER_BOOLEAN_FIELDS = [
+  "sms",
+  "whatsapp",
+  "totp",
+  "telegram",
+  "farcaster",
+  "linkedin",
+  "spotify",
+  "twitch",
+  "instagram",
+  "line",
+  "jwt",
+] as const;
+
+const OPTIONAL_PROVIDER_STRING_ARRAY_FIELDS = ["oidc", "disabled"] as const;
+const CAPTCHA_PROVIDERS = new Set(["turnstile", "hcaptcha"]);
+const CAPTCHA_REQUIRED_FOR = new Set(["email_otp", "sms_otp"]);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function isStringArray(value: unknown): value is string[] {
+  return (
+    Array.isArray(value) && value.every((entry) => typeof entry === "string")
+  );
+}
+
+function isValidCaptcha(value: unknown): boolean {
+  if (!isRecord(value)) return false;
+  if (Object.hasOwn(value, "enabled") && typeof value.enabled !== "boolean") {
+    return false;
+  }
+  if (
+    Object.hasOwn(value, "provider") &&
+    (typeof value.provider !== "string" ||
+      !CAPTCHA_PROVIDERS.has(value.provider))
+  ) {
+    return false;
+  }
+  if (Object.hasOwn(value, "siteKey") && typeof value.siteKey !== "string") {
+    return false;
+  }
+  if (Object.hasOwn(value, "requiredFor")) {
+    if (!isStringArray(value.requiredFor)) return false;
+    if (!value.requiredFor.every((entry) => CAPTCHA_REQUIRED_FOR.has(entry))) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function isProvidersData(value: unknown): value is ProvidersData {
+  if (!isRecord(value)) return false;
+  if (
+    !REQUIRED_PROVIDER_BOOLEAN_FIELDS.every(
+      (field) =>
+        Object.hasOwn(value, field) && typeof value[field] === "boolean",
+    )
+  ) {
+    return false;
+  }
+  if (!Object.hasOwn(value, "oauth") || !isStringArray(value.oauth)) {
+    return false;
+  }
+  if (
+    !OPTIONAL_PROVIDER_BOOLEAN_FIELDS.every(
+      (field) =>
+        !Object.hasOwn(value, field) || typeof value[field] === "boolean",
+    )
+  ) {
+    return false;
+  }
+  if (
+    !OPTIONAL_PROVIDER_STRING_ARRAY_FIELDS.every(
+      (field) => !Object.hasOwn(value, field) || isStringArray(value[field]),
+    )
+  ) {
+    return false;
+  }
+  return !Object.hasOwn(value, "captcha") || isValidCaptcha(value.captcha);
 }
 
 function invalidProvidersResponse(): Response {
@@ -187,6 +295,14 @@ function invalidProvidersResponse(): Response {
       headers: { "cache-control": "no-store" },
     },
   );
+}
+
+function asHeadResponse(response: Response): Response {
+  return new Response(null, {
+    status: response.status,
+    statusText: response.statusText,
+    headers: response.headers,
+  });
 }
 
 function hasOAuthCreds(
@@ -335,28 +451,23 @@ async function patchProvidersResponse(
 ): Promise<Response> {
   if (!upstream.ok) return upstream;
   const contentType = upstream.headers.get("content-type") || "";
-  if (!contentType.includes("application/json")) return upstream;
-
-  let parsed: ProvidersBody;
-  try {
-    parsed = (await upstream.clone().json()) as ProvidersBody;
-  } catch {
-    return upstream;
-  }
-  if (!isRecord(parsed)) return invalidProvidersResponse();
-
-  const hasNestedData = Object.hasOwn(parsed, "data");
-  const providerData = hasNestedData ? parsed.data : parsed;
-  if (!isRecord(providerData)) return invalidProvidersResponse();
-  if (
-    Object.hasOwn(providerData, "oauth") &&
-    (!Array.isArray(providerData.oauth) ||
-      !providerData.oauth.every((provider) => typeof provider === "string"))
-  ) {
+  if (!contentType.includes("application/json")) {
     return invalidProvidersResponse();
   }
 
-  const oauth = new Set<string>(providerData.oauth ?? []);
+  let parsed: unknown;
+  try {
+    parsed = await upstream.clone().json();
+  } catch {
+    return invalidProvidersResponse();
+  }
+  if (!isRecord(parsed)) return invalidProvidersResponse();
+
+  const hasNestedData = !isProvidersData(parsed);
+  const providerData = hasNestedData ? parsed.data : parsed;
+  if (!isProvidersData(providerData)) return invalidProvidersResponse();
+
+  const oauth = new Set<string>(providerData.oauth);
   const patched: ProvidersData = { ...providerData };
 
   for (const provider of ["google", "discord", "github"] as const) {
@@ -378,13 +489,20 @@ async function patchProvidersResponse(
 
 export const embeddedStewardHandler: MiddlewareHandler<AppEnv> = async (c) => {
   const url = new URL(c.req.url);
-  if (c.req.method === "GET" && isPublicStewardTenantConfigPath(url.pathname)) {
-    return c.json({ ok: true, data: PUBLIC_STEWARD_TENANT_CONFIG });
+  const requestMethod = c.req.method.toUpperCase();
+  const isReadMethod = requestMethod === "GET" || requestMethod === "HEAD";
+  const isProvidersRequest = isReadMethod && isAuthProvidersPath(url.pathname);
+
+  if (isReadMethod && isPublicStewardTenantConfigPath(url.pathname)) {
+    const response = c.json({ ok: true, data: PUBLIC_STEWARD_TENANT_CONFIG });
+    return requestMethod === "HEAD" ? asHeadResponse(response) : response;
   }
 
-  if (c.req.method === "GET" && isAuthProvidersPath(url.pathname)) {
+  if (isProvidersRequest) {
     const cached = readProvidersCache(c.env);
-    if (cached) return cached;
+    if (cached) {
+      return requestMethod === "HEAD" ? asHeadResponse(cached) : cached;
+    }
   }
 
   const upstream = resolveStewardUpstream(c.env, url);
@@ -411,7 +529,11 @@ export const embeddedStewardHandler: MiddlewareHandler<AppEnv> = async (c) => {
   // the SPA. Without this, /auth/email/send (Magic Link) returns
   // `Request expiry header required` — see Steward
   // packages/api/src/middleware/{request-expiry,authorization-signature}.ts.
-  const method = c.req.method.toUpperCase();
+  // A HEAD discovery request must be validated against the same representation
+  // as GET. Fetch GET upstream, cache only the validated body, then strip the
+  // downstream body below; an upstream HEAD has no body to validate.
+  const method =
+    requestMethod === "HEAD" && isProvidersRequest ? "GET" : requestMethod;
   const isMutating = MUTATING_METHODS.has(method);
   const rawSecret = c.env.STEWARD_REQUEST_SIGNING_SECRET;
   const signingSecret =
@@ -510,9 +632,10 @@ export const embeddedStewardHandler: MiddlewareHandler<AppEnv> = async (c) => {
       502,
     );
   }
-  if (c.req.method === "GET" && isAuthProvidersPath(url.pathname)) {
+  if (isProvidersRequest) {
     const patched = await patchProvidersResponse(response, c.env);
-    return writeProvidersCache(patched, c.env);
+    const cached = await writeProvidersCache(patched, c.env);
+    return requestMethod === "HEAD" ? asHeadResponse(cached) : cached;
   }
   return response;
 };
