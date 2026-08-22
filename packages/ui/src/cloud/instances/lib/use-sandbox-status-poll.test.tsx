@@ -126,7 +126,13 @@ describe("useSandboxListPoll", () => {
     // timers cannot drive, so back it with the faked global setTimeout here.
     vi.spyOn(AbortSignal, "timeout").mockImplementation((ms) => {
       const controller = new AbortController();
-      setTimeout(() => controller.abort(), ms);
+      setTimeout(
+        () =>
+          controller.abort(
+            new DOMException("Status request timed out", "TimeoutError"),
+          ),
+        ms,
+      );
       return controller.signal;
     });
     const hungFetch = vi.fn(
@@ -134,7 +140,8 @@ describe("useSandboxListPoll", () => {
         new Promise<Response>((_resolve, reject) => {
           init?.signal?.addEventListener("abort", () =>
             reject(
-              new DOMException("The operation was aborted.", "AbortError"),
+              init.signal?.reason ??
+                new DOMException("The operation was aborted.", "AbortError"),
             ),
           );
         }),
@@ -159,6 +166,7 @@ describe("useSandboxListPoll", () => {
     });
     expect(hungFetch.mock.calls[0]?.[1]?.signal?.aborted).toBe(true);
     expect(result.current.isLoading).toBe(false);
+    expect(result.current.error).toBe("Status request timed out");
   });
 });
 
@@ -298,6 +306,20 @@ describe("useSandboxStatusPoll", () => {
     await waitFor(() => expect(result.current.isLoading).toBe(false));
     expect(result.current.error).toBeTruthy();
     expect(result.current.status).not.toBe("running");
+    unmount();
+  });
+
+  it("distinguishes an interrupted status request from a generic transport failure", async () => {
+    vi.spyOn(globalThis, "fetch").mockRejectedValue(
+      new DOMException("The operation was aborted", "AbortError"),
+    );
+
+    const { result, unmount } = renderHook(() =>
+      useSandboxStatusPoll("agent-a", { intervalMs: 60_000 }),
+    );
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    expect(result.current.error).toBe("Status request was interrupted");
     unmount();
   });
 
