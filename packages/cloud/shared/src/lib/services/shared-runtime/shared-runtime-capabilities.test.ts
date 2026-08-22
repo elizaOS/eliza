@@ -95,4 +95,37 @@ describe("Shared runtime capability components", () => {
     expect(delivered).toEqual([]);
     expect(action.suppressPostActionContinuation).not.toBe(true);
   });
+
+  test("preserves complete continuation fields in the review handoff", async () => {
+    const originalIntent = `  ${"a".repeat(4_100)}  `;
+    const clientMessageId = `  ${"b".repeat(140)}  `;
+    const action = createRequestDedicatedUpgradeAction({
+      agentId: "agent-1",
+      webSearch: true,
+      reminders: false,
+      todos: false,
+      media: false,
+      transport: "app",
+    });
+
+    const result = await action.handler(
+      {} as never,
+      {
+        content: {
+          text: originalIntent,
+          chatIdempotency: { clientMessageId },
+        },
+      } as never,
+      undefined,
+      { parameters: { capabilityId: "coding-runtime" } },
+      undefined,
+    );
+
+    expect(result.data?.capabilityHandoff).toMatchObject({
+      continuation: {
+        originalIntent: "a".repeat(4_100),
+        clientMessageId: "b".repeat(140),
+      },
+    });
+  });
 });

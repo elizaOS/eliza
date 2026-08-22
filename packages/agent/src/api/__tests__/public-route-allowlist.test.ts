@@ -281,6 +281,10 @@ const ALLOWLIST: Record<string, string> = {
   // companion session token rather than the dashboard JWT.
   "/api/browser-bridge/companions/revoke":
     "browser-extension companion revoke; companion-token auth, not dashboard JWT",
+  "/api/browser-bridge/companions/preflight":
+    "browser-extension companion preflight; companion-token auth",
+  "/api/browser-bridge/companions/sessions/:id/actions/begin":
+    "browser-extension companion action lease; companion-token auth",
   "/api/browser-bridge/companions/sessions/:id/complete":
     "browser-extension companion session complete; companion-token auth",
   "/api/browser-bridge/companions/sessions/:id/progress":
@@ -331,10 +335,6 @@ const ALLOWLIST: Record<string, string> = {
   "/api/whatsapp/webhook (whatsapp-webhook-event)":
     "Meta webhook delivery must bypass auth",
 
-  // plugin-bluebubbles
-  "bluebubbles-webhook":
-    "BlueBubbles webhook delivery must bypass auth (path is a runtime const)",
-
   // @elizaos/ui cloud public pages — reachable by external/unauthenticated users.
   "payment/:paymentRequestId":
     "cloud public page: external payer; the request id is the capability link",
@@ -365,6 +365,8 @@ const ALLOWLIST: Record<string, string> = {
     "cloud public page: resumes the OpenID Provider authorization request after login; must render before authentication so the API origin can validate the parked request",
   "terms-of-service": "cloud public page: legal page, no auth",
   "privacy-policy": "cloud public page: legal page, no auth",
+  "account-deletion":
+    "cloud public page: Play/App Store deletion-request landing; API operations remain authenticated",
   bsc: "cloud public page: BSC landing page, no auth",
 };
 

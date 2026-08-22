@@ -15,6 +15,8 @@
   "plugins/plugin-browser/src/plugin.ts::(no-path)",
   "plugins/plugin-browser/src/plugin.ts::/api/browser-bridge/companions/pair",
   "plugins/plugin-browser/src/plugin.ts::/api/browser-bridge/companions/sessions/:id/complete",
+  "plugins/plugin-browser/src/plugin.ts::/api/browser-bridge/companions/sessions/:id/progress",
+  "plugins/plugin-browser/src/plugin.ts::/api/browser-bridge/companions/sync",
   "plugins/plugin-browser/src/plugin.ts::/api/browser-bridge/packages",
   "plugins/plugin-browser/src/plugin.ts::/api/browser-bridge/sessions/:id/progress",
   "plugins/plugin-calendar/src/routes/plugin-routes.ts::/api/lifeops/calendar/google/webhook",

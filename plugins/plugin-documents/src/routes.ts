@@ -36,6 +36,7 @@ import {
   actorFromAccessContext,
   ElizaError,
   fetchDocumentFromUrl,
+  isDocumentMemory as isCanonicalDocumentMemory,
   isYouTubeUrl,
   normalizeDocumentContentType,
   ServiceType,
@@ -1073,15 +1074,19 @@ export async function handleDocumentsRoutes(
           requestedGrants,
           accessContext,
         );
-      // `metadata` is the MemoryMetadata union; only DocumentMetadata carries
-      // the grants, so narrow with `in` before reading.
-      const metadata = document.metadata;
-      const directGrantCandidate =
-        metadata &&
-        "directGrantEntityIds" in metadata &&
-        (metadata as { directGrantEntityIds?: unknown }).directGrantEntityIds;
-      const directGrantEntityIds = Array.isArray(directGrantCandidate)
-        ? directGrantCandidate
+      if (!isCanonicalDocumentMemory(document)) {
+        throw new ElizaError(
+          "Canonical document grant authority returned a non-document record",
+          {
+            code: "DOCUMENT_GRANT_RESULT_INVALID",
+            context: { documentId: decodedDocumentId.trim() },
+          },
+        );
+      }
+      const directGrantEntityIds = Array.isArray(
+        document.metadata.directGrantEntityIds,
+      )
+        ? document.metadata.directGrantEntityIds
         : [];
       json(res, { ok: true, documentId: document.id, directGrantEntityIds });
     } catch (cause) {

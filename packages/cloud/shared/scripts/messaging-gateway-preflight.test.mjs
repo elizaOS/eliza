@@ -70,11 +70,11 @@ test("channel scoping does not require unrelated connector credentials", () => {
   assert.doesNotMatch(result.stdout, /telegram|whatsapp|imessage/i);
 });
 
-test("workflow keeps trusted configuration checks manual and source tests on develop", () => {
+test("workflow keeps trusted configuration checks manual and source tests reusable", () => {
   const workflow = readFileSync(WORKFLOW, "utf8");
 
   assert.match(workflow, /workflow_dispatch:/);
-  assert.match(workflow, /branches: \[develop\]/);
+  assert.match(workflow, /workflow_call:/);
   assert.doesNotMatch(workflow, /pull_request/);
   assert.match(workflow, /Enforce trusted messaging gateway configuration/);
   assert.match(workflow, /if: github\.event_name == 'workflow_dispatch'/);

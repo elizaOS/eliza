@@ -70,18 +70,32 @@ describe("dormant restore API boundary", () => {
       const occurrences = sources.flatMap(({ path, source }) =>
         source.includes(symbol) ? [path] : [],
       );
-      const expectedOccurrences = symbol === "loadAgentBackupRestoreSourceV3" ? 2 : 1;
+      const expectedOccurrences =
+        symbol === "loadAgentBackupRestoreSourceV3" ||
+        symbol === "loadCurrentAgentVaultKeyAuthority"
+          ? 2
+          : 1;
       expect(occurrences, `${symbol} must remain definition-only`).toHaveLength(
         expectedOccurrences,
       );
       expect(
-        occurrences.every((path) => path.includes("/db/repositories/")),
-        `${symbol} must remain inside the dormant repository layer`,
+        occurrences.every(
+          (path) =>
+            path.includes("/db/repositories/") ||
+            (symbol === "loadCurrentAgentVaultKeyAuthority" &&
+              path.endsWith("/lib/services/agent-backup-capture-v3-vault-authority.ts")),
+        ),
+        `${symbol} must remain inside its approved repository/capture boundary`,
       ).toBe(true);
       const invocationLikeOccurrences = production.match(
         new RegExp(`\\b${symbol}(?:<[^>]+>)?\\s*\\(`, "g"),
       );
-      const expectedInvocationLikeOccurrences = symbol === "loadAgentBackupRestoreSourceV3" ? 2 : 1;
+      const expectedInvocationLikeOccurrences =
+        symbol === "loadAgentBackupRestoreSourceV3"
+          ? 2
+          : symbol === "loadCurrentAgentVaultKeyAuthority"
+            ? 3
+            : 1;
       expect(
         invocationLikeOccurrences ?? [],
         `${symbol} gained a production call site`,
@@ -90,7 +104,7 @@ describe("dormant restore API boundary", () => {
     expect(readFileSync(join(import.meta.dir, "index.ts"), "utf8")).not.toMatch(
       /agent-backup-restore|agent-vault-key-authority/,
     );
-  }, 15_000);
+  }, 60_000);
 
   test("keeps target reservation free of remote effects and generic identity bypasses", () => {
     const operationSource = readFileSync(

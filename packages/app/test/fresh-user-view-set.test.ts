@@ -59,6 +59,7 @@ describe("fresh-user MVP view set", () => {
    *   - plugins-page— install/configure plugins & credentials.
    *   - memories    — the agent memory viewer.
    *   - settings    — model/provider/voice/connector configuration.
+   *   - vault       — owner-only credentials and secret routing workspace.
    * Everything else is either developer/preview-gated, an internal
    * (visibleInManager:false) deep-link surface, or an AOSP-only native surface.
    */
@@ -70,6 +71,7 @@ describe("fresh-user MVP view set", () => {
     "memories",
     "plugins-page",
     "settings",
+    "vault",
   ].sort();
 
   it("shows exactly the curated MVP set to a fresh non-developer user", () => {

@@ -7,7 +7,29 @@
   "source": "bundled",
   "tags": ["doordash", "food", "delivery", "ordering", "mcp"],
   "config": {
-    "features.doordash": false
+    "MCP_SERVER_DOORDASH_URL": {
+      "type": "url",
+      "required": false,
+      "sensitive": true,
+      "label": "MCP server URL",
+      "help": "HTTPS streamable-HTTP endpoint for the DoorDash MCP adapter.",
+      "advanced": false
+    },
+    "MCP_SERVER_DOORDASH_TYPE": {
+      "type": "select",
+      "required": false,
+      "sensitive": false,
+      "default": "streamable-http",
+      "label": "MCP transport",
+      "help": "Transport used by the configured DoorDash MCP adapter.",
+      "advanced": true,
+      "options": [
+        {
+          "value": "streamable-http",
+          "label": "Streamable HTTP"
+        }
+      ]
+    }
   },
   "render": {
     "visible": true,
@@ -24,5 +46,5 @@
   },
   "dependsOn": ["mcp"],
   "kind": "plugin",
-  "subtype": "connector"
+  "subtype": "feature"
 }

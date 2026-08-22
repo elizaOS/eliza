@@ -644,6 +644,17 @@ describe("E2BRemoteCapabilityRouterService", () => {
     expect(config.agentRunners).toEqual(["claude-code", "codex"]);
   });
 
+  it("rejects retired OpenCode runners", () => {
+    expect(() =>
+      resolveE2BRemoteRunnerConfig(
+        makeRuntime({
+          ELIZA_CLOUD_SANDBOX_BASE_URL: "https://cloud.example/remote-runner",
+          ELIZA_SANDBOX_AGENT_RUNNERS: "codex,opencode",
+        }),
+      ),
+    ).toThrow("Unsupported sandbox agent runner: opencode");
+  });
+
   it("rejects non-canonical request timeouts and values outside the platform timer range", () => {
     // Two distinct rejections: a value that is not a canonical decimal integer
     // never reaches the range check, while a canonical value above the timer

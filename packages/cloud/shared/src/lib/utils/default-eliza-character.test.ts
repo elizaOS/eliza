@@ -155,7 +155,7 @@ describe("default Eliza voice", () => {
     }
   });
 
-  test("keeps consumer identity free of company and framework biography", () => {
+  test("keeps origin attribution exact without framework biography", () => {
     const identity = [
       character.system,
       ...character.bio,
@@ -165,8 +165,9 @@ describe("default Eliza voice", () => {
       ),
     ].join("\n");
     expect(character.system).toContain('say "I\'m {{name}}."');
+    expect(character.system).toContain("Eliza is made by Eliza Research in San Francisco.");
     expect(identity).not.toMatch(
-      /eliza research|san francisco|elizaos|open source|self-host|github\.com|api_key|model provider/i,
+      /elizaos|open source|self-host|github\.com|api_key|model provider/i,
     );
   });
 

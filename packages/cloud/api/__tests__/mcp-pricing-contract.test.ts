@@ -17,6 +17,14 @@ import weatherRoute from "../mcps/weather/route";
 
 mock.module("@/lib/auth/workers-hono-auth", () => ({
   getCurrentUser: mock(async () => null),
+  requireAdmin: mock(async () => {
+    throw new Error("Public MCP pricing routes must not require admin auth");
+  }),
+  requireUserOrApiKeyWithOrg: mock(async () => {
+    throw new Error(
+      "Public MCP pricing routes must not require authenticated org access",
+    );
+  }),
 }));
 mock.module("@/lib/services/user-mcps", () => ({
   userMcpsService: {
@@ -50,7 +58,7 @@ app.route("/api/mcps/time", timeRoute);
 app.route("/api/mcps/weather", weatherRoute);
 
 describe("public MCP pricing contract", () => {
-  test("platform info and list agree with memory execution pricing", async () => {
+  test("platform discovery surfaces agree on the credit unit and list pricing", async () => {
     const [infoResponse, listResponse] = await Promise.all([
       app.request("/api/mcp/info", undefined, TEST_ENV),
       app.request("/api/mcp/list", undefined, TEST_ENV),
@@ -59,26 +67,26 @@ describe("public MCP pricing contract", () => {
     expect(listResponse.status).toBe(200);
 
     const info = (await infoResponse.json()) as {
-      pricing: { rates: Record<string, string> };
+      pricing: { type: string; creditUnit: string };
     };
     const list = (await listResponse.json()) as {
       mcps: Array<{
         id: string;
+        pricing: { type: string; creditUnit: string };
         tools: Array<{ name: string; cost: string }>;
       }>;
     };
     const platform = list.mcps.find((mcp) => mcp.id === "eliza-cloud-mcp");
+    if (!platform) {
+      throw new Error("MCP list omitted the platform discovery entry");
+    }
     const toolCost = (name: string) =>
-      platform?.tools.find((tool) => tool.name === name)?.cost;
+      platform.tools.find((tool) => tool.name === name)?.cost;
 
-    expect(info.pricing.rates.save_memory).toBe(
-      PLATFORM_MCP_TOOL_PRICING.save_memory.label,
-    );
+    expect(info.pricing.type).toBe(platform.pricing.type);
+    expect(info.pricing.creditUnit).toBe(platform.pricing.creditUnit);
     expect(toolCost("save_memory")).toBe(
       PLATFORM_MCP_TOOL_PRICING.save_memory.label,
-    );
-    expect(info.pricing.rates.retrieve_memories).toBe(
-      PLATFORM_MCP_TOOL_PRICING.retrieve_memories.label,
     );
     expect(toolCost("retrieve_memories")).toBe(
       PLATFORM_MCP_TOOL_PRICING.retrieve_memories.label,

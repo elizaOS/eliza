@@ -61,17 +61,16 @@ video evidence that only the manual/CI lane produces.
 
 | View id | Path | Kind | Smoke | Dedicated e2e | Manual capture lane |
 | --- | --- | --- | --- | --- | --- |
-| `tutorial` | `/tutorial` | system | ✅ smoke | `test/ui-smoke/tutorial-chat.spec.ts` (chat-native tour) | `audit:app` + video |
 | `chat` | `/chat` | system | ✅ smoke | `packages/ui/src/components/shell/__e2e__/run-chat-sheet-e2e.mjs` | `audit:app` + video + on-device |
 | `character` | `/character` | system | ✅ smoke | smoke-only | `audit:app` |
 | `documents` | `/character/documents` | system | ✅ smoke | smoke-only | `audit:app` |
 | `automations` | `/automations` | system | ✅ smoke | smoke-only | `audit:app` |
 | `plugins-page` | `/apps/plugins` | system | ✅ smoke | smoke-only | `audit:app` |
 | `trajectories` | `/apps/trajectories` | developer | ✅ smoke | smoke-only | `audit:app` (developer toggle on) |
-| `transcripts` | `/apps/transcripts` | system | ✅ smoke | smoke-only | `audit:app` + audio |
 | `memories` | `/apps/memories` | system | ✅ smoke | smoke-only | `audit:app` |
 | `database` | `/apps/database` | developer | ✅ smoke | smoke-only | `audit:app` (developer toggle on) |
 | `logs` | `/apps/logs` | developer | ✅ smoke | smoke-only | `audit:app` (developer toggle on) |
+| `vault` | `/vault` | system | ✅ smoke | smoke-only | `audit:app` + owner-role coverage |
 | `settings` | `/settings` | system | ✅ smoke | smoke-only | `audit:app` + video |
 | `background` | `/background` | preview | ✅ smoke | `packages/ui/src/components/pages/__e2e__/run-background-e2e.mjs` | `audit:app` + video (preview toggle on) |
 
@@ -80,9 +79,7 @@ video evidence that only the manual/CI lane produces.
 **None.** Every default-launcher view has automated smoke coverage (cross-checked
 by the gate: each view's `path` is asserted present in
 `builtin-views-visual.spec.ts`'s `BUILTIN_VIEW_CASES`). `chat` and `background`
-additionally have dedicated interaction e2e runners, and the chat-native
-tutorial is interaction-covered by `test/ui-smoke/tutorial-chat.spec.ts` (the
-tour is transcript turns, not a view of its own). The remaining views are
+additionally have dedicated interaction e2e runners. The remaining views are
 `smoke-only`: boot-smoke is their automated floor, and the manual/CI capture lane
 (`audit:app` + on-device captures) supplies the full-page-screenshot / video /
 device evidence per `AGENTS.md`.

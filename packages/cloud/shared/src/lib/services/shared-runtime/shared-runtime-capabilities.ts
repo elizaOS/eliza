@@ -127,10 +127,14 @@ export function createSharedRuntimeCapabilitiesProvider(
   };
 }
 
-function boundedString(value: unknown, maximum: number): string | undefined {
+function nonEmptyString(value: unknown): string | undefined {
   if (typeof value !== "string") return undefined;
   const normalized = value.trim();
-  return normalized ? normalized.slice(0, maximum) : undefined;
+  return normalized || undefined;
+}
+
+function boundedString(value: unknown, maximum: number): string | undefined {
+  return nonEmptyString(value)?.slice(0, maximum);
 }
 
 function handoffFor(
@@ -141,11 +145,11 @@ function handoffFor(
   if (capability.availability === "available") {
     throw new Error(`Capability ${capability.id} does not need setup`);
   }
-  const originalIntent = boundedString(message.content?.text, 4_000);
+  const originalIntent = nonEmptyString(message.content?.text);
   const idempotency = message.content?.chatIdempotency;
   const clientMessageId =
     idempotency && typeof idempotency === "object" && "clientMessageId" in idempotency
-      ? boundedString(idempotency.clientMessageId, 128)
+      ? nonEmptyString(idempotency.clientMessageId)
       : undefined;
   return {
     version: 1,

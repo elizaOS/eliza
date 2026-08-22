@@ -34,6 +34,8 @@ mock.module("../services/admin", () => ({
 }));
 
 mock.module("./steward-client", () => ({
+  isValidStewardTelegramId: (value: unknown) =>
+    typeof value === "string" && /^[1-9]\d{0,19}$/.test(value),
   isStagingSessionTokenCandidate: () => false,
   verifyStewardTokenCached: mock(async () => null),
 }));

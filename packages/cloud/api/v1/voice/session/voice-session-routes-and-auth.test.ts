@@ -56,8 +56,11 @@ const apiRoot = new URL("../../../src", import.meta.url).href;
 // the DB-free unit lane (matches the sibling mint-consent route test).
 mock.module("@elizaos/core", () => ({
   ...workerCoreStub,
+  canRequesterManageDocumentDirectGrants:
+    coreTestContract.canRequesterManageDocumentDirectGrants,
   canRequesterMutateDocument: coreTestContract.canRequesterMutateDocument,
   ChannelType: coreTestContract.ChannelType,
+  cloneConnectorJsonObject: coreTestContract.cloneConnectorJsonObject,
   DatabaseAdapter: coreTestContract.DatabaseAdapter,
   decryptedCharacter: coreTestContract.decryptedCharacter,
   DOCUMENT_LIST_QUERY_CAPABILITY_VERSION:
@@ -68,19 +71,28 @@ mock.module("@elizaos/core", () => ({
     coreTestContract.documentRoleHasGlobalVisibility,
   encryptedCharacter: coreTestContract.encryptedCharacter,
   ElizaError: workerCoreStub.ElizaError,
+  IDENTITY_AUTHORITY_CONTRACT_VERSION:
+    coreTestContract.IDENTITY_AUTHORITY_CONTRACT_VERSION,
+  IdentityResolutionService: coreTestContract.IdentityResolutionService,
   isElizaError: workerCoreStub.isElizaError,
   isSensitiveKeyName: () => false,
   logger: coreTestContract.logger,
   normalizePairingPageOptions: coreTestContract.normalizePairingPageOptions,
+  redactConnectorJsonAudit: coreTestContract.redactConnectorJsonAudit,
   redactLogArgs: (a: unknown) => a,
   redactSensitiveText: workerCoreStub.redactSensitiveText,
   Service: coreTestContract.Service,
+  toWellFormedUnicode: coreTestContract.toWellFormedUnicode,
+  validateDocumentDirectGrantEntityIds:
+    coreTestContract.validateDocumentDirectGrantEntityIds,
   validateDocumentFragmentQueryParams:
     coreTestContract.validateDocumentFragmentQueryParams,
   validateDocumentListQueryParams:
     coreTestContract.validateDocumentListQueryParams,
   validateDocumentRequesterContext:
     coreTestContract.validateDocumentRequesterContext,
+  validateDocumentRevisionReplacement:
+    coreTestContract.validateDocumentRevisionReplacement,
   validateQueryEntitiesPagination:
     coreTestContract.validateQueryEntitiesPagination,
   validateUuid: coreTestContract.validateUuid,

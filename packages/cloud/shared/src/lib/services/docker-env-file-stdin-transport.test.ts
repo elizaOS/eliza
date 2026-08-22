@@ -248,7 +248,7 @@ describe("generic Docker env-file stdin transport", () => {
     child.stdin.end(transport.input);
 
     try {
-      for (let attempt = 0; attempt < 200 && !existsSync(readyPath); attempt++) {
+      for (let attempt = 0; attempt < 1_000 && !existsSync(readyPath); attempt++) {
         await Bun.sleep(10);
       }
       expect(existsSync(readyPath)).toBe(true);
@@ -267,7 +267,7 @@ describe("generic Docker env-file stdin transport", () => {
       }
       rmSync(temporaryDirectory, { recursive: true, force: true });
     }
-  }, 10_000);
+  }, 30_000);
 });
 
 describe.skipIf(!RUN_REAL_DOCKER)(

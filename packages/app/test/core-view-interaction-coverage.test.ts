@@ -367,7 +367,7 @@ const CORE_VIEW_INTERACTIONS: Readonly<Record<string, CoreViewInteraction>> = {
         signals: [
           "trajectory viewer route refreshes",
           "Showing 1 plan calls",
-          "Beta response from Playwright trajectory fixture.",
+          "Alpha response from Playwright trajectory fixture.",
         ],
       },
       {

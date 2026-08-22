@@ -102,6 +102,7 @@ describe("applySubscriptionCredentials", () => {
   });
 
   it("does not expose Codex subscription credentials as OPENAI_API_KEY", async () => {
+    useTempElizaHome();
     vi.stubEnv("OPENAI_API_KEY", "");
     const config: Parameters<typeof applySubscriptionCredentials>[0] = {
       agents: {
@@ -118,6 +119,7 @@ describe("applySubscriptionCredentials", () => {
   });
 
   it("leaves a direct OpenAI API key untouched", async () => {
+    useTempElizaHome();
     vi.stubEnv("OPENAI_API_KEY", "sk-direct-openai-key");
     const config: Parameters<typeof applySubscriptionCredentials>[0] = {
       agents: {

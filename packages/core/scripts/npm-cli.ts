@@ -26,8 +26,9 @@ function normalizePathEntry(entry: string): string {
  *
  * Core's build runs under Bun, so `process.execPath` is not Node. Instead,
  * inspect PATH for a complete Node distribution and execute npm's JavaScript
- * entrypoint through that distribution's `node.exe`. Non-Windows platforms
- * keep the existing direct `npm` invocation.
+ * entrypoint through that distribution's `node.exe`. POSIX platforms execute
+ * `npm` directly so the operating system honors either a JavaScript shebang or
+ * a distribution-provided shell wrapper.
  */
 export function resolveNpmCliInvocation(
 	args: readonly string[],
@@ -37,23 +38,6 @@ export function resolveNpmCliInvocation(
 	const fileExists = options.fileExists ?? existsSync;
 	const pathValue = options.pathValue ?? process.env.PATH ?? "";
 	if (platform !== "win32") {
-		let nodeExecutable: string | undefined;
-		let npmScript: string | undefined;
-		for (const rawEntry of pathValue.split(":")) {
-			const entry = normalizePathEntry(rawEntry);
-			if (entry.length === 0) continue;
-			const nodeCandidate = path.posix.join(entry, "node");
-			const npmCandidate = path.posix.join(entry, "npm");
-			if (!nodeExecutable && fileExists(nodeCandidate)) {
-				nodeExecutable = nodeCandidate;
-			}
-			if (!npmScript && fileExists(npmCandidate)) {
-				npmScript = npmCandidate;
-			}
-			if (nodeExecutable && npmScript) {
-				return { command: nodeExecutable, args: [npmScript, ...args] };
-			}
-		}
 		return { command: "npm", args: [...args] };
 	}
 

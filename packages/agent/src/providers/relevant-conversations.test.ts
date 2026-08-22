@@ -138,6 +138,7 @@ describe("relevantConversationsProvider — shared recall embed fail-open", () =
     buildAccessContext.mockResolvedValue({
       requesterEntityId: "00000000-0000-0000-0000-0000000000e0",
       isOwner: false,
+      role: "USER",
     });
   });
 
@@ -317,6 +318,23 @@ describe("relevantConversationsProvider — shared recall embed fail-open", () =
       expect.any(Error),
       expect.objectContaining({ roomId: ROOM_ID }),
     );
+  });
+
+  it("fails closed when the requester role cannot be resolved", async () => {
+    buildAccessContext.mockResolvedValueOnce({
+      requesterEntityId: "00000000-0000-0000-0000-0000000000e0",
+    });
+    embedRecallQuery.mockResolvedValue([0.1, 0.2, 0.3]);
+    const { runtime, searchMemories } = makeRuntime();
+
+    const result = await relevantConversationsProvider.get(
+      runtime,
+      makeMessage("what did we decide about the launch date"),
+      EMPTY_STATE,
+    );
+
+    expect(searchMemories).toHaveBeenCalledOnce();
+    expect(result).toEqual({ text: "", values: {}, data: {} });
   });
 
   it("surfaces lexical hash memories even when the embed fails open (null)", async () => {
