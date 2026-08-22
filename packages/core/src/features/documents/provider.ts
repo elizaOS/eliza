@@ -17,6 +17,7 @@ import {
 	type Provider,
 } from "../../types";
 import { addHeader } from "../../utils";
+import { truncateWellFormed } from "../../utils/well-formed.ts";
 import { DocumentService } from "./service.ts";
 import type { DocumentMetadataExtended } from "./types.ts";
 import { normalizeDocumentSourceValue } from "./utils.ts";
@@ -56,23 +57,33 @@ export function renderPinnedDocuments(
 	const includedIds: Array<Memory["id"]> = [];
 	const blocks: string[] = [];
 	const maximumCharacters = tokenBudget * APPROXIMATE_CHARACTERS_PER_TOKEN;
-	let usedCharacters = 0;
 	let truncated = false;
+	const identityCatalog = pinned
+		.map(
+			(document, index) =>
+				`- ${getDocumentTitle(document, index)} (${document.id}; reference: document:${document.id})`,
+		)
+		.join("\n");
+	const fixedCharacters =
+		identityCatalog.length + PINNED_DOCUMENT_TRUNCATION_MARKER.length + 4;
+	const fairContentCharacters =
+		pinned.length === 0
+			? 0
+			: Math.max(
+					0,
+					Math.floor((maximumCharacters - fixedCharacters) / pinned.length),
+				);
 	for (const [index, document] of pinned.entries()) {
-		const block = `## ${getDocumentTitle(document, index)} (${document.id})\n${document.content.text ?? ""}`;
-		const separatorCharacters = blocks.length > 0 ? 2 : 0;
-		if (
-			usedCharacters + separatorCharacters + block.length >
-			maximumCharacters
-		) {
-			truncated = true;
-			continue;
-		}
+		const content = document.content.text ?? "";
+		const excerpt = truncateWellFormed(content, fairContentCharacters);
+		const block = `## ${getDocumentTitle(document, index)} (${document.id})\n${excerpt}`;
 		blocks.push(block);
 		includedIds.push(document.id);
-		usedCharacters += separatorCharacters + block.length;
+		if (excerpt.length < content.length) truncated = true;
 	}
-	if (truncated) blocks.push(PINNED_DOCUMENT_TRUNCATION_MARKER);
+	if (truncated) {
+		blocks.push(`${PINNED_DOCUMENT_TRUNCATION_MARKER}\n${identityCatalog}`);
+	}
 	return { text: blocks.join("\n\n"), truncated, includedIds };
 }
 

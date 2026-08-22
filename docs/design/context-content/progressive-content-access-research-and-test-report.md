@@ -33,6 +33,19 @@ The first 1,000-operation 10 MiB FILE benchmark was a calibration run, not a CI 
 
 Deliberate remaining boundaries are explicit: legacy prompt builders using `formatActionResultsForPrompt` are not yet routed through the final-request budget, and there is no private shell-output spill lifecycle, generic content URI/action, restored conversation compaction or manifest, context-inspector UI, live-provider trajectory, or soak/Postgres matrix in the keyless PR lane. Stored memory and attachment reads still materialize their existing database row, Gmail fetches the provider body before slicing, and richer PDF/DOCX/OCR/MIME corpus producers are follow-up adapter lanes. These are not described as complete central-projection or bounded-source-I/O proof.
 
+### Second-pass completion audit
+
+The post-merge audit found four priority corrections for M4. First, the native trajectory projector was not yet the only model-facing ActionResult serializer: ActionState, post-turn evaluation, reflection, message state, and grounded action replies retained full-body bypasses. Second, no runtime-derived content manifest existed for an archive or future compaction seam. Third, multi-attachment results retained only the first `ReadView`, and oversized pinned documents could disappear without an item-specific identity/reference. Fourth, the FILE benchmark and deterministic action scenario were useful but materially narrower than the goal's performance and autonomous-planning acceptance.
+
+The M4 follow-up therefore stays deliberately small:
+
+- Share one feature-gated legacy/native ActionResult projection implementation, with `promptData` replacing `data` and typed failure for nonrecoverable overflow.
+- Add a versioned, strict, content-free reference/range manifest derived identically from active and archived trajectory steps; do not restore automatic compaction or add storage.
+- Retain every attachment `ReadView` and give every oversized pinned document a fair excerpt plus its document identity/reference.
+- Keep private tool-output spill in M5, after authorization, retention, atomic publication, redaction, and reference-aware GC over the existing content-addressed byte layer are approved.
+
+This does not close the full goal. The completion audit still requires truly bounded document/message/attachment storage reads, measured Gmail acquisition caching, room-scoped manifest persistence and restart readback, deterministic autonomous planning, credentialed live-model trials, real-format corpora, context-inspector E2E, real Postgres, mutation killing, and soak/performance evidence.
+
 ## Method and limits
 
 - Audited maintained source and tests in core, agent, app-core, coding tools, documents, Google Workspace/inbox, scenario runner, evidence, and root test orchestration.
@@ -227,6 +240,17 @@ Concurrency cases include many readers at one revision; writer/continuation race
 - Record distributions, not averages alone.
 - Compare against the previous accepted baseline; do not hard-code speculative universal milliseconds in the initial PR.
 - Establish budgets after at least five stable repetitions on a pinned CI host. Report p99 only with at least 1,000 measured local operations; otherwise label it insufficient-sample.
+
+The second pass identified two measurement corrections. The measured child currently retains its generated source buffer, so it cannot prove source-size-independent RSS; scale runs must generate/write outside the measured reader process or release the generator buffer before the baseline sample. Also, a 1,000-operation run leaves 999 warm samples after separating the cold sample, while the current percentile helper reports null below 1,000. Percentiles must be defined for every nonempty sample set, and the report must record cold sample count separately from warm p50/p95/p99.
+
+| Lane | Required proof |
+| --- | --- |
+| PR deterministic | Contract/property/conformance tests, tiny real-format goldens, PGLite, strict fixture planner, mutation catalog, source-I/O counters |
+| Post-merge | Fresh-process restart/readback, real local API/UI, generated medium corpus, concurrency 1/8/32/64, five pinned benchmark repetitions |
+| Nightly/release | Real Postgres, full format/extraction shards, provider-qualified live models, fault/concurrency matrix, storage/cleanup evidence |
+| Scheduled soak | At least 100,000 mixed operations or six hours, positive leaking control, RSS/heap/external/FD/DB/WAL series, abort/revoke/mutate/restart/expire cycles |
+
+Every lane records generator schema/revision/seed/manifest SHA, exact commit, runtime versions, machine/OS/CPU/RAM, database/provider, sample count, concurrency, warm/cold state, latency distribution, throughput, memory series, source bytes, serialized bytes, cleanup inventory, and failures. A selected live lane treats missing credentials as failure, while keyless PR lanes remain deterministic and provider-free.
 - PR gates catch large regressions; nightly lanes use tighter statistical comparisons and larger corpora.
 
 Initial invariant budgets, which are architecture-independent:

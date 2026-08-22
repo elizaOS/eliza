@@ -188,9 +188,10 @@ describe("pinned DOCUMENTS provider knowledge", () => {
 			document("query", "unrelated query"),
 		);
 		expect(result.text).toContain(PINNED_DOCUMENT_TRUNCATION_MARKER);
-		expect(result.text).not.toContain("X".repeat(100));
+		expect(result.text).toContain("X".repeat(100));
+		expect(result.text).toContain(`reference: document:${oversized.id}`);
 		expect(result.data?.pinnedDocumentsTruncated).toBe(true);
-		expect(result.data?.pinnedDocumentIds).toEqual([]);
+		expect(result.data?.pinnedDocumentIds).toEqual([oversized.id]);
 		expect(warn).toHaveBeenCalledWith(
 			expect.objectContaining({ tokenBudget: 8_000 }),
 			expect.stringContaining("explicitly truncated"),

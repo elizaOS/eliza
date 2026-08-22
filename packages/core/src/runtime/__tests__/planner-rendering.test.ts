@@ -7,6 +7,7 @@ import { describe, expect, it } from "vitest";
 import type { ChatMessage } from "../../types/model";
 import {
 	projectToolResultForModel,
+	renderActionResultsForModel,
 	toolMessageContent,
 	trajectoryStepsToMessages,
 } from "../planner-rendering";
@@ -78,6 +79,53 @@ describe("trajectoryStepsToMessages", () => {
 				`${index}:${"z".repeat(50_000)}:${index}`,
 			);
 		}
+	});
+});
+
+describe("renderActionResultsForModel", () => {
+	it("removes recoverable page text while retaining its exact continuation", () => {
+		const page = `BEGIN${"x".repeat(20_000)}END`;
+		const rendered = renderActionResultsForModel(
+			[
+				{
+					success: true,
+					text: page,
+					data: { actionName: "FILE", rawBody: "SECOND_CARRIER" },
+					promptData: { actionName: "FILE", readView: readViewFor(page) },
+				},
+			],
+			{ omitRecoverableText: true },
+		);
+
+		expect(rendered.text).toContain("file_opaque");
+		expect(rendered.text).not.toContain("BEGIN");
+		expect(rendered.text).not.toContain("SECOND_CARRIER");
+		expect(rendered.stats).toEqual({
+			resultCount: 1,
+			pagesIncluded: 0,
+			pagesOmitted: 1,
+			omissionReasons: { "model-input-budget": 1 },
+		});
+	});
+
+	it("fails rather than dropping a non-recoverable oversized result", () => {
+		expect(() =>
+			renderActionResultsForModel(
+				[
+					{
+						success: true,
+						text: "x".repeat(20_000),
+						data: { actionName: "BASH" },
+					},
+				],
+				{
+					projectionBudget: {
+						perResultTokens: 100,
+						aggregateTokens: 100,
+					},
+				},
+			),
+		).toThrow(/Non-recoverable tool result exceeds/u);
 	});
 });
 
