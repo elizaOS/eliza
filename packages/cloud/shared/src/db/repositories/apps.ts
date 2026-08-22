@@ -578,7 +578,12 @@ export class AppsRepository {
     return app;
   }
 
-  /** Attaches the first API key once to an admitted app inside its creation transaction. */
+  /**
+   * Attaches one usable ordinary key owned by the admitted app's creator.
+   *
+   * The correlated ownership and lifecycle predicates keep this repository
+   * boundary fail-closed even when it is called outside `AppsService.create`.
+   */
   async attachInitialApiKey(
     appId: string,
     organizationId: string,
@@ -597,7 +602,12 @@ export class AppsRepository {
             SELECT 1
             FROM ${apiKeys}
             WHERE ${apiKeys.id} = ${apiKeyId}
-              AND ${apiKeys.organization_id} = ${organizationId}
+              AND ${apiKeys.organization_id} = ${apps.organization_id}
+              AND ${apiKeys.user_id} = ${apps.created_by_user_id}
+              AND ${apiKeys.is_active} = TRUE
+              AND ${apiKeys.deleted_at} IS NULL
+              AND ${apiKeys.source_app_id} IS NULL
+              AND (${apiKeys.expires_at} IS NULL OR ${apiKeys.expires_at} > CURRENT_TIMESTAMP)
           )`,
         ),
       )

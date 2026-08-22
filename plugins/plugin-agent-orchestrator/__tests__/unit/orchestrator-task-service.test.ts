@@ -48,10 +48,9 @@ import { CodingWorkspaceService } from "../../src/services/workspace-service.js"
 
 // This suite pins the status state machine and the ACP→task event bridge — NOT
 // the #8896 default-criteria feature. createTask now auto-populates acceptance
-// criteria for criteria-free, non-trivial goals (which would make these tasks
-// auto-verify on `task_complete` instead of parking in `validating`). Disable
-// the goal contract here so these tests exercise the original criteria-free
-// behavior; the default-criteria feature has its own dedicated suites
+// criteria for criteria-free, non-trivial goals. Disable the goal contract here
+// so these tests exercise the explicit criteria-free completion gate; the
+// default-criteria feature has its own dedicated suites
 // (acceptance-criteria.test.ts, create-task-default-criteria.test.ts).
 const PREV_GOAL_CONTRACT = process.env.ELIZA_REQUIRE_GOAL_CONTRACT;
 beforeAll(() => {
@@ -1603,6 +1602,21 @@ describe("OrchestratorTaskService — event bridge session status", () => {
     expect(session.taskDelivered).toBe(true);
     expect(session.completionSummary).toBe("shipped it");
     expect(session.stoppedAt).toBeTruthy();
+    const completionEvent = must(
+      (await service.getTask(taskId))?.events.find(
+        (event) => event.eventType === "task_complete",
+      ),
+      "completion event",
+    );
+    expect(completionEvent.data.childTerminalResult).toMatchObject({
+      schemaVersion: 1,
+      status: "completed",
+      summary: "shipped it",
+      evidence: { required: true, present: false, sufficient: false },
+      lineage: { taskId, sessionId },
+      verificationStatus: "pending",
+      deliveryStatus: "unknown",
+    });
   });
 
   it("keeps verifier feedback out of the corrected retry's evidence", async () => {
@@ -1717,7 +1731,7 @@ describe("OrchestratorTaskService — event bridge session status", () => {
       await drive(acp, sessionId, "task_complete", {
         response: "Updated foo.",
       });
-      await settleStatus(service, task.id, "validating");
+      await settleStatus(service, task.id, "done");
 
       const detail = must(await service.getTask(task.id), "detail");
       const metadata = must(detail.sessions[0], "session").metadata;
@@ -1892,10 +1906,10 @@ describe("OrchestratorTaskService — event bridge session status", () => {
 });
 
 describe("OrchestratorTaskService — task status guards", () => {
-  it("moves the task to validating on completion, never straight to done", async () => {
+  it("completes criteria-free work once deterministic gates pass", async () => {
     const { service, acp, taskId, sessionId } = await withSpawnedSession();
     await drive(acp, sessionId, "task_complete", { response: "done" });
-    await settleStatus(service, taskId, "validating");
+    await settleStatus(service, taskId, "done");
   });
 
   it("routes blocked and login_required to the right task status", async () => {
@@ -1919,21 +1933,18 @@ describe("OrchestratorTaskService — task status guards", () => {
     );
   });
 
-  it("does not let a later active signal stomp validating", async () => {
+  it("does not let a later active signal stomp criteria-free completion", async () => {
     const { service, acp, taskId, sessionId } = await withSpawnedSession();
     await drive(acp, sessionId, "task_complete", { response: "done" });
-    await settleStatus(service, taskId, "validating");
+    await settleStatus(service, taskId, "done");
     await drive(acp, sessionId, "tool_running", { toolCall: { title: "ls" } });
-    expect(must(await service.getTask(taskId), "detail").status).toBe(
-      "validating",
-    );
+    expect(must(await service.getTask(taskId), "detail").status).toBe("done");
   });
 
   it("never mutates a terminal task from a session event", async () => {
     const { service, acp, taskId, sessionId } = await withSpawnedSession();
     await drive(acp, sessionId, "task_complete", { response: "done" });
-    await settleStatus(service, taskId, "validating");
-    await service.validateTask(taskId, { passed: true, summary: "verified" });
+    await settleStatus(service, taskId, "done");
     await drive(acp, sessionId, "tool_running", { toolCall: { title: "ls" } });
     expect(must(await service.getTask(taskId), "detail").status).toBe("done");
   });
@@ -2712,14 +2723,13 @@ describe("OrchestratorTaskService — restart reconstruction (#13771)", () => {
 // teardown race — the process dropped its state AFTER the deliverable shipped.
 // The router suppresses its respawn for exactly this case (the completion
 // claim in router-loop-guard); the task bridge must be symmetric: keep the
-// `completed` session record, keep the task in `validating` so the in-flight
-// verification can finish (validateTask requires `validating`), and spend
-// nothing from the crash-retry budget.
+// `completed` session record, keep the criteria-free task terminal after its
+// deterministic completion gate, and spend nothing from the crash-retry budget.
 describe("OrchestratorTaskService — post-completion teardown race (#13830 audit)", () => {
-  it("drops a late session error after task_complete: task stays validating, session stays completed", async () => {
+  it("drops a late session error after task_complete: task stays done, session stays completed", async () => {
     const { service, acp, taskId, sessionId } = await withSpawnedSession();
     await drive(acp, sessionId, "task_complete", { response: "shipped" });
-    await settleStatus(service, taskId, "validating");
+    await settleStatus(service, taskId, "done");
     expect(
       must(must(await service.getTask(taskId), "mid").sessions[0], "session")
         .status,
@@ -2734,7 +2744,7 @@ describe("OrchestratorTaskService — post-completion teardown race (#13830 audi
     await flush();
 
     const after = must(await service.getTask(taskId), "after");
-    expect(after.status).toBe("validating");
+    expect(after.status).toBe("done");
     expect(must(after.sessions[0], "session").status).toBe("completed");
     expect(
       after.events?.some((e) => e.eventType === "session_error_retrying"),

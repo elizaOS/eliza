@@ -1,6 +1,6 @@
 # @elizaos/plugin-coding-tools
 
-Native Claude-Code-style coding tools (FILE, SHELL, WORKTREE) for Eliza agents running in code/terminal/automation contexts.
+Native coding tools (READ, WRITE, EDIT, FILE, SHELL, WORKTREE) for Eliza agents running in code/terminal/automation contexts.
 
 ## Purpose / role
 
@@ -11,13 +11,14 @@ Adds filesystem operations, shell command execution, and git worktree management
 ### Actions
 
 - **FILE** — umbrella for `read/write/edit/grep/glob/ls`. Dispatches to per-operation handlers. Relative `file_path` values for read/write/edit resolve against the conversation's `SessionCwdService` cwd before sandbox validation. Supports `target=device` for `read/write/ls` through a `device_filesystem` bridge service (mobile). Similes: `FILE_OPERATION`, `FILE_IO`.
-- **SHELL** — `action=run` executes a command via `/bin/bash -c`; `action=start_background` starts a per-conversation background process and returns a stable handle; `poll_background` reads incremental stdout/stderr by absolute stream offsets and reports `truncatedBefore`; `write_background` writes stdin; `kill_background` terminates the process group with SIGTERM then SIGKILL escalation; `list_background` lists sessions; `action=view_history`/`clear_history` read or clear per-conversation command history (backed by the in-plugin `ShellService` (`serviceType = "shell"`)). Per-call `timeout` (ms) is clamped to `[100, 600000]`, default `CODING_TOOLS_SHELL_TIMEOUT_MS` (120000). Similes: `BASH`, `EXEC`, `RUN_COMMAND`.
+- **READ / WRITE / EDIT** — strict, operation-specific schemas for direct coding loops. They delegate to the same FILE handlers and preserve its sandbox, stale-file, secret, and size checks.
+- **SHELL** — `action=run` executes a command via `/bin/bash -c`; oversized foreground results return an opaque handle whose complete redacted stdout/stderr can be paged with `read_output_artifact` only by the same agent and conversation; `action=start_background` starts a per-conversation background process and returns a stable handle; `poll_background` reads incremental stdout/stderr by absolute stream offsets and reports `truncatedBefore`; `write_background` writes stdin; `kill_background` terminates the process group with SIGTERM then SIGKILL escalation; `list_background` lists sessions; `action=view_history`/`clear_history` read or clear per-conversation command history (backed by the in-plugin `ShellService` (`serviceType = "shell"`)). Per-call `timeout` (ms) is clamped to `[100, 600000]`, default `CODING_TOOLS_SHELL_TIMEOUT_MS` (120000). Similes: `BASH`, `EXEC`, `RUN_COMMAND`.
 - **WORKTREE** — umbrella for `enter/exit` git worktrees. On enter, registers new root in `SandboxService` and pushes to `SessionCwdService` stack. On exit, pops. Similes: `GIT_WORKTREE`.
 
 ### Providers
 
-- **SHELL_HISTORY** (`src/shell/providers/shellHistoryProvider.ts`, position `99`) — injects the complete retained command history (stdout/stderr/exit code), cwd, allowed directory, and file operations into context; fires only in `terminal`/`code` contexts.
-- **AVAILABLE_CODING_TOOLS** — injects the list of available tool names (`FILE`, `SHELL`, `WORKTREE`) into agent state at position `-10`. Stable/agent-scoped cache.
+- **SHELL_HISTORY** (`src/shell/providers/shellHistoryProvider.ts`, position `99`) — injects a bounded projection of the last 10 commands (size-capped stdout/stderr/exit code), cwd, allowed directory, and recent file operations into context while `ShellService` retains complete history; fires only in `terminal`/`code` contexts.
+- **AVAILABLE_CODING_TOOLS** — injects the available focused and umbrella tool names (`READ`, `WRITE`, `EDIT`, `FILE`, `SHELL`, `WORKTREE`) into agent state at position `-10`. Stable/agent-scoped cache.
 
 ### Services
 
@@ -44,6 +45,7 @@ plugins/plugin-coding-tools/
     types.ts                      Service-type constants, ToolFailure/ToolResult types, CODING_TOOLS_CONTEXTS
     actions/
       file.ts                     FILE umbrella action — routes to per-op handlers
+      direct-file-actions.ts      strict READ / WRITE / EDIT action wrappers
       bash.ts                     SHELL action implementation
       worktree.ts                 WORKTREE umbrella action
       read.ts / write.ts / edit.ts  FILE sub-handlers for read/write/edit
@@ -103,7 +105,7 @@ All settings are read via `runtime.getSetting(key)` or `process.env`. None are r
 | `CODING_TOOLS_BACKGROUND_SHELL_BUFFER_CHARS` | `64000` | Per-stream retained stdout/stderr ring size for background shell polling. |
 | `CODING_TOOLS_BACKGROUND_SHELL_KILL_GRACE_MS` | `1500` | Grace period between SIGTERM and SIGKILL for background shell termination. |
 | `CODING_TOOLS_MAX_READ_LINES` | `2000` | Max lines returned by FILE action=read before truncation. |
-| `CODING_TOOLS_MAX_FILE_SIZE_BYTES` | `262144` | Pre-stat byte cap on FILE action=read. Larger files are rejected. |
+| `CODING_TOOLS_MAX_FILE_SIZE_BYTES` | `262144` | Byte cap for selected FILE read content. Larger files are paged with bounded line or byte reads. |
 | `CODING_TOOLS_GREP_HEAD_LIMIT` | `250` | Default `head_limit` for GREP output. Set to 0 to disable. |
 
 The folded `ShellService` also retains compatibility settings for external
@@ -120,6 +122,18 @@ canonical SHELL action above continues to use the `CODING_TOOLS_*` settings.
 | `SHELL_JOB_TTL_MS` | `1800000` | Exact decimal finished-session retention window, `60000..10800000`. |
 | `SHELL_ALLOW_BACKGROUND` | `true` | Set to exact `false` to disable compatibility-service background/yield behavior. |
 | `SHELL_FORBIDDEN_COMMANDS` | — | Comma-separated additions to the built-in forbidden-command set. |
+
+Foreground SHELL transcripts shown to the planner are capped at 50,000
+characters. When that cap is reached, the action writes the complete redacted
+stdout and stderr plus a manifest under
+`ELIZA_STATE_DIR/coding-tools/shell-output/<handle>/`, returns the handle and
+byte/line counts, and leaves the bounded preview in the tool result. The action
+does not disclose state-root paths. `action=read_output_artifact` retrieves a
+bounded stdout or stderr page only when the opaque handle's persisted agent and
+conversation scope match the requesting turn. Artifact directories are
+owner-only (`0700`) and files are `0600`. They use
+`SHELL_JOB_TTL_MS` (30 minutes by default) and expired handles are removed
+opportunistically when the next truncated foreground result is persisted.
 
 Auto-enable keys (in agent `config.features`):
 - `config.features.codingTools` (canonical) — `true` or `{ enabled: true }`.

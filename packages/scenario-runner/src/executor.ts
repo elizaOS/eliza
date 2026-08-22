@@ -76,6 +76,27 @@ import type {
 import { isLoopbackUrl, toRecord } from "./utils.js";
 import { executeVoiceTurn, voiceTurnAssertionFailures } from "./voice-turn.ts";
 
+const EXECUTOR_REQUEST_TIMEOUT_MS = 30_000;
+
+/**
+ * Bound every executor hop (lifeops API + Google mock) so a hung service
+ * cannot pin a scenario run. A caller-provided abort signal is composed with
+ * the timeout (either cancelling aborts), not substituted for it.
+ */
+export function executorFetch(
+  input: RequestInfo | URL,
+  init?: RequestInit,
+  timeoutMs: number = EXECUTOR_REQUEST_TIMEOUT_MS,
+): Promise<Response> {
+  const timeoutSignal = AbortSignal.timeout(timeoutMs);
+  return fetch(input, {
+    ...init,
+    signal: init?.signal
+      ? AbortSignal.any([init.signal, timeoutSignal])
+      : timeoutSignal,
+  });
+}
+
 export interface ExecutorOptions {
   providerName: string;
   minJudgeScore: number;
@@ -1174,7 +1195,7 @@ async function lookupDefinitionIdByTitle(args: {
   if (cached) {
     return cached;
   }
-  const response = await fetch(
+  const response = await executorFetch(
     `${args.apiServer.baseUrl}/api/lifeops/definitions`,
   );
   const body = await response.json();
@@ -1207,7 +1228,7 @@ async function lookupOccurrenceIdByTitle(args: {
   if (cached) {
     return cached;
   }
-  const response = await fetch(
+  const response = await executorFetch(
     `${args.apiServer.baseUrl}/api/lifeops/overview`,
   );
   const body = await response.json();
@@ -1486,7 +1507,7 @@ async function deleteMockGmailDrafts(): Promise<string | undefined> {
   if (!isLoopbackUrl(baseUrl)) {
     return "gmailDeleteDrafts cleanup requires ELIZA_MOCK_GOOGLE_BASE to point at the loopback Google mock";
   }
-  const response = await fetch(`${baseUrl}/gmail/v1/users/me/drafts`);
+  const response = await executorFetch(`${baseUrl}/gmail/v1/users/me/drafts`);
   if (!response.ok) {
     return `gmailDeleteDrafts list failed with HTTP ${response.status}`;
   }
@@ -1500,7 +1521,7 @@ async function deleteMockGmailDrafts(): Promise<string | undefined> {
     if (typeof id !== "string" || id.length === 0) {
       continue;
     }
-    const deleteResponse = await fetch(
+    const deleteResponse = await executorFetch(
       `${baseUrl}/gmail/v1/users/me/drafts/${encodeURIComponent(id)}`,
       { method: "DELETE" },
     );
