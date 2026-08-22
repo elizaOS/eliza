@@ -197,19 +197,41 @@ describe("production manifest persistence", () => {
       artifact.initial.memories.map((entry) => entry.tableName).sort(),
     ).toEqual(["facts", "messages"]);
     expect(artifact.initial.tasks[0]?.name).toBe("SCENARIO_MANIFEST_TEST_TASK");
-    expect(artifact.initial.schedules[0]?.logicalId).toBe(
-      "after-verification",
-    );
+    expect(artifact.initial.schedules[0]?.logicalId).toBe("after-verification");
     expect(artifact.initial.schedules).toHaveLength(2);
-    expect(artifact.initial.notifications.map((entry) => entry.logicalId)).toEqual([
-      "approval:release-workflow",
-      "verification-ready",
-    ]);
+    expect(
+      artifact.initial.notifications.map((entry) => entry.logicalId),
+    ).toEqual(["approval:release-workflow", "verification-ready"]);
     expect(artifact.initial.approvals[0]?.logicalId).toBe("release-workflow");
     expect(artifact.initial.providerState[0]?.value).toEqual({
       cursor: "page-2",
       etag: "fixture-v1",
     });
+    const scheduledRows = (
+      await getScheduledTaskRunner(runtime(), {
+        agentId: runtime().agentId,
+      }).list({})
+    ).filter((row) => artifact.reseedReceipt.scheduleIds.includes(row.taskId));
+    const manual = scheduledRows.find(
+      (row) => row.taskId === artifact.reseedReceipt.scheduleIds[0],
+    );
+    const after = scheduledRows.find(
+      (row) => row.taskId === artifact.reseedReceipt.scheduleIds[1],
+    );
+    expect(manual?.subject?.id).toBe(artifact.reseedReceipt.entityIds[0]);
+    expect(manual?.contextRequest?.includeEntities?.entityIds).toEqual(
+      artifact.reseedReceipt.entityIds,
+    );
+    expect(after?.subject?.id).toBe(artifact.reseedReceipt.relationshipIds[0]);
+    expect(
+      after?.contextRequest?.includeRelationships?.relationshipIds,
+    ).toEqual(artifact.reseedReceipt.relationshipIds);
+    expect(after?.contextRequest?.includeRelationships?.forEntityIds).toEqual(
+      artifact.reseedReceipt.entityIds,
+    );
+    expect(
+      after?.trigger.kind === "after_task" ? after.trigger.taskId : null,
+    ).toBe(manual?.taskId);
     expect(artifact.reset.absentAfterReset).toMatchObject({ world: true });
 
     await resetProductionManifest(runtime(), artifact.reseedReceipt);
@@ -294,6 +316,49 @@ describe("production manifest persistence", () => {
         entityIds: new Array(1),
       }),
     ).toThrow(/sparse array slot/);
+    let receiptGetterReads = 0;
+    const accessorReceipt = { ...restartedProcessReceipt } as Record<
+      string,
+      unknown
+    >;
+    Object.defineProperty(accessorReceipt, "namespace", {
+      enumerable: true,
+      get: () => {
+        receiptGetterReads += 1;
+        return restartedProcessReceipt.namespace;
+      },
+    });
+    expect(() => parseProductionManifestReceipt(accessorReceipt)).toThrow(
+      /namespace.*data property/,
+    );
+    expect(receiptGetterReads).toBe(0);
+    expect(() =>
+      parseProductionManifestReceipt(
+        Object.assign(
+          Object.create({ inherited: true }),
+          restartedProcessReceipt,
+        ),
+      ),
+    ).toThrow(/plain JSON objects/);
+    let deepReceiptValue: Record<string, unknown> = {};
+    for (let depth = 0; depth < 40; depth += 1) {
+      deepReceiptValue = { next: deepReceiptValue };
+    }
+    expect(() =>
+      parseProductionManifestReceipt({
+        ...restartedProcessReceipt,
+        providerStateKeys: [deepReceiptValue],
+      }),
+    ).toThrow(/maximum JSON depth/);
+    expect(() =>
+      parseProductionManifestReceipt({
+        ...restartedProcessReceipt,
+        entityIds: Array.from(
+          { length: 20_001 },
+          () => restartedProcessReceipt.entityIds[0],
+        ),
+      }),
+    ).toThrow(/node JSON budget/);
     const { taskIds: _taskIds, ...missingTaskIds } = restartedProcessReceipt;
     expect(() => parseProductionManifestReceipt(missingTaskIds)).toThrow(
       /taskIds.*required/,
@@ -535,7 +600,9 @@ describe("production manifest persistence", () => {
   it("compensates a schedule committed before its receipt is returned", async () => {
     const target = runtime();
     const input = manifest("ambiguous-schedule");
-    input.schedules = [input.schedules?.[0] as NonNullable<typeof input.schedules>[number]];
+    input.schedules = [
+      input.schedules?.[0] as NonNullable<typeof input.schedules>[number],
+    ];
     input.notifications = [];
     input.approvals = [];
     input.providerState = [];
@@ -551,7 +618,9 @@ describe("production manifest persistence", () => {
       return result;
     };
     try {
-      await expect(applyProductionManifest(target, input)).rejects.toMatchObject({
+      await expect(
+        applyProductionManifest(target, input),
+      ).rejects.toMatchObject({
         code: "SCENARIO_MANIFEST_APPLY_FAILED",
       });
       expect(
@@ -585,7 +654,9 @@ describe("production manifest persistence", () => {
       return written;
     };
     try {
-      await expect(applyProductionManifest(target, input)).rejects.toMatchObject({
+      await expect(
+        applyProductionManifest(target, input),
+      ).rejects.toMatchObject({
         code: "SCENARIO_MANIFEST_APPLY_FAILED",
       });
       expect(
@@ -625,7 +696,9 @@ describe("production manifest persistence", () => {
       return written;
     };
     try {
-      await expect(applyProductionManifest(target, input)).rejects.toMatchObject({
+      await expect(
+        applyProductionManifest(target, input),
+      ).rejects.toMatchObject({
         code: "SCENARIO_MANIFEST_APPLY_FAILED",
       });
       const service = target.getService(ServiceType.NOTIFICATION);
@@ -684,7 +757,10 @@ describe("production manifest persistence", () => {
     expect(await target.getEntitiesByIds(entityIds)).toEqual([]);
     expect(
       await originalReadback([
-        { sourceEntityId: entityIds[0] as UUID, targetEntityId: entityIds[1] as UUID },
+        {
+          sourceEntityId: entityIds[0] as UUID,
+          targetEntityId: entityIds[1] as UUID,
+        },
       ]),
     ).toEqual([null]);
   }, 120_000);
