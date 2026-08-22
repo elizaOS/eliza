@@ -15,6 +15,7 @@
  * callers must treat projected values as immutable.
  */
 
+import { ElizaError } from "../errors";
 import {
 	isSensitiveKeyName,
 	type RedactSensitiveMode,
@@ -165,6 +166,63 @@ function projectValue(
 		// Re-entrant siblings may legitimately share a subtree; only a path
 		// back through an ancestor is a cycle.
 		seen.delete(value);
+	}
+}
+
+/**
+ * Redact a model-bound value without the diagnostic depth cap. Cycles cannot
+ * be represented on the provider wire, so reject them explicitly instead of
+ * replacing content with a healthy-looking marker.
+ */
+function projectCompleteModelValue(
+	value: unknown,
+	redactText: ToolDiagnosticTextRedactor,
+	ancestors: WeakSet<object>,
+): unknown {
+	if (typeof value === "string") return redactText(value);
+	if (value === null || typeof value !== "object") return value;
+	if (value instanceof Date) return value;
+	if (ancestors.has(value)) {
+		throw new ElizaError("Model-bound tool data contains a cycle", {
+			code: "MODEL_TOOL_DATA_CYCLE",
+			context: { valueType: value.constructor?.name ?? "object" },
+		});
+	}
+	ancestors.add(value);
+	try {
+		if (Array.isArray(value)) {
+			let changed = false;
+			const projected = value.map((entry) => {
+				const next = projectCompleteModelValue(entry, redactText, ancestors);
+				if (next !== entry) changed = true;
+				return next;
+			});
+			return changed ? projected : value;
+		}
+		if (value instanceof Error) {
+			const projected = new Error(redactText(value.message));
+			projected.name = value.name;
+			projected.stack = value.stack ? redactText(value.stack) : undefined;
+			return projected;
+		}
+		let changed = false;
+		const projected: Record<string, unknown> = {};
+		for (const [key, entry] of Object.entries(value)) {
+			if (isSensitiveKeyName(key)) {
+				projected[key] = TOOL_DIAGNOSTIC_MASK;
+				changed = true;
+				continue;
+			}
+			const next = projectCompleteModelValue(entry, redactText, ancestors);
+			if (next !== entry) changed = true;
+			projected[key] = next;
+		}
+		if (!changed && Object.getPrototypeOf(value) === Object.prototype) {
+			return value;
+		}
+		return projected;
+	} finally {
+		ancestors.delete(value);
 	}
 }
 
@@ -342,8 +400,8 @@ function projectModelToolDefinition(
 
 /**
  * Projects one value for diagnostic egress. The input is never mutated; the
- * result is safe to embed in planner context, events, stream payloads,
- * summaries, and persisted trajectories. Strings are scrubbed with
+ * result is safe to embed in diagnostic events, stream payloads, summaries,
+ * and persisted trajectories. Strings are scrubbed with
  * `redactText`, values under credential-named keys are fully masked,
  * non-string primitives are preserved exactly, and cycles or nesting beyond
  * the depth bound collapse to {@link TOOL_DIAGNOSTIC_MASK}.
@@ -353,6 +411,30 @@ export function projectToolDiagnosticValue(
 	redactText: ToolDiagnosticTextRedactor,
 ): unknown {
 	return projectValue(value, redactText, new WeakSet<object>(), 0);
+}
+
+/**
+ * Redacts one complete model-bound value without diagnostic depth masking.
+ * Credential-shaped values are intentionally masked; every other reachable
+ * field is preserved, and cyclic data is rejected with a typed error.
+ */
+export function projectCompleteToolValueForModel(
+	value: unknown,
+	redactText: ToolDiagnosticTextRedactor,
+): unknown {
+	return projectCompleteModelValue(value, redactText, new WeakSet<object>());
+}
+
+/** Complete model-bound counterpart of {@link projectToolDiagnosticArgs}. */
+export function projectCompleteToolArgsForModel(
+	args: Record<string, unknown> | undefined,
+	redactText: ToolDiagnosticTextRedactor,
+): Record<string, unknown> | undefined {
+	if (args === undefined) return undefined;
+	return projectCompleteToolValueForModel(args, redactText) as Record<
+		string,
+		unknown
+	>;
 }
 
 /**
