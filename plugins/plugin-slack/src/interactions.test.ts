@@ -4,9 +4,22 @@
  * handed to it and every semantic fallback before network dispatch.
  */
 
-import type { Content, InteractionBlock } from "@elizaos/core";
+import {
+  decodePreparedInteractionCallback,
+  type Content,
+  type InteractionBlock,
+  type PreparedMessageInteraction,
+} from "@elizaos/core";
 import { describe, expect, it } from "vitest";
-import { renderSlackInteractions } from "./interactions";
+import { renderPreparedSlackInteraction, renderSlackInteractions } from "./interactions";
+
+const prepared = (block: InteractionBlock): PreparedMessageInteraction => ({
+  block,
+  callbackData: "is1:0123456789abcdef0123456789abcdef",
+  delivery: { mode: "native", reason: "preferred", limitations: [] },
+  expiresAt: "2026-08-21T00:10:00.000Z",
+  profileId: "profile-a",
+});
 
 const blocks: InteractionBlock[] = [
   {
@@ -49,17 +62,26 @@ describe("Slack canonical interaction adapter", () => {
               : undefined,
       }),
     );
-    expect(outcomes.map((outcome) => outcome.outcome)).toEqual([
-      "native",
-      "native",
-      "fallback",
-      "native",
-      "native",
-    ]);
+    expect(outcomes.every((outcome) => outcome.outcome === "fallback")).toBe(true);
     expect(outcomes[2]?.text).toContain("Reply with your answer");
     expect(outcomes[4]?.text).not.toContain("oauth");
     expect(JSON.stringify(outcomes)).not.toContain("[CHOICE:");
     expect(JSON.stringify(outcomes)).not.toContain("[FORM]");
+  });
+
+  it("renders host-prepared authority with provider-valid Block Kit keys", () => {
+    const out = renderPreparedSlackInteraction(prepared(blocks[0]));
+    expect(out.outcome).toBe("native");
+    expect(out.blocks[0]?.elements?.[0]).toMatchObject({
+      action_id: "eliza_prepared_interaction_0",
+    });
+    const wire = out.blocks[0]?.elements?.[0]?.value;
+    expect(decodePreparedInteractionCallback(wire)).toEqual({
+      callbackData: "is1:0123456789abcdef0123456789abcdef",
+      response: { value: "yes" },
+    });
+    expect(JSON.stringify(out)).not.toContain("authorization");
+    expect(JSON.stringify(out)).not.toContain("effect");
   });
 
   it("surfaces provider overflow as actionable prose", () => {
@@ -71,7 +93,7 @@ describe("Slack canonical interaction adapter", () => {
       text: "",
       interactions: [{ kind: "choice", id: "large", scope: "pick", options }],
     } as Content);
-    expect(out.blocks).toHaveLength(50);
+    expect(out.blocks).toHaveLength(0);
     expect(out.outcome).toBe("fallback");
     expect(out.needsFreeTextReply).toBe(true);
     expect(out.text).toContain("Option 259");

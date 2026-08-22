@@ -4,9 +4,25 @@
  * live credentials remain a separate unavailable evidence row.
  */
 
-import type { Content, InteractionBlock } from "@elizaos/core";
+import {
+  decodePreparedInteractionCallback,
+  type Content,
+  type InteractionBlock,
+  type PreparedMessageInteraction,
+} from "@elizaos/core";
 import { describe, expect, it } from "vitest";
-import { renderWhatsAppInteractions } from "./interactions";
+import {
+  renderPreparedWhatsAppInteraction,
+  renderWhatsAppInteractions,
+} from "./interactions";
+
+const prepared = (block: InteractionBlock): PreparedMessageInteraction => ({
+  block,
+  callbackData: "is1:0123456789abcdef0123456789abcdef",
+  delivery: { mode: "native", reason: "preferred", limitations: [] },
+  expiresAt: "2026-08-21T00:10:00.000Z",
+  profileId: "profile-a",
+});
 
 const runtime = { getSetting: () => "https://app.example" };
 const blocks: InteractionBlock[] = [
@@ -46,13 +62,7 @@ describe("WhatsApp canonical interaction adapter", () => {
         interactions: [block],
       } as Content)
     );
-    expect(outcomes.map((outcome) => outcome.outcome)).toEqual([
-      "native",
-      "native",
-      "fallback",
-      "fallback",
-      "fallback",
-    ]);
+    expect(outcomes.every((outcome) => outcome.outcome === "fallback")).toBe(true);
     expect(outcomes[2]?.text).toContain("Reply with your answer");
     expect(outcomes[3]?.text).toContain("https://app.example/orchestrator");
     expect(outcomes[4]?.text).toContain("https://secure.example/request");
@@ -74,10 +84,28 @@ describe("WhatsApp canonical interaction adapter", () => {
         },
       ],
     });
-    expect(renderWhatsAppInteractions(runtime, choice(4)).interactive?.type).toBe("list");
-    const overflow = renderWhatsAppInteractions(runtime, choice(11));
+    expect(
+      renderPreparedWhatsAppInteraction(prepared(choice(4).interactions?.[0] as InteractionBlock))
+        .interactive?.type,
+    ).toBe("list");
+    const overflow = renderPreparedWhatsAppInteraction(
+      prepared(choice(11).interactions?.[0] as InteractionBlock),
+    );
     expect(overflow.outcome).toBe("fallback");
     expect(overflow.reason).toBe("provider-limit");
     expect(overflow.text).toContain("Option 10");
+  });
+
+  it("uses only an opaque host reference plus schema-validated user input", () => {
+    const out = renderPreparedWhatsAppInteraction(prepared(blocks[0]));
+    const wire = out.interactive?.type === "button"
+      ? out.interactive.action.buttons[0]?.reply.id
+      : undefined;
+    expect(decodePreparedInteractionCallback(wire)).toEqual({
+      callbackData: "is1:0123456789abcdef0123456789abcdef",
+      response: { value: "yes" },
+    });
+    expect(JSON.stringify(out)).not.toContain("authorization");
+    expect(JSON.stringify(out)).not.toContain("effect");
   });
 });

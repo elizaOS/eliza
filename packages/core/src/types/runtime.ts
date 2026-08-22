@@ -8,6 +8,7 @@
 import type { ReportedError } from "../errors";
 import type { Logger } from "../logger";
 import type { ConnectorInteractionCapabilityProfile } from "../messaging/interactions/profiles";
+import type { PreparedMessageInteraction } from "../messaging/interactions/host";
 import type { ContextRegistry } from "../runtime/context-registry";
 import type { ResponseHandlerEvaluator } from "../runtime/response-handler-evaluators";
 import type { ResponseHandlerFieldEvaluator } from "../runtime/response-handler-field-evaluator";
@@ -366,6 +367,14 @@ export interface MessageConnectorPostToThreadParams {
 	identity?: ConnectorPostIdentity;
 }
 
+/** Renderer-safe prepared delivery. The host retains bindings, authorization, and effects. */
+export interface MessageConnectorPreparedInteractionParams {
+	target: TargetInfo;
+	interaction: PreparedMessageInteraction;
+	/** Optional visible prose accompanying the prepared control. */
+	text?: string;
+}
+
 export interface MessageConnector {
 	source: string;
 	accountId?: string;
@@ -389,6 +398,12 @@ export interface MessageConnector {
 	) =>
 		| Promise<ConnectorInteractionCapabilityProfile>
 		| ConnectorInteractionCapabilityProfile;
+	/** Send only a host-prepared interaction; connectors must not mint authority. */
+	sendPreparedInteraction?: (
+		runtime: IAgentRuntime,
+		params: MessageConnectorPreparedInteractionParams,
+		context: MessageConnectorQueryContext,
+	) => Promise<void>;
 	resolveTargets?: (
 		query: string,
 		context: MessageConnectorQueryContext,
