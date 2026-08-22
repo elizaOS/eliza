@@ -268,7 +268,11 @@ export async function startMatrixClientServerMock(
       const room = rooms.get(roomId);
       if (!room) throw new Error(`unknown Matrix room '${roomId}'`);
       if (
-        room.timeline.some((candidate) => candidate.eventId === event.eventId)
+        [...rooms.values()].some((candidateRoom) =>
+          candidateRoom.timeline.some(
+            (candidate) => candidate.eventId === event.eventId,
+          ),
+        )
       )
         return false;
       room.timeline.push({
@@ -303,10 +307,10 @@ function buildRooms(
   if (!seed.userId.startsWith("@") || !seed.accessToken)
     throw new Error("invalid Matrix account seed");
   const rooms = new Map<string, RoomState>();
+  const eventIds = new Set<string>();
   for (const room of seed.rooms) {
     if (!room.roomId.startsWith("!") || rooms.has(room.roomId))
       throw new Error("invalid or duplicate Matrix room seed");
-    const eventIds = new Set<string>();
     const timeline = (room.timeline ?? []).map((event) => {
       if (!event.eventId || eventIds.has(event.eventId))
         throw new Error("duplicate Matrix event seed");

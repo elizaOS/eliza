@@ -177,6 +177,12 @@ describe("Matrix Client-Server production boundary", () => {
         event("$live-2:mock", "duplicate", Date.now() + 2),
       ),
     ).toBe(false);
+    expect(
+      mock.enqueueInbound(
+        SECOND_ROOM_ID,
+        event("$live-2:mock", "cross-room duplicate", Date.now() + 3),
+      ),
+    ).toBe(false);
     await waitFor(
       () => timelineIds.includes("$live-2:mock"),
       "ordered live sync",
