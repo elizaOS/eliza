@@ -131,7 +131,9 @@ async function assertUnderlayClickThrough(expectedDetent) {
 }
 
 async function pointerDrag(deltaY, { hold = false, slow = true } = {}) {
-  const target = (await detent()) === "pill" ? "chat-pill" : "chat-sheet-grabber";
+  // Detached macOS keeps one persistent white-bar node across every detent.
+  // Drive that exact physical owner instead of the hidden embedded grabber.
+  const target = "chat-pill";
   const box = await visibleBox(target);
   const x = box.x + box.width / 2;
   const y = box.y + box.height / 2;
@@ -256,7 +258,7 @@ try {
   await page.mouse.up();
   await waitForDetent("full");
 
-  await page.getByTestId("chat-sheet-grabber").click();
+  await page.getByTestId("chat-pill").click();
   await waitForDetent("collapsed");
   assert(
     (await detent()) === "collapsed",

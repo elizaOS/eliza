@@ -4408,7 +4408,7 @@ describe("ChatOverlay single-thread (no chat swipe, #13531)", () => {
     expect(onWindowSizeClassChange).toHaveBeenLastCalledWith("input");
   });
 
-  it("keeps one bar-centered traveler interactive from input to pill", async () => {
+  it("keeps one bar-centered traveler interactive across pill, input, and transcript", async () => {
     const offsetHeight = vi
       .spyOn(HTMLElement.prototype, "offsetHeight", "get")
       .mockImplementation(function measuredComposerHeight(this: HTMLElement) {
@@ -4434,14 +4434,17 @@ describe("ChatOverlay single-thread (no chat swipe, #13531)", () => {
       expect(traveler.getAttribute("aria-hidden")).toBeNull();
       expect(traveler.style.width).toBe("64px");
       expect(traveler.style.height).toBe("12px");
+      expect(traveler.className).not.toContain("active:scale-95");
       expect(input.getAttribute("autocomplete")).toBe("off");
       expect(input.getAttribute("autocorrect")).toBe("off");
       expect(input.getAttribute("autocapitalize")).toBe("off");
       expect(input.getAttribute("spellcheck")).toBe("false");
       await waitFor(() => {
-        expect(
-          screen.getByTestId("chat-desktop-pill-traveler").style.transform,
-        ).toContain("translateY(-36px)");
+        const travelerWrapper = screen.getByTestId(
+          "chat-desktop-pill-traveler",
+        );
+        expect(travelerWrapper.className).toContain("top-0");
+        expect(travelerWrapper.style.transform).toBe("none");
         expect(mark.style.transform).toContain("scaleX(0.75)");
         expect(mark.style.transform).toContain("scaleY(0.5)");
       });
@@ -4468,6 +4471,19 @@ describe("ChatOverlay single-thread (no chat swipe, #13531)", () => {
       expect(screen.getByTestId("chat-pill")).toBe(traveler);
       expect(traveler.className).toContain("pointer-events-auto");
       expect(traveler.getAttribute("aria-hidden")).toBeNull();
+
+      // The same node opens to INPUT and then to the transcript. The alternate
+      // SheetGrabber never paints or steals the pointer on the first sheet
+      // frame, so there is no 48x6 -> 36x4 swap during the transition.
+      act(() => fireEvent.click(traveler, { detail: 0 }));
+      expect(screen.getByTestId("chat-sheet").dataset.detent).toBe("collapsed");
+      expect(screen.getByTestId("chat-pill")).toBe(traveler);
+      act(() => fireEvent.click(traveler, { detail: 0 }));
+      expect(screen.getByTestId("chat-sheet").dataset.detent).toBe("half");
+      expect(screen.getByTestId("chat-pill")).toBe(traveler);
+      expect(traveler.getAttribute("aria-label")).toBe("close chat");
+      expect(fixedGrabber.style.pointerEvents).toBe("none");
+      expect(fixedGrabber.style.opacity).toBe("0");
     } finally {
       offsetHeight.mockRestore();
     }
@@ -4899,8 +4915,8 @@ describe("ChatOverlay single-thread (no chat swipe, #13531)", () => {
       });
       expect(screen.getByTestId("chat-sheet").dataset.detent).toBe("collapsed");
       expect(screen.getByTestId("chat-sheet").dataset.chatState).toBe("INPUT");
-      // INPUT and PILL intentionally share one bar-centered interactive
-      // traveler. The broad sheet grabber stays inert until a transcript opens.
+      // Every detached detent intentionally shares one bar-centered interactive
+      // traveler. The broad alternate grabber stays inert throughout.
       expect(
         screen.getByTestId("chat-pill").getAttribute("aria-hidden"),
       ).toBeNull();

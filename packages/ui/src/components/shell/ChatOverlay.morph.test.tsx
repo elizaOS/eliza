@@ -30,9 +30,7 @@ vi.mock("../../api/client", () => ({
 
 import {
   ChatOverlay,
-  desktopPillTravelerOffset,
-  desktopPillTravelerOpacity,
-  desktopSheetGrabberOpacity,
+  desktopPersistentHandleTop,
   grabberBarOpacity,
   PILL_MORPH_MIN_SCALE,
   pillHandleCounterScale,
@@ -173,33 +171,19 @@ describe("handle fade through the maximize over-pull (grabberBarOpacity)", () =>
   });
 });
 
-describe("detached desktop pill traveler handoff", () => {
-  it("stays bottom-anchored at rest and lands on the measured composer top edge", () => {
-    // The native input window is 64px tall, but its transparent headroom is
-    // not part of the painted 48px composer surface and must not move the mark.
-    expect(desktopPillTravelerOffset(0, 48, 12)).toBe(0);
-    expect(desktopPillTravelerOffset(0.5, 48, 12)).toBe(-18);
-    expect(desktopPillTravelerOffset(1, 48, 12)).toBe(-36);
+describe("detached desktop persistent handle", () => {
+  it("moves monotonically from the resting bottom to the composer top", () => {
+    expect(desktopPersistentHandleTop(0, 48, 12)).toBe(36);
+    expect(desktopPersistentHandleTop(0.25, 48, 12)).toBe(27);
+    expect(desktopPersistentHandleTop(0.5, 48, 12)).toBe(18);
+    expect(desktopPersistentHandleTop(0.75, 48, 12)).toBe(9);
+    expect(desktopPersistentHandleTop(1, 48, 12)).toBe(0);
   });
 
-  it("keeps exactly one mark painted while handing off to the grabber", () => {
-    for (const travelerOwns of [true, false]) {
-      const traveler = desktopPillTravelerOpacity(travelerOwns, 0);
-      const fixedGrabber = desktopSheetGrabberOpacity(travelerOwns, 0);
-      expect(traveler + fixedGrabber).toBe(1);
-      expect(traveler * fixedGrabber).toBe(0);
+  it("stays pinned to the top while transcript height changes", () => {
+    for (const panelHeight of [48, 120, 353, 768]) {
+      expect(desktopPersistentHandleTop(1, panelHeight, 12)).toBe(0);
     }
-  });
-
-  it("keeps the traveler visible at the fully formed input endpoint", () => {
-    expect(desktopPillTravelerOpacity(true, 0)).toBe(1);
-    expect(desktopSheetGrabberOpacity(true, 0)).toBe(0);
-  });
-
-  it("never resurrects the traveler in full bleed", () => {
-    expect(desktopPillTravelerOpacity(true, 1)).toBe(0);
-    expect(desktopPillTravelerOpacity(false, 1)).toBe(0);
-    expect(desktopSheetGrabberOpacity(false, 1)).toBe(0);
   });
 });
 

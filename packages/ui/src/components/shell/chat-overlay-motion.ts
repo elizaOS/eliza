@@ -29,44 +29,19 @@ export function grabberBarOpacity(
 }
 
 /**
- * Opacity for the detached desktop's fixed sheet grabber. Unlike the embedded
- * crossfade, its owner is semantic rather than progress-based: the fixed
- * grabber owns an actual transcript, while one continuous traveler owns both
- * INPUT and PILL. Swapping DOM handles on the first drag pixel caused a small
- * visible teleport even when their calculated centers matched.
+ * Top-relative position for the detached desktop's one persistent handle.
+ * The fieldset keeps its unscaled composer layout while the pill morphs, so
+ * progress zero places the handle at that layout's bottom and progress one
+ * places it at its top. Once a transcript grows the fieldset, progress stays
+ * one and the same DOM node remains pinned to the moving top edge.
  */
-export function desktopSheetGrabberOpacity(
-  travelerOwnsHandle: boolean,
-  fullBleedProgress: number,
-): number {
-  const ownsHandle = travelerOwnsHandle ? 0 : 1;
-  return ownsHandle * (1 - clamp01(fullBleedProgress));
-}
-
-/**
- * Opacity for the detached desktop's traveling resting handle. It remains one
- * continuous mark through the whole pill-to-composer motion, including its
- * fully formed INPUT endpoint. It hands off only when transcript chrome owns
- * the surface, never on the first movement frame. Full-bleed suppresses it so
- * the restore handle is the only white mark at the top edge.
- */
-export function desktopPillTravelerOpacity(
-  travelerOwnsHandle: boolean,
-  fullBleedProgress: number,
-): number {
-  const ownsHandle = travelerOwnsHandle ? 1 : 0;
-  return ownsHandle * (1 - clamp01(fullBleedProgress));
-}
-
-/** Bottom-anchored travel from the resting host to the input's top edge. */
-export function desktopPillTravelerOffset(
+export function desktopPersistentHandleTop(
   openProgress: number,
-  inputHeight: number,
+  panelHeight: number,
   restingHeight: number,
 ): number {
   const progress = clamp01(openProgress);
-  if (progress === 0) return 0;
-  return -Math.max(0, inputHeight - restingHeight) * progress;
+  return Math.max(0, panelHeight - restingHeight) * (1 - progress);
 }
 
 /**

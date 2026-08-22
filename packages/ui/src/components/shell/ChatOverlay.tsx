@@ -140,9 +140,7 @@ import {
 import { Textarea } from "../ui/textarea";
 import {
   clamp01,
-  desktopPillTravelerOffset,
-  desktopPillTravelerOpacity,
-  desktopSheetGrabberOpacity,
+  desktopPersistentHandleTop,
   grabberBarOpacity,
   pillHandleCounterScale,
   pillMorphScale,
@@ -454,9 +452,7 @@ const FULLSCREEN_SNAP_VH = 0.9;
 const FULLSCREEN_RELEASE_HYSTERESIS_PX = 12;
 
 export {
-  desktopPillTravelerOffset,
-  desktopPillTravelerOpacity,
-  desktopSheetGrabberOpacity,
+  desktopPersistentHandleTop,
   grabberBarOpacity,
   PILL_MORPH_MIN_SCALE,
   pillHandleCounterScale,
@@ -1099,6 +1095,7 @@ function PillHandle({
   desktopOverlayHost,
   desktopMorphScaleX = 1,
   desktopMorphScaleY = 1,
+  ariaLabel = "open chat",
 }: {
   binding: PullGestureBinding;
   // Inverse of the panel's pill-morph scale. It keeps the detached target at a
@@ -1118,6 +1115,7 @@ function PillHandle({
   desktopOverlayHost: boolean;
   desktopMorphScaleX?: MotionValue<number> | number;
   desktopMorphScaleY?: MotionValue<number> | number;
+  ariaLabel?: string;
 }): React.JSX.Element {
   return (
     <motion.div
@@ -1142,8 +1140,12 @@ function PillHandle({
       <RestingPillButton
         data-testid="chat-pill"
         markTestId={desktopOverlayHost ? undefined : "chat-pill-mark"}
-        aria-label="open chat"
+        aria-label={ariaLabel}
         breathing={breathing}
+        // A held desktop drag must not shrink the physical owner under the
+        // pointer and rebound on release. Embedded tap targets retain their
+        // familiar pressed feedback.
+        pressScale={!desktopOverlayHost}
         style={
           desktopOverlayHost
             ? {
@@ -2056,12 +2058,10 @@ export function ChatOverlay({
   const overlayRef = React.useRef<HTMLDivElement>(null);
   const panelRef = React.useRef<HTMLFieldSetElement>(null);
   const composerRowRef = React.useRef<HTMLDivElement>(null);
-  // The detached host is intentionally taller than the painted composer so
-  // AppKit has transparent headroom for the grab lane. Positioning the white
-  // traveler with that native 64px envelope lifted it above the capsule. Keep
-  // its endpoint tied to the actual composer surface instead, including when a
-  // multiline draft makes that surface taller.
-  const desktopTravelerInputSurfaceHeight = useMotionValue(
+  // Layout height of the persistent fieldset. The detached handle is rendered
+  // outside the fieldset's scale/clip, so this value lets that one node stay on
+  // the real top edge as transcript height grows and shrinks.
+  const desktopTravelerPanelSurfaceHeight = useMotionValue(
     CHAT_OVERLAY_INPUT_WINDOW_HEIGHT,
   );
   // The SURFACE layer (not the transparent fieldset container): it carries the
@@ -2132,6 +2132,18 @@ export function ChatOverlay({
     observer.observe(panelElement);
     return () => observer.disconnect();
   }, [panelElement, queueWindowMaterialSize]);
+  React.useLayoutEffect(() => {
+    if (!desktopOverlayHost || !panelElement) return undefined;
+    const publish = () => {
+      const height = panelElement.offsetHeight;
+      if (height > 0) desktopTravelerPanelSurfaceHeight.set(height);
+    };
+    publish();
+    if (typeof ResizeObserver === "undefined") return undefined;
+    const observer = new ResizeObserver(publish);
+    observer.observe(panelElement);
+    return () => observer.disconnect();
+  }, [desktopOverlayHost, desktopTravelerPanelSurfaceHeight, panelElement]);
   React.useEffect(
     () => () => {
       if (materialMeasureFrameRef.current !== null) {
@@ -2140,20 +2152,6 @@ export function ChatOverlay({
     },
     [],
   );
-  React.useLayoutEffect(() => {
-    if (!desktopOverlayHost) return undefined;
-    const composerRow = composerRowRef.current;
-    if (!composerRow) return undefined;
-    const publish = () => {
-      const height = composerRow.offsetHeight;
-      if (height > 0) desktopTravelerInputSurfaceHeight.set(height);
-    };
-    publish();
-    if (typeof ResizeObserver === "undefined") return undefined;
-    const observer = new ResizeObserver(publish);
-    observer.observe(composerRow);
-    return () => observer.disconnect();
-  }, [desktopOverlayHost, desktopTravelerInputSurfaceHeight]);
   // The transcript's inner content wrapper — measured to size the onboarding
   // sheet to its content (grow-from-the-bottom) instead of a tall empty panel.
   const threadContentRef = React.useRef<HTMLDivElement>(null);
@@ -2335,18 +2333,12 @@ export function ChatOverlay({
   // The thread body remains mounted through opening previews and closing
   // springs so the renderer owns one continuous visual transition.
   const threadPresented = sheetOpen || dragPreviewVisible;
-  // Detached INPUT and PILL are one physical handle and one DOM node. Keeping
-  // the traveler as owner at the fully formed input endpoint prevents the
-  // first downward pixel from swapping to a near-but-not-identical node and
-  // visibly teleporting upward. Transcript chrome takes ownership only while
-  // a thread is actually painted (including its closing preview).
-  const desktopTravelerOwnsHandle = desktopOverlayHost && !threadPresented;
-  const desktopTravelerOwnership = useMotionValue(
-    desktopTravelerOwnsHandle ? 1 : 0,
-  );
-  React.useLayoutEffect(() => {
-    desktopTravelerOwnership.set(desktopTravelerOwnsHandle ? 1 : 0);
-  }, [desktopTravelerOwnership, desktopTravelerOwnsHandle]);
+  // Detached PILL, INPUT, and transcript are one physical white handle and one
+  // DOM node. A semantic handoff on the first transcript pixel used to replace
+  // the 48x6 input mark with a separately positioned 36x4 sheet mark, producing
+  // a visible jump/shrink between otherwise-correct endpoints. Keep the same
+  // bar authoritative for the complete detached motion instead.
+  const desktopTravelerOwnsHandle = desktopOverlayHost;
   useMotionValueEvent(openProgress, "change", (progress) => {
     const next = progress > 0.001;
     if (morphExpandedRef.current === next) return;
@@ -3661,23 +3653,18 @@ export function ChatOverlay({
     [openProgress, fullBleedT] as MotionValue<number>[],
     ([p, t]: number[]) => grabberBarOpacity(p, t),
   );
-  const desktopGrabberOpacity = useTransform(
-    [desktopTravelerOwnership, fullBleedT] as MotionValue<number>[],
-    ([travelerOwns, t]: number[]) =>
-      desktopSheetGrabberOpacity(travelerOwns >= 0.5, t),
-  );
-  // Detached macOS uses one continuous visible white mark instead of two bars
-  // with a dead crossfade between them. Its INPUT endpoint is derived from the
-  // painted composer row, not the taller transparent native window envelope.
-  // The invisible inset SheetGrabber owns the forgiving INPUT hit lane; the
-  // traveler itself becomes interactive only in PILL. That preserves one
-  // visual DOM node without shrinking the usable drag target to 48x6.
-  const desktopPillTravelerY = useTransform(
-    [openProgress, desktopTravelerInputSurfaceHeight] as MotionValue<number>[],
-    ([progress, inputSurfaceHeight]: number[]) =>
-      desktopPillTravelerOffset(
+  const desktopGrabberOpacity = useTransform(fullBleedT, () => 0);
+  // Detached macOS uses one continuous visible white mark instead of swapping
+  // to the alternate SheetGrabber when a transcript appears. Top-relative
+  // positioning makes the same node ride the fieldset's real edge while the
+  // fieldset grows; the morph coordinate only moves it within the compact
+  // composer on the PILL <-> INPUT leg.
+  const desktopPersistentHandleY = useTransform(
+    [openProgress, desktopTravelerPanelSurfaceHeight] as MotionValue<number>[],
+    ([progress, panelSurfaceHeight]: number[]) =>
+      desktopPersistentHandleTop(
         progress,
-        inputSurfaceHeight,
+        panelSurfaceHeight,
         CHAT_OVERLAY_RESTING_WINDOW_HEIGHT,
       ),
   );
@@ -3693,10 +3680,9 @@ export function ChatOverlay({
     [1, 6 / CHAT_OVERLAY_RESTING_WINDOW_HEIGHT],
     { clamp: true },
   );
-  const desktopPillTravelerAlpha = useTransform(
-    [desktopTravelerOwnership, fullBleedT] as MotionValue<number>[],
-    ([travelerOwns, t]: number[]) =>
-      desktopPillTravelerOpacity(travelerOwns >= 0.5, t),
+  const desktopPersistentHandleAlpha = useTransform(
+    fullBleedT,
+    (t) => 1 - clamp01(t),
   );
   // Header reveal tracks the LIVE height: as the panel approaches the half
   // detent the top buttons FADE in and their space LERPS open; pulling back
@@ -6423,10 +6409,9 @@ export function ChatOverlay({
             opacity={
               desktopOverlayHost ? desktopGrabberOpacity : grabberOpacity
             }
-            // The persistent detached traveler owns INPUT and PILL directly on
-            // the white bar. Keep this broad sheet lane inert at both endpoints;
-            // it becomes the handle only once a transcript is actually open.
-            pilled={pilled || desktopTravelerOwnsHandle}
+            // Detached macOS has one persistent bar for PILL, INPUT, and sheet;
+            // this alternate broad lane stays visually and interactively inert.
+            pilled={pilled || desktopOverlayHost}
           />
         ) : null}
         <motion.fieldset
@@ -7597,29 +7582,32 @@ export function ChatOverlay({
           ) : null}
         </motion.fieldset>
         {!firstRunOpen && desktopOverlayHost ? (
-          // Keep the detached rest button OUTSIDE the panel's pill-morph
-          // transform. It is the one visible traveling mark during pill ->
-          // composer: bottom 64x12 at rest, inset 48x6 at the measured composer
-          // top. The same bar-centered 64x12 control owns gestures at both
-          // endpoints, so a drag cannot begin from an unrelated invisible lane.
+          // Keep the detached bar OUTSIDE the panel's pill-morph transform. It
+          // is the one visible/interactive mark for PILL -> INPUT -> transcript:
+          // bottom 64x12 at rest, inset 48x6 at every open state. Its top-relative
+          // coordinate follows the measured fieldset, so no DOM/geometry owner
+          // changes on the first or last transcript frame.
           <motion.div
             data-testid="chat-desktop-pill-traveler"
-            className="pointer-events-none absolute inset-x-0 bottom-0 z-30 flex justify-center"
+            className="pointer-events-none absolute inset-x-0 top-0 z-30 flex justify-center"
             style={{
-              y: desktopPillTravelerY,
-              opacity: desktopPillTravelerAlpha,
+              y: desktopPersistentHandleY,
+              opacity: desktopPersistentHandleAlpha,
             }}
           >
             <PillHandle
               binding={pullBinding}
               counterScale={1}
-              onOpen={pilled ? openFromPill : openFromGrabber}
+              onOpen={
+                pilled ? openFromPill : sheetOpen ? closeSheet : openFromGrabber
+              }
               breathing={listening || responding || recording}
               pilled={pilled}
               interactive={desktopTravelerOwnsHandle}
               desktopOverlayHost
               desktopMorphScaleX={desktopPillTravelerScaleX}
               desktopMorphScaleY={desktopPillTravelerScaleY}
+              ariaLabel={sheetOpen ? "close chat" : "open chat"}
             />
           </motion.div>
         ) : null}

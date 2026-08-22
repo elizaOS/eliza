@@ -9,6 +9,7 @@ type RestingPillButtonProps = React.ComponentProps<typeof Button> & {
   breathing?: boolean;
   markClassName?: string;
   markTestId?: string;
+  pressScale?: boolean;
 };
 
 /**
@@ -20,6 +21,7 @@ export function RestingPillButton({
   breathing = false,
   markClassName,
   markTestId,
+  pressScale = true,
   className,
   children,
   ...props
@@ -30,7 +32,7 @@ export function RestingPillButton({
       {...props}
       className={cn(
         "pointer-events-auto flex h-1.5 w-12 shrink-0 items-center justify-center rounded-full border-0 bg-transparent p-0 text-white shadow-none outline-none",
-        "active:scale-95",
+        pressScale && "active:scale-95",
         className,
       )}
     >
