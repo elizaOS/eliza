@@ -3,6 +3,7 @@
  * command relay envelopes. It validates every untrusted Cloud response before
  * exposing it to Settings or the agent transport.
  */
+import { ElizaError } from "@elizaos/core";
 import type {
   EncryptedRemoteControlEnvelope,
   RemoteControllerPlatform,
@@ -425,12 +426,39 @@ export class RemoteControlCloudClient {
   }
 
   async revokeHost(hostId: string): Promise<void> {
-    await this.request(
-      `/api/v1/remote/hosts/${encodeURIComponent(hostId)}/revoke`,
-      {
+    const path = `/api/v1/remote/hosts/${encodeURIComponent(hostId)}/revoke`;
+    while (true) {
+      const data = await this.request<Record<string, unknown>>(path, {
         method: "POST",
-      },
-    );
+      });
+      const cleanup = record(data.cleanup);
+      if (
+        !cleanup ||
+        typeof cleanup.more !== "boolean" ||
+        !Number.isSafeInteger(cleanup.sessions) ||
+        (cleanup.sessions as number) < 0 ||
+        !Number.isSafeInteger(cleanup.commands) ||
+        (cleanup.commands as number) < 0
+      ) {
+        throw new ElizaError(
+          "Cloud response contains invalid host cleanup progress.",
+          {
+            code: "REMOTE_HOST_CLEANUP_PROGRESS_INVALID",
+            context: { hostId, reason: "malformed_response" },
+          },
+        );
+      }
+      if (!cleanup.more) return;
+      if (cleanup.sessions === 0 && cleanup.commands === 0) {
+        throw new ElizaError(
+          "Cloud host cleanup reported more work without making progress.",
+          {
+            code: "REMOTE_HOST_CLEANUP_PROGRESS_INVALID",
+            context: { hostId, reason: "non_progressing_page" },
+          },
+        );
+      }
+    }
   }
 
   async enqueueCommand(input: {
