@@ -164,6 +164,40 @@ describe("ROOM action — timed mute persistence (durationMinutes)", () => {
 		expect(states.get(`${ROOM_ID}:${AGENT_ID}`)).toBeUndefined();
 	});
 
+	it("rejects an explicit null duration instead of treating it as untimed", async () => {
+		const { runtime, states } = makeRuntime({
+			rooms: [room(ROOM_ID)],
+			worlds: [world()],
+		});
+		const result = await roomOpAction.handler(
+			runtime,
+			msg("mute this channel briefly"),
+			state,
+			opts({ action: "mute", durationMinutes: null }),
+		);
+		expect(result.success).toBe(false);
+		expect((result.data as Record<string, unknown>).error).toBe(
+			"ROOM_DURATION_INVALID",
+		);
+		expect(states.get(`${ROOM_ID}:${AGENT_ID}`)).toBeUndefined();
+	});
+
+	it("ignores durationMinutes for operations where the field is not applicable", async () => {
+		const { runtime, states } = makeRuntime({
+			states: { [`${ROOM_ID}:${AGENT_ID}`]: "MUTED" },
+			rooms: [room(ROOM_ID)],
+			worlds: [world()],
+		});
+		const result = await roomOpAction.handler(
+			runtime,
+			msg("unmute this channel"),
+			state,
+			opts({ action: "unmute", durationMinutes: 0.5 }),
+		);
+		expect(result.success).toBe(true);
+		expect(states.get(`${ROOM_ID}:${AGENT_ID}`)).toBeNull();
+	});
+
 	it("an untimed mute clears a stale expiry; unmute clears state and expiry", async () => {
 		const stale = new Date(Date.now() + 5 * 60_000).toISOString();
 		const { runtime, states, rooms } = makeRuntime({

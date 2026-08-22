@@ -202,7 +202,7 @@ function normalizePlatform(value: unknown): string | undefined {
  * request to mute for 30 seconds silently became a permanent mute.
  */
 function normalizeDurationMinutes(value: unknown): number | undefined | null {
-	if (value === undefined || value === null) return undefined;
+	if (value === undefined) return undefined;
 	const parsed = typeof value === "string" ? Number(value) : value;
 	if (typeof parsed !== "number" || !Number.isInteger(parsed) || parsed <= 0) {
 		return null;
@@ -795,7 +795,10 @@ export const roomOpAction: Action = {
 		const platform = normalizePlatform(params.platform);
 		const explicitRoomId = normalizeString(params.roomId);
 		const chatName = normalizeString(params.chatName);
-		const durationMinutes = normalizeDurationMinutes(params.durationMinutes);
+		const durationMinutes =
+			op === "mute"
+				? normalizeDurationMinutes(params.durationMinutes)
+				: undefined;
 		if (durationMinutes === null) {
 			return {
 				text: "durationMinutes must be a positive whole number of minutes.",
