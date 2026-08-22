@@ -780,6 +780,29 @@ export function ElizaAgentActions({
             )}
           </div>
         )}
+
+        {trackedJob?.status === "failed" && (
+          <div
+            role="alert"
+            className="rounded-md border border-red-500/30 bg-red-500/10 p-3"
+          >
+            <p
+              className="text-sm text-red-200"
+              style={{ fontFamily: "var(--font-roboto-mono)" }}
+            >
+              {trackedJob.error ??
+                t("cloud.containers.agentActions.jobFailed", {
+                  defaultValue: "Agent job failed",
+                })}
+            </p>
+            <p className="mt-1 text-xs text-white/60">
+              {t("cloud.containers.agentActions.failureRecovery", {
+                defaultValue:
+                  "Your agent was left in its previous state. Review the message, then retry the action when ready.",
+              })}
+            </p>
+          </div>
+        )}
       </div>
 
       {/* Upgrade confirmation renders the immutable server quote. No compute
