@@ -109,6 +109,41 @@ describe("post-delivery task tracker", () => {
 		expect(pendingPostDeliveryTaskCount(runtime)).toBe(0);
 	});
 
+	it("retains quarantine membership when cancellation has an empty message", async () => {
+		const runtime = runtimeStub();
+		let releaseUncooperative!: () => void;
+		const uncooperative = trackPostDeliveryTask(
+			runtime,
+			"empty-message-uncooperative",
+			async () =>
+				new Promise<void>((resolve) => {
+					releaseUncooperative = resolve;
+				}),
+		);
+		const controller = new AbortController();
+		const draining = drainPostDeliveryTasks(runtime, {
+			signal: controller.signal,
+		});
+		await Promise.resolve();
+		controller.abort(new Error());
+
+		await expect(draining).rejects.toMatchObject({
+			code: "POST_DELIVERY_DRAIN_CANCELLED",
+			context: { reason: "post-delivery drain was cancelled" },
+		});
+		expect(postDeliveryTaskQuarantineReason(runtime)).toBe(
+			"post-delivery drain was cancelled",
+		);
+		expect(() =>
+			trackPostDeliveryTask(runtime, "late", async () => undefined),
+		).toThrowError(
+			expect.objectContaining({ code: "POST_DELIVERY_RUNTIME_QUARANTINED" }),
+		);
+
+		releaseUncooperative();
+		await uncooperative;
+	});
+
 	it("treats unclassified room work as state-bearing and drains it before ownership ends", async () => {
 		const roomId = "00000000-0000-4000-8000-000000000002";
 		const queue = new RoomHandlerQueue();
