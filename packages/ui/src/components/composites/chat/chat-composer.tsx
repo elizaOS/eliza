@@ -626,10 +626,10 @@ export function ChatComposer({
           density={isInline ? null : undefined}
           className={
             isGameModal
-              ? "w-full min-w-0 min-h-0 h-[46px] resize-none overflow-y-hidden max-h-[200px] outline-none     font-[var(--font-chat)] disabled:opacity-50 rounded-sm border border-transparent bg-transparent px-4 pb-[13px] pt-[13px] text-[15px] leading-[1.55] text-txt-strong placeholder:text-muted pointer-coarse:text-[16px]"
+              ? "w-full min-w-0 min-h-0 h-[46px] resize-none overflow-y-hidden max-h-[200px] outline-none     font-chat disabled:opacity-50 rounded-sm border border-transparent bg-transparent px-4 pb-[13px] pt-[13px] text-chat-body leading-[1.55] text-txt-strong placeholder:text-muted pointer-coarse:text-[16px]"
               : isInline
                 ? inlineTextareaClass
-                : "w-full min-w-0 min-h-0 h-[38px] resize-none overflow-y-hidden max-h-[200px] outline-none     font-[var(--font-chat)] disabled:opacity-50 rounded-sm border-0 bg-card/40 px-4 py-[8px] text-[15px] leading-[1.55] text-txt placeholder:text-muted pointer-coarse:text-[16px]"
+                : "w-full min-w-0 min-h-0 h-[38px] resize-none overflow-y-hidden max-h-[200px] outline-none     font-chat disabled:opacity-50 rounded-sm border-0 bg-card/40 px-4 py-[8px] text-chat-body leading-[1.55] text-txt placeholder:text-muted pointer-coarse:text-[16px]"
           }
           placeholder={placeholder ?? defaultTextareaPlaceholder}
           rows={1}

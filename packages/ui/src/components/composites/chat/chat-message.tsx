@@ -313,7 +313,7 @@ function ReactionEmoji({ emoji }: { emoji: string }) {
   if (rendered) {
     return rendered;
   }
-  return <span className="text-[15px] leading-none">{emoji}</span>;
+  return <span className="text-chat-body leading-none">{emoji}</span>;
 }
 
 function ReactionStrip({
@@ -906,10 +906,9 @@ export const ChatMessage = memo(function ChatMessage({
         className={cn(
           "field-sizing-content min-h-0 max-h-40 w-full resize-none overflow-y-auto rounded-none border-0 bg-transparent p-0 shadow-none outline-none transition-opacity duration-200 disabled:cursor-default",
           glass
-            ? "text-[14px] leading-relaxed text-white caret-white"
-            : "text-[15px] leading-[1.7] text-txt-strong caret-txt-strong",
+            ? "font-chat text-chat-body text-white caret-white"
+            : "font-chat text-chat-body text-txt-strong caret-txt-strong",
         )}
-        style={{ fontFamily: "var(--font-chat)" }}
         disabled={savingEdit}
       />
       {glass ? null : inlineEditControls}
@@ -971,7 +970,7 @@ export const ChatMessage = memo(function ChatMessage({
           ts={message.timestamp}
           short
           data-testid="thread-line-timestamp"
-          className="inline-block min-w-[3ch] whitespace-nowrap text-left text-[11px] tabular-nums text-white/45"
+          className="inline-block min-w-[3ch] whitespace-nowrap text-left text-xs-tight tabular-nums text-white/45"
         />
       ) : null;
     const trailingAccessory =
@@ -1030,7 +1029,7 @@ export const ChatMessage = memo(function ChatMessage({
             // ("Do it") + dismiss. stopPropagation keeps these taps from
             // toggling the bubble's click-to-reveal action row.
             <div className="mb-1.5 flex items-center justify-between gap-2">
-              <span className="inline-flex items-center gap-1 text-[12px] font-medium text-[rgb(255,148,84)]">
+              <span className="inline-flex items-center gap-1 text-xs font-medium text-[rgb(255,148,84)]">
                 <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />
                 Suggestion
               </span>
@@ -1046,7 +1045,7 @@ export const ChatMessage = memo(function ChatMessage({
                       e.stopPropagation();
                       onAcceptSuggestion(message);
                     }}
-                    className="h-auto rounded-full bg-white/10 px-2.5 py-0.5 text-[12px] font-medium text-[rgb(255,148,84)] transition-colors hover:bg-white/20"
+                    className="h-auto rounded-full bg-white/10 px-2.5 py-0.5 text-xs font-medium text-[rgb(255,148,84)] transition-colors hover:bg-white/20"
                   >
                     Do it
                   </Button>
@@ -1074,7 +1073,7 @@ export const ChatMessage = memo(function ChatMessage({
             data-chat-selectable="true"
             className={cn(
               isFirstRun &&
-                "flex w-full flex-col gap-4 whitespace-normal text-[17px] leading-relaxed text-white",
+                "flex w-full flex-col gap-4 whitespace-normal text-chat-lead text-white",
             )}
           >
             {renderContent?.(message, renderContext) ??
@@ -1284,7 +1283,7 @@ export const ChatMessage = memo(function ChatMessage({
                 e.stopPropagation();
                 onRetry?.(message.id);
               }}
-              className="h-auto gap-1.5 rounded-full bg-white/10 px-3 py-1 text-[13px] font-medium text-white/80 transition-colors hover:bg-white/20"
+              className="h-auto gap-1.5 rounded-full bg-white/10 px-3 py-1 text-sm-tight font-medium text-white/80 transition-colors hover:bg-white/20"
             >
               <RotateCcw className="h-3.5 w-3.5" aria-hidden />
               Retry
@@ -1402,18 +1401,17 @@ export const ChatMessage = memo(function ChatMessage({
           tone={isUser ? "user" : "assistant"}
           source={normalizedSource}
           className={cn(
-            "relative group py-1 text-[15px] leading-[1.7] whitespace-pre-wrap break-words",
+            "relative group py-1 font-chat text-chat-body whitespace-pre-wrap break-words",
             // Suggestion treatment: subtle accent tint + dashed accent border so
             // a proactive offer reads as a suggestion, not a normal reply.
             isSuggestion &&
               "border border-dashed border-accent/45 bg-accent/[0.06]",
           )}
-          style={{
-            fontFamily: "var(--font-chat)",
-            ...(isEditing && editBubbleWidth
+          style={
+            isEditing && editBubbleWidth
               ? { width: editBubbleWidth, maxWidth: "100%" }
-              : {}),
-          }}
+              : undefined
+          }
           data-chat-message-bubble="true"
           data-proactive-suggestion={isSuggestion ? "true" : undefined}
         >
