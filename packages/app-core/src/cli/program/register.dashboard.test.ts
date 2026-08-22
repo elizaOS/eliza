@@ -13,7 +13,8 @@ import { type ChildProcess, spawn } from "node:child_process";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { createDevServerTeardown } from "./register.dashboard.ts";
 
 const posix = process.platform !== "win32";
 
@@ -146,5 +147,80 @@ describe.skipIf(!posix)("dashboard dev-server process-group teardown", () => {
     // init/subreaper), which is exactly the stale-port symptom the fix closes.
     await new Promise((r) => setTimeout(r, 250));
     expect(isAlive(grandchildPid)).toBe(true);
+  });
+});
+
+describe("createDevServerTeardown (the shipped teardown)", () => {
+  let fixtureDir: string;
+  let fixturePath: string;
+
+  beforeEach(() => {
+    fixtureDir = mkdtempSync(path.join(tmpdir(), "dashboard-teardown-real-"));
+    fixturePath = path.join(fixtureDir, "parent.cjs");
+    writeFileSync(fixturePath, PARENT_FIXTURE);
+  });
+
+  afterEach(() => {
+    rmSync(fixtureDir, { recursive: true, force: true });
+  });
+
+  it("kills the detached child's whole tree, grandchild included", async () => {
+    if (!posix) return;
+    const { child, grandchildPid } = await spawnFixture(fixturePath, true);
+    expect(isAlive(grandchildPid)).toBe(true);
+
+    createDevServerTeardown(child, (() => {
+      throw new Error("taskkill must not run on POSIX");
+    }) as never)();
+
+    expect(await waitForDeath(grandchildPid)).toBe(true);
+    expect(await waitForDeath(child.pid as number)).toBe(true);
+  });
+
+  it("is idempotent — a second call does not re-signal a reaped group", () => {
+    const killed: Array<[number, NodeJS.Signals]> = [];
+    const spy = vi.spyOn(process, "kill").mockImplementation(((
+      pid: number,
+      signal: NodeJS.Signals,
+    ) => {
+      killed.push([pid, signal]);
+      return true;
+    }) as never);
+    try {
+      const teardown = createDevServerTeardown(
+        { pid: 4242 },
+        (() => {
+          throw new Error("taskkill must not run on POSIX");
+        }) as never,
+        "linux",
+      );
+      teardown();
+      teardown();
+      teardown();
+    } finally {
+      spy.mockRestore();
+    }
+    // One SIGTERM to the GROUP (negative pid), never one per call.
+    expect(killed).toEqual([[-4242, "SIGTERM"]]);
+  });
+
+  it("tree-kills with taskkill on win32 and never signals a process group", () => {
+    const spy = vi.spyOn(process, "kill").mockImplementation((() => {
+      throw new Error("win32 must not signal a process group");
+    }) as never);
+    const calls: unknown[][] = [];
+    try {
+      createDevServerTeardown(
+        { pid: 99 },
+        ((...args: unknown[]) => {
+          calls.push(args);
+          return { status: 0 } as never;
+        }) as never,
+        "win32",
+      )();
+    } finally {
+      spy.mockRestore();
+    }
+    expect(calls).toEqual([["taskkill", ["/pid", "99", "/t", "/f"]]]);
   });
 });

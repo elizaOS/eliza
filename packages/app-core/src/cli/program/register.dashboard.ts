@@ -8,6 +8,8 @@
  * whole process group (SIGTERM, then SIGKILL) so no orphaned Vite grandchild
  * keeps holding the UI port; Windows tree-kills via taskkill /t /f.
  */
+
+import type { ChildProcess } from "node:child_process";
 import { resolveDesktopUiPort, theme } from "@elizaos/shared";
 import type { Command } from "commander";
 
@@ -49,6 +51,58 @@ async function openInBrowser(url: string): Promise<void> {
     console.log(`${theme.muted("Open manually:")} ${url}`);
   });
   child.unref();
+}
+
+/**
+ * Build the dev-server teardown used by `eliza dashboard`.
+ *
+ * Exported so the teardown contract is exercised directly: POSIX signals the
+ * child's whole process GROUP via the negative PID — `bun run dev` runs Vite as
+ * a grandchild, and signalling only the direct child leaves that grandchild
+ * alive and still holding the UI port. Windows has no process groups to signal
+ * and tears the tree down with `taskkill /t /f` instead.
+ *
+ * Idempotent: repeated SIGINT/SIGTERM (or an exit racing a signal) must not
+ * re-signal a group that a previous call already reaped.
+ */
+export function createDevServerTeardown(
+  child: Pick<ChildProcess, "pid">,
+  spawnSync: typeof import("node:child_process").spawnSync,
+  platform: NodeJS.Platform = process.platform,
+): () => void {
+  const killGroup = (signal: NodeJS.Signals): void => {
+    if (!child.pid) return;
+    try {
+      process.kill(-child.pid, signal);
+    } catch (err) {
+      // error-policy:J6 best-effort teardown: the group may already be gone
+      // (ESRCH). Any other errno during shutdown is also non-actionable.
+      const code = (err as NodeJS.ErrnoException).code;
+      if (code !== "ESRCH") {
+        console.log(
+          theme.muted(`Dev server teardown (${signal}) skipped: ${code}`),
+        );
+      }
+    }
+  };
+
+  let cleaned = false;
+  return () => {
+    if (cleaned) return;
+    cleaned = true;
+    if (platform === "win32") {
+      if (child.pid) {
+        // Windows does not propagate SIGTERM through Bun's child tree.
+        spawnSync("taskkill", ["/pid", String(child.pid), "/t", "/f"]);
+      }
+      return;
+    }
+    killGroup("SIGTERM");
+    // Escalate if the group survives a graceful SIGTERM (e.g. a wedged Vite
+    // worker ignoring the signal).
+    const escalation = setTimeout(() => killGroup("SIGKILL"), 2_000);
+    escalation.unref();
+  };
 }
 
 export function registerDashboardCommand(program: Command) {
@@ -175,40 +229,7 @@ export function registerDashboardCommand(program: Command) {
 
       setTimeout(tryOpen, 10_000);
 
-      // Signal the child's whole process group (negative PID) so the detached
-      // `bun run dev` and its Vite grandchild both die. ESRCH means the group
-      // is already gone; swallow it so we never crash the parent on shutdown.
-      const killGroup = (signal: NodeJS.Signals) => {
-        if (!child.pid) return;
-        try {
-          process.kill(-child.pid, signal);
-        } catch (err) {
-          // error-policy:J6 best-effort teardown: the group may already be gone
-          // (ESRCH). Any other errno during shutdown is also non-actionable.
-          const code = (err as NodeJS.ErrnoException).code;
-          if (code !== "ESRCH") {
-            console.log(
-              theme.muted(`Dev server teardown (${signal}) skipped: ${code}`),
-            );
-          }
-        }
-      };
-
-      let cleaned = false;
-      const cleanup = () => {
-        if (cleaned) return;
-        cleaned = true;
-        if (process.platform === "win32" && child.pid) {
-          // Windows does not propagate SIGTERM through Bun's child tree.
-          spawnSync("taskkill", ["/pid", String(child.pid), "/t", "/f"]);
-          return;
-        }
-        killGroup("SIGTERM");
-        // Escalate to SIGKILL after a short grace period if the group survives
-        // a graceful SIGTERM (e.g. a wedged Vite worker ignoring the signal).
-        const escalation = setTimeout(() => killGroup("SIGKILL"), 2_000);
-        escalation.unref();
-      };
+      const cleanup = createDevServerTeardown(child, spawnSync);
       process.on("SIGINT", cleanup);
       process.on("SIGTERM", cleanup);
     });
