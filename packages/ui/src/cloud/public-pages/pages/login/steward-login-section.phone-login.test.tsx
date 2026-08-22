@@ -325,6 +325,35 @@ describe("StewardLoginSection phone login", () => {
     expect(screen.queryByText("Enter the text code")).toBeNull();
   });
 
+  it("does not expose phone login while an older session is still recovering", async () => {
+    let failRecovery: ((error: Error) => void) | undefined;
+    sessionSpies.storedToken = "older-session-token";
+    sessionSpies.sync.mockReturnValueOnce(
+      new Promise<void>((_resolve, reject) => {
+        failRecovery = reject;
+      }),
+    );
+    renderSection();
+
+    await waitFor(() =>
+      expect(sessionSpies.sync).toHaveBeenCalledWith(
+        "older-session-token",
+        null,
+      ),
+    );
+    expect(screen.queryByLabelText("Phone number")).toBeNull();
+    expect(screen.getByLabelText("Loading sign-in options")).toBeTruthy();
+
+    await act(async () => failRecovery?.(new Error("Older session expired")));
+    expect(await screen.findByText("Older session expired")).toBeTruthy();
+
+    await sendPhoneCode();
+    expect(screen.getByText("Enter the text code")).toBeTruthy();
+    expect(screen.getByLabelText("Six-digit code")).toBeTruthy();
+    expect(sessionSpies.write).not.toHaveBeenCalled();
+    expect(returnToSpies.resolve).not.toHaveBeenCalled();
+  });
+
   it("verifies six digits through the existing session completion authority", async () => {
     renderSection("/login?returnTo=%2Fdashboard%2Fagents");
     await sendPhoneCode();
