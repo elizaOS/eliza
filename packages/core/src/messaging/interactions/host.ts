@@ -43,10 +43,18 @@ export interface PrepareMessageInteractionRequest {
 export interface PreparedMessageInteraction {
 	block: InteractionBlock;
 	delivery: NegotiatedInteractionDelivery;
+	/** Present only after negotiation validates a signed-hosted delivery URL. */
+	hostedUrl?: string;
 	callbackData: string;
 	expiresAt: string;
 	profileId: string;
 }
+
+/** Bindings a connector can authenticate from an inbound provider event. */
+export type AuthenticatedMessageInteractionBindings = Omit<
+	MessageInteractionBindings,
+	"sourceMessageId"
+>;
 
 export interface MessageInteractionProviderReceipt {
 	source: string;
@@ -95,7 +103,7 @@ export type MessageInteractionHostConsumeOutcome =
 
 export interface ConsumeMessageInteractionRequest {
 	callbackData: string;
-	bindings: MessageInteractionBindings;
+	bindings: AuthenticatedMessageInteractionBindings;
 	response?: MessageInteractionResponse;
 	providerReceipt: MessageInteractionProviderReceipt;
 }
