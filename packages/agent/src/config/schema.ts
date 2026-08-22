@@ -451,7 +451,6 @@ const FIELD_LABELS: Record<string, string> = {
   "connectors.discord": "Discord",
   "connectors.slack": "Slack",
   "connectors.mattermost": "Mattermost",
-  "connectors.signal": "Signal",
   "connectors.imessage": "iMessage",
   "connectors.msteams": "MS Teams",
   "connectors.telegram.botToken": "Telegram Bot Token",
@@ -471,7 +470,6 @@ const FIELD_LABELS: Record<string, string> = {
   "connectors.whatsapp.dmPolicy": "WhatsApp DM Policy",
   "connectors.whatsapp.selfChatMode": "WhatsApp Self-Phone Mode",
   "connectors.whatsapp.debounceMs": "WhatsApp Message Debounce (ms)",
-  "connectors.signal.dmPolicy": "Signal DM Policy",
   "connectors.imessage.dmPolicy": "iMessage DM Policy",
   "connectors.discord.dm.policy": "Discord DM Policy",
   "connectors.discord.retry.attempts": "Discord Retry Attempts",
@@ -500,7 +498,6 @@ const FIELD_LABELS: Record<string, string> = {
   "connectors.mattermost.chatmode": "Mattermost Chat Mode",
   "connectors.mattermost.oncharPrefixes": "Mattermost Onchar Prefixes",
   "connectors.mattermost.requireMention": "Mattermost Require Mention",
-  "connectors.signal.account": "Signal Account",
   "connectors.imessage.cliPath": "iMessage CLI Path",
   "agents.list[].skills": "Agent Skill Filter",
   "agents.list[].identity.avatar": "Agent Avatar",
@@ -882,8 +879,6 @@ const FIELD_HELP: Record<string, string> = {
     "Allow Discord to write config in response to channel events/commands (default: true).",
   "connectors.whatsapp.configWrites":
     "Allow WhatsApp to write config in response to channel events/commands (default: true).",
-  "connectors.signal.configWrites":
-    "Allow Signal to write config in response to channel events/commands (default: true).",
   "connectors.imessage.configWrites":
     "Allow iMessage to write config in response to channel events/commands (default: true).",
   "connectors.msteams.configWrites":
@@ -938,8 +933,6 @@ const FIELD_HELP: Record<string, string> = {
     "Same-phone setup (bot uses your personal WhatsApp number).",
   "connectors.whatsapp.debounceMs":
     "Debounce window (ms) for batching rapid consecutive messages from the same sender (0 to disable).",
-  "connectors.signal.dmPolicy":
-    'Direct message access control ("pairing" recommended). "open" requires connectors.signal.allowFrom=["*"].',
   "connectors.imessage.dmPolicy":
     'Direct message access control ("pairing" recommended). "open" requires connectors.imessage.allowFrom=["*"].',
   "connectors.discord.dm.policy":

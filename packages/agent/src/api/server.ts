@@ -5078,14 +5078,6 @@ export async function startApiServer(opts?: {
       },
     },
     {
-      name: "Signal pairing sessions",
-      dispose: async () => {
-        const sessions = [...(state.signalPairingSessions?.values() ?? [])];
-        state.signalPairingSessions?.clear();
-        await Promise.all(sessions.map((session) => session.stop()));
-      },
-    },
-    {
       name: "Telegram account session",
       dispose: async () => {
         const session = state.telegramAccountAuthSession;

@@ -79,7 +79,6 @@ export const CONNECTOR_PLUGIN_MAP: Record<string, string> = {
   farcaster: "farcaster",
   lens: "lens",
   whatsapp: "whatsapp",
-  signal: "signal",
   imessage: "imessage",
   msteams: "msteams",
   feishu: "feishu",

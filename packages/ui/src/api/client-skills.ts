@@ -296,30 +296,6 @@ declare module "./client-base" {
       accountId: string;
       authScope?: "platform" | "lifeops";
     }>;
-    getSignalStatus(accountId?: string): Promise<{
-      accountId: string;
-      status: string;
-      authExists: boolean;
-      serviceConnected: boolean;
-      qrDataUrl: string | null;
-      phoneNumber: string | null;
-      error: string | null;
-    }>;
-    startSignalPairing(accountId?: string): Promise<{
-      ok: boolean;
-      accountId: string;
-      status: string;
-      error?: string;
-    }>;
-    stopSignalPairing(accountId?: string): Promise<{
-      ok: boolean;
-      accountId: string;
-      status: string;
-    }>;
-    disconnectSignal(accountId?: string): Promise<{
-      ok: boolean;
-      accountId: string;
-    }>;
     getTelegramAccountStatus(): Promise<TelegramAccountSetupStatus>;
     startTelegramAccountAuth(
       phone?: string,
@@ -917,63 +893,6 @@ ElizaClient.prototype.disconnectWhatsApp = async function (
   return this.fetch("/api/whatsapp/disconnect", {
     method: "POST",
     body: JSON.stringify({ ...options, accountId }),
-  });
-};
-
-ElizaClient.prototype.getSignalStatus = async function (
-  this: ElizaClient,
-  accountId = "default",
-) {
-  return this.fetch(
-    `/api/signal/status?accountId=${encodeURIComponent(accountId)}`,
-  );
-};
-
-ElizaClient.prototype.startSignalPairing = async function (
-  this: ElizaClient,
-  accountId = "default",
-): Promise<{
-  ok: boolean;
-  accountId: string;
-  status: string;
-  error?: string;
-}> {
-  return this.fetch<{
-    ok: boolean;
-    accountId: string;
-    status: string;
-    error?: string;
-  }>("/api/signal/pair", {
-    method: "POST",
-    body: JSON.stringify({ accountId }),
-  });
-};
-
-ElizaClient.prototype.stopSignalPairing = async function (
-  this: ElizaClient,
-  accountId = "default",
-): Promise<{
-  ok: boolean;
-  accountId: string;
-  status: string;
-}> {
-  return this.fetch<{
-    ok: boolean;
-    accountId: string;
-    status: string;
-  }>("/api/signal/pair/stop", {
-    method: "POST",
-    body: JSON.stringify({ accountId }),
-  });
-};
-
-ElizaClient.prototype.disconnectSignal = async function (
-  this: ElizaClient,
-  accountId = "default",
-) {
-  return this.fetch("/api/signal/disconnect", {
-    method: "POST",
-    body: JSON.stringify({ accountId }),
   });
 };
 
