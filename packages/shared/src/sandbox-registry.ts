@@ -232,7 +232,7 @@ export class SandboxRegistry {
     await this.command([
       "EVAL",
       "local u=redis.call('GET',KEYS[1]) local s=redis.call('GET',KEYS[2]) " +
-        "if (u==ARGV[1] and s==ARGV[2]) or (not u and not s) then " +
+        "if u==ARGV[1] and s==ARGV[2] then " +
         "redis.call('SET',KEYS[1],ARGV[1],'EX',ARGV[3]) " +
         "redis.call('SET',KEYS[2],ARGV[2],'EX',ARGV[3]) return 1 end return 0",
       "2",
