@@ -874,6 +874,19 @@ export class PgApprovalQueue implements ApprovalQueue {
   async enqueueWithResult(
     input: ApprovalEnqueueInput,
   ): Promise<ApprovalEnqueueResult> {
+    return this.enqueueWithNotificationMode(input, false);
+  }
+
+  async enqueueWithResultAndNotification(
+    input: ApprovalEnqueueInput,
+  ): Promise<ApprovalEnqueueResult> {
+    return this.enqueueWithNotificationMode(input, true);
+  }
+
+  private async enqueueWithNotificationMode(
+    input: ApprovalEnqueueInput,
+    awaitNotification: boolean,
+  ): Promise<ApprovalEnqueueResult> {
     const inserted = await this.insertApproval(input);
     if (inserted.reused) {
       return inserted;
@@ -882,13 +895,12 @@ export class PgApprovalQueue implements ApprovalQueue {
     logger.info(
       `[ApprovalQueue] enqueued ${input.action} for ${input.subjectUserId} as ${request.id}`,
     );
-    // An outbound action now needs the owner's go-ahead. Surface it on the
-    // notification rail so the owner can act without watching the queue
-    // (fire-and-forget; a notify failure must not block the enqueue).
+    // An outbound action now needs the owner's go-ahead. Ordinary callers keep
+    // this side-channel non-blocking, while exact import/seed callers await it
+    // so their receipt boundary owns every durable projection.
     const notifier = getNotifier(this.runtime);
     if (notifier) {
-      void notifier
-        .notify({
+      const notificationWrite = notifier.notify({
           title: "Approval needed",
           body: truncateWellFormed(toWellFormedUnicode(input.reason), 200),
           category: "approval",
@@ -897,8 +909,11 @@ export class PgApprovalQueue implements ApprovalQueue {
           deepLink: "/chat",
           groupKey: approvalGroupKey(request.id),
           data: { requestId: request.id, kind: input.action },
-        })
-        .catch((error) => {
+        });
+      if (awaitNotification) {
+        await notificationWrite;
+      } else {
+        void notificationWrite.catch((error) => {
           // error-policy:J7 owner notification is a non-blocking side-channel,
           // but a failed rail must remain visible to diagnostics.
           logger.warn(
@@ -910,6 +925,7 @@ export class PgApprovalQueue implements ApprovalQueue {
             action: input.action,
           });
         });
+      }
     }
     return inserted;
   }

@@ -132,8 +132,11 @@ Any one of `GROQ_API_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GOOGLE_GENERA
 
 `applyProductionManifest` seeds the scenario runtime through the same
 `AgentRuntime` repository methods used in production. Version 1 supports
-world-scoped entities, rooms and participants, message memories,
-relationships, and tasks. It does not maintain a parallel mutable world store.
+world-scoped entities, rooms and participants, message and non-message memory
+partitions, relationships, tasks, scheduled items, notifications, pending
+`execute_workflow` approvals, and provider cache state. Each domain is written
+and removed through its production owner; the manifest does not maintain a
+parallel mutable world store.
 
 Every apply returns a JSON-serializable receipt containing the exact created
 identifiers. `readProductionManifestSnapshot` projects canonical state back
@@ -144,15 +147,22 @@ finalized receipt hash in authoritative world metadata before public read or
 reset. Reset then verifies namespace ownership, deletes through the production
 boundaries, and proves absence. Public reset is intentionally once-only: an
 absent world has no authoritative provenance and a replay or never-issued
-receipt is rejected rather than reported as successful. Manifest metadata is
-recursively validated as lossless JSON before any write. `proveProductionManifestReset`
+receipt is rejected rather than reported as successful. Manifest input is
+admitted only as bounded, plain JSON data and recursively validated as lossless
+JSON before any write. Logical entity, relationship, and earlier-task
+references inside schedules are materialized to production IDs, then
+canonicalized back to logical IDs on readback. `proveProductionManifestReset`
 captures initial/readback/reset/reseed artifacts and requires byte-equivalent
 canonical snapshots.
 
-Version 1 rejects schedules, notifications, approvals, and provider-state
-fields as unsupported. Those domains must be added through their existing
-production services and readback contracts; they must not be represented by
-fixture-only records or a second world-state architecture.
+Receipts include the exact schedule, notification, approval, memory-partition,
+and provider-state ownership needed for restart-safe cleanup. Apply discovers
+idempotent production rows after post-commit failures and compensates them;
+notification enumeration used for cleanup includes expired rows. Approval
+seeding awaits its durable notification projection, so no background write can
+escape receipt finalization. Cross-process generation fencing and virtual-clock
+authority remain controller-level composition dependencies rather than hidden
+manifest-local state.
 
 ## Strict model fixtures
 
