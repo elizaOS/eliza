@@ -66,4 +66,37 @@ describe("Discord command projection Unicode safety", () => {
 		expect(label).toBe("b".repeat(79));
 		expect(label?.isWellFormed()).toBe(true);
 	});
+
+	it("preserves all 25 choices representable by Discord button rows", () => {
+		const choices = Array.from({ length: 25 }, (_, index) => ({
+			label: `Choice ${index}`,
+			value: `choice-${index}`,
+		}));
+		const menu = buildCommandArgMenu({
+			commandName: "mode",
+			arg: { name: "level", description: "Mode level", type: "string" },
+			choices,
+			userId: "user-123",
+		});
+
+		expect(menu.rows).toHaveLength(5);
+		expect(menu.rows.flatMap((row) => row.buttons)).toHaveLength(25);
+		expect(menu.rows[4]?.buttons[4]?.customId).toContain("value=choice-24");
+	});
+
+	it("rejects choices that require pagination instead of silently dropping them", () => {
+		const choices = Array.from({ length: 26 }, (_, index) => ({
+			label: `Choice ${index}`,
+			value: `choice-${index}`,
+		}));
+
+		expect(() =>
+			buildCommandArgMenu({
+				commandName: "mode",
+				arg: { name: "level", description: "Mode level", type: "string" },
+				choices,
+				userId: "user-123",
+			}),
+		).toThrow("use pagination or autocomplete instead");
+	});
 });

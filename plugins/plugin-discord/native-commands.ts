@@ -81,6 +81,9 @@ export interface CommandArgMenu {
 	rows: CommandArgButtonRow[];
 }
 
+const DISCORD_MAX_ACTION_ROWS = 5;
+const DISCORD_MAX_BUTTONS_PER_ROW = 5;
+
 /**
  * Key for command argument custom IDs
  */
@@ -272,29 +275,44 @@ export function buildCommandArgMenu(params: {
 		choices,
 		userId,
 		title,
-		buttonsPerRow = 4,
+		buttonsPerRow = DISCORD_MAX_BUTTONS_PER_ROW,
 	} = params;
 
-	const rows = chunkArray(choices.slice(0, 20), buttonsPerRow).map(
-		(rowChoices) => ({
-			buttons: rowChoices.map((choice) => {
-				const wellFormed = toWellFormedUnicode(choice.label);
-				return {
-					label:
-						wellFormed.length > 80
-							? truncateWellFormed(wellFormed, 80)
-							: wellFormed,
-					customId: buildCommandArgCustomId({
-						command: commandName,
-						arg: arg.name,
-						value: choice.value,
-						userId,
-					}),
-					style: ButtonStyle.Secondary,
-				};
-			}),
+	if (
+		!Number.isInteger(buttonsPerRow) ||
+		buttonsPerRow < 1 ||
+		buttonsPerRow > DISCORD_MAX_BUTTONS_PER_ROW
+	) {
+		throw new RangeError(
+			`buttonsPerRow must be an integer from 1 to ${DISCORD_MAX_BUTTONS_PER_ROW}`,
+		);
+	}
+
+	const maxChoices = DISCORD_MAX_ACTION_ROWS * buttonsPerRow;
+	if (choices.length > maxChoices) {
+		throw new RangeError(
+			`Discord argument menus can display at most ${maxChoices} choices with ${buttonsPerRow} buttons per row; use pagination or autocomplete instead`,
+		);
+	}
+
+	const rows = chunkArray(choices, buttonsPerRow).map((rowChoices) => ({
+		buttons: rowChoices.map((choice) => {
+			const wellFormed = toWellFormedUnicode(choice.label);
+			return {
+				label:
+					wellFormed.length > 80
+						? truncateWellFormed(wellFormed, 80)
+						: wellFormed,
+				customId: buildCommandArgCustomId({
+					command: commandName,
+					arg: arg.name,
+					value: choice.value,
+					userId,
+				}),
+				style: ButtonStyle.Secondary,
+			};
 		}),
-	);
+	}));
 
 	const content =
 		title ?? `Choose ${arg.description || arg.name} for /${commandName}.`;
