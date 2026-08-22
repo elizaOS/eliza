@@ -267,6 +267,7 @@ import type {
 	IMessageService,
 	MessageProcessingOptions,
 	MessageProcessingResult,
+	MessageTerminalFailure,
 	ShouldRespondModelType,
 } from "../types/message-service";
 import {
@@ -1397,6 +1398,7 @@ interface StrategyResult {
 	responseContent: Content | null;
 	responseMessages: Memory[];
 	actionResults?: ActionResult[];
+	terminalFailure?: MessageTerminalFailure;
 	state: State;
 	mode: StrategyMode;
 }
@@ -2178,7 +2180,7 @@ function createV5ReplyStrategyResult(args: {
 	 * text still reaches interactive surfaces, while adapters can return a
 	 * non-success process/result instead of treating any nonempty reply as done.
 	 */
-	codingFailureKind?: string;
+	terminalFailure?: MessageTerminalFailure;
 }): StrategyResult {
 	let responseContent: Content = {
 		thought: args.thought,
@@ -2187,11 +2189,11 @@ function createV5ReplyStrategyResult(args: {
 		simple: args.mode !== "actions",
 		responseId: args.responseId,
 		...(args.agentVoiced === true ? { agentVoiced: true } : {}),
-		...(args.codingFailureKind
+		...(args.terminalFailure
 			? {
-					failureKind: args.codingFailureKind,
+					failureKind: args.terminalFailure.kind,
 					elizaSyntheticFailure: true,
-					transient: false,
+					transient: args.terminalFailure.transient,
 				}
 			: {}),
 		...(args.attachments?.length ? { attachments: args.attachments } : {}),
@@ -2225,6 +2227,7 @@ function createV5ReplyStrategyResult(args: {
 		],
 		state: args.state,
 		mode: args.mode ?? "simple",
+		...(args.terminalFailure ? { terminalFailure: args.terminalFailure } : {}),
 	};
 }
 
@@ -10289,10 +10292,7 @@ export async function runV5MessageRuntimeStage1(args: {
 			plannedTextRaw || effectiveReplyText,
 			actionResults,
 		);
-		const codingFailureKind =
-			args.codingMode === true && plannerResult.evaluator?.success === false
-				? "coding_verification_failed"
-				: undefined;
+		const terminalFailure = plannerResult.terminalFailure;
 
 		return {
 			kind: "planned_reply",
@@ -10314,7 +10314,7 @@ export async function runV5MessageRuntimeStage1(args: {
 								? { effectReceiptIds: effectiveReplyReceiptIds }
 								: {}),
 							...(transcriptVisibility ? { transcriptVisibility } : {}),
-							...(codingFailureKind ? { codingFailureKind } : {}),
+							...(terminalFailure ? { terminalFailure } : {}),
 						}),
 						...(actionResults.length > 0 ? { actionResults } : {}),
 					}
@@ -10323,6 +10323,7 @@ export async function runV5MessageRuntimeStage1(args: {
 						responseMessages: [],
 						state: finalPlannerState,
 						mode: "none",
+						...(terminalFailure ? { terminalFailure } : {}),
 						...(actionResults.length > 0 ? { actionResults } : {}),
 					},
 		};
@@ -14221,6 +14222,7 @@ export class DefaultMessageService implements IMessageService {
 			Array.from(persistedEarlyReplyIds, (id) => id as UUID),
 		);
 		let actionResults: ActionResult[] | undefined;
+		let terminalFailure: MessageTerminalFailure | undefined;
 		let mode: StrategyMode = "none";
 
 		if (shouldRespondToMessage) {
@@ -14248,6 +14250,7 @@ export class DefaultMessageService implements IMessageService {
 					: result.responseMessages;
 			state = result.state;
 			actionResults = result.actionResults;
+			terminalFailure = result.terminalFailure;
 			mode = result.mode;
 
 			// Race check before we send anything.
@@ -14747,6 +14750,7 @@ export class DefaultMessageService implements IMessageService {
 					}
 				: {}),
 			...(actionResults ? { actionResults } : {}),
+			...(terminalFailure ? { terminalFailure } : {}),
 			state,
 			mode,
 		};
