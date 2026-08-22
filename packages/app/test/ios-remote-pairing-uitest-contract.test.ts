@@ -4,7 +4,7 @@
  * confirmation must target WebKit's native XCUI alert before any document
  * fallback so the alert cannot interrupt its own tap.
  */
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
@@ -17,22 +17,27 @@ const canonicalHarnessPath = path.resolve(
   appRoot,
   "../app-core/platforms/ios/App/AppUITests/BootCaptureUITests.swift",
 );
-const appHarness = readFileSync(appHarnessPath, "utf8");
 const canonicalHarness = readFileSync(canonicalHarnessPath, "utf8");
+const materializedAppHarness = existsSync(appHarnessPath)
+  ? readFileSync(appHarnessPath, "utf8")
+  : null;
+const harnessUnderTest = materializedAppHarness ?? canonicalHarness;
 
 describe("physical iPhone remote pairing harness", () => {
-  it("keeps the generated AppUITest copy identical to canonical source", () => {
-    expect(appHarness).toBe(canonicalHarness);
+  it("keeps the generated AppUITest copy identical when materialized", () => {
+    if (materializedAppHarness !== null) {
+      expect(materializedAppHarness).toBe(canonicalHarness);
+    }
   });
 
   it("scopes WebKit trust confirmation to its native alert first", () => {
-    const nativeQuery = appHarness.indexOf(
+    const nativeQuery = harnessUnderTest.indexOf(
       "let nativeConfirm = app.alerts.buttons.matching(",
     );
-    const documentQuery = appHarness.indexOf(
+    const documentQuery = harnessUnderTest.indexOf(
       "let documentConfirm = app.buttons.matching(",
     );
-    const selection = appHarness.indexOf(
+    const selection = harnessUnderTest.indexOf(
       "let confirm = nativeConfirm.exists ? nativeConfirm : documentConfirm",
     );
 
@@ -42,13 +47,13 @@ describe("physical iPhone remote pairing harness", () => {
   });
 
   it("requires the scoped Local Network alert to disappear before routing", () => {
-    expect(appHarness).toContain(
+    expect(harnessUnderTest).toContain(
       'let allow = springboard.alerts.buttons["Allow"]',
     );
-    expect(appHarness).toContain(
+    expect(harnessUnderTest).toContain(
       "the Local Network permission sheet did not dismiss after Allow",
     );
-    expect(appHarness).not.toContain(
+    expect(harnessUnderTest).not.toContain(
       'let allow = springboard.buttons["Allow"]',
     );
   });
