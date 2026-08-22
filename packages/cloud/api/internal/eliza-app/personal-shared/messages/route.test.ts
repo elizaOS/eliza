@@ -816,7 +816,12 @@ describe("personal Shared messaging deliveries", () => {
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({
-      data: { code: "group_claim_issued" },
+      data: {
+        code: "group_claim_issued",
+        reply: expect.stringMatching(
+          /Add Eliza to the group[\s\S]*\/eliza_link [A-Z0-9]{8}[\s\S]*same Telegram account/,
+        ),
+      },
     });
     expect(issueGroupClaim).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -825,6 +830,28 @@ describe("personal Shared messaging deliveries", () => {
         connectorAccountId: "telegram:test-bot",
         issuedToPlatformUserId: "123456789",
         codeHash: expect.stringMatching(/^[0-9a-f]{64}$/),
+      }),
+    );
+    expect(sharedRestMessageSend).not.toHaveBeenCalled();
+  });
+
+  test("gives Blooio owners iMessage-specific group-link instructions", async () => {
+    const response = await request({ ...validPhone, message: "/group" });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        code: "group_claim_issued",
+        reply: expect.stringMatching(
+          /Add Eliza to the group[\s\S]*Eliza link [A-Z0-9]{8}[\s\S]*same iMessage identity/,
+        ),
+      },
+    });
+    expect(issueGroupClaim).toHaveBeenCalledWith(
+      expect.objectContaining({
+        platform: "blooio",
+        connectorAccountId: "blooio:test-number",
+        issuedToPlatformUserId: "+15551234567",
       }),
     );
     expect(sharedRestMessageSend).not.toHaveBeenCalled();

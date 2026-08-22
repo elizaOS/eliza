@@ -166,4 +166,137 @@ describe("PstnCallButton", () => {
         .disabled,
     ).toBe(true);
   });
+
+  it("renders a terminal provider status and starts a new call with a fresh idempotency key", async () => {
+    mocks.api
+      .mockResolvedValueOnce({
+        phone_number: "+14155550100",
+        phone_verified: true,
+      })
+      .mockResolvedValueOnce({
+        success: true,
+        callSid: "CA33333333333333333333333333333333",
+        status: "queued",
+        to: "***0100",
+      })
+      .mockResolvedValueOnce({
+        success: true,
+        callSid: "CA33333333333333333333333333333333",
+        status: "completed",
+        to: "***0100",
+        answeredAt: "2026-08-22T08:00:01.000Z",
+        terminalAt: "2026-08-22T08:00:05.000Z",
+        hangupRequestedAt: null,
+      })
+      .mockResolvedValueOnce({
+        success: true,
+        callSid: "CA44444444444444444444444444444444",
+        status: "queued",
+        to: "***0100",
+      });
+    const user = userEvent.setup();
+    render(<PstnCallButton />);
+
+    await user.click(
+      await screen.findByRole("button", { name: "Have Eliza call me" }),
+    );
+    await screen.findByDisplayValue("+14155550100");
+    await user.click(screen.getByRole("button", { name: "Call me" }));
+
+    expect(
+      await screen.findByText("Status: completed", {}, { timeout: 3_500 }),
+    ).toBeTruthy();
+    const firstKey = mocks.api.mock.calls[1]?.[1]?.headers?.["Idempotency-Key"];
+    await user.click(screen.getByRole("button", { name: "Call again" }));
+    await user.click(screen.getByRole("button", { name: "Call me" }));
+
+    await waitFor(() => expect(mocks.api).toHaveBeenCalledTimes(4));
+    const secondKey =
+      mocks.api.mock.calls[3]?.[1]?.headers?.["Idempotency-Key"];
+    expect(firstKey).toEqual(expect.any(String));
+    expect(secondKey).toEqual(expect.any(String));
+    expect(secondKey).not.toBe(firstKey);
+  });
+
+  it("keeps hangup available when status polling fails", async () => {
+    mocks.api
+      .mockResolvedValueOnce({
+        phone_number: "+14155550100",
+        phone_verified: true,
+      })
+      .mockResolvedValueOnce({
+        success: true,
+        callSid: "CA55555555555555555555555555555555",
+        status: "queued",
+        to: "***0100",
+      })
+      .mockRejectedValueOnce(new Error("Status service unavailable"))
+      .mockResolvedValueOnce({
+        success: true,
+        callSid: "CA55555555555555555555555555555555",
+        status: "hangup-requested",
+        to: "***0100",
+        answeredAt: null,
+        terminalAt: null,
+        hangupRequestedAt: "2026-08-22T08:00:10.000Z",
+      });
+    const user = userEvent.setup();
+    render(<PstnCallButton />);
+
+    await user.click(
+      await screen.findByRole("button", { name: "Have Eliza call me" }),
+    );
+    await screen.findByDisplayValue("+14155550100");
+    await user.click(screen.getByRole("button", { name: "Call me" }));
+
+    expect(
+      await screen.findByText(
+        "Status unavailable: Status service unavailable",
+        {},
+        { timeout: 3_500 },
+      ),
+    ).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Hang up" }));
+
+    await waitFor(() => expect(mocks.api).toHaveBeenCalledTimes(4));
+    expect(mocks.api.mock.calls[3]?.[1]).toMatchObject({
+      method: "DELETE",
+      headers: { "Idempotency-Key": expect.any(String) },
+    });
+  });
+
+  it("retries a failed call request with the same idempotency key", async () => {
+    mocks.api
+      .mockResolvedValueOnce({
+        phone_number: "+14155550100",
+        phone_verified: true,
+      })
+      .mockRejectedValueOnce(new Error("Provider temporarily unavailable"))
+      .mockResolvedValueOnce({
+        success: true,
+        callSid: "CA66666666666666666666666666666666",
+        status: "queued",
+        to: "***0100",
+      });
+    const user = userEvent.setup();
+    render(<PstnCallButton />);
+
+    await user.click(
+      await screen.findByRole("button", { name: "Have Eliza call me" }),
+    );
+    await screen.findByDisplayValue("+14155550100");
+    await user.click(screen.getByRole("button", { name: "Call me" }));
+    await waitFor(() =>
+      expect(mocks.error).toHaveBeenCalledWith(
+        "Provider temporarily unavailable",
+      ),
+    );
+    await user.click(screen.getByRole("button", { name: "Call me" }));
+
+    expect(await screen.findByRole("button", { name: "Hang up" })).toBeTruthy();
+    const firstKey = mocks.api.mock.calls[1]?.[1]?.headers?.["Idempotency-Key"];
+    const retryKey = mocks.api.mock.calls[2]?.[1]?.headers?.["Idempotency-Key"];
+    expect(firstKey).toEqual(expect.any(String));
+    expect(retryKey).toBe(firstKey);
+  });
 });
