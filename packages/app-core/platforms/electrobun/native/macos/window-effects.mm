@@ -18,7 +18,9 @@
 #import <UserNotifications/UserNotifications.h>
 #import <WebKit/WebKit.h>
 #include <atomic>
+#include <limits>
 #include <math.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -1961,6 +1963,82 @@ static NSString *elizaEventAvailabilityString(EKEventAvailability availability) 
 	return @"unknown";
 }
 
+static NSString *elizaCalendarSourceTypeString(EKSource *source) {
+	if (source == nil) {
+		return @"unknown";
+	}
+	switch ([source sourceType]) {
+		case EKSourceTypeLocal:
+			return @"local";
+		case EKSourceTypeExchange:
+			return @"exchange";
+		case EKSourceTypeCalDAV:
+			return @"caldav";
+		case EKSourceTypeMobileMe:
+			return @"mobile_me";
+		case EKSourceTypeSubscribed:
+			return @"subscribed";
+		case EKSourceTypeBirthdays:
+			return @"birthdays";
+	}
+	return @"unknown";
+}
+
+static NSString *elizaRecurrenceFrequencyString(
+	EKRecurrenceFrequency frequency) {
+	switch (frequency) {
+		case EKRecurrenceFrequencyDaily:
+			return @"daily";
+		case EKRecurrenceFrequencyWeekly:
+			return @"weekly";
+		case EKRecurrenceFrequencyMonthly:
+			return @"monthly";
+		case EKRecurrenceFrequencyYearly:
+			return @"yearly";
+	}
+	return @"unknown";
+}
+
+static NSArray *elizaRecurrenceRulesJson(EKEvent *event) {
+	NSMutableArray *rules = [NSMutableArray array];
+	for (EKRecurrenceRule *rule in [event recurrenceRules] ?: @[]) {
+		EKRecurrenceEnd *end = [rule recurrenceEnd];
+		NSInteger occurrenceCount = end != nil ? [end occurrenceCount] : 0;
+		NSDate *endDate = end != nil ? [end endDate] : nil;
+		[rules addObject:@{
+			@"frequency" : elizaRecurrenceFrequencyString([rule frequency]),
+			@"interval" : @([rule interval]),
+			@"occurrenceCount" : occurrenceCount > 0
+				? @(occurrenceCount)
+				: (id)[NSNull null],
+			@"endDate" : endDate != nil
+				? elizaISO8601StringFromDate(endDate)
+				: (id)[NSNull null],
+		}];
+	}
+	return rules;
+}
+
+static NSArray *elizaEventRemindersJson(EKEvent *event) {
+	NSMutableArray *reminders = [NSMutableArray array];
+	for (EKAlarm *alarm in [event alarms] ?: @[]) {
+		NSDate *absoluteDate = [alarm absoluteDate];
+		NSString *locationTitle = [[alarm structuredLocation] title];
+		[reminders addObject:@{
+			@"relativeOffsetSeconds" : absoluteDate == nil
+				? @([alarm relativeOffset])
+				: (id)[NSNull null],
+			@"absoluteDate" : absoluteDate != nil
+				? elizaISO8601StringFromDate(absoluteDate)
+				: (id)[NSNull null],
+			@"locationTitle" : [locationTitle length] > 0
+				? locationTitle
+				: (id)[NSNull null],
+		}];
+	}
+	return reminders;
+}
+
 static NSString *elizaParticipantStatusString(EKParticipantStatus status) {
 	switch (status) {
 		case EKParticipantStatusUnknown:
@@ -2078,6 +2156,13 @@ static NSDictionary *elizaCalendarJson(EKCalendar *calendar,
 			? [[NSTimeZone localTimeZone] name]
 			: (id)[NSNull null],
 		@"selected" : @YES,
+		@"sourceIdentifier" : [[source sourceIdentifier] length] > 0
+			? [source sourceIdentifier]
+			: (id)[NSNull null],
+		@"sourceTitle" : [[source title] length] > 0
+			? [source title]
+			: (id)[NSNull null],
+		@"sourceType" : elizaCalendarSourceTypeString(source),
 	};
 }
 
@@ -2093,6 +2178,10 @@ static NSDictionary *elizaEventJson(EKEvent *event) {
 	id organizer = [event organizer] != nil
 		? (id)elizaParticipantJson([event organizer])
 		: (id)[NSNull null];
+	NSString *iCalUID = [event calendarItemExternalIdentifier];
+	NSDate *occurrenceDate = [event occurrenceDate];
+	NSDate *lastModifiedDate = [event lastModifiedDate];
+	EKSource *source = [calendar source];
 	return @{
 		@"id" : identifier,
 		@"externalId" : identifier,
@@ -2111,7 +2200,64 @@ static NSDictionary *elizaEventJson(EKEvent *event) {
 		@"conferenceLink" : [NSNull null],
 		@"organizer" : organizer,
 		@"attendees" : attendees,
+		@"iCalUID" : [iCalUID length] > 0 ? iCalUID : (id)[NSNull null],
+		@"originalStartAt" : occurrenceDate != nil
+			? elizaISO8601StringFromDate(occurrenceDate)
+			: (id)[NSNull null],
+		@"lastModifiedAt" : lastModifiedDate != nil
+			? elizaISO8601StringFromDate(lastModifiedDate)
+			: (id)[NSNull null],
+		@"recurrenceRules" : elizaRecurrenceRulesJson(event),
+		@"reminders" : elizaEventRemindersJson(event),
+		@"sourceIdentifier" : [[source sourceIdentifier] length] > 0
+			? [source sourceIdentifier]
+			: (id)[NSNull null],
+		@"sourceTitle" : [[source title] length] > 0
+			? [source title]
+			: (id)[NSNull null],
+		@"sourceType" : elizaCalendarSourceTypeString(source),
 	};
+}
+
+// Calendar consumers need only an invalidation signal. Observe EventKit's
+// process-local store-change notification without inspecting or retaining its
+// object/userInfo, and expose a saturating generation instead of EventKit data.
+static std::atomic<uint64_t> elizaAppleCalendarChangeGeneration{0};
+static id elizaAppleCalendarChangeObserver = nil;
+
+static void elizaAdvanceAppleCalendarChangeGeneration(void) {
+	uint64_t current =
+		elizaAppleCalendarChangeGeneration.load(std::memory_order_relaxed);
+	const uint64_t maximum = std::numeric_limits<uint64_t>::max();
+	while (current < maximum &&
+		   !elizaAppleCalendarChangeGeneration.compare_exchange_weak(
+			   current,
+			   current + 1,
+			   std::memory_order_release,
+			   std::memory_order_relaxed)) {
+	}
+}
+
+static void elizaEnsureAppleCalendarChangeObserver(void) {
+	static dispatch_once_t onceToken;
+	dispatch_once(&onceToken, ^{
+		elizaAppleCalendarChangeObserver =
+			[[NSNotificationCenter defaultCenter]
+				addObserverForName:EKEventStoreChangedNotification
+						 object:nil
+						  queue:nil
+					 usingBlock:^(NSNotification *notification) {
+						 (void)notification;
+						 elizaAdvanceAppleCalendarChangeGeneration();
+					 }];
+	});
+}
+
+extern "C" uint64_t appleCalendarEventStoreGeneration(void) {
+	@autoreleasepool {
+		elizaEnsureAppleCalendarChangeObserver();
+		return elizaAppleCalendarChangeGeneration.load(std::memory_order_acquire);
+	}
 }
 
 static NSDictionary *elizaAppleCalendarUnsupportedAttendeesError(void) {
