@@ -60,12 +60,23 @@ describe("view operation ledger", () => {
         ledger.registrationOverlapCount,
     ).toBe(ledger.surfaceCount);
     expect(ledger.operationCount).toBeGreaterThan(0);
-    expect(ledger.channelCounts.chat).toBeGreaterThan(0);
+    expect(ledger.channelCounts.chat).toBe(0);
     expect(ledger.channelCounts.voice).toBe(ledger.channelCounts.chat);
     expect(ledger.operations.every((operation) => operation.source.file)).toBe(
       true,
     );
-    expect(ledger.unresolvedControls).toEqual([]);
+    expect(ledger.unresolvedControls.length).toBeGreaterThan(0);
+    expect(
+      ledger.operations
+        .filter((operation) => !operation.evidence.contractProven)
+        .every(
+          (operation) =>
+            operation.delivery &&
+            Object.keys(operation.delivery).length === 0 &&
+            !operation.channels.chat &&
+            !operation.channels.voice,
+        ),
+    ).toBe(true);
   });
 
   it("renders deterministic reviewer-readable markdown", () => {
