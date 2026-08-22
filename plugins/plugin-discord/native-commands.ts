@@ -3,7 +3,11 @@
  * button-based argument menus. Consumed by the slash-command registration path
  * when syncing commands to the Discord application.
  */
-import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
+import {
+	ElizaError,
+	toWellFormedUnicode,
+	truncateWellFormed,
+} from "@elizaos/core";
 import {
 	type APIApplicationCommandOption,
 	ApplicationCommandOptionType,
@@ -283,15 +287,34 @@ export function buildCommandArgMenu(params: {
 		buttonsPerRow < 1 ||
 		buttonsPerRow > DISCORD_MAX_BUTTONS_PER_ROW
 	) {
-		throw new RangeError(
+		throw new ElizaError(
 			`buttonsPerRow must be an integer from 1 to ${DISCORD_MAX_BUTTONS_PER_ROW}`,
+			{
+				code: "DISCORD_COMMAND_MENU_INVALID_ROW_WIDTH",
+				context: {
+					commandName,
+					arg: arg.name,
+					buttonsPerRow,
+					maxButtonsPerRow: DISCORD_MAX_BUTTONS_PER_ROW,
+				},
+			},
 		);
 	}
 
 	const maxChoices = DISCORD_MAX_ACTION_ROWS * buttonsPerRow;
 	if (choices.length > maxChoices) {
-		throw new RangeError(
+		throw new ElizaError(
 			`Discord argument menus can display at most ${maxChoices} choices with ${buttonsPerRow} buttons per row; use pagination or autocomplete instead`,
+			{
+				code: "DISCORD_COMMAND_MENU_CHOICES_EXCEED_CAPACITY",
+				context: {
+					commandName,
+					arg: arg.name,
+					choiceCount: choices.length,
+					maxChoices,
+					buttonsPerRow,
+				},
+			},
 		);
 	}
 
