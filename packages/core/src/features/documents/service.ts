@@ -636,6 +636,65 @@ export class DocumentService extends Service {
 		);
 	}
 
+	async listAllDocumentsWithAccessContext(
+		accessContext: AccessContext,
+	): Promise<Memory[]> {
+		const documents: Memory[] = [];
+		let cursor: DocumentListCursor | undefined;
+		const seenCursors = new Set<string>();
+		do {
+			const page = await this.listDocumentsDetailedWithRequester(
+				{
+					limit: DOCUMENT_LIST_MAX_LIMIT,
+					...(cursor ? { cursor } : {}),
+				},
+				() =>
+					resolveDocumentRequesterFromAccessContext(
+						this.runtime,
+						accessContext,
+					),
+			);
+			documents.push(...page.documents);
+			if (!page.hasMore) break;
+			if (!page.nextCursor) {
+				throw new ElizaError(
+					"Document list reported another page without a continuation cursor",
+					{
+						code: "DOCUMENT_LIST_CURSOR_MISSING",
+						context: { returnedDocuments: page.documents.length },
+						severity: "fatal",
+					},
+				);
+			}
+			const serializedCursor = documentListCursorKey(page.nextCursor);
+			if (seenCursors.has(serializedCursor)) {
+				throw new ElizaError(
+					"Document list reported a repeating pagination cursor",
+					{
+						code: "DOCUMENT_LIST_CURSOR_LOOP",
+						context: { cursor: page.nextCursor },
+						severity: "fatal",
+					},
+				);
+			}
+			seenCursors.add(serializedCursor);
+			cursor = page.nextCursor;
+		} while (cursor);
+
+		const finalRequester = await resolveDocumentRequesterFromAccessContext(
+			this.runtime,
+			accessContext,
+		);
+		return documents.filter((document) =>
+			isDocumentVisibleToRequester(document, {
+				agentId: this.runtime.agentId,
+				requesterEntityId: finalRequester.entityId,
+				requesterRoomIds: finalRequester.roomIds,
+				requesterRole: finalRequester.role,
+			}),
+		);
+	}
+
 	private async listDocumentsDetailedWithRequester(
 		options: DocumentListOptions,
 		resolveRequester: DocumentRequesterResolver,

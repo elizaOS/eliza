@@ -86,6 +86,9 @@ export interface DocumentsServiceLike {
     message?: Memory,
     options?: Record<string, unknown>,
   ): Promise<Memory[]>;
+  listAllDocumentsWithAccessContext?(
+    accessContext: AccessContext,
+  ): Promise<Memory[]>;
   getDocumentById?(documentId: UUID, message?: Memory): Promise<Memory | null>;
   getDocumentByIdWithAccessContext?(
     documentId: UUID,
