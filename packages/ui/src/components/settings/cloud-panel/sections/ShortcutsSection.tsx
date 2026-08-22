@@ -109,88 +109,31 @@ function comboToAccelerator(combo: Combo): string {
   return out.join("+");
 }
 
-/** Re-register a shortcut through the desktop bridge. Unregisters the old
- * binding first, then registers the new one. Best-effort — a bridge failure
- * leaves the persisted combo untouched and is logged but not surfaced as a
- * blocking error (the user can see the combo changed in the UI). */
+/** Replace a shortcut through the desktop bridge's transactional registration boundary. */
 async function syncShortcut(id: string, combo: Combo): Promise<void> {
   if (!isDesktopPlatform()) return;
-  try {
-    await invokeDesktopBridgeRequest<void>({
-      rpcMethod: "desktopUnregisterShortcut",
-      ipcChannel: "desktop:unregisterShortcut",
-      params: { id: `settings-${id}` },
-    });
-    const result = await invokeDesktopBridgeRequest<{ success: boolean }>({
-      rpcMethod: "desktopRegisterShortcut",
-      ipcChannel: "desktop:registerShortcut",
-      params: { id: `settings-${id}`, accelerator: comboToAccelerator(combo) },
-    });
-    if (result?.success === false) {
-      // OS rejected the accelerator — non-fatal, the combo is still stored.
-    }
-  } catch {
-    // Bridge unavailable — non-fatal on non-desktop or when RPC is missing.
+  const accelerator = comboToAccelerator(combo);
+  const result = await invokeDesktopBridgeRequest<{ success: boolean }>({
+    rpcMethod: "desktopRegisterShortcut",
+    ipcChannel: "desktop:registerShortcut",
+    params: { id, accelerator },
+  });
+  if (result?.success === false) {
+    throw new Error(
+      `The operating system rejected ${accelerator}. Choose a different shortcut.`,
+    );
   }
 }
 
-/** Unregister a shortcut through the desktop bridge. */
-async function unregisterShortcut(id: string): Promise<void> {
-  if (!isDesktopPlatform()) return;
-  try {
-    await invokeDesktopBridgeRequest<void>({
-      rpcMethod: "desktopUnregisterShortcut",
-      ipcChannel: "desktop:unregisterShortcut",
-      params: { id: `settings-${id}` },
-    });
-  } catch {
-    // Non-fatal.
-  }
-}
-
-// Defaults mirror the accelerators in application-menu.ts and the spec table.
+// Only expose shortcuts with a complete native registration -> renderer action
+// contract. Other menu accelerators remain owned by application-menu.ts until
+// they gain an equivalent dynamic dispatcher.
 const DEFAULT_SHORTCUTS: ShortcutBinding[] = [
-  {
-    id: "toggle-recording",
-    label: "Toggle recording",
-    defaultCombo: "alt+space",
-    combo: "alt+space",
-  },
   {
     id: "push-to-talk",
     label: "Push to talk",
     defaultCombo: "cmd+r",
     combo: "cmd+r",
-  },
-  {
-    id: "cancel-recording",
-    label: "Cancel recording",
-    defaultCombo: "escape",
-    combo: "escape",
-  },
-  {
-    id: "change-mode",
-    label: "Change mode",
-    defaultCombo: "alt+shift+k",
-    combo: "alt+shift+k",
-  },
-  {
-    id: "open-eliza",
-    label: "Open Eliza",
-    defaultCombo: "cmd+shift+e",
-    combo: "cmd+shift+e",
-  },
-  {
-    id: "show-settings",
-    label: "Show settings",
-    defaultCombo: "cmd+,",
-    combo: "cmd+,",
-  },
-  {
-    id: "secrets-storage",
-    label: "Secrets storage",
-    defaultCombo: "cmd+alt+ctrl+v",
-    combo: "cmd+alt+ctrl+v",
   },
 ];
 
@@ -223,23 +166,14 @@ export function ShortcutsSection() {
     id: string;
     combo: Combo;
   } | null>(null);
+  const [shortcutError, setShortcutError] = React.useState<string | null>(null);
+  const [shortcutMutationPending, setShortcutMutationPending] =
+    React.useState(false);
 
   // Mouse shortcut config — local state; desktop RPC for mouse buttons is new.
   const [mouseEnabled, setMouseEnabled] = React.useState(false);
   const [clickAction, setClickAction] = React.useState("toggle-recording");
   const [holdAction, setHoldAction] = React.useState("push-to-talk");
-
-  // Register all default shortcuts on mount so they're live in the OS.
-  React.useEffect(() => {
-    for (const s of DEFAULT_SHORTCUTS) {
-      void syncShortcut(s.id, s.combo);
-    }
-    return () => {
-      for (const s of DEFAULT_SHORTCUTS) {
-        void unregisterShortcut(s.id);
-      }
-    };
-  }, []);
 
   // Long-recording cancel confirmation — persisted to the app store when wired.
   const [confirmCancel, setConfirmCancel] = React.useState(true);
@@ -271,20 +205,27 @@ export function ShortcutsSection() {
     return () => window.removeEventListener("keydown", onKeyDown, true);
   }, [recordingId]);
 
-  const commitCombo = React.useCallback((id: string, combo: Combo) => {
-    setShortcuts((prev) =>
-      prev.map((s) => (s.id === id ? { ...s, combo } : s)),
-    );
-    setPending(null);
-    // Re-register the shortcut through the desktop bridge so the change
-    // takes effect without a relaunch.
-    void syncShortcut(id, combo);
+  const commitCombo = React.useCallback(async (id: string, combo: Combo) => {
+    setShortcutMutationPending(true);
+    try {
+      await syncShortcut(id, combo);
+      setShortcuts((prev) =>
+        prev.map((s) => (s.id === id ? { ...s, combo } : s)),
+      );
+      setPending(null);
+      setShortcutError(null);
+    } catch (error) {
+      setPending(null);
+      setShortcutError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setShortcutMutationPending(false);
+    }
   }, []);
 
   const resetCombo = React.useCallback(
     (id: string) => {
       const def = DEFAULT_SHORTCUTS.find((s) => s.id === id);
-      if (def) commitCombo(id, def.defaultCombo);
+      if (def) void commitCombo(id, def.defaultCombo);
     },
     [commitCombo],
   );
@@ -292,27 +233,48 @@ export function ShortcutsSection() {
   // Override: assign the combo to this shortcut and reset the displaced one to
   // its default so the two never silently share a binding.
   const overrideConflict = React.useCallback(
-    (id: string, combo: Combo, conflictId: string) => {
+    async (id: string, combo: Combo, conflictId: string) => {
+      const current = shortcuts.find((shortcut) => shortcut.id === id);
       const conflictDef = DEFAULT_SHORTCUTS.find((s) => s.id === conflictId);
-      setShortcuts((prev) =>
-        prev.map((s) => {
-          if (s.id === id) return { ...s, combo };
-          if (s.id === conflictId && conflictDef)
-            return { ...s, combo: conflictDef.defaultCombo };
-          return s;
-        }),
-      );
-      setPending(null);
-      // Re-register both affected shortcuts through the desktop bridge.
-      void syncShortcut(id, combo);
-      if (conflictDef) void syncShortcut(conflictId, conflictDef.defaultCombo);
+      if (!current || !conflictDef) return;
+      setShortcutMutationPending(true);
+      try {
+        await syncShortcut(id, combo);
+        try {
+          await syncShortcut(conflictId, conflictDef.defaultCombo);
+        } catch (conflictError) {
+          await syncShortcut(id, current.combo);
+          throw conflictError;
+        }
+        setShortcuts((prev) =>
+          prev.map((s) => {
+            if (s.id === id) return { ...s, combo };
+            if (s.id === conflictId)
+              return { ...s, combo: conflictDef.defaultCombo };
+            return s;
+          }),
+        );
+        setPending(null);
+        setShortcutError(null);
+      } catch (error) {
+        setPending(null);
+        setShortcutError(
+          error instanceof Error ? error.message : String(error),
+        );
+      } finally {
+        setShortcutMutationPending(false);
+      }
     },
-    [],
+    [shortcuts],
   );
 
   const conflict = pending
     ? findConflict(pending.id, pending.combo)
     : undefined;
+
+  React.useEffect(() => {
+    if (pending && !conflict) void commitCombo(pending.id, pending.combo);
+  }, [commitCombo, conflict, pending]);
 
   return (
     <SettingsStack>
@@ -320,6 +282,14 @@ export function ShortcutsSection() {
         title="Global Shortcuts"
         footer="Global hotkeys. Click ⌨ to record a new key combination."
       >
+        {shortcutError ? (
+          <div
+            className="my-2 rounded-sm border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive"
+            role="alert"
+          >
+            {shortcutError}
+          </div>
+        ) : null}
         {shortcuts.map((shortcut) => {
           const isRecording = recordingId === shortcut.id;
           const isPending = pending?.id === shortcut.id;
@@ -347,6 +317,7 @@ export function ShortcutsSection() {
                     variant={isRecording ? "primary" : "secondary"}
                     size="sm"
                     aria-label={`Record ${shortcut.label} shortcut`}
+                    disabled={shortcutMutationPending}
                     onClick={() => {
                       setPending(null);
                       setRecordingId(isRecording ? null : shortcut.id);
@@ -359,7 +330,10 @@ export function ShortcutsSection() {
                     variant="ghost"
                     size="sm"
                     aria-label={`Reset ${shortcut.label} shortcut`}
-                    disabled={shortcut.combo === shortcut.defaultCombo}
+                    disabled={
+                      shortcut.combo === shortcut.defaultCombo ||
+                      shortcutMutationPending
+                    }
                     onClick={() => resetCombo(shortcut.id)}
                   >
                     <RotateCcw className="h-4 w-4" aria-hidden />
@@ -382,12 +356,13 @@ export function ShortcutsSection() {
                       variant="primary"
                       size="sm"
                       onClick={() =>
-                        overrideConflict(
+                        void overrideConflict(
                           shortcut.id,
                           pending.combo,
                           conflictForThis.id,
                         )
                       }
+                      disabled={shortcutMutationPending}
                     >
                       Override
                     </NuphyButton>
