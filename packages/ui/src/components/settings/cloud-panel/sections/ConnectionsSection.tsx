@@ -16,8 +16,14 @@
 import { Button as NuphyButton } from "@extrastu/nuphy-ui";
 import { Loader2, Plus } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
-import { useAppSelector } from "../../../../state";
 import { ApiError, api, apiFetch } from "../../../../cloud/lib/api-client";
+import { useCloudConnectorConnections } from "../../../../hooks/useCloudConnectorConnections";
+import { useAppSelector } from "../../../../state";
+import {
+  CLOUD_CONNECTORS,
+  type ConnectorConfig,
+  connectorFieldValidationError,
+} from "../cloud-connector-contracts";
 import {
   DestructiveSecondaryButton,
   NuphyConfirmDialog,
@@ -31,40 +37,6 @@ import {
 
 // ── Types ───────────────────────────────────────────────────────────────
 
-interface ConnectorConfig {
-  id: string;
-  name: string;
-  group: "messaging" | "social" | "productivity";
-  /** "token" = form with credential fields; "oauth" = redirect flow. */
-  authMode: "token" | "oauth";
-  /** OAuth platform key (for `useOAuthConnections`). */
-  oauthPlatform?: string;
-  /** Status endpoint (GET). */
-  statusPath: string;
-  /** Connect endpoint (POST). */
-  connectPath: string;
-  /** Disconnect endpoint (DELETE). */
-  disconnectPath: string;
-  /** Fields for token-credential connectors. */
-  fields?: ConnectorField[];
-}
-
-interface ConnectorField {
-  key: string;
-  label: string;
-  description?: string;
-  type?: "text" | "password";
-  placeholder?: string;
-  required?: boolean;
-}
-
-interface ConnectorState {
-  connected: boolean;
-  statusText: string;
-  loading: boolean;
-  error: string | null;
-}
-
 interface McpEntry {
   id: string;
   name: string;
@@ -72,240 +44,35 @@ interface McpEntry {
   statusText: string;
 }
 
-// ── Connector registry ──────────────────────────────────────────────────
-
-const CONNECTORS: ConnectorConfig[] = [
-  {
-    id: "discord",
-    name: "Discord",
-    group: "messaging",
-    authMode: "token",
-    statusPath: "/api/v1/discord/connections",
-    connectPath: "/api/v1/discord/connections",
-    disconnectPath: "/api/v1/discord/connections",
-    fields: [
-      {
-        key: "applicationId",
-        label: "Application ID",
-        description: "Your Discord application ID from the Developer Portal.",
-        placeholder: "1234567890123456789",
-        required: true,
-      },
-      {
-        key: "botToken",
-        label: "Bot Token",
-        description: "The bot token from your Discord application.",
-        type: "password",
-        placeholder: "MTk4NjIy...",
-        required: true,
-      },
-    ],
-  },
-  {
-    id: "telegram",
-    name: "Telegram",
-    group: "messaging",
-    authMode: "token",
-    statusPath: "/api/v1/telegram/status",
-    connectPath: "/api/v1/telegram/connect",
-    disconnectPath: "/api/v1/telegram/disconnect",
-    fields: [
-      {
-        key: "botToken",
-        label: "Bot Token",
-        description: "Get this from @BotFather on Telegram.",
-        type: "password",
-        placeholder: "123456:ABC-DEF...",
-        required: true,
-      },
-    ],
-  },
-  {
-    id: "whatsapp",
-    name: "WhatsApp",
-    group: "messaging",
-    authMode: "token",
-    statusPath: "/api/v1/whatsapp/status",
-    connectPath: "/api/v1/whatsapp/connect",
-    disconnectPath: "/api/v1/whatsapp/disconnect",
-    fields: [
-      {
-        key: "accessToken",
-        label: "Access Token",
-        description: "WhatsApp Business API access token.",
-        type: "password",
-        placeholder: "EAAG...",
-        required: true,
-      },
-      {
-        key: "phoneNumberId",
-        label: "Phone Number ID",
-        placeholder: "123456789",
-        required: true,
-      },
-      {
-        key: "appSecret",
-        label: "App Secret",
-        description: "Used to verify webhook payloads.",
-        type: "password",
-        placeholder: "abc123...",
-      },
-    ],
-  },
-  {
-    id: "twilio",
-    name: "Twilio",
-    group: "messaging",
-    authMode: "token",
-    statusPath: "/api/v1/twilio/status",
-    connectPath: "/api/v1/twilio/connect",
-    disconnectPath: "/api/v1/twilio/disconnect",
-    fields: [
-      {
-        key: "accountSid",
-        label: "Account SID",
-        placeholder: "AC...",
-        required: true,
-      },
-      {
-        key: "authToken",
-        label: "Auth Token",
-        type: "password",
-        placeholder: "your-twilio-auth-token",
-        required: true,
-      },
-      {
-        key: "phoneNumber",
-        label: "Phone Number",
-        placeholder: "+1234567890",
-        required: true,
-      },
-    ],
-  },
-  {
-    id: "google",
-    name: "Google",
-    group: "productivity",
-    authMode: "oauth",
-    oauthPlatform: "google",
-    statusPath: "/api/v1/oauth/connections?platform=google",
-    connectPath: "/api/v1/oauth/google/initiate",
-    disconnectPath: "/api/v1/oauth/connections",
-  },
-  {
-    id: "microsoft",
-    name: "Microsoft",
-    group: "productivity",
-    authMode: "oauth",
-    oauthPlatform: "microsoft",
-    statusPath: "/api/v1/oauth/connections?platform=microsoft",
-    connectPath: "/api/v1/oauth/microsoft/initiate",
-    disconnectPath: "/api/v1/oauth/connections",
-  },
-  {
-    id: "blooio",
-    name: "Blooio",
-    group: "productivity",
-    authMode: "token",
-    statusPath: "/api/v1/blooio/status",
-    connectPath: "/api/v1/blooio/connect",
-    disconnectPath: "/api/v1/blooio/disconnect",
-    fields: [
-      {
-        key: "apiKey",
-        label: "API Key",
-        type: "password",
-        placeholder: "your-blooio-api-key",
-        required: true,
-      },
-      {
-        key: "phoneNumber",
-        label: "Phone Number",
-        placeholder: "+1234567890",
-      },
-    ],
-  },
-];
-
-const MESSAGING = CONNECTORS.filter((c) => c.group === "messaging");
-const PRODUCTIVITY = CONNECTORS.filter((c) => c.group === "productivity");
-
-// ── Helpers ─────────────────────────────────────────────────────────────
-
-function apiErrorMessage(error: unknown, fallback: string): string {
-  if (error instanceof ApiError) {
-    const body = error.body as { error?: unknown } | undefined;
-    if (body && typeof body.error === "string" && body.error) return body.error;
-    return error.message || fallback;
-  }
-  return fallback;
+interface CloudAgentSummary {
+  id?: unknown;
+  name?: unknown;
 }
 
-// ── Connector status hook ───────────────────────────────────────────────
+function firstCloudAgentId(
+  agents: CloudAgentSummary[] | undefined,
+): string | null {
+  for (const agent of agents ?? []) {
+    if (typeof agent.id === "string" && agent.id.length > 0) return agent.id;
+  }
+  return null;
+}
 
-function useConnectorStatus(connector: ConnectorConfig) {
-  const [state, setState] = useState<ConnectorState>({
-    connected: false,
-    statusText: "Not connected",
-    loading: true,
-    error: null,
-  });
+// ── Connector registry ──────────────────────────────────────────────────
 
-  const fetchStatus = useCallback(async () => {
-    setState((prev) => ({ ...prev, loading: true, error: null }));
-    try {
-      if (connector.authMode === "oauth") {
-        const data = await api<{ connections?: Array<{ status?: string; id?: string }> }>(
-          connector.statusPath,
-        );
-        const active = data.connections?.find((c) => c.status === "active");
-        setState({
-          connected: Boolean(active),
-          statusText: active ? "Connected" : "Not connected",
-          loading: false,
-          error: null,
-        });
-      } else if (connector.id === "discord") {
-        const data = await api<{ connections?: Array<{ id?: string; status?: string }> }>(
-          connector.statusPath,
-        );
-        const has = (data.connections?.length ?? 0) > 0;
-        setState({
-          connected: has,
-          statusText: has
-            ? `Connected — ${data.connections?.length} bot${(data.connections?.length ?? 0) > 1 ? "s" : ""}`
-            : "Not connected",
-          loading: false,
-          error: null,
-        });
-      } else {
-        const data = await api<{ configured?: boolean; connected?: boolean; error?: string }>(
-          connector.statusPath,
-        );
-        const connected = data.configured || data.connected || false;
-        setState({
-          connected,
-          statusText: connected ? "Connected" : "Not connected",
-          loading: false,
-          error: data.error ?? null,
-        });
-      }
-    } catch (err) {
-      // 401/403 means cloud auth issue; other errors are connector-specific.
-      setState({
-        connected: false,
-        statusText: "Not connected",
-        loading: false,
-        error: err instanceof ApiError && err.status === 401 ? "Sign in to Cloud" : null,
-      });
-    }
-  }, [connector]);
+const MESSAGING = CLOUD_CONNECTORS.filter(
+  (connector) => connector.group === "messaging",
+);
+const PRODUCTIVITY = CLOUD_CONNECTORS.filter(
+  (connector) => connector.group === "productivity",
+);
 
-  useEffect(() => {
-    void fetchStatus();
-  }, [fetchStatus]);
-
-  return { state, refetch: fetchStatus };
+function apiErrorMessage(error: unknown, fallback: string): string {
+  if (!(error instanceof ApiError)) return fallback;
+  const body = error.body as { error?: unknown; message?: unknown } | undefined;
+  if (typeof body?.error === "string" && body.error) return body.error;
+  if (typeof body?.message === "string" && body.message) return body.message;
+  return error.message || fallback;
 }
 
 // ── Connector row ───────────────────────────────────────────────────────
@@ -319,12 +86,22 @@ function ConnectorRow({
   onConnect: (connector: ConnectorConfig) => void;
   onDisconnect: (connector: ConnectorConfig) => void;
 }) {
-  const { state } = useConnectorStatus(connector);
+  const { state } = useCloudConnectorConnections({
+    kind:
+      connector.authMode === "oauth"
+        ? "oauth"
+        : connector.id === "discord"
+          ? "discord"
+          : "credential",
+    statusPath: connector.statusPath,
+  });
 
   return (
     <NuphyRow
       label={connector.name}
-      description={state.loading ? "Checking status…" : state.error ?? state.statusText}
+      description={
+        state.loading ? "Checking status…" : (state.error ?? state.statusText)
+      }
       control={
         state.loading ? (
           <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
@@ -335,6 +112,10 @@ function ConnectorRow({
           >
             Disconnect
           </DestructiveSecondaryButton>
+        ) : state.error ? (
+          <NuphyButton variant="secondary" size="sm" disabled>
+            Unavailable
+          </NuphyButton>
         ) : (
           <NuphyButton
             variant="secondary"
@@ -365,6 +146,7 @@ function ConnectModal({
   const [error, setError] = useState<string | null>(null);
 
   // Reset form when a new connector opens.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: connector identity intentionally resets the modal form.
   useEffect(() => {
     setFieldValues({});
     setError(null);
@@ -399,20 +181,40 @@ function ConnectModal({
     }
 
     // Token-credential: validate required fields.
-    const missing = connector.fields?.filter(
-      (f) => f.required && !fieldValues[f.key]?.trim(),
-    );
-    if (missing?.length) {
-      setError(`Please fill in: ${missing.map((f) => f.label).join(", ")}.`);
+    const validationError = connector.fields
+      ?.map((field) =>
+        connectorFieldValidationError(field, fieldValues[field.key] ?? ""),
+      )
+      .find((message) => message !== null);
+    if (validationError) {
+      setError(validationError);
       return;
     }
 
     setBusy(true);
     setError(null);
     try {
+      let payload: Record<string, unknown> = Object.fromEntries(
+        Object.entries(fieldValues).map(([key, value]) => [key, value.trim()]),
+      );
+      if (connector.id === "discord") {
+        const dashboard = await api<{ agents?: CloudAgentSummary[] }>(
+          "/api/v1/dashboard",
+        );
+        const characterId = firstCloudAgentId(dashboard.agents);
+        if (!characterId) {
+          setError("Create an agent before connecting Discord.");
+          return;
+        }
+        payload = {
+          ...fieldValues,
+          characterId,
+          metadata: { responseMode: "mention" },
+        };
+      }
       const data = await api<{ success?: boolean; error?: string }>(
         connector.connectPath,
-        { method: "POST", json: fieldValues },
+        { method: "POST", json: payload },
       );
       if (data.success === false) {
         setError(data.error ?? "Connection failed.");
@@ -420,7 +222,9 @@ function ConnectModal({
         onSuccess();
       }
     } catch (err) {
-      setError(apiErrorMessage(err, "Connection failed. Check your credentials."));
+      setError(
+        apiErrorMessage(err, "Connection failed. Check your credentials."),
+      );
     } finally {
       setBusy(false);
     }
@@ -493,8 +297,8 @@ function ConnectModal({
         </div>
       ) : (
         <p className="text-[14px] leading-5 text-muted-foreground">
-          Click <strong>Authorize</strong> to open {connector.name}'s login page.
-          After authorizing, you'll return here automatically.
+          Click <strong>Authorize</strong> to open {connector.name}'s login
+          page. After authorizing, you'll return here automatically.
         </p>
       )}
     </NuphyModal>
@@ -705,9 +509,9 @@ function useMcpServers() {
   const fetchMcps = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await api<{ mcps?: Array<{ id: string; name: string; status?: string }> }>(
-        "/api/v1/mcps",
-      );
+      const data = await api<{
+        mcps?: Array<{ id: string; name: string; status?: string }>;
+      }>("/api/v1/mcps");
       setServers(
         (data.mcps ?? []).map((m) => ({
           id: m.id,
@@ -799,11 +603,18 @@ function CloudDisconnectedEmpty() {
 
 export function ConnectionsSection() {
   const cloudConnected = useAppSelector((s) => s.elizaCloudConnected);
-  const [connectTarget, setConnectTarget] = useState<ConnectorConfig | null>(null);
-  const [disconnectTarget, setDisconnectTarget] = useState<ConnectorConfig | null>(null);
+  const [connectTarget, setConnectTarget] = useState<ConnectorConfig | null>(
+    null,
+  );
+  const [disconnectTarget, setDisconnectTarget] =
+    useState<ConnectorConfig | null>(null);
   const [mcpAddOpen, setMcpAddOpen] = useState(false);
   const [mcpRemoveTarget, setMcpRemoveTarget] = useState<McpEntry | null>(null);
-  const { servers: mcpServers, loading: mcpLoading, refetch: refetchMcps } = useMcpServers();
+  const {
+    servers: mcpServers,
+    loading: mcpLoading,
+    refetch: refetchMcps,
+  } = useMcpServers();
 
   // Disconnect handler — calls the connector's DELETE endpoint.
   const handleDisconnectConfirm = useCallback(async () => {
@@ -811,14 +622,20 @@ export function ConnectionsSection() {
     try {
       if (disconnectTarget.authMode === "oauth") {
         // OAuth: need the connection id. Fetch it first.
-        const data = await api<{ connections?: Array<{ id: string; status?: string }> }>(
-          disconnectTarget.statusPath,
-        );
-        const active = data.connections?.find((c) => c.status === "active");
-        if (active) {
-          await apiFetch(`${disconnectTarget.disconnectPath}/${active.id}`, {
-            method: "DELETE",
-          });
+        const data = await api<{
+          connections?: Array<{ id: string; status?: string }>;
+        }>(disconnectTarget.statusPath);
+        const connection =
+          data.connections?.find(
+            (candidate) => candidate.status === "active",
+          ) ?? data.connections?.[0];
+        if (connection) {
+          await apiFetch(
+            `${disconnectTarget.disconnectPath}/${connection.id}`,
+            {
+              method: "DELETE",
+            },
+          );
         }
       } else if (disconnectTarget.id === "discord") {
         // Discord: delete the first connection.
@@ -844,7 +661,9 @@ export function ConnectionsSection() {
   const handleMcpRemoveConfirm = useCallback(async () => {
     if (!mcpRemoveTarget) return;
     try {
-      await apiFetch(`/api/v1/mcps/${mcpRemoveTarget.id}`, { method: "DELETE" });
+      await apiFetch(`/api/v1/mcps/${mcpRemoveTarget.id}`, {
+        method: "DELETE",
+      });
       void refetchMcps();
     } catch {
       // Transient — refetch will reconcile.

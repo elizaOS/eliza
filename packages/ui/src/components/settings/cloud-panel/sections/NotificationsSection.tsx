@@ -6,11 +6,11 @@
  * only reflect in-session preferences until that lands.
  */
 
-import { Bell, Circle, Volume2 } from "lucide-react";
-import { useCallback, useState } from "react";
-import { useWebPush } from "../../../../state/notifications/useWebPush";
-import { isDesktopPlatform } from "../../../../platform";
+import { Bell } from "lucide-react";
+import { useCallback } from "react";
 import { invokeDesktopBridgeRequest } from "../../../../bridge";
+import { isDesktopPlatform } from "../../../../platform";
+import { useWebPush } from "../../../../state/notifications/useWebPush";
 import {
   NuphyActionButton,
   NuphyRow,
@@ -60,8 +60,9 @@ function describePushState(state: ReturnType<typeof useWebPush>["state"]): {
     default:
       return {
         label: "Unavailable",
-        description:
-          "Only available in the installed app (Add to Home Screen) on supported devices.",
+        description: isDesktopPlatform()
+          ? "Web push is not available in this desktop build. System notifications can still be tested below."
+          : "Install this app on a supported device to enable web push.",
         canToggle: false,
         on: false,
       };
@@ -81,13 +82,6 @@ export function NotificationsSection() {
     },
     [subscribe, unsubscribe],
   );
-
-  // Desktop notification behavior — local-only until the desktop RPC that
-  // persists these preferences is wired up.
-  const [showInMenuBar, setShowInMenuBar] = useState(true);
-  const [playSound, setPlaySound] = useState(true);
-  const [badgeCount, setBadgeCount] = useState(true);
-  const [doNotDisturb, setDoNotDisturb] = useState(false);
 
   const onTestNotification = useCallback(() => {
     if (isDesktopPlatform()) {
@@ -125,52 +119,7 @@ export function NotificationsSection() {
           }
           onCheckedChange={onPushToggle}
         />
-        <NuphyRow
-          label="Status"
-          description={push.label}
-        />
-      </SettingsGroup>
-
-      <SettingsGroup
-        title="Notification Behavior"
-        footer="Control how notifications appear and sound on this device."
-      >
-        <NuphySwitchRow
-          agentId="notifications-show-in-menu-bar"
-          agentLabel="Show notifications in menu bar"
-          icon={Bell}
-          label="Show in menu bar"
-          description="Display incoming notifications in the desktop menu bar."
-          checked={showInMenuBar}
-          onCheckedChange={setShowInMenuBar}
-        />
-        <NuphySwitchRow
-          agentId="notifications-play-sound"
-          agentLabel="Play notification sound"
-          icon={Volume2}
-          label="Play sound"
-          description="Play a sound when a notification arrives."
-          checked={playSound}
-          onCheckedChange={setPlaySound}
-        />
-        <NuphySwitchRow
-          agentId="notifications-badge-count"
-          agentLabel="Show badge count"
-          icon={Circle}
-          label="Badge count"
-          description="Show the unread count as an app badge."
-          checked={badgeCount}
-          onCheckedChange={setBadgeCount}
-        />
-        <NuphySwitchRow
-          agentId="notifications-do-not-disturb"
-          agentLabel="Toggle do not disturb"
-          icon={Bell}
-          label="Do not disturb"
-          description="Silence notifications temporarily."
-          checked={doNotDisturb}
-          onCheckedChange={setDoNotDisturb}
-        />
+        <NuphyRow label="Status" description={push.label} />
       </SettingsGroup>
 
       <SettingsGroup
