@@ -4,6 +4,7 @@
  * This is a persistence seam only: it does not assert that compaction occurred.
  */
 
+import type { ContentReference } from "../../types/content.ts";
 import {
 	COMPACTION_CONTENT_MANIFEST_MAX_BYTES,
 	COMPACTION_CONTENT_MANIFEST_MAX_PENDING_PROCESSES,
@@ -32,6 +33,46 @@ const DEFAULT_MAX_RENDERED_RANGES = 8;
 const DEFAULT_MAX_RENDERED_MODIFIED_FILES = 12;
 const DEFAULT_MAX_RENDERED_PENDING_PROCESSES = 12;
 const DEFAULT_MAX_RENDERED_CHARACTERS = 4096;
+const RESTART_RESOLVABLE_CONTENT_REFERENCE_KINDS = new Set([
+	"document",
+	"memory",
+]);
+const UUID_REFERENCE =
+	/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
+const SAFE_REVISION = /^[A-Za-z0-9._:~-]{1,256}$/u;
+
+/** True only when a fresh runtime can address the native resolver directly. */
+export function isRestartResolvableContentReference(
+	reference: ContentReference,
+): boolean {
+	if (!RESTART_RESOLVABLE_CONTENT_REFERENCE_KINDS.has(reference.kind)) {
+		return false;
+	}
+	const prefix = `${reference.kind}:`;
+	return (
+		reference.ref.startsWith(prefix) &&
+		UUID_REFERENCE.test(reference.ref.slice(prefix.length)) &&
+		(reference.revision === undefined || SAFE_REVISION.test(reference.revision))
+	);
+}
+
+function restartResolvableManifest(value: unknown): CompactionContentManifest {
+	const manifest = validateCompactionContentManifest(value);
+	return validateCompactionContentManifest({
+		...manifest,
+		contentRefs: manifest.contentRefs.filter((entry) => {
+			const revision = entry.revision ?? entry.reference.revision;
+			return (
+				isRestartResolvableContentReference(entry.reference) &&
+				(revision === undefined || SAFE_REVISION.test(revision))
+			);
+		}),
+		// File paths and process outputs do not yet have fresh-runtime native
+		// resolver coordinates. Keep them out of durable summary metadata.
+		modifiedFiles: [],
+		pendingProcesses: [],
+	});
+}
 
 export interface SessionSummaryManifestRenderOptions {
 	maxReferences?: number;
@@ -105,9 +146,7 @@ function validateProgressiveContentEnvelope(
 			: validateRollover(envelope.rollover);
 	return {
 		schemaVersion: SESSION_SUMMARY_PROGRESSIVE_CONTENT_SCHEMA_VERSION,
-		contentManifest: validateCompactionContentManifest(
-			envelope.contentManifest,
-		),
+		contentManifest: restartResolvableManifest(envelope.contentManifest),
 		...(rollover ? { rollover } : {}),
 	};
 }
@@ -507,9 +546,11 @@ export function messageContentManifestCandidates(
 		const value = (message.metadata as Record<string, unknown> | undefined)?.[
 			SESSION_SUMMARY_PROGRESSIVE_CONTENT_METADATA_KEY
 		];
-		return value === undefined
-			? []
-			: [validateProgressiveContentEnvelope(value).contentManifest];
+		if (value === undefined) return [];
+		const candidate = restartResolvableManifest(
+			validateProgressiveContentEnvelope(value).contentManifest,
+		);
+		return candidate.contentRefs.length === 0 ? [] : [candidate];
 	});
 }
 
@@ -529,7 +570,23 @@ function formatReference(
 	reference: CompactionContentEntry["reference"],
 	revision?: string,
 ): string {
-	return `${reference.kind}:${reference.ref}${revision ? `@${revision}` : ""}`;
+	const prefix = `${reference.kind}:`;
+	if (reference.ref.startsWith(prefix)) {
+		const expectedRevision = revision ? ` expectedRevision=${revision}` : "";
+		if (reference.kind === "document") {
+			return `DOCUMENT action=read documentId=${reference.ref.slice(prefix.length)}${expectedRevision}`;
+		}
+		if (reference.kind === "memory") {
+			return `MESSAGE action=read_channel reference=${reference.ref}${expectedRevision}`;
+		}
+		if (reference.kind === "attachment") {
+			return `ATTACHMENT reference=${reference.ref}${expectedRevision}`;
+		}
+	}
+	const canonicalRef = reference.ref.startsWith(`${reference.kind}:`)
+		? reference.ref
+		: `${reference.kind}:${reference.ref}`;
+	return `${canonicalRef}${revision ? `@${revision}` : ""}`;
 }
 
 /** Render only opaque handles and offsets; entry reasons and bodies are omitted. */
@@ -569,6 +626,14 @@ export function renderSessionSummaryContentManifest(
 		DEFAULT_MAX_RENDERED_CHARACTERS,
 		"maxCharacters",
 	);
+	if (
+		manifest.contentRefs.length === 0 &&
+		manifest.modifiedFiles.length === 0 &&
+		manifest.pendingProcesses.length === 0 &&
+		!(envelope.rollover && hasRollover(envelope.rollover))
+	) {
+		return "";
+	}
 	const lines = ["**Recoverable content references (source bodies omitted)**"];
 	for (const entry of manifest.contentRefs.slice(0, maxReferences)) {
 		const ranges = entry.rangesUsed

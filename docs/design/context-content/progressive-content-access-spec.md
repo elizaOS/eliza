@@ -230,9 +230,11 @@ The runtime derives this from the access ledger and actual mutations. It is sche
 The M4 follow-up introduces the versioned strict schema and a deterministic trajectory-derived snapshot across active and archived steps. The subsequent continuity slice stores it in the namespaced `metadata["elizaos:progressiveContent"]` envelope on the inbound dialogue memory before summary evaluation and on the assistant reply. Ordinary session summaries union the envelope without erasing unrelated metadata. Count, range, modified-file, pending-process, and 256 KiB serialized-byte pressure use deterministic rollover with explicit high-water counters; a new revision supersedes obsolete revision-bound ranges.
 
 Persistence is limited to coordinates backed by current restart-capable,
-authorization-enforcing resolvers: document and memory UUIDs and opaque
-attachment coordinates. FILE, email/Gmail, and tool-result references remain
-excluded until their durable resolver and retention contract exists. Manifest
+authorization-enforcing resolvers: document and memory UUIDs. Attachment
+references remain excluded because the current ID-only continuation performs an
+unbounded room scan and is collision-prone; it requires a direct owning-row
+coordinate plus disclosure reauthorization. FILE, email/Gmail, and tool-result
+references remain excluded until their durable resolver and retention contract exists. Manifest
 derivation and persistence are best-effort diagnostics after planner effects:
 their failure must never fail the completed reply or cause effect replay. The
 envelope does not grant access, extend retention, restore removed automatic

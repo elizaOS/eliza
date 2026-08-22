@@ -59,11 +59,13 @@ per-reference range count, modified files, pending processes, and a canonical
 visible; revision changes supersede obsolete revision-bound ranges.
 
 Only restart-resolvable reference shapes are persisted: document and memory
-UUID coordinates and opaque attachment coordinates. FILE path hashes, Gmail's
-in-process lookup coordinates, email references, and generic tool-result
-references are excluded because an opaque token without a durable authorized
-resolver is false continuity. Persisted references still reauthorize when
-resolved. Derivation, adapter rejection, thrown updates, missing rows, and
+UUID coordinates. Attachment IDs are excluded because current continuation
+scans a room and resolves duplicate IDs newest-first; a direct owning-message
+coordinate and disclosure reauthorization are required before it is durable.
+FILE path hashes, Gmail's in-process lookup coordinates, email references, and
+generic tool-result references are excluded because an opaque token without a
+durable authorized resolver is false continuity. Persisted references still
+reauthorize when resolved. Derivation, adapter rejection, thrown updates, missing rows, and
 mismatched readback are reported but cannot turn an already-effectful planner
 turn into a failure and duplicate its effects on retry.
 
@@ -71,7 +73,7 @@ A strict deterministic planning scenario now drives the real production FILE
 action twice. It withholds the planted canary from page one, derives page two's
 offset and expected revision from the first `ReadView`, and permits the final
 answer only after the canary page. Run
-`e2d26e83-2b05-45e5-9ac2-e0597697b9b7` passed in 2.547 seconds on the rebased
+`600fb0e9-4c30-4213-876a-cc3704181d2f` passed in 3.574 seconds on the rebased
 head. This proves
 autonomous continuation control flow under a deterministic fixture, not
 fresh-process FILE recovery or independent semantic answer generation; the
@@ -89,7 +91,7 @@ gates are bounded source reads, page-scaled memory, exact traversal, controlled
 children, and mandatory mutant detection.
 
 The scenario corpus ratchet is now 47 strict/model-free, 74 legacy, and 121
-total. Focused validation includes 33 manifest/summary/message tests, 20 static
+total. Focused validation includes 35 manifest/summary/message tests, 20 static
 scenario/migration tests, the autonomous scenario above, and the benchmark.
 Core typecheck passes on the rebased follow-up. No exact-head root verification
 or hosted CI is claimed until those wider gates complete.
