@@ -303,16 +303,18 @@ export class NotificationService extends Service {
 			this.cacheKey,
 		);
 		if (Array.isArray(stored)) {
-			const now = Date.now();
 			this.notifications = stored
 				.filter((n) => n && typeof n.id === "string" && n.title)
-				.filter((n) => !isExpired(n, now))
 				.slice(-MAX_NOTIFICATIONS);
 		}
 	}
 
 	private async persist(): Promise<void> {
-		await this.runtime.setCache(this.cacheKey, this.notifications);
+		if (!(await this.runtime.setCache(this.cacheKey, this.notifications))) {
+			throw new Error(
+				"[NotificationService] notification cache persistence was rejected",
+			);
+		}
 	}
 
 	private async reconcilePersistFailure(

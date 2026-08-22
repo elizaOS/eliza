@@ -127,6 +127,20 @@ describe("NotificationService", () => {
 		expect(service.listIncludingExpired()).toEqual([]);
 	});
 
+	it("does not broadcast success when durable persistence returns false", async () => {
+		const originalSetCache = runtime.setCache.bind(runtime);
+		runtime.setCache = async () => false;
+		try {
+			await expect(service.notify({ title: "Rejected" })).rejects.toThrow(
+				/persistence was rejected/,
+			);
+		} finally {
+			runtime.setCache = originalSetCache;
+		}
+		expect(emitted).toEqual([]);
+		expect(service.list()).toEqual([]);
+	});
+
 	it("keeps durable success when a live listener throws", async () => {
 		const eventService = runtime.getService(
 			ServiceType.AGENT_EVENT,
@@ -422,9 +436,10 @@ describe("NotificationService", () => {
 		expect(service.getUnreadCount()).toBe(1);
 	});
 
-	it("drops expired notifications on rehydrate", async () => {
-		await service.notify({ title: "Expired", expiresAt: Date.now() - 1000 });
+	it("keeps expired durable rows addressable after rehydrate", async () => {
 		await service.notify({ title: "Alive" });
+		await service.notify({ title: "Expired", expiresAt: Date.now() + 10 });
+		await new Promise((resolve) => setTimeout(resolve, 20));
 		const restarted = (await NotificationService.start(
 			runtime,
 		)) as NotificationService;
@@ -432,6 +447,9 @@ describe("NotificationService", () => {
 		expect(list).toHaveLength(1);
 		expect(list[0].title).toBe("Alive");
 		expect(restarted.getUnreadCount()).toBe(1);
+		expect(
+			restarted.listIncludingExpired().map((entry) => entry.title),
+		).toEqual(["Expired", "Alive"]);
 	});
 
 	it("evicts oldest beyond the retention cap", async () => {

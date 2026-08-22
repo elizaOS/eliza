@@ -39,6 +39,8 @@ const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const SHA256_PATTERN = /^[0-9a-f]{64}$/i;
 const MEMORY_TABLE_PATTERN = /^[a-z][a-z0-9_]{0,62}$/;
+const PROVIDER_STATE_KEY_PATTERN =
+  /^provider:[a-zA-Z0-9._-]+:\{\{namespace\}\}(?::[a-zA-Z0-9._-]+)*$/;
 const MANIFEST_MAX_DEPTH = 32;
 const MANIFEST_MAX_NODES = 20_000;
 const MANIFEST_MAX_CONTAINER_WIDTH = 2_000;
@@ -953,8 +955,11 @@ export function parseProductionManifest(input: unknown): ProductionManifestV1 {
     (entry, path) => {
       assertKeys(entry, ["id", "key", "value"], path);
       const key = requiredString(entry.key, `${path}.key`);
-      if (!key.includes("{{namespace}}")) {
-        fail(`${path}.key`, "must contain the literal {{namespace}} token");
+      if (!PROVIDER_STATE_KEY_PATTERN.test(key)) {
+        fail(
+          `${path}.key`,
+          "must be a provider-owned key of the form provider:<owner>:{{namespace}}[:<segment>]",
+        );
       }
       assertJsonValue(entry.value, `${path}.value`);
       return {
@@ -976,6 +981,17 @@ export function parseProductionManifest(input: unknown): ProductionManifestV1 {
     { path: "manifest.approvals", entries: approvals },
     { path: "manifest.providerState", entries: providerState },
   ]);
+  const providerKeys = new Set<string>();
+  providerState.forEach((entry, index) => {
+    const key = providerStateKey(namespace, entry.key);
+    if (providerKeys.has(key)) {
+      fail(
+        `manifest.providerState[${index}].key`,
+        `duplicates effective provider state key ${key}`,
+      );
+    }
+    providerKeys.add(key);
+  });
   const entityIds = new Set(entities.map((entry) => entry.id));
   const roomIds = new Set(rooms.map((entry) => entry.id));
   const requireEntity = (id: string, path: string) => {
@@ -1484,6 +1500,29 @@ function approvalQueue(runtime: IAgentRuntime): ApprovalQueue {
 
 function providerStateKey(namespace: string, template: string): string {
   return template.replaceAll("{{namespace}}", namespace);
+}
+
+function providerStateEnvelope(
+  namespace: string,
+  generation: UUID,
+  logicalId: string,
+  value: JsonValue,
+): JsonValue {
+  return {
+    scenarioManifest: { namespace, generation, logicalId },
+    value,
+  };
+}
+
+function providerStateEnvelopeMatches(
+  value: unknown,
+  receipt: ProductionManifestReceipt,
+): value is { scenarioManifest: Record<string, unknown>; value: JsonValue } {
+  return (
+    isRecord(value) &&
+    Object.hasOwn(value, "value") &&
+    hasNamespaceMarker(value, receipt.namespace, receipt.generation)
+  );
 }
 
 function scheduleIdempotencyKey(namespace: string, logicalId: string): string {
@@ -2145,7 +2184,15 @@ export async function applyProductionManifest(
       const key = receipt.providerStateKeys[index];
       if (!key)
         throw new Error(`provider state ${entry.id} key was not resolved`);
-      const written = await runtime.setCache(key, entry.value);
+      const written = await runtime.setCache(
+        key,
+        providerStateEnvelope(
+          manifest.namespace,
+          receipt.generation,
+          entry.id,
+          entry.value,
+        ),
+      );
       if (!written)
         throw new Error(`provider state ${entry.id} was not persisted`);
     }
@@ -2162,7 +2209,9 @@ export async function applyProductionManifest(
     await writeResetControl(runtime, receipt, "applied");
     return receipt;
   } catch (cause) {
-    let existingWorlds: Array<{ metadata?: Metadata }>;
+    let existingWorlds: Awaited<
+      ReturnType<typeof runtime.getWorldsByIds>
+    >;
     try {
       existingWorlds = await runtime.getWorldsByIds([receipt.worldId]);
     } catch (fenceCause) {
@@ -2696,10 +2745,17 @@ export async function readProductionManifestSnapshot(
       })
       .sort((a, b) => a.logicalId.localeCompare(b.logicalId)),
     providerState: receipt.providerStateKeys
-      .map((key, index) => ({
-        key,
-        value: stableValue(providerStateRows[index]),
-      }))
+      .map((key, index) => {
+        const row = providerStateRows[index];
+        if (!providerStateEnvelopeMatches(row, receipt)) {
+          throw new ProductionManifestApplyError(
+            `[production-manifest] provider state ${key} lacks namespace provenance`,
+            "SCENARIO_MANIFEST_READBACK_INCOMPLETE",
+            { dirtyReceipt: receipt },
+          );
+        }
+        return { key, value: stableValue(row.value) };
+      })
       .sort((a, b) => a.key.localeCompare(b.key)),
   };
 }
@@ -3165,8 +3221,10 @@ async function assertReceiptTargetsOwned(
         approvalRecord !== undefined && approvalById.has(approvalRecord.id)
       );
     });
-  const providerStateOwned =
-    providerState.length === receipt.providerStateKeys.length;
+  const providerStateOwned = providerState.every(
+    (value) =>
+      value === undefined || providerStateEnvelopeMatches(value, receipt),
+  );
   if (
     !worldOwned ||
     !entitiesOwned ||

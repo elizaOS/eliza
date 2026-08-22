@@ -421,7 +421,7 @@ describe("production manifest persistence", () => {
           { id: "bad-provider", key: "provider:global", value: true },
         ],
       }),
-    ).toThrow(/literal \{\{namespace\}\} token/);
+    ).toThrow(/provider-owned key/);
     expect(() =>
       parseProductionManifest({
         ...valid,
@@ -595,6 +595,57 @@ describe("production manifest persistence", () => {
         stringToUuid(`scenario-manifest:${namespace}:world:${namespace}`),
       ]),
     ).toEqual([]);
+  });
+
+  it("rejects cache-domain escapes and duplicate effective provider keys", () => {
+    const unsafe = manifest("provider-key-safety");
+    unsafe.providerState = [
+      {
+        id: "notification-cache",
+        key: "notifications:{{namespace}}",
+        value: { forged: true },
+      },
+    ];
+    expect(() => parseProductionManifest(unsafe)).toThrow(/provider-owned key/);
+
+    const duplicate = manifest("provider-key-duplicate");
+    duplicate.providerState = [
+      {
+        id: "first",
+        key: "provider:github:{{namespace}}:cursor",
+        value: { cursor: "one" },
+      },
+      {
+        id: "second",
+        key: "provider:github:{{namespace}}:cursor",
+        value: { cursor: "two" },
+      },
+    ];
+    expect(() => parseProductionManifest(duplicate)).toThrow(
+      /duplicates effective provider state key/,
+    );
+  });
+
+  it("does not delete provider state replaced by another owner", async () => {
+    const target = runtime();
+    const input = manifest("provider-state-tamper");
+    input.notifications = [];
+    input.approvals = [];
+    input.schedules = [];
+    const receipt = await applyProductionManifest(target, input);
+    const key = receipt.providerStateKeys[0];
+    if (!key) throw new Error("provider state receipt key is missing");
+    const owned = await target.getCache(key);
+    const foreign = { cursor: "foreign-owner" };
+    await target.setCache(key, foreign);
+
+    await expect(
+      resetProductionManifest(target, receipt),
+    ).rejects.toMatchObject({ code: "SCENARIO_MANIFEST_WRONG_OWNER" });
+    expect(await target.getCache(key)).toEqual(foreign);
+
+    await target.setCache(key, owned);
+    await resetProductionManifest(target, receipt);
   });
 
   it("compensates a schedule committed before its receipt is returned", async () => {
