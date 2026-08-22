@@ -2,24 +2,30 @@
  * MOCKED invalid-url guard (#11856, `pr-deterministic`). A non-meeting URL must
  * NOT start a meeting: JOIN_MEETING's `validate` rejects it (no recognizable
  * Meet/Teams/Zoom link), so the bot never joins and nothing crashes. Asserts the
- * graceful non-join — no session created — and invokes the production action
- * validator and handler directly so no language-model routing is involved.
+ * graceful non-join through the runtime-registered production action validator;
+ * no handler, session, provider call, or language-model routing is allowed.
  */
 
-import type { IAgentRuntime, Memory } from "@elizaos/core";
 import {
   type ScenarioContext,
   scenario,
 } from "@elizaos/scenario-runner/schema";
-import { joinMeetingAction } from "../../src/actions/index.js";
-import { installMockSeed } from "./_meetings-mock.js";
+import {
+  assertMeetingMockLedger,
+  installMockSeed,
+  MEETINGS_MOCK_REQUIRED_PLUGINS,
+} from "./_meetings-mock.js";
 
 const BAD_URL = "https://example.com/notameeting";
 
 async function gracefulInvalidUrl(
   ctx: ScenarioContext,
 ): Promise<string | undefined> {
-  const runtime = ctx.runtime as IAgentRuntime;
+  const runtime = ctx.runtime as {
+    getService(name: string): {
+      listSessions(): Array<{ meetingUrl?: string }>;
+    } | null;
+  };
   const service = runtime.getService("meetings") as {
     listSessions(): Array<{ meetingUrl?: string }>;
   } | null;
@@ -28,38 +34,6 @@ async function gracefulInvalidUrl(
     service.listSessions().some((session) => session.meetingUrl === BAD_URL)
   ) {
     return "a meeting session was created for a non-meeting URL";
-  }
-  if (ctx.actionsCalled.some((a) => a.actionName === "JOIN_MEETING")) {
-    return "JOIN_MEETING was called for a non-meeting URL";
-  }
-
-  // The action must decline the bad URL rather than throw: validate=false, and a
-  // forced handler call returns the typed invalid-url reply (success=false).
-  const message = {
-    id: crypto.randomUUID(),
-    entityId: crypto.randomUUID(),
-    roomId: crypto.randomUUID(),
-    content: { text: `join this: ${BAD_URL}`, source: "chat" },
-  } as unknown as Memory;
-  const valid = await joinMeetingAction.validate(runtime, message);
-  if (valid) return "JOIN_MEETING.validate accepted a non-meeting URL";
-
-  let replyText = "";
-  const result = await joinMeetingAction.handler(
-    runtime,
-    message,
-    undefined,
-    undefined,
-    async (c: { text?: string }) => {
-      if (c.text) replyText += c.text;
-      return [];
-    },
-  );
-  if (result && (result as { success?: boolean }).success === true) {
-    return "JOIN_MEETING handler reported success for a non-meeting URL";
-  }
-  if (!/meeting link|google meet|teams|zoom/i.test(replyText)) {
-    return `expected a typed invalid-url reply, got: ${replyText.slice(0, 160)}`;
   }
   return undefined;
 }
@@ -70,26 +44,46 @@ export default scenario({
   modelFixtures: {
     mode: "model-free",
     reason:
-      "The final check invokes the production action validator and handler directly.",
+      "A direct action turn proves the registered production validator rejects invalid input.",
   },
   title: "Mocked JOIN_MEETING declines a non-meeting URL gracefully",
   domain: "meetings",
   tags: ["mock", "meetings", "join-meeting", "invalid-url"],
   isolation: "per-scenario",
-  requires: { plugins: ["@elizaos/plugin-meetings"] },
+  requires: { plugins: MEETINGS_MOCK_REQUIRED_PLUGINS },
   seed: [installMockSeed()],
   rooms: [{ id: "main", source: "chat", title: "Mock Invalid URL" }],
   turns: [
     {
-      kind: "wait",
-      name: "allow the seeded meeting service to initialize",
-      durationMs: 1,
+      kind: "action",
+      name: "registered JOIN_MEETING rejects a non-meeting URL",
+      room: "main",
+      actionName: "JOIN_MEETING",
+      text: `join this: ${BAD_URL}`,
+      expectedValidation: "rejected",
+      assertTurn(turn) {
+        const validation = turn.actionsCalled.find(
+          (action) => action.actionName === "JOIN_MEETING",
+        );
+        const data = validation?.result?.data as
+          | { phase?: unknown; accepted?: unknown }
+          | undefined;
+        return data?.phase === "validation" && data.accepted === false
+          ? undefined
+          : `expected registered validation rejection, saw ${JSON.stringify(validation ?? null)}`;
+      },
+    },
+    {
+      kind: "action",
+      name: "strict meetings provider ledger matches",
+      actionName: "ASSERT_MEETING_MOCK_LEDGER",
+      assertTurn: assertMeetingMockLedger,
     },
   ],
   finalChecks: [
     {
       type: "custom",
-      name: "no meeting joined; typed invalid-url reply, no crash",
+      name: "no meeting joined after registered validation rejection",
       predicate: gracefulInvalidUrl,
     },
   ],

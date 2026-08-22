@@ -15,7 +15,12 @@ import {
   type ScenarioContext,
   scenario,
 } from "@elizaos/scenario-runner/schema";
-import { installMockSeed } from "./_meetings-mock.js";
+import {
+  assertMeetingMockLedger,
+  installMockSeed,
+  joinedTranscriptIsReady,
+  MEETINGS_MOCK_REQUIRED_PLUGINS,
+} from "./_meetings-mock.js";
 
 const GET_MEETING_TRANSCRIPT = "GET_MEETING_TRANSCRIPT";
 const MEET_URL = "https://meet.google.com/abc-defg-hij";
@@ -137,8 +142,16 @@ export default scenario({
       },
       {
         name: "meetings-transcript-post-turn-evaluator",
-        match: { modelType: "TEXT_SMALL" },
+        match: {
+          modelType: "TEXT_SMALL",
+          input: {
+            pattern:
+              "# Task: Post-turn evaluation[\\s\\S]*Show me the transcript from my last meeting — what was said\\?",
+          },
+          toolNames: [],
+        },
         response: { json: {} },
+        cardinality: 1,
       },
     ],
   },
@@ -149,11 +162,12 @@ export default scenario({
   tags: ["smoke", "meetings", "transcripts"],
   description:
     "Reads a finalized transcript through production meeting and memory paths with scripted capture and strict model fixtures.",
-  requires: { plugins: ["@elizaos/plugin-meetings"] },
+  requires: { plugins: MEETINGS_MOCK_REQUIRED_PLUGINS },
   isolation: "per-scenario",
   seed: [
     installMockSeed({
       "abc-defg-hij": {
+        platform: "google_meet",
         holdUntilLeave: false,
         turns: [
           {
@@ -179,8 +193,9 @@ export default scenario({
     },
     {
       kind: "wait",
-      name: "allow the production finalization path to commit",
-      durationMs: 400,
+      name: "wait for the authoritative transcript row to become ready",
+      timeoutMs: 5_000,
+      until: joinedTranscriptIsReady,
     },
     {
       kind: "message",
@@ -200,6 +215,12 @@ export default scenario({
           ? undefined
           : `${GET_MEETING_TRANSCRIPT} did not succeed: ${call.error?.message ?? call.result?.text ?? "unknown error"}`;
       },
+    },
+    {
+      kind: "action",
+      name: "strict meetings provider ledger matches",
+      actionName: "ASSERT_MEETING_MOCK_LEDGER",
+      assertTurn: assertMeetingMockLedger,
     },
   ],
   finalChecks: [

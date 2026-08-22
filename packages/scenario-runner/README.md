@@ -54,9 +54,10 @@ export default {
 | Kind | What it does |
 |---|---|
 | `message` | Sends text through `runtime.messageService.handleMessage` (full conversational path) |
-| `action` | Calls a named action's `validate` + `handler` directly (bypasses LLM routing) |
+| `action` | Calls a runtime-registered action's `validate` + `handler` directly; `expectedValidation: "rejected"` proves an invalid input is refused without invoking the handler |
 | `api` | Makes an HTTP request to the agent's registered routes via a loopback server |
 | `tick` | Invokes the lifeops scheduler at a logical clock time |
+| `wait` | Waits for `durationMs`, or polls a bounded `until(ctx)` state predicate |
 
 ### Assertions
 
@@ -175,6 +176,6 @@ await cleanup();
 
 ## Notes
 
-- A simulated CLI invocation runs its scenarios in one shared runtime because PGLite cannot be recreated in-process. Scenario seeds run before their declared plugins are registered, allowing stateful mock adapters to be installed before production services capture dependencies. Provider-qualified definitions are restricted to one scenario, preload their declared plugins, and still require an external production controller; the ordinary executor deliberately refuses to qualify them.
+- A simulated CLI invocation runs its scenarios in one shared runtime because PGLite cannot be recreated in-process. All declared plugins are registered before runtime initialization, preserving service availability for existing seeds. A test boundary that must replace a production service dependency declares an explicit companion plugin after the production package so its init hook runs before services start. Provider-qualified definitions are restricted to one scenario and still require an external production controller; the ordinary executor deliberately refuses to qualify them.
 - Schema types (`ScenarioDefinition`, `CapturedAction`, etc.) come from `@elizaos/scenario-runner/schema`, not from the main export.
 - Scenarios starting with `_` or in directories starting with `_` are skipped by the loader.

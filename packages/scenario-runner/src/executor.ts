@@ -1660,6 +1660,7 @@ async function executeActionTurn(
   currentNow: Date,
   turnTimeoutMs: number,
 ): Promise<{
+  actionsCalled?: CapturedAction[];
   responseText: string;
   responseBody: unknown;
   durationMs: number;
@@ -1729,9 +1730,41 @@ async function executeActionTurn(
     timeoutMs,
     `validateAction(${turn.name})`,
   );
+  const expectedValidation = turn.expectedValidation ?? "accepted";
   if (!validated) {
+    if (expectedValidation === "rejected") {
+      const text = `${actionName} validation rejected the input as expected.`;
+      return {
+        actionsCalled: [
+          {
+            actionName,
+            parameters: options,
+            result: {
+              success: false,
+              text,
+              data: {
+                phase: "validation",
+                accepted: false,
+                expected: "rejected",
+              },
+            },
+          },
+        ],
+        responseText: text,
+        responseBody: {
+          actionName,
+          validation: { accepted: false, expected: "rejected" },
+        },
+        durationMs: Date.now() - startedAt,
+      };
+    }
     throw new Error(
       `[executor] action turn '${turn.name}' failed validation for '${actionName}'`,
+    );
+  }
+  if (expectedValidation === "rejected") {
+    throw new Error(
+      `[executor] action turn '${turn.name}' expected validation rejection for '${actionName}', but validation accepted the input`,
     );
   }
   const result = await withTimeout(
@@ -1925,31 +1958,79 @@ async function executeTickTurn(args: {
 async function executeWaitTurn(
   turn: ScenarioTurn,
   turnTimeoutMs: number,
+  runtime: AgentRuntime,
+  ctx: RunnerContext,
 ): Promise<{
   statusCode: number;
   responseBody: unknown;
   responseText: string;
   durationMs: number;
 }> {
-  const durationMs = (turn as { durationMs?: unknown }).durationMs;
+  const durationMs = turn.durationMs;
+  const until = turn.until;
   if (
-    typeof durationMs !== "number" ||
-    !Number.isFinite(durationMs) ||
-    durationMs < 0
+    until === undefined &&
+    (typeof durationMs !== "number" ||
+      !Number.isFinite(durationMs) ||
+      durationMs < 0)
   ) {
     throw new Error(
       `[executor] wait turn '${turn.name}' requires non-negative durationMs`,
     );
   }
+  if (until !== undefined && typeof until !== "function") {
+    throw new Error(
+      `[executor] wait turn '${turn.name}' has a non-callable until predicate`,
+    );
+  }
   const timeoutMs =
     typeof turn.timeoutMs === "number" ? turn.timeoutMs : turnTimeoutMs;
   const startedAt = Date.now();
-  await withTimeout(
-    new Promise((resolve) => setTimeout(resolve, durationMs)),
-    timeoutMs,
-    `wait(${turn.name})`,
-  );
-  const responseBody = { success: true, durationMs };
+  if (until) {
+    const pollIntervalMs = turn.pollIntervalMs ?? 25;
+    if (!Number.isFinite(pollIntervalMs) || pollIntervalMs <= 0) {
+      throw new Error(
+        `[executor] wait turn '${turn.name}' requires a positive pollIntervalMs`,
+      );
+    }
+    const deadline = startedAt + timeoutMs;
+    while (true) {
+      const predicateBudgetMs = deadline - Date.now();
+      if (predicateBudgetMs <= 0) {
+        throw new Error(
+          `waitUntil(${turn.name}) timed out after ${timeoutMs}ms`,
+        );
+      }
+      if (
+        await withTimeout(
+          Promise.resolve(until({ ...ctx, runtime })),
+          predicateBudgetMs,
+          `waitUntil(${turn.name})`,
+        )
+      ) {
+        break;
+      }
+      const sleepBudgetMs = deadline - Date.now();
+      if (sleepBudgetMs <= 0) {
+        throw new Error(
+          `waitUntil(${turn.name}) timed out after ${timeoutMs}ms`,
+        );
+      }
+      await new Promise<void>((resolve) =>
+        setTimeout(resolve, Math.min(pollIntervalMs, sleepBudgetMs)),
+      );
+    }
+  } else {
+    await withTimeout(
+      new Promise((resolve) => setTimeout(resolve, durationMs)),
+      timeoutMs,
+      `wait(${turn.name})`,
+    );
+  }
+  const responseBody = {
+    success: true,
+    ...(until ? { condition: "satisfied" } : { durationMs }),
+  };
   return {
     statusCode: 200,
     responseBody,
@@ -2544,6 +2625,8 @@ export async function runScenario(
                       ...(await executeWaitTurn(
                         turn,
                         opts.turnTimeoutMs || DEFAULT_TURN_TIMEOUT_MS,
+                        runtime,
+                        ctx,
                       )),
                     }
                   : {
@@ -2558,7 +2641,14 @@ export async function runScenario(
                         ctx.runId,
                       )),
                     };
-      let actionsThisTurn = interceptor.actions.slice(actionsBefore);
+      const validationActions = execution.actionsCalled;
+      let actionsThisTurn = [
+        ...validationActions,
+        ...interceptor.actions.slice(actionsBefore),
+      ];
+      if (validationActions.length > 0) {
+        interceptor.actions.push(...validationActions);
+      }
       // Synthesize an implicit REPLY capture when the runtime emitted text
       // via the message callback but the LLM failed to select REPLY in its
       // structured response. This happens regularly

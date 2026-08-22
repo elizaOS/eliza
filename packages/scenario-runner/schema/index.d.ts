@@ -261,6 +261,12 @@ export type ScenarioTurn = {
   content?: Record<string, unknown>;
   /** For `action` turns, the registered action to invoke directly. */
   actionName?: string;
+  /**
+   * Expected result of the registered action's validation phase. Defaults to
+   * `"accepted"`. Use `"rejected"` to prove invalid input is refused through
+   * the runtime action registry without calling the handler.
+   */
+  expectedValidation?: "accepted" | "rejected";
   /** For multi-room scenarios, the `rooms[].id` this turn is sent to. */
   room?: string;
   method?: string;
@@ -278,6 +284,13 @@ export type ScenarioTurn = {
   redactResponseFields?: string[];
   expectedStatus?: number;
   durationMs?: number;
+  /**
+   * For `wait` turns, a bounded state predicate. The executor evaluates it
+   * immediately and then until it returns true or the turn timeout expires.
+   */
+  until?: (ctx: ScenarioContext) => boolean | Promise<boolean>;
+  /** Poll interval for a state-backed `wait` turn. Defaults to 25 ms. */
+  pollIntervalMs?: number;
   /** Per-turn override of the executor's turn timeout (ms). */
   timeoutMs?: number;
   worker?: string;

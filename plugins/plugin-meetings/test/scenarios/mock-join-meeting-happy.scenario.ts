@@ -16,7 +16,13 @@ import {
   type ScenarioContext,
   scenario,
 } from "@elizaos/scenario-runner/schema";
-import { installMockSeed } from "./_meetings-mock.js";
+import {
+  assertMeetingMockLedger,
+  defaultMockMeetingScript,
+  installMockSeed,
+  joinedTranscriptIsReady,
+  MEETINGS_MOCK_REQUIRED_PLUGINS,
+} from "./_meetings-mock.js";
 
 const MEET_URL = "https://meet.google.com/abc-defg-hij";
 
@@ -70,8 +76,12 @@ export default scenario({
   domain: "meetings",
   tags: ["mock", "meetings", "join-meeting", "transcript"],
   isolation: "per-scenario",
-  requires: { plugins: ["@elizaos/plugin-meetings"] },
-  seed: [installMockSeed()],
+  requires: { plugins: MEETINGS_MOCK_REQUIRED_PLUGINS },
+  seed: [
+    installMockSeed({
+      "abc-defg-hij": defaultMockMeetingScript("google_meet"),
+    }),
+  ],
   rooms: [{ id: "main", source: "chat", title: "Mock Meeting Join" }],
   turns: [
     {
@@ -88,8 +98,9 @@ export default scenario({
     },
     {
       kind: "wait",
-      name: "let the mock meeting finalize its transcript",
-      durationMs: 400,
+      name: "wait for the authoritative transcript row to become ready",
+      timeoutMs: 5_000,
+      until: joinedTranscriptIsReady,
     },
     {
       kind: "action",
@@ -102,6 +113,12 @@ export default scenario({
           return `expected the scripted transcript text, got: ${text.slice(0, 200)}`;
         }
       },
+    },
+    {
+      kind: "action",
+      name: "strict meetings provider ledger matches",
+      actionName: "ASSERT_MEETING_MOCK_LEDGER",
+      assertTurn: assertMeetingMockLedger,
     },
   ],
   finalChecks: [

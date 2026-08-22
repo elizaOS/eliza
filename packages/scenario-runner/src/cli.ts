@@ -714,11 +714,7 @@ export async function runCli(
   const runtimeResult = await createScenarioRuntime({
     executionProfile,
     preferredProvider: parsed.provider,
-    // Simulated scenarios load their declared plugins after custom seeds run.
-    // This preserves dependency-injection seeds while provider-qualified runs
-    // still require the complete production plugin set before initialization.
-    requiredPlugins:
-      executionProfile === "provider-qualified" ? requiredPlugins : [],
+    requiredPlugins,
   });
   const { runtime, providerName, cleanup } = runtimeResult;
   if (runtimeResult.executionProfile !== executionProfile) {
