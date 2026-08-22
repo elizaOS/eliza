@@ -42,7 +42,7 @@ import type {
   IAgentRuntime,
   Memory,
 } from "@elizaos/core";
-import { logger } from "@elizaos/core";
+import { logger, toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import {
   createManager,
   getAutofillAllowed,
@@ -175,7 +175,10 @@ function narrowSnippetResult(raw: unknown): {
   let fillReason: string | null = null;
   const reasonVal = "reason" in obj ? obj.reason : undefined;
   if (typeof reasonVal === "string") {
-    fillReason = reasonVal.slice(0, MAX_FILL_REASON_CHARS);
+    fillReason = truncateWellFormed(
+      toWellFormedUnicode(reasonVal),
+      MAX_FILL_REASON_CHARS,
+    );
   }
   return { filled, fillReason };
 }

@@ -38,6 +38,7 @@ import {
 	type Socket as NodeSocket,
 } from "node:net";
 import process from "node:process";
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 
 // ── Step 1: set Android env vars before any elizaOS module import ──────────
 
@@ -393,7 +394,7 @@ export async function runAndroidBridgeCli(): Promise<void> {
 		_logToFile(`[android-bridge] unhandledRejection: ${msg}`);
 		_appendDiagnostics("agent-fatal", {
 			kind: "unhandledRejection",
-			message: msg.slice(0, 2000),
+			message: truncateWellFormed(toWellFormedUnicode(msg), 2000),
 		});
 		console.error("[android-bridge] unhandled rejection:", msg);
 	});
@@ -403,7 +404,10 @@ export async function runAndroidBridgeCli(): Promise<void> {
 		);
 		_appendDiagnostics("agent-fatal", {
 			kind: "uncaughtException",
-			message: (error.stack || error.message).slice(0, 2000),
+			message: truncateWellFormed(
+				toWellFormedUnicode(error.stack || error.message),
+				2000,
+			),
 		});
 		console.error(
 			"[android-bridge] uncaught exception:",
@@ -455,7 +459,7 @@ export async function runAndroidBridgeCli(): Promise<void> {
 		_logToFile(`[android-bridge] startEliza THREW: ${msg}`);
 		_appendDiagnostics("agent-fatal", {
 			kind: "startEliza-threw",
-			message: msg.slice(0, 2000),
+			message: truncateWellFormed(toWellFormedUnicode(msg), 2000),
 		});
 		throw err;
 	} finally {

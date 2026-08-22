@@ -45,6 +45,8 @@ import {
 	createUniqueUuid,
 	hasRoleAccess,
 	type IAgentRuntime,
+	toWellFormedUnicode,
+	truncateWellFormed,
 } from "@elizaos/core";
 import {
 	type ConnectorCommand,
@@ -422,7 +424,10 @@ function mapOption(
 ): SlashCommandOption {
 	const choices =
 		option.choices.length > 0 && option.choices.length <= 25
-			? option.choices.map((value) => ({ name: value.slice(0, 100), value }))
+			? option.choices.map((value) => ({
+					name: truncateWellFormed(toWellFormedUnicode(value), 100),
+					value,
+				}))
 			: undefined;
 	return {
 		name: option.name,
