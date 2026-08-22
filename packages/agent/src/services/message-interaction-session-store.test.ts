@@ -831,6 +831,42 @@ describe("FileMessageInteractionSessionStore", () => {
     });
   });
 
+  it("marks stale-recovery cleanup failure as uncommitted and retryable after recovery", async () => {
+    const stateDirectory = await temporaryDirectory();
+    const now = Date.parse("2026-08-21T00:00:00.000Z");
+    const lockPath = path.join(
+      stateDirectory,
+      "message-interaction-sessions.v1.json.lock",
+    );
+    await writeLock(lockPath, {
+      pid: 2_000_000_000,
+      processIdentity: null,
+      token: "dead-owner-before-operation",
+      createdAt: now - 10_000,
+      expiresAt: now - 1,
+    });
+    const store = new FileMessageInteractionSessionStore({
+      stateDirectory,
+      clock: () => now,
+      lockRaceHooks: {
+        beforeTransitionMarkerCleanup: async () => {
+          throw new Error("simulated recovery cleanup failure");
+        },
+      },
+    });
+    await expect(store.deleteExpired(now)).rejects.toMatchObject({
+      code: "INTERACTION_STORE_RECOVERY_CLEANUP_FAILED",
+      context: { committed: false, retrySafeAfterRecovery: true },
+    });
+    await expect(fs.lstat(lockPath)).rejects.toMatchObject({ code: "ENOENT" });
+    expect(await fs.lstat(`${lockPath}.transition`)).toBeDefined();
+    await expect(
+      fs.lstat(
+        path.join(stateDirectory, "message-interaction-sessions.v1.json"),
+      ),
+    ).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
   it("reports a committed mutation whose transition cleanup fails", async () => {
     const stateDirectory = await temporaryDirectory();
     const { created, now } = await seed(stateDirectory, { retentionMs: 0 });
@@ -855,9 +891,10 @@ describe("FileMessageInteractionSessionStore", () => {
     await expect(
       failing.deleteExpired(Date.parse(created.session.expiresAt)),
     ).rejects.toMatchObject({
-      code: "INTERACTION_STORE_TRANSITION_CLEANUP_FAILED",
+      code: "INTERACTION_STORE_COMMITTED_CLEANUP_FAILED",
       message:
         "Interaction transaction committed but transition cleanup failed; stop all store users before recovery.",
+      context: { committed: true, retrySafeAfterRecovery: false },
     });
     await expect(fs.lstat(lockPath)).rejects.toMatchObject({ code: "ENOENT" });
     expect(await fs.lstat(`${lockPath}.transition`)).toBeDefined();

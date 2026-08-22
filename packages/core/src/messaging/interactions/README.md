@@ -127,6 +127,9 @@ abandoned transition marker reports `INTERACTION_STORE_RECOVERY_REQUIRED` and
 requires operator recovery after stopping every store user and verifying that
 no host process owns the store; it is never reclaimed through a racy pathname
 unlink and has no bounded automatic recovery.
+Cleanup failures distinguish pre-operation recovery (`committed: false`) from
+post-commit release (`committed: true`) with separate error codes so a caller
+never retries an already committed mutation.
 Multi-host deployments must implement the
 same store interface with a transactional database and idempotent effect/outbox
 boundary; the JSON store does not claim distributed exactly-once semantics.
