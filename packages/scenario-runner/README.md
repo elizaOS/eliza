@@ -145,6 +145,15 @@ enter a model path may instead declare
 `modelFixtures: { mode: "model-free", reason: "..." }`; message, voice, tick,
 or judge work makes that declaration invalid.
 
+Before final fixture validation, the executor waits a bounded interval for
+tracked post-delivery work and requests cancellation through each task's
+`AbortSignal`. A task that ignores cancellation leaves its runtime quarantined:
+the attempt fails and every later scenario is refused before its fixture scope
+or world can start. JavaScript cannot terminate arbitrary code that ignores an
+abort signal, so subprocess/generation isolation must end that container before
+the runtime can be replaced; quarantine is containment, not a claim that the
+task was killed.
+
 The rollout is staged: undeclared scenarios temporarily retain the legacy
 resolver and reports mark them `legacy-fallback`; declared attempts report
 `strict-fixtures` or `model-free`. The migration ratchet currently records 40

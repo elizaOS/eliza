@@ -12,7 +12,10 @@ import type {
   RouteRequest,
   RouteResponse,
 } from "@elizaos/core";
-import { trackPostDeliveryTask } from "@elizaos/core";
+import {
+  pendingPostDeliveryTaskCount,
+  trackPostDeliveryTask,
+} from "@elizaos/core";
 import {
   createDeterministicModelFixtureRegistry,
   type DeterministicModelFixtureRegistry,
@@ -116,6 +119,160 @@ describe("scenario executor wait turns", () => {
     expect(JSON.stringify(report.modelFixtureDiagnostics)).not.toContain(
       "private rendered prompt",
     );
+  });
+
+  it("bounds a never-settling tracked model task and refuses runtime reuse", async () => {
+    const registry = createDeterministicModelFixtureRegistry();
+    const runtime = {
+      ...createRuntime([]),
+      scenarioModelFixtures: registry,
+      assertScenarioModelFixturesConsumed: () => registry.assertConsumed(),
+      getScenarioModelFixtureDiagnostics: () => registry.diagnostics(),
+    } as unknown as AgentRuntime & {
+      scenarioModelFixtures: DeterministicModelFixtureRegistry;
+    };
+
+    let releaseBlockedProvider!: () => void;
+    let blockedProviderTask!: Promise<void>;
+    const startedAt = Date.now();
+    const first = await runScenario(
+      {
+        id: "strict-never-settling-model-task",
+        title: "Never-settling tracked model task",
+        domain: "executor",
+        modelFixtures: {
+          mode: "model-free",
+          reason: "The regression directly controls tracked work.",
+        },
+        turns: [
+          {
+            kind: "wait",
+            name: "provider remains pending",
+            durationMs: 0,
+            assertTurn() {
+              blockedProviderTask = trackPostDeliveryTask(
+                runtime,
+                "never-settling-model-provider",
+                async () =>
+                  new Promise<void>((resolve) => {
+                    releaseBlockedProvider = resolve;
+                  }),
+                { kind: "diagnostic" },
+              );
+            },
+          },
+        ],
+      },
+      runtime,
+      {
+        minJudgeScore: 0.8,
+        providerName: "deterministic-fixture-model",
+        turnTimeoutMs: 1_000,
+        postDeliveryTimeoutMs: 20,
+      },
+    );
+
+    expect(Date.now() - startedAt).toBeLessThan(500);
+    expect(first.status).toBe("failed");
+    expect(first.failedAssertions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          label: "postDeliveryTasks",
+          detail: expect.stringContaining("runtime quarantined"),
+        }),
+      ]),
+    );
+    expect(first.modelFixtureDiagnostics?.scope?.scenarioId).toBe(
+      "strict-never-settling-model-task",
+    );
+    expect(pendingPostDeliveryTaskCount(runtime)).toBe(1);
+
+    let secondScenarioExecuted = false;
+    const second = await runScenario(
+      {
+        id: "strict-after-quarantine",
+        title: "Runtime reuse is refused",
+        domain: "executor",
+        modelFixtures: {
+          mode: "model-free",
+          reason: "The quarantined runtime must fail before any turn executes.",
+        },
+        turns: [
+          {
+            kind: "wait",
+            name: "must not execute",
+            durationMs: 0,
+            assertTurn() {
+              secondScenarioExecuted = true;
+            },
+          },
+        ],
+      },
+      runtime,
+      {
+        minJudgeScore: 0.8,
+        providerName: "deterministic-fixture-model",
+        turnTimeoutMs: 1_000,
+      },
+    );
+
+    expect(second.status).toBe("failed");
+    expect(second.failedAssertions).toEqual([
+      expect.objectContaining({ label: "runtimeIsolation" }),
+    ]);
+    expect(secondScenarioExecuted).toBe(false);
+    expect(registry.diagnostics().scope?.scenarioId).toBe(
+      "strict-never-settling-model-task",
+    );
+    releaseBlockedProvider();
+    await blockedProviderTask;
+    expect(pendingPostDeliveryTaskCount(runtime)).toBe(0);
+  });
+
+  it("rejects an invalid post-delivery deadline before executing the scenario", async () => {
+    const runtime = createRuntime([]);
+    let executed = false;
+    const scenario = {
+      id: "invalid-post-delivery-timeout",
+      title: "Invalid post-delivery timeout",
+      domain: "executor",
+      modelFixtures: {
+        mode: "model-free" as const,
+        reason: "The option preflight must run before this direct wait turn.",
+      },
+      turns: [
+        {
+          kind: "wait" as const,
+          name: "must not execute",
+          durationMs: 0,
+          assertTurn() {
+            executed = true;
+          },
+        },
+      ],
+    };
+
+    const invalid = await runScenario(scenario, runtime, {
+      minJudgeScore: 0.8,
+      providerName: "deterministic-fixture-model",
+      turnTimeoutMs: 1_000,
+      postDeliveryTimeoutMs: 0,
+    });
+
+    expect(invalid.status).toBe("failed");
+    expect(invalid.failedAssertions).toEqual([
+      expect.objectContaining({ label: "executorOptions" }),
+    ]);
+    expect(executed).toBe(false);
+
+    const valid = await runScenario(scenario, runtime, {
+      minJudgeScore: 0.8,
+      providerName: "deterministic-fixture-model",
+      turnTimeoutMs: 1_000,
+      postDeliveryTimeoutMs: 20,
+    });
+    expect(valid.status).toBe("passed");
+    expect(executed).toBe(true);
   });
 
   it("waits for the requested duration without sending a message", async () => {

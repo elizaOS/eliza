@@ -10,6 +10,7 @@ import {
 	drainRoomPostDeliveryTasks,
 	pendingPostDeliveryTaskCount,
 	pendingRoomPostDeliveryTaskCount,
+	postDeliveryTaskQuarantineReason,
 	trackPostDeliveryTask,
 } from "./post-delivery-task-tracker.ts";
 
@@ -54,6 +55,57 @@ describe("post-delivery task tracker", () => {
 			expect.objectContaining({ message: "post-turn failed" }),
 			expect.objectContaining({ label: "broken" }),
 		);
+		expect(pendingPostDeliveryTaskCount(runtime)).toBe(0);
+	});
+
+	it("cancels cooperative work and quarantines uncooperative work", async () => {
+		const runtime = runtimeStub();
+		let cooperativeAborted = false;
+		let releaseUncooperative!: () => void;
+		trackPostDeliveryTask(runtime, "cooperative", async (signal) => {
+			await new Promise<void>((_resolve, reject) => {
+				signal.addEventListener(
+					"abort",
+					() => {
+						cooperativeAborted = true;
+						reject(signal.reason);
+					},
+					{ once: true },
+				);
+			});
+		});
+		const uncooperative = trackPostDeliveryTask(
+			runtime,
+			"uncooperative",
+			async () => {
+				await new Promise<void>((resolve) => {
+					releaseUncooperative = resolve;
+				});
+			},
+		);
+		const controller = new AbortController();
+		const draining = drainPostDeliveryTasks(runtime, {
+			signal: controller.signal,
+		});
+		await Promise.resolve();
+		controller.abort(new Error("test deadline"));
+
+		await expect(draining).rejects.toMatchObject({
+			code: "POST_DELIVERY_DRAIN_CANCELLED",
+		});
+		expect(cooperativeAborted).toBe(true);
+		expect(postDeliveryTaskQuarantineReason(runtime)).toBe("test deadline");
+		expect(pendingPostDeliveryTaskCount(runtime)).toBe(1);
+		await expect(drainPostDeliveryTasks(runtime)).rejects.toMatchObject({
+			code: "POST_DELIVERY_DRAIN_CANCELLED",
+		});
+		expect(() =>
+			trackPostDeliveryTask(runtime, "late", async () => undefined),
+		).toThrowError(
+			expect.objectContaining({ code: "POST_DELIVERY_RUNTIME_QUARANTINED" }),
+		);
+		releaseUncooperative();
+		await uncooperative;
 		expect(pendingPostDeliveryTaskCount(runtime)).toBe(0);
 	});
 
