@@ -66,6 +66,7 @@ import { safeFetch } from "../security/safe-fetch";
 import { logger } from "../utils/logger";
 import { isValidUUID } from "../utils/validation";
 import { OperationTimeoutError, withTimeout } from "../utils/with-timeout";
+import { AccountLifecycleFencedError } from "./account-lifecycle-authority";
 import {
   ADMIN_CANARY_MAX_RUNNING_JOBS,
   ADMIN_CANARY_MAX_TARGETS,
@@ -105,6 +106,7 @@ import {
   SNAPSHOT_ENDPOINT_UNSUPPORTED,
 } from "./eliza-sandbox";
 import { finalizeJobErrorText, jobErrorSummary, jobErrorText } from "./job-error-text";
+import { prepareProvisioningWithAccountLifecycleFence } from "./provisioning-account-lifecycle-fence";
 import {
   AGENT_JOB_TYPES,
   COLD_BOOT_JOB_TYPES,
@@ -1383,6 +1385,19 @@ const ADMIN_CANARY_CONFLICTING_JOB_TYPES: ProvisioningJobType[] = [
 const SHARED_IMAGE_CHANGE_JOB_TYPES: ProvisioningJobType[] = [
   JOB_TYPES.AGENT_UPGRADE,
   JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE,
+];
+
+const ACCOUNT_LIFECYCLE_FENCED_AGENT_JOB_TYPES: readonly ProvisioningJobType[] = [
+  JOB_TYPES.AGENT_PROVISION,
+  JOB_TYPES.AGENT_RESUME,
+  JOB_TYPES.AGENT_WAKE,
+  JOB_TYPES.AGENT_RESTART,
+  JOB_TYPES.AGENT_UPGRADE,
+  JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE,
+  JOB_TYPES.AGENT_DOWNGRADE,
+  JOB_TYPES.AGENT_LOGS,
+  JOB_TYPES.AGENT_MESSAGE,
+  JOB_TYPES.AGENT_SNAPSHOT,
 ];
 
 /**
@@ -4398,25 +4413,27 @@ export class ProvisioningJobService {
       throw new Error(`Claimed lifecycle job ${job.id} has no execution generation`);
     }
     await this.assertExecutionMutationLease(job);
-    await dbWrite.transaction(async (tx) => {
-      await configureElizaLifecycleTransaction(tx);
-      // PGlite's TCP bridge does not release transaction-scoped advisory locks
-      // reliably at commit. Local Docker still has the exact job-generation,
-      // lease, conflict, and sandbox-row fences below; remote providers retain
-      // the cross-process PostgreSQL advisory lock.
-      if (!usesLocalDockerSandboxProvider()) {
-        await tx.execute(elizaProvisionAdvisoryLockSql(identity.organizationId, identity.agentId));
-      }
-      const [currentJob] = await tx
-        .select({ id: jobs.id })
-        .from(jobs)
-        .where(
-          and(
-            eq(jobs.id, job.id),
-            eq(jobs.status, "in_progress"),
-            sql`${jobs.execution_generation} IS NOT DISTINCT FROM ${job.execution_generation}`,
-            isNull(jobs.execution_quiesced_at),
-            sql`EXISTS (
+    const prepare = async (): Promise<void> => {
+      await dbWrite.transaction(async (tx) => {
+        await configureElizaLifecycleTransaction(tx);
+        // PGlite's TCP bridge does not release transaction-scoped advisory
+        // locks reliably at commit. Local Docker retains the exact job,
+        // generation, lease, conflict, and sandbox-row fences below.
+        if (!usesLocalDockerSandboxProvider()) {
+          await tx.execute(
+            elizaProvisionAdvisoryLockSql(identity.organizationId, identity.agentId),
+          );
+        }
+        const [currentJob] = await tx
+          .select({ id: jobs.id })
+          .from(jobs)
+          .where(
+            and(
+              eq(jobs.id, job.id),
+              eq(jobs.status, "in_progress"),
+              sql`${jobs.execution_generation} IS NOT DISTINCT FROM ${job.execution_generation}`,
+              isNull(jobs.execution_quiesced_at),
+              sql`EXISTS (
               SELECT 1
               FROM ${jobExecutionLeases}
               WHERE ${jobExecutionLeases.job_id} = ${job.id}
@@ -4424,118 +4441,20 @@ export class ProvisioningJobService {
                 AND ${jobExecutionLeases.owner_id} = ${this.executionOwnerId}
                 AND ${jobExecutionLeases.expires_at} > NOW()
             )`,
-          ),
-        )
-        .limit(1);
-      if (!currentJob) {
-        throw new Error(`Lifecycle execution generation is no longer current: ${job.id}`);
-      }
-
-      const [sandboxAuthority] = await tx
-        .select({
-          executionTier: agentSandboxes.execution_tier,
-          pool_status: agentSandboxes.pool_status,
-          deleted_at: agentSandboxes.deleted_at,
-          deletion_attempt_id: agentSandboxes.deletion_attempt_id,
-        })
-        .from(agentSandboxes)
-        .where(
-          and(
-            eq(agentSandboxes.id, identity.agentId),
-            eq(agentSandboxes.organization_id, identity.organizationId),
-          ),
-        )
-        .for("update")
-        .limit(1);
-      if (
-        requiresContainerBackedTarget(job.type) &&
-        (!sandboxAuthority || !isContainerBackedExecutionTier(sandboxAuthority.executionTier))
-      ) {
-        throw new RejectedAgentExecutionError(
-          `${CONTAINER_BACKED_TARGET_REQUIRED_MESSAGE}: ${job.type}`,
-          {
-            jobId: job.id,
-            jobType: job.type,
-            columnAgentId: job.agent_id,
-            columnOrganizationId: job.organization_id,
-            payloadAgentId: identity.agentId,
-            payloadOrganizationId: identity.organizationId,
-            executionTier: sandboxAuthority?.executionTier ?? "missing",
-          },
-        );
-      }
-
-      if (job.type === JOB_TYPES.AGENT_SNAPSHOT && sandboxAuthority) {
-        const rejection = snapshotAuthorityRejection(sandboxAuthority);
-        if (rejection) {
-          throw new RejectedAgentExecutionError(rejection, {
-            jobId: job.id,
-            jobType: job.type,
-            columnAgentId: job.agent_id,
-            columnOrganizationId: job.organization_id,
-            payloadAgentId: identity.agentId,
-            payloadOrganizationId: identity.organizationId,
-            executionTier: sandboxAuthority.executionTier,
-          });
-        }
-      }
-
-      if (!EXCLUSIVE_AGENT_LIFECYCLE_JOB_TYPES.includes(job.type as ProvisioningJobType)) return;
-
-      const [conflict] = await tx
-        .select({ id: jobs.id, type: jobs.type, status: jobs.status })
-        .from(jobs)
-        .where(
-          and(
-            eq(jobs.organization_id, job.organization_id),
-            eq(jobs.agent_id, identity.agentId),
-            inArray(jobs.type, EXCLUSIVE_AGENT_LIFECYCLE_JOB_TYPES),
-            ne(jobs.id, job.id),
-            sql`${jobs.status} IN ('pending', 'in_progress')`,
-            // A manual suspend may be a durable follow-up to an already claimed
-            // billing suspend. Both executions serialize on the sandbox row in
-            // executeSuspend; treating them as a conflict would strand the
-            // unconditional follow-up behind the stale hydrated billing job.
-            or(ne(jobs.type, job.type), ne(jobs.type, JOB_TYPES.AGENT_SUSPEND)),
-          ),
-        )
-        .orderBy(desc(jobs.created_at))
-        .limit(1);
-      if (conflict) {
-        throw new ApiError(
-          409,
-          "session_not_ready",
-          `Agent ${job.agent_id} has conflicting ${conflict.type} job ${conflict.id}`,
-          {
-            conflictingJobId: conflict.id,
-            conflictingJobType: conflict.type,
-            conflictingJobStatus: conflict.status,
-          },
-        );
-      }
-      const [claimedSandbox] = await tx
-        .update(agentSandboxes)
-        .set({
-          lifecycle_job_id: job.id,
-          lifecycle_execution_generation: job.execution_generation,
-        })
-        .where(
-          and(
-            eq(agentSandboxes.id, identity.agentId),
-            eq(agentSandboxes.organization_id, identity.organizationId),
-            or(
-              isNull(agentSandboxes.lifecycle_execution_generation),
-              and(
-                eq(agentSandboxes.lifecycle_job_id, job.id),
-                sql`${agentSandboxes.lifecycle_execution_generation} IS NOT DISTINCT FROM ${job.execution_generation}`,
-              ),
             ),
-          ),
-        )
-        .returning({ id: agentSandboxes.id });
-      if (!claimedSandbox) {
-        const [existingSandbox] = await tx
-          .select({ id: agentSandboxes.id })
+          )
+          .limit(1);
+        if (!currentJob) {
+          throw new Error(`Lifecycle execution generation is no longer current: ${job.id}`);
+        }
+
+        const [sandboxAuthority] = await tx
+          .select({
+            executionTier: agentSandboxes.execution_tier,
+            pool_status: agentSandboxes.pool_status,
+            deleted_at: agentSandboxes.deleted_at,
+            deletion_attempt_id: agentSandboxes.deletion_attempt_id,
+          })
           .from(agentSandboxes)
           .where(
             and(
@@ -4543,12 +4462,131 @@ export class ProvisioningJobService {
               eq(agentSandboxes.organization_id, identity.organizationId),
             ),
           )
+          .for("update")
           .limit(1);
-        if (existingSandbox) {
-          throw new Error(`Agent lifecycle resource generation is already owned: ${job.agent_id}`);
+        if (
+          requiresContainerBackedTarget(job.type) &&
+          (!sandboxAuthority || !isContainerBackedExecutionTier(sandboxAuthority.executionTier))
+        ) {
+          throw new RejectedAgentExecutionError(
+            `${CONTAINER_BACKED_TARGET_REQUIRED_MESSAGE}: ${job.type}`,
+            {
+              jobId: job.id,
+              jobType: job.type,
+              columnAgentId: job.agent_id,
+              columnOrganizationId: job.organization_id,
+              payloadAgentId: identity.agentId,
+              payloadOrganizationId: identity.organizationId,
+              executionTier: sandboxAuthority?.executionTier ?? "missing",
+            },
+          );
         }
-      }
-    });
+
+        if (job.type === JOB_TYPES.AGENT_SNAPSHOT && sandboxAuthority) {
+          const rejection = snapshotAuthorityRejection(sandboxAuthority);
+          if (rejection) {
+            throw new RejectedAgentExecutionError(rejection, {
+              jobId: job.id,
+              jobType: job.type,
+              columnAgentId: job.agent_id,
+              columnOrganizationId: job.organization_id,
+              payloadAgentId: identity.agentId,
+              payloadOrganizationId: identity.organizationId,
+              executionTier: sandboxAuthority.executionTier,
+            });
+          }
+        }
+
+        if (!EXCLUSIVE_AGENT_LIFECYCLE_JOB_TYPES.includes(job.type as ProvisioningJobType)) return;
+
+        const [conflict] = await tx
+          .select({ id: jobs.id, type: jobs.type, status: jobs.status })
+          .from(jobs)
+          .where(
+            and(
+              eq(jobs.organization_id, job.organization_id),
+              eq(jobs.agent_id, identity.agentId),
+              inArray(jobs.type, EXCLUSIVE_AGENT_LIFECYCLE_JOB_TYPES),
+              ne(jobs.id, job.id),
+              sql`${jobs.status} IN ('pending', 'in_progress')`,
+              // A manual suspend may be a durable follow-up to an already claimed
+              // billing suspend. Both executions serialize on the sandbox row in
+              // executeSuspend; treating them as a conflict would strand the
+              // unconditional follow-up behind the stale hydrated billing job.
+              or(ne(jobs.type, job.type), ne(jobs.type, JOB_TYPES.AGENT_SUSPEND)),
+            ),
+          )
+          .orderBy(desc(jobs.created_at))
+          .limit(1);
+        if (conflict) {
+          throw new ApiError(
+            409,
+            "session_not_ready",
+            `Agent ${job.agent_id} has conflicting ${conflict.type} job ${conflict.id}`,
+            {
+              conflictingJobId: conflict.id,
+              conflictingJobType: conflict.type,
+              conflictingJobStatus: conflict.status,
+            },
+          );
+        }
+        const [claimedSandbox] = await tx
+          .update(agentSandboxes)
+          .set({
+            lifecycle_job_id: job.id,
+            lifecycle_execution_generation: job.execution_generation,
+          })
+          .where(
+            and(
+              eq(agentSandboxes.id, identity.agentId),
+              eq(agentSandboxes.organization_id, identity.organizationId),
+              or(
+                isNull(agentSandboxes.lifecycle_execution_generation),
+                and(
+                  eq(agentSandboxes.lifecycle_job_id, job.id),
+                  sql`${agentSandboxes.lifecycle_execution_generation} IS NOT DISTINCT FROM ${job.execution_generation}`,
+                ),
+              ),
+            ),
+          )
+          .returning({ id: agentSandboxes.id });
+        if (!claimedSandbox) {
+          const [existingSandbox] = await tx
+            .select({ id: agentSandboxes.id })
+            .from(agentSandboxes)
+            .where(
+              and(
+                eq(agentSandboxes.id, identity.agentId),
+                eq(agentSandboxes.organization_id, identity.organizationId),
+              ),
+            )
+            .limit(1);
+          if (existingSandbox) {
+            throw new Error(
+              `Agent lifecycle resource generation is already owned: ${job.agent_id}`,
+            );
+          }
+        }
+      });
+    };
+    if (!ACCOUNT_LIFECYCLE_FENCED_AGENT_JOB_TYPES.includes(job.type as ProvisioningJobType)) {
+      await prepare();
+      return;
+    }
+    try {
+      await prepareProvisioningWithAccountLifecycleFence(identity.organizationId, prepare);
+    } catch (error) {
+      if (!(error instanceof AccountLifecycleFencedError)) throw error;
+      throw new RejectedAgentExecutionError(`Account lifecycle fenced provisioning job ${job.id}`, {
+        jobId: job.id,
+        jobType: job.type,
+        columnAgentId: job.agent_id,
+        columnOrganizationId: job.organization_id,
+        payloadAgentId: identity.agentId,
+        payloadOrganizationId: identity.organizationId,
+        cause: "account_lifecycle_fenced_or_stale",
+      });
+    }
   }
 
   private async executeJob(job: Job): Promise<void> {
