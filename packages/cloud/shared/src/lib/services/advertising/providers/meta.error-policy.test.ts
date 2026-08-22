@@ -1,7 +1,8 @@
 /**
  * Pins the Meta ad provider's error-surfacing and bounded-request contracts.
  * Deterministic fetch mocks distinguish provider failures from legitimate
- * empty results and verify that deadlines compose with caller cancellation.
+ * empty results, verify that deadlines compose with caller cancellation, and
+ * pin that a deadline abort still reaches the caller as a structured failure.
  */
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 
@@ -122,6 +123,25 @@ describe("metaAdsProvider.getCampaignMetrics failure vs legitimately-empty", () 
     // distinction from the failure branch, not any derived monetary amount.
     expect(result.success).toBe(true);
     expect(result.metrics?.spend).toBe(0);
+  });
+});
+
+describe("a deadline abort reaches the caller as a structured provider failure", () => {
+  test("getCampaignMetrics returns {success:false} when a bounded hop aborts", async () => {
+    // metaFetch always attaches a deadline signal, so the hop aborts through that
+    // signal rather than waiting out the real 30s bound in the test.
+    globalThis.fetch = mock(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      expect(init?.signal).toBeInstanceOf(AbortSignal);
+      throw new DOMException("The operation was aborted.", "AbortError");
+    }) as typeof fetch;
+
+    const result = await metaAdsProvider.getCampaignMetrics(credentials, "camp_1");
+
+    // The advertising service reads !result.success to refund credits; an
+    // AbortError escaping graphApiRequest unhandled would skip that refund.
+    expect(result.success).toBe(false);
+    expect(result.error).toBeTruthy();
+    expect(result.metrics).toBeUndefined();
   });
 });
 

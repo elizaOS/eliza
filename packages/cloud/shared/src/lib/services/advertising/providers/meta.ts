@@ -23,6 +23,12 @@ const GRAPH_API_BASE = `https://graph.facebook.com/${GRAPH_API_VERSION}`;
 const META_REQUEST_TIMEOUT_MS = 30_000;
 
 /**
+ * Ad-media uploads carry base64-encoded creative bytes, so they need a far
+ * wider deadline than an ordinary Graph API hop before a slow link looks hung.
+ */
+const META_UPLOAD_TIMEOUT_MS = 120_000;
+
+/**
  * Bound every Meta Graph API hop so a hung or rate-limited API cannot pin the
  * ad-provider worker indefinitely while preserving caller cancellation.
  */
@@ -756,10 +762,14 @@ export const metaAdsProvider: AdProvider = {
       form.set("bytes", downloaded.base64);
       form.set("name", downloaded.fileName);
 
-      const response = await metaFetch(`${GRAPH_API_BASE}/${actAccountId}/adimages`, {
-        method: "POST",
-        body: form,
-      });
+      const response = await metaFetch(
+        `${GRAPH_API_BASE}/${actAccountId}/adimages`,
+        {
+          method: "POST",
+          body: form,
+        },
+        META_UPLOAD_TIMEOUT_MS,
+      );
       const data = (await response.json()) as GraphApiError & MetaAdImagesResponse;
       if (!response.ok || data.error) {
         throw new Error(data.error?.message || `Meta image upload failed (${response.status})`);
