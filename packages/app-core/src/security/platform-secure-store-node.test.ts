@@ -187,10 +187,7 @@ describe("platform secure-store behavioral outcomes", () => {
     }
     const store = createNodePlatformSecureStore({
       platform: "darwin",
-      loadNativeKeyring: async () =>
-        ({
-          AsyncEntry: FakeAsyncEntry,
-        }) as unknown as typeof import("@napi-rs/keyring"),
+      loadNativeKeyring: async () => ({ AsyncEntry: FakeAsyncEntry }),
     });
 
     await expect(
@@ -219,10 +216,7 @@ describe("platform secure-store behavioral outcomes", () => {
     }
     const store = createNodePlatformSecureStore({
       platform: "darwin",
-      loadNativeKeyring: async () =>
-        ({
-          AsyncEntry: DeniedAsyncEntry,
-        }) as unknown as typeof import("@napi-rs/keyring"),
+      loadNativeKeyring: async () => ({ AsyncEntry: DeniedAsyncEntry }),
     });
 
     await expect(
@@ -243,10 +237,7 @@ describe("platform secure-store behavioral outcomes", () => {
     }
     const store = createNodePlatformSecureStore({
       platform: "darwin",
-      loadNativeKeyring: async () =>
-        ({
-          AsyncEntry: UnverifiedAsyncEntry,
-        }) as unknown as typeof import("@napi-rs/keyring"),
+      loadNativeKeyring: async () => ({ AsyncEntry: UnverifiedAsyncEntry }),
     });
 
     await expect(
