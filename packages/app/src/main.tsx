@@ -159,6 +159,7 @@ import {
   resolveUiTheme,
   savePersistedActiveServer,
 } from "@elizaos/ui/state/persistence";
+import { getPushToTalkAccelerator } from "@elizaos/ui/state/push-to-talk-hotkey";
 import { initScreenCaptureBridge } from "@elizaos/ui/state/screen-capture-bridge";
 import {
   initStartupTrace,
@@ -2457,7 +2458,7 @@ async function initializeDesktopShell(): Promise<void> {
     ipcChannel: "desktop:registerShortcut",
     params: {
       id: "push-to-talk",
-      accelerator: "CommandOrControl+Shift+Space",
+      accelerator: getPushToTalkAccelerator(),
     },
   });
   if (pushToTalkRegistration?.success !== true) {
