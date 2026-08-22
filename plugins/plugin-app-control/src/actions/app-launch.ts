@@ -15,14 +15,23 @@ import {
 	targetReferenceLogView,
 } from "../params.js";
 import { formatAppCandidates, resolveInstalledApp } from "../resolve.js";
-import { openLaunchUrlInBrowserView } from "../services/browser-view-navigation.js";
+import {
+	appLaunchViewClientId,
+	type BrowserViewNavigationResult,
+	browserViewPathForLaunchUrl,
+	isRealtimeVoiceAppLaunch,
+	openLaunchUrlInBrowserView,
+} from "../services/browser-view-navigation.js";
 
 export interface RunLaunchInput {
 	client: AppControlClient;
 	message: Memory;
 	options?: Record<string, unknown>;
 	callback?: HandlerCallback;
-	openBrowserView?: (launchUrl: string) => Promise<boolean>;
+	openBrowserView?: (
+		launchUrl: string,
+		options: { originatingClientId?: string; realtimeVoice?: boolean },
+	) => Promise<BrowserViewNavigationResult>;
 }
 
 export async function runLaunch({
@@ -108,7 +117,13 @@ export async function runLaunch({
 	}
 	const runId = result.run?.runId ?? null;
 	const launchUrl = result.launchUrl?.trim() || null;
-	const opened = launchUrl ? await openBrowserView(launchUrl) : false;
+	const browserNavigation = launchUrl
+		? await openBrowserView(launchUrl, {
+				originatingClientId: appLaunchViewClientId(message),
+				realtimeVoice: isRealtimeVoiceAppLaunch(message),
+			})
+		: undefined;
+	const opened = browserNavigation?.completedActionDelivered === true;
 
 	logger.info(
 		`[plugin-app-control] APP/launch ${appName} runId=${runId ?? "<none>"}`,
@@ -127,6 +142,15 @@ export async function runLaunch({
 			displayName: result.displayName,
 			runId,
 			openedInBrowser: opened,
+			...(browserNavigation?.completedActionHandoffId
+				? {
+						viewId: "browser",
+						viewPath: browserNavigation.path,
+						viewType: "gui",
+						completedActionHandoffId:
+							browserNavigation.completedActionHandoffId,
+					}
+				: {}),
 		},
 		promptData: {
 			operation: "launch_app",
@@ -134,6 +158,11 @@ export async function runLaunch({
 			appName,
 			displayName: result.displayName,
 			openedInBrowser: opened,
+			browserNavigationStatus:
+				browserNavigation?.status ?? (launchUrl ? "unavailable" : "not-requested"),
+			...(browserNavigation?.errorCode
+				? { browserNavigationError: browserNavigation.errorCode }
+				: {}),
 			...(launchUrl
 				? {
 						link: {
