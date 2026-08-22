@@ -195,10 +195,10 @@ describe("ElizaAgentsTable per-row view model", () => {
       }),
     ).toBeTruthy();
     expect(
-      within(dedicatedRow as HTMLElement).getByRole("button", {
+      within(dedicatedRow as HTMLElement).getAllByRole("button", {
         name: "Open Web UI",
       }),
-    ).toBeTruthy();
+    ).toHaveLength(1);
     expect(
       within(dedicatedRow as HTMLElement).getByRole("button", {
         name: "Delete agent",

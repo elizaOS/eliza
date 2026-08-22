@@ -20,6 +20,7 @@ import { ElizaError } from "@elizaos/core";
 import { fetchWithSsrfGuard } from "@elizaos/core/network";
 
 import { containersEnv } from "../config/containers-env";
+import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import { logger } from "../utils/logger";
 import { isContainerAbsentMessage } from "./docker-error-classifier";
 import {
@@ -320,6 +321,30 @@ async function resolveLocalDockerBridgeGatewayCidrs(): Promise<string> {
   return parseLocalDockerBridgeGatewayCidrs(stdout);
 }
 
+/** Resolve the isolated Worker origin that a local container must pair with. */
+export function resolveLocalDockerCloudApiBaseUrl(environment: NodeJS.ProcessEnv): string {
+  const raw =
+    environment.ELIZA_CLOUD_LOCAL_API_URL?.trim() || environment.NEXT_PUBLIC_API_URL?.trim();
+  if (!raw) {
+    throw new Error(`${LOG_PREFIX} ELIZA_CLOUD_LOCAL_API_URL is required for local pairing.`);
+  }
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    throw new Error(`${LOG_PREFIX} Local Cloud API URL is invalid.`);
+  }
+  const hostname = url.hostname.toLowerCase().replace(/^\[|\]$/g, "");
+  const loopback =
+    hostname === "localhost" ||
+    hostname === "::1" ||
+    (isIP(hostname) === 4 && hostname.split(".")[0] === "127");
+  if ((url.protocol !== "http:" && url.protocol !== "https:") || !loopback) {
+    throw new Error(`${LOG_PREFIX} Local Cloud API URL must use a loopback HTTP origin.`);
+  }
+  return `${url.origin}/api/v1`;
+}
+
 function resolveContainerPort(config: SandboxCreateConfig): string {
   const requested =
     typeof config.environmentVars.PORT === "string" && config.environmentVars.PORT.trim()
@@ -505,6 +530,7 @@ export class LocalDockerSandboxProvider implements SandboxProvider {
     // bridge cannot be classified exactly, fail closed while the healthy
     // runtime and its persisted data remain untouched.
     const pairingAllowedPeerCidrs = await resolveLocalDockerBridgeGatewayCidrs();
+    const localCloudApiBaseUrl = resolveLocalDockerCloudApiBaseUrl(getCloudAwareEnv());
 
     // If a container with this name already exists from a prior run, remove it
     // so we can re-create cleanly. Local dev is single-tenant per agentId.
@@ -617,6 +643,7 @@ export class LocalDockerSandboxProvider implements SandboxProvider {
         PGLITE_DATA_DIR: "/home/agent/.eliza/.pgdata",
       },
       pairingAllowedPeerCidrs,
+      rewriteForContainer(localCloudApiBaseUrl),
     );
 
     for (const [key, value] of Object.entries(allEnv)) {
