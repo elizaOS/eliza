@@ -1,5 +1,5 @@
 /**
- * Audits one explicitly owned view root against the live chat/voice view-interact bridge.
+ * Audits one explicitly owned view root against the live view-interact bridge.
  *
  * Callers provide the exact rendered root rather than relying on document-wide
  * heuristics, so shell chrome, chat controls, and sibling plugin surfaces cannot
@@ -72,8 +72,10 @@ export async function listViewElements(
 
 export interface RootControlAudit {
   wiredIds: string[];
+  humanOnlyIds: string[];
   unwired: string[];
   duplicateControlIds: string[];
+  duplicateHumanOnlyIds: string[];
 }
 
 export async function inspectExactRootControls(
@@ -100,14 +102,31 @@ export async function inspectExactRootControls(
       '[role="textbox"]',
     ].join(", ");
     const owners = new Map<string, Set<HTMLElement>>();
+    const humanOwners = new Map<string, Set<HTMLElement>>();
     const unwired = new Set<string>();
-    for (const element of Array.from(
-      node.querySelectorAll<HTMLElement>(selector),
-    )) {
-      const rect = element.getBoundingClientRect();
-      if (rect.width === 0 && rect.height === 0) continue;
-      if (element.closest('[aria-hidden="true"]')) continue;
+    const controls: HTMLElement[] = [];
+    const visitRoot = (rootNode: ParentNode) => {
+      controls.push(...rootNode.querySelectorAll<HTMLElement>(selector));
+      for (const element of rootNode.querySelectorAll<HTMLElement>("*")) {
+        if (element.shadowRoot) visitRoot(element.shadowRoot);
+      }
+    };
+    visitRoot(node);
+    for (const element of controls) {
       if (element.getAttribute("aria-disabled") === "true") continue;
+      if (element.dataset.agentAuthority === "human") {
+        const humanId = element.dataset.agentHumanId;
+        if (!humanId || element.dataset.agentId) {
+          unwired.add(
+            `${element.tagName.toLocaleLowerCase()}[invalid-human-authority-marker]`,
+          );
+          continue;
+        }
+        const controls = humanOwners.get(humanId) ?? new Set<HTMLElement>();
+        controls.add(element);
+        humanOwners.set(humanId, controls);
+        continue;
+      }
 
       // An interactive element must own its bridge identity directly. Accepting
       // `closest()` here lets one coarse wrapper falsely claim any number of
@@ -135,8 +154,13 @@ export async function inspectExactRootControls(
     }
     return {
       wiredIds: [...owners.keys()].sort(),
+      humanOnlyIds: [...humanOwners.keys()].sort(),
       unwired: [...unwired].sort(),
       duplicateControlIds: [...owners.entries()]
+        .filter(([, controls]) => controls.size > 1)
+        .map(([id]) => id)
+        .sort(),
+      duplicateHumanOnlyIds: [...humanOwners.entries()]
         .filter(([, controls]) => controls.size > 1)
         .map(([id]) => id)
         .sort(),
@@ -145,8 +169,10 @@ export async function inspectExactRootControls(
 }
 
 /**
- * Prove that every enabled, visible control under `root` is registered by the
- * active view and that the bridge inventory has no malformed duplicate ids.
+ * Prove that every enabled control under `root` is registered by the active
+ * view and that no interactive bridge registration lives outside that root.
+ * This proves addressability only; it does not prove authorization, typed
+ * results, replay semantics, confirmation, receipts, or safe agent activation.
  */
 export async function expectExactRootAgentParity({
   page,
@@ -169,6 +195,10 @@ export async function expectExactRootAgentParity({
     audit.duplicateControlIds,
     `${label}: distinct controls sharing one data-agent-id: ${audit.duplicateControlIds.join(", ")}`,
   ).toEqual([]);
+  expect(
+    audit.duplicateHumanOnlyIds,
+    `${label}: distinct human-only controls sharing one semantic id: ${audit.duplicateHumanOnlyIds.join(", ")}`,
+  ).toEqual([]);
 
   const elements = await listViewElements(page, viewId);
   const bridgeIds = elements.map(({ id }) => id);
@@ -187,9 +217,13 @@ export async function expectExactRootAgentParity({
       "boolean",
     );
   }
+  const interactiveBridgeIds = elements
+    .filter((element) => element.clickable || element.fillable)
+    .map(({ id }) => id)
+    .sort();
   expect(
-    bridgeIds,
-    `${label}: every exact-root data-agent-id must be registered`,
-  ).toEqual(expect.arrayContaining(audit.wiredIds));
+    interactiveBridgeIds,
+    `${label}: interactive bridge ids must exactly match the owned root`,
+  ).toEqual(audit.wiredIds);
   return elements;
 }

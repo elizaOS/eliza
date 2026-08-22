@@ -587,14 +587,6 @@ export function OrchestratorWorkbench() {
       group: "orchestrator-timeline",
       description: "Load older entries in the task timeline",
     });
-  const { ref: stopActiveRef, agentProps: stopActiveAgentProps } =
-    useAgentElement<HTMLButtonElement>({
-      id: "timeline-stop-active",
-      role: "button",
-      label: stopLabel,
-      group: "orchestrator-timeline",
-      description: "Stop the running sub-agents on this task",
-    });
   return (
     <div
       className="relative flex h-full min-h-0 w-full flex-col bg-bg text-txt"
@@ -833,14 +825,14 @@ export function OrchestratorWorkbench() {
                   </span>
                   <Button
                     unstyled
-                    ref={stopActiveRef}
                     type="button"
                     onClick={handleStopActive}
                     disabled={mutating}
                     className="flex items-center gap-1 px-1 py-0.5 text-2xs text-txt transition-colors hover:text-danger disabled:opacity-50"
                     data-testid="orchestrator-stop-active"
                     aria-label={stopLabel}
-                    {...stopActiveAgentProps}
+                    data-agent-authority="human"
+                    data-agent-human-id="timeline-stop-active"
                   >
                     <CircleStop className="h-3 w-3" />
                     {stopLabel}

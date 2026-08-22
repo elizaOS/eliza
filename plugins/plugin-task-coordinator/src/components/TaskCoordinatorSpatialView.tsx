@@ -115,6 +115,10 @@ function clamp(text: string, max: number): string {
   return `${text.slice(0, Math.max(0, max - 1))}…`;
 }
 
+function humanAuthority(id: string, label: string) {
+  return { id, role: "button", label, authority: "human" } as const;
+}
+
 /** Distil a thread record into the presentational row shape. */
 export function toTaskCoordinatorRow(
   thread: CodingAgentTaskThread,
@@ -358,24 +362,16 @@ function TaskDetail({
       <HStack gap={1} wrap>
         {detail.status === "archived" ? (
           <Button
-            agent={{
-              id: "reopen-thread",
-              role: "button",
-              label: "Reopen task",
-            }}
+            agent={humanAuthority("reopen-thread", "Reopen task")}
             onPress={dispatch("reopen-thread")}
           >
             Reopen
           </Button>
         ) : (
           <Button
+            agent={humanAuthority("delete-thread", "Delete task")}
             variant="ghost"
             tone="danger"
-            agent={{
-              id: "delete-thread",
-              role: "button",
-              label: "Delete task",
-            }}
             onPress={dispatch("delete-thread")}
           >
             Delete
