@@ -2,7 +2,10 @@
 
 import type http from "node:http";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { BoundaryRoleAccess, TokenRoleResolver } from "../boundary-role-resolver.ts";
+import type {
+  BoundaryRoleAccess,
+  TokenRoleResolver,
+} from "../boundary-role-resolver.ts";
 import {
   clearTokenRoleResolvers,
   hasTokenRoleResolver,
@@ -54,7 +57,9 @@ describe("boundary-role resolver registry", () => {
     registerTokenRoleResolver(fakeResolver("r1", null));
     const expected = access({ principal: "winner" });
     registerTokenRoleResolver(fakeResolver("r2", expected));
-    registerTokenRoleResolver(fakeResolver("r3", access({ principal: "loser" })));
+    registerTokenRoleResolver(
+      fakeResolver("r3", access({ principal: "loser" })),
+    );
     const result = resolveRegisteredTokenRoleAccess(fakeReq());
     expect(result?.principal).toBe("winner");
   });
@@ -68,7 +73,9 @@ describe("boundary-role resolver registry", () => {
     registerTokenRoleResolver(fakeResolver("r1", access(), { throws: true }));
     const fallback = access({ principal: "fallback" });
     registerTokenRoleResolver(fakeResolver("r2", fallback));
-    expect(resolveRegisteredTokenRoleAccess(fakeReq())?.principal).toBe("fallback");
+    expect(resolveRegisteredTokenRoleAccess(fakeReq())?.principal).toBe(
+      "fallback",
+    );
   });
 
   it("re-registering the same id replaces the prior resolver", () => {
@@ -83,15 +90,15 @@ describe("boundary-role resolver registry", () => {
     );
     // A later re-registration owns the slot; unregistering the old instance
     // must not remove the new one.
-    registerTokenRoleResolver(fakeResolver("r1", access({ principal: "second" })));
+    registerTokenRoleResolver(
+      fakeResolver("r1", access({ principal: "second" })),
+    );
     unregister();
     expect(hasTokenRoleResolver("r1")).toBe(true);
   });
 
   it("unregister removes the only instance", () => {
-    const unregister = registerTokenRoleResolver(
-      fakeResolver("r1", access()),
-    );
+    const unregister = registerTokenRoleResolver(fakeResolver("r1", access()));
     unregister();
     expect(hasTokenRoleResolver("r1")).toBe(false);
   });
@@ -99,10 +106,10 @@ describe("boundary-role resolver registry", () => {
 
 describe("isRegisteredTokenRoleAuthorized", () => {
   it("authorizes admins unconditionally", () => {
-    registerTokenRoleResolver(
-      fakeResolver("r1", access({ isAdmin: true })),
-    );
-    expect(isRegisteredTokenRoleAuthorized(fakeReq(), "GET", "/any/route")).toBe(true);
+    registerTokenRoleResolver(fakeResolver("r1", access({ isAdmin: true })));
+    expect(
+      isRegisteredTokenRoleAuthorized(fakeReq(), "GET", "/any/route"),
+    ).toBe(true);
   });
 
   it("checks route scope for non-admins", () => {
@@ -112,7 +119,9 @@ describe("isRegisteredTokenRoleAuthorized", () => {
     );
     expect(isRegisteredTokenRoleAuthorized(fakeReq(), "get", "/ok")).toBe(true);
     expect(inScope).toHaveBeenCalledWith("GET", "/ok");
-    expect(isRegisteredTokenRoleAuthorized(fakeReq(), "POST", "/ok")).toBe(false);
+    expect(isRegisteredTokenRoleAuthorized(fakeReq(), "POST", "/ok")).toBe(
+      false,
+    );
   });
 
   it("denies unrecognised requests", () => {
