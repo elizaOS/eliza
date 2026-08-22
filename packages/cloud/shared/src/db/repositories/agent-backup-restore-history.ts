@@ -1,6 +1,6 @@
 /** Appends and replays immutable restore authorities without wiring a production coordinator. */
 
-import { and, eq, inArray, ne } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import {
   assertAgentBackupCatalogTransition,
   requireBoundedIdentity,
@@ -10,8 +10,10 @@ import { isValidUUID } from "../../lib/utils/validation";
 import type { DbTransaction } from "../client";
 import { dbWrite } from "../helpers";
 import {
+  type AgentBackupRestoreOperation,
   agentBackupCatalogAuthorities,
   agentBackupRestoreLeases,
+  agentBackupRestoreOperations,
 } from "../schemas/agent-backup-catalog";
 import {
   type AgentActivationPublication,
@@ -26,14 +28,17 @@ import {
 import { agentSandboxBackups, agentSandboxes } from "../schemas/agent-sandboxes";
 import { agentVaultKeyBackupBindings } from "../schemas/agent-vault-key-authority";
 import { type DockerNode, dockerNodes } from "../schemas/docker-nodes";
-import { AgentBackupCatalogConflictError } from "./agent-backup-catalog";
+import {
+  AgentBackupCatalogConflictError,
+  lockAgentBackupCatalogAuthority,
+} from "./agent-backup-catalog";
 import { readPostLockDatabaseNow } from "./primary-database-clock";
 
 const MAX_SIGNED_BIGINT = 9_223_372_036_854_775_807n;
 
 function requireUuid(value: string, field: string): string {
   if (!isValidUUID(value) || value !== value.toLowerCase()) {
-    throw new Error(`${field} must be a canonical lowercase UUID`);
+    throw new AgentBackupCatalogConflictError(`${field} must be a canonical lowercase UUID`);
   }
   return value;
 }
@@ -42,38 +47,92 @@ function conflict(message: string): never {
   throw new AgentBackupCatalogConflictError(message);
 }
 
+interface ExactRestoreOperationTarget {
+  organizationId: string;
+  agentId: string;
+  backupId: string;
+  restoreAttemptId: string;
+  targetActivationGeneration: string;
+  expectedOperationId: string;
+  expectedManifestSha256: string;
+  expectedSourceActivationGeneration: string;
+  expectedSourceLifecycleRevision: bigint;
+  expectedNodeRecordId: string;
+  expectedNodeIncarnation: string;
+  expectedNodeHistoryId: string;
+}
+
+/** Lock and prove the write-once target selected for one restore attempt. */
+async function lockExactRestoreOperationTarget(
+  tx: DbTransaction,
+  target: Readonly<ExactRestoreOperationTarget>,
+): Promise<AgentBackupRestoreOperation> {
+  const [operation] = await tx
+    .select()
+    .from(agentBackupRestoreOperations)
+    .where(
+      and(
+        eq(agentBackupRestoreOperations.organization_id, target.organizationId),
+        eq(agentBackupRestoreOperations.restore_attempt_id, target.restoreAttemptId),
+      ),
+    )
+    .for("update")
+    .limit(1);
+  if (
+    !operation ||
+    target.targetActivationGeneration !== target.restoreAttemptId ||
+    operation.agent_id !== target.agentId ||
+    operation.backup_id !== target.backupId ||
+    operation.expected_operation_id !== target.expectedOperationId ||
+    operation.expected_manifest_sha256 !== target.expectedManifestSha256 ||
+    operation.expected_activation_generation !== target.expectedSourceActivationGeneration ||
+    operation.expected_lifecycle_revision !== target.expectedSourceLifecycleRevision ||
+    operation.expected_node_record_id !== target.expectedNodeRecordId ||
+    operation.expected_node_incarnation !== target.expectedNodeIncarnation ||
+    operation.expected_node_history_id !== target.expectedNodeHistoryId
+  ) {
+    conflict("Restore writer differs from its durable operation target");
+  }
+  return operation;
+}
+
+function operationMatchesRuntimeTarget(
+  operation: Readonly<AgentBackupRestoreOperation>,
+  containerId: string,
+  imageDigest: string,
+): boolean {
+  return (
+    operation.expected_container_id === containerId &&
+    operation.expected_image_digest === imageDigest
+  );
+}
+
 /**
  * Prove that an already row-locked mutable node still names one exact,
- * unambiguous append-only boot authority for that record.
+ * append-only occurrence authority for that record and boot.
  *
  * The history reads deliberately stay MVCC reads. The caller owns the node's
  * `FOR UPDATE` lock, so no concurrent attestation can change that node while
  * this proof runs; locking append-only history rows would only add an
- * unnecessary lock class. This schema has no durable causal ordinal for
- * histories, so timestamps or transaction ids cannot safely distinguish an
- * old B -> A from an A -> B -> A replay. Restore therefore fails closed when
- * this node record has ever carried any different incarnation. Such a record
- * remains ineligible until a lifecycle/re-creation contract with durable row
- * generations is migrated.
- *
- * A -> NULL -> A is intentionally not an A -> B -> A replay: while NULL, the
- * mutable row fails this proof; an exact CAS re-attestation of the same Linux
- * boot UUID under the same host-key authority may reuse its immutable A row.
- * The created-at check catches ordinary exact-id delete/reinsert accidents, but
- * it is only defense in depth and is never used to order immutable histories.
+ * unnecessary lock class. The trigger-owned pointer is the causal ordinal:
+ * A1 -> B -> A2 has two different history ids even though the Linux boot UUID
+ * is A both times. No timestamp, transaction id, or scan of unrelated older
+ * histories participates in the decision.
  */
-export async function proveUnambiguousAgentNodeIncarnationForLockedNode(
+export async function proveExactAgentNodeOccurrenceForLockedNode(
   tx: DbTransaction,
   node: Readonly<DockerNode>,
   expectedIncarnation: string,
-): Promise<void> {
+  expectedNodeHistoryId: string,
+): Promise<AgentNodeIncarnationHistory> {
   if (
     node.node_incarnation !== expectedIncarnation ||
+    node.current_node_history_id !== expectedNodeHistoryId ||
     (node.fleet_kind !== "robot" && node.fleet_kind !== "cloud") ||
     node.infrastructure_provider !== "hetzner" ||
     !node.host_key_fingerprint
   ) {
-    conflict("Restore target lacks exact immutable node-incarnation history");
+    conflict("Restore target lacks exact current node-occurrence authority");
   }
 
   const [history] = await tx
@@ -81,6 +140,7 @@ export async function proveUnambiguousAgentNodeIncarnationForLockedNode(
     .from(agentNodeIncarnationHistories)
     .where(
       and(
+        eq(agentNodeIncarnationHistories.id, expectedNodeHistoryId),
         eq(agentNodeIncarnationHistories.docker_node_record_id, node.id),
         eq(agentNodeIncarnationHistories.node_incarnation, expectedIncarnation),
       ),
@@ -94,30 +154,21 @@ export async function proveUnambiguousAgentNodeIncarnationForLockedNode(
     history.fleet_kind !== node.fleet_kind ||
     history.infrastructure_provider !== node.infrastructure_provider ||
     history.provider_server_id !== node.provider_server_id ||
-    history.host_key_fingerprint !== node.host_key_fingerprint ||
-    node.created_at > history.attested_at
+    history.host_key_fingerprint !== node.host_key_fingerprint
   ) {
-    conflict("Restore target lacks exact immutable node-incarnation history");
+    conflict("Restore target lacks exact current node-occurrence authority");
   }
-
-  const [differentIncarnation] = await tx
-    .select({ id: agentNodeIncarnationHistories.id })
-    .from(agentNodeIncarnationHistories)
-    .where(
-      and(
-        eq(agentNodeIncarnationHistories.docker_node_record_id, node.id),
-        ne(agentNodeIncarnationHistories.node_incarnation, expectedIncarnation),
-      ),
-    )
-    .limit(1);
-  if (differentIncarnation) {
-    conflict("Restore target node record has ambiguous multi-incarnation history");
-  }
+  return history;
 }
 
 async function lockCurrentNodeHistory(
   tx: DbTransaction,
-  input: { nodeRecordId: string; nodeId?: string; nodeIncarnation: string },
+  input: {
+    nodeRecordId: string;
+    nodeId?: string;
+    nodeIncarnation: string;
+    nodeHistoryId: string;
+  },
 ): Promise<AgentNodeIncarnationHistory> {
   const [node] = await tx
     .select()
@@ -127,6 +178,7 @@ async function lockCurrentNodeHistory(
         eq(dockerNodes.id, input.nodeRecordId),
         input.nodeId ? eq(dockerNodes.node_id, input.nodeId) : undefined,
         eq(dockerNodes.node_incarnation, input.nodeIncarnation),
+        eq(dockerNodes.current_node_history_id, input.nodeHistoryId),
       ),
     )
     .for("update")
@@ -137,51 +189,14 @@ async function lockCurrentNodeHistory(
     !node.host_key_fingerprint ||
     node.infrastructure_provider !== "hetzner"
   ) {
-    conflict("Target node incarnation is absent or lacks typed immutable authority");
+    conflict("Restore target lacks exact current node-occurrence authority");
   }
-  await tx
-    .insert(agentNodeIncarnationHistories)
-    .values({
-      docker_node_record_id: node.id,
-      node_id: node.node_id,
-      node_incarnation: input.nodeIncarnation,
-      fleet_kind: node.fleet_kind,
-      infrastructure_provider: node.infrastructure_provider,
-      provider_server_id: node.provider_server_id,
-      host_key_fingerprint: node.host_key_fingerprint,
-    })
-    .onConflictDoNothing({
-      target: [
-        agentNodeIncarnationHistories.docker_node_record_id,
-        agentNodeIncarnationHistories.node_incarnation,
-      ],
-    });
-  // Read back on the same composite key the insert arbitrates on. A boot id is
-  // unique per node record, not globally (0259), so selecting on the incarnation
-  // alone would pick an arbitrary record's row once a host re-registers.
-  const [history] = await tx
-    .select()
-    .from(agentNodeIncarnationHistories)
-    .where(
-      and(
-        eq(agentNodeIncarnationHistories.docker_node_record_id, node.id),
-        eq(agentNodeIncarnationHistories.node_incarnation, input.nodeIncarnation),
-      ),
-    )
-    .limit(1);
-  if (
-    !history ||
-    history.docker_node_record_id !== node.id ||
-    history.node_id !== node.node_id ||
-    history.fleet_kind !== node.fleet_kind ||
-    history.infrastructure_provider !== node.infrastructure_provider ||
-    history.provider_server_id !== node.provider_server_id ||
-    history.host_key_fingerprint !== node.host_key_fingerprint
-  ) {
-    conflict("Target node incarnation conflicts with immutable history");
-  }
-  await proveUnambiguousAgentNodeIncarnationForLockedNode(tx, node, input.nodeIncarnation);
-  return history;
+  return proveExactAgentNodeOccurrenceForLockedNode(
+    tx,
+    node,
+    input.nodeIncarnation,
+    input.nodeHistoryId,
+  );
 }
 
 export interface RecordAgentActivationPublicationInput {
@@ -193,6 +208,7 @@ export interface RecordAgentActivationPublicationInput {
   expectedContainerId: string;
   expectedNodeRecordId: string;
   expectedNodeIncarnation: string;
+  expectedNodeHistoryId: string;
   expectedTokenSha256: string;
 }
 
@@ -203,6 +219,7 @@ function validatePublicationInput(input: RecordAgentActivationPublicationInput):
   requireUuid(input.activationGeneration, "activationGeneration");
   requireUuid(input.expectedNodeRecordId, "expectedNodeRecordId");
   requireUuid(input.expectedNodeIncarnation, "expectedNodeIncarnation");
+  requireUuid(input.expectedNodeHistoryId, "expectedNodeHistoryId");
   requireSha256Hex(input.expectedActivationReceiptSha256, "expectedActivationReceiptSha256");
   requireSha256Hex(input.expectedTokenSha256, "expectedTokenSha256");
   if (!/^[0-9a-f]{64}$/.test(input.expectedContainerId)) {
@@ -223,8 +240,186 @@ function publicationMatchesInput(
     publication.container_id === input.expectedContainerId &&
     publication.docker_node_record_id === input.expectedNodeRecordId &&
     publication.node_incarnation === input.expectedNodeIncarnation &&
+    publication.node_history_id === input.expectedNodeHistoryId &&
     publication.token_sha256 === input.expectedTokenSha256
   );
+}
+
+async function recordRestoreActivationPublication(
+  tx: DbTransaction,
+  input: Readonly<RecordAgentActivationPublicationInput>,
+  authority: Readonly<{ backupId: string; manifestSha256: string; imageDigest: string }>,
+): Promise<{ publication: AgentActivationPublication; replayed: boolean }> {
+  const [backup] = await tx
+    .select()
+    .from(agentSandboxBackups)
+    .where(
+      and(
+        eq(agentSandboxBackups.id, authority.backupId),
+        eq(agentSandboxBackups.catalog_organization_id, input.organizationId),
+        eq(agentSandboxBackups.catalog_agent_id, input.agentId),
+        eq(agentSandboxBackups.manifest_digest, authority.manifestSha256),
+      ),
+    )
+    .for("update")
+    .limit(1);
+  if (
+    !backup?.backup_operation_id ||
+    !backup.lifecycle_generation ||
+    backup.lifecycle_revision === null ||
+    !backup.manifest_digest ||
+    !["protected", "retained", "restore_verified"].includes(backup.catalog_state ?? "")
+  ) {
+    conflict("Restore publication source lacks exact restorable backup authority");
+  }
+
+  const operation = await lockExactRestoreOperationTarget(tx, {
+    organizationId: input.organizationId,
+    agentId: input.agentId,
+    backupId: backup.id,
+    restoreAttemptId: input.activationGeneration,
+    targetActivationGeneration: input.activationGeneration,
+    expectedOperationId: backup.backup_operation_id,
+    expectedManifestSha256: backup.manifest_digest,
+    expectedSourceActivationGeneration: backup.lifecycle_generation,
+    expectedSourceLifecycleRevision: backup.lifecycle_revision,
+    expectedNodeRecordId: input.expectedNodeRecordId,
+    expectedNodeIncarnation: input.expectedNodeIncarnation,
+    expectedNodeHistoryId: input.expectedNodeHistoryId,
+  });
+  if (!operationMatchesRuntimeTarget(operation, input.expectedContainerId, authority.imageDigest)) {
+    conflict("Restore publication differs from its durable operation target");
+  }
+
+  const [lease] = await tx
+    .select()
+    .from(agentBackupRestoreLeases)
+    .where(
+      and(
+        eq(agentBackupRestoreLeases.id, operation.lease_id),
+        eq(agentBackupRestoreLeases.organization_id, operation.organization_id),
+        eq(agentBackupRestoreLeases.agent_id, operation.agent_id),
+        eq(agentBackupRestoreLeases.backup_id, operation.backup_id),
+        eq(agentBackupRestoreLeases.restore_attempt_id, operation.restore_attempt_id),
+        eq(agentBackupRestoreLeases.owner_id, operation.lease_owner_id),
+        eq(agentBackupRestoreLeases.generation, operation.lease_generation),
+        eq(agentBackupRestoreLeases.catalog_epoch, operation.catalog_epoch),
+        eq(agentBackupRestoreLeases.copy_role, operation.copy_role),
+        eq(agentBackupRestoreLeases.operation_id, operation.expected_operation_id),
+        eq(
+          agentBackupRestoreLeases.activation_generation,
+          operation.expected_activation_generation,
+        ),
+        eq(agentBackupRestoreLeases.lifecycle_revision, operation.expected_lifecycle_revision),
+        eq(agentBackupRestoreLeases.expected_manifest_sha256, operation.expected_manifest_sha256),
+      ),
+    )
+    .for("update")
+    .limit(1);
+  if (!lease) conflict("Restore publication lost its exact lease authority");
+
+  const [sandbox] = await tx
+    .select()
+    .from(agentSandboxes)
+    .where(
+      and(
+        eq(agentSandboxes.id, input.agentId),
+        eq(agentSandboxes.organization_id, input.organizationId),
+        eq(agentSandboxes.activation_generation, input.activationGeneration),
+        inArray(agentSandboxes.activation_phase, ["restart_attested", "active"]),
+      ),
+    )
+    .for("update")
+    .limit(1);
+  const [concurrentPublication] = await tx
+    .select()
+    .from(agentActivationPublications)
+    .where(
+      and(
+        eq(agentActivationPublications.organization_id, input.organizationId),
+        eq(agentActivationPublications.agent_id, input.agentId),
+        eq(agentActivationPublications.activation_generation, input.activationGeneration),
+      ),
+    )
+    .limit(1);
+  if (concurrentPublication && !publicationMatchesInput(concurrentPublication, input)) {
+    conflict("Activation publication replay mismatch");
+  }
+  if (
+    !sandbox?.activation_receipt ||
+    !sandbox.activation_receipt_hash ||
+    !sandbox.activation_container_id ||
+    !sandbox.activation_node_id ||
+    !sandbox.activation_boot_id ||
+    !sandbox.activation_image_digest ||
+    !sandbox.activation_token_hash ||
+    sandbox.activation_funding_revision === null ||
+    sandbox.activation_lifecycle_revision === null ||
+    sandbox.activation_purpose !== "restore" ||
+    sandbox.activation_backup_id !== backup.id ||
+    sandbox.activation_backup_hash !== backup.manifest_digest ||
+    sandbox.activation_receipt_hash !== input.expectedActivationReceiptSha256 ||
+    sandbox.activation_container_id !== input.expectedContainerId ||
+    sandbox.activation_boot_id !== input.expectedNodeIncarnation ||
+    sandbox.activation_token_hash !== input.expectedTokenSha256 ||
+    !operationMatchesRuntimeTarget(
+      operation,
+      sandbox.activation_container_id,
+      sandbox.activation_image_digest,
+    )
+  ) {
+    conflict("Restore publication differs from mutable or durable operation authority");
+  }
+
+  const history = await lockCurrentNodeHistory(tx, {
+    nodeRecordId: input.expectedNodeRecordId,
+    nodeId: sandbox.activation_node_id,
+    nodeIncarnation: input.expectedNodeIncarnation,
+    nodeHistoryId: input.expectedNodeHistoryId,
+  });
+  const catalogAuthority = await lockAgentBackupCatalogAuthority(
+    tx,
+    input.organizationId,
+    input.agentId,
+  );
+  const databaseNow = await readPostLockDatabaseNow(tx);
+  if (
+    lease.released_at !== null ||
+    lease.expires_at <= databaseNow ||
+    lease.catalog_epoch !== catalogAuthority.catalog_revision
+  ) {
+    conflict("Restore publication lost its exact live restore lease");
+  }
+  if (concurrentPublication) {
+    return { publication: concurrentPublication, replayed: true };
+  }
+
+  const [publication] = await tx
+    .insert(agentActivationPublications)
+    .values({
+      id: input.publicationId,
+      organization_id: input.organizationId,
+      agent_id: input.agentId,
+      activation_generation: input.activationGeneration,
+      previous_activation_generation: sandbox.activation_previous_generation,
+      lifecycle_revision: sandbox.activation_lifecycle_revision,
+      purpose: "restore",
+      backup_id: backup.id,
+      backup_manifest_sha256: backup.manifest_digest,
+      activation_receipt: sandbox.activation_receipt,
+      activation_receipt_sha256: sandbox.activation_receipt_hash,
+      container_id: sandbox.activation_container_id,
+      node_history_id: history.id,
+      docker_node_record_id: history.docker_node_record_id,
+      node_id: history.node_id,
+      node_incarnation: history.node_incarnation,
+      image_digest: sandbox.activation_image_digest,
+      token_sha256: sandbox.activation_token_hash,
+      funding_revision: sandbox.activation_funding_revision,
+    })
+    .returning();
+  if (!publication) conflict("Activation publication insert returned no row");
+  return { publication, replayed: false };
 }
 
 /**
@@ -247,10 +442,61 @@ export async function recordAgentActivationPublication(
         ),
       )
       .limit(1);
+    if (existing?.purpose === "restore") {
+      if (
+        !existing.backup_id ||
+        !existing.backup_manifest_sha256 ||
+        !publicationMatchesInput(existing, input)
+      ) {
+        conflict("Activation publication replay mismatch");
+      }
+      return recordRestoreActivationPublication(tx, input, {
+        backupId: existing.backup_id,
+        manifestSha256: existing.backup_manifest_sha256,
+        imageDigest: existing.image_digest,
+      });
+    }
     if (existing) {
       if (!publicationMatchesInput(existing, input))
         conflict("Activation publication replay mismatch");
+      await lockCurrentNodeHistory(tx, {
+        nodeRecordId: existing.docker_node_record_id,
+        nodeId: existing.node_id,
+        nodeIncarnation: existing.node_incarnation,
+        nodeHistoryId: existing.node_history_id,
+      });
       return { publication: existing, replayed: true };
+    }
+
+    const [activationAuthority] = await tx
+      .select({
+        purpose: agentSandboxes.activation_purpose,
+        backupId: agentSandboxes.activation_backup_id,
+        manifestSha256: agentSandboxes.activation_backup_hash,
+        imageDigest: agentSandboxes.activation_image_digest,
+      })
+      .from(agentSandboxes)
+      .where(
+        and(
+          eq(agentSandboxes.id, input.agentId),
+          eq(agentSandboxes.organization_id, input.organizationId),
+          eq(agentSandboxes.activation_generation, input.activationGeneration),
+        ),
+      )
+      .limit(1);
+    if (activationAuthority?.purpose === "restore") {
+      if (
+        !activationAuthority.backupId ||
+        !activationAuthority.manifestSha256 ||
+        !activationAuthority.imageDigest
+      ) {
+        conflict("Restore activation lacks an exact backup authority");
+      }
+      return recordRestoreActivationPublication(tx, input, {
+        backupId: activationAuthority.backupId,
+        manifestSha256: activationAuthority.manifestSha256,
+        imageDigest: activationAuthority.imageDigest,
+      });
     }
 
     const [sandbox] = await tx
@@ -266,6 +512,9 @@ export async function recordAgentActivationPublication(
       )
       .for("update")
       .limit(1);
+    if (sandbox?.activation_purpose === "restore") {
+      conflict("Restore activation changed before durable operation authority was locked");
+    }
     const [concurrentPublication] = await tx
       .select()
       .from(agentActivationPublications)
@@ -281,6 +530,12 @@ export async function recordAgentActivationPublication(
       if (!publicationMatchesInput(concurrentPublication, input)) {
         conflict("Activation publication replay mismatch");
       }
+      await lockCurrentNodeHistory(tx, {
+        nodeRecordId: concurrentPublication.docker_node_record_id,
+        nodeId: concurrentPublication.node_id,
+        nodeIncarnation: concurrentPublication.node_incarnation,
+        nodeHistoryId: concurrentPublication.node_history_id,
+      });
       return { publication: concurrentPublication, replayed: true };
     }
     if (
@@ -301,16 +556,11 @@ export async function recordAgentActivationPublication(
     ) {
       conflict("Mutable activation authority is incomplete or differs from publication input");
     }
-    if (
-      sandbox.activation_purpose === "restore" &&
-      (!sandbox.activation_backup_id || !sandbox.activation_backup_hash)
-    ) {
-      conflict("Restore activation lacks an exact backup authority");
-    }
     const history = await lockCurrentNodeHistory(tx, {
       nodeRecordId: input.expectedNodeRecordId,
       nodeId: sandbox.activation_node_id,
       nodeIncarnation: input.expectedNodeIncarnation,
+      nodeHistoryId: input.expectedNodeHistoryId,
     });
     const [publication] = await tx
       .insert(agentActivationPublications)
@@ -391,6 +641,7 @@ export async function authorizeAgentActivationDispatch(
       nodeRecordId: publication.docker_node_record_id,
       nodeId: publication.node_id,
       nodeIncarnation: publication.node_incarnation,
+      nodeHistoryId: publication.node_history_id,
     });
     return publication;
   });
@@ -410,6 +661,7 @@ export interface RecordAgentVaultKeySeedReceiptInput {
   targetActivationGeneration: string;
   targetNodeRecordId: string;
   targetNodeIncarnation: string;
+  targetNodeHistoryId: string;
 }
 
 function validateSeedInput(input: RecordAgentVaultKeySeedReceiptInput): void {
@@ -437,7 +689,8 @@ function seedMatchesInput(
     receipt.lease_fencing_token === input.leaseFencingToken &&
     receipt.target_activation_generation === input.targetActivationGeneration &&
     receipt.docker_node_record_id === input.targetNodeRecordId &&
-    receipt.node_incarnation === input.targetNodeIncarnation
+    receipt.node_incarnation === input.targetNodeIncarnation &&
+    receipt.node_history_id === input.targetNodeHistoryId
   );
 }
 
@@ -459,6 +712,11 @@ export async function recordAgentVaultKeySeedReceipt(
       .limit(1);
     if (existing) {
       if (!seedMatchesInput(existing, input)) conflict("Vault-seed receipt replay mismatch");
+      await lockCurrentNodeHistory(tx, {
+        nodeRecordId: existing.docker_node_record_id,
+        nodeIncarnation: existing.node_incarnation,
+        nodeHistoryId: existing.node_history_id,
+      });
       return { receipt: existing, replayed: true };
     }
 
@@ -488,6 +746,11 @@ export async function recordAgentVaultKeySeedReceipt(
       if (!seedMatchesInput(concurrentReceipt, input)) {
         conflict("Vault-seed receipt replay mismatch");
       }
+      await lockCurrentNodeHistory(tx, {
+        nodeRecordId: concurrentReceipt.docker_node_record_id,
+        nodeIncarnation: concurrentReceipt.node_incarnation,
+        nodeHistoryId: concurrentReceipt.node_history_id,
+      });
       return { receipt: concurrentReceipt, replayed: true };
     }
     if (
@@ -501,6 +764,20 @@ export async function recordAgentVaultKeySeedReceipt(
     ) {
       conflict("Vault seed source is absent or lacks restorable manifest-v3 authority");
     }
+    const operation = await lockExactRestoreOperationTarget(tx, {
+      organizationId: input.organizationId,
+      agentId: input.agentId,
+      backupId: input.backupId,
+      restoreAttemptId: input.restoreAttemptId,
+      targetActivationGeneration: input.targetActivationGeneration,
+      expectedOperationId: backup.backup_operation_id,
+      expectedManifestSha256: backup.manifest_digest,
+      expectedSourceActivationGeneration: backup.lifecycle_generation,
+      expectedSourceLifecycleRevision: backup.lifecycle_revision,
+      expectedNodeRecordId: input.targetNodeRecordId,
+      expectedNodeIncarnation: input.targetNodeIncarnation,
+      expectedNodeHistoryId: input.targetNodeHistoryId,
+    });
     const [lease] = await tx
       .select()
       .from(agentBackupRestoreLeases)
@@ -513,15 +790,22 @@ export async function recordAgentVaultKeySeedReceipt(
           eq(agentBackupRestoreLeases.restore_attempt_id, input.restoreAttemptId),
           eq(agentBackupRestoreLeases.owner_id, input.leaseOwnerId),
           eq(agentBackupRestoreLeases.generation, input.leaseFencingToken),
+          eq(agentBackupRestoreLeases.catalog_epoch, operation.catalog_epoch),
+          eq(agentBackupRestoreLeases.copy_role, operation.copy_role),
+          eq(agentBackupRestoreLeases.operation_id, operation.expected_operation_id),
+          eq(
+            agentBackupRestoreLeases.activation_generation,
+            operation.expected_activation_generation,
+          ),
+          eq(agentBackupRestoreLeases.lifecycle_revision, operation.expected_lifecycle_revision),
+          eq(agentBackupRestoreLeases.expected_manifest_sha256, operation.expected_manifest_sha256),
         ),
       )
       .for("update")
       .limit(1);
-    const databaseNow = await readPostLockDatabaseNow(tx);
     if (
       !lease ||
       lease.released_at !== null ||
-      lease.expires_at.getTime() <= databaseNow.getTime() ||
       lease.operation_id !== backup.backup_operation_id ||
       lease.activation_generation !== backup.lifecycle_generation ||
       lease.lifecycle_revision !== backup.lifecycle_revision ||
@@ -563,35 +847,39 @@ export async function recordAgentVaultKeySeedReceipt(
       !sandbox ||
       (sandbox.activation_phase !== "restart_attested" && sandbox.activation_phase !== "active") ||
       !sandbox.activation_node_id ||
-      sandbox.activation_boot_id !== input.targetNodeIncarnation
+      !sandbox.activation_container_id ||
+      !sandbox.activation_image_digest ||
+      sandbox.activation_boot_id !== input.targetNodeIncarnation ||
+      !operationMatchesRuntimeTarget(
+        operation,
+        sandbox.activation_container_id,
+        sandbox.activation_image_digest,
+      )
     ) {
-      conflict("Vault seed target activation is absent, unattested, changed, or blocked");
+      conflict(
+        "Vault seed target activation is absent, unattested, changed, or blocked by its durable operation target",
+      );
     }
     const history = await lockCurrentNodeHistory(tx, {
       nodeRecordId: input.targetNodeRecordId,
       nodeId: sandbox.activation_node_id,
       nodeIncarnation: input.targetNodeIncarnation,
+      nodeHistoryId: input.targetNodeHistoryId,
     });
     // Backup writers that also fence a live sandbox take sandbox and node
     // authority before the per-agent catalogue authority. Keeping this global
     // order aligned with reservation/capture and vault-key rotation prevents
     // sandbox <-> catalogue-authority AB-BA deadlocks.
-    const [authority] = await tx
-      .select()
-      .from(agentBackupCatalogAuthorities)
-      .where(
-        and(
-          eq(agentBackupCatalogAuthorities.organization_id, input.organizationId),
-          eq(agentBackupCatalogAuthorities.agent_id, input.agentId),
-        ),
-      )
-      .for("update")
-      .limit(1);
-    if (!authority || lease.catalog_epoch !== authority.catalog_revision) {
+    const authority = await lockAgentBackupCatalogAuthority(
+      tx,
+      input.organizationId,
+      input.agentId,
+    );
+    if (lease.catalog_epoch !== authority.catalog_revision) {
       conflict("Vault seed lost its exact live restore lease");
     }
     const finalDatabaseNow = await readPostLockDatabaseNow(tx);
-    if (lease.expires_at.getTime() <= finalDatabaseNow.getTime()) {
+    if (lease.released_at !== null || lease.expires_at.getTime() <= finalDatabaseNow.getTime()) {
       conflict("Vault seed lease expired while mutable authorities were revalidated");
     }
     const [receipt] = await tx
@@ -769,6 +1057,7 @@ export async function commitAgentBackupRestore(
       seed.source_lifecycle_revision !== backup.lifecycle_revision ||
       seed.manifest_sha256 !== backup.manifest_digest ||
       seed.target_activation_generation !== publication.activation_generation ||
+      seed.node_history_id !== publication.node_history_id ||
       seed.docker_node_record_id !== publication.docker_node_record_id ||
       seed.node_incarnation !== publication.node_incarnation ||
       publication.backup_id !== backup.id ||
@@ -776,18 +1065,46 @@ export async function commitAgentBackupRestore(
     ) {
       conflict("Final restore chain differs from source, seed, or activation publication");
     }
+    const operation = await lockExactRestoreOperationTarget(tx, {
+      organizationId: input.organizationId,
+      agentId: input.agentId,
+      backupId: input.backupId,
+      restoreAttemptId: input.restoreAttemptId,
+      targetActivationGeneration: input.targetActivationGeneration,
+      expectedOperationId: backup.backup_operation_id,
+      expectedManifestSha256: backup.manifest_digest,
+      expectedSourceActivationGeneration: backup.lifecycle_generation,
+      expectedSourceLifecycleRevision: backup.lifecycle_revision,
+      expectedNodeRecordId: publication.docker_node_record_id,
+      expectedNodeIncarnation: publication.node_incarnation,
+      expectedNodeHistoryId: publication.node_history_id,
+    });
+    if (
+      !operationMatchesRuntimeTarget(operation, publication.container_id, publication.image_digest)
+    ) {
+      conflict("Final restore chain differs from its durable operation target");
+    }
     const [lease] = await tx
       .select()
       .from(agentBackupRestoreLeases)
       .where(
         and(
-          eq(agentBackupRestoreLeases.id, seed.lease_id),
+          eq(agentBackupRestoreLeases.id, operation.lease_id),
           eq(agentBackupRestoreLeases.organization_id, seed.organization_id),
           eq(agentBackupRestoreLeases.agent_id, seed.agent_id),
           eq(agentBackupRestoreLeases.backup_id, seed.backup_id),
           eq(agentBackupRestoreLeases.restore_attempt_id, seed.restore_attempt_id),
           eq(agentBackupRestoreLeases.owner_id, seed.lease_owner_id),
           eq(agentBackupRestoreLeases.generation, seed.lease_fencing_token),
+          eq(agentBackupRestoreLeases.catalog_epoch, operation.catalog_epoch),
+          eq(agentBackupRestoreLeases.copy_role, operation.copy_role),
+          eq(agentBackupRestoreLeases.operation_id, operation.expected_operation_id),
+          eq(
+            agentBackupRestoreLeases.activation_generation,
+            operation.expected_activation_generation,
+          ),
+          eq(agentBackupRestoreLeases.lifecycle_revision, operation.expected_lifecycle_revision),
+          eq(agentBackupRestoreLeases.expected_manifest_sha256, operation.expected_manifest_sha256),
         ),
       )
       .for("update")
@@ -795,6 +1112,9 @@ export async function commitAgentBackupRestore(
     if (
       !lease ||
       lease.released_at !== null ||
+      seed.lease_id !== operation.lease_id ||
+      seed.lease_owner_id !== operation.lease_owner_id ||
+      seed.lease_fencing_token !== operation.lease_generation ||
       lease.operation_id !== seed.operation_id ||
       lease.activation_generation !== seed.source_activation_generation ||
       lease.lifecycle_revision !== seed.source_lifecycle_revision ||
@@ -840,23 +1160,17 @@ export async function commitAgentBackupRestore(
       nodeRecordId: publication.docker_node_record_id,
       nodeId: publication.node_id,
       nodeIncarnation: publication.node_incarnation,
+      nodeHistoryId: publication.node_history_id,
     });
     // Match every sandbox-bearing backup writer: sandbox and node authority
     // precede catalogue authority. Writers without a sandbox still serialize
     // on the already-locked backup row before reaching this authority.
-    const [authority] = await tx
-      .select()
-      .from(agentBackupCatalogAuthorities)
-      .where(
-        and(
-          eq(agentBackupCatalogAuthorities.organization_id, input.organizationId),
-          eq(agentBackupCatalogAuthorities.agent_id, input.agentId),
-        ),
-      )
-      .for("update")
-      .limit(1);
+    const authority = await lockAgentBackupCatalogAuthority(
+      tx,
+      input.organizationId,
+      input.agentId,
+    );
     if (
-      !authority ||
       authority.restore_generation >= MAX_SIGNED_BIGINT ||
       lease.catalog_epoch !== authority.catalog_revision
     ) {

@@ -102,21 +102,26 @@ describe("absent-plugin route stub registry", () => {
     });
   });
 
-  it("echoes the signal accountId query param, defaulting to 'default'", () => {
+  it("keeps Signal status as an explicit unsupported 501 tombstone", () => {
     const stub = resolveAbsentPluginRouteStub("GET", "/api/signal/status");
-    expect(stub?.buildBody(req("/api/signal/status"))).toMatchObject({
+    expect(stub?.capabilityId).toBe("signal-unsupported");
+    expect(stub?.statusCode).toBe(501);
+    expect(stub?.buildBody(req("/api/signal/status"))).toEqual({
       accountId: "default",
-      status: "idle",
+      status: "unsupported",
+      available: false,
+      supported: false,
       authExists: false,
       serviceConnected: false,
+      qrDataUrl: null,
+      phoneNumber: null,
+      code: "SIGNAL_DIRECT_TRANSPORT_UNAVAILABLE",
+      error:
+        "Signal is unsupported because no bundled in-process transport is available.",
     });
     expect(
-      stub?.buildBody(req("/api/signal/status?accountId=acct-9")),
-    ).toMatchObject({ accountId: "acct-9" });
-    // Empty accountId falls back to "default" (matches legacy `|| "default"`).
-    expect(stub?.buildBody(req("/api/signal/status?accountId="))).toMatchObject(
-      { accountId: "default" },
-    );
+      stub?.buildBody(req("/api/signal/status?accountId=legacy-account")),
+    ).toMatchObject({ accountId: "legacy-account", status: "unsupported" });
   });
 
   it("produces the telegram-account idle snapshot", () => {

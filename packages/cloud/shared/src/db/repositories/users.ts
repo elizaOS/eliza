@@ -670,6 +670,21 @@ export class UsersRepository {
   }
 
   /**
+   * Primary-storage Telegram identity read for account-link decisions. A
+   * just-created first-message account must be visible before a verified web
+   * login decides whether it may bind another Cloud identity.
+   */
+  async findByTelegramIdWithOrganizationForWrite(
+    telegramId: string,
+  ): Promise<UserWithOrganization | undefined> {
+    const identity = await dbWrite.query.userIdentities.findFirst({
+      where: eq(userIdentities.telegram_id, telegramId),
+    });
+    if (!identity) return undefined;
+    return this.findWithOrganizationForWrite(identity.user_id);
+  }
+
+  /**
    * Finds a user by phone number (E.164 format, via identity table).
    */
   async findByPhoneNumber(phoneNumber: string): Promise<User | undefined> {

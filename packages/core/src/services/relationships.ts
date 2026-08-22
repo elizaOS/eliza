@@ -9,6 +9,7 @@
  * Consumed by relationships providers/actions, LifeOps, and the dashboard.
  */
 import { sql } from "drizzle-orm";
+import { ElizaError } from "../errors";
 import { logger } from "../logger";
 import type { Component, Entity, Relationship } from "../types/environment";
 import type {
@@ -39,6 +40,39 @@ import {
  * level CONTACT_PLATFORM_SET in agent/src/services/relationships-graph.ts.
  */
 const CONTACT_HANDLE_PLATFORMS = new Set(["email", "phone", "website"]);
+const RELATIONSHIP_MESSAGE_PAGE_SIZE = 200;
+
+async function getAllRelationshipMessages(
+	runtime: IAgentRuntime,
+	roomIds: UUID[],
+): Promise<Awaited<ReturnType<IAgentRuntime["getMemoriesByRoomIds"]>>> {
+	const messages: Awaited<ReturnType<IAgentRuntime["getMemoriesByRoomIds"]>> =
+		[];
+	const seenMemoryIds = new Set<UUID>();
+	for (let offset = 0; ; offset += RELATIONSHIP_MESSAGE_PAGE_SIZE) {
+		const page = await runtime.getMemoriesByRoomIds({
+			tableName: "messages",
+			roomIds,
+			limit: RELATIONSHIP_MESSAGE_PAGE_SIZE,
+			offset,
+		});
+		const pageIds = page.flatMap((memory) => (memory.id ? [memory.id] : []));
+		if (
+			page.length === RELATIONSHIP_MESSAGE_PAGE_SIZE &&
+			pageIds.length === page.length &&
+			pageIds.every((id) => seenMemoryIds.has(id))
+		) {
+			throw new ElizaError("Relationship message pagination made no progress", {
+				code: "RELATIONSHIP_MESSAGE_PAGINATION_STALLED",
+				context: { offset, pageSize: RELATIONSHIP_MESSAGE_PAGE_SIZE },
+				severity: "fatal",
+			});
+		}
+		for (const id of pageIds) seenMemoryIds.add(id);
+		messages.push(...page);
+		if (page.length < RELATIONSHIP_MESSAGE_PAGE_SIZE) return messages;
+	}
+}
 
 function isConfirmedIdentityLinkLike(relationship: Relationship): boolean {
 	const tags = relationship.tags;
@@ -1061,11 +1095,7 @@ export class RelationshipsService extends Service {
 		);
 		const sharedMessages =
 			sharedRoomIds.length > 0
-				? await this.runtime.getMemoriesByRoomIds({
-						tableName: "messages",
-						roomIds: sharedRoomIds,
-						limit: 200,
-					})
+				? await getAllRelationshipMessages(this.runtime, sharedRoomIds)
 				: [];
 
 		const interactions = sharedMessages
@@ -1140,7 +1170,7 @@ export class RelationshipsService extends Service {
 			lastInteractionAt,
 			averageResponseTime,
 			sentimentScore: 0.7, // Default neutral-positive score until sentiment is observed
-			topicsDiscussed: Array.from(topicsSet).slice(0, 10),
+			topicsDiscussed: Array.from(topicsSet),
 		};
 
 		// Update relationship with calculated strength

@@ -24,7 +24,7 @@ import {
   lockAgentBackupCatalogAuthority,
 } from "./agent-backup-catalog";
 import { hasAgentBackupRestoreAuthority } from "./agent-backup-restore-authority";
-import { proveUnambiguousAgentNodeIncarnationForLockedNode } from "./agent-backup-restore-history";
+import { proveExactAgentNodeOccurrenceForLockedNode } from "./agent-backup-restore-history";
 import { readPostLockDatabaseNow } from "./primary-database-clock";
 
 const MAX_TOKEN_CIPHERTEXT_BYTES = 16_384;
@@ -106,6 +106,7 @@ function immutableOperationAuthorityMatches(
     operation.expected_manifest_sha256 === authority.expected_manifest_sha256 &&
     operation.expected_activation_generation === authority.expected_activation_generation &&
     operation.expected_lifecycle_revision === authority.expected_lifecycle_revision &&
+    operation.expected_node_history_id === authority.expected_node_history_id &&
     operation.expected_node_record_id === authority.expected_node_record_id &&
     operation.expected_node_incarnation === authority.expected_node_incarnation &&
     operation.expected_image_digest === authority.expected_image_digest
@@ -115,11 +116,13 @@ function immutableOperationAuthorityMatches(
 function hasCompleteTargetAuthority(
   operation: AgentBackupRestoreOperation,
 ): operation is AgentBackupRestoreOperation & {
+  expected_node_history_id: string;
   expected_node_record_id: string;
   expected_node_incarnation: string;
   expected_image_digest: string;
 } {
   return (
+    operation.expected_node_history_id !== null &&
     operation.expected_node_record_id !== null &&
     operation.expected_node_incarnation !== null &&
     operation.expected_image_digest !== null
@@ -211,8 +214,7 @@ function isExactContainerReplay(params: {
  *
  * The canonical route (`sandbox_id`, `node_id`, `image_digest`, and `status`)
  * is intentionally untouched. Definition-only: no production caller may use
- * this until restore allocation ownership has a durable settlement path and
- * node authority carries a durable incarnation-occurrence token.
+ * this until restore allocation ownership has a durable settlement path.
  */
 export async function openAgentBackupRestoreQuarantine(
   input: Readonly<OpenAgentBackupRestoreQuarantineInput>,
@@ -335,13 +337,19 @@ export async function openAgentBackupRestoreQuarantine(
       .where(eq(dockerNodes.id, operation.expected_node_record_id))
       .for("update")
       .limit(1);
-    if (!node || node.node_incarnation !== operation.expected_node_incarnation || !node.node_id) {
-      conflict("Restore quarantine target node incarnation changed");
+    if (
+      !node ||
+      node.node_incarnation !== operation.expected_node_incarnation ||
+      node.current_node_history_id !== operation.expected_node_history_id ||
+      !node.node_id
+    ) {
+      conflict("Restore quarantine target node occurrence changed");
     }
-    await proveUnambiguousAgentNodeIncarnationForLockedNode(
+    await proveExactAgentNodeOccurrenceForLockedNode(
       tx,
       node,
       operation.expected_node_incarnation,
+      operation.expected_node_history_id,
     );
 
     // Every sandbox-bearing backup writer takes the mutable sandbox and node
@@ -588,13 +596,19 @@ export async function recordAgentBackupRestoreQuarantinedContainer(
       .where(eq(dockerNodes.id, operation.expected_node_record_id))
       .for("update")
       .limit(1);
-    if (!node || node.node_incarnation !== operation.expected_node_incarnation || !node.node_id) {
-      conflict("Quarantined container target node incarnation changed");
+    if (
+      !node ||
+      node.node_incarnation !== operation.expected_node_incarnation ||
+      node.current_node_history_id !== operation.expected_node_history_id ||
+      !node.node_id
+    ) {
+      conflict("Quarantined container target node occurrence changed");
     }
-    await proveUnambiguousAgentNodeIncarnationForLockedNode(
+    await proveExactAgentNodeOccurrenceForLockedNode(
       tx,
       node,
       operation.expected_node_incarnation,
+      operation.expected_node_history_id,
     );
 
     const catalogAuthority = await lockAgentBackupCatalogAuthority(
@@ -711,6 +725,10 @@ export async function recordAgentBackupRestoreQuarantinedContainer(
           eq(agentBackupRestoreOperations.claim_owner, input.ownerId),
           eq(agentBackupRestoreOperations.claim_generation, claimGeneration),
           isNull(agentBackupRestoreOperations.expected_container_id),
+          eq(
+            agentBackupRestoreOperations.expected_node_history_id,
+            operation.expected_node_history_id,
+          ),
           eq(
             agentBackupRestoreOperations.expected_node_record_id,
             operation.expected_node_record_id,

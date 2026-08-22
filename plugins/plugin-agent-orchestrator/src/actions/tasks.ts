@@ -21,15 +21,14 @@ import type {
 } from "@elizaos/core";
 import {
   ChannelType,
+  completeUserReferenceView,
   logger as coreLogger,
   ElizaError,
   looksLikeBareLinkShare,
   MESSAGE_SOURCE_SUB_AGENT,
   stringToUuid,
   toWellFormedUnicode,
-  truncateWellFormed,
   unwrapUserMessageText,
-  userReferenceLogView,
 } from "@elizaos/core";
 import type { IssueInfo, PullRequestInfo } from "git-workspace-service";
 import {
@@ -76,6 +75,7 @@ import type {
 import { getCodingWorkspaceService } from "../services/workspace-service.js";
 import {
   callbackText,
+  canonicalSessionId,
   contentRecord,
   emitSessionEvent,
   errorResult,
@@ -98,9 +98,9 @@ import {
   resolveSession,
   setCurrentSession,
   setCurrentSessions,
-  shortId,
   waitForSpawnSlot,
 } from "./common.js";
+import { labelFrom } from "./task-label.js";
 import { parseHistoryLimit } from "./tasks-history-limit.js";
 
 const MAX_CONCURRENT_AGENTS = 8;
@@ -324,12 +324,6 @@ function parseAgentPrefix(
     return { task: part, agentType: fallbackAgentType };
   }
   return { agentType: candidate, task: match[2] ?? part };
-}
-
-function labelFrom(task: string, index: number): string {
-  const cleaned = task.replace(/\s+/g, " ").trim();
-  const wellFormed = toWellFormedUnicode(cleaned);
-  return wellFormed ? truncateWellFormed(wellFormed, 80) : `task-${index + 1}`;
 }
 
 function objectValue(value: unknown): Record<string, unknown> | undefined {
@@ -556,7 +550,7 @@ async function ensureDistinctTaskRoom(
     }
     await runtime.createRoom({
       id: roomId,
-      name: label?.trim() || `Task ${seed.slice(0, 18)}`,
+      name: label?.trim() || `Task ${seed}`,
       source: "orchestrator-task",
       type: ChannelType.GROUP,
       worldId,
@@ -892,11 +886,11 @@ async function runCreateLegacy(
   const maxSmithersTurns = readPositiveInteger(
     params.maxTurns ?? content.maxTurns,
   );
-  // A planner-supplied label is free text; clamp like the labelFrom fallback
-  // so listings, room names, and progress lines stay bounded.
+  // Preserve planner-supplied labels completely so listings and room names do
+  // not become ambiguous aliases for different tasks.
   const baseLabelParam = pickString(params, content, "label");
   const baseLabel = baseLabelParam
-    ? userReferenceLogView(baseLabelParam)
+    ? completeUserReferenceView(baseLabelParam)
     : undefined;
   const extraMetadata = additionalSessionMetadata(params, content);
   const keepAliveAfterComplete = hasVerifiedRetryLifecycle(
@@ -933,11 +927,10 @@ async function runCreateLegacy(
   // Planner-supplied title/goal is unbounded free text (it can be a whole
   // blob); clamp at the persist/display seam — the stored task title and the
   // [TASK:] widget block both render it. labelFrom's fallback is already
-  // 80-clamped, so only the params-derived branch needs bounding.
   const plannerTitle =
     pickString(params, content, "title") ?? pickString(params, content, "goal");
   const taskTitle = plannerTitle
-    ? userReferenceLogView(plannerTitle)
+    ? completeUserReferenceView(plannerTitle)
     : tasks[0]
       ? labelFrom(tasks[0], 0)
       : "Coding task";
@@ -1884,12 +1877,11 @@ async function runSpawnAgent(
     // no interim reply. No regex over the task text (the model judges intent).
     const deferUserReply =
       pickBoolean(params, content, "deferUserReply") === true;
-    // A planner-supplied label is free text; clamp like the derived fallback
-    // so listings, room names, and progress lines stay bounded.
+    // Preserve the complete task label; it is model-visible task identity.
     const labelParam = pickString(params, content, "label");
     const label = labelParam
-      ? userReferenceLogView(labelParam)
-      : truncateWellFormed(toWellFormedUnicode(task), 80);
+      ? completeUserReferenceView(labelParam)
+      : labelFrom(task, 0);
     const originConnectorMessageId = connectorMessageIdFromMemory(
       message,
       content,
@@ -2471,7 +2463,7 @@ async function runListAgents(
   const lines = [`Active task agents (${sessions.length}):`];
   for (const session of sessions) {
     lines.push(
-      `- ${labelFor(session)} [${shortId(session.id)}] ${session.agentType} ${session.status} in ${session.workdir}`,
+      `- ${labelFor(session)} [${canonicalSessionId(session.id)}] ${session.agentType} ${session.status} in ${session.workdir}`,
     );
   }
   const text = lines.join("\n");
@@ -5166,15 +5158,15 @@ export const tasksAction: Action & {
     "RESUME_CODING_TASK",
   ],
   description:
-    "Planner surface for orchestrator workspace operations and coding task delegation to dedicated ACP coding sub-agents (elizaos / pi-agent / opencode / claude / codex). " +
+    "Planner surface for orchestrator workspace operations and coding task delegation to dedicated ACP coding sub-agents (elizaos / pi-agent / claude / codex). " +
     "Available operations (pick via `action`): create or spawn_agent (delegate new coding work), send (forward a message to an existing coding sub-agent), list_agents / history (read state), " +
     "control (pause | resume | continue | archive | reopen a task), share (surface task output), provision_workspace / submit_workspace (workspace setup and PR submission), manage_issues (GitHub issue operations), cancel / stop_agent (end a coding sub-agent run when the user asks to). " +
     "Choose this when the user asks to delegate coding work, use a coding adapter by name, or run multi-step development work — it is the canonical path for coding sub-agents and is preferred over inline FILE / BASH for delegated work. " +
     "NOT for building a web app/page/site/interactive HTML the user wants hosted with a live link — that is APP action=create, which builds, verifies, AND publishes; a task workspace has no hosting path, so files built here never get a URL.",
   descriptionCompressed:
-    "ACP coding sub-agent elizaos|pi-agent|opencode|claude|codex: spawn|send|control|list|history",
+    "ACP coding sub-agent elizaos|pi-agent|claude|codex: spawn|send|control|list|history",
   routingHint:
-    'delegate coding/software/dev work to a coding sub-agent, or drive a coding adapter by name (elizaos|pi-agent|opencode|claude|codex) -> TASKS; GitHub issue operations ("any new issues?", list/create/comment/close/reopen an issue) -> TASKS_MANAGE_ISSUES — this IS the github-issues tool; do NOT use for personal reminders, check-ins, follow-ups, alarms or recurring routines ("remind me...", "every day...") -> use the exposed reminder/scheduling tool instead (TRIGGER_CREATE, SCHEDULED_TASKS, or OWNER_REMINDERS — whichever is exposed this turn); do NOT use for building a web app/page/site/interactive HTML the user wants hosted at a live link ("make me a website", "teach me with an interactive page", "host it and give me the link") -> APP action=create, which builds AND publishes — a coding task workspace has no hosting path; not for one-off inline file edits or shell commands -> FILE / BASH',
+    'delegate coding/software/dev work to a coding sub-agent, or drive a coding adapter by name (elizaos|pi-agent|claude|codex) -> TASKS; GitHub issue operations ("any new issues?", list/create/comment/close/reopen an issue) -> TASKS_MANAGE_ISSUES — this IS the github-issues tool; do NOT use for personal reminders, check-ins, follow-ups, alarms or recurring routines ("remind me...", "every day...") -> use the exposed reminder/scheduling tool instead (TRIGGER_CREATE, SCHEDULED_TASKS, or OWNER_REMINDERS — whichever is exposed this turn); do NOT use for building a web app/page/site/interactive HTML the user wants hosted at a live link ("make me a website", "teach me with an interactive page", "host it and give me the link") -> APP action=create, which builds AND publishes — a coding task workspace has no hosting path; not for one-off inline file edits or shell commands -> FILE / BASH',
   suppressPostActionContinuation: true,
   // When the planner picks any TASKS_* subaction (spawn_agent, send, etc.),
   // suppress the response-handler's draft reply: the action's own callback
@@ -5223,7 +5215,7 @@ export const tasksAction: Action & {
     {
       name: "agentType",
       description:
-        "Heuristic backend guess (elizaos, pi-agent, opencode, codex, or claude) for create / spawn_agent / control.resume. This is a weak hint — it loses to the operator default/pin and to character routing. To honor an EXPLICIT user request use requestedBackend instead.",
+        "Heuristic backend guess (elizaos, pi-agent, codex, or claude) for create / spawn_agent / control.resume. This is a weak hint — it loses to the operator default/pin and to character routing. To honor an EXPLICIT user request use requestedBackend instead.",
       required: false,
       schema: { type: "string" as const },
     },
@@ -5237,11 +5229,11 @@ export const tasksAction: Action & {
     {
       name: "requestedBackend",
       description:
-        "Set ONLY when the user EXPLICITLY named a coding backend for THIS task (e.g. 'use codex', 'have claude build it') — one of elizaos, pi-agent, opencode, codex, claude. Leave unset if the user did not name one; never guess. Unlike agentType this overrides the configured default/pin.",
+        "Set ONLY when the user EXPLICITLY named a coding backend for THIS task (e.g. 'use codex', 'have claude build it') — one of elizaos, pi-agent, codex, claude. Leave unset if the user did not name one; never guess. Unlike agentType this overrides the configured default/pin.",
       required: false,
       schema: {
         type: "string" as const,
-        enum: ["elizaos", "pi-agent", "opencode", "codex", "claude"],
+        enum: ["elizaos", "pi-agent", "codex", "claude"],
       },
     },
     {
@@ -5702,7 +5694,7 @@ export const tasksAction: Action & {
           text: "Spinning up a coding sub-agent for the auth refactor.",
           actions: ["TASKS"],
           thought:
-            "User asked to delegate to a sub-agent; TASKS action=spawn_agent routes to AcpService.spawnSession with the configured adapter (elizaos / pi-agent / opencode / claude / codex).",
+            "User asked to delegate to a sub-agent; TASKS action=spawn_agent routes to AcpService.spawnSession with the configured adapter (elizaos / pi-agent / claude / codex).",
         },
       },
     ],
@@ -5721,24 +5713,6 @@ export const tasksAction: Action & {
           actions: ["TASKS"],
           thought:
             "Explicit delegation request → TASKS action=spawn_agent. Multi-file project work is exactly what sub-agent isolation is for; do NOT use inline FILE.write for delegated work.",
-        },
-      },
-    ],
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "use opencode to write a script that prints hello world",
-          source: "chat",
-        },
-      },
-      {
-        name: "{{agentName}}",
-        content: {
-          text: "Spawning an opencode sub-agent for the script.",
-          actions: ["TASKS"],
-          thought:
-            "User explicitly named the coding adapter (opencode). TASKS action=spawn_agent with agentType=opencode hands off to the configured opencode provider (cerebras / openrouter / etc. via auto-detected key).",
         },
       },
     ],
@@ -5774,7 +5748,7 @@ export const tasksAction: Action & {
           text: "Spinning up a coding sub-agent for the auth refactor.",
           actions: ["TASKS"],
           thought:
-            "User asked to delegate to a sub-agent; TASKS action=spawn_agent routes through the ACP service with the configured adapter (elizaos / pi-agent / opencode / claude / codex).",
+            "User asked to delegate to a sub-agent; TASKS action=spawn_agent routes through the ACP service with the configured adapter (elizaos / pi-agent / claude / codex).",
         },
       },
     ],

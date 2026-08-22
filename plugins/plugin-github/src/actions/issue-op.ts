@@ -12,7 +12,11 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import { logger, requireConfirmation } from "@elizaos/core";
+import {
+  logger,
+  requireConfirmation,
+  toWellFormedUnicode,
+} from "@elizaos/core";
 import {
   buildResolvedClient,
   describeSelection,
@@ -257,7 +261,7 @@ async function runLabel(
   };
 }
 
-function buildPreview(
+export function buildPreview(
   op: GitHubIssueOp,
   repo: string,
   identity: string,
@@ -279,7 +283,7 @@ function buildPreview(
       case "label":
         return ` with [${labels?.join(", ") ?? ""}]`;
       case "comment":
-        return body ? ` body: "${body.slice(0, 120)}"` : "";
+        return body ? ` body: "${toWellFormedUnicode(body)}"` : "";
       default:
         return "";
     }

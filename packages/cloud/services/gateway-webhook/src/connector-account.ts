@@ -16,10 +16,18 @@ export function resolveConnectorAccountId(
   config: WebhookConfig,
 ): string | undefined {
   switch (platform) {
-    case "telegram":
-      return config.botToken
-        ? `bot:${credentialFingerprint(config.botToken)}`
-        : undefined;
+    case "telegram": {
+      if (!config.botToken) return undefined;
+      // Telegram documents the decimal prefix as the immutable bot user id.
+      // Token rotation changes only the credential suffix, so binding durable
+      // group ownership to a full-token fingerprint would silently orphan
+      // every group after a routine security rotation. Keep the fingerprint
+      // fallback solely for nonstandard test/proxy credentials.
+      const botId = config.botToken.match(/^(\d{1,20}):/)?.[1];
+      return botId
+        ? `bot:${botId}`
+        : `bot:${credentialFingerprint(config.botToken)}`;
+    }
     case "whatsapp":
       return config.phoneNumberId ?? config.businessPhone;
     case "twilio":

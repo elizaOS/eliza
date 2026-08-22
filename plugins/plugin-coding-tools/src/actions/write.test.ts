@@ -150,13 +150,29 @@ describe("WRITE", () => {
     expect(onDisk).toBe("original");
   });
 
-  it("allows overwriting after a previous recordRead with matching mtime", async () => {
+  it("requires explicit overwrite after a previous recordRead", async () => {
     const file = path.join(env.tmpDir, "tracked.txt");
     await fs.writeFile(file, "original", "utf8");
     await env.fileState.recordRead("test-room", file);
 
     const result = await writeFileHandler(env.runtime, env.message, undefined, {
       parameters: { file_path: file, content: "fresh" },
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.text).toContain(
+      "WRITE would replace the entire existing file",
+    );
+    expect(await fs.readFile(file, "utf8")).toBe("original");
+  });
+
+  it("allows an explicit overwrite after a previous recordRead with matching mtime", async () => {
+    const file = path.join(env.tmpDir, "tracked-overwrite.txt");
+    await fs.writeFile(file, "original", "utf8");
+    await env.fileState.recordRead("test-room", file);
+
+    const result = await writeFileHandler(env.runtime, env.message, undefined, {
+      parameters: { file_path: file, content: "fresh", overwrite: true },
     });
 
     expect(result.success).toBe(true);

@@ -117,10 +117,9 @@ function renderedConfig(shard: { shard: string; paths: string[] }): {
   };
 }
 
-describe("scheduled CodeQL workflow", () => {
+describe("on-demand CodeQL workflow", () => {
   test("never subscribes to pull requests or pushes", () => {
     expect(Object.keys(workflow.on ?? {}).sort()).toEqual([
-      "schedule",
       "workflow_dispatch",
     ]);
     expect(workflowText).not.toMatch(/^\s+pull_request:/m);

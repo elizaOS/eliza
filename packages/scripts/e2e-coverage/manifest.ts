@@ -135,9 +135,6 @@ export const PLUGIN_ROUTE_COVERAGE: Record<string, ManifestEntry> = {
   "plugin-agent-orchestrator": existing(
     "plugins/plugin-agent-orchestrator/__tests__/unit/agent-routes-goal-wrapper.test.ts",
   ),
-  "plugin-bluebubbles": existing(
-    "plugins/plugin-bluebubbles/__tests__/data-routes.test.ts",
-  ),
   "plugin-browser": existing(
     "plugins/plugin-browser/src/routes/workspace-routes.test.ts",
   ),
@@ -161,7 +158,6 @@ export const PLUGIN_ROUTE_COVERAGE: Record<string, ManifestEntry> = {
   "plugin-meetings": existing(
     "plugins/plugin-meetings/src/routes/meetings-routes.test.ts",
   ),
-  "plugin-signal": existing("plugins/plugin-signal/src/setup-routes.test.ts"),
   "plugin-notes": existing(
     "plugins/plugin-notes/src/__tests__/backend.test.ts",
   ),

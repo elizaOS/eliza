@@ -139,7 +139,7 @@
       },
       "ELIZA_ACP_DEFAULT_AGENT": {
         "type": "string",
-        "description": "Default coding agent adapter for TASKS create/spawn_agent when the user or planner does not choose one. Supported defaults include elizaos, pi-agent, and opencode.",
+        "description": "Default coding agent adapter for TASKS create/spawn_agent when the user or planner does not choose one. Supported defaults include elizaos, pi-agent, claude, and codex.",
         "required": false,
         "default": "elizaos",
         "sensitive": false
@@ -153,7 +153,7 @@
       },
       "ELIZA_DEFAULT_AGENT_TYPE": {
         "type": "string",
-        "description": "Compatibility alias for the default coding agent adapter. Use elizaos, pi-agent, or opencode to switch the default code agent from settings.",
+        "description": "Compatibility alias for the default coding agent adapter. Use elizaos, pi-agent, claude, or codex to switch the default code agent from settings.",
         "required": false,
         "default": "elizaos",
         "sensitive": false
@@ -233,12 +233,6 @@
         "description": "Native ACP command used for Claude sessions when ELIZA_ACP_TRANSPORT=native. Pin this in production to avoid implicit package upgrades.",
         "required": false,
         "default": "npx -y @agentclientprotocol/claude-agent-acp@0.34.0",
-        "sensitive": false
-      },
-      "ELIZA_OPENCODE_ACP_COMMAND": {
-        "type": "string",
-        "description": "Native ACP command used for OpenCode sessions when ELIZA_ACP_TRANSPORT=native. Defaults to the bundled OpenCode shim when available, otherwise opencode acp.",
-        "required": false,
         "sensitive": false
       },
       "ELIZA_ACP_FORMAT": {
