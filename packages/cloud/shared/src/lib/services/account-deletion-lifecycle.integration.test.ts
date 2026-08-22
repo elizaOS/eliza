@@ -16,7 +16,7 @@ import { accountDeletionRequests } from "../../db/schemas/account-deletion-reque
 import { organizationBalanceRevisionSequence, organizations } from "../../db/schemas/organizations";
 import { userIdentities } from "../../db/schemas/user-identities";
 import { users } from "../../db/schemas/users";
-import { requestAccountDeletion } from "./account-deletion";
+import { getAccountDeletionStatus, requestAccountDeletion } from "./account-deletion";
 
 const PGLITE_TIMEOUT = 60_000;
 const ORGANIZATION_ID = "11111111-1111-4111-8111-111111111111";
@@ -98,6 +98,17 @@ describe("account deletion end-to-end lifecycle", () => {
       steward_user_id: STEWARD_USER_ID,
     });
 
+    expect(
+      await getAccountDeletionStatus({ userId: USER_ID, organizationId: ORGANIZATION_ID }),
+    ).toEqual({
+      state: "lifecycle_unavailable",
+      request: null,
+      code: "LIFECYCLE_RESERVATION_REQUIRED",
+      message:
+        "Permanent account deletion is unavailable until lifecycle recovery and provider reconciliation are reserved",
+    });
+    expect(await accountDeletionRequestsRepository.findOpenByUserId(USER_ID, true)).toBeUndefined();
+
     const requestedAt = new Date(Date.now() - 31 * 24 * 60 * 60 * 1_000);
     await expect(
       requestAccountDeletion({
@@ -123,6 +134,12 @@ describe("account deletion end-to-end lifecycle", () => {
     requestIds.push(request.id);
 
     expect(request.status).toBe("scheduled");
+    expect(
+      await getAccountDeletionStatus({ userId: USER_ID, organizationId: ORGANIZATION_ID }),
+    ).toMatchObject({
+      state: "existing_request",
+      request: { requestId: request.id, status: "scheduled" },
+    });
 
     const purgeOrganizationResources = mock(async () => undefined);
     const t1ClaimedAt = new Date(request.execute_after.getTime() + 1_000);
@@ -221,6 +238,21 @@ describe("account deletion end-to-end lifecycle", () => {
       { user_id: SHARED_OWNER_ID, steward_user_id: "steward-shared-owner" },
       { user_id: SHARED_USER_ID, steward_user_id: SHARED_STEWARD_USER_ID },
     ]);
+
+    expect(
+      await getAccountDeletionStatus({
+        userId: SHARED_USER_ID,
+        organizationId: SHARED_ORGANIZATION_ID,
+      }),
+    ).toEqual({
+      state: "transfer_required",
+      request: null,
+      code: "TRANSFER_REQUIRED",
+      message: "Transfer or revoke shared organization resources before deleting this account",
+    });
+    expect(await accountDeletionRequestsRepository.findOpenByUserId(SHARED_USER_ID, true)).toBe(
+      undefined,
+    );
 
     await expect(
       requestAccountDeletion({

@@ -10,7 +10,7 @@ import {
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
 import {
   AccountDeletionConflictError,
-  getOpenAccountDeletionRequest,
+  getAccountDeletionStatus,
   requestAccountDeletion,
   toAccountDeletionRequestDto,
 } from "@/lib/services/account-deletion";
@@ -23,10 +23,11 @@ app.use("*", rateLimit(RateLimitPresets.STANDARD));
 app.get("/", async (c) => {
   try {
     const user = await requireUserWithOrg(c);
-    const request = await getOpenAccountDeletionRequest(user.id);
-    return c.json({
-      request: request ? toAccountDeletionRequestDto(request) : null,
+    const status = await getAccountDeletionStatus({
+      userId: user.id,
+      organizationId: user.organization_id,
     });
+    return c.json(status);
   } catch (error) {
     // error-policy:J1 The HTTP boundary translates service failures into a structured response.
     return failureResponse(c, error);
