@@ -70,6 +70,7 @@ export const identityClaimSchema: SchemaTable = {
 			notNull: true,
 			default: 0,
 		},
+		version: { name: "version", type: "bigint", notNull: true, default: 1 },
 		provenance: {
 			name: "provenance",
 			type: "jsonb",
@@ -176,7 +177,12 @@ export const identityClaimSchema: SchemaTable = {
 		},
 	},
 	compositePrimaryKeys: {},
-	uniqueConstraints: {},
+	uniqueConstraints: {
+		identity_claim_id_agent_unique: {
+			name: "identity_claim_id_agent_unique",
+			columns: ["id", "agent_id"],
+		},
+	},
 	checkConstraints: {
 		identity_claim_verification_check: {
 			name: "identity_claim_verification_check",
@@ -195,6 +201,137 @@ export const identityClaimSchema: SchemaTable = {
 			name: "identity_claim_owner_binding_check",
 			value:
 				"verification <> 'owner_bound' OR (owner_binding_id IS NOT NULL AND verified_at IS NOT NULL)",
+		},
+		identity_claim_version_check: {
+			name: "identity_claim_version_check",
+			value: "version > 0",
+		},
+	},
+};
+
+export const identityClaimJournalSchema: SchemaTable = {
+	name: "identity_claim_journal",
+	schema: "",
+	columns: {
+		id: {
+			name: "id",
+			type: "uuid",
+			primaryKey: true,
+			notNull: true,
+			default: "gen_random_uuid()",
+		},
+		agent_id: { name: "agent_id", type: "uuid", notNull: true },
+		claim_id: { name: "claim_id", type: "uuid", notNull: true },
+		principal_entity_id: {
+			name: "principal_entity_id",
+			type: "uuid",
+			notNull: true,
+		},
+		event_kind: { name: "event_kind", type: "text", notNull: true },
+		prior_version: { name: "prior_version", type: "bigint" },
+		resulting_version: {
+			name: "resulting_version",
+			type: "bigint",
+			notNull: true,
+		},
+		actor_principal_id: {
+			name: "actor_principal_id",
+			type: "uuid",
+			notNull: true,
+		},
+		idempotency_key: { name: "idempotency_key", type: "text", notNull: true },
+		request_digest: { name: "request_digest", type: "text", notNull: true },
+		reason: { name: "reason", type: "text", notNull: true },
+		provenance: {
+			name: "provenance",
+			type: "jsonb",
+			notNull: true,
+			default: "'{}'::jsonb",
+		},
+		evidence: {
+			name: "evidence",
+			type: "jsonb",
+			notNull: true,
+			default: "'{}'::jsonb",
+		},
+		before_claim: { name: "before_claim", type: "jsonb" },
+		after_claim: { name: "after_claim", type: "jsonb", notNull: true },
+		created_at: {
+			name: "created_at",
+			type: "timestamp",
+			notNull: true,
+			default: "now()",
+		},
+	},
+	indexes: {
+		identity_claim_journal_claim_version_idx: {
+			name: "identity_claim_journal_claim_version_idx",
+			columns: [
+				{ expression: "agent_id", isExpression: false },
+				{ expression: "claim_id", isExpression: false },
+				{ expression: "resulting_version", isExpression: false },
+			],
+			isUnique: true,
+		},
+		identity_claim_journal_agent_created_idx: {
+			name: "identity_claim_journal_agent_created_idx",
+			columns: [
+				{ expression: "agent_id", isExpression: false },
+				{ expression: "created_at", isExpression: false },
+			],
+			isUnique: false,
+		},
+	},
+	foreignKeys: {
+		fk_identity_claim_journal_agent: agentForeignKey(
+			"fk_identity_claim_journal_agent",
+			"identity_claim_journal",
+		),
+		fk_identity_claim_journal_claim: {
+			name: "fk_identity_claim_journal_claim",
+			tableFrom: "identity_claim_journal",
+			tableTo: "identity_claims",
+			columnsFrom: ["claim_id", "agent_id"],
+			columnsTo: ["id", "agent_id"],
+			onDelete: "restrict",
+			schemaTo: "",
+		},
+		fk_identity_claim_journal_principal: {
+			name: "fk_identity_claim_journal_principal",
+			tableFrom: "identity_claim_journal",
+			tableTo: "entities",
+			columnsFrom: ["principal_entity_id", "agent_id"],
+			columnsTo: ["id", "agent_id"],
+			onDelete: "restrict",
+			schemaTo: "",
+		},
+		fk_identity_claim_journal_actor: {
+			name: "fk_identity_claim_journal_actor",
+			tableFrom: "identity_claim_journal",
+			tableTo: "entities",
+			columnsFrom: ["actor_principal_id", "agent_id"],
+			columnsTo: ["id", "agent_id"],
+			onDelete: "restrict",
+			schemaTo: "",
+		},
+	},
+	compositePrimaryKeys: {},
+	uniqueConstraints: {
+		identity_claim_journal_idempotency_unique: {
+			name: "identity_claim_journal_idempotency_unique",
+			columns: ["agent_id", "idempotency_key"],
+		},
+	},
+	checkConstraints: {
+		identity_claim_journal_event_check: {
+			name: "identity_claim_journal_event_check",
+			value:
+				"event_kind IN ('observed', 'refreshed', 'verified', 'disputed', 'revoked')",
+		},
+		identity_claim_journal_version_check: {
+			name: "identity_claim_journal_version_check",
+			value:
+				"resulting_version > 0 AND (prior_version IS NULL OR prior_version > 0)",
 		},
 	},
 };

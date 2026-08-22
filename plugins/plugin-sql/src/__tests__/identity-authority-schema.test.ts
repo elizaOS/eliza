@@ -7,6 +7,7 @@ import { describe, expect, it } from "vitest";
 import {
   identityAuthorityStateTable,
   identityCanonicalRedirectTable,
+  identityClaimJournalTable,
   identityClaimTable,
   identityMergeConfirmationTable,
   identityMergeJournalTable,
@@ -27,6 +28,7 @@ describe("canonical identity authority schema", () => {
         "identity_claim_status_check",
         "identity_claim_confidence_check",
         "identity_claim_owner_binding_check",
+        "identity_claim_version_check",
       ])
     );
     expect(config.columns.map((column) => column.name)).toEqual(
@@ -37,6 +39,22 @@ describe("canonical identity authority schema", () => {
         "connector_account_id",
         "external_subject_id",
         "owner_binding_id",
+        "version",
+      ])
+    );
+  });
+
+  it("keeps an immutable, tenant-bound claim lifecycle journal", () => {
+    const config = getTableConfig(identityClaimJournalTable);
+    expect(config.name).toBe("identity_claim_journal");
+    expect(config.uniqueConstraints.map((constraint) => constraint.name)).toContain(
+      "identity_claim_journal_idempotency_unique"
+    );
+    expect(config.foreignKeys).toHaveLength(4);
+    expect(config.checks.map((constraint) => constraint.name)).toEqual(
+      expect.arrayContaining([
+        "identity_claim_journal_event_check",
+        "identity_claim_journal_version_check",
       ])
     );
   });

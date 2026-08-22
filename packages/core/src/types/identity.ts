@@ -32,6 +32,15 @@ export const IDENTITY_CLAIM_STATUSES = [
 	"disputed",
 ] as const;
 export type IdentityClaimStatus = (typeof IDENTITY_CLAIM_STATUSES)[number];
+export const IDENTITY_CLAIM_EVENT_KINDS = [
+	"observed",
+	"refreshed",
+	"verified",
+	"disputed",
+	"revoked",
+] as const;
+export type IdentityClaimEventKind =
+	(typeof IDENTITY_CLAIM_EVENT_KINDS)[number];
 export const IDENTITY_REDIRECT_STATUSES = [
 	"active",
 	"superseded",
@@ -75,6 +84,8 @@ export interface IdentityClaim {
 	verification: IdentityClaimVerification;
 	status: IdentityClaimStatus;
 	confidence: number;
+	/** Optimistic-concurrency version for lifecycle mutations. */
+	version: number;
 	/** Only this separately verified binding can confer owner authority. */
 	ownerBindingId: string | null;
 	provenance: JsonObject;
@@ -93,6 +104,97 @@ export interface IdentityClaimScope {
 	connectorId: string;
 	connectorAccountId: UUID;
 	externalSubjectId: string;
+}
+
+interface IdentityClaimMutationBase {
+	agentId: UUID;
+	actorPrincipalId: UUID;
+	idempotencyKey: string;
+	requestDigest: string;
+	reason: string;
+	provenance: JsonObject;
+	evidence: JsonObject;
+}
+
+export interface ObserveIdentityClaimRequest extends IdentityClaimMutationBase {
+	principalEntityId: UUID;
+	scope: Omit<IdentityClaimScope, "agentId">;
+	handle: string | null;
+	displayName: string | null;
+	confidence: number;
+	observedAt: string;
+}
+
+export interface VerifyIdentityClaimRequest extends IdentityClaimMutationBase {
+	claimId: UUID;
+	expectedVersion: number;
+	attestationKind: "connector_assertion" | "operator_migration";
+	verifiedAt: string;
+}
+
+export interface DisputeIdentityClaimRequest extends IdentityClaimMutationBase {
+	claimId: UUID;
+	expectedVersion: number;
+}
+
+export interface RevokeIdentityClaimRequest extends IdentityClaimMutationBase {
+	claimId: UUID;
+	expectedVersion: number;
+	revokedAt: string;
+}
+
+export interface IdentityClaimJournalEntry {
+	contractVersion: typeof IDENTITY_AUTHORITY_CONTRACT_VERSION;
+	id: UUID;
+	agentId: UUID;
+	claimId: UUID;
+	principalEntityId: UUID;
+	eventKind: IdentityClaimEventKind;
+	priorVersion: number | null;
+	resultingVersion: number;
+	actorPrincipalId: UUID;
+	idempotencyKey: string;
+	requestDigest: string;
+	reason: string;
+	provenance: JsonObject;
+	evidence: JsonObject;
+	beforeClaim: IdentityClaim | null;
+	afterClaim: IdentityClaim;
+	createdAt: string;
+}
+
+export interface IdentityClaimJournalPage {
+	items: readonly IdentityClaimJournalEntry[];
+	nextCursor: string | null;
+}
+
+export type IdentityMigrationDisposition =
+	| "ready"
+	| "conflict"
+	| "needs_principal_projection"
+	| "needs_connector_account"
+	| "needs_stable_subject"
+	| "review";
+
+export interface IdentityMigrationInventoryRow {
+	source: string;
+	sourceId: string;
+	principalReference: string | null;
+	connectorId: string | null;
+	connectorAccountReference: string | null;
+	externalSubjectReference: string | null;
+	disposition: IdentityMigrationDisposition;
+	reasons: readonly string[];
+	metadata: JsonObject;
+}
+
+export interface IdentityMigrationInventory {
+	contractVersion: typeof IDENTITY_AUTHORITY_CONTRACT_VERSION;
+	agentId: UUID;
+	generatedAt: string;
+	digest: string;
+	sources: Readonly<Record<string, number>>;
+	rows: readonly IdentityMigrationInventoryRow[];
 }
 
 export interface IdentityCluster {
@@ -347,6 +449,26 @@ export abstract class IdentityResolutionService extends Service {
 	abstract resolveClaim(
 		scope: IdentityClaimScope,
 	): Promise<IdentityClaim | null>;
+	abstract observeClaim(
+		request: ObserveIdentityClaimRequest,
+	): Promise<IdentityClaim>;
+	abstract verifyClaim(
+		request: VerifyIdentityClaimRequest,
+	): Promise<IdentityClaim>;
+	abstract disputeClaim(
+		request: DisputeIdentityClaimRequest,
+	): Promise<IdentityClaim>;
+	abstract revokeClaim(
+		request: RevokeIdentityClaimRequest,
+	): Promise<IdentityClaim>;
+	abstract listClaimJournal(
+		agentId: UUID,
+		claimId: UUID,
+		options: { limit: number; cursor: string | null },
+	): Promise<IdentityClaimJournalPage>;
+	abstract inspectLegacyMigration(
+		agentId: UUID,
+	): Promise<IdentityMigrationInventory>;
 	abstract getCluster(
 		agentId: UUID,
 		principalId: UUID,

@@ -37,6 +37,7 @@ export {
 export {
   identityAuthorityStateTable,
   identityCanonicalRedirectTable,
+  identityClaimJournalTable,
   identityClaimTable,
   identityMergeConfirmationTable,
   identityMergeJournalTable,

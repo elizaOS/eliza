@@ -257,6 +257,7 @@ export {
   uninstallRLS,
 } from "./rls";
 export { AdvancedMemoryStorageService } from "./services/advanced-memory-storage";
+export { computeIdentityMigrationInventoryDigest } from "./services/sql-identity-migration-inventory";
 export {
   computeIdentityRequestDigest,
   SqlIdentityResolutionService,

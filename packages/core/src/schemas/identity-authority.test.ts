@@ -7,6 +7,7 @@ import { describe, expect, it } from "vitest";
 import {
 	identityAuthorityStateSchema,
 	identityCanonicalRedirectSchema,
+	identityClaimJournalSchema,
 	identityClaimSchema,
 	identityMergeConfirmationSchema,
 	identityMergeJournalSchema,
@@ -36,6 +37,19 @@ describe("portable identity authority schemas", () => {
 		expect(identityMergeJournalSchema.columns.actor_principal_id?.notNull).toBe(
 			true,
 		);
+	});
+
+	it("journals every claim transition with tenant-bound immutable evidence", () => {
+		expect(identityClaimSchema.columns.version?.default).toBe(1);
+		expect(
+			identityClaimJournalSchema.uniqueConstraints
+				.identity_claim_journal_idempotency_unique?.columns,
+		).toEqual(["agent_id", "idempotency_key"]);
+		expect(
+			identityClaimJournalSchema.foreignKeys.fk_identity_claim_journal_claim
+				?.columnsFrom,
+		).toEqual(["claim_id", "agent_id"]);
+		expect(identityClaimJournalSchema.columns.after_claim?.notNull).toBe(true);
 	});
 
 	it("binds a bounded confirmation to the exact plan and generation", () => {

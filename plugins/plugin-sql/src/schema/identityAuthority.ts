@@ -41,6 +41,7 @@ export const identityClaimTable = pgTable(
     ownerBindingId: text("owner_binding_id"),
     status: text("status").notNull().default("active"),
     confidence: real("confidence").notNull().default(0),
+    version: bigint("version", { mode: "number" }).notNull().default(1),
     provenance: jsonb("provenance")
       .$type<Record<string, unknown>>()
       .notNull()
@@ -75,6 +76,7 @@ export const identityClaimTable = pgTable(
       table.externalSubjectId
     ),
     index("identity_claim_status_idx").on(table.agentId, table.status),
+    unique("identity_claim_id_agent_unique").on(table.id, table.agentId),
     foreignKey({
       name: "fk_identity_claim_agent",
       columns: [table.agentId],
@@ -110,6 +112,72 @@ export const identityClaimTable = pgTable(
     check(
       "identity_claim_owner_binding_check",
       sql`${table.verification} <> 'owner_bound' OR (${table.ownerBindingId} IS NOT NULL AND ${table.verifiedAt} IS NOT NULL)`
+    ),
+    check("identity_claim_version_check", sql`${table.version} > 0`),
+  ]
+);
+
+export const identityClaimJournalTable = pgTable(
+  "identity_claim_journal",
+  {
+    id: uuid("id").primaryKey().default(sql`gen_random_uuid()`).notNull(),
+    agentId: uuid("agent_id").notNull(),
+    claimId: uuid("claim_id").notNull(),
+    principalEntityId: uuid("principal_entity_id").notNull(),
+    eventKind: text("event_kind").notNull(),
+    priorVersion: bigint("prior_version", { mode: "number" }),
+    resultingVersion: bigint("resulting_version", { mode: "number" }).notNull(),
+    actorPrincipalId: uuid("actor_principal_id").notNull(),
+    idempotencyKey: text("idempotency_key").notNull(),
+    requestDigest: text("request_digest").notNull(),
+    reason: text("reason").notNull(),
+    provenance: jsonb("provenance")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    evidence: jsonb("evidence")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    beforeClaim: jsonb("before_claim").$type<Record<string, unknown> | null>(),
+    afterClaim: jsonb("after_claim").$type<Record<string, unknown>>().notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
+  },
+  (table) => [
+    unique("identity_claim_journal_idempotency_unique").on(table.agentId, table.idempotencyKey),
+    uniqueIndex("identity_claim_journal_claim_version_idx").on(
+      table.agentId,
+      table.claimId,
+      table.resultingVersion
+    ),
+    index("identity_claim_journal_agent_created_idx").on(table.agentId, table.createdAt),
+    foreignKey({
+      name: "fk_identity_claim_journal_agent",
+      columns: [table.agentId],
+      foreignColumns: [agentTable.id],
+    }).onDelete("cascade"),
+    foreignKey({
+      name: "fk_identity_claim_journal_claim",
+      columns: [table.claimId, table.agentId],
+      foreignColumns: [identityClaimTable.id, identityClaimTable.agentId],
+    }).onDelete("restrict"),
+    foreignKey({
+      name: "fk_identity_claim_journal_principal",
+      columns: [table.principalEntityId, table.agentId],
+      foreignColumns: [entityTable.id, entityTable.agentId],
+    }).onDelete("restrict"),
+    foreignKey({
+      name: "fk_identity_claim_journal_actor",
+      columns: [table.actorPrincipalId, table.agentId],
+      foreignColumns: [entityTable.id, entityTable.agentId],
+    }).onDelete("restrict"),
+    check(
+      "identity_claim_journal_event_check",
+      sql`${table.eventKind} IN ('observed', 'refreshed', 'verified', 'disputed', 'revoked')`
+    ),
+    check(
+      "identity_claim_journal_version_check",
+      sql`${table.resultingVersion} > 0 AND (${table.priorVersion} IS NULL OR ${table.priorVersion} > 0)`
     ),
   ]
 );

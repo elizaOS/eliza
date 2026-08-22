@@ -6,6 +6,7 @@
 import { describe, expect, it } from "vitest";
 import {
 	IDENTITY_AUTHORITY_CONTRACT_VERSION,
+	IDENTITY_CLAIM_EVENT_KINDS,
 	IDENTITY_CLAIM_STATUSES,
 	IDENTITY_CLAIM_VERIFICATIONS,
 	IDENTITY_MERGE_OPERATIONS,
@@ -29,6 +30,13 @@ describe("identity authority contract", () => {
 			"revoked",
 			"superseded",
 			"disputed",
+		]);
+		expect(IDENTITY_CLAIM_EVENT_KINDS).toEqual([
+			"observed",
+			"refreshed",
+			"verified",
+			"disputed",
+			"revoked",
 		]);
 		expect(IDENTITY_MERGE_OPERATIONS).toEqual(["merge", "split"]);
 		expect(IDENTITY_MERGE_STATUSES).toEqual([

@@ -1,12 +1,13 @@
 /**
  * SQL-backed canonical identity authority. Authenticated person-link evidence,
- * merge, and split serialize through the per-agent generation row. Attestation
- * evidence is append-only; merges use confirmation consumption and versioned
- * redirects so source principals remain intact.
+ * merge, and split serialize through the per-agent generation row. Claim and
+ * attestation evidence is append-only; versioned redirects keep source
+ * principals intact while consumer projections repair.
  */
 import {
   type AttestIdentityPersonLinkRequest,
   type CommitIdentityMergeRequest,
+  type DisputeIdentityClaimRequest,
   ElizaError,
   type IAgentRuntime,
   IDENTITY_AUTHORITY_CONTRACT_VERSION,
@@ -14,6 +15,9 @@ import {
   type IdentityCanonicalResolution,
   type IdentityClaim,
   type IdentityClaimConflict,
+  type IdentityClaimEventKind,
+  type IdentityClaimJournalEntry,
+  type IdentityClaimJournalPage,
   type IdentityClaimScope,
   type IdentityCluster,
   type IdentityJournalPage,
@@ -21,15 +25,19 @@ import {
   type IdentityMergePlan,
   type IdentityPersonLinkAttestation,
   type IdentityPersonLinkVerification,
+  type IdentityMigrationInventory,
   IdentityResolutionService,
   type JsonObject,
   type MergeJournal,
+  type ObserveIdentityClaimRequest,
   type OwnerBindingEvaluation,
   type ProposeIdentityMergeRequest,
+  type RevokeIdentityClaimRequest,
   type Service,
   type SplitIdentityRequest,
   type UUID,
   type VerifyIdentityPersonLinkRequest,
+  type VerifyIdentityClaimRequest,
 } from "@elizaos/core";
 import { sha256 } from "@noble/hashes/sha2.js";
 import { and, desc, eq, inArray, lt, or, sql } from "drizzle-orm";
@@ -39,12 +47,14 @@ import { entityTable } from "../schema/entity";
 import {
   identityAuthorityStateTable,
   identityCanonicalRedirectTable,
+  identityClaimJournalTable,
   identityClaimTable,
   identityMergeConfirmationTable,
   identityMergeJournalTable,
   identityPersonLinkAttestationTable,
 } from "../schema/identityAuthority";
 import { type DrizzleDatabase, getDb } from "../types";
+import { inspectSqlIdentityMigration } from "./sql-identity-migration-inventory";
 
 const PLAN_TTL_MS = 15 * 60_000;
 const CONFIRMATION_TTL_MS = 5 * 60_000;
@@ -63,6 +73,7 @@ type JournalRow = typeof identityMergeJournalTable.$inferSelect;
 type RedirectRow = typeof identityCanonicalRedirectTable.$inferSelect;
 type ClaimRow = typeof identityClaimTable.$inferSelect;
 type PersonLinkAttestationRow = typeof identityPersonLinkAttestationTable.$inferSelect;
+type ClaimJournalRow = typeof identityClaimJournalTable.$inferSelect;
 
 function fail(code: string, message: string, context: Record<string, unknown> = {}): never {
   throw new ElizaError(message, { code, context, severity: "fatal" });
@@ -89,8 +100,17 @@ function digest(domain: string, value: unknown): string {
   return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
+export type IdentityRequestDigestOperation =
+  | "propose-merge"
+  | "commit-merge"
+  | "split"
+  | "observe-claim"
+  | "verify-claim"
+  | "dispute-claim"
+  | "revoke-claim";
+
 function canonicalizeIdentityRequest(
-  operation: "propose-merge" | "commit-merge" | "split",
+  operation: IdentityRequestDigestOperation,
   value: JsonObject
 ): JsonObject {
   const normalized: JsonObject = { ...value };
@@ -105,7 +125,7 @@ function canonicalizeIdentityRequest(
 }
 
 export function computeIdentityRequestDigest(
-  operation: "propose-merge" | "commit-merge" | "split",
+  operation: IdentityRequestDigestOperation,
   value: JsonObject
 ): string {
   return digest(`elizaos:identity:${operation}:v1`, canonicalizeIdentityRequest(operation, value));
@@ -205,6 +225,7 @@ function mapClaim(row: ClaimRow): IdentityClaim {
     verification: row.verification as IdentityClaim["verification"],
     status: row.status as IdentityClaim["status"],
     confidence: row.confidence,
+    version: row.version,
     ownerBindingId: row.ownerBindingId,
     provenance: asJsonObject(row.provenance, "claim.provenance"),
     evidence: asJsonObject(row.evidence, "claim.evidence"),
@@ -214,6 +235,30 @@ function mapClaim(row: ClaimRow): IdentityClaim {
     revokedAt: row.revokedAt ? iso(row.revokedAt) : null,
     createdAt: iso(row.createdAt),
     updatedAt: iso(row.updatedAt),
+  };
+}
+
+function mapClaimJournal(row: ClaimJournalRow): IdentityClaimJournalEntry {
+  return {
+    contractVersion: 1,
+    id: row.id as UUID,
+    agentId: row.agentId as UUID,
+    claimId: row.claimId as UUID,
+    principalEntityId: row.principalEntityId as UUID,
+    eventKind: row.eventKind as IdentityClaimEventKind,
+    priorVersion: row.priorVersion,
+    resultingVersion: row.resultingVersion,
+    actorPrincipalId: row.actorPrincipalId as UUID,
+    idempotencyKey: row.idempotencyKey,
+    requestDigest: row.requestDigest,
+    reason: row.reason,
+    provenance: asJsonObject(row.provenance, "claimJournal.provenance"),
+    evidence: asJsonObject(row.evidence, "claimJournal.evidence"),
+    beforeClaim: row.beforeClaim
+      ? (asJsonObject(row.beforeClaim, "claimJournal.beforeClaim") as unknown as IdentityClaim)
+      : null,
+    afterClaim: asJsonObject(row.afterClaim, "claimJournal.afterClaim") as unknown as IdentityClaim,
+    createdAt: iso(row.createdAt),
   };
 }
 
@@ -365,6 +410,430 @@ export class SqlIdentityResolutionService extends IdentityResolutionService {
       )
       .limit(1);
     return row ? mapClaim(row) : null;
+  }
+
+  private async assertMutationPrincipals(
+    tx: Parameters<Parameters<DrizzleDatabase["transaction"]>[0]>[0],
+    agentId: UUID,
+    principalIds: readonly UUID[]
+  ): Promise<void> {
+    const uniqueIds = [...new Set(principalIds)];
+    const principals = await tx
+      .select({ id: entityTable.id })
+      .from(entityTable)
+      .where(and(eq(entityTable.agentId, agentId), inArray(entityTable.id, uniqueIds)));
+    if (principals.length !== uniqueIds.length) {
+      fail("IDENTITY_PRINCIPAL_NOT_FOUND", "Every claim principal and actor must exist.");
+    }
+  }
+
+  private async replayClaimMutation(
+    tx: Parameters<Parameters<DrizzleDatabase["transaction"]>[0]>[0],
+    agentId: UUID,
+    idempotencyKey: string,
+    requestDigest: string
+  ): Promise<IdentityClaim | null> {
+    const [existing] = await tx
+      .select()
+      .from(identityClaimJournalTable)
+      .where(
+        and(
+          eq(identityClaimJournalTable.agentId, agentId),
+          eq(identityClaimJournalTable.idempotencyKey, idempotencyKey)
+        )
+      )
+      .limit(1);
+    if (!existing) return null;
+    if (existing.requestDigest !== requestDigest) {
+      fail("IDENTITY_IDEMPOTENCY_CONFLICT", "Claim idempotency key was reused.");
+    }
+    return mapClaimJournal(existing).afterClaim;
+  }
+
+  private async advanceGeneration(
+    tx: Parameters<Parameters<DrizzleDatabase["transaction"]>[0]>[0],
+    agentId: UUID,
+    now: Date
+  ): Promise<void> {
+    await tx.insert(identityAuthorityStateTable).values({ agentId }).onConflictDoNothing();
+    await tx
+      .update(identityAuthorityStateTable)
+      .set({ generation: sql`${identityAuthorityStateTable.generation} + 1`, updatedAt: now })
+      .where(eq(identityAuthorityStateTable.agentId, agentId));
+  }
+
+  async observeClaim(request: ObserveIdentityClaimRequest): Promise<IdentityClaim> {
+    this.assertAgent(request.agentId);
+    const requestValue = {
+      agentId: request.agentId,
+      actorPrincipalId: request.actorPrincipalId,
+      principalEntityId: request.principalEntityId,
+      scope: request.scope,
+      handle: request.handle,
+      displayName: request.displayName,
+      confidence: request.confidence,
+      observedAt: request.observedAt,
+      idempotencyKey: request.idempotencyKey,
+      reason: request.reason,
+      provenance: request.provenance,
+      evidence: request.evidence,
+    };
+    assertRequestDigest(request.requestDigest, "observe-claim", requestValue);
+    const observedAt = new Date(request.observedAt);
+    if (
+      !Number.isFinite(observedAt.getTime()) ||
+      !Number.isFinite(request.confidence) ||
+      request.confidence < 0 ||
+      request.confidence > 1 ||
+      request.scope.namespace.trim().length === 0 ||
+      request.scope.connectorId.trim().length === 0 ||
+      request.scope.externalSubjectId.trim().length === 0
+    ) {
+      fail("IDENTITY_CLAIM_INPUT_INVALID", "Claim observation input is invalid.");
+    }
+    return this.db.transaction(async (tx) => {
+      const replay = await this.replayClaimMutation(
+        tx,
+        request.agentId,
+        request.idempotencyKey,
+        request.requestDigest
+      );
+      if (replay) return replay;
+      await this.assertMutationPrincipals(tx, request.agentId, [
+        request.principalEntityId,
+        request.actorPrincipalId,
+      ]);
+      const [account] = await tx
+        .select()
+        .from(connectorAccountsTable)
+        .where(
+          and(
+            eq(connectorAccountsTable.id, request.scope.connectorAccountId),
+            eq(connectorAccountsTable.agentId, request.agentId),
+            eq(connectorAccountsTable.provider, request.scope.connectorId)
+          )
+        )
+        .limit(1);
+      if (!account || account.deletedAt !== null || account.status !== "connected") {
+        fail(
+          "IDENTITY_CONNECTOR_ACCOUNT_UNAVAILABLE",
+          "Claim observation requires a matching connected account."
+        );
+      }
+      const [existing] = await tx
+        .select()
+        .from(identityClaimTable)
+        .where(
+          and(
+            eq(identityClaimTable.agentId, request.agentId),
+            eq(identityClaimTable.namespace, request.scope.namespace),
+            eq(identityClaimTable.connectorId, request.scope.connectorId),
+            eq(identityClaimTable.connectorAccountId, request.scope.connectorAccountId),
+            eq(identityClaimTable.externalSubjectId, request.scope.externalSubjectId),
+            inArray(identityClaimTable.status, ["active", "disputed"])
+          )
+        )
+        .for("update")
+        .limit(1);
+      if (existing && existing.principalEntityId !== request.principalEntityId) {
+        fail(
+          "IDENTITY_CLAIM_CONFLICT",
+          "The scoped subject is already attached to another principal."
+        );
+      }
+      if (existing?.status === "disputed") {
+        fail(
+          "IDENTITY_CLAIM_TRANSITION_INVALID",
+          "A disputed scoped subject requires explicit resolution before re-observation."
+        );
+      }
+      const now = new Date();
+      let prior: IdentityClaim | null = null;
+      let after: IdentityClaim;
+      let eventKind: IdentityClaimEventKind;
+      if (existing) {
+        prior = mapClaim(existing);
+        const [updated] = await tx
+          .update(identityClaimTable)
+          .set({
+            handle: request.handle,
+            displayName: request.displayName,
+            confidence: Math.max(existing.confidence, request.confidence),
+            verification:
+              existing.verification === "unverified" ? "observed" : existing.verification,
+            provenance: toDbObject(request.provenance),
+            evidence: toDbObject(request.evidence),
+            lastSeenAt: existing.lastSeenAt > observedAt ? existing.lastSeenAt : observedAt,
+            version: existing.version + 1,
+            updatedAt: now,
+          })
+          .where(
+            and(
+              eq(identityClaimTable.id, existing.id),
+              eq(identityClaimTable.agentId, request.agentId),
+              eq(identityClaimTable.version, existing.version)
+            )
+          )
+          .returning();
+        if (!updated) fail("IDENTITY_CLAIM_VERSION_CONFLICT", "Claim changed concurrently.");
+        after = mapClaim(updated);
+        eventKind = "refreshed";
+      } else {
+        const [inserted] = await tx
+          .insert(identityClaimTable)
+          .values({
+            agentId: request.agentId,
+            principalEntityId: request.principalEntityId,
+            namespace: request.scope.namespace,
+            connectorId: request.scope.connectorId,
+            connectorAccountId: request.scope.connectorAccountId,
+            externalSubjectId: request.scope.externalSubjectId,
+            handle: request.handle,
+            displayName: request.displayName,
+            verification: "observed",
+            status: "active",
+            confidence: request.confidence,
+            version: 1,
+            provenance: toDbObject(request.provenance),
+            evidence: toDbObject(request.evidence),
+            firstSeenAt: observedAt,
+            lastSeenAt: observedAt,
+            createdAt: now,
+            updatedAt: now,
+          })
+          .onConflictDoNothing()
+          .returning();
+        if (!inserted) {
+          fail("IDENTITY_CLAIM_CONFLICT", "The scoped subject was claimed concurrently.");
+        }
+        after = mapClaim(inserted);
+        eventKind = "observed";
+      }
+      await tx.insert(identityClaimJournalTable).values({
+        agentId: request.agentId,
+        claimId: after.id,
+        principalEntityId: after.principalEntityId,
+        eventKind,
+        priorVersion: prior?.version ?? null,
+        resultingVersion: after.version,
+        actorPrincipalId: request.actorPrincipalId,
+        idempotencyKey: request.idempotencyKey,
+        requestDigest: request.requestDigest,
+        reason: request.reason,
+        provenance: toDbObject(request.provenance),
+        evidence: toDbObject(request.evidence),
+        beforeClaim: prior ? toDbObject(prior) : null,
+        afterClaim: toDbObject(after),
+        createdAt: now,
+      });
+      await this.advanceGeneration(tx, request.agentId, now);
+      return after;
+    });
+  }
+
+  private async transitionClaim(
+    request: VerifyIdentityClaimRequest | DisputeIdentityClaimRequest | RevokeIdentityClaimRequest,
+    eventKind: "verified" | "disputed" | "revoked"
+  ): Promise<IdentityClaim> {
+    this.assertAgent(request.agentId);
+    const operation =
+      `${eventKind === "verified" ? "verify" : eventKind === "disputed" ? "dispute" : "revoke"}-claim` as const;
+    const requestValue: JsonObject = {
+      agentId: request.agentId,
+      actorPrincipalId: request.actorPrincipalId,
+      claimId: request.claimId,
+      expectedVersion: request.expectedVersion,
+      idempotencyKey: request.idempotencyKey,
+      reason: request.reason,
+      provenance: request.provenance,
+      evidence: request.evidence,
+      ...(eventKind === "verified"
+        ? {
+            attestationKind: (request as VerifyIdentityClaimRequest).attestationKind,
+            verifiedAt: (request as VerifyIdentityClaimRequest).verifiedAt,
+          }
+        : {}),
+      ...(eventKind === "revoked"
+        ? { revokedAt: (request as RevokeIdentityClaimRequest).revokedAt }
+        : {}),
+    };
+    assertRequestDigest(request.requestDigest, operation, requestValue);
+    if (
+      !Number.isInteger(request.expectedVersion) ||
+      request.expectedVersion < 1 ||
+      request.idempotencyKey.trim().length === 0 ||
+      (eventKind === "verified" &&
+        !["connector_assertion", "operator_migration"].includes(
+          (request as VerifyIdentityClaimRequest).attestationKind
+        ))
+    ) {
+      fail("IDENTITY_CLAIM_INPUT_INVALID", "Claim transition input is invalid.");
+    }
+    return this.db.transaction(async (tx) => {
+      const replay = await this.replayClaimMutation(
+        tx,
+        request.agentId,
+        request.idempotencyKey,
+        request.requestDigest
+      );
+      if (replay) return replay;
+      await this.assertMutationPrincipals(tx, request.agentId, [request.actorPrincipalId]);
+      const [row] = await tx
+        .select()
+        .from(identityClaimTable)
+        .where(
+          and(
+            eq(identityClaimTable.id, request.claimId),
+            eq(identityClaimTable.agentId, request.agentId)
+          )
+        )
+        .for("update")
+        .limit(1);
+      if (!row) fail("IDENTITY_CLAIM_NOT_FOUND", "Claim was not found.");
+      if (row.version !== request.expectedVersion) {
+        fail("IDENTITY_CLAIM_VERSION_CONFLICT", "Claim changed concurrently.");
+      }
+      if (eventKind === "verified" && row.status !== "active") {
+        fail("IDENTITY_CLAIM_TRANSITION_INVALID", "Only an active claim can be verified.");
+      }
+      if (eventKind === "disputed" && row.status !== "active") {
+        fail("IDENTITY_CLAIM_TRANSITION_INVALID", "Only an active claim can be disputed.");
+      }
+      if (eventKind === "revoked" && row.status !== "active" && row.status !== "disputed") {
+        fail(
+          "IDENTITY_CLAIM_TRANSITION_INVALID",
+          "Claim cannot be revoked from its current state."
+        );
+      }
+      const now = new Date();
+      const verifiedAt =
+        eventKind === "verified"
+          ? new Date((request as VerifyIdentityClaimRequest).verifiedAt)
+          : row.verifiedAt;
+      const revokedAt =
+        eventKind === "revoked"
+          ? new Date((request as RevokeIdentityClaimRequest).revokedAt)
+          : row.revokedAt;
+      if (
+        (eventKind === "verified" && !Number.isFinite(verifiedAt?.getTime())) ||
+        (eventKind === "revoked" && !Number.isFinite(revokedAt?.getTime()))
+      ) {
+        fail("IDENTITY_CLAIM_INPUT_INVALID", "Claim transition timestamp is invalid.");
+      }
+      const before = mapClaim(row);
+      const [updated] = await tx
+        .update(identityClaimTable)
+        .set({
+          verification: eventKind === "verified" ? "verified" : row.verification,
+          status:
+            eventKind === "disputed"
+              ? "disputed"
+              : eventKind === "revoked"
+                ? "revoked"
+                : row.status,
+          verifiedAt,
+          revokedAt,
+          provenance: toDbObject(request.provenance),
+          evidence: toDbObject(request.evidence),
+          version: row.version + 1,
+          updatedAt: now,
+        })
+        .where(
+          and(
+            eq(identityClaimTable.id, request.claimId),
+            eq(identityClaimTable.agentId, request.agentId),
+            eq(identityClaimTable.version, request.expectedVersion)
+          )
+        )
+        .returning();
+      if (!updated) fail("IDENTITY_CLAIM_VERSION_CONFLICT", "Claim changed concurrently.");
+      const after = mapClaim(updated);
+      await tx.insert(identityClaimJournalTable).values({
+        agentId: request.agentId,
+        claimId: request.claimId,
+        principalEntityId: after.principalEntityId,
+        eventKind,
+        priorVersion: before.version,
+        resultingVersion: after.version,
+        actorPrincipalId: request.actorPrincipalId,
+        idempotencyKey: request.idempotencyKey,
+        requestDigest: request.requestDigest,
+        reason: request.reason,
+        provenance: toDbObject(request.provenance),
+        evidence: toDbObject(request.evidence),
+        beforeClaim: toDbObject(before),
+        afterClaim: toDbObject(after),
+        createdAt: now,
+      });
+      await this.advanceGeneration(tx, request.agentId, now);
+      return after;
+    });
+  }
+
+  async verifyClaim(request: VerifyIdentityClaimRequest): Promise<IdentityClaim> {
+    return this.transitionClaim(request, "verified");
+  }
+
+  async disputeClaim(request: DisputeIdentityClaimRequest): Promise<IdentityClaim> {
+    return this.transitionClaim(request, "disputed");
+  }
+
+  async revokeClaim(request: RevokeIdentityClaimRequest): Promise<IdentityClaim> {
+    return this.transitionClaim(request, "revoked");
+  }
+
+  async listClaimJournal(
+    agentId: UUID,
+    claimId: UUID,
+    options: { limit: number; cursor: string | null }
+  ): Promise<IdentityClaimJournalPage> {
+    this.assertAgent(agentId);
+    const limit = Math.max(1, Math.min(MAX_JOURNAL_PAGE, Math.floor(options.limit)));
+    const conditions = [
+      eq(identityClaimJournalTable.agentId, agentId),
+      eq(identityClaimJournalTable.claimId, claimId),
+    ];
+    if (options.cursor) {
+      const [cursor] = await this.db
+        .select({
+          id: identityClaimJournalTable.id,
+          createdAt: identityClaimJournalTable.createdAt,
+        })
+        .from(identityClaimJournalTable)
+        .where(
+          and(
+            eq(identityClaimJournalTable.agentId, agentId),
+            eq(identityClaimJournalTable.claimId, claimId),
+            eq(identityClaimJournalTable.id, options.cursor as UUID)
+          )
+        )
+        .limit(1);
+      if (!cursor) fail("IDENTITY_JOURNAL_CURSOR_INVALID", "Claim journal cursor is invalid.");
+      const pageCondition = or(
+        lt(identityClaimJournalTable.createdAt, cursor.createdAt),
+        and(
+          eq(identityClaimJournalTable.createdAt, cursor.createdAt),
+          lt(identityClaimJournalTable.id, cursor.id)
+        )
+      );
+      if (!pageCondition) fail("IDENTITY_JOURNAL_CURSOR_INVALID", "Cursor cannot be applied.");
+      conditions.push(pageCondition);
+    }
+    const rows = await this.db
+      .select()
+      .from(identityClaimJournalTable)
+      .where(and(...conditions))
+      .orderBy(desc(identityClaimJournalTable.createdAt), desc(identityClaimJournalTable.id))
+      .limit(limit + 1);
+    return {
+      items: rows.slice(0, limit).map(mapClaimJournal),
+      nextCursor: rows.length > limit ? (rows[limit - 1]?.id ?? null) : null,
+    };
+  }
+
+  async inspectLegacyMigration(agentId: UUID): Promise<IdentityMigrationInventory> {
+    this.assertAgent(agentId);
+    return inspectSqlIdentityMigration(this.db, agentId);
   }
 
   async getCluster(agentId: UUID, principalId: UUID): Promise<IdentityCluster | null> {

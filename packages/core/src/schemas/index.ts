@@ -39,6 +39,7 @@ export type {
 import {
 	identityAuthorityStateSchema,
 	identityCanonicalRedirectSchema,
+	identityClaimJournalSchema,
 	identityClaimSchema,
 	identityMergeConfirmationSchema,
 	identityMergeJournalSchema,
@@ -71,6 +72,7 @@ export {
 	factCandidateSchema,
 	identityAuthorityStateSchema,
 	identityCanonicalRedirectSchema,
+	identityClaimJournalSchema,
 	identityClaimSchema,
 	identityMergeConfirmationSchema,
 	identityMergeJournalSchema,
