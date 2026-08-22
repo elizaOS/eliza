@@ -286,6 +286,7 @@ export async function runSupervisorTick(
 
 const DEFAULT_INTERVAL_MS = 45_000;
 const MIN_INTERVAL_MS = 5_000;
+const MAX_INTERVAL_MS = 2_147_483_647;
 
 type RuntimeWithSendTarget = IAgentRuntime & {
   sendMessageToTarget?: (
@@ -381,11 +382,14 @@ export class TaskSupervisorService extends Service {
     // 12000 — above MIN_INTERVAL_MS, so it was accepted as a deliberate setting
     // and the supervisor swept every 12s instead of the 45s default. Require the
     // whole trimmed value to be a decimal integer; the optional leading sign is
-    // kept because `parseInt` accepted it, and the MIN_INTERVAL_MS floor below
-    // stays the range authority.
+    // kept because `parseInt` accepted it. Keep the result within Node's signed
+    // 32-bit timer range: larger delays are clamped to 1 ms, which would turn a
+    // seemingly conservative setting into a hot supervisor loop.
     const text = typeof raw === "string" ? raw.trim() : "";
     const n = /^[+-]?\d+$/.test(text) ? Number(text) : Number.NaN;
-    return Number.isSafeInteger(n) && n >= MIN_INTERVAL_MS
+    return Number.isSafeInteger(n) &&
+      n >= MIN_INTERVAL_MS &&
+      n <= MAX_INTERVAL_MS
       ? n
       : DEFAULT_INTERVAL_MS;
   }
