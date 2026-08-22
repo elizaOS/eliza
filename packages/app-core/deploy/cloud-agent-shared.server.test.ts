@@ -178,6 +178,28 @@ describe("startCloudAgent HTTP handlers", () => {
     expect(unauthorized.statusCode).toBe(401);
 
     const auth = { authorization: "Bearer secret" };
+    const cutoverImport = await dispatch(
+      bridgeServer,
+      "POST",
+      "/api/conversations/personal%3Atest/import",
+      JSON.stringify({
+        messages: [],
+        scheduledTasks: [],
+        todoSnapshot: { todos: [], mutations: [], digest: "digest" },
+      }),
+      auth,
+    );
+    expect(parseJson(cutoverImport)).toMatchObject({
+      conversationId: "personal:test",
+      complete: true,
+      sourceMessageCount: 0,
+      inserted: 0,
+      skipped: 0,
+      sourceTodoCount: 0,
+      sourceTodoDigest: "digest",
+      targetTodoDigest: "digest",
+    });
+
     const message = await dispatch(
       bridgeServer,
       "POST",

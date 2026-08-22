@@ -991,6 +991,65 @@ describe("runPollingBackend", () => {
     });
   });
 
+  it("keeps a rowless personal shared Eliza on app-shell 404", async () => {
+    const deps = createDeps();
+    const dispatch = vi.fn();
+    (globalThis as { window?: unknown }).window = {
+      location: { origin: "http://localhost:2138", protocol: "http:" },
+    };
+    const personalId = "personal:523acc35-c574-53a3-9844-ecb8273bec98";
+    const sharedBase = `https://api.elizacloud.ai/api/v1/eliza/agents/${encodeURIComponent(personalId)}`;
+    clientMock.getBaseUrl.mockReturnValue(sharedBase);
+    clientMock.hasToken.mockReturnValue(true);
+    cloudMock.getCloudAuthToken.mockReturnValue("cloud-token");
+    clientMock.getAuthStatus.mockReset();
+    clientMock.getAuthStatus.mockRejectedValue(
+      Object.assign(new Error("Not Found"), {
+        kind: "http",
+        status: 404,
+        path: "/api/auth/status",
+      }),
+    );
+
+    const personal = {
+      id: `cloud:${personalId}`,
+      kind: "cloud" as const,
+      label: "Eliza",
+      apiBase: sharedBase,
+    };
+    const ctx: RestoringSessionCtx = {
+      persistedActiveServer: personal,
+      restoredActiveServer: personal,
+      shouldPreserveCompletedFirstRun: false,
+      hadPriorFirstRun: true,
+    };
+
+    await runPollingBackend(
+      deps,
+      dispatch,
+      {
+        supportsLocalRuntime: true,
+        backendTimeoutMs: 1000,
+        agentReadyTimeoutMs: 1000,
+        probeForExistingInstall: true,
+        defaultTarget: "embedded-local",
+      },
+      ctx,
+      1,
+      { current: 1 },
+      { current: false },
+      { current: null },
+    );
+
+    expect(clientMock.getCloudCompatAgents).not.toHaveBeenCalled();
+    expect(clearPersistedActiveServer).not.toHaveBeenCalled();
+    expect(deps.setFirstRunComplete).toHaveBeenCalledWith(true);
+    expect(dispatch).toHaveBeenCalledWith({
+      type: "BACKEND_REACHED",
+      firstRunComplete: true,
+    });
+  });
+
   it("treats a STILL-EXISTING dedicated cloud agent's 404 as first-run-complete (outer 404)", async () => {
     // Guard: when the control-plane confirms the dedicated agent still exists,
     // the first-run-shell 404 means "no shell on a cloud agent" (first-run is
