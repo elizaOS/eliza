@@ -128,6 +128,7 @@ export function isTerminalDedicatedCloudAgentErrorState(args: {
   status: number | undefined;
   code?: string;
   message: string | null | undefined;
+  data?: unknown;
   clientBaseUrl: string;
 }): boolean {
   return classifyTerminalDedicatedCloudAgentErrorState(args);
@@ -1067,6 +1068,7 @@ export async function runPollingBackend(
           status: ae?.status,
           code: ae?.code,
           message: terminalMessage,
+          data: ae?.data,
           clientBaseUrl: client.getBaseUrl(),
         })
       ) {

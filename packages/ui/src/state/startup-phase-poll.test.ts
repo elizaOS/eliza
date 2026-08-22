@@ -7,6 +7,7 @@ import type { FirstRunOptions } from "../api";
 import { ANDROID_LOCAL_AGENT_IPC_BASE } from "../first-run/mobile-runtime-mode";
 import { clearPersistedActiveServer } from "./persistence";
 import {
+  isTerminalDedicatedCloudAgentErrorState,
   isRecoverableRemoteBase,
   type PollingBackendDeps,
   runPollingBackend,
@@ -2252,7 +2253,7 @@ describe("runPollingBackend progress-aware native budget + dead-cloud recovery (
     expect(dispatch).not.toHaveBeenCalledWith({ type: "BACKEND_TIMEOUT" });
   });
 
-  it("routes the terminal sandbox-error 503 to agent selection when on-device recovery is not applicable", async () => {
+  it("routes a sleeping dedicated agent to Cloud selection when on-device recovery is not applicable", async () => {
     // No persisted cloud runtime mode (e.g. web / a build without the local
     // engine): clear the dead saved server and go to first-run agent
     // selection instead of polling the terminal 503 into the timeout card.
@@ -2263,12 +2264,17 @@ describe("runPollingBackend progress-aware native budget + dead-cloud recovery (
     clientMock.getBaseUrl.mockReturnValue(deadCloudServer.apiBase);
     clientMock.getAuthStatus.mockReset();
     clientMock.getAuthStatus.mockRejectedValue(
-      Object.assign(
-        new Error(
-          "Agent is in an error state. Resolve the failure before connecting.",
-        ),
-        { kind: "http", status: 503, path: "/api/auth/status" },
-      ),
+      Object.assign(new Error("Dedicated agent is not running yet"), {
+        kind: "http",
+        status: 503,
+        code: "agent_not_running",
+        path: "/api/auth/status",
+        data: {
+          success: false,
+          code: "agent_not_running",
+          data: { status: "sleeping" },
+        },
+      }),
     );
 
     await runPollingBackend(
@@ -2288,6 +2294,22 @@ describe("runPollingBackend progress-aware native budget + dead-cloud recovery (
       firstRunComplete: false,
     });
     expect(dispatch).not.toHaveBeenCalledWith({ type: "BACKEND_TIMEOUT" });
+  });
+
+  it("keeps provisioning dedicated agents in the retryable startup path", () => {
+    expect(
+      isTerminalDedicatedCloudAgentErrorState({
+        status: 503,
+        code: "agent_not_running",
+        message: "Dedicated agent is not running yet",
+        data: {
+          success: false,
+          code: "agent_not_running",
+          data: { status: "provisioning" },
+        },
+        clientBaseUrl: deadCloudServer.apiBase,
+      }),
+    ).toBe(false);
   });
 
   it("recovers a stale persisted cloud mode to the ON-DEVICE agent when the dedicated cloud agent is DELETED (outer 404)", async () => {
