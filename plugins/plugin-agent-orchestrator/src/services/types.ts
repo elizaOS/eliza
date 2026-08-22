@@ -64,7 +64,7 @@ export type SessionEventCallback = (
   data: unknown,
   sessionSnapshot?: SessionInfo,
   turnId?: string,
-) => void | Promise<void>;
+) => void;
 
 export type AcpEventCallback = (
   event: AcpJsonRpcMessage,

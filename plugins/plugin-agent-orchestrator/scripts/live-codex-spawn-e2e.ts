@@ -147,9 +147,7 @@ async function main() {
   const acp = new AcpService(runtime);
   await acp.start();
   const events: Array<{ event: string; data: unknown }> = [];
-  acp.onSessionEvent((_sid, event, data) => {
-    events.push({ event, data });
-  });
+  acp.onSessionEvent((_sid, event, data) => events.push({ event, data }));
 
   log(
     "Spawning REAL Codex sub-agent (npx @agentclientprotocol/codex-acp; may take a minute)...",
