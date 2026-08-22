@@ -519,11 +519,20 @@ app.post("/", async (c) => {
       }
 
       if (requestedPolicy) {
-        await personalSharedGroupsRepository.setResponsePolicy({
+        const updated = await personalSharedGroupsRepository.setResponsePolicy({
           bindingId: binding.id,
           ownerUserId: binding.owner_user_id,
           policy: requestedPolicy,
         });
+        if (!updated) {
+          return c.json({
+            success: true,
+            data: {
+              code: "group_binding_changed",
+              reply: "This group link changed before the policy update. Reconnect it and try again.",
+            },
+          });
+        }
         return c.json({
           success: true,
           data: {
@@ -536,10 +545,19 @@ app.post("/", async (c) => {
         });
       }
       if (isGroupLeaveCommand(parsed.data.message)) {
-        await personalSharedGroupsRepository.revokeBinding({
+        const revoked = await personalSharedGroupsRepository.revokeBinding({
           bindingId: binding.id,
           ownerUserId: binding.owner_user_id,
         });
+        if (!revoked) {
+          return c.json({
+            success: true,
+            data: {
+              code: "group_binding_changed",
+              reply: "This group link changed before it could be disconnected.",
+            },
+          });
+        }
         return c.json({
           success: true,
           data: {

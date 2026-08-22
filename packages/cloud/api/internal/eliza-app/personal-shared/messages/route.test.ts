@@ -289,6 +289,8 @@ describe("personal Shared messaging deliveries", () => {
     applyGroupMembershipChange.mockImplementation(async () => null);
     recordGroupDeliveryReceipts.mockImplementation(async () => 0);
     hasGroupDeliveryReceipt.mockImplementation(async () => false);
+    setGroupResponsePolicy.mockImplementation(async () => canonicalGroupBinding);
+    revokeGroupBinding.mockImplementation(async () => true);
     enqueueAgentResumeOnce.mockClear();
     enqueueAgentWakeOnce.mockClear();
     triggerImmediate.mockClear();
@@ -894,6 +896,36 @@ describe("personal Shared messaging deliveries", () => {
 
     await expect(response.json()).resolves.toMatchObject({
       data: { code: "group_silent", reply: "" },
+    });
+    expect(sharedRestMessageSend).not.toHaveBeenCalled();
+  });
+
+  test("does not report a policy update after the active binding changed", async () => {
+    resolveGroupBinding.mockImplementationOnce(async () => canonicalGroupBinding);
+    setGroupResponsePolicy.mockImplementationOnce(async () => null);
+    const response = await request({
+      ...validGroup,
+      message: "Eliza ambient on",
+      invocation: "command",
+    });
+
+    await expect(response.json()).resolves.toMatchObject({
+      data: { code: "group_binding_changed" },
+    });
+    expect(sharedRestMessageSend).not.toHaveBeenCalled();
+  });
+
+  test("does not report a disconnect after the active binding changed", async () => {
+    resolveGroupBinding.mockImplementationOnce(async () => canonicalGroupBinding);
+    revokeGroupBinding.mockImplementationOnce(async () => false);
+    const response = await request({
+      ...validGroup,
+      message: "Eliza leave",
+      invocation: "command",
+    });
+
+    await expect(response.json()).resolves.toMatchObject({
+      data: { code: "group_binding_changed" },
     });
     expect(sharedRestMessageSend).not.toHaveBeenCalled();
   });
