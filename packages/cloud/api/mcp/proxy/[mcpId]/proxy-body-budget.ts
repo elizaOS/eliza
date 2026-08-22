@@ -23,8 +23,9 @@
  *     body at all;
  *  2. otherwise the body is streamed, each chunk charged against the running
  *     total before it is retained, and cut off the moment the total passes the
- *     budget. Decoding is incremental, so the raw bytes are not held alongside
- *     the finished string.
+ *     budget. Bytes are copied into one fixed-size slab and decoded once, so
+ *     retained chunk objects cannot multiply isolate memory independently of
+ *     the byte budget.
  *
  * Deliberately import-free so it can be driven on its own.
  */
@@ -38,7 +39,18 @@ export interface BudgetedBodySource {
 
 export type BudgetedText =
   | { readonly ok: true; readonly text: string }
-  | { readonly ok: false; readonly bytes: number };
+  | {
+      readonly ok: false;
+      readonly bytes: number;
+      readonly reason: "byte-budget" | "fragmentation-budget";
+    };
+
+/**
+ * Limit pull/decoder churn independently from payload bytes. A standard
+ * transport should coalesce far below this count; rejecting a deliberately
+ * one-byte-at-a-time stream prevents millions of isolate allocations/callbacks.
+ */
+const MAX_BODY_STREAM_CHUNKS = 8_192;
 
 /**
  * The declared body length, or `null` when the header is absent or is not a
@@ -73,8 +85,8 @@ function cancelBestEffort(
  *
  * On refusal `bytes` is the size the refusal was made on: the declared
  * `content-length` when the pre-check fired, otherwise the running total at the
- * chunk that blew the budget (a lower bound on the real size — the rest is
- * never read).
+ * chunk that exceeded the byte or fragmentation budget (a lower bound on the
+ * real size — the rest is never read).
  */
 export async function readBodyTextWithinBudget(
   source: BudgetedBodySource,
@@ -86,7 +98,7 @@ export async function readBodyTextWithinBudget(
     if (source.body) {
       cancelBestEffort(source.body, "content-length-precheck", onCancelFailure);
     }
-    return { ok: false, bytes: declaredLength };
+    return { ok: false, bytes: declaredLength, reason: "byte-budget" };
   }
 
   if (!source.body) {
@@ -96,21 +108,40 @@ export async function readBodyTextWithinBudget(
 
   const reader = source.body.getReader();
   const decoder = new TextDecoder("utf-8");
-  const parts: string[] = [];
+  const retained = new Uint8Array(maxBytes);
   let received = 0;
+  let chunkCount = 0;
 
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    if (!value) continue;
-    received += value.byteLength;
-    if (received > maxBytes) {
-      cancelBestEffort(reader, "streamed-budget", onCancelFailure);
-      return { ok: false, bytes: received };
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (!value || value.byteLength === 0) continue;
+      chunkCount += 1;
+      received += value.byteLength;
+      if (received > maxBytes) {
+        cancelBestEffort(reader, "streamed-budget", onCancelFailure);
+        return { ok: false, bytes: received, reason: "byte-budget" };
+      }
+      if (chunkCount > MAX_BODY_STREAM_CHUNKS) {
+        cancelBestEffort(reader, "streamed-fragmentation", onCancelFailure);
+        return {
+          ok: false,
+          bytes: received,
+          reason: "fragmentation-budget",
+        };
+      }
+      retained.set(value, received - value.byteLength);
     }
-    parts.push(decoder.decode(value, { stream: true }));
+  } finally {
+    try {
+      reader.releaseLock();
+    } catch (error) {
+      // error-policy:J6 The body read has already reached a terminal result;
+      // releasing the reader is best-effort transport teardown.
+      onCancelFailure?.("reader-release", error);
+    }
   }
-  parts.push(decoder.decode());
 
-  return { ok: true, text: parts.join("") };
+  return { ok: true, text: decoder.decode(retained.subarray(0, received)) };
 }

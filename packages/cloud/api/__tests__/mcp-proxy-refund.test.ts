@@ -184,6 +184,19 @@ test("invalid JSON body (400) refunds after the upfront debit (#11637)", async (
   expect(refundCredits).toHaveBeenCalledTimes(1);
 });
 
+test("oversized request body returns 413, refunds exact receipt, and skips upstream", async () => {
+  const res = await post(`{"payload":"${"x".repeat(1_000_001)}"}`);
+  expect(res.status).toBe(413);
+  expect(refundCredits).toHaveBeenCalledWith(
+    expect.objectContaining({
+      amount: 0.05,
+      metadata: expect.objectContaining({ reason: "request_body_too_large" }),
+    }),
+  );
+  expect(safeFetch).not.toHaveBeenCalled();
+  expect(recordUsageWithoutDeduction).not.toHaveBeenCalled();
+});
+
 test("non-ok upstream status refunds (existing behavior preserved)", async () => {
   safeFetch.mockResolvedValue(new Response("upstream error", { status: 500 }));
   const res = await post();
@@ -202,7 +215,34 @@ test("upstream response body read failure refunds before usage is recorded", asy
   } as unknown as Response);
   const res = await post();
   expect(res.status).toBe(502);
-  expect(refundCredits).toHaveBeenCalledTimes(1);
+  expect(refundCredits).toHaveBeenCalledWith(
+    expect.objectContaining({
+      amount: 0.05,
+      metadata: expect.objectContaining({ reason: "mcp_response_read_failed" }),
+    }),
+  );
+  expect(recordUsageWithoutDeduction).not.toHaveBeenCalled();
+});
+
+test("declared oversized upstream body returns 502 and refunds exact receipt", async () => {
+  safeFetch.mockResolvedValue(
+    new Response("not read", {
+      status: 200,
+      headers: {
+        "content-type": "application/json",
+        "content-length": "5000001",
+      },
+    }),
+  );
+  const res = await post();
+  expect(res.status).toBe(502);
+  expect(refundCredits).toHaveBeenCalledWith(
+    expect.objectContaining({
+      amount: 0.05,
+      metadata: expect.objectContaining({ reason: "mcp_response_too_large" }),
+    }),
+  );
+  expect(recordUsageWithoutDeduction).not.toHaveBeenCalled();
 });
 
 test("successful call does NOT refund", async () => {
