@@ -8,6 +8,7 @@
 
 import { createHash } from "node:crypto";
 import { pathToFileURL } from "node:url";
+import { CANONICAL_STEWARD_UPSTREAM_URLS } from "./verify-steward-upstream-binding.mjs";
 
 const PROVIDER_DESTINATIONS = Object.freeze({
   discord: {
@@ -106,59 +107,82 @@ export async function verifyStewardOAuthCallbacks(
   { baseUrl, callbackUrl, environment, tenantId },
   { fetchImpl = fetch } = {},
 ) {
+  const deployEnvironment = requiredEnvironment(environment);
   const results = [];
   for (const [provider, expectedDestination] of Object.entries(
     PROVIDER_DESTINATIONS,
   )) {
-    const query = new URLSearchParams({
-      tenant_id: tenantId,
-      redirect_uri: callbackUrl,
-      code_challenge: pkceChallenge(),
-      code_challenge_method: "S256",
-      state: "canonical-callback-deploy-probe",
-    });
-    const endpoint = `${baseUrl}/steward/auth/oauth/${provider}/authorize?${query}`;
-    const response = await fetchImpl(endpoint, { redirect: "manual" });
-    const location = response.headers.get("location");
+    const launchStates = new Set();
+    for (let launch = 0; launch < 2; launch += 1) {
+      const query = new URLSearchParams({
+        tenant_id: tenantId,
+        redirect_uri: callbackUrl,
+        code_challenge: pkceChallenge(),
+        code_challenge_method: "S256",
+        state: "canonical-callback-deploy-probe",
+      });
+      const endpoint = `${baseUrl}/steward/auth/oauth/${provider}/authorize?${query}`;
+      const response = await fetchImpl(endpoint, { redirect: "manual" });
+      const location = response.headers.get("location");
 
-    if (response.status !== 302 || !location) {
-      throw new Error(
-        `${provider} callback probe returned HTTP ${response.status}; expected a provider redirect`,
-      );
-    }
+      if (response.status !== 302 || !location) {
+        throw new Error(
+          `${provider} callback probe returned HTTP ${response.status}; expected a provider redirect`,
+        );
+      }
 
-    const destination = new URL(location);
-    if (
-      destination.origin !== expectedDestination.origin ||
-      destination.pathname !== expectedDestination.pathname ||
-      destination.username !== "" ||
-      destination.password !== "" ||
-      destination.hash !== ""
-    ) {
-      throw new Error(
-        `${provider} callback probe reached unexpected provider destination ${destination.origin}${destination.pathname}`,
-      );
-    }
-    const providerState = destination.searchParams.get("state");
-    if (!providerState || !OAUTH_STATE_PATTERN.test(providerState)) {
-      throw new Error(
-        `${provider} callback probe returned an invalid provider state`,
-      );
-    }
-    // Staging owns a separate challenge store, so a provider callback that
-    // escapes to the legacy production Steward host cannot consume its state.
-    // Production keeps its established direct callback contract unchanged.
-    if (environment === "staging") {
-      const expectedProviderCallback = `${baseUrl}/steward/auth/oauth/${encodeURIComponent(provider)}/callback`;
-      const actualProviderCallback =
-        destination.searchParams.get("redirect_uri");
-      if (actualProviderCallback !== expectedProviderCallback) {
+      const destination = new URL(location);
+      if (
+        destination.origin !== expectedDestination.origin ||
+        destination.pathname !== expectedDestination.pathname ||
+        destination.username !== "" ||
+        destination.password !== "" ||
+        destination.hash !== ""
+      ) {
+        throw new Error(
+          `${provider} callback probe reached unexpected provider destination ${destination.origin}${destination.pathname}`,
+        );
+      }
+      const providerStates = destination.searchParams.getAll("state");
+      const providerState = providerStates[0];
+      if (
+        providerStates.length !== 1 ||
+        !providerState ||
+        !OAUTH_STATE_PATTERN.test(providerState)
+      ) {
+        throw new Error(
+          `${provider} callback probe returned an invalid provider state`,
+        );
+      }
+      launchStates.add(providerState);
+
+      // Staging terminates the provider callback at the release origin because
+      // its challenge store is isolated there. Production retains the
+      // established direct callback on the canonical Steward upstream.
+      const expectedProviderCallback =
+        deployEnvironment === "staging"
+          ? `${baseUrl}/steward/auth/oauth/${encodeURIComponent(provider)}/callback`
+          : `${CANONICAL_STEWARD_UPSTREAM_URLS.production}/auth/oauth/${encodeURIComponent(provider)}/callback`;
+      const providerCallbacks = destination.searchParams.getAll("redirect_uri");
+      const actualProviderCallback = providerCallbacks[0];
+      if (
+        providerCallbacks.length !== 1 ||
+        actualProviderCallback !== expectedProviderCallback
+      ) {
         throw new Error(
           `${provider} callback probe used ${actualProviderCallback ?? "no redirect_uri"}; expected ${expectedProviderCallback}`,
         );
       }
     }
-    results.push({ provider, destinationHostname: destination.hostname });
+    if (launchStates.size !== 2) {
+      throw new Error(
+        `${provider} callback probe reused provider state across independent launches`,
+      );
+    }
+    results.push({
+      provider,
+      destinationHostname: new URL(expectedDestination.origin).hostname,
+    });
   }
   return results;
 }

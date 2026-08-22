@@ -18,14 +18,19 @@ const CONFIG = {
   tenantId: "elizacloud-staging",
 };
 
-function providerDestination(provider: "discord" | "google"): string {
+let providerStateSequence = 0;
+
+function providerDestination(
+  provider: "discord" | "google",
+  state = (++providerStateSequence).toString(16).padStart(32, "0"),
+): string {
   const destination = new URL(
     provider === "discord"
       ? "https://discord.com/api/oauth2/authorize"
       : "https://accounts.google.com/o/oauth2/v2/auth",
   );
   destination.searchParams.set("client_id", "public");
-  destination.searchParams.set("state", "0123456789abcdef0123456789abcdef");
+  destination.searchParams.set("state", state);
   destination.searchParams.set(
     "redirect_uri",
     `${CONFIG.baseUrl}/steward/auth/oauth/${provider}/callback`,
@@ -56,7 +61,7 @@ describe("Steward OAuth callback deployment probe", () => {
       { provider: "discord", destinationHostname: "discord.com" },
       { provider: "google", destinationHostname: "accounts.google.com" },
     ]);
-    expect(requested).toHaveLength(2);
+    expect(requested).toHaveLength(4);
     for (const url of requested) {
       expect(url.origin).toBe(CONFIG.baseUrl);
       expect(url.searchParams.get("tenant_id")).toBe(CONFIG.tenantId);
@@ -123,6 +128,39 @@ describe("Steward OAuth callback deployment probe", () => {
     },
   );
 
+  test("rejects a valid-looking provider state reused across launches", async () => {
+    const staticDestination = providerDestination(
+      "discord",
+      "0123456789abcdef0123456789abcdef",
+    );
+    await expect(
+      verifyStewardOAuthCallbacks(CONFIG, {
+        fetchImpl: async () =>
+          new Response(null, {
+            status: 302,
+            headers: { Location: staticDestination },
+          }),
+      }),
+    ).rejects.toThrow("reused provider state across independent launches");
+  });
+
+  test("rejects ambiguous duplicate provider state parameters", async () => {
+    const destination = new URL(providerDestination("discord"));
+    destination.searchParams.append(
+      "state",
+      "fedcba9876543210fedcba9876543210",
+    );
+    await expect(
+      verifyStewardOAuthCallbacks(CONFIG, {
+        fetchImpl: async () =>
+          new Response(null, {
+            status: 302,
+            headers: { Location: destination.toString() },
+          }),
+      }),
+    ).rejects.toThrow("invalid provider state");
+  });
+
   test("rejects an upstream callback bound to another environment", async () => {
     await expect(
       verifyStewardOAuthCallbacks(
@@ -164,6 +202,25 @@ describe("Steward OAuth callback deployment probe", () => {
     ).rejects.toThrow("used no redirect_uri");
   });
 
+  test("rejects ambiguous duplicate callback parameters", async () => {
+    const destination = new URL(providerDestination("discord"));
+    destination.searchParams.append(
+      "redirect_uri",
+      "https://attacker.example/oauth/callback",
+    );
+    await expect(
+      verifyStewardOAuthCallbacks(CONFIG, {
+        fetchImpl: async () =>
+          new Response(null, {
+            status: 302,
+            headers: { Location: destination.toString() },
+          }),
+      }),
+    ).rejects.toThrow(
+      "expected https://staging.eliza.app/steward/auth/oauth/discord/callback",
+    );
+  });
+
   test("preserves the established production direct-callback contract", async () => {
     const productionConfig = {
       baseUrl: "https://eliza.app",
@@ -193,6 +250,39 @@ describe("Steward OAuth callback deployment probe", () => {
       { provider: "google", destinationHostname: "accounts.google.com" },
     ]);
   });
+
+  test.each([undefined, "https://attacker.example/oauth/callback"])(
+    "rejects a production provider redirect with callback %s",
+    async (redirectUri) => {
+      const productionConfig = {
+        baseUrl: "https://eliza.app",
+        callbackUrl: "https://eliza.app/login",
+        environment: "production",
+        tenantId: "elizacloud",
+      };
+      await expect(
+        verifyStewardOAuthCallbacks(productionConfig, {
+          fetchImpl: async (input: string | URL | Request) => {
+            const provider = String(input).includes("/discord/")
+              ? "discord"
+              : "google";
+            const destination = new URL(providerDestination(provider));
+            if (redirectUri === undefined) {
+              destination.searchParams.delete("redirect_uri");
+            } else {
+              destination.searchParams.set("redirect_uri", redirectUri);
+            }
+            return new Response(null, {
+              status: 302,
+              headers: { Location: destination.toString() },
+            });
+          },
+        }),
+      ).rejects.toThrow(
+        `expected https://eliza.steward.fi/auth/oauth/discord/callback`,
+      );
+    },
+  );
 
   test("requires HTTPS and all three deployment-owned inputs", () => {
     expect(() =>
@@ -380,7 +470,7 @@ describe("Steward deployment probe CLI composition", () => {
       log: (message: string) => logs.push(message),
     });
 
-    expect(requested).toHaveLength(3);
+    expect(requested).toHaveLength(5);
     expect(requested.at(-1)).toBe(`${CONFIG.baseUrl}/steward/auth/nonce`);
     expect(logs).toEqual([
       "Verified discord canonical callback via discord.com.",
