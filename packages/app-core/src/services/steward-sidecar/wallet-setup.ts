@@ -6,6 +6,28 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { ElizaError, logger } from "@elizaos/core";
 import { fingerprintRandomToken, generateApiKey } from "./helpers";
+
+const STEWARD_REQUEST_TIMEOUT_MS = 30_000;
+
+/**
+ * Bound every Steward sidecar API hop so a hung sidecar cannot pin
+ * first-launch wallet setup. A caller-provided abort signal is composed with
+ * the timeout (either cancelling aborts), not substituted for it.
+ */
+export function stewardFetch(
+  input: RequestInfo | URL,
+  init?: RequestInit,
+  timeoutMs: number = STEWARD_REQUEST_TIMEOUT_MS,
+): Promise<Response> {
+  const timeoutSignal = AbortSignal.timeout(timeoutMs);
+  return fetch(input, {
+    ...init,
+    signal: init?.signal
+      ? AbortSignal.any([init.signal, timeoutSignal])
+      : timeoutSignal,
+  });
+}
+
 import type {
   StewardCredentialCheckpoint,
   StewardCredentials,
@@ -77,7 +99,7 @@ async function requestAgentToken(
   credentials: StewardCredentialCheckpoint,
   apiBase: string,
 ): Promise<string> {
-  const tokenResponse = await fetch(
+  const tokenResponse = await stewardFetch(
     `${apiBase}/agents/${credentials.agentId}/token`,
     {
       method: "POST",
@@ -177,12 +199,15 @@ async function verifyExistingWallet(
   updateStatus: (partial: Partial<StewardSidecarStatus>) => void,
 ): Promise<void> {
   try {
-    const response = await fetch(`${apiBase}/agents/${credentials.agentId}`, {
-      headers: {
-        "X-Steward-Tenant": credentials.tenantId,
-        "X-Steward-Key": credentials.tenantApiKey,
+    const response = await stewardFetch(
+      `${apiBase}/agents/${credentials.agentId}`,
+      {
+        headers: {
+          "X-Steward-Tenant": credentials.tenantId,
+          "X-Steward-Key": credentials.tenantApiKey,
+        },
       },
-    });
+    );
 
     if (response.ok) {
       const result = (await response.json()) as {
@@ -219,7 +244,7 @@ async function performFirstLaunchSetup(
 
   // 1. Create tenant
   const tenantApiKey = generateApiKey();
-  const tenantResponse = await fetch(`${apiBase}/tenants`, {
+  const tenantResponse = await stewardFetch(`${apiBase}/tenants`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -237,7 +262,7 @@ async function performFirstLaunchSetup(
   }
 
   // 2. Create agent with wallet
-  const agentResponse = await fetch(`${apiBase}/agents`, {
+  const agentResponse = await stewardFetch(`${apiBase}/agents`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
