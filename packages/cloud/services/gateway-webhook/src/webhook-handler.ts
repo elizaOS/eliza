@@ -1404,6 +1404,22 @@ async function sendPersonalSharedReply(
         : Number.NaN;
     const authorizationObservedAt = Date.now();
     if (
+      authorizationData !== false &&
+      authorizationData.authorized === false &&
+      authorizationData.reason === "source_already_attempted"
+    ) {
+      logger.warn("Personal Shared delivery outcome remains uncertain", {
+        project,
+        platform: adapter.platform,
+        messageId: event.messageId,
+        sourceMessageId,
+        deliveryState: "uncertain",
+        operatorAction:
+          "reconcile the durable provider attempt before retrying this source",
+        traceId,
+      });
+    }
+    if (
       authorizationData === false ||
       authorizationData.code !== "group_delivery_authorization" ||
       authorizationData.authorized !== true ||
