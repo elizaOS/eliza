@@ -12,6 +12,7 @@
  */
 
 import { describe, expect, test } from "bun:test";
+import { PLATFORM_MCP_TOOL_PRICING } from "@elizaos/cloud-shared/billing";
 
 import { listPlatformCloudMcpTools } from "@/lib/mcp/platform-cloud-tools";
 
@@ -33,6 +34,7 @@ type InfoBody = {
     type: string;
     description: string;
     creditUnit: string;
+    rates: Record<string, string>;
   };
   authentication: { type: string; header: string; description: string };
   status: string;
@@ -83,6 +85,12 @@ describe("GET /api/mcp/info advertises exactly the served inventory", () => {
     expect(body.authRequired).toBe(true);
     expect(body.status).toBe("live");
     expect(body.pricing.creditUnit).toBe("USD");
+    expect(body.pricing.rates.save_memory).toBe(
+      PLATFORM_MCP_TOOL_PRICING.save_memory.label,
+    );
+    expect(body.pricing.rates.retrieve_memories).toBe(
+      PLATFORM_MCP_TOOL_PRICING.retrieve_memories.label,
+    );
     expect(body.authentication.type).toBe("Bearer");
     expect(body.authentication.header).toBe("Authorization");
   });
