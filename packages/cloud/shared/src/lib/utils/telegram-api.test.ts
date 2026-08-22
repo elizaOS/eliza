@@ -104,6 +104,108 @@ describe("bounded Telegram request lifecycle", () => {
   });
 });
 
+describe("bounded Telegram transport hardening", () => {
+  test("never dispatches a pre-aborted caller signal", async () => {
+    const fetchMock = mock(async () => Response.json({ ok: true, result: {} }));
+    globalThis.fetch = fetchMock as typeof fetch;
+    const caller = new AbortController();
+    caller.abort(new DOMException("caller gone", "AbortError"));
+    await expect(
+      telegramBotApiGet("1:token", "getMe", undefined, { signal: caller.signal }),
+    ).rejects.toMatchObject({ name: "AbortError" });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  test("times out a fetch double that ignores its signal", async () => {
+    globalThis.fetch = mock(() => new Promise<Response>(() => {})) as typeof fetch;
+    await expect(
+      telegramBotApiGet("1:token", "getMe", undefined, { timeoutMs: 25 }),
+    ).rejects.toMatchObject({ name: "TimeoutError" });
+  });
+
+  test("times out a body stream that ignores the abort signal", async () => {
+    globalThis.fetch = mock(
+      async () => new Response(new ReadableStream<Uint8Array>({ start() {} })),
+    ) as typeof fetch;
+    await expect(
+      telegramBotApiGet("1:token", "getMe", undefined, { timeoutMs: 25 }),
+    ).rejects.toMatchObject({ name: "TimeoutError" });
+  });
+
+  test("assembles many tiny chunks under the cap into one payload", async () => {
+    const payload = new TextEncoder().encode(JSON.stringify({ ok: true, result: { id: 42 } }));
+    globalThis.fetch = mock(
+      async () =>
+        new Response(
+          new ReadableStream<Uint8Array>({
+            start(controller) {
+              for (const byte of payload) controller.enqueue(new Uint8Array([byte]));
+              controller.close();
+            },
+          }),
+        ),
+    ) as typeof fetch;
+    await expect(telegramBotApiGet("1:token", "getMe")).resolves.toEqual({ id: 42 });
+  });
+
+  test("enforces the cap across tiny chunks and grows the slab past its initial size", async () => {
+    const chunk = new Uint8Array(4_096);
+    const chunks = Math.ceil(1_000_001 / chunk.byteLength);
+    let enqueued = 0;
+    globalThis.fetch = mock(
+      async () =>
+        new Response(
+          new ReadableStream<Uint8Array>({
+            pull(controller) {
+              if (enqueued < chunks) {
+                enqueued += 1;
+                controller.enqueue(chunk);
+              } else {
+                controller.close();
+              }
+            },
+          }),
+        ),
+    ) as typeof fetch;
+    await expect(telegramBotApiGet("1:token", "getMe")).rejects.toMatchObject({
+      code: "TELEGRAM_API_RESPONSE_TOO_LARGE",
+    });
+  });
+
+  test("keeps the typed size error when stream cancellation never settles", async () => {
+    let response: Response | undefined;
+    globalThis.fetch = mock(async () => {
+      response = new Response(
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(new Uint8Array(1_000_001));
+          },
+          cancel() {
+            return new Promise<void>(() => {});
+          },
+        }),
+      );
+      return response;
+    }) as typeof fetch;
+    await expect(
+      telegramBotApiGet("1:token", "getMe", undefined, { timeoutMs: 5_000 }),
+    ).rejects.toMatchObject({
+      code: "TELEGRAM_API_RESPONSE_TOO_LARGE",
+    });
+    expect(response?.body?.locked).toBe(false);
+  });
+
+  test("releases the reader lock after a successful read", async () => {
+    let response: Response | undefined;
+    globalThis.fetch = mock(async () => {
+      response = Response.json({ ok: true, result: { id: 1 } });
+      return response;
+    }) as typeof fetch;
+    await expect(telegramBotApiGet("1:token", "getMe")).resolves.toEqual({ id: 1 });
+    expect(response?.body?.locked).toBe(false);
+  });
+});
+
 describe("Telegram Bot API request boundaries", () => {
   test("returns a successful bounded POST result", async () => {
     globalThis.fetch = mock(async (_input: RequestInfo | URL, init?: RequestInit) => {

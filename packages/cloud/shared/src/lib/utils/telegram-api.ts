@@ -2,7 +2,9 @@
  * Sends bounded Telegram Bot API requests through the fixed Telegram origin.
  *
  * The transport deadline remains active through response-body consumption,
- * and every response is streamed under a byte cap before JSON parsing.
+ * caller cancellation is composed with it, and every response is streamed
+ * into one capped slab before JSON parsing. The fetch primitive stays private
+ * so no consumer can receive a response whose deadline it does not release.
  */
 import { ElizaError } from "@elizaos/core";
 
@@ -11,6 +13,7 @@ export const TELEGRAM_API_BASE = "https://api.telegram.org";
 const TELEGRAM_REQUEST_TIMEOUT_MS = 30_000;
 const TELEGRAM_REQUEST_BODY_MAX_BYTES = 1_000_000;
 const TELEGRAM_RESPONSE_BODY_MAX_BYTES = 1_000_000;
+const TELEGRAM_RESPONSE_INITIAL_SLAB_BYTES = 16_384;
 const TELEGRAM_GET_URL_MAX_CHARS = 16_384;
 const TELEGRAM_METHOD_RE = /^[A-Za-z][A-Za-z0-9_]*$/;
 const TELEGRAM_TOKEN_RE = /^[A-Za-z0-9:_-]+$/;
@@ -22,6 +25,7 @@ export interface TelegramApiRequestOptions {
 
 interface BoundedTelegramResponse {
   response: Response;
+  signal: AbortSignal;
   releaseDeadline: () => void;
 }
 
@@ -92,9 +96,28 @@ function cancelResponseBody(response: Response, reason?: unknown): void {
 }
 
 /**
+ * Settles `promise` or rejects with the signal's reason, whichever comes
+ * first, so a fetch or stream implementation that ignores its signal cannot
+ * outlive the composed deadline.
+ */
+function raceAbort<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
+  if (signal.aborted) {
+    return Promise.reject(signal.reason);
+  }
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = () => reject(signal.reason);
+    signal.addEventListener("abort", onAbort, { once: true });
+    promise.then(resolve, reject).finally(() => {
+      signal.removeEventListener("abort", onAbort);
+    });
+  });
+}
+
+/**
  * Executes one bounded Telegram hop. Caller cancellation and the hop deadline
- * are composed, and redirects are rejected so bot tokens and POST bodies never
- * leave the allowlisted Telegram origin.
+ * are composed, a pre-aborted caller never dispatches, and redirects are
+ * rejected so bot tokens and POST bodies never leave the allowlisted Telegram
+ * origin. The returned handle owns the deadline until the body is consumed.
  */
 async function telegramApiFetch(
   input: string | URL,
@@ -109,6 +132,9 @@ async function telegramApiFetch(
       { timeoutMs },
     );
   }
+  if (init?.signal?.aborted) {
+    throw init.signal.reason;
+  }
 
   const deadline = new AbortController();
   const timer = setTimeout(() => {
@@ -117,16 +143,15 @@ async function telegramApiFetch(
   const signal = init?.signal ? AbortSignal.any([init.signal, deadline.signal]) : deadline.signal;
 
   try {
-    const response = await fetch(url, {
-      ...init,
-      redirect: "error",
-      signal,
-    });
+    const response = await raceAbort(fetch(url, { ...init, redirect: "error", signal }), signal);
     return {
       response,
+      signal,
       releaseDeadline: () => clearTimeout(timer),
     };
   } catch (error) {
+    // error-policy:J2 the transport failure is rethrown unchanged after the
+    // owned deadline timer is released.
     clearTimeout(timer);
     throw error;
   }
@@ -163,11 +188,81 @@ function serializeTelegramParams(params: Record<string, unknown>): string {
   return body;
 }
 
+/**
+ * Streams the response body into one growing slab under the byte cap so a
+ * flood of tiny chunks cannot accumulate unbounded chunk objects. Every exit
+ * path releases the reader lock and the owned deadline; stream cancellation is
+ * detached so a never-settling cancel cannot outlive the typed failure.
+ */
+async function readBoundedBody(
+  response: Response,
+  signal: AbortSignal,
+  releaseDeadline: () => void,
+  method: string,
+): Promise<Uint8Array> {
+  const body = response.body;
+  if (!body) {
+    releaseDeadline();
+    return new Uint8Array(0);
+  }
+  const reader = body.getReader();
+  const detachedCancel = (reason: unknown) => {
+    try {
+      void reader.cancel(reason).catch(() => {
+        // error-policy:J6 the typed failure is authoritative; stream
+        // cancellation is best-effort connection teardown.
+      });
+    } catch {
+      // error-policy:J6 synchronous cancel failure is best-effort teardown.
+    }
+  };
+  let slab = new Uint8Array(TELEGRAM_RESPONSE_INITIAL_SLAB_BYTES);
+  let receivedBytes = 0;
+  try {
+    for (;;) {
+      const { done, value } = await raceAbort(reader.read(), signal);
+      if (done) break;
+      if (!value?.byteLength) continue;
+      const nextLength = receivedBytes + value.byteLength;
+      if (nextLength > TELEGRAM_RESPONSE_BODY_MAX_BYTES) {
+        throw telegramError(
+          "Telegram API response exceeds the byte limit",
+          "TELEGRAM_API_RESPONSE_TOO_LARGE",
+          { method, receivedBytes: nextLength, maxBytes: TELEGRAM_RESPONSE_BODY_MAX_BYTES },
+        );
+      }
+      if (nextLength > slab.byteLength) {
+        const grown = new Uint8Array(
+          Math.min(TELEGRAM_RESPONSE_BODY_MAX_BYTES, Math.max(nextLength, slab.byteLength * 2)),
+        );
+        grown.set(slab.subarray(0, receivedBytes));
+        slab = grown;
+      }
+      slab.set(value, receivedBytes);
+      receivedBytes = nextLength;
+    }
+  } catch (error) {
+    // error-policy:J2 the read, abort, or size failure is rethrown unchanged
+    // after detached stream teardown.
+    detachedCancel(error);
+    throw error;
+  } finally {
+    releaseDeadline();
+    try {
+      reader.releaseLock();
+    } catch {
+      // error-policy:J6 releasing the lock of an errored or cancelled reader
+      // is best-effort teardown.
+    }
+  }
+  return slab.subarray(0, receivedBytes);
+}
+
 async function readTelegramResponse<T>(
   boundedResponse: BoundedTelegramResponse,
   method: string,
 ): Promise<T> {
-  const { response, releaseDeadline } = boundedResponse;
+  const { response, signal, releaseDeadline } = boundedResponse;
   const declaredLength = Number(response.headers.get("content-length"));
   if (Number.isFinite(declaredLength) && declaredLength > TELEGRAM_RESPONSE_BODY_MAX_BYTES) {
     cancelResponseBody(response);
@@ -179,47 +274,7 @@ async function readTelegramResponse<T>(
     );
   }
 
-  const reader = response.body?.getReader();
-  const chunks: Uint8Array[] = [];
-  let receivedBytes = 0;
-  try {
-    if (reader) {
-      for (;;) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        if (!value?.byteLength) continue;
-        receivedBytes += value.byteLength;
-        if (receivedBytes > TELEGRAM_RESPONSE_BODY_MAX_BYTES) {
-          void reader.cancel().catch(() => {
-            // error-policy:J6 oversize failure is authoritative; reader cleanup is best-effort.
-          });
-          throw telegramError(
-            "Telegram API response exceeds the byte limit",
-            "TELEGRAM_API_RESPONSE_TOO_LARGE",
-            { method, receivedBytes, maxBytes: TELEGRAM_RESPONSE_BODY_MAX_BYTES },
-          );
-        }
-        chunks.push(value);
-      }
-    }
-  } catch (error) {
-    try {
-      await reader?.cancel(error);
-    } catch {
-      // error-policy:J6 the read failure remains authoritative; reader
-      // cancellation is best-effort connection teardown.
-    }
-    throw error;
-  } finally {
-    releaseDeadline();
-  }
-
-  const bytes = new Uint8Array(receivedBytes);
-  let offset = 0;
-  for (const chunk of chunks) {
-    bytes.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
+  const bytes = await readBoundedBody(response, signal, releaseDeadline, method);
 
   let parsed: unknown;
   try {
