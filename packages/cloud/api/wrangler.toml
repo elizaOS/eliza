@@ -400,7 +400,7 @@ TUNNEL_AUTH_KEY_COST_USD = "0.01"
 #   CEREBRAS_API_KEY                   Cerebras — ultra-fast inference for provisioning chat agent
 #   FAL_KEY                            Fal.ai video gen
 #   FAL_API_KEY                        Alias for FAL_KEY used by image/video/music generation
-#   ATLASCLOUD_API_KEY                 AtlasCloud image generation billing key
+#   ATLASCLOUD_API_KEY                 AtlasCloud image and fallback video generation billing key
 #   ATLASCLOUD_BASE_URL                Optional AtlasCloud API base URL override
 #   BIRDEYE_API_KEY                    Birdeye defi/price proxy key
 #   ELEVENLABS_API_KEY                 ElevenLabs TTS

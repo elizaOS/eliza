@@ -1,4 +1,5 @@
-// Defines cloud shared types behavior for backend service consumers.
+/** Defines provider-neutral video generation and reconciliation contracts. */
+
 import type { PricingBillingSource } from "../../services/ai-pricing-definitions";
 
 export interface VideoGenerationRequest {
@@ -61,6 +62,36 @@ export class VideoGenerationPendingError extends Error {
     super(message);
     this.name = "VideoGenerationPendingError";
     this.requestId = requestId;
+  }
+}
+
+/**
+ * A provider has definitively rejected or terminally failed work and no paid
+ * job can still complete. Only this error authorizes a provider fallback or a
+ * zero-cost settlement.
+ */
+export class VideoGenerationTerminalError extends Error {
+  readonly providerCause: unknown;
+
+  constructor(message: string, providerCause?: unknown) {
+    super(message);
+    this.name = "VideoGenerationTerminalError";
+    this.providerCause = providerCause;
+  }
+}
+
+/**
+ * Submission may have reached a paid provider but yielded no durable job id.
+ * The route must not dispatch a fallback or refund; its reservation backstop
+ * settles conservatively because no provider status lookup is possible.
+ */
+export class VideoGenerationSubmissionUnknownError extends Error {
+  readonly providerCause: unknown;
+
+  constructor(message: string, providerCause?: unknown) {
+    super(message);
+    this.name = "VideoGenerationSubmissionUnknownError";
+    this.providerCause = providerCause;
   }
 }
 
