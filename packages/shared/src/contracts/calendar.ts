@@ -372,6 +372,27 @@ export interface GetLifeOpsCalendarFeedRequest {
   forceSync?: boolean;
 }
 
+/** Removes only Eliza's imported calendar projection for one exact source. */
+export interface PurgeLifeOpsCalendarImportedDataRequest {
+  provider: Extract<LifeOpsCalendarProvider, "google" | "apple_calendar">;
+  side: LifeOpsConnectorSide;
+  grantId: string;
+  connectorAccountId: string;
+  /** Required immediately before the local destructive operation. */
+  confirmAction: boolean;
+}
+
+export interface LifeOpsCalendarImportedDataPurgeReceipt {
+  provider: Extract<LifeOpsCalendarProvider, "google" | "apple_calendar">;
+  side: LifeOpsConnectorSide;
+  grantId: string;
+  connectorAccountId: string;
+  deletedEventCount: number;
+  deletedSyncStateCount: number;
+  providerMutation: false;
+  purgedAt: string;
+}
+
 export const LIFEOPS_CALENDAR_WINDOW_PRESETS = [
   "tomorrow_morning",
   "tomorrow_afternoon",
