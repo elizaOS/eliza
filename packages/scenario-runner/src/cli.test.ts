@@ -737,6 +737,7 @@ describe("scenario-runner CLI", () => {
     await expect(runCli(["run", tempDir], dependencies)).rejects.toThrow(
       "SCENARIO_TURN_TIMEOUT_MS must be a positive integer",
     );
+    expect(dependencies.createScenarioRuntime).not.toHaveBeenCalled();
     expect(dependencies.runScenario).not.toHaveBeenCalled();
   });
 
@@ -746,7 +747,11 @@ describe("scenario-runner CLI", () => {
     const dependencies = createDependencies(() => "passed");
 
     await runCli(["run", tempDir], dependencies);
-    expect(dependencies.runScenario).toHaveBeenCalled();
+    expect(dependencies.runScenario).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.objectContaining({ turnTimeoutMs: 500 }),
+    );
   });
 
   it("still accepts an explicitly signed positive timeout", async () => {
@@ -767,6 +772,18 @@ describe("scenario-runner CLI", () => {
     await expect(runCli(["run", tempDir], dependencies)).rejects.toThrow(
       "SCENARIO_TURN_TIMEOUT_MS must be a positive integer",
     );
+    expect(dependencies.createScenarioRuntime).not.toHaveBeenCalled();
+  });
+
+  it("rejects a timeout beyond Node's supported timer range", async () => {
+    process.env.SCENARIO_TURN_TIMEOUT_MS = "2147483648";
+    writeScenario(tempDir, "cli-timeout-timer-overflow");
+    const dependencies = createDependencies(() => "passed");
+
+    await expect(runCli(["run", tempDir], dependencies)).rejects.toThrow(
+      "no greater than 2147483647",
+    );
+    expect(dependencies.createScenarioRuntime).not.toHaveBeenCalled();
   });
 
   it("allows skipped scenarios when SKIP_REASON documents the skip", async () => {
