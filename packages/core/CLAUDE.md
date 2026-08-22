@@ -177,7 +177,10 @@ visible.
   rendering preserves exact whitespace and complete runtime-event fields, and
   content-reference discovery uses cycle-safe complete traversal rather than
   depth or visited-value caps. The final wire preflight owns any explicit
-   model-limit rejection.
+  model-limit rejection.
+- Document keyword, vector, and hybrid searches traverse every authorized
+  fragment page before ranking. Fragment-query limits are storage batch sizes,
+  never recall caps; a repeated page rejects instead of returning a prefix.
 - DB mutation methods on `IDatabaseAdapter` return `Promise<boolean>` so callers can distinguish success/failure (`types/database.ts`).
 - The task system (`services/task.ts`, `services/task-scheduler.ts`) is the single place scheduled work runs; only tasks tagged `queue` are polled. Three modes: local timer, per-daemon (`startTaskScheduler`), serverless (`{ serverless: true }` + `runDueTasks()`).
 - Document reads use `roomId` as the single room entitlement and join it to the requester's current room set inside the adapter. `directGrantEntityIds` is a bounded, validated read exception that remains valid without room membership; it never opens `agent-private` documents and never grants mutation authority. Only the dedicated adapter CAS may replace grants: OWNER on any valid document, or a current room ADMIN on global and user-private documents, with every grantee validated in the current agent tenant. Malformed or duplicate grant arrays make the parent unreadable.

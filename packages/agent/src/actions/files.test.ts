@@ -93,6 +93,26 @@ describe("filesAction", () => {
     expect(data.files?.[0].mimeType).toBe("application/pdf");
   });
 
+  it("returns every stored file even when a legacy caller supplies a limit", async () => {
+    const files = Array.from({ length: 137 }, (_, index) => ({
+      fileName: `${index.toString(16).padStart(64, "0")}.txt`,
+      url: `/api/media/${index.toString(16).padStart(64, "0")}.txt`,
+      hash: index.toString(16).padStart(64, "0"),
+      mimeType: "text/plain",
+      size: index + 1,
+      createdAt: index,
+    }));
+    const res = await run(makeRuntime(fakeStorage(files)), {
+      op: "list",
+      limit: 1,
+    });
+    const data = res?.data as FilesData;
+    expect(data.files).toHaveLength(files.length);
+    expect(data.total).toBe(files.length);
+    expect(data.files?.[0].fileName).toBe(files.at(-1)?.fileName);
+    expect(data.files?.at(-1)?.fileName).toBe(files[0].fileName);
+  });
+
   it("gets a file's details + url by name", async () => {
     const res = await run(makeRuntime(fakeStorage()), {
       op: "get",
