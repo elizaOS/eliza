@@ -101,6 +101,32 @@ export function resolvePinnedAdapter(
   return KNOWN_ADAPTER_TYPES.has(raw) ? raw : undefined;
 }
 
+/** Directories a build must never land in by planner invention: the home
+ *  directory itself, any ancestor of a configured route's workdir (the
+ *  projects folder that holds real repos), and the runtime's own checkout. */
+function isProtectedLocation(
+  runtime: IAgentRuntime | undefined,
+  workdir: string,
+): boolean {
+  const resolved = path.resolve(workdir);
+  const home = path.resolve(os.homedir());
+  if (resolved === home) return true;
+  const cwdRoot = path.resolve(process.cwd());
+  if (resolved === cwdRoot || cwdRoot.startsWith(`${resolved}${path.sep}`)) {
+    return true;
+  }
+  for (const route of configuredWorkdirRoutes(runtime)) {
+    const routeDir = path.resolve(expandHomePath(route.workdir));
+    if (
+      routeDir !== resolved &&
+      routeDir.startsWith(`${resolved}${path.sep}`)
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
 /** Whether an explicit existing workdir has a reason to be honored: it sits
  *  inside a configured route tree or the published-apps dir, the user named
  *  it (path or last segment) in the request or task text, or it is the
@@ -184,14 +210,17 @@ export function resolveSpawnWorkdir(
   if (
     expandedExplicit &&
     fs.existsSync(expandedExplicit) &&
+    isProtectedLocation(runtime, expandedExplicit) &&
     !explicitWorkdirIsGrounded(runtime, expandedExplicit, userRequest, task)
   ) {
     // The planner fills `workdir` on every create ("/home/milady/<label>",
-    // live 2026-08-22 on every build). A path that happens to EXIST but that
-    // nothing grounds — not a route tree, not named by the user, not a known
-    // lane's dir — would land a fresh build in an unrelated real directory.
+    // live 2026-08-22 on every build). An existing scratch dir stays trusted
+    // (the established contract), but a PROTECTED location — the home dir,
+    // the parent of a configured route, the agent's own checkout — that
+    // nothing grounds (not a route tree, not named by the user, not a known
+    // lane's dir) would land a fresh build in an unrelated real directory.
     logger.warn(
-      `[workdir-routes] Planner workdir is not grounded in the request, a route, or a known lane; ignoring it: ${expandedExplicit} — falling back to ${fallback.workdir}`,
+      `[workdir-routes] Planner workdir is a protected location nothing grounds; ignoring it: ${expandedExplicit} — falling back to ${fallback.workdir}`,
     );
     return fallback.isolate
       ? { workdir: fallback.workdir, isolate: true }
