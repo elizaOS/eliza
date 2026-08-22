@@ -236,6 +236,10 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 		/room\.id\.slice\(/,
 		/room\.id\.substring\(/,
 	],
+	"packages/agent/src/runtime/roles/src/provider.ts": [
+		/id\.slice\(/,
+		/id\.substring\(/,
+	],
 	"packages/agent/src/runtime/prompt-optimization.ts": [
 		/actionCompactionEnabled/,
 	],
