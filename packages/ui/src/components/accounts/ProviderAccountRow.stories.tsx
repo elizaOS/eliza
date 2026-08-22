@@ -61,9 +61,8 @@ const anthropicProvider: AccountsListProvider = {
   providerId: "anthropic-subscription",
   strategy: "reset-soonest",
   runtimeEligibility: {
-    chat: false,
-    codingAgent: true,
-    note: "Powers coding agents. Not the default chat brain.",
+    chat: { available: false },
+    codingAgent: { available: true, backend: "claude" },
   },
   selection: { activeAccountId: "acct_a2", reason: "reset-soonest" },
   accounts: [
@@ -145,7 +144,10 @@ export const NeedsAttention: Story = {
     provider: {
       providerId: "openai-codex",
       strategy: "priority",
-      runtimeEligibility: { chat: false, codingAgent: true },
+      runtimeEligibility: {
+        chat: { available: true },
+        codingAgent: { available: true, backend: "codex" },
+      },
       selection: { activeAccountId: "acct_c1", reason: "priority" },
       accounts: [
         acct({

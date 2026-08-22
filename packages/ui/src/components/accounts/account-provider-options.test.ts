@@ -3,10 +3,30 @@
  * provider picker grouping and eligibility copy.
  */
 
+import {
+  CODING_PROVIDER_DESCRIPTORS,
+  codingProviderEnrollmentAvailability,
+} from "@elizaos/shared";
 import { describe, expect, it } from "vitest";
 import { ACCOUNT_PROVIDER_OPTIONS } from "./account-provider-options";
 
 describe("consolidated account provider picker", () => {
+  it("covers the canonical provider descriptor catalog exactly once", () => {
+    const optionIds = ACCOUNT_PROVIDER_OPTIONS.map((option) => option.id);
+    expect([...optionIds].sort()).toEqual(
+      Object.keys(CODING_PROVIDER_DESCRIPTORS).sort(),
+    );
+    expect(new Set(optionIds).size).toBe(optionIds.length);
+  });
+
+  it("keeps unavailable enrollment rows aligned with the descriptor", () => {
+    for (const option of ACCOUNT_PROVIDER_OPTIONS) {
+      expect(option.unavailable === true, option.id).toBe(
+        codingProviderEnrollmentAvailability(option.id) === "unavailable",
+      );
+    }
+  });
+
   it("keeps chat API providers separate from coding subscription providers", () => {
     const chat = ACCOUNT_PROVIDER_OPTIONS.filter(
       (option) => option.category === "chat",

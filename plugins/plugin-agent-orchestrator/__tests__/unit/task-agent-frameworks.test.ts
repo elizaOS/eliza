@@ -51,7 +51,6 @@ function installedProbe(): TaskAgentFrameworkProbe {
     checkAvailableAgents: vi.fn(async () => [
       { adapter: "Claude Code", installed: true },
       { adapter: "OpenAI Codex", installed: true },
-      { adapter: "OpenCode", installed: true },
     ]),
   };
 }
@@ -65,7 +64,6 @@ function delayedInstalledProbe(): TaskAgentFrameworkProbe {
             resolve([
               { adapter: "Claude Code", installed: true },
               { adapter: "OpenAI Codex", installed: true },
-              { adapter: "OpenCode", installed: true },
             ]);
           }, 10);
         }),
@@ -115,20 +113,6 @@ describe("getTaskAgentFrameworkState", () => {
     fs.rmSync(tempHome, { recursive: true, force: true });
   });
 
-  it("does not expose OpenCode for Cerebras-backed benchmark runs", async () => {
-    setEnv({
-      BENCHMARK_MODEL_PROVIDER: "cerebras",
-      CEREBRAS_API_KEY: "csk-test",
-    });
-
-    const state = await getTaskAgentFrameworkState(runtime(), installedProbe());
-
-    expect(state.frameworks.some((item) => item.id === "opencode")).toBe(false);
-    expect(
-      state.frameworks.find((item) => item.id === "codex")?.authReady,
-    ).toBe(false);
-  });
-
   it("prefers eliza-code as the BYO default once eliza-code is installed", async () => {
     writeExecutable(path.join(tempHome, "eliza-code-acp"));
     setEnv({
@@ -143,10 +127,9 @@ describe("getTaskAgentFrameworkState", () => {
     expect(
       state.frameworks.find((item) => item.id === "elizaos")?.installed,
     ).toBe(true);
-    expect(state.frameworks.some((item) => item.id === "opencode")).toBe(false);
   });
 
-  it("honors ElizaOS as an explicit native task-agent default", async () => {
+  it("does not fabricate ElizaOS installation from an explicit default", async () => {
     setEnv({
       ELIZA_DEFAULT_AGENT_TYPE: "elizaos",
       BENCHMARK_MODEL_PROVIDER: "cerebras",
@@ -155,16 +138,15 @@ describe("getTaskAgentFrameworkState", () => {
 
     const state = await getTaskAgentFrameworkState(runtime(), installedProbe());
 
-    expect(state.preferred.id).toBe("elizaos");
     expect(
       state.frameworks.find((item) => item.id === "elizaos")?.installed,
-    ).toBe(true);
+    ).toBe(false);
     expect(
       state.frameworks.find((item) => item.id === "elizaos")?.authReady,
-    ).toBe(true);
+    ).toBe(false);
   });
 
-  it("honors Pi Agent as an explicit native task-agent default", async () => {
+  it("does not fabricate Pi Agent installation from an explicit default", async () => {
     setEnv({
       ELIZA_DEFAULT_AGENT_TYPE: "pi-agent",
       BENCHMARK_MODEL_PROVIDER: "cerebras",
@@ -173,13 +155,12 @@ describe("getTaskAgentFrameworkState", () => {
 
     const state = await getTaskAgentFrameworkState(runtime(), installedProbe());
 
-    expect(state.preferred.id).toBe("pi-agent");
     expect(
       state.frameworks.find((item) => item.id === "pi-agent")?.installed,
-    ).toBe(true);
+    ).toBe(false);
     expect(
       state.frameworks.find((item) => item.id === "pi-agent")?.authReady,
-    ).toBe(true);
+    ).toBe(false);
   });
 
   it("fails Pi Agent readiness closed when a configured ACP command is missing", async () => {
@@ -233,7 +214,6 @@ describe("getTaskAgentFrameworkState", () => {
 
     const state = await getTaskAgentFrameworkState(runtime(), installedProbe());
 
-    expect(state.frameworks.some((item) => item.id === "opencode")).toBe(false);
     expect(
       state.frameworks.find((item) => item.id === "codex")?.authReady,
     ).toBe(false);
@@ -421,7 +401,7 @@ describe("getTaskAgentFrameworkState", () => {
 
 // Model prefs must honor a freshly-saved config-file value on the NEXT spawn:
 // runtime.getSetting snapshots character settings at boot, so config-env is
-// checked first (matching how the codex/opencode prefs already behave).
+// checked first, matching the existing Codex preference behavior.
 describe("getTaskAgentModelPrefs", () => {
   const PREF_ENV_KEYS = [
     "ELIZA_CONFIG_PATH",
