@@ -35,6 +35,7 @@ import {
   scenarioMetadataFromSource,
   scenarioOwnsSurface,
   servedCloudRouteFiles,
+  servedCloudRoutes,
   workerBindingsFromSource,
 } from "./runtime-surface-inventory.ts";
 
@@ -339,6 +340,20 @@ describe("runtime-surface production inventory", () => {
           entry.packageName === "@elizaos/cloud-api" && entry.kind === "route",
       ),
     ).toBe(true);
+    expect(
+      has(
+        (entry) =>
+          entry.id ===
+          "@elizaos/cloud-api:route:post-/api/stripe/create-checkout-session",
+      ),
+    ).toBe(true);
+    expect(
+      realInventory.rows.some(
+        (entry) =>
+          entry.packageName === "@elizaos/cloud-api" &&
+          entry.surfaceName.includes(" /stripe/"),
+      ),
+    ).toBe(false);
     expect(has((entry) => entry.kind === "cloud-service")).toBe(true);
     expect(
       has(
@@ -417,6 +432,79 @@ describe("runtime-surface production inventory", () => {
       ]),
     );
     expect(realInventory.gaps.byWorkstream.unassigned).toBeUndefined();
+  });
+
+  test("keeps mixed Cloud, Calendar, Vision, and Wallet dependencies honest", () => {
+    const byId = new Map(realInventory.rows.map((row) => [row.id, row]));
+    expect(
+      byId
+        .get(
+          "@elizaos/cloud-api:route:post-/api/stripe/create-checkout-session",
+        )
+        ?.externalServiceDependencies.map((entry) => entry.id),
+    ).toEqual(["postgresql", "stripe-api"]);
+    expect(
+      byId.get("@elizaos/cloud-api:route:get-/api/i18n/locale"),
+    ).toMatchObject({
+      dependencyDisposition: "local-only",
+      externalServiceDependencies: [],
+    });
+    expect(
+      byId
+        .get(
+          "@elizaos/plugin-calendar:route:/api/lifeops/calendar/google/webhook",
+        )
+        ?.externalServiceDependencies.map((entry) => entry.id),
+    ).toEqual(["google-calendar-api"]);
+    expect(
+      byId.get("@elizaos/plugin-calendar:service:calendar_migration"),
+    ).toMatchObject({
+      dependencyDisposition: "local-only",
+      externalServiceDependencies: [],
+    });
+    expect(
+      byId
+        .get("@elizaos/plugin-calendar:service:calendar")
+        ?.externalServiceDependencies.map((entry) => entry.id),
+    ).toEqual([
+      "google-calendar-api",
+      "microsoft-graph-calendar",
+      "apple-eventkit-calendar",
+      "ics-feed-http",
+    ]);
+    expect(
+      byId.get("@elizaos/plugin-vision:service:vision-ocr-bridge"),
+    ).toMatchObject({
+      dependencyDisposition: "local-only",
+      externalServiceDependencies: [],
+    });
+    expect(byId.get("@elizaos/plugin-vision:service:vision")).toMatchObject({
+      dependencyDisposition: "unresolved",
+      externalServiceDependencies: [],
+    });
+    expect(
+      byId.get("@elizaos/plugin-wallet:service:news_data_service"),
+    ).toMatchObject({
+      dependencyDisposition: "unresolved",
+      externalServiceDependencies: [],
+    });
+    expect(
+      byId.get("@elizaos/plugin-wallet:service:userlpprofileservice"),
+    ).toMatchObject({
+      dependencyDisposition: "local-only",
+      externalServiceDependencies: [],
+    });
+    expect(
+      byId.get("@elizaos/plugin-browser:action:manage_browser_bridge"),
+    ).toMatchObject({
+      dependencyDisposition: "unresolved",
+      externalServiceDependencies: [],
+    });
+    expect(
+      byId
+        .get("@elizaos/plugin-discord:service:discord_user_account_scraper")
+        ?.externalServiceDependencies.map((entry) => entry.id),
+    ).toEqual(["browser-automation"]);
   });
 });
 
@@ -897,6 +985,53 @@ crons = ["0 * * * *", "30 * * * *"]
     }
   });
 
+  test("prefers eliza-source over root compatibility barrels", () => {
+    for (const packageDir of [
+      "plugins/plugin-whatsapp",
+      "plugins/plugin-commands",
+    ]) {
+      const absolute = path.join(RUNTIME_SURFACE_REPO_ROOT, packageDir);
+      expect(packageEntryPoints(absolute)).toContain(
+        path.join(absolute, "src", "index.ts"),
+      );
+      expect(packageEntryPoints(absolute)).not.toContain(
+        path.join(absolute, "index.ts"),
+      );
+    }
+  });
+
+  test("prefers an explicit source field over ambiguous dist index guesses", () => {
+    const root = mkdtempSync(path.join(os.tmpdir(), "surface-source-field-"));
+    try {
+      mkdirSync(path.join(root, "src"));
+      writeFileSync(
+        path.join(root, "package.json"),
+        JSON.stringify({
+          source: "./src/entry.ts",
+          main: "./dist/index.js",
+          module: "./dist/index.js",
+        }),
+      );
+      writeFileSync(
+        path.join(root, "src", "entry.ts"),
+        "export const live = true;\n",
+      );
+      writeFileSync(
+        path.join(root, "index.ts"),
+        "export const rootDecoy = true;\n",
+      );
+      writeFileSync(
+        path.join(root, "src", "index.ts"),
+        "export const sourceDecoy = true;\n",
+      );
+      expect(packageEntryPoints(root)).toEqual([
+        path.join(root, "src", "entry.ts"),
+      ]);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   test("uses generated Cloud router authority and excludes unserved route files", () => {
     const root = mkdtempSync(path.join(os.tmpdir(), "surface-cloud-routes-"));
     try {
@@ -904,7 +1039,17 @@ crons = ["0 * * * *", "30 * * * *"]
       mkdirSync(path.join(root, "src", "api", "dead"), { recursive: true });
       writeFileSync(
         path.join(root, "src", "_router.generated.ts"),
-        "import route from '../src/api/served/route';\nexport default route;\n",
+        `const unrelated = {
+  path: "/api/decoy",
+  load: () => import("../src/api/dead/route"),
+};
+export const ROUTE_MOUNTS = [
+  {
+    path: "/api/served/:id",
+    shard: "served",
+    load: () => import("../src/api/served/route"),
+  },
+] as const;\n`,
       );
       writeFileSync(
         path.join(root, "src", "api", "served", "route.ts"),
@@ -917,6 +1062,31 @@ crons = ["0 * * * *", "30 * * * *"]
       expect(servedCloudRouteFiles(root)).toEqual([
         path.join(root, "src", "api", "served", "route.ts"),
       ]);
+      expect(servedCloudRoutes(root)).toEqual([
+        {
+          file: path.join(root, "src", "api", "served", "route.ts"),
+          routePath: "/api/served/:id",
+        },
+      ]);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("fails closed for malformed generated Cloud route mounts", () => {
+    const root = mkdtempSync(path.join(os.tmpdir(), "surface-cloud-invalid-"));
+    try {
+      mkdirSync(path.join(root, "src"));
+      writeFileSync(
+        path.join(root, "src", "_router.generated.ts"),
+        `export const ROUTE_MOUNTS = [{
+  path: "/api/missing",
+  load: () => import("../missing/route"),
+}] as const;\n`,
+      );
+      expect(() => servedCloudRoutes(root)).toThrow(
+        /route import does not resolve/,
+      );
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

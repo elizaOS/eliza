@@ -76,7 +76,8 @@ export function inspectRuntimeSurfaceHealth(
     .filter(
       (row) =>
         row.status === "covered" &&
-        row.dependencyDisposition === "mock-missing",
+        (row.dependencyDisposition === "mock-missing" ||
+          row.dependencyDisposition === "unresolved"),
     )
     .map((row) => row.id)
     .sort();

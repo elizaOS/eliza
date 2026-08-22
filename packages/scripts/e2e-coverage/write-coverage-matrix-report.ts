@@ -213,6 +213,7 @@ function renderRuntimeMarkdown(
     }`,
     `- External-service mock owned: ${inventory.summary.byDependencyDisposition["mock-owned"] ?? 0}`,
     `- External-service mock missing: ${inventory.summary.byDependencyDisposition["mock-missing"] ?? 0}`,
+    `- Dependency boundary unresolved: ${inventory.summary.byDependencyDisposition.unresolved ?? 0}`,
     `- No external service: ${inventory.summary.byDependencyDisposition["local-only"] ?? 0}`,
     "",
     "## Counts by kind",

@@ -72,16 +72,23 @@ export interface MockDependency {
 
 export interface RuntimeDependencyRule {
   packageName: string;
-  /** `all` applies this reviewed package boundary to every discovered kind. */
-  kinds: RuntimeSurfaceKind[] | "all";
+  kinds: RuntimeSurfaceKind[];
   /** Exact canonical ids override a package/kind rule for narrower truth. */
   surfaceIds?: string[];
+  /** Canonical-id and source selectors narrow a rule to evidenced surfaces. */
+  surfaceIdPrefixes?: string[];
+  sourcePathPrefixes?: string[];
   noExternalServiceReason?: string;
+  unresolvedDependencyReason?: string;
   externalServices?: Array<{
     id: string;
     protocol: string;
     mockOwner?: string;
     mockSource?: string;
+    mockContract?: {
+      kind: "external-protocol";
+      markers: string[];
+    };
     missingMockReason?: string;
   }>;
 }
@@ -113,7 +120,11 @@ export interface RuntimeSurfaceRow {
   packageDependencies: string[];
   externalServiceDependencies: ExternalServiceDependency[];
   mockDependencies: MockDependency[];
-  dependencyDisposition: "local-only" | "mock-owned" | "mock-missing";
+  dependencyDisposition:
+    | "local-only"
+    | "mock-owned"
+    | "mock-missing"
+    | "unresolved";
   mockAvailability: MockAvailability;
   mockFidelity: string;
   resetSupport: ResetSupport;
@@ -439,6 +450,41 @@ export function loadRuntimeDependencyCatalog(
 
 function validateDependencyRule(rule: RuntimeDependencyRule): void {
   if (
+    !Array.isArray(rule.kinds) ||
+    rule.kinds.length === 0 ||
+    new Set(rule.kinds).size !== rule.kinds.length
+  ) {
+    throw new Error(
+      `${rule.packageName} dependency rule requires unique explicit kinds`,
+    );
+  }
+  for (const [selector, values] of [
+    ["surfaceIds", rule.surfaceIds],
+    ["surfaceIdPrefixes", rule.surfaceIdPrefixes],
+    ["sourcePathPrefixes", rule.sourcePathPrefixes],
+  ] as const) {
+    if (
+      values &&
+      (values.length === 0 || values.some((value) => !value.trim()))
+    ) {
+      throw new Error(
+        `${rule.packageName} dependency rule has an empty ${selector} selector`,
+      );
+    }
+  }
+  if (
+    rule.sourcePathPrefixes?.some(
+      (prefix) =>
+        path.isAbsolute(prefix) ||
+        prefix.split(/[\\/]/).includes("..") ||
+        prefix.startsWith("./"),
+    )
+  ) {
+    throw new Error(
+      `${rule.packageName} dependency rule has a non-canonical sourcePathPrefixes selector`,
+    );
+  }
+  if (
     !rule.packageName ||
     (Array.isArray(rule.kinds) && rule.kinds.length === 0)
   ) {
@@ -447,10 +493,17 @@ function validateDependencyRule(rule: RuntimeDependencyRule): void {
     );
   }
   const hasLocalReason = typeof rule.noExternalServiceReason === "string";
+  const hasUnresolvedReason =
+    typeof rule.unresolvedDependencyReason === "string";
   const services = rule.externalServices ?? [];
-  if (hasLocalReason === services.length > 0) {
+  if (
+    Number(hasLocalReason) +
+      Number(hasUnresolvedReason) +
+      Number(services.length > 0) !==
+    1
+  ) {
     throw new Error(
-      `${rule.packageName} dependency rule must declare exactly one of noExternalServiceReason or externalServices`,
+      `${rule.packageName} dependency rule must declare exactly one disposition`,
     );
   }
   if (
@@ -459,6 +512,14 @@ function validateDependencyRule(rule: RuntimeDependencyRule): void {
   ) {
     throw new Error(
       `${rule.packageName} local-only dependency reason is not actionable`,
+    );
+  }
+  if (
+    hasUnresolvedReason &&
+    (rule.unresolvedDependencyReason?.trim().length ?? 0) < 24
+  ) {
+    throw new Error(
+      `${rule.packageName} unresolved dependency reason is not actionable`,
     );
   }
   const serviceIds = new Set<string>();
@@ -473,6 +534,16 @@ function validateDependencyRule(rule: RuntimeDependencyRule): void {
     if (hasMock && (!service.mockOwner || !service.mockSource)) {
       throw new Error(
         `${service.id} must declare both mockOwner and mockSource`,
+      );
+    }
+    if (
+      hasMock &&
+      (service.mockContract?.kind !== "external-protocol" ||
+        !service.mockContract.markers?.length ||
+        service.mockContract.markers.some((marker) => !marker.trim()))
+    ) {
+      throw new Error(
+        `${service.id} requires protocol-specific external fixture contract metadata`,
       );
     }
     if (hasMock && service.missingMockReason) {
@@ -498,8 +569,40 @@ function validateDependencyRule(rule: RuntimeDependencyRule): void {
           `${service.id} mockSource is missing or escapes the repository`,
         );
       }
+      const sourceText = readFileSync(source, "utf8");
+      for (const marker of service.mockContract?.markers ?? []) {
+        if (!sourceText.includes(marker)) {
+          throw new Error(
+            `${service.id} mockSource does not satisfy external protocol marker ${marker}`,
+          );
+        }
+      }
     }
   }
+}
+
+function dependencyRuleMatches(
+  rule: RuntimeDependencyRule,
+  kind: RuntimeSurfaceKind,
+  surfaceId?: string,
+  sourcePath?: string,
+): boolean {
+  if (!rule.kinds.includes(kind)) return false;
+  if (rule.surfaceIds && (!surfaceId || !rule.surfaceIds.includes(surfaceId)))
+    return false;
+  if (
+    rule.surfaceIdPrefixes &&
+    (!surfaceId ||
+      !rule.surfaceIdPrefixes.some((prefix) => surfaceId.startsWith(prefix)))
+  )
+    return false;
+  if (
+    rule.sourcePathPrefixes &&
+    (!sourcePath ||
+      !rule.sourcePathPrefixes.some((prefix) => sourcePath.startsWith(prefix)))
+  )
+    return false;
+  return true;
 }
 
 export function resolveRuntimeDependencies(
@@ -507,27 +610,24 @@ export function resolveRuntimeDependencies(
   kind: RuntimeSurfaceKind,
   catalog: RuntimeDependencyCatalog = loadRuntimeDependencyCatalog(),
   surfaceId?: string,
+  sourcePath?: string,
 ): {
   externalServiceDependencies: ExternalServiceDependency[];
   mockDependencies: MockDependency[];
   dependencyDisposition: RuntimeSurfaceRow["dependencyDisposition"];
 } {
-  const exactMatches = surfaceId
-    ? catalog.rules.filter(
-        (rule) =>
-          rule.packageName === packageName &&
-          rule.surfaceIds?.includes(surfaceId),
-      )
-    : [];
-  const packageMatches = catalog.rules.filter(
+  const matches = catalog.rules.filter(
     (rule) =>
       rule.packageName === packageName &&
-      !rule.surfaceIds &&
-      (rule.kinds === "all" || rule.kinds.includes(kind)),
+      dependencyRuleMatches(rule, kind, surfaceId, sourcePath),
   );
-  const matches = exactMatches.length > 0 ? exactMatches : packageMatches;
+  const specificMatches = matches.filter(
+    (rule) =>
+      rule.surfaceIds || rule.surfaceIdPrefixes || rule.sourcePathPrefixes,
+  );
+  const selected = specificMatches.length > 0 ? specificMatches : matches;
   const localReason = catalog.localPackages[packageName];
-  if (matches.length === 0 && typeof localReason === "string") {
+  if (selected.length === 0 && typeof localReason === "string") {
     if (localReason.trim().length < 24) {
       throw new Error(
         `${packageName} local-only dependency reason is not actionable`,
@@ -539,13 +639,20 @@ export function resolveRuntimeDependencies(
       dependencyDisposition: "local-only",
     };
   }
-  if (matches.length !== 1) {
+  if (selected.length !== 1) {
     throw new Error(
-      `${packageName}:${kind} requires exactly one explicit runtime dependency rule; found ${matches.length}`,
+      `${packageName}:${kind} requires exactly one explicit runtime dependency rule; found ${selected.length}`,
     );
   }
-  const rule = matches[0];
+  const rule = selected[0];
   validateDependencyRule(rule);
+  if (rule.unresolvedDependencyReason) {
+    return {
+      externalServiceDependencies: [],
+      mockDependencies: [],
+      dependencyDisposition: "unresolved",
+    };
+  }
   const services = rule.externalServices ?? [];
   const mockDependencies: MockDependency[] = services.map((service) => {
     if (service.mockOwner && service.mockSource) {
@@ -590,31 +697,11 @@ export function validateRuntimeDependencyCatalog(
     packageName: string;
     kind: RuntimeSurfaceKind;
     id?: string;
+    sourcePath?: string;
   }>,
   catalog: RuntimeDependencyCatalog = loadRuntimeDependencyCatalog(),
 ): void {
-  const required = new Set(
-    surfaces.map((surface) => `${surface.packageName}:${surface.kind}`),
-  );
-  const kindsByPackage = new Map<string, Set<RuntimeSurfaceKind>>();
-  for (const surface of surfaces) {
-    const kinds = kindsByPackage.get(surface.packageName) ?? new Set();
-    kinds.add(surface.kind);
-    kindsByPackage.set(surface.packageName, kinds);
-  }
-  const declared = new Map<string, number>();
-  for (const rule of catalog.rules) {
-    validateDependencyRule(rule);
-    if (rule.surfaceIds) continue;
-    const kinds =
-      rule.kinds === "all"
-        ? [...(kindsByPackage.get(rule.packageName) ?? [])]
-        : rule.kinds;
-    for (const kind of kinds) {
-      const selector = `${rule.packageName}:${kind}`;
-      declared.set(selector, (declared.get(selector) ?? 0) + 1);
-    }
-  }
+  for (const rule of catalog.rules) validateDependencyRule(rule);
   const availableIds = new Set(
     surfaces
       .map((surface) => surface.id)
@@ -639,33 +726,66 @@ export function validateRuntimeDependencyCatalog(
       }
     }
   }
+  const knownPackages = new Set(surfaces.map((surface) => surface.packageName));
   for (const [packageName, reason] of Object.entries(catalog.localPackages)) {
     if (reason.trim().length < 24) {
       throw new Error(
         `${packageName} local-only dependency reason is not actionable`,
       );
     }
-    for (const kind of kindsByPackage.get(packageName) ?? []) {
-      const selector = `${packageName}:${kind}`;
-      declared.set(selector, (declared.get(selector) ?? 0) + 1);
+    if (!knownPackages.has(packageName)) {
+      throw new Error(`stale=${packageName}`);
     }
   }
-  const duplicate = [...declared].filter(([, count]) => count !== 1);
-  const missing = [...required].filter((selector) => !declared.has(selector));
-  const stale = [...declared.keys()].filter(
-    (selector) => !required.has(selector),
-  );
-  if (duplicate.length > 0 || missing.length > 0 || stale.length > 0) {
+  const missing: string[] = [];
+  const duplicate: string[] = [];
+  for (const surface of surfaces) {
+    const selector = surface.id ?? `${surface.packageName}:${surface.kind}`;
+    const matches = catalog.rules.filter(
+      (rule) =>
+        rule.packageName === surface.packageName &&
+        dependencyRuleMatches(
+          rule,
+          surface.kind,
+          surface.id,
+          surface.sourcePath,
+        ),
+    );
+    const specific = matches.filter(
+      (rule) =>
+        rule.surfaceIds || rule.surfaceIdPrefixes || rule.sourcePathPrefixes,
+    );
+    const selected = specific.length > 0 ? specific : matches;
+    if (selected.length === 0 && !catalog.localPackages[surface.packageName]) {
+      missing.push(selector);
+    } else if (selected.length > 1) {
+      duplicate.push(selector);
+    }
+  }
+  for (const rule of catalog.rules) {
+    const matched = surfaces.some(
+      (surface) =>
+        surface.packageName === rule.packageName &&
+        dependencyRuleMatches(
+          rule,
+          surface.kind,
+          surface.id,
+          surface.sourcePath,
+        ),
+    );
+    if (!matched) {
+      throw new Error(`stale=${rule.packageName}:${rule.kinds.join(",")}`);
+    }
+  }
+  if (duplicate.length > 0 || missing.length > 0) {
     throw new Error(
       [
         duplicate.length > 0
-          ? `duplicate=${duplicate
-              .map(([selector]) => selector)
-              .sort()
-              .join(",")}`
+          ? `duplicate=${[...new Set(duplicate)].sort().join(",")}`
           : null,
-        missing.length > 0 ? `missing=${missing.sort().join(",")}` : null,
-        stale.length > 0 ? `stale=${stale.sort().join(",")}` : null,
+        missing.length > 0
+          ? `missing=${[...new Set(missing)].sort().join(",")}`
+          : null,
       ]
         .filter(Boolean)
         .join("; "),
@@ -719,7 +839,7 @@ function resolveWorkspaceModule(specifier: string): string | null {
 export function packageEntryPoints(packageDir: string): string[] {
   const candidates = new Set<string>();
   const manifest = readJson(path.join(packageDir, "package.json"));
-  const visit = (value: unknown): void => {
+  const visit = (value: unknown, preferSourceCondition = true): void => {
     if (typeof value === "string") {
       const normalized = value.replace(/^\.\//, "");
       if (
@@ -729,16 +849,22 @@ export function packageEntryPoints(packageDir: string): string[] {
         const outputStem = normalized
           .replace(/^dist\//, "")
           .replace(/\.(?:m?js|cjs)$/, "");
-        const sourceStems = new Set([outputStem, path.join("src", outputStem)]);
+        const sourceGroups = [[path.join("src", outputStem), outputStem]];
         const basename = path.basename(outputStem);
         if (/^index\.(?:browser|node|edge)$/.test(basename)) {
-          sourceStems.add(basename);
-          sourceStems.add(path.join("src", basename));
+          sourceGroups.push([path.join("src", basename), basename]);
         }
-        for (const stem of sourceStems) {
-          for (const extension of [".ts", ".tsx", ".mts", ".cts"]) {
-            const sourceFile = path.join(packageDir, `${stem}${extension}`);
-            if (existsSync(sourceFile)) candidates.add(sourceFile);
+        for (const stems of sourceGroups) {
+          const alternatives: string[] = [];
+          for (const stem of stems) {
+            for (const extension of [".ts", ".tsx", ".mts", ".cts"]) {
+              alternatives.push(path.join(packageDir, `${stem}${extension}`));
+            }
+          }
+          const sourceFile = alternatives.find((file) => existsSync(file));
+          if (sourceFile) {
+            candidates.add(sourceFile);
+            break;
           }
         }
       }
@@ -753,14 +879,32 @@ export function packageEntryPoints(packageDir: string): string[] {
       return;
     }
     if (value && typeof value === "object" && !Array.isArray(value)) {
-      for (const child of Object.values(value as Record<string, unknown>))
-        visit(child);
+      const record = value as Record<string, unknown>;
+      if (preferSourceCondition && record["eliza-source"]) {
+        visit(record["eliza-source"], preferSourceCondition);
+        return;
+      }
+      for (const child of Object.values(record))
+        visit(child, preferSourceCondition);
     }
   };
   visit(manifest.exports);
   visit(manifest.bin);
-  for (const field of ["main", "module", "source"]) {
-    visit(manifest[field]);
+  visit(manifest.source);
+  const rootExport =
+    manifest.exports && typeof manifest.exports === "object"
+      ? (manifest.exports as Record<string, unknown>)["."]
+      : manifest.exports;
+  const hasRootSourceCondition =
+    rootExport &&
+    typeof rootExport === "object" &&
+    !Array.isArray(rootExport) &&
+    "eliza-source" in (rootExport as Record<string, unknown>);
+  const hasExplicitSource =
+    typeof manifest.source === "string" || hasRootSourceCondition;
+  if (!hasExplicitSource) {
+    visit(manifest.main, false);
+    visit(manifest.module, false);
   }
   const scripts = manifest.scripts;
   if (scripts && typeof scripts === "object" && !Array.isArray(scripts)) {
@@ -2423,29 +2567,131 @@ function hostAssemblySurfaces(): RawSurface[] {
   return rows;
 }
 
-/** Resolves only route modules mounted by the generated production router. */
-export function servedCloudRouteFiles(apiDir: string): string[] {
+export interface ServedCloudRoute {
+  file: string;
+  routePath: string;
+}
+
+function unwrapGeneratedRouterExpression(
+  expression: ts.Expression,
+): ts.Expression {
+  let current = expression;
+  while (
+    ts.isAsExpression(current) ||
+    ts.isSatisfiesExpression(current) ||
+    ts.isTypeAssertionExpression(current) ||
+    ts.isParenthesizedExpression(current) ||
+    ts.isNonNullExpression(current)
+  ) {
+    current = current.expression;
+  }
+  return current;
+}
+
+/** Resolves canonical route records mounted by the generated production router. */
+export function servedCloudRoutes(apiDir: string): ServedCloudRoute[] {
   const generatedRouter = path.join(apiDir, "src", "_router.generated.ts");
-  const files = new Set<string>();
-  if (existsSync(generatedRouter)) {
-    const source = readFileSync(generatedRouter, "utf8");
-    for (const match of source.matchAll(
-      /from\s+["'`](\.\.\/[^"'`]+\/route)["'`]/g,
-    )) {
-      const resolved = resolveModule(generatedRouter, match[1]);
-      if (resolved) files.add(resolved);
+  if (!existsSync(generatedRouter)) return [];
+  const ast = ts.createSourceFile(
+    generatedRouter,
+    readFileSync(generatedRouter, "utf8"),
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TS,
+  );
+  let mounts: ts.ArrayLiteralExpression | null = null;
+  for (const statement of ast.statements) {
+    if (!ts.isVariableStatement(statement)) continue;
+    for (const declaration of statement.declarationList.declarations) {
+      if (
+        ts.isIdentifier(declaration.name) &&
+        declaration.name.text === "ROUTE_MOUNTS" &&
+        declaration.initializer
+      ) {
+        const initializer = unwrapGeneratedRouterExpression(
+          declaration.initializer,
+        );
+        if (!ts.isArrayLiteralExpression(initializer)) {
+          throw new Error(
+            "Generated Cloud ROUTE_MOUNTS must be an array literal",
+          );
+        }
+        mounts = initializer;
+      }
     }
   }
-  return [...files].sort();
+  if (!mounts) {
+    throw new Error("Generated Cloud router is missing ROUTE_MOUNTS");
+  }
+  const routes: ServedCloudRoute[] = [];
+  for (const element of mounts.elements) {
+    const unwrapped = unwrapGeneratedRouterExpression(element);
+    if (!ts.isObjectLiteralExpression(unwrapped)) {
+      throw new Error(
+        "Generated Cloud ROUTE_MOUNTS contains a non-literal entry",
+      );
+    }
+    let routePath: string | null = null;
+    const moduleSpecifiers = new Set<string>();
+    for (const property of unwrapped.properties) {
+      if (!ts.isPropertyAssignment(property)) continue;
+      const name = property.name.getText(ast).replace(/["']/g, "");
+      if (name === "path" && ts.isStringLiteral(property.initializer)) {
+        routePath = property.initializer.text;
+      }
+      if (name === "load") {
+        const findImport = (candidate: ts.Node): void => {
+          if (
+            ts.isCallExpression(candidate) &&
+            candidate.expression.kind === ts.SyntaxKind.ImportKeyword &&
+            candidate.arguments.length === 1 &&
+            ts.isStringLiteral(candidate.arguments[0])
+          ) {
+            moduleSpecifiers.add(candidate.arguments[0].text);
+          }
+          ts.forEachChild(candidate, findImport);
+        };
+        findImport(property.initializer);
+      }
+    }
+    if (!routePath?.startsWith("/") || moduleSpecifiers.size !== 1) {
+      throw new Error(
+        "Generated Cloud ROUTE_MOUNTS entry requires one canonical path and dynamic import",
+      );
+    }
+    const moduleSpecifier = [...moduleSpecifiers][0];
+    if (!moduleSpecifier) {
+      throw new Error(
+        "Generated Cloud ROUTE_MOUNTS entry has no dynamic import",
+      );
+    }
+    const resolved = resolveModule(generatedRouter, moduleSpecifier);
+    if (!resolved) {
+      throw new Error(
+        `Generated Cloud route import does not resolve: ${moduleSpecifier}`,
+      );
+    }
+    routes.push({ file: resolved, routePath });
+  }
+  return routes.sort((a, b) =>
+    `${a.routePath}:${a.file}`.localeCompare(`${b.routePath}:${b.file}`),
+  );
+}
+
+/** Resolves only route modules mounted by the generated production router. */
+export function servedCloudRouteFiles(apiDir: string): string[] {
+  return [
+    ...new Set(servedCloudRoutes(apiDir).map((route) => route.file)),
+  ].sort();
 }
 
 function cloudRouteSurfaces(): RawSurface[] {
   const apiDir = path.join(RUNTIME_SURFACE_REPO_ROOT, "packages/cloud/api");
   const info = packageContext(apiDir);
   if (!info) return [];
-  const files = servedCloudRouteFiles(apiDir);
+  const routes = servedCloudRoutes(apiDir);
   const rows: RawSurface[] = [];
-  for (const file of files) {
+  for (const { file, routePath } of routes) {
     const source = readFileSync(file, "utf8");
     const registrations = [
       ...source.matchAll(
@@ -2457,7 +2703,6 @@ function cloudRouteSurfaces(): RawSurface[] {
     )) {
       registrations.push({ method: match[1], localPath: "/" });
     }
-    const routePath = `/${toRepoPath(path.dirname(file)).replace(/^packages\/cloud\/api\/?/, "")}`;
     if (registrations.length === 0 && /export\s+default\s+\w+/.test(source)) {
       registrations.push({ method: "ANY", localPath: "/" });
     }
@@ -3316,6 +3561,7 @@ export function buildRuntimeSurfaceInventory(
       packageName: surface.package.packageName,
       kind: surface.kind,
       id: runtimeSurfaceId(surface),
+      sourcePath: surface.sourcePath,
     })),
     dependencyCatalog,
   );
@@ -3350,6 +3596,7 @@ export function buildRuntimeSurfaceInventory(
       surface.kind,
       dependencyCatalog,
       id,
+      surface.sourcePath,
     );
     const covered = boundaryArtifacts.length > 0;
     const missingMock = runtimeDependencies.mockDependencies.some(
@@ -3375,7 +3622,9 @@ export function buildRuntimeSurfaceInventory(
         ? `${surface.package.packageName} ${surface.kind} ${normalizeName(surface.name)} requires a native host; the report records it without claiming synthetic coverage.`
         : status === "provider-qualified-only"
           ? `${surface.package.packageName} ${surface.kind} ${normalizeName(surface.name)} has an explicit external protocol but no owned mock source; the report records the gap without claiming coverage.`
-          : `${surface.package.packageName} ${surface.kind} ${normalizeName(surface.name)} has no executable synthetic-world boundary artifact in this report.`;
+          : runtimeDependencies.dependencyDisposition === "unresolved"
+            ? `${surface.package.packageName} ${surface.kind} ${normalizeName(surface.name)} has an explicitly unresolved per-surface dependency boundary; the report refuses to classify it as local-only.`
+            : `${surface.package.packageName} ${surface.kind} ${normalizeName(surface.name)} has no executable synthetic-world boundary artifact in this report.`;
     const providerQualified = status === "provider-qualified-only";
     const mockAvailable = deterministic.length > 0;
     const partialMock = !mockAvailable && matchingCells.length > 0;
