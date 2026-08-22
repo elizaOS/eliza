@@ -63,4 +63,20 @@ describe("browser bridge packaging", () => {
     );
     expect(browserBridgePackageContentType("chrome")).toBe("application/zip");
   });
+
+  it("never advertises an unsigned Firefox submission archive as installable", () => {
+    const manifest = buildBrowserBridgeReleaseManifestForVersion("2.0.3", {
+      GITHUB_REPOSITORY: "elizaOS/eliza",
+    });
+
+    expect(manifest.firefox).toMatchObject({
+      installKind: "firefox_unsigned_submission",
+      installUrl: null,
+      asset: {
+        fileName: "browser-bridge-firefox-v2.0.3.xpi",
+        downloadUrl:
+          "https://github.com/elizaOS/eliza/releases/download/v2.0.3/browser-bridge-firefox-v2.0.3.xpi",
+      },
+    });
+  });
 });

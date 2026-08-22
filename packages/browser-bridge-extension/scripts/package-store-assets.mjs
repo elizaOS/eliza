@@ -172,6 +172,7 @@ const firefoxSubmission = {
   reviewerNotes: [
     "The package declares a stable Gecko extension ID and supports Firefox 142 or later.",
     "With the authenticated Eliza desktop app running, Firefox enrolls automatically through native messaging and uses that same authenticated path for recovery.",
+    "The generated XPI is an unsigned AMO submission archive, not a permanent-install artifact; publish an install URL only after Mozilla signing.",
     "The package passes web-ext lint in self-hosted mode with no errors, warnings, or notices.",
   ],
 };

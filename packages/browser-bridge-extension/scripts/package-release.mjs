@@ -15,6 +15,7 @@ import {
   resolveBrowserBridgeReleaseRepository,
   resolveBrowserBridgeReleaseVersion,
   resolveBrowserBridgeStoreUrls,
+  resolveFirefoxReleaseInstall,
   resolveSourceDateIso,
   versionedArtifactName,
 } from "./release-version.mjs";
@@ -91,12 +92,7 @@ const manifest = {
     },
   },
   firefox: {
-    installKind: storeUrls.firefoxAddonsUrl
-      ? "firefox_addons"
-      : "github_release",
-    installUrl:
-      storeUrls.firefoxAddonsUrl ??
-      buildGitHubReleaseAssetDownloadUrl(repository, release, firefoxAssetName),
+    ...resolveFirefoxReleaseInstall(storeUrls.firefoxAddonsUrl),
     storeListingUrl: storeUrls.firefoxAddonsUrl,
     asset: {
       fileName: firefoxAssetName,

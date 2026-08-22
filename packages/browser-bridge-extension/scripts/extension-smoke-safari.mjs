@@ -410,7 +410,8 @@ async function startMockAgentServer() {
       res.writeHead(410, { "Content-Type": "application/json" });
       res.end(
         JSON.stringify({
-          error: "Automatic browser pairing is disabled. Import pairing JSON.",
+          error:
+            "Automatic enrollment requires the authenticated Eliza desktop app.",
         }),
       );
       return;
