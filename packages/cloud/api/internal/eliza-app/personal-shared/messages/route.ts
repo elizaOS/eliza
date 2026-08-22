@@ -73,6 +73,14 @@ function safeErrorName(error: unknown): string {
   return SAFE_ERROR_NAMES.has(name) ? name : "OtherError";
 }
 
+function isGroupDeliveryPendingError(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    (error as { code?: unknown }).code ===
+      "PERSONAL_SHARED_GROUP_DELIVERY_PENDING"
+  );
+}
+
 const telegramVoiceNoteSchema = z.object({
   bytesBase64: z.string().min(1).max(MAX_TELEGRAM_VOICE_BASE64_LENGTH),
   mimeType: z.literal("audio/ogg"),
@@ -131,7 +139,19 @@ const sharedMessageSchema = z.union([
     project: projectSchema,
     connectorAccountId: connectorAccountIdSchema,
     chatId: z.string().trim().min(1).max(160),
+    sourceMessageId: z.string().trim().min(1).max(240),
+    leaseToken: z.string().uuid(),
     invocation: z.enum(["mention", "command", "reply", "ambient"]),
+    authority: groupDeliveryAuthoritySchema,
+  }),
+  z.object({
+    eventType: z.literal("delivery_commit"),
+    platform: z.enum(["telegram", "blooio"]),
+    project: projectSchema,
+    connectorAccountId: connectorAccountIdSchema,
+    chatId: z.string().trim().min(1).max(160),
+    sourceMessageId: z.string().trim().min(1).max(240),
+    leaseToken: z.string().uuid(),
     authority: groupDeliveryAuthoritySchema,
   }),
   z.object({
@@ -145,6 +165,7 @@ const sharedMessageSchema = z.union([
       .array(z.string().trim().min(1).max(160))
       .min(1)
       .max(8),
+    leaseToken: z.string().uuid(),
     authority: groupDeliveryAuthoritySchema,
   }),
   z
@@ -403,14 +424,28 @@ app.post("/", async (c) => {
         });
       }
       if (parsed.data.eventType === "delivery_authorization") {
-        const authorized =
-          await personalSharedGroupsRepository.authorizeDelivery({
-            ...parsed.data,
-            authority: parsed.data.authority,
-          });
+        const lease = await personalSharedGroupsRepository.authorizeDelivery({
+          ...parsed.data,
+          authority: parsed.data.authority,
+        });
         return c.json({
           success: true,
-          data: { code: "group_delivery_authorization", authorized },
+          data: { code: "group_delivery_authorization", ...lease },
+        });
+      }
+      if (parsed.data.eventType === "delivery_commit") {
+        const committed = await personalSharedGroupsRepository.commitDelivery({
+          platform: parsed.data.platform,
+          project: parsed.data.project,
+          connectorAccountId: parsed.data.connectorAccountId,
+          providerChatId: parsed.data.chatId,
+          sourceMessageId: parsed.data.sourceMessageId,
+          authority: parsed.data.authority,
+          leaseToken: parsed.data.leaseToken,
+        });
+        return c.json({
+          success: true,
+          data: { code: "group_delivery_committed", committed },
         });
       }
       const receipt =
@@ -422,6 +457,7 @@ app.post("/", async (c) => {
           sourceMessageId: parsed.data.sourceMessageId,
           providerMessageIds: parsed.data.providerMessageIds,
           authority: parsed.data.authority,
+          leaseToken: parsed.data.leaseToken,
         });
       return c.json({
         success: true,
@@ -1173,6 +1209,13 @@ app.post("/", async (c) => {
       ...(error instanceof PersonalDeliveryAccountResolutionError
         ? { projectionFailure: error.projectionFailure }
         : {}),
+      ...(isGroupDeliveryPendingError(error)
+        ? {
+            deliveryState: "committed_receipt_pending",
+            operatorAction:
+              "reconcile exact source/token with provider and persist exact receipt; never clear or transfer automatically",
+          }
+        : {}),
     });
     // This route is internal-authenticated. Safe classification headers let
     // the connector correlate a retry without exposing exception messages or
@@ -1205,6 +1248,19 @@ app.post("/", async (c) => {
         },
         503,
         { "Retry-After": "1" },
+      );
+    }
+    if (isGroupDeliveryPendingError(error)) {
+      return c.json(
+        {
+          success: false,
+          error:
+            "A provider delivery outcome is pending. Group authority was not changed; retry after reconciliation or contact support.",
+          code: "group_delivery_pending",
+          retryable: true,
+        },
+        409,
+        { "Retry-After": "5" },
       );
     }
     return failureResponse(c, error);

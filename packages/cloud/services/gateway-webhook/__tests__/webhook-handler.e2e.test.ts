@@ -373,7 +373,20 @@ describe("gateway webhook handler e2e routing", () => {
         const body = (await request.json()) as Record<string, unknown>;
         if (body.eventType === "delivery_authorization") {
           authorizationBody = body;
-          return Response.json({ success: true, data: { authorized: true } });
+          return Response.json({
+            success: true,
+            data: {
+              authorized: true,
+              leaseToken: body.leaseToken,
+              expiresAt: new Date(Date.now() + 60_000).toISOString(),
+            },
+          });
+        }
+        if (body.eventType === "delivery_commit") {
+          return Response.json({
+            success: true,
+            data: { committed: true },
+          });
         }
         if (body.eventType === "delivery_receipt") {
           receiptBody = body;
@@ -438,6 +451,7 @@ describe("gateway webhook handler e2e routing", () => {
       sourceMessageId: "blooio:eliza-app:blooio-group-message-1",
       providerMessageIds: ["provider-eliza-reply-1"],
       authority,
+      leaseToken: expect.any(String),
     });
     expect(authorizationBody).toEqual({
       eventType: "delivery_authorization",
@@ -445,6 +459,8 @@ describe("gateway webhook handler e2e routing", () => {
       project: "eliza-app",
       connectorAccountId: "+15550000001",
       chatId: "chat_group_123",
+      sourceMessageId: "blooio:eliza-app:blooio-group-message-1",
+      leaseToken: expect.any(String),
       invocation: "reply",
       authority,
     });
@@ -525,9 +541,14 @@ describe("gateway webhook handler e2e routing", () => {
     },
   );
 
-  test.each(["revoke", "membership removal", "ambient off"])(
+  test.each([
+    "revoke",
+    "membership removal",
+    "ambient off",
+    "lease expiry and reacquire before egress",
+  ])(
     "suppresses provider egress when %s invalidates an in-flight group turn",
-    async () => {
+    async (_invalidation) => {
       process.env.ELIZA_APP_BLOOIO_PHONE_NUMBER = "+15550000001";
       const redis = new MemoryRedis();
       const event: ChatEvent = {
@@ -551,12 +572,24 @@ describe("gateway webhook handler e2e routing", () => {
         sendReplyWithReceipt,
       };
       let authorizationChecks = 0;
+      let commitChecks = 0;
       globalThis.fetch = mock(async (input, init) => {
         const request = new Request(input, init);
         const body = (await request.json()) as Record<string, unknown>;
         if (body.eventType === "delivery_authorization") {
           authorizationChecks += 1;
-          return Response.json({ success: true, data: { authorized: false } });
+          return Response.json({
+            success: true,
+            data: {
+              authorized: true,
+              leaseToken: body.leaseToken,
+              expiresAt: new Date(Date.now() + 60_000).toISOString(),
+            },
+          });
+        }
+        if (body.eventType === "delivery_commit") {
+          commitChecks += 1;
+          return Response.json({ success: true, data: { committed: false } });
         }
         return Response.json({
           success: true,
@@ -596,14 +629,15 @@ describe("gateway webhook handler e2e routing", () => {
         ).status,
       ).toBe(200);
       await waitFor(
-        () => authorizationChecks === 1,
+        () => authorizationChecks === 1 && commitChecks === 1,
         "stale group turn completion",
       );
       expect(sendReplyWithReceipt).not.toHaveBeenCalled();
+      expect(commitChecks).toBe(1);
     },
   );
 
-  test("reopens an idempotent Blooio delivery when zero inserted lacks exact-replay proof", async () => {
+  test("does not resend after provider success when the exact receipt response is lost", async () => {
     process.env.ELIZA_APP_BLOOIO_PHONE_NUMBER = "+15550000001";
     const redis = new MemoryRedis();
     const event: ChatEvent = {
@@ -626,14 +660,37 @@ describe("gateway webhook handler e2e routing", () => {
       sendReply: mock(async () => undefined),
       sendReplyWithReceipt,
     };
+    let committed = false;
+    let receiptPersisted = false;
+    let authorizationChecks = 0;
     globalThis.fetch = mock(async (input, init) => {
       const request = new Request(input, init);
       const body = (await request.json()) as Record<string, unknown>;
       if (body.eventType === "delivery_authorization") {
-        return Response.json({ success: true, data: { authorized: true } });
+        authorizationChecks += 1;
+        return Response.json({
+          success: true,
+          data:
+            committed || receiptPersisted
+              ? { authorized: false, leaseToken: null, expiresAt: null }
+              : {
+                  authorized: true,
+                  leaseToken: body.leaseToken,
+                  expiresAt: new Date(Date.now() + 60_000).toISOString(),
+                },
+        });
+      }
+      if (body.eventType === "delivery_commit") {
+        committed = true;
+        return Response.json({ success: true, data: { committed: true } });
       }
       if (body.eventType === "delivery_receipt") {
-        return Response.json({ success: true, data: { inserted: 0 } });
+        receiptPersisted = true;
+        committed = false;
+        return Response.json(
+          { success: false, code: "response_lost_after_commit" },
+          { status: 503 },
+        );
       }
       return Response.json({
         success: true,
@@ -679,6 +736,27 @@ describe("gateway webhook handler e2e routing", () => {
           "webhook:blooio:+15550000001:message:blooio-group-zero-receipt",
         ),
       "recoverable receipt retry reopening",
+    );
+    expect(
+      (
+        await handleWebhook(
+          new Request("https://gateway.example/webhook/eliza-app/blooio", {
+            method: "POST",
+            body: "{}",
+          }),
+          adapter,
+          {
+            redis,
+            cloudBaseUrl: "https://api.elizacloud.ai",
+            getAuthHeader: () => ({ Authorization: "Bearer internal-secret" }),
+          },
+          "eliza-app",
+        )
+      ).status,
+    ).toBe(200);
+    await waitFor(
+      () => authorizationChecks === 2,
+      "committed delivery retry fence",
     );
     expect(sendReplyWithReceipt).toHaveBeenCalledTimes(1);
   });

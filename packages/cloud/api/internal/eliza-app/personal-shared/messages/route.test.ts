@@ -118,7 +118,12 @@ const revokeGroupBinding = mock(async () => false);
 const applyGroupMembershipChange = mock(
   async (): Promise<Record<string, unknown> | null> => null,
 );
-const authorizeGroupDelivery = mock(async () => false);
+const authorizeGroupDelivery = mock(async () => ({
+  authorized: false,
+  leaseToken: null,
+  expiresAt: null,
+}));
+const commitGroupDelivery = mock(async () => false);
 const recordGroupDeliveryReceipts = mock(async () => ({
   recorded: false,
   inserted: 0,
@@ -182,6 +187,7 @@ mock.module("@/db/repositories/personal-shared-groups", () => ({
     revokeBinding: revokeGroupBinding,
     applyMembershipChange: applyGroupMembershipChange,
     authorizeDelivery: authorizeGroupDelivery,
+    commitDelivery: commitGroupDelivery,
     recordDeliveryReceipts: recordGroupDeliveryReceipts,
     hasDeliveryReceipt: hasGroupDeliveryReceipt,
   },
@@ -294,10 +300,12 @@ describe("personal Shared messaging deliveries", () => {
     revokeGroupBinding.mockClear();
     applyGroupMembershipChange.mockClear();
     authorizeGroupDelivery.mockClear();
+    commitGroupDelivery.mockClear();
     recordGroupDeliveryReceipts.mockClear();
     hasGroupDeliveryReceipt.mockClear();
     applyGroupMembershipChange.mockImplementation(async () => null);
     authorizeGroupDelivery.mockImplementation(async () => false);
+    commitGroupDelivery.mockImplementation(async () => false);
     recordGroupDeliveryReceipts.mockImplementation(async () => ({
       recorded: false,
       inserted: 0,
@@ -1058,6 +1066,34 @@ describe("personal Shared messaging deliveries", () => {
     expect(sharedRestMessageSend).not.toHaveBeenCalled();
   });
 
+  test("reports committed delivery ambiguity without fabricating membership removal", async () => {
+    applyGroupMembershipChange.mockImplementationOnce(async () => {
+      throw Object.assign(new Error("internal delivery state"), {
+        code: "PERSONAL_SHARED_GROUP_DELIVERY_PENDING",
+      });
+    });
+    const response = await request({
+      eventType: "membership",
+      platform: "telegram",
+      project: "eliza-app",
+      connectorAccountId: "telegram:test-bot",
+      chatId: "-100123456789",
+      messageId: "telegram:membership:pending",
+      membershipChange: "removed",
+    });
+
+    expect(response.status).toBe(409);
+    expect(response.headers.get("Retry-After")).toBe("5");
+    await expect(response.json()).resolves.toEqual({
+      success: false,
+      error:
+        "A provider delivery outcome is pending. Group authority was not changed; retry after reconciliation or contact support.",
+      code: "group_delivery_pending",
+      retryable: true,
+    });
+    expect(sharedRestMessageSend).not.toHaveBeenCalled();
+  });
+
   test("records provider egress receipts without entering inference", async () => {
     recordGroupDeliveryReceipts.mockImplementationOnce(async () => ({
       recorded: true,
@@ -1071,6 +1107,7 @@ describe("personal Shared messaging deliveries", () => {
       chatId: "chat_group_123",
       sourceMessageId: "blooio:eliza-app:incoming-42",
       providerMessageIds: ["outgoing-42"],
+      leaseToken: "00000000-0000-4000-8000-000000000097",
       authority: {
         bindingId: canonicalGroupBinding.id,
         ownerUserId: canonicalGroupBinding.owner_user_id,
@@ -1091,7 +1128,12 @@ describe("personal Shared messaging deliveries", () => {
   });
 
   test("revalidates the exact binding generation before provider egress", async () => {
-    authorizeGroupDelivery.mockImplementationOnce(async () => true);
+    const leaseToken = "00000000-0000-4000-8000-000000000099";
+    authorizeGroupDelivery.mockImplementationOnce(async () => ({
+      authorized: true,
+      leaseToken,
+      expiresAt: "2026-08-22T01:00:00.000Z",
+    }));
     const authority = {
       bindingId: canonicalGroupBinding.id,
       ownerUserId: canonicalGroupBinding.owner_user_id,
@@ -1104,12 +1146,18 @@ describe("personal Shared messaging deliveries", () => {
       project: "eliza-app",
       connectorAccountId: "telegram:test-bot",
       chatId: "-100123456789",
+      sourceMessageId: "telegram:eliza-app:source-1",
+      leaseToken,
       invocation: "ambient",
       authority,
     });
 
     await expect(response.json()).resolves.toMatchObject({
-      data: { code: "group_delivery_authorization", authorized: true },
+      data: {
+        code: "group_delivery_authorization",
+        authorized: true,
+        leaseToken,
+      },
     });
     expect(authorizeGroupDelivery).toHaveBeenCalledWith({
       eventType: "delivery_authorization",
@@ -1117,7 +1165,44 @@ describe("personal Shared messaging deliveries", () => {
       project: "eliza-app",
       connectorAccountId: "telegram:test-bot",
       chatId: "-100123456789",
+      sourceMessageId: "telegram:eliza-app:source-1",
+      leaseToken,
       invocation: "ambient",
+      authority,
+    });
+    expect(sharedRestMessageSend).not.toHaveBeenCalled();
+  });
+
+  test("commits only the exact delivery reservation before provider egress", async () => {
+    const leaseToken = "00000000-0000-4000-8000-000000000096";
+    commitGroupDelivery.mockImplementationOnce(async () => true);
+    const authority = {
+      bindingId: canonicalGroupBinding.id,
+      ownerUserId: canonicalGroupBinding.owner_user_id,
+      personalAgentId: canonicalGroupBinding.personal_agent_id,
+      version: canonicalGroupBinding.authority_version,
+    };
+    const response = await request({
+      eventType: "delivery_commit",
+      platform: "telegram",
+      project: "eliza-app",
+      connectorAccountId: "telegram:test-bot",
+      chatId: "-100123456789",
+      sourceMessageId: "telegram:eliza-app:source-1",
+      leaseToken,
+      authority,
+    });
+
+    await expect(response.json()).resolves.toMatchObject({
+      data: { code: "group_delivery_committed", committed: true },
+    });
+    expect(commitGroupDelivery).toHaveBeenCalledWith({
+      platform: "telegram",
+      project: "eliza-app",
+      connectorAccountId: "telegram:test-bot",
+      providerChatId: "-100123456789",
+      sourceMessageId: "telegram:eliza-app:source-1",
+      leaseToken,
       authority,
     });
     expect(sharedRestMessageSend).not.toHaveBeenCalled();

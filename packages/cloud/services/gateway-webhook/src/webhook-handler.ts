@@ -30,6 +30,7 @@ import {
 import { resolveWebhookConfig } from "./webhook-config";
 
 const DEDUP_TTL_SECONDS = 300;
+const PERSONAL_SHARED_DELIVERY_LEASE_MS = 90_000;
 // Must outlive the 75s non-idempotent message-forward budget plus Telegram
 // egress. Otherwise a provider retry can reclaim the update while the first
 // worker is still generating and execute the same user turn twice.
@@ -1174,80 +1175,8 @@ async function sendPersonalSharedReply(
         "group connector cannot return a provider delivery receipt",
       );
     }
-    if (groupDelivery.kind === "binding") {
-      const authorizationBody = JSON.stringify({
-        eventType: "delivery_authorization",
-        platform: adapter.platform,
-        project,
-        connectorAccountId,
-        chatId: event.chatId,
-        invocation: groupInvocationForEvent(event),
-        authority: groupDelivery.authority,
-      });
-      const postAuthorization = (header: Record<string, string>) =>
-        fetch(
-          `${cloudBaseUrl}/api/internal/eliza-app/personal-shared/messages`,
-          {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              [ELIZA_TRACE_ID_HEADER]: traceId,
-              ...header,
-            },
-            body: authorizationBody,
-            signal: AbortSignal.timeout(10_000),
-          },
-        );
-      let authorizationResponse = await postAuthorization(authHeader);
-      if (
-        authorizationResponse.status === 401 ||
-        authorizationResponse.status === 403
-      ) {
-        await authorizationResponse.body?.cancel();
-        authHeader = await reauth();
-        authorizationResponse = await postAuthorization(authHeader);
-      }
-      if (!authorizationResponse.ok) {
-        await authorizationResponse.body?.cancel();
-        throw new PersonalSharedPreEgressError(
-          `group delivery authorization failed (${authorizationResponse.status})`,
-        );
-      }
-      let authorizationResult: unknown;
-      try {
-        authorizationResult = await authorizationResponse.json();
-      } catch (error) {
-        // error-policy:J3 authorization is untrusted until the explicit boolean
-        // contract parses; provider egress has not started.
-        throw new PersonalSharedPreEgressError(
-          "group delivery authorization returned invalid JSON",
-          { cause: error },
-        );
-      }
-      const authorized =
-        authorizationResult !== null &&
-        typeof authorizationResult === "object" &&
-        "data" in authorizationResult &&
-        authorizationResult.data !== null &&
-        typeof authorizationResult.data === "object" &&
-        "authorized" in authorizationResult.data &&
-        authorizationResult.data.authorized === true;
-      if (!authorized) {
-        return {
-          cloudMs,
-          cloudAttempts: attemptResult.attempts,
-          egressMs: 0,
-          cloudServerTiming,
-        };
-      }
-    }
-    const receipt = await sendReplyWithReceipt(
-      config,
-      event,
-      reply,
-      deliveryHooks,
-    );
     if (groupDelivery.kind === "control") {
+      await sendReplyWithReceipt(config, event, reply, deliveryHooks);
       return {
         cloudMs,
         cloudAttempts: attemptResult.attempts,
@@ -1255,15 +1184,161 @@ async function sendPersonalSharedReply(
         cloudServerTiming,
       };
     }
+    const deliveryLeaseToken = crypto.randomUUID();
+    const sourceMessageId = `${adapter.platform}:${project}:${event.messageId}`;
+    const authorizationBody = JSON.stringify({
+      eventType: "delivery_authorization",
+      platform: adapter.platform,
+      project,
+      connectorAccountId,
+      chatId: event.chatId,
+      sourceMessageId,
+      leaseToken: deliveryLeaseToken,
+      invocation: groupInvocationForEvent(event),
+      authority: groupDelivery.authority,
+    });
+    const postAuthorization = (header: Record<string, string>) =>
+      fetch(`${cloudBaseUrl}/api/internal/eliza-app/personal-shared/messages`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          [ELIZA_TRACE_ID_HEADER]: traceId,
+          ...header,
+        },
+        body: authorizationBody,
+        signal: AbortSignal.timeout(10_000),
+      });
+    let authorizationResponse = await postAuthorization(authHeader);
+    if (
+      authorizationResponse.status === 401 ||
+      authorizationResponse.status === 403
+    ) {
+      await authorizationResponse.body?.cancel();
+      authHeader = await reauth();
+      authorizationResponse = await postAuthorization(authHeader);
+    }
+    if (!authorizationResponse.ok) {
+      await authorizationResponse.body?.cancel();
+      throw new PersonalSharedPreEgressError(
+        `group delivery authorization failed (${authorizationResponse.status})`,
+      );
+    }
+    let authorizationResult: unknown;
+    try {
+      authorizationResult = await authorizationResponse.json();
+    } catch (error) {
+      // error-policy:J3 authorization is untrusted until the explicit boolean
+      // contract parses; provider egress has not started.
+      throw new PersonalSharedPreEgressError(
+        "group delivery authorization returned invalid JSON",
+        { cause: error },
+      );
+    }
+    const authorizationData =
+      authorizationResult !== null &&
+      typeof authorizationResult === "object" &&
+      "data" in authorizationResult &&
+      authorizationResult.data !== null &&
+      typeof authorizationResult.data === "object" &&
+      (authorizationResult.data as Record<string, unknown>);
+    const leaseExpiresAtMs =
+      authorizationData !== false &&
+      typeof authorizationData.expiresAt === "string"
+        ? Date.parse(authorizationData.expiresAt)
+        : Number.NaN;
+    const authorizationObservedAt = Date.now();
+    if (
+      authorizationData === false ||
+      authorizationData.authorized !== true ||
+      authorizationData.leaseToken !== deliveryLeaseToken ||
+      !Number.isFinite(leaseExpiresAtMs) ||
+      leaseExpiresAtMs <= authorizationObservedAt ||
+      leaseExpiresAtMs >
+        authorizationObservedAt + PERSONAL_SHARED_DELIVERY_LEASE_MS
+    ) {
+      return {
+        cloudMs,
+        cloudAttempts: attemptResult.attempts,
+        egressMs: 0,
+        cloudServerTiming,
+      };
+    }
+    const commitBody = JSON.stringify({
+      eventType: "delivery_commit",
+      platform: adapter.platform,
+      project,
+      connectorAccountId,
+      chatId: event.chatId,
+      sourceMessageId,
+      leaseToken: deliveryLeaseToken,
+      authority: groupDelivery.authority,
+    });
+    const postCommit = (header: Record<string, string>) =>
+      fetch(`${cloudBaseUrl}/api/internal/eliza-app/personal-shared/messages`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          [ELIZA_TRACE_ID_HEADER]: traceId,
+          ...header,
+        },
+        body: commitBody,
+        signal: AbortSignal.timeout(10_000),
+      });
+    let commitResponse = await postCommit(authHeader);
+    if (commitResponse.status === 401 || commitResponse.status === 403) {
+      await commitResponse.body?.cancel();
+      authHeader = await reauth();
+      commitResponse = await postCommit(authHeader);
+    }
+    if (!commitResponse.ok) {
+      await commitResponse.body?.cancel();
+      throw new PersonalSharedPreEgressError(
+        `group delivery commit failed (${commitResponse.status})`,
+      );
+    }
+    let commitResult: unknown;
+    try {
+      commitResult = await commitResponse.json();
+    } catch (error) {
+      // error-policy:J3 no provider call begins unless the durable commit's
+      // explicit boolean contract parses.
+      throw new PersonalSharedPreEgressError(
+        "group delivery commit returned invalid JSON",
+        { cause: error },
+      );
+    }
+    const committed =
+      commitResult !== null &&
+      typeof commitResult === "object" &&
+      "data" in commitResult &&
+      commitResult.data !== null &&
+      typeof commitResult.data === "object" &&
+      "committed" in commitResult.data &&
+      commitResult.data.committed === true;
+    if (!committed) {
+      return {
+        cloudMs,
+        cloudAttempts: attemptResult.attempts,
+        egressMs: 0,
+        cloudServerTiming,
+      };
+    }
+    const receipt = await sendReplyWithReceipt(
+      config,
+      event,
+      reply,
+      deliveryHooks,
+    );
     const receiptBody = JSON.stringify({
       eventType: "delivery_receipt",
       platform: adapter.platform,
       project,
       connectorAccountId,
       chatId: event.chatId,
-      sourceMessageId: `${adapter.platform}:${project}:${event.messageId}`,
+      sourceMessageId,
       providerMessageIds: receipt.providerMessageIds,
       authority: groupDelivery.authority,
+      leaseToken: deliveryLeaseToken,
     });
     const postReceipt = (header: Record<string, string>) =>
       fetch(`${cloudBaseUrl}/api/internal/eliza-app/personal-shared/messages`, {

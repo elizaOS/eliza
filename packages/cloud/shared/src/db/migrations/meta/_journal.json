@@ -2010,6 +2010,13 @@
       "when": 1794081600000,
       "tag": "0303_personal_shared_group_authority_version",
       "breakpoints": true
+    },
+    {
+      "idx": 283,
+      "version": "7",
+      "when": 1794168000000,
+      "tag": "0300_personal_shared_group_delivery_lease",
+      "breakpoints": true
     }
   ]
 }
