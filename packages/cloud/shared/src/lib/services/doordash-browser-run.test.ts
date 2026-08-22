@@ -1,7 +1,10 @@
 /** Verifies the Cloudflare checkout click is bound to the exact confirmed cart and preview. */
 
 import { describe, expect, test } from "bun:test";
-import { assertManagedCheckoutBinding, managedCheckoutBindingDigest } from "./doordash-browser-run";
+import {
+  assertManagedCheckoutBinding,
+  managedCheckoutBindingDigest,
+} from "./doordash-checkout-binding";
 
 const cart = {
   success: true,
