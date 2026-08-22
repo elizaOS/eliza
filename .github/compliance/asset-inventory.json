@@ -1,0 +1,739 @@
+{
+  "schema": 1,
+  "scope": "Tracked Wrangler, Railway, Dockerfile, Compose, Terraform .tf, Android manifest, and Apple plist/entitlement descriptor classes only. Kubernetes and general YAML, Terraform inputs/backends/locks, CI deployment workflows, runtime discovery, provider contracts, physical/workstation boundaries, shadow systems, regions, retention, backups, and production acceptance remain explicit dependencies or protected operator review.",
+  "assets": [
+    {
+      "id": "cloudflare-edge",
+      "name": "Cloudflare edge applications and workers",
+      "kind": "edge-runtime",
+      "sources": [
+        "packages/app/wrangler.toml",
+        "packages/cloud/api/wrangler.toml",
+        "packages/cloud/services/_smoke-mcp/wrangler.toml",
+        "packages/elizaresearch/wrangler.toml",
+        "packages/homepage/wrangler-aasa.toml"
+      ],
+      "facts": {
+        "owner": {
+          "status": "operator-review-required",
+          "values": [],
+          "evidence": [],
+          "hold": "Assign the accountable production and control owner."
+        },
+        "environments": {
+          "status": "operator-review-required",
+          "values": [],
+          "evidence": [],
+          "hold": "Reconcile repository environments with every live Cloudflare account and zone."
+        },
+        "tenantBoundary": {
+          "status": "operator-review-required",
+          "values": [],
+          "evidence": [],
+          "hold": "Review live tenant isolation and shared-resource boundaries."
+        },
+        "dataClasses": {
+          "status": "policy",
+          "values": [
+            "account-data",
+            "credentials",
+            "user-content",
+            "regulated-data-prohibited-until-approved"
+          ],
+          "evidence": []
+        },
+        "provider": {
+          "status": "source-verified",
+          "values": ["cloudflare"],
+          "evidence": ["packages/cloud/api/wrangler.toml"]
+        },
+        "regions": {
+          "status": "operator-review-required",
+          "values": [],
+          "evidence": [],
+          "hold": "Record contracted processing and storage regions from live provider configuration."
+        },
+        "ingress": {
+          "status": "operator-review-required",
+          "values": [],
+          "evidence": [],
+          "hold": "Confirm every public, private, scheduled, queue, and service-binding ingress."
+        },
+        "egress": {
+          "status": "operator-review-required",
+          "values": [],
+          "evidence": [],
+          "hold": "Confirm live network egress, provider destinations, and failover routes."
+        },
+        "identities": {
+          "status": "operator-review-required",
+          "values": [],
+          "evidence": [],
+          "hold": "Inventory service identities, access policies, tokens, and break-glass principals."
+        },
+        "encryption": {
+          "status": "operator-review-required",
+          "values": [],
+          "evidence": [],
+          "hold": "Verify transport, storage, and tenant-bound key controls from deployed settings."
+        },
+        "retention": {
+          "status": "operator-review-required",
+          "values": [],
+          "evidence": [],
+          "hold": "Record effective retention and deletion propagation for every bound store."
+        },
+        "backups": {
+          "status": "operator-review-required",
+          "values": [],
+          "evidence": [],
+          "hold": "Verify backup scope, encryption, restore testing, and deletion propagation."
+        },
+        "monitoring": {
+          "status": "operator-review-required",
+          "values": [],
+          "evidence": [],
+          "hold": "Record sanitized monitoring, alert ownership, and log destinations."
+        },
+        "lifecycle": {
+          "status": "source-verified",
+          "values": ["repository-tracked"],
+          "evidence": ["packages/cloud/api/wrangler.toml"]
+        },
+        "ephiHandling": {
+          "status": "policy",
+          "values": ["prohibited-until-regulated-processing-activation"],
+          "evidence": []
+        }
+      }
+    },
+    {
+      "id": "container-workloads",
+      "name": "Containerized application, inference, gateway, and training workloads",
+      "kind": "container-runtime",
+      "sources": [
+        "packages/app-core/deploy/Dockerfile.ci",
+        "packages/app-core/deploy/Dockerfile.cloud-agent",
+        "packages/app-core/deploy/Dockerfile.sandbox",
+        "packages/app-core/deploy/docker-compose.supabase-db.yml",
+        "packages/app-core/deploy/docker-compose.yml",
+        "packages/cloud/infra/cloud/docker-compose.yml",
+        "packages/cloud/services/agent-server/Dockerfile",
+        "packages/cloud/services/coding-remote-runner/Dockerfile",
+        "packages/cloud/services/embeddings/Dockerfile",
+        "packages/cloud/services/embeddings/railway.toml",
+        "packages/cloud/services/gateway-discord/Dockerfile",
+        "packages/cloud/services/gateway-discord/docker-compose.yml",
+        "packages/cloud/services/gateway-discord/railway.toml",
+        "packages/cloud/services/gateway-webhook/Dockerfile",
+        "packages/cloud/services/gateway-webhook/railway.toml",
+        "packages/cloud/services/tunnel-proxy/Dockerfile",
+        "packages/cloud/services/tunnel-proxy/railway.toml",
+        "packages/cloud/services/voice-kokoro-tts/Dockerfile",
+        "packages/cloud/services/voice-kokoro-tts/railway.toml",
+        "packages/cloud/services/voice-whisper-stt/Dockerfile",
+        "packages/cloud/services/voice-whisper-stt/railway.toml",
+        "packages/cloud/shared/scripts/e2e-sample-app/Dockerfile",
+        "packages/training/Dockerfile",
+        "packages/training/Dockerfile.cpu",
+        "plugins/plugin-anthropic/docker-compose.test.yml",
+        "plugins/plugin-sql/docker-compose.electric-test.yml",
+        "plugins/plugin-sql/docker-compose.test.yml",
+        "plugins/plugin-sql/src/__tests__/migration/e2e/docker-compose.yml",
+        "scripts/vast/Dockerfile.gpu"
+      ],
+      "facts": {
+        "owner": {
+          "status": "operator-review-required",
+          "values": [],
+          "evidence": [],
+          "hold": "Assign owners per deployed workload and operational environment."
+        },
+        "environments": {
+          "status": "operator-review-required",
+          "values": [],
+          "evidence": [],
+          "hold": "Separate CI, test, staging, production, training, and ephemeral workload deployments."
+        },
+        "tenantBoundary": {
+          "status": "operator-review-required",
+          "values": [],
+          "evidence": [],
+          "hold": "Verify isolation for shared, dedicated, sandbox, inference, and training workloads."
+        },
+        "dataClasses": {
+          "status": "policy",
+          "values": [
+            "account-data",
+            "credentials",
+            "model-input-output",
+            "user-content",
+            "regulated-data-prohibited-until-approved"
+          ],
+          "evidence": []
+        },
+        "provider": {
+          "status": "operator-review-required",
+          "values": [],
+          "evidence": [],
+          "hold": "Reconcile images with every registry, orchestrator, cloud, and GPU provider."
+        },
+        "regions": {
+          "status": "operator-review-required",
+          "values": [],
+          "evidence": [],
+          "hold": "Record live workload, volume, cache, and backup regions."
+        },
+        "ingress": {
+          "status": "operator-review-required",
+          "values": [],
+          "evidence": [],
+          "hold": "Inventory load balancers, tunnels, queues, callbacks, and operator ingress."
+        },
+        "egress": {
+          "status": "operator-review-required",
+          "values": [],
+          "evidence": [],
+          "hold": "Inventory databases, model providers, connectors, telemetry, and artifact destinations."
+        },
+        "identities": {
+          "status": "operator-review-required",
+          "values": [],
+          "evidence": [],
+          "hold": "Record workload identities, registry credentials, SSH access, and service tokens."
+        },
+        "encryption": {
+          "status": "operator-review-required",
+          "values": [],
+          "evidence": [],
+          "hold": "Verify image, volume, transport, secret, and backup encryption."
+        },
+        "retention": {
+          "status": "operator-review-required",
+          "values": [],
+          "evidence": [],
+          "hold": "Record logs, caches, volumes, model artifacts, jobs, and deletion behavior."
+        },
+        "backups": {
+          "status": "operator-review-required",
+          "values": [],
+          "evidence": [],
+          "hold": "Record snapshot scope, restores, retention, and tenant deletion propagation."
+        },
+        "monitoring": {
+          "status": "operator-review-required",
+          "values": [],
+          "evidence": [],
+          "hold": "Record health, audit, security, billing, and capacity monitoring owners."
+        },
+        "lifecycle": {
+          "status": "source-verified",
+          "values": ["repository-tracked"],
+          "evidence": ["packages/cloud/services/agent-server/Dockerfile"]
+        },
+        "ephiHandling": {
+          "status": "policy",
+          "values": ["prohibited-until-regulated-processing-activation"],
+          "evidence": []
+        }
+      }
+    },
+    {
+      "id": "cloud-infrastructure",
+      "name": "Cloud resource, network, identity, and orchestration definitions",
+      "kind": "infrastructure-as-code",
+      "sources": [
+        "packages/cloud/infra/cloud/terraform/cloudflare/pages-domains/import.tf",
+        "packages/cloud/infra/cloud/terraform/cloudflare/pages-domains/main.tf",
+        "packages/cloud/infra/cloud/terraform/cloudflare/pages-domains/outputs.tf",
+        "packages/cloud/infra/cloud/terraform/cloudflare/pages-domains/providers.tf",
+        "packages/cloud/infra/cloud/terraform/cloudflare/pages-domains/variables.tf",
+        "packages/cloud/infra/cloud/terraform/cloudflare/pages-domains/versions.tf",
+        "packages/cloud/infra/cloud/terraform/gcp/01-foundation/main.tf",
+        "packages/cloud/infra/cloud/terraform/gcp/01-foundation/modules/gke/main.tf",
+        "packages/cloud/infra/cloud/terraform/gcp/01-foundation/modules/gke/outputs.tf",
+        "packages/cloud/infra/cloud/terraform/gcp/01-foundation/modules/gke/variables.tf",
+        "packages/cloud/infra/cloud/terraform/gcp/01-foundation/modules/iam/main.tf",
+        "packages/cloud/infra/cloud/terraform/gcp/01-foundation/modules/iam/outputs.tf",
+        "packages/cloud/infra/cloud/terraform/gcp/01-foundation/modules/iam/variables.tf",
+        "packages/cloud/infra/cloud/terraform/gcp/01-foundation/modules/network/main.tf",
+        "packages/cloud/infra/cloud/terraform/gcp/01-foundation/modules/network/outputs.tf",
+        "packages/cloud/infra/cloud/terraform/gcp/01-foundation/modules/network/variables.tf",
+        "packages/cloud/infra/cloud/terraform/gcp/01-foundation/outputs.tf",
+        "packages/cloud/infra/cloud/terraform/gcp/01-foundation/providers.tf",
+        "packages/cloud/infra/cloud/terraform/gcp/01-foundation/variables.tf",
+        "packages/cloud/infra/cloud/terraform/gcp/01-foundation/versions.tf",
+        "packages/cloud/infra/cloud/terraform/gcp/02-k8s/main.tf",
+        "packages/cloud/infra/cloud/terraform/gcp/02-k8s/outputs.tf",
+        "packages/cloud/infra/cloud/terraform/gcp/02-k8s/providers.tf",
+        "packages/cloud/infra/cloud/terraform/gcp/02-k8s/variables.tf",
+        "packages/cloud/infra/cloud/terraform/gcp/02-k8s/versions.tf",
+        "packages/cloud/infra/cloud/terraform/hetzner/apps-data-plane/main.tf",
+        "packages/cloud/infra/cloud/terraform/hetzner/apps-data-plane/outputs.tf",
+        "packages/cloud/infra/cloud/terraform/hetzner/apps-data-plane/providers.tf",
+        "packages/cloud/infra/cloud/terraform/hetzner/apps-data-plane/variables.tf",
+        "packages/cloud/infra/cloud/terraform/hetzner/apps-data-plane/versions.tf",
+        "packages/cloud/infra/cloud/terraform/hetzner/apps-shared/main.tf",
+        "packages/cloud/infra/cloud/terraform/hetzner/apps-shared/outputs.tf",
+        "packages/cloud/infra/cloud/terraform/hetzner/apps-shared/providers.tf",
+        "packages/cloud/infra/cloud/terraform/hetzner/apps-shared/variables.tf",
+        "packages/cloud/infra/cloud/terraform/hetzner/apps-shared/versions.tf",
+        "packages/cloud/infra/cloud/terraform/hetzner/control-plane/import.tf",
+        "packages/cloud/infra/cloud/terraform/hetzner/control-plane/main.tf",
+        "packages/cloud/infra/cloud/terraform/hetzner/control-plane/outputs.tf",
+        "packages/cloud/infra/cloud/terraform/hetzner/control-plane/providers.tf",
+        "packages/cloud/infra/cloud/terraform/hetzner/control-plane/variables.tf",
+        "packages/cloud/infra/cloud/terraform/hetzner/control-plane/versions.tf",
+        "packages/cloud/infra/cloud/terraform/hetzner/prod-ops/main.tf",
+        "packages/cloud/infra/cloud/terraform/hetzner/prod-ops/outputs.tf",
+        "packages/cloud/infra/cloud/terraform/hetzner/prod-ops/providers.tf",
+        "packages/cloud/infra/cloud/terraform/hetzner/prod-ops/variables.tf",
+        "packages/cloud/infra/cloud/terraform/hetzner/prod-ops/versions.tf"
+      ],
+      "facts": {
+        "owner": {
+          "status": "operator-review-required",
+          "values": [],
+          "evidence": [],
+          "hold": "Assign accountable owners for every infrastructure stack and live environment."
+        },
+        "environments": {
+          "status": "operator-review-required",
+          "values": [],
+          "evidence": [],
+          "hold": "Reconcile tracked stacks, modules, workspaces, and variable inputs with every live environment."
+        },
+        "tenantBoundary": {
+          "status": "operator-review-required",
+          "values": [],
+          "evidence": [],
+          "hold": "Verify tenant isolation across networks, clusters, databases, nodes, buckets, and shared services."
+        },
+        "dataClasses": {
+          "status": "policy",
+          "values": [
+            "account-data",
+            "credentials",
+            "infrastructure-metadata",
+            "user-content",
+            "regulated-data-prohibited-until-approved"
+          ],
+          "evidence": []
+        },
+        "provider": {
+          "status": "source-verified",
+          "values": ["cloudflare", "gcp", "hetzner"],
+          "evidence": [
+            "packages/cloud/infra/cloud/terraform/cloudflare/pages-domains/providers.tf",
+            "packages/cloud/infra/cloud/terraform/gcp/01-foundation/providers.tf",
+            "packages/cloud/infra/cloud/terraform/hetzner/control-plane/providers.tf"
+          ]
+        },
+        "regions": {
+          "status": "operator-review-required",
+          "values": [],
+          "evidence": [],
+          "hold": "Record effective compute, storage, backup, failover, and control-plane regions from deployed state."
+        },
+        "ingress": {
+          "status": "operator-review-required",
+          "values": [],
+          "evidence": [],
+          "hold": "Reconcile domains, load balancers, firewalls, tunnels, clusters, SSH, and operator ingress."
+        },
+        "egress": {
+          "status": "operator-review-required",
+          "values": [],
+          "evidence": [],
+          "hold": "Reconcile network routes, gateways, providers, registries, telemetry, and external service egress."
+        },
+        "identities": {
+          "status": "operator-review-required",
+          "values": [],
+          "evidence": [],
+          "hold": "Inventory effective IAM roles, service accounts, deploy principals, SSH keys, and break-glass access."
+        },
+        "encryption": {
+          "status": "operator-review-required",
+          "values": [],
+          "evidence": [],
+          "hold": "Verify transport, disk, database, backup, secret, and state encryption from provider evidence."
+        },
+        "retention": {
+          "status": "operator-review-required",
+          "values": [],
+          "evidence": [],
+          "hold": "Record effective retention and deletion propagation for state, logs, snapshots, volumes, caches, and databases."
+        },
+        "backups": {
+          "status": "operator-review-required",
+          "values": [],
+          "evidence": [],
+          "hold": "Verify snapshot and backup scope, restore tests, encryption, retention, and tenant deletion propagation."
+        },
+        "monitoring": {
+          "status": "operator-review-required",
+          "values": [],
+          "evidence": [],
+          "hold": "Record infrastructure, security, audit, billing, availability, and capacity monitoring owners."
+        },
+        "lifecycle": {
+          "status": "source-verified",
+          "values": ["terraform-managed"],
+          "evidence": [
+            "packages/cloud/infra/cloud/terraform/cloudflare/pages-domains/main.tf",
+            "packages/cloud/infra/cloud/terraform/gcp/01-foundation/main.tf",
+            "packages/cloud/infra/cloud/terraform/hetzner/control-plane/main.tf"
+          ]
+        },
+        "ephiHandling": {
+          "status": "policy",
+          "values": ["prohibited-until-regulated-processing-activation"],
+          "evidence": []
+        }
+      }
+    },
+    {
+      "id": "android-clients",
+      "name": "Android application and native plugin surfaces",
+      "kind": "native-client",
+      "sources": [
+        "packages/app-core/platforms/android/app/src/main/AndroidManifest.xml",
+        "packages/app-core/platforms/android/capacitor-cordova-android-plugins/src/main/AndroidManifest.xml",
+        "packages/app-core/platforms/android/lp3-color-policy/src/debug/AndroidManifest.xml",
+        "plugins/plugin-capacitor-bridge/android/src/main/AndroidManifest.xml",
+        "plugins/plugin-native-agent/android/src/main/AndroidManifest.xml",
+        "plugins/plugin-native-appblocker/android/src/main/AndroidManifest.xml",
+        "plugins/plugin-native-browser-surface/android/src/main/AndroidManifest.xml",
+        "plugins/plugin-native-bun-runtime/android/src/main/AndroidManifest.xml",
+        "plugins/plugin-native-camera/android/src/main/AndroidManifest.xml",
+        "plugins/plugin-native-canvas/android/src/main/AndroidManifest.xml",
+        "plugins/plugin-native-contacts/android/src/main/AndroidManifest.xml",
+        "plugins/plugin-native-gateway/android/src/main/AndroidManifest.xml",
+        "plugins/plugin-native-location/android/src/androidTest/AndroidManifest.xml",
+        "plugins/plugin-native-location/android/src/main/AndroidManifest.xml",
+        "plugins/plugin-native-messages/android/src/main/AndroidManifest.xml",
+        "plugins/plugin-native-mlkit-text/android/src/main/AndroidManifest.xml",
+        "plugins/plugin-native-mobile-agent-bridge/android/src/main/AndroidManifest.xml",
+        "plugins/plugin-native-mobile-signals/android/src/main/AndroidManifest.xml",
+        "plugins/plugin-native-network-policy/android/src/main/AndroidManifest.xml",
+        "plugins/plugin-native-phone/android/src/main/AndroidManifest.xml",
+        "plugins/plugin-native-screencapture/android/src/main/AndroidManifest.xml",
+        "plugins/plugin-native-secure-store/android/src/main/AndroidManifest.xml",
+        "plugins/plugin-native-swabble/android/src/androidTest/AndroidManifest.xml",
+        "plugins/plugin-native-swabble/android/src/main/AndroidManifest.xml",
+        "plugins/plugin-native-system/android/src/androidTest/AndroidManifest.xml",
+        "plugins/plugin-native-system/android/src/main/AndroidManifest.xml",
+        "plugins/plugin-native-talkmode/android/src/main/AndroidManifest.xml",
+        "plugins/plugin-native-websiteblocker/android/src/androidTest/AndroidManifest.xml",
+        "plugins/plugin-native-websiteblocker/android/src/main/AndroidManifest.xml",
+        "plugins/plugin-native-wifi/android/src/main/AndroidManifest.xml"
+      ],
+      "facts": {
+        "owner": {
+          "status": "operator-review-required",
+          "values": [],
+          "evidence": [],
+          "hold": "Assign mobile product, security, privacy, and release owners."
+        },
+        "environments": {
+          "status": "operator-review-required",
+          "values": [],
+          "evidence": [],
+          "hold": "Record development, test, internal, beta, and production application identities."
+        },
+        "tenantBoundary": {
+          "status": "operator-review-required",
+          "values": [],
+          "evidence": [],
+          "hold": "Verify account, agent, device, profile, and local-user isolation."
+        },
+        "dataClasses": {
+          "status": "policy",
+          "values": [
+            "account-data",
+            "credentials",
+            "device-data",
+            "user-content",
+            "regulated-data-prohibited-until-approved"
+          ],
+          "evidence": []
+        },
+        "provider": {
+          "status": "operator-review-required",
+          "values": [],
+          "evidence": [],
+          "hold": "Record stores, signing services, push providers, OEM services, and SDK subprocessors."
+        },
+        "regions": {
+          "status": "operator-review-required",
+          "values": [],
+          "evidence": [],
+          "hold": "Record cloud-backed mobile service regions and local-only boundaries."
+        },
+        "ingress": {
+          "status": "operator-review-required",
+          "values": [],
+          "evidence": [],
+          "hold": "Review intents, deep links, shares, notifications, sensors, media, and local IPC."
+        },
+        "egress": {
+          "status": "operator-review-required",
+          "values": [],
+          "evidence": [],
+          "hold": "Review API, connector, browser, telemetry, crash, store, and OS-service egress."
+        },
+        "identities": {
+          "status": "operator-review-required",
+          "values": [],
+          "evidence": [],
+          "hold": "Record application IDs, signing keys, device identities, sessions, and accounts."
+        },
+        "encryption": {
+          "status": "operator-review-required",
+          "values": [],
+          "evidence": [],
+          "hold": "Verify local stores, backups, transport, logs, exports, and notification payloads."
+        },
+        "retention": {
+          "status": "operator-review-required",
+          "values": [],
+          "evidence": [],
+          "hold": "Record local databases, files, caches, logs, exports, and uninstall deletion."
+        },
+        "backups": {
+          "status": "operator-review-required",
+          "values": [],
+          "evidence": [],
+          "hold": "Verify Android backup exclusions, restore behavior, and tenant deletion propagation."
+        },
+        "monitoring": {
+          "status": "operator-review-required",
+          "values": [],
+          "evidence": [],
+          "hold": "Record crash, performance, analytics, support, and security monitoring."
+        },
+        "lifecycle": {
+          "status": "source-verified",
+          "values": ["repository-tracked"],
+          "evidence": [
+            "packages/app-core/platforms/android/app/src/main/AndroidManifest.xml"
+          ]
+        },
+        "ephiHandling": {
+          "status": "policy",
+          "values": ["prohibited-until-regulated-processing-activation"],
+          "evidence": []
+        }
+      }
+    },
+    {
+      "id": "apple-clients",
+      "name": "Apple mobile extensions and macOS desktop entitlements",
+      "kind": "native-client",
+      "sources": [
+        "packages/app-core/platforms/electrobun/entitlements/mas-bun.entitlements",
+        "packages/app-core/platforms/electrobun/entitlements/mas-child.entitlements",
+        "packages/app-core/platforms/electrobun/entitlements/mas.entitlements",
+        "packages/app-core/platforms/ios/App/App/App.entitlements",
+        "packages/app-core/platforms/ios/App/App/DeviceActivityMonitorExtension/DeviceActivityMonitorExtension.entitlements",
+        "packages/app-core/platforms/ios/App/App/DeviceActivityMonitorExtension/Info.plist",
+        "packages/app-core/platforms/ios/App/App/DeviceActivityReportExtension/DeviceActivityReportExtension.entitlements",
+        "packages/app-core/platforms/ios/App/App/DeviceActivityReportExtension/Info.plist",
+        "packages/app-core/platforms/ios/App/App/ElizaKeyboard/ElizaKeyboard.entitlements",
+        "packages/app-core/platforms/ios/App/App/ElizaKeyboard/Info.plist",
+        "packages/app-core/platforms/ios/App/App/ElizaWidgets/ElizaWidgets.entitlements",
+        "packages/app-core/platforms/ios/App/App/ElizaWidgets/Info.plist",
+        "packages/app-core/platforms/ios/App/App/Info.plist",
+        "packages/app-core/platforms/ios/App/App/WebsiteBlockerContentExtension/Info.plist",
+        "packages/app-core/platforms/ios/App/App/WebsiteBlockerContentExtension/WebsiteBlockerContentExtension.entitlements"
+      ],
+      "facts": {
+        "owner": {
+          "status": "operator-review-required",
+          "values": [],
+          "evidence": [],
+          "hold": "Assign Apple product, security, privacy, and release owners."
+        },
+        "environments": {
+          "status": "operator-review-required",
+          "values": [],
+          "evidence": [],
+          "hold": "Record development, test, TestFlight, App Store, and desktop release identities."
+        },
+        "tenantBoundary": {
+          "status": "operator-review-required",
+          "values": [],
+          "evidence": [],
+          "hold": "Verify app-group, extension, keychain, agent, account, and local-user isolation."
+        },
+        "dataClasses": {
+          "status": "policy",
+          "values": [
+            "account-data",
+            "credentials",
+            "device-data",
+            "user-content",
+            "regulated-data-prohibited-until-approved"
+          ],
+          "evidence": []
+        },
+        "provider": {
+          "status": "operator-review-required",
+          "values": [],
+          "evidence": [],
+          "hold": "Record Apple services, stores, signing, push, crash, and SDK subprocessors."
+        },
+        "regions": {
+          "status": "operator-review-required",
+          "values": [],
+          "evidence": [],
+          "hold": "Record cloud-backed Apple service regions and local-only boundaries."
+        },
+        "ingress": {
+          "status": "operator-review-required",
+          "values": [],
+          "evidence": [],
+          "hold": "Review URLs, extensions, app groups, notifications, media, devices, and local IPC."
+        },
+        "egress": {
+          "status": "operator-review-required",
+          "values": [],
+          "evidence": [],
+          "hold": "Review API, connector, browser, telemetry, crash, store, and OS-service egress."
+        },
+        "identities": {
+          "status": "operator-review-required",
+          "values": [],
+          "evidence": [],
+          "hold": "Record bundle IDs, signing keys, entitlements, device identities, sessions, and accounts."
+        },
+        "encryption": {
+          "status": "operator-review-required",
+          "values": [],
+          "evidence": [],
+          "hold": "Verify keychain, local stores, backups, transport, logs, exports, and notifications."
+        },
+        "retention": {
+          "status": "operator-review-required",
+          "values": [],
+          "evidence": [],
+          "hold": "Record containers, app groups, caches, logs, exports, extensions, and uninstall behavior."
+        },
+        "backups": {
+          "status": "operator-review-required",
+          "values": [],
+          "evidence": [],
+          "hold": "Verify iCloud/device backup exclusions, restores, and tenant deletion propagation."
+        },
+        "monitoring": {
+          "status": "operator-review-required",
+          "values": [],
+          "evidence": [],
+          "hold": "Record crash, performance, analytics, support, and security monitoring."
+        },
+        "lifecycle": {
+          "status": "source-verified",
+          "values": ["repository-tracked"],
+          "evidence": ["packages/app-core/platforms/ios/App/App/Info.plist"]
+        },
+        "ephiHandling": {
+          "status": "policy",
+          "values": ["prohibited-until-regulated-processing-activation"],
+          "evidence": []
+        }
+      }
+    }
+  ],
+  "flows": [
+    {
+      "id": "native-to-edge",
+      "source": "android-clients",
+      "destination": "cloudflare-edge",
+      "dataClasses": ["account-data", "credentials", "user-content"],
+      "status": "operator-review-required",
+      "evidence": [],
+      "hold": "Enumerate authenticated endpoints, transformations, logs, caches, keys, subprocessors, and deletion propagation from deployed traffic evidence."
+    },
+    {
+      "id": "apple-to-edge",
+      "source": "apple-clients",
+      "destination": "cloudflare-edge",
+      "dataClasses": ["account-data", "credentials", "user-content"],
+      "status": "operator-review-required",
+      "evidence": [],
+      "hold": "Enumerate authenticated endpoints, transformations, logs, caches, keys, subprocessors, and deletion propagation from deployed traffic evidence."
+    },
+    {
+      "id": "edge-to-containers",
+      "source": "cloudflare-edge",
+      "destination": "container-workloads",
+      "dataClasses": [
+        "account-data",
+        "credentials",
+        "model-input-output",
+        "user-content"
+      ],
+      "status": "operator-review-required",
+      "evidence": [],
+      "hold": "Reconcile service bindings, queues, tunnels, callbacks, providers, logs, caches, keys, and deletion propagation with live environments."
+    },
+    {
+      "id": "containers-to-infrastructure",
+      "source": "container-workloads",
+      "destination": "cloud-infrastructure",
+      "dataClasses": [
+        "account-data",
+        "credentials",
+        "infrastructure-metadata",
+        "model-input-output",
+        "user-content"
+      ],
+      "status": "operator-review-required",
+      "evidence": [],
+      "hold": "Reconcile each workload with its effective network, compute, storage, database, cache, queue, secret, log, and backup resources."
+    }
+  ],
+  "controls": [
+    {
+      "id": "HIPAA-164.308",
+      "framework": "HIPAA administrative safeguards",
+      "owner": "unassigned-protected-operator",
+      "status": "operator-review-required",
+      "evidence": [],
+      "hold": "Assign owners and map each applicable administrative safeguard to implementation and reviewed evidence."
+    },
+    {
+      "id": "HIPAA-164.310",
+      "framework": "HIPAA physical safeguards",
+      "owner": "unassigned-protected-operator",
+      "status": "operator-review-required",
+      "evidence": [],
+      "hold": "Inventory workstation, facility, media, and device controls outside repository automation."
+    },
+    {
+      "id": "HIPAA-164.312",
+      "framework": "HIPAA technical safeguards",
+      "owner": "unassigned-protected-operator",
+      "status": "operator-review-required",
+      "evidence": [],
+      "hold": "Map access, audit, integrity, authentication, and transmission controls to exact assets and evidence."
+    },
+    {
+      "id": "TSC-CC1-CC9",
+      "framework": "AICPA Trust Services Criteria common criteria",
+      "owner": "unassigned-protected-operator",
+      "status": "operator-review-required",
+      "evidence": [],
+      "hold": "Map every applicable CC1 through CC9 criterion and point of focus to implementation and evidence."
+    },
+    {
+      "id": "TSC-A1-C1",
+      "framework": "AICPA availability and confidentiality criteria",
+      "owner": "unassigned-protected-operator",
+      "status": "operator-review-required",
+      "evidence": [],
+      "hold": "Map every applicable A1 and C1 criterion and point of focus to implementation and evidence."
+    }
+  ]
+}
