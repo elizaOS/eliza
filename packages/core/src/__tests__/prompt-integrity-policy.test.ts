@@ -301,6 +301,9 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 	"plugins/plugin-browser/src/actions/manage-browser-bridge.ts": [
 		/MAX_BROWSER_BRIDGE_TEXT_LENGTH/,
 	],
+	"plugins/plugin-browser/src/workspace/browser-workspace-web.ts": [
+		/buildBrowserWorkspaceDocumentSnapshotText\([^)]*\)\.slice\(/,
+	],
 	"plugins/plugin-vision/src/provider.ts": [/tileAnalysis\.text\.substring\(/],
 	"packages/cloud/shared/src/lib/services/browser-tools.ts": [
 		/innerText\?\.slice\(/,
