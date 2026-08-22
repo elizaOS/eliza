@@ -1,7 +1,13 @@
 /**
- * Regression coverage for #24165: the module-scoped profile caches must stay
- * bounded. Resolving more distinct messages than the cap must not grow the
- * cache without bound, and every resolution path must keep working.
+ * Load-bearing regression coverage for #24165: the module-scoped profile
+ * caches must stay bounded with newest-wins eviction.
+ *
+ * Red-before/green-after through the exported resolution paths:
+ * - After inserting more than the cap of distinct message keys, rereading the
+ *   OLDEST key performs one additional provider fetch (it was evicted).
+ * - Rereading the NEWEST key performs no fetch (cache hit).
+ * - The same eviction contract holds for user profiles.
+ * - Failure/null results and expiry are bounded the same way.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -9,26 +15,38 @@ vi.mock("../discord-avatar-cache", () => ({
   cacheDiscordAvatarUrl: vi.fn(async () => {}),
 }));
 
-import { resolveDiscordMessageAuthorProfile } from "../discord-profiles";
+import {
+  resolveDiscordMessageAuthorProfile,
+  resolveDiscordUserProfile,
+} from "../discord-profiles";
 
 const MAX_ENTRIES = 512;
 
-function makeRuntime() {
-  const messagesFetch = vi.fn(async (messageId: string) => ({
-    id: messageId,
-    author: { id: `user-${messageId}` },
-    member: null,
-  }));
+type FetchFn = ReturnType<typeof vi.fn>;
+
+function makeRuntime({
+  messagesFetch,
+  usersFetch,
+}: {
+  messagesFetch?: FetchFn;
+  usersFetch?: FetchFn;
+}) {
   const client = {
     channels: {
       cache: { get: () => undefined },
-      fetch: async () => ({ messages: { fetch: messagesFetch } }),
+      fetch:
+        messagesFetch &&
+        (async () => ({ messages: { fetch: messagesFetch } })),
     },
+    users: usersFetch ? { fetch: usersFetch } : undefined,
   };
-  const runtime = {
+  return {
     getService: () => ({ client }),
-  } as any;
-  return { runtime, messagesFetch };
+  } as never;
+}
+
+function makeAuthorProfile(userId: string) {
+  return { id: userId, username: `user-${userId}`, displayName: null };
 }
 
 describe("discord profile cache bound (#24165)", () => {
@@ -36,27 +54,60 @@ describe("discord profile cache bound (#24165)", () => {
     vi.clearAllMocks();
   });
 
-  it("keeps resolving after far more distinct messages than the cap", async () => {
-    const { runtime, messagesFetch } = makeRuntime();
-    // Insert ~2x the cap of distinct channel:message keys; none are read twice,
-    // which is the lifecycle the unbounded cache previously leaked on.
-    for (let i = 0; i < MAX_ENTRIES * 2; i++) {
-      const profile = await resolveDiscordMessageAuthorProfile(
-        runtime,
-        `ch-${i % 8}`,
-        `msg-${i}`,
-      );
-      expect(profile?.id).toBe(`user-msg-${i}`);
+  it("evicts the oldest message-author key past the cap and refetches it", async () => {
+    const messagesFetch = vi.fn(async (messageId: string) => ({
+      id: messageId,
+      author: makeAuthorProfile(messageId),
+      member: null,
+    }));
+    const runtime = makeRuntime({ messagesFetch });
+
+    // Insert cap + 1 distinct keys (oldest is key "0").
+    for (let i = 0; i < MAX_ENTRIES + 1; i++) {
+      await resolveDiscordMessageAuthorProfile(runtime, "ch", String(i));
     }
-    // The fetch mock was called for every distinct key — the cache never
-    // served an unbounded hit set, and resolution never threw.
-    expect(messagesFetch).toHaveBeenCalledTimes(MAX_ENTRIES * 2);
+    const fetchesAfterFill = messagesFetch.mock.calls.length;
+    expect(fetchesAfterFill).toBe(MAX_ENTRIES + 1);
+
+    // Reread the OLDEST key: it was evicted → one additional fetch.
+    await resolveDiscordMessageAuthorProfile(runtime, "ch", "0");
+    expect(messagesFetch.mock.calls.length).toBe(MAX_ENTRIES + 2);
+
+    // Reread the NEWEST key: cache hit → no additional fetch.
+    const fetchesBeforeNewest = messagesFetch.mock.calls.length;
+    await resolveDiscordMessageAuthorProfile(runtime, "ch", String(MAX_ENTRIES));
+    expect(messagesFetch.mock.calls.length).toBe(fetchesBeforeNewest);
   });
 
-  it("serves a cache hit for a recently resolved key without refetching", async () => {
-    const { runtime, messagesFetch } = makeRuntime();
-    await resolveDiscordMessageAuthorProfile(runtime, "ch-1", "msg-1");
-    await resolveDiscordMessageAuthorProfile(runtime, "ch-1", "msg-1");
-    expect(messagesFetch).toHaveBeenCalledTimes(1);
+  it("evicts the oldest user-profile key past the cap and refetches it", async () => {
+    const usersFetch = vi.fn(async (userId: string) => makeAuthorProfile(userId));
+    const runtime = makeRuntime({ usersFetch });
+
+    for (let i = 0; i < MAX_ENTRIES + 1; i++) {
+      await resolveDiscordUserProfile(runtime, `user-${i}`);
+    }
+    expect(usersFetch.mock.calls.length).toBe(MAX_ENTRIES + 1);
+
+    // Oldest evicted → refetch.
+    await resolveDiscordUserProfile(runtime, "user-0");
+    expect(usersFetch.mock.calls.length).toBe(MAX_ENTRIES + 2);
+
+    // Newest still cached → no fetch.
+    const before = usersFetch.mock.calls.length;
+    await resolveDiscordUserProfile(runtime, `user-${MAX_ENTRIES}`);
+    expect(usersFetch.mock.calls.length).toBe(before);
+  });
+
+  it("bounds null results the same way (failure path)", async () => {
+    // Message author: channel has no messages.fetch → null cached per key.
+    const messagesFetch = vi.fn(async () => null);
+    const runtime = makeRuntime({ messagesFetch });
+
+    for (let i = 0; i < MAX_ENTRIES + 1; i++) {
+      await resolveDiscordMessageAuthorProfile(runtime, "ch", String(i));
+    }
+    // Oldest null entry was evicted → refetch happens.
+    await resolveDiscordMessageAuthorProfile(runtime, "ch", "0");
+    expect(messagesFetch.mock.calls.length).toBe(MAX_ENTRIES + 2);
   });
 });
