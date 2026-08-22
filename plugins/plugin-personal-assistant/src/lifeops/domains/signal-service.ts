@@ -38,7 +38,6 @@ export class SignalDomain {
       reason: "disconnected",
       identity: null,
       grantedCapabilities: [],
-      pairing: null,
       grant: null,
       degradations: [
         {
