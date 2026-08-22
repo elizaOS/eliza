@@ -12,7 +12,10 @@
  * window the entry is purged.
  *
  * Backing storage: runtime cache, keyed per room. Time-based retention removes
- * expired entries without discarding live prompts or changing their content.
+ * expired entries without discarding live prompts or changing their content,
+ * and a room is retired from the room index (and its cache row deleted) by the
+ * write that leaves it with no open prompts, so `listAll()` costs one read per
+ * room with LIVE prompts rather than per room ever prompted in.
  */
 
 import { type IAgentRuntime, toWellFormedUnicode } from "@elizaos/core";
@@ -163,13 +166,43 @@ async function loadRoom(
   return Array.isArray(stored) ? stored : [];
 }
 
+/**
+ * Write a room back, and keep the room index in step with it.
+ *
+ * Every mutating path funnels through here — `record()`, `list()`'s
+ * retain-window purge, `resolve()`, `forgetTask()` — so an unconditional
+ * `registerRoom` meant the very write that emptied a room put that room
+ * straight back into the index. The index then only ever grew, one entry per
+ * room the agent had ever prompted in, and only `clearAll()` could truncate
+ * it: `listAll()` paid one `getCache` per historical room forever and each of
+ * those rooms kept an empty cache row behind it.
+ *
+ * A write that leaves the room with no entries retires the room instead.
+ */
 async function saveRoom(
   cache: RuntimeCacheLike,
   roomId: string,
   entries: RecordedPendingPrompt[],
 ): Promise<void> {
+  if (entries.length === 0) {
+    await forgetRoom(cache, roomId);
+    return;
+  }
   await cache.setCache<RecordedPendingPrompt[]>(roomCacheKey(roomId), entries);
   await registerRoom(cache, roomId);
+}
+
+/** Drop a room's cache row and its index entry. */
+async function forgetRoom(
+  cache: RuntimeCacheLike,
+  roomId: string,
+): Promise<void> {
+  if (typeof cache.deleteCache === "function") {
+    await cache.deleteCache(roomCacheKey(roomId));
+  } else {
+    await cache.setCache<RecordedPendingPrompt[]>(roomCacheKey(roomId), []);
+  }
+  await unregisterRoom(cache, roomId);
 }
 
 async function registerRoom(
@@ -180,6 +213,18 @@ async function registerRoom(
   const next = new Set<string>(Array.isArray(stored) ? stored : []);
   next.add(roomId);
   await cache.setCache<string[]>(ROOM_INDEX_KEY, [...next]);
+}
+
+async function unregisterRoom(
+  cache: RuntimeCacheLike,
+  roomId: string,
+): Promise<void> {
+  const stored = await cache.getCache<string[]>(ROOM_INDEX_KEY);
+  if (!Array.isArray(stored) || !stored.includes(roomId)) return;
+  await cache.setCache<string[]>(
+    ROOM_INDEX_KEY,
+    stored.filter((id) => id !== roomId),
+  );
 }
 
 async function listRooms(cache: RuntimeCacheLike): Promise<string[]> {
