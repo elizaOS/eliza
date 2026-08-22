@@ -92,6 +92,18 @@ export function isElizaCloudSharedHost(host: string): boolean {
   return ELIZA_CLOUD_SHARED_HOSTS.has(host.toLowerCase());
 }
 
+/** Trust only canonical HTTPS control-plane origins for cloud-only shells. */
+export function isTrustedCloudOnlyApiBaseUrl(
+  parsed: URL,
+  cloudOnly: boolean,
+): boolean {
+  return (
+    cloudOnly &&
+    parsed.protocol === "https:" &&
+    isElizaCloudSharedHost(parsed.hostname)
+  );
+}
+
 function isIosLocalAgentIpcUrl(parsed: URL): boolean {
   return isMobileLocalAgentIpcUrl(parsed);
 }

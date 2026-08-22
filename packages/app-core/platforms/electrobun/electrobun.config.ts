@@ -6,6 +6,9 @@ import { fileURLToPath } from "node:url";
 import type { ElectrobunConfig } from "electrobun/bun";
 
 const electrobunDir = path.dirname(fileURLToPath(import.meta.url));
+const PRODUCTION_CLOUD_API_ORIGIN = "https://api.eliza.app";
+const STAGING_CLOUD_ORIGIN = "https://staging.eliza.app";
+const STAGING_CLOUD_API_ORIGIN = "https://api-staging.eliza.app";
 
 function chromiumFlags(
   flags: Record<string, string | boolean>,
@@ -468,6 +471,10 @@ function resolveBrandConfigCopySource({
   const namespace = trimEnv("ELIZA_NAMESPACE");
   const appDescription = trimEnv("ELIZA_APP_DESCRIPTION");
   const cloudOnly = isTruthyEnv(process.env.ELIZA_DESKTOP_CLOUD_ONLY);
+  const cloudEnvironment =
+    trimEnv("VITE_ELIZA_CLOUD_BASE") === STAGING_CLOUD_ORIGIN
+      ? "staging"
+      : "production";
   const hasBrandOverride = Boolean(
     explicitConfigPath ||
       trimEnv("ELIZA_APP_NAME") ||
@@ -500,6 +507,14 @@ function resolveBrandConfigCopySource({
     buildVariant:
       process.env.ELIZA_BUILD_VARIANT === "store" ? "store" : "direct",
     ...(cloudOnly ? { cloudOnly: true } : {}),
+    ...(cloudOnly
+      ? {
+          cloudApiBase:
+            cloudEnvironment === "staging"
+              ? STAGING_CLOUD_API_ORIGIN
+              : PRODUCTION_CLOUD_API_ORIGIN,
+        }
+      : {}),
     namespace: namespace || fileConfig.namespace || "elizaos",
     configDirName,
     ...(appDescription
