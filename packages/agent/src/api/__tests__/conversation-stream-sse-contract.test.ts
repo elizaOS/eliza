@@ -23,11 +23,13 @@
  * `packages/app-core/test/app/streaming-visible-text.live.e2e.test.ts`.
  */
 
+import crypto from "node:crypto";
 import { EventEmitter } from "node:events";
 import http from "node:http";
 import {
   type AgentRuntime,
   ChannelType,
+  createMessageMemory,
   logger,
   type Memory,
   ModelType,
@@ -35,6 +37,10 @@ import {
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
+import {
+  LOCAL_VOICE_RUNTIME_AGENT_HEADER,
+  LOCAL_VOICE_RUNTIME_CONVERSATION_HEADER,
+} from "@elizaos/shared";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 // Per-test negotiated wire protocol the mocked payload reader advertises, so a
@@ -145,6 +151,8 @@ vi.mock("../server-helpers.ts", async () => {
 import {
   persistAssistantConversationMemory,
   persistConversationMemory,
+  persistExactConversationMemoryResult,
+  persistInterruptedAssistantReceipt,
 } from "../chat-routes.ts";
 import { serializeConversationConnectionRoomDeletion } from "../conversation-connection-readiness.ts";
 import type {
@@ -859,6 +867,16 @@ function createFollowupCtx(
   };
 }
 
+function stampLocalVoiceRuntimeFence(
+  ctx: ConversationRouteContext,
+  agentId = AGENT_ID,
+  conversationId = "conv-1",
+): void {
+  ctx.req.headers[LOCAL_VOICE_RUNTIME_AGENT_HEADER.toLowerCase()] = agentId;
+  ctx.req.headers[LOCAL_VOICE_RUNTIME_CONVERSATION_HEADER.toLowerCase()] =
+    conversationId;
+}
+
 function createDeferred() {
   let resolve: (() => void) | undefined;
   let reject: ((reason: unknown) => void) | undefined;
@@ -961,6 +979,325 @@ describe("conversation stream SSE contract (#10712)", () => {
     userMessagePreparationHook = undefined;
   });
 
+  it("accepts a turn only while the local voice runtime fence matches", async () => {
+    const { ctx, record, useModel } = createCtx();
+    stampLocalVoiceRuntimeFence(ctx);
+
+    await handleConversationRoutes(ctx);
+
+    expect(useModel).toHaveBeenCalledTimes(1);
+    expect(
+      parseSsePayloads(record.writes).some(
+        (payload) => payload.type === "done",
+      ),
+    ).toBe(true);
+  });
+
+  it("rejects a stale local voice agent before model work or persistence", async () => {
+    const { ctx, record, useModel } = createCtx();
+    stampLocalVoiceRuntimeFence(ctx, stringToUuid("retired-agent"));
+    vi.mocked(persistConversationMemory).mockClear();
+    vi.mocked(persistAssistantConversationMemory).mockClear();
+
+    await handleConversationRoutes(ctx);
+
+    expect(record.writes.join("")).toContain(
+      "error 409: Local voice agent runtime changed",
+    );
+    expect(useModel).not.toHaveBeenCalled();
+    expect(persistConversationMemory).not.toHaveBeenCalled();
+    expect(persistAssistantConversationMemory).not.toHaveBeenCalled();
+  });
+
+  it("rejects a local voice conversation mismatch before model work", async () => {
+    const { ctx, record, useModel } = createCtx();
+    stampLocalVoiceRuntimeFence(ctx, AGENT_ID, "retired-conversation");
+
+    await handleConversationRoutes(ctx);
+
+    expect(record.writes.join("")).toContain(
+      "error 409: Local voice conversation identity changed",
+    );
+    expect(useModel).not.toHaveBeenCalled();
+  });
+
+  it.each<
+    [
+      string,
+      {
+        agent?: string | string[];
+        conversation?: string;
+      },
+    ]
+  >([
+    ["a partial fence", { agent: AGENT_ID }],
+    [
+      "a duplicate agent header",
+      { agent: [AGENT_ID, AGENT_ID], conversation: "conv-1" },
+    ],
+    [
+      "a coalesced duplicate agent header",
+      { agent: `${AGENT_ID}, ${AGENT_ID}`, conversation: "conv-1" },
+    ],
+    [
+      "a noncanonical conversation header",
+      { agent: AGENT_ID, conversation: " conv-1" },
+    ],
+  ])("rejects %s before model work", async (_label, values) => {
+    const { ctx, record, useModel } = createCtx();
+    if (values.agent !== undefined) {
+      ctx.req.headers[LOCAL_VOICE_RUNTIME_AGENT_HEADER.toLowerCase()] =
+        values.agent;
+    }
+    if (values.conversation !== undefined) {
+      ctx.req.headers[LOCAL_VOICE_RUNTIME_CONVERSATION_HEADER.toLowerCase()] =
+        values.conversation;
+    }
+
+    await handleConversationRoutes(ctx);
+
+    expect(record.writes.join("")).toContain(
+      "error 400: Local voice runtime identity headers are invalid",
+    );
+    expect(useModel).not.toHaveBeenCalled();
+  });
+
+  it("fails closed when the fenced runtime is replaced during pre-model work", async () => {
+    const preparationStarted = createDeferred();
+    const preparationGate = createDeferred();
+    userMessagePreparationHook = async () => {
+      preparationStarted.resolve();
+      await preparationGate.promise;
+    };
+    const { ctx, record, state, useModel } = createCtx();
+    stampLocalVoiceRuntimeFence(ctx);
+    vi.mocked(persistConversationMemory).mockClear();
+    vi.mocked(persistAssistantConversationMemory).mockClear();
+
+    const turn = handleConversationRoutes(ctx);
+    await preparationStarted.promise;
+    state.runtime = createState().state.runtime;
+    preparationGate.resolve();
+    await turn;
+
+    expect(parseSsePayloads(record.writes)).toContainEqual(
+      expect.objectContaining({
+        type: "error",
+        message: "Local voice agent runtime changed",
+      }),
+    );
+    expect(useModel).not.toHaveBeenCalled();
+    expect(persistConversationMemory).not.toHaveBeenCalled();
+    expect(persistAssistantConversationMemory).not.toHaveBeenCalled();
+  });
+
+  it("blocks durable recovery writes when the fenced runtime changes during its read", async () => {
+    requestClientMessageId = "voice-runtime-recovery-fence";
+    const recoveryReadStarted = createDeferred();
+    const recoveryReadGate = createDeferred();
+    const { ctx, record, state, useModel } = createCtx();
+    stampLocalVoiceRuntimeFence(ctx);
+    const runtime = state.runtime;
+    if (!runtime) throw new Error("runtime fixture missing");
+    const scope = `${AGENT_ID}:${ROOM_ID}:${USER_ID}`;
+    const fingerprint = crypto
+      .createHash("sha256")
+      .update(
+        JSON.stringify({
+          channelType: ChannelType.DM,
+          prompt: DEFAULT_REQUEST_PROMPT,
+          source: "api",
+        }),
+      )
+      .digest("hex");
+    const userMessageId = stringToUuid(
+      `conversation-user:${scope}:${requestClientMessageId}`,
+    ) as UUID;
+    vi.mocked(runtime.getMemoriesByIds).mockResolvedValueOnce([
+      {
+        id: userMessageId,
+        entityId: USER_ID,
+        agentId: AGENT_ID,
+        roomId: ROOM_ID,
+        content: {
+          text: DEFAULT_REQUEST_PROMPT,
+          channelType: ChannelType.DM,
+          chatIdempotency: {
+            version: 1,
+            scope,
+            clientMessageId: requestClientMessageId,
+            fingerprint,
+          },
+        },
+        createdAt: Date.now(),
+      } as Memory,
+    ]);
+    vi.mocked(runtime.getMemories).mockImplementationOnce(async () => {
+      recoveryReadStarted.resolve();
+      await recoveryReadGate.promise;
+      return [];
+    });
+    vi.mocked(runtime.createMemory).mockClear();
+    vi.mocked(runtime.updateMemory).mockClear();
+    vi.mocked(persistConversationMemory).mockClear();
+    vi.mocked(persistAssistantConversationMemory).mockClear();
+
+    const turn = handleConversationRoutes(ctx);
+    await recoveryReadStarted.promise;
+    state.runtime = createState().state.runtime;
+    recoveryReadGate.resolve();
+    await turn;
+
+    expect(parseSsePayloads(record.writes)).toContainEqual(
+      expect.objectContaining({
+        type: "error",
+        message: expect.stringContaining("Local voice agent runtime changed"),
+      }),
+    );
+    expect(runtime.updateMemory).not.toHaveBeenCalled();
+    expect(runtime.createMemory).not.toHaveBeenCalled();
+    expect(useModel).not.toHaveBeenCalled();
+    expect(persistConversationMemory).not.toHaveBeenCalled();
+    expect(persistAssistantConversationMemory).not.toHaveBeenCalled();
+  });
+
+  it("rechecks a request fence after exact-memory lookup and before creation", async () => {
+    const lookupStarted = createDeferred();
+    const lookupGate = createDeferred();
+    const { state } = createCtx();
+    const runtime = state.runtime;
+    if (!runtime) throw new Error("runtime fixture missing");
+    vi.mocked(runtime.getMemoriesByIds).mockImplementationOnce(async () => {
+      lookupStarted.resolve();
+      await lookupGate.promise;
+      return [];
+    });
+    vi.mocked(runtime.createMemory).mockClear();
+    let current = true;
+    const memory = createMessageMemory({
+      id: stringToUuid("fenced-exact-memory"),
+      entityId: AGENT_ID,
+      agentId: AGENT_ID,
+      roomId: ROOM_ID,
+      content: { text: "must not cross the fence" },
+    });
+
+    const persistence = persistExactConversationMemoryResult(
+      runtime,
+      memory,
+      undefined,
+      () => {
+        if (!current) throw new Error("request fence changed");
+      },
+    );
+    await lookupStarted.promise;
+    current = false;
+    lookupGate.resolve();
+
+    await expect(persistence).rejects.toThrow("request fence changed");
+    expect(runtime.createMemory).not.toHaveBeenCalled();
+  });
+
+  it("rechecks the interrupted-receipt fence after lookup and before creation", async () => {
+    const lookupStarted = createDeferred();
+    const lookupGate = createDeferred();
+    const { state } = createCtx();
+    const runtime = state.runtime;
+    if (!runtime) throw new Error("runtime fixture missing");
+    vi.mocked(runtime.getMemoriesByIds).mockImplementationOnce(async () => {
+      lookupStarted.resolve();
+      await lookupGate.promise;
+      return [];
+    });
+    vi.mocked(runtime.createMemory).mockClear();
+    let current = true;
+
+    const persistence = persistInterruptedAssistantReceipt(
+      runtime,
+      ROOM_ID,
+      "partial reply",
+      ChannelType.DM,
+      stringToUuid("interrupted-user-message") as UUID,
+      stringToUuid("interrupted-assistant-receipt") as UUID,
+      undefined,
+      () => {
+        if (!current) throw new Error("interrupted receipt fence changed");
+      },
+    );
+    await lookupStarted.promise;
+    current = false;
+    lookupGate.resolve();
+
+    await expect(persistence).rejects.toThrow(
+      "interrupted receipt fence changed",
+    );
+    expect(runtime.createMemory).not.toHaveBeenCalled();
+  });
+
+  it("blocks the production user-memory write when runtime replacement wins its lookup race", async () => {
+    requestClientMessageId = "voice-user-memory-fence";
+    const lookupStarted = createDeferred();
+    const lookupGate = createDeferred();
+    const { ctx, record, state, useModel } = createCtx();
+    stampLocalVoiceRuntimeFence(ctx);
+    const runtime = state.runtime;
+    if (!runtime) throw new Error("runtime fixture missing");
+    vi.mocked(runtime.getMemoriesByIds)
+      .mockResolvedValueOnce([])
+      .mockImplementationOnce(async () => {
+        lookupStarted.resolve();
+        await lookupGate.promise;
+        return [];
+      });
+    vi.mocked(runtime.createMemory).mockClear();
+    vi.mocked(persistAssistantConversationMemory).mockClear();
+
+    const turn = handleConversationRoutes(ctx);
+    await lookupStarted.promise;
+    state.runtime = createState().state.runtime;
+    lookupGate.resolve();
+    await turn;
+
+    expect(parseSsePayloads(record.writes)).toContainEqual(
+      expect.objectContaining({
+        type: "error",
+        message: expect.stringContaining("Local voice agent runtime changed"),
+      }),
+    );
+    expect(runtime.createMemory).not.toHaveBeenCalled();
+    expect(useModel).not.toHaveBeenCalled();
+    expect(persistAssistantConversationMemory).not.toHaveBeenCalled();
+  });
+
+  it("rejects a missing bound conversation and resumes after it is restored", async () => {
+    const first = createCtx();
+    stampLocalVoiceRuntimeFence(first.ctx);
+    await handleConversationRoutes(first.ctx);
+    expect(first.useModel).toHaveBeenCalledTimes(1);
+
+    const conversation = first.state.conversations.get("conv-1");
+    if (!conversation) throw new Error("conversation fixture missing");
+    first.state.conversations.delete("conv-1");
+    const missing = createFollowupCtx(first.ctx, first.state);
+    stampLocalVoiceRuntimeFence(missing.ctx);
+    await handleConversationRoutes(missing.ctx);
+    expect(missing.record.writes.join("")).toContain(
+      "error 404: Conversation not found",
+    );
+    expect(first.useModel).toHaveBeenCalledTimes(1);
+
+    first.state.conversations.set("conv-1", conversation);
+    const restored = createFollowupCtx(first.ctx, first.state);
+    stampLocalVoiceRuntimeFence(restored.ctx);
+    await handleConversationRoutes(restored.ctx);
+    expect(first.useModel).toHaveBeenCalledTimes(2);
+    expect(
+      parseSsePayloads(restored.record.writes).some(
+        (payload) => payload.type === "done",
+      ),
+    ).toBe(true);
+  });
+
   it("completes an initial turn when room ownership requires explicit capability propagation", async () => {
     const { ctx, record, state } = createCtx();
     const runtime = state.runtime;
@@ -1048,6 +1385,7 @@ describe("conversation stream SSE contract (#10712)", () => {
       expect.any(Number),
       routeOwnedAssistantId,
       expect.anything(),
+      expect.any(Function),
     );
     // `done` is terminal — no token frames after it.
     expect(
@@ -1106,6 +1444,38 @@ describe("conversation stream SSE contract (#10712)", () => {
     expect(persistConversationMemory).toHaveBeenCalledTimes(1);
     expect(fixture.useModel).toHaveBeenCalledTimes(1);
     expect(fixture.record.ended).toBe(true);
+  });
+
+  it("blocks world-role mutation when runtime replacement wins its world lookup race", async () => {
+    const fixture = createCtx();
+    stampLocalVoiceRuntimeFence(fixture.ctx);
+    const runtime = fixture.state.runtime;
+    if (!runtime) throw new Error("runtime fixture missing");
+    const lookupStarted = createDeferred();
+    const lookupGate = createDeferred();
+    const getWorld = vi.mocked(runtime.getWorld).getMockImplementation();
+    if (!getWorld) throw new Error("world lookup fixture missing");
+    vi.mocked(runtime.getWorld).mockImplementationOnce(async (worldId) => {
+      lookupStarted.resolve();
+      await lookupGate.promise;
+      return getWorld(worldId);
+    });
+    vi.mocked(runtime.updateWorld).mockClear();
+
+    const turn = handleConversationRoutes(fixture.ctx);
+    await lookupStarted.promise;
+    fixture.state.runtime = createState().state.runtime;
+    lookupGate.resolve();
+    await turn;
+
+    expect(parseSsePayloads(fixture.record.writes)).toContainEqual(
+      expect.objectContaining({
+        type: "error",
+        message: expect.stringContaining("Local voice agent runtime changed"),
+      }),
+    );
+    expect(runtime.updateWorld).not.toHaveBeenCalled();
+    expect(fixture.useModel).not.toHaveBeenCalled();
   });
 
   it("serializes voice finals received 1.552s apart before preparation, persistence, and runtime execution", async () => {
@@ -1516,6 +1886,66 @@ describe("conversation stream SSE contract (#10712)", () => {
     expect(persistAssistantConversationMemory).not.toHaveBeenCalled();
   });
 
+  it("fails a fenced turn when the same conversation id is replaced mid-generation", async () => {
+    const generationStarted = createDeferred();
+    const generationGate = createDeferred();
+    const first = createCtx(
+      createGatedMessageService(generationStarted, generationGate),
+    );
+    stampLocalVoiceRuntimeFence(first.ctx);
+    const conversation = first.state.conversations.get("conv-1");
+    if (!conversation) throw new Error("conversation fixture missing");
+    vi.mocked(persistAssistantConversationMemory).mockClear();
+
+    const turn = handleConversationRoutes(first.ctx);
+    await generationStarted.promise;
+    first.state.conversations.set("conv-1", { ...conversation });
+    generationGate.resolve();
+    await turn;
+
+    const payloads = parseSsePayloads(first.record.writes);
+    expect(payloads).toContainEqual(
+      expect.objectContaining({
+        type: "error",
+        message: expect.stringContaining("conversation changed"),
+      }),
+    );
+    expect(payloads.some((payload) => payload.type === "done")).toBe(false);
+    expect(persistAssistantConversationMemory).not.toHaveBeenCalled();
+  });
+
+  it("blocks stale model tokens immediately after a fenced conversation replacement", async () => {
+    const tokenStarted = createDeferred();
+    const tokenGate = createDeferred();
+    const first = createCtx();
+    stampLocalVoiceRuntimeFence(first.ctx);
+    first.useModel.mockImplementation(async (_modelType, params) => {
+      tokenStarted.resolve();
+      await tokenGate.promise;
+      await params.onStreamChunk?.("stale voice token");
+      return { text: "stale voice token", thought: THOUGHT };
+    });
+    const conversation = first.state.conversations.get("conv-1");
+    if (!conversation) throw new Error("conversation fixture missing");
+
+    const turn = handleConversationRoutes(first.ctx);
+    await tokenStarted.promise;
+    first.state.conversations.set("conv-1", { ...conversation });
+    tokenGate.resolve();
+    await turn;
+
+    const payloads = parseSsePayloads(first.record.writes);
+    expect(payloads.filter((payload) => payload.type === "token")).toEqual([]);
+    expect(payloads).toContainEqual(
+      expect.objectContaining({
+        type: "error",
+        message: expect.stringContaining("conversation changed"),
+      }),
+    );
+    expect(payloads.some((payload) => payload.type === "done")).toBe(false);
+    expect(persistAssistantConversationMemory).not.toHaveBeenCalled();
+  });
+
   it("carries a direct VIEWS shortcut result on the terminal done frame", async () => {
     const { ctx, record } = createCtx(createViewShortcutMessageService());
 
@@ -1630,6 +2060,7 @@ describe("conversation stream SSE contract (#10712)", () => {
       expect.any(Number),
       expect.any(String),
       expect.anything(),
+      expect.any(Function),
     );
   });
 
@@ -2004,6 +2435,51 @@ describe("conversation stream SSE contract (#10712)", () => {
         targetId,
       ),
     ).rejects.toThrow("Failed to persist action callback history");
+  });
+
+  it("rechecks the callback-history fence after lookup and before update", async () => {
+    const targetId = stringToUuid("callback-fence-race") as UUID;
+    const lookupStarted = createDeferred();
+    const lookupGate = createDeferred();
+    const { state } = createCtx();
+    const runtime = state.runtime;
+    if (!runtime) throw new Error("runtime fixture missing");
+    vi.mocked(runtime.getMemoriesByIds).mockImplementationOnce(async () => {
+      lookupStarted.resolve();
+      await lookupGate.promise;
+      return [
+        {
+          id: targetId,
+          entityId: AGENT_ID,
+          agentId: AGENT_ID,
+          roomId: ROOM_ID,
+          content: { text: "Calendar is ready." },
+          createdAt: Date.now(),
+        },
+      ];
+    });
+    runtime.updateMemory = vi.fn(async () => true);
+    let current = true;
+
+    const persistence = persistRecentAssistantActionCallbackHistory(
+      runtime,
+      ROOM_ID,
+      ["VIEWS"],
+      Date.now(),
+      targetId,
+      undefined,
+      () => {
+        if (!current) throw new Error("callback history fence changed");
+      },
+    );
+    await lookupStarted.promise;
+    current = false;
+    lookupGate.resolve();
+
+    await expect(persistence).rejects.toThrow(
+      "Failed to persist action callback history",
+    );
+    expect(runtime.updateMemory).not.toHaveBeenCalled();
   });
 
   it("marks intentionally transient replies without inventing a durable id", async () => {

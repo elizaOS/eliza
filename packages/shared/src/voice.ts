@@ -11,6 +11,16 @@
  */
 export const REALTIME_VOICE_CLIENT_TRANSPORT = "realtime_voice" as const;
 
+/**
+ * Loopback-only identity fence stamped by the local voice bridge. The agent
+ * host uses this pair to reject turns after an in-process runtime or
+ * conversation replacement instead of delivering them to stale state.
+ */
+export const LOCAL_VOICE_RUNTIME_AGENT_HEADER =
+  "X-Eliza-Local-Voice-Agent-Id" as const;
+export const LOCAL_VOICE_RUNTIME_CONVERSATION_HEADER =
+  "X-Eliza-Local-Voice-Conversation-Id" as const;
+
 export interface VoicePreset {
   id: string;
   name: string;
