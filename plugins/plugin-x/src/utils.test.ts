@@ -88,6 +88,66 @@ describe("sendTweet", () => {
     );
   });
 
+  it("truncates 141 CJK characters to the X weighted 280 cap before egress", async () => {
+    const authenticatedProfile = profile("account-a");
+    const runtime = {
+      agentId: "agent-1",
+      character: { name: "Agent" },
+      getSetting: () => undefined,
+      getCache: vi.fn(async () => undefined),
+      setCache: vi.fn(async () => undefined),
+      reportError: vi.fn(),
+    } as unknown as IAgentRuntime;
+    const client = new ClientBase(runtime, {} as TwitterClientState);
+    const send = vi.fn().mockResolvedValue({
+      data: { data: { id: "cjk-1", text: "你".repeat(140) } },
+    });
+    client.twitterClient = {
+      sendTweet: send,
+    } as unknown as ClientBase["twitterClient"];
+    client.withAuthenticatedSession = async (operation) =>
+      operation({
+        client: {} as never,
+        profile: authenticatedProfile,
+        revision: 1,
+      });
+    client.isAuthenticatedSessionCurrent = () => true;
+
+    await sendTweet(client, "你".repeat(141));
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(send.mock.calls[0]?.[0]).toBe("你".repeat(140));
+  });
+
+  it("sends a 280-character Latin tweet unchanged", async () => {
+    const authenticatedProfile = profile("account-a");
+    const runtime = {
+      agentId: "agent-1",
+      character: { name: "Agent" },
+      getSetting: () => undefined,
+      getCache: vi.fn(async () => undefined),
+      setCache: vi.fn(async () => undefined),
+      reportError: vi.fn(),
+    } as unknown as IAgentRuntime;
+    const client = new ClientBase(runtime, {} as TwitterClientState);
+    const latin = "a".repeat(280);
+    const send = vi.fn().mockResolvedValue({
+      data: { data: { id: "latin-1", text: latin } },
+    });
+    client.twitterClient = {
+      sendTweet: send,
+    } as unknown as ClientBase["twitterClient"];
+    client.withAuthenticatedSession = async (operation) =>
+      operation({
+        client: {} as never,
+        profile: authenticatedProfile,
+        revision: 1,
+      });
+    client.isAuthenticatedSessionCurrent = () => true;
+
+    await sendTweet(client, latin);
+    expect(send.mock.calls[0]?.[0]).toBe(latin);
+  });
+
   it("leaves a null mention cursor untouched after publishing", async () => {
     // With no prior mention checkpoint, a send must not seed the cursor either;
     // the interactions loop, not the poster, owns the very first checkpoint.
