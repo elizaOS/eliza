@@ -69,6 +69,7 @@ import {
 	type ActionCatalog,
 	buildActionCatalog,
 	type LocalizedActionExampleResolver,
+	normalizeActionName,
 } from "../runtime/action-catalog";
 import {
 	actionGateFailure,
@@ -90,6 +91,7 @@ import {
 	getCandidateActionBackstopRules,
 } from "../runtime/candidate-action-backstop";
 import { isCanonicalModelCapabilityDisabled } from "../runtime/canonical-model-capabilities.ts";
+import { isProgressiveContentProjectionEnabled } from "../runtime/content-projection-policy";
 import { filterProvidersByContextGate } from "../runtime/context-gates.ts";
 import { computePrefixHashes, hashString } from "../runtime/context-hash";
 import {
@@ -161,6 +163,7 @@ import {
 	runPlannerLoop,
 	summarizeActionResultForPlanner,
 } from "../runtime/planner-loop";
+import { renderActionResultsForModel } from "../runtime/planner-rendering";
 import {
 	extractReplyTextFromTranscript,
 	looksLikeRawFieldTranscript,
@@ -267,6 +270,7 @@ import type {
 } from "../types/message-service";
 import {
 	MESSAGE_SOURCE_CLIENT_CHAT,
+	MESSAGE_SOURCE_SUB_AGENT,
 	MESSAGE_SOURCE_TRIGGER_PROMPT,
 } from "../types/message-source";
 import type {
@@ -1688,17 +1692,46 @@ function trackSettledPlannerToolResult(
 export function subAgentCompletionRelayBody(
 	text: string | undefined,
 ): string | undefined {
-	if (!text) return undefined;
-	const trimmed = text.trimStart();
-	if (!trimmed.startsWith("[sub-agent:")) return undefined;
-	const headerEnd = trimmed.indexOf("]");
-	if (headerEnd < 0) return undefined;
-	if (!trimmed.slice(0, headerEnd + 1).includes("task_complete")) {
-		return undefined;
-	}
+	const parsed = parseSubAgentTaskCompleteRelay(text);
+	if (!parsed) return undefined;
+	const { trimmed, headerEnd } = parsed;
 	const body = trimmed.slice(headerEnd + 1).trim();
 	if (!body) return undefined;
 	return toWellFormedUnicode(body);
+}
+
+/**
+ * Parses the complete bracketed status header emitted by the sub-agent router.
+ * Status matching stays inside that header and requires either the compact
+ * legacy form or the router's delimited status field; task text and result
+ * bodies are untrusted prose and cannot classify a relay as complete.
+ */
+function parseSubAgentTaskCompleteRelay(
+	text: string | undefined,
+): { trimmed: string; headerEnd: number } | undefined {
+	if (!text) return undefined;
+	const trimmed = text.trimStart();
+	if (!trimmed.startsWith("[sub-agent:")) return undefined;
+	const compactHeader = "[sub-agent:task_complete]";
+	if (trimmed.startsWith(compactHeader)) {
+		return { trimmed, headerEnd: compactHeader.length - 1 };
+	}
+	const lineEnd = trimmed.indexOf("\n");
+	if (lineEnd < 0) return undefined;
+	const headerLine = trimmed.slice(0, lineEnd).trimEnd();
+	if (!headerLine.endsWith("]")) return undefined;
+	const headerEnd = headerLine.length - 1;
+	const header = trimmed.slice(0, headerEnd + 1);
+	const inner = header.slice("[sub-agent:".length, -1).trim();
+	const routeDelimiters = [...inner.matchAll(/\([^()\r\n]+\)\s—\s*/gu)];
+	const finalDelimiter = routeDelimiters.at(-1);
+	if (finalDelimiter?.index === undefined) return undefined;
+	const routedStatus = inner.slice(
+		finalDelimiter.index + finalDelimiter[0].length,
+	);
+	return /^task_complete(?:\s—|$)/iu.test(routedStatus)
+		? { trimmed, headerEnd }
+		: undefined;
 }
 
 /**
@@ -2540,14 +2573,13 @@ function isSubAgentCompletionArtifact(memory: Memory): boolean {
 	const content = memory.content;
 	if (!content || typeof content !== "object") return false;
 	const metadata =
-		content.metadata && typeof content.metadata === "object"
+		content.metadata &&
+		typeof content.metadata === "object" &&
+		!Array.isArray(content.metadata)
 			? (content.metadata as Record<string, unknown>)
-			: {};
-	if (metadata.subAgent === true) return true;
+			: undefined;
 	const source = typeof content.source === "string" ? content.source : "";
-	if (source.startsWith("acpx:sub-agent-router")) return true;
-	const text = typeof content.text === "string" ? content.text.trim() : "";
-	return text.startsWith("[sub-agent:");
+	return source === MESSAGE_SOURCE_SUB_AGENT && metadata?.subAgent === true;
 }
 
 function looksLikePriorDialogueArtifact(text: string): boolean {
@@ -3092,11 +3124,7 @@ const CODING_SUB_AGENT_EXCLUDED_ACTIONS: ReadonlySet<string> = new Set(
 );
 
 function actionNameTokenKey(name: string): string {
-	return normalizeActionIdentifier(name)
-		.split("_")
-		.filter(Boolean)
-		.sort()
-		.join("_");
+	return normalizeActionName(name).split("_").filter(Boolean).sort().join("_");
 }
 
 function getMessageHandlerCandidateActions(
@@ -3284,9 +3312,7 @@ function buildV5PlannerActionSurface(params: {
 	// may legitimately act (answer a child, coordinate a sibling).
 	if (
 		isSubAgentCompletionArtifact(params.message) &&
-		String(params.message.content?.text ?? "")
-			.slice(0, 400)
-			.includes("task_complete")
+		parseSubAgentTaskCompleteRelay(String(params.message.content?.text ?? ""))
 	) {
 		return {
 			exposedActionNames: new Set<string>(),
@@ -7717,7 +7743,7 @@ export async function runShortcutGate(args: {
 		};
 	}
 	const resultState = actionResult
-		? withActionResultsForPrompt(args.state, [actionResult])
+		? withActionResultsForPrompt(args.state, [actionResult], args.runtime)
 		: args.state;
 	const shortcutActionResults = actionResult ? [actionResult] : [];
 	const shortcutReplyDecision = evaluatePlannedReplyEgress({
@@ -9433,6 +9459,41 @@ export async function runV5MessageRuntimeStage1(args: {
 					}
 				}
 
+				if (
+					!callbackDelivered &&
+					result.success === true &&
+					result.modelReplyRequired === true
+				) {
+					return runPlannerLoop({
+						runtime: plannerRuntime,
+						context: plannerContextAfterEarlyReply,
+						config: args.plannerLoopConfig,
+						postToolReplySeed: { toolCall, result },
+						executeToolCall: () => {
+							throw new Error(
+								"Post-tool reply synthesis cannot execute another tool",
+							);
+						},
+						evaluate: ({
+							runtime: plannerRuntimeForEval,
+							context,
+							trajectory,
+						}) =>
+							runEvaluator({
+								runtime: plannerRuntimeForEval,
+								context,
+								trajectory,
+								effects: evaluatorEffects,
+								recorder,
+								trajectoryId,
+							}),
+						evaluatorEffects,
+						recorder,
+						trajectoryId,
+						providerAttributionState: plannerState,
+					});
+				}
+
 				const reportableResultText = result.userFacingText?.trim();
 				const finalMessage =
 					!callbackDelivered &&
@@ -9752,7 +9813,7 @@ export async function runV5MessageRuntimeStage1(args: {
 		);
 		const finalPlannerState =
 			actionResults.length > 0
-				? withActionResultsForPrompt(plannerState, actionResults)
+				? withActionResultsForPrompt(plannerState, actionResults, args.runtime)
 				: plannerState;
 		const plannedTextRaw = String(plannerResult.finalMessage ?? "").trim();
 		const deliveredMediaUrls = collectMediaDeliveryUrls(actionResults);
@@ -12166,12 +12227,18 @@ async function rewriteActionCallbackInCharacter(args: {
 export function withActionResultsForPrompt(
 	state: State,
 	actionResults: ActionResult[],
+	runtime?: IAgentRuntime,
 ): State {
+	const promptActionResults = isProgressiveContentProjectionEnabled(runtime)
+		? renderActionResultsForModel(actionResults, {
+				omitRecoverableText: true,
+			}).text
+		: formatActionResultsForPrompt(actionResults);
 	return {
 		...state,
 		values: {
 			...state.values,
-			actionResults: formatActionResultsForPrompt(actionResults),
+			actionResults: promptActionResults,
 		},
 		data: {
 			...state.data,

@@ -127,6 +127,9 @@
       "@elizaos/capacitor-appblocker": [
         "../../plugins/plugin-native-appblocker/src/index.ts"
       ],
+      "@elizaos/capacitor-secure-store": [
+        "../../plugins/plugin-native-secure-store/src/index.ts"
+      ],
       "@elizaos/capacitor-phone": [
         "../../plugins/plugin-native-phone/src/index.ts"
       ],

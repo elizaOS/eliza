@@ -444,6 +444,11 @@ export async function resolveAuthorizedRouteRole(
   req: Pick<http.IncomingMessage, "headers" | "socket" | "method">,
   options: AuthorizedRouteRoleOptions,
 ): Promise<RouteRoleResolution> {
+  // Trusted local requests bypass the rate limiter, matching the ordering in
+  // {@link ensureCompatApiAuthorized}. A burst of failed renderer auth attempts
+  // must not block the desktop shell's local login-persistence request.
+  if (isTrustedLocalRequest(req)) return { ok: true, role: "OWNER" };
+
   const ip = req.socket.remoteAddress ?? null;
   if (isAuthRateLimited(ip)) {
     return {
@@ -452,8 +457,6 @@ export async function resolveAuthorizedRouteRole(
       reason: "Too many authentication attempts",
     };
   }
-
-  if (isTrustedLocalRequest(req)) return { ok: true, role: "OWNER" };
 
   const state = "state" in options ? options.state : undefined;
   const db = state?.current?.adapter?.db;

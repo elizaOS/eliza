@@ -371,6 +371,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
   private ready = false;
   private readonly agentId: UUID;
   private documentMutationTail: Promise<void> = Promise.resolve();
+  private taskMutationTail: Promise<void> = Promise.resolve();
 
   constructor(storage: IStorage, agentId: UUID) {
     super();
@@ -2016,6 +2017,26 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
       if (task) tasks.push(task);
     }
     return tasks;
+  }
+
+  async updatePendingTask(id: UUID, task: Partial<Task>): Promise<boolean> {
+    const operation = async () => {
+      const existing = await this.storage.get<Task>(COLLECTIONS.TASKS, id);
+      if (
+        !existing?.tags?.includes("queue") ||
+        (existing.metadata?.status != null && existing.metadata.status !== "pending")
+      ) {
+        return false;
+      }
+      await this.storage.set(COLLECTIONS.TASKS, id, { ...existing, ...task, id });
+      return true;
+    };
+    const run = this.taskMutationTail.then(operation, operation);
+    this.taskMutationTail = run.then(
+      () => undefined,
+      () => undefined
+    );
+    return run;
   }
 
   async updateTasks(updates: Array<{ id: UUID; task: Partial<Task> }>): Promise<void> {

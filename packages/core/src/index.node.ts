@@ -143,6 +143,9 @@ export type {
 	MessageAdapterCapabilities,
 	MessageRef,
 	MessageSource,
+	ReadMessageControl,
+	ReadMessageRequest,
+	ReadMessageResult,
 	ScoreContext,
 	SearchMessagesFilters,
 	SendPolicy,
@@ -256,6 +259,8 @@ export {
 	registerCandidateActionBackstopRule,
 } from "./runtime/candidate-action-backstop";
 export * from "./runtime/cleanup-scope";
+export * from "./runtime/content-access-manifest";
+export * from "./runtime/content-projection-policy";
 export * from "./runtime/context-gates";
 export * from "./runtime/context-registry";
 export {
@@ -290,6 +295,7 @@ export {
 // layers (message service, orchestrator completion relays) can recognize it
 // by identity and drop it as redundant next to an authoritative outcome.
 export { FAILED_TOOL_FALLBACK_MESSAGE } from "./runtime/planner-loop";
+export { renderActionResultsForModel } from "./runtime/planner-rendering";
 export * from "./runtime/response-grammar";
 export * from "./runtime/response-handler-evaluators";
 export * from "./runtime/response-handler-field-evaluator";
@@ -387,7 +393,11 @@ export * from "./services/setup-state";
 // TaskService is exported so hosts and tests can `instanceof`-check the
 // runtime-registered instance; a relative src import would create a second
 // class identity against the built package and always fail that check.
-export { TaskService } from "./services/task";
+export {
+	TaskService,
+	type TaskServiceClock,
+	type TaskServiceTimerHandle,
+} from "./services/task";
 export {
 	getTaskSchedulerAdapter,
 	markTaskSchedulerDirty,

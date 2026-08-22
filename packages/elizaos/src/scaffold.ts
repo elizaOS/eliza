@@ -1,7 +1,8 @@
 /**
  * Template rendering engine for the CLI: builds token values, copies template
  * trees, hydrates upstream submodules, and computes managed-file diffs for
- * create and upgrade.
+ * create and upgrade. Conflicted paths stay untracked so the ledger hash always
+ * matches bytes last written by this engine.
  */
 
 import { execFileSync } from "node:child_process";
@@ -538,6 +539,10 @@ export function updateManagedFiles(options: {
     if (!previousHash && nextHash) {
       if (currentHash && currentHash !== nextHash) {
         conflicts.push(relativePath);
+        // Same untrack policy as a locally-edited managed file: recording the
+        // rendered hash here would claim the template contents were written
+        // when the on-disk file is still the local copy.
+        delete nextManagedFiles[relativePath];
         continue;
       }
       created.push(relativePath);

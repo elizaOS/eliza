@@ -307,9 +307,8 @@ function configuredDefaultAgentType(runtime: {
   // Fall back to process.env. runtime.getSetting reads character
   // settings/secrets, not raw env, so a deployment that configures the default
   // agent purely via an env var (e.g. ELIZA_ACP_DEFAULT_AGENT=codex on a
-  // container) would otherwise be ignored and the spawn would fall through to
-  // the "opencode" fallback, which may not be installed. This mirrors the env
-  // resolution the spawn-workdir path already does.
+  // container) would otherwise be ignored. This mirrors the env resolution the
+  // spawn-workdir path already does.
   for (const key of ["ELIZA_ACP_DEFAULT_AGENT", "ELIZA_DEFAULT_AGENT_TYPE"]) {
     const raw = process.env[key];
     if (typeof raw === "string" && raw.trim().length > 0) return raw.trim();
@@ -1170,7 +1169,7 @@ export class OrchestratorTaskService extends Service {
   private subscribeToAcp(acp: AcpService): void {
     this.unsubscribe = acp.onSessionEvent(
       (sessionId, event, data, sessionSnapshot, turnId) => {
-        void this.onSessionEvent(
+        return this.onSessionEvent(
           sessionId,
           event,
           data,
@@ -1636,6 +1635,10 @@ export class OrchestratorTaskService extends Service {
           note: "further event-record failures for this session are suppressed",
         });
       }
+      // Account identity is an authority boundary: its caller awaits this
+      // consumer before exposing failover credentials to a child. Other
+      // telemetry events retain their established diagnostics-only behavior.
+      if (event === "account_switched") throw err;
     }
   }
 

@@ -172,14 +172,14 @@ export function createAgentOrchestratorPlugin(): Plugin {
           overrides: {
             spawn_agent: {
               description:
-                "Delegate a coding task to a dedicated ACP coding sub-agent (claude / codex / opencode — selected from configured providers). USE THIS when the user explicitly asks to delegate coding work, use a coding adapter by name, or run substantial multi-step coding work that benefits from a dedicated workspace and its own tool loop. The coding sub-agent runs in its own workspace, can read / write / edit files and run tests, and reports back when done. Prefer this over inline FILE / BASH tools whenever delegation is the user's intent — even for single-file tasks if delegation is explicitly requested. IMPORTANT: if `# Active sub-agent sessions` shows a live sub-agent already working on the SAME workdir (or the same logical area of the same workdir), prefer `TASKS_SEND_TO_AGENT` to continue that session instead of spawning a parallel agent in the same workspace. Parallel agents in one workdir race on files and waste tokens — only spawn when the existing session is on a different workdir, is terminal (stopped/errored), or the new task is unrelated to the in-flight work.",
+                "Delegate a coding task to a dedicated ACP coding sub-agent (elizaos / pi-agent / claude / codex — selected from configured providers). USE THIS when the user explicitly asks to delegate coding work, use a coding adapter by name, or run substantial multi-step coding work that benefits from a dedicated workspace and its own tool loop. The coding sub-agent runs in its own workspace, can read / write / edit files and run tests, and reports back when done. Prefer this over inline FILE / BASH tools whenever delegation is the user's intent — even for single-file tasks if delegation is explicitly requested. IMPORTANT: if `# Active sub-agent sessions` shows a live sub-agent already working on the SAME workdir (or the same logical area of the same workdir), prefer `TASKS_SEND_TO_AGENT` to continue that session instead of spawning a parallel agent in the same workspace. Parallel agents in one workdir race on files and waste tokens — only spawn when the existing session is on a different workdir, is terminal (stopped/errored), or the new task is unrelated to the in-flight work.",
               // Compressed blurb is what the planner sees in tier-A
               // summaries; if we don't override it, it inherits the
               // generic parent enum dump and the planner can't tell
               // `TASKS_SPAWN_AGENT` apart from inline `FILE.write` for
               // delegation requests. See the parent comment above.
               descriptionCompressed:
-                "delegate ACP coding sub-agent claude|codex|opencode; multi-step; prefer TASKS_SEND if active session exists on same workdir",
+                "delegate ACP coding sub-agent elizaos|pi-agent|claude|codex; multi-step; prefer TASKS_SEND if active session exists on same workdir",
             },
           },
         }),
