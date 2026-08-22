@@ -36,6 +36,7 @@ const RUN_OPTIONS: Omit<ContainerRunOptions, "name"> = {
 
 let binDirectory: string;
 let sentinelPath: string;
+let previousBaseline: string | undefined;
 
 /** Installs the stand-in `container` executable for the next spawn. */
 function installContainerStub(body: string): void {
@@ -61,10 +62,18 @@ describe.skipIf(process.platform === "win32")(
       sentinelPath = join(binDirectory, "stdout-flushed");
       // The baseline is captured once per module registry, so every case in
       // this file resolves `container` from this one directory.
+      previousBaseline = process.env.ELIZA_HOST_EXECUTION_BASELINE_PATH;
       process.env.ELIZA_HOST_EXECUTION_BASELINE_PATH = binDirectory;
     });
 
     afterAll(() => {
+      // Other files can share this vitest worker, so the baseline override must
+      // not outlive this suite.
+      if (previousBaseline === undefined) {
+        delete process.env.ELIZA_HOST_EXECUTION_BASELINE_PATH;
+      } else {
+        process.env.ELIZA_HOST_EXECUTION_BASELINE_PATH = previousBaseline;
+      }
       rmSync(binDirectory, { recursive: true, force: true });
     });
 
@@ -77,7 +86,9 @@ describe.skipIf(process.platform === "win32")(
           `process.stdout.write("x".repeat(300000), () => {`,
           `  fs.writeFileSync(${JSON.stringify(sentinelPath)}, "");`,
           "});",
-          "setTimeout(() => process.exit(0), 5000);",
+          // Just past the engine's 2s start check, so the child is treated as
+          // running without being left orphaned once the test finishes.
+          "setTimeout(() => process.exit(0), 2500);",
         ].join("\n"),
       );
 
