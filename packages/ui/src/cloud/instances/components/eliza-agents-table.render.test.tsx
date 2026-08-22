@@ -199,6 +199,9 @@ describe("ElizaAgentsTable per-row view model", () => {
         name: "Open Web UI",
       }),
     ).toHaveLength(1);
+    expect(screen.queryByRole("link", { name: "Dedicated Eliza" })).toBeNull();
+    expect(screen.getAllByText("Dedicated Eliza")).toHaveLength(2);
+    expect(screen.queryByRole("link", { name: "Open Eliza app" })).toBeNull();
     expect(
       within(dedicatedRow as HTMLElement).getByRole("button", {
         name: "Delete agent",
