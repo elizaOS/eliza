@@ -45,6 +45,7 @@ import {
   dedicatedCloudAgentIdFromBase,
   isDedicatedCloudAgentBase,
   isElizaCloudControlPlaneAgentlessBase,
+  isPersonalSharedElizaId,
 } from "../utils/cloud-agent-base";
 import { isTerminalDedicatedCloudAgentErrorState as classifyTerminalDedicatedCloudAgentErrorState } from "./dedicated-cloud-agent-error";
 import {
@@ -66,8 +67,7 @@ import { STARTUP_TIMING_POLICY } from "./startup-timing-policy";
 function isCapacitorNative(): boolean {
   try {
     const cap = (globalThis as Record<string, unknown>).Capacitor as
-      | { isNativePlatform?: () => boolean }
-      | undefined;
+      { isNativePlatform?: () => boolean } | undefined;
     return Boolean(cap?.isNativePlatform?.());
   } catch {
     return false;
@@ -286,6 +286,12 @@ async function sharedCloudAgentIsMissingFromRunningSet(
 ): Promise<boolean> {
   const agentId = sharedCloudAgentIdFromBase(base);
   if (!agentId) return false;
+  // The signed-in account's personal Eliza is rowless by design: it is served
+  // by `/api/v1/eliza/personal` and never appears in the sandbox running-set.
+  // Its shared adapter still legitimately 404s app-shell endpoints, so treating
+  // absence from `/agents` as deletion clears a healthy saved session on every
+  // reload and bounces the user back through first-run.
+  if (isPersonalSharedElizaId(agentId)) return false;
   if (!getCloudAuthToken(client)) return false;
 
   const priorBaseUrl = client.getBaseUrl();

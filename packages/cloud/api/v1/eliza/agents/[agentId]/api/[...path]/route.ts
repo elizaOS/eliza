@@ -30,6 +30,7 @@ import {
   sharedRestAgentEvents,
   sharedRestAgentStart,
   sharedRestAuthMe,
+  sharedRestAuthStatus,
   sharedRestCharacter,
   sharedRestCommands,
   sharedRestConfig,
@@ -47,11 +48,14 @@ import {
 } from "@/lib/services/shared-runtime/shared-rest-adapter";
 import type { AppEnv } from "@/types/cloud-worker-env";
 import { workflowRuntimeUnavailableResponse } from "../../workflows/_shared";
+import { proxyLocalDedicatedOrNext } from "../_local-dedicated-proxy";
 
 const CORS_METHODS = "GET, POST, PUT, DELETE, OPTIONS";
 const MAX_PUSH_REGISTRATION_BODY_BYTES = 8_192;
 
 const app = new Hono<AppEnv>();
+
+app.use("*", proxyLocalDedicatedOrNext);
 
 function json(
   c: Context<AppEnv>,
@@ -286,6 +290,8 @@ app.get("/", async (c) => {
       // key (resolveSharedAgent validated it), so report the authed machine
       // identity instead of 404'ing into "server_unavailable".
       return json(c, sharedRestAuthMe(r.agentId, r.agentName));
+    case "auth/status":
+      return json(c, sharedRestAuthStatus());
     case "runtime/mode":
       return json(c, sharedRestRuntimeMode());
     case "commands":

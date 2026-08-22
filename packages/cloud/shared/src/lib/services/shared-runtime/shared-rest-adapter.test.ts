@@ -40,6 +40,7 @@ mock.module("./shared-runtime-chat", () => ({
 const {
   sharedRestAgentStart,
   sharedRestAuthMe,
+  sharedRestAuthStatus,
   sharedRestCharacter,
   sharedRestConfig,
   sharedRestConversationCreate,
@@ -203,6 +204,14 @@ describe("shared-rest-adapter — startup shell surface", () => {
 
   test("auth/me falls back to a display name when the agent has none", () => {
     expect(sharedRestAuthMe(AGENT, "").identity.displayName).toBe("Eliza");
+    expect(sharedRestAuthStatus()).toEqual({
+      required: false,
+      authenticated: true,
+      pairingEnabled: false,
+      expiresAt: null,
+      localAccess: false,
+      passwordConfigured: false,
+    });
   });
 });
 

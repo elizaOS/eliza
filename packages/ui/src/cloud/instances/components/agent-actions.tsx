@@ -57,6 +57,7 @@ import { ElizaClient } from "../../../api";
 import { Button } from "../../../components/ui/button";
 import { getBootConfig } from "../../../config/boot-config";
 import { runSharedToDedicatedUpgradeHandoff } from "../../handoff/start-tier-upgrade";
+import { silentlyRepointToDedicated } from "../../handoff/silent-repoint";
 import { apiWithStatus, readCloudBearerToken } from "../../lib/api-client";
 import { useT } from "../lib/i18n";
 import { openWebUIWithPairing } from "../lib/open-web-ui";
@@ -458,6 +459,13 @@ export function ElizaAgentActions({
         cloudApiBase,
         authToken,
         client: new ElizaClient(cloudApiBase, authToken),
+        onSwitch: (containerBase) =>
+          silentlyRepointToDedicated({
+            containerBase,
+            authToken,
+            dedicatedAgentId,
+            personalElizaId: agentId,
+          }),
         intervalMs: 5_000,
         timeoutMs: 10 * 60_000,
       });
