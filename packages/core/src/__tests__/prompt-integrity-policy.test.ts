@@ -40,6 +40,18 @@ const removedPromptCapCloneTests = [
 	"packages/core/src/services/trajectory-json.surrogate.test.ts",
 ];
 
+const computerUseTrajectoryBoundaryCalls: Record<string, readonly RegExp[]> = {
+	"plugins/plugin-computeruse/src/mobile/android-trajectory.ts": [
+		/assertComputerUseTrajectoryText\("errorMessage",\s*payload\.errorMessage\)/,
+		/buildComputerUseAgentStepTrajectoryPayload\(event\)/,
+	],
+	"plugins/plugin-computeruse/src/actions/use-computer-agent.ts": [
+		/assertComputerUseTrajectoryText\("goal",\s*goal\)/,
+		/assertComputerUseTrajectoryText\([\s\S]{0,80}"rationale"/,
+		/buildComputerUseAgentStepTrajectoryPayload\(\{/,
+	],
+};
+
 const guardedSources: Record<string, readonly RegExp[]> = {
 	"packages/core/src/entities.ts": [/getMemories\([\s\S]{0,240}limit:\s*20/],
 	"packages/core/src/utils/json-llm.ts": [/text\.slice\(0,\s*100_000\)/],
@@ -142,6 +154,13 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 	"plugins/plugin-computeruse/src/mobile/android-trajectory.ts": [
 		/MAX_ERROR_MSG/,
 		/errorMessage\s*=\s*[^;]*\.slice\(/,
+	],
+	"plugins/plugin-computeruse/src/trajectory-text.ts": [
+		/\.slice\(/,
+		/\.substring\(/,
+		/toWellFormedUnicode/,
+		/truncateWellFormed/,
+		/max(?:Chars|Tokens|Items)/i,
 	],
 	"plugins/plugin-cli-inference/src/prompt-flatten.ts": [
 		/MAX_TOOL_PAYLOAD_(?:DEPTH|NODES|CHARS)/,
@@ -508,6 +527,22 @@ describe("prompt integrity policy", () => {
 			);
 			for (const pattern of forbiddenPatterns) {
 				expect(source, `${relativePath} must not match ${pattern}`).not.toMatch(
+					pattern,
+				);
+			}
+		}
+	});
+
+	it("keeps both computer-use emitters behind the shared rejection boundary", () => {
+		for (const [relativePath, requiredPatterns] of Object.entries(
+			computerUseTrajectoryBoundaryCalls,
+		)) {
+			const source = readFileSync(
+				resolve(repositoryRoot, relativePath),
+				"utf8",
+			);
+			for (const pattern of requiredPatterns) {
+				expect(source, `${relativePath} must match ${pattern}`).toMatch(
 					pattern,
 				);
 			}

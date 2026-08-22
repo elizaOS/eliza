@@ -20,11 +20,16 @@
  *                                    lower-level action explicitly).
  *
  * We do not depend on `@elizaos/plugin-trajectory-logger` here — like the
- * desktop side, we publish via `logger.info({ evt, ... })` and rely on the
- * log-capture pipeline.
+ * desktop side, we validate complete free-form text at the shared boundary,
+ * publish via `logger.info({ evt, ... })`, and rely on the log-capture pipeline.
  */
 
 import { logger } from "@elizaos/core";
+import {
+  assertComputerUseTrajectoryText,
+  buildComputerUseAgentStepTrajectoryPayload,
+  type ComputerUseAgentStepTrajectoryPayload,
+} from "../trajectory-text.js";
 
 export type AndroidActionKind =
   | "tap"
@@ -55,16 +60,7 @@ export interface AndroidTrajectoryActionEvent {
   rationale?: string;
 }
 
-export interface AndroidTrajectoryStepEvent {
-  step: number;
-  goal: string;
-  actionKind: string;
-  displayId: number;
-  rois: number;
-  success: boolean;
-  error?: string;
-  rationale: string;
-}
+export type AndroidTrajectoryStepEvent = ComputerUseAgentStepTrajectoryPayload;
 
 /**
  * Emit a `computeruse.android.action` log entry. Returns the payload so
@@ -74,6 +70,10 @@ export function emitAndroidAction(
   event: AndroidTrajectoryActionEvent,
 ): AndroidTrajectoryActionEvent {
   const payload: AndroidTrajectoryActionEvent = { ...event };
+  assertComputerUseTrajectoryText("errorCode", payload.errorCode);
+  assertComputerUseTrajectoryText("errorMessage", payload.errorMessage);
+  assertComputerUseTrajectoryText("ref", payload.ref);
+  assertComputerUseTrajectoryText("rationale", payload.rationale);
   logger.info(
     {
       evt: "computeruse.android.action",
@@ -93,20 +93,14 @@ export function emitAndroidAction(
 export function emitAndroidAgentStep(
   event: AndroidTrajectoryStepEvent,
 ): AndroidTrajectoryStepEvent {
+  const payload = buildComputerUseAgentStepTrajectoryPayload(event);
   logger.info(
     {
       evt: "computeruse.agent.step",
       platform: "android" as const,
-      step: event.step,
-      goal: event.goal,
-      actionKind: event.actionKind,
-      displayId: event.displayId,
-      rois: event.rois,
-      success: event.success,
-      error: event.error,
-      rationale: event.rationale,
+      ...payload,
     },
-    `[computeruse/agent/android] step ${event.step}: ${event.actionKind}`,
+    `[computeruse/agent/android] step ${payload.step}: ${payload.actionKind}`,
   );
-  return event;
+  return payload;
 }
