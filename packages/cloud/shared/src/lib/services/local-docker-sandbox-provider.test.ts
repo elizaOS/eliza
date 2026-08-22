@@ -9,6 +9,7 @@ import { afterEach, describe, expect, mock, test } from "bun:test";
 
 import {
   collectLocalDockerLlmPassthrough,
+  parseLocalDockerBridgeGatewayCidrs,
   sandboxBridgeFetch,
 } from "./local-docker-sandbox-provider";
 
@@ -248,5 +249,18 @@ describe("collectLocalDockerLlmPassthrough", () => {
         { CEREBRAS_MODEL: "sandbox-model" },
       ),
     ).toEqual({});
+  });
+});
+
+describe("parseLocalDockerBridgeGatewayCidrs", () => {
+  test("admits only the exact IPv4 and IPv6 bridge gateways", () => {
+    expect(parseLocalDockerBridgeGatewayCidrs("172.17.0.1\nfd00::1\n172.17.0.1\n")).toBe(
+      "172.17.0.1/32,fd00::1/128",
+    );
+  });
+
+  test("fails closed when Docker omits or corrupts the gateway", () => {
+    expect(() => parseLocalDockerBridgeGatewayCidrs("\n")).toThrow("did not report a gateway");
+    expect(() => parseLocalDockerBridgeGatewayCidrs("not-an-ip\n")).toThrow("invalid gateway");
   });
 });
