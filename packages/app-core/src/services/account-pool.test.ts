@@ -1176,6 +1176,29 @@ describe("AccountPool drain-soonest-reset selection", () => {
       "priority",
     );
   });
+
+  it.each([
+    ["openrouter", "openrouter-api"],
+    ["xai", "xai-api"],
+  ] as const)(
+    "maps the %s inference route to its linked-account authority",
+    (backend, providerId) => {
+      configureDefaultAccountPoolSelection({
+        serviceRouting: {
+          llmText: {
+            backend,
+            accountIds: ["selected-account"],
+            strategy: "priority",
+          },
+        },
+      });
+
+      expect(selectionForProvider(providerId)).toEqual({
+        accountIds: ["selected-account"],
+        strategy: "priority",
+      });
+    },
+  );
 });
 
 describe("AccountPool.refreshUsage concurrent health-transition safety", () => {
