@@ -10,12 +10,6 @@ import { resolveOptimizedPrompt } from "../../services/optimized-prompt-resolver
 import { __renderRoutingHintsBlockForTests } from "../planner-loop";
 import type { ContextObject } from "../planner-types";
 
-// Wave 2-D: `ELIZA_PROMPT_COMPRESS=1` is the Cerebras token-budget escape
-// hatch. Cache-key snapshots in `cache-key-stability.test.ts` are NOT
-// expected to drift from this flag — the snapshots use a canonical
-// non-resolver prefix without routing hints. The behavior change is
-// observable here on the resolver + routing-hints renderer.
-
 function makeService(args: {
 	prompt: string;
 	fewShot: number;
@@ -53,7 +47,7 @@ function makeContext(): ContextObject {
 	} as unknown as ContextObject;
 }
 
-describe("Wave 2-D compress mode (ELIZA_PROMPT_COMPRESS)", () => {
+describe("retired ELIZA_PROMPT_COMPRESS mode", () => {
 	afterEach(() => {
 		delete process.env.ELIZA_PROMPT_COMPRESS;
 	});
@@ -74,7 +68,7 @@ describe("Wave 2-D compress mode (ELIZA_PROMPT_COMPRESS)", () => {
 		// in-context demonstrations here; #24134 removed that so the flag can no
 		// longer change what the model is taught from.
 		process.env.ELIZA_PROMPT_COMPRESS = "1";
-		const compressed = resolveOptimizedPrompt(
+		const resolved = resolveOptimizedPrompt(
 			service,
 			"message-handler",
 			baseline,
@@ -93,7 +87,7 @@ describe("Wave 2-D compress mode (ELIZA_PROMPT_COMPRESS)", () => {
 		expect(out).toBe("BASELINE");
 	});
 
-	it("skips routing-hint rendering when enabled", () => {
+	it("cannot suppress routing-hint rendering", () => {
 		const ctx = makeContext();
 		const before = __renderRoutingHintsBlockForTests(ctx);
 		expect(before).not.toBeNull();
@@ -102,7 +96,7 @@ describe("Wave 2-D compress mode (ELIZA_PROMPT_COMPRESS)", () => {
 		// Routing hints memo is keyed on context.events identity, so a fresh
 		// context is needed to observe the env flag change.
 		process.env.ELIZA_PROMPT_COMPRESS = "1";
-		const compressed = __renderRoutingHintsBlockForTests(makeContext());
-		expect(compressed).toBeNull();
+		const rendered = __renderRoutingHintsBlockForTests(makeContext());
+		expect(rendered).toContain("# Routing hints");
 	});
 });

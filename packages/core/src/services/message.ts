@@ -92,7 +92,6 @@ import {
 	getCandidateActionBackstopRules,
 } from "../runtime/candidate-action-backstop";
 import { isCanonicalModelCapabilityDisabled } from "../runtime/canonical-model-capabilities.ts";
-import { isProgressiveContentProjectionEnabled } from "../runtime/content-projection-policy";
 import { filterProvidersByContextGate } from "../runtime/context-gates.ts";
 import { computePrefixHashes, hashString } from "../runtime/context-hash";
 import {
@@ -320,7 +319,6 @@ import {
 } from "../utils";
 import {
 	collectActionResultSizeWarnings,
-	formatActionResultsForPrompt,
 	trimActionResultForPromptState,
 } from "../utils/action-results";
 import {
@@ -12468,13 +12466,9 @@ async function rewriteActionCallbackInCharacter(args: {
 export function withActionResultsForPrompt(
 	state: State,
 	actionResults: ActionResult[],
-	runtime?: IAgentRuntime,
+	_runtime?: IAgentRuntime,
 ): State {
-	const promptActionResults = isProgressiveContentProjectionEnabled(runtime)
-		? renderActionResultsForModel(actionResults, {
-				omitRecoverableText: true,
-			}).text
-		: formatActionResultsForPrompt(actionResults);
+	const promptActionResults = renderActionResultsForModel(actionResults).text;
 	return {
 		...state,
 		values: {
