@@ -31,8 +31,17 @@ Private, redacted ledger for the Gmail, Google Calendar, and Apple Calendar cand
 - Stable identity proof: three unique projection ids and three unique external ids; repeated sync, local-only purge, and re-seed all produced the same redacted identity digest `50aaf43ab7891dac0a9e6c4868c4b0fbb8e79c764ff677ba3c48e57db730f7b4`.
 - Local purge receipt: 0 Gmail messages and 3 calendar events removed; provider data was unchanged. Re-seed restored exactly 3 events with no duplicate rows.
 - Real Apple recurrence gate: Calendar reports 1 recurring rule in the disposable calendar, but the LifeOps feed reports 0 recurrence rules and no recurring event id. This confirms the preserved macOS EventKit serialization handoff remains required; `window-effects.mm` was not edited.
-- Google connect fails closed before provider contact because protected OAuth settings are absent. The current UI exposed the wrong fixed-port callback example (`31437`) for this isolated API (`43232`); the provider validator now derives the exact served callback, with 31 focused tests, typecheck, and Biome clean.
+- Google connect fails closed before provider contact because protected OAuth settings are absent. The current UI exposed the wrong fixed-port callback example (`31437`); the provider validator now derives the exact served callback from the browser request origin. For this session it is `http://127.0.0.1:43231/api/connectors/google/oauth/callback`, with the focused callback tests, typecheck, and Biome clean.
 - No Google redirect/provider access, email send, attendee invite, provider deletion, GitHub mutation, merge, signing, or deployment occurred.
+
+### Final current-base refresh and supervised cleanup
+
+- Rebased the thirteen-commit LifeOps stack without conflicts onto fetched `origin/develop` at `54663662f553ebd0ba92f33bbc44b7892bf9d6c4`; pre-ledger head `ea0e4c6f76332df286aacd48001bfcdd9808a444` is thirteen ahead and zero behind.
+- Old/new `git range-diff` reports thirteen exact `=` matches. Both cumulative stable patch IDs are `02d330b3df2f616c82f307cdc0e8e2cc3d444390`.
+- Current focused proof: deterministic LifeOps browser harness 48 scenarios passed; LifeOps connections component 7 tests passed; Inbox 26 files passed / 1 skipped with 226 tests passed / 2 skipped; Google Workspace 29 files and 328 tests passed. Google Workspace, Calendar, Inbox, and Native Calendar typechecks passed; focused Biome checks passed.
+- App audit completed 226 of 227 tests. Every LifeOps, Calendar, and Inbox desktop/mobile/iPad layout passed. The only failing test is `test/ui-smoke/all-views-aesthetic-audit.spec.ts` for four pre-existing `builtin-settings` readability findings plus the `plugin-trajectory-logger-gui` iPad assertion; those Settings/trajectory surfaces are outside this lane.
+- Apple cleanup is complete. The UI removed exactly 3 local calendar projections and reported that providers were unchanged; the three disposable events and dedicated `LifeOps QA 2026-08-22` calendar were then deleted, and an exact-name inventory check reports the target absent. No existing Apple calendar or event was changed.
+- Google OAuth and provider access remain unstarted because the three protected OAuth settings are absent. No Gmail message was read or sent and no Google Calendar event was created, changed, or deleted.
 
 ## Workspace and exact checkpoints
 
@@ -135,18 +144,19 @@ Legend: deterministic means fixture/unit/integration/local-browser evidence. Rea
 
 ## Doing
 
-- Checkpoint the exact-callback recovery fix, refresh/reconcile the moving `origin/develop`, and rerun the focused publication proof.
-- Continue Google supervised acceptance only after the protected OAuth settings are available; stop at the chooser/consent click.
+- Seal this exact current-base evidence as a mode-0600 ledger checkpoint and annotated tag.
+- Push the clean review branch and open a draft PR with the protected-Google, native-recurrence, and unrelated aggregate-audit gates stated explicitly. Merge and deployment remain prohibited.
 
 ## Next: true external gates only
 
 - Provision `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and isolated `GOOGLE_REDIRECT_URI` through a protected route; then user completes account chooser/consent/password/MFA for `nubs@nubs.site` at the action-time grant boundary.
-- Explicitly confirmed disposable self-mail and dedicated Google/Apple calendar effects, followed by reversible cleanup only of session-created artifacts.
+- User-supervised Google chooser/consent/password/MFA, followed by explicitly confirmed disposable self-mail and dedicated Google Calendar effects and cleanup only of session-created artifacts.
 - Token/cursor expiry, offline/reconnect, partial failure, dedupe, disconnect/purge/reconnect, and exact receipt acceptance.
 - macOS owner implementation and review of the preserved EventKit recurrence/exception serialization contract, followed by packaged exact-head Apple recurrence acceptance.
 - iOS simulator/physical-device EventKit permission, external-edit, recurrence, timezone/DST, and reconnect acceptance.
-- Focused tests, app audit, commit/tag, normal branch push, and draft PR. Merge, signing, and deployment remain prohibited.
+- macOS owner correction of EventKit recurrence/exception serialization and packaged validation; this lane's Apple disposable data is already cleaned up.
+- Hosted CI/reviewer acceptance and any later signing or deployment authorization. Merge, signing, and deployment remain prohibited.
 
 ## Concrete user action now
 
-- Provide `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` through the canonical protected settings route and set `GOOGLE_REDIRECT_URI` exactly to `http://127.0.0.1:43232/api/connectors/google/oauth/callback`. Then click **Continue to Google** and perform the account chooser/consent/MFA clicks when prompted. Do not paste any secret into chat.
+- Provide `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` through the canonical protected settings route and set `GOOGLE_REDIRECT_URI` exactly to `http://127.0.0.1:43231/api/connectors/google/oauth/callback`. Then click **Continue to Google** at `http://127.0.0.1:43231/lifeops/connections` and perform the account chooser/consent/MFA clicks when prompted. Do not paste any secret into chat.
