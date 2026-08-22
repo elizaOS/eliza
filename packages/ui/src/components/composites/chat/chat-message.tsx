@@ -39,6 +39,7 @@ import {
 } from "../../../gestures";
 import { cn } from "../../../lib/utils";
 import { findChoiceRegions } from "../../chat/message-choice-parser";
+import { findConnectorCardRegions } from "../../chat/message-connector-parser";
 import { findFollowupsRegions } from "../../chat/message-followups-parser";
 import { findFormRegions } from "../../chat/message-form-parser";
 import { RelativeTime } from "../../shell/RelativeTime";
@@ -368,7 +369,8 @@ function isNestedInteractiveTarget(
 
 /**
  * True when an assistant turn's content carries an inline interactive widget
- * (a `[CHOICE:…]` / `[FORM:…]` / `[FOLLOWUPS:…]` block — e.g. every first-run
+ * (a `[CHOICE:…]` / `[FORM:…]` / `[FOLLOWUPS:…]` / `[CONNECTOR:…]` block —
+ * e.g. every first-run
  * onboarding turn). Such a glass bubble must NOT be wrapped in the
  * tap-to-reveal `role="button"` container: WebKit exposes an ARIA button as an
  * ATOMIC AX leaf (its aria-label becomes the node's name and all descendants
@@ -380,7 +382,8 @@ function messageHasInteractiveWidget(content: string): boolean {
   return (
     findChoiceRegions(content).length > 0 ||
     findFormRegions(content).length > 0 ||
-    findFollowupsRegions(content).length > 0
+    findFollowupsRegions(content).length > 0 ||
+    findConnectorCardRegions(content).length > 0
   );
 }
 
