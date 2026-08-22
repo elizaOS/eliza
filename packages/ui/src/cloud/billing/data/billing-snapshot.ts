@@ -40,7 +40,15 @@ type DailyUsd = ExactBillingValue & {
 
 export type BillingSnapshotResource = Pick<
   ActiveComputeResourceSnapshot,
-  "resourceType" | "resourceId" | "name" | "status" | "billingStatus"
+  | "resourceType"
+  | "resourceId"
+  | "name"
+  | "status"
+  | "billingStatus"
+  | "billingInterval"
+  | "lastBilledAt"
+  | "nextBillingAt"
+  | "estimatedNextBillingAt"
 > & {
   ratePerHour: Observed<HourlyUsd>;
   estimatedRecurringComputeCostPerDay: Observed<DailyUsd>;
@@ -84,6 +92,10 @@ function canonicalIsoTimestamp(value: unknown): string {
     return invalidResponse();
   }
   return value;
+}
+
+function nullableCanonicalIsoTimestamp(value: unknown): string | null {
+  return value === null ? null : canonicalIsoTimestamp(value);
 }
 
 function exactDecimal(value: unknown): string {
@@ -190,6 +202,15 @@ function parseResource(value: unknown): BillingSnapshotResource {
     name: nonEmptyString(record.name),
     status: nonEmptyString(record.status),
     billingStatus: nonEmptyString(record.billingStatus),
+    billingInterval:
+      record.billingInterval === "hour" || record.billingInterval === "day"
+        ? record.billingInterval
+        : invalidResponse(),
+    lastBilledAt: nullableCanonicalIsoTimestamp(record.lastBilledAt),
+    nextBillingAt: nullableCanonicalIsoTimestamp(record.nextBillingAt),
+    estimatedNextBillingAt: nullableCanonicalIsoTimestamp(
+      record.estimatedNextBillingAt,
+    ),
     ratePerHour: parseObserved(record.ratePerHour, (amount) =>
       exactUsdValue(amount, "usd_per_hour"),
     ),
