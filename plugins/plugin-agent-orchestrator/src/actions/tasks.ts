@@ -1060,6 +1060,9 @@ async function runCreateLegacy(
   }
 
   const text = requestText(message);
+  // The create turn's own abort signal (a user stop); checked once the spawn
+  // returns, the only point at which a session exists to stop.
+  const createTurnSignal = getStreamingContext()?.abortSignal;
   // Genuine user request for workdir-route matching — see runSpawnAgent and
   // resolveOriginatingRequestText. Keeps routing planner-independent.
   const routingRequest = await resolveOriginatingRequestText(
@@ -1679,6 +1682,32 @@ async function runCreateLegacy(
             },
           },
         );
+      }
+
+      // The user cancelled while this spawn was in flight: there was no
+      // session for the interrupt path to stop, so the lane ran to a
+      // completion nobody wanted 25s after "stopping the build" (live
+      // 2026-08-22, breakout). The newborn session is stopped before its
+      // first prompt and the task reads interrupted.
+      if (createTurnSignal?.aborted) {
+        await markSessionAdministrativelyStopped(
+          service,
+          session.sessionId,
+          "user_interrupt",
+        ).catch(() => undefined);
+        await Promise.resolve(service.stopSession(session.sessionId)).catch(
+          () => undefined,
+        );
+        if (threadId && typeof taskService?.interruptTask === "function") {
+          await taskService
+            .interruptTask(threadId, "user_interrupt")
+            .catch(() => undefined);
+        }
+        throw new ElizaError("the build was cancelled before it started", {
+          code: "CODING_SESSION_CANCELLED",
+          context: { sessionId: session.sessionId },
+          severity: "ephemeral",
+        });
       }
 
       if (ackPostedOutOfBand) {
