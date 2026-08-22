@@ -27,7 +27,7 @@ import type {
 const execFileAsync = promisify(execFile);
 const LINUX_SECRET_WIRE_PREFIX = "eliza-v1:";
 
-type NativeKeyringLoader = () => Promise<typeof import("@napi-rs/keyring")>;
+type NativeKeyringLoader = () => Promise<NativeKeyringModule>;
 type SecretToolCommandRunner = (
   executable: string,
   args: string[],
@@ -211,7 +211,7 @@ type NativeKeyringEntryConstructor = new (
   account: string,
 ) => NativeKeyringEntry;
 
-interface NativeKeyringModule {
+export interface NativeKeyringModule {
   AsyncEntry: NativeKeyringEntryConstructor;
 }
 

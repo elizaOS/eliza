@@ -5,6 +5,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   createNodePlatformSecureStore,
+  type NativeKeyringModule,
   resolveBundledKeyringPath,
 } from "./platform-secure-store-node";
 
@@ -190,7 +191,7 @@ describe("platform secure-store behavioral outcomes", () => {
       loadNativeKeyring: async () =>
         ({
           AsyncEntry: FakeAsyncEntry,
-        }) as unknown as typeof import("@napi-rs/keyring"),
+        }) as unknown as NativeKeyringModule,
     });
 
     await expect(
@@ -222,7 +223,7 @@ describe("platform secure-store behavioral outcomes", () => {
       loadNativeKeyring: async () =>
         ({
           AsyncEntry: DeniedAsyncEntry,
-        }) as unknown as typeof import("@napi-rs/keyring"),
+        }) as unknown as NativeKeyringModule,
     });
 
     await expect(
@@ -246,7 +247,7 @@ describe("platform secure-store behavioral outcomes", () => {
       loadNativeKeyring: async () =>
         ({
           AsyncEntry: UnverifiedAsyncEntry,
-        }) as unknown as typeof import("@napi-rs/keyring"),
+        }) as unknown as NativeKeyringModule,
     });
 
     await expect(
