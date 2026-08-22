@@ -11044,23 +11044,59 @@ describe("ElizaSandboxService.transferStateForRelocation", () => {
     return calls;
   }
 
-  async function runTransfer(sandbox: AgentSandbox) {
+  async function runTransfer(
+    sandbox: AgentSandbox,
+    options: { wireSnapshotTransaction?: boolean } = {},
+  ) {
     const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
-    return (
-      new ElizaSandboxService() as unknown as {
-        transferStateForRelocation: (o: {
-          agentId: string;
-          orgId: string;
-          targetBridgeUrl: string;
-          authRec: Pick<AgentSandbox, "id" | "environment_vars">;
-        }) => Promise<{ transferred: boolean; reason?: string; detail?: string }>;
-      }
-    ).transferStateForRelocation({
-      agentId: sandbox.id,
-      orgId: sandbox.organization_id,
-      targetBridgeUrl: "https://blue.example",
-      authRec: sandbox,
+    const service = new ElizaSandboxService() as unknown as {
+      transferStateForRelocation: (o: {
+        agentId: string;
+        orgId: string;
+        targetBridgeUrl: string;
+        authRec: Pick<AgentSandbox, "id" | "environment_vars">;
+      }) => Promise<{ transferred: boolean; reason?: string; detail?: string }>;
+      lockLifecycle: (tx: unknown, agentId: string, orgId: string) => Promise<void>;
+      getAgentForLifecycleMutation: (
+        tx: unknown,
+        agentId: string,
+        orgId: string,
+      ) => Promise<AgentSandbox | undefined>;
+      persistAuthorizedSnapshotWithinTransaction: (
+        tx: unknown,
+        rec: AgentSandbox,
+        organizationId: string,
+        snapshotType: string,
+        plannedInput: Parameters<typeof agentSandboxesRepository.createBackup>[0],
+      ) => Promise<AgentSandboxBackup>;
+    };
+    const transfer = () =>
+      service.transferStateForRelocation({
+        agentId: sandbox.id,
+        orgId: sandbox.organization_id,
+        targetBridgeUrl: "https://blue.example",
+        authRec: sandbox,
+      });
+    if (!options.wireSnapshotTransaction) return transfer();
+
+    upgradeTransactionImpl = async (fn) => fn({ execute: async () => ({ rows: [] }) });
+    const lockSpy = spyOn(service, "lockLifecycle").mockResolvedValue(undefined);
+    const currentSpy = spyOn(service, "getAgentForLifecycleMutation").mockResolvedValue(sandbox);
+    const persistSpy = spyOn(
+      service,
+      "persistAuthorizedSnapshotWithinTransaction",
+    ).mockImplementation(async (_tx, rec, _organizationId, _snapshotType, plannedInput) => {
+      await agentSandboxesRepository.update(rec.id, { last_backup_at: new Date() });
+      return await agentSandboxesRepository.createBackup(plannedInput);
     });
+    try {
+      return await transfer();
+    } finally {
+      lockSpy.mockRestore();
+      currentSpy.mockRestore();
+      persistSpy.mockRestore();
+      upgradeTransactionImpl = null;
+    }
   }
 
   test("an image with no snapshot endpoint is unrelocatable, and nothing is pushed", async () => {
@@ -11124,7 +11160,7 @@ describe("ElizaSandboxService.transferStateForRelocation", () => {
     );
     bridgeStub({ restoreStatus: 500 });
     try {
-      const outcome = await runTransfer(sandbox);
+      const outcome = await runTransfer(sandbox, { wireSnapshotTransaction: true });
       expect(outcome.transferred).toBe(false);
       expect(outcome.reason).toBe("push-failed");
     } finally {
@@ -11157,7 +11193,7 @@ describe("ElizaSandboxService.transferStateForRelocation", () => {
     );
     const calls = bridgeStub({});
     try {
-      const outcome = await runTransfer(sandbox);
+      const outcome = await runTransfer(sandbox, { wireSnapshotTransaction: true });
       expect(outcome.transferred).toBe(true);
       expect(calls.some((u) => u.endsWith("/api/snapshot"))).toBe(true);
       expect(calls.some((u) => u.endsWith("/api/restore"))).toBe(true);
