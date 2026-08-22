@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 import { assertAndroidPlayManifestPolicyEvidence } from "./lib/android-cloud-artifact-audit.mjs";
 import {
   ANDROID_CLOUD_STRIPPED_ASSET_DIRECTORIES,
+  ANDROID_CLOUD_STRIPPED_ASSET_FILES,
   ANDROID_CLOUD_STRIPPED_COMPONENTS,
   ANDROID_CLOUD_STRIPPED_NATIVE_PLUGINS,
   ANDROID_CLOUD_STRIPPED_PERMISSIONS,
@@ -15,7 +16,9 @@ import {
   ANDROID_PLAY_ALLOWED_NATIVE_PLUGIN_PACKAGES,
   ANDROID_PLAY_ALLOWED_PERMISSIONS,
   androidPlayManifestEvidenceFromAapt,
+  applyAndroidGeneratedBuildTargetProperties,
   createAndroidPlayManifestPolicy,
+  findAndroidCloudPackagedRuntimeOffenders,
   findAndroidPlayIndexHtmlFindings,
   findAndroidPlayTextAssetFindings,
 } from "./run-mobile-build.mjs";
@@ -59,6 +62,21 @@ const AAPT_MANIFEST = `
 `;
 
 describe("Android Play manifest policy", () => {
+  it("stamps only generated Cloud projects for direct Gradle and IDE use", () => {
+    const base = "org.gradle.jvmargs=-Xmx4g\nelizaCloudBuild=false\n";
+    const cloud = applyAndroidGeneratedBuildTargetProperties(base, {
+      cloudBuild: true,
+    });
+
+    expect(cloud).toContain("elizaCloudBuild=true\n");
+    expect(cloud).not.toContain("elizaCloudBuild=false");
+    expect(
+      applyAndroidGeneratedBuildTargetProperties(cloud, {
+        cloudBuild: false,
+      }),
+    ).toBe("org.gradle.jvmargs=-Xmx4g\n");
+  });
+
   it("parses AAPT xmltree evidence without confusing nested action names for components", () => {
     expect(androidPlayManifestEvidenceFromAapt(AAPT_MANIFEST)).toEqual({
       actions: [
@@ -143,6 +161,12 @@ describe("Android Play manifest policy", () => {
       "agent",
       "runners",
     ]);
+    expect(ANDROID_CLOUD_STRIPPED_ASSET_FILES).toContain("eliza-tasks.js");
+    expect(
+      findAndroidCloudPackagedRuntimeOffenders([
+        "base/assets/runners/eliza-tasks.js",
+      ]),
+    ).toEqual(["base/assets/runners/eliza-tasks.js"]);
     expect(ANDROID_PLAY_ALLOWED_NATIVE_PLUGIN_PACKAGES).toEqual([
       "@capacitor/app",
       "@capacitor/browser",
@@ -167,9 +191,12 @@ describe("Android Play manifest policy", () => {
         "llama-cpp-capacitor",
       ]),
     );
-    expect(
-      ANDROID_CLOUD_STRIPPED_NATIVE_PLUGINS.map(([pkg]) => pkg),
-    ).not.toContain("@elizaos/capacitor-browser-surface");
+    const strippedNativePackages = ANDROID_CLOUD_STRIPPED_NATIVE_PLUGINS.map(
+      ([pkg]) => pkg,
+    );
+    for (const allowedPackage of ANDROID_PLAY_ALLOWED_NATIVE_PLUGIN_PACKAGES) {
+      expect(strippedNativePackages).not.toContain(allowedPackage);
+    }
     expect(ANDROID_CLOUD_STRIPPED_RESOURCE_FILES).toEqual(
       expect.arrayContaining([
         "drawable/eliza_ime_mic_bg.xml",
