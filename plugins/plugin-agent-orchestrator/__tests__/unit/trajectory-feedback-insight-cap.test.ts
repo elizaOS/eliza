@@ -204,6 +204,11 @@ describe("queryPastExperience complete traversal", () => {
   it.each([
     ["missing detail", null, "detail_missing"],
     ["missing steps", { trajectoryId: "legacy" }, "steps_missing"],
+    [
+      "empty steps for a non-empty summary",
+      { trajectoryId: "legacy", steps: [] },
+      "steps_missing",
+    ],
   ])(
     "rejects %s instead of omitting legacy context",
     async (_label, detail, reason) => {
@@ -229,6 +234,37 @@ describe("queryPastExperience complete traversal", () => {
       });
     },
   );
+
+  it("rejects a partial model-call inventory instead of returning partial context", async () => {
+    const runtime = makeRuntime({
+      listTrajectories: async () => ({
+        trajectories: [
+          {
+            id: "legacy",
+            source: "orchestrator",
+            startTime: 1,
+            llmCallCount: 2,
+            createdAt: new Date(1).toISOString(),
+          },
+        ],
+        total: 1,
+      }),
+      getTrajectoryDetail: async () => ({
+        trajectoryId: "legacy",
+        steps: [{ llmCalls: [{ response: "DECISION: only one call" }] }],
+      }),
+    });
+
+    await expect(queryPastExperience(runtime)).rejects.toMatchObject({
+      code: "TRAJECTORY_EXPERIENCE_DETAIL_UNAVAILABLE",
+      context: {
+        trajectoryId: "legacy",
+        reason: "llm_calls_incomplete",
+        expectedLlmCallCount: 2,
+        observedLlmCallCount: 1,
+      },
+    });
+  });
 
   it("traverses every storage page without treating page size as a content cap", async () => {
     const summaries = Array.from({ length: 501 }, (_, index) => ({
