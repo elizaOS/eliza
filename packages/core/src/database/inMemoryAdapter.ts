@@ -135,7 +135,7 @@ function documentSourceIndexKey(args: {
 		String(args.agentId),
 		String(args.documentId),
 		args.documentRevision,
-		args.revisionAttemptId ?? "",
+		args.revisionAttemptId ?? null,
 	]);
 }
 
