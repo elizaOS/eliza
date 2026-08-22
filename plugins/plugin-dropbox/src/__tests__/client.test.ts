@@ -184,6 +184,21 @@ describe("DropboxClient.listFolder", () => {
       .catch((e: unknown) => e);
     expect((e2 as ElizaError).code).toBe("DROPBOX_MALFORMED_RESPONSE");
   });
+
+  it("preserves a long rejected-request body through the typed error", async () => {
+    const suffix = "DISTINGUISHING-DROPBOX-SUFFIX";
+    const rejected = fakeDropbox(() => ({
+      status: 400,
+      raw: `${"x".repeat(10_000)}${suffix}`,
+    }));
+
+    const error = await client(rejected.fetchImpl)
+      .listFolder({ accountId: "acct" })
+      .catch((thrown: unknown) => thrown as ElizaError);
+
+    expect(error.code).toBe("DROPBOX_INVALID_REQUEST");
+    expect(error.message).toContain(suffix);
+  });
 });
 
 describe("DropboxClient.search", () => {

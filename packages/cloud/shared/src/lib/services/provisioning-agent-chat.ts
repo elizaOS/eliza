@@ -22,8 +22,6 @@ import { selectElizaAppProvisioningTarget } from "./eliza-app/provisioning";
 
 const HISTORY_CACHE_KEY = (userId: string) => `prov-chat:${userId}`;
 const HISTORY_TTL_SECONDS = 604800; // 7 days
-const MAX_HISTORY_MESSAGES = 20; // 10 turns (user + assistant)
-
 const CEREBRAS_BASE_URL = "https://api.cerebras.ai/v1";
 const CEREBRAS_MODEL = CEREBRAS_DEFAULT_TEXT_MODEL;
 
@@ -180,12 +178,7 @@ async function loadHistory(userId: string): Promise<ChatMessage[]> {
 }
 
 async function saveHistory(userId: string, history: ChatMessage[]): Promise<void> {
-  // Cap at MAX_HISTORY_MESSAGES, keeping the most recent
-  const capped =
-    history.length > MAX_HISTORY_MESSAGES
-      ? history.slice(history.length - MAX_HISTORY_MESSAGES)
-      : history;
-  await cache.set(HISTORY_CACHE_KEY(userId), capped, HISTORY_TTL_SECONDS);
+  await cache.set(HISTORY_CACHE_KEY(userId), history, HISTORY_TTL_SECONDS);
 }
 
 export async function provisioningAgentChat(

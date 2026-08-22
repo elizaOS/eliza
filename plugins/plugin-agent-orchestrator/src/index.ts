@@ -26,7 +26,6 @@ import {
   promoteSubactionsToActions,
   requireConfirmedSendHandlerDelivery,
   toWellFormedUnicode,
-  truncateWellFormed,
 } from "@elizaos/core";
 
 // Register coding-agent HTTP routes with the runtime route registry.
@@ -60,7 +59,6 @@ export {
 // package root so packages/agent's swarm-synthesis path can strip captured
 // tool-output envelopes with the SAME implementation the sub-agent router uses.
 export {
-  elideLongBlocks,
   sanitizeCompletionRelay,
   stripToolTranscript,
 } from "./services/transcript-sanitizer.js";
@@ -798,7 +796,6 @@ export const SPAWN_ACK_FALLBACK = "On it.";
 
 // Longest acknowledgement we keep. An ack is a one-liner; anything longer is the
 // model over-answering, so it gets clipped.
-const SPAWN_ACK_MAX_CHARS = 120;
 const SPAWN_ACK_TIMEOUT_MS = 750;
 
 function withSpawnAckTimeout<T>(promise: Promise<T>, fallback: T): Promise<T> {
@@ -824,7 +821,7 @@ export function buildSpawnAckSystemPrompt(character: Character): string {
   const name = (character.name ?? "").trim() || "the assistant";
   const voiceParts: string[] = [];
   const bio = (character.bio ?? []).map((b) => b.trim()).filter(Boolean);
-  if (bio.length > 0) voiceParts.push(bio.slice(0, 3).join(" "));
+  if (bio.length > 0) voiceParts.push(bio.join(" "));
   const traits = [
     ...(character.adjectives ?? []),
     ...(character.style?.chat ?? []),
@@ -833,7 +830,7 @@ export function buildSpawnAckSystemPrompt(character: Character): string {
     .map((t) => t.trim())
     .filter(Boolean);
   if (traits.length > 0) {
-    voiceParts.push(`Voice: ${[...new Set(traits)].slice(0, 8).join(", ")}.`);
+    voiceParts.push(`Voice: ${[...new Set(traits)].join(", ")}.`);
   }
   return [
     `You are ${name}.`,
@@ -855,18 +852,13 @@ export function buildSpawnAckSystemPrompt(character: Character): string {
 export function buildSpawnAckUserPrompt(task: string): string {
   const trimmed = task.trim();
   const what = trimmed.length > 0 ? trimmed : "the task they just gave you";
-  const wellFormed = toWellFormedUnicode(what);
-  const clipped =
-    wellFormed.length > 400
-      ? `${truncateWellFormed(wellFormed, 397)}…`
-      : wellFormed;
-  return `The task you're starting:\n${clipped}\n\nYour one-line acknowledgement:`;
+  return `The task you're starting:\n${toWellFormedUnicode(what)}\n\nYour one-line acknowledgement:`;
 }
 
 /**
  * Clean a model-produced ack into a single plain line: first non-empty line,
- * surrounding quotes / emoji / list markers stripped, whitespace collapsed,
- * length capped. Returns "" when nothing usable remains (the caller then falls
+ * surrounding quotes / emoji / list markers stripped and whitespace collapsed.
+ * Returns "" when nothing usable remains (the caller then falls
  * back to SPAWN_ACK_FALLBACK). Pure + deterministic.
  */
 export function sanitizeSpawnAck(raw: string): string {
@@ -904,10 +896,7 @@ export function sanitizeSpawnAck(raw: string): string {
   }
   cleaned = cleaned.replace(/\s{2,}/g, " ").trim();
   if (!cleaned) return "";
-  const wellFormed = toWellFormedUnicode(cleaned);
-  return wellFormed.length > SPAWN_ACK_MAX_CHARS
-    ? `${truncateWellFormed(wellFormed, SPAWN_ACK_MAX_CHARS - 1).trimEnd()}…`
-    : wellFormed;
+  return toWellFormedUnicode(cleaned);
 }
 
 function stripToolTranscripts(raw: string): string {
@@ -941,16 +930,7 @@ function stripToolTranscripts(raw: string): string {
 
 export function extractCompletionSummary(raw: string): string {
   if (!raw.trim()) return "done";
-  const lines = stripToolTranscripts(raw)
-    .split("\n")
-    .map((l) => l.trim())
-    .filter((l) => l.length > 0 && !l.startsWith("[Tool:"));
-  const last = lines[lines.length - 1] ?? "";
-  if (!last) return "done";
-  const wellFormed = toWellFormedUnicode(last);
-  return wellFormed.length > 300
-    ? `${truncateWellFormed(wellFormed, 297).trimEnd()}…`
-    : wellFormed;
+  return toWellFormedUnicode(raw.trim());
 }
 
 /**
@@ -1026,17 +1006,8 @@ function formatToolCallForHuman(tc: AcpToolCall | undefined): string {
           : undefined;
   const pattern = typeof input.pattern === "string" ? input.pattern : undefined;
   const url = typeof input.url === "string" ? input.url : undefined;
-  const shortPath = (p: string): string => {
-    // Trim long absolute paths to the last 2 segments.
-    const parts = p.split("/").filter(Boolean);
-    return parts.length > 2 ? `…/${parts.slice(-2).join("/")}` : p;
-  };
-  const trimCmd = (c: string): string => {
-    const wellFormed = toWellFormedUnicode(c);
-    return wellFormed.length > 80
-      ? `${truncateWellFormed(wellFormed, 77)}...`
-      : wellFormed;
-  };
+  const shortPath = (p: string): string => p;
+  const trimCmd = (c: string): string => toWellFormedUnicode(c);
   // Heuristic: pick a noun based on title/kind, then attach the most
   // informative arg.
   const noun = (() => {
@@ -1419,7 +1390,7 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
         if (prevSummary && norm(prevSummary) === norm(trimmedSummary)) return;
         lastHeartbeatSummary.set(sessionId, trimmedSummary);
         const wellFormedSummary = toWellFormedUnicode(trimmedSummary);
-        const text = `⏳ [${label}] ${wellFormedSummary.length > 200 ? `${truncateWellFormed(wellFormedSummary, 197)}...` : wellFormedSummary}`;
+        const text = `⏳ [${label}] ${wellFormedSummary}`;
         lastHeartbeatPostAt.set(sessionId, now);
         await emitProgress(sessionId, { source, roomId }, text, label);
       } catch {
@@ -2059,14 +2030,8 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
     // like a clean sentence.
     const trimmed = buf.trim().replace(/[\s:;,\-—–]+$/, "");
     if (!trimmed) return;
-    // Cap at 800 chars. Sub-agents sometimes dump multi-paragraph results
-    // through narration chunks (full inventory tables, verification
-    // explanations, etc.). Posting those raw produces a wall of text that
-    // duplicates the final summary the response evaluator builds. A 800-char
-    // window fits short tables and a few bullet points; longer dumps get
-    // truncated and the canonical version lands via the summary.
     const wellFormed = toWellFormedUnicode(trimmed);
-    const text = `💬 [${label}] ${wellFormed.length > 800 ? `${truncateWellFormed(wellFormed, 793)}…[+]` : wellFormed}`;
+    const text = `💬 [${label}] ${wellFormed}`;
     // Reset heartbeat clock — message just posted, no need for a status
     // tick within the next heartbeat interval.
     lastHeartbeatPostAt.set(sessionId, Date.now());

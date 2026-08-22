@@ -8,10 +8,10 @@ import type { IAgentRuntime } from "@elizaos/core";
 
 export const SELF_STATUS_SCHEMA_VERSION = 1;
 
-/** Max chars for a single contributor summary line. */
+/** @deprecated Awareness summaries are no longer character-limited. */
 export const SUMMARY_CHAR_LIMIT = 80;
 
-/** Max total chars for the composed Layer 1 output (~300 tokens). */
+/** @deprecated Awareness summaries are no longer character-limited. */
 export const SUMMARY_TOTAL_CHAR_LIMIT = 1200;
 
 /** Default cache TTL in ms (1 minute). */
@@ -37,7 +37,7 @@ export interface AwarenessContributor {
 
   /** Layer 1 summary — injected every LLM turn.
    *  MUST return plain text, never secrets/keys/tokens.
-   *  MUST be <= SUMMARY_CHAR_LIMIT chars. Return "" if nothing to show. */
+   *  Return "" if nothing should be shown. */
   summary: (runtime: IAgentRuntime) => Promise<string>;
 
   /** Layer 2 detail — called via RUNTIME action with op=self_status.

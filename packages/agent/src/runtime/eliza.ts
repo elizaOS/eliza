@@ -356,7 +356,6 @@ import {
   applyPluginRoleGating,
   installProviderRoleGatingChokepoint,
 } from "./plugin-role-gating.ts";
-import { validateIntentActionMap } from "./prompt-compaction.ts";
 import rolesPlugin from "./roles.ts";
 import { shouldRegisterSubAgentCredentialsPlugin } from "./sub-agent-credentials-runtime-policy.ts";
 import {
@@ -5906,13 +5905,6 @@ export async function startEliza(
     }
     bootTimer.lap("deferred:autonomy+warmup");
 
-    // Same timing reason: validate the intent→action map only once the deferred
-    // plugins have registered. Run during blocking init it would warn about
-    // actions like TASKS (agent-orchestrator) that simply hadn't loaded yet.
-    validateIntentActionMap(
-      runtime.actions.map((a) => a.name),
-      runtime.logger,
-    );
     // Validate live affinity only after deferred actions have registered.
     // Completeness coverage remains a static repository audit: several shell
     // and diagnostic views intentionally use universal element capabilities,

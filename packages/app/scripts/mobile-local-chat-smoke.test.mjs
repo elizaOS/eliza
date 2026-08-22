@@ -389,7 +389,7 @@ describe("mobile smoke result parsing", () => {
     );
   });
 
-  it("requires an exact useful full-turn reply", () => {
+  it("requires a useful full-turn reply without leaked model control tokens", () => {
     expect(
       smoke.requireUsableFullTurnReply(
         { fullText: '"Android smoke model works!"' },
@@ -402,12 +402,18 @@ describe("mobile smoke result parsing", () => {
       [{ noResponseReason: "muted" }, /noResponseReason/],
       [{ text: "" }, /empty reply/],
       [{ text: "Chat generation failed" }, /unusable reply/],
-      [{ text: "wrong reply" }, /wrong reply/],
+      [{ text: "answer<end_of_turn>next prompt" }, /control token/],
     ]) {
       expect(() => smoke.requireUsableFullTurnReply(done, "stream")).toThrow(
         expected,
       );
     }
+    expect(
+      smoke.requireUsableFullTurnReply(
+        { text: "I am ready to assist you. How can I help?" },
+        "stream",
+      ),
+    ).toBe("I am ready to assist you. How can I help?");
   });
 
   it("summarizes optional local-inference payloads without inventing readiness", () => {

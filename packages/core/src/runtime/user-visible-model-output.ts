@@ -351,7 +351,7 @@ function classifyMalformedControl(
 	text: string,
 ): UserVisibleControlEnvelope | undefined {
 	if (!text.startsWith("{")) return undefined;
-	const candidate = text.slice(0, 20_000);
+	const candidate = text;
 	const action = candidate.match(
 		/"action"\s*:\s*"((?:functions\.)?[A-Z][A-Z0-9_.:-]*)"/,
 	)?.[1];
@@ -378,7 +378,7 @@ function classifyMalformedControl(
 
 function looksLikeMalformedReplyEnvelope(text: string): boolean {
 	if (!text.startsWith("{")) return false;
-	const candidate = text.slice(0, 20_000);
+	const candidate = text;
 	return (
 		/"(?:messageToUser|replyText)"\s*:/.test(candidate) ||
 		(/"(?:response|text)"\s*:/.test(candidate) &&

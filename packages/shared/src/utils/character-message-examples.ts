@@ -20,8 +20,7 @@ interface NormalizeCharacterMessageExamplesOptions {
 }
 
 function extractLikelyJson(input: string): string {
-  const safe = input.length > 200_000 ? input.slice(0, 200_000) : input;
-  const trimmed = safe.trim();
+  const trimmed = input.trim();
   if (!trimmed) return trimmed;
 
   const withoutFences = trimmed

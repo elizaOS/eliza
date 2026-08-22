@@ -5,7 +5,7 @@ Google Generative AI (Gemini) model provider for [elizaOS](https://github.com/el
 ## Capabilities
 
 - **Text generation** across all model tiers: nano, small, medium, large, mega, response handler, action planner.
-- **Text embeddings** with `gemini-embedding-001`, provider-counted and Unicode-safely truncated to the model input limit, pinned to 768 dimensions (`outputDimensionality: 768`), and L2-normalized so writes match the runtime's probe-sized vector column.
+- **Text embeddings** with `gemini-embedding-001`, provider-counted and explicitly rejected above the model input limit, pinned to 768 dimensions (`outputDimensionality: 768`), and L2-normalized so writes match the runtime's probe-sized vector column.
 - **Image description** — fetch an image by URL, encode it inline, and return a `{ title, description }` object.
 - **Structured output** — pass a JSON Schema as `responseSchema` to any text handler to get `application/json` back from the model.
 - **Tool use** — pass function declarations via `tools` / `toolChoice` to enable function-calling on supported models.

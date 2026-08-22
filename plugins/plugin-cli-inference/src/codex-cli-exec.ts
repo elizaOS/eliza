@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { logger } from "@elizaos/core";
@@ -182,6 +182,12 @@ export class CodexCli {
     const cwd = resolveSafeCwd(rawCwd, [tmpdir()]);
 
     try {
+      const promptPath = join(cwd, "prompt.txt");
+      await writeFile(promptPath, prompt, {
+        encoding: "utf8",
+        mode: 0o600,
+        flag: "wx",
+      });
       const argv = [
         binary,
         "exec",
@@ -195,14 +201,14 @@ export class CodexCli {
         "--color",
         "never",
         "--json",
-        prompt,
+        "-",
       ];
 
       const result: SpawnResult = await spawnImpl(argv, {
         cwd,
         env: filterEnv(this.env),
         timeoutMs: this.timeoutMs,
-        stdinPath: "/dev/null",
+        stdinPath: promptPath,
       });
 
       if (result.timedOut) {

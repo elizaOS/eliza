@@ -24,7 +24,7 @@ import type {
   Memory,
   UUID,
 } from "@elizaos/core";
-import { logger, toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
+import { logger, toWellFormedUnicode } from "@elizaos/core";
 import {
   type AwarenessRegistry,
   createSelfApiRequestHeaders,
@@ -84,9 +84,6 @@ interface RuntimeParams {
 
 /** Small delay (ms) before restarting so the response has time to flush. */
 const SHUTDOWN_DELAY_MS = 1_500;
-const MAX_RESTART_REASON_CHARS = 240;
-const MAX_SELF_STATUS_BRIEF_CHARS = 1200;
-const MAX_SELF_STATUS_FULL_CHARS = 8000;
 
 const RESTART_REQUEST_TERMS = getValidationKeywordTerms(
   "action.restart.request",
@@ -221,19 +218,7 @@ async function selfStatusOp(
   const detailLevel = params.detailLevel === "full" ? "full" : "brief";
 
   const rawText = await registry.getDetail(runtime, module, detailLevel);
-  const maxChars =
-    detailLevel === "full"
-      ? MAX_SELF_STATUS_FULL_CHARS
-      : MAX_SELF_STATUS_BRIEF_CHARS;
-  const suffix = "\n…[self-status truncated]";
-  const wellFormedSuffix = toWellFormedUnicode(suffix);
-  const wellFormedRaw = toWellFormedUnicode(rawText);
-  const text =
-    wellFormedRaw.length <= maxChars
-      ? wellFormedRaw
-      : maxChars <= wellFormedSuffix.length
-        ? truncateWellFormed(wellFormedSuffix, maxChars)
-        : `${truncateWellFormed(wellFormedRaw, maxChars - wellFormedSuffix.length)}${wellFormedSuffix}`;
+  const text = toWellFormedUnicode(rawText);
   return {
     success: true,
     text,
@@ -243,7 +228,7 @@ async function selfStatusOp(
       op: "self_status",
       module,
       detailLevel,
-      truncated: text.length < rawText.length,
+      truncated: false,
     },
   };
 }
@@ -350,10 +335,7 @@ async function restartOp(
 ): Promise<ActionResult> {
   const reason =
     typeof params.reason === "string"
-      ? truncateWellFormed(
-          toWellFormedUnicode(params.reason),
-          MAX_RESTART_REASON_CHARS,
-        )
+      ? toWellFormedUnicode(params.reason)
       : undefined;
   const source = isRestartSource(params.source) ? params.source : undefined;
 

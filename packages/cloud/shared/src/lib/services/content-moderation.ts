@@ -329,7 +329,7 @@ class ContentModerationService {
     await adminService.recordViolation({
       userId,
       roomId,
-      messageText: text.slice(0, 500),
+      messageText: text,
       categories: result.flaggedCategories,
       scores: result.scores as Record<string, number>,
       action,

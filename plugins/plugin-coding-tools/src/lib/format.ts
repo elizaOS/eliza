@@ -6,7 +6,6 @@
  * success/failure shape identical.
  */
 import type { ActionResult, IAgentRuntime } from "@elizaos/core";
-import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import {
   type ActionResultData,
   FAILURE_TEXT_PREFIX,
@@ -146,19 +145,6 @@ export function readArrayParam(
 ): unknown[] | undefined {
   const v = readParam<unknown>(options, name);
   return Array.isArray(v) ? v : undefined;
-}
-
-export function truncate(
-  s: string,
-  max: number,
-): { text: string; truncated: boolean } {
-  const wellFormed = toWellFormedUnicode(s);
-  if (wellFormed.length <= max) return { text: wellFormed, truncated: false };
-  const truncatedPrefix = truncateWellFormed(wellFormed, max);
-  return {
-    text: `${truncatedPrefix}\n…[truncated, ${wellFormed.length - truncatedPrefix.length} more chars]`,
-    truncated: true,
-  };
 }
 
 /** Reads a numeric runtime setting; invalid or missing falls back to `fallback`. */

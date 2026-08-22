@@ -44,6 +44,8 @@ if SCAMBENCH_ROOT is None:
 sys.path.insert(0, str(PYTHON_ROOT))
 sys.path.insert(0, str(SCRIPT_DIR))
 
+from training.tokenization import tokenize_with_explicit_limit  # noqa: E402
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
@@ -1101,17 +1103,17 @@ def _run_grpo_local(
 
     def _encode_torch_rollout(prompt_text: str, response_text: str) -> tuple[Any, Any, Any, int]:
         full_text = prompt_text + response_text
-        full_enc = tokenizer(
+        full_enc = tokenize_with_explicit_limit(
+            tokenizer,
             full_text,
+            max_tokens=2048,
             return_tensors="pt",
-            truncation=True,
-            max_length=2048,
         ).to(device)
-        prompt_enc = tokenizer(
+        prompt_enc = tokenize_with_explicit_limit(
+            tokenizer,
             prompt_text,
+            max_tokens=2048,
             return_tensors="pt",
-            truncation=True,
-            max_length=2048,
         )
         prompt_len = prompt_enc["input_ids"].shape[1]
         if prompt_len >= full_enc["input_ids"].shape[1]:
@@ -1178,8 +1180,11 @@ def _run_grpo_local(
                     verbose=False,
                 )
             else:
-                inputs = tokenizer(
-                    prompt_text, return_tensors="pt", truncation=True, max_length=2048
+                inputs = tokenize_with_explicit_limit(
+                    tokenizer,
+                    prompt_text,
+                    max_tokens=2048,
+                    return_tensors="pt",
                 ).to(device)
                 with torch.no_grad():
                     outputs = model.generate(
@@ -1250,11 +1255,17 @@ def _run_grpo_local(
             return float(mx.mean(response_log_probs))
         else:
             full_text = prompt_text + response_text
-            full_enc = tokenizer(
-                full_text, return_tensors="pt", truncation=True, max_length=2048
+            full_enc = tokenize_with_explicit_limit(
+                tokenizer,
+                full_text,
+                max_tokens=2048,
+                return_tensors="pt",
             ).to(device)
-            prompt_enc = tokenizer(
-                prompt_text, return_tensors="pt", truncation=True, max_length=2048
+            prompt_enc = tokenize_with_explicit_limit(
+                tokenizer,
+                prompt_text,
+                max_tokens=2048,
+                return_tensors="pt",
             )
             prompt_len = prompt_enc["input_ids"].shape[1]
 

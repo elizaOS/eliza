@@ -1063,7 +1063,7 @@ describe("runV5MessageRuntimeStage1", () => {
 		}
 	});
 
-	it("recovers a completed replyText when Stage 1 hits the completion cap with truncated JSON", async () => {
+	it("rejects a partial Stage 1 envelope even when replyText is complete", async () => {
 		const runtime = makeRuntime([
 			{
 				text: [
@@ -1092,9 +1092,6 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(result.kind).toBe("direct_reply");
 		if (result.kind === "direct_reply") {
 			expect(result.result.responseContent?.text).toContain(
-				"def fibonacci(n):",
-			);
-			expect(result.result.responseContent?.text).not.toContain(
 				"That answer got cut off",
 			);
 		}
@@ -1651,7 +1648,7 @@ describe("runV5MessageRuntimeStage1", () => {
 		}
 	});
 
-	it("uses a compact response-handler schema for direct channels", async () => {
+	it("uses the full response-handler schema for direct channels", async () => {
 		const runtime = makeRuntime([
 			stage1Response({
 				contexts: ["simple"],
@@ -1681,25 +1678,26 @@ describe("runV5MessageRuntimeStage1", () => {
 		};
 		const required = params.tools?.[0]?.parameters?.required ?? [];
 		expect(required).toEqual([
+			"shouldRespond",
 			"contexts",
 			"intents",
 			"replyText",
 			"replyEffectStatus",
 			"candidateActionNames",
+			"facts",
+			"relationships",
+			"topics",
+			"addressedTo",
+			"emotion",
 		]);
-		expect(required).not.toContain("shouldRespond");
-		expect(required).not.toContain("facts");
-		// Direct channels send NO max-tokens cap: a hardcoded value 400s when it
-		// exceeds the model's real limit and truncates long single-turn replies.
-		// `omitMaxTokens` tells the adapter to drop the wire field so the model's
-		// own max applies. The schema stays compact (asserted above); only the cap
-		// is dropped. (Group channels keep DEFAULT_STAGE1_MAX_TOKENS — see ~L229.)
+		// Direct channels send no output-token cap. `omitMaxTokens` tells the
+		// adapter to use the provider/model maximum.
 		expect(params.maxTokens).toBeUndefined();
 		expect(params.omitMaxTokens).toBe(true);
 		expect(
 			params.responseSkeleton?.spans?.some((s) => s.key === "shouldRespond"),
-		).toBe(false);
-		expect(params.grammar).not.toContain(
+		).toBe(true);
+		expect(params.grammar).toContain(
 			'"\\"RESPOND\\"" | "\\"IGNORE\\"" | "\\"STOP\\""',
 		);
 		const systemMessage = (
@@ -1707,15 +1705,13 @@ describe("runV5MessageRuntimeStage1", () => {
 				messages?: Array<{ content?: unknown }>;
 			}
 		).messages?.[0];
+		expect(String(systemMessage?.content ?? "")).toContain("OWNER_GOALS");
 		expect(String(systemMessage?.content ?? "")).toContain(
-			"goals -> tasks + OWNER_GOALS",
-		);
-		expect(String(systemMessage?.content ?? "")).toContain(
-			"never work threads and never VIEWS",
+			"do not create work threads",
 		);
 	});
 
-	it("keeps shouldRespond in the compact live-voice Stage-1 call", async () => {
+	it("keeps every registered field in the live-voice Stage-1 call", async () => {
 		const runtime = makeRuntime([
 			stage1Response({
 				shouldRespond: "IGNORE",
@@ -1751,20 +1747,18 @@ describe("runV5MessageRuntimeStage1", () => {
 		const required = params.tools?.[0]?.parameters?.required ?? [];
 		expect(required).toContain("shouldRespond");
 		expect(required).toContain("contexts");
-		expect(required).not.toContain("facts");
+		expect(required).toContain("facts");
 		expect(
 			params.responseSkeleton?.spans?.some(
 				(span) => span.key === "shouldRespond",
 			),
 		).toBe(true);
 		const systemContent = String(params.messages?.[0]?.content ?? "");
+		expect(systemContent).toContain("voice engagement rules:");
 		expect(systemContent).toContain(
-			"task: Decide whether to respond, then plan this live voice turn.",
+			"shouldRespond=IGNORE for content-free acknowledgements, non-speech/noise",
 		);
-		expect(systemContent).toContain(
-			"shouldRespond=IGNORE for content-free acknowledgements",
-		);
-		expect(systemContent.length).toBeLessThan(5_000);
+		expect(systemContent).toContain("### facts");
 	});
 
 	it("keeps generic programming questions on the simple path even when stale attachments linger in state", async () => {
@@ -1882,7 +1876,7 @@ describe("runV5MessageRuntimeStage1", () => {
 		}
 	});
 
-	it("uses a compact direct-channel prompt catalog", async () => {
+	it("preserves the full direct-channel prompt catalog", async () => {
 		const runtime = makeRuntime([
 			stage1Response({
 				contexts: ["simple"],
@@ -1933,13 +1927,7 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(systemContent).toContain("task: Plan this direct message.");
 		expect(systemContent).toContain("- calendar [label=Calendar");
 		expect(systemContent).toContain("role>=ADMIN");
-		expect(systemContent).not.toContain(longDescription);
-		// Compactness ceiling for the DM Stage-1 prompt. Any leaked context
-		// description (~2,500+ chars each) blows far past this; deliberate
-		// template rules only nudge it, so keep the ceiling tight (currently
-		// ~4.3k rendered after the #19863 owner-life routing floor and the F15
-		// history-never-creates-a-capability grounding line).
-		expect(systemContent.length).toBeLessThan(4_450);
+		expect(systemContent).toContain(longDescription);
 	});
 
 	it("direct-channel prompt grounds capability denials in executable actions and requires fresh tool retries", async () => {
@@ -1971,22 +1959,19 @@ describe("runV5MessageRuntimeStage1", () => {
 		const systemContent = params.messages?.[0]?.content ?? "";
 		expect(systemContent).toContain("task: Plan this direct message.");
 		expect(systemContent).toContain(
-			"Never deny a capability when current_turn_boundary says a role-visible executable action can attempt it.",
+			"Never tell the user you lack a capability",
 		);
 		expect(systemContent).toContain(
 			"available_contexts supplies routing domains but does not by itself prove a handler exists.",
 		);
 		expect(systemContent).toContain(
-			"A tool that errored on an earlier turn may work now; on a repeated ask, retry it fresh and report this turn's result, not the old failure.",
+			"A tool that errored on an earlier turn is not permanently unavailable",
 		);
 		// Inverse grounding (matrix F15, poisoned-room receipt): the room's
 		// history contained an old planner exchange asking for "your mom's
 		// number", and stage-1 parroted the implied SMS surface. History must
 		// never create a capability the surface list doesn't.
 		expect(systemContent).toContain("History never creates a capability");
-		expect(systemContent).toContain(
-			"never ask follow-up details for a surface you don't have",
-		);
 	});
 
 	it("keeps tool-like direct messages on the structured routing path", async () => {
@@ -6003,18 +5988,14 @@ describe("runV5MessageRuntimeStage1", () => {
 		const systemContent =
 			params.messages?.find((m) => m.role === "system")?.content ?? "";
 		expect(systemContent).toContain(
-			'Only use "simple" when you can answer directly from your static knowledge or the visible prior_message / reply_reference context.',
+			'simple shortcut: choose contexts=["simple"]',
 		);
 		expect(systemContent).toContain(
-			"Never claim searched/scanned/recalled unless tool returned it",
+			"Never write replyText that claims or implies an investigative action",
 		);
-		expect(systemContent).toContain('"I scanned the chat"');
-		expect(systemContent).toContain(
-			"Crisis/legal/medical/self-harm/police/CPS",
-		);
-		expect(systemContent).toContain(
-			"lawyer/emergency services/poison control/doctor/therapist/crisis/DV hotline",
-		);
+		expect(systemContent).toContain('bare past-tense ("I scanned")');
+		expect(systemContent).toContain("personal-crisis situation");
+		expect(systemContent).toContain("recommend qualified professional help");
 	});
 
 	it("routes high-stakes direct-message crisis prompts through Stage 1 instead of the fast reply path", async () => {
@@ -6045,10 +6026,10 @@ describe("runV5MessageRuntimeStage1", () => {
 		};
 		const systemContent =
 			params.messages?.find((m) => m.role === "system")?.content ?? "";
+		expect(systemContent).toContain("personal-crisis situation");
 		expect(systemContent).toContain(
-			"Crisis/legal/medical/self-harm/police/CPS",
+			"The deferral itself is the complete reply",
 		);
-		expect(systemContent).toContain("replyText deferral only");
 	});
 
 	it("keeps arithmetic word questions on the simple direct-reply path", async () => {

@@ -22,7 +22,6 @@ import {
   isPrivateIpAddress,
   normalizeHostLike,
   toWellFormedUnicode,
-  truncateWellFormed,
 } from "@elizaos/core";
 import {
   createSelfApiRequestHeaders,
@@ -555,9 +554,9 @@ const GUARDED_GET_MAX_REDIRECTS = 3;
 const CUSTOM_ACTION_HTTP_MAX_CHARS = 4_000;
 
 /**
- * Read a fetch response body as text, streaming and stopping once `maxChars`
- * characters have been collected. Avoids buffering an unbounded (or hostile)
- * response into memory the way `response.text()` would before any slice.
+ * Read a fetch response body as text. Oversized hostile bodies fail explicitly
+ * instead of returning a partial value that could be mistaken for complete
+ * action output.
  */
 async function readBodyTextCapped(
   response: Response,
@@ -568,20 +567,21 @@ async function readBodyTextCapped(
   const decoder = new TextDecoder();
   let text = "";
   try {
-    while (text.length < maxChars) {
+    while (true) {
       const { done, value } = await reader.read();
       if (done) break;
       text += decoder.decode(value, { stream: true });
-      if (text.length >= maxChars) {
-        text = truncateWellFormed(toWellFormedUnicode(text), maxChars);
+      if (text.length > maxChars) {
         await reader.cancel();
-        break;
+        throw new Error(
+          `HTTP response exceeds the configured ${maxChars}-character safety limit`,
+        );
       }
     }
   } finally {
     reader.releaseLock();
   }
-  return text;
+  return toWellFormedUnicode(text);
 }
 
 export interface GuardedHttpGetOptions {
@@ -889,7 +889,7 @@ function buildHandler(
         const output = result !== undefined ? String(result) : "Done";
         return {
           ok: true,
-          output: truncateWellFormed(toWellFormedUnicode(output), 4000),
+          output: toWellFormedUnicode(output),
         };
       };
 
