@@ -18,6 +18,7 @@ export const DOORDASH_OPERATIONS = [
 export type DoorDashOperation = (typeof DOORDASH_OPERATIONS)[number];
 
 export interface DoorDashToolDescriptor {
+  readonly inputSchema?: Record<string, unknown>;
   readonly name: string;
 }
 

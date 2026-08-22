@@ -1,9 +1,10 @@
 /**
- * Owns user-isolated DoorDash automation sessions on Cloudflare Browser Run.
+ * Owns user-and-conversation-isolated DoorDash sessions on Cloudflare Browser Run.
  * The caller persists only opaque session IDs; credentials and cookies remain
  * inside Browser Run, while Live View provides an explicit human login handoff.
  */
 
+import { createHash } from "node:crypto";
 import type { Browser, BrowserWorker, Page } from "@cloudflare/playwright";
 import { getCloudBinding } from "../runtime/cloud-bindings";
 import { logger } from "../utils/logger";
@@ -28,6 +29,41 @@ interface DoorDashHumanHandoff {
   readonly humanInterventionRequired: true;
   readonly handoffId?: string;
   readonly handoffState: "active" | "manual";
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function stableValue(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(stableValue);
+  if (!isRecord(value)) return value;
+  return Object.fromEntries(
+    Object.entries(value)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, entry]) => [key, stableValue(entry)]),
+  );
+}
+
+export function managedCheckoutBindingDigest(cart: unknown, preview: unknown): string {
+  return createHash("sha256")
+    .update(JSON.stringify(stableValue({ cart, checkout: preview })))
+    .digest("hex");
+}
+
+export function assertManagedCheckoutBinding(
+  expectedDigest: unknown,
+  cart: unknown,
+  preview: unknown,
+): void {
+  if (typeof expectedDigest !== "string" || !/^[a-f0-9]{64}$/.test(expectedDigest)) {
+    throw new Error("DoorDash checkout requires the exact user-confirmed checkout digest");
+  }
+  if (managedCheckoutBindingDigest(cart, preview) !== expectedDigest) {
+    throw new Error(
+      "DoorDash cart or checkout changed after confirmation; review the new preview before ordering",
+    );
+  }
 }
 
 function browserBinding(): BrowserWorker {
@@ -464,7 +500,17 @@ export async function executeDoorDashBrowserOperation(
         "DoorDash requires human security verification in the active Cloudflare Live View",
       );
     }
-    const result = await runDoorDashOperation(page, name, args);
+    let result: Record<string, unknown>;
+    if (name === "doordash_checkout" && args.confirm === true) {
+      const cart = await runDoorDashOperation(page, "doordash_cart", {});
+      const preview = await runDoorDashOperation(page, name, {
+        confirm: false,
+      });
+      assertManagedCheckoutBinding(args.expectedCheckoutDigest, cart, preview);
+      result = await runDoorDashOperation(page, name, args);
+    } else {
+      result = await runDoorDashOperation(page, name, args);
+    }
     if (name !== "doordash_auth_check" && (await hasDoorDashSecurityChallenge(page))) {
       throw new Error(
         "DoorDash requires human security verification in the active Cloudflare Live View",

@@ -98,11 +98,19 @@ mock.module("./doordash-browser-run", () => ({
   },
 }));
 
-const { callManagedDoorDashTool, getManagedDoorDashSessionKey } = await import(
-  "./doordash-managed"
-);
+const { callManagedDoorDashTool, DOORDASH_MANAGED_TOOLS, getManagedDoorDashSessionKey } =
+  await import("./doordash-managed");
 
-const auth = (userId: string) => ({ organizationId: "org-1", userId });
+const auth = (userId: string, conversationId = "conversation-1") => ({
+  conversationId,
+  organizationId: "org-1",
+  userId,
+});
+
+const conversationArgs = (
+  args: Record<string, unknown> = {},
+  conversationId = "conversation-1",
+) => ({ conversationId, ...args });
 
 beforeEach(() => {
   values.clear();
@@ -115,9 +123,27 @@ beforeEach(() => {
 });
 
 describe("managed DoorDash", () => {
+  test("advertises the conversation and checkout binding contract", () => {
+    const checkout = DOORDASH_MANAGED_TOOLS.find((tool) => tool.name === "doordash_checkout");
+    expect(checkout?.inputSchema).toMatchObject({
+      properties: {
+        conversationId: { type: "string" },
+        expectedCheckoutDigest: {
+          pattern: "^[a-f0-9]{64}$",
+          type: "string",
+        },
+      },
+      required: ["conversationId"],
+    });
+  });
+
   test("returns a user-specific interactive login handoff", async () => {
     executionOutputs = [{ loggedIn: false, url: "https://www.doordash.com/" }];
-    const result = await callManagedDoorDashTool("doordash_auth_check", {}, auth("user-1"));
+    const result = await callManagedDoorDashTool(
+      "doordash_auth_check",
+      conversationArgs(),
+      auth("user-1"),
+    );
     expect(result).toMatchObject({
       success: true,
       authRequired: true,
@@ -140,7 +166,11 @@ describe("managed DoorDash", () => {
         url: "https://www.doordash.com/",
       },
     ];
-    const result = await callManagedDoorDashTool("doordash_auth_check", {}, auth("user-1"));
+    const result = await callManagedDoorDashTool(
+      "doordash_auth_check",
+      conversationArgs(),
+      auth("user-1"),
+    );
     expect(result).toMatchObject({
       success: true,
       authRequired: true,
@@ -156,42 +186,72 @@ describe("managed DoorDash", () => {
       { loggedIn: true, url: "https://www.doordash.com/" },
       { loggedIn: true, url: "https://www.doordash.com/" },
     ];
-    await callManagedDoorDashTool("doordash_auth_check", {}, auth("user-1"));
-    await callManagedDoorDashTool("doordash_auth_check", {}, auth("user-2"));
+    await callManagedDoorDashTool("doordash_auth_check", conversationArgs(), auth("user-1"));
+    await callManagedDoorDashTool("doordash_auth_check", conversationArgs(), auth("user-2"));
     expect(getManagedDoorDashSessionKey(auth("user-1"))).not.toBe(
       getManagedDoorDashSessionKey(auth("user-2")),
     );
     expect(createdSessions).toEqual(["session-1", "session-2"]);
   });
 
+  test("keeps one user's simultaneous conversations in distinct hosted sessions", async () => {
+    executionOutputs = [
+      { loggedIn: true, url: "https://www.doordash.com/" },
+      { loggedIn: true, url: "https://www.doordash.com/" },
+    ];
+    await callManagedDoorDashTool(
+      "doordash_auth_check",
+      conversationArgs({}, "conversation-1"),
+      auth("user-1", "conversation-1"),
+    );
+    await callManagedDoorDashTool(
+      "doordash_auth_check",
+      conversationArgs({}, "conversation-2"),
+      auth("user-1", "conversation-2"),
+    );
+    expect(getManagedDoorDashSessionKey(auth("user-1", "conversation-1"))).not.toBe(
+      getManagedDoorDashSessionKey(auth("user-1", "conversation-2")),
+    );
+    expect(createdSessions).toEqual(["session-1", "session-2"]);
+  });
+
   test("replays the same authoritative receipt without submitting twice", async () => {
-    const preview = { success: true, summary: { total: 24.5, deliveryAddress: "1 Main" } };
-    executionOutputs = [preview, { success: true, orderId: "abc-123" }, preview];
+    const expectedCheckoutDigest = "a".repeat(64);
+    executionOutputs = [{ success: true, orderId: "abc-123" }];
     const first = await callManagedDoorDashTool(
       "doordash_checkout",
-      { confirm: true },
+      conversationArgs({ confirm: true, expectedCheckoutDigest }),
       auth("user-1"),
     );
     expect(first).toMatchObject({ success: true, orderId: "abc-123" });
     values.clear();
     const replay = await callManagedDoorDashTool(
       "doordash_checkout",
-      { confirm: true },
+      conversationArgs({ confirm: true, expectedCheckoutDigest }),
       auth("user-1"),
     );
     expect(replay).toEqual(first);
     expect(createdSessions).toEqual(["session-1", "session-2"]);
-    expect(operations).toHaveLength(3);
+    expect(operations).toEqual([
+      {
+        name: "doordash_checkout",
+        args: { confirm: true, expectedCheckoutDigest },
+      },
+    ]);
   });
 
   test("rejects a synthetic checkout receipt", async () => {
-    executionOutputs = [
-      { success: true, summary: { total: 24.5 } },
-      { success: true, orderId: "order-12345" },
-    ];
+    executionOutputs = [{ success: true, orderId: "order-12345" }];
 
     await expect(
-      callManagedDoorDashTool("doordash_checkout", { confirm: true }, auth("user-1")),
+      callManagedDoorDashTool(
+        "doordash_checkout",
+        conversationArgs({
+          confirm: true,
+          expectedCheckoutDigest: "b".repeat(64),
+        }),
+        auth("user-1"),
+      ),
     ).rejects.toThrow("outcome is ambiguous");
   });
 
@@ -199,10 +259,29 @@ describe("managed DoorDash", () => {
     await expect(
       callManagedDoorDashTool(
         "doordash_add_to_cart",
-        { restaurantId: "store-1", itemName: "Soup", quantity: 0 },
+        conversationArgs({
+          restaurantId: "store-1",
+          itemName: "Soup",
+          quantity: 0,
+        }),
         auth("user-1"),
       ),
     ).rejects.toThrow("quantity must be an integer");
+    expect(createdSessions).toEqual([]);
+    expect(operations).toEqual([]);
+  });
+
+  test("rejects missing conversation scope and unbound checkout confirmation", async () => {
+    await expect(
+      callManagedDoorDashTool("doordash_auth_check", {}, auth("user-1")),
+    ).rejects.toThrow(/conversationId is required/i);
+    await expect(
+      callManagedDoorDashTool(
+        "doordash_checkout",
+        conversationArgs({ confirm: true }),
+        auth("user-1"),
+      ),
+    ).rejects.toThrow(/expectedCheckoutDigest is required/i);
     expect(createdSessions).toEqual([]);
     expect(operations).toEqual([]);
   });

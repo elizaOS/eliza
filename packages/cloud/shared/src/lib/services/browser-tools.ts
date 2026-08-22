@@ -7,6 +7,7 @@ import { usageService } from "./usage";
 
 export interface HostedBrowserAuthContext {
   apiKeyId?: string | null;
+  conversationId?: string;
   organizationId?: string;
   requestSource?: "a2a" | "api" | "mcp";
   userId?: string;

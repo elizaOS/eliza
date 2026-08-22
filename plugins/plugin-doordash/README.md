@@ -71,8 +71,8 @@ MCP_SERVER_DOORDASH_TYPE=streamable-http
 
 Eliza Cloud exposes the same authenticated transport at
 `/api/mcps/doordash/streamable-http`. The Worker's `BROWSER` binding creates a
-short-lived Browser Run session bound to the exact Cloud user and returns a
-Cloudflare Live View through `status`. Installed desktop and mobile apps open
+short-lived Browser Run session bound to the exact Cloud user and conversation,
+and returns a Cloudflare Live View through `status`. Installed desktop and mobile apps open
 that URL with `/browser?browse=...`, which uses the app's isolated native
 Browser surface. DoorDash credentials and cookies remain inside Browser Run.
 An operator can instead set
@@ -82,10 +82,11 @@ An operator can instead set
 
 `place_order` does not trust a model-generated boolean. It reads the current
 cart and a fresh checkout preview, computes a SHA-256 digest over both, and asks
-the user to confirm that exact state. If the cart or total changes, the digest
-changes and a new confirmation is required. The adapter must return a real
-DoorDash order ID; missing and timestamp-generated fallback IDs are rejected as
-unverified.
+the user to confirm that exact state. The managed browser receives that same
+digest, re-reads the cart and checkout immediately before the order click, and
+fails closed if an item, quantity, total, address, or ETA changed. The adapter
+must return a real DoorDash order ID; missing and timestamp-generated fallback
+IDs are rejected as unverified.
 
 Community adapters may not meet this contract. Search, menus, carts, and history
 can still work while checkout fails closed.
@@ -94,7 +95,7 @@ can still work while checkout fails closed.
 
 The first-party Cloud path:
 
-- authenticates every MCP request and isolates hosted sessions per Eliza user;
+- authenticates every MCP request and isolates hosted sessions per Eliza user and conversation;
 - returns a Cloudflare Live View plus an in-app Browser path without accepting credentials;
 - restricts new browser sessions to DoorDash, supported identity/payment domains,
   and Cloudflare's common-CDN set;

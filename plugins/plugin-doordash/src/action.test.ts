@@ -202,9 +202,22 @@ describe("DoorDash checkout safety", () => {
         {
           name: "doordash",
           status: "connected",
-          tools: ["doordash_cart", "doordash_checkout"].map((name) => ({
-            name,
-          })),
+          tools: [
+            { name: "doordash_auth_check" },
+            { name: "doordash_auth_clear" },
+            { name: "doordash_cart" },
+            {
+              name: "doordash_checkout",
+              inputSchema: {
+                type: "object",
+                properties: {
+                  conversationId: { type: "string" },
+                  expectedCheckoutDigest: { type: "string" },
+                },
+                required: ["conversationId"],
+              },
+            },
+          ],
         },
       ],
       callTool: async (_serverName, toolName, args = {}) => {
@@ -244,7 +257,11 @@ describe("DoorDash checkout safety", () => {
 
     const first = await doorDashAction.handler?.(
       runtime,
-      { entityId: "user-1", content: { text: "place the order" } } as Memory,
+      {
+        entityId: "user-1",
+        roomId: "conversation-1",
+        content: { text: "place the order" },
+      } as Memory,
       undefined,
       options,
       callback,
@@ -255,13 +272,23 @@ describe("DoorDash checkout safety", () => {
 
     const second = await doorDashAction.handler?.(
       runtime,
-      { entityId: "user-1", content: { text: "yes" } } as Memory,
+      {
+        entityId: "user-1",
+        roomId: "conversation-1",
+        content: { text: "yes" },
+      } as Memory,
       undefined,
       options,
       callback,
     );
     expect(second.success).toBe(true);
     expect(calls.filter((call) => call.args.confirm === true)).toHaveLength(1);
+    expect(
+      calls.find((call) => call.args.confirm === true)?.args,
+    ).toMatchObject({
+      conversationId: "conversation-1",
+      expectedCheckoutDigest: first.data?.checkoutDigest,
+    });
     expect(second.data?.result).toEqual({
       success: true,
       orderId: "dd-real-123",

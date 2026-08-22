@@ -284,6 +284,10 @@ async function execute(
   callback?: HandlerCallback,
 ): Promise<ActionResult> {
   const args = parameters(options);
+  const scopedArgs = {
+    ...args,
+    conversationId: message.roomId,
+  };
   const operation = normalizeOperation(
     args.action ?? args.op ?? args.operation,
   );
@@ -353,13 +357,13 @@ async function execute(
       const cart = await callDoorDashOperation(
         mcp,
         "cart",
-        args,
+        scopedArgs,
         typeof args.serverName === "string" ? args.serverName : undefined,
       );
       const preview = await callDoorDashOperation(
         mcp,
         "preview_checkout",
-        args,
+        scopedArgs,
         typeof args.serverName === "string" ? args.serverName : undefined,
       );
       const binding = buildCheckoutBinding(cart.value, preview.value);
@@ -400,7 +404,7 @@ async function execute(
       const placed = await callDoorDashOperation(
         mcp,
         "place_order",
-        args,
+        { ...scopedArgs, expectedCheckoutDigest: digest },
         typeof args.serverName === "string" ? args.serverName : undefined,
       );
       assertVerifiedOrderReceipt(placed.value);
@@ -427,7 +431,7 @@ async function execute(
     const called = await callDoorDashOperation(
       mcp,
       operation,
-      args,
+      scopedArgs,
       typeof args.serverName === "string" ? args.serverName : undefined,
     );
     const handoff = humanIntervention(called.value);

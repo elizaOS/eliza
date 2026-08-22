@@ -1,4 +1,4 @@
-/** Runs the first-party DoorDash MCP adapter in a user-bound hosted browser session. */
+/** Runs the first-party DoorDash MCP adapter in a user-and-conversation-bound browser session. */
 
 import { createHash } from "node:crypto";
 import type { RuntimeDurableObjectNamespace } from "../../types/cloud-worker-env";
@@ -26,8 +26,16 @@ const objectSchema = (
   required: string[] = [],
 ): Record<string, unknown> => ({
   type: "object",
-  properties,
-  ...(required.length > 0 ? { required } : {}),
+  properties: {
+    conversationId: {
+      type: "string",
+      minLength: 1,
+      maxLength: 256,
+      description: "Authenticated Eliza conversation scope for this browser session.",
+    },
+    ...properties,
+  },
+  required: ["conversationId", ...required],
   additionalProperties: false,
 });
 
@@ -94,7 +102,14 @@ export const DOORDASH_MANAGED_TOOLS: readonly DoorDashManagedTool[] = [
     name: "doordash_checkout",
     description:
       "Preview checkout or, only with confirm=true, submit the exact visible checkout once.",
-    inputSchema: objectSchema({ confirm: { type: "boolean" } }),
+    inputSchema: objectSchema({
+      confirm: { type: "boolean" },
+      expectedCheckoutDigest: {
+        type: "string",
+        pattern: "^[a-f0-9]{64}$",
+        description: "Digest of the exact cart and checkout preview the user confirmed.",
+      },
+    }),
   },
   {
     name: "doordash_track_order",
@@ -104,24 +119,31 @@ export const DOORDASH_MANAGED_TOOLS: readonly DoorDashManagedTool[] = [
 ];
 
 function requireIdentity(auth: HostedBrowserAuthContext): {
+  conversationId: string;
   organizationId: string;
   userId: string;
 } {
+  const conversationId = auth.conversationId?.trim();
   const organizationId = auth.organizationId?.trim();
   const userId = auth.userId?.trim();
-  if (!organizationId || !userId) {
-    throw new Error("DoorDash requires an authenticated Cloud user and organization");
+  if (!conversationId || !organizationId || !userId) {
+    throw new Error(
+      "DoorDash requires an authenticated Cloud user, organization, and conversation",
+    );
   }
-  return { organizationId, userId };
+  return { conversationId, organizationId, userId };
 }
 
 function identityHash(auth: HostedBrowserAuthContext): string {
-  const { organizationId, userId } = requireIdentity(auth);
-  return createHash("sha256").update(`${organizationId}:${userId}`).digest("hex").slice(0, 32);
+  const { conversationId, organizationId, userId } = requireIdentity(auth);
+  return createHash("sha256")
+    .update(`${organizationId}:${userId}:${conversationId}`)
+    .digest("hex")
+    .slice(0, 32);
 }
 
 export function getManagedDoorDashSessionKey(auth: HostedBrowserAuthContext): string {
-  return `doordash:user:${identityHash(auth)}:session:v1`;
+  return `doordash:conversation:${identityHash(auth)}:session:v2`;
 }
 
 type CheckoutClaim =
@@ -244,6 +266,14 @@ function optionalString(args: Record<string, unknown>, key: string): string | un
   return typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined;
 }
 
+function requiredConversationId(args: Record<string, unknown>): string {
+  const conversationId = requiredString(args, "conversationId");
+  if (conversationId.length > 256) {
+    throw new Error("DoorDash conversationId must not exceed 256 characters");
+  }
+  return conversationId;
+}
+
 function validateManagedArgs(name: string, args: Record<string, unknown>): Record<string, unknown> {
   switch (name) {
     case "doordash_auth_check":
@@ -294,7 +324,14 @@ function validateManagedArgs(name: string, args: Record<string, unknown>): Recor
       if (args.confirm !== undefined && typeof args.confirm !== "boolean") {
         throw new Error("DoorDash confirm must be a boolean");
       }
-      return { confirm: args.confirm === true };
+      if (args.confirm === true) {
+        const expectedCheckoutDigest = requiredString(args, "expectedCheckoutDigest");
+        if (!/^[a-f0-9]{64}$/.test(expectedCheckoutDigest)) {
+          throw new Error("DoorDash expectedCheckoutDigest must be a lowercase SHA-256 digest");
+        }
+        return { confirm: true, expectedCheckoutDigest };
+      }
+      return { confirm: false };
     case "doordash_track_order":
       return optionalString(args, "orderId") ? { orderId: optionalString(args, "orderId") } : {};
     default:
@@ -307,24 +344,22 @@ export async function callManagedDoorDashTool(
   args: Record<string, unknown>,
   auth: HostedBrowserAuthContext,
 ): Promise<Record<string, unknown>> {
-  requireIdentity(auth);
-  if (name === "doordash_auth_clear") return clearSession(auth);
+  const scopedAuth: HostedBrowserAuthContext = {
+    ...auth,
+    conversationId: requiredConversationId(args),
+  };
+  requireIdentity(scopedAuth);
+  if (name === "doordash_auth_clear") return clearSession(scopedAuth);
   if (!DOORDASH_MANAGED_TOOLS.some((tool) => tool.name === name)) {
     throw new Error(`Unknown managed DoorDash tool: ${name}`);
   }
   const validatedArgs = validateManagedArgs(name, args);
 
-  const session = await getOrCreateSession(auth);
+  const session = await getOrCreateSession(scopedAuth);
   let checkoutDigest: string | undefined;
   if (name === "doordash_checkout" && validatedArgs.confirm === true) {
-    const preview = await executeDoorDashBrowserOperation(session.id, name, {
-      ...validatedArgs,
-      confirm: false,
-    });
-    checkoutDigest = createHash("sha256")
-      .update(`${identityHash(auth)}:${JSON.stringify(preview)}`)
-      .digest("hex");
-    const claim = await claimCheckout(auth, checkoutDigest);
+    checkoutDigest = requiredString(validatedArgs, "expectedCheckoutDigest");
+    const claim = await claimCheckout(scopedAuth, checkoutDigest);
     if (claim.kind === "completed") return claim.receipt;
   }
 
@@ -344,7 +379,7 @@ export async function callManagedDoorDashTool(
         "DoorDash submission outcome is ambiguous; inspect the active session before retrying",
       );
     }
-    return await completeCheckout(auth, checkoutDigest, result);
+    return await completeCheckout(scopedAuth, checkoutDigest, result);
   }
   if (name === "doordash_auth_check" && result.loggedIn !== true) {
     const securityVerificationRequired = result.securityVerificationRequired === true;

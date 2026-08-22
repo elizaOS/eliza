@@ -41,7 +41,7 @@ subject to website changes and DoorDash policy.
 
 - Local users may run either adapter after reviewing and accepting its browser
   behavior. The facade normalizes both tool vocabularies.
-- Cloud authenticates each request, binds the hosted browser to the exact user,
+- Cloud authenticates each request, binds the hosted browser to the exact user and conversation,
   supports revocation, and never returns cookies to the agent. Credentials are
   entered only in Cloudflare Live View. Installed Eliza apps open that URL in
   their isolated native Browser surface when possible.
@@ -50,10 +50,11 @@ subject to website changes and DoorDash policy.
 - `place_order` always refreshes the cart and non-purchasing preview, binds the
   exact state to the user's next-turn confirmation, and rejects missing or
   timestamp-generated order identifiers.
-- On the managed Cloud path, a per-user Durable Object atomically claims the
-  fresh checkout state before the hosted browser can submit it, preventing
-  concurrent duplicate attempts. An external override must provide an
-  equivalent guarantee.
+- On the managed Cloud path, a per-user-and-conversation Durable Object
+  atomically claims the user-confirmed digest. The hosted browser re-reads the
+  cart and checkout immediately before the click and rejects any mismatch,
+  preventing stale or concurrent duplicate attempts. External overrides remain
+  read-capable, but checkout fails closed unless this binding contract is present.
 
 ## Acceptance still required for Cloud
 
@@ -62,13 +63,14 @@ deployed service and a dedicated test account:
 
 1. Two users in the same organization cannot list, read, invoke, or delete each
    other's DoorDash session.
+   Two simultaneous conversations for one user must also receive distinct sessions.
 2. Session material is encrypted at rest, redacted from logs and MCP results,
    and removed by the clear-session operation.
 3. Search, menu, cart, and checkout preview work through the public Cloud MCP
    URL with the caller's real Cloud credential.
 4. Replayed and concurrent confirmed-checkout requests produce at most one
    DoorDash order and return the same authoritative receipt.
-5. A changed cart or total invalidates the prior confirmation.
+5. A changed cart, total, delivery address, or ETA invalidates the prior confirmation.
 6. Invalid, expired, cross-tenant, and unauthenticated requests fail closed.
 7. The operator reviews the resulting DoorDash order in the provider UI and
    cleans up the test account/session after the run.

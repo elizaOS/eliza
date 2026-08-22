@@ -93,4 +93,65 @@ describe("DoorDash MCP adapter", () => {
       code: "DOORDASH_ADAPTER_ERROR",
     });
   });
+
+  it("refuses checkout when an external adapter does not advertise binding support", async () => {
+    const mcp = service(["doordash_checkout"]);
+    await expect(
+      callDoorDashOperation(mcp, "place_order", {
+        conversationId: "conversation-1",
+        expectedCheckoutDigest: "a".repeat(64),
+      }),
+    ).rejects.toMatchObject({
+      code: "DOORDASH_CHECKOUT_BINDING_UNSUPPORTED",
+    });
+    expect(mcp.calls).toEqual([]);
+  });
+
+  it("passes conversation scope and the confirmed digest to a binding-capable adapter", async () => {
+    const calls: Array<Record<string, unknown>> = [];
+    const mcp: DoorDashMcpService = {
+      getServers: () => [
+        {
+          name: "doordash",
+          status: "connected",
+          tools: [
+            {
+              name: "doordash_checkout",
+              inputSchema: {
+                type: "object",
+                properties: {
+                  conversationId: { type: "string" },
+                  expectedCheckoutDigest: { type: "string" },
+                },
+                required: ["conversationId"],
+              },
+            },
+          ],
+        },
+      ],
+      callTool: async (serverName, toolName, toolArguments) => {
+        calls.push({ serverName, toolName, toolArguments });
+        return {
+          content: [
+            { type: "text", text: '{"success":true,"orderId":"dd-123"}' },
+          ],
+        };
+      },
+    };
+    await callDoorDashOperation(mcp, "place_order", {
+      conversationId: "conversation-1",
+      expectedCheckoutDigest: "b".repeat(64),
+    });
+    expect(calls).toEqual([
+      {
+        serverName: "doordash",
+        toolName: "doordash_checkout",
+        toolArguments: {
+          confirm: true,
+          conversationId: "conversation-1",
+          expectedCheckoutDigest: "b".repeat(64),
+        },
+      },
+    ]);
+  });
 });

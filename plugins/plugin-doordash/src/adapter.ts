@@ -84,6 +84,20 @@ function resolveTool(
   return selected;
 }
 
+function isFirstPartyManagedServer(server: DoorDashServerDescriptor): boolean {
+  const checkout = (server.tools ?? []).find(
+    (tool) => tool.name === "doordash_checkout",
+  );
+  const schema = checkout?.inputSchema;
+  const properties = isRecord(schema?.properties) ? schema.properties : {};
+  const required = Array.isArray(schema?.required) ? schema.required : [];
+  return (
+    isRecord(properties.conversationId) &&
+    isRecord(properties.expectedCheckoutDigest) &&
+    required.includes("conversationId")
+  );
+}
+
 function requireString(args: Record<string, unknown>, key: string): string {
   const value = args[key];
   if (typeof value !== "string" || value.trim().length === 0) {
@@ -132,16 +146,22 @@ export function buildToolArguments(
   operation: DoorDashOperation,
   toolName: string,
   args: Record<string, unknown>,
+  managed = false,
 ): Record<string, unknown> {
+  const conversationId = managed
+    ? requireString(args, "conversationId")
+    : undefined;
+  const managedContext = conversationId ? { conversationId } : {};
   switch (operation) {
     case "status":
     case "clear_session":
     case "cart":
-      return {};
+      return managedContext;
     case "set_address":
-      return { address: requireString(args, "address") };
+      return { ...managedContext, address: requireString(args, "address") };
     case "search":
       return {
+        ...managedContext,
         query: requireString(args, "query"),
         ...(optionalString(args, "cuisine")
           ? { cuisine: optionalString(args, "cuisine") }
@@ -156,7 +176,7 @@ export function buildToolArguments(
               ? { menuId: optionalString(args, "menuId") }
               : {}),
           }
-        : { restaurantId };
+        : { ...managedContext, restaurantId };
     }
     case "add_to_cart": {
       const restaurantId = requireString(args, "restaurantId");
@@ -184,6 +204,7 @@ export function buildToolArguments(
         };
       }
       return {
+        ...managedContext,
         restaurantId,
         itemName,
         quantity,
@@ -194,19 +215,37 @@ export function buildToolArguments(
     }
     case "remove_from_cart":
       return {
+        ...managedContext,
         cartId: requireString(args, "cartId"),
         itemId: requireString(args, "itemId"),
       };
     case "history":
-      return { limit: optionalNumber(args, "limit") ?? 5 };
+      return {
+        ...managedContext,
+        limit: optionalNumber(args, "limit") ?? 5,
+      };
     case "preview_checkout":
-      return { confirm: false };
-    case "place_order":
-      return { confirm: true };
+      return { ...managedContext, confirm: false };
+    case "place_order": {
+      if (!managed) {
+        throw new ElizaError(
+          "The connected DoorDash adapter cannot bind the final submission to the checkout you confirmed.",
+          {
+            code: "DOORDASH_CHECKOUT_BINDING_UNSUPPORTED",
+            severity: "ephemeral",
+          },
+        );
+      }
+      return {
+        ...managedContext,
+        confirm: true,
+        expectedCheckoutDigest: requireString(args, "expectedCheckoutDigest"),
+      };
+    }
     case "track_order":
       return optionalString(args, "orderId")
-        ? { orderId: optionalString(args, "orderId") }
-        : {};
+        ? { ...managedContext, orderId: optionalString(args, "orderId") }
+        : managedContext;
   }
 }
 
@@ -255,7 +294,12 @@ export async function callDoorDashOperation(
 ): Promise<DoorDashCallResult> {
   const server = resolveServer(service, preferredServerName);
   const toolName = resolveTool(server, operation);
-  const toolArguments = buildToolArguments(operation, toolName, args);
+  const toolArguments = buildToolArguments(
+    operation,
+    toolName,
+    args,
+    isFirstPartyManagedServer(server),
+  );
   const parsed = parseToolResult(
     await service.callTool(server.name, toolName, toolArguments),
   );
