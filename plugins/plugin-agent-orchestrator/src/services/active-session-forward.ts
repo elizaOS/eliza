@@ -359,7 +359,38 @@ export function createActiveSessionForwardHandler(
           case "ignore":
             continue;
           case "interrupt": {
+            const taskService = runtime.getService?.(
+              OrchestratorTaskService.serviceType,
+            ) as OrchestratorTaskService | null | undefined;
             if (!busy) {
+              // The session is idle, but its TASK may still be in flight
+              // (validating / awaiting a verify lap): the stop applies to the
+              // task. Prompting the idle child with "actually stop, cancel
+              // that build" made it invent deploy scripts for three coaching
+              // laps (live 2026-08-22, tetris).
+              let taskInterrupted = false;
+              if (taskService) {
+                try {
+                  const owner = await taskService.getTaskForSession(active.id);
+                  if (owner) {
+                    taskInterrupted = await taskService.interruptTask(
+                      owner.id,
+                      "user_interrupt",
+                    );
+                  }
+                } catch {
+                  // error-policy:J6 best-effort; fall through to delivery.
+                }
+              }
+              if (taskInterrupted) {
+                subAgentInbox.clear(active.id);
+                await markSessionAdministrativelyStopped(
+                  acp,
+                  active.id,
+                  "user_interrupt",
+                ).catch(() => undefined);
+                continue;
+              }
               // Nothing in flight to cancel — deliver the instruction to the
               // idle agent instead of dropping it.
               const queued = subAgentInbox.drain(active.id);
@@ -388,9 +419,6 @@ export function createActiveSessionForwardHandler(
             // it first, or the remaining lanes of a phased build launch right
             // after this session dies (live 2026-08-22, tetris: 3 more lanes
             // ran to verification after "stopping the build now").
-            const taskService = runtime.getService?.(
-              OrchestratorTaskService.serviceType,
-            ) as OrchestratorTaskService | null | undefined;
             if (taskService) {
               try {
                 const owner = await taskService.getTaskForSession(active.id);

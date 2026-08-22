@@ -37,6 +37,7 @@ import {
   resolveStateDir,
   resolveTrajectoryGate,
   rollUpTrajectoryUsage,
+  runWithStreamingContext,
   runWithTrajectoryContext,
   Service,
   TRACE_ENV,
@@ -1279,13 +1280,22 @@ export class OrchestratorTaskService extends Service {
   private subscribeToAcp(acp: AcpService): void {
     this.unsubscribe = acp.onSessionEvent(
       (sessionId, event, data, sessionSnapshot, turnId) => {
-        void this.onSessionEvent(
-          sessionId,
-          event,
-          data,
-          sessionSnapshot,
-          turnId,
-        );
+        // Durable-task work (verification, coaching laps, respawns) is owned
+        // by the task, not by whichever user turn the event happened to fire
+        // inside. A native-transport prompt completes within the spawning
+        // turn's async context, so after the user cancelled that turn every
+        // verifier model call died "Turn aborted: user requested stop", each
+        // counting as a failed attempt until the task was parked (live
+        // 2026-08-22). Detach the ambient turn context at the entry.
+        runWithStreamingContext(undefined, () => {
+          void this.onSessionEvent(
+            sessionId,
+            event,
+            data,
+            sessionSnapshot,
+            turnId,
+          );
+        });
       },
     );
   }
@@ -6701,6 +6711,16 @@ export class OrchestratorTaskService extends Service {
       createdAt: new Date().toISOString(),
     });
     this.emitChange(taskId);
+    // A completion relay deferred until the verdict would otherwise fire on
+    // its timeout, five minutes after the user cancelled the build.
+    (
+      this.runtime.getService("ACPX_SUB_AGENT_ROUTER") as {
+        releaseDeferredCompletionRelay?: (
+          taskId: string,
+          verdict: "passed" | "failed",
+        ) => void;
+      } | null
+    )?.releaseDeferredCompletionRelay?.(taskId, "failed");
     return true;
   }
 
