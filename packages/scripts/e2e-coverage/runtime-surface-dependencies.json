@@ -125,13 +125,8 @@
       "externalServices": [
         {
           "id": "anthropic-api",
-          "protocol": "Anthropic Messages API v1",
-          "mockOwner": "anthropic",
-          "mockSource": "packages/scenario-runner/test/mocks/environments/anthropic.json",
-          "mockContract": {
-            "kind": "mockoon-http",
-            "operations": [{ "method": "POST", "path": "v1/messages" }]
-          }
+          "protocol": "Caller-selected Anthropic API proxy transport",
+          "missingMockReason": "The proxy forwards caller-controlled methods and paths, while the fixture owns only a narrow Messages and models subset."
         }
       ]
     },
@@ -478,7 +473,6 @@
       "kinds": ["model-handler"],
       "surfaceIds": [
         "@elizaos/plugin-openai:model-handler:action_planner",
-        "@elizaos/plugin-openai:model-handler:research",
         "@elizaos/plugin-openai:model-handler:response_handler",
         "@elizaos/plugin-openai:model-handler:text_embedding",
         "@elizaos/plugin-openai:model-handler:text_large",
@@ -501,6 +495,18 @@
               { "method": "POST", "path": "v1/images/generations" }
             ]
           }
+        }
+      ]
+    },
+    {
+      "packageName": "@elizaos/plugin-openai",
+      "kinds": ["model-handler"],
+      "surfaceIds": ["@elizaos/plugin-openai:model-handler:research"],
+      "externalServices": [
+        {
+          "id": "openai-responses-api",
+          "protocol": "OpenAI Responses API v1",
+          "missingMockReason": "The OpenAI fixture does not register the Responses API operation used by the research model handler."
         }
       ]
     },
