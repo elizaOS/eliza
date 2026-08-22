@@ -105,6 +105,21 @@ describe("host-external importer resolution (factory hostImport)", () => {
     expect(typeof react.useState).toBe("function");
   });
 
+  it("identifies a registered host external that fails to import", async () => {
+    const { registerHostExternalImporter } = await import(
+      "../../app-shell-registry"
+    );
+    registerHostExternalImporter("@test/plugin-broken-external", async () => {
+      throw new Error("module unavailable");
+    });
+
+    await expect(
+      resolveHostExternal("@test/plugin-broken-external"),
+    ).rejects.toThrow(
+      'failed to import host external "@test/plugin-broken-external": module unavailable',
+    );
+  });
+
   it("exposes only the browser-safe core view contract", async () => {
     const core = await resolveHostExternal("@elizaos/core");
 
