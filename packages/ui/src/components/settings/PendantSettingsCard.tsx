@@ -21,13 +21,13 @@ import {
   Radio,
 } from "lucide-react";
 import type * as React from "react";
-import { AgentButton } from "../../agent-surface/components";
 import {
   isPendantLiveStatus,
   pendantConnectStepLabel,
   pendantStatusLabel,
 } from "../../pendant/pendant-status";
 import { usePendant } from "../../pendant/usePendant";
+import { Button } from "../ui/button";
 import { SettingsGroup, SettingsRow } from "./settings-layout";
 
 function BatteryBadge({ percent }: { percent: number }): React.ReactElement {
@@ -104,20 +104,16 @@ export function PendantSettingsCard(): React.ReactElement {
         }
         control={
           !supported ? null : live ? (
-            <AgentButton
-              agentId="pendant-disconnect"
-              agentLabel="Disconnect pendant"
+            <Button
               variant="surfaceDestructive"
               size="sm"
               onClick={disconnect}
               data-testid="pendant-disconnect"
             >
               Disconnect
-            </AgentButton>
+            </Button>
           ) : (
-            <AgentButton
-              agentId="pendant-connect"
-              agentLabel="Connect pendant"
+            <Button
               variant="surfaceAccent"
               size="sm"
               onClick={connect}
@@ -130,7 +126,7 @@ export function PendantSettingsCard(): React.ReactElement {
                 <Bluetooth className="size-4" aria-hidden />
               )}
               {busy ? "Connecting…" : "Connect"}
-            </AgentButton>
+            </Button>
           )
         }
       />

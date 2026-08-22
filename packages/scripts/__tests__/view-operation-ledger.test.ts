@@ -3,6 +3,7 @@
  * fixtures without letting a test-owned surface roster become authority.
  */
 
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { beforeAll, describe, expect, it } from "vitest";
@@ -74,6 +75,76 @@ describe("view operation ledger", () => {
     expect(first).toBe(second);
     expect(first).toContain("# Runtime view operation ledger");
     expect(first).toContain("| Operation | Surface | Classification |");
+  });
+
+  it("keeps view-only operation identity independent of source line movement", () => {
+    const input = {
+      surfaceId: "workflow",
+      scope: "WorkflowEditor",
+      identity: "run-workflow",
+      eventName: "onClick",
+      discriminator: "abc123",
+    };
+    expect(__test.viewOnlyOperationId(input)).toBe(
+      "workflow.view-only.WorkflowEditor.run-workflow.onClick.abc123",
+    );
+    expect(__test.viewOnlyOperationId({ ...input, ordinal: 1 })).toBe(
+      "workflow.view-only.WorkflowEditor.run-workflow.onClick.abc123-1",
+    );
+  });
+
+  it("does not treat declaration names as proven runtime contracts", () => {
+    const declared = productionLedger.operations.find(
+      (operation) => operation.contractStatus === "declaration-only",
+    );
+    expect(declared).toBeDefined();
+    expect(declared?.authorization).toBe("unverified-declaration");
+    expect(declared?.delivery).toEqual({});
+    expect(declared?.evidence).toMatchObject({
+      contractProven: false,
+      tests: [],
+    });
+  });
+
+  it("does not expose human-authority controls through direct agent activation", () => {
+    const forbidden = new Map([
+      [
+        "packages/ui/src/components/pages/WorkflowEditor.tsx",
+        [
+          'data-agent-id="run-workflow"',
+          "data-agent-id={`approve-workflow-",
+          "data-agent-id={`deny-workflow-",
+        ],
+      ],
+      [
+        "packages/ui/src/components/browser/BrowserSessionPolicyPanel.tsx",
+        [
+          "data-agent-id={`browser-session-$" + "{session.id}-approve`}",
+          "data-agent-id={`browser-session-$" + "{session.id}-grant`}",
+          "data-agent-id={`browser-session-$" + "{session.id}-block`}",
+        ],
+      ],
+      [
+        "packages/ui/src/components/settings/CloudAgentsSection.tsx",
+        ["data-agent-id={`cloud-agent-delete-"],
+      ],
+      [
+        "packages/ui/src/components/permissions/PermissionPrimingModal.tsx",
+        ["data-agent-id={`priming-enable-"],
+      ],
+      [
+        "packages/ui/src/components/transcripts/MeetingJoinBar.tsx",
+        ["data-agent-id={`stop-meeting-"],
+      ],
+    ]);
+    const exposed = [];
+    for (const [source, fragments] of forbidden) {
+      const text = readFileSync(path.resolve(REPO_ROOT, source), "utf8");
+      for (const fragment of fragments) {
+        if (text.includes(fragment)) exposed.push(`${source}: ${fragment}`);
+      }
+    }
+    expect(exposed).toEqual([]);
   });
 
   it("fails on duplicate operation ids", () => {

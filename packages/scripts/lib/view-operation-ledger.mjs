@@ -688,6 +688,17 @@ function siteDiscriminator(node, context) {
   return sha(`${context.source}:${scopeName(node)}:${parentText}`);
 }
 
+function viewOnlyOperationId({
+  surfaceId,
+  scope,
+  identity,
+  eventName,
+  discriminator,
+  ordinal = 0,
+}) {
+  return `${surfaceId}.view-only.${scope}.${identity}.${eventName}.${discriminator}${ordinal > 0 ? `-${ordinal}` : ""}`;
+}
+
 function viewOnlyJustificationCode({
   eventName,
   handler,
@@ -888,6 +899,7 @@ function elementContract({
 function scanControlsForSurface(surface, files, repoRoot, cache) {
   const operations = [];
   const rawControls = [];
+  const siteOrdinals = new Map();
   for (const source of [...files].sort(compareText)) {
     const context = parseSource(repoRoot, source, cache);
     const visit = (node) => {
@@ -1152,8 +1164,19 @@ function scanControlsForSurface(surface, files, repoRoot, cache) {
               context,
             );
             const mutationRisk = semanticAnalysis.mutation;
+            const discriminator = siteDiscriminator(node, context);
+            const siteKey = `${surface.id}\u0000${scopeName(node)}\u0000${identity.value}\u0000${eventName}\u0000${discriminator}`;
+            const ordinal = siteOrdinals.get(siteKey) ?? 0;
+            siteOrdinals.set(siteKey, ordinal + 1);
             rawControls.push({
-              operationId: `${surface.id}.view-only.${scopeName(node)}.${identity.value}.${eventName}.${siteDiscriminator(node, context)}-L${lineOf(context, ts.isJsxAttribute(event) ? event : node)}`,
+              operationId: viewOnlyOperationId({
+                surfaceId: surface.id,
+                scope: scopeName(node),
+                identity: identity.value,
+                eventName,
+                discriminator,
+                ordinal,
+              }),
               surfaceId: surface.id,
               owner: surface.owner,
               useCase: isLink
@@ -1219,22 +1242,13 @@ function declarationOperations(view) {
   const shared = {
     surfaceId: view.id,
     owner: view.owner,
-    output: {
-      type: "OperationReceipt",
-      fields: { ok: "boolean", reason: "string", receiptId: "string?" },
-    },
-    errors: [
-      "UNAUTHORIZED",
-      "CAPABILITY_UNAVAILABLE",
-      "INVALID_INPUT",
-      "OPERATION_FAILED",
-    ],
-    authorization: view.minRole
-      ? `role>=${view.minRole}`
-      : "authenticated-owner",
-    idempotency: "operation-defined",
-    confirmation: "operation-defined",
-    channels: { view: true, widget: true, chat: true, voice: true },
+    output: { type: "UnverifiedDeclaredOperationResult", fields: "unknown" },
+    errors: ["UNVERIFIED_OPERATION_CONTRACT"],
+    authorization: "unverified-declaration",
+    idempotency: "unverified-declaration",
+    confirmation: "unverified-declaration",
+    channels: { view: true, widget: false, chat: false, voice: false },
+    contractStatus: "declaration-only",
     sensitive: false,
     semanticMutation: true,
     source: { file: view.source, line: view.line },
@@ -1307,6 +1321,14 @@ function assertLedger(ledger) {
           message: `missing ${field}`,
         });
       }
+    }
+    if (operation.contractStatus === "declaration-only") {
+      findings.push({
+        code: "unverified-operation-contract",
+        operationId: operation.operationId,
+        message:
+          "view metadata names an operation but does not prove its handler, binding, policy, replay semantics, receipt, or channel delivery",
+      });
     }
     if (
       operation.sensitive &&
@@ -1517,6 +1539,7 @@ export function discoverViewOperationLedger({ repoRoot, validate = true }) {
   }
 
   for (const operation of operations) {
+    operation.contractStatus ??= "statically-inferred";
     operation.capability ??=
       operation.classification === "agent-action"
         ? operation.operationId.split(".action.")[1]
@@ -1530,30 +1553,37 @@ export function discoverViewOperationLedger({ repoRoot, validate = true }) {
       confirmation: operation.confirmation,
       sensitiveBoundary: operation.sensitive,
     };
-    operation.delivery = Object.fromEntries(
-      Object.entries(operation.channels)
-        .filter(([, enabled]) => enabled)
-        .map(([channel]) => [
-          channel,
-          {
-            output: operation.output.type,
-            reason: "canonical-operation-reason",
-            receipt: operation.output.type,
-          },
-        ]),
-    );
+    operation.delivery =
+      operation.contractStatus === "declaration-only"
+        ? {}
+        : Object.fromEntries(
+            Object.entries(operation.channels)
+              .filter(([, enabled]) => enabled)
+              .map(([channel]) => [
+                channel,
+                {
+                  output: operation.output.type,
+                  reason: "canonical-operation-reason",
+                  receipt: operation.output.type,
+                },
+              ]),
+          );
     const siblingTest = operation.source.file.replace(
       /\.(tsx|ts)$/,
       ".test.$1",
     );
     operation.evidence = {
       implementation: `${operation.source.file}:${operation.source.line}`,
-      tests: [
-        "packages/scripts/__tests__/view-operation-ledger.test.ts",
-        ...(existsSync(path.resolve(repoRoot, siblingTest))
-          ? [siblingTest]
-          : []),
-      ],
+      contractProven: operation.contractStatus !== "declaration-only",
+      tests:
+        operation.contractStatus === "declaration-only"
+          ? []
+          : [
+              "packages/scripts/__tests__/view-operation-ledger.test.ts",
+              ...(existsSync(path.resolve(repoRoot, siblingTest))
+                ? [siblingTest]
+                : []),
+            ],
     };
   }
 
@@ -1665,8 +1695,9 @@ export function discoverViewOperationLedger({ repoRoot, validate = true }) {
     unresolvedControls: operations
       .filter(
         (operation) =>
-          operation.classification === "view-only" &&
-          (operation.mutationRisk || operation.unresolvedMutation),
+          operation.contractStatus === "declaration-only" ||
+          (operation.classification === "view-only" &&
+            (operation.mutationRisk || operation.unresolvedMutation)),
       )
       .map((operation) => ({
         operationId: operation.operationId,
@@ -1675,9 +1706,11 @@ export function discoverViewOperationLedger({ repoRoot, validate = true }) {
         domain: sourceDomain(operation.source.file),
         risk: operation.sensitive
           ? "sensitive"
-          : operation.mutationRisk
-            ? "business-mutation"
-            : "generic-indirection",
+          : operation.contractStatus === "declaration-only"
+            ? "unverified-contract"
+            : operation.mutationRisk
+              ? "business-mutation"
+              : "generic-indirection",
         source: operation.source,
       })),
     registeredSurfaces: registered.map(({ root, ...surface }) => surface),
@@ -1738,5 +1771,7 @@ export function renderViewOperationLedgerMarkdown(ledger) {
 
 export const __test = {
   assertLedger,
+  declarationOperations,
+  viewOnlyOperationId,
   VIEW_ONLY_JUSTIFICATIONS,
 };
