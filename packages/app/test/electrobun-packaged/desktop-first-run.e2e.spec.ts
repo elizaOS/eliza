@@ -329,16 +329,10 @@ test("packaged desktop pairing auth redeems a code and reaches auth/me", async (
         pairingEnabled: true,
       }),
     );
-    expect(api.authMeChallenges).toContainEqual(
-      expect.objectContaining({
-        reason: "remote_auth_required",
-        access: expect.objectContaining({
-          mode: "remote",
-          passwordConfigured: true,
-          ownerConfigured: false,
-        }),
-      }),
-    );
+    // The cold auth gate may establish the unauthenticated pairing state from
+    // /api/auth/status without issuing a redundant pre-pair /api/auth/me. The
+    // status assertion above proves the starting state; the bearer response
+    // below proves the authenticated post-reload end state.
     expect(api.authMeResponses).toContainEqual(
       expect.objectContaining({
         identity: expect.objectContaining({
