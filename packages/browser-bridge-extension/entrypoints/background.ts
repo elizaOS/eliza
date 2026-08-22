@@ -20,9 +20,11 @@ import { CoalescingSyncRunner } from "../src/coalescing-sync-runner";
 import { sendWithContentScriptRecovery } from "../src/content-script-messaging";
 import {
   BROWSER_BRIDGE_NATIVE_HOST,
+  isNativeEnrollmentRevocation,
   NativeEnrollmentCoordinator,
   NativeEnrollmentError,
   type NativeEnrollmentRequest,
+  shouldProbeRevokedEnrollment,
 } from "../src/native-enrollment";
 import type {
   BackgroundState,
@@ -905,7 +907,20 @@ async function runSyncAttempt({
   });
 
   try {
-    const config = await ensureCompanionConfig({ bypassNativeBackoff });
+    const probeOwnerReset = shouldProbeRevokedEnrollment(
+      reason,
+      backgroundState.connectionIssue,
+    );
+    if (probeOwnerReset) {
+      // The authenticated app route has no extension push channel. A bounded
+      // alarm probe clears only local suppression; the native broker still
+      // rejects enrollment until its durable owner-controlled tombstone is
+      // actually reset.
+      await resetNativeEnrollmentState();
+    }
+    const config = await ensureCompanionConfig({
+      bypassNativeBackoff: bypassNativeBackoff || probeOwnerReset,
+    });
     await setState({ config });
     await performCompanionSync(config);
   } catch (error) {
@@ -941,18 +956,20 @@ async function runSyncAttempt({
       ? finalError
       : null;
     const nativeEnrollmentFailure = finalError instanceof NativeEnrollmentError;
-    const connectionIssue = isPairingInvalid
-      ? "recovery_required"
-      : finalError instanceof NativeEnrollmentError &&
-          (finalError.code === "app_not_running" ||
-            finalError.code === "app_not_authenticated")
-        ? finalError.code
+    const nativeRevocation = isNativeEnrollmentRevocation(finalError);
+    const connectionIssue =
+      isPairingInvalid || nativeRevocation
+        ? "recovery_required"
         : finalError instanceof NativeEnrollmentError &&
-            finalError.code === "native_enrollment_suppressed" &&
-            (backgroundState.connectionIssue === "owner_disconnected" ||
-              backgroundState.connectionIssue === "recovery_required")
-          ? backgroundState.connectionIssue
-          : null;
+            (finalError.code === "app_not_running" ||
+              finalError.code === "app_not_authenticated")
+          ? finalError.code
+          : finalError instanceof NativeEnrollmentError &&
+              finalError.code === "native_enrollment_suppressed" &&
+              (backgroundState.connectionIssue === "owner_disconnected" ||
+                backgroundState.connectionIssue === "recovery_required")
+            ? backgroundState.connectionIssue
+            : null;
     await setState({
       syncing: false,
       ...((isPairingInvalid ||

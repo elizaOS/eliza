@@ -5,11 +5,14 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   EMPTY_NATIVE_ENROLLMENT_STATE,
+  isNativeEnrollmentRevocation,
   NATIVE_ENROLLMENT_MAX_MESSAGE_BYTES,
   NativeEnrollmentCoordinator,
+  NativeEnrollmentError,
   type NativeEnrollmentRequest,
   type NativeEnrollmentResponse,
   type NativeEnrollmentState,
+  shouldProbeRevokedEnrollment,
 } from "./native-enrollment";
 
 const NOW = Date.parse("2026-08-21T18:00:00.000Z");
@@ -66,6 +69,31 @@ afterEach(() => {
 });
 
 describe("native enrollment", () => {
+  it("probes an owner reset only on the bounded recovery alarm", () => {
+    expect(shouldProbeRevokedEnrollment("alarm", "recovery_required")).toBe(
+      true,
+    );
+    expect(
+      shouldProbeRevokedEnrollment("tab-updated", "recovery_required"),
+    ).toBe(false);
+    expect(shouldProbeRevokedEnrollment("alarm", "owner_disconnected")).toBe(
+      false,
+    );
+  });
+
+  it("preserves recovery state when the broker still enforces revocation", () => {
+    expect(
+      isNativeEnrollmentRevocation(
+        new NativeEnrollmentError("revoked", "revoked", false),
+      ),
+    ).toBe(true);
+    expect(
+      isNativeEnrollmentRevocation(
+        new NativeEnrollmentError("offline", "app_not_running", true),
+      ),
+    ).toBe(false);
+  });
+
   it("accepts a strictly bound, fresh response and clears retry state", async () => {
     let observed: NativeEnrollmentRequest | null = null;
     const test = harness(async (request) => {

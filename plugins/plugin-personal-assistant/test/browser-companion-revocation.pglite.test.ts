@@ -197,6 +197,43 @@ describe("browser companion revocation persistence", () => {
     });
   });
 
+  it("resets the browser-wide tombstone atomically across revoked profiles", async () => {
+    const ownerEntityId = "owner-revocation-browser-reset";
+    const profileA = await pair(ownerEntityId, "profile-reset-a");
+    const profileB = await pair(ownerEntityId, "profile-reset-b");
+    await browserDomain(ownerEntityId).revokeBrowserCompanion(
+      profileA.companion.id,
+    );
+    await browserDomain(ownerEntityId).revokeBrowserCompanion(
+      profileB.companion.id,
+    );
+
+    await browserDomain(ownerEntityId).resetBrowserCompanionRevocation(
+      profileA.companion.id,
+    );
+    repository = new LifeOpsRepository(runtime);
+
+    await expect(pair(ownerEntityId, "profile-reset-a")).resolves.toEqual(
+      expect.objectContaining({
+        companion: expect.objectContaining({ profileId: "profile-reset-a" }),
+      }),
+    );
+    await expect(pair(ownerEntityId, "profile-reset-b")).resolves.toEqual(
+      expect.objectContaining({
+        companion: expect.objectContaining({ profileId: "profile-reset-b" }),
+      }),
+    );
+    await expect(
+      pair(ownerEntityId, "profile-reset-after-reinstall"),
+    ).resolves.toEqual(
+      expect.objectContaining({
+        companion: expect.objectContaining({
+          profileId: "profile-reset-after-reinstall",
+        }),
+      }),
+    );
+  });
+
   it("serializes pairing with revocation without resurrecting credentials", async () => {
     const ownerEntityId = "owner-revocation-pair-race";
     const active = await pair(ownerEntityId, "profile-pair-race");

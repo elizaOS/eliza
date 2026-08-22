@@ -10,6 +10,14 @@ import type {
 import { normalizeCompanionConfig } from "./storage";
 
 export const BROWSER_BRIDGE_NATIVE_HOST = "ai.elizaos.browserbridge";
+
+/** Allows the periodic alarm to observe an owner reset without weakening the broker tombstone. */
+export function shouldProbeRevokedEnrollment(
+  reason: string,
+  connectionIssue: string | null,
+): boolean {
+  return reason === "alarm" && connectionIssue === "recovery_required";
+}
 export const NATIVE_ENROLLMENT_PROTOCOL_VERSION = 1 as const;
 export const NATIVE_ENROLLMENT_TIMEOUT_MS = 5_000;
 export const NATIVE_ENROLLMENT_MAX_MESSAGE_BYTES = 64 * 1024;
@@ -117,6 +125,10 @@ export class NativeEnrollmentError extends Error {
     super(message);
     this.name = "NativeEnrollmentError";
   }
+}
+
+export function isNativeEnrollmentRevocation(error: unknown): boolean {
+  return error instanceof NativeEnrollmentError && error.code === "revoked";
 }
 
 type EnrollmentBindings = {
