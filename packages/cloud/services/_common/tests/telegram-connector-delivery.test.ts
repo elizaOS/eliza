@@ -108,6 +108,30 @@ describe("sendTelegramReply delivery state", () => {
     expect(events).toEqual(["prepare:1", "claim:0", "rejected:0"]);
   });
 
+  test("returns persisted provider ids when an accepted chunk is replayed", async () => {
+    globalThis.fetch = mock(async () => {
+      throw new Error("an already-delivered chunk must not be resent");
+    }) as unknown as typeof fetch;
+    const events: string[] = [];
+    const replayHooks = hooks(events);
+    replayHooks.shouldSend = async (index) => {
+      events.push(`claim:${index}`);
+      return false;
+    };
+    replayHooks.deliveredProviderMessageId = async () => "provider-prior";
+
+    const receipt = await sendTelegramReply(
+      { botToken: "test-token" },
+      event,
+      "reply",
+      undefined,
+      replayHooks,
+    );
+
+    expect(receipt.providerMessageIds).toEqual(["provider-prior"]);
+    expect(events).toEqual(["prepare:1", "claim:0"]);
+  });
+
   test("keeps transport failure uncertain", async () => {
     globalThis.fetch = mock(async () => {
       throw new Error("socket reset after write");
