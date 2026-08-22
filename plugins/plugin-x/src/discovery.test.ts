@@ -22,6 +22,8 @@ type DiscoveryHarness = {
     tweets: unknown[],
     session: TwitterAccountSession,
   ): Promise<number>;
+  generateReply(tweet: unknown): Promise<string>;
+  generateQuote(tweet: unknown): Promise<string>;
   delay(ms: number): Promise<void>;
 };
 
@@ -321,6 +323,7 @@ describe("TwitterDiscoveryClient engagement dedup (#22710)", () => {
 
   it("replies to a discovered tweet once across cycles", async () => {
     const { runtime } = makeEngagementRuntime("welcome to the timeline");
+    const useModel = runtime.useModel as ReturnType<typeof vi.fn>;
     const { client, session, sendTweet, likeTweet } = makeEngagementClient();
     const discovery = new TwitterDiscoveryClient(
       client,
@@ -340,6 +343,50 @@ describe("TwitterDiscoveryClient engagement dedup (#22710)", () => {
       "welcome to the timeline",
       "1750000000000000001",
     );
+    expect(useModel.mock.calls[0]?.[1]).not.toHaveProperty("maxTokens");
     expect(likeTweet).not.toHaveBeenCalled();
+  });
+
+  it("does not impose hidden model-output caps on reply or quote drafts", async () => {
+    const { runtime } = makeEngagementRuntime("complete draft");
+    const useModel = runtime.useModel as ReturnType<typeof vi.fn>;
+    const { client } = makeEngagementClient();
+    const discovery = new TwitterDiscoveryClient(
+      client,
+      runtime,
+      {} as TwitterClientState,
+    ) as unknown as DiscoveryHarness;
+    const tweet = scoredTweet("reply").tweet;
+
+    await expect(discovery.generateReply(tweet)).resolves.toBe(
+      "complete draft",
+    );
+    await expect(discovery.generateQuote(tweet)).resolves.toBe(
+      "complete draft",
+    );
+
+    for (const [, request] of useModel.mock.calls) {
+      expect(request).not.toHaveProperty("maxTokens");
+    }
+  });
+
+  it("rejects a complete overlength draft instead of clipping it", async () => {
+    const completeDraft = "\u4f60".repeat(141);
+    const { runtime } = makeEngagementRuntime(completeDraft);
+    const useModel = runtime.useModel as ReturnType<typeof vi.fn>;
+    const { client } = makeEngagementClient();
+    const discovery = new TwitterDiscoveryClient(
+      client,
+      runtime,
+      {} as TwitterClientState,
+    ) as unknown as DiscoveryHarness;
+
+    await expect(
+      discovery.generateReply(scoredTweet("reply").tweet),
+    ).rejects.toMatchObject({
+      code: "X_DISCOVERY_DRAFT_LENGTH_EXCEEDED",
+      context: { weightedLength: 282, maxWeightedLength: 280 },
+    });
+    expect(useModel).toHaveBeenCalledTimes(1);
   });
 });
