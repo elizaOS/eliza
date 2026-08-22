@@ -108,6 +108,7 @@ import {
   extractCompatTextContent,
   extractOpenAiSystemAndLastUser,
   resolveCompatRoomKey,
+  scopeCompatRoomKey,
 } from "./compat-utils.ts";
 import {
   isInsufficientCreditsError,
@@ -4698,7 +4699,7 @@ export async function handleChatRoutes(
       return true;
     }
 
-    const roomKey = resolveCompatRoomKey(safeBody).slice(0, 120);
+    const roomKey = scopeCompatRoomKey(resolveCompatRoomKey(safeBody));
     const wantsStream =
       safeBody.stream === true ||
       (req.headers.accept ?? "").includes("text/event-stream");
@@ -5072,7 +5073,7 @@ export async function handleChatRoutes(
       return true;
     }
 
-    const roomKey = resolveCompatRoomKey(safeBody).slice(0, 120);
+    const roomKey = scopeCompatRoomKey(resolveCompatRoomKey(safeBody));
     const wantsStream =
       safeBody.stream === true ||
       (req.headers.accept ?? "").includes("text/event-stream");
@@ -5462,7 +5463,7 @@ export async function handleChatRoutes(
         runtime,
         agentName,
         "agent-message",
-        `${agentIdParam}:${userId}`.slice(0, 120),
+        scopeCompatRoomKey(`${agentIdParam}:${userId}`),
         messagePrincipal,
       );
 
