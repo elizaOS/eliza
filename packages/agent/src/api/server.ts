@@ -546,6 +546,7 @@ import {
 import {
   AGENT_EVENT_ALLOWED_STREAMS,
   aggregateSecrets,
+  applySignalQrOverride,
   CONFIG_WRITE_ALLOWED_TOP_KEYS,
   discoverInstalledPlugins,
   discoverPluginsFromManifest,
@@ -2596,11 +2597,7 @@ async function handleRequest(
             applyWhatsAppQrOverride: (...args: unknown[]) => void;
           }>("whatsapp")
         ).applyWhatsAppQrOverride,
-        applySignalQrOverride: (
-          await getOptionalPluginApi<{
-            applySignalQrOverride: (...args: unknown[]) => void;
-          }>("signal")
-        ).applySignalQrOverride,
+        applySignalQrOverride,
         resolvePluginConfigMutationRejections,
         requirePluginManager,
         requireCoreManager,

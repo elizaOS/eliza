@@ -2879,6 +2879,7 @@ export const LIFEOPS_MESSAGING_CONNECTOR_REASONS = [
   "auth_pending",
   "auth_expired",
   "session_revoked",
+  "unsupported",
 ] as const;
 export type LifeOpsMessagingConnectorReason =
   (typeof LIFEOPS_MESSAGING_CONNECTOR_REASONS)[number];
