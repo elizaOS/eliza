@@ -62,16 +62,13 @@ process.env.ELIZA_DISABLE_TRAJECTORY_LOGGING ||= "1";
 
 import * as nodeFs from "node:fs";
 import nodePath from "node:path";
-import {
-	type IAgentRuntime,
-	toWellFormedUnicode,
-	truncateWellFormed,
-} from "@elizaos/core";
+import type { IAgentRuntime } from "@elizaos/core";
 import { androidAliasSibling, installMobileFsShim } from "../shared/fs-shim.ts";
 import {
 	createStdioBridge,
 	type StdioBridgeResponseFrame,
 } from "../shared/stdio-bridge.ts";
+import { formatAndroidFatalDiagnosticMessage } from "./diagnostics.ts";
 import {
 	type AndroidCoreRouteDeps,
 	type AndroidDispatchRoute,
@@ -397,7 +394,7 @@ export async function runAndroidBridgeCli(): Promise<void> {
 		_logToFile(`[android-bridge] unhandledRejection: ${msg}`);
 		_appendDiagnostics("agent-fatal", {
 			kind: "unhandledRejection",
-			message: truncateWellFormed(toWellFormedUnicode(msg), 2000),
+			message: formatAndroidFatalDiagnosticMessage(msg),
 		});
 		console.error("[android-bridge] unhandled rejection:", msg);
 	});
@@ -407,9 +404,8 @@ export async function runAndroidBridgeCli(): Promise<void> {
 		);
 		_appendDiagnostics("agent-fatal", {
 			kind: "uncaughtException",
-			message: truncateWellFormed(
-				toWellFormedUnicode(error.stack || error.message),
-				2000,
+			message: formatAndroidFatalDiagnosticMessage(
+				error.stack || error.message,
 			),
 		});
 		console.error(
@@ -462,7 +458,7 @@ export async function runAndroidBridgeCli(): Promise<void> {
 		_logToFile(`[android-bridge] startEliza THREW: ${msg}`);
 		_appendDiagnostics("agent-fatal", {
 			kind: "startEliza-threw",
-			message: truncateWellFormed(toWellFormedUnicode(msg), 2000),
+			message: formatAndroidFatalDiagnosticMessage(msg),
 		});
 		throw err;
 	} finally {

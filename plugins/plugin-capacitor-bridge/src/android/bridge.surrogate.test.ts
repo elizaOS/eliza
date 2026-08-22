@@ -2,12 +2,8 @@
  * Regression tests for Android bridge diagnostics surrogate safety.
  */
 
-import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
-
-function formatDiagnosticsMessage(msg: string): string {
-	return truncateWellFormed(toWellFormedUnicode(msg), 2000);
-}
+import { formatAndroidFatalDiagnosticMessage } from "./diagnostics.ts";
 
 function isWellFormed(v: string): boolean {
 	if (!v) return true;
@@ -28,20 +24,30 @@ function isWellFormed(v: string): boolean {
 }
 
 describe("Android bridge diagnostics surrogate safety", () => {
-	it("keeps surrogate pairs intact at 2,000-char boundary in fatal diagnostics", () => {
+	it("keeps a pair intact for unhandled-rejection diagnostics", () => {
 		const fox = String.fromCharCode(0xd83e, 0xdd8a);
 		const input = `${"e".repeat(1999)}${fox}${"x".repeat(100)}`;
-		const out = formatDiagnosticsMessage(input);
+		const out = formatAndroidFatalDiagnosticMessage(input);
 		expect(isWellFormed(out)).toBe(true);
-		expect(out.length).toBe(1999);
-		expect(out).not.toContain("\uD83E");
+		expect(out).toBe("e".repeat(1999));
 	});
 
-	it("sanitizes lone surrogates in stack trace and exception strings", () => {
+	it("sanitizes a lone surrogate in uncaught-exception stack diagnostics", () => {
 		const lone = `Fatal error ${String.fromCharCode(0xd800)} stack trace ${"s".repeat(3000)}`;
-		const out = formatDiagnosticsMessage(lone);
+		const out = formatAndroidFatalDiagnosticMessage(lone);
 		expect(isWellFormed(out)).toBe(true);
-		expect(out.includes("\uFFFD")).toBe(true);
+		expect(out).toContain("Fatal error \uFFFD stack trace");
 		expect(out.length).toBeLessThanOrEqual(2000);
+	});
+
+	it("sanitizes the boundary code unit in startEliza failure diagnostics", () => {
+		const loneLow = String.fromCharCode(0xdc00);
+		const input = `${"s".repeat(1999)}${loneLow}ignored`;
+
+		const out = formatAndroidFatalDiagnosticMessage(input);
+
+		expect(isWellFormed(out)).toBe(true);
+		expect(out).toBe(`${"s".repeat(1999)}\uFFFD`);
+		expect(out).toHaveLength(2000);
 	});
 });
