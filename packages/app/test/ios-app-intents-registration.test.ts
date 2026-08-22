@@ -620,6 +620,9 @@ describe("native assistant entry contracts", () => {
     expect(deviceExtensionSurfaceUITestsSwift).toContain(
       "testAppShortcutsListsV1Actions",
     );
+    expect(deviceExtensionSurfaceUITestsSwift).toContain(
+      "testTalkToElizaAppShortcutForegroundsApp",
+    );
     expect(deviceExtensionSurfaceUITestsSwift).toContain("Message Eliza");
     expect(deviceExtensionSurfaceUITestsSwift).toContain("Talk to Eliza");
     expect(deviceExtensionSurfaceUITestsSwift).toContain(

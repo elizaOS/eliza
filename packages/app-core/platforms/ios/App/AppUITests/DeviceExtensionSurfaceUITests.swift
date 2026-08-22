@@ -109,23 +109,7 @@ final class DeviceExtensionSurfaceUITests: XCTestCase {
     }
 
     func testAppShortcutsListsV1Actions() throws {
-        shortcuts.launch()
-        XCTAssertTrue(
-            shortcuts.wait(for: .runningForeground, timeout: 15),
-            "Apple Shortcuts must launch before the installed Eliza App Shortcuts can be inspected."
-        )
-
-        let search = shortcuts.searchFields.firstMatch
-        XCTAssertTrue(
-            search.waitForExistence(timeout: 10),
-            "Apple Shortcuts must expose its library search field."
-        )
-        search.tap()
-        let clearText = search.buttons["Clear text"]
-        if clearText.waitForExistence(timeout: 1) {
-            clearText.tap()
-        }
-        search.typeText("Eliza")
+        try launchShortcutsSearchEliza()
 
         XCTAssertTrue(
             shortcuts.staticTexts["Message Eliza"].firstMatch.waitForExistence(timeout: 10),
@@ -139,6 +123,29 @@ final class DeviceExtensionSurfaceUITests: XCTestCase {
         attachScreenshot(named: "shortcuts-00-v1-actions")
         attachAccessibilitySnapshot(of: shortcuts, named: "shortcuts-v1-actions")
         XCUIDevice.shared.press(.home)
+    }
+
+    func testTalkToElizaAppShortcutForegroundsApp() throws {
+        try launchShortcutsSearchEliza()
+        attachAccessibilitySnapshot(of: shortcuts, named: "shortcuts-talk-before-tap")
+        let talkGroup = shortcuts.otherElements["Talk to Eliza"].firstMatch
+        XCTAssertTrue(
+            talkGroup.waitForExistence(timeout: 10),
+            "The installed Talk to Eliza App Shortcut must expose its labeled action group before invocation."
+        )
+        let talkButton = talkGroup.buttons["waveform"].firstMatch
+        XCTAssertTrue(
+            talkButton.waitForExistence(timeout: 5) && talkButton.isHittable,
+            "The Talk to Eliza action group must expose its real waveform button as a hittable control."
+        )
+        talkButton.tap()
+
+        let app = XCUIApplication()
+        XCTAssertTrue(
+            app.wait(for: .runningForeground, timeout: 15),
+            "Running Talk to Eliza from Apple Shortcuts must foreground the signed Eliza app."
+        )
+        attachScreenshot(named: "shortcuts-01-talk-app-foregrounded")
     }
 
     func testControlCenterGalleryListsElizaControls() throws {
@@ -242,6 +249,26 @@ final class DeviceExtensionSurfaceUITests: XCTestCase {
     }
 
     // MARK: - Control Center controls
+
+    private func launchShortcutsSearchEliza() throws {
+        shortcuts.launch()
+        XCTAssertTrue(
+            shortcuts.wait(for: .runningForeground, timeout: 15),
+            "Apple Shortcuts must launch before the installed Eliza App Shortcuts can be inspected."
+        )
+
+        let search = shortcuts.searchFields.firstMatch
+        XCTAssertTrue(
+            search.waitForExistence(timeout: 10),
+            "Apple Shortcuts must expose its library search field."
+        )
+        search.tap()
+        let clearText = search.buttons["Clear text"]
+        if clearText.waitForExistence(timeout: 1) {
+            clearText.tap()
+        }
+        search.typeText("Eliza")
+    }
 
     @available(iOS 18.0, *)
     private func openControlGalleryAndSearchEliza() throws {
