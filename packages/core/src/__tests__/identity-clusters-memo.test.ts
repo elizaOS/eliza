@@ -131,7 +131,7 @@ describe("getVerifiedRelatedEntityIds", () => {
 		const runtime = {
 			agentId: AGENT,
 			getService: (name: string) => {
-				if (name === ServiceType.IDENTITY_RESOLUTION) {
+				if (name === ServiceType.PRINCIPAL) {
 					return {
 						getCluster: async () => ({
 							contractVersion: 1,
@@ -159,7 +159,7 @@ describe("getVerifiedRelatedEntityIds", () => {
 		const runtime = {
 			agentId: AGENT,
 			getService: (name: string) => {
-				if (name === ServiceType.IDENTITY_RESOLUTION) {
+				if (name === ServiceType.PRINCIPAL) {
 					return {
 						getCluster: async () => ({
 							contractVersion: 1,
