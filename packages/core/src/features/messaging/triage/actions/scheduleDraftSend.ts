@@ -25,6 +25,29 @@ import {
 	validateMessageAction,
 } from "./_shared.ts";
 
+export function formatSendAtIso(sendAtMs: number): string {
+	if (!Number.isFinite(sendAtMs)) {
+		throw new ElizaError(
+			`Invalid sendAtMs: ${String(sendAtMs)} is not finite`,
+			{
+				code: "MESSAGE_DRAFT_SCHEDULE_INVALID_TIME",
+				context: { sendAtMs },
+			},
+		);
+	}
+	const date = new Date(sendAtMs);
+	if (Number.isNaN(date.getTime())) {
+		throw new ElizaError(
+			`Invalid sendAtMs: ${String(sendAtMs)} is out of Date range`,
+			{
+				code: "MESSAGE_DRAFT_SCHEDULE_INVALID_TIME",
+				context: { sendAtMs },
+			},
+		);
+	}
+	return date.toISOString();
+}
+
 export const scheduleDraftSendAction: Action = {
 	name: "MESSAGE",
 	contexts: ["messaging", "email", "calendar", "automation"],
@@ -90,6 +113,7 @@ export const scheduleDraftSendAction: Action = {
 			logger.warn(`[ScheduleDraftSend] ${parsed.error}`);
 			return { success: false, text: parsed.error, error: parsed.error };
 		}
+		const sendAtIso = formatSendAtIso(parsed.sendAtMs);
 
 		const service = getDefaultTriageService();
 		const existing = service.getStore().getDraft(parsed.draftId);
@@ -105,7 +129,7 @@ export const scheduleDraftSendAction: Action = {
 			parsed.sendAtMs,
 		);
 
-		const text = `Scheduled draft ${parsed.draftId} for ${new Date(parsed.sendAtMs).toISOString()}.`;
+		const text = `Scheduled draft ${parsed.draftId} for ${sendAtIso}.`;
 		const commit = updated.scheduleCommit;
 		if (!commit) {
 			throw new ElizaError(
