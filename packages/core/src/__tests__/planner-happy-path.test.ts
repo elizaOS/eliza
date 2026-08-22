@@ -355,7 +355,9 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 			),
 		);
 		expect(plannerTools).toContain("READ");
-		expect(plannerTools).not.toContain("GENERATE_MEDIA");
+		// The action passes the ordinary coding-context/role gates, so a fixed
+		// legacy name allowlist must not silently remove it from the model surface.
+		expect(plannerTools).toContain("GENERATE_MEDIA");
 		const firstPlannerMessages = (
 			getCalls(runtime)[0]?.params as
 				| {
