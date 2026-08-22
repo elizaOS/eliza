@@ -171,7 +171,7 @@ describe("MESSAGE op=list_connections", () => {
 		expect(result.text).not.toContain("Matrix (unavailable)");
 	});
 
-	it("bounds the roster at 8 connectors", async () => {
+	it("returns the complete connector roster", async () => {
 		const many = Array.from({ length: 12 }, (_, i) =>
 			mockConnector(`platform-${i}`, `Platform ${i}`, ["#room"]),
 		);
@@ -181,8 +181,8 @@ describe("MESSAGE op=list_connections", () => {
 			connectionCount: number;
 			connections: unknown[];
 		};
-		expect(data.connections.length).toBe(8);
-		expect(data.connectionCount).toBe(8);
+		expect(data.connections.length).toBe(12);
+		expect(data.connectionCount).toBe(12);
 	});
 
 	it("returns zero platforms when no connector exposes listRooms", async () => {
