@@ -346,7 +346,8 @@ function requireClassification(
       value.acceptance !== "unknown") ||
     typeof value.code !== "string" ||
     value.code.trim().length === 0 ||
-    typeof value.retryable !== "boolean"
+    typeof value.retryable !== "boolean" ||
+    (value.acceptance === "accepted" && value.retryable)
   ) {
     throw new ElizaError("boundary classifier returned an invalid result", {
       code: "BOUNDARY_CLASSIFIER_INVALID",
@@ -430,6 +431,43 @@ function assertRetryLineage(
   }
 }
 
+const observationFlights = new WeakMap<
+  BoundaryObservationLedger,
+  Map<
+    string,
+    { identity: RetryIdentity; promise: Promise<ProductionBoundaryObservation> }
+  >
+>();
+
+function runObservationSingleFlight(
+  ledger: BoundaryObservationLedger,
+  identity: RetryIdentity,
+  operation: () => Promise<ProductionBoundaryObservation>,
+): Promise<ProductionBoundaryObservation> {
+  let flights = observationFlights.get(ledger);
+  if (!flights) {
+    flights = new Map();
+    observationFlights.set(ledger, flights);
+  }
+  const existing = flights.get(identity.observationId);
+  if (existing) {
+    if (!sameAttemptIdentity(existing.identity, identity)) {
+      throw new ElizaError(
+        "concurrent boundary observation identity conflicts with active evidence",
+        { code: "BOUNDARY_LEDGER_DUPLICATE_OBSERVATION" },
+      );
+    }
+    return existing.promise;
+  }
+  const promise = operation();
+  flights.set(identity.observationId, { identity, promise });
+  return promise.finally(() => {
+    if (flights?.get(identity.observationId)?.promise === promise) {
+      flights.delete(identity.observationId);
+    }
+  });
+}
+
 /**
  * Invoke one real consumer boundary and append the outcome only after its
  * authoritative readback has been checked. An accepted adapter response alone
@@ -500,271 +538,273 @@ export async function observeProductionBoundary<TResponse, TReadback>(
     startedAt,
   };
 
-  // Preflight prevents invalid or already-committed attempts from invoking the
-  // external boundary. The private append path repeats lineage validation
-  // under its single-writer queue to close the read-to-append race.
-  const existingRecords = await options.ledger.readAll();
-  const existing = existingRecords.find(
-    (record) => record.observationId === observationId,
-  );
-  if (existing) {
-    if (!sameAttemptIdentity(existing, base)) {
-      throw new ElizaError(
-        "boundary observation identity conflicts with committed evidence",
-        { code: "BOUNDARY_LEDGER_DUPLICATE_OBSERVATION" },
-      );
+  return runObservationSingleFlight(options.ledger, base, async () => {
+    // Preflight prevents invalid or already-committed attempts from invoking
+    // the external boundary. The private append path repeats lineage
+    // validation under its single-writer queue.
+    const existingRecords = await options.ledger.readAll();
+    const existing = existingRecords.find(
+      (record) => record.observationId === observationId,
+    );
+    if (existing) {
+      if (!sameAttemptIdentity(existing, base)) {
+        throw new ElizaError(
+          "boundary observation identity conflicts with committed evidence",
+          { code: "BOUNDARY_LEDGER_DUPLICATE_OBSERVATION" },
+        );
+      }
+      return existing;
     }
-    return existing;
-  }
-  assertRetryLineage(existingRecords, base);
+    assertRetryLineage(existingRecords, base);
 
-  try {
-    return await options.generationFence.withGeneration(
-      identity.generation,
-      async (guard) => {
-        if (!(await guard.isCurrent())) {
-          return appendObservation(options.ledger, {
-            ...base,
-            completedAt: isoTimestamp(options.now),
-            boundaryCalled: false,
-            acceptance: "unknown",
-            result: "stale_completion",
-            resultCode: "stale_generation_before_invoke",
-            retryable: false,
-          });
-        }
+    try {
+      return await options.generationFence.withGeneration(
+        identity.generation,
+        async (guard) => {
+          if (!(await guard.isCurrent())) {
+            return appendObservation(options.ledger, {
+              ...base,
+              completedAt: isoTimestamp(options.now),
+              boundaryCalled: false,
+              acceptance: "unknown",
+              result: "stale_completion",
+              resultCode: "stale_generation_before_invoke",
+              retryable: false,
+            });
+          }
 
-        const scriptedPreCallFault = preCallFault(options.fault);
-        if (scriptedPreCallFault) {
-          const classification =
-            preCallFaultClassification(scriptedPreCallFault);
-          return appendObservation(options.ledger, {
-            ...base,
-            completedAt: isoTimestamp(options.now),
-            boundaryCalled: false,
-            ...classification,
-            ...(scriptedPreCallFault.retryAfterMs !== undefined
-              ? { retryAfterMs: scriptedPreCallFault.retryAfterMs }
-              : {}),
-            error: safeError(
-              new ElizaError(scriptedPreCallFault.message, {
-                code: "BOUNDARY_OBSERVATION_SCRIPTED_FAULT",
-                context: { kind: scriptedPreCallFault.kind },
-              }),
-              redactText,
-            ),
-          });
-        }
+          const scriptedPreCallFault = preCallFault(options.fault);
+          if (scriptedPreCallFault) {
+            const classification =
+              preCallFaultClassification(scriptedPreCallFault);
+            return appendObservation(options.ledger, {
+              ...base,
+              completedAt: isoTimestamp(options.now),
+              boundaryCalled: false,
+              ...classification,
+              ...(scriptedPreCallFault.retryAfterMs !== undefined
+                ? { retryAfterMs: scriptedPreCallFault.retryAfterMs }
+                : {}),
+              error: safeError(
+                new ElizaError(scriptedPreCallFault.message, {
+                  code: "BOUNDARY_OBSERVATION_SCRIPTED_FAULT",
+                  context: { kind: scriptedPreCallFault.kind },
+                }),
+                redactText,
+              ),
+            });
+          }
 
-        let response: TResponse;
-        try {
-          response = await options.invoke();
-        } catch (error) {
-          // error-policy:J1 the consumer boundary translates an invocation
-          // failure into a sanitized, non-success observation.
-          return appendObservation(options.ledger, {
-            ...base,
-            completedAt: isoTimestamp(options.now),
-            boundaryCalled: true,
-            acceptance: "unknown",
-            result: "unknown",
-            resultCode: "boundary_threw",
-            retryable: false,
-            error: safeError(error, redactText),
-          });
-        }
-
-        let responseSha256: string;
-        try {
-          responseSha256 = canonicalSha256(
-            sanitizeValue(response, redactText),
-            "sanitizedBoundaryResponse",
-          );
-        } catch (error) {
-          // error-policy:J1 response evidence failures after invocation remain
-          // visible as sanitized unknown attempts.
-          return appendObservation(options.ledger, {
-            ...base,
-            completedAt: isoTimestamp(options.now),
-            boundaryCalled: true,
-            acceptance: "unknown",
-            result: "unknown",
-            resultCode: "response_evidence_threw",
-            retryable: false,
-            error: safeError(error, redactText),
-          });
-        }
-
-        let currentAfterInvoke: boolean;
-        try {
-          currentAfterInvoke = await guard.isCurrent();
-        } catch (error) {
-          // error-policy:J1 authoritative generation revalidation failed after
-          // the external effect, so the attempt is durably unknown.
-          return appendObservation(options.ledger, {
-            ...base,
-            completedAt: isoTimestamp(options.now),
-            boundaryCalled: true,
-            acceptance: "unknown",
-            result: "unknown",
-            resultCode: "generation_revalidation_threw",
-            retryable: false,
-            responseSha256,
-            error: safeError(error, redactText),
-          });
-        }
-        if (!currentAfterInvoke) {
-          return appendObservation(options.ledger, {
-            ...base,
-            completedAt: isoTimestamp(options.now),
-            boundaryCalled: true,
-            acceptance: "unknown",
-            result: "stale_completion",
-            resultCode: "stale_generation_after_invoke",
-            retryable: false,
-            responseSha256,
-          });
-        }
-        let classification: BoundaryResultClassification;
-        try {
-          classification = requireClassification(options.classify(response));
-        } catch (error) {
-          // error-policy:J1 a classifier failure after a real invocation is
-          // persisted as unknown so the attempt cannot disappear or succeed.
-          return appendObservation(options.ledger, {
-            ...base,
-            completedAt: isoTimestamp(options.now),
-            boundaryCalled: true,
-            acceptance: "unknown",
-            result: "unknown",
-            resultCode: "classifier_threw",
-            retryable: false,
-            responseSha256,
-            error: safeError(error, redactText),
-          });
-        }
-        let readback: TReadback | null = null;
-        try {
-          readback = await options.readback();
-        } catch (error) {
-          // error-policy:J1 readback collaborator failure after invocation is
-          // translated into a sanitized unknown observation.
-          return appendObservation(options.ledger, {
-            ...base,
-            completedAt: isoTimestamp(options.now),
-            boundaryCalled: true,
-            acceptance: "unknown",
-            result: "unknown",
-            resultCode: "readback_threw",
-            retryable: false,
-            responseSha256,
-            error: safeError(error, redactText),
-          });
-        }
-
-        let readbackSha256: string | undefined;
-        try {
-          readbackSha256 =
-            readback === null
-              ? undefined
-              : canonicalSha256(
-                  sanitizeValue(readback, redactText),
-                  "sanitizedBoundaryReadback",
-                );
-        } catch (error) {
-          // error-policy:J1 malformed readback evidence after invocation is a
-          // visible sanitized unknown attempt.
-          return appendObservation(options.ledger, {
-            ...base,
-            completedAt: isoTimestamp(options.now),
-            boundaryCalled: true,
-            acceptance: "unknown",
-            result: "unknown",
-            resultCode: "readback_evidence_threw",
-            retryable: false,
-            responseSha256,
-            error: safeError(error, redactText),
-          });
-        }
-        const scriptedPostCallResult = postCallFaultResult(options.fault);
-        let result: BoundaryObservationResult;
-        if (scriptedPostCallResult === "stale_completion") {
-          result = "stale_completion";
-        } else if (scriptedPostCallResult) {
-          result = scriptedPostCallResult;
-        } else if (classification.acceptance === "rejected") {
-          result = "rejected";
-        } else if (classification.acceptance === "unknown") {
-          result = "unknown";
-        } else if (readback === null) {
-          result = "readback_missing";
-        } else {
+          let response: TResponse;
           try {
-            result = options.verifyReadback(response, readback)
-              ? "succeeded"
-              : "readback_mismatch";
+            response = await options.invoke();
           } catch (error) {
-            // error-policy:J1 verifier failure after invocation is translated
-            // into a sanitized unknown observation.
+            // error-policy:J1 the consumer boundary translates an invocation
+            // failure into a sanitized, non-success observation.
             return appendObservation(options.ledger, {
               ...base,
               completedAt: isoTimestamp(options.now),
               boundaryCalled: true,
               acceptance: "unknown",
               result: "unknown",
-              resultCode: "verifier_threw",
+              resultCode: "boundary_threw",
               retryable: false,
-              responseSha256,
-              ...(readbackSha256 ? { readbackSha256 } : {}),
               error: safeError(error, redactText),
             });
           }
-        }
 
-        return appendObservation(options.ledger, {
-          ...base,
-          completedAt: isoTimestamp(options.now),
-          boundaryCalled: true,
-          acceptance: classification.acceptance,
-          result,
-          resultCode:
-            scriptedPostCallResult === "partial_failure"
-              ? "synthetic_partial_failure"
-              : scriptedPostCallResult === "unknown"
-                ? "synthetic_ambiguous_dispatch"
-                : result === "stale_completion"
-                  ? "stale_generation"
-                  : redactText(classification.code),
-          retryable: classification.retryable,
-          ...(options.fault?.retryAfterMs !== undefined
-            ? { retryAfterMs: options.fault.retryAfterMs }
-            : {}),
-          responseSha256,
-          ...(readbackSha256 ? { readbackSha256 } : {}),
-          ...(options.fault
-            ? {
-                error: safeError(
-                  new ElizaError(options.fault.message, {
-                    code: "BOUNDARY_OBSERVATION_SCRIPTED_FAULT",
-                    context: { kind: options.fault.kind },
-                  }),
-                  redactText,
-                ),
-              }
-            : {}),
-        });
-      },
-    );
-  } catch (error) {
-    // error-policy:J2 failures outside the admitted callback are generation
-    // lease acquisition/ownership failures; invocation and append never start.
-    if (error instanceof ElizaError) throw error;
-    throw new ElizaError("production generation fence failed", {
-      code: "BOUNDARY_GENERATION_FENCE_FAILED",
-      cause: error,
-      context: { generation: identity.generation },
-    });
-  }
+          let responseSha256: string;
+          try {
+            responseSha256 = canonicalSha256(
+              sanitizeValue(response, redactText),
+              "sanitizedBoundaryResponse",
+            );
+          } catch (error) {
+            // error-policy:J1 response evidence failures after invocation remain
+            // visible as sanitized unknown attempts.
+            return appendObservation(options.ledger, {
+              ...base,
+              completedAt: isoTimestamp(options.now),
+              boundaryCalled: true,
+              acceptance: "unknown",
+              result: "unknown",
+              resultCode: "response_evidence_threw",
+              retryable: false,
+              error: safeError(error, redactText),
+            });
+          }
+
+          let currentAfterInvoke: boolean;
+          try {
+            currentAfterInvoke = await guard.isCurrent();
+          } catch (error) {
+            // error-policy:J1 authoritative generation revalidation failed after
+            // the external effect, so the attempt is durably unknown.
+            return appendObservation(options.ledger, {
+              ...base,
+              completedAt: isoTimestamp(options.now),
+              boundaryCalled: true,
+              acceptance: "unknown",
+              result: "unknown",
+              resultCode: "generation_revalidation_threw",
+              retryable: false,
+              responseSha256,
+              error: safeError(error, redactText),
+            });
+          }
+          if (!currentAfterInvoke) {
+            return appendObservation(options.ledger, {
+              ...base,
+              completedAt: isoTimestamp(options.now),
+              boundaryCalled: true,
+              acceptance: "unknown",
+              result: "stale_completion",
+              resultCode: "stale_generation_after_invoke",
+              retryable: false,
+              responseSha256,
+            });
+          }
+          let classification: BoundaryResultClassification;
+          try {
+            classification = requireClassification(options.classify(response));
+          } catch (error) {
+            // error-policy:J1 a classifier failure after a real invocation is
+            // persisted as unknown so the attempt cannot disappear or succeed.
+            return appendObservation(options.ledger, {
+              ...base,
+              completedAt: isoTimestamp(options.now),
+              boundaryCalled: true,
+              acceptance: "unknown",
+              result: "unknown",
+              resultCode: "classifier_threw",
+              retryable: false,
+              responseSha256,
+              error: safeError(error, redactText),
+            });
+          }
+          let readback: TReadback | null = null;
+          try {
+            readback = await options.readback();
+          } catch (error) {
+            // error-policy:J1 readback collaborator failure after invocation is
+            // translated into a sanitized unknown observation.
+            return appendObservation(options.ledger, {
+              ...base,
+              completedAt: isoTimestamp(options.now),
+              boundaryCalled: true,
+              acceptance: "unknown",
+              result: "unknown",
+              resultCode: "readback_threw",
+              retryable: false,
+              responseSha256,
+              error: safeError(error, redactText),
+            });
+          }
+
+          let readbackSha256: string | undefined;
+          try {
+            readbackSha256 =
+              readback === null
+                ? undefined
+                : canonicalSha256(
+                    sanitizeValue(readback, redactText),
+                    "sanitizedBoundaryReadback",
+                  );
+          } catch (error) {
+            // error-policy:J1 malformed readback evidence after invocation is a
+            // visible sanitized unknown attempt.
+            return appendObservation(options.ledger, {
+              ...base,
+              completedAt: isoTimestamp(options.now),
+              boundaryCalled: true,
+              acceptance: "unknown",
+              result: "unknown",
+              resultCode: "readback_evidence_threw",
+              retryable: false,
+              responseSha256,
+              error: safeError(error, redactText),
+            });
+          }
+          const scriptedPostCallResult = postCallFaultResult(options.fault);
+          let result: BoundaryObservationResult;
+          if (scriptedPostCallResult === "stale_completion") {
+            result = "stale_completion";
+          } else if (scriptedPostCallResult) {
+            result = scriptedPostCallResult;
+          } else if (classification.acceptance === "rejected") {
+            result = "rejected";
+          } else if (classification.acceptance === "unknown") {
+            result = "unknown";
+          } else if (readback === null) {
+            result = "readback_missing";
+          } else {
+            try {
+              result = options.verifyReadback(response, readback)
+                ? "succeeded"
+                : "readback_mismatch";
+            } catch (error) {
+              // error-policy:J1 verifier failure after invocation is translated
+              // into a sanitized unknown observation.
+              return appendObservation(options.ledger, {
+                ...base,
+                completedAt: isoTimestamp(options.now),
+                boundaryCalled: true,
+                acceptance: "unknown",
+                result: "unknown",
+                resultCode: "verifier_threw",
+                retryable: false,
+                responseSha256,
+                ...(readbackSha256 ? { readbackSha256 } : {}),
+                error: safeError(error, redactText),
+              });
+            }
+          }
+
+          return appendObservation(options.ledger, {
+            ...base,
+            completedAt: isoTimestamp(options.now),
+            boundaryCalled: true,
+            acceptance: classification.acceptance,
+            result,
+            resultCode:
+              scriptedPostCallResult === "partial_failure"
+                ? "synthetic_partial_failure"
+                : scriptedPostCallResult === "unknown"
+                  ? "synthetic_ambiguous_dispatch"
+                  : result === "stale_completion"
+                    ? "stale_generation"
+                    : redactText(classification.code),
+            retryable: classification.retryable,
+            ...(options.fault?.retryAfterMs !== undefined
+              ? { retryAfterMs: options.fault.retryAfterMs }
+              : {}),
+            responseSha256,
+            ...(readbackSha256 ? { readbackSha256 } : {}),
+            ...(options.fault
+              ? {
+                  error: safeError(
+                    new ElizaError(options.fault.message, {
+                      code: "BOUNDARY_OBSERVATION_SCRIPTED_FAULT",
+                      context: { kind: options.fault.kind },
+                    }),
+                    redactText,
+                  ),
+                }
+              : {}),
+          });
+        },
+      );
+    } catch (error) {
+      // error-policy:J2 failures outside the admitted callback are generation
+      // lease acquisition/ownership failures; invocation and append never start.
+      if (error instanceof ElizaError) throw error;
+      throw new ElizaError("production generation fence failed", {
+        code: "BOUNDARY_GENERATION_FENCE_FAILED",
+        cause: error,
+        context: { generation: identity.generation },
+      });
+    }
+  });
 }
 
 const ACCEPTANCES = new Set<BoundaryAcceptance>([

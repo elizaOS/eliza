@@ -433,6 +433,56 @@ describe("production boundary observation ledger", () => {
     expect(calls).toBe(1);
   });
 
+  it("singleflights concurrent identical attempts through invoke and append", async () => {
+    const { ledger } = await createLedger();
+    let calls = 0;
+    let enterInvoke: () => void = () => undefined;
+    const invokeEntered = new Promise<void>((resolve) => {
+      enterInvoke = resolve;
+    });
+    let releaseInvoke: () => void = () => undefined;
+    const invokeReleased = new Promise<void>((resolve) => {
+      releaseInvoke = resolve;
+    });
+    const options = {
+      ledger,
+      identity: identity(),
+      payload: { text: "payload" },
+      now: clock(
+        "2026-08-21T12:00:00.000Z",
+        "2026-08-21T12:00:01.000Z",
+        "2026-08-21T12:00:02.000Z",
+      ),
+      generationFence: generationFence(),
+      invoke: async () => {
+        calls += 1;
+        enterInvoke();
+        await invokeReleased;
+        return { id: "effect" };
+      },
+      classify: () => ({
+        acceptance: "accepted" as const,
+        code: "accepted",
+        retryable: false,
+      }),
+      readback: async () => ({ id: "effect" }),
+      verifyReadback: () => true,
+    };
+    const firstPromise = observeProductionBoundary(options);
+    await invokeEntered;
+    const concurrentPromise = observeProductionBoundary(options);
+    await Promise.resolve();
+    expect(calls).toBe(1);
+    releaseInvoke();
+    const [first, concurrent] = await Promise.all([
+      firstPromise,
+      concurrentPromise,
+    ]);
+    expect(concurrent).toEqual(first);
+    expect(calls).toBe(1);
+    await expect(ledger.readAll()).resolves.toEqual([first]);
+  });
+
   it("reconciles an exact receipt after a post-commit durability error", async () => {
     const { path } = await createLedger();
     const ledger = new JsonlBoundaryObservationLedger(path, {
@@ -634,7 +684,33 @@ describe("production boundary observation ledger", () => {
       result: "unknown",
       resultCode: "classifier_threw",
     });
-    await expect(ledger.readAll()).resolves.toEqual([observation]);
+    const acceptedRetryable = await observeProductionBoundary({
+      ledger,
+      identity: identity({
+        idempotencyKey: "task-2:2026-08-21T12:00:00.000Z",
+      }),
+      payload: { value: 1 },
+      now: clock("2026-08-21T12:00:01.000Z"),
+      generationFence: generationFence(),
+      invoke: async () => ({ id: "effect-2" }),
+      classify: () => ({
+        acceptance: "accepted",
+        code: "accepted",
+        retryable: true,
+      }),
+      readback: async () => ({ id: "effect-2" }),
+      verifyReadback: () => true,
+    });
+    expect(acceptedRetryable).toMatchObject({
+      boundaryCalled: true,
+      acceptance: "unknown",
+      result: "unknown",
+      resultCode: "classifier_threw",
+    });
+    await expect(ledger.readAll()).resolves.toEqual([
+      observation,
+      acceptedRetryable,
+    ]);
   });
 
   it("records post-invocation generation revalidation failure and staleness", async () => {
