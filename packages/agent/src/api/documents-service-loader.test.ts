@@ -174,8 +174,8 @@ describe("getDocumentsServiceTimeoutMs", () => {
     expect(getDocumentsServiceTimeoutMs()).toBe(2_500);
   });
 
-  it("falls back for a timeout beyond the safe integer range", () => {
+  it("ceiling-clamps a clean timeout beyond the safe integer range", () => {
     vi.stubEnv("DOCUMENTS_SERVICE_TIMEOUT_MS", "9007199254740993");
-    expect(getDocumentsServiceTimeoutMs()).toBe(10_000);
+    expect(getDocumentsServiceTimeoutMs()).toBe(60_000);
   });
 });
