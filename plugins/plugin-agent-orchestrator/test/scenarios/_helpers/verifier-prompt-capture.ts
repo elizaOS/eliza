@@ -3,7 +3,7 @@
  * scenarios while one scenario-runner runtime is reused across attempts.
  */
 
-import { type IAgentRuntime, ModelType } from "@elizaos/core";
+import type { IAgentRuntime } from "@elizaos/core";
 import type { ScenarioCleanupStep } from "@elizaos/scenario-runner/schema";
 
 type ModelRuntime = Pick<IAgentRuntime, "useModel">;
@@ -35,7 +35,9 @@ export function installAttemptScopedVerifierPromptCapture(
   capture: (prompt: string) => void,
 ): () => void {
   if (verifierPromptCaptureByRuntime.has(runtime)) {
-    return () => uninstallAttemptScopedVerifierPromptCapture(runtime);
+    throw new Error(
+      "verifier prompt capture is already installed for this runtime attempt",
+    );
   }
   const originalUseModel = runtime.useModel;
   const useModel = originalUseModel.bind(runtime);
@@ -43,7 +45,7 @@ export function installAttemptScopedVerifierPromptCapture(
     const [modelType, params] = args;
     const prompt = (params as { prompt?: string } | undefined)?.prompt ?? "";
     if (
-      modelType === ModelType.TEXT_SMALL &&
+      modelType === "TEXT_SMALL" &&
       prompt.includes("You are a demanding engineering manager")
     ) {
       capture(prompt);
