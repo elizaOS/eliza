@@ -188,9 +188,36 @@ final class DeviceExtensionSurfaceUITests: XCTestCase {
             "Control Center add-control gallery must expose a search field before Eliza controls can be asserted."
         )
         search.tap()
+        let clearText = search.buttons["Clear text"]
+        if clearText.waitForExistence(timeout: 1) {
+            clearText.tap()
+            XCTAssertTrue(
+                waitForValueToClear(search, timeout: 3),
+                "Control Center must clear its retained gallery query before the harness types a fresh Eliza search."
+            )
+        }
         search.typeText("Eliza")
         Thread.sleep(forTimeInterval: 2.0)
         attachScreenshot(named: "control-assert-03-gallery-search-eliza")
+    }
+
+    private func waitForValueToClear(
+        _ element: XCUIElement,
+        timeout: TimeInterval
+    ) -> Bool {
+        let emptyValue = NSPredicate { object, _ in
+            guard let element = object as? XCUIElement else { return false }
+            let value = (element.value as? String) ?? ""
+            return value.isEmpty || value == element.placeholderValue
+        }
+        let expectation = XCTNSPredicateExpectation(
+            predicate: emptyValue,
+            object: element
+        )
+        return XCTWaiter.wait(
+            for: [expectation],
+            timeout: timeout
+        ) == .completed
     }
 
     // MARK: - Brand-aware display name
