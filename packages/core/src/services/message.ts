@@ -11390,6 +11390,10 @@ function buildRuntimeActionLookup(runtime: {
 	const actions = runtime.actions ?? [];
 
 	for (const action of actions) {
+		const exactKey = exactRuntimeActionKey(action.name);
+		if (exactKey && !actionMap.has(exactKey)) {
+			actionMap.set(exactKey, action);
+		}
 		const normalized = normalizeActionIdentifier(action.name);
 		if (!normalized || actionMap.has(normalized)) {
 			continue;
@@ -11410,10 +11414,20 @@ function buildRuntimeActionLookup(runtime: {
 	return actionMap;
 }
 
+/** Namespace exact action identities away from legacy normalized aliases. */
+function exactRuntimeActionKey(actionName: string): string {
+	const exact = actionName.trim();
+	return exact ? `\u0000exact:${exact}` : "";
+}
+
 function resolveRuntimeAction(
 	actionLookup: Map<string, Action>,
 	actionName: string,
 ): Action | undefined {
+	const exact = actionLookup.get(exactRuntimeActionKey(actionName));
+	if (exact) {
+		return exact;
+	}
 	const normalized = normalizeActionIdentifier(actionName);
 	if (!normalized) {
 		return undefined;
