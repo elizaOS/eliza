@@ -1,10 +1,10 @@
 # @elizaos/plugin-documents
 
-HTTP API surface for the elizaOS document store.
+HTTP API surface and reusable presentation components for the elizaOS document store.
 
 ## Purpose / role
 
-Registers a set of REST routes that expose document CRUD, bulk upload, URL ingestion, semantic search, and fragment listing against the runtime's document store. The plugin delegates all persistence and search to `DocumentsServiceLike` (resolved from `@elizaos/agent/api/documents-service-loader`). It does not register owner actions; `OWNER_DOCUMENTS` is host-adapted by `@elizaos/plugin-personal-assistant`, which owns approval queue gating, scheduled-task deadline tracking, and document-request orchestration. This plugin has no providers, evaluators, or event handlers.
+Registers a set of REST routes that expose document CRUD, bulk upload, URL ingestion, semantic search, and fragment listing against the runtime's document store. The plugin delegates all persistence and search to `DocumentsServiceLike` (resolved from `@elizaos/agent/api/documents-service-loader`). It does not register a view: the app shell's built-in Knowledge view owns the first-party document UI and consumes these routes. It also does not register owner actions; `OWNER_DOCUMENTS` is host-adapted by `@elizaos/plugin-personal-assistant`, which owns approval queue gating, scheduled-task deadline tracking, and document-request orchestration. This plugin has no providers, evaluators, or event handlers.
 
 Loading: added explicitly to the agent plugin list or via character config. It is not unconditionally enabled by default; the runtime must resolve it by name (`@elizaos/plugin-documents`).
 
@@ -31,7 +31,7 @@ Repo-wide conventions (logger-only, ESM, naming, architecture rules, git workflo
 `@elizaos/plugin-personal-assistant` and delegates to this package's document
 routes/store where appropriate.
 
-No providers, services, evaluators, or event handlers are registered.
+No views, providers, services, evaluators, or event handlers are registered.
 
 ## Layout
 
@@ -47,7 +47,6 @@ src/
   components/
     documents/
       DocumentsView.tsx          React view for documents UI
-      documents-view-bundle.ts   View bundle entry
       DocumentsView.test.tsx     Component tests
 test/
   documents-api.live.e2e.test.ts   Live API e2e tests
@@ -60,9 +59,8 @@ test/
 Scripts that exist in this package's `package.json`:
 
 ```bash
-bun run --cwd plugins/plugin-documents build               # build:js + build:views + build:types
+bun run --cwd plugins/plugin-documents build               # build:js + build:types
 bun run --cwd plugins/plugin-documents build:js            # tsup bundling
-bun run --cwd plugins/plugin-documents build:views         # vite build for view bundles
 bun run --cwd plugins/plugin-documents build:types         # tsc --noCheck type emit
 bun run --cwd plugins/plugin-documents clean               # rm -rf dist
 bun run --cwd plugins/plugin-documents test                # vitest run (unit tests)
