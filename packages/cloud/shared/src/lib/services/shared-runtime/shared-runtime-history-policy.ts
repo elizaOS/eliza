@@ -43,6 +43,29 @@ const DEICTIC_GROUNDING_FOLLOW_UP =
   /\b(?:it|that|this|those|these|they|them|result|results|source|sources|find|found|finding|findings|corrected|correction)\b/i;
 export type SharedRuntimeHistoryMessageLike = SharedRuntimeHistoryMessage;
 
+function publicSourceUrls(value: unknown): string[] | undefined {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value)) return undefined;
+  const urls: string[] = [];
+  for (const item of value) {
+    if (typeof item !== "string") return undefined;
+    try {
+      const parsed = new URL(item);
+      if (
+        (parsed.protocol !== "https:" && parsed.protocol !== "http:") ||
+        parsed.username ||
+        parsed.password
+      ) {
+        return undefined;
+      }
+      urls.push(parsed.toString());
+    } catch {
+      return undefined;
+    }
+  }
+  return urls;
+}
+
 /** Rejects malformed provenance while preserving every validated field. */
 export function parseSharedPublicWebGrounding(
   value: unknown,
@@ -75,13 +98,15 @@ export function parseSharedPublicWebGrounding(
   }
   const query = candidate.query.trim();
   const text = candidate.text.trim();
-  if (!query || !text) return undefined;
+  const sourceUrls = publicSourceUrls(candidate.sourceUrls);
+  if (!query || !text || (candidate.sourceUrls !== undefined && !sourceUrls)) return undefined;
   return {
     kind: "web_search",
     query,
     provider: candidate.provider,
     text,
     observedAt: candidate.observedAt,
+    ...(sourceUrls ? { sourceUrls } : {}),
     truncated: candidate.truncated,
   };
 }
@@ -97,6 +122,27 @@ export function encodeSharedPublicWebGrounding(value: SharedRuntimePublicGroundi
     instructionPolicy: "data_only",
     ...parsed,
   });
+}
+
+/** Projects a server-observed current-turn read as policy plus untrusted data. */
+export function sharedRuntimeFreshGroundingProjectionMessages(
+  value: SharedRuntimePublicGrounding | undefined,
+): ModelMessage[] {
+  const grounding = parseSharedPublicWebGrounding(value);
+  if (!grounding) return [];
+  const authority: ModelMessage = {
+    role: "system",
+    content: JSON.stringify({
+      type: "public_web_search_authority",
+      status: grounding.kind === "web_search" ? "available" : "unavailable",
+      policy: "current_turn_evidence_only",
+      observedAt: grounding.observedAt,
+      ...(grounding.kind === "web_search" ? { provider: grounding.provider } : {}),
+    }),
+  };
+  return grounding.kind === "web_search"
+    ? [authority, { role: "user", content: encodeSharedPublicWebGrounding(grounding) }]
+    : [authority];
 }
 
 /** Extracts only a successful Worker-safe public read for durable follow-up grounding. */
@@ -118,7 +164,11 @@ export function sharedPublicWebGrounding(
             query: data.query,
             provider: data.provider,
             text: record.text,
-            observedAt,
+            observedAt:
+              typeof data.observedAt === "number" && Number.isSafeInteger(data.observedAt)
+                ? data.observedAt
+                : observedAt,
+            sourceUrls: data.sourceUrls,
             truncated: data.truncated === true,
           })
         : parseSharedPublicWebGrounding({

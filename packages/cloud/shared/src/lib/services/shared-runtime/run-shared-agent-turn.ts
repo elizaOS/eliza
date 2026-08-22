@@ -30,6 +30,7 @@ import {
 } from "@elizaos/core/edge";
 import type { ScheduledTaskRunner, SharedReminderDelivery } from "@elizaos/plugin-scheduling/edge";
 import type { TodoStore } from "@elizaos/plugin-todos/edge";
+import { runWebSearchEdge } from "@elizaos/plugin-web-search/edge";
 import type { SharedRuntimePublicGrounding } from "../../../db/schemas/shared-runtime-history";
 import type { MobilePushMessage } from "../../mobile-push/types";
 import { CEREBRAS_DEFAULT_TEXT_SMALL_MODEL } from "../../models/catalog";
@@ -46,7 +47,14 @@ import {
   type SharedCapabilityWall,
 } from "./shared-capability-wall";
 import type { SharedMemoryStore } from "./shared-memory-store";
+import {
+  finalizeSharedRealtimeReply,
+  requireTraceableRealtimeSearch,
+  resolveSharedRealtimeRequirement,
+  sharedRealtimePromptPolicy,
+} from "./shared-realtime-grounding";
 import type { SharedRuntimeChannel } from "./shared-runtime-channel";
+import { sharedPublicWebGrounding } from "./shared-runtime-history-policy";
 import type {
   SharedProviderTimingReceipt,
   SharedRuntimeTimingReceipt,
@@ -311,6 +319,7 @@ function buildSharedRuntimeSystem(
   recallContext?: string,
   blockedCapabilities: SharedCapabilityWall[] = [],
   requiredAction?: "REMINDERS" | "TODO",
+  realtimeGrounding?: SharedRuntimePublicGrounding,
 ): string {
   const parts: string[] = [];
   const system = replaceNameTokens(character.system ?? "", character.name).trim();
@@ -340,6 +349,7 @@ function buildSharedRuntimeSystem(
         `- If the request is incomplete or cannot be applied, call ${requiredAction} anyway and use its grounded clarification or failure result; never invent success.`,
     );
   }
+  if (realtimeGrounding) parts.push(sharedRealtimePromptPolicy(realtimeGrounding));
   if (recallContext?.trim()) parts.push(recallContext.trim());
   return parts.join("\n\n") || `You are ${character.name}, a helpful assistant.`;
 }
@@ -494,6 +504,34 @@ export async function runSharedAgentTurn(
     };
   }
 
+  const realtimeRequirement = actionsEnabled
+    ? resolveSharedRealtimeRequirement(message, input.history)
+    : undefined;
+  let realtimeActionResults: ActionResult[] | undefined;
+  let realtimeGrounding: SharedRuntimePublicGrounding | undefined;
+  if (realtimeRequirement) {
+    let searchResult: ActionResult;
+    try {
+      searchResult = await runWebSearchEdge(realtimeRequirement.query);
+    } catch {
+      // error-policy:J4 current-data lookup failures become an explicit,
+      // visibly unavailable receipt; the model never receives fake success.
+      searchResult = {
+        success: false,
+        text: "Live public data is temporarily unavailable.",
+        error: "Live public data is temporarily unavailable.",
+        data: {
+          actionName: "WEB_SEARCH",
+          query: realtimeRequirement.query,
+          observedAt: Date.now(),
+        },
+      };
+    }
+    const traceableResult = requireTraceableRealtimeSearch(searchResult, realtimeRequirement.query);
+    realtimeActionResults = [traceableResult];
+    realtimeGrounding = sharedPublicWebGrounding(realtimeActionResults);
+  }
+
   let turn: RunSharedAgentTurnResult;
   try {
     const execution = resolveRuntimeExecution(input);
@@ -515,15 +553,24 @@ export async function runSharedAgentTurn(
             input.recallContext,
             capabilityWall ? [capabilityWall] : blockedSecondary,
             requiredAction,
+            realtimeGrounding,
           ),
         },
         execution,
         agentKey: execution.agentKey,
         model: modelId,
+        ...(realtimeGrounding ? { realtimeGrounding } : {}),
+        ...(realtimeActionResults ? { preflightActionResults: realtimeActionResults } : {}),
       }),
       capabilityWall,
       blockedSecondary,
     );
+    if (realtimeActionResults) {
+      const runtimeActionResults = (turn.actionResults ?? []).filter(
+        (result) => result.data?.actionName !== "WEB_SEARCH",
+      );
+      turn = { ...turn, actionResults: [...realtimeActionResults, ...runtimeActionResults] };
+    }
     if (requiredAction && !hasRequiredActionResult(turn, requiredAction)) {
       throw new Error(
         `Eliza Shared runtime completed an executable ${requiredAction} request without an action result`,
@@ -536,6 +583,31 @@ export async function runSharedAgentTurn(
       `[shared-runtime] AgentRuntime turn failed (agent=${input.character.name}, model=${modelId})`,
       { cause: error },
     );
+  }
+  if (realtimeRequirement) {
+    const groundedReply = finalizeSharedRealtimeReply(turn.reply, realtimeGrounding);
+    const history = [...turn.history];
+    let replaced = false;
+    for (let index = history.length - 1; index >= 0; index -= 1) {
+      if (history[index].role !== "assistant") continue;
+      history[index] = {
+        ...history[index],
+        content: groundedReply,
+        ...(realtimeGrounding ? { grounding: realtimeGrounding } : {}),
+      };
+      replaced = true;
+      break;
+    }
+    if (!replaced) {
+      history.push({
+        id: input.messageIds?.assistant,
+        role: "assistant",
+        content: groundedReply,
+        createdAt: Date.now(),
+        ...(realtimeGrounding ? { grounding: realtimeGrounding } : {}),
+      });
+    }
+    turn = { ...turn, reply: groundedReply, responded: true, history };
   }
   // The durable memory commit runs OUTSIDE the provider try/catch: its failure
   // is a storage fault on an already-landed reply and must not be re-labeled
@@ -576,6 +648,31 @@ export async function runSharedAgentTurnStream(
       history: appendSharedTurn(input.history, message, reply, input.messageIds, input.messageRole),
       model: "none",
       degraded: true,
+    };
+  }
+
+  // Current-data answers are buffered until their complete grounded reply has
+  // passed validation; streaming an unverified numeric claim cannot be undone.
+  if (actionsEnabled && resolveSharedRealtimeRequirement(message, input.history)) {
+    const turn = await runSharedAgentTurn(input);
+    const parts = (async function* (): AsyncIterable<SharedAgentTurnStreamPart> {
+      if (turn.reply) yield { type: "text-delta", text: turn.reply };
+      yield {
+        type: "finish",
+        text: turn.reply,
+        ...(turn.responded === false ? { responded: false } : {}),
+        ...(turn.usage ? { usage: turn.usage } : {}),
+        ...(turn.actionResults?.length ? { actionResults: turn.actionResults } : {}),
+        ...(turn.timing ? { timing: turn.timing } : {}),
+      };
+    })();
+    return {
+      model: turn.model,
+      degraded: turn.degraded,
+      reply: turn.reply,
+      history: turn.history,
+      ...(turn.actionResults?.length ? { actionResults: turn.actionResults } : {}),
+      parts,
     };
   }
 

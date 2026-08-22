@@ -2,7 +2,12 @@
 
 import type { IAgentRuntime, Memory } from "@elizaos/core/edge";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { webSearchEdgeAction, webSearchEdgePlugin } from "./edge";
+import {
+    runWebSearchEdge,
+    webSearchEdgeAction,
+    webSearchEdgePlugin,
+    webSearchSourceUrls,
+} from "./edge";
 
 const ORIGINAL_FETCH = globalThis.fetch;
 
@@ -22,7 +27,19 @@ describe("webSearchEdgePlugin", () => {
                 jsonrpc: "2.0",
                 id: 1,
                 result: {
-                    content: [{ type: "text", text: "Current public result" }],
+                    content: [
+                        {
+                            type: "text",
+                            text: JSON.stringify({
+                                results: [
+                                    {
+                                        url: "https://example.com/current",
+                                        title: "Current public result",
+                                    },
+                                ],
+                            }),
+                        },
+                    ],
                 },
             })
         ) as typeof fetch;
@@ -36,11 +53,47 @@ describe("webSearchEdgePlugin", () => {
 
         expect(result).toMatchObject({
             success: true,
-            text: "Current public result",
             data: {
                 actionName: "WEB_SEARCH",
                 provider: "parallel",
                 query: "current public result",
+                observedAt: expect.any(Number),
+                sourceUrls: ["https://example.com/current"],
+            },
+        });
+    });
+
+    it("extracts structured and prose source URLs without accepting credentials", () => {
+        expect(
+            webSearchSourceUrls(
+                `${JSON.stringify({ results: [{ url: "https://example.com/a" }] })}\n` +
+                    "Source: https://news.example.org/story). Ignore https://u:p@example.net/private"
+            )
+        ).toEqual(["https://example.com/a", "https://news.example.org/story"]);
+    });
+
+    it("exposes the same traceable receipt through the direct edge runner", async () => {
+        globalThis.fetch = vi.fn(async () =>
+            Response.json({
+                jsonrpc: "2.0",
+                id: 1,
+                result: {
+                    content: [
+                        {
+                            type: "text",
+                            text: '{"results":[{"url":"https://weather.example/current"}]}',
+                        },
+                    ],
+                },
+            })
+        ) as typeof fetch;
+
+        await expect(runWebSearchEdge("weather now")).resolves.toMatchObject({
+            success: true,
+            data: {
+                actionName: "WEB_SEARCH",
+                query: "weather now",
+                sourceUrls: ["https://weather.example/current"],
             },
         });
     });
