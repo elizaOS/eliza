@@ -768,7 +768,7 @@ async function handleSearch(
 
 const DOCUMENT_READ_DEFAULT_LIMIT = 100;
 
-type DocumentReadUnit = "line" | "fragment";
+type DocumentReadUnit = "line" | "fragment" | "byte";
 
 function opaqueDocumentRevision(metadata: Record<string, unknown>): string {
 	const declaredRevision =
@@ -871,7 +871,7 @@ async function handleRead(
 	}
 
 	const unit: DocumentReadUnit =
-		params.unit === "fragment" ? "fragment" : "line";
+		params.unit === "fragment" || params.unit === "byte" ? params.unit : "line";
 	const offset = requiredReadInteger(params.offset, "offset", 0);
 	const limit = requiredReadInteger(
 		params.limit,
@@ -893,7 +893,7 @@ async function handleRead(
 			context: { field: "offset", total: bounded.total },
 		});
 	}
-	const page = documentReadPage(bounded, documentId, unit);
+	const page = documentReadPage(bounded, documentId, bounded.unit);
 	if (
 		page.view.slice.range.start > 0 &&
 		(typeof params.expectedRevision !== "string" ||
@@ -1547,7 +1547,7 @@ export const documentAction: Action = {
 		{
 			name: "limit",
 			description:
-				"Maximum number of results or listed documents (1-100). Use 0 when this field is not applicable to the selected action.",
+				"Maximum results for list/search or exact units for one explicitly paged read (1-100). Omitting it on read requests the first bounded 100-unit page; follow readView.nextOffset until readView.completeness is complete. Use 0 when this field is not applicable.",
 			required: false,
 			schema: { type: "number", minimum: 0, maximum: 100 },
 		},
@@ -1598,16 +1598,16 @@ export const documentAction: Action = {
 		{
 			name: "offset",
 			description:
-				"Pagination offset for list, or the zero-based line/fragment offset for read.",
+				"Pagination offset for list, or the zero-based line/fragment/UTF-8-byte offset for read. Continuations must use readView.nextOffset and expectedRevision.",
 			required: false,
 			schema: { type: "number", minimum: 0 },
 		},
 		{
 			name: "unit",
 			description:
-				"Exact read unit for action=read: line or fragment. Defaults to line.",
+				"Exact read unit for action=read: line, fragment, or UTF-8 byte. Defaults to line; oversized logical units continue as bounded byte pages.",
 			required: false,
-			schema: { type: "string", enum: ["line", "fragment"] },
+			schema: { type: "string", enum: ["line", "fragment", "byte"] },
 		},
 		{
 			name: "expectedRevision",

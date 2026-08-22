@@ -64,6 +64,15 @@ export type {
 	SearchMode,
 } from "./service";
 export { DocumentService, resolveDocumentRequester } from "./service";
+export type { DocumentSourceReadMetadata } from "./source-segments";
+export {
+	DOCUMENT_SOURCE_READ_LOOKAHEAD_SEGMENTS,
+	DOCUMENT_SOURCE_READ_MAX_SEGMENTS,
+	DOCUMENT_SOURCE_SEGMENT_MAX_BYTES,
+	DOCUMENT_SOURCE_SEGMENT_VERSION,
+	readDocumentSourceProjection,
+	requireDocumentSourceReadMetadata,
+} from "./source-segments";
 export * from "./types";
 export type {
 	FetchDocumentFromUrlOptions,

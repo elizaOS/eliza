@@ -121,6 +121,57 @@ export const memorySchema: SchemaTable = {
 			],
 			isUnique: false,
 		},
+		idx_document_source_byte_seek: {
+			name: "idx_document_source_byte_seek",
+			columns: [
+				{ expression: "((metadata->>'documentId'))", isExpression: true },
+				{
+					expression: "((metadata->>'sourceByteEnd')::bigint)",
+					isExpression: true,
+				},
+				{
+					expression: "((metadata->>'position')::bigint)",
+					isExpression: true,
+				},
+			],
+			isUnique: false,
+			where:
+				"type = 'document_fragments' AND metadata->>'fragmentRole' = 'source-segment'",
+		},
+		idx_document_source_line_seek: {
+			name: "idx_document_source_line_seek",
+			columns: [
+				{ expression: "((metadata->>'documentId'))", isExpression: true },
+				{
+					expression: "((metadata->>'sourceLineEnd')::bigint)",
+					isExpression: true,
+				},
+				{
+					expression: "((metadata->>'position')::bigint)",
+					isExpression: true,
+				},
+			],
+			isUnique: false,
+			where:
+				"type = 'document_fragments' AND metadata->>'fragmentRole' = 'source-segment'",
+		},
+		idx_document_source_fragment_seek: {
+			name: "idx_document_source_fragment_seek",
+			columns: [
+				{ expression: "((metadata->>'documentId'))", isExpression: true },
+				{
+					expression: "((metadata->>'sourceFragmentEnd')::bigint)",
+					isExpression: true,
+				},
+				{
+					expression: "((metadata->>'position')::bigint)",
+					isExpression: true,
+				},
+			],
+			isUnique: false,
+			where:
+				"type = 'document_fragments' AND metadata->>'fragmentRole' = 'source-segment'",
+		},
 	},
 	foreignKeys: {
 		fk_room: {

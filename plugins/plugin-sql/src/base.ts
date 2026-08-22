@@ -28,6 +28,7 @@ import {
   DatabaseAdapter,
   type DeleteConnectorAccountParams,
   DOCUMENT_LIST_QUERY_CAPABILITY_VERSION,
+  DOCUMENT_SOURCE_READ_LOOKAHEAD_SEGMENTS,
   type DocumentCompareAndSwapParams,
   type DocumentDeleteParams,
   type DocumentDirectGrantUpdateParams,
@@ -77,6 +78,8 @@ import {
   type Relationship,
   type Room,
   type RunStatus,
+  readDocumentSourceProjection,
+  requireDocumentSourceReadMetadata,
   type SetConnectorAccountCredentialRefParams,
   type Task,
   type TaskMetadata,
@@ -558,7 +561,7 @@ import type { DrizzleDatabase } from "./types";
 
 export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase> {
   readonly documentListQueryCapability = DOCUMENT_LIST_QUERY_CAPABILITY_VERSION;
-  readonly documentRangeReadCapability = 1 as const;
+  readonly documentRangeReadCapability = 2 as const;
   protected readonly maxRetries: number = 3;
   protected readonly baseDelay: number = 1000;
   protected readonly maxDelay: number = 10000;
@@ -2232,13 +2235,15 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
   ): Promise<DocumentRangeReadResult | null> {
     validateDocumentRequesterContext(params);
     if (
+      !(["line", "fragment", "byte"] as const).includes(params.unit) ||
       !Number.isSafeInteger(params.offset) ||
       params.offset < 0 ||
       !Number.isSafeInteger(params.limit) ||
-      params.limit < 1
+      params.limit < 1 ||
+      params.offset > Number.MAX_SAFE_INTEGER - params.limit
     ) {
       throw new ElizaError(
-        "Document range read requires a non-negative offset and positive limit",
+        "Document range read requires a valid unit and bounded safe-integer range",
         {
           code: "DOCUMENT_READ_INVALID_RANGE",
         }
@@ -2248,81 +2253,65 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       ? params.agentId
       : params.requesterEntityId;
     return this.withEntityContext(entityContext, async (tx) => {
-      const linePattern = "([^\\r\\n]*(?:\\r\\n|\\r|\\n)|[^\\r\\n]+$)";
-      const units =
-        params.unit === "line"
-          ? sql`line_units AS (
-              SELECT matched[1] AS unit_text, ordinal - 1 AS unit_index
-              FROM authorized
-              CROSS JOIN LATERAL regexp_matches(source_text, ${linePattern}, 'g')
-                WITH ORDINALITY AS matches(matched, ordinal)
-            )`
-          : sql`raw_lines AS (
-              SELECT matched[1] AS unit_text, ordinal - 1 AS line_index
-              FROM authorized
-              CROSS JOIN LATERAL regexp_matches(source_text, ${linePattern}, 'g')
-                WITH ORDINALITY AS matches(matched, ordinal)
-            ), grouped_lines AS (
-              SELECT unit_text, line_index,
-                COALESCE(SUM(
-                  CASE WHEN btrim(regexp_replace(unit_text, E'[\\r\\n]', '', 'g')) = ''
-                    THEN 1 ELSE 0 END
-                ) OVER (
-                  ORDER BY line_index
-                  ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING
-                ), 0) AS unit_index
-              FROM raw_lines
-            ), line_units AS (
-              SELECT string_agg(unit_text, '' ORDER BY line_index) AS unit_text, unit_index
-              FROM grouped_lines
-              GROUP BY unit_index
-            )`;
-      const result = await tx.execute(sql`
-        WITH authorized AS (
-          SELECT content->>'text' AS source_text, metadata
-          FROM ${memoryTable}
-          WHERE ${and(...this.documentReadConditions(params))}
-          LIMIT 1
-        ), ${units}
-        SELECT
-          COALESCE(
-            string_agg(unit_text, '' ORDER BY unit_index)
-              FILTER (
-                WHERE unit_index >= ${params.offset}
-                  AND unit_index < ${params.offset + params.limit}
-              ),
-            ''
-          ) AS text,
-          COUNT(*)::integer AS total,
-          (SELECT COALESCE((metadata->>'documentRevision')::integer, 0) FROM authorized)
-            AS document_revision,
-          (SELECT metadata->>'revisionAttemptId' FROM authorized) AS revision_attempt_id,
-          (SELECT md5(source_text) FROM authorized) AS source_fingerprint
-        FROM line_units
-      `);
-      const row = result.rows[0] as
-        | {
-            text?: unknown;
-            total?: unknown;
-            document_revision?: unknown;
-            revision_attempt_id?: unknown;
-            source_fingerprint?: unknown;
-          }
-        | undefined;
-      if (!row || typeof row.source_fingerprint !== "string") return null;
-      const total = Number(row.total);
-      const start = params.offset;
-      return {
-        text: typeof row.text === "string" ? row.text : "",
-        start,
-        end: Math.min(start + params.limit, total),
-        total,
-        documentRevision: Number(row.document_revision ?? 0),
-        ...(typeof row.revision_attempt_id === "string"
-          ? { revisionAttemptId: row.revision_attempt_id }
-          : {}),
-        sourceFingerprint: `md5:${row.source_fingerprint}`,
-      };
+      const parentRows = await tx
+        .select({ metadata: memoryTable.metadata })
+        .from(memoryTable)
+        .where(and(...this.documentReadConditions(params)))
+        .limit(1);
+      const parentRow = parentRows[0];
+      if (!parentRow) return null;
+      const parentMetadata = (parentRow.metadata ?? {}) as Record<string, unknown>;
+      const parent = requireDocumentSourceReadMetadata(parentMetadata, params.documentId);
+      const total =
+        params.unit === "byte"
+          ? parent.sourceByteLength
+          : params.unit === "line"
+            ? parent.sourceLineCount
+            : parent.sourceFragmentCount;
+      const requestedEnd = Math.min(params.offset + params.limit, total);
+      const coordinateStart =
+        params.unit === "byte"
+          ? sql`(${memoryTable.metadata}->>'sourceByteStart')::bigint`
+          : params.unit === "line"
+            ? sql`(${memoryTable.metadata}->>'sourceLineStart')::bigint`
+            : sql`(${memoryTable.metadata}->>'sourceFragmentStart')::bigint`;
+      const coordinateEnd =
+        params.unit === "byte"
+          ? sql`(${memoryTable.metadata}->>'sourceByteEnd')::bigint`
+          : params.unit === "line"
+            ? sql`(${memoryTable.metadata}->>'sourceLineEnd')::bigint`
+            : sql`(${memoryTable.metadata}->>'sourceFragmentEnd')::bigint`;
+      const revisionAttemptCondition = parent.revisionAttemptId
+        ? sql`${memoryTable.metadata}->>'revisionAttemptId' = ${parent.revisionAttemptId}`
+        : sql`NOT (${memoryTable.metadata} ? 'revisionAttemptId')`;
+      const rows = await tx
+        .select()
+        .from(memoryTable)
+        .where(
+          and(
+            eq(memoryTable.type, "document_fragments"),
+            eq(memoryTable.agentId, params.agentId),
+            sql`${memoryTable.metadata}->>'type' = 'fragment'`,
+            sql`${memoryTable.metadata}->>'fragmentRole' = 'source-segment'`,
+            sql`${memoryTable.metadata}->>'sourceSegmentVersion' = '1'`,
+            sql`${memoryTable.metadata}->>'documentId' = ${params.documentId}`,
+            validDocumentRevision(memoryTable.metadata),
+            sql`${documentRevisionExpression(memoryTable.metadata)} = ${parent.documentRevision}`,
+            revisionAttemptCondition,
+            sql`${coordinateEnd} > ${params.offset}`,
+            sql`${coordinateStart} < ${requestedEnd}`
+          )
+        )
+        .orderBy(sql`(${memoryTable.metadata}->>'position')::bigint ASC`)
+        .limit(DOCUMENT_SOURCE_READ_LOOKAHEAD_SEGMENTS);
+      const segments = rows.map((row) => memoryFromRow(row));
+      return readDocumentSourceProjection({
+        segments,
+        params,
+        parent,
+        documentId: params.documentId,
+        sourceQueryCount: 2,
+      });
     });
   }
 
@@ -2345,6 +2334,8 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         eq(fragment.type, "document_fragments"),
         eq(fragment.agentId, params.agentId),
         sql`${fragment.metadata}->>'type' = 'fragment'`,
+        sql`COALESCE(${fragment.metadata}->>'fragmentRole', 'embedding-chunk')
+          = 'embedding-chunk'`,
         validDocumentRevision(fragment.metadata),
         sql`${documentRevisionExpression(fragment.metadata)}
           = ${documentRevisionExpression(parent.metadata)}`,
@@ -2379,7 +2370,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         const rows = await tx
           .select({
             memory: fragment,
-            sourceFingerprint: sql<string>`md5(${parent.content}->>'text')`,
+            sourceFingerprint: sql<string | null>`${parent.metadata}->>'sourceFingerprint'`,
           })
           .from(fragment)
           .innerJoin(parent, parentJoin)
@@ -2389,13 +2380,15 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
           .offset(params.offset ?? 0);
         return rows.map((row) => {
           const memory = memoryFromRow(row.memory);
-          return {
-            ...memory,
-            metadata: {
-              ...(memory.metadata ?? {}),
-              sourceFingerprint: `md5:${row.sourceFingerprint}`,
-            } as Memory["metadata"],
-          };
+          return row.sourceFingerprint
+            ? {
+                ...memory,
+                metadata: {
+                  ...(memory.metadata ?? {}),
+                  sourceFingerprint: row.sourceFingerprint,
+                } as Memory["metadata"],
+              }
+            : memory;
         });
       }
 
@@ -2411,7 +2404,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
           memory: fragment,
           embedding: activeColumn,
           similarity,
-          sourceFingerprint: sql<string>`md5(${parent.content}->>'text')`,
+          sourceFingerprint: sql<string | null>`${parent.metadata}->>'sourceFingerprint'`,
         })
         .from(embeddingTable)
         .innerJoin(fragment, eq(fragment.id, embeddingTable.memoryId))
@@ -2426,13 +2419,15 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
           row.embedding ? Array.from(row.embedding) : undefined,
           row.similarity
         );
-        return {
-          ...memory,
-          metadata: {
-            ...(memory.metadata ?? {}),
-            sourceFingerprint: `md5:${row.sourceFingerprint}`,
-          } as Memory["metadata"],
-        };
+        return row.sourceFingerprint
+          ? {
+              ...memory,
+              metadata: {
+                ...(memory.metadata ?? {}),
+                sourceFingerprint: row.sourceFingerprint,
+              } as Memory["metadata"],
+            }
+          : memory;
       });
     });
   }

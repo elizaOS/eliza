@@ -259,6 +259,14 @@ export interface DocumentMemoryMetadata
 	mediaHash?: string;
 	/** Served original-bytes file (content-addressed) linked to this document. */
 	mediaFileName?: string;
+	/** Versioned canonical source-segment projection available for bounded reads. */
+	sourceSegmentVersion?: 1;
+	sourceSegmentCount?: number;
+	sourceByteLength?: number;
+	sourceLineCount?: number;
+	sourceFragmentCount?: number;
+	sourceSha256?: string;
+	sourceFingerprint?: string;
 }
 export interface DocumentFragmentMemoryMetadata
 	extends FragmentMetadata,
@@ -274,6 +282,17 @@ export interface DocumentFragmentMemoryMetadata
 	/** Update attempt that staged this fragment; must match the parent's committed token to be readable. */
 	revisionAttemptId?: UUID;
 	position: number;
+	/** Source segments are canonical; embedding chunks are derived retrieval views. */
+	fragmentRole?: "source-segment" | "embedding-chunk";
+	sourceSegmentVersion?: 1;
+	/** SHA-256 of this bounded source segment, verified before returning content. */
+	sourceSegmentSha256?: string;
+	sourceByteStart?: number;
+	sourceByteEnd?: number;
+	sourceLineStart?: number;
+	sourceLineEnd?: number;
+	sourceFragmentStart?: number;
+	sourceFragmentEnd?: number;
 	source?: string;
 	documentTitle?: string;
 	timestamp?: number;

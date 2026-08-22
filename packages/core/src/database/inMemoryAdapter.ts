@@ -21,6 +21,11 @@ import {
 	validateTaskQueryPagination,
 } from "../database";
 import { ElizaError } from "../errors";
+import {
+	DOCUMENT_SOURCE_READ_LOOKAHEAD_SEGMENTS,
+	readDocumentSourceProjection,
+	requireDocumentSourceReadMetadata,
+} from "../features/documents/source-segments";
 import { rankMessageSearch, withinCreatedAtWindow } from "../search";
 import type {
 	AccessContext,
@@ -85,7 +90,6 @@ import type {
 import { MemoryType } from "../types";
 import { normalizePairingPageOptions } from "../types/pairing";
 import { DEFAULT_UUID } from "../types/primitives";
-import { createHash } from "../utils/crypto-compat";
 import { isPlainObject } from "../utils/type-guards";
 import {
 	cloneConnectorJsonObject,
@@ -301,7 +305,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 	Record<string, never>
 > {
 	readonly documentListQueryCapability = DOCUMENT_LIST_QUERY_CAPABILITY_VERSION;
-	readonly documentRangeReadCapability = 1 as const;
+	readonly documentRangeReadCapability = 2 as const;
 	db: Record<string, never> = {};
 
 	private ready = false;
@@ -911,42 +915,79 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 	async readDocumentRange(
 		params: DocumentRangeReadParams,
 	): Promise<DocumentRangeReadResult | null> {
+		if (
+			!(["line", "fragment", "byte"] as const).includes(params.unit) ||
+			!Number.isSafeInteger(params.offset) ||
+			params.offset < 0 ||
+			!Number.isSafeInteger(params.limit) ||
+			params.limit < 1 ||
+			params.offset > Number.MAX_SAFE_INTEGER - params.limit
+		) {
+			throw new ElizaError(
+				"Document range read requires a valid unit and bounded safe-integer range",
+				{
+					code: "DOCUMENT_READ_INVALID_RANGE",
+				},
+			);
+		}
 		const memory = await this.getDocument(params);
 		if (!memory) return null;
-		const source = memory.content.text ?? "";
-		const lines = source.match(/[^\r\n]*(?:\r\n|\r|\n)|[^\r\n]+$/gu) ?? [];
-		const units =
-			params.unit === "line"
-				? lines
-				: lines
-						.reduce<string[]>((fragments, line) => {
-							const last = fragments.length - 1;
-							if (last < 0) fragments.push(line);
-							else fragments[last] += line;
-							if (line.replace(/[\r\n]/gu, "").trim().length === 0) {
-								fragments.push("");
-							}
-							return fragments;
-						}, [])
-						.filter((fragment) => fragment.length > 0);
-		const text = units
-			.slice(params.offset, params.offset + params.limit)
-			.join("");
 		const metadata = (memory.metadata ?? {}) as Record<string, unknown>;
-		return {
-			text,
-			start: params.offset,
-			end: Math.min(params.offset + params.limit, units.length),
-			total: units.length,
-			documentRevision:
-				typeof metadata.documentRevision === "number"
-					? metadata.documentRevision
-					: 0,
-			...(typeof metadata.revisionAttemptId === "string"
-				? { revisionAttemptId: metadata.revisionAttemptId }
-				: {}),
-			sourceFingerprint: `md5:${createHash("md5").update(source).digest("hex")}`,
-		};
+		const parent = requireDocumentSourceReadMetadata(
+			metadata,
+			params.documentId,
+		);
+		const total =
+			params.unit === "byte"
+				? parent.sourceByteLength
+				: params.unit === "line"
+					? parent.sourceLineCount
+					: parent.sourceFragmentCount;
+		const requestedEnd = Math.min(params.offset + params.limit, total);
+		const coordinateName =
+			params.unit === "byte"
+				? "Byte"
+				: params.unit === "line"
+					? "Line"
+					: "Fragment";
+		const startKey = `source${coordinateName}Start`;
+		const endKey = `source${coordinateName}End`;
+		const sourceSegments = Array.from(this.memoriesById.values())
+			.filter((candidate) => {
+				const candidateMetadata = (candidate.metadata ?? {}) as Record<
+					string,
+					unknown
+				>;
+				const start = candidateMetadata[startKey];
+				const end = candidateMetadata[endKey];
+				return (
+					candidate.agentId === params.agentId &&
+					candidateMetadata.type === MemoryType.FRAGMENT &&
+					candidateMetadata.fragmentRole === "source-segment" &&
+					candidateMetadata.documentId === params.documentId &&
+					candidateMetadata.sourceSegmentVersion === 1 &&
+					candidateMetadata.documentRevision === parent.documentRevision &&
+					(parent.revisionAttemptId === undefined ||
+						candidateMetadata.revisionAttemptId === parent.revisionAttemptId) &&
+					typeof start === "number" &&
+					typeof end === "number" &&
+					end > params.offset &&
+					start < requestedEnd
+				);
+			})
+			.sort(
+				(left, right) =>
+					Number((left.metadata as Record<string, unknown>)?.position) -
+					Number((right.metadata as Record<string, unknown>)?.position),
+			)
+			.slice(0, DOCUMENT_SOURCE_READ_LOOKAHEAD_SEGMENTS);
+		return readDocumentSourceProjection({
+			segments: sourceSegments,
+			params,
+			parent,
+			documentId: params.documentId,
+			sourceQueryCount: 2,
+		});
 	}
 
 	async queryDocumentFragments(
@@ -964,15 +1005,15 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 				typeof documentId === "string"
 					? this.memoriesById.get(documentId)
 					: undefined;
-			const source = parent?.content.text;
-			return typeof source === "string"
+			const sourceFingerprint = (
+				parent?.metadata as Record<string, unknown> | undefined
+			)?.sourceFingerprint;
+			return typeof sourceFingerprint === "string"
 				? {
 						...fragment,
 						metadata: {
 							...(fragment.metadata ?? {}),
-							sourceFingerprint: `md5:${createHash("md5")
-								.update(source)
-								.digest("hex")}`,
+							sourceFingerprint,
 						} as Memory["metadata"],
 					}
 				: fragment;
