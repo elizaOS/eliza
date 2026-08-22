@@ -43,6 +43,45 @@ const DEICTIC_GROUNDING_FOLLOW_UP =
   /\b(?:it|that|this|those|these|they|them|result|results|source|sources|find|found|finding|findings|corrected|correction)\b/i;
 export type SharedRuntimeHistoryMessageLike = SharedRuntimeHistoryMessage;
 
+function publicSourceUrls(value: unknown): string[] | undefined {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value)) return undefined;
+  const urls: string[] = [];
+  for (const item of value) {
+    if (typeof item !== "string") return undefined;
+    try {
+      const parsed = new URL(item);
+      if (
+        (parsed.protocol !== "https:" && parsed.protocol !== "http:") ||
+        parsed.username ||
+        parsed.password
+      ) {
+        return undefined;
+      }
+      urls.push(parsed.toString());
+    } catch {
+      return undefined;
+    }
+  }
+  return urls;
+}
+
+function publicSources(value: unknown): Array<{ url: string; text: string }> | undefined {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value)) return undefined;
+  const sources: Array<{ url: string; text: string }> = [];
+  for (const item of value) {
+    if (!item || typeof item !== "object") return undefined;
+    const record = item as Record<string, unknown>;
+    if (typeof record.url !== "string" || typeof record.text !== "string") return undefined;
+    const urls = publicSourceUrls([record.url]);
+    const text = record.text.trim();
+    if (!urls?.[0] || !text) return undefined;
+    sources.push({ url: urls[0], text });
+  }
+  return sources;
+}
+
 /** Rejects malformed provenance while preserving every validated field. */
 export function parseSharedPublicWebGrounding(
   value: unknown,
@@ -69,20 +108,31 @@ export function parseSharedPublicWebGrounding(
     typeof candidate.observedAt !== "number" ||
     !Number.isSafeInteger(candidate.observedAt) ||
     candidate.observedAt < 0 ||
-    typeof candidate.truncated !== "boolean"
+    candidate.truncated !== false
   ) {
     return undefined;
   }
   const query = candidate.query.trim();
   const text = candidate.text.trim();
-  if (!query || !text) return undefined;
+  const sourceUrls = publicSourceUrls(candidate.sourceUrls);
+  const sources = publicSources(candidate.sources);
+  if (
+    !query ||
+    !text ||
+    (candidate.sourceUrls !== undefined && !sourceUrls) ||
+    (candidate.sources !== undefined && !sources)
+  ) {
+    return undefined;
+  }
   return {
     kind: "web_search",
     query,
     provider: candidate.provider,
     text,
     observedAt: candidate.observedAt,
-    truncated: candidate.truncated,
+    ...(sourceUrls ? { sourceUrls } : {}),
+    ...(sources ? { sources } : {}),
+    truncated: false,
   };
 }
 
@@ -99,6 +149,27 @@ export function encodeSharedPublicWebGrounding(value: SharedRuntimePublicGroundi
   });
 }
 
+/** Projects a server-observed current-turn read as policy plus untrusted data. */
+export function sharedRuntimeFreshGroundingProjectionMessages(
+  value: SharedRuntimePublicGrounding | undefined,
+): ModelMessage[] {
+  const grounding = parseSharedPublicWebGrounding(value);
+  if (!grounding) return [];
+  const authority: ModelMessage = {
+    role: "system",
+    content: JSON.stringify({
+      type: "public_web_search_authority",
+      status: grounding.kind === "web_search" ? "available" : "unavailable",
+      policy: "current_turn_evidence_only",
+      observedAt: grounding.observedAt,
+      ...(grounding.kind === "web_search" ? { provider: grounding.provider } : {}),
+    }),
+  };
+  return grounding.kind === "web_search"
+    ? [authority, { role: "user", content: encodeSharedPublicWebGrounding(grounding) }]
+    : [authority];
+}
+
 /** Extracts only a successful Worker-safe public read for durable follow-up grounding. */
 export function sharedPublicWebGrounding(
   actionResults: readonly unknown[] | undefined,
@@ -112,14 +183,19 @@ export function sharedPublicWebGrounding(
     if (data.actionName !== "WEB_SEARCH") continue;
     const observedAt = Date.now();
     const parsed =
-      record.success === true
+      record.success === true && data.truncated !== true
         ? parseSharedPublicWebGrounding({
             kind: "web_search",
             query: data.query,
             provider: data.provider,
             text: record.text,
-            observedAt,
-            truncated: data.truncated === true,
+            observedAt:
+              typeof data.observedAt === "number" && Number.isSafeInteger(data.observedAt)
+                ? data.observedAt
+                : observedAt,
+            sourceUrls: data.sourceUrls,
+            sources: data.sources,
+            truncated: false,
           })
         : parseSharedPublicWebGrounding({
             kind: "web_search_unavailable",

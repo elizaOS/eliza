@@ -10,6 +10,10 @@ export type SharedRuntimePublicGrounding =
       provider: KeylessWebSearchProvider;
       text: string;
       observedAt: number;
+      /** Traceable public sources extracted from the successful tool receipt. */
+      sourceUrls?: string[];
+      /** Per-result evidence keeps every factual claim bound to its own URL. */
+      sources?: Array<{ url: string; text: string }>;
       truncated: boolean;
     }
   | {
