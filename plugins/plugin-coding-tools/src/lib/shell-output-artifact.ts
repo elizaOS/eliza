@@ -1,7 +1,7 @@
 /**
- * Persists complete redacted foreground-shell streams when the planner-facing
- * transcript is truncated. Artifacts live in the shared elizaOS state root,
- * inherit the shell job retention window, and are swept opportunistically.
+ * Reads and writes scoped legacy foreground-shell artifacts without exposing
+ * their state-root paths. Current SHELL runs return accepted output directly;
+ * this compatibility store keeps already-issued handles readable until expiry.
  */
 import { randomUUID } from "node:crypto";
 import { constants as fsConstants } from "node:fs";
