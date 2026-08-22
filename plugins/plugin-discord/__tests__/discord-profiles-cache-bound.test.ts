@@ -80,7 +80,11 @@ describe("discord profile cache bound (#24165)", () => {
 
 		// Newest key still cached → no fetch.
 		const before = messagesFetch.mock.calls.length;
-		await resolveDiscordMessageAuthorProfile(runtime, "ch", String(MAX_ENTRIES));
+		await resolveDiscordMessageAuthorProfile(
+			runtime,
+			"ch",
+			String(MAX_ENTRIES),
+		);
 		expect(messagesFetch.mock.calls.length).toBe(before);
 	});
 
@@ -107,7 +111,11 @@ describe("discord profile cache bound (#24165)", () => {
 
 		// Insert one more key: eviction must take the new oldest (key 1),
 		// not the rewritten key 0 (which moved to newest).
-		await resolveDiscordMessageAuthorProfile(runtime, "ch", String(MAX_ENTRIES));
+		await resolveDiscordMessageAuthorProfile(
+			runtime,
+			"ch",
+			String(MAX_ENTRIES),
+		);
 		const before = messagesFetch.mock.calls.length;
 		await resolveDiscordMessageAuthorProfile(runtime, "ch", "0");
 		expect(messagesFetch.mock.calls.length).toBe(before); // key 0 still cached

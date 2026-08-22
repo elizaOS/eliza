@@ -99,7 +99,12 @@ export function __setProfileCacheValueForTests(
 	now?: number,
 ): void {
 	if (cache === "user") {
-		setCachedValue(discordUserProfileCache, key, value as DiscordUserProfile | null, now);
+		setCachedValue(
+			discordUserProfileCache,
+			key,
+			value as DiscordUserProfile | null,
+			now,
+		);
 	} else {
 		setCachedValue(
 			discordMessageAuthorProfileCache,
