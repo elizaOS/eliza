@@ -448,19 +448,6 @@ registerConnectorModes("x", [
   },
 ]);
 
-registerConnectorModes("signal", [
-  {
-    id: "qr",
-    label: "QR Pair",
-    labelKey: "connectormode.signal.qr.label",
-    description: "Link as a device to your Signal account via QR code",
-    descriptionKey: "connectormode.signal.qr.description",
-    managementMode: "local-setup",
-    setupPluginId: "signal",
-    channelMode: "delegate",
-  },
-]);
-
 registerConnectorModes("whatsapp", [
   {
     id: "qr",

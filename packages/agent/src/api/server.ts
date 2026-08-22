@@ -2550,11 +2550,6 @@ async function handleRequest(
             applyWhatsAppQrOverride: (...args: unknown[]) => void;
           }>("whatsapp")
         ).applyWhatsAppQrOverride,
-        applySignalQrOverride: (
-          await getOptionalPluginApi<{
-            applySignalQrOverride: (...args: unknown[]) => void;
-          }>("signal")
-        ).applySignalQrOverride,
         resolvePluginConfigMutationRejections,
         requirePluginManager,
         requireCoreManager,
@@ -5079,14 +5074,6 @@ export async function startApiServer(opts?: {
       dispose: async () => {
         const sessions = [...(state.whatsappPairingSessions?.values() ?? [])];
         state.whatsappPairingSessions?.clear();
-        await Promise.all(sessions.map((session) => session.stop()));
-      },
-    },
-    {
-      name: "Signal pairing sessions",
-      dispose: async () => {
-        const sessions = [...(state.signalPairingSessions?.values() ?? [])];
-        state.signalPairingSessions?.clear();
         await Promise.all(sessions.map((session) => session.stop()));
       },
     },

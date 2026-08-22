@@ -1,6 +1,6 @@
 /**
- * Guards the hard cutover from the retired BlueBubbles bridge to the native
- * iMessage plugin across the generated first-party registration authorities.
+ * Guards retired transport cutovers across generated registries and the
+ * runtime, configuration, LifeOps, and UI authorities that could reactivate them.
  */
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
@@ -117,6 +117,73 @@ describe("retired transport registration", () => {
       /node:child_process|\bspawn\s*\(|\bfetch\s*\(/,
     );
 
+    const inactiveAuthorities: Array<[string, RegExp]> = [
+      [
+        "packages/agent/src/api/plugin-discovery-helpers.ts",
+        /applySignalQrOverride|signalAuthExists|signal-auth|signal:\s*["']#signal["']|["']signal["'],?\s*\/\/.*connector/i,
+      ],
+      [
+        "packages/agent/src/api/server.ts",
+        /getOptionalPluginApi[^;]+["']signal["']|applySignalQrOverride|signalPairingSessions/i,
+      ],
+      [
+        "packages/agent/src/actions/plugin.ts",
+        /signal:\s*["']\/api\/signal\/disconnect["']/i,
+      ],
+      [
+        "packages/agent/src/runtime/build-character-config.ts",
+        /SIGNAL_ACCOUNT_NUMBER/,
+      ],
+      [
+        "plugins/plugin-registry/src/api/plugin-routes.ts",
+        /applySignalQrOverride/,
+      ],
+      [
+        "plugins/plugin-personal-assistant/src/lifeops/connectors/default-pack.ts",
+        /createSignalConnectorContribution|["']\.\/signal\.js["']/,
+      ],
+      [
+        "plugins/plugin-personal-assistant/src/lifeops/channels/default-pack.ts",
+        /kind:\s*["']signal["']|connectorKind:\s*["']signal["']/,
+      ],
+      [
+        "plugins/plugin-personal-assistant/src/automation-node-contributor.ts",
+        /lifeops:signal|resolveSignalStatus|Pair the owner Signal account/,
+      ],
+      [
+        "plugins/plugin-personal-assistant/src/lifeops/escalation-ladders.ts",
+        /channelKey:\s*["']signal["']/,
+      ],
+      [
+        "plugins/plugin-personal-assistant/src/default-packs/escalation-ladders.ts",
+        /channelKey:\s*["']signal["']/,
+      ],
+      [
+        "packages/ui/src/api/client-skills.ts",
+        /(?:get|start|stop|disconnect)Signal|\/api\/signal\//,
+      ],
+      ["packages/ui/src/browser.ts", /useSignalPairing/],
+      ["packages/ui/src/hooks/index.ts", /useSignalPairing/],
+      [
+        "packages/ui/src/components/connectors/connector-mode-registry.ts",
+        /registerConnectorModes\(["']signal["']/,
+      ],
+    ];
+    for (const [authority, forbidden] of inactiveAuthorities) {
+      expect(
+        readFileSync(path.join(repositoryRoot, authority), "utf8"),
+      ).not.toMatch(forbidden);
+    }
+
+    const signalPackage = JSON.parse(
+      readFileSync(
+        path.join(repositoryRoot, "plugins/plugin-signal/package.json"),
+        "utf8",
+      ),
+    ) as { exports?: Record<string, unknown> };
+    expect(signalPackage.exports).not.toHaveProperty("./*");
+    expect(signalPackage.exports).not.toHaveProperty("./*.css");
+
     for (const removedSurface of [
       "plugins/plugin-signal/src/local-client.ts",
       "plugins/plugin-signal/src/pairing-service.ts",
@@ -125,6 +192,9 @@ describe("retired transport registration", () => {
       "packages/scenario-runner/test/mocks/environments/signal.json",
       "packages/scenario-runner/test/mocks/mockoon/signal.json",
       "packages/ui/src/components/connectors/SignalQrOverlay.tsx",
+      "packages/ui/src/hooks/useSignalPairing.ts",
+      "plugins/plugin-personal-assistant/src/lifeops/connectors/signal.ts",
+      "plugins/plugin-personal-assistant/src/lifeops/signal-runtime-config.ts",
     ]) {
       expect(existsSync(path.join(repositoryRoot, removedSurface))).toBe(false);
     }
