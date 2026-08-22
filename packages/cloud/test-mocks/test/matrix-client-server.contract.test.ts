@@ -18,6 +18,8 @@ const USER_ID = "@bot:mock";
 const ACCESS_TOKEN = "matrix-contract-token";
 const ROOM_ID = "!general:mock";
 const SECOND_ROOM_ID = "!second:mock";
+const OCCUPIED_CREATED_ROOM_ID = "!created-1:mock";
+const EQUIVALENT_ROOM_ID = "!equivalent:mock";
 
 const seed = {
   userId: USER_ID,
@@ -34,8 +36,8 @@ const seed = {
         { userId: "@alice:mock", displayName: "Alice" },
       ],
       timeline: [
-        event("$seed-1:mock", "oldest", 1_700_000_000_001),
-        event("$seed-2:mock", "middle", 1_700_000_000_002),
+        event("$generated-1:mock", "oldest", 1_700_000_000_001),
+        event("$generated-2:mock", "middle", 1_700_000_000_002),
         event("$seed-3:mock", "newest", 1_700_000_000_003),
       ],
     },
@@ -46,6 +48,16 @@ const seed = {
       members: [{ userId: "@alice:mock", displayName: "Alice" }],
       timeline: [],
     },
+    ...[OCCUPIED_CREATED_ROOM_ID, EQUIVALENT_ROOM_ID].map((roomId) => ({
+      roomId,
+      name: "Equivalent State",
+      topic: "State must survive global SDK deduplication",
+      members: [
+        { userId: USER_ID, displayName: "Synthetic Bot" },
+        { userId: "@alice:mock", displayName: "Alice" },
+      ],
+      timeline: [],
+    })),
   ],
 };
 
@@ -105,6 +117,120 @@ async function waitFor(predicate: () => boolean, label: string): Promise<void> {
 }
 
 describe("Matrix Client-Server production boundary", () => {
+  test("allocates globally unique deterministic room, event, state, alias, and transaction identities", async () => {
+    const mock = await startMatrixClientServerMock(seed);
+    stops.push(mock.stop);
+    const matrixClient = client(mock.url);
+    stops.push(async () => matrixClient.stopClient());
+
+    const initial = (await matrixClient.http.authedRequest(
+      Method.Get,
+      "/sync",
+    )) as {
+      next_batch: string;
+      rooms: {
+        join: Record<
+          string,
+          {
+            state: { events: Array<{ event_id: string }> };
+            timeline: { events: Array<{ event_id: string }> };
+          }
+        >;
+      };
+    };
+    const initialEventIds = Object.values(initial.rooms.join).flatMap((room) =>
+      [...room.state.events, ...room.timeline.events].map(
+        (matrixEvent) => matrixEvent.event_id,
+      ),
+    );
+    expect(new Set(initialEventIds).size).toBe(initialEventIds.length);
+    expect(initialEventIds).toContain("$generated-1:mock");
+    expect(initialEventIds).toContain("$generated-2:mock");
+
+    mock.reset(seed);
+    const replay = (await matrixClient.http.authedRequest(
+      Method.Get,
+      "/sync",
+    )) as typeof initial;
+    expect(JSON.stringify(replay.rooms)).toBe(JSON.stringify(initial.rooms));
+    expect(replay.next_batch.replace(/^g\d+-/, "")).toBe(
+      initial.next_batch.replace(/^g\d+-/, ""),
+    );
+
+    await startAndWaitPrepared(matrixClient);
+    for (const roomId of [OCCUPIED_CREATED_ROOM_ID, EQUIVALENT_ROOM_ID]) {
+      const room = matrixClient.getRoom(roomId);
+      expect(room?.name).toBe("Equivalent State");
+      expect(
+        room?.currentState.getStateEvents(EventType.RoomTopic, "")?.getContent()
+          .topic,
+      ).toBe("State must survive global SDK deduplication");
+      expect(room?.getMember(USER_ID)?.membership).toBe("join");
+      expect(room?.getMember("@alice:mock")?.membership).toBe("join");
+    }
+
+    await expect(
+      matrixClient.createRoom({ room_alias_name: "general" }),
+    ).rejects.toMatchObject({ httpStatus: 409, errcode: "M_ROOM_IN_USE" });
+    const created = await matrixClient.createRoom({
+      name: "Collision-safe room",
+      room_alias_name: "collision-safe",
+    });
+    expect(created.room_id).toBe("!created-2:mock");
+    expect(mock.snapshot().rooms.map((room) => room.roomId)).toContain(
+      OCCUPIED_CREATED_ROOM_ID,
+    );
+
+    const transactionId = "same-transaction-across-distinct-routes";
+    const routeClient = client(mock.url);
+    const first = await routeClient.sendEvent(
+      ROOM_ID,
+      EventType.RoomMessage,
+      { msgtype: "m.text", body: "first route" },
+      transactionId,
+    );
+    const replayed = await routeClient.sendEvent(
+      ROOM_ID,
+      EventType.RoomMessage,
+      { msgtype: "m.text", body: "first route" },
+      transactionId,
+    );
+    const otherRoom = await routeClient.sendEvent(
+      OCCUPIED_CREATED_ROOM_ID,
+      EventType.RoomMessage,
+      { msgtype: "m.text", body: "other room" },
+      transactionId,
+    );
+    const otherType = await routeClient.sendEvent(
+      ROOM_ID,
+      EventType.Reaction,
+      {
+        "m.relates_to": {
+          event_id: first.event_id,
+          key: "ok",
+          rel_type: "m.annotation",
+        },
+      },
+      transactionId,
+    );
+    expect(replayed.event_id).toBe(first.event_id);
+    expect(
+      new Set([first.event_id, otherRoom.event_id, otherType.event_id]).size,
+    ).toBe(3);
+
+    const completeReadback = (await matrixClient.http.authedRequest(
+      Method.Get,
+      "/sync",
+    )) as typeof initial;
+    const allEventIds = Object.values(completeReadback.rooms.join).flatMap(
+      (room) =>
+        [...room.state.events, ...room.timeline.events].map(
+          (matrixEvent) => matrixEvent.event_id,
+        ),
+    );
+    expect(new Set(allEventIds).size).toBe(allEventIds.length);
+  });
+
   test("syncs, joins, creates, sends, paginates, orders, deduplicates, and resets", async () => {
     const mock = await startMatrixClientServerMock(seed);
     stops.push(mock.stop);
@@ -120,8 +246,8 @@ describe("Matrix Client-Server production boundary", () => {
     expect(matrixClient.getRoom(ROOM_ID)?.getMyMembership()).toBe("join");
     expect(matrixClient.getRoom(ROOM_ID)?.name).toBe("Synthetic General");
     expect(timelineIds.slice(0, 3)).toEqual([
-      "$seed-1:mock",
-      "$seed-2:mock",
+      "$generated-1:mock",
+      "$generated-2:mock",
       "$seed-3:mock",
     ]);
 

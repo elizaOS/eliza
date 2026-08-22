@@ -12,13 +12,21 @@ import type {
 
 interface StoredEvent extends MatrixMockEventSeed {
   sequence: number;
-  transactionId?: string;
 }
 
 interface RoomState extends Omit<MatrixMockRoomSeed, "timeline"> {
   joined: boolean;
   joinedAt: number;
+  stateEvents: Array<Record<string, unknown>>;
   timeline: StoredEvent[];
+}
+
+interface IdentifierState {
+  roomIds: Set<string>;
+  eventIds: Set<string>;
+  aliases: Set<string>;
+  roomSequence: number;
+  eventSequence: number;
 }
 
 export interface RunningMatrixClientServerMock {
@@ -38,10 +46,14 @@ export async function startMatrixClientServerMock(
   let generation = 0;
   let eventSequence = 0;
   let requestSequence = 0;
-  let roomSequence = 0;
-  let eventIdSequence = 0;
-  let rooms = buildRooms(currentSeed, () => ++eventSequence);
+  let identifiers = collectSeedIdentifiers(currentSeed);
+  let rooms = buildRooms(
+    currentSeed,
+    () => ++eventSequence,
+    () => allocateEventId(identifiers),
+  );
   let requests: MatrixRequestObservation[] = [];
+  let transactionEvents = new Map<string, string>();
   const faults = new Map<string, MatrixMockFault[]>();
   const activeRequests = new Set<AbortController>();
 
@@ -156,21 +168,37 @@ export async function startMatrixClientServerMock(
           "synthetic Matrix generation changed",
         );
       }
-      return json(
-        buildSync(currentSeed, rooms, since, generation, eventSequence),
-      );
+      return json(buildSync(rooms, since, generation, eventSequence));
     }
     if (request.method === "POST" && path === "/createRoom") {
-      const roomId = `!created-${++roomSequence}:mock`;
       const name = readString(body, "name");
-      rooms.set(roomId, {
+      const aliasLocalpart = readString(body, "room_alias_name");
+      const canonicalAlias = aliasLocalpart
+        ? `#${aliasLocalpart}:mock`
+        : undefined;
+      if (canonicalAlias && identifiers.aliases.has(canonicalAlias)) {
+        return matrixError(
+          409,
+          "M_ROOM_IN_USE",
+          "room alias is already in use",
+        );
+      }
+      const roomId = allocateRoomId(identifiers);
+      if (canonicalAlias) identifiers.aliases.add(canonicalAlias);
+      const room: RoomState = {
         roomId,
         name: name ?? undefined,
+        canonicalAlias,
         joined: true,
         joinedAt: ++eventSequence,
         members: [{ userId: currentSeed.userId, displayName: "Synthetic Bot" }],
+        stateEvents: [],
         timeline: [],
-      });
+      };
+      room.stateEvents = roomStateEvents(currentSeed, room, () =>
+        allocateEventId(identifiers),
+      );
+      rooms.set(roomId, room);
       return json({ room_id: roomId });
     }
 
@@ -184,9 +212,20 @@ export async function startMatrixClientServerMock(
       const ownMember = room.members.find(
         (member) => member.userId === currentSeed.userId,
       );
-      if (ownMember) ownMember.membership = "join";
-      else
+      if (ownMember) {
+        ownMember.membership = "join";
+        updateMemberState(room, currentSeed.userId, ownMember.displayName);
+      } else {
         room.members.push({ userId: currentSeed.userId, membership: "join" });
+        room.stateEvents.push(
+          memberStateEvent(
+            room.roomId,
+            allocateEventId(identifiers),
+            currentSeed.userId,
+            undefined,
+          ),
+        );
+      }
       return json({ room_id: room.roomId });
     }
 
@@ -197,11 +236,10 @@ export async function startMatrixClientServerMock(
       const transactionId = decodeURIComponent(sendMatch[3] ?? "");
       const room = rooms.get(roomId);
       if (!room?.joined) return matrixError(403, "M_FORBIDDEN", "not joined");
-      const existing = room.timeline.find(
-        (event) => event.transactionId === transactionId,
-      );
-      if (existing) return json({ event_id: existing.eventId });
-      const eventId = `$sent-${++eventIdSequence}:mock`;
+      const transactionKey = JSON.stringify([roomId, eventType, transactionId]);
+      const existingEventId = transactionEvents.get(transactionKey);
+      if (existingEventId) return json({ event_id: existingEventId });
+      const eventId = allocateEventId(identifiers);
       const sequence = ++eventSequence;
       room.timeline.push({
         eventId,
@@ -210,8 +248,8 @@ export async function startMatrixClientServerMock(
         content: requireRecord(body),
         originServerTs: 1_700_000_100_000 + sequence,
         sequence,
-        transactionId,
       });
+      transactionEvents.set(transactionKey, eventId);
       return json({ event_id: eventId });
     }
 
@@ -267,14 +305,8 @@ export async function startMatrixClientServerMock(
     enqueueInbound(roomId, event) {
       const room = rooms.get(roomId);
       if (!room) throw new Error(`unknown Matrix room '${roomId}'`);
-      if (
-        [...rooms.values()].some((candidateRoom) =>
-          candidateRoom.timeline.some(
-            (candidate) => candidate.eventId === event.eventId,
-          ),
-        )
-      )
-        return false;
+      if (identifiers.eventIds.has(event.eventId)) return false;
+      identifiers.eventIds.add(event.eventId);
       room.timeline.push({
         ...structuredClone(event),
         sequence: ++eventSequence,
@@ -287,10 +319,14 @@ export async function startMatrixClientServerMock(
       currentSeed = cloneSeed(nextSeed);
       eventSequence = 0;
       requestSequence = 0;
-      roomSequence = 0;
-      eventIdSequence = 0;
-      rooms = buildRooms(currentSeed, () => ++eventSequence);
+      identifiers = collectSeedIdentifiers(currentSeed);
+      rooms = buildRooms(
+        currentSeed,
+        () => ++eventSequence,
+        () => allocateEventId(identifiers),
+      );
       requests = [];
+      transactionEvents = new Map();
       faults.clear();
     },
     snapshot() {
@@ -303,32 +339,76 @@ export async function startMatrixClientServerMock(
 function buildRooms(
   seed: MatrixClientServerSeed,
   nextSequence: () => number,
+  nextEventId: () => string,
 ): Map<string, RoomState> {
   if (!seed.userId.startsWith("@") || !seed.accessToken)
     throw new Error("invalid Matrix account seed");
   const rooms = new Map<string, RoomState>();
-  const eventIds = new Set<string>();
   for (const room of seed.rooms) {
-    if (!room.roomId.startsWith("!") || rooms.has(room.roomId))
-      throw new Error("invalid or duplicate Matrix room seed");
     const timeline = (room.timeline ?? []).map((event) => {
-      if (!event.eventId || eventIds.has(event.eventId))
-        throw new Error("duplicate Matrix event seed");
-      eventIds.add(event.eventId);
       return { ...structuredClone(event), sequence: nextSequence() };
     });
-    rooms.set(room.roomId, {
+    const state: RoomState = {
       ...structuredClone(room),
       joined: room.joined ?? true,
       joinedAt: room.joined === false ? Number.MAX_SAFE_INTEGER : 0,
+      stateEvents: [],
       timeline,
-    });
+    };
+    state.stateEvents = roomStateEvents(seed, state, nextEventId);
+    rooms.set(room.roomId, state);
   }
   return rooms;
 }
 
+function collectSeedIdentifiers(seed: MatrixClientServerSeed): IdentifierState {
+  const roomIds = new Set<string>();
+  const eventIds = new Set<string>();
+  const aliases = new Set<string>();
+  for (const room of seed.rooms) {
+    if (!room.roomId.startsWith("!") || roomIds.has(room.roomId))
+      throw new Error("invalid or duplicate Matrix room seed");
+    roomIds.add(room.roomId);
+    if (room.canonicalAlias) {
+      if (
+        !room.canonicalAlias.startsWith("#") ||
+        aliases.has(room.canonicalAlias)
+      )
+        throw new Error("invalid or duplicate Matrix room alias seed");
+      aliases.add(room.canonicalAlias);
+    }
+    for (const event of room.timeline ?? []) {
+      if (!event.eventId || eventIds.has(event.eventId))
+        throw new Error("duplicate Matrix event seed");
+      eventIds.add(event.eventId);
+    }
+  }
+  return {
+    roomIds,
+    eventIds,
+    aliases,
+    roomSequence: 0,
+    eventSequence: 0,
+  };
+}
+
+function allocateRoomId(identifiers: IdentifierState): string {
+  let candidate: string;
+  do candidate = `!created-${++identifiers.roomSequence}:mock`;
+  while (identifiers.roomIds.has(candidate));
+  identifiers.roomIds.add(candidate);
+  return candidate;
+}
+
+function allocateEventId(identifiers: IdentifierState): string {
+  let candidate: string;
+  do candidate = `$generated-${++identifiers.eventSequence}:mock`;
+  while (identifiers.eventIds.has(candidate));
+  identifiers.eventIds.add(candidate);
+  return candidate;
+}
+
 function buildSync(
-  seed: MatrixClientServerSeed,
   rooms: Map<string, RoomState>,
   since: number | null,
   generation: number,
@@ -356,7 +436,7 @@ function buildSync(
             state: {
               events:
                 since === null || newlyJoined
-                  ? roomStateEvents(seed, room)
+                  ? room.stateEvents.map((event) => structuredClone(event))
                   : [],
             },
             timeline: {
@@ -382,22 +462,26 @@ function buildSync(
   };
 }
 
-function roomStateEvents(seed: MatrixClientServerSeed, room: RoomState) {
+function roomStateEvents(
+  seed: MatrixClientServerSeed,
+  room: RoomState,
+  nextEventId: () => string,
+) {
   const events: Array<Record<string, unknown>> = [
-    stateEvent(room.roomId, "$create:mock", "m.room.create", "", seed.userId, {
+    stateEvent(room.roomId, nextEventId(), "m.room.create", "", seed.userId, {
       creator: seed.userId,
       room_version: "10",
     }),
   ];
   if (room.name)
     events.push(
-      stateEvent(room.roomId, "$name:mock", "m.room.name", "", seed.userId, {
+      stateEvent(room.roomId, nextEventId(), "m.room.name", "", seed.userId, {
         name: room.name,
       }),
     );
   if (room.topic)
     events.push(
-      stateEvent(room.roomId, "$topic:mock", "m.room.topic", "", seed.userId, {
+      stateEvent(room.roomId, nextEventId(), "m.room.topic", "", seed.userId, {
         topic: room.topic,
       }),
     );
@@ -405,7 +489,7 @@ function roomStateEvents(seed: MatrixClientServerSeed, room: RoomState) {
     events.push(
       stateEvent(
         room.roomId,
-        "$alias:mock",
+        nextEventId(),
         "m.room.canonical_alias",
         "",
         seed.userId,
@@ -414,20 +498,40 @@ function roomStateEvents(seed: MatrixClientServerSeed, room: RoomState) {
     );
   for (const member of room.members) {
     events.push(
-      stateEvent(
+      memberStateEvent(
         room.roomId,
-        `$member-${encodeURIComponent(member.userId)}:mock`,
-        "m.room.member",
+        nextEventId(),
         member.userId,
-        member.userId,
-        {
-          membership: member.membership ?? "join",
-          displayname: member.displayName,
-        },
+        member.displayName,
+        member.membership,
       ),
     );
   }
   return events;
+}
+
+function memberStateEvent(
+  roomId: string,
+  eventId: string,
+  userId: string,
+  displayName: string | undefined,
+  membership: "join" | "invite" = "join",
+) {
+  return stateEvent(roomId, eventId, "m.room.member", userId, userId, {
+    membership,
+    displayname: displayName,
+  });
+}
+
+function updateMemberState(
+  room: RoomState,
+  userId: string,
+  displayName: string | undefined,
+): void {
+  const state = room.stateEvents.find(
+    (event) => event.type === "m.room.member" && event.state_key === userId,
+  );
+  if (state) state.content = { membership: "join", displayname: displayName };
 }
 
 function stateEvent(
@@ -472,9 +576,8 @@ function snapshot(
     rooms: [...rooms.values()].map((room) => ({
       roomId: room.roomId,
       joined: room.joined,
-      timeline: room.timeline.map(
-        ({ sequence: _sequence, transactionId: _transactionId, ...event }) =>
-          structuredClone(event),
+      timeline: room.timeline.map(({ sequence: _sequence, ...event }) =>
+        structuredClone(event),
       ),
     })),
   };
