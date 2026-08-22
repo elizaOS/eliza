@@ -125,10 +125,15 @@ async function getDialogueMessageCount(
 	runtime: IAgentRuntime,
 	roomId: UUID,
 ): Promise<number> {
+	const retainedMessageCount = await runtime.countMemories({
+		roomIds: [roomId],
+		unique: false,
+		tableName: "messages",
+	});
 	const messages = await runtime.getMemories({
 		tableName: "messages",
 		roomId,
-		limit: 100,
+		limit: Math.max(1, retainedMessageCount),
 		unique: false,
 	});
 	return messages.filter(isDialogueMessage).length;
