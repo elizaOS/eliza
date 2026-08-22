@@ -26,6 +26,9 @@ const SHARED_ORGANIZATION_ID = "44444444-4444-4444-8444-444444444444";
 const SHARED_USER_ID = "55555555-5555-4555-8555-555555555555";
 const SHARED_OWNER_ID = "66666666-6666-4666-8666-666666666666";
 const SHARED_STEWARD_USER_ID = "steward-shared-member";
+const ADVERSARIAL_ORGANIZATION_ID = "77777777-7777-4777-8777-777777777777";
+const ADVERSARIAL_USER_ID = "88888888-8888-4888-8888-888888888888";
+const MISMATCHED_RECEIPT_ORGANIZATION_ID = "99999999-9999-4999-8999-999999999999";
 const TEST_DATABASE = resolveAccountDeletionTestDatabase();
 let databaseReady = true;
 const requestIds: string[] = [];
@@ -74,6 +77,7 @@ afterAll(async () => {
         .where(eq(accountDeletionRequests.id, requestId));
     }
     await dbWrite.delete(organizations).where(eq(organizations.id, SHARED_ORGANIZATION_ID));
+    await dbWrite.delete(organizations).where(eq(organizations.id, ADVERSARIAL_ORGANIZATION_ID));
   }
   await closeDatabaseConnectionsForTests();
 });
@@ -278,5 +282,93 @@ describe("account deletion end-to-end lifecycle", () => {
     expect(await accountDeletionRequestsRepository.findOpenByUserId(SHARED_USER_ID, true)).toBe(
       undefined,
     );
+  });
+
+  test("never admits a stale cross-organization receipt or an unavailable current account", async () => {
+    await dbWrite.insert(organizations).values({
+      id: ADVERSARIAL_ORGANIZATION_ID,
+      name: "Adversarial account",
+      slug: "account-deletion-adversarial-org",
+    });
+    await dbWrite.insert(users).values({
+      id: ADVERSARIAL_USER_ID,
+      organization_id: ADVERSARIAL_ORGANIZATION_ID,
+      steward_user_id: "steward-adversarial-user",
+      role: "owner",
+    });
+
+    const staleReceipt = await accountDeletionRequestsRepository.createIdempotent({
+      user_id: ADVERSARIAL_USER_ID,
+      organization_id: MISMATCHED_RECEIPT_ORGANIZATION_ID,
+      steward_user_id: "steward-adversarial-user",
+      status: "scheduled",
+      requested_at: new Date("2026-08-01T00:00:00Z"),
+      execute_after: new Date("2026-08-31T00:00:00Z"),
+    });
+    requestIds.push(staleReceipt.id);
+
+    expect(
+      await getAccountDeletionStatus({
+        userId: ADVERSARIAL_USER_ID,
+        organizationId: ADVERSARIAL_ORGANIZATION_ID,
+      }),
+    ).toMatchObject({ state: "lifecycle_unavailable", request: null });
+    await expect(
+      requestAccountDeletion({
+        userId: ADVERSARIAL_USER_ID,
+        organizationId: ADVERSARIAL_ORGANIZATION_ID,
+        stewardUserId: "steward-adversarial-user",
+      }),
+    ).rejects.toMatchObject({ code: "LIFECYCLE_RESERVATION_REQUIRED" });
+    await expect(
+      accountDeletionRequestsRepository.createIdempotent({
+        user_id: ADVERSARIAL_USER_ID,
+        organization_id: ADVERSARIAL_ORGANIZATION_ID,
+        steward_user_id: "steward-adversarial-user",
+        status: "scheduled",
+        execute_after: new Date("2026-09-30T00:00:00Z"),
+      }),
+    ).rejects.toThrow("conflicted but no open request was found");
+
+    for (const state of [
+      { name: "inactive", values: { is_active: false, deleted_at: null, is_anonymous: false } },
+      {
+        name: "deleted",
+        values: {
+          is_active: true,
+          deleted_at: new Date("2026-08-21T00:00:00Z"),
+          is_anonymous: false,
+        },
+      },
+      { name: "anonymous", values: { is_active: true, deleted_at: null, is_anonymous: true } },
+    ] as const) {
+      await dbWrite.update(users).set(state.values).where(eq(users.id, ADVERSARIAL_USER_ID));
+      const expectedCode = state.name === "anonymous" ? "ANONYMOUS_ACCOUNT" : "ACCOUNT_UNAVAILABLE";
+
+      await expect(
+        getAccountDeletionStatus({
+          userId: ADVERSARIAL_USER_ID,
+          organizationId: ADVERSARIAL_ORGANIZATION_ID,
+        }),
+      ).rejects.toMatchObject({ code: expectedCode });
+      await expect(
+        requestAccountDeletion({
+          userId: ADVERSARIAL_USER_ID,
+          organizationId: ADVERSARIAL_ORGANIZATION_ID,
+          stewardUserId: "steward-adversarial-user",
+        }),
+      ).rejects.toMatchObject({ code: expectedCode });
+    }
+
+    expect(
+      await accountDeletionRequestsRepository.findOpenByUserAndOrganizationId(
+        ADVERSARIAL_USER_ID,
+        ADVERSARIAL_ORGANIZATION_ID,
+        true,
+      ),
+    ).toBeUndefined();
+    expect(
+      await accountDeletionRequestsRepository.findOpenByUserId(ADVERSARIAL_USER_ID, true),
+    ).toMatchObject({ id: staleReceipt.id, organization_id: MISMATCHED_RECEIPT_ORGANIZATION_ID });
   });
 });

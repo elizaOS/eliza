@@ -5,7 +5,11 @@ import { beforeEach, describe, expect, mock, test } from "bun:test";
 class AccountDeletionConflictError extends Error {
   constructor(
     message: string,
-    readonly code: "TRANSFER_REQUIRED" | "LIFECYCLE_RESERVATION_REQUIRED",
+    readonly code:
+      | "ACCOUNT_UNAVAILABLE"
+      | "ANONYMOUS_ACCOUNT"
+      | "TRANSFER_REQUIRED"
+      | "LIFECYCLE_RESERVATION_REQUIRED",
   ) {
     super(message);
   }
@@ -75,6 +79,25 @@ describe("GET /api/v1/me/account-deletion", () => {
     expect(getAccountDeletionStatus).toHaveBeenCalledWith({
       userId: "11111111-1111-4111-8111-111111111111",
       organizationId: "22222222-2222-4222-8222-222222222222",
+    });
+    expect(requestAccountDeletion).not.toHaveBeenCalled();
+  });
+
+  test("returns a conflict instead of surfacing a receipt for an unavailable account", async () => {
+    getAccountDeletionStatus.mockRejectedValueOnce(
+      new AccountDeletionConflictError(
+        "Account is no longer available",
+        "ACCOUNT_UNAVAILABLE",
+      ),
+    );
+
+    const response = await app.request("/", undefined, { NODE_ENV: "test" });
+
+    expect(response.status).toBe(409);
+    const body: unknown = await response.json();
+    expect(body).toEqual({
+      error: "Account is no longer available",
+      code: "ACCOUNT_UNAVAILABLE",
     });
     expect(requestAccountDeletion).not.toHaveBeenCalled();
   });
