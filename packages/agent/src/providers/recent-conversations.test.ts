@@ -8,9 +8,8 @@
 import type { IAgentRuntime, Memory, State, UUID } from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const getRelatedEntityIds = vi.fn<
-  (runtime: IAgentRuntime, entityId: UUID) => Promise<UUID[]>
->();
+const getRelatedEntityIds =
+  vi.fn<(runtime: IAgentRuntime, entityId: UUID) => Promise<UUID[]>>();
 const revalidateOwnerExclusiveDisclosure = vi.fn(
   async (): Promise<Record<string, unknown>> => ({
     allowed: true,
@@ -37,6 +36,7 @@ const { recentConversationsProvider } = await import(
 
 const ROOM_ID = "00000000-0000-0000-0000-0000000000c1" as UUID;
 const ALIAS_ROOM_ID = "00000000-0000-0000-0000-0000000000c2" as UUID;
+const REQUESTER_ONLY_ROOM_ID = "00000000-0000-0000-0000-0000000000c3" as UUID;
 const ENTITY_ID = "00000000-0000-0000-0000-0000000000e0" as UUID;
 const ALIAS_ENTITY_ID = "00000000-0000-0000-0000-0000000000e1" as UUID;
 const AGENT_ID = "00000000-0000-0000-0000-0000000000f0" as UUID;
@@ -62,6 +62,7 @@ function makeRuntime(overrides: Record<string, unknown> = {}): IAgentRuntime {
       name: "general",
     })),
     getRoomsForParticipants: vi.fn(async () => [ROOM_ID]),
+    getRoomsForParticipant: vi.fn(async () => [ROOM_ID]),
     getMemoriesByRoomIds: vi.fn(async () => [
       { ...message(), createdAt: Number.POSITIVE_INFINITY },
     ]),
@@ -110,7 +111,9 @@ describe("recentConversationsProvider", () => {
       ROOM_ID,
       ALIAS_ROOM_ID,
       ALIAS_ROOM_ID,
+      REQUESTER_ONLY_ROOM_ID,
     ]);
+    const getRoomsForParticipant = vi.fn(async () => [ROOM_ID, ALIAS_ROOM_ID]);
     const getMemoriesByRoomIds = vi.fn(async () =>
       completeTexts.map(
         (text, index) =>
@@ -130,6 +133,7 @@ describe("recentConversationsProvider", () => {
     ]);
     const runtime = makeRuntime({
       getRoomsForParticipants,
+      getRoomsForParticipant,
       getMemoriesByRoomIds,
       getRoomsByIds,
     });
@@ -145,6 +149,7 @@ describe("recentConversationsProvider", () => {
       ENTITY_ID,
       ALIAS_ENTITY_ID,
     ]);
+    expect(getRoomsForParticipant).toHaveBeenCalledWith(AGENT_ID);
     expect(getMemoriesByRoomIds).toHaveBeenCalledWith({
       tableName: "messages",
       roomIds: [ROOM_ID, ALIAS_ROOM_ID],
@@ -154,6 +159,53 @@ describe("recentConversationsProvider", () => {
     expect(result.values?.recentConversationCount).toBe(15);
     expect(result.data?.messages).toHaveLength(15);
     for (const text of completeTexts) expect(result.text).toContain(text);
+  });
+
+  it("keeps attachment-only cross-platform turns as multimodal context without capability URLs", async () => {
+    const runtime = makeRuntime({
+      getMemoriesByRoomIds: vi.fn(async () => [
+        {
+          ...message(),
+          content: {
+            attachments: [
+              {
+                id: "photo-1",
+                url: "https://private.example/full-resolution.png",
+                thumbnailUrl: "https://private.example/thumbnail.png",
+                filename: "receipt.png",
+                mimeType: "image/png",
+                description: "A receipt showing a 6:30 PM dinner reservation",
+              },
+            ],
+          },
+        } as Memory,
+      ]),
+    });
+
+    const result = await recentConversationsProvider.get(
+      runtime,
+      message(),
+      EMPTY_STATE,
+    );
+
+    expect(result.text).toContain(
+      "[attachment: receipt.png; image/png; A receipt showing a 6:30 PM dinner reservation]",
+    );
+    expect(result.text).not.toContain("private.example");
+    expect(result.values?.recentConversationCount).toBe(1);
+    expect(result.data?.messages).toEqual([
+      expect.objectContaining({
+        text: undefined,
+        attachments: [
+          expect.objectContaining({
+            id: "photo-1",
+            filename: "receipt.png",
+            mimeType: "image/png",
+          }),
+        ],
+      }),
+    ]);
+    expect(JSON.stringify(result.data)).not.toContain("private.example");
   });
 
   it("denies group disclosure before identity or room-history queries", async () => {
@@ -176,6 +228,7 @@ describe("recentConversationsProvider", () => {
     );
     expect(getRelatedEntityIds).not.toHaveBeenCalled();
     expect(runtime.getRoomsForParticipants).not.toHaveBeenCalled();
+    expect(runtime.getRoomsForParticipant).not.toHaveBeenCalled();
     expect(runtime.getMemoriesByRoomIds).not.toHaveBeenCalled();
     expect(runtime.getRoomsByIds).not.toHaveBeenCalled();
     expect(markOwnerExclusiveDisclosureUsed).not.toHaveBeenCalled();

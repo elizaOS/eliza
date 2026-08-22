@@ -1,12 +1,14 @@
 /**
- * Provider that surfaces the user's most recent messages across every connected
- * platform: it scans the entity's rooms, pulls the latest messages, and renders
- * them newest-first with source tag, relative time, and speaker label.
+ * Provider that surfaces the user's recent messages and attachment descriptions
+ * across every connected platform. It expands verified linked identities,
+ * intersects their rooms with the agent's durable rooms, and renders the full
+ * eligible history newest-first with source, time, and speaker provenance.
  * Suppressed inside automation and page-scoped rooms, which carry their own
  * context. Gated to ADMIN (enforced by applyPluginRoleGating).
  */
 import type {
   IAgentRuntime,
+  Media,
   Memory,
   Provider,
   ProviderResult,
@@ -33,6 +35,21 @@ import {
   formatSpeakerLabel,
   roomSourceTag,
 } from "../shared/conversation-format.ts";
+
+function attachmentPromptSummary(attachments: readonly Media[]): string {
+  return attachments
+    .map((attachment) => {
+      const label =
+        attachment.filename ??
+        attachment.title ??
+        attachment.id ??
+        "attachment";
+      const mediaType = attachment.mimeType ?? attachment.contentType;
+      const readableContent = attachment.text ?? attachment.description;
+      return `[attachment: ${toWellFormedUnicode(label)}${mediaType ? `; ${mediaType}` : ""}${readableContent ? `; ${toWellFormedUnicode(readableContent)}` : ""}]`;
+    })
+    .join(" ");
+}
 
 export const recentConversationsProvider: Provider = {
   name: "recent-conversations",
@@ -95,8 +112,13 @@ export const recentConversationsProvider: Provider = {
       }
 
       const relatedEntityIds = await getRelatedEntityIds(runtime, entityId);
-      const roomIds = Array.from(
-        new Set(await runtime.getRoomsForParticipants(relatedEntityIds)),
+      const [requesterRoomIds, agentRoomIds] = await Promise.all([
+        runtime.getRoomsForParticipants(relatedEntityIds),
+        runtime.getRoomsForParticipant(runtime.agentId),
+      ]);
+      const agentRooms = new Set(agentRoomIds);
+      const roomIds = Array.from(new Set(requesterRoomIds)).filter((roomId) =>
+        agentRooms.has(roomId),
       );
       if (!roomIds || roomIds.length === 0) {
         return { text: "", values: {}, data: {} };
@@ -113,7 +135,10 @@ export const recentConversationsProvider: Provider = {
 
       // Sort newest first
       const sorted = memories
-        .filter((m) => m.content.text)
+        .filter(
+          (m) =>
+            Boolean(m.content.text) || (m.content.attachments?.length ?? 0) > 0,
+        )
         .sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
 
       if (sorted.length === 0) {
@@ -149,7 +174,12 @@ export const recentConversationsProvider: Provider = {
         const age = formatRelativeTimestampPrefix(mem.createdAt);
         const speaker = formatSpeakerLabel(runtime, mem);
         const text = toWellFormedUnicode(mem.content.text ?? "");
-        lines.push(`${tag} ${age}${speaker}: ${text}`);
+        const attachments = attachmentPromptSummary(
+          mem.content.attachments ?? [],
+        );
+        lines.push(
+          `${tag} ${age}${speaker}: ${[text, attachments].filter(Boolean).join(" ")}`,
+        );
       }
 
       markOwnerExclusiveDisclosureUsed(message);
@@ -163,6 +193,21 @@ export const recentConversationsProvider: Provider = {
             roomId: m.roomId,
             entityId: m.entityId,
             text: m.content.text,
+            attachments: (m.content.attachments ?? []).map((attachment) => ({
+              id: attachment.id,
+              title: attachment.title,
+              source: attachment.source,
+              description: attachment.description,
+              text: attachment.text,
+              contentType: attachment.contentType,
+              mimeType: attachment.mimeType,
+              filename: attachment.filename,
+              size: attachment.size,
+              checksum: attachment.checksum,
+              width: attachment.width,
+              height: attachment.height,
+              duration: attachment.duration,
+            })),
             createdAt: m.createdAt,
           })),
         },
