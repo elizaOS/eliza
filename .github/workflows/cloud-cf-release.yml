@@ -2378,6 +2378,7 @@ jobs:
             node packages/cloud/scripts/verify-steward-oauth-callbacks.mjs \
               --base-url "$served_url" \
               --callback-url "$served_url/login" \
+              --environment "$DEPLOY_ENVIRONMENT" \
               --tenant-id "$tenant_id"
           done
 

@@ -10,9 +10,18 @@ import { createHash } from "node:crypto";
 import { pathToFileURL } from "node:url";
 
 const PROVIDER_DESTINATIONS = Object.freeze({
-  discord: "discord.com",
-  google: "accounts.google.com",
+  discord: {
+    origin: "https://discord.com",
+    pathname: "/api/oauth2/authorize",
+  },
+  google: {
+    origin: "https://accounts.google.com",
+    pathname: "/o/oauth2/v2/auth",
+  },
 });
+
+const DEPLOY_ENVIRONMENTS = new Set(["staging", "production"]);
+const OAUTH_STATE_PATTERN = /^[0-9a-f]{32}$/;
 
 // ERC-4361 defines a SIWE nonce as at least eight ASCII alphanumeric
 // characters. Steward shares this nonce across its SIWE and SIWS launch paths,
@@ -27,6 +36,15 @@ function requiredUrl(value, flag) {
     throw new Error(`${flag} must use https`);
   }
   return url;
+}
+
+function requiredEnvironment(value) {
+  const environment = value?.trim().toLowerCase();
+  if (!environment) throw new Error("--environment is required");
+  if (!DEPLOY_ENVIRONMENTS.has(environment)) {
+    throw new Error("--environment must be staging or production");
+  }
+  return environment;
 }
 
 export function parseStewardCallbackProbeArgs(argv) {
@@ -45,12 +63,35 @@ export function parseStewardCallbackProbeArgs(argv) {
     values.get("--callback-url"),
     "--callback-url",
   );
+  if (
+    baseUrl.username ||
+    baseUrl.password ||
+    baseUrl.pathname !== "/" ||
+    baseUrl.search ||
+    baseUrl.hash
+  ) {
+    throw new Error("--base-url must be an HTTPS origin");
+  }
+  if (
+    callbackUrl.username ||
+    callbackUrl.password ||
+    callbackUrl.pathname !== "/login" ||
+    callbackUrl.search ||
+    callbackUrl.hash
+  ) {
+    throw new Error("--callback-url must be the canonical HTTPS /login URL");
+  }
   const tenantId = values.get("--tenant-id")?.trim();
   if (!tenantId) throw new Error("--tenant-id is required");
+  const environment = requiredEnvironment(values.get("--environment"));
+  if (callbackUrl.origin !== baseUrl.origin) {
+    throw new Error("--callback-url must use the --base-url origin");
+  }
 
   return {
     baseUrl: baseUrl.origin,
     callbackUrl: callbackUrl.toString(),
+    environment,
     tenantId,
   };
 }
@@ -62,11 +103,11 @@ function pkceChallenge() {
 }
 
 export async function verifyStewardOAuthCallbacks(
-  { baseUrl, callbackUrl, tenantId },
+  { baseUrl, callbackUrl, environment, tenantId },
   { fetchImpl = fetch } = {},
 ) {
   const results = [];
-  for (const [provider, expectedHostname] of Object.entries(
+  for (const [provider, expectedDestination] of Object.entries(
     PROVIDER_DESTINATIONS,
   )) {
     const query = new URLSearchParams({
@@ -88,17 +129,26 @@ export async function verifyStewardOAuthCallbacks(
 
     const destination = new URL(location);
     if (
-      destination.protocol !== "https:" ||
-      destination.hostname !== expectedHostname
+      destination.origin !== expectedDestination.origin ||
+      destination.pathname !== expectedDestination.pathname ||
+      destination.username !== "" ||
+      destination.password !== "" ||
+      destination.hash !== ""
     ) {
       throw new Error(
-        `${provider} callback probe reached unexpected provider host ${destination.hostname}`,
+        `${provider} callback probe reached unexpected provider destination ${destination.origin}${destination.pathname}`,
+      );
+    }
+    const providerState = destination.searchParams.get("state");
+    if (!providerState || !OAUTH_STATE_PATTERN.test(providerState)) {
+      throw new Error(
+        `${provider} callback probe returned an invalid provider state`,
       );
     }
     // Staging owns a separate challenge store, so a provider callback that
     // escapes to the legacy production Steward host cannot consume its state.
     // Production keeps its established direct callback contract unchanged.
-    if (tenantId.toLowerCase().endsWith("-staging")) {
+    if (environment === "staging") {
       const expectedProviderCallback = `${baseUrl}/steward/auth/oauth/${encodeURIComponent(provider)}/callback`;
       const actualProviderCallback =
         destination.searchParams.get("redirect_uri");
