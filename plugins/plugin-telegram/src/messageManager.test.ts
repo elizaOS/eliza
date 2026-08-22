@@ -11,6 +11,7 @@
  */
 import {
   type Content,
+  ElizaError,
   type IAgentRuntime,
   logger,
   type Memory,
@@ -1090,5 +1091,127 @@ describe("MessageManager typing-indicator resilience", () => {
     );
     expect(sent).toHaveLength(1);
     expect(sendMessage).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("MessageManager.sendMessage transport failure", () => {
+  const corpus = [
+    "hello",
+    "Sure! Step 1 - done.",
+    "**bold** and _italic_",
+    "🦊",
+    "a".repeat(64),
+  ] as const;
+
+  function managerForSend(
+    sendMessage: ReturnType<typeof vi.fn>,
+    runtimeExtras: Record<string, unknown> = {},
+  ) {
+    return new MessageManager(
+      {
+        telegram: {
+          sendMessage,
+          sendChatAction: vi.fn(async () => undefined),
+        },
+      } as never,
+      {
+        agentId: "agent-1",
+        getSetting: () => undefined,
+        createMemory: vi.fn(async () => true),
+        emitEvent: vi.fn(),
+        ...runtimeExtras,
+      } as never,
+    );
+  }
+
+  it("throws instead of returning an empty array when Telegram rejects the send (403)", async () => {
+    const sendMessage = vi.fn(async () => {
+      throw {
+        response: {
+          error_code: 403,
+          description: "Forbidden: bot was blocked by the user",
+        },
+      };
+    });
+    const manager = managerForSend(sendMessage);
+
+    await expect(
+      manager.sendMessage(4242, { text: "hello from connector" }),
+    ).rejects.toMatchObject({
+      code: "TELEGRAM_OUTBOUND_SEND_FAILED",
+    });
+    expect(sendMessage).toHaveBeenCalledTimes(1);
+  });
+
+  it("still returns [] when there is nothing textual to send", async () => {
+    const sendMessage = vi.fn();
+    const manager = managerForSend(sendMessage);
+    const sent = await manager.sendMessage(4242, { text: "   " });
+    expect(sent).toEqual([]);
+    expect(sendMessage).not.toHaveBeenCalled();
+  });
+
+  it("keeps previously accepted corpus sends byte-identical on the wire", async () => {
+    const sentBodies: string[] = [];
+    const sendMessage = vi.fn(async (chatId: number | string, text: string) => {
+      sentBodies.push(text);
+      return {
+        message_id: sentBodies.length,
+        date: 1_700_000_000,
+        text,
+        chat: { id: chatId, type: "private" },
+      };
+    });
+    const manager = managerForSend(sendMessage);
+
+    for (const text of corpus) {
+      const sent = await manager.sendMessage(7, { text });
+      expect(sent.length).toBeGreaterThan(0);
+    }
+    expect(sentBodies).toHaveLength(corpus.length);
+  });
+
+  it("preserves provider ids when persistence throws an ElizaError after send", async () => {
+    const sendMessage = vi.fn(
+      async (chatId: number | string, text: string) => ({
+        message_id: 73,
+        date: 1_700_000_000,
+        text,
+        chat: { id: chatId, type: "private" },
+      }),
+    );
+    const persistenceError = new ElizaError("database unavailable", {
+      code: "DATABASE_UNAVAILABLE",
+    });
+    const manager = managerForSend(sendMessage, {
+      createMemory: vi.fn(async () => {
+        throw persistenceError;
+      }),
+    });
+
+    await expect(
+      manager.sendMessage(4242, { text: "accepted" }),
+    ).rejects.toMatchObject({
+      code: "TELEGRAM_OUTBOUND_PERSIST_FAILED",
+      cause: persistenceError,
+      context: {
+        chatId: "4242",
+        providerMessageIds: ["73"],
+      },
+    });
+    expect(sendMessage).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("MessageManager reaction reply transport failure", () => {
+  it("does not report an empty successful turn when ctx.reply fails", async () => {
+    const { callback, sendMessage } = await captureReactionCallback();
+    sendMessage.mockRejectedValueOnce(new Error("Forbidden: bot was blocked"));
+
+    await expect(
+      callback({ text: "thanks for the reaction" }),
+    ).rejects.toMatchObject({
+      code: "TELEGRAM_REACTION_REPLY_FAILED",
+    });
   });
 });
