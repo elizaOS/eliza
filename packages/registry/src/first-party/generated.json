@@ -1395,6 +1395,58 @@
       }
     },
     {
+      "id": "doordash",
+      "name": "DoorDash",
+      "description": "Search DoorDash restaurants, browse menus, manage carts, preview checkout, and track orders through a configured MCP adapter. Final checkout requires explicit preview-bound confirmation.",
+      "npmName": "@elizaos/plugin-doordash",
+      "version": "2.0.3-beta.7",
+      "source": "bundled",
+      "tags": ["doordash", "food", "delivery", "ordering", "mcp"],
+      "config": {
+        "MCP_SERVER_DOORDASH_URL": {
+          "type": "url",
+          "required": false,
+          "sensitive": true,
+          "label": "MCP server URL",
+          "help": "HTTPS streamable-HTTP endpoint for the DoorDash MCP adapter.",
+          "advanced": false
+        },
+        "MCP_SERVER_DOORDASH_TYPE": {
+          "type": "select",
+          "required": false,
+          "sensitive": false,
+          "default": "streamable-http",
+          "label": "MCP transport",
+          "help": "Transport used by the configured DoorDash MCP adapter.",
+          "advanced": true,
+          "options": [
+            {
+              "value": "streamable-http",
+              "label": "Streamable HTTP"
+            }
+          ]
+        }
+      },
+      "render": {
+        "visible": true,
+        "pinTo": [],
+        "style": "card",
+        "icon": "ShoppingBag",
+        "group": "connectors",
+        "groupOrder": 30,
+        "actions": ["enable", "configure"]
+      },
+      "resources": {
+        "homepage": "https://github.com/elizaos/eliza#readme",
+        "repository": "https://github.com/elizaos/eliza"
+      },
+      "dependsOn": ["mcp"],
+      "channels": [],
+      "shortIds": [],
+      "kind": "plugin",
+      "subtype": "feature"
+    },
+    {
       "id": "dropbox",
       "name": "Dropbox",
       "description": "Dropbox connector for file listing, search, text reads, uploads, temporary links, and citation deep links. Uses PKCE offline OAuth; local mode accepts a generated access token.",
