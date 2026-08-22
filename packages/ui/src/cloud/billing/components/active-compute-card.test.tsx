@@ -67,6 +67,10 @@ function computeResource(
     name: "API container",
     status: "running",
     billingStatus: "active",
+    billingInterval: "day",
+    lastBilledAt: "2026-08-21T09:00:00.000Z",
+    nextBillingAt: "2026-08-22T09:00:00.000Z",
+    estimatedNextBillingAt: "2026-08-21T11:00:00.000Z",
     ratePerHour: available(exact("0.123456", "usd_per_hour")),
     estimatedRecurringComputeCostPerDay: available(
       exact("2.962944", "usd_per_day"),
@@ -303,6 +307,33 @@ describe("ActiveComputeCardView", () => {
 
     expect(screen.getByText("$99.123456")).toBeTruthy();
     expect(screen.queryByText("$3.00")).toBeNull();
+  });
+
+  it("shows server-owned billing period and cursors without client inference", () => {
+    const container = computeResource();
+    const sandbox = computeResource({
+      resourceType: "agent_sandbox",
+      resourceId: "sandbox-one",
+      billingInterval: "hour",
+      lastBilledAt: null,
+      nextBillingAt: null,
+      estimatedNextBillingAt: null,
+    });
+    render(
+      <ActiveComputeCardView
+        state={ready(snapshot({ resources: available([container, sandbox]) }))}
+        onRetry={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText("Daily")).toBeTruthy();
+    expect(screen.getByText("Hourly")).toBeTruthy();
+    expect(screen.getByText("2026-08-21 09:00:00 UTC")).toBeTruthy();
+    expect(screen.getByText("2026-08-22 09:00:00 UTC")).toBeTruthy();
+    expect(screen.getByText("2026-08-21 11:00:00 UTC")).toBeTruthy();
+    expect(screen.getByText("Not reported")).toBeTruthy();
+    expect(screen.getByText("Not scheduled")).toBeTruthy();
+    expect(screen.getByText("Not estimated")).toBeTruthy();
   });
 
   it("preserves a long exact value and reflows resources without a table", () => {

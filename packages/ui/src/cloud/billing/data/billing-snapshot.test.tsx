@@ -54,6 +54,10 @@ function resource(
     name: type === "container" ? "API container" : "Research sandbox",
     status: "running",
     billingStatus: "active",
+    billingInterval: type === "container" ? "day" : "hour",
+    lastBilledAt: "2026-08-21T09:00:00.000Z",
+    nextBillingAt: type === "container" ? "2026-08-22T09:00:00.000Z" : null,
+    estimatedNextBillingAt: "2026-08-21T11:00:00.000Z",
     ratePerHour: available(exact("0.123456", "usd_per_hour"), "rates"),
     estimatedRecurringComputeCostPerDay: available(
       exact("2.962944", "usd_per_day"),
@@ -162,6 +166,12 @@ describe("parseBillingSnapshotV2Envelope", () => {
     expect(parsed.activeCompute.resources.value[0]?.ratePerHour.status).toBe(
       "available",
     );
+    expect(parsed.activeCompute.resources.value[0]).toMatchObject({
+      billingInterval: "day",
+      lastBilledAt: "2026-08-21T09:00:00.000Z",
+      nextBillingAt: "2026-08-22T09:00:00.000Z",
+      estimatedNextBillingAt: "2026-08-21T11:00:00.000Z",
+    });
   });
 
   it("keeps an authoritative empty list distinct from unavailable", () => {
@@ -294,6 +304,24 @@ describe("parseBillingSnapshotV2Envelope", () => {
         ) as unknown[];
         record(resources[1]).resourceType = "container";
         record(resources[1]).resourceId = "container-1";
+      },
+    ],
+    [
+      "invalid billing interval",
+      (envelope) => {
+        const resources = availableValue(
+          activeOf(envelope).resources,
+        ) as unknown[];
+        record(resources[0]).billingInterval = "week";
+      },
+    ],
+    [
+      "non-canonical billing cursor",
+      (envelope) => {
+        const resources = availableValue(
+          activeOf(envelope).resources,
+        ) as unknown[];
+        record(resources[0]).nextBillingAt = "2026-08-22";
       },
     ],
   ];

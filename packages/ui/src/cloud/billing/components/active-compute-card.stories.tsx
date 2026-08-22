@@ -41,6 +41,10 @@ const CONTAINER: BillingSnapshotResource = {
   name: "Production API",
   status: "running",
   billingStatus: "active",
+  billingInterval: "day",
+  lastBilledAt: "2026-08-21T09:00:00.000Z",
+  nextBillingAt: "2026-08-22T09:00:00.000Z",
+  estimatedNextBillingAt: "2026-08-22T09:00:00.000Z",
   ratePerHour: available(exact("0.125000", "usd_per_hour")),
   estimatedRecurringComputeCostPerDay: available(
     exact("3.000000", "usd_per_day"),
@@ -53,6 +57,10 @@ const SANDBOX: BillingSnapshotResource = {
   name: "Research agent",
   status: "running",
   billingStatus: "active",
+  billingInterval: "hour",
+  lastBilledAt: null,
+  nextBillingAt: null,
+  estimatedNextBillingAt: "2026-08-21T11:00:00.000Z",
   ratePerHour: available(exact("0.050000", "usd_per_hour")),
   estimatedRecurringComputeCostPerDay: available(
     exact("1.200000", "usd_per_day"),
