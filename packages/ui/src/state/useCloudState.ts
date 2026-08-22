@@ -350,18 +350,40 @@ function isCapacitorAssetBase(baseUrl: string): boolean {
   }
 }
 
+function isCloudOnlyElectrobunAssetBase(baseUrl: string): boolean {
+  if (
+    typeof window === "undefined" ||
+    !isElectrobunRuntime() ||
+    Reflect.get(window, "__ELIZA_DESKTOP_RUNTIME_MODE__") !== "cloud"
+  ) {
+    return false;
+  }
+  try {
+    const parsed = new URL(baseUrl, window.location.href);
+    return (
+      parsed.origin === window.location.origin &&
+      isPrivateNetworkHost(parsed.hostname)
+    );
+  } catch {
+    // error-policy:J3 malformed base URL fails closed (not an asset base).
+    return false;
+  }
+}
+
 function hasCloudLoginBackend(): boolean {
   if (isCapacitorNativeRuntime()) return false;
 
   const explicitBase =
     typeof client.getBaseUrl === "function" ? client.getBaseUrl().trim() : "";
   if (explicitBase) {
+    if (isCloudOnlyElectrobunAssetBase(explicitBase)) return false;
     return (
       !isConfiguredCloudSiteBase(explicitBase) &&
       !isCapacitorAssetBase(explicitBase)
     );
   }
   if (isDevUiPortWithoutEmbeddedBackend()) return false;
+  if (isCloudOnlyElectrobunAssetBase(window.location.origin)) return false;
   return isSameOriginLocalHttpBackend();
 }
 

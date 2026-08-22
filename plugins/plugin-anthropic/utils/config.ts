@@ -287,7 +287,11 @@ export function getMaxOutputTokensOverride(
     return undefined;
   }
   const target = modelName.toLowerCase();
+  let selected: number | undefined;
   let fallback: number | undefined;
+  // Every entry is validated before any is returned. Returning on the first
+  // target match made the fail-fast contract depend on comma order:
+  // "target:8192,other:8192junk" was accepted while the reverse threw.
   for (const entry of raw.split(",")) {
     const trimmed = entry.trim();
     if (!trimmed) {
@@ -319,13 +323,15 @@ export function getMaxOutputTokensOverride(
       allowZero: false,
       entry: trimmed,
     });
-    if (separator === -1) {
+    if (modelSelector === undefined) {
+      // Last bare entry wins, as the previous unconditional assignment did.
       fallback = parsed;
-    } else if (modelSelector?.toLowerCase() === target) {
-      return parsed;
+    } else if (selected === undefined && modelSelector.toLowerCase() === target) {
+      // First explicit match wins, as the previous early return did.
+      selected = parsed;
     }
   }
-  return fallback;
+  return selected ?? fallback;
 }
 
 export function getAuthMode(runtime: IAgentRuntime): "cli" | "oauth" | "apikey" {

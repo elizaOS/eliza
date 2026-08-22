@@ -169,6 +169,8 @@ export default defineConfig({
       "scripts/stage-android-agent.test.mjs",
       "scripts/stage-desktop-fused-lib-staleness.test.mjs",
       "scripts/build-helpers/arm64-simd.test.mjs",
+      "scripts/lib/electrobun-loopback-hardening.test.mjs",
+      "scripts/lib/linux-artifact-permissions.test.mjs",
       // Uses Node.js built-in test runner (node:test), not vitest; runs in
       // `bun run test:script-suites` (node --test list).
       "scripts/store-listing-urls.test.mjs",

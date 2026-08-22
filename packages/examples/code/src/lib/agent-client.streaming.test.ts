@@ -6,6 +6,7 @@ import {
   type HandlerCallback,
   type IAgentRuntime,
   type Memory,
+  type MessageTerminalFailure,
   type StreamChunkCallback,
   stringToUuid,
 } from "@elizaos/core";
@@ -50,6 +51,7 @@ function makeRuntime(
     didRespond: boolean;
     responseContent?: Content | null;
     responseMessages: Memory[];
+    terminalFailure?: MessageTerminalFailure;
   }>,
 ): IAgentRuntime {
   return {
@@ -197,6 +199,40 @@ describe("AgentClient streaming", () => {
     ).rejects.toMatchObject({
       code: "ELIZA_CODE_SYNTHETIC_TURN_FAILURE",
       context: { failureKind: "transient_failure", transient: true },
+    });
+  });
+
+  it("rejects a terminal failure when callback delivery suppresses response content", async () => {
+    const message =
+      "I changed files but could not complete the required command verification.";
+    const runtime = makeRuntime(async (_runtime, _message, callback) => {
+      await callback?.({ text: message });
+      return {
+        didRespond: true,
+        responseContent: null,
+        responseMessages: [],
+        terminalFailure: {
+          kind: "coding_mutation_unverified",
+          transient: false,
+          message,
+        },
+      };
+    });
+
+    getAgentClient().setRuntime(runtime);
+    await expect(
+      getAgentClient().sendMessage({
+        room: makeRoom(),
+        text: "change a file",
+        identity: makeIdentity(),
+        codingMode: true,
+      }),
+    ).rejects.toMatchObject({
+      code: "ELIZA_CODE_SYNTHETIC_TURN_FAILURE",
+      context: {
+        failureKind: "coding_mutation_unverified",
+        transient: false,
+      },
     });
   });
 

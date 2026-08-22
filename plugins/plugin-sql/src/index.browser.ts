@@ -29,7 +29,7 @@ import {
 import { identityPersonLinkRoutes } from "./routes/identity-person-link";
 import * as schema from "./schema";
 import { AdvancedMemoryStorageService } from "./services/advanced-memory-storage";
-import { SqlIdentityResolutionService } from "./services/sql-identity-resolution";
+import { SqlPrincipalService } from "./services/sql-principal";
 
 const GLOBAL_SINGLETONS = Symbol.for("elizaos.plugin-sql.global-singletons");
 
@@ -116,7 +116,7 @@ export const plugin: Plugin = {
   description: "A plugin for SQL database access (PGlite WASM in browser).",
   priority: 0,
   schema: schema,
-  services: [AdvancedMemoryStorageService, SqlIdentityResolutionService],
+  services: [AdvancedMemoryStorageService, SqlPrincipalService],
   routes: [...identityPersonLinkRoutes],
   init: async (_config, runtime: IAgentRuntime) => {
     const runtimeWithAdapter = runtime as IAgentRuntime & RuntimeWithAdapterRegistrar;
@@ -200,6 +200,6 @@ export * from "./schema";
 export { AdvancedMemoryStorageService } from "./services/advanced-memory-storage";
 export {
   computeIdentityRequestDigest,
-  SqlIdentityResolutionService,
-} from "./services/sql-identity-resolution";
+  SqlPrincipalService,
+} from "./services/sql-principal";
 export type { DrizzleDatabase } from "./types";

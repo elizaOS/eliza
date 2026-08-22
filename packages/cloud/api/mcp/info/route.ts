@@ -11,6 +11,10 @@
  * unauthenticated and requires no DB or env access.
  */
 
+import {
+  MCP_USAGE_BASED_COST_LABEL,
+  PLATFORM_MCP_TOOL_PRICING,
+} from "@elizaos/cloud-shared/billing";
 import { Hono } from "hono";
 
 import { listPlatformCloudMcpTools } from "@/lib/mcp/platform-cloud-tools";
@@ -48,6 +52,18 @@ app.get("/", (c) => {
       description:
         "Uses your organization's USD-denominated cloud-credit balance",
       creditUnit: "USD",
+      // Stable compatibility metadata consumed independently of the executable
+      // `tools` inventory. Prices come from the billing authority rather than
+      // being inferred from the current platform registry.
+      rates: {
+        generate_text: "Varies by model and tokens",
+        generate_image: MCP_USAGE_BASED_COST_LABEL,
+        search_web: MCP_USAGE_BASED_COST_LABEL,
+        extract_page: MCP_USAGE_BASED_COST_LABEL,
+        browser_session: MCP_USAGE_BASED_COST_LABEL,
+        save_memory: PLATFORM_MCP_TOOL_PRICING.save_memory.label,
+        retrieve_memories: PLATFORM_MCP_TOOL_PRICING.retrieve_memories.label,
+      },
     },
     authentication: {
       type: "Bearer",

@@ -111,7 +111,7 @@ export function LoadingScreen({
   return (
     <div className="flex items-center justify-center h-dvh bg-bg relative overflow-hidden">
       <div className="flex flex-col items-start gap-3.5 w-[420px] max-w-[90vw]">
-        <div className="font-mono text-sm font-normal tracking-[0.35em] uppercase text-txt/70 select-none">
+        <div className="font-mono text-sm font-normal tracking-[0.35em] uppercase text-muted-strong select-none">
           {t("common.loading", { defaultValue: "Loading" })}
           <span className="loading-screen__dots" />
         </div>

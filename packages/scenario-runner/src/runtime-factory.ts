@@ -58,13 +58,13 @@ async function loadTestMocks() {
     "../../../plugins/plugin-personal-assistant/test/support/helpers/seed-grants.ts",
     import.meta.url,
   ).href;
-  const [mockRuntime, lifeopsSimulator, benchmarkFixtures, grants] =
-    await Promise.all([
-      import(mockRuntimeSpecifier),
-      import(lifeopsSimulatorSpecifier),
-      import(benchmarkFixturesSpecifier),
-      import(grantsSpecifier),
-    ]);
+  // These helpers share a large module graph. Load them in sequence so test
+  // runners transform that graph once instead of contending across four
+  // concurrent dynamic imports.
+  const mockRuntime = await import(mockRuntimeSpecifier);
+  const lifeopsSimulator = await import(lifeopsSimulatorSpecifier);
+  const benchmarkFixtures = await import(benchmarkFixturesSpecifier);
+  const grants = await import(grantsSpecifier);
   return {
     prepareMockedTestEnvironment: mockRuntime.prepareMockedTestEnvironment,
     seedLifeOpsSimulatorRuntime: lifeopsSimulator.seedLifeOpsSimulatorRuntime,

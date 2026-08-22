@@ -7,7 +7,8 @@ task history, and runtime-driven sub-agent routing.
 ## Purpose / role
 
 This plugin adds a full coding-agent orchestration surface to any Eliza agent.
-It spawns local coding agents (elizaos, pi-agent, opencode, codex, claude) as
+It spawns local coding agents (elizaos, pi-agent, codex, claude, Kimi Code,
+and Grok Build) as
 ACP subprocesses, routes their terminal events back into the elizaOS runtime as
 synthetic inbound messages, and manages the git workspace and GitHub issue
 lifecycle that accompanies repo-hosted coding tasks.
@@ -108,11 +109,13 @@ See issue #9146.
 
 | Device profile | Supported? | Reason | Coding backends |
 |---|---|---|---|
-| Desktop / server (Node, non-store) | ✅ | — | all 5 |
-| Android direct/AOSP local-yolo (staged shell) | ✅ | — | all 5 |
+| Desktop / server (Node, non-store) | ✅ | — | all 4 |
+| Android direct/AOSP local-yolo (staged shell) | ✅ | — | all 4 |
 | iOS (vanilla mobile runtime) | ❌ | `vanilla_mobile` | none — stub action only |
 | Store build (sandboxed distribution) | ❌ | `store_build` | none — stub action only |
 | Android Play/store build (not local-yolo) | ❌ | `not_local_yolo` | none — stub action only |
+
+Linked-account enrollment and model inference are separate from executable coding-agent spawn. Claude subscription and OpenAI Codex accounts are the only linked-account transports currently bridged into coding sessions. Kimi and Z.AI coding-plan accounts can be enrolled for inference but do not register native spawn adapters; Grok/xAI has no linked-account or native spawn adapter yet. DeepSeek API credentials are inference-only, while its coding subscription remains unavailable. OpenRouter remains a generic model-routing option rather than a coding-account or spawn backend. Native Kimi, Z.AI, and Grok routes are tracked in #24096.
 
 Classifier precedence: `store_build` > `vanilla_mobile` (iOS) > `not_local_yolo`
 (Android non-yolo) > missing staged shell. When a device is supported every
@@ -144,7 +147,8 @@ preferred over API key):
 | `pi-agent` | runtime-routed |
 | `claude` | anthropic-subscription → anthropic-api |
 | `codex` | openai-codex → openai-api |
-| `opencode` | cerebras-api |
+| `kimi` | runtime-routed official CLI OAuth (not `kimi-coding` / `moonshot-api`) |
+| `grok` | runtime-routed official CLI OAuth |
 
 ## Layout
 
@@ -206,7 +210,6 @@ plugins/plugin-agent-orchestrator/
       goal-prompt.ts             Goal prompt construction helpers
       interruption-decider.ts    Decides whether to interrupt a running sub-agent
       json-model-output.ts       Structured JSON output helpers for model calls
-      opencode-config.ts         OpenCode-specific ACP configuration
       repo-input.ts              Repository input parsing and validation
       session-event-queue.ts     Per-session event queue for ordered delivery
       smithers-task-executor.ts  TaskStepExecutor impl — drives ACP turns per step
@@ -271,8 +274,8 @@ README → "GitHub credentials".
 | `GITHUB_OAUTH_CLIENT_ID` | unset | OAuth **device flow** client id (read via `getSetting`); used when no `GITHUB_TOKEN`. Requires a live `authPromptCallback` to surface the device-code prompt. |
 | `GITHUB_OAUTH_CLIENT_SECRET` | unset | Server-side OAuth secret for the device flow. Read directly from **process env** by design — deliberately kept out of the plugin `getSetting` allowlist. |
 | `ELIZA_ACP_TRANSPORT` | `native` | Transport: `native` (embedded JSON-RPC) or `cli`/`acpx` (legacy shell wrapper) |
-| `ELIZA_ACP_CLI` | `acpx` | Path/command for the CLI transport |
-| `ELIZA_ACP_DEFAULT_AGENT` | `elizaos` | Default agent type: `elizaos`, `pi-agent`, `opencode` |
+| `ELIZA_ACP_CLI` | `acpx` | Executable name or path for the CLI transport; command arguments are rejected |
+| `ELIZA_ACP_DEFAULT_AGENT` | `elizaos` | Default agent type: `elizaos`, `pi-agent`, `claude`, `codex`, `kimi`, or `grok` |
 | `ELIZA_ACP_WARM_SPAWN` | unset | Set to `1` to pre-initialize one native `elizaos` ACP child. The child receives no session credentials until an authenticated, single-use claim and exits after that session; stale unclaimed children are recycled. |
 | `ELIZA_DEFAULT_AGENT_TYPE` | `elizaos` | Compatibility alias for `ELIZA_ACP_DEFAULT_AGENT` |
 | `ELIZA_AGENT_SELECTION_STRATEGY` | `fixed` | Adapter selection policy: `fixed` or `dynamic` |
@@ -284,7 +287,8 @@ README → "GitHub credentials".
 | `ELIZA_CODEX_ACP_APPROVAL_POLICY` / `ELIZA_CODEX_APPROVAL_POLICY` | `never` for no-Landlock fallback, otherwise unset | Optional managed Codex ACP approval policy. Setting it requires an explicit sandbox mode; the successor supports the fixed pairs `read-only`/`on-request`, `workspace-write`/`on-request`, and `danger-full-access`/`never`. |
 | `ELIZA_CODEX_ACP_LANDLOCK` / `ELIZA_CODEX_LANDLOCK` | auto-detect | Force Landlock detection for containers/tests: `1`/`true` or `0`/`false` |
 | `ELIZA_CLAUDE_ACP_COMMAND` | `npx -y @agentclientprotocol/claude-agent-acp@0.34.0` | Native Claude ACP command |
-| `ELIZA_OPENCODE_ACP_COMMAND` | bundled shim or `opencode acp` | Native OpenCode ACP command |
+| `ELIZA_KIMI_ACP_COMMAND` | `kimi acp` | Official Kimi Code subscription ACP command. Interactive message, HTTP, and task-control boundaries mint attendance authorization and persist it for recovery; scheduled, agent-authored, and unspecified spawns fail before workspace creation. The adapter validates that the effective default model selects the managed OAuth provider. Login is `kimi login`; logout is the interactive `/logout` because there is no top-level logout/status command. |
+| `ELIZA_GROK_ACP_COMMAND` | `grok agent stdio` | Official Grok Build subscription ACP command. Login is `grok login` or `grok login --device-auth`; status/models is `grok models`; logout is `grok logout`. |
 | `ELIZA_ACP_MAX_SESSIONS` | `8` | Concurrent session cap |
 | `ELIZA_ACP_SYSTEM_SESSION_HEADROOM` | `2` | Reserved concurrent slots for short-lived `system` spawns (the #8898 read-only verifier), counted separately from `ELIZA_ACP_MAX_SESSIONS` so validation never deadlocks behind the worker cap |
 | `ELIZA_MAX_SPAWNS_PER_ORIGIN` | `3` | Max sub-agent spawns per root user message before relaying the best captured result instead of re-spawning (bounds the weak-model re-spawn loop) |
@@ -367,6 +371,12 @@ README → "GitHub credentials".
 - **Session persistence is tiered.** `RuntimeDbSessionStore` → `FileSessionStore`
   → `InMemorySessionStore`. The in-memory fallback logs a warning and sessions
   don't survive restart.
+- **Recommendation context is exhaustive.** Skill recommendation ranking must
+  retain every eligible skill, and trajectory feedback must traverse every
+  storage page while preserving source order and duplicates. Legacy `max`,
+  recency, and relevance options are compatibility-only and must not discard
+  spawn- or model-facing context. Insight text remains exact regardless of
+  length or surrounding whitespace, and malformed metadata fails explicitly.
 - **Smithers task path.** By default (`ELIZA_ORCHESTRATOR_SMITHERS` not `0`), task
   execution goes through the smithers runner (`smithers-task-runner.ts`), which
   drives a structured provision→turn→submit loop. `TASKS:create` persists the

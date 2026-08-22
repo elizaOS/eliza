@@ -8,13 +8,17 @@
  * uses, so this object cannot silently drift from the gate: a change to the
  * device gating that affects any documented profile fails this package's tests.
  *
- * Backend → auth-mode reach mirrors AGENT_PROVIDER_CANDIDATES in
- * packages/app-core/src/services/coding-account-bridge.ts (the auth pairing
- * lives there because the plugin depends only on @elizaos/core and reads the
- * selector over a globalThis bridge). When a device supports coding agents,
- * every backend below is reachable on it; when unsupported, none are.
+ * Backend → auth-mode reach comes from the cross-runtime shared capability
+ * contract also consumed by the app-core account bridge. When a device
+ * supports coding agents, every backend below is reachable on it; when
+ * unsupported, none are.
  */
 
+import {
+  CODING_AGENT_BACKEND_PROVIDERS,
+  CODING_AGENT_BACKENDS,
+  type CodingAgentBackend,
+} from "@elizaos/shared";
 import {
   classifyTerminalSupport,
   type OrchestratorTerminalSupport,
@@ -22,23 +26,22 @@ import {
 } from "./terminal-capabilities.js";
 
 /** Coding backends with a first-party spawnable CLI (post #9167 cleanup). */
-export const ORCHESTRATOR_BACKENDS = [
-  "elizaos",
-  "pi-agent",
-  "claude",
-  "codex",
-] as const;
-export type OrchestratorBackend = (typeof ORCHESTRATOR_BACKENDS)[number];
+export const ORCHESTRATOR_BACKENDS = CODING_AGENT_BACKENDS;
+export type OrchestratorBackend = CodingAgentBackend;
 
 /** Ordered auth modes per backend; subscription is preferred over API key. */
 export const ORCHESTRATOR_BACKEND_AUTH: Readonly<
   Record<OrchestratorBackend, readonly string[]>
-> = {
-  elizaos: ["runtime-routed"],
-  "pi-agent": ["runtime-routed"],
-  claude: ["anthropic-subscription", "anthropic-api"],
-  codex: ["openai-codex", "openai-api"],
-};
+> = ORCHESTRATOR_BACKENDS.reduce(
+  (authModes, backend) => {
+    authModes[backend] =
+      CODING_AGENT_BACKEND_PROVIDERS[backend].length > 0
+        ? CODING_AGENT_BACKEND_PROVIDERS[backend]
+        : ["runtime-routed"];
+    return authModes;
+  },
+  {} as Record<OrchestratorBackend, readonly string[]>,
+);
 
 export interface DeviceSupportProfile {
   /** Stable id for the device/runtime profile. */

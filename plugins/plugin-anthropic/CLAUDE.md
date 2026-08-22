@@ -102,7 +102,7 @@ All settings are read via `runtime.getSetting(key)` first, then `process.env[key
 | `ANTHROPIC_EFFORT_LARGE` | No | — | Effort for large-size models |
 | `ANTHROPIC_PROMPT_CACHE_TTL` | No | `5m` | Prompt cache TTL: `"5m"` or `"1h"` |
 | `ANTHROPIC_TEMPERATURE_LOCKED_MODELS` | No | — | Comma-separated model ids that only accept `temperature=1`, applied on top of the built-in `opus-4` name check |
-| `ANTHROPIC_MAX_OUTPUT_TOKENS` | No | — | Positive safe decimal integer, or comma-separated `model-id:tokens` pairs; malformed explicit entries fail before dispatch and unlisted models keep built-in caps. |
+| `ANTHROPIC_MAX_OUTPUT_TOKENS` | No | — | Positive safe decimal integer, or comma-separated `model-id:tokens` pairs. Every entry is validated before any is selected, so a malformed entry fails before dispatch regardless of its position in the list. The first entry matching the requested model wins, the last bare number is the fallback, and unlisted models keep built-in caps. |
 | `CLAUDE_CODE_OAUTH_TOKEN` / `ANTHROPIC_OAUTH_TOKEN` | No | — | OAuth bearer token for `ANTHROPIC_AUTH_MODE=oauth` |
 | `ANTHROPIC_SUBSCRIPTION_ACCOUNT_ID` | No | `default` | Account ID for app-managed subscription credentials |
 | `CLAUDE_CONFIG_DIR` | No | `~/.claude` | Override credential store directory (macOS keychain also checked) |

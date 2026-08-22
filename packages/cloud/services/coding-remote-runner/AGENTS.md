@@ -3,7 +3,7 @@
 A small, single-file Bun HTTP runner that exposes a sandboxed workspace
 (filesystem + process execution) over HTTP. It powers Eliza Cloud coding
 containers and home-machine remote-runner hosting, serving the contract consumed
-by `packages/agent/src/services/e2b-capability-router.ts`.
+by `packages/agent/src/services/remote-coding-runner.ts`.
 
 ## What it serves
 

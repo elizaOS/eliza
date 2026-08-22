@@ -494,6 +494,244 @@ describe("media vision provider input validation", () => {
         },
       ],
     });
+    expect(calls[0].body).not.toHaveProperty("max_tokens");
+  });
+
+  it("omits OpenAI's output cap by default and preserves an explicit caller limit", async () => {
+    const calls: FetchCall[] = [];
+    fakeMediaFetch(
+      Response.json({
+        choices: [
+          {
+            finish_reason: "stop",
+            message: { content: "complete image" },
+          },
+        ],
+      }),
+      calls,
+    );
+    const provider = createVisionProvider(
+      {
+        mode: "own-key",
+        provider: "openai",
+        openai: { apiKey: "openai-key" },
+      },
+      { cloudMediaDisabled: true },
+    );
+
+    await provider.analyze({ imageBase64: "AQID" });
+    await provider.analyze({ imageBase64: "AQID", maxTokens: 4096 });
+
+    expect(calls[0].body).not.toHaveProperty("max_tokens");
+    expect(calls[1].body.max_tokens).toBe(4096);
+  });
+
+  it.each([
+    {
+      provider: "openai" as const,
+      config: { openai: { apiKey: "openai-key" } },
+      response: {
+        choices: [
+          {
+            finish_reason: "length",
+            message: { content: "partial OpenAI description" },
+          },
+        ],
+      },
+    },
+    {
+      provider: "xai" as const,
+      config: { xai: { apiKey: "xai-key" } },
+      response: {
+        choices: [
+          {
+            finish_reason: "length",
+            message: { content: "partial xAI description" },
+          },
+        ],
+      },
+    },
+  ])("rejects $provider length-stopped descriptions", async (fixture) => {
+    const calls: FetchCall[] = [];
+    fakeMediaFetch(Response.json(fixture.response), calls);
+    const provider = createVisionProvider(
+      {
+        mode: "own-key",
+        provider: fixture.provider,
+        ...fixture.config,
+      },
+      { cloudMediaDisabled: true },
+    );
+
+    const result = await provider.analyze({ imageBase64: "AQID" });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toMatch(/incomplete vision description/);
+    expect(result.data).toBeUndefined();
+    expect(calls).toHaveLength(1);
+  });
+
+  it("uses Anthropic's model-authoritative maximum and rejects max_tokens stops", async () => {
+    const calls: FetchCall[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+        const href = String(url);
+        calls.push({
+          url: href,
+          init,
+          body:
+            typeof init?.body === "string"
+              ? (JSON.parse(init.body) as Record<string, unknown>)
+              : {},
+        });
+        if (href.includes("/v1/models/")) {
+          return Response.json({ max_tokens: 128_000 });
+        }
+        return Response.json({
+          stop_reason: "max_tokens",
+          content: [{ type: "text", text: "partial Anthropic description" }],
+        });
+      }),
+    );
+    const provider = createVisionProvider(
+      {
+        mode: "own-key",
+        provider: "anthropic",
+        anthropic: { apiKey: "anthropic-key", model: "claude-opus-4-7" },
+      },
+      { cloudMediaDisabled: true },
+    );
+
+    const result = await provider.analyze({ imageBase64: "AQID" });
+
+    expect(result).toMatchObject({
+      success: false,
+      error: expect.stringMatching(/incomplete vision description/),
+    });
+    expect(calls.map((call) => call.url)).toEqual([
+      "https://api.anthropic.com/v1/models/claude-opus-4-7",
+      "https://api.anthropic.com/v1/messages",
+    ]);
+    expect(calls[1].body.max_tokens).toBe(128_000);
+  });
+
+  it("rejects an explicit Anthropic output request above the model maximum before dispatch", async () => {
+    const calls: FetchCall[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+        const href = String(url);
+        calls.push({
+          url: href,
+          init,
+          body:
+            typeof init?.body === "string"
+              ? (JSON.parse(init.body) as Record<string, unknown>)
+              : {},
+        });
+        return Response.json({ max_tokens: 128_000 });
+      }),
+    );
+    const provider = createVisionProvider(
+      {
+        mode: "own-key",
+        provider: "anthropic",
+        anthropic: { apiKey: "anthropic-key", model: "claude-opus-4-7" },
+      },
+      { cloudMediaDisabled: true },
+    );
+
+    await expect(
+      provider.analyze({ imageBase64: "AQID", maxTokens: 128_001 }),
+    ).resolves.toMatchObject({
+      success: false,
+      errorCode: "VISION_OUTPUT_BUDGET_UNSUPPORTED",
+      error: expect.stringMatching(
+        /Requested 128001 output tokens.*supports at most 128000/,
+      ),
+      errorContext: {
+        model: "claude-opus-4-7",
+        requestedMaxTokens: 128_001,
+        supportedMaxTokens: 128_000,
+      },
+    });
+    expect(calls.map((call) => call.url)).toEqual([
+      "https://api.anthropic.com/v1/models/claude-opus-4-7",
+    ]);
+  });
+
+  it.each([0, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY])(
+    "rejects malformed Anthropic output budget %s before any provider request",
+    async (maxTokens) => {
+      const fetchMock = vi.fn();
+      vi.stubGlobal("fetch", fetchMock);
+      const provider = createVisionProvider(
+        {
+          mode: "own-key",
+          provider: "anthropic",
+          anthropic: { apiKey: "anthropic-key", model: "claude-opus-4-7" },
+        },
+        { cloudMediaDisabled: true },
+      );
+
+      await expect(
+        provider.analyze({ imageBase64: "AQID", maxTokens }),
+      ).resolves.toMatchObject({
+        success: false,
+        errorCode: "VISION_OUTPUT_BUDGET_INVALID",
+        error: expect.stringMatching(/must be a positive safe integer/),
+        errorContext: {
+          model: "claude-opus-4-7",
+          requestedMaxTokens: maxTokens,
+        },
+      });
+      expect(fetchMock).not.toHaveBeenCalled();
+    },
+  );
+
+  it("preserves an accepted explicit Anthropic output request", async () => {
+    const calls: FetchCall[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+        const href = String(url);
+        calls.push({
+          url: href,
+          init,
+          body:
+            typeof init?.body === "string"
+              ? (JSON.parse(init.body) as Record<string, unknown>)
+              : {},
+        });
+        return href.includes("/v1/models/")
+          ? Response.json({ max_tokens: 128_000 })
+          : Response.json({
+              stop_reason: "end_turn",
+              content: [{ type: "text", text: "complete image" }],
+            });
+      }),
+    );
+    const provider = createVisionProvider(
+      {
+        mode: "own-key",
+        provider: "anthropic",
+        anthropic: { apiKey: "anthropic-key", model: "claude-opus-4-7" },
+      },
+      { cloudMediaDisabled: true },
+    );
+
+    await expect(
+      provider.analyze({ imageBase64: "AQID", maxTokens: 4096 }),
+    ).resolves.toMatchObject({
+      success: true,
+      data: { description: "complete image" },
+    });
+    expect(calls.map((call) => call.url)).toEqual([
+      "https://api.anthropic.com/v1/models/claude-opus-4-7",
+      "https://api.anthropic.com/v1/messages",
+    ]);
+    expect(calls[1].body.max_tokens).toBe(4096);
   });
 });
 
@@ -590,5 +828,46 @@ describe("Ollama vision image fetching (W5-020)", () => {
     expect(
       calls.find((call) => call.url.endsWith("/api/chat")),
     ).toBeUndefined();
+  });
+
+  it("requests unlimited generation and rejects a length-stopped response", async () => {
+    const calls: FetchCall[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+        const href = String(url);
+        calls.push({
+          url: href,
+          init,
+          body:
+            typeof init?.body === "string"
+              ? (JSON.parse(init.body) as Record<string, unknown>)
+              : {},
+        });
+        if (href.endsWith("/api/tags")) {
+          return Response.json({ models: [{ name: "llava" }] });
+        }
+        return Response.json({
+          done_reason: "length",
+          message: { content: "partial Ollama description" },
+        });
+      }),
+    );
+    const provider = createVisionProvider(
+      { mode: "own-key", provider: "ollama", ollama: {} },
+      { cloudMediaDisabled: true },
+    );
+
+    const result = await provider.analyze({
+      imageBase64: "AQID",
+      prompt: "describe",
+    });
+
+    const chatCall = calls.find((call) => call.url.endsWith("/api/chat"));
+    expect(chatCall?.body.options).toEqual({ num_predict: -1 });
+    expect(result).toMatchObject({
+      success: false,
+      error: expect.stringMatching(/incomplete vision description/),
+    });
   });
 });

@@ -21,7 +21,10 @@ import {
 
 function isLoopbackHostname(hostname: string): boolean {
   const h = hostname.toLowerCase();
-  return h === "127.0.0.1" || h === "localhost" || h === "::1";
+  // RFC 1122 reserves the entire 127.0.0.0/8 block for IPv4 loopback, not
+  // only 127.0.0.1. Packaged external-runtime tests bind an alternate address
+  // in that block so they exercise the HTTP path without exposing a fixture.
+  return /^127(?:\.\d{1,3}){3}$/.test(h) || h === "localhost" || h === "::1";
 }
 
 export function isTrustedRestoreApiBaseUrl(

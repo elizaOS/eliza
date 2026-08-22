@@ -41,6 +41,7 @@ const BUILTIN_INLINE_KINDS = [
   "checklist",
   "background",
   "mapscard",
+  "connector",
 ] as const;
 
 // A representative marker per built-in, in the exact wire format its parser
@@ -59,6 +60,8 @@ const SAMPLE: Record<(typeof BUILTIN_INLINE_KINDS)[number], string> = {
   background: "[BACKGROUND]",
   mapscard:
     '[MAPSCARD]\n{"kind":"place","place":{"name":"Home","latitude":34.05,"longitude":-118.24,"provider":"contract-maps","providerPlaceId":"home-1","categories":[]}}\n[/MAPSCARD]',
+  // A bare single-line marker — the card fetches its own plugin state.
+  connector: "[CONNECTOR:slack]",
 };
 
 const ctx: InlineWidgetContext = {

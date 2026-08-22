@@ -6305,7 +6305,20 @@ export class AgentRuntime implements IAgentRuntime {
 				params: Record<string, JsonValue | object>,
 		  ) => Promise<JsonValue | object>)
 		| undefined {
-		const resolvedModel = this.resolveModelRegistration(modelType);
+		const requestedModelKey = String(modelType);
+		// Keep capability probes aligned with useModel dispatch: once the
+		// embedding dimension probe pins a provider, another provider's BATCH
+		// handler is not usable because it may emit a different vector width.
+		const requestedProvider =
+			(requestedModelKey === ModelType.TEXT_EMBEDDING ||
+				requestedModelKey === ModelType.TEXT_EMBEDDING_BATCH) &&
+			this.pinnedEmbeddingProvider !== undefined
+				? this.pinnedEmbeddingProvider
+				: undefined;
+		const resolvedModel = this.resolveModelRegistration(
+			requestedModelKey,
+			requestedProvider,
+		);
 		if (!resolvedModel) {
 			return undefined;
 		}

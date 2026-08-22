@@ -84,6 +84,7 @@ import { tierActionResults } from "../runtime/action-tiering";
 import {
 	applyAddressedTo,
 	messageAddressedToOtherParticipant,
+	messageVocativelyAddressesOtherParticipant,
 } from "../runtime/addressed-to";
 import { normalizeTopics } from "../runtime/builtin-field-evaluators";
 import {
@@ -266,6 +267,7 @@ import type {
 	IMessageService,
 	MessageProcessingOptions,
 	MessageProcessingResult,
+	MessageTerminalFailure,
 	ShouldRespondModelType,
 } from "../types/message-service";
 import {
@@ -469,7 +471,20 @@ function escapeRegex(value: string): string {
 	return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-function textContainsAgentName(
+const NON_DISTINCTIVE_AGENT_NAME_TOKENS = new Set([
+	"agent",
+	"assistant",
+	"bot",
+	"chatbot",
+	"demo",
+	"helper",
+	"system",
+	"test",
+]);
+
+/** Returns whether text names the agent through a complete configured alias or
+ * a distinctive token from a multi-word alias. */
+export function textContainsAgentName(
 	text: string | undefined,
 	names: Array<string | null | undefined>,
 ): boolean {
@@ -477,12 +492,30 @@ function textContainsAgentName(
 		return false;
 	}
 
-	return names.some((name) => {
+	// A multi-word agent name is addressed by any of its distinctive tokens:
+	// "remilio nubilio" answers to "nubilio …" (live 2026-08-22: the full-phrase
+	// match classified "nubilio whats the setting …" as ambient, arming the
+	// engagement gate on a message that literally opens with the agent's name).
+	// Short fragments and generic role/test words stay excluded because length
+	// alone does not make "agent", "assistant", or "test" an identity signal.
+	// The complete configured name/username remains authoritative even when one
+	// of its component words is generic.
+	const candidates = new Set<string>();
+	for (const name of names) {
 		const candidate = name?.trim();
-		if (!candidate) {
-			return false;
+		if (!candidate) continue;
+		candidates.add(candidate);
+		for (const token of candidate.split(/\s+/u)) {
+			if (
+				token.length >= 4 &&
+				!NON_DISTINCTIVE_AGENT_NAME_TOKENS.has(token.toLowerCase())
+			) {
+				candidates.add(token);
+			}
 		}
+	}
 
+	return [...candidates].some((candidate) => {
 		const pattern = new RegExp(
 			`(^|[^\\p{L}\\p{N}])${escapeRegex(candidate)}(?=$|[^\\p{L}\\p{N}])`,
 			"iu",
@@ -1385,6 +1418,7 @@ interface StrategyResult {
 	responseContent: Content | null;
 	responseMessages: Memory[];
 	actionResults?: ActionResult[];
+	terminalFailure?: MessageTerminalFailure;
 	state: State;
 	mode: StrategyMode;
 }
@@ -2161,6 +2195,12 @@ function createV5ReplyStrategyResult(args: {
 	 * planner text so the gate can still rewrite canned strings.
 	 */
 	agentVoiced?: boolean;
+	/**
+	 * Machine-readable terminal failure for coding/CLI callers. The visible
+	 * text still reaches interactive surfaces, while adapters can return a
+	 * non-success process/result instead of treating any nonempty reply as done.
+	 */
+	terminalFailure?: MessageTerminalFailure;
 }): StrategyResult {
 	let responseContent: Content = {
 		thought: args.thought,
@@ -2169,6 +2209,13 @@ function createV5ReplyStrategyResult(args: {
 		simple: args.mode !== "actions",
 		responseId: args.responseId,
 		...(args.agentVoiced === true ? { agentVoiced: true } : {}),
+		...(args.terminalFailure
+			? {
+					failureKind: args.terminalFailure.kind,
+					elizaSyntheticFailure: true,
+					transient: args.terminalFailure.transient,
+				}
+			: {}),
 		...(args.attachments?.length ? { attachments: args.attachments } : {}),
 		...(args.transcriptVisibility
 			? { transcriptVisibility: args.transcriptVisibility }
@@ -2200,6 +2247,7 @@ function createV5ReplyStrategyResult(args: {
 		],
 		state: args.state,
 		mode: args.mode ?? "simple",
+		...(args.terminalFailure ? { terminalFailure: args.terminalFailure } : {}),
 	};
 }
 
@@ -2779,13 +2827,7 @@ type V5PlannerActionSurfaceSummary = {
 	catalogParentCount: number;
 	exposedActionCount: number;
 	tierAParents: string[];
-	/**
-	 * Children exposed as first-class planner tools per tier-A parent, after
-	 * the per-parent child narrowing (`maxTierAChildrenPerParent`). Read back
-	 * by `collectPlannerTools` so the native-tool expansion matches the tiered
-	 * surface instead of re-expanding every subaction of a hot parent. Absent
-	 * in full-surface mode, where every subaction expands.
-	 */
+	/** Every registered child exposed as a first-class planner tool per parent. */
 	tierAChildrenByParent?: Record<string, string[]>;
 	tierBParents: string[];
 	omittedParentCount: number;
@@ -3128,32 +3170,6 @@ const CODING_SUB_AGENT_CONTEXTS: readonly AgentContext[] = [
 	"automation",
 ];
 
-/**
- * Exact action surface for a direct coding turn. Context overlap is too broad:
- * attachment and media actions also carry file/automation contexts, and each
- * extra tool schema enlarges the request. A large tool set + a large file
- * generation is exactly what makes weaker hosted models (Cerebras glm-4.7)
- * intermittently reject the request (server_error / 400) or narrate instead of
- * emitting FILE. Keep the surface aligned with the tools that actually do the
- * work (FILE/SHELL/WORKTREE/WEB plus terminal controls).
- */
-const CODING_DIRECT_ACTIONS: ReadonlySet<string> = new Set(
-	// Stored in normalizeActionIdentifier() form (uppercase, underscores
-	// stripped), since that is what the filter compares against.
-	[
-		"READ",
-		"WRITE",
-		"EDIT",
-		"SHELL",
-		"WORKTREE",
-		"WEBFETCH",
-		"WEBSEARCH",
-		"REPLY",
-		"STOP",
-		"IGNORE",
-	],
-);
-
 function actionNameTokenKey(name: string): string {
 	return normalizeActionName(name).split("_").filter(Boolean).sort().join("_");
 }
@@ -3297,6 +3313,7 @@ function buildV5PlannerActionSurface(params: {
 	message: Memory;
 	state?: State;
 	messageHandler: MessageHandlerResult;
+	/** @deprecated Candidate hints rank tools but never remove authorized tools. */
 	restrictToCandidateActions?: boolean;
 	// The messageHandler-selected contexts for this turn. Passed through to
 	// `retrieveActions` as a *weight* (boost on-context candidates) — never
@@ -3323,14 +3340,9 @@ function buildV5PlannerActionSurface(params: {
 		params.messageHandler,
 	);
 
-	// Expose EVERY action as a native tool (no tiering) when the action set is
-	// empty, OR when explicitly forced. Tiering is built for large chat catalogs
-	// (30+ actions → expose the relevant few); a focused coding sub-agent has a
-	// small, all-relevant tool set (FILE/SHELL/READ/EDIT/…) and MUST get them all
-	// exposed natively — otherwise the model sees a tool in the prompt but cannot
-	// call it (it lands in tier-B, described-only), narrates instead of acting, and
-	// trips the terminal-only-continuations guard. The trusted per-turn coding
-	// mode opts this invocation into the full surface without global state.
+	// An explicitly forced surface retains the historical summary mode, but both
+	// paths preserve every authorized action. Retrieval and tier metadata only
+	// order and describe the complete catalog.
 	// A task_complete relay's only job is delivering the finished result. Any
 	// catalog tool on this synthetic turn invites task-management
 	// improvisation over the completed work (live 2026-08-19: the planner
@@ -3403,104 +3415,13 @@ function buildV5PlannerActionSurface(params: {
 		catalog,
 		results: retrieval.results,
 		narrowToCandidateActions: candidateActions,
-		// Message-text + candidate tokens rank children WITHIN each tier-A
-		// parent so a hot parent exposes its turn-relevant children instead of
-		// its whole namespace (maxTierAChildrenPerParent).
+		// Kept for source compatibility; child availability is complete.
 		queryTokens: retrieval.query.tokens,
 	});
 	const toolSearchEndedAt = Date.now();
 	const exposedActionNames = new Set(
 		tieredSurface.exposedActionNames.map(normalizeActionIdentifier),
 	);
-	if (params.restrictToCandidateActions && candidateActions.length > 0) {
-		const allowed = new Set(candidateActions.map(normalizeActionIdentifier));
-		for (const exposed of exposedActionNames) {
-			if (!allowed.has(exposed)) exposedActionNames.delete(exposed);
-		}
-	}
-
-	let fallback: string | undefined;
-	if (
-		params.actions.every(
-			(action) =>
-				!exposedActionNames.has(normalizeActionIdentifier(action.name)),
-		)
-	) {
-		let addedFallbackAction = false;
-		for (const result of retrieval.results) {
-			if (result.score <= 0) {
-				continue;
-			}
-			exposedActionNames.add(normalizeActionIdentifier(result.name));
-			addedFallbackAction = true;
-		}
-		if (addedFallbackAction) {
-			fallback = "top-ranked-parent-fallback";
-		}
-	}
-
-	// Every candidate action the message-handler proposed is described to the
-	// planner (and reinforced by action examples), so each MUST also be callable.
-	// Tiering can otherwise leave a proposed action in the described-only tier:
-	// the model then emits a tool_call the surface rejects as "unavailable",
-	// burning unavailable-tool retries and — for delegation (TASKS_SPAWN_AGENT) —
-	// silently breaking the hand-off (observed live: the planner called
-	// TASKS_SPAWN_AGENT, it was unavailable, and the build never delegated). The
-	// candidate set is already narrowed to the relevant actions, so exposing the
-	// registered ones keeps the callable surface tight.
-	for (const name of candidateActions) {
-		const normalized = normalizeActionIdentifier(name);
-		if (
-			params.actions.some(
-				(action) => normalizeActionIdentifier(action.name) === normalized,
-			)
-		) {
-			exposedActionNames.add(normalized);
-		}
-	}
-
-	// Selected-context representation guarantee: stage-1 routed this turn to
-	// specific contexts, and a narrowed surface with ZERO callable actions for
-	// a selected context contradicts that routing — the planner then improvises
-	// with off-context tools (observed live: a web+notes composite surfaced
-	// WEB_FETCH/WEB_SEARCH only, so the "save a note" half of the ask was
-	// impossible and the turn ended on an in-flight claim with nothing saved).
-	// For each selected context with no exposed representative, expose the
-	// highest-ranked action that DECLARES the context; `params.actions` is the
-	// already gate-checked collection, so this can never expose a gated action.
-	for (const context of params.selectedContexts ?? []) {
-		const normalizedContext = String(context).trim().toLowerCase();
-		if (!normalizedContext || normalizedContext === "simple") continue;
-		const declaresContext = (action: Action): boolean =>
-			(action.contexts ?? []).some(
-				(declared) =>
-					String(declared).trim().toLowerCase() === normalizedContext,
-			);
-		const hasRepresentative = params.actions.some(
-			(action) =>
-				exposedActionNames.has(normalizeActionIdentifier(action.name)) &&
-				declaresContext(action),
-		);
-		if (hasRepresentative) continue;
-		const scoreByName = new Map(
-			retrieval.results.map((result) => [
-				normalizeActionIdentifier(result.name),
-				result.score,
-			]),
-		);
-		const best = params.actions
-			.filter(declaresContext)
-			.sort(
-				(a, b) =>
-					(scoreByName.get(normalizeActionIdentifier(b.name)) ?? 0) -
-					(scoreByName.get(normalizeActionIdentifier(a.name)) ?? 0),
-			)
-			.at(0);
-		if (best) {
-			exposedActionNames.add(normalizeActionIdentifier(best.name));
-		}
-	}
-
 	const exposedActionCount = params.actions.filter((action) =>
 		exposedActionNames.has(normalizeActionIdentifier(action.name)),
 	).length;
@@ -3539,7 +3460,6 @@ function buildV5PlannerActionSurface(params: {
 						omitted: tieredSurface.omittedParentNames.length,
 					},
 					durationMs: toolSearchEndedAt - toolSearchStartedAt,
-					fallback,
 					...(retrieval.measurement
 						? {
 								perStageScores: retrieval.measurement.perStageScores,
@@ -3583,7 +3503,6 @@ function buildV5PlannerActionSurface(params: {
 			queryTokens: retrieval.query.tokens,
 			candidateActions,
 			parentActionHints,
-			...(fallback ? { fallback } : {}),
 		},
 	};
 }
@@ -7130,11 +7049,11 @@ async function executeV5PlannedToolCall(
 	const resolvedName = resolvedNames[0] ?? args.toolCall.name;
 	const toolCall: PlannerToolCall = { ...args.toolCall, name: resolvedName };
 
-	// Per-turn `actions` is the narrowed action surface — the executable subset
+	// Per-turn `actions` is the authorized action surface — the executable subset
 	// the model was given as tools. It does NOT include the CORE_PLANNER_TERMINALS
 	// (REPLY / IGNORE / STOP) which are surfaced as tools but live in the global
 	// runtime registry. When the model calls a terminal (or, under
-	// strictResolve, an action not in the narrow), pull it from the global
+	// strictResolve, an action outside that authorization), pull it from the global
 	// registry by exact name. With `toolChoice: "required"` + tools-array
 	// enforcement the model can only call names that are in our exposed set, so
 	// this can't be an off-surface escape — it's the terminal/registry bridge.
@@ -7402,7 +7321,7 @@ export function subPlannerResultToPlannerToolResult(
 }
 
 /**
- * Planner-loop tool surface. Each narrowed Action is exposed as its own native
+ * Planner-loop tool surface. Each authorized Action is exposed as its own native
  * tool whose name is the action name and whose `parameters` is the action's
  * JSONSchema. We also always include the universal terminal-sentinel tools
  * (REPLY / IGNORE / STOP) so the planner has a stable way to end the turn.
@@ -7431,7 +7350,6 @@ function collectPlannerTools(
 		actionLookup: new Map(
 			actions.map((action) => [action.name, action] as const),
 		),
-		tierAChildrenByParent: readTierAChildrenByParentFromContext(context),
 	});
 	const terminalNames = new Set(
 		CORE_PLANNER_TERMINALS.map((tool) => normalizeActionIdentifier(tool.name)),
@@ -7449,11 +7367,8 @@ function collectPlannerTools(
 }
 
 /**
- * Read the tier-A parent names from the action surface metadata attached to the
- * context object by `buildV5PlannerActionSurface`. Returns an empty set when no
- * surface metadata is present (full-surface mode, or contexts built outside the
- * tiered pipeline), in which case the tiered builder degrades to plain
- * one-tool-per-action behavior.
+ * Read the historical tier-A metadata for telemetry compatibility. Tool
+ * construction ignores it and expands every authorized parent and child.
  */
 function readTierAParentsFromContext(context: ContextObject): Set<string> {
 	const surface = (context.metadata as { actionSurface?: unknown } | undefined)
@@ -7472,38 +7387,6 @@ function readTierAParentsFromContext(context: ContextObject): Set<string> {
 		}
 	}
 	return set;
-}
-
-/**
- * Read the per-parent tier-A child allow-list from the action surface
- * metadata. Returns `undefined` when the surface carries no
- * `tierAChildrenByParent` (full-surface mode, or contexts built outside the
- * tiered pipeline), in which case the tiered tool builder expands every
- * subaction of a tier-A parent as before.
- */
-function readTierAChildrenByParentFromContext(
-	context: ContextObject,
-): Record<string, string[]> | undefined {
-	const surface = (context.metadata as { actionSurface?: unknown } | undefined)
-		?.actionSurface;
-	if (!surface || typeof surface !== "object") {
-		return undefined;
-	}
-	const raw = (surface as { tierAChildrenByParent?: unknown })
-		.tierAChildrenByParent;
-	if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
-		return undefined;
-	}
-	const record: Record<string, string[]> = {};
-	for (const [parentName, childNames] of Object.entries(raw)) {
-		if (!Array.isArray(childNames)) {
-			continue;
-		}
-		record[parentName] = childNames.filter(
-			(name): name is string => typeof name === "string",
-		);
-	}
-	return record;
 }
 
 /**
@@ -8718,33 +8601,46 @@ export async function runV5MessageRuntimeStage1(args: {
 		// transient failure must NOT convert a normal turn into silence — it
 		// just means "don't suppress", matching the conservative contract and
 		// the fire-and-forget addressee handling above.
+		// Candidate suppression first (corroborated Stage-1 tag, or — when the
+		// tag is empty — the structural vocative check: a message that OPENS by
+		// addressing another participant by name, "hey eliza", is evidence the
+		// gate verifies itself, closing the fail-open interjection path, live
+		// 2026-08-22). The personality reply_gate override is consulted LAST and
+		// only on a positive, so turns with no gating signal never pay the
+		// personality-store lookup.
+		const suppressionCandidate = ambientTurn
+			? await (addressedTo.length > 0
+					? messageAddressedToOtherParticipant({
+							runtime: args.runtime,
+							message: args.message,
+							addressedTo,
+						})
+					: messageVocativelyAddressesOtherParticipant({
+							runtime: args.runtime,
+							message: args.message,
+						})
+				).catch((error) => {
+					// error-policy:J7 addressee-resolution diagnostics must not kill
+					// the message loop or suppress a response, but the required runtime
+					// error stream still owns the failure.
+					args.runtime.reportError("MessageService.resolveAddressees", error, {
+						roomId: args.message.roomId,
+					});
+					return false;
+				})
+			: false;
 		const addressedToOtherParticipant =
-			ambientTurn &&
-			addressedTo.length > 0 &&
-			resolveStage1ReplyGateMode(args.runtime, args.message) !== "always"
-				? await messageAddressedToOtherParticipant({
-						runtime: args.runtime,
-						message: args.message,
-						addressedTo,
-					}).catch((error) => {
-						// error-policy:J4 an unresolved addressee must not suppress a
-						// response, but the failed room lookup remains observable.
-						args.runtime.reportError(
-							"MessageService.resolveAddressees",
-							error,
-							{
-								roomId: args.message.roomId,
-							},
-						);
-						return false;
-					})
-				: false;
+			suppressionCandidate &&
+			resolveStage1ReplyGateMode(args.runtime, args.message) !== "always";
 		if (addressedToOtherParticipant) {
-			args.runtime.logger?.debug?.(
+			// warn, not debug: this gate converts a turn into TOTAL silence, and a
+			// silent non-delivery must be diagnosable from the server log (live
+			// 2026-08-22: four suppressed replies left zero log evidence).
+			args.runtime.logger?.warn?.(
 				{
 					src: "service:message",
 					roomId: args.message.roomId,
-					addressedToCount: addressedTo.length,
+					addressedTo,
 				},
 				"[message] Turn addressed to another participant — engagement gate ignores it",
 			);
@@ -8979,29 +8875,15 @@ export async function runV5MessageRuntimeStage1(args: {
 		// returning zero candidates → planner got no native tools → model narrated.
 		const useFullSurface = args.codingMode === true;
 		const plannerCandidateActions = useFullSurface
-			? (args.runtime.actions ?? []).filter(
-					(action) =>
-						// Full-surface = a trusted coding turn. It must NOT receive the
-						// whole chat action catalog (MESSAGE_*/POST_*/…) — 40 tools drowns
-						// the model and it never calls FILE. Instead treat the coding
-						// contexts (code/files/terminal/automation) as active and run the
-						// normal execution gates: that admits the coding tools
-						// (FILE/SHELL/WORKTREE, which gate on a coding context) plus
-						// context-free control actions (REPLY/STOP/…) and drops the
-						// messaging/social chat actions. Role still applies (FILE=ADMIN,
-						// SHELL=OWNER; the coding sub-agent runs as OWNER). UI/orchestration
-						// parents that pass the gate but a coder never needs are dropped
-						// too (see CODING_DIRECT_ACTIONS) to keep the request
-						// small enough for weaker hosted models to handle large builds.
-						CODING_DIRECT_ACTIONS.has(normalizeActionIdentifier(action.name)) &&
-						// Static candidate-action set for a coding sub-agent — no concrete
-						// turn message here, so skip the private-action gate; the eventual
-						// execution still enforces it through the executor.
-						canActionRun(action, {
-							activeContexts: CODING_SUB_AGENT_CONTEXTS,
-							userRoles: [senderRole],
-							skipPrivateGate: true,
-						}),
+			? (args.runtime.actions ?? []).filter((action) =>
+					// The execution gates are the authority for a focused coding turn.
+					// Names may rank tools but cannot form a second fixed allowlist that
+					// silently hides newly registered coding capabilities.
+					canActionRun(action, {
+						activeContexts: CODING_SUB_AGENT_CONTEXTS,
+						userRoles: [senderRole],
+						skipPrivateGate: true,
+					}),
 				)
 			: await collectV5PlannerCandidateActions({
 					runtime: args.runtime,
@@ -10247,6 +10129,7 @@ export async function runV5MessageRuntimeStage1(args: {
 			plannedTextRaw || effectiveReplyText,
 			actionResults,
 		);
+		const terminalFailure = plannerResult.terminalFailure;
 
 		return {
 			kind: "planned_reply",
@@ -10268,6 +10151,7 @@ export async function runV5MessageRuntimeStage1(args: {
 								? { effectReceiptIds: effectiveReplyReceiptIds }
 								: {}),
 							...(transcriptVisibility ? { transcriptVisibility } : {}),
+							...(terminalFailure ? { terminalFailure } : {}),
 						}),
 						...(actionResults.length > 0 ? { actionResults } : {}),
 					}
@@ -10276,6 +10160,7 @@ export async function runV5MessageRuntimeStage1(args: {
 						responseMessages: [],
 						state: finalPlannerState,
 						mode: "none",
+						...(terminalFailure ? { terminalFailure } : {}),
 						...(actionResults.length > 0 ? { actionResults } : {}),
 					},
 		};
@@ -14174,6 +14059,7 @@ export class DefaultMessageService implements IMessageService {
 			Array.from(persistedEarlyReplyIds, (id) => id as UUID),
 		);
 		let actionResults: ActionResult[] | undefined;
+		let terminalFailure: MessageTerminalFailure | undefined;
 		let mode: StrategyMode = "none";
 
 		if (shouldRespondToMessage) {
@@ -14201,6 +14087,7 @@ export class DefaultMessageService implements IMessageService {
 					: result.responseMessages;
 			state = result.state;
 			actionResults = result.actionResults;
+			terminalFailure = result.terminalFailure;
 			mode = result.mode;
 
 			// Race check before we send anything.
@@ -14700,6 +14587,7 @@ export class DefaultMessageService implements IMessageService {
 					}
 				: {}),
 			...(actionResults ? { actionResults } : {}),
+			...(terminalFailure ? { terminalFailure } : {}),
 			state,
 			mode,
 		};

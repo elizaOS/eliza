@@ -17,7 +17,7 @@
 import type { JsonObject, JsonValue } from "../types/primitives";
 import type { SurfaceCapability } from "../types/surface-manifest";
 
-export * from "./sandbox-factory";
+export * from "./remote-runner";
 
 export const CAPABILITY_ROUTER_SERVICE_TYPE = "capability-router" as const;
 

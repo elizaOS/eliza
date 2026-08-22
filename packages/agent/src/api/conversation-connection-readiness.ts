@@ -40,6 +40,7 @@ export interface ConversationConnectionDescriptor {
   readonly proofIdentity: string;
   readonly topologyGeneration: number;
   readonly roomGeneration: number;
+  readonly requestFence?: () => void;
 }
 
 interface InFlightConnectionEnsure {
@@ -366,6 +367,7 @@ export function captureConversationConnectionDescriptor(input: {
   callerEntityId: UUID;
   callerRole: BoundaryWorldRole;
   callerUserName: string;
+  requestFence?: () => void;
 }): ConversationConnectionDescriptor {
   const registry = getRegistry(input.runtime);
   const topologyIdentity = connectionTopologyIdentity({
@@ -409,6 +411,7 @@ export function captureConversationConnectionDescriptor(input: {
     proofIdentity,
     topologyGeneration: registry.topologyGeneration,
     roomGeneration: currentRoomGeneration(registry, input.roomId),
+    ...(input.requestFence ? { requestFence: input.requestFence } : {}),
   });
 }
 
@@ -448,8 +451,10 @@ export function scheduleConversationConnectionEnsure(
       },
       async () => {
         assertDescriptorCurrent(registry, descriptor);
+        descriptor.requestFence?.();
         try {
           await ensure();
+          descriptor.requestFence?.();
           assertDescriptorCurrent(registry, descriptor);
         } catch (error) {
           if (isConversationConnectionError(error)) {
@@ -577,6 +582,7 @@ export function assertConversationConnectionRuntime(
       severity: "ephemeral",
     });
   }
+  descriptor.requestFence?.();
   assertDescriptorCurrent(getRegistry(descriptor.runtime), descriptor);
 }
 

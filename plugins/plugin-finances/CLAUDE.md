@@ -56,8 +56,11 @@ and on `@elizaos/plugin-elizacloud` for the managed Plaid / PayPal clients.
 
 **Schema** (`financesSchema` = `pgSchema("app_finances")`, registered via the
 plugin `schema` field; the SQL plugin owns the migration runner)
-- `lifePaymentSources`, `lifePaymentTransactions`, `lifeSubscriptionAudits`,
-  `lifeSubscriptionCandidates`, `lifeSubscriptionCancellations`. Table NAMES are
+- `lifePaymentSources`, `lifePaymentSourceIdentities`,
+  `lifePaymentTransactions`, `lifeSubscriptionAudits`,
+  `lifeSubscriptionCandidates`, `lifeSubscriptionCancellations`.
+  `lifePaymentSourceIdentities` is the normalized, unique provider-connection
+  claim used to serialize concurrent Link completion. The five legacy table NAMES are
   preserved verbatim from the original LifeOps tables (`life_payment_*`,
   `life_subscription_*`) so the non-destructive copy migration
   (`FinancesMigrationService`) can move existing `app_lifeops` rows across.
@@ -82,7 +85,7 @@ src/
   actions/
     finances.ts                   runPaymentsHandler + OWNER_FINANCES param schema
   db/
-    schema.ts                     pgSchema("app_finances") + 5 finance tables
+    schema.ts                     pgSchema("app_finances") + finance tables
     sql.ts                        Self-contained raw-SQL helpers (runtime DB)
     finances-repository.ts        FinancesRepository (raw SQL over app_finances)
     index.ts                      re-exports schema.ts

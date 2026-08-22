@@ -11,7 +11,10 @@
  * keyboard never gets trapped in a group.
  */
 
-import type { LinkedAccountProviderId } from "@elizaos/shared";
+import {
+  codingProviderDescriptorForProvider,
+  type LinkedAccountProviderId,
+} from "@elizaos/shared";
 import { Search } from "lucide-react";
 import {
   type KeyboardEvent,
@@ -43,16 +46,30 @@ const CATEGORY_LABEL: Record<AccountProviderCategory, string> = {
 };
 
 /** One short capability line, not a pill row (kills the tag maze). */
-function capabilityLine(option: AccountProviderOption): string {
+export function capabilityLine(option: AccountProviderOption): string {
   if (option.unavailable) return "Not available to link here";
-  if (option.category === "chat") return "Chat, using your API key";
-  if (option.id === "anthropic-subscription")
-    return "Chat and coding agents, using browser login";
-  if (option.id === "gemini-cli") return "Coding agents, using CLI login";
-  const usesKey = option.id === "zai-coding" || option.id === "kimi-coding";
-  return usesKey
-    ? "Coding agents, using a plan key"
-    : "Coding agents, using browser login";
+  const descriptor = codingProviderDescriptorForProvider(option.id);
+  if (!descriptor || descriptor.authMode === "unavailable") {
+    return "Not available to link here";
+  }
+  const authentication =
+    descriptor.authMode === "oauth"
+      ? "browser login"
+      : descriptor.authMode === "external-cli"
+        ? "CLI login"
+        : descriptor.authMode === "coding-plan-key"
+          ? "a coding-plan key"
+          : "your API key";
+  if (descriptor.spawnSupport && descriptor.inferenceSupport) {
+    return `Model inference and coding agents, using ${authentication}`;
+  }
+  if (descriptor.spawnSupport) {
+    return `Coding agents, using ${authentication}`;
+  }
+  if (descriptor.inferenceSupport) {
+    return `Model inference, using ${authentication}; agent spawn unavailable`;
+  }
+  return "No model inference or coding-agent spawn support";
 }
 
 export function ProviderPicker({ onPick }: ProviderPickerProps) {

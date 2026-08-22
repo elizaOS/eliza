@@ -111,6 +111,7 @@ import type {
 	PlannerLoopResult,
 	PlannerRuntime,
 	PlannerStep,
+	PlannerTerminalFailure,
 	PlannerToolCall,
 	PlannerToolResult,
 	PlannerTrajectory,
@@ -434,6 +435,7 @@ async function runPlannerLoopIterations(
 	};
 	const failures: FailureLike[] = [];
 	let terminalOnlyContinuations = 0;
+	let codingVerificationDeferrals = 0;
 	let requiredToolMisses = 0;
 	let unavailableToolCallRetries = 0;
 	let silentFailedFinishRecoveries = 0;
@@ -519,6 +521,29 @@ async function runPlannerLoopIterations(
 		completionTokens: number;
 	}): void => {
 		params.onModelUsage?.(usage);
+	};
+	const stopAfterCodingVerificationDeferralLimit = async (
+		iteration: number,
+	): Promise<PlannerLoopResult | undefined> => {
+		codingVerificationDeferrals++;
+		if (codingVerificationDeferrals <= config.maxTerminalOnlyContinuations) {
+			return undefined;
+		}
+		params.runtime.logger?.warn?.(
+			{
+				iteration,
+				codingVerificationDeferrals,
+				maxTerminalOnlyContinuations: config.maxTerminalOnlyContinuations,
+			},
+			"[planner-loop] coding verification deferral limit reached; returning a typed unverified-mutation failure",
+		);
+		return finishWithForcedSynthesis({
+			loop: params,
+			config,
+			trajectory,
+			iteration,
+			onUsage: observePlannerUsage,
+		});
 	};
 	// Tracks the most recent planner output's *explicit* `messageToUser` so the
 	// post-tool evaluator gate can use it as the final response when the
@@ -1006,8 +1031,12 @@ async function runPlannerLoopIterations(
 						trajectory,
 						iteration,
 						redactDiagnosticText,
+						recordDiagnostic: codingVerificationDeferrals === 0,
 					})
 				) {
+					const limitResult =
+						await stopAfterCodingVerificationDeferralLimit(iteration);
+					if (limitResult) return limitResult;
 					continue;
 				}
 				if (trajectory.steps.some((step) => step.toolCall)) {
@@ -1265,8 +1294,12 @@ async function runPlannerLoopIterations(
 						trajectory,
 						iteration,
 						redactDiagnosticText,
+						recordDiagnostic: codingVerificationDeferrals === 0,
 					})
 				) {
+					const limitResult =
+						await stopAfterCodingVerificationDeferralLimit(iteration);
+					if (limitResult) return limitResult;
 					continue;
 				}
 				// The messageToUser fallback applies only when a REPLY call is
@@ -1344,25 +1377,43 @@ async function runPlannerLoopIterations(
 						logger: params.runtime.logger,
 					});
 				}
+				const resolvedFinalMessage = terminalFollowsFailedTool
+					? hasReplyCall
+						? userSafeFinalMessage(terminalReplyMessage, trajectory)
+						: undefined
+					: pendingInteraction && hasReplyCall
+						? userSafeFinalMessage(terminalReplyMessage, trajectory)
+						: userSafeFinalMessage(
+								codingDrainQueue
+									? codingFinalMessage(trajectory, finalMessage)
+									: preferredFinalMessageFromToolOrModel(
+											trajectory,
+											finalMessage,
+										),
+								trajectory,
+							);
+				const terminalFailure =
+					trajectory.codingMode === true &&
+					terminalFollowsFailedTool &&
+					latestNonTerminalStep
+						? codingToolTerminalFailure(
+								latestNonTerminalStep,
+								resolvedFinalMessage ??
+									userSafeFinalMessage(
+										terminalMessageWithFailureAuthority(
+											trajectory,
+											finalMessage,
+										),
+										trajectory,
+									),
+							)
+						: undefined;
 				return {
 					status: "finished",
 					trajectory,
 					evaluator: terminalEvaluator,
-					finalMessage: terminalFollowsFailedTool
-						? hasReplyCall
-							? userSafeFinalMessage(terminalReplyMessage, trajectory)
-							: undefined
-						: pendingInteraction && hasReplyCall
-							? userSafeFinalMessage(terminalReplyMessage, trajectory)
-							: userSafeFinalMessage(
-									codingDrainQueue
-										? codingFinalMessage(trajectory, finalMessage)
-										: preferredFinalMessageFromToolOrModel(
-												trajectory,
-												finalMessage,
-											),
-									trajectory,
-								),
+					finalMessage: resolvedFinalMessage,
+					...(terminalFailure ? { terminalFailure } : {}),
 					// STOP/IGNORE-only terminals chose silence; a textless REPLY did
 					// not (the model tried to answer and failed to carry text).
 					// The silent terminal's name travels with the result so the
@@ -3738,29 +3789,32 @@ function deferCodingCompletionUntilMutationVerified(args: {
 	trajectory: PlannerTrajectory;
 	iteration: number;
 	redactDiagnosticText?: ToolDiagnosticTextRedactor;
+	recordDiagnostic?: boolean;
 }): boolean {
 	if (!codingMutationRequiresVerification(args.trajectory)) return false;
 
-	const evaluator: EvaluatorOutput = {
-		success: false,
-		decision: "CONTINUE",
-		thought:
-			"A successful WRITE or EDIT has not been followed by a successful SHELL verification.",
-		messageToUser:
-			"Run the narrowest relevant test, typecheck, lint, build, or diff check with SHELL before finishing.",
-	};
-	args.trajectory.evaluatorOutputs.push(
-		projectToolDiagnosticValue(
+	if (args.recordDiagnostic !== false) {
+		const evaluator: EvaluatorOutput = {
+			success: false,
+			decision: "CONTINUE",
+			thought:
+				"A successful WRITE or EDIT has not been followed by a successful SHELL verification.",
+			messageToUser:
+				"Run the narrowest relevant test, typecheck, lint, build, or diff check with SHELL before finishing.",
+		};
+		args.trajectory.evaluatorOutputs.push(
+			projectToolDiagnosticValue(
+				evaluator,
+				args.redactDiagnosticText ?? composeToolDiagnosticRedactor(),
+			) as EvaluatorOutput,
+		);
+		appendEvaluatorContextEvent(
+			args.trajectory,
 			evaluator,
-			args.redactDiagnosticText ?? composeToolDiagnosticRedactor(),
-		) as EvaluatorOutput,
-	);
-	appendEvaluatorContextEvent(
-		args.trajectory,
-		evaluator,
-		args.iteration,
-		args.redactDiagnosticText,
-	);
+			args.iteration,
+			args.redactDiagnosticText,
+		);
+	}
 	args.trajectory.plannedQueue.length = 0;
 	return true;
 }
@@ -3773,8 +3827,30 @@ function codingMutationRequiresVerification(
 	for (let index = 0; index < steps.length; index++) {
 		const step = steps[index];
 		const name = step?.toolCall?.name.toUpperCase();
+		const fileMutation =
+			name === "FILE" &&
+			[
+				"write",
+				"edit",
+				"create",
+				"delete",
+				"move",
+				"copy",
+				"mkdir",
+				"touch",
+			].includes(
+				String(
+					(step.toolCall?.params as Record<string, unknown> | undefined)
+						?.action ??
+						(step.toolCall?.params as Record<string, unknown> | undefined)
+							?.operation ??
+						"",
+				)
+					.trim()
+					.toLowerCase(),
+			);
 		if (
-			(name === "WRITE" || name === "EDIT") &&
+			(name === "WRITE" || name === "EDIT" || fileMutation) &&
 			step.result?.success === true
 		) {
 			latestMutationIndex = index;
@@ -3784,12 +3860,130 @@ function codingMutationRequiresVerification(
 
 	const verified = steps
 		.slice(latestMutationIndex + 1)
-		.some(
-			(step) =>
-				step.toolCall?.name.toUpperCase() === "SHELL" &&
-				step.result?.success === true,
-		);
+		.some((step) => isSuccessfulCodingVerificationStep(step));
 	return !verified;
+}
+
+/**
+ * Distinguishes a command that checks the changed program from a successful
+ * inspection command. A post-edit `grep`, `ls`, or `git status` proves only
+ * that the shell works; accepting it as verification lets a coding agent stop
+ * with syntax errors. The command families below are intentionally narrow and
+ * provider-independent. Tool implementations may additionally stamp the
+ * result with `verificationEvidence: true` when they have stronger typed
+ * evidence than command shape alone.
+ */
+function isSuccessfulCodingVerificationStep(step: PlannerStep): boolean {
+	if (
+		step.toolCall?.name.toUpperCase() !== "SHELL" ||
+		step.result?.success !== true
+	) {
+		return false;
+	}
+	if (
+		(step.result.data as { verificationEvidence?: unknown } | undefined)
+			?.verificationEvidence === true
+	) {
+		return true;
+	}
+	const command = shellCommandParam(step.toolCall);
+	if (!command) return false;
+	const segments = splitSafeShellVerificationChain(command);
+	// The SHELL result exposes only the aggregate exit status. A foreground `&&`
+	// chain preserves verifier failure, but pipelines, background jobs, `||`, and
+	// sequential commands can mask it and therefore cannot serve as evidence.
+	if (!segments) return false;
+	const verificationPatterns = [
+		/^bun\s+(?:run\s+)?(?:(?:--cwd|-C)\s+\S+\s+)?(?:test|verify|check|lint|typecheck|build)(?:\s|$)/i,
+		/^npm\s+(?:test|(?:run|run-script)\s+(?:test|verify|check|lint|typecheck|build))(?:\s|$)/i,
+		/^(?:pnpm|yarn)\s+(?:run\s+)?(?:test|verify|check|lint|typecheck|build)(?:\s|$)/i,
+		/^(?:npm|pnpm)\s+exec\s+(?:vitest|jest|eslint|biome|tsc)(?:\s|$)/i,
+		/^(?:npx|bunx)\s+(?:--yes\s+)?(?:vitest|jest|eslint|biome|tsc)(?:\s|$)/i,
+		/^deno\s+(?:test|check|task\s+(?:test|verify|check|lint|typecheck|build))(?:\s|$)/i,
+		/^(?:vitest|jest|pytest|rspec|phpunit|mocha|ava)(?:\s|$)/i,
+		/^(?:uv|poetry)\s+run\s+(?:(?:python\d*\s+-m\s+)?pytest|ruff|mypy)(?:\s|$)/i,
+		/^bundle\s+exec\s+rspec(?:\s|$)/i,
+		/^go\s+(?:test|vet|build)(?:\s|$)/i,
+		/^cargo\s+(?:test|check|clippy|build|nextest\s+run)(?:\s|$)/i,
+		/^(?:dotnet\s+test|(?:mvn|\.\/mvnw)\s+(?:test|verify)|gradle\w*\s+(?:test|check|build)|(?:\.\/)?gradlew\s+(?:(?:\S*:)?(?:test|check|build)\w*))(?:\s|$)/i,
+		/^(?:swift|mix)\s+test(?:\s|$)/i,
+		/^tox(?:\s|$)/i,
+		/^(?:make|just)(?:\s+[^\s;&|]+)*\s+(?:test|verify|check|lint|typecheck|build)(?:\s|$)/i,
+		/^(?:tsc|eslint|biome)(?:\s|$)/i,
+		/^(?:python\d*\s+-m\s+(?:pytest|unittest|compileall|py_compile)|ruby\s+-c|bash\s+-n|node\s+--check)(?:\s|$)/i,
+	];
+	return segments.some((segment) => {
+		const commandSegment = stripShellVerificationPrefix(segment);
+		if (isNoopShellVerificationCommand(commandSegment)) return false;
+		return verificationPatterns.some((pattern) => pattern.test(commandSegment));
+	});
+}
+
+function isNoopShellVerificationCommand(command: string): boolean {
+	return (
+		/(?:^|\s)["']?(?:--help|-h|--version|--list|--listTests|--collect-only|--co|--dry-run|--no-run|--showConfig)["']?(?:=|\s|$)/i.test(
+			command,
+		) || /(?:^|\s)["']?-V["']?(?:\s|$)/.test(command)
+	);
+}
+
+/**
+ * Parses the only untyped compound command whose aggregate zero exit status
+ * proves every verifier ran successfully: a foreground `&&` chain. Shell
+ * redirections containing `&` are retained inside their command. Every other
+ * unquoted control operator is rejected because it can hide, defer, or replace
+ * the verifier exit status.
+ */
+function splitSafeShellVerificationChain(command: string): string[] | null {
+	const segments: string[] = [];
+	let start = 0;
+	let quote: "'" | '"' | undefined;
+	let escaped = false;
+	for (let index = 0; index < command.length; index++) {
+		const character = command[index];
+		if (escaped) {
+			escaped = false;
+			continue;
+		}
+		if (character === "\\" && quote !== "'") {
+			escaped = true;
+			continue;
+		}
+		if (character === "'" || character === '"') {
+			quote = quote === character ? undefined : (quote ?? character);
+			continue;
+		}
+		if (quote) continue;
+		if (character === ";" || character === "|" || character === "\n") {
+			return null;
+		}
+		if (character === "&") {
+			if (command[index - 1] === ">" || command[index + 1] === ">") {
+				continue;
+			}
+			if (command[index + 1] !== "&") return null;
+			const segment = command.slice(start, index).trim();
+			if (!segment) return null;
+			segments.push(segment);
+			index++;
+			start = index + 1;
+		}
+	}
+	const tail = command.slice(start).trim();
+	if (!tail) return null;
+	segments.push(tail);
+	return segments;
+}
+
+function stripShellVerificationPrefix(segment: string): string {
+	let command = segment.trim();
+	if (/^env(?:\s|$)/i.test(command)) {
+		command = command.replace(/^env\s+/i, "");
+	}
+	while (/^[A-Za-z_][A-Za-z0-9_]*=\S+\s+/.test(command)) {
+		command = command.replace(/^[A-Za-z_][A-Za-z0-9_]*=\S+\s+/, "");
+	}
+	return command;
 }
 
 function getToolDefinitionName(tool: ToolDefinition): string | undefined {
@@ -4025,6 +4219,25 @@ function terminalMessageWithFailureAuthority(
 	);
 	if (successEvidence.length === 0) return failureNote;
 	return `${failureNote}\n\nWork that did complete: ${successEvidence.join(" ")}`;
+}
+
+function codingToolTerminalFailure(
+	failedStep: PlannerStep,
+	message: string | undefined,
+): PlannerTerminalFailure {
+	const provenance = failedStep.result?.failureProvenance;
+	const retryableMarker = failedStep.result?.data?.retryable;
+	return {
+		kind: provenance?.kind ?? "coding_tool_failure",
+		...(provenance?.code ? { code: provenance.code } : {}),
+		transient:
+			provenance?.retryable ??
+			(typeof retryableMarker === "boolean" ? retryableMarker : false),
+		message:
+			message ??
+			groundedFailedToolMessage(failedStep) ??
+			"A required coding tool failed before the task could complete.",
+	};
 }
 
 /**
@@ -4446,6 +4659,11 @@ async function finishWithForcedSynthesis(params: {
 			trajectory,
 			evaluator,
 			finalMessage: message,
+			terminalFailure: {
+				kind: "coding_mutation_unverified",
+				transient: false,
+				message,
+			},
 		};
 	}
 	trajectory.context = appendContextEvent(trajectory.context, {

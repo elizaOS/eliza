@@ -326,11 +326,11 @@ export type IdentityPersonLinkVerification =
 			reason: "no_attestation";
 	  };
 
-/** Single runtime authority for identity reads and reversible mutations. */
-export abstract class IdentityResolutionService extends Service {
-	static override readonly serviceType = ServiceType.IDENTITY_RESOLUTION;
+/** Single runtime authority for principals and every identity mutation. */
+export abstract class PrincipalService extends Service {
+	static override readonly serviceType = ServiceType.PRINCIPAL;
 	public readonly capabilityDescription =
-		"Resolves canonical principals and performs reversible identity mutations.";
+		"Owns principals, identity evidence, and reversible identity mutations.";
 
 	abstract resolveCanonicalPrincipal(
 		agentId: UUID,

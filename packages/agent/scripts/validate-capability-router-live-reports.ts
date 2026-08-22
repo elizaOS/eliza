@@ -68,7 +68,6 @@ const EMPTY_SHA256 =
   "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
 
 const CANONICAL_PROVIDER_ENDPOINT_RUNTIMES = new Map([
-  ["e2b", "e2b-sandbox"],
   ["home-machine", "home-machine"],
   ["mobile-companion", "mobile-companion"],
   ["desktop-companion", "desktop-companion"],
