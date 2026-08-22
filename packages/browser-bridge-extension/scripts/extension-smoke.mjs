@@ -571,7 +571,7 @@ async function runPopupBootScenario(chromium) {
   }
 }
 
-async function runManualPairAndSyncScenario(chromium) {
+async function runPairAndSyncScenario(chromium) {
   const mockServer = await startMockAgentServer();
   const session = await launchExtensionContext(chromium);
   const appPage = await session.context.newPage();
@@ -581,15 +581,23 @@ async function runManualPairAndSyncScenario(chromium) {
 
   try {
     await waitForPopupSettled(popupPage);
-    await popupPage.click("#primaryAction");
-    await popupPage.waitForFunction(
-      () =>
-        document.querySelector("#details")?.open === true &&
-        document.querySelector("#recovery")?.open === true,
-    );
-    await popupPage.fill(
-      "#pairingJson",
-      JSON.stringify({
+    await popupPage.evaluate(
+      async (config) => {
+        const saved = await chrome.runtime.sendMessage({
+          type: "browser-bridge:save-config",
+          config,
+        });
+        if (!saved?.ok) {
+          throw new Error(saved?.error ?? "pairing setup failed");
+        }
+        const synced = await chrome.runtime.sendMessage({
+          type: "browser-bridge:sync-now",
+        });
+        if (!synced?.ok) {
+          throw new Error(synced?.error ?? "pairing sync failed");
+        }
+      },
+      {
         apiBaseUrl: mockServer.origin,
         companionId: "companion-smoke-test",
         pairingToken: "lobr_smoke_pairing_token",
@@ -597,9 +605,18 @@ async function runManualPairAndSyncScenario(chromium) {
         profileId: "default",
         profileLabel: "Default",
         label: "Agent Browser Bridge smoke",
-      }),
+      },
     );
-    await popupPage.click("#importPairing");
+    await popupPage.reload();
+    await waitForPopupSettled(popupPage);
+    const setupState = await popupPage.evaluate(async () =>
+      chrome.runtime.sendMessage({ type: "browser-bridge:get-state" }),
+    );
+    if (setupState?.state?.lastError && !setupState.state.settings) {
+      throw new Error(
+        `Browser pairing setup failed: ${setupState.state.lastError}`,
+      );
+    }
     await waitForPopupText(popupPage, "#statusTitle", "Connected", 20_000);
     if (exerciseSiteAccess) {
       await waitForPopupText(
@@ -617,7 +634,18 @@ async function runManualPairAndSyncScenario(chromium) {
       );
       await saveScreenshot(popupPage, "chrome-website-access-granted");
     }
-    await waitForPopupText(popupPage, "#appValue", mockServer.origin, 10_000);
+    const compactPopup = await popupPage.evaluate(
+      (apiOrigin) => ({
+        hasDiagnostics: document.querySelector("dl") !== null,
+        exposesApiOrigin:
+          document.body.textContent?.includes(apiOrigin) ?? false,
+      }),
+      mockServer.origin,
+    );
+    if (compactPopup.hasDiagnostics || compactPopup.exposesApiOrigin) {
+      throw new Error("Chrome popup exposed removed connection diagnostics.");
+    }
+    await saveScreenshot(popupPage, "chrome-pair-and-sync-success");
 
     const syncRequests = mockServer.requests.filter(
       (request) =>
@@ -697,7 +725,19 @@ async function runManualPairAndSyncScenario(chromium) {
 
     if (exerciseSiteAccess) {
       const blockedTarget = `${mockServer.origin.replace("127.0.0.1", "localhost")}/blocked-target`;
-      await appPage.goto(blockedTarget);
+      try {
+        await appPage.goto(blockedTarget);
+      } catch (error) {
+        // error-policy:J4 Chromium may surface the DNR interception as
+        // ERR_BLOCKED_BY_CLIENT even while committing the extension redirect.
+        // Only that exact browser-owned signal is expected here.
+        if (
+          !(error instanceof Error) ||
+          !error.message.includes("ERR_BLOCKED_BY_CLIENT")
+        ) {
+          throw error;
+        }
+      }
       await appPage.waitForURL(
         (url) =>
           url.protocol === "chrome-extension:" &&
@@ -722,7 +762,7 @@ async function runManualPairAndSyncScenario(chromium) {
       await saveScreenshot(appPage, "chrome-blocked-page-success");
     }
   } catch (error) {
-    await saveFailureScreenshot(popupPage, "manual-pair-and-sync-failure");
+    await saveFailureScreenshot(popupPage, "pair-and-sync-failure");
     throw error;
   } finally {
     try {
@@ -743,7 +783,7 @@ async function main() {
   await ensureChromeBuild();
   const { chromium } = await loadPlaywright();
   await runPopupBootScenario(chromium);
-  await runManualPairAndSyncScenario(chromium);
+  await runPairAndSyncScenario(chromium);
   console.log("Agent Browser Bridge extension smoke checks passed.");
 }
 

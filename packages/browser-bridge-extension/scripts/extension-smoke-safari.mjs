@@ -336,26 +336,18 @@ async function openSafariUrl(url, inNewTab = false) {
 async function readSafariFrontTabState() {
   const raw = await runAppleScript(`
     tell application "${safariAppName}"
-      set payload to do JavaScript "JSON.stringify({ title: document.querySelector('#statusTitle')?.textContent ?? document.title ?? '', button: document.querySelector('#primaryAction')?.textContent ?? '', app: document.querySelector('#appValue')?.textContent ?? '' })" in current tab of front window
+      set payload to do JavaScript "JSON.stringify({ title: document.querySelector('#statusTitle')?.textContent ?? document.title ?? '', button: document.querySelector('#primaryAction')?.textContent ?? '', hasDiagnostics: document.querySelector('dl') !== null })" in current tab of front window
       return payload
     end tell
   `);
   return JSON.parse(raw || "{}");
 }
 
-async function clickSafariPopupPrimaryButton() {
-  await runAppleScript(`
-    tell application "${safariAppName}"
-      do JavaScript "document.querySelector('#primaryAction')?.click();" in current tab of front window
-    end tell
-  `);
-}
-
 async function importSafariPairing(config) {
   const encodedConfig = Buffer.from(JSON.stringify(config), "utf8").toString(
     "base64",
   );
-  const javascript = `document.querySelector('#details').open = true; document.querySelector('#recovery').open = true; document.querySelector('#pairingJson').value = atob('${encodedConfig}'); document.querySelector('#importPairing').click();`;
+  const javascript = `chrome.runtime.sendMessage({ type: 'browser-bridge:save-config', config: JSON.parse(atob('${encodedConfig}')) }, () => chrome.runtime.sendMessage({ type: 'browser-bridge:sync-now' }, () => location.reload()));`;
   const escapedJavascript = javascript
     .replace(/\\/g, "\\\\")
     .replace(/"/g, '\\"');
@@ -550,12 +542,9 @@ export async function main() {
       label: "Agent Browser Bridge Safari smoke",
     });
     await waitForSafariPopup(
-      (state) => String(state.button ?? "").includes("Sync This Browser"),
-      20_000,
-    );
-    await clickSafariPopupPrimaryButton();
-    await waitForSafariPopup(
-      (state) => String(state.title ?? "").includes("connected to Eliza"),
+      (state) =>
+        String(state.title ?? "").includes("Connected to Eliza") &&
+        state.hasDiagnostics === false,
       20_000,
     );
     if (

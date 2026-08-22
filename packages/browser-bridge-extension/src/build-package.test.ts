@@ -30,10 +30,10 @@ type BuiltManifest = {
   web_accessible_resources: Array<{
     resources: string[];
     matches: string[];
-    use_dynamic_url?: boolean;
   }>;
   content_security_policy: { extension_pages: string };
   background: { service_worker?: string; scripts?: string[] };
+  key?: string;
   browser_specific_settings?: {
     gecko?: { id?: string };
   };
@@ -80,10 +80,7 @@ describe("cross-browser extension build", () => {
     const chrome = await readManifest("chrome");
     const firefox = await readManifest("firefox");
 
-    for (const [kind, manifest] of [
-      ["chrome", chrome],
-      ["firefox", firefox],
-    ] as const) {
+    for (const manifest of [chrome, firefox]) {
       expect(manifest.manifest_version).toBe(3);
       expect(manifest.host_permissions).not.toContain("<all_urls>");
       expect(manifest.host_permissions).toEqual([
@@ -97,6 +94,7 @@ describe("cross-browser extension build", () => {
       expect(manifest.permissions).toContain(
         "declarativeNetRequestWithHostAccess",
       );
+      expect(manifest.permissions).toContain("nativeMessaging");
       expect(manifest.permissions).not.toContain("declarativeNetRequest");
       expect(manifest.content_security_policy.extension_pages).toBe(
         "script-src 'self'; object-src 'self'",
@@ -114,17 +112,40 @@ describe("cross-browser extension build", () => {
         {
           resources: ["blocked.html", "blocked.js"],
           matches: ["http://*/*", "https://*/*"],
-          ...(kind === "chrome" ? { use_dynamic_url: true } : {}),
         },
       ]);
     }
 
     expect(chrome.background).toEqual({ service_worker: "background.js" });
+    expect(chrome.key).toMatch(/^MIIB/);
     expect(chrome.browser_specific_settings).toBeUndefined();
     expect(firefox.background).toEqual({ scripts: ["background.js"] });
     expect(firefox.browser_specific_settings?.gecko?.id).toBe(
       "browser-bridge@elizaos.ai",
     );
+
+    const chromeBackground = await fs.readFile(
+      path.join(packageRoot, "dist", "chrome", "background.js"),
+      "utf8",
+    );
+    expect(chromeBackground).not.toContain("browserBridgePairingGuideSeen");
+    expect(chromeBackground).not.toContain('getExtensionUrl("popup.html")');
+    expect(chromeBackground).toContain("browser-bridge:owner-reconnect");
+    expect(chromeBackground).not.toContain("forceNativeEnrollment");
+    expect(chromeBackground).toContain("app_not_authenticated");
+    const [popupHtml, popupScript] = await Promise.all([
+      fs.readFile(
+        path.join(packageRoot, "dist", "chrome", "popup.html"),
+        "utf8",
+      ),
+      fs.readFile(path.join(packageRoot, "dist", "chrome", "popup.js"), "utf8"),
+    ]);
+    expect(popupHtml).not.toContain("<dl");
+    expect(popupHtml).not.toContain('id="appValue"');
+    expect(popupScript).not.toContain("discoverAgentApiBaseUrl");
+    expect(popupScript).not.toContain("/api/status");
+    expect(popupScript).toContain("browser-bridge:owner-reconnect");
+    expect(popupScript).toContain("Sign in to Eliza");
   }, 30_000);
 
   it("creates byte-identical root-layout archives on repeated packaging", async () => {
@@ -170,5 +191,40 @@ describe("cross-browser extension build", () => {
       rootName: "Test.app",
     });
     expect(first.sha256).toBe(second.sha256);
+  });
+
+  it("generates store metadata that describes native enrollment as the primary flow", async () => {
+    await run(
+      "bun",
+      [path.join(packageRoot, "scripts", "package-store-assets.mjs")],
+      {
+        cwd: packageRoot,
+        stdio: "pipe",
+      },
+    );
+    const artifacts = path.join(packageRoot, "dist", "artifacts");
+    const [chrome, firefox, safari, checklist] = await Promise.all([
+      fs.readFile(
+        path.join(artifacts, "browser-bridge-chrome-store-metadata.json"),
+        "utf8",
+      ),
+      fs.readFile(
+        path.join(artifacts, "browser-bridge-firefox-store-metadata.json"),
+        "utf8",
+      ),
+      fs.readFile(
+        path.join(artifacts, "browser-bridge-safari-store-metadata.json"),
+        "utf8",
+      ),
+      fs.readFile(
+        path.join(artifacts, "browser-bridge-store-checklist.md"),
+        "utf8",
+      ),
+    ]);
+    for (const metadata of [chrome, firefox, safari, checklist]) {
+      expect(metadata).toMatch(/automatic|automatically|native enrollment/i);
+      expect(metadata).toMatch(/recovery/i);
+      expect(metadata).not.toMatch(/pairing json/i);
+    }
   });
 });

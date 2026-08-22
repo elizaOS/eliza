@@ -5,6 +5,11 @@
  * http://127.0.0.1:31337). Remote relay origins require explicit manual
  * pairing and never participate in trust-on-first-use discovery.
  */
+
+import type {
+  NativeEnrollmentState,
+  NativeEnrollmentSuppressionReason,
+} from "./native-enrollment";
 import type { BackgroundState, CompanionConfig } from "./protocol";
 import {
   type ExtensionTab,
@@ -17,6 +22,7 @@ import {
 const CONFIG_KEY = "browserBridgeCompanionConfig";
 const STATE_KEY = "browserBridgeBackgroundState";
 const PROFILE_ID_KEY = "browserBridgeExtensionProfileId";
+const NATIVE_ENROLLMENT_STATE_KEY = "browserBridgeNativeEnrollmentState";
 export const DEFAULT_BROWSER_BRIDGE_API_BASE_URL = "http://127.0.0.1:31337";
 const LOOPBACK_DISCOVERY_CANDIDATES = [
   "http://127.0.0.1:2138",
@@ -24,6 +30,8 @@ const LOOPBACK_DISCOVERY_CANDIDATES = [
   "http://localhost:2138",
   "http://localhost:31337",
 ] as const;
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 function normalizeString(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
@@ -293,8 +301,16 @@ export async function getOrCreateExtensionProfileId(
   },
 ): Promise<string> {
   const existing = normalizeString(await store.get());
-  if (existing) return existing;
-  const generated = `extension-profile-${crypto.randomUUID()}`;
+  if (UUID_PATTERN.test(existing)) return existing.toLowerCase();
+  const migrated = existing.startsWith("extension-profile-")
+    ? existing.slice("extension-profile-".length)
+    : "";
+  if (UUID_PATTERN.test(migrated)) {
+    const normalized = migrated.toLowerCase();
+    await store.set(normalized);
+    return normalized;
+  }
+  const generated = crypto.randomUUID();
   await store.set(generated);
   return generated;
 }
@@ -323,12 +339,74 @@ export async function saveCompanionConfig(
   if (!normalized) {
     return null;
   }
+  return await persistCompanionConfig(normalized);
+}
+
+/** Persists an already validated broker-issued config without rediscovery. */
+export async function persistCompanionConfig(
+  config: CompanionConfig,
+): Promise<CompanionConfig | null> {
+  const normalized = normalizeCompanionConfig(config);
+  if (!normalized) return null;
   await storageSet({ [CONFIG_KEY]: normalized });
   return normalized;
 }
 
 export async function clearCompanionConfig(): Promise<void> {
   await storageRemove(CONFIG_KEY);
+}
+
+export async function loadNativeEnrollmentState(): Promise<NativeEnrollmentState> {
+  const stored = await storageGet<Partial<NativeEnrollmentState>>(
+    NATIVE_ENROLLMENT_STATE_KEY,
+  );
+  const failures = stored?.consecutiveFailures;
+  const nextAttemptAt = normalizeIsoString(stored?.nextAttemptAt);
+  const lastFailureCode = normalizeString(stored?.lastFailureCode) || null;
+  const suppressedReason =
+    stored?.suppressedReason === "owner_disconnected" ||
+    stored?.suppressedReason === "companion_revoked" ||
+    stored?.suppressedReason === "credential_invalid"
+      ? stored.suppressedReason
+      : null;
+  return {
+    consecutiveFailures:
+      typeof failures === "number" &&
+      Number.isSafeInteger(failures) &&
+      failures >= 0 &&
+      failures <= 32
+        ? failures
+        : 0,
+    nextAttemptAt,
+    lastFailureCode,
+    suppressedReason,
+  };
+}
+
+export async function saveNativeEnrollmentState(
+  state: NativeEnrollmentState,
+): Promise<void> {
+  await storageSet({ [NATIVE_ENROLLMENT_STATE_KEY]: state });
+}
+
+export async function suppressNativeEnrollment(
+  reason: NativeEnrollmentSuppressionReason,
+): Promise<void> {
+  const state = await loadNativeEnrollmentState();
+  await saveNativeEnrollmentState({
+    ...state,
+    nextAttemptAt: null,
+    suppressedReason: reason,
+  });
+}
+
+export async function resetNativeEnrollmentState(): Promise<void> {
+  await saveNativeEnrollmentState({
+    consecutiveFailures: 0,
+    nextAttemptAt: null,
+    lastFailureCode: null,
+    suppressedReason: null,
+  });
 }
 
 export async function loadBackgroundState(): Promise<BackgroundState | null> {

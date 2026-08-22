@@ -85,6 +85,22 @@ regexes = [
   '''capacity-proposal-key-1''',
 ]
 
+# Chrome derives an unpacked extension's stable ID from this public RSA
+# verification key. It is intentionally shipped in the manifest and cannot
+# authenticate or sign an extension; the corresponding private signing key is
+# never stored in this repository. Scope the exception to the named field in
+# the one identity file so every other value remains scanned.
+[[allowlists]]
+description = "Browser bridge public Chrome development manifest identity key"
+condition = "AND"
+paths = [
+  '''(^|/)packages/browser-bridge-extension/identity\.json$''',
+]
+regexTarget = "line"
+regexes = [
+  '''"chrome(Dev)?ManifestKey"\s*:\s*"MIIB[A-Za-z0-9+/=]+"''',
+]
+
 # Token-info uses the public USDC mainnet contract address as a deterministic
 # lookup key for a mocked DexScreener response. The generic-api-key rule keys on
 # the TOKEN_ADDRESS identifier even though Ethereum contract addresses are

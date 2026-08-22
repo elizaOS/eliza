@@ -8,6 +8,7 @@
 import { createHash } from "node:crypto";
 import fsSync from "node:fs";
 import fs from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { unzipSync } from "fflate";
@@ -73,13 +74,17 @@ async function waitForFirefoxAction(page, requests, timeout = 30_000) {
   );
 }
 
-async function saveFailureScreenshot(page) {
+async function saveScreenshot(page, name) {
   await fs.mkdir(resultsDir, { recursive: true });
+  await page.screenshot({
+    path: path.join(resultsDir, `${name}.png`),
+    fullPage: true,
+  });
+}
+
+async function saveFailureScreenshot(page) {
   try {
-    await page.screenshot({
-      path: path.join(resultsDir, "firefox-manual-pair-and-sync.png"),
-      fullPage: true,
-    });
+    await saveScreenshot(page, "firefox-pair-and-sync-failure");
   } catch (error) {
     // error-policy:J6 Failure capture must not replace the owning smoke error.
     console.warn(
@@ -95,7 +100,7 @@ async function waitForInstalledPairingGuide(browser, timeout = 20_000) {
       try {
         if (
           (await page.title()) === "Eliza Browser" &&
-          (await page.$("#pairingJson"))
+          (await page.$("#statusTitle"))
         ) {
           return page;
         }
@@ -107,21 +112,70 @@ async function waitForInstalledPairingGuide(browser, timeout = 20_000) {
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
   throw new Error(
-    "Firefox did not open the installed extension pairing guide within 20 seconds",
+    "Firefox did not open the requested extension popup within 20 seconds",
   );
+}
+
+async function resolveFirefoxExtensionOrigin(profileDirectory, extensionId) {
+  const deadline = Date.now() + 10_000;
+  while (Date.now() < deadline) {
+    try {
+      const preferences = await fs.readFile(
+        path.join(profileDirectory, "prefs.js"),
+        "utf8",
+      );
+      const match = preferences.match(
+        /^user_pref\("extensions\.webextensions\.uuids",\s*(.+)\);$/m,
+      );
+      if (match) {
+        const mapping = JSON.parse(JSON.parse(match[1]));
+        const uuid = mapping?.[extensionId];
+        if (typeof uuid === "string" && uuid.length > 0) {
+          return `moz-extension://${uuid}`;
+        }
+      }
+    } catch {
+      // error-policy:J4 Firefox may not have flushed its profile preferences
+      // immediately after install; the bounded poll owns the final failure.
+    }
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  throw new Error("Firefox did not persist the installed extension UUID.");
+}
+
+async function openInstalledFirefoxPopup(
+  executablePath,
+  profileDirectory,
+  extensionId,
+) {
+  const origin = await resolveFirefoxExtensionOrigin(
+    profileDirectory,
+    extensionId,
+  );
+  await run(executablePath, [
+    "--profile",
+    profileDirectory,
+    "--new-tab",
+    `${origin}/popup.html`,
+  ]);
 }
 
 async function runInstalledFirefoxSmoke() {
   const mockServer = await startMockAgentServer();
+  const profileDirectory = await fs.mkdtemp(
+    path.join(os.tmpdir(), "browser-bridge-firefox-smoke-"),
+  );
+  const executablePath = resolveFirefoxExecutable();
   let browser = null;
   let appPage = null;
   try {
     browser = await puppeteer.launch({
       browser: "firefox",
-      executablePath: resolveFirefoxExecutable(),
+      executablePath,
       headless: true,
       protocol: "webDriverBiDi",
       timeout: 45_000,
+      userDataDir: profileDirectory,
     });
     const version = await browser.version();
     if (!version.toLowerCase().startsWith("firefox/")) {
@@ -137,14 +191,23 @@ async function runInstalledFirefoxSmoke() {
         `Firefox installed unexpected extension ID ${extensionId}`,
       );
     }
-    // Firefox 153's BiDi implementation reports an extension-created tab as
-    // about:blank even though its extension document is loaded. Identify the
-    // installed guide by its real DOM rather than a stale protocol URL.
-    const popupPage = await waitForInstalledPairingGuide(browser);
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    for (const page of await browser.pages()) {
+      if ((await page.title()) === "Eliza Browser") {
+        throw new Error("Firefox install unexpectedly opened the popup.");
+      }
+    }
+    await openInstalledFirefoxPopup(
+      executablePath,
+      profileDirectory,
+      extensionId,
+    );
+    // Firefox BiDi reports the explicitly opened extension tab as about:blank
+    // even while its extension DOM is loaded, so identify it by the real DOM.
+    let popupPage = await waitForInstalledPairingGuide(browser);
     // Firefox BiDi can report no clickable geometry for an installed
     // extension page whose protocol URL is stale even though its DOM is live.
-    await popupPage.$eval("#primaryAction", (element) => element.click());
-    const pairingJson = JSON.stringify({
+    const pairingConfig = {
       apiBaseUrl: mockServer.origin,
       companionId: "companion-smoke-test",
       pairingToken: "lobr_smoke_pairing_token",
@@ -152,16 +215,34 @@ async function runInstalledFirefoxSmoke() {
       profileId: "default",
       profileLabel: "Default",
       label: "Agent Browser Bridge Firefox smoke",
-    });
-    await popupPage.$eval(
-      "#pairingJson",
-      (element, value) => {
-        element.value = value;
-        element.dispatchEvent(new Event("input", { bubbles: true }));
-      },
-      pairingJson,
+    };
+    await popupPage.evaluate(async (config) => {
+      const runtime = globalThis.browser?.runtime ?? globalThis.chrome?.runtime;
+      if (!runtime) throw new Error("extension runtime unavailable");
+      const saved = await runtime.sendMessage({
+        type: "browser-bridge:save-config",
+        config,
+      });
+      if (!saved?.ok) throw new Error(saved?.error ?? "pairing setup failed");
+      const synced = await runtime.sendMessage({
+        type: "browser-bridge:sync-now",
+      });
+      if (!synced?.ok) {
+        throw new Error(synced?.error ?? "pairing sync failed");
+      }
+    }, pairingConfig);
+    // Firefox BiDi exposes the externally opened extension tab through a
+    // stale about:blank navigation identity. Puppeteer's reload waits for a
+    // navigation event Firefox never reports, even though the background has
+    // already paired and executed the session. Close and reopen the real
+    // installed popup so its normal startup render reads the persisted state.
+    await popupPage.close();
+    await openInstalledFirefoxPopup(
+      executablePath,
+      profileDirectory,
+      extensionId,
     );
-    await popupPage.$eval("#importPairing", (element) => element.click());
+    popupPage = await waitForInstalledPairingGuide(browser);
     try {
       await popupPage.waitForFunction(
         () =>
@@ -173,14 +254,14 @@ async function runInstalledFirefoxSmoke() {
     } catch (error) {
       const popupState = await popupPage.evaluate(() => ({
         action: document.querySelector("#primaryAction")?.textContent,
-        pairingJson: document.querySelector("#pairingJson")?.value,
         title: document.querySelector("#statusTitle")?.textContent,
       }));
       throw new Error(
-        `Firefox pairing import did not settle: ${JSON.stringify(popupState)}`,
+        `Firefox pairing setup did not settle: ${JSON.stringify(popupState)}`,
         { cause: error },
       );
     }
+    await saveScreenshot(popupPage, "firefox-pair-and-sync-success");
     await popupPage.close();
     await waitForFirefoxAction(appPage, mockServer.requests);
 
@@ -242,6 +323,7 @@ async function runInstalledFirefoxSmoke() {
       }
     }
     await mockServer.close();
+    await fs.rm(profileDirectory, { recursive: true, force: true });
   }
 }
 

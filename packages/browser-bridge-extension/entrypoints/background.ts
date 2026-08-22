@@ -16,7 +16,14 @@ import type {
   BrowserBridgeSettings,
   LifeOpsBrowserSession,
 } from "../src/browser-bridge-contracts";
+import { CoalescingSyncRunner } from "../src/coalescing-sync-runner";
 import { sendWithContentScriptRecovery } from "../src/content-script-messaging";
+import {
+  BROWSER_BRIDGE_NATIVE_HOST,
+  NativeEnrollmentCoordinator,
+  NativeEnrollmentError,
+  type NativeEnrollmentRequest,
+} from "../src/native-enrollment";
 import type {
   BackgroundState,
   CompanionConfig,
@@ -31,12 +38,18 @@ import type {
 import { withBrowserBridgeRequestTimeout } from "../src/request-timeout";
 import {
   clearCompanionConfig,
+  getOrCreateExtensionProfileId,
   isValidApiBaseUrl,
   loadBackgroundState,
   loadCompanionConfig,
+  loadNativeEnrollmentState,
   normalizeCompanionConfig,
+  persistCompanionConfig,
+  resetNativeEnrollmentState,
   saveBackgroundState,
   saveCompanionConfig,
+  saveNativeEnrollmentState,
+  suppressNativeEnrollment,
 } from "../src/storage";
 import {
   findFocusedTab,
@@ -58,7 +71,7 @@ import {
   focusWindow,
   getAllWindows,
   getDynamicRules,
-  getExtensionUrl,
+  getExtensionId,
   getGrantedOrigins,
   getManifestVersion,
   hasAllUrlHostPermission,
@@ -67,9 +80,8 @@ import {
   isPrivilegedExtensionSender,
   queryTabs,
   reloadTab,
+  sendNativeMessage,
   sendTabMessage,
-  storageGet,
-  storageSet,
   updateDynamicRules,
   updateTab,
 } from "../src/webextension";
@@ -91,11 +103,23 @@ let backgroundState: BackgroundState = {
   activeSessionId: null,
   rememberedTabCount: 0,
   settingsSummary: null,
+  connectionIssue: null,
 };
 let rememberedTabs: RememberedTab[] = [];
-let syncScheduled = false;
-let syncInFlight = false;
+let syncDebounceScheduled = false;
 let activeSessionId: string | null = null;
+
+const nativeEnrollment = new NativeEnrollmentCoordinator({
+  getExtensionId,
+  getExtensionVersion: getManifestVersion,
+  send: async (request: NativeEnrollmentRequest) =>
+    await sendNativeMessage<NativeEnrollmentRequest, unknown>(
+      BROWSER_BRIDGE_NATIVE_HOST,
+      request,
+    ),
+  loadState: loadNativeEnrollmentState,
+  saveState: saveNativeEnrollmentState,
+});
 
 function canSyncUrl(url: string | undefined): url is string {
   return typeof url === "string" && /^https?:\/\//i.test(url);
@@ -123,12 +147,12 @@ function isCompanionAuthError(error: unknown): error is RelayApiError {
 
 function companionAuthErrorMessage(error: RelayApiError): string {
   if (error.code === "browser_bridge_companion_token_revoked") {
-    return "Pairing was revoked. Create a new pairing in Eliza and import its pairing JSON.";
+    return "Browser access was revoked. Reset this browser in Eliza before reconnecting.";
   }
   if (error.code === "browser_bridge_companion_token_expired") {
-    return "Pairing expired. Create a new pairing in Eliza and import its pairing JSON.";
+    return "Browser access expired. Eliza will reconnect this browser automatically.";
   }
-  return "Pairing is no longer valid. Create a new pairing in Eliza and import its pairing JSON.";
+  return "Browser access is no longer valid. Reconnect this browser through Eliza.";
 }
 
 async function saveState(): Promise<void> {
@@ -760,7 +784,6 @@ async function syncBlockingRules(apiBase: string): Promise<void> {
     return;
   }
 
-  const extensionBlockedPage = getExtensionUrl("blocked.html");
   const blockedWebsites = (data.blockedWebsites ?? data.websites ?? []).filter(
     (website): website is string => typeof website === "string",
   );
@@ -778,7 +801,7 @@ async function syncBlockingRules(apiBase: string): Promise<void> {
     action: {
       type: "redirect" as const,
       redirect: {
-        url: `${extensionBlockedPage}?host=${encodeURIComponent(host)}&url=${encodeURIComponent(`https://${host}`)}&api=${encodeURIComponent(apiBase)}`,
+        extensionPath: `/blocked.html?host=${encodeURIComponent(host)}&url=${encodeURIComponent(`https://${host}`)}&api=${encodeURIComponent(apiBase)}`,
       },
     },
     condition: {
@@ -804,87 +827,175 @@ async function syncBlockingRules(apiBase: string): Promise<void> {
   });
 }
 
-async function syncNow(reason: string): Promise<BackgroundState> {
-  const config = await readConfig();
-  if (!config) {
+function isCompanionTokenExpired(config: CompanionConfig): boolean {
+  if (!config.pairingTokenExpiresAt) return false;
+  const expiresAt = Date.parse(config.pairingTokenExpiresAt);
+  return !Number.isFinite(expiresAt) || expiresAt <= Date.now();
+}
+
+async function enrollNativeCompanion(options: {
+  bypassBackoff?: boolean;
+}): Promise<CompanionConfig> {
+  const profileId = await getOrCreateExtensionProfileId();
+  const config = await nativeEnrollment.enroll(
+    { browser: __BROWSER_BRIDGE_KIND__, profileId },
+    { bypassBackoff: options.bypassBackoff },
+  );
+  const persisted = await persistCompanionConfig(config);
+  if (!persisted) {
+    throw new NativeEnrollmentError(
+      "The native enrollment host returned an invalid companion config.",
+      "invalid_native_response",
+      false,
+    );
+  }
+  backgroundState.config = persisted;
+  return persisted;
+}
+
+async function ensureCompanionConfig(options: {
+  bypassNativeBackoff?: boolean;
+}): Promise<CompanionConfig> {
+  const existing = await readConfig();
+  if (existing && !isCompanionTokenExpired(existing)) return existing;
+  if (existing) await clearCompanionConfig();
+  return await enrollNativeCompanion({
+    bypassBackoff: options.bypassNativeBackoff === true,
+  });
+}
+
+async function performCompanionSync(config: CompanionConfig): Promise<void> {
+  const client = new BrowserBridgeRelayClient(config);
+  const response = await preflightAndSync(client, config);
+  await setState({
+    syncing: false,
+    lastSyncAt: new Date().toISOString(),
+    settings: response.settings,
+    settingsSummary: `${response.settings.enabled ? response.settings.trackingMode : "off"} / control ${response.settings.allowBrowserControl ? "on" : "off"}`,
+    connectionIssue: null,
+    lastError: null,
+    rememberedTabCount: response.tabs.length,
+  });
+  if (response.session) {
+    await executeSession(client, response.session);
+  }
+  try {
+    await syncBlockingRules(config.apiBaseUrl);
+  } catch (error) {
+    // error-policy:J4 Blocking-policy failure is shown in extension state
+    // without fabricating successful rule synchronization.
     await setState({
-      syncing: false,
-      lastError:
-        backgroundState.lastError ??
-        "Agent Browser Bridge is not paired. Create an authenticated pairing in Eliza and import its pairing JSON.",
-      settingsSummary: null,
-      lastSessionStatus: null,
+      lastError: `website blocker sync failed: ${error instanceof Error ? error.message : String(error)}`,
     });
-    return backgroundState;
   }
-  if (syncInFlight) {
-    syncScheduled = true;
-    return backgroundState;
-  }
-  syncInFlight = true;
+}
+
+interface SyncRunRequest {
+  reason: string;
+  bypassNativeBackoff: boolean;
+}
+
+async function runSyncAttempt({
+  reason,
+  bypassNativeBackoff,
+}: SyncRunRequest): Promise<BackgroundState> {
   await setState({
     syncing: true,
-    config,
     lastError: null,
   });
 
   try {
-    const client = new BrowserBridgeRelayClient(config);
-    const response = await preflightAndSync(client, config);
-    await setState({
-      syncing: false,
-      lastSyncAt: new Date().toISOString(),
-      settings: response.settings,
-      settingsSummary: `${response.settings.enabled ? response.settings.trackingMode : "off"} / control ${response.settings.allowBrowserControl ? "on" : "off"}`,
-      lastError: null,
-      rememberedTabCount: response.tabs.length,
-    });
-    if (response.session) {
-      await executeSession(client, response.session);
-    }
-    try {
-      await syncBlockingRules(config.apiBaseUrl);
-    } catch (error) {
-      // error-policy:J4 Blocking-policy failure is shown in extension state
-      // without fabricating successful rule synchronization.
-      await setState({
-        lastError: `website blocker sync failed: ${error instanceof Error ? error.message : String(error)}`,
-      });
-    }
+    const config = await ensureCompanionConfig({ bypassNativeBackoff });
+    await setState({ config });
+    await performCompanionSync(config);
   } catch (error) {
     // error-policy:J1 The sync-loop boundary translates failures into durable
     // extension state and revokes invalid local pairing state.
     const isPairingInvalid = isCompanionAuthError(error);
-    if (isPairingInvalid) {
-      syncScheduled = false;
+    const isExpired =
+      isPairingInvalid &&
+      error.code === "browser_bridge_companion_token_expired";
+    const isRevoked =
+      isPairingInvalid &&
+      error.code === "browser_bridge_companion_token_revoked";
+    let finalError = error;
+    if (isExpired) {
       await clearCompanionConfig();
+      try {
+        const renewed = await enrollNativeCompanion({
+          bypassBackoff: true,
+        });
+        await setState({ config: renewed });
+        await performCompanionSync(renewed);
+        return backgroundState;
+      } catch (renewalError) {
+        finalError = renewalError;
+      }
+    } else if (isPairingInvalid) {
+      await clearCompanionConfig();
+      await suppressNativeEnrollment(
+        isRevoked ? "companion_revoked" : "credential_invalid",
+      );
     }
+    const finalPairingError = isCompanionAuthError(finalError)
+      ? finalError
+      : null;
+    const nativeEnrollmentFailure = finalError instanceof NativeEnrollmentError;
+    const connectionIssue = isPairingInvalid
+      ? "recovery_required"
+      : finalError instanceof NativeEnrollmentError &&
+          (finalError.code === "app_not_running" ||
+            finalError.code === "app_not_authenticated")
+        ? finalError.code
+        : finalError instanceof NativeEnrollmentError &&
+            finalError.code === "native_enrollment_suppressed" &&
+            (backgroundState.connectionIssue === "owner_disconnected" ||
+              backgroundState.connectionIssue === "recovery_required")
+          ? backgroundState.connectionIssue
+          : null;
     await setState({
       syncing: false,
-      ...(isPairingInvalid && { config: null, settingsSummary: null }),
-      lastError: isPairingInvalid
-        ? companionAuthErrorMessage(error)
-        : `${reason}: ${error instanceof Error ? error.message : String(error)}`,
+      ...((isPairingInvalid ||
+        finalPairingError !== null ||
+        nativeEnrollmentFailure) && {
+        config: null,
+        settingsSummary: null,
+      }),
+      lastError: finalPairingError
+        ? companionAuthErrorMessage(finalPairingError)
+        : `${reason}: ${finalError instanceof Error ? finalError.message : String(finalError)}`,
+      connectionIssue,
     });
-  } finally {
-    syncInFlight = false;
-    if (syncScheduled) {
-      syncScheduled = false;
-      setTimeout(() => {
-        void syncNow("queued");
-      }, SYNC_DEBOUNCE_MS);
-    }
   }
   return backgroundState;
 }
 
+const syncRunner = new CoalescingSyncRunner<SyncRunRequest, BackgroundState>(
+  (current, next) => ({
+    reason: current === null ? next.reason : "queued",
+    bypassNativeBackoff:
+      (current?.bypassNativeBackoff ?? false) || next.bypassNativeBackoff,
+  }),
+  runSyncAttempt,
+);
+
+async function syncNow(
+  reason: string,
+  options: { bypassNativeBackoff?: boolean } = {},
+): Promise<BackgroundState> {
+  return await syncRunner.request({
+    reason,
+    bypassNativeBackoff: options.bypassNativeBackoff === true,
+  });
+}
+
 function scheduleSync(reason: string): void {
-  if (syncScheduled) {
+  if (syncDebounceScheduled) {
     return;
   }
-  syncScheduled = true;
+  syncDebounceScheduled = true;
   setTimeout(() => {
-    syncScheduled = false;
+    syncDebounceScheduled = false;
     void syncNow(reason);
   }, SYNC_DEBOUNCE_MS);
 }
@@ -899,13 +1010,6 @@ async function handlePopupMessage(
         const persistedState = await loadBackgroundState();
         backgroundState = persistedState ?? backgroundState;
         backgroundState.config = config;
-        return { ok: true, state: backgroundState };
-      }
-      case "browser-bridge:auto-pair": {
-        await setState({
-          lastError:
-            "Automatic pairing is disabled. Create an authenticated pairing in Eliza and import its pairing JSON.",
-        });
         return { ok: true, state: backgroundState };
       }
       case "browser-bridge:save-config": {
@@ -924,11 +1028,13 @@ async function handlePopupMessage(
         if (!nextConfig) {
           throw new Error("companionId and pairingToken are required");
         }
+        await resetNativeEnrollmentState();
         await saveCompanionConfig(nextConfig);
         await setState({
           config: nextConfig,
           settings: backgroundState.settings,
           lastError: null,
+          connectionIssue: null,
         });
         createAlarm(SYNC_ALARM, SYNC_INTERVAL_MINUTES);
         scheduleSync("config");
@@ -936,21 +1042,39 @@ async function handlePopupMessage(
       }
       case "browser-bridge:clear-config": {
         await clearCompanionConfig();
+        await suppressNativeEnrollment("owner_disconnected");
         rememberedTabs = [];
         activeSessionId = null;
         await setState({
           config: null,
           settings: null,
-          lastError: "Agent Browser Bridge companion pairing cleared.",
+          lastError: null,
           lastSessionStatus: null,
           lastSyncAt: null,
           rememberedTabCount: 0,
           settingsSummary: null,
+          connectionIssue: "owner_disconnected",
         });
         return { ok: true, state: backgroundState };
       }
       case "browser-bridge:sync-now": {
-        return { ok: true, state: await syncNow("popup") };
+        return {
+          ok: true,
+          state: await syncNow("popup"),
+        };
+      }
+      case "browser-bridge:owner-reconnect": {
+        // The popup click is an explicit local-owner recovery gesture. Clearing
+        // extension-local suppression cannot bypass a revocation: the native
+        // broker independently enforces its durable owner-controlled tombstone
+        // before it can issue a new short-lived companion credential.
+        await resetNativeEnrollmentState();
+        return {
+          ok: true,
+          state: await syncNow("owner-reconnect", {
+            bypassNativeBackoff: true,
+          }),
+        };
       }
       default:
         throw new Error("Unsupported popup request");
@@ -1026,22 +1150,6 @@ void (async () => {
   const persistedState = await loadBackgroundState();
   if (persistedState) {
     backgroundState = persistedState;
-  }
-  const config = await readConfig();
-  if (
-    !config &&
-    !(await storageGet<boolean>("browserBridgePairingGuideSeen"))
-  ) {
-    await storageSet({ browserBridgePairingGuideSeen: true });
-    try {
-      await createTab({ url: getExtensionUrl("popup.html") });
-    } catch (error) {
-      // error-policy:J4 Failure to open the first-run pairing guide is visible
-      // in extension state while the toolbar popup remains available.
-      await setState({
-        lastError: `Could not open the pairing guide: ${error instanceof Error ? error.message : String(error)}`,
-      });
-    }
   }
   createAlarm(SYNC_ALARM, SYNC_INTERVAL_MINUTES);
   scheduleSync("startup-bootstrap");

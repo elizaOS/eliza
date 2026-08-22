@@ -16,6 +16,7 @@ import type {
   BrowserBridgeCompanionPairingResponse,
   BrowserBridgeCompanionPreflightRequest,
   BrowserBridgeCompanionPreflightResponse,
+  BrowserBridgeCompanionRevocationResetResponse,
   BrowserBridgeCompanionRevokeResponse,
   BrowserBridgeCompanionSessionBeginRequest,
   BrowserBridgeCompanionSessionProgressRequest,
@@ -1455,6 +1456,12 @@ export class LifeOpsService extends LifeOpsServiceBase {
     request: CreateBrowserBridgeCompanionPairingRequest,
   ): Promise<BrowserBridgeCompanionPairingResponse> {
     return this.browserDomain.createBrowserCompanionPairing(request);
+  }
+
+  resetBrowserCompanionRevocation(
+    companionId: string,
+  ): Promise<BrowserBridgeCompanionRevocationResetResponse> {
+    return this.browserDomain.resetBrowserCompanionRevocation(companionId);
   }
 
   syncBrowserCompanion(

@@ -9,6 +9,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { resolveChromeExtensionIdentity } from "./chrome-identity.mjs";
 import {
   buildChromeExtensionVersion,
   resolveBrowserBridgeReleaseVersion,
@@ -45,6 +46,13 @@ const extensionRoot = path.resolve(
   "..",
 );
 const publicDir = path.join(extensionRoot, "public");
+const extensionIdentity = JSON.parse(
+  await fs.readFile(path.join(extensionRoot, "identity.json"), "utf8"),
+);
+const chromeIdentity = resolveChromeExtensionIdentity({
+  identity: extensionIdentity,
+  release: process.env.ELIZA_BROWSER_BRIDGE_RELEASE_PACKAGING === "1",
+});
 const cleanupHelper = path.resolve(
   extensionRoot,
   "..",
@@ -120,12 +128,14 @@ export async function buildBrowserBridgeExtension(kind = browserKind) {
     version_name: release.raw,
     description:
       "Agent Browser Bridge pairs your personal browser profile with an Eliza agent so the agent can read the current page and run owner-approved browser actions.",
+    ...(kind === "chrome" ? { key: chromeIdentity.manifestKey } : {}),
     permissions: [
       "tabs",
       "storage",
       "scripting",
       "alarms",
       "activeTab",
+      "nativeMessaging",
       "declarativeNetRequestWithHostAccess",
     ],
     // SOC2 L-4: scoped host permissions. The default-install allowlist is
@@ -161,11 +171,11 @@ export async function buildBrowserBridgeExtension(kind = browserKind) {
       {
         resources: ["blocked.html", "blocked.js"],
         matches: ["http://*/*", "https://*/*"],
-        // Without this the interstitial has a stable chrome-extension://<id>/
-        // URL that every page on the web can probe, which makes the extension
-        // trivially fingerprintable. Chrome 106+ rotates the token per session.
-        // Safari's converter warns on this Chrome-only manifest key.
-        ...(kind === "chrome" ? { use_dynamic_url: true } : {}),
+        // Chrome DNR main-frame redirects resolve extensionPath against the
+        // stable extension origin. Marking this resource use_dynamic_url makes
+        // the browser reject its own redirect with ERR_BLOCKED_BY_CLIENT.
+        // Exposure stays limited to this inert interstitial and first-party
+        // controller; neither contains a credential or privileged page data.
       },
     ],
     icons: {

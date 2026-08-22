@@ -18,6 +18,30 @@ describe("Electrobun Store packaging", () => {
     });
   });
 
+  it("renders the exact Safari-matching App Group for provisioned macOS builds", () => {
+    const previousTeamId = process.env.ELECTROBUN_TEAMID;
+    const previousSafariTeam = process.env.ELIZA_SAFARI_SIGNING_TEAM;
+    try {
+      process.env.ELECTROBUN_TEAMID = "ABCDEFGHIJ";
+      process.env.ELIZA_SAFARI_SIGNING_TEAM = "ABCDEFGHIJ";
+      const config = createElectrobunConfig();
+      expect(config.build?.mac?.entitlements).toMatchObject({
+        "com.apple.security.application-groups": [
+          "group.ai.elizaos.browserbridge",
+        ],
+      });
+      expect(config.build?.mac?.entitlements).not.toHaveProperty(
+        "keychain-access-groups",
+      );
+    } finally {
+      if (previousTeamId === undefined) delete process.env.ELECTROBUN_TEAMID;
+      else process.env.ELECTROBUN_TEAMID = previousTeamId;
+      if (previousSafariTeam === undefined)
+        delete process.env.ELIZA_SAFARI_SIGNING_TEAM;
+      else process.env.ELIZA_SAFARI_SIGNING_TEAM = previousSafariTeam;
+    }
+  });
+
   it("omits the embedded local agent runtime tree for Mac App Store builds", () => {
     const copy = resolveElectrobunCopyMap({
       buildVariant: "store",
