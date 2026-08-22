@@ -1,13 +1,11 @@
 /**
  * Deterministic admission tests for complete computer-use browser context.
- * Admitted DOM and clickable inventories remain lossless; oversized content
- * fails atomically instead of returning a prefix.
+ * DOM and clickable inventories remain lossless regardless of content length.
  */
 import { describe, expect, it } from "vitest";
 import {
   admitCompleteBrowserClickables,
   admitCompleteBrowserDom,
-  MAX_BROWSER_CONTEXT_UTF8_BYTES,
 } from "../platform/browser.js";
 
 describe("computer-use browser complete-content admission", () => {
@@ -18,11 +16,10 @@ describe("computer-use browser complete-content admission", () => {
     expect(admitCompleteBrowserDom(html)).toContain(tail);
   });
 
-  it("rejects oversized DOM atomically", () => {
-    const html = "x".repeat(MAX_BROWSER_CONTEXT_UTF8_BYTES + 1);
-    expect(() => admitCompleteBrowserDom(html)).toThrow(
-      /COMPUTER_USE_BROWSER_CONTENT_TOO_LARGE|complete-content admission ceiling/,
-    );
+  it("preserves DOM content beyond the former replacement admission ceiling", () => {
+    const html = `${"x".repeat(1_048_577)}complete-large-dom-tail`;
+    expect(admitCompleteBrowserDom(html)).toBe(html);
+    expect(admitCompleteBrowserDom(html)).toContain("complete-large-dom-tail");
   });
 
   it("preserves every clickable and complete labels", () => {

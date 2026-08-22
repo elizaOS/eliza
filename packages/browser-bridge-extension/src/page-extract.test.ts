@@ -1,14 +1,10 @@
 /**
  * Unit tests for capturePageContext over a jsdom DOM (test-dom-setup): field
- * extraction, visibility filtering, complete-content preservation, and atomic
- * oversized-snapshot rejection.
+ * extraction, visibility filtering, and complete-content preservation.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import "./test-dom-setup";
-import {
-  capturePageContext,
-  MAX_PAGE_CONTEXT_UTF8_BYTES,
-} from "./page-extract";
+import { capturePageContext } from "./page-extract";
 
 describe("capturePageContext", () => {
   beforeEach(() => {
@@ -128,10 +124,9 @@ describe("capturePageContext", () => {
     expect(snapshot.mainText).toContain(tail);
   });
 
-  it("rejects an oversized page context instead of returning a prefix", () => {
-    document.body.innerHTML = `<p>${"x".repeat(MAX_PAGE_CONTEXT_UTF8_BYTES + 1)}</p>`;
-    expect(() => capturePageContext()).toThrow(
-      /BROWSER_BRIDGE_PAGE_CONTEXT_TOO_LARGE/,
-    );
+  it("preserves page context beyond the former replacement admission ceiling", () => {
+    const tail = "complete-large-page-context-tail";
+    document.body.innerHTML = `<p>${"x".repeat(1_048_577)}${tail}</p>`;
+    expect(capturePageContext().mainText).toContain(tail);
   });
 });

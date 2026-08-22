@@ -1,12 +1,9 @@
 /**
  * capturePageContext() — snapshots the live DOM (title, visible text, headings,
  * links, forms) so the agent can read the current page. Runs in the
- * content-script context. Whitespace is normalized without shortening admitted
- * content; an oversized complete snapshot is rejected atomically.
+ * content-script context. Whitespace is normalized without shortening content.
  */
 import type { PageContextSnapshot } from "./protocol";
-
-export const MAX_PAGE_CONTEXT_UTF8_BYTES = 1_048_576;
 
 function normalizeText(value: string | null | undefined): string | null {
   if (!value) {
@@ -109,7 +106,7 @@ function collectForms(): Array<{ action: string | null; fields: string[] }> {
 }
 
 export function capturePageContext(): PageContextSnapshot {
-  const snapshot = {
+  return {
     url: window.location.href,
     title: document.title || window.location.href,
     selectionText: normalizeText(window.getSelection?.()?.toString()),
@@ -119,11 +116,4 @@ export function capturePageContext(): PageContextSnapshot {
     forms: collectForms(),
     capturedAt: new Date().toISOString(),
   };
-  const bytes = new TextEncoder().encode(JSON.stringify(snapshot)).byteLength;
-  if (bytes > MAX_PAGE_CONTEXT_UTF8_BYTES) {
-    throw new Error(
-      `BROWSER_BRIDGE_PAGE_CONTEXT_TOO_LARGE: complete page context contains ${bytes} UTF-8 bytes; maximum admitted size is ${MAX_PAGE_CONTEXT_UTF8_BYTES}`,
-    );
-  }
-  return snapshot;
 }

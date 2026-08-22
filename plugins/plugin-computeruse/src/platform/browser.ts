@@ -15,7 +15,7 @@ import { existsSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { ElizaError, logger } from "@elizaos/core";
+import { logger } from "@elizaos/core";
 import { assertBrowserExecuteAllowed } from "../security/browser-script-policy.js";
 import { assertHttpBrowserUrl } from "../security/browser-url-policy.js";
 import type {
@@ -52,34 +52,14 @@ let activePage: Page | null = null;
 let tempUserDataDir: string | null = null;
 let browserHeadless = false;
 const BROWSER_LAUNCH_ATTEMPTS = 3;
-export const MAX_BROWSER_CONTEXT_UTF8_BYTES = 1_048_576;
-
-function assertBrowserContextAdmission(kind: string, value: string): void {
-  const bytes = new TextEncoder().encode(value).byteLength;
-  if (bytes > MAX_BROWSER_CONTEXT_UTF8_BYTES) {
-    throw new ElizaError(
-      `Browser ${kind} contains ${bytes} UTF-8 bytes; the complete-content admission ceiling is ${MAX_BROWSER_CONTEXT_UTF8_BYTES}.`,
-      {
-        code: "COMPUTER_USE_BROWSER_CONTENT_TOO_LARGE",
-        context: { kind, bytes, maxBytes: MAX_BROWSER_CONTEXT_UTF8_BYTES },
-        severity: "ephemeral",
-      },
-    );
-  }
-}
 
 export function admitCompleteBrowserDom(html: string): string {
-  assertBrowserContextAdmission("DOM", html);
   return html;
 }
 
 export function admitCompleteBrowserClickables(
   elements: ClickableElement[],
 ): ClickableElement[] {
-  assertBrowserContextAdmission(
-    "clickable-element inventory",
-    JSON.stringify(elements),
-  );
   return elements;
 }
 
