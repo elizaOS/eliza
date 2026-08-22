@@ -944,6 +944,45 @@ describe("production boundary observation ledger", () => {
     ]);
   });
 
+  it("persists an unknown receipt when result-code redaction fails after invocation", async () => {
+    const { ledger, path } = await createLedger();
+    let calls = 0;
+    const observation = await observeProductionBoundary({
+      ledger,
+      identity: identity(),
+      payload: { value: 1 },
+      now: clock("2026-08-21T12:00:00.000Z"),
+      generationFence: generationFence(),
+      invoke: async () => {
+        calls += 1;
+        return { id: "effect" };
+      },
+      classify: () => ({
+        acceptance: "accepted",
+        code: "accepted",
+        retryable: false,
+      }),
+      readback: async () => ({ id: "effect" }),
+      verifyReadback: () => true,
+      redactText: (text) => {
+        if (text === "accepted") throw new Error("redactor unavailable");
+        return text;
+      },
+    });
+
+    expect(calls).toBe(1);
+    expect(observation).toMatchObject({
+      boundaryCalled: true,
+      acceptance: "unknown",
+      result: "unknown",
+      resultCode: "classification_code_redaction_threw",
+      retryable: false,
+    });
+    await expect(
+      new JsonlBoundaryObservationLedger(path).readAll(),
+    ).resolves.toEqual([observation]);
+  });
+
   it("records post-invocation generation revalidation failure and staleness", async () => {
     const { ledger } = await createLedger();
     let guardCalls = 0;
