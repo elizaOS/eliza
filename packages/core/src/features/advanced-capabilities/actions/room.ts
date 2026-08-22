@@ -207,8 +207,7 @@ function normalizeDurationMinutes(value: unknown): number | undefined | null {
 	if (
 		typeof parsed !== "number" ||
 		!Number.isSafeInteger(parsed) ||
-		parsed <= 0 ||
-		Number.isNaN(new Date(Date.now() + parsed * 60_000).getTime())
+		parsed <= 0
 	) {
 		return null;
 	}
@@ -453,15 +452,10 @@ async function applyOp(args: {
 	roomName: string;
 	cfg: OpConfig;
 	durationMinutes?: number;
+	muteUntilIso: string | undefined;
 }): Promise<ActionResult> {
 	try {
-		// Compute the expiry before mutating participant state. Validation normally
-		// guarantees this conversion, but keeping the fallible Date boundary first
-		// prevents a near-limit value from leaving an unintended untimed mute.
-		const untilIso =
-			args.op === "mute"
-				? muteUntilIsoFromDuration(args.durationMinutes)
-				: undefined;
+		const untilIso = args.muteUntilIso;
 		await args.runtime.updateParticipantUserState(
 			args.roomId,
 			args.runtime.agentId,
@@ -553,6 +547,7 @@ async function applyServerScopedOp(args: {
 	room: Awaited<ReturnType<IAgentRuntime["getRoom"]>>;
 	cfg: OpConfig;
 	durationMinutes?: number;
+	muteUntilIso: string | undefined;
 }): Promise<ActionResult> {
 	const { runtime, message, op, room, cfg } = args;
 	const failure = (error: string, text: string): ActionResult => ({
@@ -583,8 +578,7 @@ async function applyServerScopedOp(args: {
 		);
 	}
 
-	const untilIso =
-		op === "mute" ? muteUntilIsoFromDuration(args.durationMinutes) : undefined;
+	const untilIso = args.muteUntilIso;
 	await setWorldMuteState(
 		runtime,
 		world.id,
@@ -821,6 +815,27 @@ export const roomOpAction: Action = {
 				success: false,
 			};
 		}
+		let muteUntilIso: string | undefined;
+		try {
+			// Serialize once, before any target lookup or state mutation. Reusing this
+			// exact expiry prevents a near-limit duration from crossing the Date
+			// boundary between validation and the eventual room/world write.
+			muteUntilIso =
+				op === "mute" ? muteUntilIsoFromDuration(durationMinutes) : undefined;
+		} catch {
+			// error-policy:J3 A supplied duration that cannot be represented as an ISO
+			// timestamp is invalid input and never reaches a mutation boundary.
+			return {
+				text: "durationMinutes must be a positive whole number of minutes.",
+				values: { success: false, error: "ROOM_DURATION_INVALID" },
+				data: {
+					actionName: "ROOM",
+					error: "ROOM_DURATION_INVALID",
+					durationMinutes: params.durationMinutes,
+				},
+				success: false,
+			};
+		}
 		const scope = normalizeScope(params.scope);
 
 		if (scope === "server") {
@@ -853,6 +868,7 @@ export const roomOpAction: Action = {
 				room,
 				cfg,
 				durationMinutes,
+				muteUntilIso,
 			});
 		}
 
@@ -901,6 +917,7 @@ export const roomOpAction: Action = {
 				roomName,
 				cfg,
 				durationMinutes,
+				muteUntilIso,
 			});
 			if (
 				op === "mute" &&
@@ -992,6 +1009,7 @@ export const roomOpAction: Action = {
 			roomName,
 			cfg,
 			durationMinutes,
+			muteUntilIso,
 		});
 	},
 };
