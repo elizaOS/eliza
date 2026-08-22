@@ -151,7 +151,12 @@ export function resolveMaxAuthRetries(raw: string | undefined): number {
 type QueuedItem = {
   run: () => Promise<void>;
   reject: (error: unknown) => void;
+  shouldRetry: (error: unknown, retryCount: number) => boolean;
 };
+
+export interface RequestQueueRetryOptions {
+  shouldRetry?: (error: unknown, retryCount: number) => boolean;
+}
 
 export class RequestQueue {
   private queue: QueuedItem[] = [];
@@ -173,7 +178,10 @@ export class RequestQueue {
    * @param {() => Promise<T>} request - The request to be added to the queue
    * @returns {Promise<T>} - A promise that resolves with the result of the request or rejects with an error
    */
-  async add<T>(request: () => Promise<T>): Promise<T> {
+  async add<T>(
+    request: () => Promise<T>,
+    options: RequestQueueRetryOptions = {},
+  ): Promise<T> {
     return new Promise((resolve, reject) => {
       this.queue.push({
         run: async () => {
@@ -181,6 +189,7 @@ export class RequestQueue {
           resolve(result);
         },
         reject,
+        shouldRetry: options.shouldRetry ?? (() => true),
       });
       void this.processQueue();
     });
@@ -208,7 +217,10 @@ export class RequestQueue {
 
         const retryCount = (this.retryAttempts.get(item) || 0) + 1;
 
-        if (retryCount < this.maxRetries) {
+        if (
+          retryCount < this.maxRetries &&
+          item.shouldRetry(error, retryCount)
+        ) {
           this.retryAttempts.set(item, retryCount);
           this.queue.unshift(item);
           await this.exponentialBackoff(retryCount);

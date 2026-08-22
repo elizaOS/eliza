@@ -28,6 +28,7 @@ import {
 } from "./templates";
 import type { ActionResponse, TwitterClientState } from "./types";
 import { parseActionResponseFromText, sendTweet } from "./utils";
+import { shouldRetryTwitterWrite } from "./utils/error-handler";
 import {
   buildTwitterMessageMetadata,
   createMemorySafe,
@@ -654,13 +655,20 @@ ${tweet.text}${mediaDescriptions}`;
         }
 
         const sendQuote = () =>
-          this.client.requestQueue.add(async () => {
-            if (session) this.assertCurrentSession(session);
-            return await this.twitterClient.sendQuoteTweet(
-              String(responseObject.post),
-              tweet.id,
-            );
-          });
+          this.client.requestQueue.add(
+            async () => {
+              if (session) this.assertCurrentSession(session);
+              return await this.twitterClient.sendQuoteTweet(
+                String(responseObject.post),
+                tweet.id,
+              );
+            },
+            {
+              // Do not duplicate a provider-accepted write after an ambiguous
+              // network failure; only explicit rate-limit rejection is safe.
+              shouldRetry: shouldRetryTwitterWrite,
+            },
+          );
         const result = await sendQuote();
 
         try {

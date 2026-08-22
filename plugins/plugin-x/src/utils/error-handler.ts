@@ -114,6 +114,15 @@ export function getErrorType(error: unknown): TwitterErrorType {
   return TwitterErrorType.UNKNOWN;
 }
 
+/**
+ * A write may be retried only when the provider explicitly rejected it for
+ * rate limiting. Network and unknown failures are ambiguous: the provider may
+ * already have accepted the write, so retrying could publish a duplicate.
+ */
+export function shouldRetryTwitterWrite(error: unknown): boolean {
+  return getErrorType(error) === TwitterErrorType.RATE_LIMIT;
+}
+
 export function handleTwitterError(
   context: string,
   error: unknown,

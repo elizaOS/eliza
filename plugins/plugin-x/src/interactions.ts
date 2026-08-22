@@ -42,6 +42,7 @@ import type {
 } from "./types";
 import { TwitterEventTypes } from "./types";
 import { parseActionResponseFromText, sendTweet } from "./utils";
+import { shouldRetryTwitterWrite } from "./utils/error-handler";
 import { describeTweetPhotos } from "./utils/image-descriptions";
 import {
   buildTwitterMessageMetadata,
@@ -740,8 +741,13 @@ ${tweet.text}`;
       }
 
       this.assertCurrentSession(session);
-      await this.client.requestQueue.add(() =>
-        this.client.twitterClient.sendQuoteTweet(post, tweet.id),
+      await this.client.requestQueue.add(
+        () => this.client.twitterClient.sendQuoteTweet(post, tweet.id),
+        {
+          // A 429 is an explicit pre-acceptance rejection. Retrying an
+          // ambiguous transport failure could publish the quote twice.
+          shouldRetry: shouldRetryTwitterWrite,
+        },
       );
       logger.info(`Quoted tweet ${tweet.id}`);
       return true;
