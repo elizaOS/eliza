@@ -387,7 +387,10 @@ async function ensureTaskWithRetries(args: {
       }
       const message = error instanceof Error ? error.message : String(error);
       if (attempt < delays.length) {
-        args.runtime.logger.warn(
+        // Early attempts routinely lose the boot-order race against deferred
+        // plugin registration (plugin-scheduling pre-registers seconds after
+        // lifeops starts); only the exhausted-retries error is actionable.
+        args.runtime.logger.debug(
           `${args.prefix} ${args.label} init failed (attempt ${attempt + 1}/${delays.length + 1}), retrying in ${delays[attempt]}ms: ${message}`,
         );
         await new Promise((resolve) => setTimeout(resolve, delays[attempt]));

@@ -3106,7 +3106,13 @@ export class HouseholdCoordinationRuntimeService extends Service {
   ): Promise<HouseholdCoordinationRuntimeService> {
     await Promise.all([
       runtime.getServiceLoadPromise(KNOWLEDGE_GRAPH_SERVICE),
-      waitForScheduledTaskRunnerService(runtime),
+      // 120s window: heavy boots on the live box (cold caches, many
+      // workspace plugins) register the deferred runner after the default 30s
+      // and this service failed for the whole process lifetime (live
+      // 2026-08-19, 2 of ~15 boots).
+      waitForScheduledTaskRunnerService(runtime, {
+        registrationTimeoutMs: 120_000,
+      }),
     ]);
     const service = new HouseholdCoordinationRuntimeService(runtime);
     await service.coordination.reconcileGrantExpiryWarnings();
