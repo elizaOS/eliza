@@ -70,10 +70,7 @@ const StructuredFieldsSchema = z.record(z.string(), z.unknown());
 // (strict structured-output validators reject `maxItems`), so an over-long
 // keyword list from the model must degrade to the first 16 rather than
 // failing the whole op. Storage re-caps via MAX_KEYWORDS anyway.
-const KeywordsSchema = z
-	.array(z.string().min(1))
-	.transform((keywords) => keywords.slice(0, 16))
-	.optional();
+const KeywordsSchema = z.array(z.string().min(1)).optional();
 
 const AddDurableOpSchema = z.object({
 	op: z.literal("add_durable"),

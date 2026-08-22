@@ -81,7 +81,6 @@ const CORE_ACTION_SURFACE: Record<string, readonly string[]> = {
     "ACCOUNTS_COMMAND",
     "BACKEND_COMMAND",
     "COMMANDS_COMMAND",
-    "COMPACT_COMMAND",
     "CONTEXT_COMMAND",
     "ELEVATED_COMMAND",
     "HELP_COMMAND",
@@ -220,13 +219,12 @@ const KNOWN_UNCOVERED: readonly string[] = [
   "MODEL_SWITCH",
   // Local-inference management action; no deterministic keyless scenario yet.
   "LOCAL_INFERENCE",
-  // plugin-commands slash-command actions (/help, /status, /reset, /compact,
+  // plugin-commands slash-command actions (/help, /status, /reset,
   // /think, /model, /tts, …) are dispatched through the command palette, not
   // the keyless scenario pipeline, so they have no deterministic scenario yet.
   "ACCOUNTS_COMMAND",
   "BACKEND_COMMAND",
   "COMMANDS_COMMAND",
-  "COMPACT_COMMAND",
   "CONTEXT_COMMAND",
   "ELEVATED_COMMAND",
   "HELP_COMMAND",

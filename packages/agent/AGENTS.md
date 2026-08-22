@@ -31,7 +31,7 @@ src/
     roles.ts / roles/     Role definitions and role-resolution helpers
     agent-wallets.ts      Agent wallet bootstrap and TEE-gated wallet logic
     model-resolution.ts   Model name resolution helpers
-    prompt-optimization.ts / prompt-compaction.ts  Prompt optimization and compaction strategies
+    prompt-optimization.ts  Lossless prompt telemetry and active-view awareness
     tool-call-cache/ tool-call-cache-wrapper.ts  Tool-call result caching layer
     first-time-setup.ts   First-run initialization logic
     load-plugin-from-directory.ts / load-plugin-from-vfs.ts  Plugin loading from local dirs and VFS
@@ -43,7 +43,6 @@ src/
     view-action-affinity.ts  View↔action routing affinity
     web-search-tools.ts / vault-profile-resolver.ts  Miscellaneous runtime helpers
     trajectory-*.ts       Trajectory persistence / query / internals
-    conversation-compactor*.ts  Conversation summarization/compaction
     operations/           vault-bridge.ts (config env resolution + optimized-prompt integrity key), classifier.ts,
                           cold-strategy.ts, manager.ts, health.ts, health-checks.ts,
                           reload-hot.ts, repository.ts, types.ts
@@ -79,7 +78,7 @@ docs/                     capability-router-remote-plugins.md, e2b-capability-ro
 ## Key exports / surface
 
 - **Binary:** `eliza-autonomous` → `src/bin.ts` → `runAutonomousCli()`. Commands: `serve`/`start`, `runtime`, `ios-bridge`, `android-bridge`, `benchmark`.
-- **Boot:** `startEliza()`, `bootElizaRuntime()`, `startInCloudMode()` (`runtime/eliza.ts`); `createElizaPlugin()` (`runtime/eliza-plugin.ts`) — the `Plugin` named `"eliza"` registering services (`AgentEventService`, `ElizaCharacterPersistenceService`, `AgentMediaGenerationService`, `PermissionRegistry`), workspace/session/rolodex providers, and the terminal/trigger/contact/settings/plugin/logs/runtime/database/memory/compact actions.
+- **Boot:** `startEliza()`, `bootElizaRuntime()`, `startInCloudMode()` (`runtime/eliza.ts`); `createElizaPlugin()` (`runtime/eliza-plugin.ts`) — the `Plugin` named `"eliza"` registering services (`AgentEventService`, `ElizaCharacterPersistenceService`, `AgentMediaGenerationService`, `PermissionRegistry`), workspace/session/rolodex providers, and the terminal/trigger/contact/settings/plugin/logs/runtime/database/memory actions.
 - **HTTP:** `startApiServer()`, `dispatchRoute()`, route handlers (`@elizaos/agent/api`).
 - **Plugin sets:** `CORE_PLUGINS`, `BLOCKING_CORE_PLUGINS`, `DEFERRED_CORE_PLUGINS`, `OPTIONAL_CORE_PLUGINS`, `MOBILE_CORE_PLUGINS` (`runtime/core-plugins.ts`); `resolvePlugins()`, `collectPluginNames()`.
 - **Config:** `loadElizaConfig`/`saveElizaConfig`, `CharacterSchema`, `resolveUserPath`, `resolveDefaultAgentWorkspaceDir`.

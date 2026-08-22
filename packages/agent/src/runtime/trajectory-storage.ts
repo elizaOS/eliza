@@ -22,7 +22,6 @@ import {
   recordedStageToSemanticStage,
   Service,
   sanitizeTrajectoryJsonObject,
-  TRAJECTORY_SEMANTIC_STAGES_MAX_ITEMS,
   type TrajectorySemanticStageRecord,
 } from "@elizaos/core";
 import type {
@@ -1253,39 +1252,21 @@ async function appendSemanticStage(
 
   const step = ensureStep(trajectory, stepId, now);
   const stages = step.semanticStages ?? [];
-  if (stages.length >= TRAJECTORY_SEMANTIC_STAGES_MAX_ITEMS) {
-    throw new ElizaError("Trajectory step semantic stages are full", {
-      code: "TRAJECTORY_SEMANTIC_STAGE_OVERFLOW",
-      context: {
-        trajectoryId: trajectory.id,
-        stepId,
-        limit: TRAJECTORY_SEMANTIC_STAGES_MAX_ITEMS,
-      },
-    });
-  }
   const nextStages = [...stages, semantic];
-  // Write ⊆ read: each stage is validated with a fresh budget on the way in,
-  // but the read path decodes the whole array against one shared budget, so a
-  // run of individually-valid stages can produce a step that no longer
-  // normalizes. That poisons the entire trajectory row on read, not just this
-  // step, so the offending stage is rejected here as an invalid capture
-  // instead.
+  // Write subset read: validate the combined stage array before persistence.
   try {
     parseTrajectorySemanticStages(nextStages);
   } catch (cause) {
-    throw new ElizaError(
-      "Trajectory step semantic stages exceed the decode budget",
-      {
-        code: "TRAJECTORY_SEMANTIC_STAGE_BUDGET_EXCEEDED",
-        context: {
-          trajectoryId: trajectory.id,
-          stepId,
-          stageId: semantic.stageId,
-          stageCount: nextStages.length,
-        },
-        cause,
+    throw new ElizaError("Trajectory step semantic stages are invalid", {
+      code: "TRAJECTORY_SEMANTIC_STAGE_INVALID",
+      context: {
+        trajectoryId: trajectory.id,
+        stepId,
+        stageId: semantic.stageId,
+        stageCount: nextStages.length,
       },
-    );
+      cause,
+    });
   }
   step.semanticStages = nextStages;
   trajectory.startTime = Math.min(trajectory.startTime, now);

@@ -104,62 +104,21 @@ function isContentRecord(value: unknown): value is Record<string, unknown> {
 
 const MAX_ACTION_RESULT_DIAGNOSTIC_DEPTH = 8;
 const MAX_ACTION_RESULT_DIAGNOSTIC_NODES = 1_024;
-const MAX_ACTION_RESULT_DIAGNOSTIC_STRING_BYTES = 8 * 1_024;
-const MAX_ACTION_RESULT_DIAGNOSTIC_TOTAL_STRING_BYTES = 16 * 1_024;
 
 interface ActionResultDiagnosticBudget {
 	nodes: number;
-	stringBytes: number;
 }
 
-function utf8ByteLength(value: string): number {
-	return new TextEncoder().encode(value).byteLength;
-}
-
-function truncateUtf8(value: string, maxBytes: number): string {
-	if (maxBytes <= 0) return TOOL_DIAGNOSTIC_MASK;
-	const suffix = "…";
-	const suffixBytes = utf8ByteLength(suffix);
-	if (maxBytes < suffixBytes) return "";
-	const characters: Array<{ bytes: number; value: string }> = [];
-	let bytes = 0;
-	for (const character of value) {
-		const characterBytes = utf8ByteLength(character);
-		if (bytes + characterBytes > maxBytes) {
-			while (characters.length > 0 && bytes + suffixBytes > maxBytes) {
-				bytes -= characters.pop()?.bytes ?? 0;
-			}
-			return `${characters.map((entry) => entry.value).join("")}${suffix}`;
-		}
-		characters.push({ bytes: characterBytes, value: character });
-		bytes += characterBytes;
-	}
-	return characters.map((entry) => entry.value).join("");
-}
-
-function boundedDiagnosticString(
+function redactDiagnosticString(
 	value: string,
 	redactDiagnosticText: ToolDiagnosticTextRedactor,
-	budget: ActionResultDiagnosticBudget,
 ): ContentValue {
-	if (value.length > MAX_ACTION_RESULT_DIAGNOSTIC_STRING_BYTES) {
-		return TOOL_DIAGNOSTIC_MASK;
-	}
-	const remaining =
-		MAX_ACTION_RESULT_DIAGNOSTIC_TOTAL_STRING_BYTES - budget.stringBytes;
-	let redacted: string;
 	try {
-		redacted = redactDiagnosticText(value);
+		return redactDiagnosticText(value);
 	} catch {
 		// error-policy:J4 A broken redactor becomes an explicit diagnostic mask.
 		return TOOL_DIAGNOSTIC_MASK;
 	}
-	const bounded = truncateUtf8(
-		redacted,
-		Math.min(MAX_ACTION_RESULT_DIAGNOSTIC_STRING_BYTES, remaining),
-	);
-	budget.stringBytes += utf8ByteLength(bounded);
-	return bounded;
 }
 
 function defineDiagnosticProperty(
@@ -194,7 +153,7 @@ function projectActionResultDiagnosticValue(
 		return Number.isFinite(value) ? value : TOOL_DIAGNOSTIC_MASK;
 	}
 	if (typeof value === "string") {
-		return boundedDiagnosticString(value, redactDiagnosticText, budget);
+		return redactDiagnosticString(value, redactDiagnosticText);
 	}
 	if (typeof value !== "object" || value === null) {
 		return TOOL_DIAGNOSTIC_MASK;
@@ -281,18 +240,6 @@ function projectActionResultDiagnosticValue(
 			if (budget.nodes > MAX_ACTION_RESULT_DIAGNOSTIC_NODES) {
 				return TOOL_DIAGNOSTIC_MASK;
 			}
-			if (key.length > MAX_ACTION_RESULT_DIAGNOSTIC_STRING_BYTES) {
-				return TOOL_DIAGNOSTIC_MASK;
-			}
-			const keyBytes = utf8ByteLength(key);
-			if (
-				keyBytes > MAX_ACTION_RESULT_DIAGNOSTIC_STRING_BYTES ||
-				keyBytes >
-					MAX_ACTION_RESULT_DIAGNOSTIC_TOTAL_STRING_BYTES - budget.stringBytes
-			) {
-				return TOOL_DIAGNOSTIC_MASK;
-			}
-			budget.stringBytes += keyBytes;
 			let projected: ContentValue;
 			if (suppressKeys?.has(key)) {
 				projected = sensitiveActionResultMarker(
@@ -329,7 +276,7 @@ function actionResultToContentRecord(
 		redactDiagnosticText,
 		new WeakSet<object>(),
 		0,
-		{ nodes: 0, stringBytes: 0 },
+		{ nodes: 0 },
 		options.suppressData ? new Set(["data", "values"]) : undefined,
 	);
 	return isContentRecord(projectedResult) ? projectedResult : {};
@@ -351,10 +298,9 @@ function sensitiveActionResultMarker(
 			) {
 				actionName =
 					redactDiagnosticText && budget
-						? (boundedDiagnosticString(
+						? (redactDiagnosticString(
 								descriptor.value,
 								redactDiagnosticText,
-								budget,
 							) as string)
 						: descriptor.value;
 			}

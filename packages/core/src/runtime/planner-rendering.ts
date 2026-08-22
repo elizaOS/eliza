@@ -13,7 +13,6 @@ import {
 } from "../security/tool-diagnostics";
 import type { ChatMessage, ChatMessageContentPart } from "../types/model";
 import type { JsonValue } from "../types/primitives.ts";
-import { tailWellFormed, truncateWellFormed } from "../utils/well-formed";
 import { stringifyForModel } from "./json-output";
 import type { PlannerStep, PlannerToolResult } from "./planner-types";
 import {
@@ -32,82 +31,6 @@ export interface TrajectoryStepsToMessagesOptions {
 	 * omitted, the shared credential-shape pass still runs.
 	 */
 	redactText?: ToolDiagnosticTextRedactor;
-	/**
-	 * When set, caps each rendered tool-result string to this many characters.
-	 *
-	 * A single pathologically-large tool result (a 30 KB shell output, a
-	 * full file read, a multi-thousand-line grep) can blow the planner's
-	 * compaction budget single-handedly when it lives inside the
-	 * kept-verbatim window after compaction. This cap renders such results
-	 * as `<head> ... [N chars truncated] ... <tail>` so the planner still
-	 * sees the beginning and end of the result (which is where structure
-	 * lives) without paying for the middle.
-	 *
-	 * **The trajectory itself is unchanged** — the raw `PlannerStep.result`
-	 * still carries the full content for archival, recorder, replay, and
-	 * any downstream consumer that wants the unredacted output. Only the
-	 * wire-shape message that goes to the next planner call is truncated.
-	 *
-	 * Default: undefined (no cap).
-	 */
-	maxToolResultChars?: number;
-}
-
-/**
- * Truncate a tool-result string to fit within `maxChars` by keeping a head
- * + tail and stitching in a deterministic marker. Pure function — exported
- * so the evaluator/recorder can mirror the exact rendering rule.
- *
- * Returns the input unchanged when it already fits OR when `maxChars` is
- * unset / non-positive / not finite.
- */
-export function truncateToolResultText(
-	text: string,
-	maxChars: number | undefined,
-): string {
-	if (
-		typeof maxChars !== "number" ||
-		!Number.isFinite(maxChars) ||
-		maxChars <= 0
-	) {
-		return text;
-	}
-	if (text.length <= maxChars) {
-		return text;
-	}
-
-	const limit = Math.floor(maxChars);
-	const markerFor = (count: number) => ` [${count} chars truncated] `;
-
-	for (
-		let preserveBudget = limit - markerFor(text.length).length;
-		preserveBudget > 0;
-		preserveBudget--
-	) {
-		const headFloor = preserveBudget >= 20 ? 10 : 1;
-		const tailFloor = preserveBudget >= 20 ? 10 : preserveBudget > 1 ? 1 : 0;
-		const headChars = Math.max(headFloor, Math.floor(preserveBudget * 0.6));
-		const tailChars = Math.max(tailFloor, preserveBudget - headChars);
-		// Surrogate-safe cuts: a plain slice landing mid-emoji leaves a lone
-		// surrogate that strict provider JSON parsers reject (#18025).
-		const head = truncateWellFormed(text, headChars);
-		const tail = tailWellFormed(text, tailChars);
-		// Compute the truncated count from the ACTUAL retained code-unit
-		// lengths, not the requested head/tail lengths — truncateWellFormed
-		// and tailWellFormed back off at surrogate boundaries, so the actual
-		// retained length may be shorter than the request (#18081).
-		const actualPreserved = head.length + tail.length;
-		const truncatedCount = text.length - actualPreserved;
-		if (truncatedCount <= 0) {
-			return truncateWellFormed(text, limit);
-		}
-		const marker = markerFor(truncatedCount);
-		if (actualPreserved + marker.length <= limit) {
-			return `${head}${marker}${tail}`;
-		}
-	}
-
-	return truncateWellFormed(text, limit);
 }
 
 /**
@@ -161,10 +84,6 @@ export function trajectoryStepsToMessages(
 		const rawResultText = toolMessageContent(
 			projectToolDiagnosticValue(step.result, redactText) as PlannerToolResult,
 		);
-		const renderedResultText = truncateToolResultText(
-			rawResultText,
-			options.maxToolResultChars,
-		);
 		messages.push({
 			role: "tool",
 			content: [
@@ -172,7 +91,7 @@ export function trajectoryStepsToMessages(
 					type: "tool-result",
 					toolCallId,
 					toolName: step.toolCall.name,
-					output: { type: "text", value: renderedResultText },
+					output: { type: "text", value: rawResultText },
 				},
 			],
 		});
@@ -206,40 +125,13 @@ function shortArgsDigest(params: Record<string, unknown> | undefined): string {
 }
 
 /**
- * Project a PlannerToolResult to plain-text `tool` message content per OpenAI
- * conventions: prefer `result.text`, fall back to a JSON serialization of
- * `data`/`error` only when no text projection exists. Strict-grammar
- * providers (Cerebras) and Anthropic both prefer text over a JSON blob in
- * the tool turn, and this preserves byte-stability when text is consistent.
- *
- * An action may provide `promptData` when its complete machine payload is not
- * an appropriate model projection. This keeps projection ownership with the
- * action and leaves arbitrary chaining data intact by default.
+ * Serialize the complete PlannerToolResult into the next model turn. Tool
+ * results are model context: preferring one projection and omitting sibling
+ * fields hides receipts, user-facing evidence, and structured failure data in
+ * ways that are extremely difficult to diagnose.
  */
 export function toolMessageContent(result: PlannerToolResult): string {
-	const parts: string[] = [];
-	const hasText =
-		typeof result.text === "string" && result.text.trim().length > 0;
-	if (hasText && typeof result.text === "string") {
-		parts.push(`text: ${result.text.trim()}`);
-	}
-	const modelData = result.promptData ?? result.data;
-	if (modelData && Object.keys(modelData).length > 0) {
-		parts.push(`data: ${stringifyForModel(modelData)}`);
-	}
-	if (result.error) {
-		const errMsg =
-			typeof result.error === "string"
-				? result.error
-				: result.error instanceof Error
-					? result.error.message
-					: stringifyForModel(result.error);
-		parts.push(result.success ? `note: ${errMsg}` : `error: ${errMsg}`);
-	}
-	if (parts.length > 0) {
-		return parts.join("\n");
-	}
-	return result.success ? "ok" : "failed";
+	return stringifyForModel(result);
 }
 
 export function cacheProviderOptions(

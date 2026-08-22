@@ -1,9 +1,8 @@
 /**
  * Computes the real git changeset for a coding session's workspace: captures a
- * baseline SHA and dirty state at spawn, then renders the bounded diff and
+ * baseline SHA and dirty state at spawn, then renders the complete diff and
  * changed-file list that back the `CODING_SESSION_CHANGES` provider's answers to
- * "show me the diff" queries. Output is capped by file count and character
- * budget, and an unborn HEAD (a fresh repo with zero commits) is diffed against
+ * "show me the diff" queries. An unborn HEAD (a fresh repo with zero commits) is diffed against
  * the canonical empty-tree hash so the whole working tree reads as added.
  */
 import { spawnSync } from "node:child_process";
@@ -20,9 +19,6 @@ import { isAbsolute, join, relative, resolve } from "node:path";
 
 const GIT_TIMEOUT_MS = 10_000;
 const GIT_MAX_BUFFER = 8 * 1024 * 1024;
-const MAX_DIFF_CHARS = 6_000;
-const MAX_CHANGED_FILES = 60;
-const MAX_FILE_DIFFS = 12;
 
 // The canonical git empty-tree object hash. On an unborn HEAD (a fresh repo
 // with zero commits), `git diff HEAD` throws because HEAD resolves to nothing;
@@ -360,12 +356,10 @@ export async function captureChangeSet(
     : [];
 
   // Agent-written paths FIRST: explicit edit/write tool calls are the
-  // highest-signal entries and must survive the MAX_CHANGED_FILES cap when a
-  // large scaffold floods `untracked`. Set dedupe keeps first-occurrence
-  // order, so spreading them last let the flood evict them entirely.
+  // highest-signal entries. Set dedupe keeps first-occurrence order.
   const changedFiles = [
     ...new Set([...agentWritten, ...tracked, ...untracked]),
-  ].slice(0, MAX_CHANGED_FILES);
+  ];
   if (changedFiles.length === 0) return undefined;
 
   // Real stat from git for the same filtered file set rendered to the user.
@@ -381,19 +375,16 @@ export async function captureChangeSet(
       : `${changedFiles.length} file(s) changed`;
 
   let diff = "";
-  for (const file of changedFiles.slice(0, MAX_FILE_DIFFS)) {
+  for (const file of changedFiles) {
     const fd = await fileDiff(workdir, base, file);
     if (fd) diff = diff ? `${diff}\n${fd}` : fd;
-    if (diff.length > MAX_DIFF_CHARS) break;
   }
-  const overLength = diff.length > MAX_DIFF_CHARS;
-  if (overLength) diff = `${diff.slice(0, MAX_DIFF_CHARS)}\n… [diff truncated]`;
 
   return {
     changedFiles,
     diffStat,
     diff,
-    truncated: overLength || changedFiles.length >= MAX_CHANGED_FILES,
+    truncated: false,
     capturedAt: Date.now(),
   };
 }
@@ -408,17 +399,17 @@ function captureToolPathOnlyChangeSet(
         .map((file) => toWorkdirRelative(workdir, file))
         .filter((file) => file.length > 0),
     ),
-  ].slice(0, MAX_CHANGED_FILES);
+  ];
   if (changedFiles.length === 0) return undefined;
 
   let diff = "";
-  for (const file of changedFiles.slice(0, MAX_FILE_DIFFS)) {
+  for (const file of changedFiles) {
     const absolute = resolve(workdir, file);
     let fileDiff = "";
     try {
       if (existsSync(absolute)) {
         const stat = statSync(absolute);
-        if (stat.isFile() && stat.size <= MAX_DIFF_CHARS) {
+        if (stat.isFile()) {
           const content = readFileSync(absolute, "utf8");
           fileDiff = [
             `diff --git a/${file} b/${file}`,
@@ -435,28 +426,22 @@ function captureToolPathOnlyChangeSet(
       fileDiff = "";
     }
     if (fileDiff) diff = diff ? `${diff}\n${fileDiff}` : fileDiff;
-    if (diff.length > MAX_DIFF_CHARS) break;
   }
-
-  const overLength = diff.length > MAX_DIFF_CHARS;
-  if (overLength) diff = `${diff.slice(0, MAX_DIFF_CHARS)}\n… [diff truncated]`;
 
   return {
     changedFiles,
     diffStat: `${changedFiles.length} file(s) changed`,
     diff,
-    truncated: overLength || changedFiles.length >= MAX_CHANGED_FILES,
+    truncated: false,
     capturedAt: Date.now(),
   };
 }
 
 /**
- * Diff + changed-file list for a workspace BRANCH against its PR base, sized for
- * the diff-review gate (not the small user-facing "show me the diff" preview).
+ * Complete diff + changed-file list for a workspace branch against its PR base.
  *
  * The gate needs the FULL diff text to scan every added line for secrets, so the
- * character budget here is far larger than {@link captureChangeSet}'s 6k preview
- * cap. We diff `base...HEAD` (three-dot = changes on the branch since it forked
+ * We diff `base...HEAD` (three-dot = changes on the branch since it forked
  * from base) so pre-existing base-branch content is never re-scanned, and fall
  * back to a two-dot `base HEAD` diff when the merge-base can't be resolved (e.g.
  * unrelated histories). Best-effort: any git failure yields `undefined` and the
@@ -470,9 +455,6 @@ export interface PrGateChangeSet {
   /** True when the changed-file list was truncated at the gate budget. */
   filesTruncated: boolean;
 }
-
-const GATE_MAX_DIFF_CHARS = 2_000_000;
-const GATE_MAX_CHANGED_FILES = 5_000;
 
 export async function capturePrGateChangeSet(
   workdir: string,
@@ -490,17 +472,18 @@ export async function capturePrGateChangeSet(
   if (nameStatus === undefined) return undefined;
 
   const allChangedFiles = parseNameStatus(nameStatus);
-  const filesTruncated = allChangedFiles.length > GATE_MAX_CHANGED_FILES;
-  const changedFiles = allChangedFiles.slice(0, GATE_MAX_CHANGED_FILES);
+  const changedFiles = allChangedFiles;
 
   const diffRaw =
     (await git(workdir, ["diff", `${base}...HEAD`])) ??
     (await git(workdir, ["diff", base, "HEAD"])) ??
     "";
-  const truncated = diffRaw.length > GATE_MAX_DIFF_CHARS;
-  const diff = truncated ? diffRaw.slice(0, GATE_MAX_DIFF_CHARS) : diffRaw;
-
-  return { changedFiles, diff, truncated, filesTruncated };
+  return {
+    changedFiles,
+    diff: diffRaw,
+    truncated: false,
+    filesTruncated: false,
+  };
 }
 
 export function verifyChangedFilesOnDisk(
@@ -551,14 +534,13 @@ export function summarizeChangeSet(
 ): string {
   const count = changeSet.changedFiles.length;
   const noun = count === 1 ? "file" : "files";
-  const shown = changeSet.changedFiles.slice(0, 6).join(", ");
-  const more = count > 6 ? ` (+${count - 6} more)` : "";
+  const shown = changeSet.changedFiles.join(", ");
   const verifiedSuffix = verification
     ? verification.verified
       ? " (verified on disk)"
       : ` (UNVERIFIED: missing ${verification.missingFiles.join(", ")})`
     : "";
-  return `Changed ${count} ${noun}: ${shown}${more}${verifiedSuffix}`;
+  return `Changed ${count} ${noun}: ${shown}${verifiedSuffix}`;
 }
 
 /**

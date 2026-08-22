@@ -1641,8 +1641,8 @@ export function buildEmailCurationPrompt(
           formatEmailCurationField("fromEmail", candidate.fromEmail ?? ""),
           formatEmailCurationField("subject", text.subject),
           formatEmailCurationField("snippet", text.snippet),
-          formatEmailCurationField("headers", text.headers.slice(0, 2000)),
-          formatEmailCurationField("body", text.body.slice(0, 8000)),
+          formatEmailCurationField("headers", text.headers),
+          formatEmailCurationField("body", text.body),
         ].join("\n"),
       ),
     ].join("\n");

@@ -48,10 +48,7 @@ import type {
 import { ModelType } from "../types/model.js";
 import type { IAgentRuntime } from "../types/runtime.js";
 import type { Service } from "../types/service.js";
-import {
-	toWellFormedUnicode,
-	truncateWellFormed,
-} from "../utils/well-formed.js";
+import { toWellFormedUnicode } from "../utils/well-formed.js";
 import { canonicalKind } from "./entity-recognizer.js";
 import type { CorpusPseudonymMap } from "./pii-pseudonym-map.js";
 
@@ -193,13 +190,12 @@ export interface AssembleContextPackRequest {
 	readonly minEntityConfidence?: number;
 	/** Max fragments folded into the pack (default 8). */
 	readonly maxFragments?: number;
-	/** Max pack characters (default 4000). Fragments are trimmed to fit. */
+	/** @deprecated Retained for source compatibility; pack text is never clipped. */
 	readonly maxChars?: number;
 }
 
 const DEFAULT_MIN_ENTITY_CONFIDENCE = 0.6;
 const DEFAULT_MAX_FRAGMENTS = 8;
-const DEFAULT_MAX_CHARS = 4000;
 
 /**
  * Assemble the context pack + pseudonym-assignment slice for one chunk.
@@ -216,7 +212,7 @@ export async function assembleContextPack(
 		rulesetVersion,
 		minEntityConfidence = DEFAULT_MIN_ENTITY_CONFIDENCE,
 		maxFragments = DEFAULT_MAX_FRAGMENTS,
-		maxChars = DEFAULT_MAX_CHARS,
+		maxChars: _maxChars,
 	} = request;
 
 	const sourcesQueried: string[] = [];
@@ -300,7 +296,7 @@ export async function assembleContextPack(
 		if (assignment) assignments.set(assignment.entityClusterId, assignment);
 	}
 
-	// 4. Render the bounded pack text. Entity summaries state that a cluster is
+	// 4. Render the complete pack text. Entity summaries state that a cluster is
 	// already mapped WITHOUT embedding the alias→pseudonym pair: the surrogate
 	// itself rides in `pseudonymAssignments`, keyed by cluster id.
 	const sections: string[] = [];
@@ -326,9 +322,6 @@ export async function assembleContextPack(
 	}
 	let contextPack = sections.join("\n\n");
 	contextPack = toWellFormedUnicode(contextPack);
-	if (contextPack.length > maxChars) {
-		contextPack = truncateWellFormed(contextPack, maxChars);
-	}
 
 	return {
 		contextPack,
@@ -436,7 +429,7 @@ export function sourcesFromRuntime(
 				roomId: (options.roomIds?.[0] ?? runtime.agentId) as UUID,
 				content: { text: query },
 			});
-			return results.slice(0, limit).map((doc) => ({
+			return results.map((doc) => ({
 				text: doc.content.text ?? "",
 				origin: "document" as const,
 				ref: doc.id,

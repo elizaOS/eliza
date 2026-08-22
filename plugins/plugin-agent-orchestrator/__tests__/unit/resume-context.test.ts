@@ -3,7 +3,7 @@
  *
  * Covers:
  *  - reason classification round-trips (rate-limited / needs-reauth / capacity)
- *  - buildResumeContext normalization (dedupe + cap changedFiles, clamp/trim
+ *  - buildResumeContext normalization (dedupe changedFiles, trim
  *    lastProgress, blank-field pruning, deterministic `now`)
  *  - readResumeContext defensive coercion (malformed / partial / wrong-kind →
  *    undefined; valid metadata round-trips)
@@ -18,8 +18,6 @@ import {
   applyResumePreamble,
   buildResumeContext,
   buildResumePreamble,
-  MAX_RESUME_CHANGED_FILES,
-  MAX_RESUME_PROGRESS_CHARS,
   RESUME_CONTEXT_METADATA_KEY,
   type ResumeContext,
   readResumeContext,
@@ -66,31 +64,27 @@ describe("resume-context: buildResumeContext", () => {
     },
   );
 
-  it("dedupes and caps changedFiles, trimming blanks", () => {
-    const many = Array.from(
-      { length: MAX_RESUME_CHANGED_FILES + 20 },
-      (_, i) => `file-${i}.ts`,
-    );
+  it("dedupes every changed file while trimming blanks", () => {
+    const many = Array.from({ length: 60 }, (_, i) => `file-${i}.ts`);
     const ctx = buildResumeContext({
       reason: "rate-limited",
       ...BASE,
       changedFiles: [" a.ts ", "a.ts", "", "  ", ...many],
     });
-    expect(ctx.changedFiles).toHaveLength(MAX_RESUME_CHANGED_FILES);
+    expect(ctx.changedFiles).toHaveLength(61);
     // dedupe collapsed " a.ts " and "a.ts" to one entry, blanks removed
     expect(ctx.changedFiles?.filter((f) => f === "a.ts")).toHaveLength(1);
     expect(ctx.changedFiles).not.toContain("");
   });
 
-  it("clamps an over-long lastProgress and marks it truncated", () => {
-    const long = "x".repeat(MAX_RESUME_PROGRESS_CHARS + 500);
+  it("preserves an over-long lastProgress", () => {
+    const long = "x".repeat(1700);
     const ctx = buildResumeContext({
       reason: "rate-limited",
       ...BASE,
       lastProgress: long,
     });
-    expect(ctx.lastProgress).toHaveLength(MAX_RESUME_PROGRESS_CHARS + 1); // +ellipsis
-    expect(ctx.lastProgress?.endsWith("…")).toBe(true);
+    expect(ctx.lastProgress).toBe(long);
   });
 
   it("prunes blank optional fields to undefined", () => {

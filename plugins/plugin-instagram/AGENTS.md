@@ -125,10 +125,9 @@ pattern).
   are skipped, padded object keys and array `accountId`/`id` values are normalized before lookup,
   and duplicate normalized IDs are rejected rather than silently overwriting credentials. The same
   key normalization applies to `character.settings.instagram.accounts`.
-- **Length caps:** `MAX_COMMENT_LENGTH = 1000` and `MAX_DM_LENGTH = 1000` are enforced in
-  `service.ts` — DMs over the cap throw in `sendDirectMessage`, and `contentShaping.postProcess`
-  auto-truncates comments via the module-local `truncateInstagramComment`. `MAX_CAPTION_LENGTH = 2200`
-  is reserved for a caption-posting path.
+- **Length limits:** `MAX_COMMENT_LENGTH = 1000` and `MAX_DM_LENGTH = 1000` are enforced in
+  `service.ts` — over-limit DMs and comments fail explicitly without changing the text.
+  `MAX_CAPTION_LENGTH = 2200` is reserved for a caption-posting path.
 - **PostConnector target:** `POST operation=send` requires `mediaId`, `target`, or `replyTo` in
   `content.metadata`; throws without one.
 - **No `console.*`** — use `runtime.logger.*` or the imported `logger` from `@elizaos/core`.

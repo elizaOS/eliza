@@ -22,8 +22,6 @@ import {
   TERMINAL_SESSION_STATUSES,
 } from "../services/types.js";
 
-const MAX_RENDERED_ACTIVE_SESSIONS = 8;
-
 function sessionSortTime(session: SessionInfo): number {
   return new Date(session.lastActivityAt).getTime();
 }
@@ -33,15 +31,11 @@ function sessionIsActive(session: SessionInfo): boolean {
 }
 
 function summarizeSessionsForPrompt(sessions: SessionInfo[]): SessionInfo[] {
-  return sessions
-    .slice()
-    .sort((a, b) => {
-      const activeDelta =
-        Number(sessionIsActive(b)) - Number(sessionIsActive(a));
-      if (activeDelta !== 0) return activeDelta;
-      return sessionSortTime(b) - sessionSortTime(a);
-    })
-    .slice(0, MAX_RENDERED_ACTIVE_SESSIONS);
+  return sessions.slice().sort((a, b) => {
+    const activeDelta = Number(sessionIsActive(b)) - Number(sessionIsActive(a));
+    if (activeDelta !== 0) return activeDelta;
+    return sessionSortTime(b) - sessionSortTime(a);
+  });
 }
 
 export const availableAgentsProvider: Provider = {

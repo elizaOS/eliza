@@ -1,20 +1,19 @@
 /**
  * Reads and writes the configured owner display name, persisted at `ui.ownerName`
  * in the Eliza config. Both accessors normalize the value (coerce to trimmed
- * string, drop empties, cap at `OWNER_NAME_MAX_LENGTH`) and swallow config
- * load/save failures, returning null / false rather than throwing.
+ * string, drop empties, and repair invalid Unicode) and swallow config load/save
+ * failures, returning null / false rather than throwing. Display names are
+ * preserved in full because they later become model-visible identity context.
  */
 
-import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
+import { toWellFormedUnicode } from "@elizaos/core";
 import { loadElizaConfig, saveElizaConfig } from "../config/config.ts";
-
-export const OWNER_NAME_MAX_LENGTH = 60;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
-function normalizeOwnerName(value: unknown): string | null {
+export function normalizeOwnerName(value: unknown): string | null {
   if (typeof value !== "string" && typeof value !== "number") {
     return null;
   }
@@ -22,10 +21,7 @@ function normalizeOwnerName(value: unknown): string | null {
   if (!trimmed) {
     return null;
   }
-  return truncateWellFormed(
-    toWellFormedUnicode(trimmed),
-    OWNER_NAME_MAX_LENGTH,
-  );
+  return toWellFormedUnicode(trimmed);
 }
 
 export async function fetchConfiguredOwnerName(): Promise<string | null> {

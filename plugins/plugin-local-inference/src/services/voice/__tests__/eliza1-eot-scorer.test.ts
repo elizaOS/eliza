@@ -183,16 +183,17 @@ describe("Eliza1EotScorer", () => {
 		expect(scorer.modelLabel).toContain("eot-lora");
 	});
 
-	it("truncates the prompt to maxHistoryTokens", async () => {
+	it("rejects a prompt that cannot fit without discarding input", async () => {
 		const fake = buildFakeModel({ endOfTurnProbability: () => 0.5 });
 		const scorer = new Eliza1EotScorer({
 			model: fake.model,
-			maxHistoryTokens: 5,
+			contextSize: 5,
 		});
 		const long = "a".repeat(50);
-		const result = await scorer.score(long);
-		expect(result.promptTokens).toBe(5);
-		expect(fake.controlledEvaluateCalls[0]).toHaveLength(5);
+		await expect(scorer.score(long)).rejects.toThrow(
+			/complete prompt requires .* exceeding the dedicated 5-token context/,
+		);
+		expect(fake.controlledEvaluateCalls).toHaveLength(0);
 	});
 
 	it("throws a descriptive error when no paired turn-token contract resolves", async () => {

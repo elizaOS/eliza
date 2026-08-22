@@ -19,8 +19,6 @@ import type {
 import { logger } from "@elizaos/core";
 import { getValidationKeywordTerms } from "@elizaos/shared";
 
-const MAX_CONTACTS = 10;
-
 function formatPerson(person: RelationshipsPersonSummary): string {
   const platforms =
     person.platforms.length > 0 ? person.platforms.join(", ") : "no platforms";
@@ -32,7 +30,7 @@ function formatPerson(person: RelationshipsPersonSummary): string {
     parts.push(`prefers: ${person.preferredCommunicationChannel}`);
   }
   if (person.aliases.length > 0) {
-    parts.push(`aka: ${person.aliases.slice(0, 3).join(", ")}`);
+    parts.push(`aka: ${person.aliases.join(", ")}`);
   }
   if (person.lastInteractionAt) {
     parts.push(`last: ${person.lastInteractionAt.slice(0, 10)}`);
@@ -77,9 +75,7 @@ export const rolodexProvider: Provider = {
         return { text: "", values: {}, data: {} };
       }
 
-      const snapshot = await graphService.getGraphSnapshot({
-        limit: MAX_CONTACTS,
-      });
+      const snapshot = await graphService.getGraphSnapshot({});
 
       if (!snapshot) {
         return {
@@ -103,12 +99,6 @@ export const rolodexProvider: Provider = {
 
       for (const person of snapshot.people) {
         lines.push(formatPerson(person));
-      }
-
-      if (snapshot.stats.totalPeople > MAX_CONTACTS) {
-        lines.push(
-          `... and ${snapshot.stats.totalPeople - MAX_CONTACTS} more. Use SEARCH_ENTITY to find specific contacts.`,
-        );
       }
 
       return {

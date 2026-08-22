@@ -989,7 +989,6 @@ export class DocumentService extends Service {
 		const contentBasedId = generateContentBasedId(options.content, agentId, {
 			includeFilename: options.originalFilename,
 			contentType: options.contentType,
-			maxChars: 2000,
 		}) as UUID;
 
 		logger.info(
@@ -1756,8 +1755,7 @@ export class DocumentService extends Service {
 				worldId: fragment.worldId,
 			}))
 			.filter((item) => item.similarity > 0)
-			.sort((a, b) => b.similarity - a.similarity)
-			.slice(0, 20) as StoredDocument[];
+			.sort((a, b) => b.similarity - a.similarity) as StoredDocument[];
 	}
 
 	/**
@@ -1843,8 +1841,7 @@ export class DocumentService extends Service {
 					worldId: fragment.worldId,
 				};
 			})
-			.sort((a, b) => b.similarity - a.similarity)
-			.slice(0, 20) as StoredDocument[];
+			.sort((a, b) => b.similarity - a.similarity) as StoredDocument[];
 	}
 
 	async enrichConversationMemoryWithRAG(
@@ -2115,10 +2112,7 @@ export class DocumentService extends Service {
 				const documentId = generateContentBasedId(
 					trimmedItem,
 					this.runtime.agentId,
-					{
-						maxChars: 2000,
-						includeFilename: filename,
-					},
+					{ includeFilename: filename },
 				) as UUID;
 
 				if (await this.checkExistingDocument(documentId)) {

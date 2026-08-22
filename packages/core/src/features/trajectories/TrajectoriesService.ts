@@ -35,7 +35,6 @@ import {
 import {
 	parseTrajectorySemanticStages,
 	recordedStageToSemanticStage,
-	TRAJECTORY_SEMANTIC_STAGES_MAX_ITEMS,
 	type TrajectorySemanticStageRecord,
 } from "../../services/trajectory-semantic-stage";
 import type { TrajectoryRuntimeLlmCallParams } from "../../trajectory-utils";
@@ -2208,73 +2207,30 @@ export class TrajectoriesService extends Service {
 				}
 				return;
 			}
-			// Bounds are expected diagnostics, not write faults, and must be
-			// reported *inside* the lock task rather than thrown out of it. The
-			// task's promise is what `withTrajectoryWriteLock` stores in
-			// `writeQueues`, and `flushWriteQueue` deliberately rethrows that
-			// promise as an awaited persistence barrier (J2). Throwing here would
-			// therefore let a stage bound — reachable on any turn that emits more
-			// stages than the cap — reject the turn's own flush, which is exactly
-			// what a diagnostics mirror must never do.
-			if (stages.length >= TRAJECTORY_SEMANTIC_STAGES_MAX_ITEMS) {
-				this.reportDetachedWriteFailure(
-					"[trajectory-logger] Dropped a semantic stage: step is at the stage cap",
-					{
-						trajectoryId,
-						stepId,
-						stageId: semantic.stageId,
-						limit: TRAJECTORY_SEMANTIC_STAGES_MAX_ITEMS,
-					},
-					new ElizaError("Trajectory step semantic stages are full", {
-						code: "TRAJECTORY_SEMANTIC_STAGE_OVERFLOW",
-						context: {
-							trajectoryId,
-							stepId,
-							limit: TRAJECTORY_SEMANTIC_STAGES_MAX_ITEMS,
-						},
-					}),
-				);
-				return;
-			}
 			const nextStages = [...stages, semantic];
-			// Write ⊆ read by construction. `parseTrajectorySemanticStage` gives
-			// each stage a fresh validation budget on the way in, but the read
-			// path (`normalizeTrajectoryStep`) shares one budget across the whole
-			// array — so a run of individually-valid stages can decode to an
-			// invalid array. That is not recoverable on read: the step
-			// normalizes to null and `getTrajectoryById` throws
-			// TRAJECTORY_ROW_INVALID for the *entire* trajectory, taking every
-			// other step, llmCall, and providerAccess with it, and making the row
-			// unwritable too. Validating the candidate array with the read-path
-			// decoder before persisting keeps that state unreachable: the stage
-			// that would exceed the aggregate budget is rejected as a J7
-			// diagnostic instead, exactly like a cap overflow.
+			// Write subset read: validate the combined stage array before persistence.
 			try {
 				parseTrajectorySemanticStages(nextStages);
 			} catch (cause) {
-				// error-policy:J7 an exceeded decode budget is a diagnostics bound:
-				// report and drop the stage, never poison the row or the flush.
+				// error-policy:J7 invalid diagnostic data must not poison the row or flush.
 				this.reportDetachedWriteFailure(
-					"[trajectory-logger] Dropped a semantic stage: step would exceed the stage decode budget",
+					"[trajectory-logger] Dropped an invalid semantic stage",
 					{
 						trajectoryId,
 						stepId,
 						stageId: semantic.stageId,
 						stageCount: nextStages.length,
 					},
-					new ElizaError(
-						"Trajectory step semantic stages exceed the decode budget",
-						{
-							code: "TRAJECTORY_SEMANTIC_STAGE_BUDGET_EXCEEDED",
-							context: {
-								trajectoryId,
-								stepId,
-								stageId: semantic.stageId,
-								stageCount: nextStages.length,
-							},
-							cause,
+					new ElizaError("Trajectory step semantic stages are invalid", {
+						code: "TRAJECTORY_SEMANTIC_STAGE_INVALID",
+						context: {
+							trajectoryId,
+							stepId,
+							stageId: semantic.stageId,
+							stageCount: nextStages.length,
 						},
-					),
+						cause,
+					}),
 				);
 				return;
 			}

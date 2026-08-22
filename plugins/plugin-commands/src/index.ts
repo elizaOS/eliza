@@ -3,7 +3,7 @@
  *
  * Provides a slash-command system with:
  * - /help, /status, /commands for information
- * - /stop, /reset, /compact for session control
+ * - /stop, /reset, /new for session control
  * - /think, /verbose, /model for options
  * - /allowlist, /approve for management
  * - /tts for media

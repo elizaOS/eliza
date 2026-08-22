@@ -19,8 +19,7 @@ export interface DirectActionInferenceHooks {
 }
 
 function unwrapPlannerIdentifier(value: string): string {
-	const safe = value.length > 10_000 ? value.slice(0, 10_000) : value;
-	const trimmed = safe
+	const trimmed = value
 		.trim()
 		.replace(/^(?:[-*]|\d+[.)])\s+/, "")
 		.replace(/^["'`]+|["'`]+$/g, "");
@@ -2205,7 +2204,6 @@ function isContinuationDialogueArtifact(
 	return false;
 }
 
-const CONTINUATION_LOOKBACK_ENTRIES = 12;
 const PENDING_ASSISTANT_TURN_MAX_CHARS = 160;
 
 function looksLikePendingAssistantTurn(text: string): boolean {
@@ -2243,8 +2241,7 @@ export function resolveExplicitContinuationRequestText(
 			if (currentMessageId && entry.id === currentMessageId) return false;
 			return continuationEntryText(entry).length > 0;
 		})
-		.sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0))
-		.slice(-CONTINUATION_LOOKBACK_ENTRIES);
+		.sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0));
 
 	if (kind === "approval") {
 		// Approval must answer the immediately preceding visible assistant turn.

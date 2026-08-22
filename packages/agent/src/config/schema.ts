@@ -331,7 +331,6 @@ const FIELD_LABELS: Record<string, string> = {
   "skills.load.watchDebounceMs": "Skills Watch Debounce (ms)",
   "agents.defaults.workspace": "Workspace",
   "agents.defaults.repoRoot": "Repo Root",
-  "agents.defaults.initMaxChars": "Init Max Chars",
   "agents.defaults.enableInitProviders": "Enable Init Providers",
   "agents.defaults.envelopeTimezone": "Envelope Timezone",
   "agents.defaults.envelopeTimestamp": "Envelope Timestamp",
@@ -691,8 +690,6 @@ const FIELD_HELP: Record<string, string> = {
     "Cap (hours) for billing backoff (default: 24).",
   "auth.cooldowns.failureWindowHours":
     "Failure window (hours) for backoff counters (default: 24).",
-  "agents.defaults.initMaxChars":
-    "Max characters of each workspace init file injected into the system prompt before truncation (default: 20000).",
   "agents.defaults.enableInitProviders":
     "Enable init providers (attachments, entities, facts) that add context but consume tokens. Useful to disable for small context windows (default: true).",
   "agents.defaults.repoRoot":

@@ -79,11 +79,10 @@ describe("buildSpawnAckUserPrompt", () => {
     expect(prompt).toContain("the task they just gave you");
   });
 
-  it("clips an overlong task so the prompt stays bounded", () => {
+  it("preserves an overlong task in the prompt", () => {
     const long = "x".repeat(1000);
     const prompt = buildSpawnAckUserPrompt(long);
-    expect(prompt).toContain("…");
-    expect(prompt.length).toBeLessThan(500);
+    expect(prompt).toContain(long);
   });
 });
 
@@ -126,10 +125,9 @@ describe("sanitizeSpawnAck", () => {
     );
   });
 
-  it("clips an over-long line and marks the truncation", () => {
+  it("preserves an over-long line", () => {
     const out = sanitizeSpawnAck("word ".repeat(60));
-    expect(out.length).toBeLessThanOrEqual(120);
-    expect(out.endsWith("…")).toBe(true);
+    expect(out).toBe("word ".repeat(60).trim());
   });
 
   it("returns empty (caller falls back) for empty / whitespace-only input", () => {

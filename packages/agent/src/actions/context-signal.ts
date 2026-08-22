@@ -111,7 +111,7 @@ export function hasContextSignalSync(
   state: State | undefined,
   strongTerms: readonly string[],
   weakTerms: readonly string[] = [],
-  contextLimit = 8,
+  contextLimit = Number.MAX_SAFE_INTEGER,
 ): boolean {
   const texts = [
     ...recentConversationTextsFromState(state, contextLimit),
@@ -156,7 +156,7 @@ export function hasContextSignalSyncForKey(
     state,
     spec.strongTerms,
     spec.weakTerms,
-    options?.contextLimit ?? spec.contextLimit,
+    options?.contextLimit ?? Number.MAX_SAFE_INTEGER,
   );
 }
 
@@ -187,7 +187,7 @@ export function hasSelectedContextOrSignalSync(
   actionContexts: readonly AgentContext[],
   strongTerms: readonly string[],
   weakTerms: readonly string[] = [],
-  contextLimit = 8,
+  contextLimit = Number.MAX_SAFE_INTEGER,
 ): boolean {
   if (hasSelectedActionContext(message, state, actionContexts)) {
     return true;
@@ -211,7 +211,7 @@ export async function hasContextSignal(
   state: State | undefined,
   strongTerms: readonly string[],
   weakTerms: readonly string[] = [],
-  contextLimit = 8,
+  contextLimit = Number.MAX_SAFE_INTEGER,
 ): Promise<boolean> {
   const stateTexts = recentConversationTextsFromState(state, contextLimit);
   let texts: string[];
