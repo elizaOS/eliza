@@ -135,7 +135,6 @@ describe("READ", () => {
         file_path: file,
         offset: firstView.slice.nextOffset,
         limit: 2,
-        expectedRevision: firstView.reference.revision,
       },
     });
     expect(`${first.text}${second.text}`).toBe("alpha\r\nbeta\ngamma\r\n");
@@ -701,14 +700,31 @@ describe("READ", () => {
     expect(result.text).toContain("UTF-8 character boundary");
   });
 
-  it("requires revision identity for every nonzero continuation", async () => {
+  it("requires an initial read before a nonzero continuation", async () => {
     const file = path.join(env.tmpDir, "revision-required.txt");
     await fs.writeFile(file, "alpha\nbeta\n", "utf8");
     const result = await readFileHandler(env.runtime, env.message, undefined, {
       parameters: { file_path: file, offset: 1, limit: 1 },
     });
     expect(result.success).toBe(false);
-    expect(result.text).toContain("expectedRevision is required");
+    expect(result.text).toContain("read from offset 0");
+  });
+
+  it("rejects an automatic continuation when the file changed after the initial read", async () => {
+    const file = path.join(env.tmpDir, "automatic-revision-stale.txt");
+    await fs.writeFile(file, "alpha\nbeta\ngamma\n", "utf8");
+    const first = await readFileHandler(env.runtime, env.message, undefined, {
+      parameters: { file_path: file, limit: 1 },
+    });
+    expect(first.success).toBe(true);
+
+    await fs.appendFile(file, "delta\n", "utf8");
+    const result = await readFileHandler(env.runtime, env.message, undefined, {
+      parameters: { file_path: file, offset: 1, limit: 1 },
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.text).toContain("expected revision");
   });
 
   it("rejects binary files containing NUL bytes", async () => {

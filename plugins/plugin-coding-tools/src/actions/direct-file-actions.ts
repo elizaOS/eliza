@@ -40,13 +40,6 @@ export const readAction: Action = {
       required: false,
       schema: { type: "number" },
     },
-    {
-      name: "expectedRevision",
-      description:
-        "Revision returned by the prior READ; required when continuing with a nonzero offset.",
-      required: false,
-      schema: { type: "string" },
-    },
   ],
   validate: async () => true,
   handler: readFileHandler,

@@ -24,7 +24,10 @@ import {
   successActionResult,
 } from "../lib/format.js";
 import { resolveInputPath } from "../lib/path-utils.js";
-import type { FileStateService } from "../services/file-state-service.js";
+import {
+  type FileStateService,
+  fileRevision,
+} from "../services/file-state-service.js";
 import type { SandboxService } from "../services/sandbox-service.js";
 import {
   CODING_TOOLS_LOG_PREFIX,
@@ -46,14 +49,6 @@ type Window = {
 };
 
 const lineCheckpoints = new Map<string, Map<number, number>>();
-
-function revision(stat: Awaited<ReturnType<fs.FileHandle["stat"]>>): string {
-  return createHash("sha256")
-    .update(
-      `${stat.dev}:${stat.ino}:${stat.size}:${stat.mtimeMs}:${stat.ctimeMs}`,
-    )
-    .digest("hex");
-}
 
 function integer(
   options: unknown,
@@ -304,13 +299,15 @@ export async function readFileHandler(
         message:
           "path is not a regular file. READ accepts files only; use SHELL with `ls` or `rg --files` to inspect a directory.",
       });
-    const currentRevision = revision(before);
-    const expected = readStringParam(options, "expectedRevision");
+    const currentRevision = fileRevision(before);
+    const explicitExpected = readStringParam(options, "expectedRevision");
+    const expected =
+      explicitExpected ??
+      fileState.get(conversationId, checked.resolved)?.revision;
     if (offset > 0 && !expected)
       return failureToActionResult({
         reason: "invalid_param",
-        message:
-          "expectedRevision is required when continuing from a nonzero offset",
+        message: "read from offset 0 before continuing from a nonzero offset",
       });
     if (expected && expected !== currentRevision)
       return failureToActionResult(
@@ -370,7 +367,7 @@ export async function readFileHandler(
         message: `line offset ${offset} exceeds total ${window.total}`,
       });
     }
-    const afterRevision = revision(await handle.stat());
+    const afterRevision = fileRevision(await handle.stat());
     if (afterRevision !== currentRevision)
       return failureToActionResult(
         {
@@ -403,7 +400,11 @@ export async function readFileHandler(
           : {}),
       },
     });
-    await fileState.recordRead(conversationId, checked.resolved);
+    await fileState.recordRead(conversationId, checked.resolved, {
+      mtimeMs: before.mtimeMs,
+      size: before.size,
+      revision: currentRevision,
+    });
     logger.debug(
       `${CODING_TOOLS_LOG_PREFIX} READ ${checked.resolved} unit=${unit} offset=${offset} end=${window.end} sourceBytesRead=${window.sourceBytesRead}`,
     );
