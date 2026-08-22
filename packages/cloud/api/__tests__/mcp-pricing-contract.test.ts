@@ -58,7 +58,7 @@ app.route("/api/mcps/time", timeRoute);
 app.route("/api/mcps/weather", weatherRoute);
 
 describe("public MCP pricing contract", () => {
-  test("platform discovery surfaces agree on the credit unit and list pricing", async () => {
+  test("platform info and list agree with memory execution pricing", async () => {
     const [infoResponse, listResponse] = await Promise.all([
       app.request("/api/mcp/info", undefined, TEST_ENV),
       app.request("/api/mcp/list", undefined, TEST_ENV),
@@ -67,7 +67,11 @@ describe("public MCP pricing contract", () => {
     expect(listResponse.status).toBe(200);
 
     const info = (await infoResponse.json()) as {
-      pricing: { type: string; creditUnit: string };
+      pricing: {
+        type: string;
+        creditUnit: string;
+        rates: Record<string, string>;
+      };
     };
     const list = (await listResponse.json()) as {
       mcps: Array<{
@@ -85,8 +89,14 @@ describe("public MCP pricing contract", () => {
 
     expect(info.pricing.type).toBe(platform.pricing.type);
     expect(info.pricing.creditUnit).toBe(platform.pricing.creditUnit);
+    expect(info.pricing.rates.save_memory).toBe(
+      PLATFORM_MCP_TOOL_PRICING.save_memory.label,
+    );
     expect(toolCost("save_memory")).toBe(
       PLATFORM_MCP_TOOL_PRICING.save_memory.label,
+    );
+    expect(info.pricing.rates.retrieve_memories).toBe(
+      PLATFORM_MCP_TOOL_PRICING.retrieve_memories.label,
     );
     expect(toolCost("retrieve_memories")).toBe(
       PLATFORM_MCP_TOOL_PRICING.retrieve_memories.label,
