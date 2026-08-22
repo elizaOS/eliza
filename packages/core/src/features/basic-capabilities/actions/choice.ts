@@ -368,7 +368,7 @@ export const choiceAction: Action = {
 			schema: { type: "string" as const, minLength: 1 },
 		},
 		{
-			name: "selectedOption",
+			name: "option",
 			description: "Option name to select for the pending task.",
 			required: true,
 			schema: { type: "string" as const, minLength: 1 },

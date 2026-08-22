@@ -49,6 +49,12 @@ function createMessage(): Memory {
 }
 
 describe("CHOOSE_OPTION action", () => {
+	it("advertises the canonical option parameter used by the action spec", () => {
+		expect(choiceAction.parameters?.map((parameter) => parameter.name)).toEqual(
+			["taskId", "option"],
+		);
+	});
+
 	it("accepts the complete task UUID as taskId", async () => {
 		const executed = { options: null as unknown | null };
 		const runtime = createRuntime(executed);
