@@ -167,8 +167,13 @@ JSONL receipt. An adapter response cannot be recorded as `succeeded` unless the
 real call occurred, its acceptance was typed, its readback exists and matches,
 and the caller's production-owned async generation fence admitted the attempt.
 The fence must exclude reset/rollover for the complete invocation, readback,
-and durable receipt append. If the generation is stale when that fence is
-acquired, the boundary is not called.
+and durable receipt append, while its guard revalidates authoritative state
+immediately before and after invocation. If the generation is stale before the
+call, the boundary is not invoked. If it becomes stale in flight, the provider
+effect cannot be prevented; the receipt is `stale_completion`, never success.
+Acquisition failures happen before the admitted callback and produce no attempt.
+After admission, guard failures are recorded as unknown attempts; a fence
+adapter must not defer a new rejection until after its callback resolves.
 
 The ledger is evidence, never desired or provider state. Fault directives are
 injected at this consumer boundary and record timeout, retryable/permanent,
@@ -179,10 +184,11 @@ a SHA-256 chain, and each newline-framed append is synced before it resolves.
 Malformed, edited, blank, or truncated frames fail closed rather than being
 returned as evidence. The chain is tamper-evident, not signed proof.
 
-`JsonlBoundaryObservationLedger` remains a single-writer primitive. #24076's
-cross-process namespace lease must implement the generation-fence contract and
-own reset/rollover exclusion; this module does not fabricate that authority or
-claim exactly-once behavior for an external provider.
+`JsonlBoundaryObservationLedger` remains a single-writer primitive. #24076 and
+its draft implementation #24204 must supply an adapter for this stricter
+generation-fence contract and own reset/rollover exclusion; this module does
+not fabricate that authority or claim exactly-once behavior for an external
+provider.
 
 ## Programmatic use
 

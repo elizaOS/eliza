@@ -18,6 +18,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   type BoundaryFaultDirective,
   type BoundaryGenerationFence,
+  type BoundaryResultClassification,
   JsonlBoundaryObservationLedger,
   observeProductionBoundary,
   type ProductionBoundaryIdentity,
@@ -102,7 +103,9 @@ function generationFence(
 ): BoundaryGenerationFence {
   return {
     withGeneration: async (expectedGeneration, operation) =>
-      operation(activeGeneration() === expectedGeneration),
+      operation({
+        isCurrent: async () => activeGeneration() === expectedGeneration,
+      }),
   };
 }
 
@@ -121,7 +124,9 @@ function exclusiveGenerationFence(initialGeneration: string): {
       });
       await previous;
       try {
-        return await operation(generation === expectedGeneration);
+        return await operation({
+          isCurrent: async () => generation === expectedGeneration,
+        });
       } finally {
         release();
       }
@@ -130,8 +135,8 @@ function exclusiveGenerationFence(initialGeneration: string): {
   return {
     fence,
     rollover: async (nextGeneration) => {
-      await fence.withGeneration(generation, async (current) => {
-        expect(current).toBe(true);
+      await fence.withGeneration(generation, async (guard) => {
+        expect(await guard.isCurrent()).toBe(true);
         generation = nextGeneration;
       });
     },
@@ -169,6 +174,29 @@ describe("production boundary observation ledger", () => {
     const { ledger } = await createLedger();
     expect("append" in ledger).toBe(false);
     expect(Object.keys(ledger)).not.toContain("append");
+
+    let calls = 0;
+    await expect(
+      observeProductionBoundary({
+        ledger: { readAll: async () => [] },
+        identity: identity(),
+        payload: { value: 1 },
+        now: clock("2026-08-21T12:00:00.000Z"),
+        generationFence: generationFence(),
+        invoke: async () => {
+          calls += 1;
+          return { id: "effect" };
+        },
+        classify: () => ({
+          acceptance: "accepted",
+          code: "accepted",
+          retryable: false,
+        }),
+        readback: async () => ({ id: "effect" }),
+        verifyReadback: () => true,
+      }),
+    ).rejects.toMatchObject({ code: "BOUNDARY_LEDGER_WRITER_UNAVAILABLE" });
+    expect(calls).toBe(0);
   });
 
   it("records a typed connector call only after matching authoritative readback", async () => {
@@ -308,6 +336,22 @@ describe("production boundary observation ledger", () => {
       new JsonlBoundaryObservationLedger(path).readAll(),
     ).rejects.toMatchObject({ code: "BOUNDARY_LEDGER_CORRUPT" });
 
+    const missingRequired = JSON.parse(JSON.stringify(observation)) as Record<
+      string,
+      unknown
+    >;
+    delete missingRequired.target;
+    const { recordSha256: _missingHash, ...missingRequiredWithoutHash } =
+      missingRequired;
+    missingRequired.recordSha256 = canonicalSha256(
+      missingRequiredWithoutHash,
+      "boundaryObservationRecord",
+    );
+    await writeFile(path, `${JSON.stringify(missingRequired)}\n`, "utf8");
+    await expect(
+      new JsonlBoundaryObservationLedger(path).readAll(),
+    ).rejects.toMatchObject({ code: "BOUNDARY_LEDGER_CORRUPT" });
+
     await writeFile(path, JSON.stringify(observation).slice(0, -8), "utf8");
     await expect(
       new JsonlBoundaryObservationLedger(path).readAll(),
@@ -359,6 +403,136 @@ describe("production boundary observation ledger", () => {
     });
     expect(JSON.stringify(verified)).not.toContain("secret");
   });
+
+  it("translates a runtime-invalid classifier return into a durable unknown attempt", async () => {
+    const { ledger } = await createLedger();
+    const observation = await observeProductionBoundary({
+      ledger,
+      identity: identity(),
+      payload: { value: 1 },
+      now: clock("2026-08-21T12:00:00.000Z"),
+      generationFence: generationFence(),
+      invoke: async () => ({ id: "effect" }),
+      classify: () =>
+        ({
+          acceptance: "fabricated",
+          code: "",
+          retryable: "yes",
+        }) as unknown as BoundaryResultClassification,
+      readback: async () => ({ id: "effect" }),
+      verifyReadback: () => true,
+    });
+
+    expect(observation).toMatchObject({
+      boundaryCalled: true,
+      acceptance: "unknown",
+      result: "unknown",
+      resultCode: "classifier_threw",
+    });
+    await expect(ledger.readAll()).resolves.toEqual([observation]);
+  });
+
+  it("records post-invocation generation revalidation failure and staleness", async () => {
+    const { ledger } = await createLedger();
+    let guardCalls = 0;
+    const failed = await observeProductionBoundary({
+      ledger,
+      identity: identity(),
+      payload: { value: 1 },
+      now: clock("2026-08-21T12:00:00.000Z"),
+      generationFence: {
+        withGeneration: async (_expected, operation) =>
+          operation({
+            isCurrent: async () => {
+              guardCalls += 1;
+              if (guardCalls === 2) {
+                throw new Error("generation token=secret");
+              }
+              return true;
+            },
+          }),
+      },
+      invoke: async () => ({ id: "effect-1" }),
+      classify: () => ({
+        acceptance: "accepted",
+        code: "accepted",
+        retryable: false,
+      }),
+      readback: async () => ({ id: "effect-1" }),
+      verifyReadback: () => true,
+      redactText: (text) => text.replace("secret", REDACTED_TEST),
+    });
+    expect(failed).toMatchObject({
+      boundaryCalled: true,
+      acceptance: "unknown",
+      result: "unknown",
+      resultCode: "generation_revalidation_threw",
+    });
+    expect(JSON.stringify(failed)).not.toContain("secret");
+
+    let generation = "generation-7";
+    const stale = await observeProductionBoundary({
+      ledger,
+      identity: identity({ retry: { attempt: 2 } }),
+      payload: { value: 2 },
+      now: clock("2026-08-21T12:01:00.000Z"),
+      generationFence: generationFence(() => generation),
+      invoke: async () => {
+        generation = "generation-8";
+        return { id: "effect-2" };
+      },
+      classify: () => ({
+        acceptance: "accepted",
+        code: "accepted",
+        retryable: false,
+      }),
+      readback: async () => ({ id: "effect-2" }),
+      verifyReadback: () => true,
+    });
+    expect(stale).toMatchObject({
+      boundaryCalled: true,
+      acceptance: "unknown",
+      result: "stale_completion",
+      resultCode: "stale_generation_after_invoke",
+    });
+  });
+
+  it.each(["response", "readback"] as const)(
+    "records cyclic %s evidence as a durable unknown attempt",
+    async (stage) => {
+      const { ledger } = await createLedger();
+      const cyclic: Record<string, unknown> = {};
+      cyclic.self = cyclic;
+      const observation = await observeProductionBoundary({
+        ledger,
+        identity: identity(),
+        payload: { value: 1 },
+        now: clock("2026-08-21T12:00:00.000Z"),
+        generationFence: generationFence(),
+        invoke: async () => (stage === "response" ? cyclic : { id: "effect" }),
+        classify: () => ({
+          acceptance: "accepted",
+          code: "accepted",
+          retryable: false,
+        }),
+        readback: async () =>
+          stage === "readback" ? cyclic : { id: "effect" },
+        verifyReadback: () => true,
+      });
+
+      expect(observation).toMatchObject({
+        boundaryCalled: true,
+        acceptance: "unknown",
+        result: "unknown",
+        resultCode:
+          stage === "response"
+            ? "response_evidence_threw"
+            : "readback_evidence_threw",
+      });
+      expect(observation.error?.message).toContain("cycle");
+      await expect(ledger.readAll()).resolves.toEqual([observation]);
+    },
+  );
 
   it("holds the generation fence through durable receipt append before rollover", async () => {
     const { ledger } = await createLedger();
