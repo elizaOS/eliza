@@ -501,7 +501,7 @@ const MODALS: DevRouteModal[] = [
   {
     id: "signal-qr",
     trigger:
-      "Settings > Connectors > Signal > Link device (renders the QR pairing overlay).",
+      "Settings > Connectors > WhatsApp > Link device (renders the QR pairing overlay).",
   },
 ];
 

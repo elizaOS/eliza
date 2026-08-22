@@ -267,7 +267,6 @@ describe("INBOX umbrella action — cross-channel inbox", () => {
         "slack",
         "discord",
         "telegram",
-        "signal",
         "imessage",
         "whatsapp",
       ]);

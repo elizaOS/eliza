@@ -32,6 +32,7 @@ import {
   readStoredStewardToken,
   STEWARD_TOKEN_KEY,
 } from "@elizaos/shared/steward-session-client";
+import { desktopHttpTransportForUrl } from "../../api/desktop-http-transport";
 import {
   DEFAULT_DIRECT_CLOUD_API_BASE_URL,
   resolveDirectCloudAuthApiBase,
@@ -225,7 +226,7 @@ export async function readCloudBearerToken(): Promise<string | null> {
 }
 
 // ---------------------------------------------------------------------------
-// Native/Electrobun transport — routes the resolved Cloud API request through
+// Capacitor transport — routes the resolved Cloud API request through
 // `CapacitorHttp` (bypassing the WebView CORS sandbox) and re-wraps the result
 // as a standard `Response`, so the shared payload/error handling below is
 // identical to the web `fetch` path.
@@ -414,21 +415,29 @@ export async function apiFetch(
   const requestBody =
     json !== undefined ? JSON.stringify(json) : (body ?? null);
 
-  // Native/Electrobun: ride `CapacitorHttp` so the request leaves the WebView
-  // sandbox and reaches the allowlisted Cloud API host. Web: the original
-  // same-origin `fetch` path, byte-for-byte unchanged.
-  const res = isNativeCloudRuntime()
-    ? await nativeApiFetch(url, {
-        method: rest.method,
-        headers,
-        body: requestBody,
-      })
-    : await fetch(url, {
-        ...rest,
-        credentials: "include",
-        headers,
-        body: requestBody,
-      });
+  // Electrobun has its own main-process HTTP bridge; CapacitorHttp is not
+  // installed in the macOS shell and otherwise falls back to a CORS-blocked
+  // WKWebView request. Capacitor keeps its native plugin, while web retains the
+  // original same-origin fetch path.
+  const desktopTransport = desktopHttpTransportForUrl(url);
+  const res = desktopTransport
+    ? await desktopTransport.request(
+        url,
+        { ...rest, headers, body: requestBody },
+        undefined,
+      )
+    : Capacitor.isNativePlatform()
+      ? await nativeApiFetch(url, {
+          method: rest.method,
+          headers,
+          body: requestBody,
+        })
+      : await fetch(url, {
+          ...rest,
+          credentials: "include",
+          headers,
+          body: requestBody,
+        });
 
   if (!res.ok) {
     // A 401 on an authed call means our session was rejected (token revoked or

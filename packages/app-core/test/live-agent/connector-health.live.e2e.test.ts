@@ -2,7 +2,7 @@
  * Live connector health tests.
  *
  * Boots a real eliza runtime and exercises the connector health/status
- * endpoints for Discord, Telegram, Signal, and other connectors.
+ * endpoints for Discord, Telegram, WhatsApp, and other connectors.
  *
  * Replaces deleted mock tests for discord-connector, telegram-connector, etc.
  * Gated on ELIZA_LIVE_TEST=1.

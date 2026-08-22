@@ -20,6 +20,8 @@ const from = mock(() => ({ where }));
 const select = mock(() => ({ from }));
 
 const returning = mock(() => []);
+const values = mock(() => ({ returning }));
+const insert = mock(() => ({ values }));
 const updateWhere = mock((clause: SQL) => {
   capturedUpdateWhere = clause;
   return { returning };
@@ -39,6 +41,7 @@ const dbReadMock = new Proxy(realHelpers.dbRead as unknown as Record<PropertyKey
 });
 const dbWriteMock = new Proxy(realHelpers.dbWrite as unknown as Record<PropertyKey, unknown>, {
   get(target, prop, receiver) {
+    if (prop === "insert" && useRepositoryMocks) return insert;
     if (prop === "update" && useRepositoryMocks) return update;
     return Reflect.get(target, prop, receiver);
   },
@@ -152,6 +155,7 @@ describe("DockerNodesRepository environment guard", () => {
       ["id", "replacement-row"],
       ["node_id", "replacement-node"],
       ["node_incarnation", "99999999-9999-4999-8999-999999999999"],
+      ["current_node_history_id", "99999999-9999-4999-8999-999999999998"],
       ["fleet_kind", "cloud"],
       ["infrastructure_provider", "hetzner"],
       ["provider_server_id", "12345"],
@@ -167,6 +171,17 @@ describe("DockerNodesRepository environment guard", () => {
 
     await expect(repository.update("row-1", { enabled: false })).resolves.toBeNull();
     expect(capturedSet).toMatchObject({ enabled: false });
+  });
+
+  test("create refuses a caller-supplied trigger-owned occurrence token", async () => {
+    const { DockerNodesRepository } = await import("./docker-nodes");
+
+    await expect(
+      new DockerNodesRepository().create({
+        current_node_history_id: "99999999-9999-4999-8999-999999999998",
+      } as never),
+    ).rejects.toThrow("cannot set trigger-owned current_node_history_id");
+    expect(values).not.toHaveBeenCalled();
   });
 
   test("findLeastLoaded applies the same environment guard to schedulable capacity", async () => {

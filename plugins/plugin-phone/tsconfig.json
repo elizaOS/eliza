@@ -63,8 +63,6 @@
       "@elizaos/ui/*": ["../../packages/ui/src/*"],
       "@elizaos/shared": ["../../packages/shared/src/index.ts"],
       "@elizaos/shared/*": ["../../packages/shared/src/*"],
-      "@elizaos/plugin-signal": ["../plugin-signal/src/index.ts"],
-      "@elizaos/plugin-signal/*": ["../plugin-signal/src/*"],
       "@elizaos/capacitor-phone": [
         "../../plugins/plugin-native-phone/src/index.ts"
       ],
