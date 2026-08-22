@@ -17,6 +17,13 @@ export type RegistryMockFault =
   | { kind: "delay"; ms: number }
   | { kind: "stall" }
   | { kind: "redirect"; location?: string }
+  | {
+      kind: "raw-json-response";
+      body: string | number[];
+      contentType?: string;
+      contentEncoding?: string;
+      contentLength?: string;
+    }
   | { kind: "integrity-mismatch" }
   | { kind: "corrupt-artifact" };
 
@@ -230,6 +237,20 @@ export async function startRegistryMock(seedInput: RegistryMockSeed = {}) {
         fault.location ?? `${origin}/redirect-target`,
         302,
       );
+    } else if (fault?.kind === "raw-json-response") {
+      record(200);
+      const headers = new Headers();
+      if (fault.contentType !== undefined)
+        headers.set("content-type", fault.contentType);
+      if (fault.contentEncoding !== undefined)
+        headers.set("content-encoding", fault.contentEncoding);
+      if (fault.contentLength !== undefined)
+        headers.set("content-length", fault.contentLength);
+      const body =
+        typeof fault.body === "string"
+          ? fault.body
+          : Uint8Array.from(fault.body);
+      return new Response(body, { headers });
     }
 
     const artifact = packageArtifact(seed);
@@ -361,6 +382,9 @@ export async function startRegistryMock(seedInput: RegistryMockSeed = {}) {
       const queue = faults.get(path) ?? [];
       queue.push(fault);
       faults.set(path, queue);
+    },
+    pendingFaultCount(path: string): number {
+      return faults.get(path)?.length ?? 0;
     },
     advanceTime(ms: number): void {
       if (!Number.isInteger(ms) || ms < 0)

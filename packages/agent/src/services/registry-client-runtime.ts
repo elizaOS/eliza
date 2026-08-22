@@ -11,8 +11,10 @@ import type { RegistryEndpoint } from "../config/types.eliza.ts";
 import {
   fetchRegistrySnapshot,
   isExpectedRegistryNetworkFallback,
+  MAX_REGISTRY_JSON_BYTES,
   type RegistryFetch,
   type RegistryNetworkSnapshot,
+  validateRegistryJsonShape,
 } from "./registry-client-network.ts";
 import {
   getPluginInfoFromRegistry,
@@ -22,6 +24,7 @@ import type { RegistryPluginInfo } from "./registry-client-types.ts";
 
 const DEFAULT_TTL_MS = 3_600_000;
 const LOCAL_FALLBACK_TTL_MS = 5 * 60_000;
+const CACHE_READ_CHUNK_BYTES = 64 * 1024;
 
 export interface RegistryCacheRecord {
   fetchedAt: number;
@@ -100,8 +103,12 @@ function parseCacheRecord(value: unknown): RegistryCacheRecord | null {
   if (
     typeof candidate.fetchedAt !== "number" ||
     !Number.isFinite(candidate.fetchedAt) ||
+    candidate.fetchedAt < 0 ||
     (candidate.sourceUrl !== null && typeof candidate.sourceUrl !== "string") ||
     (candidate.etag !== null && typeof candidate.etag !== "string") ||
+    (typeof candidate.sourceUrl === "string" &&
+      candidate.sourceUrl.length > 2_048) ||
+    (typeof candidate.etag === "string" && candidate.etag.length > 512) ||
     !Array.isArray(candidate.plugins)
   ) {
     return null;
@@ -121,6 +128,74 @@ function parseCacheRecord(value: unknown): RegistryCacheRecord | null {
   }
   if ((candidate.sourceUrl === null) !== (candidate.etag === null)) return null;
   return candidate as RegistryCacheRecord;
+}
+
+function clonePlugins(
+  plugins: Map<string, RegistryPluginInfo>,
+): Map<string, RegistryPluginInfo> {
+  return new Map(
+    [...plugins].map(([name, info]) => [name, structuredClone(info)]),
+  );
+}
+
+async function readBoundedCacheFile(filePath: string): Promise<Uint8Array> {
+  const handle = await fs.open(filePath, "r");
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    while (true) {
+      const buffer = new Uint8Array(CACHE_READ_CHUNK_BYTES);
+      const { bytesRead } = await handle.read(
+        buffer,
+        0,
+        buffer.byteLength,
+        null,
+      );
+      if (bytesRead === 0) break;
+      total += bytesRead;
+      if (total > MAX_REGISTRY_JSON_BYTES) {
+        throw new Error("Registry cache exceeds the byte limit");
+      }
+      chunks.push(buffer.subarray(0, bytesRead));
+    }
+  } finally {
+    await handle.close();
+  }
+  const bytes = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return bytes;
+}
+
+function waitForCaller<T>(
+  shared: Promise<T>,
+  signal?: AbortSignal,
+): Promise<T> {
+  if (!signal) return shared;
+  if (signal.aborted) {
+    // The authority load is intentionally caller-independent; retain an
+    // observer so its eventual bounded failure cannot become unhandled after
+    // this already-cancelled caller leaves.
+    void shared.catch(() => undefined);
+    return Promise.reject(
+      signal.reason ??
+        new DOMException("Registry request aborted", "AbortError"),
+    );
+  }
+  return new Promise<T>((resolve, reject) => {
+    const aborted = () =>
+      reject(
+        signal.reason ??
+          new DOMException("Registry request aborted", "AbortError"),
+      );
+    signal.addEventListener("abort", aborted, { once: true });
+    shared.then(resolve, reject).finally(() => {
+      signal.removeEventListener("abort", aborted);
+    });
+  });
 }
 
 /** Create an atomic JSON cache whose final rename is generation-fenced. */
@@ -145,9 +220,12 @@ export function createFileRegistryCacheStore(
       await mutationTail;
       const resolved = resolveFilePath();
       try {
-        return parseCacheRecord(
-          JSON.parse(await fs.readFile(resolved, "utf8")) as unknown,
-        );
+        const bytes = await readBoundedCacheFile(resolved);
+        const value = JSON.parse(
+          new TextDecoder("utf-8", { fatal: true }).decode(bytes),
+        ) as unknown;
+        validateRegistryJsonShape(value);
+        return parseCacheRecord(value);
       } catch {
         // error-policy:J3 an absent or corrupt cache is explicitly invalid and
         // triggers authoritative resolution; it is never a valid empty map.
@@ -159,16 +237,27 @@ export function createFileRegistryCacheStore(
         const resolved = resolveFilePath();
         await fs.mkdir(path.dirname(resolved), { recursive: true });
         const temporary = `${resolved}.${crypto.randomUUID()}.tmp`;
-        await fs.writeFile(temporary, JSON.stringify(record), {
-          encoding: "utf8",
-          flag: "wx",
-        });
-        if (!shouldCommit()) {
-          await fs.rm(temporary, { force: true });
-          return false;
+        let promoted = false;
+        try {
+          await fs.writeFile(temporary, JSON.stringify(record), {
+            encoding: "utf8",
+            flag: "wx",
+          });
+          if (!shouldCommit()) return false;
+          await fs.rename(temporary, resolved);
+          promoted = true;
+          return true;
+        } finally {
+          if (!promoted) {
+            // error-policy:J6 the original write/promotion outcome remains
+            // authoritative; cleanup prevents abandoned partial cache files.
+            await fs.rm(temporary, { force: true }).catch((error) => {
+              logger.debug(
+                `[registry-client] Temporary cache cleanup failed: ${error instanceof Error ? error.message : String(error)}`,
+              );
+            });
+          }
         }
-        await fs.rename(temporary, resolved);
-        return true;
       });
     },
     remove() {
@@ -224,42 +313,61 @@ export class RegistryClient {
     input: { signal?: AbortSignal } = {},
   ): Promise<Map<string, RegistryPluginInfo>> {
     const now = this.#now();
-    if (this.#memory && now - this.#memory.fetchedAt < this.#memory.ttlMs) {
-      return this.#memory.plugins;
+    const memoryAge = this.#memory ? now - this.#memory.fetchedAt : -1;
+    if (this.#memory && memoryAge >= 0 && memoryAge < this.#memory.ttlMs) {
+      return this.#decorate(this.#memory.plugins);
     }
+    let load = this.#load;
+    if (!load) {
+      const generation = this.#generation;
+      load = this.#resolveAuthority(generation).finally(() => {
+        if (this.#load === load) this.#load = null;
+      });
+      this.#load = load;
+    }
+    const authority = await waitForCaller(load, input.signal);
+    return this.#decorate(authority);
+  }
 
+  async #resolveAuthority(
+    generation: number,
+  ): Promise<Map<string, RegistryPluginInfo>> {
     const cached = await this.#options.cacheStore.read();
-    if (cached && now - cached.fetchedAt < this.#ttlMs) {
+    const now = this.#now();
+    const cacheAge = cached ? now - cached.fetchedAt : -1;
+    if (cached && cacheAge >= 0 && cacheAge < this.#ttlMs) {
       const plugins = new Map(cached.plugins);
-      await this.#options.applyLocalWorkspaceApps(plugins);
-      await this.#options.applyNodeModulePlugins(plugins);
-      await this.#options.mergeCustomEndpoints(
-        plugins,
-        this.#options.getConfiguredEndpoints(),
-      );
-      this.#memory = { plugins, fetchedAt: now, ttlMs: this.#ttlMs };
+      if (generation === this.#generation) {
+        this.#memory = {
+          plugins: clonePlugins(plugins),
+          fetchedAt: cached.fetchedAt,
+          ttlMs: this.#ttlMs,
+        };
+      }
       return plugins;
     }
-    if (this.#load) return this.#load;
+    return this.#loadRegistry(generation, cached);
+  }
 
-    const generation = this.#generation;
-    const load = this.#loadRegistry(generation, cached, input.signal).finally(
-      () => {
-        if (this.#load === load) this.#load = null;
-      },
+  async #decorate(
+    authority: Map<string, RegistryPluginInfo>,
+  ): Promise<Map<string, RegistryPluginInfo>> {
+    const plugins = clonePlugins(authority);
+    await this.#options.applyLocalWorkspaceApps(plugins);
+    await this.#options.applyNodeModulePlugins(plugins);
+    await this.#options.mergeCustomEndpoints(
+      plugins,
+      this.#options.getConfiguredEndpoints(),
     );
-    this.#load = load;
-    return load;
+    return plugins;
   }
 
   async #loadRegistry(
     generation: number,
     cached: RegistryCacheRecord | null,
-    requestSignal?: AbortSignal,
   ): Promise<Map<string, RegistryPluginInfo>> {
     logger.info("[registry-client] Fetching plugin registry...");
     let snapshot: RegistryNetworkSnapshot | null = null;
-    let cachePlugins: Map<string, RegistryPluginInfo> | null = null;
     let plugins: Map<string, RegistryPluginInfo>;
     let ttlMs = this.#ttlMs;
     try {
@@ -273,7 +381,6 @@ export class RegistryClient {
         cloudReachable: this.#options.cloudReachable,
         timeoutMs: this.#options.timeoutMs,
         now: this.#now,
-        signal: requestSignal,
         cacheValidator:
           cached?.sourceUrl && cached.etag
             ? {
@@ -283,8 +390,7 @@ export class RegistryClient {
               }
             : null,
       });
-      plugins = snapshot.plugins;
-      cachePlugins = new Map(plugins);
+      plugins = clonePlugins(snapshot.plugins);
     } catch (error) {
       // error-policy:J4 only the typed offline condition degrades to explicit
       // local discovery; protocol and validation failures remain fatal.
@@ -294,25 +400,19 @@ export class RegistryClient {
         `[registry-client] Remote registry unavailable; using local discovery: ${message}`,
       );
       plugins = new Map();
-      await this.#options.applyLocalWorkspaceApps(plugins);
-      await this.#options.applyNodeModulePlugins(plugins);
       ttlMs = LOCAL_FALLBACK_TTL_MS;
     }
-    await this.#options.mergeCustomEndpoints(
-      plugins,
-      this.#options.getConfiguredEndpoints(),
-    );
-    logger.info(`[registry-client] Loaded ${plugins.size} plugins`);
+    logger.info(`[registry-client] Loaded ${plugins.size} upstream plugins`);
     if (generation !== this.#generation) return plugins;
 
     const fetchedAt = this.#now();
-    this.#memory = { plugins, fetchedAt, ttlMs };
+    this.#memory = { plugins: clonePlugins(plugins), fetchedAt, ttlMs };
     if (snapshot) {
       const record: RegistryCacheRecord = {
         fetchedAt,
         sourceUrl: snapshot.etag ? snapshot.sourceUrl : null,
         etag: snapshot.etag,
-        plugins: [...(cachePlugins ?? plugins).entries()],
+        plugins: [...clonePlugins(plugins).entries()],
       };
       try {
         await this.#options.cacheStore.write(

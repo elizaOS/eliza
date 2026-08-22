@@ -14,6 +14,11 @@ import {
 } from "../../../agent/src/services/registry-client.ts";
 import {
   fetchRegistrySnapshot,
+  MAX_REGISTRY_JSON_BYTES,
+  MAX_REGISTRY_JSON_DEPTH,
+  MAX_REGISTRY_JSON_NODES,
+  MAX_REGISTRY_JSON_STRING_BYTES,
+  MAX_REGISTRY_JSON_WIDTH,
   RegistryUpstreamError,
 } from "../../../agent/src/services/registry-client-network.ts";
 import {
@@ -94,8 +99,10 @@ describe("registry marketplace protocol", () => {
       client.getRegistryPlugins(),
       client.getRegistryPlugins(),
     ]);
-    expect(first).toBe(second);
-    expect(second).toBe(third);
+    expect(first).toStrictEqual(second);
+    expect(second).toStrictEqual(third);
+    expect(first).not.toBe(second);
+    expect(second).not.toBe(third);
     expect(first.get("@synthetic/plugin-weather")?.npm.v2Version).toBe("1.0.0");
     expect(upstream.readback().observations).toMatchObject([
       { path: "/generated-registry.json", status: 200, ifNoneMatch: null },
@@ -163,6 +170,7 @@ describe("registry marketplace protocol", () => {
       },
       {
         fault: { kind: "stall" },
+        timeoutMs: 20,
         abort: true,
         verify: (error) => expect(error).toBeInstanceOf(Error),
       },
@@ -183,7 +191,141 @@ describe("registry marketplace protocol", () => {
         caught = error;
       }
       testCase.verify(caught);
+      if (testCase.abort) {
+        // Caller cancellation is isolated from the shared authority load. Let
+        // that load reach its own bounded timeout before stopping its server.
+        await new Promise((resolve) => setTimeout(resolve, 30));
+      }
       await runningServers.pop()?.stop();
+    }
+  });
+
+  it("rejects adversarial loopback JSON before schema admission", async () => {
+    let deep = "null";
+    for (let depth = 0; depth <= MAX_REGISTRY_JSON_DEPTH; depth += 1) {
+      deep = `[${deep}]`;
+    }
+    const nodeRows = Array.from({ length: MAX_REGISTRY_JSON_WIDTH }, () =>
+      Array(10).fill(0),
+    );
+    expect(MAX_REGISTRY_JSON_WIDTH * 11).toBeGreaterThan(
+      MAX_REGISTRY_JSON_NODES,
+    );
+    const cases: Array<{
+      body: string | number[];
+      contentType?: string;
+      code: string;
+    }> = [
+      {
+        body: "{}",
+        contentType: "text/plain",
+        code: "REGISTRY_UPSTREAM_CONTENT_TYPE_INVALID",
+      },
+      {
+        body: [0xc3, 0x28],
+        contentType: "application/json",
+        code: "REGISTRY_UPSTREAM_UTF8_INVALID",
+      },
+      {
+        body: deep,
+        contentType: "application/json",
+        code: "REGISTRY_UPSTREAM_JSON_LIMIT_EXCEEDED",
+      },
+      {
+        body: JSON.stringify(Array(MAX_REGISTRY_JSON_WIDTH + 1).fill(0)),
+        contentType: "application/json",
+        code: "REGISTRY_UPSTREAM_JSON_LIMIT_EXCEEDED",
+      },
+      {
+        body: JSON.stringify(nodeRows),
+        contentType: "application/json",
+        code: "REGISTRY_UPSTREAM_JSON_LIMIT_EXCEEDED",
+      },
+      {
+        body: JSON.stringify("x".repeat(MAX_REGISTRY_JSON_STRING_BYTES + 1)),
+        contentType: "application/json",
+        code: "REGISTRY_UPSTREAM_JSON_LIMIT_EXCEEDED",
+      },
+      {
+        body: "x".repeat(MAX_REGISTRY_JSON_BYTES + 1),
+        contentType: "application/json",
+        code: "REGISTRY_UPSTREAM_BODY_TOO_LARGE",
+      },
+    ];
+
+    for (const testCase of cases) {
+      const { upstream, client } = await harness();
+      upstream.enqueueFault("/generated-registry.json", {
+        kind: "raw-json-response",
+        body: testCase.body,
+        contentType: testCase.contentType,
+      });
+      await expect(client.getRegistryPlugins()).rejects.toMatchObject({
+        code: testCase.code,
+      });
+      await runningServers.pop()?.stop();
+    }
+  }, 30_000);
+
+  it("bounds success headers and cancels rejected response streams", async () => {
+    let cancelled = false;
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode("{}"));
+      },
+      cancel() {
+        cancelled = true;
+      },
+    });
+    await expect(
+      fetchRegistrySnapshot({
+        generatedRegistryUrl:
+          "https://registry.example/generated-registry.json",
+        indexRegistryUrl: "https://registry.example/index.json",
+        fetchImpl: async () =>
+          new Response(body, {
+            headers: {
+              "content-type": "application/json",
+              "content-encoding": "gzip",
+            },
+          }),
+        cloudReachable: async () => true,
+        applyLocalWorkspaceApps: async () => {},
+        applyNodeModulePlugins: async () => {},
+        sanitizeSandbox: (value) => value ?? "allow-scripts",
+      }),
+    ).rejects.toMatchObject({
+      code: "REGISTRY_UPSTREAM_CONTENT_ENCODING_UNSUPPORTED",
+    });
+    await Promise.resolve();
+    expect(cancelled).toBe(true);
+
+    for (const retryAfter of ["9".repeat(1_000), "9999999999"]) {
+      let caught: unknown;
+      try {
+        await fetchRegistrySnapshot({
+          generatedRegistryUrl:
+            "https://registry.example/generated-registry.json",
+          indexRegistryUrl: "https://registry.example/index.json",
+          fetchImpl: async () =>
+            new Response("rate limited", {
+              status: 429,
+              headers: { "retry-after": retryAfter },
+            }),
+          cloudReachable: async () => true,
+          applyLocalWorkspaceApps: async () => {},
+          applyNodeModulePlugins: async () => {},
+          sanitizeSandbox: (value) => value ?? "allow-scripts",
+        });
+      } catch (error) {
+        // error-policy:J1 inspect the public typed boundary below.
+        caught = error;
+      }
+      expect(caught).toBeInstanceOf(RegistryUpstreamError);
+      expect((caught as RegistryUpstreamError).retryAfterMs).toSatisfy(
+        (value: number | null) =>
+          value === null || value <= 24 * 60 * 60 * 1_000,
+      );
     }
   });
 
@@ -199,7 +341,11 @@ describe("registry marketplace protocol", () => {
     });
     upstream.advanceTime(101);
     const old = client.getRegistryPlugins();
-    await new Promise((resolve) => setTimeout(resolve, 5));
+    for (let attempts = 0; attempts < 100; attempts += 1) {
+      if (upstream.pendingFaultCount("/generated-registry.json") === 0) break;
+      await new Promise((resolve) => setTimeout(resolve, 1));
+    }
+    expect(upstream.pendingFaultCount("/generated-registry.json")).toBe(0);
     upstream.reset({ description: "post-reset registry" });
 
     await expect(old).rejects.toMatchObject({ status: 409 });

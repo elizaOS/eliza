@@ -617,7 +617,8 @@ async function _installPlugin(
       if (
         plan.approvalBound ||
         packageRegistryUrl !== undefined ||
-        isIntegrityFailure(npmErr)
+        isIntegrityFailure(npmErr) ||
+        isPackageManagerFallbackSafetyFailure(npmErr)
       ) {
         const authority = plan.approvalBound ? "Approved" : "Authoritative";
         const msg = `${authority} npm install failed for ${canonicalName}@${npmVersion}; refusing local or Git fallback`;
@@ -887,10 +888,47 @@ async function installSpecWithFallback(
   } catch (primaryErr) {
     if (pm === "npm") throw primaryErr;
     logger.warn(
-      `[plugin-installer] ${pm} install failed for ${spec}; retrying with npm: ${primaryErr instanceof Error ? primaryErr.message : String(primaryErr)}`,
+      `[plugin-installer] ${pm} install failed for ${spec}; cleaning the isolated target before retrying with npm: ${primaryErr instanceof Error ? primaryErr.message : String(primaryErr)}`,
     );
+    await resetInstallTargetForPackageManagerFallback(targetDir);
     await runInstallSpec("npm", spec, targetDir, packageRegistryUrl, timeoutMs);
     return "npm";
+  }
+}
+
+async function resetInstallTargetForPackageManagerFallback(
+  targetDir: string,
+): Promise<void> {
+  if (!isWithinPluginsDir(targetDir)) {
+    throw new ElizaError(
+      "Refusing package-manager fallback outside the plugin install directory",
+      {
+        code: "PLUGIN_INSTALL_FALLBACK_TARGET_UNSAFE",
+        context: { targetDir },
+        severity: "fatal",
+      },
+    );
+  }
+  try {
+    await fs.rm(targetDir, { recursive: true, force: true });
+    await fs.mkdir(targetDir, { recursive: true });
+    await fs.writeFile(
+      path.join(targetDir, "package.json"),
+      JSON.stringify({ private: true, dependencies: {} }, null, 2),
+      { encoding: "utf8", flag: "wx" },
+    );
+  } catch (cause) {
+    // error-policy:J2 npm must never inherit partial Bun output; failure to
+    // prove a clean isolated target aborts the fallback with its cause.
+    throw new ElizaError(
+      "Could not establish a clean target for package-manager fallback",
+      {
+        code: "PLUGIN_INSTALL_FALLBACK_TARGET_NOT_CLEAN",
+        context: { targetDir },
+        cause,
+        severity: "fatal",
+      },
+    );
   }
 }
 
@@ -966,6 +1004,14 @@ function validatePackageManagerTimeout(
 function isIntegrityFailure(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error);
   return /\bEINTEGRITY\b|integrity checksum failed/i.test(message);
+}
+
+function isPackageManagerFallbackSafetyFailure(error: unknown): boolean {
+  return (
+    error instanceof ElizaError &&
+    (error.code === "PLUGIN_INSTALL_FALLBACK_TARGET_UNSAFE" ||
+      error.code === "PLUGIN_INSTALL_FALLBACK_TARGET_NOT_CLEAN")
+  );
 }
 
 function validatePackageRegistryUrl(raw: string): string {

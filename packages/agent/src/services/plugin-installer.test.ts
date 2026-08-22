@@ -536,6 +536,107 @@ describe("installPlugin service-path artifacts", () => {
     },
   );
 
+  it.each(["partial failure", "timeout"] as const)(
+    "cleans Bun output before npm fallback after %s",
+    async (failureMode) => {
+      await useIsolatedState();
+      let npmSawCleanTarget = false;
+      execFileMock.mockImplementation(
+        (
+          command: string,
+          args: string[],
+          options: { cwd?: string } | ((error: Error | null) => void),
+          callback?: ExecCallback,
+        ) => {
+          const cb = typeof options === "function" ? options : callback;
+          const cwd = typeof options === "object" ? options.cwd : undefined;
+          if (command === "bun" && args?.[0] === "--version") {
+            completeExec(cb, null, "1.3.14\n");
+            return;
+          }
+          if (command === "bun" && args?.[0] === "add" && cwd) {
+            fsSync.writeFileSync(path.join(cwd, "bun-partial-output"), "bad");
+            fsSync.mkdirSync(path.join(cwd, "node_modules", "attacker"), {
+              recursive: true,
+            });
+            const error = new Error(
+              failureMode === "timeout" ? "install timed out" : "bun failed",
+            );
+            if (failureMode === "timeout") error.name = "TimeoutError";
+            completeExec(cb, error);
+            return;
+          }
+          if (command === "npm" && args?.[0] === "install") {
+            const prefixIndex = args.indexOf("--prefix");
+            const npmTarget =
+              cwd ?? (prefixIndex >= 0 ? args[prefixIndex + 1] : undefined);
+            if (!npmTarget) {
+              completeExec(cb, new Error("npm target missing"));
+              return;
+            }
+            const manifest = JSON.parse(
+              fsSync.readFileSync(path.join(npmTarget, "package.json"), "utf8"),
+            ) as { private?: boolean; dependencies?: Record<string, unknown> };
+            npmSawCleanTarget =
+              !fsSync.existsSync(path.join(npmTarget, "bun-partial-output")) &&
+              !fsSync.existsSync(path.join(npmTarget, "node_modules")) &&
+              manifest.private === true &&
+              Object.keys(manifest.dependencies ?? {}).length === 0;
+            installPackageArtifact(npmTarget, {
+              name: "@vendor/canonical-plugin",
+              version: "2.4.1",
+            });
+            completeExec(cb);
+            return;
+          }
+          completeExec(cb, new Error(`unexpected command: ${command}`));
+        },
+      );
+      vi.spyOn(registryClient, "getPluginInfo").mockResolvedValue(
+        registryInfo({ localPath: undefined }),
+      );
+
+      const result = await installPlugin("friendly-registry-alias");
+
+      expect(npmSawCleanTarget).toBe(true);
+      expect(result).toMatchObject({
+        success: true,
+        provenance: { source: "npm", packageManager: "npm" },
+      });
+    },
+  );
+
+  it("fails closed when a clean npm fallback target cannot be proven", async () => {
+    await useIsolatedState();
+    const commands: string[] = [];
+    execFileMock.mockImplementation(
+      (
+        command: string,
+        args: string[],
+        options: { cwd?: string } | ((error: Error | null) => void),
+        callback?: ExecCallback,
+      ) => {
+        commands.push(command);
+        const cb = typeof options === "function" ? options : callback;
+        if (command === "bun" && args?.[0] === "--version") {
+          completeExec(cb, null, "1.3.14\n");
+          return;
+        }
+        completeExec(cb, new Error("bun left partial output"));
+      },
+    );
+    vi.spyOn(fs, "rm").mockRejectedValueOnce(new Error("cleanup denied"));
+    vi.spyOn(registryClient, "getPluginInfo").mockResolvedValue(
+      registryInfo({ localPath: undefined }),
+    );
+
+    const result = await installPlugin("friendly-registry-alias");
+
+    expect(result).toMatchObject({ success: false });
+    expect(result.error).toMatch(/refusing local or Git fallback/);
+    expect(commands).toEqual(["bun", "bun"]);
+  });
+
   it("records a local workspace install with its real source artifact", async () => {
     const stateDir = await useIsolatedState();
     const localSource = await fs.mkdtemp(

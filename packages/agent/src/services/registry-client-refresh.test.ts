@@ -32,6 +32,8 @@ vi.mock("./registry-client-local.ts", () => ({
 }));
 
 vi.mock("./registry-client-network.ts", () => ({
+  MAX_REGISTRY_JSON_BYTES: 16 * 1024 * 1024,
+  validateRegistryJsonShape: () => {},
   fetchRegistrySnapshot: async () => {
     fetchCalls += 1;
     return {
@@ -121,8 +123,10 @@ describe("refreshRegistry", () => {
     ]);
 
     expect(fetchCalls).toBe(1);
-    expect(first).toBe(second);
-    expect(second).toBe(third);
+    expect(first).toStrictEqual(second);
+    expect(second).toStrictEqual(third);
+    expect(first).not.toBe(second);
+    expect(second).not.toBe(third);
   });
 
   it("still serves a fresh file cache without a network call", async () => {

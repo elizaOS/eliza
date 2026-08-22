@@ -3,12 +3,19 @@
  * absent generated document may fall back to the flat index; corrupt or failed
  * authoritative responses never become a healthy index result.
  */
-import { ElizaError } from "@elizaos/core";
+import { ElizaError, logger } from "@elizaos/core";
 import { isCloudReachable } from "@elizaos/shared";
 import { createIntegrationTelemetrySpan } from "../diagnostics/integration-observability.ts";
 import type { RegistryPluginInfo } from "./registry-client-types.ts";
 
 const DEFAULT_TIMEOUT_MS = 2_500;
+export const MAX_REGISTRY_JSON_BYTES = 16 * 1024 * 1024;
+export const MAX_REGISTRY_JSON_DEPTH = 32;
+export const MAX_REGISTRY_JSON_NODES = 100_000;
+export const MAX_REGISTRY_JSON_WIDTH = 10_000;
+export const MAX_REGISTRY_JSON_STRING_BYTES = 256 * 1024;
+const MAX_REGISTRY_HEADER_BYTES = 512;
+const MAX_RETRY_AFTER_MS = 24 * 60 * 60 * 1_000;
 const PACKAGE_NAME = /^(?:@[a-zA-Z0-9][\w.-]*\/)?[a-zA-Z0-9][\w.-]*$/;
 const GITHUB_REPOSITORY = /^[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+$/;
 
@@ -29,14 +36,16 @@ export class RegistryUpstreamError extends ElizaError {
     options: {
       status?: number;
       retryAfterMs?: number | null;
+      code?: string;
       cause?: unknown;
     } = {},
   ) {
     super(message, {
       code:
-        options.status === undefined
+        options.code ??
+        (options.status === undefined
           ? "REGISTRY_UPSTREAM_PROTOCOL_FAILED"
-          : "REGISTRY_UPSTREAM_HTTP_FAILED",
+          : "REGISTRY_UPSTREAM_HTTP_FAILED"),
       context: {
         status: options.status ?? null,
         retryAfterMs: options.retryAfterMs ?? null,
@@ -196,13 +205,16 @@ function init(params: FetchFromNetworkParams, sourceUrl: string): RequestInit {
   if (params.cacheValidator?.sourceUrl === sourceUrl) {
     headers.set("if-none-match", params.cacheValidator.etag);
   }
-  return { headers, redirect: "error", signal: signal(params) };
+  // `manual` prevents following redirects while still allowing a standards-
+  // compliant 304 response through Bun's fetch implementation. Actual 3xx
+  // redirects are rejected below as HTTP protocol failures.
+  return { headers, redirect: "manual", signal: signal(params) };
 }
 
 function etag(response: Response): string | null {
   const value = response.headers.get("etag");
   if (!value) return null;
-  if (value.length > 512 || /[\r\n]/.test(value)) {
+  if (value.length > MAX_REGISTRY_HEADER_BYTES || /[\r\n]/.test(value)) {
     throw new RegistryUpstreamError("Registry ETag is malformed");
   }
   return value;
@@ -211,17 +223,220 @@ function etag(response: Response): string | null {
 function retryAfterMs(response: Response, now: () => number): number | null {
   const value = response.headers.get("retry-after");
   if (!value) return null;
-  if (/^\d+$/.test(value)) return Number(value) * 1_000;
+  if (value.length > 128 || /[\r\n]/.test(value)) return null;
+  if (/^\d{1,10}$/.test(value)) {
+    const seconds = Number(value);
+    return Number.isSafeInteger(seconds)
+      ? Math.min(seconds * 1_000, MAX_RETRY_AFTER_MS)
+      : null;
+  }
   const timestamp = Date.parse(value);
-  return Number.isFinite(timestamp) ? Math.max(0, timestamp - now()) : null;
+  return Number.isFinite(timestamp)
+    ? Math.min(Math.max(0, timestamp - now()), MAX_RETRY_AFTER_MS)
+    : null;
 }
 
-async function overlays(
-  plugins: Map<string, RegistryPluginInfo>,
-  params: FetchFromNetworkParams,
-): Promise<void> {
-  await params.applyLocalWorkspaceApps(plugins);
-  await params.applyNodeModulePlugins(plugins);
+function cancelBody(response: Response, reason: string): void {
+  if (!response.body) return;
+  // error-policy:J6 rejecting the response is authoritative; stream teardown
+  // is observed but must not delay the typed boundary failure.
+  void response.body.cancel(reason).catch((error) => {
+    logger.debug(
+      `[registry-client] Response cancellation failed: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  });
+}
+
+function protocolFailure(
+  message: string,
+  code: string,
+  cause?: unknown,
+): RegistryUpstreamError {
+  return new RegistryUpstreamError(message, { code, cause });
+}
+
+export function validateRegistryJsonShape(root: unknown): void {
+  const encoder = new TextEncoder();
+  const pending: Array<{ value: unknown; depth: number }> = [
+    { value: root, depth: 0 },
+  ];
+  let nodes = 0;
+  while (pending.length > 0) {
+    const current = pending.pop();
+    if (!current) break;
+    nodes += 1;
+    if (nodes > MAX_REGISTRY_JSON_NODES) {
+      throw protocolFailure(
+        "Registry JSON exceeds the node limit",
+        "REGISTRY_UPSTREAM_JSON_LIMIT_EXCEEDED",
+      );
+    }
+    if (current.depth > MAX_REGISTRY_JSON_DEPTH) {
+      throw protocolFailure(
+        "Registry JSON exceeds the depth limit",
+        "REGISTRY_UPSTREAM_JSON_LIMIT_EXCEEDED",
+      );
+    }
+    if (typeof current.value === "string") {
+      if (
+        encoder.encode(current.value).byteLength >
+        MAX_REGISTRY_JSON_STRING_BYTES
+      ) {
+        throw protocolFailure(
+          "Registry JSON exceeds the string limit",
+          "REGISTRY_UPSTREAM_JSON_LIMIT_EXCEEDED",
+        );
+      }
+      continue;
+    }
+    if (Array.isArray(current.value)) {
+      if (current.value.length > MAX_REGISTRY_JSON_WIDTH) {
+        throw protocolFailure(
+          "Registry JSON exceeds the array width limit",
+          "REGISTRY_UPSTREAM_JSON_LIMIT_EXCEEDED",
+        );
+      }
+      for (const value of current.value) {
+        pending.push({ value, depth: current.depth + 1 });
+      }
+      continue;
+    }
+    if (isRecord(current.value)) {
+      const entries = Object.entries(current.value);
+      if (entries.length > MAX_REGISTRY_JSON_WIDTH) {
+        throw protocolFailure(
+          "Registry JSON exceeds the object width limit",
+          "REGISTRY_UPSTREAM_JSON_LIMIT_EXCEEDED",
+        );
+      }
+      for (const [key, value] of entries) {
+        if (encoder.encode(key).byteLength > MAX_REGISTRY_JSON_STRING_BYTES) {
+          throw protocolFailure(
+            "Registry JSON exceeds the key limit",
+            "REGISTRY_UPSTREAM_JSON_LIMIT_EXCEEDED",
+          );
+        }
+        pending.push({ value, depth: current.depth + 1 });
+      }
+    }
+  }
+}
+
+async function readRegistryJson(response: Response): Promise<unknown> {
+  const contentType = response.headers.get("content-type");
+  if (
+    !contentType ||
+    contentType.length > MAX_REGISTRY_HEADER_BYTES ||
+    !/^(?:application\/json|[^;\s]+\/[^;\s]+\+json)(?:\s*;|$)/i.test(
+      contentType,
+    )
+  ) {
+    cancelBody(response, "registry content type rejected");
+    throw protocolFailure(
+      "Registry response must use a JSON content type",
+      "REGISTRY_UPSTREAM_CONTENT_TYPE_INVALID",
+    );
+  }
+  const contentEncoding = response.headers.get("content-encoding");
+  if (
+    contentEncoding &&
+    (contentEncoding.length > MAX_REGISTRY_HEADER_BYTES ||
+      contentEncoding.trim().toLowerCase() !== "identity")
+  ) {
+    cancelBody(response, "registry content encoding rejected");
+    throw protocolFailure(
+      "Registry response content encoding is unsupported",
+      "REGISTRY_UPSTREAM_CONTENT_ENCODING_UNSUPPORTED",
+    );
+  }
+  const declared = response.headers.get("content-length");
+  if (declared !== null) {
+    if (!/^\d{1,16}$/.test(declared)) {
+      cancelBody(response, "registry content length rejected");
+      throw protocolFailure(
+        "Registry response Content-Length is malformed",
+        "REGISTRY_UPSTREAM_BODY_TOO_LARGE",
+      );
+    }
+    const declaredBytes = Number(declared);
+    if (
+      !Number.isSafeInteger(declaredBytes) ||
+      declaredBytes > MAX_REGISTRY_JSON_BYTES
+    ) {
+      cancelBody(response, "registry declared body exceeds limit");
+      throw protocolFailure(
+        "Registry response exceeds the body limit",
+        "REGISTRY_UPSTREAM_BODY_TOO_LARGE",
+      );
+    }
+  }
+  if (!response.body) {
+    throw protocolFailure(
+      "Registry response body is missing",
+      "REGISTRY_UPSTREAM_JSON_INVALID",
+    );
+  }
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    while (true) {
+      const chunk = await reader.read();
+      if (chunk.done) break;
+      total += chunk.value.byteLength;
+      if (total > MAX_REGISTRY_JSON_BYTES) {
+        // error-policy:J6 the limit failure is authoritative; cancellation is
+        // teardown and is intentionally not awaited.
+        void reader
+          .cancel("registry streamed body exceeds limit")
+          .catch(() => undefined);
+        throw protocolFailure(
+          "Registry response exceeds the body limit",
+          "REGISTRY_UPSTREAM_BODY_TOO_LARGE",
+        );
+      }
+      chunks.push(chunk.value);
+    }
+  } catch (cause) {
+    if (cause instanceof RegistryUpstreamError) throw cause;
+    // error-policy:J6 the read failure is already authoritative.
+    void reader.cancel("registry response read failed").catch(() => undefined);
+    throw protocolFailure(
+      "Registry response body could not be read",
+      "REGISTRY_UPSTREAM_BODY_READ_FAILED",
+      cause,
+    );
+  } finally {
+    reader.releaseLock();
+  }
+  const bytes = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  let text: string;
+  try {
+    text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  } catch (cause) {
+    throw protocolFailure(
+      "Registry response is not valid UTF-8",
+      "REGISTRY_UPSTREAM_UTF8_INVALID",
+      cause,
+    );
+  }
+  let value: unknown;
+  try {
+    value = JSON.parse(text) as unknown;
+  } catch (cause) {
+    throw protocolFailure(
+      "Registry response contains malformed JSON",
+      "REGISTRY_UPSTREAM_JSON_INVALID",
+      cause,
+    );
+  }
+  validateRegistryJsonShape(value);
+  return value;
 }
 
 function cached(
@@ -443,8 +658,12 @@ async function requestJson(
       cause,
     });
   }
-  if (allowNotFound && response.status === 404) return null;
+  if (allowNotFound && response.status === 404) {
+    cancelBody(response, "generated registry absent");
+    return null;
+  }
   if (response.status !== 304 && !response.ok) {
+    cancelBody(response, "registry HTTP response rejected");
     span.failure({ statusCode: response.status, errorKind: "http_error" });
     throw new RegistryUpstreamError(
       `${operation} failed with HTTP ${response.status}`,
@@ -470,26 +689,14 @@ async function generated(
   );
   if (!response) return null;
   if (response.status === 304) {
-    const snapshot = cached(params, sourceUrl, response);
-    await overlays(snapshot.plugins, params);
-    return snapshot;
+    return cached(params, sourceUrl, response);
   }
-  let body: unknown;
-  try {
-    body = await response.json();
-  } catch (cause) {
-    // error-policy:J2 retain the JSON parser cause in the typed upstream failure.
-    throw new RegistryUpstreamError(
-      "Generated registry returned malformed JSON",
-      { cause },
-    );
-  }
+  const body = await readRegistryJson(response);
   const registry = record(record(body, "root").registry, "registry");
   const plugins = new Map<string, RegistryPluginInfo>();
   for (const [name, entry] of Object.entries(registry)) {
     plugins.set(name, parseEntry(name, entry, params.sanitizeSandbox));
   }
-  await overlays(plugins, params);
   return { sourceUrl, etag: etag(response), plugins, notModified: false };
 }
 
@@ -506,19 +713,9 @@ async function index(
   if (!response)
     throw new RegistryUpstreamError("Index registry unexpectedly absent");
   if (response.status === 304) {
-    const snapshot = cached(params, sourceUrl, response);
-    await overlays(snapshot.plugins, params);
-    return snapshot;
+    return cached(params, sourceUrl, response);
   }
-  let body: unknown;
-  try {
-    body = await response.json();
-  } catch (cause) {
-    // error-policy:J2 retain the JSON parser cause in the typed upstream failure.
-    throw new RegistryUpstreamError("Index registry returned malformed JSON", {
-      cause,
-    });
-  }
+  const body = await readRegistryJson(response);
   const plugins = new Map<string, RegistryPluginInfo>();
   for (const [name, rawRef] of Object.entries(record(body, "index"))) {
     if (!PACKAGE_NAME.test(name))
@@ -548,7 +745,6 @@ async function index(
       thirdParty: !builtIn,
     });
   }
-  await overlays(plugins, params);
   return { sourceUrl, etag: etag(response), plugins, notModified: false };
 }
 
