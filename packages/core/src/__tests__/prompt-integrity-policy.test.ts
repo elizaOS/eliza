@@ -263,6 +263,10 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 	"plugins/plugin-x/src/lifeops-message-adapter.ts": [
 		/draft\.body\.(?:slice|substring)\(/,
 	],
+	"plugins/plugin-x/src/discovery.ts": [
+		/maxTokens:\s*100/,
+		/(?:replyText|quoteText|response)\.(?:slice|substring)\(/,
+	],
 	"plugins/plugin-anthropic/models/image.ts": [/firstLine\.slice\(/],
 	"plugins/plugin-local-inference/src/services/voice/voice-emotion-classifier.ts":
 		[/WAV2SMALL_MAX_SAMPLES/, /truncated to the trailing window/],
