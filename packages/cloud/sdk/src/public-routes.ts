@@ -2196,6 +2196,15 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     catchAllPathParams: [],
     file: "packages/cloud/api/v1/referrals/route.ts",
   },
+  "GET /api/v1/remote/hosts": {
+    method: "GET",
+    path: "/api/v1/remote/hosts",
+    methodName: "getApiV1RemoteHosts",
+    responseMode: "json",
+    pathParams: [],
+    catchAllPathParams: [],
+    file: "packages/cloud/api/v1/remote/hosts/route.ts",
+  },
   "GET /api/v1/remote/sessions": {
     method: "GET",
     path: "/api/v1/remote/sessions",
@@ -2204,6 +2213,24 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     pathParams: [],
     catchAllPathParams: [],
     file: "packages/cloud/api/v1/remote/sessions/route.ts",
+  },
+  "GET /api/v1/remote/sessions/{id}/commands": {
+    method: "GET",
+    path: "/api/v1/remote/sessions/{id}/commands",
+    methodName: "getApiV1RemoteSessionsByIdCommands",
+    responseMode: "json",
+    pathParams: ["id"],
+    catchAllPathParams: [],
+    file: "packages/cloud/api/v1/remote/sessions/[id]/commands/route.ts",
+  },
+  "GET /api/v1/remote/sessions/{id}/commands/{commandId}": {
+    method: "GET",
+    path: "/api/v1/remote/sessions/{id}/commands/{commandId}",
+    methodName: "getApiV1RemoteSessionsByIdCommandsByCommandId",
+    responseMode: "json",
+    pathParams: ["id", "commandId"],
+    catchAllPathParams: [],
+    file: "packages/cloud/api/v1/remote/sessions/[id]/commands/[commandId]/route.ts",
   },
   "GET /api/v1/sensitive-requests/{id}": {
     method: "GET",
@@ -4397,6 +4424,24 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     catchAllPathParams: [],
     file: "packages/cloud/api/v1/referrals/apply/route.ts",
   },
+  "POST /api/v1/remote/hosts": {
+    method: "POST",
+    path: "/api/v1/remote/hosts",
+    methodName: "postApiV1RemoteHosts",
+    responseMode: "json",
+    pathParams: [],
+    catchAllPathParams: [],
+    file: "packages/cloud/api/v1/remote/hosts/route.ts",
+  },
+  "POST /api/v1/remote/hosts/{id}/revoke": {
+    method: "POST",
+    path: "/api/v1/remote/hosts/{id}/revoke",
+    methodName: "postApiV1RemoteHostsByIdRevoke",
+    responseMode: "json",
+    pathParams: ["id"],
+    catchAllPathParams: [],
+    file: "packages/cloud/api/v1/remote/hosts/[id]/revoke/route.ts",
+  },
   "POST /api/v1/remote/pair": {
     method: "POST",
     path: "/api/v1/remote/pair",
@@ -4406,6 +4451,42 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     catchAllPathParams: [],
     file: "packages/cloud/api/v1/remote/pair/route.ts",
   },
+  "POST /api/v1/remote/sessions/{id}/activate": {
+    method: "POST",
+    path: "/api/v1/remote/sessions/{id}/activate",
+    methodName: "postApiV1RemoteSessionsByIdActivate",
+    responseMode: "json",
+    pathParams: ["id"],
+    catchAllPathParams: [],
+    file: "packages/cloud/api/v1/remote/sessions/[id]/activate/route.ts",
+  },
+  "POST /api/v1/remote/sessions/{id}/commands": {
+    method: "POST",
+    path: "/api/v1/remote/sessions/{id}/commands",
+    methodName: "postApiV1RemoteSessionsByIdCommands",
+    responseMode: "json",
+    pathParams: ["id"],
+    catchAllPathParams: [],
+    file: "packages/cloud/api/v1/remote/sessions/[id]/commands/route.ts",
+  },
+  "POST /api/v1/remote/sessions/{id}/commands/{commandId}/complete": {
+    method: "POST",
+    path: "/api/v1/remote/sessions/{id}/commands/{commandId}/complete",
+    methodName: "postApiV1RemoteSessionsByIdCommandsByCommandIdComplete",
+    responseMode: "json",
+    pathParams: ["id", "commandId"],
+    catchAllPathParams: [],
+    file: "packages/cloud/api/v1/remote/sessions/[id]/commands/[commandId]/complete/route.ts",
+  },
+  "POST /api/v1/remote/sessions/{id}/commands/{commandId}/start": {
+    method: "POST",
+    path: "/api/v1/remote/sessions/{id}/commands/{commandId}/start",
+    methodName: "postApiV1RemoteSessionsByIdCommandsByCommandIdStart",
+    responseMode: "json",
+    pathParams: ["id", "commandId"],
+    catchAllPathParams: [],
+    file: "packages/cloud/api/v1/remote/sessions/[id]/commands/[commandId]/start/route.ts",
+  },
   "POST /api/v1/remote/sessions/{id}/revoke": {
     method: "POST",
     path: "/api/v1/remote/sessions/{id}/revoke",
@@ -4414,6 +4495,15 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     pathParams: ["id"],
     catchAllPathParams: [],
     file: "packages/cloud/api/v1/remote/sessions/[id]/revoke/route.ts",
+  },
+  "POST /api/v1/remote/sessions/activate": {
+    method: "POST",
+    path: "/api/v1/remote/sessions/activate",
+    methodName: "postApiV1RemoteSessionsActivate",
+    responseMode: "json",
+    pathParams: [],
+    catchAllPathParams: [],
+    file: "packages/cloud/api/v1/remote/sessions/activate/route.ts",
   },
   "POST /api/v1/reports/bug": {
     method: "POST",
@@ -5356,7 +5446,13 @@ export interface PublicRoutePathParams {
   "GET /api/v1/redemptions/quote": Record<never, never>;
   "GET /api/v1/redemptions/status": Record<never, never>;
   "GET /api/v1/referrals": Record<never, never>;
+  "GET /api/v1/remote/hosts": Record<never, never>;
   "GET /api/v1/remote/sessions": Record<never, never>;
+  "GET /api/v1/remote/sessions/{id}/commands": { id: string | number };
+  "GET /api/v1/remote/sessions/{id}/commands/{commandId}": {
+    id: string | number;
+    commandId: string | number;
+  };
   "GET /api/v1/sensitive-requests/{id}": { id: string | number };
   "GET /api/v1/sessions": Record<never, never>;
   "GET /api/v1/solana/assets/{address}": { address: string | number };
@@ -5686,8 +5782,21 @@ export interface PublicRoutePathParams {
   "POST /api/v1/proxy/solana-rpc": Record<never, never>;
   "POST /api/v1/redemptions": Record<never, never>;
   "POST /api/v1/referrals/apply": Record<never, never>;
+  "POST /api/v1/remote/hosts": Record<never, never>;
+  "POST /api/v1/remote/hosts/{id}/revoke": { id: string | number };
   "POST /api/v1/remote/pair": Record<never, never>;
+  "POST /api/v1/remote/sessions/{id}/activate": { id: string | number };
+  "POST /api/v1/remote/sessions/{id}/commands": { id: string | number };
+  "POST /api/v1/remote/sessions/{id}/commands/{commandId}/complete": {
+    id: string | number;
+    commandId: string | number;
+  };
+  "POST /api/v1/remote/sessions/{id}/commands/{commandId}/start": {
+    id: string | number;
+    commandId: string | number;
+  };
   "POST /api/v1/remote/sessions/{id}/revoke": { id: string | number };
+  "POST /api/v1/remote/sessions/activate": Record<never, never>;
   "POST /api/v1/reports/bug": Record<never, never>;
   "POST /api/v1/responses": Record<never, never>;
   "POST /api/v1/rpc/{chain}": { chain: string | number };
@@ -6020,7 +6129,10 @@ export interface PublicRouteHeaders {
   "GET /api/v1/redemptions/quote": never;
   "GET /api/v1/redemptions/status": never;
   "GET /api/v1/referrals": never;
+  "GET /api/v1/remote/hosts": never;
   "GET /api/v1/remote/sessions": never;
+  "GET /api/v1/remote/sessions/{id}/commands": never;
+  "GET /api/v1/remote/sessions/{id}/commands/{commandId}": never;
   "GET /api/v1/sensitive-requests/{id}": never;
   "GET /api/v1/sessions": never;
   "GET /api/v1/solana/assets/{address}": never;
@@ -6272,8 +6384,15 @@ export interface PublicRouteHeaders {
   "POST /api/v1/proxy/solana-rpc": never;
   "POST /api/v1/redemptions": never;
   "POST /api/v1/referrals/apply": never;
+  "POST /api/v1/remote/hosts": never;
+  "POST /api/v1/remote/hosts/{id}/revoke": never;
   "POST /api/v1/remote/pair": never;
+  "POST /api/v1/remote/sessions/{id}/activate": never;
+  "POST /api/v1/remote/sessions/{id}/commands": never;
+  "POST /api/v1/remote/sessions/{id}/commands/{commandId}/complete": never;
+  "POST /api/v1/remote/sessions/{id}/commands/{commandId}/start": never;
   "POST /api/v1/remote/sessions/{id}/revoke": never;
+  "POST /api/v1/remote/sessions/activate": never;
   "POST /api/v1/reports/bug": never;
   "POST /api/v1/responses": never;
   "POST /api/v1/rpc/{chain}": never;
@@ -8683,6 +8802,15 @@ export class ElizaCloudPublicRoutesClient {
     );
   }
 
+  getApiV1RemoteHosts<TResponse = unknown>(
+    options: PublicRouteCallOptions<"GET /api/v1/remote/hosts"> = {},
+  ): Promise<TResponse> {
+    return this.call<"GET /api/v1/remote/hosts", TResponse>(
+      "GET /api/v1/remote/hosts",
+      options,
+    );
+  }
+
   getApiV1RemoteSessions<TResponse = unknown>(
     options: PublicRouteCallOptions<"GET /api/v1/remote/sessions"> = {},
   ): Promise<TResponse> {
@@ -8690,6 +8818,24 @@ export class ElizaCloudPublicRoutesClient {
       "GET /api/v1/remote/sessions",
       options,
     );
+  }
+
+  getApiV1RemoteSessionsByIdCommands<TResponse = unknown>(
+    options: PublicRouteCallOptions<"GET /api/v1/remote/sessions/{id}/commands">,
+  ): Promise<TResponse> {
+    return this.call<"GET /api/v1/remote/sessions/{id}/commands", TResponse>(
+      "GET /api/v1/remote/sessions/{id}/commands",
+      options,
+    );
+  }
+
+  getApiV1RemoteSessionsByIdCommandsByCommandId<TResponse = unknown>(
+    options: PublicRouteCallOptions<"GET /api/v1/remote/sessions/{id}/commands/{commandId}">,
+  ): Promise<TResponse> {
+    return this.call<
+      "GET /api/v1/remote/sessions/{id}/commands/{commandId}",
+      TResponse
+    >("GET /api/v1/remote/sessions/{id}/commands/{commandId}", options);
   }
 
   getApiV1SensitiveRequestsById<TResponse = unknown>(
@@ -10906,6 +11052,24 @@ export class ElizaCloudPublicRoutesClient {
     );
   }
 
+  postApiV1RemoteHosts<TResponse = unknown>(
+    options: PublicRouteCallOptions<"POST /api/v1/remote/hosts"> = {},
+  ): Promise<TResponse> {
+    return this.call<"POST /api/v1/remote/hosts", TResponse>(
+      "POST /api/v1/remote/hosts",
+      options,
+    );
+  }
+
+  postApiV1RemoteHostsByIdRevoke<TResponse = unknown>(
+    options: PublicRouteCallOptions<"POST /api/v1/remote/hosts/{id}/revoke">,
+  ): Promise<TResponse> {
+    return this.call<"POST /api/v1/remote/hosts/{id}/revoke", TResponse>(
+      "POST /api/v1/remote/hosts/{id}/revoke",
+      options,
+    );
+  }
+
   postApiV1RemotePair<TResponse = unknown>(
     options: PublicRouteCallOptions<"POST /api/v1/remote/pair"> = {},
   ): Promise<TResponse> {
@@ -10915,11 +11079,59 @@ export class ElizaCloudPublicRoutesClient {
     );
   }
 
+  postApiV1RemoteSessionsByIdActivate<TResponse = unknown>(
+    options: PublicRouteCallOptions<"POST /api/v1/remote/sessions/{id}/activate">,
+  ): Promise<TResponse> {
+    return this.call<"POST /api/v1/remote/sessions/{id}/activate", TResponse>(
+      "POST /api/v1/remote/sessions/{id}/activate",
+      options,
+    );
+  }
+
+  postApiV1RemoteSessionsByIdCommands<TResponse = unknown>(
+    options: PublicRouteCallOptions<"POST /api/v1/remote/sessions/{id}/commands">,
+  ): Promise<TResponse> {
+    return this.call<"POST /api/v1/remote/sessions/{id}/commands", TResponse>(
+      "POST /api/v1/remote/sessions/{id}/commands",
+      options,
+    );
+  }
+
+  postApiV1RemoteSessionsByIdCommandsByCommandIdComplete<TResponse = unknown>(
+    options: PublicRouteCallOptions<"POST /api/v1/remote/sessions/{id}/commands/{commandId}/complete">,
+  ): Promise<TResponse> {
+    return this.call<
+      "POST /api/v1/remote/sessions/{id}/commands/{commandId}/complete",
+      TResponse
+    >(
+      "POST /api/v1/remote/sessions/{id}/commands/{commandId}/complete",
+      options,
+    );
+  }
+
+  postApiV1RemoteSessionsByIdCommandsByCommandIdStart<TResponse = unknown>(
+    options: PublicRouteCallOptions<"POST /api/v1/remote/sessions/{id}/commands/{commandId}/start">,
+  ): Promise<TResponse> {
+    return this.call<
+      "POST /api/v1/remote/sessions/{id}/commands/{commandId}/start",
+      TResponse
+    >("POST /api/v1/remote/sessions/{id}/commands/{commandId}/start", options);
+  }
+
   postApiV1RemoteSessionsByIdRevoke<TResponse = unknown>(
     options: PublicRouteCallOptions<"POST /api/v1/remote/sessions/{id}/revoke">,
   ): Promise<TResponse> {
     return this.call<"POST /api/v1/remote/sessions/{id}/revoke", TResponse>(
       "POST /api/v1/remote/sessions/{id}/revoke",
+      options,
+    );
+  }
+
+  postApiV1RemoteSessionsActivate<TResponse = unknown>(
+    options: PublicRouteCallOptions<"POST /api/v1/remote/sessions/activate"> = {},
+  ): Promise<TResponse> {
+    return this.call<"POST /api/v1/remote/sessions/activate", TResponse>(
+      "POST /api/v1/remote/sessions/activate",
       options,
     );
   }
@@ -13072,10 +13284,31 @@ export class ElizaCloudPublicRoutesClient {
     return this.callRaw("GET /api/v1/referrals", options);
   }
 
+  getApiV1RemoteHostsRaw(
+    options: PublicRouteCallOptions<"GET /api/v1/remote/hosts"> = {},
+  ): Promise<Response> {
+    return this.callRaw("GET /api/v1/remote/hosts", options);
+  }
+
   getApiV1RemoteSessionsRaw(
     options: PublicRouteCallOptions<"GET /api/v1/remote/sessions"> = {},
   ): Promise<Response> {
     return this.callRaw("GET /api/v1/remote/sessions", options);
+  }
+
+  getApiV1RemoteSessionsByIdCommandsRaw(
+    options: PublicRouteCallOptions<"GET /api/v1/remote/sessions/{id}/commands">,
+  ): Promise<Response> {
+    return this.callRaw("GET /api/v1/remote/sessions/{id}/commands", options);
+  }
+
+  getApiV1RemoteSessionsByIdCommandsByCommandIdRaw(
+    options: PublicRouteCallOptions<"GET /api/v1/remote/sessions/{id}/commands/{commandId}">,
+  ): Promise<Response> {
+    return this.callRaw(
+      "GET /api/v1/remote/sessions/{id}/commands/{commandId}",
+      options,
+    );
   }
 
   getApiV1SensitiveRequestsByIdRaw(
@@ -14686,16 +14919,64 @@ export class ElizaCloudPublicRoutesClient {
     return this.callRaw("POST /api/v1/referrals/apply", options);
   }
 
+  postApiV1RemoteHostsRaw(
+    options: PublicRouteCallOptions<"POST /api/v1/remote/hosts"> = {},
+  ): Promise<Response> {
+    return this.callRaw("POST /api/v1/remote/hosts", options);
+  }
+
+  postApiV1RemoteHostsByIdRevokeRaw(
+    options: PublicRouteCallOptions<"POST /api/v1/remote/hosts/{id}/revoke">,
+  ): Promise<Response> {
+    return this.callRaw("POST /api/v1/remote/hosts/{id}/revoke", options);
+  }
+
   postApiV1RemotePairRaw(
     options: PublicRouteCallOptions<"POST /api/v1/remote/pair"> = {},
   ): Promise<Response> {
     return this.callRaw("POST /api/v1/remote/pair", options);
   }
 
+  postApiV1RemoteSessionsByIdActivateRaw(
+    options: PublicRouteCallOptions<"POST /api/v1/remote/sessions/{id}/activate">,
+  ): Promise<Response> {
+    return this.callRaw("POST /api/v1/remote/sessions/{id}/activate", options);
+  }
+
+  postApiV1RemoteSessionsByIdCommandsRaw(
+    options: PublicRouteCallOptions<"POST /api/v1/remote/sessions/{id}/commands">,
+  ): Promise<Response> {
+    return this.callRaw("POST /api/v1/remote/sessions/{id}/commands", options);
+  }
+
+  postApiV1RemoteSessionsByIdCommandsByCommandIdCompleteRaw(
+    options: PublicRouteCallOptions<"POST /api/v1/remote/sessions/{id}/commands/{commandId}/complete">,
+  ): Promise<Response> {
+    return this.callRaw(
+      "POST /api/v1/remote/sessions/{id}/commands/{commandId}/complete",
+      options,
+    );
+  }
+
+  postApiV1RemoteSessionsByIdCommandsByCommandIdStartRaw(
+    options: PublicRouteCallOptions<"POST /api/v1/remote/sessions/{id}/commands/{commandId}/start">,
+  ): Promise<Response> {
+    return this.callRaw(
+      "POST /api/v1/remote/sessions/{id}/commands/{commandId}/start",
+      options,
+    );
+  }
+
   postApiV1RemoteSessionsByIdRevokeRaw(
     options: PublicRouteCallOptions<"POST /api/v1/remote/sessions/{id}/revoke">,
   ): Promise<Response> {
     return this.callRaw("POST /api/v1/remote/sessions/{id}/revoke", options);
+  }
+
+  postApiV1RemoteSessionsActivateRaw(
+    options: PublicRouteCallOptions<"POST /api/v1/remote/sessions/activate"> = {},
+  ): Promise<Response> {
+    return this.callRaw("POST /api/v1/remote/sessions/activate", options);
   }
 
   postApiV1ReportsBugRaw(

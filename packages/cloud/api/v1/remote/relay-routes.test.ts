@@ -41,6 +41,7 @@ const revokeAuthenticatedHost = mock();
 const createPendingForOwnedAgent = mock();
 const createPendingForOwnedHost = mock();
 const activatePendingHost = mock();
+const activatePendingHostByCode = mock();
 const listActiveByOwnedAgent = mock();
 const listByOwnedHost = mock();
 const revokeSession = mock();
@@ -49,6 +50,15 @@ const claimNext = mock();
 const recordStart = mock();
 const complete = mock();
 const readOwnedResult = mock();
+const activationRateLimitConfigs: Array<{
+  windowMs: number;
+  maxRequests: number;
+  localLease?: boolean;
+  failClosed?: boolean;
+  keyGenerator?: (context: {
+    req: { header(name: string): string | undefined };
+  }) => string;
+}> = [];
 
 mock.module("@/lib/auth/workers-hono-auth", () => ({
   requireUserOrApiKeyWithOrg,
@@ -67,6 +77,7 @@ mock.module("@/db/repositories/remote-sessions", () => ({
     createPendingForOwnedAgent,
     createPendingForOwnedHost,
     activatePendingHost,
+    activatePendingHostByCode,
     listActiveByOwnedAgent,
     listByOwnedHost,
     revoke: revokeSession,
@@ -81,6 +92,13 @@ mock.module("@/db/repositories/remote-command-envelopes", () => ({
     readOwnedResult,
   },
 }));
+mock.module("@/lib/middleware/rate-limit-hono-cloudflare", () => ({
+  getIpKey: () => "ip:test-source",
+  rateLimit: (config: (typeof activationRateLimitConfigs)[number]) => {
+    activationRateLimitConfigs.push(config);
+    return async (_context: unknown, next: () => Promise<void>) => next();
+  },
+}));
 
 const { default: hostsRoute } = await import("./hosts/route");
 const { default: hostRevokeRoute } = await import("./hosts/[id]/revoke/route");
@@ -89,6 +107,9 @@ const { default: sessionsRoute } = await import("./sessions/route");
 const { default: activateRoute } = await import(
   "./sessions/[id]/activate/route"
 );
+const activateByCodeModule = await import("./sessions/activate/route");
+const activateByCodeRoute = activateByCodeModule.default;
+const { activationRouteInternals } = activateByCodeModule;
 const { default: commandsRoute } = await import(
   "./sessions/[id]/commands/route"
 );
@@ -107,6 +128,7 @@ app.route("/api/v1/remote/hosts", hostsRoute);
 app.route("/api/v1/remote/hosts/:id/revoke", hostRevokeRoute);
 app.route("/api/v1/remote/pair", pairRoute);
 app.route("/api/v1/remote/sessions", sessionsRoute);
+app.route("/api/v1/remote/sessions/activate", activateByCodeRoute);
 app.route("/api/v1/remote/sessions/:id/activate", activateRoute);
 app.route("/api/v1/remote/sessions/:id/commands", commandsRoute);
 app.route("/api/v1/remote/sessions/:id/commands/:commandId", commandRoute);
@@ -188,6 +210,7 @@ beforeEach(() => {
     createPendingForOwnedAgent,
     createPendingForOwnedHost,
     activatePendingHost,
+    activatePendingHostByCode,
     listActiveByOwnedAgent,
     listByOwnedHost,
     revokeSession,
@@ -454,6 +477,131 @@ describe("secure remote relay routes", () => {
         controllerCreatedAt: createdAt.toISOString(),
       },
     });
+  });
+
+  test("discovers a pairing session by code only through the authenticated host", async () => {
+    const createdAt = new Date("2026-08-22T06:30:00.000Z");
+    activatePendingHostByCode.mockResolvedValue({
+      kind: "activated",
+      session: {
+        id: sessionId,
+        grant_id: grantId,
+        grant_revision: 1,
+        user_id: ownerId,
+        controller_device_id: "controller-one",
+        controller_key_id: controllerKeyId,
+        controller_display_name: "Controller One",
+        controller_platform: "linux",
+        controller_signing_public_jwk: publicJwk,
+        controller_encryption_public_jwk: publicJwk,
+        host_id: hostId,
+        target_key_id: targetKeyId,
+        grant_expires_at: new Date("2026-08-22T14:30:00.000Z"),
+        created_at: createdAt,
+        status: "active",
+      },
+    });
+    const response = await request(
+      "/api/v1/remote/sessions/activate",
+      { code: "123456" },
+      hostHeaders(),
+    );
+    expect(response.status).toBe(200);
+    expect(activatePendingHostByCode).toHaveBeenCalledWith({
+      hostId,
+      hostToken,
+      code: "123456",
+      pairingSecret: "route-pairing-secret-at-least-thirty-two-bytes",
+    });
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        sessionId,
+        targetRuntimeId: hostId,
+        controllerKeyId,
+        status: "active",
+      },
+    });
+  });
+
+  test("does not expose code-only discovery without exact host authentication", async () => {
+    const unauthorized = await request("/api/v1/remote/sessions/activate", {
+      code: "123456",
+    });
+    expect(unauthorized.status).toBe(401);
+    expect(activatePendingHostByCode).not.toHaveBeenCalled();
+
+    activatePendingHostByCode.mockResolvedValue({ kind: "invalid_pairing" });
+    const invalid = await request(
+      "/api/v1/remote/sessions/activate",
+      { code: "123456" },
+      hostHeaders(),
+    );
+    expect(invalid.status).toBe(404);
+    await expect(invalid.json()).resolves.toMatchObject({
+      error: "Pairing session not found or invalid",
+    });
+  });
+
+  test("bounds activation JSON by exact bytes and accepts only the exact code schema", async () => {
+    const oversized = await request(
+      "/api/v1/remote/sessions/activate",
+      { code: "123456", padding: "x".repeat(80) },
+      hostHeaders(),
+    );
+    expect(oversized.status).toBe(413);
+
+    const extraField = await request(
+      "/api/v1/remote/sessions/activate",
+      { code: "123456", extra: true },
+      hostHeaders(),
+    );
+    expect(extraField.status).toBe(400);
+    expect(activatePendingHostByCode).not.toHaveBeenCalled();
+
+    const atLimit = await activationRouteInternals.readActivationBody(
+      new Request("https://api.example.test/activate", {
+        method: "POST",
+        body: JSON.stringify("x".repeat(62)),
+      }),
+    );
+    expect(atLimit.kind).toBe("ok");
+    const overLimit = await activationRouteInternals.readActivationBody(
+      new Request("https://api.example.test/activate", {
+        method: "POST",
+        body: JSON.stringify("x".repeat(63)),
+      }),
+    );
+    expect(overLimit.kind).toBe("too_large");
+  });
+
+  test("installs fail-closed shared throttles for both source and host", () => {
+    expect(activationRateLimitConfigs).toHaveLength(2);
+    expect(activationRateLimitConfigs).toEqual([
+      expect.objectContaining({
+        windowMs: 300_000,
+        maxRequests: 20,
+        localLease: false,
+        failClosed: true,
+      }),
+      expect.objectContaining({
+        windowMs: 300_000,
+        maxRequests: 5,
+        localLease: false,
+        failClosed: true,
+      }),
+    ]);
+    const context = {
+      req: {
+        header: (name: string) =>
+          name === "x-remote-host-id" ? hostId : undefined,
+      },
+    };
+    expect(activationRateLimitConfigs[0]?.keyGenerator?.(context)).toBe(
+      "remote-activation:source:ip:test-source",
+    );
+    expect(activationRateLimitConfigs[1]?.keyGenerator?.(context)).toBe(
+      `remote-activation:host:${hostId}`,
+    );
   });
 
   test("lists a host session with the explicit owner and complete envelope binding", async () => {

@@ -48,7 +48,7 @@ export async function getRemoteTargetIdentity(): Promise<{
 }
 
 export async function activateRemoteTarget(input: {
-  sessionId: string;
+  sessionId?: string;
   code: string;
 }): Promise<{ controllerDisplayName: string; grantExpiresAt: number }> {
   const result = await invokeDesktopBridgeRequest<{

@@ -152,6 +152,34 @@ describe("DevicesRuntimesSection", () => {
     ).toBeNull();
   });
 
+  it("activates an enrolled Linux target from an independent six-digit code", async () => {
+    const user = userEvent.setup();
+    const onActivateLinuxTarget = vi.fn(async () => undefined);
+    render(
+      <DevicesRuntimesSection
+        {...props({
+          linuxTarget: {
+            hostId: "linux-host",
+            enrolled: true,
+            running: false,
+            activeSessions: 0,
+            lastErrorCode: null,
+          },
+          onActivateLinuxTarget,
+        })}
+      />,
+    );
+    const submit = screen.getByRole("button", { name: "Approve pairing" });
+    expect((submit as HTMLButtonElement).disabled).toBe(true);
+    await user.type(screen.getByLabelText("6-digit code"), "12a34567");
+    expect(
+      (screen.getByLabelText("6-digit code") as HTMLInputElement).value,
+    ).toBe("123456");
+    await user.click(submit);
+    expect(onActivateLinuxTarget).toHaveBeenCalledWith({ code: "123456" });
+    expect(screen.queryByLabelText("Pairing session ID")).toBeNull();
+  });
+
   it("requires inspection before connect and blocks a changed host key", async () => {
     const user = userEvent.setup();
     const onInspectSsh = vi.fn();

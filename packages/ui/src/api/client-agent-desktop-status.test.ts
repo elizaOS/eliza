@@ -196,6 +196,34 @@ describe("ElizaClient desktop status RPC fallback", () => {
     );
   });
 
+  it("skips local desktop status RPC for a selected encrypted relay", async () => {
+    const getAgentStatus = vi.fn(async () => ({
+      state: "error",
+      agentName: "wrong-local-agent",
+    }));
+    installDesktopRpc({ getAgentStatus });
+    const request = vi.fn<AgentRequestTransport["request"]>(async () =>
+      Response.json({ state: "running", agentName: "Remote Eliza" }),
+    );
+    const client = new ElizaClient(
+      "eliza-remote://session/11111111-1111-4111-8111-111111111111",
+      "token",
+    );
+    client.setRequestTransport({ request });
+
+    await expect(client.getStatus()).resolves.toEqual({
+      state: "running",
+      agentName: "Remote Eliza",
+    });
+
+    expect(getAgentStatus).not.toHaveBeenCalled();
+    expect(request).toHaveBeenCalledWith(
+      "eliza-remote://session/11111111-1111-4111-8111-111111111111/api/status",
+      expect.any(Object),
+      { timeoutMs: 10_000 },
+    );
+  });
+
   it("uses desktop boot progress when available", async () => {
     const progress = {
       state: "running",

@@ -38,12 +38,19 @@ Execution uses these durable phases:
 5. terminal result persisted: resend the identical encrypted result until the
    relay acknowledges it or reports a terminal claim outcome.
 
-The target has no generic shell, filesystem, URL, or HTTP proxy. The current
-allowlist is deliberately demo-safe: `agent.status` with an empty payload, or
-`agent.request` containing an exact `GET /api/health` or `GET /api/status`
-request with no body or caller headers. The native executor injects the real
-loopback agent bearer and an execution id. Other actions are signed as rejected
-without reaching the local API.
+The target has no generic shell, filesystem, URL, or HTTP proxy. The shared
+controller/target allowlist admits readiness plus the minimum selected-runtime
+conversation surface: exact health/status and conversation-list GETs,
+conversation creation, UUID-scoped bounded history reads, and UUID-scoped
+SSE-compatible message sends buffered into the signed terminal result. Methods,
+query parameters, headers, JSON fields, metadata depth/nodes, and
+request/response bytes are bounded at both ends.
+Chat sends require the app's durable `clientMessageId`, so the agent's
+idempotency store and the remote runner's no-retry-after-start boundary compose
+instead of permitting a duplicated turn. Attachments, deletion, arbitrary
+plugin routes, caller authorization headers, and every other action remain
+rejected before loopback. The native executor injects the real loopback bearer
+and an execution id after validation.
 
 ## Revocation and cleanup
 

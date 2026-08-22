@@ -3092,6 +3092,11 @@ export const ROUTE_MOUNTS: readonly GeneratedRouteMount[] = [
     load: () => import("../v1/remote/pair/route"),
   },
   {
+    path: "/api/v1/remote/sessions/activate",
+    shard: "v1/remote",
+    load: () => import("../v1/remote/sessions/activate/route"),
+  },
+  {
     path: "/api/v1/remote/sessions/:id/activate",
     shard: "v1/remote",
     load: () => import("../v1/remote/sessions/[id]/activate/route"),

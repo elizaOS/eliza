@@ -3,7 +3,6 @@
  * command relay envelopes. It validates every untrusted Cloud response before
  * exposing it to Settings or the agent transport.
  */
-import { ElizaError } from "@elizaos/core";
 import type {
   EncryptedRemoteControlEnvelope,
   RemoteControllerPlatform,
@@ -101,6 +100,8 @@ interface RemoteControlCloudClientOptions {
   request?: (url: string, init: RequestInit) => Promise<Response>;
 }
 
+const MAX_REVOCATION_CLEANUP_PAGES = 256;
+
 function record(value: unknown): Record<string, unknown> | null {
   return typeof value === "object" && value !== null && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -119,6 +120,20 @@ function requiredInteger(value: unknown, field: string): number {
     throw new Error(`Cloud response is missing ${field}.`);
   }
   return value as number;
+}
+
+function nonNegativeInteger(value: unknown, field: string): number {
+  if (!Number.isSafeInteger(value) || Number(value) < 0) {
+    throw new Error(`Cloud response has an invalid ${field}.`);
+  }
+  return value as number;
+}
+
+function requiredBoolean(value: unknown, field: string): boolean {
+  if (typeof value !== "boolean") {
+    throw new Error(`Cloud response has an invalid ${field}.`);
+  }
+  return value;
 }
 
 function identifier(value: unknown, field: string): string {
@@ -417,48 +432,83 @@ export class RemoteControlCloudClient {
   }
 
   async revokeSession(sessionId: string): Promise<void> {
-    await this.request(
-      `/api/v1/remote/sessions/${encodeURIComponent(sessionId)}/revoke`,
-      {
+    const expectedSessionId = uuid(sessionId, "session id");
+    const path = `/api/v1/remote/sessions/${encodeURIComponent(sessionId)}/revoke`;
+    for (let page = 0; page < MAX_REVOCATION_CLEANUP_PAGES; page += 1) {
+      const data = await this.request<Record<string, unknown>>(path, {
         method: "POST",
-      },
+      });
+      if (uuid(data.id, "session id") !== expectedSessionId) {
+        throw new Error("Cloud revoked a different remote session.");
+      }
+      exactEnum(data.status, "session status", [
+        "denied",
+        "revoked",
+        "expired",
+      ]);
+      requiredBoolean(data.alreadyEnded, "session revocation state");
+      const cleanup = record(data.cleanup);
+      if (!cleanup) {
+        throw new Error("Cloud response is missing session cleanup progress.");
+      }
+      const commands = nonNegativeInteger(
+        cleanup.commands,
+        "session cleanup command count",
+      );
+      const more = requiredBoolean(
+        cleanup.more,
+        "session cleanup continuation state",
+      );
+      if (!more) return;
+      if (commands === 0) {
+        throw new Error(
+          "The session is revoked, but Cloud cleanup made no progress. Try revoking again.",
+        );
+      }
+    }
+    throw new Error(
+      "The session is revoked, but Cloud cleanup exceeded the safe continuation limit. Try revoking again.",
     );
   }
 
   async revokeHost(hostId: string): Promise<void> {
+    const expectedHostId = uuid(hostId, "host id");
     const path = `/api/v1/remote/hosts/${encodeURIComponent(hostId)}/revoke`;
-    while (true) {
+    for (let page = 0; page < MAX_REVOCATION_CLEANUP_PAGES; page += 1) {
       const data = await this.request<Record<string, unknown>>(path, {
         method: "POST",
       });
-      const cleanup = record(data.cleanup);
-      if (
-        !cleanup ||
-        typeof cleanup.more !== "boolean" ||
-        !Number.isSafeInteger(cleanup.sessions) ||
-        (cleanup.sessions as number) < 0 ||
-        !Number.isSafeInteger(cleanup.commands) ||
-        (cleanup.commands as number) < 0
-      ) {
-        throw new ElizaError(
-          "Cloud response contains invalid host cleanup progress.",
-          {
-            code: "REMOTE_HOST_CLEANUP_PROGRESS_INVALID",
-            context: { hostId, reason: "malformed_response" },
-          },
-        );
+      if (uuid(data.id, "host id") !== expectedHostId) {
+        throw new Error("Cloud revoked a different remote host.");
       }
-      if (!cleanup.more) return;
-      if (cleanup.sessions === 0 && cleanup.commands === 0) {
-        throw new ElizaError(
-          "Cloud host cleanup reported more work without making progress.",
-          {
-            code: "REMOTE_HOST_CLEANUP_PROGRESS_INVALID",
-            context: { hostId, reason: "non_progressing_page" },
-          },
+      exactEnum(data.status, "host status", ["revoked"]);
+      requiredBoolean(data.alreadyRevoked, "host revocation state");
+      const cleanup = record(data.cleanup);
+      if (!cleanup) {
+        throw new Error("Cloud response is missing host cleanup progress.");
+      }
+      const sessions = nonNegativeInteger(
+        cleanup.sessions,
+        "host cleanup session count",
+      );
+      const commands = nonNegativeInteger(
+        cleanup.commands,
+        "host cleanup command count",
+      );
+      const more = requiredBoolean(
+        cleanup.more,
+        "host cleanup continuation state",
+      );
+      if (!more) return;
+      if (sessions === 0 && commands === 0) {
+        throw new Error(
+          "The host is revoked, but Cloud cleanup made no progress. Try revoking again.",
         );
       }
     }
+    throw new Error(
+      "The host is revoked, but Cloud cleanup exceeded the safe continuation limit. Try revoking again.",
+    );
   }
 
   async enqueueCommand(input: {

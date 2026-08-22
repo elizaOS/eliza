@@ -88,7 +88,7 @@ export interface DevicesRuntimesSectionProps {
   onConnectSsh: (input: SshConnectInput) => void | Promise<void>;
   onEnrollLinuxTarget?: () => void | Promise<void>;
   onActivateLinuxTarget?: (input: {
-    sessionId: string;
+    sessionId?: string;
     code: string;
   }) => void | Promise<void>;
   onSetLinuxTargetRunning?: (running: boolean) => void | Promise<void>;
@@ -110,13 +110,12 @@ function LinuxTargetPanel({
   busy: boolean;
   onEnroll?: () => void | Promise<void>;
   onActivate?: (input: {
-    sessionId: string;
+    sessionId?: string;
     code: string;
   }) => void | Promise<void>;
   onSetRunning?: (running: boolean) => void | Promise<void>;
   onRevoke?: () => void | Promise<void>;
 }) {
-  const [sessionId, setSessionId] = useState("");
   const [code, setCode] = useState("");
   const [confirmingRevoke, setConfirmingRevoke] = useState(false);
   const localPairing = pairing?.hostId === target.hostId ? pairing : null;
@@ -238,34 +237,20 @@ function LinuxTargetPanel({
               </div>
             ) : null}
             <p className="text-xs leading-relaxed text-muted">
-              Manual cross-device pairing requires both the session ID and the
-              6-digit code. Code-only session discovery is not available.
+              Or enter the independent 6-digit code. This enrolled host asks
+              Cloud to find only its own unexpired pending session; no session
+              directory is exposed.
             </p>
             <form
-              className="grid gap-3 sm:grid-cols-[1fr_10rem_auto] sm:items-end"
+              className="flex flex-wrap items-end gap-3"
               onSubmit={(event) => {
                 event.preventDefault();
                 void (async () => {
-                  await onActivate({ sessionId: sessionId.trim(), code });
+                  await onActivate({ code });
                   setCode("");
                 })();
               }}
             >
-              <label
-                htmlFor="linux-target-session"
-                className="grid gap-1.5 text-xs text-muted"
-              >
-                Pairing session ID
-                <Input
-                  id="linux-target-session"
-                  required
-                  density="relaxed"
-                  value={sessionId}
-                  onChange={(event) => setSessionId(event.target.value)}
-                  autoComplete="off"
-                  spellCheck={false}
-                />
-              </label>
               <label
                 htmlFor="linux-target-code"
                 className="grid gap-1.5 text-xs text-muted"
@@ -287,7 +272,7 @@ function LinuxTargetPanel({
               <Button
                 type="submit"
                 className="min-h-11"
-                disabled={busy || !sessionId.trim() || code.length !== 6}
+                disabled={busy || code.length !== 6}
               >
                 Approve pairing
               </Button>
@@ -368,11 +353,11 @@ function PairingPanel({ pairing }: { pairing: DevicePairingView }) {
           Pair {pairing.hostLabel}
         </div>
         <p className="mt-2 text-xs leading-relaxed text-muted">
-          Scan the QR code, or enter the session ID and code together on the
-          target. The code is valid once for five minutes and cannot be reused.
+          Scan the QR code, or enter the six-digit code on the enrolled target.
+          The code is valid once for five minutes and cannot be reused.
         </p>
         <output
-          className="mt-4 font-[var(--mono)] text-3xl font-semibold tracking-[0.28em] text-txt-strong"
+          className="mt-4 font-[var(--mono)] text-2xl font-semibold tracking-[0.15em] text-txt-strong sm:text-3xl sm:tracking-[0.28em]"
           aria-label={`Pairing code ${pairing.code.split("").join(" ")}`}
           data-testid="pairing-code"
         >
@@ -447,7 +432,7 @@ function RuntimeCard({
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <h4 className="truncate text-sm font-semibold text-txt-strong">
+            <h4 className="break-words text-sm font-semibold text-txt-strong">
               {target.label}
             </h4>
             {target.selected ? (
@@ -459,7 +444,7 @@ function RuntimeCard({
           <p className="mt-1 break-words text-xs leading-relaxed text-muted">
             {target.detail}
           </p>
-          <div className="mt-2 flex items-center gap-2 text-xs">
+          <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
             <span className={cn("font-medium", status.className)}>
               {status.label}
             </span>
@@ -610,7 +595,7 @@ function AdvancedSsh({
 
   return (
     <details className="rounded-xl border border-border bg-card p-4">
-      <summary className="min-h-11 cursor-pointer select-none py-2 text-sm font-semibold text-txt-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent">
+      <summary className="min-h-11 cursor-pointer select-none py-2 text-sm font-semibold text-txt-strong">
         Advanced SSH
       </summary>
       <p className="mb-4 text-xs leading-relaxed text-muted">
@@ -817,7 +802,10 @@ export function DevicesRuntimesSection({
 }: DevicesRuntimesSectionProps) {
   const { t } = useTranslation();
   return (
-    <SettingsStack className={className} data-testid="devices-runtimes">
+    <SettingsStack
+      className={cn("devices-runtimes-accessible", className)}
+      data-testid="devices-runtimes"
+    >
       {error ? (
         <div
           role="alert"
@@ -863,7 +851,11 @@ export function DevicesRuntimesSection({
         }
         bare
       >
-        <div className="grid grid-cols-1 gap-3 lg:grid-cols-2" aria-busy={busy}>
+        <div
+          className="grid grid-cols-1 gap-3 lg:grid-cols-2"
+          aria-busy={busy}
+          data-testid="runtime-target-grid"
+        >
           {cloudState !== "loading" && targets.length === 0 ? (
             <div className="text-sm text-muted-foreground">
               {t("settings.devicesRuntimes.empty", {

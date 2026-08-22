@@ -552,7 +552,7 @@ export interface SshRuntimeStartParams extends SshHostInspectParams {
   remoteApiPort: number;
   expectedFingerprint: string;
   identityFile?: string;
-  credentialRef?: string;
+  credentialRef: string;
 }
 
 export interface SshRuntimeRequestParams extends RuntimeCredentialParams {
@@ -2222,6 +2222,8 @@ export type ElizaDesktopRPCSchema = {
           running: boolean;
           localPort: number | null;
           startedAt: number | null;
+          reconnectState: "stopped" | "running" | "blocked";
+          lastError: string | null;
         };
       };
       sshRuntimeRequest: {
@@ -2291,7 +2293,7 @@ export type ElizaDesktopRPCSchema = {
         response: { enrolled: boolean; identity?: RemoteTargetPublicIdentity };
       };
       remoteTargetActivate: {
-        params: { sessionId: string; code: string };
+        params: { sessionId?: string; code: string };
         response: {
           sessionId: string;
           status: "active";

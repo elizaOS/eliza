@@ -3,6 +3,11 @@
  * signing/decryption. A command is enqueued exactly once; after a signed start
  * receipt the client only polls status and never replays the effect.
  */
+
+import {
+  parseRemoteAgentRequest,
+  type RemoteAgentRequest,
+} from "@elizaos/shared/contracts/remote-agent-request";
 import type {
   RemoteCommandAction,
   RemoteJsonValue,
@@ -20,13 +25,18 @@ import type { AgentProfile } from "../state/agent-profile-types";
 import { loadAgentProfileRegistry } from "../state/agent-profiles";
 import type { RemoteControlCloudClient } from "./remote-control-cloud-client";
 
+type RemoteRelayCloudClient = Pick<
+  RemoteControlCloudClient,
+  "enqueueCommand" | "readCommand"
+>;
+
 async function defaultCloudClient(): Promise<RemoteControlCloudClient> {
   const module = await import("./remote-control-cloud-default");
   return module.createDefaultRemoteControlCloudClient();
 }
 
 import type { AgentRequestTransport } from "./transport";
-import { headersToRecord } from "./transport";
+import { bodyToString, headersToRecord } from "./transport";
 
 const enqueueTails = new Map<string, Promise<void>>();
 
@@ -38,11 +48,25 @@ function relayProfileForUrl(url: string): AgentProfile | null {
     // error-policy:J3 profile pseudo-URLs are untrusted transport input.
     return null;
   }
-  if (parsed.protocol !== "eliza-remote:" || parsed.hostname !== "session") {
+  if (
+    parsed.protocol !== "eliza-remote:" ||
+    parsed.host !== "session" ||
+    parsed.username ||
+    parsed.password ||
+    parsed.search ||
+    parsed.hash
+  ) {
     return null;
   }
-  const sessionId = parsed.pathname.split("/").filter(Boolean)[0];
-  if (!sessionId) return null;
+  const segments = parsed.pathname.split("/").filter(Boolean);
+  const sessionId = segments[0];
+  if (
+    segments.length !== 1 ||
+    !sessionId ||
+    !/^[A-Za-z0-9._-]{1,256}$/.test(sessionId)
+  ) {
+    return null;
+  }
   return (
     loadAgentProfileRegistry().profiles.find(
       (profile) =>
@@ -78,35 +102,48 @@ async function withSessionEnqueue<T>(
   }
 }
 
-function wait(ms: number, signal?: AbortSignal): Promise<void> {
-  if (signal?.aborted) {
-    return Promise.reject(
-      signal.reason ?? new DOMException("Aborted", "AbortError"),
-    );
-  }
-  return new Promise((resolve, reject) => {
-    const onAbort = () => {
-      clearTimeout(timer);
-      reject(signal?.reason ?? new DOMException("Aborted", "AbortError"));
-    };
-    const timer = setTimeout(() => {
-      signal?.removeEventListener("abort", onAbort);
-      resolve();
-    }, ms);
-    signal?.addEventListener("abort", onAbort, { once: true });
-  });
+function wait(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function throwIfAborted(signal?: AbortSignal): void {
+  if (signal?.aborted) {
+    throw signal.reason ?? new DOMException("Aborted", "AbortError");
+  }
+}
+
+interface RemoteRelayCommandDependencies {
+  getController: typeof getOrCreateRemoteControllerIdentity;
+  createCommand: typeof createRemoteCommand;
+  acknowledgeEnqueue: typeof acknowledgeRemoteCommandEnqueue;
+  openStartReceipt: typeof openRemoteCommandStartReceipt;
+  openResult: typeof openRemoteCommandResult;
+  now: () => number;
+  wait: (ms: number) => Promise<void>;
+}
+
+const remoteRelayCommandDependencies: RemoteRelayCommandDependencies = {
+  getController: getOrCreateRemoteControllerIdentity,
+  createCommand: createRemoteCommand,
+  acknowledgeEnqueue: acknowledgeRemoteCommandEnqueue,
+  openStartReceipt: openRemoteCommandStartReceipt,
+  openResult: openRemoteCommandResult,
+  now: Date.now,
+  wait,
+};
+
 async function sendCommand(
-  cloud: RemoteControlCloudClient,
+  cloud: RemoteRelayCloudClient,
   profile: AgentProfile,
   action: RemoteCommandAction,
   payload: RemoteJsonValue,
   signal?: AbortSignal,
+  dependencies: RemoteRelayCommandDependencies = remoteRelayCommandDependencies,
 ): Promise<RemoteJsonValue | undefined> {
+  throwIfAborted(signal);
   const relay = profile.remoteRelay;
   if (!relay) throw new Error("Remote relay authority is missing.");
-  const controller = await getOrCreateRemoteControllerIdentity({
+  const controller = await dependencies.getController({
     ownerId: relay.ownerId,
   });
   const target: RemoteTargetPublicIdentity = {
@@ -127,8 +164,9 @@ async function sendCommand(
     );
   }
   const created = await withSessionEnqueue(relay.sessionId, async () => {
+    throwIfAborted(signal);
     for (;;) {
-      const next = await createRemoteCommand({
+      const next = await dependencies.createCommand({
         ownerId: relay.ownerId,
         grantId: relay.grantId,
         grantRevision: relay.grantRevision,
@@ -142,7 +180,7 @@ async function sendCommand(
         sessionId: relay.sessionId,
         envelope: next.envelope,
       });
-      const acknowledged = await acknowledgeRemoteCommandEnqueue({
+      const acknowledged = await dependencies.acknowledgeEnqueue({
         ownerId: relay.ownerId,
         controllerDeviceId: controller.deviceId,
         sessionId: relay.sessionId,
@@ -162,16 +200,13 @@ async function sendCommand(
   let crossedStartBoundary = false;
   let verifiedStartReceipt = false;
   const command: SignedRemoteCommand = created.command;
-  while (Date.now() <= resultDeadline) {
-    if (signal?.aborted) {
-      throw signal.reason ?? new DOMException("Aborted", "AbortError");
-    }
+  while (dependencies.now() <= resultDeadline) {
     const current = await cloud.readCommand({
       sessionId: relay.sessionId,
       commandId: created.commandId,
     });
     if (current.startReceipt && !verifiedStartReceipt) {
-      await openRemoteCommandStartReceipt({
+      await dependencies.openStartReceipt({
         ownerId: relay.ownerId,
         controllerDeviceId: controller.deviceId,
         envelope: current.startReceipt,
@@ -201,7 +236,7 @@ async function sendCommand(
       (current.status === "completed" || current.status === "failed") &&
       current.resultEnvelope
     ) {
-      const result = await openRemoteCommandResult({
+      const result = await dependencies.openResult({
         ownerId: relay.ownerId,
         controllerDeviceId: controller.deviceId,
         envelope: current.resultEnvelope,
@@ -217,10 +252,17 @@ async function sendCommand(
       }
       return result.result;
     }
-    if (!crossedStartBoundary && Date.now() > created.expiresAt + 30_000) {
+    if (
+      !crossedStartBoundary &&
+      dependencies.now() > created.expiresAt + 30_000
+    ) {
       throw new Error("The remote host did not accept the command in time.");
     }
-    await wait(300, signal);
+    // The caller's AbortSignal is intentionally no longer observed after the
+    // command has crossed the durable enqueue boundary. Returning AbortError
+    // here would discard the only command handle while the target can still
+    // execute it, allowing a retry to create a second semantic operation.
+    await dependencies.wait(300);
   }
   throw new Error(
     crossedStartBoundary
@@ -239,7 +281,20 @@ export function remoteRelayTransportForUrl(
   if (!profile) return null;
   return {
     async request(requestUrl, init) {
-      const payload = normalizeRelayHealthRequest(requestUrl, init);
+      const request = normalizeRelayAgentRequest(
+        requestUrl,
+        init,
+        profile.remoteRelay?.sessionId,
+      );
+      // Rebuild the validated DTO as the protocol's JSON index shape instead
+      // of widening RemoteAgentRequest (whose optional body is intentionally
+      // absent, never serialized as undefined) or asserting through unknown.
+      const payload: RemoteJsonValue = {
+        path: request.path,
+        method: request.method,
+        headers: { ...request.headers },
+        ...(request.body !== undefined ? { body: request.body } : {}),
+      };
       const result = await sendCommand(
         await cloudFactory(),
         profile,
@@ -252,29 +307,41 @@ export function remoteRelayTransportForUrl(
   };
 }
 
-function normalizeRelayHealthRequest(
+function normalizeRelayAgentRequest(
   requestUrl: string,
   init: RequestInit,
-): { path: string; method: "GET"; headers: Record<string, string> } {
+  expectedSessionId?: string,
+): RemoteAgentRequest {
   const parsed = new URL(requestUrl);
+  if (
+    parsed.protocol !== "eliza-remote:" ||
+    parsed.host !== "session" ||
+    parsed.username ||
+    parsed.password ||
+    parsed.hash
+  ) {
+    throw new Error("The encrypted relay request target is invalid.");
+  }
   const segments = parsed.pathname.split("/").filter(Boolean);
+  if (
+    segments.length < 2 ||
+    (expectedSessionId !== undefined && segments[0] !== expectedSessionId)
+  ) {
+    throw new Error("The encrypted relay request path is invalid.");
+  }
   const path = `/${segments.slice(1).join("/")}${parsed.search}`;
   const method = (init.method ?? "GET").toUpperCase();
   const headers = headersToRecord(init.headers);
-  const hasUnsupportedHeaders = Object.keys(headers).some(
-    (name) => name.toLowerCase() !== "accept",
-  );
-  if (
-    method !== "GET" ||
-    !["/api/health", "/api/status"].includes(path) ||
-    init.body !== undefined ||
-    hasUnsupportedHeaders
-  ) {
-    throw new Error(
-      "This encrypted Linux relay currently supports GET /api/health and GET /api/status only. Chat and mutation routes are not enabled yet.",
-    );
+  const body = bodyToString(init.body);
+  if (body === undefined && init.body !== undefined) {
+    throw new Error("The encrypted relay supports text request bodies only.");
   }
-  return { path, method: "GET", headers: {} };
+  return parseRemoteAgentRequest({
+    path,
+    method,
+    headers,
+    ...(body !== undefined ? { body } : {}),
+  });
 }
 
 function responseFromRemoteResult(
@@ -284,24 +351,44 @@ function responseFromRemoteResult(
     result && typeof result === "object" && !Array.isArray(result)
       ? (result as Record<string, RemoteJsonValue>)
       : {};
-  return new Response(typeof response.body === "string" ? response.body : "", {
-    status:
-      typeof response.status === "number" &&
-      response.status >= 100 &&
-      response.status <= 599
-        ? response.status
-        : 502,
-    headers:
-      response.headers &&
-      typeof response.headers === "object" &&
-      !Array.isArray(response.headers)
-        ? (response.headers as Record<string, string>)
-        : { "content-type": "application/json" },
-  });
+  const validStatus =
+    typeof response.status === "number" &&
+    Number.isInteger(response.status) &&
+    response.status >= 100 &&
+    response.status <= 599;
+  const remoteHeaders =
+    response.headers &&
+    typeof response.headers === "object" &&
+    !Array.isArray(response.headers)
+      ? (response.headers as Record<string, RemoteJsonValue>)
+      : {};
+  const contentType = remoteHeaders["content-type"];
+  const contentTypeHasControl =
+    typeof contentType === "string" &&
+    Array.from(contentType).some((character) => {
+      const code = character.charCodeAt(0);
+      return code <= 0x1f || code === 0x7f;
+    });
+  const headers =
+    typeof contentType === "string" &&
+    contentType.length <= 256 &&
+    !contentTypeHasControl
+      ? { "content-type": contentType }
+      : { "content-type": "application/json" };
+  return new Response(
+    validStatus && typeof response.body === "string" ? response.body : "",
+    {
+      status: validStatus ? (response.status as number) : 502,
+      headers,
+    },
+  );
 }
 
 export const remoteRelayTransportInternals = {
-  normalizeRelayHealthRequest,
+  normalizeRelayAgentRequest,
+  // Backward-compatible test seam retained while the route contract expands.
+  normalizeRelayHealthRequest: normalizeRelayAgentRequest,
   responseFromRemoteResult,
+  sendCommand,
   withSessionEnqueue,
 };

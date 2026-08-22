@@ -5,7 +5,7 @@ import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-
+import type { SshRuntimeConnectionIntent } from "./ssh-runtime-intent-store";
 import {
   normalizeSshRuntimeRequest,
   parseSshKeyscanOutput,
@@ -16,6 +16,17 @@ const ED25519_KEY = Buffer.from("deterministic-ed25519-host-key").toString(
   "base64",
 );
 const RSA_KEY = Buffer.from("deterministic-rsa-host-key").toString("base64");
+const PINNED_FINGERPRINT = `SHA256:${"A".repeat(43)}`;
+
+const RESTART_INTENT: SshRuntimeConnectionIntent = {
+  runtimeId: "vps",
+  target: "eliza@host.example",
+  sshPort: 22,
+  remoteApiPort: 31337,
+  expectedFingerprint: PINNED_FINGERPRINT,
+  identityFile: "/home/eliza/.ssh/id_ed25519",
+  credentialRef: "vps",
+};
 
 function fakeTunnelChild(options: { hangOnTerm?: boolean } = {}) {
   const child = new EventEmitter() as EventEmitter & {
@@ -86,6 +97,7 @@ describe("SSH runtime RPC", () => {
         target: "host.example",
         sshPort: 22,
         remoteApiPort: 31337,
+        credentialRef: "vps",
         expectedFingerprint: `SHA256:${"A".repeat(43)}`,
       }),
     ).toThrow("user@host");
@@ -96,6 +108,7 @@ describe("SSH runtime RPC", () => {
         sshPort: 22,
         remoteApiPort: 31337,
         identityFile: "relative-key",
+        credentialRef: "vps",
         expectedFingerprint: `SHA256:${"A".repeat(43)}`,
       }),
     ).toThrow("absolute local path");
@@ -105,6 +118,7 @@ describe("SSH runtime RPC", () => {
         target: "eliza@host.example",
         sshPort: 22,
         remoteApiPort: 31337,
+        credentialRef: "vps",
         expectedFingerprint: "MD5:unsafe",
       }),
     ).toThrow("Confirm a valid SHA256");
@@ -212,5 +226,77 @@ describe("SSH runtime RPC", () => {
     await expect(fs.stat(tunnel.tempDir)).rejects.toMatchObject({
       code: "ENOENT",
     });
+  });
+
+  it("rehydrates restart intent only after secure pin and identity validation", async () => {
+    const starts: unknown[] = [];
+    await sshRuntimeInternals.rehydrateSshRuntimeIntent(RESTART_INTENT, {
+      readCredential: async () => ({
+        accessToken: "stored-outside-intent",
+        sshHostFingerprint: PINNED_FINGERPRINT,
+      }),
+      statIdentityFile: async () => ({ isFile: () => true }),
+      start: async (input) => {
+        starts.push(input);
+        return {
+          apiBase: "http://127.0.0.1:30001",
+          localPort: 30001,
+          fingerprint: input.expectedFingerprint,
+        };
+      },
+    });
+
+    expect(starts).toEqual([
+      expect.objectContaining({
+        runtimeId: "vps",
+        target: "eliza@host.example",
+        expectedFingerprint: PINNED_FINGERPRINT,
+      }),
+    ]);
+  });
+
+  it("keeps restart intent stopped when the secure pin or identity is missing", async () => {
+    const start = async () => ({
+      apiBase: "http://127.0.0.1:30001",
+      localPort: 30001,
+      fingerprint: PINNED_FINGERPRINT,
+    });
+    await expect(
+      sshRuntimeInternals.rehydrateSshRuntimeIntent(RESTART_INTENT, {
+        readCredential: async () => ({
+          accessToken: null,
+          sshHostFingerprint: null,
+        }),
+        statIdentityFile: async () => ({ isFile: () => true }),
+        start,
+      }),
+    ).rejects.toThrow("missing from secure storage");
+    await expect(
+      sshRuntimeInternals.rehydrateSshRuntimeIntent(RESTART_INTENT, {
+        readCredential: async () => ({
+          accessToken: null,
+          sshHostFingerprint: PINNED_FINGERPRINT,
+        }),
+        statIdentityFile: async () => ({ isFile: () => false }),
+        start,
+      }),
+    ).rejects.toThrow("identity file is unavailable");
+  });
+
+  it("propagates changed-key rejection and never falls back to a new host key", async () => {
+    await expect(
+      sshRuntimeInternals.rehydrateSshRuntimeIntent(RESTART_INTENT, {
+        readCredential: async () => ({
+          accessToken: null,
+          sshHostFingerprint: PINNED_FINGERPRINT,
+        }),
+        statIdentityFile: async () => ({ isFile: () => true }),
+        start: async () => {
+          throw new Error(
+            "SSH host key changed or the confirmed fingerprint is no longer offered. Connection was blocked.",
+          );
+        },
+      }),
+    ).rejects.toThrow("host key changed");
   });
 });

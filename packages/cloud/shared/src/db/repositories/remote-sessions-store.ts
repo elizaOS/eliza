@@ -6,7 +6,7 @@
  */
 
 import { ElizaError } from "@elizaos/core";
-import { and, asc, desc, eq, gt, inArray, isNull, lte, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, inArray, isNotNull, isNull, lte, or, sql } from "drizzle-orm";
 import type { Database } from "../client";
 import { hashRemoteHostToken } from "../crypto/remote-host-token";
 import {
@@ -38,6 +38,7 @@ export type ActivateRemoteHostSessionResult =
   | { kind: "invalid_pairing" };
 
 const SESSION_COMMAND_CLEANUP_BATCH = 500;
+const CODE_ACTIVATION_CANDIDATE_LIMIT = 32;
 
 function storageFailure(message: string, context: Record<string, unknown>): ElizaError {
   return new ElizaError(message, {
@@ -283,6 +284,107 @@ export class RemoteSessionsRepository {
       if (!activated) {
         throw storageFailure("Locked remote host session could not be activated", {
           sessionId: session.id,
+        });
+      }
+      return { kind: "activated", session: activated };
+    });
+  }
+
+  /**
+   * Resolves and consumes a six-digit code without accepting a caller-supplied
+   * session id. The enrolled host bearer is the discovery authority: the
+   * lookup is restricted to that host's tenant/owner rows and examines a
+   * fixed maximum number of still-current challenges while both the host and
+   * candidate sessions are locked. A collision, overflow, replay, or expiry is
+   * deliberately indistinguishable from a wrong code.
+   */
+  async activatePendingHostByCode(input: {
+    hostId: string;
+    hostToken: string;
+    code: string;
+    pairingSecret: string;
+  }): Promise<ActivateRemoteHostSessionResult> {
+    let tokenHash: string;
+    try {
+      tokenHash = await hashRemoteHostToken(input.hostToken);
+    } catch {
+      // error-policy:J3 malformed bearer material is an explicit auth miss.
+      return { kind: "not_found" };
+    }
+    return this.database.transaction(async (tx) => {
+      const [host] = await tx
+        .select()
+        .from(remoteHosts)
+        .where(
+          and(
+            eq(remoteHosts.id, input.hostId),
+            eq(remoteHosts.host_token_hash, tokenHash),
+            eq(remoteHosts.status, "active"),
+          ),
+        )
+        .for("update");
+      if (!host) return { kind: "not_found" };
+
+      const now = await readPostLockDatabaseNow(tx);
+      const candidates = await tx
+        .select()
+        .from(remoteSessions)
+        .where(
+          and(
+            eq(remoteSessions.host_id, host.id),
+            eq(remoteSessions.organization_id, host.organization_id),
+            eq(remoteSessions.user_id, host.user_id),
+            eq(remoteSessions.status, "pending"),
+            isNotNull(remoteSessions.pairing_token_hash),
+            gt(remoteSessions.expires_at, now),
+            gt(remoteSessions.grant_expires_at, now),
+          ),
+        )
+        .orderBy(desc(remoteSessions.created_at))
+        .limit(CODE_ACTIVATION_CANDIDATE_LIMIT + 1)
+        .for("update");
+      if (candidates.length > CODE_ACTIVATION_CANDIDATE_LIMIT) {
+        return { kind: "invalid_pairing" };
+      }
+
+      const matches: RemoteSession[] = [];
+      for (const candidate of candidates) {
+        const verifier = candidate.pairing_token_hash;
+        if (
+          verifier &&
+          (await verifyRemotePairingCodeVerifier(
+            input.pairingSecret,
+            {
+              organizationId: host.organization_id,
+              userId: host.user_id,
+              hostId: host.id,
+              sessionId: candidate.id,
+            },
+            input.code,
+            verifier,
+            now,
+          ))
+        ) {
+          matches.push(candidate);
+        }
+      }
+      if (matches.length !== 1) return { kind: "invalid_pairing" };
+
+      const session = matches[0];
+      if (!session) return { kind: "invalid_pairing" };
+      const [activated] = await tx
+        .update(remoteSessions)
+        .set({
+          status: "active",
+          pairing_token_hash: null,
+          pairing_consumed_at: now,
+          updated_at: now,
+        })
+        .where(and(eq(remoteSessions.id, session.id), eq(remoteSessions.status, "pending")))
+        .returning();
+      if (!activated) {
+        throw storageFailure("Locked remote host session could not be activated by code", {
+          hostId: host.id,
         });
       }
       return { kind: "activated", session: activated };

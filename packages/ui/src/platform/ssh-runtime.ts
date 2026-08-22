@@ -18,7 +18,7 @@ export interface SshRuntimeEnrollment {
   remoteApiPort: number;
   expectedFingerprint: string;
   identityFile?: string;
-  credentialRef?: string;
+  credentialRef: string;
 }
 
 export async function inspectSshHost(input: {
@@ -68,17 +68,29 @@ export async function getSshRuntimeStatus(runtimeId: string): Promise<{
   running: boolean;
   localPort: number | null;
   startedAt: number | null;
+  reconnectState: "stopped" | "running" | "blocked";
+  lastError: string | null;
 }> {
   const result = await invokeDesktopBridgeRequest<{
     running: boolean;
     localPort: number | null;
     startedAt: number | null;
+    reconnectState: "stopped" | "running" | "blocked";
+    lastError: string | null;
   }>({
     rpcMethod: "sshRuntimeStatus",
     ipcChannel: "sshRuntime:status",
     params: { runtimeId },
   });
-  return result ?? { running: false, localPort: null, startedAt: null };
+  return (
+    result ?? {
+      running: false,
+      localPort: null,
+      startedAt: null,
+      reconnectState: "stopped",
+      lastError: null,
+    }
+  );
 }
 
 export async function requestSshRuntime(input: {
