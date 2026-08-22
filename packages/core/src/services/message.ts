@@ -15638,44 +15638,24 @@ export class DefaultMessageService implements IMessageService {
 			"Clearing message memories from channel",
 		);
 
-		// Get all message memories for this room
-		const memories = await runtime.getMemoriesByRoomIds({
-			tableName: "messages",
+		// Bulk room delete — do not snapshot via getMemoriesByRoomIds. The
+		// in-memory adapter defaults that read to 20 rows, so a successful
+		// per-id loop left the rest of the channel intact. deleteAllMemories
+		// is the adapter contract for "this room, this table, all rows".
+		const totalCount = await runtime.countMemories({
 			roomIds: [roomId],
+			tableName: "messages",
+			unique: false,
 		});
-
-		runtime.logger.debug(
-			{ src: "service:message", channelId, count: memories.length },
-			"Found message memories to delete",
-		);
-
-		const messageIds: UUID[] = [];
-		for (const memory of memories) {
-			if (!memory.id) {
-				throw new ElizaError(
-					"Cannot clear a channel containing a message memory without an ID",
-					{
-						code: "CHANNEL_MESSAGE_ID_MISSING",
-						context: { roomId, channelId },
-					},
-				);
-			}
-			messageIds.push(memory.id);
-		}
-
-		let deletedCount = 0;
-		for (const messageId of messageIds) {
-			await runtime.deleteMemory(messageId);
-			deletedCount++;
-		}
+		await runtime.deleteAllMemories([roomId], "messages");
 
 		runtime.logger.info(
 			{
 				src: "service:message",
 				agentId: runtime.agentId,
 				channelId,
-				deletedCount,
-				totalCount: memories.length,
+				deletedCount: totalCount,
+				totalCount,
 			},
 			"Cleared message memories from channel",
 		);
