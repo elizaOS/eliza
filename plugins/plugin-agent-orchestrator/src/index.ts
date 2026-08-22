@@ -2476,6 +2476,26 @@ export {
   verifierVerdict,
 } from "./services/independent-verifier.js";
 export {
+  assertProviderCertificationMatrixCurrent,
+  CERTIFICATION_SURFACE_NAMES,
+  deterministicFailoverProof,
+  findCertificationSecretLeaks,
+  PROVIDER_CERTIFICATION_MATRIX_VERSION,
+  PROVIDER_CERTIFICATION_ROUTES,
+  PROVIDER_CERTIFICATION_SCHEMA_VERSION,
+  type ProviderCertificationMode,
+  type ProviderCertificationReceipt,
+  type ProviderCertificationReport,
+  type ProviderCertificationRoute,
+  type ProviderCertificationStatus,
+  type ProviderFailoverPolicy,
+  type ProviderFailoverProof,
+  type ProviderFailureKind,
+  providerCertificationRoute,
+  runDeterministicProviderCertification,
+  sanitizeCertificationSurfaces,
+} from "./services/provider-certification.js";
+export {
   collectScreenshotPaths,
   deliverScreenshots,
   screenshotsToAttachments,

@@ -878,7 +878,7 @@ async function computeTaskAgentFrameworkState(
               : id === "codex" && subscriptionReady
                 ? "ready to use the user's OpenAI subscription"
                 : id === "kimi" && subscriptionReady
-                  ? "ready to use the user's Kimi Code included plan in a user-attended session"
+                  ? "ready to use the user's Kimi Code allowance or opted-in Extra Usage in a user-attended session"
                   : id === "grok" && subscriptionReady
                     ? "ready to use the user's Grok included plan"
                     : id === "opencode" && installed && opencodeLocalMode

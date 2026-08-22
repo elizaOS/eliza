@@ -195,6 +195,8 @@ plugins/plugin-agent-orchestrator/
                                  SpawnOptions, SessionInfo, etc.
       config-env.ts              Reads all env vars into a typed config object
       task-agent-routing.ts      Adapter/workdir resolution for spawn routing
+      provider-certification.ts Versioned provider-route receipts, drift,
+                                failover, and secret-scan contracts
       task-agent-frameworks.ts   Framework state helpers
       task-policy.ts             ACL: requireTaskAgentAccess
       terminal-capabilities.ts   detectOrchestratorTerminalSupport
@@ -251,6 +253,8 @@ bun run --cwd plugins/plugin-agent-orchestrator test:unit       # Unit tests onl
 bun run --cwd plugins/plugin-agent-orchestrator test:watch      # Vitest watch mode
 bun run --cwd plugins/plugin-agent-orchestrator test:e2e:manual # acpx+codex smoke (requires installed acpx)
 bun run --cwd plugins/plugin-agent-orchestrator test:e2e:multi-account  # Multi-account smoke test
+bun run --cwd plugins/plugin-agent-orchestrator test:certification     # Deterministic provider matrix; no network
+bun run --cwd plugins/plugin-agent-orchestrator test:certification:live # One explicit credential-gated live route
 bun run --cwd plugins/plugin-agent-orchestrator lint            # Biome check + write
 bun run --cwd plugins/plugin-agent-orchestrator lint:check      # Biome check only
 bun run --cwd plugins/plugin-agent-orchestrator format          # Biome format + write
@@ -291,7 +295,7 @@ README → "GitHub credentials".
 | `ELIZA_CODEX_ACP_APPROVAL_POLICY` / `ELIZA_CODEX_APPROVAL_POLICY` | `never` for no-Landlock fallback, otherwise unset | Optional managed Codex ACP approval policy. Setting it requires an explicit sandbox mode; the successor supports the fixed pairs `read-only`/`on-request`, `workspace-write`/`on-request`, and `danger-full-access`/`never`. |
 | `ELIZA_CODEX_ACP_LANDLOCK` / `ELIZA_CODEX_LANDLOCK` | auto-detect | Force Landlock detection for containers/tests: `1`/`true` or `0`/`false` |
 | `ELIZA_CLAUDE_ACP_COMMAND` | `npx -y @agentclientprotocol/claude-agent-acp@0.34.0` | Native Claude ACP command |
-| `ELIZA_KIMI_ACP_COMMAND` | `kimi acp` | Official Kimi Code subscription ACP command. Interactive message, HTTP, and task-control boundaries mint attendance authorization and persist it for recovery; scheduled, agent-authored, and unspecified spawns fail before workspace creation. The adapter validates that the effective default model selects the managed OAuth provider. Login is `kimi login`; logout is the interactive `/logout` because there is no top-level logout/status command. |
+| `ELIZA_KIMI_ACP_COMMAND` | `kimi acp` | Official Kimi Code subscription ACP command. Interactive message, HTTP, and task-control boundaries mint attendance authorization and persist it for recovery; scheduled, agent-authored, and unspecified spawns fail before workspace creation. The adapter validates that the effective default model selects the managed OAuth provider. Launch `kimi` and enter `/login`; logout is the interactive `/logout` because there is no top-level logout/status command. |
 | `ELIZA_GROK_ACP_COMMAND` | `grok agent stdio` | Official Grok Build subscription ACP command. Login is `grok login` or `grok login --device-auth`; status/models is `grok models`; logout is `grok logout`. |
 | `ELIZA_OPENCODE_ACP_COMMAND` | bundled shim or `opencode acp` | Native OpenCode ACP command |
 | `ELIZA_OPENCODE_PROVIDER` / `ELIZA_OPENCODE_PROVIDER_ID` | auto-detect only when unambiguous | Atomic billing-route selector: `zai-coding` (GLM Coding Plan), `cerebras-api`, `deepseek-api`, `zai-api`, `moonshot-api`, `xai-api`, or `openrouter-api`. Pooled account selection writes the `_ID` form for the child. |

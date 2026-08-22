@@ -6,6 +6,7 @@
  *   RUN_LIVE_NATIVE_ACP=1 bun run test:e2e:native
  */
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import {
   existsSync,
   mkdtempSync,
@@ -18,6 +19,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 const RUN_FLAG = "RUN_LIVE_NATIVE_ACP";
+const CERTIFICATION_EVIDENCE =
+  process.env.LIVE_NATIVE_ACP_CERTIFICATION === "1";
+const CERTIFICATION_RECEIPT_PATH =
+  process.env.LIVE_NATIVE_ACP_RECEIPT_PATH?.trim();
 const DIFF_GATE_EVIDENCE =
   process.env.LIVE_NATIVE_ACP_DIFF_GATE_EVIDENCE === "1";
 const DEFAULT_AGENT = "codex";
@@ -30,9 +35,11 @@ const GIT_IDENTITY_EVIDENCE =
   process.env.LIVE_NATIVE_ACP_GIT_IDENTITY_EVIDENCE === "1";
 const GIT_IDENTITY_PROMPT =
   "Create identity-proof.txt containing exactly `real ACP commit identity proof` followed by a newline. Commit it with the message `test: prove coding agent identity`. Do not read or change git configuration. Reply with the commit hash.";
-const PROMPT = DIFF_GATE_EVIDENCE
-  ? "Create package-lock.json containing exactly {\"lockfileVersion\":3} followed by a newline, commit it with message 'add generated lockfile', and report the commit hash. Do not change any other file."
-  : "What is 7 plus 8? Reply with exactly the number, no punctuation.";
+const PROMPT = CERTIFICATION_EVIDENCE
+  ? "Read README.md. Create src/certified.mjs exporting certifiedRoute() which returns the exact string 'live-certified'. Create test/certified.test.mjs that imports it and asserts that result. Run `node test/certified.test.mjs`. Do not modify README.md. Reply with a concise summary of the test result."
+  : DIFF_GATE_EVIDENCE
+    ? "Create package-lock.json containing exactly {\"lockfileVersion\":3} followed by a newline, commit it with message 'add generated lockfile', and report the commit hash. Do not change any other file."
+    : "What is 7 plus 8? Reply with exactly the number, no punctuation.";
 const CLEANUP_TIMEOUT_MS = Number(
   process.env.LIVE_NATIVE_ACP_CLEANUP_TIMEOUT_MS ?? 5_000,
 );
@@ -48,7 +55,11 @@ async function main() {
   if (process.env[RUN_FLAG] !== "1") {
     throw new SkippedSmoke(`set ${RUN_FLAG}=1 to run`);
   }
-  if (GIT_IDENTITY_EVIDENCE && DIFF_GATE_EVIDENCE) {
+  if (
+    [GIT_IDENTITY_EVIDENCE, DIFF_GATE_EVIDENCE, CERTIFICATION_EVIDENCE].filter(
+      Boolean,
+    ).length > 1
+  ) {
     throw new Error("select only one native ACP evidence mode per run");
   }
 
@@ -65,6 +76,7 @@ async function main() {
   );
   const workdir = mkdtempSync(join(tmpdir(), `eliza-native-acp-${agent}-`));
   if (DIFF_GATE_EVIDENCE) initializeEvidenceRepository(workdir);
+  if (CERTIFICATION_EVIDENCE) initializeCertificationWorkspace(workdir);
   const codexHome =
     agent === "codex" ? createSmokeCodexHome(workdir) : undefined;
   const agentPidsBefore = snapshotAgentPids(agent);
@@ -133,11 +145,16 @@ async function main() {
     const identityEvidence = GIT_IDENTITY_EVIDENCE
       ? readGitIdentityEvidence(workdir)
       : null;
+    const certificationEvidence = CERTIFICATION_EVIDENCE
+      ? readCertificationEvidence(workdir)
+      : null;
     const finalTextValid = GIT_IDENTITY_EVIDENCE
       ? identityEvidence.valid
-      : DIFF_GATE_EVIDENCE
-        ? existsSync(join(workdir, "package-lock.json"))
-        : /(^|[^0-9])15([^0-9]|$)/.test(finalText);
+      : CERTIFICATION_EVIDENCE
+        ? certificationEvidence.valid
+        : DIFF_GATE_EVIDENCE
+          ? existsSync(join(workdir, "package-lock.json"))
+          : /(^|[^0-9])15([^0-9]|$)/.test(finalText);
 
     console.log("\n=== native ACP service smoke verdict ===");
     console.log(`task_complete events: ${taskCompletes.length}`);
@@ -150,9 +167,11 @@ async function main() {
     console.log(
       GIT_IDENTITY_EVIDENCE
         ? `git identity evidence valid: ${finalTextValid}`
-        : DIFF_GATE_EVIDENCE
-          ? `forbidden lockfile exists: ${finalTextValid}`
-          : `final text contains 15: ${finalTextValid}`,
+        : CERTIFICATION_EVIDENCE
+          ? `read/edit/test certification evidence valid: ${finalTextValid}`
+          : DIFF_GATE_EVIDENCE
+            ? `forbidden lockfile exists: ${finalTextValid}`
+            : `final text contains 15: ${finalTextValid}`,
     );
     if (identityEvidence) {
       console.log("\n=== git identity domain artifact ===");
@@ -179,6 +198,26 @@ async function main() {
         runtime,
         workdir,
       });
+    }
+
+    if (certificationEvidence && CERTIFICATION_RECEIPT_PATH) {
+      writeFileSync(
+        CERTIFICATION_RECEIPT_PATH,
+        `${JSON.stringify({
+          read: certificationEvidence.read,
+          edit: certificationEvidence.edit,
+          test: certificationEvidence.test,
+          taskCompleteEvents: taskCompletes.length,
+          stopReason: promptResult.stopReason,
+          artifactSha256: certificationEvidence.artifactSha256,
+          receiptId: createHash("sha256")
+            .update(
+              `${process.env.LIVE_NATIVE_ACP_OPERATION_KEY ?? "live-native-acp"}:${certificationEvidence.artifactSha256}`,
+            )
+            .digest("hex"),
+        })}\n`,
+        { encoding: "utf8", mode: 0o600 },
+      );
     }
 
     console.log("\nNATIVE ACP SMOKE PASSED");
@@ -259,6 +298,45 @@ function initializeEvidenceRepository(workdir) {
   execFileSync("git", ["commit", "-m", "initial evidence baseline"], {
     cwd: workdir,
   });
+}
+
+function initializeCertificationWorkspace(workdir) {
+  writeFileSync(
+    join(workdir, "README.md"),
+    "provider live certification baseline\n",
+    "utf8",
+  );
+}
+
+function readCertificationEvidence(workdir) {
+  const read =
+    readFileSync(join(workdir, "README.md"), "utf8") ===
+    "provider live certification baseline\n";
+  const sourcePath = join(workdir, "src", "certified.mjs");
+  const testPath = join(workdir, "test", "certified.test.mjs");
+  const edit =
+    existsSync(sourcePath) &&
+    readFileSync(sourcePath, "utf8").includes("live-certified");
+  const artifactSha256 = edit
+    ? createHash("sha256")
+        .update(readFileSync(sourcePath, "utf8"))
+        .digest("hex")
+    : null;
+  let test = false;
+  if (edit && existsSync(testPath)) {
+    try {
+      execFileSync(process.execPath, [testPath], {
+        cwd: workdir,
+        stdio: "pipe",
+      });
+      test = true;
+    } catch {
+      // error-policy:J1 this live-evidence boundary records a failed test in
+      // the receipt; the caller turns the false verdict into a failed smoke.
+      test = false;
+    }
+  }
+  return { valid: read && edit && test, read, edit, test, artifactSha256 };
 }
 
 async function verifyDiffGateEvidence({
@@ -348,7 +426,9 @@ function makeRuntime(agent) {
 
 function normalizeAgent(value) {
   const agent = String(value).trim().toLowerCase();
-  if (["codex", "claude", "opencode"].includes(agent)) return agent;
+  if (["codex", "claude", "opencode", "kimi", "grok"].includes(agent)) {
+    return agent;
+  }
   throw new SkippedSmoke(
     `unsupported LIVE_NATIVE_ACP_AGENT=${JSON.stringify(value)}`,
   );
@@ -382,7 +462,10 @@ function createSmokeCodexHome(workdir) {
     "utf8",
   );
   const authPath = join(process.env.HOME ?? "", ".codex", "auth.json");
-  if (existsSync(authPath)) {
+  if (
+    process.env.LIVE_NATIVE_ACP_AUTH_MODE !== "api-key" &&
+    existsSync(authPath)
+  ) {
     symlinkSync(authPath, join(codexHome, "auth.json"));
   }
   writeFileSync(join(workdir, ".codex-home"), codexHome, "utf8");
@@ -471,6 +554,8 @@ function agentProcessPattern(agent) {
   if (agent === "codex") return /codex-acp/i;
   if (agent === "claude") return /claude-agent-acp/i;
   if (agent === "opencode") return /opencode.*\bacp\b/i;
+  if (agent === "kimi") return /kimi.*\bacp\b/i;
+  if (agent === "grok") return /grok.*agent.*stdio/i;
   return undefined;
 }
 

@@ -300,7 +300,7 @@ export interface AvailableAgentInfo {
   installCommand?: string;
   docsUrl?: string;
   billingSource?: {
-    kind: "included-plan" | "api-payg";
+    kind: "included-plan" | "included-plan-or-extra-usage" | "api-payg";
     label: string;
   };
   executionPolicy?: {

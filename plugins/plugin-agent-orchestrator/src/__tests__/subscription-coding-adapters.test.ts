@@ -122,9 +122,9 @@ describe("subscription coding adapter descriptors", () => {
   it("declares only documented CLI and ACP commands", () => {
     expect(SUBSCRIPTION_CODING_ADAPTERS.kimi).toMatchObject({
       defaultAcpCommand: "kimi acp",
-      loginCommands: [{ mode: "device", command: "kimi login" }],
+      loginCommands: [{ mode: "device", command: "kimi" }],
       requiresUserAttended: true,
-      billingSource: { kind: "included-plan" },
+      billingSource: { kind: "included-plan-or-extra-usage" },
     });
     expect(SUBSCRIPTION_CODING_ADAPTERS.kimi.statusCommand).toBeUndefined();
     expect(SUBSCRIPTION_CODING_ADAPTERS.kimi.logoutCommand).toBeUndefined();
@@ -180,7 +180,7 @@ describe("subscription coding adapter probes", () => {
       installed: true,
       authenticated: true,
       spawnable: true,
-      billingSource: { kind: "included-plan" },
+      billingSource: { kind: "included-plan-or-extra-usage" },
     });
     expect(JSON.stringify(probe)).not.toContain("secret-access-token");
     expect(JSON.stringify(probe)).not.toContain("secret-refresh-token");
@@ -370,7 +370,7 @@ describe("subscription billing and error isolation", () => {
     expect(grokEnv).toEqual({ GROK_HOME: "/tmp/grok-home", PATH: "/bin" });
   });
 
-  it("classifies revoked login and included-plan quota failures", () => {
+  it("classifies revoked login and coding-allowance failures", () => {
     expect(
       classifySubscriptionRuntimeFailure(
         "grok",
@@ -511,8 +511,8 @@ describe("subscription billing and error isolation", () => {
     expect(available.find((agent) => agent.agentType === "kimi")).toMatchObject(
       {
         billingSource: {
-          kind: "included-plan",
-          label: "Kimi Code included plan",
+          kind: "included-plan-or-extra-usage",
+          label: "Kimi Code allowance or opted-in Extra Usage",
         },
         executionPolicy: { requiresUserAttended: true },
       },

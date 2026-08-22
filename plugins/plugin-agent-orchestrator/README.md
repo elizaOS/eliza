@@ -37,9 +37,9 @@ export ELIZA_CLAUDE_ACP_COMMAND="npx -y @agentclientprotocol/claude-agent-acp@0.
 
 Authenticate the underlying agent you plan to use before spawning sessions. Native Codex and Claude defaults use `npx`, so pin or replace those commands in production if you do not want runtime downloads.
 
-Subscription-backed Kimi and Grok sessions use only their official CLI OAuth state and native ACP commands. Run `kimi login` before Kimi Code, or `grok login`/`grok login --device-auth` before Grok Build. Kimi Code has no top-level status/logout command: the adapter validates that its effective default model uses the managed OAuth provider, probes the selected credential file, and ACP verifies it during session creation; logout remains the interactive `/logout` command. Grok supports `grok models` for status/model discovery and `grok logout`. Interactive message, HTTP, and task-control boundaries mint Kimi attendance authorization and persist it with the session so an interrupted attended run can recover. Scheduled, agent-authored, and unspecified Kimi spawns fail before a workspace or task is created.
+Subscription-backed Kimi and Grok sessions use only their official CLI OAuth state and native ACP commands. Launch `kimi` and enter `/login` before Kimi Code, or run `grok login`/`grok login --device-auth` before Grok Build. Kimi Code has no top-level status/logout command: the adapter validates that its effective default model uses the managed OAuth provider, probes the selected credential file, and ACP verifies it during session creation; logout remains the interactive `/logout` command. Grok supports `grok models` for status/model discovery and `grok logout`. Interactive message, HTTP, and task-control boundaries mint Kimi attendance authorization and persist it with the session so an interrupted attended run can recover. Scheduled, agent-authored, and unspecified Kimi spawns fail before a workspace or task is created.
 
-Both adapters label their billing source as an included plan and remove direct API settings from the child environment. Kimi strips Kimi/Moonshot API keys and base URLs; Grok strips `XAI_API_KEY` and API proxy overrides. This prevents a saved subscription login from silently becoming pay-as-you-go API usage.
+Both adapters remove direct API settings from the child environment. Kimi labels billing as coding allowance or user-enabled Extra Usage and strips Kimi/Moonshot API keys and base URLs; Grok labels billing as its included subscription plan and strips `XAI_API_KEY` and API proxy overrides. This prevents a saved subscription login from silently becoming API-key usage while preserving Kimi's explicit Extra Usage policy.
 
 The legacy command-wrapper path remains available for compatibility:
 
@@ -265,6 +265,50 @@ The native smoke skips successfully when `RUN_LIVE_NATIVE_ACP` is unset, when an
 
 Native transport is covered by unit tests under `__tests__/unit/acp-native-transport.test.ts` and by the gated live smoke above.
 
+### Provider certification
+
+The deterministic certification lane emits versioned receipts for Kimi, Z.AI,
+DeepSeek, OpenAI Codex and API, Claude subscription and API, Grok Build and xAI
+API, and OpenRouter. It exercises disposable read/edit/test workspaces,
+same-provider failover or explicit fail-closed behavior, task-receipt
+deduplication, descriptor/adapter drift, and secret scanning across argv,
+environment summaries, logs, prompts, metadata, trajectories, and evidence. A
+deterministic `PASS` is fixture evidence, not a live-provider claim.
+
+```bash
+bun run test:certification
+bun run test:certification -- --output /tmp/provider-certification.json
+```
+
+Live certification is one route per invocation and requires three explicit
+inputs: the route id, the global spend/network opt-in, and the route-specific
+opt-in printed by the unconfigured report. Supported routes also require
+`LIVE_PROVIDER_MODEL`; API routes require their provider key. Existing local
+OAuth sessions are used for subscription CLIs. Missing credentials, logins,
+models, or executables produce `SKIP`/`UNAVAILABLE`, never success.
+Kimi and OpenAI Codex routes also require `LIVE_PROVIDER_BILLING_SOURCE`
+because included allowance and opted-in paid/credit fallback cannot be inferred
+safely from a successful task.
+
+```bash
+# Inventory only: performs no provider request.
+bun run test:certification:live
+
+# Example paid/credit route; performs a real read/edit/test task.
+LIVE_PROVIDER_ROUTE=openrouter-api \
+RUN_LIVE_PROVIDER_CERTIFICATION=1 \
+RUN_LIVE_PROVIDER_CERTIFICATION_OPENROUTER=1 \
+LIVE_PROVIDER_MODEL=anthropic/claude-sonnet-4 \
+OPENROUTER_API_KEY=... \
+bun run test:certification:live -- --output /tmp/openrouter-live.json
+```
+
+Billing remains route-specific. OpenRouter is credits/BYOK, not a subscription;
+OpenAI and Anthropic API keys are separate from Codex/Claude subscription
+allowance; xAI API is separate from Grok Build OAuth. Kimi may move from
+included allowance to paid Extra Usage only when the user enabled it, so the
+route never labels all successful work as strictly included-plan usage.
+
 ## Package scripts
 
 | Script | Purpose |
@@ -276,6 +320,8 @@ Native transport is covered by unit tests under `__tests__/unit/acp-native-trans
 | `bun run test:unit` | Run unit tests only. |
 | `bun run test:e2e:manual` | Run the manual `acp-codex-smoke.mjs` smoke against installed/authenticated `acpx` + Codex. |
 | `bun run test:e2e:native` | Run the gated native ACP smoke using the configured native agent command. |
+| `bun run test:certification` | Emit deterministic provider-route certification receipts without network use. |
+| `bun run test:certification:live` | Build and run one explicitly authorized live provider route, or emit SKIP/UNAVAILABLE inventory. |
 | `bun run test:watch` | Run the vitest suite in watch mode. |
 | `bun run lint:check` | Run Biome checks without writing changes. |
 | `bun run lint` | Run Biome checks with write/unsafe fixes. |

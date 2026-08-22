@@ -19,7 +19,7 @@ export type SubscriptionCodingAdapterId =
 export type { SubscriptionExecutionMode } from "./types.js";
 
 export interface SubscriptionBillingSource {
-  kind: "included-plan";
+  kind: "included-plan" | "included-plan-or-extra-usage";
   label: string;
 }
 
@@ -64,10 +64,10 @@ export const SUBSCRIPTION_CODING_ADAPTERS: Readonly<
     defaultAcpCommand: "kimi acp",
     supportedPlatforms: SUPPORTED_DESKTOP_PLATFORMS,
     billingSource: {
-      kind: "included-plan",
-      label: "Kimi Code included plan",
+      kind: "included-plan-or-extra-usage",
+      label: "Kimi Code allowance or opted-in Extra Usage",
     },
-    loginCommands: [{ mode: "device", command: "kimi login" }],
+    loginCommands: [{ mode: "device", command: "kimi" }],
     logoutInstructions:
       "Open Kimi Code interactively and enter /logout; the CLI has no top-level logout command.",
     docsUrl: "https://github.com/MoonshotAI/kimi-code",
@@ -284,7 +284,7 @@ function probeKimiManagedConfiguration(
     return {
       status: "required",
       detail:
-        "Kimi Code config.toml is missing or invalid; run kimi login again.",
+        "Kimi Code config.toml is missing or invalid; launch kimi and enter /login again.",
     };
   }
   const defaultModel = recordString(config, "default_model");
@@ -301,7 +301,7 @@ function probeKimiManagedConfiguration(
     return {
       status: "required",
       detail:
-        "Kimi Code has no complete default model/provider selection; run kimi login again.",
+        "Kimi Code has no complete default model/provider selection; launch kimi and enter /login again.",
     };
   }
   const oauth = provider.oauth;
@@ -348,7 +348,10 @@ function probeKimiAuth(
   const accessToken = nonEmptyString(credentials?.access_token);
   const refreshToken = nonEmptyString(credentials?.refresh_token);
   if (!accessToken && !refreshToken) {
-    return { status: "required", detail: "Run kimi login." };
+    return {
+      status: "required",
+      detail: "Launch kimi and enter /login.",
+    };
   }
   const expiresAt = credentials?.expires_at;
   const expiresAtMs =
@@ -358,7 +361,8 @@ function probeKimiAuth(
   if (expiresAtMs !== undefined && expiresAtMs <= nowMs && !refreshToken) {
     return {
       status: "expired",
-      detail: "The local Kimi Code login expired; run kimi login again.",
+      detail:
+        "The local Kimi Code login expired; launch kimi and enter /login again.",
     };
   }
   return {
@@ -705,7 +709,7 @@ export function classifySubscriptionRuntimeFailure(
   if (/quota|usage limit|rate limit|too many requests|\b429\b/i.test(message)) {
     return new SubscriptionCodingAdapterError(
       adapterId,
-      `${descriptor.label} rejected the ACP session because the included-plan quota is unavailable. Check plan usage before retrying.`,
+      `${descriptor.label} rejected the ACP session because coding allowance is unavailable. Check plan and optional extra-usage settings before retrying.`,
       {
         code: "CODING_SUBSCRIPTION_QUOTA_EXHAUSTED",
         cause: failure,
