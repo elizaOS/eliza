@@ -121,6 +121,21 @@ describe("WhatsApp connector outbound media — send handler", () => {
     expect(service.sendMessage).not.toHaveBeenCalled();
     expect(service.sendMediaMessage).toHaveBeenCalledTimes(1);
   });
+
+  it("rejects the connector operation when attachment delivery fails", async () => {
+    const registrations: MessageConnectorRegistration[] = [];
+    const runtime = makeRuntime(registrations);
+    const service = mockService();
+    vi.mocked(service.sendMediaMessage).mockRejectedValueOnce(new Error("media delivery failed"));
+    WhatsAppConnectorService.registerSendHandlers(runtime, service);
+
+    await expect(
+      registrations[0].sendHandler?.(runtime, TARGET, {
+        text: "",
+        attachments: [{ id: "img", url: "https://cdn.example.com/cat.png" }],
+      } as ConnectorContent),
+    ).rejects.toThrow("media delivery failed");
+  });
 });
 
 describe("WhatsApp sendMediaMessage — transport-agnostic media call", () => {
@@ -141,6 +156,9 @@ describe("WhatsApp sendMediaMessage — transport-agnostic media call", () => {
       sendMessage: clientSend,
     }));
     (svc as { getConfigForAccount: unknown }).getConfigForAccount = vi.fn(() => null);
+    (svc as unknown as { runtime: IAgentRuntime }).runtime = {
+      fetch: vi.fn(),
+    } as never as IAgentRuntime;
     return { svc, clientSend };
   }
 
@@ -165,6 +183,39 @@ describe("WhatsApp sendMediaMessage — transport-agnostic media call", () => {
     expect(mediaMocks.stageWhatsAppMedia).toHaveBeenCalledWith(
       "https://cdn.example.com/cat.png",
       expect.objectContaining({ maxBytes: 20 * 1024 * 1024 }),
+      expect.any(Function),
+    );
+  });
+
+  it("reads a canonical content-addressed handle only through runtime.fetch", async () => {
+    const { svc, clientSend } = realServiceWithClient();
+    const storedUrl = `/api/media/${"a".repeat(64)}.png`;
+    const runtimeFetch = vi.fn(async () =>
+      new Response(Buffer.from("stored-media"), {
+        headers: { "content-type": "image/png", "content-length": "12" },
+      }),
+    );
+    (svc as unknown as { runtime: IAgentRuntime }).runtime = {
+      fetch: runtimeFetch,
+    } as never as IAgentRuntime;
+    mediaMocks.stageWhatsAppMedia.mockImplementationOnce(async (_url, _options, localFetch) => {
+      const response = await localFetch?.(storedUrl);
+      return { buffer: Buffer.from(await response!.arrayBuffer()), contentType: "image/png" };
+    });
+
+    await svc.sendMediaMessage("default", "+14155552671", {
+      id: "stored",
+      url: storedUrl,
+      mimeType: "image/png",
+    } as Media);
+
+    expect(mediaMocks.stageWhatsAppMedia).toHaveBeenCalledWith(
+      storedUrl,
+      expect.objectContaining({ maxBytes: 20 * 1024 * 1024 }),
+      runtimeFetch,
+    );
+    expect(clientSend).toHaveBeenCalledWith(
+      expect.objectContaining({ content: expect.objectContaining({ data: Buffer.from("stored-media") }) }),
     );
   });
 
