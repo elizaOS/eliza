@@ -1,3 +1,5 @@
+/** Drives Apple Container startup in a subprocess for inherited-stdio boundary tests. */
+
 import { ElizaError } from "@elizaos/core";
 import {
   AppleContainerEngine,
