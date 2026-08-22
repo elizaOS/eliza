@@ -10,6 +10,7 @@
  * @module api/orchestrator-routes
  */
 
+import { readDurableContent } from "../services/durable-content-store.js";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import {
   deleteBuiltApp,
@@ -46,6 +47,11 @@ import {
 } from "./route-utils.js";
 
 const PREFIX = "/api/orchestrator";
+
+/** Canonical decimal unsigned integer — the ONLY accepted spelling for the
+ *  content-window `offset`/`limit` query params (no sign, no fraction, no
+ *  exponent, no leading zeros beyond "0", no trailing garbage). */
+const CONTENT_WINDOW_UINT_RE = /^(0|[1-9][0-9]*)$/;
 
 function decodeOrchestratorPathSegment(raw: string): string | null {
   try {
@@ -215,6 +221,55 @@ async function dispatchOrchestratorRoutes(
   const method = req.method?.toUpperCase();
   const url = new URL(req.url ?? "/", "http://localhost");
   const query = url.searchParams;
+
+  // GET /api/orchestrator/content/:sha256?offset=&limit= — the continuation
+  // resolver for durable-content projections (durable-content-store.ts):
+  // every bounded view whose marker names this route resolves its omitted
+  // bytes here. Byte-windowed; independent of the task service.
+  const contentMatch = pathname.match(
+    new RegExp(`^${PREFIX}/content/([0-9a-f]{64})$`),
+  );
+  if (method === "GET" && contentMatch) {
+    // Strict spelling: canonical decimal unsigned integers ONLY. Prefix
+    // spellings ("12abc"), fractions ("1.5"), signs ("+1"/"-1"), exponents,
+    // and whitespace are typed 400s — Number.parseInt would silently accept
+    // the first two and misread the caller's intended window.
+    const offsetRaw = url.searchParams.get("offset");
+    const limitRaw = url.searchParams.get("limit");
+    const offsetValid =
+      offsetRaw === null || CONTENT_WINDOW_UINT_RE.test(offsetRaw);
+    const limitValid =
+      limitRaw === null || CONTENT_WINDOW_UINT_RE.test(limitRaw);
+    const offset =
+      offsetRaw === null || !offsetValid ? 0 : Number.parseInt(offsetRaw, 10);
+    const limit =
+      limitRaw === null || !limitValid
+        ? undefined
+        : Number.parseInt(limitRaw, 10);
+    if (
+      !offsetValid ||
+      !limitValid ||
+      !Number.isSafeInteger(offset) ||
+      (limit !== undefined && (!Number.isSafeInteger(limit) || limit < 1))
+    ) {
+      sendError(
+        res,
+        "offset/limit must be canonical decimal unsigned integers (offset >= 0, limit >= 1); rejected spellings include prefixes ('12abc'), fractions ('1.5'), and signs ('+1')",
+        400,
+      );
+      return true;
+    }
+    const window = readDurableContent(contentMatch[1] as string, {
+      offset,
+      ...(limit !== undefined ? { limit } : {}),
+    });
+    if (!window) {
+      sendError(res, "Unknown content record", 404);
+      return true;
+    }
+    sendJson(res, window);
+    return true;
+  }
 
   // GET /api/orchestrator/built-apps — apps the agent built + deployed from
   // chat (verified live URL at task completion). Reads the durable registry

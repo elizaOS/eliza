@@ -46,7 +46,10 @@ import {
 import { isAndroidMobile } from "@elizaos/shared";
 import { getHostExecutionBaseline } from "@elizaos/shared/host-execution-env";
 import { NativeAcpClient } from "./acp-native-transport.js";
-import { augmentTaskWithDeployGuidance } from "./app-deploy-guidance.js";
+import {
+  augmentTaskWithDeployGuidance,
+  resolveAppDeployConfig,
+} from "./app-deploy-guidance.js";
 import {
   CODEX_NO_LANDLOCK_SANDBOX_MODE_ENV,
   type CodexSandboxMode,
@@ -71,6 +74,10 @@ import {
   applyCredentialProxyEnv,
   resolveOrchestratorCredentialProxyConfig,
 } from "./credential-proxy-env.js";
+import {
+  durableProjection,
+  persistDurableContent,
+} from "./durable-content-store.js";
 import {
   buildGitIdentityEnvPatch,
   resolveGitIdentityConfig,
@@ -112,6 +119,8 @@ import { writeWorkspaceIdentity } from "./sub-agent-identity.js";
 import {
   appendSubagentStdout,
   isSubagentStdoutLoggingEnabled,
+  readSubagentStdout,
+  type SubagentStdoutWindow,
   subagentStdoutLogPath,
 } from "./subagent-stdout-log.js";
 import { normalizeTaskAgentAdapter } from "./task-agent-routing.js";
@@ -217,6 +226,10 @@ type RunResult = {
   durationMs: number;
 };
 
+// In-memory bound for accumulated acpx subprocess stderr. A MEMORY bound, not
+// a data bound: on overflow capStderr persists the complete pre-slice text to
+// the durable content store BEFORE dropping the head, and the retained tail is
+// headed by a marker naming the resolver (see capStderr).
 const STDERR_CAP_BYTES = 64 * 1024;
 const KILL_GRACE_MS = 5_000;
 // TTL for a per-spawn model lease when neither the spawn nor the service config
@@ -445,7 +458,11 @@ const ACP_METADATA_GIT_INDEX_FILE = "gitIndexFile";
 const ACP_METADATA_GIT_INDEX_BASE_FILE = "gitIndexBaseFile";
 const ACP_METADATA_GIT_WRAPPER_DIR = "gitWrapperDir";
 const ACP_METADATA_SPAWN_MODEL = "spawnModel";
-const _MAX_CAPTURED_TOOL_OUTPUT_CHARS = 12_000;
+// Budget for the per-tool-call output envelope relayed into model context.
+// NOT a truncation cap: overflow is persisted whole to the durable content
+// store and the envelope becomes a durableProjection view whose marker names
+// the resolver route (see captureTerminalToolOutput).
+const MAX_CAPTURED_TOOL_OUTPUT_CHARS = 12_000;
 const TOOL_OUTPUT_END_MARKER = "[/tool output]";
 const SESSION_GIT_WRAPPER_BODY = `const { spawn, spawnSync } = require("node:child_process");
 const { randomUUID } = require("node:crypto");
@@ -454,7 +471,17 @@ const path = require("node:path");
 const git = process.env.ACP_REAL_GIT || "git";
 const indexFile = process.env.ACP_GIT_INDEX_FILE;
 const baseline = process.env.ACP_GIT_BASELINE_SHA;
-if (indexFile) process.env.GIT_INDEX_FILE = indexFile;
+if (indexFile) {
+  process.env.GIT_INDEX_FILE = indexFile;
+  // Self-heal the index dir: scratch GC (or a corrective-lap reactivation)
+  // can remove ~/.acpx/git-indexes/<session>/ between turns, after which
+  // every git call exits 128 until someone recreates it — the child burned
+  // three failed steps rediscovering this by hand (live 2026-08-20,
+  // GLOSSARY corrective lap).
+  try {
+    fs.mkdirSync(path.dirname(indexFile), { recursive: true });
+  } catch {}
+}
 delete process.env.ACP_GIT_INDEX_FILE;
 delete process.env.ACP_GIT_BASELINE_SHA;
 delete process.env.ACP_REAL_GIT;
@@ -876,8 +903,16 @@ export class AcpService extends Service {
   // the completed turn through the session's next task metadata (#18490).
   private readonly promptTurns = new Map<
     string,
-    { id: string; sessionSnapshot: SessionInfo }
+    { id: string; generation: number; sessionSnapshot: SessionInfo }
   >();
+  // Monotonic per-session prompt-turn generation (the generation FENCE).
+  // Bumped when a new prompt turn starts and when the whole-turn watchdog
+  // abandons a wedged turn (ACP_PROMPT_TURN_WEDGED). Every turn captures its
+  // generation at start; any late event or effect (store status writes, lease
+  // revokes, busy-marker/handler teardown) from a turn whose generation is no
+  // longer current is DROPPED, so a wedged turn's late completion can never
+  // corrupt the session's next turn.
+  private readonly sessionGenerations = new Map<string, number>();
   private readonly acpCallbacks: AcpEventCallback[] = [];
   private readonly activeProcesses = new Map<string, ProcessRecord>();
   private readonly nativeClients = new Map<string, NativeAcpClient>();
@@ -888,10 +923,18 @@ export class AcpService extends Service {
   private warmNativeClientStarting?: Promise<void>;
   private readonly warmSpawnEnabled: boolean;
   private readonly outputBuffers = new Map<string, string[]>();
+  // Chunks evicted from the outputBuffers ring per session. The ring is a
+  // MEMORY bound only — every consumer-facing read (getSessionOutput,
+  // lastOutput) reports this count plus the durable-stream resolver instead
+  // of presenting the surviving tail as the complete output.
+  private readonly outputBufferDrops = new Map<string, number>();
   // Full session output remains available for history, while custom validators
   // need the exact latest prompt turn so a retry cannot re-consume an older
   // completion proof from the same long-lived ACP session.
   private readonly turnOutputBuffers = new Map<string, string[]>();
+  // Chunks evicted from the per-turn ring (same reporting contract as
+  // outputBufferDrops).
+  private readonly turnOutputBufferDrops = new Map<string, number>();
   // Compact per-session trail of the most recent session events. The output
   // buffer only holds assistant text and *terminal* tool output, so a session
   // that dies mid-tool-call (the common hang) leaves it empty — the trail is
@@ -1164,14 +1207,14 @@ export class AcpService extends Service {
     if (live.length > 0) {
       this.log("info", "reconcile: keeping recoverable sessions as-is", {
         count: live.length,
-        ids: live.map((s) => s.id.slice(0, 8)),
+        ids: live.map((s) => idPreview(s.id)),
         windowMs: RECONCILE_LIVE_WINDOW_MS,
       });
     }
     if (dead.length === 0) return;
     this.log("info", "reconcile: marking stale orphans errored", {
       count: dead.length,
-      ids: dead.map((s) => s.id.slice(0, 8)),
+      ids: dead.map((s) => idPreview(s.id)),
     });
     await Promise.allSettled(
       dead.map((s) =>
@@ -1500,6 +1543,23 @@ export class AcpService extends Service {
   // fall back to the legacy default-root predicate for backward cleanup.
   private async removeOwnedScratchWorkdir(session: SessionInfo): Promise<void> {
     if (!this.sessionOwnsIsolatedWorkdir(session)) return;
+    // A durable-task session's workspace OUTLIVES the session: verification,
+    // the residuals gate, and the corrective loop all inspect it after the
+    // post-completion stop. Reclaiming here failed the whole chain — the
+    // verifier found "no execution logs", the corrective re-send died on a
+    // missing workspace, and the user was asked whether they still wanted a
+    // result the child had already computed (live 2026-08-20, prime-numbers
+    // run). The orphan GC owns these dirs once the session record ages out.
+    if (session.metadata?.smithersDurableRun !== undefined) {
+      this.log(
+        "debug",
+        "scratch reclaim deferred to GC (durable-task session)",
+        {
+          sessionId: session.id,
+        },
+      );
+      return;
+    }
     const root = session.metadata?.[ACP_METADATA_WORKDIR_ROOT];
     if (
       typeof root === "string" &&
@@ -1628,10 +1688,11 @@ export class AcpService extends Service {
           } catch (err) {
             // error-policy:J6 best-effort GC; a locked/vanished dir is skipped so
             // the sweep continues and retries next boot.
-            this.log("warn", "scratch GC: failed to remove dir", {
-              path,
-              error: errorMessage(err),
-            });
+            this.log(
+              "warn",
+              `scratch GC: failed to remove dir ${path}: ${errorMessage(err)}`,
+              { path, error: errorMessage(err) },
+            );
           }
         }),
       );
@@ -1686,7 +1747,11 @@ export class AcpService extends Service {
           ? Date.now() - lastActivityMs
           : undefined,
         outputLines: buffered.length,
+        // Named diagnostic PREVIEW: last ~2,000 chars only. The complete raw
+        // stream survives at stdoutLogPath (attached below) when trajectory
+        // recording is on.
         tailOutput: tail ? tail.slice(-2000) : "(no buffered output)",
+        ...this.stdoutLogRef(session.id),
         // The buffer only holds assistant text + terminal tool output, so a
         // mid-tool death leaves it empty; the event trail still shows what the
         // agent was doing. Render compactly so one warn line reads as a timeline.
@@ -1802,7 +1867,10 @@ export class AcpService extends Service {
     }
     for (const id of swept) {
       this.outputBuffers.delete(id);
+      this.outputBufferDrops.delete(id);
       this.turnOutputBuffers.delete(id);
+      this.turnOutputBufferDrops.delete(id);
+      this.sessionGenerations.delete(id);
       this.eventTrails.delete(id);
       this.changedPathsBySession.delete(id);
       this.orchestratorOwnedArtifactsBySession.delete(id);
@@ -1820,11 +1888,11 @@ export class AcpService extends Service {
 
   // The acpx transport persists session state as `<acpxSessionId>.json` under
   // <stateRoot>/sessions. The old probe checked `<acpxSessionId>.stream.ndjson`
-  // which NEVER exists for opencode/native sessions (verified: 0 such files on
-  // disk, only ses_*.json) — a permanent false-negative that made every healthy
+  // which NEVER exists for native sessions (verified: 0 such files on disk,
+  // only ses_*.json) — a permanent false-negative that made every healthy
   // session look "state lost", triggering a runaway "spawn a fresh sub-agent"
-  // respawn cascade AND spuriously throwing on the first real prompt to any
-  // opencode session. Probe the artifact the transport actually writes.
+  // respawn cascade AND spuriously throwing on the first real prompt to a
+  // session. Probe the artifact the transport actually writes.
   private acpxSessionStateFile(acpxSessionId: string): string {
     return join(this.acpxStateRoot(), "sessions", `${acpxSessionId}.json`);
   }
@@ -2044,10 +2112,25 @@ export class AcpService extends Service {
       // Re-attach it ONCE here, before the transport branch, so BOTH the native
       // and the CLI/acpx paths host the app and report a verified URL. No-op for
       // non-app tasks; applied only to the initial task, never to follow-up sends.
+      // When the spawn's workdir already IS a served app dir (slug placement
+      // by construction), name it in the guidance so the child never picks —
+      // and never collides with — a slug of its own.
+      const deployConfig = resolveAppDeployConfig();
+      const appsDirResolved = deployConfig.customAppsDir
+        ? resolve(deployConfig.customAppsDir)
+        : undefined;
+      const workdirResolved = resolve(session.workdir);
+      const assignedAppDir =
+        appsDirResolved &&
+        workdirResolved.startsWith(appsDirResolved + sep) &&
+        !workdirResolved.slice(appsDirResolved.length + 1).includes(sep)
+          ? workdirResolved
+          : undefined;
       const initialTask =
         opts.initialTask && opts.initialTask.trim().length > 0
           ? augmentTaskWithDeployGuidance(opts.initialTask, undefined, {
               monetized: opts.monetized,
+              assignedAppDir,
             })
           : opts.initialTask;
 
@@ -2091,14 +2174,7 @@ export class AcpService extends Service {
         timeoutMs: opts.timeoutMs,
         model: spawnModel,
       });
-      args.push(
-        ...this.agentCommandArgs(agentType, [
-          "sessions",
-          "new",
-          "--name",
-          name,
-        ]),
-      );
+      args.push(agentType, "sessions", "new", "--name", name);
       const result = await this.runAcpx({
         sessionId: id,
         sessionName: name,
@@ -2266,18 +2342,124 @@ export class AcpService extends Service {
     }
     const turn = {
       id: randomUUID(),
+      generation: this.bumpSessionGeneration(sessionId),
       sessionSnapshot: {
         ...session,
         metadata: session.metadata ? { ...session.metadata } : undefined,
       },
     };
     this.promptTurns.set(sessionId, turn);
+    // Whole-turn watchdog. The JSON-RPC request timer bounds only the
+    // session/prompt exchange; every await AROUND it (reconnect attach, lease
+    // mint, workspace build, store writes) was unbounded, and one hang held
+    // the busy flag forever — a queued follow-up wedged its session for 10+
+    // minutes with no child process and no error (live 2026-08-22,
+    // coin-flip-streak-counter). The inner timer is 5 min; +60s grace keeps
+    // the watchdog strictly a backstop, never the primary bound.
+    const watchdogMs =
+      (opts.timeoutMs ?? this.sessionTimeoutMs ?? 300_000) + 60_000;
+    let watchdogTimer: ReturnType<typeof setTimeout> | undefined;
+    const watchdog = new Promise<never>((_, reject) => {
+      watchdogTimer = setTimeout(() => {
+        reject(
+          new ElizaError(
+            `ACP prompt turn exceeded ${watchdogMs}ms with no result; releasing the session`,
+            {
+              code: "ACP_PROMPT_TURN_WEDGED",
+              context: { sessionId, watchdogMs },
+            },
+          ),
+        );
+      }, watchdogMs);
+      watchdogTimer.unref?.();
+    });
     try {
-      return await this.sendPromptTurn(session, text, opts);
+      const turnRun = this.sendPromptTurn(session, text, opts);
+      // The abandoned turn may still settle later; observe its rejection so a
+      // late failure never surfaces as an unhandled rejection.
+      turnRun.catch(() => undefined);
+      return await Promise.race([turnRun, watchdog]);
+    } catch (err) {
+      if (err instanceof ElizaError && err.code === "ACP_PROMPT_TURN_WEDGED") {
+        // error-policy:J1 watchdog boundary — the wedge becomes a structured
+        // errored turn; the busy flag is released by the finally below.
+        // Fence FIRST: from here on, every late event/effect of the abandoned
+        // turn is a stale generation and gets dropped (it may still settle
+        // after a NEW prompt has claimed this session).
+        this.bumpSessionGeneration(sessionId);
+        // Then actually CANCEL the underlying turn (best-effort): the wedged
+        // request must not keep burning the agent/subprocess in the dark.
+        this.cancelWedgedPromptTurn(session);
+        await this.store
+          .updateStatus(sessionId, "errored", err.message)
+          .catch(() => undefined);
+        this.emitSessionEvent(sessionId, "error", { message: err.message });
+        this.nativePromptSessionIds.delete(sessionId);
+      }
+      throw err;
     } finally {
+      if (watchdogTimer) clearTimeout(watchdogTimer);
       if (this.promptTurns.get(sessionId)?.id === turn.id) {
         this.promptTurns.delete(sessionId);
       }
+    }
+  }
+
+  private sessionGeneration(sessionId: string): number {
+    return this.sessionGenerations.get(sessionId) ?? 0;
+  }
+
+  private bumpSessionGeneration(sessionId: string): number {
+    const next = this.sessionGeneration(sessionId) + 1;
+    this.sessionGenerations.set(sessionId, next);
+    return next;
+  }
+
+  /** True when `generation` is no longer the session's current prompt-turn
+   *  generation — the turn was abandoned by the watchdog or superseded by a
+   *  newer prompt, so its late events/effects must be dropped. */
+  private isStaleGeneration(sessionId: string, generation: number): boolean {
+    return this.sessionGeneration(sessionId) !== generation;
+  }
+
+  /**
+   * Best-effort cancellation of a prompt turn the whole-turn watchdog
+   * abandoned. Native transport: fire the `session/cancel` notification
+   * WITHOUT awaiting the terminal response — the original `session/prompt`
+   * request is exactly what is wedged, so awaiting it would wedge the
+   * watchdog path too. CLI transport: mark and terminate the live subprocess.
+   * The generation fence (bumped before this is called) already guarantees
+   * that whatever the cancelled turn still emits is dropped.
+   */
+  private cancelWedgedPromptTurn(session: SessionInfo): void {
+    const sessionId = session.id;
+    try {
+      const transportMode = sessionTransportMode(session, this.transportMode);
+      if (transportMode === "native") {
+        const client = this.nativeClients.get(sessionId);
+        if (client) {
+          void client
+            .cancel(
+              session.acpxSessionId ?? session.agentSessionId ?? sessionId,
+            )
+            // error-policy:J6 best-effort teardown — the wedge error already
+            // stands; a cancel that itself fails cannot rescue or worsen it.
+            .catch(() => undefined);
+        }
+        return;
+      }
+      const active = this.activeProcesses.get(sessionId);
+      if (active) {
+        active.cancelled = true;
+        this.terminateProcess(sessionId, active);
+      }
+    } catch (err) {
+      // error-policy:J6 best-effort teardown of a wedged turn's transport; the
+      // watchdog's typed error is the primary signal either way.
+      this.log("warn", "failed to cancel wedged prompt turn", {
+        sessionId,
+        error: errorMessage(err),
+      });
     }
   }
 
@@ -2287,6 +2469,11 @@ export class AcpService extends Service {
     opts: SendOptions,
   ): Promise<PromptResult> {
     const sessionId = session.id;
+    // The fence value for THIS turn: sendPrompt bumped the generation and
+    // registered the turn just before calling here.
+    const generation =
+      this.promptTurns.get(sessionId)?.generation ??
+      this.sessionGeneration(sessionId);
     const transportMode = sessionTransportMode(session, this.transportMode);
     if (
       transportMode !== "native" &&
@@ -2322,7 +2509,12 @@ export class AcpService extends Service {
       // onto the same native session. Teardown on the pre-prompt error paths;
       // sendNativePrompt's own finally clears it on the normal path.
       this.nativePromptSessionIds.add(sessionId);
+      // A wedged predecessor turn's finally was generation-fenced (so it could
+      // not clobber this turn's state) — clear any cancel flag it left behind
+      // before this turn starts, or this turn would misreport as cancelled.
+      this.nativeCancelledPromptSessionIds.delete(sessionId);
       this.turnOutputBuffers.set(sessionId, []);
+      this.turnOutputBufferDrops.delete(sessionId);
       try {
         await this.store.updateStatus(sessionId, "busy");
         return await this.sendNativePrompt(
@@ -2330,6 +2522,7 @@ export class AcpService extends Service {
           text,
           { ...opts, model: promptModel },
           startedAt,
+          generation,
         );
       } catch (err) {
         // error-policy:J2 release the synchronous busy-claim on the pre-prompt
@@ -2339,6 +2532,7 @@ export class AcpService extends Service {
       }
     }
     this.turnOutputBuffers.set(sessionId, []);
+    this.turnOutputBufferDrops.delete(sessionId);
     await this.store.updateStatus(sessionId, "busy");
     const args = this.baseArgs({
       workdir: session.workdir,
@@ -2347,13 +2541,12 @@ export class AcpService extends Service {
       model: promptModel,
     });
     args.push(
-      ...this.agentCommandArgs(session.agentType, [
-        "prompt",
-        "-s",
-        session.name ?? session.id,
-        "--",
-        text,
-      ]),
+      session.agentType,
+      "prompt",
+      "-s",
+      session.name ?? session.id,
+      "--",
+      text,
     );
 
     // The cli transport spawns a fresh subprocess per prompt, so re-inject the
@@ -2413,6 +2606,19 @@ export class AcpService extends Service {
         ? { error: this.classifyExitError(result.code, result.stderr) }
         : {}),
     };
+
+    if (this.isStaleGeneration(sessionId, generation)) {
+      // Generation fence: the watchdog abandoned this turn (and possibly a new
+      // turn already owns the session). Its late settlement must not write
+      // session status or emit terminal events over the current turn's state.
+      this.log("warn", "dropping stale CLI prompt-turn completion", {
+        sessionId,
+        generation,
+        currentGeneration: this.sessionGeneration(sessionId),
+        stopReason,
+      });
+      return promptResult;
+    }
 
     if (result.cancelled || stopReason === "cancelled") {
       await this.store.updateStatus(sessionId, "cancelled");
@@ -2489,11 +2695,12 @@ export class AcpService extends Service {
       active.cancelled = true;
       this.terminateProcess(sessionId, active);
     } else {
-      const args = this.agentCommandArgs(session.agentType, [
+      const args = [
+        session.agentType,
         "cancel",
         "-s",
         session.name ?? session.id,
-      ]);
+      ];
       await this.runAcpx({
         sessionId,
         agentType: session.agentType,
@@ -2539,11 +2746,10 @@ export class AcpService extends Service {
       "json",
       "--cwd",
       session.workdir,
-      ...this.agentCommandArgs(session.agentType, [
-        "sessions",
-        "close",
-        session.name ?? session.id,
-      ]),
+      session.agentType,
+      "sessions",
+      "close",
+      session.name ?? session.id,
     ];
     try {
       await this.runAcpx({
@@ -2596,7 +2802,10 @@ export class AcpService extends Service {
     await this.store.delete(sessionId);
     this.promptTurns.delete(sessionId);
     this.outputBuffers.delete(sessionId);
+    this.outputBufferDrops.delete(sessionId);
     this.turnOutputBuffers.delete(sessionId);
+    this.turnOutputBufferDrops.delete(sessionId);
+    this.sessionGenerations.delete(sessionId);
     this.eventTrails.delete(sessionId);
     this.changedPathsBySession.delete(sessionId);
     this.orchestratorOwnedArtifactsBySession.delete(sessionId);
@@ -2617,6 +2826,12 @@ export class AcpService extends Service {
     sessionId: string,
     patch: Record<string, unknown>,
   ): Promise<void> {
+    if (typeof this.store.mergeMetadata === "function") {
+      await this.store.mergeMetadata(sessionId, patch);
+      return;
+    }
+    // Racy fallback for stores without the atomic merge: a concurrent merge
+    // can clobber this patch (the admin-stop stamp was lost to exactly this).
     const session = await this.store.get(sessionId);
     if (!session) return;
     await this.store.update(sessionId, {
@@ -2630,6 +2845,56 @@ export class AcpService extends Service {
   // prompt at each one (background) so claude-agent-sdk reloads its stream
   // and picks the work back up without waiting for new user input. Mirrors
   // moltbot's recoverOrphanedSubagentSessions pattern.
+  /**
+   * Terminalize stored non-terminal NATIVE sessions from a previous process.
+   * Native ACP clients live only in process memory, so a restart orphans the
+   * row while its status stays "ready"/"busy" — and non-terminal rows hold
+   * worker slots forever (live 2026-08-19: 8/8 phantom "ready" sessions from
+   * the night's restarts blocked every spawn with a cap error). CLI-transport
+   * sessions are left alone: their acpx state survives on disk and feeds the
+   * orphan-resume and label-resume paths.
+   */
+  async sweepDeadNativeSessions(): Promise<number> {
+    let sessions: SessionInfo[];
+    try {
+      sessions = await this.store.list();
+    } catch (err) {
+      // error-policy:J7 sweep is boot hygiene; a store read failure is
+      // reported and the resume scan surfaces its own failure separately.
+      this.runtime.reportError("AcpService.sweepDeadNativeSessions", err, {
+        phase: "store.list",
+      });
+      return 0;
+    }
+    let swept = 0;
+    for (const session of sessions) {
+      if (!AcpService.isActiveSession(session)) continue;
+      if (sessionTransportMode(session, this.transportMode) !== "native") {
+        continue;
+      }
+      if (this.nativeClients.has(session.id)) continue;
+      try {
+        await this.store.updateStatus(
+          session.id,
+          "stopped",
+          "native session did not survive a runtime restart",
+        );
+        swept += 1;
+      } catch (err) {
+        // error-policy:J7 one unsweepable row must not abort the rest.
+        this.runtime.reportError("AcpService.sweepDeadNativeSessions", err, {
+          sessionId: session.id,
+        });
+      }
+    }
+    if (swept > 0) {
+      this.log("info", "swept dead native sessions from previous process", {
+        swept,
+      });
+    }
+    return swept;
+  }
+
   async resumeOrphanedBusySessions(): Promise<{
     resumed: number;
     skipped: number;
@@ -2683,7 +2948,7 @@ export class AcpService extends Service {
         }
       }
       this.log("info", "resuming orphaned sub-agent after restart", {
-        sessionId: session.id.slice(0, 8),
+        sessionId: idPreview(session.id),
         status: session.status,
         transportMode,
         label:
@@ -2696,7 +2961,7 @@ export class AcpService extends Service {
       void this.sendPrompt(session.id, ORPHAN_RESUME_PROMPT).catch(
         (err: unknown) =>
           this.log("warn", "orphan resume sendPrompt failed", {
-            sessionId: session.id.slice(0, 8),
+            sessionId: idPreview(session.id),
             err: err instanceof Error ? err.message : String(err),
           }),
       );
@@ -2879,13 +3144,161 @@ export class AcpService extends Service {
     return () => undefined;
   }
 
+  /**
+   * Bounded session-output view. The tail window is a VIEW of the captured
+   * stream: whenever it is partial (more chunks were captured than `lines`,
+   * or the in-memory ring evicted old chunks) the text is prefixed with a
+   * marker naming the omitted chunk count and the durable resolver
+   * (`GET /api/coding-agents/:id/output?offset=` — the
+   * `acpx-session-output:<sessionId>` continuation surface), so no consumer
+   * can mistake a windowed read for the complete output. Callers that want
+   * the structured continuation contract use {@link getSessionOutputWindow}.
+   */
   async getSessionOutput(sessionId: string, lines = 200): Promise<string> {
-    return (this.outputBuffers.get(sessionId) ?? []).slice(-lines).join("");
+    const buffered = this.outputBuffers.get(sessionId);
+    const dropped = this.outputBufferDrops.get(sessionId) ?? 0;
+    if (buffered && buffered.length > 0) {
+      const window = buffered.slice(-lines);
+      const text = window.join("");
+      if (window.length === buffered.length && dropped === 0) return text;
+      return `${this.outputTailMarker(
+        "session output tail",
+        sessionId,
+        window.length,
+        buffered.length + dropped,
+        dropped,
+      )}${text}`;
+    }
+    // Closed sessions drop their in-memory buffer, but the durable per-session
+    // stdout log survives — a completion verifier or a late reader must not
+    // see "" for output that is durably on disk (#24262 close-out: bounded
+    // views read from durable complete content).
+    const durable = await readSubagentStdout(sessionId, {
+      limit: lines,
+    }).catch((err: unknown) => {
+      // error-policy:J2 context-adding rethrow — a durable-read FAULT (the log
+      // exists but cannot be read) must surface as an explicit typed
+      // unavailable, never as the empty string: "" is indistinguishable from
+      // "session produced no output" and callers would treat broken storage
+      // as a clean empty result. (ENOENT/no-log is the undefined return of
+      // readSubagentStdout itself, not this path.)
+      throw new ElizaError(
+        `Durable session output is unavailable: read failed for ${sessionId}`,
+        {
+          code: "ACP_SESSION_OUTPUT_UNAVAILABLE",
+          context: { sessionId, readError: errorMessage(err) },
+          cause: err,
+        },
+      );
+    });
+    if (!durable) return "";
+    if (durable.offset === 0 && !durable.hasMore) return durable.text;
+    // Propagate the durable window's continuation contract (offset /
+    // totalChunks / hasMore) instead of stripping it — a windowed read must
+    // never present itself as the complete stream.
+    return `[session output window from durable log: chunks from ${durable.offset} of ${durable.totalChunks}${durable.hasMore ? " (more follow)" : ""} — full stream: GET /api/coding-agents/${sessionId}/output?offset=0 (acpx-session-output:${sessionId})]\n${durable.text}`;
   }
 
-  /** Output captured during the most recent prompt turn only. */
+  /**
+   * Structured session-output window carrying the explicit continuation
+   * contract (offset/limit/totalChunks/hasMore). The durable per-session
+   * stdout log is the source when it exists (it survives session close and
+   * ring eviction); the in-memory ring is the fallback, with GLOBAL chunk
+   * indices that count evicted chunks so offsets stay stable as the ring
+   * slides. Returns undefined when the session has produced no output.
+   */
+  async getSessionOutputWindow(
+    sessionId: string,
+    opts: { offset?: number; limit?: number } = {},
+  ): Promise<
+    (SubagentStdoutWindow & { source: "durable" | "memory" }) | undefined
+  > {
+    const durable = await readSubagentStdout(sessionId, opts).catch(
+      (err: unknown) => {
+        // error-policy:J2 context-adding rethrow — a durable-read FAULT must
+        // not silently degrade to the memory ring (or to undefined, which the
+        // contract defines as "session produced no output"); it surfaces as an
+        // explicit typed unavailable the caller's boundary translates.
+        throw new ElizaError(
+          `Durable session output window is unavailable: read failed for ${sessionId}`,
+          {
+            code: "ACP_SESSION_OUTPUT_UNAVAILABLE",
+            context: { sessionId, readError: errorMessage(err) },
+            cause: err,
+          },
+        );
+      },
+    );
+    if (durable) return { ...durable, source: "durable" };
+    const buffered = this.outputBuffers.get(sessionId);
+    if (!buffered || buffered.length === 0) return undefined;
+    const dropped = this.outputBufferDrops.get(sessionId) ?? 0;
+    const total = buffered.length + dropped;
+    const limit = Math.max(1, Math.min(opts.limit ?? 200, 10_000));
+    const requested = opts.offset ?? -limit;
+    // Chunks below index `dropped` were evicted from the ring: the window
+    // clamps to what memory still holds and the echoed offset reports the
+    // clamp; hasMore/totalChunks keep the continuation contract intact.
+    const start =
+      requested < 0
+        ? Math.max(dropped, total + requested)
+        : Math.max(dropped, Math.min(requested, total));
+    const window = buffered.slice(start - dropped, start - dropped + limit);
+    return {
+      text: window.join(""),
+      offset: start,
+      limit,
+      totalChunks: total,
+      hasMore: start + window.length < total,
+      rotated: dropped > 0,
+      source: "memory",
+    };
+  }
+
+  /**
+   * Continuation marker for a partial in-memory output view: names how much
+   * of the captured stream the view carries and where the complete stream is
+   * recoverable, so a windowed read is never mistaken for the whole value
+   * (prompt-integrity: bounded views must carry their continuation).
+   */
+  private outputTailMarker(
+    label: string,
+    sessionId: string,
+    shownChunks: number,
+    totalChunks: number,
+    droppedChunks: number,
+  ): string {
+    const recovery = this.persistedStdoutSessions.has(sessionId)
+      ? `full raw stream: GET /api/coding-agents/${sessionId}/output?offset=0 (acpx-session-output:${sessionId})`
+      : "earlier chunks are NOT durably recorded (trajectory recording disabled)";
+    const droppedNote =
+      droppedChunks > 0
+        ? `, ${droppedChunks} oldest evicted from the in-memory ring`
+        : "";
+    return `[${label}: last ${shownChunks} of ${totalChunks} captured chunks${droppedNote} — ${recovery}]\n`;
+  }
+
+  /**
+   * Output captured during the most recent prompt turn only. The window is a
+   * view: a partial window (more chunks than `lines`, or per-turn ring
+   * eviction) is prefixed with a marker naming the omitted count and the
+   * durable raw-stream resolver. In-memory only — the buffer resets at each
+   * prompt start and is deleted on session close; the complete raw stream
+   * survives in the durable stdout log when trajectory recording is on.
+   */
   async getSessionTurnOutput(sessionId: string, lines = 200): Promise<string> {
-    return (this.turnOutputBuffers.get(sessionId) ?? []).slice(-lines).join("");
+    const turnBuffer = this.turnOutputBuffers.get(sessionId) ?? [];
+    const dropped = this.turnOutputBufferDrops.get(sessionId) ?? 0;
+    const window = turnBuffer.slice(-lines);
+    const text = window.join("");
+    if (window.length === turnBuffer.length && dropped === 0) return text;
+    return `${this.outputTailMarker(
+      "turn output tail",
+      sessionId,
+      window.length,
+      turnBuffer.length + dropped,
+      dropped,
+    )}${text}`;
   }
 
   private baseArgs(opts: {
@@ -3382,6 +3795,7 @@ export class AcpService extends Service {
     text: string,
     opts: SendOptions,
     startedAt: number,
+    generation: number,
   ): Promise<PromptResult> {
     const { client, protocolSessionId } = await this.ensureNativeClientAttached(
       session,
@@ -3391,6 +3805,10 @@ export class AcpService extends Service {
     let eventStopReason: string | undefined;
     const capturedToolOutputs = new Set<string>();
     const previousOnAcp = (event: AcpJsonRpcMessage) => {
+      // Generation fence: after the watchdog abandons this turn, its still-
+      // attached event handler must not keep applying events (emitting session
+      // events, capturing tool output) over a newer turn.
+      if (this.isStaleGeneration(session.id, generation)) return;
       const handled = this.handleAcpEvent(
         event,
         session.id,
@@ -3429,6 +3847,18 @@ export class AcpService extends Service {
           ? { error: "ACP prompt ended with stopReason error" }
           : {}),
       };
+      if (this.isStaleGeneration(session.id, generation)) {
+        // Generation fence: the watchdog abandoned this turn; its late
+        // completion must not write session status or revoke the lease a
+        // NEWER turn may be using.
+        this.log("warn", "dropping stale native prompt-turn completion", {
+          sessionId: session.id,
+          generation,
+          currentGeneration: this.sessionGeneration(session.id),
+          stopReason: finalStopReason,
+        });
+        return promptResult;
+      }
       if (stopped) {
         await this.store.updateStatus(session.id, "stopped");
         void this.revokeModelLease(session.id, "native_prompt:stopped");
@@ -3458,6 +3888,26 @@ export class AcpService extends Service {
       // into a structured PromptResult (errored store + error event), never a
       // fake success.
       const message = errorMessage(err);
+      if (this.isStaleGeneration(session.id, generation)) {
+        // Generation fence: a late failure of the abandoned turn is dropped
+        // the same way as a late completion — no store write, no error event.
+        this.log("warn", "dropping stale native prompt-turn failure", {
+          sessionId: session.id,
+          generation,
+          currentGeneration: this.sessionGeneration(session.id),
+          error: message,
+        });
+        return {
+          sessionId: session.id,
+          response: finalText,
+          finalText,
+          stopReason: "error",
+          durationMs: Date.now() - startedAt,
+          exitCode: 1,
+          signal: null,
+          error: message,
+        };
+      }
       if (this.nativeStoppingSessionIds.has(session.id)) {
         await this.store.updateStatus(session.id, "stopped");
         void this.revokeModelLease(session.id, "native_prompt:stopped");
@@ -3497,32 +3947,43 @@ export class AcpService extends Service {
         error: message,
       };
     } finally {
-      client.setEventHandler((event, protocolSessionId) => {
-        this.handleAcpEvent(
-          event,
-          session.id,
-          "",
-          Date.now(),
-          false,
-          new Set<string>(),
-        );
-        if (protocolSessionId && protocolSessionId !== session.id) {
-          void this.store
-            .update(session.id, { acpxSessionId: protocolSessionId })
-            // error-policy:J7 mapping write runs inside the ACP event callback
-            // and must not throw into the transport, but a swallowed failure
-            // leaves the acpxSessionId unpersisted so later protocol lookups
-            // silently miss the session — report it.
-            .catch((err) =>
-              this.runtime.reportError("AcpService.persistAcpxSessionId", err, {
-                sessionId: session.id,
-              }),
-            );
-        }
-      });
-      this.nativePromptSessionIds.delete(session.id);
-      this.nativeCancelledPromptSessionIds.delete(session.id);
-      this.nativeStoppingSessionIds.delete(session.id);
+      // Generation fence: when the watchdog abandoned this turn, a NEWER turn
+      // may already own the session — its event handler and busy markers are
+      // not this turn's to tear down. (When no newer turn exists, the stale
+      // closure stays attached but is generation-fenced above, so late events
+      // are dropped rather than applied.)
+      if (!this.isStaleGeneration(session.id, generation)) {
+        client.setEventHandler((event, protocolSessionId) => {
+          this.handleAcpEvent(
+            event,
+            session.id,
+            "",
+            Date.now(),
+            false,
+            new Set<string>(),
+          );
+          if (protocolSessionId && protocolSessionId !== session.id) {
+            void this.store
+              .update(session.id, { acpxSessionId: protocolSessionId })
+              // error-policy:J7 mapping write runs inside the ACP event callback
+              // and must not throw into the transport, but a swallowed failure
+              // leaves the acpxSessionId unpersisted so later protocol lookups
+              // silently miss the session — report it.
+              .catch((err) =>
+                this.runtime.reportError(
+                  "AcpService.persistAcpxSessionId",
+                  err,
+                  {
+                    sessionId: session.id,
+                  },
+                ),
+              );
+          }
+        });
+        this.nativePromptSessionIds.delete(session.id);
+        this.nativeCancelledPromptSessionIds.delete(session.id);
+        this.nativeStoppingSessionIds.delete(session.id);
+      }
     }
   }
 
@@ -3575,6 +4036,27 @@ export class AcpService extends Service {
       );
       await this.recordAccountCredentialFailure(session, err, message, true);
       throw err;
+    }
+    // A stopped session's scratch workdir may have been reclaimed by
+    // workspace GC; spawning into a missing cwd surfaces as a bare
+    // posix_spawn ENOENT on the agent command (live 2026-08-19), which reads
+    // as a broken install. Name the real condition instead. Checked AFTER the
+    // pinned-account re-resolve so an exhausted pool keeps its typed
+    // fail-closed refusal (#24355); this path revokes the freshly minted
+    // reconnect lease too, id-guarded so a newer lease is never clobbered.
+    if (!existsSync(session.workdir)) {
+      const message = `session workspace no longer exists (${session.workdir}); it was likely reclaimed after completion`;
+      await this.revokeModelLease(
+        session.id,
+        "native_reconnect:workspace_reclaimed",
+        reconnectLease?.leaseId,
+      );
+      await this.store.updateStatus(session.id, "errored", message);
+      this.emitSessionEvent(session.id, "error", { message });
+      throw new ElizaError(message, {
+        code: "ACP_SESSION_WORKSPACE_RECLAIMED",
+        context: { sessionId: session.id, workdir: session.workdir },
+      });
     }
     const promptEnv: Record<string, string> = {
       ...(opts.env ?? {}),
@@ -3661,10 +4143,6 @@ export class AcpService extends Service {
     // close/closeSession failure must not abort the deletion.
     await client.closeSession(protocolSessionId).catch(() => undefined);
     await client.close().catch(() => undefined);
-  }
-
-  private agentCommandArgs(agentType: AgentType, args: string[]): string[] {
-    return [agentType, ...args];
   }
 
   private runAcpx(opts: RunOptions): Promise<RunResult> {
@@ -3922,7 +4400,10 @@ export class AcpService extends Service {
       // an explicit invalid (null) result the caller skips.
       this.log("warn", "malformed acpx NDJSON line ignored", {
         sessionId,
-        line: truncateWellFormed(toWellFormedUnicode(line), 200),
+        // Named log PREVIEW: the full raw chunk containing this line was
+        // already teed to the durable stdout log by persistRawStdout before
+        // line-splitting, so the complete value is recoverable there.
+        linePreview: truncateWellFormed(toWellFormedUnicode(line), 200),
       });
       return null;
     }
@@ -4045,7 +4526,7 @@ export class AcpService extends Service {
         this.emitSessionEvent(sessionId, "message", { text: content.text });
       }
       // agent_thought_chunk: the model's reasoning / chain-of-thought streams
-      // in the SAME payload shape as agent_message_chunk (opencode emits it for
+      // in the SAME payload shape as agent_message_chunk (adapters emit it for
       // `reasoning` parts). Forward the text as a dedicated `reasoning` event so
       // the UI can surface it, but do NOT add it to finalText/appendOutput:
       // reasoning is not the deliverable response, and folding it into the turn
@@ -4057,8 +4538,8 @@ export class AcpService extends Service {
       ) {
         this.emitSessionEvent(sessionId, "reasoning", { text: content.text });
       }
-      // plan: opencode emits the agent's checklist/plan list as a `plan` update with
-      // entries [{content, status, priority}] (driven by its todowrite tool).
+      // plan: an adapter emits the agent's checklist/plan list as a `plan` update
+      // with entries [{content, status, priority}] (driven by its todo tooling).
       // Forward a sanitized snapshot as a `plan` event so the task's currentPlan
       // can drive the plan/checklist dock. Validated at this boundary (raw -> typed);
       // an adapter that never emits a plan simply does not enter this branch.
@@ -5027,8 +5508,24 @@ export class AcpService extends Service {
     return `acpx subprocess exited with code ${code ?? "unknown"}`;
   }
 
+  /**
+   * Complete surviving in-memory output — the `stopped` event's `response`
+   * payload. When the ring evicted chunks the join is prefixed with the
+   * continuation marker, so the event carries a reference-bearing projection
+   * rather than a lossy join posing as the full output.
+   */
   private lastOutput(sessionId: string): string {
-    return (this.outputBuffers.get(sessionId) ?? []).join("");
+    const buffered = this.outputBuffers.get(sessionId) ?? [];
+    const dropped = this.outputBufferDrops.get(sessionId) ?? 0;
+    const text = buffered.join("");
+    if (dropped === 0) return text;
+    return `${this.outputTailMarker(
+      "session output tail",
+      sessionId,
+      buffered.length,
+      buffered.length + dropped,
+      dropped,
+    )}${text}`;
   }
 
   // Path of the persisted raw-stdout log for a session, or undefined if no raw
@@ -5075,13 +5572,28 @@ export class AcpService extends Service {
   private appendOutput(sessionId: string, text: string): void {
     const buffer = this.outputBuffers.get(sessionId) ?? [];
     buffer.push(text);
-    if (buffer.length > 2_000) buffer.splice(0, buffer.length - 2_000);
+    if (buffer.length > 2_000) {
+      // Memory bound only: count what the ring evicts so every read reports
+      // the drop (the raw stream stays durable in the per-session stdout log
+      // when trajectory recording is on).
+      const droppedNow = buffer.length - 2_000;
+      this.outputBufferDrops.set(
+        sessionId,
+        (this.outputBufferDrops.get(sessionId) ?? 0) + droppedNow,
+      );
+      buffer.splice(0, droppedNow);
+    }
     this.outputBuffers.set(sessionId, buffer);
     const turnBuffer = this.turnOutputBuffers.get(sessionId);
     if (turnBuffer) {
       turnBuffer.push(text);
       if (turnBuffer.length > 2_000) {
-        turnBuffer.splice(0, turnBuffer.length - 2_000);
+        const droppedNow = turnBuffer.length - 2_000;
+        this.turnOutputBufferDrops.set(
+          sessionId,
+          (this.turnOutputBufferDrops.get(sessionId) ?? 0) + droppedNow,
+        );
+        turnBuffer.splice(0, droppedNow);
       }
     }
   }
@@ -5346,6 +5858,10 @@ interface SessionEventTrailEntry {
   hint?: string;
 }
 
+// Bounded forensic PREVIEW: the trail keeps only the last 15 events with
+// 120-char hints and is consumed solely by the state-lost warn log. The
+// complete event history is persisted in the session event stream / task
+// documents — this is a named diagnostic summary, never the record.
 const EVENT_TRAIL_MAX_ENTRIES = 15;
 const EVENT_TRAIL_HINT_MAX_CHARS = 120;
 
@@ -5372,7 +5888,13 @@ function eventTrailHint(data: unknown): string | undefined {
     (candidate): candidate is string =>
       typeof candidate === "string" && candidate.trim().length > 0,
   );
-  return hint?.trim().slice(0, EVENT_TRAIL_HINT_MAX_CHARS);
+  if (hint === undefined) return undefined;
+  // Named hint PREVIEW — truncateWellFormed so the cut cannot bisect a
+  // surrogate pair.
+  return truncateWellFormed(
+    toWellFormedUnicode(hint.trim()),
+    EVENT_TRAIL_HINT_MAX_CHARS,
+  );
 }
 
 export interface NormalizedUsage {
@@ -5503,16 +6025,23 @@ function extractPromptResultText(
 
 function extractAssistantText(
   value: unknown,
-  depth = 0,
   seen = new Set<object>(),
 ): string | undefined {
-  if (value === undefined || value === null || depth > 5) return undefined;
+  if (value === undefined || value === null) return undefined;
   if (typeof value === "string") return value.length > 0 ? value : undefined;
   if (typeof value === "number" || typeof value === "boolean")
     return String(value);
+  // Cycle guard for arrays AND records. The seen set is the ONLY recursion
+  // bound — the previous depth cap silently dropped assistant text nested
+  // deeper than the cap, violating prompt-integrity (model-facing content
+  // must stay complete).
+  if (typeof value === "object") {
+    if (seen.has(value)) return undefined;
+    seen.add(value);
+  }
   if (Array.isArray(value)) {
     const parts = value
-      .map((entry) => extractAssistantText(entry, depth + 1, seen))
+      .map((entry) => extractAssistantText(entry, seen))
       .filter((entry): entry is string => entry !== undefined);
     // Some adapters (notably codex-acp) deliver the final assistant message as
     // an array of text content blocks split at word boundaries, where the
@@ -5530,8 +6059,6 @@ function extractAssistantText(
     return joined || undefined;
   }
   if (typeof value !== "object") return undefined;
-  if (seen.has(value)) return undefined;
-  seen.add(value);
 
   const record = value as Record<string, unknown>;
   const role = typeof record.role === "string" ? record.role : undefined;
@@ -5548,13 +6075,14 @@ function extractAssistantText(
     "message",
   ]) {
     if (!(key in record)) continue;
-    const extracted = extractAssistantText(record[key], depth + 1, seen);
+    const extracted = extractAssistantText(record[key], seen);
     if (extracted) return extracted;
   }
   return undefined;
 }
 
-function captureTerminalToolOutput(
+// Exported for unit coverage of the durable-projection envelope contract.
+export function captureTerminalToolOutput(
   toolCall: AcpToolCall,
   rawOutput: unknown,
   capturedToolOutputs: Set<string>,
@@ -5565,8 +6093,33 @@ function captureTerminalToolOutput(
   if (capturedToolOutputs.has(key)) return undefined;
   capturedToolOutputs.add(key);
   const wellFormed = toWellFormedUnicode(output);
+  // Prompt-integrity: an oversized tool output is persisted IN FULL to the
+  // durable content store FIRST, and the envelope carries the head plus a
+  // marker naming the resolver (GET /api/orchestrator/content/<sha256>) — a
+  // bare "[truncated]" cut would silently drop model-facing content. If the
+  // durable persist fails, the fallback view still declares exactly what was
+  // dropped instead of posing as complete.
+  let bounded: string;
+  if (wellFormed.length <= MAX_CAPTURED_TOOL_OUTPUT_CHARS) {
+    bounded = wellFormed;
+  } else {
+    try {
+      bounded = durableProjection(
+        wellFormed,
+        MAX_CAPTURED_TOOL_OUTPUT_CHARS,
+      ).view;
+    } catch (err) {
+      // error-policy:J2 the durable persist is the PRECONDITION for dropping
+      // bytes from the view (prompt-integrity: partial views must be
+      // recoverable). When it fails, nothing may be dropped: emit the
+      // COMPLETE output inline with the fault declared — never a truncated
+      // view whose omitted bytes are unrecoverable. The store fault still
+      // must not kill the transport event loop, so it is declared, not thrown.
+      bounded = `${wellFormed}\n[durable content persist failed (${errorMessage(err)}); the complete ${wellFormed.length}-char output is emitted inline above]`;
+    }
+  }
   const title = toolCall.title?.trim() || "tool output";
-  return `[tool output: ${title}]\n${wellFormed}\n${TOOL_OUTPUT_END_MARKER}`;
+  return `[tool output: ${title}]\n${bounded}\n${TOOL_OUTPUT_END_MARKER}`;
 }
 
 // Exported for unit coverage of the exec-record one-liner path (issue #11578).
@@ -5643,10 +6196,9 @@ function parseJsonRecord(text: string): Record<string, unknown> | undefined {
 
 function extractToolOutputText(
   value: unknown,
-  depth = 0,
   seen = new Set<object>(),
 ): string | undefined {
-  if (value === undefined || value === null || depth > 4) return undefined;
+  if (value === undefined || value === null) return undefined;
   if (typeof value === "string") {
     const trimmed = value.trim();
     return trimmed.length > 0 ? trimmed : undefined;
@@ -5654,15 +6206,20 @@ function extractToolOutputText(
   if (typeof value === "number" || typeof value === "boolean") {
     return String(value);
   }
+  // Cycle guard for arrays AND records — the seen set is the ONLY recursion
+  // bound (the previous depth cap silently dropped tool-output text nested
+  // deeper than 4 levels from the model-facing envelope).
+  if (typeof value === "object") {
+    if (seen.has(value)) return undefined;
+    seen.add(value);
+  }
   if (Array.isArray(value)) {
     const parts = value
-      .map((entry) => extractToolOutputText(entry, depth + 1, seen))
+      .map((entry) => extractToolOutputText(entry, seen))
       .filter((entry): entry is string => Boolean(entry));
     return uniqueStrings(parts).join("\n") || undefined;
   }
   if (typeof value !== "object") return undefined;
-  if (seen.has(value)) return undefined;
-  seen.add(value);
 
   const record = value as Record<string, unknown>;
   const parts = [
@@ -5677,7 +6234,7 @@ function extractToolOutputText(
     "value",
   ]
     .filter((key) => key in record)
-    .map((key) => extractToolOutputText(record[key], depth + 1, seen))
+    .map((key) => extractToolOutputText(record[key], seen))
     .filter((entry): entry is string => Boolean(entry));
   return uniqueStrings(parts).join("\n") || undefined;
 }
@@ -5694,13 +6251,55 @@ function isAuthText(text: string): boolean {
   );
 }
 
-function capStderr(text: string): string {
+/**
+ * Bound accumulated subprocess stderr to a tail without losing data: on
+ * overflow the COMPLETE pre-slice text is persisted to the durable content
+ * store first (successive overflow records chain — each record's head is the
+ * previous record's marker — so together they cover the entire stream), and
+ * the retained tail is headed by a marker naming the resolver route. Failure
+ * text derived from this buffer is therefore a named, reference-bearing tail
+ * view, never a silent head drop.
+ */
+// Exported for unit coverage of the persist-before-slice contract.
+export function capStderr(text: string): string {
   if (Buffer.byteLength(text, "utf8") <= STDERR_CAP_BYTES) return text;
-  return text.slice(-STDERR_CAP_BYTES);
+  let marker: string;
+  try {
+    const ref = persistDurableContent(text);
+    const sha = ref.ref.slice("acpx-content:".length);
+    marker = `[stderr tail — full stderr: GET /api/orchestrator/content/${sha}]`;
+  } catch (err) {
+    // error-policy:J2 the durable persist is the PRECONDITION for slicing:
+    // when it fails, NOTHING may be dropped — return the complete stderr with
+    // the fault declared, never a tail whose head is unrecoverable.
+    return `[stderr durable persist failed (${errorMessage(err)}); complete stderr retained inline]\n${text}`;
+  }
+  return `${marker}\n${tailBytesWellFormed(text, STDERR_CAP_BYTES)}`;
 }
 
+/**
+ * Last `maxBytes` BYTES of `text`, well-formed. (A bare code-unit
+ * `.slice(-n)` after a byteLength comparison could retain up to ~2x the
+ * intended bytes and bisect a surrogate pair at the cut.)
+ */
+function tailBytesWellFormed(text: string, maxBytes: number): string {
+  const buf = Buffer.from(text, "utf8");
+  if (buf.byteLength <= maxBytes) return text;
+  return toWellFormedUnicode(
+    buf.subarray(buf.byteLength - maxBytes).toString("utf8"),
+  );
+}
+
+/** Named 80-char log PREVIEW, always paired with a *Length field at call
+ *  sites; the complete value is dispatched/persisted unmodified. */
 function preview(text: string): string {
   return truncateWellFormed(toWellFormedUnicode(text.replace(/\s+/g, " ")), 80);
+}
+
+/** Log-only short-id PREVIEW (first 8 chars): full ids live in the session
+ *  store and adjacent log lines; never used for lookups or persistence. */
+function idPreview(id: string): string {
+  return id.slice(0, 8);
 }
 
 function errorMessage(err: unknown): string {
