@@ -2,7 +2,7 @@
  * Verification-room bridge tests for relaying verification outcomes into chat rooms.
  */
 
-import type { IAgentRuntime } from "@elizaos/core";
+import { type IAgentRuntime, ModelType } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { VerificationRoomBridgeService } from "../verification-room-bridge.ts";
 
@@ -24,12 +24,21 @@ function makeCoordinator() {
 	};
 }
 
-function makeRuntime(initialServices: Record<string, unknown>) {
+function makeRuntime(
+	initialServices: Record<string, unknown>,
+	options?: { modelReply?: string },
+) {
 	const services = { ...initialServices };
 	return {
 		runtime: {
 			getService: vi.fn((name: string) => services[name] ?? null),
 			createMemory: vi.fn(async () => ({ id: "mem-test" })),
+			...(options?.modelReply
+				? {
+						getModel: vi.fn(() => ({ provider: "test" })),
+						useModel: vi.fn(async () => options.modelReply),
+					}
+				: {}),
 			agentId: "agent-1",
 			logger: {
 				debug: vi.fn(),
@@ -338,7 +347,12 @@ describe("VerificationRoomBridgeService — verdict posting", () => {
 			} as Response)
 			.mockResolvedValueOnce({ ok: true, status: 200 } as Response);
 		const coordinator = makeCoordinator();
-		const { runtime } = makeRuntime({ SWARM_COORDINATOR: coordinator });
+		const modelReply =
+			"Notes is ready in Browser. [Open Notes](/api/apps/local/notes/)";
+		const { runtime } = makeRuntime(
+			{ SWARM_COORDINATOR: coordinator },
+			{ modelReply },
+		);
 		const sendMessageToTarget = vi.fn(async () => []);
 		Object.assign(runtime, { sendMessageToTarget });
 		const service = await VerificationRoomBridgeService.start(runtime);
@@ -360,7 +374,13 @@ describe("VerificationRoomBridgeService — verdict posting", () => {
 		expect(sendMessageToTarget).toHaveBeenCalledWith(
 			{ source: "client_chat", roomId: "room-99" },
 			expect.objectContaining({
-				text: "Notes is ready — I opened it in Browser. [Open Notes](/api/apps/local/notes/)",
+				text: modelReply,
+			}),
+		);
+		expect(runtime.useModel).toHaveBeenCalledWith(
+			ModelType.TEXT_SMALL,
+			expect.objectContaining({
+				prompt: expect.stringContaining('"openedInBrowser":true'),
 			}),
 		);
 		expect(runtime.createMemory).not.toHaveBeenCalled();

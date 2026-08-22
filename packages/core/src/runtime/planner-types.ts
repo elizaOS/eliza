@@ -259,9 +259,11 @@ export interface PlannerLoopParams {
 	runtime: PlannerRuntime;
 	context: ContextObject;
 	/**
-	 * A sole tool result that already completed outside the planner loop and
-	 * explicitly requested a model-authored final reply. The loop starts from
-	 * this settled step and performs only the guarded no-tools synthesis round.
+	 * A sole authoritative tool result produced outside the planner loop that
+	 * explicitly requested a model-authored final reply. The result may describe
+	 * a completed effect or a truthful started/pending asynchronous operation;
+	 * the loop starts from this step and performs only the guarded no-tools
+	 * synthesis round.
 	 */
 	postToolReplySeed?: {
 		toolCall: PlannerToolCall;

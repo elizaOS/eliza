@@ -1519,7 +1519,10 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 			(getCalls(runtime)[1]?.params as Record<string, unknown>)?.tools,
 		).toBeUndefined();
 		expect(JSON.stringify(getCalls(runtime)[1]?.params)).toContain(
-			"already settled and complete",
+			"tool result in this turn is authoritative",
+		);
+		expect(JSON.stringify(getCalls(runtime)[1]?.params)).toContain(
+			"started or pending operation is underway but not complete",
 		);
 		expect(result.kind).toBe("planned_reply");
 		if (result.kind === "planned_reply") {
