@@ -3,7 +3,7 @@
  * deliveries before account routing. It deliberately accepts raw bytes so the
  * HMAC is checked before JSON parsing or any durable side effect.
  */
-import { createHmac, timingSafeEqual } from "node:crypto";
+import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import { ElizaError } from "@elizaos/core";
 
 const MAX_WEBHOOK_BYTES = 1024 * 1024;
@@ -86,7 +86,8 @@ export function parseInstagramWebhookDelivery(
   }
 
   const output: InstagramWebhookChange[] = [];
-  for (const rawEntry of envelope.entry) {
+  const deliveryDigest = createHash("sha256").update(rawBody).digest("hex");
+  for (const [entryIndex, rawEntry] of envelope.entry.entries()) {
     if (!rawEntry || typeof rawEntry !== "object" || Array.isArray(rawEntry)) {
       throw webhookError("Instagram webhook entry is invalid.", "INSTAGRAM_WEBHOOK_INVALID");
     }
@@ -99,7 +100,7 @@ export function parseInstagramWebhookDelivery(
     }
     const changes = Array.isArray(entry.changes) ? entry.changes : [];
     const messaging = Array.isArray(entry.messaging) ? entry.messaging : [];
-    for (const rawChange of [...changes, ...messaging]) {
+    for (const [changeIndex, rawChange] of [...changes, ...messaging].entries()) {
       if (!rawChange || typeof rawChange !== "object" || Array.isArray(rawChange)) {
         throw webhookError("Instagram webhook change is invalid.", "INSTAGRAM_WEBHOOK_INVALID");
       }
@@ -126,7 +127,7 @@ export function parseInstagramWebhookDelivery(
             ? valueRecord.id
             : typeof change.id === "string"
               ? change.id
-              : `${accountId}:${time}:${output.length}`;
+              : `${deliveryDigest}:${entryIndex}:${changeIndex}`;
       output.push({
         accountId,
         eventId: `${accountId}:${field}:${providerId}`,

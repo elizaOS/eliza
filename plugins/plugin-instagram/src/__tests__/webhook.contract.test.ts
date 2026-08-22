@@ -58,6 +58,39 @@ describe("Instagram webhook boundary", () => {
     expect(replay.map((change) => change.eventId)).toEqual(first.map((change) => change.eventId));
   });
 
+  it("keeps fallback replay IDs stable across restart-like receipt times", () => {
+    const delivery = signed({
+      object: "instagram",
+      entry: [
+        {
+          id: "account-a",
+          messaging: [
+            {
+              sender: { id: "user-a" },
+              recipient: { id: "account-a" },
+              message: { text: "delivery without provider id or time" },
+            },
+          ],
+        },
+      ],
+    });
+    const beforeRestart = parseInstagramWebhookDelivery(
+      delivery.body,
+      delivery.signature,
+      SECRET,
+      1_700_000_000_000
+    );
+    const afterRestart = parseInstagramWebhookDelivery(
+      delivery.body,
+      delivery.signature,
+      SECRET,
+      1_800_000_000_000
+    );
+    expect(afterRestart[0]?.eventId).toBe(beforeRestart[0]?.eventId);
+    expect(afterRestart[0]?.receivedAt).not.toBe(beforeRestart[0]?.receivedAt);
+    expect(beforeRestart[0]?.eventId).toMatch(/^account-a:messages:[a-f0-9]{64}:0:0$/);
+  });
+
   it("rejects tampering, malformed envelopes, and missing signatures before routing", () => {
     const delivery = signed({ object: "instagram", entry: [] });
     const tampered = Buffer.from(delivery.body);
