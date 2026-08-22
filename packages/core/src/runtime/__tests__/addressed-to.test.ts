@@ -375,6 +375,19 @@ describe("messageVocativelyAddressesOtherParticipant (structural vocative)", () 
 		).toBe(true);
 	});
 
+	it("evaluates the complete message when leading whitespace exceeds a preview window", async () => {
+		expect(
+			await messageVocativelyAddressesOtherParticipant({
+				runtime: nubilio(),
+				message: makeMessage(
+					undefined,
+					undefined,
+					`${" ".repeat(100)}Eliza, can you check this?`,
+				),
+			}),
+		).toBe(true);
+	});
+
 	it('does NOT gate "i was talking to eliza" — mid-text mention is not a vocative', async () => {
 		expect(
 			await messageVocativelyAddressesOtherParticipant({

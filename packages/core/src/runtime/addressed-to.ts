@@ -326,7 +326,6 @@ export async function messageVocativelyAddressesOtherParticipant(args: {
 
 	const participants = await runtime.getEntitiesForRoom(message.roomId);
 	const speakerId = message.entityId;
-	const lead = text.slice(0, 80);
 	for (const participant of participants) {
 		if (!participant.id) continue;
 		if (participant.id === runtime.agentId) continue;
@@ -339,15 +338,15 @@ export async function messageVocativelyAddressesOtherParticipant(args: {
 				`^\\s*(?:hey|hi|yo|sup|hello|gm|gn|ok|okay)?\\s*[,–—-]?\\s*@?${escaped}(?=$|[^\\p{L}\\p{N}])`,
 				"iu",
 			);
-			if (vocative.test(lead)) {
-				// A leading vocative of OUR name elsewhere in the same lead keeps
+			if (vocative.test(text)) {
+				// A leading vocative of OUR name keeps
 				// the turn ours ("nubilio, ask eliza …" opens with us, not them).
 				const oursFirst = [...self].some((own) => {
 					const ownEscaped = own.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
 					return new RegExp(
 						`^\\s*(?:hey|hi|yo|sup|hello|gm|gn|ok|okay)?\\s*[,–—-]?\\s*@?${ownEscaped}(?=$|[^\\p{L}\\p{N}])`,
 						"iu",
-					).test(lead);
+					).test(text);
 				});
 				if (!oursFirst) return true;
 			}
