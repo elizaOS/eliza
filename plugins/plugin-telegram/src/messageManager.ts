@@ -18,8 +18,10 @@ import {
   ChannelType,
   type Content,
   type ContentType,
+  consumePreparedInteractionCallback,
   createUniqueUuid,
   decodeCallback,
+  decodePreparedInteractionCallback,
   ElizaError,
   EventType,
   type HandlerCallback,
@@ -30,6 +32,7 @@ import {
   type Memory,
   type MessagePayload,
   ModelType,
+  type PreparedMessageInteraction,
   type ResolvedAttachmentBytes,
   resolveAttachmentBytes,
   ServiceType,
@@ -52,7 +55,10 @@ import {
   resolveTelegramRuntimeEntityId,
   telegramIdentityMetadata,
 } from "./identity";
-import { renderTelegramInteractions } from "./interactions";
+import {
+  renderPreparedTelegramInteraction,
+  renderTelegramInteractions,
+} from "./interactions";
 import {
   type TelegramContent,
   TelegramEventTypes,
@@ -1058,6 +1064,7 @@ export class MessageManager {
     content: TelegramContent,
     replyToMessageId?: number,
     messageThreadId?: number,
+    preparedInteraction?: PreparedMessageInteraction,
   ): Promise<Message.TextMessage[]> {
     if (content.attachments && content.attachments.length > 0) {
       await Promise.all(
@@ -1115,10 +1122,12 @@ export class MessageManager {
         this.runtime.getSetting("ELIZA_APP_URL") ||
         this.runtime.getSetting("ELIZA_CLOUD_URL");
       const appBaseUrl = typeof rawAppUrl === "string" ? rawAppUrl : undefined;
-      const rendered = renderTelegramInteractions(
-        content,
-        buildInteractionUrlResolver(appBaseUrl),
-      );
+      const rendered = preparedInteraction
+        ? renderPreparedTelegramInteraction(preparedInteraction)
+        : renderTelegramInteractions(
+            content,
+            buildInteractionUrlResolver(appBaseUrl),
+          );
       const sentMessages: Message.TextMessage[] = [];
 
       const telegramButtons = convertToTelegramButtons(content.buttons ?? []);
@@ -1866,12 +1875,10 @@ export class MessageManager {
   }
 
   /**
-   * Handle an inline-keyboard button tap whose payload was produced by the
-   * shared interaction codec (a choice or followup answer). The chosen value is
-   * replayed as an ordinary user turn — mirroring the dashboard's "send the
-   * chosen value as a message" behavior — so downstream routing (choice scopes,
-   * orchestrator turns) is identical across surfaces. Foreign callbacks are
-   * acknowledged and ignored.
+   * Authenticate host-prepared inline-keyboard callbacks and route them to the
+   * sole interaction authority. Legacy presentation callbacks are acknowledged
+   * without dispatch; separately authorized computer-use approvals retain their
+   * dedicated path.
    */
   public async handleCallbackQuery(
     ctx: NarrowedContext<Context<Update>, Update.CallbackQueryUpdate>,
@@ -1881,9 +1888,10 @@ export class MessageManager {
       query && "data" in query && typeof query.data === "string"
         ? query.data
         : undefined;
+    const prepared = decodePreparedInteractionCallback(data);
     const decoded = decodeCallback(data);
 
-    if (!decoded || !ctx.from || !query?.message) {
+    if ((!prepared && !decoded) || !ctx.from || !query?.message) {
       try {
         await ctx.answerCbQuery();
       } catch {
@@ -1916,19 +1924,45 @@ export class MessageManager {
       this.runtime,
       this.scopedTelegramKey(telegramRoomid),
     ) as UUID;
-    const worldId = createUniqueUuid(
-      this.runtime,
-      this.scopedTelegramKey(telegramChatId),
-    ) as UUID;
-    // Derive the turn id from the unique callback-query id so it never collides
-    // with the bot message the buttons were attached to.
-    const callbackKey = `cbq-${query.id}`;
-    const messageId = createUniqueUuid(
-      this.runtime,
-      this.telegramMessageMemoryKey(telegramChatId, callbackKey),
-    );
     const channelType = getChannelType(chat);
-    const computerUseApproval = parseComputerUseApprovalCallback(decoded.value);
+    if (prepared) {
+      try {
+        await ctx.answerCbQuery();
+      } catch {
+        // error-policy:J6 Telegram may reject acknowledgement for a stale tap;
+        // host consumption still determines the durable callback outcome.
+      }
+      const outcome = await consumePreparedInteractionCallback(this.runtime, {
+        providerCallbackData: data,
+        bindings: {
+          actorId: entityId,
+          audience: { kind: "room", id: roomId },
+          agentId: this.runtime.agentId,
+          connector: { source: "telegram", accountId: this.accountId },
+          roomId,
+        },
+        providerReceipt: {
+          source: "telegram",
+          accountId: this.accountId,
+          inboundEventId: query.id,
+          receivedAt: new Date().toISOString(),
+        },
+      });
+      if (outcome.status === "denied") {
+        this.runtime.logger.warn(
+          {
+            src: "plugin:telegram",
+            accountId: this.accountId,
+            code: outcome.code,
+          },
+          "Telegram interaction callback was denied",
+        );
+      }
+      return;
+    }
+    const computerUseApproval = decoded
+      ? parseComputerUseApprovalCallback(decoded.value)
+      : null;
     if (computerUseApproval) {
       await this.resolveComputerUseApprovalCallback(
         ctx,
@@ -1943,103 +1977,12 @@ export class MessageManager {
       return;
     }
 
-    // Always acknowledge so Telegram clears the button's loading spinner.
+    // Legacy marker callbacks cannot dispatch an ordinary user turn. Only the
+    // separately authorized computer-use approval codec above remains accepted.
     try {
       await ctx.answerCbQuery();
     } catch {
-      // best-effort: a stale callback may already have expired
-    }
-
-    await this.runtime.ensureConnection({
-      entityId,
-      roomId,
-      roomName: telegramRoomid,
-      userName: ctx.from.username,
-      name: ctx.from.first_name,
-      userId: telegramUserId as UUID,
-      source: "telegram",
-      channelId: telegramRoomid,
-      type: channelType,
-      worldId,
-      worldName: telegramRoomid,
-    });
-
-    const nowMs = Date.now();
-    const memory: Memory = {
-      id: messageId,
-      entityId,
-      agentId: this.runtime.agentId,
-      roomId,
-      content: {
-        text: decoded.value,
-        source: "telegram",
-        metadata: { accountId: this.accountId },
-        channelType,
-      },
-      metadata: {
-        type: "message",
-        source: "telegram",
-        accountId: this.accountId,
-        provider: "telegram",
-        timestamp: nowMs,
-        entityName: ctx.from.first_name,
-        entityUserName: ctx.from.username,
-        fromBot: false,
-        fromId: telegramUserId,
-        sourceId: entityId,
-        chatType: chat.type,
-        messageIdFull: callbackKey,
-        sender: {
-          id: telegramUserId,
-          name: ctx.from.first_name,
-          username: ctx.from.username,
-        },
-        telegram: {
-          ...telegramIdentityMetadata(
-            telegramUserId,
-            ctx.from.first_name,
-            ctx.from.username,
-          ),
-          chatId: telegramChatId,
-          messageId: callbackKey,
-          threadId,
-        },
-        telegramUserId,
-        telegramChatId,
-      } satisfies Memory["metadata"],
-      createdAt: nowMs,
-    };
-
-    const baseCallback: HandlerCallback = async (content: Content) => {
-      const sentMessages = await this.sendMessageInChunks(
-        ctx,
-        content,
-        sourceMessage.message_id,
-        threadIdNum,
-      );
-      return this.persistSentMessageMemories({
-        sentMessages,
-        content,
-        roomId,
-        channelType,
-        chatType: chat.type,
-        threadId,
-        inReplyTo: messageId,
-      });
-    };
-    const callback = createTelegramCompactProgressCallback({
-      baseCallback,
-      editMessage: this.editMessage.bind(this),
-      chatId: chat.id,
-      threadId: threadIdNum,
-    });
-
-    if (this.runtime.messageService) {
-      await this.runtime.messageService.handleMessage(
-        this.runtime,
-        memory,
-        callback,
-      );
+      // error-policy:J6 best-effort acknowledgement of stale legacy controls.
     }
   }
 
@@ -2490,6 +2433,7 @@ export class MessageManager {
     content: Content,
     replyToMessageId?: number,
     messageThreadId?: number,
+    preparedInteraction?: PreparedMessageInteraction,
   ): Promise<Message.TextMessage[]> {
     try {
       // Create a context-like object for sending
@@ -2503,6 +2447,7 @@ export class MessageManager {
         content,
         replyToMessageId,
         messageThreadId,
+        preparedInteraction,
       );
 
       if (!sentMessages.length) {

@@ -219,7 +219,10 @@ export function decodePreparedInteractionCallback(
 /** Submit a provider-authenticated callback to the sole host authority. */
 export async function consumePreparedInteractionCallback(
 	runtime: IAgentRuntime,
-	request: Omit<ConsumeMessageInteractionRequest, "callbackData" | "response"> & {
+	request: Omit<
+		ConsumeMessageInteractionRequest,
+		"callbackData" | "response"
+	> & {
 		providerCallbackData: unknown;
 	},
 ): Promise<MessageInteractionHostConsumeOutcome> {
@@ -238,7 +241,8 @@ export async function consumePreparedInteractionCallback(
 		return {
 			status: "denied",
 			code: "MESSAGE_INTERACTION_HOST_UNAVAILABLE",
-			message: "Interactive actions are temporarily unavailable; reply in text.",
+			message:
+				"Interactive actions are temporarily unavailable; reply in text.",
 		};
 	}
 	return host.consume({

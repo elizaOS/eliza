@@ -26,10 +26,12 @@ import {
 	type MessageConnectorChatContext,
 	type MessageConnectorCreateThreadParams,
 	type MessageConnectorPostToThreadParams,
+	type MessageConnectorPreparedInteractionParams,
 	type MessageConnectorQueryContext,
 	type MessageConnectorTarget,
 	type MessageConnectorTypingParams,
 	type MessageConnectorUserContext,
+	type PreparedMessageInteraction,
 	parseBooleanFromText,
 	type Room,
 	resolveFirstPartyInteractionProfile,
@@ -150,7 +152,10 @@ import {
 	resolveDiscordRuntimeEntityId,
 	resolveElizaOwnerEntityId,
 } from "./identity";
-import { buildDiscordReplyPayload } from "./interactions";
+import {
+	buildDiscordReplyPayload,
+	renderPreparedDiscordInteraction,
+} from "./interactions";
 import {
 	beginDiscordOutboundDelivery,
 	createDiscordMessageMemoryOnce,
@@ -1809,6 +1814,7 @@ export class DiscordService extends Service implements IDiscordService {
 		runtime: IAgentRuntime,
 		target: TargetInfo,
 		content: Content,
+		preparedInteraction?: PreparedMessageInteraction,
 	): Promise<Memory | SendHandlerOutcome | undefined> {
 		let outboundReservation: DiscordOutboundDeliveryReservation | undefined;
 		let acceptedProviderMessages: Message[] = [];
@@ -1978,7 +1984,9 @@ export class DiscordService extends Service implements IDiscordService {
 					// markup to Discord (live 2026-08-17, wind-chimes relay). Blocks
 					// become action rows on the final chunk; block-free text is
 					// byte-identical to the previous behavior.
-					const rendered = buildDiscordReplyPayload(runtime, content);
+					const rendered = preparedInteraction
+						? renderPreparedDiscordInteraction(preparedInteraction)
+						: buildDiscordReplyPayload(runtime, content);
 					const renderedComponents =
 						rendered.components.length > 0
 							? buildDiscordComponents(rendered.components)
@@ -3803,6 +3811,17 @@ export class DiscordService extends Service implements IDiscordService {
 								target: scopedTarget(target),
 								accountId: accountId ?? context.accountId,
 							}),
+						sendPreparedInteraction: async (
+							handlerRuntime,
+							params: MessageConnectorPreparedInteractionParams,
+						) => {
+							await serviceInstance.handleSendMessage(
+								handlerRuntime,
+								scopedTarget(params.target),
+								{ text: params.text ?? "" },
+								params.interaction,
+							);
+						},
 						resolveTargets: (query, context) =>
 							serviceInstance.resolveConnectorTargets(
 								query,

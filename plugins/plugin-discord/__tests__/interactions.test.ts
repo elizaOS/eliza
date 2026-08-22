@@ -3,17 +3,43 @@
  * `InteractionBlock` output to Discord action-row/button components.
  * Pure-function assertions.
  */
-import type { Content } from "@elizaos/core";
+import type { Content, PreparedMessageInteraction } from "@elizaos/core";
 import {
 	buildInteractionUrlResolver,
 	decodeCallback,
+	decodePreparedInteractionCallback,
 	FORM_FREE_TEXT_INVITE,
 } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import {
 	buildDiscordReplyPayload,
 	renderDiscordInteractions,
+	renderPreparedDiscordInteraction,
 } from "../interactions";
+
+it("renders only host-prepared Discord callbacks as canonical native controls", () => {
+	const prepared: PreparedMessageInteraction = {
+		block: {
+			kind: "choice",
+			id: "choice-a",
+			scope: "pick",
+			options: [{ value: "yes", label: "Yes" }],
+		},
+		callbackData: "is1:0123456789abcdef0123456789abcdef",
+		delivery: { mode: "native", reason: "preferred", limitations: [] },
+		expiresAt: "2026-08-22T01:00:00.000Z",
+		profileId: "profile-a",
+	};
+	const out = renderPreparedDiscordInteraction(prepared);
+	expect(
+		decodePreparedInteractionCallback(
+			out.components[0]?.components[0]?.custom_id,
+		),
+	).toEqual({
+		callbackData: prepared.callbackData,
+		response: { value: "yes" },
+	});
+});
 
 describe("renderDiscordInteractions", () => {
 	it("passes plain replies through with no components", () => {

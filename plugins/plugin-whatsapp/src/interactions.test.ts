@@ -5,16 +5,13 @@
  */
 
 import {
-  decodePreparedInteractionCallback,
   type Content,
+  decodePreparedInteractionCallback,
   type InteractionBlock,
   type PreparedMessageInteraction,
 } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
-import {
-  renderPreparedWhatsAppInteraction,
-  renderWhatsAppInteractions,
-} from "./interactions";
+import { renderPreparedWhatsAppInteraction, renderWhatsAppInteractions } from "./interactions";
 
 const prepared = (block: InteractionBlock): PreparedMessageInteraction => ({
   block,
@@ -86,10 +83,10 @@ describe("WhatsApp canonical interaction adapter", () => {
     });
     expect(
       renderPreparedWhatsAppInteraction(prepared(choice(4).interactions?.[0] as InteractionBlock))
-        .interactive?.type,
+        .interactive?.type
     ).toBe("list");
     const overflow = renderPreparedWhatsAppInteraction(
-      prepared(choice(11).interactions?.[0] as InteractionBlock),
+      prepared(choice(11).interactions?.[0] as InteractionBlock)
     );
     expect(overflow.outcome).toBe("fallback");
     expect(overflow.reason).toBe("provider-limit");
@@ -98,9 +95,8 @@ describe("WhatsApp canonical interaction adapter", () => {
 
   it("uses only an opaque host reference plus schema-validated user input", () => {
     const out = renderPreparedWhatsAppInteraction(prepared(blocks[0]));
-    const wire = out.interactive?.type === "button"
-      ? out.interactive.action.buttons[0]?.reply.id
-      : undefined;
+    const wire =
+      out.interactive?.type === "button" ? out.interactive.action.buttons[0]?.reply.id : undefined;
     expect(decodePreparedInteractionCallback(wire)).toEqual({
       callbackData: "is1:0123456789abcdef0123456789abcdef",
       response: { value: "yes" },

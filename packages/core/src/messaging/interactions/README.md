@@ -111,6 +111,16 @@ as the idempotency key. Its retained receipt carries the provider receipt,
 canonical inbound event id, audit id, and app-state result. Connectors must not
 construct their own authority, store, or effect dispatcher.
 
+The additive `MessageConnector.sendPreparedInteraction` hook accepts only the
+renderer-safe `PreparedMessageInteraction` plus a target and optional prose.
+The host is the producer; the connector is only the provider renderer. For
+providers whose control value is the sole callback field,
+`encodePreparedInteractionCallback` appends schema-validated non-secret user
+input to the opaque reference within the declared provider byte budget.
+`consumePreparedInteractionCallback` removes that input and submits the
+provider-authenticated actor, audience, agent, account, room, and receipt to the
+host. The original source message remains retained-only and survives restart.
+
 `InMemoryMessageInteractionSessionStore` is for deterministic tests and embedded
 processes. The agent host's `FileMessageInteractionSessionStore` is durable and
 cross-process safe on one machine. It uses a same-filesystem fsync-and-rename
@@ -147,17 +157,11 @@ package fails with `SIGNAL_DIRECT_TRANSPORT_UNAVAILABLE` and registers no messag
 connector. A connector may not advertise a stronger family than its exact
 account transport supports.
 
-Legacy untrusted choice/followup callbacks are normalized on Discord, Telegram,
-Slack, and WhatsApp Cloud API. Durable state-changing round-trips require the
-host-owned session dispatcher described above:
-- **Telegram**: `handleCallbackQuery` decodes the tap and replays it through
-  `handleMessage` as a user turn (`plugin-telegram/src/messageManager.ts`).
-- **Discord**: the `isButton` handler in `discord-interactions.ts` decodes the
-  `customId` with `decodeCallback` and dispatches via `messageService.handleMessage`.
-- **Slack**: the Block Kit action handler acknowledges the event, applies the
-  normal inbound workspace/policy gate, and dispatches the decoded reply.
-- **WhatsApp Cloud API**: interactive button/list reply IDs decode at webhook
-  normalization; Baileys stays on conversational fallback.
+Legacy `ia1:` choice/followup values are presentation-only and never dispatch a
+state-changing turn. Discord, Telegram, Slack, and WhatsApp Cloud API emit
+effect-capable controls only from a host-prepared `is1:` delivery, authenticate
+the provider event, and consume it through the host. WhatsApp Baileys and every
+transport without native controls remain on semantic conversational fallback.
 
 The floating chat overlay (`ChatOverlay`) also renders these widgets.
 It does **not** route through `MessageContent`: it renders assistant turns via

@@ -90,9 +90,42 @@ export function renderPreparedSlackInteraction(
   options: SlackInteractionOptions = {},
 ): SlackInteractionRender {
   const block = prepared.block;
+  const hostedUrl =
+    prepared.hostedUrl ?? (block.kind === "secret" ? block.url : undefined);
+  if (hostedUrl) {
+    const label =
+      block.kind === "form"
+        ? (block.submitLabel ?? "Open form")
+        : block.kind === "task"
+          ? "Open task"
+          : block.kind === "secret"
+            ? block.secretKind === "oauth"
+              ? `Connect ${block.provider ?? "account"}`
+              : (block.submitLabel ?? "Provide securely")
+            : "Open";
+    const button = slackButton({ label, url: hostedUrl, index: 0 });
+    return {
+      text:
+        block.kind === "task"
+          ? block.title
+          : block.kind === "form"
+            ? (block.title ?? block.description ?? label)
+            : block.kind === "secret"
+              ? (block.reason ?? label)
+              : label,
+      blocks: button
+        ? [{ type: "actions", elements: [button], text: undefined }]
+        : [],
+      needsFreeTextReply: false,
+      outcome: "native",
+    };
+  }
   if (prepared.delivery.mode !== "native") {
     return {
-      text: renderContentInteractionsAsPlainText({ interactions: [block] }, options).text,
+      text: renderContentInteractionsAsPlainText(
+        { interactions: [block] },
+        options,
+      ).text,
       blocks: [],
       needsFreeTextReply: true,
       outcome: "fallback",
@@ -100,7 +133,10 @@ export function renderPreparedSlackInteraction(
   }
   const optionsToRender =
     block.kind === "choice"
-      ? block.options.map((option) => ({ label: option.label, value: option.value }))
+      ? block.options.map((option) => ({
+          label: option.label,
+          value: option.value,
+        }))
       : block.kind === "followups"
         ? block.options
             .filter((option) => option.kind !== "navigate")
@@ -118,7 +154,10 @@ export function renderPreparedSlackInteraction(
     .filter((value): value is NonNullable<typeof value> => value !== null);
   if (elements.length !== optionsToRender.length || elements.length === 0) {
     return {
-      text: renderContentInteractionsAsPlainText({ interactions: [block] }, options).text,
+      text: renderContentInteractionsAsPlainText(
+        { interactions: [block] },
+        options,
+      ).text,
       blocks: [],
       needsFreeTextReply: true,
       outcome: "fallback",
@@ -126,11 +165,18 @@ export function renderPreparedSlackInteraction(
   }
   const rows = Array.from(
     { length: Math.ceil(elements.length / MAX_BUTTONS_PER_ACTIONS_BLOCK) },
-    (_, index) => elements.slice(index * MAX_BUTTONS_PER_ACTIONS_BLOCK, (index + 1) * MAX_BUTTONS_PER_ACTIONS_BLOCK),
+    (_, index) =>
+      elements.slice(
+        index * MAX_BUTTONS_PER_ACTIONS_BLOCK,
+        (index + 1) * MAX_BUTTONS_PER_ACTIONS_BLOCK,
+      ),
   );
   if (rows.length > MAX_BLOCKS_PER_MESSAGE) {
     return {
-      text: renderContentInteractionsAsPlainText({ interactions: [block] }, options).text,
+      text: renderContentInteractionsAsPlainText(
+        { interactions: [block] },
+        options,
+      ).text,
       blocks: [],
       needsFreeTextReply: true,
       outcome: "fallback",
@@ -138,9 +184,15 @@ export function renderPreparedSlackInteraction(
   }
   return {
     text: stripDashboardOnlyMarkers(
-      block.kind === "choice" ? block.prompt ?? "Choose an option." : "Choose an option.",
+      block.kind === "choice"
+        ? (block.prompt ?? "Choose an option.")
+        : "Choose an option.",
     ),
-    blocks: rows.map((row) => ({ type: "actions", elements: row, text: undefined })),
+    blocks: rows.map((row) => ({
+      type: "actions",
+      elements: row,
+      text: undefined,
+    })),
     needsFreeTextReply: false,
     outcome: "native",
   };

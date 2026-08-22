@@ -7,8 +7,8 @@
  */
 import type { ReportedError } from "../errors";
 import type { Logger } from "../logger";
-import type { ConnectorInteractionCapabilityProfile } from "../messaging/interactions/profiles";
 import type { PreparedMessageInteraction } from "../messaging/interactions/host";
+import type { ConnectorInteractionCapabilityProfile } from "../messaging/interactions/profiles";
 import type { ContextRegistry } from "../runtime/context-registry";
 import type { ResponseHandlerEvaluator } from "../runtime/response-handler-evaluators";
 import type { ResponseHandlerFieldEvaluator } from "../runtime/response-handler-field-evaluator";
