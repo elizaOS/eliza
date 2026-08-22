@@ -115,7 +115,7 @@ src/lifeops/
                          channel pack.
   connectors/            ConnectorRegistry + per-connector contributions
                          (calendly, discord, duffel, google, imessage,
-                         signal, telegram, twilio, whatsapp, x).
+                         telegram, twilio, whatsapp, x).
   oracles/               Typed weather, route-matrix, and local-activity
                          observations with provenance and source health.
   food/                  Constraint-safe meals, inventory confidence, and

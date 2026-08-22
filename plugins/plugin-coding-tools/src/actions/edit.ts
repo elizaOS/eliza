@@ -78,6 +78,8 @@ export async function editFileHandler(
   const oldStr = readStringParam(options, "old_string");
   const newStr = readStringParam(options, "new_string");
   const replaceAll = readBoolParam(options, "replace_all") ?? false;
+  const allowLiteralEscapes =
+    readBoolParam(options, "allow_literal_escapes") ?? false;
   if (!filePath || oldStr === undefined || newStr === undefined) {
     return failureToActionResult({
       reason: "missing_param",
@@ -90,6 +92,16 @@ export async function editFileHandler(
     return failureToActionResult({
       reason: "invalid_param",
       message: "old_string and new_string are identical; nothing to do",
+    });
+  }
+  if (
+    !allowLiteralEscapes &&
+    (newStr.includes("\\n") || newStr.includes("\\r"))
+  ) {
+    return failureToActionResult({
+      reason: "invalid_param",
+      message:
+        "new_string contains a literal \\n or \\r sequence. Send an actual newline for a multiline edit, or set allow_literal_escapes=true when the backslash escape is intentionally part of the source.",
     });
   }
 

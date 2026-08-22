@@ -217,6 +217,61 @@ describe("Slack message connector adapter", () => {
     ).toMatchObject({ source: "slack", entityId: "U234" });
   });
 
+  it("preserves every matching and listed connector target", async () => {
+    const runtime = createRuntime();
+    const channels = Array.from({ length: 60 }, (_, index) => ({
+      id: `C${index}`,
+      name: `project-${index}`,
+      isChannel: true,
+      isGroup: false,
+      isIm: false,
+      isMpim: false,
+      isPrivate: false,
+      isArchived: false,
+      isGeneral: index === 0,
+      isShared: false,
+      isOrgShared: false,
+      isMember: true,
+      topic: undefined,
+      purpose: undefined,
+      numMembers: 1,
+      created: 1,
+      creator: "U1",
+    })) satisfies SlackChannel[];
+    const service = Object.assign(
+      Object.create(SlackService.prototype) as SlackService,
+      {
+        runtime,
+        teamId: "T123",
+        defaultAccountId: "default",
+        accountStates: new Map([
+          [
+            "default",
+            {
+              accountId: "default",
+              teamId: "T123",
+              policy: { isChannelAllowed: () => true },
+            },
+          ],
+        ]),
+        listChannels: vi.fn().mockResolvedValue(channels),
+        client: {
+          users: { list: vi.fn().mockResolvedValue({ members: [] }) },
+        },
+      },
+    );
+
+    const matches = await service.resolveConnectorTargets("project", {
+      runtime,
+    });
+    const rooms = await service.listConnectorRooms({ runtime });
+    const recent = await service.listRecentConnectorTargets({ runtime });
+
+    expect(matches).toHaveLength(60);
+    expect(rooms).toHaveLength(60);
+    expect(recent).toHaveLength(60);
+  });
+
   it("routes outbound DMs through the requested account client", async () => {
     const runtime = createRuntime();
     const clientA = {

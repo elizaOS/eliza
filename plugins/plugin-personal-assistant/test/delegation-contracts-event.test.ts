@@ -168,7 +168,7 @@ describe("delegation connector event normalization", () => {
       delegationInboundTurnFromMessage(
         message({
           createdAt: undefined,
-          metadata: { type: "message", source: "signal" },
+          metadata: { type: "message", source: "telegram" },
         }),
       ),
     ).toThrow("connector message has no timestamp");

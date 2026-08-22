@@ -21,13 +21,13 @@ orchestrator executes those writes into a real workspace.
   streaming) while absorbing 429 TPM rate-limits with backoff; in `replay` it
   serves recorded responses keyed by a volatile-normalized hash of
   `(model, messages, tools)`, with sequential fallback.
-- `fixtures/random-color-gemma-session.json` — the recorded gemma-4-31b session.
+- `fixtures/random-color-session.json` — the recorded qwen/qwen3.8-27b session.
 
 ## Run
 
 Prerequisite (once per checkout): `bun install` at the repo root, which runs the
 core codegen this from-source run needs. If you skipped the postinstall codegen,
-run it explicitly: `node packages/shared/scripts/generate-keywords.mjs --target ts`.
+run it explicitly: `node packages/shared/scripts/generate-keywords.mjs`.
 
 Replay (default — **keyless, no live LLM, deterministic**, safe for CI):
 
@@ -38,13 +38,33 @@ bun --conditions eliza-source --tsconfig-override ../../../tsconfig.json \
   tests/e2e/deterministic-app-build-replay.mjs
 ```
 
-Re-record the fixture against live Cerebras gemma-4-31b (needs a key):
+Re-record the fixture against an OpenAI-compatible live model (needs a key).
+The committed fixture currently uses OpenRouter qwen/qwen3.8-27b:
 
 ```bash
-LLM_MODE=record CEREBRAS_API_KEY=csk-... \
+LLM_MODE=record LLM_KEY=... \
+  LLM_UPSTREAM=https://openrouter.ai/api/v1 \
+  LLM_MODEL=qwen/qwen3.8-27b \
   bun --conditions eliza-source --tsconfig-override ../../../tsconfig.json \
   tests/e2e/deterministic-app-build-replay.mjs
 ```
+
+## Live owned-runtime matrix
+
+`owned-runtime-live.mjs` drives the production `AgentRuntime -> AcpService ->
+eliza-code-acp` path against a live OpenAI-compatible model. It creates isolated
+Git fixtures for read-only inspection, a minimal bug fix with tests, and a new
+feature with tests. Every scenario is independently verified after the agent
+finishes, and native trajectories are included in the emitted JSON report.
+
+```bash
+ELIZA_LIVE_QA_OPENROUTER_KEY=... \
+  bun run --cwd packages/examples/code e2e:owned-runtime-live
+```
+
+Set `ELIZA_LIVE_QA_KEEP=1` to retain the temporary workspaces and full JSON plus
+Markdown trajectories for manual review. Never commit those generated evidence
+artifacts or place a credential on a shared command line.
 
 ## Why the fixed workspace
 

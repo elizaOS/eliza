@@ -51,7 +51,13 @@ function resolveTextParams(
   thinking: ZaiThinkingConfig | null
 ): ResolvedTextParams {
   const prompt = params.prompt ?? "";
-  const stopSequences = (params.stopSequences ?? []).slice(0, 1);
+  const stopSequences = params.stopSequences ?? [];
+  if (stopSequences.length > 1) {
+    throw new ElizaError("z.ai supports at most one stop sequence", {
+      code: "ZAI_STOP_SEQUENCE_LIMIT_EXCEEDED",
+      context: { maximum: 1, received: stopSequences.length },
+    });
+  }
   const frequencyPenalty = params.frequencyPenalty ?? 0.7;
   const presencePenalty = params.presencePenalty ?? 0.7;
 

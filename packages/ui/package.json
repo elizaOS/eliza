@@ -58,7 +58,6 @@
     "test:chat-infinite-scroll-e2e": "bun run --cwd ../.. packages/ui/src/components/pages/__e2e__/run-chat-infinite-scroll-e2e.mjs",
     "test:suggestions-e2e": "bun --conditions=eliza-source run --cwd ../.. packages/ui/src/components/pages/__e2e__/run-suggestions-e2e.mjs",
     "test:launcher-e2e": "bun run --cwd ../.. packages/ui/src/components/pages/__e2e__/run-launcher-e2e.mjs",
-    "test:connectors-e2e": "bun run --cwd ../.. packages/ui/src/components/pages/__e2e__/run-connectors-e2e.mjs",
     "test:browser-surface-error-e2e": "bun run --cwd ../.. packages/ui/src/components/pages/__e2e__/run-browser-surface-error-e2e.mjs",
     "test:view-lifecycle-e2e": "bun run --cwd ../.. packages/ui/src/components/views/__e2e__/run-view-lifecycle-e2e.mjs",
     "test:frontend-hosting-e2e": "bun run --cwd ../.. packages/ui/src/cloud/applications/__e2e__/run-frontend-hosting-e2e.mjs",
