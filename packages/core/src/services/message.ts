@@ -1323,6 +1323,7 @@ function _resolvePromptAttachments(
  */
 type ResolvedMessageOptions = {
 	maxRetries: number;
+	codingMode: boolean;
 	continueAfterActions: boolean;
 	keepExistingResponses: boolean;
 	onStreamChunk?: StreamChunkCallback;
@@ -3095,8 +3096,8 @@ function mergeAgentContexts(
 }
 
 /**
- * The agent contexts a focused coding sub-agent (the eliza-code ACP server,
- * which sets ELIZA_PLANNER_FULL_ACTION_SURFACE) is considered to be operating in.
+ * The agent contexts a focused per-turn coding loop is considered to be
+ * operating in.
  * Used to admit the coding tools (FILE/SHELL/WORKTREE gate on these) while the
  * messaging/social chat actions stay gated off.
  */
@@ -3108,19 +3109,29 @@ const CODING_SUB_AGENT_CONTEXTS: readonly AgentContext[] = [
 ];
 
 /**
- * Parent actions a coding sub-agent never needs, excluded from its planner
- * surface even though they'd otherwise pass the coding-context gate. Each extra
- * tool schema enlarges the request, and a large tool set + a large file
+ * Exact action surface for a direct coding turn. Context overlap is too broad:
+ * attachment and media actions also carry file/automation contexts, and each
+ * extra tool schema enlarges the request. A large tool set + a large file
  * generation is exactly what makes weaker hosted models (Cerebras glm-4.7)
  * intermittently reject the request (server_error / 400) or narrate instead of
- * emitting FILE. A coding sub-agent does not open/close UI views or spawn its
- * own sub-agents, so dropping these trims the surface toward the tools that
- * actually do the work (FILE/SHELL/WORKTREE/WEB/REPLY/STOP).
+ * emitting FILE. Keep the surface aligned with the tools that actually do the
+ * work (FILE/SHELL/WORKTREE/WEB plus terminal controls).
  */
-const CODING_SUB_AGENT_EXCLUDED_ACTIONS: ReadonlySet<string> = new Set(
+const CODING_DIRECT_ACTIONS: ReadonlySet<string> = new Set(
 	// Stored in normalizeActionIdentifier() form (uppercase, underscores
 	// stripped), since that is what the filter compares against.
-	["VIEWS", "CLOSEVIEW", "CLOSEALLVIEWS", "TASKS"],
+	[
+		"READ",
+		"WRITE",
+		"EDIT",
+		"SHELL",
+		"WORKTREE",
+		"WEBFETCH",
+		"WEBSEARCH",
+		"REPLY",
+		"STOP",
+		"IGNORE",
+	],
 );
 
 function actionNameTokenKey(name: string): string {
@@ -3262,6 +3273,7 @@ export function getCachedActionCatalog(
 
 function buildV5PlannerActionSurface(params: {
 	actions: readonly Action[];
+	forceFullSurface?: boolean;
 	message: Memory;
 	state?: State;
 	messageHandler: MessageHandlerResult;
@@ -3297,12 +3309,8 @@ function buildV5PlannerActionSurface(params: {
 	// small, all-relevant tool set (FILE/SHELL/READ/EDIT/…) and MUST get them all
 	// exposed natively — otherwise the model sees a tool in the prompt but cannot
 	// call it (it lands in tier-B, described-only), narrates instead of acting, and
-	// trips the terminal-only-continuations guard. `ELIZA_PLANNER_FULL_ACTION_SURFACE=1`
-	// opts a runtime into full mode (the eliza-code ACP coding agent sets it).
-	const fullSurfaceFlag =
-		typeof process !== "undefined"
-			? process.env.ELIZA_PLANNER_FULL_ACTION_SURFACE?.trim().toLowerCase()
-			: undefined;
+	// trips the terminal-only-continuations guard. The trusted per-turn coding
+	// mode opts this invocation into the full surface without global state.
 	// A task_complete relay's only job is delivering the finished result. Any
 	// catalog tool on this synthetic turn invites task-management
 	// improvisation over the completed work (live 2026-08-19: the planner
@@ -3335,11 +3343,7 @@ function buildV5PlannerActionSurface(params: {
 		};
 	}
 	const forceFullSurface =
-		fullSurfaceFlag === "1" ||
-		fullSurfaceFlag === "true" ||
-		fullSurfaceFlag === "yes" ||
-		fullSurfaceFlag === "on" ||
-		params.actions.length === 0;
+		params.forceFullSurface === true || params.actions.length === 0;
 	if (forceFullSurface) {
 		return buildFullV5PlannerActionSurface({
 			actions: params.actions,
@@ -7881,11 +7885,45 @@ function withoutIntermediateVisibleText(content: Content): Content | null {
 	return hasIntermediateCallbackPayload(filtered) ? filtered : null;
 }
 
+/**
+ * Trusted host routing for a dedicated coding turn. This deliberately looks
+ * like the canonical Stage 1 tool result so the existing parsing and safety
+ * pipeline stays shared, but it is never recorded or accounted as a model
+ * response. Authorization remains owned by the normal context/action gates.
+ */
+function directCodingResponseHandlerResult(): GenerateTextResult {
+	return {
+		text: "",
+		toolCalls: [
+			{
+				id: "direct-coding-route",
+				name: HANDLE_RESPONSE_TOOL_NAME,
+				arguments: {
+					shouldRespond: "RESPOND",
+					contexts: [...CODING_SUB_AGENT_CONTEXTS],
+					intents: [],
+					replyText: "",
+					replyEffectStatus: "none",
+					candidateActionNames: [],
+					facts: [],
+					relationships: [],
+					topics: [],
+					addressedTo: [],
+					emotion: "none",
+				},
+			},
+		],
+		finishReason: "tool_calls",
+	};
+}
+
 export async function runV5MessageRuntimeStage1(args: {
 	runtime: IAgentRuntime;
 	message: Memory;
 	state: State;
 	responseId: UUID;
+	/** Trusted per-turn direct coding-loop selection. */
+	codingMode?: boolean;
 	callback?: HandlerCallback;
 	deliveredVisibleTexts?: Set<string>;
 	plannerLoopConfig?: PlannerLoopParams["config"];
@@ -8079,38 +8117,36 @@ export async function runV5MessageRuntimeStage1(args: {
 			}),
 		);
 
-		// RESPONSE_HANDLER_BEFORE (blocking): hooks fire right before the Stage 1 model
-		// call. Used to inject providers / facts / relationships into the
-		// stable prefix.
-		await timeInferenceSpan(
-			"actions:response-handler-before",
-			() =>
-				args.runtime.runActionsByMode(
-					"RESPONSE_HANDLER_BEFORE",
-					args.message,
-					args.state,
-				),
-			{ mode: "RESPONSE_HANDLER_BEFORE" },
-		);
+		if (!args.codingMode) {
+			// RESPONSE_HANDLER_BEFORE (blocking): hooks fire right before the Stage 1
+			// model call. A direct coding turn has no such model boundary.
+			await timeInferenceSpan(
+				"actions:response-handler-before",
+				() =>
+					args.runtime.runActionsByMode(
+						"RESPONSE_HANDLER_BEFORE",
+						args.message,
+						args.state,
+					),
+				{ mode: "RESPONSE_HANDLER_BEFORE" },
+			);
 
-		// RESPONSE_HANDLER_DURING (non-blocking): fire-and-forget alongside the model
-		// call. We don't await — the user contract is "during".
-		// error-policy:J7 diagnostics-must-not-kill-the-loop — a rejection escaping
-		// runActionsByMode must not abort the turn, but it must surface.
-		const responseHandlerDuring = args.runtime
-			.runActionsByMode("RESPONSE_HANDLER_DURING", args.message, args.state)
-			.catch((err) =>
-				args.runtime.reportError("MessageService.runActionsByMode", err, {
-					mode: "RESPONSE_HANDLER_DURING",
-				}),
-			);
-		if (args.runTerminalOwner) {
-			args.runTerminalOwner.adopt(
-				"RESPONSE_HANDLER_DURING",
-				responseHandlerDuring,
-			);
-		} else {
-			void responseHandlerDuring;
+			// RESPONSE_HANDLER_DURING runs only alongside a real handler model call.
+			const responseHandlerDuring = args.runtime
+				.runActionsByMode("RESPONSE_HANDLER_DURING", args.message, args.state)
+				.catch((err) =>
+					args.runtime.reportError("MessageService.runActionsByMode", err, {
+						mode: "RESPONSE_HANDLER_DURING",
+					}),
+				);
+			if (args.runTerminalOwner) {
+				args.runTerminalOwner.adopt(
+					"RESPONSE_HANDLER_DURING",
+					responseHandlerDuring,
+				);
+			} else {
+				void responseHandlerDuring;
+			}
 		}
 
 		// Per-turn structure forcing. `buildResponseGrammar` composes the
@@ -8203,16 +8239,26 @@ export async function runV5MessageRuntimeStage1(args: {
 		// number of times before falling back to the planner.
 		const stage1RetryLimit = readStage1EmptyRetryLimit(args.runtime);
 		let stage1RetryCount = 0;
-		recordInferenceSpan(
-			"message:stage1:preprocess",
-			performance.now() - stage1PreprocessStartedAt,
-		);
-		let rawMessageHandler = (await args.runtime.useModel(
-			ModelType.RESPONSE_HANDLER,
-			stage1ModelParams,
-		)) as string | GenerateTextResult;
+		if (!args.codingMode) {
+			recordInferenceSpan(
+				"message:stage1:preprocess",
+				performance.now() - stage1PreprocessStartedAt,
+			);
+		} else {
+			args.runtime.logger.debug?.(
+				{ src: "service:message", codingMode: true },
+				"Skipping Stage 1 model call for direct coding loop",
+			);
+		}
+		let rawMessageHandler: string | GenerateTextResult = args.codingMode
+			? directCodingResponseHandlerResult()
+			: ((await args.runtime.useModel(
+					ModelType.RESPONSE_HANDLER,
+					stage1ModelParams,
+				)) as string | GenerateTextResult);
 		let stage1RetryReason = getStage1RetryReason(rawMessageHandler);
 		while (
+			!args.codingMode &&
 			stage1RetryCount < stage1RetryLimit &&
 			shouldRetryStage1Generation(
 				stage1RetryReason,
@@ -8241,9 +8287,9 @@ export async function runV5MessageRuntimeStage1(args: {
 		// right after it completes, before any later model call could overwrite the
 		// runtime-wide last-resolved-provider, so the recorded stage names the real
 		// provider instead of the fabricated "default" literal (#13623).
-		const messageHandlerProvider = args.runtime.getLastResolvedModelProvider?.(
-			ModelType.RESPONSE_HANDLER,
-		);
+		const messageHandlerProvider = args.codingMode
+			? undefined
+			: args.runtime.getLastResolvedModelProvider?.(ModelType.RESPONSE_HANDLER);
 		const rawFieldParsed = extractMessageHandlerRawParsed(rawMessageHandler);
 		// An explicit continuation turn ("finish my request", "that is good")
 		// carries no inferable intent of its own, so candidate inference runs on
@@ -8346,16 +8392,18 @@ export async function runV5MessageRuntimeStage1(args: {
 		// RESPONSE_HANDLER_AFTER (blocking): hooks fire after Stage 1 returns and the
 		// routing decision is parsed, but before the runtime acts on it.
 		// Lets a hook inspect / mutate the parsed plan.
-		await timeInferenceSpan(
-			"actions:response-handler-after",
-			() =>
-				args.runtime.runActionsByMode(
-					"RESPONSE_HANDLER_AFTER",
-					args.message,
-					args.state,
-				),
-			{ mode: "RESPONSE_HANDLER_AFTER" },
-		);
+		if (!args.codingMode) {
+			await timeInferenceSpan(
+				"actions:response-handler-after",
+				() =>
+					args.runtime.runActionsByMode(
+						"RESPONSE_HANDLER_AFTER",
+						args.message,
+						args.state,
+					),
+				{ mode: "RESPONSE_HANDLER_AFTER" },
+			);
+		}
 
 		if (!messageHandler) {
 			if (isEmptyStage1Result(rawMessageHandler)) {
@@ -8391,7 +8439,7 @@ export async function runV5MessageRuntimeStage1(args: {
 		}
 		const parsedResponseHandlerReply = getMessageHandlerReply(messageHandler);
 
-		if (recorder && trajectoryId) {
+		if (!args.codingMode && recorder && trajectoryId) {
 			messageHandlerStageTask = recordMessageHandlerStage({
 				recorder,
 				trajectoryId,
@@ -8603,7 +8651,7 @@ export async function runV5MessageRuntimeStage1(args: {
 			messageHandler.plan.replyEffectStatus;
 		const prePatchStageOneReplyIsUngroundedAppliedClaim =
 			prePatchStageOneReplyEffectStatus === "applied";
-		const responseHandlerEvaluation = fieldRunResult?.preempt
+		const responseHandlerEvaluation = args.codingMode
 			? {
 					activeEvaluators: [],
 					appliedPatches: [],
@@ -8611,17 +8659,25 @@ export async function runV5MessageRuntimeStage1(args: {
 					candidateActionsClearedByEvaluators: false,
 					errors: [],
 				}
-			: await timeInferenceSpan("evaluators:response-handler", () =>
-					runResponseHandlerEvaluators({
-						runtime: args.runtime,
-						message: args.message,
-						state: args.state,
-						messageHandler,
-						availableContexts,
-						userRoles: [senderRole],
-						evaluators: BUILTIN_RESPONSE_HANDLER_EVALUATORS,
-					}),
-				);
+			: fieldRunResult?.preempt
+				? {
+						activeEvaluators: [],
+						appliedPatches: [],
+						candidateActionsAddedByEvaluators: [],
+						candidateActionsClearedByEvaluators: false,
+						errors: [],
+					}
+				: await timeInferenceSpan("evaluators:response-handler", () =>
+						runResponseHandlerEvaluators({
+							runtime: args.runtime,
+							message: args.message,
+							state: args.state,
+							messageHandler,
+							availableContexts,
+							userRoles: [senderRole],
+							evaluators: BUILTIN_RESPONSE_HANDLER_EVALUATORS,
+						}),
+					);
 		messageHandler.plan.contexts = filterSelectedContextsForRole(
 			messageHandler.plan.contexts,
 			availableContexts,
@@ -8890,25 +8946,25 @@ export async function runV5MessageRuntimeStage1(args: {
 			attachAvailableContexts(recomposedPlannerState, args.runtime),
 			selectedContextRoutingState,
 		);
+		if (args.codingMode === true) {
+			plannerState.data = {
+				...(plannerState.data ?? {}),
+				// Execution-mode provenance only; actions must never use this as an
+				// authorization signal. Coding tools use it to skip chat-only command
+				// rewrites that would alter an explicit repository command.
+				elizaTrustedCodingMode: true,
+			};
+		}
 		// Full-surface mode (a focused coding sub-agent): skip the relevance/role
 		// narrowing entirely and hand the planner EVERY action whose execution gates
 		// pass. The narrowing is built for big chat catalogs (retrieve the relevant
 		// few); a coding agent's whole small tool set is relevant, and narrowing was
 		// returning zero candidates → planner got no native tools → model narrated.
-		const fullSurfaceEnv =
-			typeof process !== "undefined"
-				? process.env.ELIZA_PLANNER_FULL_ACTION_SURFACE?.trim().toLowerCase()
-				: undefined;
-		const useFullSurface =
-			fullSurfaceEnv === "1" ||
-			fullSurfaceEnv === "true" ||
-			fullSurfaceEnv === "yes" ||
-			fullSurfaceEnv === "on";
+		const useFullSurface = args.codingMode === true;
 		const plannerCandidateActions = useFullSurface
 			? (args.runtime.actions ?? []).filter(
 					(action) =>
-						// Full-surface = the eliza-code coding sub-agent (its ACP server
-						// sets ELIZA_PLANNER_FULL_ACTION_SURFACE). It must NOT receive the
+						// Full-surface = a trusted coding turn. It must NOT receive the
 						// whole chat action catalog (MESSAGE_*/POST_*/…) — 40 tools drowns
 						// the model and it never calls FILE. Instead treat the coding
 						// contexts (code/files/terminal/automation) as active and run the
@@ -8918,11 +8974,9 @@ export async function runV5MessageRuntimeStage1(args: {
 						// messaging/social chat actions. Role still applies (FILE=ADMIN,
 						// SHELL=OWNER; the coding sub-agent runs as OWNER). UI/orchestration
 						// parents that pass the gate but a coder never needs are dropped
-						// too (see CODING_SUB_AGENT_EXCLUDED_ACTIONS) to keep the request
+						// too (see CODING_DIRECT_ACTIONS) to keep the request
 						// small enough for weaker hosted models to handle large builds.
-						!CODING_SUB_AGENT_EXCLUDED_ACTIONS.has(
-							normalizeActionIdentifier(action.name),
-						) &&
+						CODING_DIRECT_ACTIONS.has(normalizeActionIdentifier(action.name)) &&
 						// Static candidate-action set for a coding sub-agent — no concrete
 						// turn message here, so skip the private-action gate; the eventual
 						// execution still enforces it through the executor.
@@ -9084,6 +9138,7 @@ export async function runV5MessageRuntimeStage1(args: {
 			: null;
 		const actionSurface = buildV5PlannerActionSurface({
 			actions: plannerCandidateActions,
+			forceFullSurface: args.codingMode === true,
 			message: args.message,
 			state: plannerState,
 			messageHandler,
@@ -9521,6 +9576,7 @@ export async function runV5MessageRuntimeStage1(args: {
 				runPlannerLoop({
 					runtime: plannerRuntime,
 					context: loopContext,
+					codingMode: args.codingMode === true,
 					config: args.plannerLoopConfig,
 					tools: plannerTools.length > 0 ? plannerTools : undefined,
 					requireNonTerminalToolCall,
@@ -9657,6 +9713,11 @@ export async function runV5MessageRuntimeStage1(args: {
 					)
 				: await invokePlannerLoop(plannerContextAfterEarlyReply);
 		} catch (error) {
+			// A coding turn is an all-the-way-to-verification transaction. A
+			// successful intermediate file operation cannot rescue a loop that hit
+			// its call/token/provider limit before a grounded terminal result; doing
+			// so makes CLI/ACP report partial work as success.
+			if (args.codingMode === true) throw error;
 			const preservedAnswer = prePatchStageOneReplyIsUngroundedAppliedClaim
 				? undefined
 				: prePatchStageOneReply?.trim();
@@ -9759,11 +9820,14 @@ export async function runV5MessageRuntimeStage1(args: {
 			plannerResult.trajectory,
 			exposedPlannerActions,
 		);
-		const plannedReplyEgressDecision = evaluatePlannedReplyEgress({
-			reply: String(plannerResult.finalMessage ?? ""),
-			actionResults: egressActionResults,
-			actions: args.runtime.actions,
-		});
+		const plannedReplyEgressDecision =
+			args.codingMode === true
+				? ({ verdict: "allow" } as const)
+				: evaluatePlannedReplyEgress({
+						reply: String(plannerResult.finalMessage ?? ""),
+						actionResults: egressActionResults,
+						actions: args.runtime.actions,
+					});
 		// A reply an action callback already delivered this turn (verbatim or as
 		// a strict superset) is a planner echo: the suppression below drops it, so
 		// it never egresses. Bouncing it here instead would follow the visible,
@@ -9946,11 +10010,19 @@ export async function runV5MessageRuntimeStage1(args: {
 				effectiveReplyText = relayBody;
 			}
 		}
-		const finalReplyEgressDecision = evaluatePlannedReplyEgress({
-			reply: effectiveReplyText,
-			actionResults,
-			actions: args.runtime.actions,
-		});
+		// Coding-mode terminal claims were already checked against the concrete
+		// planner trajectory (including mandatory post-mutation SHELL proof).
+		// Generic chat egress requires EffectReceipts, which local file tools do
+		// not mint, and would replace a verified coding result with a false
+		// "couldn't verify" fallback.
+		const finalReplyEgressDecision =
+			args.codingMode === true
+				? ({ verdict: "allow" } as const)
+				: evaluatePlannedReplyEgress({
+						reply: effectiveReplyText,
+						actionResults,
+						actions: args.runtime.actions,
+					});
 		if (finalReplyEgressDecision.verdict === "reject") {
 			effectiveReplyText = finalReplyEgressDecision.fallbackReply;
 		}
@@ -12789,6 +12861,7 @@ export class DefaultMessageService implements IMessageService {
 
 				const opts: ResolvedMessageOptions = {
 					maxRetries: options?.maxRetries ?? 3,
+					codingMode: options?.codingMode === true,
 					continueAfterActions:
 						options?.continueAfterActions ??
 						parseBooleanFromText(
@@ -13749,6 +13822,7 @@ export class DefaultMessageService implements IMessageService {
 							message,
 							state,
 							responseId,
+							codingMode: opts.codingMode,
 							...(callback ? { callback } : {}),
 							deliveredVisibleTexts,
 							...(opts.roomHandlerLease
