@@ -23,7 +23,6 @@ import { isTrustedCloudApiBaseUrl } from "../state/runtime-url-trust";
 import {
   buildCloudSharedAgentApiBase,
   buildDedicatedCloudAgentApiBase,
-  isDirectCloudSharedAgentBase,
   isDedicatedCloudAgentBase,
   isElizaCloudControlPlaneAgentlessBase,
   isPersonalSharedElizaId,
