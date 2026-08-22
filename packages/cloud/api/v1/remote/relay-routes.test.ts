@@ -354,6 +354,65 @@ describe("secure remote relay routes", () => {
     expect(JSON.stringify(body)).not.toContain("rhost_v1_");
   });
 
+  test("recovers a lost one-time host token only through the owner-bound identity", async () => {
+    recoverHostCredential.mockImplementation(async (input) => ({
+      kind: "recovered",
+      host: {
+        id: input.hostId,
+        runtime_key_id: input.runtimeKeyId,
+        status: "active",
+        created_at: new Date("2026-08-22T06:15:00.000Z"),
+      },
+    }));
+    const response = await request("/api/v1/remote/hosts", {
+      recoveryHostId: hostId,
+      deviceId: "linux-one",
+      displayName: "Linux One",
+      platform: "linux",
+      connectionMode: "relay",
+      runtimeKeyId: targetKeyId,
+      signingPublicKeyJwk: publicJwk,
+      encryptionPublicKeyJwk: publicJwk,
+    });
+    expect(response.status).toBe(200);
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    const body = (await response.json()) as {
+      data: { hostToken: string; recovered: boolean };
+    };
+    expect(body.data.recovered).toBe(true);
+    expect(body.data.hostToken).toMatch(/^rhost_v1_[A-Za-z0-9_-]{43}$/);
+    expect(recoverHostCredential).toHaveBeenCalledWith(
+      expect.objectContaining({
+        hostId,
+        organizationId,
+        userId: ownerId,
+        deviceId: "linux-one",
+        runtimeKeyId: targetKeyId,
+      }),
+    );
+    expect(recoverHostCredential.mock.calls[0]?.[0].hostTokenHash).not.toBe(
+      body.data.hostToken,
+    );
+  });
+
+  test("does not disclose a replacement token when host recovery mismatches", async () => {
+    recoverHostCredential.mockResolvedValue({ kind: "mismatch" });
+    const response = await request("/api/v1/remote/hosts", {
+      recoveryHostId: hostId,
+      deviceId: "linux-one",
+      displayName: "Linux One",
+      platform: "linux",
+      connectionMode: "relay",
+      runtimeKeyId: targetKeyId,
+      signingPublicKeyJwk: publicJwk,
+      encryptionPublicKeyJwk: publicJwk,
+    });
+    expect(response.status).toBe(409);
+    const body = (await response.json()) as Record<string, unknown>;
+    expect(body).toMatchObject({ code: "RECOVERY_MISMATCH" });
+    expect(JSON.stringify(body)).not.toContain("rhost_v1_");
+  });
+
   test("issues a host-bound grant and never persists the six-digit code", async () => {
     createPendingForOwnedHost.mockImplementation(async (input) => ({
       ...input,
