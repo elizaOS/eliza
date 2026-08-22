@@ -1,6 +1,15 @@
-// Pins the bounded Blooio adapter contract: every API hop fails closed at the
-// hop timeout, composing a caller signal with the deadline (either wins).
-import { describe, expect, test, vi } from "vitest";
+/**
+ * Pins the bounded Blooio adapter contract with a stubbed global fetch: every
+ * API hop fails closed at its hop timeout, and a caller signal is composed with
+ * that deadline so whichever aborts first cancels the request.
+ */
+import { afterEach, describe, expect, test, vi } from "vitest";
+
+const originalFetch = globalThis.fetch;
+
+afterEach(() => {
+  globalThis.fetch = originalFetch;
+});
 
 describe("blooioFetch — bounded Blooio hops fail closed and compose caller signals", () => {
   test("aborts a hung Blooio hop at the configured timeout", async () => {
@@ -13,7 +22,7 @@ describe("blooioFetch — bounded Blooio hops fail closed and compose caller sig
             );
           });
         }),
-    ) as typeof fetch;
+    ) as unknown as typeof fetch;
 
     const { blooioFetch } = await import("./blooio");
     const start = Date.now();
@@ -33,7 +42,7 @@ describe("blooioFetch — bounded Blooio hops fail closed and compose caller sig
             );
           });
         }),
-    ) as typeof fetch;
+    ) as unknown as typeof fetch;
 
     const { blooioFetch } = await import("./blooio");
     const controller = new AbortController();
@@ -57,10 +66,10 @@ describe("blooioFetch — bounded Blooio hops fail closed and compose caller sig
       .fn()
       .mockImplementation(
         async (_input: RequestInfo | URL, init?: RequestInit) => {
-          seen = init?.signal;
+          seen = init?.signal ?? undefined;
           return new Response("{}", { status: 200 });
         },
-      ) as typeof fetch;
+      ) as unknown as typeof fetch;
 
     const { blooioFetch } = await import("./blooio");
     const controller = new AbortController();
