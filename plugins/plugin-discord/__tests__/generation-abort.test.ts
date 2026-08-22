@@ -20,7 +20,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
-	isUserRequestedTurnAbort,
+	designedTurnAbortReason,
 	runGenerationWithAbortableTimeout,
 } from "../messages.ts";
 
@@ -239,17 +239,21 @@ describe("runGenerationWithAbortableTimeout", () => {
 	});
 });
 
-describe("isUserRequestedTurnAbort", () => {
-	it("recognizes core's TURN_ABORTED error by code, not by message", () => {
+describe("designedTurnAbortReason", () => {
+	it("requires core's TURN_ABORTED code and explicit reason", () => {
 		const aborted = Object.assign(
 			new Error("Turn aborted: user requested to stop"),
-			{ code: "TURN_ABORTED" },
+			{ code: "TURN_ABORTED", reason: "user-requested" },
 		);
-		expect(isUserRequestedTurnAbort(aborted)).toBe(true);
-		expect(isUserRequestedTurnAbort(new Error("Turn aborted: anything"))).toBe(
-			false,
-		);
-		expect(isUserRequestedTurnAbort(new Error("Bad Request"))).toBe(false);
-		expect(isUserRequestedTurnAbort(undefined)).toBe(false);
+		expect(designedTurnAbortReason(aborted)).toBe("user-requested");
+		expect(
+			designedTurnAbortReason({ code: "TURN_ABORTED", reason: "runtime-stop" }),
+		).toBe("runtime-stop");
+		expect(designedTurnAbortReason({ code: "TURN_ABORTED" })).toBeNull();
+		expect(
+			designedTurnAbortReason(new Error("Turn aborted: anything")),
+		).toBeNull();
+		expect(designedTurnAbortReason(new Error("Bad Request"))).toBeNull();
+		expect(designedTurnAbortReason(undefined)).toBeNull();
 	});
 });

@@ -139,7 +139,14 @@ function makeDiscordService(client: unknown): IDiscordService {
 	} as unknown as IDiscordService;
 }
 
-function makeInbound(channel: unknown): DiscordMessage {
+function makeInbound(
+	channel: unknown,
+	reactionEvents: string[] = [],
+): DiscordMessage {
+	const activeReactions = new Map<
+		string,
+		{ users: { remove: () => Promise<void> } }
+	>();
 	return {
 		id: "666000000000000000",
 		content: "a real question that takes a while",
@@ -154,6 +161,19 @@ function makeInbound(channel: unknown): DiscordMessage {
 		},
 		member: null,
 		channel,
+		client: { user: { id: "888000000000000000" } },
+		react: async (emoji: string) => {
+			reactionEvents.push(`add:${emoji}`);
+			activeReactions.set(emoji, {
+				users: {
+					remove: async () => {
+						reactionEvents.push(`remove:${emoji}`);
+						activeReactions.delete(emoji);
+					},
+				},
+			});
+		},
+		reactions: { resolve: (emoji: string) => activeReactions.get(emoji) },
 		guild: undefined,
 		interaction: null,
 		reference: undefined,
@@ -448,5 +468,62 @@ describe("Discord generation timeout aborts the underlying run (dispatch path)",
 			String(s.content).includes("timed out"),
 		);
 		expect(timeoutReplies).toHaveLength(0);
+	});
+
+	it("silently settles designed aborts and releases an uncommitted inbound slot", async () => {
+		const sends: Sent[] = [];
+		const reactionEvents: string[] = [];
+		const channel = makeDmChannel(sends);
+		const client = { user: { id: "888000000000000000" } };
+		const errors: unknown[][] = [];
+		const infos: unknown[][] = [];
+		let handleCalls = 0;
+		const runtime = {
+			agentId: AGENT_ID,
+			character: { name: "Eliza" },
+			logger: {
+				debug: noop,
+				warn: noop,
+				info: (...args: unknown[]) => infos.push(args),
+				error: (...args: unknown[]) => errors.push(args),
+			},
+			getSetting: (key: string) =>
+				key === "ELIZA_LIFEOPS_PASSIVE_CONNECTORS" ? "false" : undefined,
+			getService: () => null,
+			ensureConnection: async () => {},
+			...canonicalRoomMethods,
+			getMemoryById: async () => null,
+			createMemory: async (memory: Memory) => memory.id,
+			messageService: {
+				handleMessage: async () => {
+					handleCalls += 1;
+					throw Object.assign(new Error("turn stopped"), {
+						code: "TURN_ABORTED",
+						reason: "runtime-stop",
+					});
+				},
+			},
+		} as unknown as ICompatRuntime;
+		const manager = new MessageManager(makeDiscordService(client), runtime);
+		const inbound = makeInbound(channel, reactionEvents);
+
+		await manager.handleMessage(inbound);
+		await manager.handleMessage(inbound);
+		await vi.advanceTimersByTimeAsync(0);
+
+		expect(handleCalls).toBe(2);
+		expect(sends).toEqual([]);
+		expect(errors).toEqual([]);
+		expect(infos).toEqual(
+			expect.arrayContaining([
+				expect.arrayContaining([
+					expect.objectContaining({ reason: "runtime-stop" }),
+				]),
+			]),
+		);
+		expect(reactionEvents).not.toContain("add:❌");
+		expect(
+			reactionEvents.filter((event) => event === "remove:🤔"),
+		).toHaveLength(2);
 	});
 });

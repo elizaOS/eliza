@@ -121,7 +121,7 @@ import {
 	sendMessageInChunks,
 } from "./utils";
 
-const INTERACTION_ONLY_FALLBACK_TEXT = "Choose an option:";
+export const INTERACTION_ONLY_FALLBACK_TEXT = "Choose an option:";
 
 // Filler tokens carrying no answer content — two single-fact replies differing
 // only in these words are the same fact reworded.
@@ -427,6 +427,7 @@ export interface DiscordOutboundDeliveryParams {
 	replyToMessageId?: string;
 	text?: string;
 	attachmentUrls?: readonly string[];
+	interactionIdentity?: string;
 	now?: number;
 	windowMs?: number;
 	state?: Map<string, DiscordOutboundDeliveryState>;
@@ -488,7 +489,8 @@ export function beginDiscordOutboundDelivery(
 ): BeginDiscordOutboundDeliveryResult {
 	const text = normalizeOutboundText(params.text);
 	const attachments = outboundAttachmentIdentity(params.attachmentUrls);
-	if (!text && !attachments) {
+	const interactionIdentity = params.interactionIdentity?.trim() ?? "";
+	if (!text && !attachments && !interactionIdentity) {
 		return {
 			kind: "deliver",
 			reservation: {
@@ -509,6 +511,7 @@ export function beginDiscordOutboundDelivery(
 		params.channelId,
 		params.replyToMessageId ?? "",
 		attachments,
+		interactionIdentity,
 		text,
 	].join("\u0000");
 
@@ -639,18 +642,22 @@ export interface AbortableTimeoutResult {
 }
 
 /**
- * A turn the USER cancelled (core's TurnAbortedError, code TURN_ABORTED —
- * raised when a stop/cancel ask aborts the in-flight planner turn of an
- * earlier message). Not a provider failure: the stop turn's own confirmation
- * is the notice, and "I hit a provider issue… Please retry." for the build the
- * user just cancelled is wrong on both counts (live 2026-08-22, tetris).
+ * Reads core's designed TurnAbortedError contract. Both user cancellation and
+ * runtime lifecycle shutdown use TURN_ABORTED, so callers preserve the reason
+ * instead of misclassifying every designed abort as user-requested. Designed
+ * aborts are control flow, not provider failures, and must not emit retry text.
  */
-export function isUserRequestedTurnAbort(error: unknown): boolean {
-	return (
+export function designedTurnAbortReason(error: unknown): string | null {
+	if (
 		typeof error === "object" &&
 		error !== null &&
-		(error as { code?: unknown }).code === "TURN_ABORTED"
-	);
+		(error as { code?: unknown }).code === "TURN_ABORTED" &&
+		typeof (error as { reason?: unknown }).reason === "string" &&
+		(error as { reason: string }).reason.trim().length > 0
+	) {
+		return (error as { reason: string }).reason;
+	}
+	return null;
 }
 
 /**
@@ -2376,6 +2383,9 @@ export class MessageManager {
 					// native Discord components, and strip their markers from the prose.
 					const rendered = buildDiscordReplyPayload(this.runtime, content);
 					const hasComponents = rendered.components.length > 0;
+					const interactionIdentity = hasComponents
+						? JSON.stringify(rendered.components)
+						: undefined;
 					let textContent = normalizeDiscordMessageText(rendered.text);
 					if (textContent.trim().length === 0 && hasComponents) {
 						textContent = INTERACTION_ONLY_FALLBACK_TEXT;
@@ -2421,7 +2431,7 @@ export class MessageManager {
 					// twice in response to the same inbound message (e.g.
 					// planner follow-up repeating action output).
 					if (hasText && content.inReplyTo) {
-						const dedupKey = `${content.inReplyTo}::${textContent.replace(/\s+/g, " ").trim()}`;
+						const dedupKey = `${content.inReplyTo}::${textContent.replace(/\s+/g, " ").trim()}::${interactionIdentity ?? ""}`;
 						const callbackDedup = message as DiscordMessage & {
 							_elizaSentReplyKeys?: Set<string>;
 							_elizaSentFactSignatures?: Array<Set<string>>;
@@ -2439,6 +2449,7 @@ export class MessageManager {
 						// lacks) through, regardless of delivery order.
 						const factSignature = numericFactSignatureTokens(textContent);
 						const repeatsPriorFact =
+							!hasComponents &&
 							factSignature !== null &&
 							callbackDedup._elizaSentFactSignatures.some((prior) =>
 								isSubsetOrEqual(factSignature, prior),
@@ -2480,6 +2491,7 @@ export class MessageManager {
 						attachmentUrls: content.attachments
 							?.map((media) => media.url)
 							.filter((url): url is string => typeof url === "string"),
+						interactionIdentity,
 					};
 					let outboundDedupe = beginDiscordOutboundDelivery(dedupeParams);
 					while (outboundDedupe.kind === "in_flight") {
@@ -2959,6 +2971,39 @@ export class MessageManager {
 					generationTimedOut &&
 					!!messageId &&
 					hasActiveTaskAgentWorkForMessage(this.runtime, messageId);
+				const designedAbortReason = designedTurnAbortReason(generationError);
+				if (designedAbortReason) {
+					typingController.stop();
+					statusReactions?.setDone();
+					await abortPendingDraft();
+					if (speakerLease) {
+						await releaseSpeakerLease(
+							this.runtime,
+							speakerLease,
+							"designed-turn-abort",
+						);
+					}
+					turnRecord = await this.closeTurnAsIngestOnly(turnRecord);
+					this.runtime.logger.info(
+						{
+							src: "plugin:discord",
+							agentId: this.runtime.agentId,
+							messageId: message.id,
+							memoryId: messageId,
+							roomId,
+							reason: designedAbortReason,
+						},
+						"Suppressing Discord failure reply for a designed turn abort",
+					);
+					if (!inboundMemoryCommitted) {
+						inboundMemoryCommitted =
+							await this.releaseMessageProcessingIfInboundNotPersisted(
+								message.id,
+								inboundMemoryId,
+							);
+					}
+					return;
+				}
 				this.runtime.logger.error(
 					{
 						src: "plugin:discord",
@@ -3008,29 +3053,6 @@ export class MessageManager {
 						},
 						"Suppressing Discord timeout handling while response dispatch is in flight",
 					);
-					return;
-				}
-
-				if (isUserRequestedTurnAbort(generationError)) {
-					statusReactions?.setDone();
-					await abortPendingDraft();
-					this.runtime.logger.warn(
-						{
-							src: "plugin:discord",
-							agentId: this.runtime.agentId,
-							messageId: message.id,
-							memoryId: messageId,
-							roomId,
-						},
-						"Suppressing Discord failure reply for a user-requested turn abort",
-					);
-					if (!inboundMemoryCommitted) {
-						inboundMemoryCommitted =
-							await this.releaseMessageProcessingIfInboundNotPersisted(
-								message.id,
-								inboundMemoryId,
-							);
-					}
 					return;
 				}
 

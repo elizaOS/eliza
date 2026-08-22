@@ -381,6 +381,52 @@ describe("DiscordService.getAccountLabel", () => {
 });
 
 describe("DiscordService account-scoped primitives", () => {
+	it("projects interaction-only and long relay payloads through the real send handler", async () => {
+		const { graph, runtime, service } = makeService();
+		const target = {
+			source: "discord",
+			channelId: graph.textChannel.id,
+		};
+
+		await service.handleSendMessage(runtime as never, target, {
+			text: "[FOLLOWUPS]\nnavigate:/apps=View apps\n[/FOLLOWUPS]",
+		});
+		const interactionOnlyPayload = graph.textChannel.send.mock.calls[0]?.[0];
+		expect(interactionOnlyPayload).toMatchObject({
+			content: "Choose an option:",
+			components: expect.any(Array),
+		});
+
+		graph.textChannel.send.mockClear();
+		await service.handleSendMessage(runtime as never, target, {
+			text: `${"x".repeat(2_050)}\n[FOLLOWUPS]\nnavigate:/apps=View apps\n[/FOLLOWUPS]`,
+		});
+		expect(graph.textChannel.send).toHaveBeenCalledTimes(2);
+		expect(graph.textChannel.send.mock.calls[0]?.[0]).not.toHaveProperty(
+			"components",
+		);
+		expect(graph.textChannel.send.mock.calls[1]?.[0]).toMatchObject({
+			components: expect.any(Array),
+		});
+	});
+
+	it("does not dedupe equal prose carrying distinct native controls", async () => {
+		const { graph, runtime, service } = makeService();
+		const target = {
+			source: "discord",
+			channelId: graph.textChannel.id,
+		};
+
+		await service.handleSendMessage(runtime as never, target, {
+			text: "Choose next.\n[FOLLOWUPS]\nnavigate:/apps=View apps\n[/FOLLOWUPS]",
+		});
+		await service.handleSendMessage(runtime as never, target, {
+			text: "Choose next.\n[FOLLOWUPS]\nnavigate:/settings=View settings\n[/FOLLOWUPS]",
+		});
+
+		expect(graph.textChannel.send).toHaveBeenCalledTimes(2);
+	});
+
 	it("registers account connectors and scopes wrapper calls to the selected account", async () => {
 		const { runtime, service } = makeService();
 		DiscordService.registerSendHandlers(runtime as never, service);

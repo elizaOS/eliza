@@ -154,6 +154,7 @@ import {
 	beginDiscordOutboundDelivery,
 	createDiscordMessageMemoryOnce,
 	type DiscordOutboundDeliveryReservation,
+	INTERACTION_ONLY_FALLBACK_TEXT,
 	MessageManager,
 } from "./messages";
 import { chunkDiscordText } from "./messaging";
@@ -1981,7 +1982,14 @@ export class DiscordService extends Service implements IDiscordService {
 						rendered.components.length > 0
 							? buildDiscordComponents(rendered.components)
 							: undefined;
-					const textContent = normalizeDiscordMessageText(rendered.text);
+					const hasComponents = rendered.components.length > 0;
+					const interactionIdentity = hasComponents
+						? JSON.stringify(rendered.components)
+						: undefined;
+					let textContent = normalizeDiscordMessageText(rendered.text);
+					if (textContent.trim().length === 0 && hasComponents) {
+						textContent = INTERACTION_ONLY_FALLBACK_TEXT;
+					}
 					const outboundReplyToMessageId =
 						discordReplyReferenceFromContent(content);
 					if (textContent || files.length > 0) {
@@ -2019,6 +2027,7 @@ export class DiscordService extends Service implements IDiscordService {
 							attachmentUrls: content.attachments
 								?.map((media) => media.url)
 								.filter((url): url is string => typeof url === "string"),
+							interactionIdentity,
 						};
 						let outboundDedupe = beginDiscordOutboundDelivery(dedupeParams);
 						while (outboundDedupe.kind === "in_flight") {
