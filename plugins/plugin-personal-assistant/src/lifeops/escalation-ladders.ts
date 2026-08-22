@@ -36,7 +36,6 @@ export const DEFAULT_ESCALATION_LADDERS: Readonly<{
     steps: [
       { delayMinutes: 15, channelKey: "push", intensity: "normal" },
       { delayMinutes: 45, channelKey: "telegram", intensity: "urgent" },
-      { delayMinutes: 45, channelKey: "signal", intensity: "urgent" },
       { delayMinutes: 45, channelKey: "whatsapp", intensity: "urgent" },
       { delayMinutes: 45, channelKey: "discord", intensity: "urgent" },
       { delayMinutes: 45, channelKey: "sms", intensity: "urgent" },
