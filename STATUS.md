@@ -20,6 +20,20 @@ Private, redacted ledger for the Gmail, Google Calendar, and Apple Calendar cand
 - Latest upstream overlap is limited to an independent Personal Assistant relative-schedule fix. Reconciliation will preserve that upstream commit after this bounded checkpoint; the other new upstream commits do not touch Gmail, Google Calendar, Apple Calendar, or LifeOps connection paths.
 - No Google redirect, provider read, send, calendar mutation, provider deletion, push, PR mutation, merge, or deployment has occurred.
 
+### Current-base and supervised Apple acceptance continuation
+
+- Rebased the twelve-commit LifeOps stack without conflicts onto fetched `origin/develop` at `cc387aaeef`; old/new `git range-diff` reports twelve exact `=` matches and both cumulative stable patch IDs are `461fb2ca8742717df08f5d989e3a108d3ccc8e0e`.
+- Current rebased head before the exact-callback UX fix: `2ca396c0d7f4e154d35b4191a12a42ebde152f80`; branch was twelve ahead and zero behind at reconciliation time.
+- Post-rebase proof: Personal Assistant Gmail attribution and complete Unicode-safe context, 33 tests passed; Inbox complete interaction choices, 34 tests passed; Google Workspace, Calendar, Inbox, and Native Calendar typechecks passed. Personal Assistant aggregate typecheck remains gated by unbuilt optional-workspace exports, not an in-lane diagnostic.
+- Apple EventKit permission is now `full` in the exact-source app. A dedicated disposable calendar, `LifeOps QA 2026-08-22`, was created through Calendar without touching existing calendars.
+- Empty seed receipt: 1 selected Apple source, 0 events, 0 duplicates, source `fresh`.
+- External-edit seed receipt: 1 selected Apple source, 3 disposable events, 0 duplicates, source `fresh`; coverage includes one all-day event, one local-time DST-boundary event, and one recurring series, with zero attendees.
+- Stable identity proof: three unique projection ids and three unique external ids; repeated sync, local-only purge, and re-seed all produced the same redacted identity digest `50aaf43ab7891dac0a9e6c4868c4b0fbb8e79c764ff677ba3c48e57db730f7b4`.
+- Local purge receipt: 0 Gmail messages and 3 calendar events removed; provider data was unchanged. Re-seed restored exactly 3 events with no duplicate rows.
+- Real Apple recurrence gate: Calendar reports 1 recurring rule in the disposable calendar, but the LifeOps feed reports 0 recurrence rules and no recurring event id. This confirms the preserved macOS EventKit serialization handoff remains required; `window-effects.mm` was not edited.
+- Google connect fails closed before provider contact because protected OAuth settings are absent. The current UI exposed the wrong fixed-port callback example (`31437`) for this isolated API (`43232`); the provider validator now derives the exact served callback, with 31 focused tests, typecheck, and Biome clean.
+- No Google redirect/provider access, email send, attendee invite, provider deletion, GitHub mutation, merge, signing, or deployment occurred.
+
 ## Workspace and exact checkpoints
 
 - Canonical candidate worktree: `/Users/nubs/.codex/worktrees/lifeops-current-develop-20260822/eliza`
@@ -121,18 +135,18 @@ Legend: deterministic means fixture/unit/integration/local-browser evidence. Rea
 
 ## Doing
 
-- Supervised real-provider acceptance on the current-base exact-source session.
-- Waiting only for the current macOS Calendar TCC click; after it returns, continue Apple inventory/seed proof and then the protected Google OAuth configuration/consent gate.
+- Checkpoint the exact-callback recovery fix, refresh/reconcile the moving `origin/develop`, and rerun the focused publication proof.
+- Continue Google supervised acceptance only after the protected OAuth settings are available; stop at the chooser/consent click.
 
 ## Next: true external gates only
 
-- User selects **Allow Full Access** (or **Allow**) on the pending macOS Calendar permission prompt, then this lane retries health and records only redacted calendar counts/provenance.
 - Provision `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and isolated `GOOGLE_REDIRECT_URI` through a protected route; then user completes account chooser/consent/password/MFA for `nubs@nubs.site` at the action-time grant boundary.
 - Explicitly confirmed disposable self-mail and dedicated Google/Apple calendar effects, followed by reversible cleanup only of session-created artifacts.
 - Token/cursor expiry, offline/reconnect, partial failure, dedupe, disconnect/purge/reconnect, and exact receipt acceptance.
+- macOS owner implementation and review of the preserved EventKit recurrence/exception serialization contract, followed by packaged exact-head Apple recurrence acceptance.
 - iOS simulator/physical-device EventKit permission, external-edit, recurrence, timezone/DST, and reconnect acceptance.
 - Focused tests, app audit, commit/tag, normal branch push, and draft PR. Merge, signing, and deployment remain prohibited.
 
 ## Concrete user action now
 
-- On the visible macOS Calendar permission dialog, click **Allow Full Access** (or **Allow** on an older prompt), then reply `done`. Do not change any other System Settings permission.
+- Provide `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` through the canonical protected settings route and set `GOOGLE_REDIRECT_URI` exactly to `http://127.0.0.1:43232/api/connectors/google/oauth/callback`. Then click **Continue to Google** and perform the account chooser/consent/MFA clicks when prompted. Do not paste any secret into chat.
