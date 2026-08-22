@@ -2771,6 +2771,22 @@ function isSubAgentCompletionArtifact(memory: Memory): boolean {
 	return text.startsWith("[sub-agent:");
 }
 
+/** A sub-agent router relay of a finished lane (`task_complete`) — the ONLY
+ * sub-agent artifact whose planner reply may state the worker's applied
+ * effects as its own. A question, error, blocked or progress relay from the
+ * same router carries no finished work; grounding stays strict for those. */
+function isSubAgentTaskCompleteRelay(memory: Memory): boolean {
+	if (!isSubAgentCompletionArtifact(memory)) return false;
+	const metadata =
+		memory.content?.metadata && typeof memory.content.metadata === "object"
+			? (memory.content.metadata as Record<string, unknown>)
+			: {};
+	return (
+		metadata.subAgentEvent === "task_complete" ||
+		metadata.subAgentEvent === "sub_agent_complete"
+	);
+}
+
 function looksLikePriorDialogueArtifact(text: string): boolean {
 	if (!text) return false;
 	return /^\s*\[(?:sub-agent|tool output|tool result|command output)\b/im.test(
@@ -9022,7 +9038,7 @@ export async function runV5MessageRuntimeStage1(args: {
 		// verified, live page (2026-08-22, two-lane build).
 		const prePatchStageOneReplyIsUngroundedAppliedClaim =
 			prePatchStageOneReplyEffectStatus === "applied" &&
-			!isSubAgentCompletionArtifact(args.message);
+			!isSubAgentTaskCompleteRelay(args.message);
 		const responseHandlerEvaluation = fieldRunResult?.preempt
 			? {
 					activeEvaluators: [],
@@ -9181,7 +9197,7 @@ export async function runV5MessageRuntimeStage1(args: {
 				reply,
 				actionResults: [],
 				actions: args.runtime.actions,
-				completionRelay: isSubAgentCompletionArtifact(args.message),
+				completionRelay: isSubAgentTaskCompleteRelay(args.message),
 			});
 			if (directReplyEgressDecision.verdict === "reject") {
 				reply = directReplyEgressDecision.fallbackReply;
@@ -9243,7 +9259,7 @@ export async function runV5MessageRuntimeStage1(args: {
 				reply: earlyReplyText,
 				actionResults: [],
 				actions: args.runtime.actions,
-				completionRelay: isSubAgentCompletionArtifact(args.message),
+				completionRelay: isSubAgentTaskCompleteRelay(args.message),
 			});
 			if (earlyReplyEgressDecision.verdict === "reject") {
 				// Planning is still in progress, so an ungrounded completion claim
@@ -10190,7 +10206,7 @@ export async function runV5MessageRuntimeStage1(args: {
 			reply: String(plannerResult.finalMessage ?? ""),
 			actionResults: egressActionResults,
 			actions: args.runtime.actions,
-			completionRelay: isSubAgentCompletionArtifact(args.message),
+			completionRelay: isSubAgentTaskCompleteRelay(args.message),
 		});
 		// A reply an action callback already delivered this turn (verbatim or as
 		// a strict superset) is a planner echo: the suppression below drops it, so
@@ -10378,7 +10394,7 @@ export async function runV5MessageRuntimeStage1(args: {
 			reply: effectiveReplyText,
 			actionResults,
 			actions: args.runtime.actions,
-			completionRelay: isSubAgentCompletionArtifact(args.message),
+			completionRelay: isSubAgentTaskCompleteRelay(args.message),
 		});
 		if (finalReplyEgressDecision.verdict === "reject") {
 			effectiveReplyText = finalReplyEgressDecision.fallbackReply;
@@ -12441,7 +12457,7 @@ export function wrapSingleTurnVisibleCallback(
 			fullRuntime,
 			response,
 			actionName,
-			{ completionRelay: isSubAgentCompletionArtifact(message as Memory) },
+			{ completionRelay: isSubAgentTaskCompleteRelay(message as Memory) },
 		);
 		if (typeof response?.text === "string" && response.text.trim()) {
 			if (nearDuplicateOfDeliveredThisTurn(response.text)) {
@@ -14164,7 +14180,7 @@ export class DefaultMessageService implements IMessageService {
 						runtime,
 						earlyContent,
 						undefined,
-						{ completionRelay: isSubAgentCompletionArtifact(message) },
+						{ completionRelay: isSubAgentTaskCompleteRelay(message) },
 					);
 					earlyContent = await enforceTrustedDeliveryAudienceAtEgress(
 						runtime,
@@ -14715,7 +14731,7 @@ export class DefaultMessageService implements IMessageService {
 						runtime,
 						deliverableResponseContent,
 						undefined,
-						{ completionRelay: isSubAgentCompletionArtifact(message) },
+						{ completionRelay: isSubAgentTaskCompleteRelay(message) },
 					);
 					deliverableResponseContent =
 						await enforceTrustedDeliveryAudienceAtEgress(

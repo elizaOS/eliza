@@ -3554,7 +3554,10 @@ describe("runV5MessageRuntimeStage1", () => {
 									content: {
 										text: "[sub-agent: old build (opencode) — task_complete]\n[tool output: ls]\nstale raw transcript",
 										source: "acpx:sub-agent-router",
-										metadata: { subAgent: true },
+										metadata: {
+											subAgent: true,
+											subAgentEvent: "task_complete",
+										},
 									},
 								},
 							],
@@ -4554,7 +4557,10 @@ describe("runV5MessageRuntimeStage1", () => {
 									content: {
 										text: "[sub-agent: price check (opencode) — task_complete]\nraw transcript",
 										source: "acpx:sub-agent-router",
-										metadata: { subAgent: true },
+										metadata: {
+											subAgent: true,
+											subAgentEvent: "task_complete",
+										},
 									},
 								},
 							],
@@ -6966,7 +6972,7 @@ describe("sub-agent completion relay vs the direct-candidate injection backstop"
 			message: makeMessage({
 				text: RELAY_ENVELOPE_TEXT,
 				source: "sub_agent",
-				metadata: { subAgent: true },
+				metadata: { subAgent: true, subAgentEvent: "task_complete" },
 			}),
 			state: makeState(),
 			responseId: "00000000-0000-0000-0000-000000000005" as UUID,

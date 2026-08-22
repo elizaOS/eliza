@@ -4547,14 +4547,17 @@ export class OrchestratorTaskService extends Service {
         },
       });
       this.emitChange(taskId);
+      // Scoped to this lane: a sibling lane's held "it's ready" must survive
+      // this lane's failure (unscoped release dropped every lane's relay).
       (
         this.runtime.getService("ACPX_SUB_AGENT_ROUTER") as {
           releaseDeferredCompletionRelay?: (
             taskId: string,
             verdict: "passed" | "failed",
+            sessionId?: string,
           ) => void;
         } | null
-      )?.releaseDeferredCompletionRelay?.(taskId, "failed");
+      )?.releaseDeferredCompletionRelay?.(taskId, "failed", sessionId);
       throw new ElizaError(
         `Ground-truth verification blocks validation: ${groundTruth.summary}`,
         {
@@ -5025,12 +5028,16 @@ export class OrchestratorTaskService extends Service {
         }
         if (groundTruth.hardFail) {
           const failureEvidence = renderGroundTruthEvidence(groundTruth);
-          await this.validateTaskLocked(taskId, {
-            passed: false,
-            summary: groundTruth.summary,
-            evidence: failureEvidence,
-            verifier: "ground-truth-verifier",
-          });
+          await this.validateTaskLocked(
+            taskId,
+            {
+              passed: false,
+              summary: groundTruth.summary,
+              evidence: failureEvidence,
+              verifier: "ground-truth-verifier",
+            },
+            sessionId,
+          );
           await this.reEngageOrEscalate({
             taskId,
             sessionId,
@@ -5286,12 +5293,16 @@ export class OrchestratorTaskService extends Service {
           ]
             .filter(Boolean)
             .join("\n");
-          await this.validateTaskLocked(taskId, {
-            passed: false,
-            summary: independent.summary,
-            evidence: blockEvidence,
-            verifier: INDEPENDENT_ACP_VERIFIER_NAME,
-          });
+          await this.validateTaskLocked(
+            taskId,
+            {
+              passed: false,
+              summary: independent.summary,
+              evidence: blockEvidence,
+              verifier: INDEPENDENT_ACP_VERIFIER_NAME,
+            },
+            sessionId,
+          );
           const missing = [
             ...independent.unmet,
             ...independent.failedCommands.map((c) => `command failed: ${c}`),
@@ -5460,6 +5471,18 @@ export class OrchestratorTaskService extends Service {
       // auto-verify). Bail: there is nothing to re-engage, and writing partial
       // metadata back with `...doc?.task.metadata` spreading to `{}` would
       // clobber the completion envelope this very re-read exists to preserve.
+      return;
+    }
+    if (TERMINAL_OR_INTERRUPTED_TASK_STATUSES.has(doc.task.status)) {
+      // The user cancelled (or an operator closed the task) while the judge
+      // was running: a corrective re-prompt would reactivate the stopped
+      // worker and resume the build the user just stopped.
+      this.log("info", "skipping re-engage: task no longer in flight", {
+        taskId,
+        sessionId,
+        status: doc.task.status,
+        verifier,
+      });
       return;
     }
     const attemptReflections = [
@@ -6890,6 +6913,18 @@ export class OrchestratorTaskService extends Service {
    * cancel that build" hard-stopped the running lane, then the remaining
    * three phase lanes launched and ran to verification anyway. */
   async interruptTask(taskId: string, reason: string): Promise<boolean> {
+    // Serialized against the verifier: its validating→active retry and this
+    // interrupt both write status, and the verdict writer must observe
+    // `interrupted` before it re-prompts the worker.
+    return this.withTaskWriteLock(taskId, () =>
+      this.interruptTaskLocked(taskId, reason),
+    );
+  }
+
+  private async interruptTaskLocked(
+    taskId: string,
+    reason: string,
+  ): Promise<boolean> {
     const doc = await this.store.getTask(taskId);
     if (!doc || TERMINAL_OR_INTERRUPTED_TASK_STATUSES.has(doc.task.status)) {
       return false;
