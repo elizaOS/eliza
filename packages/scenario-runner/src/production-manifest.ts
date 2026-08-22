@@ -6,20 +6,80 @@
  */
 import { createHash } from "node:crypto";
 import {
+  type AgentNotification,
   ChannelType,
   ElizaError,
   type IAgentRuntime,
   type JsonValue,
   type Metadata,
+  NotificationService,
+  ServiceType,
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
+import {
+  type ApprovalAction,
+  type ApprovalChannel,
+  type ApprovalPayload,
+  type ApprovalQueue,
+  type ApprovalRequest,
+  resolveApprovalService,
+} from "@elizaos/agent";
+import {
+  getScheduledTaskRunner,
+  type ScheduledTask,
+  type ScheduledTaskInput,
+  type ScheduledTaskRunner,
+  scheduledTaskInputSchema,
+} from "@elizaos/plugin-scheduling";
 
 const MANIFEST_VERSION = 1 as const;
 const CHANNEL_TYPES = new Set<string>(Object.values(ChannelType));
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const SHA256_PATTERN = /^[0-9a-f]{64}$/i;
+const MEMORY_TABLE_PATTERN = /^[a-z][a-z0-9_]{0,62}$/;
+const MANIFEST_MAX_DEPTH = 32;
+const MANIFEST_MAX_NODES = 20_000;
+const MANIFEST_MAX_CONTAINER_WIDTH = 2_000;
+const MANIFEST_MAX_TOP_LEVEL_ROWS = 1_000;
+const MANIFEST_MAX_STRING_BYTES = 65_536;
+const MANIFEST_MAX_TOTAL_STRING_BYTES = 1_048_576;
+const NOTIFICATION_CATEGORIES = new Set<AgentNotification["category"]>([
+  "reminder",
+  "task",
+  "workflow",
+  "agent",
+  "approval",
+  "message",
+  "health",
+  "system",
+  "general",
+]);
+const NOTIFICATION_PRIORITIES = new Set<AgentNotification["priority"]>([
+  "low",
+  "normal",
+  "high",
+  "urgent",
+]);
+const APPROVAL_CHANNELS = new Set<ApprovalChannel>([
+  "telegram",
+  "discord",
+  "signal",
+  "whatsapp",
+  "slack",
+  "imessage",
+  "sms",
+  "x_dm",
+  "email",
+  "google_calendar",
+  "microsoft_calendar",
+  "apple_calendar",
+  "ics_calendar",
+  "browser",
+  "phone",
+  "internal",
+]);
 
 export interface ProductionManifestEntity {
   id: string;
@@ -42,6 +102,47 @@ export interface ProductionManifestMemory {
   text: string;
   tableName?: string;
   metadata?: Metadata;
+}
+
+export interface ProductionManifestSchedule {
+  id: string;
+  task: ScheduledTaskInput;
+}
+
+export interface ProductionManifestNotification {
+  id: string;
+  title: string;
+  body?: string;
+  category?: AgentNotification["category"];
+  priority?: AgentNotification["priority"];
+  source?: string;
+  deepLink?: string;
+  icon?: string;
+  groupKey?: string;
+  data?: Record<string, JsonValue>;
+  expiresAt?: number | null;
+}
+
+/**
+ * A deliberately closed approval seed. `execute_workflow` exercises the real
+ * durable approval queue without letting an untrusted manifest smuggle one of
+ * the many connector-specific payload dialects past preflight validation.
+ */
+export interface ProductionManifestApproval {
+  id: string;
+  subjectEntityId: string;
+  workflowId: string;
+  input: Record<string, string | number | boolean>;
+  channel?: ApprovalChannel;
+  reason: string;
+  expiresAt: number;
+}
+
+export interface ProductionManifestProviderState {
+  id: string;
+  /** Production cache key template; must contain the literal `{{namespace}}`. */
+  key: string;
+  value: JsonValue;
 }
 
 export interface ProductionManifestRelationship {
@@ -72,6 +173,10 @@ export interface ProductionManifestV1 {
   memories?: ProductionManifestMemory[];
   relationships?: ProductionManifestRelationship[];
   tasks?: ProductionManifestTask[];
+  schedules?: ProductionManifestSchedule[];
+  notifications?: ProductionManifestNotification[];
+  approvals?: ProductionManifestApproval[];
+  providerState?: ProductionManifestProviderState[];
 }
 
 export interface ProductionManifestReceipt {
@@ -84,8 +189,13 @@ export interface ProductionManifestReceipt {
   roomIds: UUID[];
   participantPairs: Array<{ entityId: UUID; roomId: UUID }>;
   memoryIds: UUID[];
+  memoryTableNames: string[];
   relationshipIds: UUID[];
   taskIds: UUID[];
+  scheduleIds: string[];
+  notificationIds: UUID[];
+  approvalRecords: Array<{ id: string; subjectUserId: string }>;
+  providerStateKeys: string[];
 }
 
 export interface ProductionManifestSnapshot {
@@ -107,6 +217,7 @@ export interface ProductionManifestSnapshot {
     roomId: UUID;
     entityId: UUID;
     text: string;
+    tableName: string;
     metadata: JsonValue | null;
   }>;
   relationships: Array<{
@@ -126,6 +237,37 @@ export interface ProductionManifestSnapshot {
     dueAt: number | null;
     metadata: JsonValue | null;
   }>;
+  schedules: Array<{
+    logicalId: string;
+    task: JsonValue;
+  }>;
+  notifications: Array<{
+    logicalId: string;
+    title: string;
+    body: string | null;
+    category: string;
+    priority: string;
+    source: string;
+    deepLink: string | null;
+    icon: string | null;
+    groupKey: string | null;
+    data: JsonValue | null;
+    expiresAt: number | null;
+  }>;
+  approvals: Array<{
+    logicalId: string;
+    subjectUserId: string;
+    action: string;
+    payload: JsonValue;
+    channel: string;
+    reason: string;
+    expiresAt: number;
+    state: string;
+  }>;
+  providerState: Array<{
+    key: string;
+    value: JsonValue;
+  }>;
 }
 
 export interface ProductionManifestResetArtifact {
@@ -139,6 +281,10 @@ export interface ProductionManifestResetArtifact {
     memories: UUID[];
     relationships: UUID[];
     tasks: UUID[];
+    schedules: string[];
+    notifications: UUID[];
+    approvals: string[];
+    providerState: string[];
   };
 }
 
@@ -149,6 +295,10 @@ export interface ProductionManifestResidueEvidence {
   memories: UUID[];
   relationships: UUID[];
   tasks: UUID[];
+  schedules: string[];
+  notifications: UUID[];
+  approvals: string[];
+  providerState: string[];
 }
 
 export interface ProductionManifestCycleArtifact {
@@ -227,7 +377,29 @@ function assertJsonValue(
   value: unknown,
   path: string,
   active: Set<object> = new Set(),
+  budget = { nodes: 0, stringBytes: 0 },
+  depth = 0,
 ): void {
+  budget.nodes += 1;
+  if (budget.nodes > MANIFEST_MAX_NODES) {
+    fail(path, `exceeds the ${MANIFEST_MAX_NODES}-node JSON budget`);
+  }
+  if (depth > MANIFEST_MAX_DEPTH) {
+    fail(path, `exceeds the maximum JSON depth of ${MANIFEST_MAX_DEPTH}`);
+  }
+  if (typeof value === "string") {
+    const byteLength = new TextEncoder().encode(value).byteLength;
+    if (byteLength > MANIFEST_MAX_STRING_BYTES) {
+      fail(path, `exceeds the ${MANIFEST_MAX_STRING_BYTES}-byte string budget`);
+    }
+    budget.stringBytes += byteLength;
+    if (budget.stringBytes > MANIFEST_MAX_TOTAL_STRING_BYTES) {
+      fail(
+        path,
+        `exceeds the ${MANIFEST_MAX_TOTAL_STRING_BYTES}-byte total string budget`,
+      );
+    }
+  }
   if (
     value === null ||
     typeof value === "string" ||
@@ -247,12 +419,21 @@ function assertJsonValue(
   try {
     if (Array.isArray(value)) {
       assertDenseArrayShape(value, path);
+      if (value.length > MANIFEST_MAX_CONTAINER_WIDTH) {
+        fail(path, `exceeds the ${MANIFEST_MAX_CONTAINER_WIDTH}-item array budget`);
+      }
       for (let index = 0; index < value.length; index += 1) {
         const descriptor = Object.getOwnPropertyDescriptor(
           value,
           String(index),
         );
-        assertJsonValue(descriptor?.value, `${path}[${index}]`, active);
+        assertJsonValue(
+          descriptor?.value,
+          `${path}[${index}]`,
+          active,
+          budget,
+          depth + 1,
+        );
       }
       return;
     }
@@ -260,7 +441,14 @@ function assertJsonValue(
     if (prototype !== Object.prototype && prototype !== null) {
       fail(path, "must contain only plain JSON objects");
     }
-    for (const key of Reflect.ownKeys(value)) {
+    const ownKeys = Reflect.ownKeys(value);
+    if (ownKeys.length > MANIFEST_MAX_CONTAINER_WIDTH) {
+      fail(
+        path,
+        `exceeds the ${MANIFEST_MAX_CONTAINER_WIDTH}-key object budget`,
+      );
+    }
+    for (const key of ownKeys) {
       if (typeof key !== "string") {
         fail(path, "must not contain symbol keys");
       }
@@ -268,7 +456,21 @@ function assertJsonValue(
       if (!descriptor?.enumerable || !("value" in descriptor)) {
         fail(`${path}.${key}`, "must be an enumerable JSON data property");
       }
-      assertJsonValue(descriptor.value, `${path}.${key}`, active);
+      const keyBytes = new TextEncoder().encode(key).byteLength;
+      if (keyBytes > MANIFEST_MAX_STRING_BYTES) {
+        fail(`${path}.${key}`, "object key exceeds the string byte budget");
+      }
+      budget.stringBytes += keyBytes;
+      if (budget.stringBytes > MANIFEST_MAX_TOTAL_STRING_BYTES) {
+        fail(path, "exceeds the total string byte budget");
+      }
+      assertJsonValue(
+        descriptor.value,
+        `${path}.${key}`,
+        active,
+        budget,
+        depth + 1,
+      );
     }
   } finally {
     active.delete(value);
@@ -280,8 +482,23 @@ function assertKeys(
   allowed: readonly string[],
   path: string,
 ): void {
+  const prototype = Object.getPrototypeOf(value);
+  if (prototype !== Object.prototype && prototype !== null) {
+    fail(path, "must be a plain object");
+  }
   const allowedSet = new Set(allowed);
-  const unexpected = Object.keys(value).find((key) => !allowedSet.has(key));
+  const ownKeys = Reflect.ownKeys(value);
+  if (ownKeys.some((key) => typeof key !== "string")) {
+    fail(path, "must not contain symbol keys");
+  }
+  const keys = ownKeys as string[];
+  for (const key of keys) {
+    const descriptor = Object.getOwnPropertyDescriptor(value, key);
+    if (!descriptor?.enumerable || !("value" in descriptor)) {
+      fail(`${path}.${key}`, "must be an enumerable JSON data property");
+    }
+  }
+  const unexpected = keys.find((key) => !allowedSet.has(key));
   if (unexpected) fail(`${path}.${unexpected}`, "is not supported");
 }
 
@@ -338,6 +555,31 @@ function optionalMetadata(value: unknown, path: string): Metadata | undefined {
   return value as Metadata;
 }
 
+function optionalNullableSafeInteger(
+  value: unknown,
+  path: string,
+): number | null | undefined {
+  if (value === undefined || value === null) return value;
+  if (!Number.isSafeInteger(value)) fail(path, "must be a safe integer or null");
+  return value as number;
+}
+
+function jsonRecord(
+  value: unknown,
+  path: string,
+): Record<string, JsonValue> {
+  if (!isRecord(value)) fail(path, "must be a JSON object");
+  assertJsonValue(value, path);
+  return value as Record<string, JsonValue>;
+}
+
+function optionalJsonRecord(
+  value: unknown,
+  path: string,
+): Record<string, JsonValue> | undefined {
+  return value === undefined ? undefined : jsonRecord(value, path);
+}
+
 function parseArray<T>(
   value: unknown,
   path: string,
@@ -346,6 +588,9 @@ function parseArray<T>(
   if (value === undefined) return [];
   if (!Array.isArray(value)) fail(path, "must be an array");
   assertDenseArrayShape(value, path);
+  if (value.length > MANIFEST_MAX_TOP_LEVEL_ROWS) {
+    fail(path, `exceeds the ${MANIFEST_MAX_TOP_LEVEL_ROWS}-row budget`);
+  }
   return value.map((entry, index) => {
     const entryPath = `${path}[${index}]`;
     if (!isRecord(entry)) fail(entryPath, "must be an object");
@@ -371,6 +616,7 @@ function assertUniqueIds(
 /** Validates a manifest completely before any production store is mutated. */
 export function parseProductionManifest(input: unknown): ProductionManifestV1 {
   if (!isRecord(input)) fail("manifest", "must be an object");
+  assertJsonValue(input, "manifest");
   assertKeys(
     input,
     [
@@ -382,6 +628,10 @@ export function parseProductionManifest(input: unknown): ProductionManifestV1 {
       "memories",
       "relationships",
       "tasks",
+      "schedules",
+      "notifications",
+      "approvals",
+      "providerState",
     ],
     "manifest",
   );
@@ -442,8 +692,8 @@ export function parseProductionManifest(input: unknown): ProductionManifestV1 {
         path,
       );
       const tableName = optionalString(entry.tableName, `${path}.tableName`);
-      if (tableName !== undefined && tableName !== "messages") {
-        fail(`${path}.tableName`, "must equal messages in manifest version 1");
+      if (tableName !== undefined && !MEMORY_TABLE_PATTERN.test(tableName)) {
+        fail(`${path}.tableName`, "must be a safe logical memory table name");
       }
       return {
         id: requiredString(entry.id, `${path}.id`),
@@ -517,6 +767,185 @@ export function parseProductionManifest(input: unknown): ProductionManifestV1 {
       metadata: optionalMetadata(entry.metadata, `${path}.metadata`),
     };
   });
+  const schedules = parseArray(
+    input.schedules,
+    "manifest.schedules",
+    (entry, path) => {
+      assertKeys(entry, ["id", "task"], path);
+      const id = requiredString(entry.id, `${path}.id`);
+      if (!isRecord(entry.task)) fail(`${path}.task`, "must be an object");
+      assertJsonValue(entry.task, `${path}.task`);
+      if (Object.hasOwn(entry.task, "idempotencyKey")) {
+        fail(
+          `${path}.task.idempotencyKey`,
+          "is reserved for namespace ownership",
+        );
+      }
+      const parsed = scheduledTaskInputSchema.safeParse(entry.task);
+      if (!parsed.success) {
+        fail(
+          `${path}.task`,
+          `is invalid: ${parsed.error.issues.map((issue) => issue.message).join("; ")}`,
+        );
+      }
+      for (const reservedKey of [
+        "scenarioManifest",
+        "schedulingCreationReceipt",
+        "createdAtIso",
+      ]) {
+        if (
+          parsed.data.metadata &&
+          Object.hasOwn(parsed.data.metadata, reservedKey)
+        ) {
+          fail(
+            `${path}.task.metadata.${reservedKey}`,
+            "is reserved for production scheduling provenance",
+          );
+        }
+      }
+      return { id, task: parsed.data as ScheduledTaskInput };
+    },
+  );
+  const notifications = parseArray(
+    input.notifications,
+    "manifest.notifications",
+    (entry, path) => {
+      assertKeys(
+        entry,
+        [
+          "id",
+          "title",
+          "body",
+          "category",
+          "priority",
+          "source",
+          "deepLink",
+          "icon",
+          "groupKey",
+          "data",
+          "expiresAt",
+        ],
+        path,
+      );
+      const category = optionalString(entry.category, `${path}.category`);
+      if (
+        category !== undefined &&
+        !NOTIFICATION_CATEGORIES.has(category as AgentNotification["category"])
+      ) {
+        fail(`${path}.category`, "is not a notification category");
+      }
+      const priority = optionalString(entry.priority, `${path}.priority`);
+      if (
+        priority !== undefined &&
+        !NOTIFICATION_PRIORITIES.has(priority as AgentNotification["priority"])
+      ) {
+        fail(`${path}.priority`, "is not a notification priority");
+      }
+      return {
+        id: requiredString(entry.id, `${path}.id`),
+        title: requiredString(entry.title, `${path}.title`),
+        body: optionalString(entry.body, `${path}.body`),
+        category: category as AgentNotification["category"] | undefined,
+        priority: priority as AgentNotification["priority"] | undefined,
+        source: optionalString(entry.source, `${path}.source`),
+        deepLink: optionalString(entry.deepLink, `${path}.deepLink`),
+        icon: optionalString(entry.icon, `${path}.icon`),
+        groupKey: optionalString(entry.groupKey, `${path}.groupKey`),
+        data: optionalJsonRecord(entry.data, `${path}.data`),
+        expiresAt: optionalNullableSafeInteger(
+          entry.expiresAt,
+          `${path}.expiresAt`,
+        ),
+      };
+    },
+  );
+  const effectiveNotificationGroups = new Set<string>();
+  notifications.forEach((entry, index) => {
+    const group = entry.groupKey ?? entry.id;
+    if (effectiveNotificationGroups.has(group)) {
+      fail(
+        `manifest.notifications[${index}].groupKey`,
+        `duplicates effective notification group ${group}`,
+      );
+    }
+    effectiveNotificationGroups.add(group);
+    const effectivePriority =
+      entry.priority ?? (entry.category === "system" ? "low" : "normal");
+    if (effectivePriority === "low" && entry.expiresAt === undefined) {
+      fail(
+        `manifest.notifications[${index}].expiresAt`,
+        "is required for low-priority deterministic seed replay",
+      );
+    }
+  });
+  const approvals = parseArray(
+    input.approvals,
+    "manifest.approvals",
+    (entry, path) => {
+      assertKeys(
+        entry,
+        [
+          "id",
+          "subjectEntityId",
+          "workflowId",
+          "input",
+          "channel",
+          "reason",
+          "expiresAt",
+        ],
+        path,
+      );
+      const channel = optionalString(entry.channel, `${path}.channel`);
+      if (
+        channel !== undefined &&
+        !APPROVAL_CHANNELS.has(channel as ApprovalChannel)
+      ) {
+        fail(`${path}.channel`, "is not an approval channel");
+      }
+      const approvalInput = jsonRecord(entry.input, `${path}.input`);
+      for (const [key, value] of Object.entries(approvalInput)) {
+        if (
+          typeof value !== "string" &&
+          typeof value !== "number" &&
+          typeof value !== "boolean"
+        ) {
+          fail(`${path}.input.${key}`, "must be string, number, or boolean");
+        }
+      }
+      if (!Number.isSafeInteger(entry.expiresAt)) {
+        fail(`${path}.expiresAt`, "must be a safe integer epoch-millisecond value");
+      }
+      return {
+        id: requiredString(entry.id, `${path}.id`),
+        subjectEntityId: requiredString(
+          entry.subjectEntityId,
+          `${path}.subjectEntityId`,
+        ),
+        workflowId: requiredString(entry.workflowId, `${path}.workflowId`),
+        input: approvalInput as Record<string, string | number | boolean>,
+        channel: (channel ?? "internal") as ApprovalChannel,
+        reason: requiredString(entry.reason, `${path}.reason`),
+        expiresAt: entry.expiresAt as number,
+      };
+    },
+  );
+  const providerState = parseArray(
+    input.providerState,
+    "manifest.providerState",
+    (entry, path) => {
+      assertKeys(entry, ["id", "key", "value"], path);
+      const key = requiredString(entry.key, `${path}.key`);
+      if (!key.includes("{{namespace}}")) {
+        fail(`${path}.key`, "must contain the literal {{namespace}} token");
+      }
+      assertJsonValue(entry.value, `${path}.value`);
+      return {
+        id: requiredString(entry.id, `${path}.id`),
+        key,
+        value: entry.value as JsonValue,
+      };
+    },
+  );
 
   assertUniqueIds([
     { path: "manifest.entities", entries: entities },
@@ -524,6 +953,10 @@ export function parseProductionManifest(input: unknown): ProductionManifestV1 {
     { path: "manifest.memories", entries: memories },
     { path: "manifest.relationships", entries: relationships },
     { path: "manifest.tasks", entries: tasks },
+    { path: "manifest.schedules", entries: schedules },
+    { path: "manifest.notifications", entries: notifications },
+    { path: "manifest.approvals", entries: approvals },
+    { path: "manifest.providerState", entries: providerState },
   ]);
   const entityIds = new Set(entities.map((entry) => entry.id));
   const roomIds = new Set(rooms.map((entry) => entry.id));
@@ -569,12 +1002,101 @@ export function parseProductionManifest(input: unknown): ProductionManifestV1 {
     }
     pairs.add(pair);
   });
+  const relationshipIds = new Set(
+    relationships.map((relationship) => relationship.id),
+  );
   tasks.forEach((task, index) => {
     if (task.roomId)
       requireRoom(task.roomId, `manifest.tasks[${index}].roomId`);
     if (task.entityId) {
       requireEntity(task.entityId, `manifest.tasks[${index}].entityId`);
     }
+  });
+  approvals.forEach((approval, index) => {
+    requireEntity(
+      approval.subjectEntityId,
+      `manifest.approvals[${index}].subjectEntityId`,
+    );
+  });
+  const earlierScheduleIds = new Set<string>();
+  schedules.forEach((schedule, index) => {
+    const { task } = schedule;
+    if (task.trigger.kind === "after_task") {
+      if (!earlierScheduleIds.has(task.trigger.taskId)) {
+        fail(
+          `manifest.schedules[${index}].task.trigger.taskId`,
+          "must reference an earlier manifest schedule logical id",
+        );
+      }
+    }
+    for (const [pipelineName, refs] of Object.entries(task.pipeline ?? {})) {
+      if (refs && refs.length > 0) {
+        fail(
+          `manifest.schedules[${index}].task.pipeline.${pipelineName}`,
+          "is not supported until pipeline references have an exact receipt contract",
+        );
+      }
+    }
+    if (task.subject) {
+      if (task.subject.kind === "entity") {
+        requireEntity(
+          task.subject.id,
+          `manifest.schedules[${index}].task.subject.id`,
+        );
+      } else if (task.subject.kind === "relationship") {
+        if (!relationshipIds.has(task.subject.id)) {
+          fail(
+            `manifest.schedules[${index}].task.subject.id`,
+            `references unknown relationship ${task.subject.id}`,
+          );
+        }
+      } else if (task.subject.kind === "self") {
+        if (task.subject.id !== "self") {
+          fail(
+            `manifest.schedules[${index}].task.subject.id`,
+            "must equal self for a self subject",
+          );
+        }
+      } else {
+        fail(
+          `manifest.schedules[${index}].task.subject.kind`,
+          "requires an external production-id contract not supported by manifest version 1",
+        );
+      }
+    }
+    task.contextRequest?.includeEntities?.entityIds.forEach(
+      (id, entityIndex) =>
+        requireEntity(
+          id,
+          `manifest.schedules[${index}].task.contextRequest.includeEntities.entityIds[${entityIndex}]`,
+        ),
+    );
+    task.contextRequest?.includeRelationships?.relationshipIds?.forEach(
+      (id, relationshipIndex) => {
+        if (!relationshipIds.has(id)) {
+          fail(
+            `manifest.schedules[${index}].task.contextRequest.includeRelationships.relationshipIds[${relationshipIndex}]`,
+            `references unknown relationship ${id}`,
+          );
+        }
+      },
+    );
+    task.contextRequest?.includeRelationships?.forEntityIds?.forEach(
+      (id, entityIndex) =>
+        requireEntity(
+          id,
+          `manifest.schedules[${index}].task.contextRequest.includeRelationships.forEntityIds[${entityIndex}]`,
+        ),
+    );
+    earlierScheduleIds.add(schedule.id);
+  });
+  const expandedProviderKeys = new Set<string>();
+  providerState.forEach((entry, index) => {
+    const expanded = entry.key.replaceAll("{{namespace}}", namespace);
+    if (expandedProviderKeys.has(expanded)) {
+      fail(`manifest.providerState[${index}].key`, "duplicates an expanded key");
+    }
+    expandedProviderKeys.add(expanded);
   });
 
   return {
@@ -586,6 +1108,10 @@ export function parseProductionManifest(input: unknown): ProductionManifestV1 {
     memories,
     relationships,
     tasks,
+    schedules,
+    notifications,
+    approvals,
+    providerState,
   };
 }
 
@@ -622,6 +1148,37 @@ export function serializeProductionManifestArtifact(value: unknown): string {
   return JSON.stringify(stableValue(value));
 }
 
+function canonicalDifferencePaths(
+  left: unknown,
+  right: unknown,
+  path = "$",
+  differences: string[] = [],
+): string[] {
+  if (differences.length >= 20) return differences;
+  if (Object.is(left, right)) return differences;
+  if (Array.isArray(left) && Array.isArray(right)) {
+    if (left.length !== right.length) differences.push(`${path}.length`);
+    const length = Math.min(left.length, right.length);
+    for (let index = 0; index < length; index += 1) {
+      canonicalDifferencePaths(left[index], right[index], `${path}[${index}]`, differences);
+    }
+    return differences;
+  }
+  if (isRecord(left) && isRecord(right)) {
+    const keys = [...new Set([...Object.keys(left), ...Object.keys(right)])].sort();
+    for (const key of keys) {
+      if (!Object.hasOwn(left, key) || !Object.hasOwn(right, key)) {
+        differences.push(`${path}.${key}`);
+      } else {
+        canonicalDifferencePaths(left[key], right[key], `${path}.${key}`, differences);
+      }
+    }
+    return differences;
+  }
+  differences.push(path);
+  return differences;
+}
+
 function hashManifest(manifest: ProductionManifestV1): string {
   return createHash("sha256")
     .update(serializeProductionManifestArtifact(manifest))
@@ -647,8 +1204,13 @@ function emptyReceipt(
     roomIds: [],
     participantPairs: [],
     memoryIds: [],
+    memoryTableNames: [],
     relationshipIds: [],
     taskIds: [],
+    scheduleIds: [],
+    notificationIds: [],
+    approvalRecords: [],
+    providerStateKeys: [],
   };
 }
 
@@ -673,6 +1235,16 @@ function uuidArray(value: unknown, path: string): UUID[] {
   return parsed;
 }
 
+function uniqueStringArray(value: unknown, path: string): string[] {
+  const parsed = stringArray(value, path);
+  const seen = new Set<string>();
+  parsed.forEach((entry, index) => {
+    if (seen.has(entry)) fail(`${path}[${index}]`, `duplicates ${entry}`);
+    seen.add(entry);
+  });
+  return parsed;
+}
+
 /** Parses an untrusted serialized reset receipt without preserving aliases. */
 export function parseProductionManifestReceipt(
   input: unknown,
@@ -690,8 +1262,13 @@ export function parseProductionManifestReceipt(
       "roomIds",
       "participantPairs",
       "memoryIds",
+      "memoryTableNames",
       "relationshipIds",
       "taskIds",
+      "scheduleIds",
+      "notificationIds",
+      "approvalRecords",
+      "providerStateKeys",
     ],
     "receipt",
   );
@@ -714,11 +1291,53 @@ export function parseProductionManifestReceipt(
   const entityIds = uuidArray(input.entityIds, "receipt.entityIds");
   const roomIds = uuidArray(input.roomIds, "receipt.roomIds");
   const memoryIds = uuidArray(input.memoryIds, "receipt.memoryIds");
+  const memoryTableNames = stringArray(
+    input.memoryTableNames,
+    "receipt.memoryTableNames",
+  );
+  if (memoryTableNames.length !== memoryIds.length) {
+    fail("receipt.memoryTableNames", "must align one-for-one with memoryIds");
+  }
+  memoryTableNames.forEach((tableName, index) => {
+    if (!MEMORY_TABLE_PATTERN.test(tableName)) {
+      fail(`receipt.memoryTableNames[${index}]`, "is not a safe memory table name");
+    }
+  });
   const relationshipIds = uuidArray(
     input.relationshipIds,
     "receipt.relationshipIds",
   );
   const taskIds = uuidArray(input.taskIds, "receipt.taskIds");
+  const scheduleIds = uniqueStringArray(input.scheduleIds, "receipt.scheduleIds");
+  const notificationIds = uuidArray(
+    input.notificationIds,
+    "receipt.notificationIds",
+  );
+  const providerStateKeys = uniqueStringArray(
+    input.providerStateKeys,
+    "receipt.providerStateKeys",
+  );
+  if (!Array.isArray(input.approvalRecords)) {
+    fail("receipt.approvalRecords", "must be an array");
+  }
+  assertDenseArrayShape(input.approvalRecords, "receipt.approvalRecords");
+  const approvalIds = new Set<string>();
+  const approvalRecords: Array<{ id: string; subjectUserId: string }> = [];
+  input.approvalRecords.forEach((entry, index) => {
+    const path = `receipt.approvalRecords[${index}]`;
+    if (!isRecord(entry)) fail(path, "must be an object");
+    assertExactKeys(entry, ["id", "subjectUserId"], path);
+    const id = requiredString(entry.id, `${path}.id`);
+    if (approvalIds.has(id)) fail(`${path}.id`, `duplicates ${id}`);
+    approvalIds.add(id);
+    approvalRecords.push({
+      id,
+      subjectUserId: requiredString(
+        entry.subjectUserId,
+        `${path}.subjectUserId`,
+      ),
+    });
+  });
   if (!Array.isArray(input.participantPairs)) {
     fail("receipt.participantPairs", "must be an array");
   }
@@ -752,6 +1371,7 @@ export function parseProductionManifestReceipt(
     ...memoryIds,
     ...relationshipIds,
     ...taskIds,
+    ...notificationIds,
   ];
   if (new Set(allRecordIds).size !== allRecordIds.length) {
     fail("receipt", "must not repeat UUIDs across record categories");
@@ -766,8 +1386,13 @@ export function parseProductionManifestReceipt(
     roomIds,
     participantPairs,
     memoryIds,
+    memoryTableNames,
     relationshipIds,
     taskIds,
+    scheduleIds,
+    notificationIds,
+    approvalRecords,
+    providerStateKeys,
   };
 }
 
@@ -781,6 +1406,172 @@ function assertReceiptOwner(
       "SCENARIO_MANIFEST_WRONG_OWNER",
     );
   }
+}
+
+function notificationService(runtime: IAgentRuntime): NotificationService {
+  const service = runtime.getService(ServiceType.NOTIFICATION);
+  if (!(service instanceof NotificationService)) {
+    throw new ProductionManifestApplyError(
+      "[production-manifest] NotificationService is not registered",
+      "SCENARIO_MANIFEST_SERVICE_UNAVAILABLE",
+    );
+  }
+  return service;
+}
+
+function approvalQueue(runtime: IAgentRuntime): ApprovalQueue {
+  const service = resolveApprovalService(runtime);
+  if (!service) {
+    throw new ProductionManifestApplyError(
+      "[production-manifest] durable ApprovalService is not registered",
+      "SCENARIO_MANIFEST_SERVICE_UNAVAILABLE",
+    );
+  }
+  return service.getQueue(runtime.agentId);
+}
+
+function providerStateKey(namespace: string, template: string): string {
+  return template.replaceAll("{{namespace}}", namespace);
+}
+
+function scheduleIdempotencyKey(namespace: string, logicalId: string): string {
+  return `scenario-manifest:${namespace}:schedule:${logicalId}`;
+}
+
+function approvalIdempotencyKey(namespace: string, logicalId: string): string {
+  return `scenario-manifest:${namespace}:approval:${logicalId}`;
+}
+
+function approvalRequestedBy(namespace: string, logicalId: string): string {
+  return `scenario-manifest:${namespace}:${logicalId}`;
+}
+
+function requiredLogicalReference(
+  references: ReadonlyMap<string, string>,
+  logicalId: string,
+  kind: string,
+): string {
+  const productionId = references.get(logicalId);
+  if (!productionId) {
+    throw new Error(`validated ${kind} ${logicalId} was not resolved`);
+  }
+  return productionId;
+}
+
+function materializeScheduledTask(
+  task: ScheduledTaskInput,
+  entityIds: ReadonlyMap<string, UUID>,
+  relationshipIds: ReadonlyMap<string, UUID>,
+  scheduleIds: ReadonlyMap<string, string>,
+): ScheduledTaskInput {
+  const trigger =
+    task.trigger.kind === "after_task"
+      ? {
+          ...task.trigger,
+          taskId: requiredLogicalReference(
+            scheduleIds,
+            task.trigger.taskId,
+            "earlier schedule",
+          ),
+        }
+      : task.trigger;
+  const subject = task.subject
+    ? task.subject.kind === "entity"
+      ? {
+          ...task.subject,
+          id: requiredLogicalReference(entityIds, task.subject.id, "entity"),
+        }
+      : task.subject.kind === "relationship"
+        ? {
+            ...task.subject,
+            id: requiredLogicalReference(
+              relationshipIds,
+              task.subject.id,
+              "relationship",
+            ),
+          }
+        : task.subject
+    : undefined;
+  const contextRequest = task.contextRequest
+    ? {
+        ...task.contextRequest,
+        includeEntities: task.contextRequest.includeEntities
+          ? {
+              ...task.contextRequest.includeEntities,
+              entityIds: task.contextRequest.includeEntities.entityIds.map(
+                (id) => requiredLogicalReference(entityIds, id, "entity"),
+              ),
+            }
+          : undefined,
+        includeRelationships: task.contextRequest.includeRelationships
+          ? {
+              ...task.contextRequest.includeRelationships,
+              relationshipIds:
+                task.contextRequest.includeRelationships.relationshipIds?.map(
+                  (id) =>
+                    requiredLogicalReference(
+                      relationshipIds,
+                      id,
+                      "relationship",
+                    ),
+                ),
+              forEntityIds:
+                task.contextRequest.includeRelationships.forEntityIds?.map(
+                  (id) => requiredLogicalReference(entityIds, id, "entity"),
+                ),
+            }
+          : undefined,
+      }
+    : undefined;
+  return { ...task, trigger, subject, contextRequest };
+}
+
+function materializeScheduleTask(
+  task: ScheduledTaskInput,
+  entityIds: ReadonlyMap<string, UUID>,
+  relationshipIds: ReadonlyMap<string, UUID>,
+  scheduleIds: ReadonlyMap<string, string>,
+): ScheduledTaskInput {
+  const trigger =
+    task.trigger.kind === "after_task"
+      ? {
+          ...task.trigger,
+          taskId: scheduleIds.get(task.trigger.taskId) as string,
+        }
+      : task.trigger;
+  const subject = task.subject
+    ? task.subject.kind === "entity"
+      ? { ...task.subject, id: entityIds.get(task.subject.id) as UUID }
+      : task.subject.kind === "relationship"
+        ? {
+            ...task.subject,
+            id: relationshipIds.get(task.subject.id) as UUID,
+          }
+        : task.subject
+    : undefined;
+  const contextRequest = task.contextRequest
+    ? {
+        ...task.contextRequest,
+        includeEntities: task.contextRequest.includeEntities
+          ? {
+              ...task.contextRequest.includeEntities,
+              entityIds: task.contextRequest.includeEntities.entityIds.map(
+                (id) => entityIds.get(id) as UUID,
+              ),
+            }
+          : undefined,
+        includeRelationships: task.contextRequest.includeRelationships
+          ? {
+              ...task.contextRequest.includeRelationships,
+              relationshipIds:
+                task.contextRequest.includeRelationships.relationshipIds?.map(
+                  (id) => relationshipIds.get(id) as UUID,
+                ),
+            }
+          : undefined,
+      }
+    : undefined;
+  return { ...task, trigger, subject, contextRequest };
 }
 
 async function assertTargetsAbsent(
@@ -807,6 +1598,114 @@ async function assertTargetsAbsent(
       "SCENARIO_MANIFEST_NAMESPACE_NOT_EMPTY",
     );
   }
+  for (const key of receipt.providerStateKeys) {
+    if ((await runtime.getCache<JsonValue>(key)) !== undefined) {
+      throw new ProductionManifestApplyError(
+        `[production-manifest] provider state key is not empty: ${key}`,
+        "SCENARIO_MANIFEST_NAMESPACE_NOT_EMPTY",
+      );
+    }
+  }
+}
+
+async function discoverManifestSideEffects(
+  runtime: IAgentRuntime,
+  manifest: ProductionManifestV1,
+  receipt: ProductionManifestReceipt,
+  scheduledRunner: ScheduledTaskRunner | null,
+  notifications: NotificationService | null,
+  approvals: ApprovalQueue | null,
+): Promise<void> {
+  const relationshipEntries = manifest.relationships ?? [];
+  if (relationshipEntries.length > 0) {
+    const rows = await runtime.getRelationshipsByPairs(
+      relationshipEntries.map((entry) => ({
+        sourceEntityId: manifestId(
+          manifest.namespace,
+          "entity",
+          entry.sourceEntityId,
+        ),
+        targetEntityId: manifestId(
+          manifest.namespace,
+          "entity",
+          entry.targetEntityId,
+        ),
+      })),
+    );
+    for (const [index, row] of rows.entries()) {
+      if (!row) continue;
+      const expected = relationshipEntries[index];
+      const logicalId = logicalIdFromScenarioMarker(
+        row.metadata,
+        manifest.namespace,
+      );
+      if (!expected || logicalId !== expected.id) {
+        throw new Error(
+          `relationship pair ${index} is occupied without exact manifest provenance`,
+        );
+      }
+      if (!receipt.relationshipIds.includes(row.id)) {
+        receipt.relationshipIds.push(row.id);
+      }
+    }
+  }
+  if (scheduledRunner) {
+    const rows = await scheduledRunner.list({});
+    for (const entry of manifest.schedules ?? []) {
+      const key = scheduleIdempotencyKey(manifest.namespace, entry.id);
+      const matches = rows.filter((row) => row.idempotencyKey === key);
+      if (matches.length > 1) {
+        throw new Error(`multiple scheduled rows discovered for ${entry.id}`);
+      }
+      const discovered = matches[0];
+      if (discovered && !receipt.scheduleIds.includes(discovered.taskId)) {
+        receipt.scheduleIds.push(discovered.taskId);
+      }
+    }
+  }
+
+  if (approvals) {
+    for (const entry of manifest.approvals ?? []) {
+      const subjectUserId = manifestId(
+        manifest.namespace,
+        "entity",
+        entry.subjectEntityId,
+      );
+      const discovered = await approvals.byIdempotencyKey(
+        approvalIdempotencyKey(manifest.namespace, entry.id),
+        subjectUserId,
+      );
+      if (
+        discovered &&
+        !receipt.approvalRecords.some((record) => record.id === discovered.id)
+      ) {
+        receipt.approvalRecords.push({ id: discovered.id, subjectUserId });
+      }
+    }
+  }
+
+  if (notifications) {
+    const rows = notifications.listIncludingExpired();
+    const expectedGroups = [
+      ...(manifest.notifications ?? []).map(
+        (entry) =>
+          `scenario-manifest:${manifest.namespace}:${entry.groupKey ?? entry.id}`,
+      ),
+      ...receipt.approvalRecords.map((record) => `approval:${record.id}`),
+    ];
+    for (const groupKey of expectedGroups) {
+      const matches = rows.filter((row) => row.groupKey === groupKey);
+      if (matches.length > 1) {
+        throw new Error(
+          `multiple notification rows discovered for group ${groupKey}`,
+        );
+      }
+      const discovered = matches[0];
+      if (discovered && !receipt.notificationIds.includes(discovered.id)) {
+        receipt.notificationIds.push(discovered.id);
+      }
+    }
+  }
 }
 
 /** Applies a validated plan only through the runtime's production stores. */
@@ -821,6 +1720,23 @@ export async function applyProductionManifest(
       "SCENARIO_MANIFEST_WRONG_OWNER",
     );
   }
+  const applyNow = Date.now();
+  for (const [index, entry] of (manifest.notifications ?? []).entries()) {
+    if (entry.expiresAt !== null && entry.expiresAt !== undefined && entry.expiresAt <= applyNow) {
+      fail(
+        `manifest.notifications[${index}].expiresAt`,
+        "must be later than the captured apply time",
+      );
+    }
+  }
+  for (const [index, entry] of (manifest.approvals ?? []).entries()) {
+    if (entry.expiresAt <= applyNow) {
+      fail(
+        `manifest.approvals[${index}].expiresAt`,
+        "must be later than the captured apply time",
+      );
+    }
+  }
   const receipt = emptyReceipt(manifest);
   receipt.entityIds =
     manifest.entities?.map((entry) =>
@@ -834,11 +1750,100 @@ export async function applyProductionManifest(
     manifest.memories?.map((entry) =>
       manifestId(manifest.namespace, "memory", entry.id),
     ) ?? [];
+  receipt.memoryTableNames = (manifest.memories ?? []).map(
+    (entry) => entry.tableName ?? "messages",
+  );
   receipt.taskIds =
     manifest.tasks?.map((entry) =>
       manifestId(manifest.namespace, "task", entry.id),
     ) ?? [];
+  receipt.providerStateKeys = (manifest.providerState ?? []).map((entry) =>
+    providerStateKey(manifest.namespace, entry.key),
+  );
   await assertTargetsAbsent(runtime, receipt);
+  const existingRelationshipPairs = await runtime.getRelationshipsByPairs(
+    (manifest.relationships ?? []).map((entry) => ({
+      sourceEntityId: manifestId(
+        manifest.namespace,
+        "entity",
+        entry.sourceEntityId,
+      ),
+      targetEntityId: manifestId(
+        manifest.namespace,
+        "entity",
+        entry.targetEntityId,
+      ),
+    })),
+  );
+  if (existingRelationshipPairs.some((entry) => entry !== null)) {
+    throw new ProductionManifestApplyError(
+      `[production-manifest] namespace ${receipt.namespace} has an occupied relationship pair`,
+      "SCENARIO_MANIFEST_NAMESPACE_NOT_EMPTY",
+    );
+  }
+
+  const scheduledRunner =
+    (manifest.schedules?.length ?? 0) > 0
+      ? getScheduledTaskRunner(runtime, { agentId: runtime.agentId })
+      : null;
+  const notifications =
+    (manifest.notifications?.length ?? 0) > 0 ||
+    (manifest.approvals?.length ?? 0) > 0
+      ? notificationService(runtime)
+      : null;
+  const approvals =
+    (manifest.approvals?.length ?? 0) > 0 ? approvalQueue(runtime) : null;
+  if (scheduledRunner) {
+    const existingSchedules = await scheduledRunner.list({});
+    const requestedKeys = new Set(
+      (manifest.schedules ?? []).map((entry) =>
+        scheduleIdempotencyKey(manifest.namespace, entry.id),
+      ),
+    );
+    if (
+      existingSchedules.some(
+        (task) =>
+          task.idempotencyKey && requestedKeys.has(task.idempotencyKey),
+      )
+    ) {
+      throw new ProductionManifestApplyError(
+        `[production-manifest] namespace ${manifest.namespace} already has scheduled items`,
+        "SCENARIO_MANIFEST_NAMESPACE_NOT_EMPTY",
+      );
+    }
+  }
+  if (notifications) {
+    const namespacePrefix = `scenario-manifest:${manifest.namespace}:`;
+    if (
+      notifications
+        .list()
+        .some((entry) => entry.groupKey?.startsWith(namespacePrefix))
+    ) {
+      throw new ProductionManifestApplyError(
+        `[production-manifest] namespace ${manifest.namespace} already has notifications`,
+        "SCENARIO_MANIFEST_NAMESPACE_NOT_EMPTY",
+      );
+    }
+  }
+  if (approvals) {
+    for (const entry of manifest.approvals ?? []) {
+      const subjectUserId = manifestId(
+        manifest.namespace,
+        "entity",
+        entry.subjectEntityId,
+      );
+      const existing = await approvals.byIdempotencyKey(
+        approvalIdempotencyKey(manifest.namespace, entry.id),
+        subjectUserId,
+      );
+      if (existing) {
+        throw new ProductionManifestApplyError(
+          `[production-manifest] namespace ${manifest.namespace} already has approval ${entry.id}`,
+          "SCENARIO_MANIFEST_NAMESPACE_NOT_EMPTY",
+        );
+      }
+    }
+  }
 
   const entityIds = new Map(
     (manifest.entities ?? []).map((entry, index) => [
@@ -865,8 +1870,6 @@ export async function applyProductionManifest(
       },
     },
   };
-  let relationshipWriteAttempted = false;
-  let relationshipReceiptComplete = (manifest.relationships?.length ?? 0) === 0;
   try {
     await runtime.createWorld(world);
     await runtime.createEntities(
@@ -946,8 +1949,14 @@ export async function applyProductionManifest(
         },
       },
     }));
-    relationshipWriteAttempted = relationshipWrites.length > 0;
-    await runtime.createRelationships(relationshipWrites);
+    receipt.relationshipIds = await runtime.createRelationships(
+      relationshipWrites,
+    );
+    if (receipt.relationshipIds.length !== relationshipWrites.length) {
+      throw new Error(
+        "relationship write did not return one production ID per requested pair",
+      );
+    }
     const relationshipReadback = await runtime.getRelationshipsByPairs(
       relationshipWrites.map(({ sourceEntityId, targetEntityId }) => ({
         sourceEntityId,
@@ -959,10 +1968,24 @@ export async function applyProductionManifest(
         "relationship write was not visible on authoritative readback",
       );
     }
-    receipt.relationshipIds = relationshipReadback.map(
+    const readbackIds = relationshipReadback.map(
       (entry) => (entry as NonNullable<typeof entry>).id,
     );
-    relationshipReceiptComplete = true;
+    if (
+      readbackIds.some(
+        (id, index) => id !== receipt.relationshipIds[index],
+      )
+    ) {
+      throw new Error(
+        "relationship write IDs did not match authoritative pair readback",
+      );
+    }
+    const relationshipIds = new Map(
+      (manifest.relationships ?? []).map((entry, index) => [
+        entry.id,
+        receipt.relationshipIds[index],
+      ]),
+    );
     await runtime.createTasks(
       (manifest.tasks ?? []).map((entry, index) => ({
         id: receipt.taskIds[index],
@@ -983,6 +2006,110 @@ export async function applyProductionManifest(
         },
       })),
     );
+    const scheduleIds = new Map<string, string>();
+    for (const entry of manifest.schedules ?? []) {
+      if (!scheduledRunner) throw new Error("scheduled runner was not resolved");
+      const materializedTask = materializeScheduleTask(
+        entry.task,
+        entityIds,
+        relationshipIds,
+        scheduleIds,
+      );
+      const result = await scheduledRunner.scheduleWithResult({
+        ...materializedTask,
+        idempotencyKey: scheduleIdempotencyKey(manifest.namespace, entry.id),
+        metadata: {
+          ...(materializedTask.metadata ?? {}),
+          scenarioManifest: {
+            namespace: manifest.namespace,
+            logicalId: entry.id,
+          },
+        },
+      });
+      if (result.replayed) {
+        throw new Error(`scheduled item ${entry.id} unexpectedly replayed`);
+      }
+      receipt.scheduleIds.push(result.task.taskId);
+      scheduleIds.set(entry.id, result.task.taskId);
+    }
+    for (const entry of manifest.approvals ?? []) {
+      if (!approvals || !notifications) {
+        throw new Error("approval services were not resolved");
+      }
+      const subjectUserId = entityIds.get(entry.subjectEntityId);
+      if (!subjectUserId) {
+        throw new Error(`validated entity ${entry.subjectEntityId} was not resolved`);
+      }
+      const payload: ApprovalPayload = {
+        action: "execute_workflow",
+        workflowId: entry.workflowId,
+        input: entry.input,
+      };
+      if (!approvals.enqueueWithResultAndNotification) {
+        throw new Error(
+          "approval queue lacks the awaited notification projection boundary",
+        );
+      }
+      const result = await approvals.enqueueWithResultAndNotification({
+        requestedBy: approvalRequestedBy(manifest.namespace, entry.id),
+        subjectUserId,
+        action: "execute_workflow" satisfies ApprovalAction,
+        payload,
+        channel: entry.channel ?? "internal",
+        reason: entry.reason,
+        idempotencyKey: approvalIdempotencyKey(manifest.namespace, entry.id),
+        expiresAt: new Date(entry.expiresAt),
+      });
+      if (result.reused) {
+        throw new Error(`approval ${entry.id} unexpectedly replayed`);
+      }
+      receipt.approvalRecords.push({ id: result.request.id, subjectUserId });
+      const approvalNotification = notifications
+        .list()
+        .find((item) => item.groupKey === `approval:${result.request.id}`);
+      if (!approvalNotification) {
+        throw new Error(
+          `approval ${entry.id} notification was not visible on authoritative readback`,
+        );
+      }
+      receipt.notificationIds.push(approvalNotification.id);
+    }
+    for (const entry of manifest.notifications ?? []) {
+      if (!notifications) throw new Error("notification service was not resolved");
+      if (
+        entry.expiresAt !== null &&
+        entry.expiresAt !== undefined &&
+        entry.expiresAt <= Date.now()
+      ) {
+        throw new Error(`notification ${entry.id} expired before persistence`);
+      }
+      const notification = await notifications.notify({
+        title: entry.title,
+        body: entry.body,
+        category: entry.category,
+        priority: entry.priority,
+        source: entry.source,
+        deepLink: entry.deepLink,
+        icon: entry.icon,
+        groupKey: `scenario-manifest:${manifest.namespace}:${entry.groupKey ?? entry.id}`,
+        data: {
+          ...(entry.data ?? {}),
+          scenarioManifest: {
+            namespace: manifest.namespace,
+            logicalId: entry.id,
+          },
+        },
+        expiresAt: entry.expiresAt,
+        agentId: runtime.agentId,
+      });
+      receipt.notificationIds.push(notification.id);
+    }
+    for (const [index, entry] of (manifest.providerState ?? []).entries()) {
+      const key = receipt.providerStateKeys[index];
+      if (!key) throw new Error(`provider state ${entry.id} key was not resolved`);
+      const written = await runtime.setCache(key, entry.value);
+      if (!written) throw new Error(`provider state ${entry.id} was not persisted`);
+    }
     await runtime.updateWorld({
       ...world,
       metadata: {
@@ -995,11 +2122,33 @@ export async function applyProductionManifest(
     });
     return receipt;
   } catch (cause) {
-    if (relationshipWriteAttempted && !relationshipReceiptComplete) {
+    try {
+      await discoverManifestSideEffects(
+        runtime,
+        manifest,
+        receipt,
+        scheduledRunner,
+        notifications,
+        approvals,
+      );
+    } catch (discoveryCause) {
+      let rollbackCause: unknown;
+      try {
+        await resetRecordedManifestWrites(runtime, receipt);
+      } catch (error) {
+        rollbackCause = error;
+      }
       throw new ProductionManifestApplyError(
-        "[production-manifest] relationship write outcome is ambiguous; exact compensation is not provable",
+        "[production-manifest] apply outcome is ambiguous and namespace side effects could not be enumerated",
         "SCENARIO_MANIFEST_DIRTY",
-        { cause, dirtyReceipt: receipt },
+        {
+          cause: new AggregateError(
+            rollbackCause
+              ? [cause, discoveryCause, rollbackCause]
+              : [cause, discoveryCause],
+          ),
+          dirtyReceipt: receipt,
+        },
       );
     }
     try {
@@ -1028,6 +2177,24 @@ function metadataWithoutScenarioMarker(value: unknown): JsonValue | null {
   return Object.keys(rest).length === 0 ? null : stableValue(rest);
 }
 
+function logicalIdFromScenarioMarker(
+  value: unknown,
+  namespace: string,
+): string | null {
+  if (!isRecord(value) || !isRecord(value.scenarioManifest)) return null;
+  return value.scenarioManifest.namespace === namespace &&
+    typeof value.scenarioManifest.logicalId === "string"
+    ? value.scenarioManifest.logicalId
+    : null;
+}
+
+function approvalLogicalId(request: ApprovalRequest, namespace: string): string | null {
+  const prefix = `scenario-manifest:${namespace}:`;
+  return request.requestedBy.startsWith(prefix)
+    ? request.requestedBy.slice(prefix.length)
+    : null;
+}
+
 /** Reads only authoritative records named by a serialized apply receipt. */
 export async function readProductionManifestSnapshot(
   runtime: IAgentRuntime,
@@ -1044,6 +2211,10 @@ export async function readProductionManifestSnapshot(
     relationships,
     tasks,
     participants,
+    scheduleRows,
+    notificationRows,
+    approvalRows,
+    providerStateRows,
   ] = await Promise.all([
     runtime.getWorldsByIds([receipt.worldId]),
     runtime.getEntitiesByIds(receipt.entityIds),
@@ -1052,7 +2223,32 @@ export async function readProductionManifestSnapshot(
     runtime.getRelationshipsByIds(receipt.relationshipIds),
     runtime.getTasksByIds(receipt.taskIds),
     runtime.getParticipantsForRooms(receipt.roomIds),
+    receipt.scheduleIds.length > 0
+      ? getScheduledTaskRunner(runtime, { agentId: runtime.agentId }).list({})
+      : Promise.resolve([] as ScheduledTask[]),
+    receipt.notificationIds.length > 0
+      ? Promise.resolve(notificationService(runtime).listIncludingExpired())
+      : Promise.resolve([] as AgentNotification[]),
+    receipt.approvalRecords.length > 0
+      ? Promise.all(
+          receipt.approvalRecords.map((record) =>
+            approvalQueue(runtime).byId(record.id, record.subjectUserId),
+          ),
+        )
+      : Promise.resolve([] as Array<ApprovalRequest | null>),
+    Promise.all(
+      receipt.providerStateKeys.map((key) => runtime.getCache<JsonValue>(key)),
+    ),
   ]);
+  const schedules = scheduleRows.filter((entry) =>
+    receipt.scheduleIds.includes(entry.taskId),
+  );
+  const notifications = notificationRows.filter((entry) =>
+    receipt.notificationIds.includes(entry.id),
+  );
+  const approvals = approvalRows.filter(
+    (entry): entry is ApprovalRequest => entry !== null,
+  );
   if (
     worlds.length !== 1 ||
     entities.length !== receipt.entityIds.length ||
@@ -1060,6 +2256,10 @@ export async function readProductionManifestSnapshot(
     memories.length !== receipt.memoryIds.length ||
     relationships.length !== receipt.relationshipIds.length ||
     tasks.length !== receipt.taskIds.length
+    || schedules.length !== receipt.scheduleIds.length
+    || notifications.length !== receipt.notificationIds.length
+    || approvals.length !== receipt.approvalRecords.length
+    || providerStateRows.some((entry) => entry === undefined)
   ) {
     const counts = {
       worlds: `${worlds.length}/1`,
@@ -1068,6 +2268,10 @@ export async function readProductionManifestSnapshot(
       memories: `${memories.length}/${receipt.memoryIds.length}`,
       relationships: `${relationships.length}/${receipt.relationshipIds.length}`,
       tasks: `${tasks.length}/${receipt.taskIds.length}`,
+      schedules: `${schedules.length}/${receipt.scheduleIds.length}`,
+      notifications: `${notifications.length}/${receipt.notificationIds.length}`,
+      approvals: `${approvals.length}/${receipt.approvalRecords.length}`,
+      providerState: `${providerStateRows.filter((entry) => entry !== undefined).length}/${receipt.providerStateKeys.length}`,
     };
     throw new ProductionManifestApplyError(
       `[production-manifest] authoritative readback is incomplete: ${JSON.stringify(counts)}`,
@@ -1085,6 +2289,69 @@ export async function readProductionManifestSnapshot(
       );
     }
   }
+  const entityLogicalIds = new Map(
+    entities.map((entry) => {
+      const logicalId = logicalIdFromScenarioMarker(
+        entry.metadata,
+        receipt.namespace,
+      );
+      if (!logicalId) {
+        throw new ProductionManifestApplyError(
+          `[production-manifest] entity ${entry.id ?? "unknown"} lacks namespace provenance`,
+          "SCENARIO_MANIFEST_READBACK_INCOMPLETE",
+          { dirtyReceipt: receipt },
+        );
+      }
+      return [entry.id as string, logicalId] as const;
+    }),
+  );
+  const relationshipLogicalIds = new Map(
+    relationships.map((entry) => {
+      const logicalId = logicalIdFromScenarioMarker(
+        entry.metadata,
+        receipt.namespace,
+      );
+      if (!logicalId) {
+        throw new ProductionManifestApplyError(
+          `[production-manifest] relationship ${entry.id} lacks namespace provenance`,
+          "SCENARIO_MANIFEST_READBACK_INCOMPLETE",
+          { dirtyReceipt: receipt },
+        );
+      }
+      return [entry.id, logicalId] as const;
+    }),
+  );
+  const scheduleLogicalIds = new Map(
+    schedules.map((entry) => {
+      const logicalId = logicalIdFromScenarioMarker(
+        entry.metadata,
+        receipt.namespace,
+      );
+      if (!logicalId) {
+        throw new ProductionManifestApplyError(
+          `[production-manifest] scheduled item ${entry.taskId} lacks namespace provenance`,
+          "SCENARIO_MANIFEST_READBACK_INCOMPLETE",
+          { dirtyReceipt: receipt },
+        );
+      }
+      return [entry.taskId, logicalId] as const;
+    }),
+  );
+  const canonicalReference = (
+    references: ReadonlyMap<string, string>,
+    productionId: string,
+    kind: string,
+  ): string => {
+    const logicalId = references.get(productionId);
+    if (!logicalId) {
+      throw new ProductionManifestApplyError(
+        `[production-manifest] scheduled ${kind} reference ${productionId} lacks namespace provenance`,
+        "SCENARIO_MANIFEST_READBACK_INCOMPLETE",
+        { dirtyReceipt: receipt },
+      );
+    }
+    return logicalId;
+  };
   return {
     version: MANIFEST_VERSION,
     namespace: receipt.namespace,
@@ -1111,13 +2378,17 @@ export async function readProductionManifestSnapshot(
       }))
       .sort((a, b) => a.id.localeCompare(b.id)),
     memories: memories
-      .map((entry) => ({
+      .map((entry) => {
+        const index = receipt.memoryIds.indexOf(entry.id as UUID);
+        return {
         id: entry.id as UUID,
         roomId: entry.roomId as UUID,
         entityId: entry.entityId as UUID,
         text: entry.content.text as string,
+        tableName: receipt.memoryTableNames[index] as string,
         metadata: metadataWithoutScenarioMarker(entry.metadata),
-      }))
+        };
+      })
       .sort((a, b) => a.id.localeCompare(b.id)),
     relationships: relationships
       .map((entry) => ({
@@ -1144,6 +2415,199 @@ export async function readProductionManifestSnapshot(
         metadata: metadataWithoutScenarioMarker(entry.metadata),
       }))
       .sort((a, b) => a.id.localeCompare(b.id)),
+    schedules: schedules
+      .map((entry) => {
+        const logicalId = logicalIdFromScenarioMarker(
+          entry.metadata,
+          receipt.namespace,
+        );
+        if (!logicalId) {
+          throw new ProductionManifestApplyError(
+            `[production-manifest] scheduled item ${entry.taskId} lacks namespace provenance`,
+            "SCENARIO_MANIFEST_READBACK_INCOMPLETE",
+            { dirtyReceipt: receipt },
+          );
+        }
+        const {
+          taskId: _taskId,
+          idempotencyKey: _idempotencyKey,
+          metadata,
+          ...task
+        } = entry;
+        const canonicalTask = {
+          ...task,
+          trigger:
+            task.trigger.kind === "after_task"
+              ? {
+                  ...task.trigger,
+                  taskId: canonicalReference(
+                    scheduleLogicalIds,
+                    task.trigger.taskId,
+                    "after_task",
+                  ),
+                }
+              : task.trigger,
+          subject:
+            task.subject?.kind === "entity"
+              ? {
+                  ...task.subject,
+                  id: canonicalReference(
+                    entityLogicalIds,
+                    task.subject.id,
+                    "entity subject",
+                  ),
+                }
+              : task.subject?.kind === "relationship"
+                ? {
+                    ...task.subject,
+                    id: canonicalReference(
+                      relationshipLogicalIds,
+                      task.subject.id,
+                      "relationship subject",
+                    ),
+                  }
+                : task.subject,
+          contextRequest: task.contextRequest
+            ? {
+                ...task.contextRequest,
+                includeEntities: task.contextRequest.includeEntities
+                  ? {
+                      ...task.contextRequest.includeEntities,
+                      entityIds:
+                        task.contextRequest.includeEntities.entityIds.map(
+                          (id) =>
+                            canonicalReference(
+                              entityLogicalIds,
+                              id,
+                              "context entity",
+                            ),
+                        ),
+                    }
+                  : undefined,
+                includeRelationships: task.contextRequest.includeRelationships
+                  ? {
+                      ...task.contextRequest.includeRelationships,
+                      relationshipIds:
+                        task.contextRequest.includeRelationships.relationshipIds?.map(
+                          (id) =>
+                            canonicalReference(
+                              relationshipLogicalIds,
+                              id,
+                              "context relationship",
+                            ),
+                        ),
+                      forEntityIds:
+                        task.contextRequest.includeRelationships.forEntityIds?.map(
+                          (id) =>
+                            canonicalReference(
+                              entityLogicalIds,
+                              id,
+                              "relationship context entity",
+                            ),
+                        ),
+                    }
+                  : undefined,
+              }
+            : undefined,
+        };
+        const canonicalMetadata = isRecord(metadata)
+          ? Object.fromEntries(
+              Object.entries(metadata).filter(
+                ([key]) =>
+                  key !== "scenarioManifest" &&
+                  key !== "schedulingCreationReceipt" &&
+                  key !== "createdAtIso",
+              ),
+            )
+          : null;
+        return {
+          logicalId,
+          task: stableValue({
+            ...canonicalTask,
+            metadata:
+              canonicalMetadata && Object.keys(canonicalMetadata).length > 0
+                ? canonicalMetadata
+                : null,
+          }),
+        };
+      })
+      .sort((a, b) => a.logicalId.localeCompare(b.logicalId)),
+    notifications: notifications
+      .map((entry) => {
+        const approvalRecord = receipt.approvalRecords.find(
+          (record) => entry.groupKey === `approval:${record.id}`,
+        );
+        const relatedApproval = approvalRecord
+          ? approvals.find((approval) => approval.id === approvalRecord.id)
+          : undefined;
+        const logicalId =
+          logicalIdFromScenarioMarker(entry.data, receipt.namespace) ??
+          (relatedApproval
+            ? `approval:${approvalLogicalId(relatedApproval, receipt.namespace)}`
+            : null);
+        if (!logicalId) {
+          throw new ProductionManifestApplyError(
+            `[production-manifest] notification ${entry.id} lacks namespace provenance`,
+            "SCENARIO_MANIFEST_READBACK_INCOMPLETE",
+            { dirtyReceipt: receipt },
+          );
+        }
+        const data = isRecord(entry.data)
+          ? Object.fromEntries(
+              Object.entries(entry.data).filter(
+                ([key]) => key !== "scenarioManifest" && key !== "requestId",
+              ),
+            )
+          : null;
+        return {
+          logicalId,
+          title: entry.title,
+          body: entry.body ?? null,
+          category: entry.category,
+          priority: entry.priority,
+          source: entry.source,
+          deepLink: entry.deepLink ?? null,
+          icon: entry.icon ?? null,
+          groupKey: relatedApproval
+            ? `approval:${approvalLogicalId(relatedApproval, receipt.namespace)}`
+            : (entry.groupKey?.replace(
+                `scenario-manifest:${receipt.namespace}:`,
+                "",
+              ) ?? null),
+          data:
+            data && Object.keys(data).length > 0 ? stableValue(data) : null,
+          expiresAt: entry.expiresAt ?? null,
+        };
+      })
+      .sort((a, b) => a.logicalId.localeCompare(b.logicalId)),
+    approvals: approvals
+      .map((entry) => {
+        const logicalId = approvalLogicalId(entry, receipt.namespace);
+        if (!logicalId) {
+          throw new ProductionManifestApplyError(
+            `[production-manifest] approval ${entry.id} lacks namespace provenance`,
+            "SCENARIO_MANIFEST_READBACK_INCOMPLETE",
+            { dirtyReceipt: receipt },
+          );
+        }
+        return {
+          logicalId,
+          subjectUserId: entry.subjectUserId,
+          action: entry.action,
+          payload: stableValue(entry.payload),
+          channel: entry.channel,
+          reason: entry.reason,
+          expiresAt: entry.expiresAt.getTime(),
+          state: entry.state,
+        };
+      })
+      .sort((a, b) => a.logicalId.localeCompare(b.logicalId)),
+    providerState: receipt.providerStateKeys
+      .map((key, index) => ({
+        key,
+        value: stableValue(providerStateRows[index]),
+      }))
+      .sort((a, b) => a.key.localeCompare(b.key)),
   };
 }
 
@@ -1174,6 +2638,10 @@ function resetArtifact(
       memories: [...receipt.memoryIds],
       relationships: [...receipt.relationshipIds],
       tasks: [...receipt.taskIds],
+      schedules: [...receipt.scheduleIds],
+      notifications: [...receipt.notificationIds],
+      approvals: receipt.approvalRecords.map((entry) => entry.id),
+      providerState: [...receipt.providerStateKeys],
     },
   };
 }
@@ -1182,7 +2650,18 @@ async function readResidueEvidence(
   runtime: IAgentRuntime,
   receipt: ProductionManifestReceipt,
 ): Promise<ProductionManifestResidueEvidence> {
-  const [worlds, entities, rooms, memories, relationships, tasks] =
+  const [
+    worlds,
+    entities,
+    rooms,
+    memories,
+    relationships,
+    tasks,
+    scheduleRows,
+    notificationRows,
+    approvalRows,
+    providerStateRows,
+  ] =
     await Promise.all([
       runtime.getWorldsByIds([receipt.worldId]),
       runtime.getEntitiesByIds(receipt.entityIds),
@@ -1190,6 +2669,24 @@ async function readResidueEvidence(
       runtime.getMemoriesByIds(receipt.memoryIds),
       runtime.getRelationshipsByIds(receipt.relationshipIds),
       runtime.getTasksByIds(receipt.taskIds),
+      receipt.scheduleIds.length > 0
+        ? getScheduledTaskRunner(runtime, { agentId: runtime.agentId }).list({})
+        : Promise.resolve([] as ScheduledTask[]),
+      receipt.notificationIds.length > 0
+        ? Promise.resolve(notificationService(runtime).listIncludingExpired())
+        : Promise.resolve([] as AgentNotification[]),
+      receipt.approvalRecords.length > 0
+        ? Promise.all(
+            receipt.approvalRecords.map((record) =>
+              approvalQueue(runtime).byId(record.id, record.subjectUserId),
+            ),
+          )
+        : Promise.resolve([] as Array<ApprovalRequest | null>),
+      Promise.all(
+        receipt.providerStateKeys.map((key) =>
+          runtime.getCache<JsonValue>(key),
+        ),
+      ),
     ]);
   return {
     worlds: worlds.map((entry) => entry.id),
@@ -1198,6 +2695,18 @@ async function readResidueEvidence(
     memories: memories.map((entry) => entry.id as UUID),
     relationships: relationships.map((entry) => entry.id),
     tasks: tasks.map((entry) => entry.id as UUID),
+    schedules: scheduleRows
+      .filter((entry) => receipt.scheduleIds.includes(entry.taskId))
+      .map((entry) => entry.taskId),
+    notifications: notificationRows
+      .filter((entry) => receipt.notificationIds.includes(entry.id))
+      .map((entry) => entry.id),
+    approvals: approvalRows
+      .filter((entry): entry is ApprovalRequest => entry !== null)
+      .map((entry) => entry.id),
+    providerState: receipt.providerStateKeys.filter(
+      (_key, index) => providerStateRows[index] !== undefined,
+    ),
   };
 }
 
@@ -1206,6 +2715,32 @@ async function resetRecordedManifestWrites(
   receipt: ProductionManifestReceipt,
 ): Promise<void> {
   try {
+    for (const key of receipt.providerStateKeys) {
+      await runtime.deleteCache(key);
+    }
+    if (receipt.notificationIds.length > 0) {
+      const service = notificationService(runtime);
+      for (const id of receipt.notificationIds) {
+        await service.remove(id);
+      }
+    }
+    if (receipt.approvalRecords.length > 0) {
+      const queue = approvalQueue(runtime);
+      for (const record of receipt.approvalRecords) {
+        await queue.removePending(record.id, record.subjectUserId);
+      }
+    }
+    if (receipt.scheduleIds.length > 0) {
+      const runner = getScheduledTaskRunner(runtime, {
+        agentId: runtime.agentId,
+      });
+      if (!runner.remove) {
+        throw new Error("scheduled runner does not expose durable removal");
+      }
+      for (const id of receipt.scheduleIds) {
+        await runner.remove(id);
+      }
+    }
     await runtime.deleteRelationships(receipt.relationshipIds);
     await runtime.deleteTasks(receipt.taskIds);
     await runtime.deleteMemories(receipt.memoryIds);
@@ -1304,7 +2839,18 @@ async function assertReceiptTargetsOwned(
   runtime: IAgentRuntime,
   receipt: ProductionManifestReceipt,
 ): Promise<void> {
-  const [worlds, entities, rooms, memories, relationships, tasks] =
+  const [
+    worlds,
+    entities,
+    rooms,
+    memories,
+    relationships,
+    tasks,
+    schedules,
+    notifications,
+    approvals,
+    providerState,
+  ] =
     await Promise.all([
       runtime.getWorldsByIds([receipt.worldId]),
       runtime.getEntitiesByIds(receipt.entityIds),
@@ -1312,6 +2858,24 @@ async function assertReceiptTargetsOwned(
       runtime.getMemoriesByIds(receipt.memoryIds),
       runtime.getRelationshipsByIds(receipt.relationshipIds),
       runtime.getTasksByIds(receipt.taskIds),
+      receipt.scheduleIds.length > 0
+        ? getScheduledTaskRunner(runtime, { agentId: runtime.agentId }).list({})
+        : Promise.resolve([] as ScheduledTask[]),
+      receipt.notificationIds.length > 0
+        ? Promise.resolve(notificationService(runtime).listIncludingExpired())
+        : Promise.resolve([] as AgentNotification[]),
+      receipt.approvalRecords.length > 0
+        ? Promise.all(
+            receipt.approvalRecords.map((record) =>
+              approvalQueue(runtime).byId(record.id, record.subjectUserId),
+            ),
+          )
+        : Promise.resolve([] as Array<ApprovalRequest | null>),
+      Promise.all(
+        receipt.providerStateKeys.map((key) =>
+          runtime.getCache<JsonValue>(key),
+        ),
+      ),
     ]);
   const worldOwned = worlds.every(
     (world) =>
@@ -1332,10 +2896,20 @@ async function assertReceiptTargetsOwned(
       hasNamespaceMarker(room.metadata, receipt.namespace),
   );
   const memoriesOwned = memories.every(
-    (memory) =>
-      memory.agentId === runtime.agentId &&
-      memory.worldId === receipt.worldId &&
-      hasNamespaceMarker(memory.metadata, receipt.namespace),
+    (memory) => {
+      const index = receipt.memoryIds.indexOf(memory.id as UUID);
+      const marker = isRecord(memory.metadata)
+        ? memory.metadata.scenarioManifest
+        : undefined;
+      return (
+        index >= 0 &&
+        memory.agentId === runtime.agentId &&
+        memory.worldId === receipt.worldId &&
+        hasNamespaceMarker(memory.metadata, receipt.namespace) &&
+        isRecord(marker) &&
+        marker.tableName === receipt.memoryTableNames[index]
+      );
+    },
   );
   const relationshipsOwned = relationships.every(
     (relationship) =>
@@ -1348,6 +2922,51 @@ async function assertReceiptTargetsOwned(
       task.worldId === receipt.worldId &&
       hasNamespaceMarker(task.metadata, receipt.namespace),
   );
+  const schedulesOwned = schedules
+    .filter((entry) => receipt.scheduleIds.includes(entry.taskId))
+    .every(
+      (task) =>
+      task.idempotencyKey?.startsWith(
+        `scenario-manifest:${receipt.namespace}:schedule:`,
+      ) === true &&
+        hasNamespaceMarker(task.metadata, receipt.namespace),
+    );
+  const approvalById = new Map(
+    approvals
+      .filter((entry): entry is ApprovalRequest => entry !== null)
+      .map((entry) => [entry.id, entry]),
+  );
+  const approvalsOwned = [...approvalById.values()].every((approval) => {
+    const record = receipt.approvalRecords.find(
+      (candidate) => candidate.id === approval.id,
+    );
+    return (
+      record !== undefined &&
+      approval.subjectUserId === record.subjectUserId &&
+      approval.requestedBy.startsWith(
+        `scenario-manifest:${receipt.namespace}:`,
+      ) &&
+      approval.idempotencyKey?.startsWith(
+        `scenario-manifest:${receipt.namespace}:approval:`,
+      ) === true
+    );
+  });
+  const notificationById = new Map(
+    notifications.map((entry) => [entry.id, entry]),
+  );
+  const notificationsOwned = [...notificationById.values()]
+    .filter((notification) => receipt.notificationIds.includes(notification.id))
+    .every((notification) => {
+    if (logicalIdFromScenarioMarker(notification.data, receipt.namespace)) {
+      return notification.agentId === runtime.agentId;
+    }
+    const approvalRecord = receipt.approvalRecords.find(
+      (record) => notification.groupKey === `approval:${record.id}`,
+    );
+    return approvalRecord !== undefined && approvalById.has(approvalRecord.id);
+    });
+  const providerStateOwned =
+    providerState.length === receipt.providerStateKeys.length;
   if (
     !worldOwned ||
     !entitiesOwned ||
@@ -1355,6 +2974,10 @@ async function assertReceiptTargetsOwned(
     !memoriesOwned ||
     !relationshipsOwned ||
     !tasksOwned
+    || !schedulesOwned
+    || !notificationsOwned
+    || !approvalsOwned
+    || !providerStateOwned
   ) {
     throw new ProductionManifestApplyError(
       "[production-manifest] reset receipt references records outside its owned namespace",
@@ -1377,8 +3000,9 @@ export async function proveProductionManifestReset(
     serializeProductionManifestArtifact(initial) !==
     serializeProductionManifestArtifact(final)
   ) {
+    const differencePaths = canonicalDifferencePaths(initial, final);
     throw new ProductionManifestApplyError(
-      "[production-manifest] canonical readback changed after reset and reseed",
+      `[production-manifest] canonical readback changed after reset and reseed at ${differencePaths.join(", ")}`,
       "SCENARIO_MANIFEST_RESET_DRIFT",
       { dirtyReceipt: reseedReceipt },
     );
