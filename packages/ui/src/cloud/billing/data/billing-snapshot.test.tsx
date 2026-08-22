@@ -44,9 +44,17 @@ function exact(value: string, unit: "usd" | "usd_per_hour" | "usd_per_day") {
   return { value, unit, currency: "USD" };
 }
 
+interface ResourceAuthorityFixture {
+  billingInterval: "hour" | "day";
+  lastBilledAt: string | null;
+  nextBillingAt: string | null;
+  estimatedNextBillingAt: string | null;
+}
+
 function resource(
   resourceId: string,
-  type: "container" | "agent_sandbox" = "container",
+  type: "container" | "agent_sandbox",
+  authority: ResourceAuthorityFixture,
 ) {
   return {
     resourceType: type,
@@ -54,10 +62,7 @@ function resource(
     name: type === "container" ? "API container" : "Research sandbox",
     status: "running",
     billingStatus: "active",
-    billingInterval: type === "container" ? "day" : "hour",
-    lastBilledAt: "2026-08-21T09:00:00.000Z",
-    nextBillingAt: type === "container" ? "2026-08-22T09:00:00.000Z" : null,
-    estimatedNextBillingAt: "2026-08-21T11:00:00.000Z",
+    ...authority,
     ratePerHour: available(exact("0.123456", "usd_per_hour"), "rates"),
     estimatedRecurringComputeCostPerDay: available(
       exact("2.962944", "usd_per_day"),
@@ -81,8 +86,18 @@ function readyEnvelope(): Record<string, unknown> {
         }),
         activeCompute: {
           resources: available([
-            resource("container-1"),
-            resource("sandbox-1", "agent_sandbox"),
+            resource("container-1", "container", {
+              billingInterval: "hour",
+              lastBilledAt: null,
+              nextBillingAt: "2026-08-22T09:10:11.000Z",
+              estimatedNextBillingAt: null,
+            }),
+            resource("sandbox-1", "agent_sandbox", {
+              billingInterval: "day",
+              lastBilledAt: "2026-08-20T08:07:06.000Z",
+              nextBillingAt: null,
+              estimatedNextBillingAt: "2026-08-23T12:34:56.000Z",
+            }),
           ]),
           estimatedRecurringComputeCostPerDay: available(
             exact("5.925888", "usd_per_day"),
@@ -166,11 +181,30 @@ describe("parseBillingSnapshotV2Envelope", () => {
     expect(parsed.activeCompute.resources.value[0]?.ratePerHour.status).toBe(
       "available",
     );
-    expect(parsed.activeCompute.resources.value[0]).toMatchObject({
+  });
+
+  it("preserves counterfactual interval and cursor authority per resource", () => {
+    const parsed = parseBillingSnapshotV2Envelope(readyEnvelope());
+    if (parsed.activeCompute.resources.status !== "available") {
+      throw new Error("fixture");
+    }
+
+    const [container, sandbox] = parsed.activeCompute.resources.value;
+    expect(container).toMatchObject({
+      resourceType: "container",
+      resourceId: "container-1",
+      billingInterval: "hour",
+      lastBilledAt: null,
+      nextBillingAt: "2026-08-22T09:10:11.000Z",
+      estimatedNextBillingAt: null,
+    });
+    expect(sandbox).toMatchObject({
+      resourceType: "agent_sandbox",
+      resourceId: "sandbox-1",
       billingInterval: "day",
-      lastBilledAt: "2026-08-21T09:00:00.000Z",
-      nextBillingAt: "2026-08-22T09:00:00.000Z",
-      estimatedNextBillingAt: "2026-08-21T11:00:00.000Z",
+      lastBilledAt: "2026-08-20T08:07:06.000Z",
+      nextBillingAt: null,
+      estimatedNextBillingAt: "2026-08-23T12:34:56.000Z",
     });
   });
 

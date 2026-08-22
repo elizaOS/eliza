@@ -16,6 +16,7 @@ import {
   collectHoverViolations,
 } from "./helpers/brand-color-scans";
 import {
+  BILLING_AUDIT_RESOURCE_EXPECTATIONS,
   installCloudApiStubs,
   seedStewardToken,
 } from "./helpers/cloud-audit-fixtures";
@@ -499,6 +500,15 @@ function renderManualReviewStub(findings: CloudPageFinding[]): string {
       "",
     );
   }
+  if (first.slug === "cloud-billing") {
+    lines.push(
+      "## Paired hover evidence",
+      "",
+      "- The Active compute card is read-only, so its rest/hover screenshots are a paired stability proof: hovering a resource must not change or hide server-owned billing values.",
+      "- The page-wide orange-button hover scan still runs independently before this component-focused pair is captured.",
+      "",
+    );
+  }
   lines.push(
     "## Hand review",
     "",
@@ -700,6 +710,15 @@ test.describe("cloud-surfaces aesthetic audit (#10725/#11342)", () => {
         // splash cannot satisfy the readable-character gate and pass green.
         await openAppPath(page, auditCase.path);
 
+        const billingEvidenceTarget =
+          auditCase.slug === "cloud-billing"
+            ? page
+                .getByRole("heading", { name: "Active compute", exact: true })
+                .locator(
+                  "xpath=ancestor::div[contains(concat(' ', normalize-space(@class), ' '), ' bg-bg-elevated ')][1]",
+                )
+            : null;
+
         if (auditCase.slug === "cloud-agents") {
           // The loading skeleton has readable column labels, so the generic
           // paint gate cannot prove the canonical list DTO was accepted.
@@ -712,19 +731,30 @@ test.describe("cloud-surfaces aesthetic audit (#10725/#11342)", () => {
 
         if (auditCase.slug === "cloud-billing") {
           // The generic readable-text gate also accepts BillingTab's error
-          // state. Prove the canonical v2 resource payload parsed and the
-          // authoritative interval/null cursor labels reached the real card.
-          for (const label of [
-            "Smoke API container",
-            "Daily",
-            "Smoke research agent",
-            "Hourly",
-            "Not reported",
-            "Not scheduled",
-          ]) {
+          // state. Prove every counterfactual resource value reached its own
+          // card and stayed paired with the correct server-owned field. A
+          // resourceType -> interval inference or next/estimated cursor swap
+          // therefore fails this gate even when all strings exist globally.
+          if (!billingEvidenceTarget) {
+            throw new Error("Active compute audit target was not initialized");
+          }
+          for (const resource of BILLING_AUDIT_RESOURCE_EXPECTATIONS) {
+            const resourceCard = billingEvidenceTarget.locator("li").filter({
+              has: page.getByText(resource.name, { exact: true }),
+            });
+            await expect(resourceCard).toHaveCount(1);
+            await expect(resourceCard).toBeVisible({ timeout: 10_000 });
             await expect(
-              page.getByText(label, { exact: true }).filter({ visible: true }),
-            ).toBeVisible({ timeout: 10_000 });
+              resourceCard.getByText(resource.identity, { exact: true }),
+            ).toBeVisible();
+
+            for (const field of resource.fields) {
+              const term = resourceCard.getByText(field.label, { exact: true });
+              await expect(term).toHaveCount(1);
+              await expect(
+                term.locator("xpath=following-sibling::dd[1]"),
+              ).toHaveText(field.value);
+            }
           }
         }
 
@@ -792,14 +822,6 @@ test.describe("cloud-surfaces aesthetic audit (#10725/#11342)", () => {
         // viewport inside an app-owned scroll container. Capture the complete
         // Active Compute card in both states instead of green-lighting a frame
         // that only shows the unrelated credit form above it.
-        const billingEvidenceTarget =
-          auditCase.slug === "cloud-billing"
-            ? page
-                .getByRole("heading", { name: "Active compute", exact: true })
-                .locator(
-                  "xpath=ancestor::div[contains(concat(' ', normalize-space(@class), ' '), ' bg-bg-elevated ')][1]",
-                )
-            : null;
         if (billingEvidenceTarget) {
           const box = await billingEvidenceTarget.boundingBox();
           if (box && box.height + 240 > vp.height) {
@@ -832,6 +854,9 @@ test.describe("cloud-surfaces aesthetic audit (#10725/#11342)", () => {
           : [];
 
         const blueColors = await collectBlueColors(page).catch(() => []);
+        // This global scan remains the interactive hover gate for every
+        // visible orange action on the full page. Billing's component-focused
+        // screenshot pair below is additive; it does not replace this scan.
         const { violations: hoverViolations, hoverFailures } =
           await collectHoverViolations(page).catch((error: unknown) => ({
             violations: [],
@@ -842,7 +867,9 @@ test.describe("cloud-surfaces aesthetic audit (#10725/#11342)", () => {
 
         // Primary-button hover screenshot (the #10725 hover-rule artifact).
         // The read-only compute card has no action, so hover its first resource
-        // to preserve the affected component in the paired stability frame.
+        // and capture the same complete card. Its rest/hover pair proves that
+        // pointer presence cannot mutate, hide, or reflow authoritative values;
+        // it is explicitly a stability artifact, not an interaction claim.
         const hoverTarget = billingEvidenceTarget
           ? billingEvidenceTarget.locator("li").first()
           : page.locator("button:visible, a[role='button']:visible").first();
