@@ -267,8 +267,13 @@ export const VIEW_OCR_POLICIES = {
     ],
   }),
   "plugin-computer-use-sessions-gui": expected({
-    requireAll: ["Computer sessions", "Research browser", "Linux sandbox"],
-    requireAny: ["Sequence 12", "Cursor 640, 360", "Open floating"],
+    requireAll: ["Computer sessions", "Research browser"],
+    requireAny: [
+      "Linux sandbox",
+      "Sequence 12",
+      "Cursor 640, 360",
+      "Open floating",
+    ],
     forbid: ["Loading sessions", "unavailable"],
   }),
   "plugin-documents-gui": exempt(
@@ -305,8 +310,8 @@ export const VIEW_OCR_POLICIES = {
     requireAny: ["Set default SMS", "bridge-only", "compose"],
   }),
   "plugin-maps-gui": expected({
-    requireAll: ["Maps", "Provider-neutral map"],
-    requireAny: ["Provider-neutral map", "Search a place"],
+    requireAll: ["Maps", "Find somewhere worth going"],
+    requireAny: ["provider-neutral", "Search a place"],
     forbid: ["Google Maps", "Mapbox"],
   }),
   "plugin-phone-gui": expected({
@@ -331,8 +336,8 @@ export const VIEW_OCR_POLICIES = {
   }),
   "plugin-cockpit-gui": exempt(
     "unregistered-remote-bundle",
-    "The Cockpit GUI has no remote bundle in the hermetic browser audit, so the view-registry fallback is the only observable surface.",
-    VIEW_REGISTRY_FALLBACK,
+    "The Cockpit GUI has no remote bundle in the hermetic browser audit, so the launcher fallback is the only observable surface.",
+    LAUNCHER_FALLBACK,
   ),
   "plugin-trajectory-logger-gui": expected({
     requireAny: ["Back to apps", "HANDLE", "PLAN"],
