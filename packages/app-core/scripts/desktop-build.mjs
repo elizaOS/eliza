@@ -11,7 +11,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { resolveElectrobunDir, resolveMainAppDir } from "./lib/app-dir.mjs";
-import { artifactStaleness, maxMtimeUnder } from "./lib/artifact-staleness.mjs";
+import { artifactStaleness } from "./lib/artifact-staleness.mjs";
 import {
   applyDesktopCloudTarget,
   resolveDesktopCloudTarget,
@@ -32,6 +32,7 @@ import {
 } from "./lib/native-activity-tracker-packaging.mjs";
 import { appIdentityEnv } from "./lib/read-app-identity.mjs";
 import { assertRendererRebuiltSince } from "./lib/renderer-build-manifest.mjs";
+import { workspaceRuntimePackageLooksBuilt } from "./lib/workspace-runtime-package.mjs";
 
 const ROOT = process.cwd();
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
@@ -218,6 +219,7 @@ const PLUGIN_LOCAL_INFERENCE_PACKAGE_DIR = resolveWorkspacePluginDir(
 const PLUGIN_NATIVE_ACTIVITY_TRACKER_PACKAGE_DIR = resolveWorkspacePluginDir(
   "plugin-native-activity-tracker",
 );
+const PLUGIN_SQL_PACKAGE_DIR = resolveWorkspacePluginDir("plugin-sql");
 const SHARED_PACKAGE_DIR = resolveWorkspacePackageDir("shared");
 const UI_PACKAGE_DIR = resolveWorkspacePackageDir("ui");
 const VAULT_PACKAGE_DIR = resolveWorkspacePackageDir("vault");
@@ -884,7 +886,9 @@ function ensureWorkspaceRuntimePackageBuilt(packageName, packageDir) {
 
   if (
     process.env.ELIZA_DESKTOP_REBUILD_RUNTIME_PACKAGES !== "1" &&
-    workspaceRuntimePackageLooksBuilt(packageName, packageDir)
+    workspaceRuntimePackageLooksBuilt(packageName, packageDir, {
+      trustDist: process.env.ELIZA_DESKTOP_TRUST_RUNTIME_PACKAGE_DIST === "1",
+    })
   ) {
     console.log(
       `[desktop-build] Reusing existing ${packageName} runtime package`,
@@ -898,51 +902,6 @@ function ensureWorkspaceRuntimePackageBuilt(packageName, packageDir) {
   });
 }
 
-function workspaceRuntimePackageMarkersPresent(packageName, distDir) {
-  if (packageName === "@elizaos/core") {
-    return (
-      fs.existsSync(path.join(distDir, "node", "index.node.js")) &&
-      fs.existsSync(path.join(distDir, "index.node.d.ts")) &&
-      fs.existsSync(path.join(distDir, "testing", "live-provider.d.ts"))
-    );
-  }
-
-  if (packageName === "@elizaos/ui") {
-    return (
-      fs.existsSync(path.join(distDir, "index.js")) &&
-      fs.existsSync(path.join(distDir, "App.js")) &&
-      fs.existsSync(path.join(distDir, "components", "pages", "LogsView.js"))
-    );
-  }
-
-  return true;
-}
-
-function workspaceRuntimePackageLooksBuilt(packageName, packageDir) {
-  const distDir = path.join(packageDir, "dist");
-  if (!fs.existsSync(distDir)) return false;
-  if (!workspaceRuntimePackageMarkersPresent(packageName, distDir))
-    return false;
-
-  // Presence of the marker files isn't enough — a dist built from older sources
-  // would silently reuse stale runtime code (issue #9309). Reuse only when the
-  // dist is at least as new as the package's src. ELIZA_DESKTOP_TRUST_RUNTIME_-
-  // PACKAGE_DIST=1 bypasses the mtime check for environments where checkout
-  // mtimes are unreliable.
-  if (process.env.ELIZA_DESKTOP_TRUST_RUNTIME_PACKAGE_DIST === "1") return true;
-  const srcDir = path.join(packageDir, "src");
-  if (!fs.existsSync(srcDir)) return true;
-  const srcMtime = maxMtimeUnder(srcDir);
-  const distMtime = maxMtimeUnder(distDir);
-  if (srcMtime > distMtime) {
-    console.log(
-      `[desktop-build] ${packageName} dist is stale (src newer than dist) — rebuilding`,
-    );
-    return false;
-  }
-  return true;
-}
-
 function ensureWorkspaceRuntimePackagesBuilt() {
   ensureWorkspaceRuntimePackageBuilt("@elizaos/core", CORE_PACKAGE_DIR);
   ensureWorkspaceRuntimePackageBuilt("@elizaos/shared", SHARED_PACKAGE_DIR);
@@ -954,6 +913,10 @@ function ensureWorkspaceRuntimePackagesBuilt() {
   ensureWorkspaceRuntimePackageBuilt(
     "@elizaos/plugin-agent-orchestrator",
     PLUGIN_AGENT_ORCHESTRATOR_PACKAGE_DIR,
+  );
+  ensureWorkspaceRuntimePackageBuilt(
+    "@elizaos/plugin-sql",
+    PLUGIN_SQL_PACKAGE_DIR,
   );
   ensureWorkspaceRuntimePackageBuilt("@elizaos/ui", UI_PACKAGE_DIR);
   ensureWorkspaceRuntimePackageBuilt(
