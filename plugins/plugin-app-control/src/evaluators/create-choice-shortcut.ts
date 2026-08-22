@@ -60,10 +60,33 @@ function hasRegisteredAction(
 	);
 }
 
+function isSubAgentArtifact(context: ResponseHandlerEvaluatorContext): boolean {
+	const content = context.message.content;
+	if (!content || typeof content !== "object") return false;
+	const metadata = (content as { metadata?: unknown }).metadata;
+	if (
+		metadata &&
+		typeof metadata === "object" &&
+		(metadata as { subAgent?: unknown }).subAgent === true
+	) {
+		return true;
+	}
+	const source = (content as { source?: unknown }).source;
+	if (typeof source === "string" && source.startsWith("acpx:sub-agent-router"))
+		return true;
+	const text = (content as { text?: unknown }).text;
+	return typeof text === "string" && text.trimStart().startsWith("[sub-agent:");
+}
+
 async function resolveChoiceShortcut(
 	context: ResponseHandlerEvaluatorContext,
 ): Promise<ChoiceShortcut | null> {
 	if (context.messageHandler.processMessage === "STOP") return null;
+	// A sub-agent relay is machine output, not a user's choice reply. Its body
+	// routinely contains shortcut-trigger vocabulary — a maze game's "use arrow
+	// keys to move" + "localStorage" parsed as a model-switch request and fired
+	// a deterministic MODEL_SWITCH on the delivery turn (live 2026-08-19).
+	if (isSubAgentArtifact(context)) return null;
 	const choice = messageText(context).trim();
 	if (
 		hasRegisteredAction(context, MODEL_SWITCH_ACTION_NAME) &&

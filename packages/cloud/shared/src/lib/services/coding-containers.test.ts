@@ -36,7 +36,7 @@ describe("coding container payloads", () => {
       },
       () =>
         buildCodingContainerCreatePayload({
-          agent: "opencode",
+          agent: "codex",
           container: { image: "ghcr.io/example/custom-coding-image:latest" },
         }),
     );

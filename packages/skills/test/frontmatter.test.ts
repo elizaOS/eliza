@@ -45,7 +45,8 @@ Body`;
   });
 
   it("handles opening delimiter with trailing whitespace", () => {
-    const content = "---   \nname: test-trailing\ndescription: Test\n--- \nBody";
+    const content =
+      "---   \nname: test-trailing\ndescription: Test\n--- \nBody";
     const result = parseFrontmatter<SkillFrontmatter>(content);
     assert.strictEqual(result.frontmatter.name, "test-trailing");
     assert.strictEqual(result.frontmatter.description, "Test");

@@ -119,7 +119,15 @@ export async function editFileHandler(
   if (gate.ok === false) {
     const reason =
       gate.reason === "stale_read" ? "stale_read" : "invalid_param";
-    return failureToActionResult({ reason, message: gate.message });
+    // Coaching failure: the guard exists to steer the model (read, then
+    // write) and leaves no broken state. Without the marker this failed step
+    // OWNED the completion — a rerun successor that pointlessly rewrote an
+    // existing script reported "runtime step failed" over a clean, verified
+    // run (live 2026-08-21).
+    return failureToActionResult(
+      { reason, message: gate.message },
+      { coachingFailure: true },
+    );
   }
 
   let original: string;
@@ -137,6 +145,27 @@ export async function editFileHandler(
 
   const occurrences = countOccurrences(original, oldStr);
   if (occurrences === 0) {
+    // Already-applied detection (git-apply heuristic: old absent + new
+    // present = the desired end state exists). Weak coding models routinely
+    // re-issue an edit whose effect an earlier write already produced; the
+    // bare no_match failure then stands as the turn's unresolved failed step
+    // and the terminal reply leads with "the runtime step failed" over a
+    // finished deliverable (live 2026-08-20, stopwatch build). A replayed
+    // no-op is the honest verdict — nothing was mutated, and the message
+    // says so.
+    if (newStr.trim().length > 0 && original.includes(newStr)) {
+      const text = `No change needed in ${resolved}: the replacement text is already present (old_string not found).`;
+      if (callback) await callback({ text, source: "coding-tools" });
+      return {
+        ...userFacingSuccessResult(text, {
+          path: resolved,
+          replacements: 0,
+          alreadyApplied: true,
+        }),
+        verifiedUserFacing: true,
+        turnComplete: true,
+      };
+    }
     return failureToActionResult({
       reason: "no_match",
       message: `old_string not found in ${resolved}`,

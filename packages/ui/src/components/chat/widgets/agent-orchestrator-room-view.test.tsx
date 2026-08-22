@@ -45,7 +45,7 @@ const rooms: OrchestratorRoomRosterOverview = {
           kind: "sub_agent",
           id: "s2",
           label: "Mara",
-          framework: "opencode",
+          framework: "codex",
           status: "stopped",
           active: false,
           totalTokens: 6100,
