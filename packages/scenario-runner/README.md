@@ -185,11 +185,20 @@ enter a model path may instead declare
 `modelFixtures: { mode: "model-free", reason: "..." }`; message, voice, tick,
 or judge work makes that declaration invalid. Wait turns are also model-free.
 
+Before final fixture validation, the executor waits a bounded interval for
+tracked post-delivery work and requests cancellation through each task's
+`AbortSignal`. A task that ignores cancellation leaves its runtime quarantined:
+the attempt fails and every later scenario is refused before its fixture scope
+or world can start. JavaScript cannot terminate arbitrary code that ignores an
+abort signal, so subprocess/generation isolation must end that container before
+the runtime can be replaced; quarantine is containment, not a claim that the
+task was killed.
+
 The rollout is staged: undeclared scenarios temporarily retain the legacy
 resolver and reports mark them `legacy-fallback`; declared attempts report
-`strict-fixtures` or `model-free`. The migration ratchet currently records 46
-strict or explicitly model-free and 74 legacy `pr-deterministic` scenario sources across
-the repository. The declared rows contain only direct action/API work or
+`strict-fixtures` or `model-free`. The migration ratchet currently records 48
+strict or explicitly model-free and 72 legacy `pr-deterministic` scenario
+sources across the repository. The declared rows contain only direct action/API work or
 wait/seed/final checks and are validated again by the real executor before each
 attempt. The legacy count may only decrease, and the epic is complete only when
 it reaches zero.

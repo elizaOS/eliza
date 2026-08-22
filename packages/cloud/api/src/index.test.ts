@@ -481,6 +481,7 @@ describe("thin Steward public path dispatch (#18049)", () => {
           google: false,
           discord: false,
           github: false,
+          twitter: false,
           oauth: [],
         },
       });
@@ -553,7 +554,12 @@ describe("thin Steward public path dispatch (#18049)", () => {
         data: {
           passkey: true,
           email: true,
+          siwe: false,
+          siws: false,
           google: false,
+          discord: false,
+          github: false,
+          twitter: false,
           oauth: [],
         },
       });

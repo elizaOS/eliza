@@ -4036,9 +4036,11 @@ describe("runV5MessageRuntimeStage1", () => {
 	it("keeps the planner prompt byte-identical on an addressed group turn (no ambient policy, no terminal conversion)", async () => {
 		// Addressed branch pin (same pattern as the memory-surface branch
 		// tests): a platform mention makes the turn addressed, so the
-		// ambient-turn policy must not render and a planner IGNORE keeps
-		// today's planned-reply "none" outcome instead of the ambient terminal
-		// conversion.
+		// ambient-turn policy must not render and the ambient silent-terminal
+		// conversion must not fire. The addressed turn-delivery floor
+		// (#23223) still answers: a toolless planner IGNORE recovers with the
+		// honest zero-action fallback — never silence, and never a fabricated
+		// "I ran the steps … they failed" report for steps that never ran.
 		const runtime = makeRuntime([
 			stage1Response({
 				thought: "Addressed follow-up; see if the planner has anything.",
@@ -4071,8 +4073,12 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(plannerContent).not.toContain("ambient_turn_policy");
 		expect(result.kind).toBe("planned_reply");
 		if (result.kind === "planned_reply") {
-			expect(result.result.responseContent).toBeNull();
-			expect(result.result.mode).toBe("none");
+			const text = result.result.responseContent?.text ?? "";
+			expect(text).toBe(
+				"I don't have a useful answer to that right now — ask again and I will retry.",
+			);
+			// Effect honesty: nothing ran this turn, so no failure narrative.
+			expect(text).not.toMatch(/ran the steps|failed/i);
 		}
 	});
 
@@ -5135,6 +5141,36 @@ describe("runV5MessageRuntimeStage1", () => {
 		// Pure decision seam: the exact source precedence, ack suppression,
 		// failure-aware wording, and the async-handoff silence gate.
 		describe("resolveZeroDeliveryRecovery", () => {
+			it("never fabricates a failed-steps report on a toolless turn", () => {
+				// Effect honesty: with no action results at all, the fallback must
+				// not claim "I ran the steps … they failed".
+				const decision = resolveZeroDeliveryRecovery({
+					plannedText: "",
+					actionResults: [],
+					stageOneAck: "",
+					earlyReplySent: false,
+				});
+				expect(decision.recover).toBe(true);
+				expect(decision.source).toBe("fallbackText");
+				expect(decision.text).toBe(
+					"I don't have a useful answer to that right now — ask again and I will retry.",
+				);
+				expect(decision.text).not.toMatch(/ran the steps|failed/i);
+			});
+
+			it("keeps the failed-steps fallback when failed steps actually ran", () => {
+				const decision = resolveZeroDeliveryRecovery({
+					plannedText: "",
+					actionResults: [{ success: false }],
+					stageOneAck: "",
+					earlyReplySent: false,
+				});
+				expect(decision.recover).toBe(true);
+				expect(decision.text).toContain(
+					"I ran the steps for that but they failed",
+				);
+			});
+
 			it("prefers surviving planner text over everything else", () => {
 				const decision = resolveZeroDeliveryRecovery({
 					plannedText: "The check passed on retry.",

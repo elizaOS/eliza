@@ -26,6 +26,13 @@ export interface MessageProcessingOptions {
 	maxRetries?: number;
 	useMultiStep?: boolean;
 	maxMultiStepIterations?: number;
+	/**
+	 * Run this trusted host turn as a focused coding-agent loop. Coding turns
+	 * enter the planner directly instead of spending a separate model call on
+	 * conversational Stage 1 routing. This is a per-turn execution choice, not
+	 * an authorization signal; normal role and action gates still apply.
+	 */
+	codingMode?: boolean;
 	shouldRespondModel?: ShouldRespondModelType;
 	onStreamChunk?: StreamChunkCallback;
 	/**

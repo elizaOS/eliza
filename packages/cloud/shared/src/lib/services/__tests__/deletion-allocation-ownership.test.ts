@@ -28,6 +28,7 @@ process.env.MOCK_REDIS = "1";
 
 import { pushSchema } from "drizzle-kit/api";
 import { and, eq } from "drizzle-orm";
+import { agentNodeIncarnationHistories } from "../../../db/schemas/agent-node-incarnation-histories";
 import { agentSandboxes } from "../../../db/schemas/agent-sandboxes";
 import { apiKeys } from "../../../db/schemas/api-keys";
 import { containers } from "../../../db/schemas/containers";
@@ -88,6 +89,7 @@ beforeAll(async () => {
       usageRecords,
       jobs,
       jobExecutionLeases,
+      agentNodeIncarnationHistories,
       dockerNodes,
       containers,
     };

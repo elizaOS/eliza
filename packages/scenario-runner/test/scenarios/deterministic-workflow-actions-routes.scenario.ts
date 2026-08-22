@@ -1,12 +1,8 @@
 /**
- * Keyless catalog coverage for the plugin-workflow action and route surface. Runs
- * on the pr-deterministic lane under the model provider.
+ * Keyless catalog coverage for native Smithers workflow persistence, execution,
+ * action routing, and the canonical HTTP read surfaces.
  */
 import type { IAgentRuntime, Plugin } from "@elizaos/core";
-import {
-  type RuntimeWithScenarioModelFixtures,
-  registerStrictActionRouteFixtures,
-} from "@elizaos/core/testing";
 import type {
   CapturedAction,
   ScenarioContext,
@@ -44,23 +40,98 @@ const strictWorkflowRoutes = [
   },
 ];
 
+const workflowModelFixtures = [
+  {
+    name: "workflow-executions-stage1",
+    match: {
+      modelType: "RESPONSE_HANDLER" as const,
+      input: { includes: strictWorkflowRoutes[0].input },
+      toolNames: ["HANDLE_RESPONSE"],
+    },
+    response: {
+      json: {
+        contexts: ["automation"],
+        intents: [strictWorkflowRoutes[0].input.toLowerCase()],
+        replyText: strictWorkflowRoutes[0].messageToUser,
+        threadOps: [],
+        candidateActionNames: ["WORKFLOW"],
+      },
+    },
+  },
+  {
+    name: "workflow-executions-planner",
+    match: {
+      modelType: "ACTION_PLANNER" as const,
+      input: { includes: strictWorkflowRoutes[0].input },
+    },
+    response: {
+      text: "",
+      finishReason: "tool-calls",
+      toolCalls: [
+        {
+          id: "call-workflow-executions",
+          name: "WORKFLOW",
+          arguments: workflowExecutionParameters,
+        },
+      ],
+    },
+  },
+  {
+    name: "workflow-executions-evaluator",
+    match: {
+      modelType: "RESPONSE_HANDLER" as const,
+      input: { includes: strictWorkflowRoutes[0].input },
+      toolNames: [],
+    },
+    response: {
+      json: {
+        success: true,
+        decision: "FINISH",
+        thought: "The requested workflow execution was found.",
+        messageToUser: "Found 1 run.",
+      },
+    },
+  },
+  {
+    name: "workflow-post-turn-evaluators",
+    match: {
+      modelType: "TEXT_SMALL" as const,
+      input: { includes: "# Task: Post-turn evaluation" },
+      toolNames: [],
+    },
+    response: {
+      json: {
+        factMemory: { ops: [] },
+        relationships: { relationships: [] },
+        identities: { identities: [] },
+        success: {
+          completed: true,
+          reason: "The requested workflow execution was returned.",
+          thought: "The workflow action and read routes completed.",
+        },
+        preferences: { ops: [] },
+      },
+    },
+  },
+];
+
 type JsonRecord = Record<string, unknown>;
 
-type RuntimeWithWorkflowScenario = IAgentRuntime &
-  RuntimeWithScenarioModelFixtures & {
-    db?: unknown;
-    getServiceLoadPromise?: (serviceType: string) => Promise<unknown>;
-    plugins?: Plugin[];
-    registerPlugin?: (plugin: Plugin) => Promise<void>;
-    routes?: Array<{
-      type?: string;
-      path: string;
-      handler?: unknown;
-      __scenarioWorkflowRoute?: boolean;
-    }>;
-  };
+type RuntimeWithWorkflowScenario = IAgentRuntime & {
+  db?: unknown;
+  getServiceLoadPromise?: (serviceType: string) => Promise<unknown>;
+  plugins?: Plugin[];
+  registerPlugin?: (plugin: Plugin) => Promise<void>;
+  routes?: Array<{
+    type?: string;
+    path: string;
+    handler?: unknown;
+    __scenarioWorkflowRoute?: boolean;
+  }>;
+};
 
 let seededExecutionId: string | null = null;
+let seededTagId: string | null = null;
 let scenarioRuntime: RuntimeWithWorkflowScenario | null = null;
 
 const workflowDefinition: WorkflowDefinition = {
@@ -166,16 +237,14 @@ function expectWorkflowActionOptions(
 }
 
 function seededItem(execution: unknown): JsonRecord | null {
-  const item = readPath(
-    execution,
-    "data.resultData.runData.Set.0.data.main.0.0.json",
-  );
-  return isRecord(item) ? item : null;
+  const input = readPath(execution, "input");
+  return isRecord(input) ? input : null;
 }
 
 function expectSeededExecution(execution: unknown): string | undefined {
   for (const [path, expected] of Object.entries({
     workflowId: WORKFLOW_ID,
+    workflowName: WORKFLOW_NAME,
     status: "finished",
     mode: "manual",
     finished: true,
@@ -185,13 +254,17 @@ function expectSeededExecution(execution: unknown): string | undefined {
   }
   const item = seededItem(execution);
   if (!item) {
-    return `expected Set node runData item, saw ${stableStringify(execution)}`;
+    return `expected persisted execution input, saw ${stableStringify(execution)}`;
   }
   for (const [path, expected] of Object.entries({
     scenario: "workflow-keyless",
     trigger: "manual",
   })) {
-    const failure = expectEqual(readPath(item, path), expected, `Set.${path}`);
+    const failure = expectEqual(
+      readPath(item, path),
+      expected,
+      `input.${path}`,
+    );
     if (failure) return failure;
   }
   if (seededExecutionId && readPath(execution, "id") !== seededExecutionId) {
@@ -258,8 +331,11 @@ async function seedWorkflow(ctx: ScenarioContext): Promise<string | undefined> {
     const ownerTag = await embedded.getOrCreateTag(
       await getUserTagName(runtime, ctx.primaryUserId),
     );
+    seededTagId = ownerTag.id;
     await embedded.updateWorkflowTags(WORKFLOW_ID, [ownerTag.id]);
-    const execution = await embedded.executeWorkflow(WORKFLOW_ID);
+    const execution = await embedded.executeWorkflow(WORKFLOW_ID, {
+      input: { scenario: "workflow-keyless", trigger: "manual" },
+    });
     seededExecutionId = execution.id;
     const saved = await service.getWorkflow(WORKFLOW_ID);
     if (saved.id !== WORKFLOW_ID) {
@@ -272,7 +348,6 @@ async function seedWorkflow(ctx: ScenarioContext): Promise<string | undefined> {
     const failure = expectSeededExecution(actionVisible.data[0]);
     if (failure)
       return `seeded execution was not visible through WorkflowService: ${failure}`;
-    registerStrictActionRouteFixtures(runtime, strictWorkflowRoutes);
     return undefined;
   } catch (err) {
     return err instanceof Error ? err.message : String(err);
@@ -289,9 +364,7 @@ function expectWorkflowAction(
   if (action.result?.success !== true) {
     return `expected WORKFLOW result.success=true, saw ${stableStringify(action.result)}`;
   }
-  if (
-    action.result.text !== `Fetched 1 executions for workflow ${WORKFLOW_ID}.`
-  ) {
+  if (action.result.text !== "Found 1 run.") {
     return `expected WORKFLOW success text, saw ${JSON.stringify(action.result.text)}`;
   }
   const executions = readPath(action.result, "data.executions");
@@ -303,7 +376,7 @@ function expectWorkflowAction(
   // verify the complete execution artifact.
   for (const [path, expected] of Object.entries({
     workflowId: WORKFLOW_ID,
-    status: "success",
+    status: "finished",
     mode: "manual",
     finished: true,
     id: seededExecutionId,
@@ -342,10 +415,7 @@ function expectExecutionsRoute(
   body: unknown,
 ): string | undefined {
   if (status !== 200) return `expected status 200, saw ${status}`;
-  if (readPath(body, "success") !== true) {
-    return `expected success=true, saw ${stableStringify(body)}`;
-  }
-  const executions = readPath(body, "data");
+  const executions = readPath(body, "executions");
   if (!Array.isArray(executions) || executions.length !== 1) {
     return `expected one route execution, saw ${stableStringify(body)}`;
   }
@@ -370,6 +440,14 @@ async function finalWorkflowCheck(
   });
   const failure = expectSeededExecution(executions.data[0]);
   if (failure) return failure;
+  const tags = await embedded.listTags();
+  const ownerTag = tags.data.find((tag) => tag.id === seededTagId);
+  if (!ownerTag) {
+    return `expected durable owner tag ${seededTagId}, saw ${stableStringify(tags.data)}`;
+  }
+  if (!workflow.tags?.some((tag) => tag.id === seededTagId)) {
+    return `expected workflow tag ${seededTagId}, saw ${stableStringify(workflow.tags)}`;
+  }
   await embedded.deleteWorkflow(WORKFLOW_ID);
   return undefined;
 }
@@ -377,6 +455,10 @@ async function finalWorkflowCheck(
 export default scenario({
   id: "deterministic-workflow-actions-routes",
   lane: "pr-deterministic",
+  modelFixtures: {
+    mode: "fixtures",
+    fixtures: [...workflowModelFixtures],
+  },
   title: "Deterministic workflow action and route coverage",
   domain: "scenario-runner",
   tags: ["pr", "deterministic", "zero-cost", "workflow", "routes"],
@@ -387,7 +469,7 @@ export default scenario({
   seed: [
     {
       type: "custom",
-      name: "seed and execute a real embedded Manual Trigger to Set workflow",
+      name: "seed and execute a real native Smithers workflow",
       apply: seedWorkflow,
     },
   ],
@@ -417,7 +499,7 @@ export default scenario({
       kind: "api",
       name: "GET seeded execution route",
       method: "GET",
-      path: `/executions?workflowId=${WORKFLOW_ID}&limit=1`,
+      path: `/api/workflow/workflows/${WORKFLOW_ID}/executions`,
       expectedStatus: 200,
       assertResponse: expectExecutionsRoute,
     },

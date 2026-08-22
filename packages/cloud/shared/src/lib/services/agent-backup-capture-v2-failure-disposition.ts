@@ -9,6 +9,7 @@ import { AgentBackupCaptureV2ProtocolError } from "@elizaos/shared";
 import { AgentBackupCaptureV2HttpError } from "./agent-backup-capture-v2-client";
 import { AgentBackupCaptureV2PipelineError } from "./agent-backup-capture-v2-pipeline";
 import { AgentBackupCaptureV3SpoolError } from "./agent-backup-capture-v2-spool";
+import { isResolvedAgentBackupCaptureV3RuntimeAuthorityStale } from "./agent-backup-capture-v3-runtime-context";
 import type { AgentBackupCaptureV3TerminalSpoolCleanupAuthority } from "./agent-backup-capture-v3-spool-cleanup";
 
 const TERMINAL_CAPTURE_FAILURE_CODES = new Set([
@@ -175,6 +176,9 @@ function typedFailure(error: unknown): { code: string; message: string } | undef
   ) {
     return { code: error.code, message: error.message };
   }
+  if (isResolvedAgentBackupCaptureV3RuntimeAuthorityStale(error)) {
+    return { code: error.code, message: error.message };
+  }
   return undefined;
 }
 
@@ -199,6 +203,13 @@ export function normalizeAgentBackupCaptureV2TerminalFailure(
   terminalSpoolCleanup?: AgentBackupCaptureV3TerminalSpoolCleanupAuthority,
 ): AgentBackupCaptureV2CatalogExecutorError | undefined {
   if (isTrustedAgentBackupCaptureV2TerminalDisposition(error)) {
+    if (
+      error.code === "AGENT_BACKUP_V3_RUNTIME_AUTHORITY_STALE" &&
+      !error.terminalSpoolCleanup &&
+      !terminalSpoolCleanup
+    ) {
+      return undefined;
+    }
     if (terminalSpoolCleanup && !error.terminalSpoolCleanup) {
       return trustedTerminalDisposition({
         code: error.code,
@@ -219,7 +230,14 @@ export function normalizeAgentBackupCaptureV2TerminalFailure(
     seen.add(current);
 
     const failure = typedFailure(current);
-    if (failure && isTerminalAgentBackupCaptureV2FailureCode(failure.code)) {
+    const trustedRuntimeAuthorityStale =
+      failure?.code === "AGENT_BACKUP_V3_RUNTIME_AUTHORITY_STALE" &&
+      terminalSpoolCleanup !== undefined &&
+      isResolvedAgentBackupCaptureV3RuntimeAuthorityStale(current);
+    if (
+      failure &&
+      (isTerminalAgentBackupCaptureV2FailureCode(failure.code) || trustedRuntimeAuthorityStale)
+    ) {
       return trustedTerminalDisposition({
         ...failure,
         cause: error,

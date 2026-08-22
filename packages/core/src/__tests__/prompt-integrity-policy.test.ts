@@ -40,6 +40,7 @@ const removedPromptCapCloneTests = [
 ];
 
 const guardedSources: Record<string, readonly RegExp[]> = {
+	"packages/core/src/entities.ts": [/getMemories\([\s\S]{0,240}limit:\s*20/],
 	"packages/core/src/utils/json-llm.ts": [/text\.slice\(0,\s*100_000\)/],
 	"packages/core/src/utils/message-text.ts": [/MAX_MESSAGE_TEXT_LENGTH/],
 	"packages/core/src/runtime/evaluator.ts": [

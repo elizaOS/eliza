@@ -367,6 +367,7 @@ describe("ConnectorsSection", () => {
     ];
 
     render(<ConnectorsSection />);
+    fireEvent.click(screen.getByTestId("connector-channel-mode-delegate"));
 
     // Slack remains available through its OWNER-role plugin-managed inventory;
     // its app-token modes themselves are still Bot-only.
@@ -380,7 +381,12 @@ describe("ConnectorsSection", () => {
 
     expect(screen.getByText("Slack")).toBeTruthy();
     expect(screen.getByText("Matrix")).toBeTruthy();
-    expect(screen.getByRole("button", { name: /Switch to/ })).toBeTruthy();
+    expect(
+      screen
+        .getByTestId("connector-channel-mode-bot")
+        .getAttribute("aria-pressed"),
+    ).toBe("true");
+    expect(screen.queryByRole("button", { name: /Switch to/ })).toBeNull();
   });
 
   it("keeps unclassified connectors visible under both lenses", () => {
@@ -396,28 +402,28 @@ describe("ConnectorsSection", () => {
   });
 
   it("toggles a connector from the detail SettingsSwitchRow", async () => {
-    appMock.value.plugins = [plugin({ id: "signal", name: "Signal" })];
+    appMock.value.plugins = [plugin({ id: "telegram", name: "Telegram" })];
     render(<ConnectorsSection />);
-    openDetail("Signal");
-    const enable = document.getElementById("connector-signal-enable");
+    openDetail("Telegram");
+    const enable = document.getElementById("connector-telegram-enable");
     expect(enable).toBeTruthy();
     expect(enable?.getAttribute("role")).toBe("switch");
     expect(enable?.getAttribute("data-agent-id")).toBe(
-      "connector-signal-enable",
+      "connector-telegram-enable",
     );
     fireEvent.click(enable as HTMLElement);
     await waitFor(() =>
       expect(appMock.value.handlePluginToggle).toHaveBeenCalledWith(
-        "signal",
+        "telegram",
         false,
       ),
     );
   });
 
   it("returns to the index from detail back control", async () => {
-    appMock.value.plugins = [plugin({ id: "signal", name: "Signal" })];
+    appMock.value.plugins = [plugin({ id: "telegram", name: "Telegram" })];
     render(<ConnectorsSection />);
-    openDetail("Signal");
+    openDetail("Telegram");
     expect(screen.getByTestId("connector-detail")).toBeTruthy();
     const back = screen.getByTestId("connector-detail-back");
     // Mobile uses ViewHeader; this control is desktop-only with a 44px target.

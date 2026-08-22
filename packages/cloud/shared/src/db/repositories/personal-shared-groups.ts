@@ -1,5 +1,6 @@
 /** Atomic claim and binding authority for Personal Shared provider groups. */
-import { and, eq, gt, isNull, or } from "drizzle-orm";
+import { ElizaError } from "@elizaos/core";
+import { and, eq, gt, inArray, isNotNull, isNull, lte, notExists, or, sql } from "drizzle-orm";
 import { v5 as uuidv5 } from "uuid";
 import { dbWrite } from "../client";
 import {
@@ -35,6 +36,74 @@ export function personalSharedGroupConversationId(input: {
 export type ConsumePersonalSharedGroupClaimResult =
   | { status: "bound"; binding: PersonalSharedGroupBinding }
   | { status: "invalid" | "expired" | "already_used" | "already_bound" };
+
+export interface PersonalSharedGroupDeliveryAuthority {
+  bindingId: string;
+  ownerUserId: string;
+  personalAgentId: string;
+  version: number;
+}
+
+export interface PersonalSharedGroupDeliveryLease {
+  authorized: boolean;
+  leaseToken: string | null;
+  expiresAt: string | null;
+}
+
+const DELIVERY_LEASE_MS = 90_000;
+const DELIVERY_LEASE_POLL_MS = 25;
+const AUTHORITY_MUTATION_WAIT_MS = 5_000;
+
+export class PersonalSharedGroupDeliveryPendingError extends ElizaError {
+  constructor() {
+    super("A live group delivery reservation is still pending", {
+      code: "PERSONAL_SHARED_GROUP_DELIVERY_PENDING",
+      severity: "fatal",
+    });
+  }
+}
+
+function deliveryLeaseAvailable(now: Date) {
+  return or(
+    isNull(personalSharedGroupBindings.delivery_lease_source_id),
+    and(
+      isNull(personalSharedGroupBindings.delivery_lease_committed_at),
+      lte(personalSharedGroupBindings.delivery_lease_expires_at, now),
+    ),
+  );
+}
+
+function deliveryLeaseAllowsAuthorityMutation(now: Date) {
+  return or(
+    isNull(personalSharedGroupBindings.delivery_lease_source_id),
+    isNotNull(personalSharedGroupBindings.delivery_lease_committed_at),
+    lte(personalSharedGroupBindings.delivery_lease_expires_at, now),
+  );
+}
+
+function deliveryLeaseBlocksAuthorityMutation(now: Date) {
+  return and(
+    isNull(personalSharedGroupBindings.delivery_lease_committed_at),
+    gt(personalSharedGroupBindings.delivery_lease_expires_at, now),
+  );
+}
+
+async function waitForAuthorityMutation<T>(
+  mutation: (now: Date) => Promise<T | null>,
+  hasLiveLease: (now: Date) => Promise<boolean>,
+): Promise<T | null> {
+  const deadline = Date.now() + AUTHORITY_MUTATION_WAIT_MS;
+  while (true) {
+    const result = await mutation(new Date());
+    if (result !== null) return result;
+    const blocked = await hasLiveLease(new Date());
+    if (!blocked) return null;
+    if (Date.now() >= deadline) {
+      throw new PersonalSharedGroupDeliveryPendingError();
+    }
+    await new Promise((resolve) => setTimeout(resolve, DELIVERY_LEASE_POLL_MS));
+  }
+}
 
 export const personalSharedGroupsRepository = {
   async issueClaim(input: {
@@ -86,7 +155,8 @@ export const personalSharedGroupsRepository = {
     verifiedAt?: Date;
   }): Promise<ConsumePersonalSharedGroupClaimResult> {
     return dbWrite.transaction(async (tx) => {
-      const now = input.verifiedAt ?? new Date();
+      const leaseNow = new Date();
+      const now = input.verifiedAt ?? leaseNow;
       const [claim] = await tx
         .update(personalSharedGroupClaims)
         .set({ consumed_at: now })
@@ -172,6 +242,10 @@ export const personalSharedGroupsRepository = {
             conversation_id: conversationId,
             state: "active",
             response_policy: "mention_only",
+            authority_version: sql`${personalSharedGroupBindings.authority_version} + 1`,
+            delivery_lease_source_id: sql`CASE WHEN ${personalSharedGroupBindings.delivery_lease_committed_at} IS NULL THEN NULL ELSE ${personalSharedGroupBindings.delivery_lease_source_id} END`,
+            delivery_lease_token: sql`CASE WHEN ${personalSharedGroupBindings.delivery_lease_committed_at} IS NULL THEN NULL ELSE ${personalSharedGroupBindings.delivery_lease_token} END`,
+            delivery_lease_expires_at: sql`CASE WHEN ${personalSharedGroupBindings.delivery_lease_committed_at} IS NULL THEN NULL ELSE ${personalSharedGroupBindings.delivery_lease_expires_at} END`,
             created_by_platform_user_id: input.actorPlatformUserId,
             last_verified_at: now,
             updated_at: now,
@@ -181,13 +255,40 @@ export const personalSharedGroupsRepository = {
           // and a deliberately revoked group may be claimed anew, but another
           // participant cannot replace a live owner's billing and policy
           // boundary merely by presenting their own valid claim.
-          setWhere: or(
-            eq(personalSharedGroupBindings.owner_user_id, claim.owner_user_id),
-            eq(personalSharedGroupBindings.state, "revoked"),
+          setWhere: and(
+            or(
+              eq(personalSharedGroupBindings.owner_user_id, claim.owner_user_id),
+              eq(personalSharedGroupBindings.state, "revoked"),
+            ),
+            deliveryLeaseAllowsAuthorityMutation(leaseNow),
           ),
         })
         .returning();
-      if (!binding) return { status: "already_bound" } as const;
+      if (!binding) {
+        const [current] = await tx
+          .select({
+            ownerUserId: personalSharedGroupBindings.owner_user_id,
+            state: personalSharedGroupBindings.state,
+          })
+          .from(personalSharedGroupBindings)
+          .where(
+            and(
+              eq(personalSharedGroupBindings.platform, input.platform),
+              eq(personalSharedGroupBindings.project, input.project),
+              eq(personalSharedGroupBindings.connector_account_id, input.connectorAccountId),
+              eq(personalSharedGroupBindings.provider_chat_id, input.providerChatId),
+            ),
+          )
+          .limit(1);
+        const mayRebind =
+          current?.ownerUserId === claim.owner_user_id || current?.state === "revoked";
+        if (mayRebind) {
+          // Throwing rolls back claim consumption so the exact owner can retry
+          // after an uncommitted lease expires or a committed send is reconciled.
+          throw new PersonalSharedGroupDeliveryPendingError();
+        }
+        return { status: "already_bound" } as const;
+      }
       return { status: "bound", binding } as const;
     });
   },
@@ -218,32 +319,80 @@ export const personalSharedGroupsRepository = {
     ownerUserId: string;
     policy: PersonalSharedGroupResponsePolicy;
   }): Promise<PersonalSharedGroupBinding | null> {
-    const [binding] = await dbWrite
-      .update(personalSharedGroupBindings)
-      .set({ response_policy: input.policy, updated_at: new Date() })
-      .where(
-        and(
-          eq(personalSharedGroupBindings.id, input.bindingId),
-          eq(personalSharedGroupBindings.owner_user_id, input.ownerUserId),
-          eq(personalSharedGroupBindings.state, "active"),
-        ),
-      )
-      .returning();
-    return binding ?? null;
+    return waitForAuthorityMutation(
+      async (now) => {
+        const [binding] = await dbWrite
+          .update(personalSharedGroupBindings)
+          .set({
+            response_policy: input.policy,
+            authority_version: sql`${personalSharedGroupBindings.authority_version} + 1`,
+            updated_at: now,
+          })
+          .where(
+            and(
+              eq(personalSharedGroupBindings.id, input.bindingId),
+              eq(personalSharedGroupBindings.owner_user_id, input.ownerUserId),
+              eq(personalSharedGroupBindings.state, "active"),
+              deliveryLeaseAllowsAuthorityMutation(now),
+            ),
+          )
+          .returning();
+        return binding ?? null;
+      },
+      async (now) => {
+        const [binding] = await dbWrite
+          .select({ id: personalSharedGroupBindings.id })
+          .from(personalSharedGroupBindings)
+          .where(
+            and(
+              eq(personalSharedGroupBindings.id, input.bindingId),
+              eq(personalSharedGroupBindings.owner_user_id, input.ownerUserId),
+              deliveryLeaseBlocksAuthorityMutation(now),
+            ),
+          )
+          .limit(1);
+        return Boolean(binding);
+      },
+    );
   },
 
   async revokeBinding(input: { bindingId: string; ownerUserId: string }): Promise<boolean> {
-    const [binding] = await dbWrite
-      .update(personalSharedGroupBindings)
-      .set({ state: "revoked", updated_at: new Date() })
-      .where(
-        and(
-          eq(personalSharedGroupBindings.id, input.bindingId),
-          eq(personalSharedGroupBindings.owner_user_id, input.ownerUserId),
-        ),
-      )
-      .returning({ id: personalSharedGroupBindings.id });
-    return Boolean(binding);
+    return Boolean(
+      await waitForAuthorityMutation(
+        async (now) => {
+          const [binding] = await dbWrite
+            .update(personalSharedGroupBindings)
+            .set({
+              state: "revoked",
+              authority_version: sql`${personalSharedGroupBindings.authority_version} + 1`,
+              updated_at: now,
+            })
+            .where(
+              and(
+                eq(personalSharedGroupBindings.id, input.bindingId),
+                eq(personalSharedGroupBindings.owner_user_id, input.ownerUserId),
+                deliveryLeaseAllowsAuthorityMutation(now),
+              ),
+            )
+            .returning({ id: personalSharedGroupBindings.id });
+          return binding ?? null;
+        },
+        async (now) => {
+          const [binding] = await dbWrite
+            .select({ id: personalSharedGroupBindings.id })
+            .from(personalSharedGroupBindings)
+            .where(
+              and(
+                eq(personalSharedGroupBindings.id, input.bindingId),
+                eq(personalSharedGroupBindings.owner_user_id, input.ownerUserId),
+                deliveryLeaseBlocksAuthorityMutation(now),
+              ),
+            )
+            .limit(1);
+          return Boolean(binding);
+        },
+      ),
+    );
   },
 
   async applyMembershipChange(input: {
@@ -254,53 +403,227 @@ export const personalSharedGroupsRepository = {
     membershipChange: "joined" | "removed";
     verifiedAt?: Date;
   }): Promise<PersonalSharedGroupBinding | null> {
-    const now = input.verifiedAt ?? new Date();
+    const verifiedAt = input.verifiedAt;
+    return waitForAuthorityMutation(
+      async (leaseNow) => {
+        const now = verifiedAt ?? leaseNow;
+        const [binding] = await dbWrite
+          .update(personalSharedGroupBindings)
+          .set({
+            state: input.membershipChange === "joined" ? "active" : "suspended",
+            authority_version: sql`${personalSharedGroupBindings.authority_version} + 1`,
+            last_verified_at: now,
+            updated_at: now,
+          })
+          .where(
+            and(
+              eq(personalSharedGroupBindings.platform, input.platform),
+              eq(personalSharedGroupBindings.project, input.project),
+              eq(personalSharedGroupBindings.connector_account_id, input.connectorAccountId),
+              eq(personalSharedGroupBindings.provider_chat_id, input.providerChatId),
+              eq(
+                personalSharedGroupBindings.state,
+                input.membershipChange === "joined" ? "suspended" : "active",
+              ),
+              deliveryLeaseAllowsAuthorityMutation(leaseNow),
+            ),
+          )
+          .returning();
+        return binding ?? null;
+      },
+      async (now) => {
+        const [binding] = await dbWrite
+          .select({ id: personalSharedGroupBindings.id })
+          .from(personalSharedGroupBindings)
+          .where(
+            and(
+              eq(personalSharedGroupBindings.platform, input.platform),
+              eq(personalSharedGroupBindings.project, input.project),
+              eq(personalSharedGroupBindings.connector_account_id, input.connectorAccountId),
+              eq(personalSharedGroupBindings.provider_chat_id, input.providerChatId),
+              deliveryLeaseBlocksAuthorityMutation(now),
+            ),
+          )
+          .limit(1);
+        return Boolean(binding);
+      },
+    );
+  },
+
+  async authorizeDelivery(input: {
+    authority: PersonalSharedGroupDeliveryAuthority;
+    platform: PersonalSharedGroupPlatform;
+    project: string;
+    connectorAccountId: string;
+    providerChatId: string;
+    invocation: "mention" | "command" | "reply" | "ambient";
+    sourceMessageId: string;
+    leaseToken: string;
+  }): Promise<PersonalSharedGroupDeliveryLease> {
+    const now = new Date();
     const [binding] = await dbWrite
       .update(personalSharedGroupBindings)
       .set({
-        state: input.membershipChange === "joined" ? "active" : "suspended",
-        last_verified_at: now,
-        updated_at: now,
+        delivery_lease_source_id: input.sourceMessageId,
+        delivery_lease_token: input.leaseToken,
+        delivery_lease_expires_at: new Date(now.getTime() + DELIVERY_LEASE_MS),
       })
       .where(
         and(
+          eq(personalSharedGroupBindings.id, input.authority.bindingId),
+          eq(personalSharedGroupBindings.owner_user_id, input.authority.ownerUserId),
+          eq(personalSharedGroupBindings.personal_agent_id, input.authority.personalAgentId),
+          eq(personalSharedGroupBindings.authority_version, input.authority.version),
           eq(personalSharedGroupBindings.platform, input.platform),
           eq(personalSharedGroupBindings.project, input.project),
           eq(personalSharedGroupBindings.connector_account_id, input.connectorAccountId),
           eq(personalSharedGroupBindings.provider_chat_id, input.providerChatId),
-          eq(
-            personalSharedGroupBindings.state,
-            input.membershipChange === "joined" ? "suspended" : "active",
+          eq(personalSharedGroupBindings.state, "active"),
+          notExists(
+            dbWrite
+              .select({ id: personalSharedGroupDeliveryReceipts.id })
+              .from(personalSharedGroupDeliveryReceipts)
+              .where(
+                and(
+                  eq(
+                    personalSharedGroupDeliveryReceipts.binding_id,
+                    personalSharedGroupBindings.id,
+                  ),
+                  eq(personalSharedGroupDeliveryReceipts.source_message_id, input.sourceMessageId),
+                ),
+              ),
+          ),
+          ...(input.invocation === "ambient"
+            ? [eq(personalSharedGroupBindings.response_policy, "ambient")]
+            : []),
+          or(
+            deliveryLeaseAvailable(now),
+            and(
+              eq(personalSharedGroupBindings.delivery_lease_source_id, input.sourceMessageId),
+              eq(personalSharedGroupBindings.delivery_lease_token, input.leaseToken),
+            ),
           ),
         ),
       )
-      .returning();
-    return binding ?? null;
+      .returning({
+        token: personalSharedGroupBindings.delivery_lease_token,
+        expiresAt: personalSharedGroupBindings.delivery_lease_expires_at,
+      });
+    return binding?.token === input.leaseToken && binding.expiresAt
+      ? {
+          authorized: true,
+          leaseToken: binding.token,
+          expiresAt: binding.expiresAt.toISOString(),
+        }
+      : { authorized: false, leaseToken: null, expiresAt: null };
+  },
+
+  /**
+   * Commits the exact reserved delivery immediately before provider egress.
+   * Once committed, the source/token pair is the immutable authorization
+   * point. Authority may change afterward, but another delivery cannot take
+   * over this slot until its exact provider receipt is reconciled.
+   */
+  async commitDelivery(input: {
+    authority: PersonalSharedGroupDeliveryAuthority;
+    platform: PersonalSharedGroupPlatform;
+    project: string;
+    connectorAccountId: string;
+    providerChatId: string;
+    sourceMessageId: string;
+    leaseToken: string;
+  }): Promise<boolean> {
+    const now = new Date();
+    const [binding] = await dbWrite
+      .update(personalSharedGroupBindings)
+      .set({
+        delivery_lease_committed_at: sql`coalesce(${personalSharedGroupBindings.delivery_lease_committed_at}, ${now})`,
+      })
+      .where(
+        and(
+          eq(personalSharedGroupBindings.id, input.authority.bindingId),
+          eq(personalSharedGroupBindings.owner_user_id, input.authority.ownerUserId),
+          eq(personalSharedGroupBindings.personal_agent_id, input.authority.personalAgentId),
+          eq(personalSharedGroupBindings.authority_version, input.authority.version),
+          eq(personalSharedGroupBindings.platform, input.platform),
+          eq(personalSharedGroupBindings.project, input.project),
+          eq(personalSharedGroupBindings.connector_account_id, input.connectorAccountId),
+          eq(personalSharedGroupBindings.provider_chat_id, input.providerChatId),
+          eq(personalSharedGroupBindings.state, "active"),
+          eq(personalSharedGroupBindings.delivery_lease_source_id, input.sourceMessageId),
+          eq(personalSharedGroupBindings.delivery_lease_token, input.leaseToken),
+          or(
+            isNotNull(personalSharedGroupBindings.delivery_lease_committed_at),
+            gt(personalSharedGroupBindings.delivery_lease_expires_at, now),
+          ),
+        ),
+      )
+      .returning({ token: personalSharedGroupBindings.delivery_lease_token });
+    return binding?.token === input.leaseToken;
   },
 
   async recordDeliveryReceipts(input: {
+    authority: PersonalSharedGroupDeliveryAuthority;
     platform: PersonalSharedGroupPlatform;
     project: string;
     connectorAccountId: string;
     providerChatId: string;
     sourceMessageId: string;
     providerMessageIds: string[];
-  }): Promise<number> {
+    leaseToken: string;
+  }): Promise<{ recorded: boolean; inserted: number }> {
     return dbWrite.transaction(async (tx) => {
+      const expected = new Set(input.providerMessageIds);
+      if (expected.size > 0) {
+        const prior = await tx
+          .select({
+            providerMessageId: personalSharedGroupDeliveryReceipts.provider_message_id,
+            sourceMessageId: personalSharedGroupDeliveryReceipts.source_message_id,
+          })
+          .from(personalSharedGroupDeliveryReceipts)
+          .where(
+            and(
+              eq(personalSharedGroupDeliveryReceipts.binding_id, input.authority.bindingId),
+              inArray(
+                personalSharedGroupDeliveryReceipts.provider_message_id,
+                input.providerMessageIds,
+              ),
+            ),
+          );
+        const durablePrior = new Set(
+          prior
+            .filter((receipt) => receipt.sourceMessageId === input.sourceMessageId)
+            .map((receipt) => receipt.providerMessageId),
+        );
+        if (
+          durablePrior.size === expected.size &&
+          [...expected].every((id) => durablePrior.has(id))
+        ) {
+          return { recorded: true, inserted: 0 };
+        }
+      }
+      // The source/token pair was durably committed before provider egress.
+      // It remains authoritative for receipt reconciliation even if policy,
+      // membership, revocation, or owner rebind advanced the live generation.
       const [binding] = await tx
         .select({ id: personalSharedGroupBindings.id })
         .from(personalSharedGroupBindings)
         .where(
           and(
+            eq(personalSharedGroupBindings.id, input.authority.bindingId),
             eq(personalSharedGroupBindings.platform, input.platform),
             eq(personalSharedGroupBindings.project, input.project),
             eq(personalSharedGroupBindings.connector_account_id, input.connectorAccountId),
             eq(personalSharedGroupBindings.provider_chat_id, input.providerChatId),
-            eq(personalSharedGroupBindings.state, "active"),
+            eq(personalSharedGroupBindings.delivery_lease_source_id, input.sourceMessageId),
+            eq(personalSharedGroupBindings.delivery_lease_token, input.leaseToken),
+            isNotNull(personalSharedGroupBindings.delivery_lease_committed_at),
           ),
         )
         .limit(1);
-      if (!binding || input.providerMessageIds.length === 0) return 0;
+      if (!binding || input.providerMessageIds.length === 0) {
+        return { recorded: false, inserted: 0 };
+      }
       const inserted = await tx
         .insert(personalSharedGroupDeliveryReceipts)
         .values(
@@ -316,7 +639,48 @@ export const personalSharedGroupsRepository = {
         )
         .onConflictDoNothing()
         .returning({ id: personalSharedGroupDeliveryReceipts.id });
-      return inserted.length;
+      const recorded = await tx
+        .select({
+          providerMessageId: personalSharedGroupDeliveryReceipts.provider_message_id,
+          sourceMessageId: personalSharedGroupDeliveryReceipts.source_message_id,
+        })
+        .from(personalSharedGroupDeliveryReceipts)
+        .where(
+          and(
+            eq(personalSharedGroupDeliveryReceipts.binding_id, binding.id),
+            inArray(
+              personalSharedGroupDeliveryReceipts.provider_message_id,
+              input.providerMessageIds,
+            ),
+          ),
+        );
+      const durable = new Set(
+        recorded
+          .filter((receipt) => receipt.sourceMessageId === input.sourceMessageId)
+          .map((receipt) => receipt.providerMessageId),
+      );
+      const result = {
+        recorded: durable.size === expected.size && [...expected].every((id) => durable.has(id)),
+        inserted: inserted.length,
+      };
+      if (result.recorded) {
+        await tx
+          .update(personalSharedGroupBindings)
+          .set({
+            delivery_lease_source_id: null,
+            delivery_lease_token: null,
+            delivery_lease_expires_at: null,
+            delivery_lease_committed_at: null,
+          })
+          .where(
+            and(
+              eq(personalSharedGroupBindings.id, binding.id),
+              eq(personalSharedGroupBindings.delivery_lease_source_id, input.sourceMessageId),
+              eq(personalSharedGroupBindings.delivery_lease_token, input.leaseToken),
+            ),
+          );
+      }
+      return result;
     });
   },
 

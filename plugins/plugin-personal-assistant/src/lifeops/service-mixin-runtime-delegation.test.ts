@@ -58,7 +58,7 @@ function runtimeWithServices(services: Record<string, unknown>): IAgentRuntime {
 }
 
 function connectorGrant(
-  provider: "telegram" | "signal" | "x",
+  provider: "telegram" | "x",
   overrides: Partial<LifeOpsConnectorGrant> = {},
 ): LifeOpsConnectorGrant {
   return {
@@ -67,18 +67,13 @@ function connectorGrant(
     provider,
     connectorAccountId: `acct-${provider}-owner`,
     side: "owner",
-    identity:
-      provider === "signal"
-        ? { phoneNumber: "+15551234567" }
-        : { id: "12345", username: "stored_user", phone: "+15551234567" },
+    identity: { id: "12345", username: "stored_user", phone: "+15551234567" },
     identityEmail: null,
     grantedScopes: [],
     capabilities:
-      provider === "signal"
-        ? ["signal.read", "signal.send"]
-        : provider === "x"
-          ? ["x.read", "x.write", "x.dm.read", "x.dm.write"]
-          : ["telegram.read", "telegram.send"],
+      provider === "x"
+        ? ["x.read", "x.write", "x.dm.read", "x.dm.write"]
+        : ["telegram.read", "telegram.send"],
     tokenRef: `${provider}-stored-token`,
     mode: "local",
     executionTarget: "local",
@@ -245,7 +240,6 @@ describe("LifeOps messaging mixin runtime delegation", () => {
     expect(source).not.toContain("apiId");
     expect(source).not.toContain("apiHash");
     expect(source).not.toContain("startTelegramAuth");
-    expect(source).not.toContain("startSignalPairing");
   });
 
   it("passes non-default X account ids to runtime read, send, and post calls", async () => {
@@ -548,34 +542,6 @@ describe("LifeOps messaging mixin runtime delegation", () => {
     expect(stored[0]).toMatchObject({
       readAt: expect.any(String),
       repliedAt: expect.any(String),
-    });
-  });
-
-  it("does not read or send Signal from LifeOps-stored token refs", async () => {
-    const service = serviceWithConnectorGrants({
-      grants: { signal: connectorGrant("signal") },
-    });
-
-    const status = await service.getSignalConnectorStatus("owner");
-
-    expect(status.connected).toBe(false);
-    expect(status.inbound).toBe(false);
-    expect(status.grant).toBeNull();
-    expect(status.degradations?.map((item) => item.code)).toEqual(
-      expect.arrayContaining(["signal_direct_transport_unavailable"]),
-    );
-    await expect(service.readSignalInbound()).rejects.toMatchObject({
-      status: 501,
-      message: expect.stringContaining("bundled, in-process Signal transport"),
-    });
-    await expect(
-      service.sendSignalMessage({
-        recipient: "+15550000001",
-        text: "hello",
-      }),
-    ).rejects.toMatchObject({
-      status: 501,
-      message: expect.stringContaining("bundled, in-process Signal transport"),
     });
   });
 

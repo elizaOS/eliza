@@ -31,7 +31,7 @@ export default scenario({
       options: {
         action: "draft_reply",
         recipient: "Zane Turner",
-        channel: "signal",
+        channel: "whatsapp",
         requiresConfirmation: true,
         body: "Sorry I got sharp about the missed coffee plan. I want to reset when you have bandwidth.",
       },

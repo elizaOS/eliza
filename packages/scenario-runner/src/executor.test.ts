@@ -12,6 +12,14 @@ import type {
   RouteRequest,
   RouteResponse,
 } from "@elizaos/core";
+import {
+  pendingPostDeliveryTaskCount,
+  trackPostDeliveryTask,
+} from "@elizaos/core";
+import {
+  createDeterministicModelFixtureRegistry,
+  type DeterministicModelFixtureRegistry,
+} from "@elizaos/core/testing";
 import { describe, expect, it, vi } from "vitest";
 import { runScenario } from "./executor";
 
@@ -21,10 +29,12 @@ function createRuntime(
 ): AgentRuntime {
   return {
     actions,
+    agentId: "00000000-0000-4000-8000-000000000001",
     plugins: [],
     routes: [],
     ensureConnection: vi.fn(async () => undefined),
     getService: vi.fn(() => null),
+    reportError: vi.fn(),
     setSetting: vi.fn(),
     logger: {
       debug: vi.fn(),
@@ -37,6 +47,311 @@ function createRuntime(
 }
 
 describe("scenario executor wait turns", () => {
+  it("fails strict final validation when a caught model mismatch remains", async () => {
+    const registry = createDeterministicModelFixtureRegistry();
+    const runtime = {
+      ...createRuntime([]),
+      scenarioModelFixtures: registry,
+      assertScenarioModelFixturesConsumed: () => registry.assertConsumed(),
+      getScenarioModelFixtureDiagnostics: () => registry.diagnostics(),
+    } as unknown as AgentRuntime & {
+      scenarioModelFixtures: DeterministicModelFixtureRegistry;
+    };
+
+    const report = await runScenario(
+      {
+        id: "strict-caught-model-mismatch",
+        title: "Caught strict model mismatch",
+        domain: "executor",
+        modelFixtures: { mode: "fixtures", fixtures: [] },
+        turns: [
+          {
+            kind: "wait",
+            name: "background boundary catches mismatch",
+            durationMs: 0,
+            assertTurn() {
+              void trackPostDeliveryTask(
+                runtime,
+                "late-strict-model-mismatch",
+                async () => {
+                  await new Promise((resolve) => setTimeout(resolve, 550));
+                  try {
+                    registry.resolve({
+                      modelType: "TEXT_SMALL",
+                      latestUserText: "private user message",
+                      toolNames: [],
+                      params: { prompt: "private rendered prompt" },
+                    });
+                  } catch {
+                    // error-policy:J7 Simulates a production diagnostic boundary
+                    // retaining the failure without killing its background loop.
+                  }
+                },
+                { kind: "diagnostic" },
+              );
+            },
+          },
+        ],
+      },
+      runtime,
+      {
+        minJudgeScore: 0.8,
+        providerName: "deterministic-fixture-model",
+        turnTimeoutMs: 1_000,
+      },
+    );
+
+    expect(report.status).toBe("failed");
+    expect(report.failedAssertions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          label: "modelFixtures",
+          detail: expect.stringContaining(
+            "deterministic model calls were unexpected",
+          ),
+        }),
+      ]),
+    );
+    expect(report.modelFixtureDiagnostics?.unexpectedCalls).toHaveLength(1);
+    expect(JSON.stringify(report.modelFixtureDiagnostics)).not.toContain(
+      "private user message",
+    );
+    expect(JSON.stringify(report.modelFixtureDiagnostics)).not.toContain(
+      "private rendered prompt",
+    );
+  });
+
+  it("bounds a never-settling tracked model task and refuses runtime reuse", async () => {
+    const registry = createDeterministicModelFixtureRegistry();
+    const runtime = {
+      ...createRuntime([]),
+      scenarioModelFixtures: registry,
+      assertScenarioModelFixturesConsumed: () => registry.assertConsumed(),
+      getScenarioModelFixtureDiagnostics: () => registry.diagnostics(),
+    } as unknown as AgentRuntime & {
+      scenarioModelFixtures: DeterministicModelFixtureRegistry;
+    };
+
+    let releaseBlockedProvider!: () => void;
+    let blockedProviderTask!: Promise<void>;
+    const scenarioAbort = new AbortController();
+    const privateAbortReason = "private scenario abort reason must not escape";
+    const startedAt = Date.now();
+    const first = await runScenario(
+      {
+        id: "strict-never-settling-model-task",
+        title: "Never-settling tracked model task",
+        domain: "executor",
+        modelFixtures: {
+          mode: "model-free",
+          reason: "The regression directly controls tracked work.",
+        },
+        turns: [
+          {
+            kind: "wait",
+            name: "provider remains pending",
+            durationMs: 0,
+            assertTurn() {
+              blockedProviderTask = trackPostDeliveryTask(
+                runtime,
+                "never-settling-model-provider",
+                async () =>
+                  new Promise<void>((resolve) => {
+                    releaseBlockedProvider = resolve;
+                  }),
+                { kind: "diagnostic" },
+              );
+              scenarioAbort.abort(new Error(privateAbortReason));
+            },
+          },
+        ],
+      },
+      runtime,
+      {
+        minJudgeScore: 0.8,
+        providerName: "deterministic-fixture-model",
+        turnTimeoutMs: 1_000,
+        postDeliveryTimeoutMs: 20,
+        abortSignal: scenarioAbort.signal,
+      },
+    );
+
+    expect(Date.now() - startedAt).toBeLessThan(500);
+    expect(first.status).toBe("failed");
+    expect(first.failedAssertions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          label: "postDeliveryTasks",
+          detail: expect.stringContaining("runtime quarantined"),
+        }),
+      ]),
+    );
+    expect(first.modelFixtureDiagnostics?.scope?.scenarioId).toBe(
+      "strict-never-settling-model-task",
+    );
+    expect(JSON.stringify(first)).not.toContain(privateAbortReason);
+    expect(pendingPostDeliveryTaskCount(runtime)).toBe(1);
+
+    let secondScenarioExecuted = false;
+    const second = await runScenario(
+      {
+        id: "strict-after-quarantine",
+        title: "Runtime reuse is refused",
+        domain: "executor",
+        modelFixtures: {
+          mode: "model-free",
+          reason: "The quarantined runtime must fail before any turn executes.",
+        },
+        turns: [
+          {
+            kind: "wait",
+            name: "must not execute",
+            durationMs: 0,
+            assertTurn() {
+              secondScenarioExecuted = true;
+            },
+          },
+        ],
+      },
+      runtime,
+      {
+        minJudgeScore: 0.8,
+        providerName: "deterministic-fixture-model",
+        turnTimeoutMs: 1_000,
+      },
+    );
+
+    expect(second.status).toBe("failed");
+    expect(second.failedAssertions).toEqual([
+      expect.objectContaining({ label: "runtimeIsolation" }),
+    ]);
+    expect(secondScenarioExecuted).toBe(false);
+    expect(registry.diagnostics().scope?.scenarioId).toBe(
+      "strict-never-settling-model-task",
+    );
+    expect(JSON.stringify(second)).not.toContain(privateAbortReason);
+    releaseBlockedProvider();
+    await blockedProviderTask;
+    expect(pendingPostDeliveryTaskCount(runtime)).toBe(0);
+  });
+
+  it("reuses an idle runtime after a pre-aborted post-delivery wait", async () => {
+    const runtime = createRuntime([]);
+    const preAborted = new AbortController();
+    preAborted.abort(new Error("caller stopped waiting"));
+    let firstExecuted = false;
+    const first = await runScenario(
+      {
+        id: "idle-pre-aborted-drain",
+        title: "Idle pre-aborted drain",
+        domain: "executor",
+        modelFixtures: {
+          mode: "model-free",
+          reason: "The scenario creates no post-delivery work.",
+        },
+        turns: [
+          {
+            kind: "wait",
+            name: "idle turn",
+            durationMs: 0,
+            assertTurn() {
+              firstExecuted = true;
+            },
+          },
+        ],
+      },
+      runtime,
+      {
+        minJudgeScore: 0.8,
+        providerName: "deterministic-fixture-model",
+        turnTimeoutMs: 1_000,
+        abortSignal: preAborted.signal,
+      },
+    );
+
+    expect(first.status).toBe("passed");
+    expect(firstExecuted).toBe(true);
+
+    let secondExecuted = false;
+    const second = await runScenario(
+      {
+        id: "reuse-after-idle-pre-abort",
+        title: "Runtime reuse after idle pre-abort",
+        domain: "executor",
+        modelFixtures: {
+          mode: "model-free",
+          reason: "The idle abort must not quarantine the shared runtime.",
+        },
+        turns: [
+          {
+            kind: "wait",
+            name: "reuse turn",
+            durationMs: 0,
+            assertTurn() {
+              secondExecuted = true;
+            },
+          },
+        ],
+      },
+      runtime,
+      {
+        minJudgeScore: 0.8,
+        providerName: "deterministic-fixture-model",
+        turnTimeoutMs: 1_000,
+      },
+    );
+
+    expect(second.status).toBe("passed");
+    expect(secondExecuted).toBe(true);
+  });
+
+  it("rejects an invalid post-delivery deadline before executing the scenario", async () => {
+    const runtime = createRuntime([]);
+    let executed = false;
+    const scenario = {
+      id: "invalid-post-delivery-timeout",
+      title: "Invalid post-delivery timeout",
+      domain: "executor",
+      modelFixtures: {
+        mode: "model-free" as const,
+        reason: "The option preflight must run before this direct wait turn.",
+      },
+      turns: [
+        {
+          kind: "wait" as const,
+          name: "must not execute",
+          durationMs: 0,
+          assertTurn() {
+            executed = true;
+            return undefined;
+          },
+        },
+      ],
+    };
+
+    const invalid = await runScenario(scenario, runtime, {
+      minJudgeScore: 0.8,
+      providerName: "deterministic-fixture-model",
+      turnTimeoutMs: 1_000,
+      postDeliveryTimeoutMs: 0,
+    });
+
+    expect(invalid.status).toBe("failed");
+    expect(invalid.failedAssertions).toEqual([
+      expect.objectContaining({ label: "executorOptions" }),
+    ]);
+    expect(executed).toBe(false);
+
+    const valid = await runScenario(scenario, runtime, {
+      minJudgeScore: 0.8,
+      providerName: "deterministic-fixture-model",
+      turnTimeoutMs: 1_000,
+      postDeliveryTimeoutMs: 20,
+    });
+    expect(valid.status).toBe("passed");
+    expect(executed).toBe(true);
+  });
+
   it("waits for the requested duration without sending a message", async () => {
     const handleMessage = vi.fn();
     const runtime = {

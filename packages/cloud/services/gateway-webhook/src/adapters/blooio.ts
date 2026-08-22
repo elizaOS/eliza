@@ -234,7 +234,16 @@ async function verifySignature(
     const signaturePart = parts.find((p) => p.startsWith("v1="));
     if (!timestampPart || !signaturePart) return false;
 
-    const timestamp = parseInt(timestampPart.substring(2), 10);
+    // Validate the timestamp before comparing it. `parseInt` returns NaN for a
+    // malformed `t=` value, and every comparison against NaN is false — so the
+    // replay-window check below would not reject, it would silently fall
+    // through. `parseInt` also accepts a numeric prefix ("1234567890abc"), which
+    // is not the value the sender signed.
+    const rawTimestamp = timestampPart.substring(2);
+    const timestamp = /^\d+$/.test(rawTimestamp)
+      ? Number(rawTimestamp)
+      : Number.NaN;
+    if (!Number.isSafeInteger(timestamp)) return false;
     const expectedSignature = signaturePart.substring(3);
 
     const now = Math.floor(Date.now() / 1000);

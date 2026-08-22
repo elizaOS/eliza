@@ -121,12 +121,15 @@ function readSavedToken(
 ): string | null {
   if (setupService) {
     const config = setupService.getConfig();
+    // A never-configured deployment has no `connectors.telegram` block at all
+    // (`handleStart` creates it only when a token is saved), so this lookup is
+    // optional in exactly the same way `config.connectors` already is.
     const connectors = (config.connectors ?? {}) as Record<
       string,
-      Record<string, unknown>
+      Record<string, unknown> | undefined
     >;
     const tgConfig = connectors.telegram;
-    const persisted = tgConfig.botToken;
+    const persisted = tgConfig?.botToken;
     if (typeof persisted === "string" && persisted.length > 0) {
       return persisted;
     }

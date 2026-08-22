@@ -758,7 +758,7 @@ let quitRequestPromise: Promise<void> | null = null;
 let desktopSessionAgentGeneration: string | null = null;
 
 function desktopSessionGeneration(status: {
-  port: number;
+  port: number | null;
   startedAt: number | null;
 }): string {
   return `${status.port}:${status.startedAt ?? "unknown"}`;

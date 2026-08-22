@@ -22,14 +22,18 @@ interface Route {
   times?: number;
 }
 
-export function jsonResponse(status: number, body: unknown, headers: Record<string, string> = {}) {
+export function jsonResponse(
+  status: number,
+  body: unknown,
+  headers: Record<string, string> = {}
+): Response {
   return new Response(JSON.stringify(body), {
     status,
     headers: { "Content-Type": "application/json", ...headers },
   });
 }
 
-export function spotifyError(status: number, message: string, reason?: string) {
+export function spotifyError(status: number, message: string, reason?: string): Response {
   return jsonResponse(status, {
     error: { status, message, ...(reason ? { reason } : {}) },
   });

@@ -12,32 +12,32 @@ You select the provider with env vars — no code change. Any
 
 1. Explicit override: `ELIZA_CODE_PROVIDER` (or its alias
    `ELIZA_CODE_MODEL_PROVIDER`) — `anthropic`/`claude` or `openai`/`codex`.
-2. Else auto-detect: `OPENAI_API_KEY` → `openai`; `ELIZA_OPENCODE_API_KEY` →
+2. Else auto-detect: `OPENAI_API_KEY` → `openai`; `ELIZA_CODE_API_KEY` →
    `openai`; `ANTHROPIC_API_KEY` → `anthropic`.
 
-`applyOpencodeProviderEnv(env)` maps the `ELIZA_OPENCODE_*` knobs onto the
+`applyElizaCodeProviderEnv(env)` maps the `ELIZA_CODE_*` knobs onto the
 `OPENAI_*` ones the provider plugin reads (and pins
-`ELIZA_CODE_PROVIDER=openai` when it inherits the opencode key), so the
-orchestrator only has to forward `ELIZA_OPENCODE_*` to the spawned sub-agent
+`ELIZA_CODE_PROVIDER=openai` when it inherits the key), so the
+orchestrator only has to forward `ELIZA_CODE_*` to the spawned sub-agent
 (the `ELIZA_` prefix is on the forward allow-list). Explicit `OPENAI_*` values
 always win — the mapping only fills unset vars.
 
-| `ELIZA_OPENCODE_*` | maps to | meaning |
+| `ELIZA_CODE_*` | maps to | meaning |
 |---|---|---|
-| `ELIZA_OPENCODE_BASE_URL` | `OPENAI_BASE_URL` | the API endpoint |
-| `ELIZA_OPENCODE_API_KEY` | `OPENAI_API_KEY` | bearer token |
-| `ELIZA_OPENCODE_MODEL_POWERFUL` | `OPENAI_LARGE_MODEL` | the "large" model id |
-| `ELIZA_OPENCODE_MODEL_FAST` | `OPENAI_SMALL_MODEL` / `OPENAI_MEDIUM_MODEL` | the "fast" model id |
+| `ELIZA_CODE_BASE_URL` | `OPENAI_BASE_URL` | the API endpoint |
+| `ELIZA_CODE_API_KEY` | `OPENAI_API_KEY` | bearer token |
+| `ELIZA_CODE_MODEL_POWERFUL` | `OPENAI_LARGE_MODEL` | the "large" model id |
+| `ELIZA_CODE_MODEL_FAST` | `OPENAI_SMALL_MODEL` / `OPENAI_MEDIUM_MODEL` | the "fast" model id |
 
 ## Examples
 
 ### Cerebras (fast, OpenAI-compatible)
 
 ```bash
-ELIZA_OPENCODE_BASE_URL=https://api.cerebras.ai/v1
-ELIZA_OPENCODE_API_KEY=${CEREBRAS_API_KEY}
-ELIZA_OPENCODE_MODEL_POWERFUL=zai-glm-4.7
-ELIZA_OPENCODE_MODEL_FAST=zai-glm-4.7
+ELIZA_CODE_BASE_URL=https://api.cerebras.ai/v1
+ELIZA_CODE_API_KEY=${CEREBRAS_API_KEY}
+ELIZA_CODE_MODEL_POWERFUL=zai-glm-4.7
+ELIZA_CODE_MODEL_FAST=zai-glm-4.7
 ```
 
 ### Surplus Intelligence (Claude / GPT / others via one OpenAI-compatible endpoint)
@@ -45,14 +45,14 @@ ELIZA_OPENCODE_MODEL_FAST=zai-glm-4.7
 [Surplus](https://surplusintelligence.ai) proxies many models (Claude Opus,
 GPT-5.x, Gemini, GLM, DeepSeek, …) behind one OpenAI-Chat-Completions endpoint,
 billed per-request via x402 micropayments. Because it speaks the OpenAI shape,
-eliza-code uses it with zero code change — just point the `ELIZA_OPENCODE_*`
+eliza-code uses it with zero code change — just point the `ELIZA_CODE_*`
 knobs at it:
 
 ```bash
-ELIZA_OPENCODE_BASE_URL=https://api.surplusintelligence.ai/v1
-ELIZA_OPENCODE_API_KEY=${SURPLUS_API_KEY}        # an inf_... key
-ELIZA_OPENCODE_MODEL_POWERFUL=claude-opus-4.8     # e.g. claude-opus-4.8, gpt-5.5, …
-ELIZA_OPENCODE_MODEL_FAST=claude-opus-4.8
+ELIZA_CODE_BASE_URL=https://api.surplusintelligence.ai/v1
+ELIZA_CODE_API_KEY=${SURPLUS_API_KEY}            # an inf_... key
+ELIZA_CODE_MODEL_POWERFUL=claude-opus-4.8         # e.g. claude-opus-4.8, gpt-5.5, …
+ELIZA_CODE_MODEL_FAST=claude-opus-4.8
 ```
 
 List available models: `GET https://api.surplusintelligence.ai/v1/models`.
@@ -83,7 +83,7 @@ OPENAI_SMALL_MODEL=gpt-5.5-mini
 
 Which sub-agent the orchestrator spawns (and therefore whether eliza-code is
 used at all) is the **agent type**, set by `ELIZA_ACP_DEFAULT_AGENT`
-(`elizaos` = eliza-code, or `pi-agent` / `opencode` / `codex` / `claude`), or
+(`elizaos` = eliza-code, or `pi-agent` / `codex` / `claude`), or
 per-task via the resolver in `@elizaos/plugin-agent-orchestrator`
 (`src/services/task-agent-routing.ts`). The provider config above only applies
 when the `elizaos` (eliza-code) agent type is selected.

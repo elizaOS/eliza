@@ -373,7 +373,8 @@ export const ACTION_BENCHMARK_CASES: ActionBenchmarkCase[] = [
   },
   {
     id: "cross-send-signal",
-    userMessage: "send a Signal message to Priya saying thanks for the review",
+    userMessage:
+      "send a WhatsApp message to Priya saying thanks for the review",
     expectedAction: "MESSAGE",
     acceptableActions: ["MESSAGE"],
     expectedParams: { action: "send" },

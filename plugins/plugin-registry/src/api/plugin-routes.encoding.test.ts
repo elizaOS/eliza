@@ -108,7 +108,6 @@ function makeContext(
     buildPluginEvmDiagnosticEntry: vi.fn(() => makePlugin()),
     EVM_PLUGIN_PACKAGE: "@elizaos/plugin-evm",
     applyWhatsAppQrOverride: vi.fn(),
-    applySignalQrOverride: vi.fn(),
     resolvePluginConfigMutationRejections: vi.fn(() => []),
     requirePluginManager: vi.fn(),
     requireCoreManager: vi.fn(),

@@ -11,6 +11,7 @@ import {
   persistSession,
   resolveAuthDir,
   resolveSessionPath,
+  resolveShortSocketDir,
 } from "./auth-bridge";
 
 vi.mock("../logger", () => ({
@@ -78,7 +79,9 @@ describe("desktop auth bridge", () => {
       expiresAt: Date.now() + 120_000,
     };
     persistSession(session, env);
-    const fetchImpl = vi.fn(async () => new Response("{}", { status: 200 }));
+    const fetchImpl = vi.fn(
+      async (_input: URL | RequestInfo) => new Response("{}", { status: 200 }),
+    );
 
     await expect(
       loadOrCreateDesktopSession({
@@ -161,5 +164,11 @@ describe("desktop auth bridge", () => {
     expect(replacement?.sessionId).toBe("replacement-session");
     expect(fetchImpl).toHaveBeenCalledTimes(2);
     expect(loadPersistedSession(env)?.sessionId).toBe("replacement-session");
+  });
+
+  it("uses a private child directory for short macOS bootstrap sockets", () => {
+    expect(resolveShortSocketDir("/private/var/tmp", 501)).toBe(
+      "/private/var/tmp/eza-dx",
+    );
   });
 });

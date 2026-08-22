@@ -16,8 +16,10 @@
  *     app-sandbox + cs.inherit + `allow-jit` only — JIT is scoped to this
  *     one binary because Bun's macOS runtime imports Apple's JIT
  *     write-protection APIs.
- *   - Every other nested Mach-O gets `mas-child.entitlements`: app-sandbox
- *     + cs.inherit, no JIT, no library-validation bypass, no unsigned-exec.
+ *   - Executable child Mach-Os get `mas-child.entitlements`: app-sandbox +
+ *     cs.inherit, no JIT, no library-validation bypass, no unsigned-exec.
+ *     Apple codesign may omit entitlement blobs from non-executable dynamic
+ *     libraries; those remain signed and are still checked for forbidden keys.
  *
  * Usage:
  *   node mas-smoke.mjs --app=path/to/Built.app
@@ -299,10 +301,22 @@ function assertBunHelperEntitlements(machoPath, ents, collector) {
 }
 
 function assertChildEntitlements(machoPath, ents, collector) {
-  collector.failTrue(machoPath, "com.apple.security.inherit", ents);
+  if (!mayOmitChildEntitlements(machoPath) || ents.size > 0) {
+    collector.failTrue(machoPath, "com.apple.security.inherit", ents);
+  }
   for (const key of CHILD_FORBIDDEN_KEYS) {
     collector.failForbidden(machoPath, key, ents);
   }
+}
+
+/**
+ * `codesign --entitlements` does not retain an entitlement blob on ordinary
+ * dynamic libraries even when the signer supplies one. Only those known
+ * non-executable library forms may therefore report an empty entitlement map;
+ * helpers and other executable Mach-Os must still carry `cs.inherit`.
+ */
+function mayOmitChildEntitlements(machoPath) {
+  return /\.(?:dylib|so|node)$/i.test(machoPath);
 }
 
 function tailSandboxLog(appPath) {
@@ -447,6 +461,7 @@ export {
   findMachOFiles,
   isMachO,
   isParentMainExecutable,
+  mayOmitChildEntitlements,
   PARENT_FORBIDDEN_KEYS,
   PARENT_REQUIRED_TRUE_KEYS,
   parseEntitlementsPlist,

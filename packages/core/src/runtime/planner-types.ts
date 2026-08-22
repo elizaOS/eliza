@@ -226,6 +226,8 @@ export interface PlannerStep {
 
 export interface PlannerTrajectory {
 	context: ContextObject;
+	/** Internal execution-mode provenance for mode-specific terminal handling. */
+	codingMode?: boolean;
 	steps: PlannerStep[];
 	archivedSteps: PlannerStep[];
 	plannedQueue: PlannerToolCall[];
@@ -274,6 +276,8 @@ export interface PlannerLoopParams {
 		toolCall: PlannerToolCall;
 		result: PlannerToolResult;
 	};
+	/** Trusted per-turn coding-loop mode; never used as an authorization signal. */
+	codingMode?: boolean;
 	config?: Partial<ChainingLoopConfig>;
 	executeToolCall: (
 		toolCall: PlannerToolCall,

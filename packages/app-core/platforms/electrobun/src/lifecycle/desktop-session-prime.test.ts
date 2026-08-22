@@ -51,7 +51,7 @@ describe("desktop session prime lifecycle", () => {
   });
 
   it("coalesces overlapping status emissions into one proof exchange", async () => {
-    let resolveSession: ((value: typeof SESSION) => void) | null = null;
+    let resolveSession!: (value: typeof SESSION) => void;
     mocks.loadOrCreateDesktopSession.mockImplementation(
       () =>
         new Promise((resolve) => {
@@ -68,7 +68,7 @@ describe("desktop session prime lifecycle", () => {
       "http://127.0.0.1:5174",
     );
     expect(mocks.loadOrCreateDesktopSession).toHaveBeenCalledTimes(1);
-    resolveSession?.(SESSION);
+    resolveSession(SESSION);
     await Promise.all([first, second]);
     expect(mocks.installDesktopSessionCookies).toHaveBeenCalledTimes(1);
   });

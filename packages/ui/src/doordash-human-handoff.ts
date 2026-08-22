@@ -1,4 +1,4 @@
-/** Validates and dispatches DoorDash Cloudflare Live View handoffs into the app Browser. */
+/** Routes validated DoorDash Live View or provider-blocked native handoffs into the app Browser. */
 
 import type { ChatActionResultSummary } from "./api";
 import { dispatchNavigateViewRequest } from "./events";
@@ -23,6 +23,26 @@ function safeLiveViewUrl(value: unknown): string | null {
   }
 }
 
+function safeNativeDoorDashDeepLink(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  try {
+    const deepLink = new URL(value);
+    if (deepLink.protocol !== "elizaos:" || deepLink.hostname !== "browser") {
+      return null;
+    }
+    const browse = deepLink.searchParams.get("browse");
+    if (!browse) return null;
+    const target = new URL(browse);
+    return target.protocol === "https:" &&
+      target.hostname === "www.doordash.com"
+      ? target.href
+      : null;
+  } catch {
+    // error-policy:J3 untrusted action output is non-routable when malformed.
+    return null;
+  }
+}
+
 export function findDoorDashHumanHandoff(
   results: readonly ChatActionResultSummary[] | undefined,
 ): DoorDashHumanHandoff | null {
@@ -39,9 +59,13 @@ export function findDoorDashHumanHandoff(
     }
     const liveViewUrl = safeLiveViewUrl(values.liveViewUrl);
     if (!liveViewUrl) continue;
+    const browserUrl =
+      values.providerBlocked === true
+        ? (safeNativeDoorDashDeepLink(values.nativeAppDeepLink) ?? liveViewUrl)
+        : liveViewUrl;
     return {
       liveViewUrl,
-      viewPath: `/browser?browse=${encodeURIComponent(liveViewUrl)}`,
+      viewPath: `/browser?browse=${encodeURIComponent(browserUrl)}`,
     };
   }
   return null;

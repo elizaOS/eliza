@@ -2435,6 +2435,14 @@ export { AcpService } from "./services/acp-service.js";
 // Terminal-output normalizer for chat surfaces; consumed by live smoke harnesses.
 export { cleanForChat } from "./services/ansi-utils.js";
 export {
+  type ChildDeliveryStatus,
+  type ChildTerminalArtifactRef,
+  type ChildTerminalResultEnvelope,
+  type ChildTerminalStatus,
+  type ChildVerificationStatus,
+  deriveChildTerminalResult,
+} from "./services/child-terminal-result.js";
+export {
   COMPLETION_ENVELOPE_INSTRUCTION,
   type CompletionEnvelope,
   envelopeCorrection,

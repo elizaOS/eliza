@@ -235,7 +235,7 @@ const LIFEOPS_RATE_LIMITS = {
   // credentials or initiate consent flows.
   oauth_init: { maxRequests: 5, windowMs: 60_000 },
   connector_write: { maxRequests: 10, windowMs: 60_000 },
-  // Generic outbound messaging (X DMs, iMessage, signal, telegram). Tighter
+  // Generic outbound messaging (X DMs, iMessage, Telegram). Tighter
   // than the default to limit blast radius.
   outbound_message: { maxRequests: 5, windowMs: 60_000 },
   default: { maxRequests: 60, windowMs: 60_000 },
@@ -1954,55 +1954,6 @@ export async function handleLifeOpsRoutes(
     if (!body) return true;
     return runRoute(ctx, async (service) => {
       json(res, await service.verifyTelegramConnector(body));
-    });
-  }
-
-  // -----------------------------------------------------------------------
-  // Signal connector
-  // -----------------------------------------------------------------------
-
-  if (
-    method === "GET" &&
-    pathname === "/api/lifeops/connectors/signal/status"
-  ) {
-    return runRoute(ctx, async (service) => {
-      json(
-        res,
-        await service.getSignalConnectorStatus(
-          parseConnectorSideQuery(url.searchParams.get("side")),
-        ),
-      );
-    });
-  }
-
-  if (
-    method === "GET" &&
-    pathname === "/api/lifeops/connectors/signal/messages"
-  ) {
-    return runRoute(ctx, async (service) => {
-      const limit =
-        parsePositiveIntegerQuery(url.searchParams.get("limit"), "limit", {
-          max: 100,
-        }) ?? 25;
-      const messages = await service.readSignalInbound(limit);
-      json(res, { messages, count: messages.length });
-    });
-  }
-
-  if (method === "POST" && pathname === "/api/lifeops/connectors/signal/send") {
-    if (rateLimitRequest(ctx, "outbound_message")) return true;
-    const body = await readJsonBody<Record<string, unknown>>(req, res);
-    if (!body) return true;
-    return runRoute(ctx, async (service) => {
-      json(
-        res,
-        await service.sendSignalMessage({
-          side: parseConnectorSideFromRequest(url, body),
-          recipient: requireBodyString(body, "recipient"),
-          text: requireBodyString(body, "text"),
-        }),
-        201,
-      );
     });
   }
 

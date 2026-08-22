@@ -85,7 +85,7 @@ describe("E2B remote runner router with the Coding remote runner HTTP runner", (
       provider: "home",
       remoteHttpBaseUrl: REMOTE_RUNNER_URL,
       remoteHttpToken: REMOTE_RUNNER_TOKEN,
-      agentRunners: ["codex", "claude-code", "opencode"],
+      agentRunners: ["codex", "claude-code"],
       workdir: "/workspace",
       hostWorkspaceRoot: workspaceRoot,
       timeoutMs: 30_000,
@@ -168,7 +168,7 @@ describe("configured request timeout propagation (#23005 review findings)", () =
   it("aborts fs.list at the configured request timeout, not the 60s default", async () => {
     const service = makeService(100, true);
     const start = Date.now();
-    await expect(service.fs.list({})).rejects.toThrow(/aborted/i);
+    await expect(service.fs.list({})).rejects.toThrow(/timed out/i);
     expect(Date.now() - start).toBeLessThan(5_000);
   });
 
@@ -177,14 +177,14 @@ describe("configured request timeout propagation (#23005 review findings)", () =
     const start = Date.now();
     await expect(
       service.fs.writeText({ path: "/workspace/evidence.txt", text: "hi" }),
-    ).rejects.toThrow(/aborted/i);
+    ).rejects.toThrow(/timed out/i);
     expect(Date.now() - start).toBeLessThan(5_000);
   });
 
   it("aborts the remote runner health check at the configured request timeout", async () => {
     const service = makeService(100, false);
     const start = Date.now();
-    await expect(service.fs.list({})).rejects.toThrow(/aborted/i);
+    await expect(service.fs.list({})).rejects.toThrow(/timed out/i);
     expect(Date.now() - start).toBeLessThan(5_000);
   });
 });

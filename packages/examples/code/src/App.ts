@@ -217,8 +217,10 @@ function normalizeSubAgentType(input: string | undefined): SubAgentType | null {
   if (raw === "claude" || raw === "claude-code" || raw === "claudecode")
     return "claude-code";
   if (raw === "codex") return "codex";
+  // Legacy alias: requests naming the removed opencode backend resolve to the
+  // native elizaOS worker.
   if (raw === "opencode" || raw === "open-code" || raw === "open_code")
-    return "opencode";
+    return "elizaos-native";
   if (
     raw === "elizaos-native" ||
     raw === "eliza-native" ||
@@ -795,7 +797,7 @@ export class App {
           addMessage(
             currentRoomId,
             "system",
-            `Active agent: ${state.selectedSubAgentType ?? "(not set)"}\n\nUsage: /agent <type>\nTypes:\n- eliza\n- claude-code\n- codex\n- opencode\n- elizaos-native`,
+            `Active agent: ${state.selectedSubAgentType ?? "(not set)"}\n\nUsage: /agent <type>\nTypes:\n- eliza\n- claude-code\n- codex\n- elizaos-native`,
           );
           this.tui.requestRender();
           return true;
@@ -807,7 +809,7 @@ export class App {
           addMessage(
             currentRoomId,
             "system",
-            `Unknown agent type: "${typeRaw}". Try: eliza, claude-code, codex, opencode, elizaos-native`,
+            `Unknown agent type: "${typeRaw}". Try: eliza, claude-code, codex, elizaos-native`,
           );
           this.tui.requestRender();
           return true;
@@ -1184,7 +1186,7 @@ During a turn: Enter queues the message, Esc/Ctrl+C aborts (queued messages are 
       }
     }
 
-    // Queue-and-send (opencode behavior): a submission made while a turn is
+    // Queue-and-send: a submission made while a turn is
     // running is buffered and fired when the turn completes, instead of
     // spawning a second concurrent turn.
     if (this.activeTurnAbortController) {
@@ -1224,6 +1226,7 @@ During a turn: Enter queues the message, Esc/Ctrl+C aborts (queued messages are 
         room,
         text,
         identity: state.identity,
+        codingMode: true,
         abortSignal: turnAbortController.signal,
         onDelta: (delta) => {
           if (turnAbortController.signal.aborted) return;

@@ -5,9 +5,9 @@
  * one primary-database observation boundary.
  */
 
-import { and, desc, eq, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNotNull, isNull, or } from "drizzle-orm";
 import { type Database, dbRead, dbWrite } from "../../db/client";
-import { agentSandboxes } from "../../db/schemas/agent-sandboxes";
+import { agentSandboxes, CONTAINER_BACKED_EXECUTION_TIERS } from "../../db/schemas/agent-sandboxes";
 import { containers } from "../../db/schemas/containers";
 import { creditTransactions } from "../../db/schemas/credit-transactions";
 import type { AppEnv } from "../../types/cloud-worker-env";
@@ -80,6 +80,16 @@ function cancelEndpoint(resource: BillableResourceType, id: string): string {
   return `/api/v1/billing/resources/${id}/cancel?resourceType=${resource}`;
 }
 
+/** Canonical authority for user-owned compute that this billing surface may mutate. */
+function activeBillingAgentAuthorityPredicate() {
+  return and(
+    inArray(agentSandboxes.execution_tier, [...CONTAINER_BACKED_EXECUTION_TIERS]),
+    isNull(agentSandboxes.pool_status),
+    isNull(agentSandboxes.deleted_at),
+    isNull(agentSandboxes.deletion_attempt_id),
+  );
+}
+
 function detectLedgerResource(metadata: Record<string, unknown>): {
   resourceType: BillingLedgerEntry["resourceType"];
   resourceId: string | null;
@@ -135,8 +145,7 @@ class ActiveBillingService {
         .where(
           and(
             eq(agentSandboxes.organization_id, organizationId),
-            sql`${agentSandboxes.execution_tier} <> 'shared'`,
-            isNull(agentSandboxes.pool_status),
+            activeBillingAgentAuthorityPredicate(),
             inArray(agentSandboxes.billing_status, ["active", "warning", "shutdown_pending"]),
             or(
               eq(agentSandboxes.status, "running"),
@@ -370,8 +379,9 @@ class ActiveBillingService {
     }
 
     if (!resourceType || resourceType === "agent_sandbox") {
-      // pool_status is the server-owned capacity authority. Authorize against
-      // the primary immediately before enqueueing any infrastructure side effect.
+      // Authorize against the primary immediately before enqueueing any
+      // infrastructure side effect. The final billing write repeats the same
+      // predicate so a concurrent tier, pool, or deletion transition wins.
       const [agent] = await dbWrite
         .select()
         .from(agentSandboxes)
@@ -379,8 +389,7 @@ class ActiveBillingService {
           and(
             eq(agentSandboxes.id, resourceId),
             eq(agentSandboxes.organization_id, organizationId),
-            sql`${agentSandboxes.execution_tier} <> 'shared'`,
-            isNull(agentSandboxes.pool_status),
+            activeBillingAgentAuthorityPredicate(),
           ),
         )
         .limit(1);
@@ -443,27 +452,39 @@ class ActiveBillingService {
             and(
               eq(agentSandboxes.id, resourceId),
               eq(agentSandboxes.organization_id, organizationId),
-              isNull(agentSandboxes.pool_status),
-              sql`${agentSandboxes.deletion_attempt_id} IS NULL`,
+              activeBillingAgentAuthorityPredicate(),
             ),
           )
           .returning();
-        const effective =
-          updated ??
-          (
-            await dbWrite
-              .select()
-              .from(agentSandboxes)
-              .where(
-                and(
-                  eq(agentSandboxes.id, resourceId),
-                  eq(agentSandboxes.organization_id, organizationId),
-                  isNull(agentSandboxes.pool_status),
-                ),
-              )
-              .limit(1)
-          )[0];
-        if (!effective) {
+        if (!updated) {
+          const [current] = await dbWrite
+            .select()
+            .from(agentSandboxes)
+            .where(
+              and(
+                eq(agentSandboxes.id, resourceId),
+                eq(agentSandboxes.organization_id, organizationId),
+              ),
+            )
+            .limit(1);
+          if (current) {
+            throw new ApiError(
+              409,
+              "session_not_ready",
+              current.deletion_attempt_id || current.deleted_at
+                ? "Managed agent deletion is in progress"
+                : "Managed agent billing authority changed",
+              {
+                agentId: current.id,
+                status: current.status,
+                billingStatus: current.billing_status,
+                executionTier: current.execution_tier,
+                poolStatus: current.pool_status,
+                deletionAttemptId: current.deletion_attempt_id,
+                deletedAt: iso(current.deleted_at),
+              },
+            );
+          }
           return {
             stoppedBilling: true,
             message: "Managed agent was deleted while billing cancellation was in progress.",
@@ -491,13 +512,6 @@ class ActiveBillingService {
             },
           };
         }
-        if (!updated) {
-          throw new ApiError(409, "session_not_ready", "Managed agent deletion is in progress", {
-            agentId: effective.id,
-            status: effective.status,
-            billingStatus: effective.billing_status,
-          });
-        }
 
         return {
           stoppedBilling: true,
@@ -508,20 +522,20 @@ class ActiveBillingService {
           infrastructureAction,
           resource: {
             resourceType: "agent_sandbox",
-            resourceId: effective.id,
-            name: effective.agent_name ?? effective.id.slice(0, 8),
-            status: effective.status,
-            billingStatus: effective.billing_status,
+            resourceId: updated.id,
+            name: updated.agent_name ?? updated.id.slice(0, 8),
+            status: updated.status,
+            billingStatus: updated.billing_status,
             unitPrice,
             billingInterval: "hour",
-            lastBilledAt: iso(effective.last_billed_at),
+            lastBilledAt: iso(updated.last_billed_at),
             nextBillingAt: null,
             estimatedNextBillingAt: null,
             totalBilled,
-            cancelEndpoint: cancelEndpoint("agent_sandbox", effective.id),
+            cancelEndpoint: cancelEndpoint("agent_sandbox", updated.id),
             cancelAction: "suspend_billing",
             metadata: {
-              characterId: effective.character_id,
+              characterId: updated.character_id,
               cancelledAt: now.toISOString(),
               mode,
               infrastructureAction,

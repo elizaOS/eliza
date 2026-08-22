@@ -27,6 +27,7 @@ export interface FileMeta {
   mtimeMs: number;
   size: number;
   readAt: number;
+  revision?: string;
 }
 
 export type ToolFailureReason =
