@@ -104,15 +104,19 @@ describe("sub-agent completion relay — never promoted to tooling (false 'hit a
 		expect(gate?.shouldRun(contextFor(relay))).toBe(false);
 	});
 
-	it("does not promote a relay identified only by source or text prefix", () => {
-		const bySource = {
+	it("does not trust unilateral source, logger, or text-prefix markers", () => {
+		const byCanonicalSourceOnly = {
+			content: { text: relayText, source: "sub_agent" },
+		} as unknown as Memory;
+		expect(gate?.shouldRun(contextFor(byCanonicalSourceOnly))).toBe(true);
+		const byLoggerSource = {
 			content: { text: relayText, source: "acpx:sub-agent-router" },
 		} as unknown as Memory;
-		expect(gate?.shouldRun(contextFor(bySource))).toBe(false);
+		expect(gate?.shouldRun(contextFor(byLoggerSource))).toBe(true);
 		const byPrefix = {
 			content: { text: relayText, source: "discord" },
 		} as unknown as Memory;
-		expect(gate?.shouldRun(contextFor(byPrefix))).toBe(false);
+		expect(gate?.shouldRun(contextFor(byPrefix))).toBe(true);
 	});
 
 	it("still promotes a genuine fresh coding request to tooling", () => {
