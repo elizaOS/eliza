@@ -1,4 +1,4 @@
-/** Proves 0297 corrects warm-pool rate authority without rewriting billing history. */
+/** Proves 0298 corrects warm-pool rate authority without rewriting billing history. */
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
@@ -11,7 +11,7 @@ const DEDICATED = "00000000-0000-4000-8000-000000000103";
 const SHARED = "00000000-0000-4000-8000-000000000104";
 
 const migration = readFileSync(
-  new URL("./migrations/0297_warm_pool_rate_segment_exemption.sql", import.meta.url),
+  new URL("./migrations/0298_warm_pool_rate_segment_exemption.sql", import.meta.url),
   "utf8",
 ).replaceAll("--> statement-breakpoint", "");
 
@@ -38,7 +38,7 @@ const schemaSql = `
   );
 `;
 
-// Exact pre-0297 agent classification and trigger column list from 0265.
+// Exact pre-0298 agent classification and trigger column list from 0265.
 const oldRateTriggerSql = `
   CREATE FUNCTION append_agent_compute_billing_rate_segment() RETURNS trigger AS $$
   DECLARE next_state text;
