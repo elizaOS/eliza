@@ -33,6 +33,7 @@ import {
   type AgentBackupCaptureV3CatalogManifest,
   type AgentBackupCaptureV3KeyBundleProvider,
   type AgentBackupCaptureV3ManifestAuthority,
+  deriveAgentBackupCaptureV3RuntimePrincipalSha256,
   deriveAgentBackupCaptureV3SpoolAuthorityDigests,
   runAgentBackupCaptureV2Pipeline,
 } from "./agent-backup-capture-v2-pipeline";
@@ -51,7 +52,10 @@ const LEGACY_WRITER_DRAIN_FORMAT =
 
 export interface AgentBackupCaptureV2RuntimeAttestation {
   organizationId: string;
-  agentId: string;
+  /** Durable `agent_sandboxes.id`; this is the only identity used below HTTP. */
+  catalogAgentId: string;
+  /** Runtime `character_id`; this is used only on the `/api/snapshot/v2` wire. */
+  runtimeAgentId: string;
   activationGeneration: string;
   lifecycleRevision: string;
   source: AgentBackupManifestV3["source"];
@@ -280,7 +284,8 @@ function assertAttestation(params: {
   const observed = params.attestation;
   if (
     observed.organizationId !== params.organizationId ||
-    observed.agentId !== params.request.agentId ||
+    observed.catalogAgentId !== params.request.agentId ||
+    !UUID_PATTERN.test(observed.runtimeAgentId) ||
     observed.activationGeneration !== params.request.activationGeneration ||
     observed.lifecycleRevision !== params.request.lifecycleRevision ||
     !isDeepStrictEqual(observed.source, params.expectedSource)
@@ -460,6 +465,16 @@ export async function executeAgentBackupCaptureV2CatalogClaim(
       expectedSource,
     });
     const initialAttestation = structuredClone(context.attestation);
+    // The catalogue request remains the sole durable manifest/KMS/spool
+    // authority. The agent runtime has a distinct character UUID and sees a
+    // wire-only copy, which cannot flow back into pipeline state.
+    const runtimeRequest: AgentBackupCaptureV2Request = {
+      ...request,
+      agentId: initialAttestation.runtimeAgentId,
+    };
+    const runtimePrincipalSha256 = deriveAgentBackupCaptureV3RuntimePrincipalSha256(
+      initialAttestation.runtimeAgentId,
+    );
     const heartbeat = async (): Promise<true> => {
       await heartbeatCatalog();
       const current = await control.await("Runtime attestation revalidation", () =>
@@ -504,6 +519,7 @@ export async function executeAgentBackupCaptureV2CatalogClaim(
       activationGeneration: request.activationGeneration,
       lifecycleRevision: request.lifecycleRevision,
       ...deriveAgentBackupCaptureV3SpoolAuthorityDigests({ request, authority }),
+      runtimePrincipalSha256,
     };
     const recordCaptured = input.dependencies.recordCaptured;
     let result: AgentBackupCaptureV2PipelineResult;
@@ -511,12 +527,13 @@ export async function executeAgentBackupCaptureV2CatalogClaim(
       result = await control.await("Capture-v2 pipeline", () =>
         runAgentBackupCaptureV2Pipeline({
           request,
+          runtimePrincipalSha256,
           executionToken: input.claim.generation,
           authority,
           openCapture: (signal) =>
             openAgentBackupCaptureV2({
               ...context.transport,
-              request,
+              request: runtimeRequest,
               signal,
               now,
             }),

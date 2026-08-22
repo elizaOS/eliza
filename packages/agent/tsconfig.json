@@ -132,6 +132,9 @@
       "@elizaos/capacitor-appblocker": [
         "../../plugins/plugin-native-appblocker/src/index.ts"
       ],
+      "@elizaos/capacitor-secure-store": [
+        "../../plugins/plugin-native-secure-store/src/index.ts"
+      ],
       "@elizaos/capacitor-bun-runtime": [
         "../../plugins/plugin-native-bun-runtime/src/index.ts"
       ],

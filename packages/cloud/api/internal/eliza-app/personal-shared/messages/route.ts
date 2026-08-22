@@ -42,6 +42,7 @@ const FAILURE_STAGE_HEADER = "X-Eliza-Failure-Stage";
 const FAILURE_NAME_HEADER = "X-Eliza-Failure-Name";
 const GROUP_CLAIM_TTL_MS = 10 * 60_000;
 const GROUP_CODE_ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
+const GROUP_SOURCE_MESSAGE_ID_MAX_LENGTH = 240;
 
 type DeliveryStage =
   | "authentication"
@@ -73,6 +74,14 @@ function safeErrorName(error: unknown): string {
   return SAFE_ERROR_NAMES.has(name) ? name : "OtherError";
 }
 
+function isGroupDeliveryPendingError(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    (error as { code?: unknown }).code ===
+      "PERSONAL_SHARED_GROUP_DELIVERY_PENDING"
+  );
+}
+
 const telegramVoiceNoteSchema = z.object({
   bytesBase64: z.string().min(1).max(MAX_TELEGRAM_VOICE_BASE64_LENGTH),
   mimeType: z.literal("audio/ogg"),
@@ -98,6 +107,12 @@ const groupActorSchema = z.object({
   displayName: z.string().trim().min(1).max(128).optional(),
   role: z.enum(["creator", "administrator", "member", "unknown", "possessor"]),
 });
+const groupDeliveryAuthoritySchema = z.object({
+  bindingId: z.string().uuid(),
+  ownerUserId: z.string().uuid(),
+  personalAgentId: z.string().trim().min(1).max(160),
+  version: z.number().int().positive(),
+});
 const groupFields = {
   project: projectSchema,
   connectorAccountId: connectorAccountIdSchema,
@@ -120,16 +135,51 @@ const sharedMessageSchema = z.union([
     membershipChange: z.enum(["joined", "removed"]),
   }),
   z.object({
+    eventType: z.literal("delivery_authorization"),
+    platform: z.enum(["telegram", "blooio"]),
+    project: projectSchema,
+    connectorAccountId: connectorAccountIdSchema,
+    chatId: z.string().trim().min(1).max(160),
+    sourceMessageId: z
+      .string()
+      .trim()
+      .min(1)
+      .max(GROUP_SOURCE_MESSAGE_ID_MAX_LENGTH),
+    leaseToken: z.string().uuid(),
+    invocation: z.enum(["mention", "command", "reply", "ambient"]),
+    authority: groupDeliveryAuthoritySchema,
+  }),
+  z.object({
+    eventType: z.literal("delivery_commit"),
+    platform: z.enum(["telegram", "blooio"]),
+    project: projectSchema,
+    connectorAccountId: connectorAccountIdSchema,
+    chatId: z.string().trim().min(1).max(160),
+    sourceMessageId: z
+      .string()
+      .trim()
+      .min(1)
+      .max(GROUP_SOURCE_MESSAGE_ID_MAX_LENGTH),
+    leaseToken: z.string().uuid(),
+    authority: groupDeliveryAuthoritySchema,
+  }),
+  z.object({
     eventType: z.literal("delivery_receipt"),
     platform: z.enum(["telegram", "blooio"]),
     project: projectSchema,
     connectorAccountId: connectorAccountIdSchema,
     chatId: z.string().trim().min(1).max(160),
-    sourceMessageId: z.string().trim().min(1).max(160),
+    sourceMessageId: z
+      .string()
+      .trim()
+      .min(1)
+      .max(GROUP_SOURCE_MESSAGE_ID_MAX_LENGTH),
     providerMessageIds: z
       .array(z.string().trim().min(1).max(160))
       .min(1)
       .max(8),
+    leaseToken: z.string().uuid(),
+    authority: groupDeliveryAuthoritySchema,
   }),
   z
     .object({
@@ -193,6 +243,32 @@ type GroupMessage = Extract<
   SharedMessage,
   { chatType: "group" | "supergroup" }
 >;
+
+interface GroupDeliveryAuthority {
+  bindingId: string;
+  ownerUserId: string;
+  personalAgentId: string;
+  version: number;
+}
+
+const GROUP_CONTROL_DELIVERY = { kind: "control" as const };
+
+function groupBindingDelivery(binding: {
+  id: string;
+  owner_user_id: string;
+  personal_agent_id: string;
+  authority_version: number;
+}): { kind: "binding"; authority: GroupDeliveryAuthority } {
+  return {
+    kind: "binding",
+    authority: {
+      bindingId: binding.id,
+      ownerUserId: binding.owner_user_id,
+      personalAgentId: binding.personal_agent_id,
+      version: binding.authority_version,
+    },
+  };
+}
 
 function isGroupMessage(message: SharedMessage): message is GroupMessage {
   return "chatType" in message;
@@ -360,7 +436,38 @@ app.post("/", async (c) => {
           },
         });
       }
-      const inserted =
+      if (parsed.data.eventType === "delivery_authorization") {
+        const lease = await personalSharedGroupsRepository.authorizeDelivery({
+          platform: parsed.data.platform,
+          project: parsed.data.project,
+          connectorAccountId: parsed.data.connectorAccountId,
+          providerChatId: parsed.data.chatId,
+          sourceMessageId: parsed.data.sourceMessageId,
+          leaseToken: parsed.data.leaseToken,
+          invocation: parsed.data.invocation,
+          authority: parsed.data.authority,
+        });
+        return c.json({
+          success: true,
+          data: { code: "group_delivery_authorization", ...lease },
+        });
+      }
+      if (parsed.data.eventType === "delivery_commit") {
+        const committed = await personalSharedGroupsRepository.commitDelivery({
+          platform: parsed.data.platform,
+          project: parsed.data.project,
+          connectorAccountId: parsed.data.connectorAccountId,
+          providerChatId: parsed.data.chatId,
+          sourceMessageId: parsed.data.sourceMessageId,
+          authority: parsed.data.authority,
+          leaseToken: parsed.data.leaseToken,
+        });
+        return c.json({
+          success: true,
+          data: { code: "group_delivery_committed", committed },
+        });
+      }
+      const receipt =
         await personalSharedGroupsRepository.recordDeliveryReceipts({
           platform: parsed.data.platform,
           project: parsed.data.project,
@@ -368,10 +475,12 @@ app.post("/", async (c) => {
           providerChatId: parsed.data.chatId,
           sourceMessageId: parsed.data.sourceMessageId,
           providerMessageIds: parsed.data.providerMessageIds,
+          authority: parsed.data.authority,
+          leaseToken: parsed.data.leaseToken,
         });
       return c.json({
         success: true,
-        data: { code: "group_delivery_receipt_recorded", inserted },
+        data: { code: "group_delivery_receipt_recorded", ...receipt },
       });
     }
     let telegramVoiceBytes: Uint8Array | undefined;
@@ -415,6 +524,14 @@ app.post("/", async (c) => {
     let groupConversationId: string | undefined;
     let groupActorLabel: string | undefined;
     let groupPersonalAgentId: string | undefined;
+    let groupDeliveryAuthority:
+      | {
+          bindingId: string;
+          ownerUserId: string;
+          personalAgentId: string;
+          version: number;
+        }
+      | undefined;
     let dedicated:
       | Pick<AgentSandbox, "id" | "status" | "bridge_url" | "agent_config">
       | null
@@ -434,6 +551,7 @@ app.post("/", async (c) => {
               code: "group_admin_required",
               reply:
                 "Only a Telegram group creator or administrator can link Eliza. Make Eliza an admin, then have the same owner retry the link command.",
+              groupDelivery: GROUP_CONTROL_DELIVERY,
             },
           });
         }
@@ -459,6 +577,7 @@ app.post("/", async (c) => {
                     : claimed.status === "already_bound"
                       ? "This group is already linked to another Eliza owner. That owner must disconnect it before a different owner can link it."
                       : "That group link is not valid for this account or sender. DM Eliza `/group` yourself and paste the exact command here.",
+              groupDelivery: GROUP_CONTROL_DELIVERY,
             },
           });
         }
@@ -476,6 +595,7 @@ app.post("/", async (c) => {
             },
             reply:
               "Eliza is linked to this group. I respond to explicit mentions, commands, and replies by default. The owner can say `Eliza ambient on`, `Eliza ambient off`, or `Eliza leave`.",
+            groupDelivery: groupBindingDelivery(claimed.binding),
           },
         });
       }
@@ -497,6 +617,7 @@ app.post("/", async (c) => {
                 : binding
                   ? "This group link is inactive. The owner can DM Eliza `/group` to reconnect it."
                   : "This group is not linked yet. DM your Eliza `/group`, then paste the one-time link command here.",
+            groupDelivery: GROUP_CONTROL_DELIVERY,
           },
         });
       }
@@ -514,6 +635,7 @@ app.post("/", async (c) => {
             code: "group_owner_required",
             reply:
               "Only the owner who linked Eliza can change this group's response policy.",
+            groupDelivery: groupBindingDelivery(binding),
           },
         });
       }
@@ -531,6 +653,7 @@ app.post("/", async (c) => {
               code: "group_binding_changed",
               reply:
                 "This group link changed before the policy update. Reconnect it and try again.",
+              groupDelivery: GROUP_CONTROL_DELIVERY,
             },
           });
         }
@@ -542,6 +665,7 @@ app.post("/", async (c) => {
               requestedPolicy === "ambient"
                 ? "Ambient replies are on. I may respond without a mention when I have something useful to add. Say `Eliza ambient off` to return to mention-only."
                 : "Mention-only is on. I will answer explicit mentions, commands, and replies to me.",
+            groupDelivery: groupBindingDelivery(updated),
           },
         });
       }
@@ -556,6 +680,7 @@ app.post("/", async (c) => {
             data: {
               code: "group_binding_changed",
               reply: "This group link changed before it could be disconnected.",
+              groupDelivery: GROUP_CONTROL_DELIVERY,
             },
           });
         }
@@ -565,6 +690,7 @@ app.post("/", async (c) => {
             code: "group_binding_revoked",
             reply:
               "This group is disconnected from your Eliza. Remove the bot/account here, or DM Eliza `/group` later to reconnect.",
+            groupDelivery: GROUP_CONTROL_DELIVERY,
           },
         });
       }
@@ -595,6 +721,7 @@ app.post("/", async (c) => {
       accountResolution = "group-binding";
       groupConversationId = binding.conversation_id;
       groupPersonalAgentId = binding.personal_agent_id;
+      groupDeliveryAuthority = groupBindingDelivery(binding).authority;
       const actorDigest = (
         await sha256Hex(
           `${parsed.data.platform}\n${parsed.data.actor.platformUserId}`,
@@ -994,6 +1121,14 @@ app.post("/", async (c) => {
             organizationId: account.organizationId,
           },
           reply: result.text,
+          ...(groupDeliveryAuthority
+            ? {
+                groupDelivery: {
+                  kind: "binding" as const,
+                  authority: groupDeliveryAuthority,
+                },
+              }
+            : {}),
         },
       });
     }
@@ -1072,6 +1207,14 @@ app.post("/", async (c) => {
           organizationId: account.organizationId,
         },
         reply: result.text,
+        ...(groupDeliveryAuthority
+          ? {
+              groupDelivery: {
+                kind: "binding" as const,
+                authority: groupDeliveryAuthority,
+              },
+            }
+          : {}),
       },
     });
   } catch (error) {
@@ -1084,6 +1227,13 @@ app.post("/", async (c) => {
       errorName,
       ...(error instanceof PersonalDeliveryAccountResolutionError
         ? { projectionFailure: error.projectionFailure }
+        : {}),
+      ...(isGroupDeliveryPendingError(error)
+        ? {
+            deliveryState: "live_reservation_pending",
+            operatorAction:
+              "retry after the active uncommitted delivery lease expires",
+          }
         : {}),
     });
     // This route is internal-authenticated. Safe classification headers let
@@ -1117,6 +1267,19 @@ app.post("/", async (c) => {
         },
         503,
         { "Retry-After": "1" },
+      );
+    }
+    if (isGroupDeliveryPendingError(error)) {
+      return c.json(
+        {
+          success: false,
+          error:
+            "A provider delivery reservation is still active. Group authority was not changed; retry shortly.",
+          code: "group_delivery_pending",
+          retryable: true,
+        },
+        409,
+        { "Retry-After": "5" },
       );
     }
     return failureResponse(c, error);
