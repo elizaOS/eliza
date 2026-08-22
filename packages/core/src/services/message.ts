@@ -12035,6 +12035,12 @@ function enforceEffectGroundedVisibleContent(
 	runtime: Pick<IAgentRuntime, "logger">,
 	response: Content,
 	actionName?: string,
+	opts: {
+		/** The turn relays a sub-agent's verified completion — that relay is
+		 *  the effect receipt for "the page is ready" (2026-08-22: the gate
+		 *  replaced a verified live page with the unverified-effect line). */
+		completionRelay?: boolean;
+	} = {},
 ): Content {
 	const hasEffectDeliveryBinding =
 		getEffectDeliveryBinding(response) !== undefined;
@@ -12046,6 +12052,7 @@ function enforceEffectGroundedVisibleContent(
 	if (
 		effectDeliveryBindingInvalid ||
 		(typeof response.text === "string" &&
+			!opts.completionRelay &&
 			replyClaimsCompletedSideEffect(response.text) &&
 			!effectDeliveryBindingProvesApplication(response))
 	) {
@@ -12336,7 +12343,8 @@ export function wrapSingleTurnVisibleCallback(
 		Partial<Pick<IAgentRuntime, "character" | "useModel">> & {
 			getService?: IAgentRuntime["getService"];
 		},
-	message: Pick<Memory, "id" | "roomId" | "entityId">,
+	message: Pick<Memory, "id" | "roomId" | "entityId"> &
+		Partial<Pick<Memory, "content">>,
 	callback?: HandlerCallback,
 	recordDeliveredVisibleText?: (text: string) => void,
 ): HandlerCallback | undefined {
@@ -12433,6 +12441,7 @@ export function wrapSingleTurnVisibleCallback(
 			fullRuntime,
 			response,
 			actionName,
+			{ completionRelay: isSubAgentCompletionArtifact(message as Memory) },
 		);
 		if (typeof response?.text === "string" && response.text.trim()) {
 			if (nearDuplicateOfDeliveredThisTurn(response.text)) {
@@ -14154,6 +14163,8 @@ export class DefaultMessageService implements IMessageService {
 					earlyContent = enforceEffectGroundedVisibleContent(
 						runtime,
 						earlyContent,
+						undefined,
+						{ completionRelay: isSubAgentCompletionArtifact(message) },
 					);
 					earlyContent = await enforceTrustedDeliveryAudienceAtEgress(
 						runtime,
@@ -14703,6 +14714,8 @@ export class DefaultMessageService implements IMessageService {
 					deliverableResponseContent = enforceEffectGroundedVisibleContent(
 						runtime,
 						deliverableResponseContent,
+						undefined,
+						{ completionRelay: isSubAgentCompletionArtifact(message) },
 					);
 					deliverableResponseContent =
 						await enforceTrustedDeliveryAudienceAtEgress(
