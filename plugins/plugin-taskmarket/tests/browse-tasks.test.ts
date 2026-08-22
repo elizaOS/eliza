@@ -51,7 +51,7 @@ describe("BROWSE_TASKMARKET_TASKS", () => {
       expect.objectContaining({ limit: 5, mode: "bounty" }),
     );
     expect(result).toMatchObject({ success: true, data: { readOnly: true } });
-    expect(result.text).toContain("4.1625 USDC net");
+    expect(result.text).toContain('"netRewardUsdc":"4.1625"');
     expect(callback).toHaveBeenCalledWith(
       expect.objectContaining({
         text: expect.stringContaining("Implement a focused integration"),
@@ -84,6 +84,27 @@ describe("BROWSE_TASKMARKET_TASKS", () => {
     });
     expect(callback).toHaveBeenCalledWith(
       expect.objectContaining({ text: result.text }),
+    );
+  });
+
+  it("surfaces an exact continuation cursor and accepts it on the next call", async () => {
+    const listTasks = vi.fn(async () => ({
+      ...safePage,
+      hasMore: true,
+      nextCursor: "opaque cursor\npage-2",
+    }));
+    const action = createBrowseTaskmarketTasksAction(() => ({ listTasks }));
+
+    const result = await action.handler(runtime, message, undefined, {
+      parameters: { cursor: "opaque cursor\npage-1" },
+    });
+    if (!result) throw new TypeError("expected action result");
+
+    expect(listTasks).toHaveBeenCalledWith(
+      expect.objectContaining({ cursor: "opaque cursor\npage-1" }),
+    );
+    expect(result.text).toContain(
+      'Continue with cursor="opaque cursor\\npage-2".',
     );
   });
 });
