@@ -131,6 +131,55 @@ type MigrationReleaseBarrierDecision =
   | { action: "continue"; atomicPairStartIndex?: number }
   | { action: "pause"; stopBeforeJournalIndex: number };
 
+type MigrationReleaseBarrierMode = "enforce" | "advance-disposable-local-test";
+
+/**
+ * Resolve the only supported release-barrier bypass. It is intentionally
+ * unavailable to remote databases even if a caller copies the test flags.
+ */
+export function resolveMigrationReleaseBarrierMode(
+  environment: Readonly<Record<string, string | undefined>>,
+  databaseUrl: string,
+): MigrationReleaseBarrierMode {
+  const acknowledgement =
+    environment.ELIZA_DISPOSABLE_LOCAL_MIGRATION_RELEASE_BARRIER_ACK;
+  if (acknowledgement === undefined || acknowledgement === "") return "enforce";
+  if (acknowledgement !== "1") {
+    throw new Error(
+      "ELIZA_DISPOSABLE_LOCAL_MIGRATION_RELEASE_BARRIER_ACK must be exactly 1 when set",
+    );
+  }
+  if (environment.NODE_ENV !== "test" || environment.CLOUD_E2E !== "1") {
+    throw new Error(
+      "Migration release-barrier acknowledgement requires NODE_ENV=test and CLOUD_E2E=1",
+    );
+  }
+
+  if (databaseUrl.startsWith("pglite://")) {
+    return "advance-disposable-local-test";
+  }
+
+  let target: URL;
+  try {
+    target = new URL(databaseUrl);
+  } catch (cause) {
+    throw new Error(
+      "Migration release-barrier acknowledgement requires a valid local database URL",
+      { cause },
+    );
+  }
+  const loopbackHosts = new Set(["127.0.0.1", "localhost", "[::1]", "::1"]);
+  if (
+    !["postgres:", "postgresql:"].includes(target.protocol) ||
+    !loopbackHosts.has(target.hostname)
+  ) {
+    throw new Error(
+      "Migration release-barrier acknowledgement is restricted to disposable local databases",
+    );
+  }
+  return "advance-disposable-local-test";
+}
+
 async function readJournal(): Promise<Journal> {
   return JSON.parse(await readFile(JOURNAL_PATH, "utf8")) as Journal;
 }
@@ -733,6 +782,7 @@ export async function runMigrations(
   identityConfig?: DatabaseIdentityConfig,
   reportIdentityResult?: IdentityResultReporter,
   postMigrationConvergence?: PostMigrationConvergence,
+  releaseBarrierMode: MigrationReleaseBarrierMode = "enforce",
 ): Promise<void> {
   let lockHeld = false;
   await runWithCleanup(
@@ -775,10 +825,22 @@ export async function runMigrations(
         }`,
       );
 
-      const releaseBarrier = evaluateMigrationReleaseBarrier(
+      const evaluatedReleaseBarrier = evaluateMigrationReleaseBarrier(
         migrations,
         validatedLedger.lastAppliedJournalIndex,
       );
+      const releaseBarrier =
+        releaseBarrierMode === "advance-disposable-local-test"
+          ? { action: "continue" as const }
+          : evaluatedReleaseBarrier;
+      if (
+        releaseBarrierMode === "advance-disposable-local-test" &&
+        evaluatedReleaseBarrier.action === "pause"
+      ) {
+        console.warn(
+          "[db:migrate] advancing the release barrier for an acknowledged disposable local test database",
+        );
+      }
       const pending = migrations.slice(
         validatedLedger.lastAppliedJournalIndex + 1,
         releaseBarrier.action === "pause"
@@ -861,6 +923,10 @@ async function main(): Promise<void> {
     journal.entries.map((entry) => readMigration(entry)),
   );
   const retryOptions = lockRetryOptions();
+  const releaseBarrierMode = resolveMigrationReleaseBarrierMode(
+    environment,
+    databaseUrl,
+  );
   const configuredIdentityMode =
     environment.DATABASE_IDENTITY_GATE_MODE?.trim().toLowerCase();
   const identityConfig =
@@ -891,6 +957,7 @@ async function main(): Promise<void> {
       }
     },
     convergeAgentSandboxSchemaOnMigrationClient,
+    releaseBarrierMode,
   );
 }
 
