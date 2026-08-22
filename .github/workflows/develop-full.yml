@@ -389,3 +389,33 @@ jobs:
             .develop-evidence/observed.json
           if-no-files-found: error
           retention-days: 14
+
+  handoff-effects:
+    name: Hand off exact green SHA for durable reconciliation
+    needs: complete
+    if: ${{ needs.complete.result == 'success' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    permissions:
+      actions: write
+      contents: read
+    steps:
+      - name: Dispatch non-cancelable effect reconciliation
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_RUN_ID: ${{ github.run_id }}
+          SOURCE_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          response="$(
+            gh api --method POST \
+              -H 'Accept: application/vnd.github+json' \
+              -H 'X-GitHub-Api-Version: 2026-03-10' \
+              "/repos/$GITHUB_REPOSITORY/actions/workflows/develop-reconcile.yml/dispatches" \
+              -f ref=develop \
+              -F return_run_details=true \
+              -f "inputs[source_sha]=$SOURCE_SHA" \
+              -f "inputs[source_run_id]=$SOURCE_RUN_ID"
+          )"
+          reconcile_run_id="$(jq -er '.workflow_run_id | select(type == "number" and . > 0)' <<< "$response")"
+          echo "Handed $SOURCE_SHA to reconciliation run $reconcile_run_id"

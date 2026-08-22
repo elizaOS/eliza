@@ -1,5 +1,7 @@
 name: Cloud CF Deploy
 
+run-name: Cloud CF ${{ inputs.environment || 'staging' }} ${{ inputs.source_sha || github.sha }} ${{ inputs.effect_digest || 'manual' }}
+
 # Cloudflare deployment for the consolidated Eliza frontend and Workers API.
 #
 # One packages/app build is deployed to the `eliza-app` Pages project. Host-aware
@@ -7,8 +9,8 @@ name: Cloud CF Deploy
 # experience on cloud.eliza.app. Legacy elizacloud.ai hosts are Worker-owned
 # redirect inputs and never receive a separately built frontend.
 #
-# Staging and production are explicit protected-environment operations until a
-# later current-SHA effect fence can safely reconcile automatic deploys.
+# Staging accepts exact-SHA reconciler dispatches after Develop Full; production
+# remains an explicit protected-environment operation.
 #
 # Required repo secrets:
 #   CLOUDFLARE_API_TOKEN   - account-scoped token with Workers + Pages edit perms
@@ -55,6 +57,16 @@ on:
         required: false
         default: false
         type: boolean
+      source_sha:
+        description: Exact develop SHA supplied by the effect reconciler
+        required: false
+        default: ""
+        type: string
+      effect_digest:
+        description: Exact reconciler input digest; empty for manual operation
+        required: false
+        default: ""
+        type: string
 
 concurrency:
   # #18092: non-PR admission is unique per run so two dispatches/reruns of
@@ -81,7 +93,9 @@ jobs:
     steps:
       - name: Reject feature refs targeting canonical environments
         env:
+          EFFECT_DIGEST: ${{ inputs.effect_digest }}
           EVENT_NAME: ${{ github.event_name }}
+          SOURCE_SHA: ${{ inputs.source_sha }}
           TARGET_ENVIRONMENT: ${{ inputs.environment }}
           SOURCE_REF: ${{ github.ref }}
         run: |
@@ -98,6 +112,15 @@ jobs:
           if [ "$SOURCE_REF" != "$expected_ref" ]; then
             echo "::error::Canonical $TARGET_ENVIRONMENT deploys must run from $expected_ref, not $SOURCE_REF. Use the pull-request Pages preview for feature refs."
             exit 1
+          fi
+
+          if [ -n "$EFFECT_DIGEST" ]; then
+            [[ "$EFFECT_DIGEST" =~ ^[0-9a-f]{64}$ ]] || { echo "::error::Invalid reconciled effect digest"; exit 1; }
+            [[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::Invalid reconciled source SHA"; exit 1; }
+            [ "$SOURCE_SHA" = "$GITHUB_SHA" ] || {
+              echo "::error::Dispatch resolved $GITHUB_SHA instead of reconciled source $SOURCE_SHA"
+              exit 1
+            }
           fi
 
   admit-staging:
