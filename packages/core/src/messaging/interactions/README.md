@@ -117,7 +117,10 @@ canonical inbound event id, audit id, and app-state result. Connectors must not
 construct their own authority, store, or effect dispatcher.
 
 The additive `MessageConnector.sendPreparedInteraction` hook accepts only the
-renderer-safe `PreparedMessageInteraction` plus a target and optional prose.
+renderer-safe `PreparedMessageInteraction` plus a target and optional prose, and
+returns a `MessageConnectorPreparedInteractionResult` reporting whether the
+provider rendered the negotiated native control or only the semantic text
+fallback, so the host never assumes a callback that can never arrive.
 The host is the producer; the connector is only the provider renderer. For
 providers whose control value is the sole callback field,
 `encodePreparedInteractionCallback` appends schema-validated non-secret user

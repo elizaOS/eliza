@@ -27,6 +27,7 @@ import {
 	type MessageConnectorCreateThreadParams,
 	type MessageConnectorPostToThreadParams,
 	type MessageConnectorPreparedInteractionParams,
+	type MessageConnectorPreparedInteractionResult,
 	type MessageConnectorQueryContext,
 	type MessageConnectorTarget,
 	type MessageConnectorTypingParams,
@@ -3832,13 +3833,24 @@ export class DiscordService extends Service implements IDiscordService {
 						sendPreparedInteraction: async (
 							handlerRuntime,
 							params: MessageConnectorPreparedInteractionParams,
-						) => {
+						): Promise<MessageConnectorPreparedInteractionResult> => {
+							// Rendering is pure, so the seam can report the same
+							// native / fallback outcome the send path will produce.
+							const rendered = renderPreparedDiscordInteraction(
+								params.interaction,
+							);
 							await serviceInstance.handleSendMessage(
 								handlerRuntime,
 								scopedTarget(params.target),
 								{ text: params.text ?? "" },
 								params.interaction,
 							);
+							return rendered.components.length > 0
+								? { delivery: "native" }
+								: {
+										delivery: "fallback",
+										limitations: params.interaction.delivery.limitations,
+									};
 						},
 						resolveTargets: (query, context) =>
 							serviceInstance.resolveConnectorTargets(

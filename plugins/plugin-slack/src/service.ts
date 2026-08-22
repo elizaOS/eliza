@@ -39,6 +39,7 @@ import {
   type Memory,
   type MessageConnectorChatContext,
   type MessageConnectorPreparedInteractionParams,
+  type MessageConnectorPreparedInteractionResult,
   type MessageConnectorQueryContext,
   type MessageConnectorTarget,
   type MessageConnectorUserContext,
@@ -2764,7 +2765,7 @@ export class SlackService extends Service implements ISlackService {
   async handleSendPreparedInteraction(
     runtime: IAgentRuntime,
     params: MessageConnectorPreparedInteractionParams,
-  ): Promise<void> {
+  ): Promise<MessageConnectorPreparedInteractionResult> {
     const { target, interaction } = params;
     const accountId = await this.resolveAccountIdForTarget(runtime, target);
     let channelId = target.channelId;
@@ -2811,6 +2812,7 @@ export class SlackService extends Service implements ISlackService {
       },
       accountId,
     );
+    return { delivery: "native" };
   }
 
   /**

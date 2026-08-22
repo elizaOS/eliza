@@ -27,6 +27,7 @@ import {
   type IAgentRuntime,
   lifeOpsPassiveConnectorsEnabled,
   type Media,
+  type MessageConnectorPreparedInteractionResult,
   type Memory,
   type Room,
   renderContentInteractionsForConnector,
@@ -767,7 +768,10 @@ export class WhatsAppConnectorService extends Service {
                   target.threadId ?? target.channelId ?? target.entityId ?? target.roomId ?? ""
                 ),
               }),
-        sendPreparedInteraction: async (_runtime, params) => {
+        sendPreparedInteraction: async (
+          _runtime,
+          params
+        ): Promise<MessageConnectorPreparedInteractionResult> => {
           const resolved = await resolveWhatsAppSendTarget(
             runtime,
             service,
@@ -796,6 +800,7 @@ export class WhatsAppConnectorService extends Service {
             resolved.chatId,
             rendered.interactive
           );
+          return { delivery: "native" };
         },
         sendHandler: async (
           _runtime: IAgentRuntime,

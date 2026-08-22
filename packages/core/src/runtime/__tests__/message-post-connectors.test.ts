@@ -37,7 +37,9 @@ describe("message and post connector registries", () => {
 	it("retains interaction profile and host-prepared delivery hooks", () => {
 		const runtime = makeRuntime();
 		const resolveInteractionProfile = vi.fn(() => ({}) as never);
-		const sendPreparedInteraction = vi.fn(async () => undefined);
+		const sendPreparedInteraction = vi.fn(async () => ({
+			delivery: "native" as const,
+		}));
 		runtime.registerMessageConnector({
 			source: "interactive",
 			resolveInteractionProfile,

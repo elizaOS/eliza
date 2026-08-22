@@ -25,6 +25,7 @@ import {
   type MessageConnectorEditParams,
   type MessageConnectorPostToThreadParams,
   type MessageConnectorPreparedInteractionParams,
+  type MessageConnectorPreparedInteractionResult,
   type MessageConnectorQueryContext,
   type MessageConnectorReactionParams,
   type MessageConnectorTarget,
@@ -64,6 +65,7 @@ import {
 import { TELEGRAM_SERVICE_NAME } from "./constants";
 import { checkTelegramDmAccess, resolveTelegramDmPolicy } from "./dm-policy";
 import { resolveTelegramRuntimeEntityId } from "./identity";
+import { renderPreparedTelegramInteraction } from "./interactions";
 import { MessageManager } from "./messageManager";
 import {
   claimTelegramPollerToken,
@@ -3089,7 +3091,7 @@ export class TelegramService extends Service {
           sendPreparedInteraction: async (
             handlerRuntime: IAgentRuntime,
             params: MessageConnectorPreparedInteractionParams,
-          ) => {
+          ): Promise<MessageConnectorPreparedInteractionResult> => {
             const target =
               normalizedAccountId &&
               !(params.target as AccountScopedTargetInfo).accountId
@@ -3098,12 +3100,23 @@ export class TelegramService extends Service {
                     accountId: normalizedAccountId,
                   } as TargetInfo)
                 : params.target;
+            // Rendering is pure, so the seam can report the same native /
+            // fallback outcome the message manager will produce.
+            const rendered = renderPreparedTelegramInteraction(
+              params.interaction,
+            );
             await serviceInstance.handleSendMessage(
               handlerRuntime,
               target,
               { text: params.text ?? "" },
               params.interaction,
             );
+            return rendered.keyboardRows.length > 0
+              ? { delivery: "native" }
+              : {
+                  delivery: "fallback",
+                  limitations: params.interaction.delivery.limitations,
+                };
           },
         } as ExtendedMessageConnectorRegistration;
         runtime.registerMessageConnector(registration);

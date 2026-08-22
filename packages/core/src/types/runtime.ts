@@ -375,6 +375,22 @@ export interface MessageConnectorPreparedInteractionParams {
 	text?: string;
 }
 
+/**
+ * What a connector actually delivered for a prepared interaction. The host
+ * cannot observe the provider surface, so a connector must report whether the
+ * negotiated native control was rendered or whether only the semantic text
+ * fallback reached the user; a caller that assumed a tappable control would
+ * otherwise wait on a callback that can never arrive.
+ */
+export interface MessageConnectorPreparedInteractionResult {
+	/** `native` only when the provider rendered the prepared control itself. */
+	delivery: "native" | "fallback";
+	/** Why native rendering was unavailable; required for a fallback delivery. */
+	limitations?: readonly string[];
+	/** Provider message identifier when the transport returns one. */
+	providerMessageId?: string;
+}
+
 export interface MessageConnector {
 	source: string;
 	accountId?: string;
@@ -403,7 +419,7 @@ export interface MessageConnector {
 		runtime: IAgentRuntime,
 		params: MessageConnectorPreparedInteractionParams,
 		context: MessageConnectorQueryContext,
-	) => Promise<void>;
+	) => Promise<MessageConnectorPreparedInteractionResult>;
 	resolveTargets?: (
 		query: string,
 		context: MessageConnectorQueryContext,
