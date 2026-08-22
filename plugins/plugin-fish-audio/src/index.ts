@@ -41,6 +41,51 @@ type TtsInput =
       synthesisTimeoutMs?: number;
     });
 
+export interface FishAudioFailureClassification {
+  category:
+    | "auth"
+    | "rate_limit"
+    | "timeout"
+    | "cancelled"
+    | "provider"
+    | "transport"
+    | "invalid_response"
+    | "configuration";
+  retryable: boolean;
+}
+
+/** Classifies Fish failures for bounded caller-owned retry policy. */
+export function classifyFishAudioFailure(
+  error: unknown,
+): FishAudioFailureClassification {
+  const code = error instanceof ElizaError ? error.code : "";
+  if (code === "FISH_AUDIO_AUTH_FAILED") {
+    return { category: "auth", retryable: false };
+  }
+  if (code === "FISH_AUDIO_RATE_LIMITED") {
+    return { category: "rate_limit", retryable: true };
+  }
+  if (code === "FISH_AUDIO_SYNTHESIS_TIMEOUT") {
+    return { category: "timeout", retryable: true };
+  }
+  if (code === "FISH_AUDIO_STREAM_ABORTED") {
+    return { category: "cancelled", retryable: false };
+  }
+  if (code === "FISH_AUDIO_PROVIDER_MESSAGE_INVALID") {
+    return { category: "invalid_response", retryable: false };
+  }
+  if (
+    code === "FISH_AUDIO_WEBSOCKET_ERROR" ||
+    code === "FISH_AUDIO_WEBSOCKET_CLOSED_EARLY"
+  ) {
+    return { category: "transport", retryable: true };
+  }
+  if (code.startsWith("FISH_AUDIO_PROVIDER_")) {
+    return { category: "provider", retryable: false };
+  }
+  return { category: "configuration", retryable: false };
+}
+
 interface FishAudioWebSocketLike {
   readonly readyState: number;
   binaryType?: string;
@@ -249,6 +294,10 @@ function createFishAudioStream(
     resolveBytes = resolve;
     rejectBytes = reject;
   });
+  // error-policy:J5 stream-only consumers observe the same failure through
+  // iterator.next(); this handler prevents the parallel bytes view from
+  // becoming an unhandled rejection when they intentionally never await it.
+  void bytes.catch(() => undefined);
   const socket = openSocket(config.apiKey, config.model);
   socket.binaryType = "arraybuffer";
   let deadlineTimer: ReturnType<typeof setTimeout> | undefined;
@@ -259,16 +308,22 @@ function createFishAudioStream(
     done = true;
     if (deadlineTimer) clearTimeout(deadlineTimer);
     unlistenAbort?.();
+    socket.close(1000, "synthesis complete");
     resolveBytes(concatBytes(bufferedChunks, totalBytes));
     while (waiters.length > 0) {
       waiters.shift()?.({ done: true, value: undefined });
     }
   };
-  const fail = (error: unknown) => {
+  const fail = (
+    error: unknown,
+    closeCode = 1011,
+    closeReason = "synthesis failed",
+  ) => {
     if (done) return;
     done = true;
     if (deadlineTimer) clearTimeout(deadlineTimer);
     unlistenAbort?.();
+    socket.close(closeCode, closeReason);
     failure = error;
     rejectBytes(error);
     while (waiters.length > 0) {
@@ -286,8 +341,9 @@ function createFishAudioStream(
             receivedBytes: totalBytes + chunk.byteLength,
           },
         }),
+        1009,
+        "audio limit exceeded",
       );
-      socket.close(1009, "audio limit exceeded");
       return;
     }
     bufferedChunks.push(chunk);
@@ -305,8 +361,9 @@ function createFishAudioStream(
         code: "FISH_AUDIO_SYNTHESIS_TIMEOUT",
         context: { synthesisTimeoutMs: config.synthesisTimeoutMs },
       }),
+      1013,
+      "synthesis timeout",
     );
-    socket.close(1013, "synthesis timeout");
   }, config.synthesisTimeoutMs);
 
   socket.addEventListener("open", () => {
@@ -335,12 +392,9 @@ function createFishAudioStream(
       if (frame.event === "finish") {
         if (frame.reason === "error") {
           fail(
-            new ElizaError(
-              String(
-                frame.message ?? "Fish Audio TTS failed to finish synthesis",
-              ),
-              { code: "FISH_AUDIO_PROVIDER_FINISH_ERROR" },
-            ),
+            new ElizaError("Fish Audio provider reported a synthesis failure", {
+              code: "FISH_AUDIO_PROVIDER_FINISH_ERROR",
+            }),
           );
         } else {
           finish();
@@ -348,10 +402,9 @@ function createFishAudioStream(
       }
       if (frame.event === "error" || frame.error) {
         fail(
-          new ElizaError(
-            String(frame.message ?? frame.error ?? "Fish Audio TTS failed"),
-            { code: "FISH_AUDIO_PROVIDER_ERROR" },
-          ),
+          new ElizaError("Fish Audio provider reported an error", {
+            code: "FISH_AUDIO_PROVIDER_ERROR",
+          }),
         );
       }
     } catch (error) {
@@ -360,27 +413,40 @@ function createFishAudioStream(
       fail(error);
     }
   });
-  socket.addEventListener("error", (event) =>
+  socket.addEventListener("error", (event) => {
+    const statusCode = /^Unexpected server response: (401|429)$/.exec(
+      event.message ?? "",
+    )?.[1];
+    const code =
+      statusCode === "401"
+        ? "FISH_AUDIO_AUTH_FAILED"
+        : statusCode === "429"
+          ? "FISH_AUDIO_RATE_LIMITED"
+          : "FISH_AUDIO_WEBSOCKET_ERROR";
+    const publicMessage =
+      statusCode === "401"
+        ? "Fish Audio authentication failed"
+        : statusCode === "429"
+          ? "Fish Audio rate limit exceeded"
+          : "Fish Audio WebSocket transport failed";
     fail(
-      new ElizaError(
-        event.message ??
-          (event.error instanceof Error
-            ? event.error.message
-            : "Fish Audio WebSocket error"),
-        {
-          code: "FISH_AUDIO_WEBSOCKET_ERROR",
-          cause: event.error,
+      new ElizaError(publicMessage, {
+        code,
+        severity: statusCode === "401" ? "fatal" : "ephemeral",
+        context: {
+          retryable: statusCode !== "401",
+          ...(statusCode ? { statusCode: Number(statusCode) } : {}),
         },
-      ),
-    ),
-  );
+      }),
+    );
+  });
   socket.addEventListener("close", (event) => {
     if (done) return;
-    const detail = event.reason ? `: ${event.reason}` : "";
     fail(
-      new ElizaError(`Fish Audio WebSocket closed before finish${detail}`, {
+      new ElizaError("Fish Audio WebSocket closed before synthesis completed", {
         code: "FISH_AUDIO_WEBSOCKET_CLOSED_EARLY",
-        context: { statusCode: event.code, reason: event.reason },
+        context:
+          typeof event.code === "number" ? { closeCode: event.code } : {},
       }),
     );
   });
@@ -389,8 +455,9 @@ function createFishAudioStream(
       new ElizaError("Fish Audio TTS aborted", {
         code: "FISH_AUDIO_STREAM_ABORTED",
       }),
+      1000,
+      "aborted",
     );
-    socket.close(1000, "aborted");
   };
   if (config.signal?.aborted) {
     abort();
@@ -412,6 +479,10 @@ function createFishAudioStream(
               failure ? reject(failure) : resolve(result),
             );
           });
+        },
+        return(): Promise<IteratorResult<Uint8Array>> {
+          if (!done) abort();
+          return Promise.resolve({ done: true, value: undefined });
         },
       };
     },
@@ -436,40 +507,32 @@ function openSocket(
   if (configuredWebSocketFactory) {
     return configuredWebSocketFactory(FISH_AUDIO_TTS_WEBSOCKET_URL, options);
   }
-  const WebSocketCtor = (
-    globalThis as {
-      WebSocket?: new (
-        url: string,
-        protocolsOrOptions?:
-          | string
-          | string[]
-          | { headers?: Record<string, string> },
-        options?: { headers?: Record<string, string> },
-      ) => FishAudioWebSocketLike;
-    }
-  ).WebSocket;
-  if (!WebSocketCtor) {
-    throw new ElizaError("WebSocket is not available for Fish Audio TTS", {
-      code: "FISH_AUDIO_WEBSOCKET_UNAVAILABLE",
-    });
-  }
-  try {
-    return new WebSocketCtor(FISH_AUDIO_TTS_WEBSOCKET_URL, undefined, options);
-  } catch {
-    // error-policy:J1 boundary translation — runtimes differ on whether WS
-    // headers are accepted as the second or third constructor argument.
-    return new WebSocketCtor(FISH_AUDIO_TTS_WEBSOCKET_URL, options);
-  }
+  throw new ElizaError(
+    "Fish Audio requires the authenticated platform WebSocket transport",
+    { code: "FISH_AUDIO_WEBSOCKET_UNAVAILABLE" },
+  );
 }
 
 function decodeFrame(data: unknown): Record<string, unknown> {
-  const frame =
-    data instanceof ArrayBuffer
-      ? decode(new Uint8Array(data))
-      : ArrayBuffer.isView(data)
-        ? decode(new Uint8Array(data.buffer, data.byteOffset, data.byteLength))
-        : decode(data as Uint8Array);
-  if (typeof frame !== "object" || frame === null) {
+  let frame: unknown;
+  try {
+    frame =
+      data instanceof ArrayBuffer
+        ? decode(new Uint8Array(data))
+        : ArrayBuffer.isView(data)
+          ? decode(
+              new Uint8Array(data.buffer, data.byteOffset, data.byteLength),
+            )
+          : decode(data as Uint8Array);
+  } catch {
+    // error-policy:J1 malformed provider bytes are translated at the transport
+    // boundary and never reach callers as an unclassified decoder exception.
+    throw new ElizaError("Fish Audio returned an invalid MessagePack frame", {
+      code: "FISH_AUDIO_PROVIDER_MESSAGE_INVALID",
+      severity: "fatal",
+    });
+  }
+  if (typeof frame !== "object" || frame === null || Array.isArray(frame)) {
     throw new ElizaError("Fish Audio frame must be an object", {
       code: "FISH_AUDIO_PROVIDER_MESSAGE_INVALID",
     });
