@@ -2441,7 +2441,7 @@ describe("runV5MessageRuntimeStage1", () => {
 			'"candidateActions":["TASKS_SPAWN_AGENT"]',
 		);
 		expect(plannerUserContent).toContain(
-			'"tierAParents":["TASKS_SPAWN_AGENT"]',
+			'"tierAParents":["FILE","TASKS_SPAWN_AGENT"]',
 		);
 	});
 
@@ -5849,7 +5849,7 @@ describe("runV5MessageRuntimeStage1", () => {
 		}
 	});
 
-	it("does not re-add generic inferred actions after an evaluator clears the candidate route", async () => {
+	it("keeps the complete authorized catalog after an evaluator changes ranking hints", async () => {
 		const runtime = makeRuntime([
 			stage1Response({
 				thought: "The generic router guessed shell.",
@@ -5925,7 +5925,7 @@ describe("runV5MessageRuntimeStage1", () => {
 		};
 		const toolNames = plannerParams.tools?.map((tool) => tool.name) ?? [];
 		expect(toolNames).toContain("CHECK_RUNTIME");
-		expect(toolNames).not.toContain("SHELL");
+		expect(toolNames).toContain("SHELL");
 		expect(
 			plannerParams.messages
 				?.map((entry) => String(entry.content ?? ""))

@@ -13,7 +13,6 @@ import type {
 } from "../../types";
 import {
 	actionToTool,
-	buildPlannerToolsFromActions,
 	buildPlannerToolsFromTieredActions,
 	CORE_PLANNER_TERMINALS,
 	createHandleResponseTool,
@@ -58,6 +57,8 @@ describe("actionToTool", () => {
 				{
 					name: "limit",
 					description: "Maximum number of results",
+					descriptionCompressed: "Max results",
+					examples: [1, 2, 3, 4, 5],
 					required: false,
 					schema: { type: "integer", minimum: 1, maximum: 20, default: 5 },
 				},
@@ -71,7 +72,7 @@ describe("actionToTool", () => {
 			type: "function",
 			function: {
 				name: "DOCUMENT",
-				description: "Search knowledge",
+				description: "Search indexed knowledge",
 				strict: true,
 				parameters: {
 					type: "object",
@@ -84,7 +85,7 @@ describe("actionToTool", () => {
 						},
 						limit: {
 							type: "integer",
-							description: "Maximum number of results",
+							description: "Maximum number of results (e.g. 1, 2, 3, 4, 5)",
 							minimum: 1,
 							maximum: 20,
 							default: 5,
@@ -217,7 +218,7 @@ describe("buildPlannerToolsFromTieredActions", () => {
 		).toMatchObject({ track: { type: "string" } });
 	});
 
-	it("does not expand sub-actions for a Tier-B parent", () => {
+	it("expands sub-actions even when no tier metadata is provided", () => {
 		const createTask = makeTieredAction({
 			name: "CREATE_TASK",
 			description: "Create a task.",
@@ -228,14 +229,12 @@ describe("buildPlannerToolsFromTieredActions", () => {
 			subActions: [createTask],
 		});
 
-		const tools = buildPlannerToolsFromTieredActions([lifeops], {
-			// No tierAParents — LIFEOPS is implicitly Tier B.
-		});
+		const tools = buildPlannerToolsFromTieredActions([lifeops]);
 
-		expect(tools.map((tool) => tool.name)).toEqual(["LIFEOPS"]);
+		expect(tools.map((tool) => tool.name)).toEqual(["LIFEOPS", "CREATE_TASK"]);
 	});
 
-	it("produces a correct combined tool list for mixed Tier A + Tier B parents", () => {
+	it("ignores parent tier allow-lists and expands the complete child catalog", () => {
 		const playMusic = makeTieredAction({
 			name: "PLAY_MUSIC",
 			description: "Start playing a track.",
@@ -263,10 +262,8 @@ describe("buildPlannerToolsFromTieredActions", () => {
 			"MUSIC",
 			"PLAY_MUSIC",
 			"LIFEOPS",
+			"CREATE_TASK",
 		]);
-		// CREATE_TASK is gated behind the LIFEOPS parent handler — it does NOT
-		// appear as a first-class tool.
-		expect(tools.find((tool) => tool.name === "CREATE_TASK")).toBeUndefined();
 	});
 
 	it("resolves string-only sub-action references via actionLookup", () => {
@@ -338,7 +335,7 @@ describe("buildPlannerToolsFromTieredActions", () => {
 		expect(tools.map((tool) => tool.name)).toEqual(["MUSIC", "PLAY_MUSIC"]);
 	});
 
-	it("degrades to plain buildPlannerToolsFromActions behavior when tierAParents is empty", () => {
+	it("expands children when legacy tierAParents is omitted", () => {
 		const playMusic = makeTieredAction({
 			name: "PLAY_MUSIC",
 			description: "Start playing a track.",
@@ -350,11 +347,7 @@ describe("buildPlannerToolsFromTieredActions", () => {
 		});
 
 		const tiered = buildPlannerToolsFromTieredActions([music, playMusic]);
-		const plain = buildPlannerToolsFromActions([music, playMusic]);
-
-		expect(tiered.map((tool) => tool.name)).toEqual(
-			plain.map((tool) => tool.name),
-		);
+		expect(tiered.map((tool) => tool.name)).toEqual(["MUSIC", "PLAY_MUSIC"]);
 	});
 
 	it("rejects sub-action names that are not strict native tool names", () => {
@@ -395,7 +388,7 @@ describe("buildPlannerToolsFromTieredActions", () => {
 		expect(tools.map((tool) => tool.name)).toEqual(["MUSIC", "PLAY_MUSIC"]);
 	});
 
-	it("expands only allow-listed children when tierAChildrenByParent has an entry", () => {
+	it("ignores a legacy child allow-list and expands every child", () => {
 		const playMusic = makeTieredAction({
 			name: "PLAY_MUSIC",
 			description: "Start playing a track.",
@@ -419,12 +412,15 @@ describe("buildPlannerToolsFromTieredActions", () => {
 			tierAChildrenByParent: { MUSIC: ["PLAY_MUSIC"] },
 		});
 
-		// The parent umbrella stays — narrowed-out children remain dispatchable
-		// through it — but only the allow-listed child becomes a native tool.
-		expect(tools.map((tool) => tool.name)).toEqual(["MUSIC", "PLAY_MUSIC"]);
+		expect(tools.map((tool) => tool.name)).toEqual([
+			"MUSIC",
+			"PLAY_MUSIC",
+			"PAUSE_MUSIC",
+			"STOP_MUSIC",
+		]);
 	});
 
-	it("expands all children for tier-A parents without an allow-list entry", () => {
+	it("expands all children even when a legacy allow-list entry is empty", () => {
 		const playMusic = makeTieredAction({
 			name: "PLAY_MUSIC",
 			description: "Start playing a track.",
@@ -446,7 +442,6 @@ describe("buildPlannerToolsFromTieredActions", () => {
 
 		const tools = buildPlannerToolsFromTieredActions([music, lifeops], {
 			tierAParents: new Set(["MUSIC", "LIFEOPS"]),
-			// Only LIFEOPS is narrowed; MUSIC has no entry and expands fully.
 			tierAChildrenByParent: new Map([["LIFEOPS", []]]),
 		});
 
@@ -454,10 +449,11 @@ describe("buildPlannerToolsFromTieredActions", () => {
 			"MUSIC",
 			"PLAY_MUSIC",
 			"LIFEOPS",
+			"CREATE_TASK",
 		]);
 	});
 
-	it("does not report narrowed-out string refs as unresolved", () => {
+	it("reports unresolved string refs even when a legacy allow-list omits them", () => {
 		const onUnresolvedSubAction = vi.fn();
 		const music = makeTieredAction({
 			name: "MUSIC",
@@ -472,14 +468,15 @@ describe("buildPlannerToolsFromTieredActions", () => {
 		const tools = buildPlannerToolsFromTieredActions([music], {
 			tierAParents: new Set(["MUSIC"]),
 			actionLookup: new Map([["PLAY_MUSIC", playMusic]]),
-			// MISSING_CHILD is narrowed out — an intentional skip, not an
-			// unresolvable reference.
 			tierAChildrenByParent: { MUSIC: ["PLAY_MUSIC"] },
 			onUnresolvedSubAction,
 		});
 
 		expect(tools.map((tool) => tool.name)).toEqual(["MUSIC", "PLAY_MUSIC"]);
-		expect(onUnresolvedSubAction).not.toHaveBeenCalled();
+		expect(onUnresolvedSubAction).toHaveBeenCalledWith({
+			parentName: "MUSIC",
+			subActionName: "MISSING_CHILD",
+		});
 	});
 
 	it("emits parent terminals separately — does not implicitly append REPLY/IGNORE/STOP", () => {
