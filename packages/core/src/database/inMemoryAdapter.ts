@@ -132,6 +132,36 @@ function memoryMatchesMetadata(
 	return true;
 }
 
+/**
+ * Cosine similarity for in-process vector recall. Returns -1 when the vectors
+ * cannot be compared (empty, mixed width, or non-finite components) so a search
+ * can skip them instead of inventing a score. Matches the document-fragment
+ * in-memory twin.
+ */
+function cosineSimilarity(left: number[], right: number[]): number {
+	if (left.length !== right.length || left.length === 0) return -1;
+	let dot = 0;
+	let leftMagnitude = 0;
+	let rightMagnitude = 0;
+	for (let index = 0; index < left.length; index++) {
+		const leftValue = left[index];
+		const rightValue = right[index];
+		if (
+			typeof leftValue !== "number" ||
+			typeof rightValue !== "number" ||
+			!Number.isFinite(leftValue) ||
+			!Number.isFinite(rightValue)
+		) {
+			return -1;
+		}
+		dot += leftValue * rightValue;
+		leftMagnitude += leftValue * leftValue;
+		rightMagnitude += rightValue * rightValue;
+	}
+	if (leftMagnitude === 0 || rightMagnitude === 0) return -1;
+	return dot / (Math.sqrt(leftMagnitude) * Math.sqrt(rightMagnitude));
+}
+
 function connectorAccountKey(params: {
 	agentId: UUID;
 	provider: string;
@@ -287,6 +317,8 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 	private memoriesById = new Map<string, Memory>();
 	private memoriesByRoom = new Map<string, Memory[]>();
 	private cache = new Map<string, string>();
+	/** Width last passed to {@link ensureEmbeddingDimension}; used to reclaim stale vectors. */
+	private embeddingDimension: number | undefined;
 
 	private participantsByRoom = new Map<string, Set<string>>();
 	private roomsByParticipant = new Map<string, Set<string>>();
@@ -489,14 +521,34 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 		return Array.from(this.agents.values());
 	}
 
-	async ensureEmbeddingDimension(_dimension: number): Promise<void> {
-		// In-memory vectors are not schema-bound, so there is no dimension migration to apply.
+	async ensureEmbeddingDimension(dimension: number): Promise<void> {
+		this.embeddingDimension = dimension;
 	}
 
 	async clearEmbeddingsOutsideActiveDimension(): Promise<UUID[]> {
-		// In-memory vectors are not schema-bound to a fixed-width column, so there
-		// is no stale-dimension row to reclaim.
-		return [];
+		if (
+			this.embeddingDimension === undefined ||
+			!Number.isFinite(this.embeddingDimension) ||
+			this.embeddingDimension <= 0
+		) {
+			return [];
+		}
+		const active = this.embeddingDimension;
+		const reclaimed: UUID[] = [];
+		for (const memory of this.memoriesById.values()) {
+			if (!Array.isArray(memory.embedding) || memory.embedding.length === 0) {
+				continue;
+			}
+			if (memory.embedding.length === active) {
+				continue;
+			}
+			if (!memory.id) {
+				continue;
+			}
+			delete memory.embedding;
+			reclaimed.push(memory.id);
+		}
+		return reclaimed;
 	}
 
 	async transaction<T>(
@@ -1369,7 +1421,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 		this.logs = this.logs.filter((l) => !idSet.has(String(l.id)));
 	}
 
-	async searchMemories(_params: {
+	async searchMemories(params: {
 		tableName: string;
 		embedding: number[];
 		match_threshold?: number;
@@ -1382,7 +1434,38 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 		entityId?: UUID;
 		accessContext?: AccessContext;
 	}): Promise<Memory[]> {
-		return [];
+		// Scope eligibility first, then the top-K cut — the plugin-sql contract.
+		// A global top-K followed by a post-hoc room/world/entity filter silently
+		// drops eligible matches whenever closer out-of-scope vectors outnumber
+		// the candidate pool.
+		const candidates = await this.getMemories({
+			tableName: params.tableName,
+			roomId: params.roomId,
+			worldId: params.worldId,
+			entityId: params.entityId,
+			unique: params.unique,
+			accessContext: params.accessContext,
+		});
+		const limit = params.count ?? params.limit ?? 10;
+		const threshold = params.match_threshold ?? 0.5;
+		const scored: Memory[] = [];
+		for (const memory of candidates) {
+			if (!Array.isArray(memory.embedding) || memory.embedding.length === 0) {
+				continue;
+			}
+			const similarity = cosineSimilarity(memory.embedding, params.embedding);
+			if (similarity < 0) {
+				continue;
+			}
+			if (similarity < threshold) {
+				continue;
+			}
+			scored.push({ ...memory, similarity });
+		}
+		scored.sort(
+			(left, right) => (right.similarity ?? -1) - (left.similarity ?? -1),
+		);
+		return scored.slice(0, limit);
 	}
 
 	// Batch memory methods

@@ -27,12 +27,16 @@ import {
   stringToUuid,
 } from "@elizaos/core";
 import { readAliasedEnv, resolveServerOnlyPort } from "@elizaos/shared";
+import { capturedTerminalOutputIsSafe } from "../api/terminal-output-contract.ts";
 import { resolveTerminalRunLimits } from "../api/terminal-run-limits.ts";
 import { normalizeTerminalCommand } from "../utils/terminal-command.ts";
 
 const TERMINAL_ACTION_NAME = "TERMINAL_SHELL";
 const TERMINAL_TRANSPORT_GRACE_MS = 10_000;
-const MAX_TERMINAL_RESPONSE_BYTES = 8 * 1024 * 1024;
+// Four MiB of control-heavy output can expand to six JSON bytes per source
+// byte. Bound the envelope before parsing while preserving the route's exact
+// complete-output contract.
+const MAX_TERMINAL_RESPONSE_BYTES = 25 * 1024 * 1024;
 // Max sanitized stdout, in chars, that may be relayed verbatim as the user-facing
 // message. Small single-line results (a SHA, a count, a path) are useful to
 // echo for "run X and tell me the value" turns; anything larger — or with
@@ -56,7 +60,7 @@ type CapturedTerminalRun = {
   stdout: string;
   stderr: string;
   timedOut: boolean;
-  truncated: boolean;
+  truncated: false;
   maxDurationMs?: number;
 };
 
@@ -219,6 +223,13 @@ function isJsonRecord(value: JsonValue): value is Record<string, JsonValue> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
+function hasNestedExecutionEnvelope(value: Record<string, JsonValue>): boolean {
+  for (const key of ["data", "result", "output"] as const) {
+    if (isJsonRecord(value[key])) return true;
+  }
+  return false;
+}
+
 function parseJsonArguments(
   value: JsonValue | undefined,
 ): Record<string, JsonValue> | undefined {
@@ -287,11 +298,17 @@ function normalizeCapturedRun(
     !runId ||
     (expectedRunId !== undefined && runId !== expectedRunId) ||
     typeof value.exitCode !== "number" ||
-    !Number.isInteger(value.exitCode) ||
+    !Number.isSafeInteger(value.exitCode) ||
     typeof value.stdout !== "string" ||
     typeof value.stderr !== "string" ||
     typeof value.timedOut !== "boolean" ||
-    typeof value.truncated !== "boolean"
+    typeof value.truncated !== "boolean" ||
+    "error" in value ||
+    !capturedTerminalOutputIsSafe(value.stdout, value.stderr) ||
+    (value.maxDurationMs !== undefined &&
+      (typeof value.maxDurationMs !== "number" ||
+        !Number.isSafeInteger(value.maxDurationMs) ||
+        value.maxDurationMs < 1))
   ) {
     throw new ElizaError("Terminal response omitted required execution proof", {
       code: "TERMINAL_RESPONSE_INVALID",
@@ -308,6 +325,28 @@ function normalizeCapturedRun(
     });
   }
 
+  if (value.truncated !== false || hasNestedExecutionEnvelope(value)) {
+    throw new ElizaError(
+      "Terminal response contained incomplete stdout or stderr",
+      {
+        code: "TERMINAL_OUTPUT_INCOMPLETE",
+        context: { acceptance: "accepted", runId },
+        severity: "fatal",
+      },
+    );
+  }
+
+  if (value.timedOut) {
+    throw new ElizaError(
+      "Terminal response timed out before complete output was proven",
+      {
+        code: "TERMINAL_OUTPUT_INCOMPLETE",
+        context: { acceptance: "accepted", runId },
+        severity: "fatal",
+      },
+    );
+  }
+
   return {
     command,
     runId,
@@ -315,7 +354,7 @@ function normalizeCapturedRun(
     stdout: value.stdout,
     stderr: value.stderr,
     timedOut: value.timedOut,
-    truncated: value.truncated,
+    truncated: false,
     maxDurationMs:
       typeof value.maxDurationMs === "number" &&
       Number.isFinite(value.maxDurationMs)
@@ -335,7 +374,6 @@ function buildCommandArtifactContent(result: CapturedTerminalRun): string {
     result.timedOut
       ? `Timed out: yes${typeof result.maxDurationMs === "number" ? ` (${result.maxDurationMs} ms limit)` : ""}`
       : "Timed out: no",
-    result.truncated ? "Captured output truncated to 128 KB." : "",
     "",
     "STDOUT:",
     formatOutputBlock(result.stdout),
@@ -349,7 +387,6 @@ function buildCommandArtifactContent(result: CapturedTerminalRun): string {
 
 function terminalAttachmentReadView(
   outputAttachment: TerminalOutputAttachment | undefined,
-  result: CapturedTerminalRun,
 ) {
   if (!outputAttachment?.memoryId) return undefined;
   const content = outputAttachment.attachment.text ?? "";
@@ -366,17 +403,14 @@ function terminalAttachmentReadView(
         unit: "byte",
         start: 0,
         end: byteLength,
-        ...(!result.truncated ? { total: byteLength } : {}),
+        total: byteLength,
       },
       hasPrevious: false,
       hasMore: false,
       revision: outputAttachment.memoryId,
-      completeness: result.truncated ? "partial-source-loss" : "complete",
+      completeness: "complete",
       sliceSha256: digest,
-      ...(!result.truncated ? { sourceSha256: digest } : {}),
-      ...(result.truncated
-        ? { reason: "terminal provider reported upstream output truncation" }
-        : {}),
+      sourceSha256: digest,
     },
   });
 }
@@ -409,7 +443,7 @@ async function createCommandOutputAttachment(
     url: `memory://terminal-output/${attachmentId}`,
     title,
     source: TERMINAL_ACTION_NAME,
-    description: `${result.truncated ? "Truncated captured" : "Complete captured"} stdout/stderr for \`${result.command}\` (exit ${result.exitCode}).`,
+    description: `Complete captured stdout/stderr for \`${result.command}\` (exit ${result.exitCode}).`,
     text: buildCommandArtifactContent(result),
     contentType: ContentType.DOCUMENT,
   };
@@ -537,7 +571,6 @@ function buildCapturedResponseText(
     result.timedOut
       ? `Timed out${typeof result.maxDurationMs === "number" ? ` after ${result.maxDurationMs} ms` : ""}.`
       : "",
-    result.truncated ? "Captured output truncated to 128 KB." : "",
     outputAttachment
       ? `Full output attachment: ${outputAttachment.attachment.id} (${outputAttachment.attachment.title})`
       : "",
@@ -699,6 +732,12 @@ export const terminalAction: Action = {
     try {
       rawRun = normalizeCapturedRun(command, responseBody, runId);
     } catch (error) {
+      if (
+        error instanceof ElizaError &&
+        error.code === "TERMINAL_OUTPUT_INCOMPLETE"
+      ) {
+        throw error;
+      }
       // error-policy:J2 a 2xx body that cannot prove the bound run's terminal
       // result is still an ambiguous effect, not a safely retryable parse error.
       throw new ElizaError("Terminal execution outcome is unknown", {
@@ -730,12 +769,11 @@ export const terminalAction: Action = {
       message,
       capturedRun,
     );
-    const readView = terminalAttachmentReadView(outputAttachment, capturedRun);
+    const readView = terminalAttachmentReadView(outputAttachment);
 
     const cleanStdout =
       capturedRun.exitCode === 0 &&
       !capturedRun.timedOut &&
-      !capturedRun.truncated &&
       capturedRun.stderr.trim().length === 0
         ? capturedRun.stdout.trim()
         : "";

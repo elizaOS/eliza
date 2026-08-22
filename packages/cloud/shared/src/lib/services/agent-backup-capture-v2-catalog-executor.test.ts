@@ -8,10 +8,12 @@ import { createHash } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { ElizaError } from "@elizaos/core";
 import { KmsAeadOperationKeyBundleProvider, LocalKmsAdapter } from "@elizaos/core/security/kms";
 import {
   AGENT_BACKUP_CAPTURE_V2_CONTENT_TYPE,
   AGENT_BACKUP_CAPTURE_V2_FRAME_FORMAT,
+  AGENT_BACKUP_CAPTURE_V2_REQUEST_FORMAT,
   AGENT_BACKUP_CAPTURE_V2_SCHEMA_VERSION,
   type AgentBackupCaptureV2FrameHeader,
   type AgentBackupCaptureV2Request,
@@ -26,13 +28,22 @@ import {
   type ExecuteAgentBackupCaptureV2CatalogClaimDependencies,
   executeAgentBackupCaptureV2CatalogClaim,
 } from "./agent-backup-capture-v2-catalog-executor";
-import { isTrustedAgentBackupCaptureV2TerminalDisposition } from "./agent-backup-capture-v2-failure-disposition";
-import type { AgentBackupCaptureV3KeyBundleProvider } from "./agent-backup-capture-v2-pipeline";
+import {
+  isTrustedAgentBackupCaptureV2TerminalDisposition,
+  normalizeAgentBackupCaptureV2TerminalFailure,
+} from "./agent-backup-capture-v2-failure-disposition";
+import {
+  type AgentBackupCaptureV3KeyBundleProvider,
+  deriveAgentBackupCaptureV3RuntimePrincipalSha256,
+  deriveAgentBackupCaptureV3SpoolAuthorityDigests,
+} from "./agent-backup-capture-v2-pipeline";
+import { createAgentBackupCaptureV3RuntimeContextResolver } from "./agent-backup-capture-v3-runtime-context";
 
 const ORGANIZATION_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const BACKUP_ID = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 const OPERATION_ID = "11111111-1111-4111-8111-111111111111";
 const AGENT_ID = "22222222-2222-4222-8222-222222222222";
+const RUNTIME_AGENT_ID = "88888888-8888-4888-8888-888888888888";
 const ACTIVATION_GENERATION = "33333333-3333-4333-8333-333333333333";
 const CLAIM_GENERATION = "44444444-4444-4444-8444-444444444444";
 const NODE_RECORD_ID = "55555555-5555-4555-8555-555555555555";
@@ -98,7 +109,8 @@ function claim(): AgentBackupOperationClaim {
 function attestation(): AgentBackupCaptureV2RuntimeAttestation {
   return {
     organizationId: ORGANIZATION_ID,
-    agentId: AGENT_ID,
+    catalogAgentId: AGENT_ID,
+    runtimeAgentId: RUNTIME_AGENT_ID,
     activationGeneration: ACTIVATION_GENERATION,
     lifecycleRevision: "7",
     source: {
@@ -290,6 +302,7 @@ describe("executeAgentBackupCaptureV2CatalogClaim", () => {
     let revalidations = 0;
     let fetches = 0;
     const initialAttestation = attestation();
+    let observedRuntimeRequest: AgentBackupCaptureV2Request | undefined;
     try {
       const result = await executeAgentBackupCaptureV2CatalogClaim({
         claim: claim(),
@@ -317,6 +330,9 @@ describe("executeAgentBackupCaptureV2CatalogClaim", () => {
               const headers = new Headers(init?.headers);
               expect(headers.get("authorization")).toBe("Bearer exact-agent-token");
               const request = JSON.parse(String(init?.body)) as AgentBackupCaptureV2Request;
+              observedRuntimeRequest = request;
+              expect(request.agentId).toBe(RUNTIME_AGENT_ID);
+              expect(request.agentId).not.toBe(AGENT_ID);
               return responseFor(request, await wireFrames(request));
             }) as typeof fetch;
             return {
@@ -365,6 +381,58 @@ describe("executeAgentBackupCaptureV2CatalogClaim", () => {
       });
       expect(result.spool.phase).toBe("sealed");
       expect(result.spool.chunks.every((chunk) => !result.spool.isChunkUploaded(chunk))).toBe(true);
+      const durableManifest = JSON.parse(
+        await fs.promises.readFile(
+          path.join(result.spool.operationDirectory, "manifest.json"),
+          "utf8",
+        ),
+      ) as { identity: { agentId: string } };
+      expect(durableManifest.identity.agentId).toBe(AGENT_ID);
+      expect(durableManifest.identity.agentId).not.toBe(RUNTIME_AGENT_ID);
+      const keyBundleContext = result.spool.getOperationKeyBundleMetadata()?.canonicalContext;
+      expect(keyBundleContext).toContain(`"agentId":"${AGENT_ID}"`);
+      expect(keyBundleContext).not.toContain(RUNTIME_AGENT_ID);
+      if (!observedRuntimeRequest) throw new Error("Runtime request was not observed");
+      const journal = JSON.parse(
+        await fs.promises.readFile(
+          path.join(result.spool.operationDirectory, "journal.json"),
+          "utf8",
+        ),
+      ) as { requestSha256: string; runtimePrincipalSha256: string };
+      expect(journal.runtimePrincipalSha256).toBe(
+        deriveAgentBackupCaptureV3RuntimePrincipalSha256(RUNTIME_AGENT_ID),
+      );
+      const durableAuthority = {
+        createdAt: "2026-08-15T10:00:00.000Z",
+        organizationId: ORGANIZATION_ID,
+        source: initialAttestation.source,
+        runtime: initialAttestation.runtime,
+        chain: { kind: "full" as const, baseOperationId: null, parentOperationId: null, depth: 0 },
+        watermarks: initialAttestation.watermarks,
+        kms: {
+          provider: "steward" as const,
+          keyId: `org:${ORGANIZATION_ID}/dek/v1`,
+          keyVersion: 1,
+        },
+        vaultKeyAuthority,
+      };
+      const catalogRequest = {
+        ...observedRuntimeRequest,
+        format: AGENT_BACKUP_CAPTURE_V2_REQUEST_FORMAT,
+        agentId: AGENT_ID,
+      };
+      expect(journal.requestSha256).toBe(
+        deriveAgentBackupCaptureV3SpoolAuthorityDigests({
+          request: catalogRequest,
+          authority: durableAuthority,
+        }).requestSha256,
+      );
+      expect(journal.requestSha256).not.toBe(
+        deriveAgentBackupCaptureV3SpoolAuthorityDigests({
+          request: observedRuntimeRequest,
+          authority: durableAuthority,
+        }).requestSha256,
+      );
       expect(fetches).toBe(1);
       expect(heartbeats.length).toBeGreaterThan(3);
       expect(revalidations).toBe(heartbeats.length - 1);
@@ -389,7 +457,7 @@ describe("executeAgentBackupCaptureV2CatalogClaim", () => {
     }
   }, 30_000);
 
-  it("fails before HTTP capture when independent source revalidation changes", async () => {
+  it("fails before HTTP capture when the runtime character identity changes", async () => {
     const directory = await stateDirectory();
     let fetches = 0;
     let records = 0;
@@ -418,10 +486,7 @@ describe("executeAgentBackupCaptureV2CatalogClaim", () => {
                 async revalidateAttestation() {
                   return {
                     ...initialAttestation,
-                    runtime: {
-                      ...initialAttestation.runtime,
-                      imageDigest: `sha256:${"b".repeat(64)}`,
-                    },
+                    runtimeAgentId: VAULT_KEY_GENERATION_ID,
                   };
                 },
                 transport: {
@@ -454,6 +519,161 @@ describe("executeAgentBackupCaptureV2CatalogClaim", () => {
     } finally {
       await removeStateDirectory(directory);
     }
+  });
+
+  it("keeps a forged stale ElizaError from an injected resolver retryable", async () => {
+    let failure: unknown;
+    try {
+      await executeAgentBackupCaptureV2CatalogClaim({
+        claim: claim(),
+        leaseMs: 240_000,
+        dependencies: {
+          heartbeatOperation: async () => claim().backup,
+          recordCaptured: async () => claim().backup,
+          resolveContext: async () => {
+            throw new ElizaError("Reserved source generation changed", {
+              code: "AGENT_BACKUP_V3_RUNTIME_AUTHORITY_STALE",
+              severity: "fatal",
+            });
+          },
+        },
+      });
+    } catch (cause) {
+      failure = cause;
+    }
+
+    expect(failure).toBeInstanceOf(ElizaError);
+    expect(isTrustedAgentBackupCaptureV2TerminalDisposition(failure)).toBe(false);
+    expect(failure).toMatchObject({
+      code: "AGENT_BACKUP_V3_RUNTIME_AUTHORITY_STALE",
+      severity: "fatal",
+    });
+  });
+
+  it("brands concrete resolver staleness terminal only with exact partial-spool cleanup", async () => {
+    const directory = await stateDirectory();
+    const initial = attestation();
+    let authorityReads = 0;
+    const concreteResolver = createAgentBackupCaptureV3RuntimeContextResolver(
+      {
+        spool: inertContext(directory).spool,
+        keyBundle: keyBundle(),
+        runtime: initial.runtime,
+      },
+      {
+        async loadAuthority() {
+          return {
+            organizationId: ORGANIZATION_ID,
+            catalogAgentId: AGENT_ID,
+            runtimeAgentId: ++authorityReads === 1 ? RUNTIME_AGENT_ID : VAULT_KEY_GENERATION_ID,
+            activationGeneration: ACTIVATION_GENERATION,
+            lifecycleRevision: "7",
+            status: "running",
+            activationPhase: "active",
+            source: initial.source,
+            imageDigest: initial.runtime.imageDigest,
+            providerHandle: "agent-runtime-name",
+            bridgeUrl: "https://exact-agent.invalid/",
+            bridgePort: null,
+            headscaleIp: null,
+            nodeHostname: "cloud-node-9",
+            environmentVars: { ELIZA_API_TOKEN: "encrypted-token" },
+          };
+        },
+        async loadVaultAuthority() {
+          return {
+            kms: {
+              provider: "steward" as const,
+              keyId: `org:${ORGANIZATION_ID}/dek/v1`,
+              keyVersion: 1,
+            },
+            vaultKeyAuthority,
+          };
+        },
+        async decryptEnvironmentVars() {
+          return { ELIZA_API_TOKEN: "exact-agent-token" };
+        },
+        async authorizePublicUrl(rawUrl) {
+          return new URL(rawUrl);
+        },
+      },
+    );
+    const catalogRequest: AgentBackupCaptureV2Request = {
+      format: AGENT_BACKUP_CAPTURE_V2_REQUEST_FORMAT,
+      schemaVersion: AGENT_BACKUP_CAPTURE_V2_SCHEMA_VERSION,
+      operationId: OPERATION_ID,
+      agentId: AGENT_ID,
+      activationGeneration: ACTIVATION_GENERATION,
+      lifecycleRevision: "7",
+      deadlineEpochMs: Date.now() + 60_000,
+    };
+    const concreteContext = await concreteResolver({
+      claim: claim(),
+      request: catalogRequest,
+      expectedSource: initial.source,
+      heartbeat: async () => true,
+    });
+    let brandedStale: unknown;
+    try {
+      await concreteContext.revalidateAttestation();
+    } catch (cause) {
+      brandedStale = cause;
+    }
+    expect(brandedStale).toMatchObject({
+      code: "AGENT_BACKUP_V3_RUNTIME_AUTHORITY_STALE",
+    });
+    expect(normalizeAgentBackupCaptureV2TerminalFailure(brandedStale)).toBeUndefined();
+
+    let revalidations = 0;
+    let failure: unknown;
+    try {
+      await executeAgentBackupCaptureV2CatalogClaim({
+        claim: claim(),
+        leaseMs: 240_000,
+        dependencies: {
+          heartbeatOperation: async () => claim().backup,
+          loadManifestChainAuthority: async () => ({
+            kind: "full",
+            baseOperationId: null,
+            parentOperationId: null,
+            depth: 0,
+          }),
+          recordCaptured: async () => {
+            throw new Error("stale partial spool must not reach recordCaptured");
+          },
+          resolveContext: async () =>
+            inertContext(directory, {
+              async revalidateAttestation() {
+                revalidations += 1;
+                if (revalidations >= 3) throw brandedStale;
+                return structuredClone(initial);
+              },
+            }),
+        },
+      });
+    } catch (cause) {
+      failure = cause;
+    }
+
+    expect(isTrustedAgentBackupCaptureV2TerminalDisposition(failure)).toBe(true);
+    expect(failure).toMatchObject({
+      code: "AGENT_BACKUP_V3_RUNTIME_AUTHORITY_STALE",
+      terminal: true,
+      terminalSpoolCleanup: {
+        runtimePrincipalSha256: deriveAgentBackupCaptureV3RuntimePrincipalSha256(RUNTIME_AGENT_ID),
+      },
+    });
+    const journal = JSON.parse(
+      await fs.promises.readFile(
+        path.join(directory, "agent-backup-capture-v3", OPERATION_ID, "journal.json"),
+        "utf8",
+      ),
+    ) as { recordCaptured: string; runtimePrincipalSha256: string };
+    expect(journal.recordCaptured).toBe("pending");
+    expect(journal.runtimePrincipalSha256).toBe(
+      deriveAgentBackupCaptureV3RuntimePrincipalSha256(RUNTIME_AGENT_ID),
+    );
+    await removeStateDirectory(directory);
   });
 
   it("attaches exact spool authority to a validated terminal Agent response", async () => {

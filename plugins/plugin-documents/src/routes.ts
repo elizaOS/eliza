@@ -1076,12 +1076,13 @@ export async function handleDocumentsRoutes(
       // `metadata` is the MemoryMetadata union; only DocumentMetadata carries
       // the grants, so narrow with `in` before reading.
       const metadata = document.metadata;
-      const directGrantEntityIds =
+      const directGrantCandidate =
         metadata &&
         "directGrantEntityIds" in metadata &&
-        Array.isArray(metadata.directGrantEntityIds)
-          ? metadata.directGrantEntityIds
-          : [];
+        (metadata as { directGrantEntityIds?: unknown }).directGrantEntityIds;
+      const directGrantEntityIds = Array.isArray(directGrantCandidate)
+        ? directGrantCandidate
+        : [];
       json(res, { ok: true, documentId: document.id, directGrantEntityIds });
     } catch (cause) {
       // error-policy:J1 The HTTP boundary translates typed ACL failures without exposing storage details.
