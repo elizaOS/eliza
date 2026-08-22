@@ -1,10 +1,11 @@
 /**
- * Verifies workbench task normalization helpers by importing the production
- * API module while mocking only its runtime configuration dependency.
+ * Verifies the workbench task normalization helpers by importing the
+ * production API module directly; the helpers are pure, so the harness is
+ * deterministic and nothing is mocked.
  */
 
 import type { Task } from "@elizaos/core";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import {
   asObject,
   isWorkbenchTodoTask,
@@ -18,10 +19,6 @@ import {
   toWorkbenchTask,
   toWorkbenchTodo,
 } from "../workbench-helpers.ts";
-
-vi.mock("../runtime.ts", () => ({
-  readTriggerConfig: () => null,
-}));
 
 function task(overrides: Partial<Task> = {}): Task {
   return {
