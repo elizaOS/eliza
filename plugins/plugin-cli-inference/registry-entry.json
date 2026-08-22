@@ -44,9 +44,9 @@
       "sensitive": false,
       "default": "120000",
       "label": "Timeout",
-      "help": "Per-call CLI spawn timeout in milliseconds.",
+      "help": "Per-call CLI spawn timeout in milliseconds. Must be a strictly positive integer when configured.",
       "advanced": true,
-      "min": 0,
+      "min": 1,
       "unit": "ms"
     }
   },

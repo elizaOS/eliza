@@ -110,14 +110,14 @@
       },
       "ELIZA_CLI_SDK_RESTART_AFTER_TURNS": {
         "type": "number",
-        "description": "Restart each warm Claude SDK session after this many turns. Defaults to 20.",
+        "description": "Restart each warm SDK session after this many turns. Must be a strictly positive safe integer when a warm backend is active; empty or invalid values are rejected. Defaults to 20.",
         "required": false,
         "default": 20,
         "sensitive": false
       },
       "ELIZA_CLI_SDK_TURN_TIMEOUT_MS": {
         "type": "number",
-        "description": "Per-turn Claude SDK timeout in milliseconds. Defaults to 90000 and falls back to ELIZA_CLI_TIMEOUT_MS when set.",
+        "description": "Per-turn Claude SDK timeout in milliseconds. Accepts a positive safe integer or the exact literal 0 to opt out; empty, alternate zero spellings, and invalid values are rejected. Defaults to 90000 and falls back to a valid ELIZA_CLI_TIMEOUT_MS when set.",
         "required": false,
         "default": 90000,
         "sensitive": false
@@ -131,7 +131,7 @@
       },
       "ELIZA_CLI_TIMEOUT_MS": {
         "type": "number",
-        "description": "Per-call CLI spawn timeout in milliseconds (SIGTERM on expiry). Defaults to 120000.",
+        "description": "Per-call CLI spawn timeout in milliseconds (SIGTERM on expiry), also used as the Claude SDK turn fallback. Must be a strictly positive safe integer when consumed; empty or invalid values are rejected. Defaults to 120000.",
         "required": false,
         "default": 120000,
         "sensitive": false
