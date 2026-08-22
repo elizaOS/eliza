@@ -94,7 +94,7 @@ export interface RemoteTargetRelayTransport {
   ): Promise<RemoteTargetEnrollmentResponse>;
   activate(input: {
     enrollment: EnrolledRemoteTargetVaultRecord;
-    sessionId: string;
+    sessionId?: string;
     code: string;
   }): Promise<RemoteTargetActivationResponse>;
   claimNext(input: {
@@ -390,17 +390,20 @@ export class HttpRemoteTargetRelayTransport
 
   async activate(input: {
     enrollment: EnrolledRemoteTargetVaultRecord;
-    sessionId: string;
+    sessionId?: string;
     code: string;
   }): Promise<RemoteTargetActivationResponse> {
-    const sessionId = requireUuid(input.sessionId);
+    const expectedSessionId =
+      input.sessionId === undefined ? null : requireUuid(input.sessionId);
     if (!/^\d{6}$/.test(input.code)) {
       throw new Error("Pairing code must contain exactly six digits.");
     }
     const data = requireObject(
       await this.request(
         input.enrollment.apiBaseUrl,
-        `/api/v1/remote/sessions/${encodeURIComponent(sessionId)}/activate`,
+        expectedSessionId
+          ? `/api/v1/remote/sessions/${encodeURIComponent(expectedSessionId)}/activate`
+          : "/api/v1/remote/sessions/activate",
         {
           method: "POST",
           headers: this.hostHeaders(input.enrollment, true),
@@ -422,8 +425,9 @@ export class HttpRemoteTargetRelayTransport
         data.controllerEncryptionPublicKeyJwk as JsonWebKey,
       createdAt: requireTimestamp(data.controllerCreatedAt),
     };
+    const sessionId = requireUuid(data.sessionId);
     if (
-      data.sessionId !== sessionId ||
+      (expectedSessionId !== null && sessionId !== expectedSessionId) ||
       data.status !== "active" ||
       !Number.isSafeInteger(data.grantRevision) ||
       (data.grantRevision as number) < 1 ||

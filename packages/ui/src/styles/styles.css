@@ -562,6 +562,56 @@ kbd {
   background-color: var(--accent-subtle);
   color: var(--text-strong);
 }
+
+/* Devices & Runtimes is a keyboard-heavy administration surface. Its scoped
+   filled + underlined focus state remains visible even though the product-wide
+   rule above suppresses outlines and shadows. The solid border is part of the
+   control box, so it does not introduce a layout jump. */
+.devices-runtimes-accessible :where(button, summary) {
+  min-block-size: 2.75rem;
+  height: auto;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.devices-runtimes-accessible summary {
+  border: 2px solid transparent;
+}
+
+.devices-runtimes-accessible :where(button, input, summary):focus-visible {
+  border: 2px solid var(--accent) !important;
+  background-color: var(--accent-subtle) !important;
+  color: var(--text-strong) !important;
+  text-decoration-line: underline;
+  text-decoration-thickness: max(0.125rem, 2px);
+  text-underline-offset: 0.2em;
+}
+
+@media (forced-colors: active) {
+  .devices-runtimes-accessible {
+    forced-color-adjust: auto;
+  }
+
+  .devices-runtimes-accessible
+    :where(article, details, [role="alert"], [role="status"]) {
+    border-color: CanvasText;
+  }
+
+  .devices-runtimes-accessible [aria-label$=", selected"] {
+    border-color: Highlight;
+  }
+
+  .devices-runtimes-accessible :where(button, input, summary):focus-visible {
+    forced-color-adjust: none;
+    border-color: Highlight !important;
+    background-color: Highlight !important;
+    color: HighlightText !important;
+  }
+
+  .devices-runtimes-accessible svg[aria-label^="QR code"] {
+    forced-color-adjust: none;
+  }
+}
 /* biome-ignore-end lint/complexity/noImportantStyles: end focus-ring ban override */
 
 /*

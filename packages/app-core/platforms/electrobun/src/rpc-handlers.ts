@@ -1416,6 +1416,10 @@ export function buildBunRpcHandlers({
     runtimeCredentialDelete: async (params) =>
       desktopDeleteRuntimeCredential(params),
     runtimeCredentialDeleteRecord: async (params) => {
+      // Credential revocation is also desired-state revocation: erase the SSH
+      // restart intent before deleting secrets so a later launch cannot revive
+      // a removed runtime.
+      await desktopStopSshRuntime({ runtimeId: params.runtimeId });
       await deleteRuntimeCredentialRecord(params.runtimeId);
       return { deleted: true };
     },

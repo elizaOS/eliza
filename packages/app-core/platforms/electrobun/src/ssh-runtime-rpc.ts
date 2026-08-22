@@ -17,6 +17,10 @@ import {
   readRuntimeCredentialSnapshot,
   storeSshHostFingerprint,
 } from "./runtime-credential-rpc";
+import {
+  type SshRuntimeConnectionIntent,
+  SshRuntimeIntentStore,
+} from "./ssh-runtime-intent-store";
 
 const SSH_TARGET_PATTERN = /^([A-Za-z0-9._-]{1,64})@([A-Za-z0-9.-]{1,253})$/;
 const MAX_DIAGNOSTIC_STDERR_CHARS = 8_192;
@@ -59,8 +63,16 @@ interface ParsedSshRuntimeParams {
   sshPort: number;
   remoteApiPort: number;
   identityFile?: string;
-  credentialRef?: string;
+  credentialRef: string;
   expectedFingerprint: string;
+}
+
+export interface SshRuntimeStatus {
+  running: boolean;
+  localPort: number | null;
+  startedAt: number | null;
+  reconnectState: "stopped" | "running" | "blocked";
+  lastError: string | null;
 }
 
 interface SshTunnel {
@@ -74,6 +86,32 @@ interface SshTunnel {
 }
 
 const tunnels = new Map<string, SshTunnel>();
+const connectionIntents = new SshRuntimeIntentStore();
+const reconnectAttempted = new Set<string>();
+const reconnectErrors = new Map<string, string>();
+const runtimeOperationTails = new Map<string, Promise<void>>();
+let shuttingDown = false;
+
+async function withRuntimeOperation<T>(
+  runtimeId: string,
+  operation: () => Promise<T>,
+): Promise<T> {
+  const predecessor = runtimeOperationTails.get(runtimeId) ?? Promise.resolve();
+  let release!: () => void;
+  const current = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  runtimeOperationTails.set(runtimeId, current);
+  await predecessor.catch(() => undefined);
+  try {
+    return await operation();
+  } finally {
+    release();
+    if (runtimeOperationTails.get(runtimeId) === current) {
+      runtimeOperationTails.delete(runtimeId);
+    }
+  }
+}
 
 function requirePort(value: unknown, field: string): number {
   if (
@@ -139,12 +177,8 @@ function parseStartParams(params: unknown): ParsedSshRuntimeParams {
     throw new Error("SSH identity file must be an absolute local path.");
   }
   const credentialRef = Reflect.get(params, "credentialRef");
-  if (
-    credentialRef !== undefined &&
-    (typeof credentialRef !== "string" ||
-      !/^[A-Za-z0-9._:-]{1,256}$/.test(credentialRef.trim()))
-  ) {
-    throw new Error("SSH credential reference is invalid.");
+  if (typeof credentialRef !== "string" || credentialRef.trim() !== runtimeId) {
+    throw new Error("SSH credential reference must match the runtime id.");
   }
   if (typeof credentialRef === "string" && credentialRef.trim() !== runtimeId) {
     throw new Error("SSH credentials must belong to the selected runtime.");
@@ -158,9 +192,7 @@ function parseStartParams(params: unknown): ParsedSshRuntimeParams {
       Reflect.get(params, "expectedFingerprint"),
     ),
     ...(typeof identityFile === "string" ? { identityFile } : {}),
-    ...(typeof credentialRef === "string"
-      ? { credentialRef: credentialRef.trim() }
-      : {}),
+    credentialRef: credentialRef.trim(),
   };
 }
 
@@ -460,13 +492,40 @@ function sshExecutable(): string {
   return "/usr/bin/ssh";
 }
 
-export async function desktopStartSshRuntime(
-  params: unknown,
+function toConnectionIntent(
+  input: ParsedSshRuntimeParams,
+): SshRuntimeConnectionIntent {
+  return {
+    runtimeId: input.runtimeId,
+    target: input.target,
+    sshPort: input.sshPort,
+    remoteApiPort: input.remoteApiPort,
+    expectedFingerprint: input.expectedFingerprint,
+    ...(input.identityFile ? { identityFile: input.identityFile } : {}),
+    credentialRef: input.credentialRef,
+  };
+}
+
+async function startParsedSshRuntime(
+  input: ParsedSshRuntimeParams,
+  options: { persistIntent: boolean; allowNewPin: boolean },
 ): Promise<{ apiBase: string; localPort: number; fingerprint: string }> {
-  const input = parseStartParams(params);
   const signature = tunnelSignature(input);
   const prior = tunnels.get(input.runtimeId);
   if (prior?.child.exitCode === null && prior.signature === signature) {
+    if (options.persistIntent) {
+      try {
+        await connectionIntents.upsert(toConnectionIntent(input));
+      } catch (error) {
+        tunnels.delete(input.runtimeId);
+        await disposeTunnel(prior);
+        throw new Error(
+          "The SSH tunnel started, but its restart intent could not be saved. The tunnel was stopped.",
+          { cause: error },
+        );
+      }
+    }
+    reconnectErrors.delete(input.runtimeId);
     return {
       apiBase: `http://127.0.0.1:${prior.localPort}`,
       localPort: prior.localPort,
@@ -495,6 +554,11 @@ export async function desktopStartSshRuntime(
     );
   }
   if (!credential.sshHostFingerprint) {
+    if (!options.allowNewPin) {
+      throw new Error(
+        "The trusted SSH host fingerprint is missing from secure storage. Inspect and reconnect this runtime manually.",
+      );
+    }
     await storeSshHostFingerprint(input.runtimeId, input.expectedFingerprint);
   }
 
@@ -585,11 +649,160 @@ export async function desktopStartSshRuntime(
     }
     void disposeTunnel(tunnel);
   });
+  if (options.persistIntent) {
+    try {
+      await connectionIntents.upsert(toConnectionIntent(input));
+    } catch (error) {
+      tunnels.delete(input.runtimeId);
+      await disposeTunnel(tunnel);
+      throw new Error(
+        "The SSH tunnel started, but its restart intent could not be saved. The tunnel was stopped.",
+        { cause: error },
+      );
+    }
+  }
+  reconnectErrors.delete(input.runtimeId);
   return {
     apiBase: `http://127.0.0.1:${localPort}`,
     localPort,
     fingerprint: input.expectedFingerprint,
   };
+}
+
+export async function desktopStartSshRuntime(
+  params: unknown,
+): Promise<{ apiBase: string; localPort: number; fingerprint: string }> {
+  const input = parseStartParams(params);
+  return withRuntimeOperation(input.runtimeId, async () => {
+    if (shuttingDown) {
+      throw new Error("The desktop app is shutting down.");
+    }
+    reconnectAttempted.delete(input.runtimeId);
+    return startParsedSshRuntime(input, {
+      persistIntent: true,
+      allowNewPin: true,
+    });
+  });
+}
+
+interface SshRuntimeRehydrationDependencies {
+  readCredential: typeof readRuntimeCredentialSnapshot;
+  statIdentityFile: (identityFile: string) => Promise<{ isFile(): boolean }>;
+  start: (
+    input: ParsedSshRuntimeParams,
+  ) => Promise<{ apiBase: string; localPort: number; fingerprint: string }>;
+}
+
+async function rehydrateSshRuntimeIntent(
+  intent: SshRuntimeConnectionIntent,
+  dependencies: SshRuntimeRehydrationDependencies = {
+    readCredential: readRuntimeCredentialSnapshot,
+    statIdentityFile: (identityFile) => fs.stat(identityFile),
+    start: (input) =>
+      startParsedSshRuntime(input, {
+        persistIntent: false,
+        allowNewPin: false,
+      }),
+  },
+): Promise<void> {
+  const input = parseStartParams(intent);
+  const credential = await dependencies.readCredential(input.runtimeId);
+  if (!credential.sshHostFingerprint) {
+    throw new Error(
+      "The trusted SSH host fingerprint is missing from secure storage. Inspect and reconnect this runtime manually.",
+    );
+  }
+  if (credential.sshHostFingerprint !== input.expectedFingerprint) {
+    throw new Error(
+      "The trusted SSH host fingerprint no longer matches this runtime. Inspect and reconnect it manually.",
+    );
+  }
+  if (input.identityFile) {
+    let available = false;
+    try {
+      available = (
+        await dependencies.statIdentityFile(input.identityFile)
+      ).isFile();
+    } catch {
+      // error-policy:J6 only availability is relevant; path details stay native.
+    }
+    if (!available) {
+      throw new Error(
+        "The SSH identity file is unavailable. Restore it or choose a different identity and reconnect manually.",
+      );
+    }
+  }
+  await dependencies.start(input);
+}
+
+function reconnectErrorMessage(error: unknown): string {
+  return error instanceof Error
+    ? error.message
+    : "The SSH tunnel could not be restored after restart.";
+}
+
+async function ensureSshRuntimeRehydrated(runtimeId: string): Promise<boolean> {
+  return withRuntimeOperation(runtimeId, async () => {
+    if (shuttingDown) return false;
+    if (tunnels.get(runtimeId)?.child.exitCode === null) return true;
+    if (reconnectAttempted.has(runtimeId)) return false;
+    const intent = await connectionIntents.get(runtimeId);
+    if (!intent) return false;
+    reconnectAttempted.add(runtimeId);
+    try {
+      await rehydrateSshRuntimeIntent(intent);
+      // Stop/Remove uses this same serialized boundary, so desired state
+      // cannot be erased while a reconnect is still publishing its tunnel.
+      if (!(await connectionIntents.get(runtimeId))) {
+        const tunnel = tunnels.get(runtimeId);
+        tunnels.delete(runtimeId);
+        if (tunnel) await disposeTunnel(tunnel);
+        return false;
+      }
+      reconnectErrors.delete(runtimeId);
+    } catch (error) {
+      reconnectErrors.set(runtimeId, reconnectErrorMessage(error));
+    }
+    return tunnels.get(runtimeId)?.child.exitCode === null;
+  });
+}
+
+export async function desktopRehydrateSshRuntimes(): Promise<{
+  restored: string[];
+  blocked: Array<{ runtimeId: string; error: string }>;
+}> {
+  const intents = await connectionIntents.list();
+  await Promise.all(
+    intents.map((intent) => ensureSshRuntimeRehydrated(intent.runtimeId)),
+  );
+  return {
+    restored: intents
+      .filter(
+        (intent) => tunnels.get(intent.runtimeId)?.child.exitCode === null,
+      )
+      .map((intent) => intent.runtimeId),
+    blocked: intents.flatMap((intent) => {
+      const error = reconnectErrors.get(intent.runtimeId);
+      return error ? [{ runtimeId: intent.runtimeId, error }] : [];
+    }),
+  };
+}
+
+export async function desktopShutdownSshRuntimes(): Promise<void> {
+  shuttingDown = true;
+  const runtimeIds = new Set([
+    ...runtimeOperationTails.keys(),
+    ...tunnels.keys(),
+  ]);
+  await Promise.all(
+    Array.from(runtimeIds, (runtimeId) =>
+      withRuntimeOperation(runtimeId, async () => {
+        const tunnel = tunnels.get(runtimeId);
+        tunnels.delete(runtimeId);
+        if (tunnel) await disposeTunnel(tunnel);
+      }),
+    ),
+  );
 }
 
 export async function desktopStopSshRuntime(
@@ -599,28 +812,45 @@ export async function desktopStopSshRuntime(
     throw new Error("SSH runtime parameters are required.");
   }
   const runtimeId = requireRuntimeId(Reflect.get(params, "runtimeId"));
-  const tunnel = tunnels.get(runtimeId);
-  if (!tunnel) return { stopped: false };
-  tunnels.delete(runtimeId);
-  await disposeTunnel(tunnel);
-  return { stopped: true };
+  return withRuntimeOperation(runtimeId, async () => {
+    // Erase desired state before process teardown. If durable deletion fails,
+    // keep the current tunnel alive so Stop can never appear successful and
+    // then silently resurrect on the next desktop launch.
+    await connectionIntents.delete(runtimeId);
+    reconnectAttempted.delete(runtimeId);
+    reconnectErrors.delete(runtimeId);
+    const tunnel = tunnels.get(runtimeId);
+    if (!tunnel) return { stopped: false };
+    tunnels.delete(runtimeId);
+    await disposeTunnel(tunnel);
+    return { stopped: true };
+  });
 }
 
-export async function desktopGetSshRuntimeStatus(params: unknown): Promise<{
-  running: boolean;
-  localPort: number | null;
-  startedAt: number | null;
-}> {
+export async function desktopGetSshRuntimeStatus(
+  params: unknown,
+): Promise<SshRuntimeStatus> {
   if (typeof params !== "object" || params === null || Array.isArray(params)) {
     throw new Error("SSH runtime parameters are required.");
   }
   const runtimeId = requireRuntimeId(Reflect.get(params, "runtimeId"));
-  const tunnel = tunnels.get(runtimeId);
+  let tunnel = tunnels.get(runtimeId);
+  if (tunnel?.child.exitCode !== null) {
+    tunnels.delete(runtimeId);
+    tunnel = undefined;
+  }
+  if (!tunnel) {
+    await ensureSshRuntimeRehydrated(runtimeId);
+    tunnel = tunnels.get(runtimeId);
+  }
   const running = tunnel?.child.exitCode === null;
+  const lastError = reconnectErrors.get(runtimeId) ?? null;
   return {
     running,
-    localPort: running ? tunnel.localPort : null,
-    startedAt: running ? tunnel.startedAt : null,
+    localPort: running && tunnel ? tunnel.localPort : null,
+    startedAt: running && tunnel ? tunnel.startedAt : null,
+    reconnectState: running ? "running" : lastError ? "blocked" : "stopped",
+    lastError,
   };
 }
 
@@ -795,6 +1025,7 @@ export async function desktopSshRuntimeRequest(params: unknown): Promise<{
 
 export const sshRuntimeInternals = {
   disposeTunnel,
+  rehydrateSshRuntimeIntent,
   waitForChildExit,
   parseStartParams,
   parseTarget,

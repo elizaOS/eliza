@@ -217,6 +217,67 @@ describe("remote target native boundaries", () => {
     expect(result).not.toHaveProperty("ownerAccessToken");
   });
 
+  it("uses host-authenticated code-only activation without inventing a session id", async () => {
+    const requests: Request[] = [];
+    const store = new MemorySecureStore();
+    const vault = new RemoteTargetVault(store, "target-code-activation");
+    const prepared = await vault.prepare({
+      ownerId: "owner-1",
+      displayName: "Linux target",
+      now: 2_000_000_000_000,
+    });
+    if (prepared.status !== "pending") throw new Error("expected pending");
+    const enrollment = await vault.commitEnrollment({
+      apiBaseUrl: "https://api.example.test",
+      hostId: "11111111-1111-4111-8111-111111111111",
+      hostToken: `rhost_v1_${"A".repeat(43)}`,
+      runtimeKeyId: prepared.keyId,
+      createdAt: 2_000_000_000_001,
+    });
+    const transport = new HttpRemoteTargetRelayTransport(
+      async (input, init) => {
+        requests.push(new Request(input, init));
+        return jsonResponse({
+          success: true,
+          data: {
+            sessionId: "22222222-2222-4222-8222-222222222222",
+            grantId: "33333333-3333-4333-8333-333333333333",
+            grantRevision: 1,
+            ownerId: "44444444-4444-4444-8444-444444444444",
+            controllerDeviceId: "controller-one",
+            controllerKeyId: "controller-key-one",
+            controllerDisplayName: "Controller One",
+            controllerPlatform: "linux",
+            controllerSigningPublicKeyJwk: keyPair().publicKey,
+            controllerEncryptionPublicKeyJwk: keyPair().publicKey,
+            controllerCreatedAt: new Date(2_000_000_000_002).toISOString(),
+            targetRuntimeId: enrollment.identity.runtimeId,
+            targetKeyId: enrollment.identity.keyId,
+            grantExpiresAt: new Date(2_000_000_300_000).toISOString(),
+            status: "active",
+          },
+        });
+      },
+    );
+
+    await expect(
+      transport.activate({ enrollment, code: "123456" }),
+    ).resolves.toMatchObject({
+      sessionId: "22222222-2222-4222-8222-222222222222",
+      status: "active",
+    });
+    expect(requests[0]?.url).toBe(
+      "https://api.example.test/api/v1/remote/sessions/activate",
+    );
+    expect(requests[0]?.headers.get("x-remote-host-id")).toBe(
+      enrollment.identity.runtimeId,
+    );
+    expect(requests[0]?.headers.get("authorization")).toBe(
+      `Bearer ${enrollment.hostToken}`,
+    );
+    expect(await requests[0]?.json()).toEqual({ code: "123456" });
+  });
+
   it("rejects insecure API URLs and private/public secure-store tampering", async () => {
     expect(() => normalizeRemoteTargetApiBase("http://example.com")).toThrow(
       "HTTPS",

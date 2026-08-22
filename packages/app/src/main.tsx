@@ -132,6 +132,10 @@ import {
 } from "@elizaos/ui/platform/browser-launch";
 import { installLocalProviderCloudPreferencePatch } from "@elizaos/ui/platform/cloud-preference-patch";
 import { installDesktopPermissionsClientPatch } from "@elizaos/ui/platform/desktop-permissions-client";
+import {
+  dispatchRemoteTargetPairingIntent,
+  parseRemoteTargetPairingDeepLink,
+} from "@elizaos/ui/platform/remote-target-pairing-intent";
 import { startRendererServiceHost } from "@elizaos/ui/platform/renderer-services";
 import {
   clearStandaloneBottomReclaim,
@@ -2186,6 +2190,24 @@ async function handleAuthCallbackDeepLink(
  * can await it instead of acking on dispatch alone.
  */
 function handleDeepLink(url: string): undefined | Promise<boolean> {
+  const remotePairing = parseRemoteTargetPairingDeepLink(url, APP_URL_SCHEME);
+  if (remotePairing) {
+    if (
+      !isElectrobunRuntime() ||
+      !navigator.platform.toLowerCase().includes("linux")
+    ) {
+      console.warn(
+        `${APP_LOG_PREFIX} Remote target pairing is available only on the enrolled Linux desktop target`,
+      );
+      return;
+    }
+    dispatchRemoteTargetPairingIntent(remotePairing);
+    return dispatchDeepLinkNavigation({
+      viewId: "settings",
+      viewPath: "/settings",
+      subview: "my-runtimes",
+    });
+  }
   const firstRunRemote = parseFirstRunRemoteConnectDeepLink(
     url,
     APP_URL_SCHEME,

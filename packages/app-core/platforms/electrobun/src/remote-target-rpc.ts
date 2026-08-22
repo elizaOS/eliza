@@ -46,6 +46,23 @@ export interface DesktopRemoteTargetActivationResult {
   grantExpiresAt: number;
 }
 
+export interface DesktopRemoteTargetResumeResult {
+  resumed: boolean;
+  reason: "active_authority" | "not_enrolled" | "no_active_authority";
+}
+
+interface RemoteTargetLoopbackConfiguration {
+  apiBase: string;
+  apiToken: string;
+  pollIntervalMs?: number;
+}
+
+interface PreparedRemoteTargetLoopbackConfiguration {
+  executor: LoopbackRemoteTargetExecutor;
+  key: string;
+  pollIntervalMs?: number;
+}
+
 function requireObject(value: unknown): Record<string, unknown> {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     throw new Error("Remote target parameters are required.");
@@ -80,36 +97,108 @@ export class RemoteTargetDesktopService {
     private readonly now: () => number = Date.now,
   ) {}
 
-  async configureLoopback(input: {
-    apiBase: string;
-    apiToken: string;
-    pollIntervalMs?: number;
-  }): Promise<void> {
+  private prepareLoopbackConfiguration(
+    input: RemoteTargetLoopbackConfiguration,
+  ): PreparedRemoteTargetLoopbackConfiguration {
     const apiBase = normalizeRemoteTargetLoopbackBase(input.apiBase);
-    const configurationKey = createHash("sha256")
-      .update(apiBase)
-      .update("\0")
-      .update(input.apiToken)
-      .update("\0")
-      .update(String(input.pollIntervalMs ?? 1_000))
-      .digest("base64url");
-    const configure = this.configurationTail.then(async () => {
-      if (this.runner && this.loopbackConfigurationKey === configurationKey) {
-        return;
-      }
-      const replacement = new RemoteTargetRunner(
-        this.vault,
-        this.stateStore,
-        this.transport,
-        new LoopbackRemoteTargetExecutor({
-          apiBase,
-          apiToken: input.apiToken,
-        }),
-        { now: this.now, pollIntervalMs: input.pollIntervalMs },
+    return {
+      executor: new LoopbackRemoteTargetExecutor({
+        apiBase,
+        apiToken: input.apiToken,
+      }),
+      key: createHash("sha256")
+        .update(apiBase)
+        .update("\0")
+        .update(input.apiToken)
+        .update("\0")
+        .update(String(input.pollIntervalMs ?? 1_000))
+        .digest("base64url"),
+      ...(input.pollIntervalMs === undefined
+        ? {}
+        : { pollIntervalMs: input.pollIntervalMs }),
+    };
+  }
+
+  private enqueueConfiguration<T>(operation: () => Promise<T>): Promise<T> {
+    const queued = this.configurationTail.then(operation);
+    this.configurationTail = queued.then(
+      () => undefined,
+      () => undefined,
+    );
+    return queued;
+  }
+
+  private async installLoopbackConfiguration(
+    prepared: PreparedRemoteTargetLoopbackConfiguration,
+  ): Promise<RemoteTargetRunner> {
+    if (this.runner && this.loopbackConfigurationKey === prepared.key) {
+      return this.runner;
+    }
+    const replacement = new RemoteTargetRunner(
+      this.vault,
+      this.stateStore,
+      this.transport,
+      prepared.executor,
+      { now: this.now, pollIntervalMs: prepared.pollIntervalMs },
+    );
+    await this.runner?.stop();
+    this.runner = replacement;
+    this.loopbackConfigurationKey = prepared.key;
+    return replacement;
+  }
+
+  async configureLoopback(
+    input: RemoteTargetLoopbackConfiguration,
+  ): Promise<void> {
+    const prepared = this.prepareLoopbackConfiguration(input);
+    await this.enqueueConfiguration(async () => {
+      await this.installLoopbackConfiguration(prepared);
+    });
+  }
+
+  /**
+   * Rebuild the ephemeral runner after a desktop-process restart, but only
+   * when both halves of its durable authority still exist: an enrolled host
+   * identity in the OS credential store and at least one live controller
+   * grant in the exactly-once journal. Missing/corrupt credential or journal
+   * state never degrades into a fresh enrollment or an unpinned runner.
+   */
+  async resumeEligibleLoopback(
+    input: RemoteTargetLoopbackConfiguration,
+  ): Promise<DesktopRemoteTargetResumeResult> {
+    const prepared = this.prepareLoopbackConfiguration(input);
+    return await this.enqueueConfiguration(async () => {
+      const runner = await this.installLoopbackConfiguration(prepared);
+      const [enrollment, state] = await Promise.all([
+        this.vault.load(),
+        this.stateStore.read(),
+      ]);
+      const activeSessions = Object.values(state.sessions).filter(
+        (session) =>
+          session.stoppedAt === null &&
+          session.grant.revokedAt === null &&
+          (session.grant.expiresAt === null ||
+            session.grant.expiresAt >= this.now()),
       );
-      await this.runner?.stop();
-      this.runner = replacement;
-      this.loopbackConfigurationKey = configurationKey;
+      if (enrollment?.status !== "enrolled") {
+        if (activeSessions.length > 0) {
+          throw new Error(
+            "Remote target credentials are unavailable for the durable active session.",
+          );
+        }
+        return {
+          resumed: false,
+          reason: "not_enrolled" as const,
+        };
+      }
+      if (activeSessions.length === 0) {
+        return {
+          resumed: false,
+          reason: "no_active_authority" as const,
+        };
+      }
+      await runner.start();
+      return { resumed: true, reason: "active_authority" as const };
     });
     // error-policy:J5 the current configure caller receives `configure`; this
     // tail suppression only keeps a later replacement from inheriting failure.
@@ -183,7 +272,10 @@ export class RemoteTargetDesktopService {
     params: unknown,
   ): Promise<DesktopRemoteTargetActivationResult> {
     const value = requireObject(params);
-    const sessionId = requireString(value.sessionId, "session id", 256);
+    const sessionId =
+      value.sessionId === undefined
+        ? undefined
+        : requireString(value.sessionId, "session id", 256);
     const code = requireString(value.code, "pairing code", 6);
     if (!/^\d{6}$/.test(code)) {
       throw new Error("Pairing code must contain exactly six digits.");
@@ -194,7 +286,7 @@ export class RemoteTargetDesktopService {
     }
     const activation = await this.transport.activate({
       enrollment,
-      sessionId,
+      ...(sessionId ? { sessionId } : {}),
       code,
     });
     const installer =
@@ -261,46 +353,48 @@ export class RemoteTargetDesktopService {
   async finalizeHostRevoke(params: unknown): Promise<{ cleaned: true }> {
     const value = requireObject(params);
     const hostId = requireString(value.hostId, "host id", 256);
-    const enrollment = await this.vault.load();
-    if (enrollment?.status !== "enrolled") {
-      throw new ElizaError("Remote host enrollment is unavailable", {
-        code: "REMOTE_HOST_ENROLLMENT_UNAVAILABLE",
-        context: { hostId },
-      });
-    }
-    if (enrollment.identity.runtimeId !== hostId) {
-      throw new ElizaError(
-        "Remote host cleanup target does not match this device",
-        {
-          code: "REMOTE_HOST_CLEANUP_TARGET_MISMATCH",
-          context: { hostId, enrolledHostId: enrollment.identity.runtimeId },
-        },
-      );
-    }
-    while (true) {
-      const page = await this.transport.revokeHost({ enrollment });
-      if (!page.cleanup.more) break;
-      if (page.cleanup.sessions === 0 && page.cleanup.commands === 0) {
+    return await this.enqueueConfiguration(async () => {
+      const enrollment = await this.vault.load();
+      if (enrollment?.status !== "enrolled") {
+        throw new ElizaError("Remote host enrollment is unavailable", {
+          code: "REMOTE_HOST_ENROLLMENT_UNAVAILABLE",
+          context: { hostId },
+        });
+      }
+      if (enrollment.identity.runtimeId !== hostId) {
         throw new ElizaError(
-          "Remote host revocation made no cleanup progress",
+          "Remote host cleanup target does not match this device",
           {
-            code: "REMOTE_HOST_CLEANUP_PROGRESS_INVALID",
-            context: { hostId, reason: "non_progressing_page" },
+            code: "REMOTE_HOST_CLEANUP_TARGET_MISMATCH",
+            context: { hostId, enrolledHostId: enrollment.identity.runtimeId },
           },
         );
       }
-    }
-    await this.stop();
-    this.runner = null;
-    this.loopbackConfigurationKey = null;
-    await this.stateStore.clear();
-    if (!(await this.vault.delete())) {
-      throw new ElizaError("Remote host credentials could not be deleted", {
-        code: "REMOTE_HOST_CREDENTIAL_DELETE_FAILED",
-        context: { hostId },
-      });
-    }
-    return { cleaned: true };
+      while (true) {
+        const page = await this.transport.revokeHost({ enrollment });
+        if (!page.cleanup.more) break;
+        if (page.cleanup.sessions === 0 && page.cleanup.commands === 0) {
+          throw new ElizaError(
+            "Remote host revocation made no cleanup progress",
+            {
+              code: "REMOTE_HOST_CLEANUP_PROGRESS_INVALID",
+              context: { hostId, reason: "non_progressing_page" },
+            },
+          );
+        }
+      }
+      await this.runner?.stop();
+      this.runner = null;
+      this.loopbackConfigurationKey = null;
+      await this.stateStore.clear();
+      if (!(await this.vault.delete())) {
+        throw new ElizaError("Remote host credentials could not be deleted", {
+          code: "REMOTE_HOST_CREDENTIAL_DELETE_FAILED",
+          context: { hostId },
+        });
+      }
+      return { cleaned: true };
+    });
   }
 
   private requireRunner(): RemoteTargetRunner {
@@ -319,6 +413,14 @@ export function configureDesktopRemoteTarget(input: {
   pollIntervalMs?: number;
 }): Promise<void> {
   return desktopRemoteTargetService.configureLoopback(input);
+}
+
+export function resumeDesktopRemoteTarget(input: {
+  apiBase: string;
+  apiToken: string;
+  pollIntervalMs?: number;
+}): Promise<DesktopRemoteTargetResumeResult> {
+  return desktopRemoteTargetService.resumeEligibleLoopback(input);
 }
 
 export function desktopRemoteTargetEnroll(

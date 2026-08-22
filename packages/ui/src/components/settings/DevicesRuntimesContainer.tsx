@@ -2,6 +2,7 @@
 
 import type { RemoteControllerPublicIdentity } from "@elizaos/shared/contracts/remote-control";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { client } from "../../api";
 import type {
   RemoteHostDirectory,
   RemoteHostSummary,
@@ -30,6 +31,7 @@ import {
   startRemoteTarget,
   stopRemoteTarget,
 } from "../../platform/remote-target";
+import { subscribeRemoteTargetPairingIntents } from "../../platform/remote-target-pairing-intent";
 import {
   deleteRuntimeCredentialRecord,
   storeRuntimeCredential,
@@ -43,7 +45,9 @@ import {
 } from "../../platform/ssh-runtime";
 import {
   type AgentProfile,
+  type AgentProfileRegistry,
   addAgentProfile,
+  clearPersistedActiveServer,
   loadAgentProfileRegistry,
   removeAgentProfile,
   switchRuntimeNonDestructive,
@@ -124,6 +128,40 @@ function requireHostCreatedAt(value: string): number {
     throw new Error("Cloud returned invalid remote-host creation metadata.");
   }
   return createdAt;
+}
+
+function restoredRelayProfile(
+  host: RemoteHostSummary,
+  session: RemoteSessionSummary,
+  controller: RemoteControllerPublicIdentity,
+): Omit<AgentProfile, "id" | "createdAt"> {
+  if (session.targetKeyId !== host.runtimeKeyId) {
+    throw new Error(
+      "Cloud session target key does not match the enrolled remote host.",
+    );
+  }
+  return {
+    kind: "remote",
+    label: host.displayName,
+    apiBase: `eliza-remote://session/${session.id}`,
+    connectionMode: "relay",
+    remoteRelay: {
+      ownerId: session.ownerId,
+      controllerDeviceId: controller.deviceId,
+      controllerKeyId: controller.keyId,
+      grantId: session.grantId,
+      grantRevision: session.grantRevision,
+      sessionId: session.id,
+      targetRuntimeId: session.targetRuntimeId,
+      targetKeyId: session.targetKeyId,
+      targetDisplayName: host.displayName,
+      targetCreatedAt: requireHostCreatedAt(host.createdAt),
+      targetPlatform: host.platform,
+      targetSigningPublicKeyJwk: host.signingPublicKeyJwk,
+      targetEncryptionPublicKeyJwk: host.encryptionPublicKeyJwk,
+      expiresAt: session.grantExpiresAt,
+    },
+  };
 }
 
 function profileTarget(
@@ -258,6 +296,130 @@ function hostTarget(
   };
 }
 
+interface RelayRevocationAuthority {
+  sessionId: string;
+  ownerId: string;
+  controllerDeviceId: string;
+  profile: AgentProfile | null;
+}
+
+function relayAuthorityFromProfile(
+  profile: AgentProfile,
+): RelayRevocationAuthority | null {
+  const relay = profile.remoteRelay;
+  if (profile.connectionMode !== "relay" || !relay) return null;
+  return {
+    sessionId: relay.sessionId,
+    ownerId: relay.ownerId,
+    controllerDeviceId: relay.controllerDeviceId,
+    profile,
+  };
+}
+
+function resolveRelayRevocationAuthority(
+  targetId: string,
+  profiles: readonly AgentProfile[],
+  sessions: ReadonlyMap<string, RemoteSessionSummary[]>,
+  controller: RemoteControllerPublicIdentity | null,
+): RelayRevocationAuthority | null {
+  const directProfile = profiles.find((profile) => profile.id === targetId);
+  if (directProfile) return relayAuthorityFromProfile(directProfile);
+  if (!targetId.startsWith("host:") || !controller) return null;
+
+  const hostId = targetId.slice("host:".length);
+  const session = (sessions.get(hostId) ?? []).find(
+    (candidate) =>
+      candidate.status === "active" &&
+      candidate.controllerDeviceId === controller.deviceId &&
+      candidate.controllerKeyId === controller.keyId,
+  );
+  if (!session) return null;
+  const profile =
+    profiles.find(
+      (candidate) => candidate.remoteRelay?.sessionId === session.id,
+    ) ?? null;
+  return {
+    sessionId: session.id,
+    ownerId: session.ownerId,
+    controllerDeviceId: session.controllerDeviceId,
+    profile,
+  };
+}
+
+function buildRuntimeTargets(
+  registry: AgentProfileRegistry,
+  sshRunning: ReadonlyMap<string, boolean>,
+  directory: RemoteHostDirectory | null,
+  sessions: ReadonlyMap<string, RemoteSessionSummary[]>,
+  controller: RemoteControllerPublicIdentity | null,
+): DeviceRuntimeTarget[] {
+  const profiles = registry.profiles.map((profile) =>
+    profileTarget(
+      profile,
+      registry.activeProfileId,
+      sshRunning,
+      directory,
+      sessions,
+    ),
+  );
+  const representedHostIds = new Set(
+    registry.profiles.flatMap((profile) =>
+      profile.remoteRelay ? [profile.remoteRelay.targetRuntimeId] : [],
+    ),
+  );
+  const hosts = (directory?.hosts ?? [])
+    .filter((host) => !representedHostIds.has(host.id))
+    .map((host) => hostTarget(host, sessions, controller));
+  return [...profiles, ...hosts];
+}
+
+function removeProfileWithoutStaleSelection(
+  profileId: string,
+  dependencies: {
+    loadRegistry: () => AgentProfileRegistry;
+    switchRuntime: (profileId: string) => { ok: boolean };
+    clearRuntimeSelection: () => void;
+    removeProfile: (profileId: string) => void;
+  },
+): void {
+  const registry = dependencies.loadRegistry();
+  if (registry.activeProfileId === profileId) {
+    const fallback =
+      registry.profiles.find(
+        (profile) => profile.id !== profileId && profile.kind === "local",
+      ) ?? registry.profiles.find((profile) => profile.id !== profileId);
+    if (!fallback) {
+      dependencies.clearRuntimeSelection();
+    } else if (!dependencies.switchRuntime(fallback.id).ok) {
+      throw new Error(
+        "The revoked runtime could not be removed because the fallback runtime was not saved. Try again.",
+      );
+    }
+  }
+  dependencies.removeProfile(profileId);
+}
+
+async function revokeRelayAuthorityWithCleanup(
+  authority: RelayRevocationAuthority,
+  dependencies: {
+    revokeSession: (sessionId: string) => Promise<void>;
+    clearSession: (input: {
+      ownerId: string;
+      controllerDeviceId: string;
+      sessionId: string;
+    }) => Promise<unknown>;
+    removeProfile: (profileId: string) => void;
+  },
+): Promise<void> {
+  await dependencies.revokeSession(authority.sessionId);
+  await dependencies.clearSession({
+    ownerId: authority.ownerId,
+    controllerDeviceId: authority.controllerDeviceId,
+    sessionId: authority.sessionId,
+  });
+  if (authority.profile) dependencies.removeProfile(authority.profile.id);
+}
+
 interface RuntimeRemovalDependencies {
   revokeSession: (sessionId: string) => Promise<void>;
   clearSession: (input: {
@@ -274,13 +436,10 @@ async function removeRuntimeWithAuthority(
   profile: AgentProfile,
   dependencies: RuntimeRemovalDependencies,
 ): Promise<void> {
-  if (profile.connectionMode === "relay" && profile.remoteRelay) {
-    await dependencies.revokeSession(profile.remoteRelay.sessionId);
-    await dependencies.clearSession({
-      ownerId: profile.remoteRelay.ownerId,
-      controllerDeviceId: profile.remoteRelay.controllerDeviceId,
-      sessionId: profile.remoteRelay.sessionId,
-    });
+  const relayAuthority = relayAuthorityFromProfile(profile);
+  if (relayAuthority) {
+    await revokeRelayAuthorityWithCleanup(relayAuthority, dependencies);
+    return;
   }
   if (profile.connectionMode === "ssh") {
     await dependencies.stopSsh(profile.id);
@@ -404,31 +563,9 @@ export function DevicesRuntimesContainer({
             (profile) => profile.remoteRelay?.sessionId === session.id,
           );
           if (existing) continue;
-          addAgentProfile(
-            {
-              kind: "remote",
-              label: host.displayName,
-              apiBase: `eliza-remote://session/${session.id}`,
-              connectionMode: "relay",
-              remoteRelay: {
-                ownerId: session.ownerId,
-                controllerDeviceId: nextController.deviceId,
-                controllerKeyId: nextController.keyId,
-                grantId: session.grantId,
-                grantRevision: session.grantRevision,
-                sessionId: session.id,
-                targetRuntimeId: session.targetRuntimeId,
-                targetKeyId: session.targetKeyId,
-                targetDisplayName: host.displayName,
-                targetCreatedAt: requireHostCreatedAt(host.createdAt),
-                targetPlatform: host.platform,
-                targetSigningPublicKeyJwk: host.signingPublicKeyJwk,
-                targetEncryptionPublicKeyJwk: host.encryptionPublicKeyJwk,
-                expiresAt: session.grantExpiresAt,
-              },
-            },
-            { activate: false },
-          );
+          addAgentProfile(restoredRelayProfile(host, session, nextController), {
+            activate: false,
+          });
         }
       }
       setRegistry(loadAgentProfileRegistry());
@@ -466,20 +603,27 @@ export function DevicesRuntimesContainer({
   }, []);
 
   const targets = useMemo(() => {
-    const profiles = registry.profiles.map((profile) =>
-      profileTarget(
-        profile,
-        registry.activeProfileId,
-        sshRunning,
-        directory,
-        sessions,
-      ),
+    return buildRuntimeTargets(
+      registry,
+      sshRunning,
+      directory,
+      sessions,
+      controller,
     );
-    const hosts = (directory?.hosts ?? []).map((host) =>
-      hostTarget(host, sessions, controller),
-    );
-    return [...profiles, ...hosts];
   }, [controller, directory, registry, sessions, sshRunning]);
+
+  const removeProfileAfterCleanup = useCallback((profileId: string) => {
+    removeProfileWithoutStaleSelection(profileId, {
+      loadRegistry: loadAgentProfileRegistry,
+      switchRuntime: switchRuntimeNonDestructive,
+      clearRuntimeSelection: () => {
+        clearPersistedActiveServer();
+        client.setToken(null);
+        client.setBaseUrl(null);
+      },
+      removeProfile: removeAgentProfile,
+    });
+  }, []);
 
   const pairingView: DevicePairingView | null = useMemo(() => {
     if (!pairing) return null;
@@ -524,26 +668,19 @@ export function DevicesRuntimesContainer({
 
   const onRevoke = (targetId: string) =>
     run(async () => {
-      const hostId = targetId.replace(/^host:/, "");
-      const profile = registry.profiles.find((item) => item.id === targetId);
-      const sessionId =
-        profile?.remoteRelay?.sessionId ??
-        (sessions.get(hostId) ?? []).find(
-          (item) =>
-            item.status === "active" &&
-            item.controllerDeviceId === controller?.deviceId &&
-            item.controllerKeyId === controller.keyId,
-        )?.id;
-      if (!sessionId) throw new Error("No active pairing was found.");
-      await createDefaultRemoteControlCloudClient().revokeSession(sessionId);
-      if (profile?.remoteRelay) {
-        await clearRemoteControllerSessionState({
-          ownerId: profile.remoteRelay.ownerId,
-          controllerDeviceId: profile.remoteRelay.controllerDeviceId,
-          sessionId,
-        });
-        removeAgentProfile(profile.id);
-      }
+      const authority = resolveRelayRevocationAuthority(
+        targetId,
+        registry.profiles,
+        sessions,
+        controller,
+      );
+      if (!authority) throw new Error("No active pairing was found.");
+      const cloud = createDefaultRemoteControlCloudClient();
+      await revokeRelayAuthorityWithCleanup(authority, {
+        revokeSession: (sessionId) => cloud.revokeSession(sessionId),
+        clearSession: clearRemoteControllerSessionState,
+        removeProfile: removeProfileAfterCleanup,
+      });
       await refresh();
     });
 
@@ -557,7 +694,7 @@ export function DevicesRuntimesContainer({
         clearSession: clearRemoteControllerSessionState,
         stopSsh: stopSshRuntime,
         deleteCredential: deleteRuntimeCredentialRecord,
-        removeProfile: removeAgentProfile,
+        removeProfile: removeProfileAfterCleanup,
       });
     });
 
@@ -572,7 +709,7 @@ export function DevicesRuntimesContainer({
           remoteApiPort: profile.ssh.remoteApiPort,
           expectedFingerprint: profile.ssh.hostFingerprint,
           identityFile: profile.ssh.identityFile,
-          credentialRef: profile.credentialRef,
+          credentialRef: profile.credentialRef ?? profile.id,
         });
       }
       await refresh();
@@ -629,13 +766,27 @@ export function DevicesRuntimesContainer({
       await refresh();
     });
 
-  const onActivateLinuxTarget = (input: { sessionId: string; code: string }) =>
-    run(async () => {
-      await activateRemoteTarget(input);
-      await startRemoteTarget();
-      setPairing(null);
-      await refresh();
-    });
+  const onActivateLinuxTarget = useCallback(
+    (input: { sessionId?: string; code: string }) =>
+      run(async () => {
+        await activateRemoteTarget(input);
+        await startRemoteTarget();
+        setPairing(null);
+        await refresh();
+      }),
+    [refresh, run],
+  );
+
+  useEffect(
+    () =>
+      subscribeRemoteTargetPairingIntents((intent) =>
+        onActivateLinuxTarget({
+          sessionId: intent.sessionId,
+          code: intent.code,
+        }),
+      ),
+    [onActivateLinuxTarget],
+  );
 
   const onSetLinuxTargetRunning = (running: boolean) =>
     run(async () => {
@@ -684,9 +835,14 @@ export function DevicesRuntimesContainer({
 }
 
 export const devicesRuntimesInternals = {
+  buildRuntimeTargets,
   hostTarget,
   profileTarget,
+  removeProfileWithoutStaleSelection,
   removeRuntimeWithAuthority,
+  resolveRelayRevocationAuthority,
+  revokeRelayAuthorityWithCleanup,
   revokeLinuxHostCloudFirst,
   startSshWithCredentialCleanup,
+  restoredRelayProfile,
 };

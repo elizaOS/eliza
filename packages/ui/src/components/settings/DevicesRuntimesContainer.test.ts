@@ -72,23 +72,34 @@ const PROFILE: AgentProfile = {
   },
 };
 
+const LOCAL_PROFILE: AgentProfile = {
+  id: "local-profile",
+  label: "This device",
+  kind: "local",
+  apiBase: "http://127.0.0.1:3000",
+  connectionMode: "direct",
+  createdAt: "2026-08-21T00:00:00.000Z",
+};
+
+const CONTROLLER = {
+  version: 1 as const,
+  role: "controller" as const,
+  ownerId: "owner-1",
+  deviceId: "this-device",
+  keyId: "this-key",
+  displayName: "Linux",
+  platform: "linux" as const,
+  signingPublicKeyJwk: PUBLIC_JWK,
+  encryptionPublicKeyJwk: PUBLIC_JWK,
+  createdAt: 1,
+};
+
 describe("Devices & Runtimes reconciliation", () => {
   it("does not expose another controller's active session as this device's grant", () => {
     const target = devicesRuntimesInternals.hostTarget(
       HOST,
       new Map([[HOST.id, [SESSION]]]),
-      {
-        version: 1,
-        role: "controller",
-        ownerId: "owner-1",
-        deviceId: "this-device",
-        keyId: "this-key",
-        displayName: "Linux",
-        platform: "linux",
-        signingPublicKeyJwk: PUBLIC_JWK,
-        encryptionPublicKeyJwk: PUBLIC_JWK,
-        createdAt: 1,
-      },
+      CONTROLLER,
     );
     expect(target.activity).toBe("Paired on another controller");
     expect(target.canPair).toBe(true);
@@ -138,6 +149,177 @@ describe("Devices & Runtimes reconciliation", () => {
       }),
     ).rejects.toThrow("Cloud unavailable");
     expect(failedRemove).not.toHaveBeenCalled();
+  });
+
+  it("resolves host-card authority to its matching relay profile and removes it last", async () => {
+    const ownSession = {
+      ...SESSION,
+      controllerDeviceId: CONTROLLER.deviceId,
+      controllerKeyId: CONTROLLER.keyId,
+    };
+    const authority = devicesRuntimesInternals.resolveRelayRevocationAuthority(
+      `host:${HOST.id}`,
+      [PROFILE],
+      new Map([[HOST.id, [ownSession]]]),
+      CONTROLLER,
+    );
+    expect(authority).toMatchObject({
+      sessionId: SESSION.id,
+      ownerId: SESSION.ownerId,
+      controllerDeviceId: CONTROLLER.deviceId,
+      profile: { id: PROFILE.id },
+    });
+    if (!authority) throw new Error("Expected a relay revocation authority.");
+
+    const events: string[] = [];
+    await devicesRuntimesInternals.revokeRelayAuthorityWithCleanup(authority, {
+      revokeSession: vi.fn(async () => {
+        events.push("revoke");
+      }),
+      clearSession: vi.fn(async () => events.push("clear")),
+      removeProfile: vi.fn(() => events.push("remove")),
+    });
+    expect(events).toEqual(["revoke", "clear", "remove"]);
+  });
+
+  it("retains the relay profile when controller cleanup fails so retry can finish", async () => {
+    const removeProfile = vi.fn();
+    await expect(
+      devicesRuntimesInternals.revokeRelayAuthorityWithCleanup(
+        {
+          sessionId: SESSION.id,
+          ownerId: SESSION.ownerId,
+          controllerDeviceId: CONTROLLER.deviceId,
+          profile: PROFILE,
+        },
+        {
+          revokeSession: vi.fn(async () => undefined),
+          clearSession: vi.fn(async () => {
+            throw new Error("credential store unavailable");
+          }),
+          removeProfile,
+        },
+      ),
+    ).rejects.toThrow("credential store unavailable");
+    expect(removeProfile).not.toHaveBeenCalled();
+  });
+
+  it("retains relay retry state when paged Cloud revocation is interrupted", async () => {
+    const clearSession = vi.fn();
+    const removeProfile = vi.fn();
+    await expect(
+      devicesRuntimesInternals.revokeRelayAuthorityWithCleanup(
+        {
+          sessionId: SESSION.id,
+          ownerId: SESSION.ownerId,
+          controllerDeviceId: CONTROLLER.deviceId,
+          profile: PROFILE,
+        },
+        {
+          revokeSession: vi.fn(async () => {
+            throw new Error("session cleanup interrupted");
+          }),
+          clearSession,
+          removeProfile,
+        },
+      ),
+    ).rejects.toThrow("session cleanup interrupted");
+    expect(clearSession).not.toHaveBeenCalled();
+    expect(removeProfile).not.toHaveBeenCalled();
+  });
+
+  it("rejects a restored relay session whose target key differs from its host", () => {
+    expect(() =>
+      devicesRuntimesInternals.restoredRelayProfile(
+        HOST,
+        { ...SESSION, targetKeyId: "different-target-key" },
+        CONTROLLER,
+      ),
+    ).toThrow("target key does not match");
+    expect(
+      devicesRuntimesInternals.restoredRelayProfile(
+        HOST,
+        { ...SESSION, targetKeyId: HOST.runtimeKeyId },
+        CONTROLLER,
+      ).remoteRelay,
+    ).toMatchObject({
+      targetKeyId: HOST.runtimeKeyId,
+      targetSigningPublicKeyJwk: HOST.signingPublicKeyJwk,
+      targetEncryptionPublicKeyJwk: HOST.encryptionPublicKeyJwk,
+    });
+  });
+
+  it("deduplicates a paired relay profile from its host summary card", () => {
+    const ownSession = {
+      ...SESSION,
+      controllerDeviceId: CONTROLLER.deviceId,
+      controllerKeyId: CONTROLLER.keyId,
+    };
+    const targets = devicesRuntimesInternals.buildRuntimeTargets(
+      {
+        version: 1,
+        activeProfileId: PROFILE.id,
+        profiles: [PROFILE],
+      },
+      new Map(),
+      { ownerId: "owner-1", hosts: [HOST] },
+      new Map([[HOST.id, [ownSession]]]),
+      CONTROLLER,
+    );
+    expect(targets.map((target) => target.id)).toEqual([PROFILE.id]);
+  });
+
+  it("switches away from an active profile before removing it", () => {
+    const events: string[] = [];
+    devicesRuntimesInternals.removeProfileWithoutStaleSelection(PROFILE.id, {
+      loadRegistry: () => ({
+        version: 1,
+        activeProfileId: PROFILE.id,
+        profiles: [PROFILE, LOCAL_PROFILE],
+      }),
+      switchRuntime: vi.fn((profileId) => {
+        events.push(`switch:${profileId}`);
+        return { ok: true };
+      }),
+      clearRuntimeSelection: vi.fn(),
+      removeProfile: vi.fn((profileId) => events.push(`remove:${profileId}`)),
+    });
+    expect(events).toEqual([
+      `switch:${LOCAL_PROFILE.id}`,
+      `remove:${PROFILE.id}`,
+    ]);
+  });
+
+  it("does not remove the active profile when no fallback can be persisted", () => {
+    const removeProfile = vi.fn();
+    expect(() =>
+      devicesRuntimesInternals.removeProfileWithoutStaleSelection(PROFILE.id, {
+        loadRegistry: () => ({
+          version: 1,
+          activeProfileId: PROFILE.id,
+          profiles: [PROFILE, LOCAL_PROFILE],
+        }),
+        switchRuntime: vi.fn(() => ({ ok: false })),
+        clearRuntimeSelection: vi.fn(),
+        removeProfile,
+      }),
+    ).toThrow("fallback runtime was not saved");
+    expect(removeProfile).not.toHaveBeenCalled();
+  });
+
+  it("clears an only active runtime selection before removing its profile", () => {
+    const events: string[] = [];
+    devicesRuntimesInternals.removeProfileWithoutStaleSelection(PROFILE.id, {
+      loadRegistry: () => ({
+        version: 1,
+        activeProfileId: PROFILE.id,
+        profiles: [PROFILE],
+      }),
+      switchRuntime: vi.fn(),
+      clearRuntimeSelection: vi.fn(() => events.push("clear")),
+      removeProfile: vi.fn(() => events.push("remove")),
+    });
+    expect(events).toEqual(["clear", "remove"]);
   });
 
   it("revokes a Linux host in Cloud before native credential cleanup", async () => {

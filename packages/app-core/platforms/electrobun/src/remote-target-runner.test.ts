@@ -31,6 +31,8 @@ import {
 } from "./remote-target-runner";
 import {
   MemoryRemoteTargetStateStore,
+  type RemoteTargetDurableState,
+  type RemoteTargetStateStore,
   remoteTargetStoreInternals,
 } from "./remote-target-store";
 import {
@@ -77,7 +79,52 @@ class MemorySecureStore implements PlatformSecureStore {
   }
 }
 
+class DeferredReadStateStore implements RemoteTargetStateStore {
+  private deferredRead: Promise<void> | null = null;
+  private releaseDeferredRead: (() => void) | null = null;
+  private signalReadStarted: (() => void) | null = null;
+
+  constructor(private readonly delegate: RemoteTargetStateStore) {}
+
+  deferNextRead(): { started: Promise<void>; release: () => void } {
+    this.deferredRead = new Promise<void>((resolve) => {
+      this.releaseDeferredRead = resolve;
+    });
+    const started = new Promise<void>((resolve) => {
+      this.signalReadStarted = resolve;
+    });
+    return {
+      started,
+      release: () => this.releaseDeferredRead?.(),
+    };
+  }
+
+  async read(): Promise<RemoteTargetDurableState> {
+    const snapshot = await this.delegate.read();
+    const deferred = this.deferredRead;
+    if (deferred) {
+      this.deferredRead = null;
+      this.signalReadStarted?.();
+      await deferred;
+      this.releaseDeferredRead = null;
+      this.signalReadStarted = null;
+    }
+    return snapshot;
+  }
+
+  clear(): Promise<void> {
+    return this.delegate.clear();
+  }
+
+  transact<T>(
+    operation: (state: RemoteTargetDurableState) => T | Promise<T>,
+  ): Promise<T> {
+    return this.delegate.transact(operation);
+  }
+}
+
 class FakeRelay implements RemoteTargetRelayTransport {
+  claimRequests = 0;
   readonly claims: RemoteTargetClaim[] = [];
   readonly starts: {
     commandId: string;
@@ -109,6 +156,7 @@ class FakeRelay implements RemoteTargetRelayTransport {
   async claimNext(
     _input: Parameters<RemoteTargetRelayTransport["claimNext"]>[0],
   ): Promise<RemoteTargetClaim | null> {
+    this.claimRequests += 1;
     return this.claims.shift() ?? null;
   }
 
@@ -730,6 +778,225 @@ describe("remote target durable runner", () => {
     await runner.stop();
     await runner.stop();
     expect((await runner.status()).running).toBe(false);
+  });
+
+  it("auto-resumes one runner from durable enrollment and active authority", async () => {
+    const harness = await createHarness();
+    await createRunner(harness, () => undefined);
+    const restarted = new RemoteTargetDesktopService(
+      harness.vault,
+      harness.state,
+      harness.relay,
+      () => NOW,
+    );
+    const input = {
+      apiBase: "http://127.0.0.1:31337",
+      apiToken: "restart-local-token-123456789",
+      pollIntervalMs: 60_000,
+    };
+
+    const [first, duplicate] = await Promise.all([
+      restarted.resumeEligibleLoopback(input),
+      restarted.resumeEligibleLoopback(input),
+    ]);
+
+    expect(first).toEqual({ resumed: true, reason: "active_authority" });
+    expect(duplicate).toEqual({ resumed: true, reason: "active_authority" });
+    expect((await restarted.status()).running).toBe(true);
+    expect(harness.relay.claimRequests).toBe(1);
+    await restarted.stop();
+  });
+
+  it("auto-resume preserves the journal fence after a dispatched effect", async () => {
+    const harness = await createHarness();
+    let executions = 0;
+    const interrupted = await createRunner(
+      harness,
+      () => {
+        executions += 1;
+      },
+      {
+        afterEffect: () => {
+          throw new Error("desktop-process-exited");
+        },
+      },
+    );
+    const claim = claimFor(harness);
+    harness.relay.claims.push(claim);
+    expect(await interrupted.pollOnce()).toBe("offline");
+    expect(executions).toBe(1);
+
+    const restarted = new RemoteTargetDesktopService(
+      harness.vault,
+      harness.state,
+      harness.relay,
+      () => NOW,
+    );
+    await restarted.resumeEligibleLoopback({
+      apiBase: "http://127.0.0.1:31337",
+      apiToken: "restart-local-token-123456789",
+      pollIntervalMs: 60_000,
+    });
+
+    expect(executions).toBe(1);
+    expect(
+      (await harness.state.read()).commands[claim.commandId],
+    ).toMatchObject({
+      status: "execution_ambiguous",
+      errorCode: "REMOTE_EXECUTION_INTERRUPTED",
+      resultDelivered: true,
+    });
+    await restarted.stop();
+  });
+
+  it("never rehydrates a revoked remote authority", async () => {
+    const harness = await createHarness();
+    const authority = await createRunner(harness, () => undefined);
+    await authority.revokeSession(SESSION_ID);
+    const restarted = new RemoteTargetDesktopService(
+      harness.vault,
+      harness.state,
+      harness.relay,
+      () => NOW,
+    );
+
+    await expect(
+      restarted.resumeEligibleLoopback({
+        apiBase: "http://127.0.0.1:31337",
+        apiToken: "restart-local-token-123456789",
+      }),
+    ).resolves.toEqual({ resumed: false, reason: "no_active_authority" });
+    expect((await restarted.status()).running).toBe(false);
+    expect(harness.relay.claimRequests).toBe(0);
+  });
+
+  it("never rehydrates a host removed after authoritative cloud revocation", async () => {
+    const harness = await createHarness();
+    await createRunner(harness, () => undefined);
+    const priorProcess = new RemoteTargetDesktopService(
+      harness.vault,
+      harness.state,
+      harness.relay,
+      () => NOW,
+    );
+    await priorProcess.finalizeHostRevoke({
+      hostId: HOST_ID,
+      cloudRevoked: true,
+    });
+    const restarted = new RemoteTargetDesktopService(
+      harness.vault,
+      harness.state,
+      harness.relay,
+      () => NOW,
+    );
+
+    await expect(
+      restarted.resumeEligibleLoopback({
+        apiBase: "http://127.0.0.1:31337",
+        apiToken: "restart-local-token-123456789",
+      }),
+    ).resolves.toEqual({ resumed: false, reason: "not_enrolled" });
+    expect(await harness.state.read()).toEqual({
+      version: 1,
+      sessions: {},
+      commands: {},
+    });
+    expect(harness.relay.claimRequests).toBe(0);
+  });
+
+  it("serializes host finalization behind an in-flight startup resume", async () => {
+    const harness = await createHarness();
+    await createRunner(harness, () => undefined);
+    const deferredState = new DeferredReadStateStore(harness.state);
+    const deferredRead = deferredState.deferNextRead();
+    const service = new RemoteTargetDesktopService(
+      harness.vault,
+      deferredState,
+      harness.relay,
+      () => NOW,
+    );
+
+    const resuming = service.resumeEligibleLoopback({
+      apiBase: "http://127.0.0.1:31337",
+      apiToken: "restart-local-token-123456789",
+      pollIntervalMs: 60_000,
+    });
+    await deferredRead.started;
+    let finalized = false;
+    const finalizing = service
+      .finalizeHostRevoke({ hostId: HOST_ID, cloudRevoked: true })
+      .then((result) => {
+        finalized = true;
+        return result;
+      });
+    await Promise.resolve();
+
+    expect(finalized).toBe(false);
+    expect((await harness.vault.load())?.status).toBe("enrolled");
+    expect((await harness.state.read()).sessions[SESSION_ID]).toBeDefined();
+
+    deferredRead.release();
+    await expect(resuming).resolves.toEqual({
+      resumed: true,
+      reason: "active_authority",
+    });
+    await expect(finalizing).resolves.toEqual({ cleaned: true });
+    await expect(service.status()).resolves.toMatchObject({
+      running: false,
+      enrolled: false,
+      activeSessions: 0,
+    });
+    expect(await harness.state.read()).toEqual({
+      version: 1,
+      sessions: {},
+      commands: {},
+    });
+  });
+
+  it("fails closed when durable authority outlives its secure enrollment", async () => {
+    const harness = await createHarness();
+    await createRunner(harness, () => undefined);
+    await harness.vault.delete();
+    const restarted = new RemoteTargetDesktopService(
+      harness.vault,
+      harness.state,
+      harness.relay,
+      () => NOW,
+    );
+
+    await expect(
+      restarted.resumeEligibleLoopback({
+        apiBase: "http://127.0.0.1:31337",
+        apiToken: "restart-local-token-123456789",
+      }),
+    ).rejects.toThrow("credentials are unavailable");
+    expect((await restarted.status()).running).toBe(false);
+    expect(harness.relay.claimRequests).toBe(0);
+  });
+
+  it("rejects missing loopback authentication before replacing a live runner", async () => {
+    const harness = await createHarness();
+    await createRunner(harness, () => undefined);
+    const restarted = new RemoteTargetDesktopService(
+      harness.vault,
+      harness.state,
+      harness.relay,
+      () => NOW,
+    );
+    await restarted.resumeEligibleLoopback({
+      apiBase: "http://127.0.0.1:31337",
+      apiToken: "restart-local-token-123456789",
+      pollIntervalMs: 60_000,
+    });
+
+    await expect(
+      restarted.resumeEligibleLoopback({
+        apiBase: "http://127.0.0.1:31338",
+        apiToken: "missing",
+      }),
+    ).rejects.toThrow("authentication is unavailable");
+    expect((await restarted.status()).running).toBe(true);
+    await restarted.stop();
   });
 
   it("serializes reconfiguration across an old in-flight poll", async () => {

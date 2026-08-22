@@ -306,6 +306,38 @@ describe("secure remote relay repositories", () => {
     ).toEqual({ kind: "invalid_pairing" });
   });
 
+  it("discovers one host-bound session from only its six-digit code", async () => {
+    await enrollAndPair(false);
+    expect(
+      await sessions.activatePendingHostByCode({
+        hostId,
+        hostToken,
+        code: "000000",
+        pairingSecret,
+      }),
+    ).toEqual({ kind: "invalid_pairing" });
+
+    expect(
+      await sessions.activatePendingHostByCode({
+        hostId,
+        hostToken,
+        code: "123456",
+        pairingSecret,
+      }),
+    ).toMatchObject({
+      kind: "activated",
+      session: { id: sessionId, status: "active" },
+    });
+    expect(
+      await sessions.activatePendingHostByCode({
+        hostId,
+        hostToken,
+        code: "123456",
+        pairingSecret,
+      }),
+    ).toEqual({ kind: "invalid_pairing" });
+  });
+
   it("serializes sequence, nonce, and idempotency under the session lock", async () => {
     await enrollAndPair();
     const commandEnvelope = envelope("command");

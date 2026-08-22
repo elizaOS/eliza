@@ -111,6 +111,7 @@ import { getPermissionManager } from "./native/permissions";
 import { checkWebGpuSupport } from "./native/webgpu-browser-support";
 import { getPersistedDeployment } from "./persisted-deployment";
 import { printElectrobunDevSettingsBanner } from "./print-electrobun-dev-settings-banner";
+import { resumeDesktopRemoteTarget } from "./remote-target-rpc";
 import {
   createRendererApiProxyRequestInit,
   isRendererApiProxyPath,
@@ -136,6 +137,10 @@ import { resolveDesktopRuntimeForBoot } from "./runtime-preflight";
 import { startScreenCaptureBridgeServer } from "./screen-capture-bridge-server";
 import { startScreenshotDevServer } from "./screenshot-dev-server";
 import { registerShellSyncEndpoint } from "./shell-sync-relay";
+import {
+  desktopRehydrateSshRuntimes,
+  desktopShutdownSshRuntimes,
+} from "./ssh-runtime-rpc";
 import { recordStartupPhase, resolveStartupBundlePath } from "./startup-trace";
 import {
   type BoundsStore,
@@ -2002,6 +2007,23 @@ async function _startAgent(): Promise<void> {
       // windows), then push to every open window.
       publishAgentApiBase(rendererBase, apiToken, collectOpenRendererWindows());
       setAgentReady(true);
+      void resumeDesktopRemoteTarget({ apiBase, apiToken })
+        .then((result) => {
+          if (result.resumed) {
+            logger.info(
+              "[RemoteTarget] Resumed enrolled Linux target after desktop startup",
+            );
+          }
+        })
+        .catch((error) => {
+          // error-policy:J1 remote authority remains stopped when its secure
+          // enrollment or durable journal cannot be validated at startup.
+          logger.error(
+            `[RemoteTarget] Startup resume blocked: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          );
+        });
       // Sync real OS permission states to the REST API so the renderer
       // can display them and capability toggles can unlock.
       // Pass startup=true so the backend skips scheduling a restart for
@@ -2824,6 +2846,32 @@ async function main(): Promise<void> {
   recordStartupPhase("window_ready", {
     pid: process.pid,
   });
+
+  // A successful manual SSH Start is durable desired-state. Restore only those
+  // tunnels, revalidating secure host trust and the live host key inside the
+  // SSH runtime boundary. Shutdown disposes processes but deliberately retains
+  // intent; explicit Stop/Remove erases it before teardown.
+  cleanupFns.push(desktopShutdownSshRuntimes);
+  void desktopRehydrateSshRuntimes()
+    .then(({ restored, blocked }) => {
+      if (restored.length > 0) {
+        logger.info(
+          `[SSH runtime] Restored ${restored.length} tunnel(s) after restart`,
+        );
+      }
+      for (const item of blocked) {
+        logger.warn(
+          `[SSH runtime] Kept ${item.runtimeId} stopped after restart: ${item.error}`,
+        );
+      }
+    })
+    .catch((error) => {
+      logger.warn(
+        `[SSH runtime] Failed to read restart intents; all SSH tunnels remain stopped: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    });
 
   // Per-window RPC tracking: surface windows each get their own typed
   // RPC built up front via createDesktopRpc, baked into the BrowserWindow

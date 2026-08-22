@@ -534,6 +534,41 @@ function isSharedRuntimeRestAdapterBase(
   }
 }
 
+function isRemoteRelayApiUrl(value: string | null | undefined): boolean {
+  const normalized = normalizeBaseUrl(value);
+  if (!normalized) return false;
+  try {
+    const url = new URL(normalized);
+    return (
+      url.protocol === "eliza-remote:" &&
+      url.host === "session" &&
+      !url.username &&
+      !url.password &&
+      /^\/[A-Za-z0-9._-]{1,256}(?:\/|$)/.test(url.pathname) &&
+      !url.hash
+    );
+  } catch {
+    // error-policy:J3 malformed pseudo-URLs are not relay API URLs.
+    return false;
+  }
+}
+
+export function isRemoteRelayRestAdapterBase(
+  value: string | null | undefined,
+): boolean {
+  const normalized = normalizeBaseUrl(value);
+  if (!normalized || !isRemoteRelayApiUrl(normalized)) return false;
+  try {
+    const url = new URL(normalized);
+    return (
+      /^\/[A-Za-z0-9._-]{1,256}$/.test(url.pathname) && !url.search && !url.hash
+    );
+  } catch {
+    // error-policy:J3 malformed pseudo-URLs are not REST-only runtimes.
+    return false;
+  }
+}
+
 function shouldTreatAsConnectedWithoutWebSocket(
   value: string | null | undefined,
 ): boolean {
@@ -541,6 +576,7 @@ function shouldTreatAsConnectedWithoutWebSocket(
     isIosInProcessLocalAgentBase(value) ||
     isLocalAgentIpcBase(value) ||
     isSharedRuntimeRestAdapterBase(value) ||
+    isRemoteRelayRestAdapterBase(value) ||
     isDedicatedCloudAgentBase(value) ||
     // Control-plane hosts structurally cannot serve `/ws`: the alias Worker
     // routes only `/api*`/`/steward*` to the API and strips
@@ -1745,12 +1781,15 @@ export class ElizaClient {
     requestAttempt: number,
   ): RequestInit {
     const isDedicatedCloudRequest = isDedicatedCloudAgentBase(requestUrl);
+    const isEncryptedRelayRequest = isRemoteRelayApiUrl(requestUrl);
     const method = (init?.method ?? "GET").toUpperCase();
     const headers: Record<string, string> = {
       ...(!isDedicatedCloudRequest
         ? { "X-ElizaOS-Client-Id": this.clientId }
         : {}),
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(token && !isEncryptedRelayRequest
+        ? { Authorization: `Bearer ${token}` }
+        : {}),
       ...(!isDedicatedCloudRequest && this._uiLanguage
         ? { "X-ElizaOS-UI-Language": this._uiLanguage }
         : {}),
@@ -1761,6 +1800,7 @@ export class ElizaClient {
     );
     if (
       !isDedicatedCloudRequest &&
+      !isEncryptedRelayRequest &&
       !hasCsrfHeader &&
       CSRF_REQUIRED_METHODS.has(method)
     ) {

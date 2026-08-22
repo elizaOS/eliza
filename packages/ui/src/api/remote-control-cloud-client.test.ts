@@ -1,5 +1,4 @@
 /** Contract validation for owner-scoped remote host and pairing responses. */
-import { ElizaError } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 
 import {
@@ -216,13 +215,116 @@ describe("RemoteControlCloudClient", () => {
     );
   });
 
-  it("drains every host revocation cleanup page before resolving", async () => {
+  it("drains every bounded session-revocation cleanup page before returning", async () => {
+    const request = vi
+      .fn()
+      .mockResolvedValueOnce(
+        response({
+          id: SESSION_ID,
+          status: "revoked",
+          alreadyEnded: false,
+          cleanup: { commands: 500, more: true },
+        }),
+      )
+      .mockResolvedValueOnce(
+        response({
+          id: SESSION_ID,
+          status: "revoked",
+          alreadyEnded: true,
+          cleanup: { commands: 3, more: true },
+        }),
+      )
+      .mockResolvedValueOnce(
+        response({
+          id: SESSION_ID,
+          status: "revoked",
+          alreadyEnded: true,
+          cleanup: { commands: 0, more: false },
+        }),
+      );
+    const client = new RemoteControlCloudClient({
+      baseUrl: "https://cloud.example",
+      authToken: "token",
+      request,
+    });
+
+    await expect(client.revokeSession(SESSION_ID)).resolves.toBeUndefined();
+    expect(request).toHaveBeenCalledTimes(3);
+    expect(request).toHaveBeenNthCalledWith(
+      3,
+      `https://cloud.example/api/v1/remote/sessions/${SESSION_ID}/revoke`,
+      expect.objectContaining({ method: "POST" }),
+    );
+  });
+
+  it("fails closed on stalled or interrupted session cleanup so retry state remains", async () => {
+    const stalled = new RemoteControlCloudClient({
+      baseUrl: "https://cloud.example",
+      authToken: "token",
+      request: vi.fn().mockResolvedValue(
+        response({
+          id: SESSION_ID,
+          status: "revoked",
+          alreadyEnded: true,
+          cleanup: { commands: 0, more: true },
+        }),
+      ),
+    });
+    await expect(stalled.revokeSession(SESSION_ID)).rejects.toThrow(
+      "cleanup made no progress",
+    );
+
+    const request = vi
+      .fn()
+      .mockResolvedValueOnce(
+        response({
+          id: SESSION_ID,
+          status: "revoked",
+          alreadyEnded: false,
+          cleanup: { commands: 500, more: true },
+        }),
+      )
+      .mockRejectedValueOnce(new Error("network offline"));
+    const interrupted = new RemoteControlCloudClient({
+      baseUrl: "https://cloud.example",
+      authToken: "token",
+      request,
+    });
+    await expect(interrupted.revokeSession(SESSION_ID)).rejects.toThrow(
+      "network offline",
+    );
+    expect(request).toHaveBeenCalledTimes(2);
+  });
+
+  it("bounds session cleanup continuation even when every page reports progress", async () => {
+    const request = vi.fn(async () =>
+      response({
+        id: SESSION_ID,
+        status: "revoked",
+        alreadyEnded: true,
+        cleanup: { commands: 500, more: true },
+      }),
+    );
+    const client = new RemoteControlCloudClient({
+      baseUrl: "https://cloud.example",
+      authToken: "token",
+      request,
+    });
+
+    await expect(client.revokeSession(SESSION_ID)).rejects.toThrow(
+      "safe continuation limit",
+    );
+    expect(request).toHaveBeenCalledTimes(256);
+  });
+
+  it("drains every bounded host-revocation cleanup page before returning", async () => {
     const request = vi
       .fn()
       .mockResolvedValueOnce(
         response({
           id: HOST_ID,
           status: "revoked",
+          alreadyRevoked: false,
           cleanup: { sessions: 100, commands: 500, more: true },
         }),
       )
@@ -230,7 +332,16 @@ describe("RemoteControlCloudClient", () => {
         response({
           id: HOST_ID,
           status: "revoked",
-          cleanup: { sessions: 2, commands: 7, more: false },
+          alreadyRevoked: true,
+          cleanup: { sessions: 2, commands: 3, more: true },
+        }),
+      )
+      .mockResolvedValueOnce(
+        response({
+          id: HOST_ID,
+          status: "revoked",
+          alreadyRevoked: true,
+          cleanup: { sessions: 0, commands: 1, more: false },
         }),
       );
     const client = new RemoteControlCloudClient({
@@ -240,57 +351,51 @@ describe("RemoteControlCloudClient", () => {
     });
 
     await expect(client.revokeHost(HOST_ID)).resolves.toBeUndefined();
-    expect(request).toHaveBeenCalledTimes(2);
+    expect(request).toHaveBeenCalledTimes(3);
     expect(request).toHaveBeenNthCalledWith(
-      1,
-      `https://cloud.example/api/v1/remote/hosts/${HOST_ID}/revoke`,
-      expect.objectContaining({ method: "POST" }),
-    );
-    expect(request).toHaveBeenNthCalledWith(
-      2,
+      3,
       `https://cloud.example/api/v1/remote/hosts/${HOST_ID}/revoke`,
       expect.objectContaining({ method: "POST" }),
     );
   });
 
-  it("rejects missing cleanup progress instead of finalizing locally", async () => {
-    const client = new RemoteControlCloudClient({
+  it("fails closed on stalled or interrupted host cleanup so a later retry can resume", async () => {
+    const stalled = new RemoteControlCloudClient({
       baseUrl: "https://cloud.example",
       authToken: "token",
-      request: vi
-        .fn()
-        .mockResolvedValue(response({ id: HOST_ID, status: "revoked" })),
+      request: vi.fn().mockResolvedValue(
+        response({
+          id: HOST_ID,
+          status: "revoked",
+          alreadyRevoked: true,
+          cleanup: { sessions: 0, commands: 0, more: true },
+        }),
+      ),
     });
-
-    const failure = await client.revokeHost(HOST_ID).catch((cause) => cause);
-    expect(failure).toBeInstanceOf(ElizaError);
-    expect(failure).toMatchObject({
-      code: "REMOTE_HOST_CLEANUP_PROGRESS_INVALID",
-      context: { hostId: HOST_ID, reason: "malformed_response" },
-    });
-  });
-
-  it("rejects a non-progressing continuation instead of looping", async () => {
-    const request = vi.fn().mockResolvedValue(
-      response({
-        id: HOST_ID,
-        status: "revoked",
-        cleanup: { sessions: 0, commands: 0, more: true },
-      }),
+    await expect(stalled.revokeHost(HOST_ID)).rejects.toThrow(
+      "cleanup made no progress",
     );
-    const client = new RemoteControlCloudClient({
+
+    const request = vi
+      .fn()
+      .mockResolvedValueOnce(
+        response({
+          id: HOST_ID,
+          status: "revoked",
+          alreadyRevoked: false,
+          cleanup: { sessions: 100, commands: 500, more: true },
+        }),
+      )
+      .mockRejectedValueOnce(new Error("network offline"));
+    const interrupted = new RemoteControlCloudClient({
       baseUrl: "https://cloud.example",
       authToken: "token",
       request,
     });
-
-    const failure = await client.revokeHost(HOST_ID).catch((cause) => cause);
-    expect(failure).toBeInstanceOf(ElizaError);
-    expect(failure).toMatchObject({
-      code: "REMOTE_HOST_CLEANUP_PROGRESS_INVALID",
-      context: { hostId: HOST_ID, reason: "non_progressing_page" },
-    });
-    expect(request).toHaveBeenCalledTimes(1);
+    await expect(interrupted.revokeHost(HOST_ID)).rejects.toThrow(
+      "network offline",
+    );
+    expect(request).toHaveBeenCalledTimes(2);
   });
 
   it("rejects relay envelopes that are malformed or bound to another command", async () => {
