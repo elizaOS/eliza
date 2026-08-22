@@ -28,7 +28,16 @@ import { type ElizaAppProvisioningStatus, getElizaAppProvisioningStatus } from "
 import { elizaAppUserService } from "./user-service";
 
 const ONBOARDING_REQUEST_TIMEOUT_MS = 10_000;
+// Coordinator replies are small JSON control documents. One MiB leaves room
+// for retained session history while keeping a single internal hop within a
+// fixed Worker-memory budget; larger histories must be bounded or paginated.
 const ONBOARDING_RESPONSE_MAX_BYTES = 1024 * 1024;
+const REBUFFERED_RESPONSE_HEADERS = [
+  "content-encoding",
+  "content-length",
+  "trailer",
+  "transfer-encoding",
+] as const;
 
 function onboardingAbortError(message: string, name: "AbortError" | "TimeoutError"): DOMException {
   return new DOMException(message, name);
@@ -65,7 +74,9 @@ async function bufferOnboardingResponse(
   }
 
   const reader = response.body.getReader();
-  const chunks: Uint8Array[] = [];
+  // Copy every view immediately so a one-byte chunk cannot retain a large
+  // transport-owned backing buffer or grow an unbounded chunk-object list.
+  const body = new Uint8Array(ONBOARDING_RESPONSE_MAX_BYTES);
   let receivedBytes = 0;
   const cancelBody = (): void => {
     // error-policy:J6 The request already failed; cancellation only releases the response stream.
@@ -89,11 +100,14 @@ async function bufferOnboardingResponse(
       // them would let a hostile stream grow the chunk-object inventory without
       // consuming any of the byte budget.
       if (next.value.byteLength === 0) continue;
-      receivedBytes += next.value.byteLength;
-      if (receivedBytes > ONBOARDING_RESPONSE_MAX_BYTES) {
+      const nextReceivedBytes = receivedBytes + next.value.byteLength;
+      if (nextReceivedBytes > ONBOARDING_RESPONSE_MAX_BYTES) {
         const error = new ElizaError("Onboarding hop response exceeds the byte limit", {
           code: "ONBOARDING_RESPONSE_TOO_LARGE",
-          context: { maxBytes: ONBOARDING_RESPONSE_MAX_BYTES, receivedBytes },
+          context: {
+            maxBytes: ONBOARDING_RESPONSE_MAX_BYTES,
+            receivedBytes: nextReceivedBytes,
+          },
         });
         try {
           await reader.cancel(error);
@@ -105,7 +119,8 @@ async function bufferOnboardingResponse(
         }
         throw error;
       }
-      chunks.push(next.value);
+      body.set(next.value, receivedBytes);
+      receivedBytes = nextReceivedBytes;
     }
   } catch (error) {
     let rejection = error;
@@ -136,25 +151,24 @@ async function bufferOnboardingResponse(
     }
   }
 
-  const body = new Uint8Array(receivedBytes);
-  let offset = 0;
-  for (const chunk of chunks) {
-    body.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
   throwIfAbortedOrExpired();
-  return new Response(body.buffer, {
+  const headers = new Headers(response.headers);
+  for (const header of REBUFFERED_RESPONSE_HEADERS) headers.delete(header);
+  const bufferedBody = receivedBytes === body.byteLength ? body : body.slice(0, receivedBytes);
+  return new Response(bufferedBody, {
     status: response.status,
     statusText: response.statusText,
-    headers: response.headers,
+    headers,
   });
 }
 
 /**
  * Bound every onboarding coordinator / agent API hop so a hung or overloaded
  * Durable Object or agent cannot pin the onboarding worker indefinitely. The
- * clearable deadline covers headers and a bounded body read, and composes with
- * caller cancellation.
+ * clearable deadline covers headers and a bounded, fully buffered body read,
+ * and composes with caller cancellation. The returned response preserves
+ * semantic headers but drops transport/representation headers invalidated by
+ * Fetch decoding and rebuffering.
  */
 export async function onboardingFetch(
   stub: { fetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> },

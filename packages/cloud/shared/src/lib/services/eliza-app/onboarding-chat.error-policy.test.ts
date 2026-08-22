@@ -1,8 +1,7 @@
-// Pins the fail-closed contract of the onboarding phone-link path: a genuine
-// linkPhoneToUser infra failure must PROPAGATE out of runOnboardingChat, while
-// its designed tenant-safety decline (success:false) stays a distinguishable
-// non-throwing outcome that lets onboarding continue. Deterministic lib
-// fixtures (no live model, no network).
+/**
+ * Pins onboarding phone-link and internal-hop failures with deterministic
+ * service fixtures and transport streams; no live model or network is used.
+ */
 import { afterAll, afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
 import * as realCloudBindings from "../../runtime/cloud-bindings";
 import * as provisioningObservation from "./provisioning-observation";
@@ -345,6 +344,55 @@ describe("onboardingFetch — bounded hops fail closed and keep caller signals",
       onboardingFetch(stub, "https://onboarding.internal/resolve"),
     ).rejects.toMatchObject({ code: "ONBOARDING_RESPONSE_TOO_LARGE" });
     expect(cancelled).toBe(true);
+  });
+
+  test("bounds retained storage across many one-byte transport chunks", async () => {
+    const chunkCount = 16_384;
+    let emitted = 0;
+    const stub = {
+      fetch: async () =>
+        new Response(
+          new ReadableStream<Uint8Array>({
+            pull(controller) {
+              if (emitted === chunkCount) {
+                controller.close();
+                return;
+              }
+              emitted += 1;
+              controller.enqueue(Uint8Array.of(97));
+            },
+          }),
+        ),
+    };
+
+    const response = await onboardingFetch(stub, "https://onboarding.internal/resolve");
+    expect((await response.arrayBuffer()).byteLength).toBe(chunkCount);
+    expect(emitted).toBe(chunkCount);
+  });
+
+  test("drops decoded representation headers when returning the buffered body", async () => {
+    const stub = {
+      fetch: async () =>
+        new Response("decoded", {
+          headers: {
+            "content-encoding": "gzip",
+            "content-length": "1",
+            "content-type": "application/json",
+            trailer: "content-digest",
+            "transfer-encoding": "chunked",
+            "x-request-id": "request-1",
+          },
+        }),
+    };
+
+    const response = await onboardingFetch(stub, "https://onboarding.internal/resolve");
+    expect(await response.text()).toBe("decoded");
+    expect(response.headers.get("content-encoding")).toBeNull();
+    expect(response.headers.get("content-length")).toBeNull();
+    expect(response.headers.get("trailer")).toBeNull();
+    expect(response.headers.get("transfer-encoding")).toBeNull();
+    expect(response.headers.get("content-type")).toBe("application/json");
+    expect(response.headers.get("x-request-id")).toBe("request-1");
   });
 
   test("does not dispatch when the caller is already aborted", async () => {
