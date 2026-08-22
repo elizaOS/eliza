@@ -128,6 +128,40 @@ describe("model-provider production protocol mocks", () => {
     expect(server.store.readback().observations).toEqual([]);
   });
 
+  it("rejects scalar, object, and mixed configured-embedding inputs with a stable protocol response", async () => {
+    const server = await start();
+    const invalidInputs: unknown[] = [42, { text: "alpha" }, ["alpha", 42]];
+
+    for (const input of invalidInputs) {
+      const response = await fetch(
+        `${server.configuredEmbeddingBaseUrl}/embeddings`,
+        {
+          method: "POST",
+          headers: {
+            authorization: "Bearer embedding-key",
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({
+            model: "synthetic-embedding",
+            input,
+            dimensions: 384,
+          }),
+        },
+      );
+
+      expect(response.status).toBe(400);
+      expect(await response.json()).toEqual({
+        error: { message: "input must be string or string[]" },
+      });
+    }
+
+    expect(
+      server.store
+        .readback()
+        .observations.map((observation) => observation.status),
+    ).toEqual([400, 400, 400]);
+  });
+
   it("bounds adversarial provider bodies and redacts alternate credential carriers", async () => {
     const server = await start();
     const oversized = await fetch(
