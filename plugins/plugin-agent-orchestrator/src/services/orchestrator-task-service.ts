@@ -2653,7 +2653,7 @@ export class OrchestratorTaskService extends Service {
     // to the judge (a sub-agent could otherwise pass by writing "deployed to
     // https://…"). They are surfaced separately as `mentionedUrls`.
     const verifiedUrls = [
-      ...new Set(this.metadataVerifiedUrls(doc, sessionId)),
+      ...new Set(await this.metadataVerifiedUrls(doc, sessionId)),
     ];
     const verifiedSet = new Set(verifiedUrls);
     const mentionedUrls = [
@@ -2710,43 +2710,6 @@ export class OrchestratorTaskService extends Service {
           reportingSession.registeredAt,
         ),
       });
-      if (fsVerifiedFiles.length > 0 && verifiedUrls.length === 0) {
-        const routeMeta = isRecord(reportingSession.metadata)
-          ? reportingSession.metadata.workdirRoute
-          : undefined;
-        const urlMappings =
-          isRecord(routeMeta) && Array.isArray(routeMeta.urlMappings)
-            ? (routeMeta.urlMappings as {
-                urlPrefix: string;
-                localPath: string;
-              }[])
-            : undefined;
-        const candidateUrls = deriveRouteMappedUrls(
-          fsVerifiedFiles,
-          urlMappings,
-        );
-        // Assigned-slug workdirs carry no route metadata, so the mapped set
-        // is empty and criteria like "a reachable URL renders the page"
-        // starve on a build that IS served (live 2026-08-19: quote-generator
-        // parked for "no reachable URL"). The deploy config alone determines
-        // the URL for a workdir directly under the apps dir.
-        if (candidateUrls.length === 0) {
-          const deploy = resolveAppDeployConfig();
-          if (
-            deploy.target === "custom" &&
-            deploy.customAppsDir &&
-            deploy.customBaseUrl &&
-            dirname(resolvePath(reportingSession.workdir)) ===
-              resolvePath(deploy.customAppsDir)
-          ) {
-            candidateUrls.push(
-              `${deploy.customBaseUrl.replace(/\/+$/, "")}/apps/${basename(reportingSession.workdir)}/`,
-            );
-          }
-        }
-        const probed = await probeMappedUrls(candidateUrls);
-        verifiedUrls.push(...probed);
-      }
     }
 
     // Which check classes the verified deliverable can actually RUN —
@@ -2755,6 +2718,50 @@ export class OrchestratorTaskService extends Service {
       ...(ledgerVerdict.ledgerObserved ? ledgerVerdict.verifiedClaims : []),
       ...fsVerifiedFiles,
     ];
+    // The route's public URL is probed from whatever deliverable files are
+    // verified — ledger or fs. It used to live inside the ledger-less recovery
+    // branch only, so an adapter WITH a ledger (eliza-code once it mirrored
+    // its FILE writes) never had its served page probed: the verifier then
+    // demanded a non-loopback URL for a page that was live and parked the
+    // build after three laps (live 2026-08-22, quotes-page).
+    if (
+      reportingSession?.workdir &&
+      surfaceFiles.length > 0 &&
+      verifiedUrls.length === 0
+    ) {
+      const routeMeta = isRecord(reportingSession.metadata)
+        ? reportingSession.metadata.workdirRoute
+        : undefined;
+      const urlMappings =
+        isRecord(routeMeta) && Array.isArray(routeMeta.urlMappings)
+          ? (routeMeta.urlMappings as {
+              urlPrefix: string;
+              localPath: string;
+            }[])
+          : undefined;
+      const candidateUrls = deriveRouteMappedUrls(surfaceFiles, urlMappings);
+      // Assigned-slug workdirs carry no route metadata, so the mapped set
+      // is empty and criteria like "a reachable URL renders the page"
+      // starve on a build that IS served (live 2026-08-19: quote-generator
+      // parked for "no reachable URL"). The deploy config alone determines
+      // the URL for a workdir directly under the apps dir.
+      if (candidateUrls.length === 0) {
+        const deploy = resolveAppDeployConfig();
+        if (
+          deploy.target === "custom" &&
+          deploy.customAppsDir &&
+          deploy.customBaseUrl &&
+          dirname(resolvePath(reportingSession.workdir)) ===
+            resolvePath(deploy.customAppsDir)
+        ) {
+          candidateUrls.push(
+            `${deploy.customBaseUrl.replace(/\/+$/, "")}/apps/${basename(reportingSession.workdir)}/`,
+          );
+        }
+      }
+      const probed = await probeMappedUrls(candidateUrls);
+      verifiedUrls.push(...probed);
+    }
     const checkSurfaces =
       reportingSession?.workdir && surfaceFiles.length > 0
         ? detectCheckSurfaces(reportingSession.workdir, surfaceFiles)
@@ -2832,15 +2839,26 @@ export class OrchestratorTaskService extends Service {
     return signals;
   }
 
-  /** URLs the router stamped as verified onto the task or session metadata
-   *  (`subAgentVerifiedUrls`), separate from URLs mined out of free text. */
-  private metadataVerifiedUrls(
+  /** URLs the router stamped as verified (`subAgentVerifiedUrls`), separate
+   *  from URLs mined out of free text. The router patches the LIVE ACP
+   *  session's metadata at task_complete; the store row is a spawn-time copy,
+   *  so it is consulted alongside the task record, never instead of the live
+   *  session. */
+  private async metadataVerifiedUrls(
     doc: OrchestratorTaskDocument,
     sessionId: string,
-  ): string[] {
+  ): Promise<string[]> {
     const out: string[] = [];
     const session = doc.sessions.find((row) => row.sessionId === sessionId);
-    for (const meta of [doc.task.metadata, session?.metadata]) {
+    let liveMetadata: Record<string, unknown> | undefined;
+    try {
+      const live = await this.acp()?.getSession(sessionId);
+      liveMetadata = isRecord(live?.metadata) ? live.metadata : undefined;
+    } catch {
+      // error-policy:J4 the live session may already be torn down; the
+      // persisted copies below still count.
+    }
+    for (const meta of [doc.task.metadata, session?.metadata, liveMetadata]) {
       const raw = meta?.subAgentVerifiedUrls;
       if (!Array.isArray(raw)) continue;
       for (const entry of raw) {

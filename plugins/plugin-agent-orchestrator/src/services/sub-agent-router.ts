@@ -1744,6 +1744,15 @@ export class SubAgentRouter extends Service {
       text = redactLoopbackUrls(verified.text);
       deadUrls = verified.dead;
       verifiedUrls = verified.verifiedUrls;
+      // The task service's evidence bundle reads `subAgentVerifiedUrls` off
+      // the session — until now only the relay Memory carried it, so the
+      // verifier never saw the URL this probe had just confirmed and demanded
+      // a non-loopback URL for a live page (2026-08-22, quotes-page parked).
+      if (verifiedUrls.length > 0) {
+        await this.patchHandoffMetadata(sessionId, {
+          subAgentVerifiedUrls: verifiedUrls,
+        });
+      }
     }
     // When the deliverable IS the printed/tool output and there is no change
     // set and no verified URL, composeNarration→stripToolTranscript has just
