@@ -454,7 +454,7 @@ describe("getTaskAgentFrameworkState", () => {
         {
           adapter: "Kimi Code",
           installed: true,
-          authenticated: true,
+          auth: { status: "authenticated" },
         },
       ]),
     };
