@@ -223,16 +223,11 @@ function isJsonRecord(value: JsonValue): value is Record<string, JsonValue> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
-function nestedTruncationIsStrictFalse(
-  value: Record<string, JsonValue>,
-): boolean {
+function hasNestedExecutionEnvelope(value: Record<string, JsonValue>): boolean {
   for (const key of ["data", "result", "output"] as const) {
-    const nested = value[key];
-    if (isJsonRecord(nested) && nested.truncated !== false) {
-      return false;
-    }
+    if (isJsonRecord(value[key])) return true;
   }
-  return true;
+  return false;
 }
 
 function parseJsonArguments(
@@ -330,7 +325,7 @@ function normalizeCapturedRun(
     });
   }
 
-  if (value.truncated !== false || !nestedTruncationIsStrictFalse(value)) {
+  if (value.truncated !== false || hasNestedExecutionEnvelope(value)) {
     throw new ElizaError(
       "Terminal response contained incomplete stdout or stderr",
       {

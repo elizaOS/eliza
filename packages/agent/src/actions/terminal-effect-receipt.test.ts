@@ -190,6 +190,30 @@ describe("terminal action effect proof", () => {
     expect(rt.createMemory).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ["data", { truncated: false, timedOut: true }],
+    ["result", { truncated: false, error: "failed" }],
+    ["output", { truncated: false, stdout: "shadow partial" }],
+  ])(
+    "rejects a conflicting nested %s execution proof before persistence",
+    async (key, nested) => {
+      const rt = runtime();
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (_input: string | URL | Request, init?: RequestInit) =>
+          terminalResponseForRequest(init, {
+            truncated: false,
+            [key]: nested,
+          }),
+        ),
+      );
+      await expect(
+        terminalAction.handler(rt, message(), undefined, options()),
+      ).rejects.toMatchObject({ code: "TERMINAL_OUTPUT_INCOMPLETE" });
+      expect(rt.createMemory).not.toHaveBeenCalled();
+    },
+  );
+
   it("rejects conflicting nested truncation proof before persistence", async () => {
     const rt = runtime();
     vi.stubGlobal(
