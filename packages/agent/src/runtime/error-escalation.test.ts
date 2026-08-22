@@ -143,6 +143,7 @@ describe("ERROR_REPORTED escalation handler", () => {
     await handler(payload("TASK_TICK_FAILED"));
     await handler(payload("TASK_QUERY_FAILED"));
     await handler(payload("TASK_ORPHAN_QUARANTINE_FAILED"));
+    await handler(payload("SCHEDULED_DISPATCH_RENDER_FAILED"));
     expect(spy).not.toHaveBeenCalled();
 
     // A real, non-quiet code still escalates on the same tracker.

@@ -142,6 +142,12 @@ describe("RECENT_ERRORS provider", () => {
 				message: "No worker registered for task X",
 				at: now - 90,
 			},
+			{
+				scope: "lifeops.scheduled-task.dispatch-render",
+				code: "SCHEDULED_DISPATCH_RENDER_FAILED",
+				message: "Scheduled dispatch message rendering failed",
+				at: now - 80,
+			},
 		];
 		const result = await recentErrorsProvider.get(
 			runtimeWith(entries),
@@ -225,6 +231,9 @@ describe("RECENT_ERRORS provider", () => {
 	it("exports the quiet-code set with the scheduler plumbing codes", () => {
 		expect(QUIET_ERROR_CODES.has("TASK_TICK_FAILED")).toBe(true);
 		expect(QUIET_ERROR_CODES.has("TASK_WORKER_MISSING")).toBe(true);
+		expect(QUIET_ERROR_CODES.has("SCHEDULED_DISPATCH_RENDER_FAILED")).toBe(
+			true,
+		);
 		expect(QUIET_ERROR_CODES.has("WALLET_RPC_DOWN")).toBe(false);
 	});
 
