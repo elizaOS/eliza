@@ -6,6 +6,7 @@
  * branch in getByStewardId is exercised.
  */
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import * as realInferenceAuthCache from "./inference-auth-cache";
 
 const findById = mock();
 const findByStewardIdWithOrganization = mock();
@@ -40,6 +41,7 @@ mock.module("../utils/logger", () => ({
 }));
 
 mock.module("./inference-auth-cache", () => ({
+  ...realInferenceAuthCache,
   invalidateInferenceAuthContextsByKeyHashes: mock(async () => undefined),
   invalidateInferenceSessionAuthContexts: mock(async () => undefined),
 }));
