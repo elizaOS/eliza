@@ -301,7 +301,8 @@ export async function readFileHandler(
     if (!before.isFile())
       return failureToActionResult({
         reason: "invalid_param",
-        message: "path is not a regular file",
+        message:
+          "path is not a regular file. READ accepts files only; use SHELL with `ls` or `rg --files` to inspect a directory.",
       });
     const currentRevision = revision(before);
     const expected = readStringParam(options, "expectedRevision");

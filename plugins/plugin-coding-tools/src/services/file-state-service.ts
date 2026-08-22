@@ -72,7 +72,7 @@ export class FileStateService extends Service {
     conversationId: string,
     absPath: string,
   ): Promise<
-    | { ok: true }
+    | { ok: true; exists: boolean }
     | { ok: false; reason: "must_read_first" | "stale_read"; message: string }
   > {
     let stat: Awaited<ReturnType<typeof fs.stat>>;
@@ -83,7 +83,7 @@ export class FileStateService extends Service {
       // create-new-file path (Write is allowed; Edit re-verifies existence
       // separately). A genuine permission error is not masked: the subsequent
       // fs.writeFile surfaces it to the caller as an `io_error` failure.
-      return { ok: true };
+      return { ok: true, exists: false };
     }
     const meta = this.get(conversationId, absPath);
     if (!meta) {
@@ -100,7 +100,7 @@ export class FileStateService extends Service {
         message: `File ${absPath} was modified externally since last read (mtime ${meta.mtimeMs} → ${stat.mtimeMs}). Re-read before writing.`,
       };
     }
-    return { ok: true };
+    return { ok: true, exists: true };
   }
 
   invalidate(conversationId: string, absPath: string): void {
