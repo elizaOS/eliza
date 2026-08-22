@@ -10,7 +10,8 @@ Most scripts here are invoked from **root `package.json`** (`bun run …`). **Ap
 | `bun run dev:desktop:watch` | Workspace experience + Vite HMR |
 | `bun run dev:macos` | macOS assistant experience + `dev-platform.mjs` |
 | `bun run dev:macos:watch` | macOS assistant experience + Vite HMR |
-| `bun run build:macos` | Production Electrobun macOS assistant candidate |
+| `bun run build:macos` | Production Electrobun normal macOS app candidate |
+| `bun run build:macos:assistant` | Production Electrobun macOS assistant/pill candidate |
 
 **Why a dedicated script:** Electrobun needs a renderer URL, often a running API, and (in dev) a root `dist/` bundle. Starting each piece by hand drifts on ports and env vars; one orchestrator keeps **startup and shutdown** symmetric.
 

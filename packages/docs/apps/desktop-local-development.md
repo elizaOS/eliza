@@ -16,9 +16,10 @@ The **desktop dev stack** is not a single binary. `bun run dev:desktop`, `bun ru
 |---------|-------------|-------------|
 | `bun run dev:desktop` | API (unless `--no-api`) + Electrobun; **skips** `vite build` when `packages/app/dist` is fresher than sources | Fast iteration against **built** renderer assets |
 | `bun run dev:desktop:watch` | Same orchestrator with **`ELIZA_DESKTOP_VITE_WATCH=1`** — **Vite dev server** + HMR | Desktop UI workflow |
-| `bun run dev:macos` | Same stack with the macOS assistant experience: one tray-owned bottom pill; Workspace opens only on request | Shipped macOS startup behavior |
+| `bun run dev:macos` | Same stack with the macOS assistant experience: one tray-owned bottom pill; Workspace opens only on request | Assistant/pill workflow |
 | `bun run dev:macos:watch` | macOS assistant experience + Vite dev server/HMR | macOS pill and shared ChatOverlay workflow |
-| `bun run build:macos` | Production Electrobun package with the macOS assistant experience | Local packaged macOS candidate |
+| `bun run build:macos` | Production Electrobun package with the normal full-window Workspace experience | Local packaged macOS app candidate |
+| `bun run build:macos:assistant` | Production Electrobun package with the opt-in macOS assistant/pill experience | Local packaged assistant experiment |
 | `bun run dev` | Browser dashboard stack only (API + Vite) | Headless-friendly dashboard iteration |
 
 **Startup tables:** the orchestrator, Vite, API, and Electrobun each print a **plain-text settings table** (columns *Setting / Effective / Source / Change*) so you can see defaults vs env and how to change a knob. Run without `--help` to see them in the terminal.
@@ -49,7 +50,7 @@ ELIZA_DESKTOP_VITE_WATCH=1 ELIZA_DESKTOP_VITE_BUILD_WATCH=1 bun packages/app-cor
 
 | Variable | Purpose |
 |----------|---------|
-| `ELIZA_DESKTOP_EXPERIENCE` | Runtime startup contract: `macos-assistant` (one tray-owned pill; the packaged macOS default) or `workspace` (ordinary full-window startup; used by generic `dev:desktop`). This is intentionally separate from `ELIZA_DESKTOP_PROFILE`, which controls packaging contents. |
+| `ELIZA_DESKTOP_EXPERIENCE` | Runtime startup contract: `workspace` (ordinary full-window startup and the packaged macOS default) or `macos-assistant` (the explicit tray-owned assistant/pill experiment). This is intentionally separate from `ELIZA_DESKTOP_PROFILE`, which controls packaging contents. |
 | `ELIZA_DESKTOP_VITE_WATCH=1` | Enables watch workflow (dev server by default; see below) |
 | `ELIZA_DESKTOP_VITE_BUILD_WATCH=1` | With `VITE_WATCH`, use `vite build --watch` instead of `vite dev` |
 | `ELIZA_PORT` | Vite / expected UI port (default **2138**) |

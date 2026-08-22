@@ -15,10 +15,11 @@ bun run dev:macos:watch # macOS assistant: tray-owned pill + on-demand Workspace
 bun run dev:desktop:watch # generic full-window Workspace on any desktop
 ```
 
-Packaged macOS builds default to the same assistant experience. Use
-`bun run build:macos` for a local production candidate. Both experiences render
-the shared app and canonical `ChatOverlay`; this is a startup/window policy, not
-a second macOS UI or bundle identity.
+Packaged macOS builds default to the normal full-window Workspace experience.
+Use `bun run build:macos` for that local production candidate, or the explicit
+`bun run build:macos:assistant` command for the tray-owned assistant/pill
+experiment. Both experiences render the shared app and canonical `ChatOverlay`;
+this is a startup/window policy, not a second macOS UI or bundle identity.
 
 For renderer-only work, use the app package's shared development server:
 
