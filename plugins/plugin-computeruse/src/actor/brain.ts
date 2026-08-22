@@ -51,7 +51,6 @@ import { resolveReference } from "./actor.js";
 import type { BrainOutput, BrainProposedAction, BrainRoi } from "./types.js";
 
 export const BRAIN_MAX_PIXELS = 1_310_720; // 1280 * 32 * 32 ≈ 1.3 MP cap
-export const BRAIN_MAX_ROIS = 2;
 /** Bound on the per-Brain dHash→BrainOutput cache (LRU-ish, oldest evicted). */
 export const BRAIN_DHASH_CACHE_MAX = 16;
 /**
@@ -387,16 +386,15 @@ export class Brain {
       if (imageless !== null) {
         const parsedImageless = tryParse(extractText(imageless));
         if (parsedImageless) {
-          const capped = enforceCaps(parsedImageless);
           // Keep the imageless plan when its target is grounded against the
           // OCR/AX boxes (or it needs no coordinate at all), OR when the policy
           // forbids ever attaching pixels. Otherwise fall through to escalation.
           if (
             this.imagePolicy === "never" ||
-            this.resolvesWithoutImage(input.scene, capped)
+            this.resolvesWithoutImage(input.scene, parsedImageless)
           ) {
             this.recordImageless(targetCapture.frame);
-            return this.rememberOutput(key, capped);
+            return this.rememberOutput(key, parsedImageless);
           }
         } else if (this.imagePolicy === "never") {
           // No pixels available to escalate to — strict-retry imageless once.
@@ -410,7 +408,7 @@ export class Brain {
           const parsedStrict = tryParse(rawStrict);
           if (parsedStrict) {
             this.recordImageless(targetCapture.frame);
-            return this.rememberOutput(key, enforceCaps(parsedStrict));
+            return this.rememberOutput(key, parsedStrict);
           }
           throw new BrainParseError(
             "Brain output is not valid JSON conforming to BrainOutput after retry",
@@ -431,7 +429,7 @@ export class Brain {
       displayId,
     });
     const parsed = tryParse(extractText(first));
-    if (parsed) return this.rememberOutput(key, enforceCaps(parsed));
+    if (parsed) return this.rememberOutput(key, parsed);
     // Strict retry — same image, stricter prompt.
     this.invocations += 1;
     const second = await this.invoke({
@@ -441,7 +439,7 @@ export class Brain {
     });
     const rawSecond = extractText(second);
     const parsedRetry = tryParse(rawSecond);
-    if (parsedRetry) return this.rememberOutput(key, enforceCaps(parsedRetry));
+    if (parsedRetry) return this.rememberOutput(key, parsedRetry);
     throw new BrainParseError(
       "Brain output is not valid JSON conforming to BrainOutput after retry",
       rawSecond,
@@ -536,7 +534,7 @@ export function brainPromptFor(
     "  }",
     "}",
     "",
-    `Cap ROIs to ${BRAIN_MAX_ROIS}. Use action kind "finish" when the goal is already accomplished, "wait" when the screen is mid-transition.`,
+    'Use action kind "finish" when the goal is already accomplished, "wait" when the screen is mid-transition.',
     strict
       ? "Return raw JSON. No fences, no commentary, no extra fields."
       : "Output JSON only (a single object). Markdown fences are optional but will be stripped.",
@@ -651,13 +649,6 @@ export function parseBrainOutput(raw: string): BrainOutput {
     },
   };
   return validated;
-}
-
-function enforceCaps(out: BrainOutput): BrainOutput {
-  if (out.roi.length > BRAIN_MAX_ROIS) {
-    out.roi = out.roi.slice(0, BRAIN_MAX_ROIS);
-  }
-  return out;
 }
 
 function extractText(value: string | ImageDescriptionResult): string {

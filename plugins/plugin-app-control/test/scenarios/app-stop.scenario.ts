@@ -15,8 +15,8 @@ import {
 } from "@elizaos/plugin-app-control";
 import { scenario } from "@elizaos/scenario-runner/schema";
 
-const TEST_APP = "ratchet-proof";
-const TEST_PLUGIN = "@test/ratchet-proof";
+const TEST_APP = "guard-proof";
+const TEST_PLUGIN = "@test/guard-proof";
 
 type ApiServer = Awaited<ReturnType<typeof startApiServer>>;
 
@@ -80,11 +80,11 @@ async function startRunningApp(runtime: AgentRuntime): Promise<void> {
 					TEST_APP,
 					{
 						name: TEST_APP,
-						gitRepo: "test/ratchet-proof",
-						gitUrl: "https://example.test/ratchet-proof.git",
+						gitRepo: "test/guard-proof",
+						gitUrl: "https://example.test/guard-proof.git",
 						directory: null,
 						description: "Live APP stop trajectory fixture.",
-						homepage: "https://example.test/ratchet-proof",
+						homepage: "https://example.test/guard-proof",
 						topics: ["app", "test"],
 						stars: 0,
 						language: "TypeScript",
@@ -102,10 +102,10 @@ async function startRunningApp(runtime: AgentRuntime): Promise<void> {
 						supports: { v0: false, v1: false, v2: true },
 						kind: "app",
 						appMeta: {
-							displayName: "Ratchet Proof",
+							displayName: "Guard Proof",
 							category: "tool",
 							launchType: "connect",
-							launchUrl: "https://example.test/ratchet-proof",
+							launchUrl: "https://example.test/guard-proof",
 							icon: null,
 							heroImage: null,
 							capabilities: [],
@@ -202,7 +202,7 @@ export default scenario({
 		{
 			kind: "message",
 			name: "user-stops-running-app",
-			text: "Stop the Ratchet Proof app. Do not relaunch it.",
+			text: "Stop the Guard Proof app. Do not relaunch it.",
 			assertTurn: (turn) => {
 				const call = turn.actionsCalled.find(
 					(action) => action.actionName === "APP",
@@ -234,7 +234,7 @@ export default scenario({
 		{
 			type: "selectedActionArguments",
 			actionName: "APP",
-			includesAll: [/stop/i, /ratchet-proof|Ratchet Proof/i],
+			includesAll: [/stop/i, /guard-proof|Guard Proof/i],
 		},
 		{
 			type: "actionCalled",

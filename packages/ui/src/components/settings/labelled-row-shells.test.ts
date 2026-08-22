@@ -1,5 +1,5 @@
 /**
- * Source ratchet: leftover labelled dashboard rows must compose SettingsRow
+ * Source guard: leftover labelled dashboard rows must compose SettingsRow
  * rather than hand-rolled flex/grid shells. Reads shipped files off disk.
  */
 import { readFileSync } from "node:fs";

@@ -24,7 +24,7 @@ their schemas** (they model different things):
 
 The public npm package ships `src/` as TypeScript, including the generated
 first-party JSON. Published workspace consumers depend on it, so it must remain
-public and pass `packages/scripts/publish-graph-guard.mjs`.
+public and verify its packed dependency graph before release.
 
 ## Layout
 

@@ -84,6 +84,8 @@ export interface ChatToolCallEvent {
  * - `handler_error` — action handler failed; not a generic Retry affordance.
  * - `persistence_error` — save boundary failed; not a generic Retry affordance.
  * - `local_inference` — local model path issue; may recover after load/retry.
+ * - `coding_mutation_unverified` — coding changes lack successful verification.
+ * - `coding_tool_failure` — a coding tool failed without narrower provenance.
  */
 export const CHAT_FAILURE_KINDS = [
   "insufficient_credits",
@@ -96,6 +98,8 @@ export const CHAT_FAILURE_KINDS = [
   "handler_error",
   "persistence_error",
   "local_inference",
+  "coding_mutation_unverified",
+  "coding_tool_failure",
 ] as const;
 
 /**
@@ -105,6 +109,14 @@ export const CHAT_FAILURE_KINDS = [
  * provider"), not a chat reply.
  */
 export type ChatFailureKind = (typeof CHAT_FAILURE_KINDS)[number];
+
+/** Authoritative terminal failure carried independently of assistant prose. */
+export interface ChatTerminalFailure {
+  kind: ChatFailureKind;
+  message: string;
+  transient: boolean;
+  code?: string;
+}
 
 /**
  * Failure kinds for which a one-tap Retry (resend preceding user turn) is a
@@ -135,6 +147,32 @@ export function parseChatFailureKind(
   value: unknown,
 ): ChatFailureKind | undefined {
   return isChatFailureKind(value) ? value : undefined;
+}
+
+/** Strictly validates a terminal failure received across a chat transport. */
+export function parseChatTerminalFailure(
+  value: unknown,
+): ChatTerminalFailure | undefined {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return undefined;
+  }
+  const record = value as Record<string, unknown>;
+  const kind = parseChatFailureKind(record.kind);
+  if (
+    !kind ||
+    typeof record.message !== "string" ||
+    record.message.trim().length === 0 ||
+    typeof record.transient !== "boolean" ||
+    (record.code !== undefined && typeof record.code !== "string")
+  ) {
+    return undefined;
+  }
+  return {
+    kind,
+    message: record.message,
+    transient: record.transient,
+    ...(record.code ? { code: record.code } : {}),
+  };
 }
 
 /** Whether UI surfaces should offer Retry for this structured failure. */

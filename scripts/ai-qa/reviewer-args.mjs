@@ -26,16 +26,15 @@ export function parseReviewerArgs(argv, { defaultVerdictMd } = {}) {
     runDir: null,
     concurrency: 4,
     strict: false,
-    updateDebt: false,
     ...(supportsVerdictMd ? { verdictMd: defaultVerdictMd } : {}),
   };
   const seen = new Set();
 
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index];
-    if (argument === "--strict" || argument === "--update-debt") {
+    if (argument === "--strict") {
       requireUnique(seen, argument);
-      options[argument === "--strict" ? "strict" : "updateDebt"] = true;
+      options.strict = true;
       continue;
     }
     if (
@@ -62,10 +61,6 @@ export function parseReviewerArgs(argv, { defaultVerdictMd } = {}) {
       continue;
     }
     throw new Error(`unknown argument: ${argument}`);
-  }
-
-  if (options.strict && options.updateDebt) {
-    throw new Error("--strict and --update-debt cannot be combined");
   }
 
   return options;

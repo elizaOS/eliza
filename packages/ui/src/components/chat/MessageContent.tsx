@@ -1504,7 +1504,12 @@ export function MessageContent({
   // one-tap Retry that resends the preceding user turn. Permanent gates
   // (`no_provider`, `insufficient_credits`, `missing_capability`) stay off the
   // shared retry contract in `@elizaos/shared`.
-  if (message.failureKind && isRetryableChatFailureKind(message.failureKind)) {
+  if (
+    message.failureKind &&
+    (message.terminalFailure
+      ? message.terminalFailure.transient
+      : isRetryableChatFailureKind(message.failureKind))
+  ) {
     return (
       <div className="border border-warn/30 bg-warn/5 rounded-sm p-3 text-sm">
         <div className="text-muted whitespace-pre-wrap mb-2">

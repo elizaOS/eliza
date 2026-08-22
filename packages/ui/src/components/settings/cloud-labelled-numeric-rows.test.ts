@@ -1,5 +1,5 @@
 /**
- * Source ratchet: remaining labelled 1:1 number settings use SettingsInputRow.
+ * Source guard: remaining labelled 1:1 number settings use SettingsInputRow.
  * Auto Top-Up amount/threshold and affiliates markup. Reads shipped files.
  */
 import { existsSync, readFileSync } from "node:fs";

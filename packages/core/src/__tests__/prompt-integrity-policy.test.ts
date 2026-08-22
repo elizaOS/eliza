@@ -47,6 +47,9 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 	"packages/core/src/runtime/evaluator.ts": [
 		/MAX_EVALUATOR_INPUT_CHARS/,
 		/chars truncated/,
+		/DEFAULT_EVALUATOR_MAX_TOKENS/,
+		/maxTokens\s*:/,
+		/retryMaxTokens/,
 	],
 	"packages/core/src/runtime/message-handler.ts": [
 		/normalizeStringHints/,
@@ -63,6 +66,8 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 		/maybeCompactPlannerTrajectory/,
 		/CONTEXT_COMPACTION/,
 		/projectStepForFinalSynthesis/,
+		/DEFAULT_(?:CODING_)?PLANNER_MAX_TOKENS/,
+		/maxTokens:\s*\d+/,
 	],
 	"packages/core/src/services/message/bot-noise-triage.ts": [
 		/MAX_HISTORY_MESSAGES/,
@@ -336,6 +341,15 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 		/html\.slice\(0,\s*5000\)/,
 		/result\.length\s*>=\s*50/,
 		/textContent\.trim\(\)\.slice\(/,
+	],
+	"plugins/plugin-computeruse/src/actor/brain.ts": [
+		/BRAIN_MAX_ROIS/,
+		/Cap ROIs to/,
+		/roi\s*=\s*[^;]*\.slice\(0,/,
+	],
+	"plugins/plugin-computeruse/src/actor/cascade.ts": [
+		/BRAIN_MAX_ROIS/,
+		/brainOut\.roi\.slice\(0,/,
 	],
 	"packages/browser-bridge-extension/src/page-extract.ts": [
 		/normalizeText\([^\n]+,\s*\d/,
