@@ -122,6 +122,12 @@ function isMissingStripeResource(error: unknown): boolean {
 
 export interface AccountDeletionProviderAdapterDependencies {
   backupRegistry?: AgentBackupObjectStoreRegistry;
+  spoolAuthority?: AccountDeletionSpoolAuthority;
+}
+
+export interface AccountDeletionSpoolAuthority {
+  inspectOrganizationSpools(input: { organizationId: string }): Promise<"absent" | "present">;
+  purgeOrganizationSpools(input: { organizationId: string; idempotencyKey: string }): Promise<void>;
 }
 
 async function deleteBackupDatabaseGraph(organizationId: string): Promise<void> {
@@ -435,12 +441,26 @@ export function createAccountDeletionProviderAdapters(
     },
     spools: {
       async inspect(context) {
-        return (await backupRowsRemain(context.organizationId))
-          ? { state: "action_required", errorCode: "BACKUP_SPOOL_RECONCILIATION_REQUIRED" }
-          : complete(context, "spools");
+        if (!dependencies.spoolAuthority) {
+          return {
+            state: "action_required",
+            errorCode: "BACKUP_SPOOL_AUTHORITY_UNAVAILABLE",
+          };
+        }
+        return (await dependencies.spoolAuthority.inspectOrganizationSpools({
+          organizationId: context.organizationId,
+        })) === "absent"
+          ? complete(context, "spools")
+          : { state: "needs_execution" };
       },
-      async execute() {
-        throw new Error("Backup spools require reconciliation before account deletion");
+      async execute(context, idempotencyKey) {
+        if (!dependencies.spoolAuthority) {
+          throw new Error("Backup spool authority is not configured");
+        }
+        await dependencies.spoolAuthority.purgeOrganizationSpools({
+          organizationId: context.organizationId,
+          idempotencyKey,
+        });
       },
     },
     compute_containers: {

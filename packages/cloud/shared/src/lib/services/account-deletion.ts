@@ -17,7 +17,10 @@ import {
   type AccountDeletionExportRevocationResult,
   reconcileAccountDeletionExportRevocations,
 } from "./account-deletion-export";
-import { createAccountDeletionProviderAdapters } from "./account-deletion-provider-adapters";
+import {
+  type AccountDeletionSpoolAuthority,
+  createAccountDeletionProviderAdapters,
+} from "./account-deletion-provider-adapters";
 import { purgePersonalOrganizationResources } from "./account-deletion-resource-purge";
 import {
   type AccountDeletionProviderAdapters,
@@ -537,6 +540,7 @@ export interface ProcessAccountDeletionResources {
   blob: RuntimeR2Bucket;
   adapters?: AccountDeletionProviderAdapters;
   backupRegistry?: AgentBackupObjectStoreRegistry;
+  spoolAuthority?: AccountDeletionSpoolAuthority;
   purgeOrganizationResources?: typeof purgePersonalOrganizationResources;
 }
 
@@ -576,7 +580,10 @@ export async function processDueAccountDeletions(
   const stewardReactivations = await reconcileCancelingStewardReactivations({ limit, now });
   const adapters =
     resources.adapters ??
-    createAccountDeletionProviderAdapters({ backupRegistry: resources.backupRegistry });
+    createAccountDeletionProviderAdapters({
+      backupRegistry: resources.backupRegistry,
+      spoolAuthority: resources.spoolAuthority,
+    });
   const stewardDeactivations = await reconcileRecoveryStewardDeactivations({
     limit,
     blob: resources.blob,
