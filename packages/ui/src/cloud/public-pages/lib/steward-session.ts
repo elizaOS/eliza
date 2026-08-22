@@ -25,6 +25,7 @@ import {
   TELEGRAM_ACCOUNT_CLAIM_PURPOSE,
 } from "../../join/lib/onboarding-continuation";
 import { decodeJwtPayload } from "../../lib/jwt";
+import { markStewardServerCookieSynced } from "../../lib/steward-session-cookie-sync-marker";
 import { ELIZA_CLOUD_DIRECT_API_BY_HOST } from "../../shell/steward-url";
 
 export function resolveStewardAuthEndpoint(
@@ -95,6 +96,12 @@ export async function syncStewardSessionCookie(
   }
 
   if (typeof window !== "undefined") {
+    // The server cookie is authoritative now. Record this exact token before
+    // publishing it to canonical storage: that write can rerender the mounted
+    // Steward runtime, whose passive mirror must not repeat the successful POST.
+    // The marker is module-private and one-shot; browser event detail cannot
+    // forge it.
+    markStewardServerCookieSynced(token);
     // The cookie boundary may be entered directly by an SDK callback or after
     // the login page already persisted the same token. Canonical storage is
     // idempotent, so both paths publish one authority transition in total.

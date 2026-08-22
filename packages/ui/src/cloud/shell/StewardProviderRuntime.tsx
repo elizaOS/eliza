@@ -35,6 +35,7 @@ import { dispatchStewardSessionChange } from "../../events/steward-session-event
 import { scrubPersistedAgentProfileTokens } from "../../state/agent-profiles";
 import { scrubPersistedActiveServerToken } from "../../state/persistence";
 import { reportRendererDiagnostic } from "../../utils/renderer-diagnostics";
+import { consumeStewardServerCookieSynced } from "../lib/steward-session-cookie-sync-marker";
 import {
   clearServerStewardSessionCookies,
   clearStaleStewardSession,
@@ -113,6 +114,15 @@ function AuthTokenSync({ children }: { children: ReactNode }) {
       }
 
       if (tokenIsExpired(token)) return;
+      if (consumeStewardServerCookieSynced(token)) {
+        // An explicit sync already established this exact token's server
+        // cookie. Seed the passive mirror's local authority without issuing a
+        // duplicate POST. The one-shot marker cannot be forged through DOM
+        // event detail and is invalidated by any token mismatch.
+        lastSyncedToken.current = token;
+        wasAuthenticated.current = true;
+        return;
+      }
       if (token === lastSyncedToken.current) return;
 
       lastSyncedToken.current = token;
@@ -304,6 +314,7 @@ function AuthTokenSync({ children }: { children: ReactNode }) {
 
     const handler = () => syncToken();
     window.addEventListener("storage", handler);
+    window.addEventListener("steward-token-sync", handler);
 
     const visibilityHandler = () => {
       if (document.visibilityState === "visible") {
@@ -329,6 +340,7 @@ function AuthTokenSync({ children }: { children: ReactNode }) {
     return () => {
       clearInterval(refreshInterval);
       window.removeEventListener("storage", handler);
+      window.removeEventListener("steward-token-sync", handler);
       document.removeEventListener("visibilitychange", visibilityHandler);
       window.removeEventListener("online", onlineHandler);
       window.removeEventListener("steward-unauthorized", unauthorizedHandler);

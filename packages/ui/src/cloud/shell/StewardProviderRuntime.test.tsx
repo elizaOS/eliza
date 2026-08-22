@@ -13,7 +13,7 @@ import {
   STEWARD_TOKEN_KEY,
   type StewardSessionChangeDetail,
 } from "@elizaos/shared/steward-session-client";
-import { cleanup, render, waitFor } from "@testing-library/react";
+import { act, cleanup, render, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -22,6 +22,7 @@ import {
   storePendingOnboardingSession,
   TELEGRAM_ACCOUNT_CLAIM_PURPOSE,
 } from "../join/lib/onboarding-continuation";
+import { syncStewardSessionCookie } from "../public-pages/lib/steward-session";
 
 // AuthTokenSync's 401 handling is the load-bearing fix for the re-login loop:
 // a 401 from session-sync or refresh must NOT wipe a still-valid token (a
@@ -134,7 +135,115 @@ afterEach(() => {
   window.sessionStorage.clear();
 });
 
-describe("AuthTokenSync 401 handling", () => {
+describe("AuthTokenSync", () => {
+  it("does not repeat a successful explicit session-cookie sync", async () => {
+    const token = makeJwt({
+      sub: "u1",
+      exp: Math.floor(Date.now() / 1000) + 3600,
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        calls.push({
+          url: String(input),
+          method: init?.method ?? "GET",
+        });
+        return Response.json({ ok: true });
+      }),
+    );
+
+    mount();
+    await act(() => syncStewardSessionCookie(token));
+
+    // Exercise the same mounted-runtime trigger again after the one-shot hint
+    // has been consumed. lastSyncedToken must now carry durable authority.
+    act(() => {
+      window.dispatchEvent(new CustomEvent("steward-token-sync"));
+    });
+
+    await waitFor(() => expect(postsTo("steward-session")).toHaveLength(1));
+    expect(storage.getItem(STEWARD_TOKEN_KEY)).toBe(token);
+  });
+
+  it("does not suppress passive sync after an explicit cookie sync fails", async () => {
+    const token = makeJwt({
+      sub: "u1",
+      exp: Math.floor(Date.now() / 1000) + 3600,
+    });
+    let sessionPostCount = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        calls.push({
+          url: String(input),
+          method: init?.method ?? "GET",
+        });
+        if (String(input).includes("steward-session")) {
+          sessionPostCount += 1;
+          if (sessionPostCount === 1) {
+            return Response.json({ error: "sync rejected" }, { status: 500 });
+          }
+        }
+        return Response.json({ ok: true });
+      }),
+    );
+
+    mount();
+    await expect(syncStewardSessionCookie(token)).rejects.toThrow(
+      "sync rejected",
+    );
+
+    storage.setItem(STEWARD_TOKEN_KEY, token);
+    act(() => {
+      window.dispatchEvent(new CustomEvent("steward-token-sync"));
+    });
+
+    await waitFor(() => expect(postsTo("steward-session")).toHaveLength(2));
+  });
+
+  it.each(["storage", "steward-token-sync"])(
+    "still mirrors a token announced by an ordinary %s event",
+    async (eventName) => {
+      const token = makeJwt({
+        sub: "u1",
+        exp: Math.floor(Date.now() / 1000) + 3600,
+      });
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+          calls.push({
+            url: String(input),
+            method: init?.method ?? "GET",
+          });
+          return Response.json({ ok: true });
+        }),
+      );
+
+      mount();
+      storage.setItem(STEWARD_TOKEN_KEY, token);
+      act(() => {
+        if (eventName === "storage") {
+          window.dispatchEvent(
+            new StorageEvent("storage", {
+              key: STEWARD_TOKEN_KEY,
+              newValue: token,
+            }),
+          );
+          return;
+        }
+        // Even a tempting boolean/detail payload is untrusted. Only the
+        // module-private one-shot marker may suppress the mirror POST.
+        window.dispatchEvent(
+          new CustomEvent("steward-token-sync", {
+            detail: { token, serverCookieSynced: true },
+          }),
+        );
+      });
+
+      await waitFor(() => expect(postsTo("steward-session")).toHaveLength(1));
+    },
+  );
+
   it("never carries a pending Telegram account claim through the passive token sync", async () => {
     // The passive JWT → cookie mirror runs on any authenticated page load with
     // no user gesture, so it must not execute the account-claim merge. Login
