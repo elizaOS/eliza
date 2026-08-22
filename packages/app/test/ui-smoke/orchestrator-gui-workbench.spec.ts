@@ -794,10 +794,12 @@ test.describe("orchestrator GUI workbench", () => {
     await viewInteract(page, "orchestrator", "agent-click", {
       id: "add-agent-cancel",
     });
+    await expect(page.getByTestId("orchestrator-timeline")).toBeVisible();
 
-    await viewInteract(page, "orchestrator", "agent-click", {
+    const inspect = (await viewInteract(page, "orchestrator", "agent-click", {
       id: "sub-agent-inspect-session-codex",
-    });
+    })) as { ok?: boolean };
+    expect(inspect.ok).toBe(true);
     const operator = page.getByTestId("orchestrator-operator-detail");
     await expect(operator).toBeVisible();
     elements = await expectExactRootAgentParity({
