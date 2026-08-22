@@ -128,6 +128,7 @@ function createProxyHeaders(req: Request, target: URL): Headers {
   for (const header of HOP_BY_HOP_HEADERS) {
     headers.delete(header);
   }
+  rewriteSameOriginRendererProxySource(headers, req.url, target);
   if (isRendererLocalVoiceProxyPath(target.pathname)) {
     // The loopback gateway returns its bound direct WebSocket URL unless it is
     // told that an HTTP proxy also owns upgrades. The static renderer does not
@@ -136,6 +137,37 @@ function createProxyHeaders(req: Request, target: URL): Headers {
     headers.delete("x-forwarded-proto");
   }
   return headers;
+}
+
+/**
+ * Keep the packaged static renderer proxy at parity with Vite's trusted local
+ * proxy boundary. A same-origin browser request to 5174 carries that renderer
+ * origin in Origin/Referer; forwarding it unchanged to the API on 32437 makes
+ * the API correctly reject the apparent cross-origin request. Rewrite only
+ * when the source header exactly matches the incoming renderer origin. A real
+ * cross-origin caller retains its headers and remains subject to API policy.
+ */
+export function rewriteSameOriginRendererProxySource(
+  headers: Headers,
+  incomingUrl: string,
+  target: URL,
+): boolean {
+  const origin = headers.get("origin");
+  const referer = headers.get("referer");
+  const browserSource = origin ?? referer;
+  if (!browserSource) return false;
+
+  try {
+    const incomingOrigin = new URL(incomingUrl).origin;
+    const sourceOrigin = new URL(browserSource).origin;
+    if (sourceOrigin !== incomingOrigin) return false;
+    if (origin) headers.set("origin", target.origin);
+    if (referer) headers.set("referer", `${target.origin}/`);
+    headers.set("sec-fetch-site", "same-origin");
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export function createRendererApiProxyRequestInit(

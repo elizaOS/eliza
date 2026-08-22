@@ -544,9 +544,7 @@ describe("App navigate-view shell handler", () => {
       "http://127.0.0.1:32437",
     );
     expect(navigated.searchParams.get("appWindow")).toBe("1");
-    expect(navigated.searchParams.get("desktopSurface")).toBe(
-      "workspace",
-    );
+    expect(navigated.searchParams.get("desktopSurface")).toBe("workspace");
     expect(window.location.hash).toBe("#today");
   });
 });

@@ -1113,7 +1113,10 @@ async function resolveRendererUrlForCurrentRuntime(): Promise<string> {
           process.env as Record<string, string | undefined>,
           runtime.externalApi.base,
         )
-      : apiBaseOwner.getCurrent().base;
+      : (apiBaseOwner.getCurrent().base ??
+        resolveInitialApiBase(
+          process.env as Record<string, string | undefined>,
+        ));
 
   // Every renderer window needs the runtime target on its first document
   // load. The static HTML inject remains the canonical secret-bearing boot

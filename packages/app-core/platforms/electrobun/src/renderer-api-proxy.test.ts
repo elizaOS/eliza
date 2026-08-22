@@ -7,10 +7,44 @@ import {
   resolveRendererLocalVoiceGatewayBase,
   resolveRendererProxyIdleTimeoutSeconds,
   resolveRendererProxyTargetBase,
+  rewriteSameOriginRendererProxySource,
   shouldProxyToApiBase,
 } from "./renderer-api-proxy";
 
 describe("renderer API proxy", () => {
+  it("rewrites an exact same-origin renderer referer to the upstream API", () => {
+    const headers = new Headers({
+      referer: "http://127.0.0.1:5174/notes",
+      "sec-fetch-site": "same-origin",
+    });
+
+    expect(
+      rewriteSameOriginRendererProxySource(
+        headers,
+        "http://127.0.0.1:5174/api/views/notes/bundle.js",
+        new URL("http://127.0.0.1:32437/api/views/notes/bundle.js"),
+      ),
+    ).toBe(true);
+    expect(headers.get("referer")).toBe("http://127.0.0.1:32437/");
+  });
+
+  it("does not rewrite a cross-origin renderer source", () => {
+    const headers = new Headers({
+      origin: "https://attacker.example",
+      referer: "https://attacker.example/notes",
+    });
+
+    expect(
+      rewriteSameOriginRendererProxySource(
+        headers,
+        "http://127.0.0.1:5174/api/views/notes/bundle.js",
+        new URL("http://127.0.0.1:32437/api/views/notes/bundle.js"),
+      ),
+    ).toBe(false);
+    expect(headers.get("origin")).toBe("https://attacker.example");
+    expect(headers.get("referer")).toBe("https://attacker.example/notes");
+  });
+
   it("recognizes same-origin backend proxy paths", () => {
     expect(isRendererApiProxyPath("/api/status")).toBe(true);
     expect(isRendererApiProxyPath("/api/conversations/123/messages")).toBe(
