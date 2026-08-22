@@ -1041,10 +1041,21 @@ async function resolvePersistedAssistantTurn(
       result,
       userMessageId,
     );
+    const generatedTerminalFailure = parseChatTerminalFailure(
+      generatedTurn.content.terminalFailure,
+    );
+    const terminalFailureNeedsReconciliation =
+      result.terminalFailure !== undefined &&
+      (generatedTerminalFailure?.kind !== result.terminalFailure.kind ||
+        generatedTerminalFailure?.message !== result.terminalFailure.message ||
+        generatedTerminalFailure?.transient !==
+          result.terminalFailure.transient ||
+        generatedTerminalFailure?.code !== result.terminalFailure.code);
     if (
       generatedText !== text ||
       (userMessageId !== undefined &&
-        generatedTurn.content.inReplyTo !== userMessageId)
+        generatedTurn.content.inReplyTo !== userMessageId) ||
+      terminalFailureNeedsReconciliation
     ) {
       try {
         await runtime.roomHandlerQueue.runInLease(
