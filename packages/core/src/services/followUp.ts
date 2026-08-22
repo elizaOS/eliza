@@ -198,8 +198,14 @@ export class FollowUpService extends Service {
 				throw new Error(`Task ${taskId} not found`);
 			}
 
-			// Update task metadata
+			// Update task metadata and unqueue the task. WHY drop the "queue"
+			// tag: the scheduler polls only queue-tagged rows, and nothing else
+			// consults metadata.status — leaving the tag would fire the reminder
+			// at dueAt even though the operator already completed it, after
+			// which the one-shot lifecycle deletes the record. Keeping the row
+			// (without "queue") preserves the completion history.
 			await this.runtime.updateTask(taskId, {
+				tags: (task.tags ?? []).filter((tag) => tag !== "queue"),
 				metadata: {
 					...task.metadata,
 					status: "completed",
@@ -358,6 +364,11 @@ export class FollowUpService extends Service {
 				runtime: IAgentRuntime,
 				task: Task,
 			): Promise<boolean> => {
+				// Execution gate for rows stored before completion stopped
+				// unqueueing them: an explicitly completed follow-up must never
+				// fire. Rows without a status field stay runnable (backward
+				// compatibility with tasks created outside scheduleFollowUp).
+				if (task.metadata?.status === "completed") return false;
 				const targetEntityId = task.metadata?.targetEntityId as
 					| UUID
 					| undefined;
