@@ -94,7 +94,6 @@ export function MeetingJoinBar({
   return (
     <div className={cn("flex flex-col gap-2", className)}>
       <form
-        data-agent-id="meeting-join-form"
         data-testid="meeting-join-form"
         onSubmit={submit}
         className="flex flex-wrap items-center gap-2"
@@ -178,7 +177,6 @@ export function MeetingJoinBar({
               </span>
               <button
                 type="button"
-                data-agent-id={`stop-meeting-${m.id}`}
                 data-testid={`stop-meeting-${m.id}`}
                 onClick={() => onStop(m.id)}
                 className="ml-auto rounded-sm px-2 py-0.5 text-xs text-muted transition-colors hover:bg-bg-muted/30 hover:text-txt"

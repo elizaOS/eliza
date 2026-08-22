@@ -273,7 +273,6 @@ export function CameraPageView(): React.JSX.Element {
 
           <div className="absolute inset-x-0 bottom-0 flex items-center justify-center p-[calc(env(safe-area-inset-bottom,0px)+1.75rem)]">
             <Button
-              data-agent-id="camera-capture"
               data-testid="camera-capture"
               aria-label={t("camera.capture", { defaultValue: "Take photo" })}
               onClick={handleCapture}

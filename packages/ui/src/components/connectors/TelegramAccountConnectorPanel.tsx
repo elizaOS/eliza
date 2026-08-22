@@ -5,7 +5,6 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { AgentButton } from "../../agent-surface/components";
 import { client } from "../../api";
 import { useAppSelector } from "../../state";
 import { PagePanel } from "../composites/page-panel";
@@ -294,9 +293,7 @@ export function TelegramAccountConnectorPanel() {
                   "Telegram authentication is saved locally. Restart the agent to bring the connector online.",
               })}
             </div>
-            <AgentButton
-              agentId="telegram-account-restart-agent"
-              agentLabel="Restart agent"
+            <Button
               variant="outline"
               size="sm"
               className="h-8 rounded-sm px-4 text-xs-tight font-semibold"
@@ -308,14 +305,12 @@ export function TelegramAccountConnectorPanel() {
               {restarting
                 ? t("common.restarting", { defaultValue: "Restarting\u2026" })
                 : t("common.restart", { defaultValue: "Restart agent" })}
-            </AgentButton>
+            </Button>
           </div>
         ) : null}
 
         {status?.detail.status !== "idle" ? (
-          <AgentButton
-            agentId="telegram-account-disconnect"
-            agentLabel="Disconnect Telegram account"
+          <Button
             variant="outline"
             size="sm"
             className="h-8 rounded-sm px-4 text-xs-tight font-semibold"
@@ -329,7 +324,7 @@ export function TelegramAccountConnectorPanel() {
                   defaultValue: "Disconnecting\u2026",
                 })
               : t("common.disconnect", { defaultValue: "Disconnect" })}
-          </AgentButton>
+          </Button>
         ) : null}
 
         {status?.detail.status === "waiting_for_provisioning_code" ? (

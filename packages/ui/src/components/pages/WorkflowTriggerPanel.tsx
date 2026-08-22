@@ -9,7 +9,6 @@ import {
   X,
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
-import { AgentButton } from "../../agent-surface/components";
 import { client } from "../../api";
 import type { WorkflowDefinition } from "../../api/client-types-chat";
 import type {
@@ -215,12 +214,8 @@ export function WorkflowTriggerPanel({
             >
               <Icon className="h-3.5 w-3.5 text-primary" />
               <span>{triggerSummary(trigger)}</span>
-              <AgentButton
-                agentId={`workflow-trigger-delete-${trigger.id}`}
-                agentLabel={`Delete ${meta.label} trigger`}
+              <button
                 type="button"
-                variant="ghost"
-                size="icon-sm"
                 className="ml-0.5 text-muted-foreground opacity-40 hover:text-destructive group-hover:opacity-100"
                 aria-label={`Delete ${meta.label} trigger`}
                 onClick={() =>
@@ -238,7 +233,7 @@ export function WorkflowTriggerPanel({
                 }
               >
                 <Trash2 className="h-3 w-3" />
-              </AgentButton>
+              </button>
             </span>
           );
         })}
@@ -369,9 +364,7 @@ export function WorkflowTriggerPanel({
               className="h-8 min-w-40 flex-1 text-xs"
             />
           )}
-          <AgentButton
-            agentId="workflow-trigger-save"
-            agentLabel="Save trigger"
+          <Button
             size="icon-sm"
             aria-label="Save trigger"
             disabled={busy || !canCreate}
@@ -382,7 +375,7 @@ export function WorkflowTriggerPanel({
             ) : (
               <Plus className="h-3.5 w-3.5" />
             )}
-          </AgentButton>
+          </Button>
           <Button
             variant="ghost"
             size="icon-sm"

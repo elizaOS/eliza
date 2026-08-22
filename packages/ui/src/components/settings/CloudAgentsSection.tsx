@@ -638,7 +638,6 @@ export function CloudAgentsSection() {
                     autoFocus
                   />
                   <Button
-                    data-agent-id={`cloud-agent-rename-save-${agent.agent_id}`}
                     variant="default"
                     size="sm"
                     disabled={busy}
@@ -729,7 +728,6 @@ export function CloudAgentsSection() {
                     )}
                     {canResume && (
                       <Button
-                        data-agent-id={`cloud-agent-start-${agent.agent_id}`}
                         variant="ghost"
                         size="sm"
                         disabled={busy}
@@ -751,7 +749,6 @@ export function CloudAgentsSection() {
                       <Pencil className="h-4 w-4" aria-hidden />
                     </Button>
                     <Button
-                      data-agent-id={`cloud-agent-delete-${agent.agent_id}`}
                       variant="ghost"
                       size="sm"
                       disabled={busy || isActive}

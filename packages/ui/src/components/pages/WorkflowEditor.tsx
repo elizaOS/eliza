@@ -574,7 +574,6 @@ export function WorkflowEditor({
           )}
         </Button>
         <Button
-          data-agent-id="run-workflow"
           className="hover:bg-accent/85"
           size="icon-sm"
           onClick={requestRun}
@@ -880,7 +879,6 @@ export function WorkflowEditor({
                         return (
                           <>
                             <Button
-                              data-agent-id={`approve-workflow-${selectedRun.id}`}
                               size="icon-sm"
                               aria-label="Approve"
                               title="Approve"
@@ -898,7 +896,6 @@ export function WorkflowEditor({
                               <Check className="h-4 w-4" />
                             </Button>
                             <Button
-                              data-agent-id={`deny-workflow-${selectedRun.id}`}
                               size="icon-sm"
                               variant="outline"
                               aria-label="Deny"
@@ -1021,7 +1018,6 @@ export function WorkflowEditor({
       {runInputOpen ? (
         <div className="absolute inset-0 z-30 grid place-items-center bg-background/80 p-4">
           <form
-            data-agent-id="run-workflow-with-input"
             aria-label="Workflow input"
             className="w-full max-w-md rounded-2xl border border-border/60 bg-card p-4 shadow-xl"
             onSubmit={(event) => {
