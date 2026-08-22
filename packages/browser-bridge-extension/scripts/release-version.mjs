@@ -221,6 +221,12 @@ export function buildGitHubReleaseAssetDownloadUrl(
   return `https://github.com/${repository}/releases/download/${release.tag}/${assetName}`;
 }
 
+export function resolveFirefoxReleaseInstall(firefoxAddonsUrl) {
+  return firefoxAddonsUrl
+    ? { installKind: "firefox_addons", installUrl: firefoxAddonsUrl }
+    : { installKind: "firefox_unsigned_submission", installUrl: null };
+}
+
 export function resolveBrowserBridgeStoreUrls(env = process.env) {
   const chromeWebStoreUrl =
     typeof env.ELIZA_BROWSER_BRIDGE_CHROME_STORE_URL === "string" &&

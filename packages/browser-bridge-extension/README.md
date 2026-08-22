@@ -16,9 +16,9 @@ Once installed and paired, the extension:
 
 | Browser | Build target |
 |---|---|
-| Chrome / Chromium / Edge | `bun run build:chrome` → `dist/chrome/` |
+| Chrome | `bun run build:chrome` → `dist/chrome/` |
 | Firefox | `bun run build:firefox` → `dist/firefox/` |
-| Safari (macOS / iOS) | `bun run build:safari-webextension` → `dist/safari/`, then packaged with Xcode |
+| Safari (macOS) | `bun run build:safari-webextension` → `dist/safari/`, then packaged with Xcode |
 
 ## Security model
 

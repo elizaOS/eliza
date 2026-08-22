@@ -13,7 +13,10 @@ import {
   createDeterministicDirectoryArchive,
   createDeterministicWebExtensionArchive,
 } from "../scripts/package-webextension.mjs";
-import { resolveSourceDateIso } from "../scripts/release-version.mjs";
+import {
+  resolveFirefoxReleaseInstall,
+  resolveSourceDateIso,
+} from "../scripts/release-version.mjs";
 import { run } from "../scripts/script-utils.mjs";
 
 const packageRoot = path.resolve(
@@ -72,6 +75,21 @@ describe("cross-browser extension build", () => {
     expect(() => parseBrowserBridgeBuildKind("netscape")).toThrow(
       /Expected chrome, firefox, or safari/,
     );
+  });
+
+  it("never exposes an unsigned Firefox submission archive as installable", () => {
+    expect(resolveFirefoxReleaseInstall(null)).toEqual({
+      installKind: "firefox_unsigned_submission",
+      installUrl: null,
+    });
+    expect(
+      resolveFirefoxReleaseInstall(
+        "https://addons.mozilla.org/firefox/addon/eliza/",
+      ),
+    ).toEqual({
+      installKind: "firefox_addons",
+      installUrl: "https://addons.mozilla.org/firefox/addon/eliza/",
+    });
   });
 
   it("emits least-privilege Chrome and Firefox manifests from shared code", async () => {
@@ -226,5 +244,7 @@ describe("cross-browser extension build", () => {
       expect(metadata).toMatch(/recovery/i);
       expect(metadata).not.toMatch(/pairing json/i);
     }
+    expect(firefox).toMatch(/unsigned AMO submission archive/i);
+    expect(firefox).toMatch(/Mozilla signing/i);
   });
 });
