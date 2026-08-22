@@ -46,6 +46,60 @@ The M4 follow-up therefore stays deliberately small:
 
 This does not close the full goal. The completion audit still requires truly bounded document/message/attachment storage reads, measured Gmail acquisition caching, room-scoped manifest persistence and restart readback, deterministic autonomous planning, credentialed live-model trials, real-format corpora, context-inspector E2E, real Postgres, mutation killing, and soak/performance evidence.
 
+### Third-pass continuity and test hardening
+
+The next focused slice implements the smallest restart-oriented bridge that can
+be justified by current resolvers. Planner trajectories now contribute a
+versioned `metadata["elizaos:progressiveContent"]` envelope to the inbound
+dialogue memory before the session-summary query and to the assistant reply.
+Ordinary rolling summaries union that envelope while preserving unrelated
+metadata. The union has deterministic rollover for reference count,
+per-reference range count, modified files, pending processes, and a canonical
+256 KiB serialized limit. Explicit high-water counters make every omission
+visible; revision changes supersede obsolete revision-bound ranges.
+
+Only restart-resolvable reference shapes are persisted: document and memory
+UUID coordinates and opaque attachment coordinates. FILE path hashes, Gmail's
+in-process lookup coordinates, email references, and generic tool-result
+references are excluded because an opaque token without a durable authorized
+resolver is false continuity. Persisted references still reauthorize when
+resolved. Derivation, adapter rejection, thrown updates, missing rows, and
+mismatched readback are reported but cannot turn an already-effectful planner
+turn into a failure and duplicate its effects on retry.
+
+A strict deterministic planning scenario now drives the real production FILE
+action twice. It withholds the planted canary from page one, derives page two's
+offset and expected revision from the first `ReadView`, and permits the final
+answer only after the canary page. Run
+`e2d26e83-2b05-45e5-9ac2-e0597697b9b7` passed in 2.547 seconds on the rebased
+head. This proves
+autonomous continuation control flow under a deterministic fixture, not
+fresh-process FILE recovery or independent semantic answer generation; the
+fixture authors the terminal answer and FILE deliberately is not in the
+restart manifest.
+
+The benchmark now uses one cold and 1,000 warm samples, streamed corpus
+generation, fresh child processes, child deadlines/output caps, a real
+production-handler memory probe, and an intentionally leaking full-buffer
+positive control. The latest calibration measured a 278,528-byte real-handler
+delta under a 4 MiB allowance; the 10,371,072-byte leaking control was detected.
+Warm latency was p50 0.804 ms, p95 6.191 ms, and p99 9.505 ms. These are
+calibration observations, not portable fixed CI latency promises. The invariant
+gates are bounded source reads, page-scaled memory, exact traversal, controlled
+children, and mandatory mutant detection.
+
+The scenario corpus ratchet is now 47 strict/model-free, 74 legacy, and 121
+total. Focused validation includes 33 manifest/summary/message tests, 20 static
+scenario/migration tests, the autonomous scenario above, and the benchmark.
+Core typecheck passes on the rebased follow-up. No exact-head root verification
+or hosted CI is claimed until those wider gates complete.
+
+The completion boundary remains substantial: fresh-process manifest readback,
+durable FILE/email/tool-result resolution, all-source bounded storage I/O,
+private spill, rich real-format corpora, live-model repetitions and judging,
+context-inspector API/UI E2E, real Postgres, fault/concurrency matrices,
+mutation-kill completion, and sustained soak evidence are still required.
+
 ## Method and limits
 
 - Audited maintained source and tests in core, agent, app-core, coding tools, documents, Google Workspace/inbox, scenario runner, evidence, and root test orchestration.

@@ -65,6 +65,10 @@ provider always requires an exact fixture or explicit resolver:
 - `deterministic-coding-tools-actions` covers the real coding-tools `FILE`,
   `SHELL`, and `WORKTREE` handlers against an isolated throwaway git repo under
   `/tmp`, including file side effects and worktree cleanup.
+- `deterministic-progressive-content-planning` covers one autonomous message
+  turn through strict Stage 1, planner, and evaluator fixtures. The real `FILE`
+  action returns a partial `ReadView`; the next planner call must use its exact
+  `nextOffset` and revision before the model may answer from a late canary.
 - `deterministic-agent-skills-actions` covers the real agent-skills parent and
   promoted local actions: toggle, uninstall, and `USE_SKILL`, with real local
   skill storage side effects and no network dependency.

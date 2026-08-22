@@ -28,6 +28,12 @@ export interface DeriveCompactionContentManifestOptions {
 	maxRangesPerReference?: number;
 	maxVisitedValues?: number;
 	maxDepth?: number;
+	/**
+	 * Optional persistence-boundary filter. A source kind must be omitted when
+	 * its opaque reference cannot be resolved after process restart without
+	 * ambient authority or source coordinates that the manifest does not store.
+	 */
+	includeReference?: (reference: ContentReference) => boolean;
 }
 
 const DEFAULT_MAX_REFERENCES = COMPACTION_CONTENT_MANIFEST_MAX_REFERENCES;
@@ -105,6 +111,8 @@ export function deriveCompactionContentManifest(
 		reason: string,
 		range?: CompactionContentRange,
 	) => {
+		if (options.includeReference && !options.includeReference(reference))
+			return;
 		const key = referenceKey(reference);
 		let entry = entries.get(key);
 		if (!entry) {

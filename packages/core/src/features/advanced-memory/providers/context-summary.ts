@@ -1,9 +1,9 @@
 /**
  * The `SUMMARIZED_CONTEXT` provider of the advanced-memory capability: injects
- * the room's current rolling session summary (text, message range, date, and
- * topics) into prompt context. Reads the complete summary from `MemoryService`
- * via `runtime.getService("memory")`; contributes nothing when no service or
- * summary exists.
+ * the room's current rolling session summary and a bounded, body-free index of
+ * recoverable content references into prompt context. Reads the complete
+ * summary from `MemoryService` via `runtime.getService("memory")`; contributes
+ * nothing when no service or summary exists.
  */
 import type {
 	IAgentRuntime,
@@ -14,6 +14,10 @@ import type {
 } from "../../../types/index.ts";
 import { addHeader } from "../../../utils.ts";
 import type { MemoryService } from "../services/memory-service.ts";
+import {
+	parseSessionSummaryContentManifest,
+	renderSessionSummaryContentManifest,
+} from "../session-summary-content-manifest.ts";
 import { logAdvancedMemoryTrajectory } from "../trajectory.ts";
 
 export const contextSummaryProvider: Provider = {
@@ -74,9 +78,18 @@ export const contextSummaryProvider: Provider = {
 
 			const summary = currentSummary.summary;
 			const topics = currentSummary.topics ?? [];
+			const persistedContentManifest = parseSessionSummaryContentManifest(
+				currentSummary.metadata,
+			);
+			const contentManifest = renderSessionSummaryContentManifest(
+				currentSummary.metadata,
+			);
 
 			let summaryOnly = `**Previous Conversation** (${messageRange}, ${timeRange})\n`;
 			summaryOnly += summary;
+			if (contentManifest) {
+				summaryOnly += `\n\n${contentManifest}`;
+			}
 
 			let summaryWithTopics = summaryOnly;
 			if (topics.length > 0) {
@@ -108,6 +121,8 @@ export const contextSummaryProvider: Provider = {
 					summaryText: summary,
 					messageCount: currentSummary.messageCount,
 					topics: topics.join(", "),
+					contentManifestReferenceCount:
+						persistedContentManifest?.contentRefs.length ?? 0,
 				},
 				values: { sessionSummaries, sessionSummariesWithTopics },
 				text: sessionSummariesWithTopics,
