@@ -2307,8 +2307,8 @@ export class SubAgentRouter extends Service {
   private async completionRelayDeferralTaskId(
     sessionId: string,
   ): Promise<string | null | "drop"> {
-    if (process.env.ELIZA_RELAY_AFTER_VERIFY === "0") return null;
-    if (!shouldAutoVerifyGoal()) return null;
+    const deferralEnabled =
+      process.env.ELIZA_RELAY_AFTER_VERIFY !== "0" && shouldAutoVerifyGoal();
     const tasks = this.runtime.getService("ORCHESTRATOR_TASK_SERVICE") as {
       getTaskForSession?: (sessionId: string) => Promise<{
         id?: string;
@@ -2323,6 +2323,7 @@ export class SubAgentRouter extends Service {
       // Kept at warn: an undeferred relay ships before the verdict, and the
       // only trace of why is here (plugin info never reaches bot.log).
       if (!record?.id) {
+        if (!deferralEnabled) return null;
         this.log("warn", "completion relay not deferred: no task record", {
           sessionId,
         });
@@ -2335,13 +2336,15 @@ export class SubAgentRouter extends Service {
         interruptReason.startsWith("user")
       ) {
         // The user stopped the task; the child's last turn still reported a
-        // completion. "it's ready" for a cancelled build is never right.
+        // completion. "it's ready" for a cancelled build is never right —
+        // whether or not verification/deferral is enabled.
         this.log("info", "completion relay dropped: task stopped by user", {
           sessionId,
           taskId: record.id,
         });
         return "drop";
       }
+      if (!deferralEnabled) return null;
       if (
         ["done", "parked", "failed", "cancelled", "archived"].includes(
           String(record.status),

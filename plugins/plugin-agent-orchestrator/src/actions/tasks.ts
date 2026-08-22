@@ -4570,6 +4570,7 @@ async function runStopAgent(
     // coordinator-synthesized "stopped before completion" would be a duplicate.
     await markSessionAdministrativelyStopped(service, target.id, "user_stop");
     await service.stopSession(target.id);
+    await interruptOwningTask(runtime, target.id, "user_stop");
     if (
       (state as { codingSession?: { id?: string } } | undefined)?.codingSession
         ?.id === target.id
@@ -4672,6 +4673,28 @@ async function runListAgents(
 
 // ── action: cancel (CANCEL_TASK) ────────────────────────────────────────────
 
+/** A stopped/cancelled session's durable task must read user-interrupted too:
+ * with only the session stopped, a sibling lane's completion still verified
+ * and relayed, and the wave launched further lanes. Best-effort — the stop
+ * confirmation stands even when the task lookup fails. */
+async function interruptOwningTask(
+  runtime: IAgentRuntime,
+  sessionId: string,
+  reason: string,
+): Promise<void> {
+  const taskService = runtime.getService?.(
+    OrchestratorTaskService.serviceType,
+  ) as OrchestratorTaskService | null | undefined;
+  if (!taskService?.getTaskForSession) return;
+  try {
+    const record = await taskService.getTaskForSession(sessionId);
+    if (record?.id) await taskService.interruptTask(record.id, reason);
+  } catch {
+    // error-policy:J4 the session stop already succeeded; task marking is
+    // reinforcement, not a gate.
+  }
+}
+
 async function runCancel(
   runtime: IAgentRuntime,
   _message: Memory,
@@ -4707,6 +4730,7 @@ async function runCancel(
         );
         await (service.cancelSession?.(session.id) ??
           service.stopSession(session.id));
+        await interruptOwningTask(runtime, session.id, "user_cancel");
         stoppedSessions.push(session.id);
       }
       // The cancel confirmation is the complete answer to a single-operation
@@ -4794,6 +4818,7 @@ async function runCancel(
     await markSessionAdministrativelyStopped(service, target.id, "user_cancel");
     await (service.cancelSession?.(target.id) ??
       service.stopSession(target.id));
+    await interruptOwningTask(runtime, target.id, "user_cancel");
     // Chat gets the task LABEL (findInFlightWork naming), never the raw
     // session/thread id — structural ids stay in data as receipts.
     const label = labelFor(target);

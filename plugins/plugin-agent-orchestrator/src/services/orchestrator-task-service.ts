@@ -1165,6 +1165,10 @@ export class OrchestratorTaskService extends Service {
   // from two sites for one turn; without this guard both runs read the same
   // attempt counter across the model `await` and double-send a correction.
   private readonly autoVerifyInFlight = new Set<string>();
+  // Lock-free fast signal of a user stop: the write lock can be held for a
+  // whole verify lap (judge model call + corrective send), and the stop must
+  // gate those long paths BEFORE the serialized status write lands.
+  private readonly pendingUserInterrupts = new Set<string>();
 
   /** Per-task async mutex serializing the two completion-metadata writers
    * (autoVerifyCompletion and validateTask). Both replace `task.metadata`
@@ -1912,8 +1916,25 @@ export class OrchestratorTaskService extends Service {
             { taskId, sessionId },
           );
         }
-        const completedDoc = await this.store.getTask(taskId);
-        if (completedDoc && userInterrupted(completedDoc.task)) {
+        // Atomic with the interrupt: the check and the status advance sit
+        // under the task's write lock, so a stop landing between them cannot
+        // be overwritten by interrupted + completion_reported → validating.
+        const completionAccepted = await this.withTaskWriteLock(
+          taskId,
+          async () => {
+            const completedDoc = await this.store.getTask(taskId);
+            if (
+              completedDoc &&
+              (userInterrupted(completedDoc.task) ||
+                this.pendingUserInterrupts.has(taskId))
+            ) {
+              return false;
+            }
+            await this.advanceTaskStatus(taskId, "completion_reported");
+            return true;
+          },
+        );
+        if (!completionAccepted) {
           // The user cancelled; the stopped child's final turn still reports
           // a completion. `interrupted + completion_reported → validating`
           // would verify and relay "it's ready" for a build the user stopped.
@@ -1935,7 +1956,6 @@ export class OrchestratorTaskService extends Service {
           this.emitChange(taskId);
           break;
         }
-        await this.advanceTaskStatus(taskId, "completion_reported");
         // Cross-surface arbitration for the digest emitter: stamp this
         // completion on the supervisor BEFORE its next tick, so the room's
         // status digest yields to the completion relay the router posts for
@@ -3169,6 +3189,16 @@ export class OrchestratorTaskService extends Service {
     if (!doc) return;
     if (doc.task.paused) return;
     if (TERMINAL_TASK_STATUSES.has(doc.task.status)) return;
+    if (userInterrupted(doc.task)) {
+      // The user stopped this task; the dying session's error must not fire
+      // `retrying` — interrupted → retrying → active resurrected the build
+      // and re-armed verification with the stamp still on it.
+      this.log("info", "session error on a user-interrupted task: ignored", {
+        taskId,
+        sessionId,
+      });
+      return;
+    }
 
     // Scope the budget to the current run: an operator `restartTask` stamps a
     // budget epoch, and sessions spawned before it (a prior failed run's dead
@@ -4047,7 +4077,23 @@ export class OrchestratorTaskService extends Service {
   ): Promise<void> {
     try {
       const doc = await this.store.getTask(taskId);
-      if (!doc || doc.task.metadata?.verifyEscalationNotifiedAt) return;
+      if (!doc) return;
+      // One notice per LANE, not per task: the second lane to park was
+      // silent (its relay already dropped, the task-level stamp set by the
+      // first lane's notice), so half the build vanished without a word.
+      const laneScoped =
+        details.sessionId &&
+        this.laneScope(doc, details.sessionId).laneSessionIds.length > 1;
+      const laneNotices = isRecord(doc.task.metadata?.laneVerifyNoticeAt)
+        ? (doc.task.metadata.laneVerifyNoticeAt as Record<string, unknown>)
+        : {};
+      if (
+        laneScoped
+          ? details.sessionId && laneNotices[details.sessionId]
+          : doc.task.metadata?.verifyEscalationNotifiedAt
+      ) {
+        return;
+      }
       const origin = await this.getTaskOriginTarget(taskId);
       if (!origin) return;
       const send = (
@@ -4122,6 +4168,14 @@ export class OrchestratorTaskService extends Service {
         metadata: {
           ...doc.task.metadata,
           verifyEscalationNotifiedAt: nowIso(),
+          ...(laneScoped && details.sessionId
+            ? {
+                laneVerifyNoticeAt: {
+                  ...laneNotices,
+                  [details.sessionId]: nowIso(),
+                },
+              }
+            : {}),
         },
       });
       if (suppressed) return;
@@ -4436,11 +4490,13 @@ export class OrchestratorTaskService extends Service {
     if (!doc) return null;
     let from = doc.task.status;
     // A multi-lane task sits on ONE status: a sibling lane's failed verdict
-    // moved it to active while this lane's verdict was still queued. The
-    // lane's completion already reported; re-enter validating for it.
+    // moved it to active — or its park moved it to waiting_on_user — while
+    // this lane's verdict was still queued. The lane's completion already
+    // reported; re-enter validating for it (a parked sibling's park is
+    // restored by the all-verdicts branch below).
     if (
       sessionId &&
-      from === "active" &&
+      (from === "active" || from === "waiting_on_user") &&
       this.laneScope(doc, sessionId).laneSessionIds.length > 1
     ) {
       await this.store.updateTask(taskId, { status: "validating" });
@@ -4930,13 +4986,24 @@ export class OrchestratorTaskService extends Service {
     {
       let doc = await this.store.getTask(taskId);
       if (!doc) return;
-      // Only act on the state the task_complete event just produced. A human or
-      // the manual auto-validate route may have already moved it on.
+      // Only act on the state the task_complete event just produced. A human
+      // or the manual auto-validate route may have already moved it on. A
+      // multi-lane sibling may have flipped it meanwhile — failed (active) or
+      // parked (waiting_on_user) — while THIS lane's verification was queued
+      // behind the write lock; its verdict must still land (a dropped lane
+      // stranded the task with no verdict and its relay rode the timeout).
+      const laneScopeNow = this.laneScope(doc, sessionId);
+      const verdictsNow = isRecord(doc.task.metadata?.laneVerdicts)
+        ? (doc.task.metadata.laneVerdicts as Record<string, unknown>)
+        : {};
+      const pendingMultiLane =
+        laneScopeNow.laneSessionIds.length > 1 && !verdictsNow[sessionId];
       if (
         doc.task.status !== "validating" &&
         !(
-          doc.task.status === "active" &&
-          this.laneScope(doc, sessionId).laneSessionIds.length > 1
+          (doc.task.status === "active" ||
+            doc.task.status === "waiting_on_user") &&
+          pendingMultiLane
         )
       ) {
         return;
@@ -5534,31 +5601,10 @@ export class OrchestratorTaskService extends Service {
       missing,
       attempt,
     } = args;
-    const doc = await this.store.getTask(taskId);
-    if (!doc) {
-      // The task was deleted concurrently (e.g. the user cancelled during
-      // auto-verify). Bail: there is nothing to re-engage, and writing partial
-      // metadata back with `...doc?.task.metadata` spreading to `{}` would
-      // clobber the completion envelope this very re-read exists to preserve.
-      return;
-    }
-    if (TERMINAL_OR_INTERRUPTED_TASK_STATUSES.has(doc.task.status)) {
-      // The user cancelled (or an operator closed the task) while the judge
-      // was running: a corrective re-prompt would reactivate the stopped
-      // worker and resume the build the user just stopped; a park notice
-      // would announce a build nobody is waiting for.
-      this.log("info", "skipping re-engage: task no longer in flight", {
-        taskId,
-        sessionId,
-        status: doc.task.status,
-        verifier,
-      });
-      return;
-    }
     // This lane's completion is judged failed either way: drop its held
-    // relay now. Left armed, the router's 5-minute fallback released it as
-    // "passed" mid-coaching-lap and the original failed completion posted
-    // as ready.
+    // relay FIRST, on every path out of here. Left armed, the router's
+    // 5-minute fallback released it as "passed" mid-coaching-lap and the
+    // original failed completion posted as ready.
     (
       this.runtime.getService("ACPX_SUB_AGENT_ROUTER") as {
         releaseDeferredCompletionRelay?: (
@@ -5568,6 +5614,31 @@ export class OrchestratorTaskService extends Service {
         ) => void;
       } | null
     )?.releaseDeferredCompletionRelay?.(taskId, "failed", sessionId);
+    const doc = await this.store.getTask(taskId);
+    if (!doc) {
+      // The task was deleted concurrently (e.g. the user cancelled during
+      // auto-verify). Bail: there is nothing to re-engage, and writing partial
+      // metadata back with `...doc?.task.metadata` spreading to `{}` would
+      // clobber the completion envelope this very re-read exists to preserve.
+      return;
+    }
+    if (
+      TERMINAL_OR_INTERRUPTED_TASK_STATUSES.has(doc.task.status) ||
+      this.pendingUserInterrupts.has(taskId)
+    ) {
+      // The user cancelled (or an operator closed the task) while the judge
+      // was running: a corrective re-prompt would reactivate the stopped
+      // worker and resume the build the user just stopped; a park notice
+      // would announce a build nobody is waiting for. The pending flag covers
+      // the stop still queued behind THIS verify lap's write lock.
+      this.log("info", "skipping re-engage: task no longer in flight", {
+        taskId,
+        sessionId,
+        status: doc.task.status,
+        verifier,
+      });
+      return;
+    }
     const multiLane = this.laneScope(doc, sessionId).laneSessionIds.length > 1;
     if (attempt >= MAX_AUTO_VERIFY_ATTEMPTS) {
       // Stop the loop: park for a human rather than re-prompting forever.
@@ -7079,10 +7150,18 @@ export class OrchestratorTaskService extends Service {
   async interruptTask(taskId: string, reason: string): Promise<boolean> {
     // Serialized against the verifier: its validating→active retry and this
     // interrupt both write status, and the verdict writer must observe
-    // `interrupted` before it re-prompts the worker.
-    return this.withTaskWriteLock(taskId, () =>
-      this.interruptTaskLocked(taskId, reason),
-    );
+    // `interrupted` before it re-prompts the worker. The pending flag is the
+    // lock-free fast path: a verify lap already holding the lock checks it
+    // before its corrective send, so the stop takes effect immediately even
+    // while this call queues (live: the re-prompt beat the queued interrupt).
+    if (reason.startsWith("user")) this.pendingUserInterrupts.add(taskId);
+    try {
+      return await this.withTaskWriteLock(taskId, () =>
+        this.interruptTaskLocked(taskId, reason),
+      );
+    } finally {
+      this.pendingUserInterrupts.delete(taskId);
+    }
   }
 
   private async interruptTaskLocked(
@@ -7093,6 +7172,16 @@ export class OrchestratorTaskService extends Service {
     if (!doc || TERMINAL_OR_INTERRUPTED_TASK_STATUSES.has(doc.task.status)) {
       return false;
     }
+    // A paused task freezes advanceTaskStatus; a user stop overrides the
+    // pause (reporting success while leaving it active planted a stale
+    // stamp on a live task).
+    if (doc.task.paused) {
+      await this.store.updateTask(taskId, { paused: false });
+    }
+    // A task cancelled while parked in the admission queue must not dispatch
+    // when a slot frees (the drain skipped only done/failed/archived and
+    // launched the cancelled build).
+    await this.dequeueAdmission(taskId);
     await this.advanceTaskStatus(taskId, "interrupted");
     // Durable reason: advanceTaskLiveness self-heals a REAPER interrupt on
     // the next attach (restarted), but a user stop must stick — a lane whose
@@ -7959,7 +8048,7 @@ export class OrchestratorTaskService extends Service {
         waveSupervisor?.release(head.taskId);
         continue;
       }
-      if (TERMINAL_TASK_STATUSES.has(doc.task.status)) {
+      if (TERMINAL_OR_INTERRUPTED_TASK_STATUSES.has(doc.task.status)) {
         waveSupervisor?.release(head.taskId);
         await this.writeAdmission(head.taskId, null);
         continue;

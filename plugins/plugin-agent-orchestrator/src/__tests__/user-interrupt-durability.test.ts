@@ -207,4 +207,116 @@ describe("user interrupt durability", () => {
     expect(attemptsFor(doc, "coin")).toBe(3);
     expect(attemptsFor(doc, "dice")).toBe(0);
   });
+
+  it("a session error on a user-interrupted task does not resurrect it", async () => {
+    const store = new OrchestratorTaskStore({ backend: "memory" });
+    const service = makeService(store);
+    const detail = await store.createTask({ title: "t", goal: "g" });
+    const taskId = detail.task.id;
+    await addLane(store, taskId, "w1", "part:0");
+    await store.updateTask(taskId, { status: "active" });
+    await service.interruptTask(taskId, "user_interrupt");
+    await (
+      service as unknown as {
+        applySessionEvent: (
+          t: string,
+          s: string,
+          e: string,
+          d: Record<string, unknown>,
+        ) => Promise<void>;
+      }
+    ).applySessionEvent(taskId, "w1", "error", {
+      failureKind: "session_state_lost",
+      message: "state lost",
+    });
+    const doc = await store.getTask(taskId);
+    expect(doc?.task.status).toBe("interrupted");
+    expect(doc?.task.metadata?.interruptReason).toBe("user_interrupt");
+  });
+
+  it("a user stop on a paused task still interrupts it", async () => {
+    const store = new OrchestratorTaskStore({ backend: "memory" });
+    const service = makeService(store);
+    const detail = await store.createTask({ title: "t", goal: "g" });
+    const taskId = detail.task.id;
+    await store.updateTask(taskId, { status: "active", paused: true });
+    expect(await service.interruptTask(taskId, "user_interrupt")).toBe(true);
+    const doc = await store.getTask(taskId);
+    expect(doc?.task.status).toBe("interrupted");
+    expect(doc?.task.paused).toBeFalsy();
+  });
+
+  it("each parked lane gets its own notice; a lane verified under a sibling's park still lands", async () => {
+    const store = new OrchestratorTaskStore({ backend: "memory" });
+    const released: string[] = [];
+    const notices: string[] = [];
+    const service = makeService(store, released);
+    (
+      service as unknown as { runtime: Record<string, unknown> }
+    ).runtime.sendMessageToTarget = async (
+      _t: unknown,
+      content: { text: string },
+    ) => {
+      notices.push(content.text);
+    };
+    (service as unknown as { runtime: { getRoom?: unknown } }).runtime.getRoom =
+      async () => ({ source: "discord" });
+    const detail = await store.createTask({
+      title: "two pages",
+      goal: "two pages",
+      acceptanceCriteria: ["reachable"],
+    });
+    const taskId = detail.task.id;
+    await addLane(store, taskId, "coin", "part:0");
+    await addLane(store, taskId, "dice", "part:1");
+    await store.updateTask(taskId, {
+      status: "validating",
+      roomId: "room-1",
+      metadata: { source: "discord" },
+    });
+    const reEngage = (
+      service as unknown as {
+        reEngageOrEscalate: (args: Record<string, unknown>) => Promise<void>;
+      }
+    ).reEngageOrEscalate.bind(service);
+    await reEngage({
+      taskId,
+      sessionId: "dice",
+      correction: "fix",
+      eventType: "auto_verify_failed",
+      verifier: "judge",
+      summary: "dice 404",
+      missing: ["url"],
+      attempt: 3,
+    });
+    expect((await store.getTask(taskId))?.task.status).toBe("waiting_on_user");
+    // coin's pass lands even while the task is parked by dice…
+    await service.validateTask(
+      taskId,
+      { passed: true, summary: "coin ok" },
+      "coin",
+    );
+    let doc = await store.getTask(taskId);
+    expect(doc?.task.metadata?.laneVerdicts).toEqual({
+      dice: "parked",
+      coin: "passed",
+    });
+    expect(doc?.task.status).toBe("waiting_on_user");
+    // …and a second lane's park is NOT silenced by the first's notice.
+    await store.updateTask(taskId, {
+      metadata: { ...(doc?.task.metadata ?? {}), laneVerdicts: {} },
+      status: "validating",
+    });
+    await reEngage({
+      taskId,
+      sessionId: "coin",
+      correction: "fix",
+      eventType: "auto_verify_failed",
+      verifier: "judge",
+      summary: "coin 404",
+      missing: ["url"],
+      attempt: 3,
+    });
+    expect(notices.length).toBe(2);
+  });
 });
