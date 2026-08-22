@@ -26,6 +26,34 @@ See `package.json` for `build`, `lint`, and other scripts.
 unsuccessful `TaskResult` with a stable `errorCode`; it never falls back to
 ordinary `TEXT_LARGE` synthesis and labels that output as research.
 
+## Message-interaction session persistence
+
+`FileMessageInteractionSessionStore` is the durable single-host adapter for
+core's message-interaction session authority. It serializes independent local
+processes, writes a 0600 regular file through same-filesystem fsync and atomic
+rename, fails fast on corruption and symlinks, qualifies Linux lock owners by
+boot/process generation (with a bounded portable recovery ceiling), and exposes
+explicit expiry collection. Its boundary
+is one machine and one state directory. Multi-host deployments must supply a
+transactional database implementation of `MessageInteractionSessionStore` and
+use the session replay key as the effect or outbox idempotency key.
+
+The file authority durably commits an effect before dispatch. If the process
+dies after that commit but before retaining the receipt, the session remains
+`committed` for operator reconciliation; it is never lease-transferred,
+automatically retried, or revoked as if cancellation succeeded. The store lists
+ambiguous commits and accepts only a verified receipt to reconcile them without
+re-execution. Completed receipts are retained for seven days and unreconciled
+commits for thirty days by default, after which bounded collection prevents
+permanent capacity exhaustion.
+
+The bundled `eliza` plugin registers `MessageInteractionHostService` as the one
+runtime authority connectors resolve through `MESSAGE_INTERACTION_HOST_SERVICE`.
+Connectors submit capability profiles and trusted render bindings to `prepare`,
+then send authenticated inbound provider receipts to `consume`. Only host-owned
+effect handlers execute retained operations; completed receipts preserve the
+provider event, canonical inbound event, audit id, and app-state proof for replay.
+
 ## Approval-bound plugin installation
 
 `installPlugin` always installs the canonical npm package declared by the
