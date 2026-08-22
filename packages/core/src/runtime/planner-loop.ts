@@ -396,7 +396,7 @@ async function runPlannerLoopIterations(
 				source: "planner-loop",
 				createdAt: Date.now(),
 				content:
-					"The tool result in this turn is already settled and complete. Write the final user-facing reply in the agent's natural voice from that result. Do not describe the work as starting, opening now, pending, or still in progress. If the result provides a link object, include it as a Markdown link using its label and href. Do not expose internal IDs or raw tool data.",
+					"The tool result in this turn is authoritative. Write the final user-facing reply in the agent's natural voice from its promptData. Respect the reported outcome exactly: a started or pending operation is underway but not complete; a completed or successful operation is done and must not be described as starting or pending. Follow any replyGuidance in promptData. Do not promise a future message or ETA. If the result provides a link object, include it as a Markdown link using its label and href. Do not expose internal IDs or raw tool data.",
 			})
 		: plannerContext;
 	const trajectory: PlannerTrajectory = {
@@ -752,17 +752,24 @@ async function runPlannerLoopIterations(
 						finalMessage: userSafeFinalMessage(
 							terminalMessageWithFailureAuthority(
 								trajectory,
-								relay ?? REQUIRED_MODEL_REPLY_FALLBACK_MESSAGE,
+								relay ??
+									requiredModelReplyFallbackMessage(
+										trajectory.steps[trajectory.steps.length - 1]?.result,
+									),
 							),
 							trajectory,
 						),
 					};
 				}
-				const requiredModelReply = userSafeCapturedAnswerCandidate(
+				const requiredReplyResult =
+					trajectory.steps[trajectory.steps.length - 1]?.result;
+				const requiredModelReply = userSafeRequiredModelReplyCandidate(
 					plannerOutput.messageToUser,
+					requiredReplyResult,
 				);
 				const finalMessage =
-					requiredModelReply ?? REQUIRED_MODEL_REPLY_FALLBACK_MESSAGE;
+					requiredModelReply ??
+					requiredModelReplyFallbackMessage(requiredReplyResult);
 				trajectory.steps.push({
 					iteration,
 					thought: plannerOutput.thought,
@@ -5485,7 +5492,47 @@ export const GATED_EVALUATOR_THOUGHT =
 export const MODEL_REPLY_GATED_EVALUATOR_THOUGHT =
 	"Gated FINISH: successful final-scope action received one safe model-authored reply; evaluator LLM call skipped.";
 
-const REQUIRED_MODEL_REPLY_FALLBACK_MESSAGE = "The requested action completed.";
+const REQUIRED_MODEL_REPLY_COMPLETED_FALLBACK_MESSAGE =
+	"The requested action completed.";
+const REQUIRED_MODEL_REPLY_PENDING_FALLBACK_MESSAGE =
+	"The requested action is underway.";
+
+function requiredModelReplyIsPending(
+	result: PlannerToolResult | undefined,
+): boolean {
+	const outcome = result?.promptData?.outcome;
+	return outcome === "started" || outcome === "pending";
+}
+
+/**
+ * A successful async handoff is the one place where an in-progress sentence is
+ * grounded at end-of-turn: the action's bounded promptData proves that work is
+ * still running and a separate completion bridge owns the verified follow-up.
+ * The generic captured-answer gate rejects progress language because ordinary
+ * planner turns stop when they return; applying it here discarded a truthful
+ * model reply and replaced it with the false word "completed".
+ */
+function userSafeRequiredModelReplyCandidate(
+	message: string | undefined,
+	result: PlannerToolResult | undefined,
+): string | undefined {
+	if (!requiredModelReplyIsPending(result)) {
+		return userSafeCapturedAnswerCandidate(message);
+	}
+	const candidate = sanitizePlannerMessage(message);
+	if (!candidate) return undefined;
+	if (isUnsafeUserVisibleText(candidate)) return undefined;
+	if (looksLikePreToolThought(candidate)) return undefined;
+	return candidate;
+}
+
+function requiredModelReplyFallbackMessage(
+	result: PlannerToolResult | undefined,
+): string {
+	return requiredModelReplyIsPending(result)
+		? REQUIRED_MODEL_REPLY_PENDING_FALLBACK_MESSAGE
+		: REQUIRED_MODEL_REPLY_COMPLETED_FALLBACK_MESSAGE;
+}
 
 export const ACTION_RESULT_GATED_EVALUATOR_THOUGHT =
 	"Gated FINISH: queue drained successfully with a terminal action-owned userFacingText; evaluator LLM call skipped.";

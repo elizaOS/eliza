@@ -807,23 +807,26 @@ async function createNewApp({
 	}
 
 	const task = dispatch.agents[0];
-	// Chat gets one human sentence; the dispatch detail (workdir, session id,
-	// completion event) stays planner-facing in the result text — internal
-	// identifiers in a user-visible message read as a malfunction. The
-	// verified+turnComplete contract makes the callback the turn's single
-	// delivery (the gated evaluator skip), same as LIST_CLOUD_APPS.
-	const text = `Building ${displayName} now — I'll post the link once it's live.`;
 	const dispatchDetail = `Started app create task for ${displayName} at ${workdir}. Task session ${task.sessionId} is ${task.status}; verification runs when it emits APP_CREATE_DONE.`;
-	await callback?.({ text });
 	logger.info(
 		`[plugin-app-control] APP/create new name=${name} workdir=${workdir} dir=${appDirName} session=${task.sessionId}`,
 	);
 	return {
 		success: true,
 		text: dispatchDetail,
-		userFacingText: text,
-		verifiedUserFacing: true,
-		turnComplete: true,
+		transcriptVisibility: "internal",
+		// Dispatch is real but completion is asynchronous. Let the model phrase a
+		// short acknowledgement from this bounded receipt instead of injecting a
+		// canned promise into chat.
+		modelReplyRequired: true,
+		promptData: {
+			operation: "create_app",
+			outcome: "started",
+			displayName,
+			verification: "pending",
+			replyGuidance:
+				"Use one short present-tense sentence saying the work is underway. Do not mention a future message, ETA, or link.",
+		},
 		values: {
 			mode: "create",
 			subMode: "new",
@@ -909,19 +912,23 @@ async function editExistingApp({
 	}
 
 	const task = dispatch.agents[0];
-	// Same single-human-sentence contract as the create path above.
-	const text = `Updating ${app.displayName} now — I'll post the link once the changes are live.`;
 	const dispatchDetail = `Started app edit task for ${app.displayName} at ${workdir}. Task session ${task.sessionId} is ${task.status}; verification runs when it emits APP_CREATE_DONE.`;
-	await callback?.({ text });
 	logger.info(
 		`[plugin-app-control] APP/create edit appName=${app.name} workdir=${workdir} session=${task.sessionId}`,
 	);
 	return {
 		success: true,
 		text: dispatchDetail,
-		userFacingText: text,
-		verifiedUserFacing: true,
-		turnComplete: true,
+		transcriptVisibility: "internal",
+		modelReplyRequired: true,
+		promptData: {
+			operation: "edit_app",
+			outcome: "started",
+			displayName: app.displayName,
+			verification: "pending",
+			replyGuidance:
+				"Use one short present-tense sentence saying the edit is underway. Do not mention a future message, ETA, or link.",
+		},
 		values: {
 			mode: "create",
 			subMode: "edit",

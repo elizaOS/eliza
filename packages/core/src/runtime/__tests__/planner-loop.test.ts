@@ -3749,6 +3749,55 @@ describe("v5 planner loop — evaluator gate", () => {
 		).toBe("post_tool_model_reply");
 	});
 
+	it("keeps a truthful model-authored progress reply for an async handoff", async () => {
+		const modelReply =
+			"Nubs Color Pebble is being updated. I'll let you know when it's ready to open.";
+		const useModel = vi
+			.fn()
+			.mockResolvedValueOnce({
+				text: "",
+				toolCalls: [
+					{
+						id: "app-1",
+						name: "APP",
+						arguments: {
+							action: "create",
+							[TURN_SCOPE_ARG]: TURN_SCOPE_FINAL,
+						},
+					},
+				],
+			})
+			.mockResolvedValueOnce({ text: modelReply, toolCalls: [] });
+		const evaluate = vi.fn(async () => ({
+			success: true,
+			decision: "FINISH" as const,
+			thought: "should not be called",
+		}));
+
+		const result = await runPlannerLoop({
+			runtime: { useModel },
+			context: { id: "ctx" },
+			tools: [{ name: "APP", description: "Edit an installed app." }],
+			executeToolCall: vi.fn(async () => ({
+				success: true,
+				text: "Started app edit task.",
+				transcriptVisibility: "internal" as const,
+				modelReplyRequired: true,
+				promptData: {
+					operation: "edit_app",
+					outcome: "started",
+					displayName: "Nubs Color Pebble",
+					verification: "pending",
+				},
+			})),
+			evaluate,
+		});
+
+		expect(useModel).toHaveBeenCalledTimes(2);
+		expect(evaluate).not.toHaveBeenCalled();
+		expect(result.finalMessage).toBe(modelReply);
+	});
+
 	it("fails closed on a required-reply synthesis that invents a tool call, routing the completed action through the evaluator (#22609)", async () => {
 		const useModel = vi
 			.fn()

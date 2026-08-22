@@ -1011,8 +1011,9 @@ export interface ActionResult {
 	 * evaluator model call; failures, additional tools, unsafe replies, and
 	 * incomplete planner scope retain the normal evaluator path.
 	 *
-	 * Use for UI effects whose wording must remain model-owned (for example,
-	 * navigation). Do not pair it with canned `userFacingText`.
+	 * Use for effects and truthful asynchronous-start receipts whose wording must
+	 * remain model-owned (for example, navigation or a dispatched build). Do not
+	 * pair it with canned `userFacingText`.
 	 */
 	modelReplyRequired?: boolean;
 

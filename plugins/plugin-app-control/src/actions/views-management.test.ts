@@ -4856,6 +4856,14 @@ describe("view management actions", () => {
 				name: "proof-app",
 				workdir: pluginDir,
 			});
+			expect(result.promptData).toMatchObject({
+				operation: "edit_app",
+				outcome: "started",
+				verification: "pending",
+				replyGuidance: expect.stringContaining(
+					"one short present-tense sentence",
+				),
+			});
 			expect(codingHandler).toHaveBeenCalledTimes(1);
 			expect(codingHandler.mock.calls[0][1]).toMatchObject({
 				roomId: "origin-app-room",

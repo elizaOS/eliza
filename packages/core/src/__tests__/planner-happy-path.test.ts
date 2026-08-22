@@ -696,6 +696,100 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 		expect(observableSurfaces).not.toContain("suppressActionResultClipboard");
 	});
 
+	it("preserves lifecycle prompt data for the model after a sensitive async action", async () => {
+		const progressReply = "I’m changing the background now.";
+		const app = makeMockAction({
+			name: "APP",
+			parameters: [],
+			handler: async () => ({
+				success: true,
+				text: "Started app edit task.",
+				transcriptVisibility: "internal",
+				modelReplyRequired: true,
+				promptData: {
+					operation: "edit_app",
+					outcome: "started",
+					displayName: "Nubs Color Pebble",
+					verification: "pending",
+					replyGuidance: "Use one short present-tense sentence.",
+				},
+				data: {
+					workdir: "/private/worktree/must-not-leak",
+					suppressActionResultClipboard: true,
+				},
+			}),
+		});
+		const runtime = makeRuntime({
+			actions: [app],
+			responses: [
+				{
+					expectModelType: ModelType.RESPONSE_HANDLER,
+					body: stage1Response({
+						contexts: ["general"],
+						candidateActionNames: ["APP"],
+						thought: "The user asked to edit an installed app.",
+					}),
+				},
+				{
+					expectModelType: ModelType.ACTION_PLANNER,
+					body: {
+						text: "Starting the edit.",
+						toolCalls: [
+							{
+								id: "call-1",
+								name: "APP",
+								args: { eliza_turn_scope: "final" },
+							},
+						],
+					},
+				},
+				{
+					expectModelType: ModelType.ACTION_PLANNER,
+					body: { text: progressReply, toolCalls: [] },
+				},
+			],
+		});
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage("make the background blue"),
+			state: makeState(),
+			responseId: RESPONSE_ID,
+		});
+
+		const calls = getCalls(runtime);
+		expect(calls.map((call) => call.modelType)).toEqual([
+			ModelType.RESPONSE_HANDLER,
+			ModelType.ACTION_PLANNER,
+			ModelType.ACTION_PLANNER,
+		]);
+		const followUpPrompt = JSON.stringify(calls[2]?.params);
+		expect(followUpPrompt).toContain("operation");
+		expect(followUpPrompt).toContain("edit_app");
+		expect(followUpPrompt).toContain("outcome");
+		expect(followUpPrompt).toContain("started");
+		expect(followUpPrompt).toContain("verification");
+		expect(followUpPrompt).toContain("pending");
+		expect(followUpPrompt).toContain("replyGuidance");
+		expect(followUpPrompt).toContain("one short present-tense sentence");
+		expect(followUpPrompt).not.toContain("must-not-leak");
+		expect(result.kind).toBe("planned_reply");
+		if (result.kind === "planned_reply") {
+			expect(result.result.responseContent?.text).toBe(progressReply);
+			expect(result.result.actionResults).toMatchObject([
+				{
+					success: true,
+					modelReplyRequired: true,
+					promptData: {
+						operation: "edit_app",
+						outcome: "started",
+					},
+					data: { actionName: "APP" },
+				},
+			]);
+		}
+	});
+
 	it("blocks high-risk USER input before planner tools execute", async () => {
 		let webSearchCalls = 0;
 		const webSearch = makeMockAction({
@@ -1512,7 +1606,10 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 			(getCalls(runtime)[1]?.params as Record<string, unknown>)?.tools,
 		).toBeUndefined();
 		expect(JSON.stringify(getCalls(runtime)[1]?.params)).toContain(
-			"already settled and complete",
+			"tool result in this turn is authoritative",
+		);
+		expect(JSON.stringify(getCalls(runtime)[1]?.params)).toContain(
+			"started or pending operation is underway but not complete",
 		);
 		expect(runtime.composeState).not.toHaveBeenCalled();
 		const trajectory = readRecordedTrajectories(String(AGENT_ID))[0] as {
