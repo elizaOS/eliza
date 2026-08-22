@@ -40,6 +40,13 @@ export const readAction: Action = {
       required: false,
       schema: { type: "number" },
     },
+    {
+      name: "expectedRevision",
+      description:
+        "Revision returned by the prior READ; required when continuing with a nonzero offset.",
+      required: false,
+      schema: { type: "string" },
+    },
   ],
   validate: async () => true,
   handler: readFileHandler,
@@ -49,7 +56,7 @@ export const writeAction: Action = {
   name: "WRITE",
   ...DIRECT_FILE_GATE,
   description:
-    "Write complete text to a file, creating parent directories when allowed.",
+    "Create a file with complete text. Prefer EDIT for existing files; replacing one requires overwrite=true and complete replacement content.",
   parameters: [
     {
       name: "file_path",
@@ -62,6 +69,13 @@ export const writeAction: Action = {
       description: "Complete replacement file content.",
       required: true,
       schema: { type: "string" },
+    },
+    {
+      name: "overwrite",
+      description:
+        "Set true only to intentionally replace an existing file after reading it completely; defaults to false.",
+      required: false,
+      schema: { type: "boolean" },
     },
   ],
   validate: async () => true,
@@ -95,6 +109,13 @@ export const editAction: Action = {
     {
       name: "replace_all",
       description: "Replace every exact match; defaults to false.",
+      required: false,
+      schema: { type: "boolean" },
+    },
+    {
+      name: "allow_literal_escapes",
+      description:
+        "Set true only when literal backslash-n or backslash-r text is intentionally part of the source; defaults to false.",
       required: false,
       schema: { type: "boolean" },
     },
