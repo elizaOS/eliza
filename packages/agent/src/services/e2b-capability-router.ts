@@ -934,14 +934,39 @@ export class E2BRemoteCapabilityRouterService
     });
   }
 
+  /**
+   * Caches the sandbox and its one-time preparation, but only caches SUCCESS.
+   * A rejected promise left in either field would be re-awaited by every later
+   * call — one transient create/prepare failure would take `fs.*`, `pty.*` and
+   * `git.*` down for the service's lifetime, with `stop()` the only reset. Each
+   * attempt clears its own field on failure (and only if it is still the
+   * current attempt, so a concurrent retry is never discarded), so the next
+   * call starts a fresh one.
+   */
   private async getSandbox(): Promise<E2BSandboxClient> {
     if (!this.sandboxPromise) {
-      this.sandboxPromise = this.factory.create(this.routerConfig);
+      const pending: Promise<E2BSandboxClient> = this.factory
+        .create(this.routerConfig)
+        .catch((error: unknown) => {
+          // error-policy:J2 clears the memoized attempt and rethrows the original create/prepare failure unchanged.
+          if (this.sandboxPromise === pending) this.sandboxPromise = null;
+          throw error;
+        });
+      this.sandboxPromise = pending;
       this.createdSandbox = !this.routerConfig.sandboxId;
     }
     const sandbox = await this.sandboxPromise;
     if (!this.preparePromise) {
-      this.preparePromise = this.prepareSandbox(sandbox);
+      const pendingPrepare: Promise<void> = this.prepareSandbox(sandbox).catch(
+        (error: unknown) => {
+          // error-policy:J2 clears the memoized attempt and rethrows the original create/prepare failure unchanged.
+          if (this.preparePromise === pendingPrepare) {
+            this.preparePromise = null;
+          }
+          throw error;
+        },
+      );
+      this.preparePromise = pendingPrepare;
     }
     await this.preparePromise;
     return sandbox;
