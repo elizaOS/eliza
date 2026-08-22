@@ -29,6 +29,7 @@ export {
   type EscalationState,
   registerEscalationChannel,
 } from "./escalation.ts";
+export * from "./message-interaction-session-store.ts";
 export * from "./overlay-app-presence.ts";
 export {
   type IPermissionsRegistry,
