@@ -152,10 +152,14 @@ export {
 export {
   createSharedRemindersEdgeAction,
   createSharedRemindersEdgePlugin,
+  isSharedGroupReminderDelivery,
   parseSharedReminderDelivery,
   SHARED_CUTOVER_GATEWAY_CHANNEL,
   SHARED_REMINDER_MAX_TEXT_LENGTH,
   SHARED_REMINDERS_EDGE_COMPATIBILITY,
+  type SharedGroupReminderDelivery,
   type SharedReminderDelivery,
   type SharedRemindersEdgePluginOptions,
+  sharedGroupReminderMessageText,
+  sharedReminderMaxBodyLength,
 } from "./shared-reminders.js";

@@ -1,7 +1,10 @@
 /**
  * Minimal reminder action for Shared edge runtimes. The host supplies the
- * canonical runner and a trusted current-DM destination; model parameters can
- * choose reminder content and timing but can never redirect delivery.
+ * canonical runner and a trusted destination — the current verified private
+ * chat, or a linked group chat when the sender is the binding owner; model
+ * parameters can choose reminder content and timing but can never redirect
+ * delivery. Group destinations carry the binding id so the cron dispatcher can
+ * re-verify the binding is still active at fire time.
  */
 
 import type {
@@ -47,20 +50,114 @@ export type SharedReminderDelivery =
   | {
       platform: "discord";
       discordUserId: string;
+    }
+  | {
+      platform: "telegram" | "blooio";
+      kind: "group";
+      project: string;
+      chatId: string;
+      groupBindingId: string;
+      ownerLabel: string;
     };
 
-/** Validates the server-owned private destination stored with a Shared reminder. */
+export type SharedGroupReminderDelivery = Extract<
+  SharedReminderDelivery,
+  { kind: "group" }
+>;
+
+export function isSharedGroupReminderDelivery(
+  delivery: SharedReminderDelivery,
+): delivery is SharedGroupReminderDelivery {
+  return "kind" in delivery && delivery.kind === "group";
+}
+
+/**
+ * Telegram legacy-Markdown metacharacters. The owner label is interpolated
+ * into connector text sent with parse_mode Markdown, so formatting and link
+ * syntax are stripped rather than rendered. Stripping (instead of escaping)
+ * never lengthens the label, which keeps the creation-time prefix budget
+ * exact at fire time.
+ */
+const OWNER_LABEL_MARKDOWN_METACHARACTERS = /[[\]()*_`]/g;
+const FALLBACK_OWNER_LABEL = "the group owner";
+
+function sanitizedOwnerLabel(label: string): string {
+  const sanitized = label
+    .replace(OWNER_LABEL_MARKDOWN_METACHARACTERS, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  return sanitized.length > 0 ? sanitized : FALLBACK_OWNER_LABEL;
+}
+
+/**
+ * The owner-attributed text a group reminder delivers at fire time.
+ * Participants who never scheduled anything must see why Eliza spoke.
+ */
+export function sharedGroupReminderMessageText(
+  delivery: SharedGroupReminderDelivery,
+  body: string,
+): string {
+  return `Reminder for this group from ${delivery.ownerLabel}: ${body}`;
+}
+
+/**
+ * Group deliveries reserve the fire-time prefix inside the connector text
+ * limit so a reminder accepted at creation can never become undeliverable.
+ */
+export function sharedReminderMaxBodyLength(
+  delivery: SharedReminderDelivery,
+): number {
+  return isSharedGroupReminderDelivery(delivery)
+    ? SHARED_REMINDER_MAX_TEXT_LENGTH -
+        sharedGroupReminderMessageText(delivery, "").length
+    : SHARED_REMINDER_MAX_TEXT_LENGTH;
+}
+
+const PROJECT_PATTERN = /^[a-z0-9][a-z0-9_-]{0,63}$/i;
+const TELEGRAM_CHAT_ID_PATTERN = /^-?\d{1,20}$/;
+const BLOOIO_GROUP_CHAT_ID_PATTERN = /^chat_[A-Za-z0-9_-]{1,120}$/i;
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Validates the server-owned destination stored with a Shared reminder. */
 export function parseSharedReminderDelivery(
   value: unknown,
 ): SharedReminderDelivery | undefined {
   if (!value || typeof value !== "object") return undefined;
   const delivery = value as Record<string, unknown>;
+  if (delivery.kind === "group") {
+    if (
+      (delivery.platform === "telegram" || delivery.platform === "blooio") &&
+      typeof delivery.project === "string" &&
+      PROJECT_PATTERN.test(delivery.project) &&
+      typeof delivery.chatId === "string" &&
+      (delivery.platform === "telegram"
+        ? TELEGRAM_CHAT_ID_PATTERN
+        : BLOOIO_GROUP_CHAT_ID_PATTERN
+      ).test(delivery.chatId) &&
+      typeof delivery.groupBindingId === "string" &&
+      UUID_PATTERN.test(delivery.groupBindingId) &&
+      typeof delivery.ownerLabel === "string" &&
+      delivery.ownerLabel.trim().length > 0 &&
+      delivery.ownerLabel.length <= 128
+    ) {
+      return {
+        platform: delivery.platform,
+        kind: "group",
+        project: delivery.project,
+        chatId: delivery.chatId,
+        groupBindingId: delivery.groupBindingId,
+        ownerLabel: sanitizedOwnerLabel(delivery.ownerLabel),
+      };
+    }
+    return undefined;
+  }
   if (
     delivery.platform === "telegram" &&
     typeof delivery.project === "string" &&
-    /^[a-z0-9][a-z0-9_-]{0,63}$/i.test(delivery.project) &&
+    PROJECT_PATTERN.test(delivery.project) &&
     typeof delivery.chatId === "string" &&
-    /^-?\d{1,20}$/.test(delivery.chatId)
+    TELEGRAM_CHAT_ID_PATTERN.test(delivery.chatId)
   ) {
     return {
       platform: "telegram",
@@ -71,7 +168,7 @@ export function parseSharedReminderDelivery(
   if (
     delivery.platform === "blooio" &&
     typeof delivery.project === "string" &&
-    /^[a-z0-9][a-z0-9_-]{0,63}$/i.test(delivery.project) &&
+    PROJECT_PATTERN.test(delivery.project) &&
     typeof delivery.phoneNumber === "string" &&
     /^\+[1-9]\d{6,14}$/.test(delivery.phoneNumber)
   ) {
@@ -445,9 +542,10 @@ export function createSharedRemindersEdgeAction(
   const delivery = parseSharedReminderDelivery(options.delivery);
   if (!delivery) {
     throw new Error(
-      "Shared reminders require a trusted current-DM destination",
+      "Shared reminders require a trusted server-owned destination",
     );
   }
+  const groupDelivery = isSharedGroupReminderDelivery(delivery);
 
   return {
     name: "REMINDERS",
@@ -461,8 +559,9 @@ export function createSharedRemindersEdgeAction(
     tags: ["resource:scheduled-item", "capability:read", "capability:write"],
     contexts: ["reminders", "general"],
     roleGate: { minRole: "GUEST" },
-    description:
-      "Create, list, snooze, complete, or dismiss free reminders delivered only to this current verified private chat. For create, supply reminderText and one schedule: inMinutes, atIso, everyMinutes, or cronExpression plus timezone.",
+    description: groupDelivery
+      ? "Create, list, snooze, complete, or dismiss free reminders delivered only to this linked group chat. For create, supply reminderText and one schedule: inMinutes, atIso, everyMinutes, or cronExpression plus timezone."
+      : "Create, list, snooze, complete, or dismiss free reminders delivered only to this current verified private chat. For create, supply reminderText and one schedule: inMinutes, atIso, everyMinutes, or cronExpression plus timezone.",
     parameters: [
       {
         name: "operation",
@@ -553,9 +652,11 @@ export function createSharedRemindersEdgeAction(
         const body = textParameter(input, "reminderText", "text", "body");
         if (!body)
           return await actionFailure("Reminder text is required.", callback);
-        if (body.length > SHARED_REMINDER_MAX_TEXT_LENGTH) {
+        // Group sends reserve the fire-time owner prefix inside the limit.
+        const maxBodyLength = sharedReminderMaxBodyLength(delivery);
+        if (body.length > maxBodyLength) {
           return await actionFailure(
-            `Reminder text must be ${SHARED_REMINDER_MAX_TEXT_LENGTH} characters or fewer.`,
+            `Reminder text must be ${maxBodyLength} characters or fewer.`,
             callback,
           );
         }
@@ -627,7 +728,7 @@ export function createSharedRemindersEdgeAction(
         const persistedBody = reminderText(scheduled.task);
         const text = scheduled.replayed
           ? `That reminder is already set ${schedule}: ${persistedBody}`
-          : `Got it — I'll remind you ${schedule}: ${persistedBody}`;
+          : `Got it — I'll remind ${groupDelivery ? "this group" : "you"} ${schedule}: ${persistedBody}`;
         const receipt = creationReceipt(scheduled);
         await callback?.({ text });
         return {
@@ -740,7 +841,7 @@ export function createSharedRemindersEdgePlugin(
   return {
     name: "shared-reminders-edge",
     description:
-      "Free reminders persisted by the canonical scheduler and locked to the current verified private chat.",
+      "Free reminders persisted by the canonical scheduler and locked to the trusted chat that created them.",
     actions: [createSharedRemindersEdgeAction(options)],
   };
 }

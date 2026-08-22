@@ -887,7 +887,14 @@ describe("personal Shared messaging deliveries", () => {
       namespace,
       validGroup.messageId,
       "platform",
-      undefined,
+      {
+        platform: "telegram",
+        kind: "group",
+        project: "eliza-app",
+        chatId: "-100123456789",
+        groupBindingId: canonicalGroupBinding.id,
+        ownerLabel: "Nubs",
+      },
       undefined,
       { type: "GROUP", source: "telegram" },
     );

@@ -192,6 +192,15 @@ export const personalSharedGroupsRepository = {
     });
   },
 
+  async findBindingById(bindingId: string): Promise<PersonalSharedGroupBinding | null> {
+    const [binding] = await dbWrite
+      .select()
+      .from(personalSharedGroupBindings)
+      .where(eq(personalSharedGroupBindings.id, bindingId))
+      .limit(1);
+    return binding ?? null;
+  },
+
   async resolveBinding(input: {
     platform: PersonalSharedGroupPlatform;
     project: string;
