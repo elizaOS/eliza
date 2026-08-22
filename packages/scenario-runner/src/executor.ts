@@ -72,6 +72,7 @@ import type {
   ScenarioReport,
 } from "./types.ts";
 import { isLoopbackUrl, toRecord } from "./utils.js";
+import { executeVoiceTurn, voiceTurnAssertionFailures } from "./voice-turn.ts";
 
 const EXECUTOR_REQUEST_TIMEOUT_MS = 30_000;
 
@@ -93,8 +94,6 @@ export function executorFetch(
       : timeoutSignal,
   });
 }
-
-import { executeVoiceTurn, voiceTurnAssertionFailures } from "./voice-turn.ts";
 
 export interface ExecutorOptions {
   providerName: string;

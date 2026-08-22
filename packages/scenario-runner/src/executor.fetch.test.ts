@@ -1,19 +1,28 @@
-// Pins the bounded executor-hop contract: lifeops API + Google mock fetches
-// fail closed at the hop timeout, composing a caller signal with the deadline.
-import { describe, expect, test, vi } from "vitest";
+/**
+ * Verifies lifeops and Google-mock executor fetches fail closed at their hop
+ * timeout and compose caller cancellation without reaching a real service.
+ */
+import { afterEach, describe, expect, test, vi } from "vitest";
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 describe("executorFetch — bounded executor hops fail closed and compose caller signals", () => {
   test("aborts a hung executor hop at the configured timeout", async () => {
-    globalThis.fetch = vi.fn().mockImplementation(
-      (_input: RequestInfo | URL, init?: RequestInit) =>
-        new Promise<Response>((_resolve, reject) => {
-          init?.signal?.addEventListener("abort", () => {
-            reject(
-              new DOMException("The operation was aborted.", "AbortError"),
-            );
-          });
-        }),
-    ) as typeof fetch;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockImplementation(
+        (_input: RequestInfo | URL, init?: RequestInit) =>
+          new Promise<Response>((_resolve, reject) => {
+            init?.signal?.addEventListener("abort", () => {
+              reject(
+                new DOMException("The operation was aborted.", "AbortError"),
+              );
+            });
+          }),
+      ),
+    );
 
     const { executorFetch } = await import("./executor");
     const start = Date.now();
@@ -28,16 +37,19 @@ describe("executorFetch — bounded executor hops fail closed and compose caller
   });
 
   test("times out a hung hop even when a non-aborted caller signal is present", async () => {
-    globalThis.fetch = vi.fn().mockImplementation(
-      (_input: RequestInfo | URL, init?: RequestInit) =>
-        new Promise<Response>((_resolve, reject) => {
-          init?.signal?.addEventListener("abort", () => {
-            reject(
-              new DOMException("The operation was aborted.", "AbortError"),
-            );
-          });
-        }),
-    ) as typeof fetch;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockImplementation(
+        (_input: RequestInfo | URL, init?: RequestInit) =>
+          new Promise<Response>((_resolve, reject) => {
+            init?.signal?.addEventListener("abort", () => {
+              reject(
+                new DOMException("The operation was aborted.", "AbortError"),
+              );
+            });
+          }),
+      ),
+    );
 
     const { executorFetch } = await import("./executor");
     const controller = new AbortController();
@@ -57,14 +69,17 @@ describe("executorFetch — bounded executor hops fail closed and compose caller
 
   test("preserves caller cancellation (composed)", async () => {
     let seen: AbortSignal | undefined;
-    globalThis.fetch = vi
-      .fn()
-      .mockImplementation(
-        async (_input: RequestInfo | URL, init?: RequestInit) => {
-          seen = init?.signal;
-          return new Response("{}", { status: 200 });
-        },
-      ) as typeof fetch;
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockImplementation(
+          async (_input: RequestInfo | URL, init?: RequestInit) => {
+            seen = init?.signal ?? undefined;
+            return new Response("{}", { status: 200 });
+          },
+        ),
+    );
 
     const { executorFetch } = await import("./executor");
     const controller = new AbortController();
