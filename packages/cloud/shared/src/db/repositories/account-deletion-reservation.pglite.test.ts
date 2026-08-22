@@ -71,6 +71,12 @@ beforeAll(async () => {
     dbWrite as never,
   );
   await apply();
+  await dbWrite.execute(`
+    CREATE TABLE account_deletion_restrictive_fixture (
+      id uuid PRIMARY KEY,
+      organization_id uuid NOT NULL REFERENCES organizations(id) ON DELETE RESTRICT
+    )
+  `);
 });
 
 afterAll(async () => {
@@ -108,6 +114,7 @@ async function seedPersonalAccount(): Promise<void> {
 }
 
 beforeEach(async () => {
+  await dbWrite.execute("DELETE FROM account_deletion_restrictive_fixture");
   await dbWrite.delete(accountDeletionRequests);
   await dbWrite.delete(organizations);
   await seedPersonalAccount();
@@ -659,5 +666,179 @@ describe("personal account deletion reservation", () => {
       account_lifecycle_state: "deletion_recovery",
       account_lifecycle_revision: 1,
     });
+  });
+
+  test("atomically erases the personal database graph and retains only an anonymous receipt", async () => {
+    const input = reservationInput("50000000-0000-4000-8000-000000000009", "erase");
+    input.phases.push({
+      phase: "database_erasure",
+      phaseOrder: 130,
+      idempotencyKeyDigest: "database-erasure",
+    });
+    const reserved = await accountDeletionRequestsRepository.reservePersonalAccountDeletion(input);
+    if (reserved.outcome !== "reserved") throw new Error("reservation failed");
+
+    const exportLease = await accountDeletionRequestsRepository.leasePhase({
+      requestId: reserved.request.id,
+      phase: "export",
+      leaseOwnerDigest: "export-worker",
+      now,
+      leaseMilliseconds: 60_000,
+    });
+    if (!exportLease) throw new Error("export lease failed");
+    await accountDeletionRequestsRepository.markExportBuilding({
+      requestId: reserved.request.id,
+      phaseReceiptId: exportLease.receipt.id,
+      generation: exportLease.generation,
+      now,
+    });
+    await accountDeletionRequestsRepository.markPhaseProviderCallStarted(
+      exportLease.receipt.id,
+      exportLease.generation,
+      now,
+    );
+    expect(
+      await accountDeletionRequestsRepository.completeExportPhase({
+        requestId: reserved.request.id,
+        phaseReceiptId: exportLease.receipt.id,
+        generation: exportLease.generation,
+        contentDigest: "content-digest",
+        objectReceiptDigest: "object-receipt",
+        byteCount: 123,
+        now,
+      }),
+    ).toBe(true);
+    const stewardLease = await accountDeletionRequestsRepository.leasePhase({
+      requestId: reserved.request.id,
+      phase: "steward_deactivation",
+      leaseOwnerDigest: "steward-worker",
+      now,
+      leaseMilliseconds: 60_000,
+    });
+    if (!stewardLease) throw new Error("Steward lease failed");
+    expect(
+      await accountDeletionRequestsRepository.completeStewardDeactivationPhase({
+        requestId: reserved.request.id,
+        phaseReceiptId: stewardLease.receipt.id,
+        generation: stewardLease.generation,
+        providerReceiptDigest: "steward-receipt",
+        now,
+      }),
+    ).toBe(true);
+    const irreversibleAt = new Date(recoveryExpiresAt.getTime() + 1);
+    expect(
+      await accountDeletionRequestsRepository.activateExpiredPersonalAccountDeletion({
+        requestId: reserved.request.id,
+        exportRevocationIdempotencyKeyDigest: "export-revoke",
+        exportRevocationNotBefore: irreversibleAt,
+        now: irreversibleAt,
+      }),
+    ).toMatchObject({ outcome: "activated" });
+    const revokeLease = await accountDeletionRequestsRepository.leasePhase({
+      requestId: reserved.request.id,
+      phase: "export_revoke",
+      leaseOwnerDigest: "revoke-worker",
+      now: irreversibleAt,
+      leaseMilliseconds: 60_000,
+    });
+    if (!revokeLease) throw new Error("export revocation lease failed");
+    expect(
+      await accountDeletionRequestsRepository.completeExportRevocation({
+        requestId: reserved.request.id,
+        phaseReceiptId: revokeLease.receipt.id,
+        generation: revokeLease.generation,
+        providerReceiptDigest: "export-revoked",
+        now: irreversibleAt,
+      }),
+    ).toBe(true);
+    const databaseLease = await accountDeletionRequestsRepository.leasePhase({
+      requestId: reserved.request.id,
+      phase: "database_erasure",
+      leaseOwnerDigest: "database-worker",
+      now: irreversibleAt,
+      leaseMilliseconds: 60_000,
+    });
+    if (!databaseLease) throw new Error("database erasure lease failed");
+    const finalized = await accountDeletionRequestsRepository.finalizePersonalAccountDeletion({
+      requestId: reserved.request.id,
+      phaseReceiptId: databaseLease.receipt.id,
+      generation: databaseLease.generation,
+      completionReceiptDigest: "f".repeat(64),
+      now: irreversibleAt,
+    });
+    expect(finalized).toMatchObject({ outcome: "completed" });
+    expect(await dbWrite.select().from(organizations)).toHaveLength(0);
+    expect(await dbWrite.select().from(users)).toHaveLength(0);
+    expect(await dbWrite.select().from(accountDeletionPhaseReceipts)).toHaveLength(0);
+    expect(await dbWrite.select().from(accountDeletionExports)).toHaveLength(0);
+    const [receipt] = await dbWrite.select().from(accountDeletionRequests);
+    expect(receipt).toMatchObject({
+      status: "completed",
+      user_id: null,
+      organization_id: null,
+      steward_user_id: null,
+      completion_receipt_digest: "f".repeat(64),
+      status_token_hash: "status-erase",
+    });
+  });
+
+  test("rolls back identifier nulling when a restrictive foreign key survives purge", async () => {
+    const input = reservationInput("50000000-0000-4000-8000-000000000010", "blocked");
+    input.phases = [
+      {
+        phase: "account_authority",
+        phaseOrder: 0,
+        idempotencyKeyDigest: "authority-blocked",
+        completed: true,
+      },
+      {
+        phase: "database_erasure",
+        phaseOrder: 130,
+        idempotencyKeyDigest: "database-blocked",
+      },
+    ];
+    const reserved = await accountDeletionRequestsRepository.reservePersonalAccountDeletion(input);
+    if (reserved.outcome !== "reserved") throw new Error("reservation failed");
+    await dbWrite.execute(`
+      INSERT INTO account_deletion_restrictive_fixture (id, organization_id)
+      VALUES ('70000000-0000-4000-8000-000000000001', '${organizationId}')
+    `);
+    await dbWrite
+      .update(organizations)
+      .set({ account_lifecycle_state: "deletion_irreversible", account_lifecycle_revision: 2 });
+    await dbWrite
+      .update(users)
+      .set({ account_lifecycle_state: "deletion_irreversible", account_lifecycle_revision: 2 });
+    await dbWrite.update(accountDeletionRequests).set({
+      status: "scheduled",
+      lifecycle_revision: 2,
+      irreversible_at: recoveryExpiresAt,
+    });
+    const databaseLease = await accountDeletionRequestsRepository.leasePhase({
+      requestId: reserved.request.id,
+      phase: "database_erasure",
+      leaseOwnerDigest: "database-worker",
+      now: recoveryExpiresAt,
+      leaseMilliseconds: 60_000,
+    });
+    if (!databaseLease) throw new Error("database erasure lease failed");
+
+    await expect(
+      accountDeletionRequestsRepository.finalizePersonalAccountDeletion({
+        requestId: reserved.request.id,
+        phaseReceiptId: databaseLease.receipt.id,
+        generation: databaseLease.generation,
+        completionReceiptDigest: "e".repeat(64),
+        now: recoveryExpiresAt,
+      }),
+    ).rejects.toThrow();
+    const [request] = await dbWrite.select().from(accountDeletionRequests);
+    expect(request).toMatchObject({
+      status: "scheduled",
+      user_id: userId,
+      organization_id: organizationId,
+      completion_receipt_digest: null,
+    });
+    expect(await dbWrite.select().from(organizations)).toHaveLength(1);
   });
 });
