@@ -901,15 +901,15 @@ export class PgApprovalQueue implements ApprovalQueue {
     const notifier = getNotifier(this.runtime);
     if (notifier) {
       const notificationWrite = notifier.notify({
-          title: "Approval needed",
-          body: truncateWellFormed(toWellFormedUnicode(input.reason), 200),
-          category: "approval",
-          priority: "high",
-          source: "lifeops",
-          deepLink: "/chat",
-          groupKey: approvalGroupKey(request.id),
-          data: { requestId: request.id, kind: input.action },
-        });
+        title: "Approval needed",
+        body: truncateWellFormed(toWellFormedUnicode(input.reason), 200),
+        category: "approval",
+        priority: "high",
+        source: "lifeops",
+        deepLink: "/chat",
+        groupKey: approvalGroupKey(request.id),
+        data: { requestId: request.id, kind: input.action },
+      });
       if (awaitNotification) {
         await notificationWrite;
       } else {

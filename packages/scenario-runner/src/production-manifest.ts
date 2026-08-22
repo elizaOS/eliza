@@ -2209,9 +2209,7 @@ export async function applyProductionManifest(
     await writeResetControl(runtime, receipt, "applied");
     return receipt;
   } catch (cause) {
-    let existingWorlds: Awaited<
-      ReturnType<typeof runtime.getWorldsByIds>
-    >;
+    let existingWorlds: Awaited<ReturnType<typeof runtime.getWorldsByIds>>;
     try {
       existingWorlds = await runtime.getWorldsByIds([receipt.worldId]);
     } catch (fenceCause) {
