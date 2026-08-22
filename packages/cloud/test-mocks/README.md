@@ -9,7 +9,17 @@ HTTP contract used to seed, reset, advance time, install faults, inspect
 snapshots/ledgers, and tear down independently running mock processes. The
 scenario runner and Cloud E2E helpers both use `SyntheticControlClient` and
 `SyntheticControlSession`; callers must provide an explicit v1 manifest plus a
-control URL and token. A mock-profile string by itself cannot start a session.
+control URL and token. The client, token-bearing handler, request, response,
+manifest, and reset receipt are bound to one explicit namespace. A mock-profile
+string by itself cannot start a session.
+
+Wire bodies use strict uncompressed `application/json`, with a 1 MiB request
+limit, a 4 MiB response limit, and bounded JSON depth/node counts. Cleartext
+HTTP clients are restricted to loopback; non-loopback control URLs require
+HTTPS. A missing authority generation is represented as unknown and poisons an
+active session rather than being rewritten to generation zero.
+Sessions default to a five-minute lease; callers with a shorter authoritative
+lease window must finish reset and release before that lease expires.
 
 The HTTP adapter is state-neutral. Its `SyntheticControlAuthority` is
 implemented by the production owner of the relevant manifest, lease,
