@@ -8,6 +8,7 @@
  * when the chat tab is active or surfacing it as a toast otherwise. Mounts the
  * layout-shift + frame-budget monitors that feed the perf HUD.
  */
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import { useEffect } from "react";
 import { SHARE_TARGET_EVENT } from "../../events";
 import { useFrameBudgetMonitor, useLayoutShiftMonitor } from "../../hooks";
@@ -58,6 +59,14 @@ function formatSharePayload(payload: ShareTargetPayload): string {
   return fileNames.length > 0 ? fileNames.join(", ") : "";
 }
 
+/** Formats a shared text preview for the toast notice, keeping UTF-16 surrogate pairs intact. */
+export function formatSharePreview(text: string): string {
+  const wellFormed = toWellFormedUnicode(text);
+  return wellFormed.length > 80
+    ? `${truncateWellFormed(wellFormed, 77)}...`
+    : wellFormed;
+}
+
 const selectTab = (s: AppContextValue) => s.tab;
 const selectSetState = (s: AppContextValue) => s.setState;
 const selectSetActionNotice = (s: AppContextValue) => s.setActionNotice;
@@ -89,7 +98,7 @@ export function ShellOverlays({
         setState("chatInput", text);
         return;
       }
-      const preview = text.length > 80 ? `${text.slice(0, 77)}...` : text;
+      const preview = formatSharePreview(text);
       setActionNotice(`Shared: ${preview}`, "info", TOAST_TTL_MS.notification);
     };
 
