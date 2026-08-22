@@ -39,6 +39,29 @@ async function lockIdentity(lockPath: string): Promise<string> {
   return `${entry.dev}-${entry.ino}`;
 }
 
+async function writeLock(
+  lockPath: string,
+  owner: Omit<
+    {
+      pid: number;
+      processIdentity: string | null;
+      lockIdentity: string;
+      token: string;
+      createdAt: number;
+      expiresAt: number;
+    },
+    "lockIdentity"
+  >,
+): Promise<string> {
+  await fs.writeFile(lockPath, "{}", { mode: 0o600, flag: "wx" });
+  const identity = await lockIdentity(lockPath);
+  await fs.writeFile(
+    lockPath,
+    JSON.stringify({ ...owner, lockIdentity: identity }),
+  );
+  return identity;
+}
+
 function barrier(): {
   entered: Promise<void>;
   hook: () => Promise<void>;
@@ -200,6 +223,102 @@ describe("FileMessageInteractionSessionStore", () => {
     ).toHaveLength(7);
   });
 
+  it("treats the exact two-link owner publication window as in progress", async () => {
+    const stateDirectory = await temporaryDirectory();
+    const now = Date.parse("2026-08-21T00:00:00.000Z");
+    const publication = barrier();
+    const publisher = new FileMessageInteractionSessionStore({
+      stateDirectory,
+      clock: () => now,
+      lockRaceHooks: {
+        afterLockPublishBeforeCandidateCleanup: publication.hook,
+      },
+    }).deleteExpired(now);
+    await publication.entered;
+    const contender = new FileMessageInteractionSessionStore({
+      stateDirectory,
+      clock: () => now,
+      lockTimeoutMs: 20,
+      pollMs: 1,
+    }).deleteExpired(now);
+    await expect(contender).rejects.toMatchObject({
+      code: "INTERACTION_STORE_LOCK_TIMEOUT",
+    });
+
+    publication.release();
+    await expect(publisher).resolves.toBe(0);
+  });
+
+  it("accepts candidate cleanup after observing the two-link window", async () => {
+    const stateDirectory = await temporaryDirectory();
+    const now = Date.parse("2026-08-21T00:00:00.000Z");
+    const publication = barrier();
+    const publisherRelease = barrier();
+    const publisher = new FileMessageInteractionSessionStore({
+      stateDirectory,
+      clock: () => now,
+      lockRaceHooks: {
+        afterLockPublishBeforeCandidateCleanup: publication.hook,
+        beforeReleaseRetire: publisherRelease.hook,
+      },
+    }).deleteExpired(now);
+    await publication.entered;
+
+    const candidateValidation = barrier();
+    const contender = new FileMessageInteractionSessionStore({
+      stateDirectory,
+      clock: () => now,
+      lockTimeoutMs: 1_000,
+      pollMs: 1,
+      lockRaceHooks: {
+        beforePublicationCandidateValidation: candidateValidation.hook,
+      },
+    }).deleteExpired(now);
+    await candidateValidation.entered;
+    publication.release();
+    await publisherRelease.entered;
+    candidateValidation.release();
+    publisherRelease.release();
+
+    await expect(Promise.all([publisher, contender])).resolves.toEqual([0, 0]);
+  });
+
+  it("a delayed creator cannot publish over a successor owner", async () => {
+    const stateDirectory = await temporaryDirectory();
+    const now = Date.parse("2026-08-21T00:00:00.000Z");
+    const oldPublication = barrier();
+    const oldCreator = new FileMessageInteractionSessionStore({
+      stateDirectory,
+      clock: () => now,
+      lockTimeoutMs: 30,
+      pollMs: 1,
+      lockRaceHooks: { beforeLockPublish: oldPublication.hook },
+    }).deleteExpired(now);
+    await oldPublication.entered;
+
+    const successorRelease = barrier();
+    const successor = new FileMessageInteractionSessionStore({
+      stateDirectory,
+      clock: () => now,
+      lockRaceHooks: { beforeReleaseRetire: successorRelease.hook },
+    });
+    const successorTransaction = successor.deleteExpired(now);
+    await successorRelease.entered;
+    const lockPath = path.join(
+      stateDirectory,
+      "message-interaction-sessions.v1.json.lock",
+    );
+    const successorIdentity = await lockIdentity(lockPath);
+
+    oldPublication.release();
+    await expect(oldCreator).rejects.toMatchObject({
+      code: "INTERACTION_STORE_LOCK_TIMEOUT",
+    });
+    expect(await lockIdentity(lockPath)).toBe(successorIdentity);
+    successorRelease.release();
+    await expect(successorTransaction).resolves.toBe(0);
+  });
+
   it("writes a 0600 regular file and retains state across store instances", async () => {
     const stateDirectory = await temporaryDirectory();
     const { created } = await seed(stateDirectory);
@@ -319,19 +438,13 @@ describe("FileMessageInteractionSessionStore", () => {
       stateDirectory,
       "message-interaction-sessions.v1.json.lock",
     );
-    await fs.mkdir(lockPath, { mode: 0o700 });
-    await fs.writeFile(
-      path.join(lockPath, "owner.json"),
-      JSON.stringify({
-        pid: 2_000_000_000,
-        processIdentity: null,
-        lockIdentity: await lockIdentity(lockPath),
-        token: "dead-owner",
-        createdAt: now - 10_000,
-        expiresAt: now - 1,
-      }),
-      { mode: 0o600 },
-    );
+    await writeLock(lockPath, {
+      pid: 2_000_000_000,
+      processIdentity: null,
+      token: "dead-owner",
+      createdAt: now - 10_000,
+      expiresAt: now - 1,
+    });
     const { created } = await seed(stateDirectory, { now });
     expect(created.session.reference).toBe("0123456789abcdef0123456789abcdef");
   });
@@ -343,19 +456,13 @@ describe("FileMessageInteractionSessionStore", () => {
       stateDirectory,
       "message-interaction-sessions.v1.json.lock",
     );
-    await fs.mkdir(lockPath, { mode: 0o700 });
-    await fs.writeFile(
-      path.join(lockPath, "owner.json"),
-      JSON.stringify({
-        pid: process.pid,
-        processIdentity: null,
-        lockIdentity: await lockIdentity(lockPath),
-        token: "live-owner",
-        createdAt: now - 10_000,
-        expiresAt: now - 1,
-      }),
-      { mode: 0o600 },
-    );
+    await writeLock(lockPath, {
+      pid: process.pid,
+      processIdentity: null,
+      token: "live-owner",
+      createdAt: now - 10_000,
+      expiresAt: now - 1,
+    });
     const store = new FileMessageInteractionSessionStore({
       stateDirectory,
       clock: () => now,
@@ -368,6 +475,30 @@ describe("FileMessageInteractionSessionStore", () => {
     expect(await fs.lstat(lockPath)).toBeDefined();
   });
 
+  it("rejects a steady lock hardlink outside the publication candidate", async () => {
+    const stateDirectory = await temporaryDirectory();
+    const now = Date.parse("2026-08-21T00:00:00.000Z");
+    const lockPath = path.join(
+      stateDirectory,
+      "message-interaction-sessions.v1.json.lock",
+    );
+    await writeLock(lockPath, {
+      pid: process.pid,
+      processIdentity: null,
+      token: "hardlinked-owner",
+      createdAt: now,
+      expiresAt: now + 30_000,
+    });
+    await fs.link(lockPath, `${lockPath}.unexpected-link`);
+    const store = new FileMessageInteractionSessionStore({
+      stateDirectory,
+      clock: () => now,
+    });
+    await expect(store.deleteExpired(now)).rejects.toMatchObject({
+      code: "UNSAFE_INTERACTION_STORE_LOCK",
+    });
+  });
+
   it("recovers an expired lock after the recorded PID is reused", async () => {
     if (process.platform !== "linux") return;
     const stateDirectory = await temporaryDirectory();
@@ -376,19 +507,13 @@ describe("FileMessageInteractionSessionStore", () => {
       stateDirectory,
       "message-interaction-sessions.v1.json.lock",
     );
-    await fs.mkdir(lockPath, { mode: 0o700 });
-    await fs.writeFile(
-      path.join(lockPath, "owner.json"),
-      JSON.stringify({
-        pid: process.pid,
-        processIdentity: "different-boot:different-start",
-        lockIdentity: await lockIdentity(lockPath),
-        token: "reused-pid-owner",
-        createdAt: now - 10_000,
-        expiresAt: now - 1,
-      }),
-      { mode: 0o600 },
-    );
+    await writeLock(lockPath, {
+      pid: process.pid,
+      processIdentity: "different-boot:different-start",
+      token: "reused-pid-owner",
+      createdAt: now - 10_000,
+      expiresAt: now - 1,
+    });
     const { created } = await seed(stateDirectory, { now });
     expect(created.session.reference).toBe("0123456789abcdef0123456789abcdef");
   });
@@ -400,19 +525,13 @@ describe("FileMessageInteractionSessionStore", () => {
       stateDirectory,
       "message-interaction-sessions.v1.json.lock",
     );
-    await fs.mkdir(lockPath, { mode: 0o700 });
-    await fs.writeFile(
-      path.join(lockPath, "owner.json"),
-      JSON.stringify({
-        pid: process.pid,
-        processIdentity: null,
-        lockIdentity: await lockIdentity(lockPath),
-        token: "unqualified-owner",
-        createdAt: now - 101,
-        expiresAt: now - 100,
-      }),
-      { mode: 0o600 },
-    );
+    await writeLock(lockPath, {
+      pid: process.pid,
+      processIdentity: null,
+      token: "unqualified-owner",
+      createdAt: now - 101,
+      expiresAt: now - 100,
+    });
     const store = new FileMessageInteractionSessionStore({
       stateDirectory,
       clock: () => now,
@@ -434,7 +553,7 @@ describe("FileMessageInteractionSessionStore", () => {
       stateDirectory,
       "message-interaction-sessions.v1.json.lock",
     );
-    await fs.mkdir(lockPath, { mode: 0o700 });
+    await fs.writeFile(lockPath, "", { mode: 0o600, flag: "wx" });
     await fs.utimes(lockPath, new Date(now - 50), new Date(now - 50));
     const store = new FileMessageInteractionSessionStore({
       stateDirectory,
@@ -459,20 +578,13 @@ describe("FileMessageInteractionSessionStore", () => {
       stateDirectory,
       "message-interaction-sessions.v1.json.lock",
     );
-    await fs.mkdir(lockPath, { mode: 0o700 });
-    const staleIdentity = await lockIdentity(lockPath);
-    await fs.writeFile(
-      path.join(lockPath, "owner.json"),
-      JSON.stringify({
-        pid: 2_000_000_000,
-        processIdentity: null,
-        lockIdentity: staleIdentity,
-        token: "stale-generation",
-        createdAt: now - 10_000,
-        expiresAt: now - 1,
-      }),
-      { mode: 0o600 },
-    );
+    const staleIdentity = await writeLock(lockPath, {
+      pid: 2_000_000_000,
+      processIdentity: null,
+      token: "stale-generation",
+      createdAt: now - 10_000,
+      expiresAt: now - 1,
+    });
 
     let staleObservers = 0;
     let releaseObservers: () => void = () => {};
@@ -525,20 +637,13 @@ describe("FileMessageInteractionSessionStore", () => {
       stateDirectory,
       "message-interaction-sessions.v1.json.lock",
     );
-    await fs.mkdir(lockPath, { mode: 0o700 });
-    const staleIdentity = await lockIdentity(lockPath);
-    await fs.writeFile(
-      path.join(lockPath, "owner.json"),
-      JSON.stringify({
-        pid: 2_000_000_000,
-        processIdentity: null,
-        lockIdentity: staleIdentity,
-        token: "departing-generation",
-        createdAt: now - 10_000,
-        expiresAt: now - 1,
-      }),
-      { mode: 0o600 },
-    );
+    await writeLock(lockPath, {
+      pid: 2_000_000_000,
+      processIdentity: null,
+      token: "departing-generation",
+      createdAt: now - 10_000,
+      expiresAt: now - 1,
+    });
     const recovererGate = barrier();
     const recovering = new FileMessageInteractionSessionStore({
       stateDirectory,
@@ -549,7 +654,7 @@ describe("FileMessageInteractionSessionStore", () => {
     }).deleteExpired(now);
     await recovererGate.entered;
 
-    await fs.rm(lockPath, { recursive: true });
+    await fs.rm(lockPath);
     const successorRelease = barrier();
     const successor = new FileMessageInteractionSessionStore({
       stateDirectory,
@@ -576,22 +681,15 @@ describe("FileMessageInteractionSessionStore", () => {
       stateDirectory,
       "message-interaction-sessions.v1.json.lock",
     );
-    await fs.mkdir(lockPath, { mode: 0o700 });
-    const identity = await lockIdentity(lockPath);
+    await writeLock(lockPath, {
+      pid: 2_000_000_000,
+      processIdentity: null,
+      token: "dead-lock-owner",
+      createdAt: now - 10_000,
+      expiresAt: now - 1,
+    });
     await fs.writeFile(
-      path.join(lockPath, "owner.json"),
-      JSON.stringify({
-        pid: 2_000_000_000,
-        processIdentity: null,
-        lockIdentity: identity,
-        token: "dead-lock-owner",
-        createdAt: now - 10_000,
-        expiresAt: now - 1,
-      }),
-      { mode: 0o600 },
-    );
-    await fs.writeFile(
-      path.join(lockPath, ".transition"),
+      `${lockPath}.transition`,
       JSON.stringify({
         pid: 2_000_000_000,
         processIdentity: null,
@@ -607,6 +705,79 @@ describe("FileMessageInteractionSessionStore", () => {
       pollMs: 1,
     });
     await expect(store.deleteExpired(now)).resolves.toBe(0);
+  });
+
+  it("two clearers cannot remove a replacement live transition marker", async () => {
+    const stateDirectory = await temporaryDirectory();
+    const now = Date.parse("2026-08-21T00:00:00.000Z");
+    const lockPath = path.join(
+      stateDirectory,
+      "message-interaction-sessions.v1.json.lock",
+    );
+    await writeLock(lockPath, {
+      pid: 2_000_000_000,
+      processIdentity: null,
+      token: "dead-lock-owner",
+      createdAt: now - 10_000,
+      expiresAt: now - 1,
+    });
+    await fs.writeFile(
+      `${lockPath}.transition`,
+      JSON.stringify({
+        pid: 2_000_000_000,
+        processIdentity: null,
+        token: "dead-transition-owner",
+      }),
+      { mode: 0o600 },
+    );
+
+    const firstBeforeRetire = barrier();
+    const secondBeforeRetire = barrier();
+    const firstAfterRetire = barrier();
+    const first = new FileMessageInteractionSessionStore({
+      stateDirectory,
+      clock: () => now,
+      lockTimeoutMs: 30,
+      pollMs: 1,
+      lockRaceHooks: {
+        beforeAbandonedTransitionRetire: firstBeforeRetire.hook,
+        afterAbandonedTransitionRetire: firstAfterRetire.hook,
+      },
+    }).deleteExpired(now);
+    const second = new FileMessageInteractionSessionStore({
+      stateDirectory,
+      clock: () => now,
+      lockTimeoutMs: 30,
+      pollMs: 1,
+      lockRaceHooks: {
+        beforeAbandonedTransitionRetire: secondBeforeRetire.hook,
+      },
+    }).deleteExpired(now);
+    await Promise.all([firstBeforeRetire.entered, secondBeforeRetire.entered]);
+
+    firstBeforeRetire.release();
+    await firstAfterRetire.entered;
+    await fs.writeFile(
+      `${lockPath}.transition`,
+      JSON.stringify({
+        pid: process.pid,
+        processIdentity: null,
+        token: "live-replacement-transition",
+      }),
+      { mode: 0o600, flag: "wx" },
+    );
+    secondBeforeRetire.release();
+    await expect(second).rejects.toMatchObject({
+      code: "INTERACTION_STORE_LOCK_TIMEOUT",
+    });
+    expect(
+      JSON.parse(await fs.readFile(`${lockPath}.transition`, "utf8")),
+    ).toMatchObject({ token: "live-replacement-transition" });
+
+    firstAfterRetire.release();
+    await expect(first).rejects.toMatchObject({
+      code: "INTERACTION_STORE_LOCK_TIMEOUT",
+    });
   });
 
   it("a delayed release cannot detach a replacement lock generation", async () => {
@@ -645,6 +816,31 @@ describe("FileMessageInteractionSessionStore", () => {
     expect(await lockIdentity(lockPath)).toBe(successorIdentity);
     successorRelease.release();
     await expect(successorTransaction).resolves.toBe(0);
+  });
+
+  it("cleans its transition marker when lock unlink fails", async () => {
+    const stateDirectory = await temporaryDirectory();
+    const now = Date.parse("2026-08-21T00:00:00.000Z");
+    const lockPath = path.join(
+      stateDirectory,
+      "message-interaction-sessions.v1.json.lock",
+    );
+    const store = new FileMessageInteractionSessionStore({
+      stateDirectory,
+      clock: () => now,
+      lockRaceHooks: {
+        beforeLockUnlink: async () => {
+          throw new Error("simulated lock unlink failure");
+        },
+      },
+    });
+    await expect(store.deleteExpired(now)).rejects.toThrow(
+      "simulated lock unlink failure",
+    );
+    expect(await fs.lstat(lockPath)).toBeDefined();
+    await expect(fs.lstat(`${lockPath}.transition`)).rejects.toMatchObject({
+      code: "ENOENT",
+    });
   });
 
   it("collects expired sessions through the explicit retention/GC boundary", async () => {

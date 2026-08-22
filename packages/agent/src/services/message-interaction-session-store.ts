@@ -38,8 +38,14 @@ interface LockOwner {
 }
 
 interface LockRaceHooks {
+  beforeLockPublish?: () => Promise<void>;
+  afterLockPublishBeforeCandidateCleanup?: () => Promise<void>;
+  beforePublicationCandidateValidation?: () => Promise<void>;
   beforeStaleRetire?: () => Promise<void>;
   beforeReleaseRetire?: () => Promise<void>;
+  beforeAbandonedTransitionRetire?: () => Promise<void>;
+  afterAbandonedTransitionRetire?: () => Promise<void>;
+  beforeLockUnlink?: () => Promise<void>;
 }
 
 interface LockTransitionOwner {
@@ -457,9 +463,9 @@ export class FileMessageInteractionSessionStore
   private async beginLockTransition(
     lockIdentity: string,
   ): Promise<string | null> {
-    const marker = path.join(this.lockPath, ".transition");
+    const marker = `${this.lockPath}.transition`;
     const token = newToken();
-    const candidate = path.join(this.lockPath, `.transition-${token}.tmp`);
+    const candidate = `${marker}-${token}.tmp`;
     try {
       await this.writeAndSync(candidate, {
         pid: process.pid,
@@ -488,7 +494,7 @@ export class FileMessageInteractionSessionStore
     }
     const current = await existsLstat(this.lockPath);
     if (
-      !current?.isDirectory() ||
+      !current?.isFile() ||
       current.isSymbolicLink() ||
       this.lockIdentity(current) !== lockIdentity
     ) {
@@ -505,11 +511,27 @@ export class FileMessageInteractionSessionStore
   private async clearAbandonedTransition(lockIdentity: string): Promise<void> {
     const current = await existsLstat(this.lockPath);
     if (!current || this.lockIdentity(current) !== lockIdentity) return;
-    const marker = path.join(this.lockPath, ".transition");
+    const marker = `${this.lockPath}.transition`;
+    let markerEntry: Awaited<ReturnType<typeof fs.lstat>>;
     let value: Partial<LockTransitionOwner>;
     try {
-      const raw = await fs.readFile(marker, "utf8");
-      value = JSON.parse(raw) as Partial<LockTransitionOwner>;
+      markerEntry = await fs.lstat(marker);
+      if (!markerEntry.isFile() || markerEntry.isSymbolicLink()) return;
+      const handle = await fs.open(
+        marker,
+        constants.O_RDONLY | constants.O_NOFOLLOW,
+      );
+      try {
+        const opened = await handle.stat();
+        if (opened.dev !== markerEntry.dev || opened.ino !== markerEntry.ino) {
+          return;
+        }
+        value = JSON.parse(
+          await handle.readFile("utf8"),
+        ) as Partial<LockTransitionOwner>;
+      } finally {
+        await handle.close();
+      }
     } catch (error) {
       if (isErrno(error, "ENOENT")) return;
       // error-policy:J3 malformed transition ownership fails closed.
@@ -536,10 +558,27 @@ export class FileMessageInteractionSessionStore
     ) {
       return;
     }
-    const rechecked = await existsLstat(this.lockPath);
-    if (rechecked && this.lockIdentity(rechecked) === lockIdentity) {
-      await fs.rm(marker, { force: true });
+    await this.lockRaceHooks.beforeAbandonedTransitionRetire?.();
+    const retiredMarker = path.join(
+      this.directory,
+      `${path.basename(this.lockPath)}.transition-retired-${this.lockIdentity(markerEntry)}`,
+    );
+    try {
+      await fs.link(marker, retiredMarker);
+    } catch (error) {
+      if (isErrno(error, "ENOENT") || isErrno(error, "EEXIST")) return;
+      throw error;
     }
+    const retiredEntry = await fs.lstat(retiredMarker);
+    if (
+      retiredEntry.dev !== markerEntry.dev ||
+      retiredEntry.ino !== markerEntry.ino
+    ) {
+      await fs.rm(retiredMarker, { force: true });
+      return;
+    }
+    await fs.rm(marker, { force: true });
+    await this.lockRaceHooks.afterAbandonedTransitionRetire?.();
   }
 
   /** The transition hardlink excludes release and all competing recoverers. */
@@ -560,29 +599,35 @@ export class FileMessageInteractionSessionStore
       await fs.rm(marker, { force: true });
       return false;
     }
-    const quarantine = `${this.lockPath}.retired-${process.pid}-${newToken()}`;
     try {
-      await fs.rename(this.lockPath, quarantine);
+      await this.lockRaceHooks.beforeLockUnlink?.();
+      await fs.rm(this.lockPath);
     } catch (error) {
+      try {
+        await fs.rm(marker, { force: true });
+      } catch {
+        // error-policy:J6 preserve the authoritative unlink failure.
+      }
       if (isErrno(error, "ENOENT")) return false;
       throw error;
     }
     try {
-      await fs.rm(quarantine, { recursive: true });
+      await fs.rm(marker, { force: true });
     } catch {
-      // error-policy:J6 the detached generation no longer blocks the store.
+      // error-policy:J6 an abandoned transition is generation-recoverable.
     }
     return true;
   }
 
   private async readLockOwner(): Promise<LockOwner | null> {
     try {
-      const ownerPath = path.join(this.lockPath, "owner.json");
+      const ownerPath = this.lockPath;
       const entry = await fs.lstat(ownerPath);
       if (
         !entry.isFile() ||
         entry.isSymbolicLink() ||
-        entry.nlink !== 1 ||
+        entry.nlink < 1 ||
+        entry.nlink > 2 ||
         (entry.mode & 0o077) !== 0 ||
         entry.size > 4_096
       ) {
@@ -603,12 +648,15 @@ export class FileMessageInteractionSessionStore
         constants.O_RDONLY | constants.O_NOFOLLOW,
       );
       let raw: string;
+      let openedNlink = 0;
       try {
         const opened = await handle.stat();
+        openedNlink = opened.nlink;
         if (
           opened.dev !== entry.dev ||
           opened.ino !== entry.ino ||
-          opened.nlink !== 1 ||
+          opened.nlink < 1 ||
+          opened.nlink > 2 ||
           opened.size > 4_096
         ) {
           // The prior owner may release and a contender may create a new lock
@@ -631,6 +679,59 @@ export class FileMessageInteractionSessionStore
         !Number.isSafeInteger(value.createdAt) ||
         !Number.isSafeInteger(value.expiresAt)
       ) {
+        return null;
+      }
+      if (entry.nlink === 2 || openedNlink === 2) {
+        await this.lockRaceHooks.beforePublicationCandidateValidation?.();
+        const expectedCandidate = `${path.basename(this.lockPath)}.owner-${String(value.pid)}-${value.token}.tmp`;
+        const names = await fs.readdir(this.directory);
+        if (!names.includes(expectedCandidate)) {
+          const completed = await existsLstat(this.lockPath);
+          if (
+            completed &&
+            completed.dev === entry.dev &&
+            completed.ino === entry.ino &&
+            completed.nlink === 1
+          ) {
+            return {
+              ...(value as LockOwner),
+              processIdentity: value.processIdentity ?? null,
+            };
+          }
+          storeError(
+            "UNSAFE_INTERACTION_STORE_LOCK",
+            "Interaction store lock has an unexpected hardlink.",
+          );
+        }
+        let candidate: Awaited<ReturnType<typeof fs.lstat>>;
+        try {
+          candidate = await fs.lstat(
+            path.join(this.directory, expectedCandidate),
+          );
+        } catch (error) {
+          if (!isErrno(error, "ENOENT")) throw error;
+          const completed = await existsLstat(this.lockPath);
+          if (
+            completed &&
+            completed.dev === entry.dev &&
+            completed.ino === entry.ino &&
+            completed.nlink === 1
+          ) {
+            return {
+              ...(value as LockOwner),
+              processIdentity: value.processIdentity ?? null,
+            };
+          }
+          return null;
+        }
+        if (candidate.dev !== entry.dev || candidate.ino !== entry.ino) {
+          storeError(
+            "UNSAFE_INTERACTION_STORE_LOCK",
+            "Interaction store lock publication hardlink changed.",
+          );
+        }
+        // The creator has not completed candidate cleanup and therefore has
+        // not returned the lease to a transaction yet.
         return null;
       }
       return {
@@ -690,10 +791,10 @@ export class FileMessageInteractionSessionStore
   private async recoverStaleLock(now: number): Promise<boolean> {
     const lockStat = await existsLstat(this.lockPath);
     if (!lockStat) return true;
-    if (!lockStat.isDirectory() || lockStat.isSymbolicLink()) {
+    if (!lockStat.isFile() || lockStat.isSymbolicLink()) {
       storeError(
         "UNSAFE_INTERACTION_STORE_LOCK",
-        "Interaction store lock is not a real directory.",
+        "Interaction store lock is not a regular file.",
       );
     }
     if (!(await this.lockIsStale(lockStat, now))) return false;
@@ -714,42 +815,45 @@ export class FileMessageInteractionSessionStore
     const startedAt = performance.now();
     while (performance.now() - startedAt <= this.lockTimeoutMs) {
       const now = this.clock();
+      const token = newToken();
+      const candidate = `${this.lockPath}.owner-${process.pid}-${token}.tmp`;
+      let owner: LockOwner;
       try {
-        await fs.mkdir(this.lockPath, { mode: 0o700 });
+        const handle = await fs.open(
+          candidate,
+          constants.O_CREAT |
+            constants.O_EXCL |
+            constants.O_WRONLY |
+            constants.O_NOFOLLOW,
+          0o600,
+        );
+        try {
+          const created = await handle.stat();
+          owner = {
+            pid: process.pid,
+            processIdentity: await this.readProcessIdentity(process.pid),
+            lockIdentity: this.lockIdentity(created),
+            token,
+            createdAt: now,
+            expiresAt: now + this.staleLockMs,
+          };
+          await handle.writeFile(JSON.stringify(owner, null, 2), "utf8");
+          await handle.sync();
+        } finally {
+          await handle.close();
+        }
+        // link(2) publishes the already complete owner inode with no-replace
+        // semantics. A delayed creator never writes through the shared path.
+        await this.lockRaceHooks.beforeLockPublish?.();
+        await fs.link(candidate, this.lockPath);
+        await this.lockRaceHooks.afterLockPublishBeforeCandidateCleanup?.();
+        return owner;
       } catch (error) {
         if (!isErrno(error, "EEXIST")) throw error;
         await this.recoverStaleLock(now);
         await delay(this.pollMs);
-        continue;
-      }
-
-      const created = await fs.lstat(this.lockPath);
-      const lockIdentity = this.lockIdentity(created);
-      try {
-        const owner: LockOwner = {
-          pid: process.pid,
-          processIdentity: await this.readProcessIdentity(process.pid),
-          lockIdentity,
-          token: newToken(),
-          createdAt: now,
-          expiresAt: now + this.staleLockMs,
-        };
-        const ownerTemp = path.join(
-          this.lockPath,
-          `.owner-${process.pid}-${owner.token}.tmp`,
-        );
-        await this.writeAndSync(ownerTemp, owner);
-        // Publish only the complete, synced lease. Contenders may inspect the
-        // lock directory immediately after mkdir and must never mistake an
-        // empty or partially written owner file for hostile state.
-        await fs.rename(ownerTemp, path.join(this.lockPath, "owner.json"));
-        return owner;
-      } catch (error) {
-        // A construction failure may race a hard-ceiling recovery of the
-        // unpublished owner. Retain its identity quarantine so delayed cleanup
-        // cannot detach a successor generation.
-        await this.retireObservedLock(lockIdentity, async () => true);
-        throw error;
+      } finally {
+        await fs.rm(candidate, { force: true });
       }
     }
     return storeError(
