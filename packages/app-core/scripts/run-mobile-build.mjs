@@ -5781,9 +5781,12 @@ export const ANDROID_CLOUD_STRIPPED_NATIVE_PLUGINS = [
   ["@capacitor-community/bluetooth-le", "capacitor-community-bluetooth-le"],
   ["@capacitor/background-runner", "capacitor-background-runner"],
   ["@capacitor/barcode-scanner", "capacitor-barcode-scanner"],
+  ["@capacitor/device", "capacitor-device"],
+  ["@capacitor/filesystem", "capacitor-filesystem"],
   ["@capacitor/haptics", "capacitor-haptics"],
   ["@capacitor/local-notifications", "capacitor-local-notifications"],
   ["@capacitor/push-notifications", "capacitor-push-notifications"],
+  ["@capacitor/share", "capacitor-share"],
   ["@elizaos/capacitor-agent", "elizaos-capacitor-agent"],
   ["@elizaos/capacitor-bun-runtime", "elizaos-capacitor-bun-runtime"],
   ["@elizaos/capacitor-appblocker", "elizaos-capacitor-appblocker"],
@@ -5812,16 +5815,94 @@ export const ANDROID_CLOUD_STRIPPED_NATIVE_PLUGINS = [
 export const ANDROID_PLAY_ALLOWED_NATIVE_PLUGIN_PACKAGES = Object.freeze([
   "@capacitor/app",
   "@capacitor/browser",
-  "@capacitor/device",
-  "@capacitor/filesystem",
   "@capacitor/keyboard",
   "@capacitor/network",
   "@capacitor/preferences",
-  "@capacitor/share",
   "@capacitor/status-bar",
   "@elizaos/capacitor-browser-surface",
   "@elizaos/capacitor-secure-store",
 ]);
+
+export const ANDROID_PLAY_ALLOWED_CAPACITOR_CONFIG_PLUGINS = Object.freeze([
+  "CapacitorHttp",
+  "Keyboard",
+  "SplashScreen",
+]);
+
+const ANDROID_PLAY_ALLOW_NAVIGATION = Object.freeze([
+  "eliza.app",
+  "*.eliza.app",
+]);
+
+function isJsonRecord(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+/** Returns the minimal runtime config that is safe to package in a Play APK/AAB. */
+export function sanitizeAndroidCloudCapacitorConfig(value) {
+  if (!isJsonRecord(value)) {
+    throw new Error(
+      "android-cloud capacitor.config.json must contain an object",
+    );
+  }
+  const sourcePlugins = isJsonRecord(value.plugins) ? value.plugins : {};
+  const plugins = {};
+  for (const pluginName of ANDROID_PLAY_ALLOWED_CAPACITOR_CONFIG_PLUGINS) {
+    const pluginConfig = sourcePlugins[pluginName];
+    if (isJsonRecord(pluginConfig)) plugins[pluginName] = pluginConfig;
+  }
+  const sourceAndroid = isJsonRecord(value.android) ? value.android : {};
+  return {
+    appId: APP.appId,
+    appName: APP.appName,
+    webDir: "dist",
+    server: {
+      androidScheme: "https",
+      allowNavigation: [...ANDROID_PLAY_ALLOW_NAVIGATION],
+    },
+    plugins,
+    android: {
+      backgroundColor:
+        typeof sourceAndroid.backgroundColor === "string"
+          ? sourceAndroid.backgroundColor
+          : "#000000",
+      allowMixedContent: false,
+      captureInput: sourceAndroid.captureInput === true,
+      webContentsDebuggingEnabled: false,
+    },
+  };
+}
+
+function sanitizeAndroidCloudPackagedConfig() {
+  const configPath = path.join(
+    androidDir,
+    "app",
+    "src",
+    "main",
+    "assets",
+    "capacitor.config.json",
+  );
+  if (!fs.existsSync(configPath)) {
+    throw new Error(
+      "[mobile-build] android-cloud capacitor.config.json is missing",
+    );
+  }
+  let parsed;
+  try {
+    parsed = JSON.parse(fs.readFileSync(configPath, "utf8"));
+  } catch (error) {
+    throw new Error(
+      `[mobile-build] Could not parse android-cloud capacitor.config.json: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+  }
+  const sanitized = sanitizeAndroidCloudCapacitorConfig(parsed);
+  fs.writeFileSync(configPath, `${JSON.stringify(sanitized, null, "\t")}\n`);
+  console.log(
+    "[mobile-build] Rewrote capacitor.config.json to the minimal Play runtime contract.",
+  );
+}
 
 export const ANDROID_PLAY_ALLOWED_PERMISSIONS = Object.freeze([
   "android.permission.ACCESS_NETWORK_STATE",
@@ -6135,6 +6216,7 @@ ${cloudBrandUserAgentMarkerLines()}
         registerPlugin(DeepLinkBufferPlugin.class);
         registerPlugin(ElizaSecureCredentialsPlugin.class);
         registerPlugin(ElizaPlayVoicePlugin.class);
+        registerPlugin(ElizaPlaySettingsPlugin.class);
 
         super.onCreate(savedInstanceState);
 
@@ -6332,6 +6414,38 @@ public final class ElizaSecureCredentialsPlugin extends Plugin {
                 .setRandomizedEncryptionRequired(true)
                 .build());
         return generator.generateKey();
+    }
+}
+`;
+}
+
+/** Permissionless bridge to this app's standard Android settings page. */
+export function cloudSafePlaySettingsPluginJava(androidPackage) {
+  return `package ${androidPackage};
+
+import android.content.Intent;
+import android.net.Uri;
+import android.provider.Settings;
+
+import com.getcapacitor.Plugin;
+import com.getcapacitor.PluginCall;
+import com.getcapacitor.PluginMethod;
+import com.getcapacitor.annotation.CapacitorPlugin;
+
+@CapacitorPlugin(name = "ElizaPlaySettings")
+public final class ElizaPlaySettingsPlugin extends Plugin {
+    @PluginMethod
+    public void openAppSettings(PluginCall call) {
+        try {
+            Intent intent = new Intent(
+                    Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                    Uri.parse("package:" + getContext().getPackageName()));
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            getContext().startActivity(intent);
+            call.resolve();
+        } catch (RuntimeException error) {
+            call.reject("Android app settings could not be opened.", "APP_SETTINGS_UNAVAILABLE", error);
+        }
     }
 }
 `;
@@ -6750,6 +6864,12 @@ function rewriteCloudJavaSources(javaRoots, androidPackage) {
       "utf8",
     );
     touched += 1;
+    fs.writeFileSync(
+      path.join(root, "ElizaPlaySettingsPlugin.java"),
+      cloudSafePlaySettingsPluginJava(androidPackage),
+      "utf8",
+    );
+    touched += 1;
     const tasksWorker = path.join(root, "ElizaTasksWorker.java");
     if (fs.existsSync(tasksWorker)) {
       fs.writeFileSync(
@@ -7155,6 +7275,34 @@ function auditAndroidCloudSource(phase, { env = process.env } = {}) {
     }
   }
 
+  const capacitorConfigPath = path.join(
+    androidDir,
+    "app",
+    "src",
+    "main",
+    "assets",
+    "capacitor.config.json",
+  );
+  if (!fs.existsSync(capacitorConfigPath)) {
+    failures.push("app/src/main/assets/capacitor.config.json is missing");
+  } else {
+    try {
+      const config = JSON.parse(fs.readFileSync(capacitorConfigPath, "utf8"));
+      const expected = sanitizeAndroidCloudCapacitorConfig(config);
+      if (JSON.stringify(config) !== JSON.stringify(expected)) {
+        failures.push(
+          "capacitor.config.json differs from the minimal Play runtime contract",
+        );
+      }
+    } catch (error) {
+      failures.push(
+        `capacitor.config.json is invalid: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
+  }
+
   if (failures.length > 0) {
     throw new Error(
       `[mobile-build] android-cloud ${phase} audit failed:\n` +
@@ -7509,6 +7657,7 @@ function stripAndroidForCloud({ env = process.env } = {}) {
   //    libeliza_*.so jniLibs disguise.
   removeCloudNativeArtifacts();
   stripAndroidCloudNativePlugins();
+  sanitizeAndroidCloudPackagedConfig();
 }
 
 function stripAndroidForSmsGateway() {

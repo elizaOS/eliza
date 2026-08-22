@@ -12,6 +12,7 @@ import {
   ANDROID_CLOUD_STRIPPED_PERMISSIONS,
   ANDROID_CLOUD_STRIPPED_RESOURCE_FILES,
   ANDROID_CLOUD_STRIPPED_RESOURCE_VALUES,
+  ANDROID_PLAY_ALLOWED_CAPACITOR_CONFIG_PLUGINS,
   ANDROID_PLAY_ALLOWED_NATIVE_LIBRARIES,
   ANDROID_PLAY_ALLOWED_NATIVE_PLUGIN_PACKAGES,
   ANDROID_PLAY_ALLOWED_PERMISSIONS,
@@ -21,6 +22,7 @@ import {
   findAndroidCloudPackagedRuntimeOffenders,
   findAndroidPlayIndexHtmlFindings,
   findAndroidPlayTextAssetFindings,
+  sanitizeAndroidCloudCapacitorConfig,
 } from "./run-mobile-build.mjs";
 
 const VARIABLES_GRADLE = fs.readFileSync(
@@ -62,6 +64,51 @@ const AAPT_MANIFEST = `
 `;
 
 describe("Android Play manifest policy", () => {
+  it("packages only the minimal Play-safe Capacitor runtime config", () => {
+    const sanitized = sanitizeAndroidCloudCapacitorConfig({
+      appId: "ai.elizaos.app",
+      appName: "Eliza",
+      webDir: "dist",
+      server: {
+        androidScheme: "http",
+        allowNavigation: ["localhost", "127.0.0.1", "*.elizacloud.ai"],
+      },
+      plugins: {
+        Agent: { apiBase: "http://127.0.0.1:31337" },
+        BackgroundRunner: { autoStart: true },
+        CapacitorHttp: { enabled: true },
+        Keyboard: { resize: "body" },
+        SplashScreen: { launchShowDuration: 0 },
+      },
+      android: {
+        includePlugins: ["@elizaos/capacitor-bun-runtime"],
+        backgroundColor: "#000000",
+        allowMixedContent: true,
+        captureInput: true,
+        webContentsDebuggingEnabled: true,
+      },
+      ios: { webContentsDebuggingEnabled: true },
+    });
+
+    expect(Object.keys(sanitized.plugins).sort()).toEqual(
+      [...ANDROID_PLAY_ALLOWED_CAPACITOR_CONFIG_PLUGINS].sort(),
+    );
+    expect(sanitized.server).toEqual({
+      androidScheme: "https",
+      allowNavigation: ["eliza.app", "*.eliza.app"],
+    });
+    expect(sanitized.android).toEqual({
+      backgroundColor: "#000000",
+      allowMixedContent: false,
+      captureInput: true,
+      webContentsDebuggingEnabled: false,
+    });
+    expect(JSON.stringify(sanitized)).not.toMatch(
+      /localhost|127\.0\.0\.1|BackgroundRunner|bun-runtime|includePlugins/,
+    );
+    expect(sanitized).not.toHaveProperty("ios");
+  });
+
   it("stamps only generated Cloud projects for direct Gradle and IDE use", () => {
     const base = "org.gradle.jvmargs=-Xmx4g\nelizaCloudBuild=false\n";
     const cloud = applyAndroidGeneratedBuildTargetProperties(base, {
@@ -170,12 +217,9 @@ describe("Android Play manifest policy", () => {
     expect(ANDROID_PLAY_ALLOWED_NATIVE_PLUGIN_PACKAGES).toEqual([
       "@capacitor/app",
       "@capacitor/browser",
-      "@capacitor/device",
-      "@capacitor/filesystem",
       "@capacitor/keyboard",
       "@capacitor/network",
       "@capacitor/preferences",
-      "@capacitor/share",
       "@capacitor/status-bar",
       "@elizaos/capacitor-browser-surface",
       "@elizaos/capacitor-secure-store",

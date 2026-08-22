@@ -5,6 +5,7 @@
 import { describe, expect, it } from "vitest";
 import {
   cloudSafeMainActivityJava,
+  cloudSafePlaySettingsPluginJava,
   cloudSafePlayVoicePluginJava,
   cloudSafeSecureCredentialsPluginJava,
 } from "./run-mobile-build.mjs";
@@ -62,10 +63,23 @@ describe("cloudSafeMainActivityJava", () => {
       "registerPlugin(ElizaSecureCredentialsPlugin.class);",
     );
     expect(source).toContain("registerPlugin(ElizaPlayVoicePlugin.class);");
+    expect(source).toContain("registerPlugin(ElizaPlaySettingsPlugin.class);");
     expect(coldCapture).toBeGreaterThanOrEqual(0);
     expect(coldCapture).toBeLessThan(bridgeCreation);
     expect(warmCapture).toBeGreaterThanOrEqual(0);
     expect(warmCapture).toBeLessThan(warmDispatch);
+  });
+
+  it("opens only this package's standard Android app settings", () => {
+    const source = cloudSafePlaySettingsPluginJava("ai.elizaos.app");
+
+    expect(source).toContain('@CapacitorPlugin(name = "ElizaPlaySettings")');
+    expect(source).toContain("Settings.ACTION_APPLICATION_DETAILS_SETTINGS");
+    expect(source).toContain(
+      'Uri.parse("package:" + getContext().getPackageName())',
+    );
+    expect(source).not.toContain("uses-permission");
+    expect(source).not.toContain("MANAGE_");
   });
 
   it("generates permissionless Android Keystore AES-GCM credential storage", () => {
