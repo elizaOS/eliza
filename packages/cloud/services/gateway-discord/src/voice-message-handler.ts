@@ -10,32 +10,18 @@
 
 import { createHash } from "node:crypto";
 import { type Attachment, MessageFlags } from "discord.js";
+import { parseIntegerEnv } from "./integer-env";
 import { logger } from "./logger";
 
-/**
- * Parse an integer from environment variable with validation.
- * Throws if the value is not a valid integer to fail fast on misconfiguration.
- */
-function parseIntEnv(name: string, defaultValue: number): number {
-  const value = process.env[name];
-  if (value === undefined) return defaultValue;
-  // `parseInt` stops at the first non-digit, so "3600junk" parsed to 3600 and
-  // slipped past the NaN check below — silently configuring a value the
-  // operator never set, instead of the error this helper already raises for
-  // input it recognizes as invalid.
-  const trimmed = value.trim();
-  const parsed = /^[+-]?\d+$/.test(trimmed) ? Number(trimmed) : Number.NaN;
-  if (!Number.isSafeInteger(parsed)) {
-    throw new Error(
-      `Invalid ${name} environment variable: "${value}" is not a valid integer`,
-    );
-  }
-  return parsed;
-}
+const VOICE_AUDIO_TTL_SECONDS = parseIntegerEnv(
+  "VOICE_AUDIO_TTL_SECONDS",
+  3600,
+);
 
-const VOICE_AUDIO_TTL_SECONDS = parseIntEnv("VOICE_AUDIO_TTL_SECONDS", 3600);
-
-const CLEANUP_INTERVAL_MS = parseIntEnv("VOICE_CLEANUP_INTERVAL_MS", 900_000); // 15 minutes
+const CLEANUP_INTERVAL_MS = parseIntegerEnv(
+  "VOICE_CLEANUP_INTERVAL_MS",
+  900_000,
+); // 15 minutes
 
 const MAX_VOICE_FILE_SIZE = 25 * 1024 * 1024; // 25MB Discord limit
 

@@ -38,6 +38,7 @@ import {
 } from "./dm-policy";
 import { pollTrackedDiscordDms, type TrackedDiscordDm } from "./dm-polling";
 import { tryConfirmDiscordIdentityLink } from "./identity-link";
+import { parseIntegerEnvAtLeast } from "./integer-env";
 import { logger } from "./logger";
 import {
   createManagedGuildVoiceCloudBridge,
@@ -118,36 +119,6 @@ function sanitizeError(error: unknown): string {
   return message.replace(DISCORD_TOKEN_PATTERN, "[REDACTED_TOKEN]");
 }
 
-/**
- * Parse an integer from environment variable with validation.
- * Throws if the value is not a valid integer or below minimum to fail fast on misconfiguration.
- */
-function parseIntEnv(
-  name: string,
-  defaultValue: number,
-  minValue: number = 1,
-): number {
-  const value = process.env[name];
-  if (value === undefined) return defaultValue;
-  // `parseInt` stops at the first non-digit, so "3600junk" parsed to 3600 and
-  // slipped past the NaN check below — silently configuring a value the
-  // operator never set, instead of the error this helper already raises for
-  // input it recognizes as invalid.
-  const trimmed = value.trim();
-  const parsed = /^[+-]?\d+$/.test(trimmed) ? Number(trimmed) : Number.NaN;
-  if (!Number.isSafeInteger(parsed)) {
-    throw new Error(
-      `Invalid ${name} environment variable: "${value}" is not a valid integer`,
-    );
-  }
-  if (parsed < minValue) {
-    throw new Error(
-      `Invalid ${name} environment variable: ${parsed} is below minimum value of ${minValue}`,
-    );
-  }
-  return parsed;
-}
-
 // ============================================
 // Constants
 // ============================================
@@ -211,14 +182,17 @@ const FAILOVER_LOCK_TTL_SECONDS = 30;
  *
  * The threshold should be at least 2x heartbeat interval to avoid false positives.
  */
-const FAILOVER_CHECK_INTERVAL_MS = parseIntEnv(
+const FAILOVER_CHECK_INTERVAL_MS = parseIntegerEnvAtLeast(
   "FAILOVER_CHECK_INTERVAL_MS",
   30_000,
 );
-const DEAD_POD_THRESHOLD_MS = parseIntEnv("DEAD_POD_THRESHOLD_MS", 45_000);
+const DEAD_POD_THRESHOLD_MS = parseIntegerEnvAtLeast(
+  "DEAD_POD_THRESHOLD_MS",
+  45_000,
+);
 
 /** Maximum bots per pod - prevents resource exhaustion */
-const MAX_BOTS_PER_POD = parseIntEnv("MAX_BOTS_PER_POD", 100);
+const MAX_BOTS_PER_POD = parseIntegerEnvAtLeast("MAX_BOTS_PER_POD", 100);
 
 // ============================================
 // Eliza App Bot Leader Election Constants
@@ -241,13 +215,13 @@ const ELIZA_APP_LEADER_TTL_SECONDS = 10;
  * entries atomically. A stable enforced Discord nonce makes lease retries
  * idempotent if the gateway loses the acknowledgement response.
  */
-const GREETING_POLL_INTERVAL_MS = parseIntEnv(
+const GREETING_POLL_INTERVAL_MS = parseIntegerEnvAtLeast(
   "GREETING_POLL_INTERVAL_MS",
   15_000,
 );
 
 /** User-installed apps expose bot DMs but may omit freeform message events. */
-const ELIZA_APP_DM_POLL_INTERVAL_MS = parseIntEnv(
+const ELIZA_APP_DM_POLL_INTERVAL_MS = parseIntegerEnvAtLeast(
   "ELIZA_APP_DM_POLL_INTERVAL_MS",
   2_000,
   500,
