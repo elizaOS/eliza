@@ -110,7 +110,7 @@ describe("VaultInventoryPanel connector security findings", () => {
     expect(alert.textContent).not.toContain("opaque-test-value");
   });
 
-  it("retains the row and reports recovery when secure deletion is rejected", async () => {
+  it("retains the row and reports a truthful recovery check when secure deletion is rejected", async () => {
     clientMocks.rawRequest.mockResolvedValueOnce({ ok: false, status: 503 });
     const onChanged = vi.fn();
     render(
@@ -132,7 +132,9 @@ describe("VaultInventoryPanel connector security findings", () => {
     expect(screen.getByRole("alertdialog")).toBeTruthy();
     expect(clientMocks.rawRequest).not.toHaveBeenCalled();
     fireEvent.click(screen.getByLabelText("Permanently delete Test provider"));
-    expect(await screen.findByText(/credential was retained/i)).toBeTruthy();
+    expect(
+      await screen.findByText(/refresh the Vault to confirm/i),
+    ).toBeTruthy();
     expect(screen.getByTestId("vault-entry-row-TEST_API_KEY")).toBeTruthy();
     expect(onChanged).not.toHaveBeenCalled();
     expect(clientMocks.rawRequest).toHaveBeenCalledWith(

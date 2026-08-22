@@ -214,4 +214,74 @@ describe("steward credentials", () => {
     ).rejects.toThrow(/were not persisted/);
     expect(fs.existsSync(credentialsPath(stateDir))).toBe(false);
   });
+
+  it("restores the complete prior credential set after a partial save failure", async () => {
+    const secureStore = new MemorySecureStore();
+    await saveStewardCredentials(
+      {
+        apiUrl: "https://old.steward.local",
+        tenantId: "old-tenant",
+        agentId: "old-agent",
+        apiKey: "old-api-key",
+        agentToken: "old-agent-token",
+      },
+      { secureStore },
+    );
+    const originalSet = secureStore.set.bind(secureStore);
+    let writes = 0;
+    secureStore.set = async (vaultId, kind, value) => {
+      writes += 1;
+      if (writes === 3) return { ok: false, reason: "denied" };
+      return originalSet(vaultId, kind, value);
+    };
+
+    await expect(
+      saveStewardCredentials(
+        {
+          apiUrl: "https://new.steward.local",
+          tenantId: "new-tenant",
+          agentId: "new-agent",
+          apiKey: "new-api-key",
+          agentToken: "new-agent-token",
+        },
+        { secureStore },
+      ),
+    ).rejects.toThrow(/prior values were restored/);
+
+    const loaded = await loadStewardCredentials({ secureStore });
+    expect(loaded).toMatchObject({
+      apiUrl: "https://old.steward.local",
+      tenantId: "old-tenant",
+      agentId: "old-agent",
+      apiKey: "old-api-key",
+      agentToken: "old-agent-token",
+    });
+  });
+
+  it("clears optional secrets instead of leaving stale prior values", async () => {
+    const secureStore = new MemorySecureStore();
+    await saveStewardCredentials(
+      {
+        apiUrl: "https://steward.local",
+        tenantId: "tenant-1",
+        agentId: "agent-1",
+        apiKey: "old-api-key",
+        agentToken: "old-agent-token",
+      },
+      { secureStore },
+    );
+    await saveStewardCredentials(
+      {
+        apiUrl: "https://steward.local",
+        tenantId: "tenant-1",
+        agentId: "agent-1",
+        apiKey: "",
+        agentToken: "",
+      },
+      { secureStore },
+    );
+
+    const loaded = await loadStewardCredentials({ secureStore });
+    expect(loaded).toMatchObject({ apiKey: "", agentToken: "" });
+  });
 });

@@ -522,12 +522,18 @@ const EntryRow = memo(function EntryRow({
         );
         return;
       }
-      const body = (await res.json()) as {
-        value: string;
-        source: string;
-        profileId?: string;
-      };
-      setRevealed(body);
+      const body: unknown = await res.json();
+      if (
+        typeof body !== "object" ||
+        body === null ||
+        typeof (body as { value?: unknown }).value !== "string" ||
+        typeof (body as { source?: unknown }).source !== "string"
+      ) {
+        throw new Error("invalid reveal response");
+      }
+      setRevealed(
+        body as { value: string; source: string; profileId?: string },
+      );
     } catch {
       // error-policy:J1 the row exposes a redacted recovery message; transport
       // and native errors can contain sensitive identifiers and stay out of UI.
@@ -569,7 +575,7 @@ const EntryRow = memo(function EntryRow({
       );
       if (!res.ok) {
         setRevealError(
-          `Delete failed (HTTP ${res.status}). The credential was retained; unlock the system credential store and retry.`,
+          `Delete failed (HTTP ${res.status}). Refresh the Vault to confirm whether the credential remains, then unlock secure storage and retry if needed.`,
         );
         return;
       }
@@ -580,7 +586,7 @@ const EntryRow = memo(function EntryRow({
       // error-policy:J1 deletion failures retain the row and surface a
       // redacted, retryable state instead of claiming the credential is gone.
       setRevealError(
-        "Delete failed. The credential was retained; unlock the system credential store and retry.",
+        "Delete could not be confirmed. Refresh the Vault to check whether the credential remains, then unlock secure storage and retry if needed.",
       );
     } finally {
       setDeleting(false);
@@ -942,7 +948,7 @@ function ProfilesPanel({
         );
         if (!res.ok) {
           setErr(
-            `Profile delete failed (HTTP ${res.status}). The credential was retained; unlock secure storage and retry.`,
+            `Profile delete failed (HTTP ${res.status}). Refresh the Vault to confirm whether the profile remains, then unlock secure storage and retry if needed.`,
           );
           return;
         }
@@ -950,7 +956,7 @@ function ProfilesPanel({
         onChanged();
       } catch {
         setErr(
-          "Profile delete failed. The credential was retained; unlock secure storage and retry.",
+          "Profile deletion could not be confirmed. Refresh the Vault to check whether the profile remains, then unlock secure storage and retry if needed.",
         );
       } finally {
         setDeletingProfile(null);
@@ -1446,7 +1452,9 @@ function AddSecretForm({
       } catch {
         // error-policy:J1 retain the entered value only inside this password
         // field for retry; native/transport details remain redacted.
-        setErr("Secret save failed. Unlock secure storage and try again.");
+        setErr(
+          "Secret save could not be confirmed. Refresh the Vault before retrying to avoid replacing a value that may already be stored.",
+        );
       } finally {
         setSubmitting(false);
       }

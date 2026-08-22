@@ -143,9 +143,23 @@ async function writeStewardSecret(
   vaultId: string,
   field: StewardCredentialSecretField,
   value: string,
+  clearEmpty = false,
 ): Promise<void> {
   const trimmed = value.trim();
-  if (!trimmed) return;
+  if (!trimmed) {
+    if (!clearEmpty) return;
+    const removed = await store.delete(vaultId, STEWARD_SECRET_KINDS[field]);
+    if (!removed.ok) {
+      throw new Error(
+        `secure store rejected clearing ${field}: ${removed.message ?? removed.reason}`,
+      );
+    }
+    const verified = await store.get(vaultId, STEWARD_SECRET_KINDS[field]);
+    if (verified.ok || verified.reason !== "not_found") {
+      throw new Error(`secure store could not verify clearing ${field}`);
+    }
+    return;
+  }
   const result = await store.set(vaultId, STEWARD_SECRET_KINDS[field], trimmed);
   if (!result.ok) {
     throw new Error(
@@ -157,6 +171,56 @@ async function writeStewardSecret(
     throw new Error(
       `secure store could not verify ${field}; plaintext credentials were retained for recovery`,
     );
+  }
+}
+
+async function snapshotStewardSecrets(
+  store: PlatformSecureStore,
+  vaultId: string,
+): Promise<Map<StewardCredentialSecretField, string | null>> {
+  const snapshot = new Map<StewardCredentialSecretField, string | null>();
+  for (const field of Object.keys(
+    STEWARD_SECRET_KINDS,
+  ) as StewardCredentialSecretField[]) {
+    const result = await store.get(vaultId, STEWARD_SECRET_KINDS[field]);
+    if (result.ok) {
+      snapshot.set(field, result.value);
+    } else if (result.reason === "not_found") {
+      snapshot.set(field, null);
+    } else {
+      throw new Error(`secure store could not snapshot ${field}`);
+    }
+  }
+  return snapshot;
+}
+
+async function restoreStewardSecrets(
+  store: PlatformSecureStore,
+  vaultId: string,
+  snapshot: ReadonlyMap<StewardCredentialSecretField, string | null>,
+  attempted: readonly StewardCredentialSecretField[],
+): Promise<void> {
+  for (const field of [...attempted].reverse()) {
+    const previous = snapshot.get(field) ?? null;
+    if (previous === null) {
+      const removed = await store.delete(vaultId, STEWARD_SECRET_KINDS[field]);
+      if (!removed.ok) throw new Error(`rollback could not clear ${field}`);
+      const verified = await store.get(vaultId, STEWARD_SECRET_KINDS[field]);
+      if (verified.ok || verified.reason !== "not_found") {
+        throw new Error(`rollback could not verify clearing ${field}`);
+      }
+      continue;
+    }
+    const restored = await store.set(
+      vaultId,
+      STEWARD_SECRET_KINDS[field],
+      previous,
+    );
+    if (!restored.ok) throw new Error(`rollback could not restore ${field}`);
+    const verified = await store.get(vaultId, STEWARD_SECRET_KINDS[field]);
+    if (!verified.ok || verified.value !== previous) {
+      throw new Error(`rollback could not verify restoring ${field}`);
+    }
   }
 }
 
@@ -268,13 +332,34 @@ export async function saveStewardCredentials(
     );
   }
   const vaultId = deriveStewardVaultId();
-  await Promise.all(
-    (Object.keys(STEWARD_SECRET_KINDS) as StewardCredentialSecretField[]).map(
-      (field) => writeStewardSecret(store, vaultId, field, credentials[field]),
-    ),
-  );
-
-  writeCredentialsMetadata(credentials);
+  const snapshot = await snapshotStewardSecrets(store, vaultId);
+  const attempted: StewardCredentialSecretField[] = [];
+  try {
+    for (const field of Object.keys(
+      STEWARD_SECRET_KINDS,
+    ) as StewardCredentialSecretField[]) {
+      attempted.push(field);
+      await writeStewardSecret(store, vaultId, field, credentials[field], true);
+    }
+    writeCredentialsMetadata(credentials);
+  } catch (cause) {
+    try {
+      await restoreStewardSecrets(store, vaultId, snapshot, attempted);
+    } catch (rollbackCause) {
+      // error-policy:J2 report both failures without including credential data.
+      throw new Error(
+        `Steward credential save failed and rollback was incomplete: ${rollbackCause instanceof Error ? rollbackCause.message : String(rollbackCause)}`,
+        { cause },
+      );
+    }
+    // error-policy:J2 preserve the original secure-store or metadata failure.
+    throw new Error(
+      "Steward credential save failed; prior values were restored",
+      {
+        cause,
+      },
+    );
+  }
 }
 
 /**
