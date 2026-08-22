@@ -56,7 +56,10 @@ import { requireConfirmation } from "../../../utils/confirmation.ts";
 import { getActiveRoutingContextsForTurn } from "../../../utils/context-routing.ts";
 import { createHash } from "../../../utils/crypto-compat.ts";
 import { isObjectRecord as isRecord } from "../../../utils/type-guards.ts";
-import { toWellFormedUnicode } from "../../../utils/well-formed.ts";
+import {
+	toWellFormedUnicode,
+	truncateWellFormed,
+} from "../../../utils/well-formed.ts";
 import { stringToUuid } from "../../../utils.ts";
 import { draftFollowupAction } from "../../messaging/triage/actions/draftFollowup.ts";
 import { draftReplyAction } from "../../messaging/triage/actions/draftReply.ts";
@@ -956,12 +959,13 @@ function isConnectorName(value: string, min: number, max: number): boolean {
 	return true;
 }
 
-function splitConnectorPrefix(
-	target: string,
+export function splitConnectorPrefix(
+	targetInput: string,
 ): { source: string; target: string } | null {
+	const target = toWellFormedUnicode(targetInput);
 	for (let cursor = 1; cursor < target.length && cursor <= 42; cursor += 1) {
 		if (target[cursor] !== ":" && target[cursor] !== "/") continue;
-		const source = target.slice(0, cursor).trimEnd();
+		const source = truncateWellFormed(target, cursor).trimEnd();
 		const remainder = target.slice(cursor + 1).trim();
 		if (
 			remainder &&
@@ -974,9 +978,10 @@ function splitConnectorPrefix(
 	return null;
 }
 
-function splitConnectorSuffix(
-	target: string,
+export function splitConnectorSuffix(
+	targetInput: string,
 ): { source: string; target: string } | null {
+	const target = toWellFormedUnicode(targetInput);
 	const lower = target.toLowerCase();
 	for (let cursor = 1; cursor < target.length; cursor += 1) {
 		if (!/\s/u.test(target[cursor - 1])) continue;
@@ -986,7 +991,7 @@ function splitConnectorSuffix(
 				!/(?:\s)/u.test(target[cursor + keyword.length] ?? "")
 			)
 				continue;
-			const left = target.slice(0, cursor).trim();
+			const left = truncateWellFormed(target, cursor).trim();
 			const source = target.slice(cursor + keyword.length).trim();
 			if (left && isConnectorName(source, 2, 40))
 				return { source, target: left };
