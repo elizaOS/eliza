@@ -3,7 +3,8 @@
 /**
  * Computes and verifies the exact-input evidence manifest for Develop Full.
  * Surface digests bind tracked bytes, transitive workspace dependencies,
- * dependent-surface digests, the reviewed graph, and the CI environment.
+ * dependent-surface digests, repository-local workflow/action closures,
+ * persistently unowned inputs, the reviewed graph, and the CI policy identity.
  */
 
 import { spawnSync } from "node:child_process";
@@ -19,6 +20,7 @@ import {
 } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { parse } from "yaml";
 import { listWorkspaceDirs } from "./lib/workspaces.mjs";
 
 const DEFAULT_REPO_ROOT = path.resolve(
@@ -135,6 +137,11 @@ export function validateGraph(graph) {
   ) {
     throw new Error("evidenceTtlHours must be a positive safe integer");
   }
+  if (!["exact-environment", "current-run-only"].includes(graph.reusePolicy)) {
+    throw new Error(
+      "reusePolicy must be exact-environment or current-run-only",
+    );
+  }
   assertPlainObject(graph.environment, "environment");
   if (!Array.isArray(graph.globalInputs) || graph.globalInputs.length === 0) {
     throw new Error("globalInputs must be non-empty");
@@ -218,7 +225,19 @@ function trackedInventory(repoRoot) {
       const stat = lstatSync(absolutePath);
       if (!stat.isFile())
         throw new Error(`tracked input is not a regular file: ${relativePath}`);
-      contentDigest = sha256(readFileSync(absolutePath));
+      const content = readFileSync(absolutePath);
+      contentDigest = sha256(content);
+      files.set(relativePath, {
+        content:
+          /(?:^|\/)\.github\/(?:workflows|actions)\/[\s\S]+\.ya?ml$/.test(
+            `/${relativePath}`,
+          )
+            ? content.toString("utf8")
+            : undefined,
+        contentDigest,
+        mode,
+      });
+      continue;
     }
     files.set(relativePath, { contentDigest, mode });
   }
@@ -325,6 +344,146 @@ function inputRows(paths, tracked) {
   });
 }
 
+function collectLocalUses(value, label, references = []) {
+  if (Array.isArray(value)) {
+    for (const [index, entry] of value.entries()) {
+      collectLocalUses(entry, `${label}[${index}]`, references);
+    }
+    return references;
+  }
+  if (!value || typeof value !== "object") return references;
+  for (const [key, entry] of Object.entries(value)) {
+    if (key === "uses" && typeof entry === "string" && entry.startsWith("./")) {
+      references.push(entry);
+    }
+    collectLocalUses(entry, `${label}.${key}`, references);
+  }
+  return references;
+}
+
+function normalizeLocalUses(reference, label) {
+  if (reference.includes("@")) {
+    throw new Error(`${label}: repository-local uses must not contain @`);
+  }
+  const normalized = path.posix.normalize(reference.slice(2));
+  if (
+    !normalized ||
+    normalized === "." ||
+    normalized === ".." ||
+    normalized.startsWith("../") ||
+    path.posix.isAbsolute(normalized)
+  ) {
+    throw new Error(
+      `${label}: invalid repository-local uses target ${reference}`,
+    );
+  }
+  return normalized;
+}
+
+function requireTrackedYaml(tracked, descriptor, label) {
+  const entry = tracked.get(descriptor);
+  if (!entry) throw new Error(`${label}: missing local target ${descriptor}`);
+  if (entry.mode !== "100644" && entry.mode !== "100755") {
+    throw new Error(
+      `${label}: local target is not a regular file: ${descriptor}`,
+    );
+  }
+  if (typeof entry.content !== "string") {
+    throw new Error(
+      `${label}: local target has no parseable YAML: ${descriptor}`,
+    );
+  }
+  let parsed;
+  try {
+    parsed = parse(entry.content);
+  } catch (error) {
+    throw new Error(`${label}: invalid local YAML ${descriptor}`, {
+      cause: error,
+    });
+  }
+  assertPlainObject(parsed, `${label}: ${descriptor}`);
+  return parsed;
+}
+
+function resolveLocalTarget(reference, tracked, label) {
+  const target = normalizeLocalUses(reference, label);
+  if (target.endsWith(".yml") || target.endsWith(".yaml")) {
+    if (!target.startsWith(".github/workflows/")) {
+      throw new Error(
+        `${label}: local workflow target is outside .github/workflows: ${target}`,
+      );
+    }
+    const parsed = requireTrackedYaml(tracked, target, label);
+    assertPlainObject(parsed.jobs, `${label}: ${target}.jobs`);
+    return { descriptor: target, inputPaths: [target], parsed };
+  }
+
+  const candidates = [`${target}/action.yml`, `${target}/action.yaml`].filter(
+    (candidate) => tracked.has(candidate),
+  );
+  if (candidates.length !== 1) {
+    throw new Error(
+      `${label}: local action target must contain exactly one action.yml or action.yaml: ${target}`,
+    );
+  }
+  const descriptor = candidates[0];
+  const parsed = requireTrackedYaml(tracked, descriptor, label);
+  assertPlainObject(parsed.runs, `${label}: ${descriptor}.runs`);
+  const prefix = `${target}/`;
+  const inputPaths = [...tracked.keys()]
+    .filter((relativePath) => relativePath.startsWith(prefix))
+    .sort(compareText);
+  if (inputPaths.length === 0) {
+    throw new Error(`${label}: local action input closure is empty: ${target}`);
+  }
+  return { descriptor, inputPaths, parsed };
+}
+
+function localDependencyClosure(surface, tracked) {
+  const root = surface.workflow;
+  const rootEntry = tracked.get(root);
+  if (!rootEntry) throw new Error(`${surface.id}: missing workflow ${root}`);
+  if (rootEntry.mode !== "100644" && rootEntry.mode !== "100755") {
+    throw new Error(`${surface.id}: workflow is not a regular file: ${root}`);
+  }
+  if (typeof rootEntry.content !== "string") {
+    throw new Error(`${surface.id}: workflow has no parseable YAML: ${root}`);
+  }
+
+  const inputs = new Set([root]);
+  const visiting = new Set();
+  const visited = new Set();
+  function visit(descriptor, parsed) {
+    if (visiting.has(descriptor)) {
+      throw new Error(
+        `${surface.id}: local uses dependency cycle at ${descriptor}`,
+      );
+    }
+    if (visited.has(descriptor)) return;
+    visiting.add(descriptor);
+    for (const reference of collectLocalUses(parsed, descriptor)) {
+      const target = resolveLocalTarget(reference, tracked, descriptor);
+      for (const inputPath of target.inputPaths) inputs.add(inputPath);
+      visit(target.descriptor, target.parsed);
+    }
+    visiting.delete(descriptor);
+    visited.add(descriptor);
+  }
+
+  let parsed;
+  try {
+    parsed = parse(rootEntry.content);
+  } catch (error) {
+    throw new Error(`${surface.id}: invalid workflow YAML ${root}`, {
+      cause: error,
+    });
+  }
+  assertPlainObject(parsed, `${surface.id}: ${root}`);
+  assertPlainObject(parsed.jobs, `${surface.id}: ${root}.jobs`);
+  visit(root, parsed);
+  return [...inputs].sort(compareText);
+}
+
 export function computeExpectedManifest({
   baseSha,
   changedPaths,
@@ -350,43 +509,78 @@ export function computeExpectedManifest({
     const closureDirectories = new Set(
       closure.map((name) => workspaces.byName.get(name).directory),
     );
+    const localDependencyPaths = localDependencyClosure(surface, tracked);
+    const localDependencySet = new Set(localDependencyPaths);
     const directMatch = matcher([surface.workflow, ...surface.inputs]);
     const inputPaths = [...tracked.keys()]
       .filter((relativePath) => {
-        if (globalMatch(relativePath) || directMatch(relativePath)) return true;
+        if (
+          globalMatch(relativePath) ||
+          directMatch(relativePath) ||
+          localDependencySet.has(relativePath)
+        )
+          return true;
         const workspace = workspaceForPath(relativePath, workspaces);
         return workspace ? closureDirectories.has(workspace.directory) : false;
       })
       .sort(compareText);
     if (inputPaths.length === 0)
       throw new Error(`${surface.id}: input closure is empty`);
+    const inventory = inputRows(inputPaths, tracked);
+    const inputInventoryDigest = sha256(canonicalJson(inventory));
+    surfaceState.set(surface.id, {
+      catchAll: surface.catchAll === true,
+      directMatch,
+      id: surface.id,
+      inputInventoryDigest,
+      inputPaths,
+      localDependencyPaths,
+      workspaceClosure: closure,
+    });
+  }
+
+  const ownsTrackedPath = (relativePath) => {
+    if (globalMatch(relativePath) || knownNonValidation(relativePath))
+      return true;
+    const workspace = workspaceForPath(relativePath, workspaces);
+    return ordered.some((surface) => {
+      const state = surfaceState.get(surface.id);
+      if (state.catchAll) return false;
+      if (state.localDependencyPaths.includes(relativePath)) return true;
+      if (state.directMatch(relativePath)) return true;
+      return (
+        workspace !== null && state.workspaceClosure.includes(workspace.name)
+      );
+    });
+  };
+  const unownedTrackedPaths = [...tracked.keys()]
+    .filter((relativePath) => !ownsTrackedPath(relativePath))
+    .sort(compareText);
+  const unownedInputDigest = sha256(
+    canonicalJson(inputRows(unownedTrackedPaths, tracked)),
+  );
+
+  for (const surface of ordered) {
+    const state = surfaceState.get(surface.id);
     const dependencyDigests = Object.fromEntries(
       (surface.dependsOn ?? [])
         .sort(compareText)
         .map((id) => [id, surfaceState.get(id).inputDigest]),
     );
-    const inventory = inputRows(inputPaths, tracked);
-    const inputInventoryDigest = sha256(canonicalJson(inventory));
-    const inputDigest = sha256(
+    state.dependencyDigests = dependencyDigests;
+    state.inputDigest = sha256(
       canonicalJson({
         dependencyDigests,
         environmentDigest,
         graphDigest,
-        inputInventoryDigest,
+        inputInventoryDigest: state.inputInventoryDigest,
+        localDependencyPaths: state.localDependencyPaths,
         surface: surface.id,
+        unownedInputDigest,
         workflow: surface.workflow,
-        workspaceClosure: closure,
+        workspaceClosure: state.workspaceClosure,
       }),
     );
-    surfaceState.set(surface.id, {
-      catchAll: surface.catchAll === true,
-      dependencyDigests,
-      id: surface.id,
-      inputDigest,
-      inputInventoryDigest,
-      inputPaths,
-      workspaceClosure: closure,
-    });
   }
 
   const directlyTouched = new Set();
@@ -400,11 +594,14 @@ export function computeExpectedManifest({
     }
     for (const surface of ordered) {
       const state = surfaceState.get(surface.id);
-      const directMatch = matcher([surface.workflow, ...surface.inputs]);
       const workspaceMatch =
         changedWorkspace !== null &&
         state.workspaceClosure.includes(changedWorkspace.name);
-      if (directMatch(changedPath) || workspaceMatch) {
+      if (
+        state.directMatch(changedPath) ||
+        state.localDependencyPaths.includes(changedPath) ||
+        workspaceMatch
+      ) {
         directlyTouched.add(surface.id);
         if (!state.catchAll) owned = true;
       }
@@ -438,6 +635,9 @@ export function computeExpectedManifest({
     graphDigest,
     graphVersion: graph.graphVersion,
     headSha,
+    reusePolicy: graph.reusePolicy,
+    unownedInputCount: unownedTrackedPaths.length,
+    unownedInputDigest,
     unknownPaths,
     surfaces: [...surfaceState.values()]
       .sort((left, right) => compareText(left.id, right.id))
@@ -590,6 +790,8 @@ export function resolveEvidenceRuns(expected, evidenceRows, now = new Date()) {
   }
   return Object.fromEntries(
     expected.surfaces.map((surface) => {
+      if (expected.reusePolicy === "current-run-only")
+        return [surface.id, true];
       if (surface.forceRun) return [surface.id, true];
       const evidence = bySurface.get(surface.id);
       if (!evidence) return [surface.id, true];
@@ -708,6 +910,9 @@ function recordCommand(args) {
       writeJson(path.join(evidenceRoot, surface.id, "evidence.json"), row);
       rows.push(row);
     } else if (result === "skipped") {
+      if (expected.reusePolicy === "current-run-only") {
+        throw new Error(`${surface.id}: current-run-only evidence was skipped`);
+      }
       if (surface.forceRun) {
         throw new Error(`${surface.id}: required execution was skipped`);
       }

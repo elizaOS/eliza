@@ -20,6 +20,7 @@ function graph() {
     schemaVersion: 1,
     graphVersion: "fixture-v1",
     evidenceTtlHours: 24,
+    reusePolicy: "exact-environment",
     environment: { bun: "1.3.14", node: "24.15.0", runner: "fixture" },
     globalInputs: ["toolchain.json", "graph.json"],
     knownNonValidationInputs: [],
@@ -51,8 +52,8 @@ function tracked(overrides: Record<string, string> = {}) {
   const contents = {
     "toolchain.json": "toolchain-v1",
     "graph.json": "graph-v1",
-    "leaf.yml": "leaf-workflow",
-    "consumer.yml": "consumer-workflow",
+    "leaf.yml": "jobs:\n  test:\n    steps: []\n",
+    "consumer.yml": "jobs:\n  test:\n    steps: []\n",
     "packages/shared/package.json": "shared-manifest",
     "packages/shared/src.ts": "shared-source",
     "packages/leaf/package.json": "leaf-manifest",
@@ -71,7 +72,7 @@ function tracked(overrides: Record<string, string> = {}) {
   return new Map(
     Object.entries(contents).map(([path, content]) => [
       path,
-      { contentDigest: sha256(content), mode: "100644" },
+      { content, contentDigest: sha256(content), mode: "100644" },
     ]),
   );
 }
@@ -237,7 +238,9 @@ describe("Develop Full impact graph", () => {
       inputs: ["**"],
       catchAll: true,
     });
-    const inputs = tracked({ "audit.yml": "audit-workflow" });
+    const inputs = tracked({
+      "audit.yml": "jobs:\n  test:\n    steps: []\n",
+    });
     const expected = manifest(["unowned/source.ts"], {
       graph: catchAllGraph,
       tracked: inputs,
@@ -268,6 +271,89 @@ describe("Develop Full impact graph", () => {
         digest(baseline, "consumer"),
       );
     }
+  });
+
+  test("hashes transitive local workflows and complete composite action directories", () => {
+    const dependencyGraph = graph();
+    dependencyGraph.surfaces[1].dependsOn = [];
+    const localDependencies = {
+      "leaf.yml":
+        "jobs:\n  test:\n    uses: ./.github/workflows/reusable.yml\n",
+      "consumer.yml":
+        "jobs:\n  test:\n    uses: ./.github/workflows/reusable.yml\n",
+      ".github/workflows/reusable.yml":
+        "jobs:\n  delegated:\n    steps:\n      - uses: ./.github/actions/setup\n",
+      ".github/actions/setup/action.yml":
+        "runs:\n  using: composite\n  steps:\n    - uses: ./.github/actions/nested\n",
+      ".github/actions/setup/run.mjs": "setup-v1",
+      ".github/actions/nested/action.yaml":
+        "runs:\n  using: composite\n  steps: []\n",
+    };
+    const baseline = manifest([], {
+      graph: dependencyGraph,
+      tracked: tracked({
+        ...localDependencies,
+        ".github/actions/nested/run.mjs": "nested-v1",
+      }),
+    });
+    const changed = manifest([".github/actions/nested/run.mjs"], {
+      graph: dependencyGraph,
+      tracked: tracked({
+        ...localDependencies,
+        ".github/actions/nested/run.mjs": "nested-v2",
+      }),
+    });
+    expect(digest(changed, "leaf")).not.toBe(digest(baseline, "leaf"));
+    expect(digest(changed, "consumer")).not.toBe(digest(baseline, "consumer"));
+    expect(changed.unknownPaths).toEqual([]);
+  });
+
+  test("fails closed for missing, invalid, and cyclic local uses targets", () => {
+    const missing = tracked({
+      "leaf.yml": "jobs:\n  test:\n    uses: ./.github/workflows/missing.yml\n",
+    });
+    expect(() => manifest([], { tracked: missing })).toThrow(
+      /missing local target/,
+    );
+
+    const invalid = tracked({
+      "leaf.yml": "jobs:\n  test:\n    uses: ./outside.yml\n",
+      "outside.yml": "jobs: {}\n",
+    });
+    expect(() => manifest([], { tracked: invalid })).toThrow(
+      /outside .github\/workflows/,
+    );
+
+    const cyclic = tracked({
+      "leaf.yml": "jobs:\n  test:\n    uses: ./.github/workflows/first.yml\n",
+      ".github/workflows/first.yml":
+        "jobs:\n  test:\n    uses: ./.github/workflows/second.yml\n",
+      ".github/workflows/second.yml":
+        "jobs:\n  test:\n    uses: ./.github/workflows/first.yml\n",
+    });
+    expect(() => manifest([], { tracked: cyclic })).toThrow(/dependency cycle/);
+  });
+
+  test("binds persistently unowned inputs into every immutable cache key", () => {
+    const baseline = manifest([], {
+      tracked: tracked({ "unowned/executable.sh": "v1" }),
+    });
+    const changed = manifest(["unowned/executable.sh"], {
+      tracked: tracked({ "unowned/executable.sh": "v2" }),
+    });
+    expect(changed.unknownPaths).toEqual(["unowned/executable.sh"]);
+    expect(digest(changed, "leaf")).not.toBe(digest(baseline, "leaf"));
+    expect(digest(changed, "consumer")).not.toBe(digest(baseline, "consumer"));
+  });
+
+  test("current-run-only policy refuses cross-run evidence reuse", () => {
+    const policyGraph = graph();
+    policyGraph.reusePolicy = "current-run-only";
+    const expected = manifest([], { graph: policyGraph });
+    expect(resolveEvidenceRuns(expected, evidenceRows(expected), NOW)).toEqual({
+      consumer: true,
+      leaf: true,
+    });
   });
 
   test("rejects duplicate, cyclic, missing, and zero-work graph definitions", () => {
