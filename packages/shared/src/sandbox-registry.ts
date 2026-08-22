@@ -242,14 +242,20 @@ export class SandboxRegistry {
     ]);
   }
 
-  /** Renew only while both routing keys are still owned by this instance. */
+  /**
+   * Renew exact ownership, or recover only when the complete registration has
+   * expired. Mixed or foreign state belongs to another lifecycle generation
+   * and must never be overwritten by this instance.
+   */
   private async refreshOwnedKeys(): Promise<void> {
     const { serverName, serverUrl, agentId, ttlSeconds } = this.config;
-    await this.command([
+    const refreshed = await this.command([
       "EVAL",
       "-- refresh\nlocal u=redis.call('GET',KEYS[1]) local s=redis.call('GET',KEYS[2]) " +
         "local g=redis.call('GET',KEYS[3]) " +
-        "if u==ARGV[1] and s==ARGV[2] and g==ARGV[3] then " +
+        "local owned=u==ARGV[1] and s==ARGV[2] and g==ARGV[3] " +
+        "local unclaimed=not u and not s and not g " +
+        "if owned or unclaimed then " +
         "redis.call('SET',KEYS[1],ARGV[1],'EX',ARGV[4]) " +
         "redis.call('SET',KEYS[2],ARGV[2],'EX',ARGV[4]) " +
         "redis.call('SET',KEYS[3],ARGV[3],'EX',ARGV[4]) return 1 end return 0",
@@ -262,6 +268,16 @@ export class SandboxRegistry {
       this.generation,
       String(ttlSeconds),
     ]);
+    if (refreshed !== 1) {
+      throw new ElizaError(
+        "Sandbox registry heartbeat refused because the route is owned by another lifecycle generation",
+        {
+          code: "SANDBOX_REGISTRY_OWNERSHIP_LOST",
+          context: { agentId, serverName },
+          severity: "ephemeral",
+        },
+      );
+    }
   }
 
   private async command(args: string[]): Promise<unknown> {

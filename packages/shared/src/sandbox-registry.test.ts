@@ -129,14 +129,19 @@ function installFetch(): void {
           (!script.includes("s==ARGV[2]") || store.get(key2) === value2) &&
           (!script.includes("g==ARGV[3]") ||
             store.get(generationKey) === generation);
-        if (owned) {
+        const unclaimed =
+          script.includes("not u and not s and not g") &&
+          !store.has(key1) &&
+          !store.has(key2) &&
+          !store.has(generationKey);
+        if (owned || unclaimed) {
           store.set(key1, value1);
           store.set(key2, value2);
           store.set(generationKey, generation);
         }
         return {
           ok: true,
-          json: async () => ({ result: owned ? 1 : 0 }),
+          json: async () => ({ result: owned || unclaimed ? 1 : 0 }),
         } as Response;
       }
       const owned =
@@ -273,6 +278,35 @@ describe("SandboxRegistry (Upstash REST transport)", () => {
     expect(recorded).toHaveLength(1);
 
     reg.stopHeartbeat();
+  });
+
+  it("recovers a transient initial registration failure on heartbeat", async () => {
+    vi.useFakeTimers();
+    const reg = new SandboxRegistry(baseConfig);
+
+    failNextFetch = true;
+    await expect(reg.register()).rejects.toThrow("simulated upstash failure");
+
+    reg.startHeartbeat(30_000);
+    await vi.advanceTimersByTimeAsync(30_000);
+
+    expect(store.get("agent:char-123:server")).toBe("sandbox-abc");
+    expect(store.get("server:sandbox-abc:url")).toBe("http://1.2.3.4:1999/api");
+    expect(store.get("server:sandbox-abc:registration")).toBeDefined();
+
+    reg.stopHeartbeat();
+  });
+
+  it("recovers after all registration keys expire", async () => {
+    const reg = new SandboxRegistry(baseConfig);
+    await reg.register();
+    store.clear();
+
+    await reg.refresh();
+
+    expect(store.get("agent:char-123:server")).toBe("sandbox-abc");
+    expect(store.get("server:sandbox-abc:url")).toBe("http://1.2.3.4:1999/api");
+    expect(store.get("server:sandbox-abc:registration")).toBeDefined();
   });
 
   it("does not overlap heartbeat refreshes when a tick is still in flight", async () => {
@@ -612,12 +646,17 @@ async function startFakeRedis(opts?: {
               store.get(key1) === value1 &&
               store.get(key2) === value2 &&
               store.get(generationKey) === generation;
-            if (owned) {
+            const unclaimed =
+              script.includes("not u and not s and not g") &&
+              !store.has(key1) &&
+              !store.has(key2) &&
+              !store.has(generationKey);
+            if (owned || unclaimed) {
               store.set(key1, value1);
               store.set(key2, value2);
               store.set(generationKey, generation);
             }
-            send(`:${owned ? 1 : 0}\r\n`);
+            send(`:${owned || unclaimed ? 1 : 0}\r\n`);
           } else {
             const owned = store.get(generationKey) === generation;
             if (owned) {
@@ -687,7 +726,9 @@ describe("SandboxRegistry (native TCP transport)", () => {
     await reg.register();
     fake.store.set("agent:char-tcp:server", "sandbox-successor");
 
-    await reg.refresh();
+    await expect(reg.refresh()).rejects.toMatchObject({
+      code: "SANDBOX_REGISTRY_OWNERSHIP_LOST",
+    });
 
     expect(fake.store.get("agent:char-tcp:server")).toBe("sandbox-successor");
     expect(fake.store.get("server:sandbox-tcp:url")).toBe(
@@ -707,7 +748,9 @@ describe("SandboxRegistry (native TCP transport)", () => {
     );
     expect(successorGeneration).not.toBe(staleGeneration);
 
-    await stale.refresh();
+    await expect(stale.refresh()).rejects.toMatchObject({
+      code: "SANDBOX_REGISTRY_OWNERSHIP_LOST",
+    });
     await stale.unregister();
 
     expect(fake.store.get("agent:char-tcp:server")).toBe("sandbox-tcp");
