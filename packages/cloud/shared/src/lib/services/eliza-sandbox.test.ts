@@ -3239,6 +3239,30 @@ describe("ElizaSandboxService.executeResume", () => {
     }
   });
 
+  test("a running row with a non-container tier fails before billing or provisioning", async () => {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    const svc = new ElizaSandboxService();
+    const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrgForWrite").mockResolvedValue({
+      ...resumeRow("running"),
+      execution_tier: "shared",
+    });
+    settleLifecycleBillingSpy.mockClear();
+    const provisionSpy = spyOn(svc, "provision");
+    try {
+      const res = await svc.executeResume(RESUME_AGENT, RESUME_ORG);
+      expect(res).toEqual({
+        success: false,
+        containerStarted: false,
+        reprovisioned: false,
+        error: "Sandbox provisioning requires an explicit container-backed execution tier",
+      });
+      expect(settleLifecycleBillingSpy).not.toHaveBeenCalled();
+      expect(provisionSpy).not.toHaveBeenCalled();
+    } finally {
+      findSpy.mockRestore();
+    }
+  });
+
   test("a stopped agent is resumed by delegating to provision()", async () => {
     const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
     const svc = new ElizaSandboxService();
