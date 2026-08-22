@@ -20,6 +20,7 @@ export function openCloudSyntheticWorld(
   return SyntheticControlSession.open({
     client: new SyntheticControlClient({
       baseUrl: options.controlUrl,
+      namespace: options.manifest.namespace,
       token: options.controlToken,
       timeoutMs: options.timeoutMs,
     }),

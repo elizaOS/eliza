@@ -14,6 +14,8 @@ import { startControlPlaneMock } from "../../src/control-plane/index.js";
 
 const token = process.env.SYNTHETIC_CONTROL_TOKEN;
 if (!token) throw new Error("SYNTHETIC_CONTROL_TOKEN is required");
+const namespace = process.env.SYNTHETIC_CONTROL_NAMESPACE;
+if (!namespace) throw new Error("SYNTHETIC_CONTROL_NAMESPACE is required");
 
 class FixtureAuthority implements SyntheticControlAuthority {
   private currentGeneration = 0;
@@ -204,15 +206,19 @@ class FixtureAuthority implements SyntheticControlAuthority {
     if (!fault) return;
     fault.count -= 1;
     await new Promise<void>((resolve, reject) => {
-      const timer = setTimeout(resolve, fault.delayMs ?? 100);
-      signal.addEventListener(
-        "abort",
-        () => {
-          clearTimeout(timer);
-          reject(signal.reason);
-        },
-        { once: true },
-      );
+      if (signal.aborted) {
+        reject(signal.reason);
+        return;
+      }
+      const onAbort = () => {
+        clearTimeout(timer);
+        reject(signal.reason);
+      };
+      const timer = setTimeout(() => {
+        signal.removeEventListener("abort", onAbort);
+        resolve();
+      }, fault.delayMs ?? 100);
+      signal.addEventListener("abort", onAbort, { once: true });
     });
   }
 
@@ -231,7 +237,7 @@ const running = await startControlPlaneMock({
   port: 0,
   tickMs: 0,
   hetznerUrl: "http://127.0.0.1:1/v1",
-  syntheticControl: { token, authority },
+  syntheticControl: { namespace, token, authority },
 });
 authority.onTeardown = () => {
   void running.stop().finally(() => process.exit(0));
