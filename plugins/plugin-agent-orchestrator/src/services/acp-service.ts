@@ -2368,11 +2368,7 @@ export class AcpService extends Service {
       // failure before propagating it; no subprocess may inherit ambient
       // credentials after a session's pinned account pool is exhausted.
       const message = errorMessage(err);
-      await this.store.updateStatus(sessionId, "errored", message);
-      this.emitSessionEvent(sessionId, "error", {
-        message,
-        ...this.accountCredentialFailureFields(err, message, session.agentType),
-      });
+      await this.recordAccountCredentialFailure(session, err, message);
       throw err;
     }
     const promptEnv: Record<string, string> = {
@@ -3543,10 +3539,16 @@ export class AcpService extends Service {
       };
     }
 
+    let reconnectLease: ModelGatewayLease | undefined;
     try {
-      await this.mintModelLease(session.id, session.agentType, opts.timeoutMs, {
-        rollbackSessionOnFailure: false,
-      });
+      reconnectLease = await this.mintModelLease(
+        session.id,
+        session.agentType,
+        opts.timeoutMs,
+        {
+          rollbackSessionOnFailure: false,
+        },
+      );
     } catch (err) {
       // error-policy:J2 context-adding rethrow — reconnect lease refusal must
       // persist on the existing session before the caller observes the failure.
@@ -3566,15 +3568,12 @@ export class AcpService extends Service {
       // could re-resolve the pinned account. Persist and type the refusal, then
       // revoke that lease before any native client can inherit ambient auth.
       const message = errorMessage(err);
-      await this.store.updateStatus(session.id, "errored", message);
-      this.emitSessionEvent(session.id, "error", {
-        message,
-        ...this.accountCredentialFailureFields(err, message, session.agentType),
-      });
       await this.revokeModelLease(
         session.id,
         "native_reconnect:account_exhausted",
+        reconnectLease?.leaseId,
       );
+      await this.recordAccountCredentialFailure(session, err, message, true);
       throw err;
     }
     const promptEnv: Record<string, string> = {
@@ -4275,11 +4274,33 @@ export class AcpService extends Service {
     event: SessionEventName,
     data: unknown,
   ): void {
+    this.emitSessionEventInternal(sessionId, event, data, true);
+  }
+
+  private emitSessionEventInternal(
+    sessionId: string,
+    event: SessionEventName,
+    data: unknown,
+    revokeTerminalLease: boolean,
+  ): void {
     this.recordEventTrail(sessionId, event, data);
     const turn = this.promptTurns.get(sessionId);
     for (const callback of [...this.sessionCallbacks]) {
       try {
-        callback(sessionId, event, data, turn?.sessionSnapshot, turn?.id);
+        const result = callback(
+          sessionId,
+          event,
+          data,
+          turn?.sessionSnapshot,
+          turn?.id,
+        );
+        void Promise.resolve(result).catch((err) => {
+          this.log("warn", "async session event callback failed", {
+            sessionId,
+            event,
+            error: errorMessage(err),
+          });
+        });
       } catch (err) {
         // error-policy:J7 isolate a throwing subscriber so the remaining session
         // callbacks still run; the failure is warn-logged.
@@ -4294,11 +4315,34 @@ export class AcpService extends Service {
     // failure, or timeout/cancel). Revoke the session's model lease so a leaked
     // child env is dead the moment its task ends. Fire-and-forget: this sync
     // emitter is called from deep transport paths; revocation is idempotent.
-    if (LEASE_REVOKE_EVENTS.has(event)) {
+    if (revokeTerminalLease && LEASE_REVOKE_EVENTS.has(event)) {
       void this.revokeModelLease(sessionId, `event:${event}`);
       void this.store.get(sessionId).then((session) => {
         if (session) void this.removeOwnedGitIndex(session);
       });
+    }
+  }
+
+  /** Await every durable consumer before an account identity may reach a child process. */
+  private async emitAccountSwitched(
+    session: SessionInfo,
+    meta: CodingAccountMeta,
+  ): Promise<void> {
+    const data = {
+      providerId: meta.providerId,
+      accountId: meta.accountId,
+      label: meta.label,
+    };
+    this.recordEventTrail(session.id, "account_switched", data);
+    const turn = this.promptTurns.get(session.id);
+    for (const callback of [...this.sessionCallbacks]) {
+      await callback(
+        session.id,
+        "account_switched",
+        data,
+        turn?.sessionSnapshot,
+        turn?.id,
+      );
     }
   }
 
@@ -4505,25 +4549,15 @@ export class AcpService extends Service {
     meta: CodingAccountMeta,
   ): Promise<void> {
     const metadata = { ...(session.metadata ?? {}), account: meta };
+    // Durable session and task/billing consumers must agree before credentials
+    // for the new account can reach a child process. A partial re-key is a
+    // wrong-account billing defect, not a diagnostics-only degradation.
+    await this.emitAccountSwitched(session, meta);
+    // Persist the session pin last. If this write fails, the old pin causes the
+    // next attempt to replay the idempotent consumer re-key instead of silently
+    // treating a half-restamped account as complete.
+    await this.store.update(session.id, { metadata });
     session.metadata = metadata;
-    try {
-      await this.store.update(session.id, { metadata });
-    } catch (err) {
-      // error-policy:J7 the failover credential is already resolved and must
-      // reach the subprocess; a failed durable re-stamp only degrades the NEXT
-      // prompt's pin back to the stale account, so warn instead of failing the
-      // prompt.
-      this.log("warn", "failed to persist failover account on session", {
-        sessionId: session.id,
-        accountId: meta.accountId,
-        error: errorMessage(err),
-      });
-    }
-    this.emitSessionEvent(session.id, "account_switched", {
-      providerId: meta.providerId,
-      accountId: meta.accountId,
-      label: meta.label,
-    });
   }
 
   private buildEnv(
@@ -4766,7 +4800,7 @@ export class AcpService extends Service {
     agentType: AgentType,
     timeoutMs: number | undefined,
     options: { rollbackSessionOnFailure: boolean },
-  ): Promise<void> {
+  ): Promise<ModelGatewayLease | undefined> {
     const ttlMs = timeoutMs ?? this.sessionTimeoutMs ?? DEFAULT_LEASE_TTL_MS;
     let outcome: Awaited<ReturnType<typeof mintSpawnLease>>;
     try {
@@ -4800,7 +4834,9 @@ export class AcpService extends Service {
         leaseId: outcome.lease.leaseId,
         expiresAt: new Date(outcome.lease.expiresAt).toISOString(),
       });
+      return outcome.lease;
     }
+    return undefined;
   }
 
   /**
@@ -4812,9 +4848,11 @@ export class AcpService extends Service {
   private async revokeModelLease(
     sessionId: string,
     reason: string,
+    expectedLeaseId?: string,
   ): Promise<void> {
     const lease = this.modelLeases.get(sessionId);
     if (!lease) return;
+    if (expectedLeaseId && lease.leaseId !== expectedLeaseId) return;
     this.modelLeases.delete(sessionId);
     const gateway = resolveModelGatewayConfig();
     const broker = gateway ? resolveLeaseBroker(gateway) : null;
@@ -4897,6 +4935,52 @@ export class AcpService extends Service {
       fields.failureKind = "account_exhausted";
     }
     return fields;
+  }
+
+  /** Best-effort diagnostics must never replace the typed account authority failure. */
+  private async recordAccountCredentialFailure(
+    session: SessionInfo,
+    error: unknown,
+    message: string,
+    leaseAlreadyHandled = false,
+  ): Promise<void> {
+    try {
+      await this.store.updateStatus(session.id, "errored", message);
+    } catch (persistError) {
+      this.log("warn", "failed to persist coding account exhaustion", {
+        sessionId: session.id,
+        error: errorMessage(persistError),
+      });
+      try {
+        this.runtime.reportError(
+          "AcpService.persistAccountCredentialFailure",
+          persistError,
+          { sessionId: session.id },
+        );
+      } catch {
+        // error-policy:J7 reporting failure cannot replace the primary typed error.
+      }
+    }
+    try {
+      this.emitSessionEventInternal(
+        session.id,
+        "error",
+        {
+          message,
+          ...this.accountCredentialFailureFields(
+            error,
+            message,
+            session.agentType,
+          ),
+        },
+        !leaseAlreadyHandled,
+      );
+    } catch (eventError) {
+      this.log("warn", "failed to emit coding account exhaustion", {
+        sessionId: session.id,
+        error: errorMessage(eventError),
+      });
+    }
   }
 
   private classifyExitError(code: number | null, stderr: string): string {
