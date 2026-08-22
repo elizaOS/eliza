@@ -16,7 +16,6 @@ at those local URLs via env vars instead of hitting real services.
 | `environments/google.json`            | Gmail / Calendar / OAuth token       | `ELIZA_MOCK_GOOGLE_BASE`                                |
 | `environments/cloud-managed.json`     | Eliza Cloud managed-Google endpoints | `ELIZA_CLOUD_BASE_URL`                                   |
 | `environments/browser-workspace.json` | Desktop browser workspace bridge     | `ELIZA_BROWSER_WORKSPACE_URL` / `ELIZA_BROWSER_WORKSPACE_TOKEN` / `ELIZA_DISABLE_DISCORD_DESKTOP_CDP` |
-| `environments/bluebubbles.json`       | BlueBubbles iMessage HTTP API        | `ELIZA_BLUEBUBBLES_URL`                                  |
 | `environments/github.json`            | GitHub REST plus Octokit fixtures    | `ELIZA_MOCK_GITHUB_BASE`                                 |
 | `environments/discord.json`           | Discord REST API v10                 | `ELIZA_MOCK_DISCORD_BASE`                                |
 | `environments/slack.json`             | Slack Web API                        | `ELIZA_MOCK_SLACK_BASE`                                  |
@@ -87,7 +86,6 @@ bunx @mockoon/cli start \
   --data test/mocks/environments/google.json \
   --data test/mocks/environments/cloud-managed.json \
   --data test/mocks/environments/browser-workspace.json \
-  --data test/mocks/environments/bluebubbles.json \
   --data test/mocks/environments/github.json \
   --data test/mocks/environments/payments.json \
   --data test/mocks/environments/lifeops-presence-active.json
@@ -104,9 +102,6 @@ export ELIZA_MOCK_GOOGLE_BASE=http://127.0.0.1:3005
 export ELIZA_BROWSER_WORKSPACE_URL=http://127.0.0.1:3007
 export ELIZA_BROWSER_WORKSPACE_TOKEN=mock-browser-workspace-token
 export ELIZA_DISABLE_DISCORD_DESKTOP_CDP=1
-export ELIZA_IMESSAGE_BACKEND=bluebubbles
-export ELIZA_BLUEBUBBLES_URL=http://127.0.0.1:3008
-export ELIZA_BLUEBUBBLES_PASSWORD=mock-bluebubbles-password
 export ELIZA_MOCK_GITHUB_BASE=http://127.0.0.1:3009
 export ELIZA_MOCK_PAYMENT_BASE=http://127.0.0.1:3010
 export ELIZA_MOCK_PAYMENTS_BASE=http://127.0.0.1:3010
@@ -166,8 +161,6 @@ The in-process runner adds stateful contract routes for these provider files:
 - Discord browser workspace bridge routes: `/tabs`, `/tabs/:id/navigate`,
   `/tabs/:id/eval`, `/tabs/:id/show`, `/tabs/:id/hide`,
   `/tabs/:id/snapshot`, and tab close.
-- BlueBubbles iMessage routes: server info, chat query, message query/search,
-  message send, chat messages, and message detail.
 - GitHub REST fixtures for PR list/review, issue create/assign, search, and
   notifications. `helpers/github-octokit-fixture.ts` also exports a reusable
   Octokit-shaped fixture for plugin unit tests.
@@ -208,7 +201,7 @@ downtime, ambiguous recipients, too-broad bulk email requests, and rate limits.
 The standalone Mockoon file is stateless; full task progression is provided by
 the in-process `startMocks` runner. Provider API examples are static contract
 checks against the provider mocks above, so complex tests can combine the
-scenario catalog with Gmail, GitHub, BlueBubbles, and browser-workspace
+scenario catalog with Gmail, GitHub, and browser-workspace
 requests.
 
 ## Provider coverage and remaining gaps
@@ -227,7 +220,6 @@ falls out of sync.
 | `whatsapp`                   | text message send; inbound webhook ingestion; Cloud API webhook metadata and contact mapping in simulator seed; test-only inbound buffer route; request ledger metadata                                                                                                             | No media upload/download, templates, reactions, or message status lifecycle<br>No webhook signature validation or delivery retry simulation                                                                      |
 | `telegram`                   | MTProto local-client dependency injection; encoded local mock session for full LifeOps simulator runs; auth retry state; connector service status; send/search/read-receipt calls through mocked client deps                                                                         | No central HTTP mock because LifeOps does not consume Telegram through HTTP<br>No MTProto protocol simulator, media fixture, or group-admin fixture                                                              |
 | `discord`                    | desktop browser workspace tab lifecycle; navigation; script evaluation; LifeOps outbound send handler through browser workspace eval; snapshot; request ledger metadata                                                                                                             | No Discord REST or Gateway mock<br>DOM fixture cannot prove Discord production layout compatibility<br>No attachment, reaction, edit, or thread lifecycle coverage                                               |
-| `imessage-bluebubbles`       | server info; chat query; message query/search; text send; message detail/delivery metadata; request ledger metadata                                                                                                                                                                  | No attachment, tapback/reaction, edit, unsend, or read-receipt lifecycle<br>No macOS Messages database fallback fixture in the central mock runner                                                               |
 | `twilio`                     | Programmable Messaging send; Programmable Voice call create; Mockoon template request echo                                                                                                                                                                                           | No delivery status callbacks, recordings, media, incoming call webhooks, or error variants                                                                                                                       |
 | `calendly`                   | current user; event types; available times; scheduling links; scheduled events                                                                                                                                                                                                       | No webhooks, invitee cancellation/reschedule, organization/team scope, or OAuth refresh variants                                                                                                                 |
 | `eliza-cloud-managed-google` | managed Google status; managed Google account list                                                                                                                                                                                                                                   | No managed mutation routes, cloud auth failure matrix, billing limits, or account relink flows                                                                                                                   |

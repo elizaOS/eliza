@@ -68,7 +68,6 @@ jobs:
               - 'plugins/plugin-app-control/**'
               - 'plugins/plugin-app-manager/**'
               - 'plugins/plugin-blocker/**'
-              - 'plugins/plugin-bluebubbles/**'
               - 'plugins/plugin-browser/**'
               - 'plugins/plugin-calendar/**'
               - 'plugins/plugin-capacitor-bridge/**'

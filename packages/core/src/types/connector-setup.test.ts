@@ -58,19 +58,17 @@ describe("connector-setup contract", () => {
 
 	it("setupPath composes the canonical /api/setup/<connector>/<action> path", () => {
 		expect(setupPath("signal", "start")).toBe("/api/setup/signal/start");
-		expect(setupPath("bluebubbles", "status")).toBe(
-			"/api/setup/bluebubbles/status",
-		);
+		expect(setupPath("slack", "status")).toBe("/api/setup/slack/status");
 		expect(setupPath("imessage", "cancel")).toBe("/api/setup/imessage/cancel");
 	});
 
 	it("SetupStatusResponse carries connector + state + typed detail", () => {
 		const response: SetupStatusResponse<{ webhookPath: string }> = {
-			connector: "bluebubbles",
+			connector: "imessage",
 			state: "paired",
-			detail: { webhookPath: "/webhooks/bluebubbles" },
+			detail: { webhookPath: "/webhooks/imessage" },
 		};
 		expect(response.state).toBe("paired");
-		expect(response.detail?.webhookPath).toBe("/webhooks/bluebubbles");
+		expect(response.detail?.webhookPath).toBe("/webhooks/imessage");
 	});
 });

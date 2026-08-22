@@ -120,7 +120,6 @@ const VIEWLESS_TEXT_CONNECTOR_SOURCES = new Set([
 	"x",
 	"instagram",
 	"imessage",
-	"bluebubbles",
 	"line",
 	"wechat",
 	"nostr",

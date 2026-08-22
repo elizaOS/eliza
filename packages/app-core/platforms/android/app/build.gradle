@@ -47,11 +47,6 @@ android {
         // Direct-distribution LP3 builds opt in explicitly. Runtime device,
         // operator, and privileged-permission gates still apply independently.
         buildConfigField "boolean", "ELIZA_ANDROID_LP3_COLOR_POLICY_ENABLED", "${lp3ColorPolicyBuildEnabled}"
-        buildConfigField "boolean", "ELIZA_ANDROID_SMS_GATEWAY_ENABLED", "${['1', 'true', 'yes'].contains((System.getenv('ELIZA_ANDROID_SMS_GATEWAY_ENABLED') ?: 'false').toLowerCase())}"
-        buildConfigField "String", "ELIZA_ANDROID_SMS_GATEWAY_SECRET", "\"\""
-        buildConfigField "String", "ELIZA_ANDROID_SMS_GATEWAY_WEBHOOK_URL", "\"https://api.eliza.app/api/webhooks/blooio/local?bridge=bluebubbles\""
-        buildConfigField "String", "ELIZA_ANDROID_SMS_GATEWAY_PHONE_NUMBER", "\"+14159611510\""
-        buildConfigField "String", "ELIZA_ANDROID_SMS_GATEWAY_PHONE_LABEL", "\"Eliza Cloud Gateway (+14159611510)\""
         applicationId "ai.elizaos.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion

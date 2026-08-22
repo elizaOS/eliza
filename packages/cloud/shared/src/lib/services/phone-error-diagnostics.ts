@@ -35,7 +35,6 @@ const ERROR_CLASS_BY_CODE: ReadonlyMap<string, PhoneErrorClass> = new Map([
   ["OBJECT_STORAGE_FIELD_POINTER_INVALID", "payload_pointer_invalid"],
   ["OBJECT_STORAGE_FIELD_UNAVAILABLE", "object_storage_failed"],
   ["OBJECT_STORAGE_FIELD_JSON_INVALID", "object_storage_failed"],
-  ["BLUEBUBBLES_REGISTERED_BRIDGE_FAILED", "bridge_failed"],
 ]);
 
 function readErrorProperty(error: object, property: "cause" | "code"): unknown {

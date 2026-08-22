@@ -152,12 +152,6 @@ describe("LP3 direct Cloud build flag", () => {
     ).toThrow("restricted to the canonical android-cloud-debug");
     expect(() =>
       enforceAndroidLp3ColorPolicyBuildPolicy({
-        targetName: "android-sms-gateway",
-        env: enabled,
-      }),
-    ).toThrow("restricted to the canonical android-cloud-debug");
-    expect(() =>
-      enforceAndroidLp3ColorPolicyBuildPolicy({
         targetName: "android",
         env: enabled,
       }),

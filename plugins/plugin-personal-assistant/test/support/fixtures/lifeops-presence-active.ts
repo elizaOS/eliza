@@ -10,7 +10,7 @@ export type LifeOpsPresenceActiveProvider =
   | "lifeops-local"
   | "google"
   | "github"
-  | "bluebubbles"
+  | "imessage"
   | "signal"
   | "whatsapp"
   | "browser-workspace"
@@ -86,7 +86,7 @@ export const LIFEOPS_PRESENCE_ACTIVE_SUPPORTED_PROVIDERS = [
   "lifeops-local",
   "google",
   "github",
-  "bluebubbles",
+  "imessage",
   "signal",
   "whatsapp",
   "browser-workspace",
@@ -467,7 +467,7 @@ export const LIFEOPS_PRESENCE_ACTIVE_SCENARIOS: readonly LifeOpsPresenceActiveSc
       useCases: ["common", "organizational", "edge"],
       userRequest:
         "Clean up duplicate contacts, figure out which Alice is the project Alice, and remember preferred channels only when there is evidence.",
-      providers: ["bluebubbles", "signal", "lifeops-local"],
+      providers: ["imessage", "signal", "lifeops-local"],
       mockRecords: [
         {
           id: "contact-alice-nguyen-work",
@@ -495,12 +495,12 @@ export const LIFEOPS_PRESENCE_ACTIVE_SCENARIOS: readonly LifeOpsPresenceActiveSc
           },
         },
         {
-          id: "message-bluebubbles-alice",
-          provider: "bluebubbles",
+          id: "message-imessage-alice",
+          provider: "imessage",
           kind: "message",
           title: "iMessage evidence for project Alice",
           payload: {
-            path: "/api/v1/message",
+            path: "/api/lifeops/connectors/imessage/messages",
             text: "Atlas checklist is in the launch doc. Signal is fine if email gets buried.",
             contact: "Alice Nguyen",
           },
@@ -508,17 +508,18 @@ export const LIFEOPS_PRESENCE_ACTIVE_SCENARIOS: readonly LifeOpsPresenceActiveSc
       ],
       apiExamples: [
         {
-          name: "Search iMessage content for project context",
-          provider: "bluebubbles",
-          method: "POST",
-          path: "/api/v1/message/query",
-          requestBody: {
-            search: "BlueBubbles",
-            chatGuid: "iMessage;-;+15551112222",
-          },
+          name: "Read iMessage chat for project context",
+          provider: "imessage",
+          method: "GET",
+          path: "/api/lifeops/connectors/imessage/messages",
+          query: "?chatId=iMessage%3B-%3B%2B15551112222&limit=100",
           expectedStatus: 200,
-          expectedLedgerAction: "message.search",
-          responseShape: ["data[].guid", "data[].text", "data[].chatGuid"],
+          expectedLedgerAction: "message.read",
+          responseShape: [
+            "messages[].id",
+            "messages[].text",
+            "messages[].chatId",
+          ],
         },
         {
           name: "Send disambiguation prompt over Signal only after ambiguity remains",
@@ -649,7 +650,7 @@ export const LIFEOPS_PRESENCE_ACTIVE_SCENARIOS: readonly LifeOpsPresenceActiveSc
       ],
       userRequest:
         "Get the signed vendor packet from Gmail, summarize the blocking issue from GitHub, send the update to Priya by iMessage, and keep checking until the packet arrives.",
-      providers: ["google", "github", "bluebubbles", "signal", "lifeops-local"],
+      providers: ["google", "github", "imessage", "signal", "lifeops-local"],
       mockRecords: [
         {
           id: "email-vendor-inbound",
@@ -704,7 +705,7 @@ export const LIFEOPS_PRESENCE_ACTIVE_SCENARIOS: readonly LifeOpsPresenceActiveSc
         },
         {
           id: "message-priya-update",
-          provider: "bluebubbles",
+          provider: "imessage",
           kind: "message",
           title: "Outbound iMessage update to Priya",
           payload: {
@@ -772,17 +773,16 @@ export const LIFEOPS_PRESENCE_ACTIVE_SCENARIOS: readonly LifeOpsPresenceActiveSc
         },
         {
           name: "Send Priya the cross-source update by iMessage",
-          provider: "bluebubbles",
+          provider: "imessage",
           method: "POST",
-          path: "/api/v1/message/text",
+          path: "/api/lifeops/connectors/imessage/send",
           requestBody: {
-            chatGuid: "chat-priya",
-            message:
-              "Vendor packet is now attached in Gmail. The open blocker is Centralize LifeOps connector mocks. I will check again in 15 minutes.",
+            to: "chat-priya",
+            text: "Vendor packet is now attached in Gmail. The open blocker is Centralize LifeOps connector mocks. I will check again in 15 minutes.",
           },
-          expectedStatus: 200,
-          expectedLedgerAction: "message.text",
-          responseShape: ["data.guid", "data.text", "data.dateCreated"],
+          expectedStatus: 201,
+          expectedLedgerAction: "message.send",
+          responseShape: ["ok", "messageId"],
         },
         {
           name: "Fallback send by Signal if iMessage is unavailable",

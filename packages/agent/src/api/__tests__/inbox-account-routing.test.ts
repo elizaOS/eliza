@@ -101,7 +101,6 @@ async function createHarness(options: {
     sendHandlers:
       options.sendHandlers ??
       new Map([
-        ["bluebubbles", vi.fn()],
         ["discord", vi.fn()],
         ["imessage", vi.fn()],
       ]),
@@ -387,48 +386,6 @@ describe("POST /api/inbox/messages connector account routing", () => {
       body: {
         code: "INBOX_ROOM_SOURCE_MISMATCH",
         context: { requestedSource: "slack", roomSource: "discord" },
-      },
-    });
-    expect(harness.sendMessageToTarget).not.toHaveBeenCalled();
-  });
-
-  it("keeps BlueBubbles' exact provider key instead of its imessage alias", async () => {
-    const harness = await createHarness({
-      accounts: [account("bluebubbles-owner", { provider: "bluebubbles" })],
-      body: requestBody({
-        accountId: "bluebubbles-owner",
-        source: "bluebubbles",
-      }),
-      sendHandlers: new Map([["bluebubbles\u0000bluebubbles-owner", vi.fn()]]),
-    });
-
-    expect(harness.response.status).toBe(200);
-    expect(harness.sendMessageToTarget).toHaveBeenCalledOnce();
-    expect(harness.sendMessageToTarget.mock.calls[0]?.[0]).toMatchObject({
-      accountId: "bluebubbles-owner",
-      source: "bluebubbles",
-    });
-  });
-
-  it("does not treat native imessage and BlueBubbles as the same transport", async () => {
-    const harness = await createHarness({
-      accounts: [account("bluebubbles-owner", { provider: "bluebubbles" })],
-      body: requestBody({
-        accountId: "bluebubbles-owner",
-        source: "bluebubbles",
-      }),
-      roomSource: "imessage",
-      sendHandlers: new Map([
-        ["bluebubbles\u0000bluebubbles-owner", vi.fn()],
-        ["imessage\u0000native-owner", vi.fn()],
-      ]),
-    });
-
-    expect(harness.response).toMatchObject({
-      status: 409,
-      body: {
-        code: "INBOX_ROOM_SOURCE_MISMATCH",
-        context: { requestedSource: "bluebubbles", roomSource: "imessage" },
       },
     });
     expect(harness.sendMessageToTarget).not.toHaveBeenCalled();

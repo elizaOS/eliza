@@ -54,7 +54,7 @@ Status terms:
 | Discord bot invite/onboarding | Repo-owned / external blocker | `bun run --cwd packages/cloud/shared preflight:messaging-gateways` exposes missing credentials; still need production OAuth/gateway deployment. |
 | Telegram bot onboarding | Repo-owned / external blocker | Gateway preflight checks BotFather token and webhook secret; still need signed identity-link completion. |
 | WhatsApp onboarding | External blocker | Gateway preflight checks Meta env; still need official WhatsApp Business Platform account, templates, and opt-in compliance. |
-| iMessage blue-text gateway | External blocker | Gateway preflight checks relay/headscale env; still need user-owned Mac, spare iPhone, BlueBubbles, Headscale node, relay credentials, and health checks. |
+| iMessage | External blocker | Verify the native macOS connector on a signed-in Messages.app host and the Blooio hosted gateway with production credentials. |
 | Transcript handoff into real agent | Repo-owned | Persist source platform, setup session, target agent, and copied transcript state. |
 
 ## Cloud Console And One-Agent Admin

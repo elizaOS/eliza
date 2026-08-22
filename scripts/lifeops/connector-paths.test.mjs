@@ -360,7 +360,6 @@ test("env-name union covers the dashboard allowlist extensions", () => {
     "GITHUB_USER_PAT",
     "GITHUB_AGENT_PAT",
     "ELIZA_CLOUD_API_KEY",
-    "BLUEBUBBLES_SERVER_URL",
     "EVM_PRIVATE_KEY",
     "TWITTER_ACCESS_TOKEN_SECRET",
   ]) {

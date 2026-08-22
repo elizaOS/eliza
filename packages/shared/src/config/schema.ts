@@ -4,7 +4,6 @@
  * and connector-enumeration code across the stack reference.
  */
 const ELIZA_CORE_CONNECTOR_IDS = [
-  "bluebubbles",
   "telegram",
   "telegramAccount",
   "discord",

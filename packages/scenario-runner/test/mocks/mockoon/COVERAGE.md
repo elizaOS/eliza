@@ -27,7 +27,6 @@ For per-connector endpoint inventories, base URLs, and env-var overrides see
 | twilio          | 18808 | Twilio Programmable Messaging + Voice (`Messages.json`, `Calls.json`)                     | `test/scenarios/gateway/twilio.*` (3 scenarios) |
 | plaid           | 18809 | Plaid via Eliza Cloud relay (`/v1/eliza/plaid/link-token`, `exchange`, `sync`)            | `lifeops.payments/payments.plaid-mfa-fail`, `test/scenarios/payments/` (2 scenarios) |
 | apple-reminders | 18810 | Local reminders bridge (lists, reminders CRUD)                                            | `lifeops.reminders/reminders.apple-permission-denied`, `test/scenarios/reminders/` apple-touching cases |
-| bluebubbles     | 18811 | BlueBubbles server REST (chat, message text send)                                         | `test/scenarios/gateway/bluebubbles.*` (2 scenarios), iMessage scenarios under `test/scenarios/messaging.imessage/`, W2-3 `lifeops.habits/habits.cross-platform-habit-via-imessage` |
 | ntfy            | 18812 | `POST /{topic}` publish                                                                   | indirect — any scenario that exercises `notifications-push.ts` |
 | duffel          | 18813 | Duffel air search (offer_requests, offers, orders)                                        | reserved; no lifeops.* scenario hits duffel today |
 | anthropic       | 18814 | Anthropic Messages API — failure-injection only (429/529/500 via fault toggles)           | `lifeops.planner/planner.action-timeout`, `lifeops.planner/planner.invalid-json-retry` (when ANTHROPIC_BASE_URL points here) |
@@ -141,7 +140,7 @@ Lifeops.habits new scenarios (12 — extensions):
 - habits.broken-streak-with-exception
 - habits.fitness-streak-target-counts
 - habits.weekend-vs-weekday-cadence
-- habits.cross-platform-habit-via-imessage (uses bluebubbles room)
+- habits.cross-platform-habit-via-imessage
 - habits.morning-routine-stack-3-habits
 - habits.evening-wind-down-stack
 
@@ -186,7 +185,7 @@ domains assert on *agent behavior* (action selection, channel routing,
 identity dedup, ranking) rather than just on Mockoon traffic shape, but
 they still exercise the gmail (18801) env for any scenario that uses
 `gmailInbox`-typed seeds. Cross-channel scenarios exercise telegram,
-signal, discord, and bluebubbles envs indirectly through identity-merge
+signal and discord envs indirectly through identity-merge
 and channel-routing predicates.
 
 Lifeops.inbox-triage new scenarios (17 — extends existing dir):

@@ -358,15 +358,6 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     catchAllPathParams: [],
     file: "packages/cloud/api/v1/oauth/connections/[id]/route.ts",
   },
-  "DELETE /api/v1/phone-gateways/bluebubbles/{id}": {
-    method: "DELETE",
-    path: "/api/v1/phone-gateways/bluebubbles/{id}",
-    methodName: "deleteApiV1PhoneGatewaysBluebubblesById",
-    responseMode: "json",
-    pathParams: ["id"],
-    catchAllPathParams: [],
-    file: "packages/cloud/api/v1/phone-gateways/bluebubbles/[id]/route.ts",
-  },
   "DELETE /api/v1/proxy/birdeye/{path}": {
     method: "DELETE",
     path: "/api/v1/proxy/birdeye/{path}",
@@ -2123,15 +2114,6 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     pathParams: ["id"],
     catchAllPathParams: [],
     file: "packages/cloud/api/v1/payment-requests/[id]/route.ts",
-  },
-  "GET /api/v1/phone-gateways/bluebubbles": {
-    method: "GET",
-    path: "/api/v1/phone-gateways/bluebubbles",
-    methodName: "getApiV1PhoneGatewaysBluebubbles",
-    responseMode: "json",
-    pathParams: [],
-    catchAllPathParams: [],
-    file: "packages/cloud/api/v1/phone-gateways/bluebubbles/route.ts",
   },
   "GET /api/v1/pii-scrub/jobs/{id}": {
     method: "GET",
@@ -4334,15 +4316,6 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     catchAllPathParams: [],
     file: "packages/cloud/api/v1/payment-requests/[id]/expire/route.ts",
   },
-  "POST /api/v1/phone-gateways/bluebubbles": {
-    method: "POST",
-    path: "/api/v1/phone-gateways/bluebubbles",
-    methodName: "postApiV1PhoneGatewaysBluebubbles",
-    responseMode: "json",
-    pathParams: [],
-    catchAllPathParams: [],
-    file: "packages/cloud/api/v1/phone-gateways/bluebubbles/route.ts",
-  },
   "POST /api/v1/pii-scrub/jobs": {
     method: "POST",
     path: "/api/v1/pii-scrub/jobs",
@@ -5050,7 +5023,6 @@ export interface PublicRoutePathParams {
   "DELETE /api/v1/mcps/{mcpId}": { mcpId: string | number };
   "DELETE /api/v1/mcps/{mcpId}/publish": { mcpId: string | number };
   "DELETE /api/v1/oauth/connections/{id}": { id: string | number };
-  "DELETE /api/v1/phone-gateways/bluebubbles/{id}": { id: string | number };
   "DELETE /api/v1/proxy/birdeye/{path}": {
     path: string | number | readonly (string | number)[];
   };
@@ -5346,7 +5318,6 @@ export interface PublicRoutePathParams {
   "GET /api/v1/oauth/token/{platform}": { platform: string | number };
   "GET /api/v1/payment-requests": Record<never, never>;
   "GET /api/v1/payment-requests/{id}": { id: string | number };
-  "GET /api/v1/phone-gateways/bluebubbles": Record<never, never>;
   "GET /api/v1/pii-scrub/jobs/{id}": { id: string | number };
   "GET /api/v1/pricing/summary": Record<never, never>;
   "GET /api/v1/proxy/birdeye/{path}": {
@@ -5677,7 +5648,6 @@ export interface PublicRoutePathParams {
   "POST /api/v1/payment-requests": Record<never, never>;
   "POST /api/v1/payment-requests/{id}/cancel": { id: string | number };
   "POST /api/v1/payment-requests/{id}/expire": { id: string | number };
-  "POST /api/v1/phone-gateways/bluebubbles": Record<never, never>;
   "POST /api/v1/pii-scrub/jobs": Record<never, never>;
   "POST /api/v1/proxy/birdeye/{path}": {
     path: string | number | readonly (string | number)[];
@@ -5808,7 +5778,6 @@ export interface PublicRouteHeaders {
   "DELETE /api/v1/mcps/{mcpId}": never;
   "DELETE /api/v1/mcps/{mcpId}/publish": never;
   "DELETE /api/v1/oauth/connections/{id}": never;
-  "DELETE /api/v1/phone-gateways/bluebubbles/{id}": never;
   "DELETE /api/v1/proxy/birdeye/{path}": never;
   "DELETE /api/v1/sessions/{id}": never;
   "DELETE /api/v1/telegram/disconnect": never;
@@ -6012,7 +5981,6 @@ export interface PublicRouteHeaders {
   "GET /api/v1/oauth/token/{platform}": never;
   "GET /api/v1/payment-requests": never;
   "GET /api/v1/payment-requests/{id}": never;
-  "GET /api/v1/phone-gateways/bluebubbles": never;
   "GET /api/v1/pii-scrub/jobs/{id}": never;
   "GET /api/v1/pricing/summary": never;
   "GET /api/v1/proxy/birdeye/{path}": never;
@@ -6265,7 +6233,6 @@ export interface PublicRouteHeaders {
   "POST /api/v1/payment-requests": never;
   "POST /api/v1/payment-requests/{id}/cancel": never;
   "POST /api/v1/payment-requests/{id}/expire": never;
-  "POST /api/v1/phone-gateways/bluebubbles": never;
   "POST /api/v1/pii-scrub/jobs": never;
   "POST /api/v1/proxy/birdeye/{path}": never;
   "POST /api/v1/proxy/evm-rpc/{chain}": never;
@@ -6840,15 +6807,6 @@ export class ElizaCloudPublicRoutesClient {
       "DELETE /api/v1/oauth/connections/{id}",
       options,
     );
-  }
-
-  deleteApiV1PhoneGatewaysBluebubblesById<TResponse = unknown>(
-    options: PublicRouteCallOptions<"DELETE /api/v1/phone-gateways/bluebubbles/{id}">,
-  ): Promise<TResponse> {
-    return this.call<
-      "DELETE /api/v1/phone-gateways/bluebubbles/{id}",
-      TResponse
-    >("DELETE /api/v1/phone-gateways/bluebubbles/{id}", options);
   }
 
   deleteApiV1ProxyBirdeyeByPath<TResponse = unknown>(
@@ -8607,15 +8565,6 @@ export class ElizaCloudPublicRoutesClient {
   ): Promise<TResponse> {
     return this.call<"GET /api/v1/payment-requests/{id}", TResponse>(
       "GET /api/v1/payment-requests/{id}",
-      options,
-    );
-  }
-
-  getApiV1PhoneGatewaysBluebubbles<TResponse = unknown>(
-    options: PublicRouteCallOptions<"GET /api/v1/phone-gateways/bluebubbles"> = {},
-  ): Promise<TResponse> {
-    return this.call<"GET /api/v1/phone-gateways/bluebubbles", TResponse>(
-      "GET /api/v1/phone-gateways/bluebubbles",
       options,
     );
   }
@@ -10843,15 +10792,6 @@ export class ElizaCloudPublicRoutesClient {
     );
   }
 
-  postApiV1PhoneGatewaysBluebubbles<TResponse = unknown>(
-    options: PublicRouteCallOptions<"POST /api/v1/phone-gateways/bluebubbles"> = {},
-  ): Promise<TResponse> {
-    return this.call<"POST /api/v1/phone-gateways/bluebubbles", TResponse>(
-      "POST /api/v1/phone-gateways/bluebubbles",
-      options,
-    );
-  }
-
   postApiV1PiiScrubJobs<TResponse = unknown>(
     options: PublicRouteCallOptions<"POST /api/v1/pii-scrub/jobs"> = {},
   ): Promise<TResponse> {
@@ -11741,15 +11681,6 @@ export class ElizaCloudPublicRoutesClient {
     options: PublicRouteCallOptions<"DELETE /api/v1/oauth/connections/{id}">,
   ): Promise<Response> {
     return this.callRaw("DELETE /api/v1/oauth/connections/{id}", options);
-  }
-
-  deleteApiV1PhoneGatewaysBluebubblesByIdRaw(
-    options: PublicRouteCallOptions<"DELETE /api/v1/phone-gateways/bluebubbles/{id}">,
-  ): Promise<Response> {
-    return this.callRaw(
-      "DELETE /api/v1/phone-gateways/bluebubbles/{id}",
-      options,
-    );
   }
 
   deleteApiV1ProxyBirdeyeByPathRaw(
@@ -13025,12 +12956,6 @@ export class ElizaCloudPublicRoutesClient {
     options: PublicRouteCallOptions<"GET /api/v1/payment-requests/{id}">,
   ): Promise<Response> {
     return this.callRaw("GET /api/v1/payment-requests/{id}", options);
-  }
-
-  getApiV1PhoneGatewaysBluebubblesRaw(
-    options: PublicRouteCallOptions<"GET /api/v1/phone-gateways/bluebubbles"> = {},
-  ): Promise<Response> {
-    return this.callRaw("GET /api/v1/phone-gateways/bluebubbles", options);
   }
 
   getApiV1PiiScrubJobsByIdRaw(
@@ -14645,12 +14570,6 @@ export class ElizaCloudPublicRoutesClient {
     options: PublicRouteCallOptions<"POST /api/v1/payment-requests/{id}/expire">,
   ): Promise<Response> {
     return this.callRaw("POST /api/v1/payment-requests/{id}/expire", options);
-  }
-
-  postApiV1PhoneGatewaysBluebubblesRaw(
-    options: PublicRouteCallOptions<"POST /api/v1/phone-gateways/bluebubbles"> = {},
-  ): Promise<Response> {
-    return this.callRaw("POST /api/v1/phone-gateways/bluebubbles", options);
   }
 
   postApiV1PiiScrubJobsRaw(

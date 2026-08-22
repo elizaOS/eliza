@@ -6,7 +6,7 @@
  * Reads app identity from the host's app.config.ts so web, desktop, and
  * native builds share one canonical app contract.
  *
- * Usage: node scripts/run-mobile-build.mjs <android|android-host-e2e|android-cloud-hybrid|android-sms-gateway|android-cloud|android-cloud-audit [aab-path]|android-cloud-debug|android-system|ios|ios-local|ios-overlay>
+ * Usage: node scripts/run-mobile-build.mjs <android|android-host-e2e|android-cloud-hybrid|android-cloud|android-cloud-audit [aab-path]|android-cloud-debug|android-system|ios|ios-local|ios-overlay>
  *
  * Android targets:
  *   - android         Sideload-only debug APK with the on-device agent runtime
@@ -23,11 +23,6 @@
  *                     activities, no system-only permissions.
  *   - android-cloud-debug
  *                     Debug APK for cloud-client iteration. Not for Play.
- *   - android-sms-gateway
- *                     Sideload-only debug APK for running the shared Eliza
- *                     Cloud SMS gateway as the default Android SMS app. Keeps
- *                     SMS/MMS/default-message components but strips local
- *                     inference/native runtime pieces.
  *   - android-system  Privileged platform-signed AOSP release APK for
  *                     Eliza OS / ElizaOS device builds.
  *
@@ -253,11 +248,6 @@ const androidUsesAppDir = androidUsesAppDirFor(androidBuildAppId, process.env);
 const androidDir = androidUsesAppDir
   ? path.join(appDir, "android")
   : path.join(appCoreRoot, "platforms", "android");
-const localArtifactsDir = path.join(elizaRepoRoot, ".eliza-local", "artifacts");
-const androidSmsGatewayDebugApkArtifact = path.join(
-  localArtifactsDir,
-  "eliza-android-sms-gateway-debug.apk",
-);
 const IOS_DEFAULT_DEPLOYMENT_TARGET = "16.0";
 const IOS_FULL_BUN_DEPLOYMENT_TARGET = "16.0";
 
@@ -2040,35 +2030,6 @@ function injectBuildConfigAospField(content) {
   return next;
 }
 
-function androidSmsGatewayBuildConfigFieldLines() {
-  return [
-    `        buildConfigField "boolean", "ELIZA_ANDROID_LP3_COLOR_POLICY_ENABLED", "\${['1', 'true', 'yes'].contains((System.getenv('ELIZA_ANDROID_LP3_COLOR_POLICY_ENABLED') ?: 'false').toLowerCase())}"`,
-    `        buildConfigField "boolean", "ELIZA_ANDROID_SMS_GATEWAY_ENABLED", "\${['1', 'true', 'yes'].contains((System.getenv('ELIZA_ANDROID_SMS_GATEWAY_ENABLED') ?: 'false').toLowerCase())}"`,
-    `        buildConfigField "String", "ELIZA_ANDROID_SMS_GATEWAY_SECRET", "\\"${escapeJavaString(process.env.ELIZA_ANDROID_SMS_GATEWAY_SECRET ?? "")}\\""`,
-    `        buildConfigField "String", "ELIZA_ANDROID_SMS_GATEWAY_WEBHOOK_URL", "\\"${escapeJavaString(process.env.ELIZA_ANDROID_SMS_GATEWAY_WEBHOOK_URL ?? "https://api.eliza.app/api/webhooks/blooio/local?bridge=bluebubbles")}\\""`,
-    `        buildConfigField "String", "ELIZA_ANDROID_SMS_GATEWAY_PHONE_NUMBER", "\\"${escapeJavaString(process.env.ELIZA_ANDROID_SMS_GATEWAY_PHONE_NUMBER ?? "+14159611510")}\\""`,
-    `        buildConfigField "String", "ELIZA_ANDROID_SMS_GATEWAY_PHONE_LABEL", "\\"${escapeJavaString(process.env.ELIZA_ANDROID_SMS_GATEWAY_PHONE_LABEL ?? "Eliza Cloud Gateway (+14159611510)")}\\""`,
-  ];
-}
-
-function injectAndroidSmsGatewayBuildConfigFields(content) {
-  let next = injectBuildConfigAospField(content);
-  const fields = androidSmsGatewayBuildConfigFieldLines();
-  for (const field of fields) {
-    const name = field.match(/,\s*"([^"]+)"/)?.[1];
-    if (!name) continue;
-    const existingRe = new RegExp(
-      `\\n\\s*buildConfigField\\s+["'][^"']+["'],\\s*["']${escapeRegExp(name)}["'][^\\n]*`,
-      "g",
-    );
-    next = next.replace(existingRe, "");
-  }
-  return next.replace(
-    /defaultConfig\s*\{/,
-    `defaultConfig {\n${fields.join("\n")}`,
-  );
-}
-
 /**
  * Inject the `androidResources { noCompress += [...] }` block that keeps
  * `.tar.gz`, `.tar`, `.gguf`, and `.so` files byte-identical in the
@@ -3211,7 +3172,6 @@ function overlayAndroid({ includeAospRoleLaunchers = false } = {}) {
       "ElizaNotificationListenerService",
       "ElizaSmsReceiver",
       "ElizaMmsReceiver",
-      "ElizaSmsGatewayService",
       "ElizaRespondViaMessageService",
       "ElizaSmsComposeActivity",
       "ElizaBootReceiver",
@@ -3241,7 +3201,6 @@ function overlayAndroid({ includeAospRoleLaunchers = false } = {}) {
       "ElizaNotificationListenerService",
       "ElizaSmsReceiver",
       "ElizaMmsReceiver",
-      "ElizaSmsGatewayService",
       "ElizaRespondViaMessageService",
       "ElizaSmsComposeActivity",
       "ElizaBootReceiver",
@@ -3430,14 +3389,6 @@ function overlayAndroid({ includeAospRoleLaunchers = false } = {}) {
                 <data android:mimeType="application/vnd.wap.mms-message" />
             </intent-filter>
         </receiver>`,
-    );
-    xml = appendMissingApplicationBlock(
-      xml,
-      `${androidPackage}.ElizaSmsGatewayService`,
-      `
-        <service
-            android:name="${androidPackage}.ElizaSmsGatewayService"
-            android:exported="false" />`,
     );
     xml = appendMissingApplicationBlock(
       xml,
@@ -4307,7 +4258,7 @@ function patchAndroidGradle({ cloudBuild = false } = {}) {
       /getDefaultProguardFile\('proguard-android\.txt'\)/g,
       "getDefaultProguardFile('proguard-android-optimize.txt')",
     );
-    patched = injectAndroidSmsGatewayBuildConfigFields(patched);
+    patched = injectBuildConfigAospField(patched);
     patched = injectNoCompressTarGz(patched);
     patched = injectNativeLibLegacyPackaging(patched);
     patched = injectAospAssetThinning(patched);
@@ -4443,7 +4394,6 @@ function sanitizeAndroidManifestWhenPlatformTemplatesMissing() {
     "ElizaInCallService",
     "ElizaSmsReceiver",
     "ElizaMmsReceiver",
-    "ElizaSmsGatewayService",
     "ElizaRespondViaMessageService",
     "ElizaSmsComposeActivity",
     "ElizaBootReceiver",
@@ -5490,7 +5440,6 @@ export const ANDROID_CLOUD_STRIPPED_COMPONENTS = [
   "ElizaQuickActionsWidgetProvider",
   "ElizaSmsReceiver",
   "ElizaMmsReceiver",
-  "ElizaSmsGatewayService",
   "ElizaRespondViaMessageService",
   "ElizaSmsComposeActivity",
   "ElizaBootReceiver",
@@ -5612,7 +5561,6 @@ export const ANDROID_CLOUD_STRIPPED_JAVA_FILES = [
   "ElizaDialActivity.java",
   "ElizaInCallService.java",
   "ElizaMmsReceiver.java",
-  "ElizaSmsGatewayService.java",
   "ElizaRespondViaMessageService.java",
   "ElizaSmsComposeActivity.java",
   "ElizaSmsReceiver.java",
@@ -5674,7 +5622,7 @@ export function enforceAndroidLp3ColorPolicyBuildPolicy({
     throw new Error(
       "[mobile-build] ELIZA_ANDROID_LP3_COLOR_POLICY_ENABLED is restricted to " +
         "the canonical android-cloud-debug direct-distribution lane; it is " +
-        "forbidden for release, Play, SMS gateway, sideload, AOSP, app-dir, " +
+        "forbidden for release, Play, sideload, AOSP, app-dir, " +
         "and whitelabel targets.",
     );
   }
@@ -5968,53 +5916,6 @@ export function createAndroidPlayManifestPolicy({ debug = false } = {}) {
     targetSdkVersion: "36",
   };
 }
-
-const ANDROID_SMS_GATEWAY_COMPONENTS = new Set([
-  "ElizaSmsReceiver",
-  "ElizaMmsReceiver",
-  "ElizaRespondViaMessageService",
-  "ElizaSmsComposeActivity",
-  "ElizaSmsGatewayService",
-]);
-
-const ANDROID_SMS_GATEWAY_PERMISSIONS = new Set([
-  "READ_SMS",
-  "SEND_SMS",
-  "RECEIVE_SMS",
-  "RECEIVE_MMS",
-  "RECEIVE_WAP_PUSH",
-]);
-
-export const ANDROID_SMS_GATEWAY_STRIPPED_COMPONENTS =
-  ANDROID_CLOUD_STRIPPED_COMPONENTS.filter(
-    (component) => !ANDROID_SMS_GATEWAY_COMPONENTS.has(component),
-  );
-
-export const ANDROID_SMS_GATEWAY_STRIPPED_PERMISSIONS =
-  ANDROID_CLOUD_STRIPPED_PERMISSIONS.filter(
-    (permission) => !ANDROID_SMS_GATEWAY_PERMISSIONS.has(permission),
-  );
-
-export const ANDROID_SMS_GATEWAY_STRIPPED_JAVA_FILES =
-  ANDROID_CLOUD_STRIPPED_JAVA_FILES.filter(
-    (file) => !ANDROID_SMS_GATEWAY_COMPONENTS.has(file.replace(/\.java$/, "")),
-  );
-
-export const ANDROID_SMS_GATEWAY_STRIPPED_NATIVE_PLUGINS = [
-  ...ANDROID_CLOUD_STRIPPED_NATIVE_PLUGINS,
-  ["@capacitor/background-runner", "capacitor-background-runner"],
-  ["@capacitor/barcode-scanner", "capacitor-barcode-scanner"],
-  ["@capacitor/haptics", "capacitor-haptics"],
-  ["@capacitor/network", "capacitor-network"],
-  ["@capacitor/push-notifications", "capacitor-push-notifications"],
-  ["@capacitor/status-bar", "capacitor-status-bar"],
-  ["@elizaos/capacitor-camera", "elizaos-capacitor-camera"],
-  ["@elizaos/capacitor-canvas", "elizaos-capacitor-canvas"],
-  ["@elizaos/capacitor-gateway", "elizaos-capacitor-gateway"],
-  ["@elizaos/capacitor-location", "elizaos-capacitor-location"],
-  ["@elizaos/capacitor-swabble", "elizaos-capacitor-swabble"],
-  ["@elizaos/capacitor-talkmode", "elizaos-capacitor-talkmode"],
-];
 
 function isCloudBannedNativeLibrary(fileName) {
   const normalized = fileName.toLowerCase();
@@ -7164,89 +7065,6 @@ function auditAndroidCloudSource(phase, { env = process.env } = {}) {
   console.log(`[mobile-build] android-cloud ${phase} audit passed.`);
 }
 
-function auditAndroidSmsGatewaySource(phase) {
-  const failures = [];
-  const manifestPath = path.join(
-    androidDir,
-    "app",
-    "src",
-    "main",
-    "AndroidManifest.xml",
-  );
-  failures.push(...auditAndroidSmsGatewayManifest(manifestPath));
-  failures.push(...missingAndroidSmsGatewayJavaFiles());
-  failures.push(...androidCloudNativePluginReferenceFailures());
-
-  if (failures.length > 0) {
-    throw new Error(
-      `[mobile-build] android-sms-gateway ${phase} audit failed:\n` +
-        failures.map((failure) => `  - ${failure}`).join("\n"),
-    );
-  }
-  console.log(`[mobile-build] android-sms-gateway ${phase} audit passed.`);
-}
-
-function auditAndroidSmsGatewayManifest(manifestPath) {
-  const failures = [];
-  if (!fs.existsSync(manifestPath)) {
-    failures.push("AndroidManifest.xml is missing");
-    return failures;
-  }
-  const xml = stripXmlComments(fs.readFileSync(manifestPath, "utf8"));
-  for (const component of ANDROID_SMS_GATEWAY_COMPONENTS) {
-    if (!xml.includes(component)) {
-      failures.push(`AndroidManifest.xml is missing ${component}`);
-    }
-  }
-  for (const perm of ANDROID_SMS_GATEWAY_PERMISSIONS) {
-    const full = `android.permission.${perm}`;
-    if (!xml.includes(full)) {
-      failures.push(`AndroidManifest.xml is missing ${full}`);
-    }
-  }
-  for (const component of ANDROID_SMS_GATEWAY_STRIPPED_COMPONENTS) {
-    if (xml.includes(component)) {
-      failures.push(`AndroidManifest.xml still references ${component}`);
-    }
-  }
-  if (/usesCleartextTraffic="true"/.test(xml)) {
-    failures.push("AndroidManifest.xml still allows global cleartext traffic");
-  }
-  return failures;
-}
-
-function missingAndroidSmsGatewayJavaFiles() {
-  const missing = [];
-  const javaRoot = path.join(androidDir, "app", "src", "main", "java");
-  for (const file of ["ElizaSmsGatewayService.java", "ElizaSmsReceiver.java"]) {
-    let found = false;
-    walkFiles(javaRoot, (filePath) => {
-      if (path.basename(filePath) === file) found = true;
-    });
-    if (!found) missing.push(`app/src/main/java is missing ${file}`);
-  }
-  return missing;
-}
-
-function androidCloudNativePluginReferenceFailures() {
-  const failures = [];
-  for (const relPath of [
-    "capacitor.settings.gradle",
-    path.join("app", "capacitor.build.gradle"),
-    path.join("app", "src", "main", "assets", "capacitor.plugins.json"),
-  ]) {
-    const filePath = path.join(androidDir, relPath);
-    if (!fs.existsSync(filePath)) continue;
-    const source = fs.readFileSync(filePath, "utf8");
-    for (const [pkg, gradleProject] of ANDROID_CLOUD_STRIPPED_NATIVE_PLUGINS) {
-      if (source.includes(pkg) || source.includes(gradleProject)) {
-        failures.push(`${relPath} still references ${pkg}/${gradleProject}`);
-      }
-    }
-  }
-  return failures;
-}
-
 function auditAndroidSystemSource(
   phase,
   { requireCapabilityManifest = true } = {},
@@ -7511,101 +7329,6 @@ function stripAndroidForCloud({ env = process.env } = {}) {
   stripAndroidCloudNativePlugins();
 }
 
-function stripAndroidForSmsGateway() {
-  const androidPackage = APP.appId;
-  const manifestPath = path.join(
-    androidDir,
-    "app",
-    "src",
-    "main",
-    "AndroidManifest.xml",
-  );
-  if (fs.existsSync(manifestPath)) {
-    let xml = fs.readFileSync(manifestPath, "utf8");
-    const original = xml;
-
-    for (const component of ANDROID_SMS_GATEWAY_STRIPPED_COMPONENTS) {
-      xml = removeApplicationComponentBlock(
-        xml,
-        `${androidPackage}.${component}`,
-      );
-      xml = removeApplicationComponentClassBlock(xml, component);
-    }
-
-    xml = removeAndroidPermissionRequests(
-      xml,
-      ANDROID_SMS_GATEWAY_STRIPPED_PERMISSIONS,
-    );
-    xml = ensureAndroidPermissionRemovalMarkers(
-      xml,
-      ANDROID_CLOUD_MANIFEST_MERGER_REMOVED_PERMISSIONS.filter((permission) =>
-        ANDROID_SMS_GATEWAY_STRIPPED_PERMISSIONS.includes(permission),
-      ),
-    );
-    xml = applyAndroidCleartextPolicy(xml, { allowCleartext: false });
-
-    if (xml !== original) {
-      fs.writeFileSync(manifestPath, xml, "utf8");
-      console.log(
-        "[mobile-build] Stripped non-SMS local components and permissions from AndroidManifest.xml.",
-      );
-    }
-  }
-
-  const activeJavaRoot = path.join(
-    androidDir,
-    "app",
-    "src",
-    "main",
-    "java",
-    packageNameToPath(androidPackage),
-  );
-  const javaRoots = [
-    activeJavaRoot,
-    path.join(androidDir, "app", "src", "main", "java", "ai", "elizaos", "app"),
-  ];
-  let removedJavaCount = 0;
-  for (const root of javaRoots) {
-    if (!fs.existsSync(root)) continue;
-    for (const file of ANDROID_SMS_GATEWAY_STRIPPED_JAVA_FILES) {
-      const target = path.join(root, file);
-      if (fs.existsSync(target)) {
-        fs.rmSync(target);
-        removedJavaCount += 1;
-      }
-    }
-  }
-  if (removedJavaCount > 0) {
-    console.log(
-      `[mobile-build] Removed ${removedJavaCount} non-SMS Java source(s).`,
-    );
-  }
-  const removedJavaRootCount = removeInactiveAndroidJavaSourceRoots(
-    javaRoots,
-    activeJavaRoot,
-  );
-  if (removedJavaRootCount > 0) {
-    console.log(
-      `[mobile-build] Removed ${removedJavaRootCount} inactive Android Java source root(s).`,
-    );
-  }
-  rewriteCloudJavaSources(javaRoots, androidPackage);
-
-  const resRoot = path.join(androidDir, "app", "src", "main", "res");
-  for (const relPath of ANDROID_CLOUD_STRIPPED_RESOURCE_FILES) {
-    const target = path.join(resRoot, relPath);
-    if (fs.existsSync(target)) {
-      fs.rmSync(target);
-    }
-  }
-
-  removeCloudNativeArtifacts();
-  stripAndroidNativePlugins(
-    ANDROID_SMS_GATEWAY_STRIPPED_NATIVE_PLUGINS,
-    "sms-gateway-disallowed",
-  );
-}
-
 function enforceAndroidSideloadBuildPolicy({ env = process.env } = {}) {
   // Hard refusal: the default `android` target is sideload-only and will be
   // rejected by Play. If CI or a contributor signals Play-Store intent via
@@ -7635,30 +7358,18 @@ function enforceAndroidSideloadBuildPolicy({ env = process.env } = {}) {
   );
 }
 
-function requireAndroidSmsGatewaySecret({ env = process.env } = {}) {
-  if (!env.ELIZA_ANDROID_SMS_GATEWAY_SECRET) {
-    throw new Error(
-      "ELIZA_ANDROID_SMS_GATEWAY_SECRET is required for android-sms-gateway.",
-    );
-  }
-}
-
 const ANDROID_PREFLIGHTS = Object.freeze({
   sideload: enforceAndroidSideloadBuildPolicy,
 });
 
-const ANDROID_AFTER_TOOLCHAIN = Object.freeze({
-  smsGatewaySecret: requireAndroidSmsGatewaySecret,
-});
+const ANDROID_AFTER_TOOLCHAIN = Object.freeze({});
 
 const ANDROID_SOURCE_STRIPS = Object.freeze({
   cloud: stripAndroidForCloud,
-  smsGateway: stripAndroidForSmsGateway,
 });
 
 const ANDROID_SOURCE_AUDITS = Object.freeze({
   cloud: auditAndroidCloudSource,
-  smsGateway: auditAndroidSmsGatewaySource,
   system: auditAndroidSystemSource,
 });
 
@@ -7668,8 +7379,6 @@ const ANDROID_ARTIFACT_AUDITS = Object.freeze({
   cloud: ({ env, javaHome }) => auditAndroidCloudArtifact({ env, javaHome }),
   cloudDebug: ({ env, javaHome }) =>
     auditAndroidCloudArtifact({ debug: true, env, javaHome }),
-  smsGateway: ({ androidSdkRoot, javaHome }) =>
-    auditAndroidSmsGatewayArtifact({ androidSdkRoot, javaHome }),
   system: ({ androidSdkRoot, javaHome }) =>
     auditAndroidSystemArtifact({ androidSdkRoot, javaHome }),
 });
@@ -7677,10 +7386,6 @@ const ANDROID_ARTIFACT_AUDITS = Object.freeze({
 const ANDROID_POST_BUILDS = Object.freeze({
   logCloudRelease: ({ artifact }) =>
     console.log(`[mobile-build] android-cloud release AAB: ${artifact}`),
-  preserveSmsGateway: ({ artifact }) => {
-    preserveAndroidSmsGatewayArtifact(artifact);
-    console.log(`[mobile-build] android-sms-gateway debug APK: ${artifact}`);
-  },
   stageSystemApk: stageAndroidSystemApk,
 });
 
@@ -7707,21 +7412,6 @@ export function resolveAndroidGradleCommands(
   });
 }
 
-function resolveAndroidSmsGatewayEnvDefaults(env) {
-  return {
-    ELIZA_ANDROID_SMS_GATEWAY_ENABLED:
-      env.ELIZA_ANDROID_SMS_GATEWAY_ENABLED ?? "true",
-    ELIZA_ANDROID_SMS_GATEWAY_WEBHOOK_URL:
-      env.ELIZA_ANDROID_SMS_GATEWAY_WEBHOOK_URL ??
-      "https://api.eliza.app/api/webhooks/blooio/local?bridge=bluebubbles",
-    ELIZA_ANDROID_SMS_GATEWAY_PHONE_NUMBER:
-      env.ELIZA_ANDROID_SMS_GATEWAY_PHONE_NUMBER ?? "+14159611510",
-    ELIZA_ANDROID_SMS_GATEWAY_PHONE_LABEL:
-      env.ELIZA_ANDROID_SMS_GATEWAY_PHONE_LABEL ??
-      "Eliza Cloud Gateway (+14159611510)",
-  };
-}
-
 export function createAndroidBuildEnv(
   target,
   { androidSdkRoot, env, javaHome },
@@ -7729,9 +7419,6 @@ export function createAndroidBuildEnv(
   return {
     ...env,
     ...target.env,
-    ...(target.includeSmsGatewayEnvDefaults
-      ? resolveAndroidSmsGatewayEnvDefaults(env)
-      : {}),
     ANDROID_HOME: androidSdkRoot,
     ANDROID_SDK_ROOT: androidSdkRoot,
     // The Gradle AAB-audit finalizer resolves this orchestrator by walking up
@@ -9111,54 +8798,6 @@ export function auditAndroidCloudArtifact(
   return artifact;
 }
 
-function auditAndroidSmsGatewayArtifact({ androidSdkRoot, javaHome } = {}) {
-  const artifact = findAndroidCloudDebugApk();
-  if (!artifact) {
-    throw new Error(
-      "[mobile-build] android-sms-gateway debug APK was not found under app/build/outputs/.",
-    );
-  }
-
-  assertNoAndroidSmsGatewayPackagedOffenders(artifact, javaHome);
-  assertAndroidArtifactShipsWebPayload(
-    artifact,
-    listAndroidArtifactEntries(artifact, javaHome),
-    { requireAgent: false, label: "android-sms-gateway" },
-  );
-
-  const aapt = resolveAndroidBuildTool(androidSdkRoot, "aapt");
-  if (!aapt) {
-    throw new Error(
-      "[mobile-build] Could not find aapt under Android SDK build-tools for android-sms-gateway artifact audit.",
-    );
-  }
-  const badging = dumpAndroidArtifactBadging(aapt, artifact);
-  assertAndroidSmsGatewayBadging(badging);
-  const manifestText = dumpAndroidArtifactManifest(aapt, artifact);
-  assertAndroidSmsGatewayArtifactManifest(manifestText);
-
-  console.log(
-    `[mobile-build] android-sms-gateway artifact audit passed: ${artifact}`,
-  );
-  return artifact;
-}
-
-function assertNoAndroidSmsGatewayPackagedOffenders(artifact, javaHome) {
-  const packagedOffenders = findAndroidCloudPackagedRuntimeOffenders(
-    listAndroidArtifactEntries(artifact, javaHome),
-  );
-  if (packagedOffenders.length > 0) {
-    throw mobileBuildError(
-      `[mobile-build] android-sms-gateway artifact contains local runtime payloads:\n` +
-        packagedOffenders.map((entry) => `  - ${entry}`).join("\n"),
-      {
-        code: "ANDROID_CLOUD_RUNTIME_PAYLOAD_PRESENT",
-        context: { artifact, offenders: packagedOffenders },
-      },
-    );
-  }
-}
-
 export function dumpAndroidArtifactBadging(
   aapt,
   artifact,
@@ -9175,18 +8814,6 @@ export function dumpAndroidArtifactBadging(
     );
   }
   return badging.stdout;
-}
-
-function assertAndroidSmsGatewayBadging(badging) {
-  for (const perm of ANDROID_SMS_GATEWAY_PERMISSIONS) {
-    if (
-      !badging.includes(`uses-permission: name='android.permission.${perm}'`)
-    ) {
-      throw new Error(
-        `[mobile-build] android-sms-gateway artifact is missing android.permission.${perm}`,
-      );
-    }
-  }
 }
 
 export function dumpAndroidArtifactManifest(
@@ -9318,49 +8945,8 @@ export function androidPlayManifestEvidenceFromAapt(manifestText) {
   };
 }
 
-function assertAndroidSmsGatewayArtifactManifest(manifestText) {
-  for (const component of ANDROID_SMS_GATEWAY_COMPONENTS) {
-    if (!manifestText.includes(`${APP.appId}.${component}`)) {
-      throw new Error(
-        `[mobile-build] android-sms-gateway artifact manifest is missing ${APP.appId}.${component}`,
-      );
-    }
-  }
-  for (const marker of [
-    "android.provider.Telephony.SMS_DELIVER",
-    "android.provider.Telephony.WAP_PUSH_DELIVER",
-    "android.intent.action.RESPOND_VIA_MESSAGE",
-    "android.intent.action.SENDTO",
-  ]) {
-    if (!manifestText.includes(marker)) {
-      throw new Error(
-        `[mobile-build] android-sms-gateway artifact manifest is missing ${marker}`,
-      );
-    }
-  }
-  for (const component of ANDROID_SMS_GATEWAY_STRIPPED_COMPONENTS) {
-    if (manifestText.includes(component)) {
-      throw new Error(
-        `[mobile-build] android-sms-gateway artifact manifest still references ${component}`,
-      );
-    }
-  }
-}
-
-function preserveAndroidSmsGatewayArtifact(artifact) {
-  fs.mkdirSync(localArtifactsDir, { recursive: true });
-  fs.copyFileSync(artifact, androidSmsGatewayDebugApkArtifact);
-  console.log(
-    `[mobile-build] android-sms-gateway preserved APK: ${androidSmsGatewayDebugApkArtifact}`,
-  );
-}
-
 async function buildAndroidCloud({ debug = false } = {}) {
   await runAndroidBuild("android-cloud", { debug });
-}
-
-async function buildAndroidSmsGateway() {
-  await runAndroidBuild("android-sms-gateway");
 }
 
 function findAndroidSystemApk() {
@@ -9767,7 +9353,6 @@ export async function main(argv = process.argv.slice(2)) {
     target !== "android" &&
     target !== "android-host-e2e" &&
     target !== "android-cloud-hybrid" &&
-    target !== "android-sms-gateway" &&
     target !== "android-cloud" &&
     target !== "android-cloud-audit" &&
     target !== "android-cloud-debug" &&
@@ -9777,7 +9362,7 @@ export async function main(argv = process.argv.slice(2)) {
     target !== "ios-overlay"
   ) {
     console.error(
-      "Usage: node scripts/run-mobile-build.mjs <android|android-host-e2e|android-cloud-hybrid|android-sms-gateway|android-cloud|android-cloud-audit [aab-path]|android-cloud-debug|android-system|ios|ios-local|ios-overlay>",
+      "Usage: node scripts/run-mobile-build.mjs <android|android-host-e2e|android-cloud-hybrid|android-cloud|android-cloud-audit [aab-path]|android-cloud-debug|android-system|ios|ios-local|ios-overlay>",
     );
     process.exit(1);
   }
@@ -9787,8 +9372,6 @@ export async function main(argv = process.argv.slice(2)) {
     await runAndroidBuild("android-host-e2e");
   } else if (target === "android-cloud-hybrid") {
     await runAndroidBuild("android-cloud-hybrid");
-  } else if (target === "android-sms-gateway") {
-    await buildAndroidSmsGateway();
   } else if (target === "android-cloud") {
     await buildAndroidCloud();
   } else if (target === "android-cloud-audit") {

@@ -38,7 +38,6 @@ a new connector.
 | 18808 | twilio          | `twilio.json`                       |
 | 18809 | plaid           | `plaid.json` (cloud-relay shape)    |
 | 18810 | apple-reminders | `apple-reminders.json`              |
-| 18811 | bluebubbles     | `bluebubbles.json`                  |
 | 18812 | ntfy            | `ntfy.json`                         |
 | 18813 | duffel          | `duffel.json`                       |
 | 18814 | anthropic       | `anthropic.json` (failure-injection) |
@@ -318,10 +317,7 @@ failure variants beyond the standard 3:
 
 - `discord.json` — message structure is minimal; threads/embeds are not modeled
 - `notion.json` — only the most-used `search` + `pages.create` fixtures
-- `apple-reminders.json` — bridge HTTP shape is approximated; the real bridge
-  uses `bluebubbles`-style WebSockets in some configurations
-- `bluebubbles.json` — chat list and message send only; attachments are not
-  modeled
+- `apple-reminders.json` — bridge HTTP shape is approximated
 - `spotify.json` — `me` and `currently-playing` only
 - `anthropic.json` — failure-injection only by design (no happy path)
 
@@ -351,6 +347,6 @@ calls it at module load when `LIFEOPS_USE_MOCKOON=1`. The function sets:
 - `LIFEOPS_DUFFEL_API_BASE=http://localhost:18813` (consumed by duffel.ts)
 
 Plus exports for the connectors that have no env-var override yet (slack,
-discord, telegram, github, notion, bluebubbles, apple-reminders, spotify,
+discord, telegram, github, notion, apple-reminders, spotify,
 anthropic, cerebras). Tests that exercise those connectors call
 `getMockoonBaseUrl(connector)` directly.

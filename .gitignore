@@ -1040,8 +1040,7 @@ packages/ui/src/components/shell/__e2e__/output-home-locale/
 /.fused-lib/
 
 # Repo-root local state written by app-core scripts (run-mobile-build.mjs
-# artifacts, bluebubbles/homepage evidence JSON, and
-# .eliza-local/bluebubbles-bridge.env, which can hold a gateway secret).
+# artifacts and homepage evidence JSON).
 # Machine-local by design and easy to sweep into a commit (#22348 review).
 /.eliza-local/
 

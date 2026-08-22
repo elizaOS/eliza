@@ -23,7 +23,6 @@
  * also registered into the redaction set, so values that live only in a .env
  * file layer are masked in details exactly like process.env values.
  */
-import { spawnSync } from "node:child_process";
 import { createHmac, randomBytes } from "node:crypto";
 import { accessSync, constants as fsConstants } from "node:fs";
 import { homedir } from "node:os";
@@ -747,29 +746,6 @@ async function probeImessageMacos(e) {
   }
 }
 
-async function probeBlueBubbles(e) {
-  const password = e("BLUEBUBBLES_PASSWORD");
-  if (!password) {
-    return missing(
-      "imessage",
-      "BLUEBUBBLES_PASSWORD (server URL defaults to http://localhost:1234)",
-    );
-  }
-  const base = (e("BLUEBUBBLES_SERVER_URL") ?? "http://localhost:1234").replace(
-    /\/+$/,
-    "",
-  );
-  const r = await fetchJson(
-    `${base}/api/v1/ping?password=${encodeURIComponent(password)}`,
-  );
-  return r.httpOk
-    ? pass("imessage", `BlueBubbles ping ok (${new URL(base).hostname})`)
-    : fail(
-        "imessage",
-        `BlueBubbles ping HTTP ${r.status}: ${errorSnippet(r)} — if the server app is installed but stopped, launch BlueBubbles.app`,
-      );
-}
-
 // --- family registry -------------------------------------------------------------
 
 const PROBES = {
@@ -857,7 +833,6 @@ export const PATH_PROBES = {
   "slack.user-token": probeSlackUserToken,
   "whatsapp.cloud-api": probeWhatsapp,
   "imessage.macos": probeImessageMacos,
-  "imessage.bluebubbles": probeBlueBubbles,
   "x.oauth1-user": probeXOauth1,
   "x.bearer-app": probeXBearer,
   "twilio.api": probeTwilio,

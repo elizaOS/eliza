@@ -558,9 +558,8 @@ async function resolveInboxAccountRouting(
   requestedAccountId?: string,
 ): Promise<InboxAccountRoutingResolution> {
   // Connector-source aliases describe transport/UI grouping, while account
-  // providers are exact manager keys. For example, BlueBubbles is grouped
-  // under the canonical `imessage` source but registers provider
-  // `bluebubbles`; canonicalizing here would reject its valid account.
+  // providers are exact manager keys; canonicalizing here could reject a
+  // provider-specific account.
   const provider = normalizeAccountProvider(source);
   const manager = getConnectorAccountManager(runtime);
 
@@ -824,10 +823,8 @@ function readRoomSource(room: Room | undefined): string | null {
 }
 
 function connectorSourcesMatch(left: string, right: string): boolean {
-  // Aliases group sources for inbox display/filtering, but they are not
-  // interchangeable transport authorities. Native iMessage and BlueBubbles,
-  // for example, share the `imessage` canonical family while owning distinct
-  // handlers and account stores.
+  // Aliases group sources for inbox display and filtering; transport
+  // authorities still retain distinct handlers and account stores.
   return normalizeAccountProvider(left) === normalizeAccountProvider(right);
 }
 
