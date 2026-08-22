@@ -69,6 +69,48 @@ interface PersonalSharedDeliveryTiming {
   cloudServerTiming: string | null;
 }
 
+interface GroupDeliveryAuthority {
+  bindingId: string;
+  ownerUserId: string;
+  personalAgentId: string;
+  version: number;
+}
+
+type GroupDeliveryDirective =
+  | { kind: "control" }
+  | { kind: "binding"; authority: GroupDeliveryAuthority };
+
+function parseGroupDeliveryDirective(
+  value: unknown,
+): GroupDeliveryDirective | null {
+  if (!value || typeof value !== "object") return null;
+  const directive = value as Record<string, unknown>;
+  if (directive.kind === "control") return { kind: "control" };
+  const authority = directive.authority;
+  if (
+    directive.kind !== "binding" ||
+    !authority ||
+    typeof authority !== "object"
+  ) {
+    return null;
+  }
+  const candidate = authority as Record<string, unknown>;
+  if (
+    typeof candidate.bindingId !== "string" ||
+    typeof candidate.ownerUserId !== "string" ||
+    typeof candidate.personalAgentId !== "string" ||
+    typeof candidate.version !== "number" ||
+    !Number.isSafeInteger(candidate.version) ||
+    candidate.version <= 0
+  ) {
+    return null;
+  }
+  return {
+    kind: "binding",
+    authority: candidate as unknown as GroupDeliveryAuthority,
+  };
+}
+
 interface MessageTraceContext {
   traceId: string;
   gatewayReceivedAtMs: number;
@@ -1119,97 +1161,85 @@ async function sendPersonalSharedReply(
       cloudServerTiming,
     };
   }
-  const authorityValue = data?.groupDeliveryAuthority;
-  const groupDeliveryAuthority =
-    authorityValue &&
-    typeof authorityValue === "object" &&
-    typeof (authorityValue as Record<string, unknown>).bindingId === "string" &&
-    typeof (authorityValue as Record<string, unknown>).ownerUserId ===
-      "string" &&
-    typeof (authorityValue as Record<string, unknown>).personalAgentId ===
-      "string" &&
-    typeof (authorityValue as Record<string, unknown>).version === "number" &&
-    Number.isSafeInteger((authorityValue as Record<string, unknown>).version)
-      ? (authorityValue as {
-          bindingId: string;
-          ownerUserId: string;
-          personalAgentId: string;
-          version: number;
-        })
-      : null;
-  if (isGroup && !groupDeliveryAuthority) {
-    throw new PersonalSharedPreEgressError(
-      "personal Shared group reply returned no delivery authority",
-    );
-  }
+  const groupDelivery = parseGroupDeliveryDirective(data?.groupDelivery);
   const egressStartedAt = Date.now();
   if (isGroup) {
+    if (!groupDelivery) {
+      throw new PersonalSharedPreEgressError(
+        "personal Shared group reply returned no delivery directive",
+      );
+    }
     if (!sendReplyWithReceipt) {
       throw new PersonalSharedPreEgressError(
         "group connector cannot return a provider delivery receipt",
       );
     }
-    const authorizationBody = JSON.stringify({
-      eventType: "delivery_authorization",
-      platform: adapter.platform,
-      project,
-      connectorAccountId,
-      chatId: event.chatId,
-      invocation: groupInvocationForEvent(event),
-      authority: groupDeliveryAuthority,
-    });
-    const postAuthorization = (header: Record<string, string>) =>
-      fetch(`${cloudBaseUrl}/api/internal/eliza-app/personal-shared/messages`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          [ELIZA_TRACE_ID_HEADER]: traceId,
-          ...header,
-        },
-        body: authorizationBody,
-        signal: AbortSignal.timeout(10_000),
+    if (groupDelivery.kind === "binding") {
+      const authorizationBody = JSON.stringify({
+        eventType: "delivery_authorization",
+        platform: adapter.platform,
+        project,
+        connectorAccountId,
+        chatId: event.chatId,
+        invocation: groupInvocationForEvent(event),
+        authority: groupDelivery.authority,
       });
-    let authorizationResponse = await postAuthorization(authHeader);
-    if (
-      authorizationResponse.status === 401 ||
-      authorizationResponse.status === 403
-    ) {
-      await authorizationResponse.body?.cancel();
-      authHeader = await reauth();
-      authorizationResponse = await postAuthorization(authHeader);
-    }
-    if (!authorizationResponse.ok) {
-      await authorizationResponse.body?.cancel();
-      throw new PersonalSharedPreEgressError(
-        `group delivery authorization failed (${authorizationResponse.status})`,
-      );
-    }
-    let authorizationResult: unknown;
-    try {
-      authorizationResult = await authorizationResponse.json();
-    } catch (error) {
-      // error-policy:J3 authorization is untrusted until the explicit boolean
-      // contract parses; provider egress has not started.
-      throw new PersonalSharedPreEgressError(
-        "group delivery authorization returned invalid JSON",
-        { cause: error },
-      );
-    }
-    const authorized =
-      authorizationResult !== null &&
-      typeof authorizationResult === "object" &&
-      "data" in authorizationResult &&
-      authorizationResult.data !== null &&
-      typeof authorizationResult.data === "object" &&
-      "authorized" in authorizationResult.data &&
-      authorizationResult.data.authorized === true;
-    if (!authorized) {
-      return {
-        cloudMs,
-        cloudAttempts: attemptResult.attempts,
-        egressMs: 0,
-        cloudServerTiming,
-      };
+      const postAuthorization = (header: Record<string, string>) =>
+        fetch(
+          `${cloudBaseUrl}/api/internal/eliza-app/personal-shared/messages`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              [ELIZA_TRACE_ID_HEADER]: traceId,
+              ...header,
+            },
+            body: authorizationBody,
+            signal: AbortSignal.timeout(10_000),
+          },
+        );
+      let authorizationResponse = await postAuthorization(authHeader);
+      if (
+        authorizationResponse.status === 401 ||
+        authorizationResponse.status === 403
+      ) {
+        await authorizationResponse.body?.cancel();
+        authHeader = await reauth();
+        authorizationResponse = await postAuthorization(authHeader);
+      }
+      if (!authorizationResponse.ok) {
+        await authorizationResponse.body?.cancel();
+        throw new PersonalSharedPreEgressError(
+          `group delivery authorization failed (${authorizationResponse.status})`,
+        );
+      }
+      let authorizationResult: unknown;
+      try {
+        authorizationResult = await authorizationResponse.json();
+      } catch (error) {
+        // error-policy:J3 authorization is untrusted until the explicit boolean
+        // contract parses; provider egress has not started.
+        throw new PersonalSharedPreEgressError(
+          "group delivery authorization returned invalid JSON",
+          { cause: error },
+        );
+      }
+      const authorized =
+        authorizationResult !== null &&
+        typeof authorizationResult === "object" &&
+        "data" in authorizationResult &&
+        authorizationResult.data !== null &&
+        typeof authorizationResult.data === "object" &&
+        "authorized" in authorizationResult.data &&
+        authorizationResult.data.authorized === true;
+      if (!authorized) {
+        return {
+          cloudMs,
+          cloudAttempts: attemptResult.attempts,
+          egressMs: 0,
+          cloudServerTiming,
+        };
+      }
     }
     const receipt = await sendReplyWithReceipt(
       config,
@@ -1217,6 +1247,14 @@ async function sendPersonalSharedReply(
       reply,
       deliveryHooks,
     );
+    if (groupDelivery.kind === "control") {
+      return {
+        cloudMs,
+        cloudAttempts: attemptResult.attempts,
+        egressMs: Date.now() - egressStartedAt,
+        cloudServerTiming,
+      };
+    }
     const receiptBody = JSON.stringify({
       eventType: "delivery_receipt",
       platform: adapter.platform,
@@ -1225,7 +1263,7 @@ async function sendPersonalSharedReply(
       chatId: event.chatId,
       sourceMessageId: `${adapter.platform}:${project}:${event.messageId}`,
       providerMessageIds: receipt.providerMessageIds,
-      authority: groupDeliveryAuthority,
+      authority: groupDelivery.authority,
     });
     const postReceipt = (header: Record<string, string>) =>
       fetch(`${cloudBaseUrl}/api/internal/eliza-app/personal-shared/messages`, {

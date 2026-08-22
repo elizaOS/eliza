@@ -329,7 +329,7 @@ describe("gateway webhook handler e2e routing", () => {
     expect(replies).toEqual(["hello from personal Eliza"]);
   });
 
-  test("preserves a Blooio group thread and records provider egress before reply classification", async () => {
+  test("revalidates and records a Blooio Dedicated group reply", async () => {
     process.env.ELIZA_APP_BLOOIO_PHONE_NUMBER = "+15550000001";
     const redis = new MemoryRedis();
     const event: ChatEvent = {
@@ -385,7 +385,11 @@ describe("gateway webhook handler e2e routing", () => {
         turnBody = body;
         return Response.json({
           success: true,
-          data: { reply: "group reply", groupDeliveryAuthority: authority },
+          data: {
+            identity: { runtime: "dedicated" },
+            reply: "group reply",
+            groupDelivery: { kind: "binding", authority },
+          },
         });
       }
       throw new Error(`Unexpected fetch: ${request.url}`);
@@ -446,6 +450,81 @@ describe("gateway webhook handler e2e routing", () => {
     });
   });
 
+  test.each([
+    "group_admin_required",
+    "group_claim_invalid",
+    "group_claim_expired",
+    "group_claim_already_used",
+    "group_claim_already_bound",
+    "group_binding_suspended",
+    "group_not_bound",
+    "group_binding_changed",
+    "group_binding_revoked",
+  ])(
+    "delivers the explicit %s control reply without inference authority",
+    async (code) => {
+      process.env.ELIZA_APP_BLOOIO_PHONE_NUMBER = "+15550000001";
+      const redis = new MemoryRedis();
+      const event: ChatEvent = {
+        platform: "blooio",
+        messageId: `blooio-control-${code}`,
+        chatId: "chat_group_123",
+        chatType: "group",
+        senderId: "+15551234567",
+        text: "Eliza control",
+        rawPayload: {},
+      };
+      const sendReplyWithReceipt = mock(async () => ({
+        providerMessageIds: [`provider-${code}`],
+      }));
+      const adapter: PlatformAdapter = {
+        platform: "blooio",
+        verifyWebhook: mock(async () => true),
+        extractEvent: mock(async () => event),
+        sendTypingIndicator: mock(async () => undefined),
+        sendReply: mock(async () => undefined),
+        sendReplyWithReceipt,
+      };
+      let cloudRequests = 0;
+      globalThis.fetch = mock(async () => {
+        cloudRequests += 1;
+        return Response.json({
+          success: true,
+          data: {
+            code,
+            reply: `control reply for ${code}`,
+            groupDelivery: { kind: "control" },
+          },
+        });
+      }) as typeof fetch;
+
+      expect(
+        (
+          await handleWebhook(
+            new Request("https://gateway.example/webhook/eliza-app/blooio", {
+              method: "POST",
+              body: "{}",
+            }),
+            adapter,
+            {
+              redis,
+              cloudBaseUrl: "https://api.elizacloud.ai",
+              getAuthHeader: () => ({
+                Authorization: "Bearer internal-secret",
+              }),
+            },
+            "eliza-app",
+          )
+        ).status,
+      ).toBe(200);
+      await waitFor(
+        () => sendReplyWithReceipt.mock.calls.length === 1,
+        `${code} control delivery`,
+      );
+      expect(cloudRequests).toBe(1);
+    },
+  );
+
   test.each(["revoke", "membership removal", "ambient off"])(
     "suppresses provider egress when %s invalidates an in-flight group turn",
     async () => {
@@ -483,11 +562,15 @@ describe("gateway webhook handler e2e routing", () => {
           success: true,
           data: {
             reply: "stale reply",
-            groupDeliveryAuthority: {
-              bindingId: "00000000-0000-4000-8000-000000000030",
-              ownerUserId: "00000000-0000-4000-8000-000000000002",
-              personalAgentId: "personal:3e91680e-2611-5ff5-b759-c16b990967bd",
-              version: 7,
+            groupDelivery: {
+              kind: "binding",
+              authority: {
+                bindingId: "00000000-0000-4000-8000-000000000030",
+                ownerUserId: "00000000-0000-4000-8000-000000000002",
+                personalAgentId:
+                  "personal:3e91680e-2611-5ff5-b759-c16b990967bd",
+                version: 7,
+              },
             },
           },
         });
@@ -556,11 +639,14 @@ describe("gateway webhook handler e2e routing", () => {
         success: true,
         data: {
           reply: "reply",
-          groupDeliveryAuthority: {
-            bindingId: "00000000-0000-4000-8000-000000000030",
-            ownerUserId: "00000000-0000-4000-8000-000000000002",
-            personalAgentId: "personal:3e91680e-2611-5ff5-b759-c16b990967bd",
-            version: 7,
+          groupDelivery: {
+            kind: "binding",
+            authority: {
+              bindingId: "00000000-0000-4000-8000-000000000030",
+              ownerUserId: "00000000-0000-4000-8000-000000000002",
+              personalAgentId: "personal:3e91680e-2611-5ff5-b759-c16b990967bd",
+              version: 7,
+            },
           },
         },
       });

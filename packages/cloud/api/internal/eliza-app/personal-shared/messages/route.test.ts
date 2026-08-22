@@ -821,7 +821,10 @@ describe("personal Shared messaging deliveries", () => {
     });
 
     await expect(response.json()).resolves.toMatchObject({
-      data: { code: "group_admin_required" },
+      data: {
+        code: "group_admin_required",
+        groupDelivery: { kind: "control" },
+      },
     });
     expect(consumeGroupClaimAndBind).not.toHaveBeenCalled();
   });
@@ -844,6 +847,15 @@ describe("personal Shared messaging deliveries", () => {
         account: {
           userId: canonicalGroupBinding.owner_user_id,
           organizationId: canonicalGroupBinding.organization_id,
+        },
+        groupDelivery: {
+          kind: "binding",
+          authority: {
+            bindingId: canonicalGroupBinding.id,
+            ownerUserId: canonicalGroupBinding.owner_user_id,
+            personalAgentId: canonicalGroupBinding.personal_agent_id,
+            version: canonicalGroupBinding.authority_version,
+          },
         },
       },
     });
@@ -869,6 +881,7 @@ describe("personal Shared messaging deliveries", () => {
       data: {
         code: "group_claim_already_bound",
         reply: expect.stringContaining("already linked to another Eliza owner"),
+        groupDelivery: { kind: "control" },
       },
     });
     expect(sharedRestMessageSend).not.toHaveBeenCalled();
@@ -881,6 +894,19 @@ describe("personal Shared messaging deliveries", () => {
     const response = await request(validGroup);
 
     expect(response.status).toBe(200);
+    await expect(response.clone().json()).resolves.toMatchObject({
+      data: {
+        groupDelivery: {
+          kind: "binding",
+          authority: {
+            bindingId: canonicalGroupBinding.id,
+            ownerUserId: canonicalGroupBinding.owner_user_id,
+            personalAgentId: canonicalGroupBinding.personal_agent_id,
+            version: canonicalGroupBinding.authority_version,
+          },
+        },
+      },
+    });
     expect(prewarmPersonalSharedAgentTurnCaches).toHaveBeenCalledWith(
       expect.objectContaining({ id: canonicalGroupBinding.personal_agent_id }),
       namespace,
@@ -928,7 +954,10 @@ describe("personal Shared messaging deliveries", () => {
     });
 
     await expect(response.json()).resolves.toMatchObject({
-      data: { code: "group_binding_changed" },
+      data: {
+        code: "group_binding_changed",
+        groupDelivery: { kind: "control" },
+      },
     });
     expect(sharedRestMessageSend).not.toHaveBeenCalled();
   });
@@ -945,7 +974,59 @@ describe("personal Shared messaging deliveries", () => {
     });
 
     await expect(response.json()).resolves.toMatchObject({
-      data: { code: "group_binding_changed" },
+      data: {
+        code: "group_binding_changed",
+        groupDelivery: { kind: "control" },
+      },
+    });
+    expect(sharedRestMessageSend).not.toHaveBeenCalled();
+  });
+
+  test("returns the incremented binding authority with a policy confirmation", async () => {
+    resolveGroupBinding.mockImplementationOnce(
+      async () => canonicalGroupBinding,
+    );
+    const updated = { ...canonicalGroupBinding, authority_version: 8 };
+    setGroupResponsePolicy.mockImplementationOnce(async () => updated);
+    const response = await request({
+      ...validGroup,
+      message: "Eliza ambient on",
+      invocation: "command",
+    });
+
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        code: "group_policy_updated",
+        groupDelivery: {
+          kind: "binding",
+          authority: {
+            bindingId: updated.id,
+            ownerUserId: updated.owner_user_id,
+            personalAgentId: updated.personal_agent_id,
+            version: 8,
+          },
+        },
+      },
+    });
+    expect(sharedRestMessageSend).not.toHaveBeenCalled();
+  });
+
+  test("marks a successful revoke confirmation as explicit control egress", async () => {
+    resolveGroupBinding.mockImplementationOnce(
+      async () => canonicalGroupBinding,
+    );
+    revokeGroupBinding.mockImplementationOnce(async () => true);
+    const response = await request({
+      ...validGroup,
+      message: "Eliza leave",
+      invocation: "command",
+    });
+
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        code: "group_binding_revoked",
+        groupDelivery: { kind: "control" },
+      },
     });
     expect(sharedRestMessageSend).not.toHaveBeenCalled();
   });
@@ -1114,6 +1195,51 @@ describe("personal Shared messaging deliveries", () => {
     });
     expect(sharedRestMessageSend).not.toHaveBeenCalled();
     expect(bridge).toHaveBeenCalledTimes(1);
+  });
+
+  test("returns binding authority with a Dedicated group reply after cutover", async () => {
+    activeTarget = {
+      id: "00000000-0000-4000-8000-000000000020",
+      status: "running",
+      bridge_url: "http://127.0.0.1:9876/api/compat/agents/sandbox",
+    };
+    resolveGroupBinding.mockImplementationOnce(
+      async () => canonicalGroupBinding,
+    );
+
+    const response = await request(validGroup);
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      success: true,
+      data: {
+        identity: {
+          runtime: "dedicated",
+          activeAgentId: activeTarget.id,
+        },
+        reply: "hello from Dedicated",
+        groupDelivery: {
+          kind: "binding",
+          authority: {
+            bindingId: canonicalGroupBinding.id,
+            ownerUserId: canonicalGroupBinding.owner_user_id,
+            personalAgentId: canonicalGroupBinding.personal_agent_id,
+            version: canonicalGroupBinding.authority_version,
+          },
+        },
+      },
+    });
+    expect(sharedRestMessageSend).not.toHaveBeenCalled();
+    expect(bridge).toHaveBeenCalledWith(
+      activeTarget.id,
+      canonicalGroupBinding.organization_id,
+      expect.objectContaining({
+        params: expect.objectContaining({
+          roomId: canonicalGroupBinding.conversation_id,
+          conversationId: canonicalGroupBinding.conversation_id,
+        }),
+      }),
+    );
   });
 
   test("keeps a Blooio reminder on Dedicated after cutover without Shared prewarm", async () => {

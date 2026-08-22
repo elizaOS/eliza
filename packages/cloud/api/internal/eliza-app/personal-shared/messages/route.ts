@@ -210,6 +210,32 @@ type GroupMessage = Extract<
   { chatType: "group" | "supergroup" }
 >;
 
+interface GroupDeliveryAuthority {
+  bindingId: string;
+  ownerUserId: string;
+  personalAgentId: string;
+  version: number;
+}
+
+const GROUP_CONTROL_DELIVERY = { kind: "control" as const };
+
+function groupBindingDelivery(binding: {
+  id: string;
+  owner_user_id: string;
+  personal_agent_id: string;
+  authority_version: number;
+}): { kind: "binding"; authority: GroupDeliveryAuthority } {
+  return {
+    kind: "binding",
+    authority: {
+      bindingId: binding.id,
+      ownerUserId: binding.owner_user_id,
+      personalAgentId: binding.personal_agent_id,
+      version: binding.authority_version,
+    },
+  };
+}
+
 function isGroupMessage(message: SharedMessage): message is GroupMessage {
   return "chatType" in message;
 }
@@ -470,6 +496,7 @@ app.post("/", async (c) => {
               code: "group_admin_required",
               reply:
                 "Only a Telegram group creator or administrator can link Eliza. Make Eliza an admin, then have the same owner retry the link command.",
+              groupDelivery: GROUP_CONTROL_DELIVERY,
             },
           });
         }
@@ -495,6 +522,7 @@ app.post("/", async (c) => {
                     : claimed.status === "already_bound"
                       ? "This group is already linked to another Eliza owner. That owner must disconnect it before a different owner can link it."
                       : "That group link is not valid for this account or sender. DM Eliza `/group` yourself and paste the exact command here.",
+              groupDelivery: GROUP_CONTROL_DELIVERY,
             },
           });
         }
@@ -512,6 +540,7 @@ app.post("/", async (c) => {
             },
             reply:
               "Eliza is linked to this group. I respond to explicit mentions, commands, and replies by default. The owner can say `Eliza ambient on`, `Eliza ambient off`, or `Eliza leave`.",
+            groupDelivery: groupBindingDelivery(claimed.binding),
           },
         });
       }
@@ -533,6 +562,7 @@ app.post("/", async (c) => {
                 : binding
                   ? "This group link is inactive. The owner can DM Eliza `/group` to reconnect it."
                   : "This group is not linked yet. DM your Eliza `/group`, then paste the one-time link command here.",
+            groupDelivery: GROUP_CONTROL_DELIVERY,
           },
         });
       }
@@ -550,6 +580,7 @@ app.post("/", async (c) => {
             code: "group_owner_required",
             reply:
               "Only the owner who linked Eliza can change this group's response policy.",
+            groupDelivery: groupBindingDelivery(binding),
           },
         });
       }
@@ -567,6 +598,7 @@ app.post("/", async (c) => {
               code: "group_binding_changed",
               reply:
                 "This group link changed before the policy update. Reconnect it and try again.",
+              groupDelivery: GROUP_CONTROL_DELIVERY,
             },
           });
         }
@@ -578,6 +610,7 @@ app.post("/", async (c) => {
               requestedPolicy === "ambient"
                 ? "Ambient replies are on. I may respond without a mention when I have something useful to add. Say `Eliza ambient off` to return to mention-only."
                 : "Mention-only is on. I will answer explicit mentions, commands, and replies to me.",
+            groupDelivery: groupBindingDelivery(updated),
           },
         });
       }
@@ -592,6 +625,7 @@ app.post("/", async (c) => {
             data: {
               code: "group_binding_changed",
               reply: "This group link changed before it could be disconnected.",
+              groupDelivery: GROUP_CONTROL_DELIVERY,
             },
           });
         }
@@ -601,6 +635,7 @@ app.post("/", async (c) => {
             code: "group_binding_revoked",
             reply:
               "This group is disconnected from your Eliza. Remove the bot/account here, or DM Eliza `/group` later to reconnect.",
+            groupDelivery: GROUP_CONTROL_DELIVERY,
           },
         });
       }
@@ -631,12 +666,7 @@ app.post("/", async (c) => {
       accountResolution = "group-binding";
       groupConversationId = binding.conversation_id;
       groupPersonalAgentId = binding.personal_agent_id;
-      groupDeliveryAuthority = {
-        bindingId: binding.id,
-        ownerUserId: binding.owner_user_id,
-        personalAgentId: binding.personal_agent_id,
-        version: binding.authority_version,
-      };
+      groupDeliveryAuthority = groupBindingDelivery(binding).authority;
       const actorDigest = (
         await sha256Hex(
           `${parsed.data.platform}\n${parsed.data.actor.platformUserId}`,
@@ -1036,6 +1066,14 @@ app.post("/", async (c) => {
             organizationId: account.organizationId,
           },
           reply: result.text,
+          ...(groupDeliveryAuthority
+            ? {
+                groupDelivery: {
+                  kind: "binding" as const,
+                  authority: groupDeliveryAuthority,
+                },
+              }
+            : {}),
         },
       });
     }
@@ -1114,7 +1152,14 @@ app.post("/", async (c) => {
           organizationId: account.organizationId,
         },
         reply: result.text,
-        ...(groupDeliveryAuthority ? { groupDeliveryAuthority } : {}),
+        ...(groupDeliveryAuthority
+          ? {
+              groupDelivery: {
+                kind: "binding" as const,
+                authority: groupDeliveryAuthority,
+              },
+            }
+          : {}),
       },
     });
   } catch (error) {
