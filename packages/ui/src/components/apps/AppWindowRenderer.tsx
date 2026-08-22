@@ -12,12 +12,14 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import {
   overlayAgentSurfaceDescriptor,
   requireRegisteredAgentSurface,
 } from "../../app-shell-registry";
+import { reportRendererDiagnostic } from "../../utils/renderer-diagnostics";
 import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
 import { getOverlayAppLazyComponent } from "./AppWindowRenderer.helpers";
 import { getAppSlug } from "./helpers";
@@ -30,6 +32,26 @@ export interface AppWindowRendererProps {
 
 export interface OverlayAppSurfaceProps extends OverlayAppContext {
   app: OverlayApp;
+}
+
+async function runOverlayLifecycleHook(
+  app: OverlayApp,
+  phase: "launch" | "stop",
+): Promise<void> {
+  const hook = phase === "launch" ? app.onLaunch : app.onStop;
+  if (!hook) return;
+  try {
+    await hook();
+  } catch (error) {
+    // error-policy:J1 the renderer host owns this lifecycle boundary and emits
+    // a structured diagnostic without turning a hook failure into an unhandled
+    // rejection that can take down the shell.
+    reportRendererDiagnostic({
+      scope: `overlay-app.${phase}`,
+      error,
+      context: { appName: app.name },
+    });
+  }
 }
 
 function resolveOverlayAppBySlug(slug: string): OverlayApp | undefined {
@@ -75,10 +97,20 @@ export function OverlayAppSurface({
     overlayAgentSurfaceDescriptor(app),
   );
 
+  const lifecycleQueueRef = useRef<Promise<void>>(Promise.resolve());
   useEffect(() => {
-    void app.onLaunch?.();
+    const launch = lifecycleQueueRef.current.then(() =>
+      runOverlayLifecycleHook(app, "launch"),
+    );
+    lifecycleQueueRef.current = launch;
     return () => {
-      void app.onStop?.();
+      // React does not await effect cleanup. Retaining this promise as the
+      // next effect's predecessor still provides a strict local lease: a stop
+      // cannot overtake its launch, and the successor cannot launch before the
+      // prior owner has fully stopped.
+      lifecycleQueueRef.current = launch.then(() =>
+        runOverlayLifecycleHook(app, "stop"),
+      );
     };
   }, [app]);
 
