@@ -111,6 +111,16 @@ as the idempotency key. Its retained receipt carries the provider receipt,
 canonical inbound event id, audit id, and app-state result. Connectors must not
 construct their own authority, store, or effect dispatcher.
 
+The additive `MessageConnector.sendPreparedInteraction` hook accepts only the
+renderer-safe `PreparedMessageInteraction` plus a target and optional prose.
+The host is the producer; the connector is only the provider renderer. For
+providers whose control value is the sole callback field,
+`encodePreparedInteractionCallback` appends schema-validated non-secret user
+input to the opaque reference within the declared provider byte budget.
+`consumePreparedInteractionCallback` removes that input and submits the
+provider-authenticated actor, audience, agent, account, room, and receipt to the
+host. The original source message remains retained-only and survives restart.
+
 `InMemoryMessageInteractionSessionStore` is for deterministic tests and embedded
 processes. The agent host's `FileMessageInteractionSessionStore` is durable and
 cross-process safe on one machine. It uses a same-filesystem fsync-and-rename
@@ -137,11 +147,21 @@ specs are not persisted server-side), so `buildInteractionUrlResolver` resolves
 no URL for them and the layout degrades to the form's title/description plus a
 "Reply with your answer." invite. Secret-bearing input must never use a form —
 it goes through the sensitive-request flow, which has a real hosted page.
-Choice/followups round-trip works on **both** connectors:
-- **Telegram**: `handleCallbackQuery` decodes the tap and replays it through
-  `handleMessage` as a user turn (`plugin-telegram/src/messageManager.ts`).
-- **Discord**: the `isButton` handler in `discord-interactions.ts` decodes the
-  `customId` with `decodeCallback` and dispatches via `messageService.handleMessage`.
+The exhaustive production inventory is generated in
+[`CAPABILITY_MATRIX.md`](./CAPABILITY_MATRIX.md). Discord, Slack, Telegram, and
+WhatsApp Cloud API declare the provider-native controls their adapters actually
+emit. Gmail, Google Chat, iMessage, Instagram, Matrix, WeChat, X DMs, and
+WhatsApp Baileys declare semantic conversational delivery for unsupported
+controls. Signal is deliberately listed as an exclusion because the first-party
+package fails with `SIGNAL_DIRECT_TRANSPORT_UNAVAILABLE` and registers no message
+connector. A connector may not advertise a stronger family than its exact
+account transport supports.
+
+Legacy `ia1:` choice/followup values are presentation-only and never dispatch a
+state-changing turn. Discord, Telegram, Slack, and WhatsApp Cloud API emit
+effect-capable controls only from a host-prepared `is1:` delivery, authenticate
+the provider event, and consume it through the host. WhatsApp Baileys and every
+transport without native controls remain on semantic conversational fallback.
 
 The floating chat overlay (`ChatOverlay`) also renders these widgets.
 It does **not** route through `MessageContent`: it renders assistant turns via

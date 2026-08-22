@@ -13,6 +13,8 @@ import {
   type Memory,
   type MessageConnectorTarget,
   type Plugin,
+  renderContentInteractionsForConnector,
+  resolveFirstPartyInteractionProfile,
   stringToUuid,
   type TargetInfo,
   type UUID,
@@ -230,7 +232,10 @@ function registerWechatMessageConnector(
     if (!channel) {
       throw new Error("[wechat] Channel is not available");
     }
-    const text = typeof content.text === "string" ? content.text.trim() : "";
+    const text = renderContentInteractionsForConnector(
+      _runtime,
+      content,
+    ).text.trim();
     if (!text) {
       return;
     }
@@ -256,6 +261,17 @@ function registerWechatMessageConnector(
       ],
       supportedTargetKinds: ["user", "group", "room"],
       contexts: ["social", "connectors"],
+      resolveInteractionProfile: (
+        target: TargetInfo,
+        context: { accountId?: string },
+      ) =>
+        resolveFirstPartyInteractionProfile({
+          source: "wechat",
+          defaultAccountId: resolveWechatAccountId(config, target),
+          defaultTargetKind: "room",
+          target,
+          accountId: context.accountId,
+        }),
       resolveTargets: async (query: string) => {
         const normalized = query.trim().toLowerCase();
         return (await listWechatTargets(config))

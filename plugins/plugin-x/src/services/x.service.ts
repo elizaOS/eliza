@@ -24,6 +24,8 @@ import {
   type MessageConnectorTarget,
   type MessageConnectorUserContext,
   parseBooleanFromText,
+  renderContentInteractionsForConnector,
+  resolveFirstPartyInteractionProfile,
   Service,
   type TargetInfo,
   type UUID,
@@ -638,6 +640,14 @@ export class XService extends Service {
         metadata: {
           service: XService.serviceType,
         },
+        resolveInteractionProfile: (target, context) =>
+          resolveFirstPartyInteractionProfile({
+            source: "x",
+            defaultAccountId: resolveDefaultXAccountId(context.runtime),
+            defaultTargetKind: "user",
+            target,
+            accountId: context.accountId,
+          }),
         resolveTargets:
           serviceInstance.resolveConnectorTargets.bind(serviceInstance),
         listRecentTargets:
@@ -705,11 +715,14 @@ export class XService extends Service {
   }
 
   async handleSendMessage(
-    _runtime: IAgentRuntime,
+    runtime: IAgentRuntime,
     target: TargetInfo,
     content: Content,
   ): Promise<void> {
-    const text = typeof content.text === "string" ? content.text.trim() : "";
+    const text = renderContentInteractionsForConnector(
+      runtime,
+      content,
+    ).text.trim();
     if (!text) {
       throw new Error("X DM connector requires non-empty text content.");
     }

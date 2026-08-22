@@ -26,6 +26,7 @@ import {
   type Character,
   type Content,
   checkPairingAllowed,
+  consumePreparedInteractionCallback,
   createUniqueUuid,
   ElizaError,
   type EventPayload,
@@ -37,6 +38,7 @@ import {
   type Media,
   type Memory,
   type MessageConnectorChatContext,
+  type MessageConnectorPreparedInteractionParams,
   type MessageConnectorQueryContext,
   type MessageConnectorTarget,
   type MessageConnectorUserContext,
@@ -44,6 +46,7 @@ import {
   type MessagePayload,
   type Room,
   resolveAttachmentBytes,
+  resolveFirstPartyInteractionProfile,
   Service,
   stringToUuid,
   type TargetInfo,
@@ -415,6 +418,10 @@ import {
 } from "./accounts";
 import { markdownToSlackMrkdwn, splitSlackText } from "./formatting";
 import {
+  buildSlackInteractionPayload,
+  renderPreparedSlackInteraction,
+} from "./interactions";
+import {
   extractSlackEventWorkspace,
   SlackAccountPolicyResolver,
   type SlackInboundPolicyDecision,
@@ -645,6 +652,16 @@ export class SlackService extends Service implements ISlackService {
           maxMessageLength: MAX_SLACK_MESSAGE_LENGTH,
           ...(normalizedAccountId ? { accountId: normalizedAccountId } : {}),
         },
+        resolveInteractionProfile: (target, context) =>
+          resolveFirstPartyInteractionProfile({
+            source: "slack",
+            defaultAccountId: normalizedAccountId ?? DEFAULT_ACCOUNT_ID,
+            defaultTargetKind: "channel",
+            target,
+            accountId: normalizedAccountId ?? context.accountId,
+          }),
+        sendPreparedInteraction: (handlerRuntime, params) =>
+          serviceInstance.handleSendPreparedInteraction(handlerRuntime, params),
         resolveTargets: (query, context) =>
           serviceInstance.resolveConnectorTargets(
             query,
@@ -982,6 +999,71 @@ export class SlackService extends Service implements ISlackService {
         body,
       );
     });
+
+    app.action(
+      /^eliza_prepared_interaction_/,
+      async ({ action, ack, body }) => {
+        await ack();
+        if (
+          !this.isInboundWorkspaceAuthorized(accountId, body, "interaction")
+        ) {
+          return;
+        }
+        const actionRecord = action as { value?: unknown; action_ts?: unknown };
+        const bodyRecord = body as {
+          user?: { id?: unknown };
+          channel?: { id?: unknown };
+          message?: { ts?: unknown; thread_ts?: unknown };
+          trigger_id?: unknown;
+        };
+        const userId =
+          typeof bodyRecord.user?.id === "string" ? bodyRecord.user.id : "";
+        const channelId =
+          typeof bodyRecord.channel?.id === "string"
+            ? bodyRecord.channel.id
+            : "";
+        const inboundEventId =
+          typeof actionRecord.action_ts === "string"
+            ? actionRecord.action_ts
+            : typeof bodyRecord.trigger_id === "string"
+              ? bodyRecord.trigger_id
+              : "";
+        if (!userId || !channelId || !inboundEventId) {
+          this.runtime.logger.warn(
+            { src: "plugin:slack", accountId, channelId, userId },
+            "Ignoring malformed Slack interaction callback",
+          );
+          return;
+        }
+        const threadTs =
+          typeof bodyRecord.message?.thread_ts === "string"
+            ? bodyRecord.message.thread_ts
+            : undefined;
+        const roomId = await this.getRoomId(channelId, threadTs, accountId);
+        const outcome = await consumePreparedInteractionCallback(this.runtime, {
+          providerCallbackData: actionRecord.value,
+          bindings: {
+            actorId: this.getEntityId(userId, accountId),
+            audience: { kind: "room", id: roomId },
+            agentId: this.runtime.agentId,
+            connector: { source: "slack", accountId },
+            roomId,
+          },
+          providerReceipt: {
+            source: "slack",
+            accountId,
+            inboundEventId,
+            receivedAt: new Date().toISOString(),
+          },
+        });
+        if (outcome.status === "denied") {
+          this.runtime.logger.warn(
+            { src: "plugin:slack", accountId, channelId, code: outcome.code },
+            "Slack interaction callback was denied",
+          );
+        }
+      },
+    );
 
     // Handle app mentions
     app.event("app_mention", async ({ event, client, body }) => {
@@ -2587,7 +2669,8 @@ export class SlackService extends Service implements ISlackService {
       throw new Error("Slack client not initialized");
     }
 
-    const text = typeof content.text === "string" ? content.text.trim() : "";
+    const interactionPayload = buildSlackInteractionPayload(runtime, content);
+    const text = interactionPayload.text.trim();
     const outboundAttachments = Array.isArray(content.attachments)
       ? content.attachments.filter((media) => Boolean(media?.url))
       : [];
@@ -2633,21 +2716,39 @@ export class SlackService extends Service implements ISlackService {
       );
     }
 
-    if (text) {
-      await this.sendMessage(
-        channelId,
-        text,
-        {
-          threadTs,
-          replyBroadcast: undefined,
-          unfurlLinks: undefined,
-          unfurlMedia: undefined,
-          mrkdwn: undefined,
-          attachments: undefined,
-          blocks: undefined,
-        },
-        accountId,
-      );
+    if (text || interactionPayload.blocks.length > 0) {
+      try {
+        await this.sendMessage(
+          channelId,
+          text || "Choose an option.",
+          {
+            threadTs,
+            replyBroadcast: undefined,
+            unfurlLinks: undefined,
+            unfurlMedia: undefined,
+            mrkdwn: undefined,
+            attachments: undefined,
+            blocks:
+              interactionPayload.blocks.length > 0
+                ? interactionPayload.blocks
+                : undefined,
+          },
+          accountId,
+        );
+      } catch (cause) {
+        if (interactionPayload.blocks.length === 0) throw cause;
+        // error-policy:J2 Preserve provider rejection while identifying the
+        // interaction-specific delivery boundary for an actionable fallback.
+        throw new ElizaError("Slack rejected the native interaction payload.", {
+          code: "SLACK_INTERACTION_PROVIDER_REJECTED",
+          context: {
+            accountId,
+            channelId,
+            outcome: interactionPayload.outcome,
+          },
+          cause,
+        });
+      }
     }
 
     if (outboundAttachments.length > 0) {
@@ -2658,6 +2759,58 @@ export class SlackService extends Service implements ISlackService {
         accountId,
       );
     }
+  }
+
+  async handleSendPreparedInteraction(
+    runtime: IAgentRuntime,
+    params: MessageConnectorPreparedInteractionParams,
+  ): Promise<void> {
+    const { target, interaction } = params;
+    const accountId = await this.resolveAccountIdForTarget(runtime, target);
+    let channelId = target.channelId;
+    let threadTs = target.threadId;
+    if (target.roomId && (!channelId || !threadTs)) {
+      const room = await runtime.getRoom(target.roomId);
+      channelId = channelId ?? room?.channelId;
+      const metadata = room?.metadata as Record<string, unknown> | undefined;
+      threadTs =
+        threadTs ??
+        (typeof metadata?.threadTs === "string"
+          ? metadata.threadTs
+          : undefined);
+    }
+    if (!channelId) {
+      throw new ElizaError(
+        "Slack prepared interaction requires a channel target.",
+        {
+          code: "SLACK_INTERACTION_TARGET_UNAVAILABLE",
+        },
+      );
+    }
+    const rendered = renderPreparedSlackInteraction(interaction);
+    if (rendered.outcome !== "native") {
+      throw new ElizaError(
+        "Slack cannot render this prepared interaction natively; use the semantic text fallback.",
+        {
+          code: "SLACK_INTERACTION_NATIVE_UNAVAILABLE",
+          context: { limitations: interaction.delivery.limitations.join(",") },
+        },
+      );
+    }
+    await this.sendMessage(
+      channelId,
+      params.text?.trim() || rendered.text || "Choose an option.",
+      {
+        threadTs,
+        replyBroadcast: undefined,
+        unfurlLinks: undefined,
+        unfurlMedia: undefined,
+        mrkdwn: undefined,
+        attachments: undefined,
+        blocks: rendered.blocks,
+      },
+      accountId,
+    );
   }
 
   /**
@@ -3678,7 +3831,7 @@ export class SlackService extends Service implements ISlackService {
     let lastTs = "";
     const sentMessages: Array<{ ts: string; text: string }> = [];
 
-    for (const msg of messages) {
+    for (const [messageIndex, msg] of messages.entries()) {
       type SlackPostMessageArgs = Parameters<
         typeof client.chat.postMessage
       >[0] & {
@@ -3705,7 +3858,7 @@ export class SlackService extends Service implements ISlackService {
       if (options?.attachments) {
         messageArgs.attachments = options.attachments;
       }
-      if (options?.blocks) {
+      if (options?.blocks && messageIndex === messages.length - 1) {
         messageArgs.blocks = options.blocks;
       }
 

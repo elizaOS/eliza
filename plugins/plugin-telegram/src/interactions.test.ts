@@ -4,14 +4,41 @@
  * and task cards link out or stay as text depending on the url resolver.
  * Deterministic; no live API.
  */
-import type { Content } from "@elizaos/core";
+import type { Content, PreparedMessageInteraction } from "@elizaos/core";
 import {
   buildInteractionUrlResolver,
   decodeCallback,
+  decodePreparedInteractionCallback,
   FORM_FREE_TEXT_INVITE,
 } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
-import { renderTelegramInteractions } from "./interactions";
+import {
+  renderPreparedTelegramInteraction,
+  renderTelegramInteractions,
+} from "./interactions";
+
+it("renders only host-prepared Telegram callbacks as canonical native controls", () => {
+  const prepared: PreparedMessageInteraction = {
+    block: {
+      kind: "choice",
+      id: "choice-a",
+      scope: "pick",
+      options: [{ value: "yes", label: "Yes" }],
+    },
+    callbackData: "is1:0123456789abcdef0123456789abcdef",
+    delivery: { mode: "native", reason: "preferred", limitations: [] },
+    expiresAt: "2026-08-22T01:00:00.000Z",
+    profileId: "profile-a",
+  };
+  const out = renderPreparedTelegramInteraction(prepared);
+  const button = out.keyboardRows[0]?.[0];
+  const callbackData =
+    button && "callback_data" in button ? button.callback_data : undefined;
+  expect(decodePreparedInteractionCallback(callbackData)).toEqual({
+    callbackData: prepared.callbackData,
+    response: { value: "yes" },
+  });
+});
 
 describe("renderTelegramInteractions", () => {
   it("passes plain replies through with no keyboard", () => {

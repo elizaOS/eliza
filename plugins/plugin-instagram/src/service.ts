@@ -21,6 +21,8 @@ import {
   type MessageConnectorQueryContext,
   type MessageConnectorTarget,
   type MessageConnectorUserContext,
+  renderContentInteractionsForConnector,
+  resolveFirstPartyInteractionProfile,
   Service,
   stringToUuid,
   type TargetInfo,
@@ -253,6 +255,14 @@ export class InstagramService extends Service {
           service: INSTAGRAM_SERVICE_NAME,
           maxMessageLength: MAX_DM_LENGTH,
         },
+        resolveInteractionProfile: (target, context) =>
+          resolveFirstPartyInteractionProfile({
+            source: "instagram",
+            defaultAccountId: accountId,
+            defaultTargetKind: "thread",
+            target,
+            accountId: context.accountId,
+          }),
         resolveTargets: serviceInstance.resolveConnectorTargets.bind(serviceInstance),
         listRecentTargets: serviceInstance.listRecentConnectorTargets.bind(serviceInstance),
         listRooms: serviceInstance.listConnectorRooms.bind(serviceInstance),
@@ -665,7 +675,7 @@ export class InstagramService extends Service {
       throw new Error("Instagram service is not running");
     }
 
-    const text = typeof content.text === "string" ? content.text.trim() : "";
+    const text = renderContentInteractionsForConnector(runtime, content).text.trim();
     if (!text) {
       throw new Error("Instagram DM connector requires non-empty text content.");
     }

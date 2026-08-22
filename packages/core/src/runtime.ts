@@ -1086,6 +1086,10 @@ function normalizeMessageConnector(
 		connector.accountRouting = metadata.accountRouting;
 	if (metadata.description) connector.description = metadata.description;
 	if (metadata.metadata) connector.metadata = { ...metadata.metadata };
+	if (metadata.resolveInteractionProfile)
+		connector.resolveInteractionProfile = metadata.resolveInteractionProfile;
+	if (metadata.sendPreparedInteraction)
+		connector.sendPreparedInteraction = metadata.sendPreparedInteraction;
 	if (metadata.resolveTargets)
 		connector.resolveTargets = metadata.resolveTargets;
 	if (metadata.listRecentTargets)

@@ -14,10 +14,13 @@
 import {
 	buildInteractionUrlResolver,
 	type Content,
+	encodePreparedInteractionCallback,
 	type IAgentRuntime,
 	type InteractionBlock,
 	type NeutralButton,
+	type PreparedMessageInteraction,
 	parseInteractionBlocks,
+	renderContentInteractionsAsPlainText,
 	stripDashboardOnlyMarkers,
 	toNeutralLayout,
 } from "@elizaos/core";
@@ -142,6 +145,97 @@ export function renderDiscordInteractions(
 			.join("\n\n"),
 	);
 	return { text, components: visibleRows, needsFreeTextReply };
+}
+
+/** Render only host-prepared authority as Discord buttons. */
+export function renderPreparedDiscordInteraction(
+	prepared: PreparedMessageInteraction,
+): DiscordInteractionRender {
+	const block = prepared.block;
+	const fallback = renderContentInteractionsAsPlainText({
+		interactions: [block],
+	}).text;
+	const hostedUrl =
+		prepared.hostedUrl ?? (block.kind === "secret" ? block.url : undefined);
+	if (hostedUrl) {
+		const label =
+			block.kind === "form"
+				? (block.submitLabel ?? "Open form")
+				: block.kind === "task"
+					? "Open task"
+					: block.kind === "secret"
+						? block.secretKind === "oauth"
+							? `Connect ${block.provider ?? "account"}`
+							: (block.submitLabel ?? "Provide securely")
+						: "Open";
+		return {
+			text: block.kind === "task" ? block.title : fallback,
+			components: [
+				{
+					type: 1,
+					components: [
+						{
+							type: 2,
+							custom_id: "",
+							label,
+							style: LINK_STYLE,
+							url: hostedUrl,
+						},
+					],
+				},
+			],
+			needsFreeTextReply: false,
+		};
+	}
+	if (
+		prepared.delivery.mode !== "native" ||
+		(block.kind !== "choice" && block.kind !== "followups")
+	) {
+		return { text: fallback, components: [], needsFreeTextReply: true };
+	}
+	const providerOptions =
+		block.kind === "choice"
+			? block.options.map((option) => ({
+					label: option.label,
+					value: option.value,
+				}))
+			: block.options
+					.filter((option) => option.kind !== "navigate")
+					.map((option) => ({ label: option.label, value: option.payload }));
+	const concrete: DiscordComponentOptions[] = [];
+	for (const option of providerOptions) {
+		const customId = encodePreparedInteractionCallback(
+			prepared.callbackData,
+			{ value: option.value },
+			MAX_CUSTOM_ID_BYTES,
+		);
+		if (!customId) {
+			return { text: fallback, components: [], needsFreeTextReply: true };
+		}
+		concrete.push({
+			type: 2,
+			custom_id: customId,
+			label: option.label,
+			style: 2,
+		});
+	}
+	if (concrete.length > MAX_ROWS * MAX_BUTTONS_PER_ROW)
+		return { text: fallback, components: [], needsFreeTextReply: true };
+	const components: DiscordActionRow[] = [];
+	for (let index = 0; index < concrete.length; index += MAX_BUTTONS_PER_ROW) {
+		components.push({
+			type: 1,
+			components: concrete.slice(index, index + MAX_BUTTONS_PER_ROW),
+		});
+	}
+	return {
+		text:
+			block.kind === "choice"
+				? (block.prompt ?? "Choose an option.")
+				: "Choose an option.",
+		components,
+		needsFreeTextReply: false,
+	};
 }
 
 /**

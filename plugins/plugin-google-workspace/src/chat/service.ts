@@ -21,6 +21,8 @@ import {
   type MessageConnectorChatContext,
   type MessageConnectorTarget,
   type MessageConnectorUserContext,
+  renderContentInteractionsForConnector,
+  resolveFirstPartyInteractionProfile,
   Service,
   type TargetInfo,
   toWellFormedUnicode,
@@ -340,6 +342,14 @@ export class GoogleChatService extends Service implements IGoogleChatService {
           accountId,
           service: GOOGLE_CHAT_SERVICE_NAME,
         },
+        resolveInteractionProfile: (target, context) =>
+          resolveFirstPartyInteractionProfile({
+            source: GOOGLE_CHAT_SERVICE_NAME,
+            defaultAccountId: accountId,
+            defaultTargetKind: "room",
+            target,
+            accountId: context.accountId,
+          }),
         sendHandler,
         resolveTargets: async (query) => {
           const directUser = normalizeUserTarget(query);
@@ -1022,7 +1032,7 @@ export class GoogleChatService extends Service implements IGoogleChatService {
     target?: TargetInfo,
     accountId?: string
   ): Promise<void> {
-    const text = typeof content.text === "string" ? content.text.trim() : "";
+    const text = renderContentInteractionsForConnector(this.runtime, content).text.trim();
     const options = googleChatOptionsFromContent(space, { ...content, text }, target);
     if (!options.text && (!options.attachments || options.attachments.length === 0)) {
       return;

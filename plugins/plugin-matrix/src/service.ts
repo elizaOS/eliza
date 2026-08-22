@@ -23,7 +23,9 @@ import {
   type Memory,
   type MessageConnectorChatContext,
   type MessageConnectorTarget,
+  renderContentInteractionsForConnector,
   resolveAliasedEnvValue,
+  resolveFirstPartyInteractionProfile,
   Service,
   type TargetInfo,
   type UUID,
@@ -656,6 +658,14 @@ export class MatrixService extends Service implements IMatrixService {
           accountId,
           service: MATRIX_SERVICE_NAME,
         },
+        resolveInteractionProfile: (target, context) =>
+          resolveFirstPartyInteractionProfile({
+            source: "matrix",
+            defaultAccountId: accountId,
+            defaultTargetKind: "room",
+            target,
+            accountId: context.accountId,
+          }),
         sendHandler,
         resolveTargets: async (query) => {
           const rooms = await service.getJoinedRooms(accountId);
@@ -1766,7 +1776,7 @@ export class MatrixService extends Service implements IMatrixService {
   }
 
   async sendRoomMessage(roomIdOrAlias: string, content: Content): Promise<void> {
-    const text = typeof content.text === "string" ? content.text.trim() : "";
+    const text = renderContentInteractionsForConnector(this.runtime, content).text.trim();
     if (!text) {
       return;
     }
@@ -1790,7 +1800,7 @@ export class MatrixService extends Service implements IMatrixService {
     );
     this.getState(requestedAccountId);
 
-    const text = typeof content.text === "string" ? content.text.trim() : "";
+    const text = renderContentInteractionsForConnector(runtime, content).text.trim();
     if (!text) {
       return;
     }

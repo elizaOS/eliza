@@ -9,10 +9,16 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import {
   BUTTON_INTERACTION_PROFILE,
+  consumePreparedInteractionCallback,
   createConnectorInteractionCapabilityProfile,
   decodeMessageInteractionCallback,
+  encodePreparedInteractionCallback,
+  encodeReplyCallback,
   type IAgentRuntime,
   InMemoryMessageInteractionSessionStore,
+  type InteractionBlock,
+  type MessageInteractionPurpose,
+  type MessageInteractionResponse,
   resolveMessageInteractionHost,
 } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
@@ -280,6 +286,167 @@ describe("MessageInteractionHostService", () => {
       receipt: { receiptId: "receipt-provider-event-a" },
     });
     expect(execute).toHaveBeenCalledOnce();
+  });
+
+  it("consumes a provider response envelope through the registered sole host", async () => {
+    const { service, execute, prepare, providerReceipt } = fixture();
+    const prepared = await prepare();
+    const providerCallbackData = encodePreparedInteractionCallback(
+      prepared.callbackData,
+      { value: "approve" },
+      100,
+    );
+    const hostRuntime = {
+      ...runtime(),
+      getService: () => service,
+    } as IAgentRuntime;
+    const request = {
+      providerCallbackData,
+      bindings: {
+        actorId: bindings.actorId,
+        audience: bindings.audience,
+        agentId: bindings.agentId,
+        connector: bindings.connector,
+        roomId: bindings.roomId,
+      },
+      providerReceipt: providerReceipt("provider-envelope-a"),
+    };
+    await expect(
+      consumePreparedInteractionCallback(hostRuntime, request),
+    ).resolves.toMatchObject({
+      status: "completed",
+      receipt: {
+        providerReceipt: { inboundEventId: "provider-envelope-a" },
+        canonicalInboundEventId: "memory-provider-envelope-a",
+        auditId: "audit-provider-envelope-a",
+        appStateResult: { taskState: "approved" },
+      },
+    });
+    await expect(
+      consumePreparedInteractionCallback(hostRuntime, request),
+    ).resolves.toMatchObject({ status: "replay" });
+    expect(execute).toHaveBeenCalledOnce();
+  });
+
+  it("never dispatches a legacy presentation callback through host authority", async () => {
+    const { service, execute, providerReceipt } = fixture();
+    const legacyCallback = encodeReplyCallback("approve", { maxBytes: 100 });
+    const hostRuntime = {
+      ...runtime(),
+      getService: () => service,
+    } as IAgentRuntime;
+
+    await expect(
+      consumePreparedInteractionCallback(hostRuntime, {
+        providerCallbackData: legacyCallback,
+        bindings: authenticatedBindings,
+        providerReceipt: providerReceipt("legacy-provider-event"),
+      }),
+    ).resolves.toMatchObject({
+      status: "denied",
+      code: "INVALID_MESSAGE_INTERACTION_PROVIDER_CALLBACK",
+    });
+    expect(execute).not.toHaveBeenCalled();
+  });
+
+  it("executes choice, followup, form, task, auth-link, and file schemas", async () => {
+    const cases: Array<{
+      purpose: MessageInteractionPurpose;
+      block: InteractionBlock;
+      response: MessageInteractionResponse;
+    }> = [
+      {
+        purpose: "choice" as const,
+        block,
+        response: { value: "approve" },
+      },
+      {
+        purpose: "followup" as const,
+        block: {
+          kind: "followups" as const,
+          id: "followup-a",
+          options: [{ kind: "reply" as const, label: "Next", payload: "next" }],
+        },
+        response: { value: "next" },
+      },
+      {
+        purpose: "form" as const,
+        block: {
+          kind: "form" as const,
+          id: "form-a",
+          fields: [{ name: "name", type: "text" as const, required: true }],
+        },
+        response: { name: "Ada" },
+      },
+      {
+        purpose: "task" as const,
+        block: { kind: "task" as const, threadId: "12345678", title: "Task" },
+        response: { acknowledged: true },
+      },
+      {
+        purpose: "auth" as const,
+        block: {
+          kind: "secret" as const,
+          id: "auth-a",
+          secretKind: "oauth" as const,
+          provider: "Example",
+          url: "https://example.test/auth",
+        },
+        response: { acknowledged: true },
+      },
+      {
+        purpose: "file" as const,
+        block: {
+          kind: "form" as const,
+          id: "file-a",
+          fields: [
+            {
+              name: "upload",
+              type: "file" as const,
+              required: true,
+              maxBytes: 1024,
+              mimeTypes: ["text/plain"],
+            },
+          ],
+        },
+        response: {
+          upload: {
+            mediaUrl: `/api/media/${"a".repeat(64)}.txt`,
+            mimeType: "text/plain",
+            bytes: 12,
+          },
+        },
+      },
+    ];
+
+    for (const [index, testCase] of cases.entries()) {
+      const current = fixture();
+      const prepared = await current.service.prepare({
+        block: testCase.block,
+        profile,
+        bindings,
+        purpose: testCase.purpose,
+        negotiationContext: {
+          signedHostedUrl: `https://example.test/interactions/${index}`,
+        },
+        authorization: {
+          decisionId: `decision-${index}`,
+          policyRevision: "policy-7",
+          decidedAt: "2026-08-20T23:59:59.000Z",
+        },
+        effect: { kind: "approve_operation", metadata: { case: index } },
+        expiresAt: "2026-08-21T00:10:00.000Z",
+      });
+      await expect(
+        current.service.consume({
+          callbackData: prepared.callbackData,
+          bindings: authenticatedBindings,
+          response: testCase.response,
+          providerReceipt: current.providerReceipt(`provider-flow-${index}`),
+        }),
+      ).resolves.toMatchObject({ status: "completed" });
+      expect(current.execute).toHaveBeenCalledOnce();
+    }
   });
 
   it("rejects mismatched provider authority and conflicting handlers", async () => {

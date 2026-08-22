@@ -20,6 +20,7 @@ import type {
 	MessageInteractionResponse,
 	MessageInteractionSession,
 } from "./sessions";
+import { decodeMessageInteractionCallback } from "./sessions";
 
 export const MESSAGE_INTERACTION_HOST_SERVICE =
 	"message_interaction_host" as const;
@@ -125,6 +126,131 @@ export interface MessageInteractionHost {
 		kind: string,
 		handler: MessageInteractionHostEffectHandler,
 	): () => void;
+}
+
+export interface DecodedPreparedInteractionCallback {
+	callbackData: string;
+	response: MessageInteractionResponse;
+}
+
+const PROVIDER_RESPONSE_SEPARATOR = "~";
+
+function encodeBase64Url(value: string): string {
+	const bytes = new TextEncoder().encode(value);
+	let binary = "";
+	for (const byte of bytes) binary += String.fromCharCode(byte);
+	return btoa(binary)
+		.replaceAll("+", "-")
+		.replaceAll("/", "_")
+		.replace(/=+$/u, "");
+}
+
+function decodeBase64Url(value: string): string | null {
+	try {
+		const padded = value.replaceAll("-", "+").replaceAll("_", "/");
+		const binary = atob(padded.padEnd(Math.ceil(padded.length / 4) * 4, "="));
+		return new TextDecoder().decode(
+			Uint8Array.from(binary, (character) => character.charCodeAt(0)),
+		);
+	} catch {
+		// error-policy:J3 Provider callback data is untrusted and malformed data
+		// remains explicitly invalid rather than becoming a plausible response.
+		return null;
+	}
+}
+
+/**
+ * Add non-secret user input to an opaque callback for providers whose control
+ * value is their only callback field. Authority remains exclusively in the
+ * host session; the host validates this response against its retained schema.
+ */
+export function encodePreparedInteractionCallback(
+	callbackData: string,
+	response: MessageInteractionResponse,
+	maxBytes: number,
+): string | null {
+	if (!decodeMessageInteractionCallback(callbackData)) return null;
+	const entries = Object.entries(response);
+	if (
+		entries.length !== 1 ||
+		!(["value", "acknowledged"] as string[]).includes(entries[0][0]) ||
+		(typeof entries[0][1] !== "string" &&
+			typeof entries[0][1] !== "number" &&
+			typeof entries[0][1] !== "boolean")
+	) {
+		return null;
+	}
+	const wire = `${callbackData}${PROVIDER_RESPONSE_SEPARATOR}${encodeBase64Url(JSON.stringify(response))}`;
+	return new TextEncoder().encode(wire).length <= maxBytes ? wire : null;
+}
+
+/** Parse an untrusted provider value into the opaque host reference and input. */
+export function decodePreparedInteractionCallback(
+	value: unknown,
+): DecodedPreparedInteractionCallback | null {
+	if (typeof value !== "string") return null;
+	const separator = value.indexOf(PROVIDER_RESPONSE_SEPARATOR);
+	if (separator < 0) return null;
+	const callbackData = value.slice(0, separator);
+	if (!decodeMessageInteractionCallback(callbackData)) return null;
+	const decoded = decodeBase64Url(value.slice(separator + 1));
+	if (!decoded) return null;
+	try {
+		const response = JSON.parse(decoded) as unknown;
+		if (!response || typeof response !== "object" || Array.isArray(response))
+			return null;
+		const entries = Object.entries(response);
+		if (
+			entries.length !== 1 ||
+			!(["value", "acknowledged"] as string[]).includes(entries[0][0]) ||
+			(typeof entries[0][1] !== "string" &&
+				typeof entries[0][1] !== "number" &&
+				typeof entries[0][1] !== "boolean")
+		)
+			return null;
+		return { callbackData, response: response as MessageInteractionResponse };
+	} catch {
+		// error-policy:J3 Provider callback data is untrusted JSON; parsing failure
+		// is an explicit invalid callback and never a fabricated empty response.
+		return null;
+	}
+}
+
+/** Submit a provider-authenticated callback to the sole host authority. */
+export async function consumePreparedInteractionCallback(
+	runtime: IAgentRuntime,
+	request: Omit<
+		ConsumeMessageInteractionRequest,
+		"callbackData" | "response"
+	> & {
+		providerCallbackData: unknown;
+	},
+): Promise<MessageInteractionHostConsumeOutcome> {
+	const decoded = decodePreparedInteractionCallback(
+		request.providerCallbackData,
+	);
+	if (!decoded) {
+		return {
+			status: "denied",
+			code: "INVALID_MESSAGE_INTERACTION_PROVIDER_CALLBACK",
+			message: "The provider callback is malformed or unsupported.",
+		};
+	}
+	const host = resolveMessageInteractionHost(runtime);
+	if (!host) {
+		return {
+			status: "denied",
+			code: "MESSAGE_INTERACTION_HOST_UNAVAILABLE",
+			message:
+				"Interactive actions are temporarily unavailable; reply in text.",
+		};
+	}
+	return host.consume({
+		callbackData: decoded.callbackData,
+		response: decoded.response,
+		bindings: request.bindings,
+		providerReceipt: request.providerReceipt,
+	});
 }
 
 /** Resolve the one host authority. Absence is an explicit unavailable state. */
