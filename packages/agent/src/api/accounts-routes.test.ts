@@ -325,7 +325,7 @@ describe("accounts routes", () => {
         response.providers.find((item) => item.providerId === providerId),
       ).toMatchObject({
         runtimeEligibility: {
-          chat: { available: true, credentialPath: "direct-api" },
+          chat: { available: false, credentialPath: "none" },
           codingAgent: {
             available: true,
             backend: "opencode",

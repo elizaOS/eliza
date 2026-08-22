@@ -30,14 +30,24 @@ describe("direct provider authority", () => {
       id: `vendor/model-${index}`,
     }));
     models.push({ id: "vendor/model-0" });
-    const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
-      expect(init?.headers).toEqual({ Authorization: "Bearer secret-value" });
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      if (url.endsWith("/key")) {
+        expect(init?.headers).toEqual({ Authorization: "Bearer secret-value" });
+        return new Response(JSON.stringify({ data: { limit: 10 } }), {
+          status: 200,
+        });
+      }
+      expect(init?.headers).toBeUndefined();
       return new Response(JSON.stringify({ data: models }), { status: 200 });
     });
     globalThis.fetch = fetchMock as unknown as typeof fetch;
 
     const result = await probeDirectApiKey("openrouter-api", "secret-value");
 
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://openrouter.ai/api/v1/key",
+      expect.objectContaining({ method: "GET" }),
+    );
     expect(fetchMock).toHaveBeenCalledWith(
       "https://openrouter.ai/api/v1/models",
       expect.objectContaining({ method: "GET" }),
@@ -76,5 +86,53 @@ describe("direct provider authority", () => {
       latencyMs: expect.any(Number),
     });
     expect(JSON.stringify(result)).not.toContain("secret-value");
+  });
+
+  it("rejects an invalid OpenRouter key before reading the public catalog", async () => {
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url.endsWith("/key")) {
+        return new Response("invalid secret-value", { status: 401 });
+      }
+      return new Response(JSON.stringify({ data: [{ id: "public/model" }] }), {
+        status: 200,
+      });
+    });
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+    const result = await probeDirectApiKey("openrouter-api", "secret-value");
+
+    expect(result).toEqual({
+      ok: false,
+      status: 401,
+      error: "openrouter-api credential probe failed (HTTP 401)",
+      latencyMs: expect.any(Number),
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://openrouter.ai/api/v1/key",
+      expect.objectContaining({ method: "GET" }),
+    );
+    expect(JSON.stringify(result)).not.toContain("secret-value");
+  });
+
+  it("keeps an authenticated OpenRouter key healthy when public catalog metadata fails", async () => {
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url.endsWith("/key")) {
+        return new Response(JSON.stringify({ data: { limit: 10 } }), {
+          status: 200,
+        });
+      }
+      return new Response("catalog unavailable", { status: 503 });
+    });
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+    await expect(
+      probeDirectApiKey("openrouter-api", "secret-value"),
+    ).resolves.toEqual({
+      ok: true,
+      status: 200,
+      latencyMs: expect.any(Number),
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 });

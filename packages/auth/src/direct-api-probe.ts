@@ -1,8 +1,8 @@
-// Direct-API key server-side probe. Extracted from the accounts route
-// (#11033 follow-up) so the coding-account bridge can verify a pooled
-// direct-API credential against the provider — a locally-stored key with the
-// never-expires sentinel resolves fine offline, so a cached-but-revoked key
-// can only be caught by an authed round-trip.
+/**
+ * Verifies direct-provider credentials without exposing provider bodies or
+ * unbounded catalogs. OpenRouter authentication uses its current-key endpoint
+ * because the public model catalog does not prove credential ownership.
+ */
 import type { DirectAccountProvider } from "./types.ts";
 
 /** Provider base URL for a direct-API key, honoring the *_BASE_URL overrides. */
@@ -120,10 +120,42 @@ function parseBoundedModelIds(text: string): {
   };
 }
 
+async function readModelCatalog(response: Response): Promise<{
+  modelIds?: string[];
+  modelCatalogTruncated?: true;
+}> {
+  if (!response.ok) return {};
+  const catalogBody = await readBoundedResponseText(response);
+  const catalog = catalogBody.truncated
+    ? { truncated: true }
+    : parseBoundedModelIds(catalogBody.text);
+  return {
+    ...(catalog.modelIds ? { modelIds: catalog.modelIds } : {}),
+    ...(catalog.truncated ? { modelCatalogTruncated: true as const } : {}),
+  };
+}
+
+async function fetchOpenRouterCatalog(
+  baseUrl: string,
+  signal: AbortSignal,
+): Promise<{ modelIds?: string[]; modelCatalogTruncated?: true }> {
+  try {
+    const response = await fetch(`${baseUrl}/models`, {
+      method: "GET",
+      signal,
+    });
+    return await readModelCatalog(response);
+  } catch {
+    // error-policy:J4 The public catalog is optional metadata after the
+    // authenticated current-key check has already established account health.
+    return {};
+  }
+}
+
 /**
- * Verify a direct-API key against the provider with a minimal authed GET
- * (`/models`). `ok` is true only on a 2xx; a 401/403 (revoked/invalid) returns
- * `ok:false` with the status so the caller can mark the account needs-reauth.
+ * Verify a direct-API key against a provider-owned authenticated endpoint.
+ * OpenRouter uses `/key` and only then reads its public `/models` catalog;
+ * other providers authenticate through `/models` directly.
  */
 export async function probeDirectApiKey(
   providerId: DirectAccountProvider,
@@ -144,14 +176,16 @@ export async function probeDirectApiKey(
               "x-api-key": apiKey,
             },
           })
-        : await fetch(`${baseUrl}/models`, {
-            method: "GET",
-            signal: controller.signal,
-            headers: {
-              Authorization: `Bearer ${apiKey}`,
+        : await fetch(
+            `${baseUrl}/${providerId === "openrouter-api" ? "key" : "models"}`,
+            {
+              method: "GET",
+              signal: controller.signal,
+              headers: {
+                Authorization: `Bearer ${apiKey}`,
+              },
             },
-          });
-    const latencyMs = Date.now() - start;
+          );
     if (!response.ok) {
       return {
         ok: false,
@@ -160,19 +194,19 @@ export async function probeDirectApiKey(
         // diagnostics. Never reflect one across the account API boundary where
         // it could echo credentials into UI state, logs, or evidence.
         error: `${providerId} credential probe failed (HTTP ${response.status})`,
-        latencyMs,
+        latencyMs: Date.now() - start,
       };
     }
-    const catalogBody = await readBoundedResponseText(response);
-    const catalog = catalogBody.truncated
-      ? { truncated: true }
-      : parseBoundedModelIds(catalogBody.text);
+    const catalog =
+      providerId === "openrouter-api"
+        ? await fetchOpenRouterCatalog(baseUrl, controller.signal)
+        : await readModelCatalog(response);
     return {
       ok: true,
       status: response.status,
-      latencyMs,
+      latencyMs: Date.now() - start,
       ...(catalog.modelIds ? { modelIds: catalog.modelIds } : {}),
-      ...(catalog.truncated ? { modelCatalogTruncated: true } : {}),
+      ...(catalog.modelCatalogTruncated ? { modelCatalogTruncated: true } : {}),
     };
   } catch (err) {
     // error-policy:J1 boundary translation — callers need a typed failed probe

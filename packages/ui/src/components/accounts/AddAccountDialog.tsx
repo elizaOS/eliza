@@ -693,7 +693,7 @@ export function AddAccountDialog({
     : !activeProviderId
       ? t("accounts.add.chooseDescription", {
           defaultValue:
-            "Choose the provider you want to connect. Chat providers use API keys; coding subscriptions use first-party login or dedicated plan credentials.",
+            "Choose an API key or coding subscription. Each provider shows the runtime surfaces its credential can use.",
         })
       : subscriptionAddMode === "oauth"
         ? t("accounts.add.subscriptionDescription", {

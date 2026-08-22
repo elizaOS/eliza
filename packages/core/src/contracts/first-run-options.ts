@@ -786,7 +786,7 @@ const FIRST_RUN_PROVIDER_ALIASES: Record<string, FirstRunProviderId> = {
 	// Tolerate the linked-account form so env/integration callers normalize too.
 	"cerebras-api": "cerebras",
 	"openrouter-api": "openrouter",
-	"xai-api": "xai",
+	"xai-api": "grok",
 };
 
 export function isSubscriptionProviderSelectionId(

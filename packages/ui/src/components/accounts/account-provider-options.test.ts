@@ -41,8 +41,12 @@ describe("consolidated account provider picker", () => {
     );
 
     expect(openrouter?.description).toContain("credits or BYOK");
+    expect(openrouter?.description).toContain("Chat routing is not connected");
     expect(xai?.description).toContain("Metered xAI API");
     expect(xai?.description).toContain("separate from Grok subscription");
+    expect(xai?.description).toContain("Chat routing is not connected");
+    expect(openrouter?.eligibility).not.toContain("model inference");
+    expect(xai?.eligibility).not.toContain("model inference");
   });
 
   it("labels Claude subscription for its first-party coding surface", () => {

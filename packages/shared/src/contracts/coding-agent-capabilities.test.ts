@@ -165,12 +165,14 @@ describe("coding-agent capability mapping", () => {
     expect(CODING_PROVIDER_DESCRIPTORS["openrouter-api"]).toMatchObject({
       accountKind: "api-key",
       billingMode: "api-credits-or-byok",
+      inferenceSupport: false,
       backend: "opencode",
       spawnSupport: true,
     });
     expect(CODING_PROVIDER_DESCRIPTORS["xai-api"]).toMatchObject({
       accountKind: "api-key",
       billingMode: "api-payg",
+      inferenceSupport: false,
       backend: "opencode",
       spawnSupport: true,
     });

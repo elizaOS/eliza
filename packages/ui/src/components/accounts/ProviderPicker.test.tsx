@@ -96,12 +96,15 @@ describe("ProviderPicker", () => {
       screen.getAllByText(
         "Model inference and coding agents, using your API key",
       ).length,
-    ).toBe(3);
+    ).toBe(6);
     expect(
-      screen.getAllByText(
+      screen.queryByText(
         "Model inference, using your API key; agent spawn unavailable",
-      ).length,
-    ).toBe(3);
+      ),
+    ).toBeNull();
+    expect(
+      screen.getAllByText("Coding agents, using your API key").length,
+    ).toBe(2);
     expect(screen.getByText("Coding agents, using browser login")).toBeTruthy();
     expect(
       screen.getByText("No model inference or coding-agent spawn support"),
@@ -114,4 +117,16 @@ describe("ProviderPicker", () => {
     // The old "Chat \u00b7 bring your own API key" pill format must not resurface.
     expect(screen.queryByText(/\u00b7/)).toBeNull();
   });
+
+  it.each(["OpenRouter", "xAI API"])(
+    "advertises %s as coding-only until chat has request-scoped credentials",
+    (providerName) => {
+      renderPicker();
+      fireEvent.change(searchInput(), { target: { value: providerName } });
+      expect(
+        screen.getByText("Coding agents, using your API key"),
+      ).toBeTruthy();
+      expect(screen.queryByText(/Model inference/)).toBeNull();
+    },
+  );
 });
