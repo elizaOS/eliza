@@ -1,3 +1,7 @@
+/**
+ * Exercises the real ClientBase read boundaries with typed provider failures,
+ * deterministic queue waits, and mocked X transport methods.
+ */
 import type { IAgentRuntime } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ClientBase, RequestQueue, type TwitterProfile } from "./base";

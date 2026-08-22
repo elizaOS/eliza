@@ -219,4 +219,24 @@ describe("RequestQueue retries provider failures", () => {
     ).rejects.toMatchObject({ code: "X_REQUEST_RETRY_DELAY_FAILED" });
     await expect(followingRead).resolves.toBe("next");
   });
+
+  it("rejects pending callers when queue pacing cannot be enforced", async () => {
+    const queue = new RequestQueue({
+      backoff: async () => undefined,
+      jitter: async () => {
+        throw new Error("pacing unavailable");
+      },
+    });
+
+    const firstRead = queue.add(async () => "first", RETRY_TRANSIENT_X_READ);
+    const pendingRead = queue.add(
+      async () => "must not dispatch",
+      RETRY_TRANSIENT_X_READ,
+    );
+
+    await expect(firstRead).resolves.toBe("first");
+    await expect(pendingRead).rejects.toMatchObject({
+      code: "X_REQUEST_PACING_DELAY_FAILED",
+    });
+  });
 });

@@ -222,6 +222,8 @@ export class RequestQueue {
           await item.run();
           this.retryAttempts.delete(item);
         } catch (error) {
+          // error-policy:J1 The queue boundary either schedules an authorized
+          // retry or rejects the original caller with the classified failure.
           logger.error("Error processing request:", errorDetail(error));
 
           const retryCount = (this.retryAttempts.get(item) || 0) + 1;
@@ -241,6 +243,8 @@ export class RequestQueue {
               await this.exponentialBackoff(retryCount);
               this.queue.unshift(item);
             } catch (delayError) {
+              // error-policy:J1 A failed retry delay rejects this caller with
+              // a typed queue-boundary failure instead of stranding it.
               this.retryAttempts.delete(item);
               item.reject(
                 new ElizaError("X request retry delay failed", {
@@ -262,10 +266,19 @@ export class RequestQueue {
         try {
           await this.randomDelay();
         } catch (delayError) {
-          logger.warn(
-            "Request queue pacing delay failed; continuing without delay:",
-            errorDetail(delayError),
-          );
+          // error-policy:J1 The queue cannot preserve its pacing contract, so
+          // reject every pending caller rather than dispatching an unpaced
+          // burst or leaving promises stranded.
+          const pacingError = new ElizaError("X request pacing delay failed", {
+            code: "X_REQUEST_PACING_DELAY_FAILED",
+            cause: delayError,
+          });
+          let pending = this.queue.shift();
+          while (pending) {
+            this.retryAttempts.delete(pending);
+            pending.reject(pacingError);
+            pending = this.queue.shift();
+          }
         }
       }
     } finally {
