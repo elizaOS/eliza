@@ -78,4 +78,40 @@ describe("messageRouterTwilioFetch deadline", () => {
     caller.abort();
     await expect(promise).rejects.toMatchObject({ name: "AbortError" });
   });
+
+  test("deadline rejects when fetch ignores its signal", async () => {
+    globalThis.fetch = mock(
+      () => new Promise<Response>(() => undefined),
+    ) as unknown as typeof fetch;
+    await expect(
+      messageRouterTwilioFetch("https://api.twilio.com/test", undefined, 15),
+    ).rejects.toMatchObject({ name: "TimeoutError" });
+  });
+
+  test("deadline covers a Twilio body that never completes", async () => {
+    globalThis.fetch = mock(
+      async () =>
+        new Response(
+          new ReadableStream<Uint8Array>({
+            start(controller) {
+              controller.enqueue(new TextEncoder().encode("{"));
+            },
+          }),
+        ),
+    ) as unknown as typeof fetch;
+    await expect(
+      messageRouterTwilioFetch("https://api.twilio.com/test", undefined, 15),
+    ).rejects.toMatchObject({ name: "TimeoutError" });
+  });
+
+  test("rejects an invalid timeout before dispatch", async () => {
+    const fetchMock = mock(async () => new Response());
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+    await expect(
+      messageRouterTwilioFetch("https://api.twilio.com/test", undefined, 0),
+    ).rejects.toMatchObject({
+      code: "INVALID_MESSAGE_ROUTER_TWILIO_TIMEOUT",
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
 });

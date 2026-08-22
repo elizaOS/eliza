@@ -41,7 +41,7 @@ describe("twilioGatewayFetch deadline", () => {
       { method: "POST" },
       15,
     );
-    await expect(promise).rejects.toMatchObject({ name: "AbortError" });
+    await expect(promise).rejects.toMatchObject({ name: "TimeoutError" });
     expect(capturedSignal?.aborted).toBe(true);
   });
 
@@ -84,8 +84,49 @@ describe("twilioGatewayFetch deadline", () => {
       { method: "POST", signal: caller.signal },
       15,
     );
-    await expect(promise).rejects.toMatchObject({ name: "AbortError" });
+    await expect(promise).rejects.toMatchObject({ name: "TimeoutError" });
     expect(capturedSignal?.aborted).toBe(true);
+  });
+
+  test("deadline rejects even when fetch ignores its signal", async () => {
+    globalThis.fetch = mock(
+      () => new Promise<Response>(() => undefined),
+    ) as unknown as typeof fetch;
+    await expect(
+      twilioGatewayFetch("https://api.twilio.com/test", undefined, 15),
+    ).rejects.toMatchObject({ name: "TimeoutError" });
+  });
+
+  test("deadline covers a response body that never completes", async () => {
+    globalThis.fetch = mock(
+      async () =>
+        new Response(
+          new ReadableStream<Uint8Array>({
+            start(controller) {
+              controller.enqueue(new TextEncoder().encode("{"));
+            },
+          }),
+        ),
+    ) as unknown as typeof fetch;
+    await expect(
+      twilioGatewayFetch("https://api.twilio.com/test", undefined, 15),
+    ).rejects.toMatchObject({ name: "TimeoutError" });
+  });
+
+  test("clears its deadline after a bounded successful body read", async () => {
+    let capturedSignal: AbortSignal | undefined;
+    globalThis.fetch = mock(async (_url, init) => {
+      capturedSignal = init?.signal as AbortSignal | undefined;
+      return Response.json({ sid: "SM_ok" });
+    }) as unknown as typeof fetch;
+    const response = await twilioGatewayFetch(
+      "https://api.twilio.com/test",
+      undefined,
+      15,
+    );
+    expect(await response.json()).toEqual({ sid: "SM_ok" });
+    await Bun.sleep(30);
+    expect(capturedSignal?.aborted).toBe(false);
   });
 
   test("sendReply is bounded and restores fetch", async () => {
@@ -135,7 +176,7 @@ describe("blooioGatewayFetch deadline", () => {
       { method: "POST" },
       15,
     );
-    await expect(promise).rejects.toMatchObject({ name: "AbortError" });
+    await expect(promise).rejects.toMatchObject({ name: "TimeoutError" });
     expect(capturedSignal?.aborted).toBe(true);
   });
 
@@ -193,5 +234,16 @@ describe("blooioGatewayFetch deadline", () => {
 
     await blooioAdapter.sendTypingIndicator(config, event);
     expect(signals.length).toBe(1);
+  });
+
+  test("rejects an oversized provider body before a caller can parse it", async () => {
+    globalThis.fetch = mock(
+      async () => new Response(new Uint8Array(64 * 1024 + 1)),
+    ) as unknown as typeof fetch;
+    await expect(
+      blooioGatewayFetch("https://api.blooio.com/v4/messages"),
+    ).rejects.toMatchObject({
+      code: "GATEWAY_RESPONSE_TOO_LARGE",
+    });
   });
 });
