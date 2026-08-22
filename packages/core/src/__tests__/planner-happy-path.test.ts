@@ -453,6 +453,79 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 		).rejects.toThrow("queue empty");
 	});
 
+	it("marks an unverified coding mutation as a machine-readable turn failure", async () => {
+		const writeAction = makeMockAction({
+			name: "WRITE",
+			contexts: ["code", "files"],
+			parameters: [
+				{
+					name: "file_path",
+					description: "File path",
+					required: true,
+					schema: { type: "string" },
+				},
+				{
+					name: "content",
+					description: "File content",
+					required: true,
+					schema: { type: "string" },
+				},
+			],
+			handler: async () => ({ success: true, text: "wrote config.go" }),
+		});
+		const runtime = makeRuntime({
+			actions: [writeAction],
+			owner: true,
+			responses: [
+				{
+					expectModelType: ModelType.ACTION_PLANNER,
+					body: {
+						text: "",
+						toolCalls: [
+							{
+								id: "write-1",
+								name: "WRITE",
+								args: { file_path: "config.go", content: "package config" },
+							},
+						],
+					},
+				},
+				{
+					expectModelType: ModelType.ACTION_PLANNER,
+					body: {
+						text: "",
+						toolCalls: [
+							{
+								id: "reply-1",
+								name: "REPLY",
+								args: { text: "Implemented the change." },
+							},
+						],
+					},
+				},
+			],
+		});
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage("change config.go"),
+			state: makeState(),
+			responseId: RESPONSE_ID,
+			codingMode: true,
+			plannerLoopConfig: { maxTerminalOnlyContinuations: 0 },
+		});
+
+		expect(result.kind).toBe("planned_reply");
+		if (result.kind !== "planned_reply") throw new Error("expected reply");
+		expect(result.result.responseContent).toMatchObject({
+			text: expect.stringContaining("coding task is incomplete"),
+			failureKind: "coding_verification_failed",
+			elizaSyntheticFailure: true,
+			transient: false,
+		});
+		expect(getCalls(runtime)).toHaveLength(2);
+	});
+
 	it("runs the full pipeline and records every stage to disk", async () => {
 		let webSearchCalls = 0;
 		const webSearch = makeMockAction({
