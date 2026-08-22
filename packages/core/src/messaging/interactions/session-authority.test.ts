@@ -64,7 +64,7 @@ function receipt(key: string): MessageInteractionReceipt {
 		receiptId: `receipt-${key}`,
 		idempotencyKey: key,
 		status: "completed",
-		completedAt: "2026-08-21T00:00:01.000Z",
+		completedAt: "2026-08-21T00:00:00.000Z",
 		result: { accepted: true },
 	};
 }
@@ -347,7 +347,7 @@ describe("message interaction session authority", () => {
 		expect(execute).toHaveBeenCalledTimes(1);
 	});
 
-	it("resumes a crash window with one idempotent effect and completes the receipt", async () => {
+	it("fails closed after an effect succeeds but its durable completion is lost", async () => {
 		let now = Date.parse("2026-08-21T00:00:00.000Z");
 		const backing = new InMemoryMessageInteractionSessionStore();
 		let failCompletion = true;
@@ -356,6 +356,7 @@ describe("message interaction session authority", () => {
 			create: backing.create.bind(backing),
 			get: backing.get.bind(backing),
 			claimIfCurrent: backing.claimIfCurrent.bind(backing),
+			commitIfClaimed: backing.commitIfClaimed.bind(backing),
 			revokeAuthorization: backing.revokeAuthorization.bind(backing),
 			deleteExpired: backing.deleteExpired.bind(backing),
 			completeIfClaimed: async (context) => {
@@ -399,9 +400,148 @@ describe("message interaction session authority", () => {
 				replayKey: "replay-a",
 				executor,
 			}),
-		).toEqual(receipt("replay-a"));
+		).toEqual({ status: "in_progress" });
 		expect(physicalEffects).toBe(1);
 	});
+
+	it("fences an expired worker before effect commit and refuses revocation after commit", async () => {
+		let now = Date.parse("2026-08-21T00:00:00.000Z");
+		const store = new InMemoryMessageInteractionSessionStore();
+		const { authority, callbackData, session } = await created({
+			store,
+			clock: () => now,
+			preset: { value: "approve" },
+		});
+		const claim = await store.claimIfCurrent({
+			...bindings,
+			reference: session.reference,
+			replayKey: "replay-a",
+			claimId: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+			now,
+			claimTtlMs: 100,
+		});
+		expect(claim.status).toBe("acquired");
+		now += 101;
+		const replacement = await store.claimIfCurrent({
+			...bindings,
+			reference: session.reference,
+			replayKey: "replay-a",
+			claimId: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+			now,
+			claimTtlMs: 100,
+		});
+		expect(replacement.status).toBe("resumed");
+		await expect(
+			store.commitIfClaimed({
+				reference: session.reference,
+				claimId: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+				replayKey: "replay-a",
+				now,
+			}),
+		).rejects.toMatchObject({ code: "MESSAGE_INTERACTION_STALE_CLAIM" });
+		await store.commitIfClaimed({
+			reference: session.reference,
+			claimId: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+			replayKey: "replay-a",
+			now,
+		});
+		await expect(
+			store.revokeAuthorization({
+				reference: session.reference,
+				decisionId: "decision-a",
+				now,
+			}),
+		).rejects.toMatchObject({ code: "MESSAGE_INTERACTION_EFFECT_COMMITTED" });
+		let effects = 0;
+		expect(
+			await authority.consume({
+				callbackData,
+				bindings,
+				replayKey: "replay-a",
+				executor: {
+					execute: async () => {
+						effects += 1;
+						return receipt("replay-a");
+					},
+				},
+			}),
+		).toEqual({ status: "in_progress" });
+		expect(effects).toBe(0);
+	});
+
+	it.each(["reacquire", "revoke"] as const)(
+		"never calls the old worker effect when %s wins before durable commit",
+		async (winner) => {
+			let now = Date.parse("2026-08-21T00:00:00.000Z");
+			const backing = new InMemoryMessageInteractionSessionStore();
+			let enterCommit: () => void = () => undefined;
+			const commitEntered = new Promise<void>((resolve) => {
+				enterCommit = resolve;
+			});
+			let releaseCommit: () => void = () => undefined;
+			const commitBarrier = new Promise<void>((resolve) => {
+				releaseCommit = resolve;
+			});
+			const store: MessageInteractionSessionStore = {
+				create: backing.create.bind(backing),
+				get: backing.get.bind(backing),
+				claimIfCurrent: backing.claimIfCurrent.bind(backing),
+				commitIfClaimed: async (context) => {
+					enterCommit();
+					await commitBarrier;
+					return backing.commitIfClaimed(context);
+				},
+				completeIfClaimed: backing.completeIfClaimed.bind(backing),
+				revokeAuthorization: backing.revokeAuthorization.bind(backing),
+				deleteExpired: backing.deleteExpired.bind(backing),
+			};
+			const { authority, callbackData, session } = await created({
+				store,
+				clock: () => now,
+				preset: { value: "approve" },
+			});
+			let effects = 0;
+			const oldWorker = authority.consume({
+				callbackData,
+				bindings,
+				replayKey: "replay-a",
+				executor: {
+					execute: async () => {
+						effects += 1;
+						return receipt("replay-a");
+					},
+				},
+			});
+			await commitEntered;
+			if (winner === "reacquire") {
+				now += 101;
+				expect(
+					await backing.claimIfCurrent({
+						...bindings,
+						reference: session.reference,
+						replayKey: "replay-a",
+						claimId: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+						now,
+						claimTtlMs: 100,
+					}),
+				).toMatchObject({ status: "resumed" });
+			} else {
+				await backing.revokeAuthorization({
+					reference: session.reference,
+					decisionId: "decision-a",
+					now,
+				});
+			}
+			releaseCommit();
+			await expect(oldWorker).rejects.toMatchObject({
+				code:
+					winner === "reacquire"
+						? "MESSAGE_INTERACTION_STALE_CLAIM"
+						: "MESSAGE_INTERACTION_AUTHORIZATION_REVOKED",
+			});
+			expect(effects).toBe(0);
+		},
+	);
 
 	it("denies tamper, expiry, and revocation after render", async () => {
 		let now = Date.parse("2026-08-21T00:00:00.000Z");

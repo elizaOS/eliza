@@ -93,11 +93,13 @@ is only `is1:<128-bit opaque reference>`; it contains no answer, identity,
 authorization, credential, or signature. The durable record binds the actor,
 audience, agent, connector account, room, source message, response schema,
 authorization decision, expiry, effect, and stable replay key. A store performs
-atomic `pending → claimed → completed` transitions and retains the effect receipt.
-The executor must apply the replay key as its effect idempotency key, allowing a
-claim to resume after a crash without repeating the effect. Revocation after
-render, expiry, mismatched context, response tampering, stale claims, and a
-different replay key all fail closed.
+atomic `pending → claimed → committed → completed` transitions and retains the
+effect receipt. Reservation claims may expire before commitment. Once committed,
+the host may cross the external effect boundary, but an outcome lost to a crash
+remains permanently ambiguous: it is never transferred, retried, revoked as if
+cancellation succeeded, or garbage-collected. Revocation after render, expiry,
+mismatched context, response tampering, stale claims, and a different replay key
+all fail closed.
 
 Connector plugins access that authority through the registered
 `MessageInteractionHost` service. `prepare` accepts the resolved profile plus
