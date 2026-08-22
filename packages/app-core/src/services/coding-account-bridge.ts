@@ -117,6 +117,10 @@ function getEnvCodingStrategy(): Strategy | undefined {
  * opencode authenticates through a typed direct-API route. Its candidate list
  * contains only general API/PAYG products; dedicated coding-plan endpoint keys
  * and native CLI OAuth remain separate capabilities.
+ * OpenCode receives only credentials whose shared capability descriptors name
+ * it as their executable backend. Provider-specific endpoint/model policy is
+ * applied later by the orchestrator's typed route; this bridge owns only
+ * account selection and the isolated canonical environment patch.
  */
 const AGENT_PROVIDER_CANDIDATES: Readonly<
   Record<string, readonly LinkedAccountProviderId[]>
@@ -830,7 +834,7 @@ async function buildEnvPatch(
     case "anthropic-subscription":
       return { CLAUDE_CODE_OAUTH_TOKEN: accessToken };
     default: {
-      // Direct API providers (e.g. cerebras-api → CEREBRAS_API_KEY for opencode)
+      // Direct API providers (e.g. xai-api → XAI_API_KEY for OpenCode)
       // inject under their canonical env key; run-main.ts normalizes aliases
       // (Z_AI_API_KEY → ZAI_API_KEY, KIMI_API_KEY → MOONSHOT_API_KEY).
       const envKey =

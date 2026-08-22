@@ -145,13 +145,32 @@ const DIRECT_PROVIDER_BY_BACKEND: Readonly<
   deepseek: "deepseek-api",
   zai: "zai-api",
   moonshot: "moonshot-api",
+  openrouter: "openrouter-api",
+  xai: "xai-api",
 };
 
 const OPENAI_COMPAT_BASE_BY_DIRECT_PROVIDER: Readonly<
   Partial<Record<DirectAccountProvider, string>>
 > = {
   "moonshot-api": "https://api.moonshot.ai/v1",
+  "openrouter-api": "https://openrouter.ai/api/v1",
+  "xai-api": "https://api.x.ai/v1",
 };
+
+const CHILD_ISOLATED_DIRECT_PROVIDERS: ReadonlySet<DirectAccountProvider> =
+  new Set(["openrouter-api", "xai-api"]);
+
+/**
+ * OpenRouter and xAI pooled keys are released only into the selected coding
+ * subprocess environment by the coding-account bridge. They must not become
+ * ambient parent-process credentials where another runtime/plugin can inherit
+ * them without the account selection receipt.
+ */
+export function isChildIsolatedDirectProvider(
+  providerId: DirectAccountProvider,
+): boolean {
+  return CHILD_ISOLATED_DIRECT_PROVIDERS.has(providerId);
+}
 
 const KEEP_ALIVE_INTERVAL_MS = 5 * 60_000;
 /**
@@ -1441,6 +1460,7 @@ export async function applyAccountPoolApiCredentials(
   let activeProviderToken: string | null = null;
 
   for (const providerId of DIRECT_ACCOUNT_PROVIDER_IDS) {
+    if (isChildIsolatedDirectProvider(providerId)) continue;
     const accounts = listProviderAccounts(providerId);
     if (accounts.length === 0) continue;
 

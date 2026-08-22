@@ -279,7 +279,9 @@ export function isLinkedAccountProviderId(
     value === "deepseek-api" ||
     value === "zai-api" ||
     value === "moonshot-api" ||
-    value === "cerebras-api"
+    value === "cerebras-api" ||
+    value === "openrouter-api" ||
+    value === "xai-api"
   );
 }
 

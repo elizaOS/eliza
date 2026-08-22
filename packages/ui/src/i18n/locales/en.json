@@ -81,6 +81,8 @@
   "accounts.provider.geminiCli": "Gemini CLI subscription",
   "accounts.provider.kimiCoding": "Kimi Code",
   "accounts.provider.moonshotApi": "Kimi / Moonshot API",
+  "accounts.provider.openrouterApi": "OpenRouter credits / BYOK",
+  "accounts.provider.xaiApi": "xAI API (metered)",
   "accounts.provider.openaiApi": "OpenAI API",
   "accounts.provider.openaiCodex": "OpenAI Codex subscription",
   "accounts.provider.zaiApi": "z.ai API",

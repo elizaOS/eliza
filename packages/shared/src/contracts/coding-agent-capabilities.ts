@@ -27,7 +27,9 @@ export type CodingProviderAuthMode =
 export type CodingProviderBillingMode =
   | "subscription-coding-plan"
   | "subscription-coding-cli"
-  | "usage";
+  | "usage"
+  | "api-payg"
+  | "api-credits-or-byok";
 export type CodingProviderSubscriptionAuthMode =
   | "oauth"
   | "external-cli"
@@ -266,6 +268,24 @@ export const CODING_PROVIDER_DESCRIPTORS = {
     "api-key",
     "direct-api-key",
     "usage",
+    true,
+    "opencode",
+    null,
+  ),
+  "openrouter-api": descriptor(
+    "openrouter-api",
+    "api-key",
+    "direct-api-key",
+    "api-credits-or-byok",
+    true,
+    "opencode",
+    null,
+  ),
+  "xai-api": descriptor(
+    "xai-api",
+    "api-key",
+    "direct-api-key",
+    "api-payg",
     true,
     "opencode",
     null,

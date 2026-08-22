@@ -1027,24 +1027,25 @@ async function handleCreateApiKeyAccount(
     return true;
   }
 
-  if (replaceAccountId) {
-    const probe =
-      accountProvider in DIRECT_ACCOUNT_PROVIDER_ENV
-        ? await probeDirectApiKey(
-            accountProvider as DirectAccountProvider,
-            parsed.data.apiKey,
-          )
-        : isCodingPlanKeySubscriptionProvider(accountProvider)
-          ? await probeCodingPlanKey(accountProvider, parsed.data.apiKey)
-          : null;
-    if (!probe?.ok) {
-      error(
-        res,
-        probe?.error ?? "Replacement credential could not be verified",
-        400,
-      );
-      return true;
-    }
+  // A newly stored key must prove its provider route just like a replacement.
+  // AccountPool selects only `health: "ok"`, so this authenticated preflight is
+  // the fail-closed boundary between enrollment and coding-spawn eligibility.
+  const probe =
+    accountProvider in DIRECT_ACCOUNT_PROVIDER_ENV
+      ? await probeDirectApiKey(
+          accountProvider as DirectAccountProvider,
+          parsed.data.apiKey,
+        )
+      : isCodingPlanKeySubscriptionProvider(accountProvider)
+        ? await probeCodingPlanKey(accountProvider, parsed.data.apiKey)
+        : null;
+  if (!probe?.ok) {
+    error(
+      res,
+      probe?.error ?? "Credential could not be verified against its provider",
+      400,
+    );
+    return true;
   }
 
   const priority = replacementTarget
@@ -1106,7 +1107,11 @@ async function handleCreateApiKeyAccount(
     accountProvider in DIRECT_ACCOUNT_PROVIDER_ENV
       ? DIRECT_ACCOUNT_PROVIDER_ENV[accountProvider as DirectAccountProvider]
       : null;
-  if (envKey) {
+  if (
+    envKey &&
+    accountProvider !== "openrouter-api" &&
+    accountProvider !== "xai-api"
+  ) {
     process.env[envKey] = parsed.data.apiKey;
     if (accountProvider === "zai-api") {
       process.env.Z_AI_API_KEY ??= parsed.data.apiKey;
@@ -1534,7 +1539,13 @@ async function handleTestAccount(
     return true;
   }
   if (probe.ok) {
-    json(res, { ok: true, latencyMs: probe.latencyMs, status: probe.status });
+    json(res, {
+      ok: true,
+      latencyMs: probe.latencyMs,
+      status: probe.status,
+      ...(probe.modelIds ? { modelIds: probe.modelIds } : {}),
+      ...(probe.modelCatalogTruncated ? { modelCatalogTruncated: true } : {}),
+    });
   } else {
     json(res, {
       ok: false,

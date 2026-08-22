@@ -21,6 +21,8 @@ const fakes = vi.hoisted(() => ({
       status: number;
       latencyMs: number;
       error?: string;
+      modelIds?: string[];
+      modelCatalogTruncated?: boolean;
     }> => ({
       ok: true,
       status: 200,
@@ -318,6 +320,20 @@ describe("accounts routes", () => {
         },
       });
     }
+    for (const providerId of ["openrouter-api", "xai-api"]) {
+      expect(
+        response.providers.find((item) => item.providerId === providerId),
+      ).toMatchObject({
+        runtimeEligibility: {
+          chat: { available: true, credentialPath: "direct-api" },
+          codingAgent: {
+            available: true,
+            backend: "opencode",
+            credentialPath: "direct-api",
+          },
+        },
+      });
+    }
   });
 
   it("sets, surfaces, validates, and clears subscriptionEndsAt through PATCH", async () => {
@@ -388,6 +404,10 @@ describe("accounts routes", () => {
     });
     await handleAccountsRoutes(created.ctx);
     expect(fakes.saveAccount).toHaveBeenCalledOnce();
+    expect(fakes.probeDirectApiKey).toHaveBeenCalledWith(
+      "openai-api",
+      "sk-test-value",
+    );
     expect(created.jsonCalls[0]?.status).toBe(201);
 
     fakes.poolAccounts = [{ ...linkedAccount }];
@@ -439,6 +459,83 @@ describe("accounts routes", () => {
       expect.objectContaining({ owner: "runtime" }),
     );
     expect(deleted.jsonCalls[0]?.body).toEqual({ deleted: true });
+  });
+
+  it.each([
+    ["openrouter-api", "sk-or-test-value"],
+    ["xai-api", "xai-test-value"],
+  ] as const)(
+    "preflights and stores %s without copying its secret into process.env",
+    async (providerId, apiKey) => {
+      const envKey =
+        providerId === "openrouter-api" ? "OPENROUTER_API_KEY" : "XAI_API_KEY";
+      delete process.env[envKey];
+
+      const created = makeContext("POST", `/api/accounts/${providerId}`, {
+        source: "api-key",
+        label: "Coding account",
+        apiKey,
+      });
+      await handleAccountsRoutes(created.ctx);
+
+      expect(fakes.probeDirectApiKey).toHaveBeenCalledWith(providerId, apiKey);
+      expect(fakes.saveAccount).toHaveBeenCalledWith(
+        expect.objectContaining({ providerId }),
+        expect.anything(),
+      );
+      expect(created.jsonCalls[0]?.status).toBe(201);
+      expect(process.env[envKey]).toBeUndefined();
+      expect(JSON.stringify(created.jsonCalls)).not.toContain(apiKey);
+    },
+  );
+
+  it("rejects an unverified OpenRouter credential without persisting it", async () => {
+    fakes.probeDirectApiKey.mockResolvedValueOnce({
+      ok: false,
+      status: 401,
+      latencyMs: 4,
+      error: "openrouter-api 401: unauthorized",
+    });
+    const created = makeContext("POST", "/api/accounts/openrouter-api", {
+      source: "api-key",
+      label: "Rejected account",
+      apiKey: "sk-or-revoked-value",
+    });
+
+    await handleAccountsRoutes(created.ctx);
+
+    expect(created.errorCalls).toEqual([
+      { message: "openrouter-api 401: unauthorized", status: 400 },
+    ]);
+    expect(fakes.saveAccount).not.toHaveBeenCalled();
+    expect(fakes.pool.upsert).not.toHaveBeenCalled();
+  });
+
+  it("returns bounded model discovery from an xAI account probe", async () => {
+    fakes.poolAccounts = [
+      { ...linkedAccount, providerId: "xai-api", id: "xai-account" },
+    ];
+    fakes.probeDirectApiKey.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      latencyMs: 7,
+      modelIds: ["grok-4", "grok-code-fast-1"],
+      modelCatalogTruncated: true,
+    });
+
+    const tested = makeContext(
+      "POST",
+      "/api/accounts/xai-api/xai-account/test",
+    );
+    await handleAccountsRoutes(tested.ctx);
+
+    expect(tested.jsonCalls[0]?.body).toEqual({
+      ok: true,
+      latencyMs: 7,
+      status: 200,
+      modelIds: ["grok-4", "grok-code-fast-1"],
+      modelCatalogTruncated: true,
+    });
   });
 
   it("verifies and replaces an API credential in place without duplicating the account", async () => {

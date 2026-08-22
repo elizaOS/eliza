@@ -593,6 +593,32 @@ describe("coding-account-bridge", () => {
     },
   );
 
+  it.each([
+    ["openrouter-api", "OPENROUTER_API_KEY", "or-key"],
+    ["xai-api", "XAI_API_KEY", "xai-key"],
+  ] as const)(
+    "releases a selected %s credential only in its OpenCode child env patch",
+    async (providerId, envKey, secret) => {
+      writeAccount(providerId, `${providerId}-account`, secret);
+      delete process.env[envKey];
+
+      const selected = await (
+        getDefaultAccountPool() && getCodingAgentSelectorBridge()
+      )?.select("opencode");
+
+      expect(selected).toMatchObject({
+        providerId,
+        accountId: `${providerId}-account`,
+        envPatch: {
+          [envKey]: secret,
+          ELIZA_OPENCODE_PROVIDER_ID: providerId,
+        },
+        source: "api-key",
+      });
+      expect(process.env[envKey]).toBeUndefined();
+    },
+  );
+
   it("attributes recorded usage to the serving account (per-account delta)", async () => {
     writeAccount("anthropic-subscription", "acct", "sk-ant-oat-acct");
     const bridge = getDefaultAccountPool() && getCodingAgentSelectorBridge();

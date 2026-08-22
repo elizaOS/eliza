@@ -14,6 +14,7 @@ import {
   AccountPool,
   type AccountPoolDeps,
   configureDefaultAccountPoolSelection,
+  isChildIsolatedDirectProvider,
   selectionForProvider,
 } from "./account-pool";
 
@@ -40,6 +41,12 @@ afterEach(() => {
 });
 
 describe("AccountPool provider-scoped account resolution", () => {
+  it("keeps OpenRouter and xAI pooled credentials child-isolated", () => {
+    expect(isChildIsolatedDirectProvider("openrouter-api")).toBe(true);
+    expect(isChildIsolatedDirectProvider("xai-api")).toBe(true);
+    expect(isChildIsolatedDirectProvider("openai-api")).toBe(false);
+  });
+
   it("delegates metadata deletion with the provider-qualified account id", async () => {
     const deleteAccount = vi.fn(async () => {});
     const pool = new AccountPool({

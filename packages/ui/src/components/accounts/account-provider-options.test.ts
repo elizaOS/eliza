@@ -26,8 +26,23 @@ describe("consolidated account provider picker", () => {
 
     expect(chat).toContain("anthropic-api");
     expect(chat).toContain("openai-api");
+    expect(chat).toContain("openrouter-api");
+    expect(chat).toContain("xai-api");
     expect(coding).toContain("anthropic-subscription");
     expect(coding).toContain("openai-codex");
+  });
+
+  it("keeps OpenRouter credits/BYOK distinct from metered xAI API access", () => {
+    const openrouter = ACCOUNT_PROVIDER_OPTIONS.find(
+      (option) => option.id === "openrouter-api",
+    );
+    const xai = ACCOUNT_PROVIDER_OPTIONS.find(
+      (option) => option.id === "xai-api",
+    );
+
+    expect(openrouter?.description).toContain("credits or BYOK");
+    expect(xai?.description).toContain("Metered xAI API");
+    expect(xai?.description).toContain("separate from Grok subscription");
   });
 
   it("labels Claude subscription for its first-party coding surface", () => {

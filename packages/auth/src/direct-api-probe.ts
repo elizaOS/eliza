@@ -36,6 +36,13 @@ export function directProviderBaseUrl(
       return (
         process.env.CEREBRAS_BASE_URL?.trim() || "https://api.cerebras.ai/v1"
       );
+    case "openrouter-api":
+      return (
+        process.env.OPENROUTER_BASE_URL?.trim() ||
+        "https://openrouter.ai/api/v1"
+      );
+    case "xai-api":
+      return process.env.XAI_BASE_URL?.trim() || "https://api.x.ai/v1";
   }
 }
 
@@ -44,16 +51,73 @@ export interface DirectApiProbeResult {
   status: number;
   error?: string;
   latencyMs: number;
+  /** Bounded provider catalog sample; credential material is never included. */
+  modelIds?: string[];
+  /** True when the provider response exceeded a catalog safety bound. */
+  modelCatalogTruncated?: boolean;
 }
 
-async function readProbeFailureBody(response: Response): Promise<string> {
-  try {
-    return (await response.text()).slice(0, 200);
-  } catch (cause) {
-    // error-policy:J4 explicit diagnostic degrade — the HTTP status remains the
-    // authoritative failed probe; only the optional provider body is unavailable.
-    return `[response body unavailable: ${cause instanceof Error ? cause.message : String(cause)}]`;
+const MAX_MODEL_CATALOG_BYTES = 1_048_576;
+const MAX_DISCOVERED_MODELS = 100;
+
+async function readBoundedResponseText(
+  response: Response,
+): Promise<{ text: string; truncated: boolean }> {
+  const reader = response.body?.getReader();
+  if (!reader) return { text: "", truncated: false };
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  while (true) {
+    const next = await reader.read();
+    if (next.done) break;
+    if (total + next.value.byteLength > MAX_MODEL_CATALOG_BYTES) {
+      await reader.cancel();
+      return { text: "", truncated: true };
+    }
+    chunks.push(next.value);
+    total += next.value.byteLength;
   }
+  const merged = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    merged.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return { text: new TextDecoder().decode(merged), truncated: false };
+}
+
+function parseBoundedModelIds(text: string): {
+  modelIds?: string[];
+  truncated: boolean;
+} {
+  if (!text) return { truncated: false };
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    // error-policy:J3 provider catalog JSON is untrusted. A malformed optional
+    // catalog does not turn a successful authenticated probe into fake models.
+    return { truncated: false };
+  }
+  if (!parsed || typeof parsed !== "object" || !("data" in parsed)) {
+    return { truncated: false };
+  }
+  const data = (parsed as { data?: unknown }).data;
+  if (!Array.isArray(data)) return { truncated: false };
+  const unique = new Set<string>();
+  for (const item of data) {
+    if (!item || typeof item !== "object") continue;
+    const id = (item as { id?: unknown }).id;
+    if (typeof id !== "string") continue;
+    const normalized = id.trim();
+    if (!normalized || normalized.length > 256) continue;
+    unique.add(normalized);
+    if (unique.size === MAX_DISCOVERED_MODELS) break;
+  }
+  return {
+    ...(unique.size > 0 ? { modelIds: [...unique] } : {}),
+    truncated: data.length > MAX_DISCOVERED_MODELS,
+  };
 }
 
 /**
@@ -89,15 +153,27 @@ export async function probeDirectApiKey(
           });
     const latencyMs = Date.now() - start;
     if (!response.ok) {
-      const text = await readProbeFailureBody(response);
       return {
         ok: false,
         status: response.status,
-        error: `${providerId} ${response.status}: ${text}`,
+        // Provider bodies are untrusted and have historically included request
+        // diagnostics. Never reflect one across the account API boundary where
+        // it could echo credentials into UI state, logs, or evidence.
+        error: `${providerId} credential probe failed (HTTP ${response.status})`,
         latencyMs,
       };
     }
-    return { ok: true, status: response.status, latencyMs };
+    const catalogBody = await readBoundedResponseText(response);
+    const catalog = catalogBody.truncated
+      ? { truncated: true }
+      : parseBoundedModelIds(catalogBody.text);
+    return {
+      ok: true,
+      status: response.status,
+      latencyMs,
+      ...(catalog.modelIds ? { modelIds: catalog.modelIds } : {}),
+      ...(catalog.truncated ? { modelCatalogTruncated: true } : {}),
+    };
   } catch (err) {
     // error-policy:J1 boundary translation — callers need a typed failed probe
     // for transport/timeout failures, distinct from an authenticated HTTP status.

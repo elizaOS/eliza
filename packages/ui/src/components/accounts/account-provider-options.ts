@@ -110,6 +110,22 @@ export const ACCOUNT_PROVIDER_OPTIONS: AccountProviderOption[] = [
       "Direct Moonshot API billing for chat and OpenCode coding agents. This does not use Kimi membership quota.",
     eligibility: ["chat", "coding agent", "API key", "PAYG"],
   },
+  {
+    id: "openrouter-api",
+    name: "OpenRouter",
+    category: "chat",
+    description:
+      "OpenRouter credits or BYOK routing with bounded model discovery.",
+    eligibility: ["model inference", "coding agent", "API key"],
+  },
+  {
+    id: "xai-api",
+    name: "xAI API",
+    category: "chat",
+    description:
+      "Metered xAI API access for Grok models; separate from Grok subscription login.",
+    eligibility: ["model inference", "coding agent", "API key"],
+  },
 ];
 
 export function getAccountProviderOption(

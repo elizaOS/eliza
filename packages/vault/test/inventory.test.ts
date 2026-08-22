@@ -90,7 +90,7 @@ describe("inventory — provider id inference", () => {
     expect(inferProviderId("OPENAI_API_KEY")).toBe("openai");
     expect(inferProviderId("ANTHROPIC_API_KEY")).toBe("anthropic");
     expect(inferProviderId("OPENROUTER_API_KEY")).toBe("openrouter");
-    expect(inferProviderId("XAI_API_KEY")).toBe("grok");
+    expect(inferProviderId("XAI_API_KEY")).toBe("xai");
     expect(inferProviderId("GOOGLE_GENERATIVE_AI_API_KEY")).toBe("gemini");
   });
 

@@ -99,6 +99,8 @@ describe("runtime and shared public literals", () => {
       "zai-api",
       "moonshot-api",
       "cerebras-api",
+      "openrouter-api",
+      "xai-api",
     ]);
 
     expect(new Set(LINKED_ACCOUNT_PROVIDER_IDS).size).toBe(
