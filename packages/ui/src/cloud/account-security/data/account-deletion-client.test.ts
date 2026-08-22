@@ -6,7 +6,10 @@ const apiMock = vi.hoisted(() => vi.fn());
 
 vi.mock("../../lib/api-client", () => ({ api: apiMock }));
 
-import { getAccountDeletionStatus } from "./account-deletion-client";
+import {
+  getAccountDeletionStatus,
+  submitAccountDeletion,
+} from "./account-deletion-client";
 
 beforeEach(() => apiMock.mockReset());
 
@@ -56,6 +59,51 @@ describe("getAccountDeletionStatus", () => {
       request: { requestId: "request-1" },
     });
     await expect(getAccountDeletionStatus()).rejects.toThrow(
+      "Account deletion receipt was malformed",
+    );
+  });
+});
+
+describe("submitAccountDeletion", () => {
+  it("returns the parsed receipt from a complete envelope", async () => {
+    apiMock.mockResolvedValueOnce({
+      request: {
+        requestId: "request-2",
+        status: "scheduled",
+        requestedAt: "2026-08-19T00:00:00.000Z",
+        scheduledDeletionAt: "2026-09-18T00:00:00.000Z",
+        identityDeactivated: true,
+        completedAt: null,
+      },
+    });
+
+    await expect(submitAccountDeletion()).resolves.toEqual({
+      requestId: "request-2",
+      status: "scheduled",
+      requestedAt: "2026-08-19T00:00:00.000Z",
+      scheduledDeletionAt: "2026-09-18T00:00:00.000Z",
+      identityDeactivated: true,
+      completedAt: null,
+    });
+    expect(apiMock).toHaveBeenCalledWith("/api/v1/me/account-deletion", {
+      method: "POST",
+      json: { confirmation: "DELETE" },
+    });
+  });
+
+  it("rejects a malformed receipt instead of surfacing undefined fields", async () => {
+    apiMock.mockResolvedValueOnce({ request: { requestId: "request-2" } });
+    await expect(submitAccountDeletion()).rejects.toThrow(
+      "Account deletion receipt was malformed",
+    );
+
+    apiMock.mockResolvedValueOnce({ requestId: "request-2" });
+    await expect(submitAccountDeletion()).rejects.toThrow(
+      "Account deletion receipt was malformed",
+    );
+
+    apiMock.mockResolvedValueOnce("accepted");
+    await expect(submitAccountDeletion()).rejects.toThrow(
       "Account deletion receipt was malformed",
     );
   });

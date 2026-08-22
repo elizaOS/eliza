@@ -100,11 +100,13 @@ export async function getAccountDeletionStatus(): Promise<AccountDeletionStatusD
 }
 
 export async function submitAccountDeletion(): Promise<AccountDeletionRequestDto> {
-  const response = await api<{ request: AccountDeletionRequestDto }>(
-    "/api/v1/me/account-deletion",
-    { method: "POST", json: { confirmation: "DELETE" } },
-  );
-  return response.request;
+  const response = await api<unknown>("/api/v1/me/account-deletion", {
+    method: "POST",
+    json: { confirmation: "DELETE" },
+  });
+  if (!isRecord(response))
+    throw new Error("Account deletion receipt was malformed");
+  return parseRequest(response.request);
 }
 
 export async function endLocalSessionAfterDeletion(): Promise<void> {
