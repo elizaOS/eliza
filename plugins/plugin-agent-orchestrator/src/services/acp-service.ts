@@ -2360,7 +2360,21 @@ export class AcpService extends Service {
     // session's selected-account credentials (the native transport keeps the
     // spawn-time client, which already has them) and the per-session git index
     // env that keeps same-repo sessions from sharing one mutable index file.
-    const promptCredentials = await this.accountCredentialsForSession(session);
+    let promptCredentials: Record<string, string> | undefined;
+    try {
+      promptCredentials = await this.accountCredentialsForSession(session);
+    } catch (err) {
+      // error-policy:J1 The CLI prompt boundary persists the typed account
+      // failure before propagating it; no subprocess may inherit ambient
+      // credentials after a session's pinned account pool is exhausted.
+      const message = errorMessage(err);
+      await this.store.updateStatus(sessionId, "errored", message);
+      this.emitSessionEvent(sessionId, "error", {
+        message,
+        ...this.authFailureFields(message, session.agentType),
+      });
+      throw err;
+    }
     const promptEnv: Record<string, string> = {
       ...(opts.env ?? {}),
       ...(this.gitIndexEnvForSession(session) ?? {}),
@@ -4409,8 +4423,8 @@ export class AcpService extends Service {
    * needs-reauth / disabled / token resolve failed) does this deliberately
    * fail over to a fresh pick — and then re-stamps the session so every
    * account-keyed consumer follows the credential actually injected. Returns
-   * undefined when the session has no linked account and no account is
-   * available.
+   * Returns undefined only when the session never had a linked account. A
+   * stamped session with no remaining compatible account fails closed.
    */
   private async accountCredentialsForSession(
     session: SessionInfo,
@@ -4430,7 +4444,26 @@ export class AcpService extends Service {
       sessionKey: session.id,
       exclude: [meta.accountId],
     });
-    if (!failover) return undefined;
+    if (!failover) {
+      // This session was explicitly stamped to a linked account. Returning no
+      // credential patch here would make buildEnv() fall back to ambient host
+      // API keys or CLI homes, silently changing account and billing authority
+      // on a follow-up prompt or reconnect while receipts remain pinned to the
+      // exhausted account.
+      throw new ElizaError(
+        "The coding session's pinned account is unavailable and no compatible failover remains",
+        {
+          code: "CODING_ACCOUNT_SESSION_EXHAUSTED",
+          context: {
+            sessionId: session.id,
+            agentType: session.agentType,
+            providerId: meta.providerId,
+            accountId: meta.accountId,
+          },
+          severity: "ephemeral",
+        },
+      );
+    }
     this.log("warn", "coding account failed over on follow-up prompt", {
       sessionId: session.id,
       previous: meta.accountId,

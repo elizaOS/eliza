@@ -14,7 +14,7 @@ import type {
   IAgentRuntime,
 } from "@elizaos/core";
 import { setCodingAgentSelectorBridge } from "@elizaos/core";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AcpService } from "../services/acp-service.js";
 import type { CodingAccountMeta } from "../services/coding-account-selection.js";
 import { InMemorySessionStore } from "../services/session-store.js";
@@ -107,6 +107,11 @@ type CredentialResolver = {
   ): Promise<Record<string, string> | undefined>;
 };
 
+type CliBoundaryHarness = {
+  started: boolean;
+  runAcpx: ReturnType<typeof vi.fn>;
+};
+
 describe("follow-up prompt account pinning (cli transport)", () => {
   let store: InMemorySessionStore;
   let service: AcpService;
@@ -194,21 +199,72 @@ describe("follow-up prompt account pinning (cli transport)", () => {
     expect(calls).toHaveLength(0);
   });
 
-  it("returns undefined when neither the pinned account nor a failover is available", async () => {
+  it("fails closed instead of using ambient credentials when the pinned pool is exhausted", async () => {
     const { bridge } = makeBridge({ healthyIds: [] });
     setCodingAgentSelectorBridge(bridge);
     const session = makeSession();
     await store.create(session);
+    const previousApiKey = process.env.ANTHROPIC_API_KEY;
+    process.env.ANTHROPIC_API_KEY = "ambient-payg-must-not-be-used";
+    try {
+      await expect(
+        (service as unknown as CredentialResolver).accountCredentialsForSession(
+          session,
+        ),
+      ).rejects.toMatchObject({
+        code: "CODING_ACCOUNT_SESSION_EXHAUSTED",
+        context: {
+          accountId: "acct-a",
+          agentType: "claude",
+          providerId: "anthropic-subscription",
+          sessionId: session.id,
+        },
+      });
 
-    const env = await (
-      service as unknown as CredentialResolver
-    ).accountCredentialsForSession(session);
+      // No failover happened, so the session stays keyed to A and cannot be
+      // re-stamped to the unrelated ambient PAYG credential.
+      const sessionAccount = session.metadata?.account;
+      expect(sessionAccount).toBeDefined();
+      if (!sessionAccount) throw new Error("Expected the session account pin");
+      expect((sessionAccount as CodingAccountMeta).accountId).toBe("acct-a");
+    } finally {
+      if (previousApiKey === undefined) delete process.env.ANTHROPIC_API_KEY;
+      else process.env.ANTHROPIC_API_KEY = previousApiKey;
+    }
+  });
 
-    expect(env).toBeUndefined();
-    // No failover happened, so the session must stay keyed to A.
-    const sessionAccount = session.metadata?.account;
-    expect(sessionAccount).toBeDefined();
-    if (!sessionAccount) throw new Error("Expected the session account pin");
-    expect((sessionAccount as CodingAccountMeta).accountId).toBe("acct-a");
+  it("does not spawn a cli follow-up with ambient credentials when the pinned pool is exhausted", async () => {
+    const { bridge } = makeBridge({ healthyIds: [] });
+    setCodingAgentSelectorBridge(bridge);
+    const session: SessionInfo = {
+      ...makeSession(),
+      metadata: {
+        account: { ...ACCOUNT_A },
+        transportMode: "cli",
+      },
+    };
+    await store.create(session);
+    const harness = service as unknown as CliBoundaryHarness;
+    harness.started = true;
+    harness.runAcpx = vi.fn();
+    const previousApiKey = process.env.ANTHROPIC_API_KEY;
+    process.env.ANTHROPIC_API_KEY = "ambient-payg-must-not-be-used";
+    try {
+      await expect(
+        service.sendPrompt(session.id, "continue"),
+      ).rejects.toMatchObject({
+        code: "CODING_ACCOUNT_SESSION_EXHAUSTED",
+        context: { accountId: "acct-a", sessionId: session.id },
+      });
+
+      expect(harness.runAcpx).not.toHaveBeenCalled();
+      expect(await store.get(session.id)).toMatchObject({
+        status: "errored",
+        metadata: { account: { accountId: "acct-a" } },
+      });
+    } finally {
+      if (previousApiKey === undefined) delete process.env.ANTHROPIC_API_KEY;
+      else process.env.ANTHROPIC_API_KEY = previousApiKey;
+    }
   });
 });
