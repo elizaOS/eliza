@@ -50,7 +50,9 @@ describe("personal-assistant production loader contract", () => {
     // The facade carries the browser component surface …
     expect(facadeA.AppBlockerSettingsCard).toBeTypeOf("function");
     expect(facadeA.WebsiteBlockerSettingsCard).toBeTypeOf("function");
-    expect(facadeA.registerLifeOpsApp).toBeTypeOf("function");
+    // The removed LifeOps overview has no inert registration shim: renderer
+    // behavior is the real lifecycle service plus the two settings cards.
+    expect("registerLifeOpsApp" in facadeA).toBe(false);
     // … and no longer the removed React capture effect.
     expect("LifeOpsActivitySignalsEffect" in facadeA).toBe(false);
     // The register entry exports nothing; consumers that expected facade

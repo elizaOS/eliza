@@ -127,7 +127,7 @@ describe("PhoneView — unified GUI dialer", () => {
       ),
     ).toBe(true);
 
-    fireEvent.click(button("call"));
+    fireEvent.click(button("phone-call"));
     await waitFor(() =>
       expect(phoneBridge.placeCall).toHaveBeenCalledWith({ number: "5551234" }),
     );
@@ -165,7 +165,7 @@ describe("PhoneView — unified GUI dialer", () => {
     render(React.createElement(PhoneView));
     await screen.findByText("Ada Lovelace");
     fireEvent.click(button("key-1"));
-    fireEvent.click(button("call"));
+    fireEvent.click(button("phone-call"));
     await screen.findByText("CALL_PHONE denied");
     expect(phoneBridge.placeCall).toHaveBeenCalledWith({ number: "1" });
   });
@@ -175,7 +175,7 @@ describe("PhoneView — unified GUI dialer", () => {
     render(React.createElement(PhoneView));
     await screen.findByText("Ada Lovelace");
     fireEvent.click(button("key-5"));
-    fireEvent.click(button("call"));
+    fireEvent.click(button("phone-call"));
     await screen.findByText("CALL_PHONE denied");
     expect(phoneBridge.placeCall).toHaveBeenCalledWith({ number: "5" });
     // The dialer stays interactive: backspace still clears the stuck digit.
@@ -191,6 +191,39 @@ describe("PhoneView — unified GUI dialer", () => {
 });
 
 describe("PhoneView — recent calls", () => {
+  it("shows a disabled refresh control while the first device read is pending", async () => {
+    let resolveCalls!: (value: { calls: typeof recentCalls }) => void;
+    phoneBridge.listRecentCalls.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveCalls = resolve;
+        }),
+    );
+    render(React.createElement(PhoneView));
+    await screen.findByText("loading");
+    expect(button("phone-refresh").disabled).toBe(true);
+    resolveCalls({ calls: recentCalls });
+    await screen.findByText("Ada Lovelace");
+  });
+
+  it("renders the designed empty recent-call state", async () => {
+    phoneBridge.listRecentCalls.mockResolvedValueOnce({ calls: [] });
+    render(React.createElement(PhoneView));
+    await screen.findByText("None");
+    expect(button("phone-call").disabled).toBe(true);
+  });
+
+  it("renders one stable bridge control for each shared operation", async () => {
+    render(React.createElement(PhoneView));
+    await screen.findByText("Ada Lovelace");
+    expect(
+      document.querySelectorAll('[data-agent-id="phone-call"]'),
+    ).toHaveLength(1);
+    expect(
+      document.querySelectorAll('[data-agent-id="phone-refresh"]'),
+    ).toHaveLength(1);
+  });
+
   it("loads recent rows on mount with names and a per-row Call action", async () => {
     render(React.createElement(PhoneView));
     await screen.findByText("Ada Lovelace");
@@ -251,6 +284,16 @@ describe("PhoneView — recent calls", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("refreshes from the single in-surface bridge control", async () => {
+    render(React.createElement(PhoneView));
+    await screen.findByText("Ada Lovelace");
+    expect(phoneBridge.listRecentCalls).toHaveBeenCalledTimes(1);
+    fireEvent.click(button("phone-refresh"));
+    await waitFor(() =>
+      expect(phoneBridge.listRecentCalls).toHaveBeenCalledTimes(2),
+    );
   });
 });
 

@@ -116,6 +116,7 @@ export function PhoneSpatialView({
   onAction,
 }: PhoneSpatialViewProps) {
   const dispatch = (action: string) => () => onAction?.(action);
+  const canCall = snapshot.dialed.trim().length > 0;
   return (
     <Card gap={1} padding={1}>
       <HStack gap={1} align="center">
@@ -165,7 +166,17 @@ export function PhoneSpatialView({
         >
           +
         </Button>
-        <Button grow={1} agent="call" onPress={dispatch("call")}>
+        <Button
+          grow={1}
+          agent={{
+            id: "phone-call",
+            role: "button",
+            label: "Call dialed number",
+          }}
+          disabled={!canCall}
+          variant={canCall ? "solid" : "outline"}
+          onPress={dispatch("call")}
+        >
           Call
         </Button>
         <Button
@@ -198,6 +209,21 @@ export function PhoneSpatialView({
       </HStack>
 
       <Divider label="recent" />
+      <HStack gap={1} justify="end">
+        <Button
+          variant="ghost"
+          tone="default"
+          agent={{
+            id: "phone-refresh",
+            role: "button",
+            label: "Refresh recent calls",
+          }}
+          disabled={snapshot.loading}
+          onPress={dispatch("refresh")}
+        >
+          {snapshot.loading ? "Refreshing…" : "Refresh"}
+        </Button>
+      </HStack>
       {snapshot.calls.length === 0 ? (
         <Text tone="muted" align="center" style="caption">
           None

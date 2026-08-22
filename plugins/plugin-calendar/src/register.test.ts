@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import "./register.ts";
 
 describe("Calendar app registration", () => {
-  it("matches the runtime route and grants the Calendar surface contract", () => {
+  it("matches the runtime route and targets the canonical Calendar component", () => {
     const pages = listAppShellPages().filter(
       (page) => page.pluginId === "@elizaos/plugin-calendar",
     );
@@ -30,5 +30,6 @@ describe("Calendar app registration", () => {
       header: "fullscreen",
       capabilities: ["agent-surface"],
     });
+    expect(String(pages[0]?.loader)).toContain("SimpleCalendarView");
   });
 });
