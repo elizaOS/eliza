@@ -468,6 +468,7 @@ async function resetSharedSchedulingState(
 
 function assertScenarioModelFixturesConsumed(
   runtime: AgentRuntime,
+  enforceNoUnexpectedCalls: boolean,
 ): string | undefined {
   const assertConsumed = (runtime as RuntimeWithScenarioModelFixtures)
     .assertScenarioModelFixturesConsumed;
@@ -476,10 +477,16 @@ function assertScenarioModelFixturesConsumed(
   }
   try {
     assertConsumed();
-    return undefined;
   } catch (err) {
     return err instanceof Error ? err.message : String(err);
   }
+  const unexpectedCalls = enforceNoUnexpectedCalls
+    ? captureScenarioModelFixtureDiagnostics(runtime)?.unexpectedCalls
+    : undefined;
+  if (unexpectedCalls && unexpectedCalls.length > 0) {
+    return `deterministic model attempt observed unexpected call(s): ${JSON.stringify(unexpectedCalls)}`;
+  }
+  return undefined;
 }
 
 function captureScenarioModelFixtureDiagnostics(
@@ -2759,7 +2766,10 @@ export async function runScenario(
       }
     }
 
-    const fixtureFailure = assertScenarioModelFixturesConsumed(runtime);
+    const fixtureFailure = assertScenarioModelFixturesConsumed(
+      runtime,
+      report.modelFixtureMode !== "legacy-fallback",
+    );
     fixtureConsumptionChecked = true;
     report.modelFixtureDiagnostics =
       captureScenarioModelFixtureDiagnostics(runtime);
@@ -2776,7 +2786,10 @@ export async function runScenario(
     logger.warn(`[scenario-runner] ${scenario.id} threw: ${report.error}`);
   } finally {
     if (!fixtureConsumptionChecked) {
-      const fixtureFailure = assertScenarioModelFixturesConsumed(runtime);
+      const fixtureFailure = assertScenarioModelFixturesConsumed(
+        runtime,
+        report.modelFixtureMode !== "legacy-fallback",
+      );
       if (fixtureFailure) {
         report.status = "failed";
         report.failedAssertions.push({

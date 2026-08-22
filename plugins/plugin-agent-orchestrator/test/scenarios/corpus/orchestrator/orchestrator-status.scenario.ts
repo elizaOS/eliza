@@ -50,8 +50,6 @@ export default scenario({
           modelType: "ACTION_PLANNER",
           input: { includes: COMMAND_TEXT },
           toolNames: [
-            "REPLY",
-            "IGNORE",
             ORCHESTRATOR_STATUS_COMMAND_ACTION,
             "REPLY",
             "IGNORE",
@@ -61,6 +59,15 @@ export default scenario({
         response: {
           text: '{"text":"","thought":"Dispatch the deterministic orchestrator-status slash command.","messageToUser":"Here\'s the orchestrator status.","completed":true,"finishReason":"tool-calls","toolCalls":[{"id":"call-orchestrator-status","name":"ORCHESTRATOR_STATUS_COMMAND","type":"function","arguments":{}}]}',
         },
+      },
+      {
+        name: "orchestrator-status-post-turn-evaluator",
+        match: {
+          modelType: "TEXT_SMALL",
+          input: { includes: "# Task: Post-turn evaluation" },
+          toolNames: [],
+        },
+        response: { text: "{}" },
       },
     ],
   },

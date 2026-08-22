@@ -75,6 +75,15 @@ export default scenario({
           text: '{"success":true,"decision":"FINISH","thought":"No active task agents; nothing more to do.","messageToUser":"There are no active coding sub-agents right now."}',
         },
       },
+      {
+        name: "orchestrator-list-agents-post-turn-evaluator",
+        match: {
+          modelType: "TEXT_SMALL",
+          input: { includes: "# Task: Post-turn evaluation" },
+          toolNames: [],
+        },
+        response: { text: "{}" },
+      },
     ],
   },
   id: "agent-orchestrator.list-agents",
