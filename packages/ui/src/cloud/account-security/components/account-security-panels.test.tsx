@@ -243,6 +243,8 @@ describe("account-security panels", () => {
     expect(deletionDialog).not.toContain("?requested=");
     expect(deletionPage).toContain("readAccountDeletionStatus");
     expect(deletionPage).toContain("cancelAccountDeletion");
+    expect(deletionPage).toContain("begin restoring account access");
+    expect(deletionPage).toContain("<Button asChild>");
     expect(deletionPage).not.toContain("useSearchParams");
     expect(deletionPage).not.toContain('params.get("requested")');
     expect(source).not.toContain("/api/v1/me/export");

@@ -1,7 +1,12 @@
 /** Server-authoritative external request, status, export, and recovery page. */
 
 import type { AccountDeletionStatusDto } from "@elizaos/cloud-shared/types/account-lifecycle";
-import { CheckCircle2, RefreshCw, ShieldCheck } from "lucide-react";
+import {
+  CheckCircle2,
+  CircleAlert,
+  RefreshCw,
+  ShieldCheck,
+} from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { Button } from "../../../../components/ui/button";
@@ -33,6 +38,26 @@ function statusHeading(request: AccountDeletionStatusDto): string {
       return "Account deletion canceled";
     case "action_required":
       return "Deletion needs support review";
+  }
+}
+
+function statusInstruction(request: AccountDeletionStatusDto): string {
+  switch (request.status) {
+    case "reserved":
+      return "Account access is disabled while the portable export is prepared.";
+    case "recovery":
+      return "Account access is disabled. Download the export or cancel before the recovery window expires.";
+    case "canceling":
+      return "Account access remains disabled until export cleanup and identity reactivation are durably complete.";
+    case "scheduled":
+    case "processing":
+      return "The recovery window has ended and permanent deletion is being reconciled.";
+    case "completed":
+      return "The personal account and associated data have been permanently erased.";
+    case "canceled":
+      return "Cancellation cleanup is complete and account access has been restored.";
+    case "action_required":
+      return "Account access remains disabled. Contact support so the blocked deletion phase can be resolved safely.";
   }
 }
 
@@ -134,13 +159,29 @@ export default function AccountDeletionPage() {
         </div>
 
         {request ? (
-          <section className="space-y-4 rounded-lg border border-success/40 bg-bg-elevated p-6">
-            <CheckCircle2 className="h-7 w-7 text-success" />
+          <section
+            className={`space-y-4 rounded-lg border bg-bg-elevated p-6 ${
+              request.status === "action_required"
+                ? "border-danger/40"
+                : request.status === "completed" ||
+                    request.status === "canceled"
+                  ? "border-success/40"
+                  : "border-border"
+            }`}
+          >
+            {request.status === "completed" || request.status === "canceled" ? (
+              <CheckCircle2 className="h-7 w-7 text-success" />
+            ) : request.status === "action_required" ? (
+              <CircleAlert className="h-7 w-7 text-danger" />
+            ) : (
+              <RefreshCw className="h-7 w-7 text-accent" />
+            )}
             <h2 className="text-xl font-semibold">{statusHeading(request)}</h2>
             <p className="text-muted-strong">
               Request <code>{request.requestId}</code> is in
               server-authoritative state <strong>{request.status}</strong>.
             </p>
+            <p className="text-muted-strong">{statusInstruction(request)}</p>
             {request.recoveryExpiresAt ? (
               <p className="text-sm text-muted-strong">
                 Recovery is available through{" "}
@@ -195,7 +236,9 @@ export default function AccountDeletionPage() {
                   className="block space-y-2 text-sm"
                   htmlFor="cancel-deletion-confirmation"
                 >
-                  <span>Type CANCEL DELETION to restore account access</span>
+                  <span>
+                    Type CANCEL DELETION to begin restoring account access
+                  </span>
                   <Input
                     id="cancel-deletion-confirmation"
                     value={cancelConfirmation}
@@ -244,12 +287,11 @@ export default function AccountDeletionPage() {
             ) : session.authenticated ? (
               <AccountDeletionDialog onAccepted={setRequest} />
             ) : (
-              <Link
-                to="/login?returnTo=%2Faccount-deletion"
-                className="inline-flex rounded-md bg-accent px-4 py-2 text-sm font-medium text-accent-foreground"
-              >
-                Sign in to request deletion
-              </Link>
+              <Button asChild>
+                <Link to="/login?returnTo=%2Faccount-deletion">
+                  Sign in to request deletion
+                </Link>
+              </Button>
             )}
           </section>
         )}

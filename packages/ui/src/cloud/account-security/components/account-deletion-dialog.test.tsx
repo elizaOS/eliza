@@ -1,4 +1,5 @@
-/** Renders every account-deletion admission state with deterministic client responses. */
+/** Exercises exact confirmation, recent-auth errors, and retryable deletion acceptance in jsdom. */
+
 // @vitest-environment jsdom
 
 import {
@@ -10,127 +11,87 @@ import {
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const deletionClient = vi.hoisted(() => ({
-  getAccountDeletionStatus: vi.fn(),
-  submitAccountDeletion: vi.fn(),
-  endLocalSessionAfterDeletion: vi.fn(),
-}));
+const submitMock = vi.hoisted(() => vi.fn());
+const endSessionMock = vi.hoisted(() => vi.fn());
 
-vi.mock("../data/account-deletion-client", () => deletionClient);
+vi.mock("../data/account-deletion-client", () => ({
+  endLocalSessionAfterDeletion: endSessionMock,
+  submitAccountDeletion: submitMock,
+}));
 
 import { AccountDeletionDialog } from "./account-deletion-dialog";
 
-beforeEach(() => {
-  deletionClient.getAccountDeletionStatus.mockReset();
-  deletionClient.submitAccountDeletion.mockReset();
-  deletionClient.endLocalSessionAfterDeletion.mockReset();
-});
-afterEach(cleanup);
+const acceptedRequest = {
+  requestId: "33333333-3333-4333-8333-333333333333",
+  status: "reserved" as const,
+  requestedAt: "2026-08-22T12:00:00.000Z",
+  recoveryExpiresAt: "2026-09-21T12:00:00.000Z",
+  scheduledDeletionAt: "2026-09-21T12:00:00.000Z",
+  irreversibleAt: null,
+  completedAt: null,
+  identityDeactivated: true,
+  accessState: "fenced" as const,
+  canCancel: true,
+  nextAction: "wait_for_export" as const,
+  export: null,
+};
 
 describe("AccountDeletionDialog", () => {
-  it("keeps the destructive trigger disabled while status loads", async () => {
-    let resolveStatus:
-      | ((value: { state: "available"; request: null }) => void)
-      | undefined;
-    deletionClient.getAccountDeletionStatus.mockReturnValue(
-      new Promise((resolve) => {
-        resolveStatus = resolve;
-      }),
+  beforeEach(() => {
+    submitMock.mockReset();
+    endSessionMock.mockReset();
+    endSessionMock.mockResolvedValue(undefined);
+  });
+
+  afterEach(() => {
+    cleanup();
+  });
+
+  it("requires exact confirmation and leaves recent-auth failures visible and retryable", async () => {
+    const onAccepted = vi.fn();
+    submitMock
+      .mockRejectedValueOnce(new Error("Recent authentication is required"))
+      .mockResolvedValueOnce({
+        request: acceptedRequest,
+        statusCredential: "status-capability",
+        recoveryCredential: "recovery-capability",
+      });
+
+    render(<AccountDeletionDialog onAccepted={onAccepted} />);
+    fireEvent.click(screen.getByTestId("delete-account-trigger"));
+
+    const confirmation = screen.getByLabelText("Type DELETE to confirm");
+    const submit = screen.getByTestId(
+      "delete-account-confirm",
+    ) as HTMLButtonElement;
+    expect(submit.disabled).toBe(true);
+
+    fireEvent.change(confirmation, { target: { value: "delete" } });
+    expect(submit.disabled).toBe(true);
+    fireEvent.change(confirmation, { target: { value: "DELETE" } });
+    expect(submit.disabled).toBe(false);
+
+    fireEvent.click(submit);
+    expect((await screen.findByRole("alert")).textContent).toContain(
+      "Recent authentication is required",
     );
-    render(<AccountDeletionDialog />);
+    expect(submit.disabled).toBe(false);
 
-    expect(
-      (screen.getByTestId("delete-account-trigger") as HTMLButtonElement)
-        .disabled,
-    ).toBe(true);
-    expect(screen.getByText("Checking deletion status…")).toBeTruthy();
-    resolveStatus?.({ state: "available", request: null });
-    await screen.findByText("Delete account");
-  });
-
-  it("shows support without a destructive action when lifecycle admission is unavailable", async () => {
-    deletionClient.getAccountDeletionStatus.mockResolvedValue({
-      state: "lifecycle_unavailable",
-      request: null,
-      code: "LIFECYCLE_RESERVATION_REQUIRED",
-      message: "Lifecycle reservation required",
-    });
-    render(<AccountDeletionDialog />);
-
-    expect(
-      ((await screen.findByText("Deletion unavailable")) as HTMLButtonElement)
-        .disabled,
-    ).toBe(true);
-    expect(
-      screen
-        .getByRole("link", { name: "Contact support" })
-        .getAttribute("href"),
-    ).toContain("mailto:support@eliza.cloud");
-    expect(deletionClient.submitAccountDeletion).not.toHaveBeenCalled();
-  });
-
-  it("distinguishes transfer requirements and existing receipts", async () => {
-    deletionClient.getAccountDeletionStatus.mockResolvedValueOnce({
-      state: "transfer_required",
-      request: null,
-      code: "TRANSFER_REQUIRED",
-      message: "Transfer resources",
-    });
-    const first = render(<AccountDeletionDialog />);
-    expect(
-      ((await screen.findByText("Transfer required")) as HTMLButtonElement)
-        .disabled,
-    ).toBe(true);
-    first.unmount();
-
-    deletionClient.getAccountDeletionStatus.mockResolvedValueOnce({
-      state: "existing_request",
-      request: {
-        requestId: "request-1",
-        status: "action_required",
-        requestedAt: "2026-08-19T00:00:00.000Z",
-        scheduledDeletionAt: "2026-09-18T00:00:00.000Z",
-        identityDeactivated: false,
-        completedAt: null,
-      },
-    });
-    render(<AccountDeletionDialog />);
-    expect(
-      ((await screen.findByText("Request needs support")) as HTMLButtonElement)
-        .disabled,
-    ).toBe(true);
-    expect(screen.getByText(/Reference request-1/)).toBeTruthy();
-  });
-
-  it("only exposes confirmation after the server reports available", async () => {
-    deletionClient.getAccountDeletionStatus.mockResolvedValue({
-      state: "available",
-      request: null,
-    });
-    render(<AccountDeletionDialog />);
-
-    const trigger = await screen.findByText("Delete account");
-    expect((trigger as HTMLButtonElement).disabled).toBe(false);
-    fireEvent.click(trigger);
-    expect(screen.getByLabelText("Type DELETE to confirm")).toBeTruthy();
-    expect(
-      (screen.getByTestId("delete-account-confirm") as HTMLButtonElement)
-        .disabled,
-    ).toBe(true);
+    fireEvent.click(submit);
+    await waitFor(() =>
+      expect(onAccepted).toHaveBeenCalledWith(acceptedRequest),
+    );
+    expect(endSessionMock).toHaveBeenCalledOnce();
+    expect(submitMock).toHaveBeenCalledTimes(2);
   });
 
   it("does not retire the session when the POST receipt is malformed", async () => {
-    deletionClient.getAccountDeletionStatus.mockResolvedValue({
-      state: "available",
-      request: null,
-    });
-    deletionClient.submitAccountDeletion.mockRejectedValue(
+    submitMock.mockRejectedValue(
       new Error("Account deletion response was malformed"),
     );
-    const locationBefore = window.location.href;
     render(<AccountDeletionDialog />);
 
-    fireEvent.click(await screen.findByText("Delete account"));
+    fireEvent.click(screen.getByTestId("delete-account-trigger"));
     fireEvent.change(screen.getByLabelText("Type DELETE to confirm"), {
       target: { value: "DELETE" },
     });
@@ -141,56 +102,22 @@ describe("AccountDeletionDialog", () => {
         screen.getByText("Account deletion response was malformed"),
       ).toBeTruthy();
     });
-    expect(deletionClient.endLocalSessionAfterDeletion).not.toHaveBeenCalled();
-    expect(window.location.href).toBe(locationBefore);
+    expect(endSessionMock).not.toHaveBeenCalled();
   });
 
   it("does not retire the session when the server refuses the confirmed request", async () => {
-    deletionClient.getAccountDeletionStatus.mockResolvedValue({
-      state: "available",
-      request: null,
-    });
-    deletionClient.submitAccountDeletion.mockRejectedValue(
+    submitMock.mockRejectedValue(
       new Error("Permanent account deletion is unavailable"),
     );
     render(<AccountDeletionDialog />);
 
-    fireEvent.click(await screen.findByText("Delete account"));
+    fireEvent.click(screen.getByTestId("delete-account-trigger"));
     fireEvent.change(screen.getByLabelText("Type DELETE to confirm"), {
       target: { value: "DELETE" },
     });
     fireEvent.click(screen.getByTestId("delete-account-confirm"));
 
     await screen.findByText("Permanent account deletion is unavailable");
-    expect(deletionClient.endLocalSessionAfterDeletion).not.toHaveBeenCalled();
-  });
-
-  it("retires the local authority only after a validated confirmed receipt", async () => {
-    deletionClient.getAccountDeletionStatus.mockResolvedValue({
-      state: "available",
-      request: null,
-    });
-    deletionClient.submitAccountDeletion.mockResolvedValue({
-      requestId: "request-validated",
-      status: "scheduled",
-      requestedAt: "2026-08-23T00:00:00.000Z",
-      scheduledDeletionAt: "2026-09-22T00:00:00.000Z",
-      identityDeactivated: true,
-      completedAt: null,
-    });
-    deletionClient.endLocalSessionAfterDeletion.mockResolvedValue(undefined);
-    render(<AccountDeletionDialog />);
-
-    fireEvent.click(await screen.findByText("Delete account"));
-    fireEvent.change(screen.getByLabelText("Type DELETE to confirm"), {
-      target: { value: "DELETE" },
-    });
-    fireEvent.click(screen.getByTestId("delete-account-confirm"));
-
-    await waitFor(() => {
-      expect(deletionClient.endLocalSessionAfterDeletion).toHaveBeenCalledTimes(
-        1,
-      );
-    });
+    expect(endSessionMock).not.toHaveBeenCalled();
   });
 });
