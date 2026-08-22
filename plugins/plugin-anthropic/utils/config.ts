@@ -7,8 +7,7 @@
  * resolution, the `isBrowser` guard, and the CoT-budget, temperature-lock, and
  * max-output-token override parsers documented in this package's CLAUDE.md.
  */
-import type { IAgentRuntime } from "@elizaos/core";
-import { logger } from "@elizaos/core";
+import { ElizaError, type IAgentRuntime, logger } from "@elizaos/core";
 import type { ModelName, ModelSize, ValidatedApiKey } from "../types";
 import { createModelName } from "../types";
 
@@ -192,23 +191,42 @@ export function getAnthropicEffort(
 }
 
 /**
- * Parse a setting that must be a whole positive integer, returning 0 otherwise.
+ * Parse an exact safe integer setting and fail before provider dispatch when an
+ * explicit operator value cannot be honored.
  *
  * `parseInt` stops at the first non-digit and truncates a fraction, so
  * "2048junk" and "2048.9" both yielded 2048 — a thinking budget the operator
- * never set, sent on every request. Mirrors `parsePositiveInt` in
- * plugin-zai/utils/config.ts, which already parses this same setting strictly.
+ * never set, sent on every request. Returning zero/undefined for malformed
+ * explicit configuration would hide the typo as a healthy disabled/default
+ * state.
  */
-function parsePositiveInt(value: string | undefined): number {
-  if (value === undefined) {
-    return 0;
-  }
+function parseIntegerSetting(options: {
+  code: string;
+  setting: string;
+  value: string;
+  allowZero: boolean;
+  entry?: string;
+}): number {
+  const { code, setting, value, allowZero, entry } = options;
   const trimmed = value.trim();
-  if (!/^\d+$/.test(trimmed)) {
-    return 0;
-  }
   const parsed = Number(trimmed);
-  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : 0;
+  const minimum = allowZero ? 0 : 1;
+  if (/^\d+$/.test(trimmed) && Number.isSafeInteger(parsed) && parsed >= minimum) {
+    return parsed;
+  }
+  throw new ElizaError(
+    `Invalid ${setting} value ${JSON.stringify(value)}; expected a ${allowZero ? "non-negative" : "positive"} safe decimal integer`,
+    {
+      code,
+      context: {
+        setting,
+        value,
+        ...(entry === undefined ? {} : { entry }),
+        minimum,
+      },
+      severity: "fatal",
+    }
+  );
 }
 
 export function getCoTBudget(runtime: IAgentRuntime, modelSize: ModelSize): number {
@@ -217,15 +235,22 @@ export function getCoTBudget(runtime: IAgentRuntime, modelSize: ModelSize): numb
 
   const specificValue = getRawSetting(runtime, specificKey);
   if (specificValue !== undefined) {
-    return parsePositiveInt(specificValue);
+    return parseIntegerSetting({
+      code: "ANTHROPIC_COT_BUDGET_INVALID",
+      setting: specificKey,
+      value: specificValue,
+      allowZero: true,
+    });
   }
 
   const sharedValue = getRawSetting(runtime, "ANTHROPIC_COT_BUDGET");
   if (sharedValue !== undefined) {
-    const shared = parsePositiveInt(sharedValue);
-    if (shared > 0) {
-      return shared;
-    }
+    return parseIntegerSetting({
+      code: "ANTHROPIC_COT_BUDGET_INVALID",
+      setting: "ANTHROPIC_COT_BUDGET",
+      value: sharedValue,
+      allowZero: true,
+    });
   }
 
   return 0;
@@ -270,14 +295,33 @@ export function getMaxOutputTokensOverride(
     }
     const separator = trimmed.lastIndexOf(":");
     // Same prefix-parse hole: "sonnet:8192junk" yielded 8192 as a deliberate
-    // per-model cap. An entry that is not a whole positive integer is skipped.
-    const parsed = parsePositiveInt(separator === -1 ? trimmed : trimmed.slice(separator + 1));
-    if (parsed <= 0) {
-      continue;
+    // per-model cap. Reject the explicit configuration instead of silently
+    // skipping it and fabricating a healthy built-in-cap fallback.
+    const modelSelector = separator === -1 ? undefined : trimmed.slice(0, separator).trim();
+    if (modelSelector !== undefined && modelSelector.length === 0) {
+      throw new ElizaError(
+        `Invalid ANTHROPIC_MAX_OUTPUT_TOKENS entry ${JSON.stringify(trimmed)}; model id is required before ':'`,
+        {
+          code: "ANTHROPIC_MAX_OUTPUT_TOKENS_INVALID",
+          context: {
+            setting: "ANTHROPIC_MAX_OUTPUT_TOKENS",
+            value: raw,
+            entry: trimmed,
+          },
+          severity: "fatal",
+        }
+      );
     }
+    const parsed = parseIntegerSetting({
+      code: "ANTHROPIC_MAX_OUTPUT_TOKENS_INVALID",
+      setting: "ANTHROPIC_MAX_OUTPUT_TOKENS",
+      value: separator === -1 ? trimmed : trimmed.slice(separator + 1),
+      allowZero: false,
+      entry: trimmed,
+    });
     if (separator === -1) {
       fallback = parsed;
-    } else if (trimmed.slice(0, separator).trim().toLowerCase() === target) {
+    } else if (modelSelector?.toLowerCase() === target) {
       return parsed;
     }
   }
