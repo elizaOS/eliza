@@ -4,8 +4,9 @@
  * recent-interaction and relationship signals to map a natural-language
  * reference in a message ("me", a name, an `@handle`) onto a known `Entity`;
  * `getEntityDetails` and `formatEntities` merge and render a room's entities for
- * prompt context; `createUniqueUuid` derives a stable per-agent UUID from a base
- * id.
+ * prompt context. Component data is merged per key: arrays are unioned, nested
+ * objects are shallow-merged, and scalars keep last-write. `createUniqueUuid`
+ * derives a stable per-agent UUID from a base id.
  *
  * `resolveTrustedComponentSourceIds` gates which entity components are visible:
  * a component's data is trusted only when its source is the message sender, the
@@ -555,25 +556,41 @@ export async function getEntityDetails({
 				const entityId = entity.id;
 				if (!entityId || uniqueEntities.has(entityId)) continue;
 
-				const allData = {};
-				for (const component of entity.components || []) {
-					Object.assign(allData, component.data);
-				}
-
 				const mergedData: Record<string, unknown> = {};
-				for (const [key, value] of Object.entries(allData)) {
-					if (!mergedData[key]) {
-						mergedData[key] = value;
+				for (const component of entity.components || []) {
+					const componentData = component.data;
+					if (
+						!componentData ||
+						typeof componentData !== "object" ||
+						Array.isArray(componentData)
+					) {
 						continue;
 					}
-
-					if (Array.isArray(mergedData[key]) && Array.isArray(value)) {
-						mergedData[key] = [...new Set([...mergedData[key], ...value])];
-					} else if (
-						typeof mergedData[key] === "object" &&
-						typeof value === "object"
-					) {
-						mergedData[key] = { ...mergedData[key], ...value };
+					for (const [key, value] of Object.entries(componentData)) {
+						if (!(key in mergedData)) {
+							mergedData[key] = value;
+							continue;
+						}
+						const existing = mergedData[key];
+						if (Array.isArray(existing) && Array.isArray(value)) {
+							mergedData[key] = [...new Set([...existing, ...value])];
+							continue;
+						}
+						if (
+							existing !== null &&
+							value !== null &&
+							typeof existing === "object" &&
+							typeof value === "object" &&
+							!Array.isArray(existing) &&
+							!Array.isArray(value)
+						) {
+							mergedData[key] = {
+								...(existing as Record<string, unknown>),
+								...(value as Record<string, unknown>),
+							};
+							continue;
+						}
+						mergedData[key] = value;
 					}
 				}
 
