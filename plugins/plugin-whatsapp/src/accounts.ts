@@ -1,7 +1,7 @@
 /**
  * Multi-account resolution for the WhatsApp connector. Reads accounts from
  * character settings (`character.settings.whatsapp.accounts`) with env-var
- * fallbacks, resolves which transport (Cloud API vs Baileys) each account uses,
+ * fallbacks, resolves direct Baileys session directories for each account,
  * and applies DM/group access policies via the shared allowlist/pairing checks.
  * Env-only deployments still surface as a single `default` account.
  */
@@ -12,11 +12,6 @@ import { checkPairingAllowed, isInAllowlist, type PairingCheckResult } from "@el
  * Default account identifier used when no specific account is configured
  */
 export const DEFAULT_ACCOUNT_ID = "default";
-
-/**
- * Token source indicator
- */
-export type WhatsAppTokenSource = "config" | "env" | "character" | "none";
 
 /**
  * Group-specific runtime configuration (for account resolution)
@@ -42,20 +37,8 @@ export interface WhatsAppAccountRuntimeConfig {
   name?: string;
   /** If false, do not start this WhatsApp account */
   enabled?: boolean;
-  /** Transport implementation for this account */
-  transport?: "cloudapi" | "baileys";
   /** Baileys auth/session directory */
   authDir?: string;
-  /** WhatsApp Cloud API access token */
-  accessToken?: string;
-  /** Phone number ID from WhatsApp Business */
-  phoneNumberId?: string;
-  /** Business account ID */
-  businessAccountId?: string;
-  /** Webhook verification token */
-  webhookVerifyToken?: string;
-  /** API version to use */
-  apiVersion?: string;
   /** Allowlist for DM senders */
   allowFrom?: Array<string | number>;
   /** Allowlist for groups */
@@ -78,13 +61,7 @@ export interface WhatsAppAccountRuntimeConfig {
 export interface WhatsAppMultiAccountConfig {
   /** Default/base configuration applied to all accounts */
   enabled?: boolean;
-  transport?: "cloudapi" | "baileys";
   authDir?: string;
-  accessToken?: string;
-  phoneNumberId?: string;
-  businessAccountId?: string;
-  webhookVerifyToken?: string;
-  apiVersion?: string;
   dmPolicy?: "open" | "allowlist" | "pairing" | "disabled";
   groupPolicy?: "open" | "allowlist" | "disabled";
   mediaMaxMb?: number;
@@ -96,24 +73,13 @@ export interface WhatsAppMultiAccountConfig {
 }
 
 /**
- * Token resolution result
- */
-export interface WhatsAppTokenResolution {
-  token: string;
-  source: WhatsAppTokenSource;
-}
-
-/**
  * Resolved WhatsApp account with all configuration merged
  */
 export interface ResolvedWhatsAppAccount {
   accountId: string;
   enabled: boolean;
   name?: string;
-  accessToken: string;
-  phoneNumberId: string;
-  businessAccountId?: string;
-  tokenSource: WhatsAppTokenSource;
+  authDir?: string;
   configured: boolean;
   config: WhatsAppAccountRuntimeConfig;
 }
@@ -142,13 +108,7 @@ export function getMultiAccountConfig(runtime: IAgentRuntime): WhatsAppMultiAcco
 
   return {
     enabled: characterWhatsApp?.enabled,
-    transport: characterWhatsApp?.transport,
     authDir: characterWhatsApp?.authDir,
-    accessToken: characterWhatsApp?.accessToken,
-    phoneNumberId: characterWhatsApp?.phoneNumberId,
-    businessAccountId: characterWhatsApp?.businessAccountId,
-    webhookVerifyToken: characterWhatsApp?.webhookVerifyToken,
-    apiVersion: characterWhatsApp?.apiVersion,
     dmPolicy: characterWhatsApp?.dmPolicy,
     groupPolicy: characterWhatsApp?.groupPolicy,
     mediaMaxMb: characterWhatsApp?.mediaMaxMb,
@@ -167,17 +127,11 @@ export function listWhatsAppAccountIds(runtime: IAgentRuntime): string[] {
   const ids = new Set<string>();
 
   // Check if default account is configured
-  const envToken = runtime.getSetting("WHATSAPP_ACCESS_TOKEN") as string | undefined;
-  const envPhoneId = runtime.getSetting("WHATSAPP_PHONE_NUMBER_ID") as string | undefined;
-  const envAuthDir =
-    (runtime.getSetting("WHATSAPP_AUTH_DIR") as string | undefined) ??
-    (runtime.getSetting("WHATSAPP_SESSION_PATH") as string | undefined);
+  const envAuthDir = runtime.getSetting("WHATSAPP_AUTH_DIR") as string | undefined;
 
-  const baseConfigured = Boolean(config.accessToken?.trim() && config.phoneNumberId?.trim());
-  const envConfigured = Boolean(envToken?.trim() && envPhoneId?.trim());
   const baileysConfigured = Boolean(config.authDir?.trim() || envAuthDir?.trim());
 
-  if (baseConfigured || envConfigured || baileysConfigured) {
+  if (baileysConfigured) {
     ids.add(DEFAULT_ACCOUNT_ID);
   }
 
@@ -254,37 +208,6 @@ function getAccountConfig(
 }
 
 /**
- * Resolves the access token for a WhatsApp account
- */
-export function resolveWhatsAppToken(
-  runtime: IAgentRuntime,
-  accountId: string
-): WhatsAppTokenResolution {
-  const multiConfig = getMultiAccountConfig(runtime);
-  const accountConfig = getAccountConfig(runtime, accountId);
-
-  // Check account-level config first
-  if (accountConfig?.accessToken?.trim()) {
-    return { token: accountConfig.accessToken.trim(), source: "config" };
-  }
-
-  // For default account, check base config
-  if (accountId === DEFAULT_ACCOUNT_ID) {
-    if (multiConfig.accessToken?.trim()) {
-      return { token: multiConfig.accessToken.trim(), source: "config" };
-    }
-
-    // Check environment/runtime settings
-    const envToken = runtime.getSetting("WHATSAPP_ACCESS_TOKEN") as string | undefined;
-    if (envToken?.trim()) {
-      return { token: envToken.trim(), source: "env" };
-    }
-  }
-
-  return { token: "", source: "none" };
-}
-
-/**
  * Merges base configuration with account-specific overrides
  */
 /**
@@ -303,31 +226,18 @@ export function resolveWhatsAppAccountConfig(
   const accountConfig = getAccountConfig(runtime, accountId) ?? {};
 
   // Get environment/runtime settings for the base config
-  const envToken = runtime.getSetting("WHATSAPP_ACCESS_TOKEN") as string | undefined;
-  const envPhoneId = runtime.getSetting("WHATSAPP_PHONE_NUMBER_ID") as string | undefined;
-  const envBusinessId = runtime.getSetting("WHATSAPP_BUSINESS_ACCOUNT_ID") as string | undefined;
-  const envWebhookToken = runtime.getSetting("WHATSAPP_WEBHOOK_VERIFY_TOKEN") as string | undefined;
   const envDmPolicy = runtime.getSetting("WHATSAPP_DM_POLICY") as string | undefined;
   const envGroupPolicy = runtime.getSetting("WHATSAPP_GROUP_POLICY") as string | undefined;
-  const envAuthDir =
-    (runtime.getSetting("WHATSAPP_AUTH_DIR") as string | undefined) ??
-    (runtime.getSetting("WHATSAPP_SESSION_PATH") as string | undefined);
-  const envTransport = runtime.getSetting("WHATSAPP_AUTH_METHOD") as string | undefined;
+  const envAuthDir = runtime.getSetting("WHATSAPP_AUTH_DIR") as string | undefined;
 
   const envConfig: WhatsAppAccountRuntimeConfig = {
-    transport: envTransport as WhatsAppAccountRuntimeConfig["transport"] | undefined,
     authDir: envAuthDir || undefined,
-    accessToken: envToken || undefined,
-    phoneNumberId: envPhoneId || undefined,
-    businessAccountId: envBusinessId || undefined,
-    webhookVerifyToken: envWebhookToken || undefined,
     dmPolicy: envDmPolicy as WhatsAppAccountRuntimeConfig["dmPolicy"] | undefined,
     groupPolicy: envGroupPolicy as WhatsAppAccountRuntimeConfig["groupPolicy"] | undefined,
   };
 
-  // Only the default account may inherit transport credentials from env/base.
-  // Named accounts share policy defaults but own every provider identity and
-  // credential, preventing accidental cross-account webhook or send routing.
+  // Only the default account may inherit a session directory from env/base.
+  // Named accounts share policy defaults but own their session boundary.
   const namedBaseConfig: WhatsAppAccountRuntimeConfig = {
     enabled: baseConfig.enabled,
     dmPolicy: baseConfig.dmPolicy,
@@ -361,20 +271,14 @@ export function resolveWhatsAppAccount(
   const accountEnabled = merged.enabled !== false;
   const enabled = baseEnabled && accountEnabled;
 
-  const { token, source: tokenSource } = resolveWhatsAppToken(runtime, normalizedAccountId);
-  const phoneNumberId = merged.phoneNumberId?.trim() || "";
-
-  // Determine if this account is actually configured
-  const configured = Boolean(token && phoneNumberId);
+  const authDir = merged.authDir?.trim();
+  const configured = Boolean(authDir);
 
   return {
     accountId: normalizedAccountId,
     enabled,
     name: merged.name?.trim() || undefined,
-    accessToken: token,
-    phoneNumberId,
-    businessAccountId: merged.businessAccountId?.trim() || undefined,
-    tokenSource,
+    authDir,
     configured,
     config: merged,
   };

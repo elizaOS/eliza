@@ -85,7 +85,6 @@ live-LLM journeys, set `ELIZA_LIVE_TEST=1` plus a provider key.
 | Gmail / inbox | OWNER Gmail | AGENT Gmail | `google.gmail.triage` / `.send` / `.manage` | as above |
 | Telegram | OWNER Telegram | AGENT Telegram | `@elizaos/plugin-telegram` configured | as above |
 | Discord | OWNER Discord | AGENT Discord | `DISCORD_BOT_TOKEN` (`@elizaos/plugin-discord`) | as above |
-| WhatsApp | OWNER WhatsApp | AGENT WhatsApp | `ELIZA_WHATSAPP_ACCESS_TOKEN`, `ELIZA_WHATSAPP_PHONE_NUMBER_ID` | as above |
 | X | OWNER X | AGENT X | `@elizaos/plugin-x` configured | as above |
 | iMessage | OWNER macOS bridge | n/a | macOS host; `ELIZA_IMESSAGE_BACKEND` | native (not CI) |
 | Phone / SMS / voice | Twilio number | recipient allowlist | `@elizaos/plugin-phone/twilio` env | `ELIZA_LIVE_TEST=1` |

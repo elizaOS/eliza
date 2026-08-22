@@ -123,4 +123,24 @@ describe("BaileysConnection socket replacement", () => {
     expect(authManager.save).toHaveBeenCalledTimes(1);
     expect(messages).toHaveBeenCalledWith(["current"]);
   });
+
+  it("reports an active credential persistence rejection", async () => {
+    const failure = new Error("credential write failed");
+    const authManager = {
+      initialize: vi.fn(async () => ({})),
+      save: vi.fn(async () => {
+        throw failure;
+      }),
+    };
+    const connection = new BaileysConnection(authManager as never);
+    const reported = vi.fn();
+    connection.on("error", reported);
+
+    await connection.connect();
+    sockets[0]?.ev.emit("creds.update", {});
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(reported).toHaveBeenCalledWith(failure);
+  });
 });

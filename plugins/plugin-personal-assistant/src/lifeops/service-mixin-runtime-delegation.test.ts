@@ -579,35 +579,18 @@ describe("LifeOps messaging mixin runtime delegation", () => {
     });
   });
 
-  it("does not send WhatsApp through env credentials", async () => {
-    const previousAccessToken = process.env.ELIZA_WHATSAPP_ACCESS_TOKEN;
-    const previousPhoneNumberId = process.env.ELIZA_WHATSAPP_PHONE_NUMBER_ID;
-    process.env.ELIZA_WHATSAPP_ACCESS_TOKEN = "stale-token";
-    process.env.ELIZA_WHATSAPP_PHONE_NUMBER_ID = "stale-phone-number-id";
+  it("does not send WhatsApp without a paired runtime service", async () => {
     const service = serviceWithConnectorGrants({});
 
-    try {
-      await expect(
-        service.sendWhatsAppMessage({
-          to: "+15550000001",
-          text: "hello",
-        }),
-      ).rejects.toMatchObject({
-        status: 503,
-        message: expect.stringContaining("@elizaos/plugin-whatsapp"),
-      });
-    } finally {
-      if (previousAccessToken === undefined) {
-        delete process.env.ELIZA_WHATSAPP_ACCESS_TOKEN;
-      } else {
-        process.env.ELIZA_WHATSAPP_ACCESS_TOKEN = previousAccessToken;
-      }
-      if (previousPhoneNumberId === undefined) {
-        delete process.env.ELIZA_WHATSAPP_PHONE_NUMBER_ID;
-      } else {
-        process.env.ELIZA_WHATSAPP_PHONE_NUMBER_ID = previousPhoneNumberId;
-      }
-    }
+    await expect(
+      service.sendWhatsAppMessage({
+        to: "+15550000001",
+        text: "hello",
+      }),
+    ).rejects.toMatchObject({
+      status: 503,
+      message: expect.stringContaining("@elizaos/plugin-whatsapp"),
+    });
   });
 
   it("delegates WhatsApp sends to the runtime service", async () => {
@@ -693,37 +676,6 @@ describe("LifeOps messaging mixin runtime delegation", () => {
       }),
       expect.objectContaining({ accountId: "default", limit: 5 }),
     );
-  });
-
-  it("delegates WhatsApp webhooks to plugin-whatsapp and rejects LifeOps parsing", async () => {
-    const handleWebhook = vi.fn(async () => undefined);
-    const service = serviceWithConnectorGrants({
-      services: {
-        whatsapp: {
-          connected: true,
-          handleWebhook,
-        },
-      },
-    });
-
-    await expect(
-      service.ingestWhatsAppWebhook({ object: "whatsapp_business_account" }),
-    ).resolves.toEqual({ ingested: 0, messages: [] });
-    expect(handleWebhook).toHaveBeenCalledWith({
-      object: "whatsapp_business_account",
-    });
-
-    const withoutWebhook = serviceWithConnectorGrants({
-      services: { whatsapp: { connected: true } },
-    });
-    await expect(
-      withoutWebhook.ingestWhatsAppWebhook({
-        object: "whatsapp_business_account",
-      }),
-    ).rejects.toMatchObject({
-      status: 503,
-      message: expect.stringContaining("@elizaos/plugin-whatsapp"),
-    });
   });
 
   it("reports WhatsApp missing hooks when the runtime service is connected but missing send hooks", async () => {

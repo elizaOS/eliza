@@ -40,7 +40,12 @@ beforeEach(() => {
   onWsEvent.mockReset();
   onWsEvent.mockReturnValue(() => {});
   // Initial-status probe: keep it benign so the mount effect settles at "idle".
-  getWhatsAppStatus.mockResolvedValue({ authExists: false });
+  getWhatsAppStatus.mockResolvedValue({
+    status: "idle",
+    authExists: false,
+    serviceConnected: false,
+    servicePhone: null,
+  });
 });
 
 afterEach(() => {
@@ -48,6 +53,44 @@ afterEach(() => {
 });
 
 describe("useWhatsAppPairing write failures surface to the user", () => {
+  it("does not treat saved auth as a live connection", async () => {
+    getWhatsAppStatus.mockResolvedValueOnce({
+      status: "idle",
+      authExists: true,
+      serviceConnected: false,
+      servicePhone: null,
+    });
+
+    const seen: HookResult[] = [];
+    render(<HookProbe onState={(r) => seen.push(r)} />);
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(seen[seen.length - 1]?.status).toBe("idle");
+  });
+
+  it("reports connected only from live runtime health", async () => {
+    getWhatsAppStatus.mockResolvedValueOnce({
+      status: "idle",
+      authExists: true,
+      serviceConnected: true,
+      servicePhone: "15551234567",
+    });
+
+    const seen: HookResult[] = [];
+    render(<HookProbe onState={(r) => seen.push(r)} />);
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    const last = seen[seen.length - 1];
+    expect(last?.status).toBe("connected");
+    expect(last?.phoneNumber).toBe("15551234567");
+  });
+
   it("disconnect failure sets error state, not a false idle", async () => {
     disconnectWhatsApp.mockRejectedValueOnce(new Error("network down"));
 

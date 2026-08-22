@@ -44,7 +44,6 @@ type WhatsAppRuntimeServiceLike = {
     replyToMessageId?: string;
   }) => Promise<{ messages?: Array<{ id?: string }> }>;
   fetchConnectorMessages?: unknown;
-  handleWebhook?: (event: Record<string, unknown>) => Promise<void>;
 };
 
 function getWhatsAppRuntimeService(
@@ -65,10 +64,7 @@ function whatsAppServiceCanSend(
 function whatsAppServiceCanRead(
   service: WhatsAppRuntimeServiceLike | null,
 ): boolean {
-  return (
-    typeof service?.fetchConnectorMessages === "function" ||
-    typeof service?.handleWebhook === "function"
-  );
+  return typeof service?.fetchConnectorMessages === "function";
 }
 
 function whatsAppServiceConnected(
@@ -194,7 +190,7 @@ export class WhatsAppDomain {
           axis: "transport-offline",
           code: "whatsapp_plugin_inbound_unavailable",
           message:
-            "The WhatsApp runtime service is connected, but @elizaos/plugin-whatsapp does not expose webhook or message fetch handling.",
+            "The WhatsApp runtime service is connected, but @elizaos/plugin-whatsapp does not expose an inbound receive path.",
           retryable: true,
         });
       }
@@ -234,39 +230,6 @@ export class WhatsAppDomain {
       503,
       `WhatsApp runtime service send is unavailable: ${delegated.reason} ${WHATSAPP_PLUGIN_SETUP_MESSAGE}`,
     );
-  }
-
-  async ingestWhatsAppWebhook(
-    payload: unknown,
-  ): Promise<{ ingested: number; messages: WhatsAppMessage[] }> {
-    const runtimeService = getWhatsAppRuntimeService(this.ctx.runtime);
-    if (
-      runtimeService &&
-      typeof runtimeService.handleWebhook === "function" &&
-      payload &&
-      typeof payload === "object" &&
-      !Array.isArray(payload)
-    ) {
-      await runtimeService.handleWebhook(payload as Record<string, unknown>);
-      return { ingested: 0, messages: [] };
-    }
-
-    fail(
-      503,
-      `WhatsApp webhook ingestion is owned by @elizaos/plugin-whatsapp. ${WHATSAPP_PLUGIN_SETUP_MESSAGE}`,
-    );
-  }
-
-  /**
-   * Backward-compatible alias for the plugin-managed recent-message read.
-   * WhatsApp webhook parsing and message storage live in plugin-whatsapp.
-   */
-  async syncWhatsAppInbound(): Promise<{
-    drained: number;
-    messages: WhatsAppMessage[];
-  }> {
-    const result = await this.pullWhatsAppRecent(100);
-    return { drained: result.count, messages: result.messages };
   }
 
   /** Return recent WhatsApp messages from plugin-whatsapp. */

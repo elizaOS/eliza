@@ -1,10 +1,7 @@
 /**
  * WhatsApp setup HTTP routes.
  *
- * Provides QR-code pairing, status, disconnect, and webhook endpoints:
- *
- *   GET  /api/whatsapp/webhook       Meta webhook verification
- *   POST /api/whatsapp/webhook       Meta webhook event delivery
+ * Provides direct Baileys QR-code pairing, status, and disconnect endpoints:
  *   POST /api/whatsapp/pair          Start QR pairing session
  *   GET  /api/whatsapp/status        Check connection / pairing status
  *   POST /api/whatsapp/pair/stop     Stop active pairing session
@@ -16,7 +13,13 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import type { IAgentRuntime, Route, RouteRequest, RouteResponse } from "@elizaos/core";
+import {
+  logger as coreLogger,
+  type IAgentRuntime,
+  type Route,
+  type RouteRequest,
+  type RouteResponse,
+} from "@elizaos/core";
 import type { WhatsAppPairingEvent } from "./pairing-service.js";
 import {
   sanitizeAccountId,
@@ -24,7 +27,6 @@ import {
   whatsappAuthExists,
   whatsappLogout,
 } from "./pairing-service.js";
-import { isWhatsAppWebhookAuthorized, readWebhookRawBody } from "./webhook-auth.js";
 
 // ── Module-level state ─────────────────────────────────────────────────
 // Replaces WhatsAppRouteState.whatsappPairingSessions — shared across
@@ -123,102 +125,6 @@ async function cleanupStaleSessions(): Promise<void> {
       releaseTransition();
     }
   }
-}
-
-// ── GET /api/whatsapp/webhook ──────────────────────────────────────────
-async function handleWebhookVerify(
-  req: RouteRequest,
-  res: RouteResponse,
-  runtime: IAgentRuntime
-): Promise<void> {
-  const url = new URL(req.url ?? "/", `http://${routeHost(req)}`);
-  const mode = url.searchParams.get("hub.mode") ?? "";
-  const token = url.searchParams.get("hub.verify_token") ?? "";
-  const challenge = url.searchParams.get("hub.challenge") ?? "";
-  const accountId = url.searchParams.get("accountId") ?? undefined;
-
-  const service = runtime.getService("whatsapp") as
-    | {
-        verifyWebhook?: (
-          mode: string,
-          token: string,
-          challenge: string,
-          accountId?: string
-        ) => string | null;
-      }
-    | null
-    | undefined;
-
-  if (!service || typeof service.verifyWebhook !== "function") {
-    res.status(503).json({ error: "WhatsApp service unavailable" });
-    return;
-  }
-
-  const verifiedChallenge = service.verifyWebhook(mode, token, challenge, accountId);
-  if (!verifiedChallenge) {
-    res.status(403).json({ error: "Webhook verification failed" });
-    return;
-  }
-
-  // Meta compares the GET verification response body byte-for-byte against the
-  // hub.challenge it sent, so it must be the raw challenge as text/plain. The
-  // runtime RouteResponse adapter serializes json() with JSON.stringify, which
-  // would emit a JSON-quoted string and fail verification; send() emits the
-  // string verbatim. This matches the sibling api/whatsapp-routes.ts handler.
-  res.setHeader?.("Content-Type", "text/plain");
-  res.status(200).send(verifiedChallenge);
-}
-
-// ── POST /api/whatsapp/webhook ─────────────────────────────────────────
-async function handleWebhookEvent(
-  req: RouteRequest,
-  res: RouteResponse,
-  runtime: IAgentRuntime
-): Promise<void> {
-  const service = runtime.getService("whatsapp") as
-    | {
-        handleWebhook?: (event: Record<string, unknown>) => Promise<void>;
-      }
-    | null
-    | undefined;
-
-  if (!service || typeof service.handleWebhook !== "function") {
-    res.status(503).json({ error: "WhatsApp service unavailable" });
-    return;
-  }
-
-  // GHSA-vhvq-g4mq-vq62: verify Meta X-Hub-Signature-256 before any side-effect.
-  if (!isWhatsAppWebhookAuthorized(runtime, req)) {
-    res.status(401).json({ error: "Unauthorized" });
-    return;
-  }
-
-  const rawBody = readWebhookRawBody(req);
-  if (!rawBody) {
-    res.status(400).json({ error: "Missing request body" });
-    return;
-  }
-
-  let body: Record<string, unknown>;
-  try {
-    const parsed: unknown = JSON.parse(rawBody);
-    if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
-      res.status(400).json({ error: "Invalid request body" });
-      return;
-    }
-    body = parsed as Record<string, unknown>;
-  } catch {
-    res.status(400).json({ error: "Invalid request body" });
-    return;
-  }
-
-  await service.handleWebhook(body);
-
-  // Meta expects a 200 with the plain "EVENT_RECEIVED" acknowledgement. send()
-  // emits the string verbatim; json() would JSON-quote it as with the sibling
-  // api/whatsapp-routes.ts handler.
-  res.setHeader?.("Content-Type", "text/plain");
-  res.status(200).send("EVENT_RECEIVED");
 }
 
 // ── POST /api/whatsapp/pair ────────────────────────────────────────────
@@ -344,15 +250,11 @@ async function handleStatus(
 
   let serviceConnected = false;
   let servicePhone: string | null = null;
-  try {
-    const waService = runtime.getService("whatsapp");
-    if (waService && typeof waService === "object") {
-      const waState = waService as { connected?: unknown; phoneNumber?: unknown };
-      serviceConnected = Boolean(waState.connected);
-      servicePhone = typeof waState.phoneNumber === "string" ? waState.phoneNumber : null;
-    }
-  } catch {
-    /* service unavailable during setup status lookup */
+  const waService = runtime.getService("whatsapp");
+  if (waService && typeof waService === "object") {
+    const waState = waService as { connected?: unknown; phoneNumber?: unknown };
+    serviceConnected = Boolean(waState.connected);
+    servicePhone = typeof waState.phoneNumber === "string" ? waState.phoneNumber : null;
   }
 
   res.status(200).json({
@@ -424,9 +326,9 @@ async function handleDisconnect(
     try {
       await whatsappLogout(workspaceDir, accountId);
     } catch (logoutErr) {
-      console.warn(
-        `[whatsapp] Logout failed for ${accountId}, deleting auth files directly:`,
-        String(logoutErr)
+      runtime.logger.warn(
+        { src: "plugin:whatsapp", accountId, error: String(logoutErr) },
+        "WhatsApp remote logout failed; deleting local auth state"
       );
       const authDir = path.join(workspaceDir, "whatsapp-auth", accountId);
       try {
@@ -464,30 +366,10 @@ async function handleDisconnect(
 }
 
 /**
- * Plugin routes for WhatsApp setup and webhooks.
+ * Authenticated plugin routes for direct WhatsApp setup.
  * Registered with `rawPath: true` to preserve legacy `/api/whatsapp/*` paths.
  */
 export const whatsappSetupRoutes: Route[] = [
-  {
-    name: "whatsapp-webhook-verify",
-    type: "GET",
-    path: "/api/whatsapp/webhook",
-    handler: handleWebhookVerify,
-    rawPath: true,
-    public: true, // Meta webhook verification must bypass auth
-    publicReason: "Meta webhook verification must be reachable before local auth.",
-  },
-  {
-    name: "whatsapp-webhook-event",
-    type: "POST",
-    path: "/api/whatsapp/webhook",
-    handler: handleWebhookEvent,
-    rawPath: true,
-    public: true, // Meta webhook delivery must bypass auth
-    publicReason: "Meta webhook delivery is authenticated by WhatsApp signature checks.",
-    publicWrite:
-      "Inbound Meta webhook POST authenticated by the WhatsApp payload signature, not the local gate.",
-  },
   {
     type: "POST",
     path: "/api/whatsapp/pair",
@@ -522,8 +404,9 @@ export async function stopAllPairingSessions(): Promise<void> {
     const releaseTransition = await acquirePairingTransition();
     try {
       await stopPairingSession(accountId);
-    } catch {
+    } catch (error) {
       // error-policy:J6 Shutdown continues after a best-effort pairing teardown failure.
+      coreLogger.warn(`[whatsapp] Pairing teardown failed for ${accountId}: ${String(error)}`);
     } finally {
       releaseTransition();
     }

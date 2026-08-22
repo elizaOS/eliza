@@ -6,12 +6,10 @@
  * `@elizaos/core/connectors/account-manager`.
  *
  * Source of truth for accounts is character settings (`character.settings.whatsapp`)
- * plus env-var fallbacks (WHATSAPP_ACCESS_TOKEN, WHATSAPP_PHONE_NUMBER_ID, ...).
+ * plus the `WHATSAPP_AUTH_DIR` fallback.
  * Single-account env-only deployments still surface as a `default` account.
  *
- * WhatsApp Business Cloud API uses long-lived access tokens, not OAuth from
- * the bot's perspective. Pairing happens out of band when the user provisions
- * a phone_number_id in Meta Business Manager.
+ * Authentication is direct QR pairing through the in-process Baileys library.
  */
 
 import type {
@@ -19,6 +17,7 @@ import type {
   ConnectorAccountManager,
   ConnectorAccountPatch,
   ConnectorAccountProvider,
+  ConnectorAccountStatus,
   IAgentRuntime,
 } from "@elizaos/core";
 import {
@@ -43,11 +42,30 @@ function accessGateForAccount(account: ResolvedWhatsAppAccount): string {
 }
 
 function roleForAccount(_account: ResolvedWhatsAppAccount): "OWNER" | "AGENT" {
-  // WhatsApp Business API tokens act as the agent's own identity (the bot).
+  // The paired WhatsApp session acts as the agent's own identity.
   return "AGENT";
 }
 
-function toConnectorAccount(account: ResolvedWhatsAppAccount): ConnectorAccount {
+type WhatsAppRuntimeStatusReader = {
+  getAccountConnectionStatus(accountId?: string | null): "open" | "close" | "connecting" | null;
+};
+
+function accountStatus(
+  account: ResolvedWhatsAppAccount,
+  runtimeService: WhatsAppRuntimeStatusReader | null
+): ConnectorAccountStatus {
+  if (!account.enabled) return "disabled";
+  if (!account.configured) return "pending";
+  const liveStatus = runtimeService?.getAccountConnectionStatus(account.accountId) ?? null;
+  if (liveStatus === "open") return "connected";
+  if (liveStatus === "connecting" || liveStatus === null) return "pending";
+  return "error";
+}
+
+function toConnectorAccount(
+  account: ResolvedWhatsAppAccount,
+  runtimeService: WhatsAppRuntimeStatusReader | null
+): ConnectorAccount {
   const now = Date.now();
   return {
     id: normalizeAccountId(account.accountId),
@@ -56,15 +74,12 @@ function toConnectorAccount(account: ResolvedWhatsAppAccount): ConnectorAccount 
     role: roleForAccount(account),
     purpose: purposeForAccount(account),
     accessGate: accessGateForAccount(account),
-    status: account.enabled && account.configured ? "connected" : "disabled",
-    externalId: account.phoneNumberId || undefined,
-    displayHandle: account.phoneNumberId || undefined,
+    status: accountStatus(account, runtimeService),
+    externalId: account.accountId,
     createdAt: now,
     updatedAt: now,
     metadata: {
-      tokenSource: account.tokenSource,
-      phoneNumberId: account.phoneNumberId,
-      businessAccountId: account.businessAccountId ?? null,
+      transport: "baileys",
       dmPolicy: account.config.dmPolicy ?? "pairing",
       groupPolicy: account.config.groupPolicy ?? "allowlist",
     },
@@ -78,12 +93,20 @@ export function createWhatsAppConnectorAccountProvider(
     provider: WHATSAPP_PROVIDER_ID,
     label: "WhatsApp",
     listAccounts: async (_manager: ConnectorAccountManager): Promise<ConnectorAccount[]> => {
+      const candidate = runtime.getService("whatsapp");
+      const runtimeService =
+        candidate &&
+        typeof candidate === "object" &&
+        "getAccountConnectionStatus" in candidate &&
+        typeof candidate.getAccountConnectionStatus === "function"
+          ? (candidate as WhatsAppRuntimeStatusReader)
+          : null;
       const enabled = listEnabledWhatsAppAccounts(runtime);
       if (enabled.length > 0) {
-        return enabled.map(toConnectorAccount);
+        return enabled.map((account) => toConnectorAccount(account, runtimeService));
       }
       const fallback = resolveWhatsAppAccount(runtime, DEFAULT_ACCOUNT_ID);
-      return [toConnectorAccount(fallback)];
+      return [toConnectorAccount(fallback, runtimeService)];
     },
     createAccount: async (input: ConnectorAccountPatch, _manager: ConnectorAccountManager) => {
       return {
@@ -103,10 +126,8 @@ export function createWhatsAppConnectorAccountProvider(
       return { ...patch, provider: WHATSAPP_PROVIDER_ID };
     },
     deleteAccount: async (_accountId: string, _manager: ConnectorAccountManager) => {
-      // Persistent credentials live in character settings / env, so this
-      // provider cannot delete them through ConnectorAccountManager state.
+      // Session deletion is owned by the authenticated disconnect route.
     },
-    // WhatsApp Cloud API: provisioning is via Meta Business Manager. Baileys
-    // uses QR pairing handled separately in `pairing-service.ts`. No OAuth.
+    // QR pairing is handled by `pairing-service.ts`; there is no external OAuth app.
   };
 }

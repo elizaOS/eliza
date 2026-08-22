@@ -1,29 +1,51 @@
 /**
- * SSRF guard for outbound media links: `assertValidWhatsAppMediaLink` accepts
- * only well-formed http(s) URLs and throws on anything else (file:, data:,
- * javascript:, malformed). Called by both transport clients before dispatch.
+ * Stages WhatsApp attachments before Baileys receives bytes: canonical local
+ * handles use runtime fetch, while remote URLs cross core's DNS-pinned guard.
  */
-const ALLOWED_MEDIA_PROTOCOLS = new Set(["http:", "https:"]);
+import {
+  type FetchMediaOptions,
+  type FetchMediaResult,
+  fetchRemoteMedia,
+  type IFileStorageService,
+} from "@elizaos/core";
 
-function mediaLinkError(kind: string): Error {
-  return new Error(`${kind} message requires a valid http(s) media link`);
+export const DEFAULT_WHATSAPP_MEDIA_MAX_BYTES = 20 * 1024 * 1024;
+export const DEFAULT_WHATSAPP_MEDIA_TIMEOUT_MS = 30_000;
+
+type WhatsAppMediaFetchOverrides = Omit<FetchMediaOptions, "url">;
+
+const CANONICAL_STORED_MEDIA_URL = /^\/api\/media\/([a-f0-9]{64}\.[a-z0-9]+)(?:\?[^#]*)?$/;
+
+/** Only the content-addressed agent-store capability path is trusted as local media. */
+export function isCanonicalStoredMediaUrl(url: string): boolean {
+  return CANONICAL_STORED_MEDIA_URL.test(url);
 }
 
-export function assertValidWhatsAppMediaLink(link: unknown, kind: string): string {
-  if (typeof link !== "string" || !link.trim()) {
-    throw mediaLinkError(kind);
+/** Fetch one remote attachment with redirect, DNS/IP, timeout, and size guards. */
+export async function stageWhatsAppMedia(
+  url: string,
+  overrides: WhatsAppMediaFetchOverrides = {},
+  canonicalStore?: Pick<IFileStorageService, "read"> | null
+): Promise<FetchMediaResult> {
+  const localMatch = CANONICAL_STORED_MEDIA_URL.exec(url);
+  if (localMatch) {
+    if (!canonicalStore) {
+      throw new Error("Canonical WhatsApp media requires the runtime file-storage boundary");
+    }
+    const maxBytes = overrides.maxBytes ?? DEFAULT_WHATSAPP_MEDIA_MAX_BYTES;
+    const stored = await canonicalStore.read(localMatch[1], maxBytes);
+    if (!stored) throw new Error("Canonical WhatsApp media is absent from the runtime store");
+    return {
+      buffer: stored.bytes,
+      contentType: stored.mimeType,
+      fileName: localMatch[1],
+    };
   }
-
-  let url: URL;
-  try {
-    url = new URL(link.trim());
-  } catch {
-    throw mediaLinkError(kind);
-  }
-
-  if (!ALLOWED_MEDIA_PROTOCOLS.has(url.protocol) || url.username || url.password || !url.hostname) {
-    throw mediaLinkError(kind);
-  }
-
-  return url.toString();
+  return fetchRemoteMedia({
+    maxBytes: DEFAULT_WHATSAPP_MEDIA_MAX_BYTES,
+    maxRedirects: 3,
+    timeoutMs: DEFAULT_WHATSAPP_MEDIA_TIMEOUT_MS,
+    ...overrides,
+    url,
+  });
 }

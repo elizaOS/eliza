@@ -10,6 +10,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { logger as coreLogger } from "@elizaos/core";
+import { prepareBaileysAuthDirectory, secureBaileysAuthFiles } from "../baileys/auth.js";
 
 const LOG_PREFIX = "[whatsapp-pairing]";
 
@@ -88,9 +89,10 @@ export class WhatsAppPairingSession {
     const QRCode = (await import("qrcode")).default;
     const { Boom } = await import("@hapi/boom");
 
-    fs.mkdirSync(this.options.authDir, { recursive: true });
+    prepareBaileysAuthDirectory(this.options.authDir);
 
     const { state, saveCreds } = await loadMultiFileAuthState(this.options.authDir);
+    secureBaileysAuthFiles(this.options.authDir);
     const { version } = await fetchLatestBaileysVersion();
 
     const pino = (await import("pino")).default;
@@ -115,6 +117,7 @@ export class WhatsAppPairingSession {
       if (!this.isActiveSocket(epoch, socket)) return;
       const save = this.credentialSaveTail.then(async () => {
         await saveCreds();
+        secureBaileysAuthFiles(this.options.authDir);
       });
       this.credentialSaveTail = save.catch((error) => {
         // error-policy:J1 The Baileys event boundary observes asynchronous credential-save failure.
@@ -153,8 +156,9 @@ export class WhatsAppPairingSession {
             qrDataUrl,
             expiresInMs: 20_000,
           });
-        } catch {
-          // QR generation failure — non-fatal, next QR attempt will retry.
+        } catch (error) {
+          // error-policy:J4 A later Baileys QR update retries this visibly failed render.
+          coreLogger.warn(`${LOG_PREFIX} QR rendering failed: ${String(error)}`);
         }
       }
 
@@ -269,6 +273,7 @@ export async function whatsappLogout(workspaceDir: string, accountId = "default"
 
   if (fs.existsSync(credsPath)) {
     try {
+      secureBaileysAuthFiles(authDir);
       const baileys = await import("@whiskeysockets/baileys");
       const makeWASocket = baileys.default;
       const { useMultiFileAuthState: loadMultiFileAuthState, fetchLatestBaileysVersion } = baileys;
@@ -312,9 +317,9 @@ export async function whatsappLogout(workspaceDir: string, accountId = "default"
           if (update.connection === "open") {
             try {
               await sock.logout();
-            } catch {
+            } catch (error) {
               // error-policy:J6 The remote session may already be logged out.
-              // May fail if already logged out remotely.
+              coreLogger.warn(`${LOG_PREFIX} Remote logout failed: ${String(error)}`);
             }
             await finish();
           } else if (update.connection === "close") {
@@ -322,9 +327,9 @@ export async function whatsappLogout(workspaceDir: string, accountId = "default"
           }
         });
       });
-    } catch {
+    } catch (error) {
       // error-policy:J6 Local auth deletion remains valid if the remote logout cannot connect.
-      // If Baileys can't connect, just delete files anyway.
+      coreLogger.warn(`${LOG_PREFIX} Remote logout setup failed: ${String(error)}`);
     }
   }
 

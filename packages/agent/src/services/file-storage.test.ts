@@ -88,6 +88,19 @@ describe("LocalFileStorageService", () => {
     expect(s.getUrl("../../etc/passwd")).toBeNull();
   });
 
+  it("reads canonical bytes under a hard cap without loopback HTTP", async () => {
+    const s = svc();
+    const stored = await s.store(Buffer.from("canonical-bytes"), "text/plain");
+    await expect(s.read(stored.fileName, 4)).rejects.toMatchObject({
+      code: "MEDIA_STORE_READ_LIMIT_EXCEEDED",
+    });
+    await expect(s.read(stored.fileName, 64)).resolves.toEqual({
+      bytes: Buffer.from("canonical-bytes"),
+      mimeType: "text/plain; charset=utf-8",
+      size: 15,
+    });
+  });
+
   it("deletes a stored file and rejects malformed names", async () => {
     const s = svc();
     const stored = await s.store(Buffer.from("delete-me"), "text/plain");
