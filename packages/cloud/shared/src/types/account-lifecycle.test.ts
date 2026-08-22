@@ -11,16 +11,12 @@ describe("account lifecycle operation contracts", () => {
       "shared_member_exit",
       "subscription_cancellation",
     ]);
+    expect(ACCOUNT_LIFECYCLE_OPERATION_CONTRACTS.agent_control.recentAuthRequired).toBe(false);
     expect(
-      ACCOUNT_LIFECYCLE_OPERATION_CONTRACTS.agent_control.recentAuthRequired,
-    ).toBe(false);
-    expect(
-      ACCOUNT_LIFECYCLE_OPERATION_CONTRACTS.personal_account_deletion
-        .explicitlyDoesNot,
+      ACCOUNT_LIFECYCLE_OPERATION_CONTRACTS.personal_account_deletion.explicitlyDoesNot,
     ).toContain("delete a shared organization");
-    expect(
-      ACCOUNT_LIFECYCLE_OPERATION_CONTRACTS.shared_member_exit
-        .explicitlyDoesNot,
-    ).toContain("leave the organization without an owner");
+    expect(ACCOUNT_LIFECYCLE_OPERATION_CONTRACTS.shared_member_exit.explicitlyDoesNot).toContain(
+      "leave the organization without an owner",
+    );
   });
 });

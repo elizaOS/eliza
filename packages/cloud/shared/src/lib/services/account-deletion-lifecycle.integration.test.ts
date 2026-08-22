@@ -13,16 +13,10 @@ import { accountDeletionExports } from "../../db/schemas/account-deletion-export
 import { accountDeletionPhaseReceipts } from "../../db/schemas/account-deletion-phase-receipts";
 import { accountDeletionRequests } from "../../db/schemas/account-deletion-requests";
 import { apiKeys } from "../../db/schemas/api-keys";
-import {
-  organizationBalanceRevisionSequence,
-  organizations,
-} from "../../db/schemas/organizations";
+import { organizationBalanceRevisionSequence, organizations } from "../../db/schemas/organizations";
 import { userSessions } from "../../db/schemas/user-sessions";
 import { users } from "../../db/schemas/users";
-import {
-  getAccountDeletionStatusByCredential,
-  requestAccountDeletion,
-} from "./account-deletion";
+import { getAccountDeletionStatusByCredential, requestAccountDeletion } from "./account-deletion";
 
 const PERSONAL_ORGANIZATION_ID = "11111111-1111-4111-8111-111111111111";
 const PERSONAL_USER_ID = "22222222-2222-4222-8222-222222222222";
@@ -102,18 +96,12 @@ describe("account deletion reservation lifecycle", () => {
       canCancel: true,
     });
 
-    const [user] = await dbWrite
-      .select()
-      .from(users)
-      .where(eq(users.id, PERSONAL_USER_ID));
+    const [user] = await dbWrite.select().from(users).where(eq(users.id, PERSONAL_USER_ID));
     const [organization] = await dbWrite
       .select()
       .from(organizations)
       .where(eq(organizations.id, PERSONAL_ORGANIZATION_ID));
-    const [key] = await dbWrite
-      .select()
-      .from(apiKeys)
-      .where(eq(apiKeys.user_id, PERSONAL_USER_ID));
+    const [key] = await dbWrite.select().from(apiKeys).where(eq(apiKeys.user_id, PERSONAL_USER_ID));
     const [session] = await dbWrite
       .select()
       .from(userSessions)
@@ -130,9 +118,7 @@ describe("account deletion reservation lifecycle", () => {
     expect(key?.is_active).toBe(false);
     expect(session?.ended_at).not.toBeNull();
 
-    const status = await getAccountDeletionStatusByCredential(
-      accepted.statusCredential,
-    );
+    const status = await getAccountDeletionStatusByCredential(accepted.statusCredential);
     expect(status).toMatchObject({
       requestId: accepted.request.requestId,
       status: "reserved",

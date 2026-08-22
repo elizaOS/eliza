@@ -12,8 +12,7 @@ export function isRecentDestructiveAuth(input: {
   const { claims } = input;
   if (!claims || !input.expectedStewardUserId) return false;
   const ageSeconds = input.nowSeconds - claims.issuedAt;
-  const stagingSessionAllowed =
-    input.allowStagingSession && Boolean(claims.stagingSessionBinding);
+  const stagingSessionAllowed = input.allowStagingSession && Boolean(claims.stagingSessionBinding);
   return (
     claims.userId === input.expectedStewardUserId &&
     claims.bridged !== true &&
