@@ -103,14 +103,21 @@ assertions per scenario, and bounded identifier/detail strings. Invalid or
 contradictory reports exit as configuration errors without writing an aggregate.
 
 Programmatic stability execution is available through
-`executeScenarioStability()`. It drives an injected current-runtime adapter for
-all three attempts unconditionally, even after failures; gives each attempt a
-unique run ID and output directory; compares runtime-produced initial-state
-hashes; preserves trajectory, tool, state, provider, and judge evidence; and
-requires `3/3`. The adapter owns the actual fresh process/runtime, database,
-mock-service world, model conversation, and teardown for each attempt. This
-package deliberately does not introduce or depend on a synthetic-world service
-implementation.
+`executeScenarioStability()`. It runtime-validates the canonical three-attempt
+plan before any adapter call, bounds every retained evidence/state value as
+plain JSON, compares runtime-produced initial-state hashes, records
+first-attempt success, and blocks every cell below `3/3`.
+
+Use `ScenarioStabilitySubprocessAdapter` for Cloud or qualification lanes. It
+opens the exact shared synthetic-control manifest for every attempt, launches a
+separate POSIX process group, passes only explicit credential-free loopback mock
+service endpoints, kills the group before resetting the namespace, and records
+the manifest/generation receipt. Keyless deterministic mode additionally
+requires a strict-fixture manifest fingerprint and zero fixture diagnostics.
+Real-LLM mode accepts one explicit model credential over those same mock
+services. Durable manifest/reset/ledger authority and strict final fixture
+validation remain dependencies of the scheduled composed lane; the adapter does
+not fabricate them.
 
 ## Provider-qualified release evidence
 

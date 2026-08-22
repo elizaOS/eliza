@@ -111,14 +111,25 @@ to 64 MiB, 10,000 scenarios, 1,000 failed assertions per scenario, and bounded
 identifier/detail strings. Conflicting plans and contradictory statuses fail as
 CLI usage errors before an aggregate is written.
 
-Programmatic callers use `executeScenarioStability()` with an adapter that
-constructs and tears down the current scenario runtime boundary for each
-attempt. The executor always runs all three attempts, assigns unique run/output
-identities, compares runtime-produced initial-state hashes, retains evidence,
-enforces time and usage budgets, and fails every cell below `3/3`. An earlier
-failure never suppresses a later attempt. The adapter remains responsible for
-actually creating a fresh process, database, mock-service world, and model
-conversation for each supplied attempt identity.
+Programmatic callers use `executeScenarioStability()`. Its public plan is
+runtime-canonicalized before execution: only the exact ordinals 1, 2, and 3,
+canonical IDs, contained output paths, and matching report authority are
+accepted. Every attempt result is admitted as bounded plain JSON; cycles,
+accessors, executable/lossy values, excessive strings, depth, width, nodes, or
+serialized bytes become harness failures and are not retained.
+
+`ScenarioStabilitySubprocessAdapter` is the production isolation boundary. It
+opens the exact synthetic-control manifest in a fresh leased namespace, runs
+each attempt in an independent POSIX process group, inherits no ambient service
+credentials, terminates the group before closing/resetting the session, and
+records the process/generation/manifest receipt. Deterministic mode requires an
+exact strict-fixture fingerprint plus zero unmatched, ambiguous, unused, or
+over-consumed diagnostics. Real-LLM mode accepts one explicit model credential
+while every service endpoint remains credential-free loopback. The same
+executor always measures attempts 1, 2, and 3, compares runtime-produced initial
+state hashes, records first-attempt success, and blocks every cell below `3/3`.
+The shared durable manifest/reset/ledger authorities and strict final fixture
+gate remain explicit composition dependencies of the scheduled Cloud lane.
 
 ### Lanes
 
