@@ -1095,13 +1095,13 @@ describe("Shared Eliza Workerd runtime", () => {
               role: "assistant",
               content:
                 call === 5
-                  ? "A new ElizaOS public release was announced today, according to the project news page."
+                  ? "A new ElizaOS public release was announced today. [[SOURCE_URL:https://elizaos.ai/news]]"
                   : JSON.stringify({
                       success: true,
                       decision: "FINISH",
                       thought: "Answer from the public result.",
                       messageToUser:
-                        "A new ElizaOS public release was announced today, according to the project news page.",
+                        "A new ElizaOS public release was announced today. [[SOURCE_URL:https://elizaos.ai/news]]",
                     }),
             },
             finish_reason: "stop",
@@ -1136,24 +1136,28 @@ describe("Shared Eliza Workerd runtime", () => {
       method: "tools/call",
       params: {
         name: "web_search",
-        arguments: { objective: "latest ElizaOS news" },
+        arguments: { objective: "What is the latest ElizaOS news?" },
       },
     });
-    expect(result.reply).toBe(
-      "A new ElizaOS public release was announced today, according to the project news page.",
-    );
-    expect(modelRequests).toHaveLength(3);
+    expect(result.reply).toStartWith("A new ElizaOS public release was announced today.");
+    expect(result.reply).toContain("Source: elizaos.ai — https://elizaos.ai/news");
+    expect(result.reply).toContain("parallel, checked ");
+    expect(
+      result.actionResults?.filter((action) => action.data?.actionName === "WEB_SEARCH"),
+    ).toHaveLength(1);
+    expect(modelRequests).toHaveLength(4);
     expect(result.usage).toMatchObject({
-      promptTokens: 120,
-      completionTokens: 36,
-      totalTokens: 156,
+      promptTokens: 170,
+      completionTokens: 50,
+      totalTokens: 220,
     });
     expect(result.history.at(-1)?.grounding).toEqual({
       kind: "web_search",
-      query: "latest ElizaOS news",
+      query: "What is the latest ElizaOS news?",
       provider: "parallel",
       text: "ElizaOS launched a new public release today. Source: https://elizaos.ai/news",
       observedAt: expect.any(Number),
+      sourceUrls: ["https://elizaos.ai/news"],
       truncated: false,
     });
   });
