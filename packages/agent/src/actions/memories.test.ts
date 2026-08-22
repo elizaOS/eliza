@@ -701,6 +701,35 @@ describe("MEMORY op:search complete traversal", () => {
       "MEMORY_TRAVERSAL_INVENTORY_CHANGED",
     );
   });
+
+  it("rejects content mutation between complete traversal passes", async () => {
+    const { runtime, rows } = makeRuntime();
+    seedFact(rows, { text: "stable memory", entityId: USER_ID });
+    const originalGetMemories = runtime.getMemories.bind(runtime);
+    let factsCalls = 0;
+    runtime.getMemories = async (params) => {
+      const memories = await originalGetMemories(params);
+      if (params.tableName !== "facts") return memories;
+      factsCalls += 1;
+      return factsCalls === 2
+        ? memories.map((memory) => ({
+            ...memory,
+            content: { ...memory.content, text: "changed memory" },
+          }))
+        : memories;
+    };
+
+    const result = await runAction(runtime, makeMessage(), {
+      action: "search",
+      type: "facts",
+      query: "stable",
+    });
+
+    expect(result.success).toBe(false);
+    expect((result.data as { error: string }).error).toBe(
+      "MEMORY_TRAVERSAL_INVENTORY_CHANGED",
+    );
+  });
 });
 
 describe("MEMORY routing aliases", () => {
