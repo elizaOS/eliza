@@ -1413,8 +1413,20 @@ export class MessageManager {
     let remaining = toWellFormedUnicode(text);
     while (remaining.length > 0) {
       // This is lossless transport chunking: every returned chunk is sent and
-      // concatenating them reconstructs the complete well-formed input.
-      const chunk = truncateWellFormed(remaining, MAX_MESSAGE_LENGTH);
+      // concatenating them reconstructs the complete well-formed input. When
+      // the remainder does not fit, prefer cutting right before the last
+      // newline inside the window so paragraphs stay intact; the newline
+      // itself is carried into the next chunk rather than dropped.
+      let chunk: string;
+      if (remaining.length <= MAX_MESSAGE_LENGTH) {
+        chunk = remaining;
+      } else {
+        const newlineIndex = remaining.lastIndexOf("\n", MAX_MESSAGE_LENGTH);
+        chunk =
+          newlineIndex > 0
+            ? remaining.slice(0, newlineIndex)
+            : truncateWellFormed(remaining, MAX_MESSAGE_LENGTH);
+      }
       if (chunk.length === 0) {
         throw new Error("Unable to split Telegram message without data loss");
       }
