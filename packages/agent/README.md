@@ -26,6 +26,17 @@ See `package.json` for `build`, `lint`, and other scripts.
 unsuccessful `TaskResult` with a stable `errorCode`; it never falls back to
 ordinary `TEXT_LARGE` synthesis and labels that output as research.
 
+## Message-interaction session persistence
+
+`FileMessageInteractionSessionStore` is the durable single-host adapter for
+core's message-interaction session authority. It serializes independent local
+processes, writes a 0600 regular file through same-filesystem fsync and atomic
+rename, fails fast on corruption and symlinks, recovers only stale locks whose
+owner is no longer alive, and exposes explicit expiry collection. Its boundary
+is one machine and one state directory. Multi-host deployments must supply a
+transactional database implementation of `MessageInteractionSessionStore` and
+use the session replay key as the effect or outbox idempotency key.
+
 ## Approval-bound plugin installation
 
 `installPlugin` always installs the canonical npm package declared by the

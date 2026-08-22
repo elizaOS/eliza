@@ -64,10 +64,8 @@ a malformed block is left as plain text, never a broken control.
 - `toPlainTextFallback(block, { resolveUrl })` → concise prose for text-only
   transports such as SMS/iMessage, where there is no native control surface.
 - `encodeReplyCallback(value, { maxBytes })` / `decodeCallback(data)` —
-  callback codec that defaults to Telegram's 64-byte `callback_data` limit.
-  Connectors with a larger native budget, such as Discord custom IDs, pass their
-  own limit. Returns null when the answer is too big → caller links out or
-  accepts a free-text reply.
+  legacy presentation codec. Its decoded value is untrusted input and grants no
+  authority. New state-changing controls use the durable session protocol below.
 - `normalizeContentInteractions(content)` — attach parsed blocks to
   `Content.interactions` **without** mutating `text` (so the dashboard's own
   segment renderer keeps interleaving). `stripInteractionMarkers(text)` for prose.
@@ -75,6 +73,41 @@ a malformed block is left as plain text, never a broken control.
 Types: `InteractionBlock` (`FormInteraction | ChoiceInteraction |
 FollowupsInteraction | TaskInteraction | SecretInteraction`) in
 `@elizaos/core` `types/interactions`. `Content.interactions?: InteractionBlock[]`.
+
+## Negotiated delivery and durable callbacks
+
+`ConnectorInteractionCapabilityProfile` is the canonical, versioned capability
+description for one connector account and one target. `MessageConnector`
+implementations resolve it from `(target, delivery context)`; renderers select
+native, signed-hosted, conversational, or sensitive-request delivery from the
+profile rather than branching on a provider name. Every block kind is required,
+unsupported primitives use zero limits, and supported primitives use positive
+limits. `negotiateInteractionDelivery` enforces counts, UTF-8 byte budgets,
+callback size, attachment MIME and byte limits, edit windows, threads, and URL
+limits before selecting a mode. The generated `CAPABILITY_MATRIX.md` is the
+reviewable golden contract and its test fails when a registered first-party
+message connector is omitted.
+
+State-changing controls use `MessageInteractionSessionAuthority`. The wire value
+is only `is1:<128-bit opaque reference>`; it contains no answer, identity,
+authorization, credential, or signature. The durable record binds the actor,
+audience, agent, connector account, room, source message, response schema,
+authorization decision, expiry, effect, and stable replay key. A store performs
+atomic `pending → claimed → completed` transitions and retains the effect receipt.
+The executor must apply the replay key as its effect idempotency key, allowing a
+claim to resume after a crash without repeating the effect. Revocation after
+render, expiry, mismatched context, response tampering, stale claims, and a
+different replay key all fail closed.
+
+`InMemoryMessageInteractionSessionStore` is for deterministic tests and embedded
+processes. The agent host's `FileMessageInteractionSessionStore` is durable and
+cross-process safe on one machine. It uses a same-filesystem fsync-and-rename
+commit and a stale-owner-aware lock. Multi-host deployments must implement the
+same store interface with a transactional database and idempotent effect/outbox
+boundary; the JSON store does not claim distributed exactly-once semantics.
+
+Secrets and OAuth values never enter these response records. A `secret` block
+can only negotiate `sensitive-request`, and ordinary forms reject secret fields.
 
 ## Per-surface rendering matrix
 
@@ -152,9 +185,12 @@ mounts `SensitiveRequestBlock` itself for the secret/OAuth card.
 
 ## Adding a new surface
 
-Implement one function: `parseInteractionBlocks(content.text)` → for each block
-`toNeutralLayout(block, { resolveUrl })` → map `NeutralButton.callbackData`/`.url`
-to the platform's button primitive; send `cleanedText` as the body. For the
-round-trip, decode the platform's callback payload with `decodeCallback` and
-re-inject `value` as an inbound user message. ~60 lines; see
-`plugin-telegram/src/interactions.ts` and `plugin-discord/interactions.ts`.
+Register the connector's mechanically verified capability template, resolve a
+concrete profile for each account/target, and render the mode returned by
+`negotiateInteractionDelivery`. For state-changing callbacks, create a durable
+session and place only its opaque callback reference in the native control. On
+receipt, pass the connector-authenticated actor/account/room/message context to
+the session authority and execute the retained typed effect with its replay key.
+Conversational fallback must explain the accepted reply shape; signed-hosted
+fallback must use a short-lived authenticated URL; secret/OAuth input must use
+the sensitive-request service.
