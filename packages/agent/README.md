@@ -37,6 +37,13 @@ is one machine and one state directory. Multi-host deployments must supply a
 transactional database implementation of `MessageInteractionSessionStore` and
 use the session replay key as the effect or outbox idempotency key.
 
+The bundled `eliza` plugin registers `MessageInteractionHostService` as the one
+runtime authority connectors resolve through `MESSAGE_INTERACTION_HOST_SERVICE`.
+Connectors submit capability profiles and trusted render bindings to `prepare`,
+then send authenticated inbound provider receipts to `consume`. Only host-owned
+effect handlers execute retained operations; completed receipts preserve the
+provider event, canonical inbound event, audit id, and app-state proof for replay.
+
 ## Approval-bound plugin installation
 
 `installPlugin` always installs the canonical npm package declared by the
