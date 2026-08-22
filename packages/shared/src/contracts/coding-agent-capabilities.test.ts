@@ -84,10 +84,12 @@ describe("coding-agent capability mapping", () => {
       const providers = CODING_AGENT_BACKEND_PROVIDERS[backend];
       if (providers.length === 0) continue;
       expect(CODING_AGENT_BACKENDS).toContain(backend);
-      expect(CODING_AGENT_BACKEND_PREFLIGHTS[backend]).toMatchObject({
-        requiredRuntime: expect.any(String),
-        discoveryPolicy: expect.any(String),
-      });
+      expect(
+        typeof CODING_AGENT_BACKEND_PREFLIGHTS[backend].requiredRuntime,
+      ).toBe("string");
+      expect(
+        typeof CODING_AGENT_BACKEND_PREFLIGHTS[backend].discoveryPolicy,
+      ).toBe("string");
     }
   });
 
@@ -98,20 +100,18 @@ describe("coding-agent capability mapping", () => {
     for (const [providerId, descriptor] of Object.entries(
       CODING_PROVIDER_DESCRIPTORS,
     )) {
-      expect(descriptor).toMatchObject({
-        version: CODING_PROVIDER_DESCRIPTOR_VERSION,
-        providerId,
-        accountKind: expect.stringMatching(/^(subscription|api-key)$/),
-        authMode: expect.stringMatching(
-          /^(oauth|direct-api-key|coding-plan-key|external-cli|unavailable)$/,
-        ),
-        billingMode: expect.stringMatching(
-          /^(subscription-coding-plan|subscription-coding-cli|usage)$/,
-        ),
-        enrollmentSupport: expect.any(Boolean),
-        inferenceSupport: expect.any(Boolean),
-        spawnSupport: expect.any(Boolean),
-      });
+      expect(descriptor.version).toBe(CODING_PROVIDER_DESCRIPTOR_VERSION);
+      expect(descriptor.providerId).toBe(providerId);
+      expect(descriptor.accountKind).toMatch(/^(subscription|api-key)$/);
+      expect(descriptor.authMode).toMatch(
+        /^(oauth|direct-api-key|coding-plan-key|external-cli|unavailable)$/,
+      );
+      expect(descriptor.billingMode).toMatch(
+        /^(subscription-coding-plan|subscription-coding-cli|usage)$/,
+      );
+      expect(typeof descriptor.enrollmentSupport).toBe("boolean");
+      expect(typeof descriptor.inferenceSupport).toBe("boolean");
+      expect(typeof descriptor.spawnSupport).toBe("boolean");
       expect(descriptor.spawnSupport).toBe(descriptor.backend !== null);
       if (descriptor.spawnSupport) {
         if (!descriptor.backend) {
