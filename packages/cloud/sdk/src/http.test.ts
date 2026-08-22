@@ -1,6 +1,9 @@
-/** Unit tests for `ElizaCloudHttpClient` with an injected fake fetch: verb/URL/query/header construction and error mapping. */
+/**
+ * Unit tests for the SDK HTTP boundary with injected transports, including
+ * request construction, error mapping, abort provenance, and bounded reads.
+ */
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { type CloudApiError, ElizaCloudHttpClient } from "./http.js";
 
@@ -329,50 +332,74 @@ describe("ElizaCloudHttpClient abort and deadline composition", () => {
     });
   }
 
-  it("combines a caller signal with timeoutMs so the per-request deadline still fires", async () => {
+  function pendingFetch(calls: Array<{ init: RequestInit }>): typeof fetch {
+    return asFetch(
+      (_input, init = {}) =>
+        new Promise<Response>((_resolve, reject) => {
+          calls.push({ init });
+          const signal = init.signal;
+          if (!signal) return;
+          const rejectFromAbort = (): void => reject(signal.reason);
+          signal.addEventListener("abort", rejectFromAbort, { once: true });
+          if (signal.aborted) rejectFromAbort();
+        }),
+    );
+  }
+
+  it("aborts an in-flight request at the deadline while leaving the caller signal untouched", async () => {
     const calls: Array<{ init: RequestInit }> = [];
     const client = new ElizaCloudHttpClient({
       baseUrl: "https://cloud.test",
-      fetchImpl: capturingFetch(calls),
+      fetchImpl: pendingFetch(calls),
     });
     const controller = new AbortController();
 
-    await client.requestRaw("GET", "/api/slow", {
-      timeoutMs: 5,
-      signal: controller.signal,
-    });
+    await expect(
+      client.requestRaw("GET", "/api/slow", {
+        timeoutMs: 5,
+        signal: controller.signal,
+      }),
+    ).rejects.toMatchObject({ name: "TimeoutError" });
 
-    const passedSignal = calls[0].init.signal;
-    // The deadline must not silently vanish when a caller signal is present.
+    const passedSignal = calls[0]?.init.signal;
     expect(passedSignal).toBeDefined();
     expect(passedSignal).not.toBe(controller.signal);
-    const deadlineSignal = passedSignal as AbortSignal;
-    const waitUntilAborted = async (): Promise<boolean> => {
-      const startedAt = Date.now();
-      while (!deadlineSignal.aborted && Date.now() - startedAt < 2_000) {
-        await new Promise((resolve) => setTimeout(resolve, 2));
-      }
-      return deadlineSignal.aborted;
-    };
-    await expect(waitUntilAborted()).resolves.toBe(true);
+    expect((passedSignal as AbortSignal).aborted).toBe(true);
+    expect(controller.signal.aborted).toBe(false);
   });
 
-  it("aborts the combined signal when the caller's own signal fires first", async () => {
+  it("rejects at the deadline even when the injected fetch ignores its signal", async () => {
+    const fetchImpl = vi.fn(
+      asFetch(() => new Promise<Response>(() => undefined)),
+    );
+    const client = new ElizaCloudHttpClient({
+      baseUrl: "https://cloud.test",
+      fetchImpl: fetchImpl as typeof fetch,
+    });
+
+    await expect(
+      client.requestRaw("GET", "/api/ignores-abort", { timeoutMs: 5 }),
+    ).rejects.toMatchObject({ name: "TimeoutError" });
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it("preserves the caller's abort reason when it fires first", async () => {
     const calls: Array<{ init: RequestInit }> = [];
     const client = new ElizaCloudHttpClient({
       baseUrl: "https://cloud.test",
-      fetchImpl: capturingFetch(calls),
+      fetchImpl: pendingFetch(calls),
     });
     const controller = new AbortController();
+    const callerReason = new Error("caller stopped the request");
 
-    await client.requestRaw("GET", "/api/slow", {
+    const request = client.requestRaw("GET", "/api/slow", {
       timeoutMs: 60_000,
       signal: controller.signal,
     });
+    controller.abort(callerReason);
 
-    const passedSignal = calls[0].init.signal as AbortSignal;
-    controller.abort();
-    expect(passedSignal.aborted).toBe(true);
+    await expect(request).rejects.toBe(callerReason);
+    expect((calls[0].init.signal as AbortSignal).reason).toBe(callerReason);
   });
 
   it("passes a bare caller signal through unchanged", async () => {
@@ -385,20 +412,328 @@ describe("ElizaCloudHttpClient abort and deadline composition", () => {
 
     await client.requestRaw("GET", "/api/x", { signal: controller.signal });
 
-    expect(calls[0].init.signal).toBe(controller.signal);
+    expect(calls[0]?.init.signal).toBe(controller.signal);
   });
 
-  it("derives a deadline-only signal when only timeoutMs is given", async () => {
+  it("rejects a pre-aborted caller without invoking fetch", async () => {
+    const fetchImpl = vi.fn(capturingFetch([]));
+    const client = new ElizaCloudHttpClient({
+      baseUrl: "https://cloud.test",
+      fetchImpl: fetchImpl as typeof fetch,
+    });
+    const controller = new AbortController();
+    const callerReason = new Error("already stopped");
+    controller.abort(callerReason);
+
+    await expect(
+      client.requestRaw("GET", "/api/x", {
+        timeoutMs: 60_000,
+        signal: controller.signal,
+      }),
+    ).rejects.toBe(callerReason);
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it("clears the deadline after a successful raw response", async () => {
     const calls: Array<{ init: RequestInit }> = [];
     const client = new ElizaCloudHttpClient({
       baseUrl: "https://cloud.test",
       fetchImpl: capturingFetch(calls),
     });
 
-    await client.requestRaw("GET", "/api/x", { timeoutMs: 60_000 });
+    const response = await client.requestRaw("GET", "/api/x", {
+      timeoutMs: 25,
+    });
+    const passedSignal = calls[0]?.init.signal as AbortSignal;
+    await response.arrayBuffer();
+    await new Promise((resolve) => setTimeout(resolve, 50));
 
-    const passedSignal = calls[0].init.signal;
     expect(passedSignal).toBeInstanceOf(AbortSignal);
-    expect((passedSignal as AbortSignal).aborted).toBe(false);
+    expect(passedSignal.aborted).toBe(false);
+  });
+
+  it("keeps a caller signal connected to a raw response after headers arrive", async () => {
+    const controller = new AbortController();
+    const callerReason = new Error("stop streaming");
+    const client = new ElizaCloudHttpClient({
+      baseUrl: "https://cloud.test",
+      fetchImpl: asFetch(async (_input, init = {}) => {
+        const signal = init.signal as AbortSignal;
+        return new Response(
+          new ReadableStream<Uint8Array>({
+            start(streamController) {
+              signal.addEventListener(
+                "abort",
+                () => streamController.error(signal.reason),
+                { once: true },
+              );
+            },
+          }),
+        );
+      }),
+    });
+
+    const response = await client.requestRaw("GET", "/api/stream", {
+      timeoutMs: 60_000,
+      signal: controller.signal,
+    });
+    controller.abort(callerReason);
+
+    await expect(response.text()).rejects.toBe(callerReason);
+  });
+
+  it("owns the deadline until a raw response body finishes", async () => {
+    const client = new ElizaCloudHttpClient({
+      baseUrl: "https://cloud.test",
+      fetchImpl: asFetch(
+        async () =>
+          new Response(
+            new ReadableStream<Uint8Array>({
+              start() {},
+              cancel: () => new Promise<void>(() => undefined),
+            }),
+          ),
+      ),
+    });
+
+    const response = await client.requestRaw("GET", "/api/slow-stream", {
+      timeoutMs: 5,
+    });
+
+    await expect(response.text()).rejects.toMatchObject({
+      name: "TimeoutError",
+    });
+  });
+
+  it("discards a prefetched raw chunk when the deadline expires before reading", async () => {
+    let cancelCalls = 0;
+    const client = new ElizaCloudHttpClient({
+      baseUrl: "https://cloud.test",
+      fetchImpl: asFetch(
+        async () =>
+          new Response(
+            new ReadableStream<Uint8Array>({
+              start(controller) {
+                controller.enqueue(new Uint8Array([7]));
+              },
+              cancel() {
+                cancelCalls += 1;
+              },
+            }),
+          ),
+      ),
+    });
+
+    const response = await client.requestRaw("GET", "/api/prefetched", {
+      timeoutMs: 5,
+    });
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    await expect(response.body?.getReader().read()).rejects.toMatchObject({
+      name: "TimeoutError",
+    });
+    expect(cancelCalls).toBe(1);
+  });
+
+  it("preserves raw response metadata through recursive clones", async () => {
+    const upstream = new Response("stream body");
+    Object.defineProperties(upstream, {
+      redirected: { configurable: true, value: true },
+      type: { configurable: true, value: "cors" },
+      url: { configurable: true, value: "https://cloud.test/api/raw" },
+    });
+    const client = new ElizaCloudHttpClient({
+      baseUrl: "https://cloud.test",
+      fetchImpl: asFetch(async () => upstream),
+    });
+
+    const response = await client.requestRaw("GET", "/api/raw", {
+      timeoutMs: 60_000,
+    });
+    const clone = response.clone();
+    const nestedClone = clone.clone();
+
+    for (const candidate of [response, clone, nestedClone]) {
+      expect(candidate.url).toBe("https://cloud.test/api/raw");
+      expect(candidate.redirected).toBe(true);
+      expect(candidate.type).toBe("cors");
+    }
+    await expect(response.text()).resolves.toBe("stream body");
+    await expect(clone.text()).resolves.toBe("stream body");
+    await expect(nestedClone.text()).resolves.toBe("stream body");
+  });
+
+  it("preserves BYOB reads for an owned raw byte stream", async () => {
+    const client = new ElizaCloudHttpClient({
+      baseUrl: "https://cloud.test",
+      fetchImpl: asFetch(
+        async () =>
+          new Response(
+            new ReadableStream<Uint8Array>({
+              type: "bytes",
+              start(controller) {
+                controller.enqueue(new Uint8Array([1, 2, 3]));
+                controller.close();
+              },
+            }),
+          ),
+      ),
+    });
+
+    const response = await client.requestRaw("GET", "/api/bytes", {
+      timeoutMs: 60_000,
+    });
+    const reader = response.body?.getReader({ mode: "byob" });
+    const result = await reader?.read(new Uint8Array(4));
+
+    expect(result?.done).toBe(false);
+    expect(Array.from(result?.value ?? [])).toEqual([1, 2, 3]);
+  });
+
+  it("returns the original raw response when no abort owner is requested", async () => {
+    const upstream = new Response("unchanged");
+    const client = new ElizaCloudHttpClient({
+      baseUrl: "https://cloud.test",
+      fetchImpl: asFetch(async () => upstream),
+    });
+
+    const response = await client.requestRaw("GET", "/api/raw");
+
+    expect(response).toBe(upstream);
+  });
+
+  it("clears a raw deadline without awaiting hostile body cancellation", async () => {
+    const calls: Array<{ init: RequestInit }> = [];
+    let cancelCalls = 0;
+    const client = new ElizaCloudHttpClient({
+      baseUrl: "https://cloud.test",
+      fetchImpl: asFetch(async (_input, init = {}) => {
+        calls.push({ init });
+        return new Response(
+          new ReadableStream<Uint8Array>({
+            cancel() {
+              cancelCalls += 1;
+              return new Promise<void>(() => undefined);
+            },
+          }),
+        );
+      }),
+    });
+
+    const response = await client.requestRaw("GET", "/api/cancel-stream", {
+      timeoutMs: 25,
+    });
+    await response.body?.cancel("caller finished");
+    const passedSignal = calls[0]?.init.signal as AbortSignal;
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    expect(cancelCalls).toBe(1);
+    expect(passedSignal.aborted).toBe(false);
+  });
+
+  it("keeps the deadline active while request() reads the response body", async () => {
+    const client = new ElizaCloudHttpClient({
+      baseUrl: "https://cloud.test",
+      fetchImpl: asFetch(
+        async () =>
+          new Response(
+            new ReadableStream<Uint8Array>({
+              start() {},
+              cancel: () => new Promise<void>(() => undefined),
+            }),
+            { headers: { "content-type": "application/json" } },
+          ),
+      ),
+    });
+
+    await expect(
+      client.request("GET", "/api/slow-body", { timeoutMs: 5 }),
+    ).rejects.toMatchObject({ name: "TimeoutError" });
+  });
+
+  it("rejects an oversized declared response without reading partial content", async () => {
+    let cancelCalls = 0;
+    const client = new ElizaCloudHttpClient({
+      baseUrl: "https://cloud.test",
+      fetchImpl: asFetch(
+        async () =>
+          new Response(
+            new ReadableStream<Uint8Array>({
+              cancel() {
+                cancelCalls += 1;
+                return new Promise<void>(() => undefined);
+              },
+            }),
+            {
+              headers: {
+                "content-length": String(8 * 1024 * 1024 + 1),
+                "content-type": "application/json",
+              },
+            },
+          ),
+      ),
+    });
+
+    await expect(client.request("GET", "/api/oversized")).rejects.toMatchObject(
+      {
+        name: "CloudApiError",
+        errorBody: { code: "response_body_too_large" },
+      },
+    );
+    expect(cancelCalls).toBe(1);
+  });
+
+  it("rejects a chunked response that crosses the byte bound", async () => {
+    const oversizedChunk = new Uint8Array(8 * 1024 * 1024 + 1);
+    const client = new ElizaCloudHttpClient({
+      baseUrl: "https://cloud.test",
+      fetchImpl: asFetch(
+        async () =>
+          new Response(
+            new ReadableStream<Uint8Array>({
+              start(controller) {
+                controller.enqueue(oversizedChunk);
+                controller.close();
+              },
+            }),
+            { headers: { "content-type": "application/json" } },
+          ),
+      ),
+    });
+
+    await expect(
+      client.request("GET", "/api/chunked-oversized"),
+    ).rejects.toMatchObject({
+      name: "CloudApiError",
+      errorBody: { code: "response_body_too_large" },
+    });
+  });
+
+  it("bounds zero-byte chunk fragmentation without truncating a response", async () => {
+    let emittedChunks = 0;
+    const client = new ElizaCloudHttpClient({
+      baseUrl: "https://cloud.test",
+      fetchImpl: asFetch(
+        async () =>
+          new Response(
+            new ReadableStream<Uint8Array>({
+              pull(controller) {
+                emittedChunks += 1;
+                controller.enqueue(new Uint8Array());
+              },
+            }),
+            { headers: { "content-type": "application/json" } },
+          ),
+      ),
+    });
+
+    await expect(
+      client.request("GET", "/api/fragmented"),
+    ).rejects.toMatchObject({
+      name: "CloudApiError",
+      errorBody: { code: "response_body_too_large" },
+    });
+    expect(emittedChunks).toBeGreaterThan(8_192);
+    expect(emittedChunks).toBeLessThanOrEqual(8_194);
   });
 });
