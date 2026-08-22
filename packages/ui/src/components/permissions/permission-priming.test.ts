@@ -20,7 +20,13 @@ afterEach(() => {
 });
 
 describe("resolvePrimingSet", () => {
-  it("returns the voice-first set on iOS, including speech-recognition", () => {
+  it("keeps iOS onboarding permission-free and defers requests to use", () => {
+    expect(
+      resolvePrimingSet({ platform: "ios", purpose: "onboarding" }),
+    ).toEqual([]);
+  });
+
+  it("retains the explicit iOS Settings review set", () => {
     expect(resolvePrimingSet({ platform: "ios" })).toEqual([
       "microphone",
       "speech-recognition",

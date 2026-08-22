@@ -110,6 +110,12 @@ export interface ResolvePrimingOptions {
   /** Override the detected platform (tests / Settings). */
   platform?: PrimingPlatform;
   /**
+   * Onboarding is deliberately narrower than the explicit Settings review.
+   * iOS reaches first value without an up-front permission ceremony; each
+   * capability asks at the moment the user invokes it.
+   */
+  purpose?: "onboarding" | "settings";
+  /**
    * Explicit id list, e.g. a Settings "re-request just these" flow. Still
    * filtered so only ids with priming copy survive.
    */
@@ -125,7 +131,12 @@ export function resolvePrimingSet(
   opts: ResolvePrimingOptions = {},
 ): PermissionId[] {
   const platform = opts.platform ?? getFrontendPlatform();
-  const base = opts.only ?? PRIMING_SETS[platform] ?? [];
+  const purpose = opts.purpose ?? "settings";
+  const base =
+    opts.only ??
+    (purpose === "onboarding" && platform === "ios"
+      ? []
+      : (PRIMING_SETS[platform] ?? []));
   return base.filter(
     (id): id is PermissionId => PRIMING_COPY[id] !== undefined,
   );
