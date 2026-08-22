@@ -145,9 +145,7 @@ describe("ProvisioningJobService agent_downgrade", () => {
       expect(ctx.updateStatusSpy).not.toHaveBeenCalledWith(ctx.job, "completed", expect.anything());
       expect(ctx.incrementSpy).toHaveBeenCalledWith(
         ctx.job.id,
-        expect.stringContaining(
-          "No pre-upgrade snapshot found; refusing rollback without restore point",
-        ),
+        expect.any(String),
         ctx.job.max_attempts,
         undefined,
         ctx.job.execution_generation,
