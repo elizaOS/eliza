@@ -2858,28 +2858,28 @@ export function BrowserWorkspaceView(): React.JSX.Element {
               {workspace.mode === "web" &&
               browserBridgeSupported &&
               !browserBridgeUnsupportedInNativeLocalMode ? (
-                <details
-                  data-testid="browser-bridge-controls"
-                  className="w-full max-w-xl px-6 pb-4 text-xs text-muted"
-                  onToggle={(event) =>
-                    setBrowserBridgeControlsOpen(event.currentTarget.open)
-                  }
-                >
-                  <summary className="mx-auto w-fit cursor-pointer py-2 font-medium">
-                    {browserBridgeConnected
-                      ? t("browserworkspace.BrowserBridgeConnected", {
-                          defaultValue: "Browser Bridge connected",
-                        })
-                      : browserBridgeAvailable
-                        ? t("browserworkspace.BrowserBridgeAvailable", {
-                            defaultValue: "Browser Bridge available",
+                <>
+                  <details
+                    data-testid="browser-bridge-controls"
+                    className="w-full max-w-xl px-6 text-xs text-muted"
+                    onToggle={(event) =>
+                      setBrowserBridgeControlsOpen(event.currentTarget.open)
+                    }
+                  >
+                    <summary className="mx-auto w-fit cursor-pointer py-2 font-medium">
+                      {browserBridgeConnected
+                        ? t("browserworkspace.BrowserBridgeConnected", {
+                            defaultValue: "Browser Bridge connected",
                           })
-                        : t("browserworkspace.BrowserBridgeNotConnected", {
-                            defaultValue: "Browser Bridge",
-                          })}
-                  </summary>
-                  {browserBridgeControlsOpen ? (
-                    <>
+                        : browserBridgeAvailable
+                          ? t("browserworkspace.BrowserBridgeAvailable", {
+                              defaultValue: "Browser Bridge available",
+                            })
+                          : t("browserworkspace.BrowserBridgeNotConnected", {
+                              defaultValue: "Browser Bridge",
+                            })}
+                    </summary>
+                    {browserBridgeControlsOpen ? (
                       <div className="grid grid-cols-1 items-stretch gap-1.5 sm:grid-cols-3">
                         <Button
                           size="sm"
@@ -2939,17 +2939,17 @@ export function BrowserWorkspaceView(): React.JSX.Element {
                           </span>
                         </Button>
                       </div>
-                      <div className="mt-3 flex flex-col gap-2">
-                        <div className="text-[11px] font-medium uppercase tracking-wide">
-                          {t("browserworkspace.AgentBrowserSessions", {
-                            defaultValue: "Agent browser sessions",
-                          })}
-                        </div>
-                        <BrowserSessionPolicyPanel api={client} />
-                      </div>
-                    </>
-                  ) : null}
-                </details>
+                    ) : null}
+                  </details>
+                  <div className="mt-2 flex w-full max-w-xl flex-col gap-2 px-6 pb-4">
+                    <div className="text-[11px] font-medium uppercase tracking-wide text-muted">
+                      {t("browserworkspace.AgentBrowserSessions", {
+                        defaultValue: "Agent browser sessions",
+                      })}
+                    </div>
+                    <BrowserSessionPolicyPanel api={client} />
+                  </div>
+                </>
               ) : null}
             </div>
           </div>

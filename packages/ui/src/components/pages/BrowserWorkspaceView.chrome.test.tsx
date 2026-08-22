@@ -183,7 +183,7 @@ describe("BrowserWorkspaceView fullscreen chrome (Notes/Calendar parity)", () =>
     expect(screen.queryByTestId("view-header")).toBeNull();
   });
 
-  it("defers Browser Bridge administration until its disclosure opens", async () => {
+  it("collapses Browser Bridge administration without hiding session approvals", async () => {
     walletStateHarness.plugins.push({ name: "@elizaos/plugin-browser" });
     render(<BrowserWorkspaceView />);
 
@@ -193,15 +193,14 @@ describe("BrowserWorkspaceView fullscreen chrome (Notes/Calendar parity)", () =>
     ) as HTMLDetailsElement;
     expect(disclosure.open).toBe(false);
     expect(screen.queryByText("Install Agent Browser Bridge")).toBeNull();
-    expect(screen.queryByTestId("browser-session-policy-loading")).toBeNull();
+    expect(
+      await screen.findByTestId("browser-session-policy-error"),
+    ).not.toBeNull();
 
     disclosure.open = true;
     fireEvent(disclosure, new Event("toggle"));
     expect(
       await screen.findByText("Install Agent Browser Bridge"),
-    ).not.toBeNull();
-    expect(
-      await screen.findByTestId("browser-session-policy-error"),
     ).not.toBeNull();
   });
 
