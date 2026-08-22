@@ -235,6 +235,9 @@ describe("StewardLoginSection passkey capability gating", () => {
     // available only through the explicit Passkey button (email-scoped).
     expect(input.getAttribute("autocomplete")).toBe("email");
     expect(screen.getByRole("button", { name: /Passkey/i })).toBeTruthy();
+    expect(
+      screen.queryByText("New here? Passkey sets up your account in seconds."),
+    ).toBeNull();
 
     fireEvent.change(input, { target: { value: "person@example.com" } });
     fireEvent.click(screen.getByRole("button", { name: /Passkey/i }));
