@@ -6,6 +6,25 @@
 
 export const TWITTER_API_BASE = "https://api.twitter.com/2";
 export const TWITTER_UPLOAD_BASE = "https://upload.twitter.com/1.1";
+export const TWITTER_REQUEST_TIMEOUT_MS = 30_000;
+
+/**
+ * Bound every Twitter REST hop while preserving caller cancellation.
+ *
+ * A caller signal is composed with the owned deadline rather than replacing
+ * it, so a never-aborted caller signal cannot disable the operation bound.
+ */
+function twitterFetch(
+  input: RequestInfo | URL,
+  init?: RequestInit,
+  timeoutMs: number = TWITTER_REQUEST_TIMEOUT_MS,
+): Promise<Response> {
+  const deadline = AbortSignal.timeout(timeoutMs);
+  return fetch(input, {
+    ...init,
+    signal: init?.signal ? AbortSignal.any([init.signal, deadline]) : deadline,
+  });
+}
 
 /**
  * Make a Twitter API request
@@ -17,7 +36,7 @@ export async function twitterApiRequest<T>(
 ): Promise<T> {
   const url = endpoint.startsWith("http") ? endpoint : `${TWITTER_API_BASE}${endpoint}`;
 
-  const response = await fetch(url, {
+  const response = await twitterFetch(url, {
     ...options,
     headers: {
       Authorization: `Bearer ${accessToken}`,
