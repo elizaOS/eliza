@@ -172,11 +172,12 @@ visible.
 - Device-class inference budgets reject unsupported model-output requests before
   dispatch. They may bound queue wait as a resource policy, but must never lower
   `maxTokens` and pass a partial generation off as the requested result.
-- `ActionResult.promptData` supplements `data`; it never replaces it on a model
-  path. Context rendering preserves exact whitespace and complete runtime-event
-  fields, and content-reference discovery uses cycle-safe complete traversal
-  rather than depth or visited-value caps. The final wire preflight owns any
-  explicit model-limit rejection.
+- `ActionResult.promptData` may replace runtime-only `data` only as a declared,
+  complete model schema; prompt serializers never emit both carriers. Context
+  rendering preserves exact whitespace and complete runtime-event fields, and
+  content-reference discovery uses cycle-safe complete traversal rather than
+  depth or visited-value caps. The final wire preflight owns any explicit
+  model-limit rejection.
 - Document keyword, vector, and hybrid searches traverse every authorized
   fragment page before ranking. Fragment-query limits are storage batch sizes,
   never recall caps; a repeated page rejects instead of returning a prefix.

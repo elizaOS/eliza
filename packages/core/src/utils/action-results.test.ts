@@ -100,8 +100,8 @@ describe("formatCompleteActionResultText Unicode safety", () => {
 	});
 });
 
-describe("formatActionResultsForPrompt complete data", () => {
-	it("serializes complete data alongside supplemental promptData", () => {
+describe("formatActionResultsForPrompt projections", () => {
+	it("serializes promptData instead of duplicating complete data", () => {
 		const rendered = formatActionResultsForPrompt(
 			[
 				result({
@@ -115,6 +115,6 @@ describe("formatActionResultsForPrompt complete data", () => {
 		);
 		expect(rendered).toContain("exact page");
 		expect(rendered).toContain("metadata");
-		expect(rendered).toContain("RAW_BODY_SENTINEL");
+		expect(rendered).not.toContain("RAW_BODY_SENTINEL");
 	});
 });
