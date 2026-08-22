@@ -42,7 +42,10 @@ process.argv = [
   "--platform",
   "unit-test",
 ];
-const smoke = await import("./mobile-local-chat-smoke.mjs");
+// This suite owns non-default timing and model fixtures. Bun shares imported
+// modules across test files, so use a suite-specific module identity instead
+// of inheriting constants initialized by the port-policy suite.
+const smoke = await import("./mobile-local-chat-smoke.mjs?smoke-suite");
 process.argv = originalArgv;
 
 let server;
