@@ -12,13 +12,17 @@ let runtimeReply = "";
 let runtimeResponded = true;
 let runtimeActionResults: ActionResult[] | undefined;
 let capturedRuntimeInput: Record<string, unknown> | undefined;
+let searchQueries: string[] = [];
 
 mock.module("../../providers/language-model", () => ({
   hasLanguageModelProviderConfigured: () => true,
 }));
 
 mock.module("@elizaos/plugin-web-search/edge", () => ({
-  runWebSearchEdge: async () => searchResult,
+  runWebSearchEdge: async (query: string) => {
+    searchQueries.push(query);
+    return searchResult;
+  },
 }));
 
 mock.module("./shared-eliza-runtime", () => ({
@@ -84,6 +88,7 @@ beforeEach(() => {
   runtimeResponded = true;
   runtimeActionResults = undefined;
   capturedRuntimeInput = undefined;
+  searchQueries = [];
 });
 
 describe("runSharedAgentTurn realtime grounding", () => {
@@ -143,7 +148,16 @@ describe("runSharedAgentTurn realtime grounding", () => {
         truncated: false,
       },
     };
-    runtimeActionResults = [groundedSearch(), followUpSearch];
+    runtimeActionResults = [
+      {
+        ...groundedSearch(),
+        data: {
+          ...groundedSearch().data,
+          query: "  WHAT   is BTC price RN ",
+        },
+      },
+      followUpSearch,
+    ];
 
     const result = await runSharedAgentTurn({
       character,
@@ -195,13 +209,25 @@ describe("runSharedAgentTurn realtime grounding", () => {
     expect(result.actionResults?.[0]?.success).toBe(false);
   });
 
-  test("leaves private-state turns untouched and performs no public preflight", async () => {
-    runtimeReply = "You have two todos.";
-    const result = await runSharedAgentTurn({ character, history: [], message: "check my todos" });
-    expect(result.reply).toBe(runtimeReply);
-    expect(result.actionResults).toBeUndefined();
-    expect(capturedRuntimeInput?.preflightActionResults).toBeUndefined();
-  });
+  const privateTurns = [
+    ["check my todos", "You have two todos."],
+    ["what reminders do I have today?", "You have one reminder today."],
+    ["what's on my schedule today?", "Your schedule has a 3 PM meeting."],
+    ["what is the status of my order?", "Your order is still processing."],
+    ["what is the status of the export?", "The export is still processing."],
+    ["please correct my name to Nubs", "Got it — I’ll call you Nubs."],
+  ] as const;
+
+  for (const [message, reply] of privateTurns) {
+    test(`leaves private turn untouched without public search: ${message}`, async () => {
+      runtimeReply = reply;
+      const result = await runSharedAgentTurn({ character, history: [], message });
+      expect(result.reply).toBe(reply);
+      expect(result.actionResults).toBeUndefined();
+      expect(capturedRuntimeInput?.preflightActionResults).toBeUndefined();
+      expect(searchQueries).toEqual([]);
+    });
+  }
 
   test("turns model silence into useful correction recovery", async () => {
     runtimeReply = "";
