@@ -121,16 +121,15 @@ describe("Cerebras default reasoning effort", () => {
     ).toBe("low");
   });
 
-  it("defaults to 'none' for gemma-4-31b (any non-none effort starves small-capped calls)", () => {
+  it("does not send the unsupported field for gemma-4-31b", () => {
     const runtime = buildRuntime({ CEREBRAS_API_KEY: "csk-test" });
     const opts = __INTERNAL_resolveProviderOptions(
       { prompt: "hi" } as never,
       runtime,
       "gemma-4-31b"
     );
-    expect(
-      (opts as { openai?: { reasoningEffort?: string } } | undefined)?.openai?.reasoningEffort
-    ).toBe("none");
+    const openai = (opts as { openai?: { reasoningEffort?: string } } | undefined)?.openai;
+    expect(openai?.reasoningEffort).toBeUndefined();
   });
 
   it.each(["glm-4.7", "zai-glm-4.7-preview", "my-glm-router"])(
@@ -224,12 +223,11 @@ describe("eliza.thinking='off' reasoning suppression (Cerebras mode)", () => {
     expect(openai?.reasoningEffort).toBeUndefined();
   });
 
-  it("suppresses reasoning outright for gemma-4-31b (hidden reasoning starves small caps)", () => {
+  it("does not translate thinking-off for undocumented gemma-4-31b reasoning", () => {
     const runtime = buildRuntime({ CEREBRAS_API_KEY: "csk-test" });
     const opts = __INTERNAL_resolveProviderOptions(thinkingOff, runtime, "gemma-4-31b");
-    expect(
-      (opts as { openai?: { reasoningEffort?: string } } | undefined)?.openai?.reasoningEffort
-    ).toBe("none");
+    const openai = (opts as { openai?: { reasoningEffort?: string } } | undefined)?.openai;
+    expect(openai?.reasoningEffort).toBeUndefined();
   });
 
   it.each(["gpt-oss-20b", "zai-glm-4.6", "custom-glm-router"])(

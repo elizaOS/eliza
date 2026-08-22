@@ -977,20 +977,10 @@ function buildNativeRequestBody(
   }
   const userReasoningEffort = resolveUserReasoningEffort(runtime, modelName);
   if (userReasoningEffort) {
-    // Reasoning burns from the completion budget on Cerebras-served models. A
-    // small-capped call (voice/formatting helpers use max_tokens 128) cannot
-    // fit non-trivial hidden reasoning plus an answer — gemma-4-31b at
-    // effort=high returns finish_reason "length" with EMPTY content (live
-    // 2026-08-20, every orchestrator ack degraded to its canned fallback).
-    // Honor the user pin only when the completion budget can absorb it;
-    // otherwise fall back to the model's suppression value.
-    const cap = typeof requestBody.max_tokens === "number" ? requestBody.max_tokens : undefined;
-    if (cap !== undefined && cap <= 1024) {
-      const suppression = resolveCerebrasThinkingOffReasoningEffort(modelName);
-      requestBody.reasoning_effort = suppression ?? userReasoningEffort;
-    } else {
-      requestBody.reasoning_effort = userReasoningEffort;
-    }
+    // Token caps bound output length; they do not express reasoning intent.
+    // Preserve the explicit user pin unless the caller independently asks for
+    // thinking="off" below.
+    requestBody.reasoning_effort = userReasoningEffort;
   }
   // The runtime signals "don't reason" via providerOptions.eliza.thinking="off"
   // (e.g. the Stage-1 RESPONSE_HANDLER formatting call), but

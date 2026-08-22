@@ -331,17 +331,6 @@ function normalizeCerebrasModelId(modelName: string): string {
     .replace(/:(?!free$).+$/, "");
 }
 
-function _isCerebrasReasoningModel(modelName: string | undefined): boolean {
-  if (!modelName) return false;
-  const id = normalizeCerebrasModelId(modelName);
-  // gemma-4-31b accepts reasoning_effort but does NOT reason unless the field
-  // is sent — and `"low"` is not bounded for it: hidden reasoning consumes the
-  // entire completion budget on small-capped calls (max_tokens 128 →
-  // finish_reason "length", content null; verified live 2026-08-20). Its
-  // correct default is explicit `"none"`, mapped per-model below.
-  return id === "gpt-oss-120b" || id === "zai-glm-4.7" || id === "gemma-4-31b";
-}
-
 function isOpenCodeGoEndpoint(value: string | undefined): boolean {
   if (!value) return false;
   try {
@@ -382,7 +371,6 @@ function resolveThinkingOffReasoningEffort(
   if (isCerebrasMode(runtime)) {
     if (cerebrasId === "gpt-oss-120b") return "low";
     if (cerebrasId === "zai-glm-4.7") return "none";
-    if (cerebrasId === "gemma-4-31b") return "none";
   }
 
   const exactModelId = modelName.trim().toLowerCase();
@@ -391,25 +379,23 @@ function resolveThinkingOffReasoningEffort(
 }
 
 /**
- * Per-model Cerebras reasoning default. `"low"` bounds the models whose hidden
- * reasoning must be capped but still helps quality; gemma-4-31b gets `"none"`
- * because any non-none effort can spend the whole completion budget on hidden
- * reasoning and return empty content on small-capped calls (live 2026-08-20).
+ * Per-model Cerebras reasoning default. Only exact models in the published
+ * provider contract receive the field; compatible endpoints reject unknown
+ * request properties instead of ignoring them.
  */
 function resolveCerebrasDefaultReasoningEffort(
   modelName: string | undefined
-): ReasoningEffort | "none" | undefined {
+): ReasoningEffort | undefined {
   if (!modelName) return undefined;
   const id = normalizeCerebrasModelId(modelName);
   if (id === "gpt-oss-120b" || id === "zai-glm-4.7") return "low";
-  if (id === "gemma-4-31b") return "none";
   return undefined;
 }
 
 function resolveReasoningEffort(
   runtime: IAgentRuntime,
   modelName?: string
-): ReasoningEffort | "none" | undefined {
+): ReasoningEffort | undefined {
   const raw = runtime.getSetting("OPENAI_REASONING_EFFORT");
   const normalized = typeof raw === "string" ? raw.trim().toLowerCase() : "";
   if (normalized) {
@@ -421,9 +407,7 @@ function resolveReasoningEffort(
     );
   }
   // The exact provider contract gates this default: family lookalikes may
-  // reject the field, and the right bound is per-model — "low" caps hidden
-  // reasoning for gpt-oss/zai, while gemma-4-31b needs "none" outright. An
-  // explicit valid value above wins over this default.
+  // reject the field. An explicit valid value above wins over this default.
   if (isCerebrasMode(runtime)) {
     return resolveCerebrasDefaultReasoningEffort(modelName);
   }
@@ -707,7 +691,7 @@ function restoreStrictSafePlannerArgs(value: unknown): unknown {
  */
 function normalizeNativeToolsForCall(
   tools: unknown,
-  options: { cerebrasMode?: boolean } = {}
+  options: { cerebrasMode?: boolean; sanitizeUnicode?: boolean } = {}
 ): NormalizedNativeToolsResult {
   const recordArgTransformsByTool: Record<string, RecordArgTransform[]> = {};
 
@@ -715,11 +699,82 @@ function normalizeNativeToolsForCall(
     return { recordArgTransformsByTool };
   }
 
-  // Existing AI SDK callers already pass a ToolSet keyed by tool name. Keep it
-  // intact so custom tool instances, execute hooks, and dynamic tool metadata
-  // are preserved.
+  // Existing AI SDK callers already pass a ToolSet keyed by tool name. Normalize
+  // only those wire keys. Preserve lazy/accessor descriptors without observing
+  // them while repairing serializable fields that are already concrete values.
   if (!Array.isArray(tools)) {
-    return { tools: tools as ToolSet, recordArgTransformsByTool };
+    if (typeof tools !== "object" || tools === null) {
+      throw new ElizaError("[OpenAI] Native tools must be an array or ToolSet object.", {
+        code: "OPENAI_INVALID_TOOL_SET",
+        severity: "ephemeral",
+      });
+    }
+    const source = tools as Record<PropertyKey, unknown>;
+    const normalized = Object.create(null) as Record<PropertyKey, unknown>;
+    const toolNameMap = new Map<string, string>();
+    const originalNameByRegisteredName = new Map<string, string>();
+    let changed = false;
+    for (const key of Reflect.ownKeys(source)) {
+      const descriptor = Object.getOwnPropertyDescriptor(source, key);
+      if (!descriptor) continue;
+      if (typeof key !== "string" || !descriptor.enumerable) {
+        Object.defineProperty(normalized, key, descriptor);
+        continue;
+      }
+      const wellFormedName = deepToWellFormedUnicode(key);
+      const registeredName = options.cerebrasMode
+        ? sanitizeFunctionNameForCerebras(wellFormedName)
+        : wellFormedName;
+      const collidingOriginalName = originalNameByRegisteredName.get(registeredName);
+      if (collidingOriginalName !== undefined && collidingOriginalName !== key) {
+        throw new ElizaError("[OpenAI] Native tool names collide after provider normalization.", {
+          code: "OPENAI_TOOL_NAME_COLLISION",
+          context: {
+            registeredName,
+            toolNames: [collidingOriginalName, key],
+          },
+          severity: "ephemeral",
+        });
+      }
+      originalNameByRegisteredName.set(registeredName, key);
+      toolNameMap.set(key, registeredName);
+      let normalizedDescriptor = descriptor;
+      if ("value" in descriptor && descriptor.value && typeof descriptor.value === "object") {
+        const tool = descriptor.value as Record<PropertyKey, unknown>;
+        const toolClone = Object.create(null) as Record<PropertyKey, unknown>;
+        let toolChanged = false;
+        for (const toolKey of Reflect.ownKeys(tool)) {
+          const toolDescriptor = Object.getOwnPropertyDescriptor(tool, toolKey);
+          if (!toolDescriptor) continue;
+          let nextDescriptor = toolDescriptor;
+          if (
+            typeof toolKey === "string" &&
+            toolDescriptor.enumerable &&
+            "value" in toolDescriptor &&
+            (typeof toolDescriptor.value === "string" || toolKey === "parameters")
+          ) {
+            const sanitizedValue = deepToWellFormedUnicode(toolDescriptor.value);
+            if (sanitizedValue !== toolDescriptor.value) {
+              toolChanged = true;
+              nextDescriptor = { ...toolDescriptor, value: sanitizedValue };
+            }
+          }
+          Object.defineProperty(toolClone, toolKey, nextDescriptor);
+        }
+        Object.setPrototypeOf(toolClone, Object.getPrototypeOf(tool));
+        if (toolChanged) {
+          changed = true;
+          normalizedDescriptor = { ...descriptor, value: toolClone };
+        }
+      }
+      changed ||= registeredName !== key;
+      Object.defineProperty(normalized, registeredName, normalizedDescriptor);
+    }
+    return {
+      tools: (changed ? normalized : tools) as ToolSet,
+      recordArgTransformsByTool,
+      toolNameMap,
+    };
   }
 
   const toolSet: Record<string, unknown> = Object.create(null) as Record<string, unknown>;
@@ -782,6 +837,9 @@ function normalizeNativeToolsForCall(
     if (options.cerebrasMode) {
       rawSchema = cloneSchemaForBoundedTransport(rawSchema);
     }
+    if (options.sanitizeUnicode) {
+      rawSchema = deepToWellFormedUnicode(rawSchema);
+    }
     let inputSchema: JSONSchema7;
     if (strict === false) {
       if (!rawSchema || typeof rawSchema !== "object" || Array.isArray(rawSchema)) {
@@ -812,7 +870,10 @@ function normalizeNativeToolsForCall(
     // surface it to the model under that name. Tool calls come back with the
     // sanitized name, which the runtime resolves through its action registry —
     // any caller relying on dotted action names should pre-sanitize.
-    const registeredName = options.cerebrasMode ? sanitizeFunctionNameForCerebras(name) : name;
+    const wellFormedName = deepToWellFormedUnicode(name);
+    const registeredName = options.cerebrasMode
+      ? sanitizeFunctionNameForCerebras(wellFormedName)
+      : wellFormedName;
     const collidingOriginalName = originalNameByRegisteredName.get(registeredName);
     if (collidingOriginalName !== undefined && collidingOriginalName !== name) {
       throw new ElizaError("[OpenAI] Native tool names collide after provider normalization.", {
@@ -836,10 +897,8 @@ function normalizeNativeToolsForCall(
       // enumerable accessor which the strict deep sanitizer rejects fatally,
       // so the assembled ToolSet must never be deep-walked afterwards (every
       // child RESPONSE_HANDLER call died on it, live 2026-08-21).
-      ...(description
-        ? { description: deepToWellFormedUnicode(description) }
-        : {}),
-      inputSchema: jsonSchema(deepToWellFormedUnicode(inputSchema) as JSONSchema7),
+      ...(description ? { description: deepToWellFormedUnicode(description) } : {}),
+      inputSchema: jsonSchema(inputSchema as JSONSchema7),
       ...(options.cerebrasMode
         ? { strict: cerebrasRequestStrict }
         : strict === undefined
@@ -857,7 +916,7 @@ function normalizeNativeToolsForCall(
 
 function normalizeNativeTools(
   tools: unknown,
-  options: { cerebrasMode?: boolean } = {}
+  options: { cerebrasMode?: boolean; sanitizeUnicode?: boolean } = {}
 ): ToolSet | undefined {
   return normalizeNativeToolsForCall(tools, options).tools;
 }
@@ -2317,6 +2376,10 @@ async function generateTextByModelType(
   const cerebrasMode = isCerebrasMode(runtime);
   const normalizedToolResult = normalizeNativeToolsForCall(paramsWithAttachments.tools, {
     cerebrasMode,
+    // Plain array definitions are sanitized only after the provider-specific
+    // bounded structural pre-pass and before jsonSchema() introduces its lazy
+    // accessor. Existing ToolSets use the descriptor-only branch above.
+    sanitizeUnicode: true,
   });
   const normalizedTools = normalizedToolResult.tools;
   const normalizedToolChoice = normalizeToolChoice(paramsWithAttachments.toolChoice, {
