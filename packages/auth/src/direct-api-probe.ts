@@ -45,9 +45,25 @@ export interface DirectApiProbeResult {
   latencyMs: number;
 }
 
+/**
+ * Ceiling on the provider error body kept for diagnostics. Orders of magnitude
+ * above any real provider error, so in practice nothing is lost — but the base
+ * URL is operator-configurable through the `*_BASE_URL` overrides, so the read
+ * must not be unbounded. Exceeding it is reported in the text rather than
+ * silently trimmed: a truncation the reader cannot see is the failure mode this
+ * function exists to avoid.
+ */
+const MAX_PROBE_FAILURE_BODY_BYTES = 64 * 1024;
+
 async function readProbeFailureBody(response: Response): Promise<string> {
   try {
-    return await response.text();
+    const body = await response.text();
+    const bytes = new TextEncoder().encode(body);
+    if (bytes.length <= MAX_PROBE_FAILURE_BODY_BYTES) return body;
+    const kept = new TextDecoder().decode(
+      bytes.subarray(0, MAX_PROBE_FAILURE_BODY_BYTES),
+    );
+    return `${kept}[truncated: ${bytes.length} bytes exceeded the ${MAX_PROBE_FAILURE_BODY_BYTES}-byte probe diagnostic limit]`;
   } catch (cause) {
     // error-policy:J4 explicit diagnostic degrade — the HTTP status remains the
     // authoritative failed probe; only the optional provider body is unavailable.

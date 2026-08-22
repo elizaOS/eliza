@@ -35,6 +35,25 @@ describe("probeDirectApiKey", () => {
     });
   });
 
+  it("marks an over-limit body instead of trimming it silently", async () => {
+    // The base URL is operator-configurable via *_BASE_URL, so the diagnostic
+    // read is bounded. A reader must be able to tell a complete body from a cut
+    // one — that is the whole point of dropping the old silent slice(0, 200).
+    const oversized = "y".repeat(64 * 1024 + 10);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(new Response(oversized, { status: 500 })),
+    );
+
+    const result = await probeDirectApiKey("openai-api", "provider-key");
+
+    // Exactly the cap is retained, then the marker — assert on the kept body
+    // itself, since the marker and status prefix are added on top of it.
+    expect(result.error).toBe(
+      `openai-api 500: ${"y".repeat(64 * 1024)}[truncated: ${64 * 1024 + 10} bytes exceeded the ${64 * 1024}-byte probe diagnostic limit]`,
+    );
+  });
+
   it("keeps the HTTP status when the provider body cannot be read", async () => {
     vi.stubGlobal(
       "fetch",
