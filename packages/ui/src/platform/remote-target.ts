@@ -117,7 +117,7 @@ export async function finalizeRemoteTargetHostRevoke(
   const result = await invokeDesktopBridgeRequest<{ cleaned: true }>({
     rpcMethod: "remoteTargetFinalizeHostRevoke",
     ipcChannel: "remoteTarget:finalizeHostRevoke",
-    params: { hostId, cloudRevoked: true },
+    params: { hostId },
   });
   return result?.cleaned ?? false;
 }
