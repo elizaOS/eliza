@@ -68,6 +68,7 @@ import {
   collectFsObservedFiles,
   deriveRouteMappedUrls,
   enumerateWorkdirCandidates,
+  probeMappedUrls,
 } from "./quick-app-evidence.js";
 import {
   applyResumePreamble,
@@ -1739,6 +1740,16 @@ export class SubAgentRouter extends Service {
       text = redactLoopbackUrls(verified.text);
       deadUrls = verified.dead;
       verifiedUrls = verified.verifiedUrls;
+      // A child that never NAMES its page leaves nothing to verify, and the
+      // relay then shipped "it's all in index.html" with no link (live
+      // 2026-08-22, two-lane build). The served dir is known: probe it.
+      if (verifiedUrls.length === 0) {
+        const servedUrl = publicUrlForServedWorkdir(session.workdir);
+        if (servedUrl) {
+          const probed = await probeMappedUrls([servedUrl]);
+          if (probed.length > 0) verifiedUrls = probed;
+        }
+      }
       // The task service's evidence bundle reads `subAgentVerifiedUrls` off
       // the session — until now only the relay Memory carried it, so the
       // verifier never saw the URL this probe had just confirmed and demanded
@@ -3868,6 +3879,24 @@ function pickRouteUrlMappings(value: unknown): RouteUrlMapping[] {
       };
     })
     .filter((entry): entry is RouteUrlMapping => entry !== undefined);
+}
+
+/** The public URL of a session workdir directly under the configured
+ *  published-apps dir, when it holds an index page. */
+function publicUrlForServedWorkdir(workdir: string): string | undefined {
+  if (!workdir || !fs.existsSync(path.join(workdir, "index.html"))) {
+    return undefined;
+  }
+  const deploy = resolveAppDeployConfig();
+  if (
+    deploy.target !== "custom" ||
+    !deploy.customAppsDir ||
+    !deploy.customBaseUrl ||
+    path.dirname(path.resolve(workdir)) !== path.resolve(deploy.customAppsDir)
+  ) {
+    return undefined;
+  }
+  return `${deploy.customBaseUrl.replace(/\/+$/, "")}/apps/${path.basename(workdir)}/`;
 }
 
 function routeVerificationForSession(

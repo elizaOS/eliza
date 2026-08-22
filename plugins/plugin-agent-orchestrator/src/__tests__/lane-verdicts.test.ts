@@ -81,7 +81,8 @@ describe("lane verdicts", () => {
       "coin",
     );
     let doc = await store.getTask(taskId);
-    expect(doc?.task.status).toBe("active");
+    // Stays validating so the sibling lane's queued verification still runs.
+    expect(doc?.task.status).toBe("validating");
     expect(doc?.task.metadata?.laneVerdicts).toEqual({ coin: "passed" });
     expect(
       doc?.events.some((e) => e.eventType === "lane_validation_passed"),

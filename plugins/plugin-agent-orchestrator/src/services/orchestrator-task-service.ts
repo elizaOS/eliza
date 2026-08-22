@@ -4406,11 +4406,11 @@ export class OrchestratorTaskService extends Service {
             timestamp: Date.now(),
             createdAt: nowIso(),
           });
-          // Back to `active`: the sibling's completion_reported re-enters
-          // validating (the same edge validation_failed takes, without the
-          // failure semantics).
+          // The task STAYS validating: a sibling lane's verification may be
+          // queued behind this lock and bails on any other status (live
+          // 2026-08-22: flipping to active here silently skipped the second
+          // lane's verdict and its relay rode the 5-minute timeout).
           await this.store.updateTask(taskId, {
-            status: "active",
             metadata: { ...(doc.task.metadata ?? {}), laneVerdicts: verdicts },
           });
           (
