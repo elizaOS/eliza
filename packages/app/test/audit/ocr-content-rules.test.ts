@@ -78,7 +78,7 @@ describe("positiveExpectationMatches", () => {
     ["builtin-tasks", "Projects Ask Eliza", false],
     [
       "builtin-apps",
-      "My Apps Install, create, and run your elizaOS apps.",
+      "Projects Install, create, and run your elizaOS apps.",
       true,
     ],
     ["builtin-tasks", "Tasks No coding tasks yet.", true],
@@ -356,7 +356,7 @@ ph eg`,
   it.each([
     [
       "builtin-apps",
-      "< My Apps\nInstall, create, and run your elizaOS apps.\nAsk\nEliza\n+ UR",
+      "< Projects\nInstall, create, and run your elizaOS apps.\nAsk\nEliza\n+ UR",
     ],
     [
       "builtin-automations",

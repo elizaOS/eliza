@@ -26,10 +26,7 @@ import type {
 } from "../../../types/index.ts";
 import { ChannelType } from "../../../types/index.ts";
 import { hasActionContext } from "../../../utils/action-validation.ts";
-import {
-	toWellFormedUnicode,
-	truncateWellFormed,
-} from "../../../utils/well-formed.ts";
+import { toWellFormedUnicode } from "../../../utils/well-formed.ts";
 import { stringToUuid } from "../../../utils.ts";
 import {
 	boolParam,
@@ -200,16 +197,6 @@ function applyPostContentShaping(
 	const shaping = connector.contentShaping;
 	if (text && typeof shaping?.postProcess === "function") {
 		text = toWellFormedUnicode(shaping.postProcess(text));
-	}
-	const maxLength = shaping?.constraints?.maxLength;
-	if (
-		text &&
-		typeof maxLength === "number" &&
-		Number.isFinite(maxLength) &&
-		maxLength > 0 &&
-		text.length > maxLength
-	) {
-		text = truncateWellFormed(text, Math.max(0, Math.floor(maxLength)));
 	}
 	return text === content.text ? content : { ...content, text };
 }
@@ -399,6 +386,25 @@ async function handleSend(
 		selected.connector,
 		buildPostContent(params, selected.connector, message),
 	);
+	const maxLength = selected.connector.contentShaping?.constraints?.maxLength;
+	if (
+		typeof content.text === "string" &&
+		typeof maxLength === "number" &&
+		Number.isFinite(maxLength) &&
+		maxLength > 0 &&
+		content.text.length > maxLength
+	) {
+		return failure(
+			"send",
+			"POST_CONTENT_TOO_LONG",
+			`${selected.connector.label} accepts at most ${Math.floor(maxLength)} characters; the complete ${content.text.length}-character post was not sent.`,
+			{
+				source: selected.connector.source,
+				maxLength: Math.floor(maxLength),
+				actualLength: content.text.length,
+			},
+		);
+	}
 	if (!textParam(content.text) && !content.attachments?.length) {
 		return failure(
 			"send",

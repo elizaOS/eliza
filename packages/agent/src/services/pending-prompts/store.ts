@@ -13,6 +13,7 @@
  *
  * Backing storage: runtime cache, keyed per room. Time-based retention removes
  * expired entries without discarding live prompts or changing their content.
+ * Empty rooms are removed from both their cache row and the room index.
  */
 
 import { type IAgentRuntime, toWellFormedUnicode } from "@elizaos/core";
@@ -163,13 +164,31 @@ async function loadRoom(
   return Array.isArray(stored) ? stored : [];
 }
 
+/** Persist a non-empty room or retire all storage for an empty room. */
 async function saveRoom(
   cache: RuntimeCacheLike,
   roomId: string,
   entries: RecordedPendingPrompt[],
 ): Promise<void> {
+  if (entries.length === 0) {
+    await forgetRoom(cache, roomId);
+    return;
+  }
   await cache.setCache<RecordedPendingPrompt[]>(roomCacheKey(roomId), entries);
   await registerRoom(cache, roomId);
+}
+
+/** Drop a room's cache row and its index entry. */
+async function forgetRoom(
+  cache: RuntimeCacheLike,
+  roomId: string,
+): Promise<void> {
+  if (typeof cache.deleteCache === "function") {
+    await cache.deleteCache(roomCacheKey(roomId));
+  } else {
+    await cache.setCache<RecordedPendingPrompt[]>(roomCacheKey(roomId), []);
+  }
+  await unregisterRoom(cache, roomId);
 }
 
 async function registerRoom(
@@ -182,6 +201,18 @@ async function registerRoom(
   await cache.setCache<string[]>(ROOM_INDEX_KEY, [...next]);
 }
 
+async function unregisterRoom(
+  cache: RuntimeCacheLike,
+  roomId: string,
+): Promise<void> {
+  const stored = await cache.getCache<string[]>(ROOM_INDEX_KEY);
+  if (!Array.isArray(stored) || !stored.includes(roomId)) return;
+  await cache.setCache<string[]>(
+    ROOM_INDEX_KEY,
+    stored.filter((id) => id !== roomId),
+  );
+}
+
 async function listRooms(cache: RuntimeCacheLike): Promise<string[]> {
   const stored = await cache.getCache<string[]>(ROOM_INDEX_KEY);
   return Array.isArray(stored) ? stored : [];
@@ -192,6 +223,61 @@ export function createPendingPromptsStore(
 ): PendingPromptsStore {
   const cache: RuntimeCacheLike = runtime;
   const withLock = getLockRunner(cache);
+
+  const listRoom = async (
+    roomId: string,
+    opts: { lookbackMinutes?: number; now?: Date },
+    retireIndexedEmptyRoom: boolean,
+  ): Promise<PendingPrompt[]> => {
+    const now = opts.now ?? new Date();
+    const lookbackCutoffMs =
+      typeof opts.lookbackMinutes === "number" && opts.lookbackMinutes > 0
+        ? now.getTime() - opts.lookbackMinutes * 60_000
+        : null;
+
+    const live = await withLock(MUTATION_LOCK_KEY, async () => {
+      const stored = await loadRoom(cache, roomId);
+      let mutated = false;
+      const kept: RecordedPendingPrompt[] = [];
+      for (const entry of stored) {
+        const retainMs = Date.parse(entry.retainUntilIso);
+        if (Number.isFinite(retainMs) && retainMs <= now.getTime()) {
+          mutated = true;
+          continue;
+        }
+        kept.push(entry);
+      }
+      // listAll already obtained roomId from the index. Retire an empty row
+      // even when it predates this implementation or a prior retirement
+      // deleted the row before its index update failed.
+      if (mutated || (retireIndexedEmptyRoom && kept.length === 0)) {
+        await saveRoom(cache, roomId, kept);
+      }
+      return kept;
+    });
+
+    const visible = live.filter((entry) => {
+      if (lookbackCutoffMs === null) return true;
+      const firedMs = Date.parse(entry.firedAt);
+      return Number.isFinite(firedMs) && firedMs >= lookbackCutoffMs;
+    });
+
+    return visible
+      .slice()
+      .sort((a, b) => Date.parse(b.firedAt) - Date.parse(a.firedAt))
+      .map<PendingPrompt>((entry) => {
+        const projected: PendingPrompt = {
+          taskId: entry.taskId,
+          promptSnippet: entry.promptSnippet,
+          firedAt: entry.firedAt,
+          expectedReplyKind: entry.expectedReplyKind,
+        };
+        if (entry.expiresAt !== undefined) {
+          projected.expiresAt = entry.expiresAt;
+        }
+        return projected;
+      });
+  };
 
   const store: PendingPromptsStore = {
     async record(
@@ -244,51 +330,7 @@ export function createPendingPromptsStore(
       roomId: string,
       opts: { lookbackMinutes?: number; now?: Date } = {},
     ): Promise<PendingPrompt[]> {
-      const now = opts.now ?? new Date();
-      const lookbackCutoffMs =
-        typeof opts.lookbackMinutes === "number" && opts.lookbackMinutes > 0
-          ? now.getTime() - opts.lookbackMinutes * 60_000
-          : null;
-
-      const live = await withLock(MUTATION_LOCK_KEY, async () => {
-        const stored = await loadRoom(cache, roomId);
-        let mutated = false;
-        const kept: RecordedPendingPrompt[] = [];
-        for (const entry of stored) {
-          const retainMs = Date.parse(entry.retainUntilIso);
-          if (Number.isFinite(retainMs) && retainMs <= now.getTime()) {
-            mutated = true;
-            continue;
-          }
-          kept.push(entry);
-        }
-        if (mutated) {
-          await saveRoom(cache, roomId, kept);
-        }
-        return kept;
-      });
-
-      const visible = live.filter((entry) => {
-        if (lookbackCutoffMs === null) return true;
-        const firedMs = Date.parse(entry.firedAt);
-        return Number.isFinite(firedMs) && firedMs >= lookbackCutoffMs;
-      });
-
-      return visible
-        .slice()
-        .sort((a, b) => Date.parse(b.firedAt) - Date.parse(a.firedAt))
-        .map<PendingPrompt>((entry) => {
-          const projected: PendingPrompt = {
-            taskId: entry.taskId,
-            promptSnippet: entry.promptSnippet,
-            firedAt: entry.firedAt,
-            expectedReplyKind: entry.expectedReplyKind,
-          };
-          if (entry.expiresAt !== undefined) {
-            projected.expiresAt = entry.expiresAt;
-          }
-          return projected;
-        });
+      return listRoom(roomId, opts, false);
     },
 
     async listAll(
@@ -297,7 +339,7 @@ export function createPendingPromptsStore(
       const rooms = await listRooms(cache);
       const perRoom = await Promise.all(
         rooms.map(async (roomId) =>
-          (await store.list(roomId, opts)).map((prompt) => ({
+          (await listRoom(roomId, opts, true)).map((prompt) => ({
             ...prompt,
             roomId,
           })),
@@ -312,7 +354,7 @@ export function createPendingPromptsStore(
       await withLock(MUTATION_LOCK_KEY, async () => {
         const existing = await loadRoom(cache, roomId);
         const next = existing.filter((entry) => entry.taskId !== taskId);
-        if (next.length !== existing.length) {
+        if (next.length !== existing.length || existing.length === 0) {
           await saveRoom(cache, roomId, next);
         }
       });
@@ -324,7 +366,7 @@ export function createPendingPromptsStore(
         for (const roomId of rooms) {
           const existing = await loadRoom(cache, roomId);
           const next = existing.filter((entry) => entry.taskId !== taskId);
-          if (next.length !== existing.length) {
+          if (next.length !== existing.length || existing.length === 0) {
             await saveRoom(cache, roomId, next);
           }
         }

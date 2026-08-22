@@ -3,10 +3,9 @@
  * Stage 1 `HANDLE_RESPONSE` tool (schema + description, with a direct-message
  * variant) through which the model declares turn intent, and the Stage 2 planner
  * tools where each Action becomes a native tool named by the action name with its
- * `parameters` JSON Schema. Tier-aware expansion promotes tier-A parents'
- * sub-actions to first-class tools; tier-B parents stay parent-only and route
- * internally. Also emits the always-available REPLY / IGNORE / STOP terminal
- * sentinels so the planner can end a turn regardless of action narrowing. Sits
+ * `parameters` JSON Schema. Tier-aware expansion promotes every selected parent's
+ * sub-actions to first-class tools. Also emits the always-available REPLY / IGNORE /
+ * STOP terminal sentinels so the planner can end a turn. Sits
  * between the action catalog and the model layer; parameter schemas come from
  * `normalizeActionJsonSchema` (`action-schema.ts`). Tool names must match
  * `NATIVE_TOOL_NAME_PATTERN` or conversion throws.
@@ -214,7 +213,7 @@ export const HANDLE_RESPONSE_TOOL: ToolDefinition = createHandleResponseTool();
 /**
  * Synthetic terminal-sentinel action shapes. REPLY and IGNORE are real
  * runtime Actions (see `features/basic-capabilities/actions/`) but they
- * are not always part of the per-turn narrowed action surface. The
+ * are not always part of the per-turn action surface. The
  * planner needs a stable, always-available way for the model to end the
  * turn — these shapes are converted into `ToolDefinition`s by
  * {@link CORE_PLANNER_TERMINALS} so every Stage 2 request exposes them.
@@ -311,7 +310,7 @@ function actionToPlannerTool(action: PlannerToolActionShape): ToolDefinition {
 }
 
 /**
- * Build a per-turn list of `ToolDefinition`s from the narrowed Stage 2
+ * Build a per-turn list of `ToolDefinition`s from the complete Stage 2
  * action surface. Each action becomes a native tool whose name is the
  * action name and whose `parameters` is the action's parameter
  * JSONSchema, so the LLM calls each action directly by name.
@@ -338,17 +337,7 @@ export function buildPlannerToolsFromActions(
  * Options accepted by {@link buildPlannerToolsFromTieredActions}.
  */
 export interface BuildPlannerToolsFromTieredActionsOptions {
-	/**
-	 * Set of parent action names (case-insensitive, matched against
-	 * `Action.name` after normalization) whose `subActions` should be expanded
-	 * as first-class planner tools. Parents not in this set get only their own
-	 * tool exposed — the parent's handler is responsible for routing to a
-	 * sub-action when the planner picks the umbrella.
-	 *
-	 * Pass the tiered-action-surface `tierAParents` from the action surface
-	 * metadata. When omitted or empty, no expansion happens and the behavior
-	 * matches {@link buildPlannerToolsFromActions} exactly.
-	 */
+	/** @deprecated Parent allow-lists are ignored; every parent expands. */
 	tierAParents?: ReadonlySet<string> | readonly string[];
 	/**
 	 * Optional registry of `name → Action` used to resolve string-only
@@ -372,21 +361,25 @@ export interface BuildPlannerToolsFromTieredActionsOptions {
 		parentName: string;
 		subActionName: string;
 	}) => void;
-	/**
-	 * Per-parent allow-list of sub-action names (case-insensitive) to expand
-	 * for tier-A parents. Produced by the tiering surface's per-parent child
-	 * narrowing (`maxTierAChildrenPerParent` in `tierActionResults`): when a
-	 * parent has an entry, only the listed children become first-class tools;
-	 * every other subaction stays reachable through the parent umbrella tool,
-	 * whose handler dispatches any subaction. Parents WITHOUT an entry expand
-	 * all sub-actions, so full-surface mode and callers that never narrow are
-	 * unaffected.
-	 */
+	/** @deprecated Child allow-lists are ignored; every registered child expands. */
 	tierAChildrenByParent?:
 		| ReadonlyMap<string, readonly string[]>
 		| Readonly<Record<string, readonly string[]>>;
 }
 
+/**
+ * Lenient key used only as a compatibility fallback for resolving string child
+ * references. Separators and case are deliberately ignored.
+ *
+ * It must never be used as an action's IDENTITY. Because it strips every
+ * non-alphanumeric character, distinct registered actions such as
+ * `GMAIL_CREATE_DRAFT` and `GMAILCREATEDRAFT` — both legal under
+ * {@link NATIVE_TOOL_NAME_PATTERN}, and treated as distinct everywhere else in
+ * the runtime (see `matchActionWildcardParts`) — collapse onto one key. Keying
+ * emission or sub-action resolution on it silently drops one of the pair from
+ * the planner surface, or resolves a string sub-action reference to the wrong
+ * Action. Use {@link toolIdentityKey} for identity.
+ */
 function normalizeParentNameKey(name: string): string {
 	return String(name)
 		.trim()
@@ -394,87 +387,87 @@ function normalizeParentNameKey(name: string): string {
 		.replace(/[^A-Z0-9]/g, "");
 }
 
-function buildParentNameSet(
-	tierAParents: BuildPlannerToolsFromTieredActionsOptions["tierAParents"],
-): Set<string> {
-	const set = new Set<string>();
-	if (!tierAParents) {
-		return set;
-	}
-	const source: Iterable<string> = Array.isArray(tierAParents)
-		? (tierAParents as readonly string[])
-		: (tierAParents as ReadonlySet<string>);
-	for (const name of source) {
-		const key = normalizeParentNameKey(name);
-		if (key) {
-			set.add(key);
-		}
-	}
-	return set;
+/**
+ * Identity of an emitted tool. This is the exact string the model will send
+ * back as the tool name, so two actions are the same tool if and only if their
+ * names are equal. Only surrounding whitespace is trimmed;
+ * {@link assertNativeToolName} already constrains the rest of the shape (upper
+ * snake case), so no case folding is needed.
+ */
+function toolIdentityKey(name: string): string {
+	return String(name).trim();
 }
 
-function resolveTierAChildAllowlist(
-	value: BuildPlannerToolsFromTieredActionsOptions["tierAChildrenByParent"],
-): Map<string, Set<string>> {
-	const map = new Map<string, Set<string>>();
-	if (!value) {
-		return map;
-	}
-	const entries: Iterable<[string, readonly string[]]> =
-		value instanceof Map ? value : Object.entries(value);
-	for (const [parentName, childNames] of entries) {
-		const parentKey = normalizeParentNameKey(parentName);
-		if (!parentKey || !Array.isArray(childNames)) {
-			continue;
+/**
+ * Sub-action reference resolver.
+ *
+ * Exact names win. A separator/case-insensitive fallback is kept so a parent
+ * declaring `subActions: ["play-music"]` still finds `PLAY_MUSIC`, but a
+ * loose key that more than one distinct action answers to is AMBIGUOUS and
+ * resolves to nothing rather than silently picking the first insertion — the
+ * previous behaviour handed the planner a tool built from the wrong Action's
+ * schema.
+ */
+class ActionLookup {
+	private readonly exact = new Map<string, PlannerToolActionShape>();
+	private readonly loose = new Map<string, PlannerToolActionShape | null>();
+
+	add(key: string, value: PlannerToolActionShape | undefined): void {
+		if (!value) {
+			return;
 		}
-		const childKeys = new Set<string>();
-		for (const childName of childNames) {
-			const childKey = normalizeParentNameKey(String(childName));
-			if (childKey) {
-				childKeys.add(childKey);
-			}
+		const identity = toolIdentityKey(key);
+		if (!identity || this.exact.has(identity)) {
+			return;
 		}
-		map.set(parentKey, childKeys);
+		this.exact.set(identity, value);
+
+		const looseKey = normalizeParentNameKey(key);
+		if (!looseKey) {
+			return;
+		}
+		if (!this.loose.has(looseKey)) {
+			this.loose.set(looseKey, value);
+			return;
+		}
+		// A second, differently-spelled action answers to the same loose key.
+		// Poison it so the fallback cannot guess.
+		this.loose.set(looseKey, null);
 	}
-	return map;
+
+	has(key: string): boolean {
+		return this.exact.has(toolIdentityKey(key));
+	}
+
+	get(key: string): PlannerToolActionShape | undefined {
+		const identity = toolIdentityKey(key);
+		const exactMatch = this.exact.get(identity);
+		if (exactMatch) {
+			return exactMatch;
+		}
+		return this.loose.get(normalizeParentNameKey(key)) ?? undefined;
+	}
 }
 
 function resolveActionLookup(
 	lookup: BuildPlannerToolsFromTieredActionsOptions["actionLookup"],
-): Map<string, PlannerToolActionShape> {
-	const map = new Map<string, PlannerToolActionShape>();
+): ActionLookup {
+	const resolved = new ActionLookup();
 	if (!lookup) {
-		return map;
+		return resolved;
 	}
-	if (lookup instanceof Map) {
-		for (const [key, value] of lookup) {
-			const normalized = normalizeParentNameKey(key);
-			if (normalized && value && !map.has(normalized)) {
-				map.set(normalized, value);
-			}
-		}
-		return map;
+	const entries: Iterable<[string, PlannerToolActionShape]> =
+		lookup instanceof Map ? lookup : Object.entries(lookup);
+	for (const [key, value] of entries) {
+		resolved.add(key, value);
 	}
-	for (const [key, value] of Object.entries(lookup)) {
-		const normalized = normalizeParentNameKey(key);
-		if (normalized && value && !map.has(normalized)) {
-			map.set(normalized, value);
-		}
-	}
-	return map;
+	return resolved;
 }
 
 /**
  * Build a per-turn list of `ToolDefinition`s from a tier-aware Stage 2 action
- * surface. Behaves like {@link buildPlannerToolsFromActions} when no
- * `tierAParents` are provided. When `tierAParents` is non-empty, sub-actions of
- * any input action whose name is in that set are expanded into first-class
- * tools alongside the parent, so the planner can call a specific sub-action
- * directly without a "dig into the parent" round-trip.
- *
- * Tier-B parents (anything in `actions` but NOT in `tierAParents`) are exposed
- * as parent-only tools — the parent's handler is responsible for dispatching
- * to a sub-action when the planner picks the umbrella.
+ * surface. Every input parent's sub-actions are expanded into first-class tools
+ * alongside the parent, so relevance metadata cannot hide a callable action.
  *
  * Sub-action resolution:
  *   - Inline `Action` sub-actions on `parent.subActions` are always expanded.
@@ -492,18 +485,13 @@ export function buildPlannerToolsFromTieredActions(
 	actions: ReadonlyArray<PlannerToolActionShape>,
 	options: BuildPlannerToolsFromTieredActionsOptions = {},
 ): ToolDefinition[] {
-	const tierAKeys = buildParentNameSet(options.tierAParents);
 	const actionLookup = resolveActionLookup(options.actionLookup);
-	const childAllowlistByParent = resolveTierAChildAllowlist(
-		options.tierAChildrenByParent,
-	);
 
 	// Top up the lookup with anything already in `actions` so children that
 	// appear inline elsewhere in the input remain resolvable from a string ref.
 	for (const action of actions) {
-		const key = normalizeParentNameKey(action.name);
-		if (key && !actionLookup.has(key)) {
-			actionLookup.set(key, action);
+		if (!actionLookup.has(action.name)) {
+			actionLookup.add(action.name, action);
 		}
 	}
 
@@ -511,7 +499,10 @@ export function buildPlannerToolsFromTieredActions(
 	const emittedNames = new Set<string>();
 
 	const emit = (action: PlannerToolActionShape): void => {
-		const key = normalizeParentNameKey(action.name);
+		// Dedupe on the tool's IDENTITY, not the lenient hint key: two actions
+		// whose names differ only by separators are two different tools and both
+		// must reach the planner.
+		const key = toolIdentityKey(action.name);
 		if (!key || emittedNames.has(key)) {
 			return;
 		}
@@ -523,11 +514,6 @@ export function buildPlannerToolsFromTieredActions(
 
 	for (const action of actions) {
 		emit(action);
-		const key = normalizeParentNameKey(action.name);
-		if (!tierAKeys.has(key)) {
-			continue;
-		}
-		const allowedChildren = childAllowlistByParent.get(key);
 		for (const subAction of action.subActions ?? []) {
 			let child: PlannerToolActionShape | undefined;
 			let subActionName = "";
@@ -537,18 +523,8 @@ export function buildPlannerToolsFromTieredActions(
 				subActionName = subAction.name;
 				child = subAction;
 			}
-			// The allow-list check runs before string-ref resolution: a
-			// narrowed-out child is an intentional skip (it stays dispatchable
-			// through the parent umbrella), not an unresolvable reference, so
-			// it must not fire onUnresolvedSubAction.
-			if (
-				allowedChildren &&
-				!allowedChildren.has(normalizeParentNameKey(subActionName))
-			) {
-				continue;
-			}
 			if (typeof subAction === "string") {
-				child = actionLookup.get(normalizeParentNameKey(subAction));
+				child = actionLookup.get(subAction);
 				if (!child) {
 					onUnresolved({
 						parentName: action.name,

@@ -3,10 +3,12 @@
  * registered plugin: collects each plugin's `schema` export, runs the
  * legacy entity-RLS backfill (`migrateToEntityRLS`), drives `RuntimeMigrator`
  * per plugin (continuing past individual failures and aggregating them into
- * one error), and — when `ENABLE_DATA_ISOLATION=true` — re-applies Row Level
- * Security across all tables once every migration succeeds.
+ * one error), installs post-schema database guards, and — when
+ * `ENABLE_DATA_ISOLATION=true` — re-applies Row Level Security across all
+ * tables once every migration succeeds.
  */
 import { type IDatabaseAdapter, logger, type Plugin } from "@elizaos/core";
+import { applyIdentityPersonLinkAttestationGuard } from "./identity-person-link-attestation-guard";
 import { applyMessageSearchObjects, messageSearchTableExists } from "./message-search";
 import { migrateToEntityRLS } from "./migrations";
 import { applyEntityRLSToAllTables, applyRLSToNewTables, installRLSFunctions } from "./rls";
@@ -39,6 +41,7 @@ export class DatabaseMigrationService {
   private migrator: RuntimeMigrator | null = null;
   private readonly databaseBackend: DatabaseBackend;
   private messageSearchObjectsSettled = false;
+  private identityPersonLinkGuardSettled = false;
 
   constructor(options: DatabaseMigrationServiceOptions = {}) {
     this.databaseBackend = options.databaseBackend ?? "unknown";
@@ -148,6 +151,12 @@ export class DatabaseMigrationService {
 
     if (failureCount === 0) {
       logger.info({ src: "plugin:sql", successCount }, "All migrations completed successfully");
+
+      if (!this.identityPersonLinkGuardSettled) {
+        this.identityPersonLinkGuardSettled = await applyIdentityPersonLinkAttestationGuard(
+          this.db
+        );
+      }
 
       // Install the message full-text/trigram search objects on the migrated
       // `memories` table (#13534). Idempotent; runs after the table exists so the

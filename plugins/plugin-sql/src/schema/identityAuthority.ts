@@ -1,8 +1,9 @@
 /**
  * Durable canonical-identity authority tables for account-scoped claims,
- * non-destructive principal redirects, and reversible merge/split journals.
- * These tables preserve identity provenance independently from legacy entity
- * metadata while keeping OWNER authority tied to an explicit binding.
+ * authenticated person-link evidence, non-destructive principal redirects,
+ * and reversible merge/split journals. These tables preserve provenance
+ * independently from legacy entity metadata while keeping OWNER authority
+ * tied to an explicit binding.
  */
 import { sql } from "drizzle-orm";
 import {
@@ -127,6 +128,83 @@ export const identityAuthorityStateTable = pgTable(
       foreignColumns: [agentTable.id],
     }).onDelete("cascade"),
     check("identity_authority_state_generation_check", sql`${table.generation} >= 0`),
+  ]
+);
+
+export const identityPersonLinkAttestationTable = pgTable(
+  "identity_person_link_attestations",
+  {
+    id: uuid("id").primaryKey().default(sql`gen_random_uuid()`).notNull(),
+    agentId: uuid("agent_id").notNull(),
+    leftPrincipalId: uuid("left_principal_id").notNull(),
+    rightPrincipalId: uuid("right_principal_id").notNull(),
+    actorPrincipalId: uuid("actor_principal_id").notNull(),
+    actorRole: text("actor_role").notNull(),
+    authority: text("authority").notNull(),
+    transport: text("transport").notNull(),
+    reason: text("reason").notNull(),
+    idempotencyKey: text("idempotency_key").notNull(),
+    requestDigest: text("request_digest").notNull(),
+    expectedGeneration: bigint("expected_generation", { mode: "number" }).notNull(),
+    committedGeneration: bigint("committed_generation", { mode: "number" }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
+  },
+  (table) => [
+    unique("identity_person_link_attestation_idempotency_unique").on(
+      table.agentId,
+      table.idempotencyKey
+    ),
+    index("identity_person_link_attestation_pair_idx").on(
+      table.agentId,
+      table.leftPrincipalId,
+      table.rightPrincipalId,
+      table.createdAt
+    ),
+    foreignKey({
+      name: "fk_identity_person_link_attestation_agent",
+      columns: [table.agentId],
+      foreignColumns: [agentTable.id],
+    }).onDelete("cascade"),
+    foreignKey({
+      name: "fk_identity_person_link_attestation_left",
+      columns: [table.leftPrincipalId, table.agentId],
+      foreignColumns: [entityTable.id, entityTable.agentId],
+    }).onDelete("restrict"),
+    foreignKey({
+      name: "fk_identity_person_link_attestation_right",
+      columns: [table.rightPrincipalId, table.agentId],
+      foreignColumns: [entityTable.id, entityTable.agentId],
+    }).onDelete("restrict"),
+    foreignKey({
+      name: "fk_identity_person_link_attestation_actor",
+      columns: [table.actorPrincipalId, table.agentId],
+      foreignColumns: [entityTable.id, entityTable.agentId],
+    }).onDelete("restrict"),
+    check(
+      "identity_person_link_attestation_order_check",
+      sql`${table.leftPrincipalId} < ${table.rightPrincipalId}`
+    ),
+    check(
+      "identity_person_link_attestation_actor_role_check",
+      sql`${table.actorRole} IN ('OWNER', 'ADMIN')`
+    ),
+    check(
+      "identity_person_link_attestation_authority_check",
+      sql`${table.authority} = 'authenticated_private_route'`
+    ),
+    check(
+      "identity_person_link_attestation_transport_check",
+      sql`${table.transport} IN ('http', 'in_process')`
+    ),
+    check(
+      "identity_person_link_attestation_generation_check",
+      sql`${table.expectedGeneration} >= 0 AND ${table.committedGeneration} = ${table.expectedGeneration} + 1`
+    ),
+    check("identity_person_link_attestation_reason_check", sql`length(trim(${table.reason})) > 0`),
+    check(
+      "identity_person_link_attestation_idempotency_check",
+      sql`length(trim(${table.idempotencyKey})) > 0`
+    ),
   ]
 );
 

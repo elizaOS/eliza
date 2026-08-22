@@ -73,7 +73,7 @@ export interface AgentBackupObjectStore {
   /** Stream one exact catalogued generation; await `completion` before commit. */
   getExactObject(input: GetExactObjectInput): Promise<ExactObjectRead>;
   putImmutable(params: PutImmutableObjectInput): Promise<ImmutableObjectUploadReceipt>;
-  delete(target: ObjectDeleteTarget): Promise<ObjectDeleteReceipt>;
+  delete(target: ObjectDeleteTarget, control?: ObjectRequestControl): Promise<ObjectDeleteReceipt>;
 }
 
 /** Explicit alias registry used by catalogue workers and GC replayers. */
@@ -229,7 +229,8 @@ export async function createAgentBackupObjectStore(
     getExactObject: (input: GetExactObjectInput) => getExactObjectAtBackend({ backend, input }),
     putImmutable: (params: Parameters<AgentBackupObjectStore["putImmutable"]>[0]) =>
       putImmutableObjectAtBackend({ backend, ...params }),
-    delete: (target: ObjectDeleteTarget) => deleteObjectAtBackend({ backend, target }),
+    delete: (target: ObjectDeleteTarget, control?: ObjectRequestControl) =>
+      deleteObjectAtBackend({ backend, target, control }),
   });
 }
 

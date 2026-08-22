@@ -148,15 +148,18 @@ const EXCLUDED_SURFACES = [
 // (#19183).
 const GATE_WORKFLOWS = [
   "test.yml",
-  "develop-pr.yml",
+  "pr-static-smoke.yml",
   "cloud-cf-deploy.yml",
   "cloud-cf-release.yml",
 ];
 
-// Both the post-merge suite and the required develop PR gate must execute the
-// contract and publish its exact-head inventory. Keeping the PR lane here is
-// what prevents a runtime drift from merging before test.yml runs on develop.
-const CONTRACT_ENFORCEMENT_WORKFLOWS = new Set(["test.yml", "develop-pr.yml"]);
+// Both the post-merge suite and PR Static Smoke must execute the contract and
+// publish an exact-head inventory. Keeping the PR authority here prevents a
+// runtime drift from merging before test.yml runs on develop.
+const CONTRACT_ENFORCEMENT_WORKFLOWS = new Set([
+  "test.yml",
+  "pr-static-smoke.yml",
+]);
 
 // A concrete pin: a plain semver, optionally with a prerelease/build suffix.
 // Parse it deterministically because nested suffix quantifiers let a malformed

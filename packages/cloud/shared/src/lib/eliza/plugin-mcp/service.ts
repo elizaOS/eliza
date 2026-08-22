@@ -1,4 +1,4 @@
-// Wires hosted Eliza agent service behavior for cloud runtime services.
+/** Connects hosted Eliza runtimes to configured MCP servers and exposes their permitted tools. */
 import { type Action, type IAgentRuntime, logger, Service } from "@elizaos/core";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
@@ -15,7 +15,11 @@ import { createMcpToolActions, type McpToolAction } from "./actions/dynamic-tool
 import { getSchemaCache, McpSchemaCache } from "./cache/schema-cache";
 import { type Tier2ToolEntry, Tier2ToolIndex } from "./search/bm25-index";
 import { createMcpToolCompatibilitySync, type McpToolCompatibility } from "./tool-compatibility";
-import { getCrucialToolsForServer, isCrucialTool } from "./tool-visibility";
+import {
+  getCrucialToolsForServer,
+  isCrucialTool,
+  shouldRegisterRawMcpTools,
+} from "./tool-visibility";
 import {
   BACKOFF_MULTIPLIER,
   type ConnectionState,
@@ -467,6 +471,13 @@ export class McpService extends Service {
 
   private registerToolsAsActions(serverName: string, tools: Tool[]): void {
     if (!tools?.length) return;
+
+    // DoorDash is exposed through the first-party DOORDASH facade so checkout
+    // cannot bypass its preview-bound user confirmation via a raw MCP action.
+    if (!shouldRegisterRawMcpTools(serverName)) {
+      logger.info(`[MCP] ${serverName}: raw tools retained for the DoorDash facade only`);
+      return;
+    }
 
     // Split tools into Tier-1 (crucial, always visible) and Tier-2 (discoverable via SEARCH_ACTIONS).
     // Servers without a curated crucial-tools list register ALL tools as Tier-1 (old behavior).

@@ -1,17 +1,13 @@
 name: gitleaks
 
-# SOC2 CC7.1 — automated secret scanning on every develop push.
+# SOC2 CC7.1 — automated secret scanning in the Develop Full graph.
 # Configuration: .gitleaks.toml at repo root.
 
 on:
-  push:
-    branches: ["develop"]
+  workflow_call:
 
-# CI fan-out fix: the PR-scoped concurrency from #14069 fell back to
-# github.run_id on push, so every develop push got a unique group and
-# nothing ever superseded. A 37-merge wave queued thousands of push runs
-# and starved the self-hosted fleet. Fall back to github.ref (all develop
-# pushes share a group) and cancel superseded push runs.
+# Develop Full owns cancellation of superseded tips. This stable child group
+# prevents duplicate standalone invocations for the same ref.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true

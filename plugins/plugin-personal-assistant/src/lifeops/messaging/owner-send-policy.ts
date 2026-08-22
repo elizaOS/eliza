@@ -24,7 +24,6 @@ import {
   getDefaultTriageService,
   logger,
   toWellFormedUnicode,
-  truncateWellFormed,
 } from "@elizaos/core";
 import { getConnectorRegistry } from "../connectors/registry.js";
 
@@ -67,7 +66,6 @@ const MESSAGE_SOURCE_GUARD: Record<MessageSource, true> = {
   telegram: true,
   twitter: true,
   imessage: true,
-  signal: true,
   whatsapp: true,
   calendly: true,
   browser_bridge: true,
@@ -269,7 +267,6 @@ const SOURCE_TO_CONNECTOR_KIND: Partial<Record<MessageSource, string>> = {
   telegram: "telegram",
   twitter: "x",
   imessage: "imessage",
-  signal: "signal",
   whatsapp: "whatsapp",
   calendly: "calendly",
 };
@@ -291,19 +288,13 @@ function makeApprovalDescription(draft: DraftRequest): string {
     .filter(Boolean)
     .join(", ");
   const subject = draft.subject ? ` (${draft.subject})` : "";
-  const wellFormedBody = toWellFormedUnicode(draft.body);
-  const preview =
-    wellFormedBody.length > 240
-      ? `${truncateWellFormed(wellFormedBody, 237)}...`
-      : wellFormedBody;
+  const preview = toWellFormedUnicode(draft.body);
   const target = recipients.length > 0 ? recipients : "(no recipients)";
   return `Approve sending ${draft.source} to ${target}${subject}: ${preview}`;
 }
 
 function previewDraft(draft: DraftRequest): string {
-  const wellFormed = toWellFormedUnicode(draft.body);
-  if (wellFormed.length <= 200) return wellFormed;
-  return `${truncateWellFormed(wellFormed, 197)}...`;
+  return toWellFormedUnicode(draft.body);
 }
 
 export function createOwnerSendPolicy(): SendPolicy {

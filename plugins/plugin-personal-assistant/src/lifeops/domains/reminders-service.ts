@@ -18,6 +18,7 @@ import {
   resolveOwnerContactWithFallback,
 } from "@elizaos/agent";
 import {
+  ElizaError,
   type IAgentRuntime,
   inspectSendHandlerResult,
   logger,
@@ -359,6 +360,8 @@ type ReminderAttemptLifecycle = "plan" | "escalation";
 export type LifeOpsScheduledWorkSubsystemFailure = {
   subsystem: string;
   error: string;
+  /** Stable machine-readable cause when the boundary threw an ElizaError. */
+  code?: string;
 };
 
 type RuntimeOwnerContactResolution = {
@@ -5630,6 +5633,7 @@ export class RemindersDomain {
         subsystemFailures.push({
           subsystem,
           error: error instanceof Error ? error.message : String(error),
+          ...(error instanceof ElizaError ? { code: error.code } : {}),
         });
         return fallback;
       }

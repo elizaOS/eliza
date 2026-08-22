@@ -25,6 +25,8 @@ const { resolveSafeOutboundTarget } = await import("./outbound-url");
 
 type FakeIncomingMessage = IncomingMessage & {
   destroy: ReturnType<typeof vi.fn>;
+  pause: ReturnType<typeof vi.fn>;
+  resume: ReturnType<typeof vi.fn>;
 };
 
 type FakeClientRequest = ClientRequest & {
@@ -35,12 +37,48 @@ type FakeClientRequest = ClientRequest & {
 function createFakeIncomingMessage(
   overrides: Partial<Pick<IncomingMessage, "headers" | "statusCode" | "statusMessage">> = {},
 ): FakeIncomingMessage {
-  return Object.assign(new EventEmitter(), {
+  const message = Object.assign(new EventEmitter(), {
     destroy: vi.fn(),
     headers: overrides.headers ?? {},
+    pause: vi.fn(),
+    resume: vi.fn(),
     statusCode: overrides.statusCode ?? 200,
     statusMessage: overrides.statusMessage ?? "OK",
   }) as FakeIncomingMessage;
+  message.pause.mockImplementation(() => message);
+  message.resume.mockImplementation(() => message);
+  return message;
+}
+
+function createBurstingIncomingMessage(totalChunks: number, chunkSize: number) {
+  const res = createFakeIncomingMessage();
+  let emittedChunks = 0;
+  let paused = false;
+  const pump = () => {
+    while (!paused && emittedChunks < totalChunks) {
+      emittedChunks += 1;
+      res.emit("data", Buffer.alloc(chunkSize));
+    }
+    if (!paused && emittedChunks === totalChunks) {
+      res.emit("end");
+    }
+  };
+  res.pause.mockImplementation(() => {
+    paused = true;
+    return res;
+  });
+  res.resume.mockImplementation(() => {
+    paused = false;
+    pump();
+    return res;
+  });
+  return {
+    res,
+    pump,
+    get emittedChunks() {
+      return emittedChunks;
+    },
+  };
 }
 
 function createFakeClientRequest(onEnd?: (req: FakeClientRequest) => void): FakeClientRequest {
@@ -220,6 +258,27 @@ describe("safeFetch fail-closed", () => {
     expect(requestMock).not.toHaveBeenCalled();
   });
 
+  test("returns when DNS never settles if the request is aborted", async () => {
+    lookupMock.mockReturnValue(
+      new Promise(() => {
+        /* never settles */
+      }),
+    );
+    const controller = new AbortController();
+    const reason = new Error("deadline expired");
+    const pending = safeFetch("https://slow-dns.example/image", {
+      signal: controller.signal,
+    });
+    queueMicrotask(() => {
+      controller.abort(reason);
+    });
+    const hung = new Promise<never>((_, reject) => {
+      setTimeout(() => reject(new Error("safeFetch ignored abort during DNS")), 80);
+    });
+    await expect(Promise.race([pending, hung])).rejects.toBe(reason);
+    expect(requestMock).not.toHaveBeenCalled();
+  });
+
   test("rejects credential-bearing and non-http targets before any lookup", async () => {
     await expect(safeFetch("http://user:pass@example.com/")).rejects.toThrow();
     await expect(safeFetch("ftp://example.com/file")).rejects.toThrow();
@@ -246,6 +305,99 @@ describe("safeFetch fail-closed", () => {
     expect(response.status).toBe(200);
     await expect(response.text()).resolves.toBe("hello world");
     expect(requestMock).toHaveBeenCalledTimes(1);
+  });
+
+  test("pauses a fast Node response when the web stream queue is full", async () => {
+    lookupMock.mockResolvedValue([{ address: "93.184.216.34", family: 4 }]);
+    const chunkSize = 20 * 1024;
+    const totalChunks = 100;
+    let upstream!: ReturnType<typeof createBurstingIncomingMessage>;
+    requestMock.mockImplementation((_options, onResponse) => {
+      const req = createFakeClientRequest(() => {
+        upstream = createBurstingIncomingMessage(totalChunks, chunkSize);
+        onResponse(upstream.res);
+        // A real IncomingMessage begins flowing when a data listener is added.
+        // Drive that transition explicitly so this fixture also fails against
+        // an adapter that never pauses its push source.
+        upstream.pump();
+      });
+      return req;
+    });
+
+    const response = await safeFetch("http://example.com/fast-stream");
+    await Promise.resolve();
+
+    expect(upstream.emittedChunks * chunkSize).toBeLessThanOrEqual(64 * 1024 + chunkSize);
+    expect(upstream.emittedChunks).toBeLessThan(totalChunks);
+    expect(upstream.res.pause).toHaveBeenCalled();
+    expect(upstream.res.resume).toHaveBeenCalledTimes(1);
+    await response.body?.cancel();
+    expect(upstream.res.destroy).toHaveBeenCalledTimes(1);
+    upstream.res.emit("close");
+    expect(upstream.res.listenerCount("error")).toBe(0);
+    expect(upstream.res.listenerCount("close")).toBe(0);
+  });
+
+  test("lets an unconsumed small Node response finish within the bounded queue", async () => {
+    lookupMock.mockResolvedValue([{ address: "93.184.216.34", family: 4 }]);
+    let upstream!: ReturnType<typeof createBurstingIncomingMessage>;
+    requestMock.mockImplementation((_options, onResponse) => {
+      const req = createFakeClientRequest(() => {
+        upstream = createBurstingIncomingMessage(2, 16 * 1024);
+        onResponse(upstream.res);
+        upstream.pump();
+      });
+      return req;
+    });
+
+    const response = await safeFetch("http://example.com/status-only");
+    await Promise.resolve();
+
+    expect(upstream.emittedChunks).toBe(2);
+    expect(upstream.res.listenerCount("data")).toBe(0);
+    expect(upstream.res.destroy).not.toHaveBeenCalled();
+    await response.body?.cancel();
+  });
+
+  test("errors a pinned response that closes before the body ends", async () => {
+    lookupMock.mockResolvedValue([{ address: "93.184.216.34", family: 4 }]);
+    let responseMessage: FakeIncomingMessage | null = null;
+    requestMock.mockImplementation((_options, onResponse) => {
+      const req = createFakeClientRequest(() => {
+        responseMessage = createFakeIncomingMessage();
+        onResponse(responseMessage);
+      });
+      return req;
+    });
+
+    const response = await safeFetch("http://example.com/premature-close");
+    const pendingRead = response.body?.getReader().read();
+    responseMessage?.emit("close");
+
+    await expect(pendingRead).rejects.toThrow("closed before its body completed");
+    expect(responseMessage?.listenerCount("data")).toBe(0);
+    expect(responseMessage?.listenerCount("close")).toBe(0);
+  });
+
+  test("destroys a backpressured redirect body before rejecting redirects", async () => {
+    lookupMock.mockResolvedValue([{ address: "93.184.216.34", family: 4 }]);
+    let responseMessage: FakeIncomingMessage | null = null;
+    requestMock.mockImplementation((_options, onResponse) => {
+      const req = createFakeClientRequest(() => {
+        responseMessage = createFakeIncomingMessage({
+          headers: { location: "http://redirect.example/next" },
+          statusCode: 302,
+          statusMessage: "Found",
+        });
+        onResponse(responseMessage);
+      });
+      return req;
+    });
+
+    await expect(safeFetch("http://example.com/redirect", { redirect: "error" })).rejects.toThrow(
+      "redirects are not allowed",
+    );
+    expect(responseMessage?.destroy).toHaveBeenCalledTimes(1);
   });
 
   test("writes ReadableStream request bodies to pinned Node requests", async () => {

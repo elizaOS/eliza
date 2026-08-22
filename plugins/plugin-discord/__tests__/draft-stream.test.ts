@@ -6,10 +6,11 @@
  */
 import type {
 	ActionRowBuilder,
+	Message as DiscordMessage,
 	MessageActionRowComponentBuilder,
 	TextChannel,
 } from "discord.js";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createDraftStreamController } from "../draft-stream";
 import type { DiscordActionRow } from "../types";
 import { buildDiscordComponents } from "../utils";
@@ -22,6 +23,7 @@ interface CapturedSend {
 function makeChannel() {
 	const sends: CapturedSend[] = [];
 	const edits: CapturedSend[] = [];
+	const deletions: string[] = [];
 	const channel = {
 		send: async (options: CapturedSend) => {
 			sends.push(options);
@@ -30,6 +32,9 @@ function makeChannel() {
 				content: options.content ?? "",
 				createdTimestamp: Date.now(),
 				attachments: { size: 0 },
+				delete: async () => {
+					deletions.push(`msg-${sends.length}`);
+				},
 				edit: async (editOptions: CapturedSend) => {
 					edits.push(editOptions);
 					return { id: `msg-${sends.length}` };
@@ -37,7 +42,7 @@ function makeChannel() {
 			};
 		},
 	} as unknown as TextChannel;
-	return { channel, sends, edits };
+	return { channel, sends, edits, deletions };
 }
 
 const choiceRow: DiscordActionRow = {
@@ -64,6 +69,106 @@ function rowJson(component: unknown): {
 }
 
 describe("draft-stream finalize components (#14527)", () => {
+	it("discards a started stream without emitting an interruption bubble", async () => {
+		const { channel, sends } = makeChannel();
+		const controller = createDraftStreamController({ minInitialChars: 1 });
+		await controller.start(channel);
+		controller.update("pending text");
+
+		await controller.discard();
+		await new Promise((resolve) => setTimeout(resolve, 300));
+
+		expect(controller.isDone()).toBe(true);
+		expect(sends).toEqual([]);
+	});
+
+	it("deletes an already-flushed partial snapshot when discarded", async () => {
+		const { channel, sends, deletions } = makeChannel();
+		const controller = createDraftStreamController({
+			throttleMs: 250,
+			minInitialChars: 1,
+		});
+		await controller.start(channel);
+		controller.update("partial response");
+		await new Promise((resolve) => setTimeout(resolve, 300));
+		expect(sends).toHaveLength(1);
+
+		await controller.discard();
+
+		expect(deletions).toEqual(["msg-1"]);
+		expect(controller.isDone()).toBe(true);
+	});
+
+	it("deletes a snapshot whose provider send settles during discard", async () => {
+		vi.useFakeTimers();
+		let resolveSend!: (message: DiscordMessage) => void;
+		const deletions: string[] = [];
+		const channel = {
+			send: () =>
+				new Promise<DiscordMessage>((resolve) => {
+					resolveSend = resolve;
+				}),
+		} as unknown as TextChannel;
+		const controller = createDraftStreamController({
+			throttleMs: 250,
+			minInitialChars: 1,
+		});
+		await controller.start(channel);
+		controller.update("partial response");
+		vi.advanceTimersByTime(250);
+		await Promise.resolve();
+
+		const discard = controller.discard();
+		resolveSend({
+			id: "late-snapshot",
+			delete: async () => {
+				deletions.push("late-snapshot");
+			},
+		} as DiscordMessage);
+		await discard;
+
+		expect(deletions).toEqual(["late-snapshot"]);
+		expect(controller.isDone()).toBe(true);
+		vi.useRealTimers();
+	});
+
+	it("deletes an overflow snapshot whose send settles during discard", async () => {
+		let sendCount = 0;
+		let resolveOverflow!: (message: DiscordMessage) => void;
+		const deletions: string[] = [];
+		const message = (id: string) =>
+			({
+				id,
+				delete: async () => {
+					deletions.push(id);
+				},
+			}) as DiscordMessage;
+		const channel = {
+			send: () => {
+				sendCount += 1;
+				if (sendCount === 1) {
+					return Promise.resolve(message("first-chunk"));
+				}
+				return new Promise<DiscordMessage>((resolve) => {
+					resolveOverflow = resolve;
+				});
+			},
+		} as unknown as TextChannel;
+		const controller = createDraftStreamController({ maxChars: 24 });
+		await controller.start(channel);
+
+		const finalize = controller.finalize(
+			"First chunk is complete. Second chunk is still being delivered.",
+		);
+		await vi.waitFor(() => expect(sendCount).toBe(2));
+		const discard = controller.discard();
+		resolveOverflow(message("overflow-chunk"));
+
+		await Promise.all([finalize, discard]);
+		expect(deletions).toEqual(["overflow-chunk", "first-chunk"]);
+		expect(controller.isDone()).toBe(true);
+	});
+
 	it("attaches components to the finalized message", async () => {
 		const { channel, sends } = makeChannel();
 		const controller = createDraftStreamController();

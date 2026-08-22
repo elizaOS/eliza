@@ -85,6 +85,14 @@ const promoteTelegramPersonalAccountToSteward = mock(
     organization: telegramOrganization,
   }),
 );
+const findOrCreateMessagingPersonalAccount = mock(async () => ({
+  user: {
+    ...telegramUser,
+    steward_user_id: `telegram:${telegramUser.telegram_id}`,
+  },
+  organization: telegramOrganization,
+  isNew: true,
+}));
 const convergenceEvents: string[] = [];
 const inspectPhoneTelegramPersonalAccountConvergence = mock(async () => ({
   status: "not_dual_account" as const,
@@ -135,6 +143,7 @@ mock.module("../db/repositories/users", () => ({
     inspectPhoneTelegramPersonalAccountConvergence,
     linkVerifiedPhone,
     markPhoneTelegramPersonalAccountAliasComplete,
+    findOrCreateMessagingPersonalAccount,
     promoteTelegramPersonalAccountToSteward,
   },
 }));
@@ -198,6 +207,7 @@ beforeEach(() => {
     user: telegramUser,
     organization: telegramOrganization,
   });
+  findOrCreateMessagingPersonalAccount.mockClear();
   convergenceEvents.length = 0;
   inspectPhoneTelegramPersonalAccountConvergence.mockReset();
   inspectPhoneTelegramPersonalAccountConvergence.mockResolvedValue({
@@ -224,6 +234,48 @@ beforeEach(() => {
 });
 
 describe("syncUserFromSteward Telegram account convergence", () => {
+  test("resolves a signed Telegram login through the DM account lock before promotion", async () => {
+    const result = await syncUserFromSteward({
+      stewardUserId: "steward-user-1",
+      name: "Nubs",
+      verifiedTelegramId: "123456789",
+    });
+
+    expect(findOrCreateMessagingPersonalAccount).toHaveBeenCalledWith({
+      platform: "telegram",
+      telegramId: "123456789",
+      displayName: "Nubs",
+      organizationName: "Nubs's Workspace",
+      organizationSlug: expect.stringMatching(/^tg-123456789-/),
+    });
+    expect(promoteTelegramPersonalAccountToSteward).toHaveBeenCalledWith({
+      telegramId: "123456789",
+      stewardUserId: "steward-user-1",
+      expectedUserId: "telegram-user-1",
+      expectedOrganizationId: "telegram-org-1",
+    });
+    expect(result).toMatchObject({
+      id: "telegram-user-1",
+      steward_user_id: "steward-user-1",
+      telegram_id: "123456789",
+      organization_id: "telegram-org-1",
+    });
+    expect(createUser).not.toHaveBeenCalled();
+    expect(createOrganization).not.toHaveBeenCalled();
+  });
+
+  test("rejects mixed signed-login and DM-continuation authority", async () => {
+    await expect(
+      syncUserFromSteward({
+        stewardUserId: "steward-user-1",
+        verifiedTelegramId: "123456789",
+        telegramContinuation: "opaque-telegram-claim-token",
+      }),
+    ).rejects.toBeInstanceOf(StewardTelegramAccountClaimError);
+    expect(findOrCreateMessagingPersonalAccount).not.toHaveBeenCalled();
+    expect(promoteTelegramPersonalAccountToSteward).not.toHaveBeenCalled();
+  });
+
   test("returns the original account and performs no provisioning", async () => {
     const result = await syncUserFromSteward({
       stewardUserId: "steward-user-1",

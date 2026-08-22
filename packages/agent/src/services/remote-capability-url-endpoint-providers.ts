@@ -4,7 +4,7 @@
  * `RemoteCapabilityEndpointProvider` whose `provision` validates the URL
  * (http/https only, no embedded credentials, no path/query separators in the
  * endpoint id) and returns a normalized endpoint. Exports ready-made providers
- * for the e2b, home-machine, mobile-companion, and desktop-companion runtimes.
+ * for the home-machine, mobile-companion, and desktop-companion runtimes.
  */
 import type {
   ProvisionedRemoteCapabilityEndpoint,
@@ -35,9 +35,6 @@ export function urlRemoteCapabilityEndpointProvider(
       provisionUrlRemoteCapabilityEndpoint(providerId, defaults, options),
   };
 }
-
-export const e2bCapabilityEndpointProvider =
-  urlRemoteCapabilityEndpointProvider("e2b");
 
 export const homeMachineCapabilityEndpointProvider =
   urlRemoteCapabilityEndpointProvider("home-machine");

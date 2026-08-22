@@ -127,6 +127,7 @@ const VIEW_MENU_ENTRIES: readonly ViewMenuEntry[] = [
   { id: "browser", label: "Browser", path: "/browser" },
   { id: "character", label: "Character", path: "/character" },
   { id: "documents", label: "Knowledge", path: "/character/documents" },
+  { id: "vault", label: "Vault", path: "/vault" },
   { id: "settings", label: "Settings", path: "/settings" },
   { id: "background", label: "Background", path: "/background" },
 ] as const;

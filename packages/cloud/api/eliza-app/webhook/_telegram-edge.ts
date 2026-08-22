@@ -314,6 +314,12 @@ async function edgeLedger(
         ? body.state
         : null;
     },
+    // The edge flow records complete delivery receipts separately. Personal
+    // Shared groups use the gateway Redis ledger, where this per-chunk value
+    // repairs a failed receipt POST without resending provider messages.
+    async readChunkProviderMessageId() {
+      return null;
+    },
     async claimChunk(chunkIndex, chunkDigest) {
       return (
         (

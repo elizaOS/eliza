@@ -19,6 +19,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const apiMock = vi.hoisted(() => vi.fn());
 const navigateMock = vi.hoisted(() => vi.fn());
+const snapshotRefetchMock = vi.hoisted(() => vi.fn());
+const snapshotQuery = vi.hoisted(() => ({
+  current: null as unknown,
+}));
 
 vi.mock("../../lib/api-client", () => ({
   api: apiMock,
@@ -51,10 +55,26 @@ vi.mock("react-router-dom", () => ({
   useNavigate: () => navigateMock,
 }));
 
+vi.mock("../data/billing-snapshot", () => ({
+  useBillingSnapshotV2: () => snapshotQuery.current,
+}));
+
 // The sibling auto-top-up card calls the billing settings API on mount; stub it
 // so the shared api mock only sees this tab's own requests.
 vi.mock("./auto-top-up-card", () => ({
   AutoTopUpCard: () => null,
+}));
+
+vi.mock("./direct-crypto-credit-card", () => ({
+  DirectCryptoCreditCard: ({
+    onSuccess,
+  }: {
+    onSuccess: () => Promise<void> | void;
+  }) => (
+    <button type="button" onClick={() => void onSuccess()}>
+      Confirm direct crypto
+    </button>
+  ),
 }));
 
 import type { BillingUser, InvoiceDisplay } from "../types";
@@ -63,8 +83,46 @@ import { BillingTab } from "./billing-tab";
 const user: BillingUser = {
   organization_id: "org-1",
   wallet_address: null,
-  organization: { credit_balance: 12.5 },
 };
+
+const OBSERVED_AT = "2026-08-21T10:20:30.000Z";
+
+function readySnapshotQuery(balance = "12.500000") {
+  return {
+    data: {
+      snapshotStartedAt: OBSERVED_AT,
+      snapshotCompletedAt: OBSERVED_AT,
+      balance: {
+        status: "available",
+        source: "credit-ledger",
+        observedAt: OBSERVED_AT,
+        value: {
+          balance: { value: balance, unit: "usd", currency: "USD" },
+          revision: "7",
+        },
+      },
+      activeCompute: {
+        resources: {
+          status: "available",
+          source: "compute",
+          observedAt: OBSERVED_AT,
+          value: [],
+        },
+        estimatedRecurringComputeCostPerDay: {
+          status: "available",
+          source: "compute",
+          observedAt: OBSERVED_AT,
+          value: { value: "0.000000", unit: "usd_per_day", currency: "USD" },
+        },
+      },
+    },
+    isError: false,
+    isFetching: false,
+    isRefetchError: false,
+    fetchStatus: "idle",
+    refetch: snapshotRefetchMock,
+  };
+}
 
 const invoices: InvoiceDisplay[] = [
   { id: "inv-1", date: "2024-01-02 10:00", total: "$25.00", status: "paid" },
@@ -75,9 +133,6 @@ function routeApi(overrides: { invoices?: InvoiceDisplay[] } = {}) {
   apiMock.mockImplementation((url: string) => {
     if (url.startsWith("/api/invoices/list")) {
       return Promise.resolve({ invoices: overrides.invoices ?? invoices });
-    }
-    if (url.startsWith("/api/credits/balance")) {
-      return Promise.resolve({ balance: 12.5 });
     }
     if (url.startsWith("/api/crypto/status")) {
       return Promise.resolve({ enabled: false });
@@ -98,6 +153,9 @@ afterEach(() => {
 
 beforeEach(() => {
   apiMock.mockReset();
+  snapshotRefetchMock.mockReset();
+  snapshotRefetchMock.mockResolvedValue({});
+  snapshotQuery.current = readySnapshotQuery();
 });
 
 describe("BillingTab buy-credits accessibility", () => {
@@ -106,7 +164,7 @@ describe("BillingTab buy-credits accessibility", () => {
     const actor = userEvent.setup();
     render(<BillingTab user={user} />);
 
-    // Let the initial balance/invoice/crypto loads settle before interacting.
+    // Let the invoice/crypto loads settle before interacting.
     await screen.findAllByTestId("invoice-row");
     const input = screen.getByLabelText("Amount (USD)");
     // Baseline: described by the hint, not invalid, and the buy button stays
@@ -178,9 +236,6 @@ describe("BillingTab buy-credits accessibility", () => {
       if (url.startsWith("/api/invoices/list")) {
         return Promise.resolve({ invoices });
       }
-      if (url.startsWith("/api/credits/balance")) {
-        return Promise.resolve({ balance: 12.5 });
-      }
       if (url.startsWith("/api/crypto/status")) {
         return Promise.resolve({ enabled: false });
       }
@@ -202,9 +257,21 @@ describe("BillingTab buy-credits accessibility", () => {
     await actor.type(input, "{Enter}");
 
     await waitFor(() => {
-      expect(apiMock).toHaveBeenCalledWith(
-        "/api/stripe/create-checkout-session",
-        { method: "POST", json: { amount: 25, returnUrl: "settings" } },
+      const checkoutCall = apiMock.mock.calls.find((call) =>
+        String(call[0]).startsWith("/api/stripe/create-checkout-session"),
+      );
+      expect(checkoutCall).toBeDefined();
+      const init = checkoutCall?.[1] as {
+        method?: string;
+        json?: unknown;
+        headers?: Record<string, string>;
+      };
+      expect(init.method).toBe("POST");
+      expect(init.json).toEqual({ amount: 25, returnUrl: "settings" });
+      // The idempotency key is present and satisfies the server contract
+      // (#24144); Enter and click submissions share the same handler.
+      expect(init.headers?.["Idempotency-Key"]).toMatch(
+        /^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$/,
       );
     });
     // The in-flight label stays verb-first ("Processing…"), never a passive
@@ -227,9 +294,6 @@ describe("BillingTab navigation guards", () => {
     apiMock.mockImplementation((url: string) => {
       if (url.startsWith("/api/invoices/list")) {
         return Promise.resolve({ invoices });
-      }
-      if (url.startsWith("/api/credits/balance")) {
-        return Promise.resolve({ balance: 12.5 });
       }
       if (url.startsWith("/api/crypto/status")) {
         return Promise.resolve({ enabled: false });
@@ -267,9 +331,6 @@ describe("BillingTab navigation guards", () => {
       if (url.startsWith("/api/invoices/list")) {
         return Promise.resolve({ invoices });
       }
-      if (url.startsWith("/api/credits/balance")) {
-        return Promise.resolve({ balance: 12.5 });
-      }
       if (url.startsWith("/api/crypto/status")) {
         return Promise.resolve({ enabled: true });
       }
@@ -299,6 +360,39 @@ describe("BillingTab navigation guards", () => {
       "Redirecting to payment page...",
     );
   });
+
+  it("refreshes the canonical snapshot after direct crypto confirmation", async () => {
+    apiMock.mockImplementation((url: string) => {
+      if (url.startsWith("/api/invoices/list")) {
+        return Promise.resolve({ invoices });
+      }
+      if (url.startsWith("/api/crypto/status")) {
+        return Promise.resolve({
+          enabled: true,
+          directWallet: { enabled: true, networks: [], promotion: {} },
+        });
+      }
+      return Promise.resolve({});
+    });
+    const actor = userEvent.setup();
+    render(<BillingTab user={user} />);
+
+    await screen.findAllByTestId("invoice-row");
+    await actor.type(screen.getByLabelText("Amount (USD)"), "25");
+    await actor.click(screen.getByRole("button", { name: "Crypto" }));
+    await actor.click(
+      await screen.findByRole("button", { name: "Confirm direct crypto" }),
+    );
+
+    await waitFor(() => expect(snapshotRefetchMock).toHaveBeenCalledTimes(1));
+    await waitFor(() => {
+      expect(
+        apiMock.mock.calls.filter(([url]) =>
+          String(url).startsWith("/api/invoices/list"),
+        ),
+      ).toHaveLength(2);
+    });
+  });
 });
 
 describe("BillingTab hero + invoice presentation", () => {
@@ -315,6 +409,95 @@ describe("BillingTab hero + invoice presentation", () => {
     const rows = await screen.findAllByTestId("invoice-row");
     const firstTotal = within(rows[0]).getByText("$25.00");
     expect(firstTotal.className).toMatch(/tabular-nums/);
+  });
+
+  it("uses the exact snapshot balance and never calls the legacy balance endpoint", async () => {
+    snapshotQuery.current = readySnapshotQuery(
+      "900719925474099312345678.123456",
+    );
+    routeApi();
+    render(<BillingTab user={user} />);
+
+    expect(
+      await screen.findByText("$900,719,925,474,099,312,345,678.123456"),
+    ).toBeTruthy();
+    await screen.findAllByTestId("invoice-row");
+    expect(
+      apiMock.mock.calls.some(([url]) =>
+        String(url).startsWith("/api/credits/balance"),
+      ),
+    ).toBe(false);
+  });
+
+  it("marks a cached balance as refreshing, failed, or paused beside the value", async () => {
+    const query = readySnapshotQuery();
+    query.isFetching = true;
+    snapshotQuery.current = query;
+    routeApi();
+    const { rerender } = render(<BillingTab user={user} />);
+
+    expect(
+      (
+        await screen.findByText(
+          "Refreshing balance. Showing the value observed at 2026-08-21 10:20:30 UTC.",
+        )
+      ).getAttribute("role"),
+    ).toBeNull();
+    expect(screen.getAllByRole("status")).toHaveLength(1);
+    expect(screen.getByRole("status").textContent).toBe(
+      "Refreshing active compute.",
+    );
+
+    query.isFetching = false;
+    query.isRefetchError = true;
+    rerender(<BillingTab user={user} />);
+    expect(
+      screen
+        .getByText(
+          "Could not refresh balance. Showing the value observed at 2026-08-21 10:20:30 UTC.",
+        )
+        .getAttribute("role"),
+    ).toBeNull();
+    expect(screen.getAllByRole("alert")).toHaveLength(1);
+    expect(screen.getByRole("alert").textContent).toContain(
+      "Could not refresh. Showing the snapshot completed at",
+    );
+
+    query.isRefetchError = false;
+    query.fetchStatus = "paused";
+    rerender(<BillingTab user={user} />);
+    expect(
+      screen
+        .getByText(
+          "Balance refresh paused. Showing the value observed at 2026-08-21 10:20:30 UTC.",
+        )
+        .getAttribute("role"),
+    ).toBeNull();
+    expect(screen.getAllByRole("alert")).toHaveLength(1);
+    expect(screen.getByRole("alert").textContent).toContain(
+      "Refresh paused. Showing the snapshot completed at",
+    );
+    expect(screen.getByText("$12.50")).toBeTruthy();
+  });
+
+  it("keeps purchases and invoices visible when the snapshot balance is unavailable", async () => {
+    const query = readySnapshotQuery();
+    query.data.balance = {
+      status: "unavailable",
+      source: "credit-ledger",
+      observedAt: OBSERVED_AT,
+      error: { code: "ledger_read_failed", retryable: true },
+    } as unknown as typeof query.data.balance;
+    snapshotQuery.current = query;
+    routeApi();
+    const actor = userEvent.setup();
+    render(<BillingTab user={user} />);
+
+    expect(await screen.findByText("Balance unavailable")).toBeTruthy();
+    await actor.click(screen.getByRole("button", { name: "Retry balance" }));
+    expect(snapshotRefetchMock).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("button", { name: /Buy credits/i })).toBeTruthy();
+    expect(await screen.findAllByTestId("invoice-row")).toHaveLength(2);
   });
 
   it("reflows the invoice list without a fixed min-width scroller", async () => {

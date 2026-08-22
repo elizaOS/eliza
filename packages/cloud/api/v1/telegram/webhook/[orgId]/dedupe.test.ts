@@ -1,8 +1,8 @@
 /**
  * Telegram webhook fail-closed auth + replay dedupe (#12227 L4, #12878).
  *
- * Two findings, both exercised against the REAL route handler with the
- * dependency surface mocked (matches `webhooks/bluebubbles/route.test.ts`):
+ * Two findings, both exercised against the real route handler with its
+ * external dependency surface replaced by deterministic fixtures:
  *   (L4a) dev fall-open: previously, when no webhook secret was stored for an
  *         org, any non-production request fell through and processed the update
  *         with NO auth. The route now fails closed everywhere; the only bypass

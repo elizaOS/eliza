@@ -42,6 +42,7 @@ import { isThinStewardPath } from "./steward/public-paths";
 
 export { AnonymousChatGate } from "./anonymous-chat-gate";
 export { isThinCliSessionPath } from "./cli-session-paths";
+export { DoorDashCheckoutGate } from "./doordash-checkout-gate";
 export { InferenceAdmissionGate } from "./inference-admission-gate";
 export { InferenceRateLimitV2RollbackFloor } from "./inference-rate-limit-v2-rollback-floor";
 export { OnboardingSessionCoordinator } from "./onboarding-session-coordinator";
@@ -50,6 +51,7 @@ export { PersonalTelegramDelivery } from "./personal-telegram-delivery";
 export { SharedRuntimeConversation } from "./shared-runtime-conversation";
 export {
   isThinStewardEmailAuthPath,
+  isThinStewardPasskeyLoginOptionsPath,
   isThinStewardPath,
   isThinStewardPublicPath,
 } from "./steward/public-paths";
@@ -64,7 +66,7 @@ export { TwitterOAuthRefreshCoordinator } from "./twitter-oauth-refresh-coordina
 const fullAppPromises = new Map<string | null, Promise<Hono<AppEnv>>>();
 const knownRouteShards = new Set(KNOWN_ROUTE_SHARD_KEYS);
 const inferenceAppPromises = new Map<string, Promise<Hono<AppEnv>>>();
-/** Lazy thin shell for login-critical Steward GETs (#18049). */
+/** Lazy thin shell for login-critical Steward pre-auth requests (#18049). */
 let stewardThinAppPromise: Promise<Hono<AppEnv>> | undefined;
 /** Lazy thin shell for the CLI-session login hot path (#22948). */
 let cliSessionThinAppPromise: Promise<Hono<AppEnv>> | undefined;

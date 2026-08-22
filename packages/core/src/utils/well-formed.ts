@@ -160,6 +160,7 @@ function failUnbounded(
 function failUnsafeValue(
 	operation: "accessor" | "reflection",
 	cause?: unknown,
+	key?: string,
 ): never {
 	throw new ElizaError(
 		operation === "accessor"
@@ -168,7 +169,12 @@ function failUnsafeValue(
 		{
 			code: "WELL_FORMED_UNSAFE_VALUE",
 			cause,
-			context: { operation },
+			// The key name is load-bearing diagnosis: without it the producer of
+			// the accessor property is unfindable from the error alone.
+			context: {
+				operation,
+				...(key !== undefined ? { propertyName: key } : {}),
+			},
 			severity: "fatal",
 		},
 	);
@@ -243,7 +249,7 @@ function sanitizeObjectPreservingDescriptors<T>(
 		// JSON.stringify would execute an enumerable accessor. Reject it without
 		// observation so a provider request can never run caller-controlled code.
 		if (!("value" in descriptor)) {
-			failUnsafeValue("accessor");
+			failUnsafeValue("accessor", undefined, String(key));
 		}
 		const entry = descriptor.value;
 		const sanitizedValue = walkDeep(entry, depth + 1, ctx, true);

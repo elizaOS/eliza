@@ -47,6 +47,27 @@ import type {
 import { localInferenceRoot } from "./paths";
 
 const DEFAULT_CALL_TIMEOUT_MS = 60_000;
+
+/**
+ * Resolve the per-call device timeout from the environment.
+ *
+ * `Number.parseInt` stops at the first non-digit, so "60000junk" parsed to a
+ * finite, positive 60000 and "5junk" to 5 — a 5ms budget that aborts every
+ * device call. Require the whole trimmed value to be a decimal integer; the
+ * optional leading sign is kept because `parseInt` accepted it, and the `> 0`
+ * check stays the range authority.
+ *
+ * Exported for direct unit coverage, matching the other env resolvers in the
+ * codebase (`resolveTextTimeoutMs`, `getDocumentsServiceTimeoutMs`).
+ */
+export function resolveDeviceCallTimeoutMs(): number {
+  const raw = process.env.ELIZA_DEVICE_GENERATE_TIMEOUT_MS?.trim();
+  if (!raw) return DEFAULT_CALL_TIMEOUT_MS;
+  const parsed = /^[+-]?\d+$/.test(raw) ? Number(raw) : Number.NaN;
+  return Number.isSafeInteger(parsed) && parsed > 0
+    ? parsed
+    : DEFAULT_CALL_TIMEOUT_MS;
+}
 const DEFAULT_LOAD_TIMEOUT_MS = 120_000;
 const HEARTBEAT_INTERVAL_MS = 15_000;
 const PENDING_LOG_FILENAME = "pending-requests.json";
@@ -950,14 +971,7 @@ export class DeviceBridge {
   async embed(args: {
     input: string;
   }): Promise<{ embedding: number[]; tokens: number }> {
-    const envTimeout = Number.parseInt(
-      process.env.ELIZA_DEVICE_GENERATE_TIMEOUT_MS?.trim() ?? "",
-      10,
-    );
-    const timeoutMs =
-      Number.isFinite(envTimeout) && envTimeout > 0
-        ? envTimeout
-        : DEFAULT_CALL_TIMEOUT_MS;
+    const timeoutMs = resolveDeviceCallTimeoutMs();
 
     const correlationId = randomUUID();
     const request: AgentOutbound = {
@@ -1016,14 +1030,7 @@ export class DeviceBridge {
     maxTokens?: number;
     temperature?: number;
   }): Promise<string> {
-    const envTimeout = Number.parseInt(
-      process.env.ELIZA_DEVICE_GENERATE_TIMEOUT_MS?.trim() ?? "",
-      10,
-    );
-    const timeoutMs =
-      Number.isFinite(envTimeout) && envTimeout > 0
-        ? envTimeout
-        : DEFAULT_CALL_TIMEOUT_MS;
+    const timeoutMs = resolveDeviceCallTimeoutMs();
 
     const correlationId = randomUUID();
     const request: AgentOutbound = {

@@ -57,6 +57,7 @@ describe("DockerSandboxProvider placement fallback", () => {
         .create({
           agentId: "22222222-2222-4222-8222-222222222222",
           agentName: "Placement breaker regression",
+          executionTier: "dedicated-always",
           environmentVars: {},
         })
         .catch((error: unknown) => error);

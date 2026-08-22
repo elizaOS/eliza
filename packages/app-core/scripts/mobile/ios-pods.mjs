@@ -154,6 +154,10 @@ export const MOBILE_CAPACITOR_PLUGIN_MANIFEST = [
     iosPods: [{ name: "ElizaosCapacitorAppblocker", kind: "custom" }],
   },
   {
+    packageName: "@elizaos/capacitor-browser-surface",
+    iosPods: [{ name: "ElizaosCapacitorBrowserSurface", kind: "custom" }],
+  },
+  {
     packageName: "@elizaos/capacitor-camera",
     iosPods: [{ name: "ElizaosCapacitorCamera", kind: "custom" }],
   },
@@ -184,6 +188,10 @@ export const MOBILE_CAPACITOR_PLUGIN_MANIFEST = [
   {
     packageName: "@elizaos/capacitor-screencapture",
     iosPods: [{ name: "ElizaosCapacitorScreencapture", kind: "custom" }],
+  },
+  {
+    packageName: "@elizaos/capacitor-secure-store",
+    iosPods: [{ name: "ElizaosCapacitorSecureStore", kind: "custom" }],
   },
   {
     packageName: "@elizaos/capacitor-swabble",

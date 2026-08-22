@@ -272,8 +272,14 @@ async function rm(
   args: string[],
 ): Promise<VfsBuiltinCommandResult> {
   const optionArgs = args.filter((arg) => arg.startsWith("-"));
+  // A short-option cluster carries every flag in it: `-Rf` is `-R -f`, which is
+  // how `force` below already reads its own flag. Matching whole strings meant
+  // only four spellings counted, so `rm -Rf dir` (and `-fR`, `-rvf`, …) parsed
+  // as non-recursive: `fsp.rm` then threw EISDIR, the command exited 1, and the
+  // tree was still there. Long options are left alone; none were recognised
+  // before this change either.
   const recursive = optionArgs.some(
-    (arg) => arg === "-r" || arg === "-R" || arg === "-rf" || arg === "-fr",
+    (arg) => !arg.startsWith("--") && (arg.includes("r") || arg.includes("R")),
   );
   const force = optionArgs.some((arg) => arg.includes("f"));
   const targets = args.filter((arg) => !arg.startsWith("-"));

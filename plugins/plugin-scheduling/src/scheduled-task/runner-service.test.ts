@@ -31,7 +31,24 @@ import {
   registerScheduledTaskChannelDispatcher,
 } from "./channel-dispatcher-registry.js";
 import type { ScheduledTaskDispatchRecord } from "./runner.js";
-import { ScheduledTaskRunnerService } from "./runner-service.js";
+import {
+  getScheduledTaskRunner,
+  ScheduledTaskRunnerService,
+} from "./runner-service.js";
+
+it("exposes a typed unavailable error when the runner service is absent", () => {
+  const runtime = {
+    getService: () => null,
+  } as unknown as IAgentRuntime;
+
+  expect(() =>
+    getScheduledTaskRunner(runtime, {
+      agentId: "00000000-0000-0000-0000-00000000cafe",
+    }),
+  ).toThrow(
+    expect.objectContaining({ code: "SCHEDULED_TASK_RUNNER_UNAVAILABLE" }),
+  );
+});
 
 function makeFakeRuntime(): IAgentRuntime {
   return {

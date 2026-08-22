@@ -6,11 +6,13 @@ name: Tests
 # build+core-test gate; this workflow adds the broader integration surface.
 
 on:
-  # Post-merge integration surface. Canonical CI calls the lightweight
-  # lint/typecheck/build gate for `develop` PRs; the full suite runs here once
-  # changes land on `develop`, plus nightly and on demand.
-  push:
-    branches: [develop]
+  workflow_call:
+    inputs:
+      remote_capability_live:
+        description: "Run strict remote-capability Cloud and provider live smokes"
+        required: false
+        default: false
+        type: boolean
   workflow_dispatch:
     inputs:
       remote_capability_live:
@@ -18,13 +20,9 @@ on:
         required: false
         default: false
         type: boolean
-  schedule:
-    # Nightly live smoke for container-backed remote capability plugins.
-    - cron: "17 9 * * *"
 
-# Develop pushes share a stable group so an obsolete tip is superseded before
-# it can starve the fleet. Scheduled and manual runs use per-run groups: an
-# incoming push therefore cannot cancel their independent diagnostic work.
+# Develop Full owns cancellation of superseded tips. Manual runs use a per-run
+# group so an on-demand diagnostic remains independent.
 concurrency:
   group: test-${{ github.event_name == 'push' && github.ref || format('{0}-{1}', github.event_name, github.run_id) }}
   cancel-in-progress: ${{ github.event_name == 'push' }}
@@ -206,6 +204,9 @@ jobs:
 
       - name: Remote capability naming audit self-test
         run: bun run test:remote-capabilities:naming-audit:self-test
+
+      - name: Remote capability live CI audit self-test
+        run: bun run test:remote-capabilities:live-ci-audit:self-test
 
       - name: Remote capability source-build smoke
         run: bun run test:remote-capabilities:source-build
@@ -1032,7 +1033,6 @@ jobs:
         env:
           EVENT_NAME: ${{ github.event_name }}
           LIVE_REQUIRED: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.remote_capability_live) }}
-          E2B_URL: ${{ secrets.ELIZA_REMOTE_CAPABILITY_E2B_URL }}
           HOME_URL: ${{ secrets.ELIZA_REMOTE_CAPABILITY_HOME_MACHINE_URL }}
           MOBILE_URL: ${{ secrets.ELIZA_REMOTE_CAPABILITY_MOBILE_COMPANION_URL }}
           DESKTOP_URL: ${{ secrets.ELIZA_REMOTE_CAPABILITY_DESKTOP_COMPANION_URL }}
@@ -1043,16 +1043,13 @@ jobs:
             exit 0
           fi
 
-          if [ -z "${E2B_URL}${HOME_URL}${MOBILE_URL}${DESKTOP_URL}" ]; then
+          if [ -z "${HOME_URL}${MOBILE_URL}${DESKTOP_URL}" ]; then
             message="No remote capability provider endpoints configured"
             echo "::error::${message}; strict ${EVENT_NAME} live lanes must fail instead of greening by skip."
             exit 1
           fi
 
           missing_required=()
-          if [ -z "${E2B_URL}" ]; then
-            missing_required+=("ELIZA_REMOTE_CAPABILITY_E2B_URL")
-          fi
           if [ -z "${HOME_URL}" ]; then
             missing_required+=("ELIZA_REMOTE_CAPABILITY_HOME_MACHINE_URL")
           fi
@@ -1103,10 +1100,6 @@ jobs:
         env:
           ELIZA_LIVE_TEST: "1"
           ELIZA_REMOTE_CAPABILITY_LIVE_REPORT_DIR: reports/remote-capabilities/providers
-          ELIZA_REMOTE_CAPABILITY_E2B_URL: ${{ secrets.ELIZA_REMOTE_CAPABILITY_E2B_URL }}
-          ELIZA_REMOTE_CAPABILITY_E2B_TOKEN: ${{ secrets.ELIZA_REMOTE_CAPABILITY_E2B_TOKEN }}
-          ELIZA_REMOTE_CAPABILITY_E2B_ENDPOINT_ID: ${{ secrets.ELIZA_REMOTE_CAPABILITY_E2B_ENDPOINT_ID }}
-          ELIZA_REMOTE_CAPABILITY_E2B_MODULES: ${{ secrets.ELIZA_REMOTE_CAPABILITY_E2B_MODULES }}
           ELIZA_REMOTE_CAPABILITY_HOME_MACHINE_URL: ${{ secrets.ELIZA_REMOTE_CAPABILITY_HOME_MACHINE_URL }}
           ELIZA_REMOTE_CAPABILITY_HOME_MACHINE_TOKEN: ${{ secrets.ELIZA_REMOTE_CAPABILITY_HOME_MACHINE_TOKEN }}
           ELIZA_REMOTE_CAPABILITY_HOME_MACHINE_ENDPOINT_ID: ${{ secrets.ELIZA_REMOTE_CAPABILITY_HOME_MACHINE_ENDPOINT_ID }}
@@ -1122,7 +1115,7 @@ jobs:
 
       - name: Validate remote capability provider live reports
         if: steps.providers.outputs.skip != 'true' && (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule')
-        run: bun run test:remote-capabilities:validate-live-reports --kind provider --expect-count 3..4 --max-age-minutes 90 --max-future-minutes 5 --allowed-providers e2b,home-machine,mobile-companion,desktop-companion --require-providers e2b,home-machine,mobile-companion --require-ci --require-file-identity --match-github-env reports/remote-capabilities/providers
+        run: bun run test:remote-capabilities:validate-live-reports --kind provider --expect-count 2..3 --max-age-minutes 90 --max-future-minutes 5 --allowed-providers home-machine,mobile-companion,desktop-companion --require-providers home-machine,mobile-companion --require-ci --require-file-identity --match-github-env reports/remote-capabilities/providers
 
       - name: Upload remote capability provider live report
         if: steps.providers.outputs.skip != 'true' && (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule')
@@ -1190,7 +1183,7 @@ jobs:
 
       - name: Re-validate provider live reports from downloaded artifacts
         if: needs.provider-live-e2e.result == 'success' && needs.provider-live-e2e.outputs.skip != 'true'
-        run: bun run test:remote-capabilities:validate-live-reports --kind provider --expect-count 3..4 --max-age-minutes 120 --max-future-minutes 5 --allowed-providers e2b,home-machine,mobile-companion,desktop-companion --require-providers e2b,home-machine,mobile-companion --require-ci --require-file-identity reports/remote-capabilities/providers
+        run: bun run test:remote-capabilities:validate-live-reports --kind provider --expect-count 2..3 --max-age-minutes 120 --max-future-minutes 5 --allowed-providers home-machine,mobile-companion,desktop-companion --require-providers home-machine,mobile-companion --require-ci --require-file-identity reports/remote-capabilities/providers
 
   script-tests:
     name: Script Tests (Linux)

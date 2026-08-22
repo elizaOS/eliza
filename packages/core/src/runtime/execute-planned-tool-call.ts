@@ -356,6 +356,12 @@ export function projectActionResultForClipboard(
 		...(result.data?.reconciliationRequired === true
 			? { reconciliationRequired: true }
 			: {}),
+		// Turn-delivery contract, not payload: tells the reply gate this turn's
+		// answer already went out (out-of-band ack). Projecting it away
+		// re-enabled the evaluator's mimicked ack (live 2026-08-19).
+		...(result.data?.suppressPlannerReply === true
+			? { suppressPlannerReply: true }
+			: {}),
 	};
 	return {
 		success: result.success,
@@ -389,6 +395,9 @@ export function projectActionResultForClipboard(
 		...(result.modelReplyRequired !== undefined
 			? { modelReplyRequired: result.modelReplyRequired }
 			: {}),
+		...(result.modelReplyFallback !== undefined
+			? { modelReplyFallback: result.modelReplyFallback }
+			: {}),
 		...(result.continueChain !== undefined
 			? { continueChain: result.continueChain }
 			: {}),
@@ -412,6 +421,12 @@ function projectSettledResultForObserver(
 		...(result.data?.reconciliationRequired === true
 			? { reconciliationRequired: true }
 			: {}),
+		// Turn-delivery contract, not payload: tells the reply gate this turn's
+		// answer already went out (out-of-band ack). Projecting it away
+		// re-enabled the evaluator's mimicked ack (live 2026-08-19).
+		...(result.data?.suppressPlannerReply === true
+			? { suppressPlannerReply: true }
+			: {}),
 	};
 
 	return {
@@ -428,6 +443,9 @@ function projectSettledResultForObserver(
 			: {}),
 		...(projected.modelReplyRequired !== undefined
 			? { modelReplyRequired: projected.modelReplyRequired }
+			: {}),
+		...(projected.modelReplyFallback !== undefined
+			? { modelReplyFallback: projected.modelReplyFallback }
 			: {}),
 		...(projected.continueChain !== undefined
 			? { continueChain: projected.continueChain }
@@ -1072,6 +1090,7 @@ function actionResultToStreamingResult(
 				: result.values,
 		turnComplete: result.turnComplete,
 		modelReplyRequired: result.modelReplyRequired,
+		modelReplyFallback: result.modelReplyFallback,
 		continueChain: result.continueChain,
 	};
 	return actionResultToContentRecord(streamingResult, redactDiagnosticText);

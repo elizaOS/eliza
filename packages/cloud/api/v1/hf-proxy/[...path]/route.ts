@@ -94,6 +94,18 @@ function monthBucket(now = new Date()): string {
   return `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}`;
 }
 
+function retryAfterUntilNextUtcMonth(now: Date): string {
+  const nextMonthStartedAt = Date.UTC(
+    now.getUTCFullYear(),
+    now.getUTCMonth() + 1,
+    1,
+  );
+  const secondsUntilReset = Math.ceil(
+    (nextMonthStartedAt - now.getTime()) / 1000,
+  );
+  return String(Math.max(1, secondsUntilReset));
+}
+
 function egressKey(organizationId: string, now = new Date()): string {
   return `hf-proxy:egress:${organizationId}:${monthBucket(now)}`;
 }
@@ -101,8 +113,9 @@ function egressKey(organizationId: string, now = new Date()): string {
 async function readMonthlyEgress(
   env: AppEnv["Bindings"],
   organizationId: string,
+  bucketNow = new Date(),
 ): Promise<number> {
-  const key = egressKey(organizationId);
+  const key = egressKey(organizationId, bucketNow);
   const kv = env.CACHE_KV;
   if (kv) {
     const raw = await kv.get(key);
@@ -265,9 +278,14 @@ app.get("/*", async (c) => {
     }
 
     const limitBytes = monthlyEgressLimitBytes(c.env);
-    const usedBytes = await readMonthlyEgress(c.env, orgId);
+    // Pin quota lookup and reset advice to one instant so a request at the UTC
+    // month boundary cannot read one bucket and advertise another reset.
+    const egressNow = new Date();
+    const usedBytes = await readMonthlyEgress(c.env, orgId, egressNow);
     if (usedBytes >= limitBytes) {
-      return c.json(egressLimitResponse(orgId, limitBytes, usedBytes), 429);
+      return c.json(egressLimitResponse(orgId, limitBytes, usedBytes), 429, {
+        "Retry-After": retryAfterUntilNextUtcMonth(egressNow),
+      });
     }
 
     const incomingUrl = new URL(c.req.url);
@@ -330,7 +348,9 @@ app.get("/*", async (c) => {
     }
 
     if (contentLength !== null && usedBytes + contentLength > limitBytes) {
-      return c.json(egressLimitResponse(orgId, limitBytes, usedBytes), 429);
+      return c.json(egressLimitResponse(orgId, limitBytes, usedBytes), 429, {
+        "Retry-After": retryAfterUntilNextUtcMonth(egressNow),
+      });
     }
 
     const responseHeaders = new Headers();

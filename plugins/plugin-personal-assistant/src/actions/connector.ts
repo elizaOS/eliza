@@ -37,7 +37,6 @@ const VERBOSE_DISPATCHER_KINDS = [
   "google",
   "x",
   "telegram",
-  "signal",
   "discord",
   "imessage",
   "whatsapp",
@@ -121,7 +120,6 @@ type ConnectorDispatcher = (
 const MESSAGE_CONNECTOR_SOURCE_BY_LIFEOPS_CONNECTOR: Record<string, string> = {
   x: "x",
   telegram: "telegram",
-  signal: "signal",
   discord: "discord",
   imessage: "imessage",
   whatsapp: "whatsapp",
@@ -376,7 +374,6 @@ async function dispatchListAll(
     google,
     x,
     telegram,
-    signal,
     discord,
     imessage,
     whatsapp,
@@ -389,7 +386,6 @@ async function dispatchListAll(
     registryOrReadStatus("telegram", () =>
       service.getTelegramConnectorStatus(),
     ),
-    registryOrReadStatus("signal", () => service.getSignalConnectorStatus()),
     registryOrReadStatus("discord", () => service.getDiscordConnectorStatus()),
     registryOrReadStatus("imessage", () =>
       service.getIMessageConnectorStatus(),
@@ -412,7 +408,6 @@ async function dispatchListAll(
         google,
         x,
         telegram,
-        signal,
         discord,
         imessage,
         whatsapp,
@@ -909,99 +904,6 @@ async function dispatchTelegram(
   }
 }
 
-async function dispatchSignal(
-  { runtime, service }: ConnectorDispatchContext,
-  subaction: ConnectorSubaction,
-  params: ConnectorActionParams,
-): Promise<ActionResult> {
-  const side = normalizeSide(params.side) ?? "owner";
-  switch (subaction) {
-    case "connect": {
-      const status = await service.getSignalConnectorStatus(side);
-      const base = status.connected
-        ? `Signal is connected through @elizaos/plugin-signal (side=${side}).`
-        : `Set up Signal below — link this agent as a device to your Signal account by scanning the QR code.`;
-      return {
-        success: status.connected,
-        text: status.connected
-          ? base
-          : withConfigCard(base, connectorConfigPluginId("signal")),
-        data: {
-          actionName: ACTION_NAME,
-          connector: "signal",
-          subaction,
-          status,
-        },
-      };
-    }
-    case "disconnect": {
-      const status = await service.getSignalConnectorStatus(side);
-      return {
-        success: false,
-        text: `Signal disconnect is managed by @elizaos/plugin-signal (side=${side}). Use the Signal connector plugin setup controls, then check status again.`,
-        data: {
-          actionName: ACTION_NAME,
-          connector: "signal",
-          subaction,
-          status,
-        },
-      };
-    }
-    case "status":
-    case "list": {
-      const registryStatus = registryStatusResult(runtime, "signal", subaction);
-      if (registryStatus) {
-        return registryStatus;
-      }
-      const status = await service.getSignalConnectorStatus(side);
-      return {
-        success: true,
-        text: `Signal connector status retrieved (side=${side}).`,
-        data: {
-          actionName: ACTION_NAME,
-          connector: "signal",
-          subaction,
-          status,
-        },
-      };
-    }
-    case "verify":
-      return await dispatchSignalVerify(service, side, params);
-  }
-}
-
-async function dispatchSignalVerify(
-  service: LifeOpsService,
-  side: "owner" | "agent",
-  params: ConnectorActionParams,
-): Promise<ActionResult> {
-  const limit = params.recentLimit ?? 10;
-  const status = await service.getSignalConnectorStatus(side);
-  let messages: Awaited<ReturnType<LifeOpsService["readSignalInbound"]>> = [];
-  let readError: string | null = null;
-  if (status.inbound) {
-    try {
-      messages = await service.readSignalInbound(limit, side);
-    } catch (error) {
-      readError = error instanceof Error ? error.message : String(error);
-    }
-  } else {
-    readError = "Signal plugin inbound read is unavailable.";
-  }
-  const readOk = readError === null;
-  return {
-    success: status.connected && readOk,
-    text: `Signal verify: status=${status.connected ? "connected" : "disconnected"}, read=${readOk ? `${messages.length} message${messages.length === 1 ? "" : "s"}` : "failed"}.`,
-    data: {
-      actionName: ACTION_NAME,
-      connector: "signal",
-      subaction: "verify",
-      status,
-      read: { ok: readOk, error: readError, count: messages.length, messages },
-    },
-  };
-}
-
 async function dispatchDiscord(
   { runtime, service }: ConnectorDispatchContext,
   subaction: ConnectorSubaction,
@@ -1433,7 +1335,6 @@ const VERBOSE_DISPATCHERS: Record<VerboseConnectorKind, ConnectorDispatcher> = {
   google: dispatchGoogle,
   x: dispatchX,
   telegram: dispatchTelegram,
-  signal: dispatchSignal,
   discord: dispatchDiscord,
   imessage: dispatchIMessage,
   whatsapp: dispatchWhatsApp,
@@ -1757,7 +1658,7 @@ export const connectorAction: Action & {
     {
       name: "connector",
       description:
-        "ConnectorRegistry kind: google, x, telegram, signal, discord, imessage, whatsapp, wechat, twilio, calendly, duffel, health, browser_bridge. Optional action=list.",
+        "ConnectorRegistry kind: google, x, telegram, discord, imessage, whatsapp, wechat, twilio, calendly, duffel, health, browser_bridge. Optional action=list.",
       required: false,
       schema: { type: "string" as const },
     },
@@ -1842,7 +1743,7 @@ export const connectorAction: Action & {
       {
         name: "{{agentName}}",
         content: {
-          text: "I'll list status across Google, X, Telegram, Signal, Discord, iMessage, WhatsApp, and Browser Bridge.",
+          text: "I'll list status across Google, X, Telegram, Discord, iMessage, WhatsApp, and Browser Bridge.",
         },
       },
     ],

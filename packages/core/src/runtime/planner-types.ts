@@ -4,7 +4,10 @@
  * parameter and result envelopes. Consumed by planner-loop, the evaluator, and
  * the message handler that drives them.
  */
-import type { ActionFailureProvenance } from "../types/action-failure";
+import type {
+	ActionFailureKind,
+	ActionFailureProvenance,
+} from "../types/action-failure";
 import type { EvaluationResult } from "../types/components";
 import type { ContextObject } from "../types/context-object";
 import type { EffectReceipt } from "../types/effects";
@@ -92,6 +95,8 @@ export type EvaluatorOutput = EvaluationResult & {
 
 export interface PlannerRuntime {
 	getService?(service: string): unknown;
+	/** Optional per-agent setting lookup used by guarded runtime features. */
+	getSetting?(key: string): string | boolean | number | null;
 	reportError?(
 		scope: string,
 		error: unknown,
@@ -203,6 +208,8 @@ export interface PlannerToolResult {
 	 * action whose planner call explicitly declared final scope.
 	 */
 	modelReplyRequired?: boolean;
+	/** Vetted action-owned fallback for a failed required model synthesis. */
+	modelReplyFallback?: string;
 	/**
 	 * Explicit chain-control override. `false` unconditionally aborts the
 	 * remaining planner queue, including for legacy failure and fire-and-forget
@@ -222,10 +229,23 @@ export interface PlannerStep {
 
 export interface PlannerTrajectory {
 	context: ContextObject;
+	/** Internal execution-mode provenance for mode-specific terminal handling. */
+	codingMode?: boolean;
 	steps: PlannerStep[];
 	archivedSteps: PlannerStep[];
 	plannedQueue: PlannerToolCall[];
 	evaluatorOutputs: EvaluatorOutput[];
+}
+
+export interface PlannerTerminalFailure {
+	kind:
+		| "coding_mutation_unverified"
+		| "coding_tool_failure"
+		| ActionFailureKind;
+	transient: boolean;
+	message: string;
+	/** Action boundary code when the failing tool supplied typed provenance. */
+	code?: string;
 }
 
 export interface PlannerLoopResult {
@@ -233,6 +253,12 @@ export interface PlannerLoopResult {
 	trajectory: PlannerTrajectory;
 	evaluator?: EvaluatorOutput;
 	finalMessage?: string;
+	/**
+	 * Machine-readable terminal failure that survives independent text delivery.
+	 * The message service propagates this outside `responseContent`, so a host
+	 * cannot mistake a callback-delivered failure for a successful turn.
+	 */
+	terminalFailure?: PlannerTerminalFailure;
 	/**
 	 * Marks a turn whose empty `finalMessage` is a designed outcome — the
 	 * planner ended on STOP/IGNORE or a `suppressPlannerReply` terminal action —
@@ -260,6 +286,17 @@ export interface PlannerLoopResult {
 export interface PlannerLoopParams {
 	runtime: PlannerRuntime;
 	context: ContextObject;
+	/**
+	 * A sole tool result that already completed outside the planner loop and
+	 * explicitly requested a model-authored final reply. The loop starts from
+	 * this settled step and performs only the guarded no-tools synthesis round.
+	 */
+	postToolReplySeed?: {
+		toolCall: PlannerToolCall;
+		result: PlannerToolResult;
+	};
+	/** Trusted per-turn coding-loop mode; never used as an authorization signal. */
+	codingMode?: boolean;
 	config?: Partial<ChainingLoopConfig>;
 	executeToolCall: (
 		toolCall: PlannerToolCall,

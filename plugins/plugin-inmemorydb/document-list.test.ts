@@ -7,6 +7,7 @@ import {
   DOCUMENT_LIST_QUERY_CAPABILITY_VERSION,
   type DocumentListCursor,
   type DocumentListQueryParams,
+  type Entity,
   type Memory,
   MemoryType,
   readDocumentMutationSnapshot,
@@ -76,6 +77,46 @@ function memory(
 }
 
 describe("InMemoryDatabaseAdapter document list capability", () => {
+  it("enforces direct-grant replacement inside the ephemeral adapter lock", async () => {
+    const adapter = new InMemoryDatabaseAdapter(new MemoryStorage(), AGENT_ID);
+    await adapter.initialize();
+    const granteeId = "50000000-0000-0000-0000-000000000099" as UUID;
+    await adapter.createEntities([
+      { id: granteeId, agentId: AGENT_ID, names: ["Grantee"] } as Entity,
+    ]);
+    const document = memory(99, ROOM_A, { documentRevision: 0 });
+    await adapter.createMemories([{ memory: document, tableName: "documents" }]);
+    const expected = readDocumentMutationSnapshot(document);
+    expect(expected).not.toBeNull();
+    if (!expected) throw new Error("test document snapshot must be valid");
+
+    await expect(
+      adapter.updateDocumentDirectGrants({
+        agentId: AGENT_ID,
+        documentId: document.id,
+        requesterEntityId: REQUESTER_ID,
+        requesterRoomIds: [ROOM_A],
+        requesterRole: "ADMIN",
+        expected,
+        directGrantEntityIds: [granteeId],
+      })
+    ).resolves.toMatchObject({
+      status: "updated",
+      document: { metadata: { directGrantEntityIds: [granteeId] } },
+    });
+    await expect(
+      adapter.updateDocumentDirectGrants({
+        agentId: AGENT_ID,
+        documentId: document.id,
+        requesterEntityId: REQUESTER_ID,
+        requesterRoomIds: [ROOM_A],
+        requesterRole: "ADMIN",
+        expected,
+        directGrantEntityIds: [],
+      })
+    ).resolves.toEqual({ status: "conflict" });
+  });
+
   it("preserves document metadata and excludes mixed table types by room", async () => {
     const adapter = new InMemoryDatabaseAdapter(new MemoryStorage(), AGENT_ID);
     await adapter.initialize();

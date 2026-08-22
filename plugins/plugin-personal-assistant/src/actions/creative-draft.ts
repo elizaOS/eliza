@@ -20,6 +20,7 @@ import type {
   Action,
   ActionExample,
   ActionResult,
+  DocumentListCursor,
   DocumentService,
   HandlerCallback,
   HandlerOptions,
@@ -34,7 +35,6 @@ import {
   ModelType,
   runWithTrajectoryPurpose,
   toWellFormedUnicode,
-  truncateWellFormed,
 } from "@elizaos/core";
 import { hasLifeOpsAccess } from "../lifeops/access.js";
 import {
@@ -85,12 +85,14 @@ interface StoredCreativeDraftEnvelope {
 
 type CreativeDraftDocumentService = Pick<
   DocumentService,
-  "addDocument" | "getDocumentById" | "listDocuments" | "updateDocument"
+  | "addDocument"
+  | "getDocumentById"
+  | "listDocuments"
+  | "listDocumentsDetailed"
+  | "updateDocument"
 >;
 
 const CREATIVE_DRAFT_DOCUMENT_KIND = "creative-owner-voice-draft";
-const MAX_OWNER_VOICE_SOURCES = 12;
-const MAX_OWNER_SOURCE_CHARS = 6_000;
 
 function getParams(
   options: HandlerOptions | undefined,
@@ -230,32 +232,54 @@ function ownerVoiceSourceKind(memory: Memory): OwnerVoiceSource["source"] {
   return "note";
 }
 
-async function resolveOwnerVoiceSources(args: {
+export async function resolveOwnerVoiceSources(args: {
   documents: CreativeDraftDocumentService;
   message: Memory;
   supplied: readonly OwnerVoiceSource[];
 }): Promise<OwnerVoiceSource[]> {
-  const byId = new Map(args.supplied.map((source) => [source.id, source]));
-  const documents = await args.documents.listDocuments(args.message, {
-    addedBy: args.message.entityId,
-    limit: MAX_OWNER_VOICE_SOURCES,
-  });
-  for (const document of documents) {
-    const metadata = document.metadata as Record<string, unknown> | undefined;
-    if (metadata?.documentKind === CREATIVE_DRAFT_DOCUMENT_KIND) continue;
-    const text = document.content.text?.trim();
-    if (!document.id || !text) continue;
-    byId.set(document.id, {
-      id: document.id,
-      text: truncateWellFormed(
-        toWellFormedUnicode(text),
-        MAX_OWNER_SOURCE_CHARS,
-      ),
-      source: ownerVoiceSourceKind(document),
+  const byId = new Map(
+    args.supplied.map((source) => [
+      source.id,
+      { ...source, text: toWellFormedUnicode(source.text) },
+    ]),
+  );
+  let cursor: DocumentListCursor | undefined;
+  const seenCursors = new Set<string>();
+  do {
+    const page = await args.documents.listDocumentsDetailed(args.message, {
+      addedBy: args.message.entityId,
+      limit: 100,
+      ...(cursor ? { cursor } : {}),
     });
-    if (byId.size >= MAX_OWNER_VOICE_SOURCES) break;
-  }
-  return [...byId.values()].slice(0, MAX_OWNER_VOICE_SOURCES);
+    for (const document of page.documents) {
+      const metadata = document.metadata as Record<string, unknown> | undefined;
+      if (metadata?.documentKind === CREATIVE_DRAFT_DOCUMENT_KIND) continue;
+      const text = document.content.text?.trim();
+      if (!document.id || !text) continue;
+      byId.set(document.id, {
+        id: document.id,
+        text: toWellFormedUnicode(text),
+        source: ownerVoiceSourceKind(document),
+      });
+    }
+    if (!page.hasMore) break;
+    if (!page.nextCursor) {
+      throw new ElizaError(
+        "Owner voice source traversal reported more documents without a continuation cursor",
+        { code: "CREATIVE_DRAFT_SOURCE_CURSOR_MISSING" },
+      );
+    }
+    const cursorKey = JSON.stringify(page.nextCursor);
+    if (seenCursors.has(cursorKey)) {
+      throw new ElizaError(
+        "Owner voice source traversal repeated a continuation cursor",
+        { code: "CREATIVE_DRAFT_SOURCE_CURSOR_REPEATED" },
+      );
+    }
+    seenCursors.add(cursorKey);
+    cursor = page.nextCursor;
+  } while (cursor);
+  return [...byId.values()];
 }
 
 function serializeDraft(draft: CreativeDraftArtifact): string {

@@ -1,5 +1,5 @@
 {
-  "uuid": "bbbb1111-aaaa-4000-8000-0000000200f8",
+  "uuid": "bbbb1111-aaaa-4000-8000-0000000200e8",
   "lastMigration": 33,
   "name": "lifeops-anthropic-mock",
   "endpointPrefix": "",
@@ -9,14 +9,14 @@
   "folders": [],
   "routes": [
     {
-      "uuid": "bbbb1111-aaaa-4000-8000-0000000200ee",
+      "uuid": "bbbb1111-aaaa-4000-8000-0000000200de",
       "type": "http",
       "documentation": "POST v1/messages (failure-injection only)",
       "method": "post",
       "endpoint": "v1/messages",
       "responses": [
         {
-          "uuid": "bbbb1111-aaaa-4000-8000-0000000200ef",
+          "uuid": "bbbb1111-aaaa-4000-8000-0000000200df",
           "body": "{\n  \"type\": \"error\",\n  \"error\": {\n    \"type\": \"overloaded_error\",\n    \"message\": \"Mockoon anthropic env is failure-injection only — point the SDK at cerebras for happy-path completions.\"\n  }\n}",
           "latency": 0,
           "statusCode": 503,
@@ -40,7 +40,7 @@
           "callbacks": []
         },
         {
-          "uuid": "bbbb1111-aaaa-4000-8000-0000000200f0",
+          "uuid": "bbbb1111-aaaa-4000-8000-0000000200e0",
           "body": "{\n  \"type\": \"error\",\n  \"error\": {\n    \"type\": \"rate_limit_error\",\n    \"message\": \"Number of request tokens has exceeded your per-minute rate limit\"\n  }\n}",
           "latency": 0,
           "statusCode": 429,
@@ -83,7 +83,7 @@
           "callbacks": []
         },
         {
-          "uuid": "bbbb1111-aaaa-4000-8000-0000000200f1",
+          "uuid": "bbbb1111-aaaa-4000-8000-0000000200e1",
           "body": "{\n  \"type\": \"error\",\n  \"error\": {\n    \"type\": \"authentication_error\",\n    \"message\": \"invalid x-api-key\"\n  }\n}",
           "latency": 0,
           "statusCode": 401,
@@ -122,7 +122,7 @@
           "callbacks": []
         },
         {
-          "uuid": "bbbb1111-aaaa-4000-8000-0000000200f2",
+          "uuid": "bbbb1111-aaaa-4000-8000-0000000200e2",
           "body": "{\n  \"error\": \"internal_server_error\"\n}",
           "latency": 0,
           "statusCode": 500,
@@ -164,14 +164,14 @@
       "responseMode": null
     },
     {
-      "uuid": "bbbb1111-aaaa-4000-8000-0000000200f3",
+      "uuid": "bbbb1111-aaaa-4000-8000-0000000200e3",
       "type": "http",
       "documentation": "POST v1/messages/count_tokens (failure-injection only)",
       "method": "post",
       "endpoint": "v1/messages/count_tokens",
       "responses": [
         {
-          "uuid": "bbbb1111-aaaa-4000-8000-0000000200f4",
+          "uuid": "bbbb1111-aaaa-4000-8000-0000000200e4",
           "body": "{\n  \"type\": \"error\",\n  \"error\": {\n    \"type\": \"overloaded_error\",\n    \"message\": \"Mockoon anthropic env is failure-injection only — point the SDK at cerebras for happy-path completions.\"\n  }\n}",
           "latency": 0,
           "statusCode": 503,
@@ -195,7 +195,7 @@
           "callbacks": []
         },
         {
-          "uuid": "bbbb1111-aaaa-4000-8000-0000000200f5",
+          "uuid": "bbbb1111-aaaa-4000-8000-0000000200e5",
           "body": "{\n  \"type\": \"error\",\n  \"error\": {\n    \"type\": \"rate_limit_error\",\n    \"message\": \"Number of request tokens has exceeded your per-minute rate limit\"\n  }\n}",
           "latency": 0,
           "statusCode": 429,
@@ -238,7 +238,7 @@
           "callbacks": []
         },
         {
-          "uuid": "bbbb1111-aaaa-4000-8000-0000000200f6",
+          "uuid": "bbbb1111-aaaa-4000-8000-0000000200e6",
           "body": "{\n  \"type\": \"error\",\n  \"error\": {\n    \"type\": \"authentication_error\",\n    \"message\": \"invalid x-api-key\"\n  }\n}",
           "latency": 0,
           "statusCode": 401,
@@ -277,7 +277,7 @@
           "callbacks": []
         },
         {
-          "uuid": "bbbb1111-aaaa-4000-8000-0000000200f7",
+          "uuid": "bbbb1111-aaaa-4000-8000-0000000200e7",
           "body": "{\n  \"error\": \"internal_server_error\"\n}",
           "latency": 0,
           "statusCode": 500,
@@ -322,11 +322,11 @@
   "rootChildren": [
     {
       "type": "route",
-      "uuid": "bbbb1111-aaaa-4000-8000-0000000200ee"
+      "uuid": "bbbb1111-aaaa-4000-8000-0000000200de"
     },
     {
       "type": "route",
-      "uuid": "bbbb1111-aaaa-4000-8000-0000000200f3"
+      "uuid": "bbbb1111-aaaa-4000-8000-0000000200e3"
     }
   ],
   "proxyMode": false,

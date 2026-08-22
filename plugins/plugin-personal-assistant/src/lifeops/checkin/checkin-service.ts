@@ -11,7 +11,6 @@ import {
   ModelType,
   runWithTrajectoryPurpose,
   toWellFormedUnicode,
-  truncateWellFormed,
 } from "@elizaos/core";
 import {
   type GetLifeOpsCalendarFeedRequest,
@@ -236,19 +235,8 @@ function newReportId(): string {
 }
 
 export function clip(text: string, maxLength = 220): string {
-  const trimmed = text.replace(/\s+/g, " ").trim();
-  const wellFormed = toWellFormedUnicode(trimmed);
-  if (wellFormed.length <= maxLength) {
-    return wellFormed;
-  }
-  if (maxLength <= 0) {
-    return "";
-  }
-  const suffix = "...";
-  if (maxLength <= suffix.length) {
-    return truncateWellFormed(suffix, maxLength);
-  }
-  return `${truncateWellFormed(wellFormed, maxLength - suffix.length).trimEnd()}${suffix}`;
+  void maxLength;
+  return toWellFormedUnicode(text.replace(/\s+/g, " ").trim());
 }
 
 function parseMs(value: string | null | undefined): number | null {

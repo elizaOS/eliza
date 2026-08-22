@@ -7,6 +7,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ChatMessage, ToolDefinition } from "../../types/model";
 import {
+	buildContentProjectionBudget,
 	buildModelInputBudget,
 	DEFAULT_COMPACTION_RESERVE_TOKENS,
 	DEFAULT_CONTEXT_WINDOW_TOKENS,
@@ -26,6 +27,37 @@ function userMessageOfChars(chars: number): ChatMessage {
 }
 
 describe("buildModelInputBudget", () => {
+	describe("content projection budget", () => {
+		it("uses remaining request capacity with per-result and aggregate ceilings", () => {
+			const projection = buildContentProjectionBudget({
+				budget: {
+					estimatedInputTokens: 50_000,
+					contextWindowTokens: 100_000,
+					reserveTokens: 10_000,
+					compactionThresholdTokens: 90_000,
+					shouldCompact: false,
+					resolvedModelKey: null,
+				},
+				resultCount: 4,
+			});
+			expect(projection).toEqual({
+				perResultTokens: 10_000,
+				aggregateTokens: 40_000,
+			});
+		});
+
+		it("returns no inline capacity when the metadata baseline exhausts the request", () => {
+			const budget = buildModelInputBudget({
+				messages: [userMessageOfChars(500_000)],
+				contextWindowTokens: 20_000,
+				reserveTokens: 1_000,
+			});
+			expect(buildContentProjectionBudget({ budget, resultCount: 2 })).toEqual({
+				perResultTokens: 0,
+				aggregateTokens: 0,
+			});
+		});
+	});
 	describe("backwards compatibility (no modelName)", () => {
 		it("uses the explicit window + reserve when both are passed", () => {
 			const budget = buildModelInputBudget({

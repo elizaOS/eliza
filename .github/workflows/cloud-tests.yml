@@ -4,34 +4,10 @@ name: Cloud Tests
 # Source: cloud/.github/workflows/tests.yml in the original elizaOS/cloud repo.
 
 on:
+  workflow_call:
   workflow_dispatch:
-  push:
-    branches: [develop]
-    paths:
-      - "packages/cloud/api/**"
-      - "packages/cloud/shared/**"
-      - "packages/cloud/sdk/**"
-      - "packages/cloud/services/**"
-      - "packages/cloud/routing/**"
-      - "packages/cloud/infra/**"
-      - "packages/cloud/scripts/**"
-      - "packages/cloud/e2e/**"
-      - "packages/cloud/test-mocks/**"
-      - "packages/scripts/test-cloud-run.mjs"
-      - "packages/scripts/test-cloud-run-helpers.mjs"
-      - "packages/scripts/__tests__/test-cloud-run.test.mjs"
-      - "packages/scripts/test-cloud-run-flush.self-test.mjs"
-      - "packages/scripts/test-cloud-run-helpers.self-test.mjs"
-      - "packages/scripts/test-cloud-run-preflight.self-test.mjs"
-      - "packages/scripts/test-cloud-run-watchdog.self-test.mjs"
-      - "packages/scripts/audit-provider-contracts.mjs"
-      - "packages/scripts/__tests__/audit-provider-contracts.test.ts"
-      - "package.json"
-      - "bun.lock"
-      - ".github/workflows/cloud-tests.yml"
-      - ".github/actions/cloud-setup-test-env/**"
 
-# All develop pushes share a stable group so stale work is superseded.
+# Develop Full owns latest-tip cancellation for called runs.
 concurrency:
   group: cloud-tests-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'push' }}
@@ -148,6 +124,12 @@ jobs:
         run: >-
           bun test --config=/dev/null --isolate
           packages/cloud/shared/src/db/repositories/__tests__/agent-sandboxes-stuck-provisioning-lock.integration.test.ts
+      - name: Run PostgreSQL agent billing lease precision tests
+        env:
+          APPS_TENANT_DB_TEST_DSN: postgresql://postgres@127.0.0.1:5432/postgres
+        run: >-
+          bun test --config=/dev/null --isolate
+          packages/cloud/shared/src/db/repositories/__tests__/agent-billing-runs-postgres.integration.test.ts
       - name: Run cloud e2e tests
         run: bun run test:cloud:e2e
 

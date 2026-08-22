@@ -12,6 +12,7 @@ import {
 } from "react";
 
 import { useActivityEvents } from "../../hooks/useActivityEvents";
+import { useMediaQuery } from "../../hooks/useMediaQuery";
 import { isRenderTelemetryEnabled } from "../../hooks/useRenderGuard";
 import { cn } from "../../lib/utils";
 import { useAppSelector } from "../../state";
@@ -24,6 +25,7 @@ import { useNotifications } from "../../state/notifications/notification-store";
 import { useShellSurface } from "../../state/shell-surface-store";
 import { LAYOUT_SHIFT_OBSERVER_INIT } from "../../testing/layout-stability";
 import { WidgetHost } from "../../widgets/WidgetHost";
+import { TasksEventsPanel } from "../chat/TasksEventsPanel";
 import { DefaultHomeWidgets } from "./DefaultHomeWidgets";
 import { NotificationsHomeCenter } from "./NotificationsHomeCenter";
 
@@ -213,6 +215,8 @@ export interface HomeScreenProps {
 export function HomeScreen({ apps }: HomeScreenProps): React.JSX.Element {
   // The live activity stream feeds the home ranker's attention signals.
   const { events, clearEvents } = useActivityEvents();
+  const showChatSidebar = useMediaQuery("(min-width: 1024px)");
+  const [chatSidebarCollapsed, setChatSidebarCollapsed] = useState(false);
   // The entrance rise plays once, on first mount only - never re-triggered by a
   // re-render or resize (issue 9304).
   const enterClass = useEnterOnceClass();
@@ -375,76 +379,91 @@ export function HomeScreen({ apps }: HomeScreenProps): React.JSX.Element {
       )}
     >
       <style>{HOME_SCREEN_CSS}</style>
-      {/* A definite-height flex column makes the notification shade and app
-          scroller share exactly the space above the floating chat. */}
-      <div
-        ref={homeContentColumnRef}
-        data-testid="home-content-column"
-        data-home-has-notifications={notifications.length > 0 ? "" : undefined}
-        className="mx-auto flex h-full w-full max-w-2xl flex-col"
-      >
-        {/* The always-on base: a naked sized grid with the time + weather as
+      <div className="flex h-full min-h-0 w-full">
+        {/* A definite-height flex column makes the notification shade and app
+            scroller share exactly the space above the floating chat. */}
+        <div
+          ref={homeContentColumnRef}
+          data-testid="home-content-column"
+          data-home-has-notifications={
+            notifications.length > 0 ? "" : undefined
+          }
+          className="mx-auto flex h-full min-w-0 w-full max-w-2xl flex-col"
+        >
+          {/* The always-on base: a naked sized grid with the time + weather as
             2×2 neighbours - no card, white text on the ambient field. Anchored
             at the top of the column as the editorial header. */}
-        <div className={enterClass} style={{ animationDelay: "70ms" }}>
-          <DefaultHomeWidgets />
-        </div>
+          <div className={enterClass} style={{ animationDelay: "70ms" }}>
+            <DefaultHomeWidgets />
+          </div>
 
-        {/* Rested notifications are content-sized and flex-shrink into the
+          {/* Rested notifications are content-sized and flex-shrink into the
             actual remainder below the header. The desktop cap leaves useful
             room for ranked widgets on taller screens; explicit expansion still
             gives the shade the full remainder and displaces that region. */}
-        <div
-          data-home-notification-region=""
-          className={cn(
-            enterClass,
-            "mt-4 mb-3 flex min-h-0 flex-col max-sm:-mx-2",
-          )}
-          style={{ animationDelay: "90ms" }}
-        >
-          <NotificationsHomeCenter
-            emptyGestureTargetRef={homeScreenRef}
-            shadeLayoutTargetRef={homeContentColumnRef}
-            onShadeOccupancyChange={handleShadeExpandedChange}
-            openRequestId={notificationCenterOpenRequestId}
-            onOpenRequestHandled={handleNotificationCenterOpenRequestHandled}
-          />
-        </div>
-
-        <div
-          data-home-below-notifications=""
-          data-eliza-layout-shift-intent={enterClass ? "transient" : undefined}
-          className="relative min-h-0 flex-1"
-        >
-          <section
-            ref={appsRegionRef}
-            aria-label="Home content"
-            aria-hidden={appsDisplaced || undefined}
-            inert={appsDisplaced || undefined}
-            onBlurCapture={handleAppsBlurCapture}
-            onFocusCapture={handleAppsFocusCapture}
-            data-home-below-notifications-inner=""
-            data-testid="home-apps-scroll"
-            data-scroll-cert-scroller=""
+          <div
+            data-home-notification-region=""
             className={cn(
-              "scrollbar-hide relative min-h-0 touch-pan-y overflow-x-hidden overflow-y-auto overscroll-y-contain [scrollbar-width:none] [-webkit-overflow-scrolling:touch] [&::-webkit-scrollbar]:hidden",
-              appsDisplaced && "pointer-events-none",
+              enterClass,
+              "mt-4 mb-3 flex min-h-0 flex-col max-sm:-mx-2",
             )}
+            style={{ animationDelay: "90ms" }}
           >
-            {apps}
-            <div
-              className={cn(enterClass, "flex min-h-32 flex-col py-6")}
-              style={{ animationDelay: "110ms" }}
+            <NotificationsHomeCenter
+              emptyGestureTargetRef={homeScreenRef}
+              shadeLayoutTargetRef={homeContentColumnRef}
+              onShadeOccupancyChange={handleShadeExpandedChange}
+              openRequestId={notificationCenterOpenRequestId}
+              onOpenRequestHandled={handleNotificationCenterOpenRequestHandled}
+            />
+          </div>
+
+          <div
+            data-home-below-notifications=""
+            data-eliza-layout-shift-intent={
+              enterClass ? "transient" : undefined
+            }
+            className="relative min-h-0 flex-1"
+          >
+            <section
+              ref={appsRegionRef}
+              aria-label="Home content"
+              aria-hidden={appsDisplaced || undefined}
+              inert={appsDisplaced || undefined}
+              onBlurCapture={handleAppsBlurCapture}
+              onFocusCapture={handleAppsFocusCapture}
+              data-home-below-notifications-inner=""
+              data-testid="home-apps-scroll"
+              data-scroll-cert-scroller=""
+              className={cn(
+                "scrollbar-hide relative min-h-0 touch-pan-y overflow-x-hidden overflow-y-auto overscroll-y-contain [scrollbar-width:none] [-webkit-overflow-scrolling:touch] [&::-webkit-scrollbar]:hidden",
+                appsDisplaced && "pointer-events-none",
+              )}
             >
-              <WidgetHost
-                slot="home"
-                layout="grid"
-                events={events}
-                clearEvents={clearEvents}
-              />
-            </div>
-          </section>
+              {apps}
+              <div
+                className={cn(enterClass, "flex min-h-32 flex-col py-6")}
+                style={{ animationDelay: "110ms" }}
+              >
+                <WidgetHost
+                  slot="home"
+                  layout="grid"
+                  events={events}
+                  clearEvents={clearEvents}
+                />
+              </div>
+            </section>
+          </div>
         </div>
+        {showChatSidebar ? (
+          <TasksEventsPanel
+            open
+            events={events}
+            clearEvents={clearEvents}
+            collapsed={chatSidebarCollapsed}
+            onToggleCollapsed={setChatSidebarCollapsed}
+          />
+        ) : null}
       </div>
     </div>
   );

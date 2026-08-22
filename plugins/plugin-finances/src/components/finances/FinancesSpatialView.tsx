@@ -409,7 +409,7 @@ function TransactionsSection({
           {filteredOut ? "No transactions match the filter" : "None"}
         </Text>
       ) : (
-        <List gap={0}>
+        <List gap={0} padding={{ bottom: 1 }}>
           {transactions.map((tx) => (
             <HStack
               key={tx.id}

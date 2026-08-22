@@ -29,7 +29,6 @@ import {
   type SendHandlerOutcome,
   type TargetInfo,
   toWellFormedUnicode,
-  truncateWellFormed,
   type UUID,
 } from "@elizaos/core";
 import { GOOGLE_SERVICE_NAME } from "./types.js";
@@ -38,7 +37,6 @@ export const GMAIL_MESSAGE_SOURCE = "gmail";
 
 const EMAIL_ADDRESS_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const SUBJECT_MAX_LENGTH = 78;
 const EMAIL_COMPONENT_KEYS = ["email", "emailAddress"] as const;
 const GMAIL_SEND_ACCOUNT_STATUSES: ConnectorAccountStatus[] = ["connected"];
 const GMAIL_SEND_ACCOUNT_PURPOSES: ConnectorAccountPurpose[] = ["messaging"];
@@ -219,9 +217,7 @@ function subjectFromContent(content: Content): string {
       .split("\n", 1)[0]
       .trim()
   );
-  return firstLine.length <= SUBJECT_MAX_LENGTH
-    ? firstLine
-    : `${truncateWellFormed(firstLine, SUBJECT_MAX_LENGTH - 3)}...`;
+  return firstLine;
 }
 
 async function sendGmailFromTarget(

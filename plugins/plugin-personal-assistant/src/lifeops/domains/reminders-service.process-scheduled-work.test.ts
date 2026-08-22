@@ -1,4 +1,5 @@
 /** Verifies the reminder domain drives processDueScheduledTasks when processing scheduled work. Deterministic vitest with the scheduler module mocked. */
+import { ElizaError } from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { LifeOpsContext } from "../lifeops-context.js";
 import {
@@ -145,6 +146,25 @@ describe("RemindersDomain.processScheduledWork subsystem isolation", () => {
     ]);
     // Sleep check-ins still ran even after two earlier subsystems failed.
     expect(overrides.processSleepCycleCheckins).toHaveBeenCalledTimes(1);
+  });
+
+  it("reports a missing scheduled-task runner as typed unavailable state", async () => {
+    const { domain, overrides } = makeDomain();
+    vi.mocked(processDueScheduledTasks).mockRejectedValue(
+      new ElizaError("scheduled-task runner unavailable", {
+        code: "SCHEDULED_TASK_RUNNER_UNAVAILABLE",
+      }),
+    );
+
+    const result = await domain.processScheduledWork({ now: NOW });
+
+    expect(overrides.processSleepCycleCheckins).toHaveBeenCalledTimes(1);
+    expect(result.scheduledTaskFires).toEqual([]);
+    expect(result.subsystemFailures).toContainEqual({
+      subsystem: "scheduled_tasks",
+      error: "scheduled-task runner unavailable",
+      code: "SCHEDULED_TASK_RUNNER_UNAVAILABLE",
+    });
   });
 
   it("still surfaces successful subsystem results alongside failures", async () => {

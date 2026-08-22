@@ -6,6 +6,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { pushSchema } from "drizzle-kit/api";
 import { eq, sql } from "drizzle-orm";
+import { agentNodeIncarnationHistories } from "../../schemas/agent-node-incarnation-histories";
 import { agentSandboxes, WARM_POOL_ORG_ID, WARM_POOL_USER_ID } from "../../schemas/agent-sandboxes";
 import { apiKeys } from "../../schemas/api-keys";
 import { dockerNodes } from "../../schemas/docker-nodes";
@@ -52,6 +53,7 @@ beforeAll(async () => {
     users,
     userCharacters,
     agentSandboxes,
+    agentNodeIncarnationHistories,
     dockerNodes,
     apiKeys,
     usageRecords,

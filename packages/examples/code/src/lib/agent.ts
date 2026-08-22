@@ -1,7 +1,7 @@
 /** Provides shared runtime assembly for interactive and ACP Code agents. */
 import { AgentRuntime, type Character, type Plugin } from "@elizaos/core";
 import {
-  applyOpencodeProviderEnv,
+  applyElizaCodeProviderEnv,
   resolveModelProvider,
 } from "./model-provider.js";
 import { CODE_ASSISTANT_SYSTEM_PROMPT } from "./prompts.js";
@@ -88,7 +88,7 @@ export async function initializeAgent(
 ): Promise<AgentRuntime> {
   if (options.loadDotenv !== false) await import("dotenv/config");
   const includeOrchestrator = options.includeOrchestrator !== false;
-  applyOpencodeProviderEnv(process.env);
+  applyElizaCodeProviderEnv(process.env);
   const provider = resolveModelProvider(process.env);
   if (provider === "anthropic" && !process.env.ANTHROPIC_API_KEY) {
     throw new Error(

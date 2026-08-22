@@ -99,7 +99,6 @@ export const KNOWN_ROUTE_SHARD_KEYS: readonly string[] = [
   "v1/oauth-intents",
   "v1/oxapay",
   "v1/payment-requests",
-  "v1/phone-gateways",
   "v1/pii-scrub",
   "v1/pricing",
   "v1/proxy",

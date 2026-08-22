@@ -22,7 +22,6 @@ import {
   EventType,
   readRequestBodyBuffer,
   toWellFormedUnicode,
-  truncateWellFormed,
 } from "@elizaos/core";
 
 const MAX_BODY_BYTES = 4 * 1024;
@@ -30,7 +29,6 @@ const MAX_BODY_BYTES = 4 * 1024;
 /** Stable shortcut id: kebab-case, bounded length (e.g. "open-command-palette"). */
 const SHORTCUT_ID_PATTERN = /^[a-z][a-z0-9-]{1,48}$/;
 const SURFACE_ID_PATTERN = /^[a-z][a-z0-9_-]{1,64}$/;
-const MAX_CONTEXT_CHARS = 120;
 const MAX_CONVERSATION_ID_CHARS = 128;
 const MAX_DRAFT_LENGTH = 100_000;
 
@@ -88,15 +86,12 @@ export function parseShortcutBody(
   if (!SHORTCUT_ID_PATTERN.test(shortcutId)) return null;
   const context =
     typeof body.context === "string" && body.context.trim()
-      ? truncateWellFormed(
-          toWellFormedUnicode(body.context.trim()),
-          MAX_CONTEXT_CHARS,
-        )
+      ? toWellFormedUnicode(body.context.trim())
       : undefined;
   return { shortcutId, ...(context ? { context } : {}) };
 }
 
-function readBoundedString(
+function readStringWithinLimit(
   value: unknown,
   maxChars: number,
 ): string | undefined {
@@ -104,15 +99,12 @@ function readBoundedString(
   const trimmed = value.trim();
   if (!trimmed) return undefined;
   const wellFormed = toWellFormedUnicode(trimmed);
-  return wellFormed.length <= maxChars
-    ? wellFormed
-    : truncateWellFormed(wellFormed, maxChars);
+  return wellFormed.length <= maxChars ? wellFormed : undefined;
 }
 
 function readNonNegativeInteger(value: unknown): number | null {
-  if (typeof value !== "number" || !Number.isFinite(value)) return null;
-  const integer = Math.trunc(value);
-  return integer >= 0 ? integer : null;
+  if (typeof value !== "number" || !Number.isSafeInteger(value)) return null;
+  return value >= 0 ? value : null;
 }
 
 function readOccurredAt(value: unknown): string | null {
@@ -144,14 +136,22 @@ export function parseComposerBody(
       : null;
   if (!activity) return null;
 
-  const surface = readBoundedString(body.surface, 64);
+  const surface = readStringWithinLimit(body.surface, 64);
   if (!surface || !SURFACE_ID_PATTERN.test(surface)) return null;
 
   const draftLength = readNonNegativeInteger(body.draftLength);
   if (draftLength === null || draftLength > MAX_DRAFT_LENGTH) return null;
 
-  const idleForMs = readNonNegativeInteger(body.idleForMs);
-  if (activity === "typing_paused" && idleForMs === null) return null;
+  const idleForMs =
+    body.idleForMs === undefined
+      ? undefined
+      : readNonNegativeInteger(body.idleForMs);
+  if (
+    idleForMs === null ||
+    (activity === "typing_paused" && idleForMs === undefined)
+  ) {
+    return null;
+  }
 
   const reason =
     body.reason === "cleared" ||
@@ -163,16 +163,20 @@ export function parseComposerBody(
   const occurredAt = readOccurredAt(body.occurredAt);
   if (!occurredAt) return null;
 
-  const conversationId = readBoundedString(
-    body.conversationId,
-    MAX_CONVERSATION_ID_CHARS,
-  );
+  let conversationId: string | undefined;
+  if (body.conversationId !== undefined) {
+    conversationId = readStringWithinLimit(
+      body.conversationId,
+      MAX_CONVERSATION_ID_CHARS,
+    );
+    if (!conversationId) return null;
+  }
   return {
     activity,
     surface,
     draftLength,
     ...(conversationId ? { conversationId } : {}),
-    ...(idleForMs !== null ? { idleForMs } : {}),
+    ...(idleForMs !== undefined ? { idleForMs } : {}),
     ...(reason ? { reason } : {}),
     occurredAt,
   };

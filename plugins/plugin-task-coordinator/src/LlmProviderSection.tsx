@@ -118,37 +118,6 @@ export function LlmProviderSection({
               onChange={(e) => setPref("OPENAI_API_KEY", e.target.value)}
             />
           </SettingsControls.Field>
-          <SettingsControls.Field>
-            <SettingsControls.FieldLabel>
-              {t("codingagentsettingssection.OpencodeApiKey", {
-                defaultValue: "OpenCode API Key",
-              })}
-            </SettingsControls.FieldLabel>
-            <SettingsControls.Input
-              variant="compact"
-              type="password"
-              placeholder="sk-..."
-              value={prefs.ELIZA_OPENCODE_API_KEY || ""}
-              onChange={(e) =>
-                setPref("ELIZA_OPENCODE_API_KEY", e.target.value)
-              }
-            />
-          </SettingsControls.Field>
-          <SettingsControls.Field>
-            <SettingsControls.FieldLabel>
-              {t("codingagentsettingssection.OpencodeBaseUrl", {
-                defaultValue: "OpenCode Base URL",
-              })}
-            </SettingsControls.FieldLabel>
-            <SettingsControls.Input
-              variant="compact"
-              placeholder="https://api.openai.com/v1"
-              value={prefs.ELIZA_OPENCODE_BASE_URL || ""}
-              onChange={(e) =>
-                setPref("ELIZA_OPENCODE_BASE_URL", e.target.value)
-              }
-            />
-          </SettingsControls.Field>
         </div>
       )}
 

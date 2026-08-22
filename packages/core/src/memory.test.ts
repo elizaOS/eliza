@@ -31,6 +31,10 @@ const id = (s: string) => s as UUID;
 
 describe("createMessageMemory", () => {
 	it("stamps MESSAGE metadata and scope by agentId presence", () => {
+		// Intentional factory defaults: `shared` without an agentId, `private`
+		// with one. Omit-agentId production writers (inbound chat, cloud events,
+		// CLI chat) rely on `shared` so the sender and the agent can both read
+		// the row. Writers needing a tighter tier pass `scope` explicitly.
 		const shared = createMessageMemory({
 			entityId: id("e1"),
 			roomId: id("r1"),
@@ -46,6 +50,32 @@ describe("createMessageMemory", () => {
 			content: { text: "hi" },
 		});
 		expect((priv.metadata as { scope?: string }).scope).toBe("private");
+	});
+
+	it("honors an explicit scope over the agentId-derived default", () => {
+		const explicitAgentPrivate = createMessageMemory({
+			entityId: id("e1"),
+			roomId: id("r1"),
+			content: { text: "hi" },
+			scope: "agent-private",
+		});
+		expect((explicitAgentPrivate.metadata as { scope?: string }).scope).toBe(
+			"agent-private",
+		);
+		// The scope param must not leak onto the memory record itself — it only
+		// belongs in metadata, where the access-control ladder reads it.
+		expect("scope" in explicitAgentPrivate).toBe(false);
+
+		const explicitOwner = createMessageMemory({
+			entityId: id("e1"),
+			agentId: id("a1"),
+			roomId: id("r1"),
+			content: { text: "hi" },
+			scope: "owner-private",
+		});
+		expect((explicitOwner.metadata as { scope?: string }).scope).toBe(
+			"owner-private",
+		);
 	});
 });
 

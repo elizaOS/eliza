@@ -58,12 +58,9 @@ preserve the gateway separation already present in the repo.
 - `GET /api/eliza-app/provisioning-agent` exposes that status. Its retained
   `POST` method is the same read-only operation for compatibility, not a
   provisioning command.
-- `plugins/plugin-bluebubbles/src/setup-routes.ts` and
-  `plugins/plugin-bluebubbles/src/data-routes.ts` document the local
-  BlueBubbles setup contract and public webhook receiver used by an agent
-  runtime.
-- `plugins/plugin-bluebubbles/src/service.ts` maps BlueBubbles chats, handles
-  incoming messages, and sends iMessage/SMS/RCS through the BlueBubbles bridge.
+- `plugins/plugin-imessage/src/service.ts` and
+  `plugins/plugin-imessage/src/chatdb-reader.ts` implement direct local macOS
+  Messages integration without a bridge server or external relay application.
 - `packages/cloud/services/headscale/README.md` and
   `packages/cloud/services/tunnel-proxy/README.md` define the current Headscale
   and tunnel-proxy tag model.
@@ -191,18 +188,16 @@ Keep Discord in `packages/cloud/services/gateway-discord/`.
   control of a Discord account to the bot but should not silently bind that
   account to an existing cloud user without OAuth/session confirmation.
 
-### iMessage With BlueBubbles, Mac, iPhone, And Headscale
+### Native iMessage On macOS
 
 The Mac-hosted iMessage path is separate from the existing hosted `blooio`
 adapter.
 
 Reference implementation surfaces:
 
-- Local agent BlueBubbles setup and webhook routes:
-  `plugins/plugin-bluebubbles/src/setup-routes.ts`
-  and `plugins/plugin-bluebubbles/src/data-routes.ts`.
-- Local BlueBubbles send/receive semantics:
-  `plugins/plugin-bluebubbles/src/service.ts`.
+- Direct local send/receive semantics:
+  `plugins/plugin-imessage/src/service.ts` and
+  `plugins/plugin-imessage/src/chatdb-reader.ts`.
 - Headscale tunnel primitives:
   `packages/cloud/services/headscale/README.md`
   and `packages/cloud/services/tunnel-proxy/README.md`.

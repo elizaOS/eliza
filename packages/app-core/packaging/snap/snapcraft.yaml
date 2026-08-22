@@ -138,7 +138,6 @@ parts:
           "plugin-personal-assistant",
           "plugin-local-inference",
           "plugin-pdf",
-          "plugin-signal",
           "plugin-sql",
           "plugin-task-coordinator",
           "plugin-telegram",
@@ -495,7 +494,6 @@ parts:
         --filter=@elizaos/plugin-personal-assistant \
         --filter=@elizaos/plugin-local-inference \
         --filter=@elizaos/plugin-pdf \
-        --filter=@elizaos/plugin-signal \
         --filter=@elizaos/plugin-sql \
         --filter=@elizaos/plugin-task-coordinator \
         --filter=@elizaos/plugin-telegram \

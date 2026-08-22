@@ -5,22 +5,46 @@
  * an isolated real PostgreSQL-compatible engine.
  */
 
-import { and, desc, eq, gt, inArray, isNull, lte, or } from "drizzle-orm";
+import { ElizaError } from "@elizaos/core";
+import { and, asc, desc, eq, gt, inArray, isNull, lte, or, sql } from "drizzle-orm";
 import type { Database } from "../client";
-import { isRemotePairingSessionCurrent } from "../crypto/remote-pairing-code";
+import { hashRemoteHostToken } from "../crypto/remote-host-token";
+import {
+  isRemotePairingSessionCurrent,
+  verifyRemotePairingCodeVerifier,
+} from "../crypto/remote-pairing-code";
 import { agentSandboxes } from "../schemas/agent-sandboxes";
+import { remoteCommandEnvelopes } from "../schemas/remote-command-envelopes";
+import { remoteHosts } from "../schemas/remote-hosts";
 import {
   type NewRemoteSession,
   type RemoteSession,
   type RemoteSessionStatus,
   remoteSessions,
 } from "../schemas/remote-sessions";
+import { readPostLockDatabaseNow } from "./primary-database-clock";
 
 const ACTIVE_STATUSES: RemoteSessionStatus[] = ["pending", "active"];
 
 export interface RevokeRemoteSessionResult {
   session: RemoteSession;
   alreadyEnded: boolean;
+  cleanup?: { commands: number; more: boolean };
+}
+
+export type ActivateRemoteHostSessionResult =
+  | { kind: "activated"; session: RemoteSession }
+  | { kind: "not_found" }
+  | { kind: "invalid_pairing" };
+
+const SESSION_COMMAND_CLEANUP_BATCH = 500;
+
+function storageFailure(message: string, context: Record<string, unknown>): ElizaError {
+  return new ElizaError(message, {
+    code: "REMOTE_RELAY_STORAGE_FAILURE",
+    severity: "fatal",
+    context,
+  });
 }
 
 export class RemoteSessionsRepository {
@@ -45,6 +69,9 @@ export class RemoteSessionsRepository {
     ) {
       throw new TypeError("Pending remote session input violates its ownership contract");
     }
+    const agentId = data.agent_id;
+    const organizationId = data.organization_id;
+    const userId = data.user_id;
 
     return this.database.transaction(async (tx) => {
       const [ownedAgent] = await tx
@@ -52,9 +79,9 @@ export class RemoteSessionsRepository {
         .from(agentSandboxes)
         .where(
           and(
-            eq(agentSandboxes.id, data.agent_id),
-            eq(agentSandboxes.organization_id, data.organization_id),
-            eq(agentSandboxes.user_id, data.user_id),
+            eq(agentSandboxes.id, agentId),
+            eq(agentSandboxes.organization_id, organizationId),
+            eq(agentSandboxes.user_id, userId),
             isNull(agentSandboxes.deleted_at),
           ),
         )
@@ -64,15 +91,15 @@ export class RemoteSessionsRepository {
       const now = new Date();
       // Run-out challenges reach their own terminal state before the
       // replacement denies whatever is still genuinely pending.
-      await this.transitionExpired(tx, data.agent_id, data.organization_id, data.user_id, now);
+      await this.transitionExpired(tx, agentId, organizationId, userId, now);
       await tx
         .update(remoteSessions)
         .set({ status: "denied", updated_at: now, ended_at: now })
         .where(
           and(
-            eq(remoteSessions.agent_id, data.agent_id),
-            eq(remoteSessions.organization_id, data.organization_id),
-            eq(remoteSessions.user_id, data.user_id),
+            eq(remoteSessions.agent_id, agentId),
+            eq(remoteSessions.organization_id, organizationId),
+            eq(remoteSessions.user_id, userId),
             eq(remoteSessions.status, "pending"),
           ),
         );
@@ -80,6 +107,218 @@ export class RemoteSessionsRepository {
       const [row] = await tx.insert(remoteSessions).values(data).returning();
       if (!row) throw new Error("Failed to create remote session");
       return row;
+    });
+  }
+
+  /** Creates one pending, expiring host pairing grant under the host lock. */
+  async createPendingForOwnedHost(data: NewRemoteSession): Promise<RemoteSession | undefined> {
+    if (
+      data.status !== "pending" ||
+      data.requester_identity !== data.user_id ||
+      !data.id ||
+      !data.grant_id ||
+      !data.grant_revision ||
+      !data.organization_id ||
+      !data.user_id ||
+      !data.host_id ||
+      data.agent_id ||
+      !data.controller_device_id ||
+      !data.controller_key_id ||
+      !data.controller_signing_public_jwk ||
+      !data.controller_encryption_public_jwk ||
+      !data.pairing_token_hash ||
+      !(data.expires_at instanceof Date) ||
+      !(data.grant_expires_at instanceof Date) ||
+      data.grant_expires_at.getTime() <= data.expires_at.getTime()
+    ) {
+      throw new ElizaError("Pending remote host session input violates its authority contract", {
+        code: "REMOTE_SESSION_INVALID_INPUT",
+        severity: "fatal",
+      });
+    }
+    const hostId = data.host_id;
+    const organizationId = data.organization_id;
+    const userId = data.user_id;
+    const controllerDeviceId = data.controller_device_id;
+
+    return this.database.transaction(async (tx) => {
+      const [host] = await tx
+        .select({ id: remoteHosts.id, runtimeKeyId: remoteHosts.runtime_key_id })
+        .from(remoteHosts)
+        .where(
+          and(
+            eq(remoteHosts.id, hostId),
+            eq(remoteHosts.organization_id, organizationId),
+            eq(remoteHosts.user_id, userId),
+            eq(remoteHosts.status, "active"),
+          ),
+        )
+        .for("update");
+      if (!host) return undefined;
+      if (data.target_key_id && host.runtimeKeyId !== data.target_key_id) return undefined;
+
+      const now = await readPostLockDatabaseNow(tx);
+      await tx
+        .update(remoteSessions)
+        .set({ status: "expired", pairing_token_hash: null, ended_at: now, updated_at: now })
+        .where(
+          and(
+            eq(remoteSessions.host_id, host.id),
+            eq(remoteSessions.organization_id, organizationId),
+            eq(remoteSessions.user_id, userId),
+            eq(remoteSessions.controller_device_id, controllerDeviceId),
+            eq(remoteSessions.status, "pending"),
+            lte(remoteSessions.expires_at, now),
+          ),
+        );
+      await tx
+        .update(remoteSessions)
+        .set({ status: "denied", pairing_token_hash: null, ended_at: now, updated_at: now })
+        .where(
+          and(
+            eq(remoteSessions.host_id, host.id),
+            eq(remoteSessions.organization_id, organizationId),
+            eq(remoteSessions.user_id, userId),
+            eq(remoteSessions.controller_device_id, controllerDeviceId),
+            eq(remoteSessions.status, "pending"),
+          ),
+        );
+
+      const [session] = await tx
+        .insert(remoteSessions)
+        .values({ ...data, target_key_id: host.runtimeKeyId })
+        .returning();
+      if (!session) {
+        throw storageFailure("Failed to create remote host session", { hostId: host.id });
+      }
+      return session;
+    });
+  }
+
+  /**
+   * Consumes a host-bound pairing code exactly once. Host authentication,
+   * expiry, verifier validation, and activation occur while host then session
+   * rows are locked, so neither revocation nor a second consumer can race it.
+   */
+  async activatePendingHost(input: {
+    sessionId: string;
+    hostId: string;
+    hostToken: string;
+    code: string;
+    pairingSecret: string;
+  }): Promise<ActivateRemoteHostSessionResult> {
+    let tokenHash: string;
+    try {
+      tokenHash = await hashRemoteHostToken(input.hostToken);
+    } catch {
+      // error-policy:J3 malformed bearer material is an explicit auth miss.
+      return { kind: "not_found" };
+    }
+    return this.database.transaction(async (tx) => {
+      const [host] = await tx
+        .select()
+        .from(remoteHosts)
+        .where(
+          and(
+            eq(remoteHosts.id, input.hostId),
+            eq(remoteHosts.host_token_hash, tokenHash),
+            eq(remoteHosts.status, "active"),
+          ),
+        )
+        .for("update");
+      if (!host) return { kind: "not_found" };
+
+      const [session] = await tx
+        .select()
+        .from(remoteSessions)
+        .where(
+          and(
+            eq(remoteSessions.id, input.sessionId),
+            eq(remoteSessions.host_id, host.id),
+            eq(remoteSessions.organization_id, host.organization_id),
+            eq(remoteSessions.user_id, host.user_id),
+          ),
+        )
+        .for("update");
+      if (!session || session.status !== "pending" || !session.pairing_token_hash) {
+        return { kind: "invalid_pairing" };
+      }
+      const now = await readPostLockDatabaseNow(tx);
+      if (
+        !session.expires_at ||
+        session.expires_at.getTime() <= now.getTime() ||
+        !session.grant_expires_at ||
+        session.grant_expires_at.getTime() <= now.getTime()
+      ) {
+        await tx
+          .update(remoteSessions)
+          .set({ status: "expired", pairing_token_hash: null, ended_at: now, updated_at: now })
+          .where(eq(remoteSessions.id, session.id));
+        return { kind: "invalid_pairing" };
+      }
+      const valid = await verifyRemotePairingCodeVerifier(
+        input.pairingSecret,
+        {
+          organizationId: host.organization_id,
+          userId: host.user_id,
+          hostId: host.id,
+          sessionId: session.id,
+        },
+        input.code,
+        session.pairing_token_hash,
+        now,
+      );
+      if (!valid) return { kind: "invalid_pairing" };
+
+      const [activated] = await tx
+        .update(remoteSessions)
+        .set({
+          status: "active",
+          pairing_token_hash: null,
+          pairing_consumed_at: now,
+          updated_at: now,
+        })
+        .where(and(eq(remoteSessions.id, session.id), eq(remoteSessions.status, "pending")))
+        .returning();
+      if (!activated) {
+        throw storageFailure("Locked remote host session could not be activated", {
+          sessionId: session.id,
+        });
+      }
+      return { kind: "activated", session: activated };
+    });
+  }
+
+  async listByOwnedHost(
+    hostId: string,
+    organizationId: string,
+    userId: string,
+  ): Promise<RemoteSession[] | undefined> {
+    return this.database.transaction(async (tx) => {
+      const [host] = await tx
+        .select({ id: remoteHosts.id })
+        .from(remoteHosts)
+        .where(
+          and(
+            eq(remoteHosts.id, hostId),
+            eq(remoteHosts.organization_id, organizationId),
+            eq(remoteHosts.user_id, userId),
+          ),
+        )
+        .for("share");
+      if (!host) return undefined;
+      return tx
+        .select()
+        .from(remoteSessions)
+        .where(
+          and(
+            eq(remoteSessions.host_id, host.id),
+            eq(remoteSessions.organization_id, organizationId),
+            eq(remoteSessions.user_id, userId),
+            inArray(remoteSessions.status, ["pending", "active"]),
+          ),
+        )
+        .orderBy(desc(remoteSessions.created_at));
     });
   }
 
@@ -234,6 +473,18 @@ export class RemoteSessionsRepository {
     orgId: string,
     userId: string,
   ): Promise<RevokeRemoteSessionResult | undefined> {
+    const [target] = await this.database
+      .select({ hostId: remoteSessions.host_id })
+      .from(remoteSessions)
+      .where(
+        and(
+          eq(remoteSessions.id, id),
+          eq(remoteSessions.organization_id, orgId),
+          eq(remoteSessions.user_id, userId),
+        ),
+      )
+      .limit(1);
+    if (target?.hostId) return this.revokeOwnedHostSession(id, target.hostId, orgId, userId);
     return this.database.transaction(async (tx) => {
       const [authorized] = await tx
         .select({ agentId: remoteSessions.agent_id })
@@ -241,7 +492,7 @@ export class RemoteSessionsRepository {
         .innerJoin(
           agentSandboxes,
           and(
-            eq(agentSandboxes.id, remoteSessions.agent_id),
+            sql`${agentSandboxes.id} = ${remoteSessions.agent_id}`,
             eq(agentSandboxes.organization_id, remoteSessions.organization_id),
             eq(agentSandboxes.user_id, remoteSessions.user_id),
             isNull(agentSandboxes.deleted_at),
@@ -255,7 +506,8 @@ export class RemoteSessionsRepository {
           ),
         )
         .for("update", { of: agentSandboxes });
-      if (!authorized) return undefined;
+      if (!authorized?.agentId) return undefined;
+      const authorizedAgentId = authorized.agentId;
 
       const [current] = await tx
         .select()
@@ -265,7 +517,7 @@ export class RemoteSessionsRepository {
             eq(remoteSessions.id, id),
             eq(remoteSessions.organization_id, orgId),
             eq(remoteSessions.user_id, userId),
-            eq(remoteSessions.agent_id, authorized.agentId),
+            eq(remoteSessions.agent_id, authorizedAgentId),
           ),
         )
         .for("update");
@@ -294,13 +546,130 @@ export class RemoteSessionsRepository {
             eq(remoteSessions.id, id),
             eq(remoteSessions.organization_id, orgId),
             eq(remoteSessions.user_id, userId),
-            eq(remoteSessions.agent_id, authorized.agentId),
+            eq(remoteSessions.agent_id, authorizedAgentId),
             inArray(remoteSessions.status, ACTIVE_STATUSES),
           ),
         )
         .returning();
       if (!row) throw new Error("Locked remote session could not be revoked");
       return { session: row, alreadyEnded: false };
+    });
+  }
+
+  private async revokeOwnedHostSession(
+    id: string,
+    hostId: string,
+    orgId: string,
+    userId: string,
+  ): Promise<RevokeRemoteSessionResult | undefined> {
+    return this.database.transaction(async (tx) => {
+      const [host] = await tx
+        .select({ id: remoteHosts.id })
+        .from(remoteHosts)
+        .where(
+          and(
+            eq(remoteHosts.id, hostId),
+            eq(remoteHosts.organization_id, orgId),
+            eq(remoteHosts.user_id, userId),
+          ),
+        )
+        .for("update");
+      if (!host) return undefined;
+      const [current] = await tx
+        .select()
+        .from(remoteSessions)
+        .where(
+          and(
+            eq(remoteSessions.id, id),
+            eq(remoteSessions.host_id, host.id),
+            eq(remoteSessions.organization_id, orgId),
+            eq(remoteSessions.user_id, userId),
+          ),
+        )
+        .for("update");
+      if (!current) return undefined;
+
+      const now = await readPostLockDatabaseNow(tx);
+      let alreadyEnded = !ACTIVE_STATUSES.includes(current.status);
+      let session = current;
+      if (ACTIVE_STATUSES.includes(current.status)) {
+        const terminalStatus =
+          current.status === "pending" &&
+          (!current.expires_at || current.expires_at.getTime() <= now.getTime())
+            ? "expired"
+            : "revoked";
+        if (terminalStatus === "expired") alreadyEnded = true;
+        const [ended] = await tx
+          .update(remoteSessions)
+          .set({
+            status: terminalStatus,
+            pairing_token_hash: null,
+            ended_at: now,
+            updated_at: now,
+          })
+          .where(
+            and(eq(remoteSessions.id, current.id), inArray(remoteSessions.status, ACTIVE_STATUSES)),
+          )
+          .returning();
+        if (!ended) {
+          throw storageFailure("Locked remote host session could not be revoked", {
+            sessionId: current.id,
+          });
+        }
+        session = ended;
+      }
+
+      const commands = await tx
+        .select({ id: remoteCommandEnvelopes.id, status: remoteCommandEnvelopes.status })
+        .from(remoteCommandEnvelopes)
+        .where(
+          and(
+            eq(remoteCommandEnvelopes.session_id, id),
+            inArray(remoteCommandEnvelopes.status, ["pending", "claimed", "started"]),
+          ),
+        )
+        .orderBy(asc(remoteCommandEnvelopes.id))
+        .limit(SESSION_COMMAND_CLEANUP_BATCH)
+        .for("update", { skipLocked: true });
+      const preStartIds = commands
+        .filter((command) => command.status !== "started")
+        .map((command) => command.id);
+      const startedIds = commands
+        .filter((command) => command.status === "started")
+        .map((command) => command.id);
+      if (preStartIds.length > 0) {
+        await tx
+          .update(remoteCommandEnvelopes)
+          .set({
+            status: "cancelled",
+            claim_token: null,
+            claim_expires_at: null,
+            terminal_at: now,
+            updated_at: now,
+          })
+          .where(inArray(remoteCommandEnvelopes.id, preStartIds));
+      }
+      if (startedIds.length > 0) {
+        await tx
+          .update(remoteCommandEnvelopes)
+          .set({ status: "execution_ambiguous", terminal_at: now, updated_at: now })
+          .where(inArray(remoteCommandEnvelopes.id, startedIds));
+      }
+      const [remaining] = await tx
+        .select({ id: remoteCommandEnvelopes.id })
+        .from(remoteCommandEnvelopes)
+        .where(
+          and(
+            eq(remoteCommandEnvelopes.session_id, id),
+            inArray(remoteCommandEnvelopes.status, ["pending", "claimed", "started"]),
+          ),
+        )
+        .limit(1);
+      return {
+        session,
+        alreadyEnded,
+        cleanup: { commands: commands.length, more: Boolean(remaining) },
+      };
     });
   }
 }

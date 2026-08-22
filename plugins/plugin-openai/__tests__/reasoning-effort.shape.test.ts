@@ -121,6 +121,33 @@ describe("Cerebras default reasoning effort", () => {
     ).toBe("low");
   });
 
+  it("defaults to 'none' for gemma-4-31b", () => {
+    const runtime = buildRuntime({ CEREBRAS_API_KEY: "csk-test" });
+    const opts = __INTERNAL_resolveProviderOptions(
+      { prompt: "hi" } as never,
+      runtime,
+      "gemma-4-31b"
+    );
+    expect(
+      (opts as { openai?: { reasoningEffort?: string } } | undefined)?.openai?.reasoningEffort
+    ).toBe("none");
+  });
+
+  it("preserves an explicit reasoning effort for gemma-4-31b", () => {
+    const runtime = buildRuntime({
+      CEREBRAS_API_KEY: "csk-test",
+      OPENAI_REASONING_EFFORT: "high",
+    });
+    const opts = __INTERNAL_resolveProviderOptions(
+      { prompt: "hi" } as never,
+      runtime,
+      "gemma-4-31b"
+    );
+    expect(
+      (opts as { openai?: { reasoningEffort?: string } } | undefined)?.openai?.reasoningEffort
+    ).toBe("high");
+  });
+
   it.each(["glm-4.7", "zai-glm-4.7-preview", "my-glm-router"])(
     "does not infer reasoning support from a GLM-like model id: %s",
     (modelName) => {
@@ -212,7 +239,15 @@ describe("eliza.thinking='off' reasoning suppression (Cerebras mode)", () => {
     expect(openai?.reasoningEffort).toBeUndefined();
   });
 
-  it.each(["gemma-4-31b", "gpt-oss-20b", "zai-glm-4.6", "custom-glm-router"])(
+  it("suppresses reasoning for gemma-4-31b when the call explicitly opts out", () => {
+    const runtime = buildRuntime({ CEREBRAS_API_KEY: "csk-test" });
+    const opts = __INTERNAL_resolveProviderOptions(thinkingOff, runtime, "gemma-4-31b");
+    expect(
+      (opts as { openai?: { reasoningEffort?: string } } | undefined)?.openai?.reasoningEffort
+    ).toBe("none");
+  });
+
+  it.each(["gpt-oss-20b", "zai-glm-4.6", "custom-glm-router"])(
     "sends nothing for an undocumented model lookalike: %s",
     (modelName) => {
       const runtime = buildRuntime({ CEREBRAS_API_KEY: "csk-test" });

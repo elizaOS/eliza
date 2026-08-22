@@ -1642,11 +1642,8 @@ export class AgentSkillsService extends Service {
 	 */
 	generateSkillsPromptJson(options: PromptJsonOptions = {}): string {
 		const metadata = this.getSkillsMetadata();
-		const limited = options.maxSkills
-			? metadata.slice(0, options.maxSkills)
-			: metadata;
 
-		return generateSkillsJson(limited, {
+		return generateSkillsJson(metadata, {
 			includeLocation: options.includeLocation ?? true,
 		});
 	}

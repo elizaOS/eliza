@@ -7,14 +7,15 @@
  * (src/acp.ts, codingOnly) — the same agent the live bot uses. Its OpenAI-
  * compatible provider is pointed at the local record/replay proxy
  * (llm-record-replay-proxy.mjs). In REPLAY (default) it serves a recorded
- * "ideal" gemma-4-31b session (fixtures/random-color-gemma-session.json), so the
+ * recorded qwen/qwen3.8-27b session (fixtures/random-color-session.json), so the
  * whole orchestrator → real-agent → plan/tool/file-write → task_complete
  * pipeline runs deterministically with the model mocked at the PROVIDER level
  * (not the agent) — keyless, no live LLM.
  *
  * Record a fresh fixture from THIS driver's exact context (so replay never
- * diverges), against Cerebras gemma-4-31b:
- *   LLM_MODE=record CEREBRAS_API_KEY=csk-... bun --conditions eliza-source \
+ * diverges), against an OpenAI-compatible endpoint:
+ *   LLM_MODE=record LLM_KEY=... LLM_UPSTREAM=https://api.cerebras.ai/v1 \
+ *     LLM_MODEL=gemma-4-31b bun --conditions eliza-source \
  *     --tsconfig-override ../../../tsconfig.json tests/e2e/deterministic-app-build-replay.mjs
  *
  * Replay (default, keyless, CI):
@@ -39,10 +40,12 @@ import { waitForAdvertisedPort } from "../../../../scripts/e2e-ports.mjs";
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, "../../../../..");
 const proxy = join(here, "llm-record-replay-proxy.mjs");
-const fixture = join(here, "fixtures", "random-color-gemma-session.json");
+const fixture = join(here, "fixtures", "random-color-session.json");
 const acpEntry = resolve(here, "..", "..", "src", "acp.ts");
 const MODE = process.env.LLM_MODE === "record" ? "record" : "replay";
 const KEY = process.env.CEREBRAS_API_KEY || process.env.LLM_KEY || "";
+const UPSTREAM = process.env.LLM_UPSTREAM || "https://api.cerebras.ai/v1";
+const MODEL = process.env.LLM_MODEL || "qwen/qwen3.8-27b";
 // FIXED workdir (reset clean each run) — record and replay MUST share the same
 // filesystem context, or the agent's tool results diverge and replay drifts off
 // the recorded turn sequence. Path is normalized out of the match key anyway.
@@ -55,7 +58,7 @@ const PROMPT =
   "(inline <script> is fine). Keep it to one file. Then stop.";
 
 if (MODE === "record" && !KEY) {
-  console.error("LLM_MODE=record needs CEREBRAS_API_KEY");
+  console.error("LLM_MODE=record needs LLM_KEY or CEREBRAS_API_KEY");
   process.exit(2);
 }
 
@@ -74,9 +77,7 @@ const proxyProc = spawn("node", [proxy], {
     LLM_REPLAY_WORKDIR: workdir,
     PORT: "0",
     LLM_PROXY_PORT_FILE: proxyPortFile,
-    ...(MODE === "record"
-      ? { LLM_UPSTREAM: "https://api.cerebras.ai/v1", LLM_KEY: KEY }
-      : {}),
+    ...(MODE === "record" ? { LLM_UPSTREAM: UPSTREAM, LLM_KEY: KEY } : {}),
   },
   stdio: ["ignore", "ignore", "inherit"],
 });
@@ -119,8 +120,8 @@ try {
       OPENAI_API_KEY:
         MODE === "record" ? KEY : "no-live-llm-deterministic-replay",
       OPENAI_BASE_URL: `http://127.0.0.1:${PORT}/v1`,
-      OPENAI_LARGE_MODEL: "gemma-4-31b",
-      OPENAI_SMALL_MODEL: "gemma-4-31b",
+      OPENAI_LARGE_MODEL: MODEL,
+      OPENAI_SMALL_MODEL: MODEL,
       SECRET_SALT: "det-replay-e2e",
       ELIZA_ALLOW_DEFAULT_SECRET_SALT: "1",
       PGLITE_DATA_DIR: pglite,
@@ -130,6 +131,7 @@ try {
   const result = await service.sendPrompt(sessionId, PROMPT, {
     timeoutMs: 240_000,
   });
+  await fetch(`http://127.0.0.1:${PORT}/__complete`, { method: "POST" });
   const built = existsSync(join(workdir, "index.html"));
   console.log(
     `[${MODE}] stopReason:`,
@@ -149,8 +151,20 @@ try {
       : "\n✗ FAIL",
   );
 } finally {
-  if (sessionId) await service.closeSession(sessionId).catch(() => {});
-  await service.stop().catch(() => {});
+  if (sessionId) {
+    try {
+      await service.closeSession(sessionId);
+    } catch (error) {
+      // error-policy:J6 the service stop below owns final process cleanup.
+      console.warn(`Failed to close replay session: ${String(error)}`);
+    }
+  }
+  try {
+    await service.stop();
+  } catch (error) {
+    // error-policy:J6 the driver is already at its outer teardown boundary.
+    console.warn(`Failed to stop replay service: ${String(error)}`);
+  }
   proxyProc.kill();
   rmSync(workdir, { recursive: true, force: true });
   rmSync(pglite, { recursive: true, force: true });

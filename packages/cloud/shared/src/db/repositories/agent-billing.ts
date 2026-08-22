@@ -8,6 +8,7 @@ import {
   type AgentBillingStatus,
   type AgentSandboxStatus,
   agentSandboxes,
+  CONTAINER_BACKED_EXECUTION_TIERS,
 } from "../schemas/agent-sandboxes";
 import { agentBillingRecords, agentBillingRunItems } from "../schemas/compute-billing";
 import { creditTransactions } from "../schemas/credit-transactions";
@@ -70,6 +71,16 @@ export type AgentHourlyBillingOutcome =
 
 const BILLABLE_BILLING_STATUSES: AgentBillingStatus[] = ["active", "warning", "shutdown_pending"];
 
+/** Restricts agent-compute billing to live, user-owned container workloads. */
+function agentComputeBillingAuthority() {
+  return [
+    inArray(agentSandboxes.execution_tier, [...CONTAINER_BACKED_EXECUTION_TIERS]),
+    isNull(agentSandboxes.pool_status),
+    isNull(agentSandboxes.deleted_at),
+    isNull(agentSandboxes.deletion_attempt_id),
+  ];
+}
+
 export class AgentBillingRepository {
   async getOrganizationCreditBalance(organizationId: string): Promise<number | null> {
     const [org] = await dbRead
@@ -124,25 +135,10 @@ export class AgentBillingRepository {
         .where(
           and(
             eq(agentSandboxes.status, "running"),
-            sql`${agentSandboxes.execution_tier} <> 'shared'`,
-            isNull(agentSandboxes.deleted_at),
-            isNull(agentSandboxes.pool_status),
-            // Defence in depth, aligned with the six sibling predicates here.
-            // The charge itself is already safe: recordHourlyBillingWithOptions
-            // claims the row with this same guard on its SELECT ... FOR UPDATE,
-            // so a deleting sandbox is never debited — and everything gated on
-            // that claim (shutdown-warning mail, the credits.low webhook) is
-            // equally unreachable for it. What IS unguarded is the cron's
-            // shutdown_pending branch, which reads the selected row directly:
-            // it fires the credits.depleted webhook and enqueueAgentSuspendOnce
-            // without consulting the deletion state.
-            //
-            // The window is narrow because both deletion writers set
-            // status='deletion_pending' in the same UPDATE that sets
-            // deletion_attempt_id, which this predicate already excludes. It is
-            // reachable when something writes 'running' back over a row whose
-            // deletion attempt is still set — the pair-check permits that shape.
-            sql`${agentSandboxes.deletion_attempt_id} IS NULL`,
+            ...agentComputeBillingAuthority(),
+            // The shutdown-pending cron acts directly on discovery by emitting
+            // a depleted webhook and enqueueing suspend, before the later debit
+            // claim. Discovery therefore needs the full authority guard too.
             inArray(agentSandboxes.billing_status, BILLABLE_BILLING_STATUSES),
             billingDueCondition,
           ),
@@ -153,10 +149,7 @@ export class AgentBillingRepository {
         .where(
           and(
             eq(agentSandboxes.status, "stopped"),
-            sql`${agentSandboxes.execution_tier} <> 'shared'`,
-            isNull(agentSandboxes.deleted_at),
-            isNull(agentSandboxes.pool_status),
-            sql`${agentSandboxes.deletion_attempt_id} IS NULL`,
+            ...agentComputeBillingAuthority(),
             inArray(agentSandboxes.billing_status, BILLABLE_BILLING_STATUSES),
             isNotNull(agentSandboxes.last_backup_at),
             billingDueCondition,
@@ -180,6 +173,7 @@ export class AgentBillingRepository {
       .where(
         and(
           eq(agentSandboxes.status, "error"),
+          ...agentComputeBillingAuthority(),
           inArray(agentSandboxes.billing_status, BILLABLE_BILLING_STATUSES),
         ),
       )
@@ -220,8 +214,7 @@ export class AgentBillingRepository {
         and(
           eq(agentSandboxes.id, sandboxId),
           eq(agentSandboxes.organization_id, organizationId),
-          isNull(agentSandboxes.pool_status),
-          sql`${agentSandboxes.deletion_attempt_id} IS NULL`,
+          ...agentComputeBillingAuthority(),
         ),
       );
   }
@@ -261,9 +254,9 @@ export class AgentBillingRepository {
           and(
             eq(agentSandboxes.id, input.sandboxId),
             eq(agentSandboxes.organization_id, input.organizationId),
+            ...agentComputeBillingAuthority(),
             inArray(agentSandboxes.billing_status, ["active", "warning"]),
             isNull(agentSandboxes.shutdown_warning_sent_at),
-            sql`${agentSandboxes.deletion_attempt_id} IS NULL`,
           ),
         )
         .returning({ id: agentSandboxes.id });
@@ -294,8 +287,7 @@ export class AgentBillingRepository {
         and(
           eq(agentSandboxes.id, sandboxId),
           eq(agentSandboxes.organization_id, organizationId),
-          isNull(agentSandboxes.pool_status),
-          sql`${agentSandboxes.deletion_attempt_id} IS NULL`,
+          ...agentComputeBillingAuthority(),
         ),
       );
   }
@@ -317,9 +309,8 @@ export class AgentBillingRepository {
         and(
           eq(agentSandboxes.id, sandboxId),
           ...(organizationId ? [eq(agentSandboxes.organization_id, organizationId)] : []),
-          isNull(agentSandboxes.pool_status),
+          ...agentComputeBillingAuthority(),
           ne(agentSandboxes.billing_status, "exempt"),
-          sql`${agentSandboxes.deletion_attempt_id} IS NULL`,
         ),
       );
   }
@@ -370,8 +361,7 @@ export class AgentBillingRepository {
         and(
           eq(agentSandboxes.id, sandboxId),
           eq(agentSandboxes.organization_id, organizationId),
-          isNull(agentSandboxes.pool_status),
-          sql`${agentSandboxes.deletion_attempt_id} IS NULL`,
+          ...agentComputeBillingAuthority(),
         ),
       )
       .limit(1);
@@ -422,7 +412,6 @@ export class AgentBillingRepository {
           id: agentSandboxes.id,
           status: agentSandboxes.status,
           billing_status: agentSandboxes.billing_status,
-          execution_tier: agentSandboxes.execution_tier,
           last_backup_at: agentSandboxes.last_backup_at,
           last_billed_at: agentSandboxes.last_billed_at,
           created_at: agentSandboxes.created_at,
@@ -432,9 +421,7 @@ export class AgentBillingRepository {
           and(
             eq(agentSandboxes.id, input.sandboxId),
             eq(agentSandboxes.organization_id, input.organizationId),
-            isNull(agentSandboxes.deleted_at),
-            isNull(agentSandboxes.pool_status),
-            sql`${agentSandboxes.deletion_attempt_id} IS NULL`,
+            ...agentComputeBillingAuthority(),
           ),
         )
         .for("update")
@@ -442,7 +429,6 @@ export class AgentBillingRepository {
 
       if (
         !claimedSandbox ||
-        claimedSandbox.execution_tier === "shared" ||
         (!options.forceLifecycleSettlement &&
           (!BILLABLE_BILLING_STATUSES.includes(claimedSandbox.billing_status) ||
             !(
@@ -560,8 +546,7 @@ export class AgentBillingRepository {
           and(
             eq(agentSandboxes.id, input.sandboxId),
             eq(agentSandboxes.organization_id, input.organizationId),
-            isNull(agentSandboxes.pool_status),
-            sql`${agentSandboxes.deletion_attempt_id} IS NULL`,
+            ...agentComputeBillingAuthority(),
           ),
         );
 

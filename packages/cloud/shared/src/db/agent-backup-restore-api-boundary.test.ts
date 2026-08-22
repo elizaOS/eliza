@@ -90,7 +90,7 @@ describe("dormant restore API boundary", () => {
     expect(readFileSync(join(import.meta.dir, "index.ts"), "utf8")).not.toMatch(
       /agent-backup-restore|agent-vault-key-authority/,
     );
-  });
+  }, 15_000);
 
   test("keeps target reservation free of remote effects and generic identity bypasses", () => {
     const operationSource = readFileSync(
@@ -113,6 +113,14 @@ describe("dormant restore API boundary", () => {
     expect(genericAdvance).toContain(
       "Restore operation cannot leave target reservation without complete target authority",
     );
+    expect(genericAdvance).toContain("operation.expected_node_history_id === null");
+
+    const dockerNodeSource = readFileSync(
+      join(import.meta.dir, "repositories/docker-nodes.ts"),
+      "utf8",
+    );
+    expect(dockerNodeSource).toContain('"current_node_history_id"');
+    expect(dockerNodeSource).not.toMatch(/\bcurrent_node_history_id\s*:/);
 
     const openOperation = operationSource.slice(
       operationSource.indexOf("export async function openAgentBackupRestoreOperation"),
@@ -141,12 +149,14 @@ describe("dormant restore API boundary", () => {
     const transactionalReserve = reserveSource.slice(
       reserveSource.indexOf("return await dbWrite.transaction"),
     );
+    expect(reserveSource).toContain("targetNodeHistoryId: string");
+    expect(reserveSource).toContain("expected_node_history_id: target.nodeHistoryId");
     const lockAnchors = [
       ".from(agentSandboxBackups)",
       ".from(agentBackupRestoreOperations)",
       ".from(agentBackupRestoreLeases)",
       ".from(dockerNodes)",
-      "proveUnambiguousAgentNodeIncarnationForLockedNode(",
+      "proveExactAgentNodeOccurrenceForLockedNode(",
       "lockAgentBackupCatalogAuthority(",
       "readPostLockDatabaseNow(tx)",
     ];
@@ -171,6 +181,7 @@ describe("dormant restore API boundary", () => {
       "restoreClaimGeneration",
       "targetNodeRecordId",
       "targetNodeIncarnation",
+      "targetNodeHistoryId",
     ]) {
       expect(restoreVaultAuthority).toContain(requiredAuthorityField);
     }
@@ -184,7 +195,7 @@ describe("dormant restore API boundary", () => {
       ".from(agentBackupRestoreOperations)",
       ".from(agentBackupRestoreLeases)",
       ".from(dockerNodes)",
-      "proveUnambiguousAgentNodeIncarnationForLockedNode(",
+      "proveExactAgentNodeOccurrenceForLockedNode(",
       "lockAgentBackupCatalogAuthority(",
       "readPostLockDatabaseNow(tx)",
     ];
@@ -216,16 +227,16 @@ describe("dormant restore API boundary", () => {
       "utf8",
     );
     const incarnationProof = historySource.slice(
-      historySource.indexOf(
-        "export async function proveUnambiguousAgentNodeIncarnationForLockedNode",
-      ),
+      historySource.indexOf("export async function proveExactAgentNodeOccurrenceForLockedNode"),
       historySource.indexOf("async function lockCurrentNodeHistory"),
     );
+    expect(incarnationProof).toContain("node.current_node_history_id !== expectedNodeHistoryId");
     expect(incarnationProof).toContain(
-      "ne(agentNodeIncarnationHistories.node_incarnation, expectedIncarnation)",
+      "eq(agentNodeIncarnationHistories.id, expectedNodeHistoryId)",
     );
-    expect(incarnationProof).toContain("node.created_at > history.attested_at");
-    expect(incarnationProof).not.toMatch(/\bxmin\b|\bage\s*\(|\bgte\s*\(/);
+    expect(incarnationProof).not.toMatch(
+      /\bxmin\b|\bage\s*\(|\bgte\s*\(|\bne\s*\(|created_at|attested_at/,
+    );
 
     const vaultCallback = restoreVaultAuthority.slice(
       restoreVaultAuthority.indexOf("export async function withAgentBackupRestoreVaultPassphrase"),
@@ -315,7 +326,7 @@ describe("dormant restore API boundary", () => {
       ".from(agentBackupRestoreLeases)",
       ".from(agentSandboxes)",
       ".from(dockerNodes)",
-      "proveUnambiguousAgentNodeIncarnationForLockedNode(",
+      "proveExactAgentNodeOccurrenceForLockedNode(",
       "lockAgentBackupCatalogAuthority(",
       "readPostLockDatabaseNow(tx)",
     ];

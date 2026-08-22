@@ -19,7 +19,7 @@
       "@elizaos/core": ["../../packages/core/dist/node"]
     }
   },
-  "include": ["src/**/*.ts", "auto-enable.ts"],
+  "include": ["src/**/*.ts"],
   "exclude": [
     "node_modules",
     "dist",

@@ -6,9 +6,46 @@
 
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 
+const upstreamCalls: Array<{
+  upstreamUrl: string;
+  options: { timeoutMs?: number } | undefined;
+}> = [];
+let authCalls = 0;
+const managedCalls: Array<{ name: string; args: Record<string, unknown> }> = [];
+
 mock.module("@/lib/mcp/mcp-upstream-forward", () => ({
-  forwardMcpUpstreamRequest: async () =>
-    new Response("mocked upstream", { status: 200 }),
+  forwardMcpUpstreamRequest: async (
+    _request: Request,
+    upstreamUrl: string,
+    options?: { timeoutMs?: number },
+  ) => {
+    upstreamCalls.push({ upstreamUrl, options });
+    return new Response("mocked upstream", { status: 200 });
+  },
+}));
+
+mock.module("@/lib/auth", () => ({
+  requireAuthOrApiKeyWithOrg: async () => {
+    authCalls += 1;
+    return { user: { id: "user-1", organization_id: "org-1" } };
+  },
+}));
+
+mock.module("@/lib/services/doordash-managed", () => ({
+  DOORDASH_MANAGED_TOOLS: [
+    {
+      name: "doordash_auth_check",
+      description: "status",
+      inputSchema: { type: "object" },
+    },
+  ],
+  callManagedDoorDashTool: async (
+    name: string,
+    args: Record<string, unknown>,
+  ) => {
+    managedCalls.push({ name, args });
+    return { success: true };
+  },
 }));
 
 const realFetch = globalThis.fetch;
@@ -30,6 +67,9 @@ describe("MCP built-in provider timeout", () => {
   beforeEach(() => {
     timeoutCalls = [];
     fetchedSignals = [];
+    upstreamCalls.length = 0;
+    authCalls = 0;
+    managedCalls.length = 0;
   });
 
   afterEach(() => {
@@ -44,6 +84,48 @@ describe("MCP built-in provider timeout", () => {
       "./mcps-transport-gateway"
     );
     expect(MCP_PROVIDER_REQUEST_TIMEOUT_MS).toBe(10_000);
+  });
+
+  test("DoorDash proxy receives the bounded 120-second browser deadline", async () => {
+    const { createMcpsTransportApp, MCP_DOORDASH_UPSTREAM_TIMEOUT_MS } =
+      await import("./mcps-transport-gateway");
+    const { Hono } = await import("hono");
+    const bridge = createMcpsTransportApp("doordash");
+    const parent = new Hono();
+    parent.route("/:transport", bridge);
+    const req = new Request("http://example.test/mcp", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list" }),
+    });
+    const res = await parent.fetch(req, {
+      MCP_DOORDASH_STREAMABLE_HTTP_URL: "https://adapter.example/mcp",
+    } as never);
+    expect(res.status).toBe(200);
+    expect(MCP_DOORDASH_UPSTREAM_TIMEOUT_MS).toBe(120_000);
+    expect(upstreamCalls).toEqual([
+      {
+        upstreamUrl: "https://adapter.example/mcp",
+        options: { timeoutMs: 120_000 },
+      },
+    ]);
+  });
+
+  test("DoorDash uses the authenticated managed provider without an override", async () => {
+    const { createMcpsTransportApp } = await import("./mcps-transport-gateway");
+    const { Hono } = await import("hono");
+    const bridge = createMcpsTransportApp("doordash");
+    const parent = new Hono();
+    parent.route("/:transport", bridge);
+    const req = new Request("http://example.test/streamable-http", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(jsonRpcCall("doordash_auth_check", {})),
+    });
+    const res = await parent.fetch(req, {} as never);
+    expect(res.status).toBe(200);
+    expect(authCalls).toBe(1);
+    expect(managedCalls).toEqual([{ name: "doordash_auth_check", args: {} }]);
   });
 
   test("weather search_location wires deadline to geocoding fetch", async () => {

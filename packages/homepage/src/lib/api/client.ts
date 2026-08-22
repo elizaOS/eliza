@@ -38,13 +38,16 @@ export async function elizacloudFetch<T = unknown>(
 ): Promise<T> {
   const { params, ...reqInit } = init ?? {};
   const url = buildUrl(path, params);
+  const deadline = AbortSignal.timeout(15_000);
   const res = await fetch(url, {
     ...reqInit,
     headers: {
       "Content-Type": "application/json",
       ...reqInit.headers,
     },
-    signal: reqInit.signal ?? AbortSignal.timeout(15_000),
+    signal: reqInit.signal
+      ? AbortSignal.any([reqInit.signal, deadline])
+      : deadline,
   });
   if (!res.ok) {
     const text = await res.text();

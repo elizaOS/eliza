@@ -11,6 +11,7 @@ import path from "node:path";
 import type { IAgentRuntime } from "@elizaos/core";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import * as browser from "../platform/browser.js";
+import { INVALID_BROWSER_TAB_ID_MESSAGE } from "../security/browser-tab-id-policy.js";
 import { MAX_COMPUTER_USE_PLAIN_DATA_CHARS } from "../services/computer-use-plain-data.js";
 
 vi.mock("../platform/browser.js", () => {
@@ -147,6 +148,137 @@ describe("ComputerUseService browser command dispatch", () => {
       error: "Computer-use snapshot exceeds the plain-data walk budget",
     });
     expect(result).not.toHaveProperty("content");
+  });
+
+  it("normalizes numeric close/switch tab aliases before dispatch", async () => {
+    vi.mocked(browser.closeBrowserTab).mockClear();
+    vi.mocked(browser.switchBrowserTab).mockClear();
+
+    expect(
+      await service.executeBrowserAction({ action: "close_tab", index: 1 }),
+    ).toMatchObject({ success: true });
+    expect(browser.closeBrowserTab).toHaveBeenCalledWith("1");
+
+    expect(
+      await service.executeBrowserAction({
+        action: "switch_tab",
+        tab_index: 0,
+      }),
+    ).toMatchObject({ success: true });
+    expect(browser.switchBrowserTab).toHaveBeenCalledWith("0");
+  });
+
+  it.each([
+    ["tabId", { tabId: "auto" }],
+    ["index", { index: -1 }],
+    ["tab_index", { tab_index: 1.5 }],
+  ] as const)(
+    "ignores a malformed %s alias for an unrelated browser action",
+    async (_, strayAlias) => {
+      vi.mocked(browser.navigateBrowser).mockClear();
+
+      const result = await service.executeBrowserAction({
+        action: "navigate",
+        url: "https://example.com/ignored-tab-alias",
+        ...strayAlias,
+      });
+
+      expect(result).toMatchObject({ success: true });
+      expect(result).not.toHaveProperty(
+        "error",
+        INVALID_BROWSER_TAB_ID_MESSAGE,
+      );
+      expect(browser.navigateBrowser).toHaveBeenCalledWith(
+        "https://example.com/ignored-tab-alias",
+      );
+    },
+  );
+
+  it("rejects malformed close/switch tab IDs before adapter dispatch", async () => {
+    const cases = [
+      {
+        action: "close_tab" as const,
+        tabId: "1junk",
+        adapter: browser.closeBrowserTab,
+      },
+      {
+        action: "switch_tab" as const,
+        tabId: "1.5",
+        adapter: browser.switchBrowserTab,
+      },
+      {
+        action: "close_tab" as const,
+        index: -1,
+        adapter: browser.closeBrowserTab,
+      },
+      {
+        action: "switch_tab" as const,
+        tab_index: 1.5,
+        adapter: browser.switchBrowserTab,
+      },
+    ];
+
+    for (const testCase of cases) {
+      const { adapter, ...params } = testCase;
+      vi.mocked(adapter).mockClear();
+
+      const result = await service.executeBrowserAction(params);
+
+      expect(result).toEqual({
+        success: false,
+        error: INVALID_BROWSER_TAB_ID_MESSAGE,
+      });
+      expect(adapter).not.toHaveBeenCalled();
+      expect(service.getRecentActions().at(-1)).toMatchObject({
+        action: `browser_${testCase.action}`,
+        params: { action: testCase.action },
+        success: false,
+      });
+      expect(service.getRecentActions().at(-1)?.params).not.toHaveProperty(
+        "tabId",
+      );
+      expect(service.getRecentActions().at(-1)?.params).not.toHaveProperty(
+        "index",
+      );
+      expect(service.getRecentActions().at(-1)?.params).not.toHaveProperty(
+        "tab_index",
+      );
+    }
+  });
+
+  it("does not fall back from a malformed tabId to a valid numeric alias", async () => {
+    vi.mocked(browser.closeBrowserTab).mockClear();
+
+    const result = await service.executeBrowserAction({
+      action: "close_tab",
+      tabId: "1junk",
+      index: 1,
+    });
+
+    expect(result).toEqual({
+      success: false,
+      error: INVALID_BROWSER_TAB_ID_MESSAGE,
+    });
+    expect(browser.closeBrowserTab).not.toHaveBeenCalled();
+  });
+
+  it("rejects a malformed tab ID through command routing", async () => {
+    vi.mocked(browser.switchBrowserTab).mockClear();
+
+    const result = await service.executeCommand("browser_switch_tab", {
+      tabId: "1e1",
+    });
+
+    expect(result).toEqual({
+      success: false,
+      error: INVALID_BROWSER_TAB_ID_MESSAGE,
+    });
+    expect(browser.switchBrowserTab).not.toHaveBeenCalled();
+    expect(service.getRecentActions().at(-1)).toMatchObject({
+      action: "browser_switch_tab",
+      params: { action: "switch_tab" },
+      success: false,
+    });
   });
 
   it.each(["file:///etc/passwd", "https://user:password@example.com/private"])(

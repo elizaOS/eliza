@@ -532,7 +532,7 @@ describe("runComputerUseAgentLoop — fake Brain", () => {
     );
   });
 
-  it("truncates progress rationale and failure without tearing UTF-16 surrogate pairs at 180 limit", () => {
+  it("preserves complete progress rationale without tearing UTF-16 surrogate pairs", () => {
     const rationale = `${"r".repeat(176)}\u{1F98A}zzzz`;
     const stepProgress: ComputerUseAgentStepProgress = {
       step: 1,
@@ -544,7 +544,8 @@ describe("runComputerUseAgentLoop — fake Brain", () => {
 
     const formatted = formatComputerUseAgentProgress(stepProgress);
     expect(formatted.isWellFormed()).toBe(true);
-    expect(formatted).toContain(`${"r".repeat(176)}...`);
+    expect(formatted).toContain(rationale);
+    expect(formatted).not.toContain("...");
   });
 
   it("preserves well-formed progress rationale at and below the 180-code-unit limit", () => {
@@ -563,7 +564,7 @@ describe("runComputerUseAgentLoop — fake Brain", () => {
     }
   });
 
-  it("normalizes lone surrogates in short rationale and truncated failure status", () => {
+  it("normalizes lone surrogates while preserving complete failure status", () => {
     const formatted = formatComputerUseAgentProgress({
       step: 1,
       maxSteps: 5,
@@ -577,7 +578,8 @@ describe("runComputerUseAgentLoop — fake Brain", () => {
 
     expect(formatted.isWellFormed()).toBe(true);
     expect(formatted).toContain("inspect�status");
-    expect(formatted).toContain(`${"e".repeat(176)}�...`);
+    expect(formatted).toContain(`${"e".repeat(176)}�tail`);
+    expect(formatted).not.toContain("...");
   });
 
   it("normalizes either lone-surrogate half before status retention or clipping", () => {
@@ -600,7 +602,7 @@ describe("runComputerUseAgentLoop — fake Brain", () => {
     }
   });
 
-  it("reserves the status suffix only after the 180-code-unit boundary", () => {
+  it("preserves complete rationale beyond the former 180-code-unit boundary", () => {
     const atLimit = formatComputerUseAgentProgress({
       step: 1,
       maxSteps: 5,
@@ -618,6 +620,7 @@ describe("runComputerUseAgentLoop — fake Brain", () => {
 
     expect(atLimit).toContain("m".repeat(180));
     expect(atLimit).not.toContain("...");
-    expect(overLimit).toContain(`${"n".repeat(177)}...`);
+    expect(overLimit).toContain("n".repeat(181));
+    expect(overLimit).not.toContain("...");
   });
 });

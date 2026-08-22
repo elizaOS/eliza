@@ -16,6 +16,7 @@ import {
   describe,
   expect,
   mock,
+  setSystemTime,
   test,
 } from "bun:test";
 import { Hono } from "hono";
@@ -74,6 +75,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  setSystemTime();
   requireUserOrApiKeyWithOrg.mockReset();
   loggerInfo.mockReset();
   loggerWarn.mockReset();
@@ -269,6 +271,7 @@ describe("GET /api/v1/hf-proxy/[...path]", () => {
   });
 
   test("enforces per-org monthly egress budget before streaming the next response", async () => {
+    setSystemTime(new Date("2026-02-28T23:59:58.250Z"));
     const kv = fakeKv();
     globalThis.fetch = mock(
       async () =>
@@ -292,6 +295,8 @@ describe("GET /api/v1/hf-proxy/[...path]", () => {
 
     const second = await app.fetch(makeRequest(RESOLVE_PATH), env);
     expect(second.status).toBe(429);
+    // 1.75 seconds remain until the March UTC bucket, rounded up per HTTP.
+    expect(second.headers.get("Retry-After")).toBe("2");
     const body = (await second.json()) as {
       code?: string;
       limit_bytes?: number;
@@ -300,6 +305,51 @@ describe("GET /api/v1/hf-proxy/[...path]", () => {
     expect(body.code).toBe("HF_PROXY_EGRESS_LIMIT");
     expect(body.limit_bytes).toBe(12);
     expect(body.used_bytes).toBe(8);
+  });
+
+  test("pre-check exhaustion advertises the next UTC month and admits its fresh bucket", async () => {
+    setSystemTime(new Date("2026-01-31T23:59:59.999Z"));
+    const kv = fakeKv();
+    await kv.put(
+      "hf-proxy:egress:org-1:2026-01",
+      JSON.stringify({ bytes: 12 }),
+    );
+
+    let fetchCalls = 0;
+    globalThis.fetch = mock(async () => {
+      fetchCalls += 1;
+      return new Response("NEXT", {
+        status: 200,
+        headers: {
+          "content-type": "application/octet-stream",
+          "content-length": "4",
+        },
+      });
+    }) as unknown as typeof fetch;
+
+    const env = {
+      HF_TOKEN: "hf-secret",
+      CACHE_KV: kv,
+      HF_PROXY_MONTHLY_EGRESS_LIMIT_BYTES: "12",
+    };
+    const blocked = await app.fetch(makeRequest(RESOLVE_PATH), env);
+    expect(blocked.status).toBe(429);
+    expect(blocked.headers.get("Retry-After")).toBe("1");
+    expect(((await blocked.json()) as { code?: string }).code).toBe(
+      "HF_PROXY_EGRESS_LIMIT",
+    );
+    expect(fetchCalls).toBe(0);
+
+    setSystemTime(new Date("2026-02-01T00:00:00.000Z"));
+    const admitted = await app.fetch(makeRequest(RESOLVE_PATH), env);
+    expect(admitted.status).toBe(200);
+    expect(await admitted.text()).toBe("NEXT");
+    expect(fetchCalls).toBe(1);
+
+    const februaryCounter = JSON.parse(
+      (await kv.get("hf-proxy:egress:org-1:2026-02")) ?? "{}",
+    ) as { bytes?: number };
+    expect(februaryCounter.bytes).toBe(4);
   });
 });
 

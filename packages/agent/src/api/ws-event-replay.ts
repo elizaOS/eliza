@@ -91,7 +91,8 @@ export function selectReplayEvents<T extends ReplayableEvent>(
   cursor: number | null,
   limit: number = DEFAULT_REPLAY_LIMIT,
 ): T[] {
-  const cap = limit > 0 ? limit : 0;
+  const cap = Number.isFinite(limit) && limit > 0 ? Math.floor(limit) : 0;
+  if (cap === 0) return [];
   if (cursor === null) {
     return cap >= buffer.length ? buffer.slice() : buffer.slice(-cap);
   }

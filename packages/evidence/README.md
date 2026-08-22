@@ -100,6 +100,7 @@ artifacts (root exists but is empty).
 | `walkthrough-reports` | `reports/walkthrough/` | — |
 | `live-test-runs` | `reports/live-test-runs/` | — |
 | `scenario-runner` | `reports/scenarios/` | scenario |
+| `content-context` | `reports/content-context/` | content-context |
 
 The former roots `device-e2e-output/`,
 `packages/app/reports/walkthrough/`, and

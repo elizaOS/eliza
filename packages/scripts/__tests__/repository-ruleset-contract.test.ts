@@ -7,10 +7,9 @@ import { fileURLToPath } from "node:url";
 
 const REPO_ROOT = fileURLToPath(new URL("../../..", import.meta.url));
 const read = (path: string) => readFileSync(join(REPO_ROOT, path), "utf8");
-const ci = Bun.YAML.parse(read(".github/workflows/ci.yml")) as Record<
-  string,
-  any
->;
+const admission = Bun.YAML.parse(
+  read(".github/workflows/pr-static-smoke.yml"),
+) as Record<string, any>;
 const drift = Bun.YAML.parse(
   read(".github/workflows/repository-ruleset-drift.yml"),
 ) as Record<string, any>;
@@ -23,35 +22,14 @@ const driftSource = read(".github/workflows/repository-ruleset-drift.yml");
 
 describe("repository ruleset contract", () => {
   test("publishes one stable fail-closed aggregate for PR and merge candidates", () => {
-    expect(ci.on.pull_request).toEqual({
+    expect(admission.on.pull_request).toEqual({
       branches: ["develop", "main"],
-      types: [
-        "opened",
-        "synchronize",
-        "reopened",
-        "ready_for_review",
-        "labeled",
-        "unlabeled",
-      ],
+      types: ["opened", "synchronize", "reopened", "ready_for_review"],
     });
-    expect(ci.on.merge_group).toEqual({ types: ["checks_requested"] });
-    expect(ci.jobs.required.name).toBe("All Tests Passed");
-    expect(ci.jobs.required.if).toBe("always()");
-    expect(ci.jobs.required.needs).toEqual([
-      "changes",
-      "quality",
-      "tests",
-      "tests_server",
-      "tests_client",
-      "tests_plugins",
-      "smoke",
-      "smoke_lanes",
-      "android_aab",
-      "secrets",
-    ]);
-    expect(ci.jobs.required.steps[0].run).toContain(
-      'if [ "$result" != "success" ]',
-    );
+    expect(admission.on.merge_group).toEqual({ types: ["checks_requested"] });
+    expect(admission.jobs["static-smoke"].name).toBe("All Tests Passed");
+    expect(Object.keys(admission.jobs)).toEqual(["static-smoke"]);
+    expect(admission.concurrency["cancel-in-progress"]).toBeTrue();
   });
 
   test("requires the aggregate on main and develop without bypass actors", () => {
@@ -101,10 +79,9 @@ describe("repository ruleset contract", () => {
     expect(helper).toContain("repository ruleset drift detected");
   });
 
-  test("runs readback on schedule, manual request, and external dispatch", () => {
+  test("runs readback by manual request and external dispatch", () => {
     expect(Object.keys(drift.on).sort()).toEqual([
       "repository_dispatch",
-      "schedule",
       "workflow_dispatch",
     ]);
     expect(drift.on.repository_dispatch.types).toEqual([

@@ -47,6 +47,7 @@ import {
 const FINANCE_SCHEMA = "app_finances";
 const FINANCE_TABLES = {
   paymentSources: `${FINANCE_SCHEMA}.life_payment_sources`,
+  paymentSourceIdentities: `${FINANCE_SCHEMA}.life_payment_source_identities`,
   paymentTransactions: `${FINANCE_SCHEMA}.life_payment_transactions`,
   subscriptionAudits: `${FINANCE_SCHEMA}.life_subscription_audits`,
   subscriptionCandidates: `${FINANCE_SCHEMA}.life_subscription_candidates`,
@@ -565,6 +566,222 @@ export class FinancesRepository {
     await executeRawSql(this.runtime, paymentSourceUpsertSql(source));
   }
 
+  /**
+   * Claims a normalized Plaid identity and writes its source in one
+   * transaction. The identity row is the serialization point for concurrent
+   * Link callbacks; callers always receive the canonical source selected by
+   * the database rather than the speculative UUID they supplied.
+   */
+  async upsertPlaidPaymentSource(args: {
+    source: LifeOpsPaymentSource;
+    connectionId: string;
+    identityKey: string;
+  }): Promise<{
+    source: LifeOpsPaymentSource;
+    replacedConnectionId: string | null;
+  }> {
+    return withTransaction(this.runtime, async (tx) => {
+      const now = args.source.updatedAt;
+      await executeRawSqlTx(
+        tx,
+        `INSERT INTO ${FINANCE_TABLES.paymentSourceIdentities} (
+           id, agent_id, provider, identity_key, connection_id, source_id,
+           created_at, updated_at
+         ) VALUES (
+           ${sqlQuote(crypto.randomUUID())},
+           ${sqlQuote(args.source.agentId)},
+           'plaid',
+           ${sqlQuote(args.identityKey)},
+           ${sqlQuote(args.connectionId)},
+           ${sqlQuote(args.source.id)},
+           ${sqlQuote(now)},
+           ${sqlQuote(now)}
+         )
+         ON CONFLICT DO NOTHING`,
+      );
+
+      const identities = await executeRawSqlTx(
+        tx,
+        `SELECT id, identity_key, connection_id, source_id
+           FROM ${FINANCE_TABLES.paymentSourceIdentities}
+          WHERE agent_id = ${sqlQuote(args.source.agentId)}
+            AND provider = 'plaid'
+            AND (
+              identity_key = ${sqlQuote(args.identityKey)}
+              OR connection_id = ${sqlQuote(args.connectionId)}
+            )
+          ORDER BY CASE
+            WHEN identity_key = ${sqlQuote(args.identityKey)} THEN 0
+            ELSE 1
+          END
+          FOR UPDATE`,
+      );
+      const identity = identities[0];
+      if (!identity) {
+        throw new Error("Plaid source identity claim did not persist.");
+      }
+      const identityId = toText(identity.id);
+      const canonicalSourceId = toText(identity.source_id, args.source.id);
+      const replacedConnectionId = toText(identity.connection_id);
+      const duplicateSourceIds = new Set<string>();
+
+      // If a prior race left the same connection attached to a second logical
+      // row, retain its source id so its rows can be reconciled after the
+      // canonical source exists, then remove the losing identity claim.
+      for (const duplicate of identities.slice(1)) {
+        const duplicateSourceId = toText(duplicate.source_id);
+        if (duplicateSourceId && duplicateSourceId !== canonicalSourceId) {
+          duplicateSourceIds.add(duplicateSourceId);
+        }
+        await executeRawSqlTx(
+          tx,
+          `DELETE FROM ${FINANCE_TABLES.paymentSourceIdentities}
+            WHERE id = ${sqlQuote(toText(duplicate.id))}`,
+        );
+      }
+
+      const existingRows = await executeRawSqlTx(
+        tx,
+        `SELECT *
+           FROM ${FINANCE_TABLES.paymentSources}
+          WHERE agent_id = ${sqlQuote(args.source.agentId)}
+            AND id = ${sqlQuote(canonicalSourceId)}
+          FOR UPDATE`,
+      );
+      const existing = existingRows[0]
+        ? parsePaymentSource(existingRows[0])
+        : null;
+      const existingPlaid = existing
+        ? parseJsonRecord(existing.metadata).plaid
+        : null;
+      const existingConnectionId =
+        existingPlaid &&
+        typeof existingPlaid === "object" &&
+        !Array.isArray(existingPlaid) &&
+        typeof (existingPlaid as Record<string, unknown>).connectionId ===
+          "string"
+          ? ((existingPlaid as Record<string, unknown>).connectionId as string)
+          : null;
+      const proposedPlaid = parseJsonRecord(args.source.metadata).plaid;
+      const proposedPlaidRecord =
+        proposedPlaid &&
+        typeof proposedPlaid === "object" &&
+        !Array.isArray(proposedPlaid)
+          ? (proposedPlaid as Record<string, unknown>)
+          : {};
+      const existingPlaidRecord =
+        existingPlaid &&
+        typeof existingPlaid === "object" &&
+        !Array.isArray(existingPlaid)
+          ? (existingPlaid as Record<string, unknown>)
+          : {};
+      let canonical: LifeOpsPaymentSource = {
+        ...args.source,
+        id: canonicalSourceId,
+        lastSyncedAt: existing?.lastSyncedAt ?? args.source.lastSyncedAt,
+        transactionCount:
+          existing?.transactionCount ?? args.source.transactionCount,
+        metadata: {
+          ...args.source.metadata,
+          plaid: {
+            ...proposedPlaidRecord,
+            cursor:
+              existingConnectionId === args.connectionId
+                ? (existingPlaidRecord.cursor ?? proposedPlaidRecord.cursor)
+                : proposedPlaidRecord.cursor,
+          },
+        },
+        createdAt: existing?.createdAt ?? args.source.createdAt,
+      };
+      await executeRawSqlTx(tx, paymentSourceUpsertSql(canonical));
+      for (const duplicateSourceId of duplicateSourceIds) {
+        // Preserve unique provider history on the canonical source while
+        // dropping duplicate external ids or legacy tuples already present.
+        await executeRawSqlTx(
+          tx,
+          `DELETE FROM ${FINANCE_TABLES.paymentTransactions} losing
+            WHERE losing.agent_id = ${sqlQuote(args.source.agentId)}
+              AND losing.source_id = ${sqlQuote(duplicateSourceId)}
+              AND EXISTS (
+                SELECT 1
+                  FROM ${FINANCE_TABLES.paymentTransactions} canonical_tx
+                 WHERE canonical_tx.agent_id = losing.agent_id
+                   AND canonical_tx.source_id = ${sqlQuote(canonicalSourceId)}
+                   AND (
+                     (losing.external_id IS NOT NULL
+                       AND canonical_tx.external_id = losing.external_id)
+                     OR
+                     (losing.external_id IS NULL
+                       AND canonical_tx.external_id IS NULL
+                       AND canonical_tx.posted_at = losing.posted_at
+                       AND canonical_tx.amount_usd = losing.amount_usd
+                       AND canonical_tx.merchant_normalized = losing.merchant_normalized)
+                   )
+              )`,
+        );
+        await executeRawSqlTx(
+          tx,
+          `UPDATE ${FINANCE_TABLES.paymentTransactions}
+              SET source_id = ${sqlQuote(canonicalSourceId)}
+            WHERE agent_id = ${sqlQuote(args.source.agentId)}
+              AND source_id = ${sqlQuote(duplicateSourceId)}`,
+        );
+        await executeRawSqlTx(
+          tx,
+          `DELETE FROM ${FINANCE_TABLES.paymentSources}
+            WHERE agent_id = ${sqlQuote(args.source.agentId)}
+              AND id = ${sqlQuote(duplicateSourceId)}`,
+        );
+      }
+      if (duplicateSourceIds.size > 0) {
+        const countRows = await executeRawSqlTx(
+          tx,
+          `SELECT COUNT(*) AS count
+             FROM ${FINANCE_TABLES.paymentTransactions}
+            WHERE agent_id = ${sqlQuote(args.source.agentId)}
+              AND source_id = ${sqlQuote(canonicalSourceId)}`,
+        );
+        canonical = {
+          ...canonical,
+          transactionCount: toNumber(countRows[0]?.count),
+        };
+        await executeRawSqlTx(tx, paymentSourceUpsertSql(canonical));
+      }
+      await executeRawSqlTx(
+        tx,
+        `UPDATE ${FINANCE_TABLES.paymentSourceIdentities}
+            SET identity_key = ${sqlQuote(args.identityKey)},
+                connection_id = ${sqlQuote(args.connectionId)},
+                source_id = ${sqlQuote(canonicalSourceId)},
+                updated_at = ${sqlQuote(now)}
+          WHERE id = ${sqlQuote(identityId)}`,
+      );
+      return {
+        source: canonical,
+        replacedConnectionId:
+          replacedConnectionId && replacedConnectionId !== args.connectionId
+            ? replacedConnectionId
+            : null,
+      };
+    });
+  }
+
+  async hasPlaidPaymentSourceIdentity(
+    agentId: string,
+    connectionId: string,
+  ): Promise<boolean> {
+    const rows = await executeRawSql(
+      this.runtime,
+      `SELECT 1
+         FROM ${FINANCE_TABLES.paymentSourceIdentities}
+        WHERE agent_id = ${sqlQuote(agentId)}
+          AND provider = 'plaid'
+          AND connection_id = ${sqlQuote(connectionId)}
+        LIMIT 1`,
+    );
+    return rows.length > 0;
+  }
+
   async listPaymentSources(agentId: string): Promise<LifeOpsPaymentSource[]> {
     const rows = await executeRawSql(
       this.runtime,
@@ -619,6 +836,121 @@ export class FinancesRepository {
     );
   }
 
+  /** Deletes every Plaid-derived row for a source and refreshes its count. */
+  async deletePaymentTransactionsForSource(
+    agentId: string,
+    sourceId: string,
+  ): Promise<number> {
+    return withTransaction(this.runtime, async (tx) => {
+      const deleted = await executeRawSqlTx(
+        tx,
+        `DELETE FROM ${FINANCE_TABLES.paymentTransactions}
+          WHERE agent_id = ${sqlQuote(agentId)}
+            AND source_id = ${sqlQuote(sourceId)}
+        RETURNING id`,
+      );
+      await executeRawSqlTx(
+        tx,
+        `UPDATE ${FINANCE_TABLES.paymentSources}
+            SET transaction_count = 0
+          WHERE agent_id = ${sqlQuote(agentId)}
+            AND id = ${sqlQuote(sourceId)}`,
+      );
+      return deleted.length;
+    });
+  }
+
+  /** Deletes Plaid-derived rows for one revoked provider account only. */
+  async deletePaymentTransactionsForPlaidAccount(
+    agentId: string,
+    sourceId: string,
+    accountId: string,
+  ): Promise<number> {
+    return withTransaction(this.runtime, async (tx) => {
+      const deleted = await executeRawSqlTx(
+        tx,
+        `DELETE FROM ${FINANCE_TABLES.paymentTransactions}
+          WHERE agent_id = ${sqlQuote(agentId)}
+            AND source_id = ${sqlQuote(sourceId)}
+            AND metadata_json::jsonb ->> 'accountId' = ${sqlQuote(accountId)}
+        RETURNING id`,
+      );
+      const countRows = await executeRawSqlTx(
+        tx,
+        `SELECT COUNT(*) AS count
+           FROM ${FINANCE_TABLES.paymentTransactions}
+          WHERE agent_id = ${sqlQuote(agentId)}
+            AND source_id = ${sqlQuote(sourceId)}`,
+      );
+      await executeRawSqlTx(
+        tx,
+        `UPDATE ${FINANCE_TABLES.paymentSources}
+            SET transaction_count = ${sqlInteger(toNumber(countRows[0]?.count))}
+          WHERE agent_id = ${sqlQuote(agentId)}
+            AND id = ${sqlQuote(sourceId)}`,
+      );
+      return deleted.length;
+    });
+  }
+
+  /**
+   * Deletes provider-removed transactions by their stable external ids.
+   * Returns the number of rows actually deleted so callers can distinguish
+   * a replayed (already-applied) removal from a fresh one.
+   */
+  async deletePaymentTransactionsByExternalIds(
+    agentId: string,
+    sourceId: string,
+    externalIds: string[],
+  ): Promise<number> {
+    if (externalIds.length === 0) {
+      return 0;
+    }
+    const idList = externalIds.map((id) => sqlQuote(id)).join(", ");
+    const rows = await executeRawSql(
+      this.runtime,
+      `DELETE FROM ${FINANCE_TABLES.paymentTransactions}
+        WHERE agent_id = ${sqlQuote(agentId)}
+          AND source_id = ${sqlQuote(sourceId)}
+          AND external_id IN (${idList})
+      RETURNING id`,
+    );
+    return rows.length;
+  }
+
+  /**
+   * Applies a provider "modified" delta in place, keyed on the stable
+   * external id (Plaid transaction_id). Returns false when no row with that
+   * external id exists, so the caller can fall back to an insert.
+   */
+  async updatePaymentTransactionByExternalId(
+    agentId: string,
+    sourceId: string,
+    transaction: LifeOpsPaymentTransaction,
+  ): Promise<boolean> {
+    if (!transaction.externalId) {
+      return false;
+    }
+    const rows = await executeRawSql(
+      this.runtime,
+      `UPDATE ${FINANCE_TABLES.paymentTransactions}
+          SET posted_at = ${sqlQuote(transaction.postedAt)},
+              amount_usd = ${sqlNumber(transaction.amountUsd)},
+              direction = ${sqlQuote(transaction.direction)},
+              merchant_raw = ${sqlQuote(transaction.merchantRaw)},
+              merchant_normalized = ${sqlQuote(transaction.merchantNormalized)},
+              description = ${sqlText(transaction.description)},
+              category = ${sqlText(transaction.category)},
+              currency = ${sqlQuote(transaction.currency)},
+              metadata_json = ${sqlJson(transaction.metadata)}
+        WHERE agent_id = ${sqlQuote(agentId)}
+          AND source_id = ${sqlQuote(sourceId)}
+          AND external_id = ${sqlQuote(transaction.externalId)}
+      RETURNING id`,
+    );
+    return rows.length > 0;
+  }
+
   async insertPaymentTransaction(
     transaction: LifeOpsPaymentTransaction,
   ): Promise<boolean> {
@@ -667,7 +999,13 @@ export class FinancesRepository {
     added: LifeOpsPaymentTransaction[];
     modified: LifeOpsPaymentTransaction[];
     removedExternalIds: string[];
-  }): Promise<{ inserted: number; skipped: number; transactionCount: number }> {
+  }): Promise<{
+    inserted: number;
+    skipped: number;
+    modified: number;
+    removed: number;
+    transactionCount: number;
+  }> {
     return withTransaction(this.runtime, async (tx) => {
       const sourceRows = await executeRawSqlTx(
         tx,
@@ -701,21 +1039,37 @@ export class FinancesRepository {
       }
       let inserted = 0;
       let skipped = 0;
+      let modified = 0;
+      const removedIds = new Set(args.removedExternalIds);
+      const removedAppliedIds = new Set<string>();
       // Plaid may replace a transaction with a new id while retaining the
       // same local uniqueness tuple. Remove tombstoned rows first so their
       // replacements can be inserted in this same atomic cursor window.
-      for (const externalId of new Set(args.removedExternalIds)) {
-        await executeRawSqlTx(
+      for (const externalId of removedIds) {
+        const deleted = await executeRawSqlTx(
           tx,
           `DELETE FROM ${FINANCE_TABLES.paymentTransactions}
             WHERE agent_id = ${sqlQuote(args.source.agentId)}
               AND source_id = ${sqlQuote(args.source.id)}
-              AND external_id = ${sqlQuote(externalId)}`,
+              AND external_id = ${sqlQuote(externalId)}
+            RETURNING id`,
         );
+        if (deleted.length > 0) {
+          removedAppliedIds.add(externalId);
+        }
       }
       for (const transaction of [...args.added, ...args.modified]) {
         if (!transaction.externalId) {
           throw new Error("Plaid transaction is missing its external id.");
+        }
+        // A removal in the same cursor window is the terminal state. Do not
+        // resurrect an earlier added/modified representation collected from a
+        // preceding pagination page.
+        if (removedIds.has(transaction.externalId)) {
+          if (args.added.includes(transaction)) {
+            removedAppliedIds.add(transaction.externalId);
+          }
+          continue;
         }
         const existing = await executeRawSqlTx(
           tx,
@@ -736,6 +1090,10 @@ export class FinancesRepository {
         if (args.added.includes(transaction)) {
           if (existing.length === 0) inserted += 1;
           else skipped += 1;
+        } else if (existing.length === 0) {
+          inserted += 1;
+        } else {
+          modified += 1;
         }
       }
       const countRows = await executeRawSqlTx(
@@ -749,7 +1107,13 @@ export class FinancesRepository {
         tx,
         paymentSourceUpsertSql({ ...args.source, transactionCount }),
       );
-      return { inserted, skipped, transactionCount };
+      return {
+        inserted,
+        skipped,
+        modified,
+        removed: removedAppliedIds.size,
+        transactionCount,
+      };
     });
   }
 

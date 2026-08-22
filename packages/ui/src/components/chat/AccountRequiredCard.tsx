@@ -84,7 +84,7 @@ function ReconnectProgressLine({
 }) {
   if (phase === "reconnecting") {
     return (
-      <div className="mt-1.5 flex items-center gap-1.5 text-[10px] text-muted">
+      <div className="mt-1.5 flex items-center gap-1.5 text-2xs text-muted">
         <Spinner className="h-3 w-3" />
         Waiting for sign-in to finish...
       </div>
@@ -92,7 +92,7 @@ function ReconnectProgressLine({
   }
   if (phase === "retrying") {
     return (
-      <div className="mt-1.5 flex items-center gap-1.5 text-[10px] text-muted">
+      <div className="mt-1.5 flex items-center gap-1.5 text-2xs text-muted">
         <Spinner className="h-3 w-3" />
         Reconnected. Retrying...
       </div>
@@ -100,7 +100,7 @@ function ReconnectProgressLine({
   }
   if (phase === "success") {
     return (
-      <div className="mt-1.5 flex items-center gap-1.5 text-[10px] text-ok">
+      <div className="mt-1.5 flex items-center gap-1.5 text-2xs text-ok">
         <CheckCircle2 className="h-3 w-3" />
         Reconnected and sent.
       </div>
@@ -108,7 +108,7 @@ function ReconnectProgressLine({
   }
   if (phase === "failed") {
     return (
-      <div className="mt-1.5 flex items-center gap-1.5 text-[10px] text-destructive">
+      <div className="mt-1.5 flex items-center gap-1.5 text-2xs text-destructive">
         <span className="min-w-0 flex-1 truncate">
           {error ?? "Reconnect failed."}
         </span>
@@ -117,7 +117,7 @@ function ReconnectProgressLine({
             type="button"
             variant="ghost"
             size="sm"
-            className="h-6 shrink-0 gap-1 px-1.5 text-[10px]"
+            className="h-6 shrink-0 gap-1 px-1.5 text-2xs"
             onClick={onRetry}
           >
             <RefreshCw className="h-3 w-3" />
@@ -242,10 +242,10 @@ export function AccountRequiredCard({
                       <StatusBadge
                         label={status.label}
                         tone={status.tone}
-                        className="px-1.5 py-0 text-[9px]"
+                        className="px-1.5 py-0 text-3xs"
                       />
                       {account.handle || account.externalId ? (
-                        <span className="truncate text-[10px] text-muted">
+                        <span className="truncate text-2xs text-muted">
                           {account.handle ?? account.externalId}
                         </span>
                       ) : null}
@@ -256,7 +256,7 @@ export function AccountRequiredCard({
                       type="button"
                       variant="outline"
                       size="sm"
-                      className="h-7 shrink-0 gap-1 px-2 text-[10px]"
+                      className="h-7 shrink-0 gap-1 px-2 text-2xs"
                       disabled={reconnectBusy}
                       onClick={() => handleReconnect(account.id)}
                     >

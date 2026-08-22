@@ -11,6 +11,7 @@ const staging = {
   targetEnvironment: "",
   ref: "refs/heads/develop",
   force: false,
+  runDeployedRendererStaging: false,
   runId: "200",
   latestEligibleRunId: "200",
 };
@@ -28,6 +29,52 @@ describe("decideReleaseAdmission", () => {
       shouldDeploy: false,
       reason: "superseded-staging-run",
     });
+  });
+
+  it("admits one explicit non-forced deployed-renderer staging dispatch", () => {
+    expect(
+      decideReleaseAdmission({
+        ...staging,
+        eventName: "workflow_dispatch",
+        targetEnvironment: "staging",
+        runDeployedRendererStaging: true,
+        latestEligibleRunId: "",
+      }),
+    ).toEqual({
+      shouldDeploy: true,
+      reason: "explicit-deployed-renderer-staging",
+    });
+  });
+
+  it("preserves ordinary manual staging admission", () => {
+    expect(
+      decideReleaseAdmission({
+        ...staging,
+        eventName: "workflow_dispatch",
+        targetEnvironment: "staging",
+        runId: "199",
+      }),
+    ).toEqual({
+      shouldDeploy: true,
+      reason: "non-supersedable-release",
+    });
+  });
+
+  it.each([
+    { eventName: "push" },
+    { targetEnvironment: "production" },
+    { ref: "refs/heads/main" },
+    { force: true },
+  ])("rejects a proof request outside its exact dispatch fence", (override) => {
+    expect(() =>
+      decideReleaseAdmission({
+        ...staging,
+        eventName: "workflow_dispatch",
+        targetEnvironment: "staging",
+        runDeployedRendererStaging: true,
+        ...override,
+      }),
+    ).toThrow("requires a non-forced workflow_dispatch");
   });
 
   it.each([
@@ -48,6 +95,12 @@ describe("decideReleaseAdmission", () => {
       targetEnvironment: "staging",
       ref: "refs/heads/develop",
       force: true,
+    },
+    {
+      eventName: "workflow_dispatch",
+      targetEnvironment: "staging",
+      ref: "refs/heads/develop",
+      force: false,
     },
   ])("always admits non-supersedable releases", (input) => {
     expect(

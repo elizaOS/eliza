@@ -36,9 +36,8 @@ same runtime target, and same handoff semantics.
   `packages/cloud/api/eliza-app/provision-agent/route.ts`,
   `packages/cloud/api/v1/eliza/agents/[agentId]/provision/route.ts`.
 - Messaging gateways:
-  `plugins/plugin-bluebubbles/src/service.ts`,
-  `plugins/plugin-bluebubbles/src/setup-routes.ts`,
-  `plugins/plugin-bluebubbles/src/data-routes.ts`,
+  `plugins/plugin-imessage/src/service.ts`,
+  `plugins/plugin-imessage/src/chatdb-reader.ts`,
   `packages/ui/src/components/connectors/BlueBubblesStatusPanel.tsx`,
   `packages/ui/src/components/connectors/IMessageStatusPanel.tsx`,
   `packages/ui/src/components/connectors/DiscordLocalConnectorPanel.tsx`,
@@ -115,36 +114,30 @@ Acceptance criteria:
 - Failed signing, missing device trust, and stale build cases produce explicit
   user-facing recovery states.
 
-## Workstream 3: iMessage Gateway Via BlueBubbles And Headscale
+## Workstream 3: Native iMessage On macOS
 
-iMessage onboarding is an advanced self-hosted gateway: a Mac host runs
-BlueBubbles, a spare iPhone supplies iMessage continuity, and Headscale provides
-private network reachability. Product copy must call this "iMessage gateway",
-while implementation uses the existing BlueBubbles plugin.
+iMessage runs directly on the user's Mac through Messages.app and its local
+`chat.db`. It must not require an external bridge application, relay server, or
+private-network control plane.
 
 Implementation requirements:
 
-- Use `plugins/plugin-bluebubbles` as the only iMessage transport integration.
-- Add Headscale configuration as deployment/runtime infrastructure around the
-  BlueBubbles server URL and webhook URL; do not fork BlueBubbles behavior.
-- Gateway setup must flow through the existing setup/data route model in
-  `plugins/plugin-bluebubbles/src/setup-routes.ts` and
-  `plugins/plugin-bluebubbles/src/data-routes.ts`.
-- Account ownership must stay explicit: BlueBubbles credentials represent the
-  user's Mac/iMessage bridge and should use the connector-account provider in
-  `plugins/plugin-bluebubbles/src/connector-account-provider.ts`.
+- Use `plugins/plugin-imessage` as the only first-party iMessage transport.
+- Read inbound messages from the local Messages database and send outbound
+  messages through Apple's Messages.app automation interface.
+- Treat Full Disk Access and Automation permission as explicit setup states.
 - Incoming iMessage events must enter the same provisioning and handoff path as
   Discord, Telegram, and WhatsApp.
 
 Acceptance criteria:
 
-- Gateway health reports BlueBubbles reachability, webhook URL, Headscale node
-  identity, and last inbound/outbound message timestamp.
+- Connector health reports native permission state and the last inbound and
+  outbound message timestamps.
 - A new iMessage user can complete onboarding and is handed to the user's agent,
   not left attached to a gateway bootstrap agent.
-- Loss of Headscale or BlueBubbles connectivity marks the channel degraded
+- Loss of Messages database or Automation access marks the channel degraded
   without disabling the user's other channels.
-- Existing BlueBubbles tests and setup-route contract tests continue to pass.
+- Native iMessage service, policy, inbound, outbound, and attachment tests pass.
 
 ## Workstream 4: Discord, Telegram, And WhatsApp Bot Onboarding
 
@@ -284,7 +277,7 @@ Acceptance criteria:
 ## Non-Goals
 
 - Do not introduce a second personal-agent concept for channel bootstrap.
-- Do not build a parallel iMessage transport outside `plugin-bluebubbles`.
+- Do not build a parallel iMessage transport outside `plugin-imessage`.
 - Do not put channel-specific business logic into homepage components.
 - Do not claim App Store, Play Store, Mac App Store, or Microsoft Store
   availability before approved URLs exist.

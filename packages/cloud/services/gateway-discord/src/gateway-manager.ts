@@ -38,7 +38,12 @@ import {
 } from "./dm-policy";
 import { pollTrackedDiscordDms, type TrackedDiscordDm } from "./dm-polling";
 import { tryConfirmDiscordIdentityLink } from "./identity-link";
+import { invalidIntegerEnvError, parseIntegerEnvValue } from "./integer-env";
 import { logger } from "./logger";
+import {
+  type ManagedGuildInvocation,
+  managedGuildMessageTurn,
+} from "./managed-guild-message-policy";
 import {
   createManagedGuildVoiceCloudBridge,
   MANAGED_GUILD_VOICE_INTENT,
@@ -127,17 +132,14 @@ function parseIntEnv(
   defaultValue: number,
   minValue: number = 1,
 ): number {
-  const value = process.env[name];
-  if (value === undefined) return defaultValue;
-  const parsed = parseInt(value, 10);
-  if (Number.isNaN(parsed)) {
-    throw new Error(
-      `Invalid ${name} environment variable: "${value}" is not a valid integer`,
-    );
-  }
+  const parsed = parseIntegerEnvValue(name, process.env[name]);
+  if (parsed === undefined) return defaultValue;
   if (parsed < minValue) {
-    throw new Error(
-      `Invalid ${name} environment variable: ${parsed} is below minimum value of ${minValue}`,
+    throw invalidIntegerEnvError(
+      name,
+      process.env[name] ?? String(parsed),
+      `${parsed} is below minimum value of ${minValue}`,
+      { parsed, minimum: minValue },
     );
   }
   return parsed;
@@ -320,6 +322,12 @@ interface HealthStatus {
   totalGuilds: number;
   uptime: number;
   draining: boolean;
+  systemBot: {
+    enabled: boolean;
+    configured: boolean;
+    leader: boolean;
+    connected: boolean;
+  };
   controlPlane: {
     consecutiveFailures: number;
     lastSuccessfulPoll: string | null;
@@ -2530,7 +2538,7 @@ export class GatewayManager {
       );
       return;
     }
-    await this.routeManagedAgentMessage(message, trimmedContent);
+    await this.routeManagedAgentMessage(message, trimmedContent, "dm");
   }
 
   private async handleManagedAgentGuildMessage(
@@ -2541,31 +2549,14 @@ export class GatewayManager {
       return;
     }
 
-    const trimmedContent = message.content.trim();
-    if (!trimmedContent) {
-      return;
-    }
-
-    const botMentionRegex = new RegExp(`<@!?${botUserId}>`, "g");
-    const botMentioned =
-      message.mentions.users.has(botUserId) ||
-      botMentionRegex.test(trimmedContent);
-    if (!botMentioned) {
-      return;
-    }
-
-    const mentionedOtherUser = message.mentions.users.some(
-      (user: { id: string }) => user.id !== botUserId,
-    );
-    const repliedUserId = message.mentions.repliedUser?.id;
-    const repliedToAnotherUser = Boolean(
-      repliedUserId && repliedUserId !== botUserId,
-    );
-    if (
-      mentionedOtherUser ||
-      message.mentions.everyone ||
-      repliedToAnotherUser
-    ) {
+    const turn = managedGuildMessageTurn({
+      botUserId,
+      content: message.content,
+      mentionedUserIds: message.mentions.users.map((user) => user.id),
+      repliedUserId: message.mentions.repliedUser?.id,
+      mentionsEveryone: message.mentions.everyone,
+    });
+    if (!turn) {
       logger.debug("Ignoring managed guild message that targets someone else", {
         guildId: message.guildId,
         channelId: message.channelId,
@@ -2574,17 +2565,13 @@ export class GatewayManager {
       return;
     }
 
-    const sanitizedContent = trimmedContent.replace(botMentionRegex, "").trim();
-    if (!sanitizedContent) {
-      return;
-    }
-
-    await this.routeManagedAgentMessage(message, sanitizedContent);
+    await this.routeManagedAgentMessage(message, turn.content, turn.invocation);
   }
 
   private async routeManagedAgentMessage(
     message: Message,
     content: string,
+    invocation: ManagedGuildInvocation | "dm",
   ): Promise<void> {
     try {
       // Egress health (proven dropped-turn class, E2E 2026-08-05): a single
@@ -2633,8 +2620,15 @@ export class GatewayManager {
             });
           },
         });
+      // Ambient guild traffic must reach the runtime's contextual
+      // respond-or-ignore decision without producing a visible side effect
+      // first. In particular, unauthorized ambient speakers and turns the
+      // runtime ignores must never make the bot appear to be typing. Explicit
+      // DMs, mentions and replies retain their progress heartbeat.
       const typingChannel =
-        "sendTyping" in message.channel ? message.channel : null;
+        invocation !== "ambient" && "sendTyping" in message.channel
+          ? message.channel
+          : null;
       const outcome = typingChannel
         ? await withManagedTypingHeartbeat(
             {
@@ -2800,6 +2794,17 @@ export class GatewayManager {
       this.consecutivePollFailures >= CRITICAL_FAILURE_THRESHOLD;
     const controlPlaneReady =
       this.lastSuccessfulPoll !== null && !controlPlaneLost;
+    const systemBotEnabled =
+      process.env.ELIZA_APP_DISCORD_BOT_ENABLED === "true";
+    const systemBotConfigured = Boolean(
+      process.env.ELIZA_APP_DISCORD_BOT_TOKEN?.trim() && this.redis,
+    );
+    const systemBotConnected = Boolean(
+      this.isElizaAppLeader && this.elizaAppClient?.isReady(),
+    );
+    const systemBotDegraded =
+      systemBotEnabled &&
+      (!systemBotConfigured || (this.isElizaAppLeader && !systemBotConnected));
 
     // Note: draining pods are still "healthy" for liveness (don't restart)
     // but will fail readiness (don't accept new work)
@@ -2807,9 +2812,11 @@ export class GatewayManager {
       ? "unhealthy"
       : totalBots > 0 && connectedBots === 0
         ? "unhealthy"
-        : disconnectedBots > 0
+        : systemBotDegraded
           ? "degraded"
-          : "healthy";
+          : disconnectedBots > 0
+            ? "degraded"
+            : "healthy";
 
     return {
       status,
@@ -2820,6 +2827,12 @@ export class GatewayManager {
       totalGuilds,
       uptime: Date.now() - this.startTime.getTime(),
       draining: this.draining,
+      systemBot: {
+        enabled: systemBotEnabled,
+        configured: systemBotConfigured,
+        leader: this.isElizaAppLeader,
+        connected: systemBotConnected,
+      },
       controlPlane: {
         consecutiveFailures: this.consecutivePollFailures,
         lastSuccessfulPoll: this.lastSuccessfulPoll?.toISOString() ?? null,
@@ -2893,6 +2906,34 @@ export class GatewayManager {
         pod,
         h.controlPlane.healthy ? 1 : 0,
       ),
+      metric(
+        "discord_gateway_system_bot_enabled",
+        "gauge",
+        "Eliza App system bot is enabled (1=enabled, 0=disabled)",
+        pod,
+        h.systemBot.enabled ? 1 : 0,
+      ),
+      metric(
+        "discord_gateway_system_bot_configured",
+        "gauge",
+        "Eliza App system bot has token and leader-election storage (1=configured, 0=missing)",
+        pod,
+        h.systemBot.configured ? 1 : 0,
+      ),
+      metric(
+        "discord_gateway_system_bot_leader",
+        "gauge",
+        "Pod owns Eliza App system-bot leadership (1=leader, 0=standby)",
+        pod,
+        h.systemBot.leader ? 1 : 0,
+      ),
+      metric(
+        "discord_gateway_system_bot_connected",
+        "gauge",
+        "Leader-owned Eliza App system bot is connected (1=connected, 0=not connected)",
+        pod,
+        h.systemBot.connected ? 1 : 0,
+      ),
     ];
 
     for (const [id, conn] of this.connections) {
@@ -2912,6 +2953,7 @@ export class GatewayManager {
   }
 
   getStatus(): Record<string, unknown> {
+    const health = this.getHealth();
     return {
       podName: this.config.podName,
       startTime: this.startTime.toISOString(),
@@ -2922,6 +2964,7 @@ export class GatewayManager {
         consecutiveFailures: this.consecutivePollFailures,
         lastSuccessfulPoll: this.lastSuccessfulPoll?.toISOString() ?? null,
       },
+      systemBot: health.systemBot,
       connections: [...this.connections.entries()].map(([id, c]) => ({
         connectionId: id,
         organizationId: c.organizationId,

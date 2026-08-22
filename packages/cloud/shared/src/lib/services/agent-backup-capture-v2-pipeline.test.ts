@@ -25,6 +25,7 @@ import {
   type AgentBackupCaptureV3Artifacts,
   type AgentBackupCaptureV3KeyBundleProvider,
   type AgentBackupCaptureV3ManifestAuthority,
+  deriveAgentBackupCaptureV3RuntimePrincipalSha256,
   runAgentBackupCaptureV2Pipeline,
 } from "./agent-backup-capture-v2-pipeline";
 import {
@@ -43,6 +44,8 @@ const EXECUTION_TOKEN = "66666666-6666-4666-8666-666666666666";
 const NEXT_EXECUTION_TOKEN = "77777777-7777-4777-8777-777777777777";
 const TEST_BOOT_ID = "88888888-8888-4888-8888-888888888888";
 const VAULT_KEY_GENERATION_ID = "99999999-9999-4999-8999-999999999999";
+const RUNTIME_AGENT_A = "aaaaaaaa-1111-4111-8111-111111111111";
+const RUNTIME_AGENT_B = "bbbbbbbb-2222-4222-8222-222222222222";
 
 const request: AgentBackupCaptureV2Request = {
   format: "elizaos.agent-backup.capture-request",
@@ -272,6 +275,7 @@ function pipelineInput(
 ) {
   return {
     request,
+    runtimePrincipalSha256: "3".repeat(64),
     executionToken: EXECUTION_TOKEN,
     authority,
     openCapture() {
@@ -297,10 +301,72 @@ function directSpoolInput(executionToken: string) {
     executionToken,
     requestSha256: "1".repeat(64),
     authoritySha256: "2".repeat(64),
+    runtimePrincipalSha256: "3".repeat(64),
   };
 }
 
 describe("runAgentBackupCaptureV2Pipeline", () => {
+  it("fences a partial spool to its canonical runtime wire principal before replay appends", async () => {
+    const directory = await stateDirectory();
+    const probe = publicationProbe();
+    const openCount = { value: 0 };
+    const base = pipelineInput(directory, 2 * MIB, probe.boundary, openCount);
+    const principalA = deriveAgentBackupCaptureV3RuntimePrincipalSha256(RUNTIME_AGENT_A);
+    const principalB = deriveAgentBackupCaptureV3RuntimePrincipalSha256(RUNTIME_AGENT_B);
+    try {
+      await expect(
+        runAgentBackupCaptureV2Pipeline({
+          ...base,
+          runtimePrincipalSha256: principalA,
+          async *openCapture() {
+            openCount.value += 1;
+            for await (const capturedFrame of syntheticCapture(2 * MIB)) {
+              yield capturedFrame;
+              if (capturedFrame.header.kind === "component-end") {
+                throw new Error("synthetic partial capture after one durable component");
+              }
+            }
+          },
+        }),
+      ).rejects.toThrow("synthetic partial capture after one durable component");
+
+      const journalPath = path.join(
+        directory,
+        "agent-backup-capture-v3",
+        OPERATION_ID,
+        "journal.json",
+      );
+      const before = await fs.promises.readFile(journalPath, "utf8");
+      const journal = JSON.parse(before) as {
+        runtimePrincipalSha256: string;
+        chunks: unknown[];
+        recordCaptured: string;
+      };
+      expect(journal.runtimePrincipalSha256).toBe(principalA);
+      expect(journal.chunks.length).toBeGreaterThan(0);
+      expect(journal.recordCaptured).toBe("pending");
+
+      await expect(
+        runAgentBackupCaptureV2Pipeline({
+          ...base,
+          executionToken: NEXT_EXECUTION_TOKEN,
+          runtimePrincipalSha256: principalB,
+          openCapture() {
+            openCount.value += 1;
+            return syntheticCapture(2 * MIB);
+          },
+        }),
+      ).rejects.toMatchObject({
+        code: "AGENT_BACKUP_V3_RUNTIME_PRINCIPAL_REPLAY_CONFLICT",
+      });
+      expect(openCount.value).toBe(1);
+      expect(probe.recordCalls).toHaveLength(0);
+      expect(await fs.promises.readFile(journalPath, "utf8")).toBe(before);
+    } finally {
+      await removeStateDirectory(directory);
+    }
+  });
+
   it("rejects incremental authority before opening capture or allocating a spool", async () => {
     const directory = await stateDirectory();
     const probe = publicationProbe();

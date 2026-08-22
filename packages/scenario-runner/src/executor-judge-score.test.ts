@@ -15,7 +15,7 @@
 
 import type { AgentRuntime } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { runScenario } from "./executor";
+import { __INTERNAL_stringifyForJudge, runScenario } from "./executor";
 
 function createJudgedRuntime(scoreByRubricMarker: Record<string, number>) {
   const useModel = vi.fn(async (_type: unknown, params: unknown) => {
@@ -53,6 +53,15 @@ describe("judge score serialization (#8795)", () => {
 
   afterEach(() => {
     vi.unstubAllEnvs();
+  });
+
+  it("preserves complete structured evidence supplied to the judge", () => {
+    const tail = "judge-tail-marker";
+    const value = { evidence: `${"x".repeat(5_000)}${tail}` };
+    const serialized = __INTERNAL_stringifyForJudge(value);
+    expect(serialized).toBe(JSON.stringify(value));
+    expect(serialized).toContain(tail);
+    expect(serialized).not.toContain("...");
   });
 
   it("records the numeric score for passing turn judges and rubric checks", async () => {

@@ -18,8 +18,6 @@ import type { AgentSkillsService } from "../services/skills";
 import { describeSkillReference, extractSlugFromMessage } from "./parse-helpers";
 import { createAgentSkillsActionValidator } from "./validators";
 
-const INSTALLED_SKILL_MATCH_LIMIT = 100;
-
 type UninstallSkillOptions = {
 	parameters?: {
 		slug?: unknown;
@@ -97,7 +95,7 @@ export const uninstallSkillAction = {
 		}
 
 		// Find the skill
-		const loadedSkills = service.getLoadedSkills().slice(0, INSTALLED_SKILL_MATCH_LIMIT);
+		const loadedSkills = service.getLoadedSkills();
 		const match =
 			loadedSkills.find(
 				(s) => s.slug === slug || s.name.toLowerCase() === slug.toLowerCase(),

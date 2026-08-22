@@ -1,4 +1,4 @@
-/** Exercises the policy that permits one canonical PR/merge aggregate, reserves other PR-adjacent triggers, and restricts branch pushes to develop. */
+/** Exercises the single PR Static Smoke and latest-tip Develop Full trigger authorities. */
 
 import { describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -20,8 +20,9 @@ function buildRepo(workflows: Record<string, string>): string {
 
 function validateFixture(
   workflow: string,
+  name = "develop-full.yml",
 ): ReturnType<typeof validateWorkflowTriggerPolicy> {
-  const root = buildRepo({ "test.yml": workflow });
+  const root = buildRepo({ [name]: workflow });
   try {
     return validateWorkflowTriggerPolicy(root);
   } finally {
@@ -29,36 +30,54 @@ function validateFixture(
   }
 }
 
-const canonicalCi = `name: CI
+const canonicalAdmission = `name: PR Static Smoke
 on:
   pull_request:
     branches: [develop, main]
-    types: [opened, synchronize, reopened, ready_for_review, labeled, unlabeled]
-  push:
-    branches: [develop]
+    types: [opened, synchronize, reopened, ready_for_review]
   merge_group:
     types: [checks_requested]
 jobs: {}
 `;
 
+const developPush = `name: Develop Full
+on:
+  push:
+    branches: [develop]
+jobs: {}
+`;
+
 describe("workflow trigger policy", () => {
-  test("accepts develop pushes alongside manual and scheduled operations", () => {
+  test("accepts the Develop Full push alongside manual operations", () => {
     expect(
       validateFixture(`name: Test
 on:
   push:
     branches: [develop]
   workflow_dispatch:
-  schedule:
-    - cron: "0 7 * * *"
 jobs: {}
 `),
     ).toEqual({ developPushWorkflows: 1, files: 1 });
   });
 
+  test.each(["schedule", "workflow_run"])(
+    "rejects the %s automation trigger",
+    (eventName) => {
+      const eventConfig =
+        eventName === "schedule"
+          ? '    - cron: "0 7 * * *"'
+          : "    workflows: [CI]\n    types: [completed]";
+      expect(() =>
+        validateFixture(
+          `on:\n  push:\n    branches: [develop]\n  ${eventName}:\n${eventConfig}\njobs: {}\n`,
+        ),
+      ).toThrow(/is forbidden/);
+    },
+  );
+
   test("accepts tag-only release pushes", () => {
     const root = buildRepo({
-      "develop.yml": `on:\n  push:\n    branches: [develop]\njobs: {}\n`,
+      "develop-full.yml": `on:\n  push:\n    branches: [develop]\njobs: {}\n`,
       "release.yml": `on:\n  push:\n    tags: ["v*"]\njobs: {}\n`,
     });
     try {
@@ -84,39 +103,45 @@ jobs: {}
     ).toThrow(/forbidden pull-request event trigger/);
   });
 
-  test("reserves pull_request for the canonical CI workflow", () => {
+  test("reserves pull_request for PR Static Smoke", () => {
     expect(() =>
       validateFixture(
         "on:\n  push:\n    branches: [develop]\n  pull_request:\n    branches: [develop, main]\n    types: [opened, synchronize, reopened, ready_for_review, labeled, unlabeled]\njobs: {}\n",
       ),
-    ).toThrow(/pull_request is reserved for ci\.yml/);
+    ).toThrow(/pull_request is reserved for pr-static-smoke\.yml/);
   });
 
-  test("accepts the exact canonical PR and merge-group aggregate", () => {
-    const root = buildRepo({ "ci.yml": canonicalCi });
+  test("accepts the exact PR Static Smoke and develop authorities", () => {
+    const root = buildRepo({
+      "pr-static-smoke.yml": canonicalAdmission,
+      "develop-full.yml": developPush,
+    });
     try {
       expect(validateWorkflowTriggerPolicy(root)).toEqual({
         developPushWorkflows: 1,
-        files: 1,
+        files: 2,
       });
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
   });
 
-  test("fails closed when canonical CI loses either admission trigger", () => {
+  test("fails closed when PR Static Smoke loses either admission trigger", () => {
     const variants = [
-      canonicalCi.replace(
-        /  pull_request:\n    branches: \[develop, main\]\n    types: \[opened, synchronize, reopened, ready_for_review, labeled, unlabeled\]\n/,
+      canonicalAdmission.replace(
+        / {2}pull_request:\n {4}branches: \[develop, main\]\n {4}types: \[opened, synchronize, reopened, ready_for_review\]\n/,
         "",
       ),
-      canonicalCi.replace(
-        /  merge_group:\n    types: \[checks_requested\]\n/,
+      canonicalAdmission.replace(
+        / {2}merge_group:\n {4}types: \[checks_requested\]\n/,
         "",
       ),
     ];
     for (const workflow of variants) {
-      const root = buildRepo({ "ci.yml": workflow });
+      const root = buildRepo({
+        "pr-static-smoke.yml": workflow,
+        "develop-full.yml": developPush,
+      });
       try {
         expect(() => validateWorkflowTriggerPolicy(root)).toThrow(
           /canonical (pull_request|merge_group) trigger is absent or invalid/,
@@ -127,24 +152,12 @@ jobs: {}
     }
   });
 
-  test("reserves merge_group for canonical CI and candidate Biome", () => {
+  test("reserves merge_group for PR Static Smoke", () => {
     expect(() =>
       validateFixture(
         `on:\n  push:\n    branches: [develop]\n  merge_group:\n    types: [checks_requested]\njobs: {}\n`,
       ),
     ).toThrow(/merge_group is reserved/);
-    const root = buildRepo({
-      "ci.yml": canonicalCi,
-      "merge-candidate-biome.yml": `on:\n  merge_group:\n    types: [checks_requested]\njobs: {}\n`,
-    });
-    try {
-      expect(validateWorkflowTriggerPolicy(root)).toEqual({
-        developPushWorkflows: 1,
-        files: 2,
-      });
-    } finally {
-      rmSync(root, { recursive: true, force: true });
-    }
   });
 
   test("rejects an unrestricted push", () => {
@@ -161,9 +174,29 @@ jobs: {}
     }
   });
 
-  test("the checked-in workflows expose only the canonical aggregate and develop pushes", () => {
+  test("reserves the develop push for Develop Full", () => {
+    expect(() => validateFixture(developPush, "ci.yml")).toThrow(
+      /develop push is reserved for develop-full\.yml/,
+    );
+  });
+
+  test("rejects duplicate develop authorities", () => {
+    const root = buildRepo({
+      "develop-full.yml": developPush,
+      "duplicate.yml": developPush,
+    });
+    try {
+      expect(() => validateWorkflowTriggerPolicy(root)).toThrow(
+        /Expected exactly one develop push workflow/,
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("the checked-in workflows expose exactly the two validation authorities", () => {
     const result = validateWorkflowTriggerPolicy(REAL_REPO_ROOT);
     expect(result.files).toBeGreaterThan(40);
-    expect(result.developPushWorkflows).toBeGreaterThan(15);
+    expect(result.developPushWorkflows).toBe(1);
   });
 });

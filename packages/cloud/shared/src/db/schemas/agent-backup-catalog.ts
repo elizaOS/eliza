@@ -25,6 +25,7 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
+import { agentNodeIncarnationHistories } from "./agent-node-incarnation-histories";
 import { agentBackupCatalogAuthorities, agentSandboxBackups } from "./agent-sandboxes";
 import { organizations } from "./organizations";
 
@@ -433,6 +434,7 @@ export const agentBackupRestoreOperations = pgTable(
       scale: 0,
       mode: "bigint",
     }).notNull(),
+    expected_node_history_id: uuid("expected_node_history_id"),
     expected_node_record_id: uuid("expected_node_record_id"),
     expected_node_incarnation: uuid("expected_node_incarnation"),
     expected_container_id: text("expected_container_id"),
@@ -486,6 +488,19 @@ export const agentBackupRestoreOperations = pgTable(
       foreignColumns: [
         agentBackupCatalogAuthorities.organization_id,
         agentBackupCatalogAuthorities.agent_id,
+      ],
+    }).onDelete("restrict"),
+    node_occurrence_fk: foreignKey({
+      name: "agent_backup_restore_operations_node_occurrence_fkey",
+      columns: [
+        table.expected_node_history_id,
+        table.expected_node_record_id,
+        table.expected_node_incarnation,
+      ],
+      foreignColumns: [
+        agentNodeIncarnationHistories.id,
+        agentNodeIncarnationHistories.docker_node_record_id,
+        agentNodeIncarnationHistories.node_incarnation,
       ],
     }).onDelete("restrict"),
     attempt_uidx: uniqueIndex("agent_backup_restore_operations_attempt_uidx").on(
@@ -542,9 +557,18 @@ export const agentBackupRestoreOperations = pgTable(
         AND octet_length(${table.lease_owner_id}) BETWEEN 1 AND 255
         AND (${table.expected_container_id} IS NULL
           OR ${table.expected_container_id} ~ '^[0-9a-f]{64}$')
+        AND (${table.expected_container_id} IS NULL
+          OR ${table.expected_node_history_id} IS NOT NULL)
         AND (${table.expected_image_digest} IS NULL
           OR ${table.expected_image_digest} ~ '^sha256:[0-9a-f]{64}$')
-        AND (${table.expected_node_record_id} IS NULL) = (${table.expected_node_incarnation} IS NULL)
+        AND ((${table.expected_node_history_id} IS NULL
+            AND ${table.expected_node_record_id} IS NULL
+            AND ${table.expected_node_incarnation} IS NULL
+            AND ${table.expected_image_digest} IS NULL)
+          OR (${table.expected_node_history_id} IS NOT NULL
+            AND ${table.expected_node_record_id} IS NOT NULL
+            AND ${table.expected_node_incarnation} IS NOT NULL
+            AND ${table.expected_image_digest} IS NOT NULL))
       ) IS TRUE`,
     ),
   }),

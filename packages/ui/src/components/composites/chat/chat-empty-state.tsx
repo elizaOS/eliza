@@ -68,7 +68,7 @@ export function ChatEmptyState({
           <h3 className="mb-2 text-lg font-semibold text-txt-strong">
             {labels.startConversation ?? "Start a Conversation"}
           </h3>
-          <p className="mb-6 max-w-sm font-[var(--font-chat)] text-sm text-muted">
+          <p className="mb-6 max-w-sm font-chat text-sm text-muted">
             {labels.sendMessageTo ?? "Send a message to"} {agentName}{" "}
             {labels.toBeginChatting ?? "to begin chatting."}
           </p>

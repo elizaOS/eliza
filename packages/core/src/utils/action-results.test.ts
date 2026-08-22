@@ -8,6 +8,7 @@ import type { ActionResult } from "../types/components";
 import {
 	collectActionResultSizeWarnings,
 	estimateActionResultTokens,
+	formatActionResultsForPrompt,
 	formatCompleteActionResultText,
 	getActionResultActionName,
 	getActionResultReference,
@@ -96,5 +97,24 @@ describe("formatCompleteActionResultText Unicode safety", () => {
 		const out = formatCompleteActionResultText(text, 4000);
 		expect(out).toBe(text);
 		expect(out.isWellFormed()).toBe(true);
+	});
+});
+
+describe("formatActionResultsForPrompt projections", () => {
+	it("serializes promptData instead of duplicating complete data", () => {
+		const rendered = formatActionResultsForPrompt(
+			[
+				result({
+					success: true,
+					text: "exact page",
+					data: { body: "RAW_BODY_SENTINEL", actionName: "FILE" },
+					promptData: { actionName: "FILE", safe: "metadata" },
+				}),
+			],
+			{ includeData: true },
+		);
+		expect(rendered).toContain("exact page");
+		expect(rendered).toContain("metadata");
+		expect(rendered).not.toContain("RAW_BODY_SENTINEL");
 	});
 });

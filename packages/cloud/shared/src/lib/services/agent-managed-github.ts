@@ -1,5 +1,10 @@
-// Coordinates cloud service agent managed github behavior behind route handlers.
+/**
+ * Coordinates managed GitHub connector configuration and OAuth teardown.
+ * Connector mutations persist first, then schedule lifecycle work only for
+ * running agents backed by a container.
+ */
 import { agentSandboxesRepository } from "../../db/repositories/agent-sandboxes";
+import { CONTAINER_BACKED_EXECUTION_TIERS } from "../../db/schemas/agent-sandboxes";
 import { logger } from "../utils/logger";
 import {
   type ManagedAgentGithubBinding,
@@ -102,7 +107,10 @@ export class ManagedAgentGithubService {
     // daemon picks it up, stops the container, and re-provisions with
     // the freshly-persisted agent_config above.
     let restarted = false;
-    if (sandbox.status === "running") {
+    if (
+      sandbox.status === "running" &&
+      CONTAINER_BACKED_EXECUTION_TIERS.some((tier) => tier === sandbox.execution_tier)
+    ) {
       await provisioningJobService.enqueueAgentRestartOnce({
         agentId: sandbox.id,
         organizationId: params.organizationId,
@@ -111,7 +119,8 @@ export class ManagedAgentGithubService {
       // The restart job is already enqueued above; triggerImmediate only nudges the
       // daemon to pick it up now. A failed nudge delays the restart to the next poll,
       // so it is logged rather than swallowed or thrown.
-      // error-policy:J7 nudge failure only delays an already-enqueued restart; logged, not fatal.
+      // error-policy:J5 The durable restart remains observable by the scheduled poller;
+      // this handler observes and reports only the failed immediate nudge.
       void provisioningJobService.triggerImmediate().catch((err) =>
         logger.warn("[managed-github] provisioning triggerImmediate nudge failed", {
           agentId: sandbox.id,
@@ -158,6 +167,7 @@ export class ManagedAgentGithubService {
           connectionId: currentBinding.connectionId,
         });
       } catch (error) {
+        // error-policy:J6 OAuth revocation is best-effort teardown; warn while the requested local disconnect proceeds.
         logger.warn("[managed-github] Failed to revoke OAuth connection during disconnect", {
           connectionId: currentBinding.connectionId,
           error: error instanceof Error ? error.message : String(error),
@@ -176,7 +186,10 @@ export class ManagedAgentGithubService {
     // daemon picks it up, stops the container, and re-provisions with
     // the freshly-persisted agent_config above.
     let restarted = false;
-    if (sandbox.status === "running") {
+    if (
+      sandbox.status === "running" &&
+      CONTAINER_BACKED_EXECUTION_TIERS.some((tier) => tier === sandbox.execution_tier)
+    ) {
       await provisioningJobService.enqueueAgentRestartOnce({
         agentId: sandbox.id,
         organizationId: params.organizationId,
@@ -185,7 +198,8 @@ export class ManagedAgentGithubService {
       // The restart job is already enqueued above; triggerImmediate only nudges the
       // daemon to pick it up now. A failed nudge delays the restart to the next poll,
       // so it is logged rather than swallowed or thrown.
-      // error-policy:J7 nudge failure only delays an already-enqueued restart; logged, not fatal.
+      // error-policy:J5 The durable restart remains observable by the scheduled poller;
+      // this handler observes and reports only the failed immediate nudge.
       void provisioningJobService.triggerImmediate().catch((err) =>
         logger.warn("[managed-github] provisioning triggerImmediate nudge failed", {
           agentId: sandbox.id,

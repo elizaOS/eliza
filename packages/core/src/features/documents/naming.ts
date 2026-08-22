@@ -6,20 +6,13 @@
  * `utils.ts` re-exports these, so existing import sites keep working.
  */
 
-import {
-	toWellFormedUnicode,
-	truncateWellFormed,
-} from "../../utils/well-formed.ts";
+import { toWellFormedUnicode } from "../../utils/well-formed.ts";
 
+/** @deprecated Document labels are no longer silently length-limited. */
 export const DOCUMENT_TITLE_MAX_LENGTH = 80;
 
 export function truncateDocumentLabel(value: string): string {
-	const wellFormed = toWellFormedUnicode(value);
-	if (wellFormed.length <= DOCUMENT_TITLE_MAX_LENGTH) {
-		return wellFormed;
-	}
-	const budget = Math.max(0, DOCUMENT_TITLE_MAX_LENGTH - 1);
-	return `${truncateWellFormed(wellFormed, budget).trimEnd()}…`;
+	return toWellFormedUnicode(value);
 }
 
 export function stripDocumentFilenameExtension(filename: string): string {

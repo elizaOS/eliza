@@ -150,4 +150,62 @@ describe("runVfsBuiltinShell", () => {
       stderr: "",
     });
   });
+
+  // A short-option cluster carries every flag in it, so every spelling that
+  // contains r or R removes a tree. `-Rf`, `-fR` and `-rvf` used to parse as
+  // non-recursive, so `fsp.rm` threw EISDIR and the command exited 1 with the
+  // directory still in place.
+  // Distinct project ids per case: a case-insensitive filesystem would fold
+  // `-r`/`-R` and `-rf`/`-Rf` onto the same sandbox directory.
+  it.each([
+    ["-r", "lower"],
+    ["-R", "upper"],
+    ["-rf", "lowerforce"],
+    ["-fr", "forcelower"],
+    ["-Rf", "upperforce"],
+    ["-fR", "forceupper"],
+    ["-rvf", "verboseforce"],
+  ])("removes a directory tree with rm %s", async (flag, id) => {
+    const projectId = `rmflags-${id}`;
+    const vfs = createVirtualFilesystemService({ projectId });
+    await vfs.initialize();
+    await vfs.writeFile("doomed/nested/file.txt", "contents");
+
+    const result = await runVfsBuiltinShell({
+      cwdUri: `vfs://${projectId}/`,
+      command: "rm",
+      args: [flag, "doomed"],
+    });
+
+    expect(result).toMatchObject({ exitCode: 0, stderr: "" });
+    await expect(vfs.readFile("doomed/nested/file.txt")).rejects.toThrow();
+  });
+
+  it("still refuses to remove a directory without a recursive flag", async () => {
+    const vfs = createVirtualFilesystemService({ projectId: "rmnonrecursive" });
+    await vfs.initialize();
+    await vfs.writeFile("kept/file.txt", "contents");
+
+    const result = await runVfsBuiltinShell({
+      cwdUri: "vfs://rmnonrecursive/",
+      command: "rm",
+      args: ["-f", "kept"],
+    });
+
+    expect(result.exitCode).toBe(1);
+    await expect(vfs.readFile("kept/file.txt")).resolves.toBe("contents");
+  });
+
+  it("still swallows a missing target under -f", async () => {
+    const vfs = createVirtualFilesystemService({ projectId: "rmmissing" });
+    await vfs.initialize();
+
+    const result = await runVfsBuiltinShell({
+      cwdUri: "vfs://rmmissing/",
+      command: "rm",
+      args: ["-f", "never-existed"],
+    });
+
+    expect(result).toMatchObject({ exitCode: 0, stderr: "" });
+  });
 });

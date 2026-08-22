@@ -144,6 +144,16 @@
   --text-2xs--line-height: 1rem;
   --text-xs-tight: var(--text-xs-tight);
   --text-xs-tight--line-height: 1rem;
+  --text-sm-tight: var(--text-sm-tight);
+  --text-sm-tight--line-height: 1.125rem;
+  /* Chat conversation body: one size for bubbles, composers, and inline edit
+     (was a 14px/15px split across surfaces). Lead is the larger first-run
+     conversational size. Both keep the body line-height comfortable for
+     multi-line replies. */
+  --text-chat-body: var(--text-chat-body);
+  --text-chat-body--line-height: 1.625;
+  --text-chat-lead: var(--text-chat-lead);
+  --text-chat-lead--line-height: 1.625;
 
   --spacing-touch: var(--min-touch-target);
 }

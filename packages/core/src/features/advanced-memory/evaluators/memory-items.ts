@@ -125,11 +125,21 @@ async function getDialogueMessageCount(
 	runtime: IAgentRuntime,
 	roomId: UUID,
 ): Promise<number> {
+	const retainedMessageCount = await runtime.countMemories({
+		roomIds: [roomId],
+		unique: false,
+		tableName: "messages",
+	});
 	const messages = await runtime.getMemories({
 		tableName: "messages",
 		roomId,
-		limit: 100,
+		limit: Math.max(1, retainedMessageCount),
 		unique: false,
+		// The dialogue predicate reads only `metadata.type` and `content.type`.
+		// This fetch is now sized by the room, so pulling vectors for every
+		// retained message would make a long room's memory cost the dominant
+		// one for a value that is just a count.
+		includeEmbedding: false,
 	});
 	return messages.filter(isDialogueMessage).length;
 }

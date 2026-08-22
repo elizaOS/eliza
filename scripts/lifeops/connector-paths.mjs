@@ -34,10 +34,7 @@ import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { delimiter, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import {
-  PROBE_FAMILIES,
-  parseSignalAccountLines,
-} from "./credential-probes.mjs";
+import { PROBE_FAMILIES } from "./credential-probes.mjs";
 
 /** Path kinds — how the credential is obtained/held, not which provider. */
 export const CONNECTOR_PATH_KINDS = [
@@ -443,84 +440,6 @@ export const CONNECTOR_PATHS = [
     availability: { type: "always" },
   }),
 
-  // --- Signal --------------------------------------------------------------------------
-  definePath({
-    id: "signal.desktop-bridge",
-    family: "signal",
-    group: "signal",
-    kind: "local-bridge",
-    label: "Signal Desktop (status only)",
-    probeId: null,
-    probeEndpoint:
-      "local install/link status only — Signal Desktop's DB is SQLCipher-encrypted and is not a credential source",
-    availability: {
-      type: "all-of",
-      specs: [
-        {
-          type: "dir-exists",
-          path: "/Applications/Signal.app",
-          reason: "Signal Desktop not installed",
-        },
-        {
-          type: "dir-exists",
-          path: "~/Library/Application Support/Signal",
-          reason: "no Signal Desktop profile directory",
-        },
-      ],
-    },
-  }),
-  definePath({
-    id: "signal.cli",
-    family: "signal",
-    group: "signal",
-    kind: "user-client",
-    label: "signal-cli / signal-cli-rest-api",
-    requiredAll: ["SIGNAL_ACCOUNT_NUMBER"],
-    requiredAny: ["SIGNAL_HTTP_URL", "SIGNAL_CLI_PATH"],
-    probeId: "signal",
-    probeEndpoint: "GET {SIGNAL_HTTP_URL}/v1/about, else signal-cli --version",
-    oneClick: {
-      type: "shell",
-      detail:
-        "signal-cli link -n eliza-hitl-dashboard — emits an sgnl://linkdevice URI to scan from the phone (Signal → Settings → Linked devices → Link new device)",
-    },
-    availability: {
-      type: "any-of",
-      specs: [
-        {
-          type: "env-present",
-          names: ["SIGNAL_HTTP_URL"],
-          reason: "no signal-cli-rest-api URL",
-        },
-        {
-          type: "all-of",
-          specs: [
-            {
-              type: "command-in-path",
-              command: "signal-cli",
-              reason: "signal-cli not in PATH",
-            },
-            {
-              type: "command-ok",
-              command: "signal-cli",
-              args: ["--version"],
-              reason: "signal-cli is installed but not runnable",
-            },
-            {
-              type: "command-output-nonempty",
-              command: "signal-cli",
-              args: ["listAccounts"],
-              outputFilter: "signal-accounts",
-              reason: "no linked Signal account",
-            },
-          ],
-        },
-      ],
-    },
-    notes:
-      "Availability executes the read-only listAccounts command: an installed-but-unrunnable binary, a listAccounts run failure, and a runnable client with no linked account (warning-only output included) remain distinct skip states.",
-  }),
-
   // --- WhatsApp -----------------------------------------------------------------------
   definePath({
     id: "whatsapp.cloud-api",
@@ -891,18 +810,12 @@ export function defaultAvailabilityCtx() {
   };
 }
 
-// Declarative specs are data, so a spec cannot carry a filter function;
-// `outputFilter` names one of these instead. The signal filter is the exact
-// parser probeSignal uses, keeping the coarse availability leaf and the deep
-// probe in agreement on what counts as a linked account (#15848).
-const COMMAND_OUTPUT_FILTERS = {
-  "signal-accounts": parseSignalAccountLines,
-};
+// Declarative specs are data, so a spec cannot carry a filter function.
+const COMMAND_OUTPUT_FILTERS = {};
 
 // A command that failed to run is a distinct skip state from one that ran and
 // printed nothing; surfacing exit code + first stderr line keeps the
-// dashboard from misdiagnosing e.g. locked signal-cli account storage as "no
-// linked Signal account".
+// dashboard from misdiagnosing a failed command as empty output.
 function commandRunFailureReason(spec, result) {
   const stderrLine =
     typeof result.stderr === "string"

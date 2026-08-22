@@ -108,6 +108,7 @@ import {
   extractCompatTextContent,
   extractOpenAiSystemAndLastUser,
   resolveCompatRoomKey,
+  scopeCompatRoomKey,
 } from "./compat-utils.ts";
 import {
   isInsufficientCreditsError,
@@ -749,7 +750,6 @@ async function rewriteDirectActionCallbackText(args: {
           error: args.content?.error,
         })}`,
       ].join("\n"),
-      maxTokens: 260,
       signal: args.abortSignal,
       providerOptions: { eliza: { thinking: "off" } },
     });
@@ -2646,11 +2646,15 @@ export async function persistConversationMemory(
   runtime: AgentRuntime,
   memory: ReturnType<typeof createMessageMemory>,
   roomHandlerLease?: RoomHandlerLease,
+  assertCurrent?: () => void,
 ): Promise<ReturnType<typeof createMessageMemory>> {
   memory.id ??= crypto.randomUUID() as UUID;
   const stampedMemory = stampAppConversationProvenance(runtime, memory);
   try {
-    const write = () => runtime.createMemory(stampedMemory, "messages");
+    const write = () => {
+      assertCurrent?.();
+      return runtime.createMemory(stampedMemory, "messages");
+    };
     await (roomHandlerLease
       ? runtime.roomHandlerQueue.runInLease(
           stampedMemory.roomId,
@@ -2658,6 +2662,7 @@ export async function persistConversationMemory(
           write,
         )
       : write());
+    assertCurrent?.();
   } catch (err) {
     if (isDuplicateMemoryError(err)) return stampedMemory;
     throw err;
@@ -2669,12 +2674,14 @@ export async function persistExactConversationMemory(
   runtime: AgentRuntime,
   memory: ReturnType<typeof createMessageMemory>,
   roomHandlerLease?: RoomHandlerLease,
+  assertCurrent?: () => void,
 ): Promise<ReturnType<typeof createMessageMemory>> {
   return (
     await persistExactConversationMemoryResult(
       runtime,
       memory,
       roomHandlerLease,
+      assertCurrent,
     )
   ).memory;
 }
@@ -2683,6 +2690,7 @@ export async function persistExactConversationMemoryResult(
   runtime: AgentRuntime,
   memory: ReturnType<typeof createMessageMemory>,
   roomHandlerLease?: RoomHandlerLease,
+  assertCurrent?: () => void,
 ): Promise<{
   created: boolean;
   memory: ReturnType<typeof createMessageMemory>;
@@ -2703,6 +2711,7 @@ export async function persistExactConversationMemoryResult(
       [stampedMemory.id as UUID],
       "messages",
     );
+    assertCurrent?.();
     return existing ?? null;
   };
   const assertExact = (
@@ -2735,7 +2744,10 @@ export async function persistExactConversationMemoryResult(
   if (existing) return { created: false, memory: assertExact(existing) };
 
   try {
-    const write = () => runtime.createMemory(stampedMemory, "messages");
+    const write = () => {
+      assertCurrent?.();
+      return runtime.createMemory(stampedMemory, "messages");
+    };
     await (roomHandlerLease
       ? runtime.roomHandlerQueue.runInLease(
           stampedMemory.roomId,
@@ -2743,6 +2755,7 @@ export async function persistExactConversationMemoryResult(
           write,
         )
       : write());
+    assertCurrent?.();
     return { created: true, memory: stampedMemory };
   } catch (cause) {
     const raced = await loadExisting();
@@ -2875,6 +2888,7 @@ export async function persistAssistantConversationMemory(
   // to reconcile optimistic and proactive-message copies.
   memoryId?: UUID,
   roomHandlerLease?: RoomHandlerLease,
+  assertCurrent?: () => void,
 ): Promise<Memory | null> {
   const persistedContent = markSyntheticChatFailureContent(
     typeof content === "string"
@@ -2917,8 +2931,18 @@ export async function persistAssistantConversationMemory(
     content: persistedContent,
   });
   return memoryId
-    ? await persistExactConversationMemory(runtime, memory, roomHandlerLease)
-    : await persistConversationMemory(runtime, memory, roomHandlerLease);
+    ? await persistExactConversationMemory(
+        runtime,
+        memory,
+        roomHandlerLease,
+        assertCurrent,
+      )
+    : await persistConversationMemory(
+        runtime,
+        memory,
+        roomHandlerLease,
+        assertCurrent,
+      );
 }
 
 /**
@@ -2939,6 +2963,7 @@ export async function persistInterruptedAssistantReceipt(
   inReplyTo: UUID | undefined,
   memoryId: UUID,
   roomHandlerLease?: RoomHandlerLease,
+  assertCurrent?: () => void,
 ): Promise<Memory> {
   const memory = createMessageMemory({
     id: memoryId,
@@ -2953,7 +2978,12 @@ export async function persistInterruptedAssistantReceipt(
       ...(inReplyTo ? { inReplyTo } : {}),
     } satisfies Content,
   });
-  return persistExactConversationMemory(runtime, memory, roomHandlerLease);
+  return persistExactConversationMemory(
+    runtime,
+    memory,
+    roomHandlerLease,
+    assertCurrent,
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -4698,7 +4728,7 @@ export async function handleChatRoutes(
       return true;
     }
 
-    const roomKey = resolveCompatRoomKey(safeBody).slice(0, 120);
+    const roomKey = scopeCompatRoomKey(resolveCompatRoomKey(safeBody));
     const wantsStream =
       safeBody.stream === true ||
       (req.headers.accept ?? "").includes("text/event-stream");
@@ -5072,7 +5102,7 @@ export async function handleChatRoutes(
       return true;
     }
 
-    const roomKey = resolveCompatRoomKey(safeBody).slice(0, 120);
+    const roomKey = scopeCompatRoomKey(resolveCompatRoomKey(safeBody));
     const wantsStream =
       safeBody.stream === true ||
       (req.headers.accept ?? "").includes("text/event-stream");
@@ -5462,7 +5492,7 @@ export async function handleChatRoutes(
         runtime,
         agentName,
         "agent-message",
-        `${agentIdParam}:${userId}`.slice(0, 120),
+        scopeCompatRoomKey(`${agentIdParam}:${userId}`),
         messagePrincipal,
       );
 

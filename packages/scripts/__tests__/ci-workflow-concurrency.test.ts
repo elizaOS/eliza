@@ -1,7 +1,6 @@
 /**
- * Pins the canonical CI event-specific concurrency contract. This deterministic
- * check protects terminal develop health without weakening stale PR or merge
- * queue cancellation and without creating an unbounded push backlog.
+ * Pins latest-tip cancellation for the current develop CI graph while manual
+ * diagnostics keep independent run-scoped identities.
  */
 
 import { describe, expect, test } from "bun:test";
@@ -29,29 +28,14 @@ describe("ci.yml concurrency contract", () => {
     );
   });
 
-  test("supersedes pull-request runs by pull-request number", () => {
-    expect(group).toContain(
-      "github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number)",
-    );
-  });
-
-  test("supersedes merge-group runs by their stable candidate ref", () => {
-    expect(group).not.toContain("github.event_name == 'merge_group'");
+  test("uses one stable develop ref group", () => {
     expect(group).toContain("|| github.ref || github.run_id");
-  });
-
-  test("lets one develop push finish while retaining only the newest pending tip", () => {
-    expect(group).toContain(
-      "github.event_name == 'push' && format('terminal-v2-{0}', github.ref)",
-    );
-    expect(group).not.toContain("format('terminal-v2-{0}', github.run_id)");
-    expect(group).not.toContain("format('terminal-v2-{0}', github.sha)");
     expect(concurrency?.queue).toBeUndefined();
   });
 
-  test("cancels only stale pull-request and merge-group work", () => {
+  test("cancels superseded develop pushes", () => {
     expect(concurrency?.["cancel-in-progress"]).toBe(
-      `\${{ github.event_name == 'pull_request' || github.event_name == 'merge_group' }}`,
+      `\${{ github.event_name == 'push' }}`,
     );
   });
 });

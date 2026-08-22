@@ -28,6 +28,8 @@ import type {
 	MessageAdapter,
 	MessageRef,
 	MessageSource,
+	ReadMessageRequest,
+	ReadMessageResult,
 	SearchMessagesFilters,
 } from "./types.ts";
 
@@ -122,6 +124,52 @@ export class TriageService {
 		const ref = this.store.getMessage(messageId);
 		if (!ref) return undefined;
 		return this.adapters.get(ref.source);
+	}
+
+	/**
+	 * Resolve and execute a provider-native body read. Availability is checked on
+	 * every page; adapters must also resolve current authorization while fetching.
+	 */
+	async readMessage(
+		runtime: IAgentRuntime,
+		source: MessageSource,
+		request: ReadMessageRequest,
+	): Promise<ReadMessageResult> {
+		const adapter = this.adapters.get(source);
+		if (!adapter) {
+			throw new ElizaError(`No message adapter registered for ${source}`, {
+				code: "MESSAGE_READ_ADAPTER_NOT_FOUND",
+				context: { source },
+			});
+		}
+		if (!adapter.isAvailable(runtime)) {
+			throw new ElizaError(`Message adapter ${source} is unavailable`, {
+				code: "MESSAGE_READ_ADAPTER_UNAVAILABLE",
+				context: { source },
+			});
+		}
+		if (!adapter.readMessage) {
+			throw new ElizaError(
+				`Message adapter ${source} cannot read message bodies`,
+				{
+					code: "MESSAGE_READ_NOT_SUPPORTED",
+					context: { source },
+				},
+			);
+		}
+		const stored = request.messageId
+			? this.store.getMessage(request.messageId)
+			: null;
+		if (stored && stored.source !== source) {
+			throw new ElizaError("Message source does not match the stored message", {
+				code: "MESSAGE_READ_SOURCE_MISMATCH",
+				context: { source, storedSource: stored.source },
+			});
+		}
+		return adapter.readMessage(runtime, {
+			...request,
+			worldId: request.worldId ?? stored?.worldId,
+		});
 	}
 
 	/**

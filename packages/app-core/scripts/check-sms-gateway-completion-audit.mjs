@@ -34,10 +34,6 @@ const supplementalEvidenceByCheck = {
   "android-transport": [
     path.join(localEvidenceRoot, "android-sms-gateway-e2e-latest.json"),
   ],
-  "bluebubbles-transport": [
-    path.join(localEvidenceRoot, "bluebubbles-outbound-validation-latest.json"),
-    path.join(localEvidenceRoot, "bluebubbles-gateway-e2e-latest.json"),
-  ],
 };
 
 function usage() {
@@ -261,42 +257,6 @@ const checks = [
       "leave this running while opening the pairing screen: bun run --cwd packages/app-core sms-gateway:watch:pair",
       "rerun: bun run --cwd packages/app-core sms-gateway:pair",
       "then verify physical SMS: bun run --cwd packages/app-core sms-gateway:verify",
-    ],
-  },
-  {
-    key: "bluebubbles-inbound",
-    label:
-      "BlueBubbles fallback bridge can receive and forward inbound events to Cloud as +14159611510",
-    command: ["node", ["./scripts/verify-bluebubbles-inbound-readiness.mjs"]],
-    pass: (result) =>
-      result.status === 0 &&
-      /gateway=\+14159611510/.test(result.output) &&
-      /inbound=pass/.test(result.output),
-    blocked: (result) =>
-      /bridge|cloud-secret|bluebubbles-server|inbound-webhook|gateway/.test(
-        result.output,
-      ),
-    blockedDetail:
-      "BlueBubbles bridge, server, cloud secret, or inbound webhook is not ready",
-    next: [
-      "rerun bridge doctor: bun run --cwd packages/app-core sms-gateway:doctor",
-    ],
-  },
-  {
-    key: "bluebubbles-transport",
-    label: "BlueBubbles fallback outbound path is real-send validated",
-    command: ["bun", ["run", "sms-gateway:validate:bluebubbles"]],
-    pass: (result) =>
-      result.status === 0 && /PASS .* validated at/.test(result.output),
-    blocked: (result) =>
-      /Refusing to send without --confirm-real-send|Shortcut outbound validation missing/.test(
-        result.output,
-      ),
-    blockedDetail:
-      "real outbound validation send has not been explicitly confirmed",
-    next: [
-      "after explicit real-send approval, run: bun run --cwd packages/app-core sms-gateway:validate:bluebubbles -- --confirm-real-send",
-      "then verify pending egress: bun run --cwd packages/app-core sms-gateway:verify:bluebubbles",
     ],
   },
 ];

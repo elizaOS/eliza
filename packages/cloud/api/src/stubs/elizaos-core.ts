@@ -1026,8 +1026,7 @@ export function sendJsonError(
 
 const CONNECTOR_SOURCE_ALIASES: Record<string, readonly string[]> = {
   discord: ["discord", "discord-local"],
-  imessage: ["imessage", "bluebubbles"],
-  signal: ["signal"],
+  imessage: ["imessage"],
   slack: ["slack"],
   sms: ["sms"],
   telegram: ["telegram", "telegram-account", "telegramaccount"],
@@ -1524,6 +1523,9 @@ export const getEntityDetails = throwingExport("getEntityDetails");
 export const splitChunks = throwingExport("splitChunks");
 export const createMessageMemory = throwingExport("createMessageMemory");
 export const executePlannedToolCall = throwingExport("executePlannedToolCall");
+export const gateDestructiveConfirmation = throwingExport(
+  "gateDestructiveConfirmation",
+);
 
 /**
  * Host-bridge setters (core `account-pool-bridge.ts`). The real

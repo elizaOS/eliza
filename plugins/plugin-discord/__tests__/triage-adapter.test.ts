@@ -138,12 +138,12 @@ describe("mapDiscordMemoryToRef", () => {
 		expect(mapDiscordMemoryToRef(memory)).toBeNull();
 	});
 
-	it("clips long bodies into the snippet", () => {
-		const long = "x".repeat(600);
+	it("preserves complete long bodies in the model-facing snippet", () => {
+		const long = `${"x".repeat(600)}tail`;
 		const ref = mapDiscordMemoryToRef(
 			discordMemory({ messageId: "1", channelId: "2", text: long }),
 		);
-		expect(ref?.snippet.length).toBeLessThanOrEqual(240);
+		expect(ref?.snippet).toBe(long);
 		expect(ref?.body).toBe(long);
 	});
 });
@@ -355,7 +355,7 @@ describe("DiscordTriageAdapter", () => {
 		).rejects.toThrow(/no cached draft/);
 	});
 
-	it("keeps surrogate pairs intact in draft preview truncation", async () => {
+	it("preserves complete long draft previews and valid surrogate pairs", async () => {
 		const service = createFakeDiscordService({
 			channels: [{ channelId: "c1" }],
 			messagesByChannel: {
@@ -366,7 +366,7 @@ describe("DiscordTriageAdapter", () => {
 		const adapter = new DiscordTriageAdapter();
 		await adapter.listMessages(runtime, {});
 
-		const longBody = `${"a".repeat(236)}🦊${"b".repeat(50)}`;
+		const longBody = `${"a".repeat(240)}🦊${"b".repeat(500)}tail`;
 		const { preview } = await adapter.createDraft(runtime, {
 			source: "discord",
 			inReplyToId: "discord:89",
@@ -375,6 +375,7 @@ describe("DiscordTriageAdapter", () => {
 		});
 
 		expect(preview.isWellFormed()).toBe(true);
-		expect(preview).toBe(`${"a".repeat(236)}...`);
+		expect(preview).toBe(longBody);
+		expect(preview.endsWith("tail")).toBe(true);
 	});
 });

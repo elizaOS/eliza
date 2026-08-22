@@ -6,9 +6,8 @@
  * composition (#10705).
  *
  * The regression: when a connector mode delegates its setup panel to a
- * *different* plugin id (`setupPanelPluginId !== plugin.id` — e.g. signal's
- * default plugin-managed mode → `connector-account-management:signal:signal`,
- * or discord's local mode → `discordlocal`), the old predicate dropped the
+ * *different* plugin id (`setupPanelPluginId !== plugin.id`, such as Discord's
+ * local mode → `discordlocal`), the old predicate dropped the
  * plugin's own config form and rendered only the panel. Both must co-render.
  *
  * `ConnectorSetupPanel` is stubbed at the module seam (it fetches accounts /
@@ -66,9 +65,9 @@ function makeParam(key: string): PluginParamDef {
 
 function makePlugin(overrides: Partial<PluginInfo>): PluginInfo {
   return {
-    id: "signal",
-    name: "Signal",
-    description: "Signal connector",
+    id: "discord",
+    name: "Discord",
+    description: "Discord connector",
     enabled: true,
     isActive: true,
     configured: false,
@@ -143,25 +142,6 @@ afterEach(() => {
 });
 
 describe("ConnectorPluginCard config/setup-panel co-rendering", () => {
-  it("mounts BOTH the config form and the delegated setup panel when the default mode's setupPanelPluginId differs from plugin.id (signal → connector-account-management)", () => {
-    const plugin = makePlugin({
-      id: "signal",
-      name: "Signal",
-      parameters: [makeParam("SIGNAL_PHONE_NUMBER")],
-    });
-
-    render(<ConnectorPluginGroups {...makeGroupProps(plugin)} />);
-
-    // The plugin's own config form must stay mounted…
-    expect(configField("signal", "SIGNAL_PHONE_NUMBER")).not.toBeNull();
-    // …alongside the companion setup panel, which is delegated to a
-    // different plugin id than the card's own.
-    const panel = screen.getByTestId("connector-setup-panel");
-    expect(panel.getAttribute("data-plugin-id")).toBe(
-      "connector-account-management:signal:signal",
-    );
-  });
-
   it("keeps the discord config form mounted when switching to the local mode, whose setup panel is delegated to discordlocal", () => {
     const plugin = makePlugin({
       id: "discord",

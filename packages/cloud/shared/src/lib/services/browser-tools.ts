@@ -1,10 +1,13 @@
-// Coordinates cloud service browser tools behavior behind route handlers.
+/** Coordinates authenticated Firecrawl browser sessions for Cloud route handlers. */
 import { cache } from "../cache/client";
+import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import { logger } from "../utils/logger";
+import { isHostedBrowserSessionOwner } from "./browser-session-ownership";
 import { usageService } from "./usage";
 
 export interface HostedBrowserAuthContext {
   apiKeyId?: string | null;
+  conversationId?: string;
   organizationId?: string;
   requestSource?: "a2a" | "api" | "mcp";
   userId?: string;
@@ -151,7 +154,7 @@ function getHostedBrowserOrganizationSessionsKey(organizationId: string): string
 }
 
 function resolveFirecrawlApiKey(): string {
-  const apiKey = process.env.FIRECRAWL_API_KEY?.trim();
+  const apiKey = getCloudAwareEnv().FIRECRAWL_API_KEY?.trim();
   if (!apiKey) {
     throw new Error("FIRECRAWL_API_KEY is not configured");
   }
@@ -159,7 +162,9 @@ function resolveFirecrawlApiKey(): string {
 }
 
 function resolveFirecrawlBaseUrl(): string {
-  return process.env.FIRECRAWL_API_URL?.trim().replace(/\/+$/, "") || DEFAULT_FIRECRAWL_API_URL;
+  return (
+    getCloudAwareEnv().FIRECRAWL_API_URL?.trim().replace(/\/+$/, "") || DEFAULT_FIRECRAWL_API_URL
+  );
 }
 
 async function firecrawlRequest<T>(pathname: string, init: RequestInit): Promise<T> {
@@ -417,10 +422,10 @@ async function assertHostedBrowserSessionAccess(
   sessionId: string,
   auth?: HostedBrowserAuthContext,
 ): Promise<HostedBrowserSessionAccess> {
-  const organizationId = requireHostedBrowserOrganizationId(auth);
+  requireHostedBrowserOrganizationId(auth);
   const access = await getStoredHostedBrowserSessionAccess(sessionId);
 
-  if (!access || access.organizationId !== organizationId) {
+  if (!access || !isHostedBrowserSessionOwner(access, auth)) {
     throw new Error("Hosted browser session not found");
   }
 
@@ -723,7 +728,8 @@ export async function listHostedBrowserSessions(
         const { tab } = await loadAuthorizedHostedBrowserTab(sessionId, auth);
         return tab;
       } catch {
-        await removeHostedBrowserSessionAccess(sessionId, organizationId);
+        // A same-organization session may belong to another user. Do not delete
+        // its access record merely because it is intentionally invisible here.
         return null;
       }
     }),

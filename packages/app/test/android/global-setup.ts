@@ -27,6 +27,8 @@ const HEALTH_POLL_MS = Number(
 const REQUIRE_AGENT = process.env.ELIZA_ANDROID_REQUIRE_AGENT !== "0";
 const BACKEND = (process.env.ELIZA_ANDROID_BACKEND ?? "local").toLowerCase();
 const CLEAR_APP_DATA = process.env.ELIZA_ANDROID_CLEAR_APP_DATA === "1";
+const PLAY_CLOUD_ONBOARDING =
+  process.env.ELIZA_DEVICE_CLOUD_ONBOARDING_LIVE === "1";
 const HOST_AGENT_PORT =
   BACKEND === "host"
     ? parsePort(
@@ -100,10 +102,17 @@ export default async function globalSetup() {
     adbTry(adb, ["-s", serial, "shell", "pm", "clear", APP_ID]);
   }
 
-  // Pre-grant the runtime permissions the app requests on launch, so a system
-  // GrantPermissionsActivity doesn't cover the WebView and stall route render.
-  for (const perm of ANDROID_E2E_RUNTIME_PERMISSIONS) {
-    adbTry(adb, ["-s", serial, "shell", "pm", "grant", APP_ID, perm]);
+  // Local-runtime device suites exercise already-authorized chat/voice paths.
+  // The Google Play onboarding lane must instead prove a clean install requests
+  // no dangerous permission before the user invokes the corresponding feature.
+  if (!PLAY_CLOUD_ONBOARDING) {
+    for (const perm of ANDROID_E2E_RUNTIME_PERMISSIONS) {
+      adbTry(adb, ["-s", serial, "shell", "pm", "grant", APP_ID, perm]);
+    }
+  } else {
+    console.log(
+      "[android-e2e] Play Cloud onboarding: leaving runtime permissions ungranted",
+    );
   }
 
   // Host backend: preserve the device's canonical loopback API while routing

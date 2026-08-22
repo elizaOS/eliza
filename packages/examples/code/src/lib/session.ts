@@ -111,8 +111,12 @@ function sanitizeKind(kind: unknown): MessageKind | undefined {
   return kind === "chat" || kind === "tool" ? kind : undefined;
 }
 
+function sessionPersistenceExplicitlyDisabled(): boolean {
+  return process.env.ELIZA_CODE_DISABLE_SESSION_PERSISTENCE === "1";
+}
+
 function shouldPersistToDisk(): boolean {
-  if (process.env.ELIZA_CODE_DISABLE_SESSION_PERSISTENCE === "1") return false;
+  if (sessionPersistenceExplicitlyDisabled()) return false;
   if (process.env.BUN_TEST === "1") return false;
   if (process.env.NODE_ENV === "test") return false;
   return true;
@@ -250,6 +254,12 @@ export async function saveSession(state: SessionState): Promise<void> {
  * Load session state from disk
  */
 export async function loadSession(): Promise<SessionState | null> {
+  // Symmetric with the save guard for the EXPLICIT opt-out only: a run that
+  // asked for no persistence must not absorb a host's real session file
+  // either (it replaced the run's identity, live 2026-08-20). The test-env
+  // limbs stay save-only — session tests legitimately load from an explicit
+  // test-provided path under BUN_TEST.
+  if (sessionPersistenceExplicitlyDisabled()) return null;
   try {
     const sessionPath = getSessionPath();
     const content = await fs.readFile(sessionPath, "utf-8");

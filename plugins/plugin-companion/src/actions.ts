@@ -25,12 +25,18 @@ function failureText(error: unknown): string {
 }
 
 /**
- * Extracts the requested mood: an explicit `mood` option from the planner
- * wins; otherwise the last quoted or trailing word of the message text is NOT
+ * Extracts the requested mood from the runtime's validated `parameters`
+ * envelope. The last quoted or trailing word of the message text is NOT
  * guessed — a missing parameter is an explicit failure, not a default mood.
  */
 function requestedMood(options?: Record<string, unknown>): string | undefined {
-  const mood = options?.mood;
+  const parameters = options?.parameters;
+  const mood =
+    parameters !== null &&
+    typeof parameters === "object" &&
+    !Array.isArray(parameters)
+      ? (parameters as Record<string, unknown>).mood
+      : undefined;
   return typeof mood === "string" && mood.trim().length > 0
     ? mood.trim()
     : undefined;
@@ -42,6 +48,17 @@ export const setCompanionMoodAction: Action = {
     "Set the companion device's displayed mood. Requires the `mood` parameter; the device confirms or rejects the mood.",
   descriptionCompressed: "Set the companion device mood.",
   tags: ["capability:send"],
+  parameters: [
+    {
+      name: "mood",
+      description:
+        "Mood identifier accepted by the companion firmware, such as happy, sleepy, or curious.",
+      descriptionCompressed: "Firmware mood identifier.",
+      required: true,
+      schema: { type: "string", minLength: 1, pattern: "\\S" },
+      examples: ["happy", "sleepy", "curious"],
+    },
+  ],
   validate: async (runtime) => companionService(runtime) !== null,
   handler: async (
     runtime,

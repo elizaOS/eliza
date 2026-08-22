@@ -10,10 +10,9 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import {
-  extractMethods,
+  canonicalRouteMethods,
   findCloudApiRoot,
   isGeneratedPublicRoute,
-  routePathFromSegments,
   scopeForRoute,
   walkRoutes,
 } from "./route-discovery.mjs";
@@ -165,14 +164,21 @@ const routePairs = [];
 
 for (const routeFile of routeFiles) {
   const source = await readFile(routeFile.fullPath, "utf8");
-  const route = routePathFromSegments(routeFile.relativeSegments);
-  const file = path.relative(cloudRoot, routeFile.fullPath);
-  for (const method of await extractMethods(
+  // canonicalRouteMethods is the same canonicalization generate-public-routes
+  // applies before writing src/public-routes.ts, so the audit compares the
+  // generated keys against the identical canonical route set (storage
+  // catch-all remap, synthesized HEAD, zero-method skip) instead of flagging
+  // the catch-all as missing while its `/_` twins read as orphans.
+  const canonical = await canonicalRouteMethods(
     source,
     routeFile.fullPath,
     cloudRoot,
-  )) {
-    if (method === "OPTIONS" || method === "HEAD") continue;
+    routeFile.relativeSegments,
+  );
+  if (!canonical) continue;
+  const { route, methods } = canonical;
+  const file = path.relative(cloudRoot, routeFile.fullPath);
+  for (const method of methods) {
     routePairs.push({ method, route, file, scope: scopeForRoute(route) });
   }
 }

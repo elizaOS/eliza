@@ -33,7 +33,10 @@ import deviceFilesystemPlugin from "@elizaos/plugin-native-filesystem";
 import todosPlugin from "@elizaos/plugin-todos";
 import videoPlugin from "@elizaos/plugin-video";
 import workflowPlugin from "@elizaos/plugin-workflow";
-import type { ScenarioTurn } from "@elizaos/scenario-runner/schema";
+import type {
+  ScenarioDefinition,
+  ScenarioTurn,
+} from "@elizaos/scenario-runner/schema";
 import { describe, expect, it } from "vitest";
 import mcpPlugin from "../../../../plugins/plugin-mcp/src/index.ts";
 import { loadAllScenarios, loadScenarioMetadataFile } from "../loader";
@@ -71,11 +74,14 @@ const CORE_ACTION_SURFACE: Record<string, readonly string[]> = {
     "VIEWS",
   ],
   "@elizaos/plugin-coding-tools": [
+    "EDIT",
     "FILE",
+    "READ",
     "SHELL",
     "WEB_FETCH",
     "WEB_SEARCH",
     "WORKTREE",
+    "WRITE",
   ],
   "@elizaos/plugin-commands": [
     "ACCOUNTS_COMMAND",
@@ -192,6 +198,11 @@ const KNOWN_UNCOVERED: readonly string[] = [
   // current runtime action surface without registering them as top-level actions.
   "CLOSE_ALL_VIEWS",
   "CLOSE_VIEW",
+  // Direct coding-tools file aliases are registered alongside FILE but do not
+  // yet have their own strict keyless scenario turns.
+  "EDIT",
+  "READ",
+  "WRITE",
   // Coding-tools web actions are unit-covered but do not yet have a strict,
   // network-free scenario fixture. Keep them visible in the no-growth ledger.
   "WEB_FETCH",
@@ -1015,9 +1026,9 @@ async function scenarioSourceById(id: string): Promise<string | null> {
   return null;
 }
 
-async function loadedScenarioById(id: string): Promise<{
-  turns: readonly ScenarioTurn[];
-} | null> {
+async function loadedScenarioById(
+  id: string,
+): Promise<ScenarioDefinition | null> {
   const loaded = await loadAllScenarios(scenarioDir);
   return loaded.find((entry) => entry.scenario.id === id)?.scenario ?? null;
 }
@@ -1265,13 +1276,35 @@ describe("deterministic action coverage", () => {
           `${id}: expected at least ${spec.minMessageTurns} message turns, saw ${messageTurns}`,
         );
       }
-      if (!/scenarioModelFixtures\?\.register\(/.test(fixtureSource)) {
+      const authoredFixtures =
+        scenario.modelFixtures?.mode === "fixtures"
+          ? scenario.modelFixtures.fixtures
+          : [];
+      const hasAuthoredModelType = (
+        modelType: "RESPONSE_HANDLER" | "ACTION_PLANNER",
+      ): boolean =>
+        authoredFixtures.some((fixture) => {
+          const declared = fixture.match.modelType;
+          return Array.isArray(declared)
+            ? declared.some((candidate) => candidate === modelType)
+            : declared === modelType;
+        });
+      if (
+        authoredFixtures.length === 0 &&
+        !/scenarioModelFixtures\?\.register\(/.test(fixtureSource)
+      ) {
         problems.push(`${id}: no scenarioModelFixtures.register call`);
       }
-      if (!fixtureSource.includes("ModelType.RESPONSE_HANDLER")) {
+      if (
+        !hasAuthoredModelType("RESPONSE_HANDLER") &&
+        !fixtureSource.includes("ModelType.RESPONSE_HANDLER")
+      ) {
         problems.push(`${id}: no RESPONSE_HANDLER fixture`);
       }
-      if (!fixtureSource.includes("ModelType.ACTION_PLANNER")) {
+      if (
+        !hasAuthoredModelType("ACTION_PLANNER") &&
+        !fixtureSource.includes("ModelType.ACTION_PLANNER")
+      ) {
         problems.push(`${id}: no ACTION_PLANNER fixture`);
       }
       for (const actionName of spec.actionNames) {

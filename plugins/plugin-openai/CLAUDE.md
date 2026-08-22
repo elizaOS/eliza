@@ -82,7 +82,7 @@ All settings are read via `getSetting(runtime, key)` (runtime config first, then
 
 | Var | Required | Default | Purpose |
 |---|---|---|---|
-| `OPENAI_API_KEY` | one-of | — | Auth for all OpenAI endpoints |
+| `OPENAI_API_KEY` | no | — | Direct auth for OpenAI endpoints; unnecessary for authenticated proxy mode or another compatible-provider key |
 | `CEREBRAS_API_KEY` | one-of | — | Auth when using Cerebras endpoint |
 | `EVOLINK_API_KEY` | one-of | — | Auth when using EvoLink endpoint |
 | `OPENAI_BASE_URL` | no | `https://api.openai.com/v1` | Override API endpoint |
@@ -121,7 +121,7 @@ All settings are read via `getSetting(runtime, key)` (runtime config first, then
 | `EVOLINK_BASE_URL` | no | `https://direct.evolink.ai/v1` | EvoLink API base |
 | `EVOLINK_MODEL` | no | `gpt-5.2` | Override model name in EvoLink mode |
 
-*Either `OPENAI_API_KEY`, `CEREBRAS_API_KEY`, or `EVOLINK_API_KEY` is required; the plugin will not auto-enable without one.
+*The plugin auto-enables when `OPENAI_API_KEY`, `CEREBRAS_API_KEY`, or `EVOLINK_API_KEY` is present. A manually enabled authenticated proxy can operate without any local provider key; direct provider calls still fail explicitly when their required credential is unavailable.
 
 ## How to extend
 

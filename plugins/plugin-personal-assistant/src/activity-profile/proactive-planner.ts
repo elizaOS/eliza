@@ -6,7 +6,7 @@
  * ProactiveAction[] describing what to send, when, and where.
  */
 
-import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
+import { toWellFormedUnicode } from "@elizaos/core";
 import { getLocalDateKey, getZonedDateParts } from "../lifeops/time.js";
 import { resolveEffectiveDayKey, wasActiveToday } from "./analyzer.js";
 import type {
@@ -785,7 +785,6 @@ function appendInboxDigestContext(
 
   if (inboxDigest.unreadCount > 0) {
     const channelSummary = inboxDigest.channelCounts
-      .slice(0, 3)
       .map((entry) => `${entry.channel} ${entry.unreadCount}`)
       .join(", ");
     contextParts.push(
@@ -796,7 +795,6 @@ function appendInboxDigestContext(
   }
 
   const topHighlights = inboxDigest.highlights
-    .slice(0, 2)
     .map((highlight) => formatInboxHighlight(highlight))
     .filter((highlight) => highlight.length > 0);
   if (topHighlights.length > 0) {
@@ -822,10 +820,7 @@ function summarizeSnippet(value: string): string | null {
   if (wellFormed.length === 0) {
     return null;
   }
-  if (wellFormed.length <= 72) {
-    return wellFormed;
-  }
-  return `${truncateWellFormed(wellFormed, 69).trimEnd()}...`;
+  return wellFormed;
 }
 
 function isBusyDay(

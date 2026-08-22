@@ -434,7 +434,6 @@
         "@elizaos/plugin-imessage",
         "@elizaos/plugin-mcp",
         "@elizaos/plugin-notes",
-        "@elizaos/plugin-signal",
         "@elizaos/plugin-whatsapp",
         "@elizaos/plugin-workflow",
         "node:sqlite",

@@ -8,6 +8,8 @@
  * silently trimmed from the head. Backs the PtyConsoleDrawer /
  * PtyConsoleSidePanel wrappers and fills the `@elizaos/ui` PtyConsoleBase slot.
  */
+
+import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { client } from "@elizaos/ui/api";
 import type { CodingAgentSession } from "@elizaos/ui/api/client-types-cloud";
 import { Button } from "@elizaos/ui/components/ui/button";
@@ -27,7 +29,7 @@ const MAX_BUFFER_CHARS = 200_000;
 export interface PtyConsoleBaseProps {
   activeSessionId: string;
   sessions: CodingAgentSession[];
-  onClose: () => void;
+  onClose?: () => void;
   variant: "drawer" | "side-panel" | "full";
 }
 
@@ -101,6 +103,44 @@ export function PtyConsoleBase({
   const stopSession = useCallback(() => {
     void client.stopCodingAgent(activeSessionId);
   }, [activeSessionId]);
+  const { ref: interruptRef, agentProps: interruptAgentProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: "cockpit-terminal-interrupt",
+      role: "button",
+      label: "Interrupt terminal process",
+      group: "cockpit-terminal-controls",
+      description: "Send Ctrl-C to the active terminal session",
+      onActivate: () => sendInput("\u0003"),
+    });
+  const { ref: stopRef, agentProps: stopAgentProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: "cockpit-terminal-stop",
+      role: "button",
+      label: "Stop terminal session",
+      group: "cockpit-terminal-controls",
+      description: "Stop the active coding-agent terminal session",
+      onActivate: stopSession,
+    });
+  const { ref: inputRef, agentProps: inputAgentProps } =
+    useAgentElement<HTMLInputElement>({
+      id: "cockpit-terminal-input",
+      role: "text-input",
+      label: "Terminal input",
+      group: "cockpit-terminal-controls",
+      description: "Enter a line to send to the active terminal session",
+      getValue: () => input,
+      onFill: setInput,
+    });
+  const { ref: sendRef, agentProps: sendAgentProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: "cockpit-terminal-send",
+      role: "button",
+      label: "Send terminal input",
+      group: "cockpit-terminal-controls",
+      description: "Send the prepared line to the active terminal session",
+      status: input.length > 0 ? "ready" : "empty",
+      onActivate: sendLine,
+    });
 
   return (
     <section
@@ -119,32 +159,28 @@ export function PtyConsoleBase({
           </div>
         </div>
         <Button
+          ref={interruptRef}
           variant="ghost"
           size="icon"
           onClick={() => sendInput("\u0003")}
           title="Interrupt"
           aria-label="Interrupt terminal"
+          {...interruptAgentProps}
         >
           <Square className="h-4 w-4" aria-hidden />
         </Button>
         <Button
+          ref={stopRef}
           variant="ghost"
           size="icon"
           onClick={stopSession}
           title="Stop session"
           aria-label="Stop terminal session"
+          {...stopAgentProps}
         >
           <Square className="h-4 w-4 fill-current" aria-hidden />
         </Button>
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={onClose}
-          title="Close"
-          aria-label="Close terminal"
-        >
-          <X className="h-4 w-4" aria-hidden />
-        </Button>
+        {onClose ? <PtyCloseButton onClose={onClose} /> : null}
       </header>
       <div
         ref={scrollerRef}
@@ -156,6 +192,7 @@ export function PtyConsoleBase({
       </div>
       <footer className="flex h-11 shrink-0 items-center gap-2 border-t border-border/60 px-2">
         <Input
+          ref={inputRef}
           value={input}
           onChange={(event) => setInput(event.currentTarget.value)}
           onKeyDown={onInputKeyDown}
@@ -163,18 +200,45 @@ export function PtyConsoleBase({
           aria-label="Terminal input"
           autoComplete="off"
           spellCheck={false}
+          {...inputAgentProps}
         />
         <Button
+          ref={sendRef}
           variant="ghost"
           size="icon"
           onClick={sendLine}
           title="Send"
           aria-label="Send terminal input"
+          {...sendAgentProps}
         >
           <Send className="h-4 w-4" aria-hidden />
         </Button>
       </footer>
     </section>
+  );
+}
+
+function PtyCloseButton({ onClose }: { onClose: () => void }) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: "cockpit-terminal-panel-close",
+    role: "button",
+    label: "Close terminal panel",
+    group: "cockpit-terminal-controls",
+    description: "Close the terminal panel",
+    onActivate: onClose,
+  });
+  return (
+    <Button
+      ref={ref}
+      variant="ghost"
+      size="icon"
+      onClick={onClose}
+      title="Close"
+      aria-label="Close terminal"
+      {...agentProps}
+    >
+      <X className="h-4 w-4" aria-hidden />
+    </Button>
   );
 }
 

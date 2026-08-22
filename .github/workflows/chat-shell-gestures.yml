@@ -30,20 +30,11 @@ name: Chat shell gestures
 # and stub @elizaos/core, so no core build is needed; the render-parity vitest
 # imports the real @elizaos/core, so the shared i18n data is generated first.
 on:
-  push:
-    branches: [develop]
-    paths:
-      - ".github/workflows/chat-shell-gestures.yml"
-      - "package.json"
-      - "bun.lock"
-      - "packages/ui/**"
-      - "packages/shared/**"
-      - "packages/core/src/i18n/**"
-      - "packages/app/test/chat-gesture-coverage.test.ts"
-      - "packages/app/docs/CHAT_GESTURE_COVERAGE.md"
+  workflow_call:
   workflow_dispatch:
 
-# All develop pushes share a stable group so newer commits supersede stale
+# Develop Full owns latest-tip cancellation; standalone dispatches retain their
+# own stable ref group.
 # work instead of accumulating behind the runner fleet.
 concurrency:
   group: chat-shell-gestures-${{ github.ref }}

@@ -48,6 +48,7 @@ let preparedDesktopLogin: {
   baseKey: string;
   preparedAt: number;
   request: Promise<DirectCloudLoginSession>;
+  result: DirectCloudLoginSession | null;
 } | null = null;
 
 function cloudBaseKey(cloudApiBase: string): string {
@@ -88,13 +89,18 @@ export function prepareDesktopCloudLoginSession(
     baseKey: cloudBaseKey(cloudApiBase),
     preparedAt: Date.now(),
     request,
+    result: null,
   };
 
-  // A failed speculative request must not poison the real click. Clear it so
-  // handleCloudLogin starts a fresh request when the user acts.
+  // Only a completed successful warm-up is safe for the deliberate click to
+  // consume. A request started before the desktop RPC bridge is ready can stay
+  // pending indefinitely, so the click must start a fresh request in that case.
   void request.then(
     (result) => {
-      if (!result.ok && preparedDesktopLogin?.request === request) {
+      if (preparedDesktopLogin?.request !== request) return;
+      if (result.ok) {
+        preparedDesktopLogin.result = result;
+      } else {
         preparedDesktopLogin = null;
       }
     },
@@ -107,16 +113,19 @@ export function prepareDesktopCloudLoginSession(
   return request;
 }
 
-/** Consume a fresh prepared session exactly once for the matching Cloud base. */
+/** Consume a fresh, completed session exactly once for the matching Cloud base. */
 export function takePreparedDesktopCloudLoginSession(
   cloudApiBase: string,
 ): Promise<DirectCloudLoginSession> | null {
   const prepared = preparedDesktopLogin;
   preparedDesktopLogin = null;
-  if (!prepared || !isPreparedDesktopLoginFresh(prepared, cloudApiBase)) {
+  if (
+    !prepared?.result ||
+    !isPreparedDesktopLoginFresh(prepared, cloudApiBase)
+  ) {
     return null;
   }
-  return prepared.request;
+  return Promise.resolve(prepared.result);
 }
 
 /** Test isolation for the module-level warm-session slot. */

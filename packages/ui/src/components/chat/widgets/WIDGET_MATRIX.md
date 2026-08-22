@@ -61,6 +61,7 @@ affordances.
 | **Checklist** | `[CHECKLIST]\n{json}\n[/CHECKLIST]` | any agent emitting a standalone todo list (#13536) | `message-checklist-parser.ts` | `task-pipeline.tsx` `ChecklistWidget` wrapping `PlanChecklist` in `ChatWidgetShell` | none (display-only; re-emit to mutate in place) | both | wired + verified |
 | **Maps card** | `[MAPSCARD]\n{json}\n[/MAPSCARD]` | `MAPS` / promoted `MAPS_*` actions (`plugins/plugin-maps/src/card.ts`) | `message-maps-parser.ts` | `maps-card.tsx` `MapsCardWidget` (place / places / route / handoff / locate kinds) | `sendAction` (directions chips, precise-location coordinate reply); handoff deep links restricted to `geo:` / Apple Maps / OpenStreetMap | both | wired + verified |
 | **Background** | `[BACKGROUND]` (bare marker) | `BACKGROUND` op=`pick` -> `plugin-app-control/src/actions/background.ts` | `message-background-parser.ts` | `background-widget.tsx` `BackgroundWidget` (`BackgroundSettingsControls` filmstrip in `ChatWidgetShell`) | none (picks drive the persisted `useBackgroundConfig` directly, applied globally) | both | wired + verified |
+| **Connector card** | `[CONNECTOR:<pluginId>]` (bare marker) | model-taught (`uiWidgets` guide) on connect-a-service turns | `message-connector-parser.ts` | `connector-card.tsx` `ConnectorCardWidget` (brand icon + description + Authorize / Add token CTA; self-contained state like `InlinePluginConfig`) | none (drives `startConnectorAccountOAuth` / `updateSecrets` + `updatePlugin` through the typed client directly) | both | wired + verified |
 
 (1) The Task widget is registered by `plugin-task-coordinator` (`registerTaskWidget()`), **not** auto-loaded in `inline-builtins`. It renders on both surfaces only when the orchestrator UI is loaded, by design (`MessageContent` knows nothing about tasks).
 
@@ -132,9 +133,7 @@ the inbox.
 |---|---|---|---|---|---|
 | `agent-orchestrator.activity` | chat-sidebar | `useActivityEvents` <- WS `pty-session-event` / `proactive-message` / `agent_event` | `agent-orchestrator.tsx` `OrchestratorActivityWidget` | TasksEventsPanel | wired |
 | `agent-orchestrator.apps` | chat-sidebar | poll `listAppRuns()` 5s | `agent-orchestrator.tsx` `AppRunsWidget` | TasksEventsPanel | wired |
-| `agent-orchestrator.tasks` | chat-sidebar | initial `GET /api/orchestrator/widgets` + live `/api/orchestrator/widgets/stream` snapshots | `orchestrator-task-widget.tsx` | TasksEventsPanel | wired |
-| `agent-orchestrator.accounts` | chat-sidebar | poll `listAccounts()`/`getOrchestratorAccounts()`/`getOrchestratorRooms()` 15s | `agent-orchestrator-accounts-view.tsx` | TasksEventsPanel | wired |
-| `agent-orchestrator.rooms` | chat-sidebar | poll `getOrchestratorRooms()` 15s | `agent-orchestrator.tsx` `OrchestratorRoomWidget` | TasksEventsPanel | wired |
+| `agent-orchestrator.accounts` | chat-sidebar | poll `listAccounts()`/`getOrchestratorAccounts()`/`getOrchestratorRooms()` 15s | `agent-orchestrator.tsx` `OrchestratorAccountsWidget` + `agent-orchestrator-accounts-view.tsx` | TasksEventsPanel | wired |
 | `browser.status` | chat-sidebar | browser-workspace status | `browser-status.tsx` | TasksEventsPanel | wired |
 | `music-player.stream` | chat-sidebar | music-player state | `music-player.tsx` | TasksEventsPanel | wired |
 | `todo.items` | home | todo store + goals store (one at-risk goal row) | `todo.tsx` | ViewCatalog | wired |
@@ -151,7 +150,7 @@ home because its at-risk row is rendered inside `todo.items`.
 | Slot | Host mounted? | Widgets registered? | Verdict |
 |---|---|---|---|
 | `home` | yes, HomeScreen | yes, curated ≤5 residents (tutorial launcher removed) | active |
-| `chat-sidebar` | yes, TasksEventsPanel | yes, 7 | active |
+| `chat-sidebar` | yes, TasksEventsPanel | yes, 5 | active |
 | `character` | yes, CharacterHubView | yes, 1 | active |
 | `nav-page` | no WidgetHost mount | no component widgets | active app-navigation contract |
 

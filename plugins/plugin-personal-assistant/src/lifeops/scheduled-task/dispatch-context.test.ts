@@ -99,7 +99,7 @@ function makeRuntime(): IAgentRuntime {
                   updatedAt: "2026-01-01T00:00:00.000Z",
                 },
               },
-              state: { lastInteractionPlatform: "signal" },
+              state: { lastInteractionPlatform: "whatsapp" },
               tags: [],
               visibility: "owner_only",
               createdAt: "2026-01-01T00:00:00.000Z",
@@ -196,7 +196,7 @@ describe("resolveScheduledTaskDispatchContext", () => {
       {
         entityId: "pat",
         preferredName: "Pat",
-        lastInteractionPlatform: "signal",
+        lastInteractionPlatform: "whatsapp",
       },
     ]);
     expect(context?.relationships).toEqual([

@@ -168,19 +168,18 @@ describe("steward credentials load (ELIZA_STATE_DIR)", () => {
     );
   }
 
-  it("reads persisted credentials from a branded MILADY_STATE_DIR", async () => {
+  it("honors a branded MILADY_STATE_DIR while failing closed without protected storage", async () => {
     const dir = makeTempDir();
     writeCredentials(dir);
     process.env.MILADY_STATE_DIR = dir;
 
-    const creds = await loadStewardCredentials({
-      secureStore: unavailableSecureStore,
-    });
-
-    expect(creds).not.toBeNull();
-    expect(creds?.apiUrl).toBe("https://steward.milady.test");
-    expect(creds?.tenantId).toBe("tenant-milady");
-    expect(creds?.agentId).toBe("agent-milady");
+    await expect(
+      loadStewardCredentials({
+        secureStore: unavailableSecureStore,
+      }),
+    ).rejects.toThrow(
+      "platform secure store is unavailable; plaintext Steward credentials were retained for recovery",
+    );
     expect(process.env.ELIZA_STATE_DIR).toBeUndefined();
   });
 

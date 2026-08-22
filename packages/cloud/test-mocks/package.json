@@ -9,7 +9,8 @@
     "./hetzner": "./src/hetzner/index.ts",
     "./control-plane": "./src/control-plane/index.ts",
     "./steward": "./src/steward/index.ts",
-    "./provider-contract": "./src/provider-contract/index.ts"
+    "./provider-contract": "./src/provider-contract/index.ts",
+    "./synthetic-environment": "./src/synthetic-environment/index.ts"
   },
   "bin": {
     "hetzner-mock": "./bin/hetzner-mock.ts",

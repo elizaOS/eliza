@@ -348,7 +348,7 @@ export function ChatVoiceStatusBar({
 
       <span
         className={cn(
-          "inline-flex items-center gap-1 rounded-sm border px-2 py-0.5 text-[10px] font-medium",
+          "inline-flex items-center gap-1 rounded-sm border px-2 py-0.5 text-2xs font-medium",
           TONE_CLASS[tone],
         )}
         data-testid="chat-voice-latency-badge"
@@ -364,7 +364,9 @@ export function ChatVoiceStatusBar({
       >
         {formatLatency(primaryLatency)}
         {cached ? (
-          <span className="text-[9px] uppercase opacity-70">cached</span>
+          <span className="text-3xs uppercase tracking-wider opacity-70">
+            cached
+          </span>
         ) : null}
       </span>
 

@@ -94,15 +94,15 @@ All settings are read via `runtime.getSetting(key)` first, then `process.env[key
 | `ANTHROPIC_BASE_URL` | No | `https://api.anthropic.com/v1` | Node API base URL |
 | `ANTHROPIC_BROWSER_BASE_URL` | No | — | Browser proxy base URL (no API key in browser) |
 | `ANTHROPIC_EXPERIMENTAL_TELEMETRY` | No | `false` | Enable Vercel AI SDK telemetry |
-| `ANTHROPIC_COT_BUDGET` | No | `0` | Chain-of-thought token budget (both sizes) |
-| `ANTHROPIC_COT_BUDGET_SMALL` | No | — | CoT budget for small-size models |
-| `ANTHROPIC_COT_BUDGET_LARGE` | No | — | CoT budget for large-size models |
+| `ANTHROPIC_COT_BUDGET` | No | `0` | Exact non-negative safe decimal integer; `0` disables chain-of-thought for both sizes. Invalid explicit values fail before dispatch. |
+| `ANTHROPIC_COT_BUDGET_SMALL` | No | — | Exact non-negative safe decimal integer for small-size models; invalid explicit values fail before dispatch. |
+| `ANTHROPIC_COT_BUDGET_LARGE` | No | — | Exact non-negative safe decimal integer for large-size models; invalid explicit values fail before dispatch. |
 | `ANTHROPIC_EFFORT` | No | — | Reasoning effort (`low`\|`medium`\|`high`\|`xhigh`\|`max`) sent as adaptive thinking + `output_config.effort`; wins over the CoT budget. xhigh/max clamp to high below opus 4.7/fable-5; haiku ignores it (model rejects the parameter) |
 | `ANTHROPIC_EFFORT_SMALL` | No | — | Effort for small-size models (what `POST /api/models/config` persists) |
 | `ANTHROPIC_EFFORT_LARGE` | No | — | Effort for large-size models |
 | `ANTHROPIC_PROMPT_CACHE_TTL` | No | `5m` | Prompt cache TTL: `"5m"` or `"1h"` |
 | `ANTHROPIC_TEMPERATURE_LOCKED_MODELS` | No | — | Comma-separated model ids that only accept `temperature=1`, applied on top of the built-in `opus-4` name check |
-| `ANTHROPIC_MAX_OUTPUT_TOKENS` | No | — | Output-token cap override: a bare number and/or comma-separated `model-id:tokens` pairs; unlisted models keep the built-in caps |
+| `ANTHROPIC_MAX_OUTPUT_TOKENS` | No | — | Positive safe decimal integer, or comma-separated `model-id:tokens` pairs. Every entry is validated before any is selected, so a malformed entry fails before dispatch regardless of its position in the list. The first entry matching the requested model wins, the last bare number is the fallback, and unlisted models keep built-in caps. |
 | `CLAUDE_CODE_OAUTH_TOKEN` / `ANTHROPIC_OAUTH_TOKEN` | No | — | OAuth bearer token for `ANTHROPIC_AUTH_MODE=oauth` |
 | `ANTHROPIC_SUBSCRIPTION_ACCOUNT_ID` | No | `default` | Account ID for app-managed subscription credentials |
 | `CLAUDE_CONFIG_DIR` | No | `~/.claude` | Override credential store directory (macOS keychain also checked) |

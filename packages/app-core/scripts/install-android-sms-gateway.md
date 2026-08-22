@@ -129,7 +129,6 @@ outbound reply being sent and persisted.
 Strict queued-reply verification for the BlueBubbles path:
 
 ```sh
-node packages/app-core/scripts/verify-bluebubbles-gateway-e2e.mjs
 ```
 
 This command checks `http://127.0.0.1:8795/doctor` first and exits before

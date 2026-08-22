@@ -1,6 +1,8 @@
 /**
- * Runtime registry of app-shell nav pages: registerAppShellPage / listAppShellPages.
- * Plugins and the host contribute nav tabs; the shell renders the snapshot.
+ * Owns app-shell page registration and the generated in-process agent-bridge
+ * inventory shared with overlay-app renderers. Plugins contribute metadata;
+ * the shell derives stable bridge owners from the live registry snapshots and
+ * rejects ambiguous handler ids before mounting either surface family.
  */
 import type {
   AppShellBackgroundPolicy,
@@ -8,6 +10,11 @@ import type {
   ViewHeaderPolicy,
   ViewKind,
 } from "@elizaos/core";
+import {
+  getAllOverlayApps,
+  type OverlayApp,
+  packageNameToAppRouteSlug,
+} from "@elizaos/shared";
 import type { ComponentType } from "react";
 import { getUiRegistryStore } from "./registry-host";
 
@@ -177,6 +184,128 @@ export function subscribeAppShellPages(listener: () => void): () => void {
 
 export function getAppShellPageRegistrySnapshot(): number {
   return getRegistryStore().version;
+}
+
+export type RegisteredAgentSurfaceKind = "app-shell" | "overlay";
+
+export interface RegisteredAgentSurfaceDescriptor {
+  kind: RegisteredAgentSurfaceKind;
+  viewId: string;
+  ownerId: string;
+  path: string;
+}
+
+function requireStableAgentViewId(
+  value: string,
+  kind: RegisteredAgentSurfaceKind,
+  ownerId: string,
+): string {
+  const viewId = value.trim();
+  if (viewId.length === 0) {
+    throw new Error(
+      `Registered ${kind} surface "${ownerId}" resolved an empty agent view id`,
+    );
+  }
+  return viewId;
+}
+
+function overlayAgentViewId(appName: string): string {
+  const packageSlug = packageNameToAppRouteSlug(appName);
+  if (packageSlug) return packageSlug;
+  return appName
+    .replace(/^@[^/]+\//, "")
+    .replace(/^(app|plugin)-/, "")
+    .replace(/[^a-z0-9-]/gi, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "")
+    .toLowerCase();
+}
+
+/** The bridge descriptor generated for one app-shell page registration. */
+export function appShellAgentSurfaceDescriptor(
+  page: AppShellPageRegistration,
+): RegisteredAgentSurfaceDescriptor {
+  return {
+    kind: "app-shell",
+    viewId: requireStableAgentViewId(page.id, "app-shell", page.pluginId),
+    ownerId: page.pluginId,
+    path: page.path,
+  };
+}
+
+/** The bridge descriptor generated for one overlay-app registration. */
+export function overlayAgentSurfaceDescriptor(
+  app: OverlayApp,
+): RegisteredAgentSurfaceDescriptor {
+  const viewId = requireStableAgentViewId(
+    overlayAgentViewId(app.name),
+    "overlay",
+    app.name,
+  );
+  return {
+    kind: "overlay",
+    viewId,
+    ownerId: app.name,
+    path: `/apps/${viewId}`,
+  };
+}
+
+/**
+ * Build the exhaustive in-process bridge inventory from registry snapshots.
+ * Duplicate identities fail closed: two mounted surfaces cannot safely share
+ * one `viewType:viewId` interact-handler key.
+ */
+export function buildRegisteredAgentSurfaceInventory(
+  appShellPages: readonly AppShellPageRegistration[],
+  overlayApps: readonly OverlayApp[],
+): RegisteredAgentSurfaceDescriptor[] {
+  const descriptors = [
+    ...appShellPages.map(appShellAgentSurfaceDescriptor),
+    ...overlayApps.map(overlayAgentSurfaceDescriptor),
+  ];
+  const ownersByViewId = new Map<string, RegisteredAgentSurfaceDescriptor>();
+  for (const descriptor of descriptors) {
+    const existing = ownersByViewId.get(descriptor.viewId);
+    if (existing) {
+      throw new Error(
+        `Agent surface view id "${descriptor.viewId}" is registered by both ` +
+          `${existing.kind}:${existing.ownerId} and ${descriptor.kind}:${descriptor.ownerId}`,
+      );
+    }
+    ownersByViewId.set(descriptor.viewId, descriptor);
+  }
+  return descriptors.sort((left, right) =>
+    left.viewId.localeCompare(right.viewId),
+  );
+}
+
+/** The current exhaustive bridge inventory, generated from both registries. */
+export function listRegisteredAgentSurfaceInventory(): RegisteredAgentSurfaceDescriptor[] {
+  return buildRegisteredAgentSurfaceInventory(
+    listAppShellPages(),
+    getAllOverlayApps(),
+  );
+}
+
+/**
+ * Resolve a renderer's descriptor through the exhaustive live inventory. This
+ * makes duplicate-id validation part of the mount path, not a test-only audit.
+ */
+export function requireRegisteredAgentSurface(
+  expected: RegisteredAgentSurfaceDescriptor,
+): RegisteredAgentSurfaceDescriptor {
+  const descriptor = listRegisteredAgentSurfaceInventory().find(
+    (candidate) =>
+      candidate.kind === expected.kind &&
+      candidate.viewId === expected.viewId &&
+      candidate.ownerId === expected.ownerId,
+  );
+  if (!descriptor) {
+    throw new Error(
+      `Agent surface ${expected.kind}:${expected.viewId} is not present in the live registry inventory`,
+    );
+  }
+  return descriptor;
 }
 
 /**

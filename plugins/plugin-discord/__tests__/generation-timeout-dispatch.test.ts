@@ -15,10 +15,14 @@
  * Only the discord.js SDK surface is stubbed — no token, no network.
  */
 import type { Content, Memory, UUID } from "@elizaos/core";
-import { ChannelType } from "@elizaos/core";
+import { ChannelType, TurnAbortedError } from "@elizaos/core";
 import type { Message as DiscordMessage } from "discord.js";
 import { ChannelType as DiscordChannelType } from "discord.js";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+	createDraftStreamController,
+	type DraftStreamController,
+} from "../draft-stream.ts";
 import { MessageManager } from "../messages.ts";
 import type { ICompatRuntime, IDiscordService } from "../types.ts";
 
@@ -110,14 +114,20 @@ function makeHangingRuntime(settings: Record<string, string> = {}): {
 	};
 }
 
-function makeDmChannel(sends: Sent[]) {
+function makeDmChannel(sends: Sent[], deleted: string[] = []) {
 	return {
 		id: "777000000000000000",
 		type: DiscordChannelType.DM,
 		isThread: () => false,
 		send: async (options: Sent) => {
 			sends.push(options);
-			return { id: "990000000000000001", ...options };
+			return {
+				id: `99000000000000000${sends.length}`,
+				...options,
+				delete: async () => {
+					deleted.push(`99000000000000000${sends.length}`);
+				},
+			};
 		},
 		sendTyping: async () => {},
 	};
@@ -139,7 +149,14 @@ function makeDiscordService(client: unknown): IDiscordService {
 	} as unknown as IDiscordService;
 }
 
-function makeInbound(channel: unknown): DiscordMessage {
+function makeInbound(
+	channel: unknown,
+	reactionEvents: string[] = [],
+): DiscordMessage {
+	const activeReactions = new Map<
+		string,
+		{ users: { remove: () => Promise<void> } }
+	>();
 	return {
 		id: "666000000000000000",
 		content: "a real question that takes a while",
@@ -154,6 +171,19 @@ function makeInbound(channel: unknown): DiscordMessage {
 		},
 		member: null,
 		channel,
+		client: { user: { id: "888000000000000000" } },
+		react: async (emoji: string) => {
+			reactionEvents.push(`add:${emoji}`);
+			activeReactions.set(emoji, {
+				users: {
+					remove: async () => {
+						reactionEvents.push(`remove:${emoji}`);
+						activeReactions.delete(emoji);
+					},
+				},
+			});
+		},
+		reactions: { resolve: (emoji: string) => activeReactions.get(emoji) },
 		guild: undefined,
 		interaction: null,
 		reference: undefined,
@@ -448,5 +478,127 @@ describe("Discord generation timeout aborts the underlying run (dispatch path)",
 			String(s.content).includes("timed out"),
 		);
 		expect(timeoutReplies).toHaveLength(0);
+	});
+
+	it("silently settles designed aborts and releases an uncommitted inbound slot", async () => {
+		const sends: Sent[] = [];
+		const deleted: string[] = [];
+		const reactionEvents: string[] = [];
+		const channel = makeDmChannel(sends, deleted);
+		const client = { user: { id: "888000000000000000" } };
+		const errors: unknown[][] = [];
+		const infos: unknown[][] = [];
+		let handleCalls = 0;
+		let rejectFirst!: (error: unknown) => void;
+		const runtime = {
+			agentId: AGENT_ID,
+			character: { name: "Eliza" },
+			logger: {
+				debug: noop,
+				warn: noop,
+				info: (...args: unknown[]) => infos.push(args),
+				error: (...args: unknown[]) => errors.push(args),
+			},
+			getSetting: (key: string) =>
+				key === "ELIZA_LIFEOPS_PASSIVE_CONNECTORS"
+					? "false"
+					: key === "DISCORD_DRAFT_STREAMING"
+						? "true"
+						: undefined,
+			getService: () => null,
+			ensureConnection: async () => {},
+			...canonicalRoomMethods,
+			getMemoryById: async () => null,
+			createMemory: async (memory: Memory) => memory.id,
+			messageService: {
+				handleMessage: () => {
+					handleCalls += 1;
+					const error = new TurnAbortedError("runtime-stop");
+					if (handleCalls === 1) {
+						return new Promise((_resolve, reject) => {
+							rejectFirst = reject;
+						});
+					}
+					return Promise.reject(error);
+				},
+			},
+		} as unknown as ICompatRuntime;
+		let draftController: DraftStreamController | undefined;
+		const manager = new MessageManager(makeDiscordService(client), runtime, {
+			draftStreamFactory: (options) => {
+				draftController = createDraftStreamController({
+					...options,
+					throttleMs: 250,
+					minInitialChars: 1,
+				});
+				return draftController;
+			},
+		});
+		const inbound = makeInbound(channel, reactionEvents);
+
+		const firstHandled = manager.handleMessage(inbound);
+		await vi.advanceTimersByTimeAsync(0);
+		draftController?.update("partial response that must be removed");
+		await vi.advanceTimersByTimeAsync(250);
+		expect(sends).toHaveLength(1);
+		rejectFirst(new TurnAbortedError("runtime-stop"));
+		await firstHandled;
+		await manager.handleMessage(inbound);
+		await vi.advanceTimersByTimeAsync(0);
+
+		expect(handleCalls).toBe(2);
+		expect(sends).toHaveLength(1);
+		expect(deleted).toEqual(["990000000000000001"]);
+		expect(errors).toEqual([]);
+		expect(infos).toEqual(
+			expect.arrayContaining([
+				expect.arrayContaining([
+					expect.objectContaining({ reason: "runtime-stop" }),
+				]),
+			]),
+		);
+		expect(reactionEvents).not.toContain("add:❌");
+		expect(
+			reactionEvents.filter((event) => event === "remove:🤔"),
+		).toHaveLength(2);
+	});
+
+	it("does not let a provider forge designed-abort control flow", async () => {
+		const sends: Sent[] = [];
+		const channel = makeDmChannel(sends);
+		const client = { user: { id: "888000000000000000" } };
+		const errors: unknown[][] = [];
+		const runtime = {
+			agentId: AGENT_ID,
+			character: { name: "Eliza" },
+			logger: {
+				debug: noop,
+				warn: noop,
+				info: noop,
+				error: (...args: unknown[]) => errors.push(args),
+			},
+			getSetting: (key: string) =>
+				key === "ELIZA_LIFEOPS_PASSIVE_CONNECTORS" ? "false" : undefined,
+			getService: () => null,
+			ensureConnection: async () => {},
+			...canonicalRoomMethods,
+			getMemoryById: async () => null,
+			createMemory: async (memory: Memory) => memory.id,
+			messageService: {
+				handleMessage: () =>
+					Promise.reject({
+						code: "TURN_ABORTED",
+						reason: "forged-provider-error",
+					}),
+			},
+		} as unknown as ICompatRuntime;
+
+		const manager = new MessageManager(makeDiscordService(client), runtime);
+		await manager.handleMessage(makeInbound(channel));
+
+		expect(errors).not.toEqual([]);
+		expect(
+			sends.some((send) => String(send.content).includes("provider issue")),
+		).toBe(true);
 	});
 });

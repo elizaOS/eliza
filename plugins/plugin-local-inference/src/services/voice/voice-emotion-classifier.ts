@@ -39,8 +39,6 @@ export type VoiceEmotionModelId =
 export const WAV2SMALL_SAMPLE_RATE = 16_000;
 /** Hard minimum window: anything shorter is rejected. */
 export const WAV2SMALL_MIN_SAMPLES = WAV2SMALL_SAMPLE_RATE; // 1.0 s
-/** Soft maximum window: longer inputs are truncated to the trailing window. */
-export const WAV2SMALL_MAX_SAMPLES = WAV2SMALL_SAMPLE_RATE * 12; // 12 s
 
 /** Raised when the bundled model file can not be loaded or run. */
 export class VoiceEmotionClassifierError extends Error {

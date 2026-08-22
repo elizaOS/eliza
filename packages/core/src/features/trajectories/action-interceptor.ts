@@ -86,6 +86,14 @@ function requiredTrajectoryString(
 	return value;
 }
 
+function trajectoryStringOrEmpty(
+	context: Record<string, JsonValue | undefined>,
+	field: string,
+): string {
+	const value = context[field];
+	return typeof value === "string" ? value : "";
+}
+
 function optionalTrajectoryNumber(
 	context: Record<string, JsonValue | undefined>,
 	field: string,
@@ -263,15 +271,14 @@ export function logLLMCallFromAction(
 
 	trajectoryLogger.logLLMCall(stepId, {
 		model: requiredTrajectoryString(actionContext, "model"),
-		systemPrompt: requiredTrajectoryString(actionContext, "systemPrompt", {
-			allowEmpty: true,
-		}),
-		userPrompt: requiredTrajectoryString(actionContext, "userPrompt", {
-			allowEmpty: true,
-		}),
-		response: requiredTrajectoryString(actionContext, "response", {
-			allowEmpty: true,
-		}),
+		// Prompt/response are recorded verbatim when present; a pure tool-call
+		// leg has NO text response (response is undefined, not ""), and the
+		// strict string requirement threw INVALID_TRAJECTORY_ACTION_CONTEXT —
+		// dropping exactly the planner legs a trajectory exists to show.
+		// Absent text records as "" honestly.
+		systemPrompt: trajectoryStringOrEmpty(actionContext, "systemPrompt"),
+		userPrompt: trajectoryStringOrEmpty(actionContext, "userPrompt"),
+		response: trajectoryStringOrEmpty(actionContext, "response"),
 		reasoning:
 			typeof actionContext.reasoning === "string"
 				? actionContext.reasoning

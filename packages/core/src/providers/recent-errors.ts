@@ -4,8 +4,8 @@
  *
  * Failures outside the action path (providers, services, background jobs, event
  * handlers) do not otherwise reach the model. This provider reads the runtime's
- * in-memory reported-error ring, dedupes by `code`, ages out stale entries, caps
- * the list, and appends a short instruction so the agent can attempt a fix or
+ * in-memory reported-error ring, dedupes by `code`, ages out stale entries, and
+ * appends a short instruction so the agent can attempt a fix or
  * tell the owner. It renders nothing (and costs no prompt tokens) when there are
  * no recent errors — no prompt bloat on the healthy path.
  *
@@ -30,7 +30,6 @@ import {
 	toWellFormedUnicode,
 } from "../utils/well-formed.ts";
 
-/** Newest N distinct-by-code errors surfaced into the prompt. */
 /** Entries older than this are ignored (stale failures shouldn't linger). */
 const ERROR_MAX_AGE_MS = 30 * 60 * 1000;
 
@@ -49,6 +48,12 @@ export const QUIET_ERROR_CODES: ReadonlySet<string> = new Set([
 	"TASK_WORKER_MISSING",
 	"TASK_QUERY_FAILED",
 	"TASK_ORPHAN_QUARANTINE_FAILED",
+	// Consequences of a user-requested turn abort, not systemic failures: a
+	// single "cancel all ur running coding tasks" fans out into one aborted
+	// provider error per composing provider, and the escalation path posted
+	// the raw dumps into the user's channel (live 2026-08-19).
+	"PROVIDER_COMPOSITION_ABORTED",
+	"TURN_ABORTED",
 ]);
 const EMPTY_RESULT: ProviderResult = {
 	data: { recentErrors: [] },
@@ -74,7 +79,9 @@ export function serializeContext(
 
 /**
  * Reduce the raw ring to the newest entry per `code` within the age window,
- * ordered newest-first, capped at {@link MAX_RECENT_ERRORS}.
+ * ordered newest-first. Deliberately uncapped: the surfaced block is model
+ * context, and item-count windows into model context are forbidden by the
+ * prompt-integrity contract (#24134).
  */
 function selectRecentErrors(
 	entries: ReportedError[],

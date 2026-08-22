@@ -6,6 +6,7 @@
  * so several handlers can read one body without re-consuming the stream.
  */
 import type http from "node:http";
+import { ElizaError } from "../errors.js";
 import { logger } from "../logger.js";
 
 const CACHED_REQUEST_BODY = Symbol.for("eliza.http.cachedRequestBody");
@@ -41,6 +42,18 @@ function defaultTooLargeMessage(maxBytes: number, explicit?: string): string {
 	return explicit ?? `Request body exceeds maximum size (${maxBytes} bytes)`;
 }
 
+function requestBodyTooLargeError(
+	maxBytes: number,
+	observedBytes: number,
+	explicitMessage?: string,
+): ElizaError {
+	return new ElizaError(defaultTooLargeMessage(maxBytes, explicitMessage), {
+		code: "HTTP_REQUEST_BODY_TOO_LARGE",
+		context: { maxBytes, observedBytes },
+		severity: "ephemeral",
+	});
+}
+
 export async function readRequestBodyBuffer(
 	req: http.IncomingMessage,
 	{
@@ -53,6 +66,10 @@ export async function readRequestBodyBuffer(
 ): Promise<Buffer | null> {
 	const cached = (req as CachedRequest)[CACHED_REQUEST_BODY];
 	if (cached) {
+		if (cached.length > maxBytes) {
+			if (returnNullOnTooLarge) return null;
+			throw requestBodyTooLargeError(maxBytes, cached.length, tooLargeMessage);
+		}
 		return cached;
 	}
 
@@ -61,8 +78,6 @@ export async function readRequestBodyBuffer(
 		let totalBytes = 0;
 		let tooLarge = false;
 		let settled = false;
-
-		const message = defaultTooLargeMessage(maxBytes, tooLargeMessage);
 
 		const cleanup = (): void => {
 			req.off("data", onData);
@@ -98,7 +113,7 @@ export async function readRequestBodyBuffer(
 				}
 				if (destroyOnTooLarge) {
 					req.destroy();
-					fail(new Error(message));
+					fail(requestBodyTooLargeError(maxBytes, totalBytes, tooLargeMessage));
 					return;
 				}
 				return;
@@ -114,7 +129,7 @@ export async function readRequestBodyBuffer(
 					return;
 				}
 
-				fail(new Error(message));
+				fail(requestBodyTooLargeError(maxBytes, totalBytes, tooLargeMessage));
 				return;
 			}
 
@@ -249,18 +264,6 @@ export async function readJsonBody<T = Record<string, unknown>>(
 	}: ReadJsonBodyOptions = {},
 ): Promise<T | null> {
 	const cachedRequest = req as CachedRequest;
-	if (CACHED_JSON_BODY in cachedRequest) {
-		const parsed = cachedRequest[CACHED_JSON_BODY];
-		if (
-			requireObject &&
-			(parsed === null || typeof parsed !== "object" || Array.isArray(parsed))
-		) {
-			await writeJsonError(res, nonObjectMessage, nonObjectStatus);
-			return null;
-		}
-		return parsed as T;
-	}
-
 	let raw: string;
 	try {
 		const body = await readRequestBody(req, readOptions);
@@ -274,6 +277,18 @@ export async function readJsonBody<T = Record<string, unknown>>(
 		// structured client response.
 		await writeJsonError(res, readErrorMessage, readErrorStatus);
 		return null;
+	}
+
+	if (CACHED_JSON_BODY in cachedRequest) {
+		const parsed = cachedRequest[CACHED_JSON_BODY];
+		if (
+			requireObject &&
+			(parsed === null || typeof parsed !== "object" || Array.isArray(parsed))
+		) {
+			await writeJsonError(res, nonObjectMessage, nonObjectStatus);
+			return null;
+		}
+		return parsed as T;
 	}
 
 	try {

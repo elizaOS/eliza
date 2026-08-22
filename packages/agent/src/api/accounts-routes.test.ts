@@ -6,11 +6,14 @@ import { EventEmitter } from "node:events";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { LINKED_ACCOUNT_PROVIDER_IDS } from "@elizaos/core";
+import { codingProviderDescriptorForProvider } from "@elizaos/shared";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const fakes = vi.hoisted(() => ({
   accounts: [] as Array<Record<string, unknown>>,
   poolAccounts: [] as Array<Record<string, unknown>>,
+  poolAvailable: true,
   deleteAccount: vi.fn(),
   getAccessToken: vi.fn(async () => "access-token"),
   probeDirectApiKey: vi.fn(
@@ -108,7 +111,9 @@ vi.mock("@elizaos/auth/oauth-flow", () => ({
   subscribeFlow: fakes.subscribeFlow,
 }));
 vi.mock("../runtime/host-bridge.ts", () => ({
-  getAgentHostBridge: () => ({ getDefaultAccountPool: () => fakes.pool }),
+  getAgentHostBridge: () => ({
+    getDefaultAccountPool: () => (fakes.poolAvailable ? fakes.pool : null),
+  }),
 }));
 
 import {
@@ -185,6 +190,7 @@ describe("accounts routes", () => {
     vi.clearAllMocks();
     fakes.accounts = [];
     fakes.poolAccounts = [];
+    fakes.poolAvailable = true;
     fakes.getAccessToken.mockResolvedValue("access-token");
     fakes.probeDirectApiKey.mockResolvedValue({
       ok: true,
@@ -207,6 +213,28 @@ describe("accounts routes", () => {
     ]);
   });
 
+  it("returns a retryable error while the host account pool is starting", async () => {
+    fakes.poolAvailable = false;
+
+    const unavailable = makeContext("GET", "/api/accounts");
+    expect(await handleAccountsRoutes(unavailable.ctx)).toBe(true);
+    expect(unavailable.errorCalls).toEqual([
+      {
+        message:
+          "Account service is not ready; retry after runtime startup completes",
+        status: 503,
+      },
+    ]);
+
+    fakes.poolAvailable = true;
+    const recovered = makeContext("GET", "/api/accounts");
+    expect(await handleAccountsRoutes(recovered.ctx)).toBe(true);
+    expect(recovered.errorCalls).toEqual([]);
+    expect(recovered.jsonCalls[0]?.body).toMatchObject({
+      providers: expect.any(Array),
+    });
+  });
+
   it("persists provider strategy", async () => {
     const strategy = makeContext(
       "PATCH",
@@ -227,8 +255,30 @@ describe("accounts routes", () => {
     const request = makeContext("GET", "/api/accounts");
     await handleAccountsRoutes(request.ctx);
     const response = request.jsonCalls[0]?.body as {
-      providers: Array<Record<string, unknown>>;
+      providers: Array<{
+        providerId: string;
+        runtimeEligibility: {
+          chat: { available: boolean };
+          codingAgent: { available: boolean };
+        };
+      }>;
     };
+    for (const providerId of LINKED_ACCOUNT_PROVIDER_IDS) {
+      const provider = response.providers.find(
+        (item) => item.providerId === providerId,
+      );
+      const descriptor = codingProviderDescriptorForProvider(providerId);
+      if (!provider || !descriptor) {
+        throw new Error(`missing capability row for ${providerId}`);
+      }
+      expect(provider.runtimeEligibility.chat.available, providerId).toBe(
+        descriptor.inferenceSupport,
+      );
+      expect(
+        provider.runtimeEligibility.codingAgent.available,
+        providerId,
+      ).toBe(descriptor.spawnSupport);
+    }
     expect(
       response.providers.find((item) => item.providerId === "openai-api"),
     ).toMatchObject({
@@ -236,7 +286,11 @@ describe("accounts routes", () => {
       accounts: [{ id: "account-1", hasCredential: true }],
       runtimeEligibility: {
         chat: { available: true, credentialPath: "direct-api" },
-        codingAgent: { available: true, credentialPath: "direct-api" },
+        codingAgent: {
+          available: false,
+          credentialPath: "none",
+          unavailableReason: expect.any(String),
+        },
       },
     });
     expect(
@@ -246,9 +300,47 @@ describe("accounts routes", () => {
     ).toMatchObject({
       runtimeEligibility: {
         chat: { available: false, credentialPath: "none" },
-        codingAgent: { available: true, credentialPath: "account-pool" },
+        codingAgent: {
+          available: true,
+          backend: "claude",
+          credentialPath: "account-pool",
+        },
       },
     });
+
+    for (const providerId of [
+      "zai-coding",
+      "kimi-coding",
+      "deepseek-coding",
+      "deepseek-api",
+      "zai-api",
+      "moonshot-api",
+      "anthropic-api",
+      "openai-api",
+      "cerebras-api",
+    ]) {
+      expect(
+        response.providers.find((item) => item.providerId === providerId),
+      ).toMatchObject({
+        runtimeEligibility: {
+          codingAgent: {
+            available: false,
+            credentialPath: "none",
+            unavailableReason: expect.any(String),
+          },
+        },
+      });
+    }
+    for (const providerId of ["zai-coding", "kimi-coding"]) {
+      expect(
+        response.providers.find((item) => item.providerId === providerId),
+      ).toMatchObject({
+        runtimeEligibility: {
+          chat: { available: true, credentialPath: "account-pool" },
+          codingAgent: { available: false, credentialPath: "none" },
+        },
+      });
+    }
   });
 
   it("sets, surfaces, validates, and clears subscriptionEndsAt through PATCH", async () => {

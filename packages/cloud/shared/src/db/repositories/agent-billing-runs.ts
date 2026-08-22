@@ -5,7 +5,7 @@
  */
 
 import { ElizaError } from "@elizaos/core";
-import { and, asc, eq, sql } from "drizzle-orm";
+import { and, asc, eq, gt, sql } from "drizzle-orm";
 import type { DbTransaction } from "../client";
 import { dbWrite } from "../helpers";
 import {
@@ -321,7 +321,7 @@ export class AgentBillingRunRepository {
             started_at: sql`date_trunc('milliseconds', clock_timestamp())`,
             billing_cutoff_at: sql`date_trunc('milliseconds', clock_timestamp())`,
             lease_token: leaseToken,
-            lease_expires_at: sql`clock_timestamp() + ${leaseDurationMs} * INTERVAL '1 millisecond'`,
+            lease_expires_at: sql`date_trunc('milliseconds', clock_timestamp()) + ${leaseDurationMs} * INTERVAL '1 millisecond'`,
             created_at: sql`date_trunc('milliseconds', clock_timestamp())`,
             updated_at: sql`date_trunc('milliseconds', clock_timestamp())`,
           })
@@ -466,7 +466,7 @@ export class AgentBillingRunRepository {
             eq(agentBillingRuns.id, existing.id),
             eq(agentBillingRuns.status, "started"),
             eq(agentBillingRuns.lease_token, leaseToken),
-            eq(agentBillingRuns.lease_expires_at, existing.lease_expires_at),
+            gt(agentBillingRuns.lease_expires_at, sql`clock_timestamp()`),
           ),
         )
         .returning();
@@ -532,7 +532,7 @@ export class AgentBillingRunRepository {
             eq(agentBillingRuns.id, existing.id),
             eq(agentBillingRuns.status, "started"),
             eq(agentBillingRuns.lease_token, leaseToken),
-            eq(agentBillingRuns.lease_expires_at, existing.lease_expires_at),
+            gt(agentBillingRuns.lease_expires_at, sql`clock_timestamp()`),
           ),
         )
         .returning();

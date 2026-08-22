@@ -42,12 +42,18 @@ export function CockpitTierToggle({
           label: "Fast",
           disabled,
           testId: "cockpit-tier-small",
+          agentId: "cockpit-session-tier-fast",
+          agentLabel: "Use Fast tier",
+          agentGroup: "cockpit-session",
         },
         {
           value: "large",
           label: "Smart",
           disabled,
           testId: "cockpit-tier-large",
+          agentId: "cockpit-session-tier-smart",
+          agentLabel: "Use Smart tier",
+          agentGroup: "cockpit-session",
         },
       ]}
     />

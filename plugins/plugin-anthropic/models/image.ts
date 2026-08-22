@@ -26,7 +26,7 @@ function parseTitle(content: string): string {
     .map((line) => line.trim())
     .find((line) => line.length > 0);
 
-  return firstLine ? firstLine.slice(0, 100) : "Image Analysis";
+  return firstLine ?? "Image Analysis";
 }
 
 function parseDescription(content: string): string {

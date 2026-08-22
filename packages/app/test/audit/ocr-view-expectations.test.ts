@@ -76,10 +76,6 @@ describe("aesthetic audit semantic OCR policy coverage", () => {
     ).toEqual([
       { slug: "builtin-camera", applicability: "native-platform-gated" },
       {
-        slug: "plugin-documents-gui",
-        applicability: "unregistered-remote-bundle",
-      },
-      {
         slug: "plugin-lifeops-live-test-gui",
         applicability: "unregistered-remote-bundle",
       },

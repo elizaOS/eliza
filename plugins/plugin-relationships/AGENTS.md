@@ -5,8 +5,7 @@ Entity and relationship knowledge graph for Eliza agents.
 ## Purpose / role
 
 Adds an entity / relationship knowledge graph to any Eliza agent: a single
-`KNOWLEDGE_GRAPH` umbrella action (op-based dispatch over CRUD, identity claims, typed
-relationships, merge), an `ENTITY_GRAPH` provider that injects a projection of
+`KNOWLEDGE_GRAPH` umbrella action for non-identity graph CRUD, an `ENTITY_GRAPH` provider that injects a projection of
 the owner's ego-network into the planner each turn, a `/relationships` viewer
 (React component served as a bundled view), and a drizzle
 `pgSchema('app_relationships')` with `entities` and `relationships` tables.
@@ -26,9 +25,9 @@ The plugin is opt-in — add it to the agent's plugin list. It hard-depends on
 **Action**
 - `KNOWLEDGE_GRAPH` (`src/actions/entity.ts`) — single umbrella action with op-based
   dispatch. Accepted ops: `create`, `read`, `list`, `log_interaction`,
-  `set_identity`, `set_relationship`, `merge`. Contexts: `people`, `contacts`,
-  `relationships`. Owner-only (`roleGate.minRole: OWNER`). Dispatches onto the
-  runtime `KnowledgeGraphService`.
+  `set_relationship`. Identity claims and merges require deterministic identity
+  authority evidence and are not agent actions. Contexts: `people`, `contacts`,
+  `relationships`. Owner-only (`roleGate.minRole: OWNER`).
 
 **Provider**
 - `ENTITY_GRAPH` (`src/providers/entity-graph.ts`) — injected at position `-4`

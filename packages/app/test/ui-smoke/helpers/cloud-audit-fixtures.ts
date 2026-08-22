@@ -50,6 +50,43 @@ export async function seedStewardToken(page: Page): Promise<void> {
 
 const NOW_ISO = new Date().toISOString();
 const FUTURE_ISO = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+const BILLING_CONTAINER_NEXT_ISO = "2026-08-22T11:20:30.000Z";
+const BILLING_SANDBOX_LAST_ISO = "2026-08-20T08:07:06.000Z";
+const BILLING_SANDBOX_ESTIMATED_NEXT_ISO = "2026-08-23T12:34:56.000Z";
+
+/**
+ * Exact, per-resource assertions for the production-shaped billing audit.
+ *
+ * These values are deliberately counterfactual: the container is hourly and
+ * the sandbox is daily, and each card has a different mix of reported and
+ * null cursors. This prevents the visual gate from passing if the client
+ * infers billing authority from resource type or swaps cursor fields.
+ */
+export const BILLING_AUDIT_RESOURCE_EXPECTATIONS = [
+  {
+    name: "Smoke API container",
+    identity: "Container · container-smoke-api",
+    fields: [
+      { label: "Billing period", value: "Hourly" },
+      { label: "Last billed", value: "Not reported" },
+      { label: "Next billing", value: "2026-08-22 11:20:30 UTC" },
+      { label: "Estimated next billing", value: "Not estimated" },
+    ],
+  },
+  {
+    name: "Smoke research agent",
+    identity: "Agent sandbox · sandbox-smoke-research",
+    fields: [
+      { label: "Billing period", value: "Daily" },
+      { label: "Last billed", value: "2026-08-20 08:07:06 UTC" },
+      { label: "Next billing", value: "Not scheduled" },
+      {
+        label: "Estimated next billing",
+        value: "2026-08-23 12:34:56 UTC",
+      },
+    ],
+  },
+] as const;
 /** ApplicationDetailPage requires a valid UUID id (redirects otherwise). */
 export const SMOKE_APP_UUID = "6f9619ff-8b86-4d01-b42d-00c04fc964ff";
 
@@ -170,6 +207,66 @@ const STUB_RULES: StubRule[] = [
     match: path_("/api/auth/steward-session"),
     body: { success: true },
   },
+  {
+    // Startup probes the selected managed agent directly. Keep that probe
+    // authenticated so the shell reaches the Cloud route instead of waiting
+    // on a synthetic external origin that cannot answer the audit fixture.
+    match: path_("/api/auth/status"),
+    body: {
+      required: false,
+      authenticated: true,
+      loginRequired: false,
+      bootstrapRequired: false,
+      localAccess: false,
+      passwordConfigured: true,
+      pairingEnabled: false,
+      expiresAt: null,
+    },
+  },
+  {
+    // Canonical AuthMeResult consumed by useAuthStatus during cold startup.
+    match: path_("/api/auth/me"),
+    body: {
+      identity: {
+        id: "cloud-audit-smoke-user",
+        displayName: "Smoke Reviewer",
+        kind: "owner",
+      },
+      session: {
+        id: "cloud-audit-smoke-session",
+        kind: "browser",
+        expiresAt: Date.now() + 60 * 60 * 1000,
+      },
+      access: {
+        mode: "session",
+        passwordConfigured: true,
+        ownerConfigured: true,
+        role: "OWNER",
+      },
+    },
+  },
+  {
+    // The notification store hydrates as soon as AuthMe confirms authority.
+    // An explicit empty inbox is a ready state, not a transport fallback.
+    match: path_("/api/notifications"),
+    body: { notifications: [], unreadCount: 0 },
+  },
+  {
+    // Startup re-checks first-run state against the selected managed agent's
+    // dedicated origin. The local smoke server only covers its own origin, so
+    // make the managed-agent probe deterministic as well.
+    match: path_("/api/first-run/status"),
+    body: { complete: true, cloudProvisioned: true },
+  },
+  {
+    // The shell records best-effort activity during startup. Keep that write
+    // inside the deterministic audit backend so CORS noise cannot turn an
+    // otherwise healthy Cloud surface into a broken visual finding.
+    method: "POST",
+    match: path_("/api/lifeops/activity-signals"),
+    status: 201,
+    body: { signal: null },
+  },
   // Normal app-shell hydration follows the selected managed agent's dedicated
   // origin. Keep that real request path deterministic while Cloud management
   // pages mount inside the shell.
@@ -241,6 +338,17 @@ const STUB_RULES: StubRule[] = [
     match: path_("/api/apps/overlay-presence"),
     body: { ok: true, app: null, present: false },
   },
+  // The managed-agent shell boots these agent-scoped resources in parallel
+  // with Cloud routes. Stub their empty canonical states so aesthetic audits
+  // never escape to the synthetic *.cloud.eliza.app origin and fail on CORS.
+  { match: path_("/api/apps"), body: [] },
+  { match: path_("/api/catalog/apps"), body: [] },
+  { match: path_("/api/views"), body: { views: [] } },
+  {
+    match: path_("/api/browser-workspace"),
+    body: { mode: "web", tabs: [] },
+  },
+  { match: path_("/music-player/status"), body: { available: false } },
   // instances/ — canonical agent-list DTO plus detail.
   {
     match: path_("/api/v1/eliza/agents"),
@@ -346,6 +454,101 @@ const STUB_RULES: StubRule[] = [
       success: true,
       data: {
         observedAt: NOW_ISO,
+        schemaVersion: 2,
+        v2: {
+          snapshotStartedAt: NOW_ISO,
+          snapshotCompletedAt: NOW_ISO,
+          balance: {
+            status: "available",
+            source: "credit-ledger",
+            observedAt: NOW_ISO,
+            value: {
+              balance: { value: "42.000000", unit: "usd", currency: "USD" },
+              revision: "42",
+            },
+          },
+          activeCompute: {
+            resources: {
+              status: "available",
+              source: "account-billing-primary",
+              observedAt: NOW_ISO,
+              value: [
+                {
+                  resourceType: "container",
+                  resourceId: "container-smoke-api",
+                  name: "Smoke API container",
+                  status: "running",
+                  billingStatus: "active",
+                  billingInterval: "hour",
+                  lastBilledAt: null,
+                  nextBillingAt: BILLING_CONTAINER_NEXT_ISO,
+                  estimatedNextBillingAt: null,
+                  ratePerHour: {
+                    status: "available",
+                    source: "compute-billing-rate-segments",
+                    observedAt: NOW_ISO,
+                    value: {
+                      value: "0.125000",
+                      unit: "usd_per_hour",
+                      currency: "USD",
+                    },
+                  },
+                  estimatedRecurringComputeCostPerDay: {
+                    status: "available",
+                    source: "compute-billing-rate-segments",
+                    observedAt: NOW_ISO,
+                    value: {
+                      value: "3.000000",
+                      unit: "usd_per_day",
+                      currency: "USD",
+                    },
+                  },
+                },
+                {
+                  resourceType: "agent_sandbox",
+                  resourceId: "sandbox-smoke-research",
+                  name: "Smoke research agent",
+                  status: "running",
+                  billingStatus: "active",
+                  billingInterval: "day",
+                  lastBilledAt: BILLING_SANDBOX_LAST_ISO,
+                  nextBillingAt: null,
+                  estimatedNextBillingAt: BILLING_SANDBOX_ESTIMATED_NEXT_ISO,
+                  ratePerHour: {
+                    status: "available",
+                    source: "compute-billing-rate-segments",
+                    observedAt: NOW_ISO,
+                    value: {
+                      value: "0.050000",
+                      unit: "usd_per_hour",
+                      currency: "USD",
+                    },
+                  },
+                  estimatedRecurringComputeCostPerDay: {
+                    status: "available",
+                    source: "compute-billing-rate-segments",
+                    observedAt: NOW_ISO,
+                    value: {
+                      value: "1.200000",
+                      unit: "usd_per_day",
+                      currency: "USD",
+                    },
+                  },
+                },
+              ],
+            },
+            estimatedRecurringComputeCostPerDay: {
+              status: "available",
+              source: "compute-billing-rate-segments",
+              observedAt: NOW_ISO,
+              value: {
+                value: "4.200000",
+                unit: "usd_per_day",
+                currency: "USD",
+              },
+            },
+          },
+        },
         cloudCharacters: {
           source: "cloud-character-quota",
           state: "available",
@@ -748,4 +951,6 @@ export async function installCloudApiStubs(page: Page): Promise<void> {
   await page.route("**/api/**", handle);
   // The admin RPC-status probe has no /api prefix (worker route /admin/rpc-status).
   await page.route("**/admin/rpc-status*", handle);
+  // The managed-agent music availability probe also has no /api prefix.
+  await page.route("**/music-player/status*", handle);
 }

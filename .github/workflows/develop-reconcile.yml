@@ -1,0 +1,86 @@
+# This non-cancelable authority accepts only an exact successful Develop Full
+# push run, reconciles durable external effects, then fast-forwards main without
+# manufacturing an untested commit. It never runs from pull requests.
+name: Develop Effect Reconcile
+
+run-name: Reconcile ${{ inputs.source_sha }} from Develop Full ${{ inputs.source_run_id }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_sha:
+        description: Exact fully verified develop commit
+        required: true
+        type: string
+      source_run_id:
+        description: Exact successful Develop Full workflow run
+        required: true
+        type: string
+
+concurrency:
+  group: develop-effect-reconcile
+  cancel-in-progress: false
+  queue: max
+
+permissions:
+  actions: write
+  contents: write
+  deployments: write
+
+jobs:
+  reconcile:
+    name: Reconcile exact effects and promote main
+    runs-on: ubuntu-24.04
+    timeout-minutes: 300
+    steps:
+      - name: Validate source input shape
+        env:
+          SOURCE_RUN_ID: ${{ inputs.source_run_id }}
+          SOURCE_SHA: ${{ inputs.source_sha }}
+        run: |
+          set -euo pipefail
+          [[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]] || {
+            echo "::error::source_sha must be a lowercase full commit SHA"
+            exit 1
+          }
+          [[ "$SOURCE_RUN_ID" =~ ^[1-9][0-9]*$ ]] || {
+            echo "::error::source_run_id must be a positive integer"
+            exit 1
+          }
+          [[ "$GITHUB_SHA" == "$SOURCE_SHA" ]] || {
+            echo "::error::reconcile workflow head must equal source_sha"
+            exit 1
+          }
+
+      - name: Checkout exact verified source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ inputs.source_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+          submodules: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: "24.15.0"
+
+      - name: Wait for exact Develop Full success
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          SOURCE_RUN_ID: ${{ inputs.source_run_id }}
+          SOURCE_SHA: ${{ inputs.source_sha }}
+        run: node packages/scripts/develop-effect-ledger.mjs await-source --source-sha "$SOURCE_SHA" --source-run-id "$SOURCE_RUN_ID"
+
+      - name: Download exact validation manifest
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_RUN_ID: ${{ inputs.source_run_id }}
+          SOURCE_SHA: ${{ inputs.source_sha }}
+        run: gh run download "$SOURCE_RUN_ID" --name "develop-full-manifest-$SOURCE_SHA" --dir .develop-evidence
+
+      - name: Reconcile effects and fast-forward main
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          SOURCE_RUN_ID: ${{ inputs.source_run_id }}
+          SOURCE_SHA: ${{ inputs.source_sha }}
+        run: node packages/scripts/develop-effect-ledger.mjs reconcile --source-sha "$SOURCE_SHA" --source-run-id "$SOURCE_RUN_ID" --expected .develop-evidence/expected.json --observed .develop-evidence/observed.json

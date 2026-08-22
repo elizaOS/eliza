@@ -126,7 +126,9 @@ export const DEFAULT_CONTEXT_DEFINITIONS: readonly ContextDefinition[] =
 			id: "code",
 			label: "Code",
 			description:
-				"Read, edit, run, or review code, including spawned coding sub-agents.",
+				"Read, edit, run, or review code, including spawned coding sub-agents. A short snippet or one-line script the reply can carry inline (e.g. 'a python script that just prints hello') is simple: put the code in the reply, do not route here.",
+			descriptionCompressed:
+				"Read/edit/run/review code, coding sub-agents; a one-line snippet is simple (code in reply)",
 			sensitivity: "personal",
 			cacheScope: "conversation",
 			subcontexts: ["files", "terminal"],
@@ -299,7 +301,7 @@ export const DEFAULT_CONTEXT_DEFINITIONS: readonly ContextDefinition[] =
 			id: "messaging",
 			label: "Messaging",
 			description:
-				"Read, send, draft, search, triage, mute, follow, or manage private/group messages across Discord, Slack, Telegram, Signal, iMessage, WhatsApp, X DMs, and similar.",
+				"Read, send, draft, search, triage, mute, follow, or manage private/group messages across Discord, Slack, Telegram, iMessage, WhatsApp, X DMs, and similar.",
 			sensitivity: "private",
 			cacheScope: "turn",
 			subcontexts: ["phone", "social"],

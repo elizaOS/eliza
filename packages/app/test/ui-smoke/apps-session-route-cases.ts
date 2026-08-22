@@ -160,6 +160,18 @@ export const DIRECT_ROUTE_CASES: readonly DirectRouteCase[] = [
     timeoutMs: 90_000,
   },
   {
+    name: "task coordinator app shell page",
+    path: "/task-coordinator",
+    selector: '[data-testid="task-coordinator-panel"]',
+    timeoutMs: 90_000,
+  },
+  {
+    name: "coding cockpit app shell page",
+    path: "/cockpit",
+    selector: '[data-testid="cockpit-view"]',
+    timeoutMs: 90_000,
+  },
+  {
     name: "notes app shell page",
     path: "/notes",
     selector: '[data-testid="simple-notes-view"]',
@@ -199,7 +211,6 @@ const managerVisibleViewTileCases = [
   { viewId: "computer-use-sessions", path: "/computer-use-sessions" },
   { viewId: "contacts", path: "/contacts" },
   { viewId: "cockpit", path: "/cockpit" },
-  { viewId: "documents", path: "/documents" },
   { viewId: "finances", path: "/finances" },
   { viewId: "focus", path: "/focus" },
   { viewId: "goals", path: "/goals" },

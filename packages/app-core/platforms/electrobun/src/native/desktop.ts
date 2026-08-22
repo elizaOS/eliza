@@ -941,27 +941,48 @@ export class DesktopManager {
   async registerShortcut(
     options: ShortcutOptions,
   ): Promise<{ success: boolean }> {
-    // Unregister existing shortcut with same id
-    if (this.shortcuts.has(options.id)) {
-      const existing = this.shortcuts.get(options.id);
-      if (existing) {
-        GlobalShortcut.unregister(existing.accelerator);
-      }
+    const existing = this.shortcuts.get(options.id);
+    if (existing?.accelerator === options.accelerator) {
+      return { success: true };
     }
 
-    try {
-      const registered = GlobalShortcut.register(options.accelerator, () => {
+    if (existing) GlobalShortcut.unregister(existing.accelerator);
+
+    const register = (shortcut: ShortcutOptions): boolean =>
+      GlobalShortcut.register(shortcut.accelerator, () => {
         this.send("desktopShortcutPressed", {
-          id: options.id,
-          accelerator: options.accelerator,
+          id: shortcut.id,
+          accelerator: shortcut.accelerator,
         });
-      });
-      if (registered === false) {
-        return { success: false };
-      }
+      }) !== false;
+
+    try {
+      if (!register(options))
+        throw new Error("The operating system rejected the shortcut");
       this.shortcuts.set(options.id, options);
       return { success: true };
-    } catch {
+    } catch (replacementError) {
+      if (!existing) return { success: false };
+
+      try {
+        if (!register(existing)) {
+          throw new Error("The operating system rejected shortcut rollback");
+        }
+        this.shortcuts.set(existing.id, existing);
+      } catch (rollbackError) {
+        // error-policy:J1 Native shortcut registration is the boundary; a failed
+        // rollback is reported and stale in-memory ownership is removed.
+        this.shortcuts.delete(existing.id);
+        logger.error(
+          `[Desktop] Failed to replace shortcut ${options.id} and restore ${existing.accelerator}: ${rollbackError instanceof Error ? rollbackError.message : String(rollbackError)}`,
+          {
+            replacementError:
+              replacementError instanceof Error
+                ? replacementError.message
+                : String(replacementError),
+          },
+        );
+      }
       return { success: false };
     }
   }

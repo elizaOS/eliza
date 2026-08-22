@@ -267,16 +267,17 @@ export function buildControlPlaneApp(options: ControlPlaneMockOptions): {
             lifecycle_execution_generation: job.execution_generation,
           });
         };
-        const settle = (
+        const settle = async (
           job: ClaimedJob,
           jobResult: Record<string, unknown>,
-        ): Promise<void> =>
-          jobsRepository.settleExecution(
+        ): Promise<void> => {
+          await jobsRepository.settleExecution(
             job,
             "completed",
             { result: jobResult },
             MOCK_EXECUTION_OWNER_ID,
           );
+        };
         // Provision/delete are reimplemented against the Hetzner mock; the
         // remaining lifecycle jobs are reproduced as direct agent_sandboxes
         // row transitions (mirroring the real handlers' DB effects), which is

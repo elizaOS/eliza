@@ -25,43 +25,47 @@ function expectOrder(body: string, first: string, second: string, label: string)
   expect(firstIndex, `${label}: ${first} must precede ${second}`).toBeLessThan(secondIndex);
 }
 
+function expectRestoreWriterOrder(body: string, label: string): void {
+  const anchors = [
+    ".from(agentSandboxBackups)",
+    "lockExactRestoreOperationTarget(tx",
+    ".from(agentBackupRestoreLeases)",
+    ".from(agentSandboxes)",
+    "lockCurrentNodeHistory(tx",
+    "lockAgentBackupCatalogAuthority(",
+  ];
+  let previous = -1;
+  for (const anchor of anchors) {
+    const index = body.indexOf(anchor, previous + 1);
+    expect(index, `${label}: missing ordered lock anchor ${anchor}`).toBeGreaterThan(previous);
+    previous = index;
+  }
+}
+
 describe("agent backup global lock order", () => {
-  test("vault-seed receipt locks sandbox and node before catalogue authority", () => {
+  test("restore publication follows backup-to-catalogue lock order", () => {
+    const history = source("agent-backup-restore-history.ts");
+    const start = history.indexOf("async function recordRestoreActivationPublication");
+    const end = history.indexOf("export async function recordAgentActivationPublication", start);
+    expect(start).toBeGreaterThanOrEqual(0);
+    expect(end).toBeGreaterThan(start);
+    expectRestoreWriterOrder(history.slice(start, end), "restore publication");
+  });
+
+  test("vault-seed receipt follows backup-to-catalogue lock order", () => {
     const history = source("agent-backup-restore-history.ts");
     const seed = exportedFunction(
       history,
       "recordAgentVaultKeySeedReceipt",
       "commitAgentBackupRestore",
     );
-    expectOrder(
-      seed,
-      ".from(agentSandboxes)",
-      ".from(agentBackupCatalogAuthorities)",
-      "vault-seed receipt",
-    );
-    expectOrder(
-      seed,
-      "lockCurrentNodeHistory(tx",
-      ".from(agentBackupCatalogAuthorities)",
-      "vault-seed receipt",
-    );
+    expectRestoreWriterOrder(seed, "vault-seed receipt");
   });
 
-  test("restore finalizer locks sandbox and node before catalogue authority", () => {
+  test("restore finalizer follows backup-to-catalogue lock order", () => {
     const history = source("agent-backup-restore-history.ts");
     const finalizer = exportedFunction(history, "commitAgentBackupRestore");
-    expectOrder(
-      finalizer,
-      ".from(agentSandboxes)",
-      ".from(agentBackupCatalogAuthorities)",
-      "restore finalizer",
-    );
-    expectOrder(
-      finalizer,
-      "lockCurrentNodeHistory(tx",
-      ".from(agentBackupCatalogAuthorities)",
-      "restore finalizer",
-    );
+    expectRestoreWriterOrder(finalizer, "restore finalizer");
   });
 
   test("reservation, capture, and vault rotation preserve the same order", () => {

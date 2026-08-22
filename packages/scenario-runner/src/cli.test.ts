@@ -39,6 +39,7 @@ const ENV_KEYS = [
   "ELIZA_LIFEOPS_RUN_ID",
   "ELIZA_LIFEOPS_SCENARIO_ID",
   "LIFEOPS_LIVE_JUDGE_MIN_SCORE",
+  "SCENARIO_TURN_TIMEOUT_MS",
   "OPENAI_API_KEY",
   "CEREBRAS_API_KEY",
   "SCENARIO_JUDGE_REQUIRE_INDEPENDENT",
@@ -726,6 +727,63 @@ describe("scenario-runner CLI", () => {
 
     expect(code).toBe(2);
     expect(stderr).toContain("skipped without SKIP_REASON");
+  });
+
+  it("rejects trailing garbage in the per-turn timeout environment", async () => {
+    process.env.SCENARIO_TURN_TIMEOUT_MS = "500junk";
+    writeScenario(tempDir, "cli-timeout-config");
+    const dependencies = createDependencies(() => "passed");
+
+    await expect(runCli(["run", tempDir], dependencies)).rejects.toThrow(
+      "SCENARIO_TURN_TIMEOUT_MS must be a positive integer",
+    );
+    expect(dependencies.createScenarioRuntime).not.toHaveBeenCalled();
+    expect(dependencies.runScenario).not.toHaveBeenCalled();
+  });
+
+  it("still accepts a clean per-turn timeout value", async () => {
+    process.env.SCENARIO_TURN_TIMEOUT_MS = "500";
+    writeScenario(tempDir, "cli-timeout-ok");
+    const dependencies = createDependencies(() => "passed");
+
+    await runCli(["run", tempDir], dependencies);
+    expect(dependencies.runScenario).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.objectContaining({ turnTimeoutMs: 500 }),
+    );
+  });
+
+  it("still accepts an explicitly signed positive timeout", async () => {
+    // `Number.parseInt` accepted "+500"; rejecting it would be a regression.
+    process.env.SCENARIO_TURN_TIMEOUT_MS = "+500";
+    writeScenario(tempDir, "cli-timeout-signed");
+    const dependencies = createDependencies(() => "passed");
+
+    await runCli(["run", tempDir], dependencies);
+    expect(dependencies.runScenario).toHaveBeenCalled();
+  });
+
+  it("rejects a timeout beyond the safe integer range", async () => {
+    process.env.SCENARIO_TURN_TIMEOUT_MS = "9007199254740993";
+    writeScenario(tempDir, "cli-timeout-unsafe");
+    const dependencies = createDependencies(() => "passed");
+
+    await expect(runCli(["run", tempDir], dependencies)).rejects.toThrow(
+      "SCENARIO_TURN_TIMEOUT_MS must be a positive integer",
+    );
+    expect(dependencies.createScenarioRuntime).not.toHaveBeenCalled();
+  });
+
+  it("rejects a timeout beyond Node's supported timer range", async () => {
+    process.env.SCENARIO_TURN_TIMEOUT_MS = "2147483648";
+    writeScenario(tempDir, "cli-timeout-timer-overflow");
+    const dependencies = createDependencies(() => "passed");
+
+    await expect(runCli(["run", tempDir], dependencies)).rejects.toThrow(
+      "no greater than 2147483647",
+    );
+    expect(dependencies.createScenarioRuntime).not.toHaveBeenCalled();
   });
 
   it("allows skipped scenarios when SKIP_REASON documents the skip", async () => {

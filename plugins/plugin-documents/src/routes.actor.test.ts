@@ -5,7 +5,7 @@
  * Verifies that:
  * - Missing AccessContext fails closed without minting a route actor.
  * - AccessContext with requesterEntityId resolves to the correct RouteActor.
- * - OWNER/ADMIN roles map to OWNER; USER/GUEST map to USER.
+ * - OWNER, ADMIN, USER, and GUEST remain distinct.
  * - Missing requesterEntityId returns null.
  */
 
@@ -36,13 +36,13 @@ describe("resolveRouteActor process-private principal authorization", () => {
     expect(actor?.entityId).toBe(OWNER_ID);
   });
 
-  it("grants OWNER permissions for ADMIN AccessContext role", () => {
+  it("preserves ADMIN without granting OWNER permissions", () => {
     const actor = resolveRouteActor(AGENT_ID, OWNER_ID, {
       requesterEntityId: OWNER_ID,
       role: "ADMIN",
     } satisfies AccessContext);
     expect(actor).not.toBeNull();
-    expect(actor?.role).toBe("OWNER");
+    expect(actor?.role).toBe("ADMIN");
   });
 
   it("grants USER permissions for USER AccessContext role", () => {
@@ -56,13 +56,21 @@ describe("resolveRouteActor process-private principal authorization", () => {
     expect(actor?.entityId).not.toBe(OWNER_ID);
   });
 
-  it("grants USER permissions for GUEST AccessContext role", () => {
+  it("preserves GUEST without granting USER permissions", () => {
     const actor = resolveRouteActor(AGENT_ID, OWNER_ID, {
       requesterEntityId: USER_ID,
       role: "GUEST",
     } satisfies AccessContext);
     expect(actor).not.toBeNull();
-    expect(actor?.role).toBe("USER");
+    expect(actor?.role).toBe("GUEST");
+  });
+
+  it("rejects a requester whose role authority is unresolved", () => {
+    expect(
+      resolveRouteActor(AGENT_ID, OWNER_ID, {
+        requesterEntityId: USER_ID,
+      } satisfies AccessContext),
+    ).toBeNull();
   });
 
   it("returns null when AccessContext lacks requesterEntityId", () => {

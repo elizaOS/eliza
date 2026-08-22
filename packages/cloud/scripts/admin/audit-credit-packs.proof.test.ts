@@ -4,6 +4,13 @@
  * cache per store — the in-process client is cached across tests), and runs
  * the audit as a subprocess with a hermetic environment.
  * Run: bun test packages/cloud/scripts/admin/audit-credit-packs.proof.test.ts
+ *
+ * Every test sets an explicit 60s timeout: freshDb/seed/audit spawn cold bun
+ * subprocesses that exceeded bun's 5s default on hosted runners (#23870 CI
+ * failures at ~5005ms). bunfig's [test] section has no timeout option (Bun
+ * ignores the key — oven-sh/bun#7789), so the timeout stays per-test.
+ * Hermetic children also resolve packages from cloud-shared's isolated
+ * node_modules tree because the audit intentionally runs outside the checkout.
  */
 import { describe, expect, test } from "bun:test";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
@@ -18,6 +25,7 @@ function childEnv(dbUrl: string, extra: Record<string, string> = {}) {
   return {
     PATH: process.env.PATH ?? "",
     HOME: process.env.HOME ?? "",
+    NODE_PATH: path.resolve(import.meta.dir, "../../shared/node_modules"),
     DATABASE_URL: dbUrl,
     DISABLE_LOCAL_PGLITE_FALLBACK: "1",
     ...extra,
@@ -75,7 +83,7 @@ describe("audit-credit-packs classification (#22963)", () => {
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
-  });
+  }, 60_000);
 
   test("no Stripe key: DB-active => UNKNOWN (not ERRONEOUS), DB-inactive => DEPRECATED", async () => {
     const { dir, url } = await freshDb();
@@ -118,7 +126,7 @@ describe("audit-credit-packs classification (#22963)", () => {
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
-  });
+  }, 60_000);
 
   test("deployment currency guard: non-USD STRIPE_CURRENCY => ERRONEOUS", async () => {
     const { dir, url } = await freshDb();
@@ -145,7 +153,7 @@ describe("audit-credit-packs classification (#22963)", () => {
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
-  });
+  }, 60_000);
 
   test("deployment currency guard sticks: non-USD + DB-inactive stays ERRONEOUS (not overwritten)", async () => {
     const { dir, url } = await freshDb();
@@ -168,7 +176,7 @@ describe("audit-credit-packs classification (#22963)", () => {
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
-  });
+  }, 60_000);
 
   test("seededWiringMatches is null when the seeder env var is unset", async () => {
     const { dir, url } = await freshDb();
@@ -191,5 +199,5 @@ describe("audit-credit-packs classification (#22963)", () => {
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
-  });
+  }, 60_000);
 });

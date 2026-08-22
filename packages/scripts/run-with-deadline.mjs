@@ -4,8 +4,10 @@
  * when the deadline passes. Exists for test suites that can wedge instead of
  * exiting (leaked handles keep a runner's event loop alive after the last
  * test): a bounded failure with output beats holding a CI job to its cap.
- * Exit codes: the child's own code on normal completion, 124 on deadline
- * kill, 127 when the command cannot start, 2 on usage errors.
+ * Exit codes: the child's own code on normal completion, 124 on deadline,
+ * 127 when the command cannot start, and 2 on usage errors. On Windows, 1 can
+ * be the child's own status or a supervisor failure, including cleanup that
+ * could not be proven.
  *
  * The deadline must be a positive decimal integer no greater than Node's
  * maximum timer delay (`2^31 - 1` ms). Larger values would clamp to 1 ms and
@@ -14,7 +16,8 @@
  * usage: node packages/scripts/run-with-deadline.mjs <deadline-ms> -- <command> [args...]
  */
 import { spawn } from "node:child_process";
-import { pathToFileURL } from "node:url";
+import { uptime } from "node:os";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 /** Node clamps `setTimeout` delays above this to 1 ms. */
 export const MAX_TIMER_DELAY_MS = 2_147_483_647;
@@ -27,6 +30,15 @@ const PROCESS_GROUP_REAP_POLL_MS = 25;
 
 /** Maximum time spent checking for a reaped process group after SIGKILL. */
 const PROCESS_GROUP_REAP_TIMEOUT_MS = 2_000;
+
+const WINDOWS_COMMAND_SPEC_ENV = "ELIZA_RUN_WITH_DEADLINE_COMMAND_SPEC";
+// The helper bounds its native job drain at eight seconds; keep four seconds
+// for PowerShell finalization and the child's close event.
+const WINDOWS_JOB_SETTLE_TIMEOUT_MS = 12_000;
+const WINDOWS_SUPERVISOR_KILL_SETTLE_MS = 2_000;
+const WINDOWS_JOB_SUPERVISOR = fileURLToPath(
+  new URL("./run-with-deadline-windows.ps1", import.meta.url),
+);
 
 /**
  * Parse a wall-clock deadline for the CLI boundary.
@@ -85,12 +97,52 @@ function main(argv) {
 
   const { deadlineMs, command, args } = options;
 
-  // detached: the child leads its own process group, so the deadline kill
-  // reaches grandchildren (per-file test workers, spawned engines) too.
-  const child = spawn(command, args, { stdio: "inherit", detached: true });
+  const isWindows = process.platform === "win32";
+  const deadlineAtTickMs = Math.floor(uptime() * 1000) + deadlineMs;
+  // POSIX children lead a detached process group. On Windows a PowerShell
+  // supervisor creates its worker inside a kill-on-close Job Object before the
+  // worker executes the target. The supervisor owns deadline arbitration and
+  // reports 124 only after the entire job is empty.
+  const child = isWindows
+    ? spawn(
+        "powershell.exe",
+        [
+          "-NoLogo",
+          "-NoProfile",
+          "-NonInteractive",
+          "-ExecutionPolicy",
+          "Bypass",
+          "-File",
+          WINDOWS_JOB_SUPERVISOR,
+        ],
+        {
+          stdio: "inherit",
+          windowsHide: true,
+          env: {
+            ...process.env,
+            [WINDOWS_COMMAND_SPEC_ENV]: Buffer.from(
+              JSON.stringify({ command, args, deadlineMs, deadlineAtTickMs }),
+              "utf8",
+            ).toString("base64"),
+          },
+        },
+      )
+    : spawn(command, args, { stdio: "inherit", detached: true });
+  let timer;
+  let windowsSettleTimer;
+  let windowsForceExitTimer;
+  let windowsWatchdogExpired = false;
+  child.once("exit", () => {
+    clearTimeout(timer);
+    clearTimeout(windowsSettleTimer);
+  });
 
   const killGroup = (signal) => {
     try {
+      if (isWindows) {
+        child.kill(signal);
+        return;
+      }
       process.kill(-child.pid, signal);
     } catch {
       // error-policy:J6 group teardown fallback — the group leader may already
@@ -104,7 +156,7 @@ function main(argv) {
   };
 
   const processGroupExists = () => {
-    if (process.platform === "win32") return false;
+    if (isWindows) return false;
     try {
       process.kill(-child.pid, 0);
       return true;
@@ -134,7 +186,7 @@ function main(argv) {
       // A SIGTERM'd group leader can close before its descendants. If the
       // group is already gone, settle immediately; otherwise keep the wrapper
       // alive for the escalation path below.
-      if (!timeoutDone && !processGroupExists()) {
+      if (!isWindows && !timeoutDone && !processGroupExists()) {
         timeoutDone = true;
       }
       if (!timeoutDone) return;
@@ -142,36 +194,60 @@ function main(argv) {
     }
     process.exit(closeResult.code ?? (closeResult.signal ? 1 : 0));
   };
-  const timer = setTimeout(() => {
-    timedOut = true;
-    console.error(
-      `[run-with-deadline] wall-clock deadline of ${deadlineMs}ms exceeded; killing "${command}" process group`,
+  if (isWindows) {
+    timer = setTimeout(
+      () => {
+        const settleDeadlineAtTickMs =
+          deadlineAtTickMs + WINDOWS_JOB_SETTLE_TIMEOUT_MS;
+        windowsSettleTimer = setTimeout(
+          () => {
+            windowsWatchdogExpired = true;
+            console.error(
+              `[run-with-deadline] Windows supervisor for "${command}" did not settle within ${WINDOWS_JOB_SETTLE_TIMEOUT_MS}ms after its deadline`,
+            );
+            killGroup("SIGKILL");
+            windowsForceExitTimer = setTimeout(
+              () => process.exit(1),
+              WINDOWS_SUPERVISOR_KILL_SETTLE_MS,
+            );
+          },
+          Math.max(1, settleDeadlineAtTickMs - Math.floor(uptime() * 1000)),
+        );
+      },
+      Math.max(1, deadlineAtTickMs - Math.floor(uptime() * 1000)),
     );
-    killGroup("SIGTERM");
-    void (async () => {
-      const gracefullyReaped =
-        await waitForProcessGroupGone(TERMINATION_GRACE_MS);
-      if (gracefullyReaped) {
+  } else {
+    timer = setTimeout(() => {
+      timedOut = true;
+      console.error(
+        `[run-with-deadline] wall-clock deadline of ${deadlineMs}ms exceeded; killing "${command}" process group`,
+      );
+      killGroup("SIGTERM");
+      void (async () => {
+        const gracefullyReaped =
+          await waitForProcessGroupGone(TERMINATION_GRACE_MS);
+        if (gracefullyReaped) {
+          timeoutDone = true;
+          finish();
+          return;
+        }
+        console.error(
+          `[run-with-deadline] termination grace expired; escalating "${command}" process group to SIGKILL`,
+        );
+        killGroup("SIGKILL");
+        const reaped = await waitForProcessGroupGone(
+          PROCESS_GROUP_REAP_TIMEOUT_MS,
+        );
+        if (!reaped) {
+          console.error(
+            `[run-with-deadline] process group for "${command}" did not confirm reaping after SIGKILL`,
+          );
+        }
         timeoutDone = true;
         finish();
-        return;
-      }
-      console.error(
-        `[run-with-deadline] termination grace expired; escalating "${command}" process group to SIGKILL`,
-      );
-      killGroup("SIGKILL");
-      const reaped = await waitForProcessGroupGone(
-        PROCESS_GROUP_REAP_TIMEOUT_MS,
-      );
-      if (!reaped) {
-        console.error(
-          `[run-with-deadline] process group for "${command}" did not confirm reaping after SIGKILL`,
-        );
-      }
-      timeoutDone = true;
-      finish();
-    })();
-  }, deadlineMs);
+      })();
+    }, deadlineMs);
+  }
 
   for (const signal of ["SIGINT", "SIGTERM"]) {
     process.on(signal, () => killGroup(signal));
@@ -179,6 +255,8 @@ function main(argv) {
 
   child.on("error", (error) => {
     clearTimeout(timer);
+    clearTimeout(windowsSettleTimer);
+    clearTimeout(windowsForceExitTimer);
     console.error(
       `[run-with-deadline] failed to start "${command}": ${error.message}`,
     );
@@ -186,8 +264,13 @@ function main(argv) {
   });
   child.on("close", (code, signal) => {
     clearTimeout(timer);
+    clearTimeout(windowsSettleTimer);
+    clearTimeout(windowsForceExitTimer);
+    if (windowsWatchdogExpired) process.exit(1);
     closeResult = { code, signal };
-    if (timedOut && !processGroupExists()) timeoutDone = true;
+    if (timedOut && !isWindows && !processGroupExists()) {
+      timeoutDone = true;
+    }
     finish();
   });
 }

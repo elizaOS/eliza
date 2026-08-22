@@ -26,12 +26,23 @@ function hashTokenForLogging(token: string): string {
   return createHash("sha256").update(token).digest("hex").slice(0, 8);
 }
 
-export async function checkAnonymousLimit(sessionId: string): Promise<{
-  allowed: boolean;
-  reason?: "message_limit" | "hourly_limit";
-  remaining: number;
-  limit: number;
-}> {
+export type AnonymousLimitCheck =
+  | { allowed: true; remaining: number; limit: number }
+  | {
+      allowed: false;
+      reason: "message_limit";
+      remaining: 0;
+      limit: number;
+    }
+  | {
+      allowed: false;
+      reason: "hourly_limit";
+      remaining: 0;
+      limit: number;
+      retryAfter: number;
+    };
+
+export async function checkAnonymousLimit(sessionId: string): Promise<AnonymousLimitCheck> {
   const session = await anonymousSessionsService.getByToken(sessionId);
 
   if (!session) {
@@ -55,6 +66,7 @@ export async function checkAnonymousLimit(sessionId: string): Promise<{
       reason: "hourly_limit",
       remaining: 0,
       limit: ANON_HOURLY_LIMIT,
+      retryAfter: rateLimitResult.retryAfter,
     };
   }
 
@@ -65,12 +77,7 @@ export async function checkAnonymousLimit(sessionId: string): Promise<{
   };
 }
 
-export async function reserveAnonymousMessageSlot(sessionId: string): Promise<{
-  allowed: boolean;
-  reason?: "message_limit" | "hourly_limit";
-  remaining: number;
-  limit: number;
-}> {
+export async function reserveAnonymousMessageSlot(sessionId: string): Promise<AnonymousLimitCheck> {
   const session = await anonymousSessionsService.getByToken(sessionId);
 
   if (!session) {
@@ -95,6 +102,7 @@ export async function reserveAnonymousMessageSlot(sessionId: string): Promise<{
       reason: "hourly_limit",
       remaining: 0,
       limit: ANON_HOURLY_LIMIT,
+      retryAfter: rateLimitResult.retryAfter,
     };
   }
 

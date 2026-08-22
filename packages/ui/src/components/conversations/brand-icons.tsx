@@ -1,6 +1,6 @@
 /**
  * `currentColor` SVG glyphs for connector brands (Discord, Slack, Teams,
- * Signal, Google Chat, …) and `getBrandIcon`, which resolves a free-form source
+ * WhatsApp, Google Chat, …) and `getBrandIcon`, which resolves a free-form source
  * string to one by stripping non-alphanumerics. Used by the conversations
  * sidebar to badge inbox chats by their connector.
  */

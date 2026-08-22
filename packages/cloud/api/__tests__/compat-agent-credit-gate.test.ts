@@ -2,6 +2,7 @@
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { Hono } from "hono";
+import { CONTAINER_BACKED_EXECUTION_TIERS } from "@/db/schemas/agent-sandboxes";
 
 const requireCompatAuth = mock(async () => ({
   user: {
@@ -48,35 +49,48 @@ const checkAgentCreditGate = mock(async () => ({
   error: "Insufficient credits",
 }));
 
-const getAgent = mock(async () => ({
-  id: "agent-1",
-  organization_id: "org-1",
-}));
+type WritableAgentFixture = {
+  id: string;
+  organization_id: string;
+  status: string;
+  execution_tier: string;
+  pool_status: string | null;
+  deleted_at: Date | null;
+  deletion_attempt_id: string | null;
+};
 
-const getAgentForWrite = mock(
-  async (): Promise<{
-    id: string;
-    organization_id: string;
-    status: string;
-  } | null> => ({
-    id: "agent-1",
-    organization_id: "org-1",
-    status: "stopped",
-  }),
-);
-
-const defaultWritableAgent = {
+const defaultWritableAgent: WritableAgentFixture = {
   id: "agent-1",
   organization_id: "org-1",
   status: "stopped",
+  execution_tier: "dedicated-lazy",
+  pool_status: null,
+  deleted_at: null,
+  deletion_attempt_id: null,
 };
 
-const provision = mock(async () => ({
-  success: true,
-  sandboxRecord: { status: "running" },
-}));
+const getAgentForWrite = mock(
+  async (
+    _agentId: string,
+    _organizationId: string,
+  ): Promise<WritableAgentFixture | null> => defaultWritableAgent,
+);
 
-const snapshot = mock(async () => undefined);
+const lifecycleOperationOrder: string[] = [];
+
+const executeResume = mock(async () => {
+  lifecycleOperationOrder.push("resume");
+  return { success: true };
+});
+
+const snapshot = mock(async () => {
+  lifecycleOperationOrder.push("snapshot");
+});
+
+const executeRestart = mock(async () => {
+  lifecycleOperationOrder.push("restart");
+  return { success: true };
+});
 
 const createdSandboxRow = {
   id: "agent-new",
@@ -104,8 +118,7 @@ const createAgent = mock(
   }),
 );
 
-// launch/route.ts calls launchManagedElizaAgent (which itself wraps provision),
-// not elizaSandboxService.provision directly — mock it at that seam.
+// launch/route.ts calls launchManagedElizaAgent, so mock it at that seam.
 const launchManagedElizaAgent = mock(async () => ({
   agentId: "agent-1",
   agentName: "Agent One",
@@ -198,9 +211,9 @@ mock.module("@/lib/services/eliza-sandbox", () => ({
   AgentImageNotAllowedError,
   AgentQuotaExceededError,
   elizaSandboxService: {
-    getAgent,
     getAgentForWrite,
-    provision,
+    executeResume,
+    executeRestart,
     snapshot,
     createAgent,
   },
@@ -239,6 +252,12 @@ describe("compat agent resume/restart/launch credit gate", () => {
   app.route("/api/compat/agents/:id/restart", restartRoute);
   app.route("/api/compat/agents/:id/launch", launchRoute);
 
+  const lifecycleRequest = (agentId: string, action: "resume" | "restart") =>
+    new Request(
+      `https://api.example.test/api/compat/agents/${agentId}/${action}`,
+      { method: "POST" },
+    );
+
   beforeEach(() => {
     requireCompatAuth.mockClear();
     requireAuthOrApiKeyWithOrg.mockClear();
@@ -251,25 +270,18 @@ describe("compat agent resume/restart/launch credit gate", () => {
       balance: 0,
       error: "Insufficient credits",
     });
-    getAgent.mockClear();
-    getAgent.mockResolvedValue({
-      id: "agent-1",
-      organization_id: "org-1",
-    });
     getAgentForWrite.mockClear();
     getAgentForWrite.mockResolvedValue(defaultWritableAgent);
-    provision.mockClear();
+    executeResume.mockClear();
+    executeRestart.mockClear();
     snapshot.mockClear();
+    lifecycleOperationOrder.length = 0;
     launchManagedElizaAgent.mockClear();
     prepareManagedElizaEnvironment.mockClear();
   });
 
-  test("blocks compat resume before provisioning when the org has insufficient credits", async () => {
-    const response = await app.fetch(
-      new Request("https://api.example.test/api/compat/agents/agent-1/resume", {
-        method: "POST",
-      }),
-    );
+  test("blocks compat resume before execution when the org has insufficient credits", async () => {
+    const response = await app.fetch(lifecycleRequest("agent-1", "resume"));
 
     expect(response.status).toBe(402);
     await expect(response.json()).resolves.toMatchObject({
@@ -278,28 +290,21 @@ describe("compat agent resume/restart/launch credit gate", () => {
     });
     expect(getAgentForWrite).toHaveBeenCalledWith("agent-1", "org-1");
     expect(checkAgentCreditGate).toHaveBeenCalledWith("org-1");
-    expect(provision).not.toHaveBeenCalled();
+    expect(executeResume).not.toHaveBeenCalled();
   });
 
-  test("blocks compat restart before snapshot/provision when the org has insufficient credits", async () => {
-    const response = await app.fetch(
-      new Request(
-        "https://api.example.test/api/compat/agents/agent-1/restart",
-        {
-          method: "POST",
-        },
-      ),
-    );
+  test("blocks compat restart before snapshot and execution when the org has insufficient credits", async () => {
+    const response = await app.fetch(lifecycleRequest("agent-1", "restart"));
 
     expect(response.status).toBe(402);
     await expect(response.json()).resolves.toMatchObject({
       success: false,
       error: "Insufficient credits",
     });
-    expect(getAgent).toHaveBeenCalledWith("agent-1", "org-1");
+    expect(getAgentForWrite).toHaveBeenCalledWith("agent-1", "org-1");
     expect(checkAgentCreditGate).toHaveBeenCalledWith("org-1");
     expect(snapshot).not.toHaveBeenCalled();
-    expect(provision).not.toHaveBeenCalled();
+    expect(executeRestart).not.toHaveBeenCalled();
   });
 
   test("blocks compat launch before provisioning when the org has insufficient credits (elizaOS/eliza#11152)", async () => {
@@ -318,45 +323,165 @@ describe("compat agent resume/restart/launch credit gate", () => {
     expect(launchManagedElizaAgent).not.toHaveBeenCalled();
   });
 
-  test("does not check credits when the compat agent lookup fails", async () => {
-    getAgentForWrite.mockResolvedValueOnce(null);
+  test("uses tenant-scoped primary lookups and performs no effects for missing or foreign agents", async () => {
+    const cases = [
+      {
+        agentId: "missing-resume",
+        action: "resume" as const,
+        organizationId: "org-1",
+      },
+      {
+        agentId: "foreign-resume",
+        action: "resume" as const,
+        organizationId: "org-foreign",
+      },
+      {
+        agentId: "missing-restart",
+        action: "restart" as const,
+        organizationId: "org-1",
+      },
+      {
+        agentId: "foreign-restart",
+        action: "restart" as const,
+        organizationId: "org-foreign",
+      },
+    ];
 
-    const response = await app.fetch(
-      new Request("https://api.example.test/api/compat/agents/missing/resume", {
-        method: "POST",
-      }),
+    for (const { agentId, action, organizationId } of cases) {
+      requireCompatAuth.mockResolvedValueOnce({
+        user: { id: "user-1", organization_id: organizationId },
+        authMethod: "standard",
+      });
+      getAgentForWrite.mockResolvedValueOnce(null);
+
+      const response = await app.fetch(lifecycleRequest(agentId, action));
+
+      expect(response.status).toBe(404);
+      await expect(response.json()).resolves.toMatchObject({
+        success: false,
+        error: "Agent not found",
+      });
+    }
+
+    expect(getAgentForWrite.mock.calls).toEqual(
+      cases.map(({ agentId, organizationId }) => [agentId, organizationId]),
     );
-
-    expect(response.status).toBe(404);
     expect(checkAgentCreditGate).not.toHaveBeenCalled();
-    expect(provision).not.toHaveBeenCalled();
+    expect(snapshot).not.toHaveBeenCalled();
+    expect(executeResume).not.toHaveBeenCalled();
+    expect(executeRestart).not.toHaveBeenCalled();
   });
 
-  test("allows funded compat resume and restart to reach sandbox operations", async () => {
+  test("rejects ineligible lifecycle authority before credit or sandbox effects", async () => {
+    const refusalCases: Array<{
+      label: string;
+      patch: Partial<WritableAgentFixture>;
+      message: string;
+    }> = [
+      {
+        label: "unknown-tier",
+        patch: { execution_tier: "future-container-tier" },
+        message: "requires a container-backed execution tier",
+      },
+      {
+        label: "shared-tier",
+        patch: { execution_tier: "shared" },
+        message: "requires a container-backed execution tier",
+      },
+      {
+        label: "pool-owned",
+        patch: { pool_status: "unclaimed" },
+        message: "cannot target pool-owned capacity",
+      },
+      {
+        label: "deleted",
+        patch: { deleted_at: new Date("2026-08-22T00:00:00.000Z") },
+        message: "cannot target a deleted agent",
+      },
+      {
+        label: "deletion-owned",
+        patch: {
+          deletion_attempt_id: "00000000-0000-4000-8000-000000000001",
+        },
+        message: "cannot start while agent deletion is in progress",
+      },
+    ];
+
+    for (const action of ["resume", "restart"] as const) {
+      for (const refusal of refusalCases) {
+        const agentId = `${action}-${refusal.label}`;
+        getAgentForWrite.mockResolvedValueOnce({
+          ...defaultWritableAgent,
+          id: agentId,
+          status: "running",
+          ...refusal.patch,
+        });
+
+        const response = await app.fetch(lifecycleRequest(agentId, action));
+
+        expect(response.status).toBe(409);
+        await expect(response.json()).resolves.toMatchObject({
+          success: false,
+          error: `Agent ${action} ${refusal.message}`,
+        });
+      }
+    }
+
+    expect(getAgentForWrite).toHaveBeenCalledTimes(10);
+    expect(checkAgentCreditGate).not.toHaveBeenCalled();
+    expect(snapshot).not.toHaveBeenCalled();
+    expect(executeResume).not.toHaveBeenCalled();
+    expect(executeRestart).not.toHaveBeenCalled();
+  });
+
+  test("allows every canonical container tier to reach resume and ordered restart operations", async () => {
     checkAgentCreditGate.mockResolvedValue({
       allowed: true,
       balance: 5,
       error: "",
     });
 
-    const resumeResponse = await app.fetch(
-      new Request("https://api.example.test/api/compat/agents/agent-1/resume", {
-        method: "POST",
-      }),
-    );
-    const restartResponse = await app.fetch(
-      new Request(
-        "https://api.example.test/api/compat/agents/agent-1/restart",
-        {
-          method: "POST",
-        },
-      ),
-    );
+    for (const executionTier of CONTAINER_BACKED_EXECUTION_TIERS) {
+      const agentId = `agent-${executionTier}`;
+      getAgentForWrite.mockResolvedValueOnce({
+        ...defaultWritableAgent,
+        id: agentId,
+        status: "stopped",
+        execution_tier: executionTier,
+      });
+      const resumeResponse = await app.fetch(
+        lifecycleRequest(agentId, "resume"),
+      );
 
-    expect(resumeResponse.status).toBe(200);
-    expect(restartResponse.status).toBe(200);
-    expect(provision).toHaveBeenCalledWith("agent-1", "org-1");
-    expect(snapshot).toHaveBeenCalledWith("agent-1", "org-1");
+      getAgentForWrite.mockResolvedValueOnce({
+        ...defaultWritableAgent,
+        id: agentId,
+        status: "running",
+        execution_tier: executionTier,
+      });
+      const restartResponse = await app.fetch(
+        lifecycleRequest(agentId, "restart"),
+      );
+
+      expect(resumeResponse.status).toBe(200);
+      expect(restartResponse.status).toBe(200);
+      expect(executeResume).toHaveBeenCalledWith(agentId, "org-1");
+      expect(snapshot).toHaveBeenCalledWith(agentId, "org-1");
+      expect(executeRestart).toHaveBeenCalledWith(agentId, "org-1");
+    }
+
+    expect(getAgentForWrite).toHaveBeenCalledTimes(6);
+    expect(checkAgentCreditGate).toHaveBeenCalledTimes(6);
+    expect(executeResume).toHaveBeenCalledTimes(3);
+    expect(snapshot).toHaveBeenCalledTimes(3);
+    expect(executeRestart).toHaveBeenCalledTimes(3);
+    expect(lifecycleOperationOrder).toEqual(
+      CONTAINER_BACKED_EXECUTION_TIERS.flatMap(() => [
+        "resume",
+        "snapshot",
+        "restart",
+      ]),
+    );
   });
 
   test("allows funded compat launch to reach launchManagedElizaAgent", async () => {

@@ -68,7 +68,10 @@ import {
 import { parseClampedInteger } from "@elizaos/shared/utils/number-parsing";
 import { type WebSocket, WebSocketServer } from "ws";
 import { installPlugin as installPluginDirect } from "../services/plugin-installer.ts";
-import { writeAgentBackupJsonResponse } from "./backup-json-response.ts";
+import {
+  AgentBackupClientDisconnectedError,
+  writeAgentBackupJsonResponse,
+} from "./backup-json-response.ts";
 import { handleAgentBackupV2SnapshotRequest } from "./backup-v2-stream-response.ts";
 import { handleStandaloneCloudPairRoute } from "./cloud-pair-route.ts";
 import { resolveConnectorHealthIntervalMs } from "./connector-health.ts";
@@ -174,7 +177,6 @@ const optionalPluginSpecifiers = {
   cloud: "@elizaos/plugin-elizacloud",
   imessage: "@elizaos/plugin-imessage",
   mcp: "@elizaos/plugin-mcp",
-  signal: "@elizaos/plugin-signal",
   whatsapp: "@elizaos/plugin-whatsapp",
   workflow: "@elizaos/plugin-workflow",
 } as const;
@@ -185,7 +187,6 @@ const optionalPluginImports = {
   cloud: () => importOptionalPlugin(optionalPluginSpecifiers.cloud),
   imessage: () => importOptionalPlugin(optionalPluginSpecifiers.imessage),
   mcp: () => importOptionalPlugin(optionalPluginSpecifiers.mcp),
-  signal: () => importOptionalPlugin(optionalPluginSpecifiers.signal),
   whatsapp: () => importOptionalPlugin(optionalPluginSpecifiers.whatsapp),
   workflow: () => importOptionalPlugin(optionalPluginSpecifiers.workflow),
 };
@@ -842,7 +843,11 @@ async function handleBuiltinOptionalRoutes(
     if (method === "POST") {
       await readBody(req).catch(() => undefined);
     }
-    json(res, absentPluginStub.buildBody(req));
+    json(
+      res,
+      absentPluginStub.buildBody(req),
+      absentPluginStub.statusCode ?? 200,
+    );
     return true;
   }
 
@@ -1906,6 +1911,20 @@ async function handleRequest(
       await writeAgentBackupJsonResponse(res, snapshot);
     } catch (err) {
       const message = formatError(err);
+      if (
+        err instanceof AgentBackupClientDisconnectedError ||
+        message === "Agent backup response stream failed"
+      ) {
+        // The download transport died mid-stream (client abort or socket
+        // error). The response is already committed and the socket is gone;
+        // treat it like the v2 capture boundary's 499/ephemeral path rather
+        // than logging a server fault.
+        logger.warn(
+          { err: message },
+          "[agent-backup] Snapshot download aborted",
+        );
+        return;
+      }
       if (message === PGLITE_SNAPSHOT_UNAVAILABLE_TRANSIENT) {
         // Transient teardown race (PGlite closing) — 503 so the caller retries
         // or defers instead of tripping the fail-closed restart gate on a 500
@@ -2552,11 +2571,6 @@ async function handleRequest(
             applyWhatsAppQrOverride: (...args: unknown[]) => void;
           }>("whatsapp")
         ).applyWhatsAppQrOverride,
-        applySignalQrOverride: (
-          await getOptionalPluginApi<{
-            applySignalQrOverride: (...args: unknown[]) => void;
-          }>("signal")
-        ).applySignalQrOverride,
         resolvePluginConfigMutationRejections,
         requirePluginManager,
         requireCoreManager,
@@ -2847,9 +2861,6 @@ async function handleRequest(
 
   // ── WhatsApp routes (/api/whatsapp/*) ────────────────────────────────────
   // Moved to @elizaos/plugin-whatsapp setup-routes.ts (registered via Plugin.routes).
-
-  // ── BlueBubbles routes ──────────────────────────────────────────────────
-  // Extracted to @elizaos/plugin-bluebubbles setup-routes.ts (Plugin.routes).
 
   // ── Notification + inbox routes (/api/notifications/*, /api/inbox/*) ──
   // Notifications: the unified notification center backed by the runtime
@@ -4773,7 +4784,7 @@ export async function startApiServer(opts?: {
   state.broadcastWsToConversation = (conversationId: string, data: object) =>
     eventHub.sendToConversation(conversationId, data);
   // Wire up ConnectorSetupService broadcastWs so connector plugins
-  // (Signal, WhatsApp) can broadcast pairing events via the service.
+  // Pairing connectors such as WhatsApp can broadcast events via the service.
   if (state.runtime) {
     try {
       const setupSvc = state.runtime.getService("connector-setup") as {
@@ -5084,14 +5095,6 @@ export async function startApiServer(opts?: {
       dispose: async () => {
         const sessions = [...(state.whatsappPairingSessions?.values() ?? [])];
         state.whatsappPairingSessions?.clear();
-        await Promise.all(sessions.map((session) => session.stop()));
-      },
-    },
-    {
-      name: "Signal pairing sessions",
-      dispose: async () => {
-        const sessions = [...(state.signalPairingSessions?.values() ?? [])];
-        state.signalPairingSessions?.clear();
         await Promise.all(sessions.map((session) => session.stop()));
       },
     },

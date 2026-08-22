@@ -61,6 +61,22 @@ export interface ShellResult {
 
 const COMPLETE_SHELL_CAPTURE_LIMIT_CHARS = 1_000_000;
 
+function enforceCompleteCaptureLimit(result: ShellResult): ShellResult {
+  if (
+    result.outputLimitExceeded === true ||
+    result.stdout.length + result.stderr.length <=
+      COMPLETE_SHELL_CAPTURE_LIMIT_CHARS
+  ) {
+    return result;
+  }
+  return {
+    ...result,
+    stdout: "",
+    stderr: "",
+    outputLimitExceeded: true,
+  };
+}
+
 export interface BackgroundShellStartResult {
   process: HostShellProcess;
   pid: number | undefined;
@@ -685,7 +701,7 @@ export async function runShell(
   const mode = resolveRuntimeExecutionMode(runtime);
 
   const routed = await runThroughCapabilityRouter(runtime, opts);
-  if (routed) return routed;
+  if (routed) return enforceCompleteCaptureLimit(routed);
 
   if (mode === "cloud") {
     throw new Error("Local shell execution disabled in cloud mode.");
@@ -721,7 +737,7 @@ export async function runShell(
       workdir: sandboxWorkdir,
       timeoutMs: opts.timeoutMs,
     });
-    return {
+    return enforceCompleteCaptureLimit({
       exitCode: result.exitCode,
       signal: null,
       stdout: result.stdout,
@@ -729,13 +745,15 @@ export async function runShell(
       durationMs: result.durationMs,
       timedOut: false,
       sandbox: backendForManager(manager),
-    };
+    });
   }
 
-  return runOnHost({
-    command: opts.command,
-    cwd: opts.cwd,
-    timeoutMs: opts.timeoutMs,
-    env: hostSpawnEnv(process.env),
-  });
+  return enforceCompleteCaptureLimit(
+    await runOnHost({
+      command: opts.command,
+      cwd: opts.cwd,
+      timeoutMs: opts.timeoutMs,
+      env: hostSpawnEnv(process.env),
+    }),
+  );
 }

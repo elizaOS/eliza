@@ -159,7 +159,7 @@ describe("view-interact-registry", () => {
     });
   });
 
-  it("unregisters handlers and does not remove a newer replacement handler", async () => {
+  it("restores a still-mounted handler after an overlapping owner unmounts", async () => {
     const { dispatchViewInteract, registerViewInteractHandler } = await import(
       "./view-interact-registry"
     );
@@ -174,7 +174,6 @@ describe("view-interact-registry", () => {
       async () => ({ version: 2 }),
     );
 
-    firstUnregister();
     await dispatchViewInteract(
       "replaceable",
       "gui",
@@ -198,6 +197,52 @@ describe("view-interact-registry", () => {
       undefined,
       "req-unregistered",
     );
+    expect(sendWsMessage).toHaveBeenCalledWith({
+      type: "view:interact:result",
+      requestId: "req-unregistered",
+      success: true,
+      result: { version: 1 },
+    });
+
+    sendWsMessage.mockClear();
+    firstUnregister();
+    await dispatchViewInteract(
+      "replaceable",
+      "gui",
+      "get-state",
+      undefined,
+      "req-fully-unregistered",
+    );
     expect(sendWsMessage).not.toHaveBeenCalled();
+  });
+
+  it("keeps the newest owner when an older overlapping owner unmounts first", async () => {
+    const { dispatchViewInteract, registerViewInteractHandler } = await import(
+      "./view-interact-registry"
+    );
+    const firstUnregister = registerViewInteractHandler(
+      "overlap-order",
+      "gui",
+      async () => ({ version: 1 }),
+    );
+    registerViewInteractHandler("overlap-order", "gui", async () => ({
+      version: 2,
+    }));
+
+    firstUnregister();
+    await dispatchViewInteract(
+      "overlap-order",
+      "gui",
+      "get-state",
+      undefined,
+      "req-newest-survives",
+    );
+
+    expect(sendWsMessage).toHaveBeenCalledWith({
+      type: "view:interact:result",
+      requestId: "req-newest-survives",
+      success: true,
+      result: { version: 2 },
+    });
   });
 });
