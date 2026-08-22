@@ -15,8 +15,7 @@ import { eq, inArray, or, sql } from "drizzle-orm";
 import { authOwnerBindingTable } from "../schema/authOwnerBinding";
 import { connectorAccountsTable } from "../schema/connectorAccounts";
 import { entityTable } from "../schema/entity";
-import { entityIdentityTable } from "../schema/entityIdentity";
-import { relationshipTable } from "../schema/relationship";
+import { identityClaimTable } from "../schema/identityAuthority";
 import type { DrizzleDatabase } from "../types";
 
 function stableJson(value: unknown): string {
@@ -95,6 +94,7 @@ export async function inspectSqlIdentityMigration(
   const sources: Record<string, number> = {
     auth_owner_bindings: 0,
     connector_accounts: 0,
+    identity_claims: 0,
     entity_identities: 0,
     entity_metadata_platform_identities: 0,
     life_entity_identities: 0,
@@ -160,6 +160,7 @@ export async function inspectSqlIdentityMigration(
           account.status === "connected" &&
           account.provider.trim().toLowerCase() === binding.connector.trim().toLowerCase() &&
           account.externalId === binding.externalId &&
+          account.ownerIdentityId === binding.identityId &&
           binding.verifiedAt > 0 &&
           (!instanceId || binding.instanceId === instanceId)
       );
@@ -188,6 +189,9 @@ export async function inspectSqlIdentityMigration(
         }
         if (matchingAccounts.some((account) => account.externalId !== binding.externalId)) {
           reasons.push("owner_binding_external_subject_mismatch");
+        }
+        if (matchingAccounts.some((account) => account.ownerIdentityId !== binding.identityId)) {
+          reasons.push("owner_binding_identity_mismatch");
         }
       }
       if (validAccounts.length > 1) {
@@ -221,12 +225,48 @@ export async function inspectSqlIdentityMigration(
         binding.instanceId !== instanceId ||
         binding.externalId !== row.externalSubjectReference ||
         binding.connector.trim().toLowerCase() !== row.connectorId ||
-        binding.verifiedAt <= 0
+        binding.verifiedAt <= 0 ||
+        accounts.find((account) => account.id === row.connectorAccountReference)
+          ?.ownerIdentityId !== binding.identityId
       ) {
         row.disposition = "conflict";
         row.reasons = [...row.reasons, "connector_account_owner_binding_invalid"];
       }
     }
+  }
+
+  const canonicalClaims = await db
+    .select()
+    .from(identityClaimTable)
+    .where(eq(identityClaimTable.agentId, agentId));
+  sources.identity_claims = canonicalClaims.length;
+  const accountsById = new Map(accounts.map((account) => [account.id, account]));
+  for (const claim of canonicalClaims) {
+    const account = accountsById.get(claim.connectorAccountId);
+    const reasons: string[] = [];
+    if (!account) reasons.push("canonical_claim_connector_account_missing");
+    else {
+      if (account.deletedAt !== null) reasons.push("canonical_claim_connector_account_deleted");
+      if (account.status !== "connected")
+        reasons.push("canonical_claim_connector_account_disconnected");
+      if (account.provider.trim().toLowerCase() !== claim.connectorId.trim().toLowerCase()) {
+        reasons.push("canonical_claim_connector_mismatch");
+      }
+    }
+    if (claim.verification === "verified" || claim.verification === "owner_bound") {
+      reasons.push("canonical_claim_verification_authority_unavailable");
+    }
+    rows.push({
+      source: "identity_claims",
+      sourceId: claim.id,
+      principalReference: claim.principalEntityId,
+      connectorId: claim.connectorId,
+      connectorAccountReference: claim.connectorAccountId,
+      externalSubjectReference: claim.externalSubjectId,
+      disposition: reasons.length > 0 ? "conflict" : "review",
+      reasons: reasons.length > 0 ? reasons : ["canonical_claim_requires_authority_review"],
+      metadata: { status: claim.status, verification: claim.verification },
+    });
   }
   if (!instanceId) {
     rows.push({
@@ -242,20 +282,35 @@ export async function inspectSqlIdentityMigration(
     });
   }
 
-  const legacyIdentities = await db
-    .select()
-    .from(entityIdentityTable)
-    .where(eq(entityIdentityTable.agentId, agentId));
+  const legacyIdentityResult = await db.execute(sql`
+    SELECT i.*, e.agent_id AS entity_agent_id
+      FROM entity_identities i
+      LEFT JOIN entities e ON e.id = i.entity_id
+     WHERE i.agent_id = ${agentId} OR e.agent_id = ${agentId}
+     ORDER BY i.id
+  `);
+  const legacyIdentities = resultRows(legacyIdentityResult);
   sources.entity_identities = legacyIdentities.length;
   const scopeOwners = new Map<string, Set<string>>();
   for (const identity of legacyIdentities) {
-    const provider = identity.platform.trim().toLowerCase();
+    const identityAgentId = String(identity.agent_id ?? "");
+    const entityAgentId =
+      identity.entity_agent_id == null ? null : String(identity.entity_agent_id);
+    const entityId = String(identity.entity_id ?? "");
+    const handle = String(identity.handle ?? "");
+    const provider = String(identity.platform ?? "")
+      .trim()
+      .toLowerCase();
     const providerAccounts = accountsByProvider.get(provider) ?? [];
-    const key = `${provider}\0${identity.handle}`;
+    const key = `${provider}\0${handle}`;
     const owners = scopeOwners.get(key) ?? new Set<string>();
-    owners.add(identity.entityId);
+    owners.add(entityId);
     scopeOwners.set(key, owners);
     const reasons = ["legacy_handle_requires_connector_subject_semantics"];
+    if (entityAgentId === null) reasons.push("legacy_identity_entity_missing");
+    if (identityAgentId !== agentId || entityAgentId !== agentId) {
+      reasons.push("legacy_identity_agent_entity_tenant_mismatch");
+    }
     let disposition: IdentityMigrationInventoryRow["disposition"] = "needs_stable_subject";
     if (providerAccounts.length !== 1) {
       disposition = "needs_connector_account";
@@ -263,20 +318,23 @@ export async function inspectSqlIdentityMigration(
         providerAccounts.length === 0 ? "no_connected_account" : "ambiguous_connected_account"
       );
     }
+    if (identityAgentId !== agentId || entityAgentId !== agentId) disposition = "conflict";
     rows.push({
       source: "entity_identities",
-      sourceId: identity.id,
-      principalReference: identity.entityId,
+      sourceId: String(identity.id ?? ""),
+      principalReference: entityId,
       connectorId: provider,
       connectorAccountReference:
         providerAccounts.length === 1 ? (providerAccounts[0]?.id ?? null) : null,
-      externalSubjectReference: identity.handle,
+      externalSubjectReference: handle,
       disposition,
       reasons,
       metadata: {
-        verified: identity.verified,
-        confidence: identity.confidence,
-        source: identity.source,
+        verified: identity.verified === true,
+        confidence: typeof identity.confidence === "number" ? identity.confidence : 0,
+        source: typeof identity.source === "string" ? identity.source : null,
+        identityAgentId,
+        entityAgentId,
       },
     });
   }
@@ -316,26 +374,45 @@ export async function inspectSqlIdentityMigration(
     }
   }
 
-  const identityLinks = await db
-    .select()
-    .from(relationshipTable)
-    .where(eq(relationshipTable.agentId, agentId));
-  for (const relationship of identityLinks.filter(
-    (relationship) =>
-      relationship.tags?.includes("identity_link") &&
-      asMetadata(relationship.metadata).status === "confirmed"
-  )) {
+  const relationshipResult = await db.execute(sql`
+    SELECT r.*, source.agent_id AS source_agent_id, target.agent_id AS target_agent_id
+      FROM relationships r
+      LEFT JOIN entities source ON source.id = r.source_entity_id
+      LEFT JOIN entities target ON target.id = r.target_entity_id
+     WHERE r.agent_id = ${agentId}
+        OR source.agent_id = ${agentId}
+        OR target.agent_id = ${agentId}
+     ORDER BY r.id
+  `);
+  for (const relationship of resultRows(relationshipResult).filter((record) => {
+    const tags = Array.isArray(record.tags) ? record.tags : [];
+    return tags.includes("identity_link") && asMetadata(record.metadata).status === "confirmed";
+  })) {
     sources.relationships_identity_link += 1;
+    const relationshipAgentId = String(relationship.agent_id ?? "");
+    const sourceAgentId =
+      relationship.source_agent_id == null ? null : String(relationship.source_agent_id);
+    const targetAgentId =
+      relationship.target_agent_id == null ? null : String(relationship.target_agent_id);
+    const tenantMismatch =
+      relationshipAgentId !== agentId || sourceAgentId !== agentId || targetAgentId !== agentId;
     rows.push({
       source: "relationships_identity_link",
-      sourceId: relationship.id,
-      principalReference: relationship.sourceEntityId,
+      sourceId: String(relationship.id ?? ""),
+      principalReference: String(relationship.source_entity_id ?? ""),
       connectorId: null,
       connectorAccountReference: null,
-      externalSubjectReference: relationship.targetEntityId,
-      disposition: "review",
-      reasons: ["confirmed_link_is_merge_evidence_not_a_scoped_claim"],
-      metadata: { targetPrincipalId: relationship.targetEntityId },
+      externalSubjectReference: String(relationship.target_entity_id ?? ""),
+      disposition: tenantMismatch ? "conflict" : "review",
+      reasons: tenantMismatch
+        ? ["relationship_identity_link_cross_tenant"]
+        : ["confirmed_link_is_merge_evidence_not_a_scoped_claim"],
+      metadata: {
+        targetPrincipalId: String(relationship.target_entity_id ?? ""),
+        relationshipAgentId,
+        sourceAgentId,
+        targetAgentId,
+      },
     });
   }
 
@@ -345,11 +422,18 @@ export async function inspectSqlIdentityMigration(
   ) {
     const result = await db.execute(sql`
       SELECT i.id, i.entity_id, i.platform, i.handle, i.connector_account_id,
-             i.verified, i.confidence, e.entity_id AS declared_entity_id
+             i.verified, i.confidence, e.entity_id AS declared_entity_id,
+             principal.agent_id AS principal_agent_id,
+             account.agent_id AS account_agent_id,
+             account.provider AS account_provider,
+             account.status AS account_status,
+             account.deleted_at AS account_deleted_at
         FROM app_lifeops.life_entity_identities i
         LEFT JOIN app_lifeops.life_entities e
-          ON e.entity_id = i.entity_id
+         ON e.entity_id = i.entity_id
          AND e.agent_id = i.agent_id
+        LEFT JOIN entities principal ON principal.id::text = i.entity_id::text
+        LEFT JOIN connector_accounts account ON account.id::text = i.connector_account_id::text
        WHERE i.agent_id = ${agentId}
        ORDER BY i.id
     `);
@@ -364,6 +448,28 @@ export async function inspectSqlIdentityMigration(
       }
       if (!isUuid(principal)) reasons.push("lifeops_principal_is_not_uuid");
       if (!isUuid(account)) reasons.push("lifeops_connector_account_is_not_uuid");
+      if (isUuid(principal) && record.principal_agent_id == null) {
+        reasons.push("lifeops_canonical_principal_missing");
+      } else if (isUuid(principal) && String(record.principal_agent_id) !== agentId) {
+        reasons.push("lifeops_canonical_principal_wrong_tenant");
+      }
+      if (isUuid(account) && record.account_agent_id == null) {
+        reasons.push("lifeops_connector_account_missing");
+      } else if (isUuid(account)) {
+        if (String(record.account_agent_id) !== agentId)
+          reasons.push("lifeops_connector_account_wrong_tenant");
+        if (
+          String(record.account_provider ?? "")
+            .trim()
+            .toLowerCase() !==
+          String(record.platform ?? "")
+            .trim()
+            .toLowerCase()
+        )
+          reasons.push("lifeops_connector_account_provider_mismatch");
+        if (record.account_status !== "connected" || record.account_deleted_at != null)
+          reasons.push("lifeops_connector_account_not_live");
+      }
       rows.push({
         source: "life_entity_identities",
         sourceId,
@@ -371,11 +477,19 @@ export async function inspectSqlIdentityMigration(
         connectorId: String(record.platform ?? "") || null,
         connectorAccountReference: account || null,
         externalSubjectReference: String(record.handle ?? "") || null,
-        disposition: !isUuid(principal)
-          ? "needs_principal_projection"
-          : !isUuid(account)
-            ? "needs_connector_account"
-            : "review",
+        disposition: reasons.some(
+          (reason) =>
+            reason.includes("wrong_tenant") ||
+            reason.includes("missing") ||
+            reason.includes("mismatch") ||
+            reason.includes("not_live")
+        )
+          ? "conflict"
+          : !isUuid(principal)
+            ? "needs_principal_projection"
+            : !isUuid(account)
+              ? "needs_connector_account"
+              : "review",
         reasons: reasons.length > 0 ? reasons : ["legacy_claim_requires_subject_semantics_review"],
         metadata: {
           verified: record.verified === true,
@@ -402,7 +516,7 @@ export async function inspectSqlIdentityMigration(
   const subjectRows = new Map<string, IdentityMigrationInventoryRow[]>();
   for (const row of rows) {
     if (!row.connectorId || !row.externalSubjectReference) continue;
-    const key = `${row.connectorId.trim().toLowerCase()}\0${row.externalSubjectReference}`;
+    const key = `${row.connectorId.trim().toLowerCase()}\0${row.connectorAccountReference ?? "unscoped"}\0${row.externalSubjectReference}`;
     const matches = subjectRows.get(key) ?? [];
     matches.push(row);
     subjectRows.set(key, matches);

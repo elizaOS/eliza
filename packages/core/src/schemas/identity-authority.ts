@@ -235,13 +235,6 @@ export const identityClaimJournalSchema: SchemaTable = {
 			type: "uuid",
 			notNull: true,
 		},
-		event_kind: { name: "event_kind", type: "text", notNull: true },
-		prior_version: { name: "prior_version", type: "bigint" },
-		resulting_version: {
-			name: "resulting_version",
-			type: "bigint",
-			notNull: true,
-		},
 		actor_principal_id: {
 			name: "actor_principal_id",
 			type: "uuid",
@@ -333,30 +326,12 @@ export const identityClaimRetentionLedgerSchema: SchemaTable = {
 			notNull: true,
 			default: "gen_random_uuid()",
 		},
-		event_kind: { name: "event_kind", type: "text", notNull: true },
-		prior_version: { name: "prior_version", type: "bigint" },
-		resulting_version: {
-			name: "resulting_version",
-			type: "bigint",
-			notNull: true,
-		},
 	},
 	indexes: {},
 	foreignKeys: {},
 	compositePrimaryKeys: {},
 	uniqueConstraints: {},
-	checkConstraints: {
-		identity_claim_retention_ledger_event_check: {
-			name: "identity_claim_retention_ledger_event_check",
-			value:
-				"event_kind IN ('observed', 'refreshed', 'verified', 'disputed', 'revoked')",
-		},
-		identity_claim_retention_ledger_version_check: {
-			name: "identity_claim_retention_ledger_version_check",
-			value:
-				"resulting_version > 0 AND (prior_version IS NULL OR prior_version > 0)",
-		},
-	},
+	checkConstraints: {},
 };
 
 export const identityAuthorityStateSchema: SchemaTable = {

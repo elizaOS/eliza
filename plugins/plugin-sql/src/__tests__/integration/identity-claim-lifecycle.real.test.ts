@@ -23,6 +23,7 @@ import {
   identityClaimRetentionLedgerTable,
   identityClaimTable,
 } from "../../schema/identityAuthority";
+import { relationshipTable } from "../../schema/relationship";
 import {
   computeIdentityRequestDigest,
   SqlIdentityResolutionService,
@@ -93,6 +94,7 @@ describe("SQL identity claim lifecycle and migration inventory", () => {
         accountKey: "identity-owner-account",
         externalId: "owner-subject",
         ownerBindingId,
+        ownerIdentityId: identityId,
         accessGate: "owner_binding",
         status: "connected",
       },
@@ -186,6 +188,16 @@ describe("SQL identity claim lifecycle and migration inventory", () => {
       })
     ).rejects.toMatchObject({ code: "IDENTITY_VERIFICATION_AUTHORITY_UNAVAILABLE" });
     await expect(service.resolveVerifiedDeliveryClaims(agentId, principalId)).resolves.toEqual([]);
+    await expect(service.resolveVerifiedDeliveryClaims(agentId, ownerPrincipalId)).resolves.toEqual(
+      []
+    );
+    await expect(
+      service.evaluateOwnerBinding({
+        agentId,
+        actorPrincipalId: ownerPrincipalId,
+        candidateOwnerPrincipalIds: [ownerPrincipalId],
+      })
+    ).resolves.toEqual({ decision: "unavailable", reason: "service_unavailable" });
 
     const forged = {
       ...value,
@@ -246,6 +258,17 @@ describe("SQL identity claim lifecycle and migration inventory", () => {
         requestDigest: computeIdentityRequestDigest("revoke-claim", revoke),
       })
     ).rejects.toMatchObject({ code: "IDENTITY_ADMIN_AUTHORITY_UNAVAILABLE" });
+
+    const invalidRevocation = { ...revoke, revokedAt: "not-a-timestamp" };
+    await expect(
+      service.revokeClaim({
+        ...invalidRevocation,
+        requestDigest: computeIdentityRequestDigest("revoke-claim", invalidRevocation),
+      })
+    ).rejects.toMatchObject({ code: "IDENTITY_CLAIM_INPUT_INVALID" });
+    await expect(
+      service.listClaimJournal(agentId, claimId, { limit: 10, cursor: "not-a-uuid" })
+    ).rejects.toMatchObject({ code: "IDENTITY_JOURNAL_CURSOR_INVALID" });
   });
 
   it("denies journal mutation and retains unlinkable receipts on agent deletion", async () => {
@@ -330,7 +353,7 @@ describe("SQL identity claim lifecycle and migration inventory", () => {
       (row) => !beforeIds.has(row.id)
     );
     expect(receipts).toHaveLength(1);
-    expect(receipts[0]).toMatchObject({ eventKind: "observed", resultingVersion: 1 });
+    expect(Object.keys(receipts[0] ?? {})).toEqual(["id"]);
     const serialized = JSON.stringify(receipts);
     for (const identifyingValue of [
       deletionAgentId,
@@ -348,7 +371,7 @@ describe("SQL identity claim lifecycle and migration inventory", () => {
       Promise.resolve(
         db
           .update(identityClaimRetentionLedgerTable)
-          .set({ eventKind: "revoked" })
+          .set({ id: crypto.randomUUID() })
           .where(eq(identityClaimRetentionLedgerTable.id, receiptId))
       )
     ).rejects.toBeDefined();
@@ -407,6 +430,23 @@ describe("SQL identity claim lifecycle and migration inventory", () => {
         confidence: 0.9,
       },
     ]);
+    const foreignAgentId = crypto.randomUUID() as UUID;
+    await db.insert(agentTable).values({ id: foreignAgentId, name: "foreign-inventory-agent" });
+    await db.insert(entityIdentityTable).values({
+      agentId: foreignAgentId,
+      entityId: principalId,
+      platform: "discord",
+      handle: "cross-tenant-handle",
+      verified: false,
+      confidence: 0.2,
+    });
+    await db.insert(relationshipTable).values({
+      agentId: foreignAgentId,
+      sourceEntityId: principalId,
+      targetEntityId: conflictingPrincipalId,
+      tags: ["identity_link"],
+      metadata: { status: "confirmed" },
+    });
     await db.execute(sql`CREATE SCHEMA IF NOT EXISTS app_lifeops`);
     await db.execute(sql`
       CREATE TABLE IF NOT EXISTS app_lifeops.life_entities (
@@ -433,6 +473,13 @@ describe("SQL identity claim lifecycle and migration inventory", () => {
         'life-id-missing', ${agentId}, 'ent_missing', 'telegram', 'missing', 'default', FALSE, 0.4
       )
     `);
+    await db.execute(sql`
+      INSERT INTO app_lifeops.life_entity_identities (
+        id, agent_id, entity_id, platform, handle, connector_account_id, verified, confidence
+      ) VALUES (
+        'life-id-provider-mismatch', ${agentId}, ${principalId}, 'telegram', 'mismatch', ${accountId}, TRUE, 0.8
+      )
+    `);
 
     const beforeClaims = await db.select().from(identityClaimTable);
     const first = await service.inspectLegacyMigration(agentId);
@@ -444,6 +491,7 @@ describe("SQL identity claim lifecycle and migration inventory", () => {
         "owner_binding_unverified",
         "owner_binding_connector_account_disconnected",
         "owner_binding_external_subject_mismatch",
+        "owner_binding_identity_mismatch",
       ]),
     });
     expect(first.rows.find((row) => row.sourceId === wrongAccountId)).toMatchObject({
@@ -457,6 +505,25 @@ describe("SQL identity claim lifecycle and migration inventory", () => {
         "lifeops_connector_account_is_not_uuid",
       ]),
     });
+    expect(first.rows.find((row) => row.sourceId === "life-id-provider-mismatch")).toMatchObject({
+      disposition: "conflict",
+      reasons: expect.arrayContaining(["lifeops_connector_account_provider_mismatch"]),
+    });
+    expect(
+      first.rows.find(
+        (row) =>
+          row.source === "entity_identities" &&
+          row.externalSubjectReference === "cross-tenant-handle"
+      )
+    ).toMatchObject({
+      disposition: "conflict",
+      reasons: expect.arrayContaining(["legacy_identity_agent_entity_tenant_mismatch"]),
+    });
+    expect(first.rows.find((row) => row.source === "relationships_identity_link")).toMatchObject({
+      disposition: "conflict",
+      reasons: expect.arrayContaining(["relationship_identity_link_cross_tenant"]),
+    });
+    expect(first.sources.identity_claims).toBeGreaterThan(0);
     expect(first.rows.filter((row) => row.source === "entity_identities")).toEqual(
       expect.arrayContaining([
         expect.objectContaining({

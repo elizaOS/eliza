@@ -8,8 +8,8 @@
  * tables once every migration succeeds.
  */
 import { type IDatabaseAdapter, logger, type Plugin } from "@elizaos/core";
-import { applyIdentityPersonLinkAttestationGuard } from "./identity-person-link-attestation-guard";
 import { applyIdentityClaimJournalGuard } from "./identity-claim-journal-guard";
+import { applyIdentityPersonLinkAttestationGuard } from "./identity-person-link-attestation-guard";
 import { applyMessageSearchObjects, messageSearchTableExists } from "./message-search";
 import { migrateToEntityRLS } from "./migrations";
 import { applyEntityRLSToAllTables, applyRLSToNewTables, installRLSFunctions } from "./rls";
@@ -153,6 +153,13 @@ export class DatabaseMigrationService {
 
     if (failureCount === 0) {
       logger.info({ src: "plugin:sql", successCount }, "All migrations completed successfully");
+
+      // A dry-run is a read-only plan. Post-migration guards, search objects,
+      // and RLS are DDL and must never be installed from this code path.
+      if (migrationOptions.dryRun) {
+        logger.info({ src: "plugin:sql" }, "Dry-run completed without post-migration DDL");
+        return;
+      }
 
       if (!this.identityPersonLinkGuardSettled) {
         this.identityPersonLinkGuardSettled = await applyIdentityPersonLinkAttestationGuard(

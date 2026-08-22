@@ -131,6 +131,27 @@ but never expose `agent-private` documents or grant mutation authority.
 
 Message-search DDL is also guarded on production Postgres. The generated column and GIN indexes are still installed automatically for development/test and embedded PGlite. For production Postgres, schedule the table rewrite/index creation and run with `ELIZA_APPLY_MESSAGE_SEARCH_OBJECTS=true` once the deployment window is approved.
 
+### Identity claim history boundary
+
+Claim journal rows are append-only for ordinary database roles. Direct update,
+delete, and truncate operations fail; deleting an agent remains the sole
+supported lifecycle cascade and emits one fresh UUID-only retention receipt for
+the whole deletion transaction. The receipt proves only that some retained
+claim history was erased. It contains no tenant, account, principal, claim,
+subject, timestamp, event, digest, or version field that an application query
+role could use to correlate it with surviving rows. A rolled-back deletion also
+rolls back its receipt.
+
+This is an application-role privacy boundary, not erasure from PostgreSQL
+internals. Database owners, superusers, replication roles, WAL/archive readers,
+physical backup operators, and external query/log capture can observe the
+deletion transaction and are trusted infrastructure principals. Deployments
+requiring erasure from those systems must apply their own WAL, backup, log, and
+replica retention controls. Historical `owner_bound` and `verified` claim rows
+are not authorization evidence: delivery and owner evaluation fail closed until
+an independently authenticated producer can prove both the connector assertion
+and the principal-to-owner relationship.
+
 ## Connection Management
 
 Both `PostgresConnectionManager` and `PGliteClientManager` are stored under `Symbol.for("elizaos.plugin-sql.global-singletons")` on `globalThis`. This prevents multiple pools when the module is imported from multiple paths in the same process. Do not construct manager instances directly — always go through `createDatabaseAdapter()`.

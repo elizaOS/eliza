@@ -69,12 +69,7 @@ describe("canonical identity authority schema", () => {
   it("retains only unlinkable lifecycle receipt fields", () => {
     const config = getTableConfig(identityClaimRetentionLedgerTable);
     expect(config.foreignKeys).toHaveLength(0);
-    expect(config.columns.map((column) => column.name)).toEqual([
-      "id",
-      "event_kind",
-      "prior_version",
-      "resulting_version",
-    ]);
+    expect(config.columns.map((column) => column.name)).toEqual(["id"]);
   });
 
   it("retains merge and split plans with lineage and before-state", () => {

@@ -172,27 +172,16 @@ export const identityClaimJournalTable = pgTable(
 );
 
 /**
- * Unlinkable lifecycle receipts retained after tenant deletion. They have no
- * tenant, principal, subject, claim, free-text, or JSON columns by design.
+ * Application-visible deletion receipts. One fresh opaque identifier is
+ * emitted per agent deletion that had claim history. Query roles cannot link
+ * it to a tenant; PostgreSQL superusers and WAL readers remain out of scope.
  */
 export const identityClaimRetentionLedgerTable = pgTable(
   "identity_claim_retention_ledger",
   {
     id: uuid("id").primaryKey().default(sql`gen_random_uuid()`).notNull(),
-    eventKind: text("event_kind").notNull(),
-    priorVersion: bigint("prior_version", { mode: "number" }),
-    resultingVersion: bigint("resulting_version", { mode: "number" }).notNull(),
   },
-  (table) => [
-    check(
-      "identity_claim_retention_ledger_event_check",
-      sql`${table.eventKind} IN ('observed', 'refreshed', 'verified', 'disputed', 'revoked')`
-    ),
-    check(
-      "identity_claim_retention_ledger_version_check",
-      sql`${table.resultingVersion} > 0 AND (${table.priorVersion} IS NULL OR ${table.priorVersion} > 0)`
-    ),
-  ]
+  () => []
 );
 
 export const identityAuthorityStateTable = pgTable(

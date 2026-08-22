@@ -313,7 +313,7 @@ describe("SQL identity authority", () => {
     expect(journalAfter?.commitIdempotencyKey).toBeNull();
   });
 
-  it("requires a live same-instance account and canonicalizes configured owners", async () => {
+  it("keeps historical owner bindings unavailable without principal authentication", async () => {
     const identityId = crypto.randomUUID();
     const bindingId = crypto.randomUUID();
     const accountId = crypto.randomUUID() as UUID;
@@ -367,7 +367,7 @@ describe("SQL identity authority", () => {
         candidateOwnerPrincipalIds: [ownerPrincipalId],
         purpose: "role_resolution",
       })
-    ).resolves.toEqual({ decision: "not_bound", reason: "no_active_binding" });
+    ).resolves.toEqual({ decision: "unavailable", reason: "service_unavailable" });
     await db
       .update(connectorAccountsTable)
       .set({ status: "connected" })
@@ -415,12 +415,7 @@ describe("SQL identity authority", () => {
         candidateOwnerPrincipalIds: [configuredOwnerAliasId],
         purpose: "role_resolution",
       })
-    ).resolves.toMatchObject({
-      decision: "bound",
-      actorCanonicalPrincipalId: ownerPrincipalId,
-      ownerPrincipalId: configuredOwnerAliasId,
-      ownerBindingId: bindingId,
-    });
+    ).resolves.toEqual({ decision: "unavailable", reason: "service_unavailable" });
 
     const conflictingPrincipalId = crypto.randomUUID() as UUID;
     const conflictingIdentityId = crypto.randomUUID();
@@ -502,6 +497,6 @@ describe("SQL identity authority", () => {
         candidateOwnerPrincipalIds: [configuredOwnerAliasId],
         purpose: "role_resolution",
       })
-    ).resolves.toEqual({ decision: "not_bound", reason: "no_active_binding" });
+    ).resolves.toEqual({ decision: "unavailable", reason: "service_unavailable" });
   });
 });

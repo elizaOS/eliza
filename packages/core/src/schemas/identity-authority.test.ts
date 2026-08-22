@@ -57,9 +57,6 @@ describe("portable identity authority schemas", () => {
 		expect(identityClaimRetentionLedgerSchema.foreignKeys).toEqual({});
 		expect(Object.keys(identityClaimRetentionLedgerSchema.columns)).toEqual([
 			"id",
-			"event_kind",
-			"prior_version",
-			"resulting_version",
 		]);
 	});
 

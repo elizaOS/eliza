@@ -23,9 +23,9 @@ import {
   type IdentityJournalPage,
   type IdentityMergeConfirmation,
   type IdentityMergePlan,
+  type IdentityMigrationInventory,
   type IdentityPersonLinkAttestation,
   type IdentityPersonLinkVerification,
-  type IdentityMigrationInventory,
   IdentityResolutionService,
   type JsonObject,
   type MergeJournal,
@@ -36,13 +36,11 @@ import {
   type Service,
   type SplitIdentityRequest,
   type UUID,
-  type VerifyIdentityPersonLinkRequest,
   type VerifyIdentityClaimRequest,
+  type VerifyIdentityPersonLinkRequest,
 } from "@elizaos/core";
 import { sha256 } from "@noble/hashes/sha2.js";
 import { and, desc, eq, inArray, lt, or, sql } from "drizzle-orm";
-import { authOwnerBindingTable } from "../schema/authOwnerBinding";
-import { connectorAccountsTable } from "../schema/connectorAccounts";
 import { entityTable } from "../schema/entity";
 import {
   identityAuthorityStateTable,
@@ -59,6 +57,7 @@ import { inspectSqlIdentityMigration } from "./sql-identity-migration-inventory"
 const PLAN_TTL_MS = 15 * 60_000;
 const CONFIRMATION_TTL_MS = 5 * 60_000;
 const MAX_JOURNAL_PAGE = 100;
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const PENDING_CONSUMERS = Object.freeze([
   "runtime-relationships",
   "contacts",
@@ -506,6 +505,15 @@ export class SqlIdentityResolutionService extends IdentityResolutionService {
     ) {
       fail("IDENTITY_CLAIM_INPUT_INVALID", "Claim transition input is invalid.");
     }
+    const transitionTimestamp =
+      eventKind === "verified"
+        ? (request as VerifyIdentityClaimRequest).verifiedAt
+        : eventKind === "revoked"
+          ? (request as RevokeIdentityClaimRequest).revokedAt
+          : null;
+    if (transitionTimestamp !== null && !Number.isFinite(new Date(transitionTimestamp).getTime())) {
+      fail("IDENTITY_CLAIM_INPUT_INVALID", "Claim transition timestamp is invalid.");
+    }
     if (eventKind === "verified") {
       fail(
         "IDENTITY_VERIFICATION_AUTHORITY_UNAVAILABLE",
@@ -541,7 +549,7 @@ export class SqlIdentityResolutionService extends IdentityResolutionService {
     }
     if (
       options.cursor !== null &&
-      (typeof options.cursor !== "string" || options.cursor.trim().length === 0)
+      (typeof options.cursor !== "string" || !UUID_PATTERN.test(options.cursor))
     ) {
       fail("IDENTITY_JOURNAL_CURSOR_INVALID", "Claim journal cursor is invalid.");
     }
@@ -669,41 +677,12 @@ export class SqlIdentityResolutionService extends IdentityResolutionService {
   }
 
   private async isTrustedDeliveryClaim(agentId: UUID, claim: IdentityClaim): Promise<boolean> {
-    const [account] = await this.db
-      .select()
-      .from(connectorAccountsTable)
-      .where(
-        and(
-          eq(connectorAccountsTable.id, claim.connectorAccountId),
-          eq(connectorAccountsTable.agentId, agentId),
-          eq(connectorAccountsTable.provider, claim.connectorId)
-        )
-      )
-      .limit(1);
-    if (!account || account.deletedAt !== null || account.status !== "connected") return false;
-
-    const instanceSetting = this.runtime.getSetting("ELIZA_INSTANCE_ID");
-    const instanceId = typeof instanceSetting === "string" ? instanceSetting.trim() : "";
-    if (claim.verification === "owner_bound") {
-      if (!claim.ownerBindingId || instanceId.length === 0) return false;
-      const [binding] = await this.db
-        .select()
-        .from(authOwnerBindingTable)
-        .where(eq(authOwnerBindingTable.id, claim.ownerBindingId))
-        .limit(1);
-      return Boolean(
-        binding &&
-          account.ownerBindingId === binding.id &&
-          binding.connector === claim.connectorId &&
-          binding.externalId === claim.externalSubjectId &&
-          binding.instanceId === instanceId &&
-          binding.verifiedAt > 0
-      );
-    }
-
-    // Mutable database rows and caller-supplied JSON are not verification
-    // capabilities. Ordinary verified claims therefore remain unavailable to
-    // delivery until a connector-owned producer and receipt verifier land.
+    void agentId;
+    void claim;
+    // Historical owner bindings do not authenticate a principal-to-owner
+    // relationship, and mutable claim rows are not connector capabilities.
+    // Delivery remains unavailable until an independently authenticated,
+    // tenant-bound producer can prove both relationships.
     return false;
   }
 
@@ -711,80 +690,8 @@ export class SqlIdentityResolutionService extends IdentityResolutionService {
     request: Parameters<IdentityResolutionService["evaluateOwnerBinding"]>[0]
   ): Promise<OwnerBindingEvaluation> {
     this.assertAgent(request.agentId);
-    const instanceSetting = this.runtime.getSetting("ELIZA_INSTANCE_ID");
-    const instanceId = typeof instanceSetting === "string" ? instanceSetting.trim() : "";
-    if (instanceId.length === 0) {
-      return { decision: "unavailable", reason: "service_unavailable" };
-    }
-    const cluster = await this.getCluster(request.agentId, request.actorPrincipalId);
-    if (!cluster) return { decision: "not_bound", reason: "no_active_binding" };
-    const ownerClaim = cluster.claims.find(
-      (claim) =>
-        claim.status === "active" &&
-        claim.verification === "owner_bound" &&
-        claim.ownerBindingId !== null
-    );
-    if (!ownerClaim) return { decision: "not_bound", reason: "no_active_binding" };
-    const candidateResolutions = await Promise.all(
-      request.candidateOwnerPrincipalIds.map(async (candidateOwnerPrincipalId) => ({
-        configured: candidateOwnerPrincipalId,
-        resolved: await this.resolveCanonicalPrincipal(request.agentId, candidateOwnerPrincipalId),
-      }))
-    );
-    const matchedOwner = candidateResolutions.find(
-      ({ resolved }) => resolved.canonicalPrincipalId === cluster.canonicalPrincipalId
-    );
-    if (!matchedOwner) {
-      return { decision: "not_bound", reason: "wrong_owner" };
-    }
-    const [account] = await this.db
-      .select({
-        ownerBindingId: connectorAccountsTable.ownerBindingId,
-        provider: connectorAccountsTable.provider,
-        status: connectorAccountsTable.status,
-        deletedAt: connectorAccountsTable.deletedAt,
-      })
-      .from(connectorAccountsTable)
-      .where(
-        and(
-          eq(connectorAccountsTable.id, ownerClaim.connectorAccountId),
-          eq(connectorAccountsTable.agentId, request.agentId),
-          eq(connectorAccountsTable.ownerBindingId, ownerClaim.ownerBindingId as string)
-        )
-      )
-      .limit(1);
-    const [binding] = await this.db
-      .select({
-        connector: authOwnerBindingTable.connector,
-        externalId: authOwnerBindingTable.externalId,
-        instanceId: authOwnerBindingTable.instanceId,
-        verifiedAt: authOwnerBindingTable.verifiedAt,
-      })
-      .from(authOwnerBindingTable)
-      .where(eq(authOwnerBindingTable.id, ownerClaim.ownerBindingId as string))
-      .limit(1);
-    if (
-      !account ||
-      !binding ||
-      account.deletedAt !== null ||
-      account.status !== "connected" ||
-      account.provider !== ownerClaim.connectorId ||
-      binding.connector !== ownerClaim.connectorId ||
-      binding.externalId !== ownerClaim.externalSubjectId ||
-      binding.instanceId !== instanceId ||
-      binding.verifiedAt <= 0
-    ) {
-      return { decision: "not_bound", reason: "no_active_binding" };
-    }
-    return {
-      decision: "bound",
-      actorCanonicalPrincipalId: cluster.canonicalPrincipalId,
-      ownerPrincipalId: matchedOwner.configured,
-      claimId: ownerClaim.id,
-      ownerBindingId: ownerClaim.ownerBindingId as string,
-      generation: cluster.generation,
-      reason: "verified_owner_binding",
-    };
+    void request;
+    return { decision: "unavailable", reason: "service_unavailable" };
   }
 
   async attestPersonLink(

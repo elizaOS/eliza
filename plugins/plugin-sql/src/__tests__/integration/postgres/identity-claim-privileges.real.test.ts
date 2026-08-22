@@ -6,8 +6,12 @@
 
 import type { UUID } from "@elizaos/core";
 import { eq } from "drizzle-orm";
+import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { applyIdentityClaimJournalGuard } from "../../../identity-claim-journal-guard";
+import { plugin as sqlPlugin } from "../../../index";
+import { DatabaseMigrationService } from "../../../migration-service";
 import { agentTable } from "../../../schema/agent";
 import { connectorAccountsTable } from "../../../schema/connectorAccounts";
 import { entityTable } from "../../../schema/entity";
@@ -43,10 +47,11 @@ const enabled =
     await admin.query(`CREATE ROLE ${roleName} LOGIN PASSWORD '${password}'`);
     await admin.query(`GRANT USAGE ON SCHEMA public TO ${roleName}`);
     await admin.query(
-      `GRANT SELECT, UPDATE, DELETE ON identity_claim_journal, identity_claim_retention_ledger TO ${roleName}`
+      `GRANT SELECT, UPDATE, DELETE, TRUNCATE ON identity_claim_journal, identity_claim_retention_ledger TO ${roleName}`
     );
     await admin.query(`GRANT INSERT ON identity_claim_retention_ledger TO ${roleName}`);
-    await admin.query(`GRANT SELECT, DELETE ON agents TO ${roleName}`);
+    await admin.query(`GRANT SELECT, DELETE, TRUNCATE ON agents TO ${roleName}`);
+    await admin.query(`GRANT TRUNCATE ON ALL TABLES IN SCHEMA public TO ${roleName}`);
     const restrictedUrl = new URL(postgresUrl);
     restrictedUrl.username = roleName;
     restrictedUrl.password = password;
@@ -125,6 +130,31 @@ const enabled =
     await expect(
       restricted.query("DELETE FROM identity_claim_journal WHERE claim_id = $1", [claimId])
     ).rejects.toMatchObject({ code: "55000" });
+    await expect(restricted.query("TRUNCATE identity_claim_journal")).rejects.toMatchObject({
+      code: "55000",
+    });
+    await expect(
+      restricted.query("TRUNCATE identity_claim_retention_ledger")
+    ).rejects.toMatchObject({ code: "55000" });
+    await expect(restricted.query("TRUNCATE agents CASCADE")).rejects.toMatchObject({
+      code: "55000",
+    });
+
+    await restricted.query("BEGIN");
+    await restricted.query("DELETE FROM agents WHERE id = $1", [deletionAgentId]);
+    expect(
+      Number(
+        (await restricted.query("SELECT count(*) AS count FROM identity_claim_retention_ledger"))
+          .rows[0]?.count
+      )
+    ).toBe(1);
+    await restricted.query("ROLLBACK");
+    expect(
+      Number(
+        (await restricted.query("SELECT count(*) AS count FROM identity_claim_retention_ledger"))
+          .rows[0]?.count
+      )
+    ).toBe(0);
 
     await restricted.query("DELETE FROM agents WHERE id = $1", [deletionAgentId]);
     expect(
@@ -134,10 +164,73 @@ const enabled =
         .where(eq(identityClaimJournalTable.agentId, deletionAgentId))
     ).toHaveLength(0);
     const receipts = await db.select().from(identityClaimRetentionLedgerTable);
-    expect(receipts).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ eventKind: "observed", resultingVersion: 1 }),
-      ])
+    expect(receipts).toHaveLength(1);
+    expect(Object.keys(receipts[0] ?? {})).toEqual(["id"]);
+  });
+
+  it("installs and enforces the same authority in a non-public visible schema", async () => {
+    const schemaName = `identity_authority_${crypto.randomUUID().replaceAll("-", "")}`;
+    const customAgentId = crypto.randomUUID();
+    const client = await admin.connect();
+    try {
+      await client.query(`CREATE SCHEMA ${schemaName}`);
+      await client.query(`
+        CREATE TABLE ${schemaName}.agents (id uuid PRIMARY KEY);
+        CREATE TABLE ${schemaName}.identity_claim_retention_ledger (
+          id uuid PRIMARY KEY DEFAULT gen_random_uuid()
+        );
+        CREATE TABLE ${schemaName}.identity_claim_journal (
+          id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+          agent_id uuid NOT NULL REFERENCES ${schemaName}.agents(id) ON DELETE CASCADE
+        )
+      `);
+      await client.query(`SET search_path TO ${schemaName}, public`);
+      expect(await applyIdentityClaimJournalGuard(drizzle(client) as DrizzleDatabase)).toBe(true);
+      await client.query(`INSERT INTO ${schemaName}.agents (id) VALUES ($1)`, [customAgentId]);
+      await client.query(
+        `INSERT INTO ${schemaName}.identity_claim_journal (agent_id) VALUES ($1), ($1)`,
+        [customAgentId]
+      );
+      await expect(
+        client.query(`TRUNCATE ${schemaName}.identity_claim_journal`)
+      ).rejects.toMatchObject({ code: "55000" });
+      await expect(client.query(`TRUNCATE ${schemaName}.agents CASCADE`)).rejects.toMatchObject({
+        code: "55000",
+      });
+      await client.query(`DELETE FROM ${schemaName}.agents WHERE id = $1`, [customAgentId]);
+      expect(
+        Number(
+          (
+            await client.query(
+              `SELECT count(*) AS count FROM ${schemaName}.identity_claim_retention_ledger`
+            )
+          ).rows[0]?.count
+        )
+      ).toBe(1);
+    } finally {
+      await client.query("RESET search_path");
+      await client.query(`DROP SCHEMA IF EXISTS ${schemaName} CASCADE`);
+      client.release();
+    }
+  });
+
+  it("keeps migration dry-run free of post-migration guard DDL", async () => {
+    await admin.query(
+      "DROP TRIGGER identity_claim_journal_no_truncate ON public.identity_claim_journal"
     );
+    const before = await admin.query(
+      "SELECT 1 FROM pg_trigger WHERE tgname = 'identity_claim_journal_no_truncate' AND NOT tgisinternal"
+    );
+    expect(before.rows).toHaveLength(0);
+
+    const migrationService = new DatabaseMigrationService();
+    await migrationService.initializeWithDatabase(db);
+    migrationService.discoverAndRegisterPluginSchemas([sqlPlugin]);
+    await migrationService.runAllPluginMigrations({ dryRun: true });
+
+    const after = await admin.query(
+      "SELECT 1 FROM pg_trigger WHERE tgname = 'identity_claim_journal_no_truncate' AND NOT tgisinternal"
+    );
+    expect(after.rows).toHaveLength(0);
   });
 });
