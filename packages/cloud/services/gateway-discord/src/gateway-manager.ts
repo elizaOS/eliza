@@ -40,7 +40,10 @@ import { pollTrackedDiscordDms, type TrackedDiscordDm } from "./dm-polling";
 import { tryConfirmDiscordIdentityLink } from "./identity-link";
 import { invalidIntegerEnvError, parseIntegerEnvValue } from "./integer-env";
 import { logger } from "./logger";
-import { managedGuildMessageTurn } from "./managed-guild-message-policy";
+import {
+  type ManagedGuildInvocation,
+  managedGuildMessageTurn,
+} from "./managed-guild-message-policy";
 import {
   createManagedGuildVoiceCloudBridge,
   MANAGED_GUILD_VOICE_INTENT,
@@ -2535,7 +2538,7 @@ export class GatewayManager {
       );
       return;
     }
-    await this.routeManagedAgentMessage(message, trimmedContent);
+    await this.routeManagedAgentMessage(message, trimmedContent, "dm");
   }
 
   private async handleManagedAgentGuildMessage(
@@ -2562,12 +2565,13 @@ export class GatewayManager {
       return;
     }
 
-    await this.routeManagedAgentMessage(message, turn.content);
+    await this.routeManagedAgentMessage(message, turn.content, turn.invocation);
   }
 
   private async routeManagedAgentMessage(
     message: Message,
     content: string,
+    invocation: ManagedGuildInvocation | "dm",
   ): Promise<void> {
     try {
       // Egress health (proven dropped-turn class, E2E 2026-08-05): a single
@@ -2616,8 +2620,15 @@ export class GatewayManager {
             });
           },
         });
+      // Ambient guild traffic must reach the runtime's contextual
+      // respond-or-ignore decision without producing a visible side effect
+      // first. In particular, unauthorized ambient speakers and turns the
+      // runtime ignores must never make the bot appear to be typing. Explicit
+      // DMs, mentions and replies retain their progress heartbeat.
       const typingChannel =
-        "sendTyping" in message.channel ? message.channel : null;
+        invocation !== "ambient" && "sendTyping" in message.channel
+          ? message.channel
+          : null;
       const outcome = typingChannel
         ? await withManagedTypingHeartbeat(
             {
