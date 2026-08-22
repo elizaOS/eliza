@@ -1207,27 +1207,6 @@ describe("evaluatePlannedReplyEgress", () => {
 			}),
 		).toBe(false);
 	});
-
-	it("allows a completed-side-effect claim on a completion relay that proved its effects", () => {
-		// `completionRelay` is set only from isGroundedTaskCompleteRelayTurn —
-		// relay shape PLUS a validated applied-effect receipt binding — so the
-		// reply may state the child's applied work without an action result of
-		// this turn. The same reply without the flag still fails closed.
-		const reply =
-			"the bmi calculator is ready for you. i've set up the `index.html` file to handle everything.";
-		expect(
-			evaluatePlannedReplyEgress({
-				reply,
-				actionResults: [],
-				actions: [],
-				completionRelay: true,
-			}).verdict,
-		).toBe("allow");
-		expect(
-			evaluatePlannedReplyEgress({ reply, actionResults: [], actions: [] })
-				.verdict,
-		).toBe("reject");
-	});
 });
 
 describe("tasks context recap/status routing vocabulary", () => {

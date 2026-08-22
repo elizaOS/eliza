@@ -15,7 +15,6 @@ import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "../runtime/builtin-fi
 import type { CandidateActionBackstopRule } from "../runtime/candidate-action-backstop";
 import { ContextRegistry } from "../runtime/context-registry";
 import { registerDirectActionRoutingRule } from "../runtime/direct-action-routing";
-import { bindEffectDelivery } from "../runtime/effect-delivery";
 import type { ResponseHandlerEvaluator } from "../runtime/response-handler-evaluators";
 import type { ResponseHandlerFieldEvaluator } from "../runtime/response-handler-field-evaluator";
 import { ResponseHandlerFieldRegistry } from "../runtime/response-handler-field-registry";
@@ -4730,63 +4729,7 @@ describe("runV5MessageRuntimeStage1", () => {
 		}
 	});
 
-	it("does not buffer an applied effect claim on a core-bound task_complete relay turn", async () => {
-		// This is a consumer-side contract test: core receives exact relay text
-		// bound to applied receipt IDs through its trusted in-process API. It does
-		// not stand in for an orchestrator producer test. Only that authentic
-		// binding — never the relay header/metadata alone — grounds Stage 1.
-		const relayText =
-			"[sub-agent: dice roller build (opencode) — task_complete]\n" +
-			"Done. The dice roller app is built and deployed.";
-		const receiptIds = ["sub-agent:dice-roller:receipt-1"];
-		const boundRelayContent = bindEffectDelivery(
-			{
-				text: relayText,
-				source: "sub_agent",
-				metadata: { subAgent: true },
-				effectReceiptIds: receiptIds,
-			},
-			relayText,
-			receiptIds,
-			true,
-		);
-		const runtime = makeRuntime([
-			stage1Response({
-				thought: "Relay the finished build to the user.",
-				contexts: ["simple"],
-				replyText: "The dice roller app is built and deployed.",
-				extra: { requiresTool: true, replyEffectStatus: "applied" },
-			}),
-			JSON.stringify({
-				thought: "Deliver the relayed completion.",
-				toolCalls: [],
-				messageToUser: "The dice roller app is built and deployed — enjoy.",
-			}),
-		]);
-		const earlyReply = vi.fn(async () => undefined);
-
-		const result = await runV5MessageRuntimeStage1({
-			runtime,
-			message: makeMessage(boundRelayContent),
-			state: makeState(),
-			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
-			onResponseHandlerEarlyReply: earlyReply,
-		});
-
-		expect(earlyReply).toHaveBeenCalledWith(
-			expect.objectContaining({
-				text: "The dice roller app is built and deployed.",
-			}),
-		);
-		expect(result.kind).toBe("planned_reply");
-		if (result.kind === "planned_reply") {
-			expect(result.result.responseContent?.text).toBe(
-				"The dice roller app is built and deployed — enjoy.",
-			);
-		}
-	});
-
-	it("keeps strict grounding on a task_complete relay WITHOUT a validated receipt binding", async () => {
+	it("keeps strict grounding on a shape-only task_complete relay", async () => {
 		// Relay shape (header + subAgent metadata) is routing, not proof: a
 		// child can claim task_complete without having applied anything, so an
 		// unbound relay's "applied" claim buffers exactly like any other

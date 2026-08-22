@@ -269,7 +269,6 @@ export {
 	getDirectActionRoutingRules,
 	registerDirectActionRoutingRule,
 } from "./runtime/direct-action-routing";
-export * from "./runtime/effect-delivery";
 export * from "./runtime/execute-planned-tool-call";
 export {
 	detectLocaleFromText,

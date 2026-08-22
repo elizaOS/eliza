@@ -2594,27 +2594,12 @@ function isSubAgentCompletionArtifact(memory: Memory): boolean {
 
 /** The inbound turn has the routing shape of a finished sub-agent lane. This
  * classifier controls presentation only; it does not prove that any claimed
- * effect occurred. Grounding must additionally pass
- * `isGroundedTaskCompleteRelayTurn`. */
+ * effect occurred. */
 function isTaskCompleteRelayTurn(memory: Memory): boolean {
 	return (
 		isSubAgentCompletionArtifact(memory) &&
 		parseSubAgentTaskCompleteRelay(String(memory.content?.text ?? "")) !==
 			undefined
-	);
-}
-
-/** A completion relay may bypass effect grounding ONLY when it proves its
- * effects: relay shape (header + source metadata) is routing, not proof — a
- * child can claim task_complete without having applied anything. The relaying
- * orchestrator binds the receipts it verified via `bindEffectDelivery`
- * (authentic core-owned binding: exact text + applied receipt IDs), and this
- * predicate requires that validated applied binding before any grounding gate
- * is relaxed. Shape-only relays keep strict grounding. */
-function isGroundedTaskCompleteRelayTurn(memory: Memory): boolean {
-	return (
-		isTaskCompleteRelayTurn(memory) &&
-		effectDeliveryBindingProvesApplication(memory.content as Content)
 	);
 }
 
@@ -4177,20 +4162,11 @@ export function evaluatePlannedReplyEgress(args: {
 	reply: string;
 	actionResults: readonly ActionResult[];
 	actions: readonly Action[];
-	/** The turn relays a sub-agent completion that PROVED its effects: set
-	 *  only from `isGroundedTaskCompleteRelayTurn` (relay shape PLUS a
-	 *  validated applied-effect receipt binding), never from relay metadata
-	 *  alone. A completed-side-effect claim ("the page is ready") is then
-	 *  grounded without an action of this turn; without it a verified, live
-	 *  page shipped as "I couldn't verify that the requested change was
-	 *  completed" (2026-08-22). */
-	completionRelay?: boolean;
 }): PlannedReplyEgressDecision {
 	const reply = args.reply.trim();
 	if (!reply) return { verdict: "allow" };
 	if (replyClaimsCompletedSideEffect(reply)) {
 		if (
-			args.completionRelay === true ||
 			plannedReplyHasClaimGroundingReceipt({
 				kind: "completed_side_effect",
 				reply,
@@ -8690,15 +8666,8 @@ export async function runV5MessageRuntimeStage1(args: {
 				: undefined;
 		const prePatchStageOneReplyEffectStatus =
 			messageHandler.plan.replyEffectStatus;
-		// A completion relay grounds Stage 1's "applied" ONLY via its validated
-		// applied-effect receipt binding (isGroundedTaskCompleteRelayTurn) —
-		// relay shape/metadata alone is not proof an effect occurred. A bound
-		// relay's good reply must not hide behind the hedge (2026-08-22: a
-		// verified, live page shipped as "i'm not sure if that change actually
-		// went through"); an unbound relay buffers like any ungrounded claim.
 		const prePatchStageOneReplyIsUngroundedAppliedClaim =
-			prePatchStageOneReplyEffectStatus === "applied" &&
-			!isGroundedTaskCompleteRelayTurn(args.message);
+			prePatchStageOneReplyEffectStatus === "applied";
 		const responseHandlerEvaluation = args.codingMode
 			? {
 					activeEvaluators: [],
@@ -8865,7 +8834,6 @@ export async function runV5MessageRuntimeStage1(args: {
 				reply,
 				actionResults: [],
 				actions: args.runtime.actions,
-				completionRelay: isGroundedTaskCompleteRelayTurn(args.message),
 			});
 			if (directReplyEgressDecision.verdict === "reject") {
 				reply = directReplyEgressDecision.fallbackReply;
@@ -8927,7 +8895,6 @@ export async function runV5MessageRuntimeStage1(args: {
 				reply: earlyReplyText,
 				actionResults: [],
 				actions: args.runtime.actions,
-				completionRelay: isGroundedTaskCompleteRelayTurn(args.message),
 			});
 			if (earlyReplyEgressDecision.verdict === "reject") {
 				// Planning is still in progress, so an ungrounded completion claim
@@ -9877,7 +9844,6 @@ export async function runV5MessageRuntimeStage1(args: {
 						reply: String(plannerResult.finalMessage ?? ""),
 						actionResults: egressActionResults,
 						actions: args.runtime.actions,
-						completionRelay: isGroundedTaskCompleteRelayTurn(args.message),
 					});
 		// A reply an action callback already delivered this turn (verbatim or as
 		// a strict superset) is a planner echo: the suppression below drops it, so
@@ -10073,7 +10039,6 @@ export async function runV5MessageRuntimeStage1(args: {
 						reply: effectiveReplyText,
 						actionResults,
 						actions: args.runtime.actions,
-						completionRelay: isGroundedTaskCompleteRelayTurn(args.message),
 					});
 		if (finalReplyEgressDecision.verdict === "reject") {
 			effectiveReplyText = finalReplyEgressDecision.fallbackReply;
@@ -11756,11 +11721,6 @@ function enforceEffectGroundedVisibleContent(
 	runtime: Pick<IAgentRuntime, "logger">,
 	response: Content,
 	actionName?: string,
-	opts: {
-		/** The turn relays a `task_complete` whose exact content is bound to
-		 * validated applied-effect receipt IDs. Relay shape alone is never proof. */
-		completionRelay?: boolean;
-	} = {},
 ): Content {
 	const hasEffectDeliveryBinding =
 		getEffectDeliveryBinding(response) !== undefined;
@@ -11772,7 +11732,6 @@ function enforceEffectGroundedVisibleContent(
 	if (
 		effectDeliveryBindingInvalid ||
 		(typeof response.text === "string" &&
-			!opts.completionRelay &&
 			replyClaimsCompletedSideEffect(response.text) &&
 			!effectDeliveryBindingProvesApplication(response))
 	) {
@@ -12063,8 +12022,7 @@ export function wrapSingleTurnVisibleCallback(
 		Partial<Pick<IAgentRuntime, "character" | "useModel">> & {
 			getService?: IAgentRuntime["getService"];
 		},
-	message: Pick<Memory, "id" | "roomId" | "entityId"> &
-		Partial<Pick<Memory, "content">>,
+	message: Pick<Memory, "id" | "roomId" | "entityId">,
 	callback?: HandlerCallback,
 	recordDeliveredVisibleText?: (text: string) => void,
 ): HandlerCallback | undefined {
@@ -12161,7 +12119,6 @@ export function wrapSingleTurnVisibleCallback(
 			fullRuntime,
 			response,
 			actionName,
-			{ completionRelay: isGroundedTaskCompleteRelayTurn(message as Memory) },
 		);
 		if (typeof response?.text === "string" && response.text.trim()) {
 			if (nearDuplicateOfDeliveredThisTurn(response.text)) {
@@ -13842,8 +13799,6 @@ export class DefaultMessageService implements IMessageService {
 					earlyContent = enforceEffectGroundedVisibleContent(
 						runtime,
 						earlyContent,
-						undefined,
-						{ completionRelay: isGroundedTaskCompleteRelayTurn(message) },
 					);
 					earlyContent = await enforceTrustedDeliveryAudienceAtEgress(
 						runtime,
@@ -14394,8 +14349,6 @@ export class DefaultMessageService implements IMessageService {
 					deliverableResponseContent = enforceEffectGroundedVisibleContent(
 						runtime,
 						deliverableResponseContent,
-						undefined,
-						{ completionRelay: isGroundedTaskCompleteRelayTurn(message) },
 					);
 					deliverableResponseContent =
 						await enforceTrustedDeliveryAudienceAtEgress(
