@@ -219,7 +219,7 @@ export function computeBottomBarFrame(
   const margin = Math.max(0, Math.round(options?.margin ?? 0));
   const availableHeight = Math.max(1, Math.round(workArea.height) - margin);
   const requestedHeight = Math.max(
-    1,
+    DEFAULT_BOTTOM_BAR_HEIGHT,
     Math.round(options?.height ?? DEFAULT_BOTTOM_BAR_HEIGHT),
   );
   const height = Math.min(requestedHeight, availableHeight);

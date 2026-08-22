@@ -113,12 +113,12 @@ describe("desktop bottom-bar config", () => {
       expect(frame.y).toBe(800 - 100 - 20);
     });
 
-    it("allows an exact one-pixel requested height on constrained displays", () => {
+    it("preserves the painted resting-pill height as the safety floor", () => {
       const frame = computeBottomBarFrame(
         { x: 0, y: 0, width: 1000, height: 800 },
         { height: 1 },
       );
-      expect(frame.height).toBe(1);
+      expect(frame.height).toBe(DEFAULT_BOTTOM_BAR_HEIGHT);
     });
 
     it("resolves rest, hover preview, sign-in chip, and expanded sizes", () => {
