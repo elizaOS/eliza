@@ -68,6 +68,7 @@ export interface CloudLiveNetworkAuditSnapshot {
   otherHistoryGetResponseCount: number;
   failedHistoryGetRequestCount: number;
   timedOutHistoryGetRequestCount: number;
+  pendingHistoryGetRequestCount: number;
 }
 
 export interface CloudLiveHistoryNetworkDiagnostics {
@@ -205,6 +206,13 @@ function monotonicDelta(name: string, before: number, after: number): number {
   return after - before;
 }
 
+function requireNonNegativeSafeInteger(name: string, value: number): number {
+  if (!Number.isSafeInteger(value) || value < 0) {
+    fail(`${name} must be a non-negative safe integer`);
+  }
+  return value;
+}
+
 /**
  * Reduces one timed-out history proof to aggregate counts only. Request URLs,
  * conversation identifiers, response bodies, headers, and failure text never
@@ -250,12 +258,14 @@ export function createCloudLiveHistoryNetworkDiagnostics(
     before.timedOutHistoryGetRequestCount,
     after.timedOutHistoryGetRequestCount,
   );
-  const terminalHistoryGetCount =
-    successfulHistoryGetResponseCount +
-    clientErrorHistoryGetResponseCount +
-    serverErrorHistoryGetResponseCount +
-    otherHistoryGetResponseCount +
-    failedHistoryGetRequestCount;
+  requireNonNegativeSafeInteger(
+    "pendingHistoryGetRequestCount baseline",
+    before.pendingHistoryGetRequestCount,
+  );
+  const pendingHistoryGetRequestCount = requireNonNegativeSafeInteger(
+    "pendingHistoryGetRequestCount current value",
+    after.pendingHistoryGetRequestCount,
+  );
   return {
     schemaVersion: 1,
     phase,
@@ -267,10 +277,7 @@ export function createCloudLiveHistoryNetworkDiagnostics(
     otherHistoryGetResponseCount,
     failedHistoryGetRequestCount,
     timedOutHistoryGetRequestCount,
-    pendingHistoryGetRequestCount: Math.max(
-      0,
-      historyGetRequestCount - terminalHistoryGetCount,
-    ),
+    pendingHistoryGetRequestCount,
   };
 }
 
@@ -645,6 +652,12 @@ export function createCloudLiveNetworkAudit(): {
     },
     snapshot: async () => {
       await drainResponseHandlers();
+      const terminalHistoryGetCount =
+        successfulHistoryGetCount +
+        clientErrorHistoryGetResponseCount +
+        serverErrorHistoryGetResponseCount +
+        otherHistoryGetResponseCount +
+        failedHistoryGetRequestCount;
       return {
         forbiddenAgentMutationCount,
         chatSendAttemptCount,
@@ -663,6 +676,10 @@ export function createCloudLiveNetworkAudit(): {
         otherHistoryGetResponseCount,
         failedHistoryGetRequestCount,
         timedOutHistoryGetRequestCount,
+        pendingHistoryGetRequestCount: Math.max(
+          0,
+          historyGetRequestCount - terminalHistoryGetCount,
+        ),
       };
     },
   };

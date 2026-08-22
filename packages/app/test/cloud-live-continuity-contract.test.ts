@@ -211,6 +211,7 @@ describe("forbidden Cloud agent mutations", () => {
       otherHistoryGetResponseCount: 0,
       failedHistoryGetRequestCount: 0,
       timedOutHistoryGetRequestCount: 0,
+      pendingHistoryGetRequestCount: 0,
     });
     expect(JSON.stringify(snapshot)).not.toMatch(
       /api\.test|private|idempotency|prompt/,
@@ -275,6 +276,28 @@ describe("forbidden Cloud agent mutations", () => {
     expect(() =>
       createCloudLiveHistoryNetworkDiagnostics("fresh-context", before, after),
     ).toThrow("must not precede its baseline");
+  });
+
+  it("reports pending history requests when an older request completes after the baseline", async () => {
+    const audit = createCloudLiveNetworkAudit();
+    const privateHistory =
+      "https://api.test/api/conversations/private-conversation/messages";
+    audit.observeRequest("GET", privateHistory);
+    const before = await audit.snapshot();
+
+    audit.observeResponse("GET", privateHistory, 200);
+    audit.observeRequest("GET", privateHistory);
+
+    const diagnostics = createCloudLiveHistoryNetworkDiagnostics(
+      "fresh-context",
+      before,
+      await audit.snapshot(),
+    );
+    expect(diagnostics).toMatchObject({
+      historyGetRequestCount: 1,
+      successfulHistoryGetResponseCount: 1,
+      pendingHistoryGetRequestCount: 1,
+    });
   });
 
   it("counts only the two named warming codes and drains body handlers", async () => {
