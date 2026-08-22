@@ -3,10 +3,9 @@
  * the boundary between the runtime and the Instagram API backend. On start it
  * resolves each account's config, validates credentials, and registers both the
  * DM `MessageConnector` (source `"instagram"`) and the feed `PostConnector` with
- * the runtime. Handles inbound DM/comment ingestion into memory and outbound
- * sending, comment posting/replies, likes, and follow/unfollow. Degrades
- * gracefully when credentials are absent. Also exports `splitMessage`, the
- * length-aware chunker used for DM and comment limits.
+ * the runtime. Handles Graph-backed sends, comment posting/replies, reads, and
+ * explicit capability rejection. Also exports `splitMessage`, the length-aware
+ * chunker used for DM and comment limits.
  */
 import {
   ChannelType,
@@ -37,6 +36,7 @@ import {
   resolveInstagramAccountConfig,
 } from "./accounts";
 import { INSTAGRAM_SERVICE_NAME, MAX_COMMENT_LENGTH, MAX_DM_LENGTH } from "./constants";
+import { InstagramGraphClient } from "./graph-client";
 import type {
   InstagramConfig,
   InstagramMedia,
@@ -172,10 +172,19 @@ function normalizeInstagramMediaId(value: unknown): string | null {
   return /[1-9]/.test(trimmed) ? trimmed : null;
 }
 
-function throwMissingInstagramClient(operation: string): never {
-  throw new Error(
-    `Instagram ${operation} requires a configured Instagram API client. This package registers the connector surface but does not include a concrete Instagram client backend.`
-  );
+function unsupportedInstagramOperation(operation: string): never {
+  throw new ElizaError(`Instagram Graph API does not support ${operation}.`, {
+    code: "INSTAGRAM_CAPABILITY_UNSUPPORTED",
+    context: { operation },
+  });
+}
+
+function isExpectedDiscoveryUnavailable(error: unknown): boolean {
+  if (!(error instanceof ElizaError)) return false;
+  if (error.code === "INSTAGRAM_CAPABILITY_UNSUPPORTED") return true;
+  if (error.code !== "INSTAGRAM_GRAPH_REJECTED") return false;
+  const status = error.context?.status;
+  return status === 400 || status === 403 || status === 404;
 }
 
 /**
@@ -189,6 +198,7 @@ export class InstagramService extends Service {
   capabilityDescription = "Instagram messaging and social media integration";
 
   private instagramConfig: InstagramConfig | null = null;
+  private graphClient: InstagramGraphClient | null = null;
   private isRunning = false;
   private loggedInUser: InstagramUser | null = null;
   private accountServices = new Map<string, InstagramService>();
@@ -262,12 +272,14 @@ export class InstagramService extends Service {
         getUserContext: serviceInstance.getConnectorUserContext.bind(serviceInstance),
         getUser: async (handlerRuntime, params) => {
           if (params.username || params.handle) {
-            // error-policy:J4 no concrete Instagram client backend is bundled, so
-            // the username lookup throws by design; treat it as an unresolved
-            // user and fall through to the local entity lookup below.
+            // error-policy:J4 username discovery is permission-dependent; an
+            // expected provider rejection is represented as unresolved here.
             const user = await accountService
               .getUserByUsername(String(params.username ?? params.handle))
-              .catch(() => null);
+              .catch((error: unknown) => {
+                if (isExpectedDiscoveryUnavailable(error)) return null;
+                throw error;
+              });
             if (!user) {
               return null;
             }
@@ -357,12 +369,13 @@ export class InstagramService extends Service {
     this.defaultAccountId = normalizeInstagramAccountId(accountId ?? this.defaultAccountId);
     this.instagramConfig = resolveInstagramAccountConfig(this.runtime, this.defaultAccountId);
 
-    if (!this.instagramConfig.username || !this.instagramConfig.password) {
+    if (!this.instagramConfig.accessToken || !this.instagramConfig.instagramAccountId) {
       logger.warn("Instagram credentials not configured. Service will not be available.");
       return;
     }
 
-    logger.info(`Instagram service initialized for @${this.instagramConfig.username}`);
+    this.graphClient = new InstagramGraphClient(this.instagramConfig);
+    logger.info("Instagram professional-account Graph client initialized");
   }
 
   /**
@@ -377,10 +390,15 @@ export class InstagramService extends Service {
       throw new Error("Instagram service is already running");
     }
 
+    if (!this.graphClient) {
+      throw new ElizaError("Instagram Graph client is not configured.", {
+        code: "INSTAGRAM_CONFIG_INVALID",
+      });
+    }
     logger.info("Starting Instagram service connector surface");
-    this.loggedInUser = null;
+    this.loggedInUser = await this.graphClient.getOwnUser();
     this.isRunning = true;
-    logger.info(`Instagram service started for @${this.instagramConfig.username}`);
+    logger.info("Instagram professional-account service started");
   }
 
   /**
@@ -453,7 +471,7 @@ export class InstagramService extends Service {
       throw new Error(`Message too long: ${text.length} characters (max: ${MAX_DM_LENGTH})`);
     }
 
-    return throwMissingInstagramClient(`direct message send to thread ${threadId}`);
+    return this.requireGraphClient().sendDirectMessage(threadId, toWellFormedUnicode(text));
   }
 
   /**
@@ -468,14 +486,12 @@ export class InstagramService extends Service {
   /**
    * Post a comment on media
    */
-  async postComment(mediaId: number, text: string): Promise<number>;
-  async postComment(mediaId: string, text: string): Promise<string>;
-  async postComment(mediaId: string | number, _text: string): Promise<string | number> {
+  async postComment(mediaId: string | number, text: string): Promise<string> {
     if (!this.isRunning) {
       throw new Error("Instagram service is not running");
     }
 
-    return throwMissingInstagramClient(`comment post on media ${mediaId}`);
+    return this.requireGraphClient().postComment(mediaId, validateInstagramComment(text));
   }
 
   async handleSendPost(runtime: IAgentRuntime, content: Content): Promise<Memory> {
@@ -542,72 +558,67 @@ export class InstagramService extends Service {
   /**
    * Reply to a comment
    */
-  async replyToComment(mediaId: number, commentId: number, text: string): Promise<number>;
-  async replyToComment(mediaId: string, commentId: string, text: string): Promise<string>;
   async replyToComment(
-    mediaId: string | number,
-    _commentId: string | number,
+    _mediaId: string | number,
+    commentId: string | number,
     text: string
-  ): Promise<string | number> {
-    // In a real implementation, this would tag the user and reply
-    return typeof mediaId === "string"
-      ? this.postComment(mediaId, text)
-      : this.postComment(mediaId, text);
+  ): Promise<string> {
+    return this.requireGraphClient().replyToComment(commentId, validateInstagramComment(text));
   }
 
   /**
    * Like media
    */
-  async likeMedia(mediaId: string | number): Promise<void> {
+  async likeMedia(_mediaId: string | number): Promise<void> {
     if (!this.isRunning) {
       throw new Error("Instagram service is not running");
     }
 
-    throwMissingInstagramClient(`media like for ${mediaId}`);
+    unsupportedInstagramOperation("liking media");
   }
 
   /**
    * Unlike media
    */
-  async unlikeMedia(mediaId: string | number): Promise<void> {
+  async unlikeMedia(_mediaId: string | number): Promise<void> {
     if (!this.isRunning) {
       throw new Error("Instagram service is not running");
     }
 
-    throwMissingInstagramClient(`media unlike for ${mediaId}`);
+    unsupportedInstagramOperation("unliking media");
   }
 
   /**
    * Follow a user
    */
-  async followUser(userId: number): Promise<void> {
+  async followUser(_userId: number): Promise<void> {
     if (!this.isRunning) {
       throw new Error("Instagram service is not running");
     }
 
-    throwMissingInstagramClient(`user follow for ${userId}`);
+    unsupportedInstagramOperation("following users");
   }
 
   /**
    * Unfollow a user
    */
-  async unfollowUser(userId: number): Promise<void> {
+  async unfollowUser(_userId: number): Promise<void> {
     if (!this.isRunning) {
       throw new Error("Instagram service is not running");
     }
 
-    throwMissingInstagramClient(`user unfollow for ${userId}`);
+    unsupportedInstagramOperation("unfollowing users");
   }
 
   /**
    * Get user info
    */
-  async getUserInfo(userId: number): Promise<InstagramUser> {
+  async getUserInfo(userId: string | number): Promise<InstagramUser> {
     if (!this.isRunning) {
       throw new Error("Instagram service is not running");
     }
 
-    return throwMissingInstagramClient(`user lookup by id ${userId}`);
+    return this.requireGraphClient().getUser(userId);
   }
 
   /**
@@ -618,7 +629,7 @@ export class InstagramService extends Service {
       throw new Error("Instagram service is not running");
     }
 
-    return throwMissingInstagramClient(`user lookup by username ${username}`);
+    return this.requireGraphClient().getUserByUsername(username);
   }
 
   /**
@@ -629,7 +640,7 @@ export class InstagramService extends Service {
       throw new Error("Instagram service is not running");
     }
 
-    return throwMissingInstagramClient("thread list");
+    return this.requireGraphClient().getThreads();
   }
 
   /**
@@ -640,7 +651,7 @@ export class InstagramService extends Service {
       throw new Error("Instagram service is not running");
     }
 
-    return throwMissingInstagramClient(`thread message list for ${threadId}`);
+    return this.requireGraphClient().getThreadMessages(threadId);
   }
 
   async handleSendMessage(
@@ -781,10 +792,7 @@ export class InstagramService extends Service {
         .slice(0, limit);
     }
 
-    // error-policy:J4 this package ships the connector surface without a concrete
-    // Instagram client backend, so a platform fetch throws by design; degrade to
-    // the local message cache below rather than treating it as a hard failure.
-    const platformMessages = await this.getThreadMessages(threadId).catch(() => []);
+    const platformMessages = await this.getThreadMessages(threadId);
     if (platformMessages.length > 0) {
       const roomId =
         target?.roomId ??
@@ -863,11 +871,11 @@ export class InstagramService extends Service {
     entityId: string,
     _context: MessageConnectorQueryContext
   ): Promise<MessageConnectorUserContext | null> {
-    const numericId = Number.parseInt(entityId, 10);
-    if (!Number.isFinite(numericId)) {
+    const userId = entityId.trim();
+    if (!userId) {
       return null;
     }
-    const user = await this.getUserInfo(numericId);
+    const user = await this.getUserInfo(userId);
     return {
       entityId,
       label: user.fullName || `@${user.username}`,
@@ -976,13 +984,12 @@ export class InstagramService extends Service {
   /**
    * Get user's media
    */
-  async getUserMedia(_userId: number): Promise<InstagramMedia[]> {
+  async getUserMedia(userId: string | number): Promise<InstagramMedia[]> {
     if (!this.isRunning) {
       throw new Error("Instagram service is not running");
     }
 
-    // In a real implementation, this would fetch from Instagram API
-    return [];
+    return this.requireGraphClient().getUserMedia(userId);
   }
 
   /**
@@ -993,7 +1000,16 @@ export class InstagramService extends Service {
       return false;
     }
 
-    return !!(this.instagramConfig.username && this.instagramConfig.password);
+    return !!(this.instagramConfig.accessToken && this.instagramConfig.instagramAccountId);
+  }
+
+  private requireGraphClient(): InstagramGraphClient {
+    if (!this.graphClient) {
+      throw new ElizaError("Instagram Graph client is not configured.", {
+        code: "INSTAGRAM_CONFIG_INVALID",
+      });
+    }
+    return this.graphClient;
   }
 }
 

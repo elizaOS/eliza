@@ -67,27 +67,45 @@
   "agentConfig": {
     "pluginType": "elizaos:plugin:1.0.0",
     "pluginParameters": {
-      "INSTAGRAM_USERNAME": {
+      "INSTAGRAM_GRAPH_ACCOUNT_ID": {
         "type": "string",
-        "description": "Instagram username for authentication",
+        "description": "Instagram professional account ID",
         "required": true,
         "sensitive": false
       },
-      "INSTAGRAM_PASSWORD": {
+      "INSTAGRAM_ACCESS_TOKEN": {
         "type": "string",
-        "description": "Instagram password for authentication",
+        "description": "Instagram Graph API access token",
         "required": true,
         "sensitive": true
       },
-      "INSTAGRAM_VERIFICATION_CODE": {
+      "INSTAGRAM_APP_SECRET": {
         "type": "string",
-        "description": "Two-factor authentication verification code",
+        "description": "Meta app secret used for webhook signatures",
         "required": false,
         "sensitive": true
       },
-      "INSTAGRAM_PROXY": {
+      "INSTAGRAM_WEBHOOK_VERIFY_TOKEN": {
         "type": "string",
-        "description": "Proxy URL for Instagram API requests",
+        "description": "Secret used for webhook subscription verification",
+        "required": false,
+        "sensitive": true
+      },
+      "INSTAGRAM_GRAPH_API_VERSION": {
+        "type": "string",
+        "description": "Explicit Instagram Graph API version",
+        "required": false,
+        "sensitive": false
+      },
+      "INSTAGRAM_GRAPH_BASE_URL": {
+        "type": "string",
+        "description": "Instagram Graph API origin (HTTPS required outside loopback tests)",
+        "required": false,
+        "sensitive": false
+      },
+      "INSTAGRAM_REQUEST_TIMEOUT_MS": {
+        "type": "string",
+        "description": "Instagram Graph request timeout in milliseconds",
         "required": false,
         "sensitive": false
       }

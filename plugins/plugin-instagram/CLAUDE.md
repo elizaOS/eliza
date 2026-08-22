@@ -7,7 +7,8 @@ Instagram DM and public-comment connector for elizaOS agents.
 Adds Instagram integration to an Eliza agent: DM sending (via the `MESSAGE` connector) and public
 media-comment posting (via the `POST` connector). Loaded opt-in — add
 `@elizaos/plugin-instagram` to the agent's `plugins` array.
-Requires credentials to do anything useful; the service degrades gracefully when they are absent.
+Requires approved professional-account Graph credentials; consumer username/password automation is
+not supported. The service stays disabled when credentials are absent.
 
 ## Plugin surface
 
@@ -15,8 +16,9 @@ Requires credentials to do anything useful; the service degrades gracefully when
 
 - `InstagramService` (`serviceType = "instagram"`) — lifecycle manager for one or more Instagram
   accounts. On `start()` it reads config, validates credentials, and registers both the DM
-  `MessageConnector` and the feed `PostConnector` with the runtime. Exposes methods for sending DMs,
-  posting/replying to comments, liking media, following/unfollowing users, and fetching threads.
+  `MessageConnector` and the feed `PostConnector` with the runtime. Exposes Graph-backed methods for
+  scoped profiles, owned media, conversations/messages, text DMs, and comment/reply writes. Legacy
+  like/follow methods remain public for compatibility but fail explicitly as unsupported.
 
 **Actions:** none registered — DMs route through `MESSAGE`, comments through `POST`.
 
@@ -39,6 +41,8 @@ hooks (`getChatContext`, `getUserContext`, `resolveTargets`, `listRooms`, `fetch
 src/
   index.ts                       Plugin object, init() hook, re-exports
   service.ts                     InstagramService class — connector registration + API backend boundary
+  graph-client.ts                Production Graph transport, schemas, paging, and DTO conversion
+  webhook.ts                     Raw-body signature/challenge validation and account event routing
   connector-account-provider.ts  ConnectorAccountProvider impl for ConnectorAccountManager
   accounts.ts                    Config resolution: env vars, character.settings.instagram, multi-account
   constants.ts                   INSTAGRAM_SERVICE_NAME, MAX_*, SUPPORTED_MEDIA_TYPES, EVENT_PREFIX
@@ -71,10 +75,13 @@ apply when `accountId === "default"` (the single-account case). Multi-account de
 
 | Env var | Required | Description |
 |---|---|---|
-| `INSTAGRAM_USERNAME` | **Yes** | Instagram username for the default account |
-| `INSTAGRAM_PASSWORD` | **Yes** | Instagram password for the default account |
-| `INSTAGRAM_VERIFICATION_CODE` | No | 2FA code if account requires it |
-| `INSTAGRAM_PROXY` | No | HTTP/SOCKS proxy URL for API requests |
+| `INSTAGRAM_GRAPH_ACCOUNT_ID` | **Yes** | Professional account ID for the default account |
+| `INSTAGRAM_ACCESS_TOKEN` | **Yes** | Approved Graph API access token |
+| `INSTAGRAM_APP_SECRET` | For webhooks | App secret for `X-Hub-Signature-256` validation |
+| `INSTAGRAM_WEBHOOK_VERIFY_TOKEN` | For webhooks | Subscription verification secret |
+| `INSTAGRAM_GRAPH_API_VERSION` | No | Explicit API version (default `v24.0`) |
+| `INSTAGRAM_GRAPH_BASE_URL` | No | HTTPS Graph origin; literal loopback HTTP is test-only |
+| `INSTAGRAM_REQUEST_TIMEOUT_MS` | No | Request deadline in milliseconds |
 | `INSTAGRAM_AUTO_RESPOND_DMS` | No | `"true"` to auto-respond to DMs |
 | `INSTAGRAM_AUTO_RESPOND_COMMENTS` | No | `"true"` to auto-respond to comments |
 | `INSTAGRAM_POLLING_INTERVAL` | No | Poll interval in seconds (default `60`) |
@@ -87,10 +94,10 @@ Character-level config goes in `character.settings.instagram`:
 {
   "settings": {
     "instagram": {
-      "username": "mybot",
-      "password": "secret",
+      "instagramAccountId": "17841400000000000",
+      "accessToken": "secret",
       "accounts": {
-        "brand-a": { "username": "brand_a", "password": "..." }
+        "brand-a": { "instagramAccountId": "17841400000000001", "accessToken": "..." }
       }
     }
   }
@@ -115,10 +122,17 @@ pattern).
 
 ## Conventions / gotchas
 
-- **API backend boundary:** `InstagramService` registers the connector/account surfaces, but this
-  package does not ship a concrete Instagram API client backend. API methods fail explicitly until a
-  backend such as `instagram-private-api` or an approved Graph API adapter is wired into
-  `src/service.ts`.
+- **API backend boundary:** `InstagramGraphClient` is the only production network boundary. It uses
+  bearer headers, strict response schemas, same-origin cursors, manual redirects, bounded bodies,
+  deadlines, and redacted typed failures. Remote origins require HTTPS; literal loopback HTTP exists
+  only for real-wire protocol tests.
+- **Capability truth:** Official professional-account reads, scoped profile lookup, one-to-one text
+  sends, and media comments/replies are implemented. Consumer login, arbitrary username discovery,
+  third-party media reads, follows, and likes fail with `INSTAGRAM_CAPABILITY_UNSUPPORTED`; do not
+  add private/mobile scraping APIs.
+- **Webhook boundary:** Validate the raw body signature before parsing. Parsed events are stamped
+  with the professional account ID and stable replay identity. Durable route ingestion and shared
+  synthetic reset/ledger composition remain owned by #24093 and #24076-#24078.
 - **Multi-account:** Each configured account gets its own `InstagramService` instance. The `start()`
   static method iterates `listInstagramAccountIds()` and registers one connector pair per account.
   `INSTAGRAM_ACCOUNTS` is fail-closed: malformed/non-collection JSON is fatal, non-object entries

@@ -41,7 +41,7 @@ export enum InstagramMediaType {
 /** Instagram user information */
 export interface InstagramUser {
   /** User's primary key/ID */
-  pk: number;
+  pk: string;
   /** Username */
   username: string;
   /** Full display name */
@@ -49,9 +49,9 @@ export interface InstagramUser {
   /** Profile picture URL */
   profilePicUrl?: string;
   /** Whether account is private */
-  isPrivate: boolean;
+  isPrivate?: boolean;
   /** Whether account is verified */
-  isVerified: boolean;
+  isVerified?: boolean;
   /** Number of followers */
   followerCount?: number;
   /** Number of accounts following */
@@ -61,7 +61,7 @@ export interface InstagramUser {
 /** Instagram media information */
 export interface InstagramMedia {
   /** Media's primary key/ID */
-  pk: number;
+  pk: string;
   /** Type of media */
   mediaType: InstagramMediaType;
   /** Caption text */
@@ -71,9 +71,9 @@ export interface InstagramMedia {
   /** Thumbnail URL for videos */
   thumbnailUrl?: string;
   /** Number of likes */
-  likeCount: number;
+  likeCount?: number;
   /** Number of comments */
-  commentCount: number;
+  commentCount?: number;
   /** When media was posted */
   takenAt?: Date;
   /** User who posted */
@@ -92,16 +92,18 @@ export interface InstagramMessage {
   timestamp: Date;
   /** User who sent the message */
   user: InstagramUser;
+  /** Recipients when the conversations API exposes them. */
+  recipients?: InstagramUser[];
   /** Optional attached media */
   media?: InstagramMedia;
   /** Whether message has been seen */
-  isSeen: boolean;
+  isSeen?: boolean;
 }
 
 /** Instagram comment */
 export interface InstagramComment {
   /** Comment's primary key */
-  pk: number;
+  pk: string;
   /** Comment text */
   text: string;
   /** When comment was posted */
@@ -109,9 +111,9 @@ export interface InstagramComment {
   /** User who commented */
   user: InstagramUser;
   /** Media the comment is on */
-  mediaPk: number;
+  mediaPk: string;
   /** If replying to another comment */
-  replyToPk?: number;
+  replyToPk?: string;
 }
 
 /** Instagram DM thread */
@@ -132,14 +134,20 @@ export interface InstagramThread {
 export interface InstagramConfig {
   /** Connector account identifier for this Instagram bot instance */
   accountId?: string;
-  /** Instagram username */
-  username: string;
-  /** Instagram password */
-  password: string;
-  /** Optional 2FA verification code */
-  verificationCode?: string;
-  /** Optional proxy URL */
-  proxy?: string;
+  /** Professional-account Graph API access token. */
+  accessToken: string;
+  /** Instagram professional account ID associated with the token. */
+  instagramAccountId: string;
+  /** App secret used to validate signed webhook deliveries. */
+  appSecret?: string;
+  /** Secret used for the webhook subscription verification challenge. */
+  webhookVerifyToken?: string;
+  /** Graph API origin; HTTPS except literal loopback HTTP in protocol tests. */
+  graphBaseUrl?: string;
+  /** Explicit Graph API version, for example `v24.0`. */
+  graphApiVersion?: string;
+  /** Per-request deadline in milliseconds. */
+  requestTimeoutMs?: number;
   /** Whether to auto-respond to DMs */
   autoRespondToDms?: boolean;
   /** Whether to auto-respond to comments */
@@ -193,11 +201,11 @@ export interface InstagramActionContext {
   /** Original message/event data */
   message: Record<string, unknown>;
   /** User ID */
-  userId: number;
+  userId: string;
   /** Thread ID for DMs */
   threadId?: string;
   /** Media ID for comments */
-  mediaId?: number;
+  mediaId?: string;
   /** Current state */
   state: Record<string, unknown>;
 }

@@ -72,13 +72,13 @@ function parseAccountsJson(runtime: IAgentRuntime): Record<string, InstagramAcco
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw) as unknown;
-  } catch (error) {
-    // error-policy:J2 preserve the JSON parse cause and identify the setting
-    // whose invalid value must not degrade into an empty account collection.
+  } catch {
+    // error-policy:J2 preserve the parse category without retaining provider
+    // configuration bytes, which may contain access tokens or app secrets.
     throw invalidAccountsConfig(
       "Instagram accounts config is not valid JSON.",
       { setting: "INSTAGRAM_ACCOUNTS" },
-      error
+      new SyntaxError("Invalid JSON")
     );
   }
   if (Array.isArray(parsed)) {
@@ -134,7 +134,12 @@ export function listInstagramAccountIds(runtime: IAgentRuntime): string[] {
   const ids = new Set<string>();
   const config = characterConfig(runtime);
 
-  if (stringSetting(runtime, "INSTAGRAM_USERNAME") || config.username) {
+  if (
+    stringSetting(runtime, "INSTAGRAM_ACCESS_TOKEN") ||
+    stringSetting(runtime, "INSTAGRAM_GRAPH_ACCOUNT_ID") ||
+    config.accessToken ||
+    config.instagramAccountId
+  ) {
     ids.add(DEFAULT_INSTAGRAM_ACCOUNT_ID);
   }
 
@@ -203,24 +208,41 @@ export function resolveInstagramAccountConfig(
 
   return {
     accountId,
-    username:
-      account.username ??
-      base.username ??
-      (allowEnv ? stringSetting(runtime, "INSTAGRAM_USERNAME") : undefined) ??
+    accessToken:
+      account.accessToken ??
+      base.accessToken ??
+      (allowEnv ? stringSetting(runtime, "INSTAGRAM_ACCESS_TOKEN") : undefined) ??
       "",
-    password:
-      account.password ??
-      base.password ??
-      (allowEnv ? stringSetting(runtime, "INSTAGRAM_PASSWORD") : undefined) ??
+    instagramAccountId:
+      account.instagramAccountId ??
+      base.instagramAccountId ??
+      (allowEnv ? stringSetting(runtime, "INSTAGRAM_GRAPH_ACCOUNT_ID") : undefined) ??
       "",
-    verificationCode:
-      account.verificationCode ??
-      base.verificationCode ??
-      (allowEnv ? stringSetting(runtime, "INSTAGRAM_VERIFICATION_CODE") : undefined),
-    proxy:
-      account.proxy ??
-      base.proxy ??
-      (allowEnv ? stringSetting(runtime, "INSTAGRAM_PROXY") : undefined),
+    appSecret:
+      account.appSecret ??
+      base.appSecret ??
+      (allowEnv ? stringSetting(runtime, "INSTAGRAM_APP_SECRET") : undefined),
+    webhookVerifyToken:
+      account.webhookVerifyToken ??
+      base.webhookVerifyToken ??
+      (allowEnv ? stringSetting(runtime, "INSTAGRAM_WEBHOOK_VERIFY_TOKEN") : undefined),
+    graphBaseUrl:
+      account.graphBaseUrl ??
+      base.graphBaseUrl ??
+      (allowEnv ? stringSetting(runtime, "INSTAGRAM_GRAPH_BASE_URL") : undefined),
+    graphApiVersion:
+      account.graphApiVersion ??
+      base.graphApiVersion ??
+      (allowEnv ? stringSetting(runtime, "INSTAGRAM_GRAPH_API_VERSION") : undefined),
+    requestTimeoutMs: Number.parseInt(
+      String(
+        account.requestTimeoutMs ??
+          base.requestTimeoutMs ??
+          (allowEnv ? stringSetting(runtime, "INSTAGRAM_REQUEST_TIMEOUT_MS") : undefined) ??
+          "15000"
+      ),
+      10
+    ),
     autoRespondToDms: boolValue(
       account.autoRespondToDms ??
         base.autoRespondToDms ??
