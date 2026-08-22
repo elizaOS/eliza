@@ -1197,7 +1197,9 @@ export class MessageManager {
             i === 0 && replyToMessageId
               ? { message_id: replyToMessageId }
               : undefined,
-          message_thread_id: messageThreadId,
+          ...(messageThreadId !== undefined
+            ? { message_thread_id: messageThreadId }
+            : {}),
           reply_markup: replyMarkup,
         };
         const sentMessage = (await this.sendWithRetry(
@@ -1680,6 +1682,7 @@ export class MessageManager {
               ctx,
               content,
               message.message_id,
+              threadIdNum,
             );
           }
 
