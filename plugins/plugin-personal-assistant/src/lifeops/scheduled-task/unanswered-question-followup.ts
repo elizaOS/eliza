@@ -64,8 +64,6 @@ export const UNANSWERED_QUESTION_FOLLOWUP_DELAY_MINUTES = 45;
  */
 const FOLLOWUP_COMPLETION_TIMEOUT_MINUTES = 4 * 60;
 
-const QUESTION_SNIPPET_MAX_LENGTH = 200;
-
 function messageText(message: Memory): string {
   const text = message.content?.text;
   return typeof text === "string" ? text : "";
@@ -97,8 +95,7 @@ export function extractTrailingQuestion(text: string): string | null {
   // question mark and its closing quotes/brackets follow `sentenceStart`.
   const question = trimmed.slice(sentenceStart).trim();
   if (question.length < 4) return null;
-  if (question.length <= QUESTION_SNIPPET_MAX_LENGTH) return question;
-  return `…${question.slice(question.length - QUESTION_SNIPPET_MAX_LENGTH + 1)}`;
+  return question;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

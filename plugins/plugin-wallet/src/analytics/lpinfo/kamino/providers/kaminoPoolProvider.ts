@@ -10,7 +10,6 @@ import type {
   KaminoPoolByAddressResult,
 } from "../services/kaminoLiquidityService";
 
-const KAMINO_POOL_TEXT_LIMIT = 4000;
 type KaminoPoolReportData = NonNullable<KaminoPoolByAddressResult>;
 
 export const kaminoPoolProvider: Provider = {
@@ -97,7 +96,7 @@ export const kaminoPoolProvider: Provider = {
       kaminoPool: poolInfo,
     };
 
-    const text = `${poolInfo}\n`.slice(0, KAMINO_POOL_TEXT_LIMIT);
+    const text = `${poolInfo}\n`;
 
     return {
       data,

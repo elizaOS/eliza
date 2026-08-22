@@ -1060,7 +1060,7 @@ describe("executePlannedToolCall", () => {
 		);
 	});
 
-	it("bounds oversized action parameters and results before trajectory settlement", async () => {
+	it("preserves oversized action strings and arrays before trajectory settlement", async () => {
 		const trajectoryLogger = {
 			isEnabled: vi.fn(() => true),
 			startStep: vi.fn(() => "bounded-action-step"),
@@ -1122,10 +1122,8 @@ describe("executePlannedToolCall", () => {
 			settlement.parameters.payload,
 			settlement.result.data,
 		]) {
-			expect(bounded.long).toHaveLength(64 * 1024);
-			expect(bounded.long).toMatch(/\.\.\.\[truncated\]$/);
-			expect(bounded.items).toHaveLength(251);
-			expect(bounded.items[250]).toEqual({ __truncatedItems: 50 });
+			expect(bounded.long).toBe(oversized.long);
+			expect(bounded.items).toEqual(oversized.items);
 		}
 		// Parameters and result cross the diagnostic projection before the JSON
 		// sanitizer, so over-deep subtrees collapse to the projection's mask at
@@ -1542,7 +1540,7 @@ describe("executePlannedToolCall", () => {
 		expect(settled).toBe(true);
 	});
 
-	it("bounds UTF-8 strings and sparse arrays without coercion or prototype mutation", async () => {
+	it("preserves UTF-8 strings while masking hostile sparse arrays", async () => {
 		let coercionCalls = 0;
 		const coercible = {
 			[Symbol.toPrimitive]() {
@@ -1620,16 +1618,10 @@ describe("executePlannedToolCall", () => {
 			(Object.prototype as { polluted?: unknown }).polluted,
 		).toBeUndefined();
 		const projectedHuge = diagnosticData?.huge;
-		expect(projectedHuge).toBe("[REDACTED]");
+		expect(projectedHuge).toBe("😀".repeat(100_000));
 		const projectedMultibyte = diagnosticData?.multibyte as string;
-		expect(projectedMultibyte.endsWith("…")).toBe(true);
+		expect(projectedMultibyte).toBe("😀".repeat(3_000));
 		expect(projectedMultibyte).not.toContain("�");
-		expect(
-			new TextEncoder().encode(projectedMultibyte).byteLength,
-		).toBeLessThanOrEqual(8 * 1_024);
-		expect(
-			new TextEncoder().encode(JSON.stringify(diagnosticData)).byteLength,
-		).toBeLessThan(64 * 1_024);
 	});
 
 	it("suppresses sensitive action result data in ACTION_COMPLETED events", async () => {

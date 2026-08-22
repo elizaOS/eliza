@@ -174,7 +174,6 @@ const optionalPluginSpecifiers = {
   cloud: "@elizaos/plugin-elizacloud",
   imessage: "@elizaos/plugin-imessage",
   mcp: "@elizaos/plugin-mcp",
-  signal: "@elizaos/plugin-signal",
   whatsapp: "@elizaos/plugin-whatsapp",
   workflow: "@elizaos/plugin-workflow",
 } as const;
@@ -185,7 +184,6 @@ const optionalPluginImports = {
   cloud: () => importOptionalPlugin(optionalPluginSpecifiers.cloud),
   imessage: () => importOptionalPlugin(optionalPluginSpecifiers.imessage),
   mcp: () => importOptionalPlugin(optionalPluginSpecifiers.mcp),
-  signal: () => importOptionalPlugin(optionalPluginSpecifiers.signal),
   whatsapp: () => importOptionalPlugin(optionalPluginSpecifiers.whatsapp),
   workflow: () => importOptionalPlugin(optionalPluginSpecifiers.workflow),
 };
@@ -2847,9 +2845,6 @@ async function handleRequest(
 
   // ── WhatsApp routes (/api/whatsapp/*) ────────────────────────────────────
   // Moved to @elizaos/plugin-whatsapp setup-routes.ts (registered via Plugin.routes).
-
-  // ── BlueBubbles routes ──────────────────────────────────────────────────
-  // Extracted to @elizaos/plugin-bluebubbles setup-routes.ts (Plugin.routes).
 
   // ── Notification + inbox routes (/api/notifications/*, /api/inbox/*) ──
   // Notifications: the unified notification center backed by the runtime

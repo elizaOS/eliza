@@ -711,19 +711,6 @@ export async function deleteTweet(tweetId: string, auth: TwitterAuth) {
 }
 
 /**
- * Bounds the user-timeline pagination generators against a provider that never
- * stops paginating. `userTimeline` legitimately answers with zero tweets and a
- * non-empty `next_token` — server-side filtering (`exclude: ["retweets",
- * "replies"]`) can empty a page that still has data behind it — so a loop
- * guarded only by a fetched-tweet counter never advances that counter and never
- * terminates. X serves at most 3,200 recent tweets per user timeline, so 1,000
- * pages is ~30x more than a well-behaved provider can ever need while keeping
- * worst-case requests finite. Same bound, and the same repeated-cursor guard,
- * that `getAllRetweeters` below already carries.
- */
-export const MAX_TIMELINE_PAGES = 1000;
-
-/**
  * Resolves the cursor for the next timeline page, or `undefined` when the
  * provider signalled the end of the timeline.
  *
@@ -740,8 +727,7 @@ export function nextTimelinePageCursor(
   seenCursors: Set<string>,
   pageCount: number,
 ): string | undefined {
-  // A terminal page ends the run before any guard applies, so a timeline that
-  // legitimately ends on page 1,000 still completes.
+  // A terminal page ends the run before any integrity guard applies.
   if (!next) {
     return undefined;
   }
@@ -754,16 +740,6 @@ export function nextTimelinePageCursor(
       `X timeline pagination in ${source} repeated a page cursor`,
       {
         code: "X_TIMELINE_PAGINATION_CURSOR_REPEATED",
-        context: { source, pageCount },
-      },
-    );
-  }
-
-  if (pageCount >= MAX_TIMELINE_PAGES) {
-    throw new ElizaError(
-      `X timeline pagination in ${source} exceeded ${MAX_TIMELINE_PAGES} pages`,
-      {
-        code: "X_TIMELINE_PAGINATION_LIMIT_EXCEEDED",
         context: { source, pageCount },
       },
     );
@@ -1198,6 +1174,7 @@ export async function createQuoteTweetRequest(
   quotedTweetId: string,
   auth: TwitterAuth,
   _mediaData?: { data: Buffer; mediaType: string }[],
+  mediaIds?: string[],
 ) {
   const v2client = await auth.getV2Client();
   if (!v2client) {
@@ -1209,17 +1186,30 @@ export async function createQuoteTweetRequest(
     const quotedTweetUrl = `https://twitter.com/i/status/${quotedTweetId}`;
     const fullText = `${text} ${quotedTweetUrl}`;
 
-    const result = await v2client.v2.tweet({
+    const tweetConfig: SendTweetV2Params = {
       text: fullText,
-    });
+    };
+    if (mediaIds && mediaIds.length > 0) {
+      tweetConfig.media = {
+        media_ids: toTweetMediaIds(mediaIds),
+      };
+    }
+
+    const result = await v2client.v2.tweet(tweetConfig);
 
     return {
       ok: true,
       json: async () => result,
       data: result,
     };
-  } catch (error) {
-    throw new Error(`Failed to create quote tweet: ${errorMessage(error)}`);
+  } catch (cause) {
+    // error-policy:J2 Preserve the provider or request-assembly failure at the
+    // connector boundary so callers can distinguish it from an accepted write.
+    throw new ElizaError("Failed to create quote tweet", {
+      code: "X_QUOTE_REQUEST_FAILED",
+      cause,
+      context: { quotedTweetId },
+    });
   }
 }
 
@@ -1370,11 +1360,6 @@ export async function fetchRetweetersPage(
   };
 }
 
-// Bounds `getAllRetweeters` against a provider that never stops paginating
-// (repeated or perpetually-novel cursors) — 1,000 pages * 40/page covers even
-// a very viral tweet while keeping worst-case requests/memory finite.
-const MAX_RETWEETER_PAGES = 1000;
-
 /**
  * Retrieves *all* retweeters by chaining requests until no next cursor is found.
  * @param tweetId The ID of the tweet.
@@ -1392,16 +1377,6 @@ export async function getAllRetweeters(
 
   while (true) {
     pageCount += 1;
-    if (pageCount > MAX_RETWEETER_PAGES) {
-      throw new ElizaError(
-        `Retweeter pagination for tweet ${tweetId} exceeded ${MAX_RETWEETER_PAGES} pages`,
-        {
-          code: "X_RETWEETERS_PAGINATION_LIMIT_EXCEEDED",
-          context: { tweetId, pageCount },
-        },
-      );
-    }
-
     const { retweeters, bottomCursor } = await fetchRetweetersPage(
       tweetId,
       auth,

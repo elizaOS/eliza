@@ -119,7 +119,6 @@ export class MemoryService extends Service {
 			longTermExtractionInterval: 10,
 			summaryModelType: ModelType.TEXT_NANO,
 			summaryMaxTokens: 2500,
-			summaryMaxNewMessages: 20,
 		};
 	}
 
@@ -200,14 +199,6 @@ export class MemoryService extends Service {
 			);
 		}
 
-		const maxNewMessages = runtime.getSetting("MEMORY_MAX_NEW_MESSAGES");
-		if (maxNewMessages) {
-			this.memoryConfig.summaryMaxNewMessages = Number.parseInt(
-				String(maxNewMessages),
-				10,
-			);
-		}
-
 		const longTermEnabled = runtime.getSetting("MEMORY_LONG_TERM_ENABLED");
 		if (longTermEnabled === "false" || longTermEnabled === false) {
 			this.memoryConfig.longTermExtractionEnabled = false;
@@ -255,7 +246,6 @@ export class MemoryService extends Service {
 				summarizationThreshold:
 					this.memoryConfig.shortTermSummarizationThreshold,
 				summarizationInterval: this.memoryConfig.shortTermSummarizationInterval,
-				maxNewMessages: this.memoryConfig.summaryMaxNewMessages,
 				retainRecent: this.memoryConfig.shortTermRetainRecent,
 				longTermEnabled: this.memoryConfig.longTermExtractionEnabled,
 				extractionThreshold: this.memoryConfig.longTermExtractionThreshold,
@@ -449,9 +439,9 @@ export class MemoryService extends Service {
 	async getLongTermMemories(
 		entityId: UUID,
 		category?: LongTermMemoryCategory,
-		limit = 10,
+		limit?: number,
 	): Promise<LongTermMemory[]> {
-		if (limit <= 0) return [];
+		if (limit !== undefined && limit <= 0) return [];
 		const storage = await this.getStorage();
 		if (!storage) return [];
 		const entityIds = await getRelatedEntityIds(this.runtime, entityId);
@@ -460,7 +450,7 @@ export class MemoryService extends Service {
 				entityIds.map((relatedEntityId) =>
 					storage.getLongTermMemories(this.runtime.agentId, relatedEntityId, {
 						category,
-						limit,
+						...(limit === undefined ? {} : { limit }),
 					}),
 				),
 			)
@@ -473,9 +463,10 @@ export class MemoryService extends Service {
 		for (const memory of memories) {
 			if (!deduped.has(memory.id)) deduped.set(memory.id, memory);
 		}
-		return [...deduped.values()]
-			.sort((left, right) => memoryCreatedAtMs(right) - memoryCreatedAtMs(left))
-			.slice(0, limit);
+		const sorted = [...deduped.values()].sort(
+			(left, right) => memoryCreatedAtMs(right) - memoryCreatedAtMs(left),
+		);
+		return limit === undefined ? sorted : sorted.slice(0, limit);
 	}
 
 	async updateLongTermMemory(

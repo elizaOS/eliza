@@ -99,9 +99,9 @@ export interface BuildResponseGrammarOptions {
 	 */
 	contexts: ReadonlyArray<string>;
 	/**
-	 * The inbound message's channel type (`ChannelType.*` string). On
-	 * DM/API/SELF drop the `shouldRespond` span. Voice channels keep it because
-	 * semantic turn-taking can choose IGNORE.
+	 * The inbound message's channel type (`ChannelType.*` string). Retained for
+	 * callers that use channel-aware grammar extensions; the core envelope keeps
+	 * every registered response field on every channel.
 	 */
 	channelType?: string;
 	/**
@@ -807,32 +807,6 @@ class GbnfBuilder {
 
 const stage1Cache = new Map<string, ResponseGrammarResult>();
 
-const DIRECT_CHANNEL_TYPES = new Set(["DM", "VOICE_DM", "API", "SELF"]);
-const DIRECT_CHANNEL_OMITTED_RESPONSE_FIELDS = new Set([
-	"shouldRespond",
-	"facts",
-	"relationships",
-	"topics",
-	"addressedTo",
-	"emotion",
-]);
-
-function isDirectResponseChannel(channelType: string | undefined): boolean {
-	return channelType ? DIRECT_CHANNEL_TYPES.has(channelType) : false;
-}
-
-function selectResponseFieldsForChannel(
-	fields: ResponseHandlerFieldShape[],
-	channelType: string | undefined,
-): ResponseHandlerFieldShape[] {
-	if (!isDirectResponseChannel(channelType)) return fields;
-	return fields.filter(
-		(field) =>
-			!DIRECT_CHANNEL_OMITTED_RESPONSE_FIELDS.has(field.name) ||
-			(channelType === "VOICE_DM" && field.name === "shouldRespond"),
-	);
-}
-
 /** Stable hash of a string set (order-insensitive). */
 function hashStringSet(values: ReadonlyArray<string>): string {
 	const sorted = Array.from(new Set(values)).sort();
@@ -985,10 +959,7 @@ export function buildResponseGrammar(
 			? suppliedFields
 			: BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS,
 	);
-	const fields = selectResponseFieldsForChannel(
-		baseFields,
-		options.channelType,
-	);
+	const fields = baseFields;
 	const contextIds = normalizeContextIds(options.contexts);
 	const actionNames = Array.from(
 		new Set(
@@ -997,22 +968,12 @@ export function buildResponseGrammar(
 	).sort();
 	const suppliedFieldSignature =
 		runtime.responseHandlerFieldSignature ?? deriveFieldSignature(baseFields);
-	const fieldSignature =
-		fields.length === baseFields.length
-			? suppliedFieldSignature
-			: `${suppliedFieldSignature}|selected:${deriveFieldSignature(fields)}`;
-	const channelProfile =
-		options.channelType === "VOICE_DM"
-			? "voice-direct"
-			: isDirectResponseChannel(options.channelType)
-				? "direct"
-				: "default";
+	const fieldSignature = suppliedFieldSignature;
 
 	const cacheKey = [
 		"stage1",
 		hashStringSet(contextIds),
 		hashStringSet(actionNames),
-		channelProfile,
 		fieldSignature,
 	].join("#");
 	const cached = stage1Cache.get(cacheKey);

@@ -195,13 +195,7 @@ export interface ResponseHandlerFieldEvaluator<TValue = unknown> {
 	 */
 	description: string;
 
-	/**
-	 * Optional compressed prompt slice used on compact Stage-1 tiers
-	 * (unaddressed group-channel triage turns), where the full rule block is
-	 * not rendered. One short sentence preserving the field's populate/empty
-	 * contract. Falls back to `description` when absent. Mirrors the
-	 * `descriptionCompressed` convention actions and providers already use.
-	 */
+	/** Legacy short description retained for data compatibility; prompt rendering always uses `description`. */
 	descriptionCompressed?: string;
 
 	/**

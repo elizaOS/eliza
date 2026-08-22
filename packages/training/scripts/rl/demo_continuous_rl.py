@@ -34,6 +34,8 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 PYTHON_ROOT = SCRIPT_DIR.parent
 sys.path.insert(0, str(PYTHON_ROOT))
 
+from training.tokenization import tokenize_with_explicit_limit  # noqa: E402
+
 from src.training.continuous_rl import (
     ContinuousRLAgent,
     ContinuousRLConfig,
@@ -262,9 +264,12 @@ def run_eval(model, tokenizer, device: str) -> dict[str, Any]:
             add_generation_prompt=True,
         )
         prompt_text += ACTION_REASON_ASSISTANT_PREFIX
-        enc = tokenizer(prompt_text, return_tensors="pt", truncation=True, max_length=1024).to(
-            device
-        )
+        enc = tokenize_with_explicit_limit(
+            tokenizer,
+            prompt_text,
+            max_tokens=1024,
+            return_tensors="pt",
+        ).to(device)
         with torch.no_grad():
             out = model.generate(
                 enc["input_ids"],
@@ -366,17 +371,17 @@ async def run_demo(args: argparse.Namespace) -> dict[str, Any]:
                     add_generation_prompt=True,
                 )
                 full_text = prompt_text + sample["response"]
-                enc = agent.tokenizer(
+                enc = tokenize_with_explicit_limit(
+                    agent.tokenizer,
                     full_text,
+                    max_tokens=512,
                     return_tensors="pt",
-                    truncation=True,
-                    max_length=512,
                 ).to(device)
-                prompt_enc = agent.tokenizer(
+                prompt_enc = tokenize_with_explicit_limit(
+                    agent.tokenizer,
                     prompt_text,
+                    max_tokens=512,
                     return_tensors="pt",
-                    truncation=True,
-                    max_length=512,
                 )
                 prompt_len = prompt_enc["input_ids"].shape[1]
                 input_ids = enc["input_ids"][:, :-1]

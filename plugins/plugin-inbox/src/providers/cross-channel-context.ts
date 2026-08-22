@@ -29,8 +29,6 @@ import type { TriageEntry } from "../inbox/types.ts";
 
 const EMPTY: ProviderResult = { text: "", values: {}, data: {} };
 
-const MAX_ENTRIES = 8;
-
 async function resolveSenderLabel(
   runtime: IAgentRuntime,
   message: Memory,
@@ -98,7 +96,7 @@ function formatEntry(entry: TriageEntry): string {
     : "recently";
   const channelName = escapeMarkdownText(entry.channelName);
   const source = escapeMarkdownText(entry.source);
-  const snippet = escapeMarkdownText(entry.snippet.slice(0, 80));
+  const snippet = escapeMarkdownText(entry.snippet);
   const tag = entry.classification === "urgent" ? " ⚠️" : "";
   return `- **${channelName}** (${source}, ${when})${tag}: "${snippet}"`;
 }
@@ -150,7 +148,6 @@ export const crossChannelContextProvider: Provider = {
         sourceEntityId: entityId,
         senderName: name,
         excludeSource: currentSource,
-        limit: MAX_ENTRIES,
       });
     } catch (error) {
       // error-policy:J4 explicit user-facing degrade — a store-read failure

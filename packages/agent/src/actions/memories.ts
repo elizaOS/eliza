@@ -20,7 +20,6 @@ import {
   logger,
   ModelType,
   toWellFormedUnicode,
-  truncateWellFormed,
   validateUuid,
 } from "@elizaos/core";
 
@@ -378,21 +377,15 @@ async function doSearch(
     .map((c) => toListItem(c.memory, c.type));
   // The text projection carries enough of each hit for model reasoning; the
   // complete records remain machine data for state and trajectory consumers.
-  const lines = items
-    .slice(0, 25)
-    .map(
-      (m) =>
-        `- [${m.type}] ${m.id}: ${truncateWellFormed(toWellFormedUnicode(m.text), 300)}`,
-    );
+  const lines = items.map(
+    (m) => `- [${m.type}] ${m.id}: ${toWellFormedUnicode(m.text)}`,
+  );
   const userFacingText = items.length
     ? [
         `I found ${items.length} matching memory record(s):`,
-        ...items
-          .slice(0, 25)
-          .map(
-            (item) =>
-              `- [${item.type}] ${truncateWellFormed(toWellFormedUnicode(item.text), 300)}`,
-          ),
+        ...items.map(
+          (item) => `- [${item.type}] ${toWellFormedUnicode(item.text)}`,
+        ),
       ].join("\n")
     : undefined;
 
@@ -606,12 +599,8 @@ async function doDeleteByQuery(
   const distinctTexts = new Set(matched.map(normalize));
   if (distinctTexts.size > 1) {
     const lines = matched
-      .slice(0, 10)
       .map((c) => toListItem(c.memory, c.type))
-      .map(
-        (m) =>
-          `- [${m.type}] ${m.id}: ${truncateWellFormed(toWellFormedUnicode(m.text), 120)}`,
-      );
+      .map((m) => `- [${m.type}] ${m.id}: ${toWellFormedUnicode(m.text)}`);
     return {
       success: false,
       text: [
@@ -632,10 +621,7 @@ async function doDeleteByQuery(
 
   return {
     success: true,
-    text: `Forgot ${deleted.length} memory record(s) matching "${query}": ${truncateWellFormed(
-      toWellFormedUnicode(deleted[0]?.text ?? ""),
-      120,
-    )}`,
+    text: `Forgot ${deleted.length} memory record(s) matching "${query}": ${toWellFormedUnicode(deleted[0]?.text ?? "")}`,
     values: { deletedCount: deleted.length },
     data: {
       actionName: "MEMORY",

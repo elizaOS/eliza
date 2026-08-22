@@ -852,7 +852,7 @@ describe("E2BRemoteCapabilityRouterService", () => {
     expect(factory.configs).toHaveLength(0);
   });
 
-  it("truncates at a complete UTF-8 code point within maxBytes", async () => {
+  it("rejects a file above maxBytes without returning partial text", async () => {
     const service = new E2BRemoteCapabilityRouterService(
       makeRuntime(),
       makeConfig(),
@@ -861,17 +861,18 @@ describe("E2BRemoteCapabilityRouterService", () => {
 
     await expect(
       service.fs.readText({ path: "/repo/README.md", maxBytes: 1 }),
-    ).resolves.toMatchObject({
-      text: "",
-      size: 7,
-      truncated: true,
+    ).rejects.toMatchObject({
+      code: "CAPABILITY_REQUEST_FAILED",
+      capability: "fs",
+      method: "fs.readText",
+      message:
+        "fs.readText requires 7 bytes, exceeding the requested 1-byte acceptance ceiling.",
     });
     await expect(
       service.fs.readText({ path: "/repo/README.md", maxBytes: 3 }),
-    ).resolves.toMatchObject({
-      text: "éc",
-      size: 7,
-      truncated: true,
+    ).rejects.toMatchObject({
+      message:
+        "fs.readText requires 7 bytes, exceeding the requested 3-byte acceptance ceiling.",
     });
   });
 

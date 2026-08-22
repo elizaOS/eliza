@@ -33,13 +33,15 @@ export interface TaskWorker {
 	 * The core execution logic for the task. This function is called by the runtime when a task needs to be processed.
 	 * It receives the `AgentRuntime`, task-specific `options`, and the `Task` object itself.
 	 * May return `{ nextInterval?: number }` to dynamically adjust the task's updateInterval (recurring tasks only).
+	 * `preserveTask` tells the scheduler that execution deliberately did not
+	 * consume the row, so a concurrent lifecycle transition remains durable.
 	 * WHY return nextInterval: workers can adapt rate (e.g. back off under load) without separate updateTask calls.
 	 */
 	execute: (
 		runtime: IAgentRuntime,
 		options: Record<string, JsonValue | object>,
 		task: Task,
-	) => Promise<undefined | { nextInterval?: number }>;
+	) => Promise<undefined | { nextInterval?: number; preserveTask?: boolean }>;
 	/**
 	 * Called by the scheduler before each run -- "should this task run now?"
 	 * If absent, the task always passes scheduler validation.

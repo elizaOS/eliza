@@ -10,12 +10,9 @@
 import { describe, expect, it, vi } from "vitest";
 import type { IAgentRuntime, Memory, UUID } from "../../../types/index.ts";
 import {
-	MAX_REPLY_TARGET_SNIPPET_CHARS,
-	MAX_REPLY_WINDOW_MESSAGE_CHARS,
-	REPLY_CONTEXT_WINDOW_RADIUS,
+	normalizeSingleLine,
 	replyContextProvider,
-	truncateSingleLine,
-	withBoundedText,
+	withWellFormedText,
 } from "./replyContext.ts";
 
 function isWellFormed(value: string): boolean {
@@ -166,25 +163,18 @@ describe("replyContextProvider", () => {
 		// Identifies the target by sender + snippet.
 		expect(result.text).toContain("direct reply to this earlier message");
 		expect(result.text).toContain("turn 4");
-		// Window: the target (t=500) plus RADIUS turns on each side — turns 1..7
-		// (createdAt 200..800), none of which are in the recent tail (t>=900).
+		// Every retained turn outside the recent tail is included.
 		const replyContextMessages = result.data?.replyContextMessages;
 		expect(replyContextMessages).toBeDefined();
 		if (!replyContextMessages) {
 			throw new Error("Expected reply-context messages to be returned");
 		}
 		const windowIds = (replyContextMessages as Memory[]).map((m) => m.id);
-		expect(windowIds).toContain(thread[1].id); // RADIUS older
+		expect(windowIds).toContain(thread[0].id);
 		expect(windowIds).toContain(thread[4].id); // the target itself
-		expect(windowIds).toContain(thread[7].id); // RADIUS newer
-		// Symmetric radius: never reaches beyond RADIUS on either side.
-		expect(windowIds).not.toContain(thread[0].id); // t=100, RADIUS+1 older
+		expect(windowIds).toContain(thread[7].id);
 		expect(windowIds).not.toContain(thread[8].id); // t=900, in the recent tail
-		// Both half-windows are [target, ±RADIUS]; merged unique that is
-		// 2*RADIUS+1 turns (the shared target counted once).
-		expect(replyContextMessages).toHaveLength(
-			2 * REPLY_CONTEXT_WINDOW_RADIUS + 1,
-		);
+		expect(replyContextMessages).toHaveLength(8);
 	});
 
 	it("dedupes window turns already shown in the recent transcript", async () => {
@@ -211,11 +201,10 @@ describe("replyContextProvider", () => {
 			{ values: {}, data: {}, text: "" },
 		);
 
-		// The surrounding turns are all in the recent transcript, so none are
-		// re-rendered; the provider still identifies WHICH message was replied to.
-		expect(result.data?.replyContextMessages).toHaveLength(0);
+		// The recent tail is deduped while every older retained turn is supplied.
+		expect(result.data?.replyContextMessages).toHaveLength(4);
 		expect(result.text).toContain("turn 7");
-		expect(result.text).toContain("already appear in the recent conversation");
+		expect(result.text).toContain("turn 0");
 	});
 
 	it("ignores a reply id that resolves to another room", async () => {
@@ -255,91 +244,21 @@ describe("replyContextProvider", () => {
 	});
 });
 
-describe("truncateSingleLine", () => {
-	it("keeps surrogate pairs intact at exact and max-plus-one bounds", () => {
-		const exact = "hello🦊";
-		expect(exact.length).toBe(7);
-		expect(truncateSingleLine(exact, 7)).toBe(exact);
-
-		const maxPlusOne = `${exact}b`;
-		expect(maxPlusOne.length).toBe(8);
-		const truncated = truncateSingleLine(maxPlusOne, 7);
-		expect(truncated).toBe("hello…");
-		expect(isWellFormed(truncated)).toBe(true);
-		expect(truncated.length).toBeLessThanOrEqual(7);
-	});
-
-	it("sanitizes lone surrogates before truncation", () => {
-		const lone = `a\uD800bcdef`;
-		const truncated = truncateSingleLine(lone, 4);
-		expect(truncated).toBe(`a�b…`);
-		expect(isWellFormed(truncated)).toBe(true);
-	});
-
-	it("sanitizes either lone surrogate half without truncation", () => {
-		for (const lone of [`a\uD800bc`, `a\uDC00bc`]) {
-			const out = truncateSingleLine(lone, 10);
-			expect(out).toBe(`a�bc`);
-			expect(isWellFormed(out)).toBe(true);
-		}
-	});
-
-	it("collapses whitespace and trims before well-formed check", () => {
-		const text = `  hello   \n  world  `;
-		const out = truncateSingleLine(text, 20);
-		expect(out).toBe("hello world");
-		expect(isWellFormed(out)).toBe(true);
-	});
-
-	it("honors the 300-char reply target cap and never emits lone surrogates", () => {
-		const emoji = "🦊";
-		const long =
-			`a`.repeat(MAX_REPLY_TARGET_SNIPPET_CHARS - 1) + emoji + `b`.repeat(10);
-		const out = truncateSingleLine(long, MAX_REPLY_TARGET_SNIPPET_CHARS);
-		expect(out.length).toBeLessThanOrEqual(MAX_REPLY_TARGET_SNIPPET_CHARS);
-		expect(out.endsWith("…")).toBe(true);
+describe("normalizeSingleLine", () => {
+	it("preserves complete text while normalizing whitespace and Unicode", () => {
+		const text = `  ${"a".repeat(2_000)}🦊  \n  tail\uD800  `;
+		const out = normalizeSingleLine(text);
+		expect(out).toBe(`${"a".repeat(2_000)}🦊 tail�`);
 		expect(isWellFormed(out)).toBe(true);
 	});
 });
 
-describe("withBoundedText", () => {
-	it("keeps surrogate pairs intact at exact and max-plus-one window bounds", () => {
-		const exact = `${`a`.repeat(MAX_REPLY_WINDOW_MESSAGE_CHARS - 2)}🦊`;
-		const exactMemory = mem("m0", USER_ID, exact, 99);
-		expect(exact.length).toBe(MAX_REPLY_WINDOW_MESSAGE_CHARS);
-		expect(withBoundedText(exactMemory)).toBe(exactMemory);
-
-		const maxPlusOne = `${exact}b`;
-		expect(maxPlusOne.length).toBe(MAX_REPLY_WINDOW_MESSAGE_CHARS + 1);
-		const bounded = withBoundedText(mem("m1", USER_ID, maxPlusOne, 100));
-		const out = bounded.content.text as string;
-		expect(out.length).toBeLessThanOrEqual(MAX_REPLY_WINDOW_MESSAGE_CHARS);
-		expect(out.endsWith("…")).toBe(true);
-		expect(isWellFormed(out)).toBe(true);
-		expect(out).not.toContain("\uD83E");
-	});
-
-	it("sanitizes lone surrogates in window text", () => {
-		const lone = `x\uD800${`y`.repeat(2000)}`;
-		const bounded = withBoundedText(mem("m2", USER_ID, lone, 200));
-		const out = bounded.content.text as string;
-		expect(out).toContain("�");
-		expect(isWellFormed(out)).toBe(true);
-	});
-
-	it("returns same reference when already well-formed and under limit", () => {
-		const text = "short well-formed";
-		const memory = mem("m3", USER_ID, text, 300);
-		const bounded = withBoundedText(memory);
-		expect(bounded).toBe(memory);
-	});
-
-	it("returns new memory with sanitized text when lone surrogate present under limit", () => {
-		const lone = `ok \uD800 end`;
+describe("withWellFormedText", () => {
+	it("preserves long content and repairs lone surrogates", () => {
+		const lone = `ok \uD800 ${"x".repeat(2_000)}`;
 		const memory = mem("m4", USER_ID, lone, 400);
-		const bounded = withBoundedText(memory);
-		expect(bounded).not.toBe(memory);
-		expect(bounded.content.text).toBe(`ok � end`);
-		expect(isWellFormed(bounded.content.text as string)).toBe(true);
+		const normalized = withWellFormedText(memory);
+		expect(normalized.content.text).toBe(`ok � ${"x".repeat(2_000)}`);
+		expect(isWellFormed(normalized.content.text as string)).toBe(true);
 	});
 });

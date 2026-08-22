@@ -63,10 +63,6 @@ const allowedCallsites = new Map<string, string>([
 		"plugins/plugin-app-control/src/actions/views.ts",
 		"VIEWS close-alias dispatcher (CLOSE_VIEW / CLOSE_ALL_VIEWS); forwards to the underlying VIEWS handler",
 	],
-	[
-		"plugins/plugin-commands/src/actions/handlers.ts",
-		"slash-command dispatcher (/compact -> COMPACT_CONVERSATION via runCompactAction); forwards the original callback to the dispatched action and returns result.text as a CommandResult reply",
-	],
 ]);
 
 const actionHandlerCallPattern = new RegExp(

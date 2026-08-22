@@ -3,7 +3,7 @@
  * < limit)`, but that count only advances on a page with at least one mapped
  * message — a page with an empty `messages` array and a distinct
  * `nextPageToken` never grows it. Both must still terminate against a
- * repeated or a never-repeating-but-never-stopping page token. Mirrors the
+ * repeated page token. Mirrors the
  * equivalent Calendar pagination coverage in `calendar.pagination.test.ts`.
  */
 import { describe, expect, it, vi } from "vitest";
@@ -74,27 +74,13 @@ describe("searchGmailMessages pagination", () => {
     expect(list).toHaveBeenNthCalledWith(2, expect.objectContaining({ pageToken: opaqueToken }));
   });
 
-  it("bounds pagination against a provider that mints a novel token on every empty page", async () => {
-    let page = 0;
-    const list = vi.fn(async () => {
-      page += 1;
-      return { data: { messages: [], nextPageToken: `token-${page}` } };
-    });
-    const client = clientFor(list);
-
-    await expect(
-      client.searchGmailMessages({ accountId: "acct-1", query: "in:inbox" })
-    ).rejects.toMatchObject({ code: "GOOGLE_GMAIL_PAGINATION_LIMIT_EXCEEDED" });
-    expect(list).toHaveBeenCalledTimes(1_000);
-  });
-
-  it("returns a satisfied result limit on the final allowed page", async () => {
+  it("returns a satisfied result beyond the former fixed page ceiling", async () => {
     let page = 0;
     const list = vi.fn(async () => {
       page += 1;
       return {
         data: {
-          messages: page === 1_000 ? [{ id: "last" }] : [],
+          messages: page === 1_001 ? [{ id: "last" }] : [],
           nextPageToken: `token-${page}`,
         },
       };
@@ -107,7 +93,7 @@ describe("searchGmailMessages pagination", () => {
     await expect(
       client.searchGmailMessages({ accountId: "acct-1", query: "in:inbox", maxResults: 1 })
     ).resolves.toMatchObject([{ externalId: "last" }]);
-    expect(list).toHaveBeenCalledTimes(1_000);
+    expect(list).toHaveBeenCalledTimes(1_001);
   });
 });
 
@@ -125,20 +111,6 @@ describe("getGmailSubscriptionHeaders pagination", () => {
     expect(list).toHaveBeenCalledTimes(2);
   });
 
-  it("bounds pagination against a provider that mints a novel token on every empty page", async () => {
-    let page = 0;
-    const list = vi.fn(async () => {
-      page += 1;
-      return { data: { messages: [], nextPageToken: `token-${page}` } };
-    });
-    const client = clientFor(list);
-
-    await expect(client.getGmailSubscriptionHeaders({ accountId: "acct-1" })).rejects.toMatchObject(
-      { code: "GOOGLE_GMAIL_PAGINATION_LIMIT_EXCEEDED" }
-    );
-    expect(list).toHaveBeenCalledTimes(1_000);
-  });
-
   it("rejects a cursor cycle instead of looping forever on empty pages", async () => {
     const list = vi
       .fn()
@@ -153,13 +125,13 @@ describe("getGmailSubscriptionHeaders pagination", () => {
     expect(list).toHaveBeenCalledTimes(3);
   });
 
-  it("returns a satisfied result limit on the final allowed page", async () => {
+  it("returns subscription headers beyond the former fixed page ceiling", async () => {
     let page = 0;
     const list = vi.fn(async () => {
       page += 1;
       return {
         data: {
-          messages: page === 1_000 ? [{ id: "last" }] : [],
+          messages: page === 1_001 ? [{ id: "last" }] : [],
           nextPageToken: `token-${page}`,
         },
       };
@@ -172,6 +144,6 @@ describe("getGmailSubscriptionHeaders pagination", () => {
     await expect(
       client.getGmailSubscriptionHeaders({ accountId: "acct-1", maxMessages: 1 })
     ).resolves.toMatchObject([{ messageId: "last" }]);
-    expect(list).toHaveBeenCalledTimes(1_000);
+    expect(list).toHaveBeenCalledTimes(1_001);
   });
 });

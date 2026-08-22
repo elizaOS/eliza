@@ -85,7 +85,7 @@ describe("GLOB", () => {
     expect(sortedNames.some((p) => p.endsWith("b.ts"))).toBe(true);
     expect(sortedNames.some((p) => p.endsWith("c.ts"))).toBe(true);
     expect(data?.truncated).toBe(false);
-    expect(result.text).toMatch(/3 files \(truncated=false\)/);
+    expect(result.text).toMatch(/^3 files\n/);
   });
 
   it("keeps glob plugin-owned until fs.glob parity exists", async () => {
@@ -105,7 +105,7 @@ describe("GLOB", () => {
     });
 
     expect(result.success).toBe(true);
-    expect(result.text).toMatch(/3 files \(truncated=false\)/);
+    expect(result.text).toMatch(/^3 files\n/);
   });
 
   it("rejects a relative path", async () => {

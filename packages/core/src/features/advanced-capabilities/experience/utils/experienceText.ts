@@ -66,8 +66,7 @@ export function sanitizeExperienceText(text: string): string {
 		.replace(
 			/\b(user|person|someone|they)\s+(said|asked|told|mentioned)/gi,
 			"when asked",
-		)
-		.substring(0, 200);
+		);
 }
 
 export function detectExperienceDomain(text: string): string {

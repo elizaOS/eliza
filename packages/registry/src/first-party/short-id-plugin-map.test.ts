@@ -15,7 +15,6 @@ const expectedShortIdPluginMap = {
   agent_wallet: "@elizaos/plugin-wallet",
   "app-browser": "@elizaos/plugin-browser",
   appBrowser: "@elizaos/plugin-browser",
-  bluebubbles: "@elizaos/plugin-bluebubbles",
   browser: "@elizaos/plugin-browser",
   "browser-bridge": "@elizaos/plugin-browser",
   browserBridge: "@elizaos/plugin-browser",

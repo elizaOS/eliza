@@ -94,11 +94,6 @@ export function applyMockoonEnvOverrides(
     applied.push("eliza-cloud", "plaid");
   }
 
-  if (!env.SIGNAL_HTTP_URL) {
-    env.SIGNAL_HTTP_URL = getMockoonBaseUrl("signal");
-    applied.push("signal");
-  }
-
   if (!env.LIFEOPS_DUFFEL_API_BASE) {
     env.LIFEOPS_DUFFEL_API_BASE = getMockoonBaseUrl("duffel");
     applied.push("duffel");

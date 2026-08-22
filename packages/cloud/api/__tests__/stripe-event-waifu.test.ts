@@ -1,5 +1,6 @@
 /** Exercises the Stripe queue callback for agent credit top-ups. */
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { ApiError } from "@/lib/api/cloud-worker-errors";
 
 const agentId = "123e4567-e89b-12d3-a456-426614174000";
 const paymentIntentId = "pi_agent_topup";
@@ -13,6 +14,16 @@ const createInvoice = mock(async () => undefined);
 const calculateRevenueSplits = mock(async () => ({ splits: [] }));
 const enqueueAgentRestartOnce = mock(async () => ({ jobId: "job-restart" }));
 const triggerImmediate = mock(async () => undefined);
+const containerBackedTargetRejectionReason =
+  "agent_job_target_not_container_backed";
+const settleLegacy = mock(async () => ({
+  organizationId: "agent-org",
+  initiatedByUserId: "agent-user",
+  purchaseType: "custom_amount" as const,
+  creditsToGrant: "5.000000",
+  alreadyApplied: false,
+  newBalance: 5,
+}));
 
 function dbChain(rows: unknown[]) {
   return {
@@ -110,6 +121,8 @@ mock.module("@/lib/services/org-rate-limits", () => ({
   invalidateOrgTierCache: mock(async () => undefined),
 }));
 mock.module("@/lib/services/provisioning-jobs", () => ({
+  CONTAINER_BACKED_TARGET_REJECTION_REASON:
+    containerBackedTargetRejectionReason,
   provisioningJobService: {
     enqueueAgentRestartOnce,
     triggerImmediate,
@@ -125,14 +138,48 @@ mock.module("@/lib/services/referrals", () => ({
     calculateRevenueSplits,
   },
 }));
-mock.module("@/lib/security/safe-fetch", () => ({
-  safeFetch: webhookFetch,
+mock.module("@/lib/services/stripe-checkout-orders", () => ({
+  stripeCheckoutOrdersService: { settleLegacy },
 }));
 mock.module("@/lib/stripe", () => ({
   requireStripe: () => ({}),
 }));
 
 const { processStripeEvent } = await import("../src/queue/stripe-event");
+
+function agentTopUpDelivery(eventId: string, attempts = 1) {
+  return {
+    attempts,
+    body: {
+      kind: "stripe.event",
+      eventId,
+      eventType: "checkout.session.completed",
+      paymentIntentId,
+      receivedAt: Date.now(),
+      event: {
+        id: eventId,
+        type: "checkout.session.completed",
+        data: {
+          object: {
+            id: `cs_${eventId}`,
+            payment_status: "paid",
+            amount_total: 500,
+            currency: "usd",
+            customer: "cus_agent",
+            payment_intent: paymentIntentId,
+            metadata: {
+              organization_id: "agent-org",
+              user_id: "agent-user",
+              credits: "5.00",
+              type: "custom_amount",
+              agent_id: agentId,
+            },
+          },
+        },
+      },
+    },
+  } as unknown as Parameters<typeof processStripeEvent>[0];
+}
 
 describe("stripe checkout queue waifu top-up callback", () => {
   beforeEach(() => {
@@ -145,6 +192,7 @@ describe("stripe checkout queue waifu top-up callback", () => {
     webhookFetch.mockClear();
     enqueueAgentRestartOnce.mockClear();
     triggerImmediate.mockClear();
+    settleLegacy.mockClear();
     getTransactionByStripePaymentIntent.mockImplementation(async () => null);
   });
 
@@ -182,17 +230,15 @@ describe("stripe checkout queue waifu top-up callback", () => {
     } as unknown as Parameters<typeof processStripeEvent>[0]);
 
     expect(result).toBe("ack");
-    expect(addCredits).toHaveBeenCalledWith(
+    expect(settleLegacy).toHaveBeenCalledWith(
       expect.objectContaining({
         organizationId: "agent-org",
-        amount: 5,
-        stripePaymentIntentId: paymentIntentId,
-        metadata: expect.objectContaining({
-          agent_id: agentId,
-          session_id: "cs_agent_paid",
-        }),
+        initiatedByUserId: "agent-user",
+        paymentIntentId,
+        checkoutSessionId: "cs_agent_paid",
       }),
     );
+    expect(addCredits).not.toHaveBeenCalled();
     expect(webhookFetch).toHaveBeenCalledTimes(1);
     const [url, init] = (webhookFetch.mock.calls[0] ?? []) as unknown as [
       string,
@@ -204,7 +250,7 @@ describe("stripe checkout queue waifu top-up callback", () => {
     const body = JSON.parse(String((init as RequestInit).body));
     expect(body).toMatchObject({
       event: "credits.topped_up",
-      eventId: `stripe:evt_agent_topup:credits.topped_up:${agentId}`,
+      eventId: `stripe:evt_agent_topup:credits.topped_up:${agentId}:settled`,
       elizaCloudAgentId: agentId,
       organizationId: "agent-org",
       tokenContractAddress: "0x0000000000000000000000000000000000000009",
@@ -264,22 +310,29 @@ describe("stripe checkout queue waifu top-up callback", () => {
     } as unknown as Parameters<typeof processStripeEvent>[0]);
 
     expect(result).toBe("ack");
-    expect(addCredits).toHaveBeenCalledWith(
+    expect(settleLegacy).toHaveBeenCalledWith(
       expect.objectContaining({
         organizationId: "agent-org",
-        amount: 5,
-        stripePaymentIntentId: "pi_org_topup",
+        initiatedByUserId: "agent-user",
+        paymentIntentId: "pi_org_topup",
+        checkoutSessionId: "cs_org_paid",
       }),
     );
+    expect(addCredits).not.toHaveBeenCalled();
     expect(webhookFetch).not.toHaveBeenCalled();
     expect(enqueueAgentRestartOnce).not.toHaveBeenCalled();
     expect(triggerImmediate).not.toHaveBeenCalled();
   });
 
   test("retries the restart enqueue for duplicate agent top-up deliveries", async () => {
-    getTransactionByStripePaymentIntent.mockImplementationOnce(async () => ({
-      id: "existing-credit",
-    }));
+    settleLegacy.mockResolvedValueOnce({
+      organizationId: "agent-org",
+      initiatedByUserId: "agent-user",
+      purchaseType: "custom_amount",
+      creditsToGrant: "5.000000",
+      alreadyApplied: true,
+      newBalance: 5,
+    });
 
     const result = await processStripeEvent({
       attempts: 2,
@@ -330,5 +383,55 @@ describe("stripe checkout queue waifu top-up callback", () => {
       userId: "agent-user",
     });
     expect(triggerImmediate).toHaveBeenCalledTimes(1);
+  });
+
+  test("acks a Shared-like locked tier rejection without nudging compute", async () => {
+    enqueueAgentRestartOnce.mockRejectedValueOnce(
+      new ApiError(
+        409,
+        "session_not_ready",
+        "Agent job requires a container-backed tier",
+        {
+          reason: containerBackedTargetRejectionReason,
+          jobType: "agent_restart",
+        },
+      ),
+    );
+
+    expect(
+      await processStripeEvent(agentTopUpDelivery("evt_shared_topup")),
+    ).toBe("ack");
+    expect(settleLegacy).toHaveBeenCalledTimes(1);
+    expect(enqueueAgentRestartOnce).toHaveBeenCalledWith({
+      agentId,
+      organizationId: "agent-org",
+      userId: "agent-user",
+    });
+    expect(triggerImmediate).not.toHaveBeenCalled();
+    expect(calculateRevenueSplits).toHaveBeenCalledTimes(1);
+    expect(createInvoice).toHaveBeenCalledTimes(1);
+  });
+
+  test("retries an unrelated restart admission failure", async () => {
+    enqueueAgentRestartOnce.mockRejectedValueOnce(
+      new ApiError(
+        409,
+        "session_not_ready",
+        "Another lifecycle job is active",
+        {
+          reason: "exclusive_lifecycle_conflict",
+          jobType: "agent_restart",
+        },
+      ),
+    );
+
+    expect(
+      await processStripeEvent(agentTopUpDelivery("evt_restart_conflict")),
+    ).toBe("retry");
+    expect(settleLegacy).toHaveBeenCalledTimes(1);
+    expect(enqueueAgentRestartOnce).toHaveBeenCalledTimes(1);
+    expect(triggerImmediate).not.toHaveBeenCalled();
+    expect(calculateRevenueSplits).not.toHaveBeenCalled();
+    expect(createInvoice).not.toHaveBeenCalled();
   });
 });

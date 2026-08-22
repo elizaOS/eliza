@@ -1,7 +1,7 @@
 /**
- * RECENT_MESSAGES provider — builds the canonical bounded conversation
- * transcript injected into the planner prompt for the current room. Fetches room
- * memories (honoring the compaction start point), then filters, dedupes, and
+ * RECENT_MESSAGES provider — builds the canonical complete conversation
+ * transcript injected into the planner prompt for the current room. Fetches all
+ * retained room memories, then filters, dedupes, and
  * formats them into `# Conversation Messages` / `# Posts in Thread` blocks plus a
  * `# Received Message` / `# Focus your response` framing for the incoming turn.
  * Part of the basic-capabilities bundle and the single source of dialogue
@@ -12,9 +12,9 @@
  * transient orchestrator status posts, leaked tool transcripts and local-path
  * dumps, and consecutive- or assistant-run duplicates are all stripped so the
  * model never re-reads its own machinery or paraphrases it as fact on a later
- * turn. Rendered history is hard-capped to the runtime conversation length
- * regardless of how many rows the adapter returns, and a persisted compaction
- * ledger is prepended when present. On any error the provider degrades to an
+ * turn. Every retained dialogue row is rendered; runtime conversation-length
+ * settings and old compaction timestamps must never silently remove prompt
+ * history. On any error the provider degrades to an
  * empty, safe result rather than throwing — a throw here would drop the entire
  * turn's history.
  *
@@ -40,7 +40,6 @@ import type {
 	UUID,
 } from "../../../types/index.ts";
 import { ChannelType } from "../../../types/index.ts";
-import { truncateWellFormed } from "../../../utils/well-formed.ts";
 import {
 	addHeader,
 	conversationMessagesHeader,
@@ -50,10 +49,6 @@ import {
 
 // Get text content from centralized specs
 const spec = requireProviderSpec("RECENT_MESSAGES");
-const MAX_RECENT_MESSAGES_LOOKBACK = 50;
-const RECALL_REFERENTIAL_MESSAGES_LOOKBACK = 50;
-const MAX_RECENT_INTERACTIONS = 20;
-const MAX_COMPACT_LEDGER_CHARS = 4000;
 const INTERNAL_TOOL_TRANSCRIPT_MARKERS = [
 	"[tool output:",
 	"[/tool output]",
@@ -77,13 +72,6 @@ const SYNTHETIC_ASSISTANT_FAILURE_KINDS = new Set([
 	"handler_error",
 	"persistence_error",
 ]);
-const RECALL_REFERENTIAL_PATTERNS = [
-	/\bwhat\s+(?:did|was|were)\s+(?:i|we|you)\b.*\b(?:ask|say|tell|compute|calculate|mention|discuss|talk(?:ed)?\s+about)\b/i,
-	/\b(?:my|our|the)\s+(?:last|previous|prior|earlier)\b.*\b(?:question|request|message|ask|thing|calculation|math|topic)\b/i,
-	/\b(?:last|previous|prior|earlier)\s+(?:math|calculation|question|request|message)\b/i,
-	/\b(?:earlier|previously|before)\b.*\b(?:i|we|you)\s+(?:asked|said|told|mentioned|discussed|computed|calculated)\b/i,
-	/\b(?:remind me|recall|remember)\b.*\b(?:what|when|which)\b.*\b(?:asked|said|told|mentioned|discussed|computed|calculated)\b/i,
-];
 
 function asObjectRecord(value: unknown): Record<string, unknown> | null {
 	return value && typeof value === "object" && !Array.isArray(value)
@@ -209,11 +197,6 @@ function normalizeDialogueText(memory: Memory): string {
 		: "";
 }
 
-function isRecallReferentialMessage(memory: Memory): boolean {
-	const text = normalizeDialogueText(memory);
-	return RECALL_REFERENTIAL_PATTERNS.some((pattern) => pattern.test(text));
-}
-
 function dedupeConsecutiveDialogueMessages(messages: Memory[]): Memory[] {
 	const deduped: Memory[] = [];
 	for (const message of messages) {
@@ -250,17 +233,6 @@ function dedupeAssistantRunMessages(
 		deduped.push(message);
 	}
 	return deduped;
-}
-
-function getConversationCompactionLedger(room: { metadata?: unknown } | null) {
-	const metadata =
-		room?.metadata && typeof room.metadata === "object"
-			? (room.metadata as Record<string, unknown>)
-			: {};
-	const compaction = metadata.conversationCompaction;
-	if (!compaction || typeof compaction !== "object") return "";
-	const ledger = (compaction as Record<string, unknown>).priorLedger;
-	return typeof ledger === "string" ? ledger.trim() : "";
 }
 
 function buildFormattingFallbackEntity(memory: Memory): Entity | null {
@@ -337,7 +309,7 @@ async function ensureFormattingEntities(
 }
 
 // Cross-room history between the sender's identity cluster and the target
-// entity, excluding the current room, capped to the most recent 20 rows.
+// entity, excluding the current room.
 const getRecentInteractions = async (
 	runtime: IAgentRuntime,
 	sourceEntityId: UUID,
@@ -360,7 +332,6 @@ const getRecentInteractions = async (
 	return runtime.getMemoriesByRoomIds({
 		tableName: "messages",
 		roomIds: otherRooms,
-		limit: 20,
 	});
 };
 
@@ -388,13 +359,6 @@ export const recentMessagesProvider: Provider = {
 	): Promise<ProviderResult> => {
 		try {
 			const { roomId } = message;
-			const configuredConversationLength = Math.min(
-				runtime.getConversationLength(),
-				MAX_RECENT_MESSAGES_LOOKBACK,
-			);
-			const conversationLength = isRecallReferentialMessage(message)
-				? RECALL_REFERENTIAL_MESSAGES_LOOKBACK
-				: configuredConversationLength;
 
 			// The cross-room interactions fetch (identity-cluster expansion, a
 			// rooms query per identity, then a 20-row pull across every other
@@ -418,26 +382,14 @@ export const recentMessagesProvider: Provider = {
 					(cachedProviderResults as Record<string, unknown>)[spec.name],
 			);
 
-			// First get room to check for compaction point
-			const room = await runtime.getRoom(roomId);
-
-			// Check for compaction point - only load messages after this timestamp
-			const lastCompactionAt = room?.metadata?.lastCompactionAt as
-				| number
-				| undefined;
-			const compactLedger = getConversationCompactionLedger(room);
-
 			// Parallelize initial data fetching operations including recentInteractions
-			const [entitiesData, recentMessagesData, recentInteractionsData] =
+			const [entitiesData, recentMessagesData, recentInteractionsData, room] =
 				await Promise.all([
 					getEntityDetails({ runtime, roomId }),
 					runtime.getMemories({
 						tableName: "messages",
 						roomId,
-						limit: conversationLength,
 						unique: false,
-						// Use compaction point to filter history
-						start: lastCompactionAt,
 					}),
 					message.entityId !== runtime.agentId && isTurnRecompose
 						? getRecentInteractions(
@@ -445,10 +397,9 @@ export const recentMessagesProvider: Provider = {
 								message.entityId,
 								runtime.agentId,
 								roomId,
-							).then((interactions) =>
-								interactions.slice(0, MAX_RECENT_INTERACTIONS),
 							)
 						: Promise.resolve([]),
+					runtime.getRoom(roomId),
 				]);
 
 			// Separate action results from regular messages
@@ -456,15 +407,6 @@ export const recentMessagesProvider: Provider = {
 				(msg) => msg.content && msg.content.type === "action_result",
 			);
 
-			// Hard cap on rendered history regardless of how many memories the
-			// DB returned. The `limit` parameter passed to `runtime.getMemories`
-			// is meant to bound this — but in practice some adapter paths and
-			// compaction-window combinations return the entire room's history.
-			// That dropped a single HANDLE_RESPONSE call to 220K+ characters of
-			// formatted history, ~55K tokens, plus duplicates from
-			// `appendPriorDialogueEvents` and `PLATFORM_CHAT_CONTEXT`. Slice to
-			// the runtime-configured conversation length (or the lookback
-			// ceiling) so the formatted text block is always bounded.
 			const rawDialogueMessages = recentMessagesData
 				.filter(
 					(msg) =>
@@ -479,7 +421,7 @@ export const recentMessagesProvider: Provider = {
 			const dialogueMessages = dedupeAssistantRunMessages(
 				dedupeConsecutiveDialogueMessages(rawDialogueMessages),
 				runtime.agentId,
-			).slice(-conversationLength);
+			);
 
 			// Room entity lookups only include current participants. Historical room
 			// context can still contain messages from senders who left the room or
@@ -520,21 +462,8 @@ export const recentMessagesProvider: Provider = {
 					? addHeader("# Posts in Thread", formattedRecentPosts)
 					: "";
 
-			const compactedContext = compactLedger
-				? addHeader(
-						"# Conversation Compact Ledger",
-						compactLedger.length > MAX_COMPACT_LEDGER_CHARS
-							? `${truncateWellFormed(compactLedger, MAX_COMPACT_LEDGER_CHARS)}...`
-							: compactLedger,
-					)
-				: "";
-			const recentPosts = [compactedContext, recentPostsBody]
-				.filter(Boolean)
-				.join("\n\n");
+			const recentPosts = recentPostsBody;
 
-			// Name the bounded window without advertising an action. Providers run
-			// on runtimes with different plugin and role surfaces; the Stage-1
-			// boundary is the authority that says whether older history is searchable.
 			const recentMessagesBody =
 				formattedRecentMessages && formattedRecentMessages.length > 0
 					? addHeader(
@@ -542,9 +471,7 @@ export const recentMessagesProvider: Provider = {
 							formattedRecentMessages,
 						)
 					: "";
-			const recentMessages = [compactedContext, recentMessagesBody]
-				.filter(Boolean)
-				.join("\n\n");
+			const recentMessages = recentMessagesBody;
 
 			// If there are no messages at all, and no current message to process, return a specific message.
 			// The check for dialogueMessages.length === 0 ensures we only show this if there's truly nothing.

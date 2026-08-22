@@ -1,15 +1,13 @@
-name: CodeQL Scheduled
+name: CodeQL On Demand
 
 # CodeQL is deliberately an off-PR lane. The repository's fast CI remains the
-# only pull-request build/test path; this scan runs weekly or by explicit
-# operator request and therefore cannot add a check to ordinary PR updates.
+# only pull-request build/test path; this scan runs by explicit operator request
+# and therefore cannot add a check to ordinary PR updates.
 on:
-  schedule:
-    - cron: "29 8 * * 6"
   workflow_dispatch:
 
 concurrency:
-  group: codeql-scheduled-${{ github.ref }}
+  group: codeql-on-demand-${{ github.ref }}
   cancel-in-progress: false
 
 permissions:
@@ -18,7 +16,7 @@ permissions:
 jobs:
   analyze:
     name: Analyze (${{ matrix.shard }})
-    # Use an always-provisionable hosted lane so scheduled analysis cannot stall
+# Use an always-provisionable hosted lane so analysis cannot stall
     # behind offline fleet capacity. Production-boundary shards keep every query
     # below the hosted job limit while distinct categories preserve every upload.
     strategy:

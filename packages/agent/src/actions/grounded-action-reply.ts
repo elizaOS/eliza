@@ -9,10 +9,11 @@
 import type { ActionResult, IAgentRuntime, Memory, State } from "@elizaos/core";
 import {
   getTrajectoryContext,
+  isProgressiveContentProjectionEnabled,
   ModelType,
   parseJSONObjectFromText,
+  renderActionResultsForModel,
   toWellFormedUnicode,
-  truncateWellFormed,
 } from "@elizaos/core";
 import { asRecord } from "@elizaos/shared";
 import { loadTrajectoryByStepId } from "../runtime/trajectory-internals.ts";
@@ -39,13 +40,8 @@ type ActionHistoryItem = {
   success: boolean;
 };
 
-function truncateText(value: string, maxLength: number): string {
-  const wellFormed = toWellFormedUnicode(value);
-  if (wellFormed.length <= maxLength) {
-    return wellFormed;
-  }
-  const budget = Math.max(0, maxLength - 1);
-  return `${truncateWellFormed(wellFormed, budget).trimEnd()}…`;
+function normalizePromptText(value: string): string {
+  return toWellFormedUnicode(value);
 }
 
 function normalizeReplyText(raw: string): string {
@@ -71,12 +67,12 @@ function looksLikeStructuredReply(raw: string): boolean {
   );
 }
 
-function stringifyPromptValue(value: unknown, maxLength = 2_400): string {
+function stringifyPromptValue(value: unknown): string {
   try {
     const serialized = JSON.stringify(value);
-    return truncateText(serialized, maxLength);
+    return normalizePromptText(serialized);
   } catch {
-    return truncateText(String(value), maxLength);
+    return normalizePromptText(String(value));
   }
 }
 
@@ -140,13 +136,20 @@ export function extractActionResultsFromState(
   );
 }
 
-function summarizeActionResult(result: ActionResult): ActionHistoryItem | null {
+function summarizeActionResult(
+  result: ActionResult,
+  projectionEnabled = false,
+): ActionHistoryItem | null {
   const data = asRecord(result.data);
   const actionName =
     (typeof data?.actionName === "string" && data.actionName.trim()) ||
     "ACTION";
-  const resultText =
-    typeof result.text === "string" && result.text.trim().length > 0
+  const resultText = projectionEnabled
+    ? renderActionResultsForModel([result], {
+        header: "",
+        omitRecoverableText: true,
+      }).text
+    : typeof result.text === "string" && result.text.trim().length > 0
       ? result.text.trim()
       : "";
   const title =
@@ -166,7 +169,7 @@ function summarizeActionResult(result: ActionResult): ActionHistoryItem | null {
   }
   return {
     actionName,
-    text: truncateText(snippet.replace(/\s+/g, " "), 180),
+    text: normalizePromptText(snippet.replace(/\s+/g, " ")),
     success: result.success !== false,
   };
 }
@@ -174,9 +177,10 @@ function summarizeActionResult(result: ActionResult): ActionHistoryItem | null {
 export function summarizeRecentActionHistory(
   state: State | undefined,
   limit = 4,
+  projectionEnabled = false,
 ): string[] {
   const summarized = extractActionResultsFromState(state)
-    .map((result) => summarizeActionResult(result))
+    .map((result) => summarizeActionResult(result, projectionEnabled))
     .filter((item): item is ActionHistoryItem => item !== null);
   const deduped: string[] = [];
   const seen = new Set<string>();
@@ -264,7 +268,6 @@ export async function summarizeActiveTrajectory(
         : null;
     const recentProviders =
       latestStep?.providerAccesses
-        .slice(-2)
         .map((access) => access.providerName)
         .filter((name) => typeof name === "string" && name.trim().length > 0)
         .join(", ") ?? "";
@@ -308,9 +311,12 @@ export async function renderGroundedActionReply(
     runtime: args.runtime,
     message: args.message,
     state: args.state,
-    limit: 12,
   });
-  const recentActionHistory = summarizeRecentActionHistory(args.state, 4);
+  const recentActionHistory = summarizeRecentActionHistory(
+    args.state,
+    4,
+    isProgressiveContentProjectionEnabled(args.runtime),
+  );
   const trajectorySummary = await summarizeActiveTrajectory(args.runtime);
   const characterVoice = args.preferCharacterVoice
     ? buildCharacterVoiceContext(args.runtime)

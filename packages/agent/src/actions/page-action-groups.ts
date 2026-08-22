@@ -165,11 +165,6 @@ function actionMatchesContexts(
   );
 }
 
-// Bounds the available-action listing embedded in the structured
-// child-unavailable failure so a wide page (owner spans nine contexts) cannot
-// flood the planner prompt.
-const MAX_LISTED_PAGE_CHILD_ACTIONS = 40;
-
 /**
  * Names of the child actions actually registered for a page's context set.
  * Fed back on a failed dispatch so the planner corrects to a real capability
@@ -187,7 +182,7 @@ function availablePageChildActionNames(
     if (!actionMatchesContexts(action, allowedContexts)) continue;
     names.add(normalizeActionName(action.name));
   }
-  return [...names].sort().slice(0, MAX_LISTED_PAGE_CHILD_ACTIONS);
+  return [...names].sort();
 }
 
 function findChildAction(

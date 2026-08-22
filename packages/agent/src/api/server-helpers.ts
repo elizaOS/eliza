@@ -21,7 +21,6 @@ import {
   type Media,
   sendJsonError,
   toWellFormedUnicode,
-  truncateWellFormed,
   type UUID,
   validateUuid,
 } from "@elizaos/core";
@@ -266,16 +265,10 @@ export function hasPersistedFirstRunState(config: ElizaConfig): boolean {
   );
 }
 
-const APP_OWNER_NAME_MAX_LENGTH = 60;
-
 /** Resolve the app owner's display name from config, or fall back to "User". */
 export function resolveAppUserName(config: ElizaConfig): string {
   const ownerName = config.ui?.ownerName;
-  const normalized =
-    truncateWellFormed(
-      toWellFormedUnicode(ownerName?.trim() ?? ""),
-      APP_OWNER_NAME_MAX_LENGTH,
-    ) || undefined;
+  const normalized = toWellFormedUnicode(ownerName?.trim() ?? "") || undefined;
   return normalized || "User";
 }
 
