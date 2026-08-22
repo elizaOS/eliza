@@ -166,7 +166,7 @@ describe("inbound-reply completion — production wiring", () => {
     expect(completedEntry?.reason).toBe("completion-check:user_replied_within");
   }, 180_000);
 
-  it("an owner reply to a fired check-in records the check-in report acknowledgement so escalation does not ratchet to max", async () => {
+  it("an owner reply to a fired check-in records the check-in report acknowledgement so escalation does not guard to max", async () => {
     runtimeResult = await createOwnerScopedRuntime();
     const { runtime } = runtimeResult;
     const checkins = new CheckinService(runtime);

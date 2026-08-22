@@ -189,7 +189,7 @@ describe("applySandboxCharacterFromEnv", () => {
   it("treats an absent config.agents as an empty list (no empty-object sludge)", () => {
     // Regression for the typed-optional read of config.agents: when the field
     // is entirely absent the injected character must still land at list[0]
-    // without materializing intermediate `?? {}` objects (ratchet #9940).
+    // without materializing intermediate `?? {}` objects (guard #9940).
     const config = {} as never;
     const out = applySandboxCharacterFromEnv(config, {
       ELIZA_AGENT_CHARACTER_JSON: JSON.stringify({ name: "Nyx", system: "x" }),

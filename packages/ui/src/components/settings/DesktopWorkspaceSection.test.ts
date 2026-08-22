@@ -1,5 +1,5 @@
 /**
- * Source ratchet: DesktopWorkspaceSection must expose one SettingsRow per
+ * Source guard: DesktopWorkspaceSection must expose one SettingsRow per
  * action instead of a multi-action grid inside a single SettingsRow.
  * Reads the shipped file off disk.
  */
@@ -39,7 +39,7 @@ const REQUIRED_AGENT_IDS = [
   "desktop-clipboard-clear",
 ];
 
-describe("DesktopWorkspaceSection compound-row ratchet", () => {
+describe("DesktopWorkspaceSection compound-row guard", () => {
   it("does not host a multi-action grid inside one SettingsRow", () => {
     expect(source).not.toMatch(/grid gap-2 sm:grid-cols-2/);
     expect(source).toContain("function WorkspaceActionRow");
