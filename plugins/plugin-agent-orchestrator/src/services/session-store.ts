@@ -427,6 +427,20 @@ export class InMemorySessionStore implements SessionStore {
     await this.writes.enqueue(() => this.applyUpdateLocked(id, patch));
   }
 
+  async mergeMetadata(
+    id: string,
+    patch: Record<string, unknown>,
+  ): Promise<void> {
+    // Read+merge+write inside ONE queued op — see the SessionStore contract.
+    await this.writes.enqueue(async () => {
+      const current = this.sessions.get(id);
+      if (!current) return;
+      await this.applyUpdateLocked(id, {
+        metadata: { ...(current.metadata ?? {}), ...patch },
+      });
+    });
+  }
+
   async updateStatus(
     id: string,
     status: SessionStatus,
@@ -763,6 +777,24 @@ export class RuntimeDbSessionStore implements SessionStore {
 
   async update(id: string, patch: Partial<SessionInfo>): Promise<void> {
     await this.writes.enqueue(() => this.applyUpdateLocked(id, patch));
+  }
+
+  async mergeMetadata(
+    id: string,
+    patch: Record<string, unknown>,
+  ): Promise<void> {
+    // Read+merge+write inside ONE queued op — see the SessionStore contract.
+    await this.writes.enqueue(async () => {
+      await this.ensureInitialized();
+      const current = await this.getOne(
+        "SELECT * FROM acp_sessions WHERE id = ?",
+        [id],
+      );
+      if (!current) return;
+      await this.applyUpdateLocked(id, {
+        metadata: { ...(current.metadata ?? {}), ...patch },
+      });
+    });
   }
 
   async updateStatus(

@@ -960,6 +960,25 @@ export class WaveSupervisor extends Service {
       providerPolicy: terminalLane.providerPolicy ?? undefined,
       metadata: {
         ...spec.metadata,
+        // The refill continues the SAME user-request lineage as the lane it
+        // replaces: carry the request-voice keys so the router's ack/terminal
+        // ledger and the park-notice dedupe (notifyVerifyEscalation) keep
+        // matching across the replacement task record instead of degrading to
+        // a fresh task:<id> key (which re-opened the double-park window).
+        ...(nonEmptyString(terminalLane.metadata?.spawnRootMessageId)
+          ? {
+              spawnRootMessageId: nonEmptyString(
+                terminalLane.metadata?.spawnRootMessageId,
+              ),
+            }
+          : {}),
+        ...(nonEmptyString(terminalLane.metadata?.requestVoicePart)
+          ? {
+              requestVoicePart: nonEmptyString(
+                terminalLane.metadata?.requestVoicePart,
+              ),
+            }
+          : {}),
         [WAVE_ID_METADATA_KEY]: waveId,
         waveAttemptId: readWaveAttemptId(terminalLane.metadata),
         waveGoal,

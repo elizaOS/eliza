@@ -40,8 +40,11 @@ export const APP_BUILD_TASK_RE =
 // regex's `tool`/`page`/`portfolio`/`widget` nouns false-positive). The skill
 // recommender tolerates over-matching (it only suggests a skill); the spawn-
 // time deploy injection rewrites the task contract, so it uses this gate.
+// Bare "page"/"site" belong in the noun list: "Build a simple, aesthetically
+// pleasing moon phase page" matched nothing, so the build ran in a scratch
+// workspace with no served URL and verification parked it (live 2026-08-19).
 export const APP_DEPLOY_TASK_RE =
-  /\b(build|create|make|ship|deploy|generate|design)\b(?:(?!\b(?:article|blog|post|cli|command[-\s]?line|library|package|script|extension|bot|plugin)\b)[\s\S]){0,120}\b(web\s?app|webapp|web\s?site|website|web\s?page|webpage|landing\s?page|home\s?page|dashboard|micro\s?site|website|app)\b/i;
+  /\b(build|create|make|ship|deploy|generate|design)\b(?:(?!\b(?:article|blog|post|cli|command[-\s]?line|library|package|script|extension|bot|plugin)\b)[\s\S]){0,120}\b(web\s?app|webapp|web\s?site|website|web\s?page|webpage|landing\s?page|home\s?page|dashboard|micro\s?site|page|site|app)\b/i;
 // Tokens shorter than this carry no signal — they show up in nearly every
 // task description and would inflate every skill's score equally.
 const MIN_TOKEN_LENGTH = 4;

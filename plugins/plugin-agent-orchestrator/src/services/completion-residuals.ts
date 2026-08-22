@@ -30,6 +30,12 @@ import {
 } from "./orchestrator-artifact-ownership.js";
 
 const GIT_TIMEOUT_MS = 10_000;
+/** Bounded git-probe output buffer. NOT a silent truncation cap (prompt
+ * integrity, REJECT disposition): a probe whose stdout/stderr overflows this
+ * makes spawnSync fail (ENOBUFS → non-zero/absent status), `runGit` returns
+ * `ok: false`, and the gate degrades to the typed `unverifiable` result
+ * (`git_failed` / `probe_failed`) — a verdict is never computed from clipped
+ * git output, and `unverifiable` is documented as NOT a pass. */
 const GIT_MAX_BUFFER = 8 * 1024 * 1024;
 
 /** Provenance stamped on validation events produced by this gate. */
@@ -127,6 +133,14 @@ export interface CompletionResidualsInput {
    * pre-existing churn was not produced by this run. Tracked modifications
    * only — untracked exemptions come from `baselineUntrackedPaths`. */
   baselineDirtyPaths?: readonly string[];
+  /** The session's ISOLATED git index (the ACP wrapper's GIT_INDEX_FILE).
+   *  Wrapper-managed workspaces commit exclusively through it, so the REAL
+   *  index stays frozen at clone state forever — a plain `git status` then
+   *  reports every wrapper-committed file as staged-deleted + untracked and
+   *  the gate parks finished work on phantom dirt (live 2026-08-20: the same
+   *  "5 uncommitted path(s)" on four consecutive PR tasks whose branches
+   *  were clean). When set, the git legs run against this index. */
+  gitIndexFile?: string;
   /** Untracked paths already present when the reporting session spawned
    * (session metadata `codingBaselineUntracked`, captured by
    * `AcpService.spawnSession` from `git status --porcelain` `??` lines). A
@@ -161,13 +175,20 @@ interface GitProbe {
   stderr: string;
 }
 
-function runGit(workdir: string, args: string[]): GitProbe {
+function runGit(
+  workdir: string,
+  args: string[],
+  gitIndexFile?: string,
+): GitProbe {
   const result = spawnSync("git", args, {
     cwd: workdir,
     timeout: GIT_TIMEOUT_MS,
     maxBuffer: GIT_MAX_BUFFER,
     windowsHide: true,
     encoding: "utf8",
+    ...(gitIndexFile
+      ? { env: { ...process.env, GIT_INDEX_FILE: gitIndexFile } }
+      : {}),
   });
   return {
     ok: result.status === 0,
@@ -396,7 +417,11 @@ export async function collectCompletionResiduals(
     // the persisted snapshot so the skip is visible, never a silent pass.
     gitLegsSkipped = "shared_route_workdir";
   } else if (workdir !== undefined) {
-    const status = runGit(workdir, ["status", "--porcelain"]);
+    const status = runGit(
+      workdir,
+      ["status", "--porcelain"],
+      input.gitIndexFile,
+    );
     if (!status.ok) {
       return unverifiable(
         "git_failed",
@@ -479,7 +504,12 @@ export async function collectCompletionResiduals(
   };
 }
 
-/** One-line summary for event records and log lines. */
+/** One-line summary for event records and log lines — a NAMED PREVIEW.
+ * Deliberately renders each residual's `detail` without its `items`: the
+ * complete residuals object is persisted alongside every use (the validation
+ * event's `data.residuals` and the task-metadata snapshot under
+ * {@link COMPLETION_RESIDUALS_METADATA_KEY}), so this summary is never the
+ * only record and must never be re-presented as the full value. */
 export function summarizeResiduals(result: CompletionResidualsResult): string {
   if (result.status === "unverifiable") {
     return `Workspace state could not be verified: ${result.unverifiableReason}`;
@@ -491,15 +521,27 @@ export function summarizeResiduals(result: CompletionResidualsResult): string {
 }
 
 /** Flat detail list for `reEngageOrEscalate`'s `missing` field (what the
- * reflexion post-mortem and the escalation event record). */
+ * reflexion post-mortem and the escalation event record — and, via
+ * attemptReflections, the RE-SPAWN prompt's "Missing:" lines). Each entry
+ * carries the residual's COMPLETE `items` list (the concrete paths, commands,
+ * and SHAs) so the retried worker sees WHAT was left over, not just a count;
+ * the canonical snapshot additionally persists whole under
+ * {@link COMPLETION_RESIDUALS_METADATA_KEY} and the validation event's
+ * `data.residuals`. */
 export function residualDetails(result: CompletionResidualsResult): string[] {
+  const entry = (residual: CompletionResidual): string => {
+    const items = residual.items ?? [];
+    return items.length > 0
+      ? `${residual.detail}: ${items.join(", ")}`
+      : residual.detail;
+  };
   if (result.status === "unverifiable" && result.unverifiableReason) {
     return [
       `workspace unverifiable: ${result.unverifiableReason}`,
-      ...result.residuals.map((residual) => residual.detail),
+      ...result.residuals.map(entry),
     ];
   }
-  return result.residuals.map((residual) => residual.detail);
+  return result.residuals.map(entry);
 }
 
 /**

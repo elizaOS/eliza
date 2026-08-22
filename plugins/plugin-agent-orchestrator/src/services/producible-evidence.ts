@@ -73,8 +73,59 @@ const NON_ARTIFACT_TOKEN_RE = /^(?:e\.g|i\.e|etc|v?\d+(?:\.\d+)+)$/i;
 
 export interface InventedArtifactFilterResult {
   kept: string[];
-  /** Criteria dropped because they pinned a path the request never named. */
+  /** Criteria dropped because they pinned a path the request never named.
+   * Callers must RECORD this list, not discard it (prompt-integrity
+   * auditability): acceptance-criteria generation persists it to the durable
+   * content store and the structured log so a parked or misgraded task can be
+   * traced back to a filtered criterion. */
   dropped: string[];
+}
+
+/** Evidence classes no orchestrator pipeline can collect: the verifier judges
+ *  from workdir files, tool stdout, git changesets, and HTTP probes — never a
+ *  live browser session or a human eyeball. A generated criterion demanding
+ *  one of these is unsatisfiable by design and parks working deliverables
+ *  (live 2026-08-19: "Browser console shows zero JavaScript errors during a
+ *  complete work-to-break cycle" parked a built, served pomodoro page). */
+const UNCOLLECTABLE_EVIDENCE_RE =
+  /\b(?:browser\s+console|devtools|dev\s+tools|console\s+logs?\s+(?:show|prove|confirm)|screenshots?|screen\s+recording|visually\s+(?:verify|confirm|inspect)|manual(?:ly)?\s+(?:test|verify|confirm|inspect)|user\s+confirms?|lighthouse|cross-browser|no\s+(?:js|javascript)\s+(?:errors?|warnings?)\s+in\s+the\s+(?:browser|console)|(?:interact(?:ion|ing)?|click(?:ing|s)?|tapping|hover(?:ing)?)\s+(?:with\s+)?(?:a\s+|the\s+)?\w*\s*(?:trigger|button|element).{0,40}\b(?:DOM|display|updates?|renders?)|updates?\s+the\s+(?:displayed|rendered)|\bin\s+the\s+DOM\b|visual(?:ly)?\s+(?:evidence|representation|verification|confirm)|renders?\s+(?:correctly|properly|the\s+\w+\s+correctly))/i;
+
+/** Criteria classes unsatisfiable for STATIC APP builds specifically: slug-dir
+ *  pages have no git pipeline, so "summarized in the diff" can never be
+ *  evidenced (live 2026-08-19: quote-generator parked on it), and runtime DOM
+ *  behavior is only provable in a browser the verifier does not have. */
+/** Report-shaped criteria demand a NARRATIVE (a summary/description of the
+ *  changes) rather than a property of the deliverable itself. They are
+ *  unsatisfiable as acceptance criteria for EVERY task type — the verifier
+ *  ends up grading the sub-agent's prose, and an under-narrated but working
+ *  build parks ("the diff summarizes the specific style and theme changes",
+ *  live 2026-08-20 dark-mode edit). Checkable diff-content criteria ("the
+ *  diff shows a toggle element added") survive. */
+const REPORT_SHAPED_CRITERION_RE =
+  /\b(?:diff\s+summariz|summar(?:y|ize[sd]?|izing)\s+(?:of|in)?\s*the\s+(?:diff|changes?|work)|provide[sd]?\s+a\s+summary|describe[sd]?\s+the\s+changes?\b)/i;
+
+const APP_BUILD_UNSATISFIABLE_RE =
+  /\b(?:diff\s+summar|summar\w*\s+in\s+the\s+diff|the\s+diff\b|git\s+diff|changeset|commit\s+message)/i;
+
+/**
+ * Drop generated criteria whose proof would require evidence the pipeline
+ * cannot produce (browser runtime state, human inspection). Deterministic
+ * template criteria never trip this; only model-refined text does.
+ */
+export function stripUncollectableEvidenceCriteria(
+  criteria: readonly string[],
+  taskType?: string,
+): InventedArtifactFilterResult {
+  const kept: string[] = [];
+  const dropped: string[] = [];
+  for (const criterion of criteria) {
+    const uncollectable =
+      UNCOLLECTABLE_EVIDENCE_RE.test(criterion) ||
+      REPORT_SHAPED_CRITERION_RE.test(criterion) ||
+      (taskType === "app-build" && APP_BUILD_UNSATISFIABLE_RE.test(criterion));
+    (uncollectable ? dropped : kept).push(criterion);
+  }
+  return { kept, dropped };
 }
 
 /**

@@ -1,7 +1,7 @@
 /**
  * Self-contained operating manual scaffolded into a spawned sub-agent's
- * workspace so every backend (claude reads CLAUDE.md, codex reads AGENTS.md,
- * opencode reads both) receives the same eliza-context + non-interactive
+ * workspace so every backend (claude reads CLAUDE.md, codex reads AGENTS.md)
+ * receives the same eliza-context + non-interactive
  * directive regardless of where the spawn cwd lands. The ACP spawn path injects
  * nothing but the task string, so without this a sub-agent in a bare/scratch
  * cwd gets zero orientation — codex in particular ("expected identity files are

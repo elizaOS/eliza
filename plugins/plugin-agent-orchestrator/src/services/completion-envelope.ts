@@ -295,7 +295,13 @@ export function parseCompletionEnvelope(text: string): CompletionEnvelopeParse {
   };
 }
 
-/** Compact human summary of a validated envelope, for the verifier/log. */
+/** Compact human summary of a validated envelope, for the verifier/log — a
+ * NAMED PREVIEW. The projection is additive: at its call site it is PREPENDED
+ * to verifier evidence that still contains the worker's raw completion (with
+ * the full fenced JSON envelope), and the parsed envelope is persisted whole
+ * under task metadata `completionEnvelope` at the same call site. Fields like
+ * `files: N` are counts, never the underlying lists; the leading label keeps
+ * the judge from mistaking this summary for the complete envelope. */
 export function summarizeEnvelope(env: CompletionEnvelope): string {
   const tests = env.testResults
     .map((t) => `${t.command} → exit ${t.exitCode}`)
@@ -303,7 +309,7 @@ export function summarizeEnvelope(env: CompletionEnvelope): string {
   const unmet = env.acceptanceCriteriaStatus
     .filter((c) => !c.met)
     .map((c) => c.criterion);
-  return [
+  const parts = [
     `diff: ${env.diffSummary}`,
     env.realWorkdir ? `workdir: ${env.realWorkdir}` : "",
     `files: ${env.filesChanged.length}`,
@@ -319,9 +325,14 @@ export function summarizeEnvelope(env: CompletionEnvelope): string {
     env.residualRisks.length > 0
       ? `risks: ${env.residualRisks.join("; ")}`
       : "",
+    // Trailing label, not leading: transcript-sanitizer strips this machine
+    // line from chat relays by its line-anchored `diff: ` prefix, so the
+    // preview label must not displace the canonical first field.
+    "[envelope summary — complete envelope: task metadata completionEnvelope]",
   ]
     .filter(Boolean)
     .join(" | ");
+  return parts;
 }
 
 /** A targeted re-prompt for a present-but-malformed envelope. */

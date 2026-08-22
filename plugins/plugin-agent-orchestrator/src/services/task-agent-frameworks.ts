@@ -404,6 +404,13 @@ function normalizeTaskAgentAdapterForModelPrefs(
     case "elizaos":
     case "eliza-os":
     case "eliza":
+    case "eliza-code":
+    case "eliza code":
+    // "opencode" is a retired backend name; legacy task records naming it
+    // resolve to the eliza-code (elizaos) adapter.
+    case "opencode":
+    case "open-code":
+    case "open code":
       return "elizaos";
     case "pi-agent":
     case "pi agent":
@@ -717,6 +724,12 @@ async function computeTaskAgentFrameworkState(
     configuredSubscriptionProvider === "openai-codex" ||
     configuredSubscriptionProvider === "openai-subscription" ||
     hasCodexApiKey(runtime);
+  // eliza-code (elizaos) is the BYO default when no provider-specific key
+  // prefers Claude/Codex. Claude/Codex only become preferred when their key
+  // path is set; an uninstalled framework's availabilityScore of -100 keeps it
+  // out of the running.
+  const providerPrefersByoDefault =
+    !providerPrefersClaude && !providerPrefersCodex;
   const explicitDefault = safeGetSetting(runtime, "ELIZA_DEFAULT_AGENT_TYPE")
     ?.toLowerCase()
     .trim();
@@ -793,7 +806,13 @@ async function computeTaskAgentFrameworkState(
       framework.id === "elizaos" || framework.id === "pi-agent"
         ? explicitDefault === framework.id
           ? 18
-          : 0
+          : // eliza-code is the BYO default when no provider key prefers
+            // claude/codex.
+            framework.id === "elizaos" && providerPrefersByoDefault
+            ? framework.authReady
+              ? 18
+              : 6
+            : 0
         : providerPrefersClaude && framework.id === "claude"
           ? framework.subscriptionReady
             ? 18
@@ -997,6 +1016,12 @@ function computeTaskAgentFrameworkStateFromCachedInventory(
     configuredSubscriptionProvider === "openai-codex" ||
     configuredSubscriptionProvider === "openai-subscription" ||
     hasCodexApiKey(runtime);
+  // eliza-code (elizaos) is the BYO default when no provider-specific key
+  // prefers Claude/Codex. Claude/Codex only become preferred when their key
+  // path is set; an uninstalled framework's availabilityScore of -100 keeps it
+  // out of the running.
+  const providerPrefersByoDefault =
+    !providerPrefersClaude && !providerPrefersCodex;
   const explicitDefault = safeGetSetting(runtime, "ELIZA_DEFAULT_AGENT_TYPE")
     ?.toLowerCase()
     .trim();
@@ -1008,7 +1033,13 @@ function computeTaskAgentFrameworkStateFromCachedInventory(
       framework.id === "elizaos" || framework.id === "pi-agent"
         ? explicitDefault === framework.id
           ? 18
-          : 0
+          : // eliza-code is the BYO default when no provider key prefers
+            // claude/codex.
+            framework.id === "elizaos" && providerPrefersByoDefault
+            ? framework.authReady
+              ? 18
+              : 6
+            : 0
         : providerPrefersClaude && framework.id === "claude"
           ? framework.subscriptionReady
             ? 18
