@@ -5866,19 +5866,6 @@ export async function startEliza(
     abortSignal.throwIfAborted();
     await seedBundledDocumentsIfEnabled();
     abortSignal.throwIfAborted();
-    // First-boot onboarding notifications (tour / help / connect calendar) —
-    // once per agent; dismissals are permanent (guard flag, not the rows).
-    try {
-      const { seedOnboardingNotifications } = await import(
-        "./onboarding-notifications.ts"
-      );
-      await seedOnboardingNotifications(runtime);
-    } catch (err) {
-      if (abortSignal.aborted) throw err;
-      logger.warn(
-        `[eliza] Failed to seed onboarding notifications: ${formatError(err)}`,
-      );
-    }
     // Wallet balance-delta watcher (spec §E item 3, #16943): the demoted home
     // wallet card's producer-side replacement — a structural ScheduledTask on
     // the one scheduling spine that notifies on material total-balance moves.
