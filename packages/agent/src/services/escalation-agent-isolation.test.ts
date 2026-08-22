@@ -4,10 +4,12 @@
  * runtime — a multi-agent boot, or a runtime rebuilt in-process — must not let
  * one agent's escalation absorb another's: these tests pin per-agent isolation
  * of the active escalation, of the persisted cache row, and of resolution,
- * while keeping same-agent coalescing (the documented behaviour) intact.
+ * while keeping same-agent coalescing (the documented behaviour) intact. They
+ * also pin that empty per-agent timer buckets are deleted on both timer-fire
+ * and resolve, so a long-lived process does not retain one Map per agent id.
  */
 import type { IAgentRuntime } from "@elizaos/core";
-import { afterEach, describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import { EscalationService } from "./escalation.ts";
 
 type CacheStore = Map<string, unknown>;
@@ -40,6 +42,8 @@ const keyFor = (agentId: string) => `agent:escalation:active:${agentId}`;
 describe("EscalationService per-agent isolation", () => {
   afterEach(() => {
     EscalationService._reset();
+    vi.restoreAllMocks();
+    vi.useRealTimers();
   });
 
   test("a second agent gets its own escalation instead of coalescing into the first", async () => {
@@ -157,5 +161,66 @@ describe("EscalationService per-agent isolation", () => {
     expect(EscalationService.getActiveEscalationSync(runtime)?.id).toBe(
       first.id,
     );
+  });
+
+  test("resolveEscalation deletes the per-agent timer bucket instead of leaving it empty", async () => {
+    const cache: CacheStore = new Map();
+    const runtime = makeRuntime("agent-a", cache);
+
+    const first = await EscalationService.startEscalation(
+      runtime,
+      "reason A",
+      "agent A private text",
+    );
+
+    expect(EscalationService._hasPendingTimerBucket("agent-a")).toBe(true);
+
+    await EscalationService.resolveEscalation(first.id, runtime);
+
+    expect(EscalationService._hasPendingTimerBucket("agent-a")).toBe(false);
+    expect(EscalationService.getActiveEscalationSync(runtime)).toBeNull();
+  });
+
+  test("timer fire deletes the per-agent timer bucket when the check does not reschedule", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const check = vi
+      .spyOn(EscalationService, "checkEscalation")
+      .mockResolvedValue();
+
+    const cache: CacheStore = new Map();
+    const runtime = makeRuntime("agent-a", cache);
+
+    await EscalationService.startEscalation(
+      runtime,
+      "reason A",
+      "agent A private text",
+    );
+    expect(EscalationService._hasPendingTimerBucket("agent-a")).toBe(true);
+
+    await vi.runOnlyPendingTimersAsync();
+
+    expect(check).toHaveBeenCalledTimes(1);
+    expect(EscalationService._hasPendingTimerBucket("agent-a")).toBe(false);
+  });
+
+  test("resolveEscalation does not allocate a timer bucket when none exists", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    vi.spyOn(EscalationService, "checkEscalation").mockResolvedValue();
+
+    const cache: CacheStore = new Map();
+    const runtime = makeRuntime("agent-a", cache);
+
+    const first = await EscalationService.startEscalation(
+      runtime,
+      "reason A",
+      "agent A private text",
+    );
+    await vi.runOnlyPendingTimersAsync();
+    expect(EscalationService._hasPendingTimerBucket("agent-a")).toBe(false);
+
+    // Still active because the check was stubbed. Resolve must read with
+    // pendingTimers.get(), not timersFor(), or this recreates an empty bucket.
+    await EscalationService.resolveEscalation(first.id, runtime);
+    expect(EscalationService._hasPendingTimerBucket("agent-a")).toBe(false);
   });
 });

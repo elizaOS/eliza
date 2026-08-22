@@ -96,6 +96,22 @@ function timersFor(
 }
 
 /**
+ * Drop one pending timer without allocating a bucket. Empty inner maps are
+ * removed so a long-lived process that boots many agents does not retain one
+ * Map per agent id after the last timer fires or the escalation resolves.
+ */
+function releaseTimer(agentId: string, escalationId: string): void {
+  const timers = pendingTimers.get(agentId);
+  if (!timers) return;
+  const existing = timers.get(escalationId);
+  if (existing) {
+    clearTimeout(existing);
+    timers.delete(escalationId);
+  }
+  if (timers.size === 0) pendingTimers.delete(agentId);
+}
+
+/**
  * Locate an escalation by id. `resolveEscalation` may be called without a
  * runtime, so fall back to a scan across agents when no runtime is supplied.
  */
@@ -445,12 +461,11 @@ function scheduleCheck(
   escalationId: string,
   delayMs: number,
 ): void {
-  const timers = timersFor(agentIdOf(runtime));
-  const existing = timers.get(escalationId);
-  if (existing) clearTimeout(existing);
+  const agentId = agentIdOf(runtime);
+  releaseTimer(agentId, escalationId);
 
   const timer = setTimeout(async () => {
-    timers.delete(escalationId);
+    releaseTimer(agentId, escalationId);
     try {
       await EscalationService.checkEscalation(runtime, escalationId);
     } catch (err) {
@@ -461,7 +476,7 @@ function scheduleCheck(
     }
   }, delayMs);
 
-  timers.set(escalationId, timer);
+  timersFor(agentId).set(escalationId, timer);
 }
 
 let idCounter = 0;
@@ -632,12 +647,8 @@ export class EscalationService {
     state.resolved = true;
     state.resolvedAt = Date.now();
 
-    const timers = timersFor(agentId);
-    const timer = timers.get(escalationId);
-    if (timer) {
-      clearTimeout(timer);
-      timers.delete(escalationId);
-    }
+    // Read-only: timersFor() would allocate an empty bucket on a no-timer path.
+    releaseTimer(agentId, escalationId);
 
     logger.info(`[escalation] Resolved ${escalationId}`);
 
@@ -697,6 +708,15 @@ export class EscalationService {
     pendingTimers.clear();
     activeEscalations.clear();
     idCounter = 0;
+  }
+
+  /**
+   * Test-only: whether `pendingTimers` still holds a bucket for this agent,
+   * including an empty one. Production cleanup must delete the outer entry
+   * when the last timer is released.
+   */
+  static _hasPendingTimerBucket(agentId: string): boolean {
+    return pendingTimers.has(agentId);
   }
 
   static async _resetDb(runtime: IAgentRuntime): Promise<void> {
