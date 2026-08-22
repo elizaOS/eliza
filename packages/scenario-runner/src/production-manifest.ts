@@ -1864,6 +1864,14 @@ export async function applyProductionManifest(
         "SCENARIO_MANIFEST_NAMESPACE_NOT_EMPTY",
       );
     }
+    const requiredNotificationSlots =
+      (manifest.notifications?.length ?? 0) + (manifest.approvals?.length ?? 0);
+    if (requiredNotificationSlots > notifications.getAvailableCapacity()) {
+      throw new ProductionManifestApplyError(
+        `[production-manifest] namespace ${manifest.namespace} requires ${requiredNotificationSlots} notification slots but the durable inbox has insufficient capacity`,
+        "SCENARIO_MANIFEST_CAPACITY_EXCEEDED",
+      );
+    }
   }
   if (approvals) {
     for (const entry of manifest.approvals ?? []) {
@@ -2135,7 +2143,7 @@ export async function applyProductionManifest(
       ) {
         throw new Error(`notification ${entry.id} expired before persistence`);
       }
-      const notification = await notifications.notify({
+      const notification = await notifications.notifyWithoutEviction({
         title: entry.title,
         body: entry.body,
         category: entry.category,
@@ -2175,6 +2183,10 @@ export async function applyProductionManifest(
         },
       },
     });
+    // Re-read every authoritative owner after all writes. A concurrent inbox
+    // writer may consume capacity between preflight and the guarded writes; in
+    // that case apply must compensate instead of returning an incomplete receipt.
+    await readProductionManifestSnapshot(runtime, receipt);
     await writeResetControl(runtime, receipt, "applied");
     return receipt;
   } catch (cause) {
@@ -2236,6 +2248,7 @@ export async function applyProductionManifest(
     }
     try {
       await resetRecordedManifestWrites(runtime, receipt);
+      await completeCompensatedApplyControl(runtime, receipt);
     } catch (rollbackCause) {
       throw new ProductionManifestApplyError(
         "[production-manifest] apply failed and compensation could not prove a clean namespace",
@@ -2772,6 +2785,30 @@ async function writeResetControl(
       `[production-manifest] could not persist ${state} reset control`,
       "SCENARIO_MANIFEST_DIRTY",
       { dirtyReceipt: receipt },
+    );
+  }
+}
+
+/**
+ * Close a compensated apply generation even when the preceding control write
+ * committed before its adapter reported failure. A clean compensation must not
+ * leave the namespace permanently fenced by an unreachable `applied` record.
+ */
+async function completeCompensatedApplyControl(
+  runtime: IAgentRuntime,
+  receipt: ProductionManifestReceipt,
+): Promise<void> {
+  const control = await readResetControl(runtime, receipt);
+  if (!control || control.state === "complete") return;
+  try {
+    await writeResetControl(runtime, receipt, "complete");
+  } catch (cause) {
+    const reconciled = await readResetControl(runtime, receipt);
+    if (reconciled?.state === "complete") return;
+    throw new ProductionManifestApplyError(
+      "[production-manifest] compensated apply left an unfinished reset control",
+      "SCENARIO_MANIFEST_DIRTY",
+      { cause, dirtyReceipt: receipt },
     );
   }
 }

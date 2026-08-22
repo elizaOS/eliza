@@ -192,6 +192,84 @@ describe("NotificationService", () => {
 		}
 	});
 
+	it("serializes notify with concurrent removal without resurrecting the row", async () => {
+		const removed = await service.notify({ title: "Remove me" });
+		const originalSetCache = runtime.setCache.bind(runtime);
+		let releaseNotify: (() => void) | undefined;
+		const notifyBlocked = new Promise<void>((resolve) => {
+			releaseNotify = resolve;
+		});
+		let writes = 0;
+		runtime.setCache = async (key, value) => {
+			writes += 1;
+			if (writes === 1) await notifyBlocked;
+			return originalSetCache(key, value);
+		};
+		try {
+			const arriving = service.notify({ title: "Keep me" });
+			const removal = service.remove(removed.id);
+			releaseNotify?.();
+			await expect(arriving).resolves.toMatchObject({ title: "Keep me" });
+			await expect(removal).resolves.toBe(true);
+			const stored = await runtime.getCache<AgentNotification[]>(
+				`notifications:${runtime.agentId}`,
+			);
+			expect(stored?.map((entry) => entry.title)).toEqual(["Keep me"]);
+			expect(service.list().map((entry) => entry.title)).toEqual(["Keep me"]);
+		} finally {
+			runtime.setCache = originalSetCache;
+		}
+	});
+
+	it("reconciles a committed removal failure before the next queued notify", async () => {
+		const removed = await service.notify({ title: "Committed removal" });
+		const originalSetCache = runtime.setCache.bind(runtime);
+		let injected = false;
+		runtime.setCache = async (key, value) => {
+			const result = await originalSetCache(key, value);
+			if (!injected) {
+				injected = true;
+				throw new Error("injected post-removal failure");
+			}
+			return result;
+		};
+		try {
+			const removal = service.remove(removed.id);
+			const arriving = service.notify({ title: "After ambiguous removal" });
+			await expect(removal).rejects.toThrow("injected post-removal failure");
+			await expect(arriving).resolves.toMatchObject({
+				title: "After ambiguous removal",
+			});
+			const stored = await runtime.getCache<AgentNotification[]>(
+				`notifications:${runtime.agentId}`,
+			);
+			expect(stored?.map((entry) => entry.title)).toEqual([
+				"After ambiguous removal",
+			]);
+			expect(service.list().map((entry) => entry.title)).toEqual([
+				"After ambiguous removal",
+			]);
+		} finally {
+			runtime.setCache = originalSetCache;
+		}
+	});
+
+	it("rejects a full inbox without evicting unrelated durable rows", async () => {
+		for (let index = 0; index < 300; index += 1) {
+			await service.notify({ title: `Existing ${index}` });
+		}
+		expect(service.getAvailableCapacity()).toBe(0);
+		await expect(
+			service.notifyWithoutEviction({ title: "Must not evict" }),
+		).rejects.toThrow(/capacity is exhausted/);
+		const stored = await runtime.getCache<AgentNotification[]>(
+			`notifications:${runtime.agentId}`,
+		);
+		expect(stored).toHaveLength(300);
+		expect(stored?.[0]?.title).toBe("Existing 0");
+		expect(stored?.at(-1)?.title).toBe("Existing 299");
+	});
+
 	it("still records when no event bus is present", async () => {
 		const headless = await createRuntime([NotificationService]);
 		try {

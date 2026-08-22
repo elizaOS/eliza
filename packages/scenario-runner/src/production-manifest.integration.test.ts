@@ -640,6 +640,93 @@ describe("production manifest persistence", () => {
     expect(await target.getCache(key)).toBeUndefined();
   });
 
+  it("rejects insufficient inbox capacity before mutating manifest state", async () => {
+    const target = runtime();
+    const service = target.getService(ServiceType.NOTIFICATION);
+    expect(service).toBeInstanceOf(NotificationService);
+    const notifications = service as NotificationService;
+    await notifications.clear();
+    try {
+      const oversized = manifest("notification-capacity-oversized");
+      oversized.approvals = [];
+      oversized.notifications = Array.from({ length: 301 }, (_, index) => ({
+        id: `notification-${index}`,
+        title: `Owned ${index}`,
+      }));
+      await expect(
+        applyProductionManifest(target, oversized),
+      ).rejects.toMatchObject({
+        code: "SCENARIO_MANIFEST_CAPACITY_EXCEEDED",
+      });
+      expect(
+        await target.getWorldsByIds([
+          stringToUuid(
+            "scenario-manifest:notification-capacity-oversized:world",
+          ),
+        ]),
+      ).toEqual([]);
+
+      for (let index = 0; index < 299; index += 1) {
+        await notifications.notify({ title: `Unrelated ${index}` });
+      }
+      const input = manifest("notification-capacity");
+      await expect(
+        applyProductionManifest(target, input),
+      ).rejects.toMatchObject({
+        code: "SCENARIO_MANIFEST_CAPACITY_EXCEEDED",
+      });
+      expect(
+        await target.getWorldsByIds([
+          stringToUuid("scenario-manifest:notification-capacity:world"),
+        ]),
+      ).toEqual([]);
+      expect(notifications.listIncludingExpired()).toHaveLength(299);
+      expect(
+        notifications
+          .listIncludingExpired()
+          .every((entry) => entry.title.startsWith("Unrelated ")),
+      ).toBe(true);
+    } finally {
+      await notifications.clear();
+    }
+  }, 120_000);
+
+  it("reconciles a reset control that commits before apply reports failure", async () => {
+    const target = runtime();
+    const input = manifest("ambiguous-apply-control");
+    const original = target.setCache.bind(target);
+    let injected = false;
+    target.setCache = async (key, value) => {
+      const written = await original(key, value);
+      if (
+        !injected &&
+        key.startsWith("scenario-manifest:reset-control:") &&
+        typeof value === "object" &&
+        value !== null &&
+        "state" in value &&
+        value.state === "applied"
+      ) {
+        injected = true;
+        throw new Error("injected post-control-commit failure");
+      }
+      return written;
+    };
+    try {
+      await expect(
+        applyProductionManifest(target, input),
+      ).rejects.toMatchObject({
+        code: "SCENARIO_MANIFEST_APPLY_FAILED",
+      });
+    } finally {
+      target.setCache = original;
+    }
+    const retried = await applyProductionManifest(target, input);
+    const reset = await resetProductionManifest(target, retried);
+    expect(reset.absentAfterReset).toMatchObject({
+      world: true,
+    });
+  }, 120_000);
+
   it("compensates a schedule committed before its receipt is returned", async () => {
     const target = runtime();
     const input = manifest("ambiguous-schedule");
