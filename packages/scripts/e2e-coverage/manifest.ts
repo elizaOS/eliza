@@ -71,7 +71,7 @@ export const LARP_TEST_ARTIFACTS: ReadonlySet<string> = new Set([
 export const VIEW_COVERAGE_GATES: readonly string[] = [
   "packages/app/test/route-coverage.test.ts",
   "packages/app/test/view-interaction-coverage.test.ts",
-  "packages/agent/src/__tests__/plugin-view-inventory-ratchet.test.ts",
+  "packages/agent/src/__tests__/plugin-view-inventory.test.ts",
 ];
 
 /**
@@ -131,7 +131,7 @@ function existing(artifact: string): CoverageEntry {
  * scan — a newly route-wiring plugin with no entry here fails the gate.
  */
 export const PLUGIN_ROUTE_COVERAGE: Record<string, ManifestEntry> = {
-  // ── Pre-existing dedicated route tests (trusted; ratcheted against deletion) ─
+  // ── Dedicated route tests ──
   "plugin-agent-orchestrator": existing(
     "plugins/plugin-agent-orchestrator/__tests__/unit/agent-routes-goal-wrapper.test.ts",
   ),

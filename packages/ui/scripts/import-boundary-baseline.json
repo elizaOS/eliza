@@ -1,8 +1,0 @@
-{
-  "counts": {
-    "design-system-is-browser-agnostic": 0,
-    "ui-client-does-not-render-features": 0,
-    "cloud-ui-does-not-own-the-app-shell": 0
-  },
-  "violations": []
-}

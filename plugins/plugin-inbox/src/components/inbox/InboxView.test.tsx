@@ -314,7 +314,7 @@ describe("InboxView — audit settle signal (#15912)", () => {
     // settled list shows only the connected two, so the loading frame is denser.
     // A host readiness/aesthetic-audit gate that samples before the fetch
     // resolves must be able to tell "still loading" apart from "settled" — else
-    // it measures the denser placeholder and flips the divider-density ratchet
+    // it measures the denser placeholder and flips the divider-density guard
     // between identical-code runs (#15912). The shared `data-view-status`
     // settle marker is that signal.
     let resolveFetch!: (value: ReturnType<typeof populatedInbox>) => void;
