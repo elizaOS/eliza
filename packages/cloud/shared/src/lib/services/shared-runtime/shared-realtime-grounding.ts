@@ -1,0 +1,287 @@
+/**
+ * Enforces fresh, source-bound public evidence for mutable factual claims in
+ * Shared without sending private-state requests to a public search provider.
+ */
+
+import type { ActionResult } from "@elizaos/core/edge";
+import type { SharedRuntimePublicGrounding } from "../../../db/schemas/shared-runtime-history";
+import type { SharedTurnMessage } from "./run-shared-agent-turn";
+
+export type SharedRealtimeDomain = "markets" | "weather" | "news" | "sports" | "mutable_fact";
+
+export interface SharedRealtimeRequirement {
+  domain: SharedRealtimeDomain;
+  query: string;
+  correction: boolean;
+}
+
+type AvailableGrounding = Extract<SharedRuntimePublicGrounding, { kind: "web_search" }>;
+type SourceEvidence = { url: string; text: string };
+
+const FRESHNESS =
+  /\b(?:now|rn|right now|current|currently|today|tonight|latest|live|recent|recently|up[- ]?to[- ]?date|this (?:morning|afternoon|evening|week|month|year))\b/i;
+const WEB_VERIFICATION =
+  /\b(?:check|search|browse|look(?:ed)? up|verify|fact[- ]?check)(?:\s+(?:it|that|this|again|online|the))?(?:\s+(?:web|internet|source|sources|news))?\b|\b(?:source|sources|citation|citations)\??$/i;
+const CORRECTION =
+  /\b(?:wrong|incorrect|not right|made that up|hallucinat(?:e|ed|ion)|check again|try again|prove it|where did (?:that|you) (?:come|get) from)\b|^\s*\?+\s*$/i;
+const PRIVATE_STATE =
+  /\b(?:my|mine|our|ours|todo|todos|reminder|reminders|calendar|schedule|meeting|meetings|order|account|email|inbox|messages|files|notes|contacts)\b/i;
+const MARKETS =
+  /\b(?:price|quote|exchange rate|market cap|market price|stock|share price|crypto|cryptocurrency|bitcoin|btc|ethereum|eth|forex|bond yield|commodity|gold price|oil price)\b/i;
+const WEATHER = /\b(?:weather|forecast|temperature|rain|snow|wind|air quality|uv index)\b/i;
+const NEWS = /\b(?:news|headline|breaking|announcement|announced|release today|current events)\b/i;
+const SPORTS = /\b(?:score|standings|fixture|match result|game result|playoffs|season record)\b/i;
+const PUBLIC_MUTABLE_FACT =
+  /\b(?:president|prime minister|governor|mayor|senator|representative|ceo|chief executive|officeholder|software version|release version|public outage|public traffic)\b/i;
+const SOURCE_MARKER = /\[\[SOURCE_URL:(https?:\/\/[^\]\s]+)\]\]/giu;
+const CURRENCY = /\b(?:USD|EUR|GBP|JPY|CAD|AUD|BTC|ETH)\b/giu;
+const ATTRIBUTION = /\b(?:according to|reported by)\s+([^,.;\n]{1,80})/giu;
+const CLAIM_STOP_WORDS = new Set([
+  "about",
+  "according",
+  "and",
+  "are",
+  "but",
+  "checked",
+  "currently",
+  "from",
+  "into",
+  "latest",
+  "reported",
+  "source",
+  "that",
+  "the",
+  "this",
+  "today",
+  "was",
+  "with",
+]);
+
+function classifyPublicStandalone(text: string): SharedRealtimeDomain | undefined {
+  if (PRIVATE_STATE.test(text)) return undefined;
+  if (WEATHER.test(text)) return "weather";
+  if (
+    MARKETS.test(text) &&
+    (FRESHNESS.test(text) || /\b(?:price|quote|exchange rate)\b/i.test(text))
+  ) {
+    return "markets";
+  }
+  if (NEWS.test(text) && (FRESHNESS.test(text) || /\b(?:news|headline|breaking)\b/i.test(text))) {
+    return "news";
+  }
+  if (
+    SPORTS.test(text) &&
+    (FRESHNESS.test(text) || /\b(?:score|standings|fixture)\b/i.test(text))
+  ) {
+    return "sports";
+  }
+  if (PUBLIC_MUTABLE_FACT.test(text) && FRESHNESS.test(text)) return "mutable_fact";
+  return undefined;
+}
+
+/** Identifies public current-data turns and corrections that inherit that exact public topic. */
+export function resolveSharedRealtimeRequirement(
+  message: string,
+  history: readonly SharedTurnMessage[],
+): SharedRealtimeRequirement | undefined {
+  const normalized = message.trim();
+  const direct = classifyPublicStandalone(normalized);
+  const correction = CORRECTION.test(normalized);
+  if (direct) return { domain: direct, query: normalized, correction };
+  if (PRIVATE_STATE.test(normalized) || (!correction && !WEB_VERIFICATION.test(normalized))) {
+    return undefined;
+  }
+  const prior = [...history]
+    .reverse()
+    .find((turn) => turn.role === "user" && classifyPublicStandalone(turn.content));
+  if (!prior) return undefined;
+  return {
+    domain: classifyPublicStandalone(prior.content) ?? "mutable_fact",
+    query: `${prior.content}\n${normalized}\nVerify against current public sources.`,
+    correction: true,
+  };
+}
+
+function canonicalPublicUrl(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  try {
+    const parsed = new URL(value);
+    if (
+      (parsed.protocol !== "https:" && parsed.protocol !== "http:") ||
+      parsed.username ||
+      parsed.password
+    ) {
+      return undefined;
+    }
+    return parsed.toString();
+  } catch {
+    // error-policy:J3 malformed source markers are rejected, never repaired.
+    return undefined;
+  }
+}
+
+function sourceEvidence(value: unknown): SourceEvidence[] | undefined {
+  if (!Array.isArray(value) || value.length === 0) return undefined;
+  const sources: SourceEvidence[] = [];
+  for (const item of value) {
+    if (!item || typeof item !== "object") return undefined;
+    const record = item as Record<string, unknown>;
+    const url = canonicalPublicUrl(record.url);
+    const text = typeof record.text === "string" ? record.text.trim() : "";
+    if (!url || !text) return undefined;
+    sources.push({ url, text });
+  }
+  return sources;
+}
+
+/** Rejects incomplete, unbounded, source-free, or aggregate-only current-data receipts. */
+export function requireTraceableRealtimeSearch(
+  result: ActionResult,
+  query: string,
+  observedAt = Date.now(),
+): ActionResult {
+  const data = result.data && typeof result.data === "object" ? result.data : {};
+  const sources = sourceEvidence(data.sources);
+  if (
+    result.success === true &&
+    data.truncated === false &&
+    data.evidenceOverflowed !== true &&
+    sources
+  ) {
+    return {
+      ...result,
+      data: {
+        ...data,
+        sourceUrls: sources.map((source) => source.url),
+        sources,
+      },
+    };
+  }
+  return {
+    success: false,
+    text: "Live public data is temporarily unavailable from complete, source-bound evidence.",
+    error: "Live public data is temporarily unavailable from complete, source-bound evidence.",
+    data: { actionName: "WEB_SEARCH", query, observedAt },
+  };
+}
+
+/** A successful current-data receipt must retain at least one complete source result. */
+export function hasTraceableRealtimeGrounding(
+  grounding: SharedRuntimePublicGrounding | undefined,
+): grounding is AvailableGrounding & { sources: [SourceEvidence, ...SourceEvidence[]] } {
+  return Boolean(
+    grounding?.kind === "web_search" &&
+      grounding.truncated === false &&
+      grounding.sources &&
+      grounding.sources.length > 0,
+  );
+}
+
+function numericValues(value: string): number[] {
+  return [...value.matchAll(/(?:[$€£¥]\s*)?(-?\d[\d,]*(?:\.\d+)?)%?/gu)]
+    .map((match) => Number(match[1]?.replaceAll(",", "")))
+    .filter(Number.isFinite);
+}
+
+function numericSupported(claim: number, evidence: readonly number[]): boolean {
+  return evidence.some((candidate) => {
+    if (claim === candidate) return true;
+    if (Number.isInteger(claim) && claim >= 1900 && claim <= 2200) return false;
+    if (Math.abs(candidate) < 100) return false;
+    return Math.abs(claim - candidate) / Math.abs(candidate) <= 0.005;
+  });
+}
+
+function replyUrls(value: string): string[] {
+  return [...value.matchAll(/https?:\/\/[^\s<>"'\]]+/gu)]
+    .map((match) => canonicalPublicUrl(match[0].replace(/[),.;]+$/u, "")))
+    .filter((url): url is string => Boolean(url));
+}
+
+function claimWords(value: string): string[] {
+  return (
+    value
+      .toLowerCase()
+      .match(/[\p{L}\p{N}]+/gu)
+      ?.filter((word) => word.length > 3 && !CLAIM_STOP_WORDS.has(word)) ?? []
+  );
+}
+
+function sourceForUrl(
+  grounding: AvailableGrounding,
+  selectedUrl: string,
+): SourceEvidence | undefined {
+  const canonical = canonicalPublicUrl(selectedUrl);
+  if (!canonical) return undefined;
+  return grounding.sources?.find((source) => canonicalPublicUrl(source.url) === canonical);
+}
+
+function claimSupported(claim: string, source: SourceEvidence): boolean {
+  const normalized = claim.trim();
+  if (!normalized || /^[\s?!.,-]{1,12}$/u.test(normalized)) return false;
+  const evidenceNumbers = numericValues(source.text);
+  if (numericValues(normalized).some((value) => !numericSupported(value, evidenceNumbers))) {
+    return false;
+  }
+  const evidenceCurrencies = new Set(source.text.toUpperCase().match(CURRENCY) ?? []);
+  if (
+    (normalized.toUpperCase().match(CURRENCY) ?? []).some((unit) => !evidenceCurrencies.has(unit))
+  ) {
+    return false;
+  }
+  for (const url of replyUrls(normalized)) {
+    if (url !== canonicalPublicUrl(source.url)) return false;
+  }
+  for (const match of normalized.matchAll(ATTRIBUTION)) {
+    if (!source.text.toLowerCase().includes(match[1].trim().toLowerCase())) return false;
+  }
+  const words = claimWords(normalized);
+  const evidence = new Set(claimWords(source.text));
+  const supported = words.filter((word) => evidence.has(word)).length;
+  return words.length === 0 || supported >= Math.min(2, Math.ceil(words.length / 2));
+}
+
+/** Every delivered claim segment must bind to and match one structured result. */
+export function validateSharedRealtimeReply(reply: string, grounding: AvailableGrounding): boolean {
+  if (!hasTraceableRealtimeGrounding(grounding)) return false;
+  SOURCE_MARKER.lastIndex = 0;
+  let cursor = 0;
+  let count = 0;
+  for (const marker of reply.matchAll(SOURCE_MARKER)) {
+    const source = sourceForUrl(grounding, marker[1]);
+    const claim = reply.slice(cursor, marker.index).trim();
+    if (!source || !claimSupported(claim, source)) return false;
+    cursor = (marker.index ?? 0) + marker[0].length;
+    count += 1;
+  }
+  return count > 0 && reply.slice(cursor).trim().length === 0;
+}
+
+/** Produces Telegram-safe attribution or an honest deterministic recovery. */
+export function finalizeSharedRealtimeReply(
+  reply: string,
+  grounding: SharedRuntimePublicGrounding | undefined,
+): string {
+  if (!hasTraceableRealtimeGrounding(grounding)) {
+    return "I can’t verify the current value from a complete, traceable live source right now, so I won’t guess. Please try again shortly.";
+  }
+  if (!validateSharedRealtimeReply(reply, grounding)) {
+    return `I found live public results, but I couldn’t safely bind the requested claim to one complete source, so I won’t guess.\n\nSource provider: ${grounding.provider} (checked ${new Date(grounding.observedAt).toISOString()})`;
+  }
+  SOURCE_MARKER.lastIndex = 0;
+  const selectedUrls = [...reply.matchAll(SOURCE_MARKER)].map((marker) => marker[1]);
+  const answer = reply.replace(SOURCE_MARKER, "").trim();
+  const sources = [...new Set(selectedUrls)].map((url) => {
+    const canonical = canonicalPublicUrl(url);
+    if (!canonical) throw new TypeError("Validated Shared realtime source became invalid");
+    return `Source: ${new URL(canonical).hostname.replace(/^www\./u, "")} — ${canonical} (${grounding.provider}, checked ${new Date(grounding.observedAt).toISOString()})`;
+  });
+  return `${answer}\n\n${sources.join("\n")}`;
+}
+
+/** System-only policy; actual provider results remain untrusted data messages. */
+export function sharedRealtimePromptPolicy(grounding: SharedRuntimePublicGrounding): string {
+  return grounding.kind === "web_search"
+    ? "Current-data grounding policy:\n- A complete live public read already ran for this turn. Use only its structured current-turn source objects for mutable factual claims.\n- Keep each claim with its own source: append [[SOURCE_URL:https://exact-supporting-url]] immediately after every claim segment. Never combine a value from one result with another result’s URL.\n- Preserve the source value, timestamp, units or currency. If evidence conflicts or omits the requested value, say you cannot verify it.\n- Never invent a search, article, source, attribution, or numeric value. Do not run a duplicate search for the same query."
+    : "Current-data grounding policy:\n- The required live public read failed or lacked complete source-bound evidence. Say you cannot verify the current value and do not provide a number, source, article, or claimed search result.\n- Recover conversationally from corrections; never answer with punctuation alone.";
+}

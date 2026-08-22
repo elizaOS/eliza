@@ -6,6 +6,7 @@
  */
 
 import {
+  type ActionResult,
   type AgentEventPayload,
   AgentEventService,
   type AgentNotification,
@@ -38,7 +39,11 @@ import {
 } from "@elizaos/core/edge";
 import { createSharedRemindersEdgePlugin } from "@elizaos/plugin-scheduling/edge";
 import { createTodosEdgePlugin } from "@elizaos/plugin-todos/edge";
-import { webSearchEdgeAction, webSearchEdgePlugin } from "@elizaos/plugin-web-search/edge";
+import {
+  createWebSearchEdgePlugin,
+  webSearchEdgeAction,
+  webSearchEdgePlugin,
+} from "@elizaos/plugin-web-search/edge";
 import type { AgentCapabilityTransport } from "@elizaos/shared";
 import {
   generateText,
@@ -48,6 +53,7 @@ import {
   streamText,
   type ToolSet,
 } from "ai";
+import type { SharedRuntimePublicGrounding } from "../../../db/schemas/shared-runtime-history";
 import type { MobilePushMessage } from "../../mobile-push/types";
 import { getInteractiveCerebrasLanguageModel } from "../../providers/language-model";
 import { logger } from "../../utils/logger";
@@ -70,6 +76,7 @@ import {
 import {
   insertSharedRuntimeGroundingMessages,
   sharedPublicWebGrounding,
+  sharedRuntimeFreshGroundingProjectionMessages,
   sharedRuntimeGroundingProjectionMessages,
 } from "./shared-runtime-history-policy";
 import {
@@ -95,6 +102,10 @@ type SharedElizaRuntimeTurnInput = Omit<RunSharedAgentTurnInput, "execution"> & 
   execution: NonNullable<RunSharedAgentTurnInput["execution"]>;
   agentKey: string;
   model: string;
+  /** Server-executed current-turn public read, never transport supplied. */
+  realtimeGrounding?: SharedRuntimePublicGrounding;
+  /** Traceable action receipt for the server-executed public read. */
+  preflightActionResults?: ActionResult[];
 };
 
 interface SharedNotificationEventBus {
@@ -241,6 +252,7 @@ function createRuntime(options: {
   adapter: InMemoryDatabaseAdapter;
   character: RunSharedAgentTurnInput["character"];
   modelPlugin: Plugin;
+  webSearchPlugin?: Plugin;
   transport?: AgentCapabilityTransport;
   mediaPlugin?: Plugin;
   reminderPlugin?: Plugin;
@@ -277,7 +289,7 @@ function createRuntime(options: {
       options.modelPlugin,
       ...(!options.actionsEnabled ? [sharedSystemLifecyclePlugin] : []),
       ...(options.actionsEnabled ? [capabilityPlugin] : []),
-      ...(options.actionsEnabled ? [webSearchEdgePlugin] : []),
+      ...(options.actionsEnabled ? [options.webSearchPlugin ?? webSearchEdgePlugin] : []),
       ...(options.actionsEnabled && options.mediaPlugin ? [options.mediaPlugin] : []),
       ...(options.actionsEnabled && options.reminderPlugin ? [options.reminderPlugin] : []),
       ...(options.actionsEnabled && options.todoPlugin ? [options.todoPlugin] : []),
@@ -576,10 +588,12 @@ async function executeMeasuredSharedElizaRuntimeTurn(
   // The native tool-call projection may only reference a tool the current
   // request actually declares; otherwise the evidence is carried as data-only
   // transcript content so a strict provider cannot reject the whole request.
-  const persistedGroundingMessages = (declaresWebSearch: boolean): ModelMessage[] =>
-    sharedRuntimeGroundingProjectionMessages(input.history, input.message, groundingObservedAt, {
+  const persistedGroundingMessages = (declaresWebSearch: boolean): ModelMessage[] => [
+    ...sharedRuntimeGroundingProjectionMessages(input.history, input.message, groundingObservedAt, {
       nativeToolProjection: declaresWebSearch,
-    });
+    }),
+    ...sharedRuntimeFreshGroundingProjectionMessages(input.realtimeGrounding),
+  ];
 
   const modelHandler = async (
     _runtime: IAgentRuntime,
@@ -735,6 +749,9 @@ async function executeMeasuredSharedElizaRuntimeTurn(
   const incomingEntityId = actionsEnabled ? userEntityId : lifecycleEntityId;
   const authenticatedPersonalSharedUser =
     actionsEnabled && input.execution?.authenticatedPersonalSharedUser === true;
+  const preflightWebSearchResult = input.preflightActionResults?.find(
+    (result) => result.data?.actionName === "WEB_SEARCH",
+  );
   const runtime = createRuntime({
     agentKey: input.agentKey,
     agentId,
@@ -742,6 +759,11 @@ async function executeMeasuredSharedElizaRuntimeTurn(
     adapter,
     character: input.character,
     modelPlugin,
+    ...(preflightWebSearchResult
+      ? {
+          webSearchPlugin: createWebSearchEdgePlugin(async () => preflightWebSearchResult),
+        }
+      : {}),
     transport: sharedCapabilityTransportForSource(input.execution.channel.source),
     mediaPlugin,
     reminderPlugin,
@@ -947,6 +969,7 @@ async function executeMeasuredSharedElizaRuntimeTurn(
     // response. The callback receipt is still an actual user-visible delivery.
     if (!result?.didRespond && delivered.length === 0) {
       logSharedProviderSpans(input, inferenceTelemetry.summary, false);
+      const preflightActionResults = input.preflightActionResults ?? [];
       return {
         reply: "",
         responded: false,
@@ -959,12 +982,18 @@ async function executeMeasuredSharedElizaRuntimeTurn(
         model: input.model,
         degraded: false,
         usage,
+        ...(preflightActionResults.length ? { actionResults: preflightActionResults } : {}),
       };
     }
     if (!reply) {
       throw new Error("Eliza Shared runtime completed without a user-visible reply");
     }
     logSharedProviderSpans(input, inferenceTelemetry.summary, true);
+    const actionResults = [
+      ...(input.preflightActionResults ?? []),
+      ...(result.actionResults ?? []),
+    ];
+    const grounding = input.realtimeGrounding ?? sharedPublicWebGrounding(actionResults);
     return {
       reply,
       responded: true,
@@ -974,12 +1003,12 @@ async function executeMeasuredSharedElizaRuntimeTurn(
         reply,
         input.messageIds,
         input.messageRole,
-        sharedPublicWebGrounding(result.actionResults),
+        grounding,
       ),
       model: input.model,
       degraded: false,
       usage,
-      ...(result.actionResults?.length ? { actionResults: result.actionResults } : {}),
+      ...(actionResults.length ? { actionResults } : {}),
     };
   } finally {
     for (const [operation, cleanup] of [
