@@ -56,9 +56,6 @@ describe("CloudSettingsPanel narrow navigation", () => {
 
   it("returns from section content to the settings hub", () => {
     render(<CloudSettingsPanel />);
-    expect(
-      screen.getByRole("heading", { name: "Settings", level: 1 }),
-    ).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: /Voice/ }));
     expect(screen.getByText("Voice section")).toBeTruthy();

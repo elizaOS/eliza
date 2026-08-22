@@ -6,7 +6,6 @@ import type { ViewKind } from "@elizaos/core";
 import type { LucideIcon } from "lucide-react";
 import type { ComponentType, LazyExoticComponent } from "react";
 import { getUiRegistryStore } from "../../registry-host";
-import type { SettingsExperience } from "./settings-experience";
 import type { SettingsSectionGroup } from "./settings-section-meta";
 
 /**
@@ -62,8 +61,6 @@ export interface SettingsSectionDef {
    * the pinned meta list.
    */
   group: SettingsSectionGroup | (string & {});
-  /** Product experiences in which this section is meaningful. */
-  experiences?: readonly SettingsExperience[];
   /** Sort priority within a group (lower first). Built-ins use list order. */
   order?: number;
   /** Padding override for the section body panel. */

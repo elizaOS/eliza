@@ -10,6 +10,7 @@
  * `ChatHotkeySettingsGroup.syncChatOverlayShortcut`.
  */
 
+import { Button as NuphyButton } from "@extrastu/nuphy-ui";
 import { AlertTriangle, Keyboard, Mouse, RotateCcw } from "lucide-react";
 import * as React from "react";
 import { invokeDesktopBridgeRequest } from "../../../../bridge";
@@ -21,13 +22,12 @@ import {
   setPushToTalkAccelerator,
 } from "../../../../state/push-to-talk-hotkey";
 import {
-  CloudSettingsButton,
-  CloudSettingsRow,
-  CloudSettingsSelectRow,
-  CloudSettingsSwitchRow,
+  NuphyRow,
+  NuphySelectRow,
+  NuphySwitchRow,
   SettingsGroup,
   SettingsStack,
-} from "../settings-primitives";
+} from "../nuphy-settings-primitives";
 
 /** Internal canonical combo form: lowercase modifier names + key, joined by `+`. */
 type Combo = string;
@@ -349,7 +349,7 @@ export function ShortcutsSection() {
           const isPending = pending?.id === shortcut.id;
           const conflictForThis = isPending ? conflict : undefined;
           return (
-            <CloudSettingsRow
+            <NuphyRow
               key={shortcut.id}
               label={shortcut.label}
               description={
@@ -366,7 +366,7 @@ export function ShortcutsSection() {
                   >
                     {isRecording ? "…" : formatCombo(shortcut.combo)}
                   </span>
-                  <CloudSettingsButton
+                  <NuphyButton
                     type="button"
                     variant={isRecording ? "primary" : "secondary"}
                     size="sm"
@@ -378,8 +378,8 @@ export function ShortcutsSection() {
                     }}
                   >
                     <Keyboard className="h-4 w-4" aria-hidden />
-                  </CloudSettingsButton>
-                  <CloudSettingsButton
+                  </NuphyButton>
+                  <NuphyButton
                     type="button"
                     variant="ghost"
                     size="sm"
@@ -391,7 +391,7 @@ export function ShortcutsSection() {
                     onClick={() => resetCombo(shortcut.id)}
                   >
                     <RotateCcw className="h-4 w-4" aria-hidden />
-                  </CloudSettingsButton>
+                  </NuphyButton>
                 </div>
                 {isPending && conflictForThis ? (
                   <div
@@ -405,7 +405,7 @@ export function ShortcutsSection() {
                     <span className="flex-1">
                       This combo is used by “{conflictForThis.label}”. Override?
                     </span>
-                    <CloudSettingsButton
+                    <NuphyButton
                       type="button"
                       variant="primary"
                       size="sm"
@@ -419,19 +419,19 @@ export function ShortcutsSection() {
                       disabled={shortcutMutationPending}
                     >
                       Override
-                    </CloudSettingsButton>
-                    <CloudSettingsButton
+                    </NuphyButton>
+                    <NuphyButton
                       type="button"
                       variant="ghost"
                       size="sm"
                       onClick={() => setPending(null)}
                     >
                       Cancel
-                    </CloudSettingsButton>
+                    </NuphyButton>
                   </div>
                 ) : null}
               </div>
-            </CloudSettingsRow>
+            </NuphyRow>
           );
         })}
       </SettingsGroup>
@@ -440,7 +440,7 @@ export function ShortcutsSection() {
         title="Mouse"
         footer="Use a mouse button as a recording trigger."
       >
-        <CloudSettingsSwitchRow
+        <NuphySwitchRow
           agentId="shortcuts-mouse-enabled"
           group="shortcuts"
           icon={Mouse}
@@ -449,7 +449,7 @@ export function ShortcutsSection() {
           checked={mouseEnabled}
           onCheckedChange={setMouseEnabled}
         />
-        <CloudSettingsSelectRow
+        <NuphySelectRow
           agentId="shortcuts-mouse-click-action"
           group="shortcuts"
           label="Click action"
@@ -459,7 +459,7 @@ export function ShortcutsSection() {
           options={CLICK_ACTION_OPTIONS}
           disabled={!mouseEnabled}
         />
-        <CloudSettingsSelectRow
+        <NuphySelectRow
           agentId="shortcuts-mouse-hold-action"
           group="shortcuts"
           label="Hold action"
@@ -475,7 +475,7 @@ export function ShortcutsSection() {
         title="Recording"
         footer="Protect against accidentally discarding long recordings."
       >
-        <CloudSettingsSwitchRow
+        <NuphySwitchRow
           agentId="shortcuts-confirm-cancel-long"
           group="shortcuts"
           label="Confirm cancel on long recordings"
@@ -484,7 +484,7 @@ export function ShortcutsSection() {
           onCheckedChange={setConfirmCancel}
         />
         {confirmCancel ? (
-          <CloudSettingsSelectRow
+          <NuphySelectRow
             agentId="shortcuts-cancel-threshold"
             group="shortcuts"
             label="Threshold"
