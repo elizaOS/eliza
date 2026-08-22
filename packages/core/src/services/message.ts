@@ -224,6 +224,7 @@ import {
 import {
 	attestDeliveryAudienceFromCanonicalRoom,
 	getTrustedDeliveryAudience,
+	OWNER_PRIVATE_DESTINATION_DISCLOSURE_BASIS,
 	ownerExclusiveDisclosureWasUsed,
 	PRIVACY_DENIED_TEXT,
 	revalidateOwnerExclusiveDisclosure,
@@ -2364,6 +2365,23 @@ function priorDialogueContent(text: string, speaker?: string): string {
 	return `${speaker}: ${text}`;
 }
 
+function verifiedCrossRoomContent(memory: Memory): string {
+	const text = getUserMessageText(memory);
+	const attachmentText = (memory.content.attachments ?? [])
+		.map((attachment) => {
+			const label =
+				attachment.filename ??
+				attachment.title ??
+				attachment.id ??
+				"attachment";
+			const mediaType = attachment.mimeType ?? attachment.contentType;
+			const readable = attachment.text ?? attachment.description;
+			return `[attachment: ${label}${mediaType ? `; ${mediaType}` : ""}${readable ? `; ${readable}` : ""}]`;
+		})
+		.join(" ");
+	return [text, attachmentText].filter(Boolean).join(" ");
+}
+
 /**
  * How many of the agent's own prior turns the tool-planner context renders.
  * Enough to cover the pending question/preview plus a short back-and-forth,
@@ -2494,6 +2512,57 @@ function appendPriorDialogueEvents(
 				metadata: {
 					roomId: memory.roomId,
 					entityId: memory.entityId,
+					...(speakerName ? { speakerName } : {}),
+				},
+			},
+		});
+	}
+
+	const recentInteractions =
+		data &&
+		typeof data === "object" &&
+		(data as { recentInteractionsDisclosure?: unknown })
+			.recentInteractionsDisclosure ===
+			OWNER_PRIVATE_DESTINATION_DISCLOSURE_BASIS &&
+		Array.isArray((data as { recentInteractions?: unknown }).recentInteractions)
+			? (data as { recentInteractions: unknown[] }).recentInteractions
+			: [];
+	for (const candidate of recentInteractions) {
+		if (!candidate || typeof candidate !== "object") continue;
+		const memory = candidate as Memory;
+		if (memory.roomId === currentMessage.roomId) continue;
+		if (memory.content?.type === "action_result") continue;
+		if (isSubAgentCompletionArtifact(memory)) continue;
+		if (
+			memory.entityId === runtime.agentId &&
+			(!includeOwnReplies ||
+				(options?.excludeToolDerivedOwnReplies === true &&
+					isToolDerivedAssistantContent(memory.content)))
+		) {
+			continue;
+		}
+		const content = verifiedCrossRoomContent(memory);
+		if (!content || looksLikePriorDialogueArtifact(content)) continue;
+		const isOwnReply = memory.entityId === runtime.agentId;
+		const speakerName = isOwnReply
+			? (runtime.character?.name ?? priorDialogueSpeakerName(memory))
+			: priorDialogueSpeakerName(memory);
+		events.push({
+			id: `verified-cross-room:${memory.id}`,
+			type: "segment",
+			source: "verified-cross-room-context",
+			createdAt: memory.createdAt,
+			segment: {
+				id: `verified-cross-room:${memory.id}`,
+				label: isOwnReply
+					? "verified_cross_room_message:agent"
+					: "verified_cross_room_message:user",
+				content: priorDialogueContent(content, speakerName),
+				stable: false,
+				metadata: {
+					roomId: memory.roomId,
+					entityId: memory.entityId,
+					disclosureBasis: OWNER_PRIVATE_DESTINATION_DISCLOSURE_BASIS,
 					...(speakerName ? { speakerName } : {}),
 				},
 			},

@@ -187,6 +187,26 @@ async function run(
 }
 
 describe("MESSAGE authorized world and room discovery", () => {
+	it("is eligible when Stage 1 routes topology discovery to the world context", async () => {
+		const h = harness();
+		await expect(
+			messageAction.validate(h.runtime, h.message, {
+				values: { __contextRouting: { primaryContext: "world" } },
+				data: {},
+				text: "",
+			}),
+		).resolves.toBe(true);
+	});
+
+	it("accepts an explicit topology read without model routing state", async () => {
+		const h = harness();
+		await expect(
+			messageAction.validate(h.runtime, h.message, undefined, {
+				parameters: { action: "list_worlds" },
+			}),
+		).resolves.toBe(true);
+	});
+
 	it("discovers worlds shared through any linked requester account", async () => {
 		const h = harness();
 		const result = await run(h, { action: "list_worlds" });

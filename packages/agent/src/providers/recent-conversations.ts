@@ -58,6 +58,10 @@ export const recentConversationsProvider: Provider = {
   descriptionCompressed:
     "recent message user conversation across connect platform",
   dynamic: true,
+  // Cross-world continuity must be available to the response router itself;
+  // waiting for a memory/messaging context selection is too late for a direct
+  // recall answer. The owner-private audience gate below remains authoritative.
+  alwaysInResponseState: true,
   position: 5,
   relevanceKeywords: getValidationKeywordTerms(
     "provider.recentConversations.relevance",

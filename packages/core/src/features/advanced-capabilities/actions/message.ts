@@ -122,7 +122,13 @@ export const MESSAGE_OPS = [
 
 export type MessageOperation = (typeof MESSAGE_OPS)[number];
 
-const MESSAGE_CONTEXTS = ["messaging", "email", "contacts", "connectors"];
+const MESSAGE_CONTEXTS = [
+	"messaging",
+	"email",
+	"contacts",
+	"connectors",
+	"world",
+];
 
 const MESSAGE_DESCRIPTION =
 	"Addressed messaging action: DMs, groups, channels, rooms, threads, servers, users, inboxes, drafts, and authorized cross-world continuity. Use list_worlds to discover durable worlds shared by the verified requester and this agent, list_rooms to inspect the current or an authorized worldId, and read_message to page an exact provider message or email body. Public feed publishing uses POST.";
@@ -5551,8 +5557,15 @@ export const messageAction: Action = {
 	roleGate: { minRole: "ADMIN" },
 	parameters: MESSAGE_PARAMETERS,
 	examples: (spec?.examples ?? []) as ActionExample[][],
-	validate: async (runtime, message, state) => {
+	validate: async (runtime, message, state, options) => {
 		refreshDescriptions(messageAction, runtime);
+		const explicitOp = inferOp(paramsFromOptions(options));
+		if (explicitOp === "list_worlds" || explicitOp === "list_rooms") {
+			// Scenario and API callers may invoke an explicit topology read without
+			// a model-composed routing state. The handlers still revalidate the
+			// owner-private audience and authorized room intersection themselves.
+			return true;
+		}
 		return hasActionContext(message, state, {
 			contexts: MESSAGE_CONTEXTS,
 		});

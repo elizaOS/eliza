@@ -999,9 +999,25 @@ export async function resolveCanonicalOwnerIdForMessage(
 	runtime: IAgentRuntime,
 	message: Memory,
 ): Promise<string | null> {
-	const configuredOwnerId = resolveCanonicalOwnerId(runtime);
-	if (configuredOwnerId) {
-		return configuredOwnerId;
+	const configuredOwnerIds = getConfiguredOwnerEntityIds(runtime);
+	if (configuredOwnerIds.length > 0) {
+		// A connector-specific owner principal is the canonical owner for its
+		// current destination when it was configured directly or the principal
+		// authority verifies its owner binding. Keeping the live principal here
+		// lets the delivery-audience census prove the actual two-party DM rather
+		// than comparing a Discord principal to a Telegram-shaped owner UUID.
+		if (configuredOwnerIds.includes(message.entityId)) {
+			return message.entityId;
+		}
+		const verifiedBinding = await resolveIdentityOwnerBinding(
+			runtime,
+			message.entityId,
+			configuredOwnerIds as UUID[],
+		);
+		if (verifiedBinding === true) {
+			return message.entityId;
+		}
+		return configuredOwnerIds[0] ?? null;
 	}
 
 	const resolved = await resolveWorldForMessage(runtime, message);
