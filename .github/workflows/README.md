@@ -6,20 +6,20 @@ runners, environments, and a concise job graph.
 
 ## Required validation
 
-`ci.yml` is the canonical pull-request, merge-queue, and `develop` branch-health
-workflow. Pull requests targeting `develop` or `main` and every `merge_group`
-candidate run the same fail-closed job graph. Branch rules require only its stable
-`CI / All Tests Passed` aggregate, which succeeds only when every mandatory lane
-succeeds; individual lane names may evolve without silently weakening admission.
-Manual diagnostics use independent concurrency groups, PR and merge candidates
-supersede stale runs, and `develop` pushes share a never-cancelled terminal group.
-GitHub's default single-pending queue therefore lets the running push finish while
-retaining only the newest waiting tip instead of accumulating every merge-wave run.
+`pr-static-smoke.yml` is the sole pull-request and merge-candidate workflow. It
+publishes the stable `All Tests Passed` context after proving the exact candidate
+is mergeable, checking its diff and conflict markers, scanning its commits for
+secrets, linting changed workflow definitions, performing a frozen install, and
+building plus linting and typechecking the affected workspace closure. It does
+not run tests, scenarios, live providers, devices, deployments, or destructive
+effects. New commits cancel stale work for the same pull request or merge group.
 
-`merge-candidate-biome.yml` remains a defense-in-depth merge-queue check of
-GitHub's synthesized candidate tree. It runs the repository-pinned full lint and
-format contracts, but it is not a separately required context because canonical
-CI already covers those contracts and publishes the single admission aggregate.
+`ci.yml` is currently the primary develop validation graph. A newer develop tip
+cancels its older read-only run. It remains directly push-triggered during the
+trigger-authority migration; the next consolidation slice must put this graph
+and the other develop validation families behind one `Develop Full` entry point.
+Until that lands, a green `ci.yml` run is not the complete-manifest develop
+verdict and must not be represented as one.
 
 `.github/rulesets/required-branches.json` is the reviewed no-bypass ruleset
 manifest for `develop` and `main`. `scripts/security/apply-branch-protection.sh`
@@ -84,11 +84,7 @@ title check cover narrower contracts. None replaces the required
 `All Tests Passed` aggregate.
 Representative examples:
 
-- `develop-pr.yml` is called from canonical `ci.yml` for `develop`-targeted PRs
-  and runs lint, typecheck, build, changed-plugin tests, and pinned `actionlint`.
-  It has no direct pull-request trigger, so outside contributors encounter only
-  the canonical workflow's approval boundary.
-- `gitleaks.yml` scans protected-branch pushes. Canonical `ci.yml` owns the
+- `gitleaks.yml` scans protected-branch pushes. `pr-static-smoke.yml` owns the
   equivalent diff-scoped pull-request secret scan on a hosted runner.
 - `quality.yml` supplies the extended homepage build and workspace format gate
   for `main`-targeted PRs and post-merge pushes, including the single
@@ -98,9 +94,9 @@ Representative examples:
 - `ui-e2e-gate.yml` and `ui-fixture-e2e.yml` run the packages/ui Chromium and
   WebKit fixture gates when `packages/ui/src/**` changes.
 - `device-e2e.yml` is the exact-head Android-emulator and iOS-simulator
-  device-bundle producer (#19640). Canonical `ci.yml` calls it only for PRs
-  carrying the `ci:device` label; `workflow_dispatch` is the on-demand route,
-  and a weekly cadence hard-gates only the explicit host-safe Android subset;
+  device-bundle producer (#19640). Pull requests never call it;
+  `workflow_dispatch` is the on-demand route, and a weekly cadence currently
+  hard-gates only the explicit host-safe Android subset;
   scheduled runs do not allocate the macOS/iOS job. A scheduled Android
   non-success opens, updates, or reopens one stable failure issue containing
   exact run-attempt, attempt-scoped artifact, and revision links; the next

@@ -1,4 +1,4 @@
-/** Exercises the policy that permits one canonical PR/merge aggregate, reserves other PR-adjacent triggers, and restricts branch pushes to develop. */
+/** Exercises the policy that permits only PR Static Smoke for PR/merge events and restricts branch pushes to develop. */
 
 import { describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -29,15 +29,20 @@ function validateFixture(
   }
 }
 
-const canonicalCi = `name: CI
+const canonicalAdmission = `name: PR Static Smoke
 on:
   pull_request:
     branches: [develop, main]
-    types: [opened, synchronize, reopened, ready_for_review, labeled, unlabeled]
-  push:
-    branches: [develop]
+    types: [opened, synchronize, reopened, ready_for_review]
   merge_group:
     types: [checks_requested]
+jobs: {}
+`;
+
+const developPush = `name: Develop Full
+on:
+  push:
+    branches: [develop]
 jobs: {}
 `;
 
@@ -84,39 +89,45 @@ jobs: {}
     ).toThrow(/forbidden pull-request event trigger/);
   });
 
-  test("reserves pull_request for the canonical CI workflow", () => {
+  test("reserves pull_request for PR Static Smoke", () => {
     expect(() =>
       validateFixture(
         "on:\n  push:\n    branches: [develop]\n  pull_request:\n    branches: [develop, main]\n    types: [opened, synchronize, reopened, ready_for_review, labeled, unlabeled]\njobs: {}\n",
       ),
-    ).toThrow(/pull_request is reserved for ci\.yml/);
+    ).toThrow(/pull_request is reserved for pr-static-smoke\.yml/);
   });
 
-  test("accepts the exact canonical PR and merge-group aggregate", () => {
-    const root = buildRepo({ "ci.yml": canonicalCi });
+  test("accepts the exact PR Static Smoke and develop authorities", () => {
+    const root = buildRepo({
+      "pr-static-smoke.yml": canonicalAdmission,
+      "develop-full.yml": developPush,
+    });
     try {
       expect(validateWorkflowTriggerPolicy(root)).toEqual({
         developPushWorkflows: 1,
-        files: 1,
+        files: 2,
       });
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
   });
 
-  test("fails closed when canonical CI loses either admission trigger", () => {
+  test("fails closed when PR Static Smoke loses either admission trigger", () => {
     const variants = [
-      canonicalCi.replace(
-        /  pull_request:\n    branches: \[develop, main\]\n    types: \[opened, synchronize, reopened, ready_for_review, labeled, unlabeled\]\n/,
+      canonicalAdmission.replace(
+        / {2}pull_request:\n {4}branches: \[develop, main\]\n {4}types: \[opened, synchronize, reopened, ready_for_review\]\n/,
         "",
       ),
-      canonicalCi.replace(
-        /  merge_group:\n    types: \[checks_requested\]\n/,
+      canonicalAdmission.replace(
+        / {2}merge_group:\n {4}types: \[checks_requested\]\n/,
         "",
       ),
     ];
     for (const workflow of variants) {
-      const root = buildRepo({ "ci.yml": workflow });
+      const root = buildRepo({
+        "pr-static-smoke.yml": workflow,
+        "develop-full.yml": developPush,
+      });
       try {
         expect(() => validateWorkflowTriggerPolicy(root)).toThrow(
           /canonical (pull_request|merge_group) trigger is absent or invalid/,
@@ -127,24 +138,12 @@ jobs: {}
     }
   });
 
-  test("reserves merge_group for canonical CI and candidate Biome", () => {
+  test("reserves merge_group for PR Static Smoke", () => {
     expect(() =>
       validateFixture(
         `on:\n  push:\n    branches: [develop]\n  merge_group:\n    types: [checks_requested]\njobs: {}\n`,
       ),
     ).toThrow(/merge_group is reserved/);
-    const root = buildRepo({
-      "ci.yml": canonicalCi,
-      "merge-candidate-biome.yml": `on:\n  merge_group:\n    types: [checks_requested]\njobs: {}\n`,
-    });
-    try {
-      expect(validateWorkflowTriggerPolicy(root)).toEqual({
-        developPushWorkflows: 1,
-        files: 2,
-      });
-    } finally {
-      rmSync(root, { recursive: true, force: true });
-    }
   });
 
   test("rejects an unrestricted push", () => {
@@ -161,7 +160,7 @@ jobs: {}
     }
   });
 
-  test("the checked-in workflows expose only the canonical aggregate and develop pushes", () => {
+  test("the checked-in workflows expose only PR Static Smoke and develop pushes", () => {
     const result = validateWorkflowTriggerPolicy(REAL_REPO_ROOT);
     expect(result.files).toBeGreaterThan(40);
     expect(result.developPushWorkflows).toBeGreaterThan(15);
