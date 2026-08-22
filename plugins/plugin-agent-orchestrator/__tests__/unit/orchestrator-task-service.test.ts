@@ -1603,6 +1603,21 @@ describe("OrchestratorTaskService — event bridge session status", () => {
     expect(session.taskDelivered).toBe(true);
     expect(session.completionSummary).toBe("shipped it");
     expect(session.stoppedAt).toBeTruthy();
+    const completionEvent = must(
+      (await service.getTask(taskId))?.events.find(
+        (event) => event.eventType === "task_complete",
+      ),
+      "completion event",
+    );
+    expect(completionEvent.data.childTerminalResult).toMatchObject({
+      schemaVersion: 1,
+      status: "completed",
+      summary: "shipped it",
+      evidence: { required: true, present: false, sufficient: false },
+      lineage: { taskId, sessionId },
+      verificationStatus: "pending",
+      deliveryStatus: "unknown",
+    });
   });
 
   it("keeps verifier feedback out of the corrected retry's evidence", async () => {

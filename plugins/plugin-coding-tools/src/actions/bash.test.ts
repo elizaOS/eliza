@@ -50,6 +50,7 @@ import {
 } from "../types.js";
 
 import {
+  boundedShellText,
   type CommandPlatform,
   localResourceUserFacingText,
   resolveCommandPlatform,
@@ -620,6 +621,105 @@ describeIfPosix("shellAction", () => {
     expect(posts[0].text).toContain(lines[299]);
     expect(posts[0].text).toMatch(/\[\d+ lines omitted — ask to see more\]/);
     expect(posts[0].text.length).toBeLessThan(1700);
+  });
+
+  it("hard-bounds the artifact notice for unusually long state paths", () => {
+    const longPath = `/state/${"nested-segment/".repeat(3_000)}`;
+    const bounded = boundedShellText("output-line\n".repeat(10_000), {
+      handle: "shell_worst_case_notice",
+      manifestPath: `${longPath}manifest.json`,
+      stdoutPath: `${longPath}stdout.txt`,
+      stderrPath: `${longPath}stderr.txt`,
+      createdAt: "2026-08-21T00:00:00.000Z",
+      expiresAt: "2026-08-21T00:30:00.000Z",
+      retentionMs: 1_800_000,
+      stdout: { characters: 120_000, bytes: 120_000, lines: 10_000 },
+      stderr: { characters: 0, bytes: 0, lines: 0 },
+    });
+
+    expect(bounded.truncated).toBe(true);
+    expect(bounded.text.length).toBeLessThanOrEqual(50_000);
+    expect(bounded.text).toContain("shell_worst_case_notice");
+    expect(bounded.text).toContain("manifest: /state/nested-segment/");
+  });
+
+  it("persists complete redacted output for a truncated real foreground shell", async () => {
+    const stateDir = await fs.mkdtemp(
+      path.join(os.tmpdir(), "coding-tools-shell-artifact-"),
+    );
+    const previousStateDir = process.env.ELIZA_STATE_DIR;
+    const previousJobTtl = process.env.SHELL_JOB_TTL_MS;
+    process.env.ELIZA_STATE_DIR = stateDir;
+    process.env.SHELL_JOB_TTL_MS = "60000";
+    const artifactRoot = path.join(stateDir, "coding-tools", "shell-output");
+    const staleArtifact = path.join(artifactRoot, "shell_stale");
+    const secret = "marigold9-artifact-secret";
+    try {
+      await fs.mkdir(staleArtifact, { recursive: true });
+      await fs.writeFile(path.join(staleArtifact, "stdout.txt"), "stale");
+      const staleDate = new Date(Date.now() - 120_000);
+      await fs.utimes(staleArtifact, staleDate, staleDate);
+      const { runtime } = await makeRuntime({ configuredSecret: secret });
+      const script = [
+        `process.stdout.write(${JSON.stringify("row\n")}.repeat(14000));`,
+        `process.stdout.write(${JSON.stringify(secret)});`,
+        `process.stderr.write(${JSON.stringify("stderr-tail\n")});`,
+      ].join("");
+
+      const result = requireActionResult(
+        await shellAction.handler?.(runtime, makeMessage(), undefined, {
+          command: `node -e ${JSON.stringify(script)}`,
+        }),
+      );
+      const data = result.data as Record<string, unknown>;
+      const manifestPath = data.output_artifact_path as string;
+      const stdoutPath = data.output_artifact_stdout_path as string;
+      const stderrPath = data.output_artifact_stderr_path as string;
+      const stdout = await fs.readFile(stdoutPath, "utf8");
+      const stderr = await fs.readFile(stderrPath, "utf8");
+      const manifest = JSON.parse(await fs.readFile(manifestPath, "utf8")) as {
+        stdout: { bytes: number; lines: number };
+        stderr: { bytes: number; lines: number };
+        truncation: { modelCharacterLimit: number; completeBytes: number };
+      };
+
+      expect(result.success).toBe(true);
+      expect(result.text.length).toBeLessThanOrEqual(50_000);
+      expect(result.text).toContain("complete redacted artifact shell_");
+      expect(data.output_truncated).toBe(true);
+      expect(data.output_artifact_handle).toMatch(/^shell_/);
+      expect(stdout).toBe(`${"row\n".repeat(14000)}[REDACTED:TEST_SECRET]`);
+      expect(stderr).toBe("stderr-tail\n");
+      expect(JSON.stringify(result)).not.toContain(secret);
+      expect(await fs.readFile(manifestPath, "utf8")).not.toContain(secret);
+      expect(manifest.stdout).toEqual({
+        path: stdoutPath,
+        characters: stdout.length,
+        bytes: Buffer.byteLength(stdout),
+        lines: 14001,
+      });
+      expect(manifest.stderr).toEqual({
+        path: stderrPath,
+        characters: stderr.length,
+        bytes: Buffer.byteLength(stderr),
+        lines: 1,
+      });
+      expect(manifest.truncation.modelCharacterLimit).toBe(50_000);
+      expect(manifest.truncation.completeBytes).toBe(
+        Buffer.byteLength(stdout) + Buffer.byteLength(stderr),
+      );
+      expect((await fs.stat(manifestPath)).mode & 0o777).toBe(0o600);
+      expect((await fs.stat(path.dirname(manifestPath))).mode & 0o777).toBe(
+        0o700,
+      );
+      expect(await pathExists(staleArtifact)).toBe(false);
+    } finally {
+      if (previousStateDir === undefined) delete process.env.ELIZA_STATE_DIR;
+      else process.env.ELIZA_STATE_DIR = previousStateDir;
+      if (previousJobTtl === undefined) delete process.env.SHELL_JOB_TTL_MS;
+      else process.env.SHELL_JOB_TTL_MS = previousJobTtl;
+      await fs.rm(stateDir, { recursive: true, force: true });
+    }
   });
 
   it("marks empty stdout and stderr explicitly for successful commands", async () => {

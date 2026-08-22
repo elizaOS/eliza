@@ -59,6 +59,7 @@ import {
   type SerializableSpawnOpts,
 } from "./admission-queue.js";
 import { assignAgentName } from "./agent-name-assignment.js";
+import { deriveChildTerminalResult } from "./child-terminal-result.js";
 import {
   extractWriteLedger,
   verifyClaimedFiles,
@@ -1603,6 +1604,17 @@ export class OrchestratorTaskService extends Service {
           ? snapshotTaskId
           : await this.resolveTaskId(sessionId);
       if (!taskId) return;
+      const rawData = isRecord(data) ? data : { value: data };
+      const taskDoc = await this.store.getTask(taskId);
+      const childTerminalResult = taskDoc
+        ? deriveChildTerminalResult(taskDoc, {
+            eventType: event,
+            sessionId,
+            summary: describeEvent(event, data),
+            data: rawData,
+            timestamp: Date.now(),
+          })
+        : undefined;
       await this.store.addEvent({
         id: randomUUID(),
         taskId,
@@ -1610,7 +1622,10 @@ export class OrchestratorTaskService extends Service {
         ...(turnId ? { turnId } : {}),
         eventType: event,
         summary: describeEvent(event, data),
-        data: isRecord(data) ? data : { value: data },
+        data: {
+          ...rawData,
+          ...(childTerminalResult ? { childTerminalResult } : {}),
+        },
         timestamp: Date.now(),
         createdAt: nowIso(),
       });
