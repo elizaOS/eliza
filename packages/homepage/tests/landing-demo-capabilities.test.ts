@@ -80,8 +80,7 @@ describe("landing Shared-agent capability contract", () => {
             step.kind === "place" ||
             step.kind === "task-list" ||
             step.kind === "handoff" ||
-            step.kind === "itinerary" ||
-            step.kind === "heat-plan",
+            step.kind === "itinerary",
         ),
       ).toBe(true);
     }
@@ -115,10 +114,11 @@ describe("landing Shared-agent capability contract", () => {
         "co-parenting": "handoff",
         friends: "place",
         trip: "itinerary",
-        community: "heat-plan",
       }[scenario.id];
-      expect(scenario.steps).toHaveLength(21);
-      expect(scenario.steps.at(-1)?.kind).toBe(expectedAttachment);
+      expect(scenario.steps).toHaveLength(
+        scenario.id === "community" ? 20 : 21,
+      );
+      expect(scenario.steps.at(-1)?.kind).toBe(expectedAttachment ?? "eliza");
       expect(
         scenario.steps.filter((step) => step.kind === "eliza").length,
       ).toBeGreaterThanOrEqual(5);
@@ -191,8 +191,8 @@ describe("landing Shared-agent capability contract", () => {
     ).toBe(false);
   });
 
-  test("ends every room with one distinct native attachment", () => {
-    const attachments = LANDING_DEMO_SCENARIOS.map((scenario) =>
+  test("uses one distinct native attachment in each visual prototype room", () => {
+    const attachments = LANDING_DEMO_SCENARIOS.slice(0, 4).map((scenario) =>
       scenario.steps.at(-1),
     );
 
@@ -201,7 +201,6 @@ describe("landing Shared-agent capability contract", () => {
       "handoff",
       "place",
       "itinerary",
-      "heat-plan",
     ]);
     expect(
       attachments.every(
@@ -211,19 +210,20 @@ describe("landing Shared-agent capability contract", () => {
           step?.kind !== "user",
       ),
     ).toBe(true);
+    expect(
+      LANDING_DEMO_SCENARIOS.find(
+        (scenario) => scenario.id === "community",
+      )?.steps.at(-1)?.kind,
+    ).toBe("eliza");
   });
 
-  test("keeps the three coordination attachments synced with their chats", () => {
+  test("keeps the coordination attachments synced with their chats", () => {
     const coParenting = LANDING_DEMO_SCENARIOS.find(
       (scenario) => scenario.id === "co-parenting",
     )?.steps.at(-1);
     const trip = LANDING_DEMO_SCENARIOS.find(
       (scenario) => scenario.id === "trip",
     )?.steps.at(-1);
-    const community = LANDING_DEMO_SCENARIOS.find(
-      (scenario) => scenario.id === "community",
-    )?.steps.at(-1);
-
     expect(coParenting).toMatchObject({
       kind: "handoff",
       handoff: {
@@ -241,18 +241,6 @@ describe("landing Shared-agent capability contract", () => {
           { label: "Drop bags" },
           { label: "Get lunch" },
           { label: "Apartment" },
-        ],
-      },
-    });
-    expect(community).toMatchObject({
-      kind: "heat-plan",
-      heatPlan: {
-        title: "Friday Weather",
-        schedule: [
-          { task: "Water seedlings" },
-          { task: "Water west bed" },
-          { task: "Check mulch" },
-          { task: "Hose by gate" },
         ],
       },
     });

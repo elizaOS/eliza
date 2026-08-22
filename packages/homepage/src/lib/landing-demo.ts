@@ -174,11 +174,6 @@ export type LandingDemoStep =
       capability: "public-web-search";
       itinerary: LandingDemoItinerary;
       kind: "itinerary";
-    }
-  | {
-      capability: "scheduled-reminder";
-      heatPlan: LandingDemoHeatPlan;
-      kind: "heat-plan";
     };
 
 export interface LandingDemoPlace {
@@ -211,15 +206,6 @@ export interface LandingDemoItinerary {
   stops: readonly {
     label: string;
     time: string;
-  }[];
-  title: string;
-}
-
-export interface LandingDemoHeatPlan {
-  schedule: readonly {
-    assignee: string;
-    day: string;
-    task: string;
   }[];
   title: string;
 }
@@ -668,19 +654,6 @@ const LANDING_DEMO_SCENARIO_DEFINITIONS: readonly LandingDemoScenario[] = [
         kind: "eliza",
         text: "Your Saturday reminder now starts with the heat-sensitive seedlings, then the west bed. Rosa checks mulch Tuesday, and Tasha leaves the hose at the gate. No extra garden trip needed.",
       },
-      {
-        capability: "scheduled-reminder",
-        kind: "heat-plan",
-        heatPlan: {
-          title: "Friday Weather",
-          schedule: [
-            { day: "SAT", task: "Water seedlings", assignee: "You" },
-            { day: "SAT", task: "Water west bed", assignee: "You" },
-            { day: "TUE", task: "Check mulch", assignee: "Rosa" },
-            { day: "SAT", task: "Hose by gate", assignee: "Tasha" },
-          ],
-        },
-      },
     ],
   },
 ];
@@ -732,16 +705,6 @@ export function landingDemoStepText(step: LandingDemoStep): string {
     return [
       step.itinerary.title,
       ...step.itinerary.stops.flatMap((stop) => [stop.time, stop.label]),
-    ].join(" ");
-  }
-  if (step.kind === "heat-plan") {
-    return [
-      step.heatPlan.title,
-      ...step.heatPlan.schedule.flatMap((item) => [
-        item.day,
-        item.task,
-        item.assignee,
-      ]),
     ].join(" ");
   }
   return step.text;
