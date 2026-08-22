@@ -219,6 +219,9 @@ realPostgres("app and initial API-key atomicity", () => {
     const initializedAppsService = appsService;
     const initializedApiKeysRepository = apiKeysRepository;
 
+    const initializedAppsService = appsService;
+    const initializedApiKeysRepository = apiKeysRepository;
+
     const suffix = randomUUID();
     const [organization] = await dbWrite
       .insert(organizations)
