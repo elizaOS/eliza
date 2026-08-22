@@ -32,6 +32,7 @@ import {
   ChatOverlay,
   desktopPillTravelerOffset,
   desktopPillTravelerOpacity,
+  desktopSheetGrabberOpacity,
   grabberBarOpacity,
   PILL_MORPH_MIN_SCALE,
   pillHandleCounterScale,
@@ -179,12 +180,12 @@ describe("detached desktop pill traveler handoff", () => {
     expect(desktopPillTravelerOffset(1, 64, 12)).toBe(-52);
   });
 
-  it("keeps exactly one mark visible while handing off to the grabber", () => {
-    for (const progress of [0, 0.25, 0.55, 0.75, 0.95, 1]) {
-      expect(
-        desktopPillTravelerOpacity(progress, 0) +
-          grabberBarOpacity(progress, 0),
-      ).toBeCloseTo(1, 10);
+  it("keeps exactly one mark painted while handing off to the grabber", () => {
+    for (const progress of [0, 0.25, 0.55, 0.75, 0.95, 0.994, 0.995, 1]) {
+      const traveler = desktopPillTravelerOpacity(progress, 0);
+      const fixedGrabber = desktopSheetGrabberOpacity(progress, 0);
+      expect(traveler + fixedGrabber).toBe(1);
+      expect(traveler * fixedGrabber).toBe(0);
     }
   });
 
@@ -192,6 +193,7 @@ describe("detached desktop pill traveler handoff", () => {
     expect(desktopPillTravelerOpacity(0, 1)).toBe(0);
     expect(desktopPillTravelerOpacity(0.75, 1)).toBe(0);
     expect(desktopPillTravelerOpacity(1, 1)).toBe(0);
+    expect(desktopSheetGrabberOpacity(1, 1)).toBe(0);
   });
 });
 

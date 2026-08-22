@@ -4380,6 +4380,28 @@ describe("ChatOverlay single-thread (no chat swipe, #13531)", () => {
     expect(sheet.getAttribute("data-chat-state")).toBe("INPUT");
   });
 
+  it("keeps the first typed glyph in the stable detached composer detent", () => {
+    const onWindowSizeClassChange = vi.fn();
+    render(
+      <ChatOverlay
+        controller={makeSwipeController().controller}
+        desktopOverlayHost
+        initialMode="input"
+        onWindowSizeClassChange={onWindowSizeClassChange}
+      />,
+    );
+    const sheet = screen.getByTestId("chat-sheet");
+    const input = screen.getByTestId("chat-composer-textarea");
+
+    fireEvent.focus(input);
+    fireEvent.change(input, { target: { value: "h" } });
+
+    expect((input as HTMLTextAreaElement).value).toBe("h");
+    expect(sheet.dataset.detent).toBe("collapsed");
+    expect(sheet.dataset.chatState).toBe("INPUT");
+    expect(onWindowSizeClassChange).toHaveBeenLastCalledWith("input");
+  });
+
   it("gives the detached resting pill one visible forgiving hit target", () => {
     render(
       <ChatOverlay

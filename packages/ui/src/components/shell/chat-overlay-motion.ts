@@ -28,18 +28,39 @@ export function grabberBarOpacity(
   return openFade * (1 - clamp01(fullBleedProgress));
 }
 
+// Hand off the detached desktop handle only once both variants occupy the same
+// pixels. A short threshold avoids relying on a spring landing on exactly 1.
+const DESKTOP_HANDLE_HANDOFF_PROGRESS = 0.995;
+
+/**
+ * Opacity for the detached desktop's fixed sheet grabber. Unlike the embedded
+ * crossfade, it must never overlap the traveling mark: the user can see their
+ * distinct positions while dragging between the resting pill and composer.
+ */
+export function desktopSheetGrabberOpacity(
+  openProgress: number,
+  fullBleedProgress: number,
+): number {
+  const ownsHandle =
+    clamp01(openProgress) >= DESKTOP_HANDLE_HANDOFF_PROGRESS ? 1 : 0;
+  return ownsHandle * (1 - clamp01(fullBleedProgress));
+}
+
 /**
  * Opacity for the detached desktop's traveling resting handle. It remains one
- * continuous mark through the pill-to-composer motion, then hands off in place
- * to the sheet grabber. Full-bleed always suppresses it so the restore handle
- * is the only white mark at the top edge.
+ * continuous mark through the whole pill-to-composer motion, then hands off in
+ * place to the sheet grabber. There is deliberately no crossfade: two handles
+ * at different positions read as a duplicate even when their alpha sums to
+ * one. Full-bleed always suppresses it so the restore handle is the only white
+ * mark at the top edge.
  */
 export function desktopPillTravelerOpacity(
   openProgress: number,
   fullBleedProgress: number,
 ): number {
-  const grabberHandoff = clamp01((openProgress - 0.55) / 0.4);
-  return (1 - grabberHandoff) * (1 - clamp01(fullBleedProgress));
+  const ownsHandle =
+    clamp01(openProgress) < DESKTOP_HANDLE_HANDOFF_PROGRESS ? 1 : 0;
+  return ownsHandle * (1 - clamp01(fullBleedProgress));
 }
 
 /** Bottom-anchored travel from the resting host to the input's top edge. */

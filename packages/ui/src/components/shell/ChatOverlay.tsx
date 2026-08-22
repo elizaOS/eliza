@@ -142,6 +142,7 @@ import {
   clamp01,
   desktopPillTravelerOffset,
   desktopPillTravelerOpacity,
+  desktopSheetGrabberOpacity,
   grabberBarOpacity,
   pillHandleCounterScale,
   pillMorphScale,
@@ -455,6 +456,7 @@ const FULLSCREEN_RELEASE_HYSTERESIS_PX = 12;
 export {
   desktopPillTravelerOffset,
   desktopPillTravelerOpacity,
+  desktopSheetGrabberOpacity,
   grabberBarOpacity,
   PILL_MORPH_MIN_SCALE,
   pillHandleCounterScale,
@@ -3589,6 +3591,10 @@ export function ChatOverlay({
     [openProgress, fullBleedT] as MotionValue<number>[],
     ([p, t]: number[]) => grabberBarOpacity(p, t),
   );
+  const desktopGrabberOpacity = useTransform(
+    [openProgress, fullBleedT] as MotionValue<number>[],
+    ([p, t]: number[]) => desktopSheetGrabberOpacity(p, t),
+  );
   // Detached macOS uses one continuous white mark instead of two bars with a
   // dead crossfade between them. The resting 64x12 pill travels from the
   // wrapper's bottom edge to its top while shrinking to the composer's 48x6
@@ -4478,15 +4484,16 @@ export function ChatOverlay({
     setFreeH(null);
     goToDetent("half");
   }, [goToDetent, pinnedOpen, voiceConversationActive]);
-  // Typing re-asserts the open but must NOT re-snapshot the pre-focus state:
-  // the sheet is open by then, so re-snapshotting on every keystroke read
-  // "open-before-focus" and a keyboard dismiss no longer returned a
-  // collapsed-before-focus sheet to the INPUT bar. Only the focus edge (and
-  // deliberate programmatic opens) record the restore point.
-  const expandFromTyping = React.useCallback(
-    () => expandCore(false),
-    [expandCore],
-  );
+  // Typing re-asserts the open on embedded/browser surfaces but must NOT
+  // re-snapshot the pre-focus state: the sheet is open by then, so doing that
+  // on every keystroke read "open-before-focus" and broke keyboard dismissal.
+  // The detached desktop composer is intentionally a stable detent: opening
+  // its transcript on the first glyph repainted the draft while the native
+  // envelope changed size, producing a visible text flash. Its grabber remains
+  // the explicit transcript disclosure control.
+  const expandFromTyping = React.useCallback(() => {
+    if (!desktopOverlayHost) expandCore(false);
+  }, [desktopOverlayHost, expandCore]);
 
   // Reveal edge: the thread just became showable. If a focus→expand was parked
   // while there was nothing to reveal (see expand above), honor it now — but
@@ -6339,7 +6346,9 @@ export function ChatOverlay({
             // read as noise. Only the collapsed PILL (where no composer glyph
             // is visible) pulses for a live capture — see PillHandle below.
             breathing={(listening || responding) && !recording}
-            opacity={grabberOpacity}
+            opacity={
+              desktopOverlayHost ? desktopGrabberOpacity : grabberOpacity
+            }
             pilled={pilled}
           />
         ) : null}
