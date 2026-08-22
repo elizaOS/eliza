@@ -15,6 +15,7 @@ import { searchMessagesAction } from "../messaging/triage/actions/searchMessages
 import {
 	CHANNEL_RECAP_DEFAULT_COUNT,
 	CHANNEL_RECAP_MAX_FETCH,
+	CHANNEL_RECAP_TRANSCRIPT_FIT_CHARS,
 	channelRecapAction,
 } from "./actions/channel-recap.ts";
 import { basicActions } from "./index.ts";
@@ -323,5 +324,76 @@ describe("CHANNEL_RECAP count contract", () => {
 				expect.objectContaining({ count: CHANNEL_RECAP_DEFAULT_COUNT }),
 			);
 		}
+	});
+});
+
+describe("CHANNEL_RECAP transcript fit bound and offset paging", () => {
+	const ROOM = "00000000-0000-4000-8000-00000000f1f1" as UUID;
+
+	it("serves only the newest messages that fit, complete, with an explicit continuation offset", async () => {
+		// 20 messages of ~9K chars each — far past the fit bound in aggregate.
+		const rows = Array.from({ length: 20 }, (_, i) =>
+			makeMessage(ROOM, 1_000 + i, `M${i}-${"x".repeat(9_000)}`),
+		);
+		const { runtime } = makeRuntime({ [ROOM]: rows });
+		const result = (await channelRecapAction.handler(
+			runtime,
+			incoming(ROOM),
+			undefined,
+			{ parameters: { count: 20 } },
+		)) as ActionResult;
+		expect(result.success).toBe(true);
+		const scope = (result.data as { scope: Record<string, unknown> }).scope;
+		const rendered = scope.renderedCount as number;
+		expect(rendered).toBeGreaterThan(0);
+		expect(rendered).toBeLessThan(20);
+		// Every served message is COMPLETE (newest ones), none clipped.
+		for (let i = 20 - rendered; i < 20; i++) {
+			expect(result.text).toContain(`M${i}-${"x".repeat(9_000)}`);
+		}
+		// The continuation contract is explicit.
+		expect(scope.olderRemaining).toBe(20 - rendered);
+		expect(scope.continuationOffset).toBe(rendered);
+		expect(result.text).toContain(`offset=${rendered}`);
+	});
+
+	it("offset pages into older history and reports the exact range", async () => {
+		const rows = Array.from({ length: 12 }, (_, i) =>
+			makeMessage(ROOM, 1_000 + i, `msg-${i}`),
+		);
+		const { runtime } = makeRuntime({ [ROOM]: rows });
+		const result = (await channelRecapAction.handler(
+			runtime,
+			incoming(ROOM),
+			undefined,
+			{ parameters: { count: 4, offset: 4 } },
+		)) as ActionResult;
+		expect(result.success).toBe(true);
+		// newest-first rows: offset 4 skips msg-11..msg-8; serves msg-7..msg-4.
+		for (const i of [7, 6, 5, 4]) expect(result.text).toContain(`msg-${i}`);
+		for (const i of [11, 10, 9, 8, 3]) {
+			expect(result.text).not.toContain(`msg-${i}\n`);
+		}
+		expect(result.text).toContain("messages 5–8 back");
+	});
+
+	it("a single message larger than the fit bound is served alone, complete", async () => {
+		const giant = "G".repeat(CHANNEL_RECAP_TRANSCRIPT_FIT_CHARS + 5_000);
+		const rows = [
+			makeMessage(ROOM, 1_000, "older small"),
+			makeMessage(ROOM, 2_000, giant),
+		];
+		const { runtime } = makeRuntime({ [ROOM]: rows });
+		const result = (await channelRecapAction.handler(
+			runtime,
+			incoming(ROOM),
+			undefined,
+			{ parameters: { count: 2 } },
+		)) as ActionResult;
+		expect(result.success).toBe(true);
+		expect(result.text).toContain(giant);
+		const scope = (result.data as { scope: Record<string, unknown> }).scope;
+		expect(scope.renderedCount).toBe(1);
+		expect(scope.continuationOffset).toBe(1);
 	});
 });
