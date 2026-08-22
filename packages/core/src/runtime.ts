@@ -6498,6 +6498,7 @@ export class AgentRuntime implements IAgentRuntime {
 				? record.model.trim()
 				: undefined;
 		return buildModelInputBudget({
+			completeRequest: params,
 			messages: Array.isArray(record.messages)
 				? (record.messages as GenerateTextParams["messages"])
 				: undefined,
@@ -6527,6 +6528,58 @@ export class AgentRuntime implements IAgentRuntime {
 			),
 			estimationMode: "utf8-upper-bound",
 		});
+	}
+
+	/** Clone caller-owned request data before runtime transforms. Arrays and
+	 * plain records become handler-owned; opaque transport collaborators retain
+	 * identity because cloning them would change platform semantics. */
+	private cloneModelRequestGraph<T>(value: T): T {
+		const seen = new WeakMap<object, unknown>();
+		const clone = (candidate: unknown): unknown => {
+			if (candidate === null || typeof candidate !== "object") return candidate;
+			const existing = seen.get(candidate);
+			if (existing !== undefined) return existing;
+			if (Array.isArray(candidate)) {
+				const result: unknown[] = [];
+				seen.set(candidate, result);
+				for (const item of candidate) result.push(clone(item));
+				return result;
+			}
+			if (!isPlainObject(candidate)) return candidate;
+			const result: Record<string, unknown> = {};
+			seen.set(candidate, result);
+			for (const [key, nested] of Object.entries(candidate)) {
+				result[key] = clone(nested);
+			}
+			return result;
+		};
+		return clone(value) as T;
+	}
+
+	/** Freeze the complete admitted handler payload so provider code cannot add,
+	 * remove, or rewrite model-bound data after the final measurement. Only
+	 * arrays and plain records belong to the request graph; platform objects
+	 * such as AbortSignal remain opaque transport collaborators. */
+	private freezeAdmittedModelRequest(value: unknown): void {
+		const seen = new WeakSet<object>();
+		const visit = (candidate: unknown): void => {
+			if (
+				candidate === null ||
+				(typeof candidate !== "object" && typeof candidate !== "function") ||
+				seen.has(candidate as object)
+			) {
+				return;
+			}
+			if (!Array.isArray(candidate) && !isPlainObject(candidate)) return;
+			seen.add(candidate as object);
+			for (const nested of Object.values(
+				candidate as Record<string, unknown>,
+			)) {
+				visit(nested);
+			}
+			Object.freeze(candidate);
+		};
+		visit(value);
 	}
 
 	private getFirstUserPromptFromMessages(
@@ -6886,7 +6939,7 @@ export class AgentRuntime implements IAgentRuntime {
 				}
 				let modelParams: ModelParamsMap[T];
 				const paramsClone = isPlainObject(params)
-					? { ...(params as Record<string, JsonValue | object>) }
+					? this.cloneModelRequestGraph(params)
 					: params;
 				if (
 					params === null ||
@@ -7330,7 +7383,7 @@ export class AgentRuntime implements IAgentRuntime {
 				promptContentRef = promptContent;
 
 				if (TEXT_GENERATION_MODEL_KEYS.includes(String(resolvedModelKey))) {
-					const finalBudget = this.buildFinalModelInputBudget(
+					let finalBudget = this.buildFinalModelInputBudget(
 						modelParams,
 						resolvedModel.metadata,
 					);
@@ -7339,12 +7392,37 @@ export class AgentRuntime implements IAgentRuntime {
 						const providerOptions = isPlainObject(paramsRecord.providerOptions)
 							? (paramsRecord.providerOptions as Record<string, unknown>)
 							: {};
-						const budgetedProviderOptions = withModelInputBudgetProviderOptions(
-							providerOptions,
-							finalBudget,
-						);
-						Object.assign(providerOptions, budgetedProviderOptions);
-						paramsRecord.providerOptions = providerOptions;
+						const seenBudgetSignatures = new Set<string>();
+						while (true) {
+							const signature = JSON.stringify(finalBudget);
+							if (seenBudgetSignatures.has(signature)) {
+								throw new ElizaError(
+									"Final model-input budget metadata did not stabilize",
+									{ code: "MODEL_INPUT_BUDGET_UNSTABLE" },
+								);
+							}
+							seenBudgetSignatures.add(signature);
+							Object.assign(
+								providerOptions,
+								withModelInputBudgetProviderOptions(
+									providerOptions,
+									finalBudget,
+								),
+							);
+							paramsRecord.providerOptions = providerOptions;
+							const measuredWithMetadata = this.buildFinalModelInputBudget(
+								modelParams,
+								resolvedModel.metadata,
+							);
+							if (
+								measuredWithMetadata.estimatedInputTokens ===
+								finalBudget.estimatedInputTokens
+							) {
+								finalBudget = measuredWithMetadata;
+								break;
+							}
+							finalBudget = measuredWithMetadata;
+						}
 					}
 					if (finalBudget.shouldReject) {
 						const paramsRecord = isPlainObject(modelParams)
@@ -7390,6 +7468,7 @@ export class AgentRuntime implements IAgentRuntime {
 						});
 						throw error;
 					}
+					this.freezeAdmittedModelRequest(modelParams);
 				}
 
 				if (!binaryModels.includes(resolvedModelKey)) {
