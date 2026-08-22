@@ -880,6 +880,11 @@ describe("v5 planner loop skeleton", () => {
 		"cargo test --help",
 		"tox --help",
 		"npx vitest --help",
+		"pytest '--help'",
+		'tsc "--version"',
+		"npx vitest '--help'",
+		"tsc --showConfig",
+		"jest --showConfig",
 	])(
 		"does not treat verifier-looking shell text as coding verification: %s",
 		async (spoofCommand) => {

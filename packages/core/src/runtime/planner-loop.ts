@@ -3921,9 +3921,9 @@ function isSuccessfulCodingVerificationStep(step: PlannerStep): boolean {
 
 function isNoopShellVerificationCommand(command: string): boolean {
 	return (
-		/(?:^|\s)(?:--help|-h|--version|--list|--listTests|--collect-only|--co|--dry-run|--no-run|--showconfig)(?:=|\s|$)/.test(
+		/(?:^|\s)["']?(?:--help|-h|--version|--list|--listTests|--collect-only|--co|--dry-run|--no-run|--showConfig)["']?(?:=|\s|$)/i.test(
 			command,
-		) || /(?:^|\s)-V(?:\s|$)/.test(command)
+		) || /(?:^|\s)["']?-V["']?(?:\s|$)/.test(command)
 	);
 }
 
