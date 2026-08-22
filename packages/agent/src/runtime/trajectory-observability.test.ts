@@ -101,6 +101,24 @@ describe("trajectory observability", () => {
     );
   });
 
+  it("does not cap observation-extraction model output", async () => {
+    const { runtime } = createRuntime();
+    const useModel = vi.mocked(runtime.useModel);
+    useModel.mockImplementation(async (_modelType, params) => {
+      expect(params).not.toHaveProperty("maxTokens");
+      return JSON.stringify([`HEAD${"x".repeat(2_000)}TAIL`]);
+    });
+    pushChatExchange(runtime, {
+      userPrompt: "extract complete observations",
+      response: "complete response",
+      trajectoryId: "trajectory-complete-output",
+      timestamp: Date.now(),
+    });
+
+    await expect(flushObservationBuffer(runtime)).resolves.toEqual([]);
+    expect(useModel).toHaveBeenCalledTimes(1);
+  });
+
   it("rejects source aggregation failures instead of fabricating an empty result", async () => {
     const { runtime, warn } = createRuntime();
 

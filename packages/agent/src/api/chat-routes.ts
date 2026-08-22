@@ -750,7 +750,6 @@ async function rewriteDirectActionCallbackText(args: {
           error: args.content?.error,
         })}`,
       ].join("\n"),
-      maxTokens: 260,
       signal: args.abortSignal,
       providerOptions: { eliza: { thinking: "off" } },
     });
