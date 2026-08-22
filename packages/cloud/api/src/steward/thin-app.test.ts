@@ -484,6 +484,90 @@ describe("createStewardThinApp", () => {
     await expectInvalidProvidersResponse(response);
   });
 
+  test.each([
+    ["explicit unsuccessful flat envelope", { ok: false, ...providersData() }],
+    [
+      "conflicting success flag",
+      { ok: true, success: false, ...providersData() },
+    ],
+    ["nested envelope without ok:true", { data: providersData() }],
+    [
+      "successful envelope carrying an error",
+      { ok: true, error: "denied", ...providersData() },
+    ],
+  ])("fails closed on %s", async (_case, body) => {
+    await expectInvalidProvidersResponse(Response.json(body));
+  });
+
+  test.each([
+    [
+      "duplicate keys",
+      `{"ok":true,"passkey":true,"passkey":false,"email":true,"siwe":false,"siws":false,"google":false,"discord":false,"github":false,"twitter":false,"oauth":[]}`,
+    ],
+    [
+      "prototype keys",
+      `{"ok":true,"passkey":true,"email":true,"siwe":false,"siws":false,"google":false,"discord":false,"github":false,"twitter":false,"oauth":[],"__proto__":{}}`,
+    ],
+    [
+      "excessive depth",
+      JSON.stringify({
+        ok: true,
+        ...providersData(),
+        future: Array.from({ length: 18 }).reduce((value) => [value], true),
+      }),
+    ],
+    [
+      "oversize body",
+      JSON.stringify({
+        ok: true,
+        ...providersData(),
+        future: "x".repeat(70_000),
+      }),
+    ],
+  ])("rejects bounded JSON violation: %s", async (_case, body) => {
+    await expectInvalidProvidersResponse(
+      new Response(body, { headers: { "content-type": "application/json" } }),
+    );
+  });
+
+  test("strips request credentials and upstream private headers before public caching", async () => {
+    let sentHeaders: Headers | null = null;
+    stubFetch(async (_input, init) => {
+      sentHeaders = new Headers(init?.headers);
+      return new Response(JSON.stringify({ ok: true, ...providersData() }), {
+        headers: {
+          "content-type": "application/json",
+          "set-cookie": "session=secret",
+          "www-authenticate": "Bearer secret",
+          vary: "cookie, authorization",
+          "x-private-token": "secret",
+        },
+      });
+    });
+    const response = await createStewardThinApp().request(
+      "https://api.elizacloud.ai/steward/auth/providers",
+      {
+        headers: {
+          authorization: "Bearer browser-secret",
+          cookie: "session=browser-secret",
+          "x-api-key": "browser-key",
+        },
+      },
+      stewardEnv,
+    );
+
+    expect(response.status).toBe(200);
+    expect(sentHeaders).not.toBeNull();
+    const capturedHeaders = sentHeaders as Headers | null;
+    expect(capturedHeaders?.get("authorization")).toBeNull();
+    expect(capturedHeaders?.get("cookie")).toBeNull();
+    expect(capturedHeaders?.get("x-api-key")).toBeNull();
+    expect(response.headers.get("set-cookie")).toBeNull();
+    expect(response.headers.get("www-authenticate")).toBeNull();
+    expect(response.headers.get("vary")).toBeNull();
+    expect(response.headers.get("x-private-token")).toBeNull();
+  });
+
   test("does not cache a malformed provider response", async () => {
     let upstreamCalls = 0;
     stubFetch(async () => {
@@ -625,6 +709,130 @@ describe("createStewardThinApp", () => {
     expect(first.headers.get("x-eliza-providers-cache")).toBe("miss");
     expect(second.headers.get("x-eliza-providers-cache")).toBe("miss");
     expect(upstreamCalls).toBe(2);
+  });
+
+  test("isolates cache entries by tenant and OAuth representation inputs", async () => {
+    let upstreamCalls = 0;
+    stubFetch(async (_input, init) => {
+      upstreamCalls += 1;
+      const tenant = new Headers(init?.headers).get("x-steward-tenant");
+      return providersUpstreamResponse({ futureTenant: tenant });
+    });
+    const app = createStewardThinApp();
+    const envA = {
+      ...stewardEnv,
+      STEWARD_TENANT_ID: "tenant-a",
+    } as unknown as AppEnv["Bindings"];
+    const envB = {
+      ...stewardEnv,
+      STEWARD_TENANT_ID: "tenant-b",
+      GOOGLE_CLIENT_ID: undefined,
+      GOOGLE_CLIENT_SECRET: undefined,
+    } as unknown as AppEnv["Bindings"];
+    const first = await app.request(
+      "https://api.elizacloud.ai/steward/auth/providers",
+      {},
+      envA,
+    );
+    const second = await app.request(
+      "https://api.elizacloud.ai/steward/auth/providers",
+      {},
+      envB,
+    );
+
+    expect(first.headers.get("x-eliza-providers-cache")).toBe("miss");
+    expect(second.headers.get("x-eliza-providers-cache")).toBe("miss");
+    expect(
+      ((await first.json()) as { futureTenant?: unknown }).futureTenant,
+    ).toBe("tenant-a");
+    expect(
+      ((await second.json()) as { futureTenant?: unknown }).futureTenant,
+    ).toBe("tenant-b");
+    expect(upstreamCalls).toBe(2);
+  });
+
+  test("a slow old cache generation cannot overwrite a faster new generation", async () => {
+    let releaseOld!: () => void;
+    const oldBarrier = new Promise<void>((resolve) => {
+      releaseOld = resolve;
+    });
+    let upstreamCalls = 0;
+    stubFetch(async (_input, init) => {
+      upstreamCalls += 1;
+      const tenant = new Headers(init?.headers).get("x-steward-tenant");
+      if (tenant === "tenant-old") await oldBarrier;
+      return providersUpstreamResponse({ futureTenant: tenant });
+    });
+    const app = createStewardThinApp();
+    const oldEnv = {
+      ...stewardEnv,
+      STEWARD_TENANT_ID: "tenant-old",
+    } as unknown as AppEnv["Bindings"];
+    const newEnv = {
+      ...stewardEnv,
+      STEWARD_TENANT_ID: "tenant-new",
+    } as unknown as AppEnv["Bindings"];
+    const oldRequest = app.request(
+      "https://api.elizacloud.ai/steward/auth/providers",
+      {},
+      oldEnv,
+    );
+    const newResponse = await app.request(
+      "https://api.elizacloud.ai/steward/auth/providers",
+      {},
+      newEnv,
+    );
+    releaseOld();
+    await oldRequest;
+    const newHit = await app.request(
+      "https://api.elizacloud.ai/steward/auth/providers",
+      {},
+      newEnv,
+    );
+
+    expect(
+      ((await newResponse.json()) as { futureTenant?: unknown }).futureTenant,
+    ).toBe("tenant-new");
+    expect(newHit.headers.get("x-eliza-providers-cache")).toBe("hit");
+    expect(
+      ((await newHit.json()) as { futureTenant?: unknown }).futureTenant,
+    ).toBe("tenant-new");
+    expect(upstreamCalls).toBe(2);
+  });
+
+  test("singleflights concurrent HEAD and GET onto one validated representation", async () => {
+    let upstreamCalls = 0;
+    let release!: () => void;
+    const barrier = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    stubFetch(async () => {
+      upstreamCalls += 1;
+      await barrier;
+      return providersUpstreamResponse({ futureGeneration: "same" });
+    });
+    const app = createStewardThinApp();
+    const getPromise = app.request(
+      "https://api.elizacloud.ai/steward/auth/providers",
+      {},
+      stewardEnv,
+    );
+    const headPromise = app.request(
+      "https://api.elizacloud.ai/steward/auth/providers",
+      { method: "HEAD" },
+      stewardEnv,
+    );
+    await Promise.resolve();
+    release();
+    const [get, head] = await Promise.all([getPromise, headPromise]);
+
+    expect(upstreamCalls).toBe(1);
+    expect(get.status).toBe(200);
+    expect(head.status).toBe(200);
+    expect(await head.text()).toBe("");
+    expect(
+      ((await get.json()) as { futureGeneration?: unknown }).futureGeneration,
+    ).toBe("same");
   });
 
   test("fails closed in production when REDIS_RATE_LIMITING=true without Redis", async () => {
