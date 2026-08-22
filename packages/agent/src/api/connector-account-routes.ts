@@ -945,6 +945,14 @@ export async function handleConnectorAccountRoutes(
           return true;
         }
         const accounts = await manager.listAccounts(provider);
+        // Plan-then-execute: construct and validate EVERY affected account's
+        // patch before the first provider callback or row write. A later
+        // over-budget row must not 400 after earlier rows have already
+        // flipped — that would leave the provider's account set in a
+        // partially mutated, zero-or-two-default state. Provider/DB failures
+        // during execution still follow the manager's explicit partial-failure
+        // contract; only deterministic validation is hoisted here.
+        const plan: Array<{ id: string; patch: ConnectorAccountPatch }> = [];
         for (const item of accounts) {
           const isTarget = item.id === accountId;
           if (item.metadata?.isDefault === isTarget) continue;
@@ -952,7 +960,7 @@ export async function handleConnectorAccountRoutes(
           try {
             // error-policy:J1 route boundary — same pre-provider validation as
             // refresh: a listed row near the storage budget must be rejected
-            // here, before its provider callback can run. Rethrow otherwise.
+            // here, before ANY provider callback can run. Rethrow otherwise.
             defaultPatch = validatePatchMetadataForStorage({
               metadata: {
                 ...(item.metadata ?? {}),
@@ -964,7 +972,10 @@ export async function handleConnectorAccountRoutes(
             error(res, UNBOUNDED_METADATA_MESSAGE, 400);
             return true;
           }
-          await manager.patchAccount(provider, item.id, defaultPatch);
+          plan.push({ id: item.id, patch: defaultPatch });
+        }
+        for (const step of plan) {
+          await manager.patchAccount(provider, step.id, step.patch);
         }
         const updatedAccounts = await manager.listAccounts(provider);
         const updatedAccount =
