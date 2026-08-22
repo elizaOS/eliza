@@ -567,6 +567,7 @@ function EditedPlanRestartSection({
     try {
       parsed = JSON.parse(draft);
     } catch {
+      // error-policy:J3 invalid plan JSON becomes an explicit form error.
       setError(
         t("orchestrator.planEdit.invalidJson", {
           defaultValue: "Plan must be valid JSON.",
