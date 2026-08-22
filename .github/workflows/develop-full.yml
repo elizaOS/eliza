@@ -412,7 +412,7 @@ jobs:
               -H 'Accept: application/vnd.github+json' \
               -H 'X-GitHub-Api-Version: 2026-03-10' \
               "/repos/$GITHUB_REPOSITORY/actions/workflows/develop-reconcile.yml/dispatches" \
-              -f "ref=$SOURCE_SHA" \
+              -f ref=develop \
               -F return_run_details=true \
               -f "inputs[source_sha]=$SOURCE_SHA" \
               -f "inputs[source_run_id]=$SOURCE_RUN_ID"

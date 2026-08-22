@@ -579,7 +579,8 @@ describe("checked-in workflow authority", () => {
     expect(developFull).toContain("X-GitHub-Api-Version: 2026-03-10");
     expect(developFull).toContain(".workflow_run_id");
     expect(developFull).toContain("-F return_run_details=true");
-    expect(developFull).toContain('-f "ref=$SOURCE_SHA"');
+    expect(developFull).toContain("-f ref=develop");
+    expect(developFull).not.toContain('-f "ref=$SOURCE_SHA"');
     expect(developFull).not.toContain("pull_request:");
     expect(readWorkflow("develop-reconcile.yml")).toContain(
       '[[ "$GITHUB_SHA" == "$SOURCE_SHA" ]]',
