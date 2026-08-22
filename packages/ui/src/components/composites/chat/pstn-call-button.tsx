@@ -24,7 +24,8 @@ interface CurrentUserResponse {
 
 interface StartCallResponse {
   success: boolean;
-  callSid: string;
+  callId: string;
+  callSid: string | null;
   status: string;
   to: string;
 }
@@ -36,7 +37,8 @@ interface CallStatusResponse extends StartCallResponse {
 }
 
 interface ActiveCall {
-  callSid: string;
+  callId: string;
+  callSid: string | null;
   status: string;
   to: string;
   hangupIdempotencyKey: string;
@@ -92,13 +94,18 @@ export function PstnCallButton({ disabled = false }: { disabled?: boolean }) {
     const refresh = async () => {
       try {
         const result = await api<CallStatusResponse>(
-          `/api/v1/twilio/voice/calls/${encodeURIComponent(activeCall.callSid)}`,
+          `/api/v1/twilio/voice/calls/${encodeURIComponent(activeCall.callSid ?? activeCall.callId)}`,
         );
         if (cancelled) return;
         setStatusError("");
         setActiveCall((current) =>
-          current?.callSid === result.callSid
-            ? { ...current, status: result.status, to: result.to }
+          current?.callId === result.callId
+            ? {
+                ...current,
+                callSid: result.callSid,
+                status: result.status,
+                to: result.to,
+              }
             : current,
         );
       } catch (error) {
@@ -154,6 +161,7 @@ export function PstnCallButton({ disabled = false }: { disabled?: boolean }) {
       );
       toast.success(`Eliza is calling ${result.to}`);
       setActiveCall({
+        callId: result.callId,
         callSid: result.callSid,
         status: result.status,
         to: result.to,
@@ -167,7 +175,7 @@ export function PstnCallButton({ disabled = false }: { disabled?: boolean }) {
   };
 
   const handleHangup = async () => {
-    if (!activeCall || hangingUp) return;
+    if (!activeCall?.callSid || hangingUp) return;
     setHangingUp(true);
     try {
       const result = await api<CallStatusResponse>(
@@ -236,7 +244,7 @@ export function PstnCallButton({ disabled = false }: { disabled?: boolean }) {
               <DialogFooter>
                 {TERMINAL_CALL_STATUSES.has(activeCall.status) ? (
                   <Button onClick={handleNewCall}>Call again</Button>
-                ) : (
+                ) : activeCall.callSid ? (
                   <Button
                     variant="destructive"
                     onClick={() => void handleHangup()}
@@ -247,6 +255,11 @@ export function PstnCallButton({ disabled = false }: { disabled?: boolean }) {
                     ) : null}
                     Hang up
                   </Button>
+                ) : (
+                  <p className="text-sm text-muted">
+                    Call acceptance is being reconciled. Calling again is
+                    disabled until a signed provider update arrives.
+                  </p>
                 )}
                 <Button variant="ghost" onClick={() => setOpen(false)}>
                   Close

@@ -10,7 +10,7 @@ const requireUser = mock(async () => ({
 }));
 interface OwnedCall {
   id: string;
-  call_sid: string;
+  call_sid: string | null;
   account_sid: string;
   user_id: string;
   organization_id: string;
@@ -78,9 +78,13 @@ const env = {
   ELIZA_APP_TWILIO_AUTH_TOKEN: "secret",
 };
 
-function request(method: "GET" | "DELETE", idempotencyKey?: string) {
+function request(
+  method: "GET" | "DELETE",
+  idempotencyKey?: string,
+  reference = callSid,
+) {
   return app.request(
-    `/${callSid}`,
+    `/${reference}`,
     {
       method,
       headers: idempotencyKey ? { "Idempotency-Key": idempotencyKey } : {},
@@ -115,6 +119,7 @@ describe("Twilio outbound owned call", () => {
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({
       success: true,
+      callId: baseCall.id,
       callSid,
       status: "in-progress",
       to: "***0100",
@@ -122,6 +127,50 @@ describe("Twilio outbound owned call", () => {
       terminalAt: null,
       hangupRequestedAt: null,
     });
+  });
+
+  test("polls a submission-unknown call by its durable id", async () => {
+    selectLimit.mockResolvedValueOnce([
+      {
+        ...baseCall,
+        call_sid: null,
+        call_status: "submission-unknown",
+        answered_at: null,
+      },
+    ]);
+
+    const response = await request("GET", undefined, baseCall.id);
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      success: true,
+      callId: baseCall.id,
+      callSid: null,
+      status: "submission-unknown",
+    });
+  });
+
+  test("does not claim it can hang up before a CallSid is known", async () => {
+    selectLimit.mockResolvedValueOnce([
+      {
+        ...baseCall,
+        call_sid: null,
+        call_status: "submission-unknown",
+        answered_at: null,
+      },
+    ]);
+
+    const response = await request(
+      "DELETE",
+      "77777777-7777-4777-8777-777777777777",
+      baseCall.id,
+    );
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: "call_submission_unknown",
+    });
+    expect(providerRequest).not.toHaveBeenCalled();
   });
 
   test("requests one provider hangup and persists it", async () => {
