@@ -4,7 +4,7 @@ import { seedTestUser } from "../src/fixtures/seed";
 import { expect, test } from "../src/helpers/test-fixtures";
 
 test.describe("account deletion", () => {
-  test("requires confirmation, deactivates immediately, and preserves another tenant", async ({
+  test("fails closed without mutating the account or another tenant", async ({
     authenticatedPage,
     stack,
     seededUser,
@@ -12,14 +12,17 @@ test.describe("account deletion", () => {
     const other = await seedTestUser({
       slug: `account-deletion-control-${Date.now()}`,
     });
-    await authenticatedPage.goto(`${stack.urls.frontend}/account-deletion`);
+    await authenticatedPage.goto(
+      `${stack.urls.frontend}/account-deletion?requested=untrusted-receipt`,
+    );
     await expect(
       authenticatedPage.getByRole("heading", {
         name: "Delete your account and data",
       }),
     ).toBeVisible();
-    const trigger = authenticatedPage.getByTestId("delete-account-trigger");
-    await expect(trigger).toBeVisible();
+    await expect(
+      authenticatedPage.getByRole("heading", { name: "Deletion scheduled" }),
+    ).toHaveCount(0);
     const request = (method: "GET" | "POST", confirmation?: string) =>
       authenticatedPage.evaluate(
         async ({ method, confirmation }) => {
@@ -38,44 +41,22 @@ test.describe("account deletion", () => {
 
     const initial = await request("GET");
     expect(initial.status).toBe(200);
-    expect(initial.body).toEqual({ request: null });
+    expect(initial.body).toEqual({
+      state: "lifecycle_unavailable",
+      request: null,
+      code: "LIFECYCLE_RESERVATION_REQUIRED",
+      message:
+        "Permanent account deletion is unavailable until lifecycle recovery and provider reconciliation are reserved",
+    });
 
-    const unconfirmed = await request("POST", "delete");
-    expect(unconfirmed.status).toBe(400);
-    expect(stack.mocks.steward.users.has(seededUser.stewardUserId)).toBe(false);
+    const trigger = authenticatedPage.getByTestId("delete-account-trigger");
+    await expect(trigger).toBeVisible();
+    await expect(trigger).toBeDisabled();
+    await expect(trigger).toHaveText("Deletion unavailable");
 
-    await trigger.click();
-    const confirm = authenticatedPage.getByTestId("delete-account-confirm");
-    await expect(confirm).toBeDisabled();
-    await authenticatedPage.getByLabel("Type DELETE to confirm").fill("DELETE");
-    await expect(confirm).toBeEnabled();
-    const scheduledResponsePromise = authenticatedPage.waitForResponse(
-      (response) =>
-        response.request().method() === "POST" &&
-        new URL(response.url()).pathname === "/api/v1/me/account-deletion",
+    const { accountDeletionRequestsRepository } = await import(
+      "@elizaos/cloud-shared/db/repositories/account-deletion-requests"
     );
-    await confirm.click();
-    const scheduledResponse = await scheduledResponsePromise;
-    expect(scheduledResponse.status()).toBe(202);
-    const payload = (await scheduledResponse.json()) as {
-      request?: {
-        requestId?: string;
-        status?: string;
-        scheduledDeletionAt?: string;
-      };
-    };
-    expect(payload.request?.requestId).toBeTruthy();
-    expect(payload.request?.status).toBe("scheduled");
-    expect(
-      Date.parse(payload.request?.scheduledDeletionAt ?? ""),
-    ).toBeGreaterThan(Date.now());
-    await expect(
-      authenticatedPage.getByRole("heading", { name: "Deletion scheduled" }),
-    ).toBeVisible();
-    expect(stack.mocks.steward.users.get(seededUser.stewardUserId)).toBe(
-      "deactivated",
-    );
-
     const { apiKeysRepository } = await import(
       "@elizaos/cloud-shared/db/repositories/api-keys"
     );
@@ -86,26 +67,60 @@ test.describe("account deletion", () => {
       "@elizaos/cloud-shared/db/repositories/users"
     );
 
-    const deletedUser = await usersRepository.findByIdForWrite(
+    const stewardStateBefore = stack.mocks.steward.users.get(
+      seededUser.stewardUserId,
+    );
+    const userBefore = await usersRepository.findByIdForWrite(
       seededUser.userId,
     );
-    const deletedOrganization = await organizationsRepository.findById(
+    const organizationBefore = await organizationsRepository.findById(
       seededUser.organizationId,
     );
-    const [deletedKey] = await apiKeysRepository.listByUser(seededUser.userId);
+    const [keyBefore] = await apiKeysRepository.listByUser(seededUser.userId);
+
+    const unconfirmed = await request("POST", "delete");
+    expect(unconfirmed.status).toBe(400);
+    const refused = await request("POST", "DELETE");
+    expect(refused).toEqual({
+      status: 409,
+      body: {
+        error:
+          "Permanent account deletion is unavailable until lifecycle recovery and provider reconciliation are reserved",
+        code: "LIFECYCLE_RESERVATION_REQUIRED",
+      },
+    });
+
+    const userAfter = await usersRepository.findByIdForWrite(seededUser.userId);
+    const organizationAfter = await organizationsRepository.findById(
+      seededUser.organizationId,
+    );
+    const [keyAfter] = await apiKeysRepository.listByUser(seededUser.userId);
     const otherUser = await usersRepository.findByIdForWrite(other.userId);
     const otherOrganization = await organizationsRepository.findById(
       other.organizationId,
     );
 
-    expect(deletedUser).toMatchObject({ is_active: false });
-    expect(deletedUser?.deleted_at).toBeInstanceOf(Date);
-    expect(deletedOrganization).toMatchObject({ is_active: false });
-    expect(deletedKey).toMatchObject({ is_active: false });
+    expect(userAfter).toMatchObject({
+      is_active: userBefore?.is_active,
+      deleted_at: userBefore?.deleted_at,
+    });
+    expect(organizationAfter).toMatchObject({
+      is_active: organizationBefore?.is_active,
+    });
+    expect(keyAfter).toMatchObject({ is_active: keyBefore?.is_active });
+    expect(stack.mocks.steward.users.get(seededUser.stewardUserId)).toBe(
+      stewardStateBefore,
+    );
+    expect(
+      await accountDeletionRequestsRepository.findOpenByUserId(
+        seededUser.userId,
+        true,
+      ),
+    ).toBeUndefined();
     expect(otherUser).toMatchObject({ is_active: true });
     expect(otherOrganization).toMatchObject({ is_active: true });
 
-    const rejectedAfterDeactivation = await request("GET");
-    expect(rejectedAfterDeactivation.status).toBe(401);
+    const after = await request("GET");
+    expect(after).toEqual(initial);
   });
 });

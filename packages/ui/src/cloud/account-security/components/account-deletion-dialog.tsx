@@ -1,6 +1,6 @@
 /** Renders the confirmation and status flow for permanent account-deletion requests. */
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   AlertDialog,
   AlertDialogCancel,
@@ -13,33 +13,62 @@ import {
 import { Button } from "../../../components/ui/button";
 import { Input } from "../../../components/ui/input";
 import {
+  type AccountDeletionStatusDto,
   endLocalSessionAfterDeletion,
+  getAccountDeletionStatus,
   submitAccountDeletion,
 } from "../data/account-deletion-client";
 
+const SUPPORT_HREF =
+  "mailto:support@eliza.cloud?subject=Eliza%20account%20deletion%20request";
+
+type LoadState =
+  | { kind: "loading" }
+  | { kind: "error"; message: string }
+  | { kind: "ready"; status: AccountDeletionStatusDto };
+
 export function AccountDeletionDialog({
   triggerLabel = "Delete account",
-  onScheduled,
 }: {
   triggerLabel?: string;
-  onScheduled?: (requestId: string) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [confirmation, setConfirmation] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [loadState, setLoadState] = useState<LoadState>({ kind: "loading" });
+
+  useEffect(() => {
+    let active = true;
+    void getAccountDeletionStatus()
+      .then((status) => {
+        if (active) setLoadState({ kind: "ready", status });
+      })
+      .catch((cause: unknown) => {
+        // error-policy:J4 A failed status read leaves deletion visibly unavailable.
+        if (active) {
+          setLoadState({
+            kind: "error",
+            message:
+              cause instanceof Error
+                ? cause.message
+                : "Account deletion status is unavailable",
+          });
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const submit = async () => {
     setSubmitting(true);
     setError(null);
     try {
-      const request = await submitAccountDeletion();
+      await submitAccountDeletion();
       await endLocalSessionAfterDeletion();
-      onScheduled?.(request.requestId);
-      if (!onScheduled && typeof window !== "undefined") {
-        window.location.assign(
-          `/account-deletion?requested=${encodeURIComponent(request.requestId)}`,
-        );
+      if (typeof window !== "undefined") {
+        window.location.assign("/account-deletion");
       }
     } catch (cause) {
       setError(
@@ -50,6 +79,75 @@ export function AccountDeletionDialog({
       setSubmitting(false);
     }
   };
+
+  if (loadState.kind === "loading") {
+    return (
+      <Button
+        size="sm"
+        variant="outline"
+        disabled
+        data-testid="delete-account-trigger"
+      >
+        Checking deletion status…
+      </Button>
+    );
+  }
+
+  if (loadState.kind === "error") {
+    return (
+      <div className="space-y-2 text-right">
+        <Button
+          size="sm"
+          variant="outline"
+          disabled
+          data-testid="delete-account-trigger"
+        >
+          Status unavailable
+        </Button>
+        <p className="ml-auto max-w-sm text-sm text-danger" role="alert">
+          {loadState.message}{" "}
+          <a className="underline" href={SUPPORT_HREF}>
+            Contact support
+          </a>
+          .
+        </p>
+      </div>
+    );
+  }
+
+  const { status } = loadState;
+  if (status.state !== "available") {
+    const message =
+      status.state === "transfer_required"
+        ? "Transfer or revoke shared organization resources before requesting deletion."
+        : status.state === "existing_request"
+          ? `A prior deletion request needs support. Reference ${status.request.requestId}.`
+          : "Self-service deletion is not currently available.";
+    return (
+      <div className="space-y-2 text-right">
+        <Button
+          size="sm"
+          variant="outline"
+          disabled
+          className="border-danger/40 text-danger"
+          data-testid="delete-account-trigger"
+        >
+          {status.state === "transfer_required"
+            ? "Transfer required"
+            : status.state === "existing_request"
+              ? "Request needs support"
+              : "Deletion unavailable"}
+        </Button>
+        <p className="ml-auto max-w-sm text-sm text-muted-strong" role="status">
+          {message}{" "}
+          <a className="underline" href={SUPPORT_HREF}>
+            Contact support
+          </a>
+          .
+        </p>
+      </div>
+    );
+  }
 
   return (
     <>
@@ -69,10 +167,10 @@ export function AccountDeletionDialog({
               Permanently delete your Eliza account?
             </AlertDialogTitle>
             <AlertDialogDescription>
-              Access is disabled immediately. Your Steward identity and
-              associated Eliza Cloud data are scheduled for deletion within 30
-              days. Limited transaction, fraud, tax, or security records may be
-              retained when legally required. This cannot be undone.
+              This permanently retires your account through the verified
+              lifecycle shown by the server. Limited transaction, fraud, tax, or
+              security records may be retained when legally required. This
+              cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <label

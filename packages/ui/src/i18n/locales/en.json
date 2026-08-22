@@ -7517,6 +7517,7 @@
   "cloud.privacyPanel.export": "Export",
   "cloud.privacyPanel.deleteTitle": "Delete my account",
   "cloud.privacyPanel.deleteDescription": "Schedules a 30-day soft-delete. You can sign back in during the window to cancel. After 30 days, all data is purged.",
+  "cloud.privacyPanel.deleteAvailabilityDescription": "Checks whether the verified account-deletion lifecycle is available. Shared resources may need transfer first; unavailable requests are routed to support without changing your account.",
   "cloud.privacyPanel.deleteAccount": "Delete account…",
   "cloud.privacyPanel.dialogTitle": "Delete your account?",
   "cloud.privacyPanel.dialogIntro": "We'll keep your data for 30 days in case you change your mind. To confirm, type",
