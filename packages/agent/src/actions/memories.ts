@@ -16,6 +16,7 @@ import type {
 } from "@elizaos/core";
 import {
   MemoryType as CoreMemoryType,
+  ElizaError,
   getRelatedEntityIds,
   logger,
   ModelType,
@@ -43,7 +44,6 @@ interface MemoryParams {
   entityId?: string;
   roomId?: string;
   query?: string;
-  limit?: number;
   memoryId?: string;
   confirm?: boolean;
 }
@@ -93,11 +93,6 @@ function parseUuidParam(
 function normalizeMemoryOp(params: MemoryParams): MemoryOp | undefined {
   const candidate = params.action ?? params.subaction ?? params.op;
   return candidate && MEMORY_OPS.includes(candidate) ? candidate : undefined;
-}
-
-function clampLimit(value: number | undefined, fallback: number): number {
-  if (value == null) return fallback;
-  return Math.max(1, Math.min(200, Math.floor(value)));
 }
 
 function scoreText(text: string, query: string): number {
@@ -207,23 +202,184 @@ interface MemoryCandidate {
   type: MemoryType;
 }
 
-/**
- * A candidate set plus the shape of the window it was read from. The read is
- * always windowed — `perTable` most-recent rows per memory table — and the
- * query/entity filters run in memory over that window, so the surviving count
- * is a count of matches INSIDE the window and never a total.
- *
- * Saturation is MEASURED by reading one row past the window: a table holding
- * exactly `perTable` rows fills it without hiding anything, and is
- * indistinguishable from a truncated one by row count alone. Treating a merely
- * full page as saturated tells the reader older rows went unscanned when none
- * exist — a fabricated scope claim in the sentence meant to prevent them.
- */
 interface CandidateScan {
   matches: MemoryCandidate[];
-  perTable: number;
   tables: readonly MemoryType[];
-  saturatedTables: MemoryType[];
+  scanned: number;
+}
+
+const COMPLETE_MEMORY_PAGE_SIZE = 500;
+
+function traversalError(
+  code: string,
+  context: Record<string, unknown>,
+): ElizaError {
+  return new ElizaError(
+    "Memory traversal could not prove a complete snapshot",
+    {
+      code,
+      context,
+    },
+  );
+}
+
+function memoryRowFingerprint(memory: Memory): string {
+  try {
+    return JSON.stringify({
+      id: memory.id,
+      createdAt: memory.createdAt,
+      content: memory.content,
+      metadata: memory.metadata,
+      entityId: memory.entityId,
+      roomId: memory.roomId,
+      agentId: memory.agentId,
+      worldId: memory.worldId,
+    });
+  } catch (cause) {
+    throw new ElizaError("Memory row cannot be fingerprinted", {
+      code: "MEMORY_TRAVERSAL_FINGERPRINT_FAILED",
+      context: { memoryId: memory.id },
+      cause,
+    });
+  }
+}
+
+function compareMemoryTuple(left: Memory, right: Memory): number {
+  const leftCreatedAt = left.createdAt;
+  const rightCreatedAt = right.createdAt;
+  if (
+    typeof leftCreatedAt !== "number" ||
+    typeof rightCreatedAt !== "number" ||
+    !Number.isSafeInteger(leftCreatedAt) ||
+    !Number.isSafeInteger(rightCreatedAt)
+  ) {
+    throw traversalError("MEMORY_TRAVERSAL_CURSOR_INVALID", {
+      leftId: left.id,
+      rightId: right.id,
+    });
+  }
+  if (leftCreatedAt !== rightCreatedAt) return rightCreatedAt - leftCreatedAt;
+  return String(right.id)
+    .toLowerCase()
+    .localeCompare(String(left.id).toLowerCase());
+}
+
+async function scanCompleteMemoryTable(
+  runtime: IAgentRuntime,
+  tableName: MemoryType,
+  roomId: UUID | undefined,
+): Promise<Memory[]> {
+  const memories: Memory[] = [];
+  const seen = new Set<string>();
+  let cursor: { createdAt: number; id: UUID } | undefined;
+  let previous: Memory | undefined;
+
+  while (true) {
+    const page = await runtime.getMemories({
+      agentId: runtime.agentId as UUID,
+      roomId,
+      tableName,
+      limit: COMPLETE_MEMORY_PAGE_SIZE,
+      ...(cursor ? { cursor } : {}),
+      orderBy: "createdAt",
+      orderDirection: "desc",
+      includeEmbedding: false,
+    });
+    if (page.length > COMPLETE_MEMORY_PAGE_SIZE) {
+      throw traversalError("MEMORY_TRAVERSAL_PAGE_INVALID", {
+        tableName,
+        pageLength: page.length,
+      });
+    }
+    if (page.length === 0) break;
+
+    for (const memory of page) {
+      const id = validateUuid(memory.id);
+      if (!id || !Number.isSafeInteger(memory.createdAt)) {
+        throw traversalError("MEMORY_TRAVERSAL_CURSOR_INVALID", {
+          tableName,
+          memoryId: memory.id,
+          createdAt: memory.createdAt,
+        });
+      }
+      if (seen.has(id)) {
+        throw traversalError("MEMORY_TRAVERSAL_REPEATED_ROW", {
+          tableName,
+          memoryId: id,
+        });
+      }
+      if (previous && compareMemoryTuple(previous, memory) >= 0) {
+        throw traversalError("MEMORY_TRAVERSAL_ORDER_INVALID", {
+          tableName,
+          previousId: previous.id,
+          memoryId: id,
+        });
+      }
+      seen.add(id);
+      memories.push(memory);
+      previous = memory;
+    }
+
+    if (page.length < COMPLETE_MEMORY_PAGE_SIZE) break;
+    const last = page.at(-1);
+    const lastId = validateUuid(last?.id);
+    if (!last || !lastId || !Number.isSafeInteger(last.createdAt)) {
+      throw traversalError("MEMORY_TRAVERSAL_CURSOR_INVALID", { tableName });
+    }
+    const nextCursor = { createdAt: last.createdAt as number, id: lastId };
+    if (
+      cursor &&
+      cursor.createdAt === nextCursor.createdAt &&
+      cursor.id === nextCursor.id
+    ) {
+      throw traversalError("MEMORY_TRAVERSAL_CURSOR_STALLED", {
+        tableName,
+        cursor,
+      });
+    }
+    cursor = nextCursor;
+  }
+  return memories;
+}
+
+async function readStableCompleteMemoryTable(
+  runtime: IAgentRuntime,
+  tableName: MemoryType,
+  roomId: UUID | undefined,
+): Promise<Memory[]> {
+  const countParams = {
+    agentId: runtime.agentId as UUID,
+    ...(roomId ? { roomId } : {}),
+    tableName,
+  };
+  const before = await runtime.countMemories(countParams);
+  const first = await scanCompleteMemoryTable(runtime, tableName, roomId);
+  const between = await runtime.countMemories(countParams);
+  const second = await scanCompleteMemoryTable(runtime, tableName, roomId);
+  const after = await runtime.countMemories(countParams);
+  const firstFingerprints = first.map(memoryRowFingerprint);
+  const secondFingerprints = second.map(memoryRowFingerprint);
+  if (
+    !Number.isSafeInteger(before) ||
+    before < 0 ||
+    before !== between ||
+    before !== after ||
+    first.length !== before ||
+    second.length !== before ||
+    firstFingerprints.some(
+      (fingerprint, index) => fingerprint !== secondFingerprints[index],
+    )
+  ) {
+    throw traversalError("MEMORY_TRAVERSAL_INVENTORY_CHANGED", {
+      tableName,
+      before,
+      between,
+      after,
+      firstLength: first.length,
+      secondLength: second.length,
+    });
+  }
+  return second;
 }
 
 const RECALL_TERMINAL_SETTING = "ELIZA_RECALL_SHORT_CIRCUIT";
@@ -249,28 +405,19 @@ async function collectCandidates(
     entityId?: UUID;
     roomId?: UUID;
     query?: string;
-    limit: number;
   },
 ): Promise<CandidateScan> {
   const tables: readonly MemoryType[] = scope.type
     ? [scope.type]
     : MEMORY_TYPES;
-  const perTable = Math.max(scope.limit * 2, 200);
   const collected: MemoryCandidate[] = [];
-  const saturatedTables: MemoryType[] = [];
 
   for (const tableName of tables) {
-    // One row past the window, so "older rows exist" is observed rather than
-    // assumed from a page that happened to fill.
-    const page = await runtime.getMemories({
-      agentId: runtime.agentId as UUID,
-      roomId: scope.roomId,
+    const memories = await readStableCompleteMemoryTable(
+      runtime,
       tableName,
-      limit: perTable + 1,
-    });
-    const overflowed = page.length > perTable;
-    if (overflowed) saturatedTables.push(tableName);
-    const memories = overflowed ? page.slice(0, perTable) : page;
+      scope.roomId,
+    );
     for (const m of memories) collected.push({ memory: m, type: tableName });
   }
 
@@ -300,7 +447,7 @@ async function collectCandidates(
   filtered.sort(
     (a, b) => (b.memory.createdAt ?? 0) - (a.memory.createdAt ?? 0),
   );
-  return { matches: filtered, perTable, tables, saturatedTables };
+  return { matches: filtered, tables, scanned: collected.length };
 }
 
 /** Names every narrowing that was applied, so an empty result can say why. */
@@ -318,21 +465,9 @@ function describeSearchScope(scope: {
   return parts.length > 0 ? parts.join(", ") : "none";
 }
 
-/**
- * The sentence that keeps a windowed count from being read as a total. The
- * scan reads only the most recent `perTable` rows per table, so "0 matches"
- * means "no match in the window", not "nothing is stored" — the difference
- * between answering "what do you remember about my sister" with a fact and
- * with "I have nothing stored about her".
- */
-function describeScanWindow(scan: CandidateScan): string {
-  const base = `Scanned only the ${scan.perTable} most recent row(s) of each table (${scan.tables.join(", ")}) before filtering.`;
-  if (scan.saturatedTables.length === 0) {
-    // "overflowed", not "filled": a table holding exactly `perTable` rows fills
-    // the window and still had every row considered. Only overflow hides rows.
-    return `${base} No table overflowed that window, so every stored row in the scanned tables was considered.`;
-  }
-  return `${base} ${scan.saturatedTables.join(", ")} filled that window, so older rows were NOT scanned and this is a windowed match count, not a total — widen with type, entityId, roomId, or a higher limit (the window is max(limit*2, 200) rows per table).`;
+/** States the complete storage scope proven before applying caller filters. */
+function describeCompleteScan(scan: CandidateScan): string {
+  return `Scanned all ${scan.scanned} stored row(s) across ${scan.tables.join(", ")} before filtering.`;
 }
 
 async function doSearch(
@@ -361,7 +496,6 @@ async function doSearch(
     );
   }
   const query = params.query?.trim();
-  const limit = clampLimit(params.limit, 50);
 
   const scope = {
     type,
@@ -369,12 +503,10 @@ async function doSearch(
     roomId: roomParam.ok ? roomParam.id : undefined,
     query,
   };
-  const scan = await collectCandidates(runtime, { ...scope, limit });
+  const scan = await collectCandidates(runtime, scope);
 
-  const matchedInWindow = scan.matches.length;
-  const items = scan.matches
-    .slice(0, limit)
-    .map((c) => toListItem(c.memory, c.type));
+  const totalMatches = scan.matches.length;
+  const items = scan.matches.map((c) => toListItem(c.memory, c.type));
   // The text projection carries enough of each hit for model reasoning; the
   // complete records remain machine data for state and trajectory consumers.
   const lines = items.map(
@@ -389,13 +521,7 @@ async function doSearch(
       ].join("\n")
     : undefined;
 
-  // Report what was actually rendered, not what was collected: the previous
-  // header claimed up to 50 items while printing 25 lines, and printed the
-  // in-window match count under the label "total".
-  const renderNote =
-    lines.length < matchedInWindow
-      ? `Showing ${lines.length} of ${matchedInWindow} match(es) in the scanned window`
-      : `Showing all ${lines.length} match(es) found in the scanned window`;
+  const renderNote = `Showing all ${lines.length} match(es) found in the complete scan`;
 
   return {
     success: true,
@@ -404,7 +530,7 @@ async function doSearch(
       ...(ignoredIdNotes.length > 0
         ? [`Note: ${ignoredIdNotes.join("; ")}.`]
         : []),
-      describeScanWindow(scan),
+      describeCompleteScan(scan),
       ...lines,
     ].join("\n"),
     ...(userFacingText && recallTerminalEnabled(runtime)
@@ -417,27 +543,22 @@ async function doSearch(
     values: {
       count: items.length,
       rendered: lines.length,
-      matchedInWindow,
-      scanWindowPerTable: scan.perTable,
-      scanWindowSaturated: scan.saturatedTables.length > 0,
+      totalMatches,
+      scanned: scan.scanned,
     },
     data: {
       actionName: "MEMORY",
       op: "search" as const,
       memories: items,
-      matchedInWindow,
-      scanWindowPerTable: scan.perTable,
-      scanWindowSaturatedTables: scan.saturatedTables,
-      limit,
+      totalMatches,
+      scanned: scan.scanned,
     },
     promptData: {
       actionName: "MEMORY",
       op: "search" as const,
-      matchedInWindow,
+      totalMatches,
       rendered: lines.length,
-      scanWindowPerTable: scan.perTable,
-      scanWindowSaturatedTables: scan.saturatedTables,
-      limit,
+      scanned: scan.scanned,
     },
   };
 }
@@ -568,13 +689,11 @@ async function doDeleteByQuery(
   // that carry no entity (internal maintenance invocations).
   const scopeEntityId = message.entityId ?? entityParam.id;
 
-  const limit = clampLimit(params.limit, 50);
   const scan = await collectCandidates(runtime, {
     type,
     entityId: scopeEntityId,
     roomId: roomParam.id,
     query,
-    limit,
   });
 
   // Deletion needs a stronger bar than search ranking: scoreText >= 1 means
@@ -587,7 +706,7 @@ async function doDeleteByQuery(
 
   if (matched.length === 0) {
     return fail(
-      `No stored memory matches "${query}". ${describeScanWindow(scan)}`,
+      `No stored memory matches "${query}". ${describeCompleteScan(scan)}`,
       "MEMORY_NOT_FOUND",
     );
   }
@@ -703,7 +822,12 @@ export const memoryAction: Action = {
       return {
         success: false,
         text: `Failed to ${op} memory: ${msg}`,
-        data: { error: `MEMORY_${op.toUpperCase()}_FAILED` },
+        data: {
+          error:
+            err instanceof ElizaError
+              ? err.code
+              : `MEMORY_${op.toUpperCase()}_FAILED`,
+        },
       };
     }
   },
@@ -769,12 +893,6 @@ export const memoryAction: Action = {
       schema: { type: "string" as const },
     },
     {
-      name: "limit",
-      description: "search: maximum results to return (1-200).",
-      required: false,
-      schema: { type: "number" as const },
-    },
-    {
       name: "memoryId",
       description:
         "update/delete: id of the memory to mutate. delete: optional when query is provided.",
@@ -808,7 +926,7 @@ export const memoryAction: Action = {
       {
         name: "{{agentName}}",
         content: {
-          text: "Showing N of M match(es) in the scanned window...",
+          text: "Showing all N match(es) found in the complete scan...",
           action: "MEMORY",
         },
       },
