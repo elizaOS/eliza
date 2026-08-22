@@ -369,8 +369,9 @@ export class VoiceManager extends EventEmitter {
 	 * Connections this manager has already wired lifecycle listeners onto.
 	 * `joinVoiceChannel()` returns the connection it is *already* tracking for the
 	 * same (group, guildId) instead of creating a new one, so two overlapping
-	 * joins would otherwise stack a second copy of the `stateChange`/`error`
-	 * listeners onto a single connection and run its teardown twice.
+	 * joins would otherwise stack a second copy of the `stateChange`/`error`/
+	 * `speaking` listeners onto a single connection and run teardown twice /
+	 * subscribe the same member twice.
 	 */
 	private wiredConnections = new WeakSet<VoiceConnection>();
 	private audioLanes = new Map<string, DiscordAudioLaneConfig>();
@@ -774,6 +775,47 @@ export class VoiceManager extends EventEmitter {
 						"Will attempt to recover",
 					);
 				});
+
+				connection.receiver.speaking.on("start", async (entityId: string) => {
+					let user = channel.members.get(entityId);
+					if (!user) {
+						try {
+							user = await channel.guild.members.fetch(entityId);
+						} catch (error) {
+							this.runtime.logger.error(
+								{
+									src: "plugin:discord:service:voice",
+									agentId: this.runtime.agentId,
+									entityId,
+									error: error instanceof Error ? error.message : String(error),
+								},
+								"Failed to fetch user",
+							);
+						}
+					}
+
+					const userUser = user?.user;
+					if (user && userUser && !userUser.bot) {
+						await this.monitorMember(user as GuildMember, channel);
+						const entityStream = this.streams.get(entityId);
+						if (entityStream) {
+							entityStream.emit("speakingStarted");
+						}
+					}
+				});
+
+				connection.receiver.speaking.on("end", async (entityId: string) => {
+					const user = channel.members.get(entityId);
+					const userUser = user?.user;
+					if (user && userUser && !userUser.bot) {
+						const entityStream = this.streams.get(entityId);
+						if (entityStream) {
+							entityStream.emit("speakingStopped");
+						}
+						// Speaking end = utterance boundary for the meeting pipeline.
+						this.meetingSessions.get(channel.id)?.flushSpeaker(entityId);
+					}
+				});
 			}
 
 			// Store the connection
@@ -834,47 +876,6 @@ export class VoiceManager extends EventEmitter {
 					// Continue even if this fails
 				}
 			}
-
-			connection.receiver.speaking.on("start", async (entityId: string) => {
-				let user = channel.members.get(entityId);
-				if (!user) {
-					try {
-						user = await channel.guild.members.fetch(entityId);
-					} catch (error) {
-						this.runtime.logger.error(
-							{
-								src: "plugin:discord:service:voice",
-								agentId: this.runtime.agentId,
-								entityId,
-								error: error instanceof Error ? error.message : String(error),
-							},
-							"Failed to fetch user",
-						);
-					}
-				}
-
-				const userUser = user?.user;
-				if (user && userUser && !userUser.bot) {
-					this.monitorMember(user as GuildMember, channel);
-					const entityStream = this.streams.get(entityId);
-					if (entityStream) {
-						entityStream.emit("speakingStarted");
-					}
-				}
-			});
-
-			connection.receiver.speaking.on("end", async (entityId: string) => {
-				const user = channel.members.get(entityId);
-				const userUser = user?.user;
-				if (user && userUser && !userUser.bot) {
-					const entityStream = this.streams.get(entityId);
-					if (entityStream) {
-						entityStream.emit("speakingStopped");
-					}
-					// Speaking end = utterance boundary for the meeting pipeline.
-					this.meetingSessions.get(channel.id)?.flushSpeaker(entityId);
-				}
-			});
 		} catch (error) {
 			this.runtime.logger.error(
 				{
@@ -1012,6 +1013,9 @@ export class VoiceManager extends EventEmitter {
 		const name = memberUser?.displayName;
 		const memberGuild = member?.guild;
 		const memberGuildId = memberGuild?.id;
+		if (entityId && this.streams.has(entityId)) {
+			return;
+		}
 		const connection = this.getVoiceConnection(memberGuildId);
 
 		const connectionReceiver = connection?.receiver;
