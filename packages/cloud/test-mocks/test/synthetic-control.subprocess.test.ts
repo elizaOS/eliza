@@ -1,6 +1,8 @@
 /** Proves the shared control client against a real control-plane mock in an independent OS process. */
 
 import { afterEach, describe, expect, test } from "bun:test";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import {
   createSyntheticControlHandler,
@@ -13,9 +15,13 @@ import {
   SyntheticControlSession,
   type SyntheticResetReceipt,
 } from "@elizaos/shared/synthetic-control";
+import { createScenarioStabilityPlan } from "../../../scenario-runner/src/stability.ts";
+import { executeScenarioStability } from "../../../scenario-runner/src/stability-executor.ts";
+import { ScenarioStabilitySubprocessAdapter } from "../../../scenario-runner/src/stability-subprocess-adapter.ts";
 
 const TOKEN = "synthetic-control-test-token-0001";
 const children: Array<ReturnType<typeof Bun.spawn>> = [];
+const temporaryDirectories: string[] = [];
 
 async function startAuthority(namespace: string): Promise<{
   child: ReturnType<typeof Bun.spawn>;
@@ -119,9 +125,121 @@ afterEach(async () => {
       await child.exited;
     }),
   );
+  for (const directory of temporaryDirectories.splice(0)) {
+    rmSync(directory, { recursive: true, force: true });
+  }
 });
 
 describe("synthetic control subprocess protocol", () => {
+  test("composes a keyless exact-three process-group lane over the real control subprocess", async () => {
+    const namespace = `stability-composition-${crypto.randomUUID()}`;
+    const running = await startAuthority(namespace);
+    const outputRoot = mkdtempSync(
+      resolve(tmpdir(), "stability-cloud-composition-"),
+    );
+    temporaryDirectories.push(outputRoot);
+    const fixtureFingerprint = "f".repeat(64);
+    const childScript = `
+      const hash = "a".repeat(64);
+      process.stdout.write(JSON.stringify({
+        passed: true,
+        initialStateHash: hash,
+        finalStateHash: "b".repeat(64),
+        inputTokens: 3,
+        outputTokens: 2,
+        toolCalls: 1,
+        evidence: {
+          trajectory: [{ model: process.env.ELIZA_STABILITY_MODEL }],
+          toolReceipts: [{ tool: "SEND_MESSAGE" }],
+          stateTransitions: [{ delivered: true }],
+          providerReceipts: [{
+            fixtureMode: "strict-fixtures",
+            fixtureManifestFingerprint: process.env.ELIZA_STRICT_FIXTURE_MANIFEST_FINGERPRINT,
+            unmatchedCalls: 0,
+            ambiguousCalls: 0,
+            unusedRequiredFixtures: 0,
+            overconsumedFixtures: 0
+          }],
+          judgeVerdicts: [{ passed: true }]
+        },
+        stateDiff: { delivered: true }
+      }));
+    `;
+    const adapter = new ScenarioStabilitySubprocessAdapter({
+      command: process.execPath,
+      args: () => ["-e", childScript],
+      cwd: outputRoot,
+      modelMode: {
+        kind: "deterministic-mock",
+        fixtureManifestFingerprint: fixtureFingerprint,
+      },
+      syntheticControl: {
+        controlUrl: running.url,
+        controlToken: TOKEN,
+        manifest: {
+          version: 1,
+          namespace,
+          manifestId: "cloud-keyless-exact-three-v1",
+          domains: { messages: [{ id: "seed-message", text: "hello" }] },
+        },
+      },
+      mockServiceUrls: {
+        ELIZA_MOCK_CONTROL_PLANE_URL: running.url,
+      },
+    });
+
+    const report = await executeScenarioStability({
+      plan: createScenarioStabilityPlan({
+        runId: "cloud-keyless-exact-three",
+        outputRoot,
+      }),
+      targets: [
+        {
+          scenarioId: "deliver-seeded-message",
+          model: { provider: "deterministic", model: "strict-fixtures" },
+        },
+      ],
+      budgets: {
+        timeoutMs: 10_000,
+        maxInputTokens: 10,
+        maxOutputTokens: 10,
+        maxToolCalls: 2,
+      },
+      adapter,
+    });
+
+    expect(report).toMatchObject({
+      status: "passed",
+      attemptCount: 3,
+      requiredTier: "3/3",
+      cells: [
+        {
+          firstAttemptPassed: true,
+          passedAttempts: 3,
+          tier: "3/3",
+          strictPassed: true,
+          baselineInitialStateHash: "a".repeat(64),
+        },
+      ],
+      focusList: [],
+    });
+    const receipts = report.cells[0]?.attempts.map((attempt) =>
+      attempt.evidence.providerReceipts.at(-1),
+    );
+    expect(receipts).toHaveLength(3);
+    expect(
+      new Set(
+        receipts.map((receipt) =>
+          typeof receipt === "object" &&
+          receipt !== null &&
+          "processGroupId" in receipt
+            ? receipt.processGroupId
+            : null,
+        ),
+      ).size,
+    ).toBe(3);
+  });
+
   test("bounds client timeouts and redacts authority failures on the HTTP boundary", async () => {
     expect(
       () =>

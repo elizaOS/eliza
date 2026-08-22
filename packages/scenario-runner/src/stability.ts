@@ -157,6 +157,134 @@ export function createScenarioStabilityPlan(params: {
   };
 }
 
+function assertExactDataKeys(
+  value: object,
+  expectedKeys: readonly string[],
+  source: string,
+): Record<string, PropertyDescriptor> {
+  const prototype = Object.getPrototypeOf(value);
+  if (prototype !== Object.prototype && prototype !== null) {
+    throw new Error(`${source} must be an ordinary object`);
+  }
+  const ownKeys = Reflect.ownKeys(value);
+  if (ownKeys.some((key) => typeof key !== "string")) {
+    throw new Error(`${source} must not contain symbol keys`);
+  }
+  const descriptors = Object.getOwnPropertyDescriptors(value);
+  for (const key of ownKeys as string[]) {
+    const descriptor = descriptors[key];
+    if (!descriptor || !("value" in descriptor)) {
+      throw new Error(`${source}.${key} must be an own data property`);
+    }
+  }
+  const actual = (ownKeys as string[]).sort();
+  const expected = [...expectedKeys].sort();
+  if (
+    actual.length !== expected.length ||
+    actual.some((key, index) => key !== expected[index])
+  ) {
+    throw new Error(`${source} must contain only canonical plan fields`);
+  }
+  return descriptors;
+}
+
+/** Runtime-validates and canonicalizes the public three-attempt plan input. */
+export function validateScenarioStabilityPlan(
+  value: unknown,
+): ScenarioStabilityPlan {
+  const record = requireRecord(value, "scenario stability plan");
+  const planFields = assertExactDataKeys(
+    record,
+    [
+      "schemaVersion",
+      "runId",
+      "attemptCount",
+      "requiredTier",
+      "outputRoot",
+      "planPath",
+      "reportPath",
+      "attempts",
+    ],
+    "scenario stability plan",
+  );
+  const runId = planFields.runId?.value as unknown;
+  const outputRoot = planFields.outputRoot?.value as unknown;
+  if (typeof runId !== "string") {
+    throw new Error("scenario stability plan.runId must be a string");
+  }
+  if (typeof outputRoot !== "string") {
+    throw new Error("scenario stability plan.outputRoot must be a string");
+  }
+  const canonical = createScenarioStabilityPlan({
+    runId,
+    outputRoot,
+  });
+  if (
+    planFields.schemaVersion?.value !== canonical.schemaVersion ||
+    planFields.attemptCount?.value !== canonical.attemptCount ||
+    planFields.requiredTier?.value !== canonical.requiredTier ||
+    outputRoot !== canonical.outputRoot ||
+    planFields.planPath?.value !== canonical.planPath ||
+    planFields.reportPath?.value !== canonical.reportPath
+  ) {
+    throw new Error(
+      "scenario stability plan does not match its canonical run and output identity",
+    );
+  }
+  const attemptValues = planFields.attempts?.value as unknown;
+  if (
+    !Array.isArray(attemptValues) ||
+    Object.getPrototypeOf(attemptValues) !== Array.prototype
+  ) {
+    throw new Error(
+      "scenario stability plan must contain exactly attempts 1, 2, and 3",
+    );
+  }
+  const attemptListFields = Object.getOwnPropertyDescriptors(attemptValues);
+  const attemptListLength = Object.getOwnPropertyDescriptor(
+    attemptValues,
+    "length",
+  );
+  const expectedAttemptKeys = new Set(["0", "1", "2", "length"]);
+  if (
+    attemptListLength?.value !== 3 ||
+    Reflect.ownKeys(attemptValues).length !== expectedAttemptKeys.size ||
+    Reflect.ownKeys(attemptValues).some(
+      (key) =>
+        typeof key !== "string" ||
+        !expectedAttemptKeys.has(key) ||
+        !("value" in (attemptListFields[key] ?? {})),
+    )
+  ) {
+    throw new Error(
+      "scenario stability plan must contain exactly attempts 1, 2, and 3",
+    );
+  }
+  for (const [index, expected] of canonical.attempts.entries()) {
+    const source = `scenario stability plan.attempts[${index}]`;
+    const attempt = requireRecord(
+      attemptListFields[String(index)]?.value,
+      source,
+    );
+    const fields = assertExactDataKeys(
+      attempt,
+      ["attemptNumber", "attemptId", "outputDir", "reportPath"],
+      source,
+    );
+    for (const key of [
+      "attemptNumber",
+      "attemptId",
+      "outputDir",
+      "reportPath",
+    ] as const) {
+      if (fields[key]?.value !== expected[key]) {
+        throw new Error(`${source}.${key} is not canonical`);
+      }
+    }
+  }
+  return canonical;
+}
+
 function readOptionalString(
   record: Readonly<Record<string, unknown>>,
   key: string,
