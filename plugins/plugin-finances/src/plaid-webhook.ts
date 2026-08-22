@@ -40,6 +40,8 @@ export type PlaidWebhookAction =
   | "sync"
   /** Mark the source needs_attention and drive update-mode reauth. */
   | "reauth"
+  /** A healthy Item needs update-mode Link for a lifecycle/account change. */
+  | "update"
   /** The Item is gone upstream — run disconnect cleanup locally. */
   | "disconnect"
   /** Informational; record and ignore. */
@@ -54,11 +56,12 @@ const SYNC_CODES = new Set([
   "RECURRING_TRANSACTIONS_UPDATE",
 ]);
 
-const REAUTH_CODES = new Set([
-  "ERROR",
+const REAUTH_CODES = new Set(["ERROR", "LOGIN_REPAIRED"]);
+
+const UPDATE_CODES = new Set([
   "PENDING_EXPIRATION",
   "PENDING_DISCONNECT",
-  "LOGIN_REPAIRED",
+  "NEW_ACCOUNTS_AVAILABLE",
 ]);
 
 const DISCONNECT_CODES = new Set([
@@ -78,7 +81,10 @@ export function classifyPlaidWebhook(
     if (DISCONNECT_CODES.has(code)) {
       return "disconnect";
     }
-    // LOGIN_REPAIRED clears the error state; ERROR/PENDING_EXPIRATION set it.
+    if (UPDATE_CODES.has(code)) {
+      return "update";
+    }
+    // Both codes require a current Item read because delivery order is not authoritative.
     if (REAUTH_CODES.has(code)) {
       return "reauth";
     }

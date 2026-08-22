@@ -119,6 +119,52 @@ describe("managed payment clients", () => {
     expect(payloads.join("\n")).not.toContain("plaid-secret");
   });
 
+  it("validates the authoritative institution snapshot on Item status", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn<typeof fetch>(async () =>
+        Response.json({
+          connectionId: "11111111-1111-4111-8111-111111111111",
+          itemId: "item-1",
+          institutionId: "ins-2",
+          error: null,
+          consentExpirationTime: null,
+          institution: {
+            institutionId: "ins-2",
+            institutionName: "Renamed Bank",
+            primaryAccountMask: "9876",
+            accounts: [
+              {
+                accountId: "acct-2",
+                name: "Savings",
+                mask: "9876",
+                type: "depository",
+                subtype: "savings",
+              },
+            ],
+          },
+        })
+      )
+    );
+    const client = new PlaidManagedClient(() => ({
+      configured: true,
+      apiKey: "eliza_test",
+      apiBaseUrl: "https://cloud.example/api/v1",
+      siteUrl: "https://cloud.example",
+    }));
+
+    await expect(
+      client.getItemStatus({
+        connectionId: "11111111-1111-4111-8111-111111111111",
+      })
+    ).resolves.toMatchObject({
+      institution: {
+        institutionName: "Renamed Bank",
+        accounts: [{ accountId: "acct-2" }],
+      },
+    });
+  });
+
   it("surfaces Plaid errors as typed client errors", async () => {
     vi.stubGlobal(
       "fetch",

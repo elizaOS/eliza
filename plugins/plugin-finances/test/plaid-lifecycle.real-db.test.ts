@@ -335,17 +335,41 @@ describe("Plaid item lifecycle — real PGLite", () => {
       institutionId: "ins_reauth",
       error: null,
       consentExpirationTime: "2026-11-01T00:00:00Z",
+      institution: {
+        institutionId: "ins_reauth_updated",
+        institutionName: "Renamed Test Bank",
+        primaryAccountMask: "9876",
+        accounts: [
+          {
+            accountId: "reauth-savings",
+            name: "Savings",
+            mask: "9876",
+            type: "depository",
+            subtype: "savings",
+          },
+        ],
+      },
     };
     const recovered = await service.completePlaidUpdate({
       sourceId: source.id,
     });
     expect(recovered.status).toBe("active");
+    expect(recovered.institution).toBe("Renamed Test Bank");
+    expect(recovered.accountMask).toBe("9876");
     const plaid = recovered.metadata.plaid as {
       itemError: unknown;
       consentExpirationTime: string;
+      institutionId: string;
+      accounts: Array<{ accountId: string }>;
+      updateReason?: string;
     };
     expect(plaid.itemError).toBeNull();
     expect(plaid.consentExpirationTime).toBe("2026-11-01T00:00:00Z");
+    expect(plaid.institutionId).toBe("ins_reauth_updated");
+    expect(plaid.accounts).toEqual([
+      expect.objectContaining({ accountId: "reauth-savings" }),
+    ]);
+    expect(plaid.updateReason).toBeUndefined();
   });
 
   it("propagates rate limiting without corrupting the cursor", async () => {
@@ -411,12 +435,35 @@ describe("Plaid item lifecycle — real PGLite", () => {
       }),
     ).toHaveLength(1);
 
+    fake.itemStatus = {
+      connectionId: (source.metadata.plaid as { connectionId: string })
+        .connectionId,
+      itemId: "item-hook",
+      institutionId: "ins_hook",
+      error: null,
+      consentExpirationTime: null,
+      institution: {
+        institutionId: "ins_hook",
+        institutionName: "First Test Bank",
+        primaryAccountMask: "4321",
+        accounts: [
+          {
+            accountId: "item-hook-acct-1",
+            name: "Checking",
+            mask: "4321",
+            type: "depository",
+            subtype: "checking",
+          },
+        ],
+      },
+    };
+
     const reauth = await service.processPlaidWebhook({
       webhook_type: "ITEM",
       webhook_code: "PENDING_EXPIRATION",
       item_id: "item-hook",
     });
-    expect(reauth.action).toBe("reauth");
+    expect(reauth.action).toBe("update");
     expect(
       (await repository.getPaymentSource(runtime.agentId, source.id))?.status,
     ).toBe("needs_attention");
@@ -437,7 +484,7 @@ describe("Plaid item lifecycle — real PGLite", () => {
       webhook_code: "PENDING_DISCONNECT",
       item_id: "item-hook",
     });
-    expect(pendingDisconnect.action).toBe("reauth");
+    expect(pendingDisconnect.action).toBe("update");
     expect(
       (await repository.getPaymentSource(runtime.agentId, source.id))?.status,
     ).toBe("needs_attention");
@@ -451,22 +498,65 @@ describe("Plaid item lifecycle — real PGLite", () => {
       webhook_code: "LOGIN_REPAIRED",
       item_id: "item-hook",
     });
+    const currentStatus = fake.itemStatus;
+    if (!currentStatus) throw new Error("item status fixture is missing");
+    fake.itemStatus = {
+      ...currentStatus,
+      institution: {
+        ...currentStatus.institution,
+        accounts: [
+          ...currentStatus.institution.accounts,
+          {
+            accountId: "item-hook-acct-2",
+            name: "Savings",
+            mask: "2222",
+            type: "depository",
+            subtype: "savings",
+          },
+        ],
+      },
+    };
     const newAccounts = await service.processPlaidWebhook({
       webhook_type: "ITEM",
       webhook_code: "NEW_ACCOUNTS_AVAILABLE",
       item_id: "item-hook",
     });
-    expect(newAccounts.action).toBe("none");
+    expect(newAccounts.action).toBe("update");
     const healthy = await repository.getPaymentSource(
       runtime.agentId,
       source.id,
     );
     expect(healthy).not.toBeNull();
-    expect(healthy?.status).toBe("active");
+    expect(healthy?.status).toBe("needs_attention");
     const healthyPlaid = healthy?.metadata.plaid as
-      | { itemError: unknown }
+      | {
+          itemError: unknown;
+          updateReason: string;
+          accounts: Array<{ accountId: string }>;
+        }
       | undefined;
     expect(healthyPlaid?.itemError).toBeNull();
+    expect(healthyPlaid?.updateReason).toBe("NEW_ACCOUNTS_AVAILABLE");
+    expect(healthyPlaid?.accounts.map((account) => account.accountId)).toEqual([
+      "item-hook-acct-1",
+      "item-hook-acct-2",
+    ]);
+
+    await service.processPlaidWebhook({
+      webhook_type: "TRANSACTIONS",
+      webhook_code: "SYNC_UPDATES_AVAILABLE",
+      item_id: "item-hook",
+    });
+    const afterSync = await repository.getPaymentSource(
+      runtime.agentId,
+      source.id,
+    );
+    expect(afterSync).not.toBeNull();
+    if (!afterSync) throw new Error("synced source is missing");
+    expect(afterSync.status).toBe("needs_attention");
+    expect(
+      (afterSync.metadata.plaid as { updateReason: string }).updateReason,
+    ).toBe("NEW_ACCOUNTS_AVAILABLE");
 
     const revoked = await service.processPlaidWebhook({
       webhook_type: "ITEM",
@@ -487,6 +577,69 @@ describe("Plaid item lifecycle — real PGLite", () => {
       item_id: "item-hook",
     });
     expect(late.handled).toBe(false);
+  });
+
+  it("reconciles reversed ERROR and LOGIN_REPAIRED hints against current Item status", async () => {
+    const source = await linkFreshSource("item-out-of-order", "ins_order");
+    const connectionId = (source.metadata.plaid as { connectionId: string })
+      .connectionId;
+    const institution = {
+      institutionId: "ins_order",
+      institutionName: "Order Test Bank",
+      primaryAccountMask: "1010",
+      accounts: [
+        {
+          accountId: "order-acct-1",
+          name: "Checking",
+          mask: "1010",
+          type: "depository",
+          subtype: "checking",
+        },
+      ],
+    };
+
+    // A delayed ERROR must not re-corrupt a provider Item that is already healthy.
+    fake.itemStatus = {
+      connectionId,
+      itemId: "item-out-of-order",
+      institutionId: "ins_order",
+      error: null,
+      consentExpirationTime: null,
+      institution,
+    };
+    await service.processPlaidWebhook({
+      webhook_type: "ITEM",
+      webhook_code: "ERROR",
+      item_id: "item-out-of-order",
+      error: { error_code: "ITEM_LOGIN_REQUIRED" },
+    });
+    let stored = await repository.getPaymentSource(runtime.agentId, source.id);
+    expect(stored).not.toBeNull();
+    if (!stored) throw new Error("reconciled source is missing");
+    expect(stored.status).toBe("active");
+    expect(
+      (stored.metadata.plaid as { itemError: unknown }).itemError,
+    ).toBeNull();
+
+    // A delayed LOGIN_REPAIRED must not clear a newer provider-side error.
+    const healthyStatus = fake.itemStatus;
+    if (!healthyStatus) throw new Error("item status fixture is missing");
+    fake.itemStatus = {
+      ...healthyStatus,
+      error: { code: "ITEM_LOGIN_REQUIRED", message: "login required" },
+    };
+    await service.processPlaidWebhook({
+      webhook_type: "ITEM",
+      webhook_code: "LOGIN_REPAIRED",
+      item_id: "item-out-of-order",
+    });
+    stored = await repository.getPaymentSource(runtime.agentId, source.id);
+    expect(stored).not.toBeNull();
+    if (!stored) throw new Error("reconciled source is missing");
+    expect(stored.status).toBe("needs_attention");
+    expect(
+      (stored.metadata.plaid as { itemError: { code: string } }).itemError.code,
+    ).toBe("ITEM_LOGIN_REQUIRED");
   });
 
   it("reports unknown items as unhandled rather than erroring", async () => {

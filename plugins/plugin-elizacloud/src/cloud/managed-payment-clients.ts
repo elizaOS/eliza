@@ -140,22 +140,24 @@ export interface PlaidLinkTokenResponse {
   environment: "sandbox" | "development" | "production";
 }
 
+export interface PlaidInstitutionInfo {
+  institutionId: string;
+  institutionName: string;
+  primaryAccountMask: string | null;
+  accounts: Array<{
+    accountId: string;
+    name: string;
+    mask: string | null;
+    type: string;
+    subtype: string | null;
+  }>;
+}
+
 export interface PlaidExchangeResponse {
   connectionId: string;
   connectionCreated: boolean;
   environment: "sandbox" | "development" | "production";
-  institution: {
-    institutionId: string;
-    institutionName: string;
-    primaryAccountMask: string | null;
-    accounts: Array<{
-      accountId: string;
-      name: string;
-      mask: string | null;
-      type: string;
-      subtype: string | null;
-    }>;
-  };
+  institution: PlaidInstitutionInfo;
 }
 
 export interface PlaidSyncResponse {
@@ -172,6 +174,7 @@ export interface PlaidItemStatusResponse {
   institutionId: string | null;
   error: { code: string; message: string | null } | null;
   consentExpirationTime: string | null;
+  institution: PlaidInstitutionInfo;
 }
 
 export interface PlaidItemConnectionResponse {
@@ -268,6 +271,12 @@ const plaidItemStatusResponseSchema: z.ZodType<PlaidItemStatusResponse> = z.obje
   institutionId: z.string().nullable(),
   error: z.object({ code: z.string().min(1), message: z.string().nullable() }).nullable(),
   consentExpirationTime: z.string().nullable(),
+  institution: z.object({
+    institutionId: z.string().min(1),
+    institutionName: z.string().min(1),
+    primaryAccountMask: z.string().nullable(),
+    accounts: z.array(plaidAccountSchema),
+  }),
 });
 const plaidWebhookVerificationKeySchema: z.ZodType<PlaidWebhookVerificationKey> = z.object({
   alg: z.literal("ES256"),

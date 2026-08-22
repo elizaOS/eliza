@@ -162,6 +162,7 @@ type PlaidPaymentMetadata = Record<string, unknown> & {
   itemError?: { code: string; message: string | null } | null;
   consentExpirationTime?: string | null;
   lastWebhook?: { code: string; receivedAt: string };
+  updateReason?: string;
 };
 
 type PaypalCapability = { hasReporting: boolean; hasIdentity: boolean };
@@ -288,6 +289,7 @@ export function sanitizePaymentSourceForClient(
       error: plaid.itemError ?? null,
       consentExpirationTime: plaid.consentExpirationTime ?? null,
       lastWebhook: plaid.lastWebhook ?? null,
+      updateReason: plaid.updateReason ?? null,
     };
   }
   return { ...source, metadata };
@@ -1353,15 +1355,16 @@ export class FinancesService {
         expectedCursor: cursor,
         source: {
           ...source,
-          status: "active",
+          status:
+            plaidMetadata.itemError || plaidMetadata.updateReason
+              ? "needs_attention"
+              : "active",
           lastSyncedAt: now,
           metadata: {
             ...source.metadata,
             plaid: {
+              ...plaidMetadata,
               connectionId,
-              environment: plaidMetadata?.environment,
-              institutionId: plaidMetadata?.institutionId,
-              accounts: plaidMetadata?.accounts,
               cursor: pageCursor,
             },
           },
@@ -1460,21 +1463,62 @@ export class FinancesService {
       }
       throw error;
     }
-    const updated: LifeOpsPaymentSource = {
-      ...source,
-      status: status.error ? "needs_attention" : "active",
-      metadata: {
-        ...source.metadata,
-        plaid: {
-          ...metadata,
-          itemError: status.error,
-          consentExpirationTime: status.consentExpirationTime,
-        },
-      },
-      updatedAt: new Date().toISOString(),
-    };
+    const updated = this.reconcilePlaidItemStatus({
+      source,
+      metadata,
+      status,
+      updateReason: null,
+    });
     await this.repository.upsertPaymentSource(updated);
     return updated;
+  }
+
+  /**
+   * Reconciles local display/lifecycle state from the organization-scoped
+   * Cloud Item read. Webhook codes are delivery hints and may arrive out of
+   * order; provider status and account metadata are the authoritative state.
+   */
+  private reconcilePlaidItemStatus(args: {
+    source: LifeOpsPaymentSource;
+    metadata: PlaidPaymentMetadata;
+    status: PlaidItemStatusResponse;
+    updateReason: string | null;
+  }): LifeOpsPaymentSource {
+    const plaid: PlaidPaymentMetadata = {
+      ...args.metadata,
+      institutionId: args.status.institution.institutionId,
+      accounts: args.status.institution.accounts,
+      itemError: args.status.error,
+      consentExpirationTime: args.status.consentExpirationTime,
+    };
+    if (args.updateReason === null) {
+      delete plaid.updateReason;
+    } else {
+      plaid.updateReason = args.updateReason;
+    }
+    return {
+      ...args.source,
+      institution: args.status.institution.institutionName.slice(0, 120),
+      accountMask:
+        args.status.institution.primaryAccountMask?.slice(0, 16) ?? null,
+      status:
+        args.status.error || args.updateReason ? "needs_attention" : "active",
+      metadata: { ...args.source.metadata, plaid },
+      updatedAt: new Date().toISOString(),
+    };
+  }
+
+  private async readCurrentPlaidItemStatus(
+    connectionId: string,
+  ): Promise<PlaidItemStatusResponse> {
+    try {
+      return await this.getPlaidManagedClient().getItemStatus({ connectionId });
+    } catch (error) {
+      if (error instanceof PlaidManagedClientError) {
+        fail(error.status, error.message, error.code ?? undefined);
+      }
+      throw error;
+    }
   }
 
   async disconnectPlaidSource(args: { sourceId: string }): Promise<{
@@ -1593,40 +1637,55 @@ export class FinancesService {
     );
     if (!source) return { handled: false, action, sourceId: null };
     const metadata = readPlaidPaymentMetadata(source.metadata.plaid) ?? {};
-    const stamp = (
-      base: LifeOpsPaymentSource,
-      itemError: PlaidPaymentMetadata["itemError"] = metadata.itemError,
-    ): LifeOpsPaymentSource => ({
-      ...base,
-      metadata: {
-        ...base.metadata,
-        plaid: {
-          ...metadata,
-          itemError,
-          lastWebhook: {
-            code: payload.webhook_code,
-            receivedAt: new Date().toISOString(),
+    const stamp = (base: LifeOpsPaymentSource): LifeOpsPaymentSource => {
+      const baseMetadata =
+        readPlaidPaymentMetadata(base.metadata.plaid) ?? metadata;
+      return {
+        ...base,
+        metadata: {
+          ...base.metadata,
+          plaid: {
+            ...baseMetadata,
+            lastWebhook: {
+              code: payload.webhook_code,
+              receivedAt: new Date().toISOString(),
+            },
           },
         },
-      },
-      updatedAt: new Date().toISOString(),
-    });
+        updatedAt: new Date().toISOString(),
+      };
+    };
     if (action === "sync") {
       await this.repository.upsertPaymentSource(stamp(source));
       if (source.status === "disconnected")
         return { handled: false, action, sourceId: source.id };
       await this.syncPlaidTransactions({ sourceId: source.id });
     } else if (action === "reauth") {
-      const repaired = payload.webhook_code === "LOGIN_REPAIRED";
+      const status = await this.readCurrentPlaidItemStatus(
+        connection.connectionId,
+      );
       await this.repository.upsertPaymentSource(
         stamp(
-          { ...source, status: repaired ? "active" : "needs_attention" },
-          repaired
-            ? null
-            : {
-                code: payload.error?.error_code ?? payload.webhook_code,
-                message: payload.error?.error_message ?? null,
-              },
+          this.reconcilePlaidItemStatus({
+            source,
+            metadata,
+            status,
+            updateReason: null,
+          }),
+        ),
+      );
+    } else if (action === "update") {
+      const status = await this.readCurrentPlaidItemStatus(
+        connection.connectionId,
+      );
+      await this.repository.upsertPaymentSource(
+        stamp(
+          this.reconcilePlaidItemStatus({
+            source,
+            metadata,
+            status,
+            updateReason: payload.webhook_code,
+          }),
         ),
       );
     } else if (action === "disconnect") {
@@ -1646,14 +1705,23 @@ export class FinancesService {
           throw error;
         }
       }
+      const disconnectedPlaid: PlaidPaymentMetadata = {
+        ...metadata,
+        itemError: {
+          code: payload.webhook_code,
+          message: payload.error?.error_message ?? null,
+        },
+      };
+      delete disconnectedPlaid.updateReason;
       await this.repository.upsertPaymentSource(
-        stamp(
-          { ...source, status: "disconnected" },
-          {
-            code: payload.webhook_code,
-            message: payload.error?.error_message ?? null,
+        stamp({
+          ...source,
+          status: "disconnected",
+          metadata: {
+            ...source.metadata,
+            plaid: disconnectedPlaid,
           },
-        ),
+        }),
       );
     } else {
       await this.repository.upsertPaymentSource(stamp(source));

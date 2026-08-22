@@ -116,13 +116,22 @@ export class PlaidConnectionService {
     return this.protocol.createLinkToken({ ...args, accessToken });
   }
 
-  async status(args: {
-    organizationId: string;
-    connectionId: string;
-  }): Promise<PlaidItemStatus & { connectionId: string }> {
+  async status(args: { organizationId: string; connectionId: string }): Promise<
+    PlaidItemStatus & {
+      connectionId: string;
+      institution: PlaidInstitutionInfo;
+    }
+  > {
     const connection = await this.requireConnection(args.organizationId, args.connectionId);
-    const status = await this.protocol.itemStatus(await this.getAccessToken(connection));
-    return { ...status, connectionId: connection.id };
+    const accessToken = await this.getAccessToken(connection);
+    const status = await this.protocol.itemStatus(accessToken);
+    // Account discovery is authoritative only while the Item is healthy. On an
+    // Item error, `/accounts/get` may reject the same credential, so retain the
+    // last Cloud-owned institution snapshot while still returning live health.
+    const institution = status.error
+      ? this.requireStoredInstitution(connection)
+      : await this.protocol.itemInfo(accessToken);
+    return { ...status, connectionId: connection.id, institution };
   }
 
   /** Resolves Plaid's signed webhook Item id without contacting Plaid or exposing it locally. */
@@ -277,6 +286,17 @@ export class PlaidConnectionService {
       );
     }
     return storedEnvironment;
+  }
+
+  private requireStoredInstitution(connection: VendorConnection): PlaidInstitutionInfo {
+    const institution = connection.connection_metadata.plaid_institution;
+    if (!institution) {
+      throw new PlaidConnectionError(
+        409,
+        "This Plaid connection is missing institution metadata. Re-link the account.",
+      );
+    }
+    return institution;
   }
 
   private async getAccessToken(connection: VendorConnection): Promise<string> {

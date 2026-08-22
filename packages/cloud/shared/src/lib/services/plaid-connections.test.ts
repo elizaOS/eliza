@@ -257,8 +257,28 @@ describe("PlaidConnectionService", () => {
       institutionId: "ins_1",
       error: null,
       consentExpirationTime: null,
+      institution: INSTITUTION,
     });
     expect(protocol.itemStatus).toHaveBeenCalledWith("plaid-secret-token");
+    expect(protocol.itemInfo).toHaveBeenCalledWith("plaid-secret-token");
+  });
+
+  test("returns live Item errors with the stored institution snapshot", async () => {
+    const { service, protocol } = harness();
+    protocol.itemStatus.mockResolvedValueOnce({
+      itemId: "item-1",
+      institutionId: "ins_1",
+      error: { code: "ITEM_LOGIN_REQUIRED", message: "login required" },
+      consentExpirationTime: null,
+    });
+
+    await expect(
+      service.status({ organizationId: "org-a", connectionId: connection().id }),
+    ).resolves.toMatchObject({
+      error: { code: "ITEM_LOGIN_REQUIRED" },
+      institution: INSTITUTION,
+    });
+    expect(protocol.itemInfo).not.toHaveBeenCalled();
   });
 
   test("makes revoke idempotent for absent and already-removed Items", async () => {

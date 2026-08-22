@@ -41,6 +41,12 @@ const status = mock(async () => ({
   institutionId: "ins-1",
   error: null,
   consentExpirationTime: null,
+  institution: {
+    institutionId: "ins-1",
+    institutionName: "Test Bank",
+    primaryAccountMask: "1234",
+    accounts: [],
+  },
 }));
 const resolveItem = mock(async () => ({ connectionId: CONNECTION_ID }));
 const createPlaidLinkToken = mock(async () => ({
@@ -209,6 +215,12 @@ describe("Plaid credential-opaque routes", () => {
       body: JSON.stringify({ connectionId: CONNECTION_ID }),
     });
     expect(statusResponse.status).toBe(200);
+    await expect(statusResponse.json()).resolves.toMatchObject({
+      institution: {
+        institutionName: "Test Bank",
+        primaryAccountMask: "1234",
+      },
+    });
     expect(status).toHaveBeenCalledWith({
       organizationId: ORGANIZATION_ID,
       connectionId: CONNECTION_ID,
