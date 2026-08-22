@@ -1210,20 +1210,20 @@ describe("evaluatePlannedReplyEgress", () => {
 });
 
 describe("tasks context recap/status routing vocabulary", () => {
-	// #17059 variant B root cause: the compact DM Stage-1 catalog renders
-	// descriptionCompressed ONLY, and the old compressed tasks line carried no
+	// #17059 variant B root cause: the tasks catalog line carried no
 	// recap/status vocabulary — a "recap my day" ask had nothing to route on
-	// and fell to contexts=["simple"].
-	it("keeps recap/status/summary vocabulary in the COMPRESSED tasks line the DM catalog renders", () => {
-		const compact = formatAvailableContextsForPrompt(
+	// and fell to contexts=["simple"]. The compact catalog tier was retired by
+	// #24134 (complete model context); the catalog now always renders the
+	// complete description, which must keep carrying that vocabulary.
+	it("keeps recap/status/summary vocabulary in the tasks line the DM catalog renders", () => {
+		const catalog = formatAvailableContextsForPrompt(
 			getDefaultContextDefinitions(),
-			{ compact: true },
 		);
-		const tasksLine = compact
+		const tasksLine = catalog
 			.split("\n")
 			.find((line) => line.startsWith("- tasks"));
 		expect(tasksLine).toBeDefined();
-		expect(tasksLine).toMatch(/recap\/status\/summary/i);
+		expect(tasksLine).toMatch(/recap\/summary\/status/i);
 		expect(tasksLine).toMatch(/recap my day/i);
 		expect(tasksLine).toMatch(/what's left today/i);
 	});
