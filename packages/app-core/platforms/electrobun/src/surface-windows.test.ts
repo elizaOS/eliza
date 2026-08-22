@@ -143,6 +143,17 @@ describe("SurfaceWindowManager app windows", () => {
     );
   });
 
+  it("keeps the host-owned API base on an app window's first document", () => {
+    expect(
+      buildAppWindowRendererUrl(
+        "http://127.0.0.1:5173/?apiBase=http%3A%2F%2F127.0.0.1%3A32437#old",
+        "/notes",
+      ),
+    ).toBe(
+      "http://127.0.0.1:5173/?apiBase=http%3A%2F%2F127.0.0.1%3A32437&appWindow=1#/notes",
+    );
+  });
+
   it("preserves only host-owned runtime parameters for workspace first paint", () => {
     expect(
       buildSurfaceWindowRendererUrl(

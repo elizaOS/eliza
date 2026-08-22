@@ -1107,18 +1107,24 @@ function appendRuntimeChooserTestParam(rendererUrl: string): string {
 async function resolveRendererUrlForCurrentRuntime(): Promise<string> {
   const rendererUrl = await resolveRendererUrl();
   const runtime = resolveDesktopRuntime();
-  if (runtime.mode === "external" && runtime.externalApi.base) {
-    const rendererApiBase = resolveExternalRendererFacingApiBase(
-      process.env as Record<string, string | undefined>,
-      runtime.externalApi.base,
-    );
-    const externalRendererUrl = appendApiBaseParam(
-      rendererUrl,
-      rendererApiBase,
-    );
-    return appendRuntimeChooserTestParam(externalRendererUrl);
-  }
-  return appendRuntimeChooserTestParam(rendererUrl);
+  const rendererApiBase =
+    runtime.mode === "external" && runtime.externalApi.base
+      ? resolveExternalRendererFacingApiBase(
+          process.env as Record<string, string | undefined>,
+          runtime.externalApi.base,
+        )
+      : apiBaseOwner.getCurrent().base;
+
+  // Every renderer window needs the runtime target on its first document
+  // load. The static HTML inject remains the canonical secret-bearing boot
+  // path, but WKWebView may reuse a cached root document for a newly opened
+  // app/workspace window. Carrying only the non-secret API base in the URL
+  // prevents that window from entering a false disconnected state before the
+  // dom-ready RPC repair arrives.
+  const runtimeAwareRendererUrl = rendererApiBase
+    ? appendApiBaseParam(rendererUrl, rendererApiBase)
+    : rendererUrl;
+  return appendRuntimeChooserTestParam(runtimeAwareRendererUrl);
 }
 
 /**

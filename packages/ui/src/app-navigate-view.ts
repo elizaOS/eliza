@@ -91,7 +91,31 @@ export function navigateBrowserPath(path: string): void {
       window.location.hash = path;
       return;
     }
-    shellHistory.pushState(null, "", path);
+    const currentLocation = new URL(window.location.href);
+    const destination = new URL(path, currentLocation.origin);
+    // Managed desktop windows receive host-owned boot parameters in their
+    // first URL. Keep those parameters while navigating between local views;
+    // dropping apiBase/appWindow/desktopSurface silently disconnects the
+    // renderer and turns an otherwise valid view command into a blank/error
+    // window. Ordinary browser routes have none of these keys and remain
+    // byte-for-byte unchanged.
+    for (const key of [
+      "apiBase",
+      "appWindow",
+      "desktopSurface",
+      "workspacePresentation",
+      "enableRuntimeChooser",
+    ]) {
+      const currentValue = currentLocation.searchParams.get(key);
+      if (currentValue && !destination.searchParams.has(key)) {
+        destination.searchParams.set(key, currentValue);
+      }
+    }
+    shellHistory.pushState(
+      null,
+      "",
+      `${destination.pathname}${destination.search}${destination.hash}`,
+    );
     window.dispatchEvent(new PopStateEvent("popstate"));
   } catch (err) {
     // error-policy:J4 sandboxed webviews can reject history navigation with a

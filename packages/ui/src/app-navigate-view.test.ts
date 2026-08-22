@@ -527,4 +527,26 @@ describe("App navigate-view shell handler", () => {
     expect(window.location.search).toBe("?mode=edit");
     expect(window.location.hash).toBe("#row-7");
   });
+
+  it("preserves managed desktop boot parameters across local view navigation", () => {
+    window.history.replaceState(
+      null,
+      "",
+      "/?apiBase=http%3A%2F%2F127.0.0.1%3A32437&appWindow=1&desktopSurface=workspace#/chat",
+    );
+
+    navigateBrowserPath("/notes?mode=edit#today");
+
+    const navigated = new URL(window.location.href);
+    expect(window.location.pathname).toBe("/notes");
+    expect(navigated.searchParams.get("mode")).toBe("edit");
+    expect(navigated.searchParams.get("apiBase")).toBe(
+      "http://127.0.0.1:32437",
+    );
+    expect(navigated.searchParams.get("appWindow")).toBe("1");
+    expect(navigated.searchParams.get("desktopSurface")).toBe(
+      "workspace",
+    );
+    expect(window.location.hash).toBe("#today");
+  });
 });
