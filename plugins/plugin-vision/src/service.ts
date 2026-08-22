@@ -8,6 +8,7 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { promisify } from "node:util";
 import {
+  ElizaError,
   type IAgentRuntime,
   logger,
   ModelType,
@@ -20,6 +21,7 @@ import {
   StreamingAudioCaptureService,
   type StreamingAudioConfig,
 } from "./audio-capture-stream";
+import { VisionConfigSchema } from "./config";
 import {
   DescribeBackpressureController,
   type DescribePauseReason,
@@ -359,6 +361,44 @@ export class VisionService extends Service {
       if (raw === undefined) return defaultValue;
       return raw.trim().toLowerCase() === "true";
     };
+    const getNonBlankSetting = (
+      primaryKey: string,
+      legacyKey: string,
+    ): { key: string; value: string } | undefined => {
+      const primary = getSettingString(primaryKey);
+      if (primary !== undefined && primary.trim().length > 0) {
+        return { key: primaryKey, value: primary };
+      }
+      const legacy = getSettingString(legacyKey);
+      if (legacy !== undefined && legacy.trim().length > 0) {
+        return { key: legacyKey, value: legacy };
+      }
+      return undefined;
+    };
+    const captureIntervalSetting = getNonBlankSetting(
+      "SCREEN_CAPTURE_INTERVAL",
+      "VISION_SCREEN_CAPTURE_INTERVAL",
+    );
+    let screenCaptureInterval = this.DEFAULT_CONFIG.screenCaptureInterval;
+    if (captureIntervalSetting) {
+      const parsed = VisionConfigSchema.shape.screenCaptureInterval.safeParse(
+        Number(captureIntervalSetting.value),
+      );
+      if (!parsed.success) {
+        throw new ElizaError("Invalid vision screen capture interval", {
+          code: "VISION_SCREEN_CAPTURE_INTERVAL_INVALID",
+          context: {
+            key: captureIntervalSetting.key,
+            value: captureIntervalSetting.value,
+            minimumMs: 100,
+            maximumMs: 60_000,
+          },
+          cause: parsed.error,
+          severity: "fatal",
+        });
+      }
+      screenCaptureInterval = parsed.data;
+    }
 
     return {
       ...this.DEFAULT_CONFIG,
@@ -404,11 +444,7 @@ export class VisionService extends Service {
       visionMode:
         (getSettingString("VISION_MODE") as VisionMode) ||
         this.DEFAULT_CONFIG.visionMode,
-      screenCaptureInterval:
-        Number(
-          runtime.getSetting("SCREEN_CAPTURE_INTERVAL") ||
-            runtime.getSetting("VISION_SCREEN_CAPTURE_INTERVAL"),
-        ) || this.DEFAULT_CONFIG.screenCaptureInterval,
+      screenCaptureInterval,
       ocrEnabled: getBooleanSetting(
         "OCR_ENABLED",
         "VISION_OCR_ENABLED",
