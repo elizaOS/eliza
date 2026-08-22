@@ -69,6 +69,7 @@ function makeService() {
 		listDocumentsDetailed: vi.fn(async () => listResult()),
 		searchDocuments: vi.fn(async () => []),
 		getDocumentById: vi.fn(async () => null),
+		readDocumentRange: vi.fn(async () => null),
 		addDocument: vi.fn(async () => ({
 			clientDocumentId: DOC_ID,
 			fragmentCount: 1,
@@ -584,8 +585,13 @@ describe("documentAction.handler structured routing", () => {
 
 	it("forwards a structured documentId to read without scanning the text", async () => {
 		const service = makeService();
-		service.getDocumentById.mockResolvedValueOnce({
-			content: { text: "hello doc" },
+		service.readDocumentRange.mockResolvedValueOnce({
+			text: "hello doc",
+			start: 0,
+			end: 1,
+			total: 1,
+			documentRevision: 0,
+			sourceFingerprint: "md5:test",
 		} as never);
 		const { runtime } = makeRuntime(service);
 		const res = await documentAction.handler?.(
@@ -594,8 +600,9 @@ describe("documentAction.handler structured routing", () => {
 			undefined,
 			options({ action: "read", documentId: DOC_ID }),
 		);
-		expect(service.getDocumentById).toHaveBeenCalledWith(
+		expect(service.readDocumentRange).toHaveBeenCalledWith(
 			DOC_ID,
+			{ unit: "line", offset: 0, limit: 100 },
 			expect.anything(),
 		);
 		expect(res?.data).toMatchObject({ subaction: "read" });

@@ -8,6 +8,8 @@
  * exact `documents` and `knowledge` contexts and a minimum `USER` role, with
  * per-turn cache scope.
  */
+
+import { logger } from "../../logger";
 import {
 	type IAgentRuntime,
 	type Memory,
@@ -18,6 +20,12 @@ import { addHeader } from "../../utils";
 import { DocumentService } from "./service.ts";
 import type { DocumentMetadataExtended } from "./types.ts";
 import { normalizeDocumentSourceValue } from "./utils.ts";
+
+const PINNED_DOCUMENT_TOKEN_BUDGET = 8_000;
+const APPROXIMATE_CHARACTERS_PER_TOKEN = 4;
+
+export const PINNED_DOCUMENT_TRUNCATION_MARKER =
+	"[Pinned document content omitted from this prompt. Use DOCUMENT read with its document ID to page the exact source.]";
 
 function getDocumentTitle(memory: Memory, index: number): string {
 	const metadata = memory.metadata as DocumentMetadataExtended | undefined;
@@ -30,7 +38,7 @@ function getDocumentTitle(memory: Memory, index: number): string {
 
 export function renderPinnedDocuments(
 	documents: Memory[],
-	_tokenBudget?: number,
+	tokenBudget = PINNED_DOCUMENT_TOKEN_BUDGET,
 ): { text: string; truncated: boolean; includedIds: Array<Memory["id"]> } {
 	const pinned = documents
 		.filter((document) => {
@@ -47,12 +55,25 @@ export function renderPinnedDocuments(
 		});
 	const includedIds: Array<Memory["id"]> = [];
 	const blocks: string[] = [];
+	const maximumCharacters = tokenBudget * APPROXIMATE_CHARACTERS_PER_TOKEN;
+	let usedCharacters = 0;
+	let truncated = false;
 	for (const [index, document] of pinned.entries()) {
 		const block = `## ${getDocumentTitle(document, index)} (${document.id})\n${document.content.text ?? ""}`;
+		const separatorCharacters = blocks.length > 0 ? 2 : 0;
+		if (
+			usedCharacters + separatorCharacters + block.length >
+			maximumCharacters
+		) {
+			truncated = true;
+			continue;
+		}
 		blocks.push(block);
 		includedIds.push(document.id);
+		usedCharacters += separatorCharacters + block.length;
 	}
-	return { text: blocks.join("\n\n"), truncated: false, includedIds };
+	if (truncated) blocks.push(PINNED_DOCUMENT_TRUNCATION_MARKER);
+	return { text: blocks.join("\n\n"), truncated, includedIds };
 }
 
 function summarizeDocument(memory: Memory, index: number) {
@@ -102,9 +123,19 @@ export const documentsProvider: Provider = {
 
 		const { relevantFragments, documents, pinnedDocuments } =
 			await service.composeProviderDocuments(message, {
-				limit: Number.MAX_SAFE_INTEGER,
+				limit: 25,
 			});
 		const pinned = renderPinnedDocuments(pinnedDocuments);
+		if (pinned.truncated) {
+			logger.warn(
+				{
+					tokenBudget: PINNED_DOCUMENT_TOKEN_BUDGET,
+					pinnedDocumentCount: pinnedDocuments.length,
+					includedDocumentCount: pinned.includedIds.length,
+				},
+				"[DocumentsProvider] Pinned document content was explicitly truncated; exact content remains available through paged DOCUMENT reads",
+			);
+		}
 		const relevantSnippets = relevantFragments.map((fragment, index) => {
 			const metadata = fragment.metadata as
 				| DocumentMetadataExtended

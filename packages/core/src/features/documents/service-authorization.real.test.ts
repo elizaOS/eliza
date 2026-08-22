@@ -11,12 +11,14 @@ import { runWithTrajectoryContext } from "../../trajectory-context.ts";
 import {
 	type Agent,
 	ChannelType,
+	type HandlerOptions,
 	type Memory,
 	MemoryType,
 	ModelType,
 	type State,
 	type UUID,
 } from "../../types/index.ts";
+import { documentAction } from "./actions.ts";
 import { documentsProvider } from "./provider.ts";
 import { DocumentService } from "./service.ts";
 
@@ -37,6 +39,7 @@ const ATOMIC_UPDATE_DOCUMENT_ID =
 const FAILED_UPDATE_DOCUMENT_ID =
 	"f4300000-0000-4000-8000-000000000018" as UUID;
 const GRANT_DOCUMENT_ID = "f4300000-0000-4000-8000-000000000022" as UUID;
+const LARGE_DOCUMENT_ID = "f4300000-0000-4000-8000-000000000029" as UUID;
 
 let runtime: AgentRuntime;
 let cleanup: () => Promise<void>;
@@ -302,6 +305,89 @@ describe("DocumentService requester authorization", () => {
 		).rejects.toMatchObject({ code: "DOCUMENT_GRANT_MUTATION_FORBIDDEN" });
 	});
 
+	it("reads a late page from a 10 MiB PGLite document without returning a source-sized projection", async () => {
+		const ordinaryLine = `${"x".repeat(1_023)}\n`;
+		const lateLine = `${"LATE-EVIDENCE".padEnd(1_023, "z")}\n`;
+		const source = ordinaryLine.repeat(10_239) + lateLine;
+		expect(Buffer.byteLength(source)).toBe(10 * 1024 * 1024);
+		await runtime.createMemories([
+			{
+				memory: userPrivateDocument(LARGE_DOCUMENT_ID, source, {
+					title: "Large bounded-read document",
+				}),
+				tableName: "documents",
+			},
+		]);
+		const wholeRead = vi
+			.spyOn(runtime.adapter, "getDocument")
+			.mockRejectedValue(
+				new Error("whole-document materialization is forbidden in this test"),
+			);
+		const service = new DocumentService(runtime);
+		const getService = vi
+			.spyOn(runtime, "getService")
+			.mockImplementation((serviceType) =>
+				serviceType === DocumentService.serviceType ? service : null,
+			);
+		try {
+			const first = await documentAction.handler?.(
+				runtime,
+				message(),
+				undefined,
+				{
+					parameters: {
+						action: "read",
+						documentId: LARGE_DOCUMENT_ID,
+						limit: 1,
+					},
+				} as HandlerOptions,
+			);
+			const revision = (
+				first?.data as
+					| { readView: { slice: { revision?: string } } }
+					| undefined
+			)?.readView.slice.revision;
+			expect(revision).toBeDefined();
+			const result = await documentAction.handler?.(
+				runtime,
+				message(),
+				undefined,
+				{
+					parameters: {
+						action: "read",
+						documentId: LARGE_DOCUMENT_ID,
+						offset: 10_239,
+						limit: 1,
+						expectedRevision: revision,
+					},
+				} as HandlerOptions,
+			);
+			if (!result?.success) {
+				throw new Error(`bounded read failed: ${JSON.stringify(result)}`);
+			}
+			expect(result?.text).toBe(lateLine);
+			expect(wholeRead).not.toHaveBeenCalled();
+			// Query/result-byte oracle: the adapter may scan the source inside the DB,
+			// but only the requested page and continuation metadata cross into JS.
+			expect(Buffer.byteLength(JSON.stringify(result))).toBeLessThan(16 * 1024);
+			expect(result?.data).toMatchObject({
+				readView: {
+					slice: {
+						range: {
+							unit: "line",
+							start: 10_239,
+							end: 10_240,
+							total: 10_240,
+						},
+					},
+				},
+			});
+		} finally {
+			getService.mockRestore();
+			wholeRead.mockRestore();
+		}
+	}, 120_000);
+
 	it("composes knowledge context with requester-scoped user and tenant visibility", async () => {
 		const selected = filterByContextGate(
 			[documentsProvider],
@@ -460,6 +546,11 @@ describe("DocumentService requester authorization", () => {
 
 	it("denies same-turn update and delete after room membership is revoked", async () => {
 		const service = new DocumentService(runtime);
+		const getService = vi
+			.spyOn(runtime, "getService")
+			.mockImplementation((serviceType) =>
+				serviceType === DocumentService.serviceType ? service : null,
+			);
 		const membershipReads = vi.spyOn(
 			runtime.adapter,
 			"getRoomsForParticipants",
@@ -481,6 +572,19 @@ describe("DocumentService requester authorization", () => {
 				await expect(runtime.removeParticipant(USER_ID, ROOM_ID)).resolves.toBe(
 					true,
 				);
+				const revokedRead = await documentAction.handler?.(
+					runtime,
+					request,
+					undefined,
+					{
+						parameters: {
+							action: "read",
+							documentId: UPDATE_DOCUMENT_ID,
+						},
+					} as HandlerOptions,
+				);
+				expect(revokedRead?.success).toBe(false);
+				expect(revokedRead?.values).toMatchObject({ error: "not_found" });
 
 				await expect(
 					service.updateDocument({
@@ -498,7 +602,7 @@ describe("DocumentService requester authorization", () => {
 			},
 		);
 
-		expect(membershipReads).toHaveBeenCalledTimes(3);
+		expect(membershipReads).toHaveBeenCalledTimes(4);
 		const stored = await runtime.adapter.getMemoriesByIds(
 			[UPDATE_DOCUMENT_ID, DELETE_DOCUMENT_ID],
 			"documents",
@@ -510,5 +614,6 @@ describe("DocumentService requester authorization", () => {
 		expect(
 			stored.find((document) => document.id === DELETE_DOCUMENT_ID)?.content,
 		).toMatchObject({ text: "Original delete body" });
+		getService.mockRestore();
 	});
 });

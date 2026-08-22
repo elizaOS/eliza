@@ -9,6 +9,7 @@
  * write/mutation access, and registers the `documents` search category as a
  * side effect of validate/handler.
  */
+import { createHash } from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import {
@@ -24,14 +25,17 @@ import type {
 	ActionExample,
 	ActionResult,
 	Content,
+	DocumentRangeReadResult,
 	HandlerCallback,
 	HandlerOptions,
 	IAgentRuntime,
 	Memory,
+	ReadView,
 	SearchCategoryRegistration,
 	State,
 	UUID,
 } from "../../types";
+import { buildContentReference, buildReadSlice } from "../../types";
 import { getActiveRoutingContextsForTurn } from "../../utils/context-routing.ts";
 import {
 	describeUserReference,
@@ -81,6 +85,8 @@ type DocumentActionParameters = {
 	tags?: string[];
 	limit?: number;
 	offset?: number;
+	unit?: string;
+	expectedRevision?: string;
 	searchMode?: string;
 	includeImageDescriptions?: boolean;
 	scope?: string;
@@ -135,10 +141,18 @@ const DOCUMENT_SUBACTIONS: SubactionsMap<DocumentSubAction> = {
 		],
 	},
 	read: {
-		description: "Read the full text of one stored document by id.",
-		descriptionCompressed: "read document by id",
+		description:
+			"Read an exact page of one stored document by id, with continuation metadata.",
+		descriptionCompressed: "read document page by id",
 		required: [],
-		optional: ["id", "documentId"],
+		optional: [
+			"id",
+			"documentId",
+			"offset",
+			"limit",
+			"unit",
+			"expectedRevision",
+		],
 	},
 	write: {
 		description: "Create a new text-backed document from supplied content.",
@@ -679,6 +693,7 @@ async function handleSearch(
 		const metadata = item.metadata as Record<string, unknown> | undefined;
 		return {
 			...item,
+			readView: fragmentReadView(item),
 			transcriptId:
 				typeof metadata?.transcriptId === "string"
 					? metadata.transcriptId
@@ -688,6 +703,16 @@ async function handleSearch(
 			endMs: typeof metadata?.endMs === "number" ? metadata.endMs : undefined,
 		};
 	});
+	const projectedData = projected.map((item) => ({
+		id: item.id,
+		...(item.readView
+			? { reference: item.readView.reference, readView: item.readView }
+			: { coordinateUnavailable: true }),
+		similarity: item.similarity,
+		transcriptId: item.transcriptId,
+		startMs: item.startMs,
+		endMs: item.endMs,
+	}));
 	const retrievalScope = `Searched a bounded ranked retrieval window of ${matches.length} fragment(s); completeness beyond that window is unknown.`;
 	const text = `${
 		projected.length === 0
@@ -713,7 +738,7 @@ async function handleSearch(
 	return result(true, text, "search", {
 		values: {
 			query: queryLogView(query),
-			results: projected,
+			results: projectedData,
 			scope: {
 				retrieved: matches.length,
 				matchedInWindow: filteredMatches.length,
@@ -726,7 +751,7 @@ async function handleSearch(
 		},
 		data: {
 			query: queryLogView(query),
-			results: projected,
+			results: projectedData,
 			scope: {
 				retrieved: matches.length,
 				matchedInWindow: filteredMatches.length,
@@ -738,6 +763,111 @@ async function handleSearch(
 			},
 		},
 	});
+}
+
+const DOCUMENT_READ_DEFAULT_LIMIT = 100;
+
+type DocumentReadUnit = "line" | "fragment";
+
+function opaqueDocumentRevision(metadata: Record<string, unknown>): string {
+	const declaredRevision =
+		typeof metadata.documentRevision === "number"
+			? String(metadata.documentRevision)
+			: "0";
+	const attempt =
+		typeof metadata.revisionAttemptId === "string"
+			? metadata.revisionAttemptId
+			: "initial";
+	const sourceFingerprint =
+		typeof metadata.sourceFingerprint === "string"
+			? metadata.sourceFingerprint
+			: "source-unknown";
+	return `rev:${createHash("sha256")
+		.update("elizaos:document-read-revision:v1\0")
+		.update(declaredRevision)
+		.update("\0")
+		.update(attempt)
+		.update("\0")
+		.update(sourceFingerprint)
+		.digest("hex")}`;
+}
+
+function fragmentReadView(item: StoredDocument): ReadView | null {
+	const metadata = (item.metadata ?? {}) as Record<string, unknown>;
+	if (
+		typeof metadata.documentId !== "string" ||
+		!Number.isSafeInteger(metadata.position) ||
+		(metadata.position as number) < 0
+	) {
+		return null;
+	}
+	const documentId = metadata.documentId;
+	const position = metadata.position as number;
+	const text = item.content.text ?? "";
+	const revision = opaqueDocumentRevision(metadata);
+	return {
+		reference: buildContentReference({
+			kind: "document",
+			ref: `document:${documentId}`,
+			revision,
+		}),
+		slice: buildReadSlice({
+			range: { unit: "fragment", start: position, end: position + 1 },
+			completeness: "complete",
+			revision,
+			sliceSha256: createHash("sha256").update(text).digest("hex"),
+		}),
+	};
+}
+
+function requiredReadInteger(
+	value: number | undefined,
+	label: "offset" | "limit",
+	fallback: number,
+): number {
+	if (value === undefined) return fallback;
+	if (!Number.isSafeInteger(value) || value < 0) {
+		throw new ElizaError(`Document read ${label} must be a safe integer`, {
+			code: "DOCUMENT_READ_INVALID_RANGE",
+			context: { field: label },
+		});
+	}
+	if (label === "limit" && (value < 1 || value > 100)) {
+		throw new ElizaError("Document read limit exceeds 100 units", {
+			code: "DOCUMENT_READ_INVALID_RANGE",
+			context: { field: label, maximum: 100 },
+		});
+	}
+	return value;
+}
+
+function documentReadPage(
+	page: DocumentRangeReadResult,
+	documentId: UUID,
+	unit: DocumentReadUnit,
+): { text: string; view: ReadView } {
+	const revision = opaqueDocumentRevision({
+		documentRevision: page.documentRevision,
+		revisionAttemptId: page.revisionAttemptId,
+		sourceFingerprint: page.sourceFingerprint,
+	});
+	return {
+		text: page.text,
+		view: {
+			reference: buildContentReference({
+				kind: "document",
+				ref: `document:${documentId}`,
+				revision,
+			}),
+			slice: buildReadSlice({
+				range: { unit, start: page.start, end: page.end, total: page.total },
+				completeness:
+					page.end < page.total ? "partial-recoverable" : "complete",
+				revision,
+				sliceSha256: createHash("sha256").update(page.text).digest("hex"),
+			}),
+		},
+	};
 }
 
 async function handleRead(
@@ -753,18 +883,92 @@ async function handleRead(
 		return result(false, text, "read", { values: { error: "invalid_id" } });
 	}
 
-	const document = await service.getDocumentById(documentId, message);
-	if (!document) {
+	const unit: DocumentReadUnit =
+		params.unit === "fragment" ? "fragment" : "line";
+	const offset = requiredReadInteger(params.offset, "offset", 0);
+	const limit = requiredReadInteger(
+		params.limit,
+		"limit",
+		DOCUMENT_READ_DEFAULT_LIMIT,
+	);
+	const bounded = await service.readDocumentRange(
+		documentId,
+		{ unit, offset, limit },
+		message,
+	);
+	if (!bounded) {
 		const text = `Document ${documentId} was not found; tell the user it doesn't exist.`;
 		return result(false, text, "read", { values: { error: "not_found" } });
 	}
+	if (offset > bounded.total) {
+		throw new ElizaError("Document read offset exceeds the source", {
+			code: "DOCUMENT_READ_INVALID_RANGE",
+			context: { field: "offset", total: bounded.total },
+		});
+	}
+	const page = documentReadPage(bounded, documentId, unit);
+	if (
+		page.view.slice.range.start > 0 &&
+		(typeof params.expectedRevision !== "string" ||
+			!params.expectedRevision.trim())
+	) {
+		return result(
+			false,
+			"A document revision is required to continue reading.",
+			"read",
+			{
+				values: { error: "expected_revision_required", documentId },
+				data: { documentId, error: "expected_revision_required" },
+				promptData: {
+					actionName: "DOCUMENT",
+					subaction: "read",
+					documentId,
+					error: "expected_revision_required",
+				},
+			},
+		);
+	}
+	if (
+		typeof params.expectedRevision === "string" &&
+		params.expectedRevision.trim() &&
+		params.expectedRevision.trim() !== page.view.slice.revision
+	) {
+		return result(
+			false,
+			"The document changed before this page could be read.",
+			"read",
+			{
+				values: { error: "stale_revision", documentId },
+				data: {
+					documentId,
+					error: "stale_revision",
+					currentRevision: page.view.slice.revision,
+				},
+				promptData: {
+					actionName: "DOCUMENT",
+					subaction: "read",
+					documentId,
+					error: "stale_revision",
+					currentRevision: page.view.slice.revision,
+				},
+			},
+		);
+	}
 
-	// No visible callback: dumping the raw document text as a chat bubble is
-	// not the answer — the planner presents the content in voice.
-	const text = document.content.text ?? "";
-	return result(true, text, "read", {
-		values: { documentId, textLength: text.length },
-		data: { document },
+	// The exact page has one carrier: ActionResult.text. Structured projections
+	// contain only identity and continuation metadata, never the document body.
+	return result(true, page.text, "read", {
+		values: {
+			documentId,
+			readView: page.view,
+		},
+		data: { documentId, readView: page.view },
+		promptData: {
+			actionName: "DOCUMENT",
+			subaction: "read",
+			documentId,
+			readView: page.view,
+		},
 	});
 }
 
@@ -1406,9 +1610,24 @@ export const documentAction: Action = {
 		},
 		{
 			name: "offset",
-			description: "Pagination offset for list.",
+			description:
+				"Pagination offset for list, or the zero-based line/fragment offset for read.",
 			required: false,
 			schema: { type: "number", minimum: 0 },
+		},
+		{
+			name: "unit",
+			description:
+				"Exact read unit for action=read: line or fragment. Defaults to line.",
+			required: false,
+			schema: { type: "string", enum: ["line", "fragment"] },
+		},
+		{
+			name: "expectedRevision",
+			description:
+				"Revision returned by the preceding read page. A changed document fails explicitly instead of shifting offsets.",
+			required: false,
+			schema: { type: "string" },
 		},
 		{
 			name: "includeImageDescriptions",

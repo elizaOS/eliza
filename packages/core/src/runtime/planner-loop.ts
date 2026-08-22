@@ -63,6 +63,10 @@ import { resolveStateDir } from "../utils/state-dir";
 import { isPlainObject } from "../utils/type-guards";
 import { toWellFormedUnicode } from "../utils/well-formed";
 import {
+	buildContentProjectionDiagnostics,
+	isProgressiveContentProjectionEnabled,
+} from "./content-projection-policy";
+import {
 	computePrefixHashes,
 	hashString,
 	stableJsonStringify,
@@ -90,11 +94,14 @@ import {
 	TrajectoryLimitExceeded,
 } from "./limits";
 import {
+	buildContentProjectionBudget,
 	buildModelInputBudget,
+	type ContentProjectionBudget,
 	withModelInputBudgetProviderOptions,
 } from "./model-input-budget";
 import {
 	cacheProviderOptions,
+	type ToolResultProjectionStats,
 	trajectoryStepsToMessages,
 } from "./planner-rendering";
 import type {
@@ -1785,18 +1792,34 @@ function renderPlannerModelInput(params: {
 	trajectory: PlannerTrajectory;
 	template?: string;
 	runtime?: PlannerRuntime;
+	projectionBudget?: ContentProjectionBudget;
+	omitRecoverableText?: boolean;
 }): {
 	messages: ChatMessage[];
 	promptSegments: PromptSegment[];
 	cacheKeySegments: PromptSegment[];
+	projectionStats: ToolResultProjectionStats;
 } {
 	const renderedContext = renderContextObject(params.context);
 	const template = params.template ?? plannerTemplate;
 	const instructions = appendMandatoryPlannerPolicy(
 		template.split("context_object:")[0] ?? template,
 	).trim();
+	let projectionStats: ToolResultProjectionStats = {
+		resultCount: 0,
+		pagesIncluded: 0,
+		pagesOmitted: 0,
+		omissionReasons: {},
+	};
 	const stepMessages = trajectoryStepsToMessages(params.trajectory.steps, {
 		redactText: composeToolDiagnosticRedactor(params.runtime),
+		...(params.projectionBudget
+			? { projectionBudget: params.projectionBudget }
+			: {}),
+		...(params.omitRecoverableText ? { omitRecoverableText: true } : {}),
+		onProjectionStats: (stats) => {
+			projectionStats = stats;
+		},
 	});
 	// Action names + parameter schemas now ride directly on the tools array
 	// (each Action is exposed as its own native tool), so there is no separate
@@ -1853,7 +1876,7 @@ function renderPlannerModelInput(params: {
 		dynamicBlocks: [],
 		stepMessages,
 	});
-	return { messages, promptSegments, cacheKeySegments };
+	return { messages, promptSegments, cacheKeySegments, projectionStats };
 }
 
 function compactionReserveForBudget(
@@ -2339,27 +2362,56 @@ async function callPlanner(params: {
 	 */
 	onUsage?: (usage: { promptTokens: number; completionTokens: number }) => void;
 }): Promise<ReturnType<typeof parsePlannerOutput>> {
-	const renderedInput = renderPlannerModelInput({
-		context: params.context,
-		trajectory: params.trajectory,
-		template: resolveOptimizedPlannerTemplate(params.runtime),
-		runtime: params.runtime,
-	});
-	const modelInputBudget = buildModelInputBudget({
-		messages: renderedInput.messages,
-		promptSegments: renderedInput.promptSegments,
+	const budgetOptions = {
 		tools: params.tools,
-		// `modelName` lets the per-model context-window lookup fire.
-		// The lookup result wins over contextWindowTokens (see buildModelInputBudget
-		// resolution order). Note: contextWindowTokens defaults to 128_000 so the
-		// spread is always non-empty; the lookup will still override it when
-		// contextWindowModelName resolves.
 		modelName: params.config.contextWindowModelName,
 		...(params.config.contextWindowTokens
 			? { contextWindowTokens: params.config.contextWindowTokens }
 			: {}),
 		reserveTokens: compactionReserveForBudget(params.config),
+	};
+	const projectionEnabled = isProgressiveContentProjectionEnabled(
+		params.runtime,
+	);
+	const renderArgs = {
+		context: params.context,
+		trajectory: params.trajectory,
+		template: resolveOptimizedPlannerTemplate(params.runtime),
+		runtime: params.runtime,
+	};
+	const baselineInput = renderPlannerModelInput({
+		...renderArgs,
+		...(projectionEnabled ? { omitRecoverableText: true } : {}),
 	});
+	const baselineBudget = buildModelInputBudget({
+		messages: baselineInput.messages,
+		promptSegments: baselineInput.promptSegments,
+		...budgetOptions,
+	});
+	const projectionBudget = projectionEnabled
+		? buildContentProjectionBudget({
+				budget: baselineBudget,
+				resultCount: baselineInput.projectionStats.resultCount,
+			})
+		: undefined;
+	const renderedInput = projectionBudget
+		? renderPlannerModelInput({ ...renderArgs, projectionBudget })
+		: baselineInput;
+	const modelInputBudget = buildModelInputBudget({
+		messages: renderedInput.messages,
+		promptSegments: renderedInput.promptSegments,
+		...budgetOptions,
+	});
+	const contentProjection = buildContentProjectionDiagnostics({
+		enabled: projectionEnabled,
+		baselineBudget,
+		...(projectionBudget ? { projectionBudget } : {}),
+		stats: renderedInput.projectionStats,
+	});
+	params.runtime.logger?.debug?.(
+		{ src: "planner-loop", contentProjection },
+		"Computed progressive content projection",
+	);
 	const prefixHashes = computePrefixHashes(renderedInput.promptSegments);
 	const cachePrefixHashes = computePrefixHashes(renderedInput.cacheKeySegments);
 	const prefixHash =
@@ -2402,6 +2454,7 @@ async function callPlanner(params: {
 			...((modelParams.providerOptions as { eliza?: Record<string, unknown> })
 				.eliza ?? {}),
 			thinking: "off",
+			contentProjection,
 		},
 	};
 	if (hasTools) {

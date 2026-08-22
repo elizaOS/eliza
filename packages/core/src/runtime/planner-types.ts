@@ -92,6 +92,8 @@ export type EvaluatorOutput = EvaluationResult & {
 
 export interface PlannerRuntime {
 	getService?(service: string): unknown;
+	/** Optional per-agent setting lookup used by guarded runtime features. */
+	getSetting?(key: string): string | boolean | number | null;
 	reportError?(
 		scope: string,
 		error: unknown,

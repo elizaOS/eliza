@@ -991,9 +991,10 @@ export interface ActionResult {
 
 	/**
 	 * Optional model-bound projection of `data`. When present, prompt renderers
-	 * use this object while runtime state and trajectories retain the complete
-	 * `data` payload. Use it when an action's machine result is substantially
-	 * larger than the fields a model needs to continue or evaluate the turn.
+	 * use only this object and never additionally serialize `data`. Exact source
+	 * pages remain in `text`; progressive readers put model-safe `ReadView`
+	 * metadata here and keep native locators and complete bodies out of both
+	 * prompt projections and trajectories.
 	 */
 	promptData?: ProviderDataRecord;
 

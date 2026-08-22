@@ -64,6 +64,7 @@ function makeService() {
 		listDocumentsDetailed: vi.fn(async () => listResult()),
 		searchDocuments: vi.fn(async () => []),
 		getDocumentById: vi.fn(async () => null),
+		readDocumentRange: vi.fn(async () => null),
 		addDocument: vi.fn(async () => ({
 			clientDocumentId: DOC_ID,
 			fragmentCount: 1,
@@ -219,6 +220,8 @@ describe("DOCUMENT search/list echo clamping", () => {
 				content: { text: "anchored phrase" },
 				metadata: {
 					documentId: DOC_ID,
+					documentRevision: 3,
+					position: 12,
 					transcriptId: "transcript-1",
 					startMs: 12_500,
 					endMs: 15_000,
@@ -238,6 +241,12 @@ describe("DOCUMENT search/list echo clamping", () => {
 			transcriptId: "transcript-1",
 			startMs: 12_500,
 			endMs: 15_000,
+			readView: {
+				reference: { kind: "document", ref: `document:${DOC_ID}` },
+				slice: {
+					range: { unit: "fragment", start: 12, end: 13 },
+				},
+			},
 		});
 	});
 });
@@ -255,7 +264,11 @@ describe("DOCUMENT structural extraction on hardened messages", () => {
 			undefined,
 			options({ action: "read" }),
 		);
-		expect(service.getDocumentById).toHaveBeenCalledWith(DOC_ID, memory);
+		expect(service.readDocumentRange).toHaveBeenCalledWith(
+			DOC_ID,
+			{ unit: "line", offset: 0, limit: 100 },
+			memory,
+		);
 		expect(res.text).not.toContain("SECURITY NOTICE");
 	});
 
