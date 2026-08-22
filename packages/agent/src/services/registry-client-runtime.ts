@@ -6,7 +6,7 @@
 import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { logger } from "@elizaos/core";
+import { ElizaError, logger } from "@elizaos/core";
 import type { RegistryEndpoint } from "../config/types.eliza.ts";
 import {
   fetchRegistrySnapshot,
@@ -25,6 +25,10 @@ import type { RegistryPluginInfo } from "./registry-client-types.ts";
 const DEFAULT_TTL_MS = 3_600_000;
 const LOCAL_FALLBACK_TTL_MS = 5 * 60_000;
 const CACHE_READ_CHUNK_BYTES = 64 * 1024;
+
+class InvalidRegistryCacheError extends Error {
+  override readonly name = "InvalidRegistryCacheError";
+}
 
 export interface RegistryCacheRecord {
   fetchedAt: number;
@@ -154,7 +158,9 @@ async function readBoundedCacheFile(filePath: string): Promise<Uint8Array> {
       if (bytesRead === 0) break;
       total += bytesRead;
       if (total > MAX_REGISTRY_JSON_BYTES) {
-        throw new Error("Registry cache exceeds the byte limit");
+        throw new InvalidRegistryCacheError(
+          "Registry cache exceeds the byte limit",
+        );
       }
       chunks.push(buffer.subarray(0, bytesRead));
     }
@@ -170,6 +176,16 @@ async function readBoundedCacheFile(filePath: string): Promise<Uint8Array> {
   return bytes;
 }
 
+function observeDetachedAuthorityLoad<T>(shared: Promise<T>): void {
+  // error-policy:J5 the pre-aborted caller observes its AbortError; the
+  // detached authority rejection is separately observed and logged here.
+  void shared.catch((error) => {
+    logger.debug(
+      `[registry-client] Detached authority load failed: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  });
+}
+
 function waitForCaller<T>(
   shared: Promise<T>,
   signal?: AbortSignal,
@@ -179,7 +195,7 @@ function waitForCaller<T>(
     // The authority load is intentionally caller-independent; retain an
     // observer so its eventual bounded failure cannot become unhandled after
     // this already-cancelled caller leaves.
-    void shared.catch(() => undefined);
+    observeDetachedAuthorityLoad(shared);
     return Promise.reject(
       signal.reason ??
         new DOMException("Registry request aborted", "AbortError"),
@@ -219,8 +235,29 @@ export function createFileRegistryCacheStore(
     async read() {
       await mutationTail;
       const resolved = resolveFilePath();
+      let bytes: Uint8Array;
       try {
-        const bytes = await readBoundedCacheFile(resolved);
+        bytes = await readBoundedCacheFile(resolved);
+      } catch (error) {
+        // error-policy:J1 only absence and an explicitly bounded oversized
+        // cache map to cache-miss; operational filesystem failures stay fatal.
+        if (
+          error instanceof InvalidRegistryCacheError ||
+          (typeof error === "object" &&
+            error !== null &&
+            "code" in error &&
+            error.code === "ENOENT")
+        ) {
+          return null;
+        }
+        throw new ElizaError("Registry cache could not be read", {
+          code: "REGISTRY_CACHE_READ_FAILED",
+          context: { filePath: resolved },
+          cause: error,
+          severity: "fatal",
+        });
+      }
+      try {
         const value = JSON.parse(
           new TextDecoder("utf-8", { fatal: true }).decode(bytes),
         ) as unknown;

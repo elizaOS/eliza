@@ -6,7 +6,8 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { logger } from "@elizaos/core";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { installPluginWithRuntime } from "../../../agent/src/services/plugin-installer.ts";
 import {
   createFileRegistryCacheStore,
@@ -32,6 +33,7 @@ const originalStateDir = process.env.ELIZA_STATE_DIR;
 const originalConfigPath = process.env.ELIZA_CONFIG_PATH;
 
 afterEach(async () => {
+  vi.restoreAllMocks();
   await Promise.all(runningServers.splice(0).map((server) => server.stop()));
   await Promise.all(
     temporaryDirectories
@@ -299,6 +301,35 @@ describe("registry marketplace protocol", () => {
     });
     await Promise.resolve();
     expect(cancelled).toBe(true);
+
+    const debug = vi.spyOn(logger, "debug").mockImplementation(() => {});
+    const rejectedCancellation = new ReadableStream<Uint8Array>({
+      cancel() {
+        return Promise.reject(new Error("cancel rejected"));
+      },
+    });
+    await expect(
+      fetchRegistrySnapshot({
+        generatedRegistryUrl:
+          "https://registry.example/generated-registry.json",
+        indexRegistryUrl: "https://registry.example/index.json",
+        fetchImpl: async () =>
+          new Response(rejectedCancellation, {
+            headers: {
+              "content-type": "application/json",
+              "content-encoding": "gzip",
+            },
+          }),
+        cloudReachable: async () => true,
+      }),
+    ).rejects.toMatchObject({
+      code: "REGISTRY_UPSTREAM_CONTENT_ENCODING_UNSUPPORTED",
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(debug).toHaveBeenCalledWith(
+      expect.stringContaining("Response cancellation failed"),
+    );
 
     for (const retryAfter of ["9".repeat(1_000), "9999999999"]) {
       let caught: unknown;

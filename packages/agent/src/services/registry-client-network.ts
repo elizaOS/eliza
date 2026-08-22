@@ -236,15 +236,21 @@ function retryAfterMs(response: Response, now: () => number): number | null {
     : null;
 }
 
-function cancelBody(response: Response, reason: string): void {
-  if (!response.body) return;
+function observeCancellation(
+  target: { cancel(reason?: unknown): Promise<void> },
+  reason: string,
+): void {
   // error-policy:J6 rejecting the response is authoritative; stream teardown
-  // is observed but must not delay the typed boundary failure.
-  void response.body.cancel(reason).catch((error) => {
+  // failure is explicitly observed at debug level without replacing it.
+  void target.cancel(reason).catch((error) => {
     logger.debug(
       `[registry-client] Response cancellation failed: ${error instanceof Error ? error.message : String(error)}`,
     );
   });
+}
+
+function cancelBody(response: Response, reason: string): void {
+  if (response.body) observeCancellation(response.body, reason);
 }
 
 function protocolFailure(
@@ -385,11 +391,7 @@ async function readRegistryJson(response: Response): Promise<unknown> {
       if (chunk.done) break;
       total += chunk.value.byteLength;
       if (total > MAX_REGISTRY_JSON_BYTES) {
-        // error-policy:J6 the limit failure is authoritative; cancellation is
-        // teardown and is intentionally not awaited.
-        void reader
-          .cancel("registry streamed body exceeds limit")
-          .catch(() => undefined);
+        observeCancellation(reader, "registry streamed body exceeds limit");
         throw protocolFailure(
           "Registry response exceeds the body limit",
           "REGISTRY_UPSTREAM_BODY_TOO_LARGE",
@@ -399,8 +401,7 @@ async function readRegistryJson(response: Response): Promise<unknown> {
     }
   } catch (cause) {
     if (cause instanceof RegistryUpstreamError) throw cause;
-    // error-policy:J6 the read failure is already authoritative.
-    void reader.cancel("registry response read failed").catch(() => undefined);
+    observeCancellation(reader, "registry response read failed");
     throw protocolFailure(
       "Registry response body could not be read",
       "REGISTRY_UPSTREAM_BODY_READ_FAILED",

@@ -7,6 +7,7 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { logger } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MAX_REGISTRY_JSON_BYTES } from "./registry-client-network.ts";
 import {
@@ -20,6 +21,7 @@ import type { RegistryPluginInfo } from "./registry-client-types.ts";
 const temporaryDirectories: string[] = [];
 
 afterEach(async () => {
+  vi.restoreAllMocks();
   await Promise.all(
     temporaryDirectories
       .splice(0)
@@ -232,9 +234,47 @@ describe("RegistryClient authority isolation", () => {
       "plugin-network",
     ]);
   });
+
+  it("observes a detached authority failure for a pre-aborted caller", async () => {
+    const debug = vi.spyOn(logger, "debug").mockImplementation(() => {});
+    const controller = new AbortController();
+    controller.abort(new DOMException("caller stopped", "AbortError"));
+    const instance = client({
+      cacheStore: {
+        read: async () => null,
+        write: async () => true,
+        remove: async () => {},
+      },
+      fetchImpl: async () => {
+        throw new Error("detached upstream failed");
+      },
+    });
+
+    await expect(
+      instance.getRegistryPlugins({ signal: controller.signal }),
+    ).rejects.toMatchObject({ name: "AbortError" });
+    await vi.waitFor(() => {
+      expect(debug).toHaveBeenCalledWith(
+        expect.stringContaining("Detached authority load failed"),
+      );
+    });
+  });
 });
 
 describe("file registry cache admission", () => {
+  it("rethrows operational cache read failures as typed errors", async () => {
+    const openFailure = Object.assign(new Error("permission denied"), {
+      code: "EACCES",
+    });
+    vi.spyOn(fs, "open").mockRejectedValueOnce(openFailure);
+    const store = createFileRegistryCacheStore("/not-readable/registry.json");
+
+    await expect(store.read()).rejects.toMatchObject({
+      code: "REGISTRY_CACHE_READ_FAILED",
+      cause: openFailure,
+    });
+  });
+
   it("bounds bytes, rejects invalid UTF-8, and cleans fenced temp writes", async () => {
     const directory = await fs.mkdtemp(
       path.join(os.tmpdir(), "registry-cache-admission-"),
