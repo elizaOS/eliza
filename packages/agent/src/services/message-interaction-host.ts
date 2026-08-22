@@ -45,6 +45,13 @@ function requiredText(value: string, pathName: string): string {
   return normalized;
 }
 
+function canonicalTimestamp(value: string): number {
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) && new Date(parsed).toISOString() === value
+    ? parsed
+    : Number.NaN;
+}
+
 function assertSafeResult(
   value: unknown,
   pathName: string,
@@ -57,6 +64,17 @@ function assertSafeResult(
     });
   }
   for (const [key, fieldValue] of Object.entries(value)) {
+    if (
+      new TextEncoder().encode(key).length > 512 ||
+      (typeof fieldValue === "string" &&
+        new TextEncoder().encode(fieldValue).length > 65_536) ||
+      (typeof fieldValue === "number" && !Number.isFinite(fieldValue))
+    ) {
+      throw new ElizaError(`${pathName} contains an unbounded field.`, {
+        code: "INVALID_MESSAGE_INTERACTION_EFFECT_RECEIPT",
+        context: { path: `${pathName}.${key}` },
+      });
+    }
     if (
       fieldValue !== null &&
       typeof fieldValue !== "string" &&
@@ -116,7 +134,7 @@ function hostReceipt(
     "receipt.canonicalInboundEventId",
   );
   requiredText(receipt.auditId, "receipt.auditId");
-  if (!Number.isFinite(Date.parse(receipt.completedAt))) {
+  if (!Number.isFinite(canonicalTimestamp(receipt.completedAt))) {
     throw new ElizaError("Interaction receipt completion time is invalid.", {
       code: "MESSAGE_INTERACTION_STORE_PROTOCOL",
     });
@@ -286,12 +304,12 @@ export class MessageInteractionHostService
           { code: "MESSAGE_INTERACTION_PROVIDER_RECEIPT_MISMATCH" },
         );
       }
-      if (!Number.isFinite(Date.parse(provider.receivedAt))) {
+      if (!Number.isFinite(canonicalTimestamp(provider.receivedAt))) {
         throw new ElizaError("Provider receipt time is invalid.", {
           code: "INVALID_MESSAGE_INTERACTION_PROVIDER_RECEIPT",
         });
       }
-      if (Date.parse(provider.receivedAt) > this.clock()) {
+      if (canonicalTimestamp(provider.receivedAt) > this.clock()) {
         throw new ElizaError("Provider receipt time is in the future.", {
           code: "INVALID_MESSAGE_INTERACTION_PROVIDER_RECEIPT",
         });
@@ -317,6 +335,13 @@ export class MessageInteractionHostService
           { code: "MESSAGE_INTERACTION_BINDING_MISMATCH" },
         );
       }
+      const preparedHandler = this.handlers.get(prior.effect.kind);
+      if (!preparedHandler) {
+        throw new ElizaError("Interaction effect handler is unavailable.", {
+          code: "MESSAGE_INTERACTION_EFFECT_HANDLER_UNAVAILABLE",
+          context: { kind: prior.effect.kind },
+        });
+      }
       const consumed = await this.authority.consume({
         callbackData: request.callbackData,
         // The original outbound message binding is host-retained state. Provider
@@ -326,17 +351,7 @@ export class MessageInteractionHostService
         response: request.response,
         executor: {
           execute: async (args) => {
-            const handler = this.handlers.get(args.effect.kind);
-            if (!handler) {
-              throw new ElizaError(
-                "Interaction effect handler is unavailable.",
-                {
-                  code: "MESSAGE_INTERACTION_EFFECT_HANDLER_UNAVAILABLE",
-                  context: { kind: args.effect.kind },
-                },
-              );
-            }
-            const effect = await handler.execute({
+            const effect = await preparedHandler.execute({
               ...args,
               providerReceipt: structuredClone(provider),
             });

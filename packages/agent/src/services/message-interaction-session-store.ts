@@ -9,11 +9,13 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import {
   applyMessageInteractionClaim,
+  applyMessageInteractionCommit,
   applyMessageInteractionCompletion,
   applyMessageInteractionRevocation,
   ElizaError,
   type MessageInteractionClaimContext,
   type MessageInteractionClaimResult,
+  type MessageInteractionCommitContext,
   type MessageInteractionCompleteContext,
   type MessageInteractionSession,
   type MessageInteractionSessionStore,
@@ -36,12 +38,53 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function validIsoDate(value: unknown): boolean {
-  return typeof value === "string" && Number.isFinite(Date.parse(value));
+  if (typeof value !== "string") return false;
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) && new Date(parsed).toISOString() === value;
+}
+
+function validBoundedJson(value: unknown): boolean {
+  const stack: Array<{ value: unknown; depth: number }> = [{ value, depth: 0 }];
+  let nodes = 0;
+  while (stack.length > 0) {
+    const current = stack.pop();
+    if (!current || current.depth > 32 || ++nodes > 100_000) return false;
+    if (typeof current.value === "string") {
+      if (new TextEncoder().encode(current.value).length > 65_536) return false;
+      continue;
+    }
+    if (Array.isArray(current.value)) {
+      if (current.value.length > 10_000) return false;
+      for (const child of current.value)
+        stack.push({ value: child, depth: current.depth + 1 });
+      continue;
+    }
+    if (isRecord(current.value)) {
+      const entries = Object.entries(current.value);
+      if (entries.length > 10_000) return false;
+      for (const [key, child] of entries) {
+        if (
+          key === "__proto__" ||
+          key === "prototype" ||
+          key === "constructor" ||
+          new TextEncoder().encode(key).length > 512
+        )
+          return false;
+        stack.push({ value: child, depth: current.depth + 1 });
+      }
+    }
+  }
+  return true;
 }
 
 function structurallyValidConsume(value: Record<string, unknown>): boolean {
   if (value.state === "pending") return true;
-  if (value.state !== "claimed" && value.state !== "completed") return false;
+  if (
+    value.state !== "claimed" &&
+    value.state !== "committed" &&
+    value.state !== "completed"
+  )
+    return false;
   if (
     typeof value.claimId !== "string" ||
     typeof value.replayKey !== "string" ||
@@ -52,10 +95,26 @@ function structurallyValidConsume(value: Record<string, unknown>): boolean {
     Number(value.attempt) < 1
   )
     return false;
-  if (value.state === "claimed") return validIsoDate(value.claimExpiresAt);
+  if (value.state === "claimed")
+    return (
+      validIsoDate(value.claimExpiresAt) &&
+      Date.parse(String(value.claimExpiresAt)) >
+        Date.parse(String(value.claimedAt))
+    );
+  if (value.state === "committed")
+    return (
+      validIsoDate(value.committedAt) &&
+      Date.parse(String(value.committedAt)) >=
+        Date.parse(String(value.claimedAt))
+    );
   const receipt = value.receipt;
   return (
+    validIsoDate(value.committedAt) &&
     validIsoDate(value.completedAt) &&
+    Date.parse(String(value.committedAt)) >=
+      Date.parse(String(value.claimedAt)) &&
+    Date.parse(String(value.completedAt)) >=
+      Date.parse(String(value.committedAt)) &&
     isRecord(receipt) &&
     typeof receipt.receiptId === "string" &&
     receipt.idempotencyKey === value.replayKey &&
@@ -73,7 +132,16 @@ function structurallyValidSession(value: unknown, reference: string): boolean {
   return (
     value.sessionVersion === 1 &&
     value.reference === reference &&
-    typeof value.purpose === "string" &&
+    [
+      "choice",
+      "form",
+      "approval",
+      "setup",
+      "auth",
+      "task",
+      "file",
+      "followup",
+    ].includes(String(value.purpose)) &&
     ["choice", "form", "followups", "task", "secret"].includes(
       String(value.blockKind),
     ) &&
@@ -100,8 +168,9 @@ function structurallyValidSession(value: unknown, reference: string): boolean {
     typeof authorization.policyRevision === "string" &&
     validIsoDate(authorization.decidedAt) &&
     ["active", "revoked"].includes(String(authorization.state)) &&
-    (authorization.revokedAt === null ||
-      validIsoDate(authorization.revokedAt)) &&
+    ((authorization.state === "active" && authorization.revokedAt === null) ||
+      (authorization.state === "revoked" &&
+        validIsoDate(authorization.revokedAt))) &&
     isRecord(value.effect) &&
     typeof value.effect.kind === "string" &&
     validIsoDate(value.createdAt) &&
@@ -120,6 +189,8 @@ export interface FileMessageInteractionSessionStoreOptions {
   staleLockMs?: number;
   pollMs?: number;
   retentionMs?: number;
+  maxStoreBytes?: number;
+  maxSessions?: number;
   clock?: () => number;
 }
 
@@ -184,6 +255,8 @@ export class FileMessageInteractionSessionStore
   private readonly staleLockMs: number;
   private readonly pollMs: number;
   private readonly retentionMs: number;
+  private readonly maxStoreBytes: number;
+  private readonly maxSessions: number;
   private readonly clock: () => number;
   private directoryIdentity: {
     realPath: string;
@@ -223,6 +296,16 @@ export class FileMessageInteractionSessionStore
       "retentionMs",
       0,
     );
+    this.maxStoreBytes = safeInteger(
+      options.maxStoreBytes ?? 4 * 1024 * 1024,
+      "maxStoreBytes",
+      1,
+    );
+    this.maxSessions = safeInteger(
+      options.maxSessions ?? 10_000,
+      "maxSessions",
+      1,
+    );
     this.clock = options.clock ?? Date.now;
   }
 
@@ -237,6 +320,12 @@ export class FileMessageInteractionSessionStore
       storeError(
         "UNSAFE_INTERACTION_STORE_PATH",
         "Interaction store directory must be a real directory.",
+      );
+    }
+    if ((directoryStat.mode & 0o077) !== 0) {
+      storeError(
+        "UNSAFE_INTERACTION_STORE_PATH",
+        "Interaction store directory permissions expose private state.",
       );
     }
     const realDirectory = await fs.realpath(this.directory);
@@ -256,6 +345,12 @@ export class FileMessageInteractionSessionStore
       storeError(
         "UNSAFE_INTERACTION_STORE_PATH",
         "Interaction store file must be a regular file.",
+      );
+    }
+    if (existing && (existing.nlink !== 1 || (existing.mode & 0o077) !== 0)) {
+      storeError(
+        "UNSAFE_INTERACTION_STORE_PATH",
+        "Interaction store file must be private and have one filesystem link.",
       );
     }
     this.initialized = true;
@@ -298,10 +393,42 @@ export class FileMessageInteractionSessionStore
 
   private async readLockOwner(): Promise<LockOwner | null> {
     try {
-      const raw = await fs.readFile(
-        path.join(this.lockPath, "owner.json"),
-        "utf8",
+      const ownerPath = path.join(this.lockPath, "owner.json");
+      const entry = await fs.lstat(ownerPath);
+      if (
+        !entry.isFile() ||
+        entry.isSymbolicLink() ||
+        entry.nlink !== 1 ||
+        (entry.mode & 0o077) !== 0 ||
+        entry.size > 4_096
+      ) {
+        storeError(
+          "UNSAFE_INTERACTION_STORE_LOCK",
+          "Interaction store lock owner file is unsafe.",
+        );
+      }
+      const handle = await fs.open(
+        ownerPath,
+        constants.O_RDONLY | constants.O_NOFOLLOW,
       );
+      let raw: string;
+      try {
+        const opened = await handle.stat();
+        if (
+          opened.dev !== entry.dev ||
+          opened.ino !== entry.ino ||
+          opened.nlink !== 1 ||
+          opened.size > 4_096
+        ) {
+          // The prior owner may release and a contender may create a new lock
+          // between lstat and open. The changed file grants no authority; the
+          // caller treats it like an incomplete owner and waits/retries.
+          return null;
+        }
+        raw = await handle.readFile("utf8");
+      } finally {
+        await handle.close();
+      }
       const value = JSON.parse(raw) as Partial<LockOwner>;
       if (
         !Number.isSafeInteger(value.pid) ||
@@ -421,7 +548,12 @@ export class FileMessageInteractionSessionStore
   }
 
   private assertFile(value: unknown): SessionFile {
-    if (!value || typeof value !== "object" || Array.isArray(value)) {
+    if (
+      !value ||
+      typeof value !== "object" ||
+      Array.isArray(value) ||
+      !validBoundedJson(value)
+    ) {
       return storeError(
         "CORRUPT_INTERACTION_SESSION_STORE",
         "Interaction store root is invalid.",
@@ -437,6 +569,12 @@ export class FileMessageInteractionSessionStore
       return storeError(
         "CORRUPT_INTERACTION_SESSION_STORE",
         "Interaction store schema is invalid.",
+      );
+    }
+    if (Object.keys(document.sessions).length > this.maxSessions) {
+      return storeError(
+        "INTERACTION_SESSION_STORE_LIMIT_EXCEEDED",
+        "Interaction store contains too many sessions.",
       );
     }
     for (const [reference, session] of Object.entries(document.sessions)) {
@@ -463,11 +601,37 @@ export class FileMessageInteractionSessionStore
         "Interaction store became a non-regular file.",
       );
     }
+    if (
+      stat.nlink !== 1 ||
+      (stat.mode & 0o077) !== 0 ||
+      stat.size > this.maxStoreBytes
+    ) {
+      return storeError(
+        stat.size > this.maxStoreBytes
+          ? "INTERACTION_SESSION_STORE_LIMIT_EXCEEDED"
+          : "UNSAFE_INTERACTION_STORE_PATH",
+        "Interaction store file is unsafe or exceeds its byte limit.",
+      );
+    }
     const handle = await fs.open(
       this.filePath,
       constants.O_RDONLY | constants.O_NOFOLLOW,
     );
     try {
+      const opened = await handle.stat();
+      if (
+        !opened.isFile() ||
+        opened.dev !== stat.dev ||
+        opened.ino !== stat.ino ||
+        opened.nlink !== 1 ||
+        (opened.mode & 0o077) !== 0 ||
+        opened.size > this.maxStoreBytes
+      ) {
+        return storeError(
+          "UNSAFE_INTERACTION_STORE_PATH",
+          "Interaction store file identity changed while opening.",
+        );
+      }
       const raw = await handle.readFile("utf8");
       return this.assertFile(JSON.parse(raw) as unknown);
     } catch (error) {
@@ -487,7 +651,11 @@ export class FileMessageInteractionSessionStore
   private prune(document: SessionFile, now: number): number {
     let deleted = 0;
     for (const [reference, session] of Object.entries(document.sessions)) {
-      if (Date.parse(session.expiresAt) + this.retentionMs <= now) {
+      if (
+        Date.parse(session.expiresAt) + this.retentionMs <= now &&
+        session.consume.state !== "committed" &&
+        session.consume.state !== "completed"
+      ) {
         delete document.sessions[reference];
         deleted += 1;
       }
@@ -496,6 +664,23 @@ export class FileMessageInteractionSessionStore
   }
 
   private async writeFile(document: SessionFile): Promise<void> {
+    if (
+      Object.keys(document.sessions).length > this.maxSessions ||
+      !validBoundedJson(document)
+    ) {
+      storeError(
+        "INTERACTION_SESSION_STORE_LIMIT_EXCEEDED",
+        "Interaction store exceeds its structural limits.",
+      );
+    }
+    if (
+      Buffer.byteLength(JSON.stringify(document), "utf8") > this.maxStoreBytes
+    ) {
+      storeError(
+        "INTERACTION_SESSION_STORE_LIMIT_EXCEEDED",
+        "Interaction store exceeds its byte limit.",
+      );
+    }
     const temp = `${this.filePath}.tmp-${process.pid}-${newToken()}`;
     try {
       await this.writeAndSync(temp, document);
@@ -584,6 +769,22 @@ export class FileMessageInteractionSessionStore
     });
   }
 
+  async commitIfClaimed(
+    context: MessageInteractionCommitContext,
+  ): Promise<MessageInteractionSession> {
+    return this.transaction((document) => {
+      const current = document.sessions[context.reference];
+      if (!current)
+        storeError(
+          "MESSAGE_INTERACTION_NOT_FOUND",
+          "Interaction session was not found.",
+        );
+      const committed = applyMessageInteractionCommit(current, context);
+      document.sessions[context.reference] = structuredClone(committed);
+      return committed;
+    });
+  }
+
   async revokeAuthorization(args: {
     reference: string;
     decisionId: string;
@@ -611,7 +812,11 @@ export class FileMessageInteractionSessionStore
     return this.transaction((document) => {
       let deleted = 0;
       for (const [reference, session] of Object.entries(document.sessions)) {
-        if (Date.parse(session.expiresAt) <= before) {
+        if (
+          Date.parse(session.expiresAt) <= before &&
+          session.consume.state !== "committed" &&
+          session.consume.state !== "completed"
+        ) {
           delete document.sessions[reference];
           deleted += 1;
         }
