@@ -589,16 +589,16 @@ export class TaskService extends Service {
 		for (const task of validation.tasks) {
 			// Non-repeat tasks: run when due (or immediately if no dueAt/scheduledAt). WHY: one-shot "run at time X" (e.g. follow-up) uses dueAt or metadata.scheduledAt.
 			if (!task.tags?.includes("repeat")) {
-			// A paused one-shot must not run and must not reach the
-			// execute-and-delete lifecycle — pauseTask() promises that ticks
-			// after the pause skip the row until resumeTask(). The repeat
-			// branch below has its own paused skip; this mirrors it for
-			// one-shots (#24277). A tick that captured this snapshot before
-			// pauseTask persisted may still run once — documented as
-			// already-selected-work semantics on pauseTask().
-			if (task.metadata?.paused === true) {
-				continue;
-			}
+				// A paused one-shot must not run and must not reach the
+				// execute-and-delete lifecycle — pauseTask() promises that ticks
+				// after the pause skip the row until resumeTask(). The repeat
+				// branch below has its own paused skip; this mirrors it for
+				// one-shots (#24277). A tick that captured this snapshot before
+				// pauseTask persisted may still run once — documented as
+				// already-selected-work semantics on pauseTask().
+				if (task.metadata?.paused === true) {
+					continue;
+				}
 				const dueMs = resolveDueTime(task);
 				if (dueMs != null && now < dueMs) continue;
 				try {

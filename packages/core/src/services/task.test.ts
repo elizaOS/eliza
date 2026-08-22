@@ -21,7 +21,10 @@ const T0 = new Date("2026-01-01T00:00:00.000Z").getTime();
  * exactly when the tick re-queries without external nudges.
  */
 function makeTaskRuntime(options?: {
-	getTasks?: (params: { tags?: string[]; agentIds?: UUID[] }) => Promise<Task[]>;
+	getTasks?: (params: {
+		tags?: string[];
+		agentIds?: UUID[];
+	}) => Promise<Task[]>;
 }) {
 	const tasks = new Map<string, Task>();
 	const workers = new Map<string, TaskWorker>();
