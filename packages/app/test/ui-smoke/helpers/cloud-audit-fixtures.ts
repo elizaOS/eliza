@@ -373,6 +373,15 @@ const STUB_RULES: StubRule[] = [
   { match: path_("/api/v1/sessions"), body: { sessions: [] } },
   { match: path_("/api/v1/me/mfa"), body: { enrolled: false } },
   { match: path_("/api/v1/me/plugin-grants"), body: { grants: [] } },
+  {
+    match: path_("/api/v1/me/account-deletion"),
+    body: {
+      state: "lifecycle_unavailable",
+      request: null,
+      code: "LIFECYCLE_RESERVATION_REQUIRED",
+      message: "Lifecycle reservation required",
+    },
+  },
   { match: prefix("/api/v1/security/audit"), body: { events: [] } },
   // organization/ — members/invites/credentials (owner role).
   {

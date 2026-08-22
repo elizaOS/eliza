@@ -31,6 +31,28 @@ export interface AccountDeletionRequestDto {
   completedAt: string | null;
 }
 
+export type AccountDeletionStatusDto =
+  | {
+      state: "available";
+      request: null;
+    }
+  | {
+      state: "transfer_required";
+      request: null;
+      code: "TRANSFER_REQUIRED";
+      message: string;
+    }
+  | {
+      state: "lifecycle_unavailable";
+      request: null;
+      code: "LIFECYCLE_RESERVATION_REQUIRED";
+      message: string;
+    }
+  | {
+      state: "existing_request";
+      request: AccountDeletionRequestDto;
+    };
+
 export function toAccountDeletionRequestDto(
   request: AccountDeletionRequest,
 ): AccountDeletionRequestDto {
@@ -44,19 +66,7 @@ export function toAccountDeletionRequestDto(
   };
 }
 
-export async function getOpenAccountDeletionRequest(userId: string) {
-  return await accountDeletionRequestsRepository.findOpenByUserId(userId);
-}
-
-export async function requestAccountDeletion(input: {
-  userId: string;
-  organizationId: string;
-  stewardUserId: string;
-  now?: Date;
-}): Promise<AccountDeletionRequest> {
-  const existing = await accountDeletionRequestsRepository.findOpenByUserId(input.userId, true);
-  if (existing) return existing;
-
+async function getCurrentAccountMembers(input: { userId: string; organizationId: string }) {
   const members = await usersRepository.listByOrganizationForWrite(input.organizationId);
   const current = members.find((member) => member.id === input.userId);
   if (!current || !current.is_active || current.deleted_at) {
@@ -68,18 +78,70 @@ export async function requestAccountDeletion(input: {
       "ANONYMOUS_ACCOUNT",
     );
   }
-  if (
-    members.some((member) => member.id !== input.userId && member.is_active && !member.deleted_at)
-  ) {
-    throw new AccountDeletionConflictError(
-      "Transfer or revoke shared organization resources before deleting this account",
-      "TRANSFER_REQUIRED",
-    );
-  }
+  return members;
+}
 
-  throw new AccountDeletionConflictError(
-    "Permanent account deletion is unavailable until lifecycle recovery and provider reconciliation are reserved",
-    "LIFECYCLE_RESERVATION_REQUIRED",
+function getAccountDeletionAvailability(
+  members: Awaited<ReturnType<typeof getCurrentAccountMembers>>,
+  userId: string,
+): Exclude<AccountDeletionStatusDto, { state: "existing_request" }> {
+  if (members.some((member) => member.id !== userId && member.is_active && !member.deleted_at)) {
+    return {
+      state: "transfer_required",
+      request: null,
+      code: "TRANSFER_REQUIRED",
+      message: "Transfer or revoke shared organization resources before deleting this account",
+    };
+  }
+  return {
+    state: "lifecycle_unavailable",
+    request: null,
+    code: "LIFECYCLE_RESERVATION_REQUIRED",
+    message:
+      "Permanent account deletion is unavailable until lifecycle recovery and provider reconciliation are reserved",
+  };
+}
+
+/** Projects deletion admission without creating a request or calling an identity provider. */
+export async function getAccountDeletionStatus(input: {
+  userId: string;
+  organizationId: string;
+}): Promise<AccountDeletionStatusDto> {
+  const members = await getCurrentAccountMembers(input);
+  const existing = await accountDeletionRequestsRepository.findOpenByUserAndOrganizationId(
+    input.userId,
+    input.organizationId,
+    true,
+  );
+  if (existing) {
+    return { state: "existing_request", request: toAccountDeletionRequestDto(existing) };
+  }
+  return getAccountDeletionAvailability(members, input.userId);
+}
+
+export async function requestAccountDeletion(input: {
+  userId: string;
+  organizationId: string;
+  stewardUserId: string;
+  now?: Date;
+}): Promise<AccountDeletionRequest> {
+  const members = await getCurrentAccountMembers(input);
+  const existing = await accountDeletionRequestsRepository.findOpenByUserAndOrganizationId(
+    input.userId,
+    input.organizationId,
+    true,
+  );
+  if (existing) return existing;
+
+  const availability = getAccountDeletionAvailability(members, input.userId);
+  if (availability.state === "transfer_required") {
+    throw new AccountDeletionConflictError(availability.message, availability.code);
+  }
+  if (availability.state === "lifecycle_unavailable") {
+    throw new AccountDeletionConflictError(availability.message, availability.code);
+  }
+  throw new Error(
+    "Account deletion was marked available without an admitted lifecycle implementation",
   );
 }
 

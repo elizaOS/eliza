@@ -58,7 +58,7 @@ secondary identities (attacker / other-user / end-user).
 | ----------------------------- | ----------------------------------------------------------------------------- |
 | `tests/siwe-login.spec.ts`    | real nonce → sign → verify mints a usable key; forged sig 401s; re-login is idempotent; fixture identity is real-login-minted |
 | `tests/dashboard.spec.ts`     | seeded user reaches dashboard with test-auth session, localStorage writable   |
-| `tests/account-deletion.spec.ts` | authenticated public deletion page → explicit confirmation → Steward deactivation + Cloud user/org/API-key deactivation, with unrelated-tenant preservation |
+| `tests/account-deletion.spec.ts` | authenticated deletion page rejects query-string success claims, projects lifecycle unavailability, returns 409 to a confirmed request, and proves zero Steward/user/org/API-key/request or unrelated-tenant mutation |
 | `tests/provision.spec.ts`     | create agent → cron tick → sandbox `running`, control-plane sees the sandbox  |
 | `tests/deprovision.spec.ts`   | DELETE agent → async `agent_delete` job → polls to `deleted` / 404            |
 | `tests/stuck-cleanup.spec.ts` | aged `provisioning` row with no job → cleanup cron → sandbox `error`          |
