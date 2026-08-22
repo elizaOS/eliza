@@ -50,6 +50,9 @@ they are current members, but cannot read private scopes or mutate documents.
 Single-document and fragment reads are resolved by `DocumentService` with that
 authenticated context; routes never fetch a parent row or scan fragment bytes
 and then attempt to filter the result locally.
+PATCH and DELETE resolve mutation authority through the same service. Deletes
+use the adapter's atomic snapshot operation instead of route-managed fragment
+and parent deletion.
 
 ## Configuration
 

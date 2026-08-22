@@ -1,6 +1,6 @@
 /**
- * Proves single-document and fragment REST reads cross the canonical
- * access-context-aware document service before any parent or fragment bytes.
+ * Proves document REST reads and mutations cross the canonical
+ * access-context-aware service before parent, fragment, or mutation access.
  */
 import type { AccessContext, Memory, UUID } from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -49,15 +49,23 @@ const fragment: Memory = {
 
 const service = vi.hoisted(() => ({
   getDocumentByIdWithAccessContext: vi.fn(),
+  getMutableDocumentWithAccessContext: vi.fn(),
   listDocumentFragmentsWithAccessContext: vi.fn(),
   getMemories: vi.fn(),
+  updateDocument: vi.fn(),
+  deleteDocumentWithAccessContext: vi.fn(),
+  deleteMemory: vi.fn(),
 }));
 
 vi.mock("@elizaos/agent/api/documents-service-loader", () => ({
   getDocumentsService: vi.fn(async () => ({ service })),
 }));
 
-function context(pathname: string): {
+function context(
+  pathname: string,
+  method = "GET",
+  requestBody: unknown = null,
+): {
   ctx: DocumentRouteContext;
   response: { status: number; body: unknown };
   getMemoryById: ReturnType<typeof vi.fn>;
@@ -69,7 +77,7 @@ function context(pathname: string): {
   const ctx = {
     req: { headers: {} },
     res: { setHeader: vi.fn() },
-    method: "GET",
+    method,
     pathname,
     url: new URL(`http://local${pathname}`),
     accessContext,
@@ -86,7 +94,7 @@ function context(pathname: string): {
       response.status = status;
       response.body = { error: message };
     },
-    readJsonBody: vi.fn(async () => null),
+    readJsonBody: vi.fn(async () => requestBody),
   } as unknown as DocumentRouteContext;
   return { ctx, response, getMemoryById };
 }
@@ -95,10 +103,16 @@ describe("canonical document REST reads", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     service.getDocumentByIdWithAccessContext.mockResolvedValue(document);
+    service.getMutableDocumentWithAccessContext.mockResolvedValue(document);
     service.listDocumentFragmentsWithAccessContext.mockResolvedValue([
       fragment,
     ]);
     service.getMemories.mockResolvedValue([]);
+    service.updateDocument.mockResolvedValue({
+      documentId: DOCUMENT_ID,
+      fragmentCount: 1,
+    });
+    service.deleteDocumentWithAccessContext.mockResolvedValue(undefined);
   });
 
   it("reads a parent and its count only through authorized service methods", async () => {
@@ -139,5 +153,45 @@ describe("canonical document REST reads", () => {
     );
     expect(getMemoryById).not.toHaveBeenCalled();
     expect(service.getMemories).not.toHaveBeenCalled();
+  });
+
+  it("updates through the canonical mutation authority without a raw parent read", async () => {
+    const { ctx, response, getMemoryById } = context(
+      `/api/documents/${DOCUMENT_ID}`,
+      "PATCH",
+      { content: "updated bytes" },
+    );
+
+    await expect(handleDocumentsRoutes(ctx)).resolves.toBe(true);
+
+    expect(response.status).toBe(200);
+    expect(service.getMutableDocumentWithAccessContext).toHaveBeenCalledWith(
+      DOCUMENT_ID,
+      accessContext,
+    );
+    expect(service.updateDocument).toHaveBeenCalledWith({
+      documentId: DOCUMENT_ID,
+      content: "updated bytes",
+      accessContext,
+    });
+    expect(getMemoryById).not.toHaveBeenCalled();
+  });
+
+  it("deletes atomically through DocumentService without raw fragment mutation", async () => {
+    const { ctx, response, getMemoryById } = context(
+      `/api/documents/${DOCUMENT_ID}`,
+      "DELETE",
+    );
+
+    await expect(handleDocumentsRoutes(ctx)).resolves.toBe(true);
+
+    expect(response.status).toBe(200);
+    expect(service.deleteDocumentWithAccessContext).toHaveBeenCalledWith(
+      DOCUMENT_ID,
+      accessContext,
+    );
+    expect(response.body).toMatchObject({ ok: true, deletedFragments: 1 });
+    expect(getMemoryById).not.toHaveBeenCalled();
+    expect(service.deleteMemory).not.toHaveBeenCalled();
   });
 });

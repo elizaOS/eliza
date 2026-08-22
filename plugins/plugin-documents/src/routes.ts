@@ -11,7 +11,6 @@ import {
   actorCanManageOwnerDocuments,
   asRecord,
   asUuid,
-  canMutateDocumentMemory,
   canReadDocumentMemory,
   type DocumentReadableMemory,
   documentMediaFormat,
@@ -546,36 +545,6 @@ async function mapDocumentFragmentsByDocumentId(
   }
 
   return fragmentCounts;
-}
-
-async function listDocumentFragmentsForDocument(
-  documentsService: DocumentsServiceLike,
-  roomId: UUID | undefined,
-  documentId: UUID,
-): Promise<UUID[]> {
-  let offset = 0;
-  const fragmentIds: UUID[] = [];
-
-  while (true) {
-    const fragmentBatch = await documentsService.getMemories({
-      tableName: DOCUMENT_FRAGMENTS_TABLE,
-      roomId,
-      count: FRAGMENT_BATCH_SIZE,
-      offset,
-    });
-
-    for (const memory of fragmentBatch) {
-      const metadata = asRecord(memory.metadata);
-      if (metadata?.documentId === documentId && hasUuidId(memory)) {
-        fragmentIds.push(memory.id);
-      }
-    }
-
-    if (fragmentBatch.length < FRAGMENT_BATCH_SIZE) break;
-    offset += FRAGMENT_BATCH_SIZE;
-  }
-
-  return fragmentIds;
 }
 
 async function listDocumentMemories({
@@ -1114,12 +1083,15 @@ export async function handleDocumentsRoutes(
     );
     if (!decodedDocumentId) return true;
     const documentId = decodedDocumentId as UUID;
-    const document = await runtime.getMemoryById(documentId);
-    if (
-      !document ||
-      !isDocumentMemory(document, agentId) ||
-      !canMutateDocumentMemory(document, routeActor)
-    ) {
+    if (!documentsService.getMutableDocumentWithAccessContext) {
+      error(res, "Canonical document authorization is unavailable", 503);
+      return true;
+    }
+    const document = await documentsService.getMutableDocumentWithAccessContext(
+      documentId,
+      accessContext,
+    );
+    if (!document) {
       error(res, "Document not found", 404);
       return true;
     }
@@ -1143,11 +1115,7 @@ export async function handleDocumentsRoutes(
     const result = await documentsService.updateDocument({
       documentId,
       content: body.content,
-      message: buildRouteMessage({
-        agentId,
-        text: body.content,
-        actor: routeActor,
-      }),
+      accessContext,
     });
 
     json(res, {
@@ -1166,12 +1134,20 @@ export async function handleDocumentsRoutes(
     );
     if (!decodedDocumentId) return true;
     const documentId = decodedDocumentId as UUID;
-    const existingDocument = await runtime.getMemoryById(documentId);
     if (
-      !existingDocument ||
-      !isDocumentMemory(existingDocument, agentId) ||
-      !canMutateDocumentMemory(existingDocument, routeActor)
+      !documentsService.getMutableDocumentWithAccessContext ||
+      !documentsService.listDocumentFragmentsWithAccessContext ||
+      !documentsService.deleteDocumentWithAccessContext
     ) {
+      error(res, "Canonical document authorization is unavailable", 503);
+      return true;
+    }
+    const existingDocument =
+      await documentsService.getMutableDocumentWithAccessContext(
+        documentId,
+        accessContext,
+      );
+    if (!existingDocument) {
       error(res, "Document not found", 404);
       return true;
     }
@@ -1186,20 +1162,20 @@ export async function handleDocumentsRoutes(
       return true;
     }
 
-    const fragmentIds = await listDocumentFragmentsForDocument(
-      documentsService,
-      undefined,
+    const fragmentCount = (
+      await documentsService.listDocumentFragmentsWithAccessContext(
+        documentId,
+        accessContext,
+      )
+    ).length;
+    await documentsService.deleteDocumentWithAccessContext(
       documentId,
+      accessContext,
     );
-
-    for (const fragmentId of fragmentIds) {
-      await documentsService.deleteMemory(fragmentId);
-    }
-    await documentsService.deleteMemory(documentId);
 
     json(res, {
       ok: true,
-      deletedFragments: fragmentIds.length,
+      deletedFragments: fragmentCount,
     });
     return true;
   }
