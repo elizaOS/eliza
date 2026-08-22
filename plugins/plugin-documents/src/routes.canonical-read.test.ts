@@ -291,6 +291,26 @@ describe("canonical document REST reads", () => {
     expect(getMemoryById).not.toHaveBeenCalled();
   });
 
+  it("fails closed when the canonical grant authority returns a non-document", async () => {
+    service.setDocumentDirectGrantsWithAccessContext.mockResolvedValueOnce({
+      ...fragment,
+    });
+    const { ctx, response, getMemoryById } = context(
+      `/api/documents/${DOCUMENT_ID}/access`,
+      "PATCH",
+      { directGrantEntityIds: [USER_ID] },
+    );
+
+    await expect(handleDocumentsRoutes(ctx)).resolves.toBe(true);
+
+    expect(response.status).toBe(500);
+    expect(response.body).toEqual({
+      error:
+        "Canonical document grant authority returned a non-document record",
+    });
+    expect(getMemoryById).not.toHaveBeenCalled();
+  });
+
   it("rejects malformed grant payloads before any canonical or raw storage access", async () => {
     const { ctx, response, getMemoryById } = context(
       `/api/documents/${DOCUMENT_ID}/access`,
