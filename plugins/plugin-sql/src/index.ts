@@ -54,7 +54,7 @@ import {
 import { identityPersonLinkRoutes } from "./routes/identity-person-link";
 import * as schema from "./schema";
 import { AdvancedMemoryStorageService } from "./services/advanced-memory-storage";
-import { SqlIdentityResolutionService } from "./services/sql-identity-resolution";
+import { SqlPrincipalService } from "./services/sql-principal";
 import { resolvePgliteDir } from "./utils";
 import { stringToUuid } from "./utils/string-to-uuid";
 
@@ -176,7 +176,7 @@ export const plugin: Plugin = {
   description: "A plugin for SQL database access with dynamic schema migrations",
   priority: 0,
   schema: schema,
-  services: [AdvancedMemoryStorageService, SqlIdentityResolutionService],
+  services: [AdvancedMemoryStorageService, SqlPrincipalService],
   routes: [...identityPersonLinkRoutes],
   init: async (_, runtime: IAgentRuntime) => {
     const runtimeWithAdapter = runtime as IAgentRuntime & RuntimeWithAdapterRegistrar;
@@ -270,8 +270,8 @@ export * from "./schema";
 export { AdvancedMemoryStorageService } from "./services/advanced-memory-storage";
 export {
   computeIdentityRequestDigest,
-  SqlIdentityResolutionService,
-} from "./services/sql-identity-resolution";
+  SqlPrincipalService,
+} from "./services/sql-principal";
 export * from "./types";
 export { schema };
 

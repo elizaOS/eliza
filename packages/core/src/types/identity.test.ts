@@ -4,6 +4,7 @@
  */
 
 import { describe, expect, it } from "vitest";
+import * as identityContracts from "./identity";
 import {
 	IDENTITY_AUTHORITY_CONTRACT_VERSION,
 	IDENTITY_CLAIM_STATUSES,
@@ -11,7 +12,7 @@ import {
 	IDENTITY_MERGE_OPERATIONS,
 	IDENTITY_MERGE_STATUSES,
 	IDENTITY_REDIRECT_STATUSES,
-	IdentityResolutionService,
+	PrincipalService,
 } from "./identity";
 import { ServiceType } from "./service";
 
@@ -46,9 +47,14 @@ describe("identity authority contract", () => {
 	});
 
 	it("registers one canonical runtime service name", () => {
-		expect(ServiceType.IDENTITY_RESOLUTION).toBe("identity_resolution");
-		expect(IdentityResolutionService.serviceType).toBe(
-			ServiceType.IDENTITY_RESOLUTION,
-		);
+		expect(ServiceType.PRINCIPAL).toBe("principal");
+		expect(PrincipalService.serviceType).toBe(ServiceType.PRINCIPAL);
+
+		const retiredKey = ["IDENTITY", "RESOLUTION"].join("_");
+		const retiredValue = ["identity", "resolution"].join("_");
+		const retiredExport = ["Identity", "Resolution", "Service"].join("");
+		expect(Object.hasOwn(ServiceType, retiredKey)).toBe(false);
+		expect(Object.values(ServiceType)).not.toContain(retiredValue);
+		expect(Object.hasOwn(identityContracts, retiredExport)).toBe(false);
 	});
 });
