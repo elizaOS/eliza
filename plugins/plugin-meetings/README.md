@@ -27,7 +27,7 @@ Cross-package shapes (session DTO, WS events, `parseMeetingUrl`) live in
 
 | Kind | Name | Description |
 |---|---|---|
-| Service | `meetings` (`MeetingService`) | Session state machine plus authenticated Zoom cloud import: `requestJoin`, `stopSession`, `getSession`, `listSessions`, `importZoomMeeting` |
+| Service | `meetings` (`MeetingService`) | Session state machine plus authenticated Zoom cloud import: `requestJoin`, `stopSession`, `getSession`, `waitForSessionTerminal`, `pendingSessionWorkCount`, `listSessions`, `importZoomMeeting` |
 | Action | `JOIN_MEETING` (similes `INVITE_TO_MEETING`, `ATTEND_MEETING`) | Join a meeting URL from chat and transcribe it live |
 | Action | `LEAVE_MEETING` | Pull the bot out of an active meeting, finalize the transcript |
 | Action | `GET_MEETING_TRANSCRIPT` | Return the live/final transcript text of an attended meeting |

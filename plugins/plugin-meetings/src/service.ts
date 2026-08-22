@@ -497,6 +497,20 @@ export class MeetingService extends Service {
     return this.terminated.get(sessionId) ?? null;
   }
 
+  /** Await the adapter, pipeline, transcript writer, and terminal-state commit. */
+  async waitForSessionTerminal(
+    sessionId: UUID,
+  ): Promise<MeetingSession | null> {
+    const active = this.sessions.get(sessionId);
+    if (active) await active.done;
+    return this.getSession(sessionId);
+  }
+
+  /** Number of sessions whose production lifecycle still retains live work. */
+  pendingSessionWorkCount(): number {
+    return this.sessions.size;
+  }
+
   listSessions(options?: { active?: boolean }): MeetingSession[] {
     const live = [...this.sessions.values()].map((s) => this.toDto(s));
     const all = options?.active ? live : [...live, ...this.terminated.values()];

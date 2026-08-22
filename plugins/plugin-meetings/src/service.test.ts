@@ -486,13 +486,17 @@ describe("MeetingService — session state machine", () => {
       meetingUrl: MEET_URL,
     });
     await adapter.started;
+    expect(service.pendingSessionWorkCount()).toBe(1);
     adapter.end("normal_completion");
-    await new Promise((r) => setTimeout(r, 10));
+    const terminal = await service.waitForSessionTerminal(dto.id as never);
 
     // Terminal status still readable (routes/actions read status + history)…
-    const session = service.getSession(dto.id as never);
-    expect(session?.status).toBe("ended");
-    expect(session?.endReason).toBe("normal_completion");
+    expect(terminal?.status).toBe("ended");
+    expect(terminal?.endReason).toBe("normal_completion");
+    expect(service.pendingSessionWorkCount()).toBe(0);
+    await expect(
+      service.waitForSessionTerminal(dto.id as never),
+    ).resolves.toEqual(terminal);
     // …and it still appears in the full (non-active) listing.
     expect(service.listSessions().map((s) => s.id)).toContain(dto.id);
     expect(service.listSessions({ active: true })).toHaveLength(0);

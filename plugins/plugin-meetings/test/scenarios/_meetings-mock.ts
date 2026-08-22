@@ -15,6 +15,7 @@ import type {
   ScenarioTurnExecution,
 } from "@elizaos/scenario-runner/schema";
 import type { MeetingPlatform } from "@elizaos/shared";
+import type { MeetingService } from "../../src/service.js";
 import {
   ASSERT_MEETING_MOCK_LEDGER,
   clearMockMeetingScripts,
@@ -69,24 +70,30 @@ export function installMockSeed(
 export async function joinedTranscriptIsReady(
   ctx: ScenarioContext,
 ): Promise<boolean> {
-  const service = (
-    ctx.runtime as {
-      getService(name: string): {
-        listSessions(): Array<{ id?: unknown; transcriptId?: unknown }>;
-        waitForSessionCompletion(id: UUID): Promise<unknown>;
-        pendingSessionWorkCount(): number;
-      } | null;
-    }
-  ).getService("meetings");
-  const latest = service?.listSessions()[0];
-  if (typeof latest?.id !== "string") return false;
-  await service.waitForSessionCompletion(latest.id as UUID);
-  if (service.pendingSessionWorkCount() !== 0) return false;
-  const transcriptId = service.listSessions()[0]?.transcriptId;
-  if (typeof transcriptId !== "string") return false;
+  const join = ctx.turns
+    ?.flatMap((turn) => turn.actionsCalled)
+    .find((action) => action.actionName === "JOIN_MEETING");
+  const sessionId = join?.result?.data?.sessionId;
+  if (typeof sessionId !== "string") return false;
   const runtime = ctx.runtime as {
+    getService(name: string): MeetingService | null;
     getMemoryById(id: UUID): Promise<{ content?: unknown } | null>;
   };
+  const service = runtime.getService("meetings");
+  if (!service) throw new Error("meetings service is unavailable after join");
+  const terminal = await service.waitForSessionTerminal(sessionId as UUID);
+  if (terminal?.status !== "ended") {
+    throw new Error(
+      `expected event-driven terminal status ended, saw ${String(terminal?.status)}`,
+    );
+  }
+  if (service.pendingSessionWorkCount() !== 0) {
+    throw new Error(
+      `meeting lifecycle retained ${service.pendingSessionWorkCount()} pending session(s)`,
+    );
+  }
+  const transcriptId = terminal.transcriptId;
+  if (typeof transcriptId !== "string") return false;
   const row = await runtime.getMemoryById(transcriptId as UUID);
   const serialized = (
     row?.content as { transcript?: unknown } | null | undefined
