@@ -217,8 +217,14 @@ export function deriveCompactionContentManifest(
 	};
 
 	for (const step of [...trajectory.archivedSteps, ...trajectory.steps]) {
-		if (!step.result?.promptData) continue;
-		visit(step.result.promptData, `tool:${step.toolCall?.name ?? "unknown"}`);
+		if (!step.result) continue;
+		// Match the model projection contract: promptData replaces legacy data
+		// when present, while data remains the authoritative carrier for older
+		// ActionResults. Scanning only promptData would archive a rendered legacy
+		// ReadView without its continuation reference.
+		const projectedData = step.result.promptData ?? step.result.data;
+		if (projectedData === undefined) continue;
+		visit(projectedData, `tool:${step.toolCall?.name ?? "unknown"}`);
 	}
 
 	return validateCompactionContentManifest({

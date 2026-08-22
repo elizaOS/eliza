@@ -127,6 +127,20 @@ describe("renderActionResultsForModel", () => {
 			),
 		).toThrow(/Non-recoverable tool result exceeds/u);
 	});
+
+	it("redacts credentials from legacy model-facing results", () => {
+		const rendered = renderActionResultsForModel([
+			{
+				success: true,
+				text: "completed with sk-test-secret-value",
+				data: { apiKey: "must-not-leak", actionName: "FETCH" },
+			},
+		]);
+
+		expect(rendered.text).not.toContain("sk-test-secret-value");
+		expect(rendered.text).not.toContain("must-not-leak");
+		expect(rendered.text).toContain("[REDACTED]");
+	});
 });
 
 describe("toolMessageContent", () => {
@@ -200,6 +214,28 @@ describe("toolMessageContent", () => {
 		});
 		expect(rendered).not.toContain("/raw/path");
 		expect(rendered).not.toContain("must-not-duplicate");
+	});
+
+	it("omits recoverable legacy-data text without discarding its continuation", () => {
+		const text = `BEGIN${"x".repeat(20_000)}END`;
+		const readView = readViewFor(text);
+		const parsed = JSON.parse(
+			toolMessageContent(
+				{
+					success: true,
+					text,
+					data: { actionName: "FILE", readView },
+				},
+				{ maxSerializedTokens: 500 },
+			),
+		);
+
+		expect(parsed.text).toBeUndefined();
+		expect(parsed.data.readView).toEqual(readView);
+		expect(parsed.contentProjection).toEqual({
+			textIncluded: false,
+			reason: "model-input-budget",
+		});
 	});
 
 	it("preserves exact page text and its validated slice hash when included", () => {

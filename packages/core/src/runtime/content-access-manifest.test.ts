@@ -75,6 +75,32 @@ describe("deriveCompactionContentManifest", () => {
 		expect(JSON.stringify(manifest)).not.toContain("source bytes");
 	});
 
+	it("preserves legacy data references across the archive boundary", () => {
+		const manifest = deriveCompactionContentManifest(
+			{
+				archivedSteps: [
+					{
+						iteration: 1,
+						toolCall: { name: "FILE" },
+						result: {
+							success: true,
+							data: { readView: readView(40, 60) },
+						},
+					},
+				],
+				steps: [],
+			},
+			{ lastUsedAt: "2026-08-22T12:00:00.000Z" },
+		);
+
+		expect(manifest.contentRefs).toMatchObject([
+			{
+				reference: { kind: "file", ref: "opaque-file", revision: "rev-1" },
+				rangesUsed: [{ unit: "byte", start: 40, end: 60 }],
+			},
+		]);
+	});
+
 	it("fails explicitly instead of silently truncating the manifest", () => {
 		expect(() =>
 			deriveCompactionContentManifest(

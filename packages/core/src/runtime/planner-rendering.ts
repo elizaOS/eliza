@@ -71,6 +71,7 @@ export function renderActionResultsForModel(
 		header?: string;
 		projectionBudget?: ContentProjectionBudget;
 		omitRecoverableText?: boolean;
+		redactText?: ToolDiagnosticTextRedactor;
 	} = {},
 ): RenderedActionResultsForModel {
 	if (results.length === 0) {
@@ -93,8 +94,13 @@ export function renderActionResultsForModel(
 	let pagesIncluded = 0;
 	let pagesOmitted = 0;
 	const omissionReasons: Record<string, number> = {};
+	const redactText = options.redactText ?? composeToolDiagnosticRedactor();
 	const rendered = results.map((result, index) => {
-		const body = toolMessageContent(result as PlannerToolResult, {
+		const safeResult = projectToolDiagnosticValue(
+			result,
+			redactText,
+		) as PlannerToolResult;
+		const body = toolMessageContent(safeResult, {
 			...(fairResultBudget === undefined
 				? {}
 				: { maxSerializedTokens: fairResultBudget }),
@@ -262,7 +268,9 @@ export function toolMessageContent(
 		onProjection?: (observation: ToolResultProjectionObservation) => void;
 	} = {},
 ): string {
-	const validatedReadView = hasRecoverableContentLocator(result.promptData);
+	const validatedReadView = hasRecoverableContentLocator(
+		result.promptData ?? result.data,
+	);
 	const projected = projectToolResultForModel(
 		result,
 		options.omitRecoverableText,
@@ -381,7 +389,9 @@ export function projectToolResultForModel(
 ): PlannerToolResult & {
 	contentProjection?: { textIncluded: boolean; reason?: string };
 } {
-	const hasReadView = hasRecoverableContentLocator(result.promptData);
+	const hasReadView = hasRecoverableContentLocator(
+		result.promptData ?? result.data,
+	);
 	const projected = { ...result };
 	if (result.promptData !== undefined) {
 		delete projected.data;
