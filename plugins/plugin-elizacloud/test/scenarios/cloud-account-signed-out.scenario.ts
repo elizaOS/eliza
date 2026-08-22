@@ -22,11 +22,13 @@ export default scenario({
           },
           toolNames: ["HANDLE_RESPONSE"],
         },
+        cardinality: 1,
         response: {
           json: {
             contexts: ["cloud"],
             intents: ["cloud account status"],
-            replyText: "Sign in to connect your Eliza Cloud account and view credits.",
+            replyText:
+              "Sign in to connect your Eliza Cloud account and view credits.",
             threadOps: [],
             candidateActionNames: [],
           },
@@ -36,11 +38,20 @@ export default scenario({
         name: "signed-out-cloud-account-planner",
         match: {
           modelType: "ACTION_PLANNER",
+          toolNames: [
+            "CLOUD_ACCOUNT_STATUS",
+            "CLOUD_LIST_AGENTS",
+            "CLOUD_CREATE_API_KEY",
+            "REPLY",
+            "IGNORE",
+            "STOP",
+          ],
           input: {
             includes:
               "How many credits do I have on Eliza Cloud, and what agents are running?",
           },
         },
+        cardinality: 1,
         response: {
           json: {
             thought: "Cloud account tools are unavailable while signed out.",
@@ -55,9 +66,11 @@ export default scenario({
         match: {
           modelType: "TEXT_SMALL",
           input: { includes: "# Task: Post-turn evaluation" },
+          toolNames: [],
         },
+        cardinality: 1,
         response: {
-          text: "{\"factMemory\":{\"ops\":[]},\"preferences\":{\"ops\":[]},\"relationships\":{\"relationships\":[]},\"identities\":{\"identities\":[]},\"success\":{\"completed\":true,\"reason\":\"Explained that Cloud account access requires sign-in.\"},\"ftu_goal_discovery\":{\"goalFound\":false,\"goal\":\"\",\"confidence\":0},\"experiencePatterns\":{\"experiences\":[]}}",
+          text: '{"factMemory":{"ops":[]},"preferences":{"ops":[]},"relationships":{"relationships":[]},"identities":{"identities":[]},"success":{"completed":true,"reason":"Explained that Cloud account access requires sign-in."},"ftu_goal_discovery":{"goalFound":false,"goal":"","confidence":0},"experiencePatterns":{"experiences":[]}}',
         },
       },
     ],

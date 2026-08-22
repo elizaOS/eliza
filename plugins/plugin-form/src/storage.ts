@@ -302,7 +302,10 @@ function toComponentValue(
       const descriptor = inspectComponentData(`object.${key}`, () =>
         Object.getOwnPropertyDescriptor(value, key),
       );
-      if (!descriptor?.enumerable) {
+      if (!descriptor) {
+        failComponentData("reflection", { operation: `object.${key}` });
+      }
+      if (!descriptor.enumerable) {
         reserveNodes(walk);
         continue;
       }

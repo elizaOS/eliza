@@ -46,6 +46,7 @@ export default scenario({
           input: { includes: GREETING_INPUT },
           toolNames: ["HANDLE_RESPONSE"],
         },
+        cardinality: 1,
         response: {
           json: {
             contexts: ["general"],
@@ -61,7 +62,9 @@ export default scenario({
         match: {
           modelType: "ACTION_PLANNER",
           input: { includes: GREETING_INPUT },
+          toolNames: ["GREET_USER", "REPLY", "IGNORE", "STOP"],
         },
+        cardinality: 1,
         response: {
           json: {
             text: "",
@@ -85,7 +88,9 @@ export default scenario({
         match: {
           modelType: "TEXT_SMALL",
           input: { includes: "# Task: Post-turn evaluation" },
+          toolNames: [],
         },
+        cardinality: 1,
         response: {
           text: '{"factMemory":{"ops":[]},"preferences":{"ops":[]},"relationships":{"relationships":[]},"identities":{"identities":[]},"success":{"completed":true,"reason":"GREET_USER completed."},"ftu_goal_discovery":{"goalFound":false,"goal":"","confidence":0},"experiencePatterns":{"experiences":[]}}',
         },
@@ -111,6 +116,15 @@ export default scenario({
       apply: async (ctx) => {
         const runtime = asRuntime(ctx.runtime);
         await runtime.registerPlugin(greetTestPlugin satisfies Plugin);
+      },
+    },
+  ],
+  cleanup: [
+    {
+      type: "custom",
+      name: "unregister-greet-test-action",
+      apply: (ctx) => {
+        asRuntime(ctx.runtime).unregisterAction("GREET_USER");
       },
     },
   ],

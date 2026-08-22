@@ -26,8 +26,8 @@ const OWNER_FINANCES = "OWNER_FINANCES";
 export default scenario({
   lane: "pr-deterministic",
   modelFixtures: {
-    mode: "fixtures",
-    fixtures: [],
+    mode: "model-free",
+    reason: "direct production action path has no model boundary",
   },
   id: "finances.owner-finances-dashboard",
   title: "Finances: OWNER_FINANCES returns the payments dashboard",

@@ -41,7 +41,9 @@ export default scenario({
         match: {
           modelType: "TEXT_SMALL",
           input: { includes: "Scenario: health_status" },
+          toolNames: [],
         },
+        cardinality: 1,
         response: { text: GROUNDED_REPLY },
       },
     ],

@@ -7,7 +7,7 @@
  * credentials or live network access.
  */
 
-import type { AgentRuntime } from "@elizaos/core";
+import type { Action, AgentRuntime } from "@elizaos/core";
 import {
   describeCalls,
   successfulActionData,
@@ -41,6 +41,7 @@ interface ObservedRequest {
 }
 
 let observedRequests: ObservedRequest[] = [];
+const originalActions = new WeakMap<AgentRuntime, Action | undefined>();
 
 const taskmarketFetch: typeof fetch = async (input, init) => {
   const url =
@@ -65,8 +66,8 @@ type ScenarioRuntime = AgentRuntime;
 export default scenario({
   lane: "pr-deterministic",
   modelFixtures: {
-    mode: "fixtures",
-    fixtures: [],
+    mode: "model-free",
+    reason: "direct production action path has no model boundary",
   },
   id: "taskmarket.browse-open-tasks",
   title: "Taskmarket: browse open bounties through the read-only action",
@@ -85,11 +86,29 @@ export default scenario({
       apply: async (ctx) => {
         observedRequests = [];
         const runtime = ctx.runtime as ScenarioRuntime;
+        originalActions.set(
+          runtime,
+          runtime.actions.find((action) => action.name === ACTION),
+        );
         const action = createBrowseTaskmarketTasksAction(
           () => new TaskmarketClient(BASE_URL, taskmarketFetch),
         );
         runtime.registerAction({ ...action, override: true });
         return undefined;
+      },
+    },
+  ],
+  cleanup: [
+    {
+      type: "custom",
+      name: "restore-taskmarket-action",
+      apply: (ctx) => {
+        const runtime = ctx.runtime as ScenarioRuntime;
+        runtime.unregisterAction(ACTION);
+        const original = originalActions.get(runtime);
+        if (original) runtime.registerAction(original);
+        originalActions.delete(runtime);
+        observedRequests = [];
       },
     },
   ],

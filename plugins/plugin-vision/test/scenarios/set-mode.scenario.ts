@@ -5,9 +5,9 @@
  * engine, or model credentials. A "turn vision mode off" request routes through
  * the VISION action's `set_mode` operation, which talks only to the in-process
  * VisionService (no external device/tool) and reports the mode change. The
- * service is booted in OFF mode so startup performs no camera/screen probing.
+ * service remains on its production startup path; the direct action supplies
+ * its structural discriminator without a synthetic provider.
  */
-import type { AgentRuntime, Provider } from "@elizaos/core";
 import {
   describeCalls,
   successfulActionData,
@@ -15,16 +15,12 @@ import {
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 const VISION = "VISION";
-type R = AgentRuntime & {
-  setSetting?: (k: string, v: string) => void;
-  registerProvider?: (provider: Provider) => void;
-};
 
 export default scenario({
   lane: "pr-deterministic",
   modelFixtures: {
-    mode: "fixtures",
-    fixtures: [],
+    mode: "model-free",
+    reason: "direct production action path has no model boundary",
   },
   id: "vision.set-mode",
   title: "Vision: switch vision mode via the VISION action (keyless)",
@@ -35,39 +31,6 @@ export default scenario({
 
   requires: { plugins: ["@elizaos/plugin-vision"] },
   isolation: "per-scenario",
-
-  seed: [
-    {
-      type: "custom",
-      name: "vision-config-and-fixtures",
-      apply: async (ctx) => {
-        const runtime = ctx.runtime as R;
-        // Boot the VisionService in OFF mode so startup probes no camera/screen
-        // tool — set_mode is the one op that runs without an active capture.
-        process.env.VISION_MODE = "off";
-        runtime.setSetting?.("VISION_MODE", "off");
-
-        // The VISION action's validate gates exposure on a vision context being
-        // selected for the turn (state.values.selectedContexts), but the v5
-        // planner surfaces the routed contexts under a different state key, so
-        // a vision action would never be offered to the planner in the keyless
-        // harness. Surface the routed "media" vision context to validate via an
-        // always-on response-state provider — the real action then runs for
-        // real (set_mode actually flips the live VisionService mode).
-        runtime.registerProvider?.({
-          name: "VISION_SCENARIO_CONTEXT",
-          alwaysInResponseState: true,
-          get: async () => ({
-            text: "",
-            values: { selectedContexts: ["media"] },
-            data: {},
-          }),
-        });
-
-        return undefined;
-      },
-    },
-  ],
 
   rooms: [
     { id: "main", source: "dashboard", channelType: "DM", title: "Vision" },

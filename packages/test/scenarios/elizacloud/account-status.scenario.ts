@@ -25,9 +25,25 @@ const CLOUD_ACCOUNT_STATUS = "CLOUD_ACCOUNT_STATUS";
 const CLOUD_BASE_URL = "https://cloud.test.invalid/api/v1";
 const MOCK_BALANCE = 12.5;
 
-type R = AgentRuntime & {
-  setSetting?: (k: string, v: string, secret?: boolean) => void;
+type R = AgentRuntime;
+
+const CLOUD_SETTING_KEYS = [
+  "ELIZAOS_CLOUD_API_KEY",
+  "ELIZAOS_CLOUD_BASE_URL",
+  "ELIZAOS_CLOUD_USE_INFERENCE",
+  "ELIZAOS_CLOUD_USE_EMBEDDINGS",
+] as const;
+type CloudSettingKey = (typeof CLOUD_SETTING_KEYS)[number];
+type CloudScenarioSnapshot = {
+  env: Map<CloudSettingKey, string | undefined>;
+  settings: Map<CloudSettingKey, string | boolean | null>;
+  credentials: {
+    apiKey: string;
+    organizationId: string;
+    userId: string;
+  } | null;
 };
+const cloudSnapshots = new WeakMap<AgentRuntime, CloudScenarioSnapshot>();
 
 let restoreFetch: (() => void) | undefined;
 /** True once the balance endpoint was actually served by the mock. */
@@ -36,8 +52,8 @@ let balanceMockHit = false;
 export default scenario({
   lane: "pr-deterministic",
   modelFixtures: {
-    mode: "fixtures",
-    fixtures: [],
+    mode: "model-free",
+    reason: "direct production action path has no model boundary",
   },
   id: "elizacloud.account-status",
   title: "Eliza Cloud: read credit balance against a mocked cloud API",
@@ -56,6 +72,23 @@ export default scenario({
       apply: async (ctx) => {
         const runtime = ctx.runtime as R;
         balanceMockHit = false;
+
+        const auth = runtime.getService<CloudAuthService>("CLOUD_AUTH");
+        if (!auth) {
+          throw new Error("CloudAuthService did not start");
+        }
+        cloudSnapshots.set(runtime, {
+          env: new Map(
+            CLOUD_SETTING_KEYS.map((key) => [key, process.env[key]]),
+          ),
+          settings: new Map(
+            CLOUD_SETTING_KEYS.map((key) => {
+              const value = runtime.getSetting(key);
+              return [key, typeof value === "number" ? String(value) : value];
+            }),
+          ),
+          credentials: auth.getCredentials(),
+        });
 
         const realFetch = globalThis.fetch;
         restoreFetch = () => {
@@ -95,23 +128,15 @@ export default scenario({
         // Authenticate CloudAuth from a saved key, pin the base URL at the
         // mock host, and keep the cloud plugin from claiming the chat-brain /
         // embedding model slots the deterministic proxy owns.
-        runtime.setSetting?.(
-          "ELIZAOS_CLOUD_API_KEY",
-          "cloud_scenario_key",
-          true,
-        );
-        runtime.setSetting?.("ELIZAOS_CLOUD_BASE_URL", CLOUD_BASE_URL);
-        runtime.setSetting?.("ELIZAOS_CLOUD_USE_INFERENCE", "false");
-        runtime.setSetting?.("ELIZAOS_CLOUD_USE_EMBEDDINGS", "false");
+        runtime.setSetting("ELIZAOS_CLOUD_API_KEY", "cloud_scenario_key", true);
+        runtime.setSetting("ELIZAOS_CLOUD_BASE_URL", CLOUD_BASE_URL);
+        runtime.setSetting("ELIZAOS_CLOUD_USE_INFERENCE", "false");
+        runtime.setSetting("ELIZAOS_CLOUD_USE_EMBEDDINGS", "false");
         process.env.ELIZAOS_CLOUD_API_KEY = "cloud_scenario_key";
         process.env.ELIZAOS_CLOUD_BASE_URL = CLOUD_BASE_URL;
         process.env.ELIZAOS_CLOUD_USE_INFERENCE = "false";
         process.env.ELIZAOS_CLOUD_USE_EMBEDDINGS = "false";
 
-        const auth = runtime.getService<CloudAuthService>("CLOUD_AUTH");
-        if (!auth) {
-          throw new Error("CloudAuthService did not start");
-        }
         auth.authenticateWithApiKey({ apiKey: "cloud_scenario_key" });
 
         return undefined;
@@ -122,8 +147,28 @@ export default scenario({
     {
       type: "custom",
       name: "restore-elizacloud-fetch",
-      apply: () => {
+      apply: (ctx) => {
         restoreFetch?.();
+        const runtime = ctx.runtime as R;
+        const snapshot = cloudSnapshots.get(runtime);
+        if (!snapshot) return undefined;
+        const auth = runtime.getService<CloudAuthService>("CLOUD_AUTH");
+        if (snapshot.credentials) {
+          auth?.authenticateWithApiKey(snapshot.credentials);
+        } else {
+          auth?.clearAuth();
+        }
+        for (const key of CLOUD_SETTING_KEYS) {
+          runtime.setSetting(
+            key,
+            snapshot.settings.get(key) ?? null,
+            key === "ELIZAOS_CLOUD_API_KEY",
+          );
+          const previous = snapshot.env.get(key);
+          if (previous === undefined) delete process.env[key];
+          else process.env[key] = previous;
+        }
+        cloudSnapshots.delete(runtime);
         return undefined;
       },
     },

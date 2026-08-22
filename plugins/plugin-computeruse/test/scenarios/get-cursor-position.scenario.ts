@@ -23,6 +23,7 @@ import {
 } from "@elizaos/scenario-runner/scenario-assertions";
 import { scenario } from "@elizaos/scenario-runner/schema";
 
+const previousComputerUseEnabled = process.env.COMPUTER_USE_ENABLED;
 process.env.COMPUTER_USE_ENABLED = "1";
 
 const COMPUTER_USE = "COMPUTER_USE";
@@ -34,8 +35,8 @@ let restore: (() => void) | undefined;
 export default scenario({
   lane: "pr-deterministic",
   modelFixtures: {
-    mode: "fixtures",
-    fixtures: [],
+    mode: "model-free",
+    reason: "direct production action path has no model boundary",
   },
   id: "computeruse.get-cursor-position",
   title: "Computeruse: read cursor position through a stubbed device boundary",
@@ -89,6 +90,11 @@ export default scenario({
       name: "restore-computeruse-service",
       apply: () => {
         restore?.();
+        if (previousComputerUseEnabled === undefined) {
+          delete process.env.COMPUTER_USE_ENABLED;
+        } else {
+          process.env.COMPUTER_USE_ENABLED = previousComputerUseEnabled;
+        }
         return undefined;
       },
     },

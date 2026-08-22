@@ -294,6 +294,72 @@ describe("bounded form component data", () => {
     });
     expect((data as { polluted?: boolean }).polluted).toBeUndefined();
   });
+
+  it("preserves dangerous-looking JSON keys without changing adapter identity", () => {
+    const nested = Object.create(null) as Record<string, unknown>;
+    Object.defineProperty(nested, "__proto__", {
+      enumerable: true,
+      value: { safe: true },
+    });
+    Object.defineProperty(nested, "constructor", {
+      enumerable: true,
+      value: "submitted-constructor",
+    });
+    Object.defineProperty(nested, "prototype", {
+      enumerable: true,
+      value: "submitted-prototype",
+    });
+
+    const data = toComponentData({ nested });
+    const serialized = data.nested as Record<string, JsonValue>;
+    expect(Object.getPrototypeOf(serialized)).toBe(Object.prototype);
+    expect(Object.hasOwn(serialized, "__proto__")).toBe(true);
+    expect(Object.hasOwn(serialized, "constructor")).toBe(true);
+    expect(Object.hasOwn(serialized, "prototype")).toBe(true);
+    expect(({} as { safe?: boolean }).safe).toBeUndefined();
+    expect(JSON.parse(JSON.stringify(data))).toEqual(
+      JSON.parse(
+        '{"nested":{"__proto__":{"safe":true},"constructor":"submitted-constructor","prototype":"submitted-prototype"}}',
+      ),
+    );
+  });
+
+  it("uses deterministic JSON array and symbol policies without invoking accessors", () => {
+    const ignored = Symbol("ignored");
+    const values = ["first", undefined, Symbol("element"), () => "ignored"];
+    Object.defineProperty(values, ignored, {
+      enumerable: true,
+      value: "symbol-keyed",
+    });
+    const data = toComponentData({ values, [ignored]: "root-symbol" });
+    expect(data).toEqual({ values: ["first", null, null, null] });
+
+    const getter = vi.fn(() => "secret");
+    const accessorArray: unknown[] = [];
+    Object.defineProperty(accessorArray, "0", {
+      configurable: true,
+      enumerable: true,
+      get: getter,
+    });
+    Object.defineProperty(accessorArray, "length", { value: 1 });
+    expect(() => toComponentData({ accessorArray })).toThrow(
+      expect.objectContaining({ code: FORM_COMPONENT_DATA_UNBOUNDED }),
+    );
+    expect(getter).not.toHaveBeenCalled();
+  });
+
+  it("rejects a reflective object that advertises a missing property", () => {
+    const value = new Proxy(
+      {},
+      {
+        ownKeys: () => ["vanished"],
+        getOwnPropertyDescriptor: () => undefined,
+      },
+    );
+    expect(() => toComponentData(value)).toThrow(
+      expect.objectContaining({ code: FORM_COMPONENT_DATA_UNBOUNDED }),
+    );
+  });
 });
 
 function makePersistenceRuntime() {

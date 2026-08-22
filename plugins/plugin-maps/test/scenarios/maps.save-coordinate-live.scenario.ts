@@ -43,8 +43,8 @@ function record(value: unknown): Record<string, unknown> | null {
 export default scenario({
   lane: "pr-deterministic",
   modelFixtures: {
-    mode: "fixtures",
-    fixtures: [],
+    mode: "model-free",
+    reason: "direct production action path has no model boundary",
   },
   id: "maps.save-coordinate-live",
   title: "Save a coordinate-defined place with Maps",

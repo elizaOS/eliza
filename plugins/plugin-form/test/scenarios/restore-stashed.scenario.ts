@@ -32,14 +32,15 @@ const ENTITY_ID = stringToUuid(
 );
 
 type R = AgentRuntime & {
-  registerAction?: (action: unknown) => void;
+  registerAction: (action: typeof formAction) => void;
+  unregisterAction: (name: string) => boolean;
 };
 
 export default scenario({
   lane: "pr-deterministic",
   modelFixtures: {
-    mode: "fixtures",
-    fixtures: [],
+    mode: "model-free",
+    reason: "direct production action path has no model boundary",
   },
   id: "form.restore-stashed",
   title: "Form: restore a stashed form session",
@@ -68,10 +69,9 @@ export default scenario({
         const runtime = ctx.runtime as R;
 
         // Register the FORM action exactly as a consuming plugin would (the
-        // plugin exports it but leaves `actions: []`). Plugin-form itself loads
-        // after seeds, so its FormService is resolved lazily by the handler at
-        // turn time.
-        runtime.registerAction?.(formAction);
+        // plugin exports it but leaves `actions: []`). The already-loaded
+        // FormService is resolved lazily by the handler at turn time.
+        runtime.registerAction(formAction);
 
         // Seed one stashed session directly into the component store so
         // FormService.getStashedSessions / restore find it at turn time.
@@ -97,6 +97,15 @@ export default scenario({
         await saveSession(runtime as unknown as AgentRuntime, session);
 
         return undefined;
+      },
+    },
+  ],
+  cleanup: [
+    {
+      type: "custom",
+      name: "unregister-consumer-form-action",
+      apply: (ctx) => {
+        (ctx.runtime as R).unregisterAction(FORM);
       },
     },
   ],

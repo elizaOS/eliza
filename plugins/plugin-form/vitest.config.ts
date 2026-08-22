@@ -4,16 +4,21 @@
  */
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
+import { buildWorkspaceSourceAliases } from "../../packages/scripts/vitest/source-aliases.ts";
+
+const repoRoot = fileURLToPath(new URL("../..", import.meta.url));
 
 export default defineConfig({
   resolve: {
     // The live suite imports the package by its public name. Use the workspace
     // source condition so a clean checkout does not depend on a prebuilt dist.
-    alias: {
-      "@elizaos/plugin-form": fileURLToPath(
-        new URL("./src/index.ts", import.meta.url),
-      ),
-    },
+    alias: [
+      {
+        find: /^@elizaos\/plugin-form$/,
+        replacement: fileURLToPath(new URL("./src/index.ts", import.meta.url)),
+      },
+      ...buildWorkspaceSourceAliases(repoRoot),
+    ],
     conditions: ["eliza-source"],
   },
   test: {

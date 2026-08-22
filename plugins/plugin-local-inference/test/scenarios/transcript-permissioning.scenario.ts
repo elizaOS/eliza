@@ -20,11 +20,7 @@
  * Handler success without those two disclosures
  * differing is not proof, so the check fails on either leak or missing redaction.
  */
-import {
-  type AgentRuntime,
-  stringToUuid,
-  type UUID,
-} from "@elizaos/core";
+import { type AgentRuntime, stringToUuid, type UUID } from "@elizaos/core";
 import {
   TranscriptStore,
   type TranscriptStoreRuntime,
@@ -90,8 +86,8 @@ function buildTranscript(ownerHint: string): Transcript {
 export default scenario({
   lane: "pr-deterministic",
   modelFixtures: {
-    mode: "fixtures",
-    fixtures: [],
+    mode: "model-free",
+    reason: "direct production action path has no model boundary",
   },
   id: "local-inference.transcript-permissioning",
   title: "Local inference: redact a meeting transcript for its room roster",
@@ -216,8 +212,9 @@ export default scenario({
         }
 
         const originalRow = await runtime.getMemoryById(TRANSCRIPT_ID);
-        const share = (originalRow?.metadata as Record<string, unknown> | undefined)
-          ?.share as
+        const share = (
+          originalRow?.metadata as Record<string, unknown> | undefined
+        )?.share as
           | { roomSnapshot?: { roomId?: string; entityIds?: string[] } }
           | undefined;
         if (

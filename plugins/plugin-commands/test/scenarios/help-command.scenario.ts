@@ -11,11 +11,11 @@
  */
 import type { AgentRuntime } from "@elizaos/core";
 import { initForRuntime, useRuntime } from "@elizaos/plugin-commands";
-import { scenario } from "@elizaos/scenario-runner/schema";
 import {
   describeCalls,
   successfulCalls,
 } from "@elizaos/scenario-runner/scenario-assertions";
+import { scenario } from "@elizaos/scenario-runner/schema";
 
 const HELP_COMMAND = "HELP_COMMAND";
 
@@ -29,7 +29,9 @@ export default scenario({
         match: {
           modelType: "TEXT_SMALL",
           input: { includes: "# Task: Post-turn evaluation" },
+          toolNames: [],
         },
+        cardinality: 1,
         response: {
           text: '{"factMemory":{"ops":[]},"preferences":{"ops":[]},"relationships":{"relationships":[]},"identities":{"identities":[]},"success":{"completed":true,"reason":"HELP_COMMAND completed."},"ftu_goal_discovery":{"goalFound":false,"goal":"","confidence":0},"experiencePatterns":{"experiences":[]}}',
         },

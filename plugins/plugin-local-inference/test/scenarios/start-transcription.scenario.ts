@@ -31,12 +31,13 @@ type SubscribableBus = {
 
 /** Every event the live AGENT_EVENT bus emitted during the run. */
 const observedBusEvents: BusEvent[] = [];
+let unsubscribe: (() => void) | undefined;
 
 export default scenario({
   lane: "pr-deterministic",
   modelFixtures: {
-    mode: "fixtures",
-    fixtures: [],
+    mode: "model-free",
+    reason: "direct production action path has no model boundary",
   },
   id: "local-inference.start-transcription",
   title: "Local inference: start voice transcription via the control bus",
@@ -67,11 +68,22 @@ export default scenario({
         const bus = runtime.getService(
           ServiceType.AGENT_EVENT,
         ) as SubscribableBus | null;
-        bus?.subscribe?.((event) => {
+        unsubscribe = bus?.subscribe?.((event) => {
           observedBusEvents.push(event);
         });
 
         return undefined;
+      },
+    },
+  ],
+  cleanup: [
+    {
+      type: "custom",
+      name: "unsubscribe-voice-control-observer",
+      apply: () => {
+        unsubscribe?.();
+        unsubscribe = undefined;
+        observedBusEvents.length = 0;
       },
     },
   ],

@@ -95,6 +95,30 @@ describe("scenario model fixture manifests", () => {
     });
   });
 
+  it("fails exact tool-set mutation and cardinality overconsumption", () => {
+    const registry = createDeterministicModelFixtureRegistry([
+      compileScenarioModelFixture({
+        name: "exact-planner-stage",
+        match: {
+          modelType: ModelType.TEXT_SMALL,
+          input: { exact: "hello" },
+          toolNames: ["ONE", "TWO"],
+        },
+        response: { text: "done" },
+        cardinality: 1,
+      }),
+    ]);
+
+    expect(() =>
+      registry.resolve({ ...call("hello"), toolNames: ["ONE", "THREE"] }),
+    ).toThrow(/no fixture matched/);
+    expect(registry.resolve(call("hello")).response).toBe("done");
+    expect(() => registry.resolve(call("hello"))).toThrow(/over-consumed/);
+    expect(registry.diagnostics()).toMatchObject({
+      fixtures: [{ name: "exact-planner-stage", consumed: 1, min: 1, max: 1 }],
+    });
+  });
+
   it.each(["g", "y"])(
     "keeps scenario /%s regex matchers deterministic across repeated calls",
     (flags) => {

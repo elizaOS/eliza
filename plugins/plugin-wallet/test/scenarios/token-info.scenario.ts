@@ -16,10 +16,16 @@ const WALLET = "WALLET";
 const TOKEN_ADDRESS = "0xA0b86991c6218b36c1d19d4a2e9eb0ce3606eb48";
 
 type R = AgentRuntime & {
-  setSetting?: (k: string, v: string) => void;
+  setSetting: (k: string, v: string | boolean | null) => void;
+  getSetting: (k: string) => string | boolean | number | null;
 };
 
 let restoreFetch: (() => void) | undefined;
+let previousDexscreenerEnv: string | undefined;
+const previousDexscreenerSetting = new WeakMap<
+  AgentRuntime,
+  string | boolean | null
+>();
 /** URLs of DexScreener token-pair lookups the mock actually served. */
 let dexMockHits: string[] = [];
 
@@ -59,8 +65,8 @@ const MOCK_PAIR = {
 export default scenario({
   lane: "pr-deterministic",
   modelFixtures: {
-    mode: "fixtures",
-    fixtures: [],
+    mode: "model-free",
+    reason: "direct production action path has no model boundary",
   },
   id: "wallet.token-info",
   title:
@@ -83,11 +89,19 @@ export default scenario({
       apply: async (ctx) => {
         const runtime = ctx.runtime as R;
         dexMockHits = [];
+        previousDexscreenerEnv = process.env.DEXSCREENER_API_URL;
+        const previousSetting = runtime.getSetting("DEXSCREENER_API_URL");
+        previousDexscreenerSetting.set(
+          runtime,
+          typeof previousSetting === "number"
+            ? String(previousSetting)
+            : previousSetting,
+        );
 
         // Pin the DexScreener base URL so the interceptor target is stable,
         // regardless of any Eliza Cloud routing defaults.
         process.env.DEXSCREENER_API_URL = "https://api.dexscreener.com";
-        runtime.setSetting?.(
+        runtime.setSetting(
           "DEXSCREENER_API_URL",
           "https://api.dexscreener.com",
         );
@@ -132,8 +146,20 @@ export default scenario({
     {
       type: "custom",
       name: "restore-wallet-fetch",
-      apply: () => {
+      apply: (ctx) => {
         restoreFetch?.();
+        const runtime = ctx.runtime as R;
+        runtime.setSetting(
+          "DEXSCREENER_API_URL",
+          previousDexscreenerSetting.get(runtime) ?? null,
+        );
+        previousDexscreenerSetting.delete(runtime);
+        if (previousDexscreenerEnv === undefined) {
+          delete process.env.DEXSCREENER_API_URL;
+        } else {
+          process.env.DEXSCREENER_API_URL = previousDexscreenerEnv;
+        }
+        previousDexscreenerEnv = undefined;
         return undefined;
       },
     },

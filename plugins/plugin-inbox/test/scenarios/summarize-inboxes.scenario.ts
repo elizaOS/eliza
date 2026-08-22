@@ -21,8 +21,8 @@ const INBOX = "INBOX";
 export default scenario({
   lane: "pr-deterministic",
   modelFixtures: {
-    mode: "fixtures",
-    fixtures: [],
+    mode: "model-free",
+    reason: "direct production action path has no model boundary",
   },
   id: "inbox.summarize-inboxes",
   title: "Inbox: summarize cross-channel inboxes",
