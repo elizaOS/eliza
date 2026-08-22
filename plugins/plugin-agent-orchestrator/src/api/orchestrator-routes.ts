@@ -10,6 +10,7 @@
  * @module api/orchestrator-routes
  */
 
+import { readDurableContent } from "../services/durable-content-store.js";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import {
   deleteBuiltApp,
@@ -215,6 +216,38 @@ async function dispatchOrchestratorRoutes(
   const method = req.method?.toUpperCase();
   const url = new URL(req.url ?? "/", "http://localhost");
   const query = url.searchParams;
+
+  // GET /api/orchestrator/content/:sha256?offset=&limit= — the continuation
+  // resolver for durable-content projections (durable-content-store.ts):
+  // every bounded view whose marker names this route resolves its omitted
+  // bytes here. Byte-windowed; independent of the task service.
+  const contentMatch = pathname.match(
+    new RegExp(`^${PREFIX}/content/([0-9a-f]{64})$`),
+  );
+  if (method === "GET" && contentMatch) {
+    const offsetRaw = url.searchParams.get("offset");
+    const limitRaw = url.searchParams.get("limit");
+    const offset = offsetRaw === null ? 0 : Number.parseInt(offsetRaw, 10);
+    const limit = limitRaw === null ? undefined : Number.parseInt(limitRaw, 10);
+    if (
+      !Number.isSafeInteger(offset) ||
+      offset < 0 ||
+      (limit !== undefined && (!Number.isSafeInteger(limit) || limit < 1))
+    ) {
+      sendError(res, "offset/limit must be nonnegative integers", 400);
+      return true;
+    }
+    const window = readDurableContent(contentMatch[1] as string, {
+      offset,
+      ...(limit !== undefined ? { limit } : {}),
+    });
+    if (!window) {
+      sendError(res, "Unknown content record", 404);
+      return true;
+    }
+    sendJson(res, window);
+    return true;
+  }
 
   // GET /api/orchestrator/built-apps — apps the agent built + deployed from
   // chat (verified live URL at task completion). Reads the durable registry
