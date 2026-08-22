@@ -1447,7 +1447,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 			accessContext: params.accessContext,
 		});
 		const limit = params.count ?? params.limit ?? 10;
-		const threshold = params.match_threshold;
+		const threshold = params.match_threshold ?? 0.5;
 		const scored: Memory[] = [];
 		for (const memory of candidates) {
 			if (!Array.isArray(memory.embedding) || memory.embedding.length === 0) {
@@ -1457,7 +1457,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 			if (similarity < 0) {
 				continue;
 			}
-			if (threshold && similarity < threshold) {
+			if (similarity < threshold) {
 				continue;
 			}
 			scored.push({ ...memory, similarity });

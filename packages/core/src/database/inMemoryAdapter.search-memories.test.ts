@@ -161,6 +161,33 @@ describe("InMemoryDatabaseAdapter.searchMemories", () => {
 		});
 		expect(results).toEqual([]);
 	});
+
+	it("uses the SQL-compatible default threshold while preserving an explicit zero", async () => {
+		const belowDefault = offAxis(2);
+		const adapter = await seed([
+			{
+				entityId: entityA,
+				roomId: roomA,
+				agentId,
+				content: { text: "below default" },
+				embedding: belowDefault,
+			},
+		]);
+
+		expect(
+			await adapter.searchMemories({
+				tableName: "memories",
+				embedding: onAxis(),
+			}),
+		).toEqual([]);
+		expect(
+			await adapter.searchMemories({
+				tableName: "memories",
+				embedding: onAxis(),
+				match_threshold: 0,
+			}),
+		).toMatchObject([{ content: { text: "below default" } }]);
+	});
 });
 
 describe("InMemoryDatabaseAdapter.clearEmbeddingsOutsideActiveDimension", () => {
