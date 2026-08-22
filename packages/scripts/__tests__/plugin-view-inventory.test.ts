@@ -610,6 +610,52 @@ export const plugin: Plugin = {
     ]);
   });
 
+  test("does not follow type-only edges into runtime-unreachable plugin modules", () => {
+    const root = makeRoot();
+    const directory = "plugins/plugin-type-only-reachability";
+    write(
+      root,
+      `${directory}/package.json`,
+      JSON.stringify({
+        name: "@fixture/plugin-type-only-reachability",
+        source: "./src/index.ts",
+      }),
+    );
+    const index = `${directory}/src/index.ts`;
+    const runtime = `${directory}/src/runtime.ts`;
+    const legacy = `${directory}/src/legacy.ts`;
+    write(
+      root,
+      index,
+      'export { runtimePlugin } from "./runtime.js";\nexport type { legacyPlugin } from "./legacy.js";\n',
+    );
+    write(
+      root,
+      runtime,
+      `export const runtimePlugin: Plugin = {
+  name: "runtime",
+  description: "fixture",
+  views: [${view("runtime-reachable")}],
+};\n`,
+    );
+    write(
+      root,
+      legacy,
+      `throw new Error("type-only module must not execute");
+export const legacyPlugin: Plugin = {
+  name: "legacy",
+  description: "fixture",
+  views: [${view("legacy-type-only")}],
+};\n`,
+    );
+
+    const inventory = discover(root, [index, runtime, legacy]);
+    expect(inventory.views.map((entry) => entry.id)).toEqual([
+      "builtin",
+      "runtime-reachable",
+    ]);
+  });
+
   test("rejects plugin composition that could hide runtime views", () => {
     const root = makeRoot();
     const source = addPluginSource(

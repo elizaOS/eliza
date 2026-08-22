@@ -123,12 +123,7 @@ function pluginSourceEntrypoints(repoRoot, directory, candidates) {
 function moduleDependencies(context) {
   const dependencies = [];
   for (const statement of context.sourceFile.statements) {
-    if (
-      (ts.isImportDeclaration(statement) ||
-        ts.isExportDeclaration(statement)) &&
-      statement.moduleSpecifier &&
-      ts.isStringLiteralLike(statement.moduleSpecifier)
-    ) {
+    if (isRuntimeModuleEdge(statement)) {
       const resolved = resolveRelativeImport(
         context,
         statement.moduleSpecifier.text,
@@ -137,6 +132,34 @@ function moduleDependencies(context) {
     }
   }
   return dependencies;
+}
+
+function isRuntimeModuleEdge(statement) {
+  if (
+    !(ts.isImportDeclaration(statement) || ts.isExportDeclaration(statement)) ||
+    !statement.moduleSpecifier ||
+    !ts.isStringLiteralLike(statement.moduleSpecifier)
+  ) {
+    return false;
+  }
+
+  if (ts.isImportDeclaration(statement)) {
+    const clause = statement.importClause;
+    if (!clause) return true;
+    if (clause.isTypeOnly) return false;
+    if (clause.name || !clause.namedBindings) return true;
+    if (ts.isNamespaceImport(clause.namedBindings)) return true;
+    return clause.namedBindings.elements.some(
+      (specifier) => !specifier.isTypeOnly,
+    );
+  }
+
+  if (statement.isTypeOnly) return false;
+  if (!statement.exportClause) return true;
+  if (ts.isNamespaceExport(statement.exportClause)) return true;
+  return statement.exportClause.elements.some(
+    (specifier) => !specifier.isTypeOnly,
+  );
 }
 
 function runtimeReachablePluginFiles(repoRoot, files, cache) {
