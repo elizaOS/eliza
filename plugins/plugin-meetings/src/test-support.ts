@@ -6,7 +6,13 @@
  * exported from the package root.
  */
 
-import type { IAgentRuntime, Memory, Plugin, UUID } from "@elizaos/core";
+import type {
+  Action,
+  IAgentRuntime,
+  Memory,
+  Plugin,
+  UUID,
+} from "@elizaos/core";
 import type {
   MeetingBillingState,
   MeetingEndReason,
@@ -292,10 +298,10 @@ export function segment(
 //      (which sets the real dependencyFactory) and caches the ESM module, so the
 //      runner's later `requires.plugins` import returns the cached module and
 //      does NOT re-run the real assignment.
-//   2. `installMockMeetingDependencies()` — overwrites dependencyFactory with
-//      the mock. The meetings service is constructed AFTER seeds run (during
-//      `requires.plugins` registration), so it reads the mock factory. See
-//      test/scenarios/_meetings-mock.ts.
+//   2. `mockMeetingsCompanionPlugin` — is explicitly pre-registered after the
+//      production plugin and overwrites dependencyFactory in its init hook,
+//      before runtime initialization constructs MeetingService. Scenario seeds
+//      only populate exact scripts; they never mutate plugin initialization.
 // ---------------------------------------------------------------------------
 
 /** A scripted speaker turn the mock pipeline emits as a confirmed segment. */
@@ -309,6 +315,8 @@ export interface MockSpeakerTurn {
 
 /** Behavior of one mocked meeting, keyed by canonical native meeting id. */
 export interface MockMeetingScript {
+  /** Exact production adapter expected to receive this meeting id. */
+  platform: MeetingPlatform;
   /**
    * Keep the session `active` until the user requests a leave (abort) — like a
    * real bot sitting in a call. When false, the bot auto-ends after emitting so
@@ -316,6 +324,8 @@ export interface MockMeetingScript {
    */
   holdUntilLeave: boolean;
   turns: MockSpeakerTurn[];
+  /** Exact adapter-call cardinality. Defaults to one. */
+  times?: number;
 }
 
 const MOCK_AUDIO_SAMPLE_RATE = 16_000;
@@ -348,29 +358,133 @@ export const DEFAULT_MOCK_TURNS: MockSpeakerTurn[] = [
 
 /**
  * Registry the mock adapter + pipeline read at run time, keyed by canonical
- * native meeting id. A scenario seeds this before the meeting starts. When a
- * meeting id is absent, the default (auto-end, canned two-speaker) script runs.
+ * native meeting id. Every meeting must have one exact seeded expectation;
+ * absent, wrong-platform, and over-consumed calls fail without a fallback.
  */
-const mockScripts = new Map<string, MockMeetingScript>();
+type MockMeetingExpectation = {
+  script: MockMeetingScript;
+  consumed: number;
+};
+
+export interface MockMeetingProviderCall {
+  sequence: number;
+  platform: MeetingPlatform;
+  nativeMeetingId: string;
+  matched: boolean;
+  reason?: string;
+}
+
+const mockScripts = new Map<string, MockMeetingExpectation>();
+const mockProviderCalls: MockMeetingProviderCall[] = [];
 
 export function setMockMeetingScript(
   nativeMeetingId: string,
   script: MockMeetingScript,
 ): void {
-  mockScripts.set(nativeMeetingId, script);
+  const times = script.times ?? 1;
+  if (!Number.isInteger(times) || times <= 0) {
+    throw new Error(
+      `[MockMeetingAdapter] script ${nativeMeetingId} requires a positive integer times`,
+    );
+  }
+  if (mockScripts.has(nativeMeetingId)) {
+    throw new Error(
+      `[MockMeetingAdapter] duplicate script for meeting ${nativeMeetingId}`,
+    );
+  }
+  mockScripts.set(nativeMeetingId, {
+    script: { ...script, times },
+    consumed: 0,
+  });
 }
 
 export function clearMockMeetingScripts(): void {
   mockScripts.clear();
+  mockProviderCalls.length = 0;
 }
 
-function scriptFor(nativeMeetingId: string): MockMeetingScript {
-  return (
-    mockScripts.get(nativeMeetingId) ?? {
-      holdUntilLeave: false,
-      turns: DEFAULT_MOCK_TURNS,
-    }
+function scriptFor(
+  platform: MeetingPlatform,
+  nativeMeetingId: string,
+): MockMeetingScript {
+  const expectation = mockScripts.get(nativeMeetingId);
+  if (!expectation) {
+    const reason = `unexpected ${platform} meeting ${nativeMeetingId}; no script registered`;
+    mockProviderCalls.push({
+      sequence: mockProviderCalls.length + 1,
+      platform,
+      nativeMeetingId,
+      matched: false,
+      reason,
+    });
+    throw new Error(`[MockMeetingAdapter] ${reason}`);
+  }
+  const max = expectation.script.times ?? 1;
+  if (expectation.script.platform !== platform) {
+    const reason = `meeting ${nativeMeetingId} expected ${expectation.script.platform}, received ${platform}`;
+    mockProviderCalls.push({
+      sequence: mockProviderCalls.length + 1,
+      platform,
+      nativeMeetingId,
+      matched: false,
+      reason,
+    });
+    throw new Error(`[MockMeetingAdapter] ${reason}`);
+  }
+  if (expectation.consumed >= max) {
+    const reason = `meeting ${nativeMeetingId} over-consumed (${expectation.consumed + 1}/${max})`;
+    mockProviderCalls.push({
+      sequence: mockProviderCalls.length + 1,
+      platform,
+      nativeMeetingId,
+      matched: false,
+      reason,
+    });
+    throw new Error(`[MockMeetingAdapter] ${reason}`);
+  }
+  expectation.consumed += 1;
+  mockProviderCalls.push({
+    sequence: mockProviderCalls.length + 1,
+    platform,
+    nativeMeetingId,
+    matched: true,
+  });
+  return expectation.script;
+}
+
+/** Serializable exact-call ledger emitted into scenario action evidence. */
+export function getMockMeetingProviderLedger(): {
+  expectations: Array<{
+    nativeMeetingId: string;
+    platform: MeetingPlatform;
+    consumed: number;
+    expected: number;
+  }>;
+  calls: MockMeetingProviderCall[];
+  problems: string[];
+} {
+  const expectations = [...mockScripts.entries()].map(
+    ([nativeMeetingId, expectation]) => ({
+      nativeMeetingId,
+      platform: expectation.script.platform,
+      consumed: expectation.consumed,
+      expected: expectation.script.times ?? 1,
+    }),
   );
+  const problems = expectations
+    .filter((expectation) => expectation.consumed !== expectation.expected)
+    .map(
+      (expectation) =>
+        `${expectation.platform}:${expectation.nativeMeetingId} consumed ${expectation.consumed}/${expectation.expected}`,
+    );
+  for (const call of mockProviderCalls) {
+    if (!call.matched) problems.push(call.reason ?? "unexpected provider call");
+  }
+  return {
+    expectations,
+    calls: mockProviderCalls.map((call) => ({ ...call })),
+    problems,
+  };
 }
 
 /**
@@ -445,7 +559,7 @@ export class MockMeetingAdapter implements MeetingPlatformAdapter {
   ) {}
 
   async run(session: MeetingBotSession): Promise<MeetingEndReason> {
-    const script = scriptFor(session.config.nativeMeetingId);
+    const script = scriptFor(this.platform, session.config.nativeMeetingId);
     // The pipeline the service just created for this same session (FIFO handoff).
     const pipeline = this.nextPipeline();
     session.reportStatus("joining");
@@ -525,14 +639,35 @@ export function installMockMeetingDependencies(): void {
   MeetingService.dependencyFactory = () => mockMeetingDependencies();
 }
 
+export const ASSERT_MEETING_MOCK_LEDGER = "ASSERT_MEETING_MOCK_LEDGER";
+
+const assertMeetingMockLedgerAction: Action = {
+  name: ASSERT_MEETING_MOCK_LEDGER,
+  description:
+    "Assert that the strict meetings provider mock received exactly its declared calls.",
+  validate: async () => true,
+  handler: async () => {
+    const ledger = getMockMeetingProviderLedger();
+    return {
+      success: ledger.problems.length === 0,
+      text:
+        ledger.problems.length === 0
+          ? `Strict meetings provider ledger matched ${ledger.calls.length} call(s).`
+          : `Strict meetings provider ledger mismatch: ${ledger.problems.join("; ")}`,
+      data: ledger,
+    };
+  },
+};
+
 /**
  * A tiny companion plugin whose only job is to install the mock dependency
  * factory during `init` — an alternative to the seed path for hosts that load
  * plugins via the plugin array. Its `init` runs before service `start`.
  */
 export const mockMeetingsCompanionPlugin: Plugin = {
-  name: "meetings-mock-companion",
+  name: "plugin-meetings/test-support",
   description: "Installs the mock MeetingService dependency factory for tests",
+  actions: [assertMeetingMockLedgerAction],
   init: async () => {
     installMockMeetingDependencies();
   },
