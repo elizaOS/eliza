@@ -948,6 +948,7 @@ export class E2BRemoteCapabilityRouterService
       const pending: Promise<E2BSandboxClient> = this.factory
         .create(this.routerConfig)
         .catch((error: unknown) => {
+          // error-policy:J2 clears the memoized attempt and rethrows the original create/prepare failure unchanged.
           if (this.sandboxPromise === pending) this.sandboxPromise = null;
           throw error;
         });
@@ -958,6 +959,7 @@ export class E2BRemoteCapabilityRouterService
     if (!this.preparePromise) {
       const pendingPrepare: Promise<void> = this.prepareSandbox(sandbox).catch(
         (error: unknown) => {
+          // error-policy:J2 clears the memoized attempt and rethrows the original create/prepare failure unchanged.
           if (this.preparePromise === pendingPrepare) {
             this.preparePromise = null;
           }
