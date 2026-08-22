@@ -136,7 +136,6 @@ export function buildCharacterFromConfig(config: ElizaConfig): Character {
     "DISCORD_BOT_TOKEN",
     "TELEGRAM_BOT_TOKEN",
     "WHATSAPP_AUTH_DIR",
-    "WHATSAPP_SESSION_PATH",
     "WHATSAPP_DM_POLICY",
     "WHATSAPP_GROUP_POLICY",
     "WHATSAPP_ALLOW_FROM",

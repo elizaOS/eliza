@@ -20,7 +20,7 @@ POST /api/whatsapp/pair/stop
 POST /api/whatsapp/disconnect
 ```
 
-The pairing route broadcasts a `whatsapp-qr` event containing a QR data URL. Scanning it stores the session directory in connector configuration. For non-interactive deployments, set `WHATSAPP_AUTH_DIR` (or the legacy `WHATSAPP_SESSION_PATH`) to an existing paired Baileys session directory.
+The pairing route broadcasts a `whatsapp-qr` event containing a QR data URL. Scanning it stores the session directory in connector configuration. For non-interactive deployments, set `WHATSAPP_AUTH_DIR` to an existing paired Baileys session directory.
 
 Access policy settings are `WHATSAPP_DM_POLICY`, `WHATSAPP_GROUP_POLICY`, `WHATSAPP_ALLOW_FROM`, and `WHATSAPP_GROUP_ALLOW_FROM`. `WHATSAPP_AUTO_REPLY` remains off by default.
 
@@ -36,7 +36,7 @@ bun run --cwd plugins/plugin-whatsapp typecheck
 bun run --cwd plugins/plugin-whatsapp lint:check
 ```
 
-Live delivery proof requires a real WhatsApp account and QR scan. Deterministic tests cover the direct Baileys connection contract and ensure removed Cloud API activators cannot reappear.
+Live delivery proof requires a real WhatsApp account and QR scan. Deterministic tests cover the direct Baileys connection contract and ensure removed Cloud API activators cannot reappear. The bundled Baileys dependency is pinned to `7.0.0-rc14`; its upstream code is MIT licensed.
 
 ## License
 

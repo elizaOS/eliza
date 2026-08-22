@@ -74,64 +74,6 @@ type RuntimeServiceConfig = {
   mediaMaxMb?: number;
 };
 
-function readStringSetting(runtime: IAgentRuntime, key: string): string | undefined {
-  const value = runtime.getSetting(key);
-  if (typeof value === "string" && value.trim().length > 0) {
-    return value.trim();
-  }
-
-  const envValue = process.env[key];
-  if (typeof envValue === "string" && envValue.trim().length > 0) {
-    return envValue.trim();
-  }
-
-  return undefined;
-}
-
-function readCsvSetting(runtime: IAgentRuntime, key: string): string[] {
-  const value = readStringSetting(runtime, key);
-  if (!value) {
-    return [];
-  }
-
-  return value
-    .split(",")
-    .map((entry) => entry.trim())
-    .filter((entry) => entry.length > 0);
-}
-
-function resolveRuntimeConfig(runtime: IAgentRuntime): RuntimeServiceConfig | null {
-  const dmPolicy = readStringSetting(runtime, "WHATSAPP_DM_POLICY") as
-    | "open"
-    | "allowlist"
-    | "pairing"
-    | "disabled"
-    | undefined;
-  const groupPolicy = readStringSetting(runtime, "WHATSAPP_GROUP_POLICY") as
-    | "open"
-    | "allowlist"
-    | "disabled"
-    | undefined;
-  const allowFrom = readCsvSetting(runtime, "WHATSAPP_ALLOW_FROM");
-  const groupAllowFrom = readCsvSetting(runtime, "WHATSAPP_GROUP_ALLOW_FROM");
-
-  const authDir =
-    readStringSetting(runtime, "WHATSAPP_AUTH_DIR") ??
-    readStringSetting(runtime, "WHATSAPP_SESSION_PATH");
-  if (authDir) {
-    return {
-      accountId: DEFAULT_ACCOUNT_ID,
-      authDir,
-      dmPolicy,
-      groupPolicy,
-      allowFrom,
-      groupAllowFrom,
-    };
-  }
-
-  return null;
-}
-
 function resolveRuntimeConfigs(runtime: IAgentRuntime): RuntimeServiceConfig[] {
   const accountIds = listWhatsAppAccountIds(runtime);
   const configs: RuntimeServiceConfig[] = [];
@@ -139,6 +81,7 @@ function resolveRuntimeConfigs(runtime: IAgentRuntime): RuntimeServiceConfig[] {
   for (const accountId of accountIds) {
     const normalizedAccountId = normalizeWhatsAppAccountId(accountId);
     const accountConfig = resolveWhatsAppAccountConfig(runtime, normalizedAccountId);
+    if (accountConfig.enabled === false) continue;
     const authDir = accountConfig.authDir?.trim();
     if (authDir) {
       configs.push({
@@ -154,12 +97,7 @@ function resolveRuntimeConfigs(runtime: IAgentRuntime): RuntimeServiceConfig[] {
     }
   }
 
-  if (configs.length > 0) {
-    return configs;
-  }
-
-  const legacy = resolveRuntimeConfig(runtime);
-  return legacy ? [legacy] : [];
+  return configs;
 }
 
 function toTimestampMs(value: number | string | undefined): number {
@@ -747,7 +685,6 @@ export class WhatsAppConnectorService extends Service {
 
     for (const config of configs) {
       const client = new BaileysClient({
-        authMethod: "baileys",
         authDir: config.authDir,
         printQRInTerminal: false,
       } satisfies BaileysConfig);
@@ -1234,9 +1171,7 @@ export class WhatsAppConnectorService extends Service {
       replyToMessageId,
     });
 
-    return "data" in response
-      ? (response.data as WhatsAppMessageResponse)
-      : (response as WhatsAppMessageResponse);
+    return response;
   }
 
   async sendMessage(message: {

@@ -174,7 +174,6 @@ async function handlePair(
                 connectors.whatsapp = {
                   ...previousConfig,
                   authDir,
-                  transport: "baileys",
                   enabled: true,
                 };
                 return;
@@ -186,7 +185,6 @@ async function handlePair(
               accounts[accountId] = {
                 ...(accounts[accountId] ?? {}),
                 authDir,
-                transport: "baileys",
                 enabled: true,
               };
               connectors.whatsapp = {
@@ -329,11 +327,7 @@ async function handleDisconnect(
         String(logoutErr)
       );
       const authDir = path.join(workspaceDir, "whatsapp-auth", accountId);
-      try {
-        fs.rmSync(authDir, { recursive: true, force: true });
-      } catch {
-        /* may not exist */
-      }
+      fs.rmSync(authDir, { recursive: true, force: true });
     }
 
     if (setupService) {
@@ -365,7 +359,7 @@ async function handleDisconnect(
 
 /**
  * Authenticated plugin routes for direct WhatsApp setup.
- * Registered with `rawPath: true` to preserve legacy `/api/whatsapp/*` paths.
+ * `rawPath: true` makes `/api/whatsapp/*` the canonical authenticated surface.
  */
 export const whatsappSetupRoutes: Route[] = [
   {

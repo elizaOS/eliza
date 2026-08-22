@@ -31,6 +31,7 @@ export const FIRST_RUN_DEPRECATED_FIELD_KEYS = [
   "mediumModel",
   "largeModel",
   "megaModel",
+  "whatsappSessionPath",
 ] as const;
 
 const FirstRunThemeSchema = z.enum([
@@ -85,7 +86,6 @@ export const PostFirstRunRequestSchema = z
     githubToken: z.string().optional(),
     telegramToken: z.string().optional(),
     discordToken: z.string().optional(),
-    whatsappSessionPath: z.string().optional(),
     twilioAccountSid: z.string().optional(),
     twilioAuthToken: z.string().optional(),
     twilioPhoneNumber: z.string().optional(),

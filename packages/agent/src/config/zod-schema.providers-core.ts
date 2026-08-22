@@ -887,6 +887,9 @@ export const WhatsAppAccountSchema = z
 
 export const WhatsAppConfigSchema = z
   .object({
+    enabled: z.boolean().optional(),
+    /** Baileys multi-file auth state for the default account. */
+    authDir: z.string().optional(),
     accounts: z.record(z.string(), WhatsAppAccountSchema.optional()).optional(),
     capabilities: z.array(z.string()).optional(),
     markdown: MarkdownConfigSchema,

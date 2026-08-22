@@ -3,11 +3,11 @@
  * status. Implementors emit inbound messages as EventEmitter events.
  */
 import type { EventEmitter } from "node:events";
-import type { ConnectionStatus, WhatsAppMessage } from "../types";
+import type { ConnectionStatus, WhatsAppMessage, WhatsAppMessageResponse } from "../types";
 
 export interface IWhatsAppClient extends EventEmitter {
   start(): Promise<void>;
   stop(): Promise<void>;
-  sendMessage(message: WhatsAppMessage): Promise<unknown>;
+  sendMessage(message: WhatsAppMessage): Promise<WhatsAppMessageResponse>;
   getConnectionStatus(): ConnectionStatus;
 }

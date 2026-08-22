@@ -9,8 +9,11 @@ import { stageWhatsAppMedia } from "../src/media";
 describe("WhatsApp guarded media staging", () => {
   it.each([
     "file:///tmp/secret.jpg",
+    "data:text/plain,secret",
     "http://127.0.0.1/private",
+    "http://[::1]/private",
     "http://169.254.169.254/latest/meta-data",
+    "https://user:password@media.example.test/private",
   ])("rejects a hostile literal target before transport: %s", async (url) => {
     const pinnedFetchImpl = vi.fn(async () => new Response(Buffer.from("secret")));
 
@@ -52,7 +55,7 @@ describe("WhatsApp guarded media staging", () => {
       adapter.toBaileys({
         type: "image",
         to: "14155552671@s.whatsapp.net",
-        content: { link: "https://example.test/photo.jpg" },
+        content: {} as never,
       })
     ).toThrow("requires media bytes staged through the guarded fetch path");
 
@@ -63,5 +66,21 @@ describe("WhatsApp guarded media staging", () => {
         content: { data: Buffer.from("image") },
       })
     ).toEqual({ image: Buffer.from("image") });
+  });
+
+  it("builds the direct Baileys reaction key from the exact chat and message", () => {
+    const adapter = new MessageAdapter();
+    expect(
+      adapter.toBaileys({
+        type: "reaction",
+        to: "14155552671@s.whatsapp.net",
+        content: { messageId: "3EB0ABC", emoji: "👍" },
+      }),
+    ).toEqual({
+      react: {
+        text: "👍",
+        key: { remoteJid: "14155552671@s.whatsapp.net", id: "3EB0ABC" },
+      },
+    });
   });
 });

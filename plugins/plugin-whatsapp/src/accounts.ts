@@ -127,9 +127,7 @@ export function listWhatsAppAccountIds(runtime: IAgentRuntime): string[] {
   const ids = new Set<string>();
 
   // Check if default account is configured
-  const envAuthDir =
-    (runtime.getSetting("WHATSAPP_AUTH_DIR") as string | undefined) ??
-    (runtime.getSetting("WHATSAPP_SESSION_PATH") as string | undefined);
+  const envAuthDir = runtime.getSetting("WHATSAPP_AUTH_DIR") as string | undefined;
 
   const baileysConfigured = Boolean(config.authDir?.trim() || envAuthDir?.trim());
 
@@ -230,9 +228,7 @@ export function resolveWhatsAppAccountConfig(
   // Get environment/runtime settings for the base config
   const envDmPolicy = runtime.getSetting("WHATSAPP_DM_POLICY") as string | undefined;
   const envGroupPolicy = runtime.getSetting("WHATSAPP_GROUP_POLICY") as string | undefined;
-  const envAuthDir =
-    (runtime.getSetting("WHATSAPP_AUTH_DIR") as string | undefined) ??
-    (runtime.getSetting("WHATSAPP_SESSION_PATH") as string | undefined);
+  const envAuthDir = runtime.getSetting("WHATSAPP_AUTH_DIR") as string | undefined;
 
   const envConfig: WhatsAppAccountRuntimeConfig = {
     authDir: envAuthDir || undefined,

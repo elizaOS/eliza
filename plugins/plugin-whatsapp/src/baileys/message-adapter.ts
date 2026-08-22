@@ -32,19 +32,34 @@ export class MessageAdapter {
   toBaileys(msg: WhatsAppMessage): Record<string, unknown> {
     switch (msg.type) {
       case "text":
-        return { text: msg.content as string };
+        return { text: msg.content };
       case "image":
-        return this.mediaWithCaption("image", msg.content as WhatsAppMediaMessage);
+        return this.mediaWithCaption("image", msg.content);
       case "video":
-        return this.mediaWithCaption("video", msg.content as WhatsAppMediaMessage);
+        return this.mediaWithCaption("video", msg.content);
       case "audio":
-        return this.mediaNoCaption("audio", msg.content as WhatsAppMediaMessage);
+        return this.mediaNoCaption("audio", msg.content);
       case "document":
-        return this.mediaWithFilename(msg.content as WhatsAppMediaMessage);
+        return this.mediaWithFilename(msg.content);
       case "template":
-        return { text: this.renderTemplate(msg.content as WhatsAppTemplate) };
+        return { text: this.renderTemplate(msg.content) };
+      case "reaction": {
+        const reaction = msg.content;
+        if (!reaction.messageId.trim()) {
+          throw new Error("reaction message requires a target message id");
+        }
+        return {
+          react: {
+            text: reaction.emoji,
+            key: {
+              remoteJid: msg.to,
+              id: reaction.messageId,
+            },
+          },
+        };
+      }
       default:
-        throw new Error(`Message type ${msg.type} is outside the Baileys adapter contract`);
+        throw new Error("Message type is outside the Baileys adapter contract");
     }
   }
 

@@ -110,6 +110,10 @@ export type WhatsAppAccountConfig = {
 // ============================================================
 
 export type WhatsAppChannelConfig = {
+  /** If false, do not start the default account. */
+  enabled?: boolean;
+  /** Baileys multi-file auth state for the default account. */
+  authDir?: string;
   /** Optional named WhatsApp account configuration records. */
   accounts?: Record<string, WhatsAppAccountConfig>;
   /** Optional provider capability tags used for agent/runtime guidance. */
@@ -166,6 +170,3 @@ export type WhatsAppChannelConfig = {
   /** Heartbeat visibility settings for this channel. */
   heartbeat?: ChannelHeartbeatVisibilityConfig;
 };
-
-// Re-export for backward compatibility
-export type { WhatsAppChannelConfig as WhatsAppConfig };

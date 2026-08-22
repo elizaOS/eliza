@@ -98,8 +98,6 @@ export class BaileysClient extends EventEmitter implements IWhatsAppClient {
     const id = result?.key?.id ?? "";
 
     return {
-      messaging_product: "whatsapp",
-      contacts: [{ input: message.to, wa_id: message.to }],
       messages: [{ id }],
     };
   }

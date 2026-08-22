@@ -25,12 +25,25 @@ export function prepareBaileysAuthDirectory(authDir: string): void {
 /** Tighten every Baileys multi-file credential after the library writes it. */
 export function secureBaileysAuthFiles(authDir: string): void {
   prepareBaileysAuthDirectory(authDir);
-  for (const entry of readdirSync(authDir, { withFileTypes: true })) {
-    const entryPath = path.join(authDir, entry.name);
-    if (entry.isSymbolicLink()) {
-      throw new Error(`WhatsApp auth directory must not contain symbolic links: ${entryPath}`);
+  const pending = [authDir];
+  while (pending.length > 0) {
+    const directory = pending.pop();
+    if (!directory) continue;
+    for (const entry of readdirSync(directory, { withFileTypes: true })) {
+      const entryPath = path.join(directory, entry.name);
+      if (entry.isSymbolicLink()) {
+        throw new Error(`WhatsApp auth directory must not contain symbolic links: ${entryPath}`);
+      }
+      if (entry.isDirectory()) {
+        chmodSync(entryPath, AUTH_DIRECTORY_MODE);
+        pending.push(entryPath);
+        continue;
+      }
+      if (!entry.isFile()) {
+        throw new Error(`WhatsApp auth directory contains a non-file entry: ${entryPath}`);
+      }
+      chmodSync(entryPath, AUTH_FILE_MODE);
     }
-    chmodSync(entryPath, entry.isDirectory() ? AUTH_DIRECTORY_MODE : AUTH_FILE_MODE);
   }
 }
 
@@ -46,6 +59,11 @@ export class BaileysAuthManager {
   async initialize(): Promise<AuthenticationState> {
     secureBaileysAuthFiles(this.authDir);
     const result = await loadMultiFileAuthState(this.authDir);
+    const setKeys = result.state.keys.set.bind(result.state.keys);
+    result.state.keys.set = async (data) => {
+      await setKeys(data);
+      secureBaileysAuthFiles(this.authDir);
+    };
     this.state = result.state;
     this.saveCreds = result.saveCreds;
     return this.state;

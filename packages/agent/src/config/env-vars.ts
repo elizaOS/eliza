@@ -67,7 +67,6 @@ export const CONNECTOR_ENV_MAP: Readonly<
   },
   whatsapp: {
     authDir: "WHATSAPP_AUTH_DIR",
-    sessionPath: "WHATSAPP_AUTH_DIR",
     dmPolicy: "WHATSAPP_DM_POLICY",
     groupPolicy: "WHATSAPP_GROUP_POLICY",
   },
