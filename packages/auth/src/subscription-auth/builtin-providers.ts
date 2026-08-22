@@ -29,46 +29,71 @@ import {
 
 /** Shape of `~/.codex/auth.json` (Codex CLI); fields vary by CLI version. */
 interface CodexCliAuthJson {
-  auth_mode?: string;
-  OPENAI_API_KEY?: string;
-  tokens?: {
-    access_token?: string;
-    refresh_token?: string;
-  };
+  auth_mode?: unknown;
+  OPENAI_API_KEY?: unknown;
+  tokens?: unknown;
 }
 
 function parseCodexCliAuthJson(raw: string): CodexCliAuthJson | null {
   try {
-    const data = JSON.parse(raw) as CodexCliAuthJson;
-    if (!data || typeof data !== "object") return null;
-    return data;
+    const data: unknown = JSON.parse(raw);
+    return data && typeof data === "object" && !Array.isArray(data)
+      ? (data as CodexCliAuthJson)
+      : null;
   } catch {
-    // error-policy:J3 the CLI-owned file is untrusted input; null is the
-    // descriptor's explicit invalid/unavailable signal.
+    // error-policy:J3 the CLI-owned file is untrusted input; null is an
+    // explicit invalid-file signal, distinct from an absent credential file.
     return null;
   }
 }
 
+type CodexCliSubscriptionState = "absent" | "invalid" | "valid";
+
 /**
- * True when `~/.codex/auth.json` holds a usable Codex CLI subscription login
- * (a ChatGPT OAuth token, or an API key paired with a non-`api-key` auth mode).
+ * Classify the Codex CLI credential file without collapsing a present broken
+ * login into the same state as an absent or direct-API-only configuration.
  */
-function hasCodexCliSubscriptionAuth(): boolean {
+function codexCliSubscriptionState(): CodexCliSubscriptionState {
   const authPath = path.join(os.homedir(), ".codex", "auth.json");
+  let raw: string;
   try {
-    const data = parseCodexCliAuthJson(fs.readFileSync(authPath, "utf-8"));
-    if (!data) return false;
-    if (data.tokens?.access_token?.trim()) return true;
-    return Boolean(
-      data.OPENAI_API_KEY?.trim() &&
-        data.auth_mode?.trim() &&
-        data.auth_mode.trim().toLowerCase() !== "api-key",
-    );
-  } catch {
-    // error-policy:J4 optional external credential discovery returns false when
-    // the CLI file is absent or unreadable.
-    return false;
+    raw = fs.readFileSync(authPath, "utf-8");
+  } catch (cause) {
+    // error-policy:J4 an absent optional CLI credential contributes no row;
+    // other read failures mean the configured surface is present but invalid.
+    return (cause as NodeJS.ErrnoException).code === "ENOENT"
+      ? "absent"
+      : "invalid";
   }
+
+  const data = parseCodexCliAuthJson(raw);
+  if (!data) return "invalid";
+
+  if (data.tokens !== undefined) {
+    if (
+      !data.tokens ||
+      typeof data.tokens !== "object" ||
+      Array.isArray(data.tokens)
+    ) {
+      return "invalid";
+    }
+    const accessToken = (data.tokens as Record<string, unknown>).access_token;
+    return typeof accessToken === "string" && accessToken.trim()
+      ? "valid"
+      : "invalid";
+  }
+
+  const authMode =
+    typeof data.auth_mode === "string" ? data.auth_mode.trim() : "";
+  if (authMode.toLowerCase() === "api-key") return "absent";
+  if (data.OPENAI_API_KEY !== undefined || data.auth_mode !== undefined) {
+    return typeof data.OPENAI_API_KEY === "string" &&
+      data.OPENAI_API_KEY.trim() &&
+      authMode
+      ? "valid"
+      : "invalid";
+  }
+  return "invalid";
 }
 
 // ── gemini-cli: `gemini` binary on PATH ──────────────────────────────────────
@@ -101,17 +126,19 @@ export function ensureBuiltinSubscriptionAuthProviders(): void {
 
   registerSubscriptionAuthProvider({
     id: "openai-codex",
-    detectExternalCredentials: (): DiscoveredSubscriptionCredential | null =>
-      hasCodexCliSubscriptionAuth()
-        ? {
+    detectExternalCredentials: (): DiscoveredSubscriptionCredential | null => {
+      const state = codexCliSubscriptionState();
+      return state === "absent"
+        ? null
+        : {
             accountId: "codex-cli",
             label: "Codex CLI",
             source: "codex-cli",
             configured: true,
-            valid: true,
+            valid: state === "valid",
             expiresAt: null,
-          }
-        : null,
+          };
+    },
   });
 
   registerSubscriptionAuthProvider({
