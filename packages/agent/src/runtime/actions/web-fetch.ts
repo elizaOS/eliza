@@ -25,7 +25,6 @@ import {
   type Memory,
   type State,
   toWellFormedUnicode,
-  truncateWellFormed,
 } from "@elizaos/core";
 import { performGuardedHttpGet } from "../custom-actions.ts";
 
@@ -79,8 +78,9 @@ const MAX_JSON_EXTRACT_SEGMENT_LENGTH = 256;
  * Resolve a dotted JSON path (e.g. `data.price` or `items.0.name`) against a
  * parsed JSON value. Returns undefined when any segment is missing or when
  * the path is empty, too long, too deep, or contains an empty/oversized
- * segment. Uses descriptor-only reflection so accessor properties are not
- * invoked, and fails closed on hostile inputs.
+ * segment. JSON.parse produces plain data properties (accessor/Proxy traps
+ * are not reachable on host-parsed JSON); descriptor-only reflection is
+ * defense-in-depth and fails closed on hostile inputs.
  */
 function resolveJsonPath(root: unknown, path: string): unknown {
   if (path.length === 0 || path.length > MAX_JSON_EXTRACT_PATH_LENGTH)
@@ -128,10 +128,7 @@ function extractValue(body: string, extract: string | undefined): string {
       // Body was not JSON, or extract did not resolve — return the complete body.
     }
   }
-  return truncateWellFormed(
-    toWellFormedUnicode(body),
-    _WEB_FETCH_SNIPPET_CHARS,
-  );
+  return toWellFormedUnicode(body);
 }
 
 export const webFetch: Action & Record<string, unknown> = {
