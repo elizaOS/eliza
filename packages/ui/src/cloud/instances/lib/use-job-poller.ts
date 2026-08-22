@@ -3,8 +3,9 @@
  *
  * Tracks jobs by an arbitrary key (the agent id), polls `GET /api/v1/jobs/:id`
  * until each reaches a terminal state, and fires `onComplete` / `onFailed`.
- * When `autoRefresh` is set it does a hard `window.location.reload()` once a job
- * resolves — the agent detail page relies on this for the after-action refresh.
+ * When `autoRefresh` is set it does a hard `window.location.reload()` after a
+ * successful job. Failures remain in memory so the detail page can show the
+ * authoritative error and recovery guidance instead of erasing it immediately.
  * The agents *table* passes its own `onComplete`/`onFailed` and re-fetches via
  * react-query-style local merge instead, so it never triggers the reload.
  */
@@ -165,7 +166,6 @@ export function useJobPoller(options: UseJobPollerOptions = {}) {
             });
 
             callbacksRef.current.onFailed?.(timedOutJob);
-            needsRefresh = true;
             continue;
           }
 
@@ -223,7 +223,6 @@ export function useJobPoller(options: UseJobPollerOptions = {}) {
               needsRefresh = true;
             } else if (nextStatus === "failed") {
               callbacksRef.current.onFailed?.(updatedJob);
-              needsRefresh = true;
             }
           } catch {
             // error-policy:J4 transient status-read failure preserves the
