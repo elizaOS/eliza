@@ -17,6 +17,20 @@ const CONFIG = {
   tenantId: "elizacloud-staging",
 };
 
+function providerDestination(provider: "discord" | "google"): string {
+  const destination = new URL(
+    provider === "discord"
+      ? "https://discord.com/oauth2/authorize"
+      : "https://accounts.google.com/o/oauth2/v2/auth",
+  );
+  destination.searchParams.set("client_id", "public");
+  destination.searchParams.set(
+    "redirect_uri",
+    `${CONFIG.baseUrl}/steward/auth/oauth/${provider}/callback`,
+  );
+  return destination.toString();
+}
+
 describe("Steward OAuth callback deployment probe", () => {
   test("proves both provider handoffs use the exact canonical callback", async () => {
     const requested: URL[] = [];
@@ -30,10 +44,7 @@ describe("Steward OAuth callback deployment probe", () => {
         return new Response(null, {
           status: 302,
           headers: {
-            Location:
-              provider === "discord"
-                ? "https://discord.com/oauth2/authorize?client_id=public"
-                : "https://accounts.google.com/o/oauth2/v2/auth?client_id=public",
+            Location: providerDestination(provider),
           },
         });
       },
@@ -74,6 +85,70 @@ describe("Steward OAuth callback deployment probe", () => {
           }),
       }),
     ).rejects.toThrow("unexpected provider host");
+  });
+
+  test("rejects an upstream callback bound to another environment", async () => {
+    await expect(
+      verifyStewardOAuthCallbacks(CONFIG, {
+        fetchImpl: async (input: string | URL | Request) => {
+          const provider = String(input).includes("/discord/")
+            ? "discord"
+            : "google";
+          const destination = new URL(providerDestination(provider));
+          destination.searchParams.set(
+            "redirect_uri",
+            `https://api.eliza.app/steward/auth/oauth/${provider}/callback`,
+          );
+          return new Response(null, {
+            status: 302,
+            headers: { Location: destination.toString() },
+          });
+        },
+      }),
+    ).rejects.toThrow(
+      "expected https://staging.eliza.app/steward/auth/oauth/discord/callback",
+    );
+  });
+
+  test("rejects a provider redirect with no callback URI", async () => {
+    await expect(
+      verifyStewardOAuthCallbacks(CONFIG, {
+        fetchImpl: async () =>
+          new Response(null, {
+            status: 302,
+            headers: { Location: "https://discord.com/oauth2/authorize" },
+          }),
+      }),
+    ).rejects.toThrow("used no redirect_uri");
+  });
+
+  test("preserves the established production direct-callback contract", async () => {
+    const productionConfig = {
+      baseUrl: "https://api.eliza.app",
+      callbackUrl: "https://eliza.app/login",
+      tenantId: "elizacloud",
+    };
+    const results = await verifyStewardOAuthCallbacks(productionConfig, {
+      fetchImpl: async (input: string | URL | Request) => {
+        const provider = String(input).includes("/discord/")
+          ? "discord"
+          : "google";
+        const destination = new URL(providerDestination(provider));
+        destination.searchParams.set(
+          "redirect_uri",
+          `https://eliza.steward.fi/auth/oauth/${provider}/callback`,
+        );
+        return new Response(null, {
+          status: 302,
+          headers: { Location: destination.toString() },
+        });
+      },
+    });
+
+    expect(results).toEqual([
+      { provider: "discord", destinationHostname: "discord.com" },
+      { provider: "google", destinationHostname: "accounts.google.com" },
+    ]);
   });
 
   test("requires HTTPS and all three deployment-owned inputs", () => {
@@ -193,9 +268,9 @@ describe("Steward deployment probe CLI composition", () => {
         if (url.endsWith("/steward/auth/nonce")) {
           return Response.json({ nonce: "Tk9iR2buAPsSuxF0T" });
         }
-        const destination = url.includes("/discord/")
-          ? "https://discord.com/oauth2/authorize"
-          : "https://accounts.google.com/o/oauth2/v2/auth";
+        const destination = providerDestination(
+          url.includes("/discord/") ? "discord" : "google",
+        );
         return new Response(null, {
           status: 302,
           headers: { Location: destination },
@@ -221,9 +296,9 @@ describe("Steward deployment probe CLI composition", () => {
           if (url.endsWith("/steward/auth/nonce")) {
             return Response.json({ error: "origin rejected" }, { status: 400 });
           }
-          const destination = url.includes("/discord/")
-            ? "https://discord.com/oauth2/authorize"
-            : "https://accounts.google.com/o/oauth2/v2/auth";
+          const destination = providerDestination(
+            url.includes("/discord/") ? "discord" : "google",
+          );
           return new Response(null, {
             status: 302,
             headers: { Location: destination },

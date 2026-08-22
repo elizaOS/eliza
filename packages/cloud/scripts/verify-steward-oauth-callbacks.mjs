@@ -95,6 +95,19 @@ export async function verifyStewardOAuthCallbacks(
         `${provider} callback probe reached unexpected provider host ${destination.hostname}`,
       );
     }
+    // Staging owns a separate challenge store, so a provider callback that
+    // escapes to the legacy production Steward host cannot consume its state.
+    // Production keeps its established direct callback contract unchanged.
+    if (tenantId.toLowerCase().endsWith("-staging")) {
+      const expectedProviderCallback = `${baseUrl}/steward/auth/oauth/${encodeURIComponent(provider)}/callback`;
+      const actualProviderCallback =
+        destination.searchParams.get("redirect_uri");
+      if (actualProviderCallback !== expectedProviderCallback) {
+        throw new Error(
+          `${provider} callback probe used ${actualProviderCallback ?? "no redirect_uri"}; expected ${expectedProviderCallback}`,
+        );
+      }
+    }
     results.push({ provider, destinationHostname: destination.hostname });
   }
   return results;
