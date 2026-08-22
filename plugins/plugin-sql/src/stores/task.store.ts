@@ -3,7 +3,7 @@ import type { Task, TaskMetadata, UUID } from "@elizaos/core";
 import { and, eq, sql } from "drizzle-orm";
 import { taskTable } from "../schema/index";
 import type { DrizzleDatabase } from "../types";
-import { readTaskDueAt, serializeTaskDueAt } from "./task-timing";
+import { readTaskDueAt, serializeTaskDueAt, taskMetadataForWrite } from "./task-timing";
 import type { Store, StoreContext } from "./types";
 
 export class TaskStore implements Store {
@@ -15,14 +15,10 @@ export class TaskStore implements Store {
 
   async create(task: Task): Promise<UUID> {
     if (!task.worldId) throw new Error("worldId is required");
-    const scheduledAt = task.dueAt === undefined ? undefined : serializeTaskDueAt(task.dueAt);
+    const metadata = taskMetadataForWrite(task.metadata, task.dueAt);
 
     return this.ctx.withRetry(async () => {
       const now = new Date();
-      const metadata: TaskMetadata = {
-        ...(task.metadata || {}),
-        ...(scheduledAt === undefined ? {} : { scheduledAt }),
-      };
 
       const values = {
         id: task.id as UUID,
@@ -43,7 +39,12 @@ export class TaskStore implements Store {
     }, "TaskStore.create");
   }
 
-  async getAll(params: { roomId?: UUID; tags?: string[]; entityId?: UUID }): Promise<Task[]> {
+  async getAll(params: {
+    roomId?: UUID;
+    worldId?: UUID;
+    tags?: string[];
+    entityId?: UUID;
+  }): Promise<Task[]> {
     return this.ctx.withRetry(async () => {
       const result = await this.db
         .select()
@@ -52,6 +53,7 @@ export class TaskStore implements Store {
           and(
             eq(taskTable.agentId, this.ctx.agentId),
             ...(params.roomId ? [eq(taskTable.roomId, params.roomId)] : []),
+            ...(params.worldId ? [eq(taskTable.worldId, params.worldId)] : []),
             ...(params.entityId ? [eq(taskTable.entityId, params.entityId)] : []),
             ...(params.tags && params.tags.length > 0
               ? [
@@ -132,7 +134,9 @@ export class TaskStore implements Store {
   }
 
   async update(id: UUID, task: Partial<Task>): Promise<void> {
-    const scheduledAt = task.dueAt === undefined ? undefined : serializeTaskDueAt(task.dueAt);
+    const scheduledAt = task.dueAt == null ? undefined : serializeTaskDueAt(task.dueAt);
+    const replacementMetadata =
+      task.metadata === undefined ? undefined : taskMetadataForWrite(task.metadata, task.dueAt);
     return this.ctx.withRetry(async () => {
       const dbUpdateValues: Partial<typeof taskTable.$inferInsert> & { updatedAt: Date } = {
         updatedAt: new Date(),
@@ -145,13 +149,12 @@ export class TaskStore implements Store {
       if (task.entityId !== undefined) dbUpdateValues.entityId = task.entityId;
       if (task.tags !== undefined) dbUpdateValues.tags = task.tags;
       if (task.metadata !== undefined) {
-        dbUpdateValues.metadata = {
-          ...task.metadata,
-          ...(scheduledAt === undefined ? {} : { scheduledAt }),
-        };
+        dbUpdateValues.metadata = replacementMetadata;
       } else if (scheduledAt !== undefined) {
         const dueAtPatch = JSON.stringify({ scheduledAt });
         dbUpdateValues.metadata = sql`COALESCE(${taskTable.metadata}, '{}'::jsonb) || ${dueAtPatch}::jsonb`;
+      } else if (task.dueAt === null) {
+        dbUpdateValues.metadata = sql`COALESCE(${taskTable.metadata}, '{}'::jsonb) - 'scheduledAt'`;
       }
 
       await this.db

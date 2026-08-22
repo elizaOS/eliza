@@ -96,10 +96,14 @@ describe("Task Integration Tests", () => {
         status: "pending",
         scheduledAt: "2030-03-17T17:46:45.000Z",
       });
-      await expect(adapter.getTasks({ entityId: testEntityId })).resolves.toEqual([
-        expect.objectContaining({ id: taskId, entityId: testEntityId }),
-      ]);
-      await expect(adapter.getTasks({ entityId: uuidv4() as UUID })).resolves.toEqual([]);
+      await expect(
+        adapter.getTasks({ entityId: testEntityId, agentIds: [testAgentId] })
+      ).resolves.toEqual([expect.objectContaining({ id: taskId, entityId: testEntityId })]);
+      await expect(
+        adapter.getTasks({ entityId: uuidv4() as UUID, agentIds: [testAgentId] })
+      ).resolves.toEqual([]);
+      await expect(adapter.getTasks({ agentIds: [] })).resolves.toEqual([]);
+      await expect(adapter.getTasks({ agentIds: [uuidv4() as UUID] })).resolves.toEqual([]);
       await expect(
         adapter.createTask({
           ...task,
@@ -128,7 +132,7 @@ describe("Task Integration Tests", () => {
 
       const byId = await adapter.getTask(taskId);
       const byName = await adapter.getTasksByName("Drain Task");
-      const byQuery = await adapter.getTasks({ tags: ["queue"] });
+      const byQuery = await adapter.getTasks({ tags: ["queue"], agentIds: [testAgentId] });
 
       expect(byId?.agentId).toBe(testAgentId);
       expect(byName).toHaveLength(1);
@@ -158,6 +162,12 @@ describe("Task Integration Tests", () => {
           affinityKey: "preserved",
           scheduledAt: "2030-03-17T17:46:49.000Z",
         },
+      });
+
+      await adapter.updateTask(taskId, { dueAt: null });
+      await expect(adapter.getTask(taskId)).resolves.toMatchObject({
+        dueAt: undefined,
+        metadata: { status: "pending", affinityKey: "preserved" },
       });
 
       await adapter.updateTask(taskId, {
@@ -309,9 +319,27 @@ describe("Task Integration Tests", () => {
       const filteredTasks = await adapter.getTasks({
         roomId: roomId1,
         tags: ["urgent"],
+        agentIds: [testAgentId],
       });
       expect(filteredTasks.length).toBe(1);
       expect(filteredTasks[0].id).toBe(task1.id as UUID);
+      await expect(
+        adapter.getTasks({
+          roomId: roomId1,
+          worldId: testWorldId,
+          entityId: testEntityId,
+          tags: ["a"],
+          agentIds: [testAgentId],
+        })
+      ).resolves.toHaveLength(2);
+      await expect(
+        adapter.getTasks({ worldId: uuidv4() as UUID, agentIds: [testAgentId] })
+      ).resolves.toEqual([]);
+      const firstPage = await adapter.getTasks({ agentIds: [testAgentId], limit: 1 });
+      const secondPage = await adapter.getTasks({ agentIds: [testAgentId], limit: 1, offset: 1 });
+      expect(firstPage).toHaveLength(1);
+      expect(secondPage).toHaveLength(1);
+      expect(secondPage[0]?.id).not.toBe(firstPage[0]?.id);
     });
   });
 });

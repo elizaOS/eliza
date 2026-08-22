@@ -1,13 +1,14 @@
 /** Converts the public task due-time field to and from its canonical SQL metadata representation. */
 
-import type { TaskMetadata } from "@elizaos/core";
+import { ElizaError, type TaskMetadata } from "@elizaos/core";
 
-export class TaskTimingValidationError extends Error {
+export class TaskTimingValidationError extends ElizaError {
   constructor(message: string) {
-    super(message);
-    this.name = "TaskTimingValidationError";
+    super(message, { code: "TASK_TIMING_INVALID" });
   }
 }
+
+const CANONICAL_ISO_INSTANT = /^(?:\d{4}|[+-]\d{6})-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
 
 function safeTimestamp(value: number, label: string): number {
   if (!Number.isSafeInteger(value)) {
@@ -21,8 +22,30 @@ function safeTimestamp(value: number, label: string): number {
 }
 
 export function serializeTaskDueAt(dueAt: number | bigint): string {
+  if (
+    typeof dueAt === "bigint" &&
+    (dueAt < BigInt(Number.MIN_SAFE_INTEGER) || dueAt > BigInt(Number.MAX_SAFE_INTEGER))
+  ) {
+    throw new TaskTimingValidationError("task dueAt must be a safe integer millisecond timestamp");
+  }
   const numeric = typeof dueAt === "bigint" ? Number(dueAt) : dueAt;
   return new Date(safeTimestamp(numeric, "task dueAt")).toISOString();
+}
+
+/** Build caller-authored metadata before retry admission, preserving explicit clear semantics. */
+export function taskMetadataForWrite(
+  metadata: TaskMetadata | undefined,
+  dueAt: number | bigint | null | undefined
+): TaskMetadata {
+  const result: TaskMetadata = { ...(metadata || {}) };
+  if (dueAt === null) {
+    delete result.scheduledAt;
+  } else if (dueAt !== undefined) {
+    result.scheduledAt = serializeTaskDueAt(dueAt);
+  } else {
+    readTaskDueAt(result);
+  }
+  return result;
 }
 
 export function readTaskDueAt(metadata: TaskMetadata): number | undefined {
@@ -34,9 +57,14 @@ export function readTaskDueAt(metadata: TaskMetadata): number | undefined {
   if (typeof scheduledAt !== "string" || scheduledAt.trim().length === 0) {
     throw new TaskTimingValidationError("task metadata.scheduledAt must be an ISO-8601 string");
   }
-  const parsed = Date.parse(scheduledAt);
-  if (Number.isNaN(parsed)) {
+  if (!CANONICAL_ISO_INSTANT.test(scheduledAt)) {
     throw new TaskTimingValidationError("task metadata.scheduledAt must be an ISO-8601 string");
   }
-  return safeTimestamp(parsed, "task metadata.scheduledAt");
+  const parsed = safeTimestamp(Date.parse(scheduledAt), "task metadata.scheduledAt");
+  if (new Date(parsed).toISOString() !== scheduledAt) {
+    throw new TaskTimingValidationError(
+      "task metadata.scheduledAt must be a canonical ISO-8601 instant"
+    );
+  }
+  return parsed;
 }

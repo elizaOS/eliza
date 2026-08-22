@@ -11808,8 +11808,11 @@ ${section_end}`;
 
 	async getTasks(params: {
 		roomId?: UUID;
+		worldId?: UUID;
 		tags?: string[];
 		entityId?: UUID;
+		limit?: number;
+		offset?: number;
 	}): Promise<Task[]> {
 		return this.adapter.getTasks({ ...params, agentIds: [this.agentId] });
 	}

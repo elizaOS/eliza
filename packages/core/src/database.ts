@@ -636,6 +636,7 @@ export abstract class DatabaseAdapter<DB extends object = object>
 	 */
 	abstract getTasks(params: {
 		roomId?: UUID;
+		worldId?: UUID;
 		tags?: string[];
 		entityId?: UUID;
 		agentIds: UUID[];

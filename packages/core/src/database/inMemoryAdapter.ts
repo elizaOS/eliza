@@ -2008,6 +2008,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 
 	async getTasks(params: {
 		roomId?: UUID;
+		worldId?: UUID;
 		tags?: string[];
 		entityId?: UUID;
 		agentIds: UUID[];
@@ -2018,6 +2019,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 		const all = Array.from(this.tasks.values());
 		let filtered = all.filter((t) => {
 			if (params.roomId && t.roomId !== params.roomId) return false;
+			if (params.worldId && t.worldId !== params.worldId) return false;
 			if (params.entityId && t.entityId !== params.entityId) return false;
 			if (t.agentId == null || !params.agentIds.includes(t.agentId))
 				return false;
