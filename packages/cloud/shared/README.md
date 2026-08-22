@@ -28,6 +28,10 @@ docs/                        WHY docs (provisioning, messaging gateways)
 
 Import via subpath: `@elizaos/cloud-shared/billing`, `/db`, `/db/repositories/apps`, `/lib`, `/lib/services/<x>`, `/types`. Exports map (`package.json`): `.` `./billing` `./db` `./db/*` `./lib` `./lib/*` `./types` `./types/*`.
 
+Synthetic test consumers use `/db/repositories/synthetic-environment-leases`.
+Its guarded callback receives the same locked PostgreSQL/PGlite transaction as
+the generation check, so an old reset generation cannot commit afterward.
+
 `src/lib/` is server-only — browser code lives in `cloud-frontend`. Only the isomorphic helpers (`billing/`, math/string/validation) are safe to import from the frontend.
 
 ## Commands
