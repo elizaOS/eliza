@@ -84,6 +84,12 @@ function setCachedValue<T>(
 	}
 }
 
+/** Test-only reset seam so suites never share module-scoped cache state. */
+export function __resetProfileCachesForTests(): void {
+	discordUserProfileCache.clear();
+	discordMessageAuthorProfileCache.clear();
+}
+
 function getDiscordClient(runtime: AgentRuntime): DiscordClientLike | null {
 	const runtimeWithServices = runtime as AgentRuntime & {
 		getService?: (name: string) => unknown;
