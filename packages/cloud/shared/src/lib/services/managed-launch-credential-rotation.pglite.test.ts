@@ -35,6 +35,7 @@ process.env.SKIP_AGENT_SANDBOX_ENSURE = "1";
 import { pushSchema } from "drizzle-kit/api";
 import { closeDatabaseConnectionsForTests, dbWrite } from "../../db/client";
 import type { AgentSandbox } from "../../db/repositories/agent-sandboxes";
+import { agentNodeIncarnationHistories } from "../../db/schemas/agent-node-incarnation-histories";
 import { agentSandboxes } from "../../db/schemas/agent-sandboxes";
 import { apiKeys } from "../../db/schemas/api-keys";
 import { dockerNodes } from "../../db/schemas/docker-nodes";
@@ -117,7 +118,15 @@ beforeAll(async () => {
   }
   try {
     const { apply } = await pushSchema(
-      { organizations, users, userCharacters, apiKeys, dockerNodes, agentSandboxes } as never,
+      {
+        organizations,
+        users,
+        userCharacters,
+        apiKeys,
+        agentNodeIncarnationHistories,
+        dockerNodes,
+        agentSandboxes,
+      } as never,
       dbWrite as never,
     );
     await apply();

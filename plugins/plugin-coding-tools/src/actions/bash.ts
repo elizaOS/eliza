@@ -36,6 +36,10 @@ import {
   successActionResult,
 } from "../lib/format.js";
 import { runShell, type ShellResult } from "../lib/run-shell.js";
+import {
+  readShellOutputArtifactPage,
+  type ShellOutputArtifactStream,
+} from "../lib/shell-output-artifact.js";
 import { resolveHostShell } from "../lib/terminal-capabilities.js";
 import type { BackgroundShellService } from "../services/background-shell-service.js";
 import type { SandboxService } from "../services/sandbox-service.js";
@@ -68,7 +72,8 @@ type ShellActionSubaction =
   | "poll_background"
   | "write_background"
   | "kill_background"
-  | "list_background";
+  | "list_background"
+  | "read_output_artifact";
 
 interface CryptoSpotAsset {
   symbol: string;
@@ -304,6 +309,10 @@ function normalizeShellSubaction(
     case "background_list":
     case "sessions":
       return "list_background";
+    case "artifact":
+    case "read_artifact":
+    case "read_output_artifact":
+      return "read_output_artifact";
     default:
       return "run";
   }
@@ -1151,19 +1160,20 @@ export const shellAction: Action = {
   contextGate: { anyOf: ["code", "terminal", "automation"] },
   similes: ["BASH", "EXEC", "RUN_COMMAND"],
   description:
-    "Run shell commands, manage per-conversation background shell sessions, or view/clear shell history. Use bounded commands; default to the session cwd unless the user supplied an exact cwd or the session moved.",
+    "Run shell commands with complete accepted redacted foreground output, retrieve unexpired scoped legacy output artifacts, manage per-conversation background shell sessions, or view/clear shell history. Each run starts a fresh shell, so prefix any required environment variables on every command. Use bounded commands; default to the session cwd unless the user supplied an exact cwd or the session moved.",
   descriptionCompressed:
-    "Run shell commands; start/poll/write/kill/list background sessions; clear/view history.",
+    "Run shell commands; page output artifacts; start/poll/write/kill/list background sessions; clear/view history.",
   parameters: [
     {
       name: "action",
       description:
-        "Shell operation: run | start_background | poll_background | write_background | kill_background | list_background | clear_history | view_history.",
+        "Shell operation: run | read_output_artifact | start_background | poll_background | write_background | kill_background | list_background | clear_history | view_history.",
       required: false,
       schema: {
         type: "string",
         enum: [
           "run",
+          "read_output_artifact",
           "start_background",
           "poll_background",
           "write_background",
@@ -1177,7 +1187,7 @@ export const shellAction: Action = {
     {
       name: "command",
       description:
-        "For action=run: /bin/bash -c command. Keep bounded; prefer jq/node for JSON and python3 if Python is needed. Include all requested paths in df/du checks.",
+        "For action=run: /bin/bash -c command in a fresh process; exported variables do not persist to later calls. Keep bounded; prefer jq/node for JSON and python3 if Python is needed. Include all requested paths in df/du checks.",
       required: false,
       schema: { type: "string" },
     },
@@ -1224,9 +1234,30 @@ export const shellAction: Action = {
     {
       name: "handle",
       description:
-        "Stable background shell handle returned by action=start_background.",
+        "Opaque handle returned by action=start_background or by a truncated foreground output artifact.",
       required: false,
       schema: { type: "string" },
+    },
+    {
+      name: "artifact_stream",
+      description:
+        "For action=read_output_artifact: redacted stream to retrieve.",
+      required: false,
+      schema: { type: "string", enum: ["stdout", "stderr"] },
+    },
+    {
+      name: "artifact_offset",
+      description:
+        "For action=read_output_artifact: next character offset returned by the prior page; defaults to 0.",
+      required: false,
+      schema: { type: "number", minimum: 0 },
+    },
+    {
+      name: "artifact_limit",
+      description:
+        "For action=read_output_artifact: page size in characters, capped at 20000.",
+      required: false,
+      schema: { type: "number", minimum: 2, maximum: 20000 },
     },
     {
       name: "stdin",
@@ -1263,7 +1294,7 @@ export const shellAction: Action = {
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,
-    _state?: State,
+    state?: State,
     options?: unknown,
     callback?: HandlerCallback,
   ): Promise<ActionResult> => {
@@ -1274,6 +1305,63 @@ export const shellAction: Action = {
     const subaction = explicitSubaction
       ? normalizeShellSubaction(explicitSubaction)
       : "run";
+
+    if (subaction === "read_output_artifact") {
+      if (!message.roomId) {
+        return failureToActionResult({
+          reason: "missing_param",
+          message: "no roomId",
+        });
+      }
+      const handle = readStringParam(options, "handle");
+      if (!handle) {
+        return failureToActionResult({
+          reason: "missing_param",
+          message: "read_output_artifact requires 'handle'",
+        });
+      }
+      const requestedStream = readStringParam(options, "artifact_stream");
+      if (requestedStream !== "stdout" && requestedStream !== "stderr") {
+        return failureToActionResult({
+          reason: "invalid_param",
+          message:
+            "read_output_artifact requires artifact_stream=stdout or stderr",
+        });
+      }
+      const page = await readShellOutputArtifactPage({
+        handle,
+        stream: requestedStream as ShellOutputArtifactStream,
+        offset: readNonNegativeOffset(options, "artifact_offset"),
+        limit: readNumberParam(options, "artifact_limit"),
+        requesterAgentId: String(runtime.agentId),
+        requesterConversationId: String(message.roomId),
+      });
+      if (!page.ok) {
+        return failureToActionResult({
+          reason:
+            page.reason === "invalid_handle" ? "invalid_param" : "path_blocked",
+          message: page.message,
+        });
+      }
+      const value = page.value;
+      const text = [
+        `Shell artifact ${value.handle} ${value.stream} characters ${value.startOffset}..${value.endOffset} of ${value.totalCharacters} complete=${value.complete}`,
+        value.text
+          ? `--- ${value.stream} ---\n${value.text}`
+          : `--- ${value.stream} ---\n(empty)`,
+      ].join("\n");
+      if (callback) {
+        await callback({
+          text: fencePreformatted(capTranscriptForChat(text)),
+          source: "coding-tools",
+        });
+      }
+      return successActionResult(text, {
+        actionName: "SHELL",
+        [CANONICAL_SUBACTION_KEY]: "read_output_artifact",
+        ...value,
+      });
+    }
 
     if (subaction === "clear_history" || subaction === "view_history") {
       const shellHistoryService = getShellHistoryService(runtime);
@@ -1634,11 +1722,13 @@ export const shellAction: Action = {
     // of real output and inflating a 30s build past 90s. Skip all
     // message-text-keyed rewrites for the coding sub-agent; its commands run
     // verbatim.
-    const codingSubAgentShell = ((): boolean => {
-      const v =
-        process.env.ELIZA_PLANNER_FULL_ACTION_SURFACE?.trim().toLowerCase();
-      return v === "1" || v === "true" || v === "yes" || v === "on";
-    })();
+    const codingSubAgentShell =
+      state?.data?.elizaTrustedCodingMode === true ||
+      ((): boolean => {
+        const v =
+          process.env.ELIZA_PLANNER_FULL_ACTION_SURFACE?.trim().toLowerCase();
+        return v === "1" || v === "true" || v === "yes" || v === "on";
+      })();
     const destructiveGateEnabled = ((): boolean => {
       const v =
         process.env.ELIZA_SHELL_DESTRUCTIVE_CONFIRM?.trim().toLowerCase();
@@ -1872,6 +1962,10 @@ export const shellAction: Action = {
     const streams = formatStreams(redactedStdout, redactedStderr, {
       showEmptyStreams: !result.stdout && !result.stderr,
     });
+    // `runShell` rejects above the explicit complete-capture ceiling before
+    // this boundary. Every accepted result therefore remains complete after
+    // redaction; the planner must never receive a preview or optional handle
+    // in place of stdout/stderr it would otherwise reason over.
     const text = streams.length > 0 ? `${head}\n${streams}` : head;
 
     const echoTranscript =
@@ -1885,7 +1979,12 @@ export const shellAction: Action = {
     if (timedOut) {
       return failureToActionResult(
         { reason: "timeout", message: `command timed out after ${timeout}ms` },
-        { command: redactedCommand, cwd: redactedCwd, output: text },
+        {
+          command: redactedCommand,
+          cwd: redactedCwd,
+          output: text,
+          output_truncated: false,
+        },
       );
     }
     if (result.exitCode !== 0) {
@@ -1899,6 +1998,7 @@ export const shellAction: Action = {
           exit_code: result.exitCode,
           cwd: redactedCwd,
           output: text,
+          output_truncated: false,
         },
       );
     }
@@ -1909,6 +2009,7 @@ export const shellAction: Action = {
       execution_route: result.sandbox === "host" ? "host" : "sandbox",
       sandbox_backend: result.sandbox,
       signal,
+      output_truncated: false,
     });
     // The crypto / disk / memory / status projections are CHAT conveniences
     // keyed on the *message text*, and the coding sub-agent's message text is

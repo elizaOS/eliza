@@ -527,7 +527,7 @@ async function readJoinedRoomMessages(
   accountId: string,
   limit: number
 ): Promise<Memory[]> {
-  const rooms = (await service.getJoinedRooms(accountId)).slice(0, 10);
+  const rooms = await service.getJoinedRooms(accountId);
   const chunks = await Promise.all(
     rooms.map((room) => service.getRoomMessages(room.roomId, limit, accountId))
   );
@@ -663,13 +663,12 @@ export class MatrixService extends Service implements IMatrixService {
             .map((room) => ({ room, score: scoreMatrixRoom(room, query) }))
             .filter(({ score }) => score > 0)
             .sort((left, right) => right.score - left.score)
-            .slice(0, 10)
             .map(({ room, score }) => matrixRoomToConnectorTarget(room, score, accountId));
         },
         listRecentTargets: async () =>
-          (await service.getJoinedRooms(accountId))
-            .slice(0, 10)
-            .map((room) => matrixRoomToConnectorTarget(room, 0.5, accountId)),
+          (await service.getJoinedRooms(accountId)).map((room) =>
+            matrixRoomToConnectorTarget(room, 0.5, accountId)
+          ),
         listRooms: async () =>
           (await service.getJoinedRooms(accountId)).map((room) =>
             matrixRoomToConnectorTarget(room, 0.5, accountId)

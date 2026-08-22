@@ -1416,6 +1416,53 @@ const WORKFLOW_RUN_IDEMPOTENCY_BACKFILL_MARKER =
   "elizaos:life_workflow_runs:idempotency-backfill:v1";
 const WORKFLOW_RUN_IDEMPOTENCY_BACKFILL_BATCH_SIZE = 500;
 
+const WORKFLOW_RUN_IDEMPOTENCY_INDEX_DEFINITION_QUERY = `SELECT
+       pg_catalog.pg_get_indexdef(index_catalog.indexrelid) AS indexdef,
+       index_catalog.indisunique AS is_unique,
+       index_catalog.indisvalid AS is_valid,
+       index_catalog.indisready AS is_ready
+  FROM pg_catalog.pg_index AS index_catalog
+  JOIN pg_catalog.pg_class AS index_class
+    ON index_class.oid = index_catalog.indexrelid
+  JOIN pg_catalog.pg_namespace AS index_namespace
+    ON index_namespace.oid = index_class.relnamespace
+  JOIN pg_catalog.pg_class AS table_class
+    ON table_class.oid = index_catalog.indrelid
+  JOIN pg_catalog.pg_namespace AS table_namespace
+    ON table_namespace.oid = table_class.relnamespace
+ WHERE index_namespace.nspname = 'app_lifeops'
+   AND index_class.relname = 'idx_life_workflow_runs_idempotency'
+   AND table_namespace.nspname = 'app_lifeops'
+   AND table_class.relname = 'life_workflow_runs'`;
+
+function assertWorkflowRunIdempotencyIndexDefinition(
+  rows: Array<Record<string, unknown>>,
+): void {
+  const indexDefinition =
+    typeof rows[0]?.indexdef === "string" ? rows[0].indexdef : "";
+  const indexDefinitionIsExpected =
+    rows[0]?.is_unique === true &&
+    rows[0]?.is_valid === true &&
+    rows[0]?.is_ready === true &&
+    /\bUNIQUE INDEX\b/i.test(indexDefinition) &&
+    /\(agent_id, workflow_id, idempotency_key\)/i.test(indexDefinition) &&
+    /WHERE \(idempotency_key IS NOT NULL\)/i.test(indexDefinition);
+  if (!indexDefinitionIsExpected) {
+    throw new ElizaError(
+      "[LifeOpsRepository] idx_life_workflow_runs_idempotency exists but is not the expected partial unique index or is not usable — drop or rename the conflicting index so the workflow-run claim election can be installed",
+      {
+        code: "LIFEOPS_WORKFLOW_RUN_IDEMPOTENCY_INDEX_MISMATCH",
+        context: {
+          indexDefinition,
+          isUnique: rows[0]?.is_unique,
+          isValid: rows[0]?.is_valid,
+          isReady: rows[0]?.is_ready,
+        },
+      },
+    );
+  }
+}
+
 function assertValidWorkflowRunIdempotencyKey(
   idempotencyKey: string | null | undefined,
 ): void {
@@ -2772,6 +2819,12 @@ export class LifeOpsRepository {
         LIMIT 1`;
     const markerRows = await executeRawSql(runtime, markerQuery);
     if (markerRows.length > 0) {
+      assertWorkflowRunIdempotencyIndexDefinition(
+        await executeRawSql(
+          runtime,
+          WORKFLOW_RUN_IDEMPOTENCY_INDEX_DEFINITION_QUERY,
+        ),
+      );
       return;
     }
     await executeRawSql(
@@ -2786,6 +2839,12 @@ export class LifeOpsRepository {
         "LOCK TABLE app_lifeops.life_workflow_runs IN SHARE ROW EXCLUSIVE MODE",
       );
       if ((await executeRawSqlTx(tx, markerQuery)).length > 0) {
+        assertWorkflowRunIdempotencyIndexDefinition(
+          await executeRawSqlTx(
+            tx,
+            WORKFLOW_RUN_IDEMPOTENCY_INDEX_DEFINITION_QUERY,
+          ),
+        );
         return;
       }
       await executeRawSqlTx(
@@ -2932,6 +2991,18 @@ export class LifeOpsRepository {
            agent_id, workflow_id, idempotency_key
          )
         WHERE idempotency_key IS NOT NULL`,
+      );
+      // `IF NOT EXISTS` silently accepts any pre-existing index with this
+      // name. A foreign non-unique (or wrong-column/predicate) index would
+      // pass creation and then be stamped as the durable completion marker
+      // while electing nothing. Verify the live definition before stamping;
+      // the transaction rolls back on mismatch so a later boot retries after
+      // the operator drops or renames the conflicting index.
+      assertWorkflowRunIdempotencyIndexDefinition(
+        await executeRawSqlTx(
+          tx,
+          WORKFLOW_RUN_IDEMPOTENCY_INDEX_DEFINITION_QUERY,
+        ),
       );
       await executeRawSqlTx(
         tx,
@@ -6864,7 +6935,10 @@ export class LifeOpsRepository {
    * Atomically reserve a workflow run before any workflow step can perform a
    * side effect. The unique `(agent, workflow, idempotency key)` index elects
    * one cross-process winner; PostgreSQL NULL semantics keep unkeyed runs
-   * independent.
+   * independent. The conflict target names that partial index explicitly so a
+   * table missing the index raises ("no unique or exclusion constraint
+   * matching the ON CONFLICT specification") instead of letting every
+   * claimant insert-win and duplicate external workflow execution.
    */
   async claimWorkflowRun(run: LifeOpsWorkflowRun): Promise<boolean> {
     assertValidWorkflowRunIdempotencyKey(run.idempotencyKey);
@@ -6897,7 +6971,9 @@ export class LifeOpsRepository {
         ${sqlJson(run.result)},
         ${sqlText(run.auditRef)}
       )
-      ON CONFLICT DO NOTHING
+      ON CONFLICT (agent_id, workflow_id, idempotency_key)
+        WHERE idempotency_key IS NOT NULL
+      DO NOTHING
       RETURNING id`,
     );
     return rows.length === 1;

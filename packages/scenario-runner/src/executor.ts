@@ -76,6 +76,27 @@ import type {
 import { isLoopbackUrl, toRecord } from "./utils.js";
 import { executeVoiceTurn, voiceTurnAssertionFailures } from "./voice-turn.ts";
 
+const EXECUTOR_REQUEST_TIMEOUT_MS = 30_000;
+
+/**
+ * Bound every executor hop (lifeops API + Google mock) so a hung service
+ * cannot pin a scenario run. A caller-provided abort signal is composed with
+ * the timeout (either cancelling aborts), not substituted for it.
+ */
+export function executorFetch(
+  input: RequestInfo | URL,
+  init?: RequestInit,
+  timeoutMs: number = EXECUTOR_REQUEST_TIMEOUT_MS,
+): Promise<Response> {
+  const timeoutSignal = AbortSignal.timeout(timeoutMs);
+  return fetch(input, {
+    ...init,
+    signal: init?.signal
+      ? AbortSignal.any([init.signal, timeoutSignal])
+      : timeoutSignal,
+  });
+}
+
 export interface ExecutorOptions {
   providerName: string;
   minJudgeScore: number;
@@ -1174,7 +1195,7 @@ async function lookupDefinitionIdByTitle(args: {
   if (cached) {
     return cached;
   }
-  const response = await fetch(
+  const response = await executorFetch(
     `${args.apiServer.baseUrl}/api/lifeops/definitions`,
   );
   const body = await response.json();
@@ -1207,7 +1228,7 @@ async function lookupOccurrenceIdByTitle(args: {
   if (cached) {
     return cached;
   }
-  const response = await fetch(
+  const response = await executorFetch(
     `${args.apiServer.baseUrl}/api/lifeops/overview`,
   );
   const body = await response.json();
@@ -1486,7 +1507,7 @@ async function deleteMockGmailDrafts(): Promise<string | undefined> {
   if (!isLoopbackUrl(baseUrl)) {
     return "gmailDeleteDrafts cleanup requires ELIZA_MOCK_GOOGLE_BASE to point at the loopback Google mock";
   }
-  const response = await fetch(`${baseUrl}/gmail/v1/users/me/drafts`);
+  const response = await executorFetch(`${baseUrl}/gmail/v1/users/me/drafts`);
   if (!response.ok) {
     return `gmailDeleteDrafts list failed with HTTP ${response.status}`;
   }
@@ -1500,7 +1521,7 @@ async function deleteMockGmailDrafts(): Promise<string | undefined> {
     if (typeof id !== "string" || id.length === 0) {
       continue;
     }
-    const deleteResponse = await fetch(
+    const deleteResponse = await executorFetch(
       `${baseUrl}/gmail/v1/users/me/drafts/${encodeURIComponent(id)}`,
       { method: "DELETE" },
     );
@@ -1834,6 +1855,7 @@ async function executeApiTurn(args: {
   apiServer: ScenarioApiServer;
   variables: ScenarioVariableState;
   turnTimeoutMs: number;
+  abortSignal?: AbortSignal;
 }): Promise<{
   apiStatus: number;
   apiBody: unknown;
@@ -1873,53 +1895,77 @@ async function executeApiTurn(args: {
     typeof args.turn.timeoutMs === "number"
       ? args.turn.timeoutMs
       : args.turnTimeoutMs;
-  const response = await withTimeout(
-    fetch(`${args.apiServer.baseUrl}${path}`, {
+  // #24531: the deadline must abort the underlying request, not merely race a
+  // rejection against a fetch that keeps its socket alive. Compose the turn
+  // deadline with the caller's cancellation signal into one controller whose
+  // abort reason names the violated boundary, then keep body consumption on
+  // the same signal so a stalled body cannot outlive the failed turn.
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => {
+    controller.abort(
+      new Error(`api(${args.turn.name}) timed out after ${timeoutMs}ms`),
+    );
+  }, timeoutMs);
+  const abortFromCaller = () => {
+    controller.abort(
+      args.abortSignal?.reason ?? new Error("scenario execution was aborted"),
+    );
+  };
+  args.abortSignal?.addEventListener("abort", abortFromCaller, { once: true });
+  if (args.abortSignal?.aborted) abortFromCaller();
+  let response: Response;
+  try {
+    response = await fetch(`${args.apiServer.baseUrl}${path}`, {
       method,
       headers:
         body === undefined ? undefined : { "content-type": "application/json" },
       body: body === undefined ? undefined : JSON.stringify(body),
-    }),
-    timeoutMs,
-    `api(${args.turn.name})`,
-  );
-  const responseText = await response.text();
-  let responseBody: unknown = responseText;
-  const contentType = response.headers.get("content-type") ?? "";
-  if (responseText.length > 0 && contentType.includes("application/json")) {
-    try {
-      responseBody = JSON.parse(responseText);
-    } catch {
-      responseBody = responseText;
+      signal: controller.signal,
+    });
+    const responseText = await response.text();
+    let responseBody: unknown = responseText;
+    const contentType = response.headers.get("content-type") ?? "";
+    if (responseText.length > 0 && contentType.includes("application/json")) {
+      try {
+        responseBody = JSON.parse(responseText);
+      } catch {
+        // error-policy:J3 A body that claims JSON but does not parse is kept
+        // as its raw text form; downstream template resolution treats the
+        // value as opaque text rather than a fabricated parsed object.
+        responseBody = responseText;
+      }
     }
-  }
-  indexResponseIdentifiers(responseBody, args.variables);
-  captureResponseFields(args.turn, responseBody, args.variables);
-  const explicitRedactions = Array.isArray(args.turn.redactResponseFields)
-    ? args.turn.redactResponseFields.filter(
-        (field): field is string => typeof field === "string",
-      )
-    : [];
-  const reportResponseBody = redactForScenarioReport(
-    responseBody,
-    explicitRedactions,
-  );
+    indexResponseIdentifiers(responseBody, args.variables);
+    captureResponseFields(args.turn, responseBody, args.variables);
+    const explicitRedactions = Array.isArray(args.turn.redactResponseFields)
+      ? args.turn.redactResponseFields.filter(
+          (field): field is string => typeof field === "string",
+        )
+      : [];
+    const reportResponseBody = redactForScenarioReport(
+      responseBody,
+      explicitRedactions,
+    );
 
-  return {
-    apiStatus: response.status,
-    apiBody: responseBody,
-    statusCode: response.status,
-    responseBody,
-    responseText:
-      typeof responseBody === "string"
-        ? responseBody
-        : JSON.stringify(responseBody ?? ""),
-    reportResponseText:
-      typeof reportResponseBody === "string"
-        ? reportResponseBody
-        : JSON.stringify(reportResponseBody ?? ""),
-    durationMs: Date.now() - startedAt,
-  };
+    return {
+      apiStatus: response.status,
+      apiBody: responseBody,
+      statusCode: response.status,
+      responseBody,
+      responseText:
+        typeof responseBody === "string"
+          ? responseBody
+          : JSON.stringify(responseBody ?? ""),
+      reportResponseText:
+        typeof reportResponseBody === "string"
+          ? reportResponseBody
+          : JSON.stringify(reportResponseBody ?? ""),
+      durationMs: Date.now() - startedAt,
+    };
+  } finally {
+    clearTimeout(timeoutId);
+    args.abortSignal?.removeEventListener("abort", abortFromCaller);
+  }
 }
 
 async function executeTickTurn(args: {
@@ -2647,6 +2693,7 @@ export async function runScenario(
                   apiServer: activeApiServer,
                   variables,
                   turnTimeoutMs: opts.turnTimeoutMs || DEFAULT_TURN_TIMEOUT_MS,
+                  abortSignal: opts.abortSignal,
                 })),
               }
             : kind === "tick"

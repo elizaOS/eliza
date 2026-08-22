@@ -190,7 +190,6 @@ const workspacePluginSourceAliases = getWorkspacePluginAliases(repoRoot, [
   "plugin-phone",
   "plugin-pty",
   "plugin-scheduling",
-  "plugin-signal",
   "plugin-task-coordinator",
   "plugin-video",
   "plugin-vision",

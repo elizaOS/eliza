@@ -366,14 +366,14 @@ export class GoogleChatService extends Service implements IGoogleChatService {
             .filter(({ score }) => score > 0)
             .map(({ space, score }) => googleChatSpaceToConnectorTarget(space, score, accountId));
 
-          return [...directTarget, ...spaceTargets]
-            .sort((left, right) => (right.score ?? 0) - (left.score ?? 0))
-            .slice(0, 10);
+          return [...directTarget, ...spaceTargets].sort(
+            (left, right) => (right.score ?? 0) - (left.score ?? 0)
+          );
         },
         listRecentTargets: async () =>
-          (await service.listConnectorSpaces(accountId))
-            .slice(0, 10)
-            .map((space) => googleChatSpaceToConnectorTarget(space, 0.55, accountId)),
+          (await service.listConnectorSpaces(accountId)).map((space) =>
+            googleChatSpaceToConnectorTarget(space, 0.55, accountId)
+          ),
         listRooms: async () =>
           (await service.listConnectorSpaces(accountId)).map((space) =>
             googleChatSpaceToConnectorTarget(space, 0.55, accountId)
@@ -384,9 +384,9 @@ export class GoogleChatService extends Service implements IGoogleChatService {
           if (target?.roomId) {
             return readStoredMessageMemories(context.runtime, target.roomId, limit);
           }
-          const targets = (await service.listConnectorSpaces(accountId))
-            .slice(0, 10)
-            .map((space) => googleChatSpaceToConnectorTarget(space, 0.55, accountId));
+          const targets = (await service.listConnectorSpaces(accountId)).map((space) =>
+            googleChatSpaceToConnectorTarget(space, 0.55, accountId)
+          );
           return readStoredMessagesForTargets(context.runtime, targets, limit);
         },
         searchMessages: async (context, params) => {
@@ -396,9 +396,9 @@ export class GoogleChatService extends Service implements IGoogleChatService {
             ? await readStoredMessageMemories(context.runtime, target.roomId, Math.max(limit, 100))
             : await readStoredMessagesForTargets(
                 context.runtime,
-                (await service.listConnectorSpaces(accountId))
-                  .slice(0, 10)
-                  .map((space) => googleChatSpaceToConnectorTarget(space, 0.55, accountId)),
+                (await service.listConnectorSpaces(accountId)).map((space) =>
+                  googleChatSpaceToConnectorTarget(space, 0.55, accountId)
+                ),
                 Math.max(limit, 100)
               );
           return filterMemoriesByQuery(messages, params.query, limit);

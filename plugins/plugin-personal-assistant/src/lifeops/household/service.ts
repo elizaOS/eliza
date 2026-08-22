@@ -345,21 +345,13 @@ function approvalIdempotencyKey(
 const PARTY_CONTACT_ROUTES: ReadonlyArray<{
   channel: Extract<
     ApprovalChannel,
-    | "telegram"
-    | "signal"
-    | "whatsapp"
-    | "imessage"
-    | "sms"
-    | "email"
-    | "discord"
-    | "x_dm"
+    "telegram" | "whatsapp" | "imessage" | "sms" | "email" | "discord" | "x_dm"
   >;
   platforms: readonly string[];
   /** Set when the identity handle is a platform USER id, not a channel id. */
   targetKind?: "user";
 }> = [
   { channel: "telegram", platforms: ["telegram"] },
-  { channel: "signal", platforms: ["signal"] },
   { channel: "whatsapp", platforms: ["whatsapp"] },
   { channel: "imessage", platforms: ["imessage"] },
   { channel: "sms", platforms: ["phone", "sms", "twilio"] },
