@@ -2645,7 +2645,7 @@ jobs:
           set +e
           bunx playwright test \
             --config playwright.cloud-deployed.config.ts \
-            --project chromium \
+            --project=chromium \
             test/ui-smoke/cloud-live.spec.ts
           smoke_status=$?
           set -e
