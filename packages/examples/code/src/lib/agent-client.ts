@@ -190,6 +190,9 @@ class AgentClient {
         code: "ELIZA_CODE_SYNTHETIC_TURN_FAILURE",
         context: {
           failureKind: result.terminalFailure.kind,
+          ...(result.terminalFailure.code
+            ? { failureCode: result.terminalFailure.code }
+            : {}),
           transient: result.terminalFailure.transient,
         },
         severity: result.terminalFailure.transient ? "ephemeral" : "fatal",

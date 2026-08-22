@@ -867,10 +867,19 @@ describe("v5 planner loop skeleton", () => {
 		"npm exec echo test",
 		"printf 'safe && vitest'",
 		"git diff --check",
+		"go test ./... &",
 		"go test ./... || true",
 		"go test ./...; true",
 		"go test ./... | tee test.log",
 		"git diff --check || echo ignored",
+		"tsc --version",
+		"eslint --version",
+		"biome --version",
+		"pytest --help",
+		"go test -h",
+		"cargo test --help",
+		"tox --help",
+		"npx vitest --help",
 	])(
 		"does not treat verifier-looking shell text as coding verification: %s",
 		async (spoofCommand) => {
@@ -959,6 +968,20 @@ describe("v5 planner loop skeleton", () => {
 		"swift test",
 		"mix test",
 		"tox",
+		"cd pkg && go test ./...",
+		"go test ./... && tsc",
+		"go test ./... 2>&1",
+		"go test ./... &>test.log",
+		"python -m pytest",
+		"python -m unittest",
+		"pnpm exec vitest",
+		"npm exec vitest",
+		"npx --yes vitest",
+		"uv run python -m pytest",
+		"cargo nextest run",
+		"./gradlew :app:test",
+		"./mvnw test",
+		"export CGO_ENABLED=0 && go test ./...",
 	])("accepts a successful common coding verifier: %s", async (command) => {
 		await withCodingRequiredToolDefaults(async () => {
 			const runtime = {
@@ -1373,6 +1396,11 @@ describe("v5 planner loop skeleton", () => {
 
 			expect(result.finalMessage).toContain("failed");
 			expect(result.finalMessage).not.toContain("Built and deployed");
+			expect(result.terminalFailure).toMatchObject({
+				kind: "coding_tool_failure",
+				transient: false,
+				message: expect.stringContaining("failed"),
+			});
 		});
 	});
 

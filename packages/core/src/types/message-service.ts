@@ -79,6 +79,8 @@ export interface MessageProcessingOptions {
 export interface MessageTerminalFailure {
 	/** Stable machine-readable category for adapters and orchestration hosts. */
 	kind: string;
+	/** Action boundary code when the failing tool supplied typed provenance. */
+	code?: string;
 	/** Whether retrying the same turn without user intervention may succeed. */
 	transient: boolean;
 	/** Complete user-facing explanation of why the turn did not complete. */

@@ -111,6 +111,7 @@ import type {
 	PlannerLoopResult,
 	PlannerRuntime,
 	PlannerStep,
+	PlannerTerminalFailure,
 	PlannerToolCall,
 	PlannerToolResult,
 	PlannerTrajectory,
@@ -1376,25 +1377,43 @@ async function runPlannerLoopIterations(
 						logger: params.runtime.logger,
 					});
 				}
+				const resolvedFinalMessage = terminalFollowsFailedTool
+					? hasReplyCall
+						? userSafeFinalMessage(terminalReplyMessage, trajectory)
+						: undefined
+					: pendingInteraction && hasReplyCall
+						? userSafeFinalMessage(terminalReplyMessage, trajectory)
+						: userSafeFinalMessage(
+								codingDrainQueue
+									? codingFinalMessage(trajectory, finalMessage)
+									: preferredFinalMessageFromToolOrModel(
+											trajectory,
+											finalMessage,
+										),
+								trajectory,
+							);
+				const terminalFailure =
+					trajectory.codingMode === true &&
+					terminalFollowsFailedTool &&
+					latestNonTerminalStep
+						? codingToolTerminalFailure(
+								latestNonTerminalStep,
+								resolvedFinalMessage ??
+									userSafeFinalMessage(
+										terminalMessageWithFailureAuthority(
+											trajectory,
+											finalMessage,
+										),
+										trajectory,
+									),
+							)
+						: undefined;
 				return {
 					status: "finished",
 					trajectory,
 					evaluator: terminalEvaluator,
-					finalMessage: terminalFollowsFailedTool
-						? hasReplyCall
-							? userSafeFinalMessage(terminalReplyMessage, trajectory)
-							: undefined
-						: pendingInteraction && hasReplyCall
-							? userSafeFinalMessage(terminalReplyMessage, trajectory)
-							: userSafeFinalMessage(
-									codingDrainQueue
-										? codingFinalMessage(trajectory, finalMessage)
-										: preferredFinalMessageFromToolOrModel(
-												trajectory,
-												finalMessage,
-											),
-									trajectory,
-								),
+					finalMessage: resolvedFinalMessage,
+					...(terminalFailure ? { terminalFailure } : {}),
 					// STOP/IGNORE-only terminals chose silence; a textless REPLY did
 					// not (the model tried to answer and failed to carry text).
 					// The silent terminal's name travels with the result so the
@@ -3869,39 +3888,53 @@ function isSuccessfulCodingVerificationStep(step: PlannerStep): boolean {
 	}
 	const command = shellCommandParam(step.toolCall);
 	if (!command) return false;
-	const segments = splitShellCommandSegments(command);
-	// The SHELL result exposes only the aggregate exit status. Until the shell
-	// boundary returns per-command typed evidence, any control operator can mask
-	// a failed verifier (`test || true`, `test | tee`, or `test; true`).
-	if (segments.length !== 1) return false;
-	const segment = stripShellVerificationPrefix(segments[0]);
-	return [
+	const segments = splitSafeShellVerificationChain(command);
+	// The SHELL result exposes only the aggregate exit status. A foreground `&&`
+	// chain preserves verifier failure, but pipelines, background jobs, `||`, and
+	// sequential commands can mask it and therefore cannot serve as evidence.
+	if (!segments) return false;
+	const verificationPatterns = [
 		/^bun\s+(?:run\s+)?(?:(?:--cwd|-C)\s+\S+\s+)?(?:test|verify|check|lint|typecheck|build)(?:\s|$)/i,
 		/^npm\s+(?:test|(?:run|run-script)\s+(?:test|verify|check|lint|typecheck|build))(?:\s|$)/i,
 		/^(?:pnpm|yarn)\s+(?:run\s+)?(?:test|verify|check|lint|typecheck|build)(?:\s|$)/i,
-		/^(?:npx|bunx)\s+(?:vitest|jest|eslint|biome|tsc)(?:\s|$)/i,
+		/^(?:npm|pnpm)\s+exec\s+(?:vitest|jest|eslint|biome|tsc)(?:\s|$)/i,
+		/^(?:npx|bunx)\s+(?:--yes\s+)?(?:vitest|jest|eslint|biome|tsc)(?:\s|$)/i,
 		/^deno\s+(?:test|check|task\s+(?:test|verify|check|lint|typecheck|build))(?:\s|$)/i,
 		/^(?:vitest|jest|pytest|rspec|phpunit|mocha|ava)(?:\s|$)/i,
-		/^(?:uv|poetry)\s+run\s+(?:pytest|ruff|mypy)(?:\s|$)/i,
+		/^(?:uv|poetry)\s+run\s+(?:(?:python\d*\s+-m\s+)?pytest|ruff|mypy)(?:\s|$)/i,
 		/^bundle\s+exec\s+rspec(?:\s|$)/i,
 		/^go\s+(?:test|vet|build)(?:\s|$)/i,
-		/^cargo\s+(?:test|check|clippy|build)(?:\s|$)/i,
-		/^(?:dotnet\s+test|mvn\s+(?:test|verify)|gradle\w*\s+(?:test|check|build)|(?:\.\/)?gradlew\s+(?:test|check|build))(?:\s|$)/i,
+		/^cargo\s+(?:test|check|clippy|build|nextest\s+run)(?:\s|$)/i,
+		/^(?:dotnet\s+test|(?:mvn|\.\/mvnw)\s+(?:test|verify)|gradle\w*\s+(?:test|check|build)|(?:\.\/)?gradlew\s+(?:(?:\S*:)?(?:test|check|build)\w*))(?:\s|$)/i,
 		/^(?:swift|mix)\s+test(?:\s|$)/i,
 		/^tox(?:\s|$)/i,
 		/^(?:make|just)(?:\s+[^\s;&|]+)*\s+(?:test|verify|check|lint|typecheck|build)(?:\s|$)/i,
 		/^(?:tsc|eslint|biome)(?:\s|$)/i,
-		/^(?:python\d*\s+-m\s+(?:compileall|py_compile)|ruby\s+-c|bash\s+-n|node\s+--check)(?:\s|$)/i,
-	].some((pattern) => pattern.test(segment));
+		/^(?:python\d*\s+-m\s+(?:pytest|unittest|compileall|py_compile)|ruby\s+-c|bash\s+-n|node\s+--check)(?:\s|$)/i,
+	];
+	return segments.some((segment) => {
+		const commandSegment = stripShellVerificationPrefix(segment);
+		if (isNoopShellVerificationCommand(commandSegment)) return false;
+		return verificationPatterns.some((pattern) => pattern.test(commandSegment));
+	});
+}
+
+function isNoopShellVerificationCommand(command: string): boolean {
+	return (
+		/(?:^|\s)(?:--help|-h|--version|--list|--listTests|--collect-only|--co|--dry-run|--no-run|--showconfig)(?:=|\s|$)/.test(
+			command,
+		) || /(?:^|\s)-V(?:\s|$)/.test(command)
+	);
 }
 
 /**
- * Splits only on unquoted shell control operators. Verification recognition is
- * deliberately command-position based: diagnostic prose such as
- * `echo 'run vitest'` must never become proof merely because it names a test
- * runner.
+ * Parses the only untyped compound command whose aggregate zero exit status
+ * proves every verifier ran successfully: a foreground `&&` chain. Shell
+ * redirections containing `&` are retained inside their command. Every other
+ * unquoted control operator is rejected because it can hide, defer, or replace
+ * the verifier exit status.
  */
-function splitShellCommandSegments(command: string): string[] {
+function splitSafeShellVerificationChain(command: string): string[] | null {
 	const segments: string[] = [];
 	let start = 0;
 	let quote: "'" | '"' | undefined;
@@ -3920,21 +3953,25 @@ function splitShellCommandSegments(command: string): string[] {
 			quote = quote === character ? undefined : (quote ?? character);
 			continue;
 		}
-		if (
-			!quote &&
-			(character === ";" ||
-				character === "|" ||
-				character === "&" ||
-				character === "\n")
-		) {
+		if (quote) continue;
+		if (character === ";" || character === "|" || character === "\n") {
+			return null;
+		}
+		if (character === "&") {
+			if (command[index - 1] === ">" || command[index + 1] === ">") {
+				continue;
+			}
+			if (command[index + 1] !== "&") return null;
 			const segment = command.slice(start, index).trim();
-			if (segment) segments.push(segment);
-			while (command[index + 1] === character) index++;
+			if (!segment) return null;
+			segments.push(segment);
+			index++;
 			start = index + 1;
 		}
 	}
 	const tail = command.slice(start).trim();
-	if (tail) segments.push(tail);
+	if (!tail) return null;
+	segments.push(tail);
 	return segments;
 }
 
@@ -4182,6 +4219,25 @@ function terminalMessageWithFailureAuthority(
 	);
 	if (successEvidence.length === 0) return failureNote;
 	return `${failureNote}\n\nWork that did complete: ${successEvidence.join(" ")}`;
+}
+
+function codingToolTerminalFailure(
+	failedStep: PlannerStep,
+	message: string | undefined,
+): PlannerTerminalFailure {
+	const provenance = failedStep.result?.failureProvenance;
+	const retryableMarker = failedStep.result?.data?.retryable;
+	return {
+		kind: provenance?.kind ?? "coding_tool_failure",
+		...(provenance?.code ? { code: provenance.code } : {}),
+		transient:
+			provenance?.retryable ??
+			(typeof retryableMarker === "boolean" ? retryableMarker : false),
+		message:
+			message ??
+			groundedFailedToolMessage(failedStep) ??
+			"A required coding tool failed before the task could complete.",
+	};
 }
 
 /**

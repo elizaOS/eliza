@@ -618,6 +618,81 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 		});
 	});
 
+	it("preserves a typed coding-tool failure when callback delivery suppresses response content", async () => {
+		const failureMessage =
+			"The build failed because the source did not compile.";
+		const buildAction = makeMockAction({
+			name: "BROKEN_BUILD",
+			contexts: ["code"],
+			parameters: [],
+			handler: async (_runtime, _message, _state, _options, callback) => {
+				await callback?.({ text: failureMessage }, "BROKEN_BUILD");
+				return {
+					success: false,
+					text: failureMessage,
+					userFacingText: failureMessage,
+					verifiedUserFacing: true,
+					failureProvenance: {
+						kind: "handler_error",
+						boundary: "handler",
+						code: "BUILD_FAILED",
+						retryable: false,
+					},
+				};
+			},
+		});
+		const runtime = makeRuntime({
+			actions: [buildAction],
+			owner: true,
+			responses: [
+				{
+					expectModelType: ModelType.ACTION_PLANNER,
+					body: {
+						text: "",
+						toolCalls: [{ id: "build-1", name: "BROKEN_BUILD", args: {} }],
+					},
+				},
+				{
+					expectModelType: ModelType.ACTION_PLANNER,
+					body: {
+						text: "",
+						toolCalls: [
+							{
+								id: "reply-1",
+								name: "REPLY",
+								args: { text: failureMessage },
+							},
+						],
+					},
+				},
+			],
+		});
+		const deliveredVisibleTexts = new Set<string>();
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage("build the project"),
+			state: makeState(),
+			responseId: RESPONSE_ID,
+			codingMode: true,
+			deliveredVisibleTexts,
+			callback: async (content) => {
+				if (content.text) deliveredVisibleTexts.add(content.text.toLowerCase());
+				return [];
+			},
+		});
+
+		expect(result.kind).toBe("planned_reply");
+		if (result.kind !== "planned_reply") throw new Error("expected reply");
+		expect(result.result.responseContent).toBeNull();
+		expect(result.result.terminalFailure).toEqual({
+			kind: "handler_error",
+			code: "BUILD_FAILED",
+			transient: false,
+			message: failureMessage,
+		});
+	});
+
 	it("runs the full pipeline and records every stage to disk", async () => {
 		let webSearchCalls = 0;
 		const webSearch = makeMockAction({

@@ -4,7 +4,10 @@
  * parameter and result envelopes. Consumed by planner-loop, the evaluator, and
  * the message handler that drives them.
  */
-import type { ActionFailureProvenance } from "../types/action-failure";
+import type {
+	ActionFailureKind,
+	ActionFailureProvenance,
+} from "../types/action-failure";
 import type { EvaluationResult } from "../types/components";
 import type { ContextObject } from "../types/context-object";
 import type { EffectReceipt } from "../types/effects";
@@ -234,6 +237,17 @@ export interface PlannerTrajectory {
 	evaluatorOutputs: EvaluatorOutput[];
 }
 
+export interface PlannerTerminalFailure {
+	kind:
+		| "coding_mutation_unverified"
+		| "coding_tool_failure"
+		| ActionFailureKind;
+	transient: boolean;
+	message: string;
+	/** Action boundary code when the failing tool supplied typed provenance. */
+	code?: string;
+}
+
 export interface PlannerLoopResult {
 	status: "finished" | "continued";
 	trajectory: PlannerTrajectory;
@@ -244,11 +258,7 @@ export interface PlannerLoopResult {
 	 * The message service propagates this outside `responseContent`, so a host
 	 * cannot mistake a callback-delivered failure for a successful turn.
 	 */
-	terminalFailure?: {
-		kind: "coding_mutation_unverified";
-		transient: false;
-		message: string;
-	};
+	terminalFailure?: PlannerTerminalFailure;
 	/**
 	 * Marks a turn whose empty `finalMessage` is a designed outcome — the
 	 * planner ended on STOP/IGNORE or a `suppressPlannerReply` terminal action —
