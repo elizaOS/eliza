@@ -142,7 +142,7 @@ function providerDisplayName(
       });
     case "kimi-coding":
       return t("accounts.provider.kimiCoding", {
-        defaultValue: "Kimi Code",
+        defaultValue: "Kimi Coding Endpoint Key",
       });
     case "deepseek-coding":
       return t("accounts.provider.deepseekCoding", {
