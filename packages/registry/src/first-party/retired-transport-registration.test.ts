@@ -135,6 +135,44 @@ describe("retired transport registration", () => {
         /SIGNAL_ACCOUNT_NUMBER/,
       ],
       [
+        "packages/agent/src/config/zod-schema.core.ts",
+        /signal:\s*QueueModeSchema/,
+      ],
+      [
+        "packages/agent/src/config/zod-schema.hooks.ts",
+        /z\.literal\(["']signal["']\)/,
+      ],
+      [
+        "packages/agent/scripts/mobile-stubs/null-plugin.cjs",
+        /applySignalQrOverride|handleSignalRoute/,
+      ],
+      [
+        "packages/agent/scripts/build-mobile-bundle.mjs",
+        /applySignalQrOverride/,
+      ],
+      ["packages/shared/src/config/schema.ts", /["']signal["']/],
+      [
+        "packages/shared/src/config/zod-schema.core.ts",
+        /signal:\s*QueueModeSchema/,
+      ],
+      ["packages/shared/src/config/types.hooks.ts", /["']signal["']/],
+      [
+        "packages/shared/src/connector-account-catalog.ts",
+        /connectorId:\s*["']signal["']|provider:\s*["']signal["']/,
+      ],
+      [
+        "packages/ui/src/components/connectors/connector-ui-groups.ts",
+        /signal:\s*["']messaging["']/,
+      ],
+      [
+        "packages/shared/src/contracts/personal-assistant.ts",
+        /StartLifeOpsSignalPairing|LifeOpsSignalPairingStatus/,
+      ],
+      [
+        "plugins/plugin-health/src/contracts/lifeops.ts",
+        /StartLifeOpsSignalPairing|LifeOpsSignalPairingStatus/,
+      ],
+      [
         "plugins/plugin-registry/src/api/plugin-routes.ts",
         /applySignalQrOverride/,
       ],

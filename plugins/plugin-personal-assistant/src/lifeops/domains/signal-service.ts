@@ -35,7 +35,6 @@ export class SignalDomain {
       reason: "unsupported",
       identity: null,
       grantedCapabilities: [],
-      pairing: null,
       grant: null,
       degradations: [
         {

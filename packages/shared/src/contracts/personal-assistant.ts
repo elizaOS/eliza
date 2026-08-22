@@ -2892,7 +2892,6 @@ export interface LifeOpsSignalConnectorStatus {
   reason: LifeOpsMessagingConnectorReason;
   identity: { phoneNumber?: string; uuid?: string; deviceName?: string } | null;
   grantedCapabilities: LifeOpsSignalCapability[];
-  pairing: LifeOpsSignalPairingStatus | null;
   grant: LifeOpsConnectorGrant | null;
   degradations?: LifeOpsConnectorDegradation[];
 }
@@ -3151,29 +3150,6 @@ export interface VerifyLifeOpsTelegramConnectorResponse {
     message: string;
     messageId: string | null;
   };
-}
-
-export interface StartLifeOpsSignalPairingRequest {
-  side?: LifeOpsConnectorSide;
-}
-
-export interface StartLifeOpsSignalPairingResponse {
-  provider: "signal";
-  side: LifeOpsConnectorSide;
-  sessionId: string;
-}
-
-export interface LifeOpsSignalPairingStatus {
-  sessionId: string;
-  state:
-    | "idle"
-    | "generating_qr"
-    | "waiting_for_scan"
-    | "linking"
-    | "connected"
-    | "failed";
-  qrDataUrl: string | null;
-  error: string | null;
 }
 
 export interface StartLifeOpsDiscordConnectorRequest {
