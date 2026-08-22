@@ -1,6 +1,5 @@
 {
   "blooio": "@elizaos/plugin-blooio",
-  "bluebubbles": "@elizaos/plugin-bluebubbles",
   "discord": "@elizaos/plugin-discord",
   "discordLocal": "@elizaos/plugin-discord",
   "googlechat": "@elizaos/plugin-google-workspace",
