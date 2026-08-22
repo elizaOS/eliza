@@ -7,10 +7,10 @@
  * synthetic namespace lease for cross-process exclusion.
  */
 
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, open, readFile } from "node:fs/promises";
 import { dirname } from "node:path";
 
-import { redactSensitiveText } from "@elizaos/core";
+import { ElizaError, redactSensitiveText } from "@elizaos/core";
 
 import { canonicalSha256 } from "./provider-qualified/manifest.ts";
 
@@ -68,7 +68,7 @@ export type BoundaryObservationResult =
   | "stale_completion";
 
 export interface ProductionBoundaryObservation {
-  schemaVersion: 1;
+  schemaVersion: 2;
   observationId: string;
   order: number;
   surface: string;
@@ -94,13 +94,23 @@ export interface ProductionBoundaryObservation {
     name: string;
     message: string;
   };
+  previousRecordSha256: string | null;
+  recordSha256: string;
 }
 
 export interface BoundaryObservationLedger {
-  append(
-    observation: Omit<ProductionBoundaryObservation, "order">,
-  ): Promise<ProductionBoundaryObservation>;
   readAll(): Promise<ProductionBoundaryObservation[]>;
+}
+
+export interface BoundaryGenerationFence {
+  /**
+   * Runs the callback while reset/rollover is excluded. `current` is sampled
+   * atomically after acquiring the production-owned generation lease.
+   */
+  withGeneration<T>(
+    expectedGeneration: string,
+    operation: (current: boolean) => Promise<T>,
+  ): Promise<T>;
 }
 
 export interface ObserveProductionBoundaryOptions<TResponse, TReadback> {
@@ -108,7 +118,7 @@ export interface ObserveProductionBoundaryOptions<TResponse, TReadback> {
   identity: ProductionBoundaryIdentity;
   payload: unknown;
   now: () => Date;
-  activeGeneration: () => string;
+  generationFence: BoundaryGenerationFence;
   invoke: () => Promise<TResponse>;
   classify: (response: TResponse) => BoundaryResultClassification;
   readback: () => Promise<TReadback | null>;
@@ -117,16 +127,36 @@ export interface ObserveProductionBoundaryOptions<TResponse, TReadback> {
   redactText?: (text: string) => string;
 }
 
+type PendingObservation = Omit<
+  ProductionBoundaryObservation,
+  "order" | "previousRecordSha256" | "recordSha256"
+>;
+
+const ledgerAppenders = new WeakMap<
+  BoundaryObservationLedger,
+  (observation: PendingObservation) => Promise<ProductionBoundaryObservation>
+>();
+
 function requireNonEmpty(value: string, field: string): string {
   const normalized = value.trim();
-  if (!normalized) throw new Error(`${field} must be non-empty`);
+  if (!normalized) {
+    throw new ElizaError(`${field} must be non-empty`, {
+      code: "BOUNDARY_OBSERVATION_INVALID",
+      context: { field },
+    });
+  }
   return normalized;
 }
 
 function isoTimestamp(now: () => Date): string {
   const value = now();
   if (!Number.isFinite(value.getTime())) {
-    throw new Error("boundary observation clock returned an invalid Date");
+    throw new ElizaError(
+      "boundary observation clock returned an invalid Date",
+      {
+        code: "BOUNDARY_OBSERVATION_INVALID_CLOCK",
+      },
+    );
   }
   return value.toISOString();
 }
@@ -218,7 +248,10 @@ function preCallFaultClassification(fault: BoundaryFaultDirective): {
         retryable: false,
       };
     default:
-      throw new Error(`fault ${fault.kind} is not a pre-call fault`);
+      throw new ElizaError(`fault ${fault.kind} is not a pre-call fault`, {
+        code: "BOUNDARY_OBSERVATION_INVALID_FAULT",
+        context: { kind: fault.kind },
+      });
   }
 }
 
@@ -236,6 +269,20 @@ function postCallFaultResult(
     default:
       return null;
   }
+}
+
+function appendObservation(
+  ledger: BoundaryObservationLedger,
+  observation: PendingObservation,
+): Promise<ProductionBoundaryObservation> {
+  const append = ledgerAppenders.get(ledger);
+  if (!append) {
+    throw new ElizaError(
+      "boundary observation ledger does not expose the private writer capability",
+      { code: "BOUNDARY_LEDGER_WRITER_UNAVAILABLE" },
+    );
+  }
+  return append(observation);
 }
 
 /**
@@ -265,7 +312,10 @@ export async function observeProductionBoundary<TResponse, TReadback>(
     !Number.isSafeInteger(identity.retry.attempt) ||
     identity.retry.attempt < 1
   ) {
-    throw new Error("identity.retry.attempt must be a positive safe integer");
+    throw new ElizaError(
+      "identity.retry.attempt must be a positive safe integer",
+      { code: "BOUNDARY_OBSERVATION_INVALID_RETRY" },
+    );
   }
 
   const startedAt = isoTimestamp(options.now);
@@ -281,7 +331,7 @@ export async function observeProductionBoundary<TResponse, TReadback>(
     target,
   });
   const base = {
-    schemaVersion: 1 as const,
+    schemaVersion: 2 as const,
     observationId,
     surface,
     target,
@@ -299,127 +349,403 @@ export async function observeProductionBoundary<TResponse, TReadback>(
     startedAt,
   };
 
-  const scriptedPreCallFault = preCallFault(options.fault);
-  if (scriptedPreCallFault) {
-    const classification = preCallFaultClassification(scriptedPreCallFault);
-    return options.ledger.append({
-      ...base,
-      completedAt: isoTimestamp(options.now),
-      boundaryCalled: false,
-      ...classification,
-      ...(scriptedPreCallFault.retryAfterMs !== undefined
-        ? { retryAfterMs: scriptedPreCallFault.retryAfterMs }
-        : {}),
-      error: safeError(new Error(scriptedPreCallFault.message), redactText),
-    });
-  }
-
-  let response: TResponse;
   try {
-    response = await options.invoke();
-  } catch (error) {
-    return options.ledger.append({
-      ...base,
-      completedAt: isoTimestamp(options.now),
-      boundaryCalled: true,
-      acceptance: "unknown",
-      result: "unknown",
-      resultCode: "boundary_threw",
-      retryable: false,
-      error: safeError(error, redactText),
-    });
-  }
+    return await options.generationFence.withGeneration(
+      identity.generation,
+      async (current) => {
+        if (!current) {
+          return appendObservation(options.ledger, {
+            ...base,
+            completedAt: isoTimestamp(options.now),
+            boundaryCalled: false,
+            acceptance: "unknown",
+            result: "stale_completion",
+            resultCode: "stale_generation_before_invoke",
+            retryable: false,
+          });
+        }
 
-  const responseSha256 = canonicalSha256(
-    sanitizeValue(response, redactText),
-    "sanitizedBoundaryResponse",
-  );
-  const classification = options.classify(response);
-  let readback: TReadback | null = null;
-  let readbackError: unknown;
-  try {
-    readback = await options.readback();
-  } catch (error) {
-    readbackError = error;
-  }
+        const scriptedPreCallFault = preCallFault(options.fault);
+        if (scriptedPreCallFault) {
+          const classification =
+            preCallFaultClassification(scriptedPreCallFault);
+          return appendObservation(options.ledger, {
+            ...base,
+            completedAt: isoTimestamp(options.now),
+            boundaryCalled: false,
+            ...classification,
+            ...(scriptedPreCallFault.retryAfterMs !== undefined
+              ? { retryAfterMs: scriptedPreCallFault.retryAfterMs }
+              : {}),
+            error: safeError(
+              new ElizaError(scriptedPreCallFault.message, {
+                code: "BOUNDARY_OBSERVATION_SCRIPTED_FAULT",
+                context: { kind: scriptedPreCallFault.kind },
+              }),
+              redactText,
+            ),
+          });
+        }
 
-  const readbackSha256 =
-    readback === null
-      ? undefined
-      : canonicalSha256(
-          sanitizeValue(readback, redactText),
-          "sanitizedBoundaryReadback",
+        let response: TResponse;
+        try {
+          response = await options.invoke();
+        } catch (error) {
+          // error-policy:J1 the consumer boundary translates an invocation
+          // failure into a sanitized, non-success observation.
+          return appendObservation(options.ledger, {
+            ...base,
+            completedAt: isoTimestamp(options.now),
+            boundaryCalled: true,
+            acceptance: "unknown",
+            result: "unknown",
+            resultCode: "boundary_threw",
+            retryable: false,
+            error: safeError(error, redactText),
+          });
+        }
+
+        const responseSha256 = canonicalSha256(
+          sanitizeValue(response, redactText),
+          "sanitizedBoundaryResponse",
         );
-  const activeGeneration = options.activeGeneration();
-  const scriptedPostCallResult = postCallFaultResult(options.fault);
-  let result: BoundaryObservationResult;
-  if (
-    activeGeneration !== identity.generation ||
-    scriptedPostCallResult === "stale_completion"
-  ) {
-    result = "stale_completion";
-  } else if (scriptedPostCallResult) {
-    result = scriptedPostCallResult;
-  } else if (classification.acceptance === "rejected") {
-    result = "rejected";
-  } else if (classification.acceptance === "unknown") {
-    result = "unknown";
-  } else if (readbackError || readback === null) {
-    result = "readback_missing";
-  } else if (!options.verifyReadback(response, readback)) {
-    result = "readback_mismatch";
-  } else {
-    result = "succeeded";
-  }
+        let classification: BoundaryResultClassification;
+        try {
+          classification = options.classify(response);
+        } catch (error) {
+          // error-policy:J1 a classifier failure after a real invocation is
+          // persisted as unknown so the attempt cannot disappear or succeed.
+          return appendObservation(options.ledger, {
+            ...base,
+            completedAt: isoTimestamp(options.now),
+            boundaryCalled: true,
+            acceptance: "unknown",
+            result: "unknown",
+            resultCode: "classifier_threw",
+            retryable: false,
+            responseSha256,
+            error: safeError(error, redactText),
+          });
+        }
+        let readback: TReadback | null = null;
+        let readbackError: unknown;
+        try {
+          readback = await options.readback();
+        } catch (error) {
+          // error-policy:J1 readback failure is translated into a visible
+          // non-success observation after the real invocation.
+          readbackError = error;
+        }
 
-  return options.ledger.append({
-    ...base,
-    completedAt: isoTimestamp(options.now),
-    boundaryCalled: true,
-    acceptance: classification.acceptance,
-    result,
-    resultCode:
-      scriptedPostCallResult === "partial_failure"
-        ? "synthetic_partial_failure"
-        : scriptedPostCallResult === "unknown"
-          ? "synthetic_ambiguous_dispatch"
-          : result === "stale_completion"
-            ? "stale_generation"
-            : redactText(classification.code),
-    retryable: classification.retryable,
-    ...(options.fault?.retryAfterMs !== undefined
-      ? { retryAfterMs: options.fault.retryAfterMs }
-      : {}),
-    responseSha256,
-    ...(readbackSha256 ? { readbackSha256 } : {}),
-    ...(readbackError
-      ? { error: safeError(readbackError, redactText) }
-      : options.fault
-        ? { error: safeError(new Error(options.fault.message), redactText) }
-        : {}),
+        const readbackSha256 =
+          readback === null
+            ? undefined
+            : canonicalSha256(
+                sanitizeValue(readback, redactText),
+                "sanitizedBoundaryReadback",
+              );
+        const scriptedPostCallResult = postCallFaultResult(options.fault);
+        let result: BoundaryObservationResult;
+        if (scriptedPostCallResult === "stale_completion") {
+          result = "stale_completion";
+        } else if (scriptedPostCallResult) {
+          result = scriptedPostCallResult;
+        } else if (classification.acceptance === "rejected") {
+          result = "rejected";
+        } else if (classification.acceptance === "unknown") {
+          result = "unknown";
+        } else if (readbackError || readback === null) {
+          result = "readback_missing";
+        } else {
+          try {
+            result = options.verifyReadback(response, readback)
+              ? "succeeded"
+              : "readback_mismatch";
+          } catch (error) {
+            // error-policy:J1 verifier failure is translated into a visible
+            // non-success observation after the real invocation.
+            result = "unknown";
+            readbackError = error;
+          }
+        }
+
+        return appendObservation(options.ledger, {
+          ...base,
+          completedAt: isoTimestamp(options.now),
+          boundaryCalled: true,
+          acceptance: classification.acceptance,
+          result,
+          resultCode:
+            scriptedPostCallResult === "partial_failure"
+              ? "synthetic_partial_failure"
+              : scriptedPostCallResult === "unknown"
+                ? "synthetic_ambiguous_dispatch"
+                : result === "stale_completion"
+                  ? "stale_generation"
+                  : redactText(classification.code),
+          retryable: classification.retryable,
+          ...(options.fault?.retryAfterMs !== undefined
+            ? { retryAfterMs: options.fault.retryAfterMs }
+            : {}),
+          responseSha256,
+          ...(readbackSha256 ? { readbackSha256 } : {}),
+          ...(readbackError
+            ? { error: safeError(readbackError, redactText) }
+            : options.fault
+              ? {
+                  error: safeError(
+                    new ElizaError(options.fault.message, {
+                      code: "BOUNDARY_OBSERVATION_SCRIPTED_FAULT",
+                      context: { kind: options.fault.kind },
+                    }),
+                    redactText,
+                  ),
+                }
+              : {}),
+        });
+      },
+    );
+  } catch (error) {
+    // error-policy:J2 failures outside the admitted callback are generation
+    // lease acquisition/ownership failures; invocation and append never start.
+    if (error instanceof ElizaError) throw error;
+    throw new ElizaError("production generation fence failed", {
+      code: "BOUNDARY_GENERATION_FENCE_FAILED",
+      cause: error,
+      context: { generation: identity.generation },
+    });
+  }
+}
+
+const ACCEPTANCES = new Set<BoundaryAcceptance>([
+  "accepted",
+  "rejected",
+  "unknown",
+]);
+const RESULTS = new Set<BoundaryObservationResult>([
+  "succeeded",
+  "rejected",
+  "unknown",
+  "timeout",
+  "rate_limited",
+  "partial_failure",
+  "readback_missing",
+  "readback_mismatch",
+  "stale_completion",
+]);
+const RECORD_KEYS = new Set([
+  "schemaVersion",
+  "observationId",
+  "order",
+  "surface",
+  "target",
+  "payloadSha256",
+  "idempotencyKey",
+  "generation",
+  "workerId",
+  "taskId",
+  "attempt",
+  "retryOfObservationId",
+  "startedAt",
+  "completedAt",
+  "boundaryCalled",
+  "acceptance",
+  "result",
+  "resultCode",
+  "retryable",
+  "retryAfterMs",
+  "responseSha256",
+  "readbackSha256",
+  "error",
+  "previousRecordSha256",
+  "recordSha256",
+]);
+const SHA256 = /^[0-9a-f]{64}$/;
+
+function ledgerError(
+  message: string,
+  lineNumber: number,
+  cause?: unknown,
+): ElizaError {
+  return new ElizaError(message, {
+    code: "BOUNDARY_LEDGER_CORRUPT",
+    context: { lineNumber },
+    ...(cause === undefined ? {} : { cause }),
   });
 }
 
 function parseLedgerLine(
   line: string,
   lineNumber: number,
+  previousRecordSha256: string | null,
 ): ProductionBoundaryObservation {
   let value: unknown;
   try {
     value = JSON.parse(line);
   } catch (error) {
-    throw new Error(`invalid boundary ledger JSON at line ${lineNumber}`, {
-      cause: error,
-    });
+    // error-policy:J2 JSON parse context is preserved and rethrown as the
+    // typed durable-ledger corruption boundary.
+    throw ledgerError(
+      `invalid boundary ledger JSON at line ${lineNumber}`,
+      lineNumber,
+      error,
+    );
   }
-  if (!value || typeof value !== "object") {
-    throw new Error(`invalid boundary ledger record at line ${lineNumber}`);
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw ledgerError(
+      `invalid boundary ledger record at line ${lineNumber}`,
+      lineNumber,
+    );
   }
-  const record = value as Partial<ProductionBoundaryObservation>;
-  if (record.schemaVersion !== 1 || record.order !== lineNumber) {
-    throw new Error(`invalid boundary ledger ordering at line ${lineNumber}`);
+  const raw = value as Record<string, unknown>;
+  if (Object.keys(raw).some((key) => !RECORD_KEYS.has(key))) {
+    throw ledgerError(
+      `unknown boundary ledger field at line ${lineNumber}`,
+      lineNumber,
+    );
   }
-  return record as ProductionBoundaryObservation;
+  const stringFields = [
+    "observationId",
+    "surface",
+    "target",
+    "payloadSha256",
+    "idempotencyKey",
+    "generation",
+    "startedAt",
+    "completedAt",
+    "resultCode",
+    "recordSha256",
+  ];
+  if (
+    raw.schemaVersion !== 2 ||
+    raw.order !== lineNumber ||
+    stringFields.some(
+      (field) => typeof raw[field] !== "string" || raw[field] === "",
+    ) ||
+    typeof raw.boundaryCalled !== "boolean" ||
+    typeof raw.retryable !== "boolean" ||
+    !Number.isSafeInteger(raw.attempt) ||
+    (raw.attempt as number) < 1 ||
+    !ACCEPTANCES.has(raw.acceptance as BoundaryAcceptance) ||
+    !RESULTS.has(raw.result as BoundaryObservationResult)
+  ) {
+    throw ledgerError(
+      `invalid boundary ledger field types at line ${lineNumber}`,
+      lineNumber,
+    );
+  }
+  for (const field of [
+    "workerId",
+    "taskId",
+    "retryOfObservationId",
+    "responseSha256",
+    "readbackSha256",
+  ]) {
+    if (raw[field] !== undefined && typeof raw[field] !== "string") {
+      throw ledgerError(`invalid ${field} at line ${lineNumber}`, lineNumber);
+    }
+  }
+  if (
+    (raw.retryAfterMs !== undefined &&
+      (!Number.isSafeInteger(raw.retryAfterMs) ||
+        (raw.retryAfterMs as number) < 0)) ||
+    (raw.error !== undefined &&
+      (!raw.error ||
+        typeof raw.error !== "object" ||
+        Array.isArray(raw.error) ||
+        Object.keys(raw.error).some(
+          (key) => key !== "name" && key !== "message",
+        ) ||
+        typeof (raw.error as Record<string, unknown>).name !== "string" ||
+        typeof (raw.error as Record<string, unknown>).message !== "string"))
+  ) {
+    throw ledgerError(
+      `invalid optional boundary ledger fields at line ${lineNumber}`,
+      lineNumber,
+    );
+  }
+  for (const field of [
+    "observationId",
+    "payloadSha256",
+    "recordSha256",
+    ...(raw.responseSha256 === undefined ? [] : ["responseSha256"]),
+    ...(raw.readbackSha256 === undefined ? [] : ["readbackSha256"]),
+  ]) {
+    if (!SHA256.test(raw[field] as string)) {
+      throw ledgerError(`invalid ${field} at line ${lineNumber}`, lineNumber);
+    }
+  }
+  if (
+    raw.previousRecordSha256 !== previousRecordSha256 ||
+    (raw.previousRecordSha256 !== null &&
+      !SHA256.test(raw.previousRecordSha256 as string))
+  ) {
+    throw ledgerError(
+      `broken boundary ledger hash chain at line ${lineNumber}`,
+      lineNumber,
+    );
+  }
+  for (const field of ["startedAt", "completedAt"]) {
+    const timestamp = raw[field] as string;
+    if (
+      !Number.isFinite(Date.parse(timestamp)) ||
+      new Date(timestamp).toISOString() !== timestamp
+    ) {
+      throw ledgerError(`invalid ${field} at line ${lineNumber}`, lineNumber);
+    }
+  }
+  const expectedObservationId = canonicalSha256({
+    generation: raw.generation,
+    idempotencyKey: raw.idempotencyKey,
+    attempt: raw.attempt,
+    surface: raw.surface,
+    target: raw.target,
+  });
+  if (raw.observationId !== expectedObservationId) {
+    throw ledgerError(
+      `invalid observation identity at line ${lineNumber}`,
+      lineNumber,
+    );
+  }
+  if (
+    raw.result === "succeeded" &&
+    (!raw.boundaryCalled ||
+      raw.acceptance !== "accepted" ||
+      raw.retryable ||
+      typeof raw.responseSha256 !== "string" ||
+      typeof raw.readbackSha256 !== "string" ||
+      raw.error !== undefined)
+  ) {
+    throw ledgerError(
+      `impossible successful observation at line ${lineNumber}`,
+      lineNumber,
+    );
+  }
+  if (
+    Date.parse(raw.completedAt as string) < Date.parse(raw.startedAt as string)
+  ) {
+    throw ledgerError(
+      `observation completed before it started at line ${lineNumber}`,
+      lineNumber,
+    );
+  }
+  if (
+    raw.boundaryCalled === false &&
+    (raw.responseSha256 !== undefined || raw.readbackSha256 !== undefined)
+  ) {
+    throw ledgerError(
+      `uncalled boundary has response evidence at line ${lineNumber}`,
+      lineNumber,
+    );
+  }
+  const { recordSha256, ...recordWithoutHash } = raw;
+  if (
+    recordSha256 !==
+    canonicalSha256(recordWithoutHash, "boundaryObservationRecord")
+  ) {
+    throw ledgerError(`invalid record hash at line ${lineNumber}`, lineNumber);
+  }
+  return raw as unknown as ProductionBoundaryObservation;
 }
 
 /** Durable JSONL observation store. Production state remains authoritative. */
@@ -431,44 +757,116 @@ export class JsonlBoundaryObservationLedger
 
   constructor(filePath: string) {
     this.#filePath = requireNonEmpty(filePath, "filePath");
+    ledgerAppenders.set(this, (observation) => this.#append(observation));
   }
 
-  async readAll(): Promise<ProductionBoundaryObservation[]> {
+  async #readFromDisk(): Promise<ProductionBoundaryObservation[]> {
     let contents: string;
     try {
       contents = await readFile(this.#filePath, "utf8");
     } catch (error) {
+      // error-policy:J3 a missing ledger is the explicit empty initial state;
+      // every other filesystem failure remains fatal.
       if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
-      throw error;
+      throw new ElizaError("failed to read boundary observation ledger", {
+        code: "BOUNDARY_LEDGER_READ_FAILED",
+        cause: error,
+        context: { filePath: this.#filePath },
+      });
     }
-    const lines = contents.split("\n").filter((line) => line.length > 0);
-    return lines.map((line, index) => parseLedgerLine(line, index + 1));
+    if (contents === "") return [];
+    if (!contents.endsWith("\n")) {
+      throw ledgerError("boundary ledger has a truncated final frame", 0);
+    }
+    const lines = contents.slice(0, -1).split("\n");
+    if (lines.some((line) => line.length === 0)) {
+      throw ledgerError("boundary ledger contains a blank frame", 0);
+    }
+    const records: ProductionBoundaryObservation[] = [];
+    let previousRecordSha256: string | null = null;
+    for (const [index, line] of lines.entries()) {
+      const record = parseLedgerLine(line, index + 1, previousRecordSha256);
+      records.push(record);
+      previousRecordSha256 = record.recordSha256;
+    }
+    return records;
   }
 
-  append(
-    observation: Omit<ProductionBoundaryObservation, "order">,
+  async readAll(): Promise<ProductionBoundaryObservation[]> {
+    await this.#pending;
+    return this.#readFromDisk();
+  }
+
+  #append(
+    observation: PendingObservation,
   ): Promise<ProductionBoundaryObservation> {
     const appendPromise = this.#pending.then(async () => {
-      const records = await this.readAll();
+      const records = await this.#readFromDisk();
       if (
         records.some(
           (record) => record.observationId === observation.observationId,
         )
       ) {
-        throw new Error(
+        throw new ElizaError(
           `boundary observation ${observation.observationId} already exists`,
+          {
+            code: "BOUNDARY_LEDGER_DUPLICATE_OBSERVATION",
+            context: { observationId: observation.observationId },
+          },
         );
       }
-      const record = { ...observation, order: records.length + 1 };
-      await mkdir(dirname(this.#filePath), { recursive: true });
-      await writeFile(this.#filePath, `${JSON.stringify(record)}\n`, {
-        encoding: "utf8",
-        flag: "a",
-        mode: 0o600,
-      });
+      const recordWithoutHash = {
+        ...observation,
+        order: records.length + 1,
+        previousRecordSha256: records.at(-1)?.recordSha256 ?? null,
+      };
+      const record: ProductionBoundaryObservation = {
+        ...recordWithoutHash,
+        recordSha256: canonicalSha256(
+          recordWithoutHash,
+          "boundaryObservationRecord",
+        ),
+      };
+      parseLedgerLine(
+        JSON.stringify(record),
+        record.order,
+        record.previousRecordSha256,
+      );
+      try {
+        await mkdir(dirname(this.#filePath), { recursive: true });
+        const handle = await open(this.#filePath, "a", 0o600);
+        try {
+          await handle.writeFile(`${JSON.stringify(record)}\n`, "utf8");
+          await handle.sync();
+        } finally {
+          await handle.close();
+        }
+        const directoryHandle = await open(dirname(this.#filePath), "r");
+        try {
+          await directoryHandle.sync();
+        } finally {
+          await directoryHandle.close();
+        }
+      } catch (error) {
+        // error-policy:J2 durable append failures preserve the filesystem
+        // cause and never return a successful observation.
+        throw new ElizaError("failed to append boundary observation", {
+          code: "BOUNDARY_LEDGER_APPEND_FAILED",
+          cause: error,
+          context: {
+            filePath: this.#filePath,
+            observationId: observation.observationId,
+          },
+        });
+      }
       return record;
     });
-    this.#pending = appendPromise.catch(() => undefined);
+    // error-policy:J5 the caller observes appendPromise; this normalized tail
+    // only keeps later single-writer appends from inheriting its rejection.
+    this.#pending = appendPromise.then(
+      () => undefined,
+      () => undefined,
+    );
     return appendPromise;
   }
 }

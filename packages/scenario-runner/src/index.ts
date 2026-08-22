@@ -29,6 +29,7 @@ export type {
   BoundaryAcceptance,
   BoundaryFaultDirective,
   BoundaryFaultKind,
+  BoundaryGenerationFence,
   BoundaryObservationLedger,
   BoundaryObservationResult,
   BoundaryResultClassification,
