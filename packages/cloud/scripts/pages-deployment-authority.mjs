@@ -2,10 +2,11 @@
  * Closes Cloudflare Pages deployment output into a privacy-safe release proof.
  *
  * Wrangler's append-only NDJSON is accepted only at the deployment boundary.
- * This module validates both v1 records, removes the raw deployment UUID, and
- * binds subsequent public and browser observations to one source SHA, alias,
- * workflow run, and renderer build before a staging receipt can claim that the
- * deployed renderer was tested.
+ * This module validates Wrangler's session record and both deployment records,
+ * removes the raw deployment UUID and local session metadata, and binds later
+ * public and browser observations to one source SHA, alias, workflow run, and
+ * renderer build before a staging receipt can claim that the deployed renderer
+ * was tested.
  */
 import { createHash } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
@@ -201,10 +202,10 @@ function parseNdjson(raw) {
   }
   const lines = raw.slice(0, -1).split("\n");
   if (
-    lines.length !== 2 ||
+    lines.length !== 3 ||
     lines.some((line) => !line || line.includes("\r"))
   ) {
-    fail("Wrangler output must contain exactly two non-empty NDJSON records");
+    fail("Wrangler output must contain exactly three non-empty NDJSON records");
   }
   return lines.map((line, index) =>
     parseJson(line, `Wrangler record ${index + 1}`),
@@ -223,7 +224,7 @@ function parseWorkflow(value, label = "workflow") {
 }
 
 /**
- * Validates the two records emitted by Wrangler 4.100.0 and returns only the
+ * Validates the three records emitted by Wrangler 4.100.0 and returns only the
  * closed, publishable identity needed by later release jobs.
  */
 export function parseWranglerPagesDeploymentOutput(
@@ -239,7 +240,19 @@ export function parseWranglerPagesDeploymentOutput(
     runAttempt,
   },
 ) {
-  const [summaryValue, detailedValue] = parseNdjson(raw);
+  const [sessionValue, summaryValue, detailedValue] = parseNdjson(raw);
+  const session = requireExactKeys(
+    sessionValue,
+    [
+      "command_line_args",
+      "log_file_path",
+      "timestamp",
+      "type",
+      "version",
+      "wrangler_version",
+    ],
+    "wrangler-session record",
+  );
   const summary = requireExactKeys(
     summaryValue,
     ["deployment_id", "pages_project", "timestamp", "type", "url", "version"],
@@ -261,11 +274,28 @@ export function parseWranglerPagesDeploymentOutput(
     ],
     "pages-deploy-detailed record",
   );
+  if (session.type !== "wrangler-session" || session.version !== 1) {
+    fail("first Wrangler record must be wrangler-session/v1");
+  }
+  if (session.wrangler_version !== "4.100.0") {
+    fail("Wrangler session version does not match the pinned release version");
+  }
+  if (
+    !Array.isArray(session.command_line_args) ||
+    session.command_line_args.length === 0 ||
+    session.command_line_args.some(
+      (argument) => typeof argument !== "string" || !argument,
+    )
+  ) {
+    fail("Wrangler session command_line_args are invalid");
+  }
+  requireString(session.log_file_path, "Wrangler session log_file_path");
+  requireIsoTimestamp(session.timestamp, "wrangler-session timestamp");
   if (summary.type !== "pages-deploy" || summary.version !== 1) {
-    fail("first Wrangler record must be pages-deploy/v1");
+    fail("second Wrangler record must be pages-deploy/v1");
   }
   if (detailed.type !== "pages-deploy-detailed" || detailed.version !== 1) {
-    fail("second Wrangler record must be pages-deploy-detailed/v1");
+    fail("third Wrangler record must be pages-deploy-detailed/v1");
   }
   requireIsoTimestamp(summary.timestamp, "pages-deploy timestamp");
   requireIsoTimestamp(detailed.timestamp, "pages-deploy-detailed timestamp");

@@ -21,6 +21,14 @@ const buildId = "a".repeat(64);
 const indexHtmlSha256 = "b".repeat(64);
 
 function wranglerRecord(overrides: Record<string, unknown> = {}): string {
+  const session = {
+    type: "wrangler-session",
+    version: 1,
+    wrangler_version: "4.100.0",
+    command_line_args: ["pages", "deploy", "dist"],
+    log_file_path: "/tmp/wrangler.log",
+    timestamp: "2026-08-21T19:59:59.999Z",
+  };
   const summary = {
     type: "pages-deploy",
     version: 1,
@@ -42,7 +50,7 @@ function wranglerRecord(overrides: Record<string, unknown> = {}): string {
     timestamp: "2026-08-21T20:00:00.001Z",
     ...overrides,
   };
-  return `${JSON.stringify(summary)}\n${JSON.stringify(detailed)}\n`;
+  return `${JSON.stringify(session)}\n${JSON.stringify(summary)}\n${JSON.stringify(detailed)}\n`;
 }
 
 function authority() {
@@ -148,7 +156,7 @@ function continuity() {
 }
 
 describe("Pages deployment authority", () => {
-  test("closes exactly the two Wrangler v1 records and hashes the UUID", () => {
+  test("closes exactly the three Wrangler v1 records and hashes the UUID", () => {
     const parsed = authority();
     expect(parsed).toEqual({
       schema: PAGES_AUTHORITY_SCHEMA,
@@ -178,7 +186,7 @@ describe("Pages deployment authority", () => {
         runId: "1",
         runAttempt: "1",
       }),
-    ).toThrow("exactly two");
+    ).toThrow("exactly three");
     expect(() =>
       parseWranglerPagesDeploymentOutput(
         wranglerRecord({ deployment_id: "other" }),
