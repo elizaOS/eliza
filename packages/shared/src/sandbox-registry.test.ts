@@ -34,7 +34,7 @@ interface Recorded {
 const recorded: Recorded[] = [];
 const store = new Map<string, string>();
 let failNextFetch = false;
-let nextPipelineResponse: unknown = null;
+let nextCommandError: string | null = null;
 let nextWriteDelay: {
   started: () => void;
   wait: Promise<void>;
@@ -60,7 +60,7 @@ function installFetch(): void {
   recorded.length = 0;
   store.clear();
   failNextFetch = false;
-  nextPipelineResponse = null;
+  nextCommandError = null;
   nextWriteDelay = null;
   global.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     if (failNextFetch) {
@@ -72,28 +72,13 @@ function installFetch(): void {
     recorded.push({ url, body });
 
     const command = Array.isArray(body) ? body[0] : undefined;
-    if (nextWriteDelay && (url.endsWith("/pipeline") || command === "EVAL")) {
+    if (nextWriteDelay && command === "EVAL") {
       const delay = nextWriteDelay;
       nextWriteDelay = null;
       delay.started();
       await delay.wait;
     }
 
-    if (url.endsWith("/pipeline")) {
-      if (nextPipelineResponse !== null) {
-        return {
-          ok: true,
-          json: async () => nextPipelineResponse,
-        } as unknown as Response;
-      }
-      for (const cmd of body as string[][]) {
-        if (cmd[0] === "SET") store.set(cmd[1], cmd[2]);
-      }
-      return {
-        ok: true,
-        json: async () => (body as unknown[]).map(() => ({ result: "OK" })),
-      } as unknown as Response;
-    }
     const cmd = body as string[];
     if (cmd[0] === "GET") {
       return {
@@ -109,24 +94,56 @@ function installFetch(): void {
       } as unknown as Response;
     }
     if (cmd[0] === "EVAL") {
-      const [, , , key1, key2, expected1, expected2] = cmd;
-      if (cmd.length === 8) {
-        const ttl = cmd[7];
+      if (nextCommandError !== null) {
+        const error = nextCommandError;
+        nextCommandError = null;
+        return {
+          ok: true,
+          json: async () => ({ error }),
+        } as Response;
+      }
+      const [
+        ,
+        script,
+        ,
+        key1,
+        key2,
+        generationKey,
+        value1,
+        value2,
+        generation,
+      ] = cmd;
+      if (script.includes("-- register")) {
+        store.set(key1, value1);
+        store.set(key2, value2);
+        store.set(generationKey, generation);
+        return { ok: true, json: async () => ({ result: 1 }) } as Response;
+      }
+      if (script.includes("-- refresh")) {
         const owned =
-          store.get(key1) === expected1 && store.get(key2) === expected2;
+          store.get(key1) === value1 &&
+          store.get(key2) === value2 &&
+          store.get(generationKey) === generation;
         if (owned) {
-          store.set(key1, expected1);
-          store.set(key2, expected2);
+          store.set(key1, value1);
+          store.set(key2, value2);
+          store.set(generationKey, generation);
         }
-        expect(Number(ttl)).toBeGreaterThan(0);
         return {
           ok: true,
           json: async () => ({ result: owned ? 1 : 0 }),
         } as Response;
       }
-      if (store.get(key1) === expected1) store.delete(key1);
-      if (store.get(key2) === expected2) store.delete(key2);
-      return { ok: true, json: async () => ({ result: 1 }) } as Response;
+      const owned = store.get(generationKey) === generation;
+      if (owned) {
+        if (store.get(key1) === value1) store.delete(key1);
+        if (store.get(key2) === value2) store.delete(key2);
+        store.delete(generationKey);
+      }
+      return {
+        ok: true,
+        json: async () => ({ result: owned ? 1 : 0 }),
+      } as Response;
     }
     return { ok: true, json: async () => ({ result: null }) } as Response;
   }) as unknown as typeof fetch;
@@ -148,36 +165,33 @@ describe("SandboxRegistry (Upstash REST transport)", () => {
     vi.restoreAllMocks();
   });
 
-  it("register() writes both keys with TTL via the pipeline endpoint", async () => {
+  it("register() writes public keys and a private generation fence atomically", async () => {
     const reg = new SandboxRegistry(baseConfig);
     await reg.register();
 
-    const pipe = recorded.find((r) => r.url.endsWith("/pipeline"));
-    expect(pipe).toBeTruthy();
-    const cmds = pipe?.body as string[][];
-    expect(cmds).toContainEqual([
-      "SET",
+    expect(recorded).toHaveLength(1);
+    const command = recorded[0]?.body as string[];
+    expect(command.slice(0, 6)).toEqual([
+      "EVAL",
+      expect.stringContaining("-- register"),
+      "3",
       "server:sandbox-abc:url",
-      "http://1.2.3.4:1999/api",
-      "EX",
-      "90",
-    ]);
-    expect(cmds).toContainEqual([
-      "SET",
       "agent:char-123:server",
-      "sandbox-abc",
-      "EX",
-      "90",
+      "server:sandbox-abc:registration",
     ]);
+    expect(command.slice(6, 8)).toEqual([
+      "http://1.2.3.4:1999/api",
+      "sandbox-abc",
+    ]);
+    expect(command[8]).toEqual(expect.any(String));
+    expect(command[9]).toBe("90");
   });
 
-  it("rejects a top-level Upstash pipeline error response", async () => {
-    nextPipelineResponse = { error: "pipeline unavailable" };
+  it("rejects a top-level Upstash registration error response", async () => {
+    nextCommandError = "registration unavailable";
     const reg = new SandboxRegistry(baseConfig);
 
-    await expect(reg.register()).rejects.toThrow(
-      "Upstash pipeline returned an invalid response",
-    );
+    await expect(reg.register()).rejects.toThrow("registration unavailable");
   });
 
   it("unregister() deletes keys only when they still point at this sandbox", async () => {
@@ -194,9 +208,13 @@ describe("SandboxRegistry (Upstash REST transport)", () => {
     // Simulate another sandbox claiming the agent.
     store.set("agent:char-123:server", "sandbox-other");
     store.set("server:sandbox-abc:url", "http://9.9.9.9:1/api");
+    store.set("server:sandbox-abc:registration", "successor-generation");
     await reg.unregister();
     expect(store.get("agent:char-123:server")).toBe("sandbox-other");
     expect(store.get("server:sandbox-abc:url")).toBe("http://9.9.9.9:1/api");
+    expect(store.get("server:sandbox-abc:registration")).toBe(
+      "successor-generation",
+    );
   });
 
   it("unregister() does not delete keys another sandbox claims in the same instant it decides to delete", async () => {
@@ -215,6 +233,7 @@ describe("SandboxRegistry (Upstash REST transport)", () => {
         if (verb === "DEL" || verb === "EVAL") {
           store.set("agent:char-123:server", "sandbox-other");
           store.set("server:sandbox-abc:url", "http://9.9.9.9:1/api");
+          store.set("server:sandbox-abc:registration", "successor-generation");
         }
         return realFetch(input, init);
       },
@@ -224,6 +243,9 @@ describe("SandboxRegistry (Upstash REST transport)", () => {
 
     expect(store.get("agent:char-123:server")).toBe("sandbox-other");
     expect(store.get("server:sandbox-abc:url")).toBe("http://9.9.9.9:1/api");
+    expect(store.get("server:sandbox-abc:registration")).toBe(
+      "successor-generation",
+    );
   });
 
   it("startHeartbeat() refreshes on the interval; errors do not kill the timer", async () => {
@@ -332,10 +354,11 @@ describe("SandboxRegistry (Upstash REST transport)", () => {
     expect(recorded).toHaveLength(2);
   });
 
-  it("a late heartbeat cannot replace a successor instance after drain timeout", async () => {
+  it("a late heartbeat cannot refresh or delete a same-identity successor", async () => {
     vi.useFakeTimers();
     const oldRegistry = new SandboxRegistry(baseConfig);
     await oldRegistry.register();
+    const oldGeneration = store.get("server:sandbox-abc:registration");
     recorded.length = 0;
 
     const delayed = delayNextRegistryWrite();
@@ -350,21 +373,19 @@ describe("SandboxRegistry (Upstash REST transport)", () => {
       code: "SANDBOX_REGISTRY_HEARTBEAT_DRAIN_TIMEOUT",
     });
 
-    const successor = new SandboxRegistry({
-      ...baseConfig,
-      serverName: "sandbox-successor",
-      serverUrl: "http://5.6.7.8:2999/api",
-    });
+    const successor = new SandboxRegistry(baseConfig);
     await successor.register();
+    const successorGeneration = store.get("server:sandbox-abc:registration");
+    expect(successorGeneration).not.toBe(oldGeneration);
 
     delayed.release();
     await vi.advanceTimersByTimeAsync(0);
 
-    expect(store.get("agent:char-123:server")).toBe("sandbox-successor");
-    expect(store.get("server:sandbox-successor:url")).toBe(
-      "http://5.6.7.8:2999/api",
+    expect(store.get("agent:char-123:server")).toBe("sandbox-abc");
+    expect(store.get("server:sandbox-abc:url")).toBe("http://1.2.3.4:1999/api");
+    expect(store.get("server:sandbox-abc:registration")).toBe(
+      successorGeneration,
     );
-    expect(store.has("server:sandbox-abc:url")).toBe(false);
   });
 
   it("stopHeartbeat() halts the timer", async () => {
@@ -405,13 +426,10 @@ describe("buildSandboxRegistryFromEnv", () => {
     });
     expect(reg).not.toBeNull();
     await reg?.register();
-    const pipe = recorded.find((r) => r.url.endsWith("/pipeline"));
-    const cmds = pipe?.body as string[][];
+    const command = recorded[0]?.body as string[];
     // Must register under the routing character_id, not the sandbox id.
-    expect(cmds.some((c) => c[1] === "agent:char-a1f08a41:server")).toBe(true);
-    expect(cmds.some((c) => c[1] === "agent:sandbox-id-2facbf59:server")).toBe(
-      false,
-    );
+    expect(command).toContain("agent:char-a1f08a41:server");
+    expect(command).not.toContain("agent:sandbox-id-2facbf59:server");
   });
 
   it("falls back to SANDBOX_AGENT_ID when no route id is injected", () => {
@@ -564,21 +582,42 @@ async function startFakeRedis(opts?: {
           for (const k of cmd.slice(1)) if (store.delete(k)) n++;
           send(`:${n}\r\n`);
         } else if (verb === "EVAL") {
-          const [, , , key1, key2, expected1, expected2] = cmd;
-          if (cmd.length === 8) {
+          const [
+            ,
+            script,
+            ,
+            key1,
+            key2,
+            generationKey,
+            value1,
+            value2,
+            generation,
+          ] = cmd;
+          if (script.includes("-- register")) {
+            store.set(key1, value1);
+            store.set(key2, value2);
+            store.set(generationKey, generation);
+            send(":1\r\n");
+          } else if (script.includes("-- refresh")) {
             const owned =
-              store.get(key1) === expected1 && store.get(key2) === expected2;
+              store.get(key1) === value1 &&
+              store.get(key2) === value2 &&
+              store.get(generationKey) === generation;
             if (owned) {
-              store.set(key1, expected1);
-              store.set(key2, expected2);
+              store.set(key1, value1);
+              store.set(key2, value2);
+              store.set(generationKey, generation);
             }
             send(`:${owned ? 1 : 0}\r\n`);
-            cmd = tryParseCommand();
-            continue;
+          } else {
+            const owned = store.get(generationKey) === generation;
+            if (owned) {
+              if (store.get(key1) === value1) store.delete(key1);
+              if (store.get(key2) === value2) store.delete(key2);
+              store.delete(generationKey);
+            }
+            send(`:${owned ? 1 : 0}\r\n`);
           }
-          if (store.get(key1) === expected1) store.delete(key1);
-          if (store.get(key2) === expected2) store.delete(key2);
-          send(":1\r\n");
         } else {
           send("-ERR unknown command\r\n");
         }
@@ -644,6 +683,30 @@ describe("SandboxRegistry (native TCP transport)", () => {
     expect(fake.store.get("agent:char-tcp:server")).toBe("sandbox-successor");
     expect(fake.store.get("server:sandbox-tcp:url")).toBe(
       "http://5.6.7.8:1999/api",
+    );
+  });
+
+  it("a stale same-identity instance cannot refresh or unregister its TCP successor", async () => {
+    fake = await startFakeRedis();
+    const stale = new SandboxRegistry(tcpConfig(fake.port));
+    const successor = new SandboxRegistry(tcpConfig(fake.port));
+    await stale.register();
+    const staleGeneration = fake.store.get("server:sandbox-tcp:registration");
+    await successor.register();
+    const successorGeneration = fake.store.get(
+      "server:sandbox-tcp:registration",
+    );
+    expect(successorGeneration).not.toBe(staleGeneration);
+
+    await stale.refresh();
+    await stale.unregister();
+
+    expect(fake.store.get("agent:char-tcp:server")).toBe("sandbox-tcp");
+    expect(fake.store.get("server:sandbox-tcp:url")).toBe(
+      "http://5.6.7.8:1999/api",
+    );
+    expect(fake.store.get("server:sandbox-tcp:registration")).toBe(
+      successorGeneration,
     );
   });
 

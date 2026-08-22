@@ -14,8 +14,8 @@
  *
  * Two transports are supported, selected by the URL scheme so the same registry
  * works before and after the managed Redis is migrated off Upstash:
- *   - `http(s)://` — Upstash REST API via `fetch` (the pipeline endpoint applies
- *     both SET-with-EX commands atomically server-side).
+ *   - `http(s)://` — Upstash REST API via `fetch` (Lua applies the routing and
+ *     private generation keys atomically server-side).
  *   - `redis(s)://` — native RESP over a TCP socket (e.g. a Railway Redis public
  *     proxy). Auth is carried inline in the URL, so no separate token is
  *     required. This mirrors what the gateways already do (`gateway-discord` /
@@ -26,6 +26,7 @@
  * instead of concatenating until the 10s socket timeout.
  */
 
+import { randomUUID } from "node:crypto";
 import net from "node:net";
 
 import { ElizaError, logger } from "@elizaos/core";
@@ -85,6 +86,7 @@ export interface SandboxRegistryConfig {
 }
 
 export class SandboxRegistry {
+  private readonly generation = randomUUID();
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
   private heartbeatInFlight: Promise<void> | null = null;
   private readonly tcp: boolean;
@@ -149,6 +151,7 @@ export class SandboxRegistry {
     const { serverName, serverUrl, agentId } = this.config;
     const serverUrlKey = `server:${serverName}:url`;
     const agentServerKey = `agent:${agentId}:server`;
+    const generationKey = `server:${serverName}:registration`;
     // Compare-and-delete inside a single Lua script so the ownership check and
     // the delete are one atomic Redis operation. A read-then-delete over two
     // round-trips leaves a window where another sandbox's register()/refresh()
@@ -156,14 +159,18 @@ export class SandboxRegistry {
     // delete that fresh registration instead of its own stale one.
     await this.command([
       "EVAL",
-      "if redis.call('GET',KEYS[1])==ARGV[1] then redis.call('DEL',KEYS[1]) end " +
+      "-- unregister\nif redis.call('GET',KEYS[3])~=ARGV[3] then return 0 end " +
+        "if redis.call('GET',KEYS[1])==ARGV[1] then redis.call('DEL',KEYS[1]) end " +
         "if redis.call('GET',KEYS[2])==ARGV[2] then redis.call('DEL',KEYS[2]) end " +
+        "redis.call('DEL',KEYS[3]) " +
         "return 1",
-      "2",
+      "3",
       serverUrlKey,
       agentServerKey,
+      generationKey,
       serverUrl,
       serverName,
+      this.generation,
     ]);
     logger.info(
       `[sandbox-registry] Unregistered ${serverName} (agent ${agentId})`,
@@ -212,17 +219,26 @@ export class SandboxRegistry {
   }
 
   /**
-   * Atomic two-key write. Both keys must succeed together — partial state
+   * Atomic registration write. Both public keys and the private generation
+   * fence must succeed together — partial state
    * would let gateways resolve `agent:X:server` to a stale `server:Y:url`
-   * value or miss a routing entry whose other half was just renewed. REST uses
-   * the Upstash pipeline endpoint; TCP pipelines both commands on one socket.
+   * value or miss a routing entry whose other half was just renewed.
    */
   private async registerKeys(): Promise<void> {
     const { serverName, serverUrl, agentId, ttlSeconds } = this.config;
-    const ttl = String(ttlSeconds);
-    await this.pipeline([
-      ["SET", `server:${serverName}:url`, serverUrl, "EX", ttl],
-      ["SET", `agent:${agentId}:server`, serverName, "EX", ttl],
+    await this.command([
+      "EVAL",
+      "-- register\nredis.call('SET',KEYS[1],ARGV[1],'EX',ARGV[4]) " +
+        "redis.call('SET',KEYS[2],ARGV[2],'EX',ARGV[4]) " +
+        "redis.call('SET',KEYS[3],ARGV[3],'EX',ARGV[4]) return 1",
+      "3",
+      `server:${serverName}:url`,
+      `agent:${agentId}:server`,
+      `server:${serverName}:registration`,
+      serverUrl,
+      serverName,
+      this.generation,
+      String(ttlSeconds),
     ]);
   }
 
@@ -231,15 +247,19 @@ export class SandboxRegistry {
     const { serverName, serverUrl, agentId, ttlSeconds } = this.config;
     await this.command([
       "EVAL",
-      "local u=redis.call('GET',KEYS[1]) local s=redis.call('GET',KEYS[2]) " +
-        "if u==ARGV[1] and s==ARGV[2] then " +
-        "redis.call('SET',KEYS[1],ARGV[1],'EX',ARGV[3]) " +
-        "redis.call('SET',KEYS[2],ARGV[2],'EX',ARGV[3]) return 1 end return 0",
-      "2",
+      "-- refresh\nlocal u=redis.call('GET',KEYS[1]) local s=redis.call('GET',KEYS[2]) " +
+        "local g=redis.call('GET',KEYS[3]) " +
+        "if u==ARGV[1] and s==ARGV[2] and g==ARGV[3] then " +
+        "redis.call('SET',KEYS[1],ARGV[1],'EX',ARGV[4]) " +
+        "redis.call('SET',KEYS[2],ARGV[2],'EX',ARGV[4]) " +
+        "redis.call('SET',KEYS[3],ARGV[3],'EX',ARGV[4]) return 1 end return 0",
+      "3",
       `server:${serverName}:url`,
       `agent:${agentId}:server`,
+      `server:${serverName}:registration`,
       serverUrl,
       serverName,
+      this.generation,
       String(ttlSeconds),
     ]);
   }
@@ -265,43 +285,6 @@ export class SandboxRegistry {
     const json = (await res.json()) as { result?: unknown; error?: string };
     if (json.error) throw new Error(`Upstash error: ${json.error}`);
     return json.result;
-  }
-
-  private async pipeline(commands: string[][]): Promise<void> {
-    if (this.tcp) {
-      await this.tcpExec(commands);
-      return;
-    }
-    const res = await fetch(`${this.config.redisUrl}/pipeline`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${this.config.redisToken}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(commands),
-    });
-    if (!res.ok) {
-      throw new Error(
-        `Upstash pipeline failed: ${res.status} ${await res.text()}`,
-      );
-    }
-    const json: unknown = await res.json();
-    if (!Array.isArray(json) || json.length !== commands.length) {
-      throw new Error("Upstash pipeline returned an invalid response");
-    }
-    for (const entry of json) {
-      if (typeof entry !== "object" || entry === null) {
-        throw new Error("Upstash pipeline returned an invalid response");
-      }
-      const result = Reflect.get(entry, "result");
-      const error = Reflect.get(entry, "error");
-      if (typeof error === "string" && error.length > 0) {
-        throw new Error(`Upstash error: ${error}`);
-      }
-      if (result !== "OK") {
-        throw new Error("Upstash pipeline returned an invalid response");
-      }
-    }
   }
 
   /**
