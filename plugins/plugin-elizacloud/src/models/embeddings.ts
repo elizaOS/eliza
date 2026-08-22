@@ -93,13 +93,20 @@ function getEmbeddingConfig(runtime: IAgentRuntime) {
     "ELIZAOS_CLOUD_EMBEDDING_MODEL",
     "text-embedding-3-small"
   );
-  const embeddingDimension = Number.parseInt(
-    getSetting(runtime, "ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS", "1536") || "1536",
-    10
+  // `Number.parseInt` stops at the first non-digit, so "1536junk" and "1536.9"
+  // both parsed to 1536 — a value that then PASSES the allowlist below, which
+  // is what makes this worth fixing: the guard is already here and reports the
+  // truncated number rather than what the operator wrote. Require the whole
+  // trimmed value to be decimal so a malformed setting reaches that error.
+  const rawDimension =
+    getSetting(runtime, "ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS", "1536") || "1536";
+  const trimmedDimension = rawDimension.trim();
+  const embeddingDimension = (
+    /^\d+$/.test(trimmedDimension) ? Number(trimmedDimension) : Number.NaN
   ) as (typeof VECTOR_DIMS)[keyof typeof VECTOR_DIMS];
 
   if (!Object.values(VECTOR_DIMS).includes(embeddingDimension)) {
-    const errorMsg = `Invalid embedding dimension: ${embeddingDimension}. Must be one of: ${Object.values(VECTOR_DIMS).join(", ")}`;
+    const errorMsg = `Invalid embedding dimension: ${JSON.stringify(rawDimension)}. Must be one of: ${Object.values(VECTOR_DIMS).join(", ")}`;
     logger.error(errorMsg);
     throw new Error(errorMsg);
   }
