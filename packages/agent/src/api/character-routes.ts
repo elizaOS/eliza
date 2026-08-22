@@ -459,7 +459,6 @@ const CHARACTER_SCHEMA_FIELDS = [
     type: "string",
     label: "System Prompt",
     description: "System prompt defining core behavior",
-    maxLength: 10000,
   },
   {
     key: "adjectives",

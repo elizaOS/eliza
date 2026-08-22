@@ -121,6 +121,9 @@
       "@elizaos/capacitor-phone": [
         "../../plugins/plugin-native-phone/src/index.ts"
       ],
+      "@elizaos/capacitor-secure-store": [
+        "../../plugins/plugin-native-secure-store/src/index.ts"
+      ],
       "@elizaos/capacitor-system": [
         "../../plugins/plugin-native-system/src/index.ts"
       ]

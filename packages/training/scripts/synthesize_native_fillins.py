@@ -165,34 +165,8 @@ def load_dotenv(path: Path) -> None:
         os.environ[key] = value
 
 
-def json_dump(value: Any, *, max_chars: int | None = None) -> str:
-    text = json.dumps(value, ensure_ascii=False, sort_keys=True, indent=2)
-    if max_chars is not None and len(text) > max_chars:
-        return text[: max_chars - 32] + "\n...<truncated>"
-    return text
-
-
-def compact_value(value: Any, *, string_limit: int = 1400, depth: int = 5) -> Any:
-    if depth <= 0:
-        return "...<truncated>"
-    if isinstance(value, str):
-        if len(value) > string_limit:
-            return value[: string_limit - 16] + "...<truncated>"
-        return value
-    if isinstance(value, list):
-        items = [compact_value(item, string_limit=string_limit, depth=depth - 1) for item in value[:8]]
-        if len(value) > 8:
-            items.append(f"...<{len(value) - 8} more>")
-        return items
-    if isinstance(value, dict):
-        out: dict[str, Any] = {}
-        for index, (key, item) in enumerate(value.items()):
-            if index >= 20:
-                out["..."] = f"<{len(value) - index} more keys>"
-                break
-            out[str(key)] = compact_value(item, string_limit=string_limit, depth=depth - 1)
-        return out
-    return value
+def json_dump(value: Any) -> str:
+    return json.dumps(value, ensure_ascii=False, sort_keys=True, indent=2)
 
 
 def stable_id(*parts: Any, length: int = 10) -> str:
@@ -256,8 +230,8 @@ def extract_reference_rows(path: Path) -> dict[str, dict[str, Any]]:
             "stepType": row.get("stepType"),
             "request_keys": sorted(request.keys()),
             "response_keys": sorted(response.keys()),
-            "request": compact_value(request, string_limit=900, depth=4),
-            "response": compact_value(response, string_limit=900, depth=4),
+            "request": request,
+            "response": response,
         }
         examples[str(task_type)] = example
     return examples
@@ -330,7 +304,7 @@ def build_dataset_prompt_template(
             f"Missing signals to fill: {', '.join(missing) if missing else 'none'}",
             f"Native coverage: {json.dumps(coverage, ensure_ascii=False, sort_keys=True)}",
             "Synthesis templates:",
-            json_dump(selected_templates, max_chars=2200),
+            json_dump(selected_templates),
         ]
     )
 
@@ -348,7 +322,6 @@ def build_generation_prompt(
     dataset = str(sample.get("dataset"))
     expected = expected_task_types(sample, dataset_info)
     dataset_template = build_dataset_prompt_template(dataset, sample, dataset_info, templates)
-    source_preview = compact_value(sample.get("preview"), string_limit=1800, depth=5)
     source_payload = {
         "dataset": dataset,
         "sampleIndex": sample.get("sampleIndex"),
@@ -358,7 +331,7 @@ def build_generation_prompt(
         "features": sample.get("features"),
         "nativeBoundaryComponents": sample.get("nativeBoundaryComponents"),
         "stageSimilarity": sample.get("stageSimilarity"),
-        "preview": source_preview,
+        "preview": sample.get("preview"),
     }
     repair_block = ""
     if previous is not None or previous_eval is not None:
@@ -366,9 +339,9 @@ def build_generation_prompt(
             [
                 "\nPrevious attempt needs repair.",
                 "Checker result:",
-                json_dump(previous_eval or {}, max_chars=3000),
+                json_dump(previous_eval or {}),
                 "Previous output:",
-                json_dump(compact_value(previous or {}, string_limit=900, depth=5), max_chars=4500),
+                json_dump(previous or {}),
             ]
         )
     return f"""You are filling missing training data for Eliza's final native model-boundary format.
@@ -401,16 +374,16 @@ Available Eliza contexts:
 {", ".join(CONTEXTS)}
 
 Canonical MESSAGE_HANDLER_PLAN tool:
-{json_dump(MESSAGE_HANDLER_TOOL, max_chars=2500)}
+{json_dump(MESSAGE_HANDLER_TOOL)}
 
 Real Eliza reference snippets:
-{json_dump(reference_rows, max_chars=3600)}
+{json_dump(reference_rows)}
 
 Dataset-specific prompt template:
 {dataset_template}
 
 Source sample:
-{json_dump(source_payload, max_chars=4600)}
+{json_dump(source_payload)}
 
 Expected task rows for this sample: {", ".join(expected)}.
 
@@ -1275,8 +1248,8 @@ def run_one(
             "rowIndex": sample.get("rowIndex"),
             "iteration": iteration,
             "model": args.model,
-            "response": compact_value(strip_provider_reasoning(response), string_limit=1400, depth=5),
-            "rawText": raw_text if args.keep_raw_text else compact_value(raw_text, string_limit=3000, depth=2),
+            "response": strip_provider_reasoning(response),
+            "rawText": raw_text,
             "output": parsed,
             "evaluation": evaluation,
         }

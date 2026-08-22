@@ -15,6 +15,14 @@ export interface ChatEvent {
   senderName?: string;
   text: string;
   isCommand?: boolean;
+  /** Deterministic group-policy classification, before model should-respond. */
+  groupInvocation?: "mention" | "command" | "reply" | "ambient";
+  /** Provider-verified sender authority for group-control operations. */
+  groupActorRole?: "creator" | "administrator" | "member" | "unknown";
+  /** Bot/account membership transition for a provider group. */
+  membershipChange?: "joined" | "removed";
+  /** Provider message referenced by an inline reply, when exposed. */
+  replyToMessageId?: string;
   /** Provider-accepted message time, used only for coarse ingress latency. */
   providerSentAtMs?: number;
   mediaUrls?: string[];
@@ -41,7 +49,10 @@ export interface PlatformAdapter {
     rawBody: string,
     config: WebhookConfig,
   ): Promise<boolean>;
-  extractEvent(rawBody: string): Promise<ChatEvent | null>;
+  extractEvent(
+    rawBody: string,
+    config?: WebhookConfig,
+  ): Promise<ChatEvent | null>;
   sendReply(
     config: WebhookConfig,
     event: ChatEvent,
@@ -55,6 +66,8 @@ export interface PlatformAdapter {
     deliveryHooks?: TelegramDeliveryHooks,
   ): Promise<PlatformDeliveryReceipt>;
   sendTypingIndicator(config: WebhookConfig, event: ChatEvent): Promise<void>;
+  /** Clears an explicit provider typing state when the adapter supports it. */
+  stopTypingIndicator?(config: WebhookConfig, event: ChatEvent): Promise<void>;
   /** Resolve provider-owned voice bytes while credentials are still local. */
   resolveVoiceNote?(
     config: WebhookConfig,
@@ -77,6 +90,7 @@ export interface ResolvedVoiceNote {
 export interface WebhookConfig {
   // Telegram
   botToken?: string;
+  botUsername?: string;
   webhookSecret?: string;
   // Blooio
   apiKey?: string;

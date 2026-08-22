@@ -43,6 +43,10 @@ import { runShell } from "../services/shell-execution-router.ts";
 import { decodePathComponent } from "./server-helpers.ts";
 import type { ServerState } from "./server-types.ts";
 import {
+  capturedTerminalOutputIsSafe,
+  MAX_TERMINAL_CAPTURE_BYTES,
+} from "./terminal-output-contract.ts";
+import {
   resolveRequestedTerminalRunId,
   resolveTerminalRunLimits,
 } from "./terminal-run-limits.ts";
@@ -315,7 +319,7 @@ export async function handleMiscRoutes(
         : body.url
           ? `Can you analyze this: ${body.url}`
           : body.text
-            ? `What are your thoughts on: ${body.text.slice(0, 100)}`
+            ? `What are your thoughts on: ${body.text}`
             : "What do you think about this shared content?",
       receivedAt: Date.now(),
     };
@@ -504,7 +508,7 @@ export async function handleMiscRoutes(
     };
 
     const captureOutput = body.captureOutput === true;
-    const MAX_CAPTURE_BYTES = 128 * 1024;
+    const MAX_CAPTURE_BYTES = MAX_TERMINAL_CAPTURE_BYTES;
 
     const runId = resolveRequestedTerminalRunId(
       req.headers["x-eliza-terminal-run-id"],
@@ -565,16 +569,16 @@ export async function handleMiscRoutes(
     let timedOut = false;
     let stdout = "";
     let stderr = "";
-    let truncated = false;
+    let captureOverflowed = false;
 
     let capturedBytes = 0;
     const appendOutput = (current: string, chunkText: string): string => {
-      if (!captureOutput || truncated || !chunkText) {
+      if (!captureOutput || captureOverflowed || !chunkText) {
         return current;
       }
       const remaining = MAX_CAPTURE_BYTES - capturedBytes;
       if (remaining <= 0) {
-        truncated = true;
+        captureOverflowed = true;
         return current;
       }
       const chunkBytes = Buffer.byteLength(chunkText, "utf8");
@@ -582,22 +586,8 @@ export async function handleMiscRoutes(
         capturedBytes += chunkBytes;
         return current + chunkText;
       }
-      truncated = true;
-      const bytes = Buffer.from(chunkText, "utf8");
-      let prefixBytes = remaining;
-      let prefix = "";
-      while (prefixBytes > 0) {
-        try {
-          prefix = new TextDecoder("utf-8", { fatal: true }).decode(
-            bytes.subarray(0, prefixBytes),
-          );
-          break;
-        } catch {
-          prefixBytes -= 1;
-        }
-      }
-      capturedBytes += prefixBytes;
-      return current + prefix;
+      captureOverflowed = true;
+      return current;
     };
 
     const finalize = () => {
@@ -618,8 +608,11 @@ export async function handleMiscRoutes(
     }, maxDurationMs);
 
     const appendAndEmit = (stream: "stdout" | "stderr", text: string) => {
-      if (stream === "stdout") stdout = appendOutput(stdout, text);
-      else stderr = appendOutput(stderr, text);
+      if (captureOutput) {
+        if (stream === "stdout") stdout = appendOutput(stdout, text);
+        else stderr = appendOutput(stderr, text);
+        return;
+      }
       emitTerminalEvent({
         type: "terminal-output",
         runId,
@@ -649,6 +642,61 @@ export async function handleMiscRoutes(
       })
       .then((result) => {
         finalize();
+        const runTimedOut = timedOut || result.exitCode === 124;
+        if (captureOutput) {
+          if (captureOverflowed) {
+            emitTerminalEvent({
+              type: "terminal-output",
+              runId,
+              event: "error",
+              data: "Terminal output exceeded the complete-capture limit",
+            });
+            error(
+              res,
+              `Terminal output exceeded the ${MAX_CAPTURE_BYTES}-byte complete-capture safety limit; no partial result was returned.`,
+              413,
+            );
+            return;
+          }
+          if (runTimedOut) {
+            error(
+              res,
+              "Terminal execution timed out; no partial result was returned.",
+              504,
+            );
+            return;
+          }
+          if (!capturedTerminalOutputIsSafe(stdout, stderr)) {
+            emitTerminalEvent({
+              type: "terminal-output",
+              runId,
+              event: "error",
+              data: "Terminal output was not valid safe text",
+            });
+            error(
+              res,
+              "Terminal output was not valid safe text; no result was returned.",
+              422,
+            );
+            return;
+          }
+          if (stdout) {
+            emitTerminalEvent({
+              type: "terminal-output",
+              runId,
+              event: "stdout",
+              data: stdout,
+            });
+          }
+          if (stderr) {
+            emitTerminalEvent({
+              type: "terminal-output",
+              runId,
+              event: "stderr",
+              data: stderr,
+            });
+          }
+        }
         emitTerminalEvent({
           type: "terminal-output",
           runId,
@@ -663,24 +711,24 @@ export async function handleMiscRoutes(
             exitCode: result.exitCode,
             stdout,
             stderr,
-            timedOut: timedOut || result.exitCode === 124,
-            truncated,
+            timedOut: runTimedOut,
+            truncated: false,
             maxDurationMs,
             sandbox: result.sandbox,
             durationMs: result.durationMs,
           });
         }
       })
-      .catch((err: Error) => {
+      .catch((_error: Error) => {
         finalize();
         emitTerminalEvent({
           type: "terminal-output",
           runId,
           event: "error",
-          data: err.message,
+          data: "Terminal execution failed",
         });
         if (captureOutput) {
-          error(res, err.message, 500);
+          error(res, "Terminal execution failed", 500);
         }
       });
 

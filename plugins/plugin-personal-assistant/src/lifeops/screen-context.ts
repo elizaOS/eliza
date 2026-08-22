@@ -7,7 +7,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { logger, toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
+import { logger, toWellFormedUnicode } from "@elizaos/core";
 import { FRAME_FILE } from "@elizaos/plugin-browser";
 import type sharp from "sharp";
 
@@ -71,7 +71,6 @@ export interface LifeOpsScreenContextSamplerOptions {
 
 const DEFAULT_MIN_SAMPLE_INTERVAL_MS = 5 * 60_000;
 const DEFAULT_MAX_FRAME_AGE_MS = 30 * 60_000;
-const HEURISTIC_TEXT_LIMIT = 1_024;
 const WORK_KEYWORDS = [
   "inbox",
   "email",
@@ -140,10 +139,7 @@ function isSharpFactory(value: unknown): value is SharpFactory {
 }
 
 function normalizeText(value: string | null | undefined): string {
-  return truncateWellFormed(
-    toWellFormedUnicode((value ?? "").replace(/\s+/g, " ").trim()),
-    HEURISTIC_TEXT_LIMIT,
-  );
+  return toWellFormedUnicode((value ?? "").replace(/\s+/g, " ").trim());
 }
 
 function keywordMatches(text: string, keywords: readonly string[]): string[] {

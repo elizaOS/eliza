@@ -27,7 +27,7 @@ export {
 const require = createRequire(import.meta.url);
 
 // Pure-disk override helpers — inlined here to avoid module-scope dynamic
-// imports of @elizaos/plugin-signal and @elizaos/plugin-whatsapp. The plugin
+// imports of @elizaos/plugin-whatsapp. The plugin
 // versions still exist for external callers; these copies are scoped to the
 // agent's plugin-discovery surface and only walk the workspace directory.
 type QrOverrideEntry = {
@@ -36,38 +36,6 @@ type QrOverrideEntry = {
   configured: boolean;
   qrConnected?: boolean;
 };
-
-function signalAuthExists(
-  workspaceDir: string,
-  accountId = "default",
-): boolean {
-  const authDir = path.join(workspaceDir, "signal-auth", accountId);
-  if (!fs.existsSync(authDir)) return false;
-
-  const accountsPath = path.join(authDir, "data", "accounts.json");
-  if (!fs.existsSync(accountsPath)) return false;
-
-  try {
-    const parsed = JSON.parse(fs.readFileSync(accountsPath, "utf8")) as {
-      accounts?: unknown;
-    };
-    return Array.isArray(parsed.accounts) && parsed.accounts.length > 0;
-  } catch {
-    return false;
-  }
-}
-
-function applySignalQrOverride(
-  entries: QrOverrideEntry[],
-  workspaceDir: string,
-): void {
-  if (!signalAuthExists(workspaceDir, "default")) return;
-  const sigPlugin = entries.find((plugin) => plugin.id === "signal");
-  if (!sigPlugin) return;
-  sigPlugin.validationErrors = [];
-  sigPlugin.configured = true;
-  sigPlugin.qrConnected = true;
-}
 
 function applyWhatsAppQrOverride(
   entries: QrOverrideEntry[],
@@ -1134,7 +1102,6 @@ export function discoverPluginsFromManifest(): PluginEntry[] {
       );
 
       applyWhatsAppQrOverride(entries, resolveDefaultAgentWorkspaceDir());
-      applySignalQrOverride(entries, resolveDefaultAgentWorkspaceDir());
 
       return entries;
     } catch (err) {

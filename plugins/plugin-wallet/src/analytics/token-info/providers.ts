@@ -352,7 +352,7 @@ function formatBirdeyeWallet(
   result: WalletPortfolioResponse,
   address: string,
 ): string {
-  const tokens = result.data.items.slice(0, 10);
+  const tokens = result.data.items;
   const totalValue =
     typeof result.data.totalUsd === "number"
       ? result.data.totalUsd
@@ -367,7 +367,7 @@ function formatBirdeyeWallet(
         `- ${String(token.symbol ?? "TOKEN").toUpperCase()}: $${Number(token.valueUsd ?? 0).toLocaleString()} (${token.uiAmount ?? "n/a"})`,
     )
     .join("\n");
-  return `Wallet ${address}\nTotal value: $${Number(totalValue).toLocaleString()}\nTop holdings:\n${holdings}`;
+  return `Wallet ${address}\nTotal value: $${Number(totalValue).toLocaleString()}\nHoldings:\n${holdings}`;
 }
 
 async function executeBirdeye(

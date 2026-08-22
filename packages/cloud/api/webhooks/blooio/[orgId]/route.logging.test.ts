@@ -14,13 +14,6 @@ const loggerWarn = mock();
 const loggerError = mock();
 const loggerDebug = mock();
 
-mock.module("../../bluebubbles/route", () => ({
-  handleBlueBubblesWebhook: mock(async () => Response.json({ success: true })),
-  handleBlueBubblesWebhookPayload: mock(async () =>
-    Response.json({ success: true }),
-  ),
-}));
-
 mock.module("@/lib/middleware/rate-limit-hono-cloudflare", () => ({
   RateLimitPresets: { AGGRESSIVE: {} },
   rateLimit: () => async (_context: unknown, next: () => Promise<void>) =>

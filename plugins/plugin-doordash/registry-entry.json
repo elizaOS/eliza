@@ -1,0 +1,28 @@
+{
+  "id": "doordash",
+  "name": "DoorDash",
+  "description": "Search DoorDash restaurants, browse menus, manage carts, preview checkout, and track orders through a configured MCP adapter. Final checkout requires explicit preview-bound confirmation.",
+  "npmName": "@elizaos/plugin-doordash",
+  "version": "2.0.3-beta.7",
+  "source": "bundled",
+  "tags": ["doordash", "food", "delivery", "ordering", "mcp"],
+  "config": {
+    "features.doordash": false
+  },
+  "render": {
+    "visible": true,
+    "pinTo": [],
+    "style": "card",
+    "icon": "ShoppingBag",
+    "group": "connectors",
+    "groupOrder": 30,
+    "actions": ["enable", "configure"]
+  },
+  "resources": {
+    "homepage": "https://github.com/elizaos/eliza#readme",
+    "repository": "https://github.com/elizaos/eliza"
+  },
+  "dependsOn": ["mcp"],
+  "kind": "plugin",
+  "subtype": "connector"
+}

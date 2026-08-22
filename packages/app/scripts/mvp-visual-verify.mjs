@@ -129,6 +129,20 @@ async function loadReportIndex(inputDir) {
   return { index, present: true, count: findings.length };
 }
 
+/** Preserve the complete OCR transcript in the review artifact. The contact
+ * sheet already renders it in a scrollable cell, so shortening it here only
+ * hides evidence without protecting layout or resource admission. */
+export function buildOcrEvidence(ocr) {
+  return ocr.available
+    ? {
+        available: true,
+        words: ocr.words,
+        chars: ocr.chars,
+        text: ocr.text,
+      }
+    : { available: false, reason: ocr.reason };
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   if (args.help) {
@@ -226,14 +240,7 @@ async function main() {
           slug,
           viewport: vp.name,
           screenshot: path.relative(outDir, currentPath),
-          ocr: ocr.available
-            ? {
-                available: true,
-                words: ocr.words,
-                chars: ocr.chars,
-                text: ocr.text.slice(0, 4000),
-              }
-            : { available: false, reason: ocr.reason },
+          ocr: buildOcrEvidence(ocr),
           palette: {
             buckets: Object.fromEntries(
               Object.entries(palette.buckets).map(([k, v]) => [

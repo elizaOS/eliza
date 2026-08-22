@@ -30,6 +30,7 @@ import {
   type DiscordInstallWelcomeJob,
   DiscordInstallWelcomeQueue,
 } from "./discord-install-welcome-queue";
+import { chunkDiscordText, discordChunkNonce } from "./discord-text-chunks";
 import {
   type DiscordConnectionDmPolicyState,
   isDmSenderAllowed,
@@ -319,6 +320,12 @@ interface HealthStatus {
   totalGuilds: number;
   uptime: number;
   draining: boolean;
+  systemBot: {
+    enabled: boolean;
+    configured: boolean;
+    leader: boolean;
+    connected: boolean;
+  };
   controlPlane: {
     consecutiveFailures: number;
     lastSuccessfulPoll: string | null;
@@ -1669,9 +1676,9 @@ export class GatewayManager {
       );
 
       if (response) {
-        const truncated =
-          response.length > 2000 ? response.slice(0, 2000) : response;
-        await message.reply(truncated);
+        for (const chunk of chunkDiscordText(response)) {
+          await message.reply(chunk);
+        }
       }
 
       conn.eventsRouted++;
@@ -2722,20 +2729,25 @@ export class GatewayManager {
       }
 
       const replyText = routed.replyText.trim();
-      const truncated =
-        replyText.length > 2000 ? replyText.slice(0, 2000) : replyText;
-      const replyOptions = buildManagedReplyOptions(
-        message.id,
-        truncated,
-        routed.replyCta,
-      );
+      const replyChunks = chunkDiscordText(replyText);
       const failureOptions = buildManagedFailureReplyOptions(message.id);
       const delivery = await deliverManagedReply({
-        sendReply: async () =>
-          classifyManagedReplyReceipt(
-            await message.reply(replyOptions),
-            replyOptions,
-          ),
+        sendReply: async () => {
+          let delivered = false;
+          for (let index = 0; index < replyChunks.length; index += 1) {
+            const replyOptions = buildManagedReplyOptions(
+              discordChunkNonce(message.id, index),
+              replyChunks[index] ?? "",
+              index === replyChunks.length - 1 ? routed.replyCta : null,
+            );
+            const receipt = classifyManagedReplyReceipt(
+              await message.reply(replyOptions),
+              replyOptions,
+            );
+            if (receipt === "delivered") delivered = true;
+          }
+          return delivered ? "delivered" : "deduplicated";
+        },
         sendFailureNotice: async () =>
           classifyManagedReplyReceipt(
             await message.reply(failureOptions),
@@ -2794,6 +2806,17 @@ export class GatewayManager {
       this.consecutivePollFailures >= CRITICAL_FAILURE_THRESHOLD;
     const controlPlaneReady =
       this.lastSuccessfulPoll !== null && !controlPlaneLost;
+    const systemBotEnabled =
+      process.env.ELIZA_APP_DISCORD_BOT_ENABLED === "true";
+    const systemBotConfigured = Boolean(
+      process.env.ELIZA_APP_DISCORD_BOT_TOKEN?.trim() && this.redis,
+    );
+    const systemBotConnected = Boolean(
+      this.isElizaAppLeader && this.elizaAppClient?.isReady(),
+    );
+    const systemBotDegraded =
+      systemBotEnabled &&
+      (!systemBotConfigured || (this.isElizaAppLeader && !systemBotConnected));
 
     // Note: draining pods are still "healthy" for liveness (don't restart)
     // but will fail readiness (don't accept new work)
@@ -2801,9 +2824,11 @@ export class GatewayManager {
       ? "unhealthy"
       : totalBots > 0 && connectedBots === 0
         ? "unhealthy"
-        : disconnectedBots > 0
+        : systemBotDegraded
           ? "degraded"
-          : "healthy";
+          : disconnectedBots > 0
+            ? "degraded"
+            : "healthy";
 
     return {
       status,
@@ -2814,6 +2839,12 @@ export class GatewayManager {
       totalGuilds,
       uptime: Date.now() - this.startTime.getTime(),
       draining: this.draining,
+      systemBot: {
+        enabled: systemBotEnabled,
+        configured: systemBotConfigured,
+        leader: this.isElizaAppLeader,
+        connected: systemBotConnected,
+      },
       controlPlane: {
         consecutiveFailures: this.consecutivePollFailures,
         lastSuccessfulPoll: this.lastSuccessfulPoll?.toISOString() ?? null,
@@ -2887,6 +2918,34 @@ export class GatewayManager {
         pod,
         h.controlPlane.healthy ? 1 : 0,
       ),
+      metric(
+        "discord_gateway_system_bot_enabled",
+        "gauge",
+        "Eliza App system bot is enabled (1=enabled, 0=disabled)",
+        pod,
+        h.systemBot.enabled ? 1 : 0,
+      ),
+      metric(
+        "discord_gateway_system_bot_configured",
+        "gauge",
+        "Eliza App system bot has token and leader-election storage (1=configured, 0=missing)",
+        pod,
+        h.systemBot.configured ? 1 : 0,
+      ),
+      metric(
+        "discord_gateway_system_bot_leader",
+        "gauge",
+        "Pod owns Eliza App system-bot leadership (1=leader, 0=standby)",
+        pod,
+        h.systemBot.leader ? 1 : 0,
+      ),
+      metric(
+        "discord_gateway_system_bot_connected",
+        "gauge",
+        "Leader-owned Eliza App system bot is connected (1=connected, 0=not connected)",
+        pod,
+        h.systemBot.connected ? 1 : 0,
+      ),
     ];
 
     for (const [id, conn] of this.connections) {
@@ -2906,6 +2965,7 @@ export class GatewayManager {
   }
 
   getStatus(): Record<string, unknown> {
+    const health = this.getHealth();
     return {
       podName: this.config.podName,
       startTime: this.startTime.toISOString(),
@@ -2916,6 +2976,7 @@ export class GatewayManager {
         consecutiveFailures: this.consecutivePollFailures,
         lastSuccessfulPoll: this.lastSuccessfulPoll?.toISOString() ?? null,
       },
+      systemBot: health.systemBot,
       connections: [...this.connections.entries()].map(([id, c]) => ({
         connectionId: id,
         organizationId: c.organizationId,

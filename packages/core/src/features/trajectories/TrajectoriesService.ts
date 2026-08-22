@@ -35,7 +35,6 @@ import {
 import {
 	parseTrajectorySemanticStages,
 	recordedStageToSemanticStage,
-	TRAJECTORY_SEMANTIC_STAGES_MAX_ITEMS,
 	type TrajectorySemanticStageRecord,
 } from "../../services/trajectory-semantic-stage";
 import type { TrajectoryRuntimeLlmCallParams } from "../../trajectory-utils";
@@ -1065,7 +1064,7 @@ export class TrajectoriesService extends Service {
 	private stepToTrajectory: Map<string, string> = new Map();
 	private writeQueues: Map<string, Promise<void>> = new Map();
 	private inflightOperations: Set<Promise<unknown>> = new Set();
-	private closedStepIds: Map<string, true> = new Map();
+	private closedStepIds: Map<string, number> = new Map();
 
 	private acceptsNewCapture(): boolean {
 		return this.enabled && !this.stopping;
@@ -1073,7 +1072,7 @@ export class TrajectoriesService extends Service {
 
 	private rememberClosedStep(stepId: string): void {
 		this.closedStepIds.delete(stepId);
-		this.closedStepIds.set(stepId, true);
+		this.closedStepIds.set(stepId, Date.now());
 		while (this.closedStepIds.size > 10_000) {
 			const oldest = this.closedStepIds.keys().next().value;
 			if (typeof oldest !== "string") break;
@@ -1081,20 +1080,58 @@ export class TrajectoriesService extends Service {
 		}
 	}
 
+	/** Accept a capture that arrived shortly after terminalization instead of
+	 *  dropping it. The async step-resolution branch of logLlmCall/logProviderCall
+	 *  takes the write lock only after resolving its trajectory id, so a turn
+	 *  ending right after its last planner leg raced that write and the stored
+	 *  trajectory lost exactly the tool-call legs it exists to show (live all
+	 *  week). Appending within a bounded grace window records the leg without
+	 *  touching finalStatus/endTime; genuinely stale writes (crash leftovers,
+	 *  replays) still reject past the window. */
+	// Must cover the post-delivery side-effect window (reflection/memory
+	// evaluators run up to ELIZA_POST_DELIVERY_SIDE_EFFECT_TIMEOUT_MS after
+	// delivery — 90s on the reference deployment) or their model calls reject
+	// as late captures; 30s demonstrably did not (3 rejects in one boot).
+	private static readonly LATE_CAPTURE_GRACE_MS = 120_000;
+
+	/** Entry-gate twin of {@link withinLateCaptureGrace}: a step closed at
+	 *  terminalization still admits captures for the same grace window. */
+	private stepClosedBeyondGrace(stepId: string): boolean {
+		const closedAt = this.closedStepIds.get(stepId);
+		return (
+			closedAt !== undefined &&
+			Date.now() - closedAt > TrajectoriesService.LATE_CAPTURE_GRACE_MS
+		);
+	}
+
+	private withinLateCaptureGrace(trajectory: { endTime?: number }): boolean {
+		return (
+			typeof trajectory.endTime === "number" &&
+			Date.now() - trajectory.endTime <=
+				TrajectoriesService.LATE_CAPTURE_GRACE_MS
+		);
+	}
+
 	private reportLateCapture(
 		stepId: string,
 		captureType: "llm" | "provider" | "semanticStage",
+		ageMs?: number,
 	): void {
+		// Context inline in the message: the pretty transport drops structured
+		// warn payloads, and diagnosing this race blind cost two wrong fixes
+		// (30s grace, then 120s). The age names the class directly.
+		const age =
+			typeof ageMs === "number" ? `${Math.round(ageMs / 1000)}s` : "unknown";
 		const error = new ElizaError(
-			"Trajectory capture arrived after terminalization",
+			`Trajectory capture arrived after terminalization (step=${stepId.slice(0, 12)} type=${captureType} age=${age})`,
 			{
 				code: "TRAJECTORY_OWNER_CLOSED",
-				context: { stepId, captureType },
+				context: { stepId, captureType, ageMs },
 			},
 		);
 		logger.warn(
-			{ err: error, stepId, captureType },
-			"[trajectory-logger] Rejected late trajectory capture",
+			{ err: error, stepId, captureType, ageMs },
+			`[trajectory-logger] Rejected late trajectory capture (step=${stepId.slice(0, 12)} type=${captureType} age=${age})`,
 		);
 		this.runtime.reportError("TrajectoriesService.lateCapture", error, {
 			stepId,
@@ -1932,8 +1969,12 @@ export class TrajectoriesService extends Service {
 	logLlmCall(params: TrajectoryRuntimeLlmCallParams): void {
 		if (!this.acceptsNewCapture()) return;
 		if (isEmbeddingLlmCall(params)) return;
-		if (this.closedStepIds.has(params.stepId)) {
-			this.reportLateCapture(params.stepId, "llm");
+		if (this.stepClosedBeyondGrace(params.stepId)) {
+			this.reportLateCapture(
+				params.stepId,
+				"llm",
+				Date.now() - (this.closedStepIds.get(params.stepId) ?? Date.now()),
+			);
 			return;
 		}
 
@@ -2016,10 +2057,19 @@ export class TrajectoriesService extends Service {
 		await this.withTrajectoryWriteLock(trajectoryId, async () => {
 			const trajectory = await this.getTrajectoryById(trajectoryId);
 			if (!trajectory) return;
-			if (trajectory.metrics.finalStatus !== "active") {
+			if (
+				trajectory.metrics.finalStatus !== "active" &&
+				!this.withinLateCaptureGrace(trajectory)
+			) {
 				this.rememberClosedStep(params.stepId);
 				this.releaseTrajectoryRouting(trajectoryId);
-				this.reportLateCapture(params.stepId, "llm");
+				this.reportLateCapture(
+					params.stepId,
+					"llm",
+					typeof trajectory.endTime === "number"
+						? Date.now() - trajectory.endTime
+						: undefined,
+				);
 				return;
 			}
 
@@ -2208,73 +2258,30 @@ export class TrajectoriesService extends Service {
 				}
 				return;
 			}
-			// Bounds are expected diagnostics, not write faults, and must be
-			// reported *inside* the lock task rather than thrown out of it. The
-			// task's promise is what `withTrajectoryWriteLock` stores in
-			// `writeQueues`, and `flushWriteQueue` deliberately rethrows that
-			// promise as an awaited persistence barrier (J2). Throwing here would
-			// therefore let a stage bound — reachable on any turn that emits more
-			// stages than the cap — reject the turn's own flush, which is exactly
-			// what a diagnostics mirror must never do.
-			if (stages.length >= TRAJECTORY_SEMANTIC_STAGES_MAX_ITEMS) {
-				this.reportDetachedWriteFailure(
-					"[trajectory-logger] Dropped a semantic stage: step is at the stage cap",
-					{
-						trajectoryId,
-						stepId,
-						stageId: semantic.stageId,
-						limit: TRAJECTORY_SEMANTIC_STAGES_MAX_ITEMS,
-					},
-					new ElizaError("Trajectory step semantic stages are full", {
-						code: "TRAJECTORY_SEMANTIC_STAGE_OVERFLOW",
-						context: {
-							trajectoryId,
-							stepId,
-							limit: TRAJECTORY_SEMANTIC_STAGES_MAX_ITEMS,
-						},
-					}),
-				);
-				return;
-			}
 			const nextStages = [...stages, semantic];
-			// Write ⊆ read by construction. `parseTrajectorySemanticStage` gives
-			// each stage a fresh validation budget on the way in, but the read
-			// path (`normalizeTrajectoryStep`) shares one budget across the whole
-			// array — so a run of individually-valid stages can decode to an
-			// invalid array. That is not recoverable on read: the step
-			// normalizes to null and `getTrajectoryById` throws
-			// TRAJECTORY_ROW_INVALID for the *entire* trajectory, taking every
-			// other step, llmCall, and providerAccess with it, and making the row
-			// unwritable too. Validating the candidate array with the read-path
-			// decoder before persisting keeps that state unreachable: the stage
-			// that would exceed the aggregate budget is rejected as a J7
-			// diagnostic instead, exactly like a cap overflow.
+			// Write subset read: validate the combined stage array before persistence.
 			try {
 				parseTrajectorySemanticStages(nextStages);
 			} catch (cause) {
-				// error-policy:J7 an exceeded decode budget is a diagnostics bound:
-				// report and drop the stage, never poison the row or the flush.
+				// error-policy:J7 invalid diagnostic data must not poison the row or flush.
 				this.reportDetachedWriteFailure(
-					"[trajectory-logger] Dropped a semantic stage: step would exceed the stage decode budget",
+					"[trajectory-logger] Dropped an invalid semantic stage",
 					{
 						trajectoryId,
 						stepId,
 						stageId: semantic.stageId,
 						stageCount: nextStages.length,
 					},
-					new ElizaError(
-						"Trajectory step semantic stages exceed the decode budget",
-						{
-							code: "TRAJECTORY_SEMANTIC_STAGE_BUDGET_EXCEEDED",
-							context: {
-								trajectoryId,
-								stepId,
-								stageId: semantic.stageId,
-								stageCount: nextStages.length,
-							},
-							cause,
+					new ElizaError("Trajectory step semantic stages are invalid", {
+						code: "TRAJECTORY_SEMANTIC_STAGE_INVALID",
+						context: {
+							trajectoryId,
+							stepId,
+							stageId: semantic.stageId,
+							stageCount: nextStages.length,
 						},
-					),
+						cause,
+					}),
 				);
 				return;
 			}
@@ -2432,8 +2439,12 @@ export class TrajectoriesService extends Service {
 						query: arg2?.query,
 					}
 				: arg1;
-		if (this.closedStepIds.has(params.stepId)) {
-			this.reportLateCapture(params.stepId, "provider");
+		if (this.stepClosedBeyondGrace(params.stepId)) {
+			this.reportLateCapture(
+				params.stepId,
+				"provider",
+				Date.now() - (this.closedStepIds.get(params.stepId) ?? Date.now()),
+			);
 			return;
 		}
 
@@ -2504,10 +2515,19 @@ export class TrajectoriesService extends Service {
 		await this.withTrajectoryWriteLock(trajectoryId, async () => {
 			const trajectory = await this.getTrajectoryById(trajectoryId);
 			if (!trajectory) return;
-			if (trajectory.metrics.finalStatus !== "active") {
+			if (
+				trajectory.metrics.finalStatus !== "active" &&
+				!this.withinLateCaptureGrace(trajectory)
+			) {
 				this.rememberClosedStep(params.stepId);
 				this.releaseTrajectoryRouting(trajectoryId);
-				this.reportLateCapture(params.stepId, "provider");
+				this.reportLateCapture(
+					params.stepId,
+					"provider",
+					typeof trajectory.endTime === "number"
+						? Date.now() - trajectory.endTime
+						: undefined,
+				);
 				return;
 			}
 

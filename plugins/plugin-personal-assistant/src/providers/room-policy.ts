@@ -19,7 +19,7 @@ import type {
   ProviderResult,
   State,
 } from "@elizaos/core";
-import { logger, toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
+import { logger, toWellFormedUnicode } from "@elizaos/core";
 import {
   describeResumeCondition,
   resolveHandoffStore,
@@ -30,8 +30,6 @@ const QUIET_RESULT: ProviderResult = {
   values: { roomInHandoff: false },
   data: {},
 };
-
-const ONE_LINE_MAX = 240;
 
 export const roomPolicyProvider: Provider = {
   name: "roomPolicy",
@@ -88,10 +86,7 @@ export const roomPolicyProvider: Provider = {
     const directive =
       `This room is in handoff mode (since ${status.enteredAt ?? "earlier"}; reason: ${status.reason ?? "n/a"}). ` +
       `Do not respond unless ${resumePhrase}. Stay silent — defer to the human participants.`;
-    const text = truncateWellFormed(
-      toWellFormedUnicode(directive),
-      ONE_LINE_MAX,
-    );
+    const text = toWellFormedUnicode(directive);
     return {
       text,
       values: {

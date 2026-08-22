@@ -832,6 +832,33 @@ describe("ensureLocalInferenceHandler", () => {
 		);
 	});
 
+	it("adds Eliza turn markers to caller stop sequences", async () => {
+		const { registrations, runtime } = makeRuntime();
+		engineState.hasLoadedModel.mockReturnValue(true);
+
+		await ensureLocalInferenceHandler(runtime);
+		const handler = findRegisteredHandler(
+			registrations,
+			ModelType.RESPONSE_HANDLER,
+		);
+
+		await handler(runtime, {
+			messages: [{ role: "user", content: "hello" }],
+			stopSequences: ["CUSTOM", "<end_of_turn>"],
+		});
+
+		expect(engineState.generate).toHaveBeenCalledWith(
+			expect.objectContaining({
+				stopSequences: [
+					"CUSTOM",
+					"<end_of_turn>",
+					"<start_of_turn>",
+					"<endoftext>",
+				],
+			}),
+		);
+	});
+
 	it("does not wire onTextChunk for a non-streaming request", async () => {
 		// Non-streaming callers must not pay the per-chunk callback overhead:
 		// engineGenerateArgsFromParams only bridges the callback when the caller

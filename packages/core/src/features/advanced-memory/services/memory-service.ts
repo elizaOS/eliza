@@ -119,7 +119,6 @@ export class MemoryService extends Service {
 			longTermExtractionInterval: 10,
 			summaryModelType: ModelType.TEXT_NANO,
 			summaryMaxTokens: 2500,
-			summaryMaxNewMessages: 20,
 		};
 	}
 
@@ -200,14 +199,6 @@ export class MemoryService extends Service {
 			);
 		}
 
-		const maxNewMessages = runtime.getSetting("MEMORY_MAX_NEW_MESSAGES");
-		if (maxNewMessages) {
-			this.memoryConfig.summaryMaxNewMessages = Number.parseInt(
-				String(maxNewMessages),
-				10,
-			);
-		}
-
 		const longTermEnabled = runtime.getSetting("MEMORY_LONG_TERM_ENABLED");
 		if (longTermEnabled === "false" || longTermEnabled === false) {
 			this.memoryConfig.longTermExtractionEnabled = false;
@@ -235,11 +226,28 @@ export class MemoryService extends Service {
 		}
 
 		const extractionInterval = runtime.getSetting("MEMORY_EXTRACTION_INTERVAL");
-		if (extractionInterval) {
-			this.memoryConfig.longTermExtractionInterval = Number.parseInt(
-				String(extractionInterval),
-				10,
-			);
+		if (
+			extractionInterval !== undefined &&
+			extractionInterval !== null &&
+			extractionInterval !== ""
+		) {
+			// This value is a DIVISOR in shouldRunExtraction:
+			//   Math.floor(currentMessageCount / interval) * interval
+			// `Number.parseInt` truncates, so "0.5" became 0 and the checkpoint
+			// became NaN — and every comparison against NaN is false, so
+			// extraction silently never ran again. A negative value is the
+			// mirror failure: the checkpoint always exceeds the last one, so it
+			// runs on every message. Only a positive whole number is usable;
+			// anything else keeps the documented default.
+			const raw = String(extractionInterval).trim();
+			const parsed = /^\+?\d+$/.test(raw) ? Number(raw) : Number.NaN;
+			if (Number.isSafeInteger(parsed) && parsed > 0) {
+				this.memoryConfig.longTermExtractionInterval = parsed;
+			} else {
+				logger.warn(
+					`[MemoryService] ignoring MEMORY_EXTRACTION_INTERVAL=${JSON.stringify(String(extractionInterval))}; expected a positive whole number, keeping ${this.memoryConfig.longTermExtractionInterval}`,
+				);
+			}
 		}
 
 		const configuredModelType = resolveConfiguredTextGenerationModelType(
@@ -255,7 +263,6 @@ export class MemoryService extends Service {
 				summarizationThreshold:
 					this.memoryConfig.shortTermSummarizationThreshold,
 				summarizationInterval: this.memoryConfig.shortTermSummarizationInterval,
-				maxNewMessages: this.memoryConfig.summaryMaxNewMessages,
 				retainRecent: this.memoryConfig.shortTermRetainRecent,
 				longTermEnabled: this.memoryConfig.longTermExtractionEnabled,
 				extractionThreshold: this.memoryConfig.longTermExtractionThreshold,
@@ -449,9 +456,9 @@ export class MemoryService extends Service {
 	async getLongTermMemories(
 		entityId: UUID,
 		category?: LongTermMemoryCategory,
-		limit = 10,
+		limit?: number,
 	): Promise<LongTermMemory[]> {
-		if (limit <= 0) return [];
+		if (limit !== undefined && limit <= 0) return [];
 		const storage = await this.getStorage();
 		if (!storage) return [];
 		const entityIds = await getRelatedEntityIds(this.runtime, entityId);
@@ -460,7 +467,7 @@ export class MemoryService extends Service {
 				entityIds.map((relatedEntityId) =>
 					storage.getLongTermMemories(this.runtime.agentId, relatedEntityId, {
 						category,
-						limit,
+						...(limit === undefined ? {} : { limit }),
 					}),
 				),
 			)
@@ -473,9 +480,10 @@ export class MemoryService extends Service {
 		for (const memory of memories) {
 			if (!deduped.has(memory.id)) deduped.set(memory.id, memory);
 		}
-		return [...deduped.values()]
-			.sort((left, right) => memoryCreatedAtMs(right) - memoryCreatedAtMs(left))
-			.slice(0, limit);
+		const sorted = [...deduped.values()].sort(
+			(left, right) => memoryCreatedAtMs(right) - memoryCreatedAtMs(left),
+		);
+		return limit === undefined ? sorted : sorted.slice(0, limit);
 	}
 
 	async updateLongTermMemory(

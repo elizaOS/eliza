@@ -97,6 +97,7 @@ describe("DockerSandboxProvider remote runtime mode", () => {
         agentId: "11111111-1111-4111-8111-111111111111",
         agentName: "Remote pairing guard",
         organizationId: "22222222-2222-4222-8222-222222222222",
+        executionTier: "dedicated-always",
         environmentVars: callerEnvironment,
       }),
     ).rejects.toThrow("captured remote create config");
@@ -127,6 +128,7 @@ describe("DockerSandboxProvider remote runtime mode", () => {
         agentId: "11111111-1111-4111-8111-111111111111",
         agentName: "Execution key guard",
         organizationId: "22222222-2222-4222-8222-222222222222",
+        executionTier: "dedicated-always",
         environmentVars: {
           ELIZA_TERMINAL_RUN_TOKEN: "caller-set",
           SKILLS_REGISTRY: "https://attacker.example",

@@ -25,16 +25,12 @@ test("shows all five rooms and their native attachment prototypes", async ({
   ).toHaveCount(21);
   await expect(
     page.locator(
-      '[data-demo-review-room]:not([data-demo-review-room="friends"]):not([data-demo-review-room="household"])',
+      '[data-demo-review-room="co-parenting"] [data-demo-review-step], [data-demo-review-room="trip"] [data-demo-review-step]',
     ),
-  ).toHaveCount(3);
-  for (const room of await page
-    .locator(
-      '[data-demo-review-room]:not([data-demo-review-room="friends"]):not([data-demo-review-room="household"])',
-    )
-    .all()) {
-    await expect(room.locator("[data-demo-review-step]")).toHaveCount(21);
-  }
+  ).toHaveCount(42);
+  await expect(
+    page.locator('[data-demo-review-room="community"] [data-demo-review-step]'),
+  ).toHaveCount(20);
   await expect(page.locator(".landing-demo-card")).toHaveCount(0);
   await expect(page.locator(".landing-place-attachment")).toHaveCount(1);
   await expect(page.locator(".landing-task-list-attachment")).toHaveCount(1);
@@ -52,16 +48,14 @@ test("shows all five rooms and their native attachment prototypes", async ({
   await expect(page.locator(".landing-itinerary-head")).toHaveText("Plan");
   await expect(page.locator(".landing-itinerary-head small")).toHaveCount(0);
   await expect(page.locator(".landing-itinerary-copy small")).toHaveCount(0);
-  await expect(page.locator(".landing-heat-plan-attachment")).toHaveCount(1);
-  await expect(page.locator(".landing-heat-plan-head > svg")).toHaveCount(1);
-  await expect(page.locator(".landing-heat-plan-head small")).toHaveCount(0);
+  await expect(page.locator(".landing-heat-plan-attachment")).toHaveCount(0);
   await expect(page.locator(".landing-place-fit")).toHaveCount(0);
   await expect(
     page.locator(".landing-task-list-attachment footer"),
   ).toHaveCount(0);
   await expect(
     page.locator(
-      ".landing-place-attachment footer, .landing-handoff-attachment footer, .landing-itinerary-attachment footer, .landing-heat-plan-attachment footer",
+      ".landing-place-attachment footer, .landing-handoff-attachment footer, .landing-itinerary-attachment footer",
     ),
   ).toHaveCount(0);
   await expect(

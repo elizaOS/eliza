@@ -41,7 +41,6 @@ import {
   TRACE_ENV,
   type TrajectoryUsageRollup,
   toWellFormedUnicode,
-  truncateWellFormed,
   type UUID,
 } from "@elizaos/core";
 import {
@@ -155,7 +154,6 @@ import { OrchestratorTaskStore } from "./orchestrator-task-store.js";
 import {
   type AttemptReflection,
   type CreateTaskInput,
-  MAX_ATTEMPT_REFLECTIONS,
   MAX_SESSION_RETRY_ATTEMPTS,
   nextTaskStatus,
   type OrchestratorAccountAssignment,
@@ -309,9 +307,8 @@ function configuredDefaultAgentType(runtime: {
   // Fall back to process.env. runtime.getSetting reads character
   // settings/secrets, not raw env, so a deployment that configures the default
   // agent purely via an env var (e.g. ELIZA_ACP_DEFAULT_AGENT=codex on a
-  // container) would otherwise be ignored and the spawn would fall through to
-  // the "opencode" fallback, which may not be installed. This mirrors the env
-  // resolution the spawn-workdir path already does.
+  // container) would otherwise be ignored. This mirrors the env resolution the
+  // spawn-workdir path already does.
   for (const key of ["ELIZA_ACP_DEFAULT_AGENT", "ELIZA_DEFAULT_AGENT_TYPE"]) {
     const raw = process.env[key];
     if (typeof raw === "string" && raw.trim().length > 0) return raw.trim();
@@ -323,10 +320,6 @@ function configuredDefaultAgentType(runtime: {
  *  read-only execution verifier (#8898), distinct from the text judge's
  *  `llm-goal-verifier`, so the validation event's origin is unambiguous. */
 const INDEPENDENT_ACP_VERIFIER_NAME = "independent-acp-verifier";
-
-/** Cap on child trajectories ingested per task_complete (#13775) so a runaway
- *  sub-agent can't flood the task doc; the store's MAX_ARTIFACTS also clamps. */
-const MAX_CHILD_TRAJECTORY_ARTIFACTS = 20;
 
 /** Default retention window for per-task child-trajectory dirs under the state
  *  dir (#14109). A per-task `<stateDir>/orchestrator/child-trajectories/<taskId>`
@@ -627,11 +620,8 @@ function readAttemptReflections(
   return out;
 }
 
-function truncate(text: string, max = 2000): string {
-  const wellFormed = toWellFormedUnicode(text);
-  return wellFormed.length > max
-    ? `${truncateWellFormed(wellFormed, max)}…`
-    : wellFormed;
+function normalizeTaskText(text: string): string {
+  return toWellFormedUnicode(text);
 }
 
 /**
@@ -844,7 +834,7 @@ function eventExcerpt(
 ): string {
   const data =
     Object.keys(event.data).length > 0
-      ? `\nData: ${truncate(JSON.stringify(event.data), 1200)}`
+      ? `\nData: ${normalizeTaskText(JSON.stringify(event.data))}`
       : "";
   return `Event ${event.id} (${event.eventType}): ${event.summary}${data}`;
 }
@@ -863,7 +853,7 @@ function retryInstruction(
     lines.push(
       "",
       `Source message ${source.id} (${source.senderKind}/${source.direction}):`,
-      truncate(source.content),
+      normalizeTaskText(source.content),
     );
   }
   return lines.join("\n");
@@ -892,7 +882,7 @@ function withPlanRevisionContext(
     `Revision: ${revision.id}`,
   ];
   if (revision.editSummary) lines.push(`Summary: ${revision.editSummary}`);
-  lines.push(`Plan: ${truncate(JSON.stringify(revision.plan), 2000)}`);
+  lines.push(`Plan: ${normalizeTaskText(JSON.stringify(revision.plan))}`);
   return lines.join("\n");
 }
 
@@ -964,21 +954,21 @@ function describeEvent(event: string, data: unknown): string {
       return `Running ${title}`;
     }
     case "message":
-      return truncate(str(record.text) ?? "Sub-agent message", 160);
+      return normalizeTaskText(str(record.text) ?? "Sub-agent message");
     case "reasoning":
-      return truncate(str(record.text) ?? "Sub-agent reasoning", 160);
+      return normalizeTaskText(str(record.text) ?? "Sub-agent reasoning");
     case "plan": {
       const count = Array.isArray(record.entries) ? record.entries.length : 0;
       return `Updated plan — ${count} item${count === 1 ? "" : "s"}`;
     }
     case "blocked":
-      return truncate(str(record.message) ?? "Blocked on input", 160);
+      return normalizeTaskText(str(record.message) ?? "Blocked on input");
     case "login_required":
       return "Sub-agent requires authentication";
     case "task_complete":
       return "Sub-agent reported completion (pending validation)";
     case "error":
-      return truncate(str(record.message) ?? "Sub-agent error", 160);
+      return normalizeTaskText(str(record.message) ?? "Sub-agent error");
     case "stopped":
       return "Sub-agent stopped";
     case "reconnected":
@@ -1179,7 +1169,7 @@ export class OrchestratorTaskService extends Service {
   private subscribeToAcp(acp: AcpService): void {
     this.unsubscribe = acp.onSessionEvent(
       (sessionId, event, data, sessionSnapshot, turnId) => {
-        void this.onSessionEvent(
+        return this.onSessionEvent(
           sessionId,
           event,
           data,
@@ -1645,6 +1635,10 @@ export class OrchestratorTaskService extends Service {
           note: "further event-record failures for this session are suppressed",
         });
       }
+      // Account identity is an authority boundary: its caller awaits this
+      // consumer before exposing failover credentials to a child. Other
+      // telemetry events retain their established diagnostics-only behavior.
+      if (event === "account_switched") throw err;
     }
   }
 
@@ -1733,7 +1727,7 @@ export class OrchestratorTaskService extends Service {
           {
             status: "completed",
             taskDelivered: true,
-            completionSummary: summary ? truncate(summary) : undefined,
+            completionSummary: summary,
             stoppedAt: Date.now(),
           },
           taskId,
@@ -2249,10 +2243,7 @@ export class OrchestratorTaskService extends Service {
     const freshFiles = files.filter((path) => !existingArtifactPaths.has(path));
     if (freshFiles.length === 0) return [];
 
-    // Newest first, capped so a runaway child can't flood the task doc; the
-    // store's MAX_ARTIFACTS also clamps. Cap applies to genuinely-new files only
-    // so a large already-ingested backlog can't starve fresh trajectories out of
-    // the window.
+    // Newest first while retaining every genuinely new trajectory.
     const withMtime = await Promise.all(
       freshFiles.map(async (path) => ({
         path,
@@ -2260,11 +2251,10 @@ export class OrchestratorTaskService extends Service {
       })),
     );
     withMtime.sort((a, b) => b.mtimeMs - a.mtimeMs);
-    const capped = withMtime.slice(0, MAX_CHILD_TRAJECTORY_ARTIFACTS);
 
     const session = (await this.store.findSession(sessionId, taskId))?.session;
     const ingested: string[] = [];
-    for (const { path } of capped) {
+    for (const { path } of withMtime) {
       // The recorder names files `<trajectoryId>.json`.
       const trajectoryId = basename(path, ".json");
       await this.store.addArtifact({
@@ -4419,7 +4409,7 @@ export class OrchestratorTaskService extends Service {
     const attemptReflections = [
       ...readAttemptReflections(doc.task.metadata),
       { attempt: attempt + 1, missing, summary },
-    ].slice(-MAX_ATTEMPT_REFLECTIONS);
+    ];
     await this.store.updateTask(taskId, {
       metadata: {
         ...doc.task.metadata,

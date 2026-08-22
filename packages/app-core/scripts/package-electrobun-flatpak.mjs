@@ -162,6 +162,7 @@ export async function writeMetadata(filesDir, relativeLauncher) {
       `  <project_license>MIT</project_license>\n` +
       `  <name>Eliza</name>\n` +
       `  <summary>Your AI assistant, everywhere</summary>\n` +
+      `  <developer id="ai.elizaos"><name>elizaOS</name></developer>\n` +
       `  <description><p>Eliza is the elizaOS desktop application for chat, account setup, agents, and connected services.</p></description>\n` +
       `  <url type="homepage">https://elizaos.ai</url>\n` +
       `  <url type="bugtracker">https://github.com/elizaOS/eliza/issues</url>\n` +

@@ -1,5 +1,5 @@
 /**
- * Verifies that string truncation across agent-orchestrator components
+ * Verifies that complete strings across agent-orchestrator components
  * (spawn acks, completion summaries, failure reasons, activity summaries,
  * tool outputs, and evidence strings) never splits UTF-16 surrogate pairs
  * and sanitizes lone surrogates before output.
@@ -14,17 +14,16 @@ import {
 } from "../../src/index.js";
 import {
   buildEvidenceStringFromInput,
-  clamp,
+  normalizeEvidenceText,
 } from "../../src/services/completion-evidence.js";
 
 describe("agent-orchestrator surrogate safety", () => {
   describe("buildSpawnAckUserPrompt", () => {
-    it("never splits surrogate pairs at the 400 char truncation boundary", () => {
-      // 396 'a's + 🦊 (2 UTF-16 code units) + 50 'b's = 448 chars
+    it("preserves the complete task across the former 400-character boundary", () => {
       const task = `${"a".repeat(396)}🦊${"b".repeat(50)}`;
       const prompt = buildSpawnAckUserPrompt(task);
       expect(prompt.isWellFormed()).toBe(true);
-      expect(prompt).toContain(`${"a".repeat(396)}…`);
+      expect(prompt).toContain(task);
     });
 
     it("sanitizes lone surrogates", () => {
@@ -36,14 +35,11 @@ describe("agent-orchestrator surrogate safety", () => {
   });
 
   describe("sanitizeSpawnAck", () => {
-    it("never splits surrogate pairs at the SPAWN_ACK_MAX_CHARS boundary", () => {
-      // SPAWN_ACK_MAX_CHARS is 120.
-      // 118 'a's + 🦊 (2 code units) + 20 'b's = 140 chars
+    it("preserves a complete acknowledgement beyond the former boundary", () => {
       const ack = `${"a".repeat(118)}🦊${"b".repeat(20)}`;
       const sanitized = sanitizeSpawnAck(ack);
       expect(sanitized.isWellFormed()).toBe(true);
-      expect(sanitized).toBe(`${"a".repeat(118)}…`);
-      expect(sanitized.length).toBe(119);
+      expect(sanitized).toBe(ack);
     });
 
     it("sanitizes lone surrogates and preserves fitting emoji", () => {
@@ -56,12 +52,11 @@ describe("agent-orchestrator surrogate safety", () => {
   });
 
   describe("extractCompletionSummary", () => {
-    it("never splits surrogate pairs at the 300 char truncation boundary", () => {
-      // 296 'a's + 🦊 (2 code units) + 50 'b's = 348 chars
+    it("preserves a complete result beyond the former 300-character boundary", () => {
       const raw = `${"a".repeat(296)}🦊${"b".repeat(50)}`;
       const summary = extractCompletionSummary(raw);
       expect(summary.isWellFormed()).toBe(true);
-      expect(summary).toBe(`${"a".repeat(296)}…`);
+      expect(summary).toBe(raw);
     });
 
     it("handles lone surrogates cleanly", () => {
@@ -73,21 +68,20 @@ describe("agent-orchestrator surrogate safety", () => {
   });
 
   describe("extractFailureReason", () => {
-    it("never splits surrogate pairs at the 160 char truncation boundary", () => {
-      // 156 'a's + 🦊 (2 code units) + 30 'b's
+    it("preserves the complete first readable failure line", () => {
       const errorOutput = `Error occurred: ${"a".repeat(156)}🦊${"b".repeat(30)}`;
       const reason = extractFailureReason(errorOutput);
       expect(reason.isWellFormed()).toBe(true);
-      expect(reason.length).toBeLessThanOrEqual(158);
+      expect(reason).toBe(errorOutput);
     });
   });
 
-  describe("completion-evidence clamp and assembly", () => {
-    it("never splits surrogate pairs at the clamp boundary", () => {
+  describe("completion-evidence normalization and assembly", () => {
+    it("preserves a complete well-formed string", () => {
       const text = `${"a".repeat(99)}🦊${"b".repeat(20)}`;
-      const clamped = clamp(text, 100);
-      expect(clamped.isWellFormed()).toBe(true);
-      expect(clamped).toContain(`${"a".repeat(99)}\n… [truncated]`);
+      const normalized = normalizeEvidenceText(text);
+      expect(normalized.isWellFormed()).toBe(true);
+      expect(normalized).toBe(text);
     });
 
     it("preserves well-formed Unicode in buildEvidenceStringFromInput", () => {

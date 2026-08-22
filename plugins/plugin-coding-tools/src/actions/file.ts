@@ -410,15 +410,28 @@ export const fileAction: Action = {
     },
     {
       name: "offset",
-      description: "For action=read, zero-based line offset.",
+      description: "For action=read, zero-based offset in the selected unit.",
       required: false,
       schema: { type: "number" },
     },
     {
       name: "limit",
-      description: "For action=read, max number of lines to return.",
+      description: "For action=read, maximum lines or UTF-8 bytes to return.",
       required: false,
       schema: { type: "number" },
+    },
+    {
+      name: "unit",
+      description: "For action=read, coordinate unit: line (default) or byte.",
+      required: false,
+      schema: { type: "string", enum: ["line", "byte"] },
+    },
+    {
+      name: "expectedRevision",
+      description:
+        "For action=read continuation, reject if the file revision changed.",
+      required: false,
+      schema: { type: "string" },
     },
     {
       name: "ignore",

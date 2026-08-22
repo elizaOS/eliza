@@ -4,8 +4,6 @@ import type { IAgentRuntime, Memory, Provider, ProviderResult, State } from "@el
 import type { CloudModelRegistryService, ModelsByProvider } from "../services/cloud-model-registry";
 
 const TTL = 300_000; // 5 minutes
-const MAX_MODEL_PROVIDERS = 12;
-const MAX_MODELS_PER_PROVIDER = 50;
 
 /**
  * Per-runtime cache using a WeakMap keyed by the runtime object.
@@ -36,10 +34,7 @@ export const modelRegistryProvider: Provider = {
 
       const cached = runtimeCaches.get(runtime);
       if (cached && Date.now() - cached.at < TTL) {
-        const cachedValue = Object.fromEntries(
-          Object.entries(cached.value).slice(0, MAX_MODEL_PROVIDERS)
-        ) as ModelsByProvider;
-        return formatModels(cachedValue);
+        return formatModels(cached.value);
       }
 
       const byProvider = await registry.getModelsByProvider();
@@ -49,10 +44,7 @@ export const modelRegistryProvider: Provider = {
       }
 
       runtimeCaches.set(runtime, { value: byProvider, at: Date.now() });
-      const capped = Object.fromEntries(
-        Object.entries(byProvider).slice(0, MAX_MODEL_PROVIDERS)
-      ) as ModelsByProvider;
-      return formatModels(capped);
+      return formatModels(byProvider);
     } catch {
       return { text: "", values: {}, data: {} };
     }
@@ -60,9 +52,9 @@ export const modelRegistryProvider: Provider = {
 };
 
 function formatModels(byProvider: ModelsByProvider): ProviderResult {
-  const providers = Object.keys(byProvider).sort().slice(0, MAX_MODEL_PROVIDERS);
+  const providers = Object.keys(byProvider).sort();
   const total = providers.reduce(
-    (n, provider) => n + byProvider[provider].slice(0, MAX_MODELS_PER_PROVIDER).length,
+    (n, provider) => n + byProvider[provider].length,
     0
   );
 

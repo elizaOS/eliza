@@ -20,13 +20,19 @@ describe("ShellViewAgentSurface", () => {
     const { dispatchViewInteract } = await import("./view-interact-registry");
 
     const onClick = vi.fn();
-    render(
+    const rendered = render(
       <ShellViewAgentSurface viewId="settings">
         <AgentButton agentId="save" onClick={onClick}>
           Save
         </AgentButton>
       </ShellViewAgentSurface>,
     );
+
+    expect(
+      rendered.container.querySelector(
+        '[data-agent-surface-view-id="settings"][data-agent-surface-kind="builtin"]',
+      ),
+    ).not.toBeNull();
 
     // list-elements through the WS interact dispatch returns the registered button.
     await dispatchViewInteract(
