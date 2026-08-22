@@ -84,7 +84,7 @@ async function saveScreenshot(page, name) {
 
 async function saveFailureScreenshot(page) {
   try {
-    await saveScreenshot(page, "firefox-manual-pair-and-sync-failure");
+    await saveScreenshot(page, "firefox-pair-and-sync-failure");
   } catch (error) {
     // error-policy:J6 Failure capture must not replace the owning smoke error.
     console.warn(
@@ -100,7 +100,7 @@ async function waitForInstalledPairingGuide(browser, timeout = 20_000) {
       try {
         if (
           (await page.title()) === "Eliza Browser" &&
-          (await page.$("#pairingJson"))
+          (await page.$("#statusTitle"))
         ) {
           return page;
         }
@@ -204,14 +204,10 @@ async function runInstalledFirefoxSmoke() {
     );
     // Firefox BiDi reports the explicitly opened extension tab as about:blank
     // even while its extension DOM is loaded, so identify it by the real DOM.
-    const popupPage = await waitForInstalledPairingGuide(browser);
+    let popupPage = await waitForInstalledPairingGuide(browser);
     // Firefox BiDi can report no clickable geometry for an installed
     // extension page whose protocol URL is stale even though its DOM is live.
-    await popupPage.evaluate(() => {
-      document.querySelector("#details").open = true;
-      document.querySelector("#recovery").open = true;
-    });
-    const pairingJson = JSON.stringify({
+    const pairingConfig = {
       apiBaseUrl: mockServer.origin,
       companionId: "companion-smoke-test",
       pairingToken: "lobr_smoke_pairing_token",
@@ -219,16 +215,34 @@ async function runInstalledFirefoxSmoke() {
       profileId: "default",
       profileLabel: "Default",
       label: "Agent Browser Bridge Firefox smoke",
-    });
-    await popupPage.$eval(
-      "#pairingJson",
-      (element, value) => {
-        element.value = value;
-        element.dispatchEvent(new Event("input", { bubbles: true }));
-      },
-      pairingJson,
+    };
+    await popupPage.evaluate(async (config) => {
+      const runtime = globalThis.browser?.runtime ?? globalThis.chrome?.runtime;
+      if (!runtime) throw new Error("extension runtime unavailable");
+      const saved = await runtime.sendMessage({
+        type: "browser-bridge:save-config",
+        config,
+      });
+      if (!saved?.ok) throw new Error(saved?.error ?? "pairing setup failed");
+      const synced = await runtime.sendMessage({
+        type: "browser-bridge:sync-now",
+      });
+      if (!synced?.ok) {
+        throw new Error(synced?.error ?? "pairing sync failed");
+      }
+    }, pairingConfig);
+    // Firefox BiDi exposes the externally opened extension tab through a
+    // stale about:blank navigation identity. Puppeteer's reload waits for a
+    // navigation event Firefox never reports, even though the background has
+    // already paired and executed the session. Close and reopen the real
+    // installed popup so its normal startup render reads the persisted state.
+    await popupPage.close();
+    await openInstalledFirefoxPopup(
+      executablePath,
+      profileDirectory,
+      extensionId,
     );
-    await popupPage.$eval("#importPairing", (element) => element.click());
+    popupPage = await waitForInstalledPairingGuide(browser);
     try {
       await popupPage.waitForFunction(
         () =>
@@ -240,15 +254,14 @@ async function runInstalledFirefoxSmoke() {
     } catch (error) {
       const popupState = await popupPage.evaluate(() => ({
         action: document.querySelector("#primaryAction")?.textContent,
-        pairingJson: document.querySelector("#pairingJson")?.value,
         title: document.querySelector("#statusTitle")?.textContent,
       }));
       throw new Error(
-        `Firefox pairing import did not settle: ${JSON.stringify(popupState)}`,
+        `Firefox pairing setup did not settle: ${JSON.stringify(popupState)}`,
         { cause: error },
       );
     }
-    await saveScreenshot(popupPage, "firefox-manual-pair-and-sync-success");
+    await saveScreenshot(popupPage, "firefox-pair-and-sync-success");
     await popupPage.close();
     await waitForFirefoxAction(appPage, mockServer.requests);
 

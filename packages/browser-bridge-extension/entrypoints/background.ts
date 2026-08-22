@@ -46,7 +46,6 @@ import {
   normalizeCompanionConfig,
   persistCompanionConfig,
   resetNativeEnrollmentState,
-  resumeNativeEnrollmentAfterOwnerDisconnect,
   saveBackgroundState,
   saveCompanionConfig,
   saveNativeEnrollmentState,
@@ -73,7 +72,6 @@ import {
   getAllWindows,
   getDynamicRules,
   getExtensionId,
-  getExtensionUrl,
   getGrantedOrigins,
   getManifestVersion,
   hasAllUrlHostPermission,
@@ -149,12 +147,12 @@ function isCompanionAuthError(error: unknown): error is RelayApiError {
 
 function companionAuthErrorMessage(error: RelayApiError): string {
   if (error.code === "browser_bridge_companion_token_revoked") {
-    return "Pairing was revoked. Create a new pairing in Eliza and import its pairing JSON.";
+    return "Browser access was revoked. Reset this browser in Eliza before reconnecting.";
   }
   if (error.code === "browser_bridge_companion_token_expired") {
-    return "Pairing expired. Create a new pairing in Eliza and import its pairing JSON.";
+    return "Browser access expired. Eliza will reconnect this browser automatically.";
   }
-  return "Pairing is no longer valid. Create a new pairing in Eliza and import its pairing JSON.";
+  return "Browser access is no longer valid. Reconnect this browser through Eliza.";
 }
 
 async function saveState(): Promise<void> {
@@ -786,7 +784,6 @@ async function syncBlockingRules(apiBase: string): Promise<void> {
     return;
   }
 
-  const extensionBlockedPage = getExtensionUrl("blocked.html");
   const blockedWebsites = (data.blockedWebsites ?? data.websites ?? []).filter(
     (website): website is string => typeof website === "string",
   );
@@ -804,7 +801,7 @@ async function syncBlockingRules(apiBase: string): Promise<void> {
     action: {
       type: "redirect" as const,
       redirect: {
-        url: `${extensionBlockedPage}?host=${encodeURIComponent(host)}&url=${encodeURIComponent(`https://${host}`)}&api=${encodeURIComponent(apiBase)}`,
+        extensionPath: `/blocked.html?host=${encodeURIComponent(host)}&url=${encodeURIComponent(`https://${host}`)}&api=${encodeURIComponent(apiBase)}`,
       },
     },
     condition: {
@@ -950,7 +947,12 @@ async function runSyncAttempt({
           (finalError.code === "app_not_running" ||
             finalError.code === "app_not_authenticated")
         ? finalError.code
-        : null;
+        : finalError instanceof NativeEnrollmentError &&
+            finalError.code === "native_enrollment_suppressed" &&
+            (backgroundState.connectionIssue === "owner_disconnected" ||
+              backgroundState.connectionIssue === "recovery_required")
+          ? backgroundState.connectionIssue
+          : null;
     await setState({
       syncing: false,
       ...((isPairingInvalid ||
@@ -1010,13 +1012,6 @@ async function handlePopupMessage(
         backgroundState.config = config;
         return { ok: true, state: backgroundState };
       }
-      case "browser-bridge:auto-pair": {
-        await setState({
-          lastError:
-            "Automatic pairing is disabled. Create an authenticated pairing in Eliza and import its pairing JSON.",
-        });
-        return { ok: true, state: backgroundState };
-      }
       case "browser-bridge:save-config": {
         if (
           typeof message.config?.apiBaseUrl === "string" &&
@@ -1053,12 +1048,12 @@ async function handlePopupMessage(
         await setState({
           config: null,
           settings: null,
-          lastError: "Agent Browser Bridge companion pairing cleared.",
+          lastError: null,
           lastSessionStatus: null,
           lastSyncAt: null,
           rememberedTabCount: 0,
           settingsSummary: null,
-          connectionIssue: null,
+          connectionIssue: "owner_disconnected",
         });
         return { ok: true, state: backgroundState };
       }
@@ -1069,7 +1064,11 @@ async function handlePopupMessage(
         };
       }
       case "browser-bridge:owner-reconnect": {
-        await resumeNativeEnrollmentAfterOwnerDisconnect();
+        // The popup click is an explicit local-owner recovery gesture. Clearing
+        // extension-local suppression cannot bypass a revocation: the native
+        // broker independently enforces its durable owner-controlled tombstone
+        // before it can issue a new short-lived companion credential.
+        await resetNativeEnrollmentState();
         return {
           ok: true,
           state: await syncNow("owner-reconnect", {

@@ -24,26 +24,11 @@
         <button id="primaryAction" class="primary" type="button" hidden></button>
       </section>
 
-      <details id="details" class="details">
+      <details id="details" class="details" hidden>
         <summary>Details</summary>
         <button id="disconnect" class="disconnect" type="button" hidden>
           Disconnect this browser
         </button>
-
-        <details id="recovery" class="recovery">
-          <summary>Advanced recovery</summary>
-          <label for="pairingJson">Pairing JSON from Eliza</label>
-          <textarea
-            id="pairingJson"
-            rows="5"
-            autocomplete="off"
-            autocapitalize="off"
-            spellcheck="false"
-          ></textarea>
-          <button id="importPairing" class="secondary" type="button">
-            Import pairing
-          </button>
-        </details>
       </details>
     </main>
     <script src="./popup.js"></script>

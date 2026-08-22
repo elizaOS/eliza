@@ -18,6 +18,7 @@ export const NATIVE_ENROLLMENT_MAX_FUTURE_SKEW_MS = 30 * 1_000;
 export const NATIVE_ENROLLMENT_MIN_TOKEN_LIFETIME_MS = 30 * 1_000;
 export const NATIVE_ENROLLMENT_INITIAL_BACKOFF_MS = 1_000;
 export const NATIVE_ENROLLMENT_MAX_BACKOFF_MS = 5 * 60 * 1_000;
+export const NATIVE_ENROLLMENT_APP_RETRY_MAX_MS = 30 * 1_000;
 
 const IDENTIFIER_PATTERN = /^[A-Za-z0-9@._:-]{1,256}$/;
 const NONCE_PATTERN = /^[A-Za-z0-9_-]{43}$/;
@@ -316,10 +317,17 @@ function isRevocationCode(code: string): boolean {
   return code === "revoked";
 }
 
-function calculateBackoffMs(consecutiveFailures: number): number {
+function calculateBackoffMs(
+  consecutiveFailures: number,
+  failureCode: string,
+): number {
   const exponent = Math.max(0, Math.min(consecutiveFailures - 1, 16));
+  const maximum =
+    failureCode === "app_not_running" || failureCode === "app_not_authenticated"
+      ? NATIVE_ENROLLMENT_APP_RETRY_MAX_MS
+      : NATIVE_ENROLLMENT_MAX_BACKOFF_MS;
   return Math.min(
-    NATIVE_ENROLLMENT_MAX_BACKOFF_MS,
+    maximum,
     NATIVE_ENROLLMENT_INITIAL_BACKOFF_MS * 2 ** exponent,
   );
 }
@@ -577,7 +585,9 @@ export class NativeEnrollmentCoordinator {
       await this.dependencies.saveState({
         consecutiveFailures: failures,
         nextAttemptAt: normalized.retryable
-          ? new Date(this.now() + calculateBackoffMs(failures)).toISOString()
+          ? new Date(
+              this.now() + calculateBackoffMs(failures, normalized.code),
+            ).toISOString()
           : null,
         lastFailureCode: normalized.code,
         suppressedReason: isRevocationCode(normalized.code)

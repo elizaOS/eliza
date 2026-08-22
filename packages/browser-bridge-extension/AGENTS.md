@@ -4,7 +4,7 @@ Browser extension for Chrome-family browsers, Firefox, and Safari that pairs a u
 
 ## Purpose / role
 
-This is a standalone browser extension — it is not a Node/Bun package imported by other packages. It exposes no npm exports. It obtains short-lived companion credentials from the authenticated `ai.elizaos.browserbridge` native-messaging host, then communicates with the elizaOS agent API server over HTTP. Manual authenticated pairing remains a recovery path. The corresponding `/api/browser-bridge/*` server-side routes live in `plugins/plugin-browser/src/routes/bridge.ts`; the `/api/website-blocker` route is served by `plugins/plugin-native-websiteblocker`. Extension-local wire types mirror the owning plugin contracts so this standalone workspace does not depend on runtime packages.
+This is a standalone browser extension — it is not a Node/Bun package imported by other packages. It exposes no npm exports. It obtains short-lived companion credentials from the authenticated `ai.elizaos.browserbridge` native-messaging host, then communicates with the elizaOS agent API server over HTTP. The normal popup has no credential or manual-pairing fields; explicit recovery retries authenticated native enrollment against the broker's durable owner-controlled revocation state. The corresponding `/api/browser-bridge/*` server-side routes live in `plugins/plugin-browser/src/routes/bridge.ts`; the `/api/website-blocker` route is served by `plugins/plugin-native-websiteblocker`. Extension-local wire types mirror the owning plugin contracts so this standalone workspace does not depend on runtime packages.
 
 ## Layout
 
@@ -72,7 +72,7 @@ The build script (`scripts/build.mjs`) injects one define constant into each bun
 
 - `permissions`: `tabs`, `storage`, `scripting`, `alarms`, `activeTab`, `nativeMessaging`, `declarativeNetRequestWithHostAccess`
 - `host_permissions` (default install): `http://127.0.0.1/*` and `http://localhost/*` for background-owned local-agent discovery
-- `optional_host_permissions`: `https://*/*`, `http://*/*` — requested only from the popup's browser-managed **Grant Website Access** action
+- `optional_host_permissions`: `https://*/*`, `http://*/*` — requested from a popup user gesture as either the exact active HTTP(S) origin or the all-sites policy grant
 - `content_security_policy`: `script-src 'self'; object-src 'self'` — no inline scripts, no `unsafe-eval`
 - Background entrypoint: MV3 service worker on Chrome/Safari and a background script on Firefox
 - Content scripts at `document_idle`: `content.js` (page capture + DOM actions), injected only on allowlisted hosts
@@ -110,7 +110,7 @@ bun run --cwd packages/browser-bridge-extension test:smoke:safari
 
 Output lands in `dist/chrome/`, `dist/firefox/`, or `dist/safari/`. Load the Chrome directory from `chrome://extensions`; load the Firefox directory temporarily from `about:debugging#/runtime/this-firefox`.
 
-The extension attempts authenticated native enrollment before sync and retains the pairing guide for manual recovery. Production native-host registrations must allow only exact stable release identities: the Chrome Web Store ID (or committed public manifest key), Firefox manifest ID `browser-bridge@elizaos.ai`, and the signed Safari containing-app identity. Never wildcard allowed extension origins or distribute a Chrome private signing key. The Chrome and Firefox smokes install the unpacked build into the system browser and exercise authenticated manual pairing, explicit website access, sync, a real DOM action, progress, completion, and website-block redirect. Set `FIREFOX_EXECUTABLE_PATH` when Firefox is not installed in a standard platform location.
+The extension attempts authenticated native enrollment before every sync that lacks a valid credential. Production native-host registrations must allow only exact stable release identities: the Chrome Web Store ID (or committed public manifest key), Firefox manifest ID `browser-bridge@elizaos.ai`, and the signed Safari containing-app identity. Never wildcard allowed extension origins or distribute a Chrome private signing key. The Chrome and Firefox smokes install the unpacked build into the system browser, use a privileged extension-context test setup instead of a user-visible pairing form, and exercise explicit website access, sync, a real DOM action, progress, completion, and website-block redirect. Set `FIREFOX_EXECUTABLE_PATH` when Firefox is not installed in a standard platform location.
 
 Chrome 137 and later reject `--load-extension` in the branded browser. Chrome smokes therefore require an official Chrome for Testing executable through `CHROME_FOR_TESTING_EXECUTABLE_PATH` (or the standard `/Applications/Google Chrome for Testing.app` path on macOS). The default `test` script runs `test:unit` only, because the `client` repository test lane must pass on machines without an installed browser; `test:smoke:installed` chains the Chrome and Firefox installed-browser smokes and is an explicit opt-in. `test:smoke` runs the loopback pairing/action contract headlessly. `test:smoke:site-access` runs headed and waits up to two minutes for the browser-managed optional-permission decision before proving the website-block redirect; it is the installed-browser acceptance lane and cannot be replaced by a headless result.
 
@@ -184,7 +184,7 @@ Edit `BROWSER_BRIDGE_HOST_ALLOWLIST` in `scripts/build.mjs`. The array is mirror
   injection requires a separately reviewed explicit top-frame origin grant and
   a reachable, tested activation path.
 - Sync runs on a 30-second alarm (`SYNC_INTERVAL_MINUTES = 0.5`) and is debounced 750ms after tab events. Do not remove the debounce — rapid tab events would otherwise flood the agent API.
-- `isCompanionAuthError()` retries an expired token through native enrollment once. Revocation and explicit disconnect persist a suppression tombstone; only explicit manual recovery may clear it.
+- `isCompanionAuthError()` retries an expired token through native enrollment once. Revocation and explicit disconnect persist an extension suppression tombstone. The popup's explicit Reconnect gesture may clear only that local state; the native broker's durable owner-controlled revocation tombstone remains authoritative and must independently permit re-enrollment.
 - Unit tests in `src/storage.test.ts` use `jsdom` via `vitest.extension.config.ts`. Do not run `bun test` from the repo root for this package — it uses its own vitest config.
 
 <!-- BEGIN: evidence-and-e2e-mandate (managed; canonical standard = repo-root AGENTS.md) -->

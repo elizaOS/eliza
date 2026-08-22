@@ -171,11 +171,11 @@ export async function buildBrowserBridgeExtension(kind = browserKind) {
       {
         resources: ["blocked.html", "blocked.js"],
         matches: ["http://*/*", "https://*/*"],
-        // Without this the interstitial has a stable chrome-extension://<id>/
-        // URL that every page on the web can probe, which makes the extension
-        // trivially fingerprintable. Chrome 106+ rotates the token per session.
-        // Safari's converter warns on this Chrome-only manifest key.
-        ...(kind === "chrome" ? { use_dynamic_url: true } : {}),
+        // Chrome DNR main-frame redirects resolve extensionPath against the
+        // stable extension origin. Marking this resource use_dynamic_url makes
+        // the browser reject its own redirect with ERR_BLOCKED_BY_CLIENT.
+        // Exposure stays limited to this inert interstitial and first-party
+        // controller; neither contains a credential or privileged page data.
       },
     ],
     icons: {
