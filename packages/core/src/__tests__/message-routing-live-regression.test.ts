@@ -734,6 +734,12 @@ describe("live routing regressions", () => {
 			"make a python script that only outputs the primes under a million",
 			"write a script that just prints hello and then fetches the weather",
 			"make a python script that just prints my ip address",
+			// #24425 review: the ENTIRE printed expression is parsed — a computed
+			// marker beyond the first 80 characters of the object still defeats
+			// the constant-snippet scope (the former 80-char capture missed it).
+			"write a script that just prints hi and hi and hi and hi and hi and " +
+				"hi and hi and hi and hi and hi and hi and then fetches the " +
+				"current bitcoin price",
 		]) {
 			expect(inferDirectCurrentRequestCandidateActions(actions, text)).toEqual([
 				"TASKS",
