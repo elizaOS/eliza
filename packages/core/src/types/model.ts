@@ -581,9 +581,9 @@ export interface GenerateTextParams {
 	 * autonomous work (scheduled prompt tasks, prompt-batcher drains) so the
 	 * local lane can (a) dispatch waiting interactive turns first, (b) bound
 	 * how long the job waits for the lane before failing back to its
-	 * scheduler, and (c) cap the job's `maxTokens`/prompt size by device RAM
-	 * class. Unset means `"interactive"` (user-facing turns are never
-	 * deprioritized or clamped). Cloud adapters ignore this field.
+	 * scheduler, and (c) reject output requests unsupported by the device RAM
+	 * class before dispatch. Unset means `"interactive"` (user-facing turns are
+	 * never deprioritized or rewritten). Cloud adapters ignore this field.
 	 *
 	 * Producers: `PromptDispatcher` (prompt batcher).
 	 * Consumers: the mobile/AOSP local text handlers via
