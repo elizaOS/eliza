@@ -1912,7 +1912,14 @@ export class AcpService extends Service {
       normalizeTaskAgentAdapter(opts.agentType ?? this.defaultAgent) ??
       this.defaultAgent;
     const subscriptionExecutionAuthorization =
-      opts.subscriptionExecutionAuthorization;
+      subscriptionExecutionAuthorizationFromMetadata(
+        opts.subscriptionExecutionAuthorization
+          ? {
+              [SUBSCRIPTION_EXECUTION_AUTHORIZATION_METADATA_KEY]:
+                opts.subscriptionExecutionAuthorization,
+            }
+          : undefined,
+      );
     if (isSubscriptionCodingAdapter(agentType)) {
       const preflightEnv: NodeJS.ProcessEnv = {
         ...process.env,
@@ -1932,6 +1939,7 @@ export class AcpService extends Service {
         command: this.nativeAgentCommand(agentType),
         env: preflightEnv,
         executionMode: subscriptionExecutionAuthorization?.mode,
+        model: opts.model,
         transportMode: this.transportMode,
       });
     }
@@ -2089,12 +2097,6 @@ export class AcpService extends Service {
           : {}),
         ...(gitIndexIsolation?.metadata ?? {}),
         ...(resolvedAccount ? { account: resolvedAccount.meta } : {}),
-        ...(subscriptionExecutionAuthorization
-          ? {
-              [SUBSCRIPTION_EXECUTION_AUTHORIZATION_METADATA_KEY]:
-                subscriptionExecutionAuthorization,
-            }
-          : {}),
         [ORCHESTRATOR_OWNED_ARTIFACTS_METADATA_KEY]:
           this.getOrchestratorOwnedArtifacts(id),
         ...(spawnModel ? { [ACP_METADATA_SPAWN_MODEL]: spawnModel } : {}),
@@ -2871,8 +2873,6 @@ export class AcpService extends Service {
       agentType: session.agentType,
       workdir: session.workdir,
       approvalPreset: session.approvalPreset,
-      subscriptionExecutionAuthorization:
-        subscriptionExecutionAuthorizationFromMetadata(session.metadata),
       metadata: { ...session.metadata, reattachedFrom: session.id },
       model:
         typeof session.metadata?.[ACP_METADATA_SPAWN_MODEL] === "string"

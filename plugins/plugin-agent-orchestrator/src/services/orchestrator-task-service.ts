@@ -218,6 +218,7 @@ import {
   configureSpendLedger,
   createTaskStoreSpendLedger,
 } from "./spend-allowance.js";
+import { normalizeTaskAgentAdapter } from "./task-agent-routing.js";
 import {
   TASK_SUPERVISOR_SERVICE_TYPE,
   type TaskSupervisorService,
@@ -228,7 +229,6 @@ import {
   SessionCapError,
   type SessionInfo,
   type SpawnResult,
-  SUBSCRIPTION_EXECUTION_AUTHORIZATION_METADATA_KEY,
   type SubscriptionExecutionAuthorization,
   subscriptionExecutionAuthorizationFromMetadata,
   TERMINAL_SESSION_STATUSES,
@@ -1411,8 +1411,6 @@ export class OrchestratorTaskService extends Service {
         workdir: persisted.workdir,
         model: link.model,
         approvalPreset: link.approvalPreset,
-        subscriptionExecutionAuthorization:
-          subscriptionExecutionAuthorizationFromMetadata(persisted.metadata),
         metadata: {
           ...persisted.metadata,
           taskId: link.orchestratorTaskId,
@@ -5422,18 +5420,7 @@ export class OrchestratorTaskService extends Service {
     const traceEnv = this.buildChildTraceEnv(taskId);
 
     const subscriptionExecutionAuthorization =
-      opts.subscriptionExecutionAuthorization ??
-      [...doc.sessions]
-        .reverse()
-        .map((session) =>
-          subscriptionExecutionAuthorizationFromMetadata(session.metadata),
-        )
-        .find(
-          (
-            authorization,
-          ): authorization is SubscriptionExecutionAuthorization =>
-            authorization !== undefined,
-        );
+      opts.subscriptionExecutionAuthorization;
 
     const framework =
       opts.framework ??
@@ -5454,6 +5441,7 @@ export class OrchestratorTaskService extends Service {
     ) {
       const wave = await waveSupervisor.concurrencyForTask(taskId);
       if (
+        normalizeTaskAgentAdapter(framework) !== "kimi" &&
         nestingDepth === 0 &&
         opts.parkOnCap !== false &&
         this.admissionQueueEnabled()
@@ -5535,6 +5523,7 @@ export class OrchestratorTaskService extends Service {
       if (
         err instanceof SessionCapError &&
         err.slotClass === "worker" &&
+        normalizeTaskAgentAdapter(framework) !== "kimi" &&
         nestingDepth === 0 &&
         opts.parkOnCap !== false &&
         this.admissionQueueEnabled()
@@ -5610,12 +5599,6 @@ export class OrchestratorTaskService extends Service {
           ? {
               [ORCHESTRATOR_OWNED_ARTIFACTS_METADATA_KEY]:
                 orchestratorOwnedArtifacts,
-            }
-          : {}),
-        ...(subscriptionExecutionAuthorization
-          ? {
-              [SUBSCRIPTION_EXECUTION_AUTHORIZATION_METADATA_KEY]:
-                subscriptionExecutionAuthorization,
             }
           : {}),
       },

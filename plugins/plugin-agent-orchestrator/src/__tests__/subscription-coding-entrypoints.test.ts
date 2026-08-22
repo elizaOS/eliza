@@ -1,7 +1,7 @@
 /**
  * Exercises the direct coding-agent HTTP product boundary with deterministic
- * service doubles, proving attendance is minted only for an explicit
- * user-attended request and cannot be supplied through caller metadata.
+ * service doubles, proving attendance is minted only from a real user message
+ * and cannot be asserted through HTTP body fields or caller metadata.
  */
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { describe, expect, it } from "vitest";
@@ -76,11 +76,12 @@ describe("subscription coding product entry points", () => {
       subscriptionAuthorizationForMessage(runtime, message, {
         source: "client_chat",
       }),
-    ).toEqual({
+    ).toMatchObject({
       version: 1,
       mode: "user-attended",
       source: "interactive-message",
       requestId: message.id,
+      subjectId: message.entityId,
     });
     expect(
       subscriptionAuthorizationForMessage(runtime, message, {
@@ -89,7 +90,7 @@ describe("subscription coding product entry points", () => {
     ).toBeUndefined();
   });
 
-  it("mints HTTP attendance proof from an explicit interactive request", async () => {
+  it("does not let an HTTP body assert user attendance", async () => {
     const captured: SpawnOptions[] = [];
     const res = response();
 
@@ -106,12 +107,7 @@ describe("subscription coding product entry points", () => {
     ).toBe(true);
 
     expect(res.status()).toBe(201);
-    expect(captured[0]?.subscriptionExecutionAuthorization).toEqual({
-      version: 1,
-      mode: "user-attended",
-      source: "interactive-http",
-      requestId: "request-24096",
-    });
+    expect(captured[0]?.subscriptionExecutionAuthorization).toBeUndefined();
   });
 
   it("does not trust caller metadata or an unspecified attendance mode", async () => {

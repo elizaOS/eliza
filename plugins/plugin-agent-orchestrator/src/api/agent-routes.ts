@@ -10,7 +10,7 @@
  */
 
 import { execFile } from "node:child_process";
-import { createHash, randomUUID } from "node:crypto";
+import { createHash } from "node:crypto";
 import { access, readFile, realpath, rm } from "node:fs/promises";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import * as path from "node:path";
@@ -23,7 +23,6 @@ import { getTaskAgentFrameworkState } from "../services/task-agent-frameworks.js
 import {
   type AgentType,
   type ApprovalPreset,
-  createSubscriptionExecutionAuthorization,
   SessionCapError,
   type SessionInfo,
   SUBSCRIPTION_EXECUTION_AUTHORIZATION_METADATA_KEY,
@@ -572,7 +571,6 @@ export async function handleAgentRoutes(
         approvalPreset,
         customCredentials,
         metadata,
-        subscriptionExecutionMode,
       } = body;
       const taskText =
         typeof task === "string"
@@ -683,15 +681,6 @@ export async function handleAgentRoutes(
       const session = await ctx.acpService.spawnSession({
         name: `agent-${Date.now()}`,
         agentType: agentStr as AgentType,
-        subscriptionExecutionAuthorization:
-          subscriptionExecutionMode === "user-attended"
-            ? createSubscriptionExecutionAuthorization(
-                "interactive-http",
-                typeof req.headers?.["x-request-id"] === "string"
-                  ? req.headers["x-request-id"]
-                  : randomUUID(),
-              )
-            : undefined,
         workdir: workdir as string,
         initialTask: goalPrompt,
         memoryContent: memoryContent as string | undefined,

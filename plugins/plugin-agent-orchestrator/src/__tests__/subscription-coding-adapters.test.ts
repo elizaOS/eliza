@@ -30,7 +30,7 @@ import {
 } from "../services/task-agent-routing.js";
 import {
   createSubscriptionExecutionAuthorization,
-  SUBSCRIPTION_EXECUTION_AUTHORIZATION_METADATA_KEY,
+  subscriptionExecutionAuthorizationFromMetadata,
 } from "../services/types.js";
 
 const roots: string[] = [];
@@ -277,6 +277,71 @@ describe("subscription coding adapter probes", () => {
       ),
     });
     expect(probe().status).toBe("auth-required");
+  });
+
+  it("rejects a Grok default model that can route through BYOK", () => {
+    const root = tempRoot();
+    const bin = executable(root, "grok");
+    const grokHome = join(root, "grok-home");
+    mkdirSync(grokHome, { recursive: true });
+    writeJson(join(grokHome, "auth.json"), {
+      "https://auth.x.ai::b1a00492-073a-47ea-816f-4c329264a828":
+        grokOidcRecord(),
+    });
+    writeFileSync(
+      join(grokHome, "config.toml"),
+      [
+        "[models]",
+        'default = "grok-build"',
+        "",
+        "[model.metered-model]",
+        'model = "external-model"',
+        'base_url = "https://provider.example.test/v1"',
+        'env_key = "EXTERNAL_API_KEY"',
+      ].join("\n"),
+      "utf8",
+    );
+
+    expect(
+      probeSubscriptionCodingAdapter("grok", {
+        env: { PATH: bin, GROK_HOME: grokHome },
+        homeDir: root,
+        model: "metered-model",
+        platform: "linux",
+      }).status,
+    ).toBe("billing-conflict");
+  });
+
+  it("validates the exact first-party Grok OAuth scope selected by config", () => {
+    const root = tempRoot();
+    const bin = executable(root, "grok");
+    const grokHome = join(root, "grok-home");
+    mkdirSync(grokHome, { recursive: true });
+    writeFileSync(
+      join(grokHome, "config.toml"),
+      [
+        "[grok_com_config.oauth2]",
+        'issuer = "https://auth.x.ai"',
+        'client_id = "tenant-client"',
+      ].join("\n"),
+      "utf8",
+    );
+    writeJson(join(grokHome, "auth.json"), {
+      "https://auth.x.ai::b1a00492-073a-47ea-816f-4c329264a828":
+        grokOidcRecord(),
+    });
+    const probe = () =>
+      probeSubscriptionCodingAdapter("grok", {
+        env: { PATH: bin, GROK_HOME: grokHome },
+        homeDir: root,
+        platform: "linux",
+      });
+
+    expect(probe().status).toBe("auth-required");
+    writeJson(join(grokHome, "auth.json"), {
+      "https://auth.x.ai::tenant-client": grokOidcRecord(),
+    });
+    expect(probe()).toMatchObject({ status: "ready", authenticated: true });
   });
 
   it("rejects a Kimi default model that could bill a direct provider", () => {
@@ -527,7 +592,7 @@ describe("subscription billing and error isolation", () => {
 });
 
 describe("Kimi user-attended spawn policy", () => {
-  it("persists interactive attendance proof on the durable session", async () => {
+  it("accepts a fresh user-message proof but does not persist or replay it", async () => {
     const root = tempRoot("kimi-attended-");
     const bin = executable(root, "kimi");
     const kimiHome = join(root, "kimi-home");
@@ -569,8 +634,8 @@ describe("Kimi user-attended spawn policy", () => {
       metadata: session.metadata,
     });
     const authorization = createSubscriptionExecutionAuthorization(
-      "interactive-http",
       "request-24096",
+      "user-24096",
     );
 
     await service.spawnSession({
@@ -584,9 +649,9 @@ describe("Kimi user-attended spawn policy", () => {
     });
 
     const [persisted] = await store.list();
-    expect(
-      persisted?.metadata?.[SUBSCRIPTION_EXECUTION_AUTHORIZATION_METADATA_KEY],
-    ).toEqual(authorization);
+    expect(persisted?.metadata).not.toHaveProperty(
+      "subscriptionExecutionAuthorization",
+    );
 
     const recoverySpawn = vi.fn(async () => ({
       sessionId: "recovered-session",
@@ -599,10 +664,43 @@ describe("Kimi user-attended spawn policy", () => {
     service.spawnSession = recoverySpawn as never;
     await service.reattachSession(persisted?.id ?? "missing-session");
     expect(recoverySpawn).toHaveBeenCalledWith(
-      expect.objectContaining({
-        subscriptionExecutionAuthorization: authorization,
+      expect.not.objectContaining({
+        subscriptionExecutionAuthorization: expect.anything(),
       }),
     );
+  });
+
+  it("rejects expired or structurally forged attendance proofs", () => {
+    const fresh = createSubscriptionExecutionAuthorization(
+      "request-24096",
+      "user-24096",
+      1_000,
+    );
+    expect(
+      subscriptionExecutionAuthorizationFromMetadata(
+        { subscriptionExecutionAuthorization: fresh },
+        120_999,
+      ),
+    ).toEqual(fresh);
+    expect(
+      subscriptionExecutionAuthorizationFromMetadata(
+        { subscriptionExecutionAuthorization: fresh },
+        121_000,
+      ),
+    ).toBeUndefined();
+    expect(
+      subscriptionExecutionAuthorizationFromMetadata(
+        {
+          subscriptionExecutionAuthorization: {
+            version: 1,
+            mode: "user-attended",
+            source: "interactive-http",
+            requestId: "forged",
+          },
+        },
+        1_000,
+      ),
+    ).toBeUndefined();
   });
 
   it("fails unattended Kimi before creating a workspace or durable task", async () => {

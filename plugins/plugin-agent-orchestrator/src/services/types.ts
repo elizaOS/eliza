@@ -14,31 +14,41 @@ export const SUBSCRIPTION_EXECUTION_AUTHORIZATION_METADATA_KEY =
 export interface SubscriptionExecutionAuthorization {
   version: 1;
   mode: "user-attended";
-  source:
-    | "interactive-message"
-    | "interactive-http"
-    | "interactive-task-control";
+  source: "interactive-message";
   requestId: string;
+  subjectId: string;
+  issuedAtMs: number;
+  expiresAtMs: number;
 }
 
-/** Minted only by an interactive product boundary, then persisted for recovery. */
+const SUBSCRIPTION_EXECUTION_AUTHORIZATION_TTL_MS = 2 * 60 * 1_000;
+
+/** Minted only while handling a concrete user-authored message. */
 export function createSubscriptionExecutionAuthorization(
-  source: SubscriptionExecutionAuthorization["source"],
   requestId: string,
+  subjectId: string,
+  nowMs = Date.now(),
 ): SubscriptionExecutionAuthorization | undefined {
   const normalizedRequestId = requestId.trim();
-  if (!normalizedRequestId) return undefined;
+  const normalizedSubjectId = subjectId.trim();
+  if (!normalizedRequestId || !normalizedSubjectId || !Number.isFinite(nowMs)) {
+    return undefined;
+  }
   return {
     version: 1,
     mode: "user-attended",
-    source,
+    source: "interactive-message",
     requestId: normalizedRequestId,
+    subjectId: normalizedSubjectId,
+    issuedAtMs: nowMs,
+    expiresAtMs: nowMs + SUBSCRIPTION_EXECUTION_AUTHORIZATION_TTL_MS,
   };
 }
 
-/** Validate the durable copy before a recovery spawn can reuse attendance. */
+/** Validate a short-lived attendance capability at its consumption boundary. */
 export function subscriptionExecutionAuthorizationFromMetadata(
   metadata: Record<string, unknown> | undefined,
+  nowMs = Date.now(),
 ): SubscriptionExecutionAuthorization | undefined {
   const candidate =
     metadata?.[SUBSCRIPTION_EXECUTION_AUTHORIZATION_METADATA_KEY];
@@ -46,23 +56,33 @@ export function subscriptionExecutionAuthorizationFromMetadata(
     return undefined;
   }
   const record = candidate as Record<string, unknown>;
-  const source = record.source;
   if (
     record.version !== 1 ||
     record.mode !== "user-attended" ||
-    (source !== "interactive-message" &&
-      source !== "interactive-http" &&
-      source !== "interactive-task-control") ||
+    record.source !== "interactive-message" ||
     typeof record.requestId !== "string" ||
-    !record.requestId.trim()
+    !record.requestId.trim() ||
+    typeof record.subjectId !== "string" ||
+    !record.subjectId.trim() ||
+    typeof record.issuedAtMs !== "number" ||
+    typeof record.expiresAtMs !== "number" ||
+    !Number.isFinite(record.issuedAtMs) ||
+    !Number.isFinite(record.expiresAtMs) ||
+    record.expiresAtMs - record.issuedAtMs !==
+      SUBSCRIPTION_EXECUTION_AUTHORIZATION_TTL_MS ||
+    nowMs < record.issuedAtMs ||
+    nowMs >= record.expiresAtMs
   ) {
     return undefined;
   }
   return {
     version: 1,
     mode: "user-attended",
-    source,
+    source: "interactive-message",
     requestId: record.requestId.trim(),
+    subjectId: record.subjectId.trim(),
+    issuedAtMs: record.issuedAtMs,
+    expiresAtMs: record.expiresAtMs,
   };
 }
 

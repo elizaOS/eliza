@@ -67,7 +67,6 @@ import {
   createSubscriptionExecutionAuthorization,
   type SessionInfo,
   type SpawnResult,
-  subscriptionExecutionAuthorizationFromMetadata,
   TERMINAL_SESSION_STATUSES,
 } from "../services/types.js";
 import type {
@@ -480,16 +479,9 @@ export function subscriptionAuthorizationForMessage(
   content: Record<string, unknown>,
 ) {
   if (content.source === MESSAGE_SOURCE_TRIGGER_PROMPT) return undefined;
-  if (content.source === MESSAGE_SOURCE_SUB_AGENT) {
-    return subscriptionExecutionAuthorizationFromMetadata(
-      objectValue(content.metadata),
-    );
-  }
+  if (content.source === MESSAGE_SOURCE_SUB_AGENT) return undefined;
   if (message.entityId === runtime.agentId || !message.id) return undefined;
-  return createSubscriptionExecutionAuthorization(
-    "interactive-message",
-    message.id,
-  );
+  return createSubscriptionExecutionAuthorization(message.id, message.entityId);
 }
 
 function pickRoutingString(

@@ -203,6 +203,7 @@ export interface SubscriptionCodingAdapterProbeOptions {
   env?: NodeJS.ProcessEnv;
   executionMode?: SubscriptionExecutionMode;
   homeDir?: string;
+  model?: string;
   nowMs?: number;
   platform?: NodeJS.Platform;
   transportMode?: "native" | "cli";
@@ -217,7 +218,6 @@ const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1_000;
 const GROK_EARLY_INVALIDATION_MS = 5 * 60 * 1_000;
 const GROK_DEFAULT_AUTH_SCOPE =
   "https://auth.x.ai::b1a00492-073a-47ea-816f-4c329264a828";
-const GROK_LEGACY_AUTH_SCOPE = "https://accounts.x.ai/sign-in";
 const MAX_LOCAL_CONFIG_BYTES = 1024 * 1024;
 const KIMI_MANAGED_PROVIDER = "managed:kimi-code";
 const KIMI_MANAGED_OAUTH_KEY = "oauth/kimi-code";
@@ -255,6 +255,30 @@ function readTomlRecord(filePath: string): Record<string, unknown> | undefined {
   }
 }
 
+function readOptionalTomlRecord(
+  filePath: string,
+):
+  | { state: "absent" }
+  | { state: "invalid" }
+  | { state: "present"; value: Record<string, unknown> } {
+  try {
+    const file = statSync(filePath);
+    if (!file.isFile() || file.size > MAX_LOCAL_CONFIG_BYTES) {
+      return { state: "invalid" };
+    }
+    const parsed: unknown = parseToml(readFileSync(filePath, "utf8"));
+    return isRecord(parsed)
+      ? { state: "present", value: parsed }
+      : { state: "invalid" };
+  } catch (error) {
+    // error-policy:J3 Grok's user config is optional, while malformed or
+    // unreadable config must fail closed instead of validating another account.
+    return isRecord(error) && error.code === "ENOENT"
+      ? { state: "absent" }
+      : { state: "invalid" };
+  }
+}
+
 function recordString(
   record: Record<string, unknown>,
   key: string,
@@ -276,6 +300,7 @@ function normalizedEndpoint(value: string | undefined): string | undefined {
 
 function probeKimiManagedConfiguration(
   root: string,
+  requestedModel?: string,
 ):
   | { status: "managed"; credentialKey: string }
   | { status: "required" | "billing-conflict"; detail: string } {
@@ -287,7 +312,8 @@ function probeKimiManagedConfiguration(
         "Kimi Code config.toml is missing or invalid; run kimi login again.",
     };
   }
-  const defaultModel = recordString(config, "default_model");
+  const defaultModel =
+    nonEmptyString(requestedModel) ?? recordString(config, "default_model");
   const models = config.models;
   const model =
     defaultModel && isRecord(models) ? models[defaultModel] : undefined;
@@ -336,10 +362,11 @@ function probeKimiAuth(
   env: NodeJS.ProcessEnv,
   homeDir: string,
   nowMs: number,
+  requestedModel?: string,
 ): LocalAuthProbe {
   const root =
     nonEmptyString(env.KIMI_CODE_HOME) ?? join(homeDir, ".kimi-code");
-  const managed = probeKimiManagedConfiguration(root);
+  const managed = probeKimiManagedConfiguration(root, requestedModel);
   if (managed.status !== "managed") return managed;
   const credentialName = managed.credentialKey.slice("oauth/".length);
   const credentials = readJsonRecord(
@@ -431,8 +458,13 @@ function probeGrokAuth(
   env: NodeJS.ProcessEnv,
   homeDir: string,
   nowMs: number,
+  requestedModel?: string,
 ): LocalAuthProbe {
   const root = nonEmptyString(env.GROK_HOME) ?? join(homeDir, ".grok");
+  const configured = probeGrokIncludedPlanConfiguration(root, requestedModel);
+  if (configured.status !== "managed") {
+    return configured;
+  }
   const authMap = readJsonRecord(join(root, "auth.json"));
   if (!authMap) {
     return {
@@ -447,8 +479,7 @@ function probeGrokAuth(
         "Grok auth.json contains an invalid credential record; run grok login again.",
     };
   }
-  const selected =
-    authMap[GROK_DEFAULT_AUTH_SCOPE] ?? authMap[GROK_LEGACY_AUTH_SCOPE];
+  const selected = authMap[configured.authScope];
   if (!isGrokSubscriptionAuth(selected)) {
     return {
       status: "required",
@@ -467,6 +498,88 @@ function probeGrokAuth(
     detail:
       "Grok OAuth state is present; ACP verifies it during session creation.",
   };
+}
+
+function probeGrokIncludedPlanConfiguration(
+  root: string,
+  requestedModel?: string,
+):
+  | { status: "managed"; authScope: string }
+  | { status: "required" | "billing-conflict"; detail: string } {
+  const loaded = readOptionalTomlRecord(join(root, "config.toml"));
+  if (loaded.state === "absent") {
+    return { status: "managed", authScope: GROK_DEFAULT_AUTH_SCOPE };
+  }
+  if (loaded.state === "invalid") {
+    return {
+      status: "required",
+      detail:
+        "Grok config.toml is invalid or unreadable; repair it before spawning.",
+    };
+  }
+
+  const config = loaded.value;
+  const models = isRecord(config.models) ? config.models : undefined;
+  const selectedModelName =
+    nonEmptyString(requestedModel) ??
+    (models ? recordString(models, "default") : undefined);
+  const modelTable = isRecord(config.model) ? config.model : undefined;
+  const selectedModel =
+    selectedModelName && modelTable && isRecord(modelTable[selectedModelName])
+      ? modelTable[selectedModelName]
+      : undefined;
+  if (
+    selectedModel &&
+    ["api_key", "env_key", "auth_provider", "base_url", "extra_headers"].some(
+      (key) => selectedModel[key] !== undefined,
+    )
+  ) {
+    return {
+      status: "billing-conflict",
+      detail:
+        "Grok's selected default model overrides its endpoint or credentials; select a built-in xAI model before spawning.",
+    };
+  }
+
+  const auth = isRecord(config.auth) ? config.auth : undefined;
+  const grokComConfig = isRecord(config.grok_com_config)
+    ? config.grok_com_config
+    : undefined;
+  if (
+    [auth, grokComConfig].some(
+      (settings) =>
+        settings &&
+        (recordString(settings, "preferred_method") === "api_key" ||
+          Boolean(recordString(settings, "auth_provider_command"))),
+    )
+  ) {
+    return {
+      status: "billing-conflict",
+      detail:
+        "Grok is configured to use API-key or external-provider authentication instead of the included-plan xAI login.",
+    };
+  }
+
+  const oidc = [auth, grokComConfig]
+    .map((settings) => settings?.oidc)
+    .find(isRecord);
+  const oauth2 = [auth, grokComConfig]
+    .map((settings) => settings?.oauth2)
+    .find(isRecord);
+  const provider = oidc ?? oauth2;
+  if (!provider) {
+    return { status: "managed", authScope: GROK_DEFAULT_AUTH_SCOPE };
+  }
+  const issuer = normalizedEndpoint(recordString(provider, "issuer"));
+  const clientId = recordString(provider, "client_id");
+  if (!issuer || !clientId || issuer !== "https://auth.x.ai") {
+    return {
+      status: "billing-conflict",
+      detail:
+        "Grok's configured OAuth provider is not the first-party xAI included-plan login.",
+    };
+  }
+  return { status: "managed", authScope: `${issuer}::${clientId}` };
 }
 
 function isExecutableFile(candidate: string): boolean {
@@ -591,11 +704,13 @@ export function probeSubscriptionCodingAdapter(
           env,
           options.homeDir ?? homedir(),
           options.nowMs ?? Date.now(),
+          options.model,
         )
       : probeGrokAuth(
           env,
           options.homeDir ?? homedir(),
           options.nowMs ?? Date.now(),
+          options.model,
         );
   if (auth.status !== "authenticated") {
     return {
