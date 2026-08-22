@@ -53,6 +53,17 @@ export interface PersonalSharedGroupDeliveryLease {
 const DELIVERY_LEASE_MS = 90_000;
 const DELIVERY_LEASE_POLL_MS = 25;
 const AUTHORITY_MUTATION_WAIT_MS = 5_000;
+/**
+ * Recovery horizon for an orphaned committed lease. A committed lease whose
+ * exact leaseToken was lost (process crash, pod kill, or deploy between the
+ * delivery_commit response and receipt persistence) can never be cleared by
+ * its owner, so beyond this horizon the sending process is assumed dead — no
+ * legitimate provider send stays in flight this long — and the delivery slot
+ * recovers automatically instead of silencing the group until manual DB
+ * surgery. Far exceeding DELIVERY_LEASE_MS, which already treats workers as
+ * gone after 90s of an uncommitted reservation.
+ */
+const COMMITTED_LEASE_RECOVERY_MS = 10 * 60_000;
 
 export class PersonalSharedGroupDeliveryPendingError extends ElizaError {
   constructor() {
@@ -69,6 +80,14 @@ function deliveryLeaseAvailable(now: Date) {
     and(
       isNull(personalSharedGroupBindings.delivery_lease_committed_at),
       lte(personalSharedGroupBindings.delivery_lease_expires_at, now),
+    ),
+    // An orphaned committed lease — the exact leaseToken was lost to a crash,
+    // pod kill, or deploy before its receipt was persisted — can never be
+    // cleared by its owner. Past the recovery horizon the sending process is
+    // assumed dead and the slot recovers instead of silencing the group.
+    lte(
+      personalSharedGroupBindings.delivery_lease_committed_at,
+      new Date(now.getTime() - COMMITTED_LEASE_RECOVERY_MS),
     ),
   );
 }
@@ -467,6 +486,12 @@ export const personalSharedGroupsRepository = {
         delivery_lease_source_id: input.sourceMessageId,
         delivery_lease_token: input.leaseToken,
         delivery_lease_expires_at: new Date(now.getTime() + DELIVERY_LEASE_MS),
+        // A recovered slot may still carry the orphaned lease's committed
+        // marker; clear it unless this exact pair is already the committed
+        // authorization being re-authorized.
+        delivery_lease_committed_at: sql`CASE WHEN ${personalSharedGroupBindings.delivery_lease_source_id} = ${input.sourceMessageId}
+          AND ${personalSharedGroupBindings.delivery_lease_token} = ${input.leaseToken}
+          THEN ${personalSharedGroupBindings.delivery_lease_committed_at} ELSE NULL END`,
       })
       .where(
         and(
@@ -522,7 +547,9 @@ export const personalSharedGroupsRepository = {
    * Commits the exact reserved delivery immediately before provider egress.
    * Once committed, the source/token pair is the immutable authorization
    * point. Authority may change afterward, but another delivery cannot take
-   * over this slot until its exact provider receipt is reconciled.
+   * over this slot until its exact provider receipt is reconciled — or until
+   * the committed lease is orphaned past COMMITTED_LEASE_RECOVERY_MS, because
+   * a lost token could otherwise never be reconciled at all.
    */
   async commitDelivery(input: {
     authority: PersonalSharedGroupDeliveryAuthority;
