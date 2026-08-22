@@ -9,6 +9,7 @@
 
 import { describe, expect, test } from "bun:test";
 
+import { McpProxyHopDeadlineError } from "../mcp/proxy/[mcpId]/proxy-body-budget";
 import {
   isJsonRpcErrorResponse,
   type McpProxyJson,
@@ -117,6 +118,30 @@ describe("parseJsonBody", () => {
       headers: { "content-type": "application/json" },
     });
     await expect(parseJsonBody(req)).rejects.toThrow();
+  });
+
+  test("caller-aborted hanging JSON body fails as a hop deadline, not a hang", async () => {
+    const body = new ReadableStream<Uint8Array>({
+      pull() {
+        /* never enqueue */
+      },
+    });
+    const req = new Request("https://example.com", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body,
+    });
+    const controller = new AbortController();
+    const pending = parseJsonBody(req, 1_000, { signal: controller.signal });
+    queueMicrotask(() => {
+      controller.abort(new McpProxyHopDeadlineError(20));
+    });
+    const hung = new Promise<never>((_, reject) => {
+      setTimeout(() => reject(new Error("parseJsonBody ignored abort")), 80);
+    });
+    await expect(Promise.race([pending, hung])).rejects.toBeInstanceOf(
+      McpProxyHopDeadlineError,
+    );
   });
 });
 

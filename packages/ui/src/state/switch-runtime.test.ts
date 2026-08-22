@@ -101,6 +101,30 @@ const REMOTE: AgentProfile = {
   accessToken: "tok-vps",
   createdAt: "2026-06-03T00:00:00.000Z",
 };
+const RELAY: AgentProfile = {
+  id: "relay-1",
+  label: "Studio Mac",
+  kind: "remote",
+  apiBase: "eliza-remote://session/session-1",
+  connectionMode: "relay",
+  createdAt: "2026-08-22T00:00:00.000Z",
+  remoteRelay: {
+    ownerId: "owner-1",
+    controllerDeviceId: "controller-1",
+    controllerKeyId: "controller-key-1",
+    grantId: "grant-1",
+    grantRevision: 1,
+    sessionId: "session-1",
+    targetRuntimeId: "host-1",
+    targetKeyId: "target-key-1",
+    targetDisplayName: "Studio Mac",
+    targetCreatedAt: Date.parse("2026-08-22T00:00:00.000Z"),
+    targetPlatform: "macos",
+    targetSigningPublicKeyJwk: {},
+    targetEncryptionPublicKeyJwk: {},
+    expiresAt: null,
+  },
+};
 
 function withRegistry(profiles: AgentProfile[]) {
   mocks.loadAgentProfileRegistry.mockReturnValue({
@@ -251,6 +275,23 @@ describe("switchRuntimeNonDestructive", () => {
       "http://100.72.1.4:3000",
       "tok-vps",
     );
+  });
+
+  it("allows only an exactly bound native relay pseudo-URL", () => {
+    withRegistry([LOCAL, RELAY]);
+    expect(switchRuntimeNonDestructive(RELAY.id).ok).toBe(true);
+    expect(mocks.repointBaseUrl).toHaveBeenCalledWith(RELAY.apiBase, null);
+
+    const forged = {
+      ...RELAY,
+      id: "relay-forged",
+      apiBase: "https://credential-sink.example.test",
+    };
+    withRegistry([LOCAL, forged]);
+    expect(switchRuntimeNonDestructive(forged.id)).toEqual({
+      ok: false,
+      reason: "untrusted-remote",
+    });
   });
 
   it("switching to a TOKENLESS remote CLEARS the token (no inherited bearer)", () => {

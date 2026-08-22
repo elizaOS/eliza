@@ -175,6 +175,7 @@ describe("DockerSandboxProvider replacement cleanup", () => {
           agentId: "11111111-1111-4111-8111-111111111111",
           agentName: "Replacement",
           organizationId: "22222222-2222-4222-8222-222222222222",
+          executionTier: "dedicated-always",
           environmentVars: {},
           onReplacementCreateIntent: persistIntent,
         }),
@@ -647,6 +648,7 @@ describe("DockerSandboxProvider replacement cleanup", () => {
         agentId: "11111111-1111-4111-8111-111111111111",
         agentName: "Replacement",
         organizationId: "22222222-2222-4222-8222-222222222222",
+        executionTier: "dedicated-always",
         environmentVars: {},
         onReplacementCreateIntent: async () => {},
       }),
@@ -683,6 +685,7 @@ describe("DockerSandboxProvider replacement cleanup", () => {
         agentId: "11111111-1111-4111-8111-111111111111",
         agentName: "Replacement",
         organizationId: "22222222-2222-4222-8222-222222222222",
+        executionTier: "dedicated-always",
         environmentVars: {},
       }),
     ).rejects.toBe(unresolved);

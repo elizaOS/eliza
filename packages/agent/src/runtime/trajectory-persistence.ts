@@ -34,8 +34,6 @@ export {
   shouldEnableTrajectoryLoggingByDefault,
   // Testing helpers
   shouldRunObservationExtraction,
-  truncateField,
-  truncateRecord,
 } from "./trajectory-internals.ts";
 // ---------------------------------------------------------------------------
 // Query — read operations

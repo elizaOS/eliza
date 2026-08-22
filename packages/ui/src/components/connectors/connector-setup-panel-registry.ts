@@ -28,7 +28,6 @@ export type ConnectorSetupPanelToken =
   | "telegram-account"
   | "telegram-bot"
   | "whatsapp"
-  | "signal"
   | "discord-local"
   | "imessage"
   | "lifeops-browser";
@@ -91,11 +90,6 @@ registerConnectorSetupPanelRule({
 registerConnectorSetupPanelRule({
   token: "whatsapp",
   needle: "whatsapp",
-  match: "exact",
-});
-registerConnectorSetupPanelRule({
-  token: "signal",
-  needle: "signal",
   match: "exact",
 });
 registerConnectorSetupPanelRule({

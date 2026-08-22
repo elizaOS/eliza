@@ -89,7 +89,13 @@ function intFromEnv(name: string, fallback: number): number {
   const raw = process.env[name];
   if (!raw) return fallback;
   const parsed = Number(raw);
-  return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : fallback;
+  if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
+  // A positive value below 1 floors to 0, which is not a smaller limit — it is
+  // a different meaning. `keepSuperseded` feeds `superseded.slice(keep)`, so 0
+  // sweeps every rollback deployment and deletes its R2 artifacts. Treat a
+  // value that cannot floor to a usable positive integer as unset.
+  const floored = Math.floor(parsed);
+  return floored > 0 ? floored : fallback;
 }
 
 export const frontendHostingLimits = {

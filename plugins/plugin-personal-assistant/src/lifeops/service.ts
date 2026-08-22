@@ -90,8 +90,6 @@ import type {
   LifeOpsScreenTimeSession,
   LifeOpsScreenTimeSource,
   LifeOpsScreenTimeSummary,
-  LifeOpsSignalConnectorStatus,
-  LifeOpsSignalInboundMessage,
   LifeOpsSleepHistoryResponse,
   LifeOpsSleepRegularityResponse,
   LifeOpsTelegramConnectorStatus,
@@ -210,7 +208,6 @@ import {
   SchedulingDomain,
 } from "./domains/scheduling-service.js";
 import { ScreenTimeDomain } from "./domains/screentime-service.js";
-import { SignalDomain } from "./domains/signal-service.js";
 import { SleepDomain } from "./domains/sleep-service.js";
 import { StatusDomain } from "./domains/status-service.js";
 import { SubscriptionsDomain } from "./domains/subscriptions-service.js";
@@ -343,10 +340,6 @@ export class LifeOpsService extends LifeOpsServiceBase {
 
   get discord() {
     return this.discordDomain;
-  }
-
-  get signal() {
-    return this.signalDomain;
   }
 
   get whatsapp() {
@@ -2297,45 +2290,6 @@ export class LifeOpsService extends LifeOpsServiceBase {
     side?: LifeOpsConnectorSide,
   ): Promise<LifeOpsDiscordConnectorStatus> {
     return this.discordDomain.disconnectDiscord(side);
-  }
-
-  // `this` satisfies LifeOpsContext. Public to avoid TS4094 on the
-  // re-exported mixin class.
-  readonly signalDomain = new SignalDomain(this);
-
-  lifeOpsSignalServiceConnected(): boolean {
-    return this.signalDomain.lifeOpsSignalServiceConnected();
-  }
-
-  lifeOpsSignalServiceRegistered(): boolean {
-    return this.signalDomain.lifeOpsSignalServiceRegistered();
-  }
-
-  getSignalConnectorStatus(
-    side?: LifeOpsConnectorSide,
-  ): Promise<LifeOpsSignalConnectorStatus> {
-    return this.signalDomain.getSignalConnectorStatus(side);
-  }
-
-  readSignalInbound(
-    limit = 25,
-    side?: LifeOpsConnectorSide,
-  ): Promise<LifeOpsSignalInboundMessage[]> {
-    return this.signalDomain.readSignalInbound(limit, side);
-  }
-
-  sendSignalMessage(request: {
-    side?: LifeOpsConnectorSide;
-    recipient: string;
-    text: string;
-  }): Promise<{
-    provider: "signal";
-    side: LifeOpsConnectorSide;
-    recipient: string;
-    ok: true;
-    timestamp: number;
-  }> {
-    return this.signalDomain.sendSignalMessage(request);
   }
 
   // `this` satisfies LifeOpsContext. Public to avoid TS4094 on the

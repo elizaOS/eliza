@@ -3,8 +3,12 @@
  * runtime-dependent, so structurally excessive patches are rejected by the
  * canonical blocked-object-key walker before those consumers run.
  */
+
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import type http from "node:http";
-import { describe, expect, it, vi } from "vitest";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   type ConfigRouteContext,
   configPatchExceedsBound,
@@ -24,7 +28,14 @@ function nest(depth: number): Record<string, unknown> {
 function makeCtx(
   body: Record<string, unknown>,
   strip: ConfigRouteContext["stripRedactedPlaceholderValuesDeep"],
-): { ctx: ConfigRouteContext; error: ReturnType<typeof vi.fn> } {
+  options: {
+    config?: ConfigRouteContext["config"];
+  } = {},
+): {
+  ctx: ConfigRouteContext;
+  error: ReturnType<typeof vi.fn>;
+  json: ReturnType<typeof vi.fn>;
+} {
   const error = vi.fn();
   const json = vi.fn();
   const ctx: ConfigRouteContext = {
@@ -33,7 +44,7 @@ function makeCtx(
     method: "PUT",
     pathname: "/api/config",
     url: new URL("http://127.0.0.1/api/config"),
-    config: {},
+    config: options.config ?? {},
     runtime: null,
     json,
     error,
@@ -47,7 +58,7 @@ function makeCtx(
     resolveMcpServersRejection: async () => null,
     resolveMcpTerminalAuthorizationRejection: () => null,
   };
-  return { ctx, error };
+  return { ctx, error, json };
 }
 
 describe("config patch nest bound", () => {
@@ -81,5 +92,124 @@ describe("config patch nest bound", () => {
       400,
     );
     expect(strip).not.toHaveBeenCalled();
+  });
+});
+
+describe("config patch persistence", () => {
+  const envKey = "ELIZA_CONFIG_ROUTE_ATOMICITY_TEST";
+  const previousEnvValue = process.env[envKey];
+  const previousConfigPath = process.env.ELIZA_CONFIG_PATH;
+  let tempDir = "";
+
+  beforeEach(() => {
+    tempDir = mkdtempSync(path.join(tmpdir(), "eliza-config-route-"));
+    process.env.ELIZA_CONFIG_PATH = path.join(tempDir, "eliza.json");
+  });
+
+  afterEach(() => {
+    if (previousEnvValue === undefined) {
+      delete process.env[envKey];
+    } else {
+      process.env[envKey] = previousEnvValue;
+    }
+    if (previousConfigPath === undefined) {
+      delete process.env.ELIZA_CONFIG_PATH;
+    } else {
+      process.env.ELIZA_CONFIG_PATH = previousConfigPath;
+    }
+    rmSync(tempDir, { recursive: true, force: true });
+  });
+
+  it("rejects a failed save without changing live config or process.env", async () => {
+    process.env[envKey] = "before";
+    const config: ConfigRouteContext["config"] = {
+      ui: { theme: "eliza", seamColor: "#ffffff" },
+      env: { vars: { [envKey]: "before" } },
+    };
+    const before = structuredClone(config);
+    const blockedDirectory = path.join(tempDir, "not-a-directory");
+    writeFileSync(blockedDirectory, "file blocks config parent");
+    process.env.ELIZA_CONFIG_PATH = path.join(blockedDirectory, "eliza.json");
+    const { ctx, error, json } = makeCtx(
+      {
+        ui: { theme: "haxor" },
+        env: { vars: { [envKey]: "after" } },
+      },
+      vi.fn(),
+      { config },
+    );
+
+    expect(await handleConfigRoutes(ctx)).toBe(true);
+    expect(error).toHaveBeenCalledWith(
+      ctx.res,
+      "Config update could not be persisted",
+      500,
+    );
+    expect(json).not.toHaveBeenCalled();
+    expect(config).toEqual(before);
+    expect(process.env[envKey]).toBe("before");
+  });
+
+  it("preserves the successful response while committing staged state", async () => {
+    process.env[envKey] = "before";
+    const config: ConfigRouteContext["config"] = {
+      ui: { theme: "eliza", seamColor: "#ffffff" },
+      env: { vars: { [envKey]: "before" } },
+    };
+    const { ctx, error, json } = makeCtx(
+      {
+        ui: { theme: "haxor" },
+        env: { vars: { [envKey]: "after" } },
+      },
+      vi.fn(),
+      { config },
+    );
+
+    expect(await handleConfigRoutes(ctx)).toBe(true);
+    const expected = {
+      ui: { theme: "haxor", seamColor: "#ffffff" },
+      env: { vars: { [envKey]: "after" } },
+    };
+    expect(error).not.toHaveBeenCalled();
+    expect(json).toHaveBeenCalledWith(ctx.res, expected);
+    expect(config).toEqual(expected);
+    expect(process.env[envKey]).toBe("after");
+    expect(
+      JSON.parse(readFileSync(process.env.ELIZA_CONFIG_PATH as string, "utf8")),
+    ).toEqual(expected);
+  });
+
+  it("keeps exact responses for two previously-valid patch shapes", async () => {
+    const corpus: Array<{
+      config: ConfigRouteContext["config"];
+      patch: Record<string, unknown>;
+      expected: Record<string, unknown>;
+    }> = [
+      {
+        config: { ui: { theme: "eliza", seamColor: "#ffffff" } },
+        patch: { ui: { theme: "haxor" } },
+        expected: { ui: { theme: "haxor", seamColor: "#ffffff" } },
+      },
+      {
+        config: {
+          ui: { theme: "eliza" },
+          env: { vars: { [envKey]: "before", EMPTY_VALUE: "" } },
+        },
+        patch: { env: { vars: { [envKey]: "after" } } },
+        expected: {
+          ui: { theme: "eliza" },
+          env: { vars: { [envKey]: "after" } },
+        },
+      },
+    ];
+
+    for (const entry of corpus) {
+      const { ctx, error, json } = makeCtx(entry.patch, vi.fn(), {
+        config: structuredClone(entry.config),
+      });
+      expect(await handleConfigRoutes(ctx)).toBe(true);
+      expect(error).not.toHaveBeenCalled();
+      expect(json).toHaveBeenCalledWith(ctx.res, entry.expected);
+    }
   });
 });

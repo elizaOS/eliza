@@ -1,5 +1,7 @@
 name: Cloud CF Deploy
 
+run-name: Cloud CF ${{ inputs.environment || 'staging' }} ${{ inputs.source_sha || github.sha }} ${{ inputs.effect_digest || 'manual' }}
+
 # Cloudflare deployment for the consolidated Eliza frontend and Workers API.
 #
 # One packages/app build is deployed to the `eliza-app` Pages project. Host-aware
@@ -7,8 +9,8 @@ name: Cloud CF Deploy
 # experience on cloud.eliza.app. Legacy elizacloud.ai hosts are Worker-owned
 # redirect inputs and never receive a separately built frontend.
 #
-# Staging and production are explicit protected-environment operations until a
-# later current-SHA effect fence can safely reconcile automatic deploys.
+# Staging accepts exact-SHA reconciler dispatches after Develop Full; production
+# remains an explicit protected-environment operation.
 #
 # Required repo secrets:
 #   CLOUDFLARE_API_TOKEN   - account-scoped token with Workers + Pages edit perms
@@ -55,6 +57,21 @@ on:
         required: false
         default: false
         type: boolean
+      source_sha:
+        description: Exact develop SHA supplied by the effect reconciler
+        required: false
+        default: ""
+        type: string
+      effect_digest:
+        description: Exact reconciler input digest; empty for manual operation
+        required: false
+        default: ""
+        type: string
+      run_deployed_renderer_staging:
+        description: Run the credentialed deployed-Pages renderer proof once after a staging release (uses real staging model credits)
+        required: false
+        default: false
+        type: boolean
 
 concurrency:
   # #18092: non-PR admission is unique per run so two dispatches/reruns of
@@ -81,12 +98,29 @@ jobs:
     steps:
       - name: Reject feature refs targeting canonical environments
         env:
+          EFFECT_DIGEST: ${{ inputs.effect_digest }}
           EVENT_NAME: ${{ github.event_name }}
+          SOURCE_SHA: ${{ inputs.source_sha }}
           TARGET_ENVIRONMENT: ${{ inputs.environment }}
           SOURCE_REF: ${{ github.ref }}
+          FORCE: ${{ inputs.force == true }}
+          RUN_DEPLOYED_RENDERER_STAGING: ${{ inputs.run_deployed_renderer_staging == true }}
         run: |
+          set -euo pipefail
+
           if [ "$EVENT_NAME" != "workflow_dispatch" ]; then
             exit 0
+          fi
+
+          if [ "$RUN_DEPLOYED_RENDERER_STAGING" = "true" ]; then
+            if [ "$TARGET_ENVIRONMENT" != "staging" ]; then
+              echo "::error::The deployed-renderer proof may target only staging."
+              exit 1
+            fi
+            if [ "$FORCE" = "true" ]; then
+              echo "::error::The deployed-renderer proof must keep the canonical freshness guards enabled."
+              exit 1
+            fi
           fi
 
           if [ "$TARGET_ENVIRONMENT" = "production" ]; then
@@ -98,6 +132,15 @@ jobs:
           if [ "$SOURCE_REF" != "$expected_ref" ]; then
             echo "::error::Canonical $TARGET_ENVIRONMENT deploys must run from $expected_ref, not $SOURCE_REF. Use the pull-request Pages preview for feature refs."
             exit 1
+          fi
+
+          if [ -n "$EFFECT_DIGEST" ]; then
+            [[ "$EFFECT_DIGEST" =~ ^[0-9a-f]{64}$ ]] || { echo "::error::Invalid reconciled effect digest"; exit 1; }
+            [[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::Invalid reconciled source SHA"; exit 1; }
+            [ "$SOURCE_SHA" = "$GITHUB_SHA" ] || {
+              echo "::error::Dispatch resolved $GITHUB_SHA instead of reconciled source $SOURCE_SHA"
+              exit 1
+            }
           fi
 
   admit-staging:
@@ -126,14 +169,16 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           TARGET_ENVIRONMENT: ${{ inputs.environment }}
           FORCE: ${{ github.event_name == 'workflow_dispatch' && inputs.force == true }}
+          RUN_DEPLOYED_RENDERER_STAGING: ${{ github.event_name == 'workflow_dispatch' && inputs.run_deployed_renderer_staging == true }}
         run: |
           set -euo pipefail
 
           latest_eligible_run_id=""
-          if [ "$EVENT_NAME" != "pull_request" ] \
+          if [ "$EVENT_NAME" = "push" ] \
             && [ "$TARGET_ENVIRONMENT" != "production" ] \
             && [ "$GITHUB_REF" != "refs/heads/main" ] \
-            && [ "$FORCE" != "true" ]; then
+            && [ "$FORCE" != "true" ] \
+            && [ "$RUN_DEPLOYED_RENDERER_STAGING" != "true" ]; then
             latest_eligible_run_id="$(
               gh api \
                 "repos/${GITHUB_REPOSITORY}/actions/workflows/cloud-cf-deploy.yml/runs?branch=develop&event=push&per_page=1" \
@@ -146,10 +191,12 @@ jobs:
             "--environment=$TARGET_ENVIRONMENT" \
             "--ref=$GITHUB_REF" \
             "--force=$FORCE" \
+            "--run-deployed-renderer-staging=$RUN_DEPLOYED_RENDERER_STAGING" \
             "--run-id=$GITHUB_RUN_ID" \
             "--latest-eligible-run-id=$latest_eligible_run_id"
 
-          if [ "$GITHUB_RUN_ID" != "$latest_eligible_run_id" ] \
+          if [ "$EVENT_NAME" = "push" ] \
+            && [ "$GITHUB_RUN_ID" != "$latest_eligible_run_id" ] \
             && [ -n "$latest_eligible_run_id" ]; then
             echo "Superseded staging release: run=$GITHUB_RUN_ID latest=$latest_eligible_run_id" >> "$GITHUB_STEP_SUMMARY"
           fi
@@ -337,6 +384,7 @@ jobs:
     with:
       target_environment: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'production' || 'staging' }}
       force: ${{ github.event_name == 'workflow_dispatch' && inputs.force == true }}
+      run_deployed_renderer_staging: ${{ github.event_name == 'workflow_dispatch' && inputs.run_deployed_renderer_staging == true }}
 
   certify-staging-release:
     name: Certify successful staging Cloud tree

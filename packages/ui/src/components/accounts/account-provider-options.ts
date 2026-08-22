@@ -37,23 +37,25 @@ export const ACCOUNT_PROVIDER_OPTIONS: AccountProviderOption[] = [
     id: "gemini-cli",
     name: "Gemini CLI subscription",
     category: "coding",
-    description: "Managed by Gemini CLI login outside this app.",
-    eligibility: ["code-agent", "third-party CLI"],
+    description:
+      "Managed by Gemini CLI outside this app; orchestrated spawning is not wired yet.",
+    eligibility: ["external CLI", "spawn unavailable"],
   },
   {
     id: "zai-coding",
     name: "z.ai Coding Plan",
     category: "coding",
-    description: "Dedicated coding-plan credential, separate from API routing.",
-    eligibility: ["code-agent", "API key"],
+    description:
+      "Dedicated coding-endpoint credential; no coding-agent spawn backend is wired yet.",
+    eligibility: ["model inference", "spawn unavailable"],
   },
   {
     id: "kimi-coding",
-    name: "Kimi Code",
+    name: "Kimi Coding Endpoint Key",
     category: "coding",
     description:
-      "Dedicated Kimi coding-plan credential, separate from API routing.",
-    eligibility: ["code-agent", "API key"],
+      "Dedicated coding-endpoint key for model inference. Kimi ACP uses a separate kimi login OAuth session and never receives this key.",
+    eligibility: ["model inference", "endpoint key", "not ACP login"],
   },
   {
     id: "deepseek-coding",
@@ -88,7 +90,8 @@ export const ACCOUNT_PROVIDER_OPTIONS: AccountProviderOption[] = [
     id: "deepseek-api",
     name: "DeepSeek API",
     category: "chat",
-    description: "Direct DeepSeek API billing for chat or agent tasks.",
+    description:
+      "Direct DeepSeek API billing for model inference; coding-agent spawning is not wired yet.",
     eligibility: ["chat", "API key"],
   },
   {

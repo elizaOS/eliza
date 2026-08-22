@@ -1,9 +1,13 @@
-// Wires hosted Eliza agent mcp config behavior for cloud runtime services.
+/** Derives per-request MCP server configuration for hosted Eliza runtimes. */
 import { elizaLogger } from "@elizaos/core";
+import { getCloudAwareEnv, getCloudBinding } from "../../runtime/cloud-bindings";
 import { getRequestContext } from "../../services/entity-settings/request-context";
 import type { UserContext } from "../user-context";
 
-export const MCP_SERVER_CONFIGS: Record<string, { url: string; type: string }> = {
+export const MCP_SERVER_CONFIGS: Record<
+  string,
+  { url: string; type: string; timeoutInMillis?: number }
+> = {
   google: { url: "/api/mcps/google/streamable-http", type: "streamable-http" },
   hubspot: {
     url: "/api/mcps/hubspot/streamable-http",
@@ -16,6 +20,11 @@ export const MCP_SERVER_CONFIGS: Record<string, { url: string; type: string }> =
   dropbox: {
     url: "/api/mcps/dropbox/streamable-http",
     type: "streamable-http",
+  },
+  doordash: {
+    url: "/api/mcps/doordash/streamable-http",
+    type: "streamable-http",
+    timeoutInMillis: 120_000,
   },
   salesforce: {
     url: "/api/mcps/salesforce/streamable-http",
@@ -81,7 +90,15 @@ export function getConnectedPlatforms(context: UserContext): Set<string> {
 
 export function getConnectedMcpPlatforms(context: UserContext): string[] {
   const connected = getConnectedPlatforms(context);
-  return Object.keys(MCP_SERVER_CONFIGS).filter((p) => connected.has(p));
+  const env = getCloudAwareEnv();
+  return Object.keys(MCP_SERVER_CONFIGS).filter(
+    (platform) =>
+      connected.has(platform) ||
+      (platform === "doordash" &&
+        ((typeof env.MCP_DOORDASH_STREAMABLE_HTTP_URL === "string" &&
+          env.MCP_DOORDASH_STREAMABLE_HTTP_URL.trim().length > 0) ||
+          getCloudBinding("BROWSER") !== undefined)),
+  );
 }
 
 export function shouldEnableMcp(context: UserContext): boolean {
@@ -100,7 +117,7 @@ export function setMcpEnabledServers(context: UserContext): void {
 }
 
 export function buildMcpSettings(context: UserContext): { mcp?: Record<string, unknown> } {
-  const connected = getConnectedPlatforms(context);
+  const connected = new Set(getConnectedMcpPlatforms(context));
   const enabledServers = Object.fromEntries(
     Object.entries(MCP_SERVER_CONFIGS).filter(([p]) => connected.has(p)),
   );

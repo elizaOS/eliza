@@ -1046,6 +1046,7 @@ describe("Android artifact boundary selection", () => {
       "base/assets/libllama.so",
       "base/assets/models/model.GGUF",
       "base/assets/plugins/Loader.DEX",
+      "base/assets/runners/eliza-tasks.js",
       "base/assets/runtime/bun",
       "base/assets/runtime/libelizainference.so",
       "base/assets/runtime/llama-cpp-kernels.json",

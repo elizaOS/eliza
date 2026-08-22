@@ -17,6 +17,14 @@ export default defineConfig({
         replacement: path.join(coreSrcRoot, "index.node.ts"),
       },
       {
+        // `atomic-json` is an exports-map name, while its source lives under
+        // `src/utils`. Keep the exact mapping ahead of the generic core
+        // subpath alias so focused Electrobun tests do not require a built
+        // `packages/core/dist` tree.
+        find: /^@elizaos\/core\/atomic-json$/,
+        replacement: path.join(coreSrcRoot, "utils/atomic-json.ts"),
+      },
+      {
         find: /^@elizaos\/core\/(.*)$/,
         replacement: path.join(coreSrcRoot, "$1"),
       },

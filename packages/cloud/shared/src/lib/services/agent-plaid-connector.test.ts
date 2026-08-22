@@ -9,6 +9,7 @@ import {
   exchangePlaidPublicToken,
   getPlaidEnvironment,
   removePlaidItem,
+  updatePlaidItemWebhook,
 } from "./agent-plaid-connector";
 
 const originalEnvironment = process.env.PLAID_ENV;
@@ -84,6 +85,28 @@ describe("agent Plaid connector protocol boundary", () => {
     expect(JSON.parse(requestedBody)).toMatchObject({
       secret: "sandbox-server-secret",
       access_token: "access-sandbox-1",
+    });
+  });
+
+  test("updates an existing Item webhook through the dedicated Plaid endpoint", async () => {
+    configurePlaid();
+    let requestedUrl = "";
+    let requestedBody = "";
+    globalThis.fetch = mock(async (input, init) => {
+      requestedUrl = String(input);
+      requestedBody = String(init?.body ?? "");
+      return Response.json({ item: { item_id: "item-1" } });
+    }) as typeof fetch;
+
+    await updatePlaidItemWebhook({
+      accessToken: "access-sandbox-1",
+      webhookUrl: "https://agent.example/plaid/webhook",
+    });
+
+    expect(requestedUrl).toBe("https://sandbox.plaid.com/item/webhook/update");
+    expect(JSON.parse(requestedBody)).toMatchObject({
+      access_token: "access-sandbox-1",
+      webhook: "https://agent.example/plaid/webhook",
     });
   });
 

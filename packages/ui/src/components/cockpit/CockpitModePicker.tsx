@@ -2,6 +2,8 @@
  * Renders the cockpit mode cards and Eliza Cloud tier toggle without importing
  * plugin or server code into the UI package.
  */
+
+import { useAgentElement } from "../../agent-surface/useAgentElement";
 import { cn } from "../../lib/utils";
 import { Button } from "../ui/button";
 import { SegmentedControl } from "../ui/segmented-control";
@@ -25,6 +27,60 @@ const BADGE_CLASS: Record<CockpitModeBadge, string> = {
   sub: "text-muted border-border",
   exp: "text-destructive border-destructive/40",
 };
+
+function ModeOptionButton({
+  option,
+  isActive,
+  disabled,
+  select,
+}: {
+  option: ReturnType<typeof visibleCockpitModeOptions>[number];
+  isActive: boolean;
+  disabled: boolean;
+  select: (toConfig: (tier: ElizaCloudTier) => CockpitModeConfig) => void;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `cockpit-mode-${option.id}`,
+    role: "button",
+    label: option.title,
+    group: "cockpit-new-session-mode",
+    description: option.subtitle,
+    status: isActive ? "active" : "inactive",
+  });
+  return (
+    <Button
+      ref={ref}
+      variant="ghost"
+      aria-pressed={isActive}
+      disabled={disabled}
+      data-testid={`cockpit-mode-${option.id}`}
+      onClick={() => select(option.toConfig)}
+      className={cn(
+        "h-auto w-full justify-between gap-3 rounded-md border px-3.5 py-2.5 text-left transition-colors",
+        isActive
+          ? "border-accent bg-accent-subtle"
+          : "border-border hover:bg-bg-hover",
+        disabled && "cursor-not-allowed opacity-60",
+      )}
+      {...agentProps}
+    >
+      <span className="flex min-w-0 flex-col">
+        <span className="truncate text-sm font-semibold text-txt">
+          {option.title}
+        </span>
+        <span className="truncate text-xs text-muted">{option.subtitle}</span>
+      </span>
+      <span
+        className={cn(
+          "shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
+          BADGE_CLASS[option.badge],
+        )}
+      >
+        {BADGE_LABEL[option.badge]}
+      </span>
+    </Button>
+  );
+}
 
 export interface CockpitModePickerProps {
   /** The currently-selected mode config. */
@@ -68,37 +124,12 @@ export function CockpitModePicker({
         const isActive = option.id === selectedId;
         return (
           <div key={option.id} className="flex flex-col gap-2">
-            <Button
-              variant="ghost"
-              aria-pressed={isActive}
+            <ModeOptionButton
+              option={option}
+              isActive={isActive}
               disabled={disabled}
-              data-testid={`cockpit-mode-${option.id}`}
-              onClick={() => select(option.toConfig)}
-              className={cn(
-                "h-auto w-full justify-between gap-3 rounded-md border px-3.5 py-2.5 text-left transition-colors",
-                isActive
-                  ? "border-accent bg-accent-subtle"
-                  : "border-border hover:bg-bg-hover",
-                disabled && "cursor-not-allowed opacity-60",
-              )}
-            >
-              <span className="flex min-w-0 flex-col">
-                <span className="truncate text-sm font-semibold text-txt">
-                  {option.title}
-                </span>
-                <span className="truncate text-xs text-muted">
-                  {option.subtitle}
-                </span>
-              </span>
-              <span
-                className={cn(
-                  "shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
-                  BADGE_CLASS[option.badge],
-                )}
-              >
-                {BADGE_LABEL[option.badge]}
-              </span>
-            </Button>
+              select={select}
+            />
 
             {isActive && option.id === "eliza-cloud" ? (
               <SegmentedControl<ElizaCloudTier>
@@ -117,11 +148,17 @@ export function CockpitModePicker({
                     value: "small",
                     label: "Fast",
                     testId: "cockpit-tier-small",
+                    agentId: "cockpit-new-session-tier-fast",
+                    agentLabel: "Use Fast tier",
+                    agentGroup: "cockpit-new-session-mode",
                   },
                   {
                     value: "large",
                     label: "Smart",
                     testId: "cockpit-tier-large",
+                    agentId: "cockpit-new-session-tier-smart",
+                    agentLabel: "Use Smart tier",
+                    agentGroup: "cockpit-new-session-mode",
                   },
                 ]}
               />

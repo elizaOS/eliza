@@ -1,9 +1,8 @@
 /**
  * Boot-time gate deciding whether the remote coding runner (cloud/home sandbox
- * executor) plugin should load. Returns true when a runner-mode setting is set,
- * the E2B remote-runner flag is truthy, or any remote-runner base URL is
- * configured, reading each key from the runtime settings first and falling back
- * to the process env.
+ * executor) plugin should load. Returns true when a runner-mode setting or any
+ * remote-runner base URL is configured, reading each key from runtime settings
+ * first and falling back to the process env.
  */
 interface RuntimeSettingSource {
   getSetting(key: string): unknown;
@@ -40,19 +39,11 @@ function readSetting(
   return undefined;
 }
 
-function truthySetting(value: string | undefined): boolean {
-  if (!value) return false;
-  return ["1", "true", "yes", "on"].includes(value.toLowerCase());
-}
-
 export function shouldLoadRemoteCodingRunnerForBoot(
   runtime: RuntimeSettingSource,
   env: EnvSource = process.env,
 ): boolean {
   if (RUNNER_SETTING_KEYS.some((key) => readSetting(runtime, env, key))) {
-    return true;
-  }
-  if (truthySetting(readSetting(runtime, env, "ELIZA_E2B_REMOTE_RUNNER"))) {
     return true;
   }
   return REMOTE_RUNNER_URL_KEYS.some((key) => readSetting(runtime, env, key));

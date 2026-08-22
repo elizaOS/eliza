@@ -1545,47 +1545,6 @@ const spotify = envelope({
   ],
 });
 
-// ---------- signal -------------------------------------------------------
-
-const signal = envelope({
-  name: "lifeops-signal-mock",
-  port: 18818,
-  routes: [
-    route(
-      "get",
-      "v1/receive/:account",
-      [
-        {
-          envelope: {
-            source: PEOPLE[2].phone,
-            sourceNumber: PEOPLE[2].phone,
-            sourceName: PEOPLE[2].name,
-            timestamp: 1746810400000,
-            dataMessage: {
-              timestamp: 1746810400000,
-              message: "Are we still on for tomorrow?",
-              expiresInSeconds: 0,
-              viewOnce: false,
-            },
-          },
-        },
-      ],
-      "default",
-    ),
-    route(
-      "post",
-      "v2/send",
-      {
-        results: [
-          { recipientAddress: { number: PEOPLE[2].phone }, type: "SUCCESS" },
-        ],
-        timestamp: 1746810500000,
-      },
-      "default",
-    ),
-  ],
-});
-
 // ---------- write all ----------------------------------------------------
 
 const ENVS = {
@@ -1604,7 +1563,6 @@ const ENVS = {
   "cerebras.json": cerebras,
   "eliza-cloud.json": elizaCloud,
   "spotify.json": spotify,
-  "signal.json": signal,
 };
 
 for (const [name, env] of Object.entries(ENVS)) {

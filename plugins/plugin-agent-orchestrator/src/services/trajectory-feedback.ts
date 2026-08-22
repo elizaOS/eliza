@@ -13,7 +13,11 @@
  * @module services/trajectory-feedback
  */
 
-import { logger as elizaLogger, type IAgentRuntime } from "@elizaos/core";
+import {
+  ElizaError,
+  logger as elizaLogger,
+  type IAgentRuntime,
+} from "@elizaos/core";
 
 /** Timeout for trajectory DB calls to prevent blocking agent spawn. */
 const QUERY_TIMEOUT_MS = 5000;
@@ -46,13 +50,13 @@ interface PastExperience {
 
 /** Options for querying past experience. */
 export interface TrajectoryFeedbackOptions {
-  /** Caller-requested trajectory page size. Omit to consume every returned trajectory. */
+  /** @deprecated Retained for source compatibility; traversal is exhaustive. */
   maxTrajectories?: number;
-  /** Caller-requested result page size. Omit to return every relevant experience. */
+  /** @deprecated Retained for source compatibility; results are complete. */
   maxEntries?: number;
-  /** Only include trajectories from the last N hours (default: 48) */
+  /** @deprecated Retained for source compatibility; no recency window is applied. */
   lookbackHours?: number;
-  /** Task description for relevance filtering */
+  /** @deprecated Retained for source compatibility; no relevance filter is applied. */
   taskDescription?: string;
   /** Repository URL — only return experience from the same repo */
   repo?: string;
@@ -99,6 +103,7 @@ type TrajectoryLoggerRef = {
   listTrajectories: (options: {
     source?: string;
     limit?: number;
+    offset?: number;
     startDate?: string;
   }) => Promise<{
     trajectories: Array<{
@@ -110,6 +115,8 @@ type TrajectoryLoggerRef = {
       metadata?: Record<string, unknown>;
     }>;
     total: number;
+    offset?: number;
+    limit?: number;
   }>;
   getTrajectoryDetail: (id: string) => Promise<{
     trajectoryId: string;
@@ -133,6 +140,32 @@ function hasListMethod(obj: object): boolean {
   );
 }
 
+function assertWellFormedExperienceText(value: string, field: string): string {
+  if (value.toWellFormed() !== value) {
+    throw new ElizaError("Trajectory experience contains malformed Unicode", {
+      code: "TRAJECTORY_EXPERIENCE_MALFORMED_UNICODE",
+      context: { field },
+    });
+  }
+  return value;
+}
+
+function readMetadataInsights(value: unknown, trajectoryId: string): string[] {
+  if (value === undefined) return [];
+  if (
+    !Array.isArray(value) ||
+    value.some((entry) => typeof entry !== "string")
+  ) {
+    throw new ElizaError("Stored trajectory insights are malformed", {
+      code: "TRAJECTORY_EXPERIENCE_METADATA_INVALID",
+      context: { trajectoryId },
+    });
+  }
+  return value.map((entry, index) =>
+    assertWellFormedExperienceText(entry, `${trajectoryId}.insights[${index}]`),
+  );
+}
+
 // ─── Experience Extraction ───
 
 /**
@@ -146,7 +179,7 @@ function extractInsights(response: string, purpose: string): string[] {
   const decisionPattern = /DECISION:\s*(.+?)(?:\n|$)/gi;
   let match = decisionPattern.exec(response);
   while (match !== null) {
-    insights.push(match[1].trim());
+    insights.push(match[1]);
     match = decisionPattern.exec(response);
   }
 
@@ -154,7 +187,7 @@ function extractInsights(response: string, purpose: string): string[] {
   const keyDecisionPattern = /"keyDecision"\s*:\s*"([^"]+)"/g;
   match = keyDecisionPattern.exec(response);
   while (match !== null) {
-    insights.push(match[1].trim());
+    insights.push(match[1]);
     match = keyDecisionPattern.exec(response);
   }
 
@@ -163,49 +196,14 @@ function extractInsights(response: string, purpose: string): string[] {
     (purpose === "turn-complete" || purpose === "coordination") &&
     insights.length === 0
   ) {
-    const reasoningPattern = /"reasoning"\s*:\s*"([^"]{20,200})"/;
+    const reasoningPattern = /"reasoning"\s*:\s*"([^"]+)"/;
     const reasoningMatch = response.match(reasoningPattern);
-    if (reasoningMatch) {
-      insights.push(reasoningMatch[1].trim());
+    if (reasoningMatch && reasoningMatch[1].length >= 20) {
+      insights.push(reasoningMatch[1]);
     }
   }
 
   return insights;
-}
-
-/**
- * Check if a past experience is potentially relevant to a new task.
- * Uses simple keyword overlap — not semantic search, but fast and
- * good enough for catching repeated patterns.
- */
-function isRelevant(
-  experience: PastExperience,
-  taskDescription: string,
-): boolean {
-  if (!taskDescription) return true; // No filter = include all
-
-  const taskWords = new Set(
-    taskDescription
-      .toLowerCase()
-      .replace(/[^a-z0-9\s]/g, " ")
-      .split(/\s+/)
-      .filter((w) => w.length > 3),
-  );
-
-  const insightWords = experience.insight
-    .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, " ")
-    .split(/\s+/)
-    .filter((w) => w.length > 3);
-
-  // At least 2 meaningful word overlaps
-  let overlap = 0;
-  for (const word of insightWords) {
-    if (taskWords.has(word)) overlap++;
-    if (overlap >= 2) return true;
-  }
-
-  return false;
 }
 
 // ─── Main Query ───
@@ -218,33 +216,72 @@ export async function queryPastExperience(
   runtime: IAgentRuntime,
   options: TrajectoryFeedbackOptions = {},
 ): Promise<PastExperience[]> {
-  const {
-    maxTrajectories,
-    maxEntries,
-    lookbackHours = 48,
-    taskDescription,
-    repo,
-  } = options;
+  const { repo } = options;
 
   const logger = getTrajectoryLogger(runtime);
   if (!logger) return [];
 
-  const startDate = new Date(
-    Date.now() - lookbackHours * 60 * 60 * 1000,
-  ).toISOString();
-
   try {
-    // Fetch recent orchestrator trajectories
-    const result = await withTimeout(
-      logger.listTrajectories({
-        source: "orchestrator",
-        ...(maxTrajectories === undefined ? {} : { limit: maxTrajectories }),
-        startDate,
-      }),
-      QUERY_TIMEOUT_MS,
-    );
+    const summaries: Awaited<
+      ReturnType<TrajectoryLoggerRef["listTrajectories"]>
+    >["trajectories"] = [];
+    const seenTrajectoryIds = new Set<string>();
+    const pageSize = 500;
+    let offset = 0;
+    let expectedTotal: number | undefined;
+    while (true) {
+      const page = await withTimeout(
+        logger.listTrajectories({
+          source: "orchestrator",
+          limit: pageSize,
+          offset,
+        }),
+        QUERY_TIMEOUT_MS,
+      );
+      if (page.trajectories.length > pageSize) {
+        throw new ElizaError("Trajectory query exceeded its requested page", {
+          code: "TRAJECTORY_PAGE_INVALID",
+          context: { offset, pageSize, returned: page.trajectories.length },
+        });
+      }
+      if (expectedTotal === undefined) {
+        expectedTotal = page.total;
+      } else if (page.total !== expectedTotal) {
+        throw new ElizaError("Trajectory inventory changed during traversal", {
+          code: "TRAJECTORY_PAGINATION_CHANGED",
+          context: { offset, expectedTotal, observedTotal: page.total },
+        });
+      }
+      for (const summary of page.trajectories) {
+        if (seenTrajectoryIds.has(summary.id)) {
+          throw new ElizaError("Trajectory pagination repeated a record", {
+            code: "TRAJECTORY_PAGINATION_REPEATED",
+            context: { offset, trajectoryId: summary.id },
+          });
+        }
+        seenTrajectoryIds.add(summary.id);
+        summaries.push(summary);
+      }
+      offset += page.trajectories.length;
+      if (offset >= page.total) break;
+      if (page.trajectories.length === 0) {
+        throw new ElizaError("Trajectory pagination did not advance", {
+          code: "TRAJECTORY_PAGINATION_STALLED",
+          context: { offset, total: page.total },
+        });
+      }
+    }
+    if (summaries.length !== expectedTotal) {
+      throw new ElizaError(
+        "Trajectory traversal returned an incomplete inventory",
+        {
+          code: "TRAJECTORY_PAGINATION_INCOMPLETE",
+          context: { expectedTotal, returned: summaries.length },
+        },
+      );
+    }
 
-    if (result.trajectories.length === 0) return [];
+    if (summaries.length === 0) return [];
 
     const experiences: PastExperience[] = [];
 
@@ -253,9 +290,7 @@ export async function queryPastExperience(
     // to avoid loading full trajectory details with their large prompt/response
     // payloads. Fall back to getTrajectoryDetail for older trajectories that
     // predate the metadata insight extraction.
-    for (let scanIdx = 0; scanIdx < result.trajectories.length; scanIdx++) {
-      const summary = result.trajectories[scanIdx];
-
+    for (const summary of summaries) {
       const metadata = summary.metadata as
         | {
             orchestrator?: {
@@ -266,12 +301,10 @@ export async function queryPastExperience(
             insights?: unknown;
           }
         | undefined;
-      const metadataInsights = Array.isArray(metadata?.insights)
-        ? metadata.insights.filter(
-            (value): value is string =>
-              typeof value === "string" && value.trim().length > 0,
-          )
-        : [];
+      const metadataInsights = readMetadataInsights(
+        metadata?.insights,
+        summary.id,
+      );
       const decisionType = metadata?.orchestrator?.decisionType ?? "unknown";
       const taskLabel = metadata?.orchestrator?.taskLabel ?? "";
       const trajectoryRepo = metadata?.orchestrator?.repo;
@@ -304,11 +337,19 @@ export async function queryPastExperience(
       const detail = await withTimeout(
         logger.getTrajectoryDetail(summary.id),
         QUERY_TIMEOUT_MS,
-        // error-policy:J4 one unreadable/timed-out legacy trajectory is skipped
-        // so this bounded best-effort enrichment still returns partial results;
-        // a total query failure surfaces at this function's outer catch.
-      ).catch(() => null);
-      if (!detail?.steps) continue;
+      );
+      if (!detail || !Array.isArray(detail.steps)) {
+        throw new ElizaError(
+          "Trajectory detail is unavailable for complete experience loading",
+          {
+            code: "TRAJECTORY_EXPERIENCE_DETAIL_UNAVAILABLE",
+            context: {
+              trajectoryId: summary.id,
+              reason: detail ? "steps_missing" : "detail_missing",
+            },
+          },
+        );
+      }
 
       for (const step of detail.steps) {
         if (!step.llmCalls) continue;
@@ -317,7 +358,10 @@ export async function queryPastExperience(
           if (!call.response) continue;
 
           const insights = extractInsights(
-            call.response,
+            assertWellFormedExperienceText(
+              call.response,
+              `${summary.id}.llmCall.response`,
+            ),
             call.purpose ?? decisionType,
           );
 
@@ -333,38 +377,16 @@ export async function queryPastExperience(
       }
     }
 
-    // Filter by relevance if task description provided
-    let filtered = taskDescription
-      ? experiences.filter((e) => isRelevant(e, taskDescription))
-      : experiences;
-
-    // If relevance filtering removed everything, fall back to all experiences
-    if (filtered.length === 0 && experiences.length > 0) {
-      filtered = experiences;
-    }
-
-    // Deduplicate by insight text (keep most recent)
-    const seen = new Map<string, PastExperience>();
-    for (const exp of filtered) {
-      const key = exp.insight.toLowerCase();
-      const existing = seen.get(key);
-      if (!existing || exp.timestamp > existing.timestamp) {
-        seen.set(key, exp);
-      }
-    }
-
-    const ordered = Array.from(seen.values()).sort(
-      (a, b) => b.timestamp - a.timestamp,
-    );
-    return maxEntries === undefined ? ordered : ordered.slice(0, maxEntries);
+    return experiences;
   } catch (err) {
-    // error-policy:J4 explicit degrade — optional spawn-time experience
-    // enrichment; a trajectory-DB read failure is logged and degrades to no
-    // injected context, the same functional state as no past experience.
-    // Non-critical — log and return empty
+    // error-policy:J2 incomplete experience context must fail explicitly.
     elizaLogger.error(
       `[trajectory-feedback] Failed to query past experience: ${err}`,
     );
-    return [];
+    if (err instanceof ElizaError) throw err;
+    throw new ElizaError("Failed to load complete trajectory experience", {
+      code: "TRAJECTORY_EXPERIENCE_LOAD_FAILED",
+      cause: err,
+    });
   }
 }

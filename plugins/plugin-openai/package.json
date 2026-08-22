@@ -109,7 +109,7 @@
       "OPENAI_API_KEY": {
         "type": "string",
         "description": "API key used to authenticate requests to the OpenAI API.",
-        "required": true,
+        "required": false,
         "sensitive": true
       },
       "OPENAI_BASE_URL": {

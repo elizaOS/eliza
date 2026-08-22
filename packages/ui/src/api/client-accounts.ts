@@ -2,16 +2,13 @@
  * Extends the dashboard client with server-authoritative account capability
  * and selection metadata without coupling those contracts to agent controls.
  */
+import type { ProviderRuntimeEligibility } from "@elizaos/shared";
 import type {
   AccountsListProvider,
   AccountsListResponse,
 } from "./client-agent";
 
-export interface ProviderRuntimeEligibility {
-  chat: boolean;
-  codingAgent: boolean;
-  note?: string;
-}
+export type { ProviderRuntimeEligibility } from "@elizaos/shared";
 
 export interface ProviderSelectionState {
   activeAccountId: string | null;

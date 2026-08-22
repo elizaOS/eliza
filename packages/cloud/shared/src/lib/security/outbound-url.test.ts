@@ -140,6 +140,26 @@ describe("outbound URL SSRF validation", () => {
       "Unable to resolve endpoint hostname",
     );
   });
+
+  test("never-settling DNS lookup returns when the caller signal aborts", async () => {
+    lookupMock.mockReturnValue(
+      new Promise(() => {
+        /* never settles */
+      }),
+    );
+    const controller = new AbortController();
+    const reason = new DOMException("Aborted", "AbortError");
+    const pending = assertSafeOutboundUrl("https://example.com/", {
+      signal: controller.signal,
+    });
+    queueMicrotask(() => {
+      controller.abort(reason);
+    });
+    const hung = new Promise<never>((_, reject) => {
+      setTimeout(() => reject(new Error("assertSafeOutboundUrl ignored abort")), 80);
+    });
+    await expect(Promise.race([pending, hung])).rejects.toBe(reason);
+  });
 });
 
 describe("isSafeRegistrationUrl", () => {

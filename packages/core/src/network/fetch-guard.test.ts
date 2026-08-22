@@ -96,6 +96,106 @@ describe("fetchWithSsrfGuard without a lookupFn (literal-host checks)", () => {
 	});
 });
 
+describe("fetchWithSsrfGuard teardown and cancellation", () => {
+	it("does not dispatch when the caller signal is already aborted", async () => {
+		const fetchImpl = vi.fn(async () => new Response("hi", { status: 200 }));
+		const controller = new AbortController();
+		controller.abort();
+		await expect(
+			fetchWithSsrfGuard({
+				url: "https://example.com/page",
+				fetchImpl,
+				signal: controller.signal,
+			}),
+		).rejects.toMatchObject({ name: "AbortError" });
+		expect(fetchImpl).not.toHaveBeenCalled();
+	});
+
+	it("does not dispatch when a caller signal with a timeout is already aborted", async () => {
+		const fetchImpl = vi.fn(async () => new Response("hi", { status: 200 }));
+		const controller = new AbortController();
+		controller.abort();
+		await expect(
+			fetchWithSsrfGuard({
+				url: "https://example.com/page",
+				fetchImpl,
+				signal: controller.signal,
+				timeoutMs: 10_000,
+			}),
+		).rejects.toMatchObject({ name: "AbortError" });
+		expect(fetchImpl).not.toHaveBeenCalled();
+	});
+
+	it("rejects a disallowed redirect immediately when its body cancel never settles", async () => {
+		let cancelCalls = 0;
+		const fetchImpl = vi.fn(
+			async () =>
+				new Response(
+					new ReadableStream({
+						cancel() {
+							cancelCalls += 1;
+							return new Promise<void>(() => {});
+						},
+					}),
+					{ status: 302, headers: { location: "https://example.com/next" } },
+				),
+		);
+		const started = Date.now();
+		await expect(
+			fetchWithSsrfGuard({
+				url: "https://example.com/page",
+				fetchImpl,
+				maxRedirects: 0,
+				timeoutMs: 10_000,
+			}),
+		).rejects.toThrow(/Too many redirects/);
+		expect(Date.now() - started).toBeLessThan(5_000);
+		expect(cancelCalls).toBe(1);
+	});
+
+	it("keeps the missing-location error when the redirect body cancel rejects", async () => {
+		const fetchImpl = vi.fn(
+			async () =>
+				new Response(
+					new ReadableStream({
+						cancel() {
+							return Promise.reject(new Error("hostile cancel"));
+						},
+					}),
+					{ status: 302 },
+				),
+		);
+		await expect(
+			fetchWithSsrfGuard({ url: "https://example.com/page", fetchImpl }),
+		).rejects.toThrow(/Redirect missing location header/);
+	});
+
+	it("disposes each followed redirect body without waiting for it to settle", async () => {
+		let cancelCalls = 0;
+		const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
+			if (String(input) === "https://example.com/page") {
+				return new Response(
+					new ReadableStream({
+						cancel() {
+							cancelCalls += 1;
+							return new Promise<void>(() => {});
+						},
+					}),
+					{ status: 302, headers: { location: "https://example.com/next" } },
+				);
+			}
+			return new Response("done", { status: 200 });
+		});
+		const { response, release } = await fetchWithSsrfGuard({
+			url: "https://example.com/page",
+			fetchImpl,
+		});
+		expect(response.status).toBe(200);
+		expect(cancelCalls).toBe(1);
+		await release();
+	});
+});
+
 describe("fetchWithSsrfGuard with DNS pinning", () => {
 	it("passes the vetted pinned lookup to the transport", async () => {
 		let lookupCalls = 0;

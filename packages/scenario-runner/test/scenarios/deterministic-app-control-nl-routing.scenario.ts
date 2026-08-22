@@ -30,10 +30,14 @@ type RuntimeWithScenarioModelFixtures = {
   deleteTask?: (taskId: string) => Promise<void>;
   getService?: (serviceType: string) => unknown;
   getTasks?: (query?: Record<string, unknown>) => Promise<unknown[]>;
+  evaluators: unknown[];
   scenarioModelFixtures?: {
     register: (...fixtures: Array<Record<string, unknown>>) => void;
   };
 };
+
+let previousEvaluators: unknown[] | null = null;
+let scenarioRuntime: RuntimeWithScenarioModelFixtures | null = null;
 
 function toRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
@@ -125,29 +129,42 @@ function plannerFixture(
   args: Record<string, unknown>,
   messageToUser: string,
 ) {
+  const plannedResponse = {
+    text: "",
+    thought: `Call ${actionName} for ${input}.`,
+    messageToUser,
+    completed: true,
+    finishReason: "tool-calls",
+    toolCalls: [
+      {
+        id: `call-${actionName.toLowerCase()}-${String(args.action)}`,
+        name: actionName,
+        type: "function",
+        arguments: args,
+      },
+    ],
+  };
   return {
     name: `route-${actionName.toLowerCase()}-planner-${input}`,
     match: {
       modelType: ModelType.ACTION_PLANNER,
       input: matchesScenarioInput(input),
-      toolName: actionName,
     },
-    response: {
-      text: "",
-      thought: `Call ${actionName} for ${input}.`,
-      messageToUser,
-      completed: true,
-      finishReason: "tool-calls",
-      toolCalls: [
-        {
-          id: `call-${actionName.toLowerCase()}-${String(args.action)}`,
-          name: actionName,
-          type: "function",
-          arguments: args,
-        },
-      ],
-    },
-    times: 1,
+    resolve: (call: {
+      latestUserText: string;
+      params: { toolChoice?: unknown };
+    }) =>
+      call.params.toolChoice === "required"
+        ? plannedResponse
+        : {
+            text: messageToUser,
+            thought: `Report the completed ${actionName} result.`,
+            messageToUser,
+            completed: true,
+            finishReason: "stop",
+            toolCalls: [],
+          },
+    times: { min: 1, max: 2 },
   };
 }
 
@@ -294,6 +311,9 @@ export default scenario({
         process.env.ELIZA_WORKSPACE_DIR = repoRoot;
         resetAppControlHttpLoopback();
         const runtime = ctx.runtime as RuntimeWithScenarioModelFixtures;
+        scenarioRuntime = runtime;
+        previousEvaluators = runtime.evaluators;
+        runtime.evaluators = [];
 
         await fs.rm(path.dirname(appLoadDirectory), {
           force: true,
@@ -567,6 +587,36 @@ export default scenario({
             },
             "Deleted Remote Ledger (@elizaos/plugin-remote-ledger). Plugin @elizaos/plugin-remote-ledger unloaded.",
           ),
+          {
+            name: "app-relaunch-result-rescue",
+            match: {
+              modelType: ModelType.TEXT_LARGE,
+              input: (input: string) =>
+                input.includes("Relaunched Feed. New run ID: run-feed-nl-2."),
+            },
+            response: "Relaunched Feed. New run ID: run-feed-nl-2.",
+            times: 1,
+          },
+          {
+            name: "app-load-result-rescue",
+            match: {
+              modelType: ModelType.TEXT_LARGE,
+              input: (input: string) =>
+                input.includes("Loaded Console (@scenario/app-loaded-console)"),
+            },
+            response: `Registered 1 app from ${appLoadDirectory}: Loaded Console (@scenario/app-loaded-console).`,
+            times: 1,
+          },
+          {
+            name: "app-create-cancel-result-rescue",
+            match: {
+              modelType: ModelType.TEXT_LARGE,
+              input: (input: string) =>
+                input.includes("Canceled. No app changes made."),
+            },
+            response: "Canceled. No app changes made.",
+            times: 1,
+          },
         );
 
         registerAppControlHttpHandler((request) => {
@@ -661,6 +711,11 @@ export default scenario({
       type: "custom",
       name: "remove app-control source fixtures",
       apply: async () => {
+        if (scenarioRuntime && previousEvaluators !== null) {
+          scenarioRuntime.evaluators = previousEvaluators;
+          previousEvaluators = null;
+        }
+        scenarioRuntime = null;
         await fs.rm(path.dirname(appLoadDirectory), {
           force: true,
           recursive: true,

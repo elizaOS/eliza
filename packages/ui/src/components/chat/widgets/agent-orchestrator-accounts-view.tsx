@@ -41,7 +41,7 @@ function UsageBar({ label, pct }: { label: string; pct?: number }) {
   const clamped = Math.max(0, Math.min(100, Math.round(pct)));
   return (
     <div className="flex items-center gap-1.5">
-      <span className="w-9 shrink-0 text-3xs uppercase tracking-wide text-muted">
+      <span className="w-9 shrink-0 text-3xs uppercase tracking-wider text-muted">
         {label}
       </span>
       <div className="h-1 flex-1 overflow-hidden rounded-full bg-muted/20">
@@ -225,7 +225,7 @@ export function OrchestratorAccountsView({
             className="space-y-1.5 border-t border-border/40 pt-1.5"
             data-testid="orchestrator-room-roster"
           >
-            <div className="text-3xs font-medium uppercase tracking-wide text-muted">
+            <div className="text-3xs font-medium uppercase tracking-wider text-muted">
               {t("agentorchestrator.taskRooms", { defaultValue: "Task rooms" })}
             </div>
             {activeRooms.map((room) => (

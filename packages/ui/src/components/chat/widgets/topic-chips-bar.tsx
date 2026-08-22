@@ -84,7 +84,7 @@ export function TopicChipsBar({
             data-testid={`topic-chip-${topic.id}`}
             className={cn(
               appearance === "overlay"
-                ? "h-auto shrink-0 whitespace-nowrap rounded-full border px-2.5 py-0.5 text-[11px] font-medium transition-colors"
+                ? "h-auto shrink-0 whitespace-nowrap rounded-full border px-2.5 py-0.5 text-xs-tight font-medium transition-colors"
                 : "h-7 gap-1.5 px-3 text-xs",
               appearance === "overlay" &&
                 (isActive

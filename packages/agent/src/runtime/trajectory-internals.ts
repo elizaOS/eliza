@@ -79,6 +79,43 @@ type RuntimeWithOrchestratorTrajectoryContext = {
   __orchestratorTrajectoryCtx?: OrchestratorTrajectoryContext;
 };
 
+/**
+ * Appends derived trajectory text records without a recency window, dedupe, or
+ * normalization. Invalid persisted metadata is rejected so a corrupt legacy
+ * value cannot make later context look complete.
+ */
+export function appendCompleteTrajectoryTextRecords(
+  existing: unknown,
+  additions: readonly string[],
+  field: string,
+): string[] {
+  const prior = existing === undefined ? [] : existing;
+  if (
+    !Array.isArray(prior) ||
+    prior.some((record) => typeof record !== "string") ||
+    additions.some((record) => typeof record !== "string")
+  ) {
+    throw new ElizaError("Trajectory text metadata is malformed", {
+      code: "TRAJECTORY_TEXT_METADATA_INVALID",
+      context: { field },
+    });
+  }
+  for (const [index, record] of [...prior, ...additions].entries()) {
+    assertWellFormedTrajectoryText(record, `${field}[${index}]`);
+  }
+  return [...prior, ...additions];
+}
+
+function assertWellFormedTrajectoryText(value: string, field: string): string {
+  if (toWellFormedUnicode(value) !== value) {
+    throw new ElizaError("Trajectory text contains malformed Unicode", {
+      code: "TRAJECTORY_TEXT_MALFORMED_UNICODE",
+      context: { field },
+    });
+  }
+  return value;
+}
+
 export type PersistedLlmCall = TrajectoryLlmCall & {
   callId: string;
   timestamp: number;
@@ -430,17 +467,6 @@ export function normalizeTrajectoryMetadata(
   };
 }
 
-export function truncateField(value: string, _limit = 500): string {
-  return toWellFormedUnicode(value);
-}
-
-export function truncateRecord(
-  obj: Record<string, unknown>,
-  _limit = 500,
-): Record<string, unknown> {
-  return obj;
-}
-
 // ---------------------------------------------------------------------------
 // Script capture helpers
 // ---------------------------------------------------------------------------
@@ -452,7 +478,7 @@ export function capScriptForPersistence(script: string): {
   script: string;
   scriptHash?: string;
 } {
-  return { script: toWellFormedUnicode(script) };
+  return { script: assertWellFormedTrajectoryText(script, "script") };
 }
 
 // ---------------------------------------------------------------------------
@@ -464,23 +490,23 @@ export function extractInsightsFromResponse(
   purpose: string,
 ): string[] {
   const insights: string[] = [];
-  const safeResponse = toWellFormedUnicode(response);
-  const decisionPattern = /DECISION:[ \t]{0,1024}([^\n]{1,1024})/gi;
+  const safeResponse = assertWellFormedTrajectoryText(response, "response");
+  const decisionPattern = /DECISION:[ \t]*([^\n]+)/gi;
   let match: RegExpExecArray | null;
   match = decisionPattern.exec(safeResponse);
   while (match !== null) {
     const decision = match[1];
     if (decision) {
-      insights.push(decision.trim());
+      insights.push(decision);
     }
     match = decisionPattern.exec(safeResponse);
   }
-  const keyDecisionPattern = /"keyDecision"\s{0,32}:\s{0,32}"([^"]{1,1024})"/g;
+  const keyDecisionPattern = /"keyDecision"\s*:\s*"([^"]+)"/g;
   match = keyDecisionPattern.exec(safeResponse);
   while (match !== null) {
     const keyDecision = match[1];
     if (keyDecision) {
-      insights.push(keyDecision.trim());
+      insights.push(keyDecision);
     }
     match = keyDecisionPattern.exec(safeResponse);
   }
@@ -488,11 +514,9 @@ export function extractInsightsFromResponse(
     (purpose === "turn-complete" || purpose === "coordination") &&
     insights.length === 0
   ) {
-    const reasoningMatch = safeResponse.match(
-      /"reasoning"\s{0,32}:\s{0,32}"([^"]{20,200})"/,
-    );
+    const reasoningMatch = safeResponse.match(/"reasoning"\s*:\s*"([^"]+)"/);
     const reasoning = reasoningMatch?.[1];
-    if (reasoning) insights.push(reasoning.trim());
+    if (reasoning && reasoning.length >= 20) insights.push(reasoning);
   }
   return insights;
 }
@@ -619,7 +643,6 @@ export async function flushObservationBuffer(
 
     const result = await runtime.useModel(ModelType.TEXT_SMALL, {
       prompt,
-      maxTokens: 512,
       temperature: 0,
     });
 
@@ -647,16 +670,23 @@ export async function flushObservationBuffer(
     );
     if (trajectory) {
       const meta = trajectory.metadata as Record<string, unknown>;
-      const existing = Array.isArray(meta.observations)
-        ? (meta.observations as string[])
-        : [];
-      meta.observations = [...existing, ...observations].slice(-30);
+      meta.observations = appendCompleteTrajectoryTextRecords(
+        meta.observations,
+        observations,
+        "observations",
+      );
       trajectory.metadata = meta;
       await saveTrajectory(runtime, trajectory, { changedStepIds: [] });
     }
 
     return observations;
   } catch (err) {
+    // error-policy:J7 observation extraction is diagnostic enrichment, but its
+    // failures must remain visible to the runtime error stream without killing
+    // the surrounding message loop.
+    runtime.reportError("TrajectoryPersistence.flushObservationBuffer", err, {
+      agentId: runtime.agentId,
+    });
     warnRuntime(
       runtime,
       "[trajectory-persistence] observation flush failed",

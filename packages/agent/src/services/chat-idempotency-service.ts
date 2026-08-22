@@ -139,7 +139,23 @@ export function createChatIdempotencyStore<Outcome>(options?: {
     const key = keyFor(scope, clientMessageId);
     const current = entries.get(key);
     if (current) {
-      if (
+      // Retire a settled entry that has outlived the retention window BEFORE
+      // comparing fingerprints. Past `retentionMs` the reservation no longer
+      // exists as far as this contract is concerned, so a client reusing the
+      // same `clientMessageId` for genuinely new content is a fresh request.
+      // Comparing fingerprints first pinned the key to its original content
+      // permanently — the caller got CHAT_IDEMPOTENCY_CONFLICT forever, and
+      // the route layer hands that value straight to the client as an SSE
+      // error. It also returned before the opportunistic sweep below, so the
+      // dead entry was never collected either. `reserve()` already retires the
+      // expired entry first; this makes `admit()` agree with it.
+      const settledAndExpired =
+        current.status === "settled" &&
+        current.settledAt !== undefined &&
+        now - current.settledAt > retentionMs;
+      if (settledAndExpired) {
+        entries.delete(key);
+      } else if (
         current.fingerprint !== undefined &&
         options.fingerprint !== current.fingerprint
       ) {
@@ -147,13 +163,6 @@ export function createChatIdempotencyStore<Outcome>(options?: {
           kind: "conflict",
           error: new ChatIdempotencyConflictError(scope, clientMessageId),
         };
-      }
-      if (
-        current.status === "settled" &&
-        current.settledAt !== undefined &&
-        now - current.settledAt > retentionMs
-      ) {
-        entries.delete(key);
       } else if (
         current.status === "settled" &&
         current.outcome !== undefined

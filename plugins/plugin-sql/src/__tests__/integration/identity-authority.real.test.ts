@@ -17,17 +17,14 @@ import {
   identityMergeConfirmationTable,
   identityMergeJournalTable,
 } from "../../schema/identityAuthority";
-import {
-  computeIdentityRequestDigest,
-  SqlIdentityResolutionService,
-} from "../../services/sql-identity-resolution";
+import { computeIdentityRequestDigest, SqlPrincipalService } from "../../services/sql-principal";
 import type { DrizzleDatabase } from "../../types";
 import { createIsolatedTestDatabase } from "../test-helpers";
 
 describe("SQL identity authority", () => {
   let cleanup: () => Promise<void>;
   let db: DrizzleDatabase;
-  let service: SqlIdentityResolutionService;
+  let service: SqlPrincipalService;
   let agentId: UUID;
   const actorId = crypto.randomUUID() as UUID;
   const canonicalId = crypto.randomUUID() as UUID;
@@ -49,7 +46,7 @@ describe("SQL identity authority", () => {
     vi.spyOn(setup.runtime, "getSetting").mockImplementation((key) =>
       key === "ELIZA_INSTANCE_ID" ? "identity-authority-test" : getSetting(key)
     );
-    service = new SqlIdentityResolutionService(setup.runtime);
+    service = new SqlPrincipalService(setup.runtime);
     await db
       .insert(entityTable)
       .values(

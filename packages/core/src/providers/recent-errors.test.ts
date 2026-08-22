@@ -1,6 +1,7 @@
 /**
  * Tests for the RECENT_ERRORS provider: renders nothing when clean, dedupes by
- * code (newest wins), caps the list, and ages out stale entries. Uses a fake
+ * code (newest wins), ages out stale entries, and surfaces every distinct code
+ * in the window uncapped. Uses a fake
  * runtime that returns a controlled reported-error ring — except the W5-025
  * case, which drives a real AgentRuntime so the redactSecrets scrub under test
  * is the production one.
@@ -62,8 +63,11 @@ describe("RECENT_ERRORS provider", () => {
 		expect(result.text).not.toContain("old dup");
 	});
 
-	it("caps the surfaced list at 5 distinct codes (newest-first)", async () => {
+	it("surfaces every distinct code uncapped, newest-first (#24134)", async () => {
 		const now = Date.now();
+		// The surfaced block is model context: an item-count window here is
+		// forbidden by the prompt-integrity contract. All 8 distinct codes must
+		// arrive, ordered newest-first, with none dropped.
 		const entries: ReportedError[] = Array.from({ length: 8 }, (_, i) => ({
 			scope: "S",
 			code: `C${i}`,
@@ -76,10 +80,21 @@ describe("RECENT_ERRORS provider", () => {
 			state,
 		);
 		const surfaced = result.data?.recentErrors as ReportedError[];
-		expect(surfaced).toHaveLength(5);
-		// Newest (C0) first, oldest kept is C4.
-		expect(surfaced[0].code).toBe("C0");
-		expect(surfaced.at(-1)?.code).toBe("C4");
+		expect(surfaced).toHaveLength(8);
+		expect(surfaced.map((e) => e.code)).toEqual([
+			"C0",
+			"C1",
+			"C2",
+			"C3",
+			"C4",
+			"C5",
+			"C6",
+			"C7",
+		]);
+		// Every dropped code would be silent data loss in the prompt.
+		for (const entry of entries) {
+			expect(result.text).toContain(`${entry.code}: ${entry.message}`);
+		}
 	});
 
 	it("ages out entries older than 30 minutes", async () => {
@@ -307,7 +322,7 @@ describe("serializeContext well-formed Unicode boundaries", () => {
 		expect(isWellFormed(res)).toBe(true);
 	});
 
-	it("sanitizes lone surrogates without truncation when fitting under limit", () => {
+	it("sanitizes lone surrogates without truncation", () => {
 		const payload = "ok \uD800 end";
 		const res = serializeContext({ payload }) ?? "";
 		expect(res).toBe(JSON.stringify({ payload: "ok \uFFFD end" }));

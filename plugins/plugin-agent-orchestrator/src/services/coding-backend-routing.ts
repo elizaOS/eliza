@@ -1,6 +1,6 @@
 /**
  * Coding-backend routing — resolves WHICH coding sub-agent backend (claude /
- * codex / opencode / elizaos / pi-agent) handles a spawn, from explicit user
+ * codex / elizaos / pi-agent) handles a spawn, from explicit user
  * intent, declared character policy, operator pin, and the planner's guess.
  *
  * This replaces the old "operator pin always wins, planner's per-task choice is

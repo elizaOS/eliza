@@ -1,11 +1,10 @@
 /**
- * Tests for document naming helpers and surrogate-safe truncateDocumentLabel.
+ * Tests for complete, Unicode-safe document naming helpers.
  */
 
 import { describe, expect, it } from "vitest";
 import {
 	createDocumentNoteFilename,
-	DOCUMENT_TITLE_MAX_LENGTH,
 	deriveDocumentTitle,
 	stripDocumentFilenameExtension,
 	truncateDocumentLabel,
@@ -27,15 +26,12 @@ function isWellFormed(value: string): boolean {
 	return true;
 }
 
-describe("truncateDocumentLabel well-formed Unicode boundaries", () => {
-	it("keeps surrogate pairs intact when truncating at 80-char boundary", () => {
-		const budget = DOCUMENT_TITLE_MAX_LENGTH - 1; // 79
-		const text = `${"a".repeat(budget - 1)}🦊${"b".repeat(50)}`;
+describe("truncateDocumentLabel complete Unicode values", () => {
+	it("preserves content beyond the former 80-character boundary", () => {
+		const text = `${"a".repeat(78)}🦊${"b".repeat(50)}`;
 		const out = truncateDocumentLabel(text);
-		expect(out.length).toBeLessThanOrEqual(DOCUMENT_TITLE_MAX_LENGTH);
+		expect(out).toBe(text);
 		expect(isWellFormed(out)).toBe(true);
-		expect(out.endsWith("…")).toBe(true);
-		expect(out).not.toContain("\uD83E");
 	});
 
 	it("preserves fitting emoji under limit", () => {
@@ -45,21 +41,20 @@ describe("truncateDocumentLabel well-formed Unicode boundaries", () => {
 		expect(isWellFormed(out)).toBe(true);
 	});
 
-	it("sanitizes lone surrogates before truncation", () => {
+	it("sanitizes lone surrogates without shortening", () => {
 		const lone = `title \uD800 ${"b".repeat(200)}`;
 		const out = truncateDocumentLabel(lone);
 		expect(out).toContain("\uFFFD");
 		expect(isWellFormed(out)).toBe(true);
-		expect(out.length).toBeLessThanOrEqual(DOCUMENT_TITLE_MAX_LENGTH);
+		expect(out.length).toBe(lone.length);
 	});
 
-	it("deriveDocumentTitle uses surrogate-safe truncation on heading line", () => {
-		const budget = DOCUMENT_TITLE_MAX_LENGTH - 1;
-		const content = `# ${"a".repeat(budget - 1)}🦊${"b".repeat(50)}\n\nBody content.`;
+	it("deriveDocumentTitle preserves a complete heading line", () => {
+		const expected = `${"a".repeat(78)}🦊${"b".repeat(50)}`;
+		const content = `# ${expected}\n\nBody content.`;
 		const title = deriveDocumentTitle(content);
-		expect(title.length).toBeLessThanOrEqual(DOCUMENT_TITLE_MAX_LENGTH);
+		expect(title).toBe(expected);
 		expect(isWellFormed(title)).toBe(true);
-		expect(title.endsWith("…")).toBe(true);
 	});
 
 	it("handles filenames and extensions properly", () => {

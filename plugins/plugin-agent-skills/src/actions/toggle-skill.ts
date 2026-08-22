@@ -136,11 +136,7 @@ export const toggleSkillAction = {
 			);
 
 		if (!fuzzyMatch) {
-			const available = loadedSkills
-				.slice(0, 10)
-				.map((s) => s.slug)
-				.join(", ");
-			const errorText = `Skill ${describeSkillReference(slug, "matching that reference")} not found. Available skills: ${available}`;
+			const errorText = `Skill ${describeSkillReference(slug, "matching that reference")} not found. Check the installed skills list and retry with an exact slug.`;
 			if (callback) await callback({ text: errorText });
 			return { success: false, error: new Error(errorText) };
 		}

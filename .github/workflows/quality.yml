@@ -166,6 +166,9 @@ jobs:
       - name: Run CLAUDE/AGENTS guide parity
         run: bun run check:agents-claude
 
+      - name: Check maintained Markdown link targets
+        run: node scripts/check-markdown-links.mjs
+
       # The type-duplication finder is advisory (it never fails the build); only
       # its AST classifier is gated here so the candidate-report tooling stays
       # honest. The full scan + `--check` drift report is run on demand /

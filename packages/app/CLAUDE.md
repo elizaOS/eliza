@@ -36,8 +36,6 @@ packages/app/
     url-trust-policy.ts      Validates deep-link gateway URLs
     native/
       voice-capture.ts       Native voice capture shim
-    services/
-      android-update-checker.ts  Android OTA update checker
     types/                   Type declaration files for module shims
     shims/                   Browser shims for Node built-ins
   vite/
@@ -128,8 +126,8 @@ bun run --cwd packages/app test:e2e:ios              # Boot sim, build, auth smo
 bun run --cwd packages/app test:e2e:ios:cloud        # iOS e2e plus cloud provisioning probe
 ELIZA_DEVICE_CLOUD_ONBOARDING_LIVE=1 bun run --cwd packages/app test:e2e:ios:cloud-onboarding
                                                        # iOS sim fresh cloud sign-in + e2e SIWE wallet, tap + autologin
-ELIZA_DEVICE_CLOUD_ONBOARDING_LIVE=1 bun run --cwd packages/app test:e2e:android:cloud-onboarding
-                                                       # Android emu fresh cloud sign-in + e2e SIWE wallet, tap + autologin
+ELIZA_CLOUD_AUTH_TOKEN=<live-token> bun run --cwd packages/app test:e2e:android:cloud-onboarding
+                                                       # Android system-browser smoke + Keystore-backed authenticated chat/reload proof
 bun run --cwd packages/app test:sim:local-chat        # iOS simulator local-chat smoke; requires installed app
 bun run --cwd packages/app test:sim:local-chat:android # Android emulator local-chat smoke; requires installed app
 bun run --cwd packages/app test:sim:auth:ios         # auth/callback deep-link DELIVERY + in-app handler classification (not login)

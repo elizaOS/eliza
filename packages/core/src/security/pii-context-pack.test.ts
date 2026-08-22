@@ -131,7 +131,7 @@ describe("assembleContextPack", () => {
 		expect(pack.contextPack).not.toContain(pseudonym);
 	});
 
-	test("fragments are ranked by measured score and bounded; pack text is capped", async () => {
+	test("preserves every fragment exactly in source order despite compatibility cap hints", async () => {
 		const map = makeMap();
 		const fragments: PiiContextFragment[] = [
 			{ text: "low relevance", origin: "memory", score: 0.1 },
@@ -150,9 +150,12 @@ describe("assembleContextPack", () => {
 				maxFragments: 2,
 			},
 		);
+		expect(pack.contextPack).toContain("low relevance");
 		expect(pack.contextPack).toContain("high relevance");
 		expect(pack.contextPack).toContain("mid relevance");
-		expect(pack.contextPack).not.toContain("low relevance");
+		expect(pack.contextPack.indexOf("low relevance")).toBeLessThan(
+			pack.contextPack.indexOf("high relevance"),
+		);
 
 		const capped = await assembleContextPack(
 			{ searchDocuments: async () => fragments },
@@ -164,34 +167,31 @@ describe("assembleContextPack", () => {
 				maxChars: 32,
 			},
 		);
-		expect(capped.contextPack.length).toBeLessThanOrEqual(32);
+		expect(capped.contextPack).toContain("low relevance");
+		expect(capped.contextPack).toContain("high relevance");
+		expect(capped.contextPack).toContain("mid relevance");
 	});
 
-	test("absent sources are audited; empty candidates make zero source calls", async () => {
+	test("rejects blank candidates explicitly instead of silently discarding them", async () => {
 		const map = makeMap();
 		const resolveEntity = vi.fn(async () => [] as PiiResolvedEntity[]);
 		const searchDocuments = vi.fn(async () => [] as PiiContextFragment[]);
-		const pack = await assembleContextPack(
-			{ resolveEntity, searchDocuments },
-			{
-				chunk: "no candidates here",
-				candidates: [
-					{ surfaceForm: "", kind: "person" },
-					{ surfaceForm: "   ", kind: "person" },
-				],
-				map,
-				rulesetVersion: RULESET,
-			},
-		);
-		expect(pack.candidateSpans).toEqual([]);
-		expect(pack.sourcesQueried).toEqual(["entities", "documents"]);
+		await expect(
+			assembleContextPack(
+				{ resolveEntity, searchDocuments },
+				{
+					chunk: "no candidates here",
+					candidates: [{ surfaceForm: "   ", kind: "person" }],
+					map,
+					rulesetVersion: RULESET,
+				},
+			),
+		).rejects.toMatchObject({ code: "PII_CONTEXT_INVALID_CANDIDATE" });
 		expect(resolveEntity).not.toHaveBeenCalled();
 		expect(searchDocuments).not.toHaveBeenCalled();
-		expect(pack.contextPack).toBe("");
-		expect(pack.assignments).toEqual([]);
 	});
 
-	test("duplicate surface forms are deduped into one candidate span", async () => {
+	test("preserves repeated and whitespace-significant candidate surface forms", async () => {
 		const map = makeMap();
 		const searchDocuments = vi.fn(async () => [] as PiiContextFragment[]);
 		const pack = await assembleContextPack(
@@ -201,13 +201,36 @@ describe("assembleContextPack", () => {
 				candidates: [
 					{ surfaceForm: "John Smith", kind: "person" },
 					{ surfaceForm: "John Smith", kind: "person" },
+					{ surfaceForm: " John Smith ", kind: "person" },
 				],
 				map,
 				rulesetVersion: RULESET,
 			},
 		);
-		expect(pack.candidateSpans).toEqual(["John Smith"]);
-		expect(searchDocuments).toHaveBeenCalledTimes(1);
+		expect(pack.candidateSpans).toEqual([
+			"John Smith",
+			"John Smith",
+			" John Smith ",
+		]);
+		expect(searchDocuments.mock.calls).toEqual([
+			["John Smith"],
+			["John Smith"],
+			[" John Smith "],
+		]);
+	});
+
+	test("rejects malformed Unicode instead of rewriting model context", async () => {
+		await expect(
+			assembleContextPack(
+				{},
+				{
+					chunk: "candidate",
+					candidates: [{ surfaceForm: "bad\ud800value", kind: "person" }],
+					map: makeMap(),
+					rulesetVersion: RULESET,
+				},
+			),
+		).rejects.toMatchObject({ code: "PII_CONTEXT_MALFORMED_UNICODE" });
 	});
 
 	test("a wired source that throws propagates (fail-closed, rails retry)", async () => {
@@ -276,7 +299,7 @@ describe("entityResolverFromStore (EntityStore.resolve seam)", () => {
 		});
 	});
 
-	test("caps the number of candidates", async () => {
+	test("ignores the compatibility cap hint and returns every candidate", async () => {
 		const resolve = vi.fn(async () =>
 			Array.from({ length: 10 }, (_, i) => ({
 				...storeCandidate,
@@ -285,7 +308,7 @@ describe("entityResolverFromStore (EntityStore.resolve seam)", () => {
 		);
 		const resolver = entityResolverFromStore({ resolve }, { maxCandidates: 2 });
 		const resolved = await resolver({ surfaceForm: "Initech", kind: "org" });
-		expect(resolved).toHaveLength(2);
+		expect(resolved).toHaveLength(10);
 	});
 });
 

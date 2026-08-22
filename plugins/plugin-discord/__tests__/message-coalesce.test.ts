@@ -109,3 +109,39 @@ describe("Discord message coalescing", () => {
 		expect(flushed[0]).toHaveLength(1);
 	});
 });
+
+describe("coalesce config parsing", () => {
+	function settings(values: Record<string, string>) {
+		return (key: string) => values[key];
+	}
+
+	it("ignores a trailing-garbage batch size instead of parsing its prefix", () => {
+		// parseInt("2junk") is 2, so a malformed setting silently capped each
+		// coalesced turn at 2 messages instead of the default 5.
+		const config = getDiscordMessageCoalesceConfig(
+			settings({ DISCORD_MESSAGE_COALESCE_MAX_BATCH: "2junk" }),
+		);
+		expect(config.maxBatch).toBe(5);
+	});
+
+	it("still honours a clean batch size", () => {
+		const config = getDiscordMessageCoalesceConfig(
+			settings({ DISCORD_MESSAGE_COALESCE_MAX_BATCH: "2" }),
+		);
+		expect(config.maxBatch).toBe(2);
+	});
+
+	it("keeps a signed value and rejects one past the safe range", () => {
+		// `Number.parseInt` accepted "+2"; rejecting it would be a regression.
+		expect(
+			getDiscordMessageCoalesceConfig(
+				settings({ DISCORD_MESSAGE_COALESCE_MAX_BATCH: "+2" }),
+			).maxBatch,
+		).toBe(2);
+		expect(
+			getDiscordMessageCoalesceConfig(
+				settings({ DISCORD_MESSAGE_COALESCE_MAX_BATCH: "9007199254740993" }),
+			).maxBatch,
+		).toBe(5);
+	});
+});

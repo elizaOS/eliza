@@ -85,6 +85,36 @@ describe("CockpitView", () => {
     expect(onSelectRoom).toHaveBeenCalledWith("t1");
   });
 
+  it("exposes every rendered Cockpit control to chat and voice", () => {
+    const { container } = render(
+      <CockpitView
+        rooms={ROSTER}
+        onCreateSession={vi.fn()}
+        onSelectRoom={vi.fn()}
+      />,
+    );
+    const controls = Array.from(
+      container.querySelectorAll<HTMLElement>("button, input, textarea"),
+    );
+    expect(controls.length).toBeGreaterThan(0);
+    expect(
+      controls.map((control) => ({
+        testId: control.dataset.testid,
+        agentId: control.dataset.agentId,
+      })),
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ agentId: "cockpit-open-room-t1" }),
+        expect.objectContaining({ agentId: "cockpit-new-session-goal" }),
+        expect.objectContaining({ agentId: "cockpit-new-session-start" }),
+      ]),
+    );
+    expect(
+      controls.filter((control) => !control.dataset.agentId),
+      "every Cockpit control must have a data-agent-id",
+    ).toEqual([]);
+  });
+
   it("starting a session calls onCreateSession with a create-task input", async () => {
     const user = userEvent.setup();
     const onCreateSession = vi.fn();

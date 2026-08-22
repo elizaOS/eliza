@@ -61,6 +61,23 @@ describe("steward-oauth-pkce", () => {
     expect(parsed.searchParams.has("code_challenge_method")).toBe(false);
   });
 
+  it("buildStewardOAuthAuthorizeUrl supports Steward's Apple OAuth provider", () => {
+    const url = new URL(
+      buildStewardOAuthAuthorizeUrl("apple", "https://eliza.app/login", {
+        stewardApiUrl: "https://api.eliza.app/steward",
+        codeChallenge: "apple-challenge",
+        state: "apple-state",
+      }),
+    );
+
+    expect(url.pathname).toBe("/steward/auth/oauth/apple/authorize");
+    expect(url.searchParams.get("redirect_uri")).toBe(
+      "https://eliza.app/login",
+    );
+    expect(url.searchParams.get("code_challenge")).toBe("apple-challenge");
+    expect(url.searchParams.get("state")).toBe("apple-state");
+  });
+
   it("buildStewardOAuthAuthorizeUrl carries state only when provided", () => {
     const withState = new URL(
       buildStewardOAuthAuthorizeUrl("google", "https://eliza.app/login", {

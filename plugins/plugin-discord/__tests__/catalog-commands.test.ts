@@ -108,7 +108,7 @@ describe("catalog → DiscordSlashCommand mapping", () => {
 		}
 	});
 
-	it("caps mapped option choices at Discord's 25 and keeps token shape", () => {
+	it("omits fixed choices above Discord's 25-choice limit instead of truncating", () => {
 		// Navigation commands (the old /settings source of a choices-bearing
 		// option) are app-surface-only now, so drive the mapper directly.
 		const mapped = mapCatalogCommand({
@@ -129,7 +129,29 @@ describe("catalog → DiscordSlashCommand mapping", () => {
 		const section = mapped.options?.find((o) => o.name === "section");
 		expect(section).toBeDefined();
 		expect(section?.type).toBe("string");
-		// Discord caps option choices at 25; mapping must respect that.
+		// Discord caps option choices at 25. Registering the first 25 would
+		// silently hide the rest, so the option falls back to free-text input
+		// and the full choice set stays available to the command handler.
+		expect(section?.choices).toBeUndefined();
+	});
+
+	it("keeps fixed choices at or below Discord's 25-choice limit", () => {
+		const mapped = mapCatalogCommand({
+			name: "pick",
+			description: "Pick a token",
+			target: { kind: "agent" },
+			options: [
+				{
+					name: "section",
+					description: "Token",
+					required: false,
+					choices: Array.from({ length: 25 }, (_, i) => `token-${i}`),
+				},
+			],
+			requiresAuth: false,
+			requiresElevated: false,
+		});
+		const section = mapped.options?.find((o) => o.name === "section");
 		expect(section?.choices?.length).toBe(25);
 		for (const choice of section?.choices ?? []) {
 			expect(choice.name.length).toBeLessThanOrEqual(100);

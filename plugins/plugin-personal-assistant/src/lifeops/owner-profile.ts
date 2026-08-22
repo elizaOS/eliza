@@ -19,9 +19,6 @@ import {
 } from "./scheduler-task.js";
 
 const API_PORT = process.env.API_PORT || process.env.SERVER_PORT || "2138";
-export const OWNER_NAME_MAX_LENGTH = 60;
-const OWNER_PROFILE_VALUE_MAX_LENGTH = 120;
-
 export const LIFEOPS_OWNER_PROFILE_FIELDS = [
   "name",
   "relationshipStatus",
@@ -66,10 +63,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
-function normalizeProfileValue(
-  value: unknown,
-  maxLength = OWNER_PROFILE_VALUE_MAX_LENGTH,
-): string | null {
+function normalizeProfileValue(value: unknown): string | null {
   if (typeof value !== "string" && typeof value !== "number") {
     return null;
   }
@@ -77,7 +71,7 @@ function normalizeProfileValue(
   if (!trimmed) {
     return null;
   }
-  return trimmed.slice(0, maxLength);
+  return trimmed;
 }
 
 function isLifeOpsSchedulerTask(task: Task): boolean {
@@ -108,14 +102,14 @@ function readConfiguredOwnerNameFromConfig(): string | null {
   try {
     const config = loadElizaConfig() as Record<string, unknown>;
     const ui = isRecord(config.ui) ? config.ui : null;
-    return normalizeProfileValue(ui?.ownerName, OWNER_NAME_MAX_LENGTH);
+    return normalizeProfileValue(ui?.ownerName);
   } catch {
     return null;
   }
 }
 
 function writeConfiguredOwnerNameToConfig(name: string): boolean {
-  const normalized = normalizeProfileValue(name, OWNER_NAME_MAX_LENGTH);
+  const normalized = normalizeProfileValue(name);
   if (!normalized) {
     return false;
   }
@@ -155,10 +149,7 @@ export function normalizeLifeOpsOwnerProfilePatch(
 
   const normalized: LifeOpsOwnerProfilePatch = {};
   for (const field of LIFEOPS_OWNER_PROFILE_FIELDS) {
-    const value = normalizeProfileValue(
-      patch[field],
-      field === "name" ? OWNER_NAME_MAX_LENGTH : OWNER_PROFILE_VALUE_MAX_LENGTH,
-    );
+    const value = normalizeProfileValue(patch[field]);
     if (value) {
       normalized[field] = value;
     }
@@ -181,7 +172,7 @@ export async function fetchConfiguredOwnerName(): Promise<string | null> {
     }
     const config = (await response.json()) as Record<string, unknown>;
     const ui = isRecord(config.ui) ? config.ui : null;
-    return normalizeProfileValue(ui?.ownerName, OWNER_NAME_MAX_LENGTH);
+    return normalizeProfileValue(ui?.ownerName);
   } catch {
     return null;
   }
@@ -190,7 +181,7 @@ export async function fetchConfiguredOwnerName(): Promise<string | null> {
 export async function persistConfiguredOwnerName(
   name: string,
 ): Promise<boolean> {
-  const normalized = normalizeProfileValue(name, OWNER_NAME_MAX_LENGTH);
+  const normalized = normalizeProfileValue(name);
   if (!normalized) {
     return false;
   }
@@ -219,7 +210,7 @@ export function resolveLifeOpsOwnerProfile(
   const normalized = normalizeLifeOpsOwnerProfilePatch(ownerProfile);
   const updatedAt =
     ownerProfile && typeof ownerProfile.updatedAt === "string"
-      ? normalizeProfileValue(ownerProfile.updatedAt, 64)
+      ? normalizeProfileValue(ownerProfile.updatedAt)
       : null;
 
   return {
@@ -294,7 +285,7 @@ function resolveCalendarFeedPreferences(
     : null;
   const updatedAt =
     stored && typeof stored.updatedAt === "string"
-      ? normalizeProfileValue(stored.updatedAt, 64)
+      ? normalizeProfileValue(stored.updatedAt)
       : null;
   return {
     ...DEFAULT_CALENDAR_FEED_PREFERENCES,
@@ -475,7 +466,7 @@ function normalizeBlackoutWindow(
   value: unknown,
 ): LifeOpsMeetingPreferencesBlackout | null {
   if (!isRecord(value)) return null;
-  const label = normalizeProfileValue(value.label, 60);
+  const label = normalizeProfileValue(value.label);
   const startLocal = normalizeTimeOfDay(value.startLocal);
   const endLocal = normalizeTimeOfDay(value.endLocal);
   if (!label || !startLocal || !endLocal || startLocal >= endLocal) return null;
@@ -537,7 +528,7 @@ function resolveMeetingPreferences(
   const normalized = normalizeLifeOpsMeetingPreferencesPatch(stored);
   const updatedAt =
     stored && typeof stored.updatedAt === "string"
-      ? normalizeProfileValue(stored.updatedAt, 64)
+      ? normalizeProfileValue(stored.updatedAt)
       : null;
   return { ...DEFAULT_MEETING_PREFERENCES, ...normalized, updatedAt };
 }

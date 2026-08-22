@@ -9,8 +9,10 @@
 import type { ActionResult, IAgentRuntime, Memory, State } from "@elizaos/core";
 import {
   getTrajectoryContext,
+  isProgressiveContentProjectionEnabled,
   ModelType,
   parseJSONObjectFromText,
+  renderActionResultsForModel,
   toWellFormedUnicode,
 } from "@elizaos/core";
 import { asRecord } from "@elizaos/shared";
@@ -134,13 +136,20 @@ export function extractActionResultsFromState(
   );
 }
 
-function summarizeActionResult(result: ActionResult): ActionHistoryItem | null {
+function summarizeActionResult(
+  result: ActionResult,
+  projectionEnabled = false,
+): ActionHistoryItem | null {
   const data = asRecord(result.data);
   const actionName =
     (typeof data?.actionName === "string" && data.actionName.trim()) ||
     "ACTION";
-  const resultText =
-    typeof result.text === "string" && result.text.trim().length > 0
+  const resultText = projectionEnabled
+    ? renderActionResultsForModel([result], {
+        header: "",
+        omitRecoverableText: true,
+      }).text
+    : typeof result.text === "string" && result.text.trim().length > 0
       ? result.text.trim()
       : "";
   const title =
@@ -168,9 +177,10 @@ function summarizeActionResult(result: ActionResult): ActionHistoryItem | null {
 export function summarizeRecentActionHistory(
   state: State | undefined,
   limit = 4,
+  projectionEnabled = false,
 ): string[] {
   const summarized = extractActionResultsFromState(state)
-    .map((result) => summarizeActionResult(result))
+    .map((result) => summarizeActionResult(result, projectionEnabled))
     .filter((item): item is ActionHistoryItem => item !== null);
   const deduped: string[] = [];
   const seen = new Set<string>();
@@ -302,7 +312,11 @@ export async function renderGroundedActionReply(
     message: args.message,
     state: args.state,
   });
-  const recentActionHistory = summarizeRecentActionHistory(args.state, 4);
+  const recentActionHistory = summarizeRecentActionHistory(
+    args.state,
+    4,
+    isProgressiveContentProjectionEnabled(args.runtime),
+  );
   const trajectorySummary = await summarizeActiveTrajectory(args.runtime);
   const characterVoice = args.preferCharacterVoice
     ? buildCharacterVoiceContext(args.runtime)

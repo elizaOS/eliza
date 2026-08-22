@@ -1,10 +1,10 @@
 /**
- * `FileStateService` (serviceType `CODING_TOOLS_FILE_STATE`): tracks the mtime and
- * size of each file per conversation at read time so write/edit handlers can reject
- * a write when the file was modified externally since the last read — the
- * read-before-write invariant that keeps agent edits from clobbering outside
- * changes.
+ * `FileStateService` (serviceType `CODING_TOOLS_FILE_STATE`): tracks each file's
+ * opaque revision per conversation at read time so continuation and mutation
+ * handlers reject externally changed content instead of clobbering it.
  */
+import { createHash } from "node:crypto";
+import type { Stats } from "node:fs";
 import * as fs from "node:fs/promises";
 import {
   logger as coreLogger,
@@ -13,6 +13,17 @@ import {
 } from "@elizaos/core";
 import type { FileMeta } from "../types.js";
 import { CODING_TOOLS_LOG_PREFIX, FILE_STATE_SERVICE } from "../types.js";
+
+/** Produces the stable identity shared by paginated reads and mutation guards. */
+export function fileRevision(
+  stat: Pick<Stats, "dev" | "ino" | "size" | "mtimeMs" | "ctimeMs">,
+): string {
+  return createHash("sha256")
+    .update(
+      `${stat.dev}:${stat.ino}:${stat.size}:${stat.mtimeMs}:${stat.ctimeMs}`,
+    )
+    .digest("hex");
+}
 
 /**
  * Tracks per-(conversation, file) read state. Mirrors Claude's `readFileState` —
@@ -44,13 +55,18 @@ export class FileStateService extends Service {
     return `${conversationId}::${absPath}`;
   }
 
-  async recordRead(conversationId: string, absPath: string): Promise<void> {
-    const stat = await fs.stat(absPath);
+  async recordRead(
+    conversationId: string,
+    absPath: string,
+    observed?: { mtimeMs: number; size: number; revision: string },
+  ): Promise<void> {
+    const stat = observed ?? (await fs.stat(absPath));
     this.state.set(this.key(conversationId, absPath), {
       path: absPath,
       mtimeMs: stat.mtimeMs,
       size: stat.size,
       readAt: Date.now(),
+      ...(observed ? { revision: observed.revision } : {}),
     });
   }
 
@@ -61,6 +77,7 @@ export class FileStateService extends Service {
       mtimeMs: stat.mtimeMs,
       size: stat.size,
       readAt: Date.now(),
+      revision: fileRevision(stat),
     });
   }
 
@@ -72,7 +89,7 @@ export class FileStateService extends Service {
     conversationId: string,
     absPath: string,
   ): Promise<
-    | { ok: true }
+    | { ok: true; exists: boolean }
     | { ok: false; reason: "must_read_first" | "stale_read"; message: string }
   > {
     let stat: Awaited<ReturnType<typeof fs.stat>>;
@@ -83,7 +100,7 @@ export class FileStateService extends Service {
       // create-new-file path (Write is allowed; Edit re-verifies existence
       // separately). A genuine permission error is not masked: the subsequent
       // fs.writeFile surfaces it to the caller as an `io_error` failure.
-      return { ok: true };
+      return { ok: true, exists: false };
     }
     const meta = this.get(conversationId, absPath);
     if (!meta) {
@@ -93,14 +110,17 @@ export class FileStateService extends Service {
         message: `File ${absPath} exists but was not read in this session. Read it first.`,
       };
     }
-    if (stat.mtimeMs !== meta.mtimeMs) {
+    const changed = meta.revision
+      ? fileRevision(stat) !== meta.revision
+      : stat.mtimeMs !== meta.mtimeMs || stat.size !== meta.size;
+    if (changed) {
       return {
         ok: false,
         reason: "stale_read",
-        message: `File ${absPath} was modified externally since last read (mtime ${meta.mtimeMs} → ${stat.mtimeMs}). Re-read before writing.`,
+        message: `File ${absPath} was modified externally since last read. Re-read before writing.`,
       };
     }
-    return { ok: true };
+    return { ok: true, exists: true };
   }
 
   invalidate(conversationId: string, absPath: string): void {

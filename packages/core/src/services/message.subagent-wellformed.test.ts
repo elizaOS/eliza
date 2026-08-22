@@ -1,6 +1,8 @@
 /**
- * Surrogate-safe truncation for subAgentCompletionRelayBody.
- * Verifies the 1500-char cap never splits an astral surrogate pair and sanitizes lone surrogates.
+ * Unicode well-formedness for subAgentCompletionRelayBody. The relay body is
+ * COMPLETE model context — the former 1500-char cap was retired (#24134):
+ * bodies of any length pass through whole, and the only transformation is
+ * lone-surrogate sanitization via toWellFormedUnicode.
  */
 import { describe, expect, it } from "vitest";
 import { toWellFormedUnicode } from "../utils/well-formed";
@@ -17,27 +19,26 @@ describe("subAgentCompletionRelayBody surrogate safety", () => {
 		return toWellFormedUnicode(s) === s;
 	};
 
-	it("backs off when truncation would split a surrogate pair at 1500", () => {
+	it("preserves a long body COMPLETE — no cap, no ellipsis", () => {
 		const body = `${"a".repeat(1498)}🦊${"b".repeat(20)}`;
 		const out = subAgentCompletionRelayBody(makeInput(body));
 		expect(out).toBeDefined();
 		expect(isWellFormed(out!)).toBe(true);
-		expect(out!.endsWith("…")).toBe(true);
-		expect(out!.length).toBeLessThanOrEqual(1500);
+		expect(out).toBe(body);
+		expect(out!.endsWith("…")).toBe(false);
 		expect(() => JSON.stringify(out)).not.toThrow();
 	});
 
-	it("preserves a fitting astral emoji at the cap", () => {
+	it("preserves an astral emoji at any position", () => {
 		const body = `${"a".repeat(1497)}🦊`;
-		// body length 1499, header adds but body itself is under cap? Actually 1497+2=1499 <=1500, so should be preserved as is
 		const out = subAgentCompletionRelayBody(makeInput(body));
 		expect(out).toBeDefined();
 		expect(isWellFormed(out!)).toBe(true);
 		expect(out).toBe(toWellFormedUnicode(body));
 	});
 
-	it("preserves well-formed body under cap exactly at 1500 with emoji", () => {
-		const body = `${"a".repeat(1498)}🦊`; // 1500 exactly
+	it("preserves a well-formed 1500-char body byte-for-byte", () => {
+		const body = `${"a".repeat(1498)}🦊`; // 1500 chars exactly
 		const out = subAgentCompletionRelayBody(makeInput(body));
 		expect(out).toBeDefined();
 		expect(isWellFormed(out!)).toBe(true);
@@ -50,7 +51,7 @@ describe("subAgentCompletionRelayBody surrogate safety", () => {
 		const out = subAgentCompletionRelayBody(makeInput(body));
 		expect(out).toBeDefined();
 		expect(isWellFormed(out!)).toBe(true);
-		expect(out!.includes("�")).toBe(true);
+		expect(out!.includes("\ufffd")).toBe(true);
 		expect(out!.includes("\ud800")).toBe(false);
 	});
 
@@ -59,34 +60,33 @@ describe("subAgentCompletionRelayBody surrogate safety", () => {
 		const out = subAgentCompletionRelayBody(makeInput(body));
 		expect(out).toBeDefined();
 		expect(isWellFormed(out!)).toBe(true);
-		expect(out!.includes("�")).toBe(true);
+		expect(out!.includes("\ufffd")).toBe(true);
 	});
 
-	it("stays well-formed across sweep of offsets (cap 1500, test with smaller cap via long body)", () => {
+	it("stays well-formed and complete across a sweep of astral offsets", () => {
 		for (let offset = 0; offset <= 20; offset++) {
 			const body = `${"a".repeat(offset)}🦊${"b".repeat(2000)}`;
 			const out = subAgentCompletionRelayBody(makeInput(body));
 			expect(isWellFormed(out!)).toBe(true);
-			expect(out!.length).toBeLessThanOrEqual(1500);
+			expect(out).toBe(body);
 			expect(() => JSON.stringify(out)).not.toThrow();
 		}
 	});
 
-	it("returns well-formed when under cap with lone surrogate and no truncation", () => {
+	it("returns well-formed for a short body with a lone surrogate", () => {
 		const body = "ok \ud800 end";
 		const out = subAgentCompletionRelayBody(makeInput(body));
 		expect(out).toBeDefined();
 		expect(isWellFormed(out!)).toBe(true);
-		expect(out!.includes("�")).toBe(true);
+		expect(out!.includes("\ufffd")).toBe(true);
 		expect(out!.includes("\ud800")).toBe(false);
 	});
 
-	it("caps at 1500 with 1499 content chars + ellipsis for ASCII overflow", () => {
+	it("passes a 2000-char ASCII body through whole", () => {
 		const body = "a".repeat(2000);
 		const out = subAgentCompletionRelayBody(makeInput(body));
 		expect(out).toBeDefined();
-		expect(out!.length).toBe(1500);
-		expect(out!.endsWith("…")).toBe(true);
-		expect(out!.slice(0, -1).trimEnd().length).toBe(1499);
+		expect(out).toBe(body);
+		expect(out!.endsWith("…")).toBe(false);
 	});
 });

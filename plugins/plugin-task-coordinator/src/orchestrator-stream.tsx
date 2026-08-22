@@ -1,4 +1,9 @@
-// Builds the orchestrator conversation stream from events and tool messages.
+/**
+ * Renders normalized task conversation blocks, including agent-addressable
+ * tool and reasoning disclosures shared by Orchestrator and Cockpit views.
+ */
+
+import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { Button } from "@elizaos/ui/components/ui/button";
 import {
   Check,
@@ -248,20 +253,33 @@ function ToolCallCard({
   const [open, setOpen] = useState(
     () => hasBody && tool.kind !== "read" && tool.kind !== "search",
   );
+  const toggle = () => {
+    onInspect?.();
+    setOpen((value) => !value);
+  };
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `orchestrator-tool-${tool.groupKey}`,
+    role: "toggle",
+    label: `${toolVerb(tool)} ${target ?? tool.title}`,
+    group: "orchestrator-transcript",
+    description: "Show or hide this tool call's details",
+    status: open ? "open" : "closed",
+    clickable: hasBody,
+    onActivate: hasBody ? toggle : undefined,
+  });
   return (
     <div
       className="rounded-md border border-border/50 bg-card/50"
       data-testid="orchestrator-tool-call"
     >
       <Button
+        ref={ref}
         unstyled
         type="button"
         disabled={!hasBody}
-        onClick={() => {
-          onInspect?.();
-          setOpen((value) => !value);
-        }}
+        onClick={toggle}
         className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left disabled:cursor-default"
+        {...agentProps}
       >
         {hasBody ? (
           <ChevronRight
@@ -378,6 +396,7 @@ export function ConversationBlockView({
   if (block.kind === "reasoning") {
     return (
       <ReasoningCell
+        agentId={`orchestrator-reasoning-${block.key}`}
         text={block.text}
         durationMs={block.durationMs}
         streaming={block.streaming}

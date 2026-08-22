@@ -33,9 +33,9 @@ function envelopeMessage(): Memory {
 	} as unknown as Memory;
 }
 
-function makeRuntime() {
+function makeRuntime(loadedSkills: readonly Record<string, unknown>[] = []) {
 	const service = {
-		getLoadedSkills: vi.fn(() => []),
+		getLoadedSkills: vi.fn(() => loadedSkills),
 		uninstall: vi.fn(async () => true),
 	};
 	const runtime = {
@@ -90,5 +90,31 @@ describe("SKILL uninstall with security-enveloped input", () => {
 		expect(echoed).not.toContain("SECURITY NOTICE");
 		expect(echoed).toContain("matching that reference");
 		expect(echoed.length).toBeLessThan(300);
+	});
+
+	it("finds an installed skill after the former first-100 boundary", async () => {
+		const loadedSkills = Array.from({ length: 101 }, (_, index) => ({
+			slug: `skill-${index + 1}`,
+			name: `Skill ${index + 1}`,
+			source: "bundled",
+		}));
+		const { runtime } = makeRuntime(loadedSkills);
+		const callback = vi.fn();
+
+		const result = await uninstallSkillAction.handler(
+			runtime,
+			envelopeMessage(),
+			undefined,
+			{ parameters: { slug: "skill-101" } },
+			callback,
+		);
+
+		expect(result.success).toBe(false);
+		expect(callback.mock.calls.at(-1)?.[0]?.text).toContain(
+			"Skill 101",
+		);
+		expect(callback.mock.calls.at(-1)?.[0]?.text).toContain(
+			"cannot be uninstalled",
+		);
 	});
 });

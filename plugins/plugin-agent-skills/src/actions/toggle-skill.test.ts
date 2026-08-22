@@ -66,6 +66,8 @@ describe("SKILL toggle with security-enveloped input", () => {
 		// The unwrapped sentence yields slug "weather" + enable intent, so the
 		// user sees the not-found path with the real name quoted back.
 		expect(callbackTexts.at(-1)).toContain('Skill "weather" not found');
+		expect(callbackTexts.at(-1)).not.toContain("Available skills:");
+		expect(callbackTexts.at(-1)).toContain("installed skills list");
 	});
 
 	it("renders a planner-supplied blob slug as the neutral noun, never verbatim", async () => {

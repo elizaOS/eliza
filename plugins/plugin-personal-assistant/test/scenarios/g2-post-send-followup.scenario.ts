@@ -30,7 +30,7 @@ export default scenario({
       options: {
         action: "log_interaction",
         name: "Zane Turner",
-        channel: "signal",
+        channel: "whatsapp",
         notes:
           "Owner sent the approved reconnect note; next step is to wait for a reply before nudging again.",
       },

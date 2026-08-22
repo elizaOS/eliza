@@ -1,22 +1,19 @@
-// Exercises cloud API webhooks blooio orgid route.test behavior with deterministic Worker route fixtures.
+/**
+ * Proves the real Blooio route has one signed provider authority and preserves
+ * its payload-validation and idempotency contracts under deterministic fixtures.
+ */
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { createHmac } from "node:crypto";
 import { Hono } from "hono";
 
 const webhookSecret = "test-blooio-webhook-secret";
-
-const handleBlueBubblesWebhook = mock(async () =>
-  Response.json({ success: true, source: "bluebubbles-direct" }),
-);
-const handleBlueBubblesWebhookPayload = mock(async (_c, payload: unknown) =>
-  Response.json({ success: true, source: "bluebubbles-payload", payload }),
-);
-
-mock.module("../../bluebubbles/route", () => ({
-  handleBlueBubblesWebhook,
-  handleBlueBubblesWebhookPayload,
-}));
+const organizationId = "11111111-1111-4111-8111-111111111111";
+const processedKeys = new Set<string>();
+const isAlreadyProcessed = mock(async (key: string) => processedKeys.has(key));
+const markAsProcessed = mock(async (key: string) => {
+  processedKeys.add(key);
+});
 
 mock.module("@/lib/middleware/rate-limit-hono-cloudflare", () => ({
   RateLimitPresets: {
@@ -33,6 +30,11 @@ mock.module("@/lib/services/blooio-automation", () => ({
   },
 }));
 
+mock.module("@/lib/utils/idempotency", () => ({
+  isAlreadyProcessed,
+  markAsProcessed,
+}));
+
 const { default: app } = await import("./route");
 const mountedApp = new Hono().route("/:orgId", app);
 
@@ -44,18 +46,36 @@ function signature(body: string): string {
   return `t=${timestamp},v1=${digest}`;
 }
 
-function post(body: unknown, headers: Record<string, string> = {}) {
-  return new Request("https://api.example.test/?bridge=bluebubbles", {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      ...headers,
+function request(
+  body: string,
+  options: {
+    path?: string;
+    query?: string;
+    headers?: Record<string, string>;
+  } = {},
+): Request {
+  const path = options.path ?? "";
+  const query = options.query ? `?${options.query}` : "";
+  return new Request(
+    `https://api.example.test/${organizationId}${path}${query}`,
+    {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        ...options.headers,
+      },
+      body,
     },
-    body: JSON.stringify(body),
-  });
+  );
 }
 
-const blueBubblesPayload = {
+function fetchRoute(requestValue: Request): Promise<Response> {
+  return Promise.resolve(
+    mountedApp.fetch(requestValue, { NODE_ENV: "production" }),
+  );
+}
+
+const retiredBridgePayload = {
   type: "new-message",
   data: {
     guid: "message-1",
@@ -67,97 +87,124 @@ const blueBubblesPayload = {
   },
 };
 
-describe("Blooio webhook BlueBubbles compatibility", () => {
+describe("Blooio webhook authority", () => {
   beforeEach(() => {
-    handleBlueBubblesWebhook.mockClear();
-    handleBlueBubblesWebhookPayload.mockClear();
+    processedKeys.clear();
+    isAlreadyProcessed.mockClear();
+    markAsProcessed.mockClear();
   });
 
-  test("dispatches explicit bridge requests before Blooio signature validation", async () => {
-    const response = await app.fetch(post(blueBubblesPayload));
+  test("contains no deleted bridge import, discriminator, or child route", async () => {
+    const source = await Bun.file(
+      new URL("./route.ts", import.meta.url),
+    ).text();
 
-    await expect(response.json()).resolves.toMatchObject({
-      success: true,
-      source: "bluebubbles-direct",
-    });
-    expect(handleBlueBubblesWebhook).toHaveBeenCalledTimes(1);
-    expect(handleBlueBubblesWebhookPayload).not.toHaveBeenCalled();
+    expect(source).not.toContain("../../bluebubbles/route");
+    expect(source).not.toContain('header("x-eliza-bridge")');
+    expect(source).not.toContain('query("bridge")');
+    expect(source).not.toContain('app.post("/bluebubbles"');
   });
 
-  test("detects BlueBubbles-shaped payloads even without the bridge query", async () => {
-    const response = await app.fetch(
-      new Request("https://api.example.test/", {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-        },
-        body: JSON.stringify(blueBubblesPayload),
+  test("does not let bridge query or header metadata bypass Blooio signing", async () => {
+    const body = JSON.stringify(retiredBridgePayload);
+    const requests = [
+      request(body, { query: "bridge=bluebubbles" }),
+      request(body, { headers: { "x-eliza-bridge": "bluebubbles" } }),
+    ];
+
+    for (const requestValue of requests) {
+      const response = await fetchRoute(requestValue);
+      expect(response.status).toBe(401);
+      await expect(response.json()).resolves.toEqual({
+        error: "Invalid webhook signature",
+      });
+    }
+
+    expect(isAlreadyProcessed).not.toHaveBeenCalled();
+    expect(markAsProcessed).not.toHaveBeenCalled();
+  });
+
+  test("does not expose a retired bridge child route", async () => {
+    const body = JSON.stringify(retiredBridgePayload);
+    const response = await fetchRoute(
+      request(body, {
+        path: "/bluebubbles",
+        headers: { "x-blooio-signature": signature(body) },
       }),
     );
 
-    await expect(response.json()).resolves.toMatchObject({
-      success: true,
-      source: "bluebubbles-payload",
-      payload: blueBubblesPayload,
-    });
-    expect(handleBlueBubblesWebhook).not.toHaveBeenCalled();
-    expect(handleBlueBubblesWebhookPayload).toHaveBeenCalledTimes(1);
+    expect(response.status).toBe(404);
+    expect(isAlreadyProcessed).not.toHaveBeenCalled();
+    expect(markAsProcessed).not.toHaveBeenCalled();
   });
 
-  test("does not misroute a Blooio v4 envelope as BlueBubbles", async () => {
-    const response = await mountedApp.fetch(
-      new Request("https://api.example.test/test-org", {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          "x-blooio-signature": "t=0,v1=invalid",
-        },
-        body: JSON.stringify({
-          id: "evt_blooio_v4",
-          type: "message.received",
-          created_at: 1_786_291_200_000,
-          data: {
-            id: "msg_blooio_v4",
-            sender: "+15555550123",
-            recipient: "+18087881821",
-            text: "hello",
-          },
-        }),
+  test("validates a signed non-Blooio envelope as provider input", async () => {
+    const body = JSON.stringify(retiredBridgePayload);
+    const response = await fetchRoute(
+      request(body, {
+        query: "bridge=bluebubbles",
+        headers: { "x-blooio-signature": signature(body) },
       }),
-      { NODE_ENV: "production" },
     );
 
-    expect(response.status).toBe(401);
+    expect(response.status).toBe(400);
     await expect(response.json()).resolves.toEqual({
-      error: "Invalid webhook signature",
+      error: "Invalid webhook payload",
     });
-    expect(handleBlueBubblesWebhook).not.toHaveBeenCalled();
-    expect(handleBlueBubblesWebhookPayload).not.toHaveBeenCalled();
+    expect(isAlreadyProcessed).not.toHaveBeenCalled();
+    expect(markAsProcessed).not.toHaveBeenCalled();
   });
 
-  test("rejects an inbound message without a stable ID", async () => {
+  test("accepts a signed Blooio v4 event and deduplicates its retry", async () => {
+    const body = JSON.stringify({
+      id: "evt_blooio_v4",
+      type: "message.sent",
+      created_at: 1_786_291_200_000,
+      data: {
+        id: "msg_blooio_v4",
+        sender: "+15555550123",
+        recipient: "+18087881821",
+        text: "hello",
+      },
+    });
+    const headers = { "x-blooio-signature": signature(body) };
+
+    const firstResponse = await fetchRoute(request(body, { headers }));
+    expect(firstResponse.status).toBe(200);
+    await expect(firstResponse.json()).resolves.toEqual({ success: true });
+    expect(isAlreadyProcessed).toHaveBeenCalledWith("blooio:msg_blooio_v4");
+    expect(markAsProcessed).toHaveBeenCalledWith(
+      "blooio:msg_blooio_v4",
+      "blooio",
+    );
+
+    const retryResponse = await fetchRoute(request(body, { headers }));
+    expect(retryResponse.status).toBe(200);
+    await expect(retryResponse.json()).resolves.toEqual({
+      success: true,
+      status: "already_processed",
+    });
+    expect(isAlreadyProcessed).toHaveBeenCalledTimes(2);
+    expect(markAsProcessed).toHaveBeenCalledTimes(1);
+  });
+
+  test("rejects a signed inbound message without a stable ID", async () => {
     const body = JSON.stringify({
       event: "message.received",
       sender: "+15555550123",
       text: "hello",
     });
-    const response = await mountedApp.fetch(
-      new Request("https://api.example.test/test-org", {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          "x-blooio-signature": signature(body),
-        },
-        body,
+    const response = await fetchRoute(
+      request(body, {
+        headers: { "x-blooio-signature": signature(body) },
       }),
-      { NODE_ENV: "production" },
     );
 
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toEqual({
       error: "Inbound message ID is required",
     });
-    expect(handleBlueBubblesWebhook).not.toHaveBeenCalled();
-    expect(handleBlueBubblesWebhookPayload).not.toHaveBeenCalled();
+    expect(isAlreadyProcessed).not.toHaveBeenCalled();
+    expect(markAsProcessed).not.toHaveBeenCalled();
   });
 });

@@ -38,6 +38,11 @@ import {
   type TwitterInteractionPayload,
 } from "./types";
 import {
+  getTwitterProviderStatus,
+  normalizeTwitterProviderError,
+  TwitterErrorType,
+} from "./utils/error-handler";
+import {
   buildTwitterMessageMetadata,
   createMemorySafe,
   reconcileTwitterWorld,
@@ -148,13 +153,31 @@ export function resolveMaxAuthRetries(raw: string | undefined): number {
  * Class representing a request queue for handling asynchronous requests in a controlled manner.
  */
 
-type QueuedRequest = () => Promise<unknown>;
+export type RequestRetryPolicy = { kind: "never" } | { kind: "transient-read" };
 
-class RequestQueue {
-  private queue: QueuedRequest[] = [];
+export const NO_REQUEST_RETRY: RequestRetryPolicy = { kind: "never" };
+export const RETRY_TRANSIENT_X_READ: RequestRetryPolicy = {
+  kind: "transient-read",
+};
+
+type QueuedItem = {
+  run: () => Promise<void>;
+  reject: (error: unknown) => void;
+  retryPolicy: RequestRetryPolicy;
+};
+
+export class RequestQueue {
+  private queue: QueuedItem[] = [];
   private processing = false;
   private maxRetries = 3;
-  private retryAttempts = new Map<QueuedRequest, number>();
+  private retryAttempts = new Map<QueuedItem, number>();
+
+  constructor(
+    private readonly waits: {
+      backoff?: (retryCount: number) => Promise<void>;
+      jitter?: () => Promise<void>;
+    } = {},
+  ) {}
 
   /**
    * Asynchronously adds a request to the queue, then processes the queue.
@@ -163,17 +186,20 @@ class RequestQueue {
    * @param {() => Promise<T>} request - The request to be added to the queue
    * @returns {Promise<T>} - A promise that resolves with the result of the request or rejects with an error
    */
-  async add<T>(request: () => Promise<T>): Promise<T> {
+  async add<T>(
+    request: () => Promise<T>,
+    retryPolicy: RequestRetryPolicy = NO_REQUEST_RETRY,
+  ): Promise<T> {
     return new Promise((resolve, reject) => {
-      this.queue.push(async () => {
-        try {
+      this.queue.push({
+        run: async () => {
           const result = await request();
           resolve(result);
-        } catch (error) {
-          reject(error);
-        }
+        },
+        reject,
+        retryPolicy,
       });
-      this.processQueue();
+      void this.processQueue();
     });
   }
 
@@ -188,39 +214,78 @@ class RequestQueue {
     }
     this.processing = true;
 
-    while (this.queue.length > 0) {
-      const request = this.queue.shift();
-      if (!request) break;
-      try {
-        await request();
-        // Clear retry count on success
-        this.retryAttempts.delete(request);
-      } catch (error) {
-        logger.error("Error processing request:", errorDetail(error));
+    try {
+      while (this.queue.length > 0) {
+        const item = this.queue.shift();
+        if (!item) break;
+        try {
+          await item.run();
+          this.retryAttempts.delete(item);
+        } catch (error) {
+          // error-policy:J1 The queue boundary either schedules an authorized
+          // retry or rejects the original caller with the classified failure.
+          logger.error("Error processing request:", errorDetail(error));
 
-        const retryCount = (this.retryAttempts.get(request) || 0) + 1;
+          const retryCount = (this.retryAttempts.get(item) || 0) + 1;
+          const typedProviderError =
+            item.retryPolicy.kind === "transient-read"
+              ? normalizeTwitterProviderError(error)
+              : null;
+          const requestError = typedProviderError ?? error;
+          const shouldRetry =
+            item.retryPolicy.kind === "transient-read" &&
+            (typedProviderError?.type === TwitterErrorType.RATE_LIMIT ||
+              typedProviderError?.type === TwitterErrorType.NETWORK);
 
-        if (retryCount < this.maxRetries) {
-          this.retryAttempts.set(request, retryCount);
-          this.queue.unshift(request);
-          await this.exponentialBackoff(retryCount);
-          // Break the loop to allow exponential backoff to take effect
-          break;
-        } else {
-          logger.error(
-            `Max retries (${this.maxRetries}) exceeded for request, skipping`,
-          );
-          this.retryAttempts.delete(request);
+          if (shouldRetry && retryCount < this.maxRetries) {
+            this.retryAttempts.set(item, retryCount);
+            try {
+              await this.exponentialBackoff(retryCount);
+              this.queue.unshift(item);
+            } catch (delayError) {
+              // error-policy:J1 A failed retry delay rejects this caller with
+              // a typed queue-boundary failure instead of stranding it.
+              this.retryAttempts.delete(item);
+              item.reject(
+                new ElizaError("X request retry delay failed", {
+                  code: "X_REQUEST_RETRY_DELAY_FAILED",
+                  cause: delayError,
+                }),
+              );
+            }
+            continue;
+          }
+          if (shouldRetry) {
+            logger.error(
+              `Max retries (${this.maxRetries}) exceeded for request`,
+            );
+          }
+          this.retryAttempts.delete(item);
+          item.reject(requestError);
+        }
+        try {
+          await this.randomDelay();
+        } catch (delayError) {
+          // error-policy:J1 The queue cannot preserve its pacing contract, so
+          // reject every pending caller rather than dispatching an unpaced
+          // burst or leaving promises stranded.
+          const pacingError = new ElizaError("X request pacing delay failed", {
+            code: "X_REQUEST_PACING_DELAY_FAILED",
+            cause: delayError,
+          });
+          let pending = this.queue.shift();
+          while (pending) {
+            this.retryAttempts.delete(pending);
+            pending.reject(pacingError);
+            pending = this.queue.shift();
+          }
         }
       }
-      await this.randomDelay();
-    }
-
-    this.processing = false;
-
-    // If there are still items in the queue, restart processing
-    if (this.queue.length > 0) {
-      this.processQueue();
+    } finally {
+      this.processing = false;
+      if (this.queue.length > 0) {
+        void this.processQueue();
+      }
     }
   }
 
@@ -230,6 +295,10 @@ class RequestQueue {
    * @returns {Promise<void>} - A promise that resolves after a delay based on the retry count.
    */
   private async exponentialBackoff(retryCount: number): Promise<void> {
+    if (this.waits.backoff) {
+      await this.waits.backoff(retryCount);
+      return;
+    }
     const delay = 2 ** retryCount * 1000;
     await new Promise((resolve) => setTimeout(resolve, delay));
   }
@@ -240,6 +309,10 @@ class RequestQueue {
    * @returns A Promise that resolves after the random delay has passed.
    */
   private async randomDelay(): Promise<void> {
+    if (this.waits.jitter) {
+      await this.waits.jitter();
+      return;
+    }
     const delay = Math.floor(Math.random() * 2000) + 1500;
     await new Promise((resolve) => setTimeout(resolve, delay));
   }
@@ -336,8 +409,9 @@ export class ClientBase {
       return cachedTweet;
     }
 
-    const tweet = await this.requestQueue.add(() =>
-      this.twitterClient.getTweet(tweetId),
+    const tweet = await this.requestQueue.add(
+      () => this.twitterClient.getTweet(tweetId),
+      RETRY_TRANSIENT_X_READ,
     );
 
     if (!tweet) {
@@ -670,30 +744,34 @@ export class ClientBase {
     searchMode: SearchMode,
     cursor?: string,
   ): Promise<QueryTweetsResponse> {
-    let timeout: ReturnType<typeof setTimeout> | undefined;
     try {
-      const timeoutPromise = new Promise<never>((_resolve, reject) => {
-        timeout = setTimeout(
-          () =>
-            reject(
-              new ElizaError("X search timed out", {
-                code: "X_SEARCH_TIMEOUT",
-              }),
+      const result = await this.requestQueue.add(async () => {
+        let timeout: ReturnType<typeof setTimeout> | undefined;
+        const timeoutPromise = new Promise<never>((_resolve, reject) => {
+          timeout = setTimeout(
+            () =>
+              reject(
+                new ElizaError("X search timed out", {
+                  code: "X_SEARCH_TIMEOUT",
+                }),
+              ),
+            15_000,
+          );
+        });
+        try {
+          return await Promise.race([
+            this.twitterClient.fetchSearchTweets(
+              query,
+              maxTweets,
+              searchMode,
+              cursor,
             ),
-          15_000,
-        );
-      });
-      const result = await this.requestQueue.add(() =>
-        Promise.race([
-          this.twitterClient.fetchSearchTweets(
-            query,
-            maxTweets,
-            searchMode,
-            cursor,
-          ),
-          timeoutPromise,
-        ]),
-      );
+            timeoutPromise,
+          ]);
+        } finally {
+          if (timeout) clearTimeout(timeout);
+        }
+      }, RETRY_TRANSIENT_X_READ);
       if (!result) {
         throw new ElizaError("X search returned no response", {
           code: "X_SEARCH_RESPONSE_INVALID",
@@ -708,8 +786,6 @@ export class ClientBase {
         code: "X_SEARCH_FAILED",
         cause: error,
       });
-    } finally {
-      if (timeout) clearTimeout(timeout);
     }
   }
 
@@ -1131,23 +1207,11 @@ export class ClientBase {
           bio: profile.biography || characterBio,
           nicknames: [],
         } satisfies TwitterProfile;
-      });
+      }, RETRY_TRANSIENT_X_READ);
 
       return profile;
     } catch (error) {
-      const candidate =
-        typeof error === "object" && error !== null
-          ? (error as {
-              code?: unknown;
-              status?: unknown;
-              statusCode?: unknown;
-            })
-          : null;
-      const status = [
-        candidate?.code,
-        candidate?.status,
-        candidate?.statusCode,
-      ].find((value): value is number => typeof value === "number");
+      const status = getTwitterProviderStatus(error);
       if (status === 404) {
         throw new ElizaError(`X profile @${username} was not found`, {
           code: "X_PROFILE_NOT_FOUND",
@@ -1167,12 +1231,14 @@ export class ClientBase {
     try {
       return await this.withAuthenticatedSession(async ({ profile }) => {
         // Use fetchSearchTweets to get mentions instead of the non-existent get method
-        const mentionsResponse = await this.requestQueue.add(() =>
-          this.twitterClient.fetchSearchTweets(
-            `@${profile.username}`,
-            100,
-            SearchMode.Latest,
-          ),
+        const mentionsResponse = await this.requestQueue.add(
+          () =>
+            this.twitterClient.fetchSearchTweets(
+              `@${profile.username}`,
+              100,
+              SearchMode.Latest,
+            ),
+          RETRY_TRANSIENT_X_READ,
         );
 
         // Process tweets directly into the expected interaction format
@@ -1181,11 +1247,14 @@ export class ClientBase {
         );
       });
     } catch (error) {
-      // error-policy:J7 a mentions/interactions fetch failure must surface to the
-      // agent rather than reading as no interactions; degrade to an empty list
-      // after reporting.
+      // A failed read is not an empty interaction set. Preserve the provider
+      // failure and reject explicitly so callers cannot advance on fabricated
+      // absence.
       this.runtime.reportError("XClientBase.getInteractions", error);
-      return [];
+      throw new ElizaError("Failed to fetch X interactions", {
+        code: "X_INTERACTIONS_FAILED",
+        cause: error,
+      });
     }
   }
 

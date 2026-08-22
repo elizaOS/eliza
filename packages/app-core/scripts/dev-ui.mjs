@@ -1308,6 +1308,10 @@ if (uiOnly) {
     },
     onSpawn: (child) => {
       apiProcess = child;
+      // The watchdog outlives API children. Every replacement generation is
+      // legitimately unhealthy while booting, whether it came from a source
+      // reload, a child-requested restart, a crash, or the watchdog itself.
+      apiHealthWatchdog?.beginRecovery();
       child.on("error", (err) => {
         console.error(
           `  ${green(logPrefix)} Failed to start API server: ${err.message}`,

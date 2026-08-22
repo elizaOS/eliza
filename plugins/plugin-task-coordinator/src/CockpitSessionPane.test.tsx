@@ -59,7 +59,18 @@ const calls = {
 // select) and only needs `ref` + `agentProps` back; the production hook is a
 // registration side effect for the agent overlay.
 vi.mock("@elizaos/ui/agent-surface", () => ({
-  useAgentElement: () => ({ ref: () => {}, agentProps: {} }),
+  useAgentElement: (descriptor: {
+    id: string;
+    role?: string;
+    label: string;
+  }) => ({
+    ref: () => {},
+    agentProps: {
+      "data-agent-id": descriptor.id,
+      "data-agent-role": descriptor.role ?? "region",
+      "data-agent-label": descriptor.label,
+    },
+  }),
 }));
 
 // Keep the real UI components while replacing the API client boundary.
@@ -475,6 +486,27 @@ describe("CockpitSessionPane — drill-in (client mocked at the boundary)", () =
         /deliver/i,
       ),
     );
+  });
+
+  it("leaves no rendered drill-in control outside the agent bridge", async () => {
+    const { container } = renderPane();
+    await screen.findByTestId("orchestrator-user-message");
+    const controls = Array.from(
+      container.querySelectorAll<HTMLElement>(
+        'button, input:not([type="hidden"]), textarea, [role="combobox"]',
+      ),
+    ).filter((control) => !control.closest('[aria-hidden="true"]'));
+    expect(
+      controls
+        .filter((control) => !control.closest("[data-agent-id]"))
+        .map(
+          (control) =>
+            control.getAttribute("data-testid") ??
+            control.getAttribute("aria-label") ??
+            `${control.tagName.toLowerCase()}:${control.textContent?.trim()}:${control.className}`,
+        ),
+      "every rendered Cockpit session control must have a data-agent-id",
+    ).toEqual([]);
   });
 });
 

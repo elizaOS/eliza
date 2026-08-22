@@ -25,6 +25,8 @@ Repo-wide conventions (logger-only, ESM, naming, architecture rules, git workflo
 | POST   | `/api/documents/bulk` | Bulk upload up to 100 documents |
 | POST   | `/api/documents/url` | Fetch and ingest a URL or YouTube transcript |
 | PATCH  | `/api/documents/:id` | Update document text content (re-fragments) |
+| PATCH  | `/api/documents/:id/access` | Replace bounded direct entity read grants (OWNER or room ADMIN) |
+| GET    | `/api/documents/:id/access` | Read direct grants through the same management authority |
 | DELETE | `/api/documents/:id` | Delete document and all its fragments |
 
 **Actions:** none registered here. `OWNER_DOCUMENTS` is registered by
@@ -97,6 +99,9 @@ PATCH and DELETE must use the access-context-aware mutation methods. The route
 may inspect the already-authorized parent for editability, but it may not scan
 or delete fragments itself; `DocumentService` owns snapshot validation and the
 adapter performs the atomic parent/revision mutation.
+Direct-grant replacement is a separate storage-enforced CAS operation. OWNER
+may manage grants on any valid document; ADMIN may manage global or
+user-private documents only while a current member of the document room.
 
 ## How to extend
 

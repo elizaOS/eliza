@@ -88,7 +88,7 @@ export function ShortcutsOverlay() {
           {Object.entries(grouped).map(([scope, shortcuts]) => (
             <div key={scope}>
               <h3
-                className="text-xs-tight uppercase tracking-wide font-medium mb-2"
+                className="text-xs-tight uppercase tracking-wider font-medium mb-2"
                 style={{ color: "var(--muted)" }}
               >
                 {scope}

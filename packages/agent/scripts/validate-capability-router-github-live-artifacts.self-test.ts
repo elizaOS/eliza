@@ -61,11 +61,11 @@ assertCommandIncludes("validates provider report artifact", "bun", [
   "--kind",
   "provider",
   "--expect-count",
-  "3..4",
+  "2..3",
   "--allowed-providers",
-  "e2b,home-machine,mobile-companion,desktop-companion",
+  "home-machine,mobile-companion,desktop-companion",
   "--require-providers",
-  "e2b,home-machine,mobile-companion",
+  "home-machine,mobile-companion",
   "/tmp/capability-router-live-artifacts/remote-capability-provider-live-report",
 ]);
 

@@ -471,28 +471,36 @@ describe("Telegram message connector adapter", () => {
           account,
           bot: fakeBot,
           messageManager: { sendMessage: vi.fn() },
+          wiring: {
+            commands: false,
+            poller: false,
+            handlers: false,
+            shutdownHooks: false,
+          },
         };
       });
 
-    const service = await TelegramService.start(runtime);
+    try {
+      const service = await TelegramService.start(runtime);
 
-    expect(createAccountRuntime).toHaveBeenCalledTimes(1);
-    expect(createAccountRuntime).toHaveBeenCalledWith(
-      expect.objectContaining({ accountId: "acct-b", botToken: "token-b" }),
-    );
-    expect(initializeBot).toHaveBeenCalledTimes(1);
-    expect(
-      Array.from(
-        (
-          service as TelegramService & {
-            accountStates: Map<string, unknown>;
-          }
-        ).accountStates.keys(),
-      ),
-    ).toEqual(["acct-b"]);
-
-    initializeBot.mockRestore();
-    createAccountRuntime.mockRestore();
+      expect(createAccountRuntime).toHaveBeenCalledTimes(1);
+      expect(createAccountRuntime).toHaveBeenCalledWith(
+        expect.objectContaining({ accountId: "acct-b", botToken: "token-b" }),
+      );
+      expect(initializeBot).toHaveBeenCalledTimes(1);
+      expect(
+        Array.from(
+          (
+            service as TelegramService & {
+              accountStates: Map<string, unknown>;
+            }
+          ).accountStates.keys(),
+        ),
+      ).toEqual(["acct-b"]);
+    } finally {
+      initializeBot.mockRestore();
+      createAccountRuntime.mockRestore();
+    }
   });
 
   it("does not launch the full poller when standalone mode owns Telegram", async () => {

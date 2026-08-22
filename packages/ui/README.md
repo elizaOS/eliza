@@ -62,6 +62,10 @@ loaders can import `@elizaos/ui` without evaluating CSS. Import
   plugin-config UI-spec engine.
 - **Registries** — `registerAppShellPage` for runtime nav tabs, the widget and
   overlay-app registries, and `registerProviderLogo`.
+- **Devices & Runtimes** — Settings management for local, Cloud, E2EE relay,
+  and fingerprint-pinned SSH runtimes. Renderer state stores only public trust
+  metadata and native credential references, never controller private keys or
+  durable runtime bearer values.
 
 ## Development
 

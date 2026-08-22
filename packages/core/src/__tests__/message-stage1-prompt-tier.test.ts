@@ -1,6 +1,6 @@
 /**
- * Stage-1 prompt rendering: every channel and addressing state receives the
- * complete canonical instruction block, context catalog, and field docs.
+ * Stage-1 prompt rendering and structural addressing use complete canonical
+ * instructions while keeping generic name tokens ambient.
  */
 import { describe, expect, it, vi } from "vitest";
 import {
@@ -14,7 +14,10 @@ import {
 } from "../runtime/builtin-field-evaluators";
 import { ContextRegistry } from "../runtime/context-registry";
 import { ResponseHandlerFieldRegistry } from "../runtime/response-handler-field-registry";
-import { runV5MessageRuntimeStage1 } from "../services/message";
+import {
+	runV5MessageRuntimeStage1,
+	textContainsAgentName,
+} from "../services/message";
 import { isUnaddressedTextGroupTurn } from "../services/message/stage1-prompt-tier";
 import type { ContextDefinition } from "../types/contexts";
 import type { Memory } from "../types/memory";
@@ -294,6 +297,31 @@ describe("Stage-1 complete prompt rendering", () => {
 			"Read, create, update, delete, search, and list sticky notes.",
 		);
 		expect(systemContent).toContain("Sticky Notes -> NOTES");
+	});
+
+	it.each([
+		"agent whats the setting we use to make u always respond",
+		"test the build before release",
+	])("keeps generic multi-word-name tokens ambient: %s", (text) => {
+		const message = makeMessage({
+			channelType: String(ChannelType.GROUP),
+			text,
+		});
+		const addressed = textContainsAgentName(text, ["Test Agent"]);
+		expect(addressed).toBe(false);
+		expect(isUnaddressedTextGroupTurn(message, addressed)).toBe(true);
+	});
+
+	it("preserves full names, explicit aliases, and distinctive name tokens", () => {
+		expect(textContainsAgentName("Test Agent check this", ["Test Agent"])).toBe(
+			true,
+		);
+		expect(
+			textContainsAgentName("@test_agent check this", ["test_agent"]),
+		).toBe(true);
+		expect(
+			textContainsAgentName("nubilio whats the setting", ["remilio nubilio"]),
+		).toBe(true);
 	});
 
 	it("renders the full rule block when channel type is missing (fail-open)", async () => {

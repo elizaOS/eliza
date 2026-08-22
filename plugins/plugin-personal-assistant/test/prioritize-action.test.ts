@@ -196,6 +196,33 @@ describe("PRIORITIZE umbrella action — focus ranking", () => {
       expect(data.ranked[1]).toMatchObject({ id: "todo-3", rank: 2 });
     });
 
+    it("includes every source item in the ranking prompt beyond the old fifty-item cap", async () => {
+      const todos = Array.from({ length: 55 }, (_, index) => ({
+        id: `todo-${index + 1}`,
+        title: `Todo ${index + 1}`,
+      }));
+      setPrioritizeLoaders({ loadTodos: async () => todos });
+      const useModel = vi.fn(async () =>
+        JSON.stringify({
+          ranked: [{ id: "todo-55", score: 0.95, reasoning: "last item" }],
+        }),
+      );
+
+      const result = await callPrioritize(
+        makeRuntime({ useModel }),
+        makeMessage(),
+        { subaction: "rank_todos" },
+      );
+
+      expect(result.success).toBe(true);
+      const request = useModel.mock.calls[0]?.[1] as { prompt?: string };
+      expect(request.prompt).toContain('"id": "todo-55"');
+      expect(request.prompt).toContain('"title": "Todo 55"');
+      expect(result.data).toMatchObject({
+        ranked: [expect.objectContaining({ id: "todo-55" })],
+      });
+    });
+
     it("loads pending todos from the registered production service", async () => {
       const listTodos = vi.fn(async () => [
         {
@@ -238,7 +265,6 @@ describe("PRIORITIZE umbrella action — focus ranking", () => {
         agentId: "agent-prioritize-test",
         status: ["pending", "in_progress"],
         includeCompleted: false,
-        limit: 50,
       });
       const data = result.data as {
         ranked: { id: string; title: string; dueAt?: string | null }[];
@@ -393,7 +419,7 @@ describe("PRIORITIZE umbrella action — focus ranking", () => {
         subjectUserId: "owner-1",
         state: "pending",
         action: null,
-        limit: 50,
+        limit: null,
       });
       const data = result.data as {
         ranked: { id: string; title: string; dueAt?: string | null }[];
@@ -484,7 +510,6 @@ describe("PRIORITIZE umbrella action — focus ranking", () => {
       expect(listThreads).toHaveBeenCalledWith({
         statuses: ["active", "waiting", "paused"],
         ownerEntityId: "owner-1",
-        limit: 50,
       });
       const data = result.data as {
         ranked: { id: string; title: string; summary?: string }[];

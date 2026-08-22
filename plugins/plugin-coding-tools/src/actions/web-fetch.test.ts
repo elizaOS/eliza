@@ -183,7 +183,7 @@ describe("coding-tools WEB_FETCH", () => {
     });
 
     expect(result.success).toBe(false);
-    expect(result.text).toContain("complete-capture safety limit");
+    expect(result.text).toContain("safety ceiling");
     expect(result.text).not.toContain("x".repeat(100));
   });
 
@@ -398,5 +398,119 @@ describe("coding-tools WEB_FETCH", () => {
     // needs instead of the turn dying on an io_error.
     expect(result.success).toBe(true);
     expect(result.text).toContain('"price":42');
+  });
+});
+
+describe("coding-tools WEB_FETCH extract bounds", () => {
+  afterEach(() => {
+    __resetWebHttpTestOverrides();
+  });
+
+  it("extracts a valid nested path", async () => {
+    usePinnedRoutes({
+      "https://public.example.test/bounded": new Response(
+        JSON.stringify({ a: { b: { c: 123 } } }),
+        {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        },
+      ),
+    });
+    const result = await runFetch({
+      url: "https://public.example.test/bounded",
+      extract: "a.b.c",
+    });
+    expect(result.success).toBe(true);
+    expect(result.text).toBe("123");
+  });
+
+  it("falls back to full JSON on missing path", async () => {
+    usePinnedRoutes({
+      "https://public.example.test/bounded2": new Response(
+        JSON.stringify({ a: 1 }),
+        {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        },
+      ),
+    });
+    const result = await runFetch({
+      url: "https://public.example.test/bounded2",
+      extract: "a.missing",
+    });
+    expect(result.success).toBe(true);
+    expect(result.text).toContain('"a":1');
+  });
+
+  it("falls back on empty segment", async () => {
+    usePinnedRoutes({
+      "https://public.example.test/empty-seg": new Response(
+        JSON.stringify({ a: { b: 1 } }),
+        {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        },
+      ),
+    });
+    const result = await runFetch({
+      url: "https://public.example.test/empty-seg",
+      extract: "a..b",
+    });
+    expect(result.success).toBe(true);
+    expect(result.text).toContain('"a"');
+  });
+
+  it("falls back on depth >16", async () => {
+    const deep = Array.from({ length: 17 }, (_, i) => `k${i}`).join(".");
+    usePinnedRoutes({
+      "https://public.example.test/deep": new Response(
+        JSON.stringify({ k0: 1 }),
+        {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        },
+      ),
+    });
+    const result = await runFetch({
+      url: "https://public.example.test/deep",
+      extract: deep,
+    });
+    expect(result.success).toBe(true);
+    expect(result.text).toContain('"k0"');
+  });
+
+  it("falls back on segment >256", async () => {
+    const longSeg = "x".repeat(257);
+    usePinnedRoutes({
+      "https://public.example.test/long-seg": new Response(
+        JSON.stringify({ [longSeg]: 1, a: 1 }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      ),
+    });
+    const result = await runFetch({
+      url: "https://public.example.test/long-seg",
+      extract: longSeg,
+    });
+    expect(result.success).toBe(true);
+    expect(result.text).toContain('"a":1');
+  });
+
+  it("falls back on path >1024", async () => {
+    const longPath = "a.".repeat(513);
+    usePinnedRoutes({
+      "https://public.example.test/long-path": new Response(
+        JSON.stringify({ a: 1 }),
+        {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        },
+      ),
+    });
+    const result = await runFetch({
+      url: "https://public.example.test/long-path",
+      extract: longPath,
+    });
+    expect(result.success).toBe(true);
+    expect(result.text).toContain('"a":1');
   });
 });

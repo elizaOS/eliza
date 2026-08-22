@@ -280,7 +280,7 @@ async function ensureAndroidChannel(
     return { channelId: channel.id, unusable: false };
   } catch {
     // The channel genuinely could not be created on an 8+ device; a post here
-    // would be dropped. Signal unusable so delivery falls through to glass.
+    // would be dropped. An unusable primary route falls through to glass.
     return { channelId: channel.id, unusable: true };
   }
 }

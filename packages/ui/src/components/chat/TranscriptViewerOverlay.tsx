@@ -596,7 +596,7 @@ export function TranscriptViewerOverlay({
                     placeholder="Entity ID"
                     density="compact"
                     data-testid="transcript-share-target"
-                    className="font-mono text-[11px]"
+                    className="font-mono text-xs-tight"
                   />
                 </label>
                 <div className="grid content-end gap-1">

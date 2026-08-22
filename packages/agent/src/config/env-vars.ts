@@ -56,12 +56,6 @@ export const CONNECTOR_ENV_MAP: Readonly<
     userToken: "SLACK_USER_TOKEN",
     signingSecret: "SLACK_SIGNING_SECRET",
   },
-  signal: {
-    authDir: "SIGNAL_AUTH_DIR",
-    account: "SIGNAL_ACCOUNT_NUMBER",
-    httpUrl: "SIGNAL_HTTP_URL",
-    cliPath: "SIGNAL_CLI_PATH",
-  },
   imessage: {
     enabled: "IMESSAGE_ENABLED",
     cliPath: "IMESSAGE_CLI_PATH",

@@ -301,6 +301,26 @@ export const vendorConnectionsRepository = {
     return row ?? null;
   },
 
+  async findActiveByVendorLabelForOrganization(
+    organizationId: string,
+    vendor: string,
+    label: string,
+  ): Promise<VendorConnection | null> {
+    const [row] = await db
+      .select()
+      .from(vendorConnections)
+      .where(
+        and(
+          eq(vendorConnections.organization_id, organizationId),
+          eq(vendorConnections.vendor, vendor),
+          eq(vendorConnections.label, label),
+          isNull(vendorConnections.deleted_at),
+        ),
+      )
+      .limit(1);
+    return row ?? null;
+  },
+
   /** Pick the most-recently-updated connection for this `(org, vendor)`. */
   async findLatestByVendor(
     organizationId: string,

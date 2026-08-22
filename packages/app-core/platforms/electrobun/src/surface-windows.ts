@@ -10,6 +10,7 @@ export type DetachedSurface =
   | "connectors"
   | "cloud";
 export type ManagedSurface = DetachedSurface | "settings" | "app";
+export type ManagedWindowTitleBarStyle = "default" | "hidden" | "hiddenInset";
 
 export interface ManagedWindowSnapshot {
   id: string;
@@ -60,7 +61,7 @@ export interface CreateManagedWindowOptions {
   url: string;
   preload: string;
   frame: ManagedWindowFrame;
-  titleBarStyle: "default";
+  titleBarStyle: ManagedWindowTitleBarStyle;
   transparent: boolean;
 }
 
@@ -110,9 +111,16 @@ const SURFACE_FRAMES: Record<ManagedSurface, ManagedWindowFrame> = {
   plugins: { x: 180, y: 160, width: 1180, height: 860 },
   connectors: { x: 200, y: 180, width: 1180, height: 860 },
   cloud: { x: 220, y: 140, width: 1280, height: 900 },
-  settings: { x: 180, y: 120, width: 1240, height: 900 },
+  settings: { x: 220, y: 160, width: 760, height: 560 },
   app: { x: 180, y: 120, width: 1280, height: 900 },
 };
+
+/** Keep custom macOS chrome confined to the settings window that owns its inset layout. */
+export function resolveManagedWindowTitleBarStyle(
+  surface: ManagedSurface,
+): ManagedWindowTitleBarStyle {
+  return surface === "settings" ? "hiddenInset" : "default";
+}
 
 export function isDetachedSurface(value: string): value is DetachedSurface {
   return (
@@ -482,7 +490,7 @@ export class SurfaceWindowManager {
       url,
       preload,
       frame,
-      titleBarStyle: "default",
+      titleBarStyle: resolveManagedWindowTitleBarStyle(surface),
       transparent: false,
     });
     if (alwaysOnTop) {

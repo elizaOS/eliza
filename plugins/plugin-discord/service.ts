@@ -149,10 +149,12 @@ import {
 	resolveDiscordRuntimeEntityId,
 	resolveElizaOwnerEntityId,
 } from "./identity";
+import { buildDiscordReplyPayload } from "./interactions";
 import {
 	beginDiscordOutboundDelivery,
 	createDiscordMessageMemoryOnce,
 	type DiscordOutboundDeliveryReservation,
+	INTERACTION_ONLY_FALLBACK_TEXT,
 	MessageManager,
 } from "./messages";
 import { chunkDiscordText } from "./messaging";
@@ -180,6 +182,7 @@ import type {
 } from "./types";
 import { DiscordEventTypes } from "./types";
 import {
+	buildDiscordComponents,
 	buildOutboundDiscordAttachment,
 	MAX_MESSAGE_LENGTH,
 	normalizeDiscordMessageText,
@@ -903,8 +906,8 @@ export class DiscordService extends Service implements IDiscordService {
 		);
 	}
 
-	private createDiscordJsClient(): DiscordJsClient {
-		return new DiscordJsClient({
+	private createDiscordJsClient(accountId: string): DiscordJsClient {
+		const client = new DiscordJsClient({
 			intents: [
 				GatewayIntentBits.Guilds,
 				GatewayIntentBits.GuildMembers,
@@ -924,6 +927,27 @@ export class DiscordService extends Service implements IDiscordService {
 				Partials.Reaction,
 			],
 		});
+		// discord.js builds its Client with `captureRejections: true`
+		// (BaseClient.js) and installs no Symbol.for("nodejs.rejection")
+		// handler, so a rejected async gateway listener is routed into
+		// `client.emit("error", ...)`. EventEmitter THROWS when "error" is
+		// emitted with no listener, and that throw lands on a process.nextTick
+		// stack that no call-stack try/catch can reach — an uncaughtException,
+		// which the agent crash guard turns into a whole-process restart.
+		//
+		// The per-attempt `once(Events.Error)` in attemptDiscordLogin is consumed
+		// by the FIRST such rejection, leaving the client error-listener-less
+		// from the second one on. This durable listener is what guarantees the
+		// client always has one. It owns the logging; the `once` keeps only the
+		// login-retry decision, so a single error still produces one line.
+		client.on(Events.Error, (error: unknown) => {
+			this.runtime.logger.error(
+				`Discord client error for account ${accountId}: ${
+					error instanceof Error ? error.message : String(error)
+				}`,
+			);
+		});
+		return client;
 	}
 
 	private syncLegacyDefaultAliases(
@@ -1386,7 +1410,7 @@ export class DiscordService extends Service implements IDiscordService {
 		const state: DiscordAccountClientState = {
 			accountId,
 			account: { ...account, accountId },
-			client: this.createDiscordJsClient(),
+			client: this.createDiscordJsClient(accountId),
 			settings,
 			allowedChannelIds: settings.allowedChannelIds,
 			listenChannelIds: this.resolveListenChannelIdsForAccount(account),
@@ -1463,7 +1487,7 @@ export class DiscordService extends Service implements IDiscordService {
 			return;
 		}
 		if (!state.client) {
-			state.client = this.createDiscordJsClient();
+			state.client = this.createDiscordJsClient(state.accountId);
 		}
 		const client = state.client;
 		// Rebind message/reaction/guild listeners onto this (possibly fresh)
@@ -1607,12 +1631,9 @@ export class DiscordService extends Service implements IDiscordService {
 			}
 			scheduleRetry(closeEvent);
 		});
+		// Logging lives on the durable listener attached at client creation; this
+		// one only carries the login-retry decision for the current attempt.
 		client.once(Events.Error, (error: unknown) => {
-			this.runtime.logger.error(
-				`Discord client error for account ${state.accountId}: ${
-					error instanceof Error ? error.message : String(error)
-				}`,
-			);
 			scheduleRetry(error);
 		});
 		client.login(token).catch((error: unknown) => {
@@ -1967,7 +1988,26 @@ export class DiscordService extends Service implements IDiscordService {
 						? targetChannelGuild.name
 						: undefined;
 
-					const textContent = normalizeDiscordMessageText(content.text);
+					// Project embedded interaction blocks the same way the reply path
+					// does. This handler serves runtime.sendMessageToTarget — the
+					// sub-agent relay / progress / notice path — and sending
+					// `content.text` raw leaked literal `[FOLLOWUPS]…[/FOLLOWUPS]`
+					// markup to Discord (live 2026-08-17, wind-chimes relay). Blocks
+					// become action rows on the final chunk; block-free text is
+					// byte-identical to the previous behavior.
+					const rendered = buildDiscordReplyPayload(runtime, content);
+					const renderedComponents =
+						rendered.components.length > 0
+							? buildDiscordComponents(rendered.components)
+							: undefined;
+					const hasComponents = rendered.components.length > 0;
+					const interactionIdentity = hasComponents
+						? JSON.stringify(rendered.components)
+						: undefined;
+					let textContent = normalizeDiscordMessageText(rendered.text);
+					if (textContent.trim().length === 0 && hasComponents) {
+						textContent = INTERACTION_ONLY_FALLBACK_TEXT;
+					}
 					const outboundReplyToMessageId =
 						discordReplyReferenceFromContent(content);
 					if (textContent || files.length > 0) {
@@ -2005,6 +2045,7 @@ export class DiscordService extends Service implements IDiscordService {
 							attachmentUrls: content.attachments
 								?.map((media) => media.url)
 								.filter((url): url is string => typeof url === "string"),
+							interactionIdentity,
 						};
 						let outboundDedupe = beginDiscordOutboundDelivery(dedupeParams);
 						while (outboundDedupe.kind === "in_flight") {
@@ -2061,6 +2102,9 @@ export class DiscordService extends Service implements IDiscordService {
 									const sent = await targetChannel.send({
 										content: chunks[chunks.length - 1],
 										files: files.length > 0 ? files : undefined,
+										...(renderedComponents
+											? { components: renderedComponents }
+											: {}),
 										...(outboundReplyToMessageId && chunks.length === 1
 											? {
 													reply: {
@@ -2076,6 +2120,9 @@ export class DiscordService extends Service implements IDiscordService {
 									const sent = await targetChannel.send({
 										content: chunks[0],
 										files: files.length > 0 ? files : undefined,
+										...(renderedComponents
+											? { components: renderedComponents }
+											: {}),
 										...(outboundReplyToMessageId
 											? {
 													reply: {

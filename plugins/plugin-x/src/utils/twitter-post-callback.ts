@@ -18,6 +18,7 @@ import {
 } from "@elizaos/core";
 import type { ClientBase } from "../base";
 import { TWEET_MAX_LENGTH } from "../constants";
+import { countTwitterWeightedLength } from "../tweet-length";
 import type { TwitterClientState } from "../types";
 import { sendTweet } from "../utils";
 import {
@@ -33,29 +34,20 @@ function errorMessage(error: unknown): string {
 }
 
 function normalizePostText(text: string): string {
-  if (text.length <= TWEET_MAX_LENGTH) {
-    return text;
+  const weightedLength = countTwitterWeightedLength(text);
+  if (weightedLength > TWEET_MAX_LENGTH) {
+    throw new ElizaError(
+      `Generated X post is limited to ${TWEET_MAX_LENGTH} weighted characters; received ${weightedLength}`,
+      {
+        code: "X_POST_LENGTH_EXCEEDED",
+        context: {
+          weightedLength,
+          maxWeightedLength: TWEET_MAX_LENGTH,
+        },
+      },
+    );
   }
-
-  const sentenceMatches = text.match(/[^.!?]+[.!?]+/g) || [];
-  let sentenceText = "";
-  for (const sentence of sentenceMatches) {
-    if ((sentenceText + sentence).trim().length <= TWEET_MAX_LENGTH) {
-      sentenceText += sentence;
-    } else {
-      break;
-    }
-  }
-  if (sentenceText.trim()) {
-    return sentenceText.trim();
-  }
-
-  const spaceIndex = text.lastIndexOf(" ", TWEET_MAX_LENGTH - 4);
-  if (spaceIndex > 0) {
-    return `${text.slice(0, spaceIndex).trim()}...`;
-  }
-
-  return `${text.slice(0, TWEET_MAX_LENGTH - 3).trim()}...`;
+  return text;
 }
 
 export function createTwitterPostCallback({
@@ -85,19 +77,13 @@ export function createTwitterPostCallback({
   ): Promise<Memory[]> => {
     try {
       const generatedText =
-        typeof content.text === "string" ? content.text.trim() : "";
-      if (!generatedText) {
+        typeof content.text === "string" ? content.text : "";
+      if (!generatedText.trim()) {
         runtime.logger.warn("[Twitter] No generated tweet text to post");
         return [];
       }
 
       const postText = normalizePostText(generatedText);
-      if (postText !== generatedText) {
-        runtime.logger.warn(
-          `[Twitter] Generated tweet exceeded ${TWEET_MAX_LENGTH} characters; posting truncated text`,
-        );
-      }
-
       if (isDryRun) {
         runtime.logger.info(
           `[Twitter] [DRY RUN] Would post tweet: ${postText}`,
@@ -135,7 +121,10 @@ export function createTwitterPostCallback({
           return [];
         }
         const result = await sendTweet(client, postText, [], undefined, []);
-        const postedText = result.text?.trim() || postText;
+        const postedText =
+          typeof result.text === "string" && result.text.length > 0
+            ? result.text
+            : postText;
         runtime.logger.info(
           `[Twitter] Tweet posted successfully! ID: ${result.id}`,
         );

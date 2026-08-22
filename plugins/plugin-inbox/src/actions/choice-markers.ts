@@ -29,7 +29,7 @@ export function appendInboxTriageChoiceMarkers(
   entries: ReadonlyArray<TriageEntry>,
 ): string {
   if (entries.length === 0) return text;
-  const blocks = entries.slice(0, 5).map((entry) => {
+  const blocks = entries.map((entry) => {
     const sender = choiceLabelText(entry.senderName ?? entry.channelName);
     return `[CHOICE:inbox-thread-${entry.id} id=${entry.id}]
 inbox reply ${entry.id}=Reply to ${sender}

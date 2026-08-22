@@ -89,10 +89,13 @@ async function findLastOwnerMessageTimestamp(
 // Trigger checks
 // ---------------------------------------------------------------------------
 
-async function checkActiveEscalation(triggers: Trigger[]): Promise<void> {
+async function checkActiveEscalation(
+  runtime: IAgentRuntime,
+  triggers: Trigger[],
+): Promise<void> {
   try {
     const { EscalationService } = await import("../services/escalation.ts");
-    const active = EscalationService.getActiveEscalationSync();
+    const active = EscalationService.getActiveEscalationSync(runtime);
     if (active && !active.resolved) {
       triggers.push({
         type: "active_escalation",
@@ -195,7 +198,7 @@ export function createEscalationTriggerProvider(): Provider {
 
       if (isAdminViewer) {
         await Promise.all([
-          checkActiveEscalation(triggers),
+          checkActiveEscalation(runtime, triggers),
           checkOwnerInactivity(runtime, message, triggers),
           checkPendingVerifications(runtime, message, triggers),
         ]);

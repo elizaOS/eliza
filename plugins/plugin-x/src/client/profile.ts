@@ -1,4 +1,10 @@
+/**
+ * Resolves X user profiles through the authenticated API client and converts
+ * provider failures into typed connector errors without exposing credentials.
+ */
+import { ElizaError } from "@elizaos/core";
 import type { UserV2 } from "twitter-api-v2";
+import { normalizeTwitterProviderError } from "../utils/error-handler";
 import type { RequestApiResult } from "./api-types";
 import type { TwitterAuth } from "./auth";
 import type { TwitterApiErrorRaw } from "./errors";
@@ -260,10 +266,17 @@ export async function getProfile(
       value: parseV2Profile(user.data),
     };
   } catch (error) {
+    // error-policy:J2 Preserve the provider cause and add profile-operation
+    // context when it is not already a classified X provider failure.
     const message = error instanceof Error ? error.message : String(error);
     return {
       success: false,
-      err: new Error(message || "Failed to fetch profile"),
+      err:
+        normalizeTwitterProviderError(error) ??
+        new ElizaError(message || "Failed to fetch profile", {
+          code: "X_PROFILE_FETCH_FAILED",
+          cause: error,
+        }),
     };
   }
 }

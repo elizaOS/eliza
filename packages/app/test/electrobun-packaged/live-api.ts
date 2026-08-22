@@ -16,6 +16,7 @@ export interface TestApiServerOptions {
 export interface TestApiServer {
   baseUrl: string;
   requests: string[];
+  responses: string[];
   close: () => Promise<void>;
 }
 
@@ -61,10 +62,24 @@ const HOP_BY_HOP_HEADERS = new Set([
   "upgrade",
 ]);
 
+// This helper is a same-machine reverse proxy, so it terminates the renderer's
+// browser security context. Forwarding that context would make the upstream
+// loopback request look cross-site even though its actual peer is this trusted
+// test process. CORS is applied on the proxy response instead.
+const BROWSER_PROVENANCE_HEADERS = new Set([
+  "origin",
+  "referer",
+  "sec-fetch-site",
+]);
+
 function buildForwardHeaders(req: http.IncomingMessage): Headers {
   const headers = new Headers();
   for (const [key, value] of Object.entries(req.headers)) {
-    if (HOP_BY_HOP_HEADERS.has(key.toLowerCase())) {
+    const lowerKey = key.toLowerCase();
+    if (
+      HOP_BY_HOP_HEADERS.has(lowerKey) ||
+      BROWSER_PROVENANCE_HEADERS.has(lowerKey)
+    ) {
       continue;
     }
     if (typeof value === "string") {
@@ -169,6 +184,7 @@ export async function startLiveApiServer(
     }
 
     const requests: string[] = [];
+    const responses: string[] = [];
     let configPatch: Record<string, unknown> = {};
     // Fresh runtimes now report their persisted/default first-run state from
     // the real API. Make the fixture's explicit false option authoritative from
@@ -184,6 +200,7 @@ export async function startLiveApiServer(
           resetApplied = true;
           configPatch = {};
           sendJson(res, 200, { ok: true });
+          responses.push(`${method} ${targetUrl.pathname} -> 200 fixture`);
           return;
         }
 
@@ -193,6 +210,7 @@ export async function startLiveApiServer(
           targetUrl.pathname === "/api/first-run/status"
         ) {
           sendJson(res, 200, { complete: false, cloudProvisioned: false });
+          responses.push(`${method} ${targetUrl.pathname} -> 200 fixture`);
           return;
         }
 
@@ -202,6 +220,7 @@ export async function startLiveApiServer(
             configPatch = { ...configPatch, ...parseJsonBody(body) };
             resetApplied = false;
             sendJson(res, 200, configPatch);
+            responses.push(`${method} ${targetUrl.pathname} -> 200 fixture`);
             return;
           }
 
@@ -220,6 +239,9 @@ export async function startLiveApiServer(
                 : upstreamConfig),
               ...configPatch,
             });
+            responses.push(
+              `${method} ${targetUrl.pathname} -> ${response.ok ? 200 : response.status}`,
+            );
             return;
           }
         }
@@ -234,6 +256,7 @@ export async function startLiveApiServer(
           body,
           redirect: "manual",
         });
+        responses.push(`${method} ${targetUrl.pathname} -> ${response.status}`);
 
         res.statusCode = response.status;
         copyResponseHeaders(response.headers, res);
@@ -260,6 +283,7 @@ export async function startLiveApiServer(
     return {
       baseUrl: `http://127.0.0.1:${(address as AddressInfo).port}`,
       requests,
+      responses,
       close: async () => {
         await closeServer(proxy).catch(() => undefined);
         await upstream.close().catch(() => undefined);

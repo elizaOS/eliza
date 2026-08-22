@@ -50,8 +50,17 @@ async function fetchDistTags(): Promise<Record<string, string> | null> {
   }
 }
 
-function shouldSkipCheck(cfg: UpdateConfig | undefined): boolean {
+function shouldSkipCheck(
+  cfg: UpdateConfig | undefined,
+  channel: ReleaseChannel,
+): boolean {
   if (!cfg?.lastCheckAt) return false;
+  // The cached version belongs to the channel it was fetched for. Both
+  // config-mutating channel changes clear the cache, but `resolveChannel` also
+  // honours ELIZA_UPDATE_CHANNEL, which writes nothing — so a cache from
+  // another channel can outlive the channel that produced it. Caches written
+  // before this field existed have no channel and are treated as a miss.
+  if (cfg.lastCheckChannel !== channel) return false;
   const interval = cfg.checkIntervalSeconds ?? CHECK_INTERVAL_SECONDS;
   const elapsed = (Date.now() - new Date(cfg.lastCheckAt).getTime()) / 1_000;
   return elapsed < interval;
@@ -76,7 +85,7 @@ export async function checkForUpdate(options?: {
   const channel = resolveChannel(updateCfg);
   const distTag = CHANNEL_DIST_TAGS[channel];
 
-  if (!options?.force && shouldSkipCheck(updateCfg)) {
+  if (!options?.force && shouldSkipCheck(updateCfg, channel)) {
     return {
       updateAvailable: updateCfg?.lastCheckVersion
         ? (compareSemver(VERSION, updateCfg.lastCheckVersion) ?? 0) < 0
@@ -128,6 +137,7 @@ export async function checkForUpdate(options?: {
         ...config.update,
         lastCheckAt: new Date().toISOString(),
         lastCheckVersion: latestVersion,
+        lastCheckChannel: channel,
       },
     });
   } catch (err) {

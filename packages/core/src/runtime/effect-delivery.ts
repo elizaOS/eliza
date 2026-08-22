@@ -67,7 +67,11 @@ export function effectDeliveryBindingProvesApplication(
 	content: Content,
 ): boolean {
 	const binding = getEffectDeliveryBinding(content);
-	return binding?.applied === true && effectDeliveryBindingIsValid(content);
+	return (
+		binding?.applied === true &&
+		binding.receiptIds.length > 0 &&
+		effectDeliveryBindingIsValid(content)
+	);
 }
 
 /** Remove both serialized and core-owned proof markers before a safe fallback. */

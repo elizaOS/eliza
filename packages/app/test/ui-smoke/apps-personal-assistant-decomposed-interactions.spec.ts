@@ -53,11 +53,11 @@ test("calendar decomposed view: day selection and month navigation", async ({
   page,
 }) => {
   // /calendar mounts the canonical SimpleCalendarView (#17859 swapped the view
-  // bundle from the unified CalendarView): a month grid with month/year
+  // bundle from the canonical Calendar view): a month grid with month/year
   // navigation and a per-day agenda, always fetching a 42-day month-grid
   // window. There is no Day/Week/Month mode control here anymore — that
-  // belongs to the retired unified CalendarView, whose control coverage lives
-  // in plugins/plugin-calendar/src/components/calendar/CalendarView.test.tsx.
+  // belongs to the retired unified CalendarView. The shipped month-grid
+  // behavior is covered by SimpleCalendarView.test.tsx.
   // The feed mock anchors "Design sync" at the requested window start (the
   // grid's first cell), so the populated feed renders as a day-cell event
   // badge ("1 event on <date>").

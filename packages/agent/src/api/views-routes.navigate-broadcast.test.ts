@@ -150,7 +150,7 @@ describe("POST /api/views/:id/navigate broadcast contract", () => {
     );
   });
 
-  it("records originating-client navigation without broadcasting to unrelated shells", async () => {
+  it("keeps originating-client navigation out of global state and unrelated shells", async () => {
     const { ctx, json, broadcastWs } = makeNavigateCtx("notes", {
       delivery: "originating-client",
     });
@@ -158,10 +158,7 @@ describe("POST /api/views/:id/navigate broadcast contract", () => {
     await expect(handleViewsRoutes(ctx)).resolves.toBe(true);
 
     expect(broadcastWs).not.toHaveBeenCalled();
-    expect(getCurrentViewState()).toMatchObject({
-      viewId: "notes",
-      source: "agent",
-    });
+    expect(getCurrentViewState()).toBeNull();
     expect(json).toHaveBeenCalledWith(
       ctx.res,
       expect.objectContaining({ ok: true, viewId: "notes" }),
@@ -191,7 +188,7 @@ describe("POST /api/views/:id/navigate broadcast contract", () => {
     );
     expect(getCurrentViewState()).toMatchObject({
       viewId: "calendar",
-      source: "agent",
+      viewPath: null,
     });
     expect(json).toHaveBeenCalledWith(
       ctx.res,
@@ -269,6 +266,52 @@ describe("POST /api/views/:id/navigate broadcast contract", () => {
         completedActionDelivered: false,
       }),
     );
+    expect(getCurrentViewState()).toMatchObject({
+      viewId: "notes",
+      viewPath: null,
+    });
+  });
+
+  it("does not let concurrent caller-owned Browser paths overwrite shared state", async () => {
+    const shared = makeNavigateCtx("settings", {});
+    await expect(handleViewsRoutes(shared.ctx)).resolves.toBe(true);
+
+    const first = makeNavigateCtx("browser", {
+      clientId: "client-one",
+      delivery: "completed-action",
+      completedActionHandoffId: "handoff-one",
+      path: "/browser?browse=https%3A%2F%2Fone.example%2Fprivate",
+    });
+    const second = makeNavigateCtx("browser", {
+      clientId: "client-two",
+      delivery: "completed-action",
+      completedActionHandoffId: "handoff-two",
+      path: "/browser?browse=https%3A%2F%2Ftwo.example%2Fprivate",
+    });
+
+    await Promise.all([
+      handleViewsRoutes(first.ctx),
+      handleViewsRoutes(second.ctx),
+    ]);
+
+    expect(first.broadcastWsToClientId).toHaveBeenCalledWith(
+      "client-one",
+      expect.objectContaining({
+        viewPath: "/browser?browse=https%3A%2F%2Fone.example%2Fprivate",
+      }),
+    );
+    expect(second.broadcastWsToClientId).toHaveBeenCalledWith(
+      "client-two",
+      expect.objectContaining({
+        viewPath: "/browser?browse=https%3A%2F%2Ftwo.example%2Fprivate",
+      }),
+    );
+    expect(getCurrentViewState()).toMatchObject({
+      viewId: "browser",
+      viewPath: "/browser",
+    });
+    expect(JSON.stringify(getCurrentViewState())).not.toContain("one.example");
+    expect(JSON.stringify(getCurrentViewState())).not.toContain("two.example");
   });
 
   it("delivers app-chat navigation only to its originating client", async () => {

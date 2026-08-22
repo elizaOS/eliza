@@ -1,4 +1,6 @@
 /** Composes the mobile coding cockpit route from deck, session, and terminal panes. */
+
+import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { client } from "@elizaos/ui/api";
 import type {
   CodingAgentCreateTaskInput,
@@ -15,6 +17,62 @@ import { CockpitSessionPane } from "./CockpitSessionPane";
 
 /** How often the deck re-polls the live task-room roster. */
 const ROOMS_POLL_INTERVAL_MS = 4_000;
+
+function TerminalLaunchButtons({
+  onSelect,
+}: {
+  onSelect: (tier: CockpitTerminalTier) => void;
+}) {
+  const { ref: fastRef, agentProps: fastAgentProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: "cockpit-open-terminal-fast",
+      role: "button",
+      label: "Open Fast interactive terminal",
+      group: "cockpit-terminal",
+      description: "Start an interactive eliza-code terminal on the Fast tier",
+    });
+  const { ref: smartRef, agentProps: smartAgentProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: "cockpit-open-terminal-smart",
+      role: "button",
+      label: "Open Smart interactive terminal",
+      group: "cockpit-terminal",
+      description: "Start an interactive eliza-code terminal on the Smart tier",
+    });
+  return (
+    <div
+      style={{
+        position: "absolute",
+        right: 16,
+        bottom: 16,
+        display: "flex",
+        gap: 8,
+        zIndex: 10,
+      }}
+    >
+      <Button
+        ref={fastRef}
+        type="button"
+        size="sm"
+        data-testid="cockpit-open-terminal-fast"
+        onClick={() => onSelect("fast")}
+        {...fastAgentProps}
+      >
+        ⌨ Terminal · Fast
+      </Button>
+      <Button
+        ref={smartRef}
+        type="button"
+        size="sm"
+        data-testid="cockpit-open-terminal-smart"
+        onClick={() => onSelect("smart")}
+        {...smartAgentProps}
+      >
+        ⌨ Terminal · Smart
+      </Button>
+    </div>
+  );
+}
 
 /**
  * Route container for the coding cockpit. Wires the presentational
@@ -98,7 +156,7 @@ export function CockpitRoute() {
         // the record — the sub-agent actually starts via addOrchestratorAgent.
         // Thread the picked mode (framework / providerSource / model) so the
         // chosen mode runs. NOT a follow-up message: that path silently spawns
-        // the default opencode framework and discards the pick. The optional
+        // the configured default framework and discards the pick. The optional
         // repo/workdir target (from the form) is threaded here exactly as the
         // chat TASKS action does — the orchestrator route already accepts both
         // and resolves the spawn workdir/repo from them; omitted ⇒ scratch dir.
@@ -149,33 +207,7 @@ export function CockpitRoute() {
       />
 
       {terminalTier === null ? (
-        <div
-          style={{
-            position: "absolute",
-            right: 16,
-            bottom: 16,
-            display: "flex",
-            gap: 8,
-            zIndex: 10,
-          }}
-        >
-          <Button
-            type="button"
-            size="sm"
-            data-testid="cockpit-open-terminal-fast"
-            onClick={() => setTerminalTier("fast")}
-          >
-            ⌨ Terminal · Fast
-          </Button>
-          <Button
-            type="button"
-            size="sm"
-            data-testid="cockpit-open-terminal-smart"
-            onClick={() => setTerminalTier("smart")}
-          >
-            ⌨ Terminal · Smart
-          </Button>
-        </div>
+        <TerminalLaunchButtons onSelect={setTerminalTier} />
       ) : (
         <div
           data-testid="cockpit-terminal-overlay"

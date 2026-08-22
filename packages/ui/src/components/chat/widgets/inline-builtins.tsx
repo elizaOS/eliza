@@ -1,7 +1,8 @@
 /**
  * Built-in inline chat-reply widgets, registered into the inline-widget
  * registry at module load. Importing this module (a side effect) is what makes
- * `[CHOICE]`, `[FOLLOWUPS]`, `[FORM]`, and `[MAPSCARD]` markers render in chat.
+ * `[CHOICE]`, `[FOLLOWUPS]`, `[FORM]`, `[MAPSCARD]`, and `[CONNECTOR]` markers
+ * render in chat.
  *
  * Each entry pairs the marker's parser (the parsing semantics) with its React
  * renderer, the same contract a plugin uses via `registerInlineWidget`. The
@@ -19,6 +20,10 @@ import {
 } from "../message-checklist-parser";
 import { type ChoiceMatch, findChoiceRegions } from "../message-choice-parser";
 import {
+  type ConnectorCardMatch,
+  findConnectorCardRegions,
+} from "../message-connector-parser";
+import {
   type FollowupsMatch,
   findFollowupsRegions,
 } from "../message-followups-parser";
@@ -33,6 +38,7 @@ import {
 } from "../message-workflow-parser";
 import { BackgroundWidget } from "./background-widget";
 import { ChoiceWidget } from "./ChoiceWidget";
+import { ConnectorCardWidget } from "./connector-card";
 import { FollowupsWidget } from "./followups";
 import { FormRequest } from "./form-request";
 import { registerInlineWidget } from "./inline-registry";
@@ -100,6 +106,16 @@ registerInlineWidget<MapsCardMatch>({
   parse: (text) => findMapsCardRegions(text).map((m) => ({ ...m, data: m })),
   keyFor: (m) => `mapscard:${m.card.kind}:${m.start}`,
   render: (m, ctx, key) => <MapsCardWidget key={key} card={m.card} ctx={ctx} />,
+});
+
+registerInlineWidget<ConnectorCardMatch>({
+  kind: "connector",
+  parse: (text) =>
+    findConnectorCardRegions(text).map((m) => ({ ...m, data: m })),
+  keyFor: (m) => `connector:${m.pluginId}`,
+  render: (m, _ctx, key) => (
+    <ConnectorCardWidget key={key} pluginId={m.pluginId} />
+  ),
 });
 
 registerInlineWidget<ChecklistMatch>({

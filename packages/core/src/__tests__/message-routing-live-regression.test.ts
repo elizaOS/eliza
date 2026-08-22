@@ -104,15 +104,19 @@ describe("sub-agent completion relay — never promoted to tooling (false 'hit a
 		expect(gate?.shouldRun(contextFor(relay))).toBe(false);
 	});
 
-	it("does not promote a relay identified only by source or text prefix", () => {
-		const bySource = {
+	it("does not trust unilateral source, logger, or text-prefix markers", () => {
+		const byCanonicalSourceOnly = {
+			content: { text: relayText, source: "sub_agent" },
+		} as unknown as Memory;
+		expect(gate?.shouldRun(contextFor(byCanonicalSourceOnly))).toBe(true);
+		const byLoggerSource = {
 			content: { text: relayText, source: "acpx:sub-agent-router" },
 		} as unknown as Memory;
-		expect(gate?.shouldRun(contextFor(bySource))).toBe(false);
+		expect(gate?.shouldRun(contextFor(byLoggerSource))).toBe(true);
 		const byPrefix = {
 			content: { text: relayText, source: "discord" },
 		} as unknown as Memory;
-		expect(gate?.shouldRun(contextFor(byPrefix))).toBe(false);
+		expect(gate?.shouldRun(contextFor(byPrefix))).toBe(true);
 	});
 
 	it("still promotes a genuine fresh coding request to tooling", () => {
@@ -659,6 +663,91 @@ describe("live routing regressions", () => {
 			expect(result).toEqual(["TASKS"]);
 			expect(result).not.toContain("WEB_FETCH");
 			expect(result).not.toContain("WEB_SEARCH");
+		}
+	});
+
+	it("a snippet ask routed code+SPAWN_AGENT by stage-1 does not commit to delegation and loses the spawn candidate", () => {
+		const actions = [
+			{ name: "TASKS", similes: ["TASKS_SPAWN_AGENT", "SPAWN_AGENT"] },
+			{ name: "REPLY" },
+		] as unknown as ReadonlyArray<Pick<Action, "name" | "similes" | "tags">>;
+		const output = messageHandlerFromFieldResult(
+			{
+				shouldRespond: "RESPOND",
+				contexts: ["code"],
+				intents: [],
+				replyText: "on it. i'll get that set up for you.",
+				candidateActionNames: ["SPAWN_AGENT"],
+				facts: [],
+				relationships: [],
+				addressedTo: [],
+			},
+			undefined,
+			{ actions, messageText: "write a python script that just prints nubs" },
+		);
+		expect(output.plan.candidateActions ?? []).not.toContain("SPAWN_AGENT");
+		expect(output.plan.candidateActions ?? []).not.toContain("TASKS");
+		// A genuine build keeps its delegation commitment.
+		const build = messageHandlerFromFieldResult(
+			{
+				shouldRespond: "RESPOND",
+				contexts: ["code"],
+				intents: [],
+				replyText: "on it. kicking off the build.",
+				candidateActionNames: ["SPAWN_AGENT"],
+				facts: [],
+				relationships: [],
+				addressedTo: [],
+			},
+			undefined,
+			{
+				actions,
+				messageText:
+					"write me a python script that picks a random card from a deck and prints it",
+			},
+		);
+		expect(build.plan.candidateActions).toContain("SPAWN_AGENT");
+		expect(build.plan.requiresTool).toBe(true);
+	});
+
+	it("a script that just prints a constant is an inline snippet, not coding work", () => {
+		const actions: Array<Pick<Action, "name" | "similes" | "tags">> = [
+			{ name: "TASKS", similes: ["TASKS_SPAWN_AGENT"] },
+		];
+		for (const text of [
+			"write a python script that just prints nubs",
+			"make me a bash script that only says hello",
+			"write a script that just prints 42",
+			'write a script that just prints "hello world"',
+		]) {
+			expect(
+				inferDirectCurrentRequestCandidateActions(actions, text),
+			).not.toContain("TASKS");
+		}
+		// A computed deliverable still gets built and run — the WHOLE printed
+		// object is scanned, so a path, a computed noun, or a computed
+		// continuation after "and"/"then" defeats the constant-snippet scope.
+		for (const text of [
+			"write me a python script that picks a random card from a deck and prints it",
+			"write a python script that prints the current bitcoin price",
+			"write a script that just prints the current bitcoin price",
+			"write a python script that just prints the contents of /etc/hosts",
+			"make a python script that only outputs the primes under a million",
+			"write a script that just prints hello and then fetches the weather",
+			'write a script that just prints "hello" and then fetches the weather',
+			"write a script that just prints hello\nand then fetches the weather",
+			'write a simple script that just prints "hello"\nand then fetches the weather',
+			"make a python script that just prints my ip address",
+			// #24425 review: the ENTIRE printed expression is parsed — a computed
+			// marker beyond the first 80 characters of the object still defeats
+			// the constant-snippet scope (the former 80-char capture missed it).
+			"write a script that just prints hi and hi and hi and hi and hi and " +
+				"hi and hi and hi and hi and hi and hi and then fetches the " +
+				"current bitcoin price",
+		]) {
+			expect(inferDirectCurrentRequestCandidateActions(actions, text)).toEqual([
+				"TASKS",
+			]);
 		}
 	});
 

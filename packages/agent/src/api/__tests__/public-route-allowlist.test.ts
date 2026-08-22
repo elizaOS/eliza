@@ -301,6 +301,8 @@ const ALLOWLIST: Record<string, string> = {
     "health-connector OAuth provider redirect; arrives without dashboard JWT",
   "/api/lifeops/connectors/health/:provider/success (lifeops.health.success)":
     "health-connector OAuth provider return; arrives without dashboard JWT",
+  "/api/lifeops/money/plaid/webhook (lifeops.money.plaid.webhook)":
+    "Plaid webhook delivery; ES256 signature, exact-body hash, freshness, ingress deadline, body bound, and per-address rate limit apply before state work",
 
   // plugin-calendar — Google pushes arrive without a dashboard session and
   // are authenticated against the persisted channel/resource/token binding.

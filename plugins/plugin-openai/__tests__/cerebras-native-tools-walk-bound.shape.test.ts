@@ -21,6 +21,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const aiMocks = vi.hoisted(() => ({
   generateText: vi.fn(),
   streamText: vi.fn(),
+  schemaGetterReads: 0,
 }));
 
 import {
@@ -33,7 +34,25 @@ import {
 vi.mock("ai", () => ({
   generateText: aiMocks.generateText,
   streamText: aiMocks.streamText,
-  jsonSchema: (schema: unknown) => ({ jsonSchema: schema }),
+  jsonSchema: (schema: unknown) => {
+    const wrapper: Record<PropertyKey, unknown> = {
+      _type: undefined,
+      validate: undefined,
+    };
+    Object.defineProperty(wrapper, "jsonSchema", {
+      enumerable: true,
+      configurable: true,
+      get: () => {
+        aiMocks.schemaGetterReads += 1;
+        return schema;
+      },
+    });
+    Object.defineProperty(wrapper, Symbol.for("vercel.ai.schema"), {
+      enumerable: true,
+      value: true,
+    });
+    return wrapper;
+  },
   Output: {
     object: () => ({ name: "object", responseFormat: Promise.resolve({ type: "json" }) }),
     json: () => ({ name: "json", responseFormat: Promise.resolve({ type: "json" }) }),
@@ -82,6 +101,7 @@ function createRuntime(): IAgentRuntime {
 }
 
 beforeEach(() => {
+  aiMocks.schemaGetterReads = 0;
   vi.stubEnv("OPENAI_API_KEY", "test-key");
   vi.stubEnv("OPENAI_SMALL_MODEL", "gpt-oss-120b");
   vi.stubEnv("OPENAI_BASE_URL", "https://api.cerebras.ai/v1");
@@ -100,6 +120,67 @@ afterEach(() => {
 });
 
 describe("normalizeNativeToolsForCall Cerebras walk bound (real caller)", () => {
+  it("sanitizes array tool wire names before wrapping without reading the SDK accessor", () => {
+    const originalName = `probe${"\uD83D"}`;
+    const result = normalizeNativeToolsForCall([
+      {
+        name: originalName,
+        description: `description ${"\uD83D"}`,
+        parameters: {
+          type: "object",
+          properties: { field: { type: "string" } },
+        },
+      },
+    ]);
+
+    const registeredName = "probe�";
+    expect(result.toolNameMap?.get(originalName)).toBe(registeredName);
+    const tool = (result.tools as Record<string, { description: string; inputSchema: object }>)[
+      registeredName
+    ];
+    expect(tool.description).toBe("description �");
+    const descriptor = Object.getOwnPropertyDescriptor(tool.inputSchema, "jsonSchema");
+    expect(descriptor?.get).toBeTypeOf("function");
+    expect(aiMocks.schemaGetterReads).toBe(0);
+    const schema = descriptor?.get?.call(tool.inputSchema) as Record<string, unknown>;
+    expect(aiMocks.schemaGetterReads).toBe(1);
+    expect(Object.keys(schema.properties as object)).toEqual(["field"]);
+  });
+
+  it("sanitizes direct ToolSet keys without observing nested lazy accessors", () => {
+    let inputSchemaReads = 0;
+    const tool: Record<string, unknown> = { description: "tool" };
+    Object.defineProperty(tool, "inputSchema", {
+      enumerable: true,
+      get: () => {
+        inputSchemaReads += 1;
+        return { jsonSchema: { type: "object" } };
+      },
+    });
+    const originalName = `direct${"\uD83D"}`;
+    const result = normalizeNativeToolsForCall({ [originalName]: tool });
+
+    expect(inputSchemaReads).toBe(0);
+    expect(result.toolNameMap?.get(originalName)).toBe("direct�");
+    expect((result.tools as Record<string, unknown>)["direct�"]).toBe(tool);
+    expect(inputSchemaReads).toBe(0);
+  });
+
+  it("fails closed when distinct tool names collide after Unicode repair", () => {
+    expect(() =>
+      normalizeNativeToolsForCall([
+        { name: `probe${"\uD83D"}`, parameters: { type: "object" } },
+        { name: "probe�", parameters: { type: "object" } },
+      ])
+    ).toThrowError(
+      expect.objectContaining({
+        code: "OPENAI_TOOL_NAME_COLLISION",
+        context: expect.objectContaining({ registeredName: "probe�" }),
+      })
+    );
+    expect(aiMocks.schemaGetterReads).toBe(0);
+  });
+
   it("still closes an honest nested object schema through the real pipeline", () => {
     const result = callStrictCerebras({
       type: "object",

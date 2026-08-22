@@ -1,5 +1,5 @@
 /**
- * Thin Hono shell for login-critical Steward GETs (#18049).
+ * Thin Hono shell for login-critical Steward pre-auth requests (#18049).
  *
  * The monolithic bootstrap loads ~580 routes and service singletons (e.g.
  * PayoutAlerts) before the embedded Steward proxy runs. Cold isolates then
@@ -9,7 +9,9 @@
  * This shell mirrors the dependency-light protections already used by the thin
  * inference entry (`inference-app.ts`) plus the production Redis fail-closed
  * rate-limit config guard from `bootstrap-app.ts`, without evaluating
- * `_router.generated`. Mutating Steward auth still uses the full app.
+ * `_router.generated`. Only the exact pre-auth mutations selected by
+ * `public-paths.ts` enter this shell; all other mutating Steward auth still
+ * uses the full app.
  */
 
 import { Hono } from "hono";
@@ -170,7 +172,7 @@ export function createStewardThinApp(): Hono<AppEnv> {
   });
 
   // Global IP backstop (600/min) — same ceiling/namespace as bootstrap-app and
-  // inference-app so thin login GETs are not unmetered.
+  // inference-app so thin login requests are not unmetered.
   app.use(
     "*",
     rateLimit(

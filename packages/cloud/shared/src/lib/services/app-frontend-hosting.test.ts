@@ -15,6 +15,7 @@ import { type RuntimeR2Bucket, setRuntimeR2Bucket } from "../storage/r2-runtime-
 import {
   appFrontendHostingService,
   computeManifestHash,
+  frontendHostingLimits,
   generateRobots,
   generateSitemap,
   inferContentType,
@@ -57,6 +58,32 @@ function memoryBucket(objects: Map<string, Uint8Array>): RuntimeR2Bucket {
 }
 
 afterEach(() => setRuntimeR2Bucket(null));
+
+describe("frontendHostingLimits env parsing", () => {
+  const KEY = "ELIZA_FRONTEND_KEEP_SUPERSEDED";
+  const original = process.env[KEY];
+  afterEach(() => {
+    if (original === undefined) delete process.env[KEY];
+    else process.env[KEY] = original;
+  });
+
+  test("a sub-1 retention count falls back instead of flooring to zero", () => {
+    // keepSuperseded feeds `superseded.slice(keep)`. Flooring 0.5 to 0 makes
+    // that slice every rollback deployment and delete its R2 artifacts.
+    process.env[KEY] = "0.5";
+    expect(frontendHostingLimits.keepSuperseded()).toBe(5);
+  });
+
+  test("a whole retention count is still honoured", () => {
+    process.env[KEY] = "2";
+    expect(frontendHostingLimits.keepSuperseded()).toBe(2);
+  });
+
+  test("a fractional count at or above 1 still truncates as before", () => {
+    process.env[KEY] = "2.7";
+    expect(frontendHostingLimits.keepSuperseded()).toBe(2);
+  });
+});
 
 describe("normalizeSitePath", () => {
   test("strips leading slashes and passes clean paths", () => {

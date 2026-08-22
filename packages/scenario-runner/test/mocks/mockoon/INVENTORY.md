@@ -45,7 +45,6 @@ a new connector.
 | 18815 | cerebras        | `cerebras.json`                     |
 | 18816 | eliza-cloud     | `eliza-cloud.json`                  |
 | 18817 | spotify         | `spotify.json`                      |
-| 18818 | signal          | `signal.json` (signal-cli rest)     |
 
 ## Failure-mode toggle
 
@@ -267,15 +266,6 @@ Mockoon "rules" select the response. The default response is the happy path.
   - `GET /v1/me`
   - `GET /v1/me/player/currently-playing`
 
-### 18. signal (port 18818, file `signal.json`)
-
-- Source: `eliza/plugins/plugin-personal-assistant/src/lifeops/signal-local-client.ts`
-  reads `SIGNAL_HTTP_URL` (default `http://127.0.0.1:8080`). Redirect helper
-  points it at `http://localhost:18818` when mockoon is active.
-- Endpoints exercised:
-  - `GET /v1/receive/{account}`
-  - `POST /v2/send`
-
 ## Smoke test (verified)
 
 These are the exact commands run on 2026-05-09 against the freshly-generated
@@ -332,7 +322,6 @@ failure variants beyond the standard 3:
   uses `bluebubbles`-style WebSockets in some configurations
 - `bluebubbles.json` — chat list and message send only; attachments are not
   modeled
-- `signal.json` — covers REST send/receive only; no group operations
 - `spotify.json` — `me` and `currently-playing` only
 - `anthropic.json` — failure-injection only by design (no happy path)
 
@@ -359,7 +348,6 @@ calls it at module load when `LIFEOPS_USE_MOCKOON=1`. The function sets:
 - `ELIZA_MOCK_TWILIO_BASE=http://localhost:18808`
 - `NTFY_BASE_URL=http://localhost:18812`
 - `ELIZAOS_CLOUD_BASE_URL=http://localhost:18816`
-- `SIGNAL_HTTP_URL=http://localhost:18818`
 - `LIFEOPS_DUFFEL_API_BASE=http://localhost:18813` (consumed by duffel.ts)
 
 Plus exports for the connectors that have no env-var override yet (slack,

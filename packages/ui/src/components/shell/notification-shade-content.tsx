@@ -215,7 +215,7 @@ function NotificationSourceIcon({
           }
           aria-hidden
           style={{ opacity: countVisibility }}
-          className="eliza-notif-shade-transition absolute -right-2 -top-2 flex h-5 min-w-5 items-center justify-center rounded-full bg-white/90 px-1.5 text-center text-[11px] font-semibold leading-none tabular-nums text-black shadow-[0_0_0_2px_rgba(0,0,0,0.7),0_1px_4px_rgba(0,0,0,0.45)]"
+          className="eliza-notif-shade-transition absolute -right-2 -top-2 flex h-5 min-w-5 items-center justify-center rounded-full bg-white/90 px-1.5 text-center text-xs-tight font-semibold leading-none tabular-nums text-black shadow-[0_0_0_2px_rgba(0,0,0,0.7),0_1px_4px_rgba(0,0,0,0.45)]"
         >
           {decorative ? null : count > 99 ? "99+" : count}
         </span>

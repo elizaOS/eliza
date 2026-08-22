@@ -76,10 +76,19 @@ const ui = vi.hoisted(() => {
   return { client, emit };
 });
 
-vi.mock("@elizaos/ui", () => ({
+vi.mock("@elizaos/ui/api", () => ({
   client: ui.client,
+}));
+
+vi.mock("@elizaos/ui/components/ui/button", () => ({
   Button: (props: Record<string, unknown>) => {
-    const { children, variant: _variant, size: _size, ...rest } = props;
+    const {
+      children,
+      variant: _variant,
+      size: _size,
+      unstyled: _unstyled,
+      ...rest
+    } = props;
     return React.createElement(
       "button",
       { type: "button", ...rest },
@@ -200,5 +209,25 @@ describe("CockpitTerminalPanel — pretty ⇄ CLI toggle", () => {
     fireEvent.change(input, { target: { value: "ls -la" } });
     fireEvent.keyDown(input, { key: "Enter" });
     expect(ui.client.sendPtyInput).toHaveBeenCalledWith("s1", "ls -la\n");
+  });
+
+  it("exposes every readable-terminal control to the agent bridge", () => {
+    const { container } = render(
+      <CockpitTerminalPanel activeSessionId="s1" sessions={sessions} />,
+    );
+    const controls = Array.from(
+      container.querySelectorAll<HTMLElement>("button, input"),
+    );
+    expect(controls.length).toBeGreaterThan(0);
+    expect(
+      controls
+        .filter((control) => !control.dataset.agentId)
+        .map(
+          (control) =>
+            control.getAttribute("data-testid") ??
+            control.getAttribute("aria-label") ??
+            control.tagName.toLowerCase(),
+        ),
+    ).toEqual([]);
   });
 });

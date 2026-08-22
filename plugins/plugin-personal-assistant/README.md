@@ -115,7 +115,7 @@ src/lifeops/
                          channel pack.
   connectors/            ConnectorRegistry + per-connector contributions
                          (calendly, discord, duffel, google, imessage,
-                         signal, telegram, twilio, whatsapp, x).
+                         telegram, twilio, whatsapp, x).
   oracles/               Typed weather, route-matrix, and local-activity
                          observations with provenance and source health.
   food/                  Constraint-safe meals, inventory confidence, and
@@ -283,6 +283,7 @@ internals; it consumes the plugin's public exports only. See
    `completed`.
 7. Snooze resets the escalation ladder.
 8. Global pause skips tasks with `respectsGlobalPause: true`.
+9. Planner-facing owner inventories are complete: fixed-count slices must not silently hide approvals, delegation contracts, work threads, todos, or commitments.
 
 ## Where to look next
 

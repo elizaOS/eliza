@@ -3,7 +3,7 @@
 /**
  * eliza-code ACP server — lets eliza-code run AS a coding sub-agent that the
  * elizaOS orchestrator (plugin-agent-orchestrator) can spawn over the Agent
- * Client Protocol, exactly like the opencode / codex / claude ACP agents.
+ * Client Protocol, exactly like the codex / claude ACP agents.
  *
  * The orchestrator resolves the `elizaos` agent type to the command in
  * `ELIZA_ELIZAOS_ACP_COMMAND` and spawns it as a long-lived ACP JSON-RPC server
@@ -33,13 +33,22 @@
 import { consumeWarmClaimToken } from "./acp-bootstrap.js";
 import { randomUUID } from "node:crypto";
 import { AgentSideConnection, ndJsonStream } from "@agentclientprotocol/sdk";
-import type { AgentRuntime } from "@elizaos/core";
+import {
+  type ActionEventPayload,
+  type AgentRuntime,
+  EventType,
+} from "@elizaos/core";
 import {
   SandboxService,
   SessionCwdService,
 } from "@elizaos/plugin-coding-tools";
 import { captureHostExecutionBaseline } from "@elizaos/shared/host-execution-env";
 import { publishParsedReply } from "./acp-response.js";
+import { AcpActivePromptRegistry } from "./acp-active-prompts.js";
+import {
+  type AcpToolCallUpdate,
+  toolCallUpdateFromAction,
+} from "./acp-tool-ledger.js";
 import { AcpWarmSessionClaim } from "./acp-session-claim.js";
 import { initializeAgent } from "./lib/agent.js";
 import { getAgentClient } from "./lib/agent-client.js";
@@ -48,7 +57,7 @@ import {
   getMainRoomElizaId,
   type SessionIdentity,
 } from "./lib/identity.js";
-import { applyOpencodeProviderEnv } from "./lib/model-provider.js";
+import { applyElizaCodeProviderEnv } from "./lib/model-provider.js";
 import type { ChatRoom } from "./types.js";
 
 /** A `console.error` logger (stdout is the ACP JSON-RPC channel — never log there). */
@@ -65,6 +74,10 @@ function log(message: string, extra?: unknown): void {
 // Lazily-initialized shared runtime (one per ACP server process).
 let runtimePromise: Promise<AgentRuntime> | null = null;
 let identity: SessionIdentity | null = null;
+// The prompt whose turn is running. Every ACP session shares one inner room,
+// so completed actions are attributed by the prompt window, not the room —
+// the orchestrator drives one prompt per process at a time (busy-claim).
+const activePrompts = new AcpActivePromptRegistry<AcpToolCallUpdate>();
 const warmSessionClaim = new AcpWarmSessionClaim(consumeWarmClaimToken());
 
 async function ensureRuntime(cwd?: string): Promise<AgentRuntime> {
@@ -87,12 +100,11 @@ async function ensureRuntime(cwd?: string): Promise<AgentRuntime> {
       process.env.CODING_TOOLS_WORKSPACE_ROOTS ??= roots;
       process.env.SHELL_ALLOWED_DIRECTORY ??= roots;
     }
-    // Drop-in for the opencode coding sub-agent: when the host configured
-    // opencode (ELIZA_OPENCODE_* — e.g. a Cerebras key/url/models) but no
-    // explicit OPENAI_*, inherit that provider config so eliza-code runs on the
-    // same backend with zero extra setup. The orchestrator forwards the parent
-    // env to this spawned process.
-    applyOpencodeProviderEnv(process.env);
+    // When the host configured a coding provider (ELIZA_CODE_* — e.g. a
+    // Cerebras key/url/models) but no explicit OPENAI_*, inherit that provider
+    // config so eliza-code runs on the configured backend with zero extra
+    // setup. The orchestrator forwards the parent env to this spawned process.
+    applyElizaCodeProviderEnv(process.env);
     // Isolated, ephemeral database for this coding sub-agent. PGlite is
     // single-process: the parent bot (and any other concurrently-spawned
     // eliza-code sub-agent) holds the PGlite dir under ELIZA_STATE_DIR, so a
@@ -114,11 +126,6 @@ async function ensureRuntime(cwd?: string): Promise<AgentRuntime> {
       // the role resolver sees the owner at boot.
       identity = ensureSessionIdentity();
       process.env.ELIZA_ADMIN_ENTITY_ID ??= identity.userId;
-      // A coding sub-agent has a small, all-relevant tool set (FILE/SHELL/READ/
-      // EDIT/…); expose them ALL as native tools (full surface, no chat-style
-      // tiering) so the model can actually CALL them instead of only seeing them
-      // described in the prompt and narrating.
-      process.env.ELIZA_PLANNER_FULL_ACTION_SURFACE ??= "1";
       // Headless coding sub-agent: only sql + provider + shell + coding-tools.
       // codingOnly drops mcp/goals AND the orchestrator (recursion guard).
       const runtime = await initializeAgent({
@@ -133,6 +140,31 @@ async function ensureRuntime(cwd?: string): Promise<AgentRuntime> {
       };
       rt.setSetting?.("ELIZA_ADMIN_ENTITY_ID", identity.userId);
       getAgentClient().setRuntime(runtime);
+      // Tool ledger: mirror each completed FILE/SHELL call onto the ACP stream
+      // so the orchestrator's write ledger and verifier see what actually ran
+      // (see acp-tool-ledger.ts).
+      runtime.registerEvent(
+        EventType.ACTION_COMPLETED,
+        async (payload: ActionEventPayload) => {
+          const target = activePrompts.current();
+          if (!target) return;
+          const update = toolCallUpdateFromAction(
+            target.sessionId,
+            payload.content,
+            randomUUID(),
+          );
+          if (!update) return;
+          try {
+            await target.publish(update);
+          } catch (error) {
+            // error-policy:J7 ledger mirroring is diagnostics for the parent;
+            // a transport hiccup must not fail the tool call it describes.
+            log("tool_call update failed", {
+              error: error instanceof Error ? error.message : String(error),
+            });
+          }
+        },
+      );
       log("runtime initialized", { owner: identity.userId });
       return runtime;
     })();
@@ -169,7 +201,7 @@ const sessions = new Map<string, AcpSession>();
 /**
  * Read the operating manual the orchestrator scaffolds into a spawned sub-agent's
  * workspace (`AGENTS.md` / `CLAUDE.md` — "what Eliza is, you are a non-interactive
- * coding sub-agent, the relay contract"). claude/codex/opencode auto-read these
+ * coding sub-agent, the relay contract"). claude/codex auto-read these
  * from their cwd; eliza-code runs from the monorepo for dep resolution, so it must
  * read them explicitly from the build workspace and inject them so the sub-agent
  * gets the same orientation as the other backends.
@@ -285,7 +317,7 @@ const _connection = new AgentSideConnection(
       if (!text) return { stopReason: "end_turn" };
       // Inject the orchestrator's scaffolded operating manual on the first prompt
       // of the session so eliza-code gets the same "you are a non-interactive Eliza
-      // coding sub-agent + relay contract" orientation as claude/codex/opencode.
+      // coding sub-agent + relay contract" orientation as claude/codex.
       if (!session.manualInjected) {
         session.manualInjected = true;
         const preamble: string[] = [];
@@ -335,21 +367,36 @@ const _connection = new AgentSideConnection(
       // is how a Discord user ends up seeing ```json {"response":...} instead
       // of the answer. The parsed user-facing reply only exists once the turn
       // completes, so emit exactly one authoritative chunk with it.
-      const response = await getAgentClient().sendMessage({
-        room,
-        text,
-        identity,
-        source: "acp",
-      });
+      if (!identity) {
+        // initialize() resolves the session identity before any prompt; a
+        // prompt on an uninitialized connection has no owner to act as.
+        throw new Error("ACP prompt before session identity was initialized");
+      }
+      const sessionIdentity = identity;
+      const promptContext = {
+        sessionId: params.sessionId,
+        publish: (update: Parameters<typeof conn.sessionUpdate>[0]) =>
+          conn.sessionUpdate(update),
+      };
+      const response = await activePrompts.run(promptContext, (abortSignal) =>
+        getAgentClient().sendMessage({
+          room,
+          text,
+          identity: sessionIdentity,
+          source: "acp",
+          codingMode: true,
+          abortSignal,
+        }),
+      );
       await publishParsedReply(params.sessionId, response, (update) =>
         conn.sessionUpdate(update),
       );
       log("prompt done", { response: response.length });
       return { stopReason: "end_turn" };
     },
-    async cancel() {
-      // Best-effort: the runtime turn isn't externally cancellable here; the next
-      // prompt simply starts a new turn. (Hook into runtime abort when available.)
+    async cancel(params: { sessionId?: string }) {
+      const sessionId = params?.sessionId;
+      if (sessionId) activePrompts.cancel(sessionId);
     },
     // The elizaOS orchestrator's native ACP transport sends `session/close` on
     // teardown. It IS a standard ACP method (schema.AGENT_METHODS.session_close),

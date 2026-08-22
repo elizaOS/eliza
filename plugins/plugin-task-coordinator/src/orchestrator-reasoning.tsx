@@ -1,4 +1,9 @@
-// Renders collapsible reasoning blocks in orchestrator transcripts.
+/**
+ * Renders agent-addressable reasoning blocks in task transcripts while
+ * preserving the streaming shimmer and disclosure state.
+ */
+
+import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { Button } from "@elizaos/ui/components/ui/button";
 import { Brain, ChevronRight } from "lucide-react";
 import { type ReactNode, useState } from "react";
@@ -89,10 +94,12 @@ function humanizeDuration(ms: number): string {
  *   "Thinking…" label and the shimmer).
  */
 export function ReasoningCell({
+  agentId,
   text,
   durationMs,
   streaming,
 }: {
+  agentId: string;
   text: string;
   durationMs?: number;
   streaming?: boolean;
@@ -104,6 +111,15 @@ export function ReasoningCell({
     : durationMs !== undefined
       ? `Thought for ${humanizeDuration(durationMs)}`
       : "Thought";
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: agentId,
+    role: "toggle",
+    label: header,
+    group: "orchestrator-transcript",
+    description: "Show or hide this reasoning block",
+    status: open ? "open" : "closed",
+    onActivate: () => setOpen((value) => !value),
+  });
 
   return (
     <div
@@ -111,11 +127,13 @@ export function ReasoningCell({
       data-testid="orchestrator-reasoning"
     >
       <Button
+        ref={ref}
         unstyled
         type="button"
         onClick={() => setOpen((value) => !value)}
         aria-expanded={open}
         className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left"
+        {...agentProps}
       >
         <ChevronRight
           className={`h-3 w-3 shrink-0 text-muted transition-transform ${

@@ -5,7 +5,7 @@ served from another process, device, or cloud sandbox.
 
 The canonical abstraction is **capability router**. A satellite is one possible
 provider/deployment shape, not the universal name. The agent should depend on a
-small protocol and runtime service, while E2B, home devices, mobile companion
+small protocol and runtime service, while home devices, mobile companion
 processes, Eliza Cloud containers, and future sandbox providers are endpoints
 behind that service.
 
@@ -615,9 +615,9 @@ PR #7779 uses the word "satellite" for several different concerns:
 - coding-agent sandbox execution.
 
 That naming makes product/provider decisions look like runtime architecture.
-It also makes non-satellite cases awkward: an iOS app talking to Eliza Cloud, a
-cloud agent talking to a home device, or a local agent using an E2B sandbox are
-all capability-router cases whether or not the provider is called a satellite.
+It also makes non-satellite cases awkward: an iOS app talking to Eliza Cloud or
+a cloud agent talking to a home device are capability-router cases whether or
+not the provider is called a satellite.
 
 Keep `satellite` for a concrete deployment target when useful. Use
 `capability-router` for the runtime abstraction and protocol.
@@ -663,12 +663,11 @@ Problems to avoid:
 
 Concrete findings from the inspected PR files:
 
-- `packages/agent/src/services/e2b-capability-router.ts` introduces a useful
-  sandbox/provider adapter for E2B, Eliza Cloud, and home runners, but it is
-  named around E2B/Satellite instead of the cross-runtime capability-router
-  abstraction. It should be treated as one endpoint provider implementation, not
-  as the agent's canonical dynamic plugin architecture.
-- `packages/agent/docs/e2b-capability-routing.md` defines a Satellite HTTP
+- `packages/agent/src/services/remote-coding-runner.ts` introduces a useful
+  sandbox/provider adapter for Eliza Cloud and home runners. It should be
+  treated as one endpoint provider implementation, not as the agent's canonical
+  dynamic plugin architecture.
+- `packages/agent/docs/remote-coding-runner.md` defines a Satellite HTTP
   contract with `/v1/health`, `/v1/fs/entries`, `/v1/fs/file`, and
   `/v1/processes/run`. That is a good coding-sandbox runner contract, but it is
   not sufficient for dynamic plugins because it has no `plugin.modules.list`,
@@ -702,7 +701,7 @@ Current branch provider-adapter check:
   `RemoteCapabilityEndpointConfig`, installs that endpoint into
   `RemoteCapabilityRouterService`, and syncs modules through the same remote
   plugin adapter and endpoint/module trust policy used by direct endpoints.
-- There is no current E2B, home-machine, mobile-companion, or coding-satellite
+- There is no current home-machine, mobile-companion, or coding-satellite
   provider implementation to fold in. Those should be added as thin endpoint
   providers that return the same endpoint config and serve the same
   `plugin.modules.list`, `plugin.*`, route, and asset RPC contract, not as new
@@ -714,7 +713,7 @@ Current extraction strategy:
 - Keep one HTTP protocol for all endpoints.
 - Map remote modules into normal `Plugin` objects.
 - Let existing runtime ownership manage unload/reload.
-- Treat cloud/home/E2B/mobile/desktop companion as endpoint providers behind
+- Treat cloud/home/mobile/desktop companion as endpoint providers behind
   the protocol.
 
 ## Implemented Evidence
@@ -753,7 +752,7 @@ Current local implementation includes:
   `packages/agent/src/services/remote-capability-cloud-sandbox.ts`.
 - Shared endpoint-provider adapter contract in
   `packages/agent/src/services/remote-capability-endpoint-provider.ts`, so
-  direct endpoints, Cloud, E2B, home-machine runners, mobile companions, and
+  direct endpoints, Cloud, home-machine runners, mobile companions, and
   future providers all converge to the same `RemoteCapabilityEndpointConfig`
   plus endpoint/module trust policy before plugin sync.
 - Reusable endpoint conformance harness in
@@ -765,13 +764,13 @@ Current local implementation includes:
   app bridge, and compiled view asset RPC surfaces.
 - URL-backed endpoint providers in
   `packages/agent/src/services/remote-capability-url-endpoint-providers.ts`
-  for concrete E2B, home-machine, mobile-companion, and desktop-companion
+  for concrete home-machine, mobile-companion, and desktop-companion
   endpoints. These providers normalize and validate provider URLs before the
   generic endpoint-provider adapter installs the router and syncs plugins.
 - Agent API route `POST /api/capability-router/connect` that installs an
   already-provisioned endpoint or provisions a Cloud endpoint, then syncs remote
   plugins without returning stored tokens. Direct endpoint connect and
-  URL-backed provider modes (`e2b`, `home-machine`, `mobile-companion`, and
+  URL-backed provider modes (`home-machine`, `mobile-companion`, and
   `desktop-companion`) use the same endpoint-provider adapter path as Cloud
   provisioning, so product connect flows converge before runtime service
   installation and plugin sync.
@@ -843,16 +842,16 @@ Current focused tests cover:
 - generic endpoint-provider adapters that provision or resolve an endpoint,
   install the normal `RemoteCapabilityRouterService`, and sync plugins through
   the same endpoint/module trust policy regardless of whether the provider is
-  direct, Cloud, E2B, home-machine, or mobile-companion,
+  direct, Cloud, home-machine, or mobile-companion,
 - API connect routing for direct endpoints through the generic `direct`
   endpoint provider rather than a separate install/sync branch,
-- API connect routing for URL-backed `e2b`, `home-machine`,
+- API connect routing for URL-backed `home-machine`,
   `mobile-companion`, and `desktop-companion` providers through the exported
   provider implementations, so product clients can select provider families
   without reintroducing satellite-specific runtime code,
 - sequential provider connects preserving multiple live endpoints and keeping
   action RPC affinity for plugins from both endpoints,
-- provider-family conformance for E2B, home-machine, and mobile-companion
+- provider-family conformance for home-machine and mobile-companion
   adapters using the exported URL-backed provider implementations: each
   resolves to the same endpoint-provider contract and exposes action, provider,
   evaluator, response-handler evaluator, response-handler field evaluator,
@@ -864,7 +863,7 @@ Current focused tests cover:
   response-handler field evaluator, route, model, lifecycle, event, service,
   app bridge, and view-asset RPC execution without depending on
   provider-specific code,
-- URL-backed provider validation for E2B/home/mobile endpoint URLs, rejecting
+- URL-backed provider validation for home/mobile endpoint URLs, rejecting
   non-HTTP schemes, embedded URL credentials, and unsafe endpoint ids before
   runtime service installation,
 - product route sequential direct-connect flow preserving multiple live
@@ -1011,8 +1010,8 @@ contents with the Cloud and provider artifact validators. Push runs
 intentionally fail that evidence validator unless
 `--allow-unobserved` is passed, because skipped-success live jobs are not live
 artifact evidence. Provider live reports must include `providerEvidence`
-showing the provider family, canonical endpoint runtime (`e2b-sandbox`,
-`home-machine`, `mobile-companion`, or `desktop-companion`), `github-actions`
+showing the provider family, canonical endpoint runtime (`home-machine`,
+`mobile-companion`, or `desktop-companion`), `github-actions`
 as the observing agent runtime, and the `url-backed-provider` adapter path.
 The validator self-tests generate complete and partial live report fixtures and
 mocked GitHub artifact downloads so the live report validators and GitHub
@@ -1113,23 +1112,23 @@ only that RPC calls succeeded.
 When the workflow event is not `workflow_dispatch` or `schedule`, the job writes
 an explicit notice and step summary saying the remote capability cloud smoke was
 not observed for that run.
-The workflow also has an optional provider-live job for URL-backed E2B,
-home-machine, mobile-companion, and desktop-companion endpoints. It runs
+The workflow also has an optional provider-live job for URL-backed home-machine,
+mobile-companion, and desktop-companion endpoints. It runs
 `bun run --cwd packages/agent test:remote-capabilities:provider-live` on nightly
 workflows and manual workflows with `remote_capability_live` enabled. The
 preflight skips unrequested manual runs before inspecting provider availability;
 on scheduled or explicitly requested manual runs it fails before setup when all
-provider endpoint secrets are absent or when any required E2B, home-machine, or
+provider endpoint secrets are absent or when any required home-machine or
 mobile-companion URL secret is missing. Each configured provider must expose
 at least one remote action, provider, route, JSON model handler, lifecycle hook,
 event handler, service method, app bridge hook, evaluator, response-handler
 evaluator, response-handler field evaluator, and view through the
 capability-router protocol. Provider CI validation uses
-`--allowed-providers e2b,home-machine,mobile-companion,desktop-companion` and
-`--require-providers e2b,home-machine,mobile-companion` with
-`--expect-count 3..4`, so the live artifact is not accepted as provider evidence
+`--allowed-providers home-machine,mobile-companion,desktop-companion` and
+`--require-providers home-machine,mobile-companion` with
+`--expect-count 2..3`, so the live artifact is not accepted as provider evidence
 unless every provider report belongs to the known provider-family vocabulary,
-those three concrete provider families were observed, and only the optional
+those two concrete provider families were observed, and only the optional
 desktop-companion report may appear beyond the required set.
 When observed, the job uploads `remote-capability-provider-live-report`, with
 one JSON file per configured provider under
@@ -1139,7 +1138,7 @@ upload only see files produced by the current run. CI validates those reports wi
 `bun run test:remote-capabilities:validate-live-reports
 reports/remote-capabilities/providers` before upload, requiring every full
 remote plugin surface to be present in each configured provider observation,
-requiring E2B/home/mobile provider reports, and rejecting inconsistent endpoint
+requiring home/mobile provider reports, and rejecting inconsistent endpoint
 ids, malformed provider labels, leaked credential-shaped fields, or exercised
 targets that do not belong to an observed module. Provider reports also include
 the provider ID returned by the endpoint provider, the sync summary, registered
@@ -1191,7 +1190,7 @@ packages/app-core/src/cli/program/register.capability-router.test.ts
 - `bunx vitest run
 packages/agent/src/services/remote-capability-endpoint-provider.test.ts
 --coverage.enabled=false` passed with 6 tests passing after switching
-  E2B/home/mobile conformance to the exported URL-backed provider
+  home/mobile conformance to the exported URL-backed provider
   implementations.
 - `bunx vitest run
 packages/agent/src/services/remote-capability-endpoint-conformance.test.ts
@@ -1330,18 +1329,18 @@ packages/agent/src/services/remote-capability-cloud-sandbox.cloud-smoke.test.ts
   freshness/identity validation flags, provider primary endpoint secret
   enforcement, provider allowed/required lists, and provider GitHub-env
   matching, and proves the live-CI audit fails when smoke output no longer
-  feeds the validator/artifact path or when the Cloud/E2B/home/mobile
+  feeds the validator/artifact path or when the Cloud/home/mobile
   observation contract is weakened.
 - Provider live reports include `endpointUrlSha256`, a SHA-256 fingerprint of
   the normalized endpoint base URL. The live report validator requires this
   fingerprint for provider artifacts and rejects duplicates across the provider
-  report set, so E2B/home/mobile evidence cannot silently come from the same
+  report set, so home/mobile evidence cannot silently come from the same
   configured transport URL. The fingerprint helper also strips query/fragment
   components and rejects embedded URL credentials before hashing, matching the
   URL-backed endpoint provider's accepted base URL shape.
 - Provider live reports also include `providerId` from the endpoint provider,
   and the validator requires it to match the report provider label, so a live
-  artifact cannot be relabeled across E2B, home-machine, mobile-companion, or
+  artifact cannot be relabeled across home-machine, mobile-companion, or
   desktop-companion provider families.
 - Live report writers only accept lowercase report names with numbers or
   hyphens, require Cloud reports to be named `cloud`, require provider reports
@@ -1408,12 +1407,12 @@ packages/agent/src/services/remote-capability-cloud-sandbox.cloud-smoke.test.ts
 | Dynamic remote plugins materialize as normal local plugins | Adapter maps remote manifests into runtime `Plugin` objects with actions, providers, routes, lifecycle, events, models, services, config, schema, component types, contexts, priority, widgets, app metadata, app bridge hooks, and views. A CI surface audit classifies every local `Plugin` field.                                                                                                                                                                              | Implemented                                                                                                     |
 | Runs across machines/processes/containers                  | Local HTTP, child-process, and Docker capability servers are consumed through the same protocol; Docker smoke is a CI gate.                                                                                                                                                                                                                                                                                                                                                       | Implemented for local/container isolation                                                                       |
 | Mobile bundle reachability                                 | Android and iOS JSC mobile agent bundles include the capability-router service, bootstrap plugin sync, endpoint-provider contract, and connect route; remote frontend asset proxy is blocked for restricted mobile platforms.                                                                                                                                                                                                                                                     | Implemented for protocol reachability; dynamic frontend bundles intentionally restricted on app-store platforms |
-| Agent product flow can connect remote capability endpoints | API, CLI, and Settings UI connect direct endpoints, URL-backed E2B/home/mobile/desktop-companion providers, and Cloud provisioning payloads.                                                                                                                                                                                                                                                                                                                                      | Implemented with focused smokes                                                                                 |
+| Agent product flow can connect remote capability endpoints | API, CLI, and Settings UI connect direct endpoints, URL-backed home/mobile/desktop-companion providers, and Cloud provisioning payloads.                                                                                                                                                                                                                                                                                                                                      | Implemented with focused smokes                                                                                 |
 | Frontend bundles load from remote plugins                  | View registry metadata, same-origin asset proxy for token-bearing bundles, app-shell loader tests, and Playwright UI smoke cover compiled remote bundles on web/desktop. The same proxy is blocked for iOS/Android clients to respect dynamic-code-loading policy.                                                                                                                                                                                                                | Implemented for web/desktop; restricted on app-store mobile                                                     |
 | Endpoint and module trust is explicit                      | Connect flows use endpoint allowlists, optional module allowlists, optional signed-provenance issuer allowlists, optional verified provenance public keys, optional module-manifest digest binding, duplicate/colliding identities are rejected, restart bootstrap derives trust from persisted endpoint/module config, and persisted connects record redacted trust-audit entries for operator review.                                                                    | Implemented                                                                                                     |
 | Real CI exercises the path                                 | Server CI runs focused remote-capability tests and Docker smoke; UI smoke runs compiled remote bundle and Settings connect flows; a live-CI audit statically enforces that Cloud and URL-backed provider smokes stay wired to scheduled/manual observation, strict live report validation, required provider endpoints, required artifact upload, and matching report directories from smoke output through validation/upload. Provider live report validation also requires unique redacted endpoint URL fingerprints across provider artifacts. | Implemented, live provider observations pending                                                                 |
 | Real Cloud sandbox provider                                | Live smoke provisions an Eliza Cloud endpoint, verifies manifest/view asset, syncs modules, and executes action/provider/evaluator/response-handler evaluator/response-handler field evaluator/route/model/lifecycle/event/service/app-bridge when `ELIZAOS_CLOUD_API_KEY` is present.                                                                                                                                                                                            | Implemented but must be observed green                                                                          |
-| E2B/home-machine/mobile provider coverage                  | Exported URL-backed providers normalize and validate concrete E2B, home-machine, mobile-companion, and desktop-companion endpoints; focused conformance exercises E2B/home/mobile through action/provider/evaluator/response-handler evaluator/response-handler field evaluator/route/model/lifecycle/event/service/app-bridge/view/asset RPC; optional scheduled/manual provider-live CI smokes use the reusable endpoint conformance harness against configured real endpoints. | Implemented for URL-backed provider layer; live endpoint observations pending                                   |
+| Home-machine/mobile provider coverage                  | Exported URL-backed providers normalize and validate concrete home-machine, mobile-companion, and desktop-companion endpoints; focused conformance exercises home/mobile through action/provider/evaluator/response-handler evaluator/response-handler field evaluator/route/model/lifecycle/event/service/app-bridge/view/asset RPC; optional scheduled/manual provider-live CI smokes use the reusable endpoint conformance harness against configured real endpoints. | Implemented for URL-backed provider layer; live endpoint observations pending                                   |
 
 ## Implementation Plan
 
@@ -1429,7 +1428,7 @@ The target architecture should converge in this order:
    New remote manifest fields should still wait for a concrete local runtime
    registration or execution path before they are added to the protocol.
 2. Endpoint-provider adapters.
-   Treat E2B, Eliza Cloud, home-machine runners, mobile companion processes,
+   Treat Eliza Cloud, home-machine runners, mobile companion processes,
    and Electrobun desktop companions as endpoint providers. Each provider can expose
    low-level `fs`/`pty`/`git` primitives and may also run a plugin-module server
    that speaks `GET /v1/capabilities`, `POST /v1/capabilities/invoke`, and
@@ -1450,8 +1449,8 @@ The target architecture should converge in this order:
    Keep no-credential CI focused on protocol, runtime registration, process
    isolation, built frontend bundles, product direct-connect flow, and a real
    Docker container capability server. Keep the credentialed Eliza Cloud
-   capability sandbox smoke in nightly/manual CI, and add E2B/home-machine
-   live smokes once those providers are stable enough to avoid flaky default CI.
+   capability sandbox smoke in nightly/manual CI, and add home-machine live
+   smokes once that provider is stable enough to avoid flaky default CI.
 
 ## Remaining Work Before This Is "Done"
 
@@ -1497,6 +1496,6 @@ This is not complete until the following are true:
 - Credentialed nightly/manual CI runs a real Eliza Cloud capability sandbox
   smoke when `ELIZAOS_CLOUD_API_KEY` is configured. This must be observed green
   against the live provider before claiming the cloud side of the goal complete;
-  E2B/home-machine provider smokes are still pending.
+  Home-machine provider smokes are still pending.
 - The old satellite-specific names are either removed from canonical APIs or
   kept only as compatibility aliases.

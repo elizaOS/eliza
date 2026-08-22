@@ -704,9 +704,10 @@
           "sensitive": false,
           "default": "120000",
           "label": "Timeout",
-          "help": "Per-call CLI spawn timeout in milliseconds.",
+          "help": "Per-call CLI spawn timeout in milliseconds. Must be an integer from 1 through 2147483647 when configured.",
           "advanced": true,
-          "min": 0,
+          "min": 1,
+          "max": 2147483647,
           "unit": "ms"
         }
       },
@@ -3883,6 +3884,33 @@
       }
     },
     {
+      "id": "omarchy",
+      "name": "Omarchy",
+      "description": "Safe Omarchy desktop integration: shell status, explicit notifications, and the Eliza quick-chat pill.",
+      "npmName": "@elizaos/plugin-omarchy",
+      "version": "2.0.3-beta.7",
+      "source": "bundled",
+      "tags": ["desktop", "linux", "omarchy", "system"],
+      "config": {},
+      "render": {
+        "visible": false,
+        "pinTo": ["os-shell"],
+        "style": "card",
+        "icon": "MonitorCog",
+        "group": "system",
+        "actions": ["enable"]
+      },
+      "resources": {
+        "homepage": "https://github.com/elizaOS/eliza/tree/develop/plugins/plugin-omarchy",
+        "repository": "https://github.com/elizaOS/eliza"
+      },
+      "dependsOn": [],
+      "channels": [],
+      "shortIds": [],
+      "kind": "plugin",
+      "subtype": "feature"
+    },
+    {
       "id": "openai",
       "name": "Openai",
       "description": "Integrates OpenAI's GPT models for automated text generation with customizable prompts.",
@@ -3893,7 +3921,7 @@
       "config": {
         "OPENAI_API_KEY": {
           "type": "secret",
-          "required": true,
+          "required": false,
           "sensitive": true,
           "label": "Api Key",
           "help": "API key used to authenticate requests to the OpenAI API.",
@@ -4533,89 +4561,6 @@
       "shortIds": [],
       "kind": "plugin",
       "subtype": "automation"
-    },
-    {
-      "id": "signal",
-      "name": "Signal",
-      "description": "Signal messaging integration plugin for ElizaOS agents",
-      "npmName": "@elizaos/plugin-signal",
-      "version": "2.0.0-beta.0",
-      "source": "bundled",
-      "tags": [
-        "signal",
-        "messaging",
-        "secure",
-        "encrypted",
-        "connector",
-        "social",
-        "social-chat"
-      ],
-      "config": {
-        "SIGNAL_CLI_PATH": {
-          "type": "file-path",
-          "required": false,
-          "sensitive": false,
-          "label": "Cli Path",
-          "help": "Path to signal-cli executable (alternative to HTTP API). Leave blank to resolve signal-cli from PATH and auto-install with Homebrew on macOS/Linux when available; on Windows or without Homebrew, install signal-cli manually and set this path.",
-          "advanced": false
-        },
-        "SIGNAL_CLI_AUTO_INSTALL": {
-          "type": "boolean",
-          "required": false,
-          "sensitive": false,
-          "label": "Auto Install Cli",
-          "help": "Set false to disable Homebrew auto-install for the default signal-cli binary on macOS/Linux.",
-          "advanced": true
-        },
-        "SIGNAL_HTTP_URL": {
-          "type": "url",
-          "required": false,
-          "sensitive": false,
-          "label": "Http Url",
-          "help": "Signal CLI REST API URL (e.g., http://localhost:8080)",
-          "advanced": false
-        },
-        "SIGNAL_ACCOUNT_NUMBER": {
-          "type": "number",
-          "required": true,
-          "sensitive": false,
-          "label": "Account Number",
-          "help": "Signal account phone number in E.164 format (e.g., +1234567890)",
-          "advanced": false,
-          "min": 0
-        },
-        "SIGNAL_SHOULD_IGNORE_GROUP_MESSAGES": {
-          "type": "boolean",
-          "required": false,
-          "sensitive": false,
-          "label": "Should Ignore Group Messages",
-          "help": "If true, the bot will only respond to direct messages",
-          "advanced": false
-        }
-      },
-      "render": {
-        "visible": true,
-        "pinTo": [],
-        "style": "setup-panel",
-        "icon": "Lock",
-        "group": "connector",
-        "groupOrder": 1,
-        "actions": ["enable", "configure", "setup-guide"]
-      },
-      "resources": {
-        "homepage": "https://github.com/elizaos-plugins/plugin-signal#readme",
-        "repository": "https://github.com/elizaos-plugins/plugin-signal",
-        "setupGuideUrl": "https://docs.eliza.ai/plugin-setup-guide#signal"
-      },
-      "dependsOn": [],
-      "channels": ["signal"],
-      "shortIds": [],
-      "kind": "connector",
-      "subtype": "messaging",
-      "auth": {
-        "kind": "token",
-        "credentialKeys": []
-      }
     },
     {
       "id": "skills-viewer",

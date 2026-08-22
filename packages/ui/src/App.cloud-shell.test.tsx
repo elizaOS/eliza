@@ -47,6 +47,13 @@ const CHATVIEW_TSX = readFileSync(
   resolve(__dirname, "./components/pages/ChatView.tsx"),
   "utf8",
 );
+const DETACHED_SHELL_ROOT_TSX = readFileSync(
+  resolve(
+    __dirname,
+    "../../app-core/src/runtime/desktop/DetachedShellRoot.tsx",
+  ),
+  "utf8",
+);
 
 /**
  * Collapses runs of whitespace so a JSX-wiring assertion stays true when the
@@ -76,6 +83,24 @@ describe("App standalone chat-overlay wiring", () => {
     expect(APP_TSX).toContain(
       "onFirstRunReleaseHandled={firstRunChatRelease.acknowledgeRelease}",
     );
+  });
+
+  it("keeps native auxiliary app windows free of duplicate chat overlays", () => {
+    expect(APP_TSX).toContain("isAppWindowRoute,");
+    expect(APP_TSX).toContain(
+      "const isAuxiliaryAppWindow = isAppWindowRoute();",
+    );
+    expect(APP_TSX).toContain("{!isAuxiliaryAppWindow ? (");
+
+    const auxiliaryGuard = APP_TSX.slice(
+      APP_TSX.indexOf("{!isAuxiliaryAppWindow ? ("),
+      APP_TSX.indexOf("<PermissionPrimingOverlay />"),
+    );
+    expect(auxiliaryGuard).toContain("<ChatOverlayMount");
+    expect(auxiliaryGuard).toContain("<FirstRunConductorMount");
+    expect(auxiliaryGuard).toContain("<ModelStatusConductorMount />");
+    expect(auxiliaryGuard).toContain("<BootRecoveryConductorMount />");
+    expect(auxiliaryGuard).toContain("<TutorialConductorMount />");
   });
 
   it("opens the packaged desktop pill into the shared mobile chat composer", () => {
@@ -197,7 +222,10 @@ describe("App standalone chat-overlay wiring", () => {
     // persistent ambient overlay as its composer.
     expect(CHATVIEW_TSX).toContain("hideComposer");
     expect(APP_TSX).toContain("<ChatOverlayMount");
-    expect(APP_TSX).toContain("floats over EVERY view, including the /chat");
+    expect(APP_TSX).toContain(
+      "Chat overlay (ChatOverlay) — one ambient glass conversation in the",
+    );
+    expect(APP_TSX).toContain("primary shell.");
     // The composer swaps mic→send once there's a draft (one trailing control).
     expect(OVERLAY_TSX).toContain("hasDraft");
     expect(OVERLAY_TSX).toContain("(hasDraft || hasImages) && !recording");
@@ -249,6 +277,15 @@ describe("App standalone chat-overlay wiring", () => {
 // Behavioral coverage of the window-shell classification the wiring above only
 // asserts textually — these are pure functions, so we exercise the real logic.
 describe("window-shell route classification (behavioral)", () => {
+  it("routes the detached cloud section through consolidated settings in cloud-only builds", () => {
+    expect(DETACHED_SHELL_ROOT_TSX).toContain(
+      "getBootConfig().branding.cloudOnly === true",
+    );
+    expect(collapseWhitespace(DETACHED_SHELL_ROOT_TSX)).toContain(
+      collapseWhitespace("<SettingsView initialSection={section} />"),
+    );
+  });
+
   it("parses the chat-overlay shellMode under both param spellings", () => {
     expect(parseWindowShellRoute("?shellMode=chat-overlay")).toEqual({
       mode: "chat-overlay",

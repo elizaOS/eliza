@@ -217,9 +217,11 @@ function filterMemoriesByQuery(
     .slice(0, limit);
 }
 
-function registerWechatMessageConnector(
+export function registerWechatMessageConnector(
   runtime: unknown,
   config: WechatConfig,
+  targetLister: () => Promise<MessageConnectorTarget[]> = () =>
+    listWechatTargets(config),
 ): void {
   const connectorRuntime = runtime as RuntimeWithWechatConnector;
   const sendHandler = async (
@@ -258,7 +260,7 @@ function registerWechatMessageConnector(
       contexts: ["social", "connectors"],
       resolveTargets: async (query: string) => {
         const normalized = query.trim().toLowerCase();
-        return (await listWechatTargets(config))
+        return (await targetLister())
           .map((target) => {
             const haystack =
               `${target.label ?? ""} ${target.target.channelId ?? ""}`.toLowerCase();
@@ -270,12 +272,10 @@ function registerWechatMessageConnector(
                   : (target.score ?? 0.4),
             };
           })
-          .filter((target) => !normalized || (target.score ?? 0) >= 0.8)
-          .slice(0, 25);
+          .filter((target) => !normalized || (target.score ?? 0) >= 0.8);
       },
-      listRecentTargets: async () =>
-        (await listWechatTargets(config)).slice(0, 10),
-      listRooms: async () => listWechatTargets(config),
+      listRecentTargets: async () => targetLister(),
+      listRooms: async () => targetLister(),
       fetchMessages: async (
         context: { runtime: IAgentRuntime; target?: TargetInfo },
         params?: WechatConnectorReadParams,
@@ -291,7 +291,7 @@ function registerWechatMessageConnector(
             orderDirection: "desc",
           });
         }
-        const targets = (await listWechatTargets(config)).slice(0, 10);
+        const targets = await targetLister();
         const chunks = await Promise.all(
           targets
             .map((candidate) => candidate.target.roomId)

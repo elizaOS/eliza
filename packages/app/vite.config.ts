@@ -1144,12 +1144,17 @@ export function stripAndroidCloudIpcBootstrap(html: string): string {
   );
 }
 
-/** Removes browser-only icons/manifest links whose public tree is not packaged. */
+/** Removes browser-only assets whose public tree is not packaged. */
 export function stripAndroidCloudPublicAssetReferences(html: string): string {
-  return html.replace(
-    /\s*<link\b[^>]*\brel=["'](?:icon|apple-touch-icon|manifest)["'][^>]*>\s*/gi,
-    "\n",
-  );
+  return html
+    .replace(
+      /\s*<link\b[^>]*\brel=["'](?:icon|apple-touch-icon|manifest)["'][^>]*>\s*/gi,
+      "\n",
+    )
+    .replace(
+      /\s*<img\b[^>]*\bclass=["'][^"']*\beliza-preboot-shell__mark\b[^"']*["'][^>]*>\s*/gi,
+      "\n",
+    );
 }
 
 const DEFAULT_RENDERER_ENTRY = "/src/entry.ts";

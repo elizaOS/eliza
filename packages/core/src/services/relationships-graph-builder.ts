@@ -331,7 +331,6 @@ const KNOWN_PLATFORM_KEYS = [
 	"lens",
 	"nostr",
 	"warpcast",
-	"signal",
 	"email",
 	"phone",
 	"website",
@@ -726,7 +725,6 @@ function extractContactIdentityHandles(
 		lens: ["lens"],
 		nostr: ["nostr"],
 		warpcast: ["warpcast"],
-		signal: ["signal"],
 	};
 
 	for (const [platform, prefixes] of Object.entries(platformFieldPrefixes)) {

@@ -6,6 +6,7 @@ import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { SmithersRunRequest } from '../../src/services/smithers-runtime';
 import {
+  resolveSmithersBunExecutable,
   resolveSmithersWorkflowDir,
   runSmithersWorkflow,
 } from '../../src/services/smithers-runtime';
@@ -75,6 +76,11 @@ afterAll(async () => {
 });
 
 describe('Smithers worker lifecycle', () => {
+  test('uses the current Bun executable when BUN_BIN is unset', () => {
+    delete process.env.BUN_BIN;
+    expect(resolveSmithersBunExecutable()).toBe(process.execPath);
+  });
+
   test('escalates an ignored timeout and reports the typed timeout', async () => {
     const startedAt = Date.now();
     await expect(run('ignore-termination', { timeoutMs: 250 })).rejects.toMatchObject({

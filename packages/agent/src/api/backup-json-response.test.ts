@@ -4,7 +4,8 @@
  */
 
 import http from "node:http";
-import { afterEach, describe, expect, it } from "vitest";
+import net from "node:net";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AgentBackupStateData } from "../services/agent-backup.ts";
 import { writeAgentBackupJsonResponse } from "./backup-json-response.ts";
 
@@ -101,6 +102,79 @@ describe("writeAgentBackupJsonResponse", () => {
       text: `${boundaryPrefix}😀\n"done`,
       array: [null, null, true],
       date: "2026-08-13T00:00:00.000Z",
+    });
+  });
+
+  it("settles with a typed rejection when the client disconnects during backpressure", async () => {
+    // Real transport: the client reads a few KB, pauses while the server is
+    // backpressured (write() returned false), then destroys its socket. The
+    // drain event never arrives after 'close', so the writer must reject via
+    // the close race instead of parking on `once(res, "drain")` forever.
+    const snapshot = snapshotWithConfig({
+      blob: "0123456789abcdef".repeat(1024 * 1024),
+    });
+    const server = http.createServer((_req, res) => {
+      void writeAgentBackupJsonResponse(res, snapshot).then(
+        () => outcome.resolve({ kind: "resolved" }),
+        (err: unknown) =>
+          outcome.resolve({
+            kind: "rejected",
+            name: (err as Error)?.name,
+            code: (err as { code?: string })?.code,
+          }),
+      );
+    });
+    servers.push(server);
+    await new Promise<void>((resolve) =>
+      server.listen(0, "127.0.0.1", resolve),
+    );
+    const address = server.address();
+    if (!address || typeof address === "string")
+      throw new Error("No test port");
+
+    const outcome = Promise.withResolvers<{
+      kind: "resolved" | "rejected";
+      name?: string;
+      code?: string;
+    }>();
+
+    const socket = net.connect(address.port, "127.0.0.1");
+    await new Promise<void>((resolve) => socket.once("connect", resolve));
+    socket.write(
+      "POST /api/snapshot HTTP/1.1\r\nHost: test\r\nContent-Length: 0\r\n\r\n",
+    );
+
+    let received = 0;
+    let backpressured = false;
+    socket.on("data", (chunk) => {
+      received += chunk.length;
+      // Stop reading so the server's write buffer fills and res.write()
+      // starts returning false — a genuine backpressure state.
+      if (received > 16 * 1024) {
+        backpressured = true;
+        socket.pause();
+      }
+    });
+
+    await vi.waitFor(
+      () => {
+        if (!backpressured) throw new Error("backpressure not reached yet");
+      },
+      { timeout: 10_000, interval: 50 },
+    );
+    socket.destroy();
+
+    await expect(
+      Promise.race([
+        outcome.promise,
+        new Promise<"hang">((resolve) =>
+          setTimeout(() => resolve("hang"), 5_000),
+        ),
+      ]),
+    ).resolves.toEqual({
+      kind: "rejected",
+      name: "AgentBackupClientDisconnectedError",
+      code: "AGENT_BACKUP_CLIENT_DISCONNECTED",
     });
   });
 });

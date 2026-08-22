@@ -3,23 +3,11 @@ import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 import { createInterface } from "node:readline";
 import { CapabilityError, type IAgentRuntime, type UUID } from "@elizaos/core";
 import {
-  E2BRemoteCapabilityRouterService,
-  type E2BSandboxFactory,
-  type SandboxRunnerProvider,
-} from "../src/services/e2b-capability-router.ts";
+  RemoteCodingCapabilityRouterService,
+  type RemoteRunnerProvider,
+} from "../src/services/remote-coding-runner.ts";
 
-async function loadE2BSandboxFactory(
-  runtime: IAgentRuntime,
-): Promise<E2BSandboxFactory | undefined> {
-  try {
-    const mod = await import("@elizaos/plugin-e2b-sandbox");
-    return await mod.E2BSandboxFactoryService.start(runtime);
-  } catch {
-    return undefined;
-  }
-}
-
-type SmokeTarget = SandboxRunnerProvider | "codex-app-server";
+type SmokeTarget = RemoteRunnerProvider | "codex-app-server";
 type JsonRecord = Record<string, unknown>;
 
 type SmokeOutcome = {
@@ -39,8 +27,7 @@ for (const target of targets) {
     outcomes.push(await runTarget(target));
   } catch (error) {
     // A CAPABILITY_UNAVAILABLE thrown from the router means the provider is not
-    // configured/installed in this environment (e.g. the e2b factory plugin is
-    // absent, or credentials are partial) — that is a SKIP, not a failure. The
+    // configured in this environment — that is a SKIP, not a failure. The
     // `strict && skipped` gate below still fails-closed under --strict. Any
     // other error is a genuine smoke failure and stays `failed`.
     outcomes.push({
@@ -69,7 +56,7 @@ async function runTarget(target: SmokeTarget): Promise<SmokeOutcome> {
 }
 
 async function runSandboxProviderSmoke(
-  provider: SandboxRunnerProvider,
+  provider: RemoteRunnerProvider,
 ): Promise<SmokeOutcome> {
   if (provider === "eliza-cloud" && !hasElizaCloudRunnerTarget()) {
     return {
@@ -80,32 +67,11 @@ async function runSandboxProviderSmoke(
     };
   }
   const runtime = makeRuntime({ ELIZA_CODING_REMOTE_RUNNER: provider });
-  // The e2b (`e2b.dev`) SDK backend lives in the optional
-  // `@elizaos/plugin-e2b-sandbox` plugin (not in `@elizaos/agent`); inject its
-  // sandbox factory so the router can reach the e2b provider in this smoke.
-  const factory =
-    provider === "e2b" ? await loadE2BSandboxFactory(runtime) : undefined;
   // In non-strict mode a provider that cannot initialize is a SKIP, not a
   // failure: `--strict` is the fail-closed switch (the workflow only passes it
   // on manual dispatch), so a routine push smoke must stay green when a
-  // provider is genuinely unconfigurable in this environment. Here the e2b
-  // backend is unreachable whenever its optional plugin (and the `e2b` SDK it
-  // pulls in) is not installed — surface that as a clear skip up front rather
-  // than letting the router throw CAPABILITY_UNAVAILABLE mid-run and reading as
-  // a hard failure.
-  if (provider === "e2b" && !factory) {
-    return {
-      target: provider,
-      status: "skipped",
-      message:
-        "e2b backend unavailable: @elizaos/plugin-e2b-sandbox is not installed (add the plugin, or run with --strict to fail-close).",
-    };
-  }
-  const service = new E2BRemoteCapabilityRouterService(
-    runtime,
-    undefined,
-    factory,
-  );
+  // provider is genuinely unconfigurable in this environment.
+  const service = new RemoteCodingCapabilityRouterService(runtime);
   const availability = await service.availability();
   if (!availability.available) {
     return {
@@ -306,10 +272,9 @@ function makeRuntime(settings: Record<string, string>): IAgentRuntime {
 
 function resolveTargets(value: string): SmokeTarget[] {
   if (value === "all") {
-    return ["e2b", "eliza-cloud", "home", "codex-app-server"];
+    return ["eliza-cloud", "home", "codex-app-server"];
   }
   if (
-    value === "e2b" ||
     value === "eliza-cloud" ||
     value === "home" ||
     value === "codex-app-server"

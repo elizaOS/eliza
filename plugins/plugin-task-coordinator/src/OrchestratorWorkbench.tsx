@@ -1,3 +1,7 @@
+/**
+ * Renders the multi-agent orchestration workbench and its reusable task
+ * inspector, preserving one set of task mutation handlers across host views.
+ */
 import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { client } from "@elizaos/ui/api";
 import type {
@@ -1231,6 +1235,47 @@ function AddAgentForm({
   );
 }
 
+function AgentDeleteDialogCancel({ label }: { label: string }) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: "inspector-delete-cancel",
+    role: "button",
+    label,
+    group: "orchestrator-inspector-delete-confirmation",
+    description: "Cancel deleting this task",
+  });
+  return (
+    <AlertDialogCancel ref={ref} {...agentProps}>
+      {label}
+    </AlertDialogCancel>
+  );
+}
+
+function AgentDeleteDialogConfirm({
+  label,
+  onDelete,
+}: {
+  label: string;
+  onDelete: () => void;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: "inspector-delete-confirm",
+    role: "button",
+    label,
+    group: "orchestrator-inspector-delete-confirmation",
+    description: "Permanently delete this task and its transcript",
+  });
+  return (
+    <AlertDialogAction
+      ref={ref}
+      onClick={onDelete}
+      className="bg-red-600 hover:bg-red-700"
+      {...agentProps}
+    >
+      {label}
+    </AlertDialogAction>
+  );
+}
+
 function ControlButton({
   agentId,
   description,
@@ -1632,15 +1677,17 @@ export function TaskInspector({
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
-              <AlertDialogCancel>
-                {t("orchestrator.action.cancel", { defaultValue: "Cancel" })}
-              </AlertDialogCancel>
-              <AlertDialogAction
-                onClick={onDelete}
-                className="bg-red-600 hover:bg-red-700"
-              >
-                {t("orchestrator.action.delete", { defaultValue: "Delete" })}
-              </AlertDialogAction>
+              <AgentDeleteDialogCancel
+                label={t("orchestrator.action.cancel", {
+                  defaultValue: "Cancel",
+                })}
+              />
+              <AgentDeleteDialogConfirm
+                label={t("orchestrator.action.delete", {
+                  defaultValue: "Delete",
+                })}
+                onDelete={onDelete}
+              />
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>

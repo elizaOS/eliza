@@ -11,9 +11,13 @@ const storageBridge = vi.hoisted(() => ({
     window.localStorage.setItem(key, value),
   ),
   removeItem: vi.fn((key: string) => window.localStorage.removeItem(key)),
+  setStorageValue: vi.fn(async (key: string, value: string) =>
+    window.localStorage.setItem(key, value),
+  ),
 }));
 
 vi.mock("@elizaos/ui/bridge", () => ({
+  setStorageValue: storageBridge.setStorageValue,
   shellLocalStorage: storageBridge,
 }));
 
@@ -31,6 +35,7 @@ describe("packaged shell storage test bridge", () => {
     storageBridge.setItem.mockClear();
     storageBridge.removeItem.mockClear();
     storageBridge.getItem.mockClear();
+    storageBridge.setStorageValue.mockClear();
   });
 
   it("does not expose the seed helper without the packaged desktop test marker", () => {
@@ -49,14 +54,14 @@ describe("packaged shell storage test bridge", () => {
     ).toEqual(["seedResettableState", "seedReturningInstallState"]);
   });
 
-  it("seeds resettable local state through shellLocalStorage", () => {
-    const result = seedResettableStateForPackagedTests();
+  it("awaits protected storage when seeding resettable local state", async () => {
+    const result = await seedResettableStateForPackagedTests();
 
     expect(storageBridge.setItem).toHaveBeenCalledWith(
       "eliza:first-run-complete",
       "1",
     );
-    expect(storageBridge.setItem).toHaveBeenCalledWith(
+    expect(storageBridge.setStorageValue).toHaveBeenCalledWith(
       "elizaos:active-server",
       JSON.stringify({
         id: "local:embedded",
@@ -75,8 +80,8 @@ describe("packaged shell storage test bridge", () => {
     });
   });
 
-  it("seeds returning-install state through shellLocalStorage", () => {
-    const result = seedReturningInstallStateForPackagedTests(
+  it("awaits protected storage when seeding returning-install state", async () => {
+    const result = await seedReturningInstallStateForPackagedTests(
       "http://127.0.0.1:31337",
       "Alt+Shift+Super+F11",
     );
@@ -102,6 +107,10 @@ describe("packaged shell storage test bridge", () => {
         accelerator: "Alt+Shift+Super+F11",
         enabled: true,
       }),
+    );
+    expect(storageBridge.setStorageValue).toHaveBeenCalledWith(
+      "elizaos:active-server",
+      expect.stringContaining('"kind":"remote"'),
     );
     expect(result).toMatchObject({
       ok: true,

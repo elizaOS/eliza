@@ -15,7 +15,6 @@ import {
   type State,
   type SubactionsMap,
   toWellFormedUnicode,
-  truncateWellFormed,
 } from "@elizaos/core";
 import {
   DEFAULT_AUTOFILL_WHITELIST,
@@ -211,7 +210,7 @@ async function dispatchToExtension(
     return {
       dispatched: false,
       via: "device-bus",
-      detail: truncateWellFormed(toWellFormedUnicode(text), 500),
+      detail: toWellFormedUnicode(text),
     };
   }
   return { dispatched: true, via: "device-bus" };

@@ -12,15 +12,13 @@
  * real-time MP4.
  *
  * The desktop resting surface is the chromeless bottom bar / home pill
- * (`shell-home-pill`); tapping it flips the shell controller to `summoned`, which
- * reveals `AssistantOverlay` → `ChatSurface` (`shell-chat-surface`) with a
- * controlled `<input>` composer and `<li>` transcript rows. We drive it through
- * real DOM events (a real click on the pill button, a React-controlled value set
- * + `input` event on the composer, the composer's real Enter keybinding) rather
- * than synthetic pointer/keyboard injection — the WKWebView/WebKitGTK webview
- * exposes no CDP. Each step asserts the state transition it triggered, so a green
- * run proves the chat round-trip actually happened, and the MP4 is a
- * human-watchable record of the whole flow.
+ * (`shell-home-pill`); tapping it flips into the same persistent ChatOverlay
+ * sheet and textarea composer used by the macOS shell. We drive it through real
+ * DOM events rather than a CDP-only seam: click the pill, update the controlled
+ * textarea through its native setter, press the real composer action, and use
+ * the sheet's keyboard collapse contract. Each step asserts the transition it
+ * triggered, so a green run proves the chat round-trip actually happened, and
+ * the MP4 is a human-watchable record of the whole flow.
  *
  * The recorder polls screenshots concurrently with the driving `eval` calls; the
  * bridge shares one webview, so state reads are spaced out (not tight-polled) and
@@ -48,6 +46,7 @@ import {
   PackagedDesktopHarness,
   resolvePackagedLauncher,
 } from "./packaged-app-helpers";
+import { dismissPermissionPrimingIfShown } from "./packaged-ui-actions";
 
 type EvalOk<T> = T & { ok: true };
 type EvalErr = { ok: false; error: string };
@@ -144,15 +143,19 @@ async function readShellState(
     `(() => {
       try {
         const pill = document.querySelector('[data-testid="shell-home-pill"]');
-        const surface = document.querySelector('[data-testid="shell-chat-surface"]');
-        const input = surface ? surface.querySelector('input') : null;
-        const rows = surface ? Array.from(surface.querySelectorAll('li')) : [];
+        const sheet = document.querySelector('[data-testid="chat-sheet"]');
+        const input = document.querySelector('[data-testid="chat-composer-textarea"]');
+        const thread = document.querySelector('[data-testid="chat-thread"]');
+        const rows = thread
+          ? Array.from(thread.querySelectorAll('[data-testid="thread-line"]'))
+          : [];
+        const detent = sheet?.getAttribute('data-detent') ?? null;
         return {
           ok: true,
           pillPresent: Boolean(pill),
-          pillPhase: pill ? pill.getAttribute('data-phase') : null,
-          chatSurfacePresent: Boolean(surface),
-          composerValue: input instanceof HTMLInputElement ? input.value : null,
+          pillPhase: pill ? pill.getAttribute('data-phase') : detent,
+          chatSurfacePresent: detent === 'half' || detent === 'full',
+          composerValue: input instanceof HTMLTextAreaElement ? input.value : null,
           messageCount: rows.length,
           transcriptText: rows
             .map((row) => (row.textContent || "").replace(/\\s+/g, " ").trim())
@@ -217,7 +220,7 @@ async function clickHomePill(harness: PackagedDesktopHarness): Promise<void> {
 }
 
 /**
- * Types into the ChatSurface composer. It is a React-controlled `<input>`, so we
+ * Types into the shared chat composer. It is a React-controlled `<textarea>`, so we
  * set the value through the native setter and fire a bubbling `input` event —
  * the only way to update React's tracked value without CDP keyboard injection.
  */
@@ -229,12 +232,12 @@ async function typeIntoComposer(
     harness,
     `(() => {
       try {
-        const input = document.querySelector('[data-testid="shell-chat-surface"] input');
-        if (!(input instanceof HTMLInputElement)) {
+        const input = document.querySelector('[data-testid="chat-composer-textarea"]');
+        if (!(input instanceof HTMLTextAreaElement)) {
           return { ok: false, error: "chat composer input not found" };
         }
         const setter = Object.getOwnPropertyDescriptor(
-          window.HTMLInputElement.prototype,
+          window.HTMLTextAreaElement.prototype,
           "value",
         )?.set;
         if (!setter) return { ok: false, error: "no native value setter" };
@@ -280,26 +283,18 @@ async function computeWindowCropRect(
   return { x, y, width, height };
 }
 
-/** Presses Enter in the composer — the ChatSurface's real send keybinding. */
+/** Activates the shared composer's real send control. */
 async function sendComposer(harness: PackagedDesktopHarness): Promise<void> {
   const result = await bridgeEval<EvalResult<Record<string, never>>>(
     harness,
     `(() => {
       try {
-        const input = document.querySelector('[data-testid="shell-chat-surface"] input');
-        if (!(input instanceof HTMLInputElement)) {
-          return { ok: false, error: "chat composer input not found" };
+        const send = document.querySelector('[data-testid="chat-composer-action"]');
+        if (!(send instanceof HTMLButtonElement)) {
+          return { ok: false, error: "chat composer send control not found" };
         }
-        input.focus();
-        input.dispatchEvent(
-          new KeyboardEvent("keydown", {
-            key: "Enter",
-            code: "Enter",
-            keyCode: 13,
-            bubbles: true,
-            cancelable: true,
-          }),
-        );
+        if (send.disabled) return { ok: false, error: "chat composer send control disabled" };
+        send.click();
         return { ok: true };
       } catch (e) {
         return { ok: false, error: e instanceof Error ? e.message : String(e) };
@@ -361,6 +356,7 @@ test("packaged desktop chat walkthrough records a real-time MP4", async ({
       30_000,
     );
     await waitForRendererShellReady(harness);
+    await dismissPermissionPrimingIfShown(harness);
 
     // The agent must be ready (pill leaves the disabled `booting` phase) before
     // the pill will summon.
@@ -422,7 +418,7 @@ test("packaged desktop chat walkthrough records a real-time MP4", async ({
         message: "Expected clicking the home pill to summon the chat surface.",
       },
     );
-    expect(summoned.pillPhase).toBe("summoned");
+    expect(summoned.pillPhase).toBe("half");
     await capturedDwell(2_400);
 
     // 3. Type the first prompt into the composer.
@@ -479,17 +475,23 @@ test("packaged desktop chat walkthrough records a real-time MP4", async ({
     expect(afterSecondSend.transcriptText).toContain(SECOND_PROMPT);
     await capturedDwell(2_400);
 
-    // 6. Dismiss the assistant — clicking the pill again returns to the resting
-    //    bottom bar (summon -> chat -> dismiss is the real desktop state loop).
-    for (let attempt = 0; attempt < 6; attempt += 1) {
-      if (!(await readShellState(activeHarness)).chatSurfacePresent) break;
-      await clickHomePill(activeHarness);
-      await delay(1_000);
-    }
+    // 6. Dismiss the assistant through the shared sheet's keyboard contract.
+    await bridgeEval(
+      activeHarness,
+      `(() => {
+      const grabber = document.querySelector('[data-testid="chat-sheet-grabber"]');
+      if (!(grabber instanceof HTMLElement)) throw new Error('chat grabber missing');
+      grabber.dispatchEvent(new KeyboardEvent('keydown', {
+        key: 'Escape',
+        bubbles: true,
+        cancelable: true,
+      }));
+    })()`,
+    );
     await waitForShellState(
       activeHarness,
       (state) => !state.chatSurfacePresent,
-      { message: "Expected clicking the pill again to dismiss the chat." },
+      { message: "Expected Escape on the shared sheet to dismiss the chat." },
     );
     await capturedDwell(2_400);
 

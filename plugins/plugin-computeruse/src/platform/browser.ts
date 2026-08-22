@@ -17,6 +17,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { logger } from "@elizaos/core";
 import { assertBrowserExecuteAllowed } from "../security/browser-script-policy.js";
+import { normalizeBrowserTabId } from "../security/browser-tab-id-policy.js";
 import { assertHttpBrowserUrl } from "../security/browser-url-policy.js";
 import type {
   BrowserInfo,
@@ -52,6 +53,16 @@ let activePage: Page | null = null;
 let tempUserDataDir: string | null = null;
 let browserHeadless = false;
 const BROWSER_LAUNCH_ATTEMPTS = 3;
+
+export function admitCompleteBrowserDom(html: string): string {
+  return html;
+}
+
+export function admitCompleteBrowserClickables(
+  elements: ClickableElement[],
+): ClickableElement[] {
+  return elements;
+}
 
 export function setBrowserRuntimeOptions(options: {
   headless?: boolean;
@@ -417,15 +428,14 @@ export async function getBrowserInfo(): Promise<BrowserInfo> {
 export async function getBrowserDom(): Promise<string> {
   const page = await ensureBrowser();
   const html = await page.content();
-  // Limit to first 5000 chars to prevent context overflow
-  return html.slice(0, 5000);
+  return admitCompleteBrowserDom(html);
 }
 
 // ── Clickable Elements ──────────────────────────────────────────────────────
 
 export async function getBrowserClickables(): Promise<ClickableElement[]> {
   const page = await ensureBrowser();
-  return page.evaluate(() => {
+  const elements = await page.evaluate(() => {
     const selectors =
       "a, button, input, select, textarea, [role='button'], [role='link'], [onclick]";
     const elements = document.querySelectorAll(selectors);
@@ -439,9 +449,8 @@ export async function getBrowserClickables(): Promise<ClickableElement[]> {
     }> = [];
 
     for (const el of elements) {
-      if (result.length >= 50) break;
       const tag = el.tagName.toLowerCase();
-      const text = el.textContent.trim().slice(0, 100);
+      const text = el.textContent.trim();
       const id = el.id ? `#${el.id}` : "";
       const cls =
         el.className && typeof el.className === "string"
@@ -458,6 +467,7 @@ export async function getBrowserClickables(): Promise<ClickableElement[]> {
     }
     return result;
   });
+  return admitCompleteBrowserClickables(elements);
 }
 
 // ── Screenshot ──────────────────────────────────────────────────────────────
@@ -560,11 +570,12 @@ export async function openBrowserTab(url?: string): Promise<BrowserTab> {
 }
 
 export async function closeBrowserTab(tabId: string): Promise<void> {
+  const normalizedTabId = normalizeBrowserTabId(tabId);
   if (!browser) throw new Error("Browser not open.");
   const pages = await browser.pages();
-  const idx = Number.parseInt(tabId, 10);
+  const idx = Number(normalizedTabId);
   const page = pages[idx];
-  if (!page) throw new Error(`Tab ${tabId} not found.`);
+  if (!page) throw new Error(`Tab ${normalizedTabId} not found.`);
   if (page === activePage) {
     // Switch to another tab before closing
     activePage = pages.find((p) => p !== page) ?? null;
@@ -573,11 +584,12 @@ export async function closeBrowserTab(tabId: string): Promise<void> {
 }
 
 export async function switchBrowserTab(tabId: string): Promise<BrowserState> {
+  const normalizedTabId = normalizeBrowserTabId(tabId);
   if (!browser) throw new Error("Browser not open.");
   const pages = await browser.pages();
-  const idx = Number.parseInt(tabId, 10);
+  const idx = Number(normalizedTabId);
   const page = pages[idx];
-  if (!page) throw new Error(`Tab ${tabId} not found.`);
+  if (!page) throw new Error(`Tab ${normalizedTabId} not found.`);
   activePage = page;
   await page.bringToFront();
   return {

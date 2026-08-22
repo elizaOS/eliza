@@ -1,11 +1,15 @@
 /**
- * Avatar upload quota contract tests for #20950.
+ * Avatar upload quota and multipart-budget contract tests for #20950 / #24066.
  *
  * These tests drive both real Hono route modules and the real
  * `putPublicObject` helper. Only request authentication, rate limiting, the
  * quota repository, and the user-avatar database boundary are replaced with
  * hermetic boundaries. The in-memory BLOB binding therefore proves the route
  * ordering and compensation behavior without reaching live R2 or Postgres.
+ * Envelope-budget cases drive a real streaming Request through the same
+ * handlers so declared-length, streamed overflow, untrusted content-length,
+ * cancellation reporting, and client-abort paths are pinned in the maintained
+ * suite rather than PR-only ad hoc evidence.
  */
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
@@ -16,6 +20,7 @@ const ORGANIZATION_ID = "00000000-0000-4000-8000-0000000000aa";
 const USER_ID = "00000000-0000-4000-8000-0000000000bb";
 const PUBLIC_HOST = "blob.test";
 const MAX_AVATAR_BYTES = 5 * 1024 * 1024;
+const MAX_MULTIPART_BODY_BYTES = MAX_AVATAR_BYTES + 1024 * 1024;
 const VALID_AVATAR_CONTENT = "avatar";
 const VALID_AVATAR_BYTES = BigInt(VALID_AVATAR_CONTENT.length);
 const SENSITIVE_UUID = "3f10dc7c-9824-4ba6-aa10-c9a63429b055";
@@ -204,6 +209,83 @@ function uploadAvatar(
     },
     makeEnv(blob),
   );
+}
+
+async function uploadAvatarWithHeaders(
+  route: typeof characterAvatarRoute,
+  file: File,
+  blob: Bindings["BLOB"],
+  extraHeaders: HeadersInit,
+): Promise<Response> {
+  const form = new FormData();
+  form.set("file", file);
+  const base = new Request("http://localhost/", {
+    body: form,
+    method: "POST",
+  });
+  const headers = new Headers(base.headers);
+  for (const [key, value] of new Headers(extraHeaders)) {
+    headers.set(key, value);
+  }
+  const request = new Request(base.url, {
+    body: await base.arrayBuffer(),
+    headers,
+    method: base.method,
+  });
+  return route.request(request, undefined, makeEnv(blob));
+}
+
+function streamAvatarRequest(
+  chunks: readonly Uint8Array[],
+  headers: HeadersInit,
+  options: {
+    onCancel?: () => void | Promise<void>;
+    signal?: AbortSignal;
+    leaveOpen?: boolean;
+  } = {},
+): Request {
+  let index = 0;
+  const body = new ReadableStream<Uint8Array>({
+    cancel() {
+      return options.onCancel?.();
+    },
+    pull(controller) {
+      const chunk = chunks[index];
+      index += 1;
+      if (chunk) {
+        controller.enqueue(chunk);
+        return;
+      }
+      if (!options.leaveOpen) {
+        controller.close();
+      }
+    },
+  });
+  const nextHeaders = new Headers({
+    "content-type": "multipart/form-data; boundary=budget",
+  });
+  for (const [key, value] of new Headers(headers)) {
+    nextHeaders.set(key, value);
+  }
+  return new Request("http://localhost/", {
+    body,
+    headers: nextHeaders,
+    method: "POST",
+    signal: options.signal,
+  });
+}
+
+async function waitUntil(
+  predicate: () => boolean,
+  timeoutMs = 500,
+): Promise<void> {
+  const started = Date.now();
+  while (!predicate()) {
+    if (Date.now() - started > timeoutMs) {
+      throw new Error("waitUntil timed out");
+    }
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
 }
 
 function sensitiveErrorMessage(label: string): string {
@@ -498,6 +580,131 @@ for (const routeCase of routeCases) {
         expect(databaseUpdate).not.toHaveBeenCalled();
         expect(operations).toEqual(["reserve", "put"]);
       }
+    });
+
+    test("rejects a declared oversize envelope before parsing or reserving quota", async () => {
+      const blob = makeMemoryBlob();
+      const onCancel = mock(() => undefined);
+
+      const response = await routeCase.route.request(
+        streamAvatarRequest(
+          [new Uint8Array(8)],
+          { "content-length": String(MAX_MULTIPART_BODY_BYTES + 1) },
+          { onCancel },
+        ),
+        undefined,
+        makeEnv(blob.binding),
+      );
+
+      expect(response.status).toBe(413);
+      expect(await response.text()).toBe(
+        JSON.stringify({
+          success: false,
+          error: `Upload exceeds the ${MAX_MULTIPART_BODY_BYTES} byte request limit (${MAX_MULTIPART_BODY_BYTES + 1})`,
+        }),
+      );
+      expect(onCancel).toHaveBeenCalledTimes(1);
+      expect(tryReserveBytes).not.toHaveBeenCalled();
+      expect(blob.put).not.toHaveBeenCalled();
+      expect(databaseUpdate).not.toHaveBeenCalled();
+    });
+
+    test("cancels a streamed oversize envelope before reserving quota", async () => {
+      const blob = makeMemoryBlob();
+      const onCancel = mock(() => undefined);
+
+      const response = await routeCase.route.request(
+        streamAvatarRequest(
+          [new Uint8Array(MAX_MULTIPART_BODY_BYTES + 1)],
+          {},
+          { leaveOpen: true, onCancel },
+        ),
+        undefined,
+        makeEnv(blob.binding),
+      );
+
+      expect(response.status).toBe(413);
+      expect(await response.text()).toBe(
+        JSON.stringify({
+          success: false,
+          error: `Upload exceeds the ${MAX_MULTIPART_BODY_BYTES} byte request limit (${MAX_MULTIPART_BODY_BYTES + 1})`,
+        }),
+      );
+      expect(onCancel).toHaveBeenCalledTimes(1);
+      expect(tryReserveBytes).not.toHaveBeenCalled();
+      expect(blob.put).not.toHaveBeenCalled();
+      expect(databaseUpdate).not.toHaveBeenCalled();
+    });
+
+    test("does not treat malformed content-length as a budget grant", async () => {
+      const blob = makeMemoryBlob();
+
+      for (const header of ["abc", "0x400", "-1", "99999999999999999999", ""]) {
+        tryReserveBytes.mockClear();
+        blob.put.mockClear();
+        const response = await uploadAvatarWithHeaders(
+          routeCase.route,
+          avatarFile(),
+          blob.binding,
+          { "content-length": header },
+        );
+
+        expect(response.status).toBe(200);
+        expect(tryReserveBytes).toHaveBeenCalledTimes(1);
+        expect(blob.put).toHaveBeenCalledTimes(1);
+      }
+    });
+
+    test("returns 408 when the client aborts before the body is read", async () => {
+      const blob = makeMemoryBlob();
+      const controller = new AbortController();
+      const request = streamAvatarRequest(
+        [new Uint8Array(8)],
+        {},
+        { leaveOpen: true, signal: controller.signal },
+      );
+      controller.abort();
+
+      const response = await routeCase.route.request(
+        request,
+        undefined,
+        makeEnv(blob.binding),
+      );
+
+      expect(response.status).toBe(408);
+      expect(await response.text()).toBe(
+        JSON.stringify({
+          success: false,
+          error: "Upload body could not be read",
+        }),
+      );
+      expect(tryReserveBytes).not.toHaveBeenCalled();
+      expect(blob.put).not.toHaveBeenCalled();
+      expect(loggerWarn).toHaveBeenCalled();
+    });
+
+    test("reports a rejecting body cancel without reserving quota", async () => {
+      const blob = makeMemoryBlob();
+      const onCancel = mock(async () => {
+        throw new Error("cancel exploded");
+      });
+
+      const response = await routeCase.route.request(
+        streamAvatarRequest(
+          [new Uint8Array(MAX_MULTIPART_BODY_BYTES + 1)],
+          {},
+          { leaveOpen: true, onCancel },
+        ),
+        undefined,
+        makeEnv(blob.binding),
+      );
+
+      expect(response.status).toBe(413);
+      expect(tryReserveBytes).not.toHaveBeenCalled();
+      await waitUntil(() => loggerWarn.mock.calls.length >= 1);
+      const serialized = JSON.stringify(loggerWarn.mock.calls);
+      expect(serialized).toContain("Failed to cancel upload body");
+      expect(serialized).toContain("streamed-budget");
     });
   });
 }

@@ -205,7 +205,7 @@ export const checks: Check[] = [
   {
     name: "GitHub live artifact validator downloads and validates reports",
     pattern:
-      /(?=[\s\S]*remote-capability-cloud-live-report)(?=[\s\S]*remote-capability-provider-live-report)(?=[\s\S]*"gh"[\s\S]*"run"[\s\S]*"download")(?=[\s\S]*test:remote-capabilities:validate-live-reports[\s\S]*"--kind"[\s\S]*"cloud")(?=[\s\S]*test:remote-capabilities:validate-live-reports[\s\S]*"--kind"[\s\S]*"provider")(?=[\s\S]*"--require-providers"[\s\S]*"e2b,home-machine,mobile-companion")/,
+      /(?=[\s\S]*remote-capability-cloud-live-report)(?=[\s\S]*remote-capability-provider-live-report)(?=[\s\S]*"gh"[\s\S]*"run"[\s\S]*"download")(?=[\s\S]*test:remote-capabilities:validate-live-reports[\s\S]*"--kind"[\s\S]*"cloud")(?=[\s\S]*test:remote-capabilities:validate-live-reports[\s\S]*"--kind"[\s\S]*"provider")(?=[\s\S]*"--require-providers"[\s\S]*"home-machine,mobile-companion")/,
     source: "github-live-artifact-validator",
     message:
       "GitHub live artifact validation must download both artifacts and validate Cloud plus required provider report contents.",
@@ -221,7 +221,7 @@ export const checks: Check[] = [
   {
     name: "GitHub live artifact validator self-test covers provider requirements",
     pattern:
-      /(?=[\s\S]*"--allowed-providers")(?=[\s\S]*"e2b,home-machine,mobile-companion,desktop-companion")(?=[\s\S]*"--require-providers")(?=[\s\S]*"e2b,home-machine,mobile-companion")/,
+      /(?=[\s\S]*"--allowed-providers")(?=[\s\S]*"home-machine,mobile-companion,desktop-companion")(?=[\s\S]*"--require-providers")(?=[\s\S]*"home-machine,mobile-companion")/,
     source: "github-live-artifact-validator-self-test",
     message:
       "GitHub live artifact validator self-test must cover the canonical provider allow/require lists.",
@@ -531,9 +531,9 @@ export const checks: Check[] = [
   {
     name: "provider live smoke requires the three primary endpoint secrets",
     pattern:
-      /missing_required=\(\)[\s\S]*missing_required\+=\("ELIZA_REMOTE_CAPABILITY_E2B_URL"\)[\s\S]*missing_required\+=\("ELIZA_REMOTE_CAPABILITY_HOME_MACHINE_URL"\)[\s\S]*missing_required\+=\("ELIZA_REMOTE_CAPABILITY_MOBILE_COMPANION_URL"\)/,
+      /missing_required=\(\)[\s\S]*missing_required\+=\("ELIZA_REMOTE_CAPABILITY_HOME_MACHINE_URL"\)[\s\S]*missing_required\+=\("ELIZA_REMOTE_CAPABILITY_MOBILE_COMPANION_URL"\)/,
     message:
-      "provider live smoke must require E2B, home-machine, and mobile-companion endpoints for observed runs.",
+      "provider live smoke must require home-machine and mobile-companion endpoints for observed runs.",
   },
   {
     name: "provider live smoke skips when manual observation was not requested",
@@ -566,9 +566,9 @@ export const checks: Check[] = [
   {
     name: "provider live report validation requires all primary providers",
     pattern:
-      /test:remote-capabilities:validate-live-reports --kind provider --expect-count 3\.\.4 --max-age-minutes 90 --max-future-minutes 5 --allowed-providers e2b,home-machine,mobile-companion,desktop-companion --require-providers e2b,home-machine,mobile-companion --require-ci --require-file-identity --match-github-env reports\/remote-capabilities\/providers/,
+      /test:remote-capabilities:validate-live-reports --kind provider --expect-count 2\.\.3 --max-age-minutes 90 --max-future-minutes 5 --allowed-providers home-machine,mobile-companion,desktop-companion --require-providers home-machine,mobile-companion --require-ci --require-file-identity --match-github-env reports\/remote-capabilities\/providers/,
     message:
-      "provider live validation must require E2B, home-machine, mobile-companion, freshness, CI identity, file identity, and GitHub env matching.",
+      "provider live validation must require home-machine, mobile-companion, freshness, CI identity, file identity, and GitHub env matching.",
   },
   {
     name: "provider live smoke writes reports to the validated directory",

@@ -4,13 +4,17 @@
  *
  * Prefers the server-supplied `runtimeEligibility` (#16203 contract). When
  * that's absent (older agent, or the field hasn't landed yet) it falls back
- * to a CONSERVATIVE inference from the static provider option so the UI never
- * over-promises: a subscription provider is treated as coding-agent-only, an
- * API/BYOK provider as chat-capable. No hardcoded provider-name copy leaks
- * into the components — they consume the resolved shape below.
+ * to a CONSERVATIVE inference from the shared provider descriptor so the UI never
+ * over-promises: API/BYOK accounts remain chat-capable, while coding-agent
+ * eligibility requires a canonical executable-backend mapping. No hardcoded
+ * provider-name copy leaks into components.
  */
 
-import type { LinkedAccountProviderId } from "@elizaos/shared";
+import {
+  codingAgentSpawnCapabilityForProvider,
+  codingProviderDescriptorForProvider,
+  type LinkedAccountProviderId,
+} from "@elizaos/shared";
 import type { ProviderRuntimeEligibility } from "../../api/client-accounts";
 import type { AccountsListProvider } from "../../api/client-agent";
 import type { AccountProviderOption } from "./account-provider-options";
@@ -24,20 +28,22 @@ export interface ResolvedEligibility {
 }
 
 /**
- * Conservative fallback: infer capability from the static option's category.
- *  - chat providers (BYOK API keys) → chat + coding agent
- *  - coding subscriptions → coding agent only (until the server says chat)
+ * Conservative fallback: infer capability from the canonical descriptor.
+ *  - descriptor inference support → chat
+ *  - only providers with a canonical executable mapping → coding agent
+ *  - subscription spawn support remains independently mapped
  *  - unavailable providers → neither
  */
 function inferEligibility(option: AccountProviderOption): ResolvedEligibility {
   if (option.unavailable) {
     return { chat: false, codingAgent: false, source: "inferred" };
   }
-  if (option.category === "chat") {
-    return { chat: true, codingAgent: true, source: "inferred" };
-  }
-  // coding subscription / plan
-  return { chat: false, codingAgent: true, source: "inferred" };
+  const descriptor = codingProviderDescriptorForProvider(option.id);
+  return {
+    chat: descriptor?.inferenceSupport ?? false,
+    codingAgent: codingAgentSpawnCapabilityForProvider(option.id).available,
+    source: "inferred",
+  };
 }
 
 export function resolveProviderEligibility(
@@ -46,10 +52,13 @@ export function resolveProviderEligibility(
 ): ResolvedEligibility {
   if (runtime) {
     return {
-      chat: runtime.chat,
-      codingAgent: runtime.codingAgent,
+      chat: runtime.chat.available,
+      codingAgent: runtime.codingAgent.available,
       source: "runtime",
-      ...(runtime.note ? { note: runtime.note } : {}),
+      ...(!runtime.codingAgent.available &&
+      runtime.codingAgent.unavailableReason
+        ? { note: runtime.codingAgent.unavailableReason }
+        : {}),
     };
   }
   return inferEligibility(option);

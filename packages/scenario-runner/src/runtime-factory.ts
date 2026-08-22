@@ -16,6 +16,7 @@ import {
   createCharacter,
   logger,
   ModelType,
+  NotificationService,
   trajectoriesPlugin,
 } from "@elizaos/core";
 import {
@@ -57,13 +58,13 @@ async function loadTestMocks() {
     "../../../plugins/plugin-personal-assistant/test/support/helpers/seed-grants.ts",
     import.meta.url,
   ).href;
-  const [mockRuntime, lifeopsSimulator, benchmarkFixtures, grants] =
-    await Promise.all([
-      import(mockRuntimeSpecifier),
-      import(lifeopsSimulatorSpecifier),
-      import(benchmarkFixturesSpecifier),
-      import(grantsSpecifier),
-    ]);
+  // These helpers share a large module graph. Load them in sequence so test
+  // runners transform that graph once instead of contending across four
+  // concurrent dynamic imports.
+  const mockRuntime = await import(mockRuntimeSpecifier);
+  const lifeopsSimulator = await import(lifeopsSimulatorSpecifier);
+  const benchmarkFixtures = await import(benchmarkFixturesSpecifier);
+  const grants = await import(grantsSpecifier);
   return {
     prepareMockedTestEnvironment: mockRuntime.prepareMockedTestEnvironment,
     seedLifeOpsSimulatorRuntime: lifeopsSimulator.seedLifeOpsSimulatorRuntime,
@@ -90,30 +91,32 @@ const SCHEDULED_DISPATCH_TITLE_PROMPT_PREFIX =
 const SCHEDULED_DISPATCH_TITLE_BODY_MARKER = "\nMessage body:\n";
 
 async function createScenarioKnowledgeGraphPlugin(): Promise<Plugin> {
-  const agentPackageName: string = "@elizaos/agent";
-  const agentModule = (await import(agentPackageName)) as Record<
-    string,
-    unknown
-  >;
-  const KnowledgeGraphService = agentModule.KnowledgeGraphService;
-  const knowledgeGraphSchema = agentModule.knowledgeGraphSchema;
+  const [knowledgeGraphModule, approvalModule] = await Promise.all([
+    import("@elizaos/agent/services/knowledge-graph"),
+    import("@elizaos/agent/services/approval/index"),
+  ]);
+  const { KnowledgeGraphService, knowledgeGraphSchema } = knowledgeGraphModule;
+  const { ApprovalService } = approvalModule;
   if (
     typeof KnowledgeGraphService !== "function" ||
+    typeof ApprovalService !== "function" ||
     knowledgeGraphSchema === null ||
     typeof knowledgeGraphSchema !== "object"
   ) {
     throw new Error(
-      "[scenario-runner] @elizaos/agent did not expose KnowledgeGraphService and knowledgeGraphSchema",
+      "[scenario-runner] @elizaos/agent did not expose production host services and knowledgeGraphSchema",
     );
   }
 
   return {
     name: "scenario-runner-knowledge-graph",
     description:
-      "Scenario-runner runtime knowledge graph service and schema bootstrap.",
+      "Scenario-runner production knowledge graph, notification, and durable approval services.",
     schema: knowledgeGraphSchema as Plugin["schema"],
     services: [
       KnowledgeGraphService as NonNullable<Plugin["services"]>[number],
+      NotificationService as NonNullable<Plugin["services"]>[number],
+      ApprovalService as NonNullable<Plugin["services"]>[number],
     ],
   };
 }

@@ -200,7 +200,7 @@ export function MessageSearchPanel({
                   : "flex h-auto w-full flex-col items-start gap-0.5 whitespace-normal rounded-md px-2 py-1.5 text-left font-normal hover:bg-muted/60"
               }
             >
-              <span className="text-[11px] uppercase tracking-wide text-muted-foreground">
+              <span className="text-xs-tight uppercase tracking-wider text-muted-foreground">
                 {result.role === "assistant" ? "Agent" : "You"} ·{" "}
                 {formatTimestamp(result.createdAt)}
               </span>

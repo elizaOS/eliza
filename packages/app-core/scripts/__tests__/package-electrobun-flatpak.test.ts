@@ -21,6 +21,7 @@ import {
   FLATPAK_FINISH_ARGS,
   FLATPAK_RUNTIME,
   requireLauncher,
+  resolveFlatpakRefs,
   writeMetadata,
 } from "../package-electrobun-flatpak.mjs";
 
@@ -52,6 +53,29 @@ describe("Electrobun Flatpak packaging", () => {
       "libdbusmenu-glib.so.4",
       "libdbusmenu-gtk3.so.4",
     ]);
+  });
+
+  it("resolves full runtime and SDK refs without architecture drift", () => {
+    expect(resolveFlatpakRefs({ arch: "x86_64" })).toEqual({
+      runtimeRef: "org.gnome.Platform/x86_64/49",
+      sdkRef: "org.gnome.Sdk/x86_64/49",
+    });
+    expect(
+      resolveFlatpakRefs({
+        arch: "x86_64",
+        runtimeRef: "org.gnome.Platform/x86_64/50",
+        sdkRef: "org.freedesktop.Sdk/x86_64/25.08",
+      }),
+    ).toEqual({
+      runtimeRef: "org.gnome.Platform/x86_64/50",
+      sdkRef: "org.freedesktop.Sdk/x86_64/25.08",
+    });
+    expect(() =>
+      resolveFlatpakRefs({
+        arch: "x86_64",
+        runtimeRef: "org.gnome.Platform/aarch64/50",
+      }),
+    ).toThrow(/requested architecture/);
   });
 
   it("requires the packaged Electrobun launcher", () => {
@@ -96,6 +120,9 @@ describe("Electrobun Flatpak packaging", () => {
     expect(desktop).toContain("Terminal=false");
     expect(desktop).toContain("Exec=eliza");
     expect(metadata).toContain('type="desktop-application"');
+    expect(metadata).toContain(
+      '<developer id="ai.elizaos"><name>elizaOS</name></developer>',
+    );
     expect(metadata).toContain("https://github.com/elizaOS/eliza/issues");
     expect(icon.width).toBe(512);
     expect(icon.height).toBe(512);

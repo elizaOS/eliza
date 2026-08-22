@@ -16,6 +16,7 @@
  */
 
 import type { OrchestratorTaskPriority } from "./orchestrator-task-types.js";
+import type { SubscriptionExecutionAuthorization } from "./types.js";
 
 /** Persisted on `task.metadata.admission` while a task waits for a worker slot.
  * `spawnOpts` is the serializable subset of the original spawn request replayed
@@ -40,6 +41,7 @@ export interface SerializableSpawnOpts {
   task?: string;
   approvalPreset?: string;
   providerSource?: string;
+  subscriptionExecutionAuthorization?: SubscriptionExecutionAuthorization;
 }
 
 const PRIORITY_BANDS: Record<OrchestratorTaskPriority, number> = {

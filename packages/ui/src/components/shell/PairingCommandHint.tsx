@@ -102,7 +102,7 @@ export function PairingCommandHint({ remoteUrl }: { remoteUrl?: string }) {
         />
       ))}
 
-      <div className="mt-3 space-y-1 text-[11px] leading-relaxed text-muted">
+      <div className="mt-3 space-y-1 text-xs-tight leading-relaxed text-muted">
         {commandInfo.sshTarget ? (
           <p>
             {t("pairingcommandhint.editSshTargetPrefix", {
@@ -139,7 +139,7 @@ function CommandLine({
             style={{
               fontFamily: "'Poppins', Arial, system-ui, sans-serif",
             }}
-            className="text-[10px] font-semibold uppercase text-muted"
+            className="text-2xs font-semibold uppercase tracking-wider text-muted"
           >
             {label}
           </p>
@@ -155,7 +155,7 @@ function CommandLine({
           {copyLabel}
         </Button>
       </div>
-      <code className="block max-w-full select-all overflow-x-auto whitespace-pre rounded-sm border border-border/60 bg-bg/80 px-3 py-2 font-mono text-[11px] leading-relaxed text-txt">
+      <code className="block max-w-full select-all overflow-x-auto whitespace-pre rounded-sm border border-border/60 bg-bg/80 px-3 py-2 font-mono text-xs-tight leading-relaxed text-txt">
         {command}
       </code>
     </div>

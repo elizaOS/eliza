@@ -2,7 +2,12 @@
  * Proves document REST reads and mutations cross the canonical
  * access-context-aware service before parent, fragment, or mutation access.
  */
-import type { AccessContext, Memory, UUID } from "@elizaos/core";
+import {
+  type AccessContext,
+  ElizaError,
+  type Memory,
+  type UUID,
+} from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { DocumentRouteContext } from "./routes.ts";
 import { handleDocumentsRoutes } from "./routes.ts";
@@ -51,6 +56,8 @@ const service = vi.hoisted(() => ({
   listAllDocumentsWithAccessContext: vi.fn(),
   getDocumentByIdWithAccessContext: vi.fn(),
   getMutableDocumentWithAccessContext: vi.fn(),
+  setDocumentDirectGrantsWithAccessContext: vi.fn(),
+  getDocumentDirectGrantsWithAccessContext: vi.fn(),
   listDocumentFragmentsWithAccessContext: vi.fn(),
   getMemories: vi.fn(),
   updateDocument: vi.fn(),
@@ -106,6 +113,16 @@ describe("canonical document REST reads", () => {
     service.getDocumentByIdWithAccessContext.mockResolvedValue(document);
     service.listAllDocumentsWithAccessContext.mockResolvedValue([document]);
     service.getMutableDocumentWithAccessContext.mockResolvedValue(document);
+    service.setDocumentDirectGrantsWithAccessContext.mockResolvedValue({
+      ...document,
+      metadata: {
+        ...document.metadata,
+        directGrantEntityIds: [USER_ID],
+      },
+    });
+    service.getDocumentDirectGrantsWithAccessContext.mockResolvedValue([
+      USER_ID,
+    ]);
     service.listDocumentFragmentsWithAccessContext.mockResolvedValue([
       fragment,
     ]);
@@ -195,7 +212,10 @@ describe("canonical document REST reads", () => {
     const { ctx, response, getMemoryById } = context(
       `/api/documents/${DOCUMENT_ID}`,
       "PATCH",
-      { content: "updated bytes" },
+      {
+        content: "updated bytes",
+        metadata: { directGrantEntityIds: [USER_ID] },
+      },
     );
 
     await expect(handleDocumentsRoutes(ctx)).resolves.toBe(true);
@@ -229,5 +249,79 @@ describe("canonical document REST reads", () => {
     expect(response.body).toMatchObject({ ok: true, deletedFragments: 1 });
     expect(getMemoryById).not.toHaveBeenCalled();
     expect(service.deleteMemory).not.toHaveBeenCalled();
+  });
+
+  it("replaces direct grants only through the canonical ACL authority", async () => {
+    const { ctx, response, getMemoryById } = context(
+      `/api/documents/${DOCUMENT_ID}/access`,
+      "PATCH",
+      { directGrantEntityIds: [USER_ID] },
+    );
+
+    await expect(handleDocumentsRoutes(ctx)).resolves.toBe(true);
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({
+      ok: true,
+      documentId: DOCUMENT_ID,
+      directGrantEntityIds: [USER_ID],
+    });
+    expect(
+      service.setDocumentDirectGrantsWithAccessContext,
+    ).toHaveBeenCalledWith(DOCUMENT_ID, [USER_ID], accessContext);
+    expect(service.getMutableDocumentWithAccessContext).not.toHaveBeenCalled();
+    expect(getMemoryById).not.toHaveBeenCalled();
+  });
+
+  it("reads direct grants only through the canonical management authority", async () => {
+    const { ctx, response, getMemoryById } = context(
+      `/api/documents/${DOCUMENT_ID}/access`,
+    );
+
+    await expect(handleDocumentsRoutes(ctx)).resolves.toBe(true);
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({
+      documentId: DOCUMENT_ID,
+      directGrantEntityIds: [USER_ID],
+    });
+    expect(
+      service.getDocumentDirectGrantsWithAccessContext,
+    ).toHaveBeenCalledWith(DOCUMENT_ID, accessContext);
+    expect(getMemoryById).not.toHaveBeenCalled();
+  });
+
+  it("rejects malformed grant payloads before any canonical or raw storage access", async () => {
+    const { ctx, response, getMemoryById } = context(
+      `/api/documents/${DOCUMENT_ID}/access`,
+      "PATCH",
+      { directGrantEntityIds: "not-an-array" },
+    );
+
+    await expect(handleDocumentsRoutes(ctx)).resolves.toBe(true);
+
+    expect(response.status).toBe(400);
+    expect(
+      service.setDocumentDirectGrantsWithAccessContext,
+    ).not.toHaveBeenCalled();
+    expect(getMemoryById).not.toHaveBeenCalled();
+  });
+
+  it("translates canonical grant denial without falling back to a raw mutation", async () => {
+    service.setDocumentDirectGrantsWithAccessContext.mockRejectedValueOnce(
+      new ElizaError("Requester cannot manage document grants", {
+        code: "DOCUMENT_GRANT_MUTATION_FORBIDDEN",
+      }),
+    );
+    const { ctx, response, getMemoryById } = context(
+      `/api/documents/${DOCUMENT_ID}/access`,
+      "PATCH",
+      { directGrantEntityIds: [] },
+    );
+
+    await expect(handleDocumentsRoutes(ctx)).resolves.toBe(true);
+
+    expect(response.status).toBe(403);
+    expect(getMemoryById).not.toHaveBeenCalled();
   });
 });

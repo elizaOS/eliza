@@ -27,13 +27,16 @@ Add `@elizaos/plugin-openai` to your character's plugin list:
 
 The plugin auto-enables when `OPENAI_API_KEY`, `CEREBRAS_API_KEY`, or `EVOLINK_API_KEY` is present in the environment.
 
-## Required configuration
+## Authentication configuration
 
 ```
 OPENAI_API_KEY=sk-...
 ```
 
-That is the only required setting. All other settings are optional overrides.
+Use `OPENAI_API_KEY` for direct OpenAI calls, `CEREBRAS_API_KEY` or
+`EVOLINK_API_KEY` for those compatible providers, or configure an authenticated
+OpenAI proxy. No individual key is universally required in plugin metadata;
+direct calls still fail explicitly when their selected endpoint lacks auth.
 
 ## Full configuration reference
 

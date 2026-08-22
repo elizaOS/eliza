@@ -4,6 +4,12 @@ const path = require("node:path");
 
 const command = path.basename(process.argv[2]);
 const args = process.argv.slice(3);
+if (process.env.FAKE_MOBILE_COMMAND_LOG) {
+  fs.appendFileSync(
+    process.env.FAKE_MOBILE_COMMAND_LOG,
+    `${JSON.stringify({ command, args })}\n`,
+  );
+}
 
 if (command === "xcrun") {
   if (args[0] !== "simctl") process.exit(2);

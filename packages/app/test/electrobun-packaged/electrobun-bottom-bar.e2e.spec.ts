@@ -19,9 +19,11 @@ import {
 // MAIN-PROCESS window shape (reported by the desktop test bridge, independent of
 // whether the renderer fully boots the chat UI): when ELIZA_DESKTOP_BOTTOM_BAR=1
 // the resting surface is a frameless (no OS title bar), short, full-width window
-// pinned to the screen bottom — not the 1440x900 dashboard. Runs only where a
-// packaged launcher has been built (CI / local packaged builds); self-skips
-// otherwise.
+// pinned to the screen bottom — not the 1440x900 dashboard. A dedicated Linux
+// xvfb-run display has no window manager, so it can prove the native frame
+// shape and renderer anchoring but not compositor-enforced absolute placement.
+// Runs only where a packaged launcher has been built (CI / local packaged
+// builds); self-skips otherwise.
 
 test.describe.configure({ mode: "serial" });
 
@@ -73,12 +75,22 @@ test("desktop popup shell exposes the accessible pill, hotkey toggle, and tray l
 
     // A bar, not the dashboard: short, wider than tall, pinned low on screen.
     const bounds = state.mainWindow.bounds;
+    const absolutePlacementAvailable =
+      harness.displaySession === "desktop-session";
     expect(bounds).toBeTruthy();
     if (bounds) {
       expect(bounds.height).toBeLessThanOrEqual(200);
       expect(bounds.width).toBeGreaterThan(bounds.height);
-      // Pinned to the bottom: the bar's bottom edge sits well below its top.
-      expect(bounds.y).toBeGreaterThan(bounds.height);
+      if (absolutePlacementAvailable) {
+        // Pinned to the bottom: the bar's bottom edge sits well below its top.
+        expect(bounds.y).toBeGreaterThan(bounds.height);
+      } else {
+        testInfo.annotations.push({
+          type: "placement-evidence-unavailable",
+          description:
+            "dedicated xvfb-run display has no window manager; native frame shape and renderer anchoring remain asserted",
+        });
+      }
     }
 
     // The native shell and tray exist before the renderer/preload RPC is ready.
@@ -86,7 +98,9 @@ test("desktop popup shell exposes the accessible pill, hotkey toggle, and tray l
     // for it before issuing DOM eval requests that would otherwise be lost.
     const interactiveState = await harness.waitForState(
       (next) =>
-        next.shell.shortcuts.some((shortcut) => shortcut.id === "chat-overlay"),
+        (next.shell.shortcuts ?? []).some(
+          (shortcut) => shortcut.id === "chat-overlay",
+        ),
       "Expected the popup hotkey to register after the renderer mounted.",
       30_000,
     );
@@ -220,7 +234,10 @@ test("desktop popup shell exposes the accessible pill, hotkey toggle, and tray l
         const red = pillPixels[offset];
         const green = pillPixels[offset + 1];
         const blue = pillPixels[offset + 2];
-        if (red > 210 && green > 210 && blue > 210) whitePixels += 1;
+        // WebKitGTK composites the declared white/95 handle anywhere from
+        // ~210 to ~245 depending on the software-renderer path. Count the
+        // visibly light capsule, not one exact compositor rounding outcome.
+        if (red >= 190 && green >= 190 && blue >= 190) whitePixels += 1;
       }
       const sampledPixels = width * height;
       const pillCapturePath = testInfo.outputPath("bottom-launcher-pill.png");
@@ -233,14 +250,15 @@ test("desktop popup shell exposes the accessible pill, hotkey toggle, and tray l
         contentType: "image/png",
       });
       if (captureHasVisiblePixels) {
-        expect(whitePixels / sampledPixels).toBeGreaterThan(0.55);
+        expect(whitePixels / sampledPixels).toBeGreaterThan(0.75);
       } else {
         // error-policy:J4 Preserve the all-black capture attachment and the
         // DOM/native geometry assertions without misreporting OS capture
         // denial as a missing launcher. Unlocked CUA remains the pixel proof.
         testInfo.annotations.push({
           type: "screen-capture-unavailable",
-          description: "macOS returned an all-black desktop capture",
+          description:
+            "the desktop session returned an all-black global capture",
         });
       }
     }
@@ -258,117 +276,91 @@ test("desktop popup shell exposes the accessible pill, hotkey toggle, and tray l
     if (!bounds || !expandedBounds) {
       throw new Error("bottom-bar expansion bounds unavailable");
     }
-    expect(expandedBounds.y + expandedBounds.height).toBe(
-      bounds.y + bounds.height,
-    );
-    await expect
-      .poll(() =>
-        harness.eval(`(() => {
-          const panel = document.querySelector('[data-testid="shell-assistant-overlay"]');
-          return {
-            present: Boolean(panel && document.querySelector('input[aria-label="Message Eliza"]')),
-            placeholder: document.querySelector('input[aria-label="Message Eliza"]')?.getAttribute('placeholder') ?? null,
-            glassTier: panel?.getAttribute('data-glass-tier') ?? null,
-            material: panel?.getAttribute('data-popup-material') ?? null,
-            radius: panel instanceof HTMLElement ? getComputedStyle(panel).borderRadius : null,
-            background: panel instanceof HTMLElement ? getComputedStyle(panel).backgroundColor : null,
-            textColor: panel instanceof HTMLElement ? getComputedStyle(panel).color : null,
-            backdropFilter: panel instanceof HTMLElement ? getComputedStyle(panel).backdropFilter : null,
-            webkitBackdropFilter: panel instanceof HTMLElement ? getComputedStyle(panel).webkitBackdropFilter : null,
-            providerLabel: document.querySelector('[data-testid="serving-provider-chip"]')?.textContent?.trim() ?? null,
-            width: panel instanceof HTMLElement ? Math.round(panel.getBoundingClientRect().width) : null,
-            height: panel instanceof HTMLElement ? Math.round(panel.getBoundingClientRect().height) : null,
-            panelBottom: panel instanceof HTMLElement ? Math.round(panel.getBoundingClientRect().bottom) : null,
-            pillTop: document.querySelector('[data-testid="shell-home-pill"]') instanceof HTMLElement
-              ? Math.round(document.querySelector('[data-testid="shell-home-pill"]').getBoundingClientRect().top)
-              : null,
-          };
-        })()`),
-      )
-      .toMatchObject({
-        present: true,
-        placeholder: "Message Eliza…",
-        glassTier: expect.stringMatching(/^css-/),
-        material: "dark-frosted",
-        radius: "24px",
-        background: expect.stringMatching(/12|0\.047/),
-        textColor: expect.stringMatching(/rgb\(2\d{2}, 2\d{2}, 2\d{2}\)/),
-        backdropFilter: expect.stringContaining("blur(30px)"),
-        webkitBackdropFilter: expect.stringContaining("blur(30px)"),
-        // The mock advertises an Eliza Cloud route while deliberately staying
-        // disconnected, so the truthful serving result is its on-device fallback.
-        providerLabel: "On device",
-        width: 560,
-        height: 600,
-      });
-
-    const readExpandedGeometry = () =>
+    if (absolutePlacementAvailable) {
+      expect(expandedBounds.y + expandedBounds.height).toBe(
+        bounds.y + bounds.height,
+      );
+    }
+    // Desktop deliberately mounts the same continuously morphing ChatOverlay
+    // used by the macOS shell. The retired AssistantOverlay drawer must not
+    // return: one persistent chat-sheet owns pill -> input -> conversation.
+    const readComposerState = () =>
       harness.eval<{
-        panelLeft: number;
-        panelRight: number;
-        panelTop: number;
-        panelBottom: number;
-        pillTop: number;
-        viewportHeight: number;
+        present: boolean;
+        legacyDrawerPresent: boolean;
+        detent: string | null;
+        variant: string | null;
+        theme: string | null;
+        placeholder: string | null;
+        glassTier: string | null;
+        backdropFilter: string | null;
+        webkitBackdropFilter: string | null;
+        radius: string | null;
+        width: number | null;
+        height: number | null;
+        left: number | null;
+        right: number | null;
         viewportWidth: number;
       }>(`(() => {
-        const panel = document.querySelector('[data-testid="shell-assistant-overlay"]');
-        const pill = document.querySelector('[data-testid="shell-home-pill"]');
-        if (!(panel instanceof HTMLElement) || !(pill instanceof HTMLElement)) {
-          throw new Error('expanded chat geometry unavailable');
-        }
+        const sheet = document.querySelector('[data-testid="chat-sheet"]');
+        const surface = document.querySelector('[data-testid="chat-sheet-surface"]');
+        const composer = document.querySelector('[data-testid="chat-composer-textarea"]');
+        const rect = sheet instanceof HTMLElement ? sheet.getBoundingClientRect() : null;
+        const surfaceStyle = surface instanceof HTMLElement ? getComputedStyle(surface) : null;
         return {
-          panelLeft: Math.round(panel.getBoundingClientRect().left),
-          panelRight: Math.round(panel.getBoundingClientRect().right),
-          panelTop: Math.round(panel.getBoundingClientRect().top),
-          panelBottom: Math.round(panel.getBoundingClientRect().bottom),
-          pillTop: Math.round(pill.getBoundingClientRect().top),
-          viewportHeight: Math.round(window.innerHeight),
-          viewportWidth: Math.round(window.innerWidth),
+          present: sheet instanceof HTMLElement && composer instanceof HTMLTextAreaElement,
+          legacyDrawerPresent: Boolean(document.querySelector('[data-testid="shell-assistant-overlay"]')),
+          detent: sheet?.getAttribute('data-detent') ?? null,
+          variant: sheet?.getAttribute('data-variant') ?? null,
+          theme: sheet?.getAttribute('data-theme') ?? null,
+          placeholder: composer?.getAttribute('placeholder') ?? null,
+          glassTier: surface?.getAttribute('data-glass-tier') ?? null,
+          backdropFilter: surfaceStyle?.backdropFilter ?? null,
+          webkitBackdropFilter: surfaceStyle?.webkitBackdropFilter ?? null,
+          radius: surfaceStyle?.borderRadius ?? null,
+          width: rect ? Math.round(rect.width) : null,
+          height: rect ? Math.round(rect.height) : null,
+          left: rect ? Math.round(rect.left) : null,
+          right: rect ? Math.round(rect.right) : null,
+          viewportWidth: window.innerWidth,
         };
       })()`);
     await expect
-      .poll(async () => {
-        const geometry = await readExpandedGeometry();
-        const expectedTop =
-          geometry.viewportHeight -
-          56 -
-          Math.min(600, geometry.viewportHeight - 80);
-        return geometry.panelTop - expectedTop;
-      })
-      .toBe(0);
-    const expandedGeometry = await readExpandedGeometry();
-    expect(expandedGeometry.panelTop).toBeGreaterThanOrEqual(16);
-    expect(expandedGeometry.panelTop).toBe(
-      expandedGeometry.viewportHeight -
-        56 -
-        Math.min(600, expandedGeometry.viewportHeight - 80),
+      .poll(() => readComposerState())
+      .toMatchObject({
+        present: true,
+        legacyDrawerPresent: false,
+        detent: "half",
+        variant: "open",
+        theme: "dark",
+        placeholder: "Message Eliza",
+        glassTier: expect.stringMatching(/^css-/),
+        backdropFilter: expect.stringContaining("blur("),
+        webkitBackdropFilter: expect.stringContaining("blur("),
+      });
+    const composerState = await readComposerState();
+    expect(composerState.width).not.toBeNull();
+    expect(composerState.height).not.toBeNull();
+    expect(composerState.left).not.toBeNull();
+    expect(composerState.right).not.toBeNull();
+    expect(composerState.width ?? 0).toBeGreaterThanOrEqual(300);
+    expect(composerState.height ?? 0).toBeGreaterThanOrEqual(48);
+    expect(composerState.left ?? -1).toBeGreaterThanOrEqual(0);
+    expect(composerState.right ?? Number.POSITIVE_INFINITY).toBeLessThanOrEqual(
+      composerState.viewportWidth,
     );
-    expect(expandedGeometry.panelLeft).toBeGreaterThanOrEqual(0);
-    expect(expandedGeometry.panelRight).toBeLessThanOrEqual(
-      expandedGeometry.viewportWidth,
-    );
-    expect(
-      Math.abs(
-        (expandedGeometry.panelLeft + expandedGeometry.panelRight) / 2 -
-          expandedGeometry.viewportWidth / 2,
-      ),
-    ).toBeLessThanOrEqual(1);
-    expect(expandedGeometry.panelBottom).toBeLessThan(expandedGeometry.pillTop);
-    expect(
-      expandedGeometry.pillTop - expandedGeometry.panelBottom,
-    ).toBeGreaterThanOrEqual(8);
+    expect(composerState.radius).not.toBe("0px");
 
     const inputResult = await harness.eval<{
       updated: boolean;
       error?: string;
     }>(`(() => {
-      const input = document.querySelector('[data-testid="shell-chat-surface"] input');
-      if (!(input instanceof HTMLInputElement)) {
-        return { updated: false, error: 'chat composer input not found' };
+      const input = document.querySelector('[data-testid="chat-composer-textarea"]');
+      if (!(input instanceof HTMLTextAreaElement)) {
+        return { updated: false, error: 'shared chat composer not found' };
       }
       const setter = Object.getOwnPropertyDescriptor(
-        window.HTMLInputElement.prototype,
+        window.HTMLTextAreaElement.prototype,
         'value',
       )?.set;
       if (!setter) return { updated: false, error: 'native value setter missing' };
@@ -380,24 +372,24 @@ test("desktop popup shell exposes the accessible pill, hotkey toggle, and tray l
     await expect
       .poll(() =>
         harness.eval(`(() => {
-          const send = document.querySelector('button[aria-label="Send message"]');
+          const send = document.querySelector('[data-testid="chat-composer-action"]');
           return send instanceof HTMLButtonElement && !send.disabled;
         })()`),
       )
       .toBe(true);
     await harness.eval(
-      `document.querySelector('button[aria-label="Send message"]')?.click()`,
+      `document.querySelector('[data-testid="chat-composer-action"]')?.click()`,
     );
 
     await expect
       .poll(() =>
         harness.eval(`(() => {
-          const surface = document.querySelector('[data-testid="shell-chat-surface"]');
+          const thread = document.querySelector('[data-testid="chat-thread"]');
           return {
-            transcript: surface?.textContent ?? '',
-            doneVisible: Boolean(surface?.querySelector('[data-testid="choice-done"]')),
-            snoozeVisible: Boolean(surface?.querySelector('[data-testid="choice-10 minutes"]')),
-            skipVisible: Boolean(surface?.querySelector('[data-testid="choice-skip"]')),
+            transcript: thread?.textContent ?? '',
+            doneVisible: Boolean(document.querySelector('[data-testid="choice-done"]')),
+            snoozeVisible: Boolean(document.querySelector('[data-testid="choice-10 minutes"]')),
+            skipVisible: Boolean(document.querySelector('[data-testid="choice-skip"]')),
           };
         })()`),
       )
@@ -408,171 +400,52 @@ test("desktop popup shell exposes the accessible pill, hotkey toggle, and tray l
         skipVisible: true,
       });
 
-    // Resting-state transform lock: the settled panel's computed transform
-    // must be EXACTLY the shell's centering transform — asserting the
-    // anchored keyframes end state and that the Tailwind utility `translate`
-    // path stays cancelled.
-    const readRestingTransform = () =>
-      harness.eval<{
-        matrix: string;
-        width: number;
-      }>(`(() => {
-        const panel = document.querySelector('[data-testid="shell-assistant-overlay"]');
-        if (!(panel instanceof HTMLElement)) throw new Error('panel missing');
-        return {
-          matrix: getComputedStyle(panel).transform,
-          width: panel.getBoundingClientRect().width,
-        };
-      })()`);
-    // Poll until the entry animation has fully settled: its translateY term
-    // must reach exactly 0 before the one-shot snapshot is asserted.
-    await expect
-      .poll(async () => {
-        const current = await readRestingTransform();
-        const match = /^matrix\(([^)]+)\)$/.exec(current.matrix.trim());
-        return match
-          ? Number.parseFloat(match[1].split(",")[5]?.trim() ?? "NaN")
-          : Number.NaN;
-      })
-      .toBe(0);
-    const resting = await readRestingTransform();
-    const matrixMatch = /^matrix\(([^)]+)\)$/.exec(resting.matrix.trim());
-    expect(matrixMatch).toBeTruthy();
-    const matrixTerms = (matrixMatch?.[1] ?? "")
-      .split(",")
-      .map((term) => Number.parseFloat(term.trim()));
-    // identity scale terms and a pure X translation of exactly -width/2
-    expect(matrixTerms[0]).toBe(1);
-    expect(matrixTerms[1]).toBe(0);
-    expect(matrixTerms[2]).toBe(0);
-    expect(matrixTerms[3]).toBe(1);
-    expect(matrixTerms[5]).toBe(0);
-    expect(Math.abs(matrixTerms[4] + resting.width / 2)).toBeLessThanOrEqual(1);
-
-    // Mid-entry centering probe (#20063, follow-up to #20496): the resting
-    // assertions above wait out the 220ms entry animation, so they pass even
-    // if the animation replaces the centering transform (the residual finding
-    // from the #20496 review: the base `shell-overlay-in` keyframes animate
-    // `translateY(...)` alone, dropping the shell's `translateX(-50%)` for
-    // the entry). Deterministically RESTART the entry animation, flush
-    // styles, pause at the 110ms midpoint, and assert the panel is
-    // horizontally centered THERE, where un-anchored keyframes would place it
-    // ~half its width off-center. A computed animationName alone is NOT
-    // evidence the animation is still running (it stays declared after
-    // finish), and a finished animation ignores animationDelay/playState
-    // changes — hence the explicit restart.
-    {
-      const midEntry = await harness.eval<{
-        skipped: boolean;
-        reason?: string;
-        animationName: string;
-        left: number;
-        width: number;
-        viewportWidth: number;
-      }>(`(() => {
-        const panel = document.querySelector('[data-testid="shell-assistant-overlay"]');
-        if (!(panel instanceof HTMLElement)) throw new Error('panel missing');
-        // The ONLY legitimate skip: the runner itself suppresses animations.
-        // (animation-name is NOT a valid detector — the shell rule sets it
-        // unconditionally, even when motion-safe utilities are withheld.)
-        if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-          return { skipped: true, reason: 'prefers-reduced-motion' };
-        }
-        const cs = getComputedStyle(panel);
-        if (cs.animationName !== 'shell-overlay-in-anchored') {
-          // The shell rule must select the anchored keyframes; anything else
-          // is a regression, not a skip.
-          throw new Error(
-            'shell rule no longer selects shell-overlay-in-anchored (got ' +
-              cs.animationName + ')',
-          );
-        }
-        // Capture the utility-declared shorthand so restoration is exact.
-        const declared = {
-          name: cs.animationName,
-          duration: cs.animationDuration,
-          timing: cs.animationTimingFunction,
-          delay: cs.animationDelay,
-          iteration: cs.animationIterationCount,
-          direction: cs.animationDirection,
-          fill: cs.animationFillMode,
-          play: cs.animationPlayState,
-        };
-        // Validate the duration BEFORE any inline mutation so the guard
-        // throws leave the panel untouched (the restore finally sits outside
-        // this eval round-trip; ordering makes the no-leak guarantee
-        // unconditional).
-        const durationMs =
-          Number.parseFloat(declared.duration) *
-          (declared.duration.endsWith("ms") ? 1 : 1000);
-        if (!(durationMs > 0)) {
-          throw new Error(
-            'entry animation duration is not positive (got ' +
-              declared.duration + '); motion-safe utility not applied',
-          );
-        }
-        // Restart: cancel any in-flight/finished animation, cancel the
-        // inline override, then re-declare the shorthand so a NEW
-        // CSSAnimation starts from time zero.
-        for (const anim of panel.getAnimations()) anim.cancel();
-        panel.style.animation = 'none';
-        void panel.offsetWidth; // force style flush
-        panel.style.animation = [
-          declared.duration, declared.timing, '0ms', declared.iteration,
-          declared.direction, declared.fill, 'paused', declared.name,
-        ].join(' ');
-        void panel.offsetWidth; // flush so the paused animation exists
-        // Seek to the midpoint of the duration via currentTime. A
-        // zero/negative duration means the motion-safe utility was withheld
-        // and seeking would sample time zero — a silent false pass.
-        const anim = panel.getAnimations()[0];
-        if (!(anim instanceof CSSAnimation)) {
-          throw new Error('no CSSAnimation running after restart');
-        }
-        anim.currentTime = durationMs / 2;
-        void panel.offsetWidth; // flush the seeked frame
-        const rect = panel.getBoundingClientRect();
-        return {
-          skipped: false,
-          animationName: cs.animationName,
-          left: rect.left,
-          width: rect.width,
-          viewportWidth: window.innerWidth,
-        };
-      })()`);
-      try {
-        if (!midEntry.skipped) {
-          expect(midEntry.animationName).toBe("shell-overlay-in-anchored");
-          const midOffset = Math.abs(
-            midEntry.left + midEntry.width / 2 - midEntry.viewportWidth / 2,
-          );
-          expect(midOffset).toBeLessThanOrEqual(4);
-        } else {
-          // Surface the skip for traceability, matching the file's
-          // established annotation pattern for unavailable-evidence paths.
-          testInfo.annotations.push({
-            type: "entry-probe-unavailable",
-            description: `mid-entry centering probe skipped: ${midEntry.reason ?? "unspecified"}`,
-          });
-        }
-      } finally {
-        // Restoration must run even when an assertion throws (so the inline
-        // animation override never leaks into later probes).
-        await harness.eval(
-          `(() => {
-            const panel = document.querySelector('[data-testid="shell-assistant-overlay"]');
-            if (panel instanceof HTMLElement) panel.style.animation = '';
-          })()`,
-        );
-      }
-    }
-    await harness.eval(
-      `document.querySelector('[aria-label="Close assistant"]')?.click()`,
+    const expandedPng = Buffer.from(
+      (await harness.screenshot(30_000)).replace(
+        /^data:image\/png;base64,/,
+        "",
+      ),
+      "base64",
     );
+    const expandedStats = await sharp(expandedPng).stats();
+    const expandedCapturePath = testInfo.outputPath("expanded-shared-chat.png");
+    await fs.writeFile(expandedCapturePath, expandedPng);
+    await testInfo.attach("expanded-shared-chat.png", {
+      path: expandedCapturePath,
+      contentType: "image/png",
+    });
+    const expandedCaptureHasVisiblePixels = expandedStats.channels
+      .slice(0, 3)
+      .some((channel) => channel.max > 24);
+    if (harness.displaySession === "dedicated-xvfb-without-window-manager") {
+      expect(expandedCaptureHasVisiblePixels).toBe(true);
+    } else if (!expandedCaptureHasVisiblePixels) {
+      // error-policy:J4 GNOME Wayland can deny non-interactive global capture
+      // even for the active, unlocked user session. Keep the black frame as
+      // evidence and retain DOM + native-window compositor assertions without
+      // claiming physical pixels from this unavailable capture path.
+      testInfo.annotations.push({
+        type: "screen-capture-unavailable",
+        description:
+          "the desktop session returned an all-black expanded-chat capture",
+      });
+    }
+
+    // The shared sheet's keyboard contract collapses it back to the same
+    // physical pill, and the native frame must shrink with that transition.
+    await harness.eval(`(() => {
+      const grabber = document.querySelector('[data-testid="chat-sheet-grabber"]');
+      if (!(grabber instanceof HTMLElement)) throw new Error('chat grabber missing');
+      grabber.dispatchEvent(new KeyboardEvent('keydown', {
+        key: 'Escape',
+        bubbles: true,
+        cancelable: true,
+      }));
+    })()`);
     await harness.waitForState(
       (next) =>
         (next.mainWindow.bounds?.height ?? Number.POSITIVE_INFINITY) <= 200,
-      "Expected closing chat to restore the compact native launcher frame.",
+      "Expected collapsing shared chat to restore the compact native launcher frame.",
       30_000,
     );
 

@@ -21,7 +21,6 @@ import { resolveConnectorSetupPanelToken } from "./connector-setup-panel-registr
 import { DiscordLocalConnectorPanel } from "./DiscordLocalConnectorPanel";
 import { IMessageStatusPanel } from "./IMessageStatusPanel";
 import { OwnerAgentConnectorSetupPanel } from "./OwnerAgentConnectorSetupPanel";
-import { SignalQrOverlay } from "./SignalQrOverlay";
 import { TelegramAccountConnectorPanel } from "./TelegramAccountConnectorPanel";
 import { TelegramBotSetupPanel } from "./TelegramBotSetupPanel";
 import { WhatsAppQrOverlay } from "./WhatsAppQrOverlay";
@@ -93,14 +92,6 @@ export function ConnectorSetupPanel({
         <ConnectorAccountSetupScope provider="whatsapp" connectorId={pluginId}>
           {(accountId) => (
             <WhatsAppQrOverlay accountId={accountId ?? undefined} />
-          )}
-        </ConnectorAccountSetupScope>
-      );
-    case "signal":
-      return (
-        <ConnectorAccountSetupScope provider="signal" connectorId={pluginId}>
-          {(accountId) => (
-            <SignalQrOverlay accountId={accountId ?? undefined} />
           )}
         </ConnectorAccountSetupScope>
       );

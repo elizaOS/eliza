@@ -7,7 +7,11 @@
  * them to agents.
  */
 
-import type { IAgentRuntime } from "../../../types/index.ts";
+import type {
+	IAgentRuntime,
+	ReadRangeUnit,
+	ReadView,
+} from "../../../types/index.ts";
 
 export type MessageSource =
 	| "gmail"
@@ -15,7 +19,6 @@ export type MessageSource =
 	| "telegram"
 	| "twitter"
 	| "imessage"
-	| "signal"
 	| "whatsapp"
 	| "calendly"
 	| "browser_bridge";
@@ -26,7 +29,6 @@ export const ALL_MESSAGE_SOURCES: readonly MessageSource[] = [
 	"telegram",
 	"twitter",
 	"imessage",
-	"signal",
 	"whatsapp",
 	"calendly",
 	"browser_bridge",
@@ -159,6 +161,34 @@ export interface SearchMessagesFilters {
 	limit?: number;
 }
 
+/** Provider-native request for one exact, bounded page of a message body. */
+export interface ReadMessageRequest {
+	messageId?: string;
+	reference?: string;
+	worldId?: string;
+	offset?: number;
+	limit?: number;
+	unit?: ReadRangeUnit;
+	expectedRevision?: string;
+}
+
+/** Continuation metadata contains no provider body or native identifier. */
+export interface ReadMessageControl {
+	action: "read_message";
+	source: MessageSource;
+	reference: string;
+	offset: number;
+	limit: number;
+	unit: ReadRangeUnit;
+	expectedRevision: string;
+}
+
+export interface ReadMessageResult {
+	text: string;
+	readView: ReadView;
+	control?: ReadMessageControl;
+}
+
 export type ManageOperationKind =
 	| "archive"
 	| "trash"
@@ -211,6 +241,10 @@ export interface MessageAdapter {
 		opts: ListOptions,
 	): Promise<MessageRef[]>;
 	getMessage(runtime: IAgentRuntime, id: string): Promise<MessageRef | null>;
+	readMessage?(
+		runtime: IAgentRuntime,
+		request: ReadMessageRequest,
+	): Promise<ReadMessageResult>;
 	searchMessages?(
 		runtime: IAgentRuntime,
 		filters: SearchMessagesFilters,

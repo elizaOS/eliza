@@ -89,6 +89,19 @@ function canRetryObservation<T>(observation: Observed<T>): boolean {
   );
 }
 
+function billingIntervalLabel(
+  interval: BillingSnapshotResource["billingInterval"],
+  t: Translator,
+): string {
+  return interval === "hour"
+    ? t("cloud.billing.compute.hourly", { defaultValue: "Hourly" })
+    : t("cloud.billing.compute.daily", { defaultValue: "Daily" });
+}
+
+function billingCursorLabel(value: string | null, emptyLabel: string): string {
+  return value === null ? emptyLabel : observedTimestamp(value);
+}
+
 function ResourceCard({
   resource,
   t,
@@ -163,6 +176,64 @@ function ResourceCard({
               resource.estimatedRecurringComputeCostPerDay,
               t("cloud.billing.compute.perDay", { defaultValue: "/ day" }),
               t,
+            )}
+          </dd>
+        </div>
+      </dl>
+
+      <dl className="mt-3 grid gap-3 border-t border-border pt-4 sm:grid-cols-2">
+        <div className="min-w-0">
+          <dt className="text-xs font-medium uppercase tracking-wide text-muted-strong">
+            {t("cloud.billing.compute.billingPeriod", {
+              defaultValue: "Billing period",
+            })}
+          </dt>
+          <dd className="mt-1 break-words font-mono text-sm text-txt-strong [overflow-wrap:anywhere]">
+            {billingIntervalLabel(resource.billingInterval, t)}
+          </dd>
+        </div>
+        <div className="min-w-0">
+          <dt className="text-xs font-medium uppercase tracking-wide text-muted-strong">
+            {t("cloud.billing.compute.lastBilled", {
+              defaultValue: "Last billed",
+            })}
+          </dt>
+          <dd className="mt-1 break-words font-mono text-sm text-txt-strong [overflow-wrap:anywhere]">
+            {billingCursorLabel(
+              resource.lastBilledAt,
+              t("cloud.billing.compute.notReported", {
+                defaultValue: "Not reported",
+              }),
+            )}
+          </dd>
+        </div>
+        <div className="min-w-0">
+          <dt className="text-xs font-medium uppercase tracking-wide text-muted-strong">
+            {t("cloud.billing.compute.nextBilling", {
+              defaultValue: "Next billing",
+            })}
+          </dt>
+          <dd className="mt-1 break-words font-mono text-sm text-txt-strong [overflow-wrap:anywhere]">
+            {billingCursorLabel(
+              resource.nextBillingAt,
+              t("cloud.billing.compute.notScheduled", {
+                defaultValue: "Not scheduled",
+              }),
+            )}
+          </dd>
+        </div>
+        <div className="min-w-0">
+          <dt className="text-xs font-medium uppercase tracking-wide text-muted-strong">
+            {t("cloud.billing.compute.estimatedNextBilling", {
+              defaultValue: "Estimated next billing",
+            })}
+          </dt>
+          <dd className="mt-1 break-words font-mono text-sm text-txt-strong [overflow-wrap:anywhere]">
+            {billingCursorLabel(
+              resource.estimatedNextBillingAt,
+              t("cloud.billing.compute.notEstimated", {
+                defaultValue: "Not estimated",
+              }),
             )}
           </dd>
         </div>

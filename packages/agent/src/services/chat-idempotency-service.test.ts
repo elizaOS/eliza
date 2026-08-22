@@ -147,4 +147,92 @@ describe("chat idempotency store", () => {
       store.admit("principal-b:room", "id", { fingerprint: "request" }).kind,
     ).toBe("owner");
   });
+
+  // `settle` stamps `settledAt` from the real clock while `admit` accepts an
+  // injected `now`. The suite's other expiry cases pass `now: 3`, which makes
+  // `now - settledAt` hugely negative, so the retention branch can never fire
+  // there. These cases derive `now` from the real clock so it actually does.
+  it("re-admits a key reused after the retention window with new content", () => {
+    const store = createChatIdempotencyStore<{ value: string }>({
+      retentionMs: 10,
+    });
+    const owner = store.admit("principal:room", "id", {
+      fingerprint: "request-a",
+    });
+    if (owner.kind !== "owner") throw new Error("fixture admission failed");
+    store.settle("principal:room", "id", { value: "done" }, owner.reservation);
+
+    const afterRetention = Date.now() + store.retentionMs + 1;
+    const replacement = store.admit("principal:room", "id", {
+      fingerprint: "request-b",
+      now: afterRetention,
+    });
+    expect(replacement.kind).toBe("owner");
+    if (replacement.kind !== "owner") throw new Error("re-admission failed");
+
+    store.settle(
+      "principal:room",
+      "id",
+      { value: "second" },
+      replacement.reservation,
+    );
+    expect(store.outcome("principal:room", "id")).toEqual({ value: "second" });
+  });
+
+  it("still conflicts and still replays inside the retention window", () => {
+    const store = createChatIdempotencyStore<{ value: string }>({
+      retentionMs: 60_000,
+    });
+    const owner = store.admit("principal:room", "id", {
+      fingerprint: "request-a",
+    });
+    if (owner.kind !== "owner") throw new Error("fixture admission failed");
+    store.settle("principal:room", "id", { value: "done" }, owner.reservation);
+
+    const inWindow = Date.now() + 1_000;
+    expect(
+      store.admit("principal:room", "id", {
+        fingerprint: "request-b",
+        now: inWindow,
+      }),
+    ).toMatchObject({
+      kind: "conflict",
+      error: { code: "CHAT_IDEMPOTENCY_CONFLICT" },
+    });
+    expect(
+      store.admit("principal:room", "id", {
+        fingerprint: "request-a",
+        now: inWindow,
+      }),
+    ).toMatchObject({ kind: "settled", outcome: { value: "done" } });
+  });
+
+  it("does not retire an ACTIVE turn no matter how old it is", () => {
+    const store = createChatIdempotencyStore<{ value: string }>({
+      retentionMs: 10,
+    });
+    const owner = store.admit("principal:room", "id", {
+      fingerprint: "request-a",
+    });
+    if (owner.kind !== "owner") throw new Error("fixture admission failed");
+
+    // Never settled, so retention does not apply: a long-running generation
+    // keeps its reservation and a different payload still conflicts.
+    const muchLater = Date.now() + 60 * 60_000;
+    expect(
+      store.admit("principal:room", "id", {
+        fingerprint: "request-a",
+        now: muchLater,
+      }).kind,
+    ).toBe("duplicate");
+    expect(
+      store.admit("principal:room", "id", {
+        fingerprint: "request-b",
+        now: muchLater,
+      }),
+    ).toMatchObject({
+      kind: "conflict",
+      error: { code: "CHAT_IDEMPOTENCY_CONFLICT" },
+    });
+  });
 });

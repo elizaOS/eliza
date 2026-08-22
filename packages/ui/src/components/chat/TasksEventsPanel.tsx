@@ -301,7 +301,7 @@ export function TasksEventsPanel({
                 data-testid="chat-widgets-edit-inline"
                 variant="ghost"
                 size="sm"
-                className="h-5 shrink-0 gap-1 bg-transparent px-1 text-[10px] leading-none font-semibold uppercase tracking-[0.1em] text-muted transition-colors hover:bg-transparent hover:text-txt"
+                className="h-5 shrink-0 gap-1 bg-transparent px-1 text-2xs leading-none font-semibold uppercase tracking-wider text-muted transition-colors hover:bg-transparent hover:text-txt"
                 aria-label="Edit widgets"
                 onClick={() => setEditOpen(true)}
               >

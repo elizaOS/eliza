@@ -24,14 +24,9 @@ import type { SlashArgChoiceContext } from "./slash-menu";
 type ChatTarget = "small" | "large";
 
 /** Backend tokens `/model coding <backend>` accepts, in suggestion order. */
-export const CODING_BACKEND_CHOICES = [
-  "codex",
-  "claude",
-  "opencode",
-  "elizaos",
-] as const;
+export const CODING_BACKEND_CHOICES = ["codex", "claude", "elizaos"] as const;
 
-// Catalog provider that carries each backend's model list; opencode/elizaos
+// Catalog provider that carries each backend's model list; elizaos
 // take free-form model ids, so they get no completion source.
 const CODING_BACKEND_CATALOG_PROVIDER: Record<string, string> = {
   codex: "codex",
@@ -252,7 +247,6 @@ const STATIC_MODEL_CHOICE_LABELS: ReadonlyArray<[string, string]> = [
   ["cloud", "Eliza Cloud inference"],
   ["codex", "Codex CLI"],
   ["claude", "Claude Code"],
-  ["opencode", "OpenCode"],
   ["elizaos", "elizaOS coder"],
 ];
 

@@ -3,7 +3,8 @@
  *
  * Part of the reply vocabulary is rendered exclusively by the dashboard chat
  * surface and means nothing anywhere else: the single-line `[CONFIG:<pluginId>]`
- * plugin-card and `[BACKGROUND]` wallpaper-picker markers, and the JSON-bodied
+ * plugin-card, `[CONNECTOR:<pluginId>]` connector-card, and `[BACKGROUND]`
+ * wallpaper-picker markers, and the JSON-bodied
  * `[CHECKLIST]`/`[WORKFLOW]` widget blocks (see packages/ui
  * message-parser-helpers and the per-widget parsers it collects). None of these
  * are part of the interaction-block grammar, so `parseInteractionBlocks`
@@ -27,6 +28,9 @@
 
 /** Matches `[CONFIG:<pluginId>]` — keep in lockstep with the dashboard's CONFIG_RE. */
 const DASHBOARD_CONFIG_MARKER_RE = /\[CONFIG:([@\w][\w@./:-]*)\]/g;
+
+/** Matches `[CONNECTOR:<pluginId>]` — lockstep with the dashboard's CONNECTOR_RE. */
+const DASHBOARD_CONNECTOR_MARKER_RE = /\[CONNECTOR:([@\w][\w@./:-]*)\]/g;
 
 /** Matches the bare `[BACKGROUND]` picker marker — lockstep with BACKGROUND_RE. */
 const DASHBOARD_BACKGROUND_MARKER_RE = /\[BACKGROUND\]/g;
@@ -155,6 +159,7 @@ function replaceDashboardBlocks(
 export function stripDashboardOnlyMarkers(text: string): string {
 	if (
 		!text.includes("[CONFIG:") &&
+		!text.includes("[CONNECTOR:") &&
 		!text.includes("[BACKGROUND]") &&
 		!text.includes("[CHECKLIST]") &&
 		!text.includes("[WORKFLOW]")
@@ -163,6 +168,7 @@ export function stripDashboardOnlyMarkers(text: string): string {
 	}
 	return degradeWidgetBlocks(text)
 		.replace(DASHBOARD_CONFIG_MARKER_RE, "")
+		.replace(DASHBOARD_CONNECTOR_MARKER_RE, "")
 		.replace(DASHBOARD_BACKGROUND_MARKER_RE, "")
 		.replace(/[ \t]+\n/g, "\n")
 		.replace(/\n{3,}/g, "\n\n")

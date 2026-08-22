@@ -1,12 +1,14 @@
 /** Exposes the Fish Audio plugin from the package root. */
-import WebSocket from "ws";
+
+import { createFishAudioNodeWebSocketFactory } from "./node-transport";
 import { configureFishAudioWebSocketFactory } from "./src/index";
 
-configureFishAudioWebSocketFactory(
-  (url, options) => new WebSocket(url, { headers: options.headers }),
-);
+configureFishAudioWebSocketFactory(createFishAudioNodeWebSocketFactory());
 
+export { createFishAudioNodeWebSocketFactory } from "./node-transport";
+export type { FishAudioFailureClassification } from "./src/index";
 export {
+  classifyFishAudioFailure,
   default,
   fishAudioPlugin,
   handleFishAudioTextToSpeech,

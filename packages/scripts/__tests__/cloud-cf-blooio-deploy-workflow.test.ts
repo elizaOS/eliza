@@ -1,6 +1,6 @@
 /**
- * Guards staging-only Blooio secret sourcing, atomic Worker publication, and
- * names-only post-deploy verification in the protected Cloud release.
+ * Guards protected-environment Blooio secret sourcing, atomic Worker
+ * publication, and names-only post-deploy verification in the Cloud release.
  */
 
 import { describe, expect, test } from "bun:test";
@@ -31,7 +31,7 @@ const blooioNames = [
   "ELIZA_APP_BLOOIO_PHONE_NUMBER",
   "ELIZA_APP_BLOOIO_WEBHOOK_SECRET",
 ] as const;
-const stagingValues: Record<(typeof blooioNames)[number], string> = {
+const blooioValues: Record<(typeof blooioNames)[number], string> = {
   ELIZA_APP_BLOOIO_API_KEY: "api-key-private-canary",
   ELIZA_APP_BLOOIO_PHONE_NUMBER: "+15555550199",
   ELIZA_APP_BLOOIO_WEBHOOK_SECRET: "webhook-secret-private-canary",
@@ -52,14 +52,15 @@ function githubExpression(body: string): string {
 }
 
 function runValidation(
-  overrides: Partial<typeof stagingValues> = {},
+  target: "staging" | "production",
+  overrides: Partial<typeof blooioValues> = {},
 ): ReturnType<typeof Bun.spawnSync> {
-  const validation = step("Validate protected staging Blooio configuration");
+  const validation = step("Validate protected Blooio configuration");
   return Bun.spawnSync(["bash", "-c", validation.run ?? ""], {
     env: {
       ...process.env,
-      DEPLOY_ENVIRONMENT: "staging",
-      ...stagingValues,
+      DEPLOY_ENVIRONMENT: target,
+      ...blooioValues,
       ...overrides,
     },
     stderr: "pipe",
@@ -67,57 +68,55 @@ function runValidation(
   });
 }
 
-describe("protected Cloud staging Blooio configuration", () => {
+describe("protected Cloud Blooio configuration", () => {
   test("fails closed before Worker mutation without exposing protected values", () => {
-    const validation = step("Validate protected staging Blooio configuration");
-    expect(validation.if).toContain(
-      "steps.env.outputs.deploy_environment == 'staging'",
-    );
+    const validation = step("Validate protected Blooio configuration");
+    expect(validation.if).not.toContain("deploy_environment == 'staging'");
     expect(index("Validate canonical routing contract")).toBeLessThan(
-      index("Validate protected staging Blooio configuration"),
+      index("Validate protected Blooio configuration"),
     );
-    expect(
-      index("Validate protected staging Blooio configuration"),
-    ).toBeLessThan(index("Disable staging session exchange before cutover"));
-
-    const complete = runValidation();
-    expect(complete.exitCode).toBe(0);
-    expect(complete.stdout.toString()).toContain(
-      "Verified 3 protected staging Blooio secret names",
+    expect(index("Validate protected Blooio configuration")).toBeLessThan(
+      index("Disable staging session exchange before cutover"),
     );
-    const completeOutput = `${complete.stdout.toString()}${complete.stderr.toString()}`;
-    for (const value of Object.values(stagingValues)) {
-      expect(completeOutput).not.toContain(value);
-    }
 
-    for (const name of blooioNames) {
-      for (const missingValue of ["", " \t "]) {
-        const missing = runValidation({ [name]: missingValue });
-        expect(missing.exitCode).toBe(1);
-        const output = `${missing.stdout.toString()}${missing.stderr.toString()}`;
-        expect(output).toContain(name);
-        for (const value of Object.values(stagingValues)) {
-          expect(output).not.toContain(value);
+    for (const target of ["staging", "production"] as const) {
+      const complete = runValidation(target);
+      expect(complete.exitCode).toBe(0);
+      expect(complete.stdout.toString()).toContain(
+        `Verified 3 protected ${target} Blooio secret names`,
+      );
+      const completeOutput = `${complete.stdout.toString()}${complete.stderr.toString()}`;
+      for (const value of Object.values(blooioValues)) {
+        expect(completeOutput).not.toContain(value);
+      }
+
+      for (const name of blooioNames) {
+        for (const missingValue of ["", " \t "]) {
+          const missing = runValidation(target, { [name]: missingValue });
+          expect(missing.exitCode).toBe(1);
+          const output = `${missing.stdout.toString()}${missing.stderr.toString()}`;
+          expect(output).toContain(name);
+          expect(output).toContain(`protected ${target} Blooio`);
+          for (const value of Object.values(blooioValues)) {
+            expect(output).not.toContain(value);
+          }
         }
       }
     }
   });
 
-  test("sources only protected staging values and commits them atomically", () => {
-    const validation = step("Validate protected staging Blooio configuration");
+  test("sources protected environment values and commits them atomically", () => {
+    const validation = step("Validate protected Blooio configuration");
     const prepare = step("Prepare Worker secrets for atomic deploy");
     const deploy = step("Deploy to Cloudflare Workers");
     const cleanup = step("Remove atomic Worker secrets file");
 
     for (const name of blooioNames) {
-      const expected = githubExpression(
-        `steps.env.outputs.deploy_environment == 'staging' && secrets.${name} || ''`,
-      );
+      const expected = githubExpression(`secrets.${name}`);
       expect(validation.env?.[name]).toBe(expected);
       expect(prepare.env?.[name]).toBe(expected);
-      expect(prepare.run).toContain(`\n    ${name}`);
+      expect(prepare.run).toContain(name);
     }
-    expect(prepare.run).toContain('if [ "$DEPLOY_ENVIRONMENT" = "staging" ]');
     expect(prepare.run).toContain('queue_secret "$name" || exit 1');
     expect(prepare.run).toContain("worker-secrets-file.mjs");
     expect(prepare.run).toContain('create "$RUNNER_TEMP"');
@@ -127,25 +126,11 @@ describe("protected Cloud staging Blooio configuration", () => {
     expect(cleanup.run).toContain('remove-all "$RUNNER_TEMP"');
   });
 
-  test("verifies staging names after deploy while leaving production isolated", () => {
+  test("verifies Blooio names after every protected deploy", () => {
     const verify = step("Verify required Worker secret binding names");
-    expect(verify.run).toContain(
-      'process.env.DEPLOY_ENVIRONMENT === "staging"',
-    );
     for (const name of blooioNames) {
       expect(verify.run).toContain(`"${name}"`);
     }
     expect(verify.run).toContain("values were not read");
-
-    const validation = step("Validate protected staging Blooio configuration");
-    expect(validation.if).not.toContain("production");
-    for (const name of blooioNames) {
-      expect(validation.env?.[name]).not.toContain(
-        `deploy_environment == 'production' && secrets.${name}`,
-      );
-      expect(
-        step("Prepare Worker secrets for atomic deploy").env?.[name],
-      ).not.toContain(`deploy_environment == 'production' && secrets.${name}`);
-    }
   });
 });

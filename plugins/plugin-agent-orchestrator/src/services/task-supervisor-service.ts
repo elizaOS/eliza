@@ -35,6 +35,7 @@ import type {
   UUID,
 } from "@elizaos/core";
 import {
+  ElizaError,
   logger,
   requireConfirmedSendHandlerDelivery,
   Service,
@@ -286,6 +287,8 @@ export async function runSupervisorTick(
 
 const DEFAULT_INTERVAL_MS = 45_000;
 const MIN_INTERVAL_MS = 5_000;
+/** Node clamps a `setInterval` delay above this to 1ms, so it is the real ceiling. */
+const MAX_TIMER_DELAY_MS = 2_147_483_647;
 
 type RuntimeWithSendTarget = IAgentRuntime & {
   sendMessageToTarget?: (
@@ -375,10 +378,44 @@ export class TaskSupervisorService extends Service {
     return this.readSetting("ELIZA_ORCHESTRATOR_SUPERVISOR") !== "0";
   }
 
+  /**
+   * Resolve the sweep interval.
+   *
+   * Three distinct outcomes: absent or blank takes the documented default; a
+   * configured value that cannot be honoured throws, because substituting the
+   * default would hide an operator mistake; anything else is the configured
+   * number.
+   *
+   * "Cannot be honoured" is a value `setInterval` would not use as written —
+   * not a whole decimal integer, below `MIN_INTERVAL_MS`, or above
+   * `MAX_TIMER_DELAY_MS` (Node clamps a larger delay to 1ms, which would sweep
+   * continuously instead of on a schedule). `Number.parseInt` alone accepted
+   * all three: "12000junk" parsed to 12000 and cleared the floor.
+   */
   private intervalMs(): number {
     const raw = this.readSetting("ELIZA_ORCHESTRATOR_SUPERVISOR_INTERVAL_MS");
-    const n = typeof raw === "string" ? Number.parseInt(raw, 10) : NaN;
-    return Number.isFinite(n) && n >= MIN_INTERVAL_MS ? n : DEFAULT_INTERVAL_MS;
+    if (typeof raw !== "string" || raw.trim() === "")
+      return DEFAULT_INTERVAL_MS;
+    const text = raw.trim();
+    const n = /^[+-]?\d+$/.test(text) ? Number(text) : Number.NaN;
+    if (
+      !Number.isSafeInteger(n) ||
+      n < MIN_INTERVAL_MS ||
+      n > MAX_TIMER_DELAY_MS
+    ) {
+      throw new ElizaError(
+        `ELIZA_ORCHESTRATOR_SUPERVISOR_INTERVAL_MS must be a whole number of milliseconds between ${MIN_INTERVAL_MS} and ${MAX_TIMER_DELAY_MS}; received ${JSON.stringify(raw)}`,
+        {
+          code: "ORCHESTRATOR_SUPERVISOR_INTERVAL_INVALID",
+          context: {
+            raw,
+            minMs: MIN_INTERVAL_MS,
+            maxMs: MAX_TIMER_DELAY_MS,
+          },
+        },
+      );
+    }
+    return n;
   }
 
   private startTimer(): void {

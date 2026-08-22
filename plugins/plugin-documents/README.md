@@ -30,6 +30,8 @@ Documents are stored as memories in the runtime's `documents` table and chunked 
 | POST   | `/api/documents/bulk` | Upload up to 100 documents at once |
 | POST   | `/api/documents/url` | Ingest a URL or YouTube transcript: `{ url, scope?, metadata? }` |
 | PATCH  | `/api/documents/:id` | Update document text (only for non-bundled, non-character, text-backed documents) |
+| PATCH  | `/api/documents/:id/access` | Replace explicit entity read grants (OWNER or current room ADMIN) |
+| GET    | `/api/documents/:id/access` | Read explicit entity grants under the same management authority |
 | DELETE | `/api/documents/:id` | Delete document and all its fragments |
 
 ## Document scopes
@@ -56,6 +58,10 @@ fragment path.
 PATCH and DELETE resolve mutation authority through the same service. Deletes
 use the adapter's atomic snapshot operation instead of route-managed fragment
 and parent deletion.
+Direct grants are independent of room membership for reads, but never grant
+mutation authority and never open `agent-private` documents. Grant replacement
+is atomic, validates every entity against the current agent, and is limited to
+OWNER or a current room ADMIN for `global` and `user-private` documents.
 
 ## Configuration
 

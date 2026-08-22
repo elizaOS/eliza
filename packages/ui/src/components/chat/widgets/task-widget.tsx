@@ -310,7 +310,7 @@ export const TaskWidget = memo(function TaskWidget({
               </span>
               {sessionCount > 0 ? (
                 <>
-                  <span className="text-muted/40">·</span>
+                  <span className="text-muted">·</span>
                   <span>
                     {activeSessionCount}/{sessionCount} agents
                   </span>
@@ -318,13 +318,13 @@ export const TaskWidget = memo(function TaskWidget({
               ) : null}
               {relative ? (
                 <>
-                  <span className="text-muted/40">·</span>
+                  <span className="text-muted">·</span>
                   <span>{relative}</span>
                 </>
               ) : null}
               {tokens ? (
                 <>
-                  <span className="text-muted/40">·</span>
+                  <span className="text-muted">·</span>
                   <span className="tabular-nums">{tokens}</span>
                 </>
               ) : null}

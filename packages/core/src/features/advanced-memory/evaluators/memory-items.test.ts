@@ -147,6 +147,7 @@ describe("summaryEvaluator.shouldRun — dialogue count matches canonical MESSAG
 		metadataType: string,
 		count: number,
 		extraMemories: Memory[] = [],
+		existingSummary: { lastMessageOffset: number } | null = null,
 	) {
 		const memories = [
 			...Array.from({ length: count }, (_v, i) =>
@@ -159,14 +160,16 @@ describe("summaryEvaluator.shouldRun — dialogue count matches canonical MESSAG
 				shortTermSummarizationThreshold: 16,
 				shortTermSummarizationInterval: 8,
 			}),
-			getCurrentSessionSummary: async () => null,
+			getCurrentSessionSummary: async () => existingSummary,
 		};
 		return createMockRuntime({
 			agentId: "agent-1",
 			character: { name: "Agent" },
 			getService: (name: string) =>
 				name === "memory" ? (memoryService as never) : null,
-			getMemories: async () => memories,
+			countMemories: async () => memories.length,
+			getMemories: async ({ limit }: { limit: number }) =>
+				memories.slice(0, limit),
 		} as never);
 	}
 
@@ -230,5 +233,21 @@ describe("summaryEvaluator.shouldRun — dialogue count matches canonical MESSAG
 		// 12 real dialogue rows < 16 threshold; the 8 action_result rows must
 		// not push the count over.
 		expect(run).toBe(false);
+	});
+
+	it("continues after the first 100 retained dialogue rows", async () => {
+		const rt = runtimeWithMessages("message", 110, [], {
+			lastMessageOffset: 100,
+		});
+		const run = await summaryEvaluator.shouldRun?.({
+			runtime: rt,
+			message: trigger,
+			state: {} as State,
+			options: {} as EvaluatorRunOptions,
+		});
+
+		// 10 retained dialogue rows are newer than the prior summary offset,
+		// exceeding the configured interval of 8.
+		expect(run).toBe(true);
 	});
 });

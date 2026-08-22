@@ -44,6 +44,7 @@ import { validateTwitterConfig } from "../environment";
 import { TwitterInteractionClient } from "../interactions";
 import { TwitterPostClient } from "../post";
 import { TwitterTimelineClient } from "../timeline";
+import { countTwitterWeightedLength } from "../tweet-length";
 import type { ITwitterClient, TwitterClientState } from "../types";
 import { normalizeXReceiptId } from "../utils/provider-receipt";
 import { getSetting } from "../utils/settings";
@@ -816,9 +817,17 @@ export class XService extends Service {
     if (!text) {
       throw new Error("X post connector requires non-empty text content.");
     }
-    if (text.length > X_MAX_POST_LENGTH) {
-      throw new Error(
-        `X post connector requires text <= ${X_MAX_POST_LENGTH} characters; received ${text.length}.`,
+    const weightedLength = countTwitterWeightedLength(text);
+    if (weightedLength > X_MAX_POST_LENGTH) {
+      throw new ElizaError(
+        `X post connector requires text <= ${X_MAX_POST_LENGTH} weighted characters; received ${weightedLength}.`,
+        {
+          code: "X_POST_LENGTH_EXCEEDED",
+          context: {
+            weightedLength,
+            maxWeightedLength: X_MAX_POST_LENGTH,
+          },
+        },
       );
     }
 
@@ -834,6 +843,7 @@ export class XService extends Service {
         "replyTo",
         "inReplyToTweetId",
       ]);
+      const quotedPostId = readContentString(content, ["quotedPostId"]);
       const postService = new TwitterPostService(base);
       const post = await postService.createPost(
         {
@@ -844,6 +854,7 @@ export class XService extends Service {
           ),
           text,
           ...(replyToTweetId ? { inReplyTo: replyToTweetId } : {}),
+          ...(quotedPostId ? { quotedPostId } : {}),
         },
         profile,
       );

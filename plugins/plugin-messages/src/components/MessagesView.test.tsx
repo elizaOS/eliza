@@ -124,6 +124,21 @@ afterEach(() => {
 });
 
 describe("MessagesView — unified GUI thread list", () => {
+  it("shows a disabled refresh control while the first bridge read is pending", async () => {
+    let resolveMessages!: (value: { messages: typeof sampleMessages }) => void;
+    bridge.listMessages.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveMessages = resolve;
+        }),
+    );
+    render(React.createElement(MessagesView));
+    await screen.findByText("loading");
+    expect(button("messages-refresh").disabled).toBe(true);
+    resolveMessages({ messages: sampleMessages });
+    await screen.findByText("+15550200");
+  });
+
   it("loads both threads on mount with addresses and last-message previews", async () => {
     render(React.createElement(MessagesView));
     await screen.findByText("+15550200");
@@ -166,7 +181,7 @@ describe("MessagesView — compose and send", () => {
     fireEvent.change(field("compose-body"), {
       target: { value: " hello from spatial " },
     });
-    fireEvent.click(button("send"));
+    fireEvent.click(button("messages-send"));
 
     await waitFor(() =>
       expect(bridge.sendSms).toHaveBeenCalledWith({
@@ -174,6 +189,34 @@ describe("MessagesView — compose and send", () => {
         body: "hello from spatial",
       }),
     );
+  });
+
+  it("disables send while the bridge request is pending", async () => {
+    let resolveSend!: (value: {
+      messageId: string;
+      messageUri: string;
+    }) => void;
+    bridge.sendSms.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveSend = resolve;
+        }),
+    );
+    render(React.createElement(MessagesView));
+    await screen.findByText("+15550200");
+
+    fireEvent.change(field("compose-address"), {
+      target: { value: "+15550400" },
+    });
+    fireEvent.change(field("compose-body"), {
+      target: { value: "hello" },
+    });
+    fireEvent.click(button("messages-send"));
+
+    await screen.findByText("Sending…");
+    expect(button("messages-send").disabled).toBe(true);
+    resolveSend({ messageId: "sent-1", messageUri: "content://sms/1" });
+    await waitFor(() => expect(screen.queryByText("Sending…")).toBeNull());
   });
 
   it("disables send and never calls the bridge when the body is blank", async () => {
@@ -185,8 +228,8 @@ describe("MessagesView — compose and send", () => {
     });
     fireEvent.change(field("compose-body"), { target: { value: "  \n\t " } });
 
-    expect(button("send").disabled).toBe(true);
-    fireEvent.click(button("send"));
+    expect(button("messages-send").disabled).toBe(true);
+    fireEvent.click(button("messages-send"));
     expect(bridge.sendSms).not.toHaveBeenCalled();
   });
 
@@ -207,6 +250,17 @@ describe("MessagesView — compose and send", () => {
 });
 
 describe("MessagesView — SMS role + refresh", () => {
+  it("renders one stable bridge control for each shared operation", async () => {
+    render(React.createElement(MessagesView));
+    await screen.findByText("+15550200");
+    expect(
+      document.querySelectorAll('[data-agent-id="messages-send"]'),
+    ).toHaveLength(1);
+    expect(
+      document.querySelectorAll('[data-agent-id="messages-refresh"]'),
+    ).toHaveLength(1);
+  });
+
   it("renders the request-sms-role control when unclaimed and wires it to the bridge", async () => {
     bridge.getStatus
       .mockResolvedValueOnce(statusWith(false))
@@ -241,7 +295,7 @@ describe("MessagesView — SMS role + refresh", () => {
     await screen.findByText("+15550200");
     expect(bridge.listMessages).toHaveBeenCalledTimes(1);
 
-    fireEvent.click(button("refresh"));
+    fireEvent.click(button("messages-refresh"));
     await waitFor(() => expect(bridge.listMessages).toHaveBeenCalledTimes(2));
     expect(bridge.getStatus).toHaveBeenCalledTimes(2);
   });

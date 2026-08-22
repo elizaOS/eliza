@@ -318,6 +318,28 @@ describe("top-level-surface deep-link navigation intents", () => {
     });
   });
 
+  it("preserves an exact Cloudflare Live View target for the native browser", () => {
+    const liveView = "https://live.browser.run/session?token=secret";
+    expect(
+      resolveDeepLinkNavigationIntent(
+        "browser",
+        new URLSearchParams({ browse: liveView }),
+      ),
+    ).toEqual({
+      viewId: "browser",
+      viewPath: `/browser?browse=${encodeURIComponent(liveView)}`,
+    });
+  });
+
+  it("drops an untrusted browser target from an OS-delivered deep link", () => {
+    expect(
+      resolveDeepLinkNavigationIntent(
+        "browser",
+        new URLSearchParams({ browse: "https://attacker.example/phish" }),
+      ),
+    ).toEqual({ viewId: "browser", viewPath: "/browser" });
+  });
+
   it("routes apps/deploy to the cloud-apps studio page (#10823 Apps Deploy UI entry)", () => {
     expect(resolveDeepLinkNavigationIntent("apps/deploy")).toEqual({
       viewId: "cloud-apps",

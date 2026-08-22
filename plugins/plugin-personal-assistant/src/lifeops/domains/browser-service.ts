@@ -1700,8 +1700,8 @@ export class BrowserDomain {
         companion,
         status,
         expectedActionIndex: currentActionIndex,
-        completedActionId,
-        attemptId,
+        completedActionId: completedActionId ?? null,
+        attemptId: attemptId ?? null,
         resultPatch: lifecycle.result,
         updatedAt,
       });

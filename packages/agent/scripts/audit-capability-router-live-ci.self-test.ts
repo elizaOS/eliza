@@ -707,8 +707,8 @@ assertFails(
 assertFails(
   "manual remote capability live observation is explicit",
   workflow.replace(
-    '      remote_capability_live:\n        description: "Run strict remote-capability Cloud and provider live smokes"\n        required: false\n        default: false\n        type: boolean\n',
-    "",
+    '  workflow_dispatch:\n    inputs:\n      remote_capability_live:\n        description: "Run strict remote-capability Cloud and provider live smokes"\n        required: false\n        default: false\n        type: boolean\n',
+    "  workflow_dispatch:\n",
   ),
 );
 
@@ -900,16 +900,16 @@ assertFails(
 assertFails(
   "provider live report validation requires all primary providers",
   workflow.replace(
-    " --require-providers e2b,home-machine,mobile-companion --require-ci",
-    " --require-providers e2b,home-machine --require-ci",
+    " --require-providers home-machine,mobile-companion --require-ci",
+    " --require-providers home-machine --require-ci",
   ),
 );
 
 assertFails(
   "provider live report validation requires all primary providers",
   workflow.replace(
-    " --allowed-providers e2b,home-machine,mobile-companion,desktop-companion --require-providers",
-    " --allowed-providers e2b,home-machine,mobile-companion,desktop-companion,unreviewed-provider --require-providers",
+    " --allowed-providers home-machine,mobile-companion,desktop-companion --require-providers",
+    " --allowed-providers home-machine,mobile-companion,desktop-companion,unreviewed-provider --require-providers",
   ),
 );
 
@@ -964,8 +964,8 @@ const githubArtifactValidatorFailure = assertFails(
   endpointConformanceSource,
   liveReportValidatorSelfTestSource,
   githubLiveArtifactValidatorSource.replace(
-    '      "e2b,home-machine,mobile-companion",\n',
-    '      "e2b,home-machine",\n',
+    '      "home-machine,mobile-companion",\n',
+    '      "home-machine",\n',
   ),
 );
 if (
@@ -988,8 +988,8 @@ assertGithubArtifactValidatorSelfTestFailure(
 assertGithubArtifactValidatorSelfTestFailure(
   "GitHub live artifact validator self-test covers provider requirements",
   githubLiveArtifactValidatorSelfTestSource.replace(
-    '"e2b,home-machine,mobile-companion",',
-    '"e2b,home-machine",',
+    '"home-machine,mobile-companion",',
+    '"home-machine",',
   ),
 );
 

@@ -1,4 +1,4 @@
-// Exercises docker sandbox headscale route behavior with deterministic cloud-shared lib fixtures.
+/** Exercises Docker sandbox Headscale routing with deterministic cloud-shared fixtures. */
 import { afterEach, describe, expect, test } from "bun:test";
 import { resolveElizaCloudTopology } from "@elizaos/shared";
 import {
@@ -196,6 +196,7 @@ describe("resolveContainerPort", () => {
     agentId: "11111111-1111-4111-8111-111111111111",
     agentName: "BNancy",
     organizationId: "22222222-2222-4222-8222-222222222222",
+    executionTier: "dedicated-always" as const,
   };
 
   test("uses HTTP_PORT when PORT is absent", () => {
@@ -231,6 +232,7 @@ describe("DockerSandboxProvider Headscale route guard", () => {
         agentId: "11111111-1111-4111-8111-111111111111",
         agentName: "Suki",
         organizationId: "22222222-2222-4222-8222-222222222222",
+        executionTier: "dedicated-always",
         environmentVars: {},
       }),
     ).rejects.toThrow("HEADSCALE_API_KEY is not configured");

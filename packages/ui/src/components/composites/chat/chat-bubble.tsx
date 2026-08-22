@@ -65,7 +65,7 @@ export function ChatBubble({
         className={cn(
           // whitespace-pre-wrap keeps newlines; overflow-wrap breaks long URLs /
           // hashes / paths so they can't blow out the bubble width on a phone.
-          "relative w-fit max-w-full whitespace-pre-wrap text-[14px] leading-relaxed [overflow-wrap:anywhere]",
+          "relative w-fit max-w-full whitespace-pre-wrap text-chat-body [overflow-wrap:anywhere]",
           // Message text must remain selectable for normal highlight/copy.
           "select-text [-webkit-touch-callout:default]",
           bare

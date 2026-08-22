@@ -49,6 +49,12 @@ function createMessage(): Memory {
 }
 
 describe("CHOOSE_OPTION action", () => {
+	it("advertises the canonical option parameter used by the action spec", () => {
+		expect(choiceAction.parameters?.map((parameter) => parameter.name)).toEqual(
+			["taskId", "option"],
+		);
+	});
+
 	it("accepts the complete task UUID as taskId", async () => {
 		const executed = { options: null as unknown | null };
 		const runtime = createRuntime(executed);
@@ -59,6 +65,25 @@ describe("CHOOSE_OPTION action", () => {
 			undefined,
 			{
 				parameters: { taskId: TASK_ID, selectedOption: "post" },
+			} as HandlerOptions,
+		);
+
+		expect(result?.success).toBe(true);
+		expect(result?.values?.selectedOption).toBe("post");
+		expect(result?.values?.taskId).toBe(TASK_ID);
+		expect(executed.options).toEqual({ option: "post" });
+	});
+
+	it("accepts option parameter conforming to canonical spec", async () => {
+		const executed = { options: null as unknown | null };
+		const runtime = createRuntime(executed);
+
+		const result = await choiceAction.handler?.(
+			runtime,
+			createMessage(),
+			undefined,
+			{
+				parameters: { taskId: TASK_ID, option: "post" },
 			} as HandlerOptions,
 		);
 

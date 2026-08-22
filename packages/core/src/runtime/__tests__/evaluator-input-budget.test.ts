@@ -43,7 +43,17 @@ interface CapturedRequest {
 			  }>;
 	}>;
 	promptSegments?: Array<{ content: string; stable?: boolean }>;
-	providerOptions?: { eliza?: { thinking?: unknown } };
+	providerOptions?: {
+		eliza?: {
+			thinking?: unknown;
+			contentProjection?: {
+				enabled: boolean;
+				resultCount: number;
+				pagesIncluded: number;
+				pagesOmitted: number;
+			};
+		};
+	};
 }
 
 function makeStep(iteration: number, resultText: string) {
@@ -141,6 +151,12 @@ describe("runEvaluator — over-window input trims to fit (never context_length_
 		if (!request) throw new Error("no captured request");
 		expect(toolMessageValues(request)[0]).toContain(result);
 		expect(toolMessageValues(request)[0]).not.toContain("chars truncated]");
+		expect(request.providerOptions?.eliza?.contentProjection).toMatchObject({
+			enabled: false,
+			resultCount: 1,
+			pagesIncluded: 0,
+			pagesOmitted: 0,
+		});
 	});
 
 	it("preserves the selected primary input and lets AgentRuntime compact a smaller failover", async () => {

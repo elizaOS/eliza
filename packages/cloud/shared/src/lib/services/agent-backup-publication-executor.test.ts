@@ -197,6 +197,164 @@ function dependencies(params: {
 }
 
 describe("post-capture backup publication", () => {
+  test("rejects an already-aborted signal at every executor entry without transition or I/O", async () => {
+    const fixture = await publicationFixture();
+    const capturedClaim = claim({ state: "captured", inventoryDigest: fixture.inventoryDigest });
+    const primaryVerifiedClaim = claim({
+      state: "primary_verified",
+      inventoryDigest: fixture.inventoryDigest,
+    });
+    const events: string[] = [];
+    const reason = new Error("publication shutdown");
+    const controller = new AbortController();
+    controller.abort(reason);
+    const resolveSource = async (): Promise<AgentBackupCapturedPublicationSource> => {
+      events.push("source-resolve");
+      throw new Error("aborted publication must not resolve its source");
+    };
+    const abortedDependencies = dependencies({
+      initialClaim: primaryVerifiedClaim,
+      events,
+      listPrimary: async () => {
+        events.push("primary-list");
+        return fixture.chunks.map((chunk) => primaryObject(chunk));
+      },
+      replicate: async () => {
+        events.push("replicate");
+        return {} as AgentBackupObject;
+      },
+    });
+
+    for (const execute of [
+      () =>
+        executeAgentBackupPrimaryPublication({
+          claim: capturedClaim,
+          leaseMs: 60_000,
+          scope: "production-eu",
+          primaryEndpointAlias: "primary-r2",
+          registry: UNUSED_REGISTRY,
+          resolveSource,
+          dependencies: abortedDependencies,
+          signal: controller.signal,
+        }),
+      () =>
+        executeAgentBackupSecondaryReplication({
+          claim: primaryVerifiedClaim,
+          leaseMs: 60_000,
+          scope: "production-eu",
+          secondaryEndpointAlias: "secondary-hetzner",
+          registry: UNUSED_REGISTRY,
+          dependencies: abortedDependencies,
+          signal: controller.signal,
+        }),
+      () =>
+        executeAgentBackupPostCapturePublication({
+          claim: primaryVerifiedClaim,
+          leaseMs: 60_000,
+          config: {
+            scope: "production-eu",
+            primaryEndpointAlias: "primary-r2",
+            secondaryEndpointAlias: "secondary-hetzner",
+          },
+          registry: UNUSED_REGISTRY,
+          resolveSource,
+          dependencies: abortedDependencies,
+          signal: controller.signal,
+        }),
+    ]) {
+      await expect(execute()).rejects.toBe(reason);
+    }
+    expect(events).toEqual([]);
+  });
+
+  test("stops between primary and secondary after abort while preserving an exact replay boundary", async () => {
+    const fixture = await publicationFixture();
+    const initialClaim = claim({
+      state: "primary_uploaded",
+      inventoryDigest: fixture.inventoryDigest,
+    });
+    const events: string[] = [];
+    const controller = new AbortController();
+    const reason = new Error("shutdown after primary source close");
+    let secondaryLists = 0;
+    let replications = 0;
+    await expect(
+      executeAgentBackupPostCapturePublication({
+        claim: initialClaim,
+        leaseMs: 60_000,
+        config: {
+          scope: "production-eu",
+          primaryEndpointAlias: "primary-r2",
+          secondaryEndpointAlias: "secondary-hetzner",
+        },
+        registry: UNUSED_REGISTRY,
+        resolveSource: async () => {
+          const source = sourceFixture({
+            chunks: fixture.chunks,
+            bodies: fixture.bodies,
+            inventoryDigest: fixture.inventoryDigest,
+            events,
+            returnedBodies: [],
+          });
+          return {
+            ...source,
+            async close() {
+              events.push("source-close");
+              controller.abort(reason);
+            },
+          };
+        },
+        dependencies: dependencies({
+          initialClaim,
+          events,
+          listPrimary: async () => {
+            secondaryLists += 1;
+            return fixture.chunks.map((chunk) => primaryObject(chunk));
+          },
+          replicate: async () => {
+            replications += 1;
+            return {} as AgentBackupObject;
+          },
+        }),
+        signal: controller.signal,
+      }),
+    ).rejects.toBe(reason);
+
+    expect(events).toContain("transition:primary_uploaded->primary_verified");
+    expect(events).not.toContain("transition:primary_verified->secondary_pending");
+    expect(secondaryLists).toBe(0);
+    expect(replications).toBe(0);
+
+    const replayClaim = claim({
+      state: "primary_verified",
+      inventoryDigest: fixture.inventoryDigest,
+    });
+    const replayed = await executeAgentBackupPostCapturePublication({
+      claim: replayClaim,
+      leaseMs: 60_000,
+      config: {
+        scope: "production-eu",
+        primaryEndpointAlias: "primary-r2",
+        secondaryEndpointAlias: "secondary-hetzner",
+      },
+      registry: UNUSED_REGISTRY,
+      resolveSource: async () => {
+        throw new Error("primary-verified replay must not reopen the spool");
+      },
+      dependencies: dependencies({
+        initialClaim: replayClaim,
+        events: [],
+        listPrimary: async () => fixture.chunks.map((chunk) => primaryObject(chunk)),
+        replicate: async () => {
+          replications += 1;
+          return {} as AgentBackupObject;
+        },
+      }),
+    });
+    expect(replayed.backup.catalog_state).toBe("protected");
+    expect(replications).toBe(fixture.chunks.length);
+  });
+
   test("publishes repository-owned primary slots, journals every chunk, and zeroes spool copies", async () => {
     const fixture = await publicationFixture();
     const initialClaim = claim({ state: "captured", inventoryDigest: fixture.inventoryDigest });

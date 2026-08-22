@@ -103,6 +103,39 @@ async function withForceCloudAppSkillsEnv(
 }
 
 describe("recommendSkillsForTask", () => {
+  it("returns and model-scores every eligible skill without normalizing descriptions", async () => {
+    const skills = Array.from({ length: 12 }, (_, index) => ({
+      slug: `browser-skill-${index}`,
+      name: `Browser Skill ${index}`,
+      description:
+        index === 11
+          ? "  Browser automation\n\nwith exact spacing.  "
+          : `Browser automation capability ${index}.`,
+    }));
+    let capturedPrompt = "";
+    const runtime = createRuntime({ skills }) as IAgentRuntime & {
+      useModel: (model: unknown, params: { prompt: string }) => Promise<string>;
+    };
+    runtime.useModel = async (_model, params) => {
+      capturedPrompt = params.prompt;
+      return JSON.stringify({
+        scores: [{ slug: skills[0].slug, score: 0.8, reason: "relevant" }],
+      });
+    };
+
+    const recommendations = await recommendSkillsForTask(runtime, {
+      taskText: "automate browser testing",
+      max: 1,
+    });
+
+    expect(recommendations).toHaveLength(skills.length);
+    expect(recommendations.map((skill) => skill.slug)).toEqual(
+      expect.arrayContaining(skills.map((skill) => skill.slug)),
+    );
+    expect(capturedPrompt).toContain(JSON.stringify(skills[11].description));
+    expect(capturedPrompt).toContain(`"slug":"${skills[11].slug}"`);
+  });
+
   it("forces paired Cloud build and backend skills for app prompts when explicitly enabled", async () => {
     await withForceCloudAppSkillsEnv("1", async () => {
       const recommendations = await recommendSkillsForTask(
@@ -181,6 +214,6 @@ describe("recommendSkillsForTask", () => {
 
     expect(
       recommendations.find((skill) => skill.slug === "build-monetized-app"),
-    ).toBeUndefined();
+    ).toMatchObject({ score: 0 });
   });
 });

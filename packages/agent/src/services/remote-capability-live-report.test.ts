@@ -162,22 +162,22 @@ describe("remote capability live report summaries", () => {
         }),
       ).rejects.toThrow("must use lowercase letters");
       await expect(
-        writeRemoteCapabilityLiveReport("e2b", {
+        writeRemoteCapabilityLiveReport("mobile-companion", {
           kind: "provider",
           provider: "home-machine",
           providerId: "home-machine",
         }),
       ).rejects.toThrow("must match provider");
       await expect(
-        writeRemoteCapabilityLiveReport("e2b", {
+        writeRemoteCapabilityLiveReport("mobile-companion", {
           kind: "provider",
-          provider: "e2b",
+          provider: "mobile-companion",
         }),
       ).rejects.toThrow("providerId must match provider");
       await expect(
-        writeRemoteCapabilityLiveReport("e2b", {
+        writeRemoteCapabilityLiveReport("mobile-companion", {
           kind: "provider",
-          provider: "e2b",
+          provider: "mobile-companion",
           providerId: "home-machine",
         }),
       ).rejects.toThrow("providerId must match provider");
@@ -189,19 +189,19 @@ describe("remote capability live report summaries", () => {
       await expect(
         writeRemoteCapabilityLiveReport("cloud", {
           kind: "cloud",
-          provider: "e2b",
+          provider: "mobile-companion",
         }),
       ).rejects.toThrow('field "provider" is not valid');
       await expect(
-        writeRemoteCapabilityLiveReport("e2b", {
+        writeRemoteCapabilityLiveReport("mobile-companion", {
           kind: "provider",
-          provider: "e2b",
-          providerId: "e2b",
+          provider: "mobile-companion",
+          providerId: "mobile-companion",
           cloudApiBase: "https://api.example.test",
         }),
       ).rejects.toThrow('field "cloudApiBase" is not valid');
       await expect(
-        writeRemoteCapabilityLiveReport("e2b", {
+        writeRemoteCapabilityLiveReport("mobile-companion", {
           kind: "other",
         }),
       ).rejects.toThrow('kind must be either "cloud" or "provider"');

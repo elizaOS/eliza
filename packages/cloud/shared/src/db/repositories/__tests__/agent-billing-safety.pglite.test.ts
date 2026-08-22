@@ -1,5 +1,5 @@
 /**
- * Exercises failed/deleted agent billing exclusion and the final debit claim against real PGlite.
+ * Exercises agent-compute billing authority and the final debit claim against real PGlite.
  *
  * The repository is the billing authority: replica/list results may become stale before settlement,
  * so both discovery and the row lock must reject workloads that no longer accrue charges.
@@ -58,6 +58,8 @@ async function seedSandbox(
     billingStatus?: AgentBillingStatus;
     deletedAt?: Date | null;
     lastBackupAt?: Date | null;
+    executionTier?: string;
+    poolStatus?: "unclaimed" | null;
   } = {},
 ): Promise<string> {
   const [sandbox] = await dbWrite
@@ -67,10 +69,11 @@ async function seedSandbox(
       user_id: userId,
       agent_name: unique("agent"),
       status: values.status ?? "running",
-      execution_tier: "dedicated-always",
+      execution_tier: (values.executionTier ?? "dedicated-always") as never,
       billing_status: values.billingStatus ?? "active",
       deleted_at: values.deletedAt ?? null,
       last_backup_at: values.lastBackupAt ?? null,
+      pool_status: values.poolStatus ?? null,
       created_at: new Date("2026-08-20T10:00:00.000Z"),
       last_billed_at: new Date("2026-08-20T10:00:00.000Z"),
       shutdown_warning_sent_at: new Date("2026-08-20T10:30:00.000Z"),
@@ -114,6 +117,7 @@ beforeAll(async () => {
     const { apply } = await pushSchema(schema as never, dbWrite as never);
     await apply();
   } catch (error) {
+    // error-policy:J1 The test-harness boundary records schema setup failure for the mandatory readiness assertion.
     pgliteReady = false;
     console.error("[agent-billing-safety] real PGlite schema setup failed", error);
   }
@@ -150,22 +154,72 @@ describe("AgentBillingRepository billable-state authority", () => {
     expect(due.runningSandboxes.map((sandbox) => sandbox.id)).not.toContain(deletedId);
   });
 
+  test("the due-set admits only canonical user-owned container tiers", async () => {
+    const { organizationId, userId } = await seedOrganizationAndUser();
+    const dedicatedLazyId = await seedSandbox(organizationId, userId, {
+      executionTier: "dedicated-lazy",
+    });
+    const dedicatedAlwaysId = await seedSandbox(organizationId, userId, {
+      executionTier: "dedicated-always",
+    });
+    const customId = await seedSandbox(organizationId, userId, { executionTier: "custom" });
+    const sharedId = await seedSandbox(organizationId, userId, { executionTier: "shared" });
+    const unknownId = await seedSandbox(organizationId, userId, {
+      executionTier: "future-container-tier",
+    });
+    const poolId = await seedSandbox(organizationId, userId, { poolStatus: "unclaimed" });
+
+    const due = await agentBillingRepository.listBillableSandboxes(
+      BILLING_NOW,
+      new Date("2026-08-20T11:00:00.000Z"),
+    );
+    const discoveredIds = due.runningSandboxes.map((sandbox) => sandbox.id);
+
+    expect(discoveredIds).toEqual(
+      expect.arrayContaining([dedicatedLazyId, dedicatedAlwaysId, customId]),
+    );
+    for (const id of [sharedId, unknownId, poolId]) {
+      expect(discoveredIds).not.toContain(id);
+    }
+  });
+
   test("hourly maintenance suspends every failed active clock but preserves exempt", async () => {
     const { organizationId, userId } = await seedOrganizationAndUser();
-    const activeId = await seedSandbox(organizationId, userId, { status: "error" });
+    const activeId = await seedSandbox(organizationId, userId, {
+      status: "error",
+      executionTier: "dedicated-always",
+    });
     const warningId = await seedSandbox(organizationId, userId, {
       status: "error",
       billingStatus: "warning",
+      executionTier: "dedicated-lazy",
     });
     const pendingId = await seedSandbox(organizationId, userId, {
       status: "error",
       billingStatus: "shutdown_pending",
+      executionTier: "custom",
     });
     const exemptId = await seedSandbox(organizationId, userId, {
       status: "error",
       billingStatus: "exempt",
     });
     const runningId = await seedSandbox(organizationId, userId);
+    const sharedId = await seedSandbox(organizationId, userId, {
+      status: "error",
+      executionTier: "shared",
+    });
+    const unknownId = await seedSandbox(organizationId, userId, {
+      status: "error",
+      executionTier: "future-container-tier",
+    });
+    const poolId = await seedSandbox(organizationId, userId, {
+      status: "error",
+      poolStatus: "unclaimed",
+    });
+    const deletedId = await seedSandbox(organizationId, userId, {
+      status: "error",
+      deletedAt: new Date("2026-08-20T11:00:00.000Z"),
+    });
 
     expect(await agentBillingRepository.suspendFailedSandboxBilling(BILLING_NOW)).toBe(3);
 
@@ -178,6 +232,13 @@ describe("AgentBillingRepository billable-state authority", () => {
     }
     expect((await row(exemptId)).billing_status).toBe("exempt");
     expect((await row(runningId)).billing_status).toBe("active");
+    for (const id of [sharedId, unknownId, poolId, deletedId]) {
+      expect(await row(id)).toMatchObject({
+        billing_status: "active",
+        shutdown_warning_sent_at: new Date("2026-08-20T10:30:00.000Z"),
+        scheduled_shutdown_at: new Date("2026-08-20T11:30:00.000Z"),
+      });
+    }
   });
 
   test("a soft delete after discovery loses the final debit claim", async () => {

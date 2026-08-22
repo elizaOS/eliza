@@ -366,7 +366,10 @@ export interface PromptJsonOptions {
 	/** Include location paths */
 	includeLocation?: boolean;
 
-	/** Maximum number of skills to include */
+	/**
+	 * @deprecated Ignored. Prompt metadata always includes every loaded skill;
+	 * callers must not turn this into a silent prefix.
+	 */
 	maxSkills?: number;
 }
 

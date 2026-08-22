@@ -1,4 +1,9 @@
-// Streams read-only PTY output into the cockpit session panel.
+/**
+ * Streams task-scoped PTY output into the Cockpit and switches between its
+ * readable and raw terminal renderers over the same authorized session.
+ */
+
+import { useAgentElement } from "@elizaos/ui/agent-surface";
 import type { CodingAgentSession } from "@elizaos/ui/api/client-types-cloud";
 import { Button } from "@elizaos/ui/components/ui/button";
 import { TerminalSquare } from "lucide-react";
@@ -46,6 +51,26 @@ export function CockpitTerminalPanel({
   const [mode, setMode] = useState<TerminalMode>("pretty");
   const sessionId = activeSessionId ?? "";
   const hasSession = sessionId.length > 0;
+  const { ref: prettyRef, agentProps: prettyAgentProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: "cockpit-terminal-view-pretty",
+      role: "tab",
+      label: "Show readable terminal",
+      group: "cockpit-terminal-view",
+      description: "Show buffered terminal output with line input controls",
+      status: mode === "pretty" ? "active" : "inactive",
+      onActivate: () => setMode("pretty"),
+    });
+  const { ref: cliRef, agentProps: cliAgentProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: "cockpit-terminal-view-cli",
+      role: "tab",
+      label: "Show raw terminal",
+      group: "cockpit-terminal-view",
+      description: "Show the raw xterm terminal surface",
+      status: mode === "cli" ? "active" : "inactive",
+      onActivate: () => setMode("cli"),
+    });
 
   return (
     <div
@@ -63,6 +88,7 @@ export function CockpitTerminalPanel({
           className="inline-flex items-center gap-0.5 rounded-md border border-border/60 bg-black/30 p-0.5"
         >
           <Button
+            ref={prettyRef}
             type="button"
             size="sm"
             variant={mode === "pretty" ? "default" : "ghost"}
@@ -71,10 +97,12 @@ export function CockpitTerminalPanel({
             aria-pressed={mode === "pretty"}
             data-testid="cockpit-term-toggle-pretty"
             onClick={() => setMode("pretty")}
+            {...prettyAgentProps}
           >
             Pretty
           </Button>
           <Button
+            ref={cliRef}
             type="button"
             size="sm"
             variant={mode === "cli" ? "default" : "ghost"}
@@ -83,6 +111,7 @@ export function CockpitTerminalPanel({
             aria-pressed={mode === "cli"}
             data-testid="cockpit-term-toggle-cli"
             onClick={() => setMode("cli")}
+            {...cliAgentProps}
           >
             CLI
           </Button>
@@ -106,7 +135,7 @@ export function CockpitTerminalPanel({
             variant="full"
             activeSessionId={sessionId}
             sessions={sessions}
-            onClose={onClose ?? noop}
+            onClose={onClose}
           />
         ) : (
           <div data-testid="cockpit-term-cli" className="h-full w-full">
@@ -116,8 +145,4 @@ export function CockpitTerminalPanel({
       </div>
     </div>
   );
-}
-
-function noop(): void {
-  // No-op default close handler when the host does not supply one.
 }

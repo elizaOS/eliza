@@ -26,6 +26,13 @@ export interface MessageProcessingOptions {
 	maxRetries?: number;
 	useMultiStep?: boolean;
 	maxMultiStepIterations?: number;
+	/**
+	 * Run this trusted host turn as a focused coding-agent loop. Coding turns
+	 * enter the planner directly instead of spending a separate model call on
+	 * conversational Stage 1 routing. This is a per-turn execution choice, not
+	 * an authorization signal; normal role and action gates still apply.
+	 */
+	codingMode?: boolean;
 	shouldRespondModel?: ShouldRespondModelType;
 	onStreamChunk?: StreamChunkCallback;
 	/**
@@ -69,10 +76,27 @@ export interface MessageProcessingOptions {
 /**
  * Result of message processing
  */
+export interface MessageTerminalFailure {
+	/** Stable machine-readable category for adapters and orchestration hosts. */
+	kind: string;
+	/** Action boundary code when the failing tool supplied typed provenance. */
+	code?: string;
+	/** Whether retrying the same turn without user intervention may succeed. */
+	transient: boolean;
+	/** Complete user-facing explanation of why the turn did not complete. */
+	message: string;
+}
+
 export interface MessageProcessingResult {
 	didRespond: boolean;
 	responseContent?: Content | null;
 	responseMessages: Memory[];
+	/**
+	 * Terminal failure independent of response delivery. Callback-delivered or
+	 * deduplicated text may leave `responseContent` null, but callers still need
+	 * an authoritative non-success result.
+	 */
+	terminalFailure?: MessageTerminalFailure;
 	/**
 	 * The returned delivery belongs to a live message-service run whose detached
 	 * task barrier will emit `RUN_ENDED`. Hosts must preserve this capability on

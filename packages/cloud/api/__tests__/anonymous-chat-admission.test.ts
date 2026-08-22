@@ -333,4 +333,119 @@ describe("anonymous chat admission client", () => {
     expect(aborts).toBe(2);
     expect(elapsedMs).toBeLessThan(2_500);
   });
+
+  test("preserves only matching positive hourly retry advice", async () => {
+    const gate = new AnonymousChatGate(
+      { storage: new TestStorage() } as unknown as DurableObjectState,
+      {} as never,
+    );
+    const credential = {
+      sessionToken: "secret-session-token",
+      context: {
+        sessionId: "session-a",
+        userId: "user-a",
+        messageCount: 10,
+        messagesLimit: 20,
+      },
+    };
+    const executionCtx = { waitUntil() {} };
+    const reserveWith = (response: Response) =>
+      runWithCloudBindingsAsync(
+        createBindings(gate, async () => response),
+        () =>
+          reserveAnonymousChatSlot(
+            credential,
+            "request-hourly-limited",
+            executionCtx,
+          ),
+      );
+
+    await expect(
+      reserveWith(
+        Response.json(
+          {
+            admitted: false,
+            reason: "hourly_limit",
+            remaining: 0,
+            limit: 10,
+            retryAfter: 17,
+          },
+          { status: 429, headers: { "Retry-After": "17" } },
+        ),
+      ),
+    ).resolves.toEqual({
+      kind: "limited",
+      reason: "hourly_limit",
+      remaining: 0,
+      limit: 10,
+      retryAfter: 17,
+    });
+
+    for (const [bodyRetryAfter, headerRetryAfter] of [
+      [17, "18"],
+      [0, "0"],
+      [1.5, "1.5"],
+      [17, "017"],
+    ] as const) {
+      await expect(
+        reserveWith(
+          Response.json(
+            {
+              admitted: false,
+              reason: "hourly_limit",
+              remaining: 0,
+              limit: 10,
+              retryAfter: bodyRetryAfter,
+            },
+            { status: 429, headers: { "Retry-After": headerRetryAfter } },
+          ),
+        ),
+      ).resolves.toEqual({ kind: "unavailable" });
+    }
+
+    for (const response of [
+      Response.json(
+        {
+          admitted: false,
+          reason: "hourly_limit",
+          remaining: 0,
+          limit: 10,
+          retryAfter: 17,
+        },
+        { status: 429 },
+      ),
+      Response.json(
+        {
+          admitted: false,
+          reason: "hourly_limit",
+          remaining: 0,
+          limit: 10,
+        },
+        { status: 429, headers: { "Retry-After": "17" } },
+      ),
+    ]) {
+      await expect(reserveWith(response)).resolves.toEqual({
+        kind: "unavailable",
+      });
+    }
+
+    await expect(
+      reserveWith(
+        Response.json(
+          {
+            admitted: false,
+            reason: "message_limit",
+            remaining: 0,
+            limit: 10,
+          },
+          { status: 429 },
+        ),
+      ),
+    ).resolves.toEqual({
+      kind: "limited",
+      reason: "message_limit",
+      remaining: 0,
+      limit: 10,
+    });
+  });
 });

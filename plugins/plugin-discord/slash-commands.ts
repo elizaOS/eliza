@@ -190,16 +190,22 @@ const searchCommand: SlashCommand = {
 
 			const results = filteredMemories.slice(0, limit).map((memory, index) => {
 				const text = memory.content?.text || "(no text)";
-				const truncated = text.length > 120 ? `${text.slice(0, 120)}...` : text;
 				const date = memory.createdAt
 					? new Date(memory.createdAt).toLocaleDateString()
 					: "unknown date";
-				return `**${index + 1}.** ${truncated}\n_${date}_`;
+				return `**${index + 1}.** ${text}\n_${date}_`;
 			});
 
-			await interaction.editReply({
-				content: `**Search results for "${query}"**\n\n${results.join("\n\n")}`,
-			});
+			const response = `**Search results for "${query}"**\n\n${results.join("\n\n")}`;
+			const chunks = chunkDiscordText(response);
+			const firstChunk = chunks[0];
+			if (!firstChunk) {
+				throw new Error("Discord search chunking produced no content.");
+			}
+			await interaction.editReply({ content: firstChunk });
+			for (const chunk of chunks.slice(1)) {
+				await interaction.followUp({ content: chunk, ephemeral: true });
+			}
 		} catch (error) {
 			await interaction.editReply({
 				content: `Search failed: ${error instanceof Error ? error.message : String(error)}`,
@@ -816,9 +822,15 @@ const askCommand: SlashCommand = {
 		// deferred reply, the rest follow up in the same thread. Buttons ride
 		// the LAST message so they sit directly under the end of the answer.
 		const chunks = chunkDiscordText(cleanedAnswer);
+		const firstChunk = chunks[0];
+		if (!firstChunk) {
+			throw new Error(
+				"Discord reply chunking produced no content for a non-empty answer.",
+			);
+		}
 		const lastIndex = Math.max(0, chunks.length - 1);
 		await interaction.editReply({
-			content: chunks[0] ?? cleanedAnswer.slice(0, 2000),
+			content: firstChunk,
 			...(components && lastIndex === 0 ? { components } : {}),
 		});
 		for (let i = 1; i < chunks.length; i++) {

@@ -89,7 +89,6 @@
     "@elizaos/plugin-phone": "workspace:*",
     "@elizaos/plugin-reminders": "workspace:*",
     "@elizaos/plugin-scheduling": "workspace:*",
-    "@elizaos/plugin-signal": "workspace:*",
     "@elizaos/plugin-telegram": "workspace:*",
     "@elizaos/plugin-whatsapp": "workspace:*",
     "@elizaos/plugin-x": "workspace:*",

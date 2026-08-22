@@ -22,7 +22,7 @@ import { Service } from "../types/service.js";
  * Routing strategy interface. Each strategy decides how to dispatch a
  * capability invocation: locally (via a remote-mode plugin running in the
  * host process) or remotely (via HTTPS to a capability-host container,
- * an e2b sandbox, or another paired user device).
+ * a cloud coding runner or another paired user device).
  *
  * Strategies are an internal implementation detail of
  * {@link RuntimeCapabilityService}; external callers only see the

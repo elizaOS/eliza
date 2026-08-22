@@ -30,7 +30,7 @@ import { createUniqueUuid } from "./entities";
 import { ElizaError } from "./errors.ts";
 import { logger } from "./logger";
 import type { IAgentRuntime, Memory, UUID, World } from "./types";
-import type { IdentityResolutionService } from "./types/identity";
+import type { PrincipalService } from "./types/identity";
 import {
 	MESSAGE_SOURCE_AGENT_GREETING,
 	MESSAGE_SOURCE_CLIENT_CHAT,
@@ -512,9 +512,7 @@ async function resolveIdentityOwnerBinding(
 	ownerIds: readonly UUID[],
 ): Promise<boolean | null> {
 	if (typeof runtime.getService !== "function") return null;
-	const service = runtime.getService<IdentityResolutionService>(
-		ServiceType.IDENTITY_RESOLUTION,
-	);
+	const service = runtime.getService<PrincipalService>(ServiceType.PRINCIPAL);
 	if (!service) return null;
 
 	try {
@@ -776,13 +774,11 @@ async function resolveExplicitGrantedRole(
 		return { role: directRole, source: "manual" };
 	}
 
-	const identityService =
+	const principalService =
 		typeof runtime.getService === "function"
-			? runtime.getService<IdentityResolutionService>(
-					ServiceType.IDENTITY_RESOLUTION,
-				)
+			? runtime.getService<PrincipalService>(ServiceType.PRINCIPAL)
 			: null;
-	if (identityService) return null;
+	if (principalService) return null;
 
 	const linkedIds = await getConfirmedLinkedEntityIds(runtime, entityId);
 	let bestRole: RoleName | null = null;

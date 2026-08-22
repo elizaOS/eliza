@@ -30,12 +30,17 @@ describe("desktop brand config", () => {
     const file = path.join(dir, "brand-config.json");
     fs.writeFileSync(
       file,
-      `${JSON.stringify({ appName: "Eliza", cloudOnly: true })}\n`,
+      `${JSON.stringify({
+        appName: "Eliza",
+        cloudOnly: true,
+        cloudApiBase: "https://api.eliza.app",
+      })}\n`,
     );
     process.env.ELIZA_BRAND_CONFIG_PATH = file;
     resetBrandConfigForTests();
 
     expect(getBrandConfig().cloudOnly).toBe(true);
+    expect(getBrandConfig().cloudApiBase).toBe("https://api.eliza.app");
   });
 
   it("does not let the shared eliza namespace default override a packaged brand file", () => {

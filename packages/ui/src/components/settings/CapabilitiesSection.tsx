@@ -79,11 +79,10 @@ type CapabilityRouterConnectResponse = {
   mode?:
     | "endpoint"
     | "cloud"
-    | "e2b"
     | "home-machine"
     | "mobile-companion"
     | "desktop-companion";
-  provider?: "e2b" | "home-machine" | "mobile-companion" | "desktop-companion";
+  provider?: "home-machine" | "mobile-companion" | "desktop-companion";
   agentId?: string;
   endpoint?: {
     id?: string;
@@ -113,7 +112,7 @@ export function CapabilitiesSection() {
   const [capabilityConnectMode, setCapabilityConnectMode] =
     useState<CapabilityConnectMode>("endpoint");
   const [capabilityEndpointProvider, setCapabilityEndpointProvider] = useState<
-    "direct" | "e2b" | "home-machine" | "mobile-companion" | "desktop-companion"
+    "direct" | "home-machine" | "mobile-companion" | "desktop-companion"
   >("direct");
   const [capabilityEndpointUrl, setCapabilityEndpointUrl] = useState("");
   const [capabilityEndpointId, setCapabilityEndpointId] = useState("");
@@ -554,12 +553,6 @@ export function CapabilitiesSection() {
                     value: "direct",
                     label: t("capabilities.provider.direct", {
                       defaultValue: "Direct endpoint",
-                    }),
-                  },
-                  {
-                    value: "e2b",
-                    label: t("capabilities.provider.e2b", {
-                      defaultValue: "E2B sandbox",
                     }),
                   },
                   {

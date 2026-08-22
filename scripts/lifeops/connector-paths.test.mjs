@@ -2,8 +2,7 @@
  * Unit tests for the connector auth-path registry: structural invariants of
  * the shipped CONNECTOR_PATHS, owner/agent slot naming against the repo's two
  * conventions, and the declarative availability evaluator driven through a
- * fully injected machine context (no real fs/PATH/exec needed to simulate
- * machine states like "signal-cli installed but unregistered").
+ * fully injected machine context (no real fs/PATH/exec needed).
  */
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -216,7 +215,6 @@ test("every required family is present with multiple-path families intact", () =
     "telegram",
     "discord",
     "slack",
-    "signal",
     "whatsapp",
     "imessage",
     "x",
@@ -229,7 +227,6 @@ test("every required family is present with multiple-path families intact", () =
   }
   assert.equal(getPathsForFamily("model").length, 3);
   assert.ok(getPathsForFamily("github").length >= 3);
-  assert.ok(getPathsForFamily("signal").length >= 2);
 });
 
 test("kinds are constrained to the declared vocabulary", () => {
@@ -464,85 +461,25 @@ test("any-of aggregates all branch reasons; all-of reports the first failure", (
   assert.deepEqual(allOf, { available: false, reason: "blocker" });
 });
 
-test("signal.cli scenario: installed-but-unrunnable CLI skips distinctly", () => {
-  const spec = byId("signal.cli").availability;
-  // This machine's GROUND state: signal-cli in PATH, no data dir, no REST URL.
-  const broken = checkAvailability(
-    spec,
-    fakeCtx({ commandInPath: (command) => command === "signal-cli" }),
-  );
-  assert.equal(broken.available, false);
-  assert.match(broken.reason, /installed but not runnable/);
-  // REST bridge configured -> available regardless of the local CLI.
-  const viaRest = checkAvailability(
-    spec,
-    fakeCtx({ env: { SIGNAL_HTTP_URL: "http://x" } }),
-  );
-  assert.equal(viaRest.available, true);
-  // CLI in PATH plus a successful read-only account listing -> available.
-  const registered = checkAvailability(
-    spec,
-    fakeCtx({
-      commandInPath: (command) => command === "signal-cli",
-      runCommand: (_command, args) => ({
-        ok: args[0] === "--version" || args[0] === "listAccounts",
-        stdout:
-          args[0] === "listAccounts"
-            ? "Number: +15551234567\n"
-            : "signal-cli 0.13\n",
-      }),
-    }),
-  );
-  assert.equal(registered.available, true);
-});
-
-test("Signal Desktop and signal-cli unavailability shapes stay distinct", () => {
-  const desktop = byId("signal.desktop-bridge").availability;
-  const absent = checkAvailability(desktop, fakeCtx());
-  assert.equal(absent.available, false);
-  assert.equal(absent.reason, "Signal Desktop not installed");
-  const noProfile = checkAvailability(
-    desktop,
-    fakeCtx({ existsSync: (path) => path === "/Applications/Signal.app" }),
-  );
-  assert.equal(noProfile.available, false);
-  assert.equal(noProfile.reason, "no Signal Desktop profile directory");
-
-  const cli = byId("signal.cli").availability;
-  const noBinary = checkAvailability(cli, fakeCtx());
-  assert.match(noBinary.reason, /signal-cli not in PATH/);
-  const noAccount = checkAvailability(
-    cli,
-    fakeCtx({
-      commandInPath: () => true,
-      runCommand: (_command, args) => ({
-        ok: args[0] === "--version" || args[0] === "listAccounts",
-        stdout: args[0] === "listAccounts" ? "" : "signal-cli 0.13\n",
-      }),
-    }),
-  );
-  assert.match(noAccount.reason, /no linked Signal account/);
-});
-
 test("command-output-nonempty requires both success and actual stdout", () => {
   const spec = {
     type: "command-output-nonempty",
-    command: "signal-cli",
-    args: ["listAccounts"],
-    reason: "no linked account",
+    command: "fixture-helper",
+    args: ["list"],
+    reason: "no fixture rows",
   };
   assert.deepEqual(
     checkAvailability(
       spec,
       fakeCtx({ runCommand: () => ({ ok: true, stdout: "" }) }),
     ),
-    { available: false, reason: "no linked account" },
+    { available: false, reason: "no fixture rows" },
   );
   assert.deepEqual(
     checkAvailability(
       spec,
       fakeCtx({
-        runCommand: () => ({ ok: true, stdout: "Number: +15551234567\n" }),
+        runCommand: () => ({ ok: true, stdout: "fixture row\n" }),
       }),
     ),
     { available: true, reason: null },
@@ -553,7 +490,7 @@ test("command-output-nonempty requires both success and actual stdout", () => {
     checkAvailability(spec, fakeCtx({ runCommand: () => ({ ok: false }) })),
     {
       available: false,
-      reason: "signal-cli listAccounts failed (status=spawn-error)",
+      reason: "fixture-helper list failed (status=spawn-error)",
     },
   );
   assert.deepEqual(
@@ -571,7 +508,7 @@ test("command-output-nonempty requires both success and actual stdout", () => {
     {
       available: false,
       reason:
-        "signal-cli listAccounts failed (status=3): Config file is in use by another instance",
+        "fixture-helper list failed (status=3): Config file is in use by another instance",
     },
   );
   // An unknown filter name is a malformed spec — a bug, not a skip.
@@ -583,62 +520,6 @@ test("command-output-nonempty requires both success and actual stdout", () => {
       ),
     /Unknown command-output filter: "telepathy"/,
   );
-});
-
-test("signal.cli scenario: warning-only listAccounts stdout reads as no linked account", () => {
-  const spec = byId("signal.cli").availability;
-  const signalCtx = (listAccountsStdout) =>
-    fakeCtx({
-      commandInPath: (command) => command === "signal-cli",
-      runCommand: (_command, args) => ({
-        ok: true,
-        stdout:
-          args[0] === "listAccounts" ? listAccountsStdout : "signal-cli 0.13\n",
-      }),
-    });
-  // signal-cli builds that emit warnings to stdout with zero linked accounts
-  // must skip exactly like an empty listing — probeSignal already rejects
-  // this shape, and the coarse availability leaf shares its parser.
-  const warningOnly = checkAvailability(
-    spec,
-    signalCtx("WARN no account configured\n"),
-  );
-  assert.equal(warningOnly.available, false);
-  assert.match(warningOnly.reason, /no linked Signal account/);
-  // Warnings interleaved with a real account line still count as linked.
-  const mixed = checkAvailability(
-    spec,
-    signalCtx("WARN storage version is newer\nNumber: +15551234567\n"),
-  );
-  assert.deepEqual(mixed, { available: true, reason: null });
-  // A u:username account handle counts the same as an E.164 number.
-  const username = checkAvailability(spec, signalCtx("u:agent.01\n"));
-  assert.deepEqual(username, { available: true, reason: null });
-});
-
-test("signal.cli scenario: listAccounts crash after --version reports the run failure", () => {
-  const spec = byId("signal.cli").availability;
-  const crashed = checkAvailability(
-    spec,
-    fakeCtx({
-      commandInPath: (command) => command === "signal-cli",
-      runCommand: (_command, args) =>
-        args[0] === "listAccounts"
-          ? {
-              ok: false,
-              status: 1,
-              stdout: "",
-              stderr: "Config file is in use by another instance",
-            }
-          : { ok: true, stdout: "signal-cli 0.13\n" },
-    }),
-  );
-  assert.equal(crashed.available, false);
-  // Locked account storage is a run failure, not evidence of a missing
-  // account — the dashboard reason must carry the exit code and stderr.
-  assert.match(crashed.reason, /signal-cli listAccounts failed \(status=1\)/);
-  assert.match(crashed.reason, /Config file is in use/);
-  assert.doesNotMatch(crashed.reason, /no linked Signal account/);
 });
 
 test("oauth-app-dependent rows skip with an explanatory reason until an app is configured", () => {
@@ -711,7 +592,7 @@ test("discord user OAuth is a one-click loopback flow gated on owner setup", () 
 test("evaluateConnectorPaths emits env names and reasons, never env values", () => {
   const secret = "sk-super-secret-value-1234";
   const rows = evaluateConnectorPaths(
-    fakeCtx({ env: { OPENAI_API_KEY: secret, SIGNAL_HTTP_URL: secret } }),
+    fakeCtx({ env: { OPENAI_API_KEY: secret } }),
   );
   assert.equal(rows.length, CONNECTOR_PATHS.length);
   const serialized = JSON.stringify(rows);

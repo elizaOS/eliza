@@ -35,6 +35,24 @@ export type SwitchRuntimeResult =
         | "untrusted-remote";
     };
 
+function hasValidNativeRemoteBinding(profile: AgentProfile): boolean {
+  if (profile.connectionMode === "relay") {
+    return Boolean(
+      profile.remoteRelay &&
+        profile.apiBase ===
+          `eliza-remote://session/${profile.remoteRelay.sessionId}`,
+    );
+  }
+  if (profile.connectionMode === "ssh") {
+    return Boolean(
+      profile.ssh &&
+        profile.credentialRef === profile.id &&
+        profile.apiBase === `eliza-ssh://runtime/${profile.id}`,
+    );
+  }
+  return false;
+}
+
 /**
  * Switch the active runtime IN PLACE — the "My Runtimes" non-destructive switch.
  *
@@ -60,7 +78,12 @@ export function switchRuntimeNonDestructive(
 
   if (
     profile.kind === "remote" &&
-    !isTrustedRestoreApiBaseUrl(profile.apiBase)
+    !(
+      hasValidNativeRemoteBinding(profile) ||
+      (profile.connectionMode !== "relay" &&
+        profile.connectionMode !== "ssh" &&
+        isTrustedRestoreApiBaseUrl(profile.apiBase))
+    )
   ) {
     return { ok: false, reason: "untrusted-remote" };
   }

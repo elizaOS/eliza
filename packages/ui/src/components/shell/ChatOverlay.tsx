@@ -6119,7 +6119,7 @@ export function ChatOverlay({
                 {transcriptionComposerActive ? (
                   <div
                     data-testid="chat-transcribing-badge"
-                    className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 whitespace-nowrap rounded-full bg-white/10 px-2.5 py-0.5 text-[11px] font-medium text-white/75"
+                    className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 whitespace-nowrap rounded-full bg-white/10 px-2.5 py-0.5 text-xs-tight font-medium text-white/75"
                   >
                     {transcriptionFinishing
                       ? "Finishing transcription…"

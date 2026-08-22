@@ -163,9 +163,15 @@ export function resolveNextRelativeScheduleInstant(args: {
 
   if (anchorMs !== null) {
     const targetMs = anchorMs + offsetMinutes * 60_000;
+    // Weekday restrictions apply to the anchor's local day (the sleep-day the
+    // occurrence belongs to), not the offsetted fire instant. A negative
+    // offset (relative_to_bedtime / during_night) can push the fire instant
+    // across local midnight onto the previous weekday; gating on `targetMs`
+    // there fires on a day the owner did not request or silently drops a day
+    // they did. This mirrors the anchor-day rule in `nextProjectedLocalInstant`.
     if (
       targetMs > cursorMs &&
-      weekdayMatches(targetMs, state.timezone, args.schedule.onDays)
+      weekdayMatches(anchorMs, state.timezone, args.schedule.onDays)
     ) {
       return new Date(targetMs).toISOString();
     }

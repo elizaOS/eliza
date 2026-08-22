@@ -159,6 +159,42 @@ function retryableWarmingResponse(c: AppContext, area: string): Response {
   );
 }
 
+type AnonymousLimitResponse =
+  | {
+      reason: "message_limit";
+      remaining: number;
+      limit: number;
+    }
+  | {
+      reason: "hourly_limit";
+      remaining: number;
+      limit: number;
+      retryAfter: number;
+    };
+
+function anonymousLimitResponse(
+  c: AppContext,
+  limitResult: AnonymousLimitResponse,
+): Response {
+  const error =
+    limitResult.reason === "message_limit"
+      ? `You've reached your free message limit (${limitResult.limit} messages). Sign up to continue chatting!`
+      : "You've reached the hourly rate limit. Please wait an hour or sign up for unlimited access.";
+  const body = {
+    error,
+    requiresSignup: true,
+    reason: limitResult.reason,
+    limit: limitResult.limit,
+    remaining: limitResult.remaining,
+  };
+  if (limitResult.reason === "hourly_limit") {
+    return c.json(body, 429, {
+      "Retry-After": String(limitResult.retryAfter),
+    });
+  }
+  return c.json(body, 429);
+}
+
 const app = new Hono<AppEnv>();
 
 app.post("/", async (c) => {
@@ -471,20 +507,7 @@ app.post("/", async (c) => {
           );
         }
         if (leaseResolution.kind === "limited") {
-          const error =
-            leaseResolution.reason === "message_limit"
-              ? `You've reached your free message limit (${leaseResolution.limit} messages). Sign up to continue chatting!`
-              : "You've reached the hourly rate limit. Please wait an hour or sign up for unlimited access.";
-          return c.json(
-            {
-              error,
-              requiresSignup: true,
-              reason: leaseResolution.reason,
-              limit: leaseResolution.limit,
-              remaining: leaseResolution.remaining,
-            },
-            429,
-          );
+          return anonymousLimitResponse(c, leaseResolution);
         }
 
         const lease: AnonymousChatGateLease = leaseResolution.lease;
@@ -516,20 +539,7 @@ app.post("/", async (c) => {
           anonymousSession.session_token,
         );
         if (!limitCheck.allowed) {
-          const error =
-            limitCheck.reason === "message_limit"
-              ? `You've reached your free message limit (${limitCheck.limit} messages). Sign up to continue chatting!`
-              : "You've reached the hourly rate limit. Please wait an hour or sign up for unlimited access.";
-          return c.json(
-            {
-              error,
-              requiresSignup: true,
-              reason: limitCheck.reason,
-              limit: limitCheck.limit,
-              remaining: limitCheck.remaining,
-            },
-            429,
-          );
+          return anonymousLimitResponse(c, limitCheck);
         }
         let refunded = false;
         refundAnonymousMessageSlot = async () => {

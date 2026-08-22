@@ -196,6 +196,11 @@ export function createDeterministicModelFixtureRegistry(
 			return resolveRegisteredFixture(entries, calls, unexpectedCalls, call);
 		},
 		assertConsumed(): void {
+			if (unexpectedCalls.length > 0) {
+				throw new Error(
+					`deterministic model calls were unexpected: ${JSON.stringify(unexpectedCalls)}`,
+				);
+			}
 			const unused = entries.filter(
 				(fixture) => fixture.consumed < fixture.min,
 			);
@@ -345,6 +350,8 @@ function resolveRegisteredFixture(
 	const fixture = matching[0];
 	const rawResponse = resolveFixtureResponse(fixture, call);
 	if (rawResponse === null || rawResponse === undefined) {
+		diagnostic.matchedFixtureName = fixture.name;
+		diagnostic.matchingReason = "matched fixture did not return a response";
 		unexpectedCalls.push(diagnostic);
 		throw new Error(
 			`deterministic model fixture "${fixture.name}" did not return a response`,

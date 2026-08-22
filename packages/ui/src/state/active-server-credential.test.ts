@@ -39,6 +39,21 @@ describe("persistActiveServerCredential", () => {
     expect(getActiveProfile()?.accessToken).toBe("session-token");
   });
 
+  it("persists a directly booted remote target before pairing reloads", async () => {
+    await persistActiveServerCredential(
+      "paired-token",
+      "https://runtime.example.test/",
+    );
+
+    expect(loadPersistedActiveServer()).toEqual({
+      id: "remote:https://runtime.example.test",
+      kind: "remote",
+      label: "runtime.example.test",
+      apiBase: "https://runtime.example.test",
+      accessToken: "paired-token",
+    });
+  });
+
   it("scrubs a rejected active credential without dropping the target", async () => {
     savePersistedActiveServer(
       createPersistedActiveServer({

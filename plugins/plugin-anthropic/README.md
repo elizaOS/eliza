@@ -81,9 +81,9 @@ const { title, description } = await runtime.useModel(ModelType.IMAGE_DESCRIPTIO
 | `ANTHROPIC_REASONING_LARGE_MODEL` | No | (large fallback) | Model for TEXT_REASONING_LARGE |
 | `ANTHROPIC_BASE_URL` | No | `https://api.anthropic.com/v1` | API base URL override |
 | `ANTHROPIC_BROWSER_BASE_URL` | No | — | Proxy URL for browser builds |
-| `ANTHROPIC_COT_BUDGET` | No | `0` | Chain-of-thought token budget (0 = disabled) |
-| `ANTHROPIC_COT_BUDGET_SMALL` | No | — | CoT budget for small-size models |
-| `ANTHROPIC_COT_BUDGET_LARGE` | No | — | CoT budget for large-size models |
+| `ANTHROPIC_COT_BUDGET` | No | `0` | Exact non-negative safe decimal integer (`0` disables); invalid explicit values fail before dispatch |
+| `ANTHROPIC_COT_BUDGET_SMALL` | No | — | Exact non-negative safe decimal integer for small-size models |
+| `ANTHROPIC_COT_BUDGET_LARGE` | No | — | Exact non-negative safe decimal integer for large-size models |
 | `ANTHROPIC_PROMPT_CACHE_TTL` | No | `5m` | Prompt cache TTL: `"5m"` or `"1h"` |
 | `ANTHROPIC_EXPERIMENTAL_TELEMETRY` | No | `false` | Enable Vercel AI SDK telemetry |
 

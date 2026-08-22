@@ -8,6 +8,7 @@
  * the runtime; batch APIs reduce DB round-trips. Safe to use from both Node and edge entry points.
  */
 
+import { logger } from "./logger";
 import type { Entity, JsonValue, Metadata, Room, UUID, World } from "./types";
 import { ChannelType } from "./types";
 import type { IDatabaseAdapter } from "./types/database";
@@ -68,6 +69,116 @@ function mergeEntitySourceMetadata(
 		}
 	}
 	return merged as Metadata;
+}
+
+/**
+ * Serializes the read-merge-write cycles that reconcile one entity or world
+ * within this process and for one adapter instance.
+ *
+ * The merges above exist because a connection contributes fields without owning
+ * the record — but they read with `getEntitiesByIds`/`getWorldsByIds`, merge,
+ * and write back with `upsertEntities`/`upsertWorlds`, and the adapter write is
+ * a whole-column replace with no transaction or optimistic-concurrency check.
+ * Two reconciliations that overlap on one record therefore merge against the
+ * same pre-write snapshot, and the later write silently discards whatever the
+ * earlier one contributed. The runtime serializes handler work per room, so two
+ * rooms that share an entity or a world overlap freely.
+ *
+ * This is not durable cross-process serialization: hosts or workers using
+ * separate adapter instances can still race on the same database record. That
+ * requires an adapter-level atomic merge or conditional update.
+ */
+const RECORD_RECONCILIATION_WARN_MS = 30_000;
+const recordReconciliationsByAdapter = new WeakMap<
+	IDatabaseAdapter,
+	Map<string, Promise<void>>
+>();
+
+function getRecordReconciliations(
+	adapter: IDatabaseAdapter,
+): Map<string, Promise<void>> {
+	const existing = recordReconciliationsByAdapter.get(adapter);
+	if (existing) return existing;
+	const registry = new Map<string, Promise<void>>();
+	recordReconciliationsByAdapter.set(adapter, registry);
+	return registry;
+}
+
+/** Exposes per-adapter registry size for lifecycle regression tests. */
+export function __getConnectionReconciliationRegistrySizeForTests(
+	adapter: IDatabaseAdapter,
+): number {
+	return recordReconciliationsByAdapter.get(adapter)?.size ?? 0;
+}
+
+function withRecordLock<T>(
+	adapter: IDatabaseAdapter,
+	key: string,
+	run: () => Promise<T>,
+): Promise<T> {
+	const recordReconciliations = getRecordReconciliations(adapter);
+	const predecessor = recordReconciliations.get(key) ?? Promise.resolve();
+	const operation = predecessor.then(async () => {
+		// This timer is diagnostic only. Releasing the lock on a deadline would let
+		// a successor write while the uncancellable adapter write can still finish,
+		// recreating the lost update this registry prevents.
+		const warningTimer = setTimeout(() => {
+			logger.warn(
+				{
+					key,
+					src: "core:connection",
+					thresholdMs: RECORD_RECONCILIATION_WARN_MS,
+				},
+				"Connection reconciliation lock is still held",
+			);
+		}, RECORD_RECONCILIATION_WARN_MS);
+		(
+			warningTimer as unknown as {
+				unref?: () => void;
+			}
+		).unref?.();
+		try {
+			return await run();
+		} finally {
+			clearTimeout(warningTimer);
+		}
+	});
+	const tail = operation.then(
+		() => undefined,
+		() => undefined,
+	);
+	recordReconciliations.set(key, tail);
+	// A late tail retires only its own entry: a newer reconciliation may already
+	// have installed its replacement, and deleting that would unserialize the
+	// writers this map exists to order — and leak the key when it does not.
+	void tail.then(() => {
+		if (recordReconciliations.get(key) === tail) {
+			recordReconciliations.delete(key);
+			if (recordReconciliations.size === 0) {
+				recordReconciliationsByAdapter.delete(adapter);
+			}
+		}
+	});
+	return operation;
+}
+
+/**
+ * Hold every named record for the duration of `run`. Keys are acquired in a
+ * stable sorted order so two batches with overlapping records can never take
+ * them in opposite orders.
+ */
+function withRecordLocks<T>(
+	adapter: IDatabaseAdapter,
+	keys: string[],
+	run: () => Promise<T>,
+): Promise<T> {
+	const ordered = [...new Set(keys)].sort();
+	const acquire = (index: number): Promise<T> => {
+		const key = ordered[index];
+		if (key === undefined) return run();
+		return withRecordLock(adapter, key, () => acquire(index + 1));
+	};
+	return acquire(0);
 }
 
 /** WHY: World is required for room hierarchy; derive a stable worldId from messageServerId when not provided. */
@@ -184,54 +295,71 @@ export async function ensureConnections(
 	}
 
 	const entityIds = [...entityMap.keys()];
-	const existingEntities =
-		entityIds.length > 0
-			? await adapter.getEntitiesByIds(entityIds as UUID[])
-			: [];
-	const existingByKey = new Map(existingEntities.map((e) => [e.id, e]));
-	const entities: Entity[] = [];
-	for (const [, v] of entityMap) {
-		const existing = existingByKey.get(v.entityId) ?? null;
-		const names = existing
-			? [...new Set([...(existing.names || []), ...v.names])].filter(Boolean)
-			: v.names;
-		const metadata = existing
-			? mergeEntitySourceMetadata(
-					(existing.metadata ?? {}) as Metadata,
-					v.metadata,
-				)
-			: (v.metadata as Metadata);
-		entities.push({
-			id: v.entityId,
-			names,
-			metadata,
-			agentId: v.agentId,
-		});
-	}
-	if (entities.length) await adapter.upsertEntities(entities);
+	// The read, the merge and the write are one cycle per record: a concurrent
+	// reconciliation that reads the same pre-write snapshot would otherwise
+	// overwrite this one's contribution wholesale.
+	await withRecordLocks(
+		adapter,
+		entityIds.map((id) => `entity:${id}`),
+		async () => {
+			const existingEntities =
+				entityIds.length > 0
+					? await adapter.getEntitiesByIds(entityIds as UUID[])
+					: [];
+			const existingByKey = new Map(existingEntities.map((e) => [e.id, e]));
+			const entities: Entity[] = [];
+			for (const [, v] of entityMap) {
+				const existing = existingByKey.get(v.entityId) ?? null;
+				const names = existing
+					? [...new Set([...(existing.names || []), ...v.names])].filter(
+							Boolean,
+						)
+					: v.names;
+				const metadata = existing
+					? mergeEntitySourceMetadata(
+							(existing.metadata ?? {}) as Metadata,
+							v.metadata,
+						)
+					: (v.metadata as Metadata);
+				entities.push({
+					id: v.entityId,
+					names,
+					metadata,
+					agentId: v.agentId,
+				});
+			}
+			if (entities.length) await adapter.upsertEntities(entities);
+		},
+	);
 
 	const worldIds = [...worldMap.keys()] as UUID[];
-	const existingWorlds =
-		worldIds.length > 0 ? await adapter.getWorldsByIds(worldIds) : [];
-	const existingWorldsById = new Map(
-		existingWorlds.map((world) => [world.id, world]),
+	await withRecordLocks(
+		adapter,
+		worldIds.map((id) => `world:${id}`),
+		async () => {
+			const existingWorlds =
+				worldIds.length > 0 ? await adapter.getWorldsByIds(worldIds) : [];
+			const existingWorldsById = new Map(
+				existingWorlds.map((world) => [world.id, world]),
+			);
+			const worlds = [...worldMap.values()].map((world) => {
+				const existing = existingWorldsById.get(world.id);
+				return {
+					...existing,
+					...world,
+					agentId,
+					// Connection establishment contributes metadata; it does not own the
+					// full world document. Replacing this object erases durable role grants
+					// every time another participant connects to the shared world.
+					metadata: {
+						...(existing?.metadata ?? {}),
+						...(world.metadata ?? {}),
+					},
+				};
+			});
+			if (worlds.length) await adapter.upsertWorlds(worlds);
+		},
 	);
-	const worlds = [...worldMap.values()].map((world) => {
-		const existing = existingWorldsById.get(world.id);
-		return {
-			...existing,
-			...world,
-			agentId,
-			// Connection establishment contributes metadata; it does not own the
-			// full world document. Replacing this object erases durable role grants
-			// every time another participant connects to the shared world.
-			metadata: {
-				...(existing?.metadata ?? {}),
-				...(world.metadata ?? {}),
-			},
-		};
-	});
-	if (worlds.length) await adapter.upsertWorlds(worlds);
 
 	const rooms = [...roomMap.values()].map((r) => ({
 		...r,

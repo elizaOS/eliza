@@ -242,6 +242,18 @@ describe("delegation contract repository", () => {
       "Handle the vendor renewal thread",
     );
 
+    const completeText = renderDelegationContractsProviderText(
+      Array.from({ length: 8 }, (_, index) => ({
+        ...rows[0],
+        contractId: `delegation:vendor-thread-${index + 1}`,
+        objective: `Vendor objective ${index + 1}`,
+      })),
+    );
+    for (let index = 1; index <= 8; index += 1) {
+      expect(completeText).toContain(`Vendor objective ${index}`);
+    }
+    expect(completeText).not.toContain("more active delegation contracts");
+
     const evaluated = evaluateDelegationContract({
       contract: rows[0],
       nowIso: "2026-07-06T16:45:00.000Z",

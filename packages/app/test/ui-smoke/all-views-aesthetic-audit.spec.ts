@@ -1574,7 +1574,7 @@ test.describe("all-views aesthetic audit (#8796)", () => {
     await page.setContent(`
       <main>
         <section data-view-lifecycle-slot="cached-apps" data-view-hidden="true">
-          <h1>My Apps</h1>
+          <h1>Projects</h1>
           <p>Install, create, and run your elizaOS apps.</p>
         </section>
         <section data-view-lifecycle-slot="apps" data-view-hidden="false">Loading…</section>
@@ -1614,7 +1614,7 @@ test.describe("all-views aesthetic audit (#8796)", () => {
 
     await viewRoot.evaluate((root) => {
       root.innerHTML =
-        '<div style="position: relative; overflow: hidden; width: 100px; height: 1px"><div style="position: absolute; top: 20px"><h1>My Apps</h1><p>Install, create, and run your elizaOS apps.</p></div></div>';
+        '<div style="position: relative; overflow: hidden; width: 100px; height: 1px"><div style="position: absolute; top: 20px"><h1>Projects</h1><p>Install, create, and run your elizaOS apps.</p></div></div>';
     });
     await expect(
       readViewPaint(viewRoot, overlay, appsPolicy.expectation),

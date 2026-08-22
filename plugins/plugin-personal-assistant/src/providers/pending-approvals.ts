@@ -30,8 +30,6 @@ const EMPTY: ProviderResult = {
   data: { pendingApprovals: [] },
 };
 
-const APPROVALS_MAX_DISPLAYED = 5;
-const APPROVALS_QUERY_LIMIT = 20;
 export const PENDING_APPROVALS_UNAVAILABLE_TEXT = [
   "# Pending Approvals unavailable",
   "The approval queue could not be read for this turn. Do not say that nothing is pending and do not approve, reject, or dispatch a queued action from memory. Ask the owner to retry after the queue is available.",
@@ -52,12 +50,7 @@ export function renderPendingApprovalsText(
   requests: ReadonlyArray<ApprovalRequest>,
 ): string {
   if (requests.length === 0) return "";
-  const lines = requests
-    .slice(0, APPROVALS_MAX_DISPLAYED)
-    .map((request) => formatApprovalLine(request));
-  if (requests.length > APPROVALS_MAX_DISPLAYED) {
-    lines.push(`(+${requests.length - APPROVALS_MAX_DISPLAYED} more)`);
-  }
+  const lines = requests.map((request) => formatApprovalLine(request));
   return [
     "# Pending Approvals (queued actions awaiting the owner's decision)",
     ...lines,
@@ -125,7 +118,7 @@ export const pendingApprovalsProvider: Provider = {
         subjectUserId,
         state: "pending",
         action: null,
-        limit: APPROVALS_QUERY_LIMIT,
+        limit: null,
       });
     } catch (error) {
       // error-policy:J4 explicit user-facing degrade — a queue-read failure

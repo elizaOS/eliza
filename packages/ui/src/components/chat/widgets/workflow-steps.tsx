@@ -109,7 +109,7 @@ export const WorkflowSteps = memo(function WorkflowSteps({
       title={title}
       status={
         <span
-          className={`text-[11px] font-medium tabular-nums ${
+          className={`text-xs-tight font-medium tabular-nums ${
             failed ? "text-danger" : "text-muted"
           }`}
         >
@@ -162,12 +162,12 @@ export const WorkflowSteps = memo(function WorkflowSteps({
               <span className="text-xs font-medium text-txt">
                 {widget.title}
               </span>
-              <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[9px] uppercase text-primary">
+              <span className="rounded bg-primary/10 px-1.5 py-0.5 text-3xs uppercase tracking-wider text-primary">
                 {widget.component}
               </span>
             </div>
             {execution?.output !== undefined ? (
-              <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap text-[11px] text-muted">
+              <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap text-xs-tight text-muted">
                 {JSON.stringify(execution.output, null, 2)}
               </pre>
             ) : null}
