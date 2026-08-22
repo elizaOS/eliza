@@ -12,7 +12,10 @@
  * Uses the service's injected clock, so no timers and no real waiting.
  */
 import { describe, expect, it } from "vitest";
-import { createCredentialTunnelService } from "./credential-tunnel-service.ts";
+import {
+  CredentialScopeError,
+  createCredentialTunnelService,
+} from "./credential-tunnel-service.ts";
 
 const TTL_MS = 100;
 
@@ -48,6 +51,48 @@ describe("credential tunnel: abandoned scope retention", () => {
     // Nothing is left for a sweep to find: the 50 dead scopes were reclaimed
     // by that declare rather than being retained for the runtime's lifetime.
     expect(service.expireScopes()).toBe(0);
+  });
+
+  it("pins the public error codes for a scope removed by the declare-time sweep", () => {
+    const clock = { now: 1_000 };
+    const service = makeService(clock);
+    const expired = service.declareScope({
+      childSessionId: "pty-expired",
+      credentialKeys: ["OPENAI_API_KEY"],
+    });
+
+    clock.now += TTL_MS * 10;
+    service.declareScope({
+      childSessionId: "pty-next",
+      credentialKeys: ["OTHER_KEY"],
+    });
+
+    let retrieveError: unknown;
+    try {
+      service.retrieveCredential({
+        childSessionId: "pty-expired",
+        key: "OPENAI_API_KEY",
+        scopedToken: expired.scopedToken,
+      });
+    } catch (error) {
+      retrieveError = error;
+    }
+    expect(retrieveError).toBeInstanceOf(CredentialScopeError);
+    expect((retrieveError as CredentialScopeError).code).toBe("invalid_token");
+
+    let tunnelError: unknown;
+    try {
+      service.tunnelCredential({
+        childSessionId: "pty-expired",
+        credentialScopeId: expired.credentialScopeId,
+        key: "OPENAI_API_KEY",
+        value: "sk-too-late",
+      });
+    } catch (error) {
+      tunnelError = error;
+    }
+    expect(tunnelError).toBeInstanceOf(CredentialScopeError);
+    expect((tunnelError as CredentialScopeError).code).toBe("unknown_scope");
   });
 
   it("reclaims a scope whose child redeemed only some of its declared keys", () => {
