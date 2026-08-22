@@ -80,6 +80,11 @@ import { resolveDesktopStartupEmbeddingWarmupPolicy } from "./lib/desktop-startu
 import { resolveViteCommand } from "./lib/dev-ui-vite.mjs";
 import { signalSpawnedProcessTree } from "./lib/kill-process-tree.mjs";
 import { killUiListenPort } from "./lib/kill-ui-listen-port.mjs";
+import {
+  claimMacApplicationAtPath,
+  inspectMacApplicationsAtPath,
+  stopMacApplication,
+} from "./lib/macos-launch-services-lifecycle.mjs";
 import { resolveMacNativeEffectsDevPlan } from "./lib/macos-native-effects-dev.mjs";
 import { extendNodePathEnv } from "./lib/node-path-env.mjs";
 import { formatOrchestratorDesktopDevBanner } from "./lib/orchestrator-desktop-dev-banner.mjs";
@@ -649,6 +654,11 @@ async function warmApiRoutes(port) {
 const children = [];
 // Human names for shutdown logging; keyed weakly so tracking stays an array.
 const childNames = new WeakMap();
+// Exact path/PID/launch identity for the LaunchServices fallback we started.
+let launchServicesAppAuthority = null;
+// Shutdown awaits an in-flight claim so a signal cannot race the fallback
+// between `open` and ownership publication.
+let launchServicesOwnershipTask = Promise.resolve();
 // Same bounded window as dev-ui.mjs (#18435): covers the longest bounded
 // child-side teardown (Discord 10 s drain + 2 s reconcile) with margin.
 const SHUTDOWN_DRAIN_WINDOW_MS = resolveShutdownDrainWindowMs(process.env);
@@ -988,20 +998,14 @@ async function launch() {
       force: viteDepForce,
       port: uiDevPort,
     });
-    pushChild(
-      "vite",
-      viteCommand.command,
-      viteCommand.args,
-      appDir,
-      {
-        NODE_ENV: "development",
-        ELIZA_VITE_LOOPBACK_ORIGIN: "1",
-        ELIZA_PORT: String(uiDevPort),
-        ELIZA_UI_PORT: String(uiDevPort),
-        ELIZA_API_PORT: apiPort,
-        ELIZA_NAMESPACE: process.env.ELIZA_NAMESPACE ?? defaultElizaNamespace,
-      },
-    );
+    pushChild("vite", viteCommand.command, viteCommand.args, appDir, {
+      NODE_ENV: "development",
+      ELIZA_VITE_LOOPBACK_ORIGIN: "1",
+      ELIZA_PORT: String(uiDevPort),
+      ELIZA_UI_PORT: String(uiDevPort),
+      ELIZA_API_PORT: apiPort,
+      ELIZA_NAMESPACE: process.env.ELIZA_NAMESPACE ?? defaultElizaNamespace,
+    });
     await waitForPort(uiDevPort);
     console.log(`[eliza] Vite ready on ${rendererUrlForShell}\n`);
   }
@@ -1011,15 +1015,9 @@ async function launch() {
       appDir,
       viteArgs: ["build", "--watch"],
     });
-    pushChild(
-      "vite",
-      viteWatchCommand.command,
-      viteWatchCommand.args,
-      appDir,
-      {
-        ELIZA_DESKTOP_VITE_FAST_DIST: "1",
-      },
-    );
+    pushChild("vite", viteWatchCommand.command, viteWatchCommand.args, appDir, {
+      ELIZA_DESKTOP_VITE_FAST_DIST: "1",
+    });
   }
 
   const electrobunChild = pushChild(
@@ -1095,34 +1093,59 @@ async function launch() {
       }
     };
     const triggerOpen = (reason) => {
-      if (scheduledOpen) return;
+      if (shuttingDown || scheduledOpen) return;
       scheduledOpen = true;
-      const macAppPath = resolveDevMacAppPath();
-      if (!macAppPath) {
-        console.log(
-          "[eliza] LaunchServices auto-open skipped — no .app bundle found in dev build dir",
-        );
-        return;
-      }
-      try {
-        const opener = spawn("open", [macAppPath], {
-          stdio: "ignore",
-          detached: true,
-        });
-        opener.unref();
-        opener.on("error", (err) => {
+      launchServicesOwnershipTask = (async () => {
+        const macAppPath = resolveDevMacAppPath();
+        if (!macAppPath) {
           console.log(
-            `[eliza] LaunchServices auto-open failed: ${err.message}`,
+            "[eliza] LaunchServices auto-open skipped — no .app bundle found in dev build dir",
           );
-        });
-        console.log(
-          `[eliza] LaunchServices auto-open (${reason}): open ${path.basename(macAppPath)}`,
-        );
-      } catch (err) {
-        console.log(
-          `[eliza] LaunchServices auto-open threw: ${err instanceof Error ? err.message : String(err)}`,
-        );
-      }
+          return;
+        }
+        try {
+          const canonicalAppPath = realpathSync(macAppPath);
+          const baseline = await inspectMacApplicationsAtPath(canonicalAppPath);
+          if (!baseline.ok) {
+            console.log(
+              `[eliza] LaunchServices ownership preflight failed: ${baseline.error}`,
+            );
+            return;
+          }
+          // A shutdown that began during the preflight must not launch new work.
+          if (shuttingDown) return;
+          const opener = pushChild(
+            "launchservices-open",
+            "open",
+            ["-W", canonicalAppPath],
+            electrobunDir,
+          );
+          opener.on("error", (err) => {
+            console.log(
+              `[eliza] LaunchServices auto-open failed: ${err.message}`,
+            );
+          });
+          console.log(
+            `[eliza] LaunchServices auto-open (${reason}): open -W ${path.basename(macAppPath)}`,
+          );
+          const claimed = await claimMacApplicationAtPath(
+            canonicalAppPath,
+            baseline.applications,
+          );
+          if (claimed.ok) {
+            launchServicesAppAuthority = claimed.authority;
+          } else {
+            console.log(
+              `[eliza] LaunchServices ownership not claimed: ${claimed.error}`,
+            );
+          }
+        } catch (err) {
+          // error-policy:J1 Translate fallback launch failure at the dev-host boundary.
+          console.log(
+            `[eliza] LaunchServices auto-open threw: ${err instanceof Error ? err.message : String(err)}`,
+          );
+        }
+      })();
     };
 
     // Watch for the screenshot server port — if it comes up on its own, the
@@ -1133,7 +1156,7 @@ async function launch() {
     const fallbackDeadlineMs = 45000;
     const startedAt = Date.now();
     const checkAndFallback = async () => {
-      if (scheduledOpen) return;
+      if (shuttingDown || scheduledOpen) return;
       if (!electrobunChild || electrobunChild.exitCode != null) return;
       const port = screenshotPortStr ? Number(screenshotPortStr) : 0;
       if (port > 0) {
@@ -1160,7 +1183,7 @@ async function launch() {
         triggerOpen("fallback after 45s with no screenshot server");
         return;
       }
-      setTimeout(checkAndFallback, 3000);
+      if (!shuttingDown) setTimeout(checkAndFallback, 3000);
     };
     setTimeout(checkAndFallback, 8000);
   }
@@ -1192,18 +1215,39 @@ function shutdownDesktopDev({
   // the window is escalated (loudly, per child), and a bounded kill grace
   // keeps exit from racing the escalation. Already-exited children are
   // skipped inside the drain, preserving the no-stale-tree-signal behavior.
-  void drainSpawnedChildren({
-    children: children.map((child, index) => ({
-      name: childNames.get(child) ?? `child-${index + 1}`,
-      child,
-    })),
-    drainWindowMs: SHUTDOWN_DRAIN_WINDOW_MS,
-    signalTree: signalSpawnedProcessTree,
-    log: (line) => console.log(line),
-    warn: (line) => console.error(line),
-  }).then(() => {
-    process.exit(exitCode);
-  });
+  void launchServicesOwnershipTask
+    .then(async () => {
+      if (!launchServicesAppAuthority) return;
+      const result = await stopMacApplication(launchServicesAppAuthority);
+      for (const attempt of [result.graceful, result.forced]) {
+        if (!attempt.ok) {
+          console.error(
+            `[eliza] LaunchServices app shutdown failed: ${attempt.error}`,
+          );
+        }
+      }
+    })
+    .catch((error) => {
+      // error-policy:J6 Teardown failure is reported before child drain continues.
+      console.error(
+        `[eliza] LaunchServices app shutdown threw: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    })
+    .then(() =>
+      drainSpawnedChildren({
+        children: children.map((child, index) => ({
+          name: childNames.get(child) ?? `child-${index + 1}`,
+          child,
+        })),
+        drainWindowMs: SHUTDOWN_DRAIN_WINDOW_MS,
+        signalTree: signalSpawnedProcessTree,
+        log: (line) => console.log(line),
+        warn: (line) => console.error(line),
+      }),
+    )
+    .then(() => {
+      process.exit(exitCode);
+    });
 }
 
 function cleanup() {

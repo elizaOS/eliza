@@ -292,12 +292,29 @@ describe("dev-platform supervisor wiring", () => {
   );
 
   it("routes shutdownDesktopDev through the bounded drain", () => {
-    expect(devPlatformSource).toContain("void drainSpawnedChildren({");
+    expect(devPlatformSource).toContain("drainSpawnedChildren({");
     expect(devPlatformSource).toContain(
       "drainWindowMs: SHUTDOWN_DRAIN_WINDOW_MS,",
     );
     expect(devPlatformSource).toContain(
       "signalTree: signalSpawnedProcessTree,",
+    );
+  });
+
+  it("settles and stops the exact LaunchServices fallback before draining children", () => {
+    const shutdownSource = devPlatformSource.slice(
+      devPlatformSource.indexOf("function shutdownDesktopDev"),
+    );
+    expect(shutdownSource).toContain("void launchServicesOwnershipTask");
+    expect(shutdownSource).toContain(
+      "await stopMacApplication(launchServicesAppAuthority)",
+    );
+    expect(shutdownSource.indexOf("await stopMacApplication(")).toBeLessThan(
+      shutdownSource.indexOf("drainSpawnedChildren({"),
+    );
+    expect(devPlatformSource).toContain('["-W", canonicalAppPath]');
+    expect(devPlatformSource).not.toContain(
+      'const opener = spawn("open", [macAppPath]',
     );
   });
 
