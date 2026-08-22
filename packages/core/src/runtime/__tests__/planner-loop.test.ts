@@ -738,7 +738,7 @@ describe("v5 planner loop skeleton", () => {
 							{
 								id: "shell-1",
 								name: "SHELL",
-								arguments: { command: "test -s dice.html" },
+								arguments: { command: "bun test dice.test.ts" },
 							},
 						],
 					})
@@ -857,6 +857,92 @@ describe("v5 planner loop skeleton", () => {
 			).toHaveLength(1);
 		});
 	});
+
+	it.each([
+		"echo vitest",
+		"printf 'git diff --check'",
+		"test -f config.go",
+		"[ -f config.go ]",
+		"echo 'bun test packages/core'",
+		"npm exec echo test",
+		"printf 'safe && vitest'",
+	])(
+		"does not treat verifier-looking shell text as coding verification: %s",
+		async (spoofCommand) => {
+			await withCodingRequiredToolDefaults(async () => {
+				const runtime = {
+					useModel: vi
+						.fn()
+						.mockResolvedValueOnce({
+							text: "",
+							toolCalls: [
+								{
+									id: "write-1",
+									name: "WRITE",
+									arguments: { path: "config.go", content: "package config" },
+								},
+							],
+						})
+						.mockResolvedValueOnce({
+							text: "",
+							toolCalls: [
+								{
+									id: "shell-spoof-1",
+									name: "SHELL",
+									arguments: { command: spoofCommand },
+								},
+							],
+						})
+						.mockResolvedValueOnce(
+							codingReply("reply-spoofed", "Implemented the change."),
+						)
+						.mockResolvedValueOnce({
+							text: "",
+							toolCalls: [
+								{
+									id: "shell-real-1",
+									name: "SHELL",
+									arguments: { command: "go test ./..." },
+								},
+							],
+						})
+						.mockResolvedValueOnce(
+							codingReply(
+								"reply-verified",
+								"Implemented and tested the change.",
+							),
+						),
+					logger: { warn: vi.fn() },
+				};
+				const executeToolCall = vi.fn(async () => ({
+					success: true,
+					text: "succeeded",
+				}));
+
+				const result = await runPlannerLoop({
+					runtime,
+					context: codingPlannerContext,
+					codingMode: true,
+					tools: [
+						{ name: "WRITE", description: "Write a file." },
+						{ name: "SHELL", description: "Run a command." },
+						{ name: "REPLY", description: "Reply to the user." },
+					],
+					executeToolCall,
+					evaluate: vi.fn(),
+				});
+
+				expect(runtime.useModel).toHaveBeenCalledTimes(5);
+				expect(executeToolCall).toHaveBeenCalledTimes(3);
+				expect(result.finalMessage).toBe("Implemented and tested the change.");
+				expect(
+					result.trajectory.evaluatorOutputs.filter(
+						(output) => output.decision === "CONTINUE",
+					),
+				).toHaveLength(1);
+			});
+		},
+	);
 
 	it("bounds repeated terminal replies while a coding mutation remains unverified", async () => {
 		await withCodingRequiredToolDefaults(async () => {
@@ -1059,7 +1145,7 @@ describe("v5 planner loop skeleton", () => {
 							{
 								id: "shell-failed",
 								name: "SHELL",
-								arguments: { command: "test -s dice.html" },
+								arguments: { command: "bun test dice.test.ts" },
 							},
 						],
 					})
@@ -1083,7 +1169,7 @@ describe("v5 planner loop skeleton", () => {
 							{
 								id: "shell-passed",
 								name: "SHELL",
-								arguments: { command: "test -s dice.html" },
+								arguments: { command: "bun test dice.test.ts" },
 							},
 						],
 					})
@@ -1162,7 +1248,7 @@ describe("v5 planner loop skeleton", () => {
 							{
 								id: "verify-passed",
 								name: "SHELL",
-								arguments: { command: "test -s dice.html" },
+								arguments: { command: "bun test dice.test.ts" },
 							},
 						],
 					})
