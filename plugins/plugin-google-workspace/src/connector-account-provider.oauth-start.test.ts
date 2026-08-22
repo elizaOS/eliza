@@ -72,8 +72,11 @@ describe("google provider startOAuth served-origin boundary", () => {
   for (const { name, redirect, servedOrigin } of CASES) {
     it(`starts OAuth for a ${name} deployment whose callback matches the served origin`, async () => {
       const result = await startWith(redirect, servedOrigin);
+      const authUrl = new URL(result.authUrl);
       expect(result.redirectUri).toBe(redirect);
       expect(result.authUrl).toContain(encodeURIComponent(redirect));
+      expect(authUrl.searchParams.get("nonce")).toMatch(/^[A-Za-z0-9_-]{40,}$/);
+      expect(result.metadata?.oidcNonce).toBe(authUrl.searchParams.get("nonce"));
     });
   }
 

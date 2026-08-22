@@ -1799,6 +1799,9 @@ interface LifeOpsGmailSyncState {
   mailbox: string;
   grantId: string;
   maxResults: number;
+  historyId: string | null;
+  cursorStatus: "seeded" | "incremental" | "resynced";
+  fullResyncReason: string | null;
   syncedAt: string;
   updatedAt: string;
 }
@@ -1814,9 +1817,31 @@ function parseGmailSyncState(
     mailbox: toText(row.mailbox),
     grantId: toText(row.grant_id),
     maxResults: toNumber(row.max_results, 0),
+    historyId: row.history_id ? toText(row.history_id) : null,
+    cursorStatus: parseGmailCursorStatus(row.cursor_status),
+    fullResyncReason: row.full_resync_reason
+      ? toText(row.full_resync_reason)
+      : null,
     syncedAt: toText(row.synced_at),
     updatedAt: toText(row.updated_at),
   };
+}
+
+function parseGmailCursorStatus(
+  value: unknown,
+): LifeOpsGmailSyncState["cursorStatus"] {
+  const status = toText(value, "seeded");
+  if (
+    status === "seeded" ||
+    status === "incremental" ||
+    status === "resynced"
+  ) {
+    return status;
+  }
+  throw new ElizaError("[LifeOpsRepository] Invalid Gmail cursor status", {
+    code: "LIFEOPS_GMAIL_CURSOR_STATUS_INVALID",
+    context: { status },
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -2720,6 +2745,7 @@ export class LifeOpsRepository {
     await LifeOpsRepository.ensureReminderReviewColumns(runtime);
     await LifeOpsRepository.ensureBrowserBridgeCompanionTokenColumns(runtime);
     await LifeOpsRepository.ensureConnectorAccountColumns(runtime);
+    await LifeOpsRepository.ensureGmailSyncColumns(runtime);
     await LifeOpsRepository.ensureInboxCacheIndexes(runtime);
     await LifeOpsRepository.ensureWorkflowRunIdempotencyKey(runtime);
   }
@@ -3115,6 +3141,19 @@ export class LifeOpsRepository {
       for (const statement of repair.statements) {
         await executeRawSql(runtime, statement);
       }
+    }
+  }
+
+  static async ensureGmailSyncColumns(runtime: IAgentRuntime): Promise<void> {
+    if (!(await tableExists(runtime, "app_lifeops.life_gmail_sync_states"))) {
+      return;
+    }
+    for (const statement of [
+      "ALTER TABLE app_lifeops.life_gmail_sync_states ADD COLUMN IF NOT EXISTS history_id TEXT",
+      "ALTER TABLE app_lifeops.life_gmail_sync_states ADD COLUMN IF NOT EXISTS cursor_status TEXT NOT NULL DEFAULT 'seeded'",
+      "ALTER TABLE app_lifeops.life_gmail_sync_states ADD COLUMN IF NOT EXISTS full_resync_reason TEXT",
+    ]) {
+      await executeRawSql(runtime, statement);
     }
   }
 
@@ -6539,8 +6578,8 @@ export class LifeOpsRepository {
     await executeRawSql(
       this.runtime,
       `INSERT INTO app_lifeops.life_gmail_sync_states (
-        id, agent_id, provider, side, mailbox, grant_id, max_results, synced_at,
-        updated_at
+        id, agent_id, provider, side, mailbox, grant_id, max_results, history_id,
+        cursor_status, full_resync_reason, synced_at, updated_at
       ) VALUES (
         ${sqlQuote(state.id)},
         ${sqlQuote(state.agentId)},
@@ -6549,12 +6588,18 @@ export class LifeOpsRepository {
         ${sqlQuote(state.mailbox)},
         ${sqlQuote(grantId)},
         ${sqlInteger(state.maxResults)},
+        ${sqlText(state.historyId)},
+        ${sqlQuote(state.cursorStatus)},
+        ${sqlText(state.fullResyncReason)},
         ${sqlQuote(state.syncedAt)},
         ${sqlQuote(state.updatedAt)}
       )
       ON CONFLICT(agent_id, provider, side, grant_id, mailbox) DO UPDATE SET
         id = excluded.id,
         max_results = excluded.max_results,
+        history_id = excluded.history_id,
+        cursor_status = excluded.cursor_status,
+        full_resync_reason = excluded.full_resync_reason,
         synced_at = excluded.synced_at,
         updated_at = excluded.updated_at`,
     );
@@ -10280,9 +10325,21 @@ export function createLifeOpsCalendarSyncState(
 }
 
 export function createLifeOpsGmailSyncState(
-  params: Omit<LifeOpsGmailSyncState, "id" | "updatedAt">,
+  params: Omit<
+    LifeOpsGmailSyncState,
+    "id" | "updatedAt" | "historyId" | "cursorStatus" | "fullResyncReason"
+  > &
+    Partial<
+      Pick<
+        LifeOpsGmailSyncState,
+        "historyId" | "cursorStatus" | "fullResyncReason"
+      >
+    >,
 ): LifeOpsGmailSyncState {
   return {
+    historyId: null,
+    cursorStatus: "seeded",
+    fullResyncReason: null,
     ...params,
     id: crypto.randomUUID(),
     updatedAt: isoNow(),
