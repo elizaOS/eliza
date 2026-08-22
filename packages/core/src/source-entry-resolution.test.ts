@@ -1,12 +1,21 @@
 /**
- * Verifies the published source condition through a real Node/tsx package
- * import and audits every platform barrel's relative module targets. The
- * subprocess resolves the workspace package export instead of a test alias.
+ * Verifies the published source condition through real Node/tsx and Vite
+ * consumers, and audits every platform barrel's relative module targets. The
+ * subprocesses resolve package exports instead of test aliases.
  */
 import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
-import { readFile } from "node:fs/promises";
-import { dirname, resolve } from "node:path";
+import {
+	cp,
+	mkdir,
+	mkdtemp,
+	readFile,
+	rm,
+	symlink,
+	writeFile,
+} from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { describe, expect, it } from "vitest";
@@ -15,6 +24,8 @@ const execFileAsync = promisify(execFile);
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const repositoryRoot = resolve(packageRoot, "../..");
 const sourceRoot = resolve(packageRoot, "src");
+const viteCli = resolve(repositoryRoot, "node_modules/vite/bin/vite.js");
+const tsxImport = import.meta.resolve("tsx");
 
 const platformEntries = [
 	"index.ts",
@@ -93,7 +104,7 @@ describe("core source export resolution", () => {
 			[
 				"--conditions=eliza-source",
 				"--import",
-				"tsx",
+				tsxImport,
 				"--input-type=module",
 				"--eval",
 				probe,
@@ -102,5 +113,86 @@ describe("core source export resolution", () => {
 		);
 
 		expect(stdout).toContain("core-source-ok");
+	});
+
+	it("loads the source export through an actual Vite config consumer", async () => {
+		const fixtureRoot = await mkdtemp(
+			join(tmpdir(), "eliza-core-vite-source-consumer-"),
+		);
+		try {
+			const copiedCoreRoot = join(
+				fixtureRoot,
+				"node_modules",
+				"@elizaos",
+				"core",
+			);
+			await mkdir(copiedCoreRoot, { recursive: true });
+			await cp(sourceRoot, join(copiedCoreRoot, "src"), { recursive: true });
+			await cp(
+				resolve(packageRoot, "package.json"),
+				join(copiedCoreRoot, "package.json"),
+			);
+			await symlink(
+				resolve(packageRoot, "node_modules"),
+				join(copiedCoreRoot, "node_modules"),
+				"dir",
+			);
+			await writeFile(
+				join(fixtureRoot, "entry.js"),
+				"export const viteSourceConsumer = true;\n",
+			);
+			await writeFile(
+				join(fixtureRoot, "vite.config.mjs"),
+				[
+					'import { ElizaError } from "@elizaos/core";',
+					'if (typeof ElizaError !== "function") throw new Error("Vite did not load the core source export");',
+					"export default {",
+					'  build: { outDir: "dist", lib: { entry: "entry.js", formats: ["es"], fileName: () => "bundle.js" } },',
+					'  logLevel: "error",',
+					"};",
+					"",
+				].join("\n"),
+			);
+
+			const viteArgs = [
+				"--conditions=eliza-source",
+				"--import",
+				tsxImport,
+				viteCli,
+				"build",
+				"--configLoader",
+				"native",
+				"--config",
+				"vite.config.mjs",
+			];
+			await execFileAsync(process.execPath, viteArgs, {
+				cwd: fixtureRoot,
+				timeout: 30_000,
+			});
+			expect(existsSync(join(fixtureRoot, "dist", "bundle.js"))).toBe(true);
+
+			const copiedEntry = join(copiedCoreRoot, "src", "index.ts");
+			const explicitSource = await readFile(copiedEntry, "utf8");
+			expect(explicitSource).toContain('export * from "./index.node.ts";');
+			await writeFile(
+				copiedEntry,
+				explicitSource.replace(
+					'export * from "./index.node.ts";',
+					'export * from "./index.node";',
+				),
+			);
+			await rm(join(fixtureRoot, "dist"), { recursive: true, force: true });
+
+			await expect(
+				execFileAsync(process.execPath, viteArgs, {
+					cwd: fixtureRoot,
+					timeout: 30_000,
+				}),
+			).rejects.toMatchObject({
+				stderr: expect.stringMatching(/index\.node|ERR_MODULE_NOT_FOUND/u),
+			});
+		} finally {
+			await rm(fixtureRoot, { recursive: true, force: true });
+		}
 	});
 });
