@@ -164,6 +164,25 @@ describe("TaskService injected clock", () => {
 		expect(getTasks).not.toHaveBeenCalled();
 	});
 
+	it.each([
+		["null", null],
+		["zero", 0],
+	] as const)("clears a %s timer handle", async (_label, handle) => {
+		const { runtime } = makeTaskRuntime();
+		const clock: TaskServiceClock = {
+			now: () => T0,
+			setInterval: () => handle,
+			clearInterval: vi.fn(),
+		};
+		const service = new TaskService(runtime, clock);
+
+		service.startTimer();
+		await service.stop();
+
+		expect(clock.clearInterval).toHaveBeenCalledOnce();
+		expect(clock.clearInterval).toHaveBeenCalledWith(handle);
+	});
+
 	it("does not leak callbacks across an exact clock reset", async () => {
 		const first = makeTaskRuntime();
 		const second = makeTaskRuntime();

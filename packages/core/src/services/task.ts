@@ -69,7 +69,8 @@ const systemTaskServiceClock: TaskServiceClock = {
  * tags — a paused one-shot stays in the store until it is resumed.
  */
 export class TaskService extends Service {
-	private timer: TaskServiceTimerHandle | null = null;
+	private timer: TaskServiceTimerHandle;
+	private hasTimer = false;
 	private activeTick: Promise<void> | null = null;
 	private readonly clock: TaskServiceClock;
 	private readonly TICK_INTERVAL = 1000; // Check every second
@@ -243,7 +244,8 @@ export class TaskService extends Service {
 			registerTaskSchedulerRuntime(this.runtime, this);
 			return;
 		}
-		if (this.timer !== null) {
+		if (this.hasTimer) {
+			this.hasTimer = false;
 			this.clock.clearInterval(this.timer);
 		}
 
@@ -267,6 +269,7 @@ export class TaskService extends Service {
 			this.activeTick = tick;
 			await tick;
 		}, this.TICK_INTERVAL);
+		this.hasTimer = true;
 	}
 
 	/**
@@ -1123,9 +1126,9 @@ export class TaskService extends Service {
 	async stop() {
 		this.stopped = true;
 		unregisterTaskSchedulerRuntime(this.runtime.agentId);
-		if (this.timer !== null) {
+		if (this.hasTimer) {
+			this.hasTimer = false;
 			this.clock.clearInterval(this.timer);
-			this.timer = null;
 		}
 		if (this.activeTick) {
 			await this.activeTick;
