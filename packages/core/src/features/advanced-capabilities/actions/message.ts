@@ -4803,7 +4803,7 @@ export const MESSAGE_PARAMETERS: ActionParameter[] = [
 	{
 		name: "source",
 		description:
-			"Connector source: discord, slack, signal, whatsapp, telegram, x, imessage, matrix, line, google-chat, feishu, instagram, wechat, gmail.",
+			"Connector source: discord, slack, whatsapp, telegram, x, imessage, matrix, line, google-chat, feishu, instagram, wechat, gmail.",
 		required: false,
 		subactions: [
 			"send",
