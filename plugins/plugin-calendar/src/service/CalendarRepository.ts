@@ -390,6 +390,42 @@ export class CalendarRepository {
     );
   }
 
+  async purgeImportedCalendarProjection(args: {
+    agentId: string;
+    provider: Extract<LifeOpsCalendarProvider, "google" | "apple_calendar">;
+    side: LifeOpsConnectorSide;
+    grantId: string;
+    connectorAccountId: string;
+  }): Promise<{ deletedEventCount: number; deletedSyncStateCount: number }> {
+    const rows = await executeRawSql(
+      this.runtime,
+      `WITH deleted_events AS (
+         DELETE FROM app_calendar.life_calendar_events
+          WHERE agent_id = ${sqlQuote(args.agentId)}
+            AND provider = ${sqlQuote(args.provider)}
+            AND side = ${sqlQuote(args.side)}
+            AND grant_id = ${sqlQuote(args.grantId)}
+            AND connector_account_id = ${sqlQuote(args.connectorAccountId)}
+         RETURNING id
+       ), deleted_sync_states AS (
+         DELETE FROM app_calendar.life_calendar_sync_states
+          WHERE agent_id = ${sqlQuote(args.agentId)}
+            AND provider = ${sqlQuote(args.provider)}
+            AND side = ${sqlQuote(args.side)}
+            AND grant_id = ${sqlQuote(args.grantId)}
+            AND connector_account_id = ${sqlQuote(args.connectorAccountId)}
+         RETURNING id
+       )
+       SELECT
+         (SELECT COUNT(*) FROM deleted_events) AS deleted_event_count,
+         (SELECT COUNT(*) FROM deleted_sync_states) AS deleted_sync_state_count`,
+    );
+    return {
+      deletedEventCount: toNumber(rows[0]?.deleted_event_count, 0),
+      deletedSyncStateCount: toNumber(rows[0]?.deleted_sync_state_count, 0),
+    };
+  }
+
   async deleteCalendarEventByExternalId(
     agentId: string,
     provider: LifeOpsCalendarProvider,

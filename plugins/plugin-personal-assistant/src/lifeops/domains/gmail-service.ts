@@ -20,6 +20,7 @@ import type {
   LifeOpsGmailBatchReplyDraftsFeed,
   LifeOpsGmailBatchReplySendResult,
   LifeOpsGmailEventIngestResult,
+  LifeOpsGmailImportedDataPurgeReceipt,
   LifeOpsGmailManageResult,
   LifeOpsGmailMessageSummary,
   LifeOpsGmailNeedsResponseFeed,
@@ -28,9 +29,11 @@ import type {
   LifeOpsGmailSearchFeed,
   LifeOpsGmailSpamReviewFeed,
   LifeOpsGmailSpamReviewItem,
+  LifeOpsGmailSyncHealth,
   LifeOpsGmailTriageFeed,
   LifeOpsGmailUnrespondedFeed,
   ManageLifeOpsGmailMessagesRequest,
+  PurgeLifeOpsGmailImportedDataRequest,
   SendLifeOpsGmailBatchReplyRequest,
   SendLifeOpsGmailMessageRequest,
   SendLifeOpsGmailReplyRequest,
@@ -39,6 +42,7 @@ import type {
 import { settleBriefEngagementReward } from "../briefing/engagement-reward.js";
 import {
   accountIdForGrant,
+  googleAccountIdFromGrantId,
   googleSendEmailInput,
   lifeOpsGmailMessageFromGoogle,
   requireGoogleServiceMethod,
@@ -458,6 +462,126 @@ export class GmailDomain {
       }),
     );
     return { grant, query: args.query, messages, syncedAt };
+  }
+
+  async getGmailSyncHealth(
+    requestUrl: URL,
+    request: {
+      side?: LifeOpsConnectorSide;
+      mode?: LifeOpsConnectorMode;
+      grantId: string;
+    },
+  ): Promise<LifeOpsGmailSyncHealth> {
+    const grant = await this.deps.requireGoogleGmailGrant(
+      requestUrl,
+      normalizeOptionalConnectorMode(request.mode, "mode"),
+      normalizeOptionalConnectorSide(request.side, "side"),
+      request.grantId,
+    );
+    const state = await this.ctx.repository.getGmailSyncState(
+      this.ctx.agentId(),
+      "google",
+      GOOGLE_GMAIL_MAILBOX,
+      grant.side,
+      grant.id,
+    );
+    const cachedMessageCount = await this.ctx.repository.countGmailMessages(
+      this.ctx.agentId(),
+      "google",
+      grant.side,
+      grant.id,
+    );
+    return {
+      provider: "google",
+      side: grant.side,
+      grantId: grant.id,
+      connectorAccountId: grant.connectorAccountId ?? accountIdForGrant(grant),
+      mailbox: GOOGLE_GMAIL_MAILBOX,
+      state: state ? "current" : "never_synced",
+      cursorStatus: state?.cursorStatus ?? "never_synced",
+      historyCursorPresent: Boolean(state?.historyId),
+      fullResyncReason: state?.fullResyncReason ?? null,
+      cachedMessageCount,
+      syncedAt: state?.syncedAt ?? null,
+    };
+  }
+
+  async purgeGmailImportedData(
+    _requestUrl: URL,
+    request: PurgeLifeOpsGmailImportedDataRequest,
+    now = new Date(),
+  ): Promise<LifeOpsGmailImportedDataPurgeReceipt> {
+    if (request.confirmAction !== true) {
+      fail(
+        409,
+        "Removing imported Gmail data requires explicit confirmation immediately before deletion.",
+      );
+    }
+    const side =
+      normalizeOptionalConnectorSide(request.side, "side") ?? "owner";
+    const grantId = requireNonEmptyString(request.grantId, "grantId");
+    const connectorAccountId = requireNonEmptyString(
+      request.connectorAccountId,
+      "connectorAccountId",
+    );
+    if (googleAccountIdFromGrantId(grantId) !== connectorAccountId) {
+      fail(
+        409,
+        "The Gmail grant and connector account identities do not match; reconnect before purging imported data.",
+      );
+    }
+    const [deletedMessageCount, deletedSpamReviewCount, syncState] =
+      await Promise.all([
+        this.ctx.repository.countGmailMessages(
+          this.ctx.agentId(),
+          "google",
+          side,
+          grantId,
+        ),
+        this.ctx.repository.countGmailSpamReviewItems(
+          this.ctx.agentId(),
+          "google",
+          side,
+          grantId,
+        ),
+        this.ctx.repository.getGmailSyncState(
+          this.ctx.agentId(),
+          "google",
+          GOOGLE_GMAIL_MAILBOX,
+          side,
+          grantId,
+        ),
+      ]);
+    await this.ctx.repository.deleteGmailMessagesForProvider(
+      this.ctx.agentId(),
+      "google",
+      side,
+      grantId,
+    );
+    await this.ctx.repository.deleteGmailSpamReviewItemsForProvider(
+      this.ctx.agentId(),
+      "google",
+      side,
+      grantId,
+    );
+    await this.ctx.repository.deleteGmailSyncState(
+      this.ctx.agentId(),
+      "google",
+      GOOGLE_GMAIL_MAILBOX,
+      side,
+      grantId,
+    );
+    return {
+      provider: "google",
+      side,
+      grantId,
+      connectorAccountId,
+      deletedMessageCount,
+      deletedSpamReviewCount,
+      deletedSyncCursor: syncState !== null,
+      providerMutation: false,
+      purgedAt: now.toISOString(),
+    };
   }
 
   async getGmailTriage(

@@ -38,6 +38,16 @@ function harness(
       source: { id: "source-1" },
       outcome: "complete",
     })),
+    purgeImportedCalendarData: vi.fn(async () => ({
+      provider: "google",
+      side: "owner",
+      grantId: "connector-account:account-a",
+      connectorAccountId: "account-a",
+      deletedEventCount: 3,
+      deletedSyncStateCount: 1,
+      providerMutation: false,
+      purgedAt: "2026-08-22T09:00:00.000Z",
+    })),
   };
   const jsonCalls: Array<{ data: unknown; status?: number }> = [];
   const mutationGateway = {
@@ -96,6 +106,29 @@ describe("handleCalendarRoutes", () => {
     expect(await handleCalendarRoutes(deps)).toBe(true);
     expect(service.listCalendars).toHaveBeenCalledTimes(1);
     expect(jsonCalls[0]?.data).toHaveProperty("calendars");
+  });
+
+  it("routes exact-identity local projection purge without a provider mutation", async () => {
+    const body = {
+      provider: "google",
+      side: "owner",
+      grantId: "connector-account:account-a",
+      connectorAccountId: "account-a",
+      confirmAction: true,
+    };
+    const { deps, service, jsonCalls } = harness({
+      method: "POST",
+      pathname: "/api/lifeops/calendar/imported-data/purge",
+      body,
+    });
+
+    expect(await handleCalendarRoutes(deps)).toBe(true);
+    expect(service.purgeImportedCalendarData).toHaveBeenCalledWith(body);
+    expect(jsonCalls[0]?.data).toMatchObject({
+      deletedEventCount: 3,
+      deletedSyncStateCount: 1,
+      providerMutation: false,
+    });
   });
 
   it("routes subscription source CRUD and manual sync", async () => {

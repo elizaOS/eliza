@@ -6398,6 +6398,24 @@ export class LifeOpsRepository {
     return rows.map(parseGmailMessageSummary);
   }
 
+  async countGmailMessages(
+    agentId: string,
+    provider: LifeOpsConnectorGrant["provider"],
+    side: LifeOpsConnectorSide,
+    grantId: string,
+  ): Promise<number> {
+    const rows = await executeRawSql(
+      this.runtime,
+      `SELECT COUNT(*) AS message_count
+         FROM app_lifeops.life_gmail_messages
+        WHERE agent_id = ${sqlQuote(agentId)}
+          AND provider = ${sqlQuote(provider)}
+          AND side = ${sqlQuote(side)}
+          AND grant_id = ${sqlQuote(grantId)}`,
+    );
+    return toNumber(rows[0]?.message_count, 0);
+  }
+
   async getGmailMessage(
     agentId: string,
     provider: LifeOpsConnectorGrant["provider"],
@@ -6790,6 +6808,24 @@ export class LifeOpsRepository {
         LIMIT ${sqlInteger(limit)}`,
     );
     return rows.map(parseGmailSpamReviewItem);
+  }
+
+  async countGmailSpamReviewItems(
+    agentId: string,
+    provider: LifeOpsConnectorGrant["provider"],
+    side: LifeOpsConnectorSide,
+    grantId: string,
+  ): Promise<number> {
+    const rows = await executeRawSql(
+      this.runtime,
+      `SELECT COUNT(*) AS item_count
+         FROM app_lifeops.life_gmail_spam_review_items
+        WHERE agent_id = ${sqlQuote(agentId)}
+          AND provider = ${sqlQuote(provider)}
+          AND side = ${sqlQuote(side)}
+          AND grant_id = ${sqlQuote(grantId)}`,
+    );
+    return toNumber(rows[0]?.item_count, 0);
   }
 
   async getGmailSpamReviewItem(
