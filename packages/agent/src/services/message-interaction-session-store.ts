@@ -41,7 +41,9 @@ interface LockOwner {
 
 interface LockRaceHooks {
   beforeLockPublish?: () => Promise<void>;
+  afterTransitionCheckBeforeLockPublish?: () => Promise<void>;
   afterLockPublishBeforeCandidateCleanup?: () => Promise<void>;
+  beforeOwnerCandidateCleanup?: () => Promise<void>;
   beforePublicationCandidateValidation?: () => Promise<void>;
   beforeStaleRetire?: () => Promise<void>;
   beforeReleaseRetire?: () => Promise<void>;
@@ -492,6 +494,7 @@ export class FileMessageInteractionSessionStore
 
   private async beginLockTransition(
     lockIdentity: string,
+    phase: "recovery" | "release",
   ): Promise<string | null> {
     const marker = `${this.lockPath}.transition`;
     const token = newToken();
@@ -526,9 +529,12 @@ export class FileMessageInteractionSessionStore
       this.lockIdentity(current) !== lockIdentity
     ) {
       try {
+        await this.lockRaceHooks.beforeTransitionAbortCleanup?.();
         await fs.rm(marker, { force: true });
-      } catch {
-        // error-policy:J6 the mismatched generation cannot be retired by us.
+      } catch (cleanupError) {
+        // error-policy:J2 A marker targeting a replaced lock must remain a
+        // typed outage if its pathname cannot be cleared safely.
+        throw this.transitionCleanupError(marker, phase, cleanupError);
       }
       return null;
     }
@@ -541,7 +547,7 @@ export class FileMessageInteractionSessionStore
     validate: () => Promise<boolean>,
     phase: "recovery" | "release",
   ): Promise<boolean> {
-    const marker = await this.beginLockTransition(lockIdentity);
+    const marker = await this.beginLockTransition(lockIdentity, phase);
     if (!marker) return false;
     let valid: boolean;
     try {
@@ -802,6 +808,7 @@ export class FileMessageInteractionSessionStore
       const candidate = `${this.lockPath}.owner-${process.pid}-${token}.tmp`;
       let owner: LockOwner | null = null;
       let published = false;
+      let candidateCleanupError: unknown;
       try {
         const handle = await fs.open(
           candidate,
@@ -833,6 +840,7 @@ export class FileMessageInteractionSessionStore
           await delay(this.pollMs);
           continue;
         }
+        await this.lockRaceHooks.afterTransitionCheckBeforeLockPublish?.();
         await fs.link(candidate, this.lockPath);
         published = true;
         await this.lockRaceHooks.afterLockPublishBeforeCandidateCleanup?.();
@@ -841,9 +849,37 @@ export class FileMessageInteractionSessionStore
         await this.recoverStaleLock(now);
         await delay(this.pollMs);
       } finally {
-        await fs.rm(candidate, { force: true });
+        try {
+          await this.lockRaceHooks.beforeOwnerCandidateCleanup?.();
+          await fs.rm(candidate, { force: true });
+        } catch (error) {
+          candidateCleanupError = error;
+        }
       }
       if (published && owner) {
+        while (
+          (await existsLstat(`${this.lockPath}.transition`)) &&
+          performance.now() - startedAt <= this.lockTimeoutMs
+        ) {
+          await delay(this.pollMs);
+        }
+        if (await existsLstat(`${this.lockPath}.transition`)) {
+          const marker = `${this.lockPath}.transition`;
+          storeError(
+            "INTERACTION_STORE_RECOVERY_REQUIRED",
+            "Interaction store recovery requires all users to stop before the abandoned transition marker is removed.",
+            {
+              ...this.transitionRecoveryContext(marker),
+              lockPath: this.lockPath,
+              lockIdentity: owner.lockIdentity,
+              ownerToken: owner.token,
+              committed: false,
+              recovery:
+                "Stop all store users, verify lockPath still has lockIdentity and ownerToken, remove markerPath and lockPath, fsync their parent directory, then restart.",
+              retrySafeAfterRecovery: true,
+            },
+          );
+        }
         const canonical = await existsLstat(this.lockPath);
         const current = await this.readLockOwner();
         if (
@@ -856,8 +892,41 @@ export class FileMessageInteractionSessionStore
             "Interaction store lock ownership changed during publication.",
           );
         }
+        if (candidateCleanupError) {
+          let releaseError: unknown;
+          try {
+            await this.releaseLock(owner);
+          } catch (error) {
+            releaseError = error;
+          }
+          throw new ElizaError(
+            "Interaction lock owner candidate cleanup failed before mutation.",
+            {
+              code: "INTERACTION_STORE_OWNER_CANDIDATE_CLEANUP_FAILED",
+              cause: candidateCleanupError,
+              context: {
+                candidatePath: candidate,
+                committed: false,
+                lockPath: this.lockPath,
+                markerPath: `${this.lockPath}.transition`,
+                recoveryRequired: Boolean(releaseError),
+                retrySafeAfterRecovery: true,
+                retrySafeNow: !releaseError,
+                ...(releaseError instanceof ElizaError
+                  ? {
+                      releaseErrorCode: releaseError.code,
+                      releaseErrorContext: releaseError.context,
+                    }
+                  : releaseError
+                    ? { releaseError: String(releaseError) }
+                    : {}),
+              },
+            },
+          );
+        }
         return owner;
       }
+      if (candidateCleanupError) throw candidateCleanupError;
     }
     if (await existsLstat(`${this.lockPath}.transition`)) {
       const marker = `${this.lockPath}.transition`;
@@ -1120,31 +1189,47 @@ export class FileMessageInteractionSessionStore
               releaseError instanceof Error
                 ? releaseError.message
                 : String(releaseError),
+            ...(releaseError instanceof ElizaError
+              ? {
+                  releaseErrorCode: releaseError.code,
+                  releaseErrorContext: releaseError.context,
+                }
+              : {}),
           },
         },
       );
     }
     if (operationError) throw operationError;
-    if (
-      releaseError instanceof ElizaError &&
-      releaseError.code === "INTERACTION_STORE_RELEASE_CLEANUP_FAILED"
-    ) {
+    if (releaseError) {
       // error-policy:J2 The state rename and directory fsync completed before
-      // release began, so this is a committed mutation plus an operator outage.
+      // every release path, so no release failure is safe for caller retry.
       throw new ElizaError(
-        "Interaction transaction committed but transition cleanup failed; stop all store users before recovery.",
+        "Interaction transaction committed but lock release failed; do not retry the mutation.",
         {
-          code: "INTERACTION_STORE_COMMITTED_CLEANUP_FAILED",
+          code:
+            releaseError instanceof ElizaError &&
+            releaseError.code === "INTERACTION_STORE_RELEASE_CLEANUP_FAILED"
+              ? "INTERACTION_STORE_COMMITTED_CLEANUP_FAILED"
+              : "INTERACTION_STORE_COMMITTED_RELEASE_FAILED",
           cause: releaseError,
           context: {
-            ...releaseError.context,
+            ...(releaseError instanceof ElizaError
+              ? {
+                  ...releaseError.context,
+                  releaseErrorCode: releaseError.code,
+                }
+              : {
+                  releaseError:
+                    releaseError instanceof Error
+                      ? releaseError.message
+                      : String(releaseError),
+                }),
             committed: true,
             retrySafeAfterRecovery: false,
           },
         },
       );
     }
-    if (releaseError) throw releaseError;
     return result as T;
   }
 

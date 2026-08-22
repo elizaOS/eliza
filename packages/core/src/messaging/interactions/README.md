@@ -132,7 +132,12 @@ verify no process owns the adjacent `.lock` file, remove exactly the reported
 `.transition` path, fsync its parent directory, then restart.
 Cleanup failures distinguish pre-operation recovery (`committed: false`) from
 post-commit release (`committed: true`) with separate error codes so a caller
-never retries an already committed mutation.
+never retries an already committed mutation. All other post-write release
+errors also report `committed: true`; combined operation/release errors preserve
+the structured release code and recovery context. A publisher that finds a
+transition marker after linking its owner performs no mutation and reports both
+paths plus the owner token/inode: offline recovery must remove the verified
+marker and owner while all users are stopped, fsync the parent, then restart.
 Multi-host deployments must implement the
 same store interface with a transactional database and idempotent effect/outbox
 boundary; the JSON store does not claim distributed exactly-once semantics.
