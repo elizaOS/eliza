@@ -21,6 +21,16 @@ active session rather than being rewritten to generation zero.
 Sessions default to a five-minute lease; callers with a shorter authoritative
 lease window must finish reset and release before that lease expires.
 
+The keyless exact-three composition test drives
+`ScenarioStabilitySubprocessAdapter` through this real control subprocess. Each
+of attempts 1, 2, and 3 opens the same exact manifest in a clean leased
+generation, runs in a distinct OS process group, attests zero strict-fixture
+diagnostics, and proves an identical initial state hash. The adapter inherits no
+ambient credentials and accepts service locations only as credential-free
+loopback HTTP URLs. A scheduled real-LLM lane may add one explicit model
+credential while retaining those same mock service endpoints; it cannot silently
+fall back to real connector or provider credentials.
+
 The HTTP adapter is state-neutral. Its `SyntheticControlAuthority` is
 implemented by the production owner of the relevant manifest, lease,
 generation, reset receipt, fault, and ledger state. The protocol must not grow

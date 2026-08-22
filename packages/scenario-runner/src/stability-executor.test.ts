@@ -13,7 +13,10 @@ import type {
   ScenarioStabilityAttemptExecution,
   ScenarioStabilityExecutionAdapter,
 } from "./stability-executor.ts";
-import { executeScenarioStability } from "./stability-executor.ts";
+import {
+  executeScenarioStability,
+  SCENARIO_STABILITY_MAX_JSON_STRING_BYTES,
+} from "./stability-executor.ts";
 
 const INITIAL_HASH = "a".repeat(64);
 
@@ -102,6 +105,244 @@ describe("scenario stability executor", () => {
       ],
       focusList: [],
     });
+    expect(report.planFingerprint).toMatch(/^[a-f0-9]{64}$/);
+  });
+
+  it("runtime-rejects noncanonical attempt ordinals and paths before execution", async () => {
+    const invalid = plan("invalid-plan");
+    const attempts = [...invalid.attempts];
+    attempts[1] = { ...attempts[0] };
+    let executions = 0;
+
+    await expect(
+      executeScenarioStability({
+        plan: { ...invalid, attempts } as unknown as typeof invalid,
+        targets: [
+          {
+            scenarioId: "send-a-message",
+            model: { provider: "test-provider", model: "best-case" },
+          },
+        ],
+        budgets: {
+          timeoutMs: 1_000,
+          maxInputTokens: 100,
+          maxOutputTokens: 100,
+          maxToolCalls: 3,
+        },
+        adapter: {
+          async execute() {
+            executions += 1;
+            return passingExecution();
+          },
+          async terminate() {},
+        },
+      }),
+    ).rejects.toThrow("attempts[1].attemptNumber is not canonical");
+    expect(executions).toBe(0);
+  });
+
+  it("rejects accessor-backed plans without invoking the accessor", async () => {
+    const invalid = plan("accessor-plan");
+    let getterCalls = 0;
+    Object.defineProperty(invalid, "runId", {
+      enumerable: true,
+      get() {
+        getterCalls += 1;
+        throw new Error("plan accessor executed");
+      },
+    });
+
+    await expect(
+      executeScenarioStability({
+        plan: invalid,
+        targets: [
+          {
+            scenarioId: "send-a-message",
+            model: { provider: "test-provider", model: "best-case" },
+          },
+        ],
+        budgets: {
+          timeoutMs: 1_000,
+          maxInputTokens: 100,
+          maxOutputTokens: 100,
+          maxToolCalls: 3,
+        },
+        adapter: {
+          async execute() {
+            return passingExecution();
+          },
+          async terminate() {},
+        },
+      }),
+    ).rejects.toThrow("plan.runId must be an own data property");
+    expect(getterCalls).toBe(0);
+  });
+
+  it.each([
+    {
+      name: "cyclic evidence",
+      mutate(execution: ScenarioStabilityAttemptExecution) {
+        const cycle: unknown[] = [];
+        cycle.push(cycle);
+        return {
+          ...execution,
+          evidence: { ...execution.evidence, trajectory: cycle },
+        };
+      },
+      error: "must not be cyclic",
+    },
+    {
+      name: "non-finite state",
+      mutate(execution: ScenarioStabilityAttemptExecution) {
+        return { ...execution, stateDiff: { score: Number.NaN } };
+      },
+      error: "must be a finite JSON number",
+    },
+    {
+      name: "oversized string",
+      mutate(execution: ScenarioStabilityAttemptExecution) {
+        return {
+          ...execution,
+          stateDiff: { value: "x".repeat(256 * 1024 + 1) },
+        };
+      },
+      error: "exceeds the JSON string limit",
+    },
+    {
+      name: "accessor object",
+      mutate(execution: ScenarioStabilityAttemptExecution) {
+        const stateDiff = {};
+        Object.defineProperty(stateDiff, "secret", {
+          enumerable: true,
+          get() {
+            throw new Error("accessor executed");
+          },
+        });
+        return { ...execution, stateDiff };
+      },
+      error: "must be an own data property",
+    },
+    {
+      name: "array subclass",
+      mutate(execution: ScenarioStabilityAttemptExecution) {
+        class HostileArray extends Array<unknown> {}
+        return {
+          ...execution,
+          evidence: {
+            ...execution.evidence,
+            trajectory: new HostileArray(),
+          },
+        };
+      },
+      error: "must be an ordinary array",
+    },
+  ])("fails closed without retaining $name", async ({ mutate, error }) => {
+    const report = await executeScenarioStability({
+      plan: plan(`invalid-json-${error.length}`),
+      targets: [
+        {
+          scenarioId: "send-a-message",
+          model: { provider: "test-provider", model: "best-case" },
+        },
+      ],
+      budgets: {
+        timeoutMs: 1_000,
+        maxInputTokens: 100,
+        maxOutputTokens: 100,
+        maxToolCalls: 3,
+      },
+      adapter: {
+        async execute() {
+          return mutate(passingExecution());
+        },
+        async terminate() {},
+      },
+    });
+
+    expect(report.cells[0]).toMatchObject({ tier: "0/3", strictPassed: false });
+    expect(report.cells[0]?.attempts).toHaveLength(3);
+    expect(
+      report.cells[0]?.attempts.every((attempt) => attempt.stateDiff === null),
+    ).toBe(true);
+    expect(report.cells[0]?.attempts[0]?.error).toContain(error);
+  });
+
+  it("never invokes top-level evidence or stateDiff accessors", async () => {
+    let getterCalls = 0;
+    const report = await executeScenarioStability({
+      plan: plan("top-level-accessor"),
+      targets: [
+        {
+          scenarioId: "send-a-message",
+          model: { provider: "test-provider", model: "best-case" },
+        },
+      ],
+      budgets: {
+        timeoutMs: 1_000,
+        maxInputTokens: 100,
+        maxOutputTokens: 100,
+        maxToolCalls: 3,
+      },
+      adapter: {
+        async execute() {
+          const execution = passingExecution();
+          Object.defineProperty(execution, "evidence", {
+            enumerable: true,
+            get() {
+              getterCalls += 1;
+              throw new Error("evidence getter executed");
+            },
+          });
+          Object.defineProperty(execution, "stateDiff", {
+            enumerable: true,
+            get() {
+              getterCalls += 1;
+              throw new Error("stateDiff getter executed");
+            },
+          });
+          return execution;
+        },
+        async terminate() {},
+      },
+    });
+
+    expect(getterCalls).toBe(0);
+    expect(report.cells[0]).toMatchObject({ tier: "0/3", strictPassed: false });
+    expect(report.cells[0]?.attempts[0]?.error).toContain(
+      "must be an own data property",
+    );
+  });
+
+  it("bounds hostile adapter and teardown error messages", async () => {
+    const report = await executeScenarioStability({
+      plan: plan("bounded-thrown-errors"),
+      targets: [
+        {
+          scenarioId: "send-a-message",
+          model: { provider: "test-provider", model: "best-case" },
+        },
+      ],
+      budgets: {
+        timeoutMs: 1_000,
+        maxInputTokens: 100,
+        maxOutputTokens: 100,
+        maxToolCalls: 3,
+      },
+      adapter: {
+        async execute() {
+          throw new Error("x".repeat(512 * 1024));
+        },
+        async terminate() {
+          throw new Error("y".repeat(512 * 1024));
+        },
+      },
+    });
+
+    for (const attempt of report.cells[0]?.attempts ?? []) {
+      expect(
+        new TextEncoder().encode(attempt.error).byteLength,
+      ).toBeLessThanOrEqual(SCENARIO_STABILITY_MAX_JSON_STRING_BYTES);
+    }
   });
 
   it("does not retry until green: it measures and records every attempt", async () => {
