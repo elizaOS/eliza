@@ -286,18 +286,7 @@
         "event-handler",
         "service"
       ],
-      "externalServices": [
-        {
-          "id": "discord-api",
-          "protocol": "Discord REST, Gateway, and interaction webhook protocols",
-          "mockOwner": "messaging-webhook-family",
-          "mockSource": "packages/scenario-runner/test/mocks/environments/discord.json",
-          "mockContract": {
-            "kind": "external-protocol",
-            "markers": ["Discord REST", "api/v10/channels/:channel_id/messages"]
-          }
-        }
-      ]
+      "unresolvedDependencyReason": "Discord surfaces span REST, Gateway WebSocket, OAuth, local RPC/IPC, setup, and data-only services; each implementation must be attributed explicitly before external protocol ownership is claimed."
     },
     {
       "packageName": "@elizaos/plugin-discord",
@@ -338,18 +327,7 @@
     {
       "packageName": "@elizaos/plugin-elizacloud",
       "kinds": ["action", "event-handler", "model-handler", "service"],
-      "externalServices": [
-        {
-          "id": "eliza-cloud-api",
-          "protocol": "Eliza Cloud authenticated HTTP and model APIs",
-          "mockOwner": "eliza-cloud-managed",
-          "mockSource": "packages/scenario-runner/test/mocks/environments/cloud-managed.json",
-          "mockContract": {
-            "kind": "external-protocol",
-            "markers": ["Eliza Cloud Managed Google", "eliza/google/status"]
-          }
-        }
-      ]
+      "unresolvedDependencyReason": "Eliza Cloud surfaces span authenticated routes, providers, events, models, and local services; the two Google mock endpoints do not prove the package-wide protocol boundary."
     },
     {
       "packageName": "@elizaos/plugin-embeddings",
@@ -722,117 +700,13 @@
           "missingMockReason": "No resettable production-client Ollama server mock is registered."
         }
       ]
+    },
+    {
+      "packageName": "@elizaos/plugin-notes",
+      "kinds": ["action"],
+      "surfaceIds": ["@elizaos/plugin-notes:action:notes"],
+      "noExternalServiceReason": "The Notes action mutates the agent-local NotesService state and does not call an external provider protocol."
     }
   ],
-  "localPackages": {
-    "@elizaos/app-core": "Native bridge registration is resolved by the local application host and platform runtime.",
-    "@elizaos/capacitor-agent": "The Capacitor agent bridge invokes only the local native application host.",
-    "@elizaos/capacitor-appblocker": "The app-blocker bridge invokes only local operating-system capabilities.",
-    "@elizaos/capacitor-browser-surface": "The browser-surface bridge invokes only the local embedded browser host.",
-    "@elizaos/capacitor-bun-runtime": "The Bun runtime bridge invokes only the local embedded runtime host.",
-    "@elizaos/capacitor-calendar": "The calendar bridge invokes only the local operating-system calendar capability.",
-    "@elizaos/capacitor-camera": "The camera bridge invokes only the local device camera capability.",
-    "@elizaos/capacitor-canvas": "The canvas bridge invokes only the local application rendering host.",
-    "@elizaos/capacitor-contacts": "The contacts bridge invokes only the local operating-system contacts capability.",
-    "@elizaos/capacitor-desktop": "The desktop bridge invokes only the local desktop application host.",
-    "@elizaos/capacitor-eliza-tasks": "The task bridge invokes only the local operating-system task capability.",
-    "@elizaos/capacitor-gateway": "The gateway bridge exposes the local application transport boundary.",
-    "@elizaos/capacitor-llama": "The Llama service invokes a local native inference library rather than an external service.",
-    "@elizaos/capacitor-location": "The location bridge invokes only the local device location capability.",
-    "@elizaos/capacitor-messages": "The messages bridge invokes only the local operating-system messaging capability.",
-    "@elizaos/capacitor-mlkit-text": "The ML Kit bridge invokes only the local on-device text recognition runtime.",
-    "@elizaos/capacitor-mobile-agent-bridge": "The mobile agent bridge invokes only the local application agent host.",
-    "@elizaos/capacitor-mobile-signals": "The mobile signals bridge invokes only local device signal capabilities.",
-    "@elizaos/capacitor-network-policy": "The network-policy bridge enforces policy inside the local application host.",
-    "@elizaos/capacitor-phone": "The phone bridge invokes only the local operating-system telephony capability.",
-    "@elizaos/capacitor-screencapture": "The screen-capture bridge invokes only the local device capture capability.",
-    "@elizaos/capacitor-secure-store": "The secure-store bridge invokes only local platform keychain storage.",
-    "@elizaos/capacitor-swabble": "The Swabble bridge invokes only the local application and device host.",
-    "@elizaos/capacitor-system": "The system bridge invokes only local operating-system capabilities.",
-    "@elizaos/capacitor-talkmode": "The talk-mode bridge invokes only local audio and application capabilities.",
-    "@elizaos/capacitor-websiteblocker": "The website-blocker bridge invokes only local operating-system capabilities.",
-    "@elizaos/capacitor-wifi": "The Wi-Fi bridge invokes only the local operating-system network capability.",
-    "@elizaos/coding-remote-runner": "This service is the hosted coding boundary itself and launches only workspace-local processes.",
-    "@elizaos/macosalarm": "The alarm action invokes only the local macOS alarm capability.",
-    "@elizaos/plugin-goals": "Goal actions, services, and views operate on local runtime repositories.",
-    "@elizaos/plugin-health": "Health views render local runtime and device-projected state.",
-    "@elizaos/plugin-inmemorydb": "The in-memory database service owns process-local deterministic state.",
-    "@elizaos/plugin-local-storage": "Local-storage services operate on the host filesystem and content store.",
-    "@elizaos/plugin-native-filesystem": "Native filesystem services invoke only local platform filesystem capabilities.",
-    "@elizaos/plugin-native-settings": "Native settings views render local platform configuration state.",
-    "@elizaos/plugin-pdf": "PDF services operate on local content bytes and bundled rendering libraries.",
-    "@elizaos/plugin-reminders": "Reminder services invoke the local platform reminder capability and scheduler.",
-    "@elizaos/plugin-sql": "The SQL service owns the configured runtime repository boundary rather than a provider protocol.",
-    "@elizaos/plugin-task-coordinator": "Task coordination actions and views operate on local runtime task state.",
-    "@elizaos/plugin-trajectory-logger": "Trajectory views render locally recorded runtime evidence.",
-    "@elizaos/agent": "Agent providers and routes expose in-process runtime state and the authenticated local agent HTTP API; connector and model protocols are registered by their owning plugins.",
-    "@elizaos/core": "Core registrations define framework-local message, context, and test routes and do not select an external provider protocol.",
-    "@elizaos/plugin-agent-orchestrator": "Orchestrator routes are authenticated local runtime control endpoints.",
-    "@elizaos/plugin-agent-skills": "Skill providers and routes expose the local installed-skill registry and package state.",
-    "@elizaos/plugin-anthropic": "Surfaces outside the explicitly selected external-protocol kinds expose local registration, configuration, or rendering state only.",
-    "@elizaos/plugin-anthropic-proxy": "Surfaces outside the explicitly selected external-protocol kinds expose local registration, configuration, or rendering state only.",
-    "@elizaos/plugin-app-control": "App-control context is supplied by the local application host.",
-    "@elizaos/plugin-app-manager": "App-manager routes mutate the local installed application registry.",
-    "@elizaos/plugin-blocker": "Blocker providers read local runtime state.",
-    "@elizaos/plugin-browser": "Surfaces outside the explicitly selected external-protocol kinds expose local registration, configuration, or rendering state only.",
-    "@elizaos/plugin-capacitor-bridge": "Capacitor model handlers delegate to the local native bridge; native-host requirements are recorded separately.",
-    "@elizaos/plugin-cli-inference": "CLI inference handlers launch an operator-selected local subprocess rather than a fixed external service protocol.",
-    "@elizaos/plugin-cloud-apps": "Cloud-app context is read from the local runtime application registry.",
-    "@elizaos/plugin-codex-cli": "Codex CLI handlers launch the locally installed Codex subprocess rather than a network provider client.",
-    "@elizaos/plugin-coding-tools": "Coding-tools context is assembled from the local workspace and runtime.",
-    "@elizaos/plugin-commands": "Command providers expose the local registered-command set.",
-    "@elizaos/plugin-companion": "Companion context is runtime-local.",
-    "@elizaos/plugin-computeruse": "Computer-use registrations target the local host automation service; platform requirements are tracked independently.",
-    "@elizaos/plugin-contacts": "Contacts context reads the shared local entity store.",
-    "@elizaos/plugin-discord": "Surfaces outside the explicitly selected external-protocol kinds expose local registration, configuration, or rendering state only.",
-    "@elizaos/plugin-documents": "Document routes operate on the local content-addressed media and document services.",
-    "@elizaos/plugin-elizacloud": "Surfaces outside the explicitly selected external-protocol kinds expose local registration, configuration, or rendering state only.",
-    "@elizaos/plugin-embeddings": "Surfaces outside the explicitly selected external-protocol kinds expose local registration, configuration, or rendering state only.",
-    "@elizaos/plugin-fish-audio": "Surfaces outside the explicitly selected external-protocol kinds expose local registration, configuration, or rendering state only.",
-    "@elizaos/plugin-form": "Form providers expose runtime-local form state.",
-    "@elizaos/plugin-github": "Surfaces outside the explicitly selected external-protocol kinds expose local registration, configuration, or rendering state only.",
-    "@elizaos/plugin-google-genai": "Surfaces outside the explicitly selected external-protocol kinds expose local registration, configuration, or rendering state only.",
-    "@elizaos/plugin-google-workspace": "Surfaces outside the explicitly selected external-protocol kinds expose local registration, configuration, or rendering state only.",
-    "@elizaos/plugin-imessage": "Surfaces outside the explicitly selected external-protocol kinds expose local registration, configuration, or rendering state only.",
-    "@elizaos/plugin-inbox": "Inbox providers and routes operate on the shared local message store.",
-    "@elizaos/plugin-instagram": "Surfaces outside the explicitly selected external-protocol kinds expose local registration, configuration, or rendering state only.",
-    "@elizaos/plugin-local-inference": "Local-inference handlers and routes execute an embedded local model runtime.",
-    "@elizaos/plugin-matrix": "Surfaces outside the explicitly selected external-protocol kinds expose local registration, configuration, or rendering state only.",
-    "@elizaos/plugin-mcp": "Surfaces outside the explicitly selected external-protocol kinds expose local registration, configuration, or rendering state only.",
-    "@elizaos/plugin-meetings": "Meeting providers and routes operate on the local meeting record and media services.",
-    "@elizaos/plugin-messages": "The messages connector is an internal normalization ingress; transport-specific protocols are owned by channel plugins.",
-    "@elizaos/plugin-native-inference": "Native inference handlers execute through the local native host; platform requirements are recorded separately.",
-    "@elizaos/plugin-notes": "Notes providers and routes operate on the local notes service.",
-    "@elizaos/plugin-openai": "Surfaces outside the explicitly selected external-protocol kinds expose local registration, configuration, or rendering state only.",
-    "@elizaos/plugin-personal-assistant": "Personal-assistant providers assemble local domain state; scheduled delivery transports are inventoried separately.",
-    "@elizaos/plugin-phone": "Phone context reads local call state; telephony transport boundaries are registered separately.",
-    "@elizaos/plugin-pty": "PTY routes control a local subprocess terminal.",
-    "@elizaos/plugin-registry": "Surfaces outside the explicitly selected external-protocol kinds expose local registration, configuration, or rendering state only.",
-    "@elizaos/plugin-relationships": "Relationship context reads the shared local entity and relationship stores.",
-    "@elizaos/plugin-scheduling": "Scheduling routes operate on the canonical local scheduled-task state machine.",
-    "@elizaos/plugin-slack": "Surfaces outside the explicitly selected external-protocol kinds expose local registration, configuration, or rendering state only.",
-    "@elizaos/plugin-telegram": "Surfaces outside the explicitly selected external-protocol kinds expose local registration, configuration, or rendering state only.",
-    "@elizaos/plugin-todos": "Todo providers read the local todo store.",
-    "@elizaos/plugin-wechat": "Surfaces outside the explicitly selected external-protocol kinds expose local registration, configuration, or rendering state only.",
-    "@elizaos/plugin-whatsapp": "Surfaces outside the explicitly selected external-protocol kinds expose local registration, configuration, or rendering state only.",
-    "@elizaos/plugin-wifi": "Wi-Fi context is supplied by the local platform network service.",
-    "@elizaos/plugin-workflow": "Workflow routes operate on the embedded local workflow runtime.",
-    "@elizaos/plugin-x": "Surfaces outside the explicitly selected external-protocol kinds expose local registration, configuration, or rendering state only.",
-    "@elizaos/plugin-zai": "Surfaces outside the explicitly selected external-protocol kinds expose local registration, configuration, or rendering state only.",
-    "@elizaos/plugin-zerollama": "Surfaces outside the explicitly selected external-protocol kinds expose local registration, configuration, or rendering state only.",
-    "@elizaos/agent-server": "Surfaces outside the explicitly selected external-protocol kinds expose local registration, configuration, or rendering state only.",
-    "@elizaos/container-control-plane": "Surfaces outside the explicitly selected external-protocol kinds expose local registration, configuration, or rendering state only.",
-    "@elizaos/gateway-discord": "Surfaces outside the explicitly selected external-protocol kinds expose local registration, configuration, or rendering state only.",
-    "@elizaos/gateway-webhook": "Surfaces outside the explicitly selected external-protocol kinds expose local registration, configuration, or rendering state only.",
-    "@elizaos/operator": "Surfaces outside the explicitly selected external-protocol kinds expose local registration, configuration, or rendering state only.",
-    "@elizaos/plugin-dropbox": "Surfaces outside the explicitly selected external-protocol kinds expose local registration, configuration, or rendering state only.",
-    "@elizaos/plugin-finances": "Surfaces outside the explicitly selected external-protocol kinds expose local registration, configuration, or rendering state only.",
-    "@elizaos/plugin-linear": "Surfaces outside the explicitly selected external-protocol kinds expose local registration, configuration, or rendering state only.",
-    "@elizaos/plugin-maps": "Surfaces outside the explicitly selected external-protocol kinds expose local registration, configuration, or rendering state only.",
-    "@elizaos/plugin-notion": "Surfaces outside the explicitly selected external-protocol kinds expose local registration, configuration, or rendering state only.",
-    "@elizaos/plugin-spotify": "Surfaces outside the explicitly selected external-protocol kinds expose local registration, configuration, or rendering state only.",
-    "@elizaos/plugin-taskmarket": "Surfaces outside the explicitly selected external-protocol kinds expose local registration, configuration, or rendering state only.",
-    "@elizaos/plugin-video": "Surfaces outside the explicitly selected external-protocol kinds expose local registration, configuration, or rendering state only.",
-    "@elizaos/plugin-web-search": "Surfaces outside the explicitly selected external-protocol kinds expose local registration, configuration, or rendering state only."
-  }
+  "localPackages": {}
 }

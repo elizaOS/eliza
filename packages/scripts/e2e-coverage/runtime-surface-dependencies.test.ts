@@ -31,12 +31,12 @@ function catalog(
 }
 
 describe("runtime surface dependency catalog", () => {
-  test("does not turn React, Zod, or another package import into a service", () => {
+  test("fails unmatched surfaces closed instead of inferring a local boundary", () => {
     const resolved = resolveRuntimeDependencies("@elizaos/agent", "provider");
     expect(resolved).toEqual({
       externalServiceDependencies: [],
       mockDependencies: [],
-      dependencyDisposition: "local-only",
+      dependencyDisposition: "unresolved",
     });
   });
 
@@ -91,12 +91,15 @@ describe("runtime surface dependency catalog", () => {
       noExternalServiceReason:
         "The example provider reads only deterministic runtime-local fixture state.",
     };
-    expect(() =>
-      validateRuntimeDependencyCatalog(
-        [{ packageName: "@elizaos/missing", kind: "provider" }],
+    expect(
+      resolveRuntimeDependencies(
+        "@elizaos/missing",
+        "route",
         catalog([]),
-      ),
-    ).toThrow(/missing=.*@elizaos\/missing:provider/);
+        "@elizaos/missing:route:/new-external",
+        "plugins/missing/src/routes/new-external.ts",
+      ).dependencyDisposition,
+    ).toBe("unresolved");
     expect(() =>
       validateRuntimeDependencyCatalog(
         [{ packageName: "@elizaos/example", kind: "provider" }],
@@ -131,7 +134,7 @@ describe("runtime surface dependency catalog", () => {
         [{ packageName: "@elizaos/missing", kind: "service" }],
         catalog([]),
       ),
-    ).toThrow(/missing=.*@elizaos\/missing:service/);
+    ).not.toThrow();
   });
 
   test("rejects empty, duplicate, and non-canonical selectors", () => {
@@ -211,14 +214,14 @@ describe("runtime surface dependency catalog", () => {
         mockDependencies: [],
       });
     }
-    expect(() =>
+    expect(
       resolveRuntimeDependencies(
         "@elizaos/plugin-calendar",
         "action",
         undefined,
         "@elizaos/plugin-calendar:action:new_unreviewed_action",
-      ),
-    ).toThrow(/requires exactly one explicit runtime dependency rule; found 0/);
+      ).dependencyDisposition,
+    ).toBe("unresolved");
     expect(
       resolveRuntimeDependencies(
         "@elizaos/plugin-vision",
@@ -323,7 +326,7 @@ describe("runtime surface dependency catalog", () => {
     ).toEqual({
       externalServiceDependencies: [],
       mockDependencies: [],
-      dependencyDisposition: "local-only",
+      dependencyDisposition: "unresolved",
     });
   });
 
@@ -394,8 +397,8 @@ describe("runtime surface dependency catalog", () => {
       pullRequest: 23185,
       head: "0f14c26c6ae4b28771d984c32e8d1fd79c7929ee",
     });
-    expect(committed.rules).toHaveLength(50);
-    expect(Object.keys(committed.localPackages)).toHaveLength(109);
+    expect(committed.rules).toHaveLength(51);
+    expect(Object.keys(committed.localPackages)).toHaveLength(0);
     expect(committed.rules.every((rule) => Array.isArray(rule.kinds))).toBe(
       true,
     );
@@ -404,7 +407,7 @@ describe("runtime surface dependency catalog", () => {
         ...committed.rules.map((rule) => rule.packageName),
         ...Object.keys(committed.localPackages),
       ]).size,
-    ).toBe(114);
+    ).toBe(43);
     expect(
       resolveRuntimeDependencies(
         "@elizaos/cloud-api",

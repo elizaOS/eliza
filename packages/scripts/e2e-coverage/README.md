@@ -58,9 +58,9 @@ registered boundary name; moving an implementation file does not change its id.
 every discovered production surface kind, including actions, services,
 scheduled workers, queues, views, and native bridges. External-service rules
 select explicit kinds, exact canonical ids, or implementation source prefixes;
-remaining surfaces require a reviewed local package fallback or an explicit
-unresolved rule. No unlisted package falls through to an automatic local-only
-default, and unresolved Cloud routes remain visible rather than inheriting
+remaining surfaces fail closed as unresolved unless an explicit matching rule
+proves a local or external boundary. No unlisted package or newly added surface
+falls through to an automatic local-only default, and unresolved Cloud routes remain visible rather than inheriting
 every dependency used anywhere in Cloud API.
 Package imports such as
 React, Zod, SDKs, parsers, and database
@@ -74,8 +74,8 @@ external protocol such as Stripe. Mock/reset evidence remains row-specific and
 is not inferred from catalog ownership. The catalog records closed draft PR #23185
 only as a design reference for a richer provider conformance catalog; it does
 not treat that unmerged work as present evidence or a required stack. The
-current-develop migration has 50 selected rules plus 109 reviewed local package
-fallbacks, accounting for all 114 packages with discovered runtime surfaces.
+current-develop migration has 51 selected rules across 43 packages and zero
+package-wide local fallbacks. Every unmatched surface remains unresolved.
 No rule uses a package-wide `all` selector. Calendar's selected operational
 surfaces declare Google Calendar, Microsoft Graph, Apple EventKit, and guarded
 ICS-feed protocols, while its Google webhook, local migration, provider, and
