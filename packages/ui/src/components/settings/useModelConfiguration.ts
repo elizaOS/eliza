@@ -910,7 +910,12 @@ export function useModelConfiguration(
   const buildCodingGroup = useCallback(
     (data: ReadyData): ModelConfigCodingGroup => {
       const draft = codingDrafts[codingBackend];
-      const freeFormModel = !CODING_CATALOG_PROVIDERS[codingBackend];
+      // OpenCode is the direct-provider escape hatch (including OpenRouter's
+      // full catalog), so its model id must stay editable even when Cerebras
+      // suggestions are available.
+      const freeFormModel =
+        codingBackend === "opencode" ||
+        !CODING_CATALOG_PROVIDERS[codingBackend];
       const modelOptions = codingModelOptions(
         codingBackend,
         data.catalog,

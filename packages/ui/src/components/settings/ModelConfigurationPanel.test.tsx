@@ -341,16 +341,13 @@ describe("prefill and option filtering", () => {
     ]);
   });
 
-  it("keeps a configured opencode model visible even when not in the suggestion list", async () => {
+  it("keeps OpenCode models free-form for full OpenRouter catalogs", async () => {
     await renderReady();
 
     fill("models-coding-backend", "opencode");
-    expect(agentElements.get("models-coding-model")?.options).toEqual([
-      "custom-oss-model",
-      "gemma-4-31b",
-      "zai-glm-4.7",
-      "plain-model",
-    ]);
+    expect(
+      document.querySelector('input[data-agent-id="models-coding-model"]'),
+    ).toBeTruthy();
     expect(
       document.querySelector('[data-agent-id="models-coding-effort"]'),
     ).toBeNull();
