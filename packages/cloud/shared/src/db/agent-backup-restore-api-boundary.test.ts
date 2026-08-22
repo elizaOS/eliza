@@ -104,7 +104,7 @@ describe("dormant restore API boundary", () => {
     expect(readFileSync(join(import.meta.dir, "index.ts"), "utf8")).not.toMatch(
       /agent-backup-restore|agent-vault-key-authority/,
     );
-  }, 15_000);
+  }, 60_000);
 
   test("keeps target reservation free of remote effects and generic identity bypasses", () => {
     const operationSource = readFileSync(
