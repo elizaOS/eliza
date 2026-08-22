@@ -22,6 +22,7 @@ vi.mock("../discord-avatar-cache", () => ({
 
 import {
 	__resetProfileCachesForTests,
+	__setProfileCacheValueForTests,
 	resolveDiscordMessageAuthorProfile,
 	resolveDiscordUserProfile,
 } from "../discord-profiles";
@@ -91,15 +92,20 @@ describe("discord profile cache bound (#24165)", () => {
 		}));
 		const runtime = makeMessageRuntime(messagesFetch);
 
-		// Fill to the cap with keys 0..511.
+		// Fill to the cap with keys 0..511 via the provider path.
 		for (let i = 0; i < MAX_ENTRIES; i++) {
 			await resolveDiscordMessageAuthorProfile(runtime, "ch", String(i));
 		}
-		// Rewrite key 0 (now the oldest slot).
-		await resolveDiscordMessageAuthorProfile(runtime, "ch", "0");
-		expect(messagesFetch.mock.calls.length).toBe(MAX_ENTRIES + 1);
+		// Rewrite key 0 (the oldest slot) through the supported test setter —
+		// the only caller-visible write path (resolve is a read/cache-hit for
+		// an existing key). setCachedValue reinserts → key 0 becomes newest.
+		__setProfileCacheValueForTests("message-author", "ch:0", {
+			id: "user-0",
+			username: "user-0",
+			displayName: null,
+		});
 
-		// Insert one more key: eviction must take the NEW oldest (key 1),
+		// Insert one more key: eviction must take the new oldest (key 1),
 		// not the rewritten key 0 (which moved to newest).
 		await resolveDiscordMessageAuthorProfile(runtime, "ch", String(MAX_ENTRIES));
 		const before = messagesFetch.mock.calls.length;

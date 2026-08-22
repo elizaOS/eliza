@@ -90,6 +90,26 @@ export function __resetProfileCachesForTests(): void {
 	discordMessageAuthorProfileCache.clear();
 }
 
+/** Test-only setter seam: exercises setCachedValue (incl. newest-wins
+ * reinsert) for the named cache without a provider round-trip. */
+export function __setProfileCacheValueForTests(
+	cache: "user" | "message-author",
+	key: string,
+	value: unknown,
+	now?: number,
+): void {
+	if (cache === "user") {
+		setCachedValue(discordUserProfileCache, key, value as DiscordUserProfile | null, now);
+	} else {
+		setCachedValue(
+			discordMessageAuthorProfileCache,
+			key,
+			value as DiscordMessageAuthorProfile | null,
+			now,
+		);
+	}
+}
+
 function getDiscordClient(runtime: AgentRuntime): DiscordClientLike | null {
 	const runtimeWithServices = runtime as AgentRuntime & {
 		getService?: (name: string) => unknown;
