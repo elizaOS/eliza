@@ -1,139 +1,151 @@
-/** Provides the typed browser client for account-deletion status and request endpoints. */
+/** Provides the typed browser client for account-deletion lifecycle endpoints. */
 
-import { api } from "../../lib/api-client";
+import type {
+  AccountDeletionAcceptedDto,
+  AccountDeletionStatusDto,
+} from "@elizaos/cloud-shared/types/account-lifecycle";
+import { api, apiFetch } from "../../lib/api-client";
 import { signOutFromSsoBridgedHost } from "../../sso-bridge/sso-bridge";
 
-export interface AccountDeletionRequestDto {
-  requestId: string;
-  status: AccountDeletionRequestStatus;
-  requestedAt: string;
-  scheduledDeletionAt: string;
-  identityDeactivated: boolean;
-  completedAt: string | null;
+const STATUS_CREDENTIAL_KEY = "eliza.account-deletion.status.v1";
+const RECOVERY_CREDENTIAL_KEY = "eliza.account-deletion.recovery.v1";
+const volatileCredentials = new Map<string, string>();
+
+function readSessionCredential(key: string): string | null {
+  if (typeof window === "undefined") return null;
+  try {
+    return (
+      window.sessionStorage.getItem(key) ?? volatileCredentials.get(key) ?? null
+    );
+  } catch {
+    // error-policy:J4 a storage-denied browser retains capabilities only for
+    // the current renderer lifetime and never substitutes a public identifier.
+    return volatileCredentials.get(key) ?? null;
+  }
 }
 
-export type AccountDeletionRequestStatus =
-  | "requested"
-  | "scheduled"
-  | "processing"
-  | "completed"
-  | "action_required";
-
-const ACCOUNT_DELETION_REQUEST_STATUSES = new Set<AccountDeletionRequestStatus>(
-  ["requested", "scheduled", "processing", "completed", "action_required"],
-);
-
-export type AccountDeletionStatusDto =
-  | { state: "available"; request: null }
-  | {
-      state: "transfer_required";
-      request: null;
-      code: "TRANSFER_REQUIRED";
-      message: string;
-    }
-  | {
-      state: "lifecycle_unavailable";
-      request: null;
-      code: "LIFECYCLE_RESERVATION_REQUIRED";
-      message: string;
-    }
-  | { state: "existing_request"; request: AccountDeletionRequestDto };
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
+function writeSessionCredential(key: string, value: string): void {
+  if (typeof window === "undefined") return;
+  volatileCredentials.set(key, value);
+  try {
+    window.sessionStorage.setItem(key, value);
+  } catch {
+    // error-policy:J4 a storage-denied browser can still use the accepted
+    // capability from volatile memory until this renderer exits.
+  }
 }
 
-function isAccountDeletionRequestStatus(
-  value: unknown,
-): value is AccountDeletionRequestStatus {
-  return (
-    typeof value === "string" &&
-    ACCOUNT_DELETION_REQUEST_STATUSES.has(value as AccountDeletionRequestStatus)
+function removeSessionCredential(key: string): void {
+  if (typeof window === "undefined") return;
+  volatileCredentials.delete(key);
+  try {
+    window.sessionStorage.removeItem(key);
+  } catch {
+    // error-policy:J4 the volatile copy is already removed and the consumed
+    // recovery capability is invalid server-side.
+  }
+}
+
+export function rememberAccountDeletionCapabilities(
+  accepted: AccountDeletionAcceptedDto,
+): void {
+  writeSessionCredential(STATUS_CREDENTIAL_KEY, accepted.statusCredential);
+  writeSessionCredential(RECOVERY_CREDENTIAL_KEY, accepted.recoveryCredential);
+}
+
+export async function submitAccountDeletion(): Promise<AccountDeletionAcceptedDto> {
+  const accepted = await api<AccountDeletionAcceptedDto>(
+    "/api/v1/me/account-deletion",
+    { method: "POST", json: { confirmation: "DELETE" } },
   );
+  rememberAccountDeletionCapabilities(accepted);
+  return accepted;
 }
 
-function isServerTimestamp(value: unknown): value is string {
-  if (typeof value !== "string") return false;
-  const parsed = new Date(value);
-  return !Number.isNaN(parsed.getTime()) && parsed.toISOString() === value;
+export async function readAccountDeletionStatus(): Promise<AccountDeletionStatusDto | null> {
+  const statusCredential = readSessionCredential(STATUS_CREDENTIAL_KEY);
+  if (!statusCredential) return null;
+  const response = await api<{ request: AccountDeletionStatusDto }>(
+    "/api/public/account-deletion",
+    {
+      skipAuth: true,
+      headers: { "X-Account-Deletion-Status": statusCredential },
+    },
+  );
+  return response.request;
 }
 
-function parseRequest(value: unknown): AccountDeletionRequestDto {
-  if (!isRecord(value))
-    throw new Error("Account deletion receipt was malformed");
-  const completedAt = value.completedAt;
-  if (
-    typeof value.requestId !== "string" ||
-    value.requestId.trim().length === 0 ||
-    !isAccountDeletionRequestStatus(value.status) ||
-    !isServerTimestamp(value.requestedAt) ||
-    !isServerTimestamp(value.scheduledDeletionAt) ||
-    typeof value.identityDeactivated !== "boolean" ||
-    (completedAt !== null && !isServerTimestamp(completedAt))
-  ) {
-    throw new Error("Account deletion receipt was malformed");
+export async function cancelAccountDeletion(): Promise<AccountDeletionStatusDto> {
+  const recoveryCredential = readSessionCredential(RECOVERY_CREDENTIAL_KEY);
+  if (!recoveryCredential) {
+    throw new Error(
+      "The recovery capability is unavailable in this browser session.",
+    );
+  }
+  const response = await api<{ request: AccountDeletionStatusDto }>(
+    "/api/public/account-deletion",
+    {
+      method: "DELETE",
+      skipAuth: true,
+      headers: { "X-Account-Deletion-Recovery": recoveryCredential },
+      json: { confirmation: "CANCEL DELETION" },
+    },
+  );
+  removeSessionCredential(RECOVERY_CREDENTIAL_KEY);
+  return response.request;
+}
+
+export interface AccountDeletionExportDownload {
+  blob: Blob;
+  contentDigest: string;
+  filename: string;
+}
+
+export async function downloadAccountDeletionExport(): Promise<AccountDeletionExportDownload> {
+  const recoveryCredential = readSessionCredential(RECOVERY_CREDENTIAL_KEY);
+  if (!recoveryCredential) {
+    throw new Error(
+      "The recovery capability is unavailable in this browser session.",
+    );
+  }
+  const response = await apiFetch("/api/public/account-deletion/export", {
+    method: "POST",
+    skipAuth: true,
+    headers: { "X-Account-Deletion-Recovery": recoveryCredential },
+    json: { confirmation: "EXPORT MY DATA" },
+  });
+  const contentDigest =
+    response.headers.get("X-Account-Deletion-Export-SHA256") ?? "";
+  if (!/^[a-f0-9]{64}$/.test(contentDigest)) {
+    throw new Error(
+      "The deletion export response has no valid content digest.",
+    );
+  }
+  const disposition = response.headers.get("Content-Disposition") ?? "";
+  const filenameMatch = /filename="([A-Za-z0-9._-]+)"/.exec(disposition);
+  const blob = await response.blob();
+  if (!globalThis.crypto?.subtle) {
+    throw new Error("This browser cannot verify the deletion export digest.");
+  }
+  const actualDigest = Array.from(
+    new Uint8Array(
+      await globalThis.crypto.subtle.digest(
+        "SHA-256",
+        await blob.arrayBuffer(),
+      ),
+    ),
+    (byte) => byte.toString(16).padStart(2, "0"),
+  ).join("");
+  if (actualDigest !== contentDigest) {
+    throw new Error(
+      "The deletion export bytes do not match the server receipt.",
+    );
   }
   return {
-    requestId: value.requestId,
-    status: value.status,
-    requestedAt: value.requestedAt,
-    scheduledDeletionAt: value.scheduledDeletionAt,
-    identityDeactivated: value.identityDeactivated,
-    completedAt,
+    blob,
+    contentDigest,
+    filename: filenameMatch?.[1] ?? "eliza-account-export.json",
   };
-}
-
-function parseStatus(value: unknown): AccountDeletionStatusDto {
-  if (!isRecord(value) || typeof value.state !== "string") {
-    throw new Error("Account deletion availability response was malformed");
-  }
-  if (value.state === "available" && value.request === null) {
-    return { state: "available", request: null };
-  }
-  if (value.state === "existing_request") {
-    return { state: "existing_request", request: parseRequest(value.request) };
-  }
-  if (
-    value.state === "transfer_required" &&
-    value.request === null &&
-    value.code === "TRANSFER_REQUIRED" &&
-    typeof value.message === "string"
-  ) {
-    return {
-      state: value.state,
-      request: null,
-      code: value.code,
-      message: value.message,
-    };
-  }
-  if (
-    value.state === "lifecycle_unavailable" &&
-    value.request === null &&
-    value.code === "LIFECYCLE_RESERVATION_REQUIRED" &&
-    typeof value.message === "string"
-  ) {
-    return {
-      state: value.state,
-      request: null,
-      code: value.code,
-      message: value.message,
-    };
-  }
-  throw new Error("Account deletion availability response was malformed");
-}
-
-export async function getAccountDeletionStatus(): Promise<AccountDeletionStatusDto> {
-  return parseStatus(await api<unknown>("/api/v1/me/account-deletion"));
-}
-
-export async function submitAccountDeletion(): Promise<AccountDeletionRequestDto> {
-  const response = await api<unknown>("/api/v1/me/account-deletion", {
-    method: "POST",
-    json: { confirmation: "DELETE" },
-  });
-  if (!isRecord(response))
-    throw new Error("Account deletion receipt was malformed");
-  return parseRequest(response.request);
 }
 
 export async function endLocalSessionAfterDeletion(): Promise<void> {

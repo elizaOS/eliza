@@ -1,4 +1,4 @@
-/** Verifies deletion receipts and the real local authority teardown that follows confirmed success. */
+/** Proves deletion capabilities survive logout while confirmed success retires all local authority. */
 // @vitest-environment jsdom
 
 import { getElizaApiToken, setElizaApiToken } from "@elizaos/shared";
@@ -16,148 +16,156 @@ import {
 } from "../../../state/persistence";
 
 const apiMock = vi.hoisted(() => vi.fn());
+const apiFetchMock = vi.hoisted(() => vi.fn());
 
-vi.mock("../../lib/api-client", () => ({ api: apiMock }));
+vi.mock("../../lib/api-client", () => ({
+  api: apiMock,
+  apiFetch: apiFetchMock,
+}));
 
 import {
+  cancelAccountDeletion,
+  downloadAccountDeletionExport,
   endLocalSessionAfterDeletion,
-  getAccountDeletionStatus,
+  readAccountDeletionStatus,
   submitAccountDeletion,
 } from "./account-deletion-client";
 
-beforeEach(() => apiMock.mockReset());
+const request = {
+  requestId: "33333333-3333-4333-8333-333333333333",
+  status: "recovery" as const,
+  requestedAt: "2026-08-22T12:00:00.000Z",
+  recoveryExpiresAt: "2026-09-21T12:00:00.000Z",
+  scheduledDeletionAt: "2026-09-21T12:00:00.000Z",
+  irreversibleAt: null,
+  completedAt: null,
+  identityDeactivated: true,
+  canCancel: true,
+  nextAction: "download_export_or_cancel" as const,
+  export: null,
+};
 
-describe("getAccountDeletionStatus", () => {
-  it("accepts each fail-closed availability state", async () => {
-    apiMock.mockResolvedValueOnce({
-      state: "lifecycle_unavailable",
-      request: null,
-      code: "LIFECYCLE_RESERVATION_REQUIRED",
-      message: "Lifecycle reservation required",
-    });
-
-    await expect(getAccountDeletionStatus()).resolves.toMatchObject({
-      state: "lifecycle_unavailable",
-      request: null,
-    });
-    expect(apiMock).toHaveBeenCalledWith("/api/v1/me/account-deletion");
+describe("account deletion capability client", () => {
+  beforeEach(() => {
+    apiMock.mockReset();
+    apiFetchMock.mockReset();
+    window.sessionStorage.clear();
   });
 
-  it("accepts a complete existing receipt", async () => {
+  it("stores separate status and recovery capabilities before session revocation", async () => {
     apiMock.mockResolvedValueOnce({
-      state: "existing_request",
-      request: {
-        requestId: "request-1",
-        status: "action_required",
-        requestedAt: "2026-08-19T00:00:00.000Z",
-        scheduledDeletionAt: "2026-09-18T00:00:00.000Z",
-        identityDeactivated: false,
-        completedAt: null,
-      },
+      request,
+      statusCredential: "status-capability",
+      recoveryCredential: "recovery-capability",
     });
 
-    await expect(getAccountDeletionStatus()).resolves.toMatchObject({
-      state: "existing_request",
-      request: { requestId: "request-1", identityDeactivated: false },
-    });
-  });
+    await submitAccountDeletion();
 
-  it("rejects unknown states and incomplete receipts", async () => {
-    apiMock.mockResolvedValueOnce({ state: "scheduled", request: null });
-    await expect(getAccountDeletionStatus()).rejects.toThrow(
-      "Account deletion availability response was malformed",
-    );
-
-    apiMock.mockResolvedValueOnce({
-      state: "existing_request",
-      request: { requestId: "request-1" },
-    });
-    await expect(getAccountDeletionStatus()).rejects.toThrow(
-      "Account deletion receipt was malformed",
-    );
-  });
-});
-
-describe("submitAccountDeletion", () => {
-  it("returns the parsed receipt from a complete envelope", async () => {
-    apiMock.mockResolvedValueOnce({
-      request: {
-        requestId: "request-2",
-        status: "scheduled",
-        requestedAt: "2026-08-19T00:00:00.000Z",
-        scheduledDeletionAt: "2026-09-18T00:00:00.000Z",
-        identityDeactivated: true,
-        completedAt: null,
-      },
-    });
-
-    await expect(submitAccountDeletion()).resolves.toEqual({
-      requestId: "request-2",
-      status: "scheduled",
-      requestedAt: "2026-08-19T00:00:00.000Z",
-      scheduledDeletionAt: "2026-09-18T00:00:00.000Z",
-      identityDeactivated: true,
-      completedAt: null,
-    });
     expect(apiMock).toHaveBeenCalledWith("/api/v1/me/account-deletion", {
       method: "POST",
       json: { confirmation: "DELETE" },
     });
+    expect(
+      window.sessionStorage.getItem("eliza.account-deletion.status.v1"),
+    ).toBe("status-capability");
+    expect(
+      window.sessionStorage.getItem("eliza.account-deletion.recovery.v1"),
+    ).toBe("recovery-capability");
   });
 
-  it("rejects a malformed receipt instead of surfacing undefined fields", async () => {
-    apiMock.mockResolvedValueOnce({ request: { requestId: "request-2" } });
-    await expect(submitAccountDeletion()).rejects.toThrow(
-      "Account deletion receipt was malformed",
+  it("reads post-session status only through the header capability", async () => {
+    window.sessionStorage.setItem(
+      "eliza.account-deletion.status.v1",
+      "status-capability",
     );
+    apiMock.mockResolvedValueOnce({ request });
 
-    apiMock.mockResolvedValueOnce({ requestId: "request-2" });
-    await expect(submitAccountDeletion()).rejects.toThrow(
-      "Account deletion receipt was malformed",
-    );
-
-    apiMock.mockResolvedValueOnce("accepted");
-    await expect(submitAccountDeletion()).rejects.toThrow(
-      "Account deletion receipt was malformed",
-    );
+    await expect(readAccountDeletionStatus()).resolves.toEqual(request);
+    expect(apiMock).toHaveBeenCalledWith("/api/public/account-deletion", {
+      skipAuth: true,
+      headers: { "X-Account-Deletion-Status": "status-capability" },
+    });
   });
 
-  it("rejects unknown receipt statuses, blank ids, and invalid timestamps", async () => {
-    const request = {
-      requestId: "request-2",
-      status: "scheduled",
-      requestedAt: "2026-08-19T00:00:00.000Z",
-      scheduledDeletionAt: "2026-09-18T00:00:00.000Z",
-      identityDeactivated: true,
-      completedAt: null,
-    };
-
+  it("uses and consumes the separate recovery capability for exact undo", async () => {
+    window.sessionStorage.setItem(
+      "eliza.account-deletion.status.v1",
+      "status-capability",
+    );
+    window.sessionStorage.setItem(
+      "eliza.account-deletion.recovery.v1",
+      "recovery-capability",
+    );
     apiMock.mockResolvedValueOnce({
-      request: { ...request, requestId: "  " },
+      request: { ...request, status: "canceled", canCancel: false },
     });
-    await expect(submitAccountDeletion()).rejects.toThrow(
-      "Account deletion receipt was malformed",
+
+    await cancelAccountDeletion();
+
+    expect(apiMock).toHaveBeenCalledWith("/api/public/account-deletion", {
+      method: "DELETE",
+      skipAuth: true,
+      headers: { "X-Account-Deletion-Recovery": "recovery-capability" },
+      json: { confirmation: "CANCEL DELETION" },
+    });
+    expect(
+      window.sessionStorage.getItem("eliza.account-deletion.recovery.v1"),
+    ).toBeNull();
+    expect(
+      window.sessionStorage.getItem("eliza.account-deletion.status.v1"),
+    ).toBe("status-capability");
+  });
+
+  it("downloads export bytes with the recovery capability and verifies the digest header", async () => {
+    window.sessionStorage.setItem(
+      "eliza.account-deletion.recovery.v1",
+      "recovery-capability",
+    );
+    apiFetchMock.mockResolvedValueOnce(
+      new Response('{"export":true}', {
+        headers: {
+          "Content-Disposition": 'attachment; filename="account-export.json"',
+          "Content-Type": "application/json",
+          "X-Account-Deletion-Export-SHA256":
+            "4c258778fd8b758646f4f157098fcd82f65df0c6fe924fecac710d0c94d3de12",
+        },
+      }),
     );
 
-    apiMock.mockResolvedValueOnce({
-      request: { ...request, status: "unexpected" },
-    });
-    await expect(submitAccountDeletion()).rejects.toThrow(
-      "Account deletion receipt was malformed",
+    const download = await downloadAccountDeletionExport();
+
+    expect(apiFetchMock).toHaveBeenCalledWith(
+      "/api/public/account-deletion/export",
+      {
+        method: "POST",
+        skipAuth: true,
+        headers: { "X-Account-Deletion-Recovery": "recovery-capability" },
+        json: { confirmation: "EXPORT MY DATA" },
+      },
+    );
+    expect(download.filename).toBe("account-export.json");
+    expect(download.contentDigest).toBe(
+      "4c258778fd8b758646f4f157098fcd82f65df0c6fe924fecac710d0c94d3de12",
+    );
+    expect(await download.blob.text()).toBe('{"export":true}');
+  });
+
+  it("fails closed when export bytes do not match the receipt digest", async () => {
+    window.sessionStorage.setItem(
+      "eliza.account-deletion.recovery.v1",
+      "recovery-capability",
+    );
+    apiFetchMock.mockResolvedValueOnce(
+      new Response('{"export":true}', {
+        headers: {
+          "Content-Disposition": 'attachment; filename="account-export.json"',
+          "X-Account-Deletion-Export-SHA256": "a".repeat(64),
+        },
+      }),
     );
 
-    apiMock.mockResolvedValueOnce({
-      request: { ...request, scheduledDeletionAt: "not-a-date" },
-    });
-    await expect(submitAccountDeletion()).rejects.toThrow(
-      "Account deletion receipt was malformed",
-    );
-
-    apiMock.mockResolvedValueOnce({
-      request: { ...request, completedAt: "2026-09-18" },
-    });
-    await expect(submitAccountDeletion()).rejects.toThrow(
-      "Account deletion receipt was malformed",
+    await expect(downloadAccountDeletionExport()).rejects.toThrow(
+      "do not match the server receipt",
     );
   });
 });
