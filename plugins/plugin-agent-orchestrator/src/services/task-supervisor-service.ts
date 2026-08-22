@@ -377,8 +377,17 @@ export class TaskSupervisorService extends Service {
 
   private intervalMs(): number {
     const raw = this.readSetting("ELIZA_ORCHESTRATOR_SUPERVISOR_INTERVAL_MS");
-    const n = typeof raw === "string" ? Number.parseInt(raw, 10) : NaN;
-    return Number.isFinite(n) && n >= MIN_INTERVAL_MS ? n : DEFAULT_INTERVAL_MS;
+    // `Number.parseInt` stops at the first non-digit, so "12000junk" parsed to
+    // 12000 — above MIN_INTERVAL_MS, so it was accepted as a deliberate setting
+    // and the supervisor swept every 12s instead of the 45s default. Require the
+    // whole trimmed value to be a decimal integer; the optional leading sign is
+    // kept because `parseInt` accepted it, and the MIN_INTERVAL_MS floor below
+    // stays the range authority.
+    const text = typeof raw === "string" ? raw.trim() : "";
+    const n = /^[+-]?\d+$/.test(text) ? Number(text) : Number.NaN;
+    return Number.isSafeInteger(n) && n >= MIN_INTERVAL_MS
+      ? n
+      : DEFAULT_INTERVAL_MS;
   }
 
   private startTimer(): void {

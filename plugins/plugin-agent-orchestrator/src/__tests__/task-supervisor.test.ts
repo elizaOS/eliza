@@ -16,6 +16,7 @@ function makeRuntime(
     target: { source: string; roomId?: UUID },
     content: Content,
   ) => SendHandlerResult,
+  settings: Record<string, string> = {},
 ): IAgentRuntime {
   const taskService = {
     listTasks: vi.fn(async () => [
@@ -33,7 +34,7 @@ function makeRuntime(
     })),
   };
   return {
-    getSetting: () => undefined,
+    getSetting: (key: string) => settings[key],
     getService: (serviceType: string) =>
       serviceType === "ORCHESTRATOR_TASK_SERVICE" ? taskService : undefined,
     sendMessageToTarget,
@@ -116,5 +117,41 @@ describe("TaskSupervisorService digest sinks (#8902 AC2)", () => {
       posted: [],
       skipped: [],
     });
+  });
+});
+
+describe("TaskSupervisorService sweep interval parsing", () => {
+  /** Capture the delay the supervisor arms its sweep timer with. */
+  async function armedIntervalMs(raw: string): Promise<number> {
+    const spy = vi
+      .spyOn(globalThis, "setInterval")
+      .mockReturnValue(0 as unknown as ReturnType<typeof setInterval>);
+    try {
+      const service = await TaskSupervisorService.start(
+        makeRuntime(undefined, {
+          ELIZA_ORCHESTRATOR_SUPERVISOR_INTERVAL_MS: raw,
+        }),
+      );
+      await service.stop();
+      return spy.mock.calls[0]?.[1] as number;
+    } finally {
+      spy.mockRestore();
+    }
+  }
+
+  it("ignores a trailing-garbage interval instead of sweeping on its prefix", async () => {
+    // parseInt("12000junk") is 12000, which clears MIN_INTERVAL_MS, so a typo
+    // silently swept every 12s instead of the 45s default — 3.75x the load.
+    expect(await armedIntervalMs("12000junk")).toBe(45_000);
+  });
+
+  it("still honours a clean interval, including a signed one", async () => {
+    expect(await armedIntervalMs("12000")).toBe(12_000);
+    // `parseInt` accepted "+12000"; rejecting it would be a regression.
+    expect(await armedIntervalMs("+12000")).toBe(12_000);
+  });
+
+  it("falls back for an interval beyond the safe integer range", async () => {
+    expect(await armedIntervalMs("9007199254740993")).toBe(45_000);
   });
 });
