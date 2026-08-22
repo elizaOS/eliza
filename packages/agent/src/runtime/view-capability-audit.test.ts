@@ -72,7 +72,6 @@ const VIEW_SOURCE_DIRS: Readonly<Record<string, string>> = {
   goals: "plugin-goals",
   todos: "plugin-todos",
   relationships: "plugin-relationships",
-  documents: "plugin-documents",
   orchestrator: "plugin-task-coordinator",
 };
 
@@ -84,7 +83,6 @@ const VIEW_SOURCE_DIRS: Readonly<Record<string, string>> = {
  * cosmetic. (This is documentation of the audited set, not a second registry.)
  */
 const SPATIAL_VIEWS: readonly string[] = [
-  "documents",
   "inbox",
   "goals",
   "health",

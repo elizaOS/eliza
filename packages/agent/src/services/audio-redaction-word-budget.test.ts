@@ -4,7 +4,7 @@
  * imports the production helper only — no runtime, media store, or mocks.
  */
 
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it } from "vitest";
 import {
   AudioRedactionWordBudgetError,
   assertAudioRedactionInputBudget,
