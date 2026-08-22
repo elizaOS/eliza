@@ -22,7 +22,7 @@ import type { AgentRuntime } from "@elizaos/core";
 import { FinancesRepository } from "@elizaos/plugin-finances/db/finances-repository";
 import { FinancesService } from "@elizaos/plugin-finances/finances-service";
 import financesPlugin from "@elizaos/plugin-finances/plugin";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import {
   createRealTestRuntime,
   type RealTestRuntimeResult,
@@ -30,6 +30,7 @@ import {
 import {
   handleLifeOpsRoutes,
   type LifeOpsRouteContext,
+  PLAID_WEBHOOK_BODY_READ_TIMEOUT_MS,
 } from "./lifeops-routes.js";
 
 process.env.ELIZA_TOKEN_ENCRYPTION_KEY = Buffer.alloc(32, 9).toString("base64");
@@ -210,7 +211,12 @@ function buildWebhookCtx(args: {
   runtime: AgentRuntime;
   rawBody?: Buffer;
   verificationJwt?: string;
-}): { ctx: LifeOpsRouteContext; res: CapturedResponse } {
+  stallBody?: boolean;
+}): {
+  ctx: LifeOpsRouteContext;
+  req: IncomingMessage;
+  res: CapturedResponse;
+} {
   const captured: CapturedResponse = { ended: false };
   const socket = new Socket();
   Object.defineProperty(socket, "remoteAddress", {
@@ -228,7 +234,9 @@ function buildWebhookCtx(args: {
   if (args.rawBody) {
     httpReq.push(args.rawBody);
   }
-  httpReq.push(null);
+  if (!args.stallBody) {
+    httpReq.push(null);
+  }
 
   const httpRes = new ServerResponse(httpReq);
   httpRes.statusCode = 0;
@@ -272,7 +280,7 @@ function buildWebhookCtx(args: {
       return raw;
     },
   };
-  return { ctx, res: captured };
+  return { ctx, req: httpReq, res: captured };
 }
 
 describe("Plaid webhook production route (real runtime + HTTP key lookup)", () => {
@@ -409,6 +417,42 @@ describe("Plaid webhook production route (real runtime + HTTP key lookup)", () =
     await handleLifeOpsRoutes(ctx);
     expect(res.statusCode).toBe(413);
     expect(stub.calls).toHaveLength(0);
+  });
+
+  it("times out a stalled body, destroys ingress, and performs zero service work", async () => {
+    vi.useFakeTimers();
+    try {
+      stub.calls.length = 0;
+      const signed = await signWebhook({
+        webhook_type: "TRANSACTIONS",
+        webhook_code: "SYNC_UPDATES_AVAILABLE",
+        item_id: "route-item-1",
+      });
+      const { ctx, req, res } = buildWebhookCtx({
+        runtime,
+        rawBody: Buffer.from(signed.rawBody.slice(0, 8), "utf8"),
+        verificationJwt: signed.verificationJwt,
+        stallBody: true,
+      });
+
+      const handledPromise = handleLifeOpsRoutes(ctx);
+      await vi.advanceTimersByTimeAsync(PLAID_WEBHOOK_BODY_READ_TIMEOUT_MS);
+      expect(await handledPromise).toBe(true);
+      expect(res.statusCode).toBe(408);
+      expect(JSON.parse(res.body ?? "{}")).toEqual({
+        error: "Plaid webhook body read timed out.",
+      });
+      expect(req.destroyed).toBe(true);
+      expect(req.listenerCount("data")).toBe(0);
+      expect(req.listenerCount("end")).toBe(0);
+      expect(req.listenerCount("error")).toBe(0);
+      expect(stub.calls).toHaveLength(0);
+      expect(
+        await repository.listPaymentTransactions(runtime.agentId, { sourceId }),
+      ).toHaveLength(1);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("reports an unknown item as unhandled without touching local sources", async () => {

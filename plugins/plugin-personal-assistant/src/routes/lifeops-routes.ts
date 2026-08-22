@@ -254,7 +254,55 @@ const ACTIVITY_SIGNALS_MAX_LIMIT = 500;
 const MS_PER_DAY = 86_400_000;
 const MAX_SCREEN_TIME_WINDOW_DAYS = 31;
 const MAX_SCREEN_TIME_WINDOW_MS = MAX_SCREEN_TIME_WINDOW_DAYS * MS_PER_DAY;
+/** Maximum time an unauthenticated Plaid delivery may hold its body stream open. */
+export const PLAID_WEBHOOK_BODY_READ_TIMEOUT_MS = 10_000;
 const routeSchemaBootstraps = new WeakMap<AgentRuntime, Promise<void>>();
+
+type PlaidWebhookBodyReadResult =
+  | { kind: "body"; body: Buffer | null }
+  | { kind: "timeout" };
+
+/**
+ * Reads the public webhook body under a clearable deadline. A stalled sender is
+ * destroyed with an observable stream error; awaiting the shared reader after
+ * destruction guarantees its listeners are removed before the route returns.
+ */
+async function readPlaidWebhookBody(
+  req: http.IncomingMessage,
+): Promise<PlaidWebhookBodyReadResult> {
+  let deadlineElapsed = false;
+  let deadline: ReturnType<typeof setTimeout> | undefined;
+  const bodyRead = readRequestBodyBuffer(req, {
+    maxBytes: PLAID_WEBHOOK_MAX_BODY_BYTES,
+    returnNullOnError: true,
+    returnNullOnTooLarge: true,
+    destroyOnTooLarge: true,
+  });
+  const timeout = new Promise<PlaidWebhookBodyReadResult>((resolve) => {
+    deadline = setTimeout(() => {
+      deadlineElapsed = true;
+      req.destroy(new Error("Plaid webhook body read deadline exceeded"));
+      resolve({ kind: "timeout" });
+    }, PLAID_WEBHOOK_BODY_READ_TIMEOUT_MS);
+    deadline.unref?.();
+  });
+
+  try {
+    const result = await Promise.race([
+      bodyRead.then((body) => ({ kind: "body", body }) as const),
+      timeout,
+    ]);
+    if (deadlineElapsed || result.kind === "timeout") {
+      // `returnNullOnError` makes the destroy-triggered read failure resolve;
+      // awaiting it here proves the data/end/error listeners are cleaned up.
+      await bodyRead;
+      return { kind: "timeout" };
+    }
+    return result;
+  } finally {
+    if (deadline) clearTimeout(deadline);
+  }
+}
 
 async function ensureRouteSchema(runtime: AgentRuntime | null): Promise<void> {
   if (!runtime) return;
@@ -2611,12 +2659,12 @@ export async function handleLifeOpsRoutes(
     ) {
       return true;
     }
-    const rawBody = await readRequestBodyBuffer(req, {
-      maxBytes: PLAID_WEBHOOK_MAX_BODY_BYTES,
-      returnNullOnError: true,
-      returnNullOnTooLarge: true,
-      destroyOnTooLarge: true,
-    });
+    const bodyRead = await readPlaidWebhookBody(req);
+    if (bodyRead.kind === "timeout") {
+      ctx.error(res, "Plaid webhook body read timed out.", 408);
+      return true;
+    }
+    const rawBody = bodyRead.body;
     if (!rawBody || rawBody.length === 0) {
       ctx.error(
         res,
