@@ -22,9 +22,11 @@ import {
 } from "./check-runtime-surface-coverage.ts";
 import {
   buildRuntimeSurfaceInventory,
+  hostAssemblyExportKind,
   isDeterministicScenarioSource,
   isExecutableBoundaryEvidence,
   packageEntryPoints,
+  packageHostExportKinds,
   RUNTIME_SURFACE_REPO_ROOT,
   RUNTIME_SURFACE_SCHEMA,
   type RuntimeSurfaceInventory,
@@ -475,6 +477,30 @@ describe("runtime-surface production inventory", () => {
             !entry.registrationField.endsWith(".catch"),
         ),
     ).toBe(true);
+  });
+
+  test("classifies host-used library exports from package-owned metadata", () => {
+    expect(
+      packageHostExportKinds(
+        path.join(RUNTIME_SURFACE_REPO_ROOT, "plugins/plugin-registry"),
+      ),
+    ).toEqual(
+      new Map([
+        ["installAndRestart", "service"],
+        ["installPlugin", "service"],
+        ["listInstalledPlugins", "service"],
+        ["uninstallAndRestart", "service"],
+        ["uninstallPlugin", "service"],
+      ]),
+    );
+    expect(hostAssemblyExportKind("installPlugin", "service")).toBe("service");
+    expect(
+      hostAssemblyExportKind("sanitizeCompletionRelay", undefined),
+    ).toBeNull();
+    expect(hostAssemblyExportKind("PluginManager", undefined)).toBe("service");
+    expect(hostAssemblyExportKind("handlePluginRoutes", undefined)).toBe(
+      "route",
+    );
   });
 
   test("covered means an executable artifact plus its exact boundary signal", () => {

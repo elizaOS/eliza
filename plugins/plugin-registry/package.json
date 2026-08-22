@@ -61,6 +61,15 @@
       "capabilities": [
         "plugin-registry"
       ]
+    },
+    "runtimeSurfaces": {
+      "hostExports": {
+        "installAndRestart": "service",
+        "installPlugin": "service",
+        "listInstalledPlugins": "service",
+        "uninstallAndRestart": "service",
+        "uninstallPlugin": "service"
+      }
     }
   },
   "publishConfig": {

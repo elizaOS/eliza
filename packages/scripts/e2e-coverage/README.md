@@ -30,6 +30,10 @@ are parsed as the authority for both each dynamic import and its canonical
 `/api/...` path; filesystem directory names never substitute for the served
 path. Package source conditions such as `eliza-source` take precedence over
 compiled-output guesses and compatibility barrels.
+Lower-camel library functions consumed directly by a production host declare
+their kind through package-owned `elizaos.runtimeSurfaces.hostExports`
+metadata; a `services/` directory name does not turn an arbitrary helper into a
+runtime service.
 
 Each generated row records:
 

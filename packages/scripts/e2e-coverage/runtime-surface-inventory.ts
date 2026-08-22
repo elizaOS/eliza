@@ -2501,6 +2501,54 @@ function workspacePackageDirs(): string[] {
   return [...new Set(dirs)].sort();
 }
 
+type HostAssemblyExportKind = Extract<RuntimeSurfaceKind, "route" | "service">;
+
+/** Reads explicitly classified host exports from package-owned metadata. */
+export function packageHostExportKinds(
+  packageDir: string,
+): Map<string, HostAssemblyExportKind> {
+  const manifest = readJson(path.join(packageDir, "package.json")) as {
+    elizaos?: { runtimeSurfaces?: { hostExports?: unknown } };
+  };
+  const configured = manifest.elizaos?.runtimeSurfaces?.hostExports;
+  if (configured === undefined) return new Map();
+  if (
+    !configured ||
+    typeof configured !== "object" ||
+    Array.isArray(configured)
+  ) {
+    throw new Error(
+      `${toRepoPath(packageDir)} has invalid elizaos.runtimeSurfaces.hostExports metadata`,
+    );
+  }
+  const entries = Object.entries(configured).sort(([left], [right]) =>
+    left < right ? -1 : left > right ? 1 : 0,
+  );
+  const result = new Map<string, HostAssemblyExportKind>();
+  for (const [name, kind] of entries) {
+    if (!name.trim() || (kind !== "route" && kind !== "service")) {
+      throw new Error(
+        `${toRepoPath(packageDir)} has invalid host export ${name || "<empty>"}`,
+      );
+    }
+    result.set(name, kind);
+  }
+  return result;
+}
+
+/** Classifies a host-used export from metadata or stable public naming. */
+export function hostAssemblyExportKind(
+  name: string,
+  declaredKind: HostAssemblyExportKind | undefined,
+): RuntimeSurfaceKind | null {
+  if (declaredKind) return declaredKind;
+  if (/^handle.*Routes$/.test(name)) return "route";
+  if (/^[A-Z].*(?:Service|Manager)$/.test(name) && !/^I[A-Z]/.test(name)) {
+    return "service";
+  }
+  return null;
+}
+
 function hostAssemblySurfaces(): RawSurface[] {
   const hostFiles = [
     path.join(RUNTIME_SURFACE_REPO_ROOT, "packages/core"),
@@ -2691,6 +2739,7 @@ function hostAssemblySurfaces(): RawSurface[] {
     if (!info) continue;
     if (!hostSources.some((host) => host.source.includes(info.packageName)))
       continue;
+    const declaredHostExports = packageHostExportKinds(packageDir);
     for (const entrypoint of packageEntryPoints(packageDir)) {
       const ast = ts.createSourceFile(
         entrypoint,
@@ -2708,16 +2757,10 @@ function hostAssemblySurfaces(): RawSurface[] {
         for (const exported of statement.exportClause.elements) {
           if (exported.isTypeOnly) continue;
           const name = exported.name.text;
-          const kind: RuntimeSurfaceKind | null = /^handle.*Routes$/.test(name)
-            ? "route"
-            : (/^[A-Z].*(?:Service|Manager)$/.test(name) &&
-                  !/^I[A-Z]/.test(name)) ||
-                (info.packageName === "@elizaos/plugin-registry" &&
-                  /^(?:installPlugin|uninstallPlugin|listInstalledPlugins)$/.test(
-                    name,
-                  ))
-              ? "service"
-              : null;
+          const kind = hostAssemblyExportKind(
+            name,
+            declaredHostExports.get(name),
+          );
           if (
             !kind ||
             !hostSources.some((host) =>
