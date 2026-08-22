@@ -163,6 +163,7 @@ function TimelineHeader({
       label: backLabel,
       group: "orchestrator-timeline",
       description: "Go back to the task list",
+      clickable: isMobile,
     });
   const { ref: detailsRef, agentProps: detailsAgentProps } =
     useAgentElement<HTMLButtonElement>({
@@ -597,6 +598,7 @@ export function OrchestratorWorkbench() {
       label: searchLabel,
       group: "orchestrator-rail",
       description: "Filter the task list by title or request text",
+      fillable: !selectedId,
       getValue: () => search,
       onFill: (value) => setSearch(value),
     });
@@ -608,6 +610,7 @@ export function OrchestratorWorkbench() {
       group: "orchestrator-rail",
       status: showArchived ? "active" : "inactive",
       description: "Toggle showing archived tasks in the list",
+      clickable: !selectedId,
       onActivate: () => setShowArchived((value) => !value),
     });
   return (
