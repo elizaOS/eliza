@@ -57,7 +57,7 @@ function signalAuthExists(
   }
 }
 
-function applySignalQrOverride(
+export function applySignalQrOverride(
   entries: QrOverrideEntry[],
   workspaceDir: string,
 ): void {
