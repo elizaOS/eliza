@@ -6,6 +6,7 @@
  * only runtime transport.
  */
 import { EventEmitter } from "node:events";
+import { logger } from "@elizaos/core";
 import { BaileysAuthManager } from "../baileys/auth";
 import { BaileysConnection } from "../baileys/connection";
 import { MessageAdapter } from "../baileys/message-adapter";
@@ -40,8 +41,8 @@ export class BaileysClient extends EventEmitter implements IWhatsAppClient {
       try {
         const qrData = await this.qrGenerator.generate(qr);
         if (this.config.printQRInTerminal !== false) {
-          console.log("\n=== Scan QR Code ===\n");
-          console.log(qrData.terminal);
+          logger.info("[whatsapp] Scan the following QR code to pair the direct Baileys session");
+          logger.info(qrData.terminal);
         }
         this.emit("qr", qrData);
       } catch (error) {
@@ -95,7 +96,10 @@ export class BaileysClient extends EventEmitter implements IWhatsAppClient {
       message.to,
       payload as Parameters<typeof socket.sendMessage>[1]
     );
-    const id = result?.key?.id ?? "";
+    const id = result?.key?.id;
+    if (!id) {
+      throw new Error("Baileys send completed without a WhatsApp message id");
+    }
 
     return {
       messaging_product: "whatsapp",

@@ -17,6 +17,7 @@ import type {
   ConnectorAccountManager,
   ConnectorAccountPatch,
   ConnectorAccountProvider,
+  ConnectorAccountStatus,
   IAgentRuntime,
 } from "@elizaos/core";
 import {
@@ -45,7 +46,26 @@ function roleForAccount(_account: ResolvedWhatsAppAccount): "OWNER" | "AGENT" {
   return "AGENT";
 }
 
-function toConnectorAccount(account: ResolvedWhatsAppAccount): ConnectorAccount {
+type WhatsAppRuntimeStatusReader = {
+  getAccountConnectionStatus(accountId?: string | null): "open" | "close" | "connecting" | null;
+};
+
+function accountStatus(
+  account: ResolvedWhatsAppAccount,
+  runtimeService: WhatsAppRuntimeStatusReader | null
+): ConnectorAccountStatus {
+  if (!account.enabled) return "disabled";
+  if (!account.configured) return "pending";
+  const liveStatus = runtimeService?.getAccountConnectionStatus(account.accountId) ?? null;
+  if (liveStatus === "open") return "connected";
+  if (liveStatus === "connecting" || liveStatus === null) return "pending";
+  return "error";
+}
+
+function toConnectorAccount(
+  account: ResolvedWhatsAppAccount,
+  runtimeService: WhatsAppRuntimeStatusReader | null
+): ConnectorAccount {
   const now = Date.now();
   return {
     id: normalizeAccountId(account.accountId),
@@ -54,7 +74,7 @@ function toConnectorAccount(account: ResolvedWhatsAppAccount): ConnectorAccount 
     role: roleForAccount(account),
     purpose: purposeForAccount(account),
     accessGate: accessGateForAccount(account),
-    status: account.enabled && account.configured ? "connected" : "disabled",
+    status: accountStatus(account, runtimeService),
     externalId: account.accountId,
     createdAt: now,
     updatedAt: now,
@@ -73,12 +93,20 @@ export function createWhatsAppConnectorAccountProvider(
     provider: WHATSAPP_PROVIDER_ID,
     label: "WhatsApp",
     listAccounts: async (_manager: ConnectorAccountManager): Promise<ConnectorAccount[]> => {
+      const candidate = runtime.getService("whatsapp");
+      const runtimeService =
+        candidate &&
+        typeof candidate === "object" &&
+        "getAccountConnectionStatus" in candidate &&
+        typeof candidate.getAccountConnectionStatus === "function"
+          ? (candidate as WhatsAppRuntimeStatusReader)
+          : null;
       const enabled = listEnabledWhatsAppAccounts(runtime);
       if (enabled.length > 0) {
-        return enabled.map(toConnectorAccount);
+        return enabled.map((account) => toConnectorAccount(account, runtimeService));
       }
       const fallback = resolveWhatsAppAccount(runtime, DEFAULT_ACCOUNT_ID);
-      return [toConnectorAccount(fallback)];
+      return [toConnectorAccount(fallback, runtimeService)];
     },
     createAccount: async (input: ConnectorAccountPatch, _manager: ConnectorAccountManager) => {
       return {

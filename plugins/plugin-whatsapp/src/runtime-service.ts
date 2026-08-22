@@ -479,6 +479,11 @@ export class WhatsAppConnectorService extends Service {
     );
   }
 
+  /** Live Baileys socket state for account surfaces; null means no client exists. */
+  getAccountConnectionStatus(accountId?: string | null): ConnectionStatus | null {
+    return this.getClientForAccount(accountId)?.getConnectionStatus() ?? null;
+  }
+
   private getConfigForAccount(accountId?: string | null): RuntimeServiceConfig | null {
     const normalizedAccountId = this.resolveAccountId(accountId);
     return (
@@ -634,22 +639,10 @@ export class WhatsAppConnectorService extends Service {
             }
           }
 
-          // Agent-generated attachments ride as native WhatsApp media messages
-          // (#8876). Each attachment is isolated so one failure never drops the rest.
+          // Preserve ordering and fail the connector operation if any delivery fails.
+          // A partial delivery is still a failure; callers must not receive fabricated success.
           for (const media of attachments) {
-            try {
-              await service.sendMediaMessage(resolved.accountId, resolved.chatId, media);
-            } catch (error) {
-              runtime.logger.warn(
-                {
-                  src: "plugin:whatsapp",
-                  agentId: runtime.agentId,
-                  url: media.url,
-                  error: error instanceof Error ? error.message : String(error),
-                },
-                "Failed to send WhatsApp outbound attachment; skipping"
-              );
-            }
+            await service.sendMediaMessage(resolved.accountId, resolved.chatId, media);
           }
         },
         resolveTargets: async (query: string) => {
@@ -1282,10 +1275,14 @@ export class WhatsAppConnectorService extends Service {
       typeof configuredMaxMb === "number" && Number.isFinite(configuredMaxMb) && configuredMaxMb > 0
         ? Math.floor(configuredMaxMb * 1024 * 1024)
         : DEFAULT_WHATSAPP_MEDIA_MAX_BYTES;
-    const staged = await stageWhatsAppMedia(media.url, {
-      maxBytes,
-      filePathHint: filename,
-    });
+    const staged = await stageWhatsAppMedia(
+      media.url,
+      {
+        maxBytes,
+        filePathHint: filename,
+      },
+      this.runtime.fetch
+    );
     const mediaContent: WhatsAppMediaMessage = {
       data: staged.buffer,
       mimeType: staged.contentType ?? media.mimeType,

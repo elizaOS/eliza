@@ -13,7 +13,13 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import type { IAgentRuntime, Route, RouteRequest, RouteResponse } from "@elizaos/core";
+import {
+  logger as coreLogger,
+  type IAgentRuntime,
+  type Route,
+  type RouteRequest,
+  type RouteResponse,
+} from "@elizaos/core";
 import type { WhatsAppPairingEvent } from "./pairing-service.js";
 import {
   sanitizeAccountId,
@@ -244,15 +250,11 @@ async function handleStatus(
 
   let serviceConnected = false;
   let servicePhone: string | null = null;
-  try {
-    const waService = runtime.getService("whatsapp");
-    if (waService && typeof waService === "object") {
-      const waState = waService as { connected?: unknown; phoneNumber?: unknown };
-      serviceConnected = Boolean(waState.connected);
-      servicePhone = typeof waState.phoneNumber === "string" ? waState.phoneNumber : null;
-    }
-  } catch {
-    /* service unavailable during setup status lookup */
+  const waService = runtime.getService("whatsapp");
+  if (waService && typeof waService === "object") {
+    const waState = waService as { connected?: unknown; phoneNumber?: unknown };
+    serviceConnected = Boolean(waState.connected);
+    servicePhone = typeof waState.phoneNumber === "string" ? waState.phoneNumber : null;
   }
 
   res.status(200).json({
@@ -324,9 +326,9 @@ async function handleDisconnect(
     try {
       await whatsappLogout(workspaceDir, accountId);
     } catch (logoutErr) {
-      console.warn(
-        `[whatsapp] Logout failed for ${accountId}, deleting auth files directly:`,
-        String(logoutErr)
+      runtime.logger.warn(
+        { src: "plugin:whatsapp", accountId, error: String(logoutErr) },
+        "WhatsApp remote logout failed; deleting local auth state"
       );
       const authDir = path.join(workspaceDir, "whatsapp-auth", accountId);
       try {
@@ -402,8 +404,9 @@ export async function stopAllPairingSessions(): Promise<void> {
     const releaseTransition = await acquirePairingTransition();
     try {
       await stopPairingSession(accountId);
-    } catch {
+    } catch (error) {
       // error-policy:J6 Shutdown continues after a best-effort pairing teardown failure.
+      coreLogger.warn(`[whatsapp] Pairing teardown failed for ${accountId}: ${String(error)}`);
     } finally {
       releaseTransition();
     }

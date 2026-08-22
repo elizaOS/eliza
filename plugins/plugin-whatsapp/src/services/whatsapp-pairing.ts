@@ -156,8 +156,9 @@ export class WhatsAppPairingSession {
             qrDataUrl,
             expiresInMs: 20_000,
           });
-        } catch {
-          // QR generation failure — non-fatal, next QR attempt will retry.
+        } catch (error) {
+          // error-policy:J4 A later Baileys QR update retries this visibly failed render.
+          coreLogger.warn(`${LOG_PREFIX} QR rendering failed: ${String(error)}`);
         }
       }
 
@@ -316,9 +317,9 @@ export async function whatsappLogout(workspaceDir: string, accountId = "default"
           if (update.connection === "open") {
             try {
               await sock.logout();
-            } catch {
+            } catch (error) {
               // error-policy:J6 The remote session may already be logged out.
-              // May fail if already logged out remotely.
+              coreLogger.warn(`${LOG_PREFIX} Remote logout failed: ${String(error)}`);
             }
             await finish();
           } else if (update.connection === "close") {
@@ -326,9 +327,9 @@ export async function whatsappLogout(workspaceDir: string, accountId = "default"
           }
         });
       });
-    } catch {
+    } catch (error) {
       // error-policy:J6 Local auth deletion remains valid if the remote logout cannot connect.
-      // If Baileys can't connect, just delete files anyway.
+      coreLogger.warn(`${LOG_PREFIX} Remote logout setup failed: ${String(error)}`);
     }
   }
 

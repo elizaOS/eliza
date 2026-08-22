@@ -4,7 +4,7 @@
  */
 import { describe, expect, it, vi } from "vitest";
 import { MessageAdapter } from "../src/baileys/message-adapter";
-import { stageWhatsAppMedia } from "../src/media";
+import { isCanonicalStoredMediaUrl, stageWhatsAppMedia } from "../src/media";
 
 describe("WhatsApp guarded media staging", () => {
   it.each([
@@ -44,6 +44,22 @@ describe("WhatsApp guarded media staging", () => {
       })
     ).rejects.toMatchObject({ code: "fetch_failed" });
     expect(pinnedFetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it("bounds canonical local media through the explicitly trusted runtime fetch", async () => {
+    const storedUrl = `/api/media/${"a".repeat(64)}.png`;
+    const localFetch = vi.fn(async () =>
+      new Response(Buffer.from("stored"), {
+        headers: { "content-type": "image/png", "content-length": "6" },
+      }),
+    );
+
+    expect(isCanonicalStoredMediaUrl(storedUrl)).toBe(true);
+    expect(isCanonicalStoredMediaUrl("/api/media/not-a-hash.png")).toBe(false);
+    await expect(stageWhatsAppMedia(storedUrl, { maxBytes: 5 }, localFetch)).rejects.toThrow(
+      "exceeds maxBytes 5",
+    );
+    expect(localFetch).toHaveBeenCalledWith(storedUrl, expect.objectContaining({ signal: expect.any(AbortSignal) }));
   });
 
   it("hands only staged bytes to the Baileys adapter", () => {
