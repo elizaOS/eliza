@@ -126,6 +126,25 @@ export function shouldExpandScenarioEdges(): boolean {
   return process.env.SCENARIO_EXPAND_EDGE_CASES === "1";
 }
 
+// The `--scenario <id>` filter is applied after edge expansion, but edge
+// variants carry generated ids (`<id>--edge-<suffix>`) that a caller filtering
+// by an authored base id never lists. Matching a candidate when the filter
+// names either its own id (selecting one variant directly) or its
+// `baseScenarioId` (selecting a base and pulling its variants along) keeps the
+// run path, the metadata listing, and the corpus count in agreement. Without
+// the base-id branch a filtered expansion run silently drops every variant and
+// `validateScenarioCorpus` rejects a valid corpus.
+function scenarioIdPassesFilter(
+  filter: Set<string> | undefined,
+  id: string,
+  baseScenarioId: string | undefined,
+): boolean {
+  if (!filter) return true;
+  if (filter.has(id)) return true;
+  if (baseScenarioId !== undefined && filter.has(baseScenarioId)) return true;
+  return false;
+}
+
 function withEdgeTurnText(
   turn: ScenarioDefinition["turns"][number],
   suffix: string,
@@ -436,7 +455,15 @@ export async function loadAllScenarios(
     const candidates = [result, ...expanded];
     if (result.scenario.status === "pending" && !includePending) continue;
     for (const candidate of candidates) {
-      if (filter && !filter.has(candidate.scenario.id)) continue;
+      if (
+        !scenarioIdPassesFilter(
+          filter,
+          candidate.scenario.id,
+          candidate.scenario.baseScenarioId,
+        )
+      ) {
+        continue;
+      }
       loaded.push(candidate);
     }
   }
@@ -472,7 +499,11 @@ export async function listScenarioMetadata(
       ...(includeExpanded ? expandScenarioMetadata(result) : []),
     ];
     for (const candidate of candidates) {
-      if (filter && !filter.has(candidate.id)) continue;
+      if (
+        !scenarioIdPassesFilter(filter, candidate.id, candidate.baseScenarioId)
+      ) {
+        continue;
+      }
       loaded.push(candidate);
     }
   }
@@ -490,14 +521,23 @@ export async function countScenarioCorpus(
   total: number;
   multiplierAdded: number;
 }> {
+  // Derive counts from the actual filtered listings instead of projecting a
+  // blind base×(1+variants) multiple. When a filter is present the expanded
+  // listing is the authoritative set of selectable scenarios, so `added` is
+  // exactly the extra variants it contains beyond the bases. This keeps
+  // `total` equal to the expanded listing length for every filter shape, which
+  // is precisely the invariant `validateScenarioCorpus` asserts. For the
+  // unfiltered corpus each base still expands to `SCENARIO_EDGE_VARIANTS.length`
+  // variants, so the reported shape is unchanged.
   const base = await listScenarioMetadata(root, filter, fileGlobs, false);
+  const expanded = await listScenarioMetadata(root, filter, fileGlobs, true);
   const existing = base.length;
-  const added = existing * SCENARIO_EDGE_VARIANTS.length;
+  const added = expanded.length - existing;
   return {
     suite: "scenario-runner",
     existing,
     added,
-    total: existing + added,
+    total: expanded.length,
     multiplierAdded: existing > 0 ? added / existing : 0,
   };
 }
