@@ -1,8 +1,8 @@
 # Progressive content access specification
 
-Status: experimental implementation candidate; projection is opt-in; M4 follow-up under review
+Status: experimental; core/file slices are implemented behind an opt-in projection; lossless restart continuity requires redesign; corpus v2 is under review
 
-Date: 2026-08-21
+Date: 2026-08-22
 
 Owners: core runtime, agent host, coding tools, documents, connector adapters, scenario runner, evidence
 
@@ -51,6 +51,7 @@ Non-goals:
 8. **Mechanical future compaction state.** Any future compaction implementation must preserve references and ranges through a runtime-derived manifest, not through summarizer memory alone.
 9. **No hidden duplication.** Prompt serializers use the bounded projection and must not serialize the full body again through `data`.
 10. **Measure real behavior.** Acceptance includes whether agents request and use later content, not only whether an API supports pagination.
+11. **Bound source work, not only responses.** A small returned page is insufficient when the adapter still fetches, decodes, scans, hashes, or allocates the complete source for every read.
 
 ## 4. Minimal v1 model
 
@@ -58,7 +59,7 @@ Non-goals:
 
 V1 does not introduce a global URI grammar or copy authorization/lifecycle fields into a new public handle. Each adapter retains its native runtime-only locator—such as a validated path, document ID, or provider account/message ID—behind its authorization boundary.
 
-Only this small opaque reference may enter `promptData`, trajectories, telemetry, or compaction:
+Only this small opaque reference may enter `promptData`, protected trajectories, or compaction state:
 
 ```ts
 interface ContentReference {
@@ -69,6 +70,12 @@ interface ContentReference {
 ```
 
 `ref` is a redacted native-service token, not ambient authority. Every read resolves it through the domain's normal authorization. Raw paths, provider account IDs, and cross-room identifiers stay inside the adapter.
+
+The runtime classifies references by continuation lifetime without widening this public type:
+
+- **Restart-safe:** a durable native resolver exists and reauthorizes in a fresh process; only this class may enter a persisted compaction/session-summary manifest.
+- **Session-safe:** resolution depends on current-process or current-session state; it may guide the active runtime but is removed before durable persistence.
+- **Non-resumable:** the upstream source was already lost or truncated; it reports `partial-source-loss` and is never presented as a continuation.
 
 ### 4.2 Shared `ReadSlice`
 
@@ -113,10 +120,10 @@ V1 requires native exact paging. Layered summaries, universal outlines, semantic
 V1 keeps current model-facing action names and adds compatible parameters/results:
 
 ```text
-FILE action=read file_path [offset] [limit] [expected_revision]
-DOCUMENT action=read document_id [offset] [limit] [expected_revision]
-ATTACHMENT action=read attachment_id [offset] [limit] [expected_revision]
-provider email/message read account_id message_id [offset] [limit]
+FILE action=read file_path [offset] [limit] [unit] [expectedRevision]
+DOCUMENT action=read documentId [offset] [limit] [unit] [expectedRevision]
+ATTACHMENT action=read attachmentId [offset] [limit] [expectedRevision]
+provider email/message read accountId messageId [offset] [limit] [expectedRevision]
 ```
 
 Search stays domain-owned. Search hits resolve to exact model-safe references/ranges. Page, MIME-part, sheet, or time selectors may remain domain-specific and map to a v1 line/fragment/byte slice. A generic CONTENT dispatcher, global URI, universal outline, and cross-source relation graph are deferred.
@@ -180,10 +187,12 @@ Rules:
 
 ### 7.3 Documents
 
-- Reuse current document storage and chunk embeddings.
+- Reuse current document storage and chunk embeddings; do not add a second document store.
 - Exact reads support fragment, adjacent-fragment, line, and byte ranges. Parser page metadata may map a PDF page to exact text ranges, but a first-class page range unit remains deferred.
 - Search returns document ID, fragment index/range, score components, and exact continuation.
 - A pinned oversized document contributes at least identity metadata, a fair excerpt, and its model-safe reference; it may not disappear entirely because one block does not fit.
+- Canonical large-document storage uses immutable, non-overlapping UTF-8 byte segments with document/revision/ordinal/start/end metadata and an index that selects only intersecting segments plus bounded lookahead. Overlapping semantic embedding chunks are derived views, not the paging authority.
+- A legacy unsegmented document is transactionally reindexed or returns typed `DOCUMENT_REINDEX_REQUIRED`; it must not silently full-scan, split, and fingerprint the parent body on every page.
 
 ### 7.4 Email and attachments
 
@@ -192,6 +201,8 @@ Rules:
 - Stored attachment text is paged independently; canonical media bytes remain governed by the existing media-store contract.
 - Multiple items use fair per-item budgets.
 - Revoked connector scopes fail explicitly on later reads.
+- A durable attachment locator binds the owning message and a hash of the attachment ID. Resolution fetches that message directly, rechecks room/participant/disclosure authorization, then resolves immutable extracted-text segments. Room-wide attachment scans are not an accepted durable resolver.
+- Connector bodies use stable account/message/revision coordinates and private bounded local segments after one strictly limited acquisition. Process-local random-token maps remain session-safe and may not enter persisted manifests.
 
 ### 7.5 Memories and database records
 
@@ -225,9 +236,9 @@ interface CompactionContentManifest {
 }
 ```
 
-The runtime derives this from the access ledger and actual mutations. It is schema-validated, redacted, size-bounded, and authorization-covered. Recoverability must not depend on prose mentioning every reference.
+The runtime derives this from the access ledger and actual mutations. The logical durable ledger is complete, schema-validated, redacted, and authorization-covered. Individual storage records and model-facing projections are bounded, but count or byte pressure may not evict canonical references/ranges and replace them with omission counters. Overflow is written first into ordered, authorized, addressable shards in the existing memory/database domain; the current summary retains a restart-safe head reference and integrity metadata. Recoverability must not depend on prose mentioning every reference.
 
-The M4 follow-up introduces the versioned strict schema and a deterministic trajectory-derived snapshot across active and archived steps. The snapshot rejects unknown fields, native paths, revision conflicts, excessive references/ranges/processes, and oversized serialized manifests. It does not grant access, extend retention, restore removed automatic compaction, or claim restart durability. Room-scoped capture, persistence in existing session-summary metadata, reauthorization, and fresh-process readback remain required before compaction continuity is complete.
+The M4 follow-up introduces the versioned strict schema and a deterministic trajectory-derived snapshot across active and archived steps. Each shard rejects unknown fields, native paths, revision conflicts, oversized entries, and unsafe references; fixed record ceilings trigger lossless rollover rather than deletion. It does not grant access, extend retention, or restore removed automatic compaction. Persistence is accepted only after tests recover every entry and range following count pressure, byte pressure, repeated rollover, and process termination. A parent test starts a second runtime over the same explicit PGLite directory, reloads the shard head, traverses the complete ledger, reauthorizes, and continues to late canaries through production actions. The same semantic vectors run against real Postgres in the scheduled lane.
 
 ## 9. Security and failure semantics
 
@@ -266,7 +277,10 @@ The feature is not complete until all of the following are demonstrated:
 - Mutation between pages returns stale-source conflict rather than shifted content.
 - Revoked authorization blocks later retrieval without leaking prior unseen content.
 - Model-safe references/revisions remain usable across later turns while retention and access remain valid.
+- Canonical continuity survives count/byte rollover without omitted references or ranges; only the model-facing view is truncated and it carries an addressable next-shard continuation.
 - Raw bodies are absent from prompt `data` when a bounded projection is present.
+- Every accepted corpus family is realized through its production native service and recorded in a verified object-to-native-reference/revision/scope ledger; family labels or filesystem lookalikes are not native-path proof.
+- Per-page and full-traversal source work are bounded: no repeated parent-body scan, whole-source digest, provider refetch, or source-sized allocation hides behind a small response.
 - Deterministic production-action scenario, evidence ingestion, and the invariant performance gate pass at the same revision.
 - A scheduled live-model planning lane, context-inspector UI/API, future compaction manifest, provider soak, and real-Postgres scale lane are follow-up rollout gates before enabling projection by default.
 
@@ -274,11 +288,15 @@ A future inspector exposes only redacted reference, kind, included range, comple
 
 ### 11.1 Normative verification
 
-Delivery requires shared adapter conformance and seeded property suites; temp-filesystem and real PGLite integration; fresh-child-process restart/readback; deterministic isolated scenarios; scheduled live/provider-qualified scenarios; real-stack API/UI E2E; authorization/fault/concurrency tests; performance/soak; and canonical evidence ingestion.
+Delivery requires shared adapter conformance and seeded property suites; temp-filesystem and real PGLite integration; fresh-child-process restart/readback; deterministic isolated scenarios; scheduled live/provider-qualified scenarios; real-stack API/UI E2E; authorization/fault/concurrency tests; performance/soak; and canonical evidence ingestion. PGLite and Postgres execute the same semantic conformance vectors; backend-specific tests may add cases but may not replace the shared vectors.
 
-Behavioral acceptance tests must kill 100% of this explicit mutant catalog: restore whole-file materialization; drop expected-revision validation; split UTF-8/UTF-16 text incorrectly; falsely report completeness; omit a middle page; skip authorization on continuation; duplicate a body through `data`; let the first item starve others; budget before final serialization; reuse artifact identity incorrectly; or turn a selected live lane's missing credentials into a skip.
+Behavioral acceptance tests must kill 100% of this explicit mutant catalog: restore whole-file materialization; drop expected-revision validation; split UTF-8/UTF-16 text incorrectly; falsely report completeness; omit a middle page; skip authorization on continuation; duplicate a body through `data`; let the first item starve others; budget before final serialization; reuse artifact identity incorrectly; evict canonical references/ranges under count or byte pressure while retaining only omission counters; break, skip, repeat, or loop a manifest shard next-link; or turn a selected live lane's missing credentials into a skip.
 
-Required evidence includes corpus manifest/seed/SHA/coordinates, page access/hash ledger, final prompt-token ledger, source-I/O counters, mutant-kill report, fault report, benchmark/environment JSON, heap/RSS/external-memory/FD series, cleanup inventory, scenario report/native export/full trajectories, real E2E backend/browser/network/DB/artifact evidence, and bundle integrity result. The named producer must have a producer-to-bundle regression test and the exact bundle must be inspected.
+The mutant catalog is a checked-in, versioned executable registry. Each required mutant ID names a production seam and a killing test; CI emits `mutant-kills.json` and fails unless every required ID executed and was killed. Shard tests force count rollover, byte rollover, repeated rollover, and fresh-process traversal; they recover every ordered entry/range and detect missing, duplicate, reordered, cyclic, or integrity-mismatched links.
+
+Required evidence includes corpus manifest/seed/SHA/coordinates, native-realization ledger, page access/hash ledger, final prompt-token ledger, source-I/O counters, mutant-kill report, fault report, benchmark/environment JSON, heap/RSS/external-memory/FD series, cleanup inventory, scenario report/native export/full trajectories, real E2E backend/browser/network/DB/artifact evidence, and bundle integrity result. The content-context named producer validates its declared sub-artifacts and writes a strict completeness manifest under the run root assigned by `test:matrix:review`. The existing matrix command remains the sole owner of pre-run inventory, producer execution, exact bundle creation, verification, and review. No sub-producer invents another report root or invokes ingestion itself. The named producer has a producer-to-bundle regression test and the exact bundle is inspected.
+
+Selected credentialed lanes fail when credentials are absent. Optional discovery jobs may skip, but a skip cannot satisfy live-model acceptance.
 
 ## 12. Recommended decisions
 
