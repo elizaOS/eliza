@@ -4,10 +4,11 @@ Private, redacted ledger for the Gmail, Google Calendar, and Apple Calendar cand
 
 ## Workspace and exact checkpoints
 
-- Worktree: `/Users/nubs/.codex/worktrees/lifeops-ux-recovery-20260822/eliza`
-- Branch: `codex/lifeops-ux-recovery-20260822`
-- Reconciliation merge: `2147c2f0ccdc69a97ca3b93b468d56b1641e0494`
-- `origin/develop` reconciled at recovery time: `6d5ce29a5e45ba7b0cd6957349f71e5c2a141fc4`
+- Canonical candidate worktree: `/Users/nubs/.codex/worktrees/lifeops-current-develop-20260822/eliza`
+- Branch: `codex/lifeops-current-develop-20260822`
+- Final current-base reconciliation: `origin/develop` `c6a8c6a54ff096378244511d4863ec380de9e21c`
+- Reconciled implementation head before this ledger update: `70dbbf1f42651574bccead9c72e81a735b59b5e7`
+- Preserved source worktree remains clean at `/Users/nubs/.codex/worktrees/lifeops-ux-recovery-20260822/eliza`, branch `codex/lifeops-ux-recovery-20260822`, head `8334e48ccd02df17c199f86478fbe1e95b295809`.
 - Preserved Gmail checkpoint: `6d9e558c23311bbd4ba2f2f4d555c1960f42210e`, tag `lifeops-gmail-sync-receipts-20260822`
 - Preserved Apple/Calendar checkpoint: `a56941d8b285c2e45031aa7e2a6735ce0d73de37`, tag `lifeops-apple-calendar-provenance-20260822`
 - Preserved overnight ledger: `0a325e37d98e11c69461470a4fdadaec024d9e32`, tag `lifeops-overnight-checkpoint-20260822`
@@ -16,7 +17,9 @@ Private, redacted ledger for the Gmail, Google Calendar, and Apple Calendar cand
 - Connection UI implementation head: `044eece51502c8a59fb82a70f16b4ceb75a88717`, tag `lifeops-connection-ui-20260822`
 - Clean aggregate starting head for this acceptance pass: `24a49ebc24352a967e8e16bfc6438871f888bccd`
 - Exhaustive local/browser recovery checkpoint: `e2454b40fae902124ad5430ede46ab121bf82128`, tag `lifeops-connections-local-qa-20260822`
-- The annotated local-QA tag resolves to the implementation head above. This ledger is the immediate follow-on documentation checkpoint.
+- Gmail account-isolation recoverability checkpoint before the final rebase: `f3ca6093e776667be7740191050254895b3890fe`, tag `lifeops-gmail-account-isolation-20260822`; its final rebased patch-equivalent commit is `70dbbf1f42651574bccead9c72e81a735b59b5e7`.
+- Final current-base commit map, in order: `157f88ce8d`, `273d973085`, `3985913c43`, `91fc92b63e`, `4639652e47`, `94a51275fd`, `4d4102e695`, `f05dec686b`, `f524581bd8`, `70dbbf1f42`.
+- `git range-diff` reports eight preserved implementation/ledger commits as exact `=`, the provider-neutral backend as the same LifeOps patch with only upstream Signal-to-iMessage import context, and the account-isolation change as the new tenth commit.
 - `packages/app-core/platforms/electrobun/native/macos/window-effects.mm` is byte-for-byte unchanged by this lane.
 - No push, PR mutation, merge, deployment, OAuth consent, native permission prompt, or real provider mutation occurred.
 
@@ -28,6 +31,7 @@ Private, redacted ledger for the Gmail, Google Calendar, and Apple Calendar cand
 | Provider-neutral backend | `6a112ea122` | Durable Gmail/calendar projections, bounded resync and purge paths, source selection, exact-account identity, retries, and partial-failure receipts |
 | Connection UI/tests/docs | `044eece515` | Focused first-five-minutes and ongoing-management surface, no-provider browser harness, view registration/bundle, component tests, and contributor documentation |
 | Local/browser recovery | `e2454b40fa` | Multi-account isolation, Apple-only seeding, permission/settings recovery, destructive-dialog focus safety, count-aware receipts, and exhaustive deterministic browser scenarios |
+| Gmail account identity hardening | `70dbbf1f42` | Account-scoped projection, unified-inbox cache, and thread identities while retaining raw provider IDs for confirmed effects; includes real-PGlite multi-account proof |
 | macOS native handoff | Existing bounded artifact | `plugins/plugin-calendar/docs/MACOS_EVENTKIT_PROVENANCE_CONTRACT.md`; native implementation remains with the macOS owner |
 
 ## Current capability matrix
@@ -66,34 +70,40 @@ Legend: deterministic means fixture/unit/integration/local-browser evidence. Rea
 - Physically inspected final desktop initial, Apple-only seeded, disconnected, and 390px mobile captures.
 - Documented the exact supervised live-provider acceptance sequence in `plugins/plugin-personal-assistant/docs/LIFEOPS_LIVE_VALIDATION.md`.
 - Preserved the macOS EventKit provenance contract and left the owned native bridge unchanged.
+- Reconciled all preserved LifeOps commits onto current `origin/develop` without conflict and proved patch identity with `git range-diff`.
+- Corrected a real multi-account Gmail collision: identical provider message/thread IDs from different Google accounts now remain distinct in durable projections and unified Inbox caches, while provider mutation references remain raw and usable.
+- Tightened the legacy/rich Gmail mapper union so the package-wide Personal Assistant typecheck is clean on the current compiler.
+- Inspected canonical credential locations by presence only. No Google OAuth environment configuration or canonical default provider state was discoverable; no token, credential, provider message, or event value was read or printed.
 
 ## Verification evidence
 
-- Final no-provider browser acceptance: 48/48 assertions passed in real headless Chromium.
+- Final current-base no-provider browser acceptance: 48/48 assertions passed in real headless Chromium.
   - Covered partial source failure, Gmail History health, every Apple permission state, bounded seed/count receipts, retry recovery, provider-safe purge, disconnect/reconnect/no duplicates, drafts versus effects, multi-account isolation, Apple-only seed, capability defaults, injected load/seed/calendar/permission/settings/purge/disconnect/connect failures, zero uncaught page errors, 390px overflow, and 44px touch targets.
-  - Redacted temporary captures: `/var/folders/h3/hz68shz96gz0h9lnyctghppc0000gn/T/eliza-lifeops-e2e-tTOShh`
-- In-app Browser inspection against the rebuilt isolated fixture confirmed exact second-account seed provenance, exclusion of the first account's hidden calendar, Apple-only `grantId: null`, Cancel-first modal focus/trap/Escape behavior, visible seed-failure recovery, no page errors, and a clean 390x844 layout.
-- Focused UI/registration/boundary Vitest: 4 files, 27 tests passed.
-- Focused provider-neutral backend/component/boundary Vitest: 6 files, 50 tests passed.
+  - Final exact-head redacted temporary captures: `/var/folders/h3/hz68shz96gz0h9lnyctghppc0000gn/T/eliza-lifeops-e2e-AXvMRC`
+- Direct capture inspection confirmed account/calendar/scope selection, 7/30/90-day bounds, seed counts, cursor/source health, Apple denied/fresh states, local purge receipts, disconnected state, provider-safe dedup copy, and a clean 390px mobile layout.
+- Focused current-base UI/registration/Gmail boundary Vitest: 6 files, 43 tests passed.
+- Real local PGlite account-isolation integration: 1 file, 2 tests passed.
+- Inbox package lane: 26 files passed, 1 skipped; 225 tests passed, 2 skipped.
+- Google Workspace package lane: 29 files, 326 tests passed.
 - Calendar package unit lane: 67 files passed, 2 skipped; 645 tests passed, 4 skipped.
-- Calendar integration lane through the repository integration config: 2 files, 18 tests passed.
+- Calendar deterministic integration lane through the repository integration config: 3 files, 24 tests passed.
+- Native Calendar bridge lane: 3 files, 28 tests passed.
+- Personal Assistant, Inbox, Google Workspace, Calendar, and native Calendar typechecks, Biome checks, and production builds passed.
 - Personal Assistant production build passed, including the 36.26 kB focused view bundle and declaration emission.
-- Focused production connection UI TypeScript check passed with no diagnostics.
-- Biome passed all 15 changed TypeScript/TSX/MJS/JSON source files with no fixes.
-- Repository CLAUDE/AGENTS parity passed for all 160 tracked pairs.
+- Inbox built a 10.29 kB view bundle; Calendar built a 25.81 kB view bundle.
+- Repository CLAUDE/AGENTS parity passed for all 161 tracked pairs.
 - App audit passed: 227 tests passed; 224 views reviewed, 211 verified, 0 broken, 0 needs-work, and 13 audit entries left for human eyeballing; final LifeOps desktop/mobile captures were manually inspected separately.
-- `git diff --check` passed before the UI commit.
+- `git diff --check` passed before each scoped commit.
 - No test or harness contacted Google, Gmail, Google Calendar, Apple Calendar, OAuth, or a native permission surface.
 
 ## Known non-scoped repository baselines
 
-- The package-wide Personal Assistant typecheck continues to report pre-existing diagnostics in unrelated browser, Signal, and legacy Google delegate modules. The focused production connection UI typecheck is green.
-- A broad Personal Assistant suite was intentionally stopped after unrelated existing brief/fuzz/connector/anticipation/register failures appeared. The exact owned test selection above is green and is the acceptance gate for this bounded checkpoint.
-- These baselines were not expanded into this lane and do not invalidate the focused connection candidate.
+- The six-scenario deterministic LifeOps scheduling spine is not usable as acceptance on this base: all six failed on shared runtime/fixture drift, including an expired mock Google grant, missing deterministic evaluator fixtures, missing delivery observations, and scheduled-task quarantine. The run was stopped only after all six scenarios had completed and emitted its checkpoint summary. This is separate from the green Gmail/Calendar connector fixture suites above.
+- Gmail and Calendar corpus scenarios are intentionally `live-only` and credential-gated; the scenario runner correctly excludes them from `pr-deterministic`. They remain part of supervised provider acceptance, not local proof.
 
 ## Doing
 
-- No safe local implementation or browser-fixture work remains in the bounded Gmail/Google Calendar/Apple Calendar acceptance scope.
+- No safe local implementation or deterministic acceptance work remains in the bounded Gmail, Google Calendar, and Apple Calendar scope.
 
 ## Next: true external gates only
 
