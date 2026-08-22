@@ -223,8 +223,8 @@ export const VIEW_OCR_POLICIES = {
     requireAny: ["Desktop workspace", "Electrobun desktop runtime"],
   }),
   "builtin-settings": expected({
-    requireAll: ["Settings"],
-    requireAny: ["Models & Providers", "Voice", "Appearance", "Basics"],
+    requireAll: ["General"],
+    requireAny: ["Voice", "Agent", "Connections", "Permissions"],
   }),
   "builtin-vault": expected({
     // The audit intentionally captures routed views with the chat sheet open.

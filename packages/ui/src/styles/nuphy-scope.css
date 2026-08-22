@@ -195,3 +195,11 @@
   left: 0;
   height: 32px;
 }
+
+/* The tablet chat capsule spans the settings sidebar in portrait. Reserve its
+   resting height so the pinned Cloud account action remains tappable. */
+@media (orientation: portrait) and (min-width: 640px) and (max-width: 1023px) {
+  .nuphy-scope .nuphy-settings-account-footer {
+    margin-bottom: 5rem;
+  }
+}

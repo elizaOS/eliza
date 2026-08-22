@@ -301,7 +301,11 @@ function readWindowsProcessIdentity(pid, spawnSyncFn) {
       {
         encoding: "utf8",
         windowsHide: true,
-        timeout: 1000,
+        // Hosted Windows runners can take more than a second to initialize
+        // the first CIM query. The process identity is a safety prerequisite,
+        // so give the bounded read time to complete instead of degrading to a
+        // PID-only teardown.
+        timeout: 5000,
         maxBuffer: 4096,
       },
     );

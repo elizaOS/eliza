@@ -339,12 +339,7 @@ function PairingQr({ payload }: { payload: string }) {
 }
 
 function PairingPanel({ pairing }: { pairing: DevicePairingView }) {
-  const [remaining, setRemaining] = useState(() =>
-    Math.max(
-      0,
-      Math.ceil((Date.parse(pairing.expiresAt) - Date.now()) / 1_000),
-    ),
-  );
+  const [remaining, setRemaining] = useState<number | null>(null);
   useEffect(() => {
     const update = () =>
       setRemaining(
@@ -358,8 +353,9 @@ function PairingPanel({ pairing }: { pairing: DevicePairingView }) {
     return () => window.clearInterval(timer);
   }, [pairing.expiresAt]);
 
-  const minutes = Math.floor(remaining / 60);
-  const seconds = String(remaining % 60).padStart(2, "0");
+  const minutes = remaining === null ? null : Math.floor(remaining / 60);
+  const seconds =
+    remaining === null ? null : String(remaining % 60).padStart(2, "0");
   return (
     <div className="grid gap-5 rounded-xl border border-accent/35 bg-accent/5 p-4 sm:grid-cols-[1fr_auto] sm:items-center">
       <div className="min-w-0">
@@ -397,12 +393,14 @@ function PairingPanel({ pairing }: { pairing: DevicePairingView }) {
         <p
           className={cn(
             "mt-2 text-xs",
-            remaining ? "text-muted" : "text-destructive",
+            remaining === 0 ? "text-destructive" : "text-muted",
           )}
         >
-          {remaining
-            ? `Expires in ${minutes}:${seconds}`
-            : "Code expired. Request a new code."}
+          {remaining === null
+            ? "Checking code expiry..."
+            : remaining > 0
+              ? `Expires in ${minutes}:${seconds}`
+              : "Code expired. Request a new code."}
         </p>
       </div>
       <PairingQr payload={pairing.qrPayload} />

@@ -34,6 +34,7 @@ import {
   PREFLIGHT_STEPS,
   parseBatchTimeoutArg,
   parsePositiveDuration,
+  readProcessIdentity,
   runBatches,
   runCommandWithWatchdog,
   runPreflightStep,
@@ -67,6 +68,24 @@ describe("walkTests", () => {
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
+  });
+});
+
+describe("readProcessIdentity", () => {
+  it("gives hosted Windows CIM enough bounded time to prove process ownership", () => {
+    let invocation;
+    const identity = readProcessIdentity(321, {
+      platform: "win32",
+      spawnSyncFn: (command, args, options) => {
+        invocation = { command, args, options };
+        return { status: 0, stdout: "638914176000000000" };
+      },
+    });
+
+    expect(identity).toBe("win-creation:638914176000000000");
+    expect(invocation.command).toBe("powershell.exe");
+    expect(invocation.args).toContain("-NonInteractive");
+    expect(invocation.options.timeout).toBe(5000);
   });
 });
 

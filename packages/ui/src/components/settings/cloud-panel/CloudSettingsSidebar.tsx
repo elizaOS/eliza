@@ -26,7 +26,7 @@ function CloudAccountFooter() {
 
   if (!elizaCloudConnected && !hasCloudManagementCredential()) {
     return (
-      <div className="border-t border-[var(--hairline)] px-3 py-3">
+      <div className="nuphy-settings-account-footer border-t border-[var(--hairline)] px-3 py-3">
         <button
           type="button"
           className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--fill)]"
@@ -51,7 +51,7 @@ function CloudAccountFooter() {
   }
 
   return (
-    <div className="border-t border-[var(--hairline)] px-3 py-2">
+    <div className="nuphy-settings-account-footer border-t border-[var(--hairline)] px-3 py-2">
       <button
         type="button"
         className="flex w-full items-center justify-between rounded-md px-2 py-1.5 text-sm transition-colors hover:bg-[var(--fill)]"

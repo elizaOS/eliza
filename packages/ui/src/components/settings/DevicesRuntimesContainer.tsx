@@ -329,12 +329,17 @@ export function DevicesRuntimesContainer({
   const [sshInspection, setSshInspection] = useState<SshHostInspection | null>(
     null,
   );
-  const pendingSshId = useRef(crypto.randomUUID());
+  const pendingSshId = useRef<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [cloudState, setCloudState] = useState<
     "loading" | "available" | "signed-out" | "error"
   >("loading");
+
+  const getPendingSshId = useCallback(() => {
+    pendingSshId.current ??= crypto.randomUUID();
+    return pendingSshId.current;
+  }, []);
 
   const refresh = useCallback(async () => {
     setError(null);
@@ -581,7 +586,7 @@ export function DevicesRuntimesContainer({
   const onInspectSsh = (input: { target: string; sshPort: number }) =>
     run(async () => {
       const inspection = await inspectSshHost({
-        runtimeId: pendingSshId.current,
+        runtimeId: getPendingSshId(),
         ...input,
       });
       setSshInspection(inspection);
@@ -589,7 +594,7 @@ export function DevicesRuntimesContainer({
 
   const onConnectSsh = (input: SshConnectInput) =>
     run(async () => {
-      const runtimeId = pendingSshId.current;
+      const runtimeId = getPendingSshId();
       if (input.accessToken)
         await storeRuntimeCredential(runtimeId, input.accessToken);
       await startSshWithCredentialCleanup(runtimeId, input);
@@ -610,7 +615,7 @@ export function DevicesRuntimesContainer({
         },
         { activate: false, id: runtimeId },
       );
-      pendingSshId.current = crypto.randomUUID();
+      pendingSshId.current = null;
       setSshInspection(null);
       await refresh();
     });
