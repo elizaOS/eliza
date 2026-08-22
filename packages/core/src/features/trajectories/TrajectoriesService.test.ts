@@ -88,7 +88,7 @@ describe("TrajectoriesService", () => {
 		await service.stop();
 	});
 
-	it("persists LLM calls with complete JSON-safe payloads", async () => {
+	it("persists complete JSON-safe model request and response payloads", async () => {
 		const trajectoryId = "00000000-0000-4000-8000-000000000010";
 		const stepId = "00000000-0000-4000-8000-000000000011";
 		const runtimeSecret = "SYNTH-CORE-DB-RUNTIME-SECRET-1111";
@@ -130,6 +130,10 @@ describe("TrajectoriesService", () => {
 			},
 		};
 		circular.self = circular;
+		let deepArgs: Record<string, unknown> = { final: "FINAL-DEPTH-CANARY" };
+		for (let depth = 30; depth >= 1; depth -= 1) {
+			deepArgs = { child: deepArgs };
+		}
 
 		service.logLlmCall({
 			stepId,
@@ -146,16 +150,25 @@ describe("TrajectoriesService", () => {
 				{
 					role: "assistant",
 					content: `--token=${flagCanary} ${runtimeSecret} ${"m".repeat(120_000)}`,
-					circular,
 				},
 			],
-			tools: { circular },
+			tools: [
+				{
+					name: "CANARY_TOOL",
+					description: "complete schema",
+					parameters: {
+						type: "object",
+						properties: { target: { type: "string" } },
+					},
+				},
+			],
 			toolCalls: [
 				{
 					id: "call-1",
 					name: "CANARY_TOOL",
 					args: {
 						target: `https://user:${uriCanary}@synthetic.invalid/`,
+						deep: deepArgs,
 					},
 				},
 			],
@@ -194,8 +207,10 @@ describe("TrajectoriesService", () => {
 		// persisted whole (only the secret canaries are redacted).
 		expect(call.messages[0].content).not.toContain("[truncated]");
 		expect(call.messages[0].content).toContain("m".repeat(120_000));
-		expect(call.tools.circular.self).toBe("[REDACTED]");
-		expect(call.tools.circular.fn).toBe("[Function toolHandler]");
+		expect(call.tools[0].name).toBe("CANARY_TOOL");
+		expect(JSON.stringify(call.toolCalls[0].args.deep)).toContain(
+			"FINAL-DEPTH-CANARY",
+		);
 		expect(call.providerMetadata.self).toBe("[REDACTED]");
 		expect(call.providerOrder).toEqual(["CHARACTER"]);
 		expect(call.runId).toBe("run-identity-1");

@@ -5,6 +5,7 @@
  * canned strings, no live model or DB.
  */
 import { describe, expect, it, vi } from "vitest";
+import { ElizaError } from "../../errors";
 import { evaluatorTemplate } from "../../prompts/evaluator";
 import {
 	type ChatMessage,
@@ -1610,8 +1611,13 @@ describe("provider-owned evaluator output boundaries", () => {
 						},
 						request,
 					);
+					if (completedCalls === 1) {
+						throw new ElizaError("final request exceeds context", {
+							code: "MODEL_INPUT_OVER_BUDGET",
+						});
+					}
 					completedCalls++;
-					return completedCalls === 1 ? truncatedEnvelope : completeEnvelope;
+					return truncatedEnvelope;
 				},
 			);
 			const reportError = vi.fn();

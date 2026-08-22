@@ -20,8 +20,6 @@ const removedCompactionModules = [
 	"packages/agent/src/runtime/conversation-compactor.ts",
 	"packages/agent/src/runtime/prompt-compaction.ts",
 	"packages/core/src/runtime/conversation-compaction-hook.ts",
-	"packages/core/src/runtime/content-projection-policy.ts",
-	"packages/core/src/runtime/content-projection-policy.test.ts",
 	"packages/training/scripts/transform_drop_oversized.py",
 ];
 
@@ -105,6 +103,11 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 		/contentProjection/,
 		/projectToolDiagnosticValue/,
 		/projectToolDiagnosticArgs/,
+	],
+	"packages/core/src/runtime/content-projection-policy.ts": [
+		/parseBooleanValue/,
+		/enabled:\s*args\.enabled/,
+		/pagesOmitted:\s*args\.stats\.pagesOmitted/,
 	],
 	"packages/core/src/services/optimized-prompt-resolver.ts": [
 		/ELIZA_PROMPT_COMPRESS/,
