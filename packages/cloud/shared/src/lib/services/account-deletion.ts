@@ -10,13 +10,20 @@ import type {
   AccountDeletionStatus,
   AccountDeletionStatusDto,
 } from "../../types/account-lifecycle";
+import type { AgentBackupObjectStoreRegistry } from "../storage/agent-backup-object-store";
 import type { RuntimeR2Bucket } from "../storage/r2-runtime-binding";
 import { logger } from "../utils/logger";
 import {
   type AccountDeletionExportRevocationResult,
   reconcileAccountDeletionExportRevocations,
 } from "./account-deletion-export";
+import { createAccountDeletionProviderAdapters } from "./account-deletion-provider-adapters";
 import { purgePersonalOrganizationResources } from "./account-deletion-resource-purge";
+import {
+  type AccountDeletionProviderAdapters,
+  processIrreversibleAccountDeletionSaga,
+  reconcileRecoveryStewardDeactivations,
+} from "./account-deletion-saga";
 import {
   deactivateStewardPlatformUser,
   reactivateStewardPlatformUser,
@@ -31,20 +38,40 @@ const EXPORT_REVOCATION_SAFETY_MILLISECONDS = 15 * 60 * 1_000;
 export const ACCOUNT_DELETION_PHASES = [
   "account_authority",
   "export",
-  "steward",
+  "steward_deactivation",
   "stripe",
+  "domains",
+  "secondary_backups",
+  "spools",
   "compute_containers",
   "github_repositories",
   "connector_credentials",
   "voice_credentials",
-  "domains",
   "primary_object_storage",
-  "secondary_backups",
-  "spools",
   "vault_key_bindings",
   "other_grants",
+  "steward_deletion",
   "database_erasure",
 ] as const;
+
+const ACCOUNT_DELETION_PHASE_ORDER = new Map<string, number>([
+  ["account_authority", 0],
+  ["export", 1],
+  ["steward_deactivation", 2],
+  ["stripe", 10],
+  ["domains", 20],
+  ["secondary_backups", 30],
+  ["spools", 40],
+  ["compute_containers", 50],
+  ["github_repositories", 60],
+  ["connector_credentials", 70],
+  ["voice_credentials", 80],
+  ["primary_object_storage", 90],
+  ["vault_key_bindings", 100],
+  ["other_grants", 110],
+  ["steward_deletion", 120],
+  ["database_erasure", 130],
+]);
 
 export type AccountDeletionConflictCode =
   | "ACCOUNT_UNAVAILABLE"
@@ -86,6 +113,7 @@ function nextActionForStatus(status: AccountDeletionStatus): AccountDeletionNext
       return "download_export_or_cancel";
     case "scheduled":
     case "processing":
+    case "canceling":
       return "wait_for_reconciliation";
     case "action_required":
       return "contact_support";
@@ -109,11 +137,9 @@ export function toAccountDeletionRequestDto(
     irreversibleAt: request.irreversible_at?.toISOString() ?? null,
     completedAt: request.completed_at?.toISOString() ?? null,
     identityDeactivated: request.identity_deactivated_at !== null,
+    accessState: status === "completed" ? "erased" : status === "canceled" ? "active" : "fenced",
     canCancel: status === "reserved" || status === "recovery",
-    nextAction:
-      status === "canceled" && request.last_error_code
-        ? "wait_for_reconciliation"
-        : nextActionForStatus(status),
+    nextAction: nextActionForStatus(status),
     export: exportReceipt
       ? {
           status: exportReceipt.status,
@@ -172,23 +198,16 @@ export async function cancelAccountDeletion(
       "RECOVERY_WINDOW_EXPIRED",
     );
   }
-  if (cancellation.outcome === "already_canceled") {
+  if (cancellation.outcome === "already_canceled" || cancellation.outcome === "already_canceling") {
     return toAccountDeletionRequestDto(cancellation.request);
   }
 
-  const reactivated = await attemptImmediateStewardReactivation({
+  await attemptImmediateStewardReactivation({
     requestId: cancellation.request.id,
     stewardUserId: cancellation.stewardUserId,
   });
-  return toAccountDeletionRequestDto(
-    reactivated
-      ? {
-          ...cancellation.request,
-          identity_deactivated_at: null,
-          last_error_code: null,
-        }
-      : cancellation.request,
-  );
+  const latest = await accountDeletionRequestsRepository.findById(cancellation.request.id);
+  return toAccountDeletionRequestDto(latest ?? cancellation.request);
 }
 
 export async function requestAccountDeletion(input: {
@@ -208,9 +227,9 @@ export async function requestAccountDeletion(input: {
   const requestDigest = createHash("sha256")
     .update(`account-deletion:v1:${requestId}`)
     .digest("hex");
-  const phases = ACCOUNT_DELETION_PHASES.map((phase, phaseOrder) => ({
+  const phases = ACCOUNT_DELETION_PHASES.map((phase) => ({
     phase,
-    phaseOrder,
+    phaseOrder: ACCOUNT_DELETION_PHASE_ORDER.get(phase)!,
     idempotencyKeyDigest: createHash("sha256")
       .update(`account-deletion-phase:v1:${requestId}:${phase}`)
       .digest("hex"),
@@ -279,7 +298,7 @@ async function attemptImmediateStewardDeactivation(input: {
   const workerNonce = randomUUID();
   const lease = await accountDeletionRequestsRepository.leasePhase({
     requestId: input.requestId,
-    phase: "steward",
+    phase: "steward_deactivation",
     leaseOwnerDigest: createHash("sha256").update(workerNonce).digest("hex"),
     now: input.now,
     leaseMilliseconds: IMMEDIATE_PHASE_LEASE_MILLISECONDS,
@@ -375,14 +394,21 @@ async function attemptImmediateStewardReactivation(input: {
 
 export interface ProcessAccountDeletionResult {
   exportRevocations: AccountDeletionExportRevocationResult;
+  cancellationsFinalized: number;
+  stewardDeactivationReconciliations: number;
+  activated: number;
   recovered: number;
   processed: number;
   completed: number;
+  progressed: number;
+  reconciling: number;
   actionRequired: number;
 }
 
 export interface ProcessAccountDeletionResources {
   blob: RuntimeR2Bucket;
+  adapters?: AccountDeletionProviderAdapters;
+  backupRegistry?: AgentBackupObjectStoreRegistry;
   purgeOrganizationResources?: typeof purgePersonalOrganizationResources;
 }
 
@@ -404,9 +430,9 @@ function requireProcessAccountDeletionResources(
 }
 
 /**
- * Reconciles bounded export cleanup before parking legacy irreversible requests.
- * New reservations use phase receipts; the legacy queue remains fail-closed
- * until all irreversible providers use the same fenced lifecycle contract.
+ * Activates expired recovery reservations and advances one ordered, inspected
+ * provider phase per request. Pre-reservation legacy rows remain on the
+ * deliberate fail-closed path and never share the new saga authority.
  */
 export async function processDueAccountDeletions(
   limit = 10,
@@ -419,6 +445,67 @@ export async function processDueAccountDeletions(
     bucket: resources.blob,
     now: () => now,
   });
+  const adapters =
+    resources.adapters ??
+    createAccountDeletionProviderAdapters({ backupRegistry: resources.backupRegistry });
+  const stewardDeactivations = await reconcileRecoveryStewardDeactivations({
+    limit,
+    blob: resources.blob,
+    adapter: adapters.steward_deactivation,
+    now,
+  });
+  let cancellationsFinalized = 0;
+  for (const requestId of await accountDeletionRequestsRepository.findCancelingRequestIds(limit)) {
+    if (
+      await accountDeletionRequestsRepository.finalizeCancellationIfComplete({ requestId, now })
+    ) {
+      cancellationsFinalized++;
+    }
+  }
+
+  let activated = 0;
+  let activationActionRequired = 0;
+  for (const requestId of await accountDeletionRequestsRepository.findExpiredRecoveryRequestIds(
+    now,
+    limit,
+  )) {
+    const activation =
+      await accountDeletionRequestsRepository.activateExpiredPersonalAccountDeletion({
+        requestId,
+        exportRevocationIdempotencyKeyDigest: createHash("sha256")
+          .update(`account-deletion-export-revoke:v1:${requestId}`)
+          .digest("hex"),
+        exportRevocationNotBefore: new Date(now.getTime() + EXPORT_REVOCATION_SAFETY_MILLISECONDS),
+        now,
+      });
+    if (activation.outcome === "activated") {
+      activated++;
+      continue;
+    }
+    const activationErrorCode =
+      activation.outcome === "transfer_required"
+        ? "TRANSFER_REQUIRED"
+        : activation.outcome === "export_required"
+          ? "EXPORT_REQUIRED_BEFORE_ERASURE"
+          : activation.outcome === "identity_deactivation_required"
+            ? "STEWARD_DEACTIVATION_RECONCILIATION_REQUIRED"
+            : null;
+    if (activationErrorCode) {
+      const parked = await accountDeletionRequestsRepository.markRecoveryActionRequired({
+        requestId,
+        errorCode: activationErrorCode,
+        now,
+      });
+      if (parked) activationActionRequired++;
+    }
+  }
+
+  const saga = await processIrreversibleAccountDeletionSaga({
+    limit,
+    blob: resources.blob,
+    adapters,
+    now,
+  });
 
   const recovered = await accountDeletionRequestsRepository.recoverStaleProcessing(
     new Date(now.getTime() - 15 * 60 * 1_000),
@@ -426,10 +513,16 @@ export async function processDueAccountDeletions(
   const due = await accountDeletionRequestsRepository.claimDue(limit);
   const result = {
     exportRevocations,
+    cancellationsFinalized,
+    stewardDeactivationReconciliations: stewardDeactivations.completed,
+    activated,
     recovered,
-    processed: due.length,
-    completed: 0,
-    actionRequired: 0,
+    processed: saga.processed + due.length,
+    completed: saga.completed,
+    progressed: saga.progressed,
+    reconciling: saga.reconciling,
+    actionRequired:
+      saga.actionRequired + activationActionRequired + stewardDeactivations.actionRequired,
   };
 
   for (const request of due) {

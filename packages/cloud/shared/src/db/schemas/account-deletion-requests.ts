@@ -22,6 +22,7 @@ export type AccountDeletionRequestStatus =
   | "requested"
   | "reserved"
   | "recovery"
+  | "canceling"
   | "scheduled"
   | "processing"
   | "completed"
@@ -35,19 +36,10 @@ export const accountDeletionRequests = pgTable(
     user_id: uuid("user_id"),
     organization_id: uuid("organization_id"),
     steward_user_id: text("steward_user_id"),
-    operation_kind: text("operation_kind")
-      .notNull()
-      .default("personal_account_deletion"),
-    status: text("status")
-      .$type<AccountDeletionRequestStatus>()
-      .notNull()
-      .default("reserved"),
-    lifecycle_revision: bigint("lifecycle_revision", { mode: "number" })
-      .notNull()
-      .default(1),
-    lease_generation: bigint("lease_generation", { mode: "number" })
-      .notNull()
-      .default(0),
+    operation_kind: text("operation_kind").notNull().default("personal_account_deletion"),
+    status: text("status").$type<AccountDeletionRequestStatus>().notNull().default("reserved"),
+    lifecycle_revision: bigint("lifecycle_revision", { mode: "number" }).notNull().default(1),
+    lease_generation: bigint("lease_generation", { mode: "number" }).notNull().default(0),
     lease_expires_at: timestamp("lease_expires_at"),
     status_token_hash: text("status_token_hash"),
     status_token_expires_at: timestamp("status_token_expires_at"),
@@ -55,9 +47,7 @@ export const accountDeletionRequests = pgTable(
     recovery_token_expires_at: timestamp("recovery_token_expires_at"),
     request_digest: text("request_digest"),
     restore_auto_top_up_enabled: boolean("restore_auto_top_up_enabled"),
-    restore_pay_as_you_go_from_earnings: boolean(
-      "restore_pay_as_you_go_from_earnings",
-    ),
+    restore_pay_as_you_go_from_earnings: boolean("restore_pay_as_you_go_from_earnings"),
     requested_at: timestamp("requested_at").notNull().defaultNow(),
     recovery_expires_at: timestamp("recovery_expires_at"),
     execute_after: timestamp("execute_after").notNull(),
@@ -76,28 +66,19 @@ export const accountDeletionRequests = pgTable(
   },
   (table) => ({
     user_idx: index("account_deletion_requests_user_idx").on(table.user_id),
-    due_idx: index("account_deletion_requests_due_idx").on(
-      table.status,
-      table.execute_after,
-    ),
+    due_idx: index("account_deletion_requests_due_idx").on(table.status, table.execute_after),
     status_token_idx: uniqueIndex("account_deletion_requests_status_token_idx")
       .on(table.status_token_hash)
       .where(sql`${table.status_token_hash} IS NOT NULL`),
-    recovery_token_idx: uniqueIndex(
-      "account_deletion_requests_recovery_token_idx",
-    )
+    recovery_token_idx: uniqueIndex("account_deletion_requests_recovery_token_idx")
       .on(table.recovery_token_hash)
       .where(sql`${table.recovery_token_hash} IS NOT NULL`),
-    one_open_request_per_user: uniqueIndex(
-      "account_deletion_requests_one_open_user_idx",
-    )
+    one_open_request_per_user: uniqueIndex("account_deletion_requests_one_open_user_idx")
       .on(table.user_id)
-      .where(
-        sql`${table.completed_at} IS NULL AND ${table.user_id} IS NOT NULL`,
-      ),
+      .where(sql`${table.completed_at} IS NULL AND ${table.user_id} IS NOT NULL`),
     status_check: check(
       "account_deletion_requests_status_check",
-      sql`${table.status} IN ('requested', 'reserved', 'recovery', 'scheduled', 'processing', 'completed', 'canceled', 'action_required')`,
+      sql`${table.status} IN ('requested', 'reserved', 'recovery', 'canceling', 'scheduled', 'processing', 'completed', 'canceled', 'action_required')`,
     ),
     operation_kind_check: check(
       "account_deletion_requests_operation_kind_check",
@@ -110,9 +91,5 @@ export const accountDeletionRequests = pgTable(
   }),
 );
 
-export type AccountDeletionRequest = InferSelectModel<
-  typeof accountDeletionRequests
->;
-export type NewAccountDeletionRequest = InferInsertModel<
-  typeof accountDeletionRequests
->;
+export type AccountDeletionRequest = InferSelectModel<typeof accountDeletionRequests>;
+export type NewAccountDeletionRequest = InferInsertModel<typeof accountDeletionRequests>;

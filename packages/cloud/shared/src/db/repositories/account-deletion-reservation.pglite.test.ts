@@ -48,7 +48,7 @@ function reservationInput(requestId: string, tokenSuffix: string) {
         idempotencyKeyDigest: `export-${tokenSuffix}`,
       },
       {
-        phase: "steward",
+        phase: "steward_deactivation",
         phaseOrder: 2,
         idempotencyKeyDigest: `steward-${tokenSuffix}`,
       },
@@ -196,6 +196,22 @@ describe("personal account deletion reservation", () => {
     expect(reserved.outcome).toBe("reserved");
     if (reserved.outcome !== "reserved") throw new Error("reservation failed");
 
+    const staleDeactivation = await accountDeletionRequestsRepository.leasePhase({
+      requestId: reserved.request.id,
+      phase: "steward_deactivation",
+      leaseOwnerDigest: "stale-deactivation-worker",
+      now,
+      leaseMilliseconds: 60_000,
+    });
+    if (!staleDeactivation) throw new Error("Steward deactivation lease failed");
+    expect(
+      await accountDeletionRequestsRepository.markPhaseProviderCallStarted(
+        staleDeactivation.receipt.id,
+        staleDeactivation.generation,
+        now,
+      ),
+    ).toBe(true);
+
     const canceled = await accountDeletionRequestsRepository.cancelDuringRecovery({
       recoveryTokenHash: "recovery-undo",
       reactivationIdempotencyKeyDigest: "reactivation-undo",
@@ -203,7 +219,7 @@ describe("personal account deletion reservation", () => {
       exportRevocationNotBefore: new Date("2026-08-23T12:15:00Z"),
       now: new Date("2026-08-23T12:00:00Z"),
     });
-    expect(canceled.outcome).toBe("canceled");
+    expect(canceled.outcome).toBe("canceling");
 
     const [organization] = await dbWrite
       .select()
@@ -225,20 +241,19 @@ describe("personal account deletion reservation", () => {
       .where(eq(accountDeletionExports.request_id, reserved.request.id));
 
     expect(organization).toMatchObject({
-      is_active: true,
-      auto_top_up_enabled: true,
-      pay_as_you_go_from_earnings: true,
-      account_lifecycle_state: "active",
-      account_lifecycle_revision: 2,
-      account_deletion_request_id: null,
-      paid_work_fenced_at: null,
+      is_active: false,
+      auto_top_up_enabled: false,
+      pay_as_you_go_from_earnings: false,
+      account_lifecycle_state: "deletion_recovery",
+      account_lifecycle_revision: 1,
+      account_deletion_request_id: reserved.request.id,
     });
     expect(user).toMatchObject({
-      is_active: true,
-      account_lifecycle_state: "active",
-      account_lifecycle_revision: 2,
-      account_deletion_request_id: null,
-      auth_fenced_at: null,
+      is_active: false,
+      account_lifecycle_state: "deletion_recovery",
+      account_lifecycle_revision: 1,
+      account_deletion_request_id: reserved.request.id,
+      auth_fenced_at: now,
     });
     expect(key?.is_active).toBe(false);
     expect(session?.ended_at).toEqual(now);
@@ -250,6 +265,46 @@ describe("personal account deletion reservation", () => {
       status: "pending",
       idempotency_key_digest: "export-revoke-undo",
     });
+    expect(
+      await accountDeletionRequestsRepository.completeStewardDeactivationPhase({
+        requestId: reserved.request.id,
+        phaseReceiptId: staleDeactivation.receipt.id,
+        generation: staleDeactivation.generation,
+        providerReceiptDigest: "stale-provider-callback",
+        now: new Date("2026-08-23T12:01:00Z"),
+      }),
+    ).toBe(false);
+
+    const reactivationLease = await accountDeletionRequestsRepository.leasePhase({
+      requestId: reserved.request.id,
+      phase: "steward_reactivation",
+      leaseOwnerDigest: "reactivation-worker",
+      now: new Date("2026-08-23T12:01:00Z"),
+      leaseMilliseconds: 60_000,
+    });
+    if (!reactivationLease) throw new Error("Steward reactivation lease failed");
+    expect(
+      await accountDeletionRequestsRepository.markPhaseProviderCallStarted(
+        reactivationLease.receipt.id,
+        reactivationLease.generation,
+        new Date("2026-08-23T12:01:00Z"),
+      ),
+    ).toBe(true);
+    expect(
+      await accountDeletionRequestsRepository.completeStewardReactivationPhase({
+        requestId: reserved.request.id,
+        phaseReceiptId: reactivationLease.receipt.id,
+        generation: reactivationLease.generation,
+        providerReceiptDigest: "reactivation-receipt",
+        now: new Date("2026-08-23T12:01:01Z"),
+      }),
+    ).toBe(true);
+    expect(
+      await accountDeletionRequestsRepository.finalizeCancellationIfComplete({
+        requestId: reserved.request.id,
+        now: new Date("2026-08-23T12:01:02Z"),
+      }),
+    ).toBe(false);
 
     const revokeLease = await accountDeletionRequestsRepository.leasePhase({
       requestId: reserved.request.id,
@@ -279,15 +334,44 @@ describe("personal account deletion reservation", () => {
       object_receipt_digest: "export-delete-receipt",
     });
 
+    expect(
+      await accountDeletionRequestsRepository.finalizeCancellationIfComplete({
+        requestId: reserved.request.id,
+        now: new Date("2026-08-23T12:15:02Z"),
+      }),
+    ).toBe(true);
+
     const [request] = await dbWrite
       .select()
       .from(accountDeletionRequests)
       .where(eq(accountDeletionRequests.id, reserved.request.id));
     expect(request).toMatchObject({
       status: "canceled",
+      lifecycle_revision: 2,
       recovery_token_hash: null,
       recovery_token_expires_at: null,
-      last_error_code: "STEWARD_REACTIVATION_PENDING",
+      last_error_code: null,
+    });
+    const [restoredOrganization] = await dbWrite
+      .select()
+      .from(organizations)
+      .where(eq(organizations.id, organizationId));
+    const [restoredUser] = await dbWrite.select().from(users).where(eq(users.id, userId));
+    expect(restoredOrganization).toMatchObject({
+      is_active: true,
+      auto_top_up_enabled: true,
+      pay_as_you_go_from_earnings: true,
+      account_lifecycle_state: "active",
+      account_lifecycle_revision: 2,
+      account_deletion_request_id: null,
+      paid_work_fenced_at: null,
+    });
+    expect(restoredUser).toMatchObject({
+      is_active: true,
+      account_lifecycle_state: "active",
+      account_lifecycle_revision: 2,
+      account_deletion_request_id: null,
+      auth_fenced_at: null,
     });
   });
 
@@ -444,5 +528,136 @@ describe("personal account deletion reservation", () => {
     });
     expect(reconciliation?.receipt.status).toBe("reconciling");
     expect(reconciliation?.generation).toBe(leased.generation + 1);
+  });
+
+  test("publishes irreversible authority once across concurrent expiry workers", async () => {
+    const reserved = await accountDeletionRequestsRepository.reservePersonalAccountDeletion(
+      reservationInput("50000000-0000-4000-8000-000000000007", "expiry"),
+    );
+    if (reserved.outcome !== "reserved") throw new Error("reservation failed");
+
+    const exportLease = await accountDeletionRequestsRepository.leasePhase({
+      requestId: reserved.request.id,
+      phase: "export",
+      leaseOwnerDigest: "export-worker",
+      now,
+      leaseMilliseconds: 60_000,
+    });
+    if (!exportLease) throw new Error("export lease failed");
+    expect(
+      await accountDeletionRequestsRepository.markExportBuilding({
+        requestId: reserved.request.id,
+        phaseReceiptId: exportLease.receipt.id,
+        generation: exportLease.generation,
+        now,
+      }),
+    ).toBe(true);
+    expect(
+      await accountDeletionRequestsRepository.markPhaseProviderCallStarted(
+        exportLease.receipt.id,
+        exportLease.generation,
+        now,
+      ),
+    ).toBe(true);
+    expect(
+      await accountDeletionRequestsRepository.completeExportPhase({
+        requestId: reserved.request.id,
+        phaseReceiptId: exportLease.receipt.id,
+        generation: exportLease.generation,
+        contentDigest: "content-digest",
+        objectReceiptDigest: "object-receipt-digest",
+        byteCount: 123,
+        now,
+      }),
+    ).toBe(true);
+
+    const stewardLease = await accountDeletionRequestsRepository.leasePhase({
+      requestId: reserved.request.id,
+      phase: "steward_deactivation",
+      leaseOwnerDigest: "steward-worker",
+      now,
+      leaseMilliseconds: 60_000,
+    });
+    if (!stewardLease) throw new Error("Steward lease failed");
+    expect(
+      await accountDeletionRequestsRepository.completeStewardDeactivationPhase({
+        requestId: reserved.request.id,
+        phaseReceiptId: stewardLease.receipt.id,
+        generation: stewardLease.generation,
+        providerReceiptDigest: "steward-receipt",
+        now,
+      }),
+    ).toBe(true);
+
+    const expiry = new Date(recoveryExpiresAt.getTime() + 1);
+    const input = {
+      requestId: reserved.request.id,
+      exportRevocationIdempotencyKeyDigest: "export-revoke-expiry",
+      exportRevocationNotBefore: new Date(expiry.getTime() + 60_000),
+      now: expiry,
+    };
+    const [left, right] = await Promise.all([
+      accountDeletionRequestsRepository.activateExpiredPersonalAccountDeletion(input),
+      accountDeletionRequestsRepository.activateExpiredPersonalAccountDeletion(input),
+    ]);
+    expect([left.outcome, right.outcome].sort()).toEqual(["activated", "already_activated"]);
+
+    const [request] = await dbWrite
+      .select()
+      .from(accountDeletionRequests)
+      .where(eq(accountDeletionRequests.id, reserved.request.id));
+    const [organization] = await dbWrite
+      .select()
+      .from(organizations)
+      .where(eq(organizations.id, organizationId));
+    const [user] = await dbWrite.select().from(users).where(eq(users.id, userId));
+    const phases = await dbWrite
+      .select()
+      .from(accountDeletionPhaseReceipts)
+      .where(eq(accountDeletionPhaseReceipts.request_id, reserved.request.id));
+    expect(request).toMatchObject({
+      status: "scheduled",
+      lifecycle_revision: 2,
+      recovery_token_hash: null,
+    });
+    expect(organization).toMatchObject({
+      account_lifecycle_state: "deletion_irreversible",
+      account_lifecycle_revision: 2,
+    });
+    expect(user).toMatchObject({
+      account_lifecycle_state: "deletion_irreversible",
+      account_lifecycle_revision: 2,
+    });
+    expect(phases.filter((phase) => phase.phase === "export_revoke")).toHaveLength(1);
+  });
+
+  test("fails closed at expiry until export and Steward receipts are complete", async () => {
+    const reserved = await accountDeletionRequestsRepository.reservePersonalAccountDeletion(
+      reservationInput("50000000-0000-4000-8000-000000000008", "incomplete"),
+    );
+    if (reserved.outcome !== "reserved") throw new Error("reservation failed");
+
+    const activation =
+      await accountDeletionRequestsRepository.activateExpiredPersonalAccountDeletion({
+        requestId: reserved.request.id,
+        exportRevocationIdempotencyKeyDigest: "export-revoke-incomplete",
+        exportRevocationNotBefore: new Date(recoveryExpiresAt.getTime() + 60_000),
+        now: new Date(recoveryExpiresAt.getTime() + 1),
+      });
+    expect(activation).toEqual({ outcome: "export_required" });
+
+    const [request] = await dbWrite
+      .select()
+      .from(accountDeletionRequests)
+      .where(eq(accountDeletionRequests.id, reserved.request.id));
+    const [organization] = await dbWrite
+      .select()
+      .from(organizations)
+      .where(eq(organizations.id, organizationId));
+    expect(request).toMatchObject({ status: "reserved", lifecycle_revision: 1 });
+    expect(organization).toMatchObject({
+      account_lifecycle_state: "deletion_recovery",
+      account_lifecycle_revision: 1,
+    });
   });
 });

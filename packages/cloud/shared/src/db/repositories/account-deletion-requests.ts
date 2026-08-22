@@ -59,12 +59,30 @@ export interface AccountDeletionStatusRecord {
   exportReceipt: AccountDeletionExport | null;
 }
 
+export type ActivateExpiredAccountDeletionResult =
+  | { outcome: "activated"; request: AccountDeletionRequest }
+  | { outcome: "already_activated"; request: AccountDeletionRequest }
+  | { outcome: "not_due" }
+  | { outcome: "account_unavailable" }
+  | { outcome: "transfer_required"; activeOwnerCount: number }
+  | { outcome: "export_required" }
+  | { outcome: "identity_deactivation_required" };
+
+export type FinalizePersonalAccountDeletionResult =
+  | { outcome: "completed"; request: AccountDeletionRequest }
+  | { outcome: "already_completed"; request: AccountDeletionRequest }
+  | { outcome: "stale_generation" }
+  | { outcome: "account_unavailable" }
+  | { outcome: "transfer_required"; activeOwnerCount: number }
+  | { outcome: "phases_incomplete"; phases: string[] };
+
 export type CancelAccountDeletionResult =
   | {
-      outcome: "canceled";
+      outcome: "canceling";
       request: AccountDeletionRequest;
       stewardUserId: string;
     }
+  | { outcome: "already_canceling"; request: AccountDeletionRequest }
   | { outcome: "already_canceled"; request: AccountDeletionRequest }
   | { outcome: "invalid_credential" }
   | { outcome: "recovery_expired" };
@@ -249,7 +267,27 @@ export class AccountDeletionRequestsRepository {
         )
         .for("update")
         .limit(1);
-      if (!current || current.status === "completed" || current.status === "action_required") {
+      if (
+        !current ||
+        current.status === "completed" ||
+        current.status === "canceled" ||
+        current.status === "action_required"
+      ) {
+        return undefined;
+      }
+      if (current.attempt_count >= current.max_attempts) {
+        await tx
+          .update(accountDeletionPhaseReceipts)
+          .set({
+            status: "action_required",
+            retry_class: "attempts_exhausted",
+            lease_owner_digest: null,
+            lease_expires_at: null,
+            next_attempt_at: null,
+            last_error_code: "ACCOUNT_DELETION_PHASE_ATTEMPTS_EXHAUSTED",
+            updated_at: input.now,
+          })
+          .where(eq(accountDeletionPhaseReceipts.id, current.id));
         return undefined;
       }
       if (current.lease_expires_at && current.lease_expires_at > input.now) return undefined;
@@ -283,12 +321,14 @@ export class AccountDeletionRequestsRepository {
     phaseReceiptId: string,
     generation: number,
     now: Date,
+    providerOperationDigest?: string,
   ): Promise<boolean> {
     const [updated] = await dbWrite
       .update(accountDeletionPhaseReceipts)
       .set({
         status: "calling",
         before_provider_call_at: now,
+        provider_operation_digest: providerOperationDigest,
         attempt_count: sql`${accountDeletionPhaseReceipts.attempt_count} + 1`,
         updated_at: now,
       })
@@ -301,6 +341,490 @@ export class AccountDeletionRequestsRepository {
       )
       .returning({ id: accountDeletionPhaseReceipts.id });
     return updated !== undefined;
+  }
+
+  /**
+   * Publishes the irreversible authority only after the recovery export and
+   * immediate identity fence are durably acknowledged. Organization, member,
+   * request, and phase rows share one transaction and lock order.
+   */
+  async activateExpiredPersonalAccountDeletion(input: {
+    requestId: string;
+    exportRevocationIdempotencyKeyDigest: string;
+    exportRevocationNotBefore: Date;
+    now: Date;
+  }): Promise<ActivateExpiredAccountDeletionResult> {
+    return await dbWrite.transaction(async (tx) => {
+      const [request] = await tx
+        .select()
+        .from(accountDeletionRequests)
+        .where(eq(accountDeletionRequests.id, input.requestId))
+        .for("update")
+        .limit(1);
+      if (!request) return { outcome: "account_unavailable" };
+      if (request.status === "scheduled" || request.status === "processing") {
+        return { outcome: "already_activated", request };
+      }
+      if (
+        (request.status !== "reserved" && request.status !== "recovery") ||
+        request.execute_after > input.now
+      ) {
+        return { outcome: "not_due" };
+      }
+      if (!request.user_id || !request.organization_id) {
+        return { outcome: "account_unavailable" };
+      }
+
+      const [organization] = await tx
+        .select()
+        .from(organizations)
+        .where(eq(organizations.id, request.organization_id))
+        .for("update")
+        .limit(1);
+      const members = await tx
+        .select()
+        .from(users)
+        .where(eq(users.organization_id, request.organization_id))
+        .for("update");
+      const current = members.find((member) => member.id === request.user_id);
+      if (!organization || !current) return { outcome: "account_unavailable" };
+
+      const activeOwners = members.filter(
+        (member) => member.is_active && !member.deleted_at && member.role === "owner",
+      );
+      if (members.length !== 1) {
+        return {
+          outcome: "transfer_required",
+          activeOwnerCount: activeOwners.length,
+        };
+      }
+      if (
+        organization.account_deletion_request_id !== request.id ||
+        current.account_deletion_request_id !== request.id ||
+        organization.account_lifecycle_revision !== request.lifecycle_revision ||
+        current.account_lifecycle_revision !== request.lifecycle_revision
+      ) {
+        return { outcome: "account_unavailable" };
+      }
+
+      const [exportReceipt] = await tx
+        .select()
+        .from(accountDeletionExports)
+        .where(eq(accountDeletionExports.request_id, request.id))
+        .for("update")
+        .limit(1);
+      const phases = await tx
+        .select()
+        .from(accountDeletionPhaseReceipts)
+        .where(eq(accountDeletionPhaseReceipts.request_id, request.id))
+        .for("update");
+      if (
+        exportReceipt?.status !== "ready" ||
+        phases.find((phase) => phase.phase === "export")?.status !== "completed"
+      ) {
+        return { outcome: "export_required" };
+      }
+      if (
+        request.identity_deactivated_at === null ||
+        phases.find((phase) => phase.phase === "steward_deactivation")?.status !== "completed"
+      ) {
+        return { outcome: "identity_deactivation_required" };
+      }
+
+      const lifecycleRevision = request.lifecycle_revision + 1;
+      await tx
+        .update(organizations)
+        .set({
+          account_lifecycle_state: "deletion_irreversible",
+          account_lifecycle_revision: lifecycleRevision,
+          paid_work_fenced_at: organization.paid_work_fenced_at ?? input.now,
+          auto_top_up_enabled: false,
+          pay_as_you_go_from_earnings: false,
+          is_active: false,
+          updated_at: input.now,
+        })
+        .where(eq(organizations.id, organization.id));
+      await tx
+        .update(users)
+        .set({
+          account_lifecycle_state: "deletion_irreversible",
+          account_lifecycle_revision: lifecycleRevision,
+          auth_fenced_at: current.auth_fenced_at ?? input.now,
+          is_active: false,
+          updated_at: input.now,
+        })
+        .where(eq(users.id, current.id));
+      await tx
+        .update(accountDeletionExports)
+        .set({ status: "expired", updated_at: input.now })
+        .where(eq(accountDeletionExports.request_id, request.id));
+      await tx
+        .insert(accountDeletionPhaseReceipts)
+        .values({
+          request_id: request.id,
+          phase: "export_revoke",
+          phase_order: 3,
+          status: "pending",
+          idempotency_key_digest: input.exportRevocationIdempotencyKeyDigest,
+          next_attempt_at: input.exportRevocationNotBefore,
+          created_at: input.now,
+          updated_at: input.now,
+        })
+        .onConflictDoNothing();
+
+      const [activated] = await tx
+        .update(accountDeletionRequests)
+        .set({
+          status: "scheduled",
+          lifecycle_revision: lifecycleRevision,
+          recovery_token_hash: null,
+          recovery_token_expires_at: null,
+          irreversible_at: input.now,
+          last_error_code: null,
+          failure_class: null,
+          next_reconcile_at: input.now,
+          updated_at: input.now,
+        })
+        .where(eq(accountDeletionRequests.id, request.id))
+        .returning();
+      if (!activated)
+        throw new Error("Deletion receipt disappeared during irreversible activation");
+      return { outcome: "activated", request: activated };
+    });
+  }
+
+  async findExpiredRecoveryRequestIds(now: Date, limit: number): Promise<string[]> {
+    const rows = await dbWrite
+      .select({ id: accountDeletionRequests.id })
+      .from(accountDeletionRequests)
+      .where(
+        and(
+          inArray(accountDeletionRequests.status, ["reserved", "recovery"]),
+          lte(accountDeletionRequests.execute_after, now),
+        ),
+      )
+      .orderBy(asc(accountDeletionRequests.execute_after))
+      .limit(limit);
+    return rows.map((row) => row.id);
+  }
+
+  async findRecoveryPhaseCandidates(
+    phase: string,
+    now: Date,
+    limit: number,
+  ): Promise<AccountDeletionRequest[]> {
+    return await dbWrite
+      .select({ request: accountDeletionRequests })
+      .from(accountDeletionPhaseReceipts)
+      .innerJoin(
+        accountDeletionRequests,
+        eq(accountDeletionRequests.id, accountDeletionPhaseReceipts.request_id),
+      )
+      .where(
+        and(
+          eq(accountDeletionPhaseReceipts.phase, phase),
+          inArray(accountDeletionRequests.status, ["reserved", "recovery"]),
+          notInArray(accountDeletionPhaseReceipts.status, [
+            "completed",
+            "canceled",
+            "action_required",
+          ]),
+          or(
+            isNull(accountDeletionPhaseReceipts.next_attempt_at),
+            lte(accountDeletionPhaseReceipts.next_attempt_at, now),
+          ),
+          or(
+            isNull(accountDeletionPhaseReceipts.lease_expires_at),
+            lte(accountDeletionPhaseReceipts.lease_expires_at, now),
+          ),
+        ),
+      )
+      .orderBy(asc(accountDeletionPhaseReceipts.created_at))
+      .limit(limit)
+      .then((rows) => rows.map((row) => row.request));
+  }
+
+  async markRecoveryActionRequired(input: {
+    requestId: string;
+    errorCode: string;
+    now: Date;
+  }): Promise<boolean> {
+    const [updated] = await dbWrite
+      .update(accountDeletionRequests)
+      .set({
+        status: "action_required",
+        recovery_token_hash: null,
+        recovery_token_expires_at: null,
+        last_error_code: input.errorCode,
+        failure_class: "operator_action_required",
+        next_reconcile_at: null,
+        updated_at: input.now,
+      })
+      .where(
+        and(
+          eq(accountDeletionRequests.id, input.requestId),
+          inArray(accountDeletionRequests.status, ["reserved", "recovery"]),
+        ),
+      )
+      .returning({ id: accountDeletionRequests.id });
+    return updated !== undefined;
+  }
+
+  async findRunnableIrreversibleRequests(
+    now: Date,
+    limit: number,
+  ): Promise<AccountDeletionRequest[]> {
+    return await dbWrite
+      .select()
+      .from(accountDeletionRequests)
+      .where(
+        and(
+          inArray(accountDeletionRequests.status, ["scheduled", "processing"]),
+          lte(accountDeletionRequests.execute_after, now),
+          or(
+            isNull(accountDeletionRequests.next_reconcile_at),
+            lte(accountDeletionRequests.next_reconcile_at, now),
+          ),
+        ),
+      )
+      .orderBy(asc(accountDeletionRequests.execute_after))
+      .limit(limit);
+  }
+
+  async listPhaseReceipts(requestId: string): Promise<AccountDeletionPhaseReceipt[]> {
+    return await dbWrite
+      .select()
+      .from(accountDeletionPhaseReceipts)
+      .where(eq(accountDeletionPhaseReceipts.request_id, requestId))
+      .orderBy(asc(accountDeletionPhaseReceipts.phase_order));
+  }
+
+  async completeProviderPhase(input: {
+    requestId: string;
+    phaseReceiptId: string;
+    generation: number;
+    providerReceiptDigest: string;
+    now: Date;
+  }): Promise<boolean> {
+    const [completed] = await dbWrite
+      .update(accountDeletionPhaseReceipts)
+      .set({
+        status: "completed",
+        provider_receipt_digest: input.providerReceiptDigest,
+        provider_acknowledged_at: input.now,
+        reconciled_at: input.now,
+        completed_at: input.now,
+        retry_class: null,
+        next_attempt_at: null,
+        lease_owner_digest: null,
+        lease_expires_at: null,
+        last_error_code: null,
+        updated_at: input.now,
+      })
+      .where(
+        and(
+          eq(accountDeletionPhaseReceipts.id, input.phaseReceiptId),
+          eq(accountDeletionPhaseReceipts.request_id, input.requestId),
+          inArray(accountDeletionPhaseReceipts.status, ["leased", "calling", "reconciling"]),
+          eq(accountDeletionPhaseReceipts.lease_generation, input.generation),
+        ),
+      )
+      .returning({ id: accountDeletionPhaseReceipts.id });
+    return completed !== undefined;
+  }
+
+  async markPhaseActionRequired(input: {
+    requestId: string;
+    phaseReceiptId: string;
+    generation: number;
+    errorCode: string;
+    now: Date;
+  }): Promise<boolean> {
+    return await dbWrite.transaction(async (tx) => {
+      const [phase] = await tx
+        .update(accountDeletionPhaseReceipts)
+        .set({
+          status: "action_required",
+          retry_class: "operator_action_required",
+          next_attempt_at: null,
+          lease_owner_digest: null,
+          lease_expires_at: null,
+          last_error_code: input.errorCode,
+          updated_at: input.now,
+        })
+        .where(
+          and(
+            eq(accountDeletionPhaseReceipts.id, input.phaseReceiptId),
+            eq(accountDeletionPhaseReceipts.request_id, input.requestId),
+            inArray(accountDeletionPhaseReceipts.status, ["leased", "calling", "reconciling"]),
+            eq(accountDeletionPhaseReceipts.lease_generation, input.generation),
+          ),
+        )
+        .returning({ id: accountDeletionPhaseReceipts.id });
+      if (!phase) return false;
+      await tx
+        .update(accountDeletionRequests)
+        .set({
+          status: "action_required",
+          processing_started_at: null,
+          last_error_code: input.errorCode,
+          failure_class: "operator_action_required",
+          next_reconcile_at: null,
+          updated_at: input.now,
+        })
+        .where(eq(accountDeletionRequests.id, input.requestId));
+      return true;
+    });
+  }
+
+  async scheduleRequestReconciliation(input: {
+    requestId: string;
+    now: Date;
+    retryAt: Date;
+    errorCode: string;
+  }): Promise<void> {
+    await dbWrite
+      .update(accountDeletionRequests)
+      .set({
+        status: "processing",
+        next_reconcile_at: input.retryAt,
+        last_error_code: input.errorCode,
+        failure_class: "retryable",
+        updated_at: input.now,
+      })
+      .where(
+        and(
+          eq(accountDeletionRequests.id, input.requestId),
+          inArray(accountDeletionRequests.status, ["scheduled", "processing"]),
+        ),
+      );
+  }
+
+  /**
+   * Erases the sole-user organization and commits the bounded anonymous
+   * receipt in the same transaction. Any incomplete phase or restrictive FK
+   * aborts before identifiers are nulled.
+   */
+  async finalizePersonalAccountDeletion(input: {
+    requestId: string;
+    phaseReceiptId: string;
+    generation: number;
+    completionReceiptDigest: string;
+    now: Date;
+  }): Promise<FinalizePersonalAccountDeletionResult> {
+    return await dbWrite.transaction(async (tx) => {
+      const [request] = await tx
+        .select()
+        .from(accountDeletionRequests)
+        .where(eq(accountDeletionRequests.id, input.requestId))
+        .for("update")
+        .limit(1);
+      if (!request) return { outcome: "account_unavailable" };
+      if (request.status === "completed") return { outcome: "already_completed", request };
+      if (!request.user_id || !request.organization_id) {
+        return { outcome: "account_unavailable" };
+      }
+
+      const [databasePhase] = await tx
+        .select()
+        .from(accountDeletionPhaseReceipts)
+        .where(eq(accountDeletionPhaseReceipts.id, input.phaseReceiptId))
+        .for("update")
+        .limit(1);
+      if (
+        !databasePhase ||
+        databasePhase.request_id !== request.id ||
+        databasePhase.phase !== "database_erasure" ||
+        databasePhase.lease_generation !== input.generation ||
+        (databasePhase.status !== "leased" && databasePhase.status !== "calling")
+      ) {
+        return { outcome: "stale_generation" };
+      }
+
+      const [organization] = await tx
+        .select()
+        .from(organizations)
+        .where(eq(organizations.id, request.organization_id))
+        .for("update")
+        .limit(1);
+      const members = await tx
+        .select()
+        .from(users)
+        .where(eq(users.organization_id, request.organization_id))
+        .for("update");
+      const current = members.find((member) => member.id === request.user_id);
+      if (!organization || !current) return { outcome: "account_unavailable" };
+      const activeOwners = members.filter(
+        (member) => member.is_active && !member.deleted_at && member.role === "owner",
+      );
+      if (members.length !== 1) {
+        return { outcome: "transfer_required", activeOwnerCount: activeOwners.length };
+      }
+      if (
+        request.irreversible_at === null ||
+        organization.account_lifecycle_state !== "deletion_irreversible" ||
+        current.account_lifecycle_state !== "deletion_irreversible" ||
+        organization.account_deletion_request_id !== request.id ||
+        current.account_deletion_request_id !== request.id ||
+        organization.account_lifecycle_revision !== request.lifecycle_revision ||
+        current.account_lifecycle_revision !== request.lifecycle_revision
+      ) {
+        return { outcome: "account_unavailable" };
+      }
+
+      const phases = await tx
+        .select()
+        .from(accountDeletionPhaseReceipts)
+        .where(eq(accountDeletionPhaseReceipts.request_id, request.id))
+        .for("update");
+      const incomplete = phases
+        .filter(
+          (phase) =>
+            phase.phase !== "database_erasure" &&
+            phase.status !== "completed" &&
+            phase.status !== "canceled",
+        )
+        .map((phase) => phase.phase)
+        .sort();
+      if (incomplete.length > 0) return { outcome: "phases_incomplete", phases: incomplete };
+
+      const deleted = await tx
+        .delete(organizations)
+        .where(eq(organizations.id, organization.id))
+        .returning({ id: organizations.id });
+      if (deleted.length !== 1) return { outcome: "account_unavailable" };
+
+      await tx
+        .delete(accountDeletionPhaseReceipts)
+        .where(eq(accountDeletionPhaseReceipts.request_id, request.id));
+      await tx
+        .delete(accountDeletionExports)
+        .where(eq(accountDeletionExports.request_id, request.id));
+      const [completed] = await tx
+        .update(accountDeletionRequests)
+        .set({
+          status: "completed",
+          user_id: null,
+          organization_id: null,
+          steward_user_id: null,
+          recovery_token_hash: null,
+          recovery_token_expires_at: null,
+          restore_auto_top_up_enabled: null,
+          restore_pay_as_you_go_from_earnings: null,
+          lease_expires_at: null,
+          processing_started_at: null,
+          completed_at: input.now,
+          completion_receipt_digest: input.completionReceiptDigest,
+          last_error_code: null,
+          failure_class: null,
+          next_reconcile_at: null,
+          updated_at: input.now,
+        })
+        .where(eq(accountDeletionRequests.id, request.id))
+        .returning();
+      if (!completed) throw new Error("Deletion receipt disappeared during terminal completion");
+      return { outcome: "completed", request: completed };
+    });
   }
 
   async completeStewardDeactivationPhase(input: {
@@ -328,7 +852,7 @@ export class AccountDeletionRequestsRepository {
           and(
             eq(accountDeletionPhaseReceipts.id, input.phaseReceiptId),
             eq(accountDeletionPhaseReceipts.request_id, input.requestId),
-            eq(accountDeletionPhaseReceipts.status, "calling"),
+            inArray(accountDeletionPhaseReceipts.status, ["leased", "calling", "reconciling"]),
             eq(accountDeletionPhaseReceipts.lease_generation, input.generation),
           ),
         )
@@ -386,7 +910,7 @@ export class AccountDeletionRequestsRepository {
         .where(
           and(
             eq(accountDeletionRequests.id, input.requestId),
-            eq(accountDeletionRequests.status, "canceled"),
+            eq(accountDeletionRequests.status, "canceling"),
           ),
         )
         .returning({ id: accountDeletionRequests.id });
@@ -447,6 +971,35 @@ export class AccountDeletionRequestsRepository {
         and(
           eq(accountDeletionPhaseReceipts.id, input.phaseReceiptId),
           inArray(accountDeletionPhaseReceipts.status, ["leased", "reconciling"]),
+          eq(accountDeletionPhaseReceipts.lease_generation, input.generation),
+        ),
+      )
+      .returning({ id: accountDeletionPhaseReceipts.id });
+    return updated !== undefined;
+  }
+
+  async deferPhaseReconciliation(input: {
+    phaseReceiptId: string;
+    generation: number;
+    errorCode: string;
+    now: Date;
+    retryAt: Date;
+  }): Promise<boolean> {
+    const [updated] = await dbWrite
+      .update(accountDeletionPhaseReceipts)
+      .set({
+        status: "reconciling",
+        retry_class: "ambiguous_provider_outcome",
+        next_attempt_at: input.retryAt,
+        lease_owner_digest: null,
+        lease_expires_at: null,
+        last_error_code: input.errorCode,
+        updated_at: input.now,
+      })
+      .where(
+        and(
+          eq(accountDeletionPhaseReceipts.id, input.phaseReceiptId),
+          eq(accountDeletionPhaseReceipts.status, "reconciling"),
           eq(accountDeletionPhaseReceipts.lease_generation, input.generation),
         ),
       )
@@ -563,6 +1116,7 @@ export class AccountDeletionRequestsRepository {
       .limit(1);
     if (!observed) return { outcome: "invalid_credential" };
     if (observed.status === "canceled") return { outcome: "already_canceled", request: observed };
+    if (observed.status === "canceling") return { outcome: "already_canceling", request: observed };
     if (
       !observed.user_id ||
       !observed.organization_id ||
@@ -595,6 +1149,7 @@ export class AccountDeletionRequestsRepository {
         .limit(1);
       if (!organization || !user || !request) return { outcome: "recovery_expired" };
       if (request.status === "canceled") return { outcome: "already_canceled", request };
+      if (request.status === "canceling") return { outcome: "already_canceling", request };
       if (
         request.recovery_token_hash !== input.recoveryTokenHash ||
         !request.recovery_expires_at ||
@@ -602,6 +1157,124 @@ export class AccountDeletionRequestsRepository {
         (request.status !== "reserved" && request.status !== "recovery")
       ) {
         return { outcome: "recovery_expired" };
+      }
+
+      await tx
+        .update(accountDeletionPhaseReceipts)
+        .set({
+          status: "canceled",
+          lease_owner_digest: null,
+          lease_expires_at: null,
+          next_attempt_at: null,
+          completed_at: input.now,
+          last_error_code: "DELETION_CANCELED_DURING_RECOVERY",
+          updated_at: input.now,
+        })
+        .where(
+          and(
+            eq(accountDeletionPhaseReceipts.request_id, request.id),
+            notInArray(accountDeletionPhaseReceipts.status, ["completed", "canceled"]),
+          ),
+        );
+      await tx
+        .insert(accountDeletionPhaseReceipts)
+        .values({
+          request_id: request.id,
+          phase: "steward_reactivation",
+          phase_order: 1_000,
+          status: "pending",
+          idempotency_key_digest: input.reactivationIdempotencyKeyDigest,
+          created_at: input.now,
+          updated_at: input.now,
+        })
+        .onConflictDoNothing();
+      await tx
+        .insert(accountDeletionPhaseReceipts)
+        .values({
+          request_id: request.id,
+          phase: "export_revoke",
+          phase_order: 1_010,
+          status: "pending",
+          idempotency_key_digest: input.exportRevocationIdempotencyKeyDigest,
+          next_attempt_at: input.exportRevocationNotBefore,
+          created_at: input.now,
+          updated_at: input.now,
+        })
+        .onConflictDoNothing();
+      await tx
+        .update(accountDeletionExports)
+        .set({ status: "expired", updated_at: input.now })
+        .where(eq(accountDeletionExports.request_id, request.id));
+
+      const [canceling] = await tx
+        .update(accountDeletionRequests)
+        .set({
+          status: "canceling",
+          canceled_at: input.now,
+          recovery_token_hash: null,
+          recovery_token_expires_at: null,
+          last_error_code: "STEWARD_REACTIVATION_PENDING",
+          updated_at: input.now,
+        })
+        .where(eq(accountDeletionRequests.id, request.id))
+        .returning();
+      if (!canceling) throw new Error("Deletion receipt disappeared during recovery cancellation");
+      return {
+        outcome: "canceling",
+        request: canceling,
+        stewardUserId: request.steward_user_id!,
+      };
+    });
+  }
+
+  async findCancelingRequestIds(limit: number): Promise<string[]> {
+    const rows = await dbWrite
+      .select({ id: accountDeletionRequests.id })
+      .from(accountDeletionRequests)
+      .where(eq(accountDeletionRequests.status, "canceling"))
+      .orderBy(asc(accountDeletionRequests.updated_at))
+      .limit(limit);
+    return rows.map((row) => row.id);
+  }
+
+  /** Restores account authority only after both cancellation cleanup receipts complete. */
+  async finalizeCancellationIfComplete(input: { requestId: string; now: Date }): Promise<boolean> {
+    return await dbWrite.transaction(async (tx) => {
+      const [request] = await tx
+        .select()
+        .from(accountDeletionRequests)
+        .where(eq(accountDeletionRequests.id, input.requestId))
+        .for("update")
+        .limit(1);
+      if (!request || request.status === "canceled") return request?.status === "canceled";
+      if (request.status !== "canceling" || !request.user_id || !request.organization_id) {
+        return false;
+      }
+      const [organization] = await tx
+        .select()
+        .from(organizations)
+        .where(eq(organizations.id, request.organization_id))
+        .for("update")
+        .limit(1);
+      const [user] = await tx
+        .select()
+        .from(users)
+        .where(eq(users.id, request.user_id))
+        .for("update")
+        .limit(1);
+      if (!organization || !user) return false;
+      const cleanup = await tx
+        .select()
+        .from(accountDeletionPhaseReceipts)
+        .where(
+          and(
+            eq(accountDeletionPhaseReceipts.request_id, request.id),
+            inArray(accountDeletionPhaseReceipts.phase, ["steward_reactivation", "export_revoke"]),
+          ),
+        )
+        .for("update");
+      if (cleanup.length !== 2 || cleanup.some((phase) => phase.status !== "completed")) {
+        return false;
       }
 
       const restoredRevision = request.lifecycle_revision + 1;
@@ -629,71 +1302,25 @@ export class AccountDeletionRequestsRepository {
           updated_at: input.now,
         })
         .where(eq(users.id, user.id));
-      await tx
-        .update(accountDeletionPhaseReceipts)
+      const [completed] = await tx
+        .update(accountDeletionRequests)
         .set({
           status: "canceled",
-          lease_owner_digest: null,
-          lease_expires_at: null,
-          next_attempt_at: null,
-          completed_at: input.now,
-          last_error_code: "DELETION_CANCELED_DURING_RECOVERY",
+          lifecycle_revision: restoredRevision,
+          identity_deactivated_at: null,
+          last_error_code: null,
+          failure_class: null,
+          next_reconcile_at: null,
           updated_at: input.now,
         })
         .where(
           and(
-            eq(accountDeletionPhaseReceipts.request_id, request.id),
-            notInArray(accountDeletionPhaseReceipts.status, ["completed", "canceled"]),
+            eq(accountDeletionRequests.id, request.id),
+            eq(accountDeletionRequests.status, "canceling"),
           ),
-        );
-      await tx
-        .insert(accountDeletionPhaseReceipts)
-        .values({
-          request_id: request.id,
-          phase: "steward_reactivation",
-          phase_order: 15,
-          status: "pending",
-          idempotency_key_digest: input.reactivationIdempotencyKeyDigest,
-          created_at: input.now,
-          updated_at: input.now,
-        })
-        .onConflictDoNothing();
-      await tx
-        .insert(accountDeletionPhaseReceipts)
-        .values({
-          request_id: request.id,
-          phase: "export_revoke",
-          phase_order: 16,
-          status: "pending",
-          idempotency_key_digest: input.exportRevocationIdempotencyKeyDigest,
-          next_attempt_at: input.exportRevocationNotBefore,
-          created_at: input.now,
-          updated_at: input.now,
-        })
-        .onConflictDoNothing();
-      await tx
-        .update(accountDeletionExports)
-        .set({ status: "expired", updated_at: input.now })
-        .where(eq(accountDeletionExports.request_id, request.id));
-
-      const [canceled] = await tx
-        .update(accountDeletionRequests)
-        .set({
-          status: "canceled",
-          canceled_at: input.now,
-          recovery_token_hash: null,
-          recovery_token_expires_at: null,
-          last_error_code: "STEWARD_REACTIVATION_PENDING",
-          updated_at: input.now,
-        })
-        .where(eq(accountDeletionRequests.id, request.id))
-        .returning();
-      if (!canceled) throw new Error("Deletion receipt disappeared during recovery cancellation");
-      return {
-        outcome: "canceled",
-        request: canceled,
-        stewardUserId: request.steward_user_id!,
-      };
+        )
+        .returning({ id: accountDeletionRequests.id });
+      return completed !== undefined;
     });
   }
 
@@ -772,7 +1399,7 @@ export class AccountDeletionRequestsRepository {
         .values({
           request_id: input.requestId,
           phase: "export_revoke",
-          phase_order: 16,
+          phase_order: 3,
           status: "pending",
           idempotency_key_digest: input.idempotencyKeyDigest,
           next_attempt_at: input.nextAttemptAt,
@@ -935,6 +1562,7 @@ export class AccountDeletionRequestsRepository {
           and(
             eq(accountDeletionRequests.status, "scheduled"),
             lte(accountDeletionRequests.execute_after, now),
+            isNull(accountDeletionRequests.request_digest),
           ),
         )
         .orderBy(asc(accountDeletionRequests.execute_after))

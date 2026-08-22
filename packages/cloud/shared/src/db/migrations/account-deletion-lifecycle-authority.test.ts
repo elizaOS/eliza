@@ -9,12 +9,10 @@ const migrationNames = [
   "0312_account_deletion_lifecycle_authority.sql",
   "0313_account_deletion_phase_receipts.sql",
   "0314_account_deletion_exports.sql",
+  "0315_account_deletion_canceling_state.sql",
 ] as const;
 const migrations = await Promise.all(
-  migrationNames.map(
-    async (name) =>
-      await readFile(new URL(`./${name}`, import.meta.url), "utf8"),
-  ),
+  migrationNames.map(async (name) => await readFile(new URL(`./${name}`, import.meta.url), "utf8")),
 );
 const databases: PGlite[] = [];
 
@@ -40,9 +38,7 @@ async function createDatabase(): Promise<PGlite> {
 }
 
 afterEach(async () => {
-  await Promise.all(
-    databases.splice(0).map(async (database) => await database.close()),
-  );
+  await Promise.all(databases.splice(0).map(async (database) => await database.close()));
 });
 
 describe("account deletion lifecycle authority migrations", () => {
@@ -51,16 +47,12 @@ describe("account deletion lifecycle authority migrations", () => {
     const organizations = await database.query<{
       account_lifecycle_state: string;
       account_lifecycle_revision: number;
-    }>(
-      "SELECT account_lifecycle_state, account_lifecycle_revision FROM organizations",
-    );
+    }>("SELECT account_lifecycle_state, account_lifecycle_revision FROM organizations");
     const requests = await database.query<{
       status: string;
       operation_kind: string;
       lifecycle_revision: number;
-    }>(
-      "SELECT status, operation_kind, lifecycle_revision FROM account_deletion_requests",
-    );
+    }>("SELECT status, operation_kind, lifecycle_revision FROM account_deletion_requests");
 
     expect(organizations.rows).toEqual([
       { account_lifecycle_state: "active", account_lifecycle_revision: 0 },
@@ -138,5 +130,19 @@ describe("account deletion lifecycle authority migrations", () => {
       "SELECT count(*)::bigint AS count FROM account_deletion_requests",
     );
     expect(count.rows[0]?.count).toBe(2);
+  });
+
+  test("keeps canceling nonterminal until cleanup can restore access", async () => {
+    const database = await createDatabase();
+    await database.exec("UPDATE account_deletion_requests SET status = 'canceling'");
+    await expect(
+      database.exec(`
+        INSERT INTO account_deletion_requests
+          (user_id, organization_id, steward_user_id, execute_after)
+        VALUES
+          ('20000000-0000-4000-8000-000000000001',
+           '10000000-0000-4000-8000-000000000001', 'steward-test', now());
+      `),
+    ).rejects.toThrow(/account_deletion_requests_one_open_user_idx/);
   });
 });
