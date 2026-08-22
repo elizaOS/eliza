@@ -51,6 +51,7 @@ import {
 	type UUID,
 } from "../../types";
 import { splitChunks, validateUuid } from "../../utils";
+import { stableStringify } from "../../utils/deterministic";
 import { Semaphore } from "../../utils/prompt-batcher/shared";
 import { bm25Scores, normalizeBm25Scores } from "./bm25.ts";
 import { validateModelConfig } from "./config";
@@ -2100,7 +2101,47 @@ export class DocumentService extends Service {
 		params: Omit<DocumentFragmentQueryParams, "limit" | "offset">,
 	): Promise<Memory[]> {
 		const pageSize = 1_000;
+		const first = await this.traverseDocumentFragmentSnapshot(params, pageSize);
+		const second = await this.traverseDocumentFragmentSnapshot(
+			params,
+			pageSize,
+		);
+		if (first.fingerprints.length !== second.fingerprints.length) {
+			throw new ElizaError(
+				"Document fragment inventory changed during traversal",
+				{
+					code: "DOCUMENT_FRAGMENT_TRAVERSAL_CHANGED",
+					context: {
+						firstCount: first.fingerprints.length,
+						secondCount: second.fingerprints.length,
+					},
+				},
+			);
+		}
+		for (let index = 0; index < first.fingerprints.length; index += 1) {
+			if (first.fingerprints[index] !== second.fingerprints[index]) {
+				throw new ElizaError(
+					"Document fragment inventory changed during traversal",
+					{
+						code: "DOCUMENT_FRAGMENT_TRAVERSAL_CHANGED",
+						context: {
+							index,
+							firstFragmentId: first.fragments[index]?.id,
+							secondFragmentId: second.fragments[index]?.id,
+						},
+					},
+				);
+			}
+		}
+		return second.fragments;
+	}
+
+	private async traverseDocumentFragmentSnapshot(
+		params: Omit<DocumentFragmentQueryParams, "limit" | "offset">,
+		pageSize: number,
+	): Promise<{ fragments: Memory[]; fingerprints: string[] }> {
 		const fragments: Memory[] = [];
+		const fingerprints: string[] = [];
 		const seen = new Set<string>();
 		let offset = 0;
 		while (true) {
@@ -2117,10 +2158,15 @@ export class DocumentService extends Service {
 			}
 			if (page.length === 0) break;
 			for (const fragment of page) {
-				// Malformed legacy fragments without an identity are not searchable and
-				// were already excluded by every search mode. They still advance the
-				// storage offset, so retaining that compatibility cannot stall paging.
-				if (!fragment.id) continue;
+				if (!fragment.id) {
+					throw new ElizaError(
+						"Document fragment traversal returned a row without an identity",
+						{
+							code: "DOCUMENT_FRAGMENT_TRAVERSAL_ROW_INVALID",
+							context: { offset },
+						},
+					);
+				}
 				if (seen.has(fragment.id)) {
 					throw new ElizaError(
 						"Document fragment traversal repeated an identity",
@@ -2132,11 +2178,12 @@ export class DocumentService extends Service {
 				}
 				seen.add(fragment.id);
 				fragments.push(fragment);
+				fingerprints.push(stableStringify(fragment));
 			}
 			if (page.length < pageSize) break;
 			offset += page.length;
 		}
-		return fragments;
+		return { fragments, fingerprints };
 	}
 
 	async enrichConversationMemoryWithRAG(
