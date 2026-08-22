@@ -66,6 +66,10 @@ async function bufferDiscordResponse(
       const next = await reader.read();
       throwIfAbortedOrExpired();
       if (next.done) break;
+      // Empty fragments do not contribute to the bounded payload. Retaining
+      // them would let a hostile stream grow the chunk-object inventory without
+      // consuming any of the byte budget.
+      if (next.value.byteLength === 0) continue;
       receivedBytes += next.value.byteLength;
       if (receivedBytes > DISCORD_RESPONSE_MAX_BYTES) {
         const error = new ElizaError("Discord response exceeds the byte limit", {
@@ -78,8 +82,16 @@ async function bufferDiscordResponse(
       chunks.push(next.value);
     }
   } catch (error) {
-    await cancelReader(error);
-    throw error;
+    let rejection = error;
+    try {
+      throwIfAbortedOrExpired();
+    } catch (abortOrDeadlineReason) {
+      // The composed signal owns cancellation semantics even if the transport
+      // rejects its reader or cancellation hook with a different error.
+      rejection = abortOrDeadlineReason;
+    }
+    await cancelReader(rejection);
+    throw rejection;
   } finally {
     signal.removeEventListener("abort", onAbort);
     try {

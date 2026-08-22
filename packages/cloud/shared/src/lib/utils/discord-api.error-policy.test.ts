@@ -170,6 +170,38 @@ describe("discordFetch", () => {
     expect(cancelled).toBe(true);
   });
 
+  it("preserves the caller reason when stream cancellation rejects differently", async () => {
+    const controller = new AbortController();
+    const reason = new DOMException("caller owns this reason", "AbortError");
+    const transportFailure = new Error("transport cancellation failed");
+    let releasePull!: () => void;
+    const blockedPull = new Promise<void>((resolve) => {
+      releasePull = resolve;
+    });
+    globalThis.fetch = mock(
+      async () =>
+        new Response(
+          new ReadableStream<Uint8Array>({
+            async pull() {
+              await blockedPull;
+            },
+            cancel() {
+              throw transportFailure;
+            },
+          }),
+        ),
+    ) as unknown as typeof fetch;
+
+    const pending = discordFetch("https://discord.com/api/v10/users/@me", {
+      signal: controller.signal,
+    });
+    await Promise.resolve();
+    controller.abort(reason);
+    releasePull();
+
+    await expect(pending).rejects.toBe(reason);
+  });
+
   it("does not let a bodyless response win over caller cancellation", async () => {
     const controller = new AbortController();
     const reason = new DOMException("caller stopped after headers", "AbortError");
