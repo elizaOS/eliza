@@ -481,14 +481,26 @@ describe("native assistant entry contracts", () => {
     // and containing app when a control foregrounds the app. The shared file
     // remains extension-safe and is compiled into exactly those two targets.
     expect(controlIntentsSwift).toContain(
-      "struct AskElizaControlIntent: AppIntent",
+      "enum MessageElizaControlTarget: String",
     );
     expect(controlIntentsSwift).toContain(
+      "enum TalkToElizaControlTarget: String",
+    );
+    expect(controlIntentsSwift).toContain(
+      "struct AskElizaControlIntent: OpenIntent",
+    );
+    expect(controlIntentsSwift).toContain(
+      "struct StartElizaVoiceControlIntent: OpenIntent",
+    );
+    expect(controlIntentsSwift).not.toContain(
+      "struct AskElizaControlIntent: AppIntent",
+    );
+    expect(controlIntentsSwift).not.toContain(
       "struct StartElizaVoiceControlIntent: AppIntent",
     );
-    expect(controlIntentsSwift).toContain("static var openAppWhenRun = true");
-    expect(controlIntentsSwift).toContain("OpenURLIntent");
-    expect(controlIntentsSwift).not.toContain("import UIKit");
+    expect(controlIntentsSwift).not.toContain("OpenURLIntent");
+    expect(controlIntentsSwift).toContain("#if !APP_EXTENSION");
+    expect(pbxproj.match(/APP_EXTENSION/g)).toHaveLength(2);
     const controlIntentsFileRef = pbxproj.match(
       /([A-Z0-9]+) \/\* ElizaControlIntents\.swift \*\/ = \{isa = PBXFileReference/,
     )?.[1];
