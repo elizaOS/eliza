@@ -46,6 +46,13 @@ machine and one state directory. Multi-host deployments must supply a
 transactional database implementation of `MessageInteractionSessionStore` and
 use the session replay key as the effect or outbox idempotency key.
 
+Transition cleanup reports machine-distinct retry outcomes. A failure during
+pre-operation stale recovery is
+`INTERACTION_STORE_RECOVERY_CLEANUP_FAILED` with `committed: false`; a failure
+after the durable transaction commit is
+`INTERACTION_STORE_COMMITTED_CLEANUP_FAILED` with `committed: true`, so callers
+must not retry the mutation.
+
 The file authority durably commits an effect before dispatch. If the process
 dies after that commit but before retaining the receipt, the session remains
 `committed` for operator reconciliation; it is never lease-transferred,

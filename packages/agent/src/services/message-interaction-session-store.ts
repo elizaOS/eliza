@@ -504,6 +504,7 @@ export class FileMessageInteractionSessionStore
   private async retireObservedLock(
     lockIdentity: string,
     validate: () => Promise<boolean>,
+    phase: "recovery" | "release",
   ): Promise<boolean> {
     const marker = await this.beginLockTransition(lockIdentity);
     if (!marker) return false;
@@ -539,8 +540,15 @@ export class FileMessageInteractionSessionStore
       throw new ElizaError(
         "Interaction lock detached but transition cleanup failed.",
         {
-          code: "INTERACTION_STORE_TRANSITION_CLEANUP_FAILED",
+          code:
+            phase === "recovery"
+              ? "INTERACTION_STORE_RECOVERY_CLEANUP_FAILED"
+              : "INTERACTION_STORE_RELEASE_CLEANUP_FAILED",
           cause: error,
+          context:
+            phase === "recovery"
+              ? { committed: false, retrySafeAfterRecovery: true }
+              : undefined,
         },
       );
     }
@@ -729,14 +737,18 @@ export class FileMessageInteractionSessionStore
     if (!(await this.lockIsStale(lockStat, now))) return false;
     const observedIdentity = this.lockIdentity(lockStat);
     await this.lockRaceHooks.beforeStaleRetire?.();
-    return this.retireObservedLock(observedIdentity, async () => {
-      const current = await existsLstat(this.lockPath);
-      return Boolean(
-        current &&
-          this.lockIdentity(current) === observedIdentity &&
-          (await this.lockIsStale(current, now, lockStat.mtimeMs)),
-      );
-    });
+    return this.retireObservedLock(
+      observedIdentity,
+      async () => {
+        const current = await existsLstat(this.lockPath);
+        return Boolean(
+          current &&
+            this.lockIdentity(current) === observedIdentity &&
+            (await this.lockIsStale(current, now, lockStat.mtimeMs)),
+        );
+      },
+      "recovery",
+    );
   }
 
   private async acquireLock(): Promise<LockOwner> {
@@ -822,10 +834,14 @@ export class FileMessageInteractionSessionStore
     const startedAt = performance.now();
     while (performance.now() - startedAt <= this.lockTimeoutMs) {
       if (
-        await this.retireObservedLock(owner.lockIdentity, async () => {
-          const current = await this.readLockOwner();
-          return Boolean(current && current.token === owner.token);
-        })
+        await this.retireObservedLock(
+          owner.lockIdentity,
+          async () => {
+            const current = await this.readLockOwner();
+            return Boolean(current && current.token === owner.token);
+          },
+          "release",
+        )
       ) {
         return;
       }
@@ -1065,15 +1081,16 @@ export class FileMessageInteractionSessionStore
     if (operationError) throw operationError;
     if (
       releaseError instanceof ElizaError &&
-      releaseError.code === "INTERACTION_STORE_TRANSITION_CLEANUP_FAILED"
+      releaseError.code === "INTERACTION_STORE_RELEASE_CLEANUP_FAILED"
     ) {
       // error-policy:J2 The state rename and directory fsync completed before
       // release began, so this is a committed mutation plus an operator outage.
       throw new ElizaError(
         "Interaction transaction committed but transition cleanup failed; stop all store users before recovery.",
         {
-          code: releaseError.code,
+          code: "INTERACTION_STORE_COMMITTED_CLEANUP_FAILED",
           cause: releaseError,
+          context: { committed: true, retrySafeAfterRecovery: false },
         },
       );
     }
