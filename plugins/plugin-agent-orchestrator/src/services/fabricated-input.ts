@@ -22,6 +22,12 @@ export interface FabricatedInput {
   wrote: string;
 }
 
+export interface InputBaseline {
+  path: string;
+  existed: boolean;
+  sha256?: string;
+}
+
 function normalizedPath(path: string): string {
   return path.replace(/\\/g, "/").replace(/\/+/g, "/").toLowerCase();
 }
@@ -52,6 +58,7 @@ export function detectFabricatedInput(
   taskText: string,
   writtenPaths: readonly string[],
   shellCommands: readonly string[],
+  baselines: readonly InputBaseline[],
 ): FabricatedInput | undefined {
   const targets = readTargetsFromTask(taskText);
   if (targets.length === 0) return undefined;
@@ -62,6 +69,13 @@ export function detectFabricatedInput(
   for (const target of targets) {
     const normalizedTarget = normalizedPath(target);
     if (!normalizedTarget) continue;
+    const baseline = baselines.find(
+      (entry) => normalizedPath(entry.path) === normalizedTarget,
+    );
+    // A write is only fabrication evidence when the requested input was
+    // captured as absent before execution. Missing baseline is unknown, not a
+    // guilty verdict; an existing file may legitimately be rewritten.
+    if (!baseline || baseline.existed) continue;
     const wrote = writes.find(
       (path) => normalizedPath(path) === normalizedTarget,
     );

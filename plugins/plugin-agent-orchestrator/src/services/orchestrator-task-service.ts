@@ -17,7 +17,7 @@
  * @module services/orchestrator-task-service
  */
 
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import {
   appendFile,
   mkdir,
@@ -109,7 +109,11 @@ import {
   getCuratedCodingMemoryService,
   renderInjectedCodingNotes,
 } from "./curated-coding-memory.js";
-import { detectFabricatedInput } from "./fabricated-input.js";
+import {
+  detectFabricatedInput,
+  type InputBaseline,
+  readTargetsFromTask,
+} from "./fabricated-input.js";
 import {
   buildAutoVerifyCorrection,
   LLM_GOAL_VERIFIER_NAME,
@@ -3395,7 +3399,27 @@ export class OrchestratorTaskService extends Service {
   // ---- lifecycle ---------------------------------------------------------
 
   async createTask(input: CreateTaskInput): Promise<TaskThreadDetailDto> {
-    const bound = this.bindProject(input);
+    const inputText = `${input.goal}\n${input.originalRequest ?? ""}`;
+    const inputBaselines: InputBaseline[] = [];
+    for (const requestedPath of readTargetsFromTask(inputText)) {
+      const path = resolvePath(input.workdir ?? process.cwd(), requestedPath);
+      try {
+        const bytes = await readFile(path);
+        inputBaselines.push({
+          path,
+          existed: true,
+          sha256: createHash("sha256").update(bytes).digest("hex"),
+        });
+      } catch (error) {
+        const code = (error as NodeJS.ErrnoException).code;
+        if (code === "ENOENT") inputBaselines.push({ path, existed: false });
+        else throw error;
+      }
+    }
+    const bound = this.bindProject({
+      ...input,
+      metadata: { ...input.metadata, inputBaselines },
+    });
     const doc = await this.store.createTask(
       await this.withDefaultAcceptanceCriteria(bound),
     );
@@ -4764,6 +4788,9 @@ export class OrchestratorTaskService extends Service {
         this.extractToolSignals(sessionLedgerEvents)
           .map((signal) => signal.source)
           .filter((source): source is string => typeof source === "string"),
+        Array.isArray(doc.task.metadata?.inputBaselines)
+          ? (doc.task.metadata.inputBaselines as InputBaseline[])
+          : [],
       );
       if (fabricated) {
         const summary = `The sub-agent manufactured the input it was asked to read (wrote ${basename(fabricated.wrote)} itself) instead of reading ${fabricated.target}, which does not exist here.`;
