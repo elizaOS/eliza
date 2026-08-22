@@ -1,8 +1,7 @@
-// Direct-API key server-side probe. Extracted from the accounts route
-// (#11033 follow-up) so the coding-account bridge can verify a pooled
-// direct-API credential against the provider — a locally-stored key with the
-// never-expires sentinel resolves fine offline, so a cached-but-revoked key
-// can only be caught by an authed round-trip.
+/**
+ * Verifies direct API credentials with provider round-trips for account-pool
+ * callers that cannot detect cached-but-revoked keys from local state alone.
+ */
 import type { DirectAccountProvider } from "./types.ts";
 
 /** Provider base URL for a direct-API key, honoring the *_BASE_URL overrides. */
@@ -48,7 +47,7 @@ export interface DirectApiProbeResult {
 
 async function readProbeFailureBody(response: Response): Promise<string> {
   try {
-    return (await response.text()).slice(0, 200);
+    return await response.text();
   } catch (cause) {
     // error-policy:J4 explicit diagnostic degrade — the HTTP status remains the
     // authoritative failed probe; only the optional provider body is unavailable.
