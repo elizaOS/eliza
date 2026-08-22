@@ -66,10 +66,6 @@ export function toAccountDeletionRequestDto(
   };
 }
 
-export async function getOpenAccountDeletionRequest(userId: string) {
-  return await accountDeletionRequestsRepository.findOpenByUserId(userId);
-}
-
 async function getCurrentAccountMembers(input: { userId: string; organizationId: string }) {
   const members = await usersRepository.listByOrganizationForWrite(input.organizationId);
   const current = members.find((member) => member.id === input.userId);
