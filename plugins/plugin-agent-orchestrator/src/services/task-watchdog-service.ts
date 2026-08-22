@@ -31,6 +31,10 @@ import {
   requireConfirmedSendHandlerDelivery,
   Service,
 } from "@elizaos/core";
+import {
+  AGENT_VOICED_METADATA,
+  phraseForUser,
+} from "../voice/phrase-for-user.js";
 import { getSessionSpendUsd, readSpendCapUsd } from "./spend-allowance.js";
 import { TERMINAL_SESSION_STATUSES } from "./types.js";
 
@@ -170,13 +174,17 @@ function sessionLabel(metadata: Record<string, unknown> | undefined): string {
   return typeof label === "string" && label.trim() ? label : "A sub-agent";
 }
 
-/** Deterministic warning text for the originating room. */
+/** Deterministic FALLBACK warning text for the originating room — used verbatim
+ * only when the model-phrased line (see `postCapWarning`) is unavailable.
+ * Minimal facts only (label, count/limit, percent, what the user can do); no
+ * internal action names or mechanism vocabulary — the module's own
+ * banned-vocab contract would reject equivalent model output. */
 export function composeCapWarning(warning: CapWarning, label: string): string {
   const pct = Math.round(warning.ratio * 100);
   if (warning.kind === "round-trip") {
-    return `⚠️ ${label} is at ${warning.count}/${warning.limit} round-trips (${pct}%) — risk of a runaway loop. Consider stopping it (STOP_AGENT) or redirecting it (SEND_TO_AGENT) before it force-stops.`;
+    return `${label} is at ${warning.count}/${warning.limit} check-ins (${pct}%) and may be stuck in a loop — you can stop it or redirect it.`;
   }
-  return `⚠️ ${label} has spent $${warning.count.toFixed(2)} of its $${warning.limit.toFixed(2)} budget (${pct}%) — approaching the spend cap. Consider stopping or redirecting it.`;
+  return `${label} has spent $${warning.count.toFixed(2)} of its $${warning.limit.toFixed(2)} budget (${pct}%) — you can stop it or redirect it.`;
 }
 
 interface AcpServiceLike {
@@ -189,6 +197,23 @@ interface AcpServiceLike {
     }>
   >;
   sendToSession(sessionId: string, input: string): Promise<unknown>;
+}
+
+/** Durable-task statuses that mean the session is actually WORKING — the only
+ * states where a stall is a defect worth grilling. `waiting_on_user`,
+ * `blocked`, and `validating` sessions are idle BY DESIGN (gated on the user,
+ * an external dependency, or the verifier) and a status-check prompt cannot
+ * unblock any of them — it just burns a turn and produces noise. */
+const GRILLABLE_TASK_STATUSES = new Set(["open", "active"]);
+
+/** Read-only task view the stall gate needs from ORCHESTRATOR_TASK_SERVICE. */
+interface TaskStatusSourceLike {
+  listTasks(filter?: Record<string, unknown>): Promise<
+    Array<{
+      status: string;
+      latestSessionId: string | null;
+    }>
+  >;
 }
 
 /** Read-only round-trip accounting exposed by the SubAgentRouter. */
@@ -210,8 +235,19 @@ export class TaskWatchdogService extends Service {
     "Detects stalled (idle) sub-agent sessions and prods them, and warns the originating room when a session approaches its round-trip or spend cap.";
 
   private timer: ReturnType<typeof setInterval> | undefined;
-  /** Session ids already prodded this stall, so we grill once (not every tick). */
+  /**
+   * Session ids already prodded, kept for the SESSION'S LIFETIME (dropped only
+   * when the session leaves the active list). The previous recover-then-regrill
+   * reset made the prod loop self-sustaining: the grill starts a fresh ACP
+   * turn, the turn's reply resets `lastActivityAt` ("recovered"), recovery
+   * cleared the prodded flag, and one stall threshold later the same session
+   * was grilled again — a ~4-minute nag loop whose status babble relayed to
+   * the user's room indefinitely (live 2026-08-17 01:01–01:21Z). "Prods each
+   * ONCE" now means once per session, exactly as documented.
+   */
   private readonly prodded = new Set<string>();
+  /** Sessions stalled as of the last tick (provider surface only). */
+  private currentlyStalled = new Set<string>();
   /** `${kind}:${sessionId}` already warned this approach, so we warn once per
    * threshold crossing (cleared when the ratio drops back under the threshold). */
   private readonly warned = new Set<string>();
@@ -255,7 +291,7 @@ export class TaskWatchdogService extends Service {
 
   /** Session ids currently considered stalled (for the ACTIVE_SUB_AGENTS provider). */
   getStalledSessionIds(): string[] {
-    return [...this.prodded];
+    return [...this.currentlyStalled];
   }
 
   /** Sessions currently approaching a cap (for the ACTIVE_SUB_AGENTS provider). */
@@ -281,16 +317,34 @@ export class TaskWatchdogService extends Service {
       lastActivityMs: s.lastActivityAt?.getTime?.() ?? 0,
     }));
     const stalled = detectStalledSessions(views, nowMs, this.stallMs());
-    const stalledIds = new Set(stalled.map((s) => s.id));
+    this.currentlyStalled = new Set(stalled.map((s) => s.id));
 
-    // Clear the prodded flag for sessions that recovered or ended, so a future
-    // stall re-grills.
+    // The prod memo lives as long as the session does: drop only ids that are
+    // no longer in the session list at all. Recovery does NOT re-arm the grill
+    // — the grill itself manufactures "recovery" (its reply resets activity),
+    // which is exactly the loop this memo exists to break.
+    const liveIds = new Set(views.map((v) => v.id));
     for (const id of [...this.prodded]) {
-      if (!stalledIds.has(id)) this.prodded.delete(id);
+      if (!liveIds.has(id)) this.prodded.delete(id);
     }
 
+    const taskStatusBySession = await this.taskStatusBySession();
     for (const s of stalled) {
-      if (this.prodded.has(s.id)) continue; // already prodded this stall
+      if (this.prodded.has(s.id)) continue; // one grill per session lifetime
+      // A stall is only worth grilling while the durable task is actually
+      // WORKING. User-gated / blocked / validating tasks idle by design; a
+      // status check cannot unblock them. Sessions with no resolvable task
+      // record fail open (grilled once) — an ad-hoc session can still wedge.
+      const taskStatus = taskStatusBySession.get(s.id);
+      if (
+        taskStatus !== undefined &&
+        !GRILLABLE_TASK_STATUSES.has(taskStatus)
+      ) {
+        logger.debug(
+          `[TaskWatchdogService] session ${s.id} idle but its task is ${taskStatus} — not grilling`,
+        );
+        continue;
+      }
       this.prodded.add(s.id);
       try {
         await acp.sendToSession(s.id, STALL_GRILL_PROMPT);
@@ -313,6 +367,33 @@ export class TaskWatchdogService extends Service {
 
     await this.checkCapWarnings(sessions);
     return stalled;
+  }
+
+  /**
+   * Best-effort map of ACP session id → durable task status via the task
+   * service's latest-session linkage. Any failure (service absent, store
+   * error) yields an empty map so the stall gate FAILS OPEN — a wedged
+   * session must still get its one grill even when task state is unreadable.
+   */
+  private async taskStatusBySession(): Promise<Map<string, string>> {
+    const map = new Map<string, string>();
+    try {
+      const tasks = this.runtime.getService<Service & TaskStatusSourceLike>(
+        "ORCHESTRATOR_TASK_SERVICE",
+      );
+      if (!tasks || typeof tasks.listTasks !== "function") return map;
+      for (const task of await tasks.listTasks({})) {
+        if (task.latestSessionId) map.set(task.latestSessionId, task.status);
+      }
+    } catch (error) {
+      // error-policy:J7 stall gating is advisory; an unreadable task store must not stop the watchdog tick
+      logger.debug(
+        `[TaskWatchdogService] task-status lookup failed; grilling ungated: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
+    return map;
   }
 
   /**
@@ -386,11 +467,43 @@ export class TaskWatchdogService extends Service {
     if (typeof send !== "function") return;
     const origin = resolveOrigin(metadata);
     if (!origin) return; // no chat origin — nothing to warn into
-    const text = composeCapWarning(warning, sessionLabel(metadata));
+    // Model-phrased warning (owner directive: user-facing text is LLM-written).
+    // The caller has already claimed the `warned` slot synchronously, so the
+    // model latency here cannot double the warning. composeCapWarning stays the
+    // factual fallback when the model is unavailable.
+    const label = sessionLabel(metadata);
+    const { text } = await phraseForUser(
+      this.runtime,
+      {
+        intent: "warn",
+        facts: {
+          label,
+          kind: warning.kind,
+          count:
+            warning.kind === "spend"
+              ? `$${warning.count.toFixed(2)}`
+              : warning.count,
+          limit:
+            warning.kind === "spend"
+              ? `$${warning.limit.toFixed(2)}`
+              : warning.limit,
+          percentUsed: Math.round(warning.ratio * 100),
+          suggestStopOrRedirect: true,
+        },
+        mustInclude: [label],
+      },
+      composeCapWarning(warning, label),
+      // The memo serves cached text WITHOUT re-validating facts, so the key
+      // must pin every fact the text embeds (label via mustInclude, counts in
+      // prose) — a kind-only key would replay another session's numbers.
+      {
+        cacheKey: `capwarn:${warning.kind}:${label}:${warning.count}/${warning.limit}`,
+      },
+    );
     requireConfirmedSendHandlerDelivery(
       await send(
         { source: origin.source, roomId: origin.roomId },
-        { text, source: origin.source },
+        { text, source: origin.source, ...AGENT_VOICED_METADATA },
       ),
     );
     logger.info(
@@ -407,5 +520,6 @@ export class TaskWatchdogService extends Service {
     }
     this.prodded.clear();
     this.warned.clear();
+    this.currentlyStalled.clear();
   }
 }

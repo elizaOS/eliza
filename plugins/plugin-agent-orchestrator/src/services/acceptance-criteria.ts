@@ -5,19 +5,47 @@
  * contracts are enabled unless `ELIZA_REQUIRE_GOAL_CONTRACT=0`.
  */
 
-import { type IAgentRuntime, ModelType } from "@elizaos/core";
+import {
+  ElizaError,
+  type IAgentRuntime,
+  ModelType,
+  toWellFormedUnicode,
+} from "@elizaos/core";
+import { persistDurableContent } from "./durable-content-store.js";
 import { parseJsonObjectResponse } from "./json-model-output.js";
-import { stripInventedArtifactCriteria } from "./producible-evidence.js";
+import {
+  stripInventedArtifactCriteria,
+  stripUncollectableEvidenceCriteria,
+} from "./producible-evidence.js";
 
 /** Coarse task classification driving which template set is applied. */
 export type OrchestratorTaskType =
   | "coding"
+  | "script-run"
   | "view-create"
   | "app-build"
   | "deploy";
 
 /** Lower bound the issue calls for: a generated set always has ≥3 criteria. */
 const MIN_CRITERIA = 3;
+/** Upper bound REQUESTED from the refinement model so the verifier prompt
+ *  stays cheap and focused. This is the prompt's contract only, NOT an
+ *  enforcement cap: every well-formed criterion the model returns is kept
+ *  whole (prompt integrity — the refined set IS the task contract the worker
+ *  builds against and the judge grades, and silently narrowing it graded
+ *  workers against a subset of what refinement produced). The only
+ *  enforcement bound is {@link MAX_CRITERIA_SANITY_BOUND}, which rejects with
+ *  a typed error instead of slicing. */
+const MAX_CRITERIA = 5;
+/**
+ * Generous sanity bound on the refined criteria count. A deduped set larger
+ * than this is a runaway refinement, rejected with a typed {@link ElizaError}
+ * (code {@link ACCEPTANCE_CRITERIA_OVERFLOW_CODE}) BEFORE any criterion is
+ * dispatched — never silently sliced down to a working subset.
+ */
+export const MAX_CRITERIA_SANITY_BOUND = 25;
+/** Machine-classifiable code for the sanity-bound rejection. */
+export const ACCEPTANCE_CRITERIA_OVERFLOW_CODE = "ACCEPTANCE_CRITERIA_OVERFLOW";
 /** A goal shorter than this is treated as trivial — no criteria generated. */
 const MIN_GOAL_CHARS = 8;
 
@@ -53,6 +81,16 @@ export const DEFAULT_CRITERIA_TEMPLATES: Readonly<
     "the deliverable file exists in the workdir",
     "the page serves the requested content",
   ],
+  // One-shot "write a script and run it" asks: the deliverable is the RUN
+  // OUTPUT, not a maintained codebase. The coding template's lint/test-suite
+  // demands parked a two-tool write+run task whose script worked on the first
+  // try (live 2026-08-20: prime-numbers ask, three verify attempts burned on
+  // "a test suite passes").
+  "script-run": [
+    "the script file exists in the workdir",
+    "the script runs to completion without errors",
+    "the captured run output contains the requested result",
+  ],
   "view-create": [
     "a Plugin.views entry is declared with a viewKind",
     "the view appears in /api/views",
@@ -78,6 +116,16 @@ export function shouldRequireGoalContract(): boolean {
 
 /** Keyword groups feeding {@link detectTaskType}. Ordered most-specific-first
  *  so a goal that matches several groups gets the narrower classification. */
+// "write/make a <lang> script … and run it" (or "run it for me"): a compute
+// deliverable judged by its output. A creation verb directly before the
+// script noun also qualifies — "write me a python script that picks a random
+// dinner idea" is the same one-shot deliverable even without a run verb, and
+// classifying it coding parked a working script on invented lint/test-suite
+// criteria (live 2026-08-20). "add a build script to package.json" stays
+// coding: "add" is not a creation-of-deliverable verb here.
+const SCRIPT_RUN_RE =
+  /\b(?:script|one[- ]?liner)\b[\s\S]{0,80}\b(?:run|execute)\b|\b(?:run|execute)\b[\s\S]{0,40}\bscript\b|\b(?:write|make|create)\b(?:\s+\w+){0,4}?\s+(?:script|one[- ]?liner)\b/i;
+
 const VIEW_RE =
   /\b(view|views|viewkind|widget|dashboard\s+(?:card|panel|tile)|render\s+a\s+view)\b/i;
 const DEPLOY_RE =
@@ -90,21 +138,32 @@ const DEPLOY_RE =
 // intervening words so canonical phrasing like "build an app" and
 // "create a checklist app" classifies correctly (a bare `build\s+a\s+app` never
 // matches grammatical English and silently regressed those to coding).
+// The trailing alternative catches verb-less goals that are just a noun
+// phrase ending in page/site ("quote generator page" — the planner's task
+// title became the goal and classified coding, resurrecting the diff-summary
+// criterion on a slug-dir app, live 2026-08-19).
 const APP_BUILD_RE =
-  /\b(website|web\s*site|landing\s+page|web\s+app|webapp|frontend\s+app|(?:build|create|make)\s+an?\s+(?:\w+[ -]){0,2}(?:site|page|app|application)\b)/i;
+  /\b(website|web\s*site|web\s?page|landing\s+page|web\s+app|webapp|frontend\s+app|(?:build|create|make)\s+(?:me\s+)?an?\s+(?:[\w'-]+[ -]){0,5}(?:site|page|app|application)\b|^[\w'’-]+(?:\s+[\w'’-]+){0,5}\s+(?:page|site|webpage)\s*$)/im;
 
 /**
  * Classify a task from its goal text. Defaults to `coding` — the safest
  * superset, since every other type extends or specializes the coding checks.
  * Pure and deterministic so the static path is fully testable without a model.
  */
+// File names and paths are not intent: "/etc/nubs-deploy-settings.yaml"
+// classified a read-a-config script as a DEPLOY task (deploy criteria, two
+// lanes, live 2026-08-22). Strip path-like tokens before the keyword groups.
+const PATH_TOKEN_RE =
+  /(?:(?:\/|~\/|\.\/|[A-Za-z]:\\)[\w.\\/-]+)|\b[\w-]+\.(?:ya?ml|json|csv|tsv|txt|toml|ini|cfg|conf|xml|env|log|md|db|sqlite3?|py|js|ts|sh|html|css)\b/gi;
+
 export function detectTaskType(goal: string): OrchestratorTaskType {
-  const text = (goal ?? "").trim();
+  const text = (goal ?? "").replace(PATH_TOKEN_RE, " ").trim();
   if (text.length === 0) return "coding";
   // View creation is the most specific signal — check it first.
   if (VIEW_RE.test(text)) return "view-create";
   if (DEPLOY_RE.test(text)) return "deploy";
   if (APP_BUILD_RE.test(text)) return "app-build";
+  if (SCRIPT_RUN_RE.test(text)) return "script-run";
   return "coding";
 }
 
@@ -114,9 +173,17 @@ export function isNonTrivialGoal(goal: string): boolean {
   return (goal ?? "").trim().length >= MIN_GOAL_CHARS;
 }
 
-/** Normalize and de-dupe a candidate criteria list, topping up from the static fallback when the model
- *  returned too few usable lines. Always returns ≥{@link MIN_CRITERIA} when the
- *  fallback set itself has that many. */
+/** Normalize and de-dupe a candidate criteria list, topping up from the
+ *  static fallback when the model returned too few usable lines. Every kept
+ *  criterion is carried WHOLE as well-formed Unicode — no per-criterion char
+ *  cap and no count slice (prompt integrity: a criterion is the contract line
+ *  the worker builds against and the judge grades, so truncating or dropping
+ *  one silently changes both). Always returns ≥{@link MIN_CRITERIA} when the
+ *  fallback set itself has that many.
+ *
+ *  @throws ElizaError with code {@link ACCEPTANCE_CRITERIA_OVERFLOW_CODE}
+ *  when the deduped candidate set exceeds {@link MAX_CRITERIA_SANITY_BOUND} —
+ *  a typed pre-dispatch rejection, never a silent slice. */
 function normalizeCriteria(
   candidates: readonly string[],
   fallback: readonly string[],
@@ -124,7 +191,7 @@ function normalizeCriteria(
   const seen = new Set<string>();
   const out: string[] = [];
   const push = (raw: string): void => {
-    const trimmed = raw.trim();
+    const trimmed = toWellFormedUnicode(raw).trim();
     if (trimmed.length === 0) return;
     const key = trimmed.toLowerCase();
     if (seen.has(key)) return;
@@ -132,12 +199,76 @@ function normalizeCriteria(
     out.push(trimmed);
   };
   for (const candidate of candidates) push(candidate);
+  if (out.length > MAX_CRITERIA_SANITY_BOUND) {
+    throw new ElizaError(
+      `Refined acceptance-criteria set has ${out.length} entries — above the ` +
+        `sanity bound of ${MAX_CRITERIA_SANITY_BOUND}. Re-run refinement or ` +
+        "supply acceptance criteria explicitly; the deterministic static " +
+        "template stands in for this task.",
+      {
+        code: ACCEPTANCE_CRITERIA_OVERFLOW_CODE,
+        severity: "ephemeral",
+        context: { count: out.length, bound: MAX_CRITERIA_SANITY_BOUND },
+      },
+    );
+  }
   // Top up to the minimum from the static fallback if the model was stingy.
   for (const item of fallback) {
     if (out.length >= MIN_CRITERIA) break;
     push(item);
   }
   return out;
+}
+
+/**
+ * Record the criteria the producibility filters dropped so a parked or
+ * misgraded task can be traced back to a filtered criterion. The complete
+ * dropped lists are persisted to the content-addressed durable store
+ * (resolvable via `GET /api/orchestrator/content/<sha256>`) AND carried whole
+ * on the structured log record, so the record survives even when the store is
+ * unavailable. Pure observability: never throws.
+ */
+function recordDroppedCriteria(
+  runtime: IAgentRuntime,
+  goal: string,
+  type: OrchestratorTaskType,
+  dropped: {
+    inventedArtifact: readonly string[];
+    uncollectableEvidence: readonly string[];
+  },
+): void {
+  const total =
+    dropped.inventedArtifact.length + dropped.uncollectableEvidence.length;
+  if (total === 0) return;
+  let droppedCriteriaRef: string | undefined;
+  try {
+    droppedCriteriaRef = persistDurableContent(
+      JSON.stringify(
+        {
+          kind: "droppedAcceptanceCriteria",
+          taskType: type,
+          goal,
+          droppedInventedArtifact: dropped.inventedArtifact,
+          droppedUncollectableEvidence: dropped.uncollectableEvidence,
+        },
+        null,
+        2,
+      ),
+    ).ref;
+  } catch {
+    // error-policy:J7 diagnostics-must-not-kill-the-loop — the structured log
+    // record below still carries the complete dropped lists when the durable
+    // store is unavailable, so no information is lost by continuing.
+  }
+  runtime.logger?.info?.(
+    {
+      taskType: type,
+      droppedInventedArtifact: [...dropped.inventedArtifact],
+      droppedUncollectableEvidence: [...dropped.uncollectableEvidence],
+      ...(droppedCriteriaRef ? { droppedCriteriaRef } : {}),
+    },
+    "[acceptance-criteria] producibility filters dropped refined criteria (complete lists on this record; durable copy at droppedCriteriaRef when present)",
+  );
 }
 
 /**
@@ -175,7 +306,7 @@ function buildRefinePrompt(
     template.map((c, i) => `${i + 1}. ${c}`).join("\n"),
     "",
     'Respond with a SINGLE JSON object and nothing else, no markdown fences. Schema: { "criteria": ["<criterion>", "<criterion>", ...] }',
-    `Return at least ${MIN_CRITERIA} criteria.`,
+    `Return between ${MIN_CRITERIA} and ${MAX_CRITERIA} criteria.`,
   ].join("\n");
 }
 
@@ -214,6 +345,18 @@ export async function generateDefaultAcceptanceCriteria(
   const type = taskTypeHint ?? detectTaskType(goal);
   const fallback = [...DEFAULT_CRITERIA_TEMPLATES[type]];
 
+  // Static app builds keep the deterministic serve-focused template with NO
+  // model refine: every refine pass invented runtime-behavior demands in new
+  // phrasings ("browser console shows zero errors", "interaction updates the
+  // DOM", "timer changes its value") that no headless pipeline can evidence,
+  // and each parked a live, working page (2026-08-19, four distinct parks).
+  // The template criteria — reachable URL, files on disk, served content —
+  // are exactly what the evidence pipeline can prove.
+  if (type === "app-build") return fallback;
+  // Same purity rule for script-run: refinement re-invents the lint/test-suite
+  // demands the template exists to avoid.
+  if (type === "script-run") return fallback;
+
   if (!runtime || typeof runtime.useModel !== "function") return fallback;
 
   try {
@@ -230,10 +373,31 @@ export async function generateDefaultAcceptanceCriteria(
     // The prompt forbids invented paths, but the filter is the enforcement:
     // a criterion pinning a path the goal never named is unsatisfiable by
     // design (#20794), so it is dropped and the template tops the set back up.
-    const producible = stripInventedArtifactCriteria(candidates, goal).kept;
-    const refined = normalizeCriteria(producible, fallback);
+    const inventedFilter = stripInventedArtifactCriteria(candidates, goal);
+    const uncollectableFilter = stripUncollectableEvidenceCriteria(
+      inventedFilter.kept,
+      type,
+    );
+    // The dropped lists are persisted (durable store + structured log), never
+    // silently discarded — a filtered criterion must stay traceable.
+    recordDroppedCriteria(runtime, goal, type, {
+      inventedArtifact: inventedFilter.dropped,
+      uncollectableEvidence: uncollectableFilter.dropped,
+    });
+    const refined = normalizeCriteria(uncollectableFilter.kept, fallback);
     return refined.length >= MIN_CRITERIA ? refined : fallback;
-  } catch {
+  } catch (err) {
+    if (
+      err instanceof ElizaError &&
+      err.code === ACCEPTANCE_CRITERIA_OVERFLOW_CODE
+    ) {
+      // Typed rejection of a runaway refined set: RECORDED via reportError
+      // (never a silent narrowing), then the deterministic static template
+      // stands in — task creation must not break on a misbehaving refine
+      // model (the caller's documented never-throw contract).
+      runtime.reportError?.("[acceptance-criteria]", err, { taskType: type });
+      return fallback;
+    }
     // error-policy:J4 optional model refinement of an external dep; any failure degrades to the designed deterministic static template
     // Defensive: criteria generation must never break task creation.
     return fallback;

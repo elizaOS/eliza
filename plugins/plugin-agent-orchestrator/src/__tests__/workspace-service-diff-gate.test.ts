@@ -223,7 +223,10 @@ describe("CodingWorkspaceService.createPR diff-review boundary", () => {
       "secret",
       {
         changedFiles: ["config.ts"],
-        diff: "+++ b/config.ts\n+password=not-a-real-secret-value\n",
+        // `api_key=` is one of the lowercase compound names core's
+        // case-sensitive env pattern enumerates (bare lowercase `password=`
+        // is deliberately not matched by core since the develop contract).
+        diff: "+++ b/config.ts\n+api_key=not-a-real-secret-value\n",
         truncated: false,
         filesTruncated: false,
       },

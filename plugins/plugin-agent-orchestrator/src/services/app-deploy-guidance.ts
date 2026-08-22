@@ -26,6 +26,7 @@
  * @module services/app-deploy-guidance
  */
 
+import { detectTaskType } from "./acceptance-criteria.js";
 import { readConfigEnvKey } from "./config-env.js";
 import { APP_DEPLOY_TASK_RE } from "./skill-recommender.js";
 import {
@@ -180,6 +181,7 @@ function customHostGuidance(
   config: AppDeployConfig,
   _task?: string,
   monetized?: boolean,
+  assignedAppDir?: string,
 ): string {
   const dir = config.customAppsDir ?? "";
   const base = config.customBaseUrl ?? "";
@@ -200,7 +202,16 @@ function customHostGuidance(
     "--- Publishing web apps (custom host) ---",
     "If (and only if) your task is to build OR edit a web app, page, or site for the operator — not a script, CLI, library, or backend service — publish it to the operator's configured static host:",
     `- Published apps are plain static files under \`${dir}/<slug>/\` (index.html plus any css/js — there is NO per-app build step), served live at \`${base}/apps/<slug>/\`.`,
-    `- To CREATE a new app: pick a fresh, short kebab-case \`<slug>\`, write the files into \`${dir}/<slug>/\`, then open \`${base}/apps/<slug>/\` to confirm it works and report that URL.`,
+    // A server-assigned dir removes the child's slug choice entirely: a
+    // self-picked slug overwrote an existing app (live 2026-08-19).
+    assignedAppDir
+      ? `- To CREATE the app: your assigned app folder is \`${assignedAppDir}/\` — write index.html (plus css/js) directly there and NOWHERE else under \`${dir}/\`; it serves at \`${base}/apps/${assignedAppDir.split("/").pop()}/\` — open that URL to confirm and report it.`
+      : `- To CREATE a new app: pick a fresh, short kebab-case \`<slug>\` that is NOT an existing folder under \`${dir}/\`, write the files into \`${dir}/<slug>/\`, then open \`${base}/apps/<slug>/\` to confirm it works and report that URL. Never overwrite an existing app folder you did not create.`,
+    // Children self-imposed `eslint`/`tsc` checks on plain browser scripts;
+    // with no lint/ts config in the app dir those exit 1, the child's planner
+    // ends on a failed tool step, and a finished page reports as a failed
+    // task (live 2026-08-19: every first attempt "failed" this way).
+    "- Verify a static app by reading the files back and fetching its served URL. There is NO build, lint, or typecheck step: do not run eslint, tsc, npm, or bun for these plain static apps — a failing check you invented is not a task failure.",
     `- To EDIT an existing app: the \`<slug>\` is the app's existing folder name under \`${dir}/\` — read its files there, modify them in place, then re-open \`${base}/apps/<slug>/\` to confirm. Do not create a new slug for an edit.`,
     monetizeLine,
   ];
@@ -294,7 +305,7 @@ function extractViewPluginSourceDir(task: string): string | undefined {
 export function augmentTaskWithDeployGuidance(
   task: string,
   config?: AppDeployConfig,
-  opts?: { monetized?: boolean; cloudAppId?: string },
+  opts?: { monetized?: boolean; cloudAppId?: string; assignedAppDir?: string },
 ): string {
   // Idempotent: if a deploy block is already present, no-op.
   if (
@@ -304,6 +315,30 @@ export function augmentTaskWithDeployGuidance(
     task.includes("--- Publishing web apps")
   ) {
     return task;
+  }
+  // Script deliverables never get the web-publishing contract. The section's
+  // own "If (and only if) your task is to build OR edit a web app … not a
+  // script" conditional is routinely ignored at small-model scale: a python
+  // script ask produced an unrequested "Dinner Picker" web app, and a
+  // run-the-script follow-up produced a JavaScript rewrite inside the apps
+  // dir (both live 2026-08-20). detectTaskType is the same deterministic
+  // classifier the acceptance-criteria contract uses.
+  if (detectTaskType(task) === "script-run" && !isAppBuildTask(task)) {
+    return [
+      task.trimEnd(),
+      "",
+      "--- Script tasks ---",
+      "The deliverable is the script and its run output. Verify by executing the script and capturing its stdout.",
+      // Children self-imposed mypy/flake8 on scratch workspaces with no venv;
+      // the failed check led the completion as a task failure while the
+      // script itself ran clean (live 2026-08-21, 2 of 4 runs).
+      "Do not run linters, type checkers, or test frameworks (mypy, flake8, eslint, tsc, pytest) unless the workspace already has them installed and configured — a failing check you introduced is not a task failure.",
+      // A missing input got replaced by a hand-written stand-in and a made-up
+      // value shipped as the answer (live 2026-08-22). The honest result of a
+      // script whose input is absent IS the error.
+      "If a file, endpoint, or dataset the task names does not exist or cannot be reached from here, report that as the result — never create a stand-in for it or change the script to read something else.",
+      "End your final message with the captured run output.",
+    ].join("\n");
   }
   const resolved = config ?? resolveAppDeployConfig();
   // The planner's monetization judgment (model intent, not a keyword match).
@@ -329,7 +364,12 @@ export function augmentTaskWithDeployGuidance(
     // A custom-host app only touches Cloud when it is monetized (it registers
     // for billing); only then does an existing-app binding apply.
     const boundLine = monetized ? existingCloudAppLine(opts?.cloudAppId) : "";
-    const custom = customHostGuidance(resolved, task, monetized);
+    const custom = customHostGuidance(
+      resolved,
+      task,
+      monetized,
+      opts?.assignedAppDir,
+    );
     const block = boundLine ? `${custom}\n${boundLine}` : custom;
     return `${task.trimEnd()}\n\n${block}`;
   }

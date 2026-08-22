@@ -10,7 +10,9 @@
  * This module turns the rich signals the orchestrator ALREADY has into a single
  * clearly-SECTIONED evidence string the verifier can grill against:
  *
- *   - **CHANGESET** — the real git diffstat + changed files + a capped diff,
+ *   - **CHANGESET** — the real git diffstat + changed files + the diff,
+ *     rendered whole (a capture-level cut is disclosed with a durable
+ *     continuation reference, never silently),
  *     captured from git at `task_complete` (same {@link WorkspaceChangeSet} the
  *     CODING_SESSION_CHANGES provider renders), so "I changed X" is checkable.
  *   - **DELIVERABLE** — the sub-agent's captured deliverable (printed/tool
@@ -23,15 +25,20 @@
  *   - **ARTIFACTS** — references to screenshot/trajectory artifacts found on the
  *     task/session, so UI and agent-behavior criteria have something to cite.
  *
- * Pure (no IO): the caller gathers the inputs (durable store + live ACP session
- * metadata) and hands them in. The whole assembly is null-safe and size-capped
- * so it can be fed straight into the verifier without blowing the prompt
- * budget.
+ * Everything assembled here reaches the verifier's model call, so every text
+ * that enters a section is passed COMPLETE — no head+marker substitution, no
+ * view budget. Near-pure: the caller gathers the inputs and hands them in; the
+ * ONLY IO is the durable-content store, used solely to disclose an UPSTREAM
+ * capture-level cut (a change set the git read buffer already truncated) by
+ * persisting the fullest captured record and naming its resolver
+ * (`GET /api/orchestrator/content/<sha256>`) — never to bound the evidence
+ * text itself.
  *
  * @module services/completion-evidence
  */
 
 import { toWellFormedUnicode } from "@elizaos/core";
+import { persistDurableContent } from "./durable-content-store.js";
 import type { WorkspaceChangeSet } from "./workspace-diff.js";
 
 /** One recorded signal (a durable event or sub-agent message) the assembler
@@ -60,6 +67,9 @@ export interface CompletionEvidenceInput {
   signals?: readonly EvidenceSignal[];
   /** Artifact references (screenshots, trajectories) found on task/session. */
   artifacts?: readonly EvidenceArtifactRef[];
+  /** Reporting session id — threads the concrete durable-transcript target
+   *  into the evidence section headers. */
+  sessionId?: string;
 }
 
 export interface EvidenceArtifactRef {
@@ -71,8 +81,8 @@ export interface EvidenceArtifactRef {
 
 /**
  * Captured stdout from the sub-agent's tool runs, split by tool class. Each
- * field is the raw (already-bounded) output of a `vitest`/`tsc`/`biome`-style
- * run mined from the recorded ACP tool events, so the verifier can read the
+ * field is the complete mined output of a `vitest`/`tsc`/`biome`-style
+ * run from the recorded ACP tool events, so the verifier can read the
  * actual run result rather than the agent's narration of it. `raw` is a
  * catch-all for tool output that matched a build/test marker but couldn't be
  * confidently classed as test/build/lint.
@@ -99,8 +109,21 @@ export interface ToolOutputEvidence {
 export interface CompletionEvidenceBundle {
   /** The sub-agent's reported result — the fallback/final-reply text. */
   summary: string;
-  /** Human-readable git diff summary (diffstat + changed files + capped diff)
-   *  captured at completion, if any. */
+  /** Tail of the session's captured raw output (tool stdout the transport
+   *  recorded). Script-run criteria are judged by what the run PRINTED; the
+   *  classified tool buckets miss plain interpreter output, and the judge
+   *  rejected a correct prime-numbers run as "no execution logs provided"
+   *  (live 2026-08-20). */
+  runOutput?: string;
+  /** Pull request the ORCHESTRATOR's auto-submit opened for this task. The
+   *  child cannot push or open PRs by design, so its narration never carries
+   *  the URL — without this field the judge kept failing "no pull request
+   *  was opened" against tasks whose PR its own submit had already opened
+   *  (live 2026-08-20: TESTING.md and STYLE.md, three attempts each). */
+  pullRequestUrl?: string;
+  /** Human-readable git diff summary (diffstat + changed files + the diff,
+   *  rendered whole; a capture-level cut carries a durable continuation
+   *  reference) captured at completion, if any. */
   diffSummary?: string;
   /** Captured tool stdout split by class (test/build/lint) plus a raw bucket. */
   toolOutput?: ToolOutputEvidence;
@@ -131,15 +154,19 @@ export interface CompletionEvidenceBundle {
   /** Check classes runnable where the verified deliverable lives (tooling
    *  manifests observed in its own directories); absent = unknown. */
   checkSurfaces?: { typecheck: boolean; lint: boolean; test: boolean };
-  /** Contents of small fs-verified static files, READ BY THE
+  /** COMPLETE contents of fs-verified static text files, READ BY THE
    *  ORCHESTRATOR from the session workdir — so content criteria ("the CSS
-   *  includes …") are judged against the real file text instead of failing as
-   *  unproven narration (#20794 reed-marsh). */
+   *  includes …") are judged against the real, whole file text instead of
+   *  failing as unproven narration (#20794 reed-marsh). */
   fsVerifiedFileContents?: Array<{ path: string; content: string }>;
   /** Screenshot artifact paths found on the task/session. */
   screenshots: string[];
   /** Path to the persisted trajectory JSONL artifact for this completion. */
   trajectoryPath?: string;
+  /** Session whose transcript is the durable ground truth for the mined
+   *  tool-output selections; threads the concrete continuation target into
+   *  the evidence section headers. */
+  reportingSessionId?: string;
 }
 
 /**
@@ -190,13 +217,18 @@ const BUILD_MARKER_RE =
 /** Markers that class a signal as LINT output (biome/eslint). */
 const LINT_MARKER_RE = /\b(?:biome|eslint|\blint\b)\b/;
 
-/** Extract just the build/test-looking lines from one signal body, deduped and
- *  so a noisy tool transcript collapses to its run-result lines. */
+/** Extract just the build/test-looking lines from one signal body, deduped so
+ *  a noisy tool transcript collapses to its run-result lines. This is a mined
+ *  SELECTION (regex + dedupe), never a length cut: matched lines are kept
+ *  WHOLE regardless of length — a single-line vitest summary or a long tsc
+ *  error is exactly the line the judge needs, and the old >400-char gate
+ *  silently dropped it. The section header names the durable session
+ *  transcript so unmatched/collapsed output stays recoverable. */
 function extractToolLines(text: string, seen: Set<string>): string[] {
   const out: string[] = [];
   for (const rawLine of text.replace(/\r\n/g, "\n").split("\n")) {
     const line = rawLine.trim();
-    if (line.length === 0 || line.length > 400) continue;
+    if (line.length === 0) continue;
     if (!BUILD_TEST_LINE_RE.test(line)) continue;
     if (seen.has(line)) continue;
     seen.add(line);
@@ -222,8 +254,32 @@ export function classifyToolOutput(
     lint: [],
     raw: [],
   };
+  // One dedupe set across all signals and buckets — a deliberate
+  // noise-collapse PROJECTION (a line repeated across runs renders once, in
+  // the first bucket that saw it). Tolerable only because the rendered
+  // section names the durable session transcript
+  // (GET /api/coding-agents/:sessionId/output), where multiplicity and
+  // per-run attribution remain recoverable in full.
   const seen = new Set<string>();
   for (const signal of signals) {
+    // A `[tool output: …]…[/tool output]` envelope IS tool output by
+    // construction — no marker heuristics needed. Without this, a script's
+    // plain stdout (bare numbers) matched no build/test line shape and the
+    // judge failed a correct run for "missing actual shell output"
+    // (live 2026-08-19: squares.py printed 1..36, task marked failed).
+    for (const match of signal.text.matchAll(
+      /\[tool output:[^\]]*\]([\s\S]*?)\[\/tool output\]/g,
+    )) {
+      const inner = (match[1] ?? "").trim();
+      if (inner && !seen.has(inner)) {
+        seen.add(inner);
+        // The envelope body enters the bucket COMPLETE. This text reaches the
+        // judge's model call, and the repository contract requires the model
+        // to receive the full content — a capped head with a continuation
+        // reference does not make the CURRENT model call lossless.
+        buckets.raw.push(inner);
+      }
+    }
     const lines = extractToolLines(signal.text, seen);
     if (lines.length === 0) continue;
     const haystack = `${signal.source ?? ""}\n${signal.text}`;
@@ -243,14 +299,16 @@ export function classifyToolOutput(
 }
 
 /** Pull the lines from a signal body that read like build/test/typecheck
- *  output, so the verifier sees the actual run output rather than narration. */
+ *  output, so the verifier sees the actual run output rather than narration.
+ *  Selection only (regex + dedupe) — matched lines are kept WHOLE, with no
+ *  length gate, for the same reason as {@link extractToolLines}. */
 function extractBuildTestLines(signals: readonly EvidenceSignal[]): string[] {
   const out: string[] = [];
   const seen = new Set<string>();
   for (const signal of signals) {
     for (const rawLine of signal.text.replace(/\r\n/g, "\n").split("\n")) {
       const line = rawLine.trim();
-      if (line.length === 0 || line.length > 400) continue;
+      if (line.length === 0) continue;
       if (!BUILD_TEST_LINE_RE.test(line)) continue;
       const key = signal.source ? `${signal.source}: ${line}` : line;
       if (seen.has(key)) continue;
@@ -263,7 +321,7 @@ function extractBuildTestLines(signals: readonly EvidenceSignal[]): string[] {
 
 /**
  * Render the human-readable body of a {@link WorkspaceChangeSet} (diffstat +
- * changed files + a capped diff) WITHOUT the section header. Used as the
+ * changed files + the whole captured diff) WITHOUT the section header. Used as the
  * `diffSummary` field of a {@link CompletionEvidenceBundle}, so the bundle and
  * the legacy assembler produce byte-identical changeset text.
  */
@@ -280,8 +338,28 @@ export function renderChangeSetBody(changeSet: WorkspaceChangeSet): string {
     lines.push("diff:");
     lines.push(normalizeEvidenceText(changeSet.diff));
   }
-  if (changeSet.truncated) lines.push("(changeset truncated)");
+  if (changeSet.truncated) {
+    // A bare "(changeset truncated)" marker is not recoverability. Persist
+    // the fullest captured record durably and name the resolver so the judge
+    // (and any re-verification) can page everything that WAS captured, and
+    // knows precisely what the flag means: the capture layer cut the git
+    // read, so files/hunks beyond the buffer may be missing entirely.
+    lines.push(renderChangeSetTruncationMarker(lines.join("\n")));
+  }
   return lines.join("\n");
+}
+
+function renderChangeSetTruncationMarker(capturedBody: string): string {
+  try {
+    const reference = persistDurableContent(capturedBody);
+    const sha = reference.ref.slice("acpx-content:".length);
+    return `(changeset truncated at capture — files/hunks beyond the git read buffer may be missing; the fullest captured record is durably stored: GET /api/orchestrator/content/${sha})`;
+  } catch {
+    // error-policy:J4 durable persistence failing must not sink evidence
+    // assembly — the marker still names the loss honestly, it just cannot
+    // promise a resolver.
+    return "(changeset truncated at capture — files/hunks beyond the git read buffer may be missing; durable persistence of the captured record failed)";
+  }
 }
 
 function renderChangeSetSection(changeSet: WorkspaceChangeSet): string {
@@ -360,8 +438,17 @@ function renderArtifactsSection(
   return lines.join("\n");
 }
 
-function renderToolOutputSection(toolOutput: ToolOutputEvidence): string {
-  const lines = ["## TEST / BUILD / TYPECHECK OUTPUT (captured tool stdout)"];
+function renderToolOutputSection(
+  toolOutput: ToolOutputEvidence,
+  reportingSessionId?: string,
+): string {
+  // The header names the section for what it is — a mined selection — and
+  // names the durable transcript where the COMPLETE output lives, so a line
+  // the mining heuristics missed (or collapsed as a duplicate) is
+  // recoverable, never gone.
+  const lines = [
+    `## TEST / BUILD / TYPECHECK OUTPUT (captured tool stdout — a mined selection of run-result lines; the COMPLETE output is durable on the session transcript: GET /api/coding-agents/${reportingSessionId ?? ":sessionId"}/output)`,
+  ];
   const labelled: [string, string | undefined][] = [
     ["test", toolOutput.test],
     ["build", toolOutput.build],
@@ -401,6 +488,28 @@ export function buildCompletionEvidenceString(
   const sections: string[] = [];
   let hasRicherSection = false;
 
+  const runOutput = bundle.runOutput?.trim();
+  if (runOutput) {
+    sections.push(
+      [
+        "## RUN OUTPUT (raw session output captured by the orchestrator)",
+        runOutput,
+      ].join("\n"),
+    );
+    hasRicherSection = true;
+  }
+
+  const pr = bundle.pullRequestUrl?.trim();
+  if (pr) {
+    sections.push(
+      [
+        "## PULL REQUEST (opened by the orchestrator's auto-submit; the sub-agent cannot push or open PRs itself)",
+        pr,
+      ].join("\n"),
+    );
+    hasRicherSection = true;
+  }
+
   const diff = bundle.diffSummary?.trim();
   if (diff) {
     sections.push(
@@ -429,9 +538,12 @@ export function buildCompletionEvidenceString(
   // direct inspection, not worker narration — so it counts as richer evidence.
   const fsVerified = bundle.fsVerifiedFiles ?? [];
   if (fsVerified.length > 0) {
+    // The header names the enumeration's deliberate exclusions so "not
+    // listed" can never be read as "does not exist": workdir enumeration
+    // skips orchestration plumbing and vendor/VCS internals by policy.
     sections.push(
       [
-        "## FS-VERIFIED FILES (stat-observed in the session workdir, modified after session start)",
+        "## FS-VERIFIED FILES (stat-observed in the session workdir, modified after session start; workdir enumeration deliberately skips orchestration plumbing — AGENTS.md/CLAUDE.md — and vendor/VCS dirs such as node_modules and .git, so absence of such paths here is not evidence they don't exist)",
         ...fsVerified.map((file) => `- ${file}`),
       ].join("\n"),
     );
@@ -442,9 +554,14 @@ export function buildCompletionEvidenceString(
   // judged against this, not against the worker's description of it.
   const fileContents = bundle.fsVerifiedFileContents ?? [];
   if (fileContents.length > 0) {
+    // Inclusion rule named in the header: text files are inlined WHOLE —
+    // this section is judge input, so no per-file budget applies. Binary
+    // assets are NOT inlined — they remain listed under FS-VERIFIED FILES —
+    // so a missing entry here means "not a text file", never "does not
+    // exist".
     sections.push(
       [
-        "## FS-VERIFIED FILE CONTENTS (read by the orchestrator from the session workdir)",
+        "## FS-VERIFIED FILE CONTENTS (complete file text read by the orchestrator from the session workdir; text files only — binary assets stay listed under FS-VERIFIED FILES without inlined bytes)",
         ...fileContents.map(
           (entry) => `--- ${entry.path} ---\n${entry.content}`,
         ),
@@ -473,7 +590,9 @@ export function buildCompletionEvidenceString(
   }
 
   if (bundle.toolOutput && hasToolOutput(bundle.toolOutput)) {
-    sections.push(renderToolOutputSection(bundle.toolOutput));
+    sections.push(
+      renderToolOutputSection(bundle.toolOutput, bundle.reportingSessionId),
+    );
     hasRicherSection = true;
   }
 
@@ -570,7 +689,7 @@ export function buildEvidenceStringFromInput(
   if (buildTestLines.length > 0) {
     sections.push(
       [
-        "## TEST / BUILD / TYPECHECK OUTPUT (mined from recorded session output)",
+        `## TEST / BUILD / TYPECHECK OUTPUT (a mined selection from recorded session output; the COMPLETE output is durable on the session transcript: GET /api/coding-agents/${input.sessionId ?? ":sessionId"}/output)`,
         normalizeEvidenceText(buildTestLines.join("\n")),
       ].join("\n"),
     );
