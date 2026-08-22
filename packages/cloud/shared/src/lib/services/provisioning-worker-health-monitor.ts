@@ -15,6 +15,7 @@
  * about its own death) — wiring that schedule is infra, not this module.
  */
 
+import { truncateWellFormed } from "@elizaos/core";
 import { safeFetch } from "../security/safe-fetch";
 import { logger } from "../utils/logger";
 import { writeCloudApiDbHeartbeat } from "./cloud-api-db-heartbeat";
@@ -35,7 +36,7 @@ function boundedAlertText(value: string, maxChars: number): string {
   const wellFormed = value.toWellFormed();
   return wellFormed.length <= maxChars
     ? wellFormed
-    : `${wellFormed.slice(0, maxChars - 1).toWellFormed()}…`;
+    : `${truncateWellFormed(wellFormed, maxChars - 1)}…`;
 }
 
 function boundedAlertDetails(details: Record<string, unknown>): Record<string, unknown> {

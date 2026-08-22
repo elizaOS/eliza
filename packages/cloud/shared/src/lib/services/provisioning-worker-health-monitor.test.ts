@@ -158,7 +158,7 @@ describe("monitorProvisioningWorkerHealth", () => {
       process.env.PROVISIONING_ALERT_PAGERDUTY_KEY = "pd-routing-key";
       await sendProvisioningWorkerAlert(
         {
-          title: "t".repeat(1_000),
+          title: `${"t".repeat(510)}🦊${"t".repeat(1_000)}`,
           message: "m".repeat(10_000),
           details: { code: "TEST", diagnostic: "d".repeat(20_000) },
           dedupKey: "test-dedup",
@@ -175,11 +175,48 @@ describe("monitorProvisioningWorkerHealth", () => {
         expect(String(post.init?.body).length).toBeLessThan(20_000);
         expect(() => JSON.parse(String(post.init?.body))).not.toThrow();
       }
+      const slackBody = JSON.parse(String(posted[0]?.init?.body)) as { text: string };
+      expect(slackBody.text.isWellFormed()).toBe(true);
+      expect(slackBody.text).not.toContain("�");
     } finally {
       if (prevSlack === undefined) delete process.env.PROVISIONING_ALERT_SLACK_WEBHOOK;
       else process.env.PROVISIONING_ALERT_SLACK_WEBHOOK = prevSlack;
       if (prevPd === undefined) delete process.env.PROVISIONING_ALERT_PAGERDUTY_KEY;
       else process.env.PROVISIONING_ALERT_PAGERDUTY_KEY = prevPd;
+    }
+  });
+
+  it("preserves repeated DAG references while cutting true cycles", async () => {
+    const previous = process.env.PROVISIONING_ALERT_PAGERDUTY_KEY;
+    process.env.PROVISIONING_ALERT_PAGERDUTY_KEY = "pd-routing-key";
+    const posted: RequestInit[] = [];
+    const shared = { region: "eu-west", replicas: 2 };
+    const cycle: Record<string, unknown> = {};
+    cycle.self = cycle;
+    try {
+      const { sendProvisioningWorkerAlert } = await import("./provisioning-worker-health-monitor");
+      await sendProvisioningWorkerAlert(
+        {
+          title: "t",
+          message: "m",
+          details: { primary: shared, secondary: shared, cycle },
+        },
+        {
+          transport: async (_url, init) => {
+            if (init) posted.push(init);
+            return new Response("ok");
+          },
+        },
+      );
+      const body = JSON.parse(String(posted[0]?.body)) as {
+        payload: { custom_details: Record<string, unknown> };
+      };
+      expect(body.payload.custom_details.primary).toEqual(shared);
+      expect(body.payload.custom_details.secondary).toEqual(shared);
+      expect(body.payload.custom_details.cycle).toEqual({ self: "[circular]" });
+    } finally {
+      if (previous === undefined) delete process.env.PROVISIONING_ALERT_PAGERDUTY_KEY;
+      else process.env.PROVISIONING_ALERT_PAGERDUTY_KEY = previous;
     }
   });
 
