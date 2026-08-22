@@ -20,8 +20,9 @@ import {
  * TutorialConductorMount) and self-gates — it renders `null` unless:
  *  - the user is authenticated (post-login; local resolves silently, cloud
  *    clears LoginView),
- *  - first-run has completed (`firstRunComplete !== false`), so the in-chat
- *    onboarding lock is already released and there is nothing to collide with,
+ *  - this surface observed first-run incomplete and then complete, so restoring
+ *    an existing session or opening a second desktop window cannot summon an
+ *    onboarding modal over the requested destination,
  *  - the tutorial is not active (the chat-native tour owns the conversation
  *    right after onboarding — priming waits its turn instead of covering it),
  *  - the platform has a non-empty priming set (web is intentionally empty), and
@@ -36,9 +37,23 @@ export function PermissionPrimingOverlay(): React.JSX.Element | null {
   const [primed, setPrimed] = React.useState<boolean>(hasPrimedPermissions);
   const [open, setOpen] = React.useState(false);
 
+  // `firstRunComplete === true` is persisted and restored for every new
+  // renderer surface. It is not evidence that onboarding just completed in
+  // this surface. Remember an actual incomplete state so only the surface that
+  // hosted onboarding may auto-open the post-onboarding soft ask. Explicit
+  // re-entry remains available from Settings -> Permissions.
+  const observedIncompleteFirstRunRef = React.useRef(
+    firstRunComplete === false,
+  );
+  if (firstRunComplete === false) {
+    observedIncompleteFirstRunRef.current = true;
+  }
+  const completedFirstRunInThisSurface =
+    observedIncompleteFirstRunRef.current && firstRunComplete === true;
+
   const eligible =
     authed &&
-    firstRunComplete !== false &&
+    completedFirstRunInThisSurface &&
     !tutorial.active &&
     ids.length > 0 &&
     !primed;

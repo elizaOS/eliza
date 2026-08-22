@@ -3595,9 +3595,9 @@ function AppContent() {
         {/* Post-login permission priming: a one-time soft-ask modal that walks
             the user through the platform's onboarding permission set (voice,
             location, notifications) BEFORE any OS prompt. Self-gates on
-            authenticated + firstRunComplete !== false + no active tutorial, so
-            it never collides with the in-chat first-run conductor. Renders null
-            when not eligible; re-triggerable from Settings → Permissions. */}
+            an onboarding completion observed in this surface + no active
+            tutorial, so restored sessions and newly opened desktop windows are
+            never covered. Re-triggerable from Settings → Permissions. */}
         <PermissionPrimingOverlay />
         {/* Headless notification wiring: boots the notification store (hydrate
             + live stream) and sends every "open notifications" entry point
