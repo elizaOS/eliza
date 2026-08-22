@@ -4,6 +4,27 @@ import { z } from "zod";
 import { logger } from "../logger";
 import type { ChatEvent, PlatformAdapter, WebhookConfig } from "./types";
 
+const WHATSAPP_REQUEST_TIMEOUT_MS = 30_000;
+
+/**
+ * Bound every WhatsApp Cloud API hop so a hung gateway cannot pin the
+ * adapter. A caller-provided abort signal is composed with the timeout
+ * (either cancelling aborts), not substituted for it.
+ */
+export function whatsappFetch(
+  input: RequestInfo | URL,
+  init?: RequestInit,
+  timeoutMs: number = WHATSAPP_REQUEST_TIMEOUT_MS,
+): Promise<Response> {
+  const timeoutSignal = AbortSignal.timeout(timeoutMs);
+  return fetch(input, {
+    ...init,
+    signal: init?.signal
+      ? AbortSignal.any([init.signal, timeoutSignal])
+      : timeoutSignal,
+  });
+}
+
 const WHATSAPP_API_BASE = "https://graph.facebook.com/v21.0";
 
 const WhatsAppWebhookMessageSchema = z.object({
@@ -154,7 +175,7 @@ export const whatsappAdapter: PlatformAdapter = {
     }
 
     const url = `${WHATSAPP_API_BASE}/${config.phoneNumberId}/messages`;
-    const response = await fetch(url, {
+    const response = await whatsappFetch(url, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${config.accessToken}`,
@@ -182,7 +203,7 @@ export const whatsappAdapter: PlatformAdapter = {
     if (!config.accessToken || !config.phoneNumberId) return;
     try {
       const url = `${WHATSAPP_API_BASE}/${config.phoneNumberId}/messages`;
-      await fetch(url, {
+      await whatsappFetch(url, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${config.accessToken}`,
