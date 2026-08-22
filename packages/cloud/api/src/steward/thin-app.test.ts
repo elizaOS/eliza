@@ -246,6 +246,29 @@ describe("createStewardThinApp", () => {
     },
   );
 
+  test.each([
+    ["nested scalar provider data", { data: "telegram" }],
+    ["nested array provider data", { data: ["telegram"] }],
+    ["non-array oauth", { oauth: { google: true } }],
+    ["oauth entries with non-string values", { oauth: ["google", 42] }],
+  ])("fails closed on %s", async (_case, malformedProviders) => {
+    stubFetch(async () => providersUpstreamResponse(malformedProviders));
+
+    const app = createStewardThinApp();
+    const response = await app.request(
+      "https://api.elizacloud.ai/steward/auth/providers",
+      { method: "GET" },
+      stewardEnv,
+    );
+
+    expect(response.status).toBe(502);
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    expect(response.headers.get("x-eliza-providers-cache")).toBeNull();
+    await expect(response.json()).resolves.toMatchObject({
+      code: "steward_upstream_invalid_response",
+    });
+  });
+
   test("serves GET /steward/tenants/config without upstream and defaults no-store", async () => {
     let upstreamCalls = 0;
     stubFetch(async () => {

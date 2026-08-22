@@ -203,6 +203,26 @@ describe("POST /api/auth/steward-session phone convergence", () => {
     });
   });
 
+  test("rejects Telegram identity on a non-Telegram verified session", async () => {
+    verifyStewardTokenCached.mockResolvedValueOnce({
+      userId: "steward-email-user",
+      tenantId: "personal-steward-email-user",
+      authMethod: "email",
+      telegramId: "424242",
+      expiration: Math.floor(Date.now() / 1000) + 900,
+      issuedAt: Math.floor(Date.now() / 1000) - 10,
+    });
+
+    const response = await post({ token: "email-session-token" });
+
+    expect(response.status).toBe(401);
+    await expect(response.json()).resolves.toMatchObject({
+      code: "invalid_token",
+    });
+    expect(syncUserFromSteward).not.toHaveBeenCalled();
+    expect(response.headers.get("set-cookie")).toBeNull();
+  });
+
   test("rejects combining a signed Telegram identity with a DM continuation", async () => {
     verifyStewardTokenCached.mockResolvedValueOnce({
       userId: "steward-telegram-user",

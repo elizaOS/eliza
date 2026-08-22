@@ -170,6 +170,25 @@ type ProvidersBody = ProvidersData & {
   data?: ProvidersData;
 };
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function invalidProvidersResponse(): Response {
+  return Response.json(
+    {
+      success: false,
+      error: "steward_upstream_invalid_response",
+      code: "steward_upstream_invalid_response",
+      message: "Steward providers response is malformed",
+    },
+    {
+      status: 502,
+      headers: { "cache-control": "no-store" },
+    },
+  );
+}
+
 function hasOAuthCreds(
   env: AppEnv["Bindings"],
   provider: "google" | "discord" | "github",
@@ -324,10 +343,19 @@ async function patchProvidersResponse(
   } catch {
     return upstream;
   }
-  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
-    return upstream;
+  if (!isRecord(parsed)) return invalidProvidersResponse();
+
+  const hasNestedData = Object.hasOwn(parsed, "data");
+  const providerData = hasNestedData ? parsed.data : parsed;
+  if (!isRecord(providerData)) return invalidProvidersResponse();
+  if (
+    Object.hasOwn(providerData, "oauth") &&
+    (!Array.isArray(providerData.oauth) ||
+      !providerData.oauth.every((provider) => typeof provider === "string"))
+  ) {
+    return invalidProvidersResponse();
   }
-  const providerData = parsed.data ?? parsed;
+
   const oauth = new Set<string>(providerData.oauth ?? []);
   const patched: ProvidersData = { ...providerData };
 
@@ -339,7 +367,7 @@ async function patchProvidersResponse(
   }
   patched.oauth = [...oauth];
 
-  const body = parsed.data
+  const body = hasNestedData
     ? { ...parsed, data: patched }
     : { ...parsed, ...patched };
   return Response.json(body, {
