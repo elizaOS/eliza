@@ -85,7 +85,10 @@ function codexCliSubscriptionState(): CodexCliSubscriptionState {
 
   const authMode =
     typeof data.auth_mode === "string" ? data.auth_mode.trim() : "";
-  if (authMode.toLowerCase() === "api-key") return "absent";
+  const normalizedAuthMode = authMode.toLowerCase();
+  if (normalizedAuthMode === "apikey" || normalizedAuthMode === "api-key") {
+    return "absent";
+  }
   if (data.OPENAI_API_KEY !== undefined || data.auth_mode !== undefined) {
     return typeof data.OPENAI_API_KEY === "string" &&
       data.OPENAI_API_KEY.trim() &&

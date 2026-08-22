@@ -117,12 +117,18 @@ describe("built-in Codex CLI credential discovery", () => {
     expect(discoverCodexCredential()).toBeNull();
   });
 
-  it("omits a valid direct API-key-only login", () => {
-    writeCodexAuth(
-      home,
-      JSON.stringify({ auth_mode: "api-key", OPENAI_API_KEY: "sk-fixture" }),
-    );
+  it.each(["apikey", "api-key"])(
+    "omits a valid direct API-key-only login using %s auth mode",
+    (authMode) => {
+      writeCodexAuth(
+        home,
+        JSON.stringify({
+          auth_mode: authMode,
+          OPENAI_API_KEY: "sk-fixture",
+        }),
+      );
 
-    expect(discoverCodexCredential()).toBeNull();
-  });
+      expect(discoverCodexCredential()).toBeNull();
+    },
+  );
 });
