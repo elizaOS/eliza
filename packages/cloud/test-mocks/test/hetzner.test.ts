@@ -1,9 +1,11 @@
 /** Covers the hetzner cloud mock with deterministic in-process state and real HTTP handlers. */
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { HetznerCloudClient } from "@elizaos/cloud-shared/lib/services/containers/hetzner-cloud-api";
 import { type RunningHetznerMock, startHetznerMock } from "../src/hetzner";
 
 // Speed up tests
 process.env.MOCK_HETZNER_LATENCY = "0";
+process.env.MOCK_HETZNER_ACTION_MS = "0";
 
 let mock: RunningHetznerMock;
 
@@ -126,5 +128,74 @@ describe("Hetzner mock", () => {
     expect(r.status).toBe(422);
     const body = (await r.json()) as { error: { code: string } };
     expect(body.error.code).toBe("invalid_input");
+  });
+
+  test("volume placement rejects provider-invalid location and server combinations", async () => {
+    const both = await fetch(`${mock.url}/volumes`, {
+      method: "POST",
+      headers: AUTH,
+      body: JSON.stringify({
+        name: "invalid-volume",
+        size: 10,
+        location: "fsn1",
+        server: 42,
+      }),
+    });
+    expect(both.status).toBe(422);
+
+    const neither = await fetch(`${mock.url}/volumes`, {
+      method: "POST",
+      headers: AUTH,
+      body: JSON.stringify({ name: "invalid-volume", size: 10 }),
+    });
+    expect(neither.status).toBe(422);
+
+    const unattachedAutomount = await fetch(`${mock.url}/volumes`, {
+      method: "POST",
+      headers: AUTH,
+      body: JSON.stringify({
+        name: "invalid-volume",
+        size: 10,
+        location: "fsn1",
+        automount: true,
+      }),
+    });
+    expect(unattachedAutomount.status).toBe(422);
+  });
+
+  test("real client proves create/readback/volume/delete lifecycle over HTTP", async () => {
+    const client = HetznerCloudClient.withTestTransport("test-token", {
+      apiBaseUrl: mock.url,
+      requestTimeoutMs: 1_000,
+      lifecycleTimeoutMs: 5_000,
+    });
+
+    const created = await client.createServer({
+      name: "client-node",
+      serverType: "cx22",
+      location: "fsn1",
+      image: "ubuntu-24.04",
+      userData: "#cloud-config\n",
+    });
+    expect(created.server).toMatchObject({ status: "running" });
+
+    const serverId = created.server.id;
+    const volume = await client.createVolume({
+      name: "client-volume",
+      sizeGb: 10,
+      location: "fsn1",
+      serverId,
+      automount: false,
+    });
+    expect(volume).toMatchObject({
+      status: "available",
+      server: serverId,
+    });
+    expect(volume.linux_device).toContain(String(volume.id));
+
+    await client.deleteVolume(volume.id);
+    expect(await client.getVolume(volume.id)).toBeNull();
+    await client.deleteServer(serverId);
+    expect(await client.getServer(serverId)).toBeNull();
   });
 });
