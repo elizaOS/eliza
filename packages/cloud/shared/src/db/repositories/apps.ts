@@ -546,15 +546,15 @@ export class AppsRepository {
   }
 
   /**
-   * Creates a new app only if the owning organization is still under its app cap.
+   * Creates a provisional app only if the owning organization is still under its app cap.
    *
    * The organization row lock serializes concurrent app creates for one org in
    * Postgres, so parallel requests cannot all observe the same pre-insert count.
-   * `NO KEY UPDATE` remains exclusive between contenders while staying compatible
-   * with the foreign-key `KEY SHARE` lock held by their transactional API-key insert.
+   * The initial API key stays null until the admitted transaction mints and
+   * attaches it, so a quota loser cannot generate a credential first.
    */
   async createIfOrganizationBelowLimit(
-    data: NewApp,
+    data: Omit<NewApp, "api_key_id">,
     maxApps: number,
     tx: DbTransaction,
   ): Promise<App | undefined> {
@@ -571,7 +571,37 @@ export class AppsRepository {
       return undefined;
     }
 
-    const [app] = await tx.insert(apps).values(data).returning();
+    const [app] = await tx
+      .insert(apps)
+      .values({ ...data, api_key_id: null })
+      .returning();
+    return app;
+  }
+
+  /** Attaches the first API key once to an admitted app inside its creation transaction. */
+  async attachInitialApiKey(
+    appId: string,
+    organizationId: string,
+    apiKeyId: string,
+    tx: DbTransaction,
+  ): Promise<App | undefined> {
+    const [app] = await tx
+      .update(apps)
+      .set({ api_key_id: apiKeyId })
+      .where(
+        and(
+          eq(apps.id, appId),
+          eq(apps.organization_id, organizationId),
+          isNull(apps.api_key_id),
+          sql`EXISTS (
+            SELECT 1
+            FROM ${apiKeys}
+            WHERE ${apiKeys.id} = ${apiKeyId}
+              AND ${apiKeys.organization_id} = ${organizationId}
+          )`,
+        ),
+      )
+      .returning();
     return app;
   }
 

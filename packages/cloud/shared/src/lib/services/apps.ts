@@ -458,6 +458,27 @@ export class AppsService {
 
     const limit = getMaxAppsPerOrg();
     const created = await writeTransaction(async (tx) => {
+      const provisionalApp = await appsRepository.createIfOrganizationBelowLimit(
+        {
+          name: data.name,
+          description: data.description,
+          slug,
+          organization_id: data.organization_id,
+          created_by_user_id: data.created_by_user_id,
+          app_url: data.app_url,
+          allowed_origins: data.allowed_origins || [data.app_url],
+          logo_url: data.logo_url,
+          website_url: data.website_url,
+          contact_email: data.contact_email,
+        },
+        limit,
+        tx,
+      );
+
+      if (!provisionalApp) {
+        throw new AppCreationLimitError(data.organization_id, limit);
+      }
+
       const { apiKey, plainKey } = await apiKeysService.create(
         {
           name: `${data.name} - App API Key`,
@@ -469,26 +490,23 @@ export class AppsService {
         tx,
       );
 
-      const app = await appsRepository.createIfOrganizationBelowLimit(
-        {
-          name: data.name,
-          description: data.description,
-          slug,
-          organization_id: data.organization_id,
-          created_by_user_id: data.created_by_user_id,
-          app_url: data.app_url,
-          allowed_origins: data.allowed_origins || [data.app_url],
-          api_key_id: apiKey.id,
-          logo_url: data.logo_url,
-          website_url: data.website_url,
-          contact_email: data.contact_email,
-        },
-        limit,
+      const app = await appsRepository.attachInitialApiKey(
+        provisionalApp.id,
+        data.organization_id,
+        apiKey.id,
         tx,
       );
 
       if (!app) {
-        throw new AppCreationLimitError(data.organization_id, limit);
+        throw new ElizaError("App lost its initial API-key attachment compare-and-set", {
+          code: "APP_INITIAL_API_KEY_ATTACH_FAILED",
+          context: {
+            appId: provisionalApp.id,
+            apiKeyId: apiKey.id,
+            organizationId: data.organization_id,
+          },
+          severity: "fatal",
+        });
       }
 
       return { app, apiKey: plainKey };

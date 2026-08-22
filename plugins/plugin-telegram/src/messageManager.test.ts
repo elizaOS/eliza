@@ -1205,8 +1205,8 @@ describe("MessageManager.sendMessage transport failure", () => {
 
 describe("MessageManager reaction reply transport failure", () => {
   it("does not report an empty successful turn when ctx.reply fails", async () => {
-    const { callback, reply } = await captureReactionCallback();
-    reply.mockRejectedValueOnce(new Error("Forbidden: bot was blocked"));
+    const { callback, sendMessage } = await captureReactionCallback();
+    sendMessage.mockRejectedValueOnce(new Error("Forbidden: bot was blocked"));
 
     await expect(
       callback({ text: "thanks for the reaction" }),
