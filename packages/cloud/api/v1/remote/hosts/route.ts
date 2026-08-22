@@ -17,6 +17,7 @@ import type { AppEnv } from "@/types/cloud-worker-env";
 import { isRemoteControlIdentifier } from "../validation";
 
 const app = new Hono<AppEnv>();
+const REMOTE_HOST_ONLINE_WINDOW_MS = 15_000;
 
 app.get("/", async (c) => {
   try {
@@ -38,7 +39,14 @@ app.get("/", async (c) => {
           runtimeKeyId: host.runtime_key_id,
           signingPublicKeyJwk: host.signing_public_jwk,
           encryptionPublicKeyJwk: host.encryption_public_jwk,
-          status: host.status,
+          status:
+            host.status === "revoked"
+              ? "revoked"
+              : host.last_seen_at &&
+                  Date.now() - host.last_seen_at.getTime() <=
+                    REMOTE_HOST_ONLINE_WINDOW_MS
+                ? "active"
+                : "offline",
           lastSeenAt: host.last_seen_at,
           createdAt: host.created_at,
           revokedAt: host.revoked_at,

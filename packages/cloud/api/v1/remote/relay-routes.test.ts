@@ -234,6 +234,7 @@ describe("secure remote relay routes", () => {
   });
 
   test("bootstraps the authenticated owner and target public keys without leaking host credentials", async () => {
+    const staleHostId = "40000000-0000-4000-8000-000000000002";
     listOwned.mockResolvedValue([
       {
         id: hostId,
@@ -246,7 +247,22 @@ describe("secure remote relay routes", () => {
         encryption_public_jwk: publicJwk,
         host_token_hash: "sha256:must-not-leak",
         status: "active",
-        last_seen_at: null,
+        last_seen_at: new Date(),
+        created_at: new Date(),
+        revoked_at: null,
+      },
+      {
+        id: staleHostId,
+        device_id: "linux-stale",
+        display_name: "Linux Stale",
+        platform: "linux",
+        connection_mode: "relay",
+        runtime_key_id: "target-key-stale",
+        signing_public_jwk: publicJwk,
+        encryption_public_jwk: publicJwk,
+        host_token_hash: "sha256:also-must-not-leak",
+        status: "active",
+        last_seen_at: new Date(Date.now() - 60_000),
         created_at: new Date(),
         revoked_at: null,
       },
@@ -265,9 +281,15 @@ describe("secure remote relay routes", () => {
       runtimeKeyId: targetKeyId,
       signingPublicKeyJwk: publicJwk,
       encryptionPublicKeyJwk: publicJwk,
+      status: "active",
+    });
+    expect(body.data.hosts[1]).toMatchObject({
+      id: staleHostId,
+      status: "offline",
     });
     expect(body.data.hosts[0]).not.toHaveProperty("hostTokenHash");
     expect(JSON.stringify(body)).not.toContain("must-not-leak");
+    expect(JSON.stringify(body)).not.toContain("also-must-not-leak");
   });
 
   test("recovers a lost one-time host token only through the owner-bound identity", async () => {

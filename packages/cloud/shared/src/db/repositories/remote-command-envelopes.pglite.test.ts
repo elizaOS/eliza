@@ -224,6 +224,16 @@ afterAll(async () => {
 });
 
 describe("secure remote relay repositories", () => {
+  it("records a host heartbeat even when its active session has no command", async () => {
+    await enrollAndPair();
+    expect((await commands.claimNext({ sessionId, hostId, hostToken })).kind).toBe("empty");
+    const [host] = await database
+      .select({ lastSeenAt: remoteHosts.last_seen_at })
+      .from(remoteHosts)
+      .where(eq(remoteHosts.id, hostId));
+    expect(host?.lastSeenAt).toBeInstanceOf(Date);
+  });
+
   it("recovers a lost host token only for the exact active public identity", async () => {
     await enrollAndPair(false);
     const oldToken = hostToken;

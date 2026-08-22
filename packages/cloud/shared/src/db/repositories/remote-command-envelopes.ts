@@ -377,6 +377,11 @@ export class RemoteCommandEnvelopesRepository {
         )
         .for("update");
       if (!host) return { kind: "not_found" };
+      const now = await readPostLockDatabaseNow(tx);
+      await tx
+        .update(remoteHosts)
+        .set({ last_seen_at: now, updated_at: now })
+        .where(and(eq(remoteHosts.id, host.id), eq(remoteHosts.status, "active")));
       const [session] = await tx
         .select()
         .from(remoteSessions)
@@ -390,7 +395,6 @@ export class RemoteCommandEnvelopesRepository {
         )
         .for("update");
       if (!session) return { kind: "not_found" };
-      const now = await readPostLockDatabaseNow(tx);
       if (session.status !== "active") {
         await terminalizeSessionCommands(
           tx,
