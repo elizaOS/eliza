@@ -1,6 +1,7 @@
 package ai.elizaos.app;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
@@ -154,19 +155,71 @@ public final class BionicDecodeLoopTest {
     }
 
     @Test
-    public void stopSequenceSplitAcrossStepsIsRemovedAndEndsDecode() throws Exception {
+    public void mandatoryStopSequencesSplitAcrossStepsNeverLeak() throws Exception {
+        final List<String> stops =
+            Arrays.asList("<end_of_turn>", "<start_of_turn>", "<endoftext>");
+        for (String marker : stops) {
+            final List<String> frames = new ArrayList<>();
+            final int split = marker.length() / 2;
+            final String[] pieces = {
+                "Ready" + marker.substring(0, split),
+                marker.substring(split) + "ignored",
+                "never reached"
+            };
+            final int[] call = {0};
+            final BionicDecodeLoop.StepFn fn = stepCap ->
+                new BionicDecodeLoop.Step(pieces[call[0]++], 2, false);
+
+            final BionicDecodeLoop.Result r =
+                BionicDecodeLoop.run(fn, 64, 2, stops, frames::add);
+
+            assertEquals("Ready", r.text);
+            assertEquals(Arrays.asList("Ready"), frames);
+            assertFalse(r.text.contains(marker));
+            assertFalse(String.join("", frames).contains(marker));
+            assertEquals(4, r.produced);
+            assertEquals(2, call[0]);
+        }
+    }
+
+    @Test
+    public void longUnrelatedStopDoesNotDelaySafeText() throws Exception {
         final List<String> frames = new ArrayList<>();
-        final String[] pieces = {"Ready<end_", "of_turn>ignored", "never reached"};
+        final StringBuilder longStop = new StringBuilder();
+        for (int i = 0; i < 1024; i++) longStop.append('x');
         final int[] call = {0};
-        final BionicDecodeLoop.StepFn fn = stepCap ->
-            new BionicDecodeLoop.Step(pieces[call[0]++], 2, false);
+        final BionicDecodeLoop.StepFn fn = stepCap -> {
+            call[0]++;
+            if (call[0] == 1) {
+                return new BionicDecodeLoop.Step("safe output", 2, false);
+            }
+            assertEquals(Arrays.asList("safe output"), frames);
+            return new BionicDecodeLoop.Step("", 1, true);
+        };
 
         final BionicDecodeLoop.Result r = BionicDecodeLoop.run(
-            fn, 64, 2, Arrays.asList("<end_of_turn>", "<start_of_turn>"), frames::add);
+            fn, 64, 8, Arrays.asList(longStop.toString()), frames::add);
 
-        assertEquals("Ready", r.text);
-        assertEquals(Arrays.asList("Ready"), frames);
-        assertEquals(4, r.produced);
+        assertEquals("safe output", r.text);
+        assertEquals(Arrays.asList("safe output"), frames);
+        assertEquals(2, call[0]);
+    }
+
+    @Test
+    public void overlappingStopPrefixesWithholdOnlyTheLongestPendingSuffix() throws Exception {
+        final List<String> frames = new ArrayList<>();
+        final String[] pieces = {"visible<sto", "p>hidden", "never reached"};
+        final int[] call = {0};
+        final BionicDecodeLoop.StepFn fn = stepCap -> {
+            if (call[0] == 1) assertEquals(Arrays.asList("visible"), frames);
+            return new BionicDecodeLoop.Step(pieces[call[0]++], 2, false);
+        };
+
+        final BionicDecodeLoop.Result r = BionicDecodeLoop.run(
+            fn, 64, 2, Arrays.asList("<stop-extra>", "<stop>"), frames::add);
+
+        assertEquals("visible", r.text);
+        assertEquals(Arrays.asList("visible"), frames);
         assertEquals(2, call[0]);
     }
 
@@ -183,7 +236,7 @@ public final class BionicDecodeLoopTest {
             fn, 64, 8, Arrays.asList("<end_of_turn>"), frames::add);
 
         assertEquals("answer<end_", r.text);
-        assertEquals(Arrays.asList("answer<end_"), frames);
+        assertEquals(Arrays.asList("answer", "<end_"), frames);
         assertEquals(1, call[0]);
     }
 
