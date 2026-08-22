@@ -11,7 +11,14 @@ import {
 import os, { tmpdir } from "node:os";
 import path, { join } from "node:path";
 import { Writable } from "node:stream";
-import { getHostExecutionBaseline } from "@elizaos/shared/host-execution-env";
+import {
+  CODING_AGENT_BACKEND_PREFLIGHTS,
+  CODING_AGENT_BACKENDS,
+} from "@elizaos/shared";
+import {
+  captureHostExecutionBaseline,
+  getHostExecutionBaseline,
+} from "@elizaos/shared/host-execution-env";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // The ACP implementation runs every workdir through `path.resolve`, which on
@@ -128,7 +135,16 @@ vi.mock("../../src/services/acp-native-transport.js", () => {
       this.eventHandler?.(event, sessionId);
     }
   };
-  return { NativeAcpClient: state.NativeAcpClient };
+  return {
+    NativeAcpClient: state.NativeAcpClient,
+    splitCommandLine(input: string) {
+      const parts = input.match(/(?:[^\s"']+|"[^"]*"|'[^']*')+/gu) ?? [];
+      const [command = "", ...args] = parts.map((part) =>
+        part.replace(/^(['"])(.*)\1$/u, "$2"),
+      );
+      return { command, args };
+    },
+  };
 });
 
 import {
@@ -328,6 +344,33 @@ async function waitForNativeClients(count: number): Promise<void> {
   );
 }
 
+async function waitForMockCalls(
+  mock: ReturnType<typeof vi.fn>,
+  count: number,
+  timeoutMs = 1_000,
+): Promise<void> {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < timeoutMs) {
+    if (mock.mock.calls.length >= count) return;
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+  throw new Error(
+    `expected ${count} mock calls, got ${mock.mock.calls.length}`,
+  );
+}
+
+async function waitForWarmClientReady(service: AcpService): Promise<void> {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < 1_000) {
+    const internal = service as AcpService & {
+      warmNativeClient?: unknown;
+    };
+    if (internal.warmNativeClient) return;
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+  throw new Error("expected warm native client to become ready");
+}
+
 beforeEach(() => {
   spawnMock.mockReset();
   nativeClientMock.instances.length = 0;
@@ -358,6 +401,137 @@ async function waitForNativeClient(
 }
 
 describe("AcpService", () => {
+  it("reports every canonical backend unavailable when the transport is missing", async () => {
+    const service = new AcpService(
+      runtime({ ELIZA_ACP_TRANSPORT: "cli", ELIZA_ACP_CLI: "/no/acpx" }),
+    );
+
+    const availability = await service.checkAvailableAgents();
+
+    expect(availability.map((entry) => entry.agentType)).toEqual(
+      CODING_AGENT_BACKENDS,
+    );
+    expect(availability.every((entry) => entry.installed === false)).toBe(true);
+    expect(
+      availability.every((entry) => Boolean(entry.unavailableReason)),
+    ).toBe(true);
+  });
+
+  it("requires each configured native command to resolve to an executable", async () => {
+    const configured = Object.fromEntries(
+      CODING_AGENT_BACKENDS.map((backend) => [
+        CODING_AGENT_BACKEND_PREFLIGHTS[backend].commandConfigKey,
+        process.execPath,
+      ]),
+    );
+    const available = new AcpService(
+      runtime({ ELIZA_ACP_TRANSPORT: "native", ...configured }),
+    );
+    expect(
+      (await available.checkAvailableAgents()).every(
+        (entry) => entry.installed,
+      ),
+    ).toBe(true);
+
+    const missing = new AcpService(
+      runtime({
+        ELIZA_ACP_TRANSPORT: "native",
+        ...configured,
+        ELIZA_PI_AGENT_ACP_COMMAND: "/missing/pi-agent",
+      }),
+    );
+    const pi = (await missing.checkAvailableAgents()).find(
+      (entry) => entry.agentType === "pi-agent",
+    );
+    expect(pi).toMatchObject({ installed: false });
+    expect(pi?.unavailableReason).toMatch(/missing or not executable/i);
+  });
+
+  it("fails closed for an unknown adapter", () => {
+    const service = new AcpService(runtime({ ELIZA_ACP_TRANSPORT: "native" }));
+    const inspect = service as unknown as {
+      agentCommandAvailability(agentType: string): {
+        available: boolean;
+        reason?: string;
+      };
+    };
+
+    expect(inspect.agentCommandAvailability("unknown-adapter")).toMatchObject({
+      available: false,
+      reason: expect.stringMatching(/No verified ACP backend/),
+    });
+  });
+
+  it("accepts built-in acpx profiles without shadow profile executables", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "acpx-profile-preflight-"));
+    const cliPath = join(dir, "acpx");
+    const previousPath = process.env.PATH;
+    try {
+      await fs.writeFile(cliPath, "#!/bin/sh\nexit 0\n");
+      await fs.chmod(cliPath, 0o755);
+      process.env.PATH = dir;
+      const service = new AcpService(
+        runtime({ ELIZA_ACP_TRANSPORT: "cli", ELIZA_ACP_CLI: cliPath }),
+      );
+
+      const availability = await service.checkAvailableAgents();
+
+      for (const agentType of ["pi-agent", "claude", "codex"] as const) {
+        expect(
+          availability.find((entry) => entry.agentType === agentType),
+        ).toMatchObject({ installed: true });
+      }
+    } finally {
+      if (previousPath === undefined) delete process.env.PATH;
+      else process.env.PATH = previousPath;
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects a composed ELIZA_ACP_CLI command before spawn", async () => {
+    const service = new AcpService(
+      runtime({ ELIZA_ACP_TRANSPORT: "cli", ELIZA_ACP_CLI: "npx -y acpx" }),
+    );
+
+    expect(
+      (await service.checkAvailableAgents()).every(
+        (entry) => entry.installed === false,
+      ),
+    ).toBe(true);
+    expect(
+      (await service.checkAvailableAgents())[0]?.unavailableReason,
+    ).toMatch(/must name one executable path/i);
+  });
+
+  it("anchors a relative native executable before the session changes cwd", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "relative-native-command-"));
+    const executable = join(dir, "agent-acp");
+    try {
+      await fs.writeFile(executable, "#!/bin/sh\nexit 0\n");
+      await fs.chmod(executable, 0o755);
+      const relative = path.relative(process.cwd(), executable);
+      const service = new AcpService(
+        runtime({
+          ELIZA_ACP_TRANSPORT: "native",
+          ELIZA_PI_AGENT_ACP_COMMAND: `${relative} --stdio`,
+        }),
+      );
+      const inspect = service as unknown as {
+        nativeAgentCommand(agentType: string): string;
+        agentCommandAvailability(agentType: string): { available: boolean };
+      };
+
+      expect(inspect.nativeAgentCommand("pi-agent")).toBe(
+        `${executable} --stdio`,
+      );
+      expect(inspect.agentCommandAvailability("pi-agent")).toEqual({
+        available: true,
+      });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it("fails with a clear diagnostic when acpx is missing on Android", async () => {
     const previousPlatform = process.env.ELIZA_PLATFORM;
     process.env.ELIZA_PLATFORM = "android";
@@ -783,6 +957,7 @@ describe("AcpService", () => {
   });
 
   it("single-claims warm elizaos children without credentials at process spawn", async () => {
+    captureHostExecutionBaseline();
     const previous = process.env.OPENAI_API_KEY;
     process.env.OPENAI_API_KEY = "host-credential-must-not-reach-warm-child";
     const service = new AcpService(
@@ -790,11 +965,13 @@ describe("AcpService", () => {
         ELIZA_ACP_TRANSPORT: "native",
         ELIZA_ACP_DEFAULT_AGENT: "elizaos",
         ELIZA_ACP_WARM_SPAWN: "1",
+        ELIZA_ELIZAOS_ACP_COMMAND: process.execPath,
       }),
     );
     try {
       await service.start();
       await waitForNativeClients(1);
+      await waitForWarmClientReady(service);
       const firstWarm = nativeClientMock.instances[0];
       const firstToken = firstWarm?.opts.env?.ELIZA_ACP_WARM_CLAIM_TOKEN;
       expect(firstToken).toMatch(/^[a-f0-9]{64}$/);
@@ -1306,63 +1483,6 @@ describe("AcpService", () => {
     expect(events).not.toContain("task_complete");
   });
 
-  it("prepares OpenCode ACP environment for Cerebras", async () => {
-    const reg = nextProc();
-    const service = new AcpService(
-      runtime({
-        ELIZA_OPENCODE_BASE_URL: "https://api.cerebras.ai/v1",
-        ELIZA_OPENCODE_API_KEY: "csk_test",
-        ELIZA_OPENCODE_MODEL_POWERFUL: "gpt-oss-120b",
-      }),
-    );
-    await service.start();
-
-    const spawned = service.spawnSession({
-      name: "opencode-cerebras",
-      agentType: "opencode",
-      workdir: "/tmp/acp-test",
-    });
-    await waitForSpawn(reg);
-    closeOk(reg);
-    await spawned;
-
-    const args = spawnMock.mock.calls[0]?.[1] as string[] | undefined;
-    const agentArgIndex = args?.indexOf("--agent") ?? -1;
-    expect(agentArgIndex).toBeGreaterThanOrEqual(0);
-    // The shim script lives at `<plugin>/bin/opencode*` and is referenced
-    // with platform-native path separators (`\` on Windows, `/` on POSIX).
-    // On Windows the spawn target is wrapped in double quotes (paths can
-    // contain spaces) and uses the `.cmd` shim, so accept either
-    // separator after `plugin-agent-orchestrator`, any extension on the
-    // opencode shim, and tolerate surrounding quotes / trailing tokens
-    // around the trailing `acp` subcommand.
-    const shimArg = args?.[agentArgIndex + 1];
-    expect(shimArg).toBeDefined();
-    expect(shimArg).toContain("plugin-agent-orchestrator");
-    expect(shimArg).toContain("opencode");
-    expect(shimArg).toMatch(/\sacp(\s|$)/);
-    expect(args).not.toContain("opencode");
-
-    const env = spawnMock.mock.calls[0]?.[2]?.env as
-      | Record<string, string>
-      | undefined;
-    const config = JSON.parse(env?.OPENCODE_CONFIG_CONTENT ?? "{}") as {
-      provider?: Record<
-        string,
-        { npm?: string; options?: { baseURL?: string; apiKey?: string } }
-      >;
-      model?: string;
-    };
-    expect(env?.OPENCODE_MODEL).toBe("cerebras/gpt-oss-120b");
-    expect(env?.OPENCODE_DISABLE_AUTOUPDATE).toBe("1");
-    expect(config.model).toBe("cerebras/gpt-oss-120b");
-    expect(config.provider?.cerebras?.options?.baseURL).toBe(
-      "https://api.cerebras.ai/v1",
-    );
-    expect(config.provider?.cerebras?.npm).toBe("@ai-sdk/cerebras");
-    expect(config.provider?.cerebras?.options?.apiKey).toBe("csk_test");
-  });
-
   it("keeps BENCHMARK_TASK_AGENT=elizaos as the native default adapter", async () => {
     const reg = nextProc();
     const service = new AcpService(
@@ -1384,13 +1504,11 @@ describe("AcpService", () => {
 
     expect(session.agentType).toBe("elizaos");
     const args = spawnMock.mock.calls[0]?.[1] as string[] | undefined;
-    expect(args).toContain("elizaos");
-    expect(args).not.toContain("opencode");
-
+    expect(args).toContain("--agent");
+    expect(args).toContain("eliza-code-acp");
     const env = spawnMock.mock.calls[0]?.[2]?.env as
       | Record<string, string>
       | undefined;
-    expect(env?.OPENCODE_MODEL).toBeUndefined();
     expect(env?.OPENAI_MODEL).toBeUndefined();
   });
 
@@ -1693,51 +1811,6 @@ describe("AcpService", () => {
         process.env.ELIZA_CODEX_ACP_LANDLOCK = previousOverride;
       }
     }
-  });
-
-  it("uses an explicit OpenCode ACP command override when configured", async () => {
-    const reg = nextProc();
-    const service = new AcpService(
-      runtime({
-        ELIZA_OPENCODE_ACP_COMMAND: "/opt/opencode/bin/opencode acp",
-      }),
-    );
-    await service.start();
-
-    const spawned = service.spawnSession({
-      name: "opencode-command",
-      agentType: "opencode",
-      workdir: "/tmp/acp-test",
-    });
-    await waitForSpawn(reg);
-    closeOk(reg);
-    const { sessionId } = await spawned;
-
-    const args = spawnMock.mock.calls[0]?.[1] as string[] | undefined;
-    const agentArgIndex = args?.indexOf("--agent") ?? -1;
-    expect(agentArgIndex).toBeGreaterThanOrEqual(0);
-    expect(args?.[agentArgIndex + 1]).toBe("/opt/opencode/bin/opencode acp");
-    expect(args).not.toContain("opencode");
-
-    const prompt = nextProc();
-    const sent = service.sendPrompt(sessionId, "write a tiny static page");
-    await waitForSpawn(prompt);
-    prompt.proc.stdout.emit(
-      "data",
-      Buffer.from(
-        '{"jsonrpc":"2.0","id":"prompt","result":{"stopReason":"end_turn"},"sessionId":"protocol-session"}\n',
-      ),
-    );
-    closeOk(prompt);
-    await sent;
-
-    const promptArgs = spawnMock.mock.calls[1]?.[1] as string[] | undefined;
-    const promptAgentArgIndex = promptArgs?.indexOf("--agent") ?? -1;
-    expect(promptAgentArgIndex).toBeGreaterThanOrEqual(0);
-    expect(promptArgs?.[promptAgentArgIndex + 1]).toBe(
-      "/opt/opencode/bin/opencode acp",
-    );
-    expect(promptArgs).not.toContain("opencode");
   });
 
   it("sendPrompt emits message, tool_running, task_complete and resolves PromptResult", async () => {
@@ -2216,7 +2289,7 @@ describe("AcpService", () => {
     await service.start();
     const { sessionId } = await service.spawnSession({
       name: "native-reasoning",
-      agentType: "opencode",
+      agentType: "codex",
       workdir: "/tmp/acp-test",
     });
     const client = firstNativeClient();
@@ -2273,7 +2346,7 @@ describe("AcpService", () => {
     await service.start();
     const { sessionId } = await service.spawnSession({
       name: "native-plan",
-      agentType: "opencode",
+      agentType: "codex",
       workdir: "/tmp/acp-test",
     });
     const client = firstNativeClient();
@@ -2571,7 +2644,7 @@ describe("AcpService", () => {
     await service.start();
     const spawned = service.spawnSession({
       name: "route-prefixed",
-      agentType: "opencode",
+      agentType: "codex",
       workdir: "/tmp/acp-test",
     });
     await waitForSpawn(create);
@@ -2602,7 +2675,7 @@ describe("AcpService", () => {
     await service.start();
     const spawned = service.spawnSession({
       name: "ignore-echo",
-      agentType: "opencode",
+      agentType: "codex",
       workdir: "/tmp/acp-test",
     });
     await waitForSpawn(create);
@@ -2970,7 +3043,7 @@ describe("AcpService.runHealthCheck state_lost guards", () => {
     return {
       id: over.id ?? "00000000-0000-0000-0000-0000000000aa",
       name: "hc",
-      agentType: "opencode" as const,
+      agentType: "codex" as const,
       workdir: "/tmp/acp-test",
       status: "ready" as const,
       approvalPreset: "standard" as const,
@@ -3306,7 +3379,7 @@ describe("AcpService.runHealthCheck state_lost guards", () => {
     );
 
     const promptA = service.sendPrompt(sessionId, "task A");
-    await vi.waitFor(() => expect(client.prompt).toHaveBeenCalledTimes(1));
+    await waitForMockCalls(client.prompt, 1);
     await service.updateSessionMetadata(sessionId, { taskId: "task-b" });
     await expect(service.sendPrompt(sessionId, "task B")).rejects.toThrow(
       /already busy/,

@@ -855,7 +855,7 @@ export function applySubscriptionCredentialsLocal(
     hasConfiguredExternalCredential("gemini-cli")
   ) {
     logger.info(
-      "[auth] Gemini CLI subscription surface detected/configured — available only through Gemini CLI task agents. " +
+      "[auth] Gemini CLI subscription surface detected/configured — available through the external Gemini CLI, but not wired to the coding-agent orchestrator. " +
         "Not applied to GOOGLE_API_KEY or GOOGLE_GENERATIVE_AI_API_KEY.",
     );
   }
