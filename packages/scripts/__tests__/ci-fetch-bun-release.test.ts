@@ -1,10 +1,19 @@
 /**
- * Exercises Bun release URL selection, AVX2 variant choice, GitHub-to-npm
- * fallback, and zip cache hits. Network is a deterministic fetch stub.
+ * Exercises Bun release selection, caching, bounded downloads, mirror fallback,
+ * and local serving. Timeout coverage runs the production downloader in Node
+ * against a real loopback HTTP connection; other remote-network paths use
+ * deterministic fetch stubs.
  */
 import { describe, expect, it } from "bun:test";
-import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { execFileSync, spawn } from "node:child_process";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -22,6 +31,117 @@ import {
 
 const BUN_VERSION = "1.3.14";
 
+const NODE_DOWNLOAD_HARNESS = `
+const spec = JSON.parse(process.env.ELIZA_BUN_TIMEOUT_TEST_SPEC);
+const { readFile } = await import("node:fs/promises");
+const downloader = await import(spec.moduleUrl);
+const asset = downloader.resolveBunAsset(spec.host);
+const [githubUrl, npmUrl] = downloader.bunReleaseUrls(spec.version, asset);
+const seen = [];
+const realFetch = globalThis.fetch.bind(globalThis);
+const result = await downloader.ensureBunReleaseZip({
+  outDir: spec.outDir,
+  version: spec.version,
+  host: spec.host,
+  attempts: 2,
+  retryDelayMs: 0,
+  requestTimeoutMs: 150,
+  fetchImpl: (url, init) => {
+    const remoteUrl = String(url);
+    seen.push(remoteUrl);
+    if (remoteUrl === githubUrl) return realFetch(spec.baseUrl + "/stall", init);
+    if (remoteUrl === npmUrl) return realFetch(spec.baseUrl + "/ok", init);
+    throw new Error("unexpected Bun release URL: " + remoteUrl);
+  },
+});
+const zip = await readFile(result.zipPath);
+process.stdout.write(JSON.stringify({
+  source: result.source,
+  seen,
+  zipBase64: zip.toString("base64"),
+}));
+`;
+
+type NodeDownloadHarnessResult = {
+  source: string;
+  seen: string[];
+  zipBase64: string;
+};
+
+function runNodeDownloadHarness(spec: {
+  moduleUrl: string;
+  baseUrl: string;
+  outDir: string;
+  version: string;
+  host: { platform: string; arch: string; hasAvx2: boolean };
+}): Promise<NodeDownloadHarnessResult> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(
+      "node",
+      ["--input-type=module", "--eval", NODE_DOWNLOAD_HARNESS],
+      {
+        env: {
+          ...process.env,
+          ELIZA_BUN_TIMEOUT_TEST_SPEC: JSON.stringify(spec),
+        },
+        stdio: ["ignore", "pipe", "pipe"],
+        windowsHide: true,
+      },
+    );
+    let stdout = "";
+    let stderr = "";
+    let spawnError: Error | undefined;
+    let timedOut = false;
+    child.stdout.setEncoding("utf8");
+    child.stderr.setEncoding("utf8");
+    child.stdout.on("data", (chunk: string) => {
+      stdout += chunk;
+    });
+    child.stderr.on("data", (chunk: string) => {
+      stderr += chunk;
+    });
+    child.once("error", (error) => {
+      spawnError = error;
+    });
+    const timer = setTimeout(() => {
+      timedOut = true;
+      child.kill();
+    }, 5_000);
+    child.once("close", (code, signal) => {
+      clearTimeout(timer);
+      if (spawnError) {
+        reject(spawnError);
+        return;
+      }
+      if (timedOut) {
+        reject(new Error("Node Bun release fallback exceeded 5 seconds"));
+        return;
+      }
+      if (code !== 0) {
+        reject(
+          new Error(
+            `Node Bun release harness exited with code ${String(code)} and signal ${String(signal)}: ${stderr}`,
+          ),
+        );
+        return;
+      }
+      try {
+        resolve(JSON.parse(stdout));
+      } catch (error) {
+        // error-policy:J2 preserve the parse failure while adding child output
+        reject(
+          new Error(
+            `Node Bun release harness returned invalid JSON: ${stdout}`,
+            {
+              cause: error,
+            },
+          ),
+        );
+      }
+    });
+  });
+}
+
 function fakeZip() {
   const bytes = Buffer.alloc(2048, 0);
   bytes[0] = 0x50;
@@ -29,6 +149,24 @@ function fakeZip() {
   bytes[2] = 0x03;
   bytes[3] = 0x04;
   return bytes;
+}
+
+async function withDeadline<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  message: string,
+): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error(message)), timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 }
 
 describe("resolveBunAsset", () => {
@@ -146,10 +284,221 @@ describe("ensureBunReleaseZip", () => {
     expect(result.source).toContain("registry.npmjs.org/@oven/bun-linux-x64");
   });
 
+  it("rejects invalid request deadlines before fetching", async () => {
+    const invalidValues = [
+      0,
+      -1,
+      1.5,
+      Number.NaN,
+      Number.POSITIVE_INFINITY,
+      2_147_483_648,
+      Number.MAX_SAFE_INTEGER,
+      Number.MAX_SAFE_INTEGER + 1,
+    ];
+    let fetches = 0;
+    for (const requestTimeoutMs of invalidValues) {
+      const outDir = mkdtempSync(join(tmpdir(), "bun-zip-timeout-invalid-"));
+      try {
+        await expect(
+          ensureBunReleaseZip({
+            outDir,
+            host: { platform: "linux", arch: "x64", hasAvx2: true },
+            attempts: 1,
+            requestTimeoutMs,
+            fetchImpl: async () => {
+              fetches += 1;
+              return { ok: true, arrayBuffer: async () => fakeZip() };
+            },
+          }),
+        ).rejects.toThrow("requestTimeoutMs must be an integer between 1 and");
+      } finally {
+        rmSync(outDir, { force: true, recursive: true });
+      }
+    }
+    expect(fetches).toBe(0);
+  });
+
+  it("accepts the timer deadline boundaries", async () => {
+    for (const requestTimeoutMs of [1, 2_147_483_647]) {
+      const outDir = mkdtempSync(join(tmpdir(), "bun-zip-timeout-valid-"));
+      let fetches = 0;
+      try {
+        const result = await ensureBunReleaseZip({
+          outDir,
+          host: { platform: "linux", arch: "x64", hasAvx2: true },
+          attempts: 1,
+          requestTimeoutMs,
+          fetchImpl: async () => {
+            fetches += 1;
+            return { ok: true, arrayBuffer: async () => fakeZip() };
+          },
+        });
+        expect(fetches).toBe(1);
+        expect(result.source).toContain(
+          "github.com/oven-sh/bun/releases/download",
+        );
+      } finally {
+        rmSync(outDir, { force: true, recursive: true });
+      }
+    }
+  });
+
+  it("reports the final mirror and deadline after retries are exhausted", async () => {
+    const outDir = mkdtempSync(join(tmpdir(), "bun-zip-timeout-error-"));
+    const asset = resolveBunAsset({
+      platform: "linux",
+      arch: "x64",
+      hasAvx2: true,
+    });
+    const [, npmUrl] = bunReleaseUrls(BUN_VERSION, asset);
+    const timeoutError = new Error("simulated body timeout");
+    timeoutError.name = "TimeoutError";
+    try {
+      await expect(
+        ensureBunReleaseZip({
+          outDir,
+          host: { platform: "linux", arch: "x64", hasAvx2: true },
+          attempts: 1,
+          fetchImpl: async () => {
+            throw timeoutError;
+          },
+        }),
+      ).rejects.toMatchObject({
+        message: expect.stringContaining(
+          `after 1 attempt(s) with a 30000ms deadline: ${npmUrl}`,
+        ),
+        cause: expect.objectContaining({ name: "TimeoutError" }),
+      });
+    } finally {
+      rmSync(outDir, { force: true, recursive: true });
+    }
+  });
+
+  it("times out a stalled Node response body and advances to the npm mirror", async () => {
+    const sockets = new Set<import("node:net").Socket>();
+    const stalledSockets: import("node:net").Socket[] = [];
+    const stalledSocketCloses: Promise<void>[] = [];
+    const serverPaths: string[] = [];
+    const server = createServer((req, res) => {
+      serverPaths.push(req.url ?? "");
+      if (req.url === "/stall") {
+        stalledSockets.push(req.socket);
+        stalledSocketCloses.push(
+          new Promise<void>((resolve) => req.socket.once("close", resolve)),
+        );
+        res.writeHead(200, {
+          "content-length": String(fakeZip().length),
+          "content-type": "application/zip",
+        });
+        res.flushHeaders();
+        res.write(fakeZip().subarray(0, 64));
+        return;
+      }
+      if (req.url === "/ok") {
+        res.writeHead(200, { "content-type": "application/zip" });
+        res.end(fakeZip());
+        return;
+      }
+      res.writeHead(404);
+      res.end();
+    });
+    server.on("connection", (socket) => {
+      sockets.add(socket);
+      socket.once("close", () => sockets.delete(socket));
+    });
+    const outDir = mkdtempSync(join(tmpdir(), "bun-zip-timeout-real-"));
+    let listening = false;
+    let downloadPromise: ReturnType<typeof runNodeDownloadHarness> | undefined;
+
+    const operationResults = await Promise.allSettled([
+      (async () => {
+        await new Promise<void>((resolve, reject) => {
+          const onError = (error: Error) => reject(error);
+          server.once("error", onError);
+          server.listen(0, "127.0.0.1", () => {
+            server.off("error", onError);
+            listening = true;
+            resolve();
+          });
+        });
+        const address = server.address();
+        if (!address || typeof address === "string") {
+          throw new Error("loopback test server did not bind a TCP port");
+        }
+        const baseUrl = `http://127.0.0.1:${address.port}`;
+        const asset = resolveBunAsset({
+          platform: "linux",
+          arch: "x64",
+          hasAvx2: true,
+        });
+        const [githubUrl, npmUrl] = bunReleaseUrls(BUN_VERSION, asset);
+        downloadPromise = runNodeDownloadHarness({
+          moduleUrl: new URL("../ci-fetch-bun-release.mjs", import.meta.url)
+            .href,
+          baseUrl,
+          outDir,
+          version: BUN_VERSION,
+          host: { platform: "linux", arch: "x64", hasAvx2: true },
+        });
+        const result = await downloadPromise;
+
+        expect(stalledSocketCloses).toHaveLength(2);
+        await withDeadline(
+          Promise.all(stalledSocketCloses),
+          2_000,
+          "stalled sockets did not close after request aborts",
+        );
+
+        expect(result.seen).toEqual([githubUrl, githubUrl, npmUrl]);
+        expect(serverPaths).toEqual(["/stall", "/stall", "/ok"]);
+        expect(stalledSockets.every((socket) => socket.destroyed)).toBe(true);
+        expect(result.source).toBe(npmUrl);
+        expect(Buffer.from(result.zipBase64, "base64")).toEqual(fakeZip());
+      })(),
+    ]);
+
+    const teardownChecks: Promise<unknown>[] = [];
+    if (listening) {
+      const serverClosed = new Promise<void>((resolve, reject) => {
+        server.close((error) => {
+          if (error) reject(error);
+          else resolve();
+        });
+      });
+      for (const socket of sockets) socket.destroy();
+      teardownChecks.push(
+        withDeadline(
+          serverClosed,
+          2_000,
+          "loopback server did not close during teardown",
+        ),
+      );
+    }
+    if (downloadPromise) {
+      teardownChecks.push(
+        withDeadline(
+          Promise.allSettled([downloadPromise]),
+          2_000,
+          "Node Bun release download did not settle during teardown",
+        ),
+      );
+    }
+    const teardownResults = await Promise.allSettled(teardownChecks);
+    const remainingSockets = sockets.size;
+    for (const socket of sockets) socket.destroy();
+    rmSync(outDir, { force: true, recursive: true });
+
+    for (const result of [...operationResults, ...teardownResults]) {
+      if (result.status === "rejected") throw result.reason;
+    }
+    expect(remainingSockets).toBe(0);
+  });
+
   it("converts an npm tarball into a GitHub-layout zip without the zip CLI", async () => {
     const staging = mkdtempSync(join(tmpdir(), "bun-npm-src-"));
     mkdirSync(join(staging, "package"), { recursive: true });
-    writeFileSync(join(staging, "package", "bun"), Buffer.alloc(2048, 0x61));
+    const bunName = process.platform === "win32" ? "bun.exe" : "bun";
+    writeFileSync(join(staging, "package", bunName), Buffer.alloc(2048, 0x61));
     const tgzPath = join(staging, "bun.tgz");
     execFileSync("tar", ["-czf", tgzPath, "-C", staging, "package"]);
     const tgz = readFileSync(tgzPath);
@@ -176,7 +525,7 @@ describe("ensureBunReleaseZip", () => {
     const zip = readFileSync(result.zipPath);
     expect(zip[0]).toBe(0x50);
     expect(zip[1]).toBe(0x4b);
-    expect(zip.includes(Buffer.from("bun-linux-x64/bun"))).toBe(true);
+    expect(zip.includes(Buffer.from(`bun-linux-x64/${bunName}`))).toBe(true);
   });
 });
 

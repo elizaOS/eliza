@@ -31,6 +31,9 @@ import { crc32 } from "node:zlib";
 const BUN_VERSION = "1.3.14";
 const ZIP_NAME = "bun.zip";
 const DEFAULT_ATTEMPTS = 6;
+// Six deadlines plus the existing 22.5s backoff still leave 5m jobs time to use npm.
+const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
+const MAX_TIMER_DELAY_MS = 2_147_483_647;
 
 /**
  * @typedef {{
@@ -145,14 +148,34 @@ function tgzLooksValid(bytes) {
   return bytes.length > 20 && bytes[0] === 0x1f && bytes[1] === 0x8b;
 }
 
+function validateRequestTimeoutMs(value) {
+  if (
+    !Number.isSafeInteger(value) ||
+    value <= 0 ||
+    value > MAX_TIMER_DELAY_MS
+  ) {
+    throw new TypeError(
+      `requestTimeoutMs must be an integer between 1 and ${MAX_TIMER_DELAY_MS}; received ${String(value)}`,
+    );
+  }
+}
+
 async function downloadBytes(
   url,
-  { fetchImpl, attempts, retryDelayMs = 1500 },
+  {
+    fetchImpl,
+    attempts,
+    retryDelayMs = 1500,
+    requestTimeoutMs = DEFAULT_REQUEST_TIMEOUT_MS,
+  },
 ) {
   let lastError;
   for (let attempt = 1; attempt <= attempts; attempt++) {
     try {
-      const response = await fetchImpl(url, { redirect: "follow" });
+      const response = await fetchImpl(url, {
+        redirect: "follow",
+        signal: AbortSignal.timeout(requestTimeoutMs),
+      });
       if (!response.ok) {
         throw new Error(`${url} -> HTTP ${response.status}`);
       }
@@ -170,7 +193,12 @@ async function downloadBytes(
       );
     }
   }
-  throw lastError instanceof Error ? lastError : new Error(String(lastError));
+  const cause =
+    lastError instanceof Error ? lastError : new Error(String(lastError));
+  throw new Error(
+    `Bun release request failed after ${attempts} attempt(s) with a ${requestTimeoutMs}ms deadline: ${url}: ${cause.message}`,
+    { cause },
+  );
 }
 
 /**
@@ -267,7 +295,9 @@ export async function ensureBunReleaseZip(options) {
     fetchImpl = globalThis.fetch,
     attempts = DEFAULT_ATTEMPTS,
     retryDelayMs = 1500,
+    requestTimeoutMs = DEFAULT_REQUEST_TIMEOUT_MS,
   } = options;
+  validateRequestTimeoutMs(requestTimeoutMs);
   mkdirSync(outDir, { recursive: true });
   const zipPath = join(outDir, ZIP_NAME);
   if (existsSync(zipPath)) {
@@ -285,6 +315,7 @@ export async function ensureBunReleaseZip(options) {
         fetchImpl,
         attempts,
         retryDelayMs,
+        requestTimeoutMs,
       });
       if (zipLooksValid(bytes)) {
         writeFileSync(zipPath, bytes);
