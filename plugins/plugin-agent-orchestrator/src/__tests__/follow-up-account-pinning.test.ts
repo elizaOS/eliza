@@ -226,6 +226,27 @@ describe("follow-up prompt account pinning (cli transport)", () => {
     });
   });
 
+  it("reports rejected asynchronous session event subscribers", async () => {
+    const reportError = vi.fn();
+    const reportingService = new AcpService(
+      { ...makeRuntime(), reportError } as IAgentRuntime,
+      { store },
+    );
+    reportingService.onSessionEvent(async () => {
+      throw new Error("async subscriber failed");
+    });
+
+    reportingService.emitSessionEvent("sess-report-1", "message", {});
+
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(reportError).toHaveBeenCalledWith(
+      "AcpService.emitSessionEvent",
+      expect.objectContaining({ message: "async subscriber failed" }),
+      { sessionId: "sess-report-1", event: "message" },
+    );
+  });
+
   it("does not expose failover credentials when the session re-stamp cannot persist", async () => {
     const { bridge } = makeBridge({ healthyIds: ["acct-b"] });
     setCodingAgentSelectorBridge(bridge);

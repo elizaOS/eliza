@@ -4295,20 +4295,38 @@ export class AcpService extends Service {
           turn?.id,
         );
         void Promise.resolve(result).catch((err) => {
+          // error-policy:J7 isolate a rejecting subscriber so the remaining
+          // session callbacks still run; warn and surface the diagnostic.
           this.log("warn", "async session event callback failed", {
             sessionId,
             event,
             error: errorMessage(err),
           });
+          try {
+            this.runtime.reportError("AcpService.emitSessionEvent", err, {
+              sessionId,
+              event,
+            });
+          } catch {
+            // error-policy:J7 reporting failure cannot create an unhandled rejection.
+          }
         });
       } catch (err) {
         // error-policy:J7 isolate a throwing subscriber so the remaining session
-        // callbacks still run; the failure is warn-logged.
+        // callbacks still run; warn and surface the diagnostic.
         this.log("warn", "session event callback failed", {
           sessionId,
           event,
           error: errorMessage(err),
         });
+        try {
+          this.runtime.reportError("AcpService.emitSessionEvent", err, {
+            sessionId,
+            event,
+          });
+        } catch {
+          // error-policy:J7 reporting failure cannot replace event delivery.
+        }
       }
     }
     // A terminal event means the task ended (completion via a stop/close,
@@ -4947,6 +4965,8 @@ export class AcpService extends Service {
     try {
       await this.store.updateStatus(session.id, "errored", message);
     } catch (persistError) {
+      // error-policy:J7 diagnostics persistence must not replace the primary
+      // typed account authority failure; warn and report it separately.
       this.log("warn", "failed to persist coding account exhaustion", {
         sessionId: session.id,
         error: errorMessage(persistError),
@@ -4976,10 +4996,21 @@ export class AcpService extends Service {
         !leaseAlreadyHandled,
       );
     } catch (eventError) {
+      // error-policy:J7 diagnostic event delivery must not replace the primary
+      // typed account authority failure; warn and report it separately.
       this.log("warn", "failed to emit coding account exhaustion", {
         sessionId: session.id,
         error: errorMessage(eventError),
       });
+      try {
+        this.runtime.reportError(
+          "AcpService.emitAccountCredentialFailure",
+          eventError,
+          { sessionId: session.id },
+        );
+      } catch {
+        // error-policy:J7 reporting failure cannot replace the primary typed error.
+      }
     }
   }
 
