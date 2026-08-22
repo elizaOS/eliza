@@ -5,13 +5,19 @@
  * nor let it stamp a fresh TTL over the refreshed result afterwards.
  *
  * The registry caches are module-level, so every case re-imports the module
- * through `vi.resetModules()`.
+ * through `vi.resetModules()`. The listing-route case uses the real refresh
+ * function so cache teardown failures are covered at the HTTP boundary too.
  */
 
 import fsp from "node:fs/promises";
+import type http from "node:http";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  handleRegistryRoutes,
+  type RegistryRouteContext,
+} from "../api/registry-routes.ts";
 
 let stateDir: string;
 let fetchImpl: () => Promise<Map<string, unknown>>;
@@ -40,8 +46,10 @@ vi.mock("./registry-client-network.ts", () => ({
 }));
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-const PAYLOAD_A = () => new Map([["plugin-a", { name: "plugin-a" }]]);
-const PAYLOAD_B = () => new Map([["plugin-b", { name: "plugin-b" }]]);
+const PAYLOAD_A = () =>
+  new Map([["plugin-a", { name: "plugin-a", npm: { v2Version: null } }]]);
+const PAYLOAD_B = () =>
+  new Map([["plugin-b", { name: "plugin-b", npm: { v2Version: null } }]]);
 
 async function loadModule() {
   vi.resetModules();
@@ -123,27 +131,82 @@ describe("refreshRegistry", () => {
   });
 
   it.each(["EACCES", "EROFS"] as const)(
-    "rejects a %s cache removal failure with a typed error",
+    "still returns fresh network data when cache removal fails with %s",
     async (code) => {
+      const cachePath = path.join(stateDir, "cache", "registry.json");
+      await fsp.mkdir(path.dirname(cachePath), { recursive: true });
+      await fsp.writeFile(
+        cachePath,
+        JSON.stringify({
+          fetchedAt: Date.now(),
+          plugins: [...PAYLOAD_A().entries()],
+        }),
+      );
+      fetchImpl = async () => PAYLOAD_B();
       const cause = Object.assign(new Error(`unlink failed: ${code}`), {
         code,
       });
       vi.spyOn(fsp, "unlink").mockRejectedValueOnce(cause);
       const registry = await loadModule();
 
-      const error = await registry.refreshRegistry().catch((caught) => caught);
+      const refreshed = await registry.refreshRegistry();
 
-      expect(error).toBeInstanceOf(registry.RegistryCacheInvalidationError);
-      expect(error).toMatchObject({
-        name: "RegistryCacheInvalidationError",
-        code: "REGISTRY_CACHE_INVALIDATION_FAILED",
-        cause,
-      });
-      expect(fetchCalls).toBe(0);
+      expect([...refreshed.keys()]).toEqual(["plugin-b"]);
+      expect([...(await registry.getRegistryPlugins()).keys()]).toEqual([
+        "plugin-b",
+      ]);
+      expect(fetchCalls).toBe(1);
     },
   );
 
-  it("does not abandon an in-flight load when cache removal fails", async () => {
+  it("keeps GET /api/registry/plugins available when cache removal fails", async () => {
+    const cachePath = path.join(stateDir, "cache", "registry.json");
+    await fsp.mkdir(path.dirname(cachePath), { recursive: true });
+    await fsp.writeFile(
+      cachePath,
+      JSON.stringify({
+        fetchedAt: Date.now(),
+        plugins: [...PAYLOAD_A().entries()],
+      }),
+    );
+    fetchImpl = async () => PAYLOAD_B();
+    vi.spyOn(fsp, "unlink").mockRejectedValueOnce(
+      Object.assign(new Error("permission denied"), { code: "EACCES" }),
+    );
+    const registry = await loadModule();
+    const json = vi.fn();
+    const error = vi.fn();
+    const res = {} as http.ServerResponse;
+    const ctx = {
+      req: { method: "GET", url: "/api/registry/plugins" },
+      res,
+      method: "GET",
+      pathname: "/api/registry/plugins",
+      url: new URL("http://localhost/api/registry/plugins"),
+      json,
+      error,
+      getPluginManager: () => ({
+        refreshRegistry: registry.refreshRegistry,
+        listInstalledPlugins: async () => [],
+        getRegistryPlugin: async () => null,
+        searchRegistry: async () => [],
+      }),
+      getLoadedPluginNames: () => [],
+      getBundledPluginIds: () => new Set<string>(),
+      classifyRegistryPluginRelease: () => ({ status: "compatible" }),
+    } as unknown as RegistryRouteContext;
+
+    await expect(handleRegistryRoutes(ctx)).resolves.toBe(true);
+
+    expect(error).not.toHaveBeenCalled();
+    expect(json).toHaveBeenCalledWith(res, {
+      count: 1,
+      plugins: [expect.objectContaining({ name: "plugin-b" })],
+    });
+    expect(fetchCalls).toBe(1);
+  });
+
+  it("still supersedes an in-flight load when cache removal fails", async () => {
     let releaseFetch: (() => void) | undefined;
     const fetchGate = new Promise<void>((resolve) => {
       releaseFetch = resolve;
@@ -155,29 +218,22 @@ describe("refreshRegistry", () => {
     const registry = await loadModule();
     const first = registry.getRegistryPlugins();
     while (fetchCalls === 0) await sleep(1);
+    fetchImpl = async () => PAYLOAD_B();
 
     const cause = Object.assign(new Error("permission denied"), {
       code: "EACCES",
     });
     vi.spyOn(fsp, "unlink").mockRejectedValueOnce(cause);
-    const refresh = registry.refreshRegistry().catch((caught) => caught);
-    await sleep(10);
-    const second = registry.getRegistryPlugins();
-    // `getRegistryPlugins` checks the file tier before the shared network slot.
-    // Keep the first fetch gated until the second caller has reached that slot.
-    await sleep(50);
+    const refreshed = await registry.refreshRegistry();
+
+    expect([...refreshed.keys()]).toEqual(["plugin-b"]);
+    expect(fetchCalls).toBe(2);
     releaseFetch?.();
 
-    const [firstResult, secondResult, refreshError] = await Promise.all([
-      first,
-      second,
-      refresh,
+    expect([...(await first).keys()]).toEqual(["plugin-a"]);
+    expect([...(await registry.getRegistryPlugins()).keys()]).toEqual([
+      "plugin-b",
     ]);
-    expect(refreshError).toBeInstanceOf(
-      registry.RegistryCacheInvalidationError,
-    );
-    expect(fetchCalls).toBe(1);
-    expect(secondResult).toBe(firstResult);
   });
 
   it("does not publish a file-cache read that began before refresh", async () => {

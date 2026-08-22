@@ -70,18 +70,6 @@ export type {
   RegistrySearchResult,
 } from "./registry-client-types.ts";
 
-export class RegistryCacheInvalidationError extends Error {
-  readonly code = "REGISTRY_CACHE_INVALIDATION_FAILED" as const;
-
-  constructor(
-    readonly cachePath: string,
-    cause: unknown,
-  ) {
-    super(`Failed to remove registry cache at ${cachePath}`, { cause });
-    this.name = "RegistryCacheInvalidationError";
-  }
-}
-
 // ---------------------------------------------------------------------------
 // Cache state
 // ---------------------------------------------------------------------------
@@ -257,10 +245,9 @@ export function isDefaultEndpoint(url: string): boolean {
 // Public API
 // ---------------------------------------------------------------------------
 
-/** Get all plugins. Resolution: memory → file → network. */
-export async function getRegistryPlugins(): Promise<
-  Map<string, RegistryPluginInfo>
-> {
+async function loadRegistryPlugins(
+  skipFileCache: boolean,
+): Promise<Map<string, RegistryPluginInfo>> {
   if (
     memoryCache &&
     Date.now() - memoryCache.fetchedAt < (memoryCache.ttlMs ?? CACHE_TTL_MS)
@@ -268,20 +255,22 @@ export async function getRegistryPlugins(): Promise<
     return memoryCache.plugins;
   }
 
-  const fileReadGeneration = registryGeneration;
-  const fromFile = await readFileCache();
-  if (fromFile) {
-    await applyLocalWorkspaceApps(fromFile);
-    await applyNodeModulePlugins(fromFile);
-    await mergeCustomEndpoints(fromFile, getConfiguredEndpoints());
+  if (!skipFileCache) {
+    const fileReadGeneration = registryGeneration;
+    const fromFile = await readFileCache();
+    if (fromFile) {
+      await applyLocalWorkspaceApps(fromFile);
+      await applyNodeModulePlugins(fromFile);
+      await mergeCustomEndpoints(fromFile, getConfiguredEndpoints());
 
-    // A refresh can unlink the cache while an earlier read still owns an open
-    // file handle. Return that snapshot only to its original caller; publishing
-    // it would replace the post-refresh memory cache with stale disk state.
-    if (fileReadGeneration !== registryGeneration) return fromFile;
+      // A refresh can unlink the cache while an earlier read still owns an open
+      // file handle. Return that snapshot only to its original caller; publishing
+      // it would replace the post-refresh memory cache with stale disk state.
+      if (fileReadGeneration !== registryGeneration) return fromFile;
 
-    memoryCache = { plugins: fromFile, fetchedAt: Date.now() };
-    return fromFile;
+      memoryCache = { plugins: fromFile, fetchedAt: Date.now() };
+      return fromFile;
+    }
   }
 
   if (registryLoadPromise) {
@@ -339,6 +328,13 @@ export async function getRegistryPlugins(): Promise<
   return load;
 }
 
+/** Get all plugins. Resolution: memory → file → network. */
+export async function getRegistryPlugins(): Promise<
+  Map<string, RegistryPluginInfo>
+> {
+  return loadRegistryPlugins(false);
+}
+
 /**
  * Drop every cached registry snapshot, including one that is still loading.
  * Clearing `memoryCache` alone is not enough: an in-flight load returns its
@@ -365,11 +361,12 @@ async function removeRegistryFileCache(): Promise<void> {
   try {
     await fs.unlink(filePath);
   } catch (error) {
-    // error-policy:J2 A missing cache is the only successful no-op. Permission,
-    // read-only filesystem, and other I/O failures retain their cause and gain
-    // a stable registry-specific type for callers and route boundaries.
     if (hasFilesystemErrorCode(error, "ENOENT")) return;
-    throw new RegistryCacheInvalidationError(filePath, error);
+    // error-policy:J6 File-cache removal is best-effort teardown. The refresh
+    // below bypasses the retained file and obtains a complete network snapshot.
+    logger.warn(
+      `[registry-client] Cache removal failed at ${filePath}; forcing an uncached refresh: ${String(error)}`,
+    );
   }
 }
 
@@ -377,12 +374,11 @@ async function removeRegistryFileCache(): Promise<void> {
 export async function refreshRegistry(): Promise<
   Map<string, RegistryPluginInfo>
 > {
-  // Remove the durable snapshot before invalidating the usable in-memory
-  // state. If removal fails, refresh rejects without abandoning an in-flight
-  // load or leaving the process cache half-invalidated.
+  // Removal is useful persistent cleanup but is not required for correctness:
+  // the refresh explicitly bypasses the file tier even when unlink is denied.
   await removeRegistryFileCache();
   invalidateRegistryCaches();
-  return getRegistryPlugins();
+  return loadRegistryPlugins(true);
 }
 
 /** Look up a plugin by name (exact → @elizaos/ prefix → bare suffix). */
