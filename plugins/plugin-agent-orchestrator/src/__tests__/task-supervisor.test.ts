@@ -145,7 +145,7 @@ describe("TaskSupervisorService sweep interval parsing", () => {
     expect(await armedIntervalMs("12000junk")).toBe(45_000);
   });
 
-  it("still honours a clean interval, including a signed one", async () => {
+  it("still honours a clean interval with an explicit leading plus", async () => {
     expect(await armedIntervalMs("12000")).toBe(12_000);
     // `parseInt` accepted "+12000"; rejecting it would be a regression.
     expect(await armedIntervalMs("+12000")).toBe(12_000);
@@ -153,5 +153,12 @@ describe("TaskSupervisorService sweep interval parsing", () => {
 
   it("falls back for an interval beyond the safe integer range", async () => {
     expect(await armedIntervalMs("9007199254740993")).toBe(45_000);
+  });
+
+  it("enforces the timer runtime's minimum and maximum delays", async () => {
+    expect(await armedIntervalMs("4999")).toBe(45_000);
+    expect(await armedIntervalMs("5000")).toBe(5_000);
+    expect(await armedIntervalMs("2147483647")).toBe(2_147_483_647);
+    expect(await armedIntervalMs("2147483648")).toBe(45_000);
   });
 });
