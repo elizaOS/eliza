@@ -44,6 +44,12 @@ describe("splitMessage surrogate-safe chunking", () => {
 		for (const chunk of chunks) {
 			expect(chunk.isWellFormed()).toBe(true);
 		}
+		expect(chunks.join("")).toBe(text);
+	});
+
+	it("preserves spaces and newlines at chunk boundaries", () => {
+		const text = `${"a".repeat(MAX_DISCORD_MESSAGE_LENGTH - 1)} \n body  `;
+		expect(splitMessage(text, MAX_DISCORD_MESSAGE_LENGTH).join("")).toBe(text);
 	});
 
 	it("returns the original text unchanged when under the limit", () => {
