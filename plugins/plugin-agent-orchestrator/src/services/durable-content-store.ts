@@ -35,6 +35,10 @@ function sha256(text: string): string {
   return createHash("sha256").update(text, "utf8").digest("hex");
 }
 
+function durableText(text: string): string {
+  return redactSensitiveText(toWellFormedUnicode(text));
+}
+
 /**
  * Persist the complete text and return its resolvable reference. Idempotent:
  * the record is content-addressed, so persisting the same text twice writes
@@ -42,8 +46,11 @@ function sha256(text: string): string {
  * durable record exists before dropping bytes from the view.
  */
 export function persistDurableContent(text: string): ContentReference {
-  const wellFormed = toWellFormedUnicode(text);
-  const masked = redactSensitiveText(wellFormed);
+  const masked = durableText(text);
+  return persistNormalizedDurableContent(masked);
+}
+
+function persistNormalizedDurableContent(masked: string): ContentReference {
   const digest = sha256(masked);
   const dir = contentDir();
   const file = path.join(dir, `${digest}.txt`);
@@ -62,6 +69,8 @@ export interface DurableContentWindow {
   limit: number;
   totalBytes: number;
   hasMore: boolean;
+  /** Byte offset for the next lossless UTF-8 window. */
+  nextOffset?: number;
   sourceSha256: string;
 }
 
@@ -83,15 +92,29 @@ export function readDurableContent(
     throw err;
   }
   const totalBytes = buffer.byteLength;
-  const offset = Math.max(0, Math.min(opts.offset ?? 0, totalBytes));
+  let offset = Math.max(0, Math.min(opts.offset ?? 0, totalBytes));
   const limit = Math.max(1, Math.min(opts.limit ?? 65_536, 1_048_576));
-  const slice = buffer.subarray(offset, offset + limit);
+  // An arbitrary route offset may point into a UTF-8 continuation byte. Move
+  // it to the next character boundary, then ensure the end also lands on a
+  // boundary. If the requested limit is smaller than one code point, return
+  // that complete code point so continuation can still make progress.
+  while (offset < totalBytes && (buffer[offset] & 0xc0) === 0x80) offset += 1;
+  let end = Math.min(offset + limit, totalBytes);
+  if (end < totalBytes) {
+    while (end > offset && (buffer[end] & 0xc0) === 0x80) end -= 1;
+    if (end === offset) {
+      end += 1;
+      while (end < totalBytes && (buffer[end] & 0xc0) === 0x80) end += 1;
+    }
+  }
+  const slice = buffer.subarray(offset, end);
   return {
     text: slice.toString("utf8"),
     offset,
     limit,
     totalBytes,
-    hasMore: offset + slice.byteLength < totalBytes,
+    hasMore: end < totalBytes,
+    ...(end < totalBytes ? { nextOffset: end } : {}),
     sourceSha256: sha,
   };
 }
@@ -118,11 +141,14 @@ export function durableProjection(
   full: string,
   budgetChars: number,
 ): DurableProjection {
-  const wellFormed = toWellFormedUnicode(full);
+  // The view and the durable source must describe the same byte sequence.
+  // Redact before either operation; otherwise the reference hashes masked
+  // bytes while the ReadView advertises ranges and hashes from unmasked text.
+  const wellFormed = durableText(full);
   if (wellFormed.length <= budgetChars) {
     return { view: wellFormed, truncated: false };
   }
-  const reference = persistDurableContent(wellFormed);
+  const reference = persistNormalizedDurableContent(wellFormed);
   const sha = reference.ref.slice("acpx-content:".length);
   const marker = `\n… [${wellFormed.length} chars total — full content: GET /api/orchestrator/content/${sha}]`;
   const headBudget = Math.max(0, budgetChars - marker.length);
