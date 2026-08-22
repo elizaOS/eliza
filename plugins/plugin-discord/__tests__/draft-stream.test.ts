@@ -64,6 +64,19 @@ function rowJson(component: unknown): {
 }
 
 describe("draft-stream finalize components (#14527)", () => {
+	it("discards a started stream without emitting an interruption bubble", async () => {
+		const { channel, sends } = makeChannel();
+		const controller = createDraftStreamController({ minInitialChars: 1 });
+		await controller.start(channel);
+		controller.update("pending text");
+
+		controller.discard();
+		await new Promise((resolve) => setTimeout(resolve, 300));
+
+		expect(controller.isDone()).toBe(true);
+		expect(sends).toEqual([]);
+	});
+
 	it("attaches components to the finalized message", async () => {
 		const { channel, sends } = makeChannel();
 		const controller = createDraftStreamController();

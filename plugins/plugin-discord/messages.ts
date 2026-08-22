@@ -2975,7 +2975,7 @@ export class MessageManager {
 				if (designedAbortReason) {
 					typingController.stop();
 					statusReactions?.setDone();
-					await abortPendingDraft();
+					draftStream?.discard();
 					if (speakerLease) {
 						await releaseSpeakerLease(
 							this.runtime,

@@ -488,7 +488,11 @@ describe("Discord generation timeout aborts the underlying run (dispatch path)",
 				error: (...args: unknown[]) => errors.push(args),
 			},
 			getSetting: (key: string) =>
-				key === "ELIZA_LIFEOPS_PASSIVE_CONNECTORS" ? "false" : undefined,
+				key === "ELIZA_LIFEOPS_PASSIVE_CONNECTORS"
+					? "false"
+					: key === "DISCORD_DRAFT_STREAMING"
+						? "true"
+						: undefined,
 			getService: () => null,
 			ensureConnection: async () => {},
 			...canonicalRoomMethods,

@@ -38,6 +38,8 @@ export interface DraftStreamController {
 		components?: ActionRowBuilder<MessageActionRowComponentBuilder>[],
 	) => Promise<DiscordMessage[]>;
 	abort: (reason?: string) => Promise<void>;
+	/** End streaming without emitting an interruption message. */
+	discard: () => void;
 	messageId: () => string | undefined;
 	isStarted: () => boolean;
 	isDone: () => boolean;
@@ -328,11 +330,22 @@ export function createDraftStreamController(
 		log("draft-stream: aborted");
 	};
 
+	const discard = (): void => {
+		if (done) {
+			return;
+		}
+		done = true;
+		clearThrottle();
+		pendingText = null;
+		log("draft-stream: discarded silently");
+	};
+
 	return {
 		start,
 		update,
 		finalize,
 		abort,
+		discard,
 		messageId: () => lastSentMessage?.id,
 		isStarted: () => started,
 		isDone: () => done,
