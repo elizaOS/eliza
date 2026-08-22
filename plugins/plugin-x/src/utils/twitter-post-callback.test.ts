@@ -7,13 +7,11 @@ import {
 } from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ClientBase } from "../base";
-import { countTwitterWeightedLength } from "../tweet-length";
 import { addToRecentTweets, getRecentTweets, isDuplicateTweet } from "./memory";
 import { createTwitterPostCallback } from "./twitter-post-callback";
 
 const AGENT_ID = "00000000-0000-0000-0000-000000000001" as UUID;
 const ROOM_ID = "00000000-0000-0000-0000-000000000002" as UUID;
-const X_MAX_POST_LENGTH = 280;
 const RECENT_TWEETS_KEY = "twitter/default/twitter-user-1/recentTweets";
 
 function makeRuntime(overrides: Partial<IAgentRuntime> = {}): IAgentRuntime & {
@@ -162,6 +160,25 @@ describe("createTwitterPostCallback", () => {
     expect(memories[0]?.content?.text).toBe("new post text");
   });
 
+  it("preserves generated and provider-returned boundary whitespace", async () => {
+    const runtime = makeRuntime();
+    const client = makeClient();
+    const callback = makeCallback({ client, runtime });
+    const text = "  exact post text  ";
+
+    const memories = await callback({ text });
+
+    expect(client.twitterClient.sendTweet).toHaveBeenCalledWith(
+      text,
+      undefined,
+      [],
+      false,
+      [],
+    );
+    expect(runtime.cache.get(RECENT_TWEETS_KEY)).toEqual([text]);
+    expect(memories[0]?.content?.text).toBe(text);
+  });
+
   it("keeps duplicate suppression when memory persistence fails after posting", async () => {
     const runtime = makeRuntime({
       createMemory: vi.fn(async () => {
@@ -269,35 +286,28 @@ describe("createTwitterPostCallback", () => {
     expect(client.twitterClient.sendTweet).toHaveBeenCalledTimes(1);
   });
 
-  it("checks duplicates and posts with the normalized X-length text", async () => {
+  it("rejects overlong Latin text before duplicate tracking or egress", async () => {
     const runtime = makeRuntime();
     const client = makeClient();
     const callback = makeCallback({ client, runtime });
     const longText = "hello ".repeat(70);
 
-    await callback({ text: longText });
+    await expect(callback({ text: longText })).rejects.toThrow(
+      /weighted characters/,
+    );
 
-    expect(client.twitterClient.sendTweet).toHaveBeenCalledTimes(1);
-    const recentTweets = runtime.cache.get(RECENT_TWEETS_KEY) as
-      | string[]
-      | undefined;
-    expect(recentTweets).toHaveLength(1);
-    expect(typeof recentTweets?.[0]).toBe("string");
-    expect(recentTweets?.[0]?.length).toBeLessThanOrEqual(X_MAX_POST_LENGTH);
+    expect(client.twitterClient.sendTweet).not.toHaveBeenCalled();
+    expect(runtime.cache.get(RECENT_TWEETS_KEY)).toBeUndefined();
   });
 
-  it("truncates generated CJK text to the X weighted cap before posting", async () => {
+  it("rejects generated CJK text over the weighted cap without posting", async () => {
     const runtime = makeRuntime();
     const client = makeClient();
     const callback = makeCallback({ client, runtime });
-    await callback({ text: "你".repeat(141) });
-    expect(client.twitterClient.sendTweet).toHaveBeenCalledTimes(1);
-    const posted = vi.mocked(client.twitterClient.sendTweet).mock.calls[0]?.[0];
-    expect(typeof posted).toBe("string");
-    expect(countTwitterWeightedLength(posted as string)).toBeLessThanOrEqual(
-      X_MAX_POST_LENGTH,
+    await expect(callback({ text: "你".repeat(141) })).rejects.toThrow(
+      /weighted characters; received 282/,
     );
-    expect(posted).not.toBe("你".repeat(141));
+    expect(client.twitterClient.sendTweet).not.toHaveBeenCalled();
   });
 
   it("partitions recent-post duplicate state by account and profile identity", async () => {

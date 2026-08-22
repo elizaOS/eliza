@@ -88,7 +88,7 @@ describe("sendTweet", () => {
     );
   });
 
-  it("truncates 141 CJK characters to the X weighted 280 cap before egress", async () => {
+  it("rejects 141 CJK characters before egress without rewriting them", async () => {
     const authenticatedProfile = profile("account-a");
     const runtime = {
       agentId: "agent-1",
@@ -113,9 +113,10 @@ describe("sendTweet", () => {
       });
     client.isAuthenticatedSessionCurrent = () => true;
 
-    await sendTweet(client, "你".repeat(141));
-    expect(send).toHaveBeenCalledTimes(1);
-    expect(send.mock.calls[0]?.[0]).toBe("你".repeat(140));
+    await expect(sendTweet(client, "你".repeat(141))).rejects.toThrow(
+      /weighted characters; received 282/,
+    );
+    expect(send).not.toHaveBeenCalled();
   });
 
   it("sends a 280-character Latin tweet unchanged", async () => {
