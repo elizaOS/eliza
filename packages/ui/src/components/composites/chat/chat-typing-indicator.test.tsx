@@ -130,4 +130,16 @@ describe("TurnStatus working indicator", () => {
       "min-h-[1.4375rem]",
     );
   });
+
+  it("shows audible speaking immediately instead of dwelling on thinking", () => {
+    const { rerender } = render(
+      <TurnStatus status={{ kind: "thinking" }} showLabel={false} />,
+    );
+    const label = screen.getByTestId("turn-status-label");
+
+    rerender(<TurnStatus status={{ kind: "speaking" }} showLabel={false} />);
+
+    expect(label.getAttribute("data-current-label")).toBe("Speaking");
+    expect(label.textContent).toBe("Speaking");
+  });
 });

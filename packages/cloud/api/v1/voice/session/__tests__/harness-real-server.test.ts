@@ -6,16 +6,21 @@
 
 import { afterAll, beforeAll, describe, expect, mock, test } from "bun:test";
 import { spawnSync } from "node:child_process";
+import { EventEmitter } from "node:events";
 import { connect } from "node:net";
 import { fileURLToPath } from "node:url";
 
 const calls: string[] = [];
 const CONVERSATION_ID = "legacy-channel";
+const fakeSockets: FakeSocket[] = [];
 
-class FakeSocket {
+class FakeSocket extends EventEmitter {
+  constructor() {
+    super();
+    fakeSockets.push(this);
+  }
   addEventListener() {}
   close() {}
-  on() {}
   send() {}
 }
 
@@ -264,6 +269,21 @@ if (process.env.ELIZA_PROCESS_ISOLATED_TEST === "1") {
       // certify production behavior, and its revocation poll is wired through
       // the real jwt module.
       expect(lastSessionOptions).not.toBeNull();
+      const providerSockets = fakeSockets.filter(
+        (socket) => socket.listenerCount("error") >= 2,
+      );
+      expect(providerSockets).toHaveLength(2);
+      for (const socket of providerSockets) {
+        // Simulate a completed provider context detaching its own mapped error
+        // listener while the shared transport remains open. The permanent DOM
+        // compatibility sink must keep a later Node `error` event non-fatal.
+        const mappedListener = socket.listeners("error").at(-1);
+        expect(mappedListener).toBeDefined();
+        if (mappedListener) socket.off("error", mappedListener);
+        expect(() =>
+          socket.emit("error", new Error("late provider error")),
+        ).not.toThrow();
+      }
       expect(lastSessionOptions?.fetchImpl).toBe(fetch);
       expect(
         lastSessionOptions && "onTeardownRevoke" in lastSessionOptions

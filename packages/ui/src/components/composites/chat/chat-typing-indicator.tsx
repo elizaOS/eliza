@@ -152,7 +152,24 @@ function useDebouncedTurnStatus(
   const timerRef = useRef<number | null>(null);
   useEffect(() => {
     if (!status) {
+      if (timerRef.current !== null) {
+        window.clearTimeout(timerRef.current);
+        timerRef.current = null;
+      }
       setShown(null);
+      return;
+    }
+    // Speaking is audible ground truth, not a speculative planner phase. Do
+    // not leave "Thinking" on screen while audio is already playing merely to
+    // satisfy the generic phase-dwell animation. The physical transition and
+    // its stop control must update in the same render.
+    if (status.kind === "speaking") {
+      if (timerRef.current !== null) {
+        window.clearTimeout(timerRef.current);
+        timerRef.current = null;
+      }
+      lastChangeRef.current = Date.now();
+      setShown(status);
       return;
     }
     const now = Date.now();

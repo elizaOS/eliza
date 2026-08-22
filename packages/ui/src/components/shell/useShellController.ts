@@ -1830,8 +1830,17 @@ export function useShellController(): ShellController {
       realtimeVoice.status === "transcribing");
   const realtimeVoiceRecording =
     realtimeVoiceEnabled && (realtimeVoice.active || realtimeVoice.connecting);
+  const realtimeVoiceOwnsTurn = realtimeVoiceRecording;
+  // While the realtime session owns the composer, its wire phase is
+  // authoritative. A late generic chat/SSE flag from the just-persisted voice
+  // turn must not resurrect "Thinking" after `speaking_end` has already put
+  // the session back in listening. Text sends cannot start from the composer
+  // while this voice activity surface owns it, so suppressing those stale
+  // batch flags here cannot hide a concurrent typed turn.
   const responding =
-    chatSending || voiceOutput.speaking || realtimeVoiceResponding;
+    voiceOutput.speaking ||
+    realtimeVoiceResponding ||
+    (!realtimeVoiceOwnsTurn && chatSending);
 
   // The rich status (#8813): what the agent is *doing*, distinct from the coarse
   // `responding` boolean. Voice playback wins (the server can't see local TTS).
@@ -1845,6 +1854,9 @@ export function useShellController(): ShellController {
     }
     if (realtimeVoiceEnabled && realtimeVoice.status === "thinking") {
       return { kind: "thinking" };
+    }
+    if (realtimeVoiceOwnsTurn) {
+      return null;
     }
     if (
       serverTurnStatus &&
@@ -1861,6 +1873,7 @@ export function useShellController(): ShellController {
     realtimeVoice.agentSpeaking,
     realtimeVoice.status,
     realtimeVoiceEnabled,
+    realtimeVoiceOwnsTurn,
     serverTurnStatus,
     chatSending,
     chatFirstTokenReceived,

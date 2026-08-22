@@ -2443,6 +2443,20 @@ describe("useShellController — mounted Cartesia Talk ownership", () => {
     expect(result.current.transcript).toBe("");
   });
 
+  it("does not resurrect stale batch thinking after realtime speaking ends", () => {
+    realtimeVoiceMock.state.active = true;
+    realtimeVoiceMock.state.status = "listening";
+    realtimeVoiceMock.state.agentSpeaking = false;
+    appMock.value.chatSending = true;
+    composerMock.value.chatSending = true;
+    appMock.serverTurnStatus = { kind: "thinking" };
+
+    const { result } = renderHook(() => useShellController());
+
+    expect(result.current.responding).toBe(false);
+    expect(result.current.turnStatus).toBeNull();
+  });
+
   it("reconciles gateway-written voice turns through the canonical conversation loader", () => {
     const resyncEvents: CustomEvent[] = [];
     const onResync = (event: Event) => {
