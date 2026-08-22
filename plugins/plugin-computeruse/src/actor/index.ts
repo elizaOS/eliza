@@ -46,7 +46,6 @@ export {
 } from "./agent-loop.js";
 export {
   BRAIN_MAX_PIXELS,
-  BRAIN_MAX_ROIS,
   Brain,
   type BrainDeps,
   type BrainInput,

@@ -337,6 +337,15 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 		/result\.length\s*>=\s*50/,
 		/textContent\.trim\(\)\.slice\(/,
 	],
+	"plugins/plugin-computeruse/src/actor/brain.ts": [
+		/BRAIN_MAX_ROIS/,
+		/Cap ROIs to/,
+		/roi\s*=\s*[^;]*\.slice\(0,/,
+	],
+	"plugins/plugin-computeruse/src/actor/cascade.ts": [
+		/BRAIN_MAX_ROIS/,
+		/brainOut\.roi\.slice\(0,/,
+	],
 	"packages/browser-bridge-extension/src/page-extract.ts": [
 		/normalizeText\([^\n]+,\s*\d/,
 		/currentLength\s*>=/,
