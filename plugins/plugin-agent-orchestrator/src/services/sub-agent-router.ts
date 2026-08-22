@@ -2318,18 +2318,41 @@ export class SubAgentRouter extends Service {
     if (!tasks?.getTaskForSession) return null;
     try {
       const record = await tasks.getTaskForSession(sessionId);
-      if (!record?.id) return null;
+      // Kept at warn: an undeferred relay ships before the verdict, and the
+      // only trace of why is here (plugin info never reaches bot.log).
+      if (!record?.id) {
+        this.log("warn", "completion relay not deferred: no task record", {
+          sessionId,
+        });
+        return null;
+      }
       if (
         ["done", "parked", "failed", "cancelled", "archived"].includes(
           String(record.status),
         )
       ) {
+        this.log("warn", "completion relay not deferred: task is terminal", {
+          sessionId,
+          taskId: record.id,
+          status: record.status,
+        });
         return null;
       }
       const criteria = Array.isArray(record.acceptanceCriteria)
         ? record.acceptanceCriteria
         : [];
-      return criteria.length > 0 ? record.id : null;
+      if (criteria.length === 0) {
+        this.log(
+          "warn",
+          "completion relay not deferred: task has no criteria",
+          {
+            sessionId,
+            taskId: record.id,
+          },
+        );
+        return null;
+      }
+      return record.id;
     } catch {
       // error-policy:J4 a lookup failure must degrade to the immediate relay,
       // never to a swallowed completion.

@@ -1197,8 +1197,17 @@ async function runCreateLegacy(
   // blob); clamp at the persist/display seam — the stored task title and the
   // [TASK:] widget block both render it. labelFrom's fallback is already
   // 80-clamped, so only the params-derived branch needs bounding.
+  // Planner titles arrive corrupted on occasion — a task literally titled
+  // "»,title:" (a JSON fragment) became the durable goal the verifier judged
+  // against (live 2026-08-22). A title with no letters or digits, or shaped
+  // like a stray key/fragment, names nothing: derive from the task instead.
+  const saneTitle = (value: string | undefined): string | undefined =>
+    value && /[a-z0-9]/i.test(value) && !/^[^a-z0-9]*\w+:\s*$/i.test(value)
+      ? value
+      : undefined;
   const plannerTitle =
-    pickString(params, content, "title") ?? pickString(params, content, "goal");
+    saneTitle(pickString(params, content, "title")) ??
+    saneTitle(pickString(params, content, "goal"));
   const taskTitle = plannerTitle
     ? userReferenceLogView(plannerTitle)
     : tasks[0]
