@@ -1914,6 +1914,38 @@ describe("conversation stream SSE contract (#10712)", () => {
     expect(persistAssistantConversationMemory).not.toHaveBeenCalled();
   });
 
+  it("blocks stale model tokens immediately after a fenced conversation replacement", async () => {
+    const tokenStarted = createDeferred();
+    const tokenGate = createDeferred();
+    const first = createCtx();
+    stampLocalVoiceRuntimeFence(first.ctx);
+    first.useModel.mockImplementation(async (_modelType, params) => {
+      tokenStarted.resolve();
+      await tokenGate.promise;
+      await params.onStreamChunk?.("stale voice token");
+      return { text: "stale voice token", thought: THOUGHT };
+    });
+    const conversation = first.state.conversations.get("conv-1");
+    if (!conversation) throw new Error("conversation fixture missing");
+
+    const turn = handleConversationRoutes(first.ctx);
+    await tokenStarted.promise;
+    first.state.conversations.set("conv-1", { ...conversation });
+    tokenGate.resolve();
+    await turn;
+
+    const payloads = parseSsePayloads(first.record.writes);
+    expect(payloads.filter((payload) => payload.type === "token")).toEqual([]);
+    expect(payloads).toContainEqual(
+      expect.objectContaining({
+        type: "error",
+        message: expect.stringContaining("conversation changed"),
+      }),
+    );
+    expect(payloads.some((payload) => payload.type === "done")).toBe(false);
+    expect(persistAssistantConversationMemory).not.toHaveBeenCalled();
+  });
+
   it("carries a direct VIEWS shortcut result on the terminal done frame", async () => {
     const { ctx, record } = createCtx(createViewShortcutMessageService());
 
