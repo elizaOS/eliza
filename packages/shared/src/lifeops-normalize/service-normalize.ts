@@ -10,7 +10,12 @@
  * re-export shim at `lifeops/service-normalize.ts` for historical import paths.
  */
 
-import { type IAgentRuntime, stringToUuid } from "@elizaos/core";
+import {
+  type IAgentRuntime,
+  resolveCanonicalOwnerId,
+  stringToUuid,
+  validateUuid,
+} from "@elizaos/core";
 import type {
   LifeOpsContextPolicy,
   LifeOpsDomain,
@@ -39,8 +44,19 @@ export function fail(status: number, message: string, code?: string): never {
   throw new LifeOpsServiceError(status, message, code);
 }
 
+/**
+ * The single owner-entity derivation for LifeOps scoping. Every surface that
+ * reads, writes, or schedules owner-scoped LifeOps rows must resolve the owner
+ * through this precedence — configured canonical owner (a UUID under
+ * `ELIZA_ADMIN_ENTITY_ID` / owner contacts) first, then the deterministic
+ * agent-id seed — or rows written on one surface become invisible to the
+ * others (the write/read/scheduler `subject_id` fork).
+ */
 export function defaultOwnerEntityId(runtime: IAgentRuntime): string {
-  return stringToUuid(`${requireAgentId(runtime)}-admin-entity`);
+  const canonicalOwnerId = validateUuid(resolveCanonicalOwnerId(runtime));
+  return (
+    canonicalOwnerId ?? stringToUuid(`${requireAgentId(runtime)}-admin-entity`)
+  );
 }
 
 export function normalizeLifeOpsDomain(
