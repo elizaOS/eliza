@@ -1,126 +1,161 @@
 /**
- * Apple Container has no `-d`, so `AppleContainerEngine.runContainer` keeps the
- * spawned `container run` as a long-lived child that outlives the promise. Any
- * pipe held open on that child must therefore be drained for the container's
- * whole life, and any buffer filled from it must be bounded.
- *
- * Both tests drive the real spawn path through a stand-in `container`
- * executable resolved from the host-execution baseline, so they exercise the
- * process boundary rather than an engine mock.
+ * Process-boundary coverage for Apple Container startup stdio. The engine runs
+ * in an outer Node subprocess so this test observes exactly what its inherited
+ * stdout/stderr descriptors make visible to the caller.
  */
 
-import {
-  chmodSync,
-  existsSync,
-  mkdtempSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
+import { spawn } from "node:child_process";
+import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import {
-  AppleContainerEngine,
-  type ContainerRunOptions,
-} from "./sandbox-engine.ts";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 
-const RUN_OPTIONS: Omit<ContainerRunOptions, "name"> = {
-  image: "eliza-sandbox:test",
-  detach: true,
-  mounts: [],
-  env: {},
-  network: "none",
-  user: "",
-  capDrop: [],
-};
+const SERVICE_DIRECTORY = dirname(fileURLToPath(import.meta.url));
+const REPOSITORY_ROOT = resolve(SERVICE_DIRECTORY, "../../../..");
+const HARNESS_PATH = join(
+  SERVICE_DIRECTORY,
+  "sandbox-engine-run-container.harness.ts",
+);
+const STDOUT_BYTES = 300_000;
+const STDOUT_SENTINEL = "<stdout-complete>\n";
+const RESOLVED_MARKER = "HARNESS_RESOLVED:eliza-sandbox-stdout\n";
 
-let binDirectory: string;
-let sentinelPath: string;
+let binDirectory: string | undefined;
 let previousBaseline: string | undefined;
 
-/** Installs the stand-in `container` executable for the next spawn. */
 function installContainerStub(body: string): void {
+  binDirectory = mkdtempSync(join(tmpdir(), "eliza-container-stub-"));
   const stub = join(binDirectory, "container");
   writeFileSync(stub, `#!${process.execPath}\n${body}`);
   chmodSync(stub, 0o755);
 }
 
-async function waitForSentinel(timeoutMs: number): Promise<boolean> {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    if (existsSync(sentinelPath)) return true;
-    await new Promise((resolve) => setTimeout(resolve, 100));
-  }
-  return existsSync(sentinelPath);
+function runHarness(mode: "stdout" | "immediate-exit"): Promise<{
+  code: number | null;
+  stdout: Buffer;
+  stderr: Buffer;
+}> {
+  return new Promise((resolveResult, reject) => {
+    const child = spawn(
+      process.execPath,
+      ["--conditions=eliza-source", "--import", "tsx", HARNESS_PATH, mode],
+      {
+        cwd: REPOSITORY_ROOT,
+        env: {
+          ...process.env,
+          ELIZA_HOST_EXECUTION_BASELINE_PATH: binDirectory,
+        },
+        stdio: ["ignore", "pipe", "pipe"],
+      },
+    );
+    const stdout: Buffer[] = [];
+    const stderr: Buffer[] = [];
+    child.stdout.on("data", (chunk: Buffer) => stdout.push(chunk));
+    child.stderr.on("data", (chunk: Buffer) => stderr.push(chunk));
+    const timeout = setTimeout(() => {
+      child.kill("SIGKILL");
+      reject(new Error("sandbox-engine subprocess harness timed out"));
+    }, 45_000);
+    child.once("error", (error) => {
+      clearTimeout(timeout);
+      reject(error);
+    });
+    child.once("close", (code) => {
+      clearTimeout(timeout);
+      resolveResult({
+        code,
+        stdout: Buffer.concat(stdout),
+        stderr: Buffer.concat(stderr),
+      });
+    });
+  });
 }
 
 describe.skipIf(process.platform === "win32")(
-  "Apple Container background run",
+  "Apple Container inherited startup stdio",
   () => {
     beforeAll(() => {
-      binDirectory = mkdtempSync(join(tmpdir(), "eliza-container-stub-"));
-      sentinelPath = join(binDirectory, "stdout-flushed");
-      // The baseline is captured once per module registry, so every case in
-      // this file resolves `container` from this one directory.
       previousBaseline = process.env.ELIZA_HOST_EXECUTION_BASELINE_PATH;
-      process.env.ELIZA_HOST_EXECUTION_BASELINE_PATH = binDirectory;
+    });
+
+    afterEach(() => {
+      if (binDirectory) {
+        rmSync(binDirectory, { recursive: true, force: true });
+        binDirectory = undefined;
+      }
     });
 
     afterAll(() => {
-      // Other files can share this vitest worker, so the baseline override must
-      // not outlive this suite.
+      // Other files can share this vitest worker, so preserve the environment
+      // even though each outer harness receives its baseline through spawn.
       if (previousBaseline === undefined) {
         delete process.env.ELIZA_HOST_EXECUTION_BASELINE_PATH;
       } else {
         process.env.ELIZA_HOST_EXECUTION_BASELINE_PATH = previousBaseline;
       }
-      rmSync(binDirectory, { recursive: true, force: true });
     });
 
-    it("keeps draining container stdout after the start check resolves", async () => {
-      // 300000 bytes is far past the 64KiB OS pipe buffer, so the write only
-      // completes if the parent keeps reading (or never piped stdout at all).
+    it("forwards every stdout byte without a child pipe or truncation", async () => {
       installContainerStub(
         [
-          'const fs = require("node:fs");',
-          `process.stdout.write("x".repeat(300000), () => {`,
-          `  fs.writeFileSync(${JSON.stringify(sentinelPath)}, "");`,
-          "});",
-          // Just past the engine's 2s start check, so the child is treated as
-          // running without being left orphaned once the test finishes.
-          "setTimeout(() => process.exit(0), 2500);",
+          `process.stdout.write("x".repeat(${STDOUT_BYTES}));`,
+          `process.stdout.write(${JSON.stringify(STDOUT_SENTINEL)});`,
+          "setTimeout(() => process.exit(0), 3000);",
         ].join("\n"),
       );
 
-      const engine = new AppleContainerEngine();
-      await expect(
-        engine.runContainer({ ...RUN_OPTIONS, name: "eliza-sandbox-stdout" }),
-      ).resolves.toBe("eliza-sandbox-stdout");
+      const result = await runHarness("stdout");
 
-      expect(await waitForSentinel(10_000)).toBe(true);
-    }, 30_000);
+      expect(result.code).toBe(0);
+      expect(result.stderr).toEqual(Buffer.alloc(0));
+      expect(result.stdout.subarray(0, STDOUT_BYTES)).toEqual(
+        Buffer.alloc(STDOUT_BYTES, "x"),
+      );
+      expect(result.stdout.subarray(STDOUT_BYTES).toString()).toBe(
+        `${STDOUT_SENTINEL}${RESOLVED_MARKER}`,
+      );
+      expect(result.stdout.length).toBe(
+        STDOUT_BYTES +
+          Buffer.byteLength(STDOUT_SENTINEL) +
+          Buffer.byteLength(RESOLVED_MARKER),
+      );
+    }, 90_000);
 
-    it("bounds the start-check stderr buffer", async () => {
+    it("forwards immediate-exit stderr byte-for-byte and rejects typed", async () => {
+      const stderrPayload = `stderr-start:${"e".repeat(300_000)}:stderr-end\n`;
       installContainerStub(
         [
-          'process.stderr.write("e".repeat(400_000), () => {',
-          "  process.exit(0);",
+          `process.stderr.write(${JSON.stringify(stderrPayload)}, () => {`,
+          "  process.exit(23);",
           "});",
         ].join("\n"),
       );
 
-      const engine = new AppleContainerEngine();
-      const error = await engine
-        .runContainer({ ...RUN_OPTIONS, name: "eliza-sandbox-stderr" })
-        .then(
-          () => null,
-          (thrown: unknown) => thrown as Error,
-        );
+      const result = await runHarness("immediate-exit");
 
-      expect(error).toBeInstanceOf(Error);
-      expect(error?.message).toMatch(/Apple Container exited immediately/);
-      expect(error?.message).toContain("[truncated]");
-      expect(error?.message.length).toBeLessThan(200_000);
-    }, 30_000);
+      expect(result.code).toBe(0);
+      expect(result.stderr).toEqual(Buffer.from(stderrPayload));
+      const rejection = JSON.parse(result.stdout.toString()) as {
+        kind: string;
+        isElizaError: boolean;
+        code?: string;
+        context?: Record<string, unknown>;
+        message: string;
+      };
+      expect(rejection).toMatchObject({
+        kind: "rejected",
+        isElizaError: true,
+        code: "SANDBOX_APPLE_CONTAINER_START_EXITED",
+        context: {
+          containerName: "eliza-sandbox-immediate-exit",
+          engine: "apple-container",
+          exitCode: 23,
+        },
+      });
+      expect(rejection.message).not.toContain(stderrPayload);
+      expect(result.stdout.toString()).not.toContain("[truncated]");
+      expect(result.stderr.toString()).not.toContain("[truncated]");
+    }, 90_000);
   },
 );
