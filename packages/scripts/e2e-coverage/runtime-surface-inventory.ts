@@ -626,17 +626,11 @@ export function resolveRuntimeDependencies(
       rule.surfaceIds || rule.surfaceIdPrefixes || rule.sourcePathPrefixes,
   );
   const selected = specificMatches.length > 0 ? specificMatches : matches;
-  const localReason = catalog.localPackages[packageName];
-  if (selected.length === 0 && typeof localReason === "string") {
-    if (localReason.trim().length < 24) {
-      throw new Error(
-        `${packageName} local-only dependency reason is not actionable`,
-      );
-    }
+  if (selected.length === 0) {
     return {
       externalServiceDependencies: [],
       mockDependencies: [],
-      dependencyDisposition: "local-only",
+      dependencyDisposition: "unresolved",
     };
   }
   if (selected.length !== 1) {
@@ -726,18 +720,11 @@ export function validateRuntimeDependencyCatalog(
       }
     }
   }
-  const knownPackages = new Set(surfaces.map((surface) => surface.packageName));
-  for (const [packageName, reason] of Object.entries(catalog.localPackages)) {
-    if (reason.trim().length < 24) {
-      throw new Error(
-        `${packageName} local-only dependency reason is not actionable`,
-      );
-    }
-    if (!knownPackages.has(packageName)) {
-      throw new Error(`stale=${packageName}`);
-    }
+  if (Object.keys(catalog.localPackages).length > 0) {
+    throw new Error(
+      "localPackages is retired; local-only dispositions require an explicit matching rule",
+    );
   }
-  const missing: string[] = [];
   const duplicate: string[] = [];
   for (const surface of surfaces) {
     const selector = surface.id ?? `${surface.packageName}:${surface.kind}`;
@@ -756,9 +743,7 @@ export function validateRuntimeDependencyCatalog(
         rule.surfaceIds || rule.surfaceIdPrefixes || rule.sourcePathPrefixes,
     );
     const selected = specific.length > 0 ? specific : matches;
-    if (selected.length === 0 && !catalog.localPackages[surface.packageName]) {
-      missing.push(selector);
-    } else if (selected.length > 1) {
+    if (selected.length > 1) {
       duplicate.push(selector);
     }
   }
@@ -777,14 +762,11 @@ export function validateRuntimeDependencyCatalog(
       throw new Error(`stale=${rule.packageName}:${rule.kinds.join(",")}`);
     }
   }
-  if (duplicate.length > 0 || missing.length > 0) {
+  if (duplicate.length > 0) {
     throw new Error(
       [
         duplicate.length > 0
           ? `duplicate=${[...new Set(duplicate)].sort().join(",")}`
-          : null,
-        missing.length > 0
-          ? `missing=${[...new Set(missing)].sort().join(",")}`
           : null,
       ]
         .filter(Boolean)
