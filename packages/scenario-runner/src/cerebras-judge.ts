@@ -1,4 +1,3 @@
-import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 /**
  * Shared Cerebras judge transport.
  *
@@ -11,6 +10,9 @@ import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
  * owns transport, retry, tolerant JSON parsing, and a canonical verdict
  * shape. Callers map the canonical shape back to their own return types.
  */
+
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
+
 /** Canonical verdict alias re-exported for callers that don't pull types.ts. */
 export type CerebrasJudgeVerdict = "PASS" | "FAIL" | "REVIEW";
 
