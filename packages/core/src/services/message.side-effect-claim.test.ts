@@ -1208,11 +1208,11 @@ describe("evaluatePlannedReplyEgress", () => {
 		).toBe(false);
 	});
 
-	it("allows a completed-side-effect claim on a sub-agent completion relay turn", () => {
-		// The task_complete relay IS the effect receipt: the child did and
-		// verified the work, so the reply may state it without an action
-		// result of this turn. The same reply without the relay flag still
-		// fails closed.
+	it("allows a completed-side-effect claim on a completion relay that proved its effects", () => {
+		// `completionRelay` is set only from isGroundedTaskCompleteRelayTurn —
+		// relay shape PLUS a validated applied-effect receipt binding — so the
+		// reply may state the child's applied work without an action result of
+		// this turn. The same reply without the flag still fails closed.
 		const reply =
 			"the bmi calculator is ready for you. i've set up the `index.html` file to handle everything.";
 		expect(

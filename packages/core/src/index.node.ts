@@ -262,6 +262,7 @@ export * from "./runtime/cleanup-scope";
 export * from "./runtime/content-access-manifest";
 export * from "./runtime/content-projection-policy";
 export * from "./runtime/context-gates";
+export * from "./runtime/effect-delivery";
 export * from "./runtime/context-registry";
 export {
 	__resetDirectActionRoutingRulesForTests,

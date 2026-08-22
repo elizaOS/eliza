@@ -14,6 +14,7 @@ import { CONNECTOR_ACCOUNT_SERVICE_TYPE } from "../connectors/account-manager";
 import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "../runtime/builtin-field-evaluators";
 import type { CandidateActionBackstopRule } from "../runtime/candidate-action-backstop";
 import { ContextRegistry } from "../runtime/context-registry";
+import { bindEffectDelivery } from "../runtime/effect-delivery";
 import { registerDirectActionRoutingRule } from "../runtime/direct-action-routing";
 import type { ResponseHandlerEvaluator } from "../runtime/response-handler-evaluators";
 import type { ResponseHandlerFieldEvaluator } from "../runtime/response-handler-field-evaluator";
@@ -4729,12 +4730,29 @@ describe("runV5MessageRuntimeStage1", () => {
 		}
 	});
 
-	it("does not buffer an applied effect claim on a task_complete relay turn — the relay is the receipt", async () => {
-		// The inbound message IS a sub-agent task_complete relay: the child did
-		// and verified the work, so Stage 1's "applied" is grounded by the relay
-		// itself and the good reply must not be withheld behind the hedge
-		// (2026-08-22: a verified, live page shipped as "i'm not sure if that
-		// change actually went through").
+	it("does not buffer an applied effect claim on a RECEIPT-BOUND task_complete relay turn", async () => {
+		// The inbound message is a sub-agent task_complete relay whose content
+		// carries the core-owned effect-delivery binding the orchestrator minted
+		// from the receipts it VERIFIED. Only that validated applied binding —
+		// never the relay header/metadata alone — grounds Stage 1's "applied",
+		// so the good reply is not withheld behind the hedge (2026-08-22: a
+		// verified, live page shipped as "i'm not sure if that change actually
+		// went through").
+		const relayText =
+			"[sub-agent: dice roller build (opencode) — task_complete]\n" +
+			"Done. The dice roller app is built and deployed.";
+		const receiptIds = ["sub-agent:dice-roller:receipt-1"];
+		const boundRelayContent = bindEffectDelivery(
+			{
+				text: relayText,
+				source: "sub_agent",
+				metadata: { subAgent: true },
+				effectReceiptIds: receiptIds,
+			},
+			relayText,
+			receiptIds,
+			true,
+		);
 		const runtime = makeRuntime([
 			stage1Response({
 				thought: "Relay the finished build to the user.",
@@ -4746,6 +4764,48 @@ describe("runV5MessageRuntimeStage1", () => {
 				thought: "Deliver the relayed completion.",
 				toolCalls: [],
 				messageToUser: "The dice roller app is built and deployed — enjoy.",
+			}),
+		]);
+		const earlyReply = vi.fn(async () => undefined);
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage(boundRelayContent),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+			onResponseHandlerEarlyReply: earlyReply,
+		});
+
+		expect(earlyReply).toHaveBeenCalledWith(
+			expect.objectContaining({
+				text: "The dice roller app is built and deployed.",
+			}),
+		);
+		expect(result.kind).toBe("planned_reply");
+		if (result.kind === "planned_reply") {
+			expect(result.result.responseContent?.text).toBe(
+				"The dice roller app is built and deployed — enjoy.",
+			);
+		}
+	});
+
+	it("keeps strict grounding on a task_complete relay WITHOUT a validated receipt binding", async () => {
+		// Relay shape (header + subAgent metadata) is routing, not proof: a
+		// child can claim task_complete without having applied anything, so an
+		// unbound relay's "applied" claim buffers exactly like any other
+		// ungrounded claim (#24425 review: task-complete metadata is not proof
+		// that an effect occurred).
+		const runtime = makeRuntime([
+			stage1Response({
+				thought: "Relay the claimed build to the user.",
+				contexts: ["simple"],
+				replyText: "The dice roller app is built and deployed.",
+				extra: { requiresTool: true, replyEffectStatus: "applied" },
+			}),
+			JSON.stringify({
+				thought: "No receipt proved the claimed build.",
+				toolCalls: [],
+				messageToUser: "I couldn't verify that build completed.",
 			}),
 		]);
 		const earlyReply = vi.fn(async () => undefined);
@@ -4764,15 +4824,11 @@ describe("runV5MessageRuntimeStage1", () => {
 			onResponseHandlerEarlyReply: earlyReply,
 		});
 
-		expect(earlyReply).toHaveBeenCalledWith(
-			expect.objectContaining({
-				text: "The dice roller app is built and deployed.",
-			}),
-		);
+		expect(earlyReply).not.toHaveBeenCalled();
 		expect(result.kind).toBe("planned_reply");
 		if (result.kind === "planned_reply") {
 			expect(result.result.responseContent?.text).toBe(
-				"The dice roller app is built and deployed — enjoy.",
+				"I couldn't verify that build completed.",
 			);
 		}
 	});

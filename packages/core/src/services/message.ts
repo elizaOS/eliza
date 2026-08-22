@@ -2608,6 +2608,20 @@ function isTaskCompleteRelayTurn(memory: Memory): boolean {
 	);
 }
 
+/** A completion relay may bypass effect grounding ONLY when it proves its
+ * effects: relay shape (header + source metadata) is routing, not proof — a
+ * child can claim task_complete without having applied anything. The relaying
+ * orchestrator binds the receipts it verified via `bindEffectDelivery`
+ * (authentic core-owned binding: exact text + applied receipt IDs), and this
+ * predicate requires that validated applied binding before any grounding gate
+ * is relaxed. Shape-only relays keep strict grounding. */
+function isGroundedTaskCompleteRelayTurn(memory: Memory): boolean {
+	return (
+		isTaskCompleteRelayTurn(memory) &&
+		effectDeliveryBindingProvesApplication(memory.content as Content)
+	);
+}
+
 function looksLikePriorDialogueArtifact(text: string): boolean {
 	if (!text) return false;
 	return /^\s*\[(?:sub-agent|tool output|tool result|command output)\b/im.test(
@@ -4167,11 +4181,13 @@ export function evaluatePlannedReplyEgress(args: {
 	reply: string;
 	actionResults: readonly ActionResult[];
 	actions: readonly Action[];
-	/** The turn relays a sub-agent's verified completion (`task_complete`):
-	 *  that message is the effect receipt, so a completed-side-effect claim
-	 *  ("the page is ready") is grounded without an action of this turn.
-	 *  Without it a verified, live page shipped as "I couldn't verify that
-	 *  the requested change was completed" (2026-08-22). */
+	/** The turn relays a sub-agent completion that PROVED its effects: set
+	 *  only from `isGroundedTaskCompleteRelayTurn` (relay shape PLUS a
+	 *  validated applied-effect receipt binding), never from relay metadata
+	 *  alone. A completed-side-effect claim ("the page is ready") is then
+	 *  grounded without an action of this turn; without it a verified, live
+	 *  page shipped as "I couldn't verify that the requested change was
+	 *  completed" (2026-08-22). */
 	completionRelay?: boolean;
 }): PlannedReplyEgressDecision {
 	const reply = args.reply.trim();
@@ -8678,14 +8694,15 @@ export async function runV5MessageRuntimeStage1(args: {
 				: undefined;
 		const prePatchStageOneReplyEffectStatus =
 			messageHandler.plan.replyEffectStatus;
-		// A sub-agent task_complete relay IS the effect receipt: the build it
-		// reports was done and verified by the child. Treating the relay's
-		// "applied" as ungrounded withheld the good reply and the planner
-		// shipped "i'm not sure if that change actually went through" for a
-		// verified, live page (2026-08-22, two-lane build).
+		// A completion relay grounds Stage 1's "applied" ONLY via its validated
+		// applied-effect receipt binding (isGroundedTaskCompleteRelayTurn) —
+		// relay shape/metadata alone is not proof an effect occurred. A bound
+		// relay's good reply must not hide behind the hedge (2026-08-22: a
+		// verified, live page shipped as "i'm not sure if that change actually
+		// went through"); an unbound relay buffers like any ungrounded claim.
 		const prePatchStageOneReplyIsUngroundedAppliedClaim =
 			prePatchStageOneReplyEffectStatus === "applied" &&
-			!isTaskCompleteRelayTurn(args.message);
+			!isGroundedTaskCompleteRelayTurn(args.message);
 		const responseHandlerEvaluation = args.codingMode
 			? {
 					activeEvaluators: [],
@@ -8852,7 +8869,7 @@ export async function runV5MessageRuntimeStage1(args: {
 				reply,
 				actionResults: [],
 				actions: args.runtime.actions,
-				completionRelay: isTaskCompleteRelayTurn(args.message),
+				completionRelay: isGroundedTaskCompleteRelayTurn(args.message),
 			});
 			if (directReplyEgressDecision.verdict === "reject") {
 				reply = directReplyEgressDecision.fallbackReply;
@@ -8914,7 +8931,7 @@ export async function runV5MessageRuntimeStage1(args: {
 				reply: earlyReplyText,
 				actionResults: [],
 				actions: args.runtime.actions,
-				completionRelay: isTaskCompleteRelayTurn(args.message),
+				completionRelay: isGroundedTaskCompleteRelayTurn(args.message),
 			});
 			if (earlyReplyEgressDecision.verdict === "reject") {
 				// Planning is still in progress, so an ungrounded completion claim
@@ -9864,7 +9881,7 @@ export async function runV5MessageRuntimeStage1(args: {
 						reply: String(plannerResult.finalMessage ?? ""),
 						actionResults: egressActionResults,
 						actions: args.runtime.actions,
-						completionRelay: isTaskCompleteRelayTurn(args.message),
+						completionRelay: isGroundedTaskCompleteRelayTurn(args.message),
 					});
 		// A reply an action callback already delivered this turn (verbatim or as
 		// a strict superset) is a planner echo: the suppression below drops it, so
@@ -10060,7 +10077,7 @@ export async function runV5MessageRuntimeStage1(args: {
 						reply: effectiveReplyText,
 						actionResults,
 						actions: args.runtime.actions,
-						completionRelay: isTaskCompleteRelayTurn(args.message),
+						completionRelay: isGroundedTaskCompleteRelayTurn(args.message),
 					});
 		if (finalReplyEgressDecision.verdict === "reject") {
 			effectiveReplyText = finalReplyEgressDecision.fallbackReply;
@@ -11309,8 +11326,13 @@ function looksLikeInlineCodeSnippetRequest(text: string): boolean {
 	// bare words with no path, URL, number or computed noun ("the current
 	// bitcoin price", "the contents of /etc/hosts", "the primes under a
 	// million" are real programs however the ask is phrased).
+	// The printed object is captured to the END of the sentence line — a capped
+	// capture (formerly 80 chars) let a computed tail ("… and then fetches the
+	// current bitcoin price") hide beyond the window and misread a real program
+	// as an inline constant snippet. isConstantPrintedObject scans the whole
+	// expression it receives.
 	const constantOutputMatch =
-		/\b(?:script|program)\b[\s\S]{0,40}\b(?:just|only|simply)\s+(?:prints?|says?|outputs?|echo(?:es)?|displays?|returns?)\s+([^\n]{0,80})/iu.exec(
+		/\b(?:script|program)\b[\s\S]{0,40}\b(?:just|only|simply)\s+(?:prints?|says?|outputs?|echo(?:es)?|displays?|returns?)\s+([^\n]*)/iu.exec(
 			normalized,
 		);
 	const constantOutputScript =
@@ -12130,7 +12152,7 @@ export function wrapSingleTurnVisibleCallback(
 			fullRuntime,
 			response,
 			actionName,
-			{ completionRelay: isTaskCompleteRelayTurn(message as Memory) },
+			{ completionRelay: isGroundedTaskCompleteRelayTurn(message as Memory) },
 		);
 		if (typeof response?.text === "string" && response.text.trim()) {
 			if (nearDuplicateOfDeliveredThisTurn(response.text)) {
@@ -13812,7 +13834,7 @@ export class DefaultMessageService implements IMessageService {
 						runtime,
 						earlyContent,
 						undefined,
-						{ completionRelay: isTaskCompleteRelayTurn(message) },
+						{ completionRelay: isGroundedTaskCompleteRelayTurn(message) },
 					);
 					earlyContent = await enforceTrustedDeliveryAudienceAtEgress(
 						runtime,
@@ -14364,7 +14386,7 @@ export class DefaultMessageService implements IMessageService {
 						runtime,
 						deliverableResponseContent,
 						undefined,
-						{ completionRelay: isTaskCompleteRelayTurn(message) },
+						{ completionRelay: isGroundedTaskCompleteRelayTurn(message) },
 					);
 					deliverableResponseContent =
 						await enforceTrustedDeliveryAudienceAtEgress(
