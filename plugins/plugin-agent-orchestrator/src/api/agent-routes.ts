@@ -10,7 +10,7 @@
  */
 
 import { execFile } from "node:child_process";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { access, readFile, realpath, rm } from "node:fs/promises";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import * as path from "node:path";
@@ -23,8 +23,10 @@ import { getTaskAgentFrameworkState } from "../services/task-agent-frameworks.js
 import {
   type AgentType,
   type ApprovalPreset,
+  createSubscriptionExecutionAuthorization,
   SessionCapError,
   type SessionInfo,
+  SUBSCRIPTION_EXECUTION_AUTHORIZATION_METADATA_KEY,
   TERMINAL_SESSION_STATUSES,
 } from "../services/types.js";
 import { resolveAllowedWorkdir } from "../services/workdir-validation.js";
@@ -574,6 +576,7 @@ export async function handleAgentRoutes(
         approvalPreset,
         customCredentials,
         metadata,
+        subscriptionExecutionMode,
       } = body;
       const taskText =
         typeof task === "string"
@@ -633,7 +636,15 @@ export async function handleAgentRoutes(
         ? (agentType as string).toLowerCase()
         : String((await ctx.acpService.resolveAgentType?.({})) ?? "codex");
 
-      const callerMetadata = (metadata as Record<string, unknown>) ?? {};
+      const untrustedCallerMetadata =
+        metadata && typeof metadata === "object" && !Array.isArray(metadata)
+          ? (metadata as Record<string, unknown>)
+          : {};
+      const {
+        [SUBSCRIPTION_EXECUTION_AUTHORIZATION_METADATA_KEY]:
+          _ignoredAuthorization,
+        ...callerMetadata
+      } = untrustedCallerMetadata;
       const taskRoomId =
         typeof callerMetadata.taskRoomId === "string"
           ? callerMetadata.taskRoomId
@@ -676,6 +687,15 @@ export async function handleAgentRoutes(
       const session = await ctx.acpService.spawnSession({
         name: `agent-${Date.now()}`,
         agentType: agentStr as AgentType,
+        subscriptionExecutionAuthorization:
+          subscriptionExecutionMode === "user-attended"
+            ? createSubscriptionExecutionAuthorization(
+                "interactive-http",
+                typeof req.headers?.["x-request-id"] === "string"
+                  ? req.headers["x-request-id"]
+                  : randomUUID(),
+              )
+            : undefined,
         workdir: workdir as string,
         initialTask: goalPrompt,
         memoryContent: memoryContent as string | undefined,

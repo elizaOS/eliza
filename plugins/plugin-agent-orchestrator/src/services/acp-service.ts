@@ -152,6 +152,8 @@ import {
   type SessionStore,
   type SpawnOptions,
   type SpawnResult,
+  SUBSCRIPTION_EXECUTION_AUTHORIZATION_METADATA_KEY,
+  subscriptionExecutionAuthorizationFromMetadata,
   TERMINAL_SESSION_STATUSES,
 } from "./types.js";
 import {
@@ -1890,6 +1892,8 @@ export class AcpService extends Service {
     const agentType =
       normalizeTaskAgentAdapter(opts.agentType ?? this.defaultAgent) ??
       this.defaultAgent;
+    const subscriptionExecutionAuthorization =
+      opts.subscriptionExecutionAuthorization;
     if (isSubscriptionCodingAdapter(agentType)) {
       const preflightEnv: NodeJS.ProcessEnv = {
         ...process.env,
@@ -1900,10 +1904,15 @@ export class AcpService extends Service {
         SUBSCRIPTION_CODING_ADAPTERS[agentType].homeEnvironmentKey;
       const configuredHome = this.setting(homeKey);
       if (configuredHome) preflightEnv[homeKey] = configuredHome;
+      // Probe the exact environment the child will receive. In particular,
+      // caller-supplied Kimi model credentials and Grok auth-source overrides
+      // are removed before both preflight and spawn, so a passing account can
+      // never differ from the account the subprocess resolves.
+      stripSubscriptionApiEnvironment(agentType, preflightEnv);
       assertSubscriptionCodingAdapterReady(agentType, {
         command: this.nativeAgentCommand(agentType),
         env: preflightEnv,
-        executionMode: opts.subscriptionExecutionMode,
+        executionMode: subscriptionExecutionAuthorization?.mode,
         transportMode: this.transportMode,
       });
     }
@@ -2061,6 +2070,12 @@ export class AcpService extends Service {
           : {}),
         ...(gitIndexIsolation?.metadata ?? {}),
         ...(resolvedAccount ? { account: resolvedAccount.meta } : {}),
+        ...(subscriptionExecutionAuthorization
+          ? {
+              [SUBSCRIPTION_EXECUTION_AUTHORIZATION_METADATA_KEY]:
+                subscriptionExecutionAuthorization,
+            }
+          : {}),
         [ORCHESTRATOR_OWNED_ARTIFACTS_METADATA_KEY]:
           this.getOrchestratorOwnedArtifacts(id),
         ...(spawnModel ? { [ACP_METADATA_SPAWN_MODEL]: spawnModel } : {}),
@@ -2827,6 +2842,8 @@ export class AcpService extends Service {
       agentType: session.agentType,
       workdir: session.workdir,
       approvalPreset: session.approvalPreset,
+      subscriptionExecutionAuthorization:
+        subscriptionExecutionAuthorizationFromMetadata(session.metadata),
       metadata: { ...session.metadata, reattachedFrom: session.id },
       model:
         typeof session.metadata?.[ACP_METADATA_SPAWN_MODEL] === "string"
