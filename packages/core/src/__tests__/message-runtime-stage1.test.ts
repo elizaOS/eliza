@@ -14,8 +14,8 @@ import { CONNECTOR_ACCOUNT_SERVICE_TYPE } from "../connectors/account-manager";
 import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "../runtime/builtin-field-evaluators";
 import type { CandidateActionBackstopRule } from "../runtime/candidate-action-backstop";
 import { ContextRegistry } from "../runtime/context-registry";
-import { bindEffectDelivery } from "../runtime/effect-delivery";
 import { registerDirectActionRoutingRule } from "../runtime/direct-action-routing";
+import { bindEffectDelivery } from "../runtime/effect-delivery";
 import type { ResponseHandlerEvaluator } from "../runtime/response-handler-evaluators";
 import type { ResponseHandlerFieldEvaluator } from "../runtime/response-handler-field-evaluator";
 import { ResponseHandlerFieldRegistry } from "../runtime/response-handler-field-registry";
@@ -4730,14 +4730,11 @@ describe("runV5MessageRuntimeStage1", () => {
 		}
 	});
 
-	it("does not buffer an applied effect claim on a RECEIPT-BOUND task_complete relay turn", async () => {
-		// The inbound message is a sub-agent task_complete relay whose content
-		// carries the core-owned effect-delivery binding the orchestrator minted
-		// from the receipts it VERIFIED. Only that validated applied binding —
-		// never the relay header/metadata alone — grounds Stage 1's "applied",
-		// so the good reply is not withheld behind the hedge (2026-08-22: a
-		// verified, live page shipped as "i'm not sure if that change actually
-		// went through").
+	it("does not buffer an applied effect claim on a core-bound task_complete relay turn", async () => {
+		// This is a consumer-side contract test: core receives exact relay text
+		// bound to applied receipt IDs through its trusted in-process API. It does
+		// not stand in for an orchestrator producer test. Only that authentic
+		// binding — never the relay header/metadata alone — grounds Stage 1.
 		const relayText =
 			"[sub-agent: dice roller build (opencode) — task_complete]\n" +
 			"Done. The dice roller app is built and deployed.";

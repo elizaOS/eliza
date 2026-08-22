@@ -2592,14 +2592,10 @@ function isSubAgentCompletionArtifact(memory: Memory): boolean {
 	return source === MESSAGE_SOURCE_SUB_AGENT && metadata?.subAgent === true;
 }
 
-/** The inbound turn is a sub-agent router relay of a finished lane
- * (`task_complete`) — the ONLY sub-agent artifact whose reply may state the
- * worker's applied effects as its own: that relay IS the effect receipt for
- * the completed work it reports. A question, error, blocked or progress
- * relay from the same router carries no finished work, so grounding stays
- * strict for those. Keyed on the router's parsed status header — the
- * authoritative relay classifier on this branch — never on untrusted body
- * prose or side-channel metadata. */
+/** The inbound turn has the routing shape of a finished sub-agent lane. This
+ * classifier controls presentation only; it does not prove that any claimed
+ * effect occurred. Grounding must additionally pass
+ * `isGroundedTaskCompleteRelayTurn`. */
 function isTaskCompleteRelayTurn(memory: Memory): boolean {
 	return (
 		isSubAgentCompletionArtifact(memory) &&
@@ -11286,7 +11282,7 @@ function looksLikeExplicitDelegationRequest(text: string): boolean {
 }
 
 const COMPUTED_OBJECT_RE =
-	/[\/\\:@]|https?:|\b(?:current|latest|live|today|now|price|prices|contents?|weather|time|date|random|primes?|fibonacci|under|between|from|of|in|at|each|every|all|list|first|last|largest|smallest|sum|count|number|result|output|value|api|file|url|env|variable|ip|address|size|length|temperature|stats?|status|usage|memory|disk|uptime|hostname|version|fetch(?:es|ed)?|read(?:s)?|calculat\w*|comput\w*)\b/iu;
+	/[/\\:@]|https?:|\b(?:current|latest|live|today|now|price|prices|contents?|weather|time|date|random|primes?|fibonacci|under|between|from|of|in|at|each|every|all|list|first|last|largest|smallest|sum|count|number|result|output|value|api|file|url|env|variable|ip|address|size|length|temperature|stats?|status|usage|memory|disk|uptime|hostname|version|fetch(?:es|ed)?|read(?:s)?|calculat\w*|comput\w*)\b/iu;
 
 /** The object of "just prints X" is a constant when it is a quoted literal,
  * a bare numeric literal, or a few bare words naming nothing computed. The
@@ -11295,7 +11291,17 @@ const COMPUTED_OBJECT_RE =
 function isConstantPrintedObject(object: string): boolean {
 	const trimmed = object.trim().replace(/[.!?]+$/u, "");
 	if (!trimmed) return false;
-	if (/^(?:["'`“‘]).+/u.test(trimmed)) return true;
+	// A quoted constant must be the complete expression. Merely starting with a
+	// quote is insufficient: `"hello" and then fetches the weather` still asks
+	// for computed work. Accept escaped ASCII delimiters and paired typographic
+	// delimiters, including a literal whose contents span lines.
+	if (
+		/^(?:"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`|“[^”]*”|‘[^’]*’)$/su.test(
+			trimmed,
+		)
+	) {
+		return true;
+	}
 	const head =
 		trimmed.split(/\s*(?:,|;|\band\b|\bthen\b|\bwhen\b|\bif\b)\s*/iu)[0] ?? "";
 	// "just prints 42" is a constant, not a computation.
@@ -11326,18 +11332,22 @@ function looksLikeInlineCodeSnippetRequest(text: string): boolean {
 	// bare words with no path, URL, number or computed noun ("the current
 	// bitcoin price", "the contents of /etc/hosts", "the primes under a
 	// million" are real programs however the ask is phrased).
-	// The printed object is captured to the END of the sentence line — a capped
+	// The printed object is captured to the END of the request — a capped
 	// capture (formerly 80 chars) let a computed tail ("… and then fetches the
-	// current bitcoin price") hide beyond the window and misread a real program
-	// as an inline constant snippet. isConstantPrintedObject scans the whole
-	// expression it receives.
+	// current bitcoin price") hide beyond the window, while a line-bounded
+	// capture let the same tail hide after a newline. isConstantPrintedObject
+	// scans the whole expression it receives.
 	const constantOutputMatch =
-		/\b(?:script|program)\b[\s\S]{0,40}\b(?:just|only|simply)\s+(?:prints?|says?|outputs?|echo(?:es)?|displays?|returns?)\s+([^\n]*)/iu.exec(
+		/\b(?:script|program)\b[\s\S]{0,40}\b(?:just|only|simply)\s+(?:prints?|says?|outputs?|echo(?:es)?|displays?|returns?)\s+([\s\S]*)/iu.exec(
 			normalized,
 		);
 	const constantOutputScript =
 		constantOutputMatch !== null &&
 		isConstantPrintedObject(constantOutputMatch[1] ?? "");
+	// The explicit just/only/simply form is eligible for inline handling only
+	// when its complete object is constant. Do not let generic words such as
+	// "simple" or "example" override a computed tail.
+	if (constantOutputMatch !== null && !constantOutputScript) return false;
 	const asksForSnippet =
 		constantOutputScript ||
 		/\b(?:write|give me|show me|generate|provide|create|make)\b[\s\S]{0,80}\b(?:code block|snippet|function|class|method|example|program|one[- ]?liner|hello world|fibonacci)\b/iu.test(
@@ -11747,9 +11757,8 @@ function enforceEffectGroundedVisibleContent(
 	response: Content,
 	actionName?: string,
 	opts: {
-		/** The turn relays a sub-agent's verified `task_complete` — that relay
-		 *  is the effect receipt for "the page is ready" (2026-08-22: the gate
-		 *  replaced a verified live page with the unverified-effect line). */
+		/** The turn relays a `task_complete` whose exact content is bound to
+		 * validated applied-effect receipt IDs. Relay shape alone is never proof. */
 		completionRelay?: boolean;
 	} = {},
 ): Content {
