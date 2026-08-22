@@ -125,6 +125,7 @@ jobs:
     timeout-minutes: 95
     env:
       SYSTEMD_UNIT: eliza-provisioning-worker.service
+      BACKUP_SYSTEMD_UNIT: eliza-backup-catalog-worker.service
       DEPLOY_BRANCH: ${{ needs.determine-env.outputs.branch }}
       DEPLOY_SHA: ${{ needs.determine-env.outputs.deployment_sha }}
       # Headscale wiring for the provisioning worker (the CONSUMER of the
@@ -186,6 +187,49 @@ jobs:
       # compatibility window.
       AGENT_ROUTER_PUBLIC_HOST: ${{ needs.determine-env.outputs.environment == 'production' && 'eliza-production-1.eliza.app' || 'eliza-staging-1.eliza.app' }}
       LEGACY_AGENT_ROUTER_PUBLIC_HOST: ${{ needs.determine-env.outputs.environment == 'production' && 'eliza-production-1.elizacloud.ai' || 'eliza-staging-1.elizacloud.ai' }}
+      # Non-secret backup catalogue inputs document the future activation
+      # contract while both merge-time gates remain forced off. The five backup
+      # credentials are intentionally not sourced or transported in this
+      # dormant changeset; a reviewed activation must add that authority.
+      AGENT_BACKUP_CATALOG_WORKER_ID: ${{ vars.AGENT_BACKUP_CATALOG_WORKER_ID }}
+      AGENT_BACKUP_R2_ENDPOINT_ALIAS: ${{ vars.AGENT_BACKUP_R2_ENDPOINT_ALIAS }}
+      AGENT_BACKUP_R2_ACCOUNT_ID: ${{ vars.AGENT_BACKUP_R2_ACCOUNT_ID }}
+      AGENT_BACKUP_R2_ENDPOINT: ${{ vars.AGENT_BACKUP_R2_ENDPOINT }}
+      AGENT_BACKUP_R2_BUCKET: ${{ vars.AGENT_BACKUP_R2_BUCKET }}
+      AGENT_BACKUP_R2_REGION: ${{ vars.AGENT_BACKUP_R2_REGION }}
+      AGENT_BACKUP_HETZNER_ENDPOINT_ALIAS: ${{ vars.AGENT_BACKUP_HETZNER_ENDPOINT_ALIAS }}
+      AGENT_BACKUP_HETZNER_ACCOUNT_ID: ${{ vars.AGENT_BACKUP_HETZNER_ACCOUNT_ID }}
+      AGENT_BACKUP_HETZNER_ENDPOINT: ${{ vars.AGENT_BACKUP_HETZNER_ENDPOINT }}
+      AGENT_BACKUP_HETZNER_BUCKET: ${{ vars.AGENT_BACKUP_HETZNER_BUCKET }}
+      AGENT_BACKUP_HETZNER_REGION: ${{ vars.AGENT_BACKUP_HETZNER_REGION }}
+      AGENT_BACKUP_STEWARD_KMS_BASE_URL: ${{ vars.AGENT_BACKUP_STEWARD_KMS_BASE_URL }}
+      AGENT_BACKUP_AGENT_SCHEMA_VERSION: ${{ vars.AGENT_BACKUP_AGENT_SCHEMA_VERSION }}
+      AGENT_BACKUP_DATABASE_SCHEMA_VERSION: ${{ vars.AGENT_BACKUP_DATABASE_SCHEMA_VERSION }}
+      AGENT_BACKUP_RUNTIME_PLUGINS_JSON: ${{ vars.AGENT_BACKUP_RUNTIME_PLUGINS_JSON }}
+      AGENT_BACKUP_LEGACY_WRITER_DRAIN_DEPLOYMENT_ID: ${{ vars.AGENT_BACKUP_LEGACY_WRITER_DRAIN_DEPLOYMENT_ID }}
+      AGENT_BACKUP_LEGACY_WRITER_DRAINED_AT: ${{ vars.AGENT_BACKUP_LEGACY_WRITER_DRAINED_AT }}
+      AGENT_BACKUP_STORAGE_SCOPE: ${{ vars.AGENT_BACKUP_STORAGE_SCOPE }}
+      AGENT_BACKUP_SPOOL_MAX_BYTES: ${{ vars.AGENT_BACKUP_SPOOL_MAX_BYTES }}
+      AGENT_BACKUP_SPOOL_MIN_FREE_BYTES: ${{ vars.AGENT_BACKUP_SPOOL_MIN_FREE_BYTES }}
+      AGENT_BACKUP_SPOOL_CLEANUP_BATCH_SIZE: ${{ vars.AGENT_BACKUP_SPOOL_CLEANUP_BATCH_SIZE }}
+      AGENT_BACKUP_CAPTURE_DEADLINE_MS: ${{ vars.AGENT_BACKUP_CAPTURE_DEADLINE_MS }}
+      AGENT_BACKUP_OBJECT_TRANSFER_DEADLINE_MS: ${{ vars.AGENT_BACKUP_OBJECT_TRANSFER_DEADLINE_MS }}
+      AGENT_BACKUP_SCHEDULE_BATCH_SIZE: ${{ vars.AGENT_BACKUP_SCHEDULE_BATCH_SIZE }}
+      AGENT_BACKUP_SCHEDULE_LEASE_MS: ${{ vars.AGENT_BACKUP_SCHEDULE_LEASE_MS }}
+      AGENT_BACKUP_SCHEDULE_RETRY_MS: ${{ vars.AGENT_BACKUP_SCHEDULE_RETRY_MS }}
+      AGENT_BACKUP_OPERATION_BATCH_SIZE: ${{ vars.AGENT_BACKUP_OPERATION_BATCH_SIZE }}
+      AGENT_BACKUP_OPERATION_LEASE_MS: ${{ vars.AGENT_BACKUP_OPERATION_LEASE_MS }}
+      AGENT_BACKUP_OPERATION_RETRY_BASE_MS: ${{ vars.AGENT_BACKUP_OPERATION_RETRY_BASE_MS }}
+      AGENT_BACKUP_OPERATION_RETRY_MAX_MS: ${{ vars.AGENT_BACKUP_OPERATION_RETRY_MAX_MS }}
+      AGENT_BACKUP_GC_BATCH_SIZE: ${{ vars.AGENT_BACKUP_GC_BATCH_SIZE }}
+      AGENT_BACKUP_GC_LEASE_MS: ${{ vars.AGENT_BACKUP_GC_LEASE_MS }}
+      AGENT_BACKUP_GC_RETRY_BASE_MS: ${{ vars.AGENT_BACKUP_GC_RETRY_BASE_MS }}
+      AGENT_BACKUP_GC_RETRY_MAX_MS: ${{ vars.AGENT_BACKUP_GC_RETRY_MAX_MS }}
+      AGENT_BACKUP_DELETION_BATCH_SIZE: ${{ vars.AGENT_BACKUP_DELETION_BATCH_SIZE }}
+      AGENT_BACKUP_CATALOG_WORKER_INTERVAL_MS: ${{ vars.AGENT_BACKUP_CATALOG_WORKER_INTERVAL_MS }}
+      AGENT_BACKUP_CATALOG_WORKER_RETRY_MS: ${{ vars.AGENT_BACKUP_CATALOG_WORKER_RETRY_MS }}
+      AGENT_BACKUP_CATALOG_WORKER_SHUTDOWN_TIMEOUT_MS: ${{ vars.AGENT_BACKUP_CATALOG_WORKER_SHUTDOWN_TIMEOUT_MS }}
+      DATABASE_SSL_NO_VERIFY: ${{ vars.DATABASE_SSL_NO_VERIFY }}
     steps:
       - name: Validate canonical deploy configuration and shared secrets
         id: deploy_config
@@ -283,6 +327,22 @@ jobs:
             echo "::error::Migration checkout is not clean"
             exit 1
           }
+          helper_sha256=$(sha256sum \
+            packages/cloud/scripts/admin/systemd-environment-line.mjs | awk '{print $1}')
+          backup_unit_sha256=$(sha256sum \
+            packages/cloud/scripts/admin/eliza-backup-catalog-worker.service | awk '{print $1}')
+          [[ "$helper_sha256" =~ ^[0-9a-f]{64}$ ]] || {
+            echo "::error::Could not hash the exact-SHA EnvironmentFile helper"
+            exit 1
+          }
+          [[ "$backup_unit_sha256" =~ ^[0-9a-f]{64}$ ]] || {
+            echo "::error::Could not hash the exact-SHA backup systemd unit"
+            exit 1
+          }
+          {
+            echo "SYSTEMD_ENVIRONMENT_HELPER_SHA256=$helper_sha256"
+            echo "BACKUP_SYSTEMD_UNIT_SHA256=$backup_unit_sha256"
+          } >> "$GITHUB_ENV"
 
       - name: Setup Node for migration gate
         if: steps.deploy_config.outputs.configured == 'true'
@@ -420,7 +480,7 @@ jobs:
           # wait without weakening the preflight's own eight-minute fail-closed
           # fence near the end of this remote script.
           command_timeout: 40m
-          envs: DEPLOY_BRANCH,DEPLOY_SHA,SYSTEMD_UNIT,HEADSCALE_API_URL,HEADSCALE_PUBLIC_URL,HEADSCALE_API_KEY,CONTAINERS_SSH_KEY,SANDBOX_REGISTRY_REDIS_URL,DATABASE_URL,SECRETS_MASTER_KEY,ELIZA_AGENT_IMAGE,WARM_POOL_ENABLED,ELIZA_CLOUD_AGENT_BASE_DOMAIN,AGENT_ROUTER_PUBLIC_HOST,LEGACY_AGENT_ROUTER_PUBLIC_HOST
+          envs: DEPLOY_BRANCH,DEPLOY_SHA,SYSTEMD_UNIT,BACKUP_SYSTEMD_UNIT,SYSTEMD_ENVIRONMENT_HELPER_SHA256,BACKUP_SYSTEMD_UNIT_SHA256,HEADSCALE_API_URL,HEADSCALE_PUBLIC_URL,HEADSCALE_API_KEY,CONTAINERS_SSH_KEY,SANDBOX_REGISTRY_REDIS_URL,DATABASE_URL,DATABASE_SSL_NO_VERIFY,SECRETS_MASTER_KEY,ELIZA_AGENT_IMAGE,WARM_POOL_ENABLED,ELIZA_CLOUD_AGENT_BASE_DOMAIN,AGENT_ROUTER_PUBLIC_HOST,LEGACY_AGENT_ROUTER_PUBLIC_HOST,AGENT_BACKUP_CATALOG_WORKER_ID,AGENT_BACKUP_R2_ENDPOINT_ALIAS,AGENT_BACKUP_R2_ACCOUNT_ID,AGENT_BACKUP_R2_ENDPOINT,AGENT_BACKUP_R2_BUCKET,AGENT_BACKUP_R2_REGION,AGENT_BACKUP_HETZNER_ENDPOINT_ALIAS,AGENT_BACKUP_HETZNER_ACCOUNT_ID,AGENT_BACKUP_HETZNER_ENDPOINT,AGENT_BACKUP_HETZNER_BUCKET,AGENT_BACKUP_HETZNER_REGION,AGENT_BACKUP_STEWARD_KMS_BASE_URL,AGENT_BACKUP_AGENT_SCHEMA_VERSION,AGENT_BACKUP_DATABASE_SCHEMA_VERSION,AGENT_BACKUP_RUNTIME_PLUGINS_JSON,AGENT_BACKUP_LEGACY_WRITER_DRAIN_DEPLOYMENT_ID,AGENT_BACKUP_LEGACY_WRITER_DRAINED_AT,AGENT_BACKUP_STORAGE_SCOPE,AGENT_BACKUP_SPOOL_MAX_BYTES,AGENT_BACKUP_SPOOL_MIN_FREE_BYTES,AGENT_BACKUP_SPOOL_CLEANUP_BATCH_SIZE,AGENT_BACKUP_CAPTURE_DEADLINE_MS,AGENT_BACKUP_OBJECT_TRANSFER_DEADLINE_MS,AGENT_BACKUP_SCHEDULE_BATCH_SIZE,AGENT_BACKUP_SCHEDULE_LEASE_MS,AGENT_BACKUP_SCHEDULE_RETRY_MS,AGENT_BACKUP_OPERATION_BATCH_SIZE,AGENT_BACKUP_OPERATION_LEASE_MS,AGENT_BACKUP_OPERATION_RETRY_BASE_MS,AGENT_BACKUP_OPERATION_RETRY_MAX_MS,AGENT_BACKUP_GC_BATCH_SIZE,AGENT_BACKUP_GC_LEASE_MS,AGENT_BACKUP_GC_RETRY_BASE_MS,AGENT_BACKUP_GC_RETRY_MAX_MS,AGENT_BACKUP_DELETION_BATCH_SIZE,AGENT_BACKUP_CATALOG_WORKER_INTERVAL_MS,AGENT_BACKUP_CATALOG_WORKER_RETRY_MS,AGENT_BACKUP_CATALOG_WORKER_SHUTDOWN_TIMEOUT_MS
           script: |
             set -euo pipefail
 
@@ -504,6 +564,113 @@ jobs:
             # installs are lockfile-pinned and deterministic.
             git checkout "$DEPLOY_SHA" -- bun.lock
 
+            # Root must never execute a helper from the deploy-writable checkout.
+            # The runner hashed both privileged artifacts from the already
+            # verified immutable checkout. Copy through a root-only candidate,
+            # verify that candidate, atomically rename it inside the same
+            # root-owned directory, then verify the installed destination again.
+            # TEST-ANCHOR: root-artifact-installer-begin
+            install_root_verified_file() {
+              local source_path="$1"
+              local destination_path="$2"
+              local expected_sha256="$3"
+              local install_mode="$4"
+              local destination_directory="${destination_path%/*}"
+              local destination_name="${destination_path##*/}"
+              local expected_stat_mode="${install_mode#0}"
+              local candidate_path="${destination_directory}/.${destination_name}.candidate.${DEPLOY_SHA}.$$"
+              local digest_output=""
+              local actual_sha256=""
+              local actual_stat=""
+
+              if [[ ! "$expected_sha256" =~ ^[0-9a-f]{64}$ ]]; then
+                echo "::error::Refusing a root artifact without an exact-SHA digest"
+                return 1
+              fi
+              case "$install_mode" in
+                0555|0644) ;;
+                *)
+                  echo "::error::Refusing an unsupported root artifact mode"
+                  return 1
+                  ;;
+              esac
+
+              if ! digest_output=$(/usr/bin/sha256sum -- "$source_path"); then
+                echo "::error::Could not hash a root artifact source"
+                return 1
+              fi
+              actual_sha256="${digest_output%% *}"
+              if [ "$actual_sha256" != "$expected_sha256" ]; then
+                echo "::error::Root artifact source differs from the exact checkout"
+                return 1
+              fi
+
+              if ! sudo /usr/bin/install -d -o root -g root -m 0755 \
+                "$destination_directory"; then
+                echo "::error::Could not prepare the root artifact directory"
+                return 1
+              fi
+              actual_stat=$(sudo /usr/bin/stat -c '%U:%G:%a' \
+                "$destination_directory") || return 1
+              if [ "$actual_stat" != "root:root:755" ]; then
+                echo "::error::Root artifact directory ownership or mode is invalid"
+                return 1
+              fi
+
+              if ! sudo /usr/bin/install -o root -g root -m "$install_mode" -- \
+                "$source_path" "$candidate_path"; then
+                echo "::error::Could not stage a root artifact candidate"
+                return 1
+              fi
+              if ! digest_output=$(sudo /usr/bin/sha256sum -- "$candidate_path"); then
+                sudo /usr/bin/rm -f -- "$candidate_path" || true
+                echo "::error::Could not hash a root artifact candidate"
+                return 1
+              fi
+              actual_sha256="${digest_output%% *}"
+              actual_stat=$(sudo /usr/bin/stat -c '%U:%G:%a' \
+                "$candidate_path") || {
+                sudo /usr/bin/rm -f -- "$candidate_path" || true
+                return 1
+              }
+              if [ "$actual_sha256" != "$expected_sha256" ] \
+                || [ "$actual_stat" != "root:root:$expected_stat_mode" ]; then
+                sudo /usr/bin/rm -f -- "$candidate_path" || true
+                echo "::error::Root artifact candidate failed integrity checks"
+                return 1
+              fi
+
+              if ! sudo /usr/bin/mv -fT -- "$candidate_path" "$destination_path"; then
+                sudo /usr/bin/rm -f -- "$candidate_path" || true
+                echo "::error::Could not atomically install a root artifact"
+                return 1
+              fi
+              digest_output=$(sudo /usr/bin/sha256sum -- "$destination_path") \
+                || return 1
+              actual_sha256="${digest_output%% *}"
+              actual_stat=$(sudo /usr/bin/stat -c '%U:%G:%a' \
+                "$destination_path") || return 1
+              if [ "$actual_sha256" != "$expected_sha256" ] \
+                || [ "$actual_stat" != "root:root:$expected_stat_mode" ]; then
+                echo "::error::Installed root artifact failed integrity checks"
+                return 1
+              fi
+            }
+            # TEST-ANCHOR: root-artifact-installer-end
+
+            NODE_BIN=/usr/bin/node
+            if [ ! -x "$NODE_BIN" ] || [[ "$("$NODE_BIN" --version)" != v24.* ]]; then
+              echo "::error::The canonical root-owned Node 24 binary is unavailable"
+              exit 1
+            fi
+            ENV_SERIALIZER_SOURCE=/opt/eliza/packages/cloud/scripts/admin/systemd-environment-line.mjs
+            ENV_SERIALIZER=/usr/local/lib/eliza-admin/systemd-environment-line.mjs
+            install_root_verified_file \
+              "$ENV_SERIALIZER_SOURCE" \
+              "$ENV_SERIALIZER" \
+              "$SYSTEMD_ENVIRONMENT_HELPER_SHA256" \
+              0555
+
             # git clean removes these intentionally ignored modules. Generate
             # and assert them before install/build, while the healthy daemons
             # are still running, so generator failure cannot cause downtime.
@@ -554,16 +721,6 @@ jobs:
             mkdir -p node_modules/@elizaos
             ln -sfn ../../packages/cloud/shared node_modules/@elizaos/cloud-shared
 
-            # Install/refresh both systemd units (provisioning worker + agent router).
-            sudo install -m 0644 \
-              packages/cloud/scripts/admin/eliza-provisioning-worker.service \
-              "/etc/systemd/system/$SYSTEMD_UNIT"
-            sudo install -m 0644 \
-              packages/cloud/scripts/admin/eliza-agent-router.service \
-              /etc/systemd/system/eliza-agent-router.service
-            sudo systemctl daemon-reload
-            sudo systemctl enable "$SYSTEMD_UNIT" eliza-agent-router.service
-
             # Reconcile control-plane secrets (HEADSCALE_API_URL /
             # HEADSCALE_PUBLIC_URL / HEADSCALE_API_KEY /
             # SANDBOX_REGISTRY_REDIS_URL / DATABASE_URL / SECRETS_MASTER_KEY)
@@ -585,7 +742,65 @@ jobs:
             # docker-sandbox-provider throw "HEADSCALE_API_KEY is not
             # configured" when a route is required).
             ENV_FILE=/opt/eliza/cloud/.env.local
-            sudo touch "$ENV_FILE"
+            BACKUP_ENV_FILE=/etc/eliza/backup-catalog-worker.env
+            BUN_BIN=$(command -v bun)
+            SAFE_CHILD_PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/bin
+            # TEST-ANCHOR: atomic-environment-reconcile-begin
+            RECONCILE_PLAN_DIR=$(mktemp -d)
+            chmod 700 "$RECONCILE_PLAN_DIR"
+            ENV_REPLACEMENTS="$RECONCILE_PLAN_DIR/host-replacements"
+            ENV_ASSIGNMENTS="$RECONCILE_PLAN_DIR/host-assignments"
+            BACKUP_REPLACEMENTS="$RECONCILE_PLAN_DIR/backup-replacements"
+            BACKUP_ASSIGNMENTS="$RECONCILE_PLAN_DIR/backup-assignments"
+            : > "$ENV_REPLACEMENTS"
+            : > "$ENV_ASSIGNMENTS"
+            : > "$BACKUP_REPLACEMENTS"
+            : > "$BACKUP_ASSIGNMENTS"
+            chmod 600 \
+              "$ENV_REPLACEMENTS" \
+              "$ENV_ASSIGNMENTS" \
+              "$BACKUP_REPLACEMENTS" \
+              "$BACKUP_ASSIGNMENTS"
+            trap 'rm -rf -- "$RECONCILE_PLAN_DIR"' EXIT
+
+            run_environment_helper() {
+              /usr/bin/env -i PATH="$SAFE_CHILD_PATH" \
+                "$NODE_BIN" "$ENV_SERIALIZER" "$@"
+            }
+
+            append_environment_setting() {
+              local names_file="$1"
+              local assignments_file="$2"
+              local key="$3"
+              local value="$4"
+              printf '%s\n' "$key" >> "$names_file"
+              # The value crosses the external-process boundary only on stdin.
+              # argv and rejection diagnostics contain the non-secret key only.
+              printf '%s' "$value" \
+                | run_environment_helper serialize "$key" \
+                >> "$assignments_file"
+            }
+
+            remove_environment_setting() {
+              printf '%s\n' "$2" >> "$1"
+            }
+
+            require_environment_settings() {
+              local file="$1"
+              shift
+              sudo /usr/bin/env -i PATH="$SAFE_CHILD_PATH" \
+                "$NODE_BIN" "$ENV_SERIALIZER" nonempty "$file" "$@"
+            }
+
+            require_environment_setting_equals() {
+              local file="$1"
+              local key="$2"
+              local expected="$3"
+              printf '%s' "$expected" \
+                | sudo /usr/bin/env -i PATH="$SAFE_CHILD_PATH" \
+                    "$NODE_BIN" "$ENV_SERIALIZER" equals "$file" "$key"
+            }
+
             # Pin this control-plane daemon to the AGENT lane. Unset, a single
             # daemon claims ALL job types (agent + apps); it would claim
             # APP_DEPLOY / CONTAINER_* jobs it can't run (no apps backend wired
@@ -595,13 +810,89 @@ jobs:
             # every deploy (same mechanism as the HEADSCALE_* keys below). This
             # value is constant — not a GH var — so it's reconciled directly,
             # never blanked.
-            sudo sed -i "/^PROVISIONING_JOB_LANES=/d" "$ENV_FILE"
-            printf 'PROVISIONING_JOB_LANES=%s\n' "agent" | sudo tee -a "$ENV_FILE" >/dev/null
+            append_environment_setting \
+              "$ENV_REPLACEMENTS" "$ENV_ASSIGNMENTS" \
+              PROVISIONING_JOB_LANES agent
             # Headscale is the required dedicated-agent ingress. Bridge-host
             # fallback was a legacy escape hatch; if it remains hand-set on the
             # box, docker-sandbox-provider deliberately disables VPN injection
             # and fresh staging agents never receive a headscale_ip (#15347).
-            sudo sed -i "/^AGENT_ROUTER_ALLOW_BRIDGE_HOST_FALLBACK=/d" "$ENV_FILE"
+            remove_environment_setting \
+              "$ENV_REPLACEMENTS" AGENT_ROUTER_ALLOW_BRIDGE_HOST_FALLBACK
+            # The manifest-v3 catalogue ships dormant. Remove stale host edits
+            # and append the two gates exactly once. Its systemd unit reads only
+            # the dedicated allowlisted file assembled below.
+            BACKUP_CATALOG_RUNTIME_GATE=0
+            BACKUP_RPO_SCHEDULER_GATE=0
+            BACKUP_SPOOL_STATE_DIRECTORY=/var/lib/eliza-backup-catalog/spool
+            BACKUP_WORKER_HEALTH_FILE=/run/eliza-backup-catalog/health.json
+            BACKUP_WORKER_INTERVAL_MS="${AGENT_BACKUP_CATALOG_WORKER_INTERVAL_MS:-60000}"
+            BACKUP_WORKER_RETRY_MS="${AGENT_BACKUP_CATALOG_WORKER_RETRY_MS:-5000}"
+            BACKUP_WORKER_SHUTDOWN_TIMEOUT_MS="${AGENT_BACKUP_CATALOG_WORKER_SHUTDOWN_TIMEOUT_MS:-25000}"
+            append_environment_setting \
+              "$ENV_REPLACEMENTS" "$ENV_ASSIGNMENTS" \
+              AGENT_BACKUP_CATALOG_RUNTIME_ENABLED "$BACKUP_CATALOG_RUNTIME_GATE"
+            append_environment_setting \
+              "$ENV_REPLACEMENTS" "$ENV_ASSIGNMENTS" \
+              AGENT_BACKUP_RPO_SCHEDULER_ENABLED "$BACKUP_RPO_SCHEDULER_GATE"
+            append_environment_setting \
+              "$ENV_REPLACEMENTS" "$ENV_ASSIGNMENTS" \
+              AGENT_BACKUP_SPOOL_STATE_DIRECTORY "$BACKUP_SPOOL_STATE_DIRECTORY"
+            append_environment_setting \
+              "$ENV_REPLACEMENTS" "$ENV_ASSIGNMENTS" \
+              AGENT_BACKUP_CATALOG_WORKER_HEALTH_FILE "$BACKUP_WORKER_HEALTH_FILE"
+            # The provisioning worker and router still consume the shared file.
+            # Delete every known backup-only authority/configuration left by an
+            # older deployment so those processes inherit only the four inert
+            # compatibility settings above. Names, never values, enter this plan.
+            shared_backup_only_names=(
+              AGENT_BACKUP_CATALOG_WORKER_ID
+              AGENT_BACKUP_R2_ENDPOINT_ALIAS
+              AGENT_BACKUP_R2_ACCOUNT_ID
+              AGENT_BACKUP_R2_ENDPOINT
+              AGENT_BACKUP_R2_BUCKET
+              AGENT_BACKUP_R2_REGION
+              AGENT_BACKUP_R2_ACCESS_KEY_ID
+              AGENT_BACKUP_R2_SECRET_ACCESS_KEY
+              AGENT_BACKUP_HETZNER_ENDPOINT_ALIAS
+              AGENT_BACKUP_HETZNER_ACCOUNT_ID
+              AGENT_BACKUP_HETZNER_ENDPOINT
+              AGENT_BACKUP_HETZNER_BUCKET
+              AGENT_BACKUP_HETZNER_REGION
+              AGENT_BACKUP_HETZNER_ACCESS_KEY_ID
+              AGENT_BACKUP_HETZNER_SECRET_ACCESS_KEY
+              AGENT_BACKUP_STEWARD_KMS_BASE_URL
+              AGENT_BACKUP_STEWARD_KMS_TOKEN
+              AGENT_BACKUP_AGENT_SCHEMA_VERSION
+              AGENT_BACKUP_DATABASE_SCHEMA_VERSION
+              AGENT_BACKUP_RUNTIME_PLUGINS_JSON
+              AGENT_BACKUP_LEGACY_WRITER_DRAIN_DEPLOYMENT_ID
+              AGENT_BACKUP_LEGACY_WRITER_DRAINED_AT
+              AGENT_BACKUP_STORAGE_SCOPE
+              AGENT_BACKUP_SPOOL_MAX_BYTES
+              AGENT_BACKUP_SPOOL_MIN_FREE_BYTES
+              AGENT_BACKUP_SPOOL_CLEANUP_BATCH_SIZE
+              AGENT_BACKUP_CAPTURE_DEADLINE_MS
+              AGENT_BACKUP_OBJECT_TRANSFER_DEADLINE_MS
+              AGENT_BACKUP_SCHEDULE_BATCH_SIZE
+              AGENT_BACKUP_SCHEDULE_LEASE_MS
+              AGENT_BACKUP_SCHEDULE_RETRY_MS
+              AGENT_BACKUP_OPERATION_BATCH_SIZE
+              AGENT_BACKUP_OPERATION_LEASE_MS
+              AGENT_BACKUP_OPERATION_RETRY_BASE_MS
+              AGENT_BACKUP_OPERATION_RETRY_MAX_MS
+              AGENT_BACKUP_GC_BATCH_SIZE
+              AGENT_BACKUP_GC_LEASE_MS
+              AGENT_BACKUP_GC_RETRY_BASE_MS
+              AGENT_BACKUP_GC_RETRY_MAX_MS
+              AGENT_BACKUP_DELETION_BATCH_SIZE
+              AGENT_BACKUP_CATALOG_WORKER_INTERVAL_MS
+              AGENT_BACKUP_CATALOG_WORKER_RETRY_MS
+              AGENT_BACKUP_CATALOG_WORKER_SHUTDOWN_TIMEOUT_MS
+            )
+            for name in "${shared_backup_only_names[@]}"; do
+              remove_environment_setting "$ENV_REPLACEMENTS" "$name"
+            done
             for kv in \
               "HEADSCALE_API_URL=$HEADSCALE_API_URL" \
               "HEADSCALE_PUBLIC_URL=$HEADSCALE_PUBLIC_URL" \
@@ -612,14 +903,194 @@ jobs:
               "SECRETS_MASTER_KEY=$SECRETS_MASTER_KEY" \
               "ELIZA_AGENT_IMAGE=$ELIZA_AGENT_IMAGE" \
               "WARM_POOL_ENABLED=$WARM_POOL_ENABLED" \
-              "ELIZA_CLOUD_AGENT_BASE_DOMAIN=$ELIZA_CLOUD_AGENT_BASE_DOMAIN"; do
+              "ELIZA_CLOUD_AGENT_BASE_DOMAIN=$ELIZA_CLOUD_AGENT_BASE_DOMAIN" \
+              "DATABASE_SSL_NO_VERIFY=$DATABASE_SSL_NO_VERIFY"; do
               key="${kv%%=*}"
               val="${kv#*=}"
               [ -n "$val" ] || continue
-              sudo sed -i "/^${key}=/d" "$ENV_FILE"
-              printf '%s=%s\n' "$key" "$val" | sudo tee -a "$ENV_FILE" >/dev/null
+              case "$val" in
+                *$'\n'*|*$'\r'*)
+                  echo "::error::Refusing multiline setting for $key"
+                  exit 1
+                  ;;
+              esac
+              append_environment_setting \
+                "$ENV_REPLACEMENTS" "$ENV_ASSIGNMENTS" "$key" "$val"
             done
-            sudo chmod 600 "$ENV_FILE"
+
+            # The backup daemon receives a separate exact allowlist. While the
+            # merge-time gates remain hardcoded off, this plan contains only
+            # gates, cadence, spool, and health paths: no database, encryption,
+            # provider, KMS, SSH, Headscale, or registry authority can leak in
+            # from the shared host file or a stale previous deployment.
+            append_environment_setting \
+              "$BACKUP_REPLACEMENTS" "$BACKUP_ASSIGNMENTS" \
+              AGENT_BACKUP_CATALOG_RUNTIME_ENABLED "$BACKUP_CATALOG_RUNTIME_GATE"
+            append_environment_setting \
+              "$BACKUP_REPLACEMENTS" "$BACKUP_ASSIGNMENTS" \
+              AGENT_BACKUP_RPO_SCHEDULER_ENABLED "$BACKUP_RPO_SCHEDULER_GATE"
+            append_environment_setting \
+              "$BACKUP_REPLACEMENTS" "$BACKUP_ASSIGNMENTS" \
+              AGENT_BACKUP_CATALOG_WORKER_INTERVAL_MS "$BACKUP_WORKER_INTERVAL_MS"
+            append_environment_setting \
+              "$BACKUP_REPLACEMENTS" "$BACKUP_ASSIGNMENTS" \
+              AGENT_BACKUP_CATALOG_WORKER_RETRY_MS "$BACKUP_WORKER_RETRY_MS"
+            append_environment_setting \
+              "$BACKUP_REPLACEMENTS" "$BACKUP_ASSIGNMENTS" \
+              AGENT_BACKUP_CATALOG_WORKER_SHUTDOWN_TIMEOUT_MS "$BACKUP_WORKER_SHUTDOWN_TIMEOUT_MS"
+            append_environment_setting \
+              "$BACKUP_REPLACEMENTS" "$BACKUP_ASSIGNMENTS" \
+              AGENT_BACKUP_SPOOL_STATE_DIRECTORY "$BACKUP_SPOOL_STATE_DIRECTORY"
+            append_environment_setting \
+              "$BACKUP_REPLACEMENTS" "$BACKUP_ASSIGNMENTS" \
+              AGENT_BACKUP_CATALOG_WORKER_HEALTH_FILE "$BACKUP_WORKER_HEALTH_FILE"
+
+            # Activation remains impossible in this changeset because both gate
+            # variables above are literal zero. Gate 1 stays blocked until the
+            # backup worker has a separate trust domain (an identity without
+            # deploy's sudo/docker authority, or a dedicated host) plus verified
+            # artifact integrity. Only then may a separately reviewed activation
+            # populate this explicit protected authority allowlist.
+            if [ "$BACKUP_CATALOG_RUNTIME_GATE" = "1" ]; then
+              enabled_backup_names=(
+                DATABASE_URL
+                SECRETS_MASTER_KEY
+                AGENT_BACKUP_CATALOG_WORKER_ID
+                AGENT_BACKUP_R2_ENDPOINT_ALIAS
+                AGENT_BACKUP_R2_ACCOUNT_ID
+                AGENT_BACKUP_R2_ENDPOINT
+                AGENT_BACKUP_R2_BUCKET
+                AGENT_BACKUP_R2_REGION
+                AGENT_BACKUP_R2_ACCESS_KEY_ID
+                AGENT_BACKUP_R2_SECRET_ACCESS_KEY
+                AGENT_BACKUP_HETZNER_ENDPOINT_ALIAS
+                AGENT_BACKUP_HETZNER_ACCOUNT_ID
+                AGENT_BACKUP_HETZNER_ENDPOINT
+                AGENT_BACKUP_HETZNER_BUCKET
+                AGENT_BACKUP_HETZNER_REGION
+                AGENT_BACKUP_HETZNER_ACCESS_KEY_ID
+                AGENT_BACKUP_HETZNER_SECRET_ACCESS_KEY
+                AGENT_BACKUP_STEWARD_KMS_BASE_URL
+                AGENT_BACKUP_STEWARD_KMS_TOKEN
+                AGENT_BACKUP_AGENT_SCHEMA_VERSION
+                AGENT_BACKUP_DATABASE_SCHEMA_VERSION
+                AGENT_BACKUP_RUNTIME_PLUGINS_JSON
+                AGENT_BACKUP_LEGACY_WRITER_DRAIN_DEPLOYMENT_ID
+                AGENT_BACKUP_LEGACY_WRITER_DRAINED_AT
+                AGENT_BACKUP_STORAGE_SCOPE
+                AGENT_BACKUP_SPOOL_MAX_BYTES
+                AGENT_BACKUP_SPOOL_MIN_FREE_BYTES
+                AGENT_BACKUP_SPOOL_CLEANUP_BATCH_SIZE
+                AGENT_BACKUP_CAPTURE_DEADLINE_MS
+                AGENT_BACKUP_OBJECT_TRANSFER_DEADLINE_MS
+              )
+              for name in "${enabled_backup_names[@]}"; do
+                val="${!name-}"
+                if [ -z "$val" ]; then
+                  echo "::error::Backup catalogue activation input is missing required protected setting name: $name"
+                  exit 1
+                fi
+                append_environment_setting \
+                  "$BACKUP_REPLACEMENTS" "$BACKUP_ASSIGNMENTS" "$name" "$val"
+                unset val
+              done
+              optional_enabled_backup_names=(
+                DATABASE_SSL_NO_VERIFY
+                AGENT_BACKUP_SCHEDULE_BATCH_SIZE
+                AGENT_BACKUP_SCHEDULE_LEASE_MS
+                AGENT_BACKUP_SCHEDULE_RETRY_MS
+                AGENT_BACKUP_OPERATION_BATCH_SIZE
+                AGENT_BACKUP_OPERATION_LEASE_MS
+                AGENT_BACKUP_OPERATION_RETRY_BASE_MS
+                AGENT_BACKUP_OPERATION_RETRY_MAX_MS
+                AGENT_BACKUP_GC_BATCH_SIZE
+                AGENT_BACKUP_GC_LEASE_MS
+                AGENT_BACKUP_GC_RETRY_BASE_MS
+                AGENT_BACKUP_GC_RETRY_MAX_MS
+                AGENT_BACKUP_DELETION_BATCH_SIZE
+              )
+              for name in "${optional_enabled_backup_names[@]}"; do
+                val="${!name-}"
+                [ -n "$val" ] || continue
+                append_environment_setting \
+                  "$BACKUP_REPLACEMENTS" "$BACKUP_ASSIGNMENTS" "$name" "$val"
+                unset val
+              done
+            fi
+
+            # An EnvironmentFile replacement cannot revoke authority already in
+            # a running process. Disable and stop any previously installed unit
+            # before even renaming the dedicated safe-off file. An interrupted
+            # deployment therefore cannot leave that old process enabled with
+            # its former environment. The verified unit is re-enabled only at
+            # the final unit-install boundary below.
+            BACKUP_OLD_LOAD_STATE=$(sudo systemctl show "$BACKUP_SYSTEMD_UNIT" \
+              --property=LoadState --value 2>/dev/null || true)
+            if [ "$BACKUP_OLD_LOAD_STATE" != "not-found" ]; then
+              if [ -z "$BACKUP_OLD_LOAD_STATE" ]; then
+                echo "::error::Could not determine the previous backup catalogue unit state"
+                exit 1
+              fi
+              if ! sudo systemctl disable --now "$BACKUP_SYSTEMD_UNIT"; then
+                # Reach and verify the same closed postcondition even when an
+                # older unit's graceful stop fails. No fallback result is trusted.
+                sudo systemctl kill --kill-whom=all --signal=KILL "$BACKUP_SYSTEMD_UNIT" || true
+                sudo systemctl stop --no-block "$BACKUP_SYSTEMD_UNIT" || true
+                sudo systemctl disable "$BACKUP_SYSTEMD_UNIT" || true
+              fi
+              BACKUP_OLD_ACTIVE_STATE=""
+              BACKUP_OLD_MAIN_PID=""
+              for _ in $(seq 1 50); do
+                BACKUP_OLD_ACTIVE_STATE=$(sudo systemctl show "$BACKUP_SYSTEMD_UNIT" \
+                  --property=ActiveState --value)
+                BACKUP_OLD_MAIN_PID=$(sudo systemctl show "$BACKUP_SYSTEMD_UNIT" \
+                  --property=MainPID --value)
+                if { [ "$BACKUP_OLD_ACTIVE_STATE" = "inactive" ] || [ "$BACKUP_OLD_ACTIVE_STATE" = "failed" ]; } \
+                  && [ "$BACKUP_OLD_MAIN_PID" = "0" ]; then
+                  break
+                fi
+                sleep 0.1
+              done
+              if { [ "$BACKUP_OLD_ACTIVE_STATE" != "inactive" ] && [ "$BACKUP_OLD_ACTIVE_STATE" != "failed" ]; } \
+                || [ "$BACKUP_OLD_MAIN_PID" != "0" ]; then
+                echo "::error::Previous backup catalogue process remained live after the safe-off stop boundary"
+                exit 1
+              fi
+              BACKUP_OLD_ENABLE_STATE=$(sudo systemctl is-enabled "$BACKUP_SYSTEMD_UNIT" 2>/dev/null || true)
+              if [ "$BACKUP_OLD_ENABLE_STATE" != "disabled" ]; then
+                echo "::error::Previous backup catalogue unit did not reach the disabled safe-off boundary"
+                exit 1
+              fi
+            fi
+
+            # Install the exact safe-off allowlist only after the old process is
+            # disabled and gone. Helpers run with an empty inherited environment;
+            # the plan files are the only input to the root process.
+            sudo install -d -o root -g root -m 0755 "$(dirname "$BACKUP_ENV_FILE")"
+            sudo flock -w 120 "$BACKUP_ENV_FILE.lock" \
+              /usr/bin/env -i PATH="$SAFE_CHILD_PATH" \
+              "$NODE_BIN" "$ENV_SERIALIZER" install \
+              "$BACKUP_ENV_FILE" "$BACKUP_REPLACEMENTS" "$BACKUP_ASSIGNMENTS"
+            if [ "$(sudo stat -c '%U:%G:%a' "$BACKUP_ENV_FILE")" != "root:root:600" ]; then
+              echo "::error::Dedicated backup catalogue EnvironmentFile ownership or mode is invalid"
+              exit 1
+            fi
+            require_environment_setting_equals \
+              "$BACKUP_ENV_FILE" AGENT_BACKUP_CATALOG_RUNTIME_ENABLED 0
+            require_environment_setting_equals \
+              "$BACKUP_ENV_FILE" AGENT_BACKUP_RPO_SCHEDULER_ENABLED 0
+
+            # The shared file is reconciled only after the dormant worker has
+            # been forced safe-off. Optimistic snapshot verification also
+            # detects writers that do not cooperate with this lock and retries
+            # from their latest contents instead of losing their update.
+            sudo flock -w 120 "$ENV_FILE.lock" \
+              /usr/bin/env -i PATH="$SAFE_CHILD_PATH" \
+              "$NODE_BIN" "$ENV_SERIALIZER" reconcile \
+              "$ENV_FILE" "$ENV_REPLACEMENTS" "$ENV_ASSIGNMENTS"
+            # TEST-ANCHOR: atomic-environment-reconcile-end
+            rm -rf -- "$RECONCILE_PLAN_DIR"
+            trap - EXIT
 
             # Some live secrets predate GitHub environment inventory and cannot
             # be recovered from Cloudflare. Empty CI values deliberately preserve
@@ -636,15 +1107,7 @@ jobs:
             )
             missing_host_settings=()
             for name in "${required_host_settings[@]}"; do
-              if ! sudo awk -F= -v required_name="$name" '
-                $1 == required_name {
-                  sub(/^[^=]*=/, "")
-                  value = $0
-                  gsub(/[[:space:]]/, "", value)
-                  if (length(value) > 0) found = 1
-                }
-                END { exit found ? 0 : 1 }
-              ' "$ENV_FILE"; then
+              if ! require_environment_settings "$ENV_FILE" "$name"; then
                 missing_host_settings+=("$name")
               fi
             done
@@ -654,34 +1117,230 @@ jobs:
             fi
             echo "Verified required provisioning-host setting names; values were not printed."
 
+            # Verify the dormant gate contract without disclosing the file. If
+            # a future reviewed change enables the runtime, this same block
+            # immediately promotes every production-composition name to a
+            # required preflight input.
+            for gate_name in AGENT_BACKUP_CATALOG_RUNTIME_ENABLED AGENT_BACKUP_RPO_SCHEDULER_ENABLED; do
+              if ! require_environment_setting_equals "$ENV_FILE" "$gate_name" 0; then
+                echo "::error::Backup catalogue merge-time gate contract is invalid for $gate_name"
+                exit 1
+              fi
+              if ! require_environment_setting_equals "$BACKUP_ENV_FILE" "$gate_name" 0; then
+                echo "::error::Dedicated backup catalogue gate contract is invalid for $gate_name"
+                exit 1
+              fi
+            done
+            if [ "$(sudo stat -c '%U:%G:%a' "$BACKUP_ENV_FILE")" != "root:root:600" ]; then
+              echo "::error::Dedicated backup catalogue EnvironmentFile ownership or mode is invalid"
+              exit 1
+            fi
+            BACKUP_GATE="$BACKUP_CATALOG_RUNTIME_GATE"
+            if [ "$BACKUP_GATE" = "1" ]; then
+              required_backup_settings=(
+                DATABASE_URL
+                SECRETS_MASTER_KEY
+                AGENT_BACKUP_CATALOG_WORKER_ID
+                AGENT_BACKUP_R2_ENDPOINT_ALIAS
+                AGENT_BACKUP_R2_ACCOUNT_ID
+                AGENT_BACKUP_R2_ENDPOINT
+                AGENT_BACKUP_R2_BUCKET
+                AGENT_BACKUP_R2_REGION
+                AGENT_BACKUP_R2_ACCESS_KEY_ID
+                AGENT_BACKUP_R2_SECRET_ACCESS_KEY
+                AGENT_BACKUP_HETZNER_ENDPOINT_ALIAS
+                AGENT_BACKUP_HETZNER_ACCOUNT_ID
+                AGENT_BACKUP_HETZNER_ENDPOINT
+                AGENT_BACKUP_HETZNER_BUCKET
+                AGENT_BACKUP_HETZNER_REGION
+                AGENT_BACKUP_HETZNER_ACCESS_KEY_ID
+                AGENT_BACKUP_HETZNER_SECRET_ACCESS_KEY
+                AGENT_BACKUP_STEWARD_KMS_BASE_URL
+                AGENT_BACKUP_STEWARD_KMS_TOKEN
+                AGENT_BACKUP_AGENT_SCHEMA_VERSION
+                AGENT_BACKUP_DATABASE_SCHEMA_VERSION
+                AGENT_BACKUP_RUNTIME_PLUGINS_JSON
+                AGENT_BACKUP_LEGACY_WRITER_DRAIN_DEPLOYMENT_ID
+                AGENT_BACKUP_LEGACY_WRITER_DRAINED_AT
+                AGENT_BACKUP_STORAGE_SCOPE
+                AGENT_BACKUP_SPOOL_STATE_DIRECTORY
+                AGENT_BACKUP_SPOOL_MAX_BYTES
+                AGENT_BACKUP_SPOOL_MIN_FREE_BYTES
+                AGENT_BACKUP_SPOOL_CLEANUP_BATCH_SIZE
+                AGENT_BACKUP_CAPTURE_DEADLINE_MS
+                AGENT_BACKUP_OBJECT_TRANSFER_DEADLINE_MS
+              )
+              missing_backup_settings=()
+              for name in "${required_backup_settings[@]}"; do
+                if ! require_environment_settings "$BACKUP_ENV_FILE" "$name"; then
+                  missing_backup_settings+=("$name")
+                fi
+              done
+              if [ "${#missing_backup_settings[@]}" -gt 0 ]; then
+                echo "::error::Backup catalogue host is missing required setting name(s): ${missing_backup_settings[*]}"
+                exit 1
+              fi
+            fi
+            echo "Verified disabled backup-catalogue gate and configuration names; values were not printed."
+
+            /usr/bin/env -i \
+              PATH="$SAFE_CHILD_PATH" \
+              HOME=/home/deploy \
+              AGENT_BACKUP_CATALOG_RUNTIME_ENABLED=0 \
+              AGENT_BACKUP_RPO_SCHEDULER_ENABLED=0 \
+              AGENT_BACKUP_SPOOL_STATE_DIRECTORY=/var/lib/eliza-backup-catalog/spool \
+              AGENT_BACKUP_CATALOG_WORKER_HEALTH_FILE=/run/eliza-backup-catalog/health.json \
+              /opt/eliza/node_modules/.bin/tsx \
+              --tsconfig /opt/eliza/packages/cloud/shared/tsconfig.json \
+              packages/cloud/scripts/admin/daemons/backup-catalog-worker-preflight.ts
+
             # This workflow can reach the restart independently of the cloud
             # deploy workflow's migrate-db job. Bind activation to the exact
             # catalog and migration hash instead of assuming another workflow
             # won the race. The bounded preflight leaves the currently healthy
             # daemons running when migration has not completed or drifted.
-            EFFECTIVE_DATABASE_URL="$DATABASE_URL"
-            if [ -z "$EFFECTIVE_DATABASE_URL" ]; then
-              EFFECTIVE_DATABASE_URL=$(sudo awk -F= '
-                $1=="DATABASE_URL" {
-                  sub(/^[^=]*=/, "")
-                  value=$0
-                }
-                END { print value }
-              ' "$ENV_FILE")
-            fi
-            if [ -z "$EFFECTIVE_DATABASE_URL" ]; then
+            if [ -z "$DATABASE_URL" ]; then
               echo "::error::DATABASE_URL is required for the job-interruption schema preflight."
               exit 1
             fi
-            DATABASE_URL="$EFFECTIVE_DATABASE_URL" \
+            /usr/bin/env -i \
+              PATH="$SAFE_CHILD_PATH" \
+              HOME=/home/deploy \
+              DATABASE_URL="$DATABASE_URL" \
+              DATABASE_SSL_NO_VERIFY="$DATABASE_SSL_NO_VERIFY" \
               timeout --foreground --signal=TERM --kill-after=5s 8m \
-              bun --conditions=eliza-source \
+              "$BUN_BIN" --conditions=eliza-source \
               packages/cloud/scripts/admin/preflight-job-execution-interruptions.ts
-            unset EFFECTIVE_DATABASE_URL
 
+            # Prove that the host's real systemd manager consumes this
+            # serializer's EnvironmentFile. The probe contains one public
+            # literal only; no deployment authority is copied into its file,
+            # command line, output, or transient unit. The exact-SHA backup unit
+            # itself is installed and verified from its root-owned destination
+            # at the final disabled-unit boundary below.
+            SYSTEMD_PROBE_DIR=$(mktemp -d)
+            chmod 700 "$SYSTEMD_PROBE_DIR"
+            SYSTEMD_PROBE_SOURCE="$SYSTEMD_PROBE_DIR/environment"
+            SYSTEMD_PROBE_ENV="/run/eliza-backup-environment-probe.$$.env"
+            cleanup_systemd_probe() {
+              sudo rm -f -- "$SYSTEMD_PROBE_ENV"
+              rm -rf -- "$SYSTEMD_PROBE_DIR"
+            }
+            trap cleanup_systemd_probe EXIT
+            printf '%s' expected-safe-literal \
+              | run_environment_helper serialize SYSTEMD_ENVIRONMENT_PROBE \
+              > "$SYSTEMD_PROBE_SOURCE"
+            chmod 600 "$SYSTEMD_PROBE_SOURCE"
+            sudo install -o root -g root -m 0600 \
+              "$SYSTEMD_PROBE_SOURCE" "$SYSTEMD_PROBE_ENV"
+            sudo /usr/bin/env -i PATH="$SAFE_CHILD_PATH" \
+              systemd-run --wait --pipe --quiet --collect \
+              --service-type=oneshot --uid=deploy \
+              --property="EnvironmentFile=$SYSTEMD_PROBE_ENV" \
+              /bin/sh -c '[ "${SYSTEMD_ENVIRONMENT_PROBE:-}" = expected-safe-literal ]'
+            cleanup_systemd_probe
+            trap - EXIT
+
+            # Prove the host manager honors the exact exit-78 restart fence on
+            # a main process. ExecStartPre exits are intentionally absent from
+            # the shipped unit because RestartPreventExitStatus does not cover
+            # them. This public transient probe must execute once and stop.
+            RESTART_PROBE_UNIT="eliza-backup-exit78-probe-${DEPLOY_SHA:0:12}-$$.service"
+            cleanup_restart_probe() {
+              sudo systemctl stop "$RESTART_PROBE_UNIT" >/dev/null 2>&1 || true
+              sudo systemctl reset-failed "$RESTART_PROBE_UNIT" >/dev/null 2>&1 || true
+            }
+            trap cleanup_restart_probe EXIT
+            sudo /usr/bin/env -i PATH="$SAFE_CHILD_PATH" \
+              systemd-run --quiet --unit="$RESTART_PROBE_UNIT" \
+              --property=Restart=always \
+              --property=RestartPreventExitStatus=78 \
+              /bin/sh -c 'exit 78'
+            RESTART_PROBE_STATE=""
+            for _ in $(seq 1 50); do
+              RESTART_PROBE_STATE=$(sudo systemctl show "$RESTART_PROBE_UNIT" \
+                --property=ActiveState --value)
+              if [ "$RESTART_PROBE_STATE" = "failed" ] || [ "$RESTART_PROBE_STATE" = "inactive" ]; then
+                break
+              fi
+              sleep 0.1
+            done
+            RESTART_PROBE_STATUS=$(sudo systemctl show "$RESTART_PROBE_UNIT" \
+              --property=ExecMainStatus --value)
+            RESTART_PROBE_COUNT=$(sudo systemctl show "$RESTART_PROBE_UNIT" \
+              --property=NRestarts --value)
+            if { [ "$RESTART_PROBE_STATE" != "failed" ] && [ "$RESTART_PROBE_STATE" != "inactive" ]; } \
+              || [ "$RESTART_PROBE_STATUS" != "78" ] \
+              || [ "$RESTART_PROBE_COUNT" != "0" ]; then
+              echo "::error::systemd did not honor the backup worker exit-78 restart fence"
+              exit 1
+            fi
+            cleanup_restart_probe
+            trap - EXIT
+
+            # Install units only after both EnvironmentFiles, closed name/value
+            # checks, disabled preflight, database schema preflight, and real
+            # systemd consumption have succeeded. The backup unit is copied,
+            # verified, reloaded, and inspected while it remains disabled.
+            sudo install -m 0644 \
+              packages/cloud/scripts/admin/eliza-provisioning-worker.service \
+              "/etc/systemd/system/$SYSTEMD_UNIT"
+            sudo install -m 0644 \
+              packages/cloud/scripts/admin/eliza-agent-router.service \
+              /etc/systemd/system/eliza-agent-router.service
+            BACKUP_UNIT_SOURCE=/opt/eliza/packages/cloud/scripts/admin/eliza-backup-catalog-worker.service
+            BACKUP_UNIT_DESTINATION="/etc/systemd/system/$BACKUP_SYSTEMD_UNIT"
+            install_root_verified_file \
+              "$BACKUP_UNIT_SOURCE" \
+              "$BACKUP_UNIT_DESTINATION" \
+              "$BACKUP_SYSTEMD_UNIT_SHA256" \
+              0644
+            sudo /usr/bin/env -i PATH="$SAFE_CHILD_PATH" \
+              systemd-analyze verify "$BACKUP_UNIT_DESTINATION"
+            sudo systemctl daemon-reload
+
+            BACKUP_EFFECTIVE_DYNAMIC_USER=$(sudo systemctl show \
+              "$BACKUP_SYSTEMD_UNIT" --property=DynamicUser --value)
+            BACKUP_EFFECTIVE_USER=$(sudo systemctl show \
+              "$BACKUP_SYSTEMD_UNIT" --property=User --value)
+            BACKUP_EFFECTIVE_GROUP=$(sudo systemctl show \
+              "$BACKUP_SYSTEMD_UNIT" --property=Group --value)
+            BACKUP_EFFECTIVE_EXEC_START=$(sudo systemctl show \
+              "$BACKUP_SYSTEMD_UNIT" --property=ExecStart --value)
+            BACKUP_EFFECTIVE_FRAGMENT=$(sudo systemctl show \
+              "$BACKUP_SYSTEMD_UNIT" --property=FragmentPath --value)
+            BACKUP_EFFECTIVE_DROP_INS=$(sudo systemctl show \
+              "$BACKUP_SYSTEMD_UNIT" --property=DropInPaths --value)
+            BACKUP_EFFECTIVE_DIGEST_OUTPUT=$(sudo /usr/bin/sha256sum -- \
+              "$BACKUP_UNIT_DESTINATION")
+            BACKUP_EFFECTIVE_SHA256="${BACKUP_EFFECTIVE_DIGEST_OUTPUT%% *}"
+            BACKUP_EXPECTED_EXECUTABLE=/opt/eliza/node_modules/.bin/tsx
+            BACKUP_EXPECTED_EXEC_START="$BACKUP_EXPECTED_EXECUTABLE --tsconfig /opt/eliza/packages/cloud/shared/tsconfig.json /opt/eliza/packages/cloud/scripts/admin/daemons/backup-catalog-worker.ts"
+            # With DynamicUser=yes and no explicit User=, systemd v255 exposes
+            # the unit-derived dynamic identity through the effective User
+            # property. Require that exact derivation, not an empty value.
+            BACKUP_EXPECTED_DYNAMIC_USER="${BACKUP_SYSTEMD_UNIT%.service}"
+            if [ "$BACKUP_EFFECTIVE_DYNAMIC_USER" != "yes" ] \
+              || [ "$BACKUP_EFFECTIVE_USER" != "$BACKUP_EXPECTED_DYNAMIC_USER" ] \
+              || [ "$BACKUP_EFFECTIVE_GROUP" != "$BACKUP_EXPECTED_DYNAMIC_USER" ] \
+              || [ "$BACKUP_EFFECTIVE_FRAGMENT" != "$BACKUP_UNIT_DESTINATION" ] \
+              || [ -n "$BACKUP_EFFECTIVE_DROP_INS" ] \
+              || [ "$BACKUP_EFFECTIVE_SHA256" != "$BACKUP_SYSTEMD_UNIT_SHA256" ]; then
+              echo "::error::Effective backup systemd identity or fragment integrity is invalid"
+              exit 1
+            fi
+            case "$BACKUP_EFFECTIVE_EXEC_START" in
+              *"path=$BACKUP_EXPECTED_EXECUTABLE ; argv[]=$BACKUP_EXPECTED_EXEC_START ;"*) ;;
+              *)
+                echo "::error::Effective backup systemd ExecStart is invalid"
+                exit 1
+                ;;
+            esac
+            sudo systemctl enable "$SYSTEMD_UNIT" eliza-agent-router.service "$BACKUP_SYSTEMD_UNIT"
             sudo systemctl restart "$SYSTEMD_UNIT"
             sudo systemctl restart eliza-agent-router.service
-            echo "=== Restart issued for both daemons ==="
+            sudo systemctl restart "$BACKUP_SYSTEMD_UNIT"
+            echo "=== Restart issued for provisioning, router, and dormant backup daemons ==="
 
             # The canonical edge origin must terminate in the nginx vhost that
             # proxies the agent-router daemon. Without this alias, nginx
@@ -719,13 +1378,34 @@ jobs:
           username: deploy
           key: ${{ secrets.ELIZA_PROVISIONING_SSH_KEY }}
           command_timeout: 5m
-          envs: SYSTEMD_UNIT,ELIZA_CLOUD_AGENT_BASE_DOMAIN,AGENT_ROUTER_PUBLIC_HOST
+          envs: SYSTEMD_UNIT,BACKUP_SYSTEMD_UNIT,SYSTEMD_ENVIRONMENT_HELPER_SHA256,ELIZA_CLOUD_AGENT_BASE_DOMAIN,AGENT_ROUTER_PUBLIC_HOST
           script: |
             set -euo pipefail
             ENV_FILE=/opt/eliza/cloud/.env.local
-            ACTUAL_AGENT_BASE_DOMAIN=$(sudo awk -F= '$1=="ELIZA_CLOUD_AGENT_BASE_DOMAIN" { value=$2 } END { print value }' "$ENV_FILE")
-            if [ "$ACTUAL_AGENT_BASE_DOMAIN" != "$ELIZA_CLOUD_AGENT_BASE_DOMAIN" ]; then
-              echo "::error::Agent router base-domain drift: expected $ELIZA_CLOUD_AGENT_BASE_DOMAIN, found ${ACTUAL_AGENT_BASE_DOMAIN:-<missing>}."
+            ENV_SERIALIZER=/usr/local/lib/eliza-admin/systemd-environment-line.mjs
+            NODE_BIN=/usr/bin/node
+            SAFE_CHILD_PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/bin
+            if [ ! -x "$NODE_BIN" ] || [[ "$("$NODE_BIN" --version)" != v24.* ]]; then
+              echo "::error::The canonical root-owned Node 24 binary is unavailable"
+              exit 1
+            fi
+            HEALTH_HELPER_DIGEST_OUTPUT=$(sudo /usr/bin/sha256sum -- \
+              "$ENV_SERIALIZER") || {
+              echo "::error::Could not hash the installed EnvironmentFile helper"
+              exit 1
+            }
+            HEALTH_HELPER_SHA256="${HEALTH_HELPER_DIGEST_OUTPUT%% *}"
+            if [[ ! "$SYSTEMD_ENVIRONMENT_HELPER_SHA256" =~ ^[0-9a-f]{64}$ ]] \
+              || [ "$(sudo /usr/bin/stat -c '%U:%G:%a' "$ENV_SERIALIZER")" != "root:root:555" ] \
+              || [ "$HEALTH_HELPER_SHA256" != "$SYSTEMD_ENVIRONMENT_HELPER_SHA256" ]; then
+              echo "::error::Installed EnvironmentFile helper integrity is invalid"
+              exit 1
+            fi
+            if ! printf '%s' "$ELIZA_CLOUD_AGENT_BASE_DOMAIN" \
+              | sudo /usr/bin/env -i PATH="$SAFE_CHILD_PATH" \
+                  "$NODE_BIN" "$ENV_SERIALIZER" equals \
+                  "$ENV_FILE" ELIZA_CLOUD_AGENT_BASE_DOMAIN; then
+              echo "::error::Agent router base-domain drift. Values were not printed."
               exit 1
             fi
             # The worker logs to journald via systemd's stdout/stderr capture.
@@ -734,7 +1414,7 @@ jobs:
             # error / restart-loop in the journal since deploy.
             HEALTH_SINCE_TS="$(date -u '+%Y-%m-%d %H:%M:%S')"
             STABLE_THRESHOLD_SEC=20
-            FATAL_LOG_PATTERN="\[(provisioning-worker|agent-router)\] (fatal|unhandled rejection)|node:internal/.*Error:|Error \[ERR_|^[A-Za-z]+Error:"
+            FATAL_LOG_PATTERN="\[(provisioning-worker|agent-router|backup-catalog-worker)\] (fatal|unhandled rejection)|node:internal/.*Error:|Error \[ERR_|^[A-Za-z]+Error:"
             report_public_route_failure() {
               sudo nginx -t || true
               sudo systemctl status nginx --no-pager || true
@@ -742,11 +1422,35 @@ jobs:
               sudo systemctl status eliza-agent-router.service --no-pager || true
               sudo journalctl -u eliza-agent-router.service --since "$HEALTH_SINCE_TS" -n 200 --no-pager || true
             }
+            validate_disabled_backup_health() {
+              # DynamicUser owns the mode-0700 RuntimeDirectory and mode-0600
+              # snapshot. Validate it as root with a fixed path, bounded bytes,
+              # empty inherited environment, and no stdout value channel.
+              sudo /usr/bin/env -i PATH="$SAFE_CHILD_PATH" "$NODE_BIN" -e '
+                const { readFileSync } = require("node:fs");
+                try {
+                  const bytes = readFileSync("/run/eliza-backup-catalog/health.json");
+                  if (bytes.byteLength === 0 || bytes.byteLength > 65536) process.exit(1);
+                  const raw = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+                  const parsed = JSON.parse(raw);
+                  const valid =
+                    parsed &&
+                    parsed.format === "elizaos.agent-backup.catalog-worker-health.v1" &&
+                    parsed.state === "disabled" &&
+                    parsed.enabled === false;
+                  process.exit(valid ? 0 : 1);
+                } catch {
+                  // error-policy:J1 missing, malformed, or hostile health bytes
+                  // become one closed non-success status without output.
+                  process.exit(1);
+                }
+              '
+            }
             # The router's health contract is a JSON object with boolean
             # ok === true. A substring grep would also accept HTML error
             # pages that merely contain the text, so parse for real.
             validate_public_health_payload() {
-              node -e '
+              /usr/bin/env -i PATH="$SAFE_CHILD_PATH" "$NODE_BIN" -e '
                 let raw = "";
                 process.stdin.on("data", (chunk) => { raw += chunk; });
                 process.stdin.on("end", () => {
@@ -766,6 +1470,22 @@ jobs:
               '
             }
             for attempt in $(seq 1 18); do
+              if ! sudo systemctl is-active --quiet "$BACKUP_SYSTEMD_UNIT"; then
+                echo "Health check attempt $attempt/18: dormant backup worker not active yet."
+                sleep 5
+                continue
+              fi
+              BACKUP_JOURNAL=$(sudo journalctl -u "$BACKUP_SYSTEMD_UNIT" --since "$HEALTH_SINCE_TS" --no-pager 2>/dev/null || true)
+              if echo "$BACKUP_JOURNAL" | grep -qE "$FATAL_LOG_PATTERN"; then
+                echo "::error::Backup catalogue worker logged a fatal error since deploy."
+                echo "$BACKUP_JOURNAL" | tail -n 50
+                exit 1
+              fi
+              if ! validate_disabled_backup_health; then
+                echo "Health check attempt $attempt/18: backup health is unavailable or not the exact disabled contract yet."
+                sleep 5
+                continue
+              fi
               if sudo systemctl is-active --quiet "$SYSTEMD_UNIT"; then
                 JOURNAL=$(sudo journalctl -u "$SYSTEMD_UNIT" --since "$HEALTH_SINCE_TS" --no-pager 2>/dev/null || true)
                 if echo "$JOURNAL" | grep -qE "$FATAL_LOG_PATTERN"; then
@@ -829,7 +1549,7 @@ jobs:
                       report_public_route_failure
                       exit 1
                     fi
-                    echo "Both daemons active and stable (worker ${AGE}s, router ${ROUTER_AGE}s, local and canonical health/readiness OK) on attempt $attempt."
+                    echo "Provisioning/router stable and backup worker disabled/healthy (worker ${AGE}s, router ${ROUTER_AGE}s) on attempt $attempt."
                     exit 0
                   fi
                   echo "Health check attempt $attempt/18: worker stable (${AGE}s), router ${ROUTER_AGE}s but health/readiness not ready on port ${ROUTER_PORT}."
@@ -848,6 +1568,8 @@ jobs:
             sudo journalctl -u "$SYSTEMD_UNIT" -n 200 --no-pager || true
             sudo systemctl status eliza-agent-router.service --no-pager || true
             sudo journalctl -u eliza-agent-router.service -n 200 --no-pager || true
+            sudo systemctl status "$BACKUP_SYSTEMD_UNIT" --no-pager || true
+            sudo journalctl -u "$BACKUP_SYSTEMD_UNIT" -n 200 --no-pager || true
             exit 1
 
       - name: Notify Discord (Success)

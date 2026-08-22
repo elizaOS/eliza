@@ -22,6 +22,7 @@ process.env.SKIP_AGENT_SANDBOX_ENSURE = "1";
 
 import { pushSchema } from "drizzle-kit/api";
 import { eq, sql } from "drizzle-orm";
+import { installAgentNodeOccurrenceTriggerForTests } from "../../agent-node-occurrence-test-support";
 import { closeDatabaseConnectionsForTests, dbWrite } from "../../client";
 import {
   agentBackupCatalogAuthorities,
@@ -203,7 +204,7 @@ function expectCanonicalQuarantineLockOrder(body: string): void {
     ".from(agentBackupRestoreLeases)",
     ".from(agentSandboxes)",
     ".from(dockerNodes)",
-    "proveUnambiguousAgentNodeIncarnationForLockedNode(",
+    "proveExactAgentNodeOccurrenceForLockedNode(",
     "lockAgentBackupCatalogAuthority(",
     "readPostLockDatabaseNow(tx)",
   ];
@@ -255,21 +256,27 @@ async function seedFixture(): Promise<void> {
     steward_user_id: "restore-quarantine-user",
     organization_id: ORG_ID,
   });
-  await dbWrite.insert(dockerNodes).values({
-    id: TARGET_NODE_RECORD_ID,
-    node_id: "restore-target",
-    hostname: "restore-target.invalid",
-    capacity: 2,
-    allocated_count: 0,
-    enabled: true,
-    placement_state: "open",
-    status: "healthy",
-    host_key_fingerprint: "SHA256:test-only-target",
-    fleet_kind: "robot",
-    infrastructure_provider: "hetzner",
-    provider_server_id: null,
-    node_incarnation: TARGET_NODE_INCARNATION,
-  });
+  const [targetNode] = await dbWrite
+    .insert(dockerNodes)
+    .values({
+      id: TARGET_NODE_RECORD_ID,
+      node_id: "restore-target",
+      hostname: "restore-target.invalid",
+      capacity: 2,
+      allocated_count: 0,
+      enabled: true,
+      placement_state: "open",
+      status: "healthy",
+      host_key_fingerprint: "SHA256:test-only-target",
+      fleet_kind: "robot",
+      infrastructure_provider: "hetzner",
+      provider_server_id: null,
+      node_incarnation: TARGET_NODE_INCARNATION,
+    })
+    .returning();
+  if (!targetNode?.current_node_history_id) {
+    throw new Error("restore target occurrence trigger did not assign a history id");
+  }
   const publishedAt = new Date("2026-08-20T08:00:00.000Z");
   const dispatchedAt = new Date("2026-08-20T08:00:01.000Z");
   const completedAt = new Date("2026-08-20T08:00:02.000Z");
@@ -399,6 +406,7 @@ async function seedFixture(): Promise<void> {
     claimGeneration: claimed.claimGeneration,
     targetNodeRecordId: TARGET_NODE_RECORD_ID,
     targetNodeIncarnation: TARGET_NODE_INCARNATION,
+    targetNodeHistoryId: targetNode.current_node_history_id,
   });
   operationId = opened.operation.id;
   initialClaimGeneration = claimed.claimGeneration;
@@ -457,6 +465,9 @@ beforeAll(async () => {
       dbWrite as never,
     );
     await apply();
+    await installAgentNodeOccurrenceTriggerForTests((statement) =>
+      dbWrite.execute(sql.raw(statement)),
+    );
     // pushSchema creates the shape, while deployed databases also have the
     // lifecycle trigger. Install that authority so the CAS is tested honestly.
     await dbWrite.execute(
@@ -477,33 +488,6 @@ beforeAll(async () => {
       FOR EACH ROW EXECUTE FUNCTION test_advance_agent_sandbox_lifecycle_revision()
     `),
     );
-    await dbWrite.execute(
-      sql.raw(`
-      CREATE OR REPLACE FUNCTION test_journal_node_incarnation()
-      RETURNS trigger LANGUAGE plpgsql AS $$
-      BEGIN
-        IF NEW.node_incarnation IS NULL THEN RETURN NEW; END IF;
-        INSERT INTO agent_node_incarnation_histories (
-          docker_node_record_id, node_id, node_incarnation, fleet_kind,
-          infrastructure_provider, provider_server_id, host_key_fingerprint, attested_at
-        ) VALUES (
-          NEW.id, NEW.node_id, NEW.node_incarnation, NEW.fleet_kind,
-          NEW.infrastructure_provider, NEW.provider_server_id, NEW.host_key_fingerprint,
-          clock_timestamp()
-        ) ON CONFLICT (docker_node_record_id, node_incarnation) DO NOTHING;
-        RETURN NEW;
-      END;
-      $$
-    `),
-    );
-    await dbWrite.execute(
-      sql.raw(`
-      CREATE TRIGGER test_docker_nodes_incarnation_history
-      BEFORE INSERT OR UPDATE OF node_id, node_incarnation, fleet_kind,
-        infrastructure_provider, provider_server_id, host_key_fingerprint
-      ON docker_nodes FOR EACH ROW EXECUTE FUNCTION test_journal_node_incarnation()
-    `),
-    );
   } catch (error) {
     schemaFailure = error instanceof Error ? error.message : String(error);
   }
@@ -515,8 +499,8 @@ beforeEach(async () => {
   await dbWrite.delete(agentBackupRestoreLeases);
   await dbWrite.delete(agentSandboxBackups);
   await dbWrite.delete(agentSandboxes);
-  await dbWrite.delete(agentNodeIncarnationHistories);
   await dbWrite.delete(dockerNodes);
+  await dbWrite.delete(agentNodeIncarnationHistories);
   await dbWrite.delete(agentBackupCatalogAuthorities);
   await dbWrite.delete(userCharacters);
   await dbWrite.delete(users);
@@ -589,6 +573,7 @@ describe("restore activation quarantine", () => {
       });
       expect(operation.phase).toBe("reserved");
       expect(operation.claim_generation).toBe(initialClaimGeneration);
+      expect(operation.expected_node_history_id).toBe(node.current_node_history_id);
       expect(node.allocated_count).toBe(1);
     },
     TIMEOUT,
@@ -688,7 +673,7 @@ describe("restore activation quarantine", () => {
         .where(eq(dockerNodes.id, TARGET_NODE_RECORD_ID));
       expect((await readRows()).node.node_incarnation).toBe(TARGET_NODE_INCARNATION);
       await expect(openAgentBackupRestoreQuarantine(openInput())).rejects.toThrow(
-        "ambiguous multi-incarnation history",
+        "target node occurrence changed",
       );
       const after = await readRows();
       expect(after.sandbox.activation_generation).toBe(PREVIOUS_ACTIVATION_GENERATION);
@@ -699,7 +684,7 @@ describe("restore activation quarantine", () => {
   );
 
   test(
-    "rejects an ancient backdated B history before the first quarantine write",
+    "ignores an unrelated ancient history when the exact current occurrence still matches",
     async () => {
       const [history] = await dbWrite
         .select()
@@ -717,11 +702,10 @@ describe("restore activation quarantine", () => {
         attested_at: new Date("2000-01-01T00:00:00.000Z"),
       });
 
-      await expect(openAgentBackupRestoreQuarantine(openInput())).rejects.toThrow(
-        "ambiguous multi-incarnation history",
-      );
+      const result = await openAgentBackupRestoreQuarantine(openInput());
+      expect(result.replayed).toBe(false);
       const after = await readRows();
-      expect(after.sandbox.activation_generation).toBe(PREVIOUS_ACTIVATION_GENERATION);
+      expect(after.sandbox.activation_generation).toBe(RESTORE_ATTEMPT_ID);
       expect(after.operation.phase).toBe("reserved");
       expect(after.operation.expected_container_id).toBeNull();
     },
@@ -871,7 +855,7 @@ describe("restore activation quarantine", () => {
   );
 
   test(
-    "rejects container recording after node loss without partial phase writes",
+    "rejects container recording after target occurrence loss without partial phase writes",
     async () => {
       const claimGeneration = await openAndClaimVaultSeeded();
       const request = {
@@ -886,7 +870,7 @@ describe("restore activation quarantine", () => {
         .set({ node_incarnation: OTHER_NODE_INCARNATION })
         .where(eq(dockerNodes.id, TARGET_NODE_RECORD_ID));
       await expect(recordAgentBackupRestoreQuarantinedContainer(request)).rejects.toThrow(
-        "node incarnation changed",
+        "target node occurrence changed",
       );
       const after = await readRows();
       expect(after.sandbox.activation_phase).toBe("container_pending");
