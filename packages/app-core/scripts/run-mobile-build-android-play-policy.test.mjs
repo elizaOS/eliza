@@ -16,8 +16,10 @@ import {
   ANDROID_PLAY_ALLOWED_NATIVE_LIBRARIES,
   ANDROID_PLAY_ALLOWED_NATIVE_PLUGIN_PACKAGES,
   ANDROID_PLAY_ALLOWED_PERMISSIONS,
+  ANDROID_PLAY_DATA_EXTRACTION_RULES,
   androidPlayManifestEvidenceFromAapt,
   applyAndroidGeneratedBuildTargetProperties,
+  applyAndroidPlayManifestHardening,
   createAndroidPlayManifestPolicy,
   findAndroidCloudPackagedRuntimeOffenders,
   findAndroidPlayIndexHtmlFindings,
@@ -64,6 +66,29 @@ const AAPT_MANIFEST = `
 `;
 
 describe("Android Play manifest policy", () => {
+  it("places permissions before the application and disables all backup transfer", () => {
+    const hardened = applyAndroidPlayManifestHardening(`<manifest>
+    <queries />
+    <application android:allowBackup="false"></application>
+    <uses-permission android:name="android.permission.INTERNET" />
+</manifest>`);
+
+    expect(hardened.indexOf("<uses-permission")).toBeLessThan(
+      hardened.indexOf("<queries"),
+    );
+    expect(hardened.indexOf("<uses-permission")).toBeLessThan(
+      hardened.indexOf("<application"),
+    );
+    expect(hardened).toContain(
+      'android:dataExtractionRules="@xml/data_extraction_rules"',
+    );
+    expect(hardened).toContain('android:fullBackupContent="false"');
+    expect(ANDROID_PLAY_DATA_EXTRACTION_RULES).toContain(
+      '<exclude domain="sharedpref" path="." />',
+    );
+    expect(ANDROID_PLAY_DATA_EXTRACTION_RULES).toContain("<device-transfer>");
+  });
+
   it("packages only the minimal Play-safe Capacitor runtime config", () => {
     const sanitized = sanitizeAndroidCloudCapacitorConfig({
       appId: "ai.elizaos.app",

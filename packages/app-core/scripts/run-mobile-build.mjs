@@ -5949,6 +5949,54 @@ export const ANDROID_PLAY_ALLOWED_QUERY_ACTIONS = Object.freeze([
 
 export const ANDROID_PLAY_ALLOWED_NATIVE_LIBRARIES = Object.freeze([]);
 
+export const ANDROID_PLAY_DATA_EXTRACTION_RULES = `<?xml version="1.0" encoding="utf-8"?>
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="root" path="." />
+        <exclude domain="file" path="." />
+        <exclude domain="database" path="." />
+        <exclude domain="sharedpref" path="." />
+        <exclude domain="external" path="." />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="root" path="." />
+        <exclude domain="file" path="." />
+        <exclude domain="database" path="." />
+        <exclude domain="sharedpref" path="." />
+        <exclude domain="external" path="." />
+    </device-transfer>
+</data-extraction-rules>
+`;
+
+export function applyAndroidPlayManifestHardening(source) {
+  let xml = source
+    .replace(/\s+android:dataExtractionRules="[^"]*"/, "")
+    .replace(/\s+android:fullBackupContent="[^"]*"/, "")
+    .replace(
+      /<application\b/,
+      '<application\n        android:dataExtractionRules="@xml/data_extraction_rules"\n        android:fullBackupContent="false"',
+    );
+
+  const permissionBlocks = [];
+  xml = xml.replace(/\n?[ \t]*<uses-permission\b[\s\S]*?\/>/g, (block) => {
+    permissionBlocks.push(block.trim());
+    return "";
+  });
+  if (permissionBlocks.length === 0) return xml;
+
+  const insertion = xml.search(/\n[ \t]*<(?:queries|application)\b/);
+  if (insertion < 0) return xml;
+  const permissions = permissionBlocks
+    .map((block) =>
+      block
+        .split("\n")
+        .map((line) => `    ${line.trimStart()}`)
+        .join("\n"),
+    )
+    .join("\n");
+  return `${xml.slice(0, insertion)}\n\n${permissions}${xml.slice(insertion)}`;
+}
+
 export const ANDROID_PLAY_FORBIDDEN_ASSET_MARKERS = Object.freeze([
   "31337",
   "31338",
@@ -6149,26 +6197,11 @@ export function findAndroidCloudPackagedRuntimeOffenders(entries) {
   });
 }
 
-function cloudBrandUserAgentMarkerLines() {
-  const markers = [
-    { systemProp: "ro.elizaos.product", uaPrefix: "ElizaOS/" },
-    ...(APP.userAgentMarkers ?? []),
-  ];
-  return markers
-    .map(
-      (marker) =>
-        `        new UserAgentMarker("${escapeJavaString(marker.systemProp)}", "${escapeJavaString(marker.uaPrefix)}"),`,
-    )
-    .join("\n");
-}
-
 export function cloudSafeMainActivityJava(androidPackage) {
   return `package ${androidPackage};
 
-import android.os.Build;
 import android.os.Bundle;
 import android.content.Intent;
-import android.util.Log;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 
@@ -6180,25 +6213,7 @@ import com.getcapacitor.BridgeActivity;
 
 import ${androidPackage}.BuildConfig;
 
-import java.lang.reflect.Method;
-
 public class MainActivity extends BridgeActivity {
-
-    private static final String TAG = "ElizaMainActivity";
-
-    private static final class UserAgentMarker {
-        final String systemProp;
-        final String uaPrefix;
-
-        UserAgentMarker(String systemProp, String uaPrefix) {
-            this.systemProp = systemProp;
-            this.uaPrefix = uaPrefix;
-        }
-    }
-
-    private static final UserAgentMarker[] BRAND_USER_AGENT_MARKERS = new UserAgentMarker[] {
-${cloudBrandUserAgentMarkerLines()}
-    };
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -6237,7 +6252,6 @@ ${cloudBrandUserAgentMarkerLines()}
         if (getBridge() != null && getBridge().getWebView() != null) {
             WebSettings settings = getBridge().getWebView().getSettings();
             settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
-            applyBrandUserAgentMarkers(settings);
         }
     }
 
@@ -6247,45 +6261,6 @@ ${cloudBrandUserAgentMarkerLines()}
         super.onNewIntent(intent);
     }
 
-    private void applyBrandUserAgentMarkers(WebSettings settings) {
-        StringBuilder newUa = null;
-        String currentUa = settings.getUserAgentString();
-        for (UserAgentMarker marker : BRAND_USER_AGENT_MARKERS) {
-            if (marker.systemProp == null || marker.systemProp.isEmpty()) {
-                continue;
-            }
-            String tag = readSystemProperty(marker.systemProp);
-            if (tag == null || tag.isEmpty()) {
-                continue;
-            }
-            String token = marker.uaPrefix + tag;
-            if (currentUa != null && currentUa.contains(token)) {
-                continue;
-            }
-            if (newUa == null) {
-                newUa = new StringBuilder(currentUa == null ? "" : currentUa);
-            }
-            if (newUa.length() > 0) {
-                newUa.append(" ");
-            }
-            newUa.append(token);
-        }
-        if (newUa != null) {
-            settings.setUserAgentString(newUa.toString());
-        }
-    }
-
-    private static String readSystemProperty(String key) {
-        try {
-            Class<?> spClass = Class.forName("android.os.SystemProperties");
-            Method get = spClass.getMethod("get", String.class);
-            Object result = get.invoke(null, key);
-            return result instanceof String ? (String) result : "";
-        } catch (ReflectiveOperationException | SecurityException e) {
-            Log.w(TAG, "SystemProperties.get failed for " + key, e);
-            return "";
-        }
-    }
 }
 `;
 }
@@ -6463,6 +6438,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.GeneralSecurityException;
 import java.security.MessageDigest;
 import java.util.Arrays;
+import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
@@ -6607,7 +6583,7 @@ public final class ElizaPlayExportPlugin extends Plugin {
             String actualDigest = sha256(bytes);
             if (!MessageDigest.isEqual(
                     actualDigest.getBytes(StandardCharsets.US_ASCII),
-                    expectedDigest.toLowerCase().getBytes(StandardCharsets.US_ASCII))) {
+                    expectedDigest.toLowerCase(Locale.ROOT).getBytes(StandardCharsets.US_ASCII))) {
                 Arrays.fill(bytes, (byte) 0);
                 throw new GeneralSecurityException("account export digest does not match");
             }
@@ -7327,6 +7303,14 @@ function auditAndroidCloudSource(phase, { env = process.env } = {}) {
     if (!/android:allowBackup="false"/.test(xml)) {
       failures.push("AndroidManifest.xml does not disable application backup");
     }
+    if (
+      !/android:dataExtractionRules="@xml\/data_extraction_rules"/.test(xml) ||
+      !/android:fullBackupContent="false"/.test(xml)
+    ) {
+      failures.push(
+        "AndroidManifest.xml does not disable Android 12+ cloud backup and device transfer",
+      );
+    }
     for (const forbidden of [
       "android.intent.category.HOME",
       "com.google.android.apps.healthdata",
@@ -7403,6 +7387,20 @@ function auditAndroidCloudSource(phase, { env = process.env } = {}) {
   }
 
   const resRoot = path.join(androidDir, "app", "src", "main", "res");
+  const dataExtractionRulesPath = path.join(
+    resRoot,
+    "xml",
+    "data_extraction_rules.xml",
+  );
+  if (
+    !fs.existsSync(dataExtractionRulesPath) ||
+    fs.readFileSync(dataExtractionRulesPath, "utf8") !==
+      ANDROID_PLAY_DATA_EXTRACTION_RULES
+  ) {
+    failures.push(
+      "app/src/main/res/xml/data_extraction_rules.xml is missing or differs from the Play no-backup policy",
+    );
+  }
   for (const relPath of ANDROID_CLOUD_STRIPPED_RESOURCE_FILES) {
     if (fs.existsSync(path.join(resRoot, relPath))) {
       failures.push(`app/src/main/res/${relPath} still exists`);
@@ -7798,6 +7796,7 @@ function stripAndroidForCloud({ env = process.env } = {}) {
     xml = xml
       .replace(/(<\/provider>)\n[ \t]*(<activity\b)/g, "$1\n\n        $2")
       .replace(/\n[ \t]*<\/(application)>/g, "\n    </$1>");
+    xml = applyAndroidPlayManifestHardening(xml);
 
     if (xml !== original) {
       fs.writeFileSync(manifestPath, xml, "utf8");
@@ -7805,6 +7804,27 @@ function stripAndroidForCloud({ env = process.env } = {}) {
         "[mobile-build] Stripped Play-Store-noncompliant components and permissions from AndroidManifest.xml.",
       );
     }
+  }
+  const dataExtractionRulesPath = path.join(
+    androidDir,
+    "app",
+    "src",
+    "main",
+    "res",
+    "xml",
+    "data_extraction_rules.xml",
+  );
+  fs.mkdirSync(path.dirname(dataExtractionRulesPath), { recursive: true });
+  if (
+    !fs.existsSync(dataExtractionRulesPath) ||
+    fs.readFileSync(dataExtractionRulesPath, "utf8") !==
+      ANDROID_PLAY_DATA_EXTRACTION_RULES
+  ) {
+    fs.writeFileSync(
+      dataExtractionRulesPath,
+      ANDROID_PLAY_DATA_EXTRACTION_RULES,
+      "utf8",
+    );
   }
 
   // 2. Remove the matching Java sources so the build doesn't reference

@@ -46,6 +46,15 @@ describe("cloudSafeMainActivityJava", () => {
     expect(source).not.toContain("SYSTEM_UI_FLAG_");
   });
 
+  it("uses no hidden Android system-property API in the Play activity", () => {
+    const source = cloudSafeMainActivityJava("ai.elizaos.app");
+
+    expect(source).not.toContain("android.os.SystemProperties");
+    expect(source).not.toContain("java.lang.reflect");
+    expect(source).not.toContain("Class.forName(");
+    expect(source).not.toContain("readSystemProperty");
+  });
+
   it("captures cold and warm deep links before Capacitor dispatches them", () => {
     const source = cloudSafeMainActivityJava("ai.elizaos.app");
     const coldCapture = source.indexOf(
@@ -113,6 +122,7 @@ describe("cloudSafeMainActivityJava", () => {
     expect(source).toContain("EXPORT MY DATA");
     expect(source).toContain('MessageDigest.getInstance("SHA-256")');
     expect(source).toContain("MessageDigest.isEqual(");
+    expect(source).toContain("expectedDigest.toLowerCase(Locale.ROOT)");
     expect(source).toContain("MAX_EXPORT_BYTES = 32 * 1024 * 1024");
     expect(source).toContain("connection.setInstanceFollowRedirects(false)");
     expect(source).not.toContain("uses-permission");
