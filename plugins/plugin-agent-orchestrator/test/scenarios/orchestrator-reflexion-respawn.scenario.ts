@@ -10,7 +10,10 @@ import {
   ORCHESTRATOR_REFLEXION_RESPAWN,
   ORCHESTRATOR_SCENARIO_PLUGIN_NAME,
 } from "./_helpers/orchestrator-scenario-harness";
-import { verifierPromptCaptureCleanupStep } from "./_helpers/verifier-prompt-capture";
+import {
+  bindVerifierPromptCaptureCleanup,
+  verifierPromptCaptureCleanupStep,
+} from "./_helpers/verifier-prompt-capture";
 
 const FAIL_SUMMARY = "the sub-agent never ran the unit tests";
 const MISSING_CRITERION = "unit tests pass";
@@ -72,7 +75,10 @@ export default scenario({
       name: "install deterministic orchestrator reflexion harness",
       apply: async (ctx) => {
         await installOrchestratorScenarioHarness(ctx);
-        installVerifierPromptCapture(ctx.runtime);
+        bindVerifierPromptCaptureCleanup(
+          ctx,
+          installVerifierPromptCapture(ctx.runtime),
+        );
         return undefined;
       },
     },

@@ -10,7 +10,10 @@ import {
   ORCHESTRATOR_EVIDENCE_BUNDLE,
   ORCHESTRATOR_SCENARIO_PLUGIN_NAME,
 } from "./_helpers/orchestrator-scenario-harness";
-import { verifierPromptCaptureCleanupStep } from "./_helpers/verifier-prompt-capture";
+import {
+  bindVerifierPromptCaptureCleanup,
+  verifierPromptCaptureCleanupStep,
+} from "./_helpers/verifier-prompt-capture";
 
 function actionData(ctx: ScenarioContext): Record<string, unknown> | null {
   const action = ctx.actionsCalled.find(
@@ -69,7 +72,10 @@ export default scenario({
       name: "install deterministic evidence bundle harness",
       apply: async (ctx) => {
         await installOrchestratorScenarioHarness(ctx);
-        installVerifierPromptCapture(ctx.runtime);
+        bindVerifierPromptCaptureCleanup(
+          ctx,
+          installVerifierPromptCapture(ctx.runtime),
+        );
         return undefined;
       },
     },

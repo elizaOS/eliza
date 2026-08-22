@@ -29,10 +29,7 @@ import {
   buildDeviceSupportScenarioEvidence,
   type DeviceSupportScenarioEvidence,
 } from "./device-modality-scenario";
-import {
-  installAttemptScopedVerifierPromptCapture,
-  uninstallAttemptScopedVerifierPromptCapture,
-} from "./verifier-prompt-capture";
+import { installAttemptScopedVerifierPromptCapture } from "./verifier-prompt-capture";
 
 export const ORCHESTRATOR_SCENARIO_PLUGIN_NAME =
   "orchestrator-scenario-harness";
@@ -968,11 +965,6 @@ export function installVerifierPromptCapture(
       params: { prompt },
     });
   });
-}
-
-/** Restore the attempt-scoped verifier observer before the shared runtime is reused. */
-export function uninstallVerifierPromptCapture(runtime: ScenarioRuntime): void {
-  uninstallAttemptScopedVerifierPromptCapture(runtime);
 }
 
 /**

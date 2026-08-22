@@ -7,10 +7,12 @@ import { ModelType } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { runScenario } from "../../../../packages/scenario-runner/src/executor";
 import {
+  bindVerifierPromptCaptureCleanup,
   installAttemptScopedVerifierPromptCapture,
-  uninstallAttemptScopedVerifierPromptCapture,
   verifierPromptCaptureCleanupStep,
 } from "../../test/scenarios/_helpers/verifier-prompt-capture";
+
+vi.mock("@elizaos/plugin-local-inference/voice-workbench", () => ({}));
 
 type ScenarioRuntime = Parameters<
   typeof installAttemptScopedVerifierPromptCapture
@@ -35,12 +37,10 @@ function createRuntime(): ScenarioRuntime {
 }
 
 describe("verifier prompt capture lifecycle", () => {
-  it("fails loudly when cleanup has no runtime model boundary", () => {
-    expect(() =>
-      verifierPromptCaptureCleanupStep.apply?.({
-        runtime: undefined,
-      } as never),
-    ).toThrow("cleanup requires a runtime model boundary");
+  it("leaves an unowned cleanup attempt inert", () => {
+    expect(
+      verifierPromptCaptureCleanupStep.apply?.({ runtime: undefined } as never),
+    ).toBeUndefined();
   });
 
   it("restores the shared runtime after successful and failed scenario attempts", async () => {
@@ -63,9 +63,12 @@ describe("verifier prompt capture lifecycle", () => {
           {
             type: "custom",
             apply: async (ctx) => {
-              installAttemptScopedVerifierPromptCapture(
-                ctx.runtime,
-                successfulCapture,
+              bindVerifierPromptCaptureCleanup(
+                ctx,
+                installAttemptScopedVerifierPromptCapture(
+                  ctx.runtime,
+                  successfulCapture,
+                ),
               );
               await ctx.runtime.useModel(ModelType.TEXT_SMALL, {
                 prompt: "You are a demanding engineering manager",
@@ -94,9 +97,12 @@ describe("verifier prompt capture lifecycle", () => {
           {
             type: "custom",
             apply: async (ctx) => {
-              installAttemptScopedVerifierPromptCapture(
-                ctx.runtime,
-                failedCapture,
+              bindVerifierPromptCaptureCleanup(
+                ctx,
+                installAttemptScopedVerifierPromptCapture(
+                  ctx.runtime,
+                  failedCapture,
+                ),
               );
               await ctx.runtime.useModel(ModelType.TEXT_SMALL, {
                 prompt: "You are a demanding engineering manager",
@@ -167,15 +173,100 @@ describe("verifier prompt capture lifecycle", () => {
   it("is idempotent after cleanup but refuses to discard a later wrapper", () => {
     const runtime = createRuntime();
     const cleanup = installAttemptScopedVerifierPromptCapture(runtime, vi.fn());
-    uninstallAttemptScopedVerifierPromptCapture(runtime);
+    cleanup();
     expect(() => cleanup()).not.toThrow();
 
-    installAttemptScopedVerifierPromptCapture(runtime, vi.fn());
+    const secondCleanup = installAttemptScopedVerifierPromptCapture(
+      runtime,
+      vi.fn(),
+    );
     runtime.useModel = vi.fn(
       async () => "later wrapper",
     ) as typeof runtime.useModel;
-    expect(() => uninstallAttemptScopedVerifierPromptCapture(runtime)).toThrow(
-      "runtime.useModel changed",
+    expect(() => secondCleanup()).toThrow("runtime.useModel changed");
+  });
+
+  it("does not let a rejected overlapping attempt clean up the winner", async () => {
+    const runtime = createRuntime();
+    const originalUseModel = runtime.useModel;
+    const winningCapture = vi.fn();
+    let releaseWinner!: () => void;
+    let announceWinner!: () => void;
+    const winnerInstalled = new Promise<void>((resolve) => {
+      announceWinner = resolve;
+    });
+    const loserFinished = new Promise<void>((resolve) => {
+      releaseWinner = resolve;
+    });
+    const options = {
+      minJudgeScore: 0.8,
+      providerName: "unit-test",
+      turnTimeoutMs: 1_000,
+    };
+
+    const winner = runScenario(
+      {
+        id: "verifier-overlap-winner",
+        title: "Verifier overlap winner",
+        domain: "agent-orchestrator",
+        seed: [
+          {
+            type: "custom",
+            apply: async (ctx) => {
+              bindVerifierPromptCaptureCleanup(
+                ctx,
+                installAttemptScopedVerifierPromptCapture(
+                  ctx.runtime,
+                  winningCapture,
+                ),
+              );
+              announceWinner();
+              await loserFinished;
+              await ctx.runtime.useModel(ModelType.TEXT_SMALL, {
+                prompt:
+                  "You are a demanding engineering manager after loser cleanup",
+              });
+              return undefined;
+            },
+          },
+        ],
+        cleanup: [verifierPromptCaptureCleanupStep],
+        turns: [],
+      },
+      runtime as never,
+      options,
     );
+    await winnerInstalled;
+    const loser = await runScenario(
+      {
+        id: "verifier-overlap-loser",
+        title: "Verifier overlap loser",
+        domain: "agent-orchestrator",
+        seed: [
+          {
+            type: "custom",
+            apply: (ctx) => {
+              bindVerifierPromptCaptureCleanup(
+                ctx,
+                installAttemptScopedVerifierPromptCapture(ctx.runtime, vi.fn()),
+              );
+              return undefined;
+            },
+          },
+        ],
+        cleanup: [verifierPromptCaptureCleanupStep],
+        turns: [],
+      },
+      runtime as never,
+      options,
+    );
+    releaseWinner();
+    const winningReport = await winner;
+
+    expect(loser.status).toBe("failed");
+    expect(loser.error).toContain("already installed");
+    expect(winningReport.status).toBe("passed");
+    expect(winningCapture).toHaveBeenCalledTimes(1);
+    expect(runtime.useModel).toBe(originalUseModel);
   });
 });

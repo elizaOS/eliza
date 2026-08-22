@@ -4,7 +4,10 @@
  */
 
 import type { IAgentRuntime } from "@elizaos/core";
-import type { ScenarioCleanupStep } from "@elizaos/scenario-runner/schema";
+import type {
+  ScenarioCleanupStep,
+  ScenarioContext,
+} from "@elizaos/scenario-runner/schema";
 
 type ModelRuntime = Pick<IAgentRuntime, "useModel">;
 
@@ -29,6 +32,14 @@ const verifierPromptCaptureByRuntime = new WeakMap<
     wrapper: ModelRuntime["useModel"];
   }
 >();
+const verifierPromptCaptureCleanupByAttempt = new WeakMap<object, () => void>();
+
+function requireAttemptKey(ctx: ScenarioContext): object {
+  if (!Array.isArray(ctx.turns)) {
+    throw new Error("verifier prompt capture requires runner-owned turns");
+  }
+  return ctx.turns;
+}
 
 export function installAttemptScopedVerifierPromptCapture(
   runtime: ModelRuntime,
@@ -57,14 +68,16 @@ export function installAttemptScopedVerifierPromptCapture(
     originalUseModel,
     wrapper,
   });
-  return () => uninstallAttemptScopedVerifierPromptCapture(runtime);
+  return () => uninstallAttemptScopedVerifierPromptCapture(runtime, wrapper);
 }
 
-export function uninstallAttemptScopedVerifierPromptCapture(
+function uninstallAttemptScopedVerifierPromptCapture(
   runtime: ModelRuntime,
+  owner: ModelRuntime["useModel"],
 ): void {
   const installed = verifierPromptCaptureByRuntime.get(runtime);
   if (!installed) return;
+  if (installed.wrapper !== owner) return;
   if (runtime.useModel !== installed.wrapper) {
     throw new Error(
       "cannot restore verifier prompt capture after runtime.useModel changed",
@@ -74,13 +87,29 @@ export function uninstallAttemptScopedVerifierPromptCapture(
   verifierPromptCaptureByRuntime.delete(runtime);
 }
 
+/** Bind a successful installation's owner-scoped cleanup to one runner attempt. */
+export function bindVerifierPromptCaptureCleanup(
+  ctx: ScenarioContext,
+  cleanup: () => void,
+): void {
+  const attemptKey = requireAttemptKey(ctx);
+  if (verifierPromptCaptureCleanupByAttempt.has(attemptKey)) {
+    throw new Error("verifier prompt capture cleanup is already bound");
+  }
+  verifierPromptCaptureCleanupByAttempt.set(attemptKey, cleanup);
+}
+
 export const verifierPromptCaptureCleanupStep = {
   type: "custom",
   name: "restore verifier prompt capture",
   apply: (ctx) => {
-    uninstallAttemptScopedVerifierPromptCapture(
-      requireModelRuntime(ctx.runtime),
-    );
+    if (!Array.isArray(ctx.turns)) return undefined;
+    const attemptKey = ctx.turns;
+    const cleanup = verifierPromptCaptureCleanupByAttempt.get(attemptKey);
+    if (!cleanup) return undefined;
+    requireModelRuntime(ctx.runtime);
+    cleanup();
+    verifierPromptCaptureCleanupByAttempt.delete(attemptKey);
     return undefined;
   },
 } satisfies ScenarioCleanupStep;
