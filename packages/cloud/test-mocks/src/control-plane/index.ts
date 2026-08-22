@@ -1,4 +1,9 @@
 /** Public entry that starts the container control-plane mock server and re-exports its app and store builders. */
+
+import {
+  createSyntheticControlHandler,
+  type SyntheticControlAuthority,
+} from "@elizaos/shared/synthetic-control";
 import { startFetchServer } from "../fetch-server";
 import { buildControlPlaneApp, type ControlPlaneMockOptions } from "./server";
 import type { ControlPlaneStore } from "./store";
@@ -18,6 +23,11 @@ export interface StartControlPlaneMockOptions
   hetznerUrl?: string;
   /** Background tick interval. 0 disables auto-tick (test mode). */
   tickMs?: number;
+  /** Optional authenticated control transport; state remains owned by the supplied authority. */
+  syntheticControl?: {
+    token: string;
+    authority: SyntheticControlAuthority;
+  };
 }
 
 export interface RunningControlPlaneMock {
@@ -48,16 +58,26 @@ export async function startControlPlaneMock(
     process.env.HCLOUD_API_BASE_URL ??
     "https://api.hetzner.cloud/v1";
 
+  const { syntheticControl, ...controlPlaneOptions } = options;
   const { app, store, tick, processDbBackedJobs, cleanupStuck } =
     buildControlPlaneApp({
-      ...options,
+      ...controlPlaneOptions,
       hetznerUrl,
     });
 
-  const server = await startFetchServer(app.fetch, {
-    port: options.port ?? 0,
-    hostname: options.hostname ?? "127.0.0.1",
-  });
+  const controlHandler = syntheticControl
+    ? createSyntheticControlHandler(syntheticControl)
+    : null;
+  const server = await startFetchServer(
+    async (request) => {
+      const controlResponse = await controlHandler?.(request);
+      return controlResponse ?? app.fetch(request);
+    },
+    {
+      port: options.port ?? 0,
+      hostname: options.hostname ?? "127.0.0.1",
+    },
+  );
   const port = server.port;
   if (typeof port !== "number") {
     throw new Error("Control plane mock server did not bind to a numeric port");

@@ -173,6 +173,12 @@ const report = await runScenario(myScenario, runtime, {
 await cleanup();
 ```
 
+For subprocess-backed synthetic services, use `openScenarioSyntheticWorld`
+with an explicit control URL, bearer token, and v1 `SyntheticManifest`. It uses
+the same `SyntheticControlSession` as Cloud E2E, acquires a generation-fenced
+lease, seeds through the owning service, and retains the authority-issued reset
+receipt for teardown. The runner does not keep a parallel world-state copy.
+
 ## Notes
 
 - A simulated CLI invocation runs its scenarios in one shared runtime because PGLite cannot be recreated in-process. Provider-qualified definitions are restricted to one scenario and still require an external production controller; the ordinary executor deliberately refuses to qualify them.
