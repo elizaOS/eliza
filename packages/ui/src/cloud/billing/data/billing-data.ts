@@ -1,5 +1,5 @@
 /**
- * React Query data hooks for the billing domain (user/org, credits, invoices),
+ * React Query data hooks for the billing domain (user/org and invoices),
  * on the cloud {@link api} client (steward Bearer on native, same-origin cookie
  * on web) with the auth gate driven by {@link useSessionAuth}.
  */
@@ -9,12 +9,12 @@ import { ApiError, api } from "../../lib/api-client";
 import { useSessionAuth } from "../../lib/use-session-auth";
 import type {
   BillingUser,
-  CreditBalanceResponse,
   CurrentUserResponse,
   InvoiceApiPayload,
   InvoiceDto,
   VerifyCheckoutResult,
 } from "../types";
+import { BILLING_SNAPSHOT_V2_QUERY_KEY } from "./billing-snapshot";
 
 interface AuthGate {
   enabled: boolean;
@@ -54,7 +54,6 @@ export function useBillingUser(
       return {
         organization_id,
         wallet_address,
-        organization: { credit_balance: organization.credit_balance },
       };
     },
     enabled: gate.enabled,
@@ -72,21 +71,6 @@ export function useBillingUser(
 }
 
 /**
- * GET /api/credits/balance — cached server-side for 30s; pass `fresh` to bypass.
- */
-export function useCreditsBalance(opts: { fresh?: boolean } = {}) {
-  const gate = useAuthGate();
-  return useQuery({
-    queryKey: authKey(["credits", "balance", opts.fresh ?? false], gate),
-    queryFn: () =>
-      api<CreditBalanceResponse>(
-        opts.fresh ? "/api/credits/balance?fresh=true" : "/api/credits/balance",
-      ),
-    enabled: gate.enabled,
-  });
-}
-
-/**
  * POST /api/billing/checkout/verify — synchronous webhook fallback for the
  * billing-success page. Idempotent on the payment intent; invalidates the
  * cached balance on success.
@@ -101,6 +85,9 @@ export function useVerifyCheckout() {
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["credits", "balance"] });
+      queryClient.invalidateQueries({
+        queryKey: BILLING_SNAPSHOT_V2_QUERY_KEY,
+      });
     },
   });
 }

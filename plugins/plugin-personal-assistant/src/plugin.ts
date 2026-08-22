@@ -1074,7 +1074,7 @@ const rawPersonalAssistantPlugin: Plugin = {
 
     // Register the activity-profile maintenance worker. One scheduler
     // (#10721 H1): this tick only maintains the owner activity profile and
-    // maintains learned owner context — owner-facing
+    // runs the WS5 background-planner observability loop — owner-facing
     // proactive dispatch (GM/GN, nudges, check-ins) is owned by the
     // scheduled-task runner via the first-run defaults pack + default-pack
     // catalog below. ELIZA_DISABLE_PROACTIVE_AGENT keeps its historical

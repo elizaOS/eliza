@@ -15,14 +15,20 @@ import {
 	targetReferenceLogView,
 } from "../params.js";
 import { formatAppCandidates, resolveInstalledApp } from "../resolve.js";
-import { openLaunchUrlInBrowserView } from "../services/browser-view-navigation.js";
+import {
+	type BrowserNavigationResult,
+	openLaunchUrlInBrowserView,
+} from "../services/browser-view-navigation.js";
 
 export interface RunLaunchInput {
 	client: AppControlClient;
 	message: Memory;
 	options?: Record<string, unknown>;
 	callback?: HandlerCallback;
-	openBrowserView?: (launchUrl: string) => Promise<boolean>;
+	openBrowserView?: (
+		launchUrl: string,
+		message: Memory,
+	) => Promise<BrowserNavigationResult>;
 }
 
 export async function runLaunch({
@@ -77,6 +83,9 @@ export async function runLaunch({
 		return {
 			success: false,
 			text,
+			userFacingText: text,
+			verifiedUserFacing: true,
+			turnComplete: true,
 			data: { target: targetReferenceLogView(target) },
 		};
 	}
@@ -86,49 +95,76 @@ export async function runLaunch({
 	try {
 		result = await client.launchApp(appName);
 	} catch (err) {
-		// Don't propagate — a thrown launch (HTTP 4xx/5xx, network error,
-		// race with concurrent uninstall) must not crash the planner turn.
+		// error-policy:J1 APP is the user-facing action boundary: translate a
+		// typed/transport launch rejection into one explicit failed action result.
 		const message = err instanceof Error ? err.message : String(err);
 		const text = `Failed to launch ${appName}: ${message}`;
 		logger.warn(
 			`[plugin-app-control] APP/launch ${appName} failed: ${message}`,
 		);
 		await callback?.({ text });
-		return { success: false, text, error: message };
+		return {
+			success: false,
+			text,
+			userFacingText: text,
+			verifiedUserFacing: true,
+			turnComplete: true,
+			error: message,
+		};
 	}
 	const runId = result.run?.runId ?? null;
 	const launchUrl = result.launchUrl?.trim() || null;
-	const opened = launchUrl ? await openBrowserView(launchUrl) : false;
+	const browserNavigation: BrowserNavigationResult = launchUrl
+		? await openBrowserView(launchUrl, message)
+		: { status: "target-unavailable", openedInBrowser: false };
 
 	logger.info(
 		`[plugin-app-control] APP/launch ${appName} runId=${runId ?? "<none>"}`,
 	);
+	const safeFallbackText = browserNavigation.safeMarkdownLaunchUrl
+		? `The app launched successfully. [Open the app](${browserNavigation.safeMarkdownLaunchUrl})`
+		: "The app launched successfully.";
 
 	return {
 		success: true,
 		text: JSON.stringify({ effect: "app_launch", status: "completed" }),
+		modelReplyFallback: safeFallbackText,
 		transcriptVisibility: "internal",
 		// The effect is already complete. Give Eliza a bounded receipt and let the
-		// canonical planner own the conversational wording.
+		// model own the conversational wording instead of posting canned action copy.
 		modelReplyRequired: true,
 		values: {
 			mode: "launch",
 			appName,
 			displayName: result.displayName,
 			runId,
-			openedInBrowser: opened,
+			openedInBrowser: browserNavigation.openedInBrowser,
+			browserNavigationStatus: browserNavigation.status,
+			...(browserNavigation.viewPath
+				? { viewId: "browser", viewPath: browserNavigation.viewPath }
+				: {}),
+			...(browserNavigation.completedActionDelivered
+				? { completedActionDelivered: true }
+				: {}),
+			...(browserNavigation.completedActionHandoffId
+				? {
+						completedActionHandoffId:
+							browserNavigation.completedActionHandoffId,
+					}
+				: {}),
 		},
 		promptData: {
 			operation: "launch_app",
 			outcome: "success",
 			appName,
 			displayName: result.displayName,
-			openedInBrowser: opened,
-			...(launchUrl
+			openedInBrowser: browserNavigation.openedInBrowser,
+			browserNavigationStatus: browserNavigation.status,
+			...(browserNavigation.safeMarkdownLaunchUrl
 				? {
 						link: {
 							label: `Open ${result.displayName}`,
-							href: launchUrl,
+							href: browserNavigation.safeMarkdownLaunchUrl,
 						},
 					}
 				: {}),

@@ -150,22 +150,5 @@ describe("FcmProvider", () => {
       expect(body.message.notification).toEqual({ title: "Hi" });
       expect(body.message.data).toBeUndefined();
     });
-
-    it("maps canonical urgency and collapse identity onto Android delivery", () => {
-      const { privatePem } = makeRsaKey();
-      const provider = new FcmProvider(envWith(privatePem));
-      const body = JSON.parse(
-        provider.buildMessageBody("t", {
-          title: "Approval needed",
-          priority: "urgent",
-          collapseKey: "approval:req-1",
-        }),
-      );
-
-      expect(body.message.android).toEqual({
-        priority: "HIGH",
-        collapse_key: "approval:req-1",
-      });
-    });
   });
 });

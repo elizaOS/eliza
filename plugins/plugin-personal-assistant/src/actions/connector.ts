@@ -918,14 +918,9 @@ async function dispatchSignal(
   switch (subaction) {
     case "connect": {
       const status = await service.getSignalConnectorStatus(side);
-      const base = status.connected
-        ? `Signal is connected through @elizaos/plugin-signal (side=${side}).`
-        : `Set up Signal below — link this agent as a device to your Signal account by scanning the QR code.`;
       return {
-        success: status.connected,
-        text: status.connected
-          ? base
-          : withConfigCard(base, connectorConfigPluginId("signal")),
+        success: false,
+        text: "Signal is unavailable until elizaOS owns a legal, bundled, in-process transport.",
         data: {
           actionName: ACTION_NAME,
           connector: "signal",
@@ -938,7 +933,7 @@ async function dispatchSignal(
       const status = await service.getSignalConnectorStatus(side);
       return {
         success: false,
-        text: `Signal disconnect is managed by @elizaos/plugin-signal (side=${side}). Use the Signal connector plugin setup controls, then check status again.`,
+        text: `Signal is unavailable, so there is no active connector to disconnect (side=${side}).`,
         data: {
           actionName: ACTION_NAME,
           connector: "signal",
@@ -986,7 +981,7 @@ async function dispatchSignalVerify(
       readError = error instanceof Error ? error.message : String(error);
     }
   } else {
-    readError = "Signal plugin inbound read is unavailable.";
+    readError = "Signal direct transport is unavailable.";
   }
   const readOk = readError === null;
   return {

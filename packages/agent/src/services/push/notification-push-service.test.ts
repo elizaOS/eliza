@@ -1,8 +1,8 @@
 /**
  * Covers the notification push service: it subscribes to the agent event bus,
  * routes notification-stream events to per-platform providers (ios→apns,
- * android→fcm) only when configured, carries notification identity, priority,
- * collapse policy, and deep links, prunes dead tokens on an unregistered error, and
+ * android→fcm) only when configured, carries notification id/deepLink/category
+ * in the push data, prunes dead tokens on an unregistered error, and
  * subscribes/unsubscribes cleanly. Harness is in-memory — a fake network-free
  * provider, an in-memory event bus, and a Map-backed cache — no real push send.
  */
@@ -12,8 +12,8 @@ import type {
   AgentNotification,
   IAgentRuntime,
 } from "@elizaos/core";
-import { NOTIFICATION_STREAM, ServiceType } from "@elizaos/core";
-import { beforeEach, describe, expect, it } from "vitest";
+import { logger, NOTIFICATION_STREAM, ServiceType } from "@elizaos/core";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NotificationPushService } from "./notification-push-service.ts";
 import { PushTokenRegistry } from "./push-token-registry.ts";
 import {
@@ -73,6 +73,7 @@ function makeHarness(): Harness {
     },
     deleteCache: async (key: string): Promise<boolean> => cache.delete(key),
     getService: (t: string) => (t === ServiceType.AGENT_EVENT ? bus : null),
+    reportError: () => {},
   } as unknown as IAgentRuntime;
 
   const emitRaw = (event: AgentEventPayload) => {
@@ -171,7 +172,7 @@ describe("NotificationPushService", () => {
     expect(android.sent).toHaveLength(0);
   });
 
-  it("carries notification identity, priority, collapse policy, and deepLink", async () => {
+  it("carries the notification id + deepLink in the push custom data", async () => {
     const ios = new FakeProvider("apns", true);
     const android = new FakeProvider("fcm", true);
     const service = new NotificationPushService(h.runtime, {
@@ -181,25 +182,15 @@ describe("NotificationPushService", () => {
     await service.attach();
     await h.registry.register("ios", "tok-ios");
 
-    h.emit(
-      notification({
-        id: "abc-123",
-        deepLink: "/calendar",
-        groupKey: "approval:req-1",
-        priority: "urgent",
-      }),
-    );
+    h.emit(notification({ id: "abc-123", deepLink: "/calendar" }));
     await flush();
 
     expect(ios.sent[0].message.data).toMatchObject({
       notificationId: "abc-123",
       deepLink: "/calendar",
       category: "workflow",
-      priority: "urgent",
     });
     expect(ios.sent[0].message.title).toBe("Build finished");
-    expect(ios.sent[0].message.priority).toBe("urgent");
-    expect(ios.sent[0].message.collapseKey).toBe("approval:req-1");
   });
 
   it("drops a token from the registry on an unregistered error", async () => {
@@ -253,6 +244,70 @@ describe("NotificationPushService", () => {
     expect(h.listenerCount()).toBe(1);
     await service.stop();
     expect(h.listenerCount()).toBe(0);
+  });
+
+  it("logs and drops fan-out failures from registry list()", async () => {
+    const ios = new FakeProvider("apns", true);
+    const android = new FakeProvider("fcm", true);
+    const service = new NotificationPushService(h.runtime, {
+      registry: h.registry,
+      providers: { ios, android },
+    });
+    await service.attach();
+    const listSpy = vi
+      .spyOn(h.registry, "list")
+      .mockRejectedValueOnce(new Error("db down"));
+    const loggerSpy = vi.spyOn(logger, "error").mockImplementation(() => {});
+    const reportErrorSpy = vi
+      .spyOn(h.runtime, "reportError")
+      .mockImplementation(() => {});
+
+    h.emit(notification());
+    await flush();
+
+    expect(listSpy).toHaveBeenCalledTimes(1);
+    expect(loggerSpy).toHaveBeenCalledWith(
+      { src: "service:notification_push", error: expect.any(Error) },
+      "[NotificationPushService] fan-out failed",
+    );
+    expect(reportErrorSpy).toHaveBeenCalledWith(
+      "NotificationPushService.fanOut",
+      expect.any(Error),
+      { stream: NOTIFICATION_STREAM },
+    );
+    expect(ios.sent).toHaveLength(0);
+  });
+
+  it("logs and drops fan-out failures from dead-token unregister()", async () => {
+    const ios = new FakeProvider("apns", true, new Set(["dead-token"]));
+    const android = new FakeProvider("fcm", false);
+    const service = new NotificationPushService(h.runtime, {
+      registry: h.registry,
+      providers: { ios, android },
+    });
+    await service.attach();
+    await h.registry.register("ios", "dead-token");
+    const unregisterSpy = vi
+      .spyOn(h.registry, "unregister")
+      .mockRejectedValueOnce(new Error("durable write rejected"));
+    const loggerSpy = vi.spyOn(logger, "error").mockImplementation(() => {});
+    const reportErrorSpy = vi
+      .spyOn(h.runtime, "reportError")
+      .mockImplementation(() => {});
+
+    h.emit(notification());
+    await flush();
+
+    expect(unregisterSpy).toHaveBeenCalledWith("dead-token");
+    expect(loggerSpy).toHaveBeenCalledWith(
+      { src: "service:notification_push", error: expect.any(Error) },
+      "[NotificationPushService] fan-out failed",
+    );
+    expect(reportErrorSpy).toHaveBeenCalledWith(
+      "NotificationPushService.fanOut",
+      expect.any(Error),
+      { stream: NOTIFICATION_STREAM },
+    );
   });
 
   it("starts dormant (no throw) when there is no event bus", async () => {

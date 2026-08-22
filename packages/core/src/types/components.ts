@@ -171,6 +171,14 @@ export interface MessageHandlerPlan {
 	requiresTool?: boolean;
 	contextSlices?: string[];
 	candidateActions?: string[];
+	/**
+	 * Stage 1's declared user intents for the turn, verbatim ("delete
+	 * reminder", "create reminder", …). Multi-intent turns feed these to the
+	 * planner context so the loop serves every declared leg or says which it
+	 * did not — small planner models otherwise complete leg one and finish
+	 * (live: "delete and recreate my reminder" deleted, never recreated).
+	 */
+	intents?: string[];
 	parentActionHints?: string[];
 	/**
 	 * Per-turn cap on the planner's required-tool miss budget, set by the
@@ -983,9 +991,10 @@ export interface ActionResult {
 
 	/**
 	 * Optional model-bound projection of `data`. When present, prompt renderers
-	 * use this object while runtime state and trajectories retain the complete
-	 * `data` payload. Use it when an action's machine result is substantially
-	 * larger than the fields a model needs to continue or evaluate the turn.
+	 * use only this object and never additionally serialize `data`. Exact source
+	 * pages remain in `text`; progressive readers put model-safe `ReadView`
+	 * metadata here and keep native locators and complete bodies out of both
+	 * prompt projections and trajectories.
 	 */
 	promptData?: ProviderDataRecord;
 
@@ -1011,11 +1020,13 @@ export interface ActionResult {
 	 * evaluator model call; failures, additional tools, unsafe replies, and
 	 * incomplete planner scope retain the normal evaluator path.
 	 *
-	 * Use for effects and truthful asynchronous-start receipts whose wording must
-	 * remain model-owned (for example, navigation or a dispatched build). Do not
-	 * pair it with canned `userFacingText`.
+	 * Use for UI effects and truthful asynchronous handoffs whose wording must
+	 * remain model-owned. Do not pair it with canned `userFacingText`; use the
+	 * narrowly vetted `modelReplyFallback` only for provider-outage recovery.
 	 */
 	modelReplyRequired?: boolean;
+	/** Safe action-owned prose used only if required model synthesis is unavailable. */
+	modelReplyFallback?: string;
 
 	/**
 	 * Explicit chain-control override. `false` aborts the remaining planner queue

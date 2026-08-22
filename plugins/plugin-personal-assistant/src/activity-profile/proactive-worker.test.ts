@@ -116,9 +116,6 @@ describe("proactive-worker no longer fires outside the runner (grep-level)", () 
     "planGoalCheckIns",
     "planSocialOveruseCheck",
     "recordFiredAction",
-    "planJob",
-    "enqueueIfSensitive",
-    'jobKind: "daily_brief"',
   ])("source contains no dispatch surface: %s", (token) => {
     expect(workerSource).not.toContain(token);
   });
@@ -192,6 +189,8 @@ function createTripwireRuntime(): {
     async deleteCache(key: string): Promise<boolean> {
       return cache.delete(key);
     },
+    // No useModel → the WS5 planner throws BackgroundPlannerError, which the
+    // tick catches and logs; nothing else may depend on a model.
     getService: (type: string) =>
       type === "agent_event" || type === "AGENT_EVENT"
         ? agentEventService

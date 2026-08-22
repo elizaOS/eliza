@@ -251,7 +251,6 @@ export function nativeModuleStubPlugin(
     "@elizaos/plugin-sql",
     "@elizaos/plugin-agent-skills",
     "@elizaos/plugin-agent-orchestrator",
-    "@elizaos/plugin-signal",
     "@elizaos/plugin-telegram",
     "@elizaos/plugin-whatsapp",
     // Node-only edge-tts backend. app-core's runtime/ensure-text-to-speech-handler.ts

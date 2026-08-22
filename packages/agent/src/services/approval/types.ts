@@ -298,8 +298,6 @@ export interface ApprovalRequest {
 export interface ApprovalEnqueueResult {
   readonly request: ApprovalRequest;
   readonly reused: boolean;
-  /** True only when the canonical notification rail accepted this new row. */
-  readonly notificationProjected?: boolean;
 }
 
 /** Input to `enqueue` — server fills in id, timestamps, and initial state. */
@@ -420,6 +418,14 @@ export interface ApprovalQueue {
   readonly protocolVersion: typeof APPROVAL_EXECUTION_PROTOCOL_VERSION;
   enqueue(input: ApprovalEnqueueInput): Promise<ApprovalRequest>;
   enqueueWithResult(
+    input: ApprovalEnqueueInput,
+  ): Promise<ApprovalEnqueueResult>;
+  /**
+   * Enqueue and await the owner-notification projection. Exact seed/import
+   * workflows use this seam so no background persistence can escape their
+   * receipt and compensation boundary.
+   */
+  enqueueWithResultAndNotification?(
     input: ApprovalEnqueueInput,
   ): Promise<ApprovalEnqueueResult>;
   /**

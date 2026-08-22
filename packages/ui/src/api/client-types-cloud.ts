@@ -293,47 +293,6 @@ export interface CloudCompatAgent {
   execution_tier?: string | null;
 }
 
-/** User-owned BlueBubbles relay registered with the Eliza Cloud gateway. */
-export interface CloudBlueBubblesGateway {
-  id: string;
-  bridgeId: string;
-  phoneNumber: string;
-  friendlyName: string | null;
-  routingMode: "sender-owned" | "fixed-agent";
-  agentId: string | null;
-  userId: string;
-  lastSeenAt: string | null;
-  status: "registered" | "connected" | "offline";
-}
-
-/** Registration fields accepted by the BlueBubbles cloud-gateway API. */
-export interface CloudBlueBubblesRegistrationRequest {
-  routingMode?: "sender-owned" | "fixed-agent";
-  agentId?: string | null;
-  phoneNumber: string;
-  friendlyName?: string;
-}
-
-/** Environment handed to the Mac relay once, immediately after registration. */
-export interface CloudBlueBubblesRelayEnvironment {
-  ELIZA_CLOUD_BLUEBUBBLES_URL: string;
-  BLUEBUBBLES_BRIDGE_ID: string;
-  BLUEBUBBLES_GATEWAY_TOKEN: string;
-  BLUEBUBBLES_GATEWAY_PHONE_NUMBER: string;
-}
-
-/** One-time BlueBubbles registration response; the token is never listed again. */
-export interface CloudBlueBubblesRegistration {
-  id: string;
-  bridgeId: string;
-  phoneNumber: string;
-  routingMode: "sender-owned" | "fixed-agent";
-  agentId: string | null;
-  webhookUrl: string;
-  token: string;
-  relayEnvironment: CloudBlueBubblesRelayEnvironment;
-}
-
 export interface CloudCompatAgentStatus {
   status: string;
   lastHeartbeat: string | null;

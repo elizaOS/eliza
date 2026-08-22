@@ -809,13 +809,7 @@ export function createProductionScheduledTaskDispatcher(opts: {
         // service (durable inbox). Previously this branch returned
         // ok:true unconditionally, fabricating delivery on hosts where
         // both surfaces were absent, so nothing ever retried/escalated.
-        const approvalRequestId = metadataString(
-          record.metadata,
-          "approvalRequestId",
-        );
-        const approvalNotificationProjected =
-          record.metadata?.approvalNotificationProjected === true;
-        let surfacesAccepted = approvalNotificationProjected ? 1 : 0;
+        let surfacesAccepted = 0;
         const eventService = getAgentEventService(opts.runtime) as {
           emit?: (event: {
             runId: string;
@@ -848,38 +842,23 @@ export function createProductionScheduledTaskDispatcher(opts: {
           surfacesAccepted += 1;
         }
         const notifier = getNotifier(opts.runtime);
-        if (notifier && !approvalNotificationProjected) {
+        if (notifier) {
           try {
-            const title = approvalRequestId
-              ? "Approval needed"
-              : await renderScheduledDispatchTitle(
-                  opts.runtime,
-                  record,
-                  message,
-                );
+            const title = await renderScheduledDispatchTitle(
+              opts.runtime,
+              record,
+              message,
+            );
             const isUrgent = record.intensity === "urgent";
             await notifier.notify({
               title,
               body: message,
-              category: approvalRequestId
-                ? "approval"
-                : isUrgent
-                  ? "approval"
-                  : "reminder",
-              priority: isUrgent
-                ? "urgent"
-                : approvalRequestId
-                  ? "high"
-                  : "normal",
+              category: isUrgent ? "approval" : "reminder",
+              priority: isUrgent ? "urgent" : "normal",
               source: "lifeops",
-              groupKey: approvalRequestId
-                ? `approval:${approvalRequestId}`
-                : `lifeops:${record.taskId}`,
+              groupKey: `lifeops:${record.taskId}`,
               deepLink: "/chat",
               data: {
-                ...(approvalRequestId
-                  ? { requestId: approvalRequestId, count: 1 }
-                  : {}),
                 taskId: record.taskId,
                 firedAtIso: record.firedAtIso,
                 channelKey: record.channelKey,

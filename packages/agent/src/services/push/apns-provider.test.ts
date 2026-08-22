@@ -139,52 +139,5 @@ describe("ApnsProvider", () => {
       const payload = JSON.parse(provider.buildPayload({ title: "Ping" }));
       expect(payload.aps.alert).toEqual({ title: "Ping" });
     });
-
-    it("keeps low-priority updates silent and groups replacements", () => {
-      const { privatePem } = makeEcKey();
-      const provider = new ApnsProvider(baseEnv(privatePem));
-      const payload = JSON.parse(
-        provider.buildPayload({
-          title: "Background update",
-          priority: "low",
-          collapseKey: "workflow:daily-brief",
-        }),
-      );
-
-      expect(payload.aps.sound).toBeUndefined();
-      expect(payload.aps["thread-id"]).toBe("workflow:daily-brief");
-      expect(
-        provider.buildRequestHeaders(
-          "device-token",
-          "jwt",
-          JSON.stringify(payload),
-          {
-            title: "Background update",
-            priority: "low",
-            collapseKey: "workflow:daily-brief",
-          },
-        ),
-      ).toMatchObject({
-        "apns-priority": "5",
-        "apns-collapse-id": "workflow:daily-brief",
-      });
-    });
-
-    it("uses immediate APNs delivery for interrupt-tier alerts", () => {
-      const { privatePem } = makeEcKey();
-      const provider = new ApnsProvider(baseEnv(privatePem));
-      const message = { title: "Approval needed", priority: "high" } as const;
-      const payload = JSON.parse(provider.buildPayload(message));
-
-      expect(payload.aps.sound).toBe("default");
-      expect(
-        provider.buildRequestHeaders(
-          "device-token",
-          "jwt",
-          JSON.stringify(payload),
-          message,
-        )["apns-priority"],
-      ).toBe("10");
-    });
   });
 });

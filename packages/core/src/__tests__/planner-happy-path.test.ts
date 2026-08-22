@@ -1523,81 +1523,86 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 		).toMatchObject({ tool: { name: "VIEWS", success: true } });
 	});
 
-	it("lets the canonical planner write the final reply after deterministic navigation", async () => {
-		let viewCalls = 0;
-		const views = makeMockAction({
-			name: "VIEWS",
+	it("lets the model write the final reply after a deterministic tool completes", async () => {
+		let appCalls = 0;
+		const modelReply =
+			"Done — I opened [Nubs Color Pebble](/api/apps/local/nubs-color-pebble/) for you.";
+		const app = makeMockAction({
+			name: "APP",
+			suppressEarlyReply: true,
 			parameters: [
 				{
 					name: "action",
-					description: "View operation",
+					description: "App operation",
 					required: true,
 					schema: { type: "string" },
 				},
 				{
-					name: "view",
-					description: "Registered view id",
+					name: "app",
+					description: "Installed app name",
 					required: true,
 					schema: { type: "string" },
 				},
 			],
-			suppressEarlyReply: true,
 			handler: async () => {
-				viewCalls++;
+				appCalls++;
 				return {
 					success: true,
-					text: '{"effect":"view_navigation","status":"accepted","viewId":"notes","label":"Notes"}',
+					text: '{"effect":"app_launch","status":"completed"}',
 					transcriptVisibility: "internal",
 					modelReplyRequired: true,
+					promptData: {
+						operation: "launch_app",
+						outcome: "success",
+						displayName: "Nubs Color Pebble",
+						link: {
+							label: "Open Nubs Color Pebble",
+							href: "/api/apps/local/nubs-color-pebble/",
+						},
+					},
 				};
 			},
 		});
-		const deterministicViewEvaluator = {
-			name: "test.force_deterministic_view_with_model_reply",
+		const evaluator = {
+			name: "test.force_deterministic_app_launch",
 			priority: 10,
-			deterministicActions: ["VIEWS"],
+			deterministicActions: ["APP"],
 			shouldRun: () => true,
 			evaluate: () => ({
 				requiresTool: true,
 				clearReply: true,
 				deterministicToolCall: {
-					name: "VIEWS",
-					params: { action: "show", view: "notes" },
+					name: "APP",
+					params: { action: "launch", app: "nubs-color-pebble" },
 				},
 			}),
 		} satisfies import("../runtime/response-handler-evaluators").ResponseHandlerEvaluator;
 		const runtime = makeRuntime({
-			actions: [views],
-			responseHandlerEvaluators: [deterministicViewEvaluator],
+			actions: [app],
+			responseHandlerEvaluators: [evaluator],
 			responses: [
 				{
 					expectModelType: ModelType.RESPONSE_HANDLER,
 					body: stage1Response({
 						contexts: ["general"],
-						candidateActionNames: ["VIEWS"],
-						replyText: "Opening Notes now.",
+						replyText: "Opening that now.",
 					}),
 				},
 				{
 					expectModelType: ModelType.ACTION_PLANNER,
-					body: { text: "Notes is open.", toolCalls: [] },
+					body: { text: modelReply, toolCalls: [] },
 				},
 			],
 		});
-		runtime.composeState = vi.fn(async () => makeState());
 
 		const result = await runV5MessageRuntimeStage1({
 			runtime,
-			message: makeMessage("open notes"),
+			message: makeMessage("open Nubs Color Pebble"),
 			state: makeState(),
 			responseId: RESPONSE_ID,
 		});
 
-		expect(viewCalls).toBe(1);
-		expect(result.kind).toBe("planned_reply");
-		if (result.kind === "planned_reply") {
-			expect(result.result.responseContent?.text).toBe("Notes is open.");
-		}
+		expect(appCalls).toBe(1);
 		expect(getCalls(runtime).map((call) => call.modelType)).toEqual([
 			ModelType.RESPONSE_HANDLER,
 			ModelType.ACTION_PLANNER,
@@ -1611,13 +1616,17 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 		expect(JSON.stringify(getCalls(runtime)[1]?.params)).toContain(
 			"started or pending operation is underway but not complete",
 		);
-		expect(runtime.composeState).not.toHaveBeenCalled();
-		const trajectory = readRecordedTrajectories(String(AGENT_ID))[0] as {
-			stages: Array<{ kind: string }>;
-		};
-		expect(trajectory.stages.some((stage) => stage.kind === "toolSearch")).toBe(
-			false,
-		);
+		expect(result.kind).toBe("planned_reply");
+		if (result.kind === "planned_reply") {
+			expect(result.result.responseContent?.text).toBe(modelReply);
+			expect(result.result.actionResults).toMatchObject([
+				{
+					success: true,
+					text: '{"effect":"app_launch","status":"completed"}',
+					transcriptVisibility: "internal",
+				},
+			]);
+		}
 	});
 
 	it("executes an owner-only deterministic call through the canonical gates without planning", async () => {

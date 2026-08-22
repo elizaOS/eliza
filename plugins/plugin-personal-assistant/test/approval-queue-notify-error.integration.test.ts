@@ -2,9 +2,10 @@
  * Approval-queue notify-failure path (real PGlite runtime, #12273).
  *
  * Enqueue surfaces a pending approval on the notification rail as a
- * non-transactional side-channel. This drives a NOTIFICATION service whose
- * `notify` rejects and asserts the failure is reported via
- * `runtime.reportError` (scope `ApprovalQueue.notify`) while the enqueue still
+ * fire-and-forget side-channel. This drives a NOTIFICATION service whose
+ * `notify` rejects and asserts the failure is now reported via
+ * `runtime.reportError` (scope `ApprovalQueue.notify`) instead of being
+ * swallowed by a bare `.catch(() => {})`, while the enqueue itself still
  * succeeds (the persisted approval row is unaffected).
  */
 
@@ -104,11 +105,17 @@ describe("ApprovalQueue notify failure (real PGlite)", () => {
     const fetched = await queue.byId(enqueued.id, "owner-notify");
     expect(fetched?.id).toBe(enqueued.id);
 
-    expect(
-      runtime
+    // notify is fire-and-forget; poll the reported-error ring until the
+    // rejection has propagated through `.catch → reportError`.
+    let reported = false;
+    for (let i = 0; i < 50 && !reported; i += 1) {
+      await new Promise((r) => setTimeout(r, 10));
+      const entry = runtime
         .getRecentReportedErrors()
-        .filter((e) => e.scope === "ApprovalQueue.notify").length,
-    ).toBeGreaterThan(before);
+        .filter((e) => e.scope === "ApprovalQueue.notify");
+      reported = entry.length > before;
+    }
+    expect(reported).toBe(true);
 
     const latest = runtime
       .getRecentReportedErrors()

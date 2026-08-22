@@ -92,6 +92,8 @@ export type EvaluatorOutput = EvaluationResult & {
 
 export interface PlannerRuntime {
 	getService?(service: string): unknown;
+	/** Optional per-agent setting lookup used by guarded runtime features. */
+	getSetting?(key: string): string | boolean | number | null;
 	reportError?(
 		scope: string,
 		error: unknown,
@@ -203,6 +205,8 @@ export interface PlannerToolResult {
 	 * action whose planner call explicitly declared final scope.
 	 */
 	modelReplyRequired?: boolean;
+	/** Vetted action-owned fallback for a failed required model synthesis. */
+	modelReplyFallback?: string;
 	/**
 	 * Explicit chain-control override. `false` unconditionally aborts the
 	 * remaining planner queue, including for legacy failure and fire-and-forget
@@ -262,10 +266,9 @@ export interface PlannerLoopParams {
 	context: ContextObject;
 	/**
 	 * A sole authoritative tool result produced outside the planner loop that
-	 * explicitly requested a model-authored final reply. The result may describe
-	 * a completed effect or a truthful started/pending asynchronous operation;
-	 * the loop starts from this step and performs only the guarded no-tools
-	 * synthesis round.
+	 * explicitly requested a model-authored final reply. Its prompt data may
+	 * describe either a completed effect or a truthful asynchronous handoff; the
+	 * loop starts from this step and performs only the guarded no-tools round.
 	 */
 	postToolReplySeed?: {
 		toolCall: PlannerToolCall;

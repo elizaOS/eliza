@@ -14,6 +14,7 @@
  * inference so routing stays language-agnostic (#10471).
  */
 
+import { createHash } from "node:crypto";
 import { ElizaError } from "../../errors.ts";
 import {
 	fetchRemoteMedia,
@@ -27,6 +28,8 @@ import {
 import {
 	type Action,
 	type ActionResult,
+	buildContentReference,
+	buildReadSlice,
 	ContentType,
 	type HandlerCallback,
 	type HandlerOptions,
@@ -34,6 +37,7 @@ import {
 	logger,
 	type Memory,
 	ModelType,
+	type ReadView,
 	type State,
 	type UUID,
 } from "../../types/index.ts";
@@ -87,6 +91,144 @@ function isLinkShareWithoutAsk(text: string): boolean {
 
 export function completeAttachmentContent(content: string): string {
 	return content;
+}
+
+const ATTACHMENT_READ_TOTAL_PAGE_BYTES = 16 * 1024;
+const ATTACHMENT_READ_MAX_ITEM_BYTES = 64 * 1024;
+
+type PagedAttachmentRecord = AttachmentRecord & {
+	readView: ReadView;
+};
+
+function readNonnegativeInteger(
+	params: Record<string, unknown>,
+	key: string,
+	fallback: number,
+	minimum = 0,
+): number {
+	const value = params[key];
+	if (value === undefined) return fallback;
+	if (!Number.isSafeInteger(value) || (value as number) < minimum) {
+		throw new ElizaError(`Attachment read ${key} must be a safe integer`, {
+			code: "ATTACHMENT_READ_INVALID_RANGE",
+			context: { field: key, minimum },
+		});
+	}
+	return value as number;
+}
+
+function attachmentRevision(record: AttachmentRecord): string {
+	return `attachment:${createHash("sha256")
+		.update(record.attachment.id)
+		.update("\0")
+		.update(record.content)
+		.digest("hex")}`;
+}
+
+function pageAttachmentRecord(params: {
+	record: AttachmentRecord;
+	offset: number;
+	limit: number;
+}): PagedAttachmentRecord {
+	const source = Buffer.from(params.record.content, "utf8");
+	if (params.offset > source.length) {
+		throw new ElizaError("Attachment byte offset exceeds the source", {
+			code: "ATTACHMENT_READ_INVALID_OFFSET",
+			context: {
+				attachmentId: params.record.attachment.id,
+				total: source.length,
+			},
+		});
+	}
+	const start = params.offset;
+	if (start < source.length && (source[start] & 0xc0) === 0x80) {
+		throw new ElizaError("Attachment byte offset splits a UTF-8 code point", {
+			code: "ATTACHMENT_READ_INVALID_OFFSET",
+			context: { attachmentId: params.record.attachment.id, offset: start },
+		});
+	}
+	let end = Math.min(start + params.limit, source.length);
+	while (end > start && end < source.length && (source[end] & 0xc0) === 0x80) {
+		end -= 1;
+	}
+	if (end === start && start < source.length) {
+		throw new ElizaError(
+			"Attachment byte limit is too small for the next UTF-8 code point",
+			{
+				code: "ATTACHMENT_READ_INVALID_RANGE",
+				context: { attachmentId: params.record.attachment.id },
+			},
+		);
+	}
+	const page = source.subarray(start, end).toString("utf8");
+	const sourceSha256 = createHash("sha256").update(source).digest("hex");
+	const revision = attachmentRevision(params.record);
+	return {
+		...params.record,
+		content: page,
+		readView: {
+			reference: buildContentReference({
+				kind: "attachment",
+				ref: `attachment:${params.record.attachment.id}`,
+				revision,
+			}),
+			slice: buildReadSlice({
+				range: { unit: "byte", start, end, total: source.length },
+				completeness: end < source.length ? "partial-recoverable" : "complete",
+				revision,
+				sliceSha256: createHash("sha256").update(page).digest("hex"),
+				sourceSha256,
+			}),
+		},
+	};
+}
+
+function pageAttachmentRecords(
+	records: AttachmentRecord[],
+	params: Record<string, unknown>,
+): PagedAttachmentRecord[] {
+	const offset = readNonnegativeInteger(params, "offset", 0);
+	const requestedLimit = readNonnegativeInteger(params, "limit", 0, 1);
+	const fairLimit = Math.max(
+		1,
+		Math.floor(ATTACHMENT_READ_TOTAL_PAGE_BYTES / Math.max(records.length, 1)),
+	);
+	const limit = Math.min(
+		requestedLimit > 0 ? requestedLimit : fairLimit,
+		ATTACHMENT_READ_MAX_ITEM_BYTES,
+	);
+	if (requestedLimit > ATTACHMENT_READ_MAX_ITEM_BYTES) {
+		throw new ElizaError(
+			"Attachment read limit exceeds the maximum page size",
+			{
+				code: "ATTACHMENT_READ_INVALID_RANGE",
+				context: { maximum: ATTACHMENT_READ_MAX_ITEM_BYTES },
+			},
+		);
+	}
+	return records.map((record) =>
+		pageAttachmentRecord({ record, offset, limit }),
+	);
+}
+
+function projectClipboardResult(
+	result: Awaited<ReturnType<typeof maybeStoreTaskClipboardItem>>,
+): Record<string, unknown> {
+	if (!result.requested || !result.stored) return { ...result };
+	return {
+		requested: true,
+		stored: true,
+		replaced: result.replaced,
+		item: {
+			id: result.item.id,
+			title: result.item.title,
+			sourceType: result.item.sourceType,
+			sourceId: result.item.sourceId,
+			createdAt: result.item.createdAt,
+			updatedAt: result.item.updatedAt,
+		},
+		itemCount: result.snapshot.items.length,
+	};
 }
 
 function attachmentAnswerTokenBudget(content: string): number {
@@ -790,9 +932,11 @@ export const readAttachmentAction: Action = {
 					runtime,
 					messageWithParams,
 				);
-				const fallback = attachments.length
-					? `Available attachments:\n${attachments.map(summarizeAttachment).join("\n\n")}`
-					: "No attachments are available in the current conversation window.";
+				const fallback = explicitId
+					? "That attachment is unavailable or no longer authorized."
+					: attachments.length
+						? `Available attachments:\n${attachments.map(summarizeAttachment).join("\n\n")}`
+						: "No attachments are available in the current conversation window.";
 				if (callback) {
 					await callback({
 						text: fallback,
@@ -804,15 +948,66 @@ export const readAttachmentAction: Action = {
 				// user must act on: verified + turnComplete make it the sole
 				// delivery instead of pairing it with a second evaluator reply.
 				return {
-					success: true,
+					success: !explicitId,
 					text: attachments.length
 						? "No attachment matched; showed the user the available attachments to pick from"
 						: fallback,
+					...(explicitId
+						? { error: "ATTACHMENT_UNAVAILABLE_OR_UNAUTHORIZED" }
+						: {}),
 					userFacingText: fallback,
 					verifiedUserFacing: true,
 					turnComplete: true,
-					values: { awaitingSelection: attachments.length > 0 },
-					data: { actionName: "ATTACHMENT", action },
+					values: {
+						awaitingSelection: !explicitId && attachments.length > 0,
+					},
+					data: {
+						actionName: "ATTACHMENT",
+						action,
+						...(explicitId ? { error: "unavailable_or_unauthorized" } : {}),
+					},
+				};
+			}
+
+			if (action === "read" && records.length > 1 && !explicitId) {
+				const candidates = records.map((record) => ({
+					id: record.attachment.id,
+					title: titleForRecord(record),
+					contentType: record.attachment.contentType,
+					source: record.attachment.source,
+					readableBytes: Buffer.byteLength(record.content, "utf8"),
+				}));
+				const text = [
+					"Multiple attachments are available. Select one attachment ID to read an exact page:",
+					...candidates.map(
+						(candidate) =>
+							`- ${candidate.title} (${candidate.id}, ${candidate.contentType ?? "unknown"}, ${candidate.readableBytes} readable bytes)`,
+					),
+				].join("\n");
+				await callback?.({
+					text,
+					actions: ["ATTACHMENT_READ_SELECTION_REQUIRED"],
+					source: messageWithParams.content.source,
+				});
+				return {
+					success: true,
+					text,
+					userFacingText: text,
+					verifiedUserFacing: true,
+					turnComplete: true,
+					values: { awaitingSelection: true },
+					data: {
+						actionName: "ATTACHMENT",
+						action: "read",
+						requiresAttachmentSelection: true,
+						attachments: candidates,
+					},
+					promptData: {
+						actionName: "ATTACHMENT",
+						action: "read",
+						requiresAttachmentSelection: true,
+						attachments: candidates,
+					},
 				};
 			}
 
@@ -822,33 +1017,87 @@ export const readAttachmentAction: Action = {
 			if (!hasContent && (await transcribeMediaOnDemand(runtime, records))) {
 				hasContent = hasReadableContent(records);
 			}
-			const storedContent = hasContent ? contentForRecords(records) : "";
+			const completeStoredContent = hasContent
+				? contentForRecords(records)
+				: "";
 			if (action === "save_as_document") {
 				return await saveAttachmentAsDocument({
 					runtime,
 					message: messageWithParams,
 					records,
-					content: storedContent,
+					content: completeStoredContent,
 					actionParams: params,
 					callback,
 				});
 			}
+
+			const pagedRecords = pageAttachmentRecords(records, params);
+			const expectedRevision = readStringParam(params, "expectedRevision");
+			if (
+				pagedRecords.some((record) => record.readView.slice.range.start > 0) &&
+				!expectedRevision
+			) {
+				return {
+					success: false,
+					text: "An attachment revision is required to continue reading.",
+					error: "ATTACHMENT_READ_EXPECTED_REVISION_REQUIRED",
+					data: {
+						actionName: "ATTACHMENT",
+						action: "read",
+						error: "expected_revision_required",
+					},
+					promptData: {
+						actionName: "ATTACHMENT",
+						action: "read",
+						error: "expected_revision_required",
+					},
+				};
+			}
+			if (
+				expectedRevision &&
+				(pagedRecords.length !== 1 ||
+					expectedRevision !== pagedRecords[0]?.readView.slice.revision)
+			) {
+				return {
+					success: false,
+					text: "The attachment changed before this page could be read.",
+					error: "ATTACHMENT_READ_STALE_REVISION",
+					data: {
+						actionName: "ATTACHMENT",
+						action: "read",
+						error: "stale_revision",
+						readView: pagedRecords[0]?.readView,
+					},
+					promptData: {
+						actionName: "ATTACHMENT",
+						action: "read",
+						error: "stale_revision",
+						readView: pagedRecords[0]?.readView,
+					},
+				};
+			}
+			const storedContent = hasContent ? contentForRecords(pagedRecords) : "";
+			const exactPageText = hasContent
+				? pagedRecords.map((record) => record.content).join("")
+				: "";
 
 			const clipboardResult = await maybeStoreTaskClipboardItem(
 				runtime,
 				messageWithParams,
 				{
 					fallbackTitle:
-						records.length === 1
-							? titleForRecord(records[0])
-							: `${records.length} attachments`,
+						pagedRecords.length === 1
+							? titleForRecord(pagedRecords[0])
+							: `${pagedRecords.length} attachments`,
 					content: storedContent,
 					sourceType: attachmentSourceType(records),
-					sourceId: records.map((record) => record.attachment.id).join(","),
-					sourceLabel: records.map(titleForRecord).join(", "),
+					sourceId: pagedRecords
+						.map((record) => record.attachment.id)
+						.join(","),
+					sourceLabel: pagedRecords.map(titleForRecord).join(", "),
 					mimeType:
-						records.length === 1
-							? records[0]?.attachment.contentType
+						pagedRecords.length === 1
+							? pagedRecords[0]?.attachment.contentType
 							: undefined,
 				},
 			);
@@ -861,7 +1110,7 @@ export const readAttachmentAction: Action = {
 				}
 			}
 			const responseText = responseRecordText({
-				records,
+				records: pagedRecords,
 				clipboardStatusText,
 				clipboardResult,
 				storedContent,
@@ -885,11 +1134,11 @@ export const readAttachmentAction: Action = {
 							message: messageWithParams,
 							content: storedContent,
 							fallbackText:
-								records.length === 1
-									? `Read "${titleForRecord(records[0])}" but couldn't put an answer together — ask me something specific about it.`
+								pagedRecords.length === 1
+									? `Read "${titleForRecord(pagedRecords[0])}" but couldn't put an answer together — ask me something specific about it.`
 									: "Read the attachments but couldn't put an answer together — ask me something specific about them.",
 						})
-					: missingReadableContentMessage(records);
+					: missingReadableContentMessage(pagedRecords);
 
 			if (callback) {
 				await callback({
@@ -903,21 +1152,37 @@ export const readAttachmentAction: Action = {
 			// verified + turnComplete make the callback the sole delivery.
 			return {
 				success: true,
-				text: visibleText,
+				// A paging call selects exactly one attachment, so this string is the
+				// canonical source page named by the single ReadView. Display labels
+				// stay only in the action's private answer-model prompt.
+				text: exactPageText,
+				transcriptVisibility: "internal",
 				userFacingText: visibleText,
 				verifiedUserFacing: true,
 				turnComplete: true,
 				data: {
 					actionName: "ATTACHMENT",
 					action: "read",
-					attachmentId: records[0]?.attachment.id,
-					attachmentIds: records.map((record) => record.attachment.id),
-					attachment: records[0]?.attachment,
-					attachments: records.map((record) => record.attachment),
-					content: storedContent,
-					contents: records.map((record) => record.content.trim()),
-					clipboard: clipboardResult,
+					attachmentId: pagedRecords[0]?.attachment.id,
+					attachmentIds: pagedRecords.map((record) => record.attachment.id),
+					attachments: pagedRecords.map((record) => ({
+						id: record.attachment.id,
+						title: record.attachment.title,
+						contentType: record.attachment.contentType,
+						source: record.attachment.source,
+						notProcessed: record.attachment.notProcessed,
+					})),
+					readView: pagedRecords[0]?.readView,
+					readViews: pagedRecords.map((record) => record.readView),
+					clipboard: projectClipboardResult(clipboardResult),
 					suppressActionResultClipboard: clipboardResult.requested,
+				},
+				promptData: {
+					actionName: "ATTACHMENT",
+					action: "read",
+					attachmentIds: pagedRecords.map((record) => record.attachment.id),
+					readView: pagedRecords[0]?.readView,
+					readViews: pagedRecords.map((record) => record.readView),
 				},
 			};
 		} catch (error) {
@@ -955,6 +1220,30 @@ export const readAttachmentAction: Action = {
 			name: "attachmentId",
 			description:
 				"Optional attachment ID to read. Omit to read current or recent attachments.",
+			required: false,
+			schema: { type: "string" as const },
+		},
+		{
+			name: "offset",
+			description: "Zero-based UTF-8 byte offset for an attachment read page.",
+			required: false,
+			schema: { type: "number" as const, minimum: 0 },
+		},
+		{
+			name: "limit",
+			description:
+				"Maximum UTF-8 bytes per selected attachment. Multiple attachments each receive the same fair page allowance.",
+			required: false,
+			schema: {
+				type: "number" as const,
+				minimum: 1,
+				maximum: ATTACHMENT_READ_MAX_ITEM_BYTES,
+			},
+		},
+		{
+			name: "expectedRevision",
+			description:
+				"Revision from a preceding single-attachment page. A changed or revoked source fails explicitly.",
 			required: false,
 			schema: { type: "string" as const },
 		},

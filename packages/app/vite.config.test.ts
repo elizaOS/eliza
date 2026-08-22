@@ -149,10 +149,13 @@ describe("app shell local connection policy", () => {
       <link rel="icon" href="/brand/favicons/favicon.svg" />
       <link rel="apple-touch-icon" href="/brand/favicons/apple-touch-icon.png" />
       <link rel="manifest" href="/site.webmanifest" />
+      <img class="eliza-preboot-shell__mark" src="/brand/logos/logo_white_nobg.svg" alt="" />
       <link rel="stylesheet" href="/assets/app.css" />`;
     const stripped = stripAndroidCloudPublicAssetReferences(source);
 
-    expect(stripped).not.toMatch(/favicon|apple-touch-icon|site\.webmanifest/);
+    expect(stripped).not.toMatch(
+      /favicon|apple-touch-icon|site\.webmanifest|logo_white_nobg/,
+    );
     expect(stripped).toContain('rel="stylesheet"');
   });
 

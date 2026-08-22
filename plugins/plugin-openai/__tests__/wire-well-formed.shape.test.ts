@@ -108,6 +108,28 @@ beforeEach(() => {
 });
 
 describe("#18025: request bodies are well-formed strict JSON", () => {
+  it.each([
+    ["gemma-4-31b", undefined],
+    ["gpt-oss-120b", "low"],
+    ["zai-glm-4.7", "low"],
+  ] as const)(
+    "emits only provider-documented Cerebras reasoning fields for %s",
+    async (modelName, expectedEffort) => {
+      vi.stubEnv("ELIZA_PROVIDER", "cerebras");
+      vi.stubEnv("OPENAI_SMALL_MODEL", modelName);
+
+      await handleTextSmall(buildRuntime(), { prompt: "short answer" } as never);
+
+      expect(captured).toHaveLength(1);
+      const body = assertStrictParseable(captured[0].bytes);
+      if (expectedEffort === undefined) {
+        expect(body).not.toHaveProperty("reasoning_effort");
+      } else {
+        expect(body.reasoning_effort).toBe(expectedEffort);
+      }
+    }
+  );
+
   it("rejects an oversized sparse response schema before opening a provider request", async () => {
     const sparseSchema = new Array(MAX_WELL_FORMED_VISITS);
 
@@ -217,30 +239,37 @@ describe("#18025: request bodies are well-formed strict JSON", () => {
     expect(LONE_SURROGATE_ESCAPE.test(serialized)).toBe(false);
   });
 
-  it("sanitizes array tools before the real AI SDK schema getter is installed", async () => {
+  it("sanitizes array tool names, descriptions, and schema keys before SDK wrapping", async () => {
+    const originalName = `wire_tool${"\uD83D"}`;
     const result = await handleTextSmall(buildRuntime(), {
-      prompt: "use the native tool",
+      prompt: "use the tool",
       tools: [
         {
-          name: "native-tool",
-          description: `bad tool ${"\uD83D"}`,
+          name: originalName,
+          description: `wire description ${"\uD83D"}`,
           parameters: {
             type: "object",
-            properties: {
-              value: { type: "string", description: `bad schema ${"\uD83D"}` },
-            },
+            properties: { [`field${"\uD83D"}`]: { type: "string" } },
           },
         },
       ],
+      toolChoice: { type: "tool", toolName: originalName },
     } as never);
     expect(typeof result === "string" ? result : (result as { text: string }).text).toBe("ok");
 
     expect(captured).toHaveLength(1);
     const body = assertStrictParseable(captured[0].bytes);
-    const serialized = JSON.stringify(body);
-    expect(serialized).toContain("bad tool \uFFFD");
-    expect(serialized).toContain("bad schema \uFFFD");
-    expect(LONE_SURROGATE_ESCAPE.test(serialized)).toBe(false);
+    const wireTools = body.tools as Array<{
+      function: {
+        name: string;
+        description: string;
+        parameters: { properties: Record<string, unknown> };
+      };
+    }>;
+    expect(wireTools[0].function.name).toBe("wire_tool�");
+    expect(wireTools[0].function.description).toBe("wire description �");
+    expect(Object.keys(wireTools[0].function.parameters.properties)).toEqual(["field�"]);
+    expect(body.tool_choice).toEqual({ type: "function", function: { name: "wire_tool�" } });
   });
 
   // #18081 review: structured-output schemas must also be sanitized. The plain

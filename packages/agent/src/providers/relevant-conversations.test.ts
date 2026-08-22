@@ -101,6 +101,7 @@ function makeRuntime(overrides: Partial<IAgentRuntime> = {}): {
       roomId: OTHER_ROOM,
       entityId: "00000000-0000-0000-0000-0000000000e1",
       content: { text: "earlier relevant message" },
+      metadata: { type: "message", scope: "shared" },
       createdAt: 1,
     } as unknown as Memory,
   ]);
@@ -262,6 +263,7 @@ describe("relevantConversationsProvider — shared recall embed fail-open", () =
       roomId: OTHER_ROOM,
       entityId: "00000000-0000-0000-0000-0000000000e1",
       content: { text: "disclosable launch note" },
+      metadata: { type: "message", scope: "shared" },
       createdAt: 1,
     } as unknown as Memory;
     searchCanonicalConversationMemories.mockResolvedValueOnce({
@@ -328,6 +330,7 @@ describe("relevantConversationsProvider — shared recall embed fail-open", () =
           text: "the launch date is set for next Friday",
           source: "hash_memory",
         },
+        metadata: { type: "message", scope: "shared" },
         createdAt: 5,
       } as unknown as Memory,
       {
@@ -335,6 +338,7 @@ describe("relevantConversationsProvider — shared recall embed fail-open", () =
         roomId: "00000000-0000-0000-0000-0000000000hr",
         entityId: "00000000-0000-0000-0000-0000000000e9",
         content: { text: "unrelated note", source: "hash_memory" },
+        metadata: { type: "message", scope: "shared" },
         createdAt: 6,
       } as unknown as Memory,
     ]);
@@ -448,6 +452,7 @@ describe("relevantConversationsProvider — shared recall embed fail-open", () =
         roomId: OTHER_ROOM,
         entityId: "00000000-0000-0000-0000-0000000000e1",
         content: { text: "first relevant message" },
+        metadata: { type: "message", scope: "shared" },
         createdAt: 3,
       } as unknown as Memory,
       {
@@ -455,6 +460,7 @@ describe("relevantConversationsProvider — shared recall embed fail-open", () =
         roomId: THIRD_ROOM,
         entityId: "00000000-0000-0000-0000-0000000000e2",
         content: { text: "second relevant message" },
+        metadata: { type: "message", scope: "shared" },
         createdAt: 2,
       } as unknown as Memory,
       {
@@ -462,6 +468,7 @@ describe("relevantConversationsProvider — shared recall embed fail-open", () =
         roomId: OTHER_ROOM,
         entityId: "00000000-0000-0000-0000-0000000000e1",
         content: { text: "third relevant message" },
+        metadata: { type: "message", scope: "shared" },
         createdAt: 1,
       } as unknown as Memory,
     ]);

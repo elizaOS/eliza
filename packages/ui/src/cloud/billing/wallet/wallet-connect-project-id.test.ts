@@ -104,7 +104,7 @@ describe("buildStewardEvmConfig fail-closed paths", () => {
     expect(connectors.map((c) => c.type)).toEqual(["injected"]);
   });
 
-  it("uses RainbowKit getDefaultConfig (multi-connector) when a real project id is provided", async () => {
+  it("registers only injected and WalletConnect when a real project id is provided", async () => {
     const { buildStewardEvmConfig } = await import(
       "./steward-wallet-providers"
     );
@@ -120,10 +120,18 @@ describe("buildStewardEvmConfig fail-closed paths", () => {
     });
     const withConnectors = withProjectId.connectors ?? [];
     const withoutConnectors = withoutProjectId.connectors ?? [];
-    // Full RainbowKit stack is larger than the injected-only fail-closed path.
-    // Connector ids differ across Node/jsdom vs browser (mocks vs WC), so assert
-    // the structural difference rather than a specific WalletConnect id string.
-    expect(withConnectors.length).toBeGreaterThan(withoutConnectors.length);
-    expect(withConnectors.map((c) => c.id)).not.toEqual(["injected"]);
+    // Keep the configured path deliberately narrow. RainbowKit's default
+    // wallet set pulls vendor SDKs with embedded public telemetry/provider
+    // keys into the shipped app even when those wallets are never selected.
+    // RainbowKit supplies deterministic mock connectors for its two requested
+    // wallet definitions under Node/jsdom. In a browser they resolve to the
+    // injected and WalletConnect connectors represented by those definitions.
+    expect(withConnectors.map((c) => c.id)).toEqual([
+      "injected",
+      "mock",
+      "mock",
+    ]);
+    expect(withConnectors).toHaveLength(3);
+    expect(withoutConnectors.map((c) => c.id)).toEqual(["injected"]);
   });
 });

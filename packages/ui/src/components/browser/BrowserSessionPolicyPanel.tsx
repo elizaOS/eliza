@@ -51,6 +51,8 @@ export interface BrowserSessionPolicyPanelProps {
   api: BrowserSessionPolicyApi;
   /** Clock refresh cadence for TTL annotations; defaults to 30s. */
   clockIntervalMs?: number;
+  /** Omit the redundant empty card when a parent already declares an empty browser workspace. */
+  hideWhenEmpty?: boolean;
 }
 
 const POLICY_MODE_LABELS: Record<BrowserDomainPolicyMode, string> = {
@@ -88,6 +90,7 @@ type LoadPhase = "loading" | "error" | "ready";
 export function BrowserSessionPolicyPanel({
   api,
   clockIntervalMs = 30_000,
+  hideWhenEmpty = false,
 }: BrowserSessionPolicyPanelProps) {
   const [phase, setPhase] = useState<LoadPhase>("loading");
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -237,6 +240,7 @@ export function BrowserSessionPolicyPanel({
   }
 
   if (visibleSessions.length === 0) {
+    if (hideWhenEmpty) return null;
     return (
       <div
         data-testid="browser-session-policy-empty"

@@ -61,7 +61,7 @@ src/
     paths.ts              resolveUserPath() and state/path helpers
     env-vars.ts, schema.ts, model-metadata.ts, owner-contacts.ts
   services/               Business-logic services (capability-broker, permissions-registry, config-plugin-manager, plugin-installer/-compiler, relationships-graph, agent-export, shell-execution-router, provider-neutral tee-*)
-  actions/                Eliza actions registered by createElizaPlugin (terminal, trigger, contact, settings, plugin, logs, runtime, database, memory, compact-conversation)
+  actions/                Eliza actions registered by createElizaPlugin (terminal, trigger, contact, settings, plugin, logs, runtime, database, memory)
   providers/              Providers for createElizaPlugin (workspace, admin-trust/-panel, session, rolodex, recent/relevant-conversations, pending-permissions, escalation-trigger, page-scoped-context, ...)
   triggers/               runtime.ts (registerTriggerTaskWorker), scheduling.ts, types.ts
   auth/                   Credential storage + OAuth/Anthropic/OpenAI-Codex flows (account-storage, oauth-flow, refresh-mutex)
@@ -139,7 +139,7 @@ Verified audio redaction:
 Capability router (remote plugins — see `docs/capability-router-remote-plugins.md`):
 - `ELIZA_CAPABILITY_ROUTER_ENABLED`, `ELIZA_CAPABILITY_ROUTER_URLS`, `ELIZA_CAPABILITY_ROUTER_ALLOWED_MODULES`, `ELIZA_CAPABILITY_ROUTER_TRUST_POLICY`, `ELIZA_CAPABILITY_ROUTER_TRUST_AUDIT`.
 
-Wallet/chain: `EVM_PRIVATE_KEY`, `SOLANA_PRIVATE_KEY`, `ELIZA_WALLET_NETWORK`, `{BSC,QUICKNODE_BSC,NODEREAL_BSC}_RPC_URL`. Misc: `GITHUB_TOKEN`, `LOG_LEVEL`, `ELIZA_CONVERSATION_COMPACTOR`.
+Wallet/chain: `EVM_PRIVATE_KEY`, `SOLANA_PRIVATE_KEY`, `ELIZA_WALLET_NETWORK`, `{BSC,QUICKNODE_BSC,NODEREAL_BSC}_RPC_URL`. Misc: `GITHUB_TOKEN`, `LOG_LEVEL`.
 
 Stability (memory watchdog — `runtime/memory-watchdog.ts`, #10197): the boot
   sampler (`runtime/boot-telemetry.ts`) only *records* RSS; the watchdog *acts* on

@@ -15,7 +15,7 @@ This catalog is generated from `packages/prompts/specs/**` by `bun run --cwd pac
 - **Plugin overlay actions:** 10
 - **Canonical providers:** 23
 - **Core providers:** 23
-- **Registered runtime actions:** 172
+- **Registered runtime actions:** 174
 
 ## Actions
 
@@ -342,6 +342,7 @@ list. Regenerate this document after changing the registered action surface.
 - `AGENT_SWITCH` — `plugins/plugin-app-control/src/actions/agent-switch.ts`
 - `ALARM` — `plugins/plugin-native-macosalarm/src/actions.ts`
 - `APP` — `plugins/plugin-app-control/src/actions/app.ts`
+- `ASSERT_MEETING_MOCK_LEDGER` — `plugins/plugin-meetings/src/test-support.ts`
 - `ATTACH_TO_CHAT` — `packages/agent/src/actions/knowledge.ts`
 - `ATTACHMENT` — `packages/core/src/features/working-memory/readAttachmentAction.ts`
 - `AWAIT_CHILD_AGENT_DECISION` — `packages/core/src/features/sub-agent-credentials/actions/await-child-agent-decision.ts`
@@ -384,6 +385,7 @@ list. Regenerate this document after changing the registered action surface.
 - `DEPLOY_FRONTEND` — `plugins/plugin-cloud-apps/src/actions/deploy-frontend.ts`
 - `DISABLE_AUTONOMOUS_MODE` — `packages/core/src/features/autonomy/action.ts`
 - `DOCUMENT` — `packages/core/src/features/documents/actions.ts`
+- `DOORDASH` — `plugins/plugin-doordash/src/action.ts`
 - `DRAFT_PRESS_RELEASE` — `plugins/plugin-cloud-apps/src/actions/press-releases.ts`
 - `DUPLICATE_AD_CAMPAIGN` — `plugins/plugin-cloud-apps/src/actions/ad-campaigns.ts`
 - `ENABLE_AUTONOMOUS_MODE` — `packages/core/src/features/autonomy/action.ts`

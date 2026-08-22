@@ -127,7 +127,25 @@ export class NotificationPushService extends Service {
 
     this.unsubscribe = bus.subscribe((event) => {
       if (event.stream !== NOTIFICATION_STREAM) return;
-      void this.onNotification(event);
+      void (async () => {
+        try {
+          await this.onNotification(event);
+        } catch (error) {
+          // error-policy:J7 best-effort fan-out must not escape as an
+          // unhandled rejection; log + report and drop the event.
+          logger.error(
+            { src: "service:notification_push", error },
+            "[NotificationPushService] fan-out failed",
+          );
+          if (typeof this.runtime.reportError === "function") {
+            this.runtime.reportError(
+              "NotificationPushService.fanOut",
+              error as Error,
+              { stream: NOTIFICATION_STREAM },
+            );
+          }
+        }
+      })();
     });
   }
 
@@ -200,15 +218,12 @@ function toPushMessage(notification: AgentNotification): PushMessage {
   const data: PushMessage["data"] = {
     notificationId: notification.id,
     category: notification.category,
-    priority: notification.priority,
   };
   if (notification.deepLink) data.deepLink = notification.deepLink;
   if (notification.groupKey) data.groupKey = notification.groupKey;
   return {
     title: notification.title,
     body: notification.body,
-    priority: notification.priority,
-    collapseKey: notification.groupKey,
     data,
   };
 }

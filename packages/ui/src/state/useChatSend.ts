@@ -33,6 +33,7 @@ import {
   normalizeSlashCommandName,
 } from "../chat";
 import { dispatchWorkflowActionHandoff } from "../components/pages/workflow-action-handoff";
+import { dispatchDoorDashHumanHandoff } from "../doordash-human-handoff";
 import {
   CLOUD_HANDOFF_PHASE_EVENT,
   type CloudHandoffPhaseDetail,
@@ -144,6 +145,7 @@ async function handoffCompletedAction(
     }
     return;
   }
+  if (dispatchDoorDashHumanHandoff(actionResults)) return;
   dispatchWorkflowActionHandoff(actionResults);
 }
 

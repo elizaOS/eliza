@@ -14,13 +14,21 @@
  * model the query shapes the store emits — not a general SQL engine.
  */
 
-import type { IAgentRuntime } from "@elizaos/core";
+import { randomUUID } from "node:crypto";
+import type {
+  AgentNotification,
+  IAgentRuntime,
+  NotificationInput,
+  UUID,
+} from "@elizaos/core";
 import { ServiceType } from "@elizaos/core";
 import { createMockRuntime } from "@elizaos/core/testing";
 import { describe, expect, it, vi } from "vitest";
 import {
   type ApprovalEnqueueInput,
+  type ApprovalEnqueueResult,
   ApprovalNotFoundError,
+  type ApprovalQueue,
   ApprovalService,
   ApprovalStateTransitionError,
   resolveApprovalService,
@@ -172,14 +180,51 @@ function parseSet(setSql: string): Record<string, string | null> {
 
 interface NotifierSpy {
   notify: ReturnType<typeof vi.fn>;
+  ensureGroupedNotification: ReturnType<typeof vi.fn>;
   markReadByGroupKey: ReturnType<typeof vi.fn>;
+  notifications: AgentNotification[];
 }
 
 function createNotifierSpy(): NotifierSpy {
-  return {
-    notify: vi.fn(async () => ({})),
-    markReadByGroupKey: vi.fn(async () => 1),
+  const notifications: AgentNotification[] = [];
+  const recordNotification = async (
+    input: NotificationInput,
+  ): Promise<AgentNotification> => {
+    const notification: AgentNotification = {
+      ...input,
+      id: randomUUID() as UUID,
+      category: input.category ?? "general",
+      priority: input.priority ?? "normal",
+      source: input.source ?? "test",
+      createdAt: Date.now(),
+      readAt: null,
+    };
+    notifications.unshift(notification);
+    return notification;
   };
+  const notifier: NotifierSpy = {
+    notify: vi.fn(recordNotification),
+    ensureGroupedNotification: vi.fn(
+      async (
+        input: NotificationInput & { groupKey: string },
+        isExact: (notification: AgentNotification) => boolean,
+      ) => {
+        const grouped = notifications.filter(
+          (entry) => entry.groupKey === input.groupKey,
+        );
+        if (grouped.length === 1 && isExact(grouped[0])) return grouped[0];
+        for (let index = notifications.length - 1; index >= 0; index -= 1) {
+          if (notifications[index]?.groupKey === input.groupKey) {
+            notifications.splice(index, 1);
+          }
+        }
+        return recordNotification(input);
+      },
+    ),
+    markReadByGroupKey: vi.fn(async () => 1),
+    notifications,
+  };
+  return notifier;
 }
 
 function createApprovalTableRuntime(
@@ -298,6 +343,17 @@ function messageInput(
   };
 }
 
+async function enqueueWithAwaitedNotification(
+  queue: ApprovalQueue,
+  input: ApprovalEnqueueInput,
+): Promise<ApprovalEnqueueResult> {
+  const enqueue = queue.enqueueWithResultAndNotification;
+  if (!enqueue) {
+    throw new Error("ApprovalQueue lacks awaited notification support");
+  }
+  return enqueue.call(queue, input);
+}
+
 describe("ApprovalService", () => {
   it("resolveApprovalService returns null when unregistered", () => {
     const runtime = createMockRuntime({ getService: () => null });
@@ -365,14 +421,65 @@ describe("ApprovalService", () => {
     const runtime = createApprovalTableRuntime("agent-notif", notifier);
     const queue = (await ApprovalService.start(runtime)).getQueue();
 
-    const outcome = await queue.enqueueWithResult(messageInput());
-    const enqueued = outcome.request;
-    expect(outcome.notificationProjected).toBe(true);
+    const enqueued = await queue.enqueue(messageInput());
     expect(notifier.notify).toHaveBeenCalledTimes(1);
     const arg = notifier.notify.mock.calls[0][0];
     expect(arg.category).toBe("approval");
     expect(arg.priority).toBe("high"); // interrupt tier (§C.1)
     expect(arg.groupKey).toBe(`approval:${enqueued.id}`);
+  });
+
+  it("reconciles the exact notification projection on idempotent awaited reuse", async () => {
+    const notifier = createNotifierSpy();
+    const runtime = createApprovalTableRuntime("agent-notif-reuse", notifier);
+    const queue = (await ApprovalService.start(runtime)).getQueue();
+    const input = messageInput({ idempotencyKey: "approval-notif-reuse" });
+
+    const initial = await enqueueWithAwaitedNotification(queue, input);
+    expect(notifier.ensureGroupedNotification).toHaveBeenCalledTimes(1);
+
+    const exactReplay = await enqueueWithAwaitedNotification(queue, input);
+    expect(exactReplay).toMatchObject({ reused: true });
+    expect(exactReplay.request.id).toBe(initial.request.id);
+    expect(notifier.ensureGroupedNotification).toHaveBeenCalledTimes(2);
+    expect(notifier.notifications).toHaveLength(1);
+
+    notifier.notifications[0] = {
+      ...notifier.notifications[0],
+      title: "Stale approval projection",
+    };
+    await enqueueWithAwaitedNotification(queue, input);
+    expect(notifier.ensureGroupedNotification).toHaveBeenCalledTimes(3);
+    expect(notifier.notifications).toHaveLength(1);
+    expect(notifier.notifications[0]).toMatchObject({
+      title: "Approval needed",
+      groupKey: `approval:${initial.request.id}`,
+      data: { requestId: initial.request.id, kind: input.action },
+      readAt: null,
+    });
+    expect(notifier.notifications[0]?.data).toEqual({
+      requestId: initial.request.id,
+      kind: input.action,
+    });
+
+    notifier.notifications.splice(0);
+    await enqueueWithAwaitedNotification(queue, input);
+    expect(notifier.ensureGroupedNotification).toHaveBeenCalledTimes(4);
+    expect(notifier.notifications).toHaveLength(1);
+  });
+
+  it("fails the awaited projection seam when notification service is unavailable", async () => {
+    const runtime = createApprovalTableRuntime("agent-notif-unavailable");
+    const queue = (await ApprovalService.start(runtime)).getQueue();
+
+    await expect(
+      enqueueWithAwaitedNotification(
+        queue,
+        messageInput({ idempotencyKey: "approval-notif-unavailable" }),
+      ),
+    ).rejects.toThrow(
+      "notification service unavailable for awaited approval projection",
+    );
   });
 
   it("persists an authenticated confirmed gesture without a redundant prompt", async () => {

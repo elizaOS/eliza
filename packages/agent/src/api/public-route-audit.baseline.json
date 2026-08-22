@@ -11,7 +11,6 @@
   "packages/ui/src/cloud/public-pages/register.ts::(no-path)",
   "packages/ui/src/cloud/public-pages/register.ts::(no-path)",
   "packages/ui/src/cloud/shell/cloud-route-registry.ts::(no-path)",
-  "plugins/plugin-bluebubbles/src/data-routes.ts::(no-path)",
   "plugins/plugin-browser/src/plugin.ts::(no-path)",
   "plugins/plugin-browser/src/plugin.ts::(no-path)",
   "plugins/plugin-browser/src/plugin.ts::/api/browser-bridge/companions/pair",

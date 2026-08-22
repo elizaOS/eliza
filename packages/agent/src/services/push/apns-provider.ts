@@ -17,12 +17,7 @@
  * bundle id, and a real device token.
  */
 
-import {
-  createHash,
-  createPrivateKey,
-  createSign,
-  type KeyObject,
-} from "node:crypto";
+import { createPrivateKey, createSign, type KeyObject } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { connect, constants as http2Constants } from "node:http2";
 import {
@@ -35,22 +30,6 @@ const PROD_HOST = "https://api.push.apple.com";
 const SANDBOX_HOST = "https://api.sandbox.push.apple.com";
 /** Re-mint the provider token before Apple's 60-minute cap (use 50 min). */
 const TOKEN_TTL_MS = 50 * 60 * 1000;
-const APNS_COLLAPSE_ID_MAX_BYTES = 64;
-
-function isImmediate(message: PushMessage): boolean {
-  return (
-    message.priority === undefined ||
-    message.priority === "high" ||
-    message.priority === "urgent"
-  );
-}
-
-function apnsCollapseId(value: string): string {
-  if (Buffer.byteLength(value, "utf8") <= APNS_COLLAPSE_ID_MAX_BYTES) {
-    return value;
-  }
-  return createHash("sha256").update(value).digest("hex");
-}
 
 interface ApnsConfig {
   /** PEM/p8 EC private key contents. */
@@ -160,38 +139,11 @@ export class ApnsProvider implements PushProvider {
   buildPayload(message: PushMessage): string {
     const alert: { title: string; body?: string } = { title: message.title };
     if (message.body) alert.body = message.body;
-    const aps: Record<string, unknown> = { alert };
-    if (isImmediate(message)) aps.sound = "default";
-    if (message.collapseKey) {
-      aps["thread-id"] = apnsCollapseId(message.collapseKey);
-    }
     const payload: Record<string, unknown> = {
-      aps,
+      aps: { alert, sound: "default" },
       ...(message.data ?? {}),
     };
     return JSON.stringify(payload);
-  }
-
-  /** Build transport headers as a pure seam for policy verification. */
-  buildRequestHeaders(
-    token: string,
-    jwt: string,
-    body: string,
-    message: PushMessage,
-  ): Record<string, string | number> {
-    return {
-      [http2Constants.HTTP2_HEADER_METHOD]: "POST",
-      [http2Constants.HTTP2_HEADER_PATH]: `/3/device/${token}`,
-      "apns-topic": this.requireConfig().topic,
-      "apns-push-type": "alert",
-      "apns-priority": isImmediate(message) ? "10" : "5",
-      ...(message.collapseKey
-        ? { "apns-collapse-id": apnsCollapseId(message.collapseKey) }
-        : {}),
-      authorization: `bearer ${jwt}`,
-      "content-type": "application/json",
-      "content-length": Buffer.byteLength(body),
-    };
   }
 
   async send(token: string, message: PushMessage): Promise<void> {
@@ -200,13 +152,7 @@ export class ApnsProvider implements PushProvider {
     const jwt = this.mintToken();
     const body = this.buildPayload(message);
 
-    const { status, reason } = await this.postHttp2(
-      host,
-      token,
-      jwt,
-      body,
-      message,
-    );
+    const { status, reason } = await this.postHttp2(host, token, jwt, body);
     if (status === 200) return;
 
     // 410 = the device token is no longer active; APNs also returns reason
@@ -232,14 +178,20 @@ export class ApnsProvider implements PushProvider {
     token: string,
     jwt: string,
     body: string,
-    message: PushMessage,
   ): Promise<{ status: number; reason?: string }> {
+    const config = this.requireConfig();
     return new Promise((resolve, reject) => {
       const client = connect(host);
       client.on("error", reject);
-      const req = client.request(
-        this.buildRequestHeaders(token, jwt, body, message),
-      );
+      const req = client.request({
+        [http2Constants.HTTP2_HEADER_METHOD]: "POST",
+        [http2Constants.HTTP2_HEADER_PATH]: `/3/device/${token}`,
+        "apns-topic": config.topic,
+        "apns-push-type": "alert",
+        authorization: `bearer ${jwt}`,
+        "content-type": "application/json",
+        "content-length": Buffer.byteLength(body),
+      });
       let status = 0;
       const chunks: Buffer[] = [];
       req.on("response", (headers) => {

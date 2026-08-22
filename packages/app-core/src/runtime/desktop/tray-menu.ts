@@ -73,6 +73,12 @@ export const DESKTOP_VIEW_WINDOWS: readonly DesktopViewWindow[] = [
     path: "/character/documents",
   },
   {
+    id: "vault",
+    label: "Vault",
+    labelKey: "desktop.views.vault",
+    path: "/vault",
+  },
+  {
     id: "settings",
     label: "Settings",
     labelKey: "desktop.views.settings",

@@ -217,4 +217,18 @@ describe("renderer API proxy", () => {
       }),
     ).toBe(30);
   });
+
+  it("keeps accepting an explicit leading plus and rejects one past the safe range", () => {
+    // `parseInt` accepted "+30"; rejecting it would be a regression.
+    expect(
+      resolveRendererProxyIdleTimeoutSeconds({
+        ELIZA_RENDERER_PROXY_IDLE_TIMEOUT_SECONDS: "+30",
+      }),
+    ).toBe(30);
+    expect(
+      resolveRendererProxyIdleTimeoutSeconds({
+        ELIZA_RENDERER_PROXY_IDLE_TIMEOUT_SECONDS: "9007199254740993",
+      }),
+    ).toBe(255);
+  });
 });

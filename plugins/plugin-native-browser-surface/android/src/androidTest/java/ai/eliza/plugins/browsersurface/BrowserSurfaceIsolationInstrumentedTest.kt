@@ -39,22 +39,25 @@ class BrowserSurfaceIsolationInstrumentedTest {
             "multi-profile unsupported on this system WebView",
             WebViewFeature.isFeatureSupported(WebViewFeature.MULTI_PROFILE),
         )
-        val store = ProfileStore.getInstance()
-        val profileA = store.getOrCreateProfile("eliza-surface-test-a")
-        val profileB = store.getOrCreateProfile("eliza-surface-test-b")
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            val store = ProfileStore.getInstance()
+            val suffix = System.nanoTime()
+            val profileA = store.getOrCreateProfile("eliza-surface-test-a-$suffix")
+            val profileB = store.getOrCreateProfile("eliza-surface-test-b-$suffix")
 
-        val cmA = profileA.cookieManager
-        val cmB = profileB.cookieManager
-        val cmDefault = store.getOrCreateProfile(Profile.DEFAULT_PROFILE_NAME).cookieManager
+            val cmA = profileA.cookieManager
+            val cmB = profileB.cookieManager
+            val cmDefault = store.getOrCreateProfile(Profile.DEFAULT_PROFILE_NAME).cookieManager
 
-        cmA.setCookie(urlA, "session=secret-A")
-        cmA.flush()
+            cmA.setCookie(urlA, "session=secret-A")
+            cmA.flush()
 
-        // Profile A sees its own cookie…
-        assertTrue(cmA.getCookie(urlA)?.contains("secret-A") == true)
-        // …but a sibling profile and the default profile do NOT.
-        assertNull(cmB.getCookie(urlA))
-        assertNull(cmDefault.getCookie(urlA))
+            // Profile A sees its own cookie…
+            assertTrue(cmA.getCookie(urlA)?.contains("secret-A") == true)
+            // …but a sibling profile and the default profile do NOT.
+            assertNull(cmB.getCookie(urlA))
+            assertNull(cmDefault.getCookie(urlA))
+        }
     }
 
     @Test
@@ -63,10 +66,13 @@ class BrowserSurfaceIsolationInstrumentedTest {
             "multi-profile unsupported on this system WebView",
             WebViewFeature.isFeatureSupported(WebViewFeature.MULTI_PROFILE),
         )
-        val store = ProfileStore.getInstance()
-        val a = store.getOrCreateProfile("eliza-surface-test-a")
-        val b = store.getOrCreateProfile("eliza-surface-test-b")
-        assertNotEquals(a.name, b.name)
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            val store = ProfileStore.getInstance()
+            val suffix = System.nanoTime()
+            val a = store.getOrCreateProfile("eliza-surface-test-a-$suffix")
+            val b = store.getOrCreateProfile("eliza-surface-test-b-$suffix")
+            assertNotEquals(a.name, b.name)
+        }
     }
 
     @Test
@@ -75,17 +81,19 @@ class BrowserSurfaceIsolationInstrumentedTest {
             "multi-profile unsupported on this system WebView",
             WebViewFeature.isFeatureSupported(WebViewFeature.MULTI_PROFILE),
         )
-        val store = ProfileStore.getInstance()
-        val cmDefault = store.getOrCreateProfile(Profile.DEFAULT_PROFILE_NAME).cookieManager
-        cmDefault.setCookie(urlShared, "shared=value")
-        cmDefault.flush()
-        // A second read of the default profile sees the shared write.
-        val again = store.getOrCreateProfile(Profile.DEFAULT_PROFILE_NAME).cookieManager
-        assertEquals(true, again.getCookie(urlShared)?.contains("shared=value"))
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            val store = ProfileStore.getInstance()
+            val cmDefault = store.getOrCreateProfile(Profile.DEFAULT_PROFILE_NAME).cookieManager
+            cmDefault.setCookie(urlShared, "shared=value")
+            cmDefault.flush()
+            // A second read of the default profile sees the shared write.
+            val again = store.getOrCreateProfile(Profile.DEFAULT_PROFILE_NAME).cookieManager
+            assertEquals(true, again.getCookie(urlShared)?.contains("shared=value"))
+        }
     }
 
     @Test
-    fun isolatedProfileAndRendererAreReleasedAfterTheSurfaceWebViewIsDestroyed() {
+    fun destroyedSurfaceProfileIsRetiredInsteadOfReusedInProcess() {
         assumeTrue(
             "multi-profile unsupported on this system WebView",
             WebViewFeature.isFeatureSupported(WebViewFeature.MULTI_PROFILE),
@@ -97,10 +105,12 @@ class BrowserSurfaceIsolationInstrumentedTest {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val context = instrumentation.targetContext
         val profileName = "eliza-surface-release-${System.nanoTime()}"
-        val store = ProfileStore.getInstance()
         lateinit var webView: WebView
         instrumentation.runOnMainSync {
+            val store = ProfileStore.getInstance()
             val profile = store.getOrCreateProfile(profileName)
+            profile.cookieManager.setCookie(urlA, "session=retired-secret")
+            profile.cookieManager.flush()
             webView = WebView(context)
             WebViewCompat.setProfile(webView, profile.name)
             webView.loadUrl("about:blank")
@@ -115,14 +125,14 @@ class BrowserSurfaceIsolationInstrumentedTest {
         }
         instrumentation.waitForIdleSync()
         instrumentation.runOnMainSync {
-            val deleted = store.deleteProfile(profileName)
-            assertTrue(deleted || store.getProfile(profileName) == null)
-            assertFalse(store.deleteProfile(profileName))
-            assertNull(store.getProfile(profileName))
-            val replacement = store.getOrCreateProfile(profileName)
-            assertEquals(profileName, replacement.name)
-            val replacementDeleted = store.deleteProfile(profileName)
-            assertTrue(replacementDeleted || store.getProfile(profileName) == null)
+            val store = ProfileStore.getInstance()
+            assertThrows(IllegalStateException::class.java) {
+                store.deleteProfile(profileName)
+            }
+            val replacementName = "$profileName-replacement"
+            val replacement = store.getOrCreateProfile(replacementName)
+            assertEquals(replacementName, replacement.name)
+            assertNull(replacement.cookieManager.getCookie(urlA))
         }
     }
 

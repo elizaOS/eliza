@@ -323,6 +323,16 @@
       "import": "./dist/contracts/scheduled-task-execution.js",
       "default": "./dist/contracts/scheduled-task-execution.js"
     },
+    "./contracts/synthetic-environment-lease": {
+      "types": "./dist/contracts/synthetic-environment-lease.d.ts",
+      "eliza-source": {
+        "types": "./src/contracts/synthetic-environment-lease.ts",
+        "import": "./src/contracts/synthetic-environment-lease.ts",
+        "default": "./src/contracts/synthetic-environment-lease.ts"
+      },
+      "import": "./dist/contracts/synthetic-environment-lease.js",
+      "default": "./dist/contracts/synthetic-environment-lease.js"
+    },
     "./utils/asset-url": {
       "types": "./dist/utils/asset-url.d.ts",
       "eliza-source": {

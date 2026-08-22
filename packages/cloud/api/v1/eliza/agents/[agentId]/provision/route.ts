@@ -1,6 +1,7 @@
 // Handles v1 cloud API v1 eliza agents agentid provision route traffic with route-local auth expectations.
 import { Hono } from "hono";
 import { agentSandboxesRepository } from "@/db/repositories/agent-sandboxes";
+import { CONTAINER_BACKED_EXECUTION_TIERS } from "@/db/schemas/agent-sandboxes";
 import { errorToResponse } from "@/lib/api/errors";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
 import { containersEnv } from "@/lib/config/containers-env";
@@ -133,6 +134,66 @@ async function __hono_POST(
         ),
         CORS_METHODS,
       );
+    }
+
+    // This primary snapshot is not a lock/CAS. Fence only the legacy blocking
+    // path here; async behavior remains unchanged and is covered by separate
+    // enqueue/worker authority work.
+    if (sync) {
+      if (
+        !CONTAINER_BACKED_EXECUTION_TIERS.some(
+          (tier) => tier === existing.execution_tier,
+        )
+      ) {
+        return applyCorsHeaders(
+          Response.json(
+            {
+              success: false,
+              error:
+                "Agent provision requires a container-backed execution tier",
+            },
+            { status: 409 },
+          ),
+          CORS_METHODS,
+        );
+      }
+      if (existing.pool_status !== null) {
+        return applyCorsHeaders(
+          Response.json(
+            {
+              success: false,
+              error: "Agent provision cannot target pool-owned capacity",
+            },
+            { status: 409 },
+          ),
+          CORS_METHODS,
+        );
+      }
+      if (existing.deleted_at !== null) {
+        return applyCorsHeaders(
+          Response.json(
+            {
+              success: false,
+              error: "Agent provision cannot target deleted capacity",
+            },
+            { status: 409 },
+          ),
+          CORS_METHODS,
+        );
+      }
+      if (existing.deletion_attempt_id !== null) {
+        return applyCorsHeaders(
+          Response.json(
+            {
+              success: false,
+              error:
+                "Agent provision cannot target capacity with deletion in progress",
+            },
+            { status: 409 },
+          ),
+          CORS_METHODS,
+        );
+      }
     }
 
     if (existing.execution_tier === "shared") {

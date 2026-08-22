@@ -471,6 +471,7 @@
     "cron-parser": "^5.5.0",
     "date-fns": "^4.1.0",
     "embla-carousel-react": "^8.6.0",
+    "libphonenumber-js": "^1.12.35",
     "lucide-react": "^1.0.0",
     "motion": "^12.38.0",
     "nprogress": "^0.2.0",

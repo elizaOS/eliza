@@ -402,6 +402,30 @@ describe("beginDiscordOutboundDelivery dedupe window", () => {
 		).toBe("deliver");
 	});
 
+	it("treats distinct native interaction payloads as distinct deliveries", () => {
+		const state = new Map<string, DiscordOutboundDeliveryState>();
+		const first = beginDiscordOutboundDelivery({
+			channelId: "123",
+			text: "Choose one",
+			interactionIdentity: '[{"id":"first"}]',
+			now: 1_000,
+			state,
+		});
+		expect(first.kind).toBe("deliver");
+		if (first.kind !== "deliver") throw new Error("expected deliver");
+		first.reservation.commit("delivered", receipt("first"), 1_000);
+
+		expect(
+			beginDiscordOutboundDelivery({
+				channelId: "123",
+				text: "Choose one",
+				interactionIdentity: '[{"id":"second"}]',
+				now: 1_001,
+				state,
+			}).kind,
+		).toBe("deliver");
+	});
+
 	it("never expires or cap-evicts an active reservation", () => {
 		const state = new Map<string, DiscordOutboundDeliveryState>();
 		const activeParams = {
