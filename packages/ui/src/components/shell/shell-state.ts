@@ -4,6 +4,7 @@
  */
 import type {
   ChatFailureKind,
+  ChatTerminalFailure,
   ConversationSecretRequest,
   MessageAttachment,
   NativeToolCallEvent,
@@ -61,6 +62,8 @@ export interface ShellMessage {
   source?: string;
   /** Set on assistant turns the server flagged as failed (e.g. no provider). */
   failureKind?: ChatFailureKind;
+  /** Complete typed terminal failure used for truthful transient retry state. */
+  terminalFailure?: ChatTerminalFailure;
   /** Agent reasoning/thought for this turn, rendered as a collapsed block. */
   reasoning?: string;
   /** Inline tool-call rows for this turn, streamed live from the chat SSE `tool`

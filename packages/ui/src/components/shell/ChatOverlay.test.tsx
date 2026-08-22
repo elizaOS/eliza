@@ -5507,6 +5507,53 @@ describe("ChatOverlay — routed OS-intent composer prefill (#9148, #16441)", ()
     expect(screen.queryByTestId("thread-line-retry")).toBeNull();
   });
 
+  it("shows Retry when a typed terminal failure explicitly marks a normally permanent kind transient", () => {
+    const controller = makeController({
+      messages: [
+        { id: "u1", role: "user", content: "fix it", createdAt: 1 },
+        {
+          id: "a1",
+          role: "assistant",
+          content: "Shell execution failed.",
+          createdAt: 2,
+          failureKind: "coding_tool_failure",
+          terminalFailure: {
+            kind: "coding_tool_failure",
+            message: "Shell execution failed.",
+            transient: true,
+            code: "SHELL_UNAVAILABLE",
+          },
+        },
+      ],
+    } as unknown as Partial<ShellController>);
+    render(<ChatOverlay controller={controller} />);
+    fireEvent.focus(screen.getByLabelText("message"));
+    expect(screen.getByTestId("thread-line-retry")).toBeTruthy();
+  });
+
+  it("hides Retry when a typed terminal failure marks a normally retryable kind permanent", () => {
+    const controller = makeController({
+      messages: [
+        { id: "u1", role: "user", content: "try it", createdAt: 1 },
+        {
+          id: "a1",
+          role: "assistant",
+          content: "The planner cannot continue.",
+          createdAt: 2,
+          failureKind: "planner_exhaustion",
+          terminalFailure: {
+            kind: "planner_exhaustion",
+            message: "The planner cannot continue.",
+            transient: false,
+          },
+        },
+      ],
+    } as unknown as Partial<ShellController>);
+    render(<ChatOverlay controller={controller} />);
+    fireEvent.focus(screen.getByLabelText("message"));
+    expect(screen.queryByTestId("thread-line-retry")).toBeNull();
+  });
+
   it("restores the persisted composer draft for the active conversation (shared app composer slot)", () => {
     // The overlay reads the SHARED ChatComposerContext draft; the app-level
     // persistence hook (AppContext runs the same one this harness runs)

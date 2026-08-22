@@ -7,6 +7,7 @@
 import type { LinkedAccountProviderId } from "@elizaos/shared";
 import type {
   ChatFailureKind,
+  ChatTerminalFailure,
   ChatToolCallEvent,
   ChatTurnStatus,
 } from "@elizaos/shared/contracts";
@@ -20,7 +21,12 @@ import type {
 // here so existing `@elizaos/ui` `api` consumers keep their import path. Imported
 // (not export-from) because `failureKind` fields below reference the type in this
 // module's scope.
-export type { ChatFailureKind, ChatToolCallEvent, ChatTurnStatus };
+export type {
+  ChatFailureKind,
+  ChatTerminalFailure,
+  ChatToolCallEvent,
+  ChatTurnStatus,
+};
 
 // Conversations
 export interface Conversation {
@@ -387,6 +393,8 @@ export interface ConversationMessage {
    * the fallback `text` as a normal reply bubble.
    */
   failureKind?: ChatFailureKind;
+  /** Authoritative terminal failure details retained for retry and diagnostics. */
+  terminalFailure?: ChatTerminalFailure;
   /** Structured local-inference status returned with local model command/error replies. */
   localInference?: LocalInferenceChatMetadata;
   /** Structured sensitive/private information request metadata. */
