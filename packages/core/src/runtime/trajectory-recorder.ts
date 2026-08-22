@@ -31,8 +31,8 @@ import {
 } from "../features/trajectories/pricing";
 import {
 	composeToolDiagnosticRedactor,
-	projectToolDiagnosticArgs,
-	projectToolDiagnosticValue,
+	projectCompleteToolArgsForModel,
+	projectCompleteToolValueForModel,
 	type ToolDiagnosticTextRedactor,
 } from "../security/tool-diagnostics";
 import type { EvaluationResult } from "../types/components";
@@ -1047,8 +1047,8 @@ export function projectRecordedStageToolDiagnostics(
 ): void {
 	if (stage.tool) {
 		stage.tool.args =
-			projectToolDiagnosticArgs(stage.tool.args, redactText) ?? {};
-		stage.tool.result = projectToolDiagnosticValue(
+			projectCompleteToolArgsForModel(stage.tool.args, redactText) ?? {};
+		stage.tool.result = projectCompleteToolValueForModel(
 			stage.tool.result,
 			redactText,
 		);
@@ -1074,7 +1074,7 @@ export function projectRecordedStageToolDiagnostics(
 			stage.model.toolCalls = stage.model.toolCalls.map((toolCall) => ({
 				...toolCall,
 				...(toolCall.args !== undefined
-					? { args: projectToolDiagnosticArgs(toolCall.args, redactText) }
+					? { args: projectCompleteToolArgsForModel(toolCall.args, redactText) }
 					: {}),
 			}));
 		}
@@ -1092,7 +1092,7 @@ export function projectRecordedStageToolDiagnostics(
 		}
 		stage.model.response = redactText(stage.model.response);
 		if (Array.isArray(stage.model.messages)) {
-			const projectedMessages = projectToolDiagnosticValue(
+			const projectedMessages = projectCompleteToolValueForModel(
 				stage.model.messages,
 				redactText,
 			) as RecordedModelCall["messages"];
@@ -1114,7 +1114,7 @@ export function projectRecordedStageToolDiagnostics(
 		}
 	}
 	if (stage.evaluation) {
-		stage.evaluation = projectToolDiagnosticValue(
+		stage.evaluation = projectCompleteToolValueForModel(
 			stage.evaluation,
 			redactText,
 		) as RecordedEvaluationStage;

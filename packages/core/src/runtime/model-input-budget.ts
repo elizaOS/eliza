@@ -3,6 +3,8 @@
  * threshold from the resolved context window and output reserve. Callers must
  * reject an oversized request; this module never rewrites model-facing input.
  */
+
+import { ElizaError } from "../errors";
 import { lookupModelContextWindow } from "../features/trajectories/pricing";
 import type {
 	ChatMessage,
@@ -12,6 +14,12 @@ import type {
 
 export const DEFAULT_CONTEXT_WINDOW_TOKENS = 128_000;
 export const DEFAULT_INPUT_RESERVE_TOKENS = 10_000;
+/** @deprecated Use {@link DEFAULT_INPUT_RESERVE_TOKENS}. */
+export const DEFAULT_COMPACTION_RESERVE_TOKENS = DEFAULT_INPUT_RESERVE_TOKENS;
+/** @deprecated Content projection is retired; retained for source compatibility. */
+export const DEFAULT_CONTENT_PROJECTION_PER_RESULT_TOKENS = 16_000;
+/** @deprecated Content projection is retired; retained for source compatibility. */
+export const DEFAULT_CONTENT_PROJECTION_AGGREGATE_TOKENS = 64_000;
 
 /**
  * When the context window is resolved from `lookupModelContextWindow` (i.e.
@@ -42,6 +50,11 @@ export interface ModelInputBudget {
 	reserveTokens: number;
 	dispatchThresholdTokens: number;
 	shouldReject: boolean;
+	/** @deprecated Alias of dispatchThresholdTokens for source compatibility. */
+	compactionThresholdTokens: number;
+	/** @deprecated Always false; automatic compaction is retired. */
+	shouldCompact: false;
+	estimationMode: "heuristic" | "utf8-upper-bound";
 	/**
 	 * The matched model-family key from the context-window lookup, or null
 	 * when the window came from the caller's explicit argument or the
@@ -51,14 +64,52 @@ export interface ModelInputBudget {
 	resolvedModelKey: string | null;
 }
 
-function textLength(value: unknown): number {
+/** @deprecated Content projection is retired. */
+export interface ContentProjectionBudget {
+	perResultTokens: number;
+	aggregateTokens: number;
+}
+
+/**
+ * @deprecated Content projection is retired. Complete input must reach the
+ * final runtime boundary, which either dispatches it unchanged or rejects it.
+ */
+export function buildContentProjectionBudget(_args: {
+	budget: ModelInputBudget;
+	resultCount: number;
+	perResultCeilingTokens?: number;
+	aggregateCeilingTokens?: number;
+}): never {
+	throw new ElizaError("Automatic content projection is retired", {
+		code: "CONTENT_PROJECTION_RETIRED",
+	});
+}
+
+function serializedText(value: unknown): string {
 	if (typeof value === "string") {
-		return value.length;
+		return value;
 	}
 	if (value == null) {
-		return 0;
+		return "";
 	}
-	return JSON.stringify(value).length;
+	try {
+		return JSON.stringify(value) ?? "";
+	} catch (cause) {
+		throw new ElizaError("Model input cannot be serialized completely", {
+			code: "MODEL_INPUT_SERIALIZATION_FAILED",
+			cause,
+		});
+	}
+}
+
+function textMeasure(
+	value: unknown,
+	mode: "heuristic" | "utf8-upper-bound",
+): number {
+	const text = serializedText(value);
+	return mode === "utf8-upper-bound"
+		? new TextEncoder().encode(text).byteLength
+		: text.length;
 }
 
 export function estimateTokensFromChars(chars: number): number {
@@ -69,28 +120,75 @@ export function estimateModelInputTokens(args: {
 	messages?: readonly ChatMessage[];
 	promptSegments?: readonly PromptSegment[];
 	tools?: readonly ToolDefinition[];
+	system?: unknown;
+	prompt?: unknown;
+	input?: unknown;
+	responseSchema?: unknown;
+	responseFormat?: unknown;
+	grammar?: unknown;
+	responseSkeleton?: unknown;
+	prefill?: unknown;
+	estimationMode?: "heuristic" | "utf8-upper-bound";
 }): number {
+	const estimationMode = args.estimationMode ?? "heuristic";
 	const messageChars =
-		args.messages?.reduce(
-			(total, message) => total + textLength(message.content),
-			0,
-		) ?? 0;
+		estimationMode === "utf8-upper-bound"
+			? textMeasure(args.messages, estimationMode)
+			: (args.messages?.reduce(
+					(total, message) =>
+						total + textMeasure(message.content, estimationMode),
+					0,
+				) ?? 0);
 	const segmentChars =
 		args.messages && args.messages.length > 0
 			? 0
-			: (args.promptSegments?.reduce(
-					(total, segment) => total + textLength(segment.content),
+			: estimationMode === "utf8-upper-bound"
+				? textMeasure(args.promptSegments, estimationMode)
+				: (args.promptSegments?.reduce(
+						(total, segment) =>
+							total + textMeasure(segment.content, estimationMode),
+						0,
+					) ?? 0);
+	const toolChars =
+		estimationMode === "utf8-upper-bound"
+			? textMeasure(args.tools, estimationMode)
+			: (args.tools?.reduce(
+					(total, tool) => total + textMeasure(tool, estimationMode),
 					0,
 				) ?? 0);
-	const toolChars =
-		args.tools?.reduce((total, tool) => total + textLength(tool), 0) ?? 0;
-	return estimateTokensFromChars(segmentChars + messageChars + toolChars);
+	const additionalChars = [
+		args.system,
+		args.prompt,
+		args.input,
+		args.responseSchema,
+		args.responseFormat,
+		args.grammar,
+		args.responseSkeleton,
+		args.prefill,
+	].reduce<number>(
+		(total, value) => total + textMeasure(value, estimationMode),
+		0,
+	);
+	const measured = segmentChars + messageChars + toolChars + additionalChars;
+	return estimationMode === "utf8-upper-bound"
+		? measured
+		: estimateTokensFromChars(measured);
 }
 
 export function buildModelInputBudget(args: {
 	messages?: readonly ChatMessage[];
 	promptSegments?: readonly PromptSegment[];
 	tools?: readonly ToolDefinition[];
+	system?: unknown;
+	prompt?: unknown;
+	input?: unknown;
+	responseSchema?: unknown;
+	responseFormat?: unknown;
+	grammar?: unknown;
+	responseSkeleton?: unknown;
+	prefill?: unknown;
+	/** Conservative final-wire mode: one token per UTF-8 byte upper bound. */
+	estimationMode?: "heuristic" | "utf8-upper-bound";
 	/**
 	 * Explicit fallback ceiling. Used when `modelName` is unset or misses the
 	 * lookup table, and otherwise superseded by the per-model lookup because
@@ -197,12 +295,16 @@ export function buildModelInputBudget(args: {
 		contextWindowTokens - reserveTokens,
 	);
 	const estimatedInputTokens = estimateModelInputTokens(args);
+	const estimationMode = args.estimationMode ?? "heuristic";
 	return {
 		estimatedInputTokens,
 		contextWindowTokens,
 		reserveTokens,
 		dispatchThresholdTokens,
 		shouldReject: estimatedInputTokens >= dispatchThresholdTokens,
+		compactionThresholdTokens: dispatchThresholdTokens,
+		shouldCompact: false,
+		estimationMode,
 		resolvedModelKey: lookup?.matchedKey ?? null,
 	};
 }

@@ -260,6 +260,7 @@ export {
 } from "./runtime/candidate-action-backstop";
 export * from "./runtime/cleanup-scope";
 export * from "./runtime/content-access-manifest";
+export * from "./runtime/content-projection-policy";
 export * from "./runtime/context-gates";
 export * from "./runtime/context-registry";
 export {
