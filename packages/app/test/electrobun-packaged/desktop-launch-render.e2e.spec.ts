@@ -6,13 +6,14 @@
  * which is sensitive to the bridge eval RPC + a network-reachable registry. This
  * spec covers the platform-level invariant those tests presuppose and that
  * matters most for the decomposed app: the PACKAGED DESKTOP app (Electrobun +
- * WebKitGTK) actually launches and renders a non-blank UI headlessly on Linux.
+ * WebKitGTK) actually launches and renders a substantial full-window UI
+ * headlessly on Linux. A nearly black frame containing only the resting
+ * bottom-bar handle is deliberately insufficient evidence for this lane.
  *
- * It uses only the native bridge state (`harness.start()` waits for the main
- * window + tray via the bridge `/state` snapshot — no renderer eval) and a real
- * screenshot of the rendered window (`assertScreenshotNotBlank`), so it does not
- * depend on the eval-seeding path. The same React bundle (and thus the decomposed
- * lifeops views) renders here as in the web + mobile-viewport e2e lanes.
+ * It starts from native bridge state (`harness.start()` waits for the main
+ * window + tray via the bridge `/state` snapshot), then observes renderer
+ * readiness without mutating or seeding storage and captures the real window.
+ * The same React bundle renders here as in the web + mobile-viewport e2e lanes.
  *
  * Requires a prebuilt Electrobun binary (see playwright.electrobun.packaged.config.ts)
  * and, on a GPU-less host, the headless env from packaged-app-helpers (xvfb +
@@ -29,6 +30,7 @@ import {
   PackagedDesktopHarness,
   resolvePackagedLauncher,
 } from "./packaged-app-helpers";
+import { assertPackagedScreenshotHasSubstantialUi } from "./packaged-test-contracts";
 
 type EvalOk<T> = T & { ok: true };
 type EvalErr = { ok: false; error: string };
@@ -107,7 +109,7 @@ async function waitForRendererShellReady(
   }
 }
 
-test("packaged desktop app launches and renders a non-blank UI headless", async ({
+test("packaged desktop app launches and renders substantial UI headless", async ({
   browserName: _browserName,
 }, testInfo) => {
   void _browserName;
@@ -132,6 +134,9 @@ test("packaged desktop app launches and renders a non-blank UI headless", async 
       tempRoot,
       launcherPath: launcherPath as string,
       apiBase: api.baseUrl,
+      // This lane proves the renderer paints a substantial application surface.
+      // The dedicated bottom-bar spec separately proves the compact handle.
+      extraEnv: { ELIZA_DESKTOP_BOTTOM_BAR: "0" },
     });
 
     // start() waits for the bridge /health + the native /state snapshot
@@ -174,6 +179,10 @@ test("packaged desktop app launches and renders a non-blank UI headless", async 
       buffer,
     );
     await assertScreenshotNotBlank(buffer, "packaged desktop launch render");
+    await assertPackagedScreenshotHasSubstantialUi(
+      buffer,
+      "packaged desktop launch render",
+    );
   } finally {
     await harness?.stop().catch(() => undefined);
     await api?.close().catch(() => undefined);

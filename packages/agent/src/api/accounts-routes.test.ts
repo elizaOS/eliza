@@ -13,6 +13,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const fakes = vi.hoisted(() => ({
   accounts: [] as Array<Record<string, unknown>>,
   poolAccounts: [] as Array<Record<string, unknown>>,
+  poolAvailable: true,
   deleteAccount: vi.fn(),
   getAccessToken: vi.fn(async () => "access-token"),
   probeDirectApiKey: vi.fn(
@@ -110,7 +111,9 @@ vi.mock("@elizaos/auth/oauth-flow", () => ({
   subscribeFlow: fakes.subscribeFlow,
 }));
 vi.mock("../runtime/host-bridge.ts", () => ({
-  getAgentHostBridge: () => ({ getDefaultAccountPool: () => fakes.pool }),
+  getAgentHostBridge: () => ({
+    getDefaultAccountPool: () => (fakes.poolAvailable ? fakes.pool : null),
+  }),
 }));
 
 import {
@@ -187,6 +190,7 @@ describe("accounts routes", () => {
     vi.clearAllMocks();
     fakes.accounts = [];
     fakes.poolAccounts = [];
+    fakes.poolAvailable = true;
     fakes.getAccessToken.mockResolvedValue("access-token");
     fakes.probeDirectApiKey.mockResolvedValue({
       ok: true,
@@ -207,6 +211,28 @@ describe("accounts routes", () => {
     expect(unknown.errorCalls).toEqual([
       { message: "Unknown providerId: not-a-provider", status: 400 },
     ]);
+  });
+
+  it("returns a retryable error while the host account pool is starting", async () => {
+    fakes.poolAvailable = false;
+
+    const unavailable = makeContext("GET", "/api/accounts");
+    expect(await handleAccountsRoutes(unavailable.ctx)).toBe(true);
+    expect(unavailable.errorCalls).toEqual([
+      {
+        message:
+          "Account service is not ready; retry after runtime startup completes",
+        status: 503,
+      },
+    ]);
+
+    fakes.poolAvailable = true;
+    const recovered = makeContext("GET", "/api/accounts");
+    expect(await handleAccountsRoutes(recovered.ctx)).toBe(true);
+    expect(recovered.errorCalls).toEqual([]);
+    expect(recovered.jsonCalls[0]?.body).toMatchObject({
+      providers: expect.any(Array),
+    });
   });
 
   it("persists provider strategy", async () => {

@@ -132,6 +132,22 @@ export function isMacConsoleSessionLocked(): boolean {
   );
 }
 
+export type PackagedDisplaySession =
+  | "desktop-session"
+  | "dedicated-xvfb-without-window-manager";
+
+export function classifyPackagedDisplaySession(args: {
+  platform: NodeJS.Platform;
+  useCurrentDisplay: boolean;
+  xvfbRunAvailable: boolean;
+}): PackagedDisplaySession {
+  return args.platform === "linux" &&
+    !args.useCurrentDisplay &&
+    args.xvfbRunAvailable
+    ? "dedicated-xvfb-without-window-manager"
+    : "desktop-session";
+}
+
 function resolveExecutableOnPath(binaryName: string): string | null {
   const pathValue = process.env.PATH || "";
   for (const dir of pathValue.split(path.delimiter)) {
@@ -453,6 +469,14 @@ function createPackagedDesktopEnv(args: {
     // child dies with "Authorization required ... cannot open display" under
     // any headless X server (e.g. CI behind xvfb).
     const xauthority = args.baseEnv.XAUTHORITY || process.env.XAUTHORITY;
+    // Linux protected storage is backed by Secret Service. Keep the session
+    // bus/runtime directory in the intentionally minimal launch environment so
+    // the packaged app can reach the user's keyring during persistence tests.
+    const dbusSessionBusAddress =
+      args.baseEnv.DBUS_SESSION_BUS_ADDRESS ||
+      process.env.DBUS_SESSION_BUS_ADDRESS;
+    const xdgRuntimeDir =
+      args.baseEnv.XDG_RUNTIME_DIR || process.env.XDG_RUNTIME_DIR;
     return {
       ...buildMinimalMacEnv(args.baseEnv),
       ...commonEnv,
@@ -461,6 +485,10 @@ function createPackagedDesktopEnv(args: {
       // path raises GLXBadWindow).
       DISPLAY: args.baseEnv.DISPLAY || process.env.DISPLAY || ":0",
       ...(xauthority ? { XAUTHORITY: xauthority } : {}),
+      ...(dbusSessionBusAddress
+        ? { DBUS_SESSION_BUS_ADDRESS: dbusSessionBusAddress }
+        : {}),
+      ...(xdgRuntimeDir ? { XDG_RUNTIME_DIR: xdgRuntimeDir } : {}),
       WEBKIT_DISABLE_DMABUF_RENDERER: "1",
       WEBKIT_DISABLE_COMPOSITING_MODE: "1",
       // WebKitGTK's bubblewrap web/network-process sandbox aborts (SIGTRAP)
@@ -616,6 +644,7 @@ export class PackagedDesktopHarness {
   appEnv: NodeJS.ProcessEnv;
   process: ChildProcess | null = null;
   logs: PackagedProcessLogs | null = null;
+  displaySession: PackagedDisplaySession = "desktop-session";
 
   constructor(args: {
     tempRoot: string;
@@ -664,6 +693,11 @@ export class PackagedDesktopHarness {
     const xvfbRun = useDedicatedXvfb
       ? resolveExecutableOnPath("xvfb-run")
       : null;
+    this.displaySession = classifyPackagedDisplaySession({
+      platform: process.platform,
+      useCurrentDisplay: !useDedicatedXvfb,
+      xvfbRunAvailable: xvfbRun !== null,
+    });
     const launchCommand = xvfbRun ?? this.launcherPath;
     const launchArgs = xvfbRun ? ["-a", this.launcherPath] : [];
 

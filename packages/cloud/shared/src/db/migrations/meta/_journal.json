@@ -2017,6 +2017,20 @@
       "when": 1794168000000,
       "tag": "0304_personal_shared_group_delivery_lease",
       "breakpoints": true
+    },
+    {
+      "idx": 288,
+      "version": "7",
+      "when": 1794081600000,
+      "tag": "0305_secure_remote_hosts",
+      "breakpoints": true
+    },
+    {
+      "idx": 289,
+      "version": "7",
+      "when": 1794081600001,
+      "tag": "0306_secure_remote_command_relay",
+      "breakpoints": true
     }
   ]
 }
