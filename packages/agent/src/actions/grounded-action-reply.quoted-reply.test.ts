@@ -33,12 +33,22 @@ describe("renderGroundedActionReply output preservation", () => {
     '"Sure — I added milk to your shopping list."',
     "'Added milk.'",
     "  Added milk to your list.  ",
+  ])("returns %j unchanged", async (modelOutput) => {
+    expect(await render(modelOutput)).toBe(modelOutput);
+  });
+
+  it.each([
     '{"response": "Added milk", "confidence": 0.9}',
     '```json\n{"response": "Added milk"}\n```',
     "shouldAct: true\nresponse: Added milk",
     "<thinking>should I</thinking>",
     "   ",
-  ])("returns %j unchanged", async (modelOutput) => {
-    expect(await render(modelOutput)).toBe(modelOutput);
-  });
+  ])(
+    "rejects non-user-facing output %j without substituting fallback",
+    async (modelOutput) => {
+      await expect(render(modelOutput)).rejects.toMatchObject({
+        code: "GROUNDED_REPLY_OUTPUT_INVALID",
+      });
+    },
+  );
 });
