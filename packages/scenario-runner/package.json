@@ -66,6 +66,7 @@
     "build": "tsc6 --noCheck -p tsconfig.build.json",
     "test": "bun run test:unit && bun run test:mocks",
     "test:unit": "vitest run --config vitest.config.ts",
+    "test:production-composition": "bun test --conditions eliza-source test/production-process-composition.test.ts",
     "test:mocks": "vitest run --config test/mocks/vitest.config.ts",
     "test:deterministic:e2e": "SCENARIO_USE_DETERMINISTIC_MODEL=1 bun --conditions eliza-source --tsconfig-override ../../tsconfig.json src/cli.ts run test/scenarios --lane pr-deterministic --report-dir ../../reports/scenarios/pr-deterministic --run-dir ../../reports/scenarios/pr-deterministic",
     "test:corpus:pr:e2e": "TZ=UTC SCENARIO_USE_DETERMINISTIC_MODEL=1 bun --conditions eliza-source --tsconfig-override ../../tsconfig.json src/cli.ts run ../test/scenarios --lane pr-deterministic --report-dir ../../reports/scenarios/pr-deterministic-corpus --run-dir ../../reports/scenarios/pr-deterministic-corpus",
@@ -104,7 +105,6 @@
     "@elizaos/plugin-video": "workspace:*",
     "@elizaos/plugin-wallet": "workspace:*",
     "@elizaos/plugin-sql": "workspace:*",
-    "@elizaos/shared": "workspace:*",
     "ws": "^8.21.3",
     "@elizaos/auth": "workspace:*"
   },

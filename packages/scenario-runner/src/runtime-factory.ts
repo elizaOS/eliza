@@ -9,7 +9,7 @@ import "./react-runtime-stubs";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import type { AgentRuntime, Plugin } from "@elizaos/core";
+import type { AgentRuntime, IAgentRuntime, Plugin, UUID } from "@elizaos/core";
 import {
   AgentRuntime as AgentRuntimeCtor,
   createBasicCapabilitiesPlugin,
@@ -17,6 +17,8 @@ import {
   logger,
   ModelType,
   NotificationService,
+  TaskService,
+  type TaskServiceClock,
   trajectoriesPlugin,
 } from "@elizaos/core";
 import {
@@ -215,11 +217,16 @@ function cancelScenarioOnlyLazyServiceStarts(runtime: AgentRuntime): void {
 
 export interface CreateScenarioRuntimeOptions {
   characterName?: string;
+  characterId?: UUID;
   preferredProvider?: LiveProviderName;
   extraPlugins?: Plugin[];
   useDeterministicModel?: boolean;
   executionProfile?: ScenarioExecutionProfile;
   requiredPlugins?: readonly string[];
+  /** Host-owned time authority for the real TaskService. */
+  taskServiceClock?: TaskServiceClock;
+  /** Minimal real-service bootstrap used by production-foundation composition. */
+  bootstrapMode?: "scenario" | "production-foundations";
 }
 
 type LoadedScenarioTestMocks = Awaited<ReturnType<typeof loadTestMocks>>;
@@ -704,6 +711,8 @@ export async function createScenarioRuntime(
 ): Promise<RuntimeFactoryResult> {
   const executionProfile =
     options?.executionProfile ?? DEFAULT_SCENARIO_EXECUTION_PROFILE;
+  const productionFoundations =
+    options?.bootstrapMode === "production-foundations";
   if (executionProfile === "provider-qualified") {
     assertProviderQualifiedEnvironment();
     if (options?.useDeterministicModel === true) {
@@ -738,8 +747,13 @@ export async function createScenarioRuntime(
       "[scenario-runner] provider-qualified execution requires a live model provider",
     );
   }
-  const preparedEnvironment =
-    await prepareScenarioExecutionEnvironment(executionProfile);
+  const preparedEnvironment = productionFoundations
+    ? {
+        executionProfile,
+        testMocks: null,
+        mockedEnvironment: null,
+      }
+    : await prepareScenarioExecutionEnvironment(executionProfile);
   const { testMocks, mockedEnvironment } = preparedEnvironment;
   for (const [key, value] of Object.entries(providerConfig.env)) {
     process.env[key] = value;
@@ -808,6 +822,7 @@ export async function createScenarioRuntime(
   }
 
   const character = createCharacter({
+    id: options?.characterId,
     name: options?.characterName ?? "ScenarioAgent",
   });
   const scenarioRuntimeSettings =
@@ -834,6 +849,25 @@ export async function createScenarioRuntime(
   });
   const registeredPluginPackages = new Set<string>();
 
+  if (options?.taskServiceClock) {
+    const taskServiceClock = options.taskServiceClock;
+    class ScenarioClockTaskService extends TaskService {
+      static override async start(
+        runtime: IAgentRuntime,
+      ): Promise<TaskService> {
+        return TaskService.startWithClock(runtime, taskServiceClock);
+      }
+    }
+    const clockedBasicCapabilities = createBasicCapabilitiesPlugin({
+      advancedCapabilities: true,
+    });
+    clockedBasicCapabilities.services = clockedBasicCapabilities.services?.map(
+      (service) =>
+        service === TaskService ? ScenarioClockTaskService : service,
+    );
+    await runtime.registerPlugin(clockedBasicCapabilities);
+  }
+
   const { default: pluginSql } = (await import("@elizaos/plugin-sql")) as {
     default: Plugin;
   };
@@ -849,9 +883,11 @@ export async function createScenarioRuntime(
   // registers contact/message actions (ADD_CONTACT, MESSAGE, ...).
   // Without this plugin the runtime has no conversational reply action and
   // nearly every scenario fails with "expected 1 call(s) to REPLY, saw 0".
-  await runtime.registerPlugin(
-    createBasicCapabilitiesPlugin({ advancedCapabilities: true }),
-  );
+  if (!options?.taskServiceClock) {
+    await runtime.registerPlugin(
+      createBasicCapabilitiesPlugin({ advancedCapabilities: true }),
+    );
+  }
 
   // Simulated scenarios omit embeddings because their assertions do not score
   // semantic retrieval. AgentRuntime treats an absent embedding provider as an
@@ -876,7 +912,7 @@ export async function createScenarioRuntime(
 
   applyRuntimeSettings(runtime, providerConfig.env);
   if (providerConfig.name === DETERMINISTIC_MODEL_PROVIDER_NAME) {
-    if (!testMocks) {
+    if (!testMocks && !productionFoundations) {
       throw new Error(
         "[scenario-runner] deterministic model provider requested without the simulated test environment",
       );
@@ -950,7 +986,22 @@ export async function createScenarioRuntime(
     }
   }
 
-  if (executionProfile === "simulated") {
+  if (productionFoundations) {
+    const schedulingModule = (await import(
+      "@elizaos/plugin-scheduling"
+    )) as Record<string, unknown>;
+    const schedulingPlugin = extractPlugin(schedulingModule, [
+      "default",
+      "schedulingPlugin",
+    ]);
+    if (!schedulingPlugin) {
+      throw new Error(
+        "[scenario-runner] @elizaos/plugin-scheduling did not export a Plugin",
+      );
+    }
+    await runtime.registerPlugin(schedulingPlugin);
+    registeredPluginPackages.add("@elizaos/plugin-scheduling");
+  } else if (executionProfile === "simulated") {
     const agentSkillsModule = (await import(
       "@elizaos/plugin-agent-skills"
     )) as Record<string, unknown>;
@@ -1057,7 +1108,7 @@ export async function createScenarioRuntime(
         runtimeActions.splice(i, 1);
       }
     }
-  } else {
+  } else if (executionProfile === "provider-qualified") {
     assertProviderQualifiedEnvironment();
     const missingRequiredPlugins = (options?.requiredPlugins ?? []).filter(
       (packageName) => !pluginPackageIsRegistered(runtime, packageName),
