@@ -29,7 +29,8 @@
   "scripts": {
     "clean": "node ../scripts/rm-path-recursive.mjs dist",
     "prepublishOnly": "bun run build",
-    "build": "bun run build:i18n && bun run build:dist",
+    "build": "node ../scripts/with-package-build-lock.mjs packages/shared -- bun run build:unlocked",
+    "build:unlocked": "bun run build:i18n && bun run build:dist",
     "build:i18n": "node scripts/generate-keywords.mjs",
     "generate:coding-provider-support-matrix": "bun scripts/generate-coding-provider-support-matrix.ts",
     "typecheck": "bun run build:i18n && tsc --noEmit -p tsconfig.json",
