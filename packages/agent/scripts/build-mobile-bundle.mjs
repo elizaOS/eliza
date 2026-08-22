@@ -1777,7 +1777,6 @@ const polyfillLines = [
 // Always-on: the few hand-curated overrides that need specific shapes.
 polyfillLines.push("var default10 = () => globalThis.crypto.randomUUID();");
 polyfillLines.push("var applyWhatsAppQrOverride3 = () => {};");
-polyfillLines.push("var applySignalQrOverride3 = () => {};");
 polyfillLines.push(
   "var AutonomyService2 = class AutonomyServicePolyfill {\n" +
     "  static serviceType = 'AUTONOMY';\n" +
@@ -1786,10 +1785,7 @@ polyfillLines.push(
     "};",
 );
 const SKIP_DEFAULTS = new Set(["default10"]);
-const SKIP_APPLIES = new Set([
-  "applyWhatsAppQrOverride3",
-  "applySignalQrOverride3",
-]);
+const SKIP_APPLIES = new Set(["applyWhatsAppQrOverride3"]);
 const SKIP_SERVICES = new Set(["AutonomyService2"]);
 for (const name of renames.undeclaredDefaults) {
   if (SKIP_DEFAULTS.has(name)) continue;
