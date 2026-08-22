@@ -49,6 +49,7 @@ Private, redacted ledger for the Gmail, Google Calendar, and Apple Calendar cand
 - Draft PR: `https://github.com/elizaOS/eliza/pull/24809`.
 - Local annotated tag: `lifeops-current-base-supervised-publication-20260822`. The tag was not pushed.
 - The draft PR records the exact focused proof and the protected-Google, native EventKit recurrence, unrelated aggregate app-audit, hosted CI/review, and deployment gates. It was not merged or deployed.
+- Root `bun run verify` was attempted at PR head `c64470c50a4865fe79f8de6183504efc3f58ef7e` and stopped at `check:i18n`: seven locale catalogs are each missing roughly 1,100 existing source keys and `en.json` is missing 14 `connectorcard.*` keys. This PR changes none of the reported source/catalog paths or the checker, so the failure is a current-base repository baseline rather than a LifeOps regression; later verify stages did not run.
 
 ## Workspace and exact checkpoints
 
