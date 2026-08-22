@@ -1,12 +1,17 @@
 /** Applies the BlueBubbles retirement migration to real PGlite and proves targeted fail-closed backfill. */
 import { afterEach, describe, expect, test } from "bun:test";
+import { readFile } from "node:fs/promises";
 import { PGlite } from "@electric-sql/pglite";
 import {
   type ConnectedCapabilitySourceRows,
   type PhoneGatewayDeviceRow,
   projectConnectedAccounts,
 } from "../../lib/services/connected-capabilities/projection";
-import migration from "./0307_retire_legacy_bluebubbles_gateways.sql" with { type: "text" };
+
+const migration = await readFile(
+  new URL("./0307_retire_legacy_bluebubbles_gateways.sql", import.meta.url),
+  "utf8",
+);
 
 const databases: PGlite[] = [];
 
