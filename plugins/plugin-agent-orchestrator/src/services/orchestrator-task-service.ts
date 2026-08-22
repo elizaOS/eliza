@@ -4372,9 +4372,21 @@ export class OrchestratorTaskService extends Service {
     },
     sessionId?: string,
   ): Promise<TaskThreadDetailDto | null> {
-    const doc = await this.store.getTask(taskId);
+    let doc = await this.store.getTask(taskId);
     if (!doc) return null;
-    const from = doc.task.status;
+    let from = doc.task.status;
+    // A multi-lane task sits on ONE status: a sibling lane's failed verdict
+    // moved it to active while this lane's verdict was still queued. The
+    // lane's completion already reported; re-enter validating for it.
+    if (
+      sessionId &&
+      from === "active" &&
+      this.laneScope(doc, sessionId).laneSessionIds.length > 1
+    ) {
+      await this.store.updateTask(taskId, { status: "validating" });
+      doc = (await this.store.getTask(taskId)) ?? doc;
+      from = doc.task.status;
+    }
     // A passing LANE of a multi-lane task: record the lane verdict, release
     // that lane's relay, and keep the task open until every lane has passed
     // — promoting to `done` on the first lane closed the task under its
@@ -4819,7 +4831,15 @@ export class OrchestratorTaskService extends Service {
       if (!doc) return;
       // Only act on the state the task_complete event just produced. A human or
       // the manual auto-validate route may have already moved it on.
-      if (doc.task.status !== "validating") return;
+      if (
+        doc.task.status !== "validating" &&
+        !(
+          doc.task.status === "active" &&
+          this.laneScope(doc, sessionId).laneSessionIds.length > 1
+        )
+      ) {
+        return;
+      }
       const attempts = num(doc.task.metadata?.autoVerifyAttempts);
       const parse = parseCompletionEnvelope(rawCompletion);
 
