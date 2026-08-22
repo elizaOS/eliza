@@ -87,7 +87,7 @@ describe("telegram group-link authority", () => {
     expect(requests).toBe(0);
   });
 
-  test("does not authorize a link command addressed to another bot", async () => {
+  test("drops a link command addressed to another bot", async () => {
     let requests = 0;
     globalThis.fetch = (async () => {
       requests += 1;
@@ -100,14 +100,25 @@ describe("telegram group-link authority", () => {
       config,
     );
 
-    // Ambient forwarding is enabled for groups, so the provider event remains
-    // available; it must not be upgraded into a link-authority operation.
-    expect(event).toMatchObject({
-      text,
-      groupInvocation: "ambient",
-    });
-    expect(event?.groupActorRole).toBeUndefined();
+    expect(event).toBeNull();
     expect(requests).toBe(0);
+  });
+
+  test("drops a suffixed link command when bot identity is unavailable", async () => {
+    let requests = 0;
+    globalThis.fetch = (async () => {
+      requests += 1;
+      throw new Error("Telegram unavailable");
+    }) as typeof fetch;
+    const text = "/eliza_link@ElizaBot 23456789";
+
+    const event = await telegramAdapter.extractEvent(
+      groupUpdate(text, text.indexOf(" ")),
+      { botToken: "telegram-test-token" },
+    );
+
+    expect(event).toBeNull();
+    expect(requests).toBe(1);
   });
 
   test("fails a link command closed when current membership lookup fails", async () => {
