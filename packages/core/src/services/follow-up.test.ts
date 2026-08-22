@@ -58,7 +58,7 @@ function makeRuntime() {
 		getTasks: async (params: { tags?: string[]; agentIds?: UUID[] }) =>
 			Array.from(tasks.values()).filter((task) =>
 				(params.tags ?? []).every((tag) => task.tags?.includes(tag)),
-		),
+			),
 		getTask: async (id: UUID) => tasks.get(id) ?? null,
 		getTasksByName: async (name: string) =>
 			Array.from(tasks.values()).filter((t) => t.name === name),
@@ -72,11 +72,23 @@ function makeRuntime() {
 			if (!existing) throw new Error(`no task ${id}`);
 			tasks.set(id, { ...existing, ...patch });
 		},
+		updatePendingTask: async (id: UUID, patch: Partial<Task>) => {
+			const existing = tasks.get(id);
+			if (
+				!existing?.tags?.includes("queue") ||
+				(existing.metadata?.status != null &&
+					existing.metadata.status !== "pending")
+			) {
+				return false;
+			}
+			tasks.set(id, { ...existing, ...patch });
+			return true;
+		},
 		deleteTask: async (id: UUID) => {
 			tasks.delete(id);
 		},
 	} as unknown as IAgentRuntime;
-	return { runtime, tasks, workers, memories };
+	return { runtime, tasks, workers, memories, relationshipsService, contact };
 }
 
 describe("FollowUpService completion lifecycle", () => {
@@ -167,7 +179,44 @@ describe("FollowUpService completion lifecycle", () => {
 		await followUps.stop();
 	});
 
-	it("fires at most one already-selected execution when completeFollowUp lands mid-tick", async () => {
+	it("retries contact cleanup after task completion already persisted", async () => {
+		const { runtime, tasks, memories, relationshipsService, contact } =
+			makeRuntime();
+		const followUps = (await FollowUpService.start(runtime)) as FollowUpService;
+		service = (await TaskService.start(runtime)) as TaskService;
+		const task = await followUps.scheduleFollowUp(
+			ENTITY_ID,
+			new Date(T0 + 5_000),
+			"contact cleanup retry",
+		);
+
+		const realUpdateContact = relationshipsService.updateContact;
+		let failCleanup = true;
+		relationshipsService.updateContact = async (entityId, patch) => {
+			if (failCleanup) {
+				failCleanup = false;
+				throw new Error("contact store unavailable");
+			}
+			await realUpdateContact(entityId, patch);
+		};
+
+		await expect(
+			followUps.completeFollowUp(task.id as UUID, "handled"),
+		).rejects.toThrow("contact store unavailable");
+		expect(tasks.get(task.id as string)?.metadata?.status).toBe("completed");
+		expect(contact.customFields.nextFollowUpAt).toBeDefined();
+
+		await followUps.completeFollowUp(task.id as UUID, "handled");
+		expect(contact.customFields.nextFollowUpAt).toBeUndefined();
+		expect(contact.customFields.nextFollowUpReason).toBeUndefined();
+		await vi.advanceTimersByTimeAsync(30_000);
+		expect(memories).toHaveLength(0);
+		expect(tasks.has(task.id as string)).toBe(true);
+
+		await followUps.stop();
+	});
+
+	it("does not fire or delete when completion wins after a stale tick selection", async () => {
 		const { runtime, tasks, memories } = makeRuntime();
 		const followUps = (await FollowUpService.start(runtime)) as FollowUpService;
 		service = (await TaskService.start(runtime)) as TaskService;
@@ -179,47 +228,40 @@ describe("FollowUpService completion lifecycle", () => {
 		);
 		await vi.advanceTimersByTimeAsync(1_000);
 
-		// Gate the next scheduler getTasks so completion can land while the
-		// tick holds a queued, pre-completion snapshot — the production
-		// interleaving the already-selected-work semantics describe.
-		let releaseTick: ((snapshot: Task[]) => void) | null = null;
-		const tickSnapshot = new Promise<Task[]>((resolve) => {
-			releaseTick = resolve;
+		const realTransition = runtime.updatePendingTask.bind(runtime);
+		let releaseClaim: (() => void) | null = null;
+		const claimBlocked = new Promise<void>((resolve) => {
+			releaseClaim = resolve;
 		});
-		let firstCall = true;
-		(runtime as unknown as { getTasks: unknown }).getTasks = async (
-			params: { tags?: string[] },
-		) => {
-			if (!firstCall) {
-				return Array.from(tasks.values()).filter((candidate) =>
-					(params.tags ?? []).every((tag) =>
-						candidate.tags?.includes(tag),
-					),
-				);
+		let claimAttempted: (() => void) | null = null;
+		const attempted = new Promise<void>((resolve) => {
+			claimAttempted = resolve;
+		});
+		(
+			runtime as { updatePendingTask: IAgentRuntime["updatePendingTask"] }
+		).updatePendingTask = async (id, patch) => {
+			if (patch.metadata?.status === "executing") {
+				claimAttempted?.();
+				await claimBlocked;
 			}
-			firstCall = false;
-			return await tickSnapshot;
+			return realTransition(id, patch);
 		};
 
-		await vi.advanceTimersByTimeAsync(10_000);
-
-		// Stale snapshot captured BEFORE completion persists.
-		const stale = Array.from(tasks.values());
+		const ticking = vi.advanceTimersByTimeAsync(10_000);
+		await attempted;
 		await followUps.completeFollowUp(task.id as UUID, "handled early");
 		const stored = tasks.get(task.id as string);
 		expect(stored?.tags?.includes("queue")).toBe(false);
 		expect(stored?.metadata?.status).toBe("completed");
 
-		releaseTick?.(stale);
-		await vi.advanceTimersByTimeAsync(2_000);
-		// The already-selected execution completes its lifecycle exactly once…
-		expect(memories).toHaveLength(1);
-		// …including the normal one-shot delete (documented semantics).
-		expect(tasks.has(task.id as string)).toBe(false);
+		releaseClaim?.();
+		await ticking;
+		expect(memories).toHaveLength(0);
+		expect(tasks.has(task.id as string)).toBe(true);
 
 		// Every subsequent poll observes the retired state: no further fires.
 		await vi.advanceTimersByTimeAsync(30_000);
-		expect(memories).toHaveLength(1);
+		expect(memories).toHaveLength(0);
 
 		await followUps.stop();
 	});

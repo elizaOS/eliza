@@ -196,18 +196,13 @@ export class FollowUpService extends Service {
 	 * loses its "queue" tag so no subsequent tick polls or selects it, and the
 	 * completion record (status, completedAt, notes) is preserved.
 	 *
-	 * Already-selected-work semantics: Task rows carry no version column, so
-	 * completion is not CAS-atomic with tick selection. A tick that captured
-	 * the queued Task snapshot BEFORE this update persisted may fire that one
-	 * selection to completion (including the normal one-shot delete of the
-	 * row). Every selection afterwards observes either the dropped "queue" tag
-	 * or the completed-status worker gate and skips. If the racing execution
-	 * deletes the row first, a later completeFollowUp call throws "Task not
-	 * found" — the follow-up already fired.
+	 * Completion and worker execution compete through the storage adapter's
+	 * atomic pending-task transition. Once completion returns, even a scheduler
+	 * tick holding a stale queued snapshot cannot claim, fire, or delete the row.
 	 */
 	async completeFollowUp(taskId: UUID, notes?: string): Promise<void> {
 		try {
-			const task = await this.runtime.getTask(taskId);
+			let task = await this.runtime.getTask(taskId);
 			if (!task) {
 				throw new Error(`Task ${taskId} not found`);
 			}
@@ -218,7 +213,7 @@ export class FollowUpService extends Service {
 			// at dueAt even though the operator already completed it, after
 			// which the one-shot lifecycle deletes the record. Keeping the row
 			// (without "queue") preserves the completion history.
-			await this.runtime.updateTask(taskId, {
+			const completed = await this.runtime.updatePendingTask(taskId, {
 				tags: (task.tags ?? []).filter((tag) => tag !== "queue"),
 				metadata: {
 					...task.metadata,
@@ -227,6 +222,25 @@ export class FollowUpService extends Service {
 					completionNotes: notes,
 				},
 			});
+			if (!completed) {
+				const current = await this.runtime.getTask(taskId);
+				if (current?.metadata?.status === "completed") {
+					if (current.tags?.includes("queue")) {
+						await this.runtime.updateTask(taskId, {
+							tags: current.tags.filter((tag) => tag !== "queue"),
+						});
+					}
+					task = current;
+				} else {
+					throw new Error(
+						current
+							? current.metadata?.status === "pending"
+								? `Task ${taskId} could not be completed atomically`
+								: `Task ${taskId} is already executing`
+							: `Task ${taskId} not found`,
+					);
+				}
+			}
 
 			// Clear next follow-up from contact
 			const targetEntityId = task.metadata?.targetEntityId as UUID;
@@ -396,6 +410,13 @@ export class FollowUpService extends Service {
 				task: Task,
 			) => {
 				try {
+					if (!task.id) return { preserveTask: true };
+					const claimed = await runtime.updatePendingTask(task.id, {
+						tags: (task.tags ?? []).filter((tag) => tag !== "queue"),
+						metadata: { ...task.metadata, status: "executing" },
+					});
+					if (!claimed) return { preserveTask: true };
+
 					const targetEntityId = task.metadata?.targetEntityId as UUID;
 					const message =
 						(task.metadata?.message as string) || "Time for a follow-up!";

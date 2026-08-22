@@ -7079,6 +7079,33 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     return tasks;
   }
 
+  async updatePendingTask(id: UUID, task: Partial<Task>): Promise<boolean> {
+    return this.withRetry(async () => {
+      return this.withDatabase(async () => {
+        const updateValues: Partial<typeof taskTable.$inferInsert> = {
+          updatedAt: new Date(),
+        };
+        if (task.tags !== undefined) updateValues.tags = task.tags;
+        if (task.metadata !== undefined) {
+          updateValues.metadata = task.metadata as typeof taskTable.$inferInsert.metadata;
+        }
+        const updated = await this.db
+          .update(taskTable)
+          .set(updateValues)
+          .where(
+            and(
+              eq(taskTable.id, id),
+              eq(taskTable.agentId, this.agentId),
+              sql`${taskTable.tags} @> ARRAY['queue']::text[]`,
+              sql`COALESCE(${taskTable.metadata}->>'status', 'pending') = 'pending'`
+            )
+          )
+          .returning();
+        return updated.length === 1;
+      });
+    });
+  }
+
   async updateTasks(updates: Array<{ id: UUID; task: Partial<Task> }>): Promise<void> {
     for (const { id, task } of updates) {
       await this.updateTask(id, task);

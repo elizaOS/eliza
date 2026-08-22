@@ -1975,6 +1975,19 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 		return tasks;
 	}
 
+	async updatePendingTask(id: UUID, task: Partial<Task>): Promise<boolean> {
+		const existing = this.tasks.get(String(id));
+		if (
+			!existing?.tags?.includes("queue") ||
+			(existing.metadata?.status != null &&
+				existing.metadata.status !== "pending")
+		) {
+			return false;
+		}
+		this.tasks.set(String(id), { ...existing, ...task, id });
+		return true;
+	}
+
 	async updateTasks(
 		updates: Array<{ id: UUID; task: Partial<Task> }>,
 	): Promise<void> {

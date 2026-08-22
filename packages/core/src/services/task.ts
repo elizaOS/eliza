@@ -786,6 +786,9 @@ export class TaskService extends Service {
 				JsonValue | object
 			>;
 			const result = await worker.execute(this.runtime, taskOptions, task);
+			if (result?.preserveTask) {
+				return;
+			}
 
 			if (task.tags?.includes("repeat")) {
 				const latestTask = await this.runtime.getTask(task.id);
