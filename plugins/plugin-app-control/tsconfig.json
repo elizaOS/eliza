@@ -29,6 +29,9 @@
 			"@elizaos/capacitor-bun-runtime": [
 				"../plugin-native-bun-runtime/src/index.ts"
 			],
+			"@elizaos/capacitor-secure-store": [
+				"../plugin-native-secure-store/src/index.ts"
+			],
 			"@elizaos/ui": ["../../packages/ui/src/index.ts"],
 			"@elizaos/ui/*": ["../../packages/ui/src/*"]
 		}

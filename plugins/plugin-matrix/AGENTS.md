@@ -113,6 +113,7 @@ Supply `MATRIX_ACCOUNTS='[{"accountId":"work","homeserver":"...","userId":"...",
 - **Node.js only.** `matrix-js-sdk` is a Node.js package; this plugin will not work in browser or mobile runtimes.
 - **Auto-enable module is imported at boot before full plugin init.** Keep `auto-enable.ts` free of transitive imports from `src/`.
 - **No actions array.** Matrix send/react/join/leave are exposed via the runtime's `MessageConnector` abstraction, not via `Plugin.actions`. Other plugins invoke Matrix through the connector system (`source: "matrix"`).
+- **Connector target inventories are complete.** Resolution, recent-target discovery, room listing, and roomless reads consider every joined Matrix room. Do not silently slice these model-facing lists.
 - **E2EE flag exists but relies on SDK-level support.** Setting `MATRIX_ENCRYPTION=true` flags the intent; the SDK must also have appropriate crypto support enabled in the deployment.
 - **Message splitting is the caller's responsibility.** `MAX_MATRIX_MESSAGE_LENGTH = 4000` (exported from `types.ts`) — the service does not auto-split; callers must chunk before calling `sendMessage`.
 - **`providers/index.ts` is intentionally empty.** Room context is surfaced by the `MessageConnector` hooks (`getChatContext`, `listRooms`), not by a runtime provider.

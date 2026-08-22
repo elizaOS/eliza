@@ -1,6 +1,6 @@
 /**
- * Covers the host command contract that opts debug Android builds into the
- * bearer-protected loopback API used by device acceptance.
+ * Covers the host command contract that opts Android acceptance builds into
+ * the bearer-protected loopback API and reliably removes that override.
  */
 import { afterAll, describe, expect, it } from "bun:test";
 
@@ -18,7 +18,7 @@ afterAll(() => {
   process.argv = originalArgv;
 });
 
-describe("Android debug API port policy", () => {
+describe("Android acceptance API port policy", () => {
   it("builds explicit enable and cleanup setprop commands", () => {
     expect(smoke.androidE2eApiPortOverrideArgs("serial", true)).toEqual([
       "-s",
@@ -36,6 +36,29 @@ describe("Android debug API port policy", () => {
       "debug.eliza.api_expose_port",
       "0",
     ]);
+  });
+
+  it("clears the override when launch preparation fails after enablement", async () => {
+    const calls = [];
+    const launchFailure = new Error("model staging failed");
+    const context = { adb: "adb", serial: "serial", installed: true };
+
+    await expect(
+      smoke.withAndroidE2eApiPortOverride(
+        context,
+        async () => {
+          calls.push("prepare");
+          throw launchFailure;
+        },
+        (target, enabled) => {
+          calls.push(enabled ? "enable" : "clear");
+          target.e2eApiPortOverride = enabled;
+        },
+      ),
+    ).rejects.toBe(launchFailure);
+
+    expect(calls).toEqual(["enable", "prepare", "clear"]);
+    expect(context.e2eApiPortOverride).toBe(false);
   });
 
   it("uses authenticated status details when health is topology-trimmed", async () => {

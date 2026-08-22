@@ -20,6 +20,7 @@ import {
 
 import {
   failureToActionResult,
+  readBoolParam,
   readStringParam,
   userFacingSuccessResult,
 } from "../lib/format.js";
@@ -128,6 +129,13 @@ export async function writeFileHandler(
     const reason =
       gate.reason === "stale_read" ? "stale_read" : "invalid_param";
     return failureToActionResult({ reason, message: gate.message });
+  }
+  if (gate.exists && readBoolParam(options, "overwrite") !== true) {
+    return failureToActionResult({
+      reason: "invalid_param",
+      message:
+        "WRITE would replace the entire existing file. Use EDIT for a localized change, or set overwrite=true only after reading the complete file and intentionally supplying its complete replacement.",
+    });
   }
 
   const secrets = detectSecrets(content);

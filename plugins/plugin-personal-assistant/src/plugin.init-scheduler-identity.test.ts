@@ -4,8 +4,10 @@
  * ELIZA_DISABLE_LIFEOPS_SCHEDULER (issue: preserve disabled scheduler worker
  * identity). A recording stub runtime captures every registerTaskWorker call so
  * the disabled-path behavior is asserted against the real init wiring rather
- * than a hand-rolled fragment. The dynamic Google connector import is stubbed so
- * init runs without the optional third-party plugin present.
+ * than a hand-rolled fragment. Also proves the deferred scheduler-task ensure
+ * awaits the workflow-run claim schema install before ensuring the scheduler
+ * task (#23835). The dynamic Google connector import is stubbed so init runs
+ * without the optional third-party plugin present.
  */
 import {
   getDirectActionRoutingRules,
@@ -15,6 +17,10 @@ import {
   type UUID,
 } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+const schedulingMocks = vi.hoisted(() => ({
+  waitForScheduledTaskRunnerService: vi.fn(async () => ({})),
+}));
 
 // Isolate PA's own init wiring (registries, workers, policies, the scheduler
 // identity under test) from the cross-plugin connector boot. Each connector
@@ -36,8 +42,25 @@ vi.mock("@elizaos/plugin-health", async (importOriginal) => ({
   registerCircadianInsightContract: vi.fn(),
   createDefaultCircadianInsightContract: vi.fn(() => ({})),
 }));
+vi.mock("@elizaos/plugin-scheduling", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  waitForScheduledTaskRunnerService:
+    schedulingMocks.waitForScheduledTaskRunnerService,
+}));
+vi.mock("./lifeops/app-state.js", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  loadLifeOpsAppState: vi.fn(async () => ({ enabled: true })),
+}));
+// Replace only the deferred scheduler-task ensure so the boot-ordering test
+// below can observe when init reaches it; worker registration stays real.
+vi.mock("./lifeops/runtime.js", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  ensureLifeOpsSchedulerTask: vi.fn(async () => undefined),
+}));
 
 import { areLifeOpsActivitySignalsActive } from "./lifeops/activity-signal-lifecycle.js";
+import { LifeOpsRepository } from "./lifeops/repository.js";
+import { ensureLifeOpsSchedulerTask } from "./lifeops/runtime.js";
 import { personalAssistantPlugin } from "./plugin.js";
 
 const AGENT_ID = "00000000-0000-0000-0000-0000000000ab" as UUID;
@@ -165,5 +188,63 @@ describe("personalAssistantPlugin.init scheduler identity", () => {
     expect(worker).toBeDefined();
     // When enabled, shouldRun consults live app state (not a hardcoded false).
     expect(typeof worker?.shouldRun).toBe("function");
+  });
+
+  it("uses scheduling-owned runner readiness for enabled startup work", async () => {
+    delete process.env.ELIZA_DISABLE_LIFEOPS_SCHEDULER;
+    const { runtime } = createRecordingRuntime();
+
+    await personalAssistantPlugin.init?.({}, runtime);
+
+    await vi.waitFor(() => {
+      expect(
+        schedulingMocks.waitForScheduledTaskRunnerService,
+      ).toHaveBeenCalledTimes(2);
+    });
+    for (const call of schedulingMocks.waitForScheduledTaskRunnerService.mock
+      .calls) {
+      expect(call).toHaveLength(1);
+      expect(call[0]).toBe(runtime);
+    }
+  });
+
+  it("gates a persisted scheduler worker until claim schema installation completes", async () => {
+    delete process.env.ELIZA_DISABLE_LIFEOPS_SCHEDULER;
+    const { runtime, taskWorkers } = createRecordingRuntime();
+
+    // The bootstrap spy resolves on a later tick so a scheduler ensure that
+    // does not await the index install would record its event first (#23835).
+    const events: string[] = [];
+    const bootstrapSpy = vi
+      .spyOn(LifeOpsRepository, "bootstrapSchema")
+      .mockImplementation(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 25));
+        events.push("bootstrap-schema");
+      });
+    vi.mocked(ensureLifeOpsSchedulerTask).mockImplementation(async () => {
+      events.push("scheduler-task");
+      return undefined;
+    });
+
+    try {
+      await personalAssistantPlugin.init?.({}, runtime);
+      const worker = taskWorkers.get(LIFEOPS_TASK_NAME);
+      expect(worker).toBeDefined();
+      await expect(
+        worker?.shouldRun?.(runtime, { name: LIFEOPS_TASK_NAME }),
+      ).resolves.toBe(false);
+      await vi.waitFor(() => {
+        expect(events).toContain("scheduler-task");
+      });
+      expect(events.indexOf("bootstrap-schema")).toBeGreaterThanOrEqual(0);
+      expect(events.indexOf("bootstrap-schema")).toBeLessThan(
+        events.indexOf("scheduler-task"),
+      );
+      await expect(
+        worker?.shouldRun?.(runtime, { name: LIFEOPS_TASK_NAME }),
+      ).resolves.toBe(true);
+    } finally {
+      bootstrapSpy.mockRestore();
+    }
   });
 });

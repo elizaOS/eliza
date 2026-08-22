@@ -10,8 +10,6 @@ import type {
   SteerVaultDetailInput,
 } from "../steer-display-types.js";
 
-const STEER_LIQUIDITY_TEXT_LIMIT = 4000;
-
 function getVaultTokenAddress(
   vaultToken: SteerVaultDetailInput["token0"],
 ): string {
@@ -158,7 +156,7 @@ export const steerLiquidityProvider: Provider = {
       steerLiquidity: liquidityInfo,
     };
 
-    const text = `${liquidityInfo}\n`.slice(0, STEER_LIQUIDITY_TEXT_LIMIT);
+    const text = `${liquidityInfo}\n`;
 
     return {
       data,
@@ -482,11 +480,11 @@ function isValidEthereumAddress(address: string): boolean {
   return ethereumAddressRegex.test(address);
 }
 
-// No symbol lookup is performed; this always returns a shortened address.
+// No symbol lookup is performed; the exact address is the only reliable label.
 function getTokenSymbol(address: string): string {
   if (!address || address === "Unknown") {
     return "Unknown";
   }
 
-  return `${address.slice(0, 6)}...${address.slice(-4)}`;
+  return address;
 }

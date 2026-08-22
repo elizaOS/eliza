@@ -34,6 +34,8 @@ import torch
 import torch.nn.functional as F
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
+from training.tokenization import tokenize_with_explicit_limit
+
 from .simulation_bridge import ActionOutcome, Scenario, SimulationBridge
 from .turboquant import TurboQuantSettings, build_generation_cache
 
@@ -299,11 +301,11 @@ class ContinuousRLAgent:
             (response_text, input_ids, output_ids) - text and tensors for training.
         """
         prompt = self._build_prompt(scenario)
-        enc = self.tokenizer(
+        enc = tokenize_with_explicit_limit(
+            self.tokenizer,
             prompt,
+            max_tokens=2048,
             return_tensors="pt",
-            truncation=True,
-            max_length=2048,
         ).to(self.config.device)
 
         # Build TurboQuant cache if enabled

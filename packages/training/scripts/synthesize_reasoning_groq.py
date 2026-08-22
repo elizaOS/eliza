@@ -15,7 +15,7 @@ Resume-safe: re-runs skip keys already present in the output file.
 
 Run:
     GROQ_API_KEY=gsk_... uv run python scripts/synthesize_reasoning_groq.py \
-        [--limit N] [--concurrency N] [--max-input-chars N]
+        [--limit N] [--concurrency N]
 """
 from __future__ import annotations
 
@@ -151,8 +151,6 @@ def main() -> None:
                     help="Cap on records this run (0 = all)")
     ap.add_argument("--concurrency", type=int, default=24,
                     help="Concurrent in-flight requests")
-    ap.add_argument("--max-input-chars", type=int, default=3000,
-                    help="Truncate user msg / response to this many chars")
     args = ap.parse_args()
 
     seen = load_seen()
@@ -164,7 +162,6 @@ def main() -> None:
     asyncio.run(run_round(
         cfg=CFG, items=items,
         concurrency=args.concurrency,
-        max_input_chars=args.max_input_chars,
         progress_label="r1 progress",
     ))
 

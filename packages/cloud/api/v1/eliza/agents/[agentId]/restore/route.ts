@@ -1,6 +1,7 @@
 // Handles v1 cloud API v1 eliza agents agentid restore route traffic with route-local auth expectations.
 import { Hono } from "hono";
 import { z } from "zod";
+import { CONTAINER_BACKED_EXECUTION_TIERS } from "@/db/schemas/agent-sandboxes";
 import { errorToResponse, ValidationError } from "@/lib/api/errors";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
 import { elizaSandboxService } from "@/lib/services/eliza-sandbox";
@@ -54,6 +55,78 @@ async function __hono_POST(
             details: parsed.error.issues,
           },
           { status: 400 },
+        ),
+        CORS_METHODS,
+      );
+    }
+
+    const agent = await elizaSandboxService.getAgentForWrite(
+      agentId,
+      user.organization_id,
+    );
+    if (!agent) {
+      return applyCorsHeaders(
+        Response.json(
+          { success: false, error: "Agent not found" },
+          { status: 404 },
+        ),
+        CORS_METHODS,
+      );
+    }
+
+    // This primary read is a route-level admission snapshot, not a lock or a
+    // CAS. The service rechecks tenant ownership, but it does not fence these
+    // four fields across lifecycle work; a concurrent transition can still
+    // win here until the inner restore path gains its own CAS.
+    if (
+      !CONTAINER_BACKED_EXECUTION_TIERS.some(
+        (tier) => tier === agent.execution_tier,
+      )
+    ) {
+      return applyCorsHeaders(
+        Response.json(
+          {
+            success: false,
+            error: "Agent restore requires a container-backed execution tier",
+          },
+          { status: 409 },
+        ),
+        CORS_METHODS,
+      );
+    }
+    if (agent.pool_status !== null) {
+      return applyCorsHeaders(
+        Response.json(
+          {
+            success: false,
+            error: "Agent restore cannot target pool-owned capacity",
+          },
+          { status: 409 },
+        ),
+        CORS_METHODS,
+      );
+    }
+    if (agent.deleted_at !== null) {
+      return applyCorsHeaders(
+        Response.json(
+          {
+            success: false,
+            error: "Agent restore cannot target a deleted agent",
+          },
+          { status: 409 },
+        ),
+        CORS_METHODS,
+      );
+    }
+    if (agent.deletion_attempt_id !== null) {
+      return applyCorsHeaders(
+        Response.json(
+          {
+            success: false,
+            error:
+              "Agent restore cannot start while agent deletion is in progress",
+          },
+          { status: 409 },
         ),
         CORS_METHODS,
       );

@@ -4,7 +4,6 @@ import {
 	type CommandRegistryService,
 	type IAgentRuntime,
 	toWellFormedUnicode,
-	truncateWellFormed,
 } from "@elizaos/core";
 import type { AgentSkillsService } from "./services/skills";
 
@@ -25,7 +24,7 @@ export function registerLoadedSkillCommands(
 		const slug = skill.slug.toLowerCase();
 		commands.register({
 			key: `skill-${slug}`,
-			description: truncateWellFormed(toWellFormedUnicode(skill.description), 80),
+			description: toWellFormedUnicode(skill.description),
 			textAliases: [`/${slug}`],
 			scope: "both",
 			category: "skills",

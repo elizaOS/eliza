@@ -16,8 +16,6 @@ const MAX_ENTITY = 2_000;
 const ENTITY_SUFFIX = "... (truncated)";
 const MAX_RUNTIME = 500;
 const RUNTIME_SUFFIX = "...";
-const CLIPBOARD_MAX = 4096;
-const CLIPBOARD_SUFFIX = "…";
 const SETTINGS_MAX = 12_000;
 const LONG_TERM_MAX = 5_000;
 const SUMMARY_MAX = 3_000;
@@ -76,16 +74,6 @@ describe("truncation suffix reservation — 7-site batch", () => {
 		expect(newTruncate("a".repeat(500), 500, "...").length).toBe(500);
 	});
 
-	it("clipboard preview: 4097 chars truncate to 4096 with …", () => {
-		const input = "a".repeat(CLIPBOARD_MAX + 1);
-		expect(newTruncate(input, CLIPBOARD_MAX, CLIPBOARD_SUFFIX).length).toBe(
-			CLIPBOARD_MAX,
-		);
-		expect(oldTruncate(input, CLIPBOARD_MAX, CLIPBOARD_SUFFIX).length).toBe(
-			4097,
-		);
-	});
-
 	it("settings / long-term / summary: caps reserve 3 for ...", () => {
 		for (const [max, label] of [
 			[SETTINGS_MAX, "settings 12000"],
@@ -105,7 +93,6 @@ describe("truncation suffix reservation — 7-site batch", () => {
 			[MAX_ATTACHMENT, ATTACHMENT_SUFFIX, 87],
 			[MAX_ENTITY, ENTITY_SUFFIX, 15],
 			[MAX_RUNTIME, RUNTIME_SUFFIX, 3],
-			[CLIPBOARD_MAX, CLIPBOARD_SUFFIX, 1],
 			[SETTINGS_MAX, GENERIC_SUFFIX, 3],
 		];
 		for (const [max, suffix, over] of cases) {

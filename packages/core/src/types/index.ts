@@ -29,6 +29,8 @@ export * from "./commands";
 export * from "./components";
 // Connector setup HTTP-route contract (distinct from ./setup onboarding wizard)
 export * from "./connector-setup";
+export * from "./content";
+export * from "./content-manifest";
 export * from "./contexts";
 export * from "./database";
 export * from "./documents";

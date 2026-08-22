@@ -10,7 +10,8 @@
 import {
   calculateCreditMarkup,
   DEFAULT_PLATFORM_FEE_RATE,
-  legacyMcpPointsToOrganizationCredits,
+  formatOrganizationCreditUsd,
+  mcpUsageChargeReceiptFromLegacyPoints,
   ORGANIZATION_CREDIT_UNIT,
 } from "@elizaos/cloud-shared/billing";
 import { Hono } from "hono";
@@ -258,10 +259,15 @@ app.post("/", async (c) => {
     markupPercent: referrer ? Number(referrer.markup_percent) : 0,
     platformFeeRate: referrer ? DEFAULT_PLATFORM_FEE_RATE : 0,
   });
+  const chargeReceipt = mcpUsageChargeReceiptFromLegacyPoints({
+    basePoints: creditsRequired,
+    affiliateFeePoints: affiliateFeeCredits,
+    platformFeePoints: platformFeeCredits,
+  });
 
   const preChargeResult = await creditsService.reserveAndDeductCredits({
     organizationId: user.organization_id,
-    amount: legacyMcpPointsToOrganizationCredits(totalCreditsRequired),
+    amount: chargeReceipt.totalAmountUsd,
     description: `MCP: ${mcp.name}`,
     metadata: {
       mcp_id: mcp.id,
@@ -271,8 +277,16 @@ app.post("/", async (c) => {
       affiliate_fee: affiliateFeeCredits.toFixed(4),
       platform_fee: platformFeeCredits.toFixed(4),
       total_credits_charged: totalCreditsRequired.toFixed(4),
-      price_usd:
-        legacyMcpPointsToOrganizationCredits(totalCreditsRequired).toString(),
+      base_amount_usd: formatOrganizationCreditUsd(chargeReceipt.baseAmountUsd),
+      affiliate_fee_usd: formatOrganizationCreditUsd(
+        chargeReceipt.affiliateFeeUsd,
+      ),
+      platform_fee_usd: formatOrganizationCreditUsd(
+        chargeReceipt.platformFeeUsd,
+      ),
+      total_amount_usd: formatOrganizationCreditUsd(
+        chargeReceipt.totalAmountUsd,
+      ),
       credit_unit: ORGANIZATION_CREDIT_UNIT,
       ...(affiliateOwnerId && { affiliate_owner_id: affiliateOwnerId }),
       ...(affiliateCodeId && { affiliate_code_id: affiliateCodeId }),
@@ -284,7 +298,7 @@ app.post("/", async (c) => {
       {
         error: "Insufficient credits",
         creditUnit: ORGANIZATION_CREDIT_UNIT,
-        requiredUsd: legacyMcpPointsToOrganizationCredits(totalCreditsRequired),
+        requiredUsd: chargeReceipt.totalAmountUsd,
         /** @deprecated Legacy MCP pricing points (100 points = $1). */
         required: totalCreditsRequired,
         balance: preChargeResult.newBalance,
@@ -307,7 +321,7 @@ app.post("/", async (c) => {
     await creditsService
       .refundCredits({
         organizationId: user.organization_id,
-        amount: legacyMcpPointsToOrganizationCredits(totalCreditsRequired),
+        amount: chargeReceipt.totalAmountUsd,
         description: `MCP refund: ${mcp.name} (${reason})`,
         metadata: {
           mcp_id: mcp.id,
@@ -463,6 +477,7 @@ app.post("/", async (c) => {
         creditsCharged: creditsRequired,
         affiliateFeeCredits,
         platformFeeCredits,
+        chargeReceipt,
         affiliateOwnerId,
         affiliateCodeId,
         metadata: {

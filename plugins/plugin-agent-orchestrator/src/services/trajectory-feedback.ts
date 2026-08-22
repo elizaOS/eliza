@@ -17,14 +17,6 @@ import { logger as elizaLogger, type IAgentRuntime } from "@elizaos/core";
 
 /** Timeout for trajectory DB calls to prevent blocking agent spawn. */
 const QUERY_TIMEOUT_MS = 5000;
-const SLOW_PATH_BUDGET_MS = 15_000;
-/**
- * Per-trajectory insight budget. The fast path already caps metadata insights
- * at this many per trajectory; the slow-path detail scan mirrors it so a single
- * legacy trajectory with many steps/LLM calls can't balloon the intermediate
- * `experiences` array before the final dedup + `maxEntries` cap.
- */
-const MAX_INSIGHTS_PER_TRAJECTORY = 50;
 
 function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   return Promise.race([
@@ -54,9 +46,9 @@ interface PastExperience {
 
 /** Options for querying past experience. */
 export interface TrajectoryFeedbackOptions {
-  /** Maximum number of recent trajectories to scan (default: 30) */
+  /** Caller-requested trajectory page size. Omit to consume every returned trajectory. */
   maxTrajectories?: number;
-  /** Maximum number of experience entries to return (default: 8) */
+  /** Caller-requested result page size. Omit to return every relevant experience. */
   maxEntries?: number;
   /** Only include trajectories from the last N hours (default: 48) */
   lookbackHours?: number;
@@ -227,8 +219,8 @@ export async function queryPastExperience(
   options: TrajectoryFeedbackOptions = {},
 ): Promise<PastExperience[]> {
   const {
-    maxTrajectories = 30,
-    maxEntries = 8,
+    maxTrajectories,
+    maxEntries,
     lookbackHours = 48,
     taskDescription,
     repo,
@@ -246,7 +238,7 @@ export async function queryPastExperience(
     const result = await withTimeout(
       logger.listTrajectories({
         source: "orchestrator",
-        limit: maxTrajectories,
+        ...(maxTrajectories === undefined ? {} : { limit: maxTrajectories }),
         startDate,
       }),
       QUERY_TIMEOUT_MS,
@@ -255,15 +247,13 @@ export async function queryPastExperience(
     if (result.trajectories.length === 0) return [];
 
     const experiences: PastExperience[] = [];
-    const slowPathDeadline = Date.now() + SLOW_PATH_BUDGET_MS;
 
     // Scan each trajectory for insights. Prefer pre-extracted insights from
     // metadata (populated at write time by eliza's trajectory-persistence)
     // to avoid loading full trajectory details with their large prompt/response
     // payloads. Fall back to getTrajectoryDetail for older trajectories that
     // predate the metadata insight extraction.
-    const maxScans = Math.min(result.trajectories.length, maxTrajectories);
-    for (let scanIdx = 0; scanIdx < maxScans; scanIdx++) {
+    for (let scanIdx = 0; scanIdx < result.trajectories.length; scanIdx++) {
       const summary = result.trajectories[scanIdx];
 
       const metadata = summary.metadata as
@@ -277,12 +267,10 @@ export async function queryPastExperience(
           }
         | undefined;
       const metadataInsights = Array.isArray(metadata?.insights)
-        ? metadata.insights
-            .filter(
-              (value): value is string =>
-                typeof value === "string" && value.trim().length > 0,
-            )
-            .slice(0, MAX_INSIGHTS_PER_TRAJECTORY)
+        ? metadata.insights.filter(
+            (value): value is string =>
+              typeof value === "string" && value.trim().length > 0,
+          )
         : [];
       const decisionType = metadata?.orchestrator?.decisionType ?? "unknown";
       const taskLabel = metadata?.orchestrator?.taskLabel ?? "";
@@ -310,12 +298,6 @@ export async function queryPastExperience(
       }
 
       // Slow path (fallback): load full detail for pre-extraction trajectories
-      if (Date.now() > slowPathDeadline) {
-        elizaLogger.debug(
-          `[trajectory-feedback] Slow path budget exhausted; stopping detail loads`,
-        );
-        break;
-      }
       elizaLogger.debug(
         `[trajectory-feedback] Slow path: loading full detail for ${summary.id} (no metadata insights)`,
       );
@@ -328,11 +310,7 @@ export async function queryPastExperience(
       ).catch(() => null);
       if (!detail?.steps) continue;
 
-      // Mirror the fast path's per-trajectory insight budget so a single
-      // legacy trajectory with many steps/LLM calls can't balloon the
-      // intermediate array before the final dedup + maxEntries cap.
-      let insightsForThisTrajectory = 0;
-      stepsLoop: for (const step of detail.steps) {
+      for (const step of detail.steps) {
         if (!step.llmCalls) continue;
 
         for (const call of step.llmCalls) {
@@ -344,16 +322,12 @@ export async function queryPastExperience(
           );
 
           for (const insight of insights) {
-            if (insightsForThisTrajectory >= MAX_INSIGHTS_PER_TRAJECTORY) {
-              break stepsLoop;
-            }
             experiences.push({
               timestamp: call.timestamp ?? summary.startTime,
               decisionType: call.purpose ?? decisionType,
               taskLabel,
               insight,
             });
-            insightsForThisTrajectory += 1;
           }
         }
       }
@@ -379,10 +353,10 @@ export async function queryPastExperience(
       }
     }
 
-    // Return most recent entries, capped
-    return Array.from(seen.values())
-      .sort((a, b) => b.timestamp - a.timestamp)
-      .slice(0, maxEntries);
+    const ordered = Array.from(seen.values()).sort(
+      (a, b) => b.timestamp - a.timestamp,
+    );
+    return maxEntries === undefined ? ordered : ordered.slice(0, maxEntries);
   } catch (err) {
     // error-policy:J4 explicit degrade — optional spawn-time experience
     // enrichment; a trajectory-DB read failure is logged and degrades to no

@@ -23,7 +23,7 @@ export default scenario({
       options: {
         action: "draft_reply",
         recipient: "Mira Chen",
-        channel: "signal",
+        channel: "whatsapp",
         requiresConfirmation: true,
         body: "Can you take the 5:00 setup window and leave the shared supply bin by the sign-in table?",
       },
@@ -37,7 +37,7 @@ export default scenario({
       options: {
         action: "draft_reply",
         recipient: "Talia Reed",
-        channel: "signal",
+        channel: "whatsapp",
         requiresConfirmation: true,
         body: "Can you take the 6:00 setup window and use the shared supply bin after Mira is done?",
       },

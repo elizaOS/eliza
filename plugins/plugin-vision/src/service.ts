@@ -8,6 +8,7 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { promisify } from "node:util";
 import {
+  ElizaError,
   type IAgentRuntime,
   logger,
   ModelType,
@@ -75,12 +76,6 @@ const execAsync = promisify(exec);
 // lives in a peer plugin. The structural contract must stay in sync with the
 // `VisionContext` exported from plugin-computeruse.
 const VISION_CONTEXT_SERVICE_TYPE = "vision-context";
-const SCENE_CONTEXT_OPEN_APPS_LIMIT = 20;
-const SCENE_CONTEXT_RECENT_ACTIONS_LIMIT = 10;
-const SCENE_DESCRIPTION_OCR_LINE_LIMIT = 40;
-const SCENE_DESCRIPTION_OCR_TEXT_LIMIT = 2000;
-const SCENE_DESCRIPTION_OBJECT_LIMIT = 20;
-const SCENE_DESCRIPTION_FACE_LIMIT = 10;
 const CAMERA_PERMISSION_DENIED_PATTERN =
   /camera access (?:denied|not granted)|permission denied|not authorized|not permitted|device access denied/i;
 
@@ -136,15 +131,13 @@ function isVisionContextProvider(
   );
 }
 
-function trimVisionContextForPrompt(
+function normalizeVisionContextForPrompt(
   context: VisionContextSnapshot,
 ): VisionContextSnapshot {
   return {
-    openApps: context.openApps.slice(0, SCENE_CONTEXT_OPEN_APPS_LIMIT),
+    openApps: context.openApps,
     focusedWindow: context.focusedWindow,
-    recentActions: context.recentActions.slice(
-      -SCENE_CONTEXT_RECENT_ACTIONS_LIMIT,
-    ),
+    recentActions: context.recentActions,
     currentTaskGoal: context.currentTaskGoal,
   };
 }
@@ -159,7 +152,7 @@ export function buildSceneDescriptionPrompt(
     task: "describe_visual_scene",
     instructions: SCENE_DESCRIPTION_INSTRUCTIONS,
   };
-  if (context) payload.context = trimVisionContextForPrompt(context);
+  if (context) payload.context = normalizeVisionContextForPrompt(context);
   const detectedText = normalizeOcrTextForPrompt(ocrText);
   if (detectedText) payload.detectedText = detectedText;
   const objects = normalizeDetectedObjectsForPrompt(detectedObjects);
@@ -175,7 +168,6 @@ function normalizeDetectedObjectsForPrompt(
   if (!objects || objects.length === 0) return [];
   return [...objects]
     .sort((a, b) => b.confidence - a.confidence)
-    .slice(0, SCENE_DESCRIPTION_OBJECT_LIMIT)
     .map((obj) => ({
       type: obj.type,
       confidence: obj.confidence,
@@ -195,7 +187,6 @@ function normalizeRecognizedFacesForPrompt(
     if (seen.has(label)) continue;
     seen.add(label);
     result.push({ label, bbox: face.bbox });
-    if (result.length >= SCENE_DESCRIPTION_FACE_LIMIT) break;
   }
   return result;
 }
@@ -212,13 +203,9 @@ function normalizeOcrTextForPrompt(text?: string | null): string | null {
     if (seen.has(dedupeKey)) continue;
     seen.add(dedupeKey);
     lines.push(line);
-    if (lines.length >= SCENE_DESCRIPTION_OCR_LINE_LIMIT) break;
   }
 
-  const normalized = lines
-    .join("\n")
-    .slice(0, SCENE_DESCRIPTION_OCR_TEXT_LIMIT)
-    .trim();
+  const normalized = lines.join("\n").trim();
   return normalized.length > 0 ? normalized : null;
 }
 
@@ -226,6 +213,45 @@ interface CameraDevice {
   id: string;
   name: string;
   capture: () => Promise<Buffer>;
+}
+
+/** Node clamps a `setInterval` delay above this to 1ms, so it is the real ceiling. */
+const MAX_TIMER_DELAY_MS = 2_147_483_647;
+const DEFAULT_SCREEN_CAPTURE_INTERVAL_MS = 2_000;
+
+/**
+ * Resolve a capture-interval setting that is passed directly to `setInterval`.
+ *
+ * Three outcomes, deliberately distinct:
+ *   - absent or blank  -> `fallback` (the documented default)
+ *   - explicit invalid -> throws `ElizaError`, because a configured value that
+ *     cannot be honoured is an operator mistake, and silently substituting the
+ *     default would hide it
+ *   - valid            -> the configured number
+ *
+ * "Invalid" is anything Node cannot use as the requested timer delay:
+ * non-finite, below 1ms, or above `MAX_TIMER_DELAY_MS`. Node clamps ALL of
+ * those out-of-range values to 1ms
+ * (`TimeoutOverflowWarning` / `TimeoutNegativeWarning`), turning a mistyped
+ * interval into a capture busy-loop rather than a slower cadence.
+ */
+export function resolveCaptureIntervalMs(
+  raw: string | undefined,
+  fallback: number,
+  settingName: string,
+): number {
+  if (raw === undefined || raw.trim() === "") return fallback;
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed) || parsed < 1 || parsed > MAX_TIMER_DELAY_MS) {
+    throw new ElizaError(
+      `${settingName} must be at least 1 millisecond and no greater than ${MAX_TIMER_DELAY_MS}; received ${JSON.stringify(raw)}`,
+      {
+        code: "VISION_CAPTURE_INTERVAL_INVALID",
+        context: { settingName, raw, maxMs: MAX_TIMER_DELAY_MS },
+      },
+    );
+  }
+  return parsed;
 }
 
 export class VisionService extends Service {
@@ -305,7 +331,7 @@ export class VisionService extends Service {
     tfChangeThreshold: 10, // 10% change triggers TF update
     vlmChangeThreshold: 50, // 50% change triggers VLM update
     visionMode: VisionMode.OFF, // Capture requires explicit activation
-    screenCaptureInterval: 2000, // Screen capture every 2 seconds
+    screenCaptureInterval: DEFAULT_SCREEN_CAPTURE_INTERVAL_MS,
     tileSize: 256,
     tileProcessingOrder: "priority",
     ocrEnabled: true,
@@ -373,6 +399,13 @@ export class VisionService extends Service {
       if (raw === undefined) return defaultValue;
       return raw.trim().toLowerCase() === "true";
     };
+    const primaryCaptureInterval = getSettingString("SCREEN_CAPTURE_INTERVAL");
+    const captureIntervalSetting =
+      primaryCaptureInterval ||
+      getSettingString("VISION_SCREEN_CAPTURE_INTERVAL");
+    const captureIntervalSettingName = primaryCaptureInterval
+      ? "SCREEN_CAPTURE_INTERVAL"
+      : "VISION_SCREEN_CAPTURE_INTERVAL";
 
     return {
       ...this.DEFAULT_CONFIG,
@@ -418,11 +451,14 @@ export class VisionService extends Service {
       visionMode:
         (getSettingString("VISION_MODE") as VisionMode) ||
         this.DEFAULT_CONFIG.visionMode,
-      screenCaptureInterval:
-        Number(
-          runtime.getSetting("SCREEN_CAPTURE_INTERVAL") ||
-            runtime.getSetting("VISION_SCREEN_CAPTURE_INTERVAL"),
-        ) || this.DEFAULT_CONFIG.screenCaptureInterval,
+      // `||` (not `??`) preserves the existing alias precedence: an empty
+      // primary reaches the legacy alias, while a whitespace-only primary is
+      // truthy and therefore suppresses the alias exactly as before.
+      screenCaptureInterval: resolveCaptureIntervalMs(
+        captureIntervalSetting,
+        DEFAULT_SCREEN_CAPTURE_INTERVAL_MS,
+        captureIntervalSettingName,
+      ),
       ocrEnabled: getBooleanSetting(
         "OCR_ENABLED",
         "VISION_OCR_ENABLED",

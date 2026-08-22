@@ -141,13 +141,14 @@ function getInstagramTargetMetadata(target: TargetInfo): Record<string, unknown>
     : undefined;
 }
 
-export function truncateInstagramComment(text: string): string {
+export function validateInstagramComment(text: string): string {
   const wellFormed = toWellFormedUnicode(text);
-  if (wellFormed.length <= MAX_COMMENT_LENGTH) {
-    return wellFormed;
+  if (wellFormed.length > MAX_COMMENT_LENGTH) {
+    throw new RangeError(
+      `Instagram comments must not exceed ${MAX_COMMENT_LENGTH} UTF-16 code units; received ${wellFormed.length}.`
+    );
   }
-  const budget = Math.max(0, MAX_COMMENT_LENGTH - 3);
-  return `${truncateWellFormed(wellFormed, budget)}...`;
+  return wellFormed;
 }
 
 function getInstagramPostMetadata(content: Content): Record<string, unknown> {
@@ -335,7 +336,7 @@ export class InstagramService extends Service {
               maxLength: MAX_COMMENT_LENGTH,
               supportsMarkdown: false,
             },
-            postProcess: truncateInstagramComment,
+            postProcess: validateInstagramComment,
           },
         });
       }
@@ -483,7 +484,7 @@ export class InstagramService extends Service {
     if (accountService !== this) {
       return accountService.handleSendPost(runtime, content);
     }
-    const text = truncateInstagramComment(
+    const text = validateInstagramComment(
       typeof content.text === "string" ? content.text.trim() : ""
     );
     if (!text) {
@@ -706,15 +707,14 @@ export class InstagramService extends Service {
         ]);
         return score > 0 ? this.buildThreadTarget(thread, score) : null;
       })
-      .filter((target): target is MessageConnectorTarget => Boolean(target))
-      .slice(0, 25);
+      .filter((target): target is MessageConnectorTarget => Boolean(target));
   }
 
   async listConnectorRooms(
     _context: MessageConnectorQueryContext
   ): Promise<MessageConnectorTarget[]> {
     const threads = await this.getThreads();
-    return threads.map((thread) => this.buildThreadTarget(thread, 0.5)).slice(0, 50);
+    return threads.map((thread) => this.buildThreadTarget(thread, 0.5));
   }
 
   async listRecentConnectorTargets(
@@ -740,7 +740,7 @@ export class InstagramService extends Service {
       });
     }
     targets.push(...(await this.listConnectorRooms(context)));
-    return targets.slice(0, 25);
+    return targets;
   }
 
   async fetchConnectorMessages(
@@ -756,7 +756,7 @@ export class InstagramService extends Service {
     }
 
     if (!threadId) {
-      const targets = (await this.listRecentConnectorTargets(context)).slice(0, 10);
+      const targets = await this.listRecentConnectorTargets(context);
       const roomIds = Array.from(
         new Set(
           targets
@@ -842,7 +842,7 @@ export class InstagramService extends Service {
         threadId,
       } as TargetInfo,
       label: `Instagram thread ${threadId}`,
-      recentMessages: messages.slice(-20).map((message) => ({
+      recentMessages: messages.map((message) => ({
         name: message.user.username,
         text: message.text ?? "",
         timestamp: message.timestamp.getTime(),

@@ -16,10 +16,7 @@
 import { ElizaError } from "@elizaos/core";
 
 import { safeFetch } from "../../security/safe-fetch";
-import {
-  SOCIAL_MEDIA_MEDIA_MAX_BASE64_LENGTH,
-  SOCIAL_MEDIA_MEDIA_MAX_BYTES,
-} from "../../types/social-media";
+import { SOCIAL_MEDIA_MEDIA_MAX_BYTES } from "../../types/social-media";
 
 const SOCIAL_MEDIA_DOWNLOAD_TIMEOUT_MS = 10_000;
 
@@ -66,12 +63,10 @@ export function assertSocialMediaBytesWithinBudget(
  *
  * The budget is a DECODED-byte budget, charged twice. First against the
  * encoded character count, so an oversized payload is rejected BEFORE
- * `Buffer.from` allocates the decode; every payload the URL branch accepts
- * (at most {@link SOCIAL_MEDIA_MEDIA_MAX_BYTES} bytes) encodes to at most
- * {@link SOCIAL_MEDIA_MEDIA_MAX_BASE64_LENGTH} characters, so nothing that
- * posts today is rejected by that pre-check. Then against the buffer actually
- * produced, because `Buffer.from` skips characters outside the base64 alphabet
- * and a padded string of the maximum accepted length can still decode two
+ * `Buffer.from` allocates the decode. MIME formatting whitespace does not
+ * count toward that encoded-data ceiling because the decoder ignores ASCII
+ * space, tab, CR, and LF. The buffer actually produced is charged again
+ * because a padded string of the maximum accepted length can still decode two
  * bytes past the budget.
  */
 export function decodeSocialMediaBase64(
@@ -80,17 +75,46 @@ export function decodeSocialMediaBase64(
   maxBytes: number = SOCIAL_MEDIA_MEDIA_MAX_BYTES,
 ): Buffer {
   const maxEncodedLength = Math.ceil(maxBytes / 3) * 4;
-  if (base64.length > maxEncodedLength) {
+  // RFC 2045 wraps base64 at 76 characters with CRLF. Bound the raw string to
+  // exactly that worst-case overhead before scanning it, so ignorable spaces
+  // cannot retain an arbitrarily large request beside the decoded allocation.
+  const maxMimeLineBreaks = Math.max(0, Math.ceil(maxEncodedLength / 76) - 1);
+  const maxRawEncodedLength = maxEncodedLength + maxMimeLineBreaks * 2;
+  if (base64.length > maxRawEncodedLength) {
     throw downloadError(
-      "Media attachment exceeds the media byte limit",
+      "Media attachment exceeds the raw encoded media limit",
       "SOCIAL_MEDIA_MEDIA_TOO_LARGE",
       {
-        encodedLength: base64.length,
+        rawEncodedLength: base64.length,
+        maxRawEncodedLength,
         maxEncodedLength,
         maxBytes,
         ...context,
       },
     );
+  }
+  if (base64.length > maxEncodedLength) {
+    let encodedLength = 0;
+    for (let index = 0; index < base64.length; index += 1) {
+      const code = base64.charCodeAt(index);
+      if (code === 0x09 || code === 0x0a || code === 0x0d || code === 0x20) {
+        continue;
+      }
+      encodedLength += 1;
+    }
+    if (encodedLength > maxEncodedLength) {
+      throw downloadError(
+        "Media attachment exceeds the media byte limit",
+        "SOCIAL_MEDIA_MEDIA_TOO_LARGE",
+        {
+          encodedLength,
+          rawEncodedLength: base64.length,
+          maxEncodedLength,
+          maxBytes,
+          ...context,
+        },
+      );
+    }
   }
 
   const bytes = Buffer.from(base64, "base64");

@@ -2217,8 +2217,8 @@ public class ElizaAgentService extends Service {
             boolean legacyLibllamaBundled = abiLibllama.isFile() && abiLlamaShim.isFile();
             boolean nativeLlamaBundled = fusedInferenceBundled || legacyLibllamaBundled;
             boolean brandedAospBuild = BuildConfig.AOSP_BUILD && isBrandedDevice();
-            // When the dynamic-Vulkan fused lib is staged (libelizainference.so +
-            // libggml-vulkan.so), the GPU is only reachable from THIS bionic app
+            // When the fused inference lib is staged, its Android Vulkan dependency
+            // is only reachable from THIS bionic app
             // process — the musl agent's ld can't load libvulkan's HIDL closure
             // (project_android_gpu_vulkan_wall). So instead of pointing the musl
             // agent at the bun:ffi AOSP loader (ELIZA_LOCAL_LLAMA=1 → the wall),
@@ -2237,8 +2237,9 @@ public class ElizaAgentService extends Service {
             // would fail with a cryptic "bionic socket error: connect ENOENT".
             boolean bionicJniBridgeBundled =
                 resolveBundledNativeLib(abiDir, "libelizavoicejni.so").isFile();
-            boolean delegateToBionicHost =
-                fusedInferenceBundled && abiGgmlVulkan.isFile() && bionicJniBridgeBundled;
+            boolean delegateToBionicHost = shouldDelegateToBionicHost(
+                fusedInferenceBundled,
+                bionicJniBridgeBundled);
             // #11760: export the device RAM class + idle-unload default so the
             // bun agent's in-process loader (plugin-native-inference) applies
             // the same inference memory policy as the bionic host. Operator env
@@ -2252,9 +2253,9 @@ public class ElizaAgentService extends Service {
                     "ELIZA_LOCAL_IDLE_UNLOAD_MS",
                     String.valueOf(inferenceIdleUnloadMs(inferenceRamClass)));
             }
-            if (fusedInferenceBundled && abiGgmlVulkan.isFile() && !bionicJniBridgeBundled) {
+            if (fusedInferenceBundled && !bionicJniBridgeBundled) {
                 Log.w(TAG, "agent/" + abiDir.getName()
-                    + ": fused Vulkan libs are staged but libelizavoicejni.so is absent "
+                    + ": fused inference is staged but libelizavoicejni.so is absent "
                     + "(this build skipped the fused-voice JNI bridge); on-device GPU "
                     + "inference via the bionic host is UNAVAILABLE. Rebuild with "
                     + "stage-elizavoice-lib.mjs to re-enable. Falling back to the "
@@ -2264,7 +2265,7 @@ public class ElizaAgentService extends Service {
                 agentEnv.put("ELIZA_BIONIC_HOST_DELEGATED", "1");
                 agentEnv.put("ELIZA_BIONIC_INFERENCE_SOCK", BIONIC_INFERENCE_SOCKET_NAME);
                 Log.i(TAG, "agent/" + abiDir.getName()
-                    + "/libggml-vulkan.so present; delegating inference to the in-process"
+                    + "/libelizainference.so present; delegating inference to the in-process"
                     + " bionic Vulkan host over UDS \"" + BIONIC_INFERENCE_SOCKET_NAME
                     + "\" (NOT taking the musl bun:ffi AOSP path)");
                 // Stand up the in-process GPU inference server BEFORE the agent
@@ -4086,6 +4087,16 @@ public class ElizaAgentService extends Service {
         return debugBuild
             && ("1".equals(debugPropertyValue)
                 || "true".equalsIgnoreCase(debugPropertyValue));
+    }
+
+    static boolean shouldDelegateToBionicHost(
+            boolean fusedInferenceBundled,
+            boolean bionicJniBridgeBundled) {
+        // The Android artifact is a single fused ABI. Vulkan is linked into
+        // libelizainference.so, so a separate libggml-vulkan.so is not a valid
+        // capability sentinel. The JNI bridge is the fail-closed proof that the
+        // app process can host the fused library for the musl agent.
+        return fusedInferenceBundled && bionicJniBridgeBundled;
     }
 
     /**

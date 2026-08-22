@@ -1,6 +1,5 @@
 /**
- * Regression for documents `generateContentBasedId` surrogate-safe
- * truncation (2000 cap). Mirrors #23581 precedent.
+ * Regression for lossless, surrogate-safe document content IDs.
  */
 
 import { describe, expect, it } from "vitest";
@@ -27,32 +26,29 @@ function isWellFormed(value: string): boolean {
 }
 
 describe("generateContentBasedId well-formed", () => {
-	it("keeps surrogate pairs intact at 2000 boundary (plain)", () => {
+	it("hashes content beyond the former boundary", () => {
 		const emoji = String.fromCharCode(0xd83d, 0xde00);
 		const content = `${"a".repeat(1999)}${emoji}${"b".repeat(20)}`;
-		const id = generateContentBasedId(content, "agent-1", { maxChars: 2000 });
+		const id = generateContentBasedId(content, "agent-1");
 		const id2 = generateContentBasedId(
 			`${"a".repeat(1999)}${emoji}X`,
 			"agent-1",
-			{ maxChars: 2000 },
 		);
-		expect(id).toBe(id2);
+		expect(id).not.toBe(id2);
 	});
 
 	it("preserves fitting emoji under cap", () => {
 		const emoji = String.fromCharCode(0xd83d, 0xde00);
 		const content = `${"a".repeat(1998)}${emoji}`;
-		const id = generateContentBasedId(content, "agent-1", { maxChars: 2000 });
-		const id2 = generateContentBasedId(content, "agent-1", { maxChars: 2000 });
+		const id = generateContentBasedId(content, "agent-1");
+		const id2 = generateContentBasedId(content, "agent-1");
 		expect(id).toBe(id2);
-		expect(isWellFormed(toWellFormedUnicode(content).slice(0, 2000))).toBe(
-			true,
-		);
+		expect(isWellFormed(toWellFormedUnicode(content))).toBe(true);
 	});
 
 	it("sanitizes lone high surrogate before hashing", () => {
 		const lone = `doc ${String.fromCharCode(0xd800)} content`;
-		const id = generateContentBasedId(lone, "agent-1", { maxChars: 2000 });
+		const id = generateContentBasedId(lone, "agent-1");
 		expect(isWellFormed(toWellFormedUnicode(lone))).toBe(true);
 		expect(id).toBeTruthy();
 	});
@@ -61,12 +57,12 @@ describe("generateContentBasedId well-formed", () => {
 		const emoji = String.fromCharCode(0xd83e, 0xdd8a);
 		const raw = `${"a".repeat(1999)}${emoji}${"b".repeat(20)}`;
 		const base64 = Buffer.from(raw).toString("base64");
-		const id = generateContentBasedId(base64, "agent-1", { maxChars: 2000 });
-		const id2 = generateContentBasedId(base64, "agent-1", { maxChars: 2000 });
+		const id = generateContentBasedId(base64, "agent-1");
+		const id2 = generateContentBasedId(base64, "agent-1");
 		expect(id).toBe(id2);
 	});
 
-	it("never splits at sweep around 2000", () => {
+	it("normalizes Unicode across long content", () => {
 		for (let n = 1995; n <= 2005; n++) {
 			const emoji = String.fromCharCode(0xd83e, 0xdd8a);
 			const content = `${"x".repeat(n)}${emoji}${"y".repeat(20)}`;

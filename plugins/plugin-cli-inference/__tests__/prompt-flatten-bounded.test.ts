@@ -1,19 +1,14 @@
 /**
- * Load-bearing regression pins for the bounded tool-payload walk in
+ * Load-bearing regression pins for lossless tool-payload flattening in
  * `src/prompt-flatten.ts`.
  *
  * These import the REAL production symbols (`contentToText`, `flattenPrompt`
- * and the exported markers) — no copy of the implementation lives in this file,
+ * and the exported error) — no copy of the implementation lives in this file,
  * so deleting or weakening any guard turns the suite red.
  *
  * Two halves:
- *  1. Hostile payloads that threw uncaught out of `flattenPrompt` before the
- *     fix (`RangeError: Maximum call stack size exceeded` on a deep array, a
- *     deep `.content` chain and a self-referential `.content`; `TypeError:
- *     Converting circular structure to JSON` on a cyclic object and on cyclic
- *     tool-call arguments) now flatten to a bounded marker.
- *  2. Ordinary payloads still flatten byte-identically — the guard must not
- *     reject anything the live path accepts today.
+ *  1. Payloads that cannot be represented losslessly fail with a typed error.
+ *  2. Every valid payload, including large and wide values, remains complete.
  */
 
 import { runInNewContext } from "node:vm";
@@ -22,9 +17,7 @@ import { describe, expect, it } from "vitest";
 import {
   contentToText,
   flattenPrompt,
-  TOOL_PAYLOAD_BUDGET_MARKER,
-  TOOL_PAYLOAD_CYCLE_MARKER,
-  TOOL_PAYLOAD_DEPTH_MARKER,
+  PromptPayloadSerializationError,
 } from "../src/prompt-flatten";
 
 const toolResult = (output: unknown): ChatMessageContentPart =>
@@ -35,89 +28,83 @@ const toolCall = (input: unknown): ChatMessageContentPart =>
 /** Deep enough that the old recursive walk blew the stack. */
 const DEEP = 60_000;
 
-describe("toolOutputToText — hostile tool payloads no longer throw", () => {
-  it("bounds a deep array tool output instead of overflowing the stack", () => {
+describe("toolOutputToText — unsafe payloads fail explicitly", () => {
+  it("rejects a stack-exhausting deep array without substituting a marker", () => {
     const deepArray = JSON.parse(`${"[".repeat(DEEP)}1${"]".repeat(DEEP)}`);
-    const text = contentToText([toolResult(deepArray)]);
-    expect(text).toContain(TOOL_PAYLOAD_DEPTH_MARKER);
+    expect(() => contentToText([toolResult(deepArray)])).toThrow(PromptPayloadSerializationError);
   });
 
-  it("bounds a deep `.content` chain instead of overflowing the stack", () => {
+  it("rejects a stack-exhausting deep content chain", () => {
     let nested: unknown = { text: "leaf" };
     for (let i = 0; i < DEEP; i += 1) nested = { content: nested };
-    const text = contentToText([toolResult(nested)]);
-    expect(text).toContain(TOOL_PAYLOAD_DEPTH_MARKER);
+    expect(() => contentToText([toolResult(nested)])).toThrow(PromptPayloadSerializationError);
   });
 
-  it("cuts a self-referential `.content` back-edge instead of recursing forever", () => {
+  it("rejects a self-referential content back-edge", () => {
     const selfReferential: Record<string, unknown> = {};
     selfReferential.content = selfReferential;
-    const text = contentToText([toolResult(selfReferential)]);
-    expect(text).toContain(TOOL_PAYLOAD_CYCLE_MARKER);
+    expect(() => contentToText([toolResult(selfReferential)])).toThrow(
+      PromptPayloadSerializationError
+    );
   });
 
-  it("serializes a cyclic tool output instead of throwing from JSON.stringify", () => {
+  it("rejects a cyclic tool output", () => {
     const cyclic: Record<string, unknown> = { a: 1 };
     cyclic.self = cyclic;
-    const text = contentToText([toolResult(cyclic)]);
-    expect(text).toContain('"a":1');
-    expect(text).toContain(TOOL_PAYLOAD_CYCLE_MARKER);
+    expect(() => contentToText([toolResult(cyclic)])).toThrow(PromptPayloadSerializationError);
   });
 
-  it("bounds the AI-SDK `{type:'json',value}` tool-result shape", () => {
+  it("rejects a stack-exhausting AI-SDK `{type:'json',value}` payload", () => {
     // The shape emitted by plugins/plugin-openai/models/text.ts and
     // plugins/plugin-zerollama/utils/ai-sdk-wire.ts: `value` is parsed remote
     // JSON of arbitrary depth, with no string fast-path in the walk.
     const deepJson = JSON.parse(`${'{"a":'.repeat(DEEP)}1${"}".repeat(DEEP)}`);
-    const text = contentToText([toolResult({ type: "json", value: deepJson })]);
-    expect(text).toContain(TOOL_PAYLOAD_DEPTH_MARKER);
+    expect(() => contentToText([toolResult({ type: "json", value: deepJson })])).toThrow(
+      PromptPayloadSerializationError
+    );
   });
 
-  it("bounds cyclic tool-call arguments carried in the content array", () => {
+  it("rejects cyclic tool-call arguments carried in the content array", () => {
     const cyclic: Record<string, unknown> = { q: 1 };
     cyclic.self = cyclic;
-    const text = contentToText([toolCall(cyclic)]);
-    expect(text).toContain(TOOL_PAYLOAD_CYCLE_MARKER);
+    expect(() => contentToText([toolCall(cyclic)])).toThrow(PromptPayloadSerializationError);
   });
 
-  it("bounds cyclic arguments carried on `message.toolCalls`", () => {
+  it("rejects cyclic arguments carried on `message.toolCalls`", () => {
     const cyclic: Record<string, unknown> = { q: 1 };
     cyclic.self = cyclic;
-    const { body } = flattenPrompt({
-      messages: [
-        {
-          role: "assistant",
-          content: "narrating",
-          toolCalls: [{ name: "WEB_FETCH", arguments: cyclic }],
-        } as unknown as ChatMessage,
-      ],
-    });
-    expect(body).toContain(TOOL_PAYLOAD_CYCLE_MARKER);
+    expect(() =>
+      flattenPrompt({
+        messages: [
+          {
+            role: "assistant",
+            content: "narrating",
+            toolCalls: [{ name: "WEB_FETCH", arguments: cyclic }],
+          } as unknown as ChatMessage,
+        ],
+      })
+    ).toThrow(PromptPayloadSerializationError);
   });
 
-  it("charges container width so a very wide payload cannot exhaust the walk", () => {
+  it("preserves a very wide payload", () => {
     const wide = { rows: Array.from({ length: 200_000 }, (_, i) => i) };
     const text = contentToText([toolResult(wide)]);
-    expect(text).toContain(TOOL_PAYLOAD_BUDGET_MARKER);
+    expect(text).toBe(`[tool_result WEB_FETCH: ${JSON.stringify(wide)}]`);
   });
 
-  it("keeps the rest of the turn alive when one part is poisoned", () => {
-    // The whole point: a poisoned part is replayed on every later generation of
-    // the turn, so it must degrade to a marker rather than kill the flatten.
+  it("rejects the whole turn before dispatch when one part is not lossless", () => {
     const selfReferential: Record<string, unknown> = {};
     selfReferential.content = selfReferential;
-    const { system, body } = flattenPrompt({
-      system: "ROOT",
-      messages: [
-        { role: "user", content: "turn 1" },
-        { role: "tool", content: [toolResult(selfReferential)] } as unknown as ChatMessage,
-        { role: "user", content: "turn 2" },
-      ],
-    });
-    expect(system).toContain("ROOT");
-    expect(body).toContain("turn 1");
-    expect(body).toContain("turn 2");
-    expect(body).toContain(TOOL_PAYLOAD_CYCLE_MARKER);
+    expect(() =>
+      flattenPrompt({
+        system: "ROOT",
+        messages: [
+          { role: "user", content: "turn 1" },
+          { role: "tool", content: [toolResult(selfReferential)] } as unknown as ChatMessage,
+          { role: "user", content: "turn 2" },
+        ],
+      })
+    ).toThrow(PromptPayloadSerializationError);
   });
 
   it("never invokes an accessor on an untrusted payload", () => {
@@ -130,9 +117,54 @@ describe("toolOutputToText — hostile tool payloads no longer throw", () => {
         return "pwned";
       },
     });
-    const text = contentToText([toolResult(trap)]);
+    expect(() => contentToText([toolResult(trap)])).toThrow(PromptPayloadSerializationError);
     expect(invoked).toBe(0);
-    expect(text).not.toContain("pwned");
+  });
+
+  it("rejects array accessors without invoking them", () => {
+    let invoked = 0;
+    const payload: unknown[] = [];
+    Object.defineProperty(payload, 0, {
+      enumerable: true,
+      get() {
+        invoked += 1;
+        return "pwned";
+      },
+    });
+    payload.length = 2;
+    expect(() => contentToText([toolResult({ payload })])).toThrow(PromptPayloadSerializationError);
+    expect(() => contentToText([toolResult(payload)])).toThrow(PromptPayloadSerializationError);
+    expect(invoked).toBe(0);
+  });
+
+  it("rejects Proxy payloads without invoking direct or prototype traps", () => {
+    let invoked = 0;
+    const proxy = new Proxy(Buffer.from("x"), {
+      getPrototypeOf() {
+        invoked += 1;
+        throw new Error("proxy trap ran");
+      },
+      ownKeys() {
+        invoked += 1;
+        throw new Error("proxy trap ran");
+      },
+    });
+    const revocable = Proxy.revocable({}, {});
+    revocable.revoke();
+    const proxyPrototype = new Proxy(Buffer.prototype, {
+      getPrototypeOf() {
+        invoked += 1;
+        throw new Error("prototype-chain trap ran");
+      },
+    });
+    const bufferWithProxyPrototype = Buffer.from("y");
+    Object.setPrototypeOf(bufferWithProxyPrototype, proxyPrototype);
+
+    for (const payload of [proxy, revocable.proxy, bufferWithProxyPrototype]) {
+      expect(() => contentToText([toolResult(payload)])).toThrow(PromptPayloadSerializationError);
+    }
+    expect(() => contentToText([toolResult({ proxy })])).toThrow(PromptPayloadSerializationError);
+    expect(invoked).toBe(0);
   });
 });
 
@@ -192,7 +224,7 @@ describe("toolOutputToText — no over-rejection of ordinary payloads", () => {
     );
   });
 
-  it("keeps an honestly deep (but in-budget) payload whole", () => {
+  it("keeps an honestly deep payload whole", () => {
     let nested: unknown = { leaf: true };
     for (let i = 0; i < 40; i += 1) nested = { child: nested };
     expect(contentToText([toolResult(nested)])).toBe(
@@ -202,29 +234,27 @@ describe("toolOutputToText — no over-rejection of ordinary payloads", () => {
 
   const MiB = 1024 * 1024;
 
-  it("charges strings nested in a JSON object against the character budget", () => {
-    // Every string on the JSON projection path used to be handed back free, so
-    // an object could carry unlimited large fields past the declared char cap
-    // while the node budget counted only one node per field.
-    const out = contentToText([
-      toolResult({ a: "a".repeat(3 * MiB), b: "b".repeat(3 * MiB), c: "c".repeat(3 * MiB) }),
-    ]);
-    expect(out).toContain(TOOL_PAYLOAD_BUDGET_MARKER);
-    expect(out.length).toBeLessThan(9 * MiB);
+  it("preserves all strings nested in a large JSON object", () => {
+    const payload = {
+      a: "a".repeat(3 * MiB),
+      b: "b".repeat(3 * MiB),
+      c: "c".repeat(3 * MiB),
+    };
+    expect(contentToText([toolResult(payload)])).toBe(
+      `[tool_result WEB_FETCH: ${JSON.stringify(payload)}]`
+    );
   });
 
-  it("charges property names, so sibling objects with huge keys are bounded", () => {
-    // #23891 charged nested values and dropped the terminal charge that used to
-    // account for keys and serialization syntax, which made property names free
-    // forever. Reported on that PR by @lalalune; this pins the fix.
+  it("preserves huge property names", () => {
     const bigKey = (char: string): Record<string, number> => {
       const object: Record<string, number> = {};
       object[char.repeat(3 * MiB)] = 1;
       return object;
     };
-    const out = contentToText([toolResult([bigKey("a"), bigKey("b"), bigKey("c")])]);
-    expect(out).toContain(TOOL_PAYLOAD_BUDGET_MARKER);
-    expect(out.length).toBeLessThan(9 * MiB);
+    const payload = [bigKey("a"), bigKey("b"), bigKey("c")];
+    expect(contentToText([toolResult(payload)])).toBe(
+      `[tool_result WEB_FETCH: ${payload.map((entry) => JSON.stringify(entry)).join("\n")}]`
+    );
   });
 
   it("cannot be made to throw by a getTime override on a Date-shaped payload", () => {
@@ -257,17 +287,61 @@ describe("toolOutputToText — no over-rejection of ordinary payloads", () => {
     expect(({} as Record<string, unknown>).polluted).toBeUndefined();
   });
 
-  it("preserves Buffer and URL shape, and still bounds a large Buffer", () => {
+  it("preserves Buffer and URL shape, including a large Buffer", () => {
     expect(contentToText([toolResult(Buffer.from("hi"))])).toBe(
       '[tool_result WEB_FETCH: {"type":"Buffer","data":[104,105]}]'
     );
     expect(contentToText([toolResult(new URL("https://e.com/x"))])).toBe(
       '[tool_result WEB_FETCH: "https://e.com/x"]'
     );
-    // Byte count is charged, so a buffer wider than the node budget is marked
-    // rather than materialized into a multi-megabyte index array.
-    expect(contentToText([toolResult(Buffer.alloc(200_000))])).toContain(
-      TOOL_PAYLOAD_BUDGET_MARKER
+    const large = Buffer.alloc(200_000);
+    expect(contentToText([toolResult(large)])).toBe(
+      `[tool_result WEB_FETCH: ${JSON.stringify(large)}]`
+    );
+  });
+
+  it("copies Buffer bytes without consulting payload length or @@iterator", () => {
+    let invoked = 0;
+    const payload = Buffer.from("hi");
+    Object.defineProperties(payload, {
+      length: {
+        get() {
+          invoked += 1;
+          throw new Error("length getter ran");
+        },
+      },
+      [Symbol.iterator]: {
+        value() {
+          invoked += 1;
+          throw new Error("iterator ran");
+        },
+      },
+    });
+    expect(contentToText([toolResult(payload)])).toBe(
+      '[tool_result WEB_FETCH: {"type":"Buffer","data":[104,105]}]'
+    );
+    expect(invoked).toBe(0);
+  });
+
+  it("never consults an attacker-controlled Symbol.toStringTag", () => {
+    // `Object.prototype.toString` performs Get(value, @@toStringTag), so brand
+    // sniffing on untrusted input could run an attacker getter, or let a plain
+    // object claim to be a Date/URL and make the builtin call throw. Reported
+    // by @lalalune on #23925; detection now probes the internal slot instead.
+    const throwingTag = {};
+    Object.defineProperty(throwingTag, Symbol.toStringTag, {
+      get() {
+        throw new Error("tag getter ran");
+      },
+    });
+    expect(() => contentToText([toolResult({ x: throwingTag })])).not.toThrow();
+    expect(() =>
+      contentToText([toolResult({ x: { [Symbol.toStringTag]: "Date" } })])
+    ).not.toThrow();
+    expect(() => contentToText([toolResult({ x: { [Symbol.toStringTag]: "URL" } })])).not.toThrow();
+    // An impostor is just a plain object, so it renders as one.
+    expect(contentToText([toolResult({ x: { [Symbol.toStringTag]: "Date" } })])).toBe(
+      '[tool_result WEB_FETCH: {"x":{}}]'
     );
   });
 
@@ -281,15 +355,12 @@ describe("toolOutputToText — no over-rejection of ordinary payloads", () => {
   });
 
   it("still returns a single oversized body whole, nested or bare", () => {
-    // `chargeChars` checks before it charges, so the first oversized body comes
-    // back untouched. That contract must hold identically whether the body
-    // arrives as a bare string or inside an object.
+    // The complete value must hold identically whether it arrives as a bare
+    // string or inside an object.
     const body = "x".repeat(10 * MiB);
     const bare = contentToText([toolResult(body)]);
     const wrapped = contentToText([toolResult({ body })]);
-    expect(bare).not.toContain(TOOL_PAYLOAD_BUDGET_MARKER);
     expect(bare).toContain(body);
-    expect(wrapped).not.toContain(TOOL_PAYLOAD_BUDGET_MARKER);
     expect(wrapped).toBe(`[tool_result WEB_FETCH: ${JSON.stringify({ body })}]`);
   });
 });

@@ -229,6 +229,32 @@ describe("managed payment clients", () => {
     } satisfies Partial<PaypalManagedClientError>);
   });
 
+  it("preserves complete plain-text provider errors", async () => {
+    const suffix = "DISTINGUISHING-PROVIDER-SUFFIX";
+    vi.stubGlobal(
+      "fetch",
+      vi.fn<typeof fetch>(
+        async () => new Response(`${"x".repeat(10_000)}${suffix}`, { status: 503 })
+      )
+    );
+    const config = () => ({
+      configured: true as const,
+      apiKey: "eliza_test",
+      apiBaseUrl: "https://cloud.example/api/v1",
+      siteUrl: "https://cloud.example",
+    });
+
+    const plaidError = await new PlaidManagedClient(config)
+      .createLinkToken()
+      .catch((thrown: unknown) => thrown as PlaidManagedClientError);
+    const paypalError = await new PaypalManagedClient(config)
+      .buildAuthorizeUrl({ state: "state" })
+      .catch((thrown: unknown) => thrown as PaypalManagedClientError);
+
+    expect(plaidError.message).toContain(suffix);
+    expect(paypalError.message).toContain(suffix);
+  });
+
   it("fails before fetch when cloud auth is missing", async () => {
     const fetchMock = vi.fn<typeof fetch>();
     vi.stubGlobal("fetch", fetchMock);

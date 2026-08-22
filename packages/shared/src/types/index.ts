@@ -2,7 +2,7 @@
  * Runtime-agnostic type contracts shared across the bridge, dashboard, and
  * host surfaces — a type-only module (no runtime values). Collects: Electrobun
  * RPC install-detection types, per-connector status snapshots (WhatsApp,
- * Telegram, Discord, Slack, Google Chat, Signal, iMessage, Nostr, MS Teams)
+ * Telegram, Discord, Slack, Google Chat, iMessage, Nostr, MS Teams)
  * and the generic channel snapshot shape, the plugin config-UI hint schema
  * (`ConfigUiHint` with dynamic-value / visibility / validation / action-binding
  * expressions and `PluginUiTheme` tokens), config snapshots, presence entries,
@@ -230,25 +230,6 @@ export type SlackStatus = {
   lastStopAt?: number | null;
   lastError?: string | null;
   probe?: SlackProbe | null;
-  lastProbeAt?: number | null;
-};
-
-export type SignalProbe = {
-  ok: boolean;
-  status?: number | null;
-  error?: string | null;
-  elapsedMs?: number | null;
-  version?: string | null;
-};
-
-export type SignalStatus = {
-  configured: boolean;
-  baseUrl: string;
-  running: boolean;
-  lastStartAt?: number | null;
-  lastStopAt?: number | null;
-  lastError?: string | null;
-  probe?: SignalProbe | null;
   lastProbeAt?: number | null;
 };
 

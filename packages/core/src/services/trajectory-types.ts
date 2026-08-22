@@ -183,10 +183,7 @@ export interface TrajectoryActionAttemptRecord {
 }
 
 /**
- * Structured truncation marker shape persisted alongside per-skill
- * invocation records. Mirrors the action-step marker emitted by
- * `applyTrajectoryFieldCap` so downstream consumers can apply identical
- * handling regardless of which seam produced the cap.
+ * Legacy loss marker persisted in historical per-skill invocation records.
  */
 export interface TrajectorySkillInvocationTruncationMarker {
 	field: "args" | "result";
@@ -199,9 +196,8 @@ export interface TrajectorySkillInvocationTruncationMarker {
  * these against the active trajectory step so the trajectory viewer and
  * training pipelines can replay the skill seam in full detail.
  *
- * Shape mirrors the tool-stage capture: encoded JSON strings for
- * structured fields, per-field 64KB cap with a structured marker on
- * overflow. `args` and `result` are stored pre-encoded so reads do not
+ * Shape mirrors the tool-stage capture: complete encoded JSON strings for
+ * structured fields. `args` and `result` are stored pre-encoded so reads do not
  * need to re-parse; consumers can `JSON.parse` when they need the
  * structured form.
  */
@@ -230,7 +226,7 @@ export interface TrajectorySkillInvocationRecord {
 	success: boolean;
 	/** ms-epoch when the invocation started. */
 	startedAt: number;
-	/** Per-field truncation markers (W1-T4 contract: 64KB caps). */
+	/** Legacy loss markers read from historical rows; new captures omit them. */
 	truncated?: TrajectorySkillInvocationTruncationMarker[];
 }
 
@@ -263,8 +259,6 @@ export interface TrajectoryStepRecord {
 	/** Ordered semantic stages captured during this step's runtime work. */
 	semanticStages?: TrajectorySemanticStageRecord[];
 }
-
-export const TRAJECTORY_STEP_SCRIPT_MAX_CHARS = 4096;
 
 export interface TrajectoryUsageTotalsRecord {
 	stepCount: number;

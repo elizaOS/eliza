@@ -215,14 +215,18 @@ describe("Zoom cloud import", () => {
     expect(participantCalls).toBe(3);
   });
 
-  it("stops before requesting a 101st participant page", async () => {
+  it("accepts participants beyond the former 100-page ceiling", async () => {
     let participantCalls = 0;
     const fetchImpl = async (input: RequestInfo | URL): Promise<Response> => {
       if (String(input).includes("/participants")) {
         participantCalls += 1;
         return json({
-          participants: [],
-          next_page_token: `unique-token-${participantCalls}`,
+          participants:
+            participantCalls === 101
+              ? [{ id: "participant-101", name: "Late" }]
+              : [],
+          next_page_token:
+            participantCalls === 101 ? "" : `unique-token-${participantCalls}`,
         });
       }
       return json({ uuid: "meeting-page-limit" });
@@ -234,11 +238,14 @@ describe("Zoom cloud import", () => {
         accessToken: TOKEN,
         fetchImpl,
       }),
-    ).rejects.toMatchObject<Partial<ZoomCloudImportError>>({
-      code: "invalid_response",
-      status: 502,
+    ).resolves.toMatchObject({
+      artifact: {
+        platformParticipants: [
+          expect.objectContaining({ id: "participant-101" }),
+        ],
+      },
     });
-    expect(participantCalls).toBe(100);
+    expect(participantCalls).toBe(101);
   });
 
   it("fails closed when a streamed recording exceeds its byte quota", async () => {

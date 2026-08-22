@@ -224,12 +224,11 @@ class AppPromotionAssetsService {
       }
 
       // Extract feature-like content (look for lists)
-      const featureMatches = html.match(/<li[^>]*>([^<]{10,100})<\/li>/gi);
+      const featureMatches = html.match(/<li[^>]*>([^<]+)<\/li>/gi);
       if (featureMatches && featureMatches.length > 0) {
         context.features = featureMatches
-          .slice(0, 5)
           .map((m) => m.replace(/<[^>]+>/g, "").trim())
-          .filter((f) => f.length > 10 && f.length < 100);
+          .filter((f) => f.length > 10);
       }
 
       logger.info("[PromotionAssets] Website context extracted", {
@@ -278,17 +277,7 @@ class AppPromotionAssetsService {
       });
     }
 
-    let prompt = this.buildImagePrompt(app, size, websiteContext, customPrompt);
-
-    // Truncate prompt if too long (some models have limits)
-    const MAX_PROMPT_LENGTH = 4000;
-    if (prompt.length > MAX_PROMPT_LENGTH) {
-      logger.info("[PromotionAssets] Truncating long prompt", {
-        originalLength: prompt.length,
-        truncatedLength: MAX_PROMPT_LENGTH,
-      });
-      prompt = prompt.slice(0, MAX_PROMPT_LENGTH);
-    }
+    const prompt = this.buildImagePrompt(app, size, websiteContext, customPrompt);
 
     await contentSafetyService.assertSafeForPublicUse({
       surface: "promotion_asset_prompt",

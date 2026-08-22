@@ -25,6 +25,9 @@ const billingUser = vi.hoisted(() => ({
 const billingUserOptions = vi.hoisted(() => ({
   current: null as { requireFreshOrganization?: boolean } | null,
 }));
+const observedCheckoutIntentStores = vi.hoisted(
+  () => [] as Array<{ current: unknown }>,
+);
 vi.mock("@elizaos/ui/cloud-ui", () => ({
   DashboardErrorState: ({ message }: { message: string }) => (
     <div role="alert">{message}</div>
@@ -45,7 +48,14 @@ vi.mock("./data/billing-data", () => ({
 }));
 
 vi.mock("./components/billing-tab", () => ({
-  BillingTab: () => <div>billing tab</div>,
+  BillingTab: ({
+    checkoutIntentStore,
+  }: {
+    checkoutIntentStore: { current: unknown };
+  }) => {
+    observedCheckoutIntentStores.push(checkoutIntentStore);
+    return <div>billing tab</div>;
+  },
 }));
 
 vi.mock("./wallet/ConditionalWalletProviders", () => ({
@@ -60,6 +70,7 @@ describe("BillingSectionBody", () => {
   afterEach(() => {
     cleanup();
     billingUserOptions.current = null;
+    observedCheckoutIntentStores.length = 0;
     billingUser.value = {
       user: null,
       isLoading: false,
@@ -117,6 +128,50 @@ describe("BillingSectionBody", () => {
     expect(text).toContain("Loading billing");
     expect(text).not.toContain("billing tab");
     expect(text).not.toContain("account limits card");
+  });
+
+  it("preserves checkout intent ownership across a membership refresh remount", () => {
+    billingUser.value = {
+      user: { organization_id: "org-1" },
+      isLoading: false,
+      isFetching: false,
+      isPaused: false,
+      isFetchedAfterMount: true,
+      isAuthenticated: true,
+      isError: false,
+      error: null,
+    };
+    const view = render(<BillingSectionBody />);
+    const initialStore = observedCheckoutIntentStores.at(-1);
+    expect(initialStore).toBeDefined();
+    if (!initialStore) throw new Error("BillingTab did not receive its store");
+    initialStore.current = {
+      organizationId: "org-1",
+      amount: 25,
+      key: "persisted-checkout-key",
+    };
+
+    billingUser.value = {
+      ...billingUser.value,
+      isFetching: true,
+      isFetchedAfterMount: false,
+    };
+    view.rerender(<BillingSectionBody />);
+    expect(view.container.textContent).toContain("Loading billing");
+
+    billingUser.value = {
+      ...billingUser.value,
+      isFetching: false,
+      isFetchedAfterMount: true,
+    };
+    view.rerender(<BillingSectionBody />);
+    const remountedStore = observedCheckoutIntentStores.at(-1);
+    expect(remountedStore).toBe(initialStore);
+    expect(remountedStore?.current).toEqual({
+      organizationId: "org-1",
+      amount: 25,
+      key: "persisted-checkout-key",
+    });
   });
 
   it("does not paint a cached organization while its membership refresh is paused", () => {

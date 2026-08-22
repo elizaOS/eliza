@@ -5,7 +5,7 @@
  * assembles those artifacts into a structured `GoogleMeetReport`.
  * `GOOGLE_MEET_API_SURFACE` records the capability each method requires.
  */
-import { ElizaError, toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
+import { ElizaError, toWellFormedUnicode } from "@elizaos/core";
 import type { meet_v2 } from "googleapis";
 import type { GoogleApiClientFactory } from "./client-factory.js";
 import type {
@@ -49,15 +49,12 @@ export const GOOGLE_MEET_API_SURFACE = [
   { method: "generateReport", capabilities: ["meet.read"] },
 ] as const;
 
-const MAX_GOOGLE_MEET_PAGES = 1_000;
-
 interface MeetPaginationState {
-  pageCount: number;
   seenPageTokens: Set<string>;
 }
 
 function createMeetPaginationState(): MeetPaginationState {
-  return { pageCount: 0, seenPageTokens: new Set<string>() };
+  return { seenPageTokens: new Set<string>() };
 }
 
 function nextMeetPageToken(
@@ -65,7 +62,6 @@ function nextMeetPageToken(
   state: MeetPaginationState,
   resource: string
 ): string | undefined {
-  state.pageCount += 1;
   if (!token?.trim()) return undefined;
   if (state.seenPageTokens.has(token)) {
     throw new ElizaError(`Google Meet repeated a ${resource} page token.`, {
@@ -73,16 +69,6 @@ function nextMeetPageToken(
       context: { resource },
       severity: "fatal",
     });
-  }
-  if (state.pageCount >= MAX_GOOGLE_MEET_PAGES) {
-    throw new ElizaError(
-      `Google Meet ${resource} pagination exceeded ${MAX_GOOGLE_MEET_PAGES} pages.`,
-      {
-        code: "GOOGLE_MEET_PAGE_LIMIT_EXCEEDED",
-        context: { maxPages: MAX_GOOGLE_MEET_PAGES, resource },
-        severity: "fatal",
-      }
-    );
   }
   state.seenPageTokens.add(token);
   return token;
@@ -577,19 +563,10 @@ export function summarizeTranscript(entries: readonly GoogleMeetTranscript[]): {
   }
 
   const plainText = lines.join(" ");
-  const sentences = plainText
-    .split(/(?<=[.!?])\s+/)
-    .map((sentence) => sentence.trim())
-    .filter(Boolean);
-  const wellFormedPlainText = toWellFormedUnicode(plainText);
-  const rawSummary =
-    sentences.slice(0, 3).join(" ") || truncateWellFormed(wellFormedPlainText, 500);
-  const summary =
-    rawSummary.length > 500 ? truncateWellFormed(toWellFormedUnicode(rawSummary), 500) : rawSummary;
-  const keyPoints = lines.filter((line) => line.length >= 20).slice(0, 6);
+  const summary = toWellFormedUnicode(plainText);
+  const keyPoints = lines.filter((line) => line.length >= 20);
   const actionItems = lines
     .filter((line) => /\b(action item|to[- ]?do|follow up|need to|will|should)\b/i.test(line))
-    .slice(0, 6)
     .map((line) => ({
       description: line,
       priority: "medium" as const,

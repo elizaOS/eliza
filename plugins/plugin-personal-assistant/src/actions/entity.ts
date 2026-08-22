@@ -4,10 +4,8 @@
  * Canonical subactions (entity / relationship CRUD):
  *   - `add`              add a person/entity to the contacts/Rolodex
  *   - `list`             list known entities
- *   - `set_identity`     observe a (platform, handle) identity for an entity
  *   - `set_relationship` upsert a typed edge between two entities
  *   - `log_interaction`  record an outbound/inbound interaction
- *   - `merge`            merge duplicate entities
  *
  * Follow-up cadence (`add_follow_up`, `complete_follow_up`,
  * `follow_up_list`, `days_since`, `list_overdue_followups`,
@@ -29,13 +27,8 @@ import {
   ModelType,
 } from "@elizaos/core";
 import {
-  DEFAULT_CONNECTOR_ACCOUNT_ID,
-  type Entity,
-  type EntityIdentity,
-  foldIdentity,
   LIFEOPS_MESSAGE_CHANNELS,
   type LifeOpsMessageChannel,
-  normalizeEntityConnectorAccountId,
 } from "@elizaos/shared";
 import { hasLifeOpsAccess } from "../lifeops/access.js";
 import {
@@ -51,13 +44,7 @@ import {
   renderLifeOpsActionReply,
 } from "../lifeops/voice/grounded-reply.js";
 
-type Subaction =
-  | "create"
-  | "read"
-  | "log_interaction"
-  | "set_identity"
-  | "set_relationship"
-  | "merge";
+type Subaction = "create" | "read" | "log_interaction" | "set_relationship";
 
 type EntityParameters = {
   subaction?: Subaction;
@@ -72,24 +59,13 @@ type EntityParameters = {
   notes?: string;
   relationshipId?: string;
   reason?: string;
-  confirmed?: boolean;
-  /** Target entity id for set_identity/set_relationship/merge. */
-  entityId?: string;
-  /** Optional explicit platform when calling set_identity. */
-  platform?: string;
-  /** Display name shown for an observed identity. */
-  displayName?: string;
-  /** Connector account that verified and should reuse this route. */
-  connectorAccountId?: string;
   /** Edge target id when calling set_relationship. */
   toEntityId?: string;
   /** Edge source id when calling set_relationship. Defaults to "self". */
   fromEntityId?: string;
   /** Edge type label when calling set_relationship (e.g. "manages"). */
   relationshipType?: string;
-  /** Source entity ids consumed when calling merge. */
-  sourceEntityIds?: string[];
-  /** Free-form evidence string for set_identity/set_relationship. */
+  /** Free-form evidence string for set_relationship. */
   evidence?: string;
 };
 
@@ -98,6 +74,18 @@ function getParams(options: HandlerOptions | undefined): EntityParameters {
     | EntityParameters
     | undefined;
   return params ?? {};
+}
+
+function requestedIdentityMutation(
+  options: HandlerOptions | undefined,
+): "set_identity" | "merge" | null {
+  const parameters = options?.parameters;
+  if (typeof parameters !== "object" || parameters === null) return null;
+  const record = parameters as Record<string, unknown>;
+  for (const value of [record.action, record.subaction]) {
+    if (value === "set_identity" || value === "merge") return value;
+  }
+  return null;
 }
 
 function messageBodyText(message: Memory): string {
@@ -249,9 +237,7 @@ const ENTITY_SUBACTIONS: readonly Subaction[] = [
   "create",
   "read",
   "log_interaction",
-  "set_identity",
   "set_relationship",
-  "merge",
 ];
 
 /**
@@ -314,11 +300,6 @@ function normalizeStringParam(value: unknown): string | undefined {
   return trimmed;
 }
 
-function normalizeBooleanParam(value: unknown): boolean | undefined {
-  const normalized = normalizeShouldAct(value);
-  return normalized === null ? undefined : normalized;
-}
-
 function entityParamsFromJson(
   parsed: Record<string, unknown>,
 ): Partial<EntityParameters> {
@@ -335,10 +316,6 @@ function entityParamsFromJson(
     "notes",
     "relationshipId",
     "reason",
-    "entityId",
-    "platform",
-    "displayName",
-    "connectorAccountId",
     "toEntityId",
     "fromEntityId",
     "relationshipType",
@@ -348,22 +325,6 @@ function entityParamsFromJson(
     if (value !== undefined) {
       params[key] = value;
     }
-  }
-
-  const sourceEntityIds = parsed.sourceEntityIds;
-  if (Array.isArray(sourceEntityIds)) {
-    const filtered = sourceEntityIds
-      .filter((entry): entry is string => typeof entry === "string")
-      .map((entry) => entry.trim())
-      .filter((entry) => entry.length > 0);
-    if (filtered.length > 0) {
-      params.sourceEntityIds = filtered;
-    }
-  }
-
-  const confirmed = normalizeBooleanParam(parsed.confirmed);
-  if (confirmed !== undefined) {
-    params.confirmed = confirmed;
   }
 
   return params;
@@ -396,42 +357,34 @@ async function resolveEntityPlanWithLlm(args: {
     "Plan the ENTITY (people / relationships) action for this request.",
     "The user may speak in any language.",
     "Return JSON only as a single object with exactly these fields:",
-    "action: create, read, log_interaction, set_identity, set_relationship, merge, or null",
+    "action: create, read, log_interaction, set_relationship, or null",
     "shouldAct: true or false",
     "response: short clarifying question, or null",
     "intent: concise restatement of the user request, or null",
     "name: contact/entity display name, or null",
-    "channel: email, telegram, discord, signal, sms, twilio_voice, imessage, whatsapp, or null",
+    "channel: email, telegram, discord, sms, twilio_voice, imessage, whatsapp, or null",
     "handle: primary channel handle/address, or null",
     "email: email address, or null",
     "phone: phone number, or null",
     "notes: interaction/contact notes, or null",
     "relationshipId: explicit relationship id/name, or null",
     "reason: short reason note, or null",
-    "confirmed: true, false, or null",
-    "entityId: explicit entity id (set_identity / set_relationship / merge), or null",
-    "platform: identity platform (set_identity), or null",
-    "displayName: identity display name (set_identity), or null",
-    "connectorAccountId: exact configured connector account id for this route (set_identity), or null",
     "toEntityId: target entity id (set_relationship), or null",
     "fromEntityId: source entity id (set_relationship; defaults to 'self' when omitted), or null",
     "relationshipType: edge type label (set_relationship; e.g. 'manages', 'colleague_of', 'works_at'), or null",
-    "sourceEntityIds: array of duplicate entity ids to fold into the target (merge), or null",
-    "evidence: short evidence string for set_identity / set_relationship, or null",
-    'Example: {"action":"create","shouldAct":true,"response":null,"intent":"add Sam to my Rolodex","name":"Sam","channel":"telegram","handle":"@sam","email":null,"phone":null,"notes":null,"relationshipId":null,"reason":null,"confirmed":null,"entityId":null,"platform":null,"displayName":null,"connectorAccountId":null,"toEntityId":null,"fromEntityId":null,"relationshipType":null,"sourceEntityIds":null,"evidence":null}',
+    "evidence: short evidence string for set_relationship, or null",
+    'Example: {"action":"create","shouldAct":true,"response":null,"intent":"add Sam to my Rolodex","name":"Sam","channel":"telegram","handle":"@sam","email":null,"phone":null,"notes":null,"relationshipId":null,"reason":null,"toEntityId":null,"fromEntityId":null,"relationshipType":null,"evidence":null}',
     "",
     "Choose read when the user wants to see, browse, list, or recall who is in the contacts/Rolodex.",
     "Choose create when the user wants to remember a new person, store a handle, or add them to the contact list.",
     "Choose log_interaction when the user reports a past conversation, call, meeting, or message they had with a known contact.",
-    "Choose set_identity when the user adds a (platform, handle) for an existing entity, e.g. 'Pat's Slack handle is @pat'.",
     "Choose set_relationship when the user describes a typed edge between two entities, e.g. 'Pat is my manager', 'Sam works at Acme', 'Carol is my colleague'.",
-    "Choose merge when the user says two contact entries are the same person and should be combined.",
+    "Identity claims, identity verification, and entity merges are not agent actions. Set shouldAct=false for those requests because they require the deterministic identity authority.",
     "If the user wants to schedule, list, or close a follow-up cadence, set shouldAct=false and tell them to use SCHEDULED_TASKS - that umbrella owns follow-up verbs.",
     "Set shouldAct=false only when the request is too vague to safely choose any of the actions.",
     "When shouldAct=false, response must be a short clarifying question in the user's language.",
     "Extract only values stated or clearly implied by the request or recent conversation. Do not invent ids, handles, or notes.",
     "For create, extract name plus channel and handle when present.",
-    "For set_identity, extract entityId or name plus platform and handle. Preserve connectorAccountId only when the request or structured parameters supplies the exact configured account id; never infer one from a platform or handle.",
     "For set_relationship, extract fromEntityId/toEntityId or names plus relationshipType.",
     "",
     `Current request:\n${currentMessage}`,
@@ -530,14 +483,11 @@ export const entityAction: Action & {
     "LOG_INTERACTION",
     "ADD_ENTITY",
     "ADD_PERSON",
-    "MERGE_ENTITIES",
-    "MERGE_CONTACTS",
-    "SET_IDENTITY",
   ],
   description:
-    "Owner graph: people, orgs, projects, concepts, typed relationships. Ops: create|read|set_identity|set_relationship|log_interaction|merge. Contact CRUD -> CONTACT. Identity/relationships/history -> ENTITY. Follow-up cadence -> SCHEDULED_TASKS. One-off dated call/text reminders -> OWNER_REMINDERS.",
+    "Owner graph: people, orgs, projects, concepts, typed relationships. Ops: create|read|set_relationship|log_interaction. Identity claims and merges require the deterministic identity authority. Contact CRUD -> CONTACT. Follow-up cadence -> SCHEDULED_TASKS. One-off dated call/text reminders -> OWNER_REMINDERS.",
   descriptionCompressed:
-    "ENTITY people+relations create|read|set_identity|set_relationship|log_interaction|merge",
+    "ENTITY people+relations create|read|set_relationship|log_interaction",
   routingHint:
     'people/contacts/relationships ("add Pat", "Pat is my manager") -> ENTITY; follow-up cadence ("follow up David", "how long since X", "who overdue") -> SCHEDULED_TASKS; one-off dated call/text reminder ("call mom Sunday") -> OWNER_REMINDERS',
   tags: [
@@ -619,6 +569,19 @@ export const entityAction: Action & {
     }
 
     const rawParams = getParams(options);
+    const identityMutation = requestedIdentityMutation(options);
+    if (identityMutation) {
+      return respond({
+        success: false,
+        scenario: "identity_authority_required",
+        fallback:
+          "Identity claims and principal merges require verified evidence through the deterministic identity authority.",
+        data: {
+          error: "IDENTITY_AUTHORITY_REQUIRED",
+          requestedSubaction: identityMutation,
+        },
+      });
+    }
     let params = rawParams;
     const body = messageBodyText(message);
     const explicitSubaction = normalizeRelationshipSubaction(
@@ -643,7 +606,7 @@ export const entityAction: Action & {
       if (plan.shouldAct === false || !subaction) {
         const fallback =
           plan.response ??
-          "Tell me whether you want to list contacts, add a contact, log an interaction, set an identity, set a relationship, or merge duplicates. (Follow-up scheduling lives on SCHEDULED_TASK.)";
+          "Tell me whether you want to list contacts, add a contact, log an interaction, or set a relationship. Identity verification and merging require the deterministic identity authority.";
         return respond({
           success: false,
           scenario: "planner_clarification",
@@ -781,150 +744,6 @@ export const entityAction: Action & {
       });
     }
 
-    if (subaction === "set_identity") {
-      const platform = normalizedNonEmpty(params.platform);
-      const handle = normalizedNonEmpty(params.handle);
-      if (!platform || !handle) {
-        return respond({
-          success: false,
-          scenario: "entity_set_identity_missing",
-          fallback:
-            "I need both the platform (e.g. telegram, slack, email) and the handle to record an identity.",
-          data: { subaction, error: "MISSING_FIELDS" },
-        });
-      }
-      const repository = new LifeOpsRepository(runtime);
-      const entityStore = await repository.entityStore(runtime.agentId);
-      const evidence = normalizedNonEmpty(params.evidence) ?? "user_chat";
-      const connectorAccountId = normalizeEntityConnectorAccountId(
-        params.connectorAccountId,
-      );
-      const requestedEntityId = normalizedNonEmpty(params.entityId);
-      let observedEntity: Entity;
-      let mergedFrom: string[] = [];
-
-      if (requestedEntityId) {
-        const requestedEntity = await entityStore.get(requestedEntityId);
-        if (!requestedEntity) {
-          return respond({
-            success: false,
-            scenario: "entity_set_identity_target_not_found",
-            fallback: `I couldn't find entity ${requestedEntityId}, so I did not attach the identity.`,
-            context: { entityId: requestedEntityId },
-            data: { subaction, error: "NOT_FOUND" },
-          });
-        }
-        const identityMatches = await entityStore.resolve({
-          identity: { platform, handle, connectorAccountId },
-        });
-        const conflictingEntityIds = identityMatches
-          .map((candidate) => candidate.entity.entityId)
-          .filter((entityId) => entityId !== requestedEntityId);
-        if (conflictingEntityIds.length > 0 && params.confirmed !== true) {
-          return respond({
-            success: false,
-            scenario: "entity_set_identity_conflict",
-            fallback:
-              "That identity is already attached to another entity. Confirm the merge before I move it.",
-            context: {
-              entityId: requestedEntityId,
-              conflictingEntityIds,
-            },
-            data: {
-              subaction,
-              error: "IDENTITY_CONFLICT",
-              conflictingEntityIds,
-            },
-          });
-        }
-        observedEntity =
-          conflictingEntityIds.length > 0
-            ? await entityStore.merge(requestedEntityId, conflictingEntityIds)
-            : requestedEntity;
-        mergedFrom = conflictingEntityIds;
-      } else {
-        const observation = await entityStore.observeIdentity({
-          platform,
-          handle,
-          connectorAccountId,
-          ...(normalizedNonEmpty(params.displayName)
-            ? { displayName: params.displayName as string }
-            : {}),
-          evidence: [evidence],
-          confidence: 1,
-          suggestedType: "person",
-        });
-        if (observation.conflict) {
-          return respond({
-            success: false,
-            scenario: "entity_set_identity_conflict",
-            fallback:
-              "That identity matches multiple entities. Choose the target entity before I change the graph.",
-            context: {
-              conflictingEntityIds: observation.mergedFrom ?? [],
-            },
-            data: {
-              subaction,
-              error: "IDENTITY_CONFLICT",
-              conflictingEntityIds: observation.mergedFrom ?? [],
-            },
-          });
-        }
-        observedEntity = observation.entity;
-        mergedFrom = observation.mergedFrom ?? [];
-      }
-
-      const observedAt = new Date().toISOString();
-      const verifiedIdentity: EntityIdentity = {
-        platform,
-        handle,
-        connectorAccountId,
-        ...(normalizedNonEmpty(params.displayName)
-          ? { displayName: params.displayName as string }
-          : {}),
-        verified: true,
-        confidence: 1,
-        addedAt: observedAt,
-        addedVia: "user_chat",
-        evidence: [evidence],
-      };
-      const merged = await entityStore.upsert({
-        ...observedEntity,
-        identities: foldIdentity(observedEntity.identities, verifiedIdentity),
-        state: {
-          ...observedEntity.state,
-          lastObservedAt: observedAt,
-        },
-      });
-      return respond({
-        success: true,
-        scenario: "entity_set_identity",
-        fallback: `Recorded identity ${platform}:${handle} on ${merged.preferredName}.`,
-        context: {
-          entityId: merged.entityId,
-          platform,
-          handle,
-          connectorAccountId,
-        },
-        data: {
-          subaction,
-          entity: merged,
-          mergedFrom: mergedFrom.length > 0 ? mergedFrom : null,
-        },
-        receipt: appliedEntityEffect({
-          operation: "lifeops.entity.identity.set",
-          resourceKind: "lifeops.entity",
-          resourceId: merged.entityId,
-          version: merged.updatedAt,
-          committedAt: merged.updatedAt,
-          artifacts: mergedFrom.map((sourceEntityId) => ({
-            kind: "lifeops.entity.merge_source",
-            id: sourceEntityId,
-          })),
-        }),
-      });
-    }
-
     if (subaction === "set_relationship") {
       const toEntityId = normalizedNonEmpty(params.toEntityId);
       const relationshipType = normalizedNonEmpty(params.relationshipType);
@@ -969,48 +788,6 @@ export const entityAction: Action & {
       });
     }
 
-    if (subaction === "merge") {
-      const targetEntityId = normalizedNonEmpty(params.entityId);
-      const sourceEntityIds = (params.sourceEntityIds ?? []).filter(
-        (id): id is string => typeof id === "string" && id.trim().length > 0,
-      );
-      if (!targetEntityId || sourceEntityIds.length === 0) {
-        return respond({
-          success: false,
-          scenario: "entity_merge_missing",
-          fallback:
-            "I need a target entityId and at least one sourceEntityId to merge duplicates.",
-          data: { subaction, error: "MISSING_FIELDS" },
-        });
-      }
-      const repository = new LifeOpsRepository(runtime);
-      const entityStore = await repository.entityStore(runtime.agentId);
-      const merged = await entityStore.merge(targetEntityId, sourceEntityIds);
-      return respond({
-        success: true,
-        scenario: "entity_merge",
-        fallback: `Merged ${sourceEntityIds.length} entit${
-          sourceEntityIds.length === 1 ? "y" : "ies"
-        } into ${merged.preferredName}.`,
-        context: {
-          targetEntityId,
-          sourceCount: sourceEntityIds.length,
-        },
-        data: { subaction, entity: merged, sourceEntityIds },
-        receipt: appliedEntityEffect({
-          operation: "lifeops.entity.merge",
-          resourceKind: "lifeops.entity",
-          resourceId: merged.entityId,
-          version: merged.updatedAt,
-          committedAt: merged.updatedAt,
-          artifacts: sourceEntityIds.map((sourceEntityId) => ({
-            kind: "lifeops.entity.merge_source",
-            id: sourceEntityId,
-          })),
-        }),
-      });
-    }
-
     return respond({
       success: false,
       scenario: "relationship_unknown_subaction",
@@ -1023,14 +800,14 @@ export const entityAction: Action & {
     {
       name: "action",
       description:
-        "ENTITY op: create contact|read rolodex|log_interaction event|set_identity platform handle on Entity|set_relationship typed edge|merge duplicate Entities. Contact CRUD -> CONTACT. Follow-up cadence -> SCHEDULED_TASKS.",
+        "ENTITY op: create contact|read rolodex|log_interaction event|set_relationship typed edge. Identity claims and merges require the deterministic identity authority. Contact CRUD -> CONTACT. Follow-up cadence -> SCHEDULED_TASKS.",
       descriptionCompressed:
-        "ENTITY op: create | read | log_interaction | set_identity | set_relationship | merge",
+        "ENTITY op: create | read | log_interaction | set_relationship",
       schema: {
         type: "string" as const,
         enum: [...ENTITY_SUBACTIONS],
       },
-      examples: ["create", "read", "set_identity"],
+      examples: ["create", "read", "set_relationship"],
     },
     {
       name: "intent",
@@ -1048,9 +825,9 @@ export const entityAction: Action & {
     {
       name: "channel",
       description:
-        "Primary channel: email|telegram|discord|signal|sms|twilio_voice|imessage|whatsapp.",
+        "Primary channel: email|telegram|discord|sms|twilio_voice|imessage|whatsapp.",
       descriptionCompressed:
-        "primary channel: email|telegram|discord|signal|sms|twilio_voice|imessage|whatsapp",
+        "primary channel: email|telegram|discord|sms|twilio_voice|imessage|whatsapp",
       schema: {
         type: "string" as const,
         enum: [...LIFEOPS_MESSAGE_CHANNELS],
@@ -1088,39 +865,6 @@ export const entityAction: Action & {
       schema: { type: "string" as const },
     },
     {
-      name: "confirmed",
-      description: "Optional confirmation flag.",
-      schema: { type: "boolean" as const },
-    },
-    {
-      name: "entityId",
-      description:
-        "Target Entity id: set_identity target, merge target, stable EntityStore id.",
-      schema: { type: "string" as const },
-    },
-    {
-      name: "platform",
-      description:
-        "set_identity platform: telegram|slack|email|twitter|phone; pair with handle.",
-      descriptionCompressed:
-        "set_identity platform e.g. telegram|slack|email|twitter|phone",
-      schema: { type: "string" as const },
-      examples: ["telegram", "email", "phone", "slack"],
-    },
-    {
-      name: "displayName",
-      description: "Observed identity displayName for set_identity.",
-      schema: { type: "string" as const },
-    },
-    {
-      name: "connectorAccountId",
-      description: `Exact configured connector account for set_identity routing; omission targets only '${DEFAULT_CONNECTOR_ACCOUNT_ID}'.`,
-      descriptionCompressed:
-        "exact connector account id; omitted means default only",
-      schema: { type: "string" as const },
-      examples: ["default", "family-discord", "work-slack"],
-    },
-    {
       name: "toEntityId",
       description: "Target Entity id for set_relationship.",
       schema: { type: "string" as const },
@@ -1140,18 +884,8 @@ export const entityAction: Action & {
       examples: ["manages", "colleague_of", "friend_of", "co_parent_of"],
     },
     {
-      name: "sourceEntityIds",
-      description:
-        "merge source Entity ids folded into target; JSON string array.",
-      schema: {
-        type: "array" as const,
-        items: { type: "string" as const },
-      },
-    },
-    {
       name: "evidence",
-      description:
-        "Evidence string for set_identity/set_relationship observations.",
+      description: "Evidence string for set_relationship observations.",
       schema: { type: "string" as const },
     },
   ],

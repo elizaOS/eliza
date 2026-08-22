@@ -353,7 +353,7 @@ function buildLlmPrompt(message: EmailLikeMessage): string {
         `Subject: ${message.subject ?? ""}`,
         `From: ${message.from ?? ""}`,
         `From email: ${message.fromEmail ?? ""}`,
-        `Snippet: ${(message.snippet ?? "").slice(0, 800)}`,
+        `Snippet: ${message.snippet ?? ""}`,
       ].join("\n"),
     ),
   ].join("\n");
@@ -408,7 +408,7 @@ function parseLlmClassification(raw: unknown): EmailClassification | null {
     typeof confidenceValue === "number" && Number.isFinite(confidenceValue)
       ? Math.max(0, Math.min(1, confidenceValue))
       : 0.5;
-  const signals = normalizeSignalList(parsed.signals).slice(0, 8);
+  const signals = normalizeSignalList(parsed.signals);
   return {
     category: category as EmailCategory,
     confidence: Number(confidence.toFixed(2)),

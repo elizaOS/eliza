@@ -88,17 +88,27 @@ function validateEnum(
 	value: unknown,
 	path: string,
 	errors: string[],
-): void {
+): unknown {
 	if (
 		!schema.enum ||
 		schema.enum.includes(value as string | number | boolean)
 	) {
-		return;
+		return value;
+	}
+
+	// Model tool arguments can carry transport whitespace around string enums.
+	// Normalize only when trimming produces an exact declared value.
+	if (
+		typeof value === "string" &&
+		schema.enum.includes(value.trim() as string | number | boolean)
+	) {
+		return value.trim();
 	}
 
 	errors.push(
 		`Argument '${formatPath(path)}' value '${String(value)}' is not one of: ${schema.enum.join(", ")}`,
 	);
+	return value;
 }
 
 function validateNumberBounds(
@@ -250,33 +260,40 @@ export function validateSchema(
 	}
 
 	switch (schema.type) {
-		case "string":
+		case "string": {
 			if (typeof value !== "string") {
 				errors.push(
 					`Argument '${formatPath(path)}' expected string, got ${describeType(value)}`,
 				);
 				return value;
 			}
-			validateEnum(schema, value, path, errors);
-			if (schema.minLength !== undefined && value.length < schema.minLength) {
+			const normalized = validateEnum(schema, value, path, errors) as string;
+			if (
+				schema.minLength !== undefined &&
+				normalized.length < schema.minLength
+			) {
 				errors.push(
-					`Argument '${formatPath(path)}' length ${value.length} is below minimum ${schema.minLength}`,
+					`Argument '${formatPath(path)}' length ${normalized.length} is below minimum ${schema.minLength}`,
 				);
 			}
-			if (schema.maxLength !== undefined && value.length > schema.maxLength) {
+			if (
+				schema.maxLength !== undefined &&
+				normalized.length > schema.maxLength
+			) {
 				errors.push(
-					`Argument '${formatPath(path)}' length ${value.length} exceeds maximum ${schema.maxLength}`,
+					`Argument '${formatPath(path)}' length ${normalized.length} exceeds maximum ${schema.maxLength}`,
 				);
 			}
 			if (schema.pattern !== undefined) {
-				const result = testSchemaPattern(schema.pattern, value);
+				const result = testSchemaPattern(schema.pattern, normalized);
 				if (!result.ok) {
 					errors.push(
-						`Argument '${formatPath(path)}' value '${value}' ${result.reason}`,
+						`Argument '${formatPath(path)}' value '${normalized}' ${result.reason}`,
 					);
 				}
 			}
-			return value;
+			return normalized;
+		}
 
 		case "number":
 			if (typeof value !== "number" || !Number.isFinite(value)) {

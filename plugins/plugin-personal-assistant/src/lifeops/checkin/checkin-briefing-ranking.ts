@@ -1,8 +1,6 @@
 /** Structural ranking helpers for check-in briefing items before they are serialized into the summary prompt. */
 import type { CheckinBriefingItem } from "./types.js";
 
-export const MAX_SECTION_ITEMS_FOR_PROMPT = 30;
-
 export type BriefingItemSignals = NonNullable<CheckinBriefingItem["signals"]>;
 export type BriefingSortSignals = BriefingItemSignals & {
   occurredAt: string | null;
@@ -95,6 +93,5 @@ export function sortBriefingItems(
       }
       return (parseMs(right.occurredAt) ?? 0) - (parseMs(left.occurredAt) ?? 0);
     })
-    .slice(0, MAX_SECTION_ITEMS_FOR_PROMPT)
     .map(({ sort: _sort, ...item }) => item);
 }

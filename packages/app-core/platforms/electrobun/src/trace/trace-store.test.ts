@@ -1,5 +1,5 @@
 /** Exercises trace store behavior with deterministic app-core test fixtures. */
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { TraceError } from "./errors";
 import { TraceStore } from "./trace-store";
 
@@ -138,5 +138,41 @@ describe("TraceStore", () => {
     expect(() =>
       traces.recordEvent({ sessionId: "missing", kind: "log" }),
     ).toThrow(TraceError);
+  });
+});
+
+describe("trace store env limits", () => {
+  const KEY = "ELIZA_TRACE_MAX_SESSIONS";
+  const original = process.env[KEY];
+  afterEach(() => {
+    if (original === undefined) delete process.env[KEY];
+    else process.env[KEY] = original;
+  });
+
+  it("ignores a trailing-garbage session limit instead of parsing its prefix", () => {
+    // parseInt("2junk") is 2 — a two-session retention window that evicts
+    // almost every trace, from a value nobody meant as a setting.
+    process.env[KEY] = "2junk";
+    const traces = new TraceStore();
+    for (let i = 0; i < 5; i++) {
+      traces.createSession({ title: `run ${i}`, source: "agent" });
+    }
+    expect(traces.listSessions().length).toBe(5);
+  });
+
+  it("keeps an explicit leading plus and rejects one past the safe range", () => {
+    process.env[KEY] = "+2";
+    const explicitlyBounded = new TraceStore();
+    for (let i = 0; i < 5; i++) {
+      explicitlyBounded.createSession({ title: `run ${i}`, source: "agent" });
+    }
+    expect(explicitlyBounded.listSessions()).toHaveLength(2);
+
+    process.env[KEY] = String(Number.MAX_SAFE_INTEGER + 1);
+    const fallbackBounded = new TraceStore();
+    for (let i = 0; i < 5; i++) {
+      fallbackBounded.createSession({ title: `run ${i}`, source: "agent" });
+    }
+    expect(fallbackBounded.listSessions()).toHaveLength(5);
   });
 });

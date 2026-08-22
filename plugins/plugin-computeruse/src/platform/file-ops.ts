@@ -4,10 +4,10 @@
  * these back internal computer-use flows only.
  *
  * Byte-bearing reads and writes fail closed before allocating more than
- * {@link MAX_FILE_OP_BYTES}. `readFile` still returns at most
- * {@link READ_FILE_CHAR_LIMIT} characters, but it no longer slurp-then-slices
- * the whole guest file first. Mutating read-modify-write operations keep one
- * file handle so a path replacement cannot redirect the eventual write.
+ * {@link MAX_FILE_OP_BYTES}. Text reads return the complete file or fail the
+ * same byte budget without changing the content. Mutating read-modify-write
+ * operations keep one file handle so a path replacement cannot redirect the
+ * eventual write.
  */
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -16,7 +16,6 @@ import { resolveSafeFileTarget } from "./security.js";
 
 /** Same working-set ceiling as the clipboard path (`CLIPBOARD_MAX_BYTES`). */
 export const MAX_FILE_OP_BYTES = 10 * 1024 * 1024;
-export const READ_FILE_CHAR_LIMIT = 10_000;
 
 function budgetExceeded(op: string): FileActionResult {
   return {
@@ -120,18 +119,17 @@ export async function readFile(
   }
 
   try {
-    const maxBytes = READ_FILE_CHAR_LIMIT * 4;
     const read = await readBoundedWindow(
       check.resolvedPath,
       0,
-      maxBytes,
+      undefined,
       "read",
     );
     if (!read.ok) return read.result;
     return {
       success: true,
       path: check.resolvedPath,
-      content: read.buffer.toString(encoding).slice(0, READ_FILE_CHAR_LIMIT),
+      content: read.buffer.toString(encoding),
     };
   } catch (error) {
     // error-policy:J1 file-op boundary — the failure returns as a structured
