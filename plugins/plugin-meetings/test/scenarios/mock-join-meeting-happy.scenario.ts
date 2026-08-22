@@ -61,6 +61,11 @@ async function transcriptHasScriptedText(
 export default scenario({
   id: "mock-join-meeting-happy",
   lane: "pr-deterministic",
+  modelFixtures: {
+    mode: "model-free",
+    reason:
+      "Action and wait turns exercise production runtime state without model calls.",
+  },
   title: "Mocked JOIN_MEETING produces a scripted transcript (no browser)",
   domain: "meetings",
   tags: ["mock", "meetings", "join-meeting", "transcript"],

@@ -419,7 +419,7 @@ describe("scenario-runner CLI", () => {
     expect(createScenarioRuntime).not.toHaveBeenCalled();
   });
 
-  it("forwards declared plugins to a simulated scenario runtime", async () => {
+  it("defers simulated plugin loading until after scenario seeds", async () => {
     writeScenario(tempDir, "maps-live", {
       lane: "live-only",
       requires: { plugins: ["@elizaos/plugin-maps"] },
@@ -428,7 +428,7 @@ describe("scenario-runner CLI", () => {
       runtime: {} as never,
       pgliteDir: tmpdir(),
       executionProfile: "simulated" as const,
-      registeredPluginPackages: ["@elizaos/plugin-maps"],
+      registeredPluginPackages: [],
       providerName: DETERMINISTIC_PROVIDER_NAME,
       providerConfig: {
         name: DETERMINISTIC_PROVIDER_NAME,
@@ -446,7 +446,7 @@ describe("scenario-runner CLI", () => {
     ).resolves.toBe(0);
     expect(createScenarioRuntime).toHaveBeenCalledWith({
       executionProfile: "simulated",
-      requiredPlugins: ["@elizaos/plugin-maps"],
+      requiredPlugins: [],
     });
   });
 
