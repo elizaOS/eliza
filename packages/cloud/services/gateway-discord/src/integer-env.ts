@@ -6,6 +6,21 @@
  * question: it stops at the first non-digit, so "3600junk" parses to 3600 and
  * silently becomes configuration nobody set.
  */
+import { ElizaError } from "@elizaos/core";
+
+/** Build the fatal configuration error shared by lexical and range checks. */
+export function invalidIntegerEnvError(
+  name: string,
+  value: string,
+  reason: string,
+  context: Record<string, unknown> = {},
+): ElizaError {
+  return new ElizaError(`Invalid ${name} environment variable: ${reason}`, {
+    code: "INVALID_GATEWAY_INTEGER_ENV",
+    context: { envKey: name, configured: value, ...context },
+    severity: "fatal",
+  });
+}
 
 /**
  * Parse an environment value that must be a whole integer.
@@ -26,8 +41,10 @@ export function parseIntegerEnvValue(
   const trimmed = value.trim();
   const parsed = /^[+-]?\d+$/.test(trimmed) ? Number(trimmed) : Number.NaN;
   if (!Number.isSafeInteger(parsed)) {
-    throw new Error(
-      `Invalid ${name} environment variable: "${value}" is not a valid integer`,
+    throw invalidIntegerEnvError(
+      name,
+      value,
+      `"${value}" is not a valid integer`,
     );
   }
   return parsed;

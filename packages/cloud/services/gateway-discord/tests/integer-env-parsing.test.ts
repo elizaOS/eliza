@@ -6,6 +6,7 @@
  * parsed to 3600 and became configuration nobody set.
  */
 import { describe, expect, test } from "bun:test";
+import { ElizaError } from "@elizaos/core";
 import { parseIntegerEnvValue } from "../src/integer-env";
 
 const NAME = "VOICE_AUDIO_TTL_SECONDS";
@@ -16,9 +17,18 @@ describe("parseIntegerEnvValue", () => {
   });
 
   test("rejects trailing garbage rather than parsing its prefix", () => {
-    expect(() => parseIntegerEnvValue(NAME, "3600junk")).toThrow(
-      "is not a valid integer",
-    );
+    let thrown: unknown;
+    try {
+      parseIntegerEnvValue(NAME, "3600junk");
+    } catch (error) {
+      thrown = error;
+    }
+    expect(thrown).toBeInstanceOf(ElizaError);
+    expect(thrown).toMatchObject({
+      code: "INVALID_GATEWAY_INTEGER_ENV",
+      context: { envKey: NAME, configured: "3600junk" },
+      severity: "fatal",
+    });
   });
 
   test("rejects a fractional value", () => {
@@ -86,9 +96,22 @@ describe("gateway-discord env helpers over the shared parser", () => {
   test("the gateway manager still enforces its own minimum", async () => {
     stub("MAX_BOTS_PER_POD", "0");
     try {
-      await expect(
-        import(`../src/gateway-manager?case=gm-min-${Date.now()}`),
-      ).rejects.toThrow("below minimum value");
+      try {
+        await import(`../src/gateway-manager?case=gm-min-${Date.now()}`);
+        throw new Error("expected gateway manager import to reject");
+      } catch (error) {
+        expect(error).toBeInstanceOf(ElizaError);
+        expect(error).toMatchObject({
+          code: "INVALID_GATEWAY_INTEGER_ENV",
+          context: {
+            envKey: "MAX_BOTS_PER_POD",
+            configured: "0",
+            parsed: 0,
+            minimum: 1,
+          },
+          severity: "fatal",
+        });
+      }
     } finally {
       restore();
     }
