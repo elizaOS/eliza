@@ -21,6 +21,7 @@ const app = new Hono<AppEnv>();
 app.use("*", rateLimit(RateLimitPresets.STANDARD));
 
 app.get("/", async (c) => {
+  c.header("Cache-Control", "no-store, private");
   try {
     const user = await requireRecentSessionUserWithOrg(c);
     const request = await getOpenAccountDeletionRequest(user.id);
@@ -34,6 +35,7 @@ app.get("/", async (c) => {
 });
 
 app.post("/", async (c) => {
+  c.header("Cache-Control", "no-store, private");
   const origin = checkElizaMutatingRequestOrigin(
     c.req,
     c.env.NODE_ENV === "production",
@@ -79,13 +81,13 @@ app.post("/", async (c) => {
     });
     return c.json(accepted, 202);
   } catch (error) {
+    // error-policy:J1 The HTTP boundary logs and translates unexpected service failures.
     if (error instanceof AccountDeletionConflictError) {
       return c.json(
         { error: error.message, code: error.code, details: error.details },
         409,
       );
     }
-    // error-policy:J1 The HTTP boundary logs and translates unexpected service failures.
     logger.error("[AccountDeletionRoute] Failed to schedule deletion", {
       error: error instanceof Error ? error.message : String(error),
     });

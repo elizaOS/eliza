@@ -6,6 +6,9 @@
  * falling through is never treated as permission to cascade or retain data.
  */
 
+import { getTableConfig } from "drizzle-orm/pg-core";
+import * as schema from "./schemas";
+
 export type AccountDeletionForeignKeyAction =
   | "anonymize_retained_record"
   | "delete_private_data"
@@ -23,6 +26,49 @@ export interface AccountDeletionForeignKeyDescriptor {
 /** SHA-256 of the 215 sorted direct user/organization FK descriptors. */
 export const ACCOUNT_DELETION_FOREIGN_KEY_SNAPSHOT_SHA256 =
   "15534d017ba7c2a8414b4831ded62b8fe6256daca279115c56c48eacf62e0e3a";
+
+function serializeDescriptor(descriptor: AccountDeletionForeignKeyDescriptor): string {
+  return [
+    descriptor.sourceTable,
+    descriptor.sourceColumns,
+    descriptor.targetTable,
+    descriptor.targetColumns,
+    descriptor.onDelete,
+  ].join("|");
+}
+
+/** Runtime inventory shared by export, erasure, and the schema ratchet test. */
+export function listAccountDeletionForeignKeys(): AccountDeletionForeignKeyDescriptor[] {
+  const tableNames = new Set<string>();
+  const descriptors: AccountDeletionForeignKeyDescriptor[] = [];
+  for (const value of Object.values(schema)) {
+    let config: ReturnType<typeof getTableConfig>;
+    try {
+      config = getTableConfig(value as Parameters<typeof getTableConfig>[0]);
+    } catch {
+      // error-policy:J3 schema barrels also export non-table values; only
+      // successfully introspected PostgreSQL tables enter the FK authority.
+      continue;
+    }
+    if (!config.name || tableNames.has(config.name)) continue;
+    tableNames.add(config.name);
+    for (const foreignKey of config.foreignKeys) {
+      const reference = foreignKey.reference();
+      const targetTable = getTableConfig(reference.foreignTable).name;
+      if (targetTable !== "organizations" && targetTable !== "users") continue;
+      descriptors.push({
+        sourceTable: config.name,
+        sourceColumns: reference.columns.map((column) => column.name).join(","),
+        targetTable,
+        targetColumns: reference.foreignColumns.map((column) => column.name).join(","),
+        onDelete: foreignKey.onDelete ?? "no action",
+      });
+    }
+  }
+  return descriptors.sort((left, right) =>
+    serializeDescriptor(left).localeCompare(serializeDescriptor(right)),
+  );
+}
 
 /**
  * Rows whose removal is only safe after the corresponding provider, object,

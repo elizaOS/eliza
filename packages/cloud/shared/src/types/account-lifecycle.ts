@@ -21,33 +21,21 @@ export const ACCOUNT_LIFECYCLE_OPERATION_CONTRACTS: Readonly<
     authority: "organization runtime permission for one agent",
     recentAuthRequired: false,
     reversible: true,
-    consequence:
-      "Stops or wakes one agent without changing account or billing ownership.",
-    explicitlyDoesNot: [
-      "cancel subscriptions",
-      "exit a shared organization",
-      "delete an account",
-    ],
+    consequence: "Stops or wakes one agent without changing account or billing ownership.",
+    explicitlyDoesNot: ["cancel subscriptions", "exit a shared organization", "delete an account"],
   },
   subscription_cancellation: {
     authority: "organization billing owner",
     recentAuthRequired: true,
     reversible: true,
-    consequence:
-      "Cancels future subscription renewal while preserving the account and its data.",
-    explicitlyDoesNot: [
-      "stop agents immediately",
-      "remove members",
-      "delete account data",
-    ],
+    consequence: "Cancels future subscription renewal while preserving the account and its data.",
+    explicitlyDoesNot: ["stop agents immediately", "remove members", "delete account data"],
   },
   shared_member_exit: {
-    authority:
-      "the departing member plus an active successor owner when ownership is held",
+    authority: "the departing member plus an active successor owner when ownership is held",
     recentAuthRequired: true,
     reversible: false,
-    consequence:
-      "Transfers or revokes the member's grants, then removes only that membership.",
+    consequence: "Transfers or revokes the member's grants, then removes only that membership.",
     explicitlyDoesNot: [
       "delete shared assets",
       "cancel organization billing",
@@ -78,7 +66,12 @@ export type AccountDeletionStatus =
   | "action_required";
 
 export type AccountDeletionExportStatus =
-  "pending" | "building" | "ready" | "expired" | "deleted" | "failed";
+  | "pending"
+  | "building"
+  | "ready"
+  | "expired"
+  | "deleted"
+  | "failed";
 
 export type AccountDeletionNextAction =
   | "wait_for_export"
@@ -107,7 +100,7 @@ export interface AccountDeletionStatusDto {
   } | null;
 }
 
-/** Returned once or on an authenticated credential rotation; never persisted in plaintext. */
+/** Returned only on initial acceptance; the server never persists either capability in plaintext. */
 export interface AccountDeletionAcceptedDto {
   request: AccountDeletionStatusDto;
   statusCredential: string;

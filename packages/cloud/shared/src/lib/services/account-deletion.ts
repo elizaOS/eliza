@@ -2,8 +2,8 @@
 
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { accountDeletionRequestsRepository } from "../../db/repositories/account-deletion-requests";
-import type { AccountDeletionRequest } from "../../db/schemas/account-deletion-requests";
 import type { AccountDeletionExport } from "../../db/schemas/account-deletion-exports";
+import type { AccountDeletionRequest } from "../../db/schemas/account-deletion-requests";
 import type {
   AccountDeletionAcceptedDto,
   AccountDeletionNextAction,
@@ -12,6 +12,10 @@ import type {
 } from "../../types/account-lifecycle";
 import type { RuntimeR2Bucket } from "../storage/r2-runtime-binding";
 import { logger } from "../utils/logger";
+import {
+  type AccountDeletionExportRevocationResult,
+  reconcileAccountDeletionExportRevocations,
+} from "./account-deletion-export";
 import { purgePersonalOrganizationResources } from "./account-deletion-resource-purge";
 import {
   deactivateStewardPlatformUser,
@@ -21,6 +25,8 @@ import {
 const RECOVERY_WINDOW_MILLISECONDS = 30 * 24 * 60 * 60 * 1_000;
 const STATUS_CREDENTIAL_RETENTION_MILLISECONDS = 120 * 24 * 60 * 60 * 1_000;
 const IMMEDIATE_PHASE_LEASE_MILLISECONDS = 60 * 1_000;
+// Outlive the export worker lease so a stale in-flight put cannot recreate an object after revoke.
+const EXPORT_REVOCATION_SAFETY_MILLISECONDS = 15 * 60 * 1_000;
 
 export const ACCOUNT_DELETION_PHASES = [
   "account_authority",
@@ -43,6 +49,7 @@ export const ACCOUNT_DELETION_PHASES = [
 export type AccountDeletionConflictCode =
   | "ACCOUNT_UNAVAILABLE"
   | "ANONYMOUS_ACCOUNT"
+  | "REQUEST_REPLAYED"
   | "TRANSFER_REQUIRED"
   | "LIFECYCLE_RESERVATION_REQUIRED";
 
@@ -67,15 +74,11 @@ export class AccountDeletionRecoveryError extends Error {
   }
 }
 
-function publicStatus(
-  status: AccountDeletionRequest["status"],
-): AccountDeletionStatus {
+function publicStatus(status: AccountDeletionRequest["status"]): AccountDeletionStatus {
   return status === "requested" ? "reserved" : status;
 }
 
-function nextActionForStatus(
-  status: AccountDeletionStatus,
-): AccountDeletionNextAction {
+function nextActionForStatus(status: AccountDeletionStatus): AccountDeletionNextAction {
   switch (status) {
     case "reserved":
       return "wait_for_export";
@@ -131,11 +134,8 @@ export async function getAccountDeletionStatusByCredential(
 ): Promise<AccountDeletionStatusDto | null> {
   if (!/^[A-Za-z0-9_-]{43}$/.test(statusCredential)) return null;
   const tokenHash = createHash("sha256").update(statusCredential).digest("hex");
-  const record =
-    await accountDeletionRequestsRepository.findByStatusTokenHash(tokenHash);
-  return record
-    ? toAccountDeletionRequestDto(record.request, record.exportReceipt)
-    : null;
+  const record = await accountDeletionRequestsRepository.findByStatusTokenHash(tokenHash);
+  return record ? toAccountDeletionRequestDto(record.request, record.exportReceipt) : null;
 }
 
 export async function cancelAccountDeletion(
@@ -147,17 +147,19 @@ export async function cancelAccountDeletion(
       "STATUS_CREDENTIAL_INVALID",
     );
   }
-  const recoveryTokenHash = createHash("sha256")
-    .update(recoveryCredential)
-    .digest("hex");
-  const cancellation =
-    await accountDeletionRequestsRepository.cancelDuringRecovery({
-      recoveryTokenHash,
-      reactivationIdempotencyKeyDigest: createHash("sha256")
-        .update(`steward-reactivation:v1:${recoveryTokenHash}`)
-        .digest("hex"),
-      now: new Date(),
-    });
+  const recoveryTokenHash = createHash("sha256").update(recoveryCredential).digest("hex");
+  const now = new Date();
+  const cancellation = await accountDeletionRequestsRepository.cancelDuringRecovery({
+    recoveryTokenHash,
+    reactivationIdempotencyKeyDigest: createHash("sha256")
+      .update(`steward-reactivation:v1:${recoveryTokenHash}`)
+      .digest("hex"),
+    exportRevocationIdempotencyKeyDigest: createHash("sha256")
+      .update(`account-deletion-export-revoke:v1:${recoveryTokenHash}`)
+      .digest("hex"),
+    exportRevocationNotBefore: new Date(now.getTime() + EXPORT_REVOCATION_SAFETY_MILLISECONDS),
+    now,
+  });
   if (cancellation.outcome === "invalid_credential") {
     throw new AccountDeletionRecoveryError(
       "Recovery credential is invalid",
@@ -199,18 +201,10 @@ export async function requestAccountDeletion(input: {
   const requestId = randomUUID();
   const statusCredential = randomBytes(32).toString("base64url");
   const recoveryCredential = randomBytes(32).toString("base64url");
-  const statusTokenHash = createHash("sha256")
-    .update(statusCredential)
-    .digest("hex");
-  const recoveryTokenHash = createHash("sha256")
-    .update(recoveryCredential)
-    .digest("hex");
-  const recoveryExpiresAt = new Date(
-    now.getTime() + RECOVERY_WINDOW_MILLISECONDS,
-  );
-  const statusTokenExpiresAt = new Date(
-    now.getTime() + STATUS_CREDENTIAL_RETENTION_MILLISECONDS,
-  );
+  const statusTokenHash = createHash("sha256").update(statusCredential).digest("hex");
+  const recoveryTokenHash = createHash("sha256").update(recoveryCredential).digest("hex");
+  const recoveryExpiresAt = new Date(now.getTime() + RECOVERY_WINDOW_MILLISECONDS);
+  const statusTokenExpiresAt = new Date(now.getTime() + STATUS_CREDENTIAL_RETENTION_MILLISECONDS);
   const requestDigest = createHash("sha256")
     .update(`account-deletion:v1:${requestId}`)
     .digest("hex");
@@ -223,27 +217,23 @@ export async function requestAccountDeletion(input: {
     completed: phase === "account_authority",
   }));
 
-  const reservation =
-    await accountDeletionRequestsRepository.reservePersonalAccountDeletion({
-      requestId,
-      userId: input.userId,
-      organizationId: input.organizationId,
-      stewardUserId: input.stewardUserId,
-      now,
-      recoveryExpiresAt,
-      statusTokenHash,
-      statusTokenExpiresAt,
-      recoveryTokenHash,
-      recoveryTokenExpiresAt: recoveryExpiresAt,
-      requestDigest,
-      phases,
-    });
+  const reservation = await accountDeletionRequestsRepository.reservePersonalAccountDeletion({
+    requestId,
+    userId: input.userId,
+    organizationId: input.organizationId,
+    stewardUserId: input.stewardUserId,
+    now,
+    recoveryExpiresAt,
+    statusTokenHash,
+    statusTokenExpiresAt,
+    recoveryTokenHash,
+    recoveryTokenExpiresAt: recoveryExpiresAt,
+    requestDigest,
+    phases,
+  });
 
   if (reservation.outcome === "account_unavailable") {
-    throw new AccountDeletionConflictError(
-      "Account is no longer available",
-      "ACCOUNT_UNAVAILABLE",
-    );
+    throw new AccountDeletionConflictError("Account is no longer available", "ACCOUNT_UNAVAILABLE");
   }
   if (reservation.outcome === "anonymous_account") {
     throw new AccountDeletionConflictError(
@@ -261,14 +251,18 @@ export async function requestAccountDeletion(input: {
       },
     );
   }
-
-  if (reservation.outcome === "reserved") {
-    await attemptImmediateStewardDeactivation({
-      requestId: reservation.request.id,
-      stewardUserId: input.stewardUserId,
-      now,
-    });
+  if (reservation.outcome === "existing") {
+    throw new AccountDeletionConflictError(
+      "An account deletion request is already active; use its status credential",
+      "REQUEST_REPLAYED",
+    );
   }
+
+  await attemptImmediateStewardDeactivation({
+    requestId: reservation.request.id,
+    stewardUserId: input.stewardUserId,
+    now,
+  });
 
   return {
     request: toAccountDeletionRequestDto(reservation.request),
@@ -291,12 +285,11 @@ async function attemptImmediateStewardDeactivation(input: {
     leaseMilliseconds: IMMEDIATE_PHASE_LEASE_MILLISECONDS,
   });
   if (!lease) return;
-  const started =
-    await accountDeletionRequestsRepository.markPhaseProviderCallStarted(
-      lease.receipt.id,
-      lease.generation,
-      input.now,
-    );
+  const started = await accountDeletionRequestsRepository.markPhaseProviderCallStarted(
+    lease.receipt.id,
+    lease.generation,
+    input.now,
+  );
   if (!started) return;
 
   try {
@@ -304,21 +297,17 @@ async function attemptImmediateStewardDeactivation(input: {
     const providerReceiptDigest = createHash("sha256")
       .update(`steward-deactivation:v1:${result.userId}`)
       .digest("hex");
-    const committed =
-      await accountDeletionRequestsRepository.completeStewardDeactivationPhase({
-        requestId: input.requestId,
-        phaseReceiptId: lease.receipt.id,
-        generation: lease.generation,
-        providerReceiptDigest,
-        now: new Date(),
-      });
+    const committed = await accountDeletionRequestsRepository.completeStewardDeactivationPhase({
+      requestId: input.requestId,
+      phaseReceiptId: lease.receipt.id,
+      generation: lease.generation,
+      providerReceiptDigest,
+      now: new Date(),
+    });
     if (!committed) {
-      logger.warn(
-        "[AccountDeletion] Steward deactivation acknowledgement lost lease authority",
-        {
-          requestId: input.requestId,
-        },
-      );
+      logger.warn("[AccountDeletion] Steward deactivation acknowledgement lost lease authority", {
+        requestId: input.requestId,
+      });
     }
   } catch {
     // error-policy:J1 A failed response can be ambiguous. Persist reconciliation
@@ -330,12 +319,9 @@ async function attemptImmediateStewardDeactivation(input: {
       now: new Date(),
       retryAt: new Date(Date.now() + 60_000),
     });
-    logger.warn(
-      "[AccountDeletion] Steward deactivation requires reconciliation",
-      {
-        requestId: input.requestId,
-      },
-    );
+    logger.warn("[AccountDeletion] Steward deactivation requires reconciliation", {
+      requestId: input.requestId,
+    });
   }
 }
 
@@ -352,27 +338,24 @@ async function attemptImmediateStewardReactivation(input: {
     leaseMilliseconds: IMMEDIATE_PHASE_LEASE_MILLISECONDS,
   });
   if (!lease) return false;
-  const started =
-    await accountDeletionRequestsRepository.markPhaseProviderCallStarted(
-      lease.receipt.id,
-      lease.generation,
-      now,
-    );
+  const started = await accountDeletionRequestsRepository.markPhaseProviderCallStarted(
+    lease.receipt.id,
+    lease.generation,
+    now,
+  );
   if (!started) return false;
 
   try {
     const result = await reactivateStewardPlatformUser(input.stewardUserId);
-    return await accountDeletionRequestsRepository.completeStewardReactivationPhase(
-      {
-        requestId: input.requestId,
-        phaseReceiptId: lease.receipt.id,
-        generation: lease.generation,
-        providerReceiptDigest: createHash("sha256")
-          .update(`steward-reactivation:v1:${result.userId}`)
-          .digest("hex"),
-        now: new Date(),
-      },
-    );
+    return await accountDeletionRequestsRepository.completeStewardReactivationPhase({
+      requestId: input.requestId,
+      phaseReceiptId: lease.receipt.id,
+      generation: lease.generation,
+      providerReceiptDigest: createHash("sha256")
+        .update(`steward-reactivation:v1:${result.userId}`)
+        .digest("hex"),
+      now: new Date(),
+    });
   } catch {
     // error-policy:J1 Reactivation can also succeed with a lost response; it
     // remains a reconciliation phase and is never blindly repeated.
@@ -383,17 +366,15 @@ async function attemptImmediateStewardReactivation(input: {
       now: new Date(),
       retryAt: new Date(Date.now() + 60_000),
     });
-    logger.warn(
-      "[AccountDeletion] Steward reactivation requires reconciliation",
-      {
-        requestId: input.requestId,
-      },
-    );
+    logger.warn("[AccountDeletion] Steward reactivation requires reconciliation", {
+      requestId: input.requestId,
+    });
     return false;
   }
 }
 
 export interface ProcessAccountDeletionResult {
+  exportRevocations: AccountDeletionExportRevocationResult;
   recovered: number;
   processed: number;
   completed: number;
@@ -415,24 +396,17 @@ function requireProcessAccountDeletionResources(
     typeof blob.put !== "function" ||
     typeof blob.delete !== "function"
   ) {
-    throw new Error(
-      "Account deletion requires a valid Cloud object-storage binding",
-    );
+    throw new Error("Account deletion requires a valid Cloud object-storage binding");
   }
-  if (
-    !resources.purgeOrganizationResources &&
-    typeof blob.list !== "function"
-  ) {
-    throw new Error(
-      "Account deletion's default resource purge requires Cloud object listing",
-    );
+  if (!resources.purgeOrganizationResources && typeof blob.list !== "function") {
+    throw new Error("Account deletion's default resource purge requires Cloud object listing");
   }
 }
 
 /**
- * Evaluates due requests without crossing an irreversible provider boundary.
- * Until the durable reservation in #23098 exists, every claimed deletion is
- * parked for operator action and its identifying receipt remains intact.
+ * Reconciles bounded export cleanup before parking legacy irreversible requests.
+ * New reservations use phase receipts; the legacy queue remains fail-closed
+ * until all irreversible providers use the same fenced lifecycle contract.
  */
 export async function processDueAccountDeletions(
   limit = 10,
@@ -440,12 +414,18 @@ export async function processDueAccountDeletions(
 ): Promise<ProcessAccountDeletionResult> {
   requireProcessAccountDeletionResources(resources);
 
-  const recovered =
-    await accountDeletionRequestsRepository.recoverStaleProcessing(
-      new Date(Date.now() - 15 * 60 * 1_000),
-    );
+  const now = new Date();
+  const exportRevocations = await reconcileAccountDeletionExportRevocations(limit, {
+    bucket: resources.blob,
+    now: () => now,
+  });
+
+  const recovered = await accountDeletionRequestsRepository.recoverStaleProcessing(
+    new Date(now.getTime() - 15 * 60 * 1_000),
+  );
   const due = await accountDeletionRequestsRepository.claimDue(limit);
   const result = {
+    exportRevocations,
     recovered,
     processed: due.length,
     completed: 0,
@@ -455,22 +435,15 @@ export async function processDueAccountDeletions(
   for (const request of due) {
     try {
       if (!request.steward_user_id || !request.user_id) {
-        throw new Error(
-          "Claimed deletion request is missing account identifiers",
-        );
+        throw new Error("Claimed deletion request is missing account identifiers");
       }
       if (!request.organization_id) {
-        throw new Error(
-          "Claimed deletion request is missing its organization identifier",
-        );
+        throw new Error("Claimed deletion request is missing its organization identifier");
       }
       if (!request.processing_started_at) {
-        logger.error(
-          "[AccountDeletion] Claimed request is missing its generation",
-          {
-            requestId: request.id,
-          },
-        );
+        logger.error("[AccountDeletion] Claimed request is missing its generation", {
+          requestId: request.id,
+        });
         continue;
       }
 
@@ -482,21 +455,15 @@ export async function processDueAccountDeletions(
         "LIFECYCLE_RESERVATION_REQUIRED",
       );
       if (!parked) {
-        logger.warn(
-          "[AccountDeletion] Ignored a stale worker while parking deletion",
-          {
-            requestId: request.id,
-          },
-        );
+        logger.warn("[AccountDeletion] Ignored a stale worker while parking deletion", {
+          requestId: request.id,
+        });
         continue;
       }
       result.actionRequired++;
-      logger.warn(
-        "[AccountDeletion] Permanent deletion requires a lifecycle reservation",
-        {
-          requestId: request.id,
-        },
-      );
+      logger.warn("[AccountDeletion] Permanent deletion requires a lifecycle reservation", {
+        requestId: request.id,
+      });
     } catch (error) {
       // error-policy:J1 The per-request worker boundary records a fenced retry outcome.
       if (!request.processing_started_at) continue;
