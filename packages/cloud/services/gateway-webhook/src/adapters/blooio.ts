@@ -7,6 +7,27 @@ import { z } from "zod";
 import { logger } from "../logger";
 import type { ChatEvent, PlatformAdapter, WebhookConfig } from "./types";
 
+const BLOOIO_REQUEST_TIMEOUT_MS = 30_000;
+
+/**
+ * Bound every Blooio API hop so a hung gateway cannot pin the adapter. A
+ * caller-provided abort signal is composed with the timeout (either cancelling
+ * aborts), not substituted for it.
+ */
+export function blooioFetch(
+  input: RequestInfo | URL,
+  init?: RequestInit,
+  timeoutMs: number = BLOOIO_REQUEST_TIMEOUT_MS,
+): Promise<Response> {
+  const timeoutSignal = AbortSignal.timeout(timeoutMs);
+  return fetch(input, {
+    ...init,
+    signal: init?.signal
+      ? AbortSignal.any([init.signal, timeoutSignal])
+      : timeoutSignal,
+  });
+}
+
 const BLOOIO_V2_API_BASE = "https://api.blooio.com/v2/api";
 const BLOOIO_V4_MESSAGES_URL = "https://api.blooio.com/v4/messages";
 const BLOOIO_V4_CHATS_URL = "https://api.blooio.com/v4/chats";
@@ -174,7 +195,7 @@ async function sendBlooioMessage(
     if (from) body.from = from;
   }
 
-  const response = await fetch(url, {
+  const response = await blooioFetch(url, {
     method: "POST",
     headers,
     body: JSON.stringify(body),
@@ -391,8 +412,8 @@ export const blooioAdapter: PlatformAdapter = {
       if (/^chat_/i.test(event.chatId)) {
         const chatBase = `${BLOOIO_V4_CHATS_URL}/${encodeURIComponent(event.chatId)}`;
         const [read, typing] = await Promise.all([
-          fetch(`${chatBase}/read`, { method: "POST", headers }),
-          fetch(`${chatBase}/typing`, {
+          blooioFetch(`${chatBase}/read`, { method: "POST", headers }),
+          blooioFetch(`${chatBase}/typing`, {
             method: "POST",
             headers,
             body: JSON.stringify({ state: "started" }),
@@ -407,7 +428,7 @@ export const blooioAdapter: PlatformAdapter = {
       } else {
         const url = `${BLOOIO_V2_API_BASE}/chats/${encodeURIComponent(event.chatId)}/read`;
         if (config.fromNumber) headers["X-From-Number"] = config.fromNumber;
-        const response = await fetch(url, { method: "POST", headers });
+        const response = await blooioFetch(url, { method: "POST", headers });
         if (!response.ok) {
           throw new BlooioApiResponseError(
             response.status,
@@ -428,7 +449,7 @@ export const blooioAdapter: PlatformAdapter = {
   async stopTypingIndicator(config, event): Promise<void> {
     if (!config.apiKey || !/^chat_/i.test(event.chatId)) return;
     try {
-      const response = await fetch(
+      const response = await blooioFetch(
         `${BLOOIO_V4_CHATS_URL}/${encodeURIComponent(event.chatId)}/typing`,
         {
           method: "DELETE",
