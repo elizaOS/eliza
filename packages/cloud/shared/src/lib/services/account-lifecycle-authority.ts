@@ -23,11 +23,7 @@ export class AccountLifecycleFencedError extends Error {
 function isOrganizationLifecycleState(
   state: string,
 ): state is OrganizationLifecycleAuthority["state"] {
-  return (
-    state === "active" ||
-    state === "deletion_recovery" ||
-    state === "deletion_irreversible"
-  );
+  return state === "active" || state === "deletion_recovery" || state === "deletion_irreversible";
 }
 
 /** Reads the canonical account authority from the primary, never a replica/cache. */

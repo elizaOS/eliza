@@ -25,9 +25,7 @@ export const accountDeletionPhaseReceipts = pgTable(
     phase: text("phase").notNull(),
     phase_order: integer("phase_order").notNull(),
     status: text("status").notNull().default("pending"),
-    lease_generation: bigint("lease_generation", { mode: "number" })
-      .notNull()
-      .default(0),
+    lease_generation: bigint("lease_generation", { mode: "number" }).notNull().default(0),
     lease_owner_digest: text("lease_owner_digest"),
     lease_expires_at: timestamp("lease_expires_at"),
     idempotency_key_digest: text("idempotency_key_digest").notNull(),
@@ -46,9 +44,10 @@ export const accountDeletionPhaseReceipts = pgTable(
     updated_at: timestamp("updated_at").notNull().defaultNow(),
   },
   (table) => ({
-    request_phase_unique: unique(
-      "account_deletion_phase_receipts_request_phase_unique",
-    ).on(table.request_id, table.phase),
+    request_phase_unique: unique("account_deletion_phase_receipts_request_phase_unique").on(
+      table.request_id,
+      table.phase,
+    ),
     work_idx: index("account_deletion_phase_receipts_work_idx").on(
       table.status,
       table.next_attempt_at,
@@ -64,9 +63,5 @@ export const accountDeletionPhaseReceipts = pgTable(
   }),
 );
 
-export type AccountDeletionPhaseReceipt = InferSelectModel<
-  typeof accountDeletionPhaseReceipts
->;
-export type NewAccountDeletionPhaseReceipt = InferInsertModel<
-  typeof accountDeletionPhaseReceipts
->;
+export type AccountDeletionPhaseReceipt = InferSelectModel<typeof accountDeletionPhaseReceipts>;
+export type NewAccountDeletionPhaseReceipt = InferInsertModel<typeof accountDeletionPhaseReceipts>;

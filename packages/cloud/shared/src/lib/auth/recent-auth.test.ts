@@ -1,8 +1,8 @@
 /** Verifies destructive-operation recent-auth policy without raw credentials. */
 
 import { describe, expect, test } from "bun:test";
-import type { StewardTokenClaims } from "./steward-client";
 import { isRecentDestructiveAuth } from "./recent-auth";
+import type { StewardTokenClaims } from "./steward-client";
 
 const nowSeconds = 1_800_000_000;
 const claims: StewardTokenClaims = {

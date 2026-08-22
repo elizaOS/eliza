@@ -274,13 +274,12 @@ function service(
   stripe: ReturnType<typeof stripeHarness>,
   ids: string[] = ["candidate-id", "lease-token"],
   rolloutEnabled: () => boolean = () => true,
-  lifecycleAuthority: NonNullable<ServiceDependencies["lifecycleAuthority"]> =
-    async () => ({
-      state: "active",
-      revision: 0,
-      active: true,
-      deletionRequestId: null,
-    }),
+  lifecycleAuthority: NonNullable<ServiceDependencies["lifecycleAuthority"]> = async () => ({
+    state: "active",
+    revision: 0,
+    active: true,
+    deletionRequestId: null,
+  }),
 ): InstanceType<typeof AutoTopUpService> {
   let index = 0;
   return new AutoTopUpService({
@@ -388,8 +387,7 @@ describe("AutoTopUpService durable provider recovery", () => {
       ...leased,
       status: "canceled",
       canceledAt: NOW,
-      lastError:
-        "Account lifecycle fenced auto top-up before provider authorization",
+      lastError: "Account lifecycle fenced auto top-up before provider authorization",
     });
     const durableRepository = repository({
       claimEligibleAttempt: mock(async () => ({
@@ -401,18 +399,12 @@ describe("AutoTopUpService durable provider recovery", () => {
     });
     const stripe = stripeHarness();
 
-    const result = await service(
-      durableRepository,
-      stripe,
-      undefined,
-      undefined,
-      async () => ({
-        state: "deletion_recovery",
-        revision: 1,
-        active: false,
-        deletionRequestId: "deletion-request-1",
-      }),
-    ).executeAutoTopUpForOrganization(ORG_ID, { source: "manual" });
+    const result = await service(durableRepository, stripe, undefined, undefined, async () => ({
+      state: "deletion_recovery",
+      revision: 1,
+      active: false,
+      deletionRequestId: "deletion-request-1",
+    })).executeAutoTopUpForOrganization(ORG_ID, { source: "manual" });
 
     expect(result.status).toBe("canceled");
     expect(durableRepository.authorizeProviderRequest).not.toHaveBeenCalled();
@@ -451,18 +443,12 @@ describe("AutoTopUpService durable provider recovery", () => {
     const stripe = stripeHarness();
     let reads = 0;
 
-    const result = await service(
-      durableRepository,
-      stripe,
-      undefined,
-      undefined,
-      async () => ({
-        state: "active",
-        revision: reads++,
-        active: true,
-        deletionRequestId: null,
-      }),
-    ).executeAutoTopUpForOrganization(ORG_ID, { source: "manual" });
+    const result = await service(durableRepository, stripe, undefined, undefined, async () => ({
+      state: "active",
+      revision: reads++,
+      active: true,
+      deletionRequestId: null,
+    })).executeAutoTopUpForOrganization(ORG_ID, { source: "manual" });
 
     expect(result.status).toBe("manual_review");
     expect(durableRepository.authorizeProviderRequest).toHaveBeenCalledTimes(1);

@@ -16,38 +16,24 @@
 import { getCookie } from "hono/cookie";
 import type { UserWithOrganization } from "../../db/repositories/users";
 import type { ApiKey } from "../../db/schemas/api-keys";
-import type {
-  AppContext,
-  AuthedUser,
-  Bindings,
-} from "../../types/cloud-worker-env";
-import {
-  ApiError,
-  AuthenticationError,
-  ForbiddenError,
-} from "../api/cloud-worker-errors";
+import type { AppContext, AuthedUser, Bindings } from "../../types/cloud-worker-env";
+import { ApiError, AuthenticationError, ForbiddenError } from "../api/cloud-worker-errors";
 import { logger } from "../utils/logger";
 import { timingSafeEqualSecret } from "./cron";
-import { isRecentDestructiveAuth } from "./recent-auth";
 import {
   isPlaywrightTestAuthEnabled,
   PLAYWRIGHT_TEST_SESSION_COOKIE_NAME,
   type PlaywrightTestAuthEnv,
   verifyPlaywrightTestSessionToken,
 } from "./playwright-test-session";
+import { isRecentDestructiveAuth } from "./recent-auth";
 import { loadVerifiedStagingSessionUser } from "./staging-session-binding";
-import {
-  isStagingSessionTokenCandidate,
-  verifyStewardTokenCached,
-} from "./steward-client";
+import { isStagingSessionTokenCandidate, verifyStewardTokenCached } from "./steward-client";
 import { readStewardAccessCookieFromHeader } from "./steward-cookies";
 
 function readStewardCookie(c: AppContext): string | null {
   return (
-    readStewardAccessCookieFromHeader(
-      c.req.header("cookie") ?? null,
-      c.env?.ENVIRONMENT,
-    ) ?? null
+    readStewardAccessCookieFromHeader(c.req.header("cookie") ?? null, c.env?.ENVIRONMENT) ?? null
   );
 }
 
@@ -63,9 +49,7 @@ function looksLikeJwt(token: string): boolean {
 }
 
 function isLoopbackHostname(hostname: string): boolean {
-  return (
-    hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1"
-  );
+  return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1";
 }
 
 function isLocalDevAdminEnabled(c: AppContext): boolean {
@@ -73,16 +57,10 @@ function isLocalDevAdminEnabled(c: AppContext): boolean {
   // middleware: NEVER grant the dev-admin bypass regardless of env vars, so
   // both layers fail closed identically (SOC2 CC6.1).
   if (c.env.NODE_ENV === "production") {
-    if (
-      c.env.ELIZA_CLOUD_LOCAL_DEV_ADMIN === "true" ||
-      c.env.LOCAL_DEV === "true"
-    ) {
-      logger.error(
-        "[Auth] Refusing dev-admin bypass in production — env var ignored",
-        {
-          path: new URL(c.req.url).pathname,
-        },
-      );
+    if (c.env.ELIZA_CLOUD_LOCAL_DEV_ADMIN === "true" || c.env.LOCAL_DEV === "true") {
+      logger.error("[Auth] Refusing dev-admin bypass in production — env var ignored", {
+        path: new URL(c.req.url).pathname,
+      });
     }
     return false;
   }
@@ -136,11 +114,7 @@ function toAuthedUser(user: UserWithOrganization): AuthedUser {
   };
 }
 
-function trackApiKeyUsage(
-  c: AppContext,
-  id: string,
-  increment: () => Promise<void>,
-): void {
+function trackApiKeyUsage(c: AppContext, id: string, increment: () => Promise<void>): void {
   const update = increment().catch((error) => {
     logger.warn("[Auth] API key usage tracking failed", {
       apiKeyId: id,
@@ -156,11 +130,7 @@ function trackApiKeyUsage(
 async function validateApiKeyOrServiceUnavailable(
   apiKey: string,
 ): Promise<
-  Awaited<
-    ReturnType<
-      typeof import("../services/api-keys").apiKeysService.validateApiKey
-    >
-  >
+  Awaited<ReturnType<typeof import("../services/api-keys").apiKeysService.validateApiKey>>
 > {
   const { apiKeysService } = await import("../services/api-keys");
   try {
@@ -185,8 +155,7 @@ async function validateApiKeyOrServiceUnavailable(
  * rejected so self-revocation can never select an ambiguous credential.
  */
 export async function requireApiKeyCredential(c: AppContext): Promise<ApiKey> {
-  const headerKey =
-    (c.req.header("X-API-Key") ?? c.req.header("x-api-key"))?.trim() || null;
+  const headerKey = (c.req.header("X-API-Key") ?? c.req.header("x-api-key"))?.trim() || null;
   const authorization = c.req.header("authorization")?.trim() ?? null;
   const bearerMatch = authorization?.match(/^Bearer\s+(.+)$/i);
   const bearerKey = bearerMatch?.[1]?.trim() || null;
@@ -217,12 +186,9 @@ export async function requireApiKeyCredential(c: AppContext): Promise<ApiKey> {
 function testAuthEnv(env: Bindings): PlaywrightTestAuthEnv {
   return {
     NODE_ENV: typeof env.NODE_ENV === "string" ? env.NODE_ENV : undefined,
-    ENVIRONMENT:
-      typeof env.ENVIRONMENT === "string" ? env.ENVIRONMENT : undefined,
+    ENVIRONMENT: typeof env.ENVIRONMENT === "string" ? env.ENVIRONMENT : undefined,
     PLAYWRIGHT_TEST_AUTH:
-      typeof env.PLAYWRIGHT_TEST_AUTH === "string"
-        ? env.PLAYWRIGHT_TEST_AUTH
-        : undefined,
+      typeof env.PLAYWRIGHT_TEST_AUTH === "string" ? env.PLAYWRIGHT_TEST_AUTH : undefined,
     PLAYWRIGHT_TEST_AUTH_SECRET:
       typeof env.PLAYWRIGHT_TEST_AUTH_SECRET === "string"
         ? env.PLAYWRIGHT_TEST_AUTH_SECRET
@@ -230,9 +196,7 @@ function testAuthEnv(env: Bindings): PlaywrightTestAuthEnv {
   };
 }
 
-async function getPlaywrightTestUser(
-  c: AppContext,
-): Promise<AuthedUser | null> {
+async function getPlaywrightTestUser(c: AppContext): Promise<AuthedUser | null> {
   if (!isPlaywrightTestAuthEnabled(testAuthEnv(c.env))) return null;
 
   const token = getCookie(c, PLAYWRIGHT_TEST_SESSION_COOKIE_NAME);
@@ -249,9 +213,7 @@ async function getPlaywrightTestUser(
   return toAuthedUser(user);
 }
 
-export async function getCurrentUser(
-  c: AppContext,
-): Promise<AuthedUser | null> {
+export async function getCurrentUser(c: AppContext): Promise<AuthedUser | null> {
   const cached = c.get("user");
   if (cached !== undefined) return cached;
 
@@ -319,8 +281,7 @@ export async function getCurrentUser(
 export async function requireUser(c: AppContext): Promise<AuthedUser> {
   const user = await getCurrentUser(c);
   if (!user) throw AuthenticationError();
-  if (user.is_active === false)
-    throw ForbiddenError("User account is inactive");
+  if (user.is_active === false) throw ForbiddenError("User account is inactive");
   return user;
 }
 
@@ -519,15 +480,11 @@ async function authenticateApiKeyWithOrg<T>(
     (error: unknown) => ({ ok: false as const, error }),
   );
   const user = await usersService.getWithOrganization(validated.user_id);
-  if (!user)
-    throw AuthenticationError("User associated with API key not found");
+  if (!user) throw AuthenticationError("User associated with API key not found");
   if (!user.is_active) throw ForbiddenError("User account is inactive");
-  if (!user.organization?.is_active)
-    throw ForbiddenError("Organization is inactive");
+  if (!user.organization?.is_active) throw ForbiddenError("Organization is inactive");
   if (!user.organization_id) {
-    throw ForbiddenError(
-      "This feature requires a full account. Please sign up to continue.",
-    );
+    throw ForbiddenError("This feature requires a full account. Please sign up to continue.");
   }
   // Never let the parallel lookup's key scope substitute for current user/org
   // membership. A stale/malformed key row falls back to the hydrated user's org,
@@ -535,20 +492,14 @@ async function authenticateApiKeyWithOrg<T>(
   let orgLookupResult: T | undefined;
   if (user.organization_id !== validated.organization_id) {
     await orgLookupPromise;
-    orgLookupResult = orgLookup
-      ? await orgLookup(user.organization_id)
-      : undefined;
+    orgLookupResult = orgLookup ? await orgLookup(user.organization_id) : undefined;
   } else {
-    const orgLookupOutcome = orgLookupPromise
-      ? await orgLookupPromise
-      : undefined;
+    const orgLookupOutcome = orgLookupPromise ? await orgLookupPromise : undefined;
     if (orgLookupOutcome && !orgLookupOutcome.ok) throw orgLookupOutcome.error;
     orgLookupResult = orgLookupOutcome?.value;
   }
 
-  trackApiKeyUsage(c, validated.id, () =>
-    apiKeysService.incrementUsageDebounced(validated.id),
-  );
+  trackApiKeyUsage(c, validated.id, () => apiKeysService.incrementUsageDebounced(validated.id));
   const authed = toAuthedUser(user) as AuthedUserWithOrg;
   c.set("user", authed);
   c.set("authMethod", "api_key");
@@ -574,9 +525,7 @@ function readApiKeyCredential(c: AppContext): string | null {
  * their cache ONLY on the API-key path and fall back to the authoritative gate
  * everywhere else. Import kept local (crypto) so this stays a pure derivation.
  */
-export async function apiKeyScopeHashPrefix(
-  c: AppContext,
-): Promise<string | null> {
+export async function apiKeyScopeHashPrefix(c: AppContext): Promise<string | null> {
   const apiKey = readApiKeyCredential(c);
   if (!apiKey) return null;
   const { createHash } = await import("node:crypto");
@@ -606,9 +555,7 @@ export function readSessionCredential(c: AppContext): string | null {
  * pass a `"s:"`-prefixed cache key) so a session hash can never collide with an
  * API-key hash.
  */
-export async function sessionScopeHashPrefix(
-  c: AppContext,
-): Promise<string | null> {
+export async function sessionScopeHashPrefix(c: AppContext): Promise<string | null> {
   const token = readSessionCredential(c);
   if (!token) return null;
   const { createHash } = await import("node:crypto");
@@ -654,9 +601,7 @@ export async function revalidateSessionScope(
   return user?.organization_id === cachedOrganizationId;
 }
 
-export async function requireUserOrApiKeyWithOrg(
-  c: AppContext,
-): Promise<AuthedUserWithOrg> {
+export async function requireUserOrApiKeyWithOrg(c: AppContext): Promise<AuthedUserWithOrg> {
   const apiKey = readApiKeyCredential(c);
   if (apiKey) return (await authenticateApiKeyWithOrg(c, apiKey)).user;
   return requireUserWithOrg(c);
@@ -696,12 +641,9 @@ export async function requireUserOrApiKey(c: AppContext): Promise<AuthedUser> {
     }
     const { usersService } = await import("../services/users");
     const user = await usersService.getWithOrganization(validated.user_id);
-    if (!user)
-      throw AuthenticationError("User associated with API key not found");
+    if (!user) throw AuthenticationError("User associated with API key not found");
     if (!user.is_active) throw ForbiddenError("User account is inactive");
-    trackApiKeyUsage(c, validated.id, () =>
-      apiKeysService.incrementUsageDebounced(validated.id),
-    );
+    trackApiKeyUsage(c, validated.id, () => apiKeysService.incrementUsageDebounced(validated.id));
     const authed = toAuthedUser(user);
     c.set("user", authed);
     c.set("authMethod", "api_key");

@@ -41,12 +41,9 @@ export const users = pgTable(
     avatar: text("avatar"),
 
     // Organization
-    organization_id: uuid("organization_id").references(
-      () => organizations.id,
-      {
-        onDelete: "cascade",
-      },
-    ),
+    organization_id: uuid("organization_id").references(() => organizations.id, {
+      onDelete: "cascade",
+    }),
     role: text("role").notNull().default("member"),
 
     // External identities (kept here for auth system compatibility)
@@ -78,9 +75,7 @@ export const users = pgTable(
 
     // Personal lifecycle authority is separate from organization ownership so
     // a shared member can exit without fencing or deleting the shared tenant.
-    account_lifecycle_state: text("account_lifecycle_state")
-      .notNull()
-      .default("active"),
+    account_lifecycle_state: text("account_lifecycle_state").notNull().default("active"),
     account_lifecycle_revision: bigint("account_lifecycle_revision", {
       mode: "number",
     })
@@ -137,37 +132,27 @@ export const users = pgTable(
   },
   (table) => ({
     email_idx: index("users_email_idx").on(table.email),
-    email_blind_index_idx: index("users_email_blind_index_idx").on(
-      table.email_blind_index,
-    ),
-    wallet_address_idx: index("users_wallet_address_idx").on(
-      table.wallet_address,
-    ),
+    email_blind_index_idx: index("users_email_blind_index_idx").on(table.email_blind_index),
+    wallet_address_idx: index("users_wallet_address_idx").on(table.wallet_address),
     wallet_blind_index_idx: index("users_wallet_blind_index_idx").on(
       table.wallet_address_blind_index,
     ),
-    wallet_chain_type_idx: index("users_wallet_chain_type_idx").on(
-      table.wallet_chain_type,
-    ),
+    wallet_chain_type_idx: index("users_wallet_chain_type_idx").on(table.wallet_chain_type),
     organization_idx: index("users_organization_idx").on(table.organization_id),
     is_active_idx: index("users_is_active_idx").on(table.is_active),
     steward_idx: index("users_steward_idx").on(table.steward_user_id),
     telegram_idx: index("users_telegram_idx").on(table.telegram_id),
     discord_idx: index("users_discord_idx").on(table.discord_id),
     phone_idx: index("users_phone_idx").on(table.phone_number),
-    phone_blind_index_idx: index("users_phone_blind_index_idx").on(
-      table.phone_blind_index,
-    ),
+    phone_blind_index_idx: index("users_phone_blind_index_idx").on(table.phone_blind_index),
     is_anonymous_idx: index("users_is_anonymous_idx").on(table.is_anonymous),
     deleted_at_idx: index("users_deleted_at_idx").on(table.deleted_at),
-    anonymous_session_id_partial_idx: index(
-      "users_anonymous_session_id_partial_idx",
-    )
+    anonymous_session_id_partial_idx: index("users_anonymous_session_id_partial_idx")
       .on(table.anonymous_session_id)
       .where(sql`${table.anonymous_session_id} IS NOT NULL`),
-    account_deletion_request_idx: index(
-      "users_account_deletion_request_idx",
-    ).on(table.account_deletion_request_id),
+    account_deletion_request_idx: index("users_account_deletion_request_idx").on(
+      table.account_deletion_request_id,
+    ),
     account_lifecycle_state_check: check(
       "users_account_lifecycle_state_check",
       sql`${table.account_lifecycle_state} IN ('active', 'deletion_recovery', 'deletion_irreversible')`,
