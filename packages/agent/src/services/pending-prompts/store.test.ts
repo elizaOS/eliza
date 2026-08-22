@@ -1,12 +1,4 @@
-/**
- * The pending-prompts room index is a set of every room the agent has ever
- * recorded a prompt in. Every mutating path writes back through `saveRoom`,
- * including the writes that leave a room EMPTY (`list()`'s retain-window purge,
- * `resolve()`, `forgetTask()`), so an unconditional re-register meant the index
- * only ever grew and `listAll()` paid one `getCache` per historical room
- * forever. These tests pin the retirement of emptied rooms, and pin that rooms
- * with live prompts are untouched.
- */
+/** Verifies indexed pending-prompt rooms retire when empty while live room behavior remains stable, using a deterministic serialized cache double. */
 import type { IAgentRuntime } from "@elizaos/core";
 import { describe, expect, test } from "vitest";
 import { createPendingPromptsStore } from "./store.ts";
@@ -20,11 +12,13 @@ interface CacheDouble {
   store: Map<string, string>;
   getCalls: string[];
   index(): string[];
+  failNextIndexWrite(): void;
 }
 
 function makeCache(): CacheDouble {
   const store = new Map<string, string>();
   const getCalls: string[] = [];
+  let shouldFailIndexWrite = false;
   const runtime = {
     agentId: "agent-under-test",
     // The real cache round-trips through the adapter, so serialize rather than
@@ -35,6 +29,10 @@ function makeCache(): CacheDouble {
       return raw === undefined ? undefined : (JSON.parse(raw) as T);
     },
     setCache: async <T>(key: string, value: T): Promise<boolean> => {
+      if (key === ROOM_INDEX_KEY && shouldFailIndexWrite) {
+        shouldFailIndexWrite = false;
+        throw new Error("cache index write failed");
+      }
       store.set(key, JSON.stringify(value));
       return true;
     },
@@ -45,6 +43,9 @@ function makeCache(): CacheDouble {
     runtime,
     store,
     getCalls,
+    failNextIndexWrite(): void {
+      shouldFailIndexWrite = true;
+    },
     index(): string[] {
       const raw = store.get(ROOM_INDEX_KEY);
       return raw === undefined ? [] : (JSON.parse(raw) as string[]);
@@ -82,6 +83,40 @@ describe("pending-prompts room index", () => {
     cache.getCalls.length = 0;
     await expect(store.listAll()).resolves.toEqual([]);
     expect(cache.getCalls).toEqual([ROOM_INDEX_KEY]);
+  });
+
+  test("listAll retires empty rooms persisted by the pre-fix implementation", async () => {
+    const cache = makeCache();
+    const store = createPendingPromptsStore(cache.runtime);
+    cache.store.set(ROOM_INDEX_KEY, JSON.stringify(["legacy-room"]));
+    cache.store.set(roomCacheKey("legacy-room"), JSON.stringify([]));
+
+    await expect(store.listAll()).resolves.toEqual([]);
+
+    expect(cache.index()).toEqual([]);
+    expect(cache.store.has(roomCacheKey("legacy-room"))).toBe(false);
+  });
+
+  test("resolve retry finishes retirement after the row delete succeeds but the index write fails", async () => {
+    const cache = makeCache();
+    const store = createPendingPromptsStore(cache.runtime);
+    await store.record({
+      roomId: "room-a",
+      taskId: "task-a",
+      promptSnippet: "resolve me",
+      firedAt,
+    });
+    cache.failNextIndexWrite();
+
+    await expect(store.resolve("room-a", "task-a")).rejects.toThrow(
+      "cache index write failed",
+    );
+    expect(cache.store.has(roomCacheKey("room-a"))).toBe(false);
+    expect(cache.index()).toEqual(["room-a"]);
+
+    await expect(store.resolve("room-a", "task-a")).resolves.toBeUndefined();
+    expect(cache.index()).toEqual([]);
+    expect(cache.store.has(roomCacheKey("room-a"))).toBe(false);
   });
 
   test("the retain-window purge in list() retires the room it empties", async () => {
