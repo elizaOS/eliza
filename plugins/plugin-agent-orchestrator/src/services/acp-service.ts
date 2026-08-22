@@ -50,7 +50,7 @@ import {
   isCodingAgentBackend,
 } from "@elizaos/shared";
 import { getHostExecutionBaseline } from "@elizaos/shared/host-execution-env";
-import { NativeAcpClient } from "./acp-native-transport.js";
+import { NativeAcpClient, splitCommandLine } from "./acp-native-transport.js";
 import { augmentTaskWithDeployGuidance } from "./app-deploy-guidance.js";
 import {
   CODEX_NO_LANDLOCK_SANDBOX_MODE_ENV,
@@ -377,6 +377,23 @@ function findExecutableOnPath(name: string): string | undefined {
     }
   }
   return undefined;
+}
+
+function quoteCommandPart(value: string): string {
+  return /\s/u.test(value) ? JSON.stringify(value) : value;
+}
+
+/**
+ * Anchor relative executable paths before a session changes cwd. Bare commands
+ * deliberately remain PATH-resolved by the child process.
+ */
+function anchorRelativeCommandLine(commandLine: string): string {
+  const { command, args } = splitCommandLine(commandLine);
+  if (!command || (!command.includes("/") && !command.includes("\\"))) {
+    return commandLine;
+  }
+  const executable = resolve(command);
+  return [executable, ...args].map(quoteCommandPart).join(" ");
 }
 
 export function normalizeClaudeAcpModelId(
@@ -961,7 +978,13 @@ export class AcpService extends Service {
     this.workspaceRegistry = getSharedWorkspaceRegistry((level, msg, ctx) =>
       this.log(level, msg, ctx),
     );
-    this.cliPath = this.setting("ELIZA_ACP_CLI") ?? "acpx";
+    const configuredCli = this.setting("ELIZA_ACP_CLI") ?? "acpx";
+    const parsedCli = splitCommandLine(configuredCli);
+    this.cliPath =
+      parsedCli.args.length === 0 &&
+      (parsedCli.command.includes("/") || parsedCli.command.includes("\\"))
+        ? resolve(parsedCli.command)
+        : configuredCli;
     this.transportMode =
       normalizeTransportMode(
         this.setting("ELIZA_ACP_TRANSPORT") ?? this.setting("ACPX_TRANSPORT"),
@@ -3668,7 +3691,9 @@ export class AcpService extends Service {
       return this.codexAgentCommand();
     }
     const configured = this.setting(preflight.commandConfigKey);
-    return configured?.trim() || preflight.defaultCommand;
+    return anchorRelativeCommandLine(
+      configured?.trim() || preflight.defaultCommand,
+    );
   }
 
   private agentCommandAvailability(agentType: AgentType): {
@@ -3683,7 +3708,12 @@ export class AcpService extends Service {
         const adapter = this.legacyAcpxAdapter(agentType);
         commandLines = [
           this.cliPath,
-          ...(adapter.command ? [adapter.command] : []),
+          // pi/claude/codex are acpx registry selectors, not host binaries.
+          // Only the elizaOS `--agent <command>` route names a second process
+          // the host must be able to execute.
+          ...(adapter.command && adapter.args[0] === "--agent"
+            ? [adapter.command]
+            : []),
         ];
       }
     } catch (error) {
@@ -3692,13 +3722,22 @@ export class AcpService extends Service {
       return { available: false, reason: errorMessage(error) };
     }
     for (const commandLine of commandLines) {
-      const [token] =
-        commandLine.match(/(?:[^\s"']+|"[^"]*"|'[^']*')+/gu) ?? [];
-      const command = token?.replace(/^(['"])(.*)\1$/u, "$2") ?? "";
+      const { command, args } = splitCommandLine(commandLine);
       if (!command) {
         return {
           available: false,
           reason: "No executable command is configured.",
+        };
+      }
+      if (
+        this.transportMode === "cli" &&
+        commandLine === this.cliPath &&
+        args.length > 0
+      ) {
+        return {
+          available: false,
+          reason:
+            "ELIZA_ACP_CLI must name one executable path; command arguments are not supported.",
         };
       }
       if (command.includes("/") || command.includes("\\")) {
@@ -5327,6 +5366,9 @@ export class AcpService extends Service {
   }
 
   private missingCliMessage(): string | undefined {
+    if (splitCommandLine(this.cliPath).args.length > 0) {
+      return "ELIZA_ACP_CLI must name one executable path; command arguments are not supported.";
+    }
     if (!this.cliPath.includes("/") || existsSync(this.cliPath)) {
       return undefined;
     }

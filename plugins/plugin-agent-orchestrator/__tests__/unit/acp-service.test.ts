@@ -135,7 +135,16 @@ vi.mock("../../src/services/acp-native-transport.js", () => {
       this.eventHandler?.(event, sessionId);
     }
   };
-  return { NativeAcpClient: state.NativeAcpClient };
+  return {
+    NativeAcpClient: state.NativeAcpClient,
+    splitCommandLine(input: string) {
+      const parts = input.match(/(?:[^\s"']+|"[^"]*"|'[^']*')+/gu) ?? [];
+      const [command = "", ...args] = parts.map((part) =>
+        part.replace(/^(['"])(.*)\1$/u, "$2"),
+      );
+      return { command, args };
+    },
+  };
 });
 
 import {
@@ -451,6 +460,76 @@ describe("AcpService", () => {
       available: false,
       reason: expect.stringMatching(/No verified ACP backend/),
     });
+  });
+
+  it("accepts built-in acpx profiles without shadow profile executables", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "acpx-profile-preflight-"));
+    const cliPath = join(dir, "acpx");
+    const previousPath = process.env.PATH;
+    try {
+      await fs.writeFile(cliPath, "#!/bin/sh\nexit 0\n");
+      await fs.chmod(cliPath, 0o755);
+      process.env.PATH = dir;
+      const service = new AcpService(
+        runtime({ ELIZA_ACP_TRANSPORT: "cli", ELIZA_ACP_CLI: cliPath }),
+      );
+
+      const availability = await service.checkAvailableAgents();
+
+      for (const agentType of ["pi-agent", "claude", "codex"] as const) {
+        expect(
+          availability.find((entry) => entry.agentType === agentType),
+        ).toMatchObject({ installed: true });
+      }
+    } finally {
+      if (previousPath === undefined) delete process.env.PATH;
+      else process.env.PATH = previousPath;
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects a composed ELIZA_ACP_CLI command before spawn", async () => {
+    const service = new AcpService(
+      runtime({ ELIZA_ACP_TRANSPORT: "cli", ELIZA_ACP_CLI: "npx -y acpx" }),
+    );
+
+    expect(
+      (await service.checkAvailableAgents()).every(
+        (entry) => entry.installed === false,
+      ),
+    ).toBe(true);
+    expect(
+      (await service.checkAvailableAgents())[0]?.unavailableReason,
+    ).toMatch(/must name one executable path/i);
+  });
+
+  it("anchors a relative native executable before the session changes cwd", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "relative-native-command-"));
+    const executable = join(dir, "agent-acp");
+    try {
+      await fs.writeFile(executable, "#!/bin/sh\nexit 0\n");
+      await fs.chmod(executable, 0o755);
+      const relative = path.relative(process.cwd(), executable);
+      const service = new AcpService(
+        runtime({
+          ELIZA_ACP_TRANSPORT: "native",
+          ELIZA_PI_AGENT_ACP_COMMAND: `${relative} --stdio`,
+        }),
+      );
+      const inspect = service as unknown as {
+        nativeAgentCommand(agentType: string): string;
+        agentCommandAvailability(agentType: string): { available: boolean };
+      };
+
+      expect(inspect.nativeAgentCommand("pi-agent")).toBe(
+        `${executable} --stdio`,
+      );
+      expect(inspect.agentCommandAvailability("pi-agent")).toEqual({
+        available: true,
+      });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it("fails with a clear diagnostic when acpx is missing on Android", async () => {

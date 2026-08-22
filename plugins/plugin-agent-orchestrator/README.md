@@ -148,7 +148,7 @@ second credential broker, and child trajectories retain their session join key.
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `ELIZA_ACP_TRANSPORT` | `native` | Transport mode. Accepted values include `native`/`direct` and `cli`/`acpx`. |
-| `ELIZA_ACP_CLI` | `acpx` | ACPX executable name or absolute path for the CLI transport. |
+| `ELIZA_ACP_CLI` | `acpx` | ACPX executable name or path for the CLI transport; command arguments are rejected. |
 | `ELIZA_ACP_DEFAULT_AGENT` | `elizaos` | Default agent type. Choices: `elizaos`, `pi-agent`, `claude`, or `codex`. |
 | `ELIZA_ACP_WARM_SPAWN` | unset | Set to `1` to keep one pre-initialized native `elizaos` child ready. It starts without session credentials, accepts one authenticated environment claim, and is disposed after that session; unclaimed children are recycled after two minutes. |
 | `ELIZA_ELIZAOS_ACP_COMMAND` | `eliza-code-acp` | Native elizaOS ACP command. |

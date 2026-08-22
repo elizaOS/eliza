@@ -163,6 +163,55 @@ describe("getTaskAgentFrameworkState", () => {
     ).toBe(false);
   });
 
+  it("preserves an authoritative negative preflight despite static discovery", async () => {
+    writeExecutable(path.join(tempHome, "npx"));
+    setEnv({ CODEX_API_KEY: "codex-test" });
+    const probe: TaskAgentFrameworkProbe = {
+      checkAvailableAgents: vi.fn(async () => [
+        {
+          adapter: "OpenAI Codex",
+          installed: false,
+          auth: { status: "authenticated" },
+        },
+      ]),
+    };
+
+    const state = await getTaskAgentFrameworkState(runtime(), probe);
+
+    expect(
+      state.frameworks.find((item) => item.id === "codex")?.installed,
+    ).toBe(false);
+    expect(
+      state.frameworks.find((item) => item.id === "codex")?.authReady,
+    ).toBe(false);
+  });
+
+  it("treats installed runtime-routed adapters as auth-ready with production unknown auth", async () => {
+    const probe: TaskAgentFrameworkProbe = {
+      checkAvailableAgents: vi.fn(async () => [
+        {
+          adapter: "ElizaOS",
+          installed: true,
+          auth: { status: "unknown" },
+        },
+        {
+          adapter: "Pi Agent",
+          installed: true,
+          auth: { status: "unknown" },
+        },
+      ]),
+    };
+
+    const state = await getTaskAgentFrameworkState(runtime(), probe);
+
+    for (const id of ["elizaos", "pi-agent"] as const) {
+      expect(state.frameworks.find((item) => item.id === id)).toMatchObject({
+        installed: true,
+        authReady: true,
+      });
+    }
+  });
+
   it("fails Pi Agent readiness closed when a configured ACP command is missing", async () => {
     writeExecutable(path.join(tempHome, "pi-agent"));
     setEnv({

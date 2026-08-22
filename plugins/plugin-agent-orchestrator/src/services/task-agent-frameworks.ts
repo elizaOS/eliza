@@ -705,7 +705,11 @@ async function computeTaskAgentFrameworkState(
   const inventory: TaskAgentFrameworkAvailability[] = STANDARD_FRAMEWORKS.map(
     (id) => {
       const preflight = preflightByAdapter.get(id);
-      const installed = preflight?.installed === true || hasFrameworkBinary(id);
+      // A probe row is authoritative, including an explicit negative. Static
+      // discovery is only the fallback when the probe returned no row.
+      const installed = preflight
+        ? preflight.installed === true
+        : hasFrameworkBinary(id);
       const subscriptionReady =
         id === "claude"
           ? claudeSubscriptionReady
@@ -714,9 +718,7 @@ async function computeTaskAgentFrameworkState(
             : false;
       const credentialsReady =
         id === "elizaos" || id === "pi-agent"
-          ? preflight
-            ? getPreflightAuthStatus(preflight) === "authenticated"
-            : installed
+          ? installed
           : id === "claude"
             ? claudeAuthReady
             : id === "codex"

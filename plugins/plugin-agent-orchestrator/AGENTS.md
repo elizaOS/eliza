@@ -271,7 +271,7 @@ README → "GitHub credentials".
 | `GITHUB_OAUTH_CLIENT_ID` | unset | OAuth **device flow** client id (read via `getSetting`); used when no `GITHUB_TOKEN`. Requires a live `authPromptCallback` to surface the device-code prompt. |
 | `GITHUB_OAUTH_CLIENT_SECRET` | unset | Server-side OAuth secret for the device flow. Read directly from **process env** by design — deliberately kept out of the plugin `getSetting` allowlist. |
 | `ELIZA_ACP_TRANSPORT` | `native` | Transport: `native` (embedded JSON-RPC) or `cli`/`acpx` (legacy shell wrapper) |
-| `ELIZA_ACP_CLI` | `acpx` | Path/command for the CLI transport |
+| `ELIZA_ACP_CLI` | `acpx` | Executable name or path for the CLI transport; command arguments are rejected |
 | `ELIZA_ACP_DEFAULT_AGENT` | `elizaos` | Default agent type: `elizaos`, `pi-agent`, `claude`, or `codex` |
 | `ELIZA_ACP_WARM_SPAWN` | unset | Set to `1` to pre-initialize one native `elizaos` ACP child. The child receives no session credentials until an authenticated, single-use claim and exits after that session; stale unclaimed children are recycled. |
 | `ELIZA_DEFAULT_AGENT_TYPE` | `elizaos` | Compatibility alias for `ELIZA_ACP_DEFAULT_AGENT` |
