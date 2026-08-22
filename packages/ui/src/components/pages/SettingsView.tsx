@@ -31,6 +31,10 @@ import { CloudSettingsPanel } from "../settings/cloud-panel/CloudSettingsPanel";
 import { DesktopSettingsNavigation } from "../settings/DesktopSettingsNavigation";
 import { SettingsHubList } from "../settings/SettingsHubList";
 import {
+  isSettingsSectionAvailable,
+  resolveSettingsExperience,
+} from "../settings/settings-experience";
+import {
   getSettingsSectionRegistryVersion,
   subscribeSettingsSections,
 } from "../settings/settings-section-registry";
@@ -279,8 +283,10 @@ function LegacySettingsView({
   const plugins = useAppSelector((s) => s.plugins);
   const runtimeTarget = useAppSelector((s) => s.startupCoordinator.target);
   const cloudOnlyBranding = getBootConfig().branding.cloudOnly === true;
-  const managedCloudRuntime =
-    isManagedCloudRuntime(runtimeTarget) || cloudOnlyBranding;
+  const settingsExperience = resolveSettingsExperience({
+    cloudOnlyBranding,
+    managedCloudRuntime: isManagedCloudRuntime(runtimeTarget),
+  });
   const enabledKinds = useEnabledViewKinds();
   const isDesktop = useMediaQuery("(min-width: 1024px)");
   useSyncExternalStore(
@@ -300,10 +306,15 @@ function LegacySettingsView({
 
   const visibleSections = getAllSettingsSections().filter((section) => {
     if (section.id === "wallet-rpc" && walletEnabled === false) return false;
-    if (section.cloudOnly && !managedCloudRuntime) return false;
-    if (section.hideOnManagedCloud && managedCloudRuntime) return false;
+    if (
+      !isSettingsSectionAvailable(section, {
+        experience: settingsExperience,
+        androidCloudBuild: isAndroidCloudBuild(),
+      })
+    ) {
+      return false;
+    }
     if (!isViewVisible(section, enabledKinds)) return false;
-    if (section.hideOnCloud && isAndroidCloudBuild()) return false;
     return true;
   });
   const visibleSectionIds = new Set(
