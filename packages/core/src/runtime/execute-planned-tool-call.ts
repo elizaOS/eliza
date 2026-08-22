@@ -204,6 +204,13 @@ export function projectActionResultForClipboard(
 		...(result.failureProvenance !== undefined
 			? { failureProvenance: result.failureProvenance }
 			: {}),
+		// promptData is the action's deliberately bounded, model-facing
+		// projection. Preserve it even when the raw data/values clipboard is
+		// suppressed; otherwise the follow-up model loses authoritative lifecycle
+		// state (for example, "started" versus "completed") and may guess.
+		...(result.promptData !== undefined
+			? { promptData: result.promptData }
+			: {}),
 		...(Object.keys(safeControlData).length > 0
 			? { data: safeControlData }
 			: {}),

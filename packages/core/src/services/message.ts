@@ -7366,9 +7366,15 @@ function collectPreviousActionResults(
 								step.result.userFacingEffectReceiptIds,
 						}
 					: {}),
+				...(step.result.promptData !== undefined
+					? { promptData: step.result.promptData }
+					: {}),
 				data: { actionName },
 				...(step.result.turnComplete !== undefined
 					? { turnComplete: step.result.turnComplete }
+					: {}),
+				...(step.result.modelReplyRequired !== undefined
+					? { modelReplyRequired: step.result.modelReplyRequired }
 					: {}),
 				...(step.result.continueChain !== undefined
 					? { continueChain: step.result.continueChain }
@@ -7424,6 +7430,9 @@ function collectPreviousActionResults(
 						userFacingEffectReceiptIds: step.result.userFacingEffectReceiptIds,
 					}
 				: {}),
+			...(step.result.promptData !== undefined
+				? { promptData: step.result.promptData }
+				: {}),
 			data: {
 				...actionData,
 				actionName,
@@ -7432,6 +7441,9 @@ function collectPreviousActionResults(
 			...(error !== undefined ? { error } : {}),
 			...(step.result.turnComplete !== undefined
 				? { turnComplete: step.result.turnComplete }
+				: {}),
+			...(step.result.modelReplyRequired !== undefined
+				? { modelReplyRequired: step.result.modelReplyRequired }
 				: {}),
 			...(step.result.continueChain !== undefined
 				? { continueChain: step.result.continueChain }

@@ -5,7 +5,7 @@
  * the message handler that drives them.
  */
 import type { ActionFailureProvenance } from "../types/action-failure";
-import type { EvaluationResult } from "../types/components";
+import type { EvaluationResult, ProviderDataRecord } from "../types/components";
 import type { ContextObject } from "../types/context-object";
 import type { EffectReceipt } from "../types/effects";
 import type {
@@ -184,7 +184,7 @@ export interface PlannerToolResult {
 	summary?: string;
 	data?: Record<string, unknown>;
 	/** Model-bound projection of `data`; complete data remains on the result. */
-	promptData?: Record<string, unknown>;
+	promptData?: ProviderDataRecord;
 	error?: unknown;
 	/** Typed boundary provenance retained through planner retry exhaustion. */
 	failureProvenance?: ActionFailureProvenance;
