@@ -53,6 +53,8 @@ export const CORS_ALLOWED_HEADERS = [
   "X-Browser-Bridge-Companion-Id",
   "X-Eliza-Browser-Companion-Id",
   "X-Eliza-CSRF",
+  "X-ElizaOS-Turn-Correlation",
+  "X-ElizaOS-Turn-Attempt",
   "X-Server-Token",
 ].join(", ");
 
