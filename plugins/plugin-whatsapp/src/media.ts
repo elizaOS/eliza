@@ -1,29 +1,24 @@
 /**
- * SSRF guard for outbound media links: `assertValidWhatsAppMediaLink` accepts
- * only well-formed http(s) URLs and throws on anything else (file:, data:,
- * javascript:, malformed). Called by both transport clients before dispatch.
+ * Stages remote WhatsApp attachments through core's DNS-pinned SSRF boundary
+ * before the bytes are handed to Baileys.
  */
-const ALLOWED_MEDIA_PROTOCOLS = new Set(["http:", "https:"]);
+import { type FetchMediaOptions, type FetchMediaResult, fetchRemoteMedia } from "@elizaos/core";
 
-function mediaLinkError(kind: string): Error {
-  return new Error(`${kind} message requires a valid http(s) media link`);
-}
+export const DEFAULT_WHATSAPP_MEDIA_MAX_BYTES = 20 * 1024 * 1024;
+export const DEFAULT_WHATSAPP_MEDIA_TIMEOUT_MS = 30_000;
 
-export function assertValidWhatsAppMediaLink(link: unknown, kind: string): string {
-  if (typeof link !== "string" || !link.trim()) {
-    throw mediaLinkError(kind);
-  }
+type WhatsAppMediaFetchOverrides = Omit<FetchMediaOptions, "url">;
 
-  let url: URL;
-  try {
-    url = new URL(link.trim());
-  } catch {
-    throw mediaLinkError(kind);
-  }
-
-  if (!ALLOWED_MEDIA_PROTOCOLS.has(url.protocol) || url.username || url.password || !url.hostname) {
-    throw mediaLinkError(kind);
-  }
-
-  return url.toString();
+/** Fetch one remote attachment with redirect, DNS/IP, timeout, and size guards. */
+export async function stageWhatsAppMedia(
+  url: string,
+  overrides: WhatsAppMediaFetchOverrides = {}
+): Promise<FetchMediaResult> {
+  return fetchRemoteMedia({
+    maxBytes: DEFAULT_WHATSAPP_MEDIA_MAX_BYTES,
+    maxRedirects: 3,
+    timeoutMs: DEFAULT_WHATSAPP_MEDIA_TIMEOUT_MS,
+    ...overrides,
+    url,
+  });
 }

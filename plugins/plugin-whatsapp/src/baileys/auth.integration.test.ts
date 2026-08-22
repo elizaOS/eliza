@@ -2,7 +2,7 @@
  * Exercises Baileys' real multi-file authentication adapter against a temporary
  * directory, proving credentials survive a process-style manager restart.
  */
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { chmod, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -29,6 +29,8 @@ describe("BaileysAuthManager real persistence", () => {
 
     const persisted = await readFile(path.join(authDir, "creds.json"), "utf8");
     expect(persisted).toContain("14155552671:1@s.whatsapp.net");
+    expect((await stat(authDir)).mode & 0o777).toBe(0o700);
+    expect((await stat(path.join(authDir, "creds.json"))).mode & 0o777).toBe(0o600);
 
     const secondManager = new BaileysAuthManager(authDir);
     const secondState = await secondManager.initialize();
@@ -37,5 +39,18 @@ describe("BaileysAuthManager real persistence", () => {
       id: "14155552671:1@s.whatsapp.net",
       name: "Test Account",
     });
+  });
+
+  it("repairs permissive existing directory and credential modes on reload", async () => {
+    const authDir = await mkdtemp(path.join(tmpdir(), "eliza-whatsapp-auth-"));
+    authDirectories.push(authDir);
+    await writeFile(path.join(authDir, "creds.json"), "{}");
+    await chmod(authDir, 0o755);
+    await chmod(path.join(authDir, "creds.json"), 0o644);
+
+    await new BaileysAuthManager(authDir).initialize();
+
+    expect((await stat(authDir)).mode & 0o777).toBe(0o700);
+    expect((await stat(path.join(authDir, "creds.json"))).mode & 0o777).toBe(0o600);
   });
 });

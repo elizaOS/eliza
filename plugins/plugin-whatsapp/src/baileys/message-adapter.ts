@@ -2,10 +2,9 @@
  * Translates between Baileys protobuf messages and the plugin's transport types.
  * `toNormalized` maps an inbound proto.IWebMessageInfo into a NormalizedMessage
  * (chat id, type, content, reply target); `toBaileys` builds the outbound
- * Baileys payload from a WhatsAppMessage, validating media links before send.
+ * Baileys payload from a WhatsAppMessage, accepting only pre-staged media bytes.
  */
 import type { proto } from "@whiskeysockets/baileys";
-import { assertValidWhatsAppMediaLink } from "../media";
 import type {
   NormalizedMessage,
   WhatsAppMediaMessage,
@@ -53,25 +52,31 @@ export class MessageAdapter {
     key: "image" | "video",
     media: WhatsAppMediaMessage
   ): Record<string, unknown> {
-    const link = assertValidWhatsAppMediaLink(media.link, key);
+    const data = this.requireStagedMedia(media, key);
     return {
-      [key]: { url: link },
+      [key]: data,
       ...(media.caption ? { caption: media.caption } : {}),
     };
   }
 
   private mediaNoCaption(key: "audio", media: WhatsAppMediaMessage): Record<string, unknown> {
-    const link = assertValidWhatsAppMediaLink(media.link, key);
-    return { [key]: { url: link } };
+    return { [key]: this.requireStagedMedia(media, key) };
   }
 
   private mediaWithFilename(media: WhatsAppMediaMessage): Record<string, unknown> {
-    const link = assertValidWhatsAppMediaLink(media.link, "document");
+    const data = this.requireStagedMedia(media, "document");
     return {
-      document: { url: link },
+      document: data,
       ...(media.filename ? { fileName: media.filename } : {}),
       ...(media.caption ? { caption: media.caption } : {}),
     };
+  }
+
+  private requireStagedMedia(media: WhatsAppMediaMessage, kind: string): Uint8Array {
+    if (!(media.data instanceof Uint8Array) || media.data.byteLength === 0) {
+      throw new Error(`${kind} message requires media bytes staged through the guarded fetch path`);
+    }
+    return media.data;
   }
 
   private detectType(

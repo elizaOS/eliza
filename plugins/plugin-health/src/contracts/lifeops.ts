@@ -3025,19 +3025,15 @@ export interface LifeOpsWhatsAppConnectorStatus {
    * the Baileys runtime service is actually online.
    */
   connected: boolean;
-  /**
-   * Inbound is always true for WhatsApp. Messages arrive via webhook push and
-   * are buffered for periodic drain via `syncWhatsAppInbound()`.
-   */
+  /** Inbound messages arrive directly through the paired Baileys socket. */
   inbound: true;
-  phoneNumberId?: string;
   phoneNumber?: string | null;
   localAuthAvailable?: boolean;
   localAuthRegistered?: boolean | null;
   serviceConnected?: boolean;
   outboundReady?: boolean;
   inboundReady?: boolean;
-  transport?: "cloudapi" | "baileys" | "unconfigured";
+  transport?: "baileys" | "unconfigured";
   lastCheckedAt: string;
   degradations?: LifeOpsConnectorDegradation[];
 }

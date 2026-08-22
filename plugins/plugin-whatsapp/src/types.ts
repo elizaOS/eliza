@@ -62,6 +62,8 @@ export interface WhatsAppTemplate {
  */
 export interface WhatsAppMediaMessage {
   link?: string;
+  /** Guarded, size-capped bytes staged by the runtime before Baileys dispatch. */
+  data?: Uint8Array;
   id?: string;
   caption?: string;
   filename?: string;

@@ -2352,19 +2352,6 @@ export class LifeOpsService extends LifeOpsServiceBase {
     return this.whatsappDomain.sendWhatsAppMessage(req);
   }
 
-  ingestWhatsAppWebhook(
-    payload: unknown,
-  ): Promise<{ ingested: number; messages: WhatsAppMessage[] }> {
-    return this.whatsappDomain.ingestWhatsAppWebhook(payload);
-  }
-
-  syncWhatsAppInbound(): Promise<{
-    drained: number;
-    messages: WhatsAppMessage[];
-  }> {
-    return this.whatsappDomain.syncWhatsAppInbound();
-  }
-
   pullWhatsAppRecent(limit = 25): Promise<{
     count: number;
     messages: WhatsAppMessage[];

@@ -2,7 +2,7 @@
  * Guards the hard cutover from the retired BlueBubbles bridge to the native
  * iMessage plugin across the generated first-party registration authorities.
  */
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
@@ -16,6 +16,18 @@ const repositoryRoot = path.resolve(
 );
 const retiredConnector = "bluebubbles";
 const retiredPackage = `@elizaos/plugin-${retiredConnector}`;
+
+function maintainedFiles(root: string): string[] {
+  const files: string[] = [];
+  for (const entry of readdirSync(root, { withFileTypes: true })) {
+    if (entry.name === "dist" || entry.name === "node_modules") continue;
+    const resolved = path.join(root, entry.name);
+    if (entry.isDirectory()) files.push(...maintainedFiles(resolved));
+    else if (/\.(?:ts|tsx|js|mjs|json|md)$/.test(entry.name))
+      files.push(resolved);
+  }
+  return files;
+}
 
 describe("retired transport registration", () => {
   it("does not ship or register the retired BlueBubbles bridge", () => {
@@ -151,6 +163,13 @@ describe("retired transport registration", () => {
     for (const authority of [
       "packages/agent/src/runtime/build-character-config.ts",
       "packages/agent/src/api/public-route-audit.baseline.json",
+      ".env.test.example",
+      "packages/shared/src/contracts/personal-assistant.ts",
+      "plugins/plugin-health/src/contracts/lifeops.ts",
+      "plugins/plugin-personal-assistant/src/lifeops/domains/whatsapp-service.ts",
+      "plugins/plugin-personal-assistant/src/lifeops/service.ts",
+      "plugins/plugin-personal-assistant/test/support/helpers/lifeops-simulator.ts",
+      "plugins/plugin-personal-assistant/test/support/fixtures/lifeops-simulator.ts",
       "packages/registry/src/first-party/generated.json",
       "packages/scripts/post-merge-secrets.txt",
       "packages/scripts/test-console/lib/connections.mjs",
@@ -163,6 +182,14 @@ describe("retired transport registration", () => {
         readFileSync(path.join(repositoryRoot, authority), "utf8"),
       ).not.toMatch(
         /whatsapp-cloud-webhook|WHATSAPP_ACCESS_TOKEN|WHATSAPP_PHONE_NUMBER_ID|WHATSAPP_APP_SECRET|graph\.facebook\.com.*whatsapp/i,
+      );
+    }
+
+    for (const pluginFile of maintainedFiles(
+      path.join(repositoryRoot, "plugins/plugin-whatsapp"),
+    )) {
+      expect(readFileSync(pluginFile, "utf8"), pluginFile).not.toMatch(
+        /whatsapp-cloud-webhook|WHATSAPP_(?:ACCESS_TOKEN|PHONE_NUMBER_ID|WEBHOOK_VERIFY_TOKEN|APP_SECRET|BUSINESS_ACCOUNT_ID)|graph\.facebook\.com|cloudapi|whatsapp_business_account|handleWebhook|verifyWebhook/i,
       );
     }
 
