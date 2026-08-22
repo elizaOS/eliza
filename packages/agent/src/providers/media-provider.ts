@@ -13,7 +13,9 @@
  */
 
 import {
+  ElizaError,
   fetchRemoteMedia,
+  isElizaError,
   logger,
   nodeLookupFn,
   nodePinnedFetch,
@@ -53,10 +55,12 @@ async function withProviderErrorBoundary<T>(
   try {
     return await run();
   } catch (err) {
+    // error-policy:J1 provider boundary returns an explicit failed result.
     const message = err instanceof Error ? err.message : String(err);
     return {
       success: false,
       error: `[${providerName}] Network error: ${message}`,
+      ...(isElizaError(err) ? { errorCode: err.code } : {}),
     };
   }
 }
@@ -153,6 +157,7 @@ export interface MediaProviderResult<T> {
   success: boolean;
   data?: T;
   error?: string;
+  errorCode?: string;
 }
 
 export interface ImageGenerationResult {
@@ -1343,6 +1348,22 @@ export class AnthropicVisionProvider implements VisionAnalysisProvider {
 
     return withProviderErrorBoundary(this.name, async () => {
       const modelMaxOutputTokens = await this.resolveModelMaxOutputTokens();
+      if (
+        options.maxTokens !== undefined &&
+        options.maxTokens > modelMaxOutputTokens
+      ) {
+        throw new ElizaError(
+          `Anthropic model ${this.model} supports at most ${modelMaxOutputTokens} output tokens`,
+          {
+            code: "VISION_OUTPUT_BUDGET_UNSUPPORTED",
+            context: {
+              model: this.model,
+              requestedMaxTokens: options.maxTokens,
+              supportedMaxTokens: modelMaxOutputTokens,
+            },
+          },
+        );
+      }
       const response = await fetchWithTimeout(
         "https://api.anthropic.com/v1/messages",
         {
@@ -1354,10 +1375,7 @@ export class AnthropicVisionProvider implements VisionAnalysisProvider {
           },
           body: JSON.stringify({
             model: this.model,
-            max_tokens: Math.min(
-              options.maxTokens ?? modelMaxOutputTokens,
-              modelMaxOutputTokens,
-            ),
+            max_tokens: options.maxTokens ?? modelMaxOutputTokens,
             messages: [
               {
                 role: "user",
