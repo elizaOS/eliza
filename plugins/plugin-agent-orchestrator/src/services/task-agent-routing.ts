@@ -101,6 +101,52 @@ export function resolvePinnedAdapter(
   return KNOWN_ADAPTER_TYPES.has(raw) ? raw : undefined;
 }
 
+/** Whether an explicit existing workdir has a reason to be honored: it sits
+ *  inside a configured route tree or the published-apps dir, the user named
+ *  it (path or last segment) in the request or task text, or it is the
+ *  workdir of a session the orchestrator knows (a finished lane being
+ *  continued). Anything else is a planner-invented path. */
+function explicitWorkdirIsGrounded(
+  runtime: IAgentRuntime | undefined,
+  workdir: string,
+  userRequest: string,
+  task: string,
+): boolean {
+  const resolved = path.resolve(workdir);
+  if (resolveRouteForWorkdir(runtime, resolved)) return true;
+  const deploy = resolveAppDeployConfig();
+  if (
+    deploy.target === "custom" &&
+    deploy.customAppsDir &&
+    resolved.startsWith(`${path.resolve(deploy.customAppsDir)}${path.sep}`)
+  ) {
+    return true;
+  }
+  const mentioned = `${userRequest}\n${task}`;
+  const base = path.basename(resolved);
+  if (
+    mentioned.toLowerCase().includes(resolved.toLowerCase()) ||
+    mentioned.toLowerCase().includes(workdir.toLowerCase()) ||
+    (base.length >= 3 && containsPhrase(mentioned, base))
+  ) {
+    return true;
+  }
+  const acp = runtime?.getService?.("ACP_SERVICE") as
+    | { listSessions?: () => unknown }
+    | null
+    | undefined;
+  const sessions = acp?.listSessions?.();
+  if (Array.isArray(sessions)) {
+    return sessions.some(
+      (session) =>
+        typeof (session as { workdir?: unknown }).workdir === "string" &&
+        path.resolve(String((session as { workdir: string }).workdir)) ===
+          resolved,
+    );
+  }
+  return false;
+}
+
 export function resolveSpawnWorkdir(
   runtime: IAgentRuntime | undefined,
   task: string,
@@ -135,6 +181,22 @@ export function resolveSpawnWorkdir(
   const detected = resolveWorkdirByConvention(runtime, task, userRequest);
   if (detected) return withContainedRoute({ workdir: detected });
   const fallback = resolveDefaultSpawnWorkdir(runtime);
+  if (
+    expandedExplicit &&
+    fs.existsSync(expandedExplicit) &&
+    !explicitWorkdirIsGrounded(runtime, expandedExplicit, userRequest, task)
+  ) {
+    // The planner fills `workdir` on every create ("/home/milady/<label>",
+    // live 2026-08-22 on every build). A path that happens to EXIST but that
+    // nothing grounds — not a route tree, not named by the user, not a known
+    // lane's dir — would land a fresh build in an unrelated real directory.
+    logger.warn(
+      `[workdir-routes] Planner workdir is not grounded in the request, a route, or a known lane; ignoring it: ${expandedExplicit} — falling back to ${fallback.workdir}`,
+    );
+    return fallback.isolate
+      ? { workdir: fallback.workdir, isolate: true }
+      : { workdir: fallback.workdir };
+  }
   if (expandedExplicit && fs.existsSync(expandedExplicit)) {
     if (
       fallback.isolate &&

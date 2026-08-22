@@ -7739,7 +7739,8 @@ export const tasksAction: Action & {
     },
     {
       name: "workdir",
-      description: "Working directory for action=create / action=spawn_agent.",
+      description:
+        "Working directory for action=create / action=spawn_agent. Only when the user named an existing directory, or when continuing a finished lane (its workdir from context). Omit for a new build — the orchestrator resolves the directory; an invented path is ignored.",
       required: false,
       schema: { type: "string" as const },
     },
