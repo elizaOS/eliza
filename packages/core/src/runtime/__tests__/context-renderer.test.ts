@@ -10,10 +10,68 @@ import type { ContextObject } from "../../types/context-object";
 import {
 	buildStageChatMessages,
 	cachePrefixSegments,
+	normalizePromptSegments,
 	renderContextObject,
+	segmentBlock,
 } from "../context-renderer";
 
 describe("context renderer", () => {
+	it("preserves segment, provider, and dynamic-block whitespace exactly", () => {
+		expect(segmentBlock({ label: "system", content: "  system  " })).toBe(
+			"  system  ",
+		);
+		expect(
+			normalizePromptSegments([
+				{ content: "  first  " },
+				{ content: "\tsecond\n" },
+			]).map((segment) => segment.content),
+		).toEqual(["  first  ", "\n\n\tsecond\n"]);
+
+		const messages = buildStageChatMessages({
+			contextSegments: [
+				{ label: "system", content: "  stable  ", stable: true },
+			],
+			stageLabel: "stage",
+			instructions: "instructions",
+			dynamicBlocks: ["  dynamic  "],
+			stepMessages: [],
+		});
+		expect(messages[0]?.content).toContain("  stable  ");
+		expect(messages[1]?.content).toBe("  dynamic  ");
+	});
+
+	it("renders complete message objects and runtime event metadata", () => {
+		const context = {
+			id: "ctx-complete",
+			version: "v5",
+			events: [
+				{
+					id: "message-object",
+					type: "message",
+					message: {
+						role: "user",
+						content: { text: "exact", metadata: { sentinel: "MESSAGE_META" } },
+					},
+				},
+				{
+					id: "handler",
+					type: "message_handler",
+					metadata: {
+						thought: "  exact thought  ",
+						nested: { sentinel: "HANDLER_META" },
+					},
+				},
+			],
+		} as unknown as ContextObject;
+
+		const serialized = JSON.stringify(
+			renderContextObject(context).promptSegments,
+		);
+		expect(serialized).toContain("MESSAGE_META");
+		expect(serialized).toContain("HANDLER_META");
+		expect(serialized).toContain("  exact thought  ");
+	});
+
 	it("renders provider and tool prefixes before append-only events", () => {
 		const context: ContextObject = {
 			id: "ctx",
