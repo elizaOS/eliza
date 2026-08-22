@@ -72,17 +72,7 @@ function executeFailureAThenSuccessB() {
 }
 
 async function withCodingFullSurface<T>(run: () => Promise<T>): Promise<T> {
-	const previous = process.env.ELIZA_PLANNER_FULL_ACTION_SURFACE;
-	process.env.ELIZA_PLANNER_FULL_ACTION_SURFACE = "1";
-	try {
-		return await run();
-	} finally {
-		if (previous === undefined) {
-			delete process.env.ELIZA_PLANNER_FULL_ACTION_SURFACE;
-		} else {
-			process.env.ELIZA_PLANNER_FULL_ACTION_SURFACE = previous;
-		}
-	}
+	return run();
 }
 
 describe("planner-loop failed-operation correlation", () => {
@@ -906,6 +896,7 @@ describe("planner-loop failed-operation correlation", () => {
 			const result = await runPlannerLoop({
 				runtime,
 				context: { id: "ctx" },
+				codingMode: true,
 				executeToolCall: vi
 					.fn()
 					.mockResolvedValueOnce({
@@ -971,6 +962,7 @@ describe("planner-loop failed-operation correlation", () => {
 			const result = await runPlannerLoop({
 				runtime,
 				context: { id: "ctx" },
+				codingMode: true,
 				executeToolCall: vi
 					.fn()
 					.mockResolvedValueOnce({

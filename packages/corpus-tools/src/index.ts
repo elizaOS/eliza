@@ -10,5 +10,6 @@ export * from "./pipeline/delete.ts";
 export * from "./pipeline/delete-command.ts";
 export * from "./pipeline/delete-files.ts";
 export * from "./progressive-content.ts";
+export * from "./progressive-content-formats.ts";
 export * from "./schema.ts";
 export * from "./validator.ts";

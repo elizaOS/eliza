@@ -4832,7 +4832,8 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         .where(
           and(
             eq(relationshipTable.sourceEntityId, sourceEntityId),
-            eq(relationshipTable.targetEntityId, targetEntityId)
+            eq(relationshipTable.targetEntityId, targetEntityId),
+            eq(relationshipTable.agentId, this.agentId)
           )
         );
       if (result.length === 0) return null;
@@ -6990,9 +6991,22 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
   ): Promise<UUID[]> {
     const ids: UUID[] = [];
     for (const rel of relationships) {
-      const id = v4() as UUID;
       const success = await this.createRelationship(rel);
-      if (success) ids.push(id);
+      if (success) {
+        const persisted = await this.getRelationship(rel);
+        if (!persisted) {
+          throw new ElizaError("createRelationships readback failed", {
+            code: "DB_READBACK_FAILED",
+            context: {
+              table: "relationships",
+              agentId: this.agentId,
+              sourceEntityId: rel.sourceEntityId,
+              targetEntityId: rel.targetEntityId,
+            },
+          });
+        }
+        ids.push(persisted.id);
+      }
     }
     return ids;
   }

@@ -15,6 +15,7 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 import { agentBackupRestoreLeases } from "./agent-backup-catalog";
+import { agentNodeIncarnationHistories } from "./agent-node-incarnation-histories";
 import {
   type AgentActivationPurpose,
   type AgentActivationReceipt,
@@ -23,38 +24,8 @@ import {
 import { agentVaultKeyBackupBindings } from "./agent-vault-key-authority";
 import { organizations } from "./organizations";
 
-export const agentNodeIncarnationHistories = pgTable(
-  "agent_node_incarnation_histories",
-  {
-    id: uuid("id").defaultRandom().primaryKey(),
-    docker_node_record_id: uuid("docker_node_record_id").notNull(),
-    node_id: text("node_id").notNull(),
-    node_incarnation: uuid("node_incarnation").notNull(),
-    fleet_kind: text("fleet_kind").notNull(),
-    infrastructure_provider: text("infrastructure_provider").notNull(),
-    provider_server_id: text("provider_server_id"),
-    host_key_fingerprint: text("host_key_fingerprint").notNull(),
-    attested_at: timestamp("attested_at", { withTimezone: true }).notNull().defaultNow(),
-  },
-  (table) => ({
-    record_incarnation_unique: unique(
-      "agent_node_incarnation_histories_record_incarnation_unique",
-    ).on(table.docker_node_record_id, table.node_incarnation),
-    receipt_authority_unique: unique(
-      "agent_node_incarnation_histories_receipt_authority_unique",
-    ).on(table.id, table.docker_node_record_id, table.node_incarnation),
-    shape_check: check(
-      "agent_node_incarnation_histories_shape_check",
-      sql`(${table.node_id} = btrim(${table.node_id})
-        AND octet_length(${table.node_id}) BETWEEN 1 AND 255
-        AND ${table.fleet_kind} IN ('robot', 'cloud')
-        AND ${table.infrastructure_provider} = 'hetzner'
-        AND btrim(${table.host_key_fingerprint}) <> ''
-        AND ((${table.fleet_kind} = 'robot' AND ${table.provider_server_id} IS NULL)
-          OR (${table.fleet_kind} = 'cloud' AND ${table.provider_server_id} ~ '^[1-9][0-9]{0,19}$'))) IS TRUE`,
-    ),
-  }),
-);
+export type { AgentNodeIncarnationHistory } from "./agent-node-incarnation-histories";
+export { agentNodeIncarnationHistories };
 
 export const agentActivationPublications = pgTable(
   "agent_activation_publications",
@@ -377,7 +348,6 @@ export const agentBackupRestoreReceipts = pgTable(
   }),
 );
 
-export type AgentNodeIncarnationHistory = InferSelectModel<typeof agentNodeIncarnationHistories>;
 export type AgentActivationPublication = InferSelectModel<typeof agentActivationPublications>;
 export type AgentVaultKeySeedReceipt = InferSelectModel<typeof agentVaultKeySeedReceipts>;
 export type AgentBackupRestoreReceipt = InferSelectModel<typeof agentBackupRestoreReceipts>;

@@ -1,7 +1,7 @@
 /**
  * Tests for TaskService tick re-arm, repeat-task backoff/auto-pause, and
- * self-queue suppression, driven by fake timers over an in-memory task store,
- * plus the AgentRuntime task mutations that mark the local service dirty.
+ * self-queue suppression, and injected-clock ordering and teardown over an
+ * in-memory task store, plus runtime mutations that mark the service dirty.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AgentRuntime } from "../runtime";
@@ -9,7 +9,11 @@ import type { UUID } from "../types/primitives";
 import type { IAgentRuntime } from "../types/runtime";
 import { ServiceType } from "../types/service";
 import type { Task, TaskWorker } from "../types/task";
-import { TaskService } from "./task.ts";
+import {
+	TaskService,
+	type TaskServiceClock,
+	type TaskServiceTimerHandle,
+} from "./task.ts";
 
 const AGENT_ID = "00000000-0000-0000-0000-0000000000bb" as UUID;
 const T0 = new Date("2026-01-01T00:00:00.000Z").getTime();
@@ -61,6 +65,168 @@ function makeTaskRuntime(options?: {
 	} as unknown as IAgentRuntime;
 	return { runtime, tasks, workers };
 }
+
+class DeterministicTaskClock implements TaskServiceClock {
+	private nextTimerId = 1;
+	private timers = new Map<
+		number,
+		{ callback: () => Promise<void>; intervalMs: number; nextAt: number }
+	>();
+
+	constructor(private currentTime: number) {}
+
+	now(): number {
+		return this.currentTime;
+	}
+
+	setInterval(
+		callback: () => Promise<void>,
+		intervalMs: number,
+	): TaskServiceTimerHandle {
+		const id = this.nextTimerId++;
+		this.timers.set(id, {
+			callback,
+			intervalMs,
+			nextAt: this.currentTime + intervalMs,
+		});
+		return id;
+	}
+
+	clearInterval(handle: TaskServiceTimerHandle): void {
+		this.timers.delete(handle as number);
+	}
+
+	async advanceBy(durationMs: number): Promise<void> {
+		const target = this.currentTime + durationMs;
+		while (true) {
+			const due = Array.from(this.timers.entries())
+				.filter(([, timer]) => timer.nextAt <= target)
+				.sort(
+					([leftId, left], [rightId, right]) =>
+						left.nextAt - right.nextAt || leftId - rightId,
+				)[0];
+			if (!due) break;
+			const [id, timer] = due;
+			this.currentTime = timer.nextAt;
+			timer.nextAt += timer.intervalMs;
+			await timer.callback();
+			if (!this.timers.has(id)) continue;
+		}
+		this.currentTime = target;
+	}
+
+	reset(now: number): void {
+		this.currentTime = now;
+		this.nextTimerId = 1;
+		this.timers.clear();
+	}
+}
+
+describe("TaskService injected clock", () => {
+	it("runs same-deadline tasks deterministically at the injected boundary", async () => {
+		const { runtime, tasks, workers } = makeTaskRuntime();
+		const order: string[] = [];
+		for (const name of ["FIRST", "SECOND"]) {
+			workers.set(name, {
+				name,
+				execute: async () => {
+					order.push(name);
+				},
+			});
+			tasks.set(name, {
+				id: name as UUID,
+				name,
+				agentId: AGENT_ID,
+				tags: ["queue"],
+				dueAt: T0 + 1_000,
+			});
+		}
+		const clock = new DeterministicTaskClock(T0);
+		const service = new TaskService(runtime, clock);
+		service.startTimer();
+
+		await clock.advanceBy(999);
+		expect(order).toEqual([]);
+		await clock.advanceBy(1);
+		expect(order).toEqual(["FIRST", "SECOND"]);
+		await service.stop();
+	});
+
+	it("cancels polling on stop", async () => {
+		const { runtime } = makeTaskRuntime();
+		const getTasks = vi.spyOn(runtime, "getTasks");
+		const clock = new DeterministicTaskClock(T0);
+		const service = new TaskService(runtime, clock);
+		service.startTimer();
+		await service.stop();
+
+		await clock.advanceBy(10_000);
+		expect(getTasks).not.toHaveBeenCalled();
+	});
+
+	it.each([
+		["null", null],
+		["zero", 0],
+	] as const)("clears a %s timer handle", async (_label, handle) => {
+		const { runtime } = makeTaskRuntime();
+		const clock: TaskServiceClock = {
+			now: () => T0,
+			setInterval: () => handle,
+			clearInterval: vi.fn(),
+		};
+		const service = new TaskService(runtime, clock);
+
+		service.startTimer();
+		await service.stop();
+
+		expect(clock.clearInterval).toHaveBeenCalledOnce();
+		expect(clock.clearInterval).toHaveBeenCalledWith(handle);
+	});
+
+	it("does not leak callbacks across an exact clock reset", async () => {
+		const first = makeTaskRuntime();
+		const second = makeTaskRuntime();
+		const firstQuery = vi.spyOn(first.runtime, "getTasks");
+		const secondQuery = vi.spyOn(second.runtime, "getTasks");
+		const clock = new DeterministicTaskClock(T0);
+		const firstService = new TaskService(first.runtime, clock);
+		firstService.startTimer();
+
+		await firstService.stop();
+		clock.reset(T0);
+		const secondService = new TaskService(second.runtime, clock);
+		secondService.startTimer();
+		await clock.advanceBy(1_000);
+
+		expect(firstQuery).not.toHaveBeenCalled();
+		expect(secondQuery).toHaveBeenCalledTimes(1);
+		await secondService.stop();
+	});
+
+	it("keeps system time and timer APIs as the default boundary", async () => {
+		const { runtime } = makeTaskRuntime();
+		const timerHandle = { kind: "system-timer" };
+		const now = vi.spyOn(Date, "now").mockReturnValue(T0);
+		const set = vi
+			.spyOn(globalThis, "setInterval")
+			.mockReturnValue(
+				timerHandle as unknown as ReturnType<typeof setInterval>,
+			);
+		const clear = vi
+			.spyOn(globalThis, "clearInterval")
+			.mockImplementation(() => {});
+		const service = new TaskService(runtime);
+
+		service.startTimer();
+		expect(now).toHaveBeenCalled();
+		expect(set).toHaveBeenCalledWith(expect.any(Function), 1_000);
+		await service.stop();
+		expect(clear).toHaveBeenCalledWith(timerHandle);
+		now.mockRestore();
+		set.mockRestore();
+		clear.mockRestore();
+	});
+});
 
 describe("TaskService tick re-arm", () => {
 	let service: TaskService | null = null;

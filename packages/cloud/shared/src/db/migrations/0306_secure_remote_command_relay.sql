@@ -1,3 +1,4 @@
+-- Secure remote command relay (renumbered after upstream migration convergence).
 CREATE TABLE IF NOT EXISTS "remote_command_envelopes" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"session_id" uuid NOT NULL REFERENCES "remote_sessions"("id") ON DELETE cascade,

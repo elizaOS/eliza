@@ -3,16 +3,55 @@
  * webhook payload normalization, `Bot` dedup/gating and delivery failure
  * propagation, and `ReplyDispatcher` chunking. No live proxy service.
  */
+import type { IAgentRuntime, MessageConnectorTarget } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { Bot } from "./bot";
 import { normalizePayload } from "./callback-server";
 import { WechatDeliveryError } from "./delivery-error";
+import { registerWechatMessageConnector } from "./index";
 import type { ProxyClient } from "./proxy-client";
 import { ReplyDispatcher } from "./reply-dispatcher";
 import { deliverIncomingWechatMessage } from "./runtime-bridge";
 import type { WechatMessageContext } from "./types";
 
 describe("@elizaos/plugin-wechat", () => {
+  it("preserves every matching, recent, and roomless-read target", async () => {
+    const targets = Array.from({ length: 30 }, (_, index) => ({
+      target: {
+        source: "wechat",
+        channelId: `wxid-${index}`,
+        roomId: `00000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
+      },
+      label: `Contact ${index}`,
+      kind: "user",
+      score: 0.55,
+    })) as MessageConnectorTarget[];
+    const runtime = {
+      registerMessageConnector: vi.fn(),
+      getMemories: vi.fn(async ({ roomId }) => [
+        {
+          roomId,
+          content: { text: "hello" },
+          createdAt: 1,
+        },
+      ]),
+    } as unknown as IAgentRuntime;
+    registerWechatMessageConnector(runtime, {}, async () => targets);
+    const registration = vi.mocked(runtime.registerMessageConnector).mock
+      .calls[0][0];
+
+    const matches = await registration.resolveTargets?.("contact");
+    const recent = await registration.listRecentTargets?.({ runtime });
+    const messages = await registration.fetchMessages?.(
+      { runtime },
+      { limit: 50 },
+    );
+
+    expect(matches).toHaveLength(30);
+    expect(recent).toHaveLength(30);
+    expect(runtime.getMemories).toHaveBeenCalledTimes(30);
+    expect(messages).toHaveLength(30);
+  });
   it("normalizes supported direct and group webhook payloads", () => {
     expect(
       normalizePayload({

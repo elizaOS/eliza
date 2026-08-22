@@ -10,8 +10,8 @@ import { PGlite } from "@electric-sql/pglite";
 const migrations = [
   "0068_add_remote_sessions",
   "0275_remote_sessions_first_class_expiry",
-  "0300_secure_remote_hosts",
-  "0301_secure_remote_command_relay",
+  "0305_secure_remote_hosts",
+  "0306_secure_remote_command_relay",
 ] as const;
 
 async function apply(database: PGlite, name: string): Promise<void> {
@@ -117,8 +117,8 @@ describe("secure remote relay migrations", () => {
         await readFile(new URL("./migrations/meta/_journal.json", import.meta.url), "utf8"),
       ) as { entries: Array<{ tag: string }> };
       expect(journal.entries.slice(-2).map((entry) => entry.tag)).toEqual([
-        "0300_secure_remote_hosts",
-        "0301_secure_remote_command_relay",
+        "0305_secure_remote_hosts",
+        "0306_secure_remote_command_relay",
       ]);
     } finally {
       await database.close();

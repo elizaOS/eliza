@@ -1075,14 +1075,14 @@ describe("voice-session WS lifecycle", () => {
     await flush();
 
     const firstText = client.controlFrames.find(
-      (frame) => frame.t === "llm_first_text",
+      (frame): frame is Extract<ServerControlFrame, { t: "llm_first_text" }> =>
+        frame.t === "llm_first_text",
     );
     const navigation = client.controlFrames.filter(
       (frame) => frame.t === "navigate_view",
     );
-    if (!firstText) {
-      throw new Error("Expected an llm_first_text control frame");
-    }
+    expect(firstText).toBeDefined();
+    if (!firstText) throw new Error("expected an llm_first_text control frame");
     expect(navigation).toEqual([
       {
         t: "navigate_view",

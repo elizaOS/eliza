@@ -37,6 +37,12 @@
       "@elizaos/capacitor-bun-runtime/*": [
         "../../../../plugins/plugin-native-bun-runtime/src/*"
       ],
+      "@elizaos/capacitor-secure-store": [
+        "../../../../plugins/plugin-native-secure-store/src/index.ts"
+      ],
+      "@elizaos/capacitor-secure-store/*": [
+        "../../../../plugins/plugin-native-secure-store/src/*"
+      ],
       "@elizaos/core": ["../../../core/src/index.node.ts"],
       "@elizaos/core/atomic-json": ["../../../core/src/utils/atomic-json.ts"],
       "@elizaos/core/*": ["../../../core/src/*"],

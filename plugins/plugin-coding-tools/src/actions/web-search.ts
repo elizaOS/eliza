@@ -1,7 +1,7 @@
 /**
  * WEB_SEARCH exposes the same keyless MCP search path to coding-only agents that
- * the full agent runtime uses: Parallel is primary, Exa is fallback. Results are
- * bounded before they enter the planner loop and no query text is logged.
+ * the full agent runtime uses: Parallel is primary, Exa is fallback. Complete
+ * provider results enter the planner loop and no query text is logged.
  */
 import type {
   Action,
@@ -64,7 +64,7 @@ export const webSearchAction: Action = {
   routingHint:
     "open-ended external info (news, public facts, 'latest on...', recommendations, pages to discover) -> WEB_SEARCH; a live NOW-value with a constructable endpoint (spot crypto/stock price, exchange rate, current weather) -> WEB_FETCH to that live API (api.coingecko.com/api/v3/simple/price, wttr.in/<city>?format=j1) — search-index snippets lag live values by minutes-to-hours, the endpoint is exact and fresh",
   description:
-    "Search the open web for current or external information using keyless MCP search. Uses Parallel first and Exa fallback, returning bounded ranked result text. For a live NOW-value (spot price, exchange rate, current weather) prefer WEB_FETCH to a live JSON endpoint — search snippets lag live values.",
+    "Search the open web for current or external information using keyless MCP search. Uses Parallel first and Exa fallback, returning complete ranked result text. For a live NOW-value (spot price, exchange rate, current weather) prefer WEB_FETCH to a live JSON endpoint — search snippets lag live values.",
   parameters: [
     {
       name: "query",

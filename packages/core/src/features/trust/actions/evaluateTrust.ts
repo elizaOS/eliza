@@ -102,9 +102,6 @@ export async function evaluateTrustHandler(
 			);
 
 		const detailed = requestData.detailed ?? false;
-		const cappedEvidence = Array.isArray(trustProfile.evidence)
-			? trustProfile.evidence.slice(0, 20)
-			: trustProfile.evidence;
 
 		if (detailed) {
 			const dimensionText = Object.entries(trustProfile.dimensions)
@@ -142,7 +139,7 @@ Last Updated: ${new Date(trustProfile.lastCalculated).toLocaleString()}`,
 					lastCalculated: trustProfile.lastCalculated,
 					evaluatorId: trustProfile.evaluatorId,
 					dimensions: trustProfile.dimensions,
-					evidence: cappedEvidence,
+					evidence: trustProfile.evidence,
 					trend: trustProfile.trend,
 				},
 			};

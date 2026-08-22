@@ -778,7 +778,7 @@ describe("E2BRemoteCapabilityRouterService", () => {
         remoteHttpBaseUrl: "http://home.local:2468",
         remoteAccessUrl:
           "https://www.elizacloud.ai/dashboard/app?homeRemoteRunnerSession=session-123",
-        agentRunners: ["codex", "claude-code"],
+        agentRunners: ["codex"],
       }),
       new FakeFactory(),
     );

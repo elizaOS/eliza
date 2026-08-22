@@ -1,6 +1,8 @@
 // Exercises the Code example behavior that this module protects.
 import { beforeEach, describe, expect, it } from "bun:test";
 import {
+  type Content,
+  FAILED_TOOL_FALLBACK_MESSAGE,
   type HandlerCallback,
   type IAgentRuntime,
   type Memory,
@@ -12,6 +14,7 @@ import { getAgentClient, resetAgentClient } from "./agent-client.js";
 import type { SessionIdentity } from "./identity.js";
 
 interface HandleMessageOptions {
+  codingMode?: boolean;
   abortSignal?: AbortSignal;
   onStreamChunk?: StreamChunkCallback;
 }
@@ -43,7 +46,11 @@ function makeRuntime(
     message: Memory,
     callback?: HandlerCallback,
     options?: HandleMessageOptions,
-  ) => Promise<{ didRespond: boolean; responseMessages: Memory[] }>,
+  ) => Promise<{
+    didRespond: boolean;
+    responseContent?: Content | null;
+    responseMessages: Memory[];
+  }>,
 ): IAgentRuntime {
   return {
     ensureConnection: async () => {},
@@ -78,12 +85,14 @@ describe("AgentClient streaming", () => {
       room: makeRoom(),
       text: "say hello",
       identity: makeIdentity(),
+      codingMode: true,
       abortSignal: abortController.signal,
       onDelta: (delta) => deltas.push(delta),
     });
 
     expect(response).toBe("hello");
     expect(deltas).toEqual(["hel", "lo"]);
+    expect(seenOptions?.codingMode).toBe(true);
     expect(seenOptions?.abortSignal).toBe(abortController.signal);
     expect(typeof seenOptions?.onStreamChunk).toBe("function");
   });
@@ -139,5 +148,77 @@ describe("AgentClient streaming", () => {
 
     expect(response).toBe("The answer is 42.");
     expect(deltas).toEqual(["The answer", " is 42."]);
+  });
+
+  it("uses the returned response content when a host callback is not invoked", async () => {
+    const runtime = makeRuntime(async () => ({
+      didRespond: true,
+      responseContent: { text: "returned directly" },
+      responseMessages: [],
+    }));
+
+    getAgentClient().setRuntime(runtime);
+    await expect(
+      getAgentClient().sendMessage({
+        room: makeRoom(),
+        text: "answer",
+        identity: makeIdentity(),
+      }),
+    ).resolves.toBe("returned directly");
+  });
+
+  it("rejects synthetic runtime replies instead of returning them as success", async () => {
+    const runtime = makeRuntime(async (_runtime, _message, callback) => {
+      await callback?.({
+        text: "Something went wrong on my end. Please try again.",
+        failureKind: "transient_failure",
+        elizaSyntheticFailure: true,
+        transient: true,
+      });
+      return {
+        didRespond: true,
+        responseContent: {
+          text: "Something went wrong on my end. Please try again.",
+          failureKind: "transient_failure",
+          elizaSyntheticFailure: true,
+          transient: true,
+        },
+        responseMessages: [],
+      };
+    });
+
+    getAgentClient().setRuntime(runtime);
+    await expect(
+      getAgentClient().sendMessage({
+        room: makeRoom(),
+        text: "run a tool",
+        identity: makeIdentity(),
+      }),
+    ).rejects.toMatchObject({
+      code: "ELIZA_CODE_SYNTHETIC_TURN_FAILURE",
+      context: { failureKind: "transient_failure", transient: true },
+    });
+  });
+
+  it("rejects the planner's failed-tool fallback as a failed coding turn", async () => {
+    const runtime = makeRuntime(async () => ({
+      didRespond: true,
+      responseContent: {
+        text: `${FAILED_TOOL_FALLBACK_MESSAGE}\n\nWork that did complete: read config.go`,
+      },
+      responseMessages: [],
+    }));
+
+    getAgentClient().setRuntime(runtime);
+    await expect(
+      getAgentClient().sendMessage({
+        room: makeRoom(),
+        text: "run a tool",
+        identity: makeIdentity(),
+      }),
+    ).rejects.toMatchObject({
+      code: "ELIZA_CODE_SYNTHETIC_TURN_FAILURE",
+      context: { failureKind: "unknown", transient: false },
+    });
   });
 });

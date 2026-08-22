@@ -14,12 +14,14 @@
  * side fails the same way on an adapter-supplied audit row, whose `metadata`
  * column no layer between the row and the redaction walk bounds.
  *
- * These tests pin the bounded behaviour: an over-budget write is rejected with
- * a 400, an over-budget stored value is still served with an explicit marker,
- * and honest nested metadata is untouched.
+ * These tests pin both bounded layers: route-walk failures and the stricter
+ * connector-storage projection are rejected with a 400 before provider
+ * callbacks run, an over-budget stored value is served with an explicit
+ * marker, and honest nested metadata is untouched.
  */
 import type { IncomingMessage, ServerResponse } from "node:http";
 import {
+  type ConnectorAccountPatch,
   getConnectorAccountManager,
   InMemoryDatabaseAdapter,
 } from "@elizaos/core";
@@ -36,6 +38,10 @@ const ACCOUNT_ID = "3a899cd0-170f-4b3e-932e-46ec68119b35";
 
 /** Comfortably past the V8 recursion limit for these frames. */
 const OVERFLOW_DEPTH = 60_000;
+/** One level beyond the connector-storage depth accepted by core. */
+const STORAGE_OVERFLOW_DEPTH = 17;
+/** Wide enough to exceed core's storage-node budget but not the route budget. */
+const STORAGE_OVERFLOW_WIDTH = 2_100;
 
 function deepChain(depth: number): Record<string, unknown> {
   const root: Record<string, unknown> = {};
@@ -47,6 +53,12 @@ function deepChain(depth: number): Record<string, unknown> {
   }
   cursor.leaf = "end";
   return root;
+}
+
+function wideObject(width: number): Record<string, unknown> {
+  return Object.fromEntries(
+    Array.from({ length: width }, (_, index) => [`field_${index}`, index]),
+  );
 }
 
 function createRuntime(adapter?: InMemoryDatabaseAdapter) {
@@ -100,6 +112,65 @@ async function newAdapter(): Promise<InMemoryDatabaseAdapter> {
 }
 
 describe("connector account metadata walk bounds (real route handler)", () => {
+  it("rejects storage-over-deep POST metadata before a provider create side effect", async () => {
+    const runtime = createRuntime(await newAdapter());
+    const manager = getConnectorAccountManager(runtime as never);
+    const createAccount = vi.fn(async (input: ConnectorAccountPatch) => input);
+    manager.registerProvider({ provider: PROVIDER, createAccount });
+    const pathname = `/api/connectors/${PROVIDER}/accounts`;
+    const { ctx, captured } = createContext(runtime, "POST", pathname, {
+      label: "deep-for-storage",
+      metadata: { root: deepChain(STORAGE_OVERFLOW_DEPTH) },
+    });
+
+    const handled = await handleConnectorAccountRoutes(ctx);
+
+    expect(handled).toBe(true);
+    expect(captured).toEqual({
+      status: 400,
+      body: {
+        error: "Connector account metadata exceeds the bounded walk budget",
+      },
+    });
+    expect(createAccount).not.toHaveBeenCalled();
+  });
+
+  it("rejects storage-over-wide PATCH metadata before a provider patch side effect", async () => {
+    const adapter = await newAdapter();
+    const runtime = createRuntime(adapter);
+    const manager = getConnectorAccountManager(runtime as never);
+    await manager.upsertAccount(PROVIDER, {
+      id: ACCOUNT_ID,
+      provider: PROVIDER,
+      label: "user@example.com",
+      role: "OWNER",
+      accessGate: "open",
+      status: "connected",
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      metadata: {},
+    } as never);
+    const patchAccount = vi.fn(
+      async (_accountId: string, patch: ConnectorAccountPatch) => patch,
+    );
+    manager.registerProvider({ provider: PROVIDER, patchAccount });
+    const pathname = `/api/connectors/${PROVIDER}/accounts/${ACCOUNT_ID}`;
+    const { ctx, captured } = createContext(runtime, "PATCH", pathname, {
+      metadata: wideObject(STORAGE_OVERFLOW_WIDTH),
+    });
+
+    const handled = await handleConnectorAccountRoutes(ctx);
+
+    expect(handled).toBe(true);
+    expect(captured).toEqual({
+      status: 400,
+      body: {
+        error: "Connector account metadata exceeds the bounded walk budget",
+      },
+    });
+    expect(patchAccount).not.toHaveBeenCalled();
+  });
+
   it("rejects an over-deep POST body with a 400 instead of escaping the handler", async () => {
     const runtime = createRuntime(await newAdapter());
     const pathname = `/api/connectors/${PROVIDER}/accounts`;

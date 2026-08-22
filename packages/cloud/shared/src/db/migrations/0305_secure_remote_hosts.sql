@@ -1,3 +1,4 @@
+-- Secure remote host authority (renumbered after upstream migration convergence).
 CREATE TABLE IF NOT EXISTS "remote_hosts" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"organization_id" uuid NOT NULL REFERENCES "organizations"("id") ON DELETE cascade,
