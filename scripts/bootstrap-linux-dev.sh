@@ -5,8 +5,10 @@
 
 set -euo pipefail
 
-readonly BUN_VERSION="1.3.14"
-readonly NODE_VERSION="24.15.0"
+BUN_VERSION="1.3.14"
+readonly BUN_VERSION
+NODE_VERSION="24.15.0"
+readonly NODE_VERSION
 REPO_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)"
 readonly REPO_ROOT
 readonly TOOLCHAIN_ROOT="${ELIZA_LINUX_TOOLCHAIN_DIR:-${REPO_ROOT}/.cache/linux-dev-toolchain}"
