@@ -277,6 +277,10 @@ function expectGroundedClickAndDedup(
 export default scenario({
   id: "deterministic-cua-vision-loop",
   lane: "pr-deterministic",
+  modelFixtures: {
+    mode: "fixtures",
+    fixtures: [],
+  },
   title: "CUA Brain loop dedups the describe model on identical frames",
   domain: "computeruse",
   tags: ["pr", "deterministic", "zero-cost", "computeruse", "vision", "dhash"],

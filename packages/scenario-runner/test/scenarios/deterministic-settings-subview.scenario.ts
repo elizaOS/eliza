@@ -73,6 +73,10 @@ function toRecord(value: unknown): Record<string, unknown> {
 export default scenario({
   id: "deterministic-settings-subview",
   lane: "pr-deterministic",
+  modelFixtures: {
+    mode: "fixtures",
+    fixtures: [],
+  },
   title: "Deterministic Settings subview deep-link via the VIEWS action",
   domain: "scenario-runner",
   tags: [

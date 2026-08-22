@@ -13,10 +13,8 @@ import {
   ensureBrowserWorkspaceDefaultTab,
   executeBrowserWorkspaceCommand,
 } from "../../../../plugins/plugin-browser/src/workspace/browser-workspace.ts";
-import {
-  type RuntimeWithScenarioModelFixtures,
-  registerStrictActionRouteFixtures,
-} from "@elizaos/core/testing";
+import { strictActionRouteModelFixtures } from "./_helpers/strict-action-route-model-fixtures.ts";
+import { postTurnModelFixtures } from "./_helpers/post-turn-model-fixtures.ts";
 
 const strictBrowserRoutes = [
   {
@@ -322,6 +320,18 @@ function expectActionTurn(
 export default scenario({
   id: "deterministic-browser-actions",
   lane: "pr-deterministic",
+  modelFixtures: {
+    mode: "fixtures",
+    fixtures: [
+      ...strictActionRouteModelFixtures(strictBrowserRoutes),
+      ...postTurnModelFixtures(
+        strictBrowserRoutes.map((route) => ({
+          name: route.actionName,
+          input: route.input,
+        })),
+      ),
+    ],
+  },
   title: "Deterministic browser workspace action catalog",
   domain: "scenario-runner",
   tags: ["pr", "deterministic", "zero-cost", "browser"],
@@ -339,10 +349,10 @@ export default scenario({
         await __resetBrowserWorkspaceStateForTests();
 
         const runtime = ctx.runtime as
-          | ({
+          | {
               plugins?: Array<{ name?: string }>;
               registerPlugin?: (plugin: typeof browserPlugin) => Promise<void>;
-            } & RuntimeWithScenarioModelFixtures)
+            }
           | undefined;
         if (!runtime?.registerPlugin) {
           return "runtime.registerPlugin unavailable";
@@ -403,7 +413,6 @@ export default scenario({
         });
 
         scheduleWaitForUrlCallbackNavigation();
-        registerStrictActionRouteFixtures(runtime, strictBrowserRoutes);
         return undefined;
       },
     },

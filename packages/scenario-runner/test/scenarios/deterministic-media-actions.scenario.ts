@@ -3,10 +3,6 @@
  * pr-deterministic lane under the model provider.
  */
 import { ModelType, type Plugin } from "@elizaos/core";
-import {
-  type RuntimeWithScenarioModelFixtures,
-  registerStrictActionRouteFixtures,
-} from "@elizaos/core/testing";
 import { generateMediaAction } from "@elizaos/plugin-local-inference/actions/generate-media";
 import type {
   CapturedAction,
@@ -14,6 +10,8 @@ import type {
   ScenarioTurnExecution,
 } from "@elizaos/scenario-runner/schema";
 import { scenario } from "@elizaos/scenario-runner/schema";
+import { strictActionRouteModelFixtures } from "./_helpers/strict-action-route-model-fixtures.ts";
+import { postTurnModelFixtures } from "./_helpers/post-turn-model-fixtures.ts";
 
 const transparentPngDataUrl =
   "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAFgwJ/lbJY7wAAAABJRU5ErkJggg==";
@@ -217,6 +215,18 @@ async function finalLedgerCheck(
 export default scenario({
   id: "deterministic-media-actions",
   lane: "pr-deterministic",
+  modelFixtures: {
+    mode: "fixtures",
+    fixtures: [
+      ...strictActionRouteModelFixtures(strictMediaRoutes),
+      ...postTurnModelFixtures(
+        strictMediaRoutes.map((route) => ({
+          name: route.actionName,
+          input: route.input,
+        })),
+      ),
+    ],
+  },
   title: "Deterministic media generation actions",
   domain: "scenario-runner",
   tags: ["pr", "deterministic", "zero-cost", "media"],
@@ -229,11 +239,11 @@ export default scenario({
         modelCalls.length = 0;
 
         const runtime = ctx.runtime as
-          | (RuntimeWithScenarioModelFixtures & {
+          | {
               plugins?: Array<{ name?: string }>;
               registerPlugin?: (plugin: Plugin) => Promise<void>;
               unregisterAction?: (name: string) => boolean;
-            })
+            }
           | undefined;
         if (!runtime?.registerPlugin) {
           return "runtime.registerPlugin unavailable";
@@ -246,7 +256,6 @@ export default scenario({
           runtime.unregisterAction?.("GENERATE_MEDIA");
           await runtime.registerPlugin(deterministicMediaPlugin);
         }
-        registerStrictActionRouteFixtures(runtime, strictMediaRoutes);
         return undefined;
       },
     },

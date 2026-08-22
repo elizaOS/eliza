@@ -37,6 +37,7 @@
 
 import type { ScenarioContext } from "@elizaos/scenario-runner/schema";
 import { scenario } from "@elizaos/scenario-runner/schema";
+import { scheduledDispatchModelFixtures } from "./_helpers/scheduled-dispatch-model-fixtures.ts";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -388,6 +389,32 @@ function assertDeliveryLedger(): string | undefined {
 export default scenario({
   id: "deterministic-lifeops-recurrence",
   lane: "pr-deterministic",
+  modelFixtures: {
+    mode: "fixtures",
+    fixtures: [
+      ...scheduledDispatchModelFixtures([
+        {
+          name: "daily-recurrence-probe",
+          instruction: DAILY_PROMPT,
+          cardinality: 2,
+          titleCardinality: 0,
+        },
+      ]),
+      {
+        name: "daily-recurrence-background-reminder-nudge",
+        match: {
+          modelType: "TEXT_SMALL",
+          prompt: {
+            includes: "Write a short reminder nudge in the assistant's voice.",
+          },
+        },
+        response: {
+          text: "A pending reminder is ready for your attention.",
+        },
+        cardinality: { min: 0, max: 2 },
+      },
+    ],
+  },
   title:
     "Daily cron reminder fired and completed on day 1 refires on day 2 through the real scheduler tick",
   domain: "lifeops",

@@ -25,15 +25,9 @@ import type {
   RouteResponse,
   ViewDeclaration,
 } from "@elizaos/core";
-import { ModelType } from "@elizaos/core";
-import type { DeterministicModelCall } from "@elizaos/core/testing";
-import {
-  finalMessageUserText,
-  type RuntimeWithScenarioModelFixtures,
-  stage1ResponseHandlerFixture,
-} from "@elizaos/core/testing";
 import type { ScenarioTurnExecution } from "@elizaos/scenario-runner/schema";
 import { scenario } from "@elizaos/scenario-runner/schema";
+import { latestScenarioInputPattern } from "./_helpers/strict-action-route-model-fixtures.ts";
 
 const VIEW_ID = "scenario-active-ledger";
 const VIEW_LABEL = "Scenario Active Ledger";
@@ -149,7 +143,7 @@ const scenarioViewsRoutePlugin: Plugin = {
   ),
 };
 
-type RuntimeWithScenarioPlugins = RuntimeWithScenarioModelFixtures & {
+type RuntimeWithScenarioPlugins = {
   plugins?: Array<{ name?: string }>;
   registerPlugin?: (plugin: Plugin) => Promise<void>;
 };
@@ -209,143 +203,6 @@ function expectViewsInteract(
   return undefined;
 }
 
-function promptHasActiveViewElements(value: string): boolean {
-  return [
-    "# Active View",
-    VIEW_LABEL,
-    VIEW_ID,
-    "Addressable elements currently in this view",
-    "ledger-title [textbox]",
-    "save-ledger [button]",
-    "agent-fill {id,value}",
-    "agent-click {id}",
-  ].every((needle) => value.includes(needle));
-}
-
-function postTurnEvaluatorFixture({
-  capability,
-  elementId,
-  input,
-}: {
-  capability: "agent-click" | "agent-fill";
-  elementId: string;
-  input: string;
-}) {
-  const expectedEvaluatorNames = [
-    "factMemory",
-    "preferences",
-    "relationships",
-    "identities",
-    "success",
-    "ftu_goal_discovery",
-    capability === "agent-fill" ? "experiencePatterns" : "skillProposal",
-  ];
-  return {
-    name: `active-view-post-turn-${capability}-${elementId}`,
-    match: (call: DeterministicModelCall) => {
-      if (call.modelType !== ModelType.TEXT_SMALL) return false;
-      const promptText =
-        call.params.prompt ??
-        (Array.isArray(call.params.messages)
-          ? call.params.messages
-              .map((m: { content?: string }) => m.content ?? "")
-              .join("\n")
-          : "");
-      const schema = call.params.responseSchema as
-        | { properties?: Record<string, unknown> }
-        | undefined;
-      const evaluatorNames = Object.keys(schema?.properties ?? {});
-      return (
-        promptText.includes("# Task: Post-turn evaluation") &&
-        promptText.includes(input) &&
-        promptText.includes(capability) &&
-        promptText.includes(elementId) &&
-        evaluatorNames.length === expectedEvaluatorNames.length &&
-        expectedEvaluatorNames.every((name) => evaluatorNames.includes(name))
-      );
-    },
-    response: {
-      factMemory: { ops: [] },
-      preferences: { ops: [] },
-      relationships: { relationships: [] },
-      identities: { identities: [] },
-      success: {
-        completed: true,
-        reason: "The requested active-view interaction completed successfully.",
-      },
-      ftu_goal_discovery: { goalFound: false, goal: "", confidence: 0 },
-      ...(capability === "agent-fill"
-        ? { experiencePatterns: { experiences: [] } }
-        : {
-            skillProposal: {
-              extract: false,
-              reason: "This one-off view interaction is not a reusable skill.",
-            },
-          }),
-    },
-    times: 1,
-  };
-}
-
-function plannerFixture({
-  capability,
-  elementId,
-  input,
-  messageToUser,
-  value,
-}: {
-  capability: "agent-click" | "agent-fill";
-  elementId: string;
-  input: string;
-  messageToUser: string;
-  value?: string;
-}) {
-  return {
-    name: `active-view-planner-${capability}-${elementId}`,
-    match: (call: DeterministicModelCall) => {
-      if (call.modelType !== ModelType.ACTION_PLANNER) return false;
-      if (!call.toolNames.includes("VIEWS")) return false;
-      // On the messages-path planner, Active View is prepended into the last
-      // user message content, so latestUserText is no longer an exact match
-      // for the bare scenario input. Accept exact or suffix match.
-      const userText = finalMessageUserText(call.latestUserText);
-      if (userText !== input && !userText.endsWith(input)) return false;
-      // Certifies the agent-addressable surface reaches the planner on every
-      // turn (fill + click). Depends on product fixes in #17918: preserve
-      // elements on same-viewId re-publish, inject into the *last* user
-      // message, re-inject after budget compaction.
-      return promptHasActiveViewElements(
-        `${call.params.prompt ?? ""}\n${call.latestUserText}`,
-      );
-    },
-    response: {
-      text: "",
-      thought: `Use the active-view element id ${elementId}.`,
-      messageToUser,
-      completed: true,
-      finishReason: "tool-calls",
-      toolCalls: [
-        {
-          id: `call-${capability}-${elementId}`,
-          name: "VIEWS",
-          type: "function",
-          arguments: {
-            action: "interact",
-            capability,
-            params: {
-              id: elementId,
-              ...(value ? { value } : {}),
-            },
-            view: VIEW_ID,
-            viewType: "gui",
-          },
-        },
-      ],
-    },
-    times: 1,
-  };
-}
-
 function installScenarioInteractFetchShim(): void {
   restoreFetch?.();
   const originalFetch = globalThis.fetch;
@@ -401,6 +258,160 @@ function installScenarioInteractFetchShim(): void {
 export default scenario({
   id: "deterministic-active-view-agent-surface",
   lane: "pr-deterministic",
+  modelFixtures: {
+    mode: "fixtures",
+    fixtures: [
+      {
+        name: "active-view-fill-stage1",
+        match: {
+          modelType: "RESPONSE_HANDLER",
+          input: { pattern: latestScenarioInputPattern(FILL_TEXT) },
+        },
+        response: {
+          json: {
+            contexts: ["active-view", "views"],
+            intents: [FILL_TEXT.toLowerCase()],
+            replyText: "Filling the active ledger title.",
+            threadOps: [],
+            candidateActionNames: ["VIEWS"],
+          },
+        },
+      },
+      {
+        name: "active-view-fill-planner",
+        match: {
+          modelType: "ACTION_PLANNER",
+          input: { pattern: latestScenarioInputPattern(FILL_TEXT) },
+        },
+        response: {
+          json: {
+            text: "",
+            thought: "Use the active-view element id ledger-title.",
+            messageToUser: "Filled the active ledger title.",
+            completed: true,
+            finishReason: "tool-calls",
+            toolCalls: [
+              {
+                id: "call-agent-fill-ledger-title",
+                name: "VIEWS",
+                type: "function",
+                arguments: {
+                  action: "interact",
+                  capability: "agent-fill",
+                  params: { id: "ledger-title", value: "Close Issue 11355" },
+                  view: VIEW_ID,
+                  viewType: "gui",
+                },
+              },
+            ],
+          },
+        },
+      },
+      {
+        name: "active-view-fill-evaluator",
+        match: {
+          modelType: "TEXT_SMALL",
+          input: {
+            pattern:
+              "(?=.*# Task: Post-turn evaluation)(?=.*Fill the focused ledger title with Close Issue 11355)(?=.*agent-fill)(?=.*ledger-title)",
+            flags: "s",
+          },
+        },
+        response: {
+          json: {
+            factMemory: { ops: [] },
+            preferences: { ops: [] },
+            relationships: { relationships: [] },
+            identities: { identities: [] },
+            success: {
+              completed: true,
+              reason:
+                "The requested active-view interaction completed successfully.",
+            },
+            ftu_goal_discovery: { goalFound: false, goal: "", confidence: 0 },
+            experiencePatterns: { experiences: [] },
+          },
+        },
+        cardinality: { min: 0, max: 1 },
+      },
+      {
+        name: "active-view-click-stage1",
+        match: {
+          modelType: "RESPONSE_HANDLER",
+          input: { pattern: latestScenarioInputPattern(CLICK_TEXT) },
+        },
+        response: {
+          json: {
+            contexts: ["active-view", "views"],
+            intents: [CLICK_TEXT.toLowerCase()],
+            replyText: "Saving the active ledger.",
+            threadOps: [],
+            candidateActionNames: ["VIEWS"],
+          },
+        },
+      },
+      {
+        name: "active-view-click-planner",
+        match: {
+          modelType: "ACTION_PLANNER",
+          input: { pattern: latestScenarioInputPattern(CLICK_TEXT) },
+        },
+        response: {
+          json: {
+            text: "",
+            thought: "Use the active-view element id save-ledger.",
+            messageToUser: "Saved the active ledger.",
+            completed: true,
+            finishReason: "tool-calls",
+            toolCalls: [
+              {
+                id: "call-agent-click-save-ledger",
+                name: "VIEWS",
+                type: "function",
+                arguments: {
+                  action: "interact",
+                  capability: "agent-click",
+                  params: { id: "save-ledger" },
+                  view: VIEW_ID,
+                  viewType: "gui",
+                },
+              },
+            ],
+          },
+        },
+      },
+      {
+        name: "active-view-click-evaluator",
+        match: {
+          modelType: "TEXT_SMALL",
+          input: {
+            pattern:
+              "(?=.*# Task: Post-turn evaluation)(?=.*Click the save button in the active ledger view)(?=.*agent-click)(?=.*save-ledger)",
+            flags: "s",
+          },
+        },
+        response: {
+          json: {
+            factMemory: { ops: [] },
+            preferences: { ops: [] },
+            relationships: { relationships: [] },
+            identities: { identities: [] },
+            success: {
+              completed: true,
+              reason:
+                "The requested active-view interaction completed successfully.",
+            },
+            ftu_goal_discovery: { goalFound: false, goal: "", confidence: 0 },
+            skillProposal: {
+              extract: false,
+              reason: "This one-off view interaction is not a reusable skill.",
+            },
+          },
+        },
+        cardinality: { min: 0, max: 1 },
+      },
+    ],
+  },
   title: "Deterministic active-view agent-surface trajectory",
   domain: "scenario-runner",
   tags: [
@@ -443,57 +454,6 @@ export default scenario({
           await runtime.registerPlugin(scenarioViewsRoutePlugin);
         }
         installPromptOptimizations(runtime as never, {} as never);
-        runtime.scenarioModelFixtures?.register(
-          stage1ResponseHandlerFixture({
-            actionName: "VIEWS",
-            contextIds: ["active-view", "views"],
-            input: FILL_TEXT,
-            messageToUser: "Filling the active ledger title.",
-            args: {
-              action: "interact",
-              capability: "agent-fill",
-              params: { id: "ledger-title", value: "Close Issue 11355" },
-              view: VIEW_ID,
-              viewType: "gui",
-            },
-          }),
-          plannerFixture({
-            capability: "agent-fill",
-            elementId: "ledger-title",
-            input: FILL_TEXT,
-            messageToUser: "Filled the active ledger title.",
-            value: "Close Issue 11355",
-          }),
-          postTurnEvaluatorFixture({
-            capability: "agent-fill",
-            elementId: "ledger-title",
-            input: FILL_TEXT,
-          }),
-          stage1ResponseHandlerFixture({
-            actionName: "VIEWS",
-            contextIds: ["active-view", "views"],
-            input: CLICK_TEXT,
-            messageToUser: "Saving the active ledger.",
-            args: {
-              action: "interact",
-              capability: "agent-click",
-              params: { id: "save-ledger" },
-              view: VIEW_ID,
-              viewType: "gui",
-            },
-          }),
-          plannerFixture({
-            capability: "agent-click",
-            elementId: "save-ledger",
-            input: CLICK_TEXT,
-            messageToUser: "Saved the active ledger.",
-          }),
-          postTurnEvaluatorFixture({
-            capability: "agent-click",
-            elementId: "save-ledger",
-            input: CLICK_TEXT,
-          }),
-        );
         return undefined;
       },
     },

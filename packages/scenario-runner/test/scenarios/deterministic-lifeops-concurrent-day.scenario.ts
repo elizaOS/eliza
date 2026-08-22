@@ -33,6 +33,7 @@
 import { type IAgentRuntime, Service, ServiceType } from "@elizaos/core";
 import type { ScenarioContext } from "@elizaos/scenario-runner/schema";
 import { scenario } from "@elizaos/scenario-runner/schema";
+import { scheduledDispatchModelFixtures } from "./_helpers/scheduled-dispatch-model-fixtures.ts";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -528,6 +529,17 @@ function assertRealDeliveries(): string | undefined {
 export default scenario({
   id: "deterministic-lifeops-concurrent-day",
   lane: "pr-deterministic",
+  modelFixtures: {
+    mode: "fixtures",
+    fixtures: [
+      ...scheduledDispatchModelFixtures(
+        TASK_PLAN.filter((plan) => !plan.gateDenied).map((plan) => ({
+          name: plan.key,
+          instruction: plan.promptInstructions,
+        })),
+      ),
+    ],
+  },
   title:
     "Concurrent-day scheduler tick: 26 due tasks, exact 25-task budget, ordered ledger, none lost",
   domain: "lifeops",

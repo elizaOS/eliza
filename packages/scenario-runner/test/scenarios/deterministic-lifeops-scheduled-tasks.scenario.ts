@@ -9,10 +9,10 @@ import type {
 } from "@elizaos/scenario-runner/schema";
 import { scenario } from "@elizaos/scenario-runner/schema";
 import {
-  type RuntimeWithScenarioModelFixtures,
-  registerStrictActionRouteFixtures,
-  type StrictActionRouteFixture,
-} from "@elizaos/core/testing";
+  strictActionRouteModelFixtures,
+  type StrictScenarioActionRoute,
+} from "./_helpers/strict-action-route-model-fixtures.ts";
+import { postTurnModelFixtures } from "./_helpers/post-turn-model-fixtures.ts";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -78,9 +78,7 @@ const historyParameters = {
 };
 
 let createdTaskId: string | null = null;
-let scenarioRuntime: RuntimeWithScenarioModelFixtures | null = null;
-
-const initialStrictRoutes: StrictActionRouteFixture[] = [
+const initialStrictRoutes: StrictScenarioActionRoute[] = [
   {
     actionName: "SCHEDULED_TASKS",
     args: createParameters,
@@ -97,42 +95,11 @@ const initialStrictRoutes: StrictActionRouteFixture[] = [
   },
 ];
 
-function idDependentStrictRoutes(taskId: string): StrictActionRouteFixture[] {
+function setIdDependentParameters(taskId: string): void {
   getParameters.taskId = taskId;
   snoozeParameters.taskId = taskId;
   completeParameters.taskId = taskId;
   historyParameters.taskId = taskId;
-
-  return [
-    {
-      actionName: "SCHEDULED_TASKS",
-      args: getParameters,
-      contextIds: ["tasks", "reminders"],
-      input: getText,
-      messageToUser: "Found scheduled task.",
-    },
-    {
-      actionName: "SCHEDULED_TASKS",
-      args: snoozeParameters,
-      contextIds: ["tasks", "reminders"],
-      input: snoozeText,
-      messageToUser: "Snoozed scheduled task.",
-    },
-    {
-      actionName: "SCHEDULED_TASKS",
-      args: completeParameters,
-      contextIds: ["tasks", "reminders"],
-      input: completeText,
-      messageToUser: "Completed scheduled task.",
-    },
-    {
-      actionName: "SCHEDULED_TASKS",
-      args: historyParameters,
-      contextIds: ["tasks", "reminders"],
-      input: historyText,
-      messageToUser: "scheduled-task log row.",
-    },
-  ];
 }
 
 function seedStrictFixtures(ctx: ScenarioContext): string | undefined {
@@ -142,19 +109,6 @@ function seedStrictFixtures(ctx: ScenarioContext): string | undefined {
   completeParameters.taskId = "__created_task_id_unset__";
   historyParameters.taskId = "__created_task_id_unset__";
 
-  scenarioRuntime = ctx.runtime as RuntimeWithScenarioModelFixtures;
-  registerStrictActionRouteFixtures(scenarioRuntime, initialStrictRoutes);
-  return undefined;
-}
-
-function registerIdDependentFixtures(taskId: string): string | undefined {
-  if (!scenarioRuntime) {
-    return "scenario runtime unavailable for id-dependent strict fixtures";
-  }
-  registerStrictActionRouteFixtures(
-    scenarioRuntime,
-    idDependentStrictRoutes(taskId),
-  );
   return undefined;
 }
 
@@ -279,7 +233,8 @@ function expectCreatedTurn(
     return `expected task.idempotencyKey=${createParameters.idempotencyKey}, saw ${String(task.idempotencyKey)}`;
   }
   createdTaskId = task.taskId;
-  return registerIdDependentFixtures(createdTaskId);
+  setIdDependentParameters(createdTaskId);
+  return undefined;
 }
 
 function expectTaskStatusTurn(
@@ -418,6 +373,18 @@ function finalActionLedgerCheck(ctx: ScenarioContext): string | undefined {
 export default scenario({
   id: "deterministic-lifeops-scheduled-tasks",
   lane: "pr-deterministic",
+  modelFixtures: {
+    mode: "fixtures",
+    fixtures: [
+      ...strictActionRouteModelFixtures(initialStrictRoutes),
+      ...postTurnModelFixtures(
+        initialStrictRoutes.map((route) => ({
+          name: route.actionName,
+          input: route.input,
+        })),
+      ),
+    ],
+  },
   title: "Deterministic LifeOps ScheduledTask action execution",
   domain: "lifeops",
   tags: ["pr", "deterministic", "zero-cost", "lifeops", "scheduled-tasks"],
@@ -461,24 +428,30 @@ export default scenario({
       assertTurn: expectListTurn,
     },
     {
-      kind: "message",
+      kind: "action",
       name: "get created scheduled reminder",
+      actionName: "SCHEDULED_TASKS",
       text: getText,
+      options: { parameters: getParameters },
       responseIncludesAny: ["Found that scheduled item"],
       assertTurn: (execution) =>
         expectTaskStatusTurn(execution, getParameters, "get", "scheduled"),
     },
     {
-      kind: "message",
+      kind: "action",
       name: "snooze created scheduled reminder",
+      actionName: "SCHEDULED_TASKS",
       text: snoozeText,
+      options: { parameters: snoozeParameters },
       responseIncludesAny: ["Snoozed that scheduled item"],
       assertTurn: expectSnoozeTurn,
     },
     {
-      kind: "message",
+      kind: "action",
       name: "complete created scheduled reminder",
+      actionName: "SCHEDULED_TASKS",
       text: completeText,
+      options: { parameters: completeParameters },
       responseIncludesAny: ["Marked that scheduled item as completed"],
       assertTurn: (execution) =>
         expectTaskStatusTurn(
@@ -489,9 +462,11 @@ export default scenario({
         ),
     },
     {
-      kind: "message",
+      kind: "action",
       name: "read scheduled reminder history",
+      actionName: "SCHEDULED_TASKS",
       text: historyText,
+      options: { parameters: historyParameters },
       responseIncludesAny: ["history entr"],
       assertTurn: expectHistoryTurn,
     },

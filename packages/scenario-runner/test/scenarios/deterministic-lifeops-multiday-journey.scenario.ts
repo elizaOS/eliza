@@ -42,10 +42,10 @@ import type {
 } from "@elizaos/scenario-runner/schema";
 import { scenario } from "@elizaos/scenario-runner/schema";
 import {
-  type RuntimeWithScenarioModelFixtures,
-  registerStrictActionRouteFixtures,
-  type StrictActionRouteFixture,
-} from "@elizaos/core/testing";
+  strictActionRouteModelFixtures,
+  type StrictScenarioActionRoute,
+} from "./_helpers/strict-action-route-model-fixtures.ts";
+import { scheduledDispatchModelFixtures } from "./_helpers/scheduled-dispatch-model-fixtures.ts";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -133,9 +133,8 @@ const historyParameters = {
 };
 
 let createdTaskId: string | null = null;
-let scenarioRuntime: RuntimeWithScenarioModelFixtures | null = null;
 
-const initialStrictRoutes: StrictActionRouteFixture[] = [
+const initialStrictRoutes: StrictScenarioActionRoute[] = [
   {
     actionName: "SCHEDULED_TASKS",
     args: createParameters,
@@ -145,41 +144,11 @@ const initialStrictRoutes: StrictActionRouteFixture[] = [
   },
 ];
 
-function idDependentStrictRoutes(taskId: string): StrictActionRouteFixture[] {
+function setIdDependentParameters(taskId: string): void {
   snoozeParameters.taskId = taskId;
   getParameters.taskId = taskId;
   completeParameters.taskId = taskId;
   historyParameters.taskId = taskId;
-  return [
-    {
-      actionName: "SCHEDULED_TASKS",
-      args: snoozeParameters,
-      contextIds: ["tasks", "reminders"],
-      input: snoozeText,
-      messageToUser: "Snoozed pharmacy reminder to Wednesday.",
-    },
-    {
-      actionName: "SCHEDULED_TASKS",
-      args: getParameters,
-      contextIds: ["tasks", "reminders"],
-      input: getText,
-      messageToUser: "Pharmacy reminder status read.",
-    },
-    {
-      actionName: "SCHEDULED_TASKS",
-      args: completeParameters,
-      contextIds: ["tasks", "reminders"],
-      input: completeText,
-      messageToUser: "Completed pharmacy reminder.",
-    },
-    {
-      actionName: "SCHEDULED_TASKS",
-      args: historyParameters,
-      contextIds: ["tasks", "reminders"],
-      input: historyText,
-      messageToUser: "pharmacy reminder log rows.",
-    },
-  ];
 }
 
 // ---------------------------------------------------------------------------
@@ -288,8 +257,6 @@ async function seedJourney(ctx: ScenarioContext): Promise<string | undefined> {
     }
   }
 
-  scenarioRuntime = ctx.runtime as RuntimeWithScenarioModelFixtures;
-  registerStrictActionRouteFixtures(scenarioRuntime, initialStrictRoutes);
   return undefined;
 }
 
@@ -368,13 +335,7 @@ function expectCreateTurn(
     return `expected created status=scheduled, saw ${JSON.stringify(task.state)}`;
   }
   createdTaskId = task.taskId;
-  if (!scenarioRuntime) {
-    return "scenario runtime unavailable for id-dependent strict fixtures";
-  }
-  registerStrictActionRouteFixtures(
-    scenarioRuntime,
-    idDependentStrictRoutes(createdTaskId),
-  );
+  setIdDependentParameters(createdTaskId);
   return undefined;
 }
 
@@ -580,6 +541,41 @@ function expectHistoryTurn(
 export default scenario({
   id: "deterministic-lifeops-multiday-journey",
   lane: "pr-deterministic",
+  modelFixtures: {
+    mode: "fixtures",
+    fixtures: [
+      ...strictActionRouteModelFixtures(initialStrictRoutes),
+      {
+        name: "scheduled-tasks-create-post-turn-evaluator",
+        match: {
+          modelType: "TEXT_SMALL",
+          input: { includes: createText },
+        },
+        response: {
+          json: {
+            factMemory: { ops: [] },
+            preferences: { ops: [] },
+            relationships: { relationships: [] },
+            identities: { identities: [] },
+            success: {
+              completed: true,
+              reason: "The scheduled task was created successfully.",
+            },
+            ftu_goal_discovery: { goalFound: false, goal: "", confidence: 0 },
+            experiencePatterns: { experiences: [] },
+          },
+        },
+        cardinality: { min: 0, max: 1 },
+      },
+      ...scheduledDispatchModelFixtures([
+        {
+          name: "pharmacy-refill",
+          instruction: createParameters.promptInstructions,
+          cardinality: 2,
+        },
+      ]),
+    ],
+  },
   title:
     "Multi-day journey: snooze override, day-accurate ticks, and recurrence refire across occurrences",
   domain: "lifeops",
@@ -632,9 +628,11 @@ export default scenario({
       assertTurn: expectCreateTurn,
     },
     {
-      kind: "message",
+      kind: "action",
       name: "Monday: snooze it to Wednesday 15:00",
+      actionName: "SCHEDULED_TASKS",
       text: snoozeText,
+      options: { parameters: snoozeParameters },
       responseIncludesAny: ["Snoozed that scheduled item"],
       assertTurn: expectSnoozeTurn,
     },
@@ -647,9 +645,11 @@ export default scenario({
       assertResponse: assertTuesdayTick,
     },
     {
-      kind: "message",
+      kind: "action",
       name: "Tuesday: task is still scheduled with the override intact",
+      actionName: "SCHEDULED_TASKS",
       text: getText,
+      options: { parameters: getParameters },
       responseIncludesAny: ["Found that scheduled item"],
       assertTurn: expectStillScheduledTurn,
     },
@@ -662,9 +662,11 @@ export default scenario({
       assertResponse: assertWednesdayTick,
     },
     {
-      kind: "message",
+      kind: "action",
       name: "Wednesday: complete the fired occurrence",
+      actionName: "SCHEDULED_TASKS",
       text: completeText,
+      options: { parameters: completeParameters },
       responseIncludesAny: ["Marked that scheduled item as completed"],
       assertTurn: expectCompleteTurn,
     },
@@ -677,9 +679,11 @@ export default scenario({
       assertResponse: assertThursdayTick,
     },
     {
-      kind: "message",
+      kind: "action",
       name: "history shows the full multi-day transition chain",
+      actionName: "SCHEDULED_TASKS",
       text: historyText,
+      options: { parameters: historyParameters },
       responseIncludesAny: ["history entr"],
       assertTurn: expectHistoryTurn,
     },

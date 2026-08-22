@@ -5,10 +5,8 @@
 
 import type { ScenarioContext } from "@elizaos/scenario-runner/schema";
 import { scenario } from "@elizaos/scenario-runner/schema";
-import {
-  type RuntimeWithScenarioModelFixtures,
-  registerStrictActionRouteFixtures,
-} from "@elizaos/core/testing";
+import { strictActionRouteModelFixtures } from "./_helpers/strict-action-route-model-fixtures.ts";
+import { postTurnModelFixtures } from "./_helpers/post-turn-model-fixtures.ts";
 
 const guidanceSlug = "scenario-guidance";
 const removableSlug = "scenario-removable";
@@ -127,6 +125,18 @@ async function verifyLocalSideEffects(
 export default scenario({
   id: "deterministic-agent-skills-actions",
   lane: "pr-deterministic",
+  modelFixtures: {
+    mode: "fixtures",
+    fixtures: [
+      ...strictActionRouteModelFixtures(strictRoutes),
+      ...postTurnModelFixtures(
+        strictRoutes.map((route) => ({
+          name: route.actionName,
+          input: route.input,
+        })),
+      ),
+    ],
+  },
   title: "Deterministic agent-skills local actions",
   domain: "scenario-runner",
   tags: ["pr", "deterministic", "zero-cost", "agent-skills"],
@@ -153,10 +163,6 @@ export default scenario({
           service,
           removableSlug,
           "Deterministic removable skill",
-        );
-        registerStrictActionRouteFixtures(
-          runtime as RuntimeWithScenarioModelFixtures,
-          strictRoutes,
         );
         return undefined;
       },

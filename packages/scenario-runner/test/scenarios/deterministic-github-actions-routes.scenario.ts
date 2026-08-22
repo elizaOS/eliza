@@ -5,11 +5,7 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { type IAgentRuntime, ModelType, type Plugin } from "@elizaos/core";
-import {
-  type RuntimeWithScenarioModelFixtures,
-  registerStrictActionRouteFixtures,
-} from "@elizaos/core/testing";
+import { type IAgentRuntime, type Plugin } from "@elizaos/core";
 import type {
   CapturedAction,
   ScenarioContext,
@@ -19,6 +15,8 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 import githubPlugin, {
   GitHubService,
 } from "../../../../plugins/plugin-github/src/index.ts";
+import { strictActionRouteModelFixtures } from "./_helpers/strict-action-route-model-fixtures.ts";
+import { postTurnModelFixtures } from "./_helpers/post-turn-model-fixtures.ts";
 
 const REPO = "octo/repo";
 const ISSUE_TITLE = "Deterministic issue";
@@ -33,18 +31,17 @@ const ISSUE_CREATE_PREVIEW =
 
 type JsonRecord = Record<string, unknown>;
 
-type RuntimeWithGithubScenario = IAgentRuntime &
-  RuntimeWithScenarioModelFixtures & {
-    getServiceLoadPromise?: (serviceType: string) => Promise<unknown>;
-    plugins?: Plugin[];
-    registerPlugin?: (plugin: Plugin) => Promise<void>;
-    routes?: Array<{
-      type?: string;
-      path: string;
-      handler?: unknown;
-      __scenarioGithubRoute?: boolean;
-    }>;
-  };
+type RuntimeWithGithubScenario = IAgentRuntime & {
+  getServiceLoadPromise?: (serviceType: string) => Promise<unknown>;
+  plugins?: Plugin[];
+  registerPlugin?: (plugin: Plugin) => Promise<void>;
+  routes?: Array<{
+    type?: string;
+    path: string;
+    handler?: unknown;
+    __scenarioGithubRoute?: boolean;
+  }>;
+};
 
 type GithubLedgerEntry = {
   method: string;
@@ -261,7 +258,6 @@ async function seedGithub(ctx: ScenarioContext): Promise<string | undefined> {
     const service = await ensureGithubPlugin(runtime);
     service.setClientForTesting("agent", fakeOctokit() as never);
     service.setClientForTesting("user", fakeOctokit() as never);
-    registerGithubStrictFixtures(runtime);
     return undefined;
   } catch (err) {
     return err instanceof Error ? err.message : String(err);
@@ -393,38 +389,6 @@ const strictGithubRoutes = [
     messageToUser: "Triaged 2 unread notification(s)",
   },
 ];
-
-function matchesGithubIssueCreatePreviewEvaluation(value: string): boolean {
-  return (
-    value.includes(
-      "message:user:\ncreate deterministic GitHub issue preview",
-    ) &&
-    value.includes("event:message_handler:") &&
-    value.includes(
-      "Stage 1 router marked this current turn as requiring a tool",
-    )
-  );
-}
-
-function registerGithubStrictFixtures(
-  runtime: RuntimeWithGithubScenario,
-): void {
-  registerStrictActionRouteFixtures(runtime, strictGithubRoutes);
-  runtime.scenarioModelFixtures?.register({
-    name: "route-github-issue-create-preview-evaluator",
-    match: {
-      modelType: ModelType.RESPONSE_HANDLER,
-      input: matchesGithubIssueCreatePreviewEvaluation,
-    },
-    response: {
-      success: false,
-      decision: "FINISH",
-      thought: "The issue-create action produced a confirmation preview.",
-      messageToUser: ISSUE_CREATE_PREVIEW,
-    },
-    times: 1,
-  });
-}
 
 function expectGithubPreview(
   execution: ScenarioTurnExecution,
@@ -818,6 +782,37 @@ async function finalGithubCheck(): Promise<string | undefined> {
 export default scenario({
   id: "deterministic-github-actions-routes",
   lane: "pr-deterministic",
+  modelFixtures: {
+    mode: "fixtures",
+    fixtures: [
+      ...strictActionRouteModelFixtures(strictGithubRoutes),
+      ...postTurnModelFixtures(
+        strictGithubRoutes.map((route) => ({
+          name: route.actionName,
+          input: route.input,
+        })),
+      ),
+      {
+        name: "route-github-issue-create-preview-evaluator",
+        match: {
+          modelType: "RESPONSE_HANDLER",
+          input: {
+            pattern:
+              "(?=.*message:user:\\ncreate deterministic GitHub issue preview)(?=.*event:message_handler:)(?=.*Stage 1 router marked this current turn as requiring a tool)",
+            flags: "s",
+          },
+        },
+        response: {
+          json: {
+            success: false,
+            decision: "FINISH",
+            thought: "The issue-create action produced a confirmation preview.",
+            messageToUser: ISSUE_CREATE_PREVIEW,
+          },
+        },
+      },
+    ],
+  },
   title: "Deterministic GitHub action and route coverage",
   domain: "scenario-runner",
   tags: ["pr", "deterministic", "zero-cost", "github", "routes"],

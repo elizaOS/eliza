@@ -14,6 +14,10 @@ export default scenario({
   domain: "voice",
   tags: ["deterministic", "voice"],
   lane: "pr-deterministic",
+  modelFixtures: {
+    mode: "fixtures",
+    fixtures: [],
+  },
   turns: [
     {
       name: "multi-speaker voice scenario",

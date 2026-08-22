@@ -30,18 +30,17 @@
  * acted-on class.
  */
 
-import { ModelType } from "@elizaos/core";
-import {
-  type RuntimeWithScenarioModelFixtures,
-  registerStrictActionRouteFixtures,
-  type StrictActionRouteFixture,
-} from "@elizaos/core/testing";
 import type {
   CapturedAction,
   ScenarioContext,
   ScenarioTurnExecution,
 } from "@elizaos/scenario-runner/schema";
 import { scenario } from "@elizaos/scenario-runner/schema";
+import {
+  strictActionRouteModelFixtures,
+  type StrictScenarioActionRoute,
+} from "./_helpers/strict-action-route-model-fixtures.ts";
+import { postTurnModelFixtures } from "./_helpers/post-turn-model-fixtures.ts";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -142,7 +141,7 @@ const composeAgainText = "Run my morning brief again";
 // (`promoteSubactionsToActions` in core): picking the plain BRIEF umbrella
 // tool triggers a second subaction-narrowing planner pass, which a strict
 // one-fixture-per-turn scenario deliberately does not model.
-const strictRoutes: StrictActionRouteFixture[] = [
+const strictRoutes: StrictScenarioActionRoute[] = [
   {
     actionName: "BRIEF_RECALIBRATE",
     input: recalibrateText,
@@ -252,19 +251,6 @@ async function seedIgnorePattern(
     return `expected finalizeExpiredBriefItemEngagements to close exactly 4 windows, closed ${finalized}`;
   }
 
-  const fixturesRuntime = runtime as RuntimeWithScenarioModelFixtures;
-  registerStrictActionRouteFixtures(fixturesRuntime, strictRoutes);
-  fixturesRuntime.scenarioModelFixtures?.register({
-    name: `${SCENARIO_ID}-morning-narrative`,
-    match: {
-      modelType: ModelType.TEXT_LARGE,
-      prompt: (prompt: string) =>
-        prompt.startsWith("You are composing the owner's morning briefing"),
-    },
-    response:
-      "Quiet morning. Nothing high-consequence is on deck; newsletter digests stay demoted until you restore them.",
-    times: { min: 0, max: 2 },
-  });
   return undefined;
 }
 
@@ -435,6 +421,31 @@ async function expectLedgerEvidence(
 export default scenario({
   id: "deterministic-lifeops-brief-recalibrate",
   lane: "pr-deterministic",
+  modelFixtures: {
+    mode: "fixtures",
+    fixtures: [
+      ...strictActionRouteModelFixtures(strictRoutes),
+      ...postTurnModelFixtures(
+        strictRoutes.map((route) => ({
+          name: route.actionName,
+          input: route.input,
+        })),
+      ),
+      {
+        name: `${SCENARIO_ID}-morning-narrative`,
+        match: {
+          modelType: "TEXT_LARGE",
+          prompt: {
+            pattern: "^You are composing the owner's morning briefing",
+          },
+        },
+        response: {
+          text: "Quiet morning. Nothing high-consequence is on deck; newsletter digests stay demoted until you restore them.",
+        },
+        cardinality: { min: 0, max: 2 },
+      },
+    ],
+  },
   title: "Deterministic BRIEF seeded ignore-pattern recalibration journey",
   domain: "lifeops",
   tags: ["pr", "deterministic", "zero-cost", "lifeops", "brief"],

@@ -34,6 +34,7 @@
 
 import type { ScenarioContext } from "@elizaos/scenario-runner/schema";
 import { scenario } from "@elizaos/scenario-runner/schema";
+import { scheduledDispatchModelFixtures } from "./_helpers/scheduled-dispatch-model-fixtures.ts";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -424,6 +425,50 @@ async function assertStateLog(
 export default scenario({
   id: "deterministic-lifeops-dispatch-retry",
   lane: "pr-deterministic",
+  modelFixtures: {
+    mode: "fixtures",
+    fixtures: [
+      ...scheduledDispatchModelFixtures([
+        {
+          name: "dispatch-retry-probe",
+          instruction: PROBE_PROMPT,
+          cardinality: 2,
+          titleCardinality: 0,
+        },
+      ]),
+      {
+        name: "dispatch-retry-priority-scoring",
+        match: {
+          modelType: "TEXT_SMALL",
+          prompt: {
+            includes: "Score each inbox message. For each one decide:",
+          },
+        },
+        response: {
+          text: JSON.stringify({
+            scores: Array.from({ length: 10 }, () => ({
+              score: 0,
+              category: "casual",
+              flags: [],
+            })),
+          }),
+        },
+        cardinality: { min: 0, max: 1 },
+      },
+      {
+        name: "dispatch-retry-checkin-summary",
+        match: {
+          modelType: "TEXT_LARGE",
+          prompt: {
+            pattern:
+              "^Write the owner's (?:morning personal-assistant intro|night personal-assistant closeout) summary\\.",
+          },
+        },
+        response: { text: "No urgent owner updates." },
+        cardinality: { min: 0, max: 3 },
+      },
+    ],
+  },
   title:
     "Typed dispatch failure parks the fire for retry, then delivers at the retry instant",
   domain: "lifeops",

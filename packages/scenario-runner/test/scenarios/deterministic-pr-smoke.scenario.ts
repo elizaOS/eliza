@@ -2,7 +2,6 @@
  * Fast keyless smoke covering the core scenario surfaces (views, actions, routing)
  * in one pass. Runs on the pr-deterministic lane under the model provider.
  */
-import { ModelType } from "@elizaos/core";
 import type {
   CapturedAction,
   ScenarioTurnExecution,
@@ -14,13 +13,6 @@ import {
   registerAppControlHttpHandler,
   resetAppControlHttpLoopback,
 } from "./_helpers/app-control-http-loopback";
-import { matchesScenarioInput } from "@elizaos/core/testing";
-
-type RuntimeWithScenarioModelFixtures = {
-  scenarioModelFixtures?: {
-    register: (...fixtures: Array<Record<string, unknown>>) => void;
-  };
-};
 
 const views = [
   {
@@ -127,6 +119,43 @@ function expectViewsAction(
 export default scenario({
   id: "deterministic-pr-smoke",
   lane: "pr-deterministic",
+  modelFixtures: {
+    mode: "fixtures",
+    fixtures: [
+      {
+        name: "pr-smoke-deterministic-direct-reply",
+        match: {
+          modelType: "TEXT_SMALL",
+          input: { includes: "hello deterministic provider" },
+        },
+        response: {
+          text: "deterministic-test-response: hello deterministic provider",
+        },
+        cardinality: { min: 0, max: 1 },
+      },
+      {
+        name: "pr-smoke-deterministic-router-reply",
+        match: {
+          modelType: "RESPONSE_HANDLER",
+          input: { includes: "hello deterministic provider" },
+        },
+        response: {
+          json: {
+            shouldRespond: "RESPOND",
+            contexts: ["simple"],
+            intents: ["hello deterministic provider"],
+            replyText:
+              "deterministic-test-response: hello deterministic provider",
+            candidateActionNames: [],
+            facts: [],
+            relationships: [],
+            addressedTo: [],
+            emotion: "none",
+          },
+        },
+      },
+    ],
+  },
   title: "Deterministic PR scenario smoke",
   domain: "scenario-runner",
   tags: ["pr", "deterministic", "zero-cost"],
@@ -140,46 +169,6 @@ export default scenario({
       name: "local view loopback API for deterministic shell actions",
       apply: (ctx) => {
         resetAppControlHttpLoopback();
-        const runtime = ctx.runtime as RuntimeWithScenarioModelFixtures;
-        runtime.scenarioModelFixtures?.register(
-          // The simple-reply path answers straight from the stage-1 router
-          // response (`replyText`); no follow-up TEXT_SMALL call fires. The
-          // router fixture is therefore the required one, and the direct
-          // TEXT_SMALL fixture stays registered only as an optional guard so
-          // a regression that reintroduces the second call still resolves
-          // deterministically instead of failing strict-mode.
-          {
-            name: "pr-smoke-deterministic-direct-reply",
-            match: {
-              modelType: ModelType.TEXT_SMALL,
-              input: "hello deterministic provider",
-            },
-            response: "deterministic-test-response: hello deterministic provider",
-            required: false,
-            times: { min: 0, max: 1 },
-          },
-          {
-            name: "pr-smoke-deterministic-router-reply",
-            match: {
-              modelType: ModelType.RESPONSE_HANDLER,
-              input: matchesScenarioInput("hello deterministic provider"),
-              toolName: "HANDLE_RESPONSE",
-            },
-            response: {
-              shouldRespond: "RESPOND",
-              contexts: ["simple"],
-              intents: ["hello deterministic provider"],
-              replyText:
-                "deterministic-test-response: hello deterministic provider",
-              candidateActionNames: [],
-              facts: [],
-              relationships: [],
-              addressedTo: [],
-              emotion: "none",
-            },
-            times: 1,
-          },
-        );
         registerAppControlHttpHandler((request) => {
           if (!request.pathname.startsWith("/api/views")) return undefined;
           if (request.method === "GET" && request.pathname === "/api/views") {

@@ -3,10 +3,8 @@
  * pipeline to a reply. Runs on the pr-deterministic lane under the model provider;
  * live-inbound-attachment proves a real model reads and summarizes it.
  */
-import { ModelType } from "@elizaos/core";
 import type { ScenarioTurnExecution } from "@elizaos/scenario-runner/schema";
 import { scenario } from "@elizaos/scenario-runner/schema";
-import { matchesScenarioInput } from "@elizaos/core/testing";
 
 // Deterministic INBOUND attachment coverage (#8876): a user message that
 // carries a `Media` attachment must flow end-to-end through a real AgentRuntime
@@ -22,46 +20,35 @@ const noteDataUrl = `data:text/plain;base64,${Buffer.from(noteText).toString("ba
 const attachmentInput = "Take a look at the attached note and reply.";
 const replyText = "Thanks — I've got your attached note.";
 
-type RuntimeWithScenarioModelFixtures = {
-  scenarioModelFixtures?: {
-    register: (...fixtures: Array<Record<string, unknown>>) => void;
-  };
-};
-
 export default scenario({
   id: "deterministic-inbound-attachment-actions",
   lane: "pr-deterministic",
-  title:
-    "Deterministic inbound attachment flows through the pipeline to a reply",
-  domain: "scenario-runner",
-  tags: ["pr", "deterministic", "zero-cost", "attachments", "files"],
-  isolation: "shared-runtime",
-  seed: [
-    {
-      type: "custom",
-      name: "register the deterministic reply for the inbound attachment turn",
-      apply: (ctx) => {
-        const runtime = ctx.runtime as RuntimeWithScenarioModelFixtures;
-        runtime.scenarioModelFixtures?.register({
-          name: "inbound-attachment-stage1-direct-reply",
-          match: {
-            modelType: ModelType.RESPONSE_HANDLER,
-            input: matchesScenarioInput(attachmentInput),
-            toolName: "HANDLE_RESPONSE",
-          },
-          response: {
+  modelFixtures: {
+    mode: "fixtures",
+    fixtures: [
+      {
+        name: "inbound-attachment-stage1-direct-reply",
+        match: {
+          modelType: "RESPONSE_HANDLER",
+          input: { includes: attachmentInput },
+        },
+        response: {
+          json: {
             contexts: ["simple"],
             intents: ["read attached note"],
             replyText,
             threadOps: [],
             candidateActionNames: [],
           },
-          times: "any",
-        });
-        return undefined;
+        },
       },
-    },
-  ],
+    ],
+  },
+  title:
+    "Deterministic inbound attachment flows through the pipeline to a reply",
+  domain: "scenario-runner",
+  tags: ["pr", "deterministic", "zero-cost", "attachments", "files"],
+  isolation: "shared-runtime",
   rooms: [
     {
       id: "main",
