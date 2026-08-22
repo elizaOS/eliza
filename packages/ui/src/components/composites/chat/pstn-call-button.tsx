@@ -24,9 +24,32 @@ interface CurrentUserResponse {
 
 interface StartCallResponse {
   success: boolean;
+  callSid: string;
   status: string;
   to: string;
 }
+
+interface CallStatusResponse extends StartCallResponse {
+  answeredAt: string | null;
+  terminalAt: string | null;
+  hangupRequestedAt: string | null;
+}
+
+interface ActiveCall {
+  callSid: string;
+  status: string;
+  to: string;
+  hangupIdempotencyKey: string;
+}
+
+const TERMINAL_CALL_STATUSES = new Set([
+  "completed",
+  "busy",
+  "failed",
+  "no-answer",
+  "canceled",
+  "provider-error",
+]);
 
 function apiErrorMessage(error: unknown): string {
   if (
@@ -54,16 +77,51 @@ export function PstnCallButton({ disabled = false }: { disabled?: boolean }) {
   const [open, setOpen] = useState(false);
   const [loadingProfile, setLoadingProfile] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [hangingUp, setHangingUp] = useState(false);
   const [phoneNumber, setPhoneNumber] = useState("");
   const [phoneVerified, setPhoneVerified] = useState(false);
+  const [callIdempotencyKey, setCallIdempotencyKey] = useState("");
+  const [activeCall, setActiveCall] = useState<ActiveCall | null>(null);
+  const [statusError, setStatusError] = useState("");
 
   useEffect(() => setAvailable(isCallMeAvailable()), []);
+
+  useEffect(() => {
+    if (!activeCall || TERMINAL_CALL_STATUSES.has(activeCall.status)) return;
+    let cancelled = false;
+    const refresh = async () => {
+      try {
+        const result = await api<CallStatusResponse>(
+          `/api/v1/twilio/voice/calls/${encodeURIComponent(activeCall.callSid)}`,
+        );
+        if (cancelled) return;
+        setStatusError("");
+        setActiveCall((current) =>
+          current?.callSid === result.callSid
+            ? { ...current, status: result.status, to: result.to }
+            : current,
+        );
+      } catch (error) {
+        // error-policy:J4 status polling failure is shown in the active-call
+        // dialog while the explicit hangup control remains available.
+        if (!cancelled) setStatusError(apiErrorMessage(error));
+      }
+    };
+    const interval = window.setInterval(() => void refresh(), 2_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [activeCall]);
 
   const handleOpenChange = async (nextOpen: boolean) => {
     setOpen(nextOpen);
     if (!nextOpen) return;
+    if (activeCall) return;
     setPhoneNumber("");
     setPhoneVerified(false);
+    setCallIdempotencyKey(crypto.randomUUID());
+    setStatusError("");
     setLoadingProfile(true);
     try {
       const user = await api<CurrentUserResponse>("/api/v1/user");
@@ -77,24 +135,63 @@ export function PstnCallButton({ disabled = false }: { disabled?: boolean }) {
   };
 
   const handleCall = async () => {
-    if (submitting || !phoneVerified || !phoneNumber.trim()) return;
+    if (
+      submitting ||
+      !phoneVerified ||
+      !phoneNumber.trim() ||
+      !callIdempotencyKey
+    )
+      return;
     setSubmitting(true);
     try {
       const result = await api<StartCallResponse>(
         "/api/v1/twilio/voice/calls",
         {
           method: "POST",
-          headers: { "Idempotency-Key": crypto.randomUUID() },
+          headers: { "Idempotency-Key": callIdempotencyKey },
           json: { to: phoneNumber.trim() },
         },
       );
       toast.success(`Eliza is calling ${result.to}`);
-      setOpen(false);
+      setActiveCall({
+        callSid: result.callSid,
+        status: result.status,
+        to: result.to,
+        hangupIdempotencyKey: crypto.randomUUID(),
+      });
     } catch (error) {
       toast.error(apiErrorMessage(error));
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const handleHangup = async () => {
+    if (!activeCall || hangingUp) return;
+    setHangingUp(true);
+    try {
+      const result = await api<CallStatusResponse>(
+        `/api/v1/twilio/voice/calls/${encodeURIComponent(activeCall.callSid)}`,
+        {
+          method: "DELETE",
+          headers: { "Idempotency-Key": activeCall.hangupIdempotencyKey },
+        },
+      );
+      setActiveCall((current) =>
+        current ? { ...current, status: result.status } : current,
+      );
+      toast.success("Hangup requested");
+    } catch (error) {
+      toast.error(apiErrorMessage(error));
+    } finally {
+      setHangingUp(false);
+    }
+  };
+
+  const handleNewCall = () => {
+    setActiveCall(null);
+    setCallIdempotencyKey(crypto.randomUUID());
+    setStatusError("");
   };
 
   if (!available) return null;
@@ -118,55 +215,94 @@ export function PstnCallButton({ disabled = false }: { disabled?: boolean }) {
           <DialogHeader>
             <DialogTitle>Call me</DialogTitle>
             <DialogDescription>
-              Eliza will call your verified account phone.
+              Eliza will call your verified account phone. When you answer,
+              Eliza identifies itself as an AI assistant using an AI-generated
+              voice.
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-2">
-            <Label htmlFor="eliza-call-me-number">Phone number</Label>
-            <Input
-              id="eliza-call-me-number"
-              inputMode="tel"
-              autoComplete="tel"
-              placeholder="+1 415 555 0100"
-              value={phoneNumber}
-              readOnly
-              disabled={loadingProfile || submitting}
-            />
-            {!loadingProfile && !phoneVerified ? (
-              <p className="text-sm text-danger">
-                Add and verify this phone number in account settings before
-                requesting a call.
-              </p>
-            ) : (
-              <p className="text-sm text-muted">
-                For your security, the number must match your verified account
-                phone.
-              </p>
-            )}
-          </div>
-          <DialogFooter>
-            <Button
-              variant="ghost"
-              onClick={() => setOpen(false)}
-              disabled={submitting}
-            >
-              Cancel
-            </Button>
-            <Button
-              onClick={() => void handleCall()}
-              disabled={
-                loadingProfile ||
-                submitting ||
-                !phoneVerified ||
-                !phoneNumber.trim()
-              }
-            >
-              {submitting ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              ) : null}
-              Call me
-            </Button>
-          </DialogFooter>
+          {activeCall ? (
+            <>
+              <div className="space-y-2" aria-live="polite">
+                <p className="text-sm">Calling {activeCall.to}</p>
+                <p className="text-sm text-muted">
+                  Status: {activeCall.status}
+                </p>
+                {statusError ? (
+                  <p className="text-sm text-danger">
+                    Status unavailable: {statusError}
+                  </p>
+                ) : null}
+              </div>
+              <DialogFooter>
+                {TERMINAL_CALL_STATUSES.has(activeCall.status) ? (
+                  <Button onClick={handleNewCall}>Call again</Button>
+                ) : (
+                  <Button
+                    variant="destructive"
+                    onClick={() => void handleHangup()}
+                    disabled={hangingUp}
+                  >
+                    {hangingUp ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : null}
+                    Hang up
+                  </Button>
+                )}
+                <Button variant="ghost" onClick={() => setOpen(false)}>
+                  Close
+                </Button>
+              </DialogFooter>
+            </>
+          ) : (
+            <>
+              <div className="space-y-2">
+                <Label htmlFor="eliza-call-me-number">Phone number</Label>
+                <Input
+                  id="eliza-call-me-number"
+                  inputMode="tel"
+                  autoComplete="tel"
+                  placeholder="+1 415 555 0100"
+                  value={phoneNumber}
+                  readOnly
+                  disabled={loadingProfile || submitting}
+                />
+                {!loadingProfile && !phoneVerified ? (
+                  <p className="text-sm text-danger">
+                    Add and verify this phone number in account settings before
+                    requesting a call.
+                  </p>
+                ) : (
+                  <p className="text-sm text-muted">
+                    For your security, the number must match your verified
+                    account phone.
+                  </p>
+                )}
+              </div>
+              <DialogFooter>
+                <Button
+                  variant="ghost"
+                  onClick={() => setOpen(false)}
+                  disabled={submitting}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={() => void handleCall()}
+                  disabled={
+                    loadingProfile ||
+                    submitting ||
+                    !phoneVerified ||
+                    !phoneNumber.trim()
+                  }
+                >
+                  {submitting ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : null}
+                  Call me
+                </Button>
+              </DialogFooter>
+            </>
+          )}
         </DialogContent>
       </Dialog>
     </>
