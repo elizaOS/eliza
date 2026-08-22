@@ -1257,6 +1257,7 @@ export function TaskInspector({
       label: closeDetailsLabel,
       group: "orchestrator-inspector",
       description: "Close the task details panel",
+      clickable: Boolean(onClose),
     });
 
   return (
