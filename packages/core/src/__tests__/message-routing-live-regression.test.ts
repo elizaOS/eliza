@@ -718,10 +718,14 @@ describe("live routing regressions", () => {
 				inferDirectCurrentRequestCandidateActions(actions, text),
 			).not.toContain("TASKS");
 		}
-		// A computed deliverable still gets built and run.
+		// A computed deliverable still gets built and run — however the ask is
+		// phrased: "just prints" names the user's scope, not a constant object.
 		for (const text of [
 			"write me a python script that picks a random card from a deck and prints it",
 			"write a python script that prints the current bitcoin price",
+			"write a script that just prints the current bitcoin price",
+			"write a python script that just prints the contents of /etc/hosts",
+			"make a python script that only outputs the primes under a million",
 		]) {
 			expect(inferDirectCurrentRequestCandidateActions(actions, text)).toEqual([
 				"TASKS",

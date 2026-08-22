@@ -689,6 +689,27 @@ function num(value: unknown): number {
   return typeof value === "number" && Number.isFinite(value) ? value : 0;
 }
 
+function withoutInterruptStamp(
+  metadata: unknown,
+): Record<string, unknown> | undefined {
+  if (!isRecord(metadata)) return undefined;
+  const { interruptReason: _r, interruptedAt: _a, ...rest } = metadata;
+  return rest;
+}
+
+/** The task was stopped by the user (not the stuck-task reaper): a late
+ * attach or completion must not resurrect it. Stamped by interruptTask. */
+function userInterrupted(task: {
+  status: string;
+  metadata?: unknown;
+}): boolean {
+  if (task.status !== "interrupted") return false;
+  const reason = isRecord(task.metadata)
+    ? task.metadata.interruptReason
+    : undefined;
+  return typeof reason === "string" && reason.startsWith("user");
+}
+
 /**
  * Coerce the persisted `metadata.attemptReflections` (free-form JSON) back into
  * typed {@link AttemptReflection}s, dropping any malformed entries. See #8899.
@@ -1891,6 +1912,29 @@ export class OrchestratorTaskService extends Service {
             { taskId, sessionId },
           );
         }
+        const completedDoc = await this.store.getTask(taskId);
+        if (completedDoc && userInterrupted(completedDoc.task)) {
+          // The user cancelled; the stopped child's final turn still reports
+          // a completion. `interrupted + completion_reported → validating`
+          // would verify and relay "it's ready" for a build the user stopped.
+          await this.store.addEvent({
+            id: randomUUID(),
+            taskId,
+            sessionId,
+            eventType: "completion_after_interrupt",
+            summary:
+              "Completion reported after the user stopped the task; not verified or relayed.",
+            data: { reason: "user_interrupt" },
+            timestamp: Date.now(),
+            createdAt: nowIso(),
+          });
+          this.log("info", "completion after user interrupt: ignored", {
+            taskId,
+            sessionId,
+          });
+          this.emitChange(taskId);
+          break;
+        }
         await this.advanceTaskStatus(taskId, "completion_reported");
         // Cross-surface arbitration for the digest emitter: stamp this
         // completion on the supervisor BEFORE its next tick, so the room's
@@ -3062,6 +3106,14 @@ export class OrchestratorTaskService extends Service {
   private async advanceTaskLiveness(taskId: string): Promise<void> {
     const doc = await this.store.getTask(taskId);
     if (!doc || doc.task.paused) return;
+    if (userInterrupted(doc.task)) {
+      // The user stopped this task; only an explicit restart/reopen revives
+      // it. The session is indexed, the create path stops it on return.
+      this.log("info", "attach on a user-interrupted task: not resurrecting", {
+        taskId,
+      });
+      return;
+    }
     await this.advanceTaskStatus(
       taskId,
       doc.task.status === "interrupted" ? "restarted" : "session_active",
@@ -4282,6 +4334,7 @@ export class OrchestratorTaskService extends Service {
       status,
       archivedAt: null,
       closedAt: null,
+      metadata: withoutInterruptStamp(doc.task.metadata),
     });
     return this.getTask(taskId);
   }
@@ -4400,9 +4453,43 @@ export class OrchestratorTaskService extends Service {
             : {}),
           [sessionId]: "passed",
         };
-        const remaining = laneSessionIds.filter(
-          (id) => verdicts[id] !== "passed",
-        );
+        // Pending lanes have NO verdict; a parked lane (at the attempt cap)
+        // has one and is not awaited — a sibling's pass used to leave the
+        // task `validating` forever over a parked lane.
+        const remaining = laneSessionIds.filter((id) => !verdicts[id]);
+        const parked = laneSessionIds.filter((id) => verdicts[id] === "parked");
+        if (remaining.length === 0 && parked.length > 0) {
+          await this.store.addEvent({
+            id: randomUUID(),
+            taskId,
+            sessionId,
+            eventType: "lane_validation_passed",
+            summary: `${result.summary ?? "Lane verified."} (${parked.length} lane(s) parked for the user; task stays parked)`,
+            data: {
+              evidence: result.evidence ?? "",
+              verifier: result.verifier ?? "orchestrator",
+              parkedLanes: parked,
+            },
+            timestamp: Date.now(),
+            createdAt: nowIso(),
+          });
+          await this.store.updateTask(taskId, {
+            metadata: { ...(doc.task.metadata ?? {}), laneVerdicts: verdicts },
+          });
+          // Back to the park the sibling's completion lifted it out of.
+          await this.advanceTaskStatus(taskId, "awaiting_user");
+          (
+            this.runtime.getService("ACPX_SUB_AGENT_ROUTER") as {
+              releaseDeferredCompletionRelay?: (
+                taskId: string,
+                verdict: "passed" | "failed",
+                sessionId?: string,
+              ) => void;
+            } | null
+          )?.releaseDeferredCompletionRelay?.(taskId, "passed", sessionId);
+          this.emitChange(taskId);
+          return this.getTask(taskId);
+        }
         if (remaining.length > 0) {
           await this.store.addEvent({
             id: randomUUID(),
@@ -4847,7 +4934,7 @@ export class OrchestratorTaskService extends Service {
       ) {
         return;
       }
-      const attempts = num(doc.task.metadata?.autoVerifyAttempts);
+      const attempts = this.laneAutoVerifyAttempts(doc, sessionId);
       const parse = parseCompletionEnvelope(rawCompletion);
 
       // A manufactured input is never a pass and never coached further: the
@@ -5391,6 +5478,22 @@ export class OrchestratorTaskService extends Service {
     }
   }
 
+  /** Prior failed-verdict count for THIS lane: lane-keyed on a multi-lane
+   * task, the task-level counter otherwise. */
+  private laneAutoVerifyAttempts(
+    doc: OrchestratorTaskDocument,
+    sessionId: string,
+  ): number {
+    const metadata = doc.task.metadata;
+    if (this.laneScope(doc, sessionId).laneSessionIds.length > 1) {
+      const byLane = isRecord(metadata?.laneAutoVerifyAttempts)
+        ? (metadata.laneAutoVerifyAttempts as Record<string, unknown>)
+        : {};
+      return num(byLane[sessionId]);
+    }
+    return num(metadata?.autoVerifyAttempts);
+  }
+
   /**
    * Shared re-prompt / escalation path for every failed completion verdict — the
    * remote-ground-truth gate, malformed-envelope gate (#8895), independent-verify
@@ -5424,6 +5527,41 @@ export class OrchestratorTaskService extends Service {
       missing,
       attempt,
     } = args;
+    const doc = await this.store.getTask(taskId);
+    if (!doc) {
+      // The task was deleted concurrently (e.g. the user cancelled during
+      // auto-verify). Bail: there is nothing to re-engage, and writing partial
+      // metadata back with `...doc?.task.metadata` spreading to `{}` would
+      // clobber the completion envelope this very re-read exists to preserve.
+      return;
+    }
+    if (TERMINAL_OR_INTERRUPTED_TASK_STATUSES.has(doc.task.status)) {
+      // The user cancelled (or an operator closed the task) while the judge
+      // was running: a corrective re-prompt would reactivate the stopped
+      // worker and resume the build the user just stopped; a park notice
+      // would announce a build nobody is waiting for.
+      this.log("info", "skipping re-engage: task no longer in flight", {
+        taskId,
+        sessionId,
+        status: doc.task.status,
+        verifier,
+      });
+      return;
+    }
+    // This lane's completion is judged failed either way: drop its held
+    // relay now. Left armed, the router's 5-minute fallback released it as
+    // "passed" mid-coaching-lap and the original failed completion posted
+    // as ready.
+    (
+      this.runtime.getService("ACPX_SUB_AGENT_ROUTER") as {
+        releaseDeferredCompletionRelay?: (
+          taskId: string,
+          verdict: "passed" | "failed",
+          sessionId?: string,
+        ) => void;
+      } | null
+    )?.releaseDeferredCompletionRelay?.(taskId, "failed", sessionId);
+    const multiLane = this.laneScope(doc, sessionId).laneSessionIds.length > 1;
     if (attempt >= MAX_AUTO_VERIFY_ATTEMPTS) {
       // Stop the loop: park for a human rather than re-prompting forever.
       await this.store.addEvent({
@@ -5436,6 +5574,25 @@ export class OrchestratorTaskService extends Service {
         timestamp: Date.now(),
         createdAt: nowIso(),
       });
+      if (multiLane) {
+        // Per-lane park verdict: the sibling's pass must not close the task
+        // over this lane, and must restore the park when it is the last one.
+        const parkedDoc = (await this.store.getTask(taskId)) ?? doc;
+        await this.store.updateTask(taskId, {
+          metadata: {
+            ...(parkedDoc.task.metadata ?? {}),
+            laneVerdicts: {
+              ...(isRecord(parkedDoc.task.metadata?.laneVerdicts)
+                ? (parkedDoc.task.metadata.laneVerdicts as Record<
+                    string,
+                    string
+                  >)
+                : {}),
+              [sessionId]: "parked",
+            },
+          },
+        });
+      }
       await this.advanceTaskStatus(taskId, "awaiting_user");
       // Stamp the park time as durable task metadata. The forwarder's
       // waiting_on_user gate discriminates VERIFY parks (drop forwards; the
@@ -5463,36 +5620,35 @@ export class OrchestratorTaskService extends Service {
     }
     // Persist the bumped attempt counter + a reflexion post-mortem first, so a
     // redelivered task_complete can't double-count and the next respawn (#8899)
-    // can replay the gap. Re-read the doc so an upstream metadata write in this
-    // same pass (e.g. the valid-envelope stamp) is preserved.
-    const doc = await this.store.getTask(taskId);
-    if (!doc) {
-      // The task was deleted concurrently (e.g. the user cancelled during
-      // auto-verify). Bail: there is nothing to re-engage, and writing partial
-      // metadata back with `...doc?.task.metadata` spreading to `{}` would
-      // clobber the completion envelope this very re-read exists to preserve.
-      return;
-    }
-    if (TERMINAL_OR_INTERRUPTED_TASK_STATUSES.has(doc.task.status)) {
-      // The user cancelled (or an operator closed the task) while the judge
-      // was running: a corrective re-prompt would reactivate the stopped
-      // worker and resume the build the user just stopped.
-      this.log("info", "skipping re-engage: task no longer in flight", {
-        taskId,
-        sessionId,
-        status: doc.task.status,
-        verifier,
-      });
-      return;
-    }
+    // can replay the gap. `doc` was re-read above so an upstream metadata
+    // write in this same pass (e.g. the valid-envelope stamp) is preserved.
     const attemptReflections = [
       ...readAttemptReflections(doc.task.metadata),
       { attempt: attempt + 1, missing, summary },
     ].slice(-MAX_ATTEMPT_REFLECTIONS);
+    // Lane-keyed budget: three failures of lane A must not park lane B on
+    // its first. The task-level counter stays the max for single-lane
+    // readers and the UI.
+    const laneAttempts = {
+      ...(isRecord(doc.task.metadata?.laneAutoVerifyAttempts)
+        ? (doc.task.metadata.laneAutoVerifyAttempts as Record<string, number>)
+        : {}),
+      [sessionId]: attempt + 1,
+    };
+    const laneVerdicts = isRecord(doc.task.metadata?.laneVerdicts)
+      ? { ...(doc.task.metadata.laneVerdicts as Record<string, string>) }
+      : {};
+    // A coached lane is pending again: its next completion re-verifies.
+    delete laneVerdicts[sessionId];
     await this.store.updateTask(taskId, {
       metadata: {
         ...doc.task.metadata,
-        autoVerifyAttempts: attempt + 1,
+        autoVerifyAttempts: Math.max(
+          num(doc.task.metadata?.autoVerifyAttempts),
+          attempt + 1,
+        ),
+        laneAutoVerifyAttempts: laneAttempts,
+        laneVerdicts,
         attemptReflections,
       },
     });
@@ -6099,6 +6255,7 @@ export class OrchestratorTaskService extends Service {
       archivedAt: null,
       closedAt: null,
       status: nextTaskStatus(current.task.status, "restarted"),
+      metadata: withoutInterruptStamp(current.task.metadata),
     });
     return this.getTask(taskId);
   }
@@ -6930,6 +7087,17 @@ export class OrchestratorTaskService extends Service {
       return false;
     }
     await this.advanceTaskStatus(taskId, "interrupted");
+    // Durable reason: advanceTaskLiveness self-heals a REAPER interrupt on
+    // the next attach (restarted), but a user stop must stick — a lane whose
+    // spawn returned after the cancel was attaching and resurrecting the
+    // task to active.
+    await this.store.updateTask(taskId, {
+      metadata: {
+        ...(doc.task.metadata ?? {}),
+        interruptReason: reason,
+        interruptedAt: nowIso(),
+      },
+    });
     await this.store.addEvent({
       id: randomUUID(),
       taskId,

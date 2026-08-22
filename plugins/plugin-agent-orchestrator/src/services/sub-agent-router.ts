@@ -1186,6 +1186,7 @@ export class SubAgentRouter extends Service {
       !this.releasingDeferredRelaySessions.has(sessionId)
     ) {
       const deferTaskId = await this.completionRelayDeferralTaskId(sessionId);
+      if (deferTaskId === "drop") return;
       if (deferTaskId) {
         // Keyed per lane: two lanes of one task defer independently, and a
         // lane's verdict releases only its own relay (live 2026-08-22: the
@@ -2305,7 +2306,7 @@ export class SubAgentRouter extends Service {
    *  body decides internally is covered by the release fallback timer. */
   private async completionRelayDeferralTaskId(
     sessionId: string,
-  ): Promise<string | null> {
+  ): Promise<string | null | "drop"> {
     if (process.env.ELIZA_RELAY_AFTER_VERIFY === "0") return null;
     if (!shouldAutoVerifyGoal()) return null;
     const tasks = this.runtime.getService("ORCHESTRATOR_TASK_SERVICE") as {
@@ -2313,6 +2314,7 @@ export class SubAgentRouter extends Service {
         id?: string;
         status?: string;
         acceptanceCriteria?: string[];
+        metadata?: Record<string, unknown> | null;
       } | null>;
     } | null;
     if (!tasks?.getTaskForSession) return null;
@@ -2325,6 +2327,20 @@ export class SubAgentRouter extends Service {
           sessionId,
         });
         return null;
+      }
+      const interruptReason = record.metadata?.interruptReason;
+      if (
+        record.status === "interrupted" &&
+        typeof interruptReason === "string" &&
+        interruptReason.startsWith("user")
+      ) {
+        // The user stopped the task; the child's last turn still reported a
+        // completion. "it's ready" for a cancelled build is never right.
+        this.log("info", "completion relay dropped: task stopped by user", {
+          sessionId,
+          taskId: record.id,
+        });
+        return "drop";
       }
       if (
         ["done", "parked", "failed", "cancelled", "archived"].includes(

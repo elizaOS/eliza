@@ -11625,6 +11625,22 @@ function looksLikeExplicitDelegationRequest(text: string): boolean {
 	);
 }
 
+const COMPUTED_OBJECT_RE =
+	/[\/\\:@]|https?:|\d|\b(?:current|latest|live|today|now|price|prices|contents?|weather|time|date|random|primes?|fibonacci|under|between|from|of|in|at|each|every|all|list|first|last|largest|smallest|sum|count|number|result|output|value|from|api|file|url|env|variable)\b/iu;
+
+/** The object of "just prints X" is a constant when it is a quoted literal
+ * or at most four bare words naming nothing computed. */
+function isConstantPrintedObject(object: string): boolean {
+	const trimmed = object.trim().replace(/[.!?]+$/u, "");
+	if (!trimmed) return false;
+	if (/^(?:["'`“‘]).+/u.test(trimmed)) return true;
+	const head =
+		trimmed.split(/\s*(?:,|;|\band\b|\bthen\b|\bwhen\b|\bif\b)\s*/iu)[0] ?? "";
+	const words = head.split(/\s+/u).filter(Boolean);
+	if (words.length === 0 || words.length > 4) return false;
+	return !COMPUTED_OBJECT_RE.test(head);
+}
+
 function looksLikeInlineCodeSnippetRequest(text: string): boolean {
 	const normalized = text.toLowerCase();
 	if (
@@ -11639,10 +11655,17 @@ function looksLikeInlineCodeSnippetRequest(text: string): boolean {
 	// it through a coding sub-agent spent a 27s build and the user never saw
 	// the one line (live 2026-08-22). Scoped by the just/only/simply marker so
 	// computed deliverables ("prints a random card") still get built and run.
-	const constantOutputScript =
-		/\b(?:script|program)\b[\s\S]{0,40}\b(?:just|only|simply)\s+(?:prints?|says?|outputs?|echo(?:es)?|displays?|returns?)\b/iu.test(
+	// The printed OBJECT must itself be constant: a quoted literal, or a few
+	// bare words with no path, URL, number or computed noun ("the current
+	// bitcoin price", "the contents of /etc/hosts", "the primes under a
+	// million" are real programs however the ask is phrased).
+	const constantOutputMatch =
+		/\b(?:script|program)\b[\s\S]{0,40}\b(?:just|only|simply)\s+(?:prints?|says?|outputs?|echo(?:es)?|displays?|returns?)\s+([^\n]{0,80})/iu.exec(
 			normalized,
 		);
+	const constantOutputScript =
+		constantOutputMatch !== null &&
+		isConstantPrintedObject(constantOutputMatch[1] ?? "");
 	const asksForSnippet =
 		constantOutputScript ||
 		/\b(?:write|give me|show me|generate|provide|create|make)\b[\s\S]{0,80}\b(?:code block|snippet|function|class|method|example|program|one[- ]?liner|hello world|fibonacci)\b/iu.test(

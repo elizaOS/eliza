@@ -1839,12 +1839,12 @@ async function runCreateLegacy(
       // completion nobody wanted 25s after "stopping the build" (live
       // 2026-08-22, breakout). The newborn session is stopped before its
       // first prompt and the task reads interrupted.
-      const taskInterruptedMeanwhile =
+      const interruptedMeanwhile = async (): Promise<boolean> =>
         threadId && typeof taskService?.getTask === "function"
           ? (await taskService.getTask(threadId).catch(() => null))?.status ===
             "interrupted"
           : false;
-      if (createTurnSignal?.aborted || taskInterruptedMeanwhile) {
+      const stopNewbornLane = async (): Promise<never> => {
         await markSessionAdministrativelyStopped(
           service,
           session.sessionId,
@@ -1866,6 +1866,9 @@ async function runCreateLegacy(
           context: { sessionId: session.sessionId },
           severity: "ephemeral",
         });
+      };
+      if (createTurnSignal?.aborted || (await interruptedMeanwhile())) {
+        await stopNewbornLane();
       }
 
       if (ackPostedOutOfBand) {
@@ -1947,6 +1950,12 @@ async function runCreateLegacy(
         }
       }
 
+      // Second look after the attach: a cancel that landed between the first
+      // check and here found a registered session to stop, but this prompt
+      // would still go out and the build would run anyway.
+      if (createTurnSignal?.aborted || (await interruptedMeanwhile())) {
+        await stopNewbornLane();
+      }
       if (durableRun) {
         const runningRun: SmithersDurableRunLink = {
           ...durableRun,
