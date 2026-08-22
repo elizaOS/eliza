@@ -2161,6 +2161,12 @@ function createV5ReplyStrategyResult(args: {
 	 * planner text so the gate can still rewrite canned strings.
 	 */
 	agentVoiced?: boolean;
+	/**
+	 * Machine-readable terminal failure for coding/CLI callers. The visible
+	 * text still reaches interactive surfaces, while adapters can return a
+	 * non-success process/result instead of treating any nonempty reply as done.
+	 */
+	codingFailureKind?: string;
 }): StrategyResult {
 	let responseContent: Content = {
 		thought: args.thought,
@@ -2169,6 +2175,13 @@ function createV5ReplyStrategyResult(args: {
 		simple: args.mode !== "actions",
 		responseId: args.responseId,
 		...(args.agentVoiced === true ? { agentVoiced: true } : {}),
+		...(args.codingFailureKind
+			? {
+					failureKind: args.codingFailureKind,
+					elizaSyntheticFailure: true,
+					transient: false,
+				}
+			: {}),
 		...(args.attachments?.length ? { attachments: args.attachments } : {}),
 		...(args.transcriptVisibility
 			? { transcriptVisibility: args.transcriptVisibility }
@@ -10326,6 +10339,10 @@ export async function runV5MessageRuntimeStage1(args: {
 			plannedTextRaw || effectiveReplyText,
 			actionResults,
 		);
+		const codingFailureKind =
+			args.codingMode === true && plannerResult.evaluator?.success === false
+				? "coding_verification_failed"
+				: undefined;
 
 		return {
 			kind: "planned_reply",
@@ -10347,6 +10364,7 @@ export async function runV5MessageRuntimeStage1(args: {
 								? { effectReceiptIds: effectiveReplyReceiptIds }
 								: {}),
 							...(transcriptVisibility ? { transcriptVisibility } : {}),
+							...(codingFailureKind ? { codingFailureKind } : {}),
 						}),
 						...(actionResults.length > 0 ? { actionResults } : {}),
 					}

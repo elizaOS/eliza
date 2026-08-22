@@ -60,6 +60,11 @@ function setSnapshot(
 }
 
 async function loadPrivateCloudDomains(): Promise<void> {
+  // These lightweight redirect definitions have no domain import dependency.
+  // Register them before the larger private chunk fan-out so route discovery
+  // and direct legacy links do not temporarily observe them as missing.
+  registerMovedApplicationsCloudRoutes();
+
   // Side-effecting domain modules: importing them runs their top-level
   // `registerCloudRoute(...)` calls.
   await Promise.all([
@@ -90,12 +95,6 @@ async function loadPrivateCloudDomains(): Promise<void> {
 
   registerApiExplorerCloudRoute();
   registerApprovalsCloudRoute();
-
-  // The console no longer surfaces Apps — management moved into the Eliza
-  // app. Override the current paths and retain the older plural aliases so
-  // stale links redirect to the dashboard. Do not import the Applications
-  // barrel: it eagerly re-exports heavy page modules.
-  registerMovedApplicationsCloudRoutes();
 
   registerAdminCloudRoutes();
   registerMcpsCloudRoute();

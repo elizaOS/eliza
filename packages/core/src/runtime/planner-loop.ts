@@ -434,6 +434,7 @@ async function runPlannerLoopIterations(
 	};
 	const failures: FailureLike[] = [];
 	let terminalOnlyContinuations = 0;
+	let codingVerificationDeferrals = 0;
 	let requiredToolMisses = 0;
 	let unavailableToolCallRetries = 0;
 	let silentFailedFinishRecoveries = 0;
@@ -519,6 +520,29 @@ async function runPlannerLoopIterations(
 		completionTokens: number;
 	}): void => {
 		params.onModelUsage?.(usage);
+	};
+	const stopAfterCodingVerificationDeferralLimit = async (
+		iteration: number,
+	): Promise<PlannerLoopResult | undefined> => {
+		codingVerificationDeferrals++;
+		if (codingVerificationDeferrals <= config.maxTerminalOnlyContinuations) {
+			return undefined;
+		}
+		params.runtime.logger?.warn?.(
+			{
+				iteration,
+				codingVerificationDeferrals,
+				maxTerminalOnlyContinuations: config.maxTerminalOnlyContinuations,
+			},
+			"[planner-loop] coding verification deferral limit reached; returning a typed unverified-mutation failure",
+		);
+		return finishWithForcedSynthesis({
+			loop: params,
+			config,
+			trajectory,
+			iteration,
+			onUsage: observePlannerUsage,
+		});
 	};
 	// Tracks the most recent planner output's *explicit* `messageToUser` so the
 	// post-tool evaluator gate can use it as the final response when the
@@ -1018,8 +1042,12 @@ async function runPlannerLoopIterations(
 						trajectory,
 						iteration,
 						redactDiagnosticText,
+						recordDiagnostic: codingVerificationDeferrals === 0,
 					})
 				) {
+					const limitResult =
+						await stopAfterCodingVerificationDeferralLimit(iteration);
+					if (limitResult) return limitResult;
 					continue;
 				}
 				if (trajectory.steps.some((step) => step.toolCall)) {
@@ -1277,8 +1305,12 @@ async function runPlannerLoopIterations(
 						trajectory,
 						iteration,
 						redactDiagnosticText,
+						recordDiagnostic: codingVerificationDeferrals === 0,
 					})
 				) {
+					const limitResult =
+						await stopAfterCodingVerificationDeferralLimit(iteration);
+					if (limitResult) return limitResult;
 					continue;
 				}
 				// The messageToUser fallback applies only when a REPLY call is
@@ -3750,29 +3782,32 @@ function deferCodingCompletionUntilMutationVerified(args: {
 	trajectory: PlannerTrajectory;
 	iteration: number;
 	redactDiagnosticText?: ToolDiagnosticTextRedactor;
+	recordDiagnostic?: boolean;
 }): boolean {
 	if (!codingMutationRequiresVerification(args.trajectory)) return false;
 
-	const evaluator: EvaluatorOutput = {
-		success: false,
-		decision: "CONTINUE",
-		thought:
-			"A successful WRITE or EDIT has not been followed by a successful SHELL verification.",
-		messageToUser:
-			"Run the narrowest relevant test, typecheck, lint, build, or diff check with SHELL before finishing.",
-	};
-	args.trajectory.evaluatorOutputs.push(
-		projectToolDiagnosticValue(
+	if (args.recordDiagnostic !== false) {
+		const evaluator: EvaluatorOutput = {
+			success: false,
+			decision: "CONTINUE",
+			thought:
+				"A successful WRITE or EDIT has not been followed by a successful SHELL verification.",
+			messageToUser:
+				"Run the narrowest relevant test, typecheck, lint, build, or diff check with SHELL before finishing.",
+		};
+		args.trajectory.evaluatorOutputs.push(
+			projectToolDiagnosticValue(
+				evaluator,
+				args.redactDiagnosticText ?? composeToolDiagnosticRedactor(),
+			) as EvaluatorOutput,
+		);
+		appendEvaluatorContextEvent(
+			args.trajectory,
 			evaluator,
-			args.redactDiagnosticText ?? composeToolDiagnosticRedactor(),
-		) as EvaluatorOutput,
-	);
-	appendEvaluatorContextEvent(
-		args.trajectory,
-		evaluator,
-		args.iteration,
-		args.redactDiagnosticText,
-	);
+			args.iteration,
+			args.redactDiagnosticText,
+		);
+	}
 	args.trajectory.plannedQueue.length = 0;
 	return true;
 }
@@ -3785,8 +3820,30 @@ function codingMutationRequiresVerification(
 	for (let index = 0; index < steps.length; index++) {
 		const step = steps[index];
 		const name = step?.toolCall?.name.toUpperCase();
+		const fileMutation =
+			name === "FILE" &&
+			[
+				"write",
+				"edit",
+				"create",
+				"delete",
+				"move",
+				"copy",
+				"mkdir",
+				"touch",
+			].includes(
+				String(
+					(step.toolCall?.params as Record<string, unknown> | undefined)
+						?.action ??
+						(step.toolCall?.params as Record<string, unknown> | undefined)
+							?.operation ??
+						"",
+				)
+					.trim()
+					.toLowerCase(),
+			);
 		if (
-			(name === "WRITE" || name === "EDIT") &&
+			(name === "WRITE" || name === "EDIT" || fileMutation) &&
 			step.result?.success === true
 		) {
 			latestMutationIndex = index;
@@ -3796,12 +3853,46 @@ function codingMutationRequiresVerification(
 
 	const verified = steps
 		.slice(latestMutationIndex + 1)
-		.some(
-			(step) =>
-				step.toolCall?.name.toUpperCase() === "SHELL" &&
-				step.result?.success === true,
-		);
+		.some((step) => isSuccessfulCodingVerificationStep(step));
 	return !verified;
+}
+
+/**
+ * Distinguishes a command that checks the changed program from a successful
+ * inspection command. A post-edit `grep`, `ls`, or `git status` proves only
+ * that the shell works; accepting it as verification lets a coding agent stop
+ * with syntax errors. The command families below are intentionally narrow and
+ * provider-independent. Tool implementations may additionally stamp the
+ * result with `verificationEvidence: true` when they have stronger typed
+ * evidence than command shape alone.
+ */
+function isSuccessfulCodingVerificationStep(step: PlannerStep): boolean {
+	if (
+		step.toolCall?.name.toUpperCase() !== "SHELL" ||
+		step.result?.success !== true
+	) {
+		return false;
+	}
+	if (
+		(step.result.data as { verificationEvidence?: unknown } | undefined)
+			?.verificationEvidence === true
+	) {
+		return true;
+	}
+	const command = shellCommandParam(step.toolCall);
+	if (!command) return false;
+	return [
+		/(?:^|[;&|]\s*)(?:test|\[)\s+[^;&|]+/i,
+		/\bgit\s+diff\s+--check\b/i,
+		/\b(?:bun|npm|pnpm|yarn|deno)\b[^;&|\n]*\b(?:test|verify|check|lint|typecheck|build)\b/i,
+		/\b(?:vitest|jest|pytest|rspec|phpunit|mocha|ava)\b/i,
+		/\bgo\s+(?:test|vet|build)\b/i,
+		/\bcargo\s+(?:test|check|clippy|build)\b/i,
+		/\b(?:dotnet\s+test|mvn\s+(?:test|verify)|gradle\w*\s+(?:test|check|build))\b/i,
+		/\b(?:make|just)\b[^;&|\n]*\b(?:test|verify|check|lint|typecheck|build)\b/i,
+		/\b(?:tsc|eslint|biome)\b/i,
+		/\b(?:python\d*\s+-m\s+(?:compileall|py_compile)|ruby\s+-c|bash\s+-n|node\s+--check)\b/i,
+	].some((pattern) => pattern.test(command));
 }
 
 function getToolDefinitionName(tool: ToolDefinition): string | undefined {
