@@ -21,84 +21,11 @@ import type {
 export const DEFAULT_TIMEOUT_MS = 12_000;
 export const DEFAULT_WAIT_INTERVAL_MS = 120;
 export const DEFAULT_WEB_PARTITION = "persist:eliza-browser";
-/** Maximum admitted semantic content for one page, route, or snapshot (1 MiB UTF-8). */
-export const BROWSER_WORKSPACE_CONTENT_MAX_UTF8_BYTES = 1024 * 1024;
 export const CONNECTOR_BROWSER_WORKSPACE_PARTITION_PREFIX =
   "persist:connector-";
 export const DESKTOP_BRIDGE_UNAVAILABLE_MESSAGE =
   "Eliza browser workspace desktop bridge is unavailable.";
 export const browserWorkspacePageFetch = globalThis.fetch.bind(globalThis);
-
-export function createBrowserWorkspaceContentTooLargeError(
-  operation: string,
-  byteLength?: number,
-): ReturnType<typeof createBrowserWorkspaceError> {
-  const measured =
-    byteLength === undefined
-      ? "exceeds"
-      : `is ${byteLength} UTF-8 bytes, above`;
-  return createBrowserWorkspaceError(
-    "content_too_large",
-    operation,
-    `Browser workspace ${operation} content ${measured} the ${BROWSER_WORKSPACE_CONTENT_MAX_UTF8_BYTES}-byte UTF-8 maximum.`,
-    undefined,
-    413,
-  );
-}
-
-export function assertBrowserWorkspaceContentAdmitted(
-  value: string,
-  operation: string,
-): void {
-  const byteLength = Buffer.byteLength(value, "utf8");
-  if (byteLength <= BROWSER_WORKSPACE_CONTENT_MAX_UTF8_BYTES) {
-    return;
-  }
-  throw createBrowserWorkspaceContentTooLargeError(operation, byteLength);
-}
-
-/** Consume a response body without ever retaining more than the admission ceiling. */
-export async function readBrowserWorkspaceResponseText(
-  response: Response,
-  operation: string,
-): Promise<string> {
-  const declaredLength = Number(response.headers.get("content-length"));
-  if (
-    Number.isFinite(declaredLength) &&
-    declaredLength > BROWSER_WORKSPACE_CONTENT_MAX_UTF8_BYTES
-  ) {
-    throw createBrowserWorkspaceContentTooLargeError(operation, declaredLength);
-  }
-  if (!response.body) {
-    return "";
-  }
-
-  const reader = response.body.getReader();
-  const chunks: Uint8Array[] = [];
-  let byteLength = 0;
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      byteLength += value.byteLength;
-      if (byteLength > BROWSER_WORKSPACE_CONTENT_MAX_UTF8_BYTES) {
-        await reader.cancel();
-        throw createBrowserWorkspaceContentTooLargeError(operation);
-      }
-      chunks.push(value);
-    }
-  } finally {
-    reader.releaseLock();
-  }
-
-  const bytes = new Uint8Array(byteLength);
-  let offset = 0;
-  for (const chunk of chunks) {
-    bytes.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-  return new TextDecoder("utf-8").decode(bytes);
-}
 
 /**
  * Page fetch with a hop deadline, so a host that accepts the connection and

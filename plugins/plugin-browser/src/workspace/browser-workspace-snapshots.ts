@@ -2,11 +2,7 @@
  * Snapshot, diff, screenshot, and PDF helpers for browser workspace documents.
  */
 
-import {
-  BROWSER_WORKSPACE_CONTENT_MAX_UTF8_BYTES,
-  createBrowserWorkspaceContentTooLargeError,
-  normalizeBrowserWorkspaceText,
-} from "./browser-workspace-helpers.js";
+import { normalizeBrowserWorkspaceText } from "./browser-workspace-helpers.js";
 import type { BrowserWorkspaceSnapshotRecord } from "./browser-workspace-types.js";
 
 export function escapeBrowserWorkspacePdfText(value: string): string {
@@ -99,86 +95,26 @@ export function createBrowserWorkspaceSnapshotRecord(
 export function buildBrowserWorkspaceDocumentSnapshotText(
   document: Document,
 ): string {
-  const parts: string[] = [];
-  let byteLength = 0;
-  let started = false;
-  let pendingWhitespace = false;
-  const appendNormalized = (rawValue: unknown, trimEdges = false): void => {
-    const raw = String(rawValue ?? "");
-    let cursor = 0;
-    let appendedInCall = false;
-    const whitespace = /\s+/gu;
-    for (
-      let match = whitespace.exec(raw);
-      match;
-      match = whitespace.exec(raw)
-    ) {
-      const segment = raw.slice(cursor, match.index);
-      if (segment) {
-        const prefix = started && pendingWhitespace ? " " : "";
-        byteLength +=
-          Buffer.byteLength(prefix, "utf8") +
-          Buffer.byteLength(segment, "utf8");
-        if (byteLength > BROWSER_WORKSPACE_CONTENT_MAX_UTF8_BYTES) {
-          throw createBrowserWorkspaceContentTooLargeError(
-            "document_snapshot",
-            byteLength,
-          );
-        }
-        if (prefix) parts.push(prefix);
-        parts.push(segment);
-        started = true;
-        appendedInCall = true;
-      }
-      pendingWhitespace = started && (!trimEdges || appendedInCall);
-      cursor = match.index + match[0].length;
-    }
-    const tail = raw.slice(cursor);
-    if (tail) {
-      const prefix = started && pendingWhitespace ? " " : "";
-      byteLength +=
-        Buffer.byteLength(prefix, "utf8") + Buffer.byteLength(tail, "utf8");
-      if (byteLength > BROWSER_WORKSPACE_CONTENT_MAX_UTF8_BYTES) {
-        throw createBrowserWorkspaceContentTooLargeError(
-          "document_snapshot",
-          byteLength,
-        );
-      }
-      if (prefix) parts.push(prefix);
-      parts.push(tail);
-      started = true;
-      appendedInCall = true;
-      pendingWhitespace = false;
-    }
-    if (trimEdges) pendingWhitespace = false;
-  };
-
-  const walker = document.createTreeWalker(
-    document.body ?? document.documentElement,
-    4,
-  );
-  while (walker.nextNode()) {
-    appendNormalized(walker.currentNode.nodeValue);
-  }
-  appendNormalized(" ");
-  for (const element of document.querySelectorAll(
-    "input, textarea, select, option:checked",
-  )) {
-    const name =
-      element.getAttribute("name") ||
-      element.getAttribute("id") ||
-      element.tagName.toLowerCase();
-    const value =
-      element.tagName === "SELECT"
-        ? (element as HTMLSelectElement).value
-        : "value" in (element as HTMLInputElement | HTMLTextAreaElement)
-          ? (element as HTMLInputElement | HTMLTextAreaElement).value
-          : (element.textContent ?? "");
-    appendNormalized(`${name}:`);
-    appendNormalized(value, true);
-    appendNormalized(" ");
-  }
-  return parts.join("");
+  const bodyText = normalizeBrowserWorkspaceText(document.body?.textContent);
+  const controlText = Array.from(
+    document.querySelectorAll("input, textarea, select, option:checked"),
+  )
+    .map((element) => {
+      const name =
+        element.getAttribute("name") ||
+        element.getAttribute("id") ||
+        element.tagName.toLowerCase();
+      const value =
+        element.tagName === "SELECT"
+          ? (element as HTMLSelectElement).value
+          : "value" in (element as HTMLInputElement | HTMLTextAreaElement)
+            ? (element as HTMLInputElement | HTMLTextAreaElement).value
+            : (element.textContent ?? "");
+      return `${name}:${normalizeBrowserWorkspaceText(value)}`;
+    })
+    .filter(Boolean)
+    .join(" ");
+  return normalizeBrowserWorkspaceText(`${bodyText} ${controlText}`);
 }
 
 export function diffBrowserWorkspaceSnapshots(

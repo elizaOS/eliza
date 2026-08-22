@@ -2,12 +2,7 @@
  * Network interception and HAR helpers for browser workspace page loading.
  */
 
-import { isBrowserWorkspaceError } from "./browser-workspace-errors.js";
-import {
-  assertBrowserWorkspaceContentAdmitted,
-  browserWorkspaceBoundedPageFetch,
-  readBrowserWorkspaceResponseText,
-} from "./browser-workspace-helpers.js";
+import { browserWorkspaceBoundedPageFetch } from "./browser-workspace-helpers.js";
 import { getBrowserWorkspaceTimestamp } from "./browser-workspace-state.js";
 import type {
   BrowserWorkspaceNetworkRequestRecord,
@@ -127,10 +122,6 @@ export async function fetchBrowserWorkspaceTrackedResponse(
       route.status !== null ||
       Object.keys(route.headers).length > 0)
   ) {
-    assertBrowserWorkspaceContentAdmitted(
-      route.body ?? "",
-      "network_route_response",
-    );
     const response = new Response(route?.body ?? "", {
       headers: route?.headers,
       status: route?.status ?? 200,
@@ -178,17 +169,8 @@ export async function fetchBrowserWorkspaceTrackedResponse(
   if (resourceType !== "document") {
     const clone = response.clone();
     try {
-      responseBody = await readBrowserWorkspaceResponseText(
-        clone,
-        "network_response",
-      );
-    } catch (error) {
-      if (
-        isBrowserWorkspaceError(error) &&
-        error.browserWorkspaceErrorCode === "content_too_large"
-      ) {
-        throw error;
-      }
+      responseBody = await clone.text();
+    } catch {
       responseBody = null;
     }
   }

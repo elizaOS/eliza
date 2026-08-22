@@ -83,14 +83,6 @@ describe("classifyBrowserWorkspaceErrorCode", () => {
       ),
     ],
     ["timeout", new Error("navigation timed out after 30000ms")],
-    [
-      "content_too_large",
-      createBrowserWorkspaceError(
-        "content_too_large",
-        "snapshot",
-        "content too large",
-      ),
-    ],
     ["command_failed", new Error("something else entirely")],
     ["command_failed", "a bare string, not an Error"],
   ];

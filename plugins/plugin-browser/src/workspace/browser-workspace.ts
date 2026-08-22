@@ -130,10 +130,7 @@ import {
   pushWebBrowserWorkspaceHistory,
 } from "./browser-workspace-forms.js";
 // ── Re-export network ────────────────────────────────────────────────
-import {
-  browserWorkspaceBoundedPageFetch,
-  readBrowserWorkspaceResponseText,
-} from "./browser-workspace-helpers.js";
+import { browserWorkspaceBoundedPageFetch } from "./browser-workspace-helpers.js";
 // ── Re-export jsdom ──────────────────────────────────────────────────
 import {
   createEmptyWebBrowserWorkspaceDom,
@@ -985,18 +982,12 @@ export async function executeBrowserWorkspaceCommand(
             createBrowserWorkspaceSnapshotRecord(
               leftUrl,
               left.url || leftUrl,
-              await readBrowserWorkspaceResponseText(
-                left,
-                "diff_left_response",
-              ),
+              await left.text(),
             ),
             createBrowserWorkspaceSnapshotRecord(
               rightUrl,
               right.url || rightUrl,
-              await readBrowserWorkspaceResponseText(
-                right,
-                "diff_right_response",
-              ),
+              await right.text(),
             ),
           ),
         };
