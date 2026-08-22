@@ -91,7 +91,7 @@ describe("coding-agent capability mapping", () => {
         discoveryPolicy: "configured-command-or-path",
         commandConfigKey: "ELIZA_GROK_ACP_COMMAND",
         commandResolution: "literal",
-        defaultCommand: "grok agent stdio",
+        defaultCommand: "grok --no-auto-update agent stdio",
       },
     });
     for (const backend of CODING_AGENT_BACKENDS) {

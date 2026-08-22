@@ -316,6 +316,8 @@ export interface AvailableAgentInfo {
   billingSource?: {
     kind: "included-plan" | "api-payg";
     label: string;
+    mayUsePaidOverage?: boolean;
+    disclosure?: string;
   };
   executionPolicy?: {
     requiresUserAttended: boolean;
