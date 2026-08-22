@@ -5083,20 +5083,20 @@ function renderMessageHandlerModelInput(
 		...dynamicProviderSegments,
 		...turnTailSegments,
 	];
-	const promptSegments = normalizePromptSegments([
+	const stableWireSegments = [
 		...stableSegments,
 		{ content: `message_handler_stage:\n${instructions}`, stable: true },
+	];
+	const promptSegments = normalizePromptSegments([
+		...stableWireSegments,
 		...orderedDynamicSegments,
 	]);
-	const systemContent = normalizePromptSegments([
-		...stableSegments,
-		{ content: `message_handler_stage:\n${instructions}`, stable: true },
-	])
-		.map(segmentBlock)
-		.join("\n\n");
-	const userContent = normalizePromptSegments(orderedDynamicSegments)
-		.map(segmentBlock)
-		.join("\n\n");
+	// `normalizePromptSegments` embeds separators in segment content for cache
+	// consumers that concatenate the array. Render message blocks from the raw
+	// segments so those separators remain between labeled blocks instead of
+	// becoming extra whitespace inside a block's content.
+	const systemContent = stableWireSegments.map(segmentBlock).join("\n\n");
+	const userContent = orderedDynamicSegments.map(segmentBlock).join("\n\n");
 	return {
 		messages: [
 			{ role: "system", content: systemContent },
@@ -5172,10 +5172,10 @@ export async function renderMessageHandlerStablePrefix(
 		availableContexts,
 		{ directMessage: true },
 	);
-	return normalizePromptSegments([
+	return [
 		...stableSegments,
 		{ content: `message_handler_stage:\n${instructions}`, stable: true },
-	])
+	]
 		.map(segmentBlock)
 		.join("\n\n");
 }
