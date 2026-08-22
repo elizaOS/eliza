@@ -2894,6 +2894,81 @@ function retargetPlannerAppPaths(task: string, assignedDir: string): string {
   return task.replace(re, assignedDir);
 }
 
+/** Slug = short noun phrase, not the whole imperative sentence: planner
+ * labels like "Build an interactive magic 8 ball page w…" produced public
+ * URLs such as /apps/build-an-interactive-magic-8-ball-page-w/ complete with
+ * a mid-word chop (live 2026-08-20). Strip leading verb/filler tokens, stop
+ * at the first clause boundary ("tip calculator page WITH input for bill
+ * amount…" served as tip-calculator-page-with-input, live 2026-08-22), keep
+ * at most five meaningful tokens, never cut inside a token. */
+const SLUG_FILLER = new Set([
+  "build",
+  "create",
+  "make",
+  "design",
+  "generate",
+  "ship",
+  "add",
+  "an",
+  "a",
+  "the",
+  "me",
+  "us",
+  "my",
+  "lil",
+  "little",
+  "simple",
+  "basic",
+  "interactive",
+  "working",
+  "fully",
+  "functional",
+]);
+const SLUG_BOUNDARY = new Set([
+  "with",
+  "that",
+  "which",
+  "where",
+  "for",
+  "to",
+  "showing",
+  "shows",
+  "using",
+  "displaying",
+  "featuring",
+  "including",
+  "containing",
+  "having",
+  "in",
+  "on",
+  "into",
+  "from",
+  "so",
+  "via",
+  "w",
+]);
+
+export function deliverableSlugFromLabel(label: string): string {
+  const slugTokens = label
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  while (slugTokens.length > 1 && SLUG_FILLER.has(slugTokens[0] as string)) {
+    slugTokens.shift();
+  }
+  const boundary = slugTokens.findIndex(
+    (token, index) => index > 0 && SLUG_BOUNDARY.has(token),
+  );
+  const phrase = boundary > 0 ? slugTokens.slice(0, boundary) : slugTokens;
+  const keptTokens = phrase.slice(0, 5);
+  while (keptTokens.length > 1 && keptTokens.join("-").length > 48) {
+    keptTokens.pop();
+  }
+  return keptTokens.join("-");
+}
+
 function appBuildSlugWorkdir(
   task: string,
   label: string,
@@ -2947,48 +3022,7 @@ function appBuildSlugWorkdir(
       );
     }
   }
-  // Slug = short noun phrase, not the whole imperative sentence: planner
-  // labels like "Build an interactive magic 8 ball page w…" produced public
-  // URLs such as /apps/build-an-interactive-magic-8-ball-page-w/ complete
-  // with a mid-word chop (live 2026-08-20). Strip leading verb/filler
-  // tokens, keep at most five meaningful ones, never cut inside a token.
-  const SLUG_FILLER = new Set([
-    "build",
-    "create",
-    "make",
-    "design",
-    "generate",
-    "ship",
-    "add",
-    "an",
-    "a",
-    "the",
-    "me",
-    "us",
-    "my",
-    "lil",
-    "little",
-    "simple",
-    "basic",
-    "interactive",
-    "working",
-    "fully",
-    "functional",
-  ]);
-  const slugTokens = label
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, " ")
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean);
-  while (slugTokens.length > 1 && SLUG_FILLER.has(slugTokens[0] as string)) {
-    slugTokens.shift();
-  }
-  const keptTokens = slugTokens.slice(0, 5);
-  while (keptTokens.length > 1 && keptTokens.join("-").length > 48) {
-    keptTokens.pop();
-  }
-  const baseSlug = keptTokens.join("-") || "app";
+  const baseSlug = deliverableSlugFromLabel(label) || "app";
   // Edit-shaped asks reuse the newest EXISTING app in the slug family instead
   // of minting the next free slot: "make the unit converter dark mode, same
   // link" re-derived the slug from its label, landed on the STALE bare
