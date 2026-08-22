@@ -9,6 +9,7 @@ import {
   generateRemoteHostToken,
   hashRemoteHostToken,
 } from "@/db/crypto/remote-host-token";
+import { isRemotePairingUuid } from "@/db/crypto/remote-pairing-code";
 import { remoteHostsRepository } from "@/db/repositories/remote-hosts";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
@@ -71,7 +72,15 @@ app.post("/", async (c) => {
     }
     const body = value as Record<string, unknown>;
     const connectionMode = body.connectionMode ?? "relay";
-    const hostId = crypto.randomUUID();
+    const recoveryHostId =
+      typeof body.recoveryHostId === "string" ? body.recoveryHostId.trim() : "";
+    if (recoveryHostId && !isRemotePairingUuid(recoveryHostId)) {
+      return c.json(
+        { success: false, error: "Recovery host id must be a UUID" },
+        400,
+      );
+    }
+    const hostId = recoveryHostId || crypto.randomUUID();
     const identity = {
       version: REMOTE_CONTROL_PROTOCOL_VERSION,
       role: "target",
@@ -96,26 +105,55 @@ app.post("/", async (c) => {
     }
 
     const token = generateRemoteHostToken();
-    const result = await remoteHostsRepository.createOwned({
-      id: hostId,
-      organization_id: user.organization_id,
-      user_id: user.id,
-      device_id: body.deviceId,
-      display_name: identity.displayName,
-      platform: identity.platform,
-      connection_mode: connectionMode,
-      runtime_key_id: identity.keyId,
-      signing_public_jwk: identity.signingPublicKeyJwk,
-      encryption_public_jwk: identity.encryptionPublicKeyJwk,
-      host_token_hash: await hashRemoteHostToken(token),
-      status: "active",
-    });
+    const hostTokenHash = await hashRemoteHostToken(token);
+    const result = recoveryHostId
+      ? await remoteHostsRepository.recoverCredential({
+          hostId,
+          organizationId: user.organization_id,
+          userId: user.id,
+          deviceId: body.deviceId as string,
+          displayName: identity.displayName,
+          platform: identity.platform,
+          connectionMode: connectionMode as string,
+          runtimeKeyId: identity.keyId,
+          signingPublicJwk: identity.signingPublicKeyJwk,
+          encryptionPublicJwk: identity.encryptionPublicKeyJwk,
+          hostTokenHash,
+        })
+      : await remoteHostsRepository.createOwned({
+          id: hostId,
+          organization_id: user.organization_id,
+          user_id: user.id,
+          device_id: body.deviceId,
+          display_name: identity.displayName,
+          platform: identity.platform,
+          connection_mode: connectionMode,
+          runtime_key_id: identity.keyId,
+          signing_public_jwk: identity.signingPublicKeyJwk,
+          encryption_public_jwk: identity.encryptionPublicKeyJwk,
+          host_token_hash: hostTokenHash,
+          status: "active",
+        });
     if (result.kind === "conflict") {
       return c.json(
         {
           success: false,
           error: "Remote host identity is already enrolled",
           code: "CONFLICT",
+        },
+        409,
+      );
+    }
+    if (
+      result.kind === "not_found" ||
+      result.kind === "mismatch" ||
+      result.kind === "revoked"
+    ) {
+      return c.json(
+        {
+          success: false,
+          error: "Remote host credential recovery did not match an active host",
+          code: "RECOVERY_MISMATCH",
         },
         409,
       );
@@ -129,9 +167,11 @@ app.post("/", async (c) => {
           hostToken: token,
           runtimeKeyId: result.host.runtime_key_id,
           status: result.host.status,
+          createdAt: result.host.created_at,
+          recovered: result.kind === "recovered",
         },
       },
-      201,
+      result.kind === "recovered" ? 200 : 201,
     );
   } catch (error) {
     // error-policy:J1 the HTTP boundary translates typed/internal failures.

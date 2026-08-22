@@ -34,6 +34,7 @@ const requireUserOrApiKeyWithOrg = mock(async () => ({
   organization_id: organizationId,
 }));
 const createOwned = mock();
+const recoverHostCredential = mock();
 const listOwned = mock();
 const revokeHost = mock();
 const createPendingForOwnedAgent = mock();
@@ -52,7 +53,12 @@ mock.module("@/lib/auth/workers-hono-auth", () => ({
   requireUserOrApiKeyWithOrg,
 }));
 mock.module("@/db/repositories/remote-hosts", () => ({
-  remoteHostsRepository: { createOwned, listOwned, revoke: revokeHost },
+  remoteHostsRepository: {
+    createOwned,
+    recoverCredential: recoverHostCredential,
+    listOwned,
+    revoke: revokeHost,
+  },
 }));
 mock.module("@/db/repositories/remote-sessions", () => ({
   remoteSessionsRepository: {
@@ -173,6 +179,7 @@ function request(
 beforeEach(() => {
   for (const collaborator of [
     createOwned,
+    recoverHostCredential,
     listOwned,
     revokeHost,
     createPendingForOwnedAgent,
@@ -196,7 +203,7 @@ describe("secure remote relay routes", () => {
   test("enrolls a host only in the authenticated owner scope and returns its token once", async () => {
     createOwned.mockImplementation(async (input) => ({
       kind: "created",
-      host: input,
+      host: { ...input, created_at: new Date("2026-08-22T06:15:00.000Z") },
     }));
     const response = await request("/api/v1/remote/hosts", {
       ownerId: "attacker",
@@ -216,8 +223,11 @@ describe("secure remote relay routes", () => {
       user_id: ownerId,
       device_id: "linux-one",
     });
-    const body = (await response.json()) as { data: { hostToken: string } };
+    const body = (await response.json()) as {
+      data: { hostToken: string; createdAt: string };
+    };
     expect(body.data.hostToken).toMatch(/^rhost_v1_[A-Za-z0-9_-]{43}$/);
+    expect(body.data.createdAt).toBe("2026-08-22T06:15:00.000Z");
     expect(createOwned.mock.calls[0]?.[0].host_token_hash).not.toBe(
       body.data.hostToken,
     );
@@ -258,6 +268,65 @@ describe("secure remote relay routes", () => {
     });
     expect(body.data.hosts[0]).not.toHaveProperty("hostTokenHash");
     expect(JSON.stringify(body)).not.toContain("must-not-leak");
+  });
+
+  test("recovers a lost one-time host token only through the owner-bound identity", async () => {
+    recoverHostCredential.mockImplementation(async (input) => ({
+      kind: "recovered",
+      host: {
+        id: input.hostId,
+        runtime_key_id: input.runtimeKeyId,
+        status: "active",
+        created_at: new Date("2026-08-22T06:15:00.000Z"),
+      },
+    }));
+    const response = await request("/api/v1/remote/hosts", {
+      recoveryHostId: hostId,
+      deviceId: "linux-one",
+      displayName: "Linux One",
+      platform: "linux",
+      connectionMode: "relay",
+      runtimeKeyId: targetKeyId,
+      signingPublicKeyJwk: publicJwk,
+      encryptionPublicKeyJwk: publicJwk,
+    });
+    expect(response.status).toBe(200);
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    const body = (await response.json()) as {
+      data: { hostToken: string; recovered: boolean };
+    };
+    expect(body.data.recovered).toBe(true);
+    expect(body.data.hostToken).toMatch(/^rhost_v1_[A-Za-z0-9_-]{43}$/);
+    expect(recoverHostCredential).toHaveBeenCalledWith(
+      expect.objectContaining({
+        hostId,
+        organizationId,
+        userId: ownerId,
+        deviceId: "linux-one",
+        runtimeKeyId: targetKeyId,
+      }),
+    );
+    expect(recoverHostCredential.mock.calls[0]?.[0].hostTokenHash).not.toBe(
+      body.data.hostToken,
+    );
+  });
+
+  test("does not disclose a replacement token when host recovery mismatches", async () => {
+    recoverHostCredential.mockResolvedValue({ kind: "mismatch" });
+    const response = await request("/api/v1/remote/hosts", {
+      recoveryHostId: hostId,
+      deviceId: "linux-one",
+      displayName: "Linux One",
+      platform: "linux",
+      connectionMode: "relay",
+      runtimeKeyId: targetKeyId,
+      signingPublicKeyJwk: publicJwk,
+      encryptionPublicKeyJwk: publicJwk,
+    });
+    expect(response.status).toBe(409);
+    const body = (await response.json()) as Record<string, unknown>;
+    expect(body).toMatchObject({ code: "RECOVERY_MISMATCH" });
+    expect(JSON.stringify(body)).not.toContain("rhost_v1_");
   });
 
   test("issues a host-bound grant and never persists the six-digit code", async () => {
@@ -318,6 +387,47 @@ describe("secure remote relay routes", () => {
       hostToken,
       code: "123456",
       pairingSecret: "route-pairing-secret-at-least-thirty-two-bytes",
+    });
+  });
+
+  test("returns a complete authoritative controller identity on activation", async () => {
+    const createdAt = new Date("2026-08-22T06:30:00.000Z");
+    activatePendingHost.mockResolvedValue({
+      kind: "activated",
+      session: {
+        id: sessionId,
+        grant_id: grantId,
+        grant_revision: 1,
+        user_id: ownerId,
+        controller_device_id: "controller-one",
+        controller_key_id: controllerKeyId,
+        controller_display_name: "Controller One",
+        controller_platform: "linux",
+        controller_signing_public_jwk: publicJwk,
+        controller_encryption_public_jwk: publicJwk,
+        host_id: hostId,
+        target_key_id: targetKeyId,
+        grant_expires_at: new Date("2026-08-22T14:30:00.000Z"),
+        created_at: createdAt,
+        status: "active",
+      },
+    });
+    const response = await request(
+      `/api/v1/remote/sessions/${sessionId}/activate`,
+      { code: "123456" },
+      hostHeaders(),
+    );
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        controllerDeviceId: "controller-one",
+        controllerKeyId,
+        controllerDisplayName: "Controller One",
+        controllerPlatform: "linux",
+        controllerSigningPublicKeyJwk: publicJwk,
+        controllerEncryptionPublicKeyJwk: publicJwk,
+        controllerCreatedAt: createdAt.toISOString(),
+      },
     });
   });
 

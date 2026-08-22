@@ -224,6 +224,44 @@ afterAll(async () => {
 });
 
 describe("secure remote relay repositories", () => {
+  it("recovers a lost host token only for the exact active public identity", async () => {
+    await enrollAndPair(false);
+    const oldToken = hostToken;
+    const replacement = generateRemoteHostToken();
+    const recovery = await hosts.recoverCredential({
+      hostId,
+      organizationId,
+      userId: ownerId,
+      deviceId: "linux-one",
+      displayName: "Linux One",
+      platform: "linux",
+      connectionMode: "relay",
+      runtimeKeyId: targetKeyId,
+      signingPublicJwk: ecPublicJwk,
+      encryptionPublicJwk: ecPublicJwk,
+      hostTokenHash: await hashRemoteHostToken(replacement),
+    });
+    expect(recovery).toMatchObject({ kind: "recovered", host: { id: hostId } });
+    expect(await hosts.authenticate(hostId, oldToken)).toBeUndefined();
+    expect(await hosts.authenticate(hostId, replacement)).toMatchObject({ id: hostId });
+
+    expect(
+      await hosts.recoverCredential({
+        hostId,
+        organizationId,
+        userId: ownerId,
+        deviceId: "different-device",
+        displayName: "Linux One",
+        platform: "linux",
+        connectionMode: "relay",
+        runtimeKeyId: targetKeyId,
+        signingPublicJwk: ecPublicJwk,
+        encryptionPublicJwk: ecPublicJwk,
+        hostTokenHash: await hashRemoteHostToken(generateRemoteHostToken()),
+      }),
+    ).toEqual({ kind: "mismatch" });
+  });
+
   it("consumes a host-bound pairing verifier only once", async () => {
     await enrollAndPair(false);
     const attempts = await Promise.all([

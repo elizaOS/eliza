@@ -5,6 +5,7 @@
  */
 
 import { ElizaError } from "@elizaos/core";
+import { canonicalizeRemoteControlValue } from "@elizaos/shared/contracts/remote-control";
 import { and, asc, desc, eq, inArray } from "drizzle-orm";
 import type { Database } from "../client";
 import { hashRemoteHostToken } from "../crypto/remote-host-token";
@@ -18,6 +19,26 @@ const HOST_REVOCATION_SESSION_BATCH = 100;
 const HOST_REVOCATION_COMMAND_BATCH = 500;
 
 export type CreateRemoteHostResult = { kind: "created"; host: RemoteHost } | { kind: "conflict" };
+
+export interface RecoverRemoteHostCredentialInput {
+  hostId: string;
+  organizationId: string;
+  userId: string;
+  deviceId: string;
+  displayName: string;
+  platform: string;
+  connectionMode: string;
+  runtimeKeyId: string;
+  signingPublicJwk: JsonWebKey;
+  encryptionPublicJwk: JsonWebKey;
+  hostTokenHash: string;
+}
+
+export type RecoverRemoteHostCredentialResult =
+  | { kind: "recovered"; host: RemoteHost }
+  | { kind: "not_found" }
+  | { kind: "mismatch" }
+  | { kind: "revoked" };
 
 export interface RevokeRemoteHostResult {
   host: RemoteHost;
@@ -106,6 +127,70 @@ export class RemoteHostsRepository {
       )
       .limit(1);
     return host;
+  }
+
+  /**
+   * Rotates a lost one-time host bearer only when the authenticated owner
+   * proves the complete immutable public enrollment identity. This closes the
+   * create-response -> secure-store crash window without making bearer hashes
+   * reversible or reviving a revoked host.
+   */
+  async recoverCredential(
+    input: RecoverRemoteHostCredentialInput,
+  ): Promise<RecoverRemoteHostCredentialResult> {
+    if (
+      !input.hostId ||
+      !input.organizationId ||
+      !input.userId ||
+      !input.deviceId ||
+      !input.runtimeKeyId ||
+      !input.hostTokenHash
+    ) {
+      throw new ElizaError("Remote host credential recovery input is incomplete", {
+        code: "REMOTE_HOST_INVALID_INPUT",
+        severity: "fatal",
+      });
+    }
+    return this.database.transaction(async (tx) => {
+      const [current] = await tx
+        .select()
+        .from(remoteHosts)
+        .where(
+          and(
+            eq(remoteHosts.id, input.hostId),
+            eq(remoteHosts.organization_id, input.organizationId),
+            eq(remoteHosts.user_id, input.userId),
+          ),
+        )
+        .for("update");
+      if (!current) return { kind: "not_found" };
+      if (current.status !== "active") return { kind: "revoked" };
+      if (
+        current.device_id !== input.deviceId ||
+        current.display_name !== input.displayName ||
+        current.platform !== input.platform ||
+        current.connection_mode !== input.connectionMode ||
+        current.runtime_key_id !== input.runtimeKeyId ||
+        canonicalizeRemoteControlValue(current.signing_public_jwk) !==
+          canonicalizeRemoteControlValue(input.signingPublicJwk) ||
+        canonicalizeRemoteControlValue(current.encryption_public_jwk) !==
+          canonicalizeRemoteControlValue(input.encryptionPublicJwk)
+      ) {
+        return { kind: "mismatch" };
+      }
+      const now = await readPostLockDatabaseNow(tx);
+      const [host] = await tx
+        .update(remoteHosts)
+        .set({ host_token_hash: input.hostTokenHash, updated_at: now })
+        .where(and(eq(remoteHosts.id, current.id), eq(remoteHosts.status, "active")))
+        .returning();
+      if (!host) {
+        throw storageFailure("Locked remote host credential could not be recovered", {
+          hostId: current.id,
+        });
+      }
+      return { kind: "recovered", host };
+    });
   }
 
   /**
