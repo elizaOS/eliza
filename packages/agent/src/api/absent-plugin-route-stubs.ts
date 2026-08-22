@@ -111,20 +111,6 @@ export const ABSENT_PLUGIN_ROUTE_STUBS: readonly AbsentPluginRouteStub[] = [
     }),
   },
   {
-    capabilityId: "signal",
-    method: "GET",
-    path: "/api/signal/status",
-    buildBody: (req) => ({
-      accountId: queryParam(req, "accountId", "default") || "default",
-      status: "idle",
-      authExists: false,
-      serviceConnected: false,
-      qrDataUrl: null,
-      phoneNumber: null,
-      error: null,
-    }),
-  },
-  {
     capabilityId: "telegram-account",
     method: "GET",
     path: "/api/setup/telegram-account/status",

@@ -509,7 +509,7 @@ const optionalPluginStubs = {
   "@elizaos/plugin-browser": path.join(stubsDir, "null-plugin.cjs"),
   // Server-side connectors that app-lifeops dynamically imports inside
   // its service mixins. Mobile never reaches the runtime path that
-  // calls `import("@elizaos/plugin-whatsapp")` or `plugin-signal`, but
+  // calls `import("@elizaos/plugin-whatsapp")`, but
   // Bun's bundler still has to resolve them statically. The plugins
   // are workspace-only deps on app-lifeops and aren't in
   // packages/agent's resolution scope, so stub them out here. Trying to

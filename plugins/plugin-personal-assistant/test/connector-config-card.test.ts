@@ -251,7 +251,6 @@ describe("CONNECTOR connect emits the setup-card marker", () => {
   it.each([
     ["discord", "[CONFIG:discord]"],
     ["telegram", "[CONFIG:telegram]"],
-    ["signal", "[CONFIG:signal]"],
     ["imessage", "[CONFIG:imessage]"],
     ["whatsapp", "[CONFIG:whatsapp]"],
     ["wechat", "[CONFIG:wechat]"],

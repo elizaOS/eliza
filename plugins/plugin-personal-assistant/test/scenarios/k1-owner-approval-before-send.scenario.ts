@@ -23,7 +23,7 @@ export default scenario({
       options: {
         action: "draft_reply",
         recipient: "Zane Turner",
-        channel: "signal",
+        channel: "whatsapp",
         requiresConfirmation: true,
         body: "I'm sorry things have been heavy. I'm here with you, and I can sit with you for the first ten minutes if that helps.",
       },

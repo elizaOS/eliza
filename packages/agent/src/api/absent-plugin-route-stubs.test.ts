@@ -102,23 +102,6 @@ describe("absent-plugin route stub registry", () => {
     });
   });
 
-  it("echoes the signal accountId query param, defaulting to 'default'", () => {
-    const stub = resolveAbsentPluginRouteStub("GET", "/api/signal/status");
-    expect(stub?.buildBody(req("/api/signal/status"))).toMatchObject({
-      accountId: "default",
-      status: "idle",
-      authExists: false,
-      serviceConnected: false,
-    });
-    expect(
-      stub?.buildBody(req("/api/signal/status?accountId=acct-9")),
-    ).toMatchObject({ accountId: "acct-9" });
-    // Empty accountId falls back to "default" (matches legacy `|| "default"`).
-    expect(stub?.buildBody(req("/api/signal/status?accountId="))).toMatchObject(
-      { accountId: "default" },
-    );
-  });
-
   it("produces the telegram-account idle snapshot", () => {
     const stub = resolveAbsentPluginRouteStub(
       "GET",
