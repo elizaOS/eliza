@@ -205,6 +205,8 @@ export interface PlannerToolResult {
 	 * action whose planner call explicitly declared final scope.
 	 */
 	modelReplyRequired?: boolean;
+	/** Vetted action-owned fallback for a failed required model synthesis. */
+	modelReplyFallback?: string;
 	/**
 	 * Explicit chain-control override. `false` unconditionally aborts the
 	 * remaining planner queue, including for legacy failure and fire-and-forget

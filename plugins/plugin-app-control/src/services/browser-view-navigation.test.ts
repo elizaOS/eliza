@@ -55,8 +55,13 @@ describe("Browser launch navigation", () => {
 		expect(body).toMatchObject({
 			clientId: "client-a",
 			delivery: "completed-action",
-			path: "/browser?browse=%2Fapi%2Fapps%2Flocal%2Fdemo%2F",
 		});
+		const viewPath = String(body.path);
+		const browseTarget = new URLSearchParams(viewPath.split("?")[1]).get(
+			"browse",
+		);
+		expect(viewPath.startsWith("/browser?browse=")).toBe(true);
+		expect(browseTarget).toBe("/api/apps/local/demo/");
 		expect(body.completedActionHandoffId).toEqual(expect.any(String));
 		expect(result).toMatchObject({
 			status: "renderer-delivered",
@@ -189,6 +194,33 @@ describe("Browser launch navigation", () => {
 		await expect(
 			openLaunchUrlInBrowserView("http://[", message("client-a")),
 		).resolves.toEqual({ status: "invalid-url", openedInBrowser: false });
+		expect(fetchMock).not.toHaveBeenCalled();
+	});
+
+	it("normalizes local dot segments before the Browser consumes the target", async () => {
+		const result = await openLaunchUrlInBrowserView(
+			"/api/apps/local/demo/../safe/",
+			message(),
+		);
+		const browseTarget = new URLSearchParams(
+			result.viewPath?.split("?")[1],
+		).get("browse");
+		expect(new URL(browseTarget ?? "", "https://agent.example").pathname).toBe(
+			"/api/apps/local/safe/",
+		);
+	});
+
+	it("rejects network-path relative URLs before delivery", async () => {
+		const fetchMock = vi.fn();
+		setFetch(fetchMock);
+		for (const launchUrl of [
+			"//evil.example/api/apps/local/demo/",
+			"/\\evil.example/api/apps/local/demo/",
+		]) {
+			await expect(
+				openLaunchUrlInBrowserView(launchUrl, message()),
+			).resolves.toEqual({ status: "invalid-url", openedInBrowser: false });
+		}
 		expect(fetchMock).not.toHaveBeenCalled();
 	});
 });

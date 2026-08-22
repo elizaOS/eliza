@@ -95,8 +95,8 @@ export async function runLaunch({
 	try {
 		result = await client.launchApp(appName);
 	} catch (err) {
-		// Don't propagate — a thrown launch (HTTP 4xx/5xx, network error,
-		// race with concurrent uninstall) must not crash the planner turn.
+		// error-policy:J1 APP is the user-facing action boundary: translate a
+		// typed/transport launch rejection into one explicit failed action result.
 		const message = err instanceof Error ? err.message : String(err);
 		const text = `Failed to launch ${appName}: ${message}`;
 		logger.warn(
@@ -121,10 +121,14 @@ export async function runLaunch({
 	logger.info(
 		`[plugin-app-control] APP/launch ${appName} runId=${runId ?? "<none>"}`,
 	);
+	const safeFallbackText = browserNavigation.safeMarkdownLaunchUrl
+		? `The app launched successfully. [Open the app](${browserNavigation.safeMarkdownLaunchUrl})`
+		: "The app launched successfully.";
 
 	return {
 		success: true,
 		text: JSON.stringify({ effect: "app_launch", status: "completed" }),
+		modelReplyFallback: safeFallbackText,
 		transcriptVisibility: "internal",
 		// The effect is already complete. Give Eliza a bounded receipt and let the
 		// model own the conversational wording instead of posting canned action copy.
@@ -156,11 +160,11 @@ export async function runLaunch({
 			displayName: result.displayName,
 			openedInBrowser: browserNavigation.openedInBrowser,
 			browserNavigationStatus: browserNavigation.status,
-			...(launchUrl
+			...(browserNavigation.safeMarkdownLaunchUrl
 				? {
 						link: {
 							label: `Open ${result.displayName}`,
-							href: launchUrl,
+							href: browserNavigation.safeMarkdownLaunchUrl,
 						},
 					}
 				: {}),

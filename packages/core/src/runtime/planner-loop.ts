@@ -624,41 +624,66 @@ async function runPlannerLoopIterations(
 					return await callPlanner(args);
 				}
 			};
-			const plannerOutput = await callPlannerWithToolChoiceRetry({
-				runtime: params.runtime,
-				context: trajectory.context,
-				trajectory,
-				config,
-				modelType: params.modelType,
-				provider: params.provider,
-				// A successful final-scope action may ask for one natural closing
-				// sentence. That round is synthesis, not planning: remove the tool
-				// catalog entirely so callPlanner cannot default an omitted toolChoice
-				// to "required" and re-run the action. The branch below consumes this
-				// output exactly once, including when a non-compliant provider invents
-				// a tool call despite receiving no tools.
-				tools: synthesizingRequiredModelReply ? undefined : params.tools,
-				// Force a tool call ONLY while the turn's "use a real tool" requirement
-				// is still unmet. Once a non-terminal tool has executed, relax to
-				// "auto" so the planner is free to synthesize a terminal REPLY from
-				// the result instead of being pushed to re-call a tool every
-				// iteration. "auto" must be EXPLICIT: passing the caller's (undefined)
-				// choice would be a no-op because callPlanner defaults undefined back
-				// to "required".
-				toolChoice: synthesizingRequiredModelReply
-					? undefined
-					: requireNonTerminalToolCall
-						? hasExecutedNonTerminalTool(trajectory)
-							? "auto"
-							: "required"
-						: params.toolChoice,
-				recorder: params.recorder,
-				trajectoryId: params.trajectoryId,
-				parentStageId: params.parentStageId,
-				providerAttributionState: params.providerAttributionState,
-				iteration,
-				onUsage: observePlannerUsage,
-			});
+			let plannerOutput: Awaited<
+				ReturnType<typeof callPlannerWithToolChoiceRetry>
+			>;
+			try {
+				plannerOutput = await callPlannerWithToolChoiceRetry({
+					runtime: params.runtime,
+					context: trajectory.context,
+					trajectory,
+					config,
+					modelType: params.modelType,
+					provider: params.provider,
+					// A successful final-scope action may ask for one natural closing
+					// sentence. That round is synthesis, not planning: remove the tool
+					// catalog entirely so callPlanner cannot default an omitted toolChoice
+					// to "required" and re-run the action. The branch below consumes this
+					// output exactly once, including when a non-compliant provider invents
+					// a tool call despite receiving no tools.
+					tools: synthesizingRequiredModelReply ? undefined : params.tools,
+					// Force a tool call ONLY while the turn's "use a real tool" requirement
+					// is still unmet. Once a non-terminal tool has executed, relax to
+					// "auto" so the planner is free to synthesize a terminal REPLY from
+					// the result instead of being pushed to re-call a tool every
+					// iteration. "auto" must be EXPLICIT: passing the caller's (undefined)
+					// choice would be a no-op because callPlanner defaults undefined back
+					// to "required".
+					toolChoice: synthesizingRequiredModelReply
+						? undefined
+						: requireNonTerminalToolCall
+							? hasExecutedNonTerminalTool(trajectory)
+								? "auto"
+								: "required"
+							: params.toolChoice,
+					recorder: params.recorder,
+					trajectoryId: params.trajectoryId,
+					parentStageId: params.parentStageId,
+					providerAttributionState: params.providerAttributionState,
+					iteration,
+					onUsage: observePlannerUsage,
+				});
+			} catch (err) {
+				// error-policy:J4 the sole tool already committed; an expected model
+				// provider outage degrades to its vetted action-owned fallback without replay.
+				if (!synthesizingRequiredModelReply || !isModelProviderError(err)) {
+					throw err;
+				}
+				const relay = deterministicSuccessfulToolRelay(trajectory);
+				if (!relay) throw err;
+				params.runtime.logger?.warn?.(
+					{ iteration, err: err instanceof Error ? err.message : String(err) },
+					"[planner-loop] post-tool reply model failed; relaying completed action result",
+				);
+				return {
+					status: "finished",
+					trajectory,
+					finalMessage: userSafeFinalMessage(
+						terminalMessageWithFailureAuthority(trajectory, relay),
+						trajectory,
+					),
+				};
+			}
 			// Treat `messageToUser` as authoritative ONLY when the planner's structured
 			// output carried it as an explicit field. The native-tool-call code path
 			// in `parsePlannerOutput` falls back to `raw.text`, but in native mode
@@ -800,8 +825,18 @@ async function runPlannerLoopIterations(
 				const requiredModelReply = userSafeCapturedAnswerCandidate(
 					plannerOutput.messageToUser,
 				);
-				const finalMessage =
-					requiredModelReply ?? REQUIRED_MODEL_REPLY_FALLBACK_MESSAGE;
+				const finalMessage = userSafeFinalMessage(
+					terminalMessageWithFailureAuthority(
+						trajectory,
+						preferredFinalMessageFromToolOrModel(
+							trajectory,
+							requiredModelReply,
+							deterministicSuccessfulToolRelay(trajectory) ??
+								REQUIRED_MODEL_REPLY_FALLBACK_MESSAGE,
+						),
+					),
+					trajectory,
+				);
 				trajectory.steps.push({
 					iteration,
 					thought: plannerOutput.thought,
@@ -4812,7 +4847,11 @@ function deterministicSuccessfulToolRelay(
 	for (const step of [...trajectory.steps].reverse()) {
 		if (!step.toolCall || step.result?.success !== true) continue;
 		if (isTerminalToolCall(step.toolCall)) continue;
-		const candidate = getNonEmptyString(step.result.userFacingText);
+		const candidate =
+			getNonEmptyString(step.result.userFacingText) ??
+			(step.result.modelReplyRequired === true
+				? getNonEmptyString(step.result.modelReplyFallback)
+				: undefined);
 		if (candidate) return candidate;
 	}
 	return undefined;
@@ -6062,6 +6101,7 @@ export function actionResultToPlannerToolResult(
 		failureProvenance: result.failureProvenance,
 		turnComplete: result.turnComplete,
 		modelReplyRequired: result.modelReplyRequired,
+		modelReplyFallback: result.modelReplyFallback,
 		continueChain: result.continueChain,
 	};
 	if (options.summary) {

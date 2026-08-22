@@ -7,7 +7,6 @@ import {
 	readViewInteractionClientId,
 } from "../actions/view-delivery.js";
 import { navigateToView } from "../actions/views-show.js";
-import { getAppControlApiBase } from "../loopback-api.js";
 
 export type BrowserNavigationStatus =
 	| "renderer-delivered"
@@ -18,6 +17,10 @@ export type BrowserNavigationStatus =
 export interface BrowserNavigationResult {
 	status: BrowserNavigationStatus;
 	openedInBrowser: boolean;
+	/** Canonical http(s) target safe to expose to the model or renderer. */
+	safeLaunchUrl?: string;
+	/** Same target escaped for a Markdown link destination. */
+	safeMarkdownLaunchUrl?: string;
 	viewPath?: string;
 	completedActionDelivered?: true;
 	completedActionHandoffId?: string;
@@ -35,14 +38,27 @@ function navigationFailure(
 }
 
 export function browserViewPathForLaunchUrl(launchUrl: string): string {
-	if (launchUrl.startsWith("/api/apps/local/")) {
-		return `/browser?browse=${encodeURIComponent(launchUrl)}`;
+	if (launchUrl.startsWith("/")) {
+		const relativeBase = "https://relative.invalid/";
+		const parsed = new URL(launchUrl, relativeBase);
+		if (parsed.origin !== new URL(relativeBase).origin) {
+			throw new TypeError("Unsupported network-path app launch URL");
+		}
+		if (!parsed.pathname.startsWith("/api/apps/local/")) {
+			throw new TypeError("Unsupported relative app launch URL");
+		}
+		const relativeUrl = `${parsed.pathname}${parsed.search}${parsed.hash}`;
+		return `/browser?browse=${encodeURIComponent(relativeUrl)}`;
 	}
-	const absoluteUrl = new URL(launchUrl, `${getAppControlApiBase()}/`);
+	const absoluteUrl = new URL(launchUrl);
 	if (absoluteUrl.protocol !== "http:" && absoluteUrl.protocol !== "https:") {
 		throw new TypeError("Unsupported app launch URL protocol");
 	}
 	return `/browser?browse=${encodeURIComponent(absoluteUrl.toString())}`;
+}
+
+function markdownSafeHref(url: string): string {
+	return url.replace(/\\/g, "%5C").replace(/\(/g, "%28").replace(/\)/g, "%29");
 }
 
 export async function openLaunchUrlInBrowserView(
@@ -50,8 +66,16 @@ export async function openLaunchUrlInBrowserView(
 	message: Memory,
 ): Promise<BrowserNavigationResult> {
 	let viewPath: string;
+	let safeLaunchUrl: string;
+	let safeMarkdownLaunchUrl: string;
 	try {
 		viewPath = browserViewPathForLaunchUrl(launchUrl);
+		safeLaunchUrl =
+			new URLSearchParams(viewPath.slice(viewPath.indexOf("?") + 1)).get(
+				"browse",
+			) ?? "";
+		if (!safeLaunchUrl) throw new TypeError("Missing Browser launch target");
+		safeMarkdownLaunchUrl = markdownSafeHref(safeLaunchUrl);
 	} catch {
 		// error-policy:J3 an invalid launch URL becomes an explicit typed result;
 		// it is never sent to a renderer or disguised as successful navigation.
@@ -66,12 +90,16 @@ export async function openLaunchUrlInBrowserView(
 				status: "target-unavailable",
 				openedInBrowser: false,
 				viewPath,
+				safeLaunchUrl,
+				safeMarkdownLaunchUrl,
 			};
 		}
 		return {
 			status: "terminal-fallback",
 			openedInBrowser: false,
 			viewPath,
+			safeLaunchUrl,
+			safeMarkdownLaunchUrl,
 			completedActionHandoffId: randomUUID(),
 		};
 	}
@@ -100,6 +128,8 @@ export async function openLaunchUrlInBrowserView(
 			status: navigation.ok ? "renderer-delivered" : "target-unavailable",
 			openedInBrowser: navigation.ok,
 			viewPath,
+			safeLaunchUrl,
+			safeMarkdownLaunchUrl,
 			...(!navigation.ok && failure ? { navigationFailure: failure } : {}),
 		};
 	}
@@ -110,6 +140,8 @@ export async function openLaunchUrlInBrowserView(
 		status: delivered ? "renderer-delivered" : "terminal-fallback",
 		openedInBrowser: delivered,
 		viewPath,
+		safeLaunchUrl,
+		safeMarkdownLaunchUrl,
 		...(delivered ? { completedActionDelivered: true as const } : {}),
 		...(completedActionHandoffId ? { completedActionHandoffId } : {}),
 		...(navigation.receiptStatus === "malformed"
