@@ -6,8 +6,21 @@
 
 import crypto from "crypto";
 import { z } from "zod";
+import { ownedBoundedFetch } from "./owned-bounded-fetch";
 
 export const BLOOIO_API_BASE = "https://api.blooio.com/v2/api";
+export const BLOOIO_REQUEST_TIMEOUT_MS = 30_000;
+
+/**
+ * Bound every Blooio REST hop while preserving caller cancellation.
+ */
+export async function blooioFetch(
+  input: RequestInfo | URL,
+  init?: RequestInit,
+  timeoutMs: number = BLOOIO_REQUEST_TIMEOUT_MS,
+): Promise<Response> {
+  return ownedBoundedFetch(input, init, { timeoutMs });
+}
 
 export interface BlooioSendMessageRequest {
   text?: string;
@@ -151,7 +164,7 @@ export async function blooioApiRequest<T>(
     headers["Idempotency-Key"] = options.idempotencyKey;
   }
 
-  const response = await fetch(url, {
+  const response = await blooioFetch(url, {
     method,
     headers,
     body: body ? JSON.stringify(body) : undefined,

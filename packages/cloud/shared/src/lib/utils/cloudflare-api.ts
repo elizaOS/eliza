@@ -7,8 +7,21 @@
  */
 
 import { logger } from "./logger";
+import { ownedBoundedFetch } from "./owned-bounded-fetch";
 
 const CLOUDFLARE_API_BASE = "https://api.cloudflare.com/client/v4";
+export const CLOUDFLARE_REQUEST_TIMEOUT_MS = 30_000;
+
+/**
+ * Bound every Cloudflare REST hop while preserving caller cancellation.
+ */
+export async function cloudflareFetch(
+  input: RequestInfo | URL,
+  init?: RequestInit,
+  timeoutMs: number = CLOUDFLARE_REQUEST_TIMEOUT_MS,
+): Promise<Response> {
+  return ownedBoundedFetch(input, init, { timeoutMs });
+}
 
 interface CloudflareErrorEntry {
   code: number;
@@ -62,7 +75,7 @@ export async function cloudflareApiRequest<T>(
     headers.set("Content-Type", "application/json");
   }
 
-  const response = await fetch(url, { ...options, headers });
+  const response = await cloudflareFetch(url, { ...options, headers });
   const text = await response.text();
 
   let envelope: CloudflareEnvelope<T> | null = null;
