@@ -298,6 +298,8 @@ Required evidence includes corpus manifest/seed/SHA/coordinates, native-realizat
 
 Selected credentialed lanes fail when credentials are absent. Optional discovery jobs may skip, but a skip cannot satisfy live-model acceptance.
 
+The corpus manifest is `elizaos.progressive-content.v2`. A valid publication is owner-only and manifest-last; contains no undeclared files under its owned `objects/` and `formats/` trees; rejects symlink/hardlink targets and unsafe modes; deletes only stale paths declared by a prior verified manifest; records exact source and normalized-text hashes, revisions, authorization scopes, UTF-8 byte coordinates, extraction states, and total logical bytes; and passes a fresh byte-backed verifier against code-derived deterministic bytes and declarations. Tests must include changed-seed stale-file cleanup, unsafe-mode rejection, preservation of unowned files, a symlink victim that remains unchanged, a resigned manifest with a missing extraction oracle, and fully resigned format and streamed-source tampering.
+
 ## 12. Recommended decisions
 
 - Retain raw content according to existing security/retention policy: **yes**.
