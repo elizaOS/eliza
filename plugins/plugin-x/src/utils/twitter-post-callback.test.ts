@@ -292,9 +292,10 @@ describe("createTwitterPostCallback", () => {
     const callback = makeCallback({ client, runtime });
     const longText = "hello ".repeat(70);
 
-    await expect(callback({ text: longText })).rejects.toThrow(
-      /weighted characters/,
-    );
+    await expect(callback({ text: longText })).rejects.toMatchObject({
+      code: "X_POST_LENGTH_EXCEEDED",
+      context: { weightedLength: 420, maxWeightedLength: 280 },
+    });
 
     expect(client.twitterClient.sendTweet).not.toHaveBeenCalled();
     expect(runtime.cache.get(RECENT_TWEETS_KEY)).toBeUndefined();
@@ -304,9 +305,10 @@ describe("createTwitterPostCallback", () => {
     const runtime = makeRuntime();
     const client = makeClient();
     const callback = makeCallback({ client, runtime });
-    await expect(callback({ text: "你".repeat(141) })).rejects.toThrow(
-      /weighted characters; received 282/,
-    );
+    await expect(callback({ text: "你".repeat(141) })).rejects.toMatchObject({
+      code: "X_POST_LENGTH_EXCEEDED",
+      context: { weightedLength: 282, maxWeightedLength: 280 },
+    });
     expect(client.twitterClient.sendTweet).not.toHaveBeenCalled();
   });
 

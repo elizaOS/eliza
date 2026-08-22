@@ -530,7 +530,10 @@ describe("XService trusted account routing", () => {
       service.handleSendPost(runtime, {
         text: "你".repeat(141),
       } as Content),
-    ).rejects.toThrow(/weighted characters; received 282/);
+    ).rejects.toMatchObject({
+      code: "X_POST_LENGTH_EXCEEDED",
+      context: { weightedLength: 282, maxWeightedLength: 280 },
+    });
     expect(getClient).not.toHaveBeenCalled();
   });
 

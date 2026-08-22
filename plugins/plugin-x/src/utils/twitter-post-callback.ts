@@ -36,8 +36,15 @@ function errorMessage(error: unknown): string {
 function normalizePostText(text: string): string {
   const weightedLength = countTwitterWeightedLength(text);
   if (weightedLength > TWEET_MAX_LENGTH) {
-    throw new RangeError(
+    throw new ElizaError(
       `Generated X post is limited to ${TWEET_MAX_LENGTH} weighted characters; received ${weightedLength}`,
+      {
+        code: "X_POST_LENGTH_EXCEEDED",
+        context: {
+          weightedLength,
+          maxWeightedLength: TWEET_MAX_LENGTH,
+        },
+      },
     );
   }
   return text;
