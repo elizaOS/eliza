@@ -1048,6 +1048,73 @@ export function looksLikeFollowUpToInFlightWork(text: string): boolean {
   return FOLLOW_UP_SHAPE_RE.test(text) && !NEW_DELIVERABLE_RE.test(text);
 }
 
+const STOPWORDS = new Set([
+  "that",
+  "this",
+  "with",
+  "from",
+  "into",
+  "then",
+  "them",
+  "what",
+  "when",
+  "will",
+  "make",
+  "build",
+  "create",
+  "write",
+  "script",
+  "page",
+  "file",
+  "files",
+  "please",
+  "under",
+  "over",
+  "some",
+  "also",
+  "just",
+  "only",
+  "have",
+  "does",
+  "print",
+  "prints",
+  "show",
+  "again",
+  "python",
+  "bash",
+  "shell",
+]);
+
+function contentWords(text: string): Set<string> {
+  return new Set(
+    text
+      .toLowerCase()
+      .replace(/<@!?\d+>|@\S+/g, " ")
+      .split(/[^a-z0-9]+/)
+      .filter((word) => word.length > 3 && !STOPWORDS.has(word)),
+  );
+}
+
+/** A send into a FINISHED lane continues that lane only when the text reads
+ *  as a follow-up ("run it again", "add a footer to it") or names the prior
+ *  work. A new-deliverable ask sharing no content word with the finished task
+ *  ("write me a python script that prints a random prime" into the
+ *  count-ts-files lane, live 2026-08-22) is a fresh build: no inherited
+ *  title, acceptance criteria, lineage or workdir — the judge graded the
+ *  prime script against the .ts-count criteria and the file landed in the
+ *  repo checkout. */
+export function continuesFinishedWork(
+  text: string,
+  priorTask: string,
+): boolean {
+  if (!NEW_DELIVERABLE_RE.test(text)) return true;
+  const prior = contentWords(priorTask);
+  for (const word of contentWords(text)) {
+    if (prior.has(word)) return true;
+  }
+  return false;
+}
+
 const FOLLOW_UP_SIBLING_WINDOW_MS = 3 * 60_000;
 const FOLLOW_UP_SESSION_WAIT_MS = 20_000;
 
@@ -4117,8 +4184,10 @@ async function runSend(
       )
         ? ""
         : rawPriorTask;
+      const continuesPrior =
+        Boolean(priorTask) && continuesFinishedWork(textInput, priorTask);
       logger(runtime).info(
-        `[TASKS:send] target session ${target.session.id} is terminal (${target.session.status}); redirecting follow-up to a successor create`,
+        `[TASKS:send] target session ${target.session.id} is terminal (${target.session.status}); redirecting to a ${continuesPrior ? "successor" : "fresh"} create`,
       );
       // Same claim as the interrupt redirect: the successor create below is
       // the launch for this origin; a second redirect or planner create for
@@ -4141,7 +4210,7 @@ async function runSend(
         state,
         {
           ...params,
-          ...(priorTask
+          ...(continuesPrior
             ? await successorInheritance(runtime, target.session)
             : {}),
           action: "create",
@@ -4150,13 +4219,13 @@ async function runSend(
           // re-execute it verbatim — "Write a python script…" re-wrote the
           // existing file (tripping the read-first guard) when the user only
           // asked to run it again (live 2026-08-21).
-          task: priorTask
+          task: continuesPrior
             ? `${textInput}
 
 Context: this continues a FINISHED task whose deliverable already exists in the workdir. The original task was: ${priorTask}
 Build on the existing files; do not recreate them.`
             : textInput,
-          ...(target.session.workdir
+          ...(continuesPrior && target.session.workdir
             ? { workdir: target.session.workdir }
             : {}),
         },
