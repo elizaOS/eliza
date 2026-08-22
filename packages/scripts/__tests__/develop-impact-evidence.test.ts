@@ -1,6 +1,8 @@
 /** Exercises exact-input surface invalidation and fail-closed evidence reuse without network or GitHub state. */
 
 import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import {
   computeExpectedManifest,
   createEvidence,
@@ -134,6 +136,22 @@ function digest(expected: ReturnType<typeof manifest>, id: string) {
 }
 
 describe("Develop Full impact graph", () => {
+  test("planner entrypoint remains dependency-free before workspace install", () => {
+    const source = readFileSync(
+      fileURLToPath(new URL("../develop-impact-evidence.mjs", import.meta.url)),
+      "utf8",
+    );
+    const imports = [...source.matchAll(/from\s+["']([^"']+)["']/g)].map(
+      (match) => match[1],
+    );
+    expect(
+      imports.every(
+        (specifier) =>
+          specifier.startsWith("node:") || specifier.startsWith("./"),
+      ),
+    ).toBe(true);
+  });
+
   test("binds a leaf to its complete transitive workspace input closure", () => {
     const expected = manifest(["packages/leaf/src.ts"]);
     const leaf = expected.surfaces.find((surface) => surface.id === "leaf");

@@ -20,7 +20,6 @@ import {
 } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { parse } from "yaml";
 import { listWorkspaceDirs } from "./lib/workspaces.mjs";
 
 const DEFAULT_REPO_ROOT = path.resolve(
@@ -344,19 +343,13 @@ function inputRows(paths, tracked) {
   });
 }
 
-function collectLocalUses(value, label, references = []) {
-  if (Array.isArray(value)) {
-    for (const [index, entry] of value.entries()) {
-      collectLocalUses(entry, `${label}[${index}]`, references);
-    }
-    return references;
-  }
-  if (!value || typeof value !== "object") return references;
-  for (const [key, entry] of Object.entries(value)) {
-    if (key === "uses" && typeof entry === "string" && entry.startsWith("./")) {
-      references.push(entry);
-    }
-    collectLocalUses(entry, `${label}.${key}`, references);
+function collectLocalUses(source) {
+  const references = [];
+  const expression =
+    /^\s*(?:-\s*)?uses\s*:\s*(?:"([^"]+)"|'([^']+)'|([^\s#]+))\s*(?:#.*)?$/gm;
+  for (const match of source.matchAll(expression)) {
+    const reference = match[1] ?? match[2] ?? match[3];
+    if (reference.startsWith("./")) references.push(reference);
   }
   return references;
 }
@@ -380,7 +373,7 @@ function normalizeLocalUses(reference, label) {
   return normalized;
 }
 
-function requireTrackedYaml(tracked, descriptor, label) {
+function requireTrackedSource(tracked, descriptor, label) {
   const entry = tracked.get(descriptor);
   if (!entry) throw new Error(`${label}: missing local target ${descriptor}`);
   if (entry.mode !== "100644" && entry.mode !== "100755") {
@@ -388,21 +381,11 @@ function requireTrackedYaml(tracked, descriptor, label) {
       `${label}: local target is not a regular file: ${descriptor}`,
     );
   }
-  if (typeof entry.content !== "string") {
+  if (typeof entry.content !== "string")
     throw new Error(
-      `${label}: local target has no parseable YAML: ${descriptor}`,
+      `${label}: local target source is unavailable: ${descriptor}`,
     );
-  }
-  let parsed;
-  try {
-    parsed = parse(entry.content);
-  } catch (error) {
-    throw new Error(`${label}: invalid local YAML ${descriptor}`, {
-      cause: error,
-    });
-  }
-  assertPlainObject(parsed, `${label}: ${descriptor}`);
-  return parsed;
+  return entry.content;
 }
 
 function resolveLocalTarget(reference, tracked, label) {
@@ -413,9 +396,8 @@ function resolveLocalTarget(reference, tracked, label) {
         `${label}: local workflow target is outside .github/workflows: ${target}`,
       );
     }
-    const parsed = requireTrackedYaml(tracked, target, label);
-    assertPlainObject(parsed.jobs, `${label}: ${target}.jobs`);
-    return { descriptor: target, inputPaths: [target], parsed };
+    const source = requireTrackedSource(tracked, target, label);
+    return { descriptor: target, inputPaths: [target], source };
   }
 
   const candidates = [`${target}/action.yml`, `${target}/action.yaml`].filter(
@@ -427,8 +409,7 @@ function resolveLocalTarget(reference, tracked, label) {
     );
   }
   const descriptor = candidates[0];
-  const parsed = requireTrackedYaml(tracked, descriptor, label);
-  assertPlainObject(parsed.runs, `${label}: ${descriptor}.runs`);
+  const source = requireTrackedSource(tracked, descriptor, label);
   const prefix = `${target}/`;
   const inputPaths = [...tracked.keys()]
     .filter((relativePath) => relativePath.startsWith(prefix))
@@ -436,7 +417,7 @@ function resolveLocalTarget(reference, tracked, label) {
   if (inputPaths.length === 0) {
     throw new Error(`${label}: local action input closure is empty: ${target}`);
   }
-  return { descriptor, inputPaths, parsed };
+  return { descriptor, inputPaths, source };
 }
 
 function localDependencyClosure(surface, tracked) {
@@ -447,13 +428,13 @@ function localDependencyClosure(surface, tracked) {
     throw new Error(`${surface.id}: workflow is not a regular file: ${root}`);
   }
   if (typeof rootEntry.content !== "string") {
-    throw new Error(`${surface.id}: workflow has no parseable YAML: ${root}`);
+    throw new Error(`${surface.id}: workflow source is unavailable: ${root}`);
   }
 
   const inputs = new Set([root]);
   const visiting = new Set();
   const visited = new Set();
-  function visit(descriptor, parsed) {
+  function visit(descriptor, source) {
     if (visiting.has(descriptor)) {
       throw new Error(
         `${surface.id}: local uses dependency cycle at ${descriptor}`,
@@ -461,26 +442,16 @@ function localDependencyClosure(surface, tracked) {
     }
     if (visited.has(descriptor)) return;
     visiting.add(descriptor);
-    for (const reference of collectLocalUses(parsed, descriptor)) {
+    for (const reference of collectLocalUses(source)) {
       const target = resolveLocalTarget(reference, tracked, descriptor);
       for (const inputPath of target.inputPaths) inputs.add(inputPath);
-      visit(target.descriptor, target.parsed);
+      visit(target.descriptor, target.source);
     }
     visiting.delete(descriptor);
     visited.add(descriptor);
   }
 
-  let parsed;
-  try {
-    parsed = parse(rootEntry.content);
-  } catch (error) {
-    throw new Error(`${surface.id}: invalid workflow YAML ${root}`, {
-      cause: error,
-    });
-  }
-  assertPlainObject(parsed, `${surface.id}: ${root}`);
-  assertPlainObject(parsed.jobs, `${surface.id}: ${root}.jobs`);
-  visit(root, parsed);
+  visit(root, rootEntry.content);
   return [...inputs].sort(compareText);
 }
 
