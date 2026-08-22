@@ -141,6 +141,19 @@ describe("TaskCoordinatorView — GUI route wrapper", () => {
     expect(screen.getByText("Fix tests")).toBeTruthy();
   });
 
+  it("gives every list bridge element a concrete role and label", async () => {
+    const { container } = render(React.createElement(TaskCoordinatorView));
+    await screen.findByText("Refactor auth");
+    const elements = Array.from(
+      container.querySelectorAll<HTMLElement>("[data-agent-id]"),
+    );
+    expect(elements.length).toBeGreaterThan(0);
+    for (const element of elements) {
+      expect(element.dataset.agentRole).toBeTruthy();
+      expect(element.dataset.agentLabel).toBeTruthy();
+    }
+  });
+
   it("opens a thread's detail when its Open button is clicked", async () => {
     render(React.createElement(TaskCoordinatorView));
     await screen.findByText("Refactor auth");

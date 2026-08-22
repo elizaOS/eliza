@@ -70,24 +70,36 @@ export async function listViewElements(
   )) as AgentBridgeElement[];
 }
 
-interface RootControlAudit {
+export interface RootControlAudit {
   wiredIds: string[];
   unwired: string[];
+  duplicateControlIds: string[];
 }
 
-async function inspectExactRoot(root: Locator): Promise<RootControlAudit> {
+export async function inspectExactRootControls(
+  root: Locator,
+): Promise<RootControlAudit> {
   return root.evaluate((node) => {
     const selector = [
       "button:not([disabled])",
-      '[role="button"]',
+      "a[href]",
       'input:not([type="hidden"]):not([disabled]):not([readonly])',
       "textarea:not([disabled]):not([readonly])",
+      "select:not([disabled])",
+      '[contenteditable="true"]',
+      '[role="button"]',
       '[role="switch"]',
       '[role="combobox"]',
       '[role="tab"]',
-      "select:not([disabled])",
+      '[role="menuitem"]',
+      '[role="menuitemcheckbox"]',
+      '[role="menuitemradio"]',
+      '[role="listbox"]',
+      '[role="option"]',
+      '[role="slider"]',
+      '[role="textbox"]',
     ].join(", ");
-    const wiredIds = new Set<string>();
+    const owners = new Map<string, Set<HTMLElement>>();
     const unwired = new Set<string>();
     for (const element of Array.from(
       node.querySelectorAll<HTMLElement>(selector),
@@ -95,10 +107,16 @@ async function inspectExactRoot(root: Locator): Promise<RootControlAudit> {
       const rect = element.getBoundingClientRect();
       if (rect.width === 0 && rect.height === 0) continue;
       if (element.closest('[aria-hidden="true"]')) continue;
-      const owner = element.closest<HTMLElement>("[data-agent-id]");
-      if (owner && node.contains(owner)) {
-        const id = owner.dataset.agentId;
-        if (id) wiredIds.add(id);
+      if (element.getAttribute("aria-disabled") === "true") continue;
+
+      // An interactive element must own its bridge identity directly. Accepting
+      // `closest()` here lets one coarse wrapper falsely claim any number of
+      // unrelated child buttons, leaving chat/voice unable to address them.
+      const id = element.dataset.agentId;
+      if (id) {
+        const controls = owners.get(id) ?? new Set<HTMLElement>();
+        controls.add(element);
+        owners.set(id, controls);
         continue;
       }
       const role = element.getAttribute("role");
@@ -106,15 +124,22 @@ async function inspectExactRoot(root: Locator): Promise<RootControlAudit> {
         element.getAttribute("aria-label") ??
         element.textContent?.trim().replace(/\s+/g, " ").slice(0, 80) ??
         "";
+      const inheritedId = element.parentElement
+        ?.closest<HTMLElement>("[data-agent-id]")
+        ?.getAttribute("data-agent-id");
       unwired.add(
         `${element.tagName.toLocaleLowerCase()}${role ? `[role=${role}]` : ""}${
           name ? `(${name})` : ""
-        }`,
+        }${inheritedId ? `[nested-under=${inheritedId}]` : ""}`,
       );
     }
     return {
-      wiredIds: [...wiredIds].sort(),
+      wiredIds: [...owners.keys()].sort(),
       unwired: [...unwired].sort(),
+      duplicateControlIds: [...owners.entries()]
+        .filter(([, controls]) => controls.size > 1)
+        .map(([id]) => id)
+        .sort(),
     };
   });
 }
@@ -135,10 +160,14 @@ export async function expectExactRootAgentParity({
   label: string;
 }): Promise<AgentBridgeElement[]> {
   await waitForViewInteract(page);
-  const audit = await inspectExactRoot(root);
+  const audit = await inspectExactRootControls(root);
   expect(
     audit.unwired,
     `${label}: visible controls without data-agent-id: ${audit.unwired.join("; ")}`,
+  ).toEqual([]);
+  expect(
+    audit.duplicateControlIds,
+    `${label}: distinct controls sharing one data-agent-id: ${audit.duplicateControlIds.join(", ")}`,
   ).toEqual([]);
 
   const elements = await listViewElements(page, viewId);
