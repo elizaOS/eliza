@@ -5,7 +5,7 @@
  * clear. The bulk deleteAllMemories path must empty the room regardless of that
  * default.
  */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { InMemoryDatabaseAdapter } from "../database/inMemoryAdapter.ts";
 import { AgentRuntime } from "../runtime.ts";
 import type { Character, UUID } from "../types";
@@ -43,6 +43,7 @@ async function seededRuntime(count: number): Promise<{
 describe("DefaultMessageService.clearChannel", () => {
 	it("deletes every message in a room larger than the in-memory default page", async () => {
 		const { runtime, adapter } = await seededRuntime(25);
+		const countMemories = vi.spyOn(runtime, "countMemories");
 		const before = await adapter.getMemories({
 			tableName: "messages",
 			roomId: ROOM_ID,
@@ -54,6 +55,12 @@ describe("DefaultMessageService.clearChannel", () => {
 			ROOM_ID,
 			"chan-repro",
 		);
+		expect(countMemories).toHaveBeenCalledWith({
+			roomIds: [ROOM_ID],
+			tableName: "messages",
+			unique: false,
+			agentId: runtime.agentId,
+		});
 
 		const remaining = await adapter.getMemories({
 			tableName: "messages",
