@@ -14,7 +14,14 @@ import type {
   State,
   UUID,
 } from "@elizaos/core";
-import { toWellFormedUnicode } from "@elizaos/core";
+import {
+  getRelatedEntityIds,
+  markOwnerExclusiveDisclosureUsed,
+  OWNER_PRIVATE_DESTINATION_DISCLOSURE_BASIS,
+  recordOwnerExclusiveSuppression,
+  revalidateOwnerExclusiveDisclosure,
+  toWellFormedUnicode,
+} from "@elizaos/core";
 import { getValidationKeywordTerms } from "@elizaos/shared";
 import {
   extractConversationMetadataFromRoom,
@@ -69,7 +76,28 @@ export const recentConversationsProvider: Provider = {
         return { text: "", values: {}, data: {} };
       }
 
-      const roomIds = await runtime.getRoomsForParticipant(entityId);
+      // Every result from this provider can disclose another destination's
+      // history. Revalidate the live audience before resolving identities or
+      // reading rooms so a group/thread destination cannot probe private
+      // cross-platform context through either output or query side effects.
+      const disclosure = await revalidateOwnerExclusiveDisclosure(
+        runtime,
+        message,
+      );
+      if (
+        !disclosure.allowed ||
+        disclosure.basis !== OWNER_PRIVATE_DESTINATION_DISCLOSURE_BASIS
+      ) {
+        if (!disclosure.allowed) {
+          recordOwnerExclusiveSuppression(message, disclosure.reason);
+        }
+        return { text: "", values: {}, data: {} };
+      }
+
+      const relatedEntityIds = await getRelatedEntityIds(runtime, entityId);
+      const roomIds = Array.from(
+        new Set(await runtime.getRoomsForParticipants(relatedEntityIds)),
+      );
       if (!roomIds || roomIds.length === 0) {
         return { text: "", values: {}, data: {} };
       }
@@ -92,17 +120,26 @@ export const recentConversationsProvider: Provider = {
         return { text: "", values: {}, data: {} };
       }
 
-      // Resolve room details for display
+      // Resolve source tags in one adapter read. A missing cosmetic tag must
+      // not remove otherwise eligible history from model context.
       const roomCache = new Map<string, Room | null>();
       for (const mem of sorted) {
         const rid = mem.roomId;
         if (rid && !roomCache.has(rid)) {
-          try {
-            roomCache.set(rid, await runtime.getRoom(rid));
-          } catch {
-            roomCache.set(rid, null);
-          }
+          roomCache.set(rid, null);
         }
+      }
+      const resultRoomIds = Array.from(roomCache.keys()) as UUID[];
+      try {
+        for (const room of await runtime.getRoomsByIds(resultRoomIds)) {
+          if (room.id) roomCache.set(room.id, room);
+        }
+      } catch (error) {
+        // error-policy:J4 source tags degrade to untagged while the complete
+        // eligible message set remains visible and diagnostics record failure.
+        runtime.reportError("RecentConversationsProvider.roomTags", error, {
+          roomIds: resultRoomIds,
+        });
       }
 
       const lines: string[] = ["Recent conversations:"];
@@ -114,6 +151,8 @@ export const recentConversationsProvider: Provider = {
         const text = toWellFormedUnicode(mem.content.text ?? "");
         lines.push(`${tag} ${age}${speaker}: ${text}`);
       }
+
+      markOwnerExclusiveDisclosureUsed(message);
 
       return {
         text: lines.join("\n"),

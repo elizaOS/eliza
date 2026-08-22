@@ -308,8 +308,8 @@ async function ensureFormattingEntities(
 	return Array.from(entitiesById.values());
 }
 
-// Cross-room history between the sender's identity cluster and the target
-// entity, excluding the current room.
+// Cross-room history from rooms shared by the sender's identity cluster and
+// the target entity, excluding the current room.
 const getRecentInteractions = async (
 	runtime: IAgentRuntime,
 	sourceEntityId: UUID,
@@ -317,12 +317,18 @@ const getRecentInteractions = async (
 	excludeRoomId: UUID,
 ): Promise<Memory[]> => {
 	const sourceEntityIds = await getRelatedEntityIds(runtime, sourceEntityId);
-	const roomsByIdentity = await Promise.all(
-		sourceEntityIds.map((entityId) =>
-			runtime.getRoomsForParticipants([entityId, targetEntityId]),
-		),
+	// getRoomsForParticipants is a union query (rooms containing ANY supplied
+	// entity), so intersect the identity-cluster rooms with the target's rooms.
+	// Passing both sides to one call would leak unrelated participant rooms into
+	// recentInteractions.
+	const [sourceRooms, targetRooms] = await Promise.all([
+		runtime.getRoomsForParticipants(sourceEntityIds),
+		runtime.getRoomsForParticipant(targetEntityId),
+	]);
+	const targetRoomIds = new Set(targetRooms);
+	const rooms = Array.from(new Set(sourceRooms)).filter((roomId) =>
+		targetRoomIds.has(roomId),
 	);
-	const rooms = Array.from(new Set(roomsByIdentity.flat()));
 	const otherRooms = rooms.filter((room) => room !== excludeRoomId);
 	if (otherRooms.length === 0) {
 		return [];
