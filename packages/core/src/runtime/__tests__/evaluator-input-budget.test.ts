@@ -204,7 +204,7 @@ describe("runEvaluator — complete input or explicit rejection", () => {
 			10,
 			{ displayModel: "llama3.1-8b" },
 		);
-		const result = "x".repeat(10_000);
+		const result = "x".repeat(1_000);
 		await runEvaluator({
 			runtime,
 			context: CONTEXT,
@@ -253,7 +253,7 @@ describe("runEvaluator — complete input or explicit rejection", () => {
 			10,
 			{ displayModel: "llama3.1-8b" },
 		);
-		const result = "x".repeat(10_000);
+		const result = "x".repeat(1_000);
 
 		await runEvaluator({
 			runtime,
@@ -785,7 +785,7 @@ describe("runEvaluator — trajectory stage records the per-attempt prepared req
 			} as never,
 			trajectoryId: "attempt-snapshot",
 			context: CONTEXT,
-			trajectory: makeTrajectory([makeStep(1, "x".repeat(10_000))]),
+			trajectory: makeTrajectory([makeStep(1, "x".repeat(1_000))]),
 			effects: {},
 		});
 
