@@ -43,6 +43,12 @@ function getMessageService(runtime: AgentRuntime): DefaultMessageService {
   return service;
 }
 
+function installCodingActions(runtime: AgentRuntime): void {
+  for (const name of ["READ", "WRITE", "EDIT", "SHELL"]) {
+    runtime.actions.push({ name } as never);
+  }
+}
+
 describe("runBenchmarkTask", () => {
   it("passes owner cancellation into the message loop and captures every output channel", async () => {
     const runtime = createRuntime();
@@ -97,6 +103,7 @@ describe("runBenchmarkTask", () => {
 
   it("routes explicit coding tasks through the coding message loop", async () => {
     const runtime = createRuntime();
+    installCodingActions(runtime);
     let receivedCodingMode: boolean | undefined;
     vi.spyOn(getMessageService(runtime), "handleMessage").mockImplementation(
       async (_runtime, _message, _callback, options) => {
@@ -117,6 +124,26 @@ describe("runBenchmarkTask", () => {
 
     expect(receivedCodingMode).toBe(true);
     expect(result).toMatchObject({ task_type: "coding", success: true });
+  });
+
+  it("fails closed before model inference when coding tools are unavailable", async () => {
+    const runtime = createRuntime();
+    const handleMessage = vi.spyOn(getMessageService(runtime), "handleMessage");
+
+    const result = await runBenchmarkTask(
+      runtime,
+      { id: "missing-tools", type: "coding", prompt: "Fix the parser" },
+      new AbortController().signal,
+    );
+
+    expect(handleMessage).not.toHaveBeenCalled();
+    expect(result).toMatchObject({
+      task_type: "coding",
+      success: false,
+      response: "",
+      error:
+        "Coding benchmark runtime is missing required actions: READ, WRITE, EDIT, SHELL",
+    });
   });
 
   it("returns partial streamed output when the owner cancels without late completion", async () => {
@@ -359,6 +386,31 @@ describe("runBenchmark lifecycle", () => {
     vi.restoreAllMocks();
     process.exitCode = undefined;
     await rm(fixtureDir, { recursive: true, force: true });
+  });
+
+  it("blocks for deferred capabilities during boot and restores the caller environment", async () => {
+    const previous = process.env.ELIZA_BLOCK_DEFERRED_PLUGIN_IMPORTS;
+    delete process.env.ELIZA_BLOCK_DEFERRED_PLUGIN_IMPORTS;
+    lifecycle.boot.mockImplementation(async () => {
+      expect(process.env.ELIZA_BLOCK_DEFERRED_PLUGIN_IMPORTS).toBe("1");
+      return runtime;
+    });
+    vi.spyOn(getMessageService(runtime), "handleMessage").mockResolvedValue({
+      didRespond: true,
+      responseContent: { text: "done" },
+      responseMessages: [],
+    });
+    const taskPath = join(fixtureDir, "task.json");
+    await writeFile(taskPath, JSON.stringify({ id: "boot", prompt: "Run it" }));
+
+    try {
+      await runBenchmark({ task: taskPath });
+      expect(process.env.ELIZA_BLOCK_DEFERRED_PLUGIN_IMPORTS).toBeUndefined();
+    } finally {
+      if (previous === undefined)
+        delete process.env.ELIZA_BLOCK_DEFERRED_PLUGIN_IMPORTS;
+      else process.env.ELIZA_BLOCK_DEFERRED_PLUGIN_IMPORTS = previous;
+    }
   });
 
   it("shuts down the runtime after a successful task", async () => {
