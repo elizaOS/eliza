@@ -15,7 +15,12 @@
  */
 
 import { randomBytes } from "node:crypto";
-import { createManager, type SecretsManager, type Vault } from "@elizaos/vault";
+import {
+  createManager,
+  type SecretsManager,
+  type Vault,
+  VaultDecryptionError,
+} from "@elizaos/vault";
 import type { OperationErrorCode } from "./types.ts";
 
 export class VaultResolveError extends Error {
@@ -63,16 +68,71 @@ export function parseVaultRef(value: string): string | null {
 export type VaultLike = Pick<Vault, "get" | "has">;
 
 const OPTIMIZED_PROMPT_HMAC_VAULT_KEY = "system.optimized-prompt.hmac-key";
+const OPTIMIZED_PROMPT_HMAC_RECOVERY_CALLER =
+  "runtime-boot:optimized-prompt-hmac-decryption-recovery";
 
-/**
- * Return the persistent integrity key used to authenticate optimized prompts.
- * The vault is authoritative; a key is generated once and encrypted at rest.
- */
-export async function resolveOptimizedPromptIntegrityKey(
-  vault: Pick<Vault, "get" | "has" | "setIfAbsent">,
+type OptimizedPromptIntegrityVault = Pick<
+  Vault,
+  "get" | "has" | "set" | "setIfAbsent"
+>;
+
+// `set()` is an encrypted UPSERT, not a compare-and-swap. Keep the complete
+// read/recover/write/read-back sequence single-flight for the process-wide
+// shared Vault instance so concurrent boot callers cannot return different
+// replacement keys. PGlite remains the cross-process single-writer boundary.
+const optimizedPromptIntegrityKeyResolutions = new WeakMap<
+  object,
+  Promise<string>
+>();
+
+function isOptimizedPromptIntegrityKeyDecryptionFailure(
+  error: unknown,
+): error is VaultDecryptionError {
+  return (
+    error instanceof VaultDecryptionError &&
+    error.key === OPTIMIZED_PROMPT_HMAC_VAULT_KEY
+  );
+}
+
+async function replaceUnreadableOptimizedPromptIntegrityKey(
+  vault: OptimizedPromptIntegrityVault,
+): Promise<string> {
+  const replacement = randomBytes(32).toString("base64");
+  await vault.set(OPTIMIZED_PROMPT_HMAC_VAULT_KEY, replacement, {
+    sensitive: true,
+    // This caller is persisted in the Vault audit log as the redacted reason;
+    // no key material or underlying crypto error is logged.
+    caller: OPTIMIZED_PROMPT_HMAC_RECOVERY_CALLER,
+  });
+  const readBack = await vault.get(OPTIMIZED_PROMPT_HMAC_VAULT_KEY);
+  if (readBack !== replacement) {
+    throw new Error(
+      "[runtime-ops:vault] optimized-prompt integrity-key recovery failed exact read-back verification",
+    );
+  }
+  return replacement;
+}
+
+async function readOptimizedPromptIntegrityKeyOrRecover(
+  vault: OptimizedPromptIntegrityVault,
+): Promise<string> {
+  try {
+    return await vault.get(OPTIMIZED_PROMPT_HMAC_VAULT_KEY);
+  } catch (error) {
+    // This is the sole recoverable decryption failure: the value is randomly
+    // generated internal HMAC material, never a user/provider credential. A
+    // replacement makes old optimized-prompt artifacts fail their HMAC check;
+    // the core loader rejects them and falls back to baseline prompts.
+    if (!isOptimizedPromptIntegrityKeyDecryptionFailure(error)) throw error;
+    return replaceUnreadableOptimizedPromptIntegrityKey(vault);
+  }
+}
+
+async function resolveOptimizedPromptIntegrityKeyOnce(
+  vault: OptimizedPromptIntegrityVault,
 ): Promise<string> {
   if (await vault.has(OPTIMIZED_PROMPT_HMAC_VAULT_KEY)) {
-    return vault.get(OPTIMIZED_PROMPT_HMAC_VAULT_KEY);
+    return readOptimizedPromptIntegrityKeyOrRecover(vault);
   }
   const key = randomBytes(32).toString("base64");
   const inserted = await vault.setIfAbsent(
@@ -83,7 +143,30 @@ export async function resolveOptimizedPromptIntegrityKey(
       caller: "runtime-boot",
     },
   );
-  return inserted ? key : vault.get(OPTIMIZED_PROMPT_HMAC_VAULT_KEY);
+  return inserted ? key : readOptimizedPromptIntegrityKeyOrRecover(vault);
+}
+
+/**
+ * Return the persistent integrity key used to authenticate optimized prompts.
+ * The vault is authoritative; a key is generated once and encrypted at rest.
+ * Only authenticated-decryption failure for this exact regenerable system key
+ * is repaired. All user/provider keys and every other error stay fail-closed.
+ */
+export async function resolveOptimizedPromptIntegrityKey(
+  vault: OptimizedPromptIntegrityVault,
+): Promise<string> {
+  const existing = optimizedPromptIntegrityKeyResolutions.get(vault);
+  if (existing) return existing;
+
+  const resolution = resolveOptimizedPromptIntegrityKeyOnce(vault).finally(
+    () => {
+      if (optimizedPromptIntegrityKeyResolutions.get(vault) === resolution) {
+        optimizedPromptIntegrityKeyResolutions.delete(vault);
+      }
+    },
+  );
+  optimizedPromptIntegrityKeyResolutions.set(vault, resolution);
+  return resolution;
 }
 
 /**

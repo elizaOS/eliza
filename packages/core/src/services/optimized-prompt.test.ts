@@ -35,6 +35,7 @@ import {
 	parseDisabledTasksEnv,
 	parseOptimizedPromptArtifact,
 } from "./optimized-prompt";
+import { resolveOptimizedPrompt } from "./optimized-prompt-resolver";
 
 const TEST_INTEGRITY_KEY = Buffer.alloc(32, 0x5a).toString("base64");
 
@@ -478,6 +479,28 @@ describe("OptimizedPromptService — HMAC integrity (SOC2 CC6.8)", () => {
 		);
 		await service.refresh();
 		expect(service.getPrompt("action_planner")).toBeNull();
+	});
+
+	it("rejects artifacts signed by a superseded recovery key and falls back to baseline", async () => {
+		const oldKey = Buffer.alloc(32, 0x31).toString("base64");
+		const replacementKey = Buffer.alloc(32, 0x32).toString("base64");
+		process.env.ELIZA_OPTIMIZED_PROMPT_HMAC_KEY = oldKey;
+		await service.setPrompt("action_planner", makeArtifact(1));
+
+		// Boot-time recovery replaces only the internal HMAC key. Existing
+		// artifacts are intentionally left untrusted: the new key must reject
+		// their old MAC and the runtime resolver must use its built-in baseline.
+		process.env.ELIZA_OPTIMIZED_PROMPT_HMAC_KEY = replacementKey;
+		await service.refresh();
+
+		expect(service.getPrompt("action_planner")).toBeNull();
+		expect(
+			resolveOptimizedPrompt(
+				service,
+				"action_planner",
+				"baseline after integrity-key recovery",
+			),
+		).toBe("baseline after integrity-key recovery");
 	});
 });
 
