@@ -28,6 +28,7 @@ import type {
   StewardAuthResult,
   StewardMfaRequiredResult,
   StewardProviders,
+  StewardTelegramLoginPayload,
 } from "@stwd/sdk";
 import { StewardApiError, StewardAuth } from "@stwd/sdk";
 import { AlertCircle, Phone } from "lucide-react";
@@ -47,7 +48,10 @@ import {
   useSearchParams,
 } from "react-router-dom";
 import { toast } from "sonner";
-import { DiscordIcon } from "../../../../cloud-ui/components/icons";
+import {
+  DiscordIcon,
+  TelegramIcon,
+} from "../../../../cloud-ui/components/icons";
 import { Alert, AlertDescription } from "../../../../components/primitives";
 import { Button } from "../../../../components/ui/button";
 import { Input } from "../../../../components/ui/input";
@@ -98,6 +102,10 @@ import {
   resolveWebPasskeyCapability,
   type WebPasskeyCapability,
 } from "./passkey-capability";
+import {
+  configuredTelegramBotUsername,
+  TelegramLoginWidget,
+} from "./telegram-login-widget";
 
 const Github = ({ className }: { className?: string }) => (
   <svg
@@ -177,6 +185,7 @@ type Provider =
   | "google"
   | "discord"
   | "github"
+  | "telegram"
   | "twitter"
   | "ethereum"
   | "solana";
@@ -207,6 +216,7 @@ const DEFAULT_PROVIDERS: StewardProviders = {
   google: false,
   discord: false,
   github: false,
+  telegram: false,
   twitter: false,
   oauth: [],
 };
@@ -387,6 +397,7 @@ function normalizeSessionCachedProviders(
   const google = record.google;
   const discord = record.discord;
   const github = record.github;
+  const telegram = record.telegram;
   const twitter = record.twitter;
   const oauth = record.oauth;
   if (
@@ -397,6 +408,7 @@ function normalizeSessionCachedProviders(
     typeof google !== "boolean" ||
     typeof discord !== "boolean" ||
     typeof github !== "boolean" ||
+    (telegram !== undefined && typeof telegram !== "boolean") ||
     typeof twitter !== "boolean" ||
     !Array.isArray(oauth) ||
     !oauth.every((provider) => typeof provider === "string") ||
@@ -412,6 +424,7 @@ function normalizeSessionCachedProviders(
     google,
     discord,
     github,
+    ...(typeof telegram === "boolean" ? { telegram } : {}),
     twitter,
     oauth,
     ...(typeof record.sms === "boolean" ? { sms: record.sms } : {}),
@@ -467,6 +480,10 @@ export default function StewardLoginSection() {
   const navigate = useNavigate();
   const pathname = useLocation().pathname;
   const stewardApiUrl = useMemo(() => resolveBrowserStewardApiUrl(), []);
+  const telegramBotUsername = useMemo(
+    () => configuredTelegramBotUsername(),
+    [],
+  );
 
   const auth = useMemo(() => {
     const privateSession = new Map<string, string>();
@@ -506,6 +523,9 @@ export default function StewardLoginSection() {
   const [loading, setLoading] = useState<Provider | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showPasskeyRecovery, setShowPasskeyRecovery] = useState(false);
+  const [telegramIntent, setTelegramIntent] = useState(false);
+  const telegramIntentButtonRef = useRef<HTMLButtonElement>(null);
+  const telegramRegionRef = useRef<HTMLFieldSetElement>(null);
   // Wallet libs mount only on intent: the first wallet-button click renders
   // the (lazy) providers + buttons and auto-starts that wallet's flow.
   const [walletButtonsMounted, setWalletButtonsMounted] = useState(false);
@@ -570,6 +590,7 @@ export default function StewardLoginSection() {
   const hasOAuthProviders = Boolean(
     providers.google || providers.discord || providers.github,
   );
+  const hasExternalProviders = hasOAuthProviders || providers.telegram;
   const showWallets = hasAnyWalletProvider(providers);
   const showPasskey =
     providers.passkey !== false && passkeyCapability?.usable === true;
@@ -1326,6 +1347,40 @@ export default function StewardLoginSection() {
     window.location.href = authorizeUrl;
   }
 
+  function handleTelegramError(message: string) {
+    setError(message);
+    setLoading(null);
+    setTelegramIntent(false);
+    window.setTimeout(
+      () => telegramIntentButtonRef.current?.focus({ preventScroll: true }),
+      0,
+    );
+  }
+
+  async function handleTelegramAuth(payload: StewardTelegramLoginPayload) {
+    setLoading("telegram");
+    setError(null);
+    try {
+      const result = requireCompletedAuth(
+        await auth.signInWithTelegram(payload, {
+          tenantId: STEWARD_TENANT_ID,
+        }),
+      );
+      await handleSuccess(result.token, result.refreshToken);
+    } catch (telegramError: unknown) {
+      // error-policy:J4 Steward or Cloud session failures remain visibly
+      // distinct and leave the user on the login surface for a safe retry.
+      setError(
+        getErrorMessage(telegramError, "Telegram sign-in failed. Try again."),
+      );
+      setLoading(null);
+      window.setTimeout(
+        () => telegramRegionRef.current?.focus({ preventScroll: true }),
+        0,
+      );
+    }
+  }
+
   // First wallet click: mount the lazy wallet stack and remember which chain
   // to auto-start once it's up, so the user doesn't have to click twice.
   function handleWalletIntent(kind: WalletKind) {
@@ -1342,6 +1397,11 @@ export default function StewardLoginSection() {
     if (!walletButtonsMounted) return;
     walletOptionsRegionRef.current?.focus({ preventScroll: true });
   }, [walletButtonsMounted]);
+
+  useEffect(() => {
+    if (!telegramIntent) return;
+    telegramRegionRef.current?.focus({ preventScroll: true });
+  }, [telegramIntent]);
 
   if (redirectTo) {
     return <Navigate to={redirectTo} replace />;
@@ -2005,7 +2065,7 @@ export default function StewardLoginSection() {
         </section>
       )}
 
-      {hasOAuthProviders && (
+      {hasExternalProviders && (
         <div className="flex items-center gap-3">
           <div className="h-px flex-1 bg-border" />
           <span className="text-xs text-muted">
@@ -2017,8 +2077,8 @@ export default function StewardLoginSection() {
         </div>
       )}
 
-      {hasOAuthProviders && (
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+      {hasExternalProviders && (
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
           {providers.google && (
             <Button
               variant="ghost"
@@ -2063,7 +2123,79 @@ export default function StewardLoginSection() {
               {t("cloud.login.button.github", { defaultValue: "GitHub" })}
             </Button>
           )}
+          {providers.telegram && (
+            <Button
+              ref={telegramIntentButtonRef}
+              variant="ghost"
+              type="button"
+              aria-expanded={telegramIntent}
+              aria-controls="steward-telegram-login-widget"
+              onClick={() => {
+                setError(null);
+                setTelegramIntent(true);
+              }}
+              disabled={isLoading || telegramIntent}
+              className="hosted-signin-focus-emphasis flex min-h-touch items-center justify-center gap-2 rounded-md border border-border-strong bg-bg-elevated px-4 py-2.5 text-sm font-semibold text-txt transition-[background-color,border-color,transform] hover:border-border-hover hover:bg-bg-hover active:scale-[0.99] disabled:pointer-events-none disabled:border-border/60 disabled:text-muted-strong"
+            >
+              {loading === "telegram" ? (
+                <Spinner />
+              ) : (
+                <TelegramIcon className="h-4 w-4" />
+              )}{" "}
+              {t("cloud.login.button.telegram", {
+                defaultValue: "Telegram",
+              })}
+            </Button>
+          )}
         </div>
+      )}
+
+      {providers.telegram && telegramIntent && (
+        <fieldset
+          id="steward-telegram-login-widget"
+          ref={telegramRegionRef}
+          aria-label={t("cloud.login.telegramRegion", {
+            defaultValue: "Telegram sign-in",
+          })}
+          tabIndex={-1}
+          className="space-y-2 outline-none"
+        >
+          {telegramBotUsername ? (
+            <TelegramLoginWidget
+              botUsername={telegramBotUsername}
+              disabled={isLoading}
+              onAuth={handleTelegramAuth}
+              onError={handleTelegramError}
+            />
+          ) : (
+            <Alert variant="destructive">
+              <AlertCircle />
+              <AlertDescription>
+                Telegram sign-in is not configured for this deployment.
+              </AlertDescription>
+            </Alert>
+          )}
+          <Button
+            variant="ghost"
+            type="button"
+            onClick={() => {
+              setTelegramIntent(false);
+              window.setTimeout(
+                () =>
+                  telegramIntentButtonRef.current?.focus({
+                    preventScroll: true,
+                  }),
+                0,
+              );
+            }}
+            disabled={isLoading}
+            className="min-h-touch w-full rounded-md px-3 text-sm font-medium text-muted hover:text-txt"
+          >
+            {t("cloud.login.button.cancelTelegram", {
+              defaultValue: "Use another sign-in method",
+            })}
+          </Button>
+        </fieldset>
       )}
 
       {showWallets && (

@@ -118,6 +118,7 @@ const CACHED_PROVIDERS = {
   google: true,
   discord: true,
   github: false,
+  telegram: true,
   twitter: false,
   oauth: [],
 };
@@ -158,10 +159,8 @@ describe("StewardLoginSection — session-cached provider fast path (#18256)", (
     window.sessionStorage.setItem(
       CACHE_KEY,
       JSON.stringify({
-        passkey: false,
-        email: true,
-        google: "true",
-        oauth: [],
+        ...CACHED_PROVIDERS,
+        telegram: "true",
       }),
     );
 
@@ -183,6 +182,7 @@ describe("StewardLoginSection — session-cached provider fast path (#18256)", (
       screen.queryByRole("status", { name: "Loading sign-in options" }),
     ).toBeNull();
     expect(screen.getByRole("button", { name: /^Google$/i })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /^Telegram$/i })).toBeTruthy();
     expect(screen.queryByRole("button", { name: /^GitHub$/i })).toBeNull();
   });
 
@@ -205,11 +205,16 @@ describe("StewardLoginSection — session-cached provider fast path (#18256)", (
     renderSection("/login");
     expect(screen.queryByRole("button", { name: /^GitHub$/i })).toBeNull();
 
-    harness.resolveProviders({ ...CACHED_PROVIDERS, github: true });
+    harness.resolveProviders({
+      ...CACHED_PROVIDERS,
+      github: true,
+      telegram: false,
+    });
 
     await waitFor(() =>
       expect(screen.getByRole("button", { name: /^GitHub$/i })).toBeTruthy(),
     );
+    expect(screen.queryByRole("button", { name: /^Telegram$/i })).toBeNull();
     // The successful discovery refreshes the snapshot for the next load.
     const stored = window.sessionStorage.getItem(CACHE_KEY);
     expect(stored).not.toBeNull();
