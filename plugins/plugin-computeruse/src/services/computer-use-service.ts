@@ -124,6 +124,7 @@ import {
   type ScreenStateChange,
   ScreenStateStore,
 } from "../scene/screen-state.js";
+import { normalizeBrowserTabId } from "../security/browser-tab-id-policy.js";
 import { assertHttpBrowserUrl } from "../security/browser-url-policy.js";
 import { ComputerUseSessionManager } from "../sessions/session-manager.js";
 import type {
@@ -1063,8 +1064,8 @@ export class ComputerUseService extends Service {
     try {
       params = this.normalizeBrowserActionParams(rawParams);
     } catch (error) {
-      // error-policy:J1 action boundary — reject an invalid navigation target
-      // before its raw value reaches action history or the approval queue.
+      // error-policy:J1 action boundary — reject invalid browser targets before
+      // their raw values reach action history or the approval queue.
       const rejectedEntry = this.createEntry(`browser_${action}`, { action });
       return this.failEntry(rejectedEntry, {
         success: false,
@@ -1803,7 +1804,10 @@ export class ComputerUseService extends Service {
       ...(params.url === undefined
         ? {}
         : { url: assertHttpBrowserUrl(params.url) }),
-      tabId: tabIdCandidate !== undefined ? String(tabIdCandidate) : undefined,
+      tabId:
+        tabIdCandidate !== undefined
+          ? normalizeBrowserTabId(tabIdCandidate)
+          : undefined,
       action: this.normalizeBrowserAction(params.action),
     };
   }
