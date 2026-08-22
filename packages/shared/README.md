@@ -28,7 +28,7 @@ import { EXTERNAL_URLS } from "@elizaos/shared/brand";
 import { syncStewardSession } from "@elizaos/shared/steward-session-client";
 ```
 
-- `@elizaos/shared/synthetic-control` owns the state-neutral subprocess protocol,
+- `@elizaos/shared/synthetic-control` owns the versioned, namespace-bound subprocess protocol,
   client and manifested session lifecycle used by scenarios and Cloud E2E.
   Its namespace shares the synthetic environment lease validator: 1–512
   non-control characters, without silently normalizing whitespace.

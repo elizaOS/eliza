@@ -2,6 +2,8 @@
 
 export const SYNTHETIC_CONTROL_VERSION = 1 as const;
 export const SYNTHETIC_CONTROL_PATH = "/__eliza/synthetic-control/v1" as const;
+export const SYNTHETIC_CONTROL_MAX_REQUEST_BYTES = 1_048_576 as const;
+export const SYNTHETIC_CONTROL_MAX_RESPONSE_BYTES = 4_194_304 as const;
 
 export type JsonPrimitive = string | number | boolean | null;
 export type JsonValue =
@@ -51,6 +53,7 @@ export type SyntheticControlCommand =
 
 export interface SyntheticControlRequest {
   version: 1;
+  namespace: string;
   commandId: string;
   expectedGeneration?: number;
   leaseId?: string;
@@ -59,6 +62,7 @@ export interface SyntheticControlRequest {
 
 export interface SyntheticControlSuccess {
   version: 1;
+  namespace: string;
   commandId: string;
   ok: true;
   generation: number;
@@ -67,9 +71,10 @@ export interface SyntheticControlSuccess {
 
 export interface SyntheticControlFailure {
   version: 1;
+  namespace: string;
   commandId: string;
   ok: false;
-  generation: number;
+  generation: number | null;
   error: {
     code:
       | "AUTH_REQUIRED"
@@ -90,6 +95,7 @@ export type SyntheticControlResponse =
   | SyntheticControlFailure;
 
 export interface SyntheticControlExecutionContext {
+  namespace: string;
   commandId: string;
   expectedGeneration?: number;
   leaseId?: string;
@@ -117,8 +123,12 @@ export class SyntheticControlProtocolError extends Error {
     retryable?: boolean;
     details?: JsonValue;
     generation?: number;
+    cause?: unknown;
   }) {
-    super(options.message);
+    super(
+      options.message,
+      options.cause === undefined ? undefined : { cause: options.cause },
+    );
     this.name = "SyntheticControlProtocolError";
     this.code = options.code;
     this.retryable = options.retryable ?? false;
