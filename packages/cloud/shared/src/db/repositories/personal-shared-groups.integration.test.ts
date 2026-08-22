@@ -66,12 +66,14 @@ beforeAll(async () => {
     new URL("../migrations/0297_personal_shared_group_bindings.sql", import.meta.url),
   ).text();
   await database.exec(migration);
+  // Repair: these migrations were renumbered to 0303/0304 when #24356 landed,
+  // but the references below were left stale, breaking this entire test file.
   const authorityMigration = await Bun.file(
-    new URL("../migrations/0300_personal_shared_group_authority_version.sql", import.meta.url),
+    new URL("../migrations/0303_personal_shared_group_authority_version.sql", import.meta.url),
   ).text();
   await database.exec(authorityMigration);
   const leaseMigration = await Bun.file(
-    new URL("../migrations/0301_personal_shared_group_delivery_lease.sql", import.meta.url),
+    new URL("../migrations/0304_personal_shared_group_delivery_lease.sql", import.meta.url),
   ).text();
   await database.exec(leaseMigration);
 });
@@ -659,4 +661,100 @@ describe("personalSharedGroupsRepository", () => {
       }),
     ).resolves.toEqual({ recorded: true, inserted: 1 });
   });
+
+  test("recovers a group whose committed lease was orphaned with its lost token", async () => {
+    await issue({
+      codeHash: "claim-orphan-initial",
+      organizationId: ORG_A,
+      ownerUserId: USER_A,
+      personalAgentId: "personal:owner-a",
+      platformUserId: "+155****0001",
+    });
+    const initial = await consume("claim-orphan-initial", "+155****0001");
+    if (initial.status !== "bound") throw new Error("expected initial binding");
+    const delivery = {
+      authority: {
+        bindingId: initial.binding.id,
+        ownerUserId: USER_A,
+        personalAgentId: "personal:owner-a",
+        version: initial.binding.authority_version,
+      },
+      platform: "blooio" as const,
+      project: "eliza-app",
+      connectorAccountId: CONNECTOR_ID,
+      providerChatId: CHAT_ID,
+      invocation: "mention" as const,
+      sourceMessageId: "incoming-orphaned-commit",
+      leaseToken: "71000000-0000-4000-8000-0000000000a1",
+    };
+    expect(await repository.authorizeDelivery(delivery)).toMatchObject({ authorized: true });
+    expect(await repository.commitDelivery(delivery)).toBe(true);
+
+    // At this point the sending process dies before persisting any receipt.
+    // Nothing can ever present this exact leaseToken again, so no
+    // recordDeliveryReceipts call can clear the committed lease below.
+
+    // Fresh deliveries stay fenced while the orphaned commit is recent — the
+    // provider send may still be in flight and must not be duplicated.
+    const fresh = {
+      authority: { ...delivery.authority },
+      platform: "blooio" as const,
+      project: "eliza-app",
+      connectorAccountId: CONNECTOR_ID,
+      providerChatId: CHAT_ID,
+      invocation: "mention" as const,
+      sourceMessageId: "incoming-too-soon",
+      leaseToken: "71000000-0000-4000-8000-0000000000a2",
+    };
+    expect(await repository.authorizeDelivery(fresh)).toMatchObject({ authorized: false });
+
+    // Past the recovery horizon (COMMITTED_LEASE_RECOVERY_MS = 600s) the slot
+    // frees up without knowing the token; age it 60s beyond for determinism.
+    await getPgliteClientForTests().exec(`
+      UPDATE personal_shared_group_bindings
+      SET delivery_lease_committed_at = now() - interval '660 seconds'
+      WHERE id = '${initial.binding.id}';
+    `);
+    expect(await repository.authorizeDelivery(fresh)).toMatchObject({
+      authorized: true,
+      leaseToken: fresh.leaseToken,
+    });
+    const recovered = await repository.resolveBinding({
+      platform: "blooio",
+      project: "eliza-app",
+      connectorAccountId: CONNECTOR_ID,
+      providerChatId: CHAT_ID,
+    });
+    if (!recovered) throw new Error("expected recovered binding");
+    // The takeover must not inherit the orphaned lease's committed marker...
+    expect(recovered.delivery_lease_committed_at).toBeNull();
+    expect(recovered.delivery_lease_source_id).toBe(fresh.sourceMessageId);
+    // ...and the new reservation commits and reconciles normally end-to-end.
+    expect(await repository.commitDelivery(fresh)).toBe(true);
+    expect(
+      await repository.recordDeliveryReceipts({
+        ...fresh,
+        providerMessageIds: ["outgoing-recovered"],
+      }),
+    ).toEqual({ recorded: true, inserted: 1 });
+    const settled = await repository.resolveBinding({
+      platform: "blooio",
+      project: "eliza-app",
+      connectorAccountId: CONNECTOR_ID,
+      providerChatId: CHAT_ID,
+    });
+    expect(settled?.delivery_lease_source_id).toBeNull();
+    expect(settled?.delivery_lease_token).toBeNull();
+    expect(settled?.delivery_lease_expires_at).toBeNull();
+    expect(settled?.delivery_lease_committed_at).toBeNull();
+
+    // The late receipt of the original orphaned send can no longer hijack or
+    // clear anything: its token was overwritten by the recovered delivery.
+    expect(
+      await repository.recordDeliveryReceipts({
+        ...delivery,
+        providerMessageIds: ["outgoing-late-orphan"],
+      }),
+    ).toEqual({ recorded: false, inserted: 0 });
+  }, 10_000);
 });
