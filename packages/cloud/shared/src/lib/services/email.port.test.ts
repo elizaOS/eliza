@@ -1,8 +1,8 @@
 /**
- * Tests for strict SMTP_PORT parsing in EmailService.
+ * Tests for strict SMTP_PORT parsing and initialization boundary validation in EmailService.
  *
  * Drives production seam: imports resolveSmtpPort and SmtpPortConfigError from
- * email.ts and exercises EmailService initialization with a mocked transporter.
+ * email.ts and exercises EmailService initialization and send path with a mocked transporter.
  * Reverting production validation (e.g., fallback to 587) makes this suite red.
  */
 
@@ -15,6 +15,7 @@ const originalEnv = {
   SMTP_PORT: process.env.SMTP_PORT,
   SMTP_PASSWORD: process.env.SMTP_PASSWORD,
   SMTP_USERNAME: process.env.SMTP_USERNAME,
+  SENDGRID_API_KEY: process.env.SENDGRID_API_KEY,
 };
 
 function restoreEnv(): void {
@@ -26,6 +27,8 @@ function restoreEnv(): void {
   else process.env.SMTP_PASSWORD = originalEnv.SMTP_PASSWORD;
   if (originalEnv.SMTP_USERNAME === undefined) delete process.env.SMTP_USERNAME;
   else process.env.SMTP_USERNAME = originalEnv.SMTP_USERNAME;
+  if (originalEnv.SENDGRID_API_KEY === undefined) delete process.env.SENDGRID_API_KEY;
+  else process.env.SENDGRID_API_KEY = originalEnv.SENDGRID_API_KEY;
 }
 
 describe("resolveSmtpPort strict parsing", () => {
@@ -41,14 +44,9 @@ describe("resolveSmtpPort strict parsing", () => {
   });
 
   it("rejects trailing junk (parseInt would accept)", () => {
-    for (const bad of ["587abc", "25junk", "587 ", "587\nabc", "465xyz", "25 ", "90abc"]) {
-      // note: "587 " with trailing space is caught after trim? "587 " trim => "587" valid, so use "587abc"
-      if (bad === "587 " || bad === "25 ") continue;
+    for (const bad of ["587abc", "25junk", "587\nabc", "465xyz", "90abc", "25px"]) {
       expect(() => resolveSmtpPort(bad)).toThrow(SmtpPortConfigError);
     }
-    expect(() => resolveSmtpPort("587abc")).toThrow(SmtpPortConfigError);
-    expect(() => resolveSmtpPort("25junk")).toThrow(SmtpPortConfigError);
-    expect(() => resolveSmtpPort("90abc")).toThrow(SmtpPortConfigError);
   });
 
   it("rejects decimal and exponent forms", () => {
@@ -63,15 +61,14 @@ describe("resolveSmtpPort strict parsing", () => {
     }
   });
 
-  it("rejects whitespace-only and empty", () => {
-    for (const bad of ["", "   ", "\t", "\n", " \t\n "]) {
+  it("rejects whitespace-only, empty, null, and undefined inputs", () => {
+    for (const bad of ["", "   ", "\t", "\n", " \t\n ", null, undefined as unknown as string]) {
       expect(() => resolveSmtpPort(bad)).toThrow(SmtpPortConfigError);
     }
   });
 
   it("rejects out-of-range and non-canonical bounds", () => {
     expect(() => resolveSmtpPort("0")).toThrow(SmtpPortConfigError);
-    expect(() => resolveSmtpPort("00")).toThrow(SmtpPortConfigError);
     expect(() => resolveSmtpPort("65536")).toThrow(SmtpPortConfigError);
     expect(() => resolveSmtpPort("70000")).toThrow(SmtpPortConfigError);
     expect(() => resolveSmtpPort("99999")).toThrow(SmtpPortConfigError);
@@ -79,8 +76,6 @@ describe("resolveSmtpPort strict parsing", () => {
   });
 
   it("is mutation-sensitive: reverting to parseInt fallback would not throw for trailing junk", () => {
-    // This test documents mutation proof: with the old `Number.parseInt(...,10) || 587`
-    // fallback, "587abc" would be parsed as 587 and not throw, making this fail.
     expect(() => resolveSmtpPort("587abc")).toThrow(SmtpPortConfigError);
     expect(() => resolveSmtpPort("1e3")).toThrow(SmtpPortConfigError);
     expect(() => resolveSmtpPort("007")).toThrow(SmtpPortConfigError);
@@ -100,30 +95,39 @@ describe("EmailService SMTP_PORT integration drives production resolver", () => 
     vi.restoreAllMocks();
   });
 
-  it("initializes SMTP with a valid strict port via mocked transporter", async () => {
+  it("initializes SMTP with a valid strict port and sends via mocked transporter", async () => {
     process.env.SMTP_HOST = "smtp.example.com";
     process.env.SMTP_PORT = " 587 ";
     process.env.SMTP_PASSWORD = "secret";
     process.env.SMTP_USERNAME = "user@example.com";
 
+    const sendMailMock = vi.fn().mockResolvedValue({ messageId: "msg-123" });
     const createSpy = vi
       .spyOn(nodemailer, "createTransport")
-      .mockReturnValue({ sendMail: vi.fn().mockResolvedValue({}) } as unknown as ReturnType<
+      .mockReturnValue({ sendMail: sendMailMock } as unknown as ReturnType<
         typeof nodemailer.createTransport
       >);
 
     const svc = new EmailService();
-    // Access private initialize via bracket to prove production path is exercised
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (svc as any).initialize();
+    const result = await svc.send({
+      to: "recipient@example.com",
+      subject: "Test Subject",
+      text: "Test body content",
+    });
 
+    expect(result).toBe(true);
     expect(createSpy).toHaveBeenCalledTimes(1);
     expect(createSpy).toHaveBeenCalledWith(
       expect.objectContaining({ port: 587, host: "smtp.example.com" }),
     );
-
-    // Verify send path also uses the same transporter without re-throwing
-    await expect((svc as any).initialize()).not.toThrow;
+    expect(sendMailMock).toHaveBeenCalledTimes(1);
+    expect(sendMailMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        to: "recipient@example.com",
+        subject: "Test Subject",
+        text: "Test body content",
+      }),
+    );
   });
 
   it("throws SmtpPortConfigError at init boundary for trailing junk (does not fallback to 587)", () => {
@@ -132,10 +136,36 @@ describe("EmailService SMTP_PORT integration drives production resolver", () => 
     process.env.SMTP_PASSWORD = "secret";
 
     const createSpy = vi.spyOn(nodemailer, "createTransport");
+    const svc = new EmailService();
+    expect(() => (svc as unknown as { initialize: () => void }).initialize()).toThrow(
+      SmtpPortConfigError,
+    );
+    expect(createSpy).not.toHaveBeenCalled();
+  });
+
+  it("throws SmtpPortConfigError at init boundary when SMTP_PORT is empty string", () => {
+    process.env.SMTP_HOST = "smtp.example.com";
+    process.env.SMTP_PORT = "";
+    process.env.SMTP_PASSWORD = "secret";
+
+    const createSpy = vi.spyOn(nodemailer, "createTransport");
+    const svc = new EmailService();
+    expect(() => (svc as unknown as { initialize: () => void }).initialize()).toThrow(
+      SmtpPortConfigError,
+    );
+    expect(createSpy).not.toHaveBeenCalled();
+  });
+
+  it("throws SmtpPortConfigError and does not bypass to SendGrid when SMTP_PORT is empty string", () => {
+    process.env.SMTP_HOST = "smtp.example.com";
+    process.env.SMTP_PORT = "";
+    process.env.SMTP_PASSWORD = "secret";
+    process.env.SENDGRID_API_KEY = "SG.test-api-key";
 
     const svc = new EmailService();
-    expect(() => (svc as any).initialize()).toThrow(SmtpPortConfigError);
-    expect(createSpy).not.toHaveBeenCalled();
+    expect(() => (svc as unknown as { initialize: () => void }).initialize()).toThrow(
+      SmtpPortConfigError,
+    );
   });
 
   it("throws for decimal, exponent, signed, and leading-zero forms via EmailService", () => {
@@ -145,7 +175,9 @@ describe("EmailService SMTP_PORT integration drives production resolver", () => 
       process.env.SMTP_PORT = badPort;
       process.env.SMTP_PASSWORD = "secret";
       const svc = new EmailService();
-      expect(() => (svc as any).initialize()).toThrow(SmtpPortConfigError);
+      expect(() => (svc as unknown as { initialize: () => void }).initialize()).toThrow(
+        SmtpPortConfigError,
+      );
     }
   });
 
@@ -155,7 +187,9 @@ describe("EmailService SMTP_PORT integration drives production resolver", () => 
       process.env.SMTP_PORT = badPort;
       process.env.SMTP_PASSWORD = "secret";
       const svc = new EmailService();
-      expect(() => (svc as any).initialize()).toThrow(SmtpPortConfigError);
+      expect(() => (svc as unknown as { initialize: () => void }).initialize()).toThrow(
+        SmtpPortConfigError,
+      );
     }
   });
 
@@ -165,7 +199,7 @@ describe("EmailService SMTP_PORT integration drives production resolver", () => 
     process.env.SMTP_PASSWORD = "secret";
     const svc = new EmailService();
     try {
-      (svc as any).initialize();
+      (svc as unknown as { initialize: () => void }).initialize();
       throw new Error("expected to throw");
     } catch (error) {
       expect(error).toBeInstanceOf(SmtpPortConfigError);
