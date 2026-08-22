@@ -5,7 +5,7 @@
  * stubbed TEXT_SMALL response; assertions read the stores the inbound gate
  * reads, closing the loop from action write to message drop.
  */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { resolveEffectiveMuteState } from "../../../services/message/mute-state";
 import type { Room, World } from "../../../types/environment";
 import type {
@@ -199,6 +199,36 @@ describe("ROOM action — timed mute persistence (durationMinutes)", () => {
 		);
 		expect(states.get(`${ROOM_ID}:${AGENT_ID}`)).toBeUndefined();
 		expect(rooms.get(ROOM_ID)?.metadata?.agentMuteUntilIso).toBeUndefined();
+	});
+
+	it("keeps a server mute structured when the clock crosses the Date boundary", async () => {
+		const { runtime, worlds } = makeRuntime({
+			rooms: [room(ROOM_ID)],
+			worlds: [world()],
+		});
+		const now = vi
+			.spyOn(Date, "now")
+			.mockReturnValueOnce(0)
+			.mockReturnValueOnce(0)
+			.mockReturnValue(1);
+		try {
+			const result = await roomOpAction.handler(
+				runtime,
+				msg("mute this server for the maximum representable duration"),
+				state,
+				opts({
+					action: "mute",
+					scope: "server",
+					durationMinutes: 144_000_000_000,
+				}),
+			);
+			expect(result.success).toBe(true);
+			expect(worlds.get(WORLD_ID)?.metadata?.agentMuteUntilIso).toBe(
+				"+275760-09-13T00:00:00.000Z",
+			);
+		} finally {
+			now.mockRestore();
+		}
 	});
 
 	it("ignores durationMinutes for operations where the field is not applicable", async () => {
