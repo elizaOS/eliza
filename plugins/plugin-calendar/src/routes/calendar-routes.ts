@@ -19,6 +19,7 @@ import type {
   LifeOpsConnectorMode,
   LifeOpsConnectorSide,
   ListLifeOpsCalendarsRequest,
+  PurgeLifeOpsCalendarImportedDataRequest,
   SetLifeOpsCalendarIncludedRequest,
   UpdateLifeOpsIcsCalendarSourceRequest,
 } from "@elizaos/shared";
@@ -32,7 +33,8 @@ export type CalendarRouteRateLimitKey =
   | "calendar_delete"
   | "calendar_source_read"
   | "calendar_source_write"
-  | "calendar_source_sync";
+  | "calendar_source_sync"
+  | "calendar_imported_data_purge";
 
 /** The calendar method surface the route handlers invoke. */
 export interface CalendarRouteService {
@@ -84,6 +86,9 @@ export interface CalendarRouteService {
   ): Promise<unknown>;
   deleteIcsCalendarSource(sourceId: string): Promise<void>;
   syncIcsCalendarSource(sourceId: string): Promise<unknown>;
+  purgeImportedCalendarData(
+    request: PurgeLifeOpsCalendarImportedDataRequest,
+  ): Promise<unknown>;
 }
 
 /** Host-provided HTTP plumbing. */
@@ -162,6 +167,19 @@ export async function handleCalendarRoutes(
         grantId: q.get("grantId") ?? undefined,
       };
       deps.json(await service.getCalendarFeed(url, request));
+    });
+  }
+
+  if (
+    method === "POST" &&
+    pathname === "/api/lifeops/calendar/imported-data/purge"
+  ) {
+    if (deps.rateLimit("calendar_imported_data_purge")) return true;
+    const body =
+      await deps.readJsonBody<PurgeLifeOpsCalendarImportedDataRequest>();
+    if (!body) return true;
+    return deps.runRoute(async (service) => {
+      deps.json(await service.purgeImportedCalendarData(body));
     });
   }
 

@@ -42,6 +42,7 @@ import type {
   GetLifeOpsCalendarFeedRequest,
   LifeOpsCalendarEvent,
   LifeOpsCalendarFeed,
+  LifeOpsCalendarImportedDataPurgeReceipt,
   LifeOpsCalendarProvider,
   LifeOpsCalendarRecurrenceScope,
   LifeOpsCalendarSourceError,
@@ -55,6 +56,7 @@ import type {
   LifeOpsIcsCalendarSyncResponse,
   LifeOpsNextCalendarEventContext,
   ListLifeOpsCalendarsRequest,
+  PurgeLifeOpsCalendarImportedDataRequest,
   SetLifeOpsCalendarIncludedRequest,
   SetLifeOpsCalendarIncludedResponse,
   UpdateLifeOpsIcsCalendarSourceRequest,
@@ -4768,6 +4770,49 @@ export class CalendarService extends Service {
       "Apple Calendar create access has not been granted.",
       "APPLE_CALENDAR_PERMISSION_REQUIRED",
     );
+  }
+
+  async purgeImportedCalendarData(
+    request: PurgeLifeOpsCalendarImportedDataRequest,
+    now = new Date(),
+  ): Promise<LifeOpsCalendarImportedDataPurgeReceipt> {
+    if (request.confirmAction !== true) {
+      throw new CalendarServiceError(
+        409,
+        "Removing imported calendar data requires explicit confirmation immediately before deletion.",
+        "CALENDAR_IMPORTED_DATA_CONFIRMATION_REQUIRED",
+      );
+    }
+    const events = await this.repo.listCalendarEvents(
+      this.agentId(),
+      request.provider,
+      undefined,
+      undefined,
+      request.side,
+      request.grantId,
+    );
+    const exactEvents = events.filter(
+      (event) => event.connectorAccountId === request.connectorAccountId,
+    );
+    await this.deleteCalendarReminderPlansForEvents(
+      exactEvents.map((event) => event.id),
+    );
+    const deleted = await this.repo.purgeImportedCalendarProjection({
+      agentId: this.agentId(),
+      provider: request.provider,
+      side: request.side,
+      grantId: request.grantId,
+      connectorAccountId: request.connectorAccountId,
+    });
+    return {
+      provider: request.provider,
+      side: request.side,
+      grantId: request.grantId,
+      connectorAccountId: request.connectorAccountId,
+      ...deleted,
+      providerMutation: false,
+      purgedAt: now.toISOString(),
+    };
   }
 
   async getCalendarEventById(
