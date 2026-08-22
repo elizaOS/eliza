@@ -311,6 +311,82 @@ describe("document list query (real SQL parity)", () => {
     }
   });
 
+  it("authorizes direct grants outside current rooms before list and fragment construction", async () => {
+    const otherRoomId = v4() as UUID;
+    await adapter.createRooms([
+      {
+        id: otherRoomId,
+        agentId,
+        worldId,
+        name: "direct-grant-room",
+        source: "test",
+        type: ChannelType.DM,
+      } as Room,
+    ]);
+    const granted = document(20, {
+      roomId: otherRoomId,
+      metadata: {
+        scope: "owner-private",
+        directGrantEntityIds: [REQUESTER_ID],
+      },
+    });
+    const agentOnly = document(21, {
+      roomId: otherRoomId,
+      metadata: {
+        scope: "agent-private",
+        directGrantEntityIds: [REQUESTER_ID],
+      },
+    });
+    const fragment = document(22, {
+      roomId: otherRoomId,
+      metadata: {
+        type: MemoryType.FRAGMENT,
+        documentId: granted.id,
+        documentRevision: 0,
+        position: 0,
+      },
+    });
+    await seedSql([granted, agentOnly]);
+    await adapter.createMemories([{ memory: fragment, tableName: "document_fragments" }]);
+    const inMemory = await seedInMemory([granted, agentOnly]);
+    await inMemory.createMemories([{ memory: fragment, tableName: "document_fragments" }]);
+    const context = {
+      agentId,
+      requesterEntityId: REQUESTER_ID,
+      requesterRoomIds: [],
+      requesterRole: "USER" as const,
+    };
+
+    const sqlDocuments = await adapter.queryDocuments({ ...context, limit: 10, offset: 0 });
+    const memoryDocuments = await inMemory.queryDocuments({ ...context, limit: 10, offset: 0 });
+    expect(sqlDocuments).toEqual(memoryDocuments);
+    expect(ids(sqlDocuments.documents)).toEqual([granted.id]);
+    expect(await adapter.getDocument({ ...context, documentId: granted.id as UUID })).toMatchObject(
+      {
+        id: granted.id,
+      }
+    );
+    expect(
+      ids(
+        await adapter.queryDocumentFragments({
+          ...context,
+          documentId: granted.id as UUID,
+          limit: 10,
+        })
+      )
+    ).toEqual([fragment.id as UUID]);
+    expect(
+      await adapter.queryDocuments({ ...context, requesterRole: "GUEST", limit: 10, offset: 0 })
+    ).toEqual(
+      await inMemory.queryDocuments({
+        ...context,
+        requesterRole: "GUEST",
+        limit: 10,
+        offset: 0,
+      })
+    );
+  });
+
   it("filters fragment pages by exact authorized parent before pagination", async () => {
     const firstParent = document(1);
     const secondParent = document(2);
@@ -584,6 +660,10 @@ describe("document list query (real SQL parity)", () => {
       document(5, { metadata: { addedBy: "not-a-uuid" } }),
       document(6, { metadata: { documentRevision: 1.5 } }),
       document(9, { metadata: { documentRevision: "1" } }),
+      document(11, { metadata: { directGrantEntityIds: ["not-a-uuid"] } }),
+      document(12, {
+        metadata: { directGrantEntityIds: [REQUESTER_ID, REQUESTER_ID] },
+      }),
     ];
     const validParent = document(2, {
       metadata: {

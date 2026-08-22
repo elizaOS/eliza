@@ -164,6 +164,8 @@ export interface AddDocumentOptions {
 	content: string;
 	scope?: DocumentVisibilityScope;
 	scopedToEntityId?: UUID;
+	/** Read-only entity grants that remain valid independently of room membership. */
+	directGrantEntityIds?: UUID[];
 	addedBy?: UUID;
 	addedByRole?: DocumentAddedByRole;
 	addedFrom?: DocumentAddedFrom;

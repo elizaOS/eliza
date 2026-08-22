@@ -168,6 +168,7 @@ visible.
 - The model-output contract is `<response>` XML (with `<actions>`/`<providers>`/`<text>`); plain text is tolerated and treated as a `REPLY`.
 - DB mutation methods on `IDatabaseAdapter` return `Promise<boolean>` so callers can distinguish success/failure (`types/database.ts`).
 - The task system (`services/task.ts`, `services/task-scheduler.ts`) is the single place scheduled work runs; only tasks tagged `queue` are polled. Three modes: local timer, per-daemon (`startTaskScheduler`), serverless (`{ serverless: true }` + `runDueTasks()`).
+- Document reads use `roomId` as the single room entitlement and join it to the requester's current room set inside the adapter. `directGrantEntityIds` is a bounded, validated, read-only exception that remains valid without room membership; it never opens `agent-private` documents and never grants mutation authority. Malformed or duplicate grant arrays make the parent unreadable.
 - `runtime.ts` is intentionally large and load-bearing; navigate by symbol and
   ownership boundary rather than reading it top to bottom or adding another
   unrelated responsibility.

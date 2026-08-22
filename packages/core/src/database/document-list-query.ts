@@ -269,6 +269,26 @@ function readUuidMetadata(
 	return isUuid(value) ? value : undefined;
 }
 
+const DOCUMENT_DIRECT_GRANT_LIMIT = 1_000;
+
+function readDirectGrantEntityIds(
+	metadata: Record<string, unknown>,
+): UUID[] | null {
+	const value = metadata.directGrantEntityIds;
+	if (value === undefined) return [];
+	if (!Array.isArray(value) || value.length > DOCUMENT_DIRECT_GRANT_LIMIT) {
+		return null;
+	}
+	const grants: UUID[] = [];
+	const seen = new Set<string>();
+	for (const entityId of value) {
+		if (!isUuid(entityId) || seen.has(entityId)) return null;
+		seen.add(entityId);
+		grants.push(entityId);
+	}
+	return grants;
+}
+
 function readDocumentRevision(metadata: unknown): number | null {
 	if (metadata === null || typeof metadata !== "object") return null;
 	const value = Reflect.get(metadata, "documentRevision");
@@ -302,6 +322,8 @@ export function readDocumentMutationSnapshot(
 	if (metadata.scopedToEntityId !== undefined && !scopedToEntityId) return null;
 	const addedBy = readUuidMetadata(metadata, "addedBy");
 	if (metadata.addedBy !== undefined && !addedBy) return null;
+	const directGrantEntityIds = readDirectGrantEntityIds(metadata);
+	if (!directGrantEntityIds) return null;
 	const revision = readDocumentRevision(metadata);
 	if (revision === null) return null;
 	const ingestionAttemptId = readUuidMetadata(metadata, "ingestionAttemptId");
@@ -330,6 +352,7 @@ export function readDocumentMutationSnapshot(
 			: {}),
 		...(scopedToEntityId ? { scopedToEntityId } : {}),
 		...(addedBy ? { addedBy } : {}),
+		...(directGrantEntityIds.length > 0 ? { directGrantEntityIds } : {}),
 	};
 }
 
@@ -364,6 +387,10 @@ export function validateDocumentRevisionReplacement(
 		replacementSnapshot.scope !== params.expected.scope ||
 		replacementSnapshot.roomId !== params.expected.roomId ||
 		replacementSnapshot.entityId !== params.expected.entityId ||
+		!uuidArraysEqual(
+			replacementSnapshot.directGrantEntityIds,
+			params.expected.directGrantEntityIds,
+		) ||
 		replacementSnapshot.scopedToEntityId !== params.expected.scopedToEntityId ||
 		replacementSnapshot.addedBy !== params.expected.addedBy ||
 		replacementSnapshot.ingestionAttemptId !==
@@ -426,9 +453,20 @@ export function isDocumentVisibleToRequester(
 	if (documentRoleHasGlobalVisibility(params.requesterRole)) {
 		return true;
 	}
+	if (params.requesterRole === "GUEST") {
+		return (
+			params.requesterRoomIds.includes(snapshot.roomId) &&
+			snapshot.scope === "global"
+		);
+	}
+	if (
+		snapshot.scope !== "agent-private" &&
+		snapshot.directGrantEntityIds?.includes(params.requesterEntityId)
+	) {
+		return true;
+	}
 	if (!params.requesterRoomIds.includes(snapshot.roomId)) return false;
 	if (snapshot.scope === "global") return true;
-	if (params.requesterRole === "GUEST") return false;
 	if (snapshot.scope !== "user-private") return false;
 	if (params.requesterRole === "ADMIN") return true;
 	return snapshot.scopedToEntityId === params.requesterEntityId;
@@ -469,11 +507,24 @@ export function documentMutationSnapshotMatches(
 		actual.scope === expected.scope &&
 		actual.roomId === expected.roomId &&
 		actual.entityId === expected.entityId &&
+		uuidArraysEqual(
+			actual.directGrantEntityIds,
+			expected.directGrantEntityIds,
+		) &&
 		actual.scopedToEntityId === expected.scopedToEntityId &&
 		actual.addedBy === expected.addedBy &&
 		actual.revision === expected.revision &&
 		actual.ingestionAttemptId === expected.ingestionAttemptId &&
 		actual.ingestionState === expected.ingestionState
+	);
+}
+
+function uuidArraysEqual(left?: UUID[], right?: UUID[]): boolean {
+	const normalizedLeft = left ?? [];
+	const normalizedRight = right ?? [];
+	return (
+		normalizedLeft.length === normalizedRight.length &&
+		normalizedLeft.every((value, index) => value === normalizedRight[index])
 	);
 }
 

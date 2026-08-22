@@ -138,6 +138,7 @@ Settings are read via `runtime.getSetting(key)` inside `plugin.init`.
 - **Drizzle subpath export.** Common Drizzle query helpers (`eq`, `sql`, `and`, etc.) are re-exported from `@elizaos/plugin-sql` and `@elizaos/plugin-sql/drizzle` to avoid direct drizzle-orm version coupling in consumer code.
 - **Vector dimensions are active-width scoped.** `ensureEmbeddingDimension(n)` selects the current vector column, and runtime boot calls `clearEmbeddingsOutsideActiveDimension()` to delete vectors in other dimension columns and queue those memories for re-embedding at the active width. Memory rows survive; stale vectors do not.
 - **RLS is PostgreSQL-only.** PGlite does not support Row Level Security. The `ENABLE_DATA_ISOLATION` path is silently skipped on PGlite.
+- **Document entitlements are query-time authority.** Document list, lookup, and fragment queries authorize the parent before constructing results. Current room IDs satisfy the parent's single room entitlement; validated `directGrantEntityIds` provide read-only access outside the room, except for `agent-private` documents. Never materialize per-member document grants or move these predicates after pagination/ranking.
 - **Tests live under `src/__tests__/`** and run via vitest configured in `src/vitest.config.ts`.
 
 ## Verification
