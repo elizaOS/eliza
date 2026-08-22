@@ -8,6 +8,7 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { promisify } from "node:util";
 import {
+  ElizaError,
   type IAgentRuntime,
   logger,
   ModelType,
@@ -214,6 +215,44 @@ interface CameraDevice {
   capture: () => Promise<Buffer>;
 }
 
+/** Node clamps a `setInterval` delay above this to 1ms, so it is the real ceiling. */
+const MAX_TIMER_DELAY_MS = 2_147_483_647;
+
+/**
+ * Resolve a capture-interval setting that is passed directly to `setInterval`.
+ *
+ * Three outcomes, deliberately distinct:
+ *   - absent or blank  -> `fallback` (the documented default)
+ *   - explicit invalid -> throws `ElizaError`, because a configured value that
+ *     cannot be honoured is an operator mistake, and silently substituting the
+ *     default would hide it
+ *   - valid            -> the configured number
+ *
+ * "Invalid" is anything Node cannot use as a timer delay: non-finite, <= 0, or
+ * above `MAX_TIMER_DELAY_MS`. Node clamps ALL of those to 1ms
+ * (`TimeoutOverflowWarning` / `TimeoutNegativeWarning`), turning a mistyped
+ * interval into a capture busy-loop rather than a slower cadence.
+ */
+export function resolveCaptureIntervalMs(
+  raw: string | undefined,
+  fallback: number,
+  settingName: string,
+): number {
+  if (raw === undefined || raw.trim() === "") return fallback;
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed) || parsed <= 0 || parsed > MAX_TIMER_DELAY_MS) {
+    throw new ElizaError(
+      `${settingName} must be a positive number of milliseconds no greater than ${MAX_TIMER_DELAY_MS}; received ${JSON.stringify(raw)}`,
+      {
+        code: "VISION_CAPTURE_INTERVAL_INVALID",
+        context: { settingName, raw, maxMs: MAX_TIMER_DELAY_MS },
+      },
+    );
+  }
+  return parsed;
+}
+
+
 export class VisionService extends Service {
   static override serviceType: ServiceTypeName =
     VisionServiceType.VISION as ServiceTypeName;
@@ -404,11 +443,14 @@ export class VisionService extends Service {
       visionMode:
         (getSettingString("VISION_MODE") as VisionMode) ||
         this.DEFAULT_CONFIG.visionMode,
-      screenCaptureInterval:
-        Number(
-          runtime.getSetting("SCREEN_CAPTURE_INTERVAL") ||
-            runtime.getSetting("VISION_SCREEN_CAPTURE_INTERVAL"),
-        ) || this.DEFAULT_CONFIG.screenCaptureInterval,
+      // `||` (not `??`) preserves the existing alias precedence: a blank
+      // primary falls through to the legacy alias exactly as before.
+      screenCaptureInterval: resolveCaptureIntervalMs(
+        getSettingString("SCREEN_CAPTURE_INTERVAL") ||
+          getSettingString("VISION_SCREEN_CAPTURE_INTERVAL"),
+        this.DEFAULT_CONFIG.screenCaptureInterval,
+        "SCREEN_CAPTURE_INTERVAL",
+      ),
       ocrEnabled: getBooleanSetting(
         "OCR_ENABLED",
         "VISION_OCR_ENABLED",
