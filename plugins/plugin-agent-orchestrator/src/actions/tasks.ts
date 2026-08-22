@@ -1054,21 +1054,32 @@ async function inFlightSiblingSessionForFollowUp(
   const roomId = typeof message.roomId === "string" ? message.roomId : "";
   if (!taskService || !roomId) return undefined;
   const origin = spawnRootIdFor(message, {}) ?? "";
-  const now = Date.now();
-  let candidates: Array<{ id: string }> = [];
-  try {
-    const tasks = await taskService.listTasks({ includeArchived: false });
-    candidates = tasks
-      .filter(
-        (task) =>
-          ["open", "active", "validating"].includes(String(task.status)) &&
-          now - new Date(task.createdAt).getTime() <
-            FOLLOW_UP_SIBLING_WINDOW_MS,
-      )
-      .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
-  } catch {
-    // error-policy:J4 a listing failure keeps today's behavior (fresh create).
-    return undefined;
+  // The sibling's create may still be running (both asks dispatch within a
+  // second of each other): its claim exists from dispatch, its task record a
+  // few seconds later. Only a recent other-origin claim earns the wait.
+  if (!hasRecentCreateClaimFromOtherOrigin(runtime, origin)) return undefined;
+  const listDeadline = Date.now() + FOLLOW_UP_SESSION_WAIT_MS;
+  let candidates: Array<{ id: string; createdAt: string }> = [];
+  while (Date.now() < listDeadline && candidates.length === 0) {
+    const now = Date.now();
+    try {
+      const tasks = await taskService.listTasks({ includeArchived: false });
+      candidates = tasks
+        .filter(
+          (task) =>
+            ["open", "active", "validating"].includes(String(task.status)) &&
+            now - new Date(task.createdAt).getTime() <
+              FOLLOW_UP_SIBLING_WINDOW_MS &&
+            String(task.originalRequest ?? "") !== requestText(message),
+        )
+        .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+    } catch {
+      // error-policy:J4 a listing failure keeps today's behavior (fresh create).
+      return undefined;
+    }
+    if (candidates.length === 0) {
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
   }
   for (const candidate of candidates) {
     const doc = await taskService.getTask(candidate.id).catch(() => null);
@@ -5031,6 +5042,27 @@ function claimCreateForMessage(
   claims.set(messageId, now);
   logger(runtime).warn(`[TASKS] create claim recorded for origin ${messageId}`);
   return true;
+}
+
+/** Another origin message claimed a create within the follow-up window —
+ *  the signal that a sibling build is in flight even before its task record
+ *  exists. */
+function hasRecentCreateClaimFromOtherOrigin(
+  runtime: IAgentRuntime,
+  originId: string,
+  windowMs = 90_000,
+): boolean {
+  const claims = (
+    runtime as IAgentRuntime & {
+      __orchestratorCreateClaims?: Map<string, number>;
+    }
+  ).__orchestratorCreateClaims;
+  if (!claims) return false;
+  const now = Date.now();
+  for (const [id, at] of claims) {
+    if (id !== originId && now - at < windowMs) return true;
+  }
+  return false;
 }
 
 function hasCreateClaimForMessage(
