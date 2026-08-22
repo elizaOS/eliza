@@ -193,23 +193,6 @@ export function normalizeBaileysSendTarget(target: string): string {
 }
 
 /**
- * Resolves an outbound Cloud API target to canonical E.164. Cloud sends do not
- * accept Baileys group or LID identifiers, and short local numbers are unsafe
- * because the Cloud API requires an explicit country code.
- */
-export function normalizeCloudApiSendTarget(target: string): string {
-  const candidate = stripWhatsAppTargetPrefixes(target);
-  if (isWhatsAppGroupJid(candidate) || WHATSAPP_LID_RE.test(candidate)) {
-    throw new Error("WhatsApp Cloud API send target must be a valid E.164 phone number.");
-  }
-  const normalized = normalizeWhatsAppTarget(candidate);
-  if (!normalized || !/^\+[1-9]\d{1,14}$/.test(normalized)) {
-    throw new Error("WhatsApp Cloud API send target must be a valid E.164 phone number.");
-  }
-  return normalized;
-}
-
-/**
  * Options for text chunking
  */
 export interface ChunkWhatsAppTextOpts {

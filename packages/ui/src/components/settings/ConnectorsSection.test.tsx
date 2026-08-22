@@ -210,32 +210,6 @@ describe("ConnectorsSection", () => {
     expect(panel.textContent ?? "").toContain("telegram");
   });
 
-  it("co-renders the setup panel for whatsapp business mode on detail", () => {
-    connectorModeMock.byId.whatsapp = {
-      setupPluginId: "whatsapp",
-      selectedMode: "business",
-      modes: [{ id: "business", managementMode: "local-config" }],
-      setSelectedMode: () => {},
-    };
-    appMock.value.plugins = [
-      plugin({
-        id: "whatsapp",
-        name: "WhatsApp",
-        parameters: [tokenParam("WHATSAPP_ACCESS_TOKEN")],
-      }),
-    ];
-
-    render(<ConnectorsSection />);
-    openDetail("WhatsApp");
-
-    expect(screen.getByTestId("plugin-config-form")).toBeTruthy();
-    expect(
-      (screen.getByTestId("connector-setup-panel").textContent ?? "").includes(
-        "whatsapp",
-      ),
-    ).toBe(true);
-  });
-
   it("renders config form without setup panel for discord bot local-config", () => {
     connectorModeMock.byId.discord = {
       setupPluginId: "discord",

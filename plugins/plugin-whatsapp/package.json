@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-whatsapp",
-  "description": "WhatsApp plugin for ElizaOS (Cloud API + Baileys QR auth)",
+  "description": "Direct WhatsApp plugin for elizaOS using in-process Baileys QR authentication",
   "version": "2.0.3-beta.7",
   "type": "module",
   "main": "dist/index.js",
@@ -51,10 +51,6 @@
     "auto-enable.ts"
   ],
   "elizaos": {
-    "managedIntegration": {
-      "promoted": true,
-      "contractId": "whatsapp-cloud-webhook"
-    },
     "plugin": {
       "autoEnableModule": "./auto-enable.ts",
       "capabilities": [
@@ -98,24 +94,6 @@
   },
   "agentConfig": {
     "pluginParameters": {
-      "WHATSAPP_ACCESS_TOKEN": {
-        "type": "string",
-        "description": "Access token for WhatsApp Cloud API (required for cloudapi auth)",
-        "required": false,
-        "sensitive": true
-      },
-      "WHATSAPP_PHONE_NUMBER_ID": {
-        "type": "string",
-        "description": "Phone number ID for WhatsApp Cloud API (required for cloudapi auth)",
-        "required": false,
-        "sensitive": false
-      },
-      "WHATSAPP_AUTH_METHOD": {
-        "type": "string",
-        "description": "Authentication method: cloudapi or baileys",
-        "required": false,
-        "sensitive": false
-      },
       "WHATSAPP_AUTH_DIR": {
         "type": "string",
         "description": "Directory used to persist Baileys session files (required for baileys auth)",
@@ -125,30 +103,6 @@
       "WHATSAPP_PRINT_QR": {
         "type": "boolean",
         "description": "Print QR code in terminal when using Baileys auth",
-        "required": false,
-        "sensitive": false
-      },
-      "WHATSAPP_WEBHOOK_VERIFY_TOKEN": {
-        "type": "string",
-        "description": "Webhook verification token",
-        "required": false,
-        "sensitive": true
-      },
-      "WHATSAPP_APP_SECRET": {
-        "type": "string",
-        "description": "WhatsApp App Secret used to verify X-Hub-Signature-256 on webhook POSTs (required for Cloud API webhooks)",
-        "required": false,
-        "sensitive": true
-      },
-      "WHATSAPP_BUSINESS_ACCOUNT_ID": {
-        "type": "string",
-        "description": "Business account ID",
-        "required": false,
-        "sensitive": false
-      },
-      "WHATSAPP_API_VERSION": {
-        "type": "string",
-        "description": "API version string",
         "required": false,
         "sensitive": false
       },

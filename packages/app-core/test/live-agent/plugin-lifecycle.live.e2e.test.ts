@@ -102,13 +102,7 @@ function canBootConnector(
     case "imessage":
       return CURRENT_PLATFORM === "darwin";
     case "whatsapp":
-      return Boolean(
-        (process.env.WHATSAPP_AUTH_METHOD === "cloudapi" &&
-          process.env.WHATSAPP_ACCESS_TOKEN &&
-          process.env.WHATSAPP_PHONE_NUMBER_ID) ||
-          (process.env.WHATSAPP_AUTH_METHOD === "baileys" &&
-            process.env.WHATSAPP_AUTH_DIR),
-      );
+      return Boolean(process.env.WHATSAPP_AUTH_DIR);
     default:
       return plugin.requiredEnvKeys.length > 0 && hasRequiredEnv(plugin);
   }

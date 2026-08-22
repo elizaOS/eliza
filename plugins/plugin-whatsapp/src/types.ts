@@ -1,21 +1,8 @@
 /**
- * Raw transport types for the WhatsApp connector: per-transport config
- * (Cloud API / Baileys), outbound message shapes (text, media, reaction,
- * location, template, interactive button/list/flow), inbound webhook and
- * status-update payloads, the normalized inbound message, and connection/QR
- * state. These model the wire protocols, distinct from the agent-facing config
- * types in config.ts.
+ * Raw types for the direct in-process Baileys transport, including outbound
+ * messages, normalized inbound messages, connection status, and QR state.
  */
-export type WhatsAppConfig = CloudAPIConfig | BaileysConfig;
-
-export interface CloudAPIConfig {
-  authMethod?: "cloudapi";
-  accessToken: string;
-  phoneNumberId: string;
-  webhookVerifyToken?: string;
-  businessAccountId?: string;
-  apiVersion?: string;
-}
+export type WhatsAppConfig = BaileysConfig;
 
 export interface BaileysConfig {
   authMethod?: "baileys";
@@ -25,7 +12,7 @@ export interface BaileysConfig {
 }
 
 /**
- * Message types supported by WhatsApp Cloud API.
+ * Message types supported by the connector.
  */
 export type WhatsAppMessageType =
   | "text"
@@ -179,153 +166,6 @@ export interface WhatsAppFlowAction {
   };
 }
 
-export interface WhatsAppIncomingMessage {
-  from: string;
-  id: string;
-  timestamp: string;
-  text?: {
-    body: string;
-  };
-  image?: {
-    caption?: string;
-    mime_type: string;
-    sha256: string;
-    id: string;
-  };
-  video?: {
-    caption?: string;
-    mime_type: string;
-    sha256: string;
-    id: string;
-  };
-  audio?: {
-    mime_type: string;
-    sha256: string;
-    id: string;
-    voice?: boolean;
-  };
-  document?: {
-    caption?: string;
-    filename: string;
-    mime_type: string;
-    sha256: string;
-    id: string;
-  };
-  sticker?: {
-    mime_type: string;
-    sha256: string;
-    id: string;
-    animated?: boolean;
-  };
-  location?: {
-    latitude: number;
-    longitude: number;
-    name?: string;
-    address?: string;
-  };
-  contacts?: Array<{
-    name: {
-      formatted_name: string;
-      first_name?: string;
-      last_name?: string;
-    };
-    phones?: Array<{
-      phone: string;
-      type: string;
-    }>;
-  }>;
-  interactive?: {
-    type: "button_reply" | "list_reply" | "nfm_reply";
-    button_reply?: {
-      id: string;
-      title: string;
-    };
-    list_reply?: {
-      id: string;
-      title: string;
-      description?: string;
-    };
-    nfm_reply?: {
-      response_json: string;
-      body: string;
-      name: string;
-    };
-  };
-  reaction?: {
-    message_id: string;
-    emoji: string;
-  };
-  context?: {
-    from: string;
-    id: string;
-    referred_product?: {
-      catalog_id: string;
-      product_retailer_id: string;
-    };
-  };
-  type: string;
-}
-
-export interface WhatsAppStatusUpdate {
-  id: string;
-  status: "sent" | "delivered" | "read" | "failed";
-  timestamp: string;
-  recipient_id: string;
-  conversation?: {
-    id: string;
-    origin?: {
-      type: string;
-    };
-    expiration_timestamp?: string;
-  };
-  pricing?: {
-    billable: boolean;
-    pricing_model: string;
-    category: string;
-  };
-  errors?: Array<{
-    code: number;
-    title: string;
-    message?: string;
-    error_data?: {
-      details: string;
-    };
-  }>;
-}
-
-export interface WhatsAppWebhookEvent {
-  object: string;
-  entry: Array<{
-    id: string;
-    changes: Array<{
-      value: {
-        messaging_product: string;
-        metadata: {
-          display_phone_number: string;
-          phone_number_id: string;
-        };
-        statuses?: WhatsAppStatusUpdate[];
-        messages?: WhatsAppIncomingMessage[];
-        contacts?: Array<{
-          profile: {
-            name: string;
-          };
-          wa_id: string;
-        }>;
-        errors?: Array<{
-          code: number;
-          title: string;
-          message?: string;
-          error_data?: {
-            details: string;
-          };
-        }>;
-      };
-      field: string;
-    }>;
-  }>;
-}
-
 export interface WhatsAppMessageResponse {
   messaging_product: string;
   contacts: Array<{
@@ -387,7 +227,6 @@ export enum WhatsAppEventType {
   REACTION_RECEIVED = "WHATSAPP_REACTION_RECEIVED",
   REACTION_SENT = "WHATSAPP_REACTION_SENT",
   INTERACTIVE_REPLY = "WHATSAPP_INTERACTIVE_REPLY",
-  WEBHOOK_VERIFIED = "WHATSAPP_WEBHOOK_VERIFIED",
 }
 
 /**

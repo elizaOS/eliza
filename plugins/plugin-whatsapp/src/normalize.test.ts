@@ -11,7 +11,6 @@ import {
   isWhatsAppGroupJid,
   isWhatsAppUserTarget,
   normalizeBaileysSendTarget,
-  normalizeCloudApiSendTarget,
   normalizeE164,
   normalizeWhatsAppTarget,
   truncateText,
@@ -87,18 +86,9 @@ describe("buildWhatsAppUserJid", () => {
 });
 
 describe("outbound transport target normalization", () => {
-  it("requires canonical E.164 output for Cloud API sends", () => {
-    expect(normalizeCloudApiSendTarget("+1 (415) 555-0123")).toBe("+14155550123");
-    expect(normalizeCloudApiSendTarget("14155550123@s.whatsapp.net")).toBe("+14155550123");
-    expect(() => normalizeCloudApiSendTarget("123")).toThrow("valid E.164 phone number");
-  });
-
-  it("rejects LIDs and groups on Cloud while preserving recognized LIDs for Baileys", () => {
-    expect(() => normalizeCloudApiSendTarget("1234567890@lid")).toThrow("valid E.164 phone number");
-    expect(() => normalizeCloudApiSendTarget("123456789-987654321@g.us")).toThrow(
-      "valid E.164 phone number"
-    );
+  it("preserves recognized LIDs and groups for Baileys", () => {
     expect(normalizeBaileysSendTarget("1234567890@lid")).toBe("1234567890@lid");
+    expect(normalizeBaileysSendTarget("123456789-987654321@g.us")).toBe("123456789-987654321@g.us");
   });
 });
 

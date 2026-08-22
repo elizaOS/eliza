@@ -83,7 +83,6 @@ Legend for **Result**: `pass` · `fail` · `blocked (no creds)` · `n/a`.
 | Telegram | status/read/send-or-draft | OWNER + AGENT bot/user identities | | |
 | Discord | status/read/send-or-draft | OWNER + AGENT identities | | |
 | Signal | status/read/send | linked device | | |
-| WhatsApp | status/read/send | `ELIZA_WHATSAPP_ACCESS_TOKEN`, `ELIZA_WHATSAPP_PHONE_NUMBER_ID` | | |
 | iMessage | status/read/send | macOS + `ELIZA_IMESSAGE_BACKEND` | | |
 | X | status/read/post | OWNER + AGENT identities | | |
 | Slack | status/read/send | workspace tokens (if deployed) | | |

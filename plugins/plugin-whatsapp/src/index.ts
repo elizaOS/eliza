@@ -12,7 +12,7 @@ import { registerWhatsappTriageAdapter } from "./triage-adapter";
 
 const whatsappPlugin: Plugin = {
   name: "whatsapp",
-  description: "WhatsApp integration for ElizaOS (Cloud API + Baileys)",
+  description: "Direct WhatsApp integration through the in-process Baileys library",
   connectorSources: [
     {
       source: "whatsapp",
@@ -72,24 +72,11 @@ export {
   resolveDefaultWhatsAppAccountId,
   resolveWhatsAppAccount,
   resolveWhatsAppGroupConfig,
-  resolveWhatsAppToken,
   type WhatsAppAccessCheckResult,
   type WhatsAppAccountRuntimeConfig,
   type WhatsAppGroupRuntimeConfig,
   type WhatsAppMultiAccountConfig,
-  type WhatsAppTokenResolution,
-  type WhatsAppTokenSource,
 } from "./accounts";
-export {
-  applyWhatsAppQrOverride,
-  handleWhatsAppRoute,
-  MAX_PAIRING_SESSIONS as WHATSAPP_MAX_PAIRING_SESSIONS,
-  type WhatsAppPairingEventLike,
-  type WhatsAppPairingSessionLike,
-  type WhatsAppRouteDeps,
-  type WhatsAppRouteState,
-} from "./api/whatsapp-routes";
-export { ClientFactory } from "./clients/factory";
 // Channel configuration types
 export type {
   WhatsAppAccountConfig,
@@ -151,14 +138,7 @@ import {
   resolveDefaultWhatsAppAccountId as _bs_9_resolveDefaultWhatsAppAccountId,
   resolveWhatsAppAccount as _bs_10_resolveWhatsAppAccount,
   resolveWhatsAppGroupConfig as _bs_11_resolveWhatsAppGroupConfig,
-  resolveWhatsAppToken as _bs_12_resolveWhatsAppToken,
 } from "./accounts";
-import {
-  applyWhatsAppQrOverride as _bs_13_applyWhatsAppQrOverride,
-  handleWhatsAppRoute as _bs_14_handleWhatsAppRoute,
-  MAX_PAIRING_SESSIONS as _bs_15_MAX_PAIRING_SESSIONS,
-} from "./api/whatsapp-routes";
-import { ClientFactory as _bs_16_ClientFactory } from "./clients/factory";
 import {
   createWhatsAppConnectorAccountProvider as _bs_17_createWhatsAppConnectorAccountProvider,
   WHATSAPP_PROVIDER_ID as _bs_18_WHATSAPP_PROVIDER_ID,
@@ -205,11 +185,6 @@ const __bundle_safety_PLUGINS_PLUGIN_WHATSAPP_SRC_INDEX__ = [
   _bs_9_resolveDefaultWhatsAppAccountId,
   _bs_10_resolveWhatsAppAccount,
   _bs_11_resolveWhatsAppGroupConfig,
-  _bs_12_resolveWhatsAppToken,
-  _bs_13_applyWhatsAppQrOverride,
-  _bs_14_handleWhatsAppRoute,
-  _bs_15_MAX_PAIRING_SESSIONS,
-  _bs_16_ClientFactory,
   _bs_17_createWhatsAppConnectorAccountProvider,
   _bs_18_WHATSAPP_PROVIDER_ID,
   _bs_19_buildWhatsAppUserJid,

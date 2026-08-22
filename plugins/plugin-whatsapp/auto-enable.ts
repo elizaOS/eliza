@@ -13,9 +13,6 @@ export function shouldEnable(ctx: PluginAutoEnableContext): boolean {
   if (!c || typeof c !== "object") return false;
   const config = c as Record<string, unknown>;
   if (config.enabled === false) return false;
-  // The full per-connector field check (token/phoneNumberId) lives in the
-  // central engine's isConnectorConfigured. This module only checks that the
-  // block is present and not explicitly disabled; the engine applies the
-  // stricter field-level gate.
+  // QR pairing writes the session directory into this connector block.
   return true;
 }

@@ -41,25 +41,16 @@ function runtimeWithRoutes(routes: Route[]): AgentRuntime {
 }
 
 describe("isPublicRuntimePluginRoute", () => {
-  it("recognizes webhook endpoints through public route declarations", () => {
+  it("recognizes externally delivered endpoints through public route declarations", () => {
     const runtime = runtimeWithRoutes([
       {
         type: "POST",
-        path: "/api/whatsapp/webhook",
+        path: "/api/example/events",
         public: true,
-        name: "whatsapp-webhook",
-        publicReason: "WhatsApp webhook callback is externally delivered.",
+        name: "example-events",
+        publicReason: "Example callback is externally delivered.",
         publicWrite:
-          "Inbound Meta webhook POST authenticated by the WhatsApp payload signature, not the local gate.",
-      },
-      {
-        type: "POST",
-        path: "/webhooks/bluebubbles",
-        public: true,
-        name: "bluebubbles-webhook",
-        publicReason: "BlueBubbles webhook callback is externally delivered.",
-        publicWrite:
-          "Inbound BlueBubbles webhook POST authenticated by payload validation, not the local gate.",
+          "Example callback authenticates its payload at the route boundary.",
       },
     ] as Route[]);
 
@@ -67,36 +58,21 @@ describe("isPublicRuntimePluginRoute", () => {
       isPublicRuntimePluginRoute({
         runtime,
         method: "POST",
-        pathname: "/api/whatsapp/webhook",
-      }),
-    ).toBe(true);
-    expect(
-      isPublicRuntimePluginRoute({
-        runtime,
-        method: "POST",
-        pathname: "/webhooks/bluebubbles",
+        pathname: "/api/example/events",
       }),
     ).toBe(true);
   });
 
   it("does not exempt matching webhook paths unless the route is public", () => {
     const runtime = runtimeWithRoutes([
-      { type: "POST", path: "/api/whatsapp/webhook" },
-      { type: "POST", path: "/webhooks/bluebubbles", public: false },
+      { type: "POST", path: "/api/example/events" },
     ] as Route[]);
 
     expect(
       isPublicRuntimePluginRoute({
         runtime,
         method: "POST",
-        pathname: "/api/whatsapp/webhook",
-      }),
-    ).toBe(false);
-    expect(
-      isPublicRuntimePluginRoute({
-        runtime,
-        method: "POST",
-        pathname: "/webhooks/bluebubbles",
+        pathname: "/api/example/events",
       }),
     ).toBe(false);
   });

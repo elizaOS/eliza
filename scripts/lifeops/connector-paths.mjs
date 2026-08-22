@@ -440,26 +440,6 @@ export const CONNECTOR_PATHS = [
     availability: { type: "always" },
   }),
 
-  // --- WhatsApp -----------------------------------------------------------------------
-  definePath({
-    id: "whatsapp.cloud-api",
-    family: "whatsapp",
-    group: "whatsapp",
-    kind: "api-key",
-    label: "WhatsApp Cloud API token + phone id",
-    requiredAll: [
-      "ELIZA_WHATSAPP_ACCESS_TOKEN",
-      "ELIZA_WHATSAPP_PHONE_NUMBER_ID",
-    ],
-    optional: ["WHATSAPP_ACCESS_TOKEN", "WHATSAPP_PHONE_NUMBER_ID"],
-    probeId: "whatsapp",
-    probeEndpoint:
-      "GET https://graph.facebook.com/v19.0/{PHONE_NUMBER_ID}?fields=display_phone_number (Bearer)",
-    availability: { type: "always" },
-    notes:
-      "ELIZA_WHATSAPP_* and bare WHATSAPP_* spellings are write-aliased by the dashboard; either satisfies the probe.",
-  }),
-
   // --- iMessage ------------------------------------------------------------------------
   definePath({
     id: "imessage.macos",

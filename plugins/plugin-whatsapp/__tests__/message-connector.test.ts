@@ -42,7 +42,7 @@ describe("WhatsApp message connector registration", () => {
     };
     const service = {
       connected: true,
-      config: { transport: "cloudapi" },
+      config: { authDir: "/tmp/whatsapp-test" },
       sendMessage: vi.fn(async () => ({ messages: [{ id: "wamid.1" }] })),
       listKnownTargets: vi.fn(() => [known]),
       getKnownTarget: vi.fn((chatId: string) => (chatId === known.chatId ? known : null)),
@@ -97,7 +97,7 @@ describe("WhatsApp message connector registration", () => {
     const runtime = makeRuntime(registrations);
     const service = {
       connected: true,
-      config: { transport: "cloudapi" },
+      config: { authDir: "/tmp/whatsapp-test" },
       sendMessage: vi.fn(async () => ({ messages: [{ id: "wamid.2" }] })),
       listKnownTargets: vi.fn(() => []),
       getKnownTarget: vi.fn(() => null),

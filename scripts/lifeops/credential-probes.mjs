@@ -23,7 +23,6 @@
  * also registered into the redaction set, so values that live only in a .env
  * file layer are masked in details exactly like process.env values.
  */
-import { spawnSync } from "node:child_process";
 import { createHmac, randomBytes } from "node:crypto";
 import { accessSync, constants as fsConstants } from "node:fs";
 import { homedir } from "node:os";
@@ -339,32 +338,6 @@ async function probeX(e) {
   return missing(
     "x",
     "TWITTER_API_KEY + TWITTER_API_SECRET_KEY + TWITTER_ACCESS_TOKEN + TWITTER_ACCESS_TOKEN_SECRET (or TWITTER_BEARER_TOKEN)",
-  );
-}
-
-async function probeWhatsapp(e) {
-  const token = e("ELIZA_WHATSAPP_ACCESS_TOKEN") ?? e("WHATSAPP_ACCESS_TOKEN");
-  const phoneId =
-    e("ELIZA_WHATSAPP_PHONE_NUMBER_ID") ?? e("WHATSAPP_PHONE_NUMBER_ID");
-  if (!token || !phoneId) {
-    return missing(
-      "whatsapp",
-      "ELIZA_WHATSAPP_ACCESS_TOKEN + ELIZA_WHATSAPP_PHONE_NUMBER_ID",
-    );
-  }
-  const r = await fetchJson(
-    `https://graph.facebook.com/v19.0/${encodeURIComponent(phoneId)}?fields=display_phone_number`,
-    { headers: { Authorization: `Bearer ${token}` } },
-  );
-  if (!r.httpOk)
-    return fail(
-      "whatsapp",
-      `phone-number lookup HTTP ${r.status}: ${errorSnippet(r)}`,
-    );
-  const digits = String(r.body?.display_phone_number ?? "").replace(/\D/g, "");
-  return pass(
-    "whatsapp",
-    `phone number verified (…${digits.slice(-4) || "????"})`,
   );
 }
 
@@ -777,7 +750,6 @@ const PROBES = {
   discord: probeDiscord,
   slack: probeSlack,
   x: probeX,
-  whatsapp: probeWhatsapp,
   twilio: probeTwilio,
   model: probeModel,
   health: probeHealth,
@@ -855,7 +827,6 @@ export const PATH_PROBES = {
   "discord.user-token": probeDiscordUserToken,
   "slack.bot": probeSlack,
   "slack.user-token": probeSlackUserToken,
-  "whatsapp.cloud-api": probeWhatsapp,
   "imessage.macos": probeImessageMacos,
   "imessage.bluebubbles": probeBlueBubbles,
   "x.oauth1-user": probeXOauth1,

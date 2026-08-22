@@ -90,10 +90,6 @@ const FAKE_CREDS: Readonly<Record<string, string>> = {
   TWILIO_ACCOUNT_SID: "ACtest1234567890123456789012345678",
   TWILIO_AUTH_TOKEN: "fake-auth-token",
   TWILIO_PHONE_NUMBER: "+15555550000",
-  // WhatsApp
-  ELIZA_WHATSAPP_ACCESS_TOKEN: "fake-whatsapp-token",
-  ELIZA_WHATSAPP_PHONE_NUMBER_ID: "1234567890",
-  ELIZA_WHATSAPP_API_VERSION: "v21.0",
   // Calendly
   ELIZA_CALENDLY_TOKEN: "fake-calendly-token",
   // X / Twitter

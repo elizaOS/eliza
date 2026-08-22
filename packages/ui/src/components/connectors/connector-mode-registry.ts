@@ -472,22 +472,6 @@ registerConnectorModes("whatsapp", [
     setupPluginId: "whatsapp",
     channelMode: "delegate",
   },
-  {
-    id: "business",
-    label: "Business Cloud API",
-    labelKey: "connectormode.whatsapp.business.label",
-    description:
-      "Use WhatsApp Business API with access token and phone number ID",
-    descriptionKey: "connectormode.whatsapp.business.description",
-    managementMode: "local-config",
-    setupPluginId: "whatsapp",
-    channelMode: "bot",
-    hiddenConfigKeys: [
-      "WHATSAPP_AUTH_METHOD",
-      "WHATSAPP_AUTH_DIR",
-      "WHATSAPP_PRINT_QR",
-    ],
-  },
 ]);
 
 registerConnectorModes("imessage", [

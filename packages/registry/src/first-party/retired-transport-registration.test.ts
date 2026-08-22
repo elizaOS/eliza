@@ -129,4 +129,62 @@ describe("retired transport registration", () => {
       expect(existsSync(path.join(repositoryRoot, removedSurface))).toBe(false);
     }
   });
+
+  it("registers the local WhatsApp connector only as in-process Baileys", () => {
+    expect(channelPluginMap.whatsapp).toBe("@elizaos/plugin-whatsapp");
+    const whatsappEntry = generatedRegistry.entries.find(
+      (plugin) => plugin.npmName === "@elizaos/plugin-whatsapp",
+    );
+    expect(whatsappEntry).toBeDefined();
+    expect(whatsappEntry).not.toHaveProperty("auth");
+    expect(whatsappEntry?.accounts?.agent?.authKind).toBe("qr");
+
+    const manifest = readFileSync(
+      path.join(repositoryRoot, "plugins/plugin-whatsapp/package.json"),
+      "utf8",
+    );
+    expect(manifest).toContain('"@whiskeysockets/baileys"');
+    expect(manifest).not.toMatch(
+      /whatsapp-cloud-webhook|WHATSAPP_ACCESS_TOKEN|WHATSAPP_PHONE_NUMBER_ID|WHATSAPP_APP_SECRET/i,
+    );
+
+    for (const authority of [
+      "packages/agent/src/runtime/build-character-config.ts",
+      "packages/agent/src/api/public-route-audit.baseline.json",
+      "packages/registry/src/first-party/generated.json",
+      "packages/scripts/post-merge-secrets.txt",
+      "packages/scripts/test-console/lib/connections.mjs",
+      "packages/ui/src/components/connectors/connector-mode-registry.ts",
+      "scripts/lifeops/connector-paths.mjs",
+      "scripts/lifeops/credential-probes.mjs",
+      "scripts/lifeops/hitl-credential-dashboard.mjs",
+    ]) {
+      expect(
+        readFileSync(path.join(repositoryRoot, authority), "utf8"),
+      ).not.toMatch(
+        /whatsapp-cloud-webhook|WHATSAPP_ACCESS_TOKEN|WHATSAPP_PHONE_NUMBER_ID|WHATSAPP_APP_SECRET|graph\.facebook\.com.*whatsapp/i,
+      );
+    }
+
+    const directRuntime = readFileSync(
+      path.join(
+        repositoryRoot,
+        "plugins/plugin-whatsapp/src/runtime-service.ts",
+      ),
+      "utf8",
+    );
+    expect(directRuntime).toContain("new BaileysClient");
+    expect(directRuntime).not.toMatch(
+      /node:child_process|\bspawn\s*\(|\bexec\s*\(|cloudapi|handleWebhook|verifyWebhook/i,
+    );
+
+    for (const removedSurface of [
+      "plugins/plugin-whatsapp/src/client.ts",
+      "plugins/plugin-whatsapp/src/webhook-auth.ts",
+      "plugins/plugin-whatsapp/src/clients/factory.ts",
+      "plugins/plugin-whatsapp/src/api/whatsapp-routes.ts",
+    ]) {
+      expect(existsSync(path.join(repositoryRoot, removedSurface))).toBe(false);
+    }
+  });
 });
