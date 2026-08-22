@@ -8,6 +8,10 @@ import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import { stringToUuid } from "@elizaos/core";
+import {
+  type RuntimeWithScenarioModelFixtures,
+  registerStrictActionRouteFixtures,
+} from "@elizaos/core/testing";
 import type {
   CapturedAction,
   ScenarioContext,
@@ -15,10 +19,6 @@ import type {
 } from "@elizaos/scenario-runner/schema";
 import { scenario } from "@elizaos/scenario-runner/schema";
 import codingToolsPlugin from "../../../../plugins/plugin-coding-tools/src/index.ts";
-import {
-  type RuntimeWithScenarioModelFixtures,
-  registerStrictActionRouteFixtures,
-} from "@elizaos/core/testing";
 
 const execFileAsync = promisify(execFile);
 
@@ -233,11 +233,29 @@ function expectFileReadTurn(
     (() => {
       const data = actionData(action);
       if (typeof data === "string") return data;
-      if (data.path !== notePath) {
-        return `expected FILE read path=${notePath}, saw ${String(data.path)}`;
+      const readView = isRecord(data.readView) ? data.readView : null;
+      const reference = isRecord(readView?.reference)
+        ? readView.reference
+        : null;
+      const slice = isRecord(readView?.slice) ? readView.slice : null;
+      const range = isRecord(slice?.range) ? slice.range : null;
+      if (reference?.kind !== "file") {
+        return `expected FILE ReadView file reference, saw ${stableStringify(reference)}`;
       }
-      if (data.totalLines !== 3) {
-        return `expected FILE totalLines=3, saw ${String(data.totalLines)}`;
+      if (
+        range?.unit !== "line" ||
+        range.start !== 0 ||
+        range.end !== 2 ||
+        range.total !== 2
+      ) {
+        return `expected FILE line range [0,2)/2, saw ${stableStringify(range)}`;
+      }
+      if (
+        JSON.stringify(action.result?.data).includes(
+          "alpha coding-tools scenario",
+        )
+      ) {
+        return "expected FILE page text only in ActionResult.text, but data duplicated it";
       }
       return action.result?.text?.includes("alpha coding-tools scenario")
         ? undefined

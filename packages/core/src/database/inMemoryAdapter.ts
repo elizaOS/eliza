@@ -42,6 +42,8 @@ import type {
 	DocumentListQueryParams,
 	DocumentListQueryResult,
 	DocumentMutationResult,
+	DocumentRangeReadParams,
+	DocumentRangeReadResult,
 	DocumentRevisionReplaceParams,
 	EntitiesForRoomsResult,
 	Entity,
@@ -81,6 +83,7 @@ import type {
 import { MemoryType } from "../types";
 import { normalizePairingPageOptions } from "../types/pairing";
 import { DEFAULT_UUID } from "../types/primitives";
+import { createHash } from "../utils/crypto-compat";
 import { isPlainObject } from "../utils/type-guards";
 import {
 	cloneConnectorJsonObject,
@@ -265,6 +268,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 	Record<string, never>
 > {
 	readonly documentListQueryCapability = DOCUMENT_LIST_QUERY_CAPABILITY_VERSION;
+	readonly documentRangeReadCapability = 1 as const;
 	db: Record<string, never> = {};
 
 	private ready = false;
@@ -849,13 +853,75 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 		return memory;
 	}
 
+	async readDocumentRange(
+		params: DocumentRangeReadParams,
+	): Promise<DocumentRangeReadResult | null> {
+		const memory = await this.getDocument(params);
+		if (!memory) return null;
+		const source = memory.content.text ?? "";
+		const lines = source.match(/[^\r\n]*(?:\r\n|\r|\n)|[^\r\n]+$/gu) ?? [];
+		const units =
+			params.unit === "line"
+				? lines
+				: lines
+						.reduce<string[]>((fragments, line) => {
+							const last = fragments.length - 1;
+							if (last < 0) fragments.push(line);
+							else fragments[last] += line;
+							if (line.replace(/[\r\n]/gu, "").trim().length === 0) {
+								fragments.push("");
+							}
+							return fragments;
+						}, [])
+						.filter((fragment) => fragment.length > 0);
+		const text = units
+			.slice(params.offset, params.offset + params.limit)
+			.join("");
+		const metadata = (memory.metadata ?? {}) as Record<string, unknown>;
+		return {
+			text,
+			start: params.offset,
+			end: Math.min(params.offset + params.limit, units.length),
+			total: units.length,
+			documentRevision:
+				typeof metadata.documentRevision === "number"
+					? metadata.documentRevision
+					: 0,
+			...(typeof metadata.revisionAttemptId === "string"
+				? { revisionAttemptId: metadata.revisionAttemptId }
+				: {}),
+			sourceFingerprint: `md5:${createHash("md5").update(source).digest("hex")}`,
+		};
+	}
+
 	async queryDocumentFragments(
 		params: DocumentFragmentQueryParams,
 	): Promise<Memory[]> {
-		return queryDocumentFragmentsInMemory(
+		const fragments = queryDocumentFragmentsInMemory(
 			Array.from(this.memoriesById.values()),
 			params,
 		);
+		return fragments.map((fragment) => {
+			const documentId = (
+				fragment.metadata as { documentId?: unknown } | undefined
+			)?.documentId;
+			const parent =
+				typeof documentId === "string"
+					? this.memoriesById.get(documentId)
+					: undefined;
+			const source = parent?.content.text;
+			return typeof source === "string"
+				? {
+						...fragment,
+						metadata: {
+							...(fragment.metadata ?? {}),
+							sourceFingerprint: `md5:${createHash("md5")
+								.update(source)
+								.digest("hex")}`,
+						} as Memory["metadata"],
+					}
+				: fragment;
+		});
 	}
 
 	async compareAndSwapDocument(

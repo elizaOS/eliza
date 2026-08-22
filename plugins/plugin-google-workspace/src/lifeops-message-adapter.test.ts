@@ -4,7 +4,17 @@
  * against a mock runtime whose "google" service is a `vi.fn` stub. The harness
  * is deterministic and does not call the live Gmail API.
  */
-import { EventType, type IAgentRuntime } from "@elizaos/core/node";
+
+import { createHash } from "node:crypto";
+import {
+  __resetDefaultTriageServiceForTests,
+  EventType,
+  getDefaultTriageService,
+  type IAgentRuntime,
+  type Memory,
+  messageAction,
+  validateReadView,
+} from "@elizaos/core/node";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { GoogleApiClientFactory } from "./client-factory.js";
 import { GoogleGmailClient } from "./gmail.js";
@@ -17,6 +27,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  __resetDefaultTriageServiceForTests();
   process.env = { ...ORIGINAL_ENV };
   vi.useRealTimers();
 });
@@ -25,6 +36,7 @@ function runtimeWithGoogleService(service: Record<string, unknown>): IAgentRunti
   const googleService = {
     listGmailTriageMessages: vi.fn(async () => []),
     searchGmailMessages: vi.fn(async () => []),
+    getGmailMessageDetail: vi.fn(async () => null),
     sendGmailReply: vi.fn(async () => ({})),
     sendGmailMessage: vi.fn(async () => ({})),
     modifyGmailMessages: vi.fn(async () => undefined),
@@ -358,5 +370,186 @@ describe("GoogleGmailAdapter", () => {
         domainEventId: "gmail_mark_read:acct_google_1:msg_1",
       })
     );
+  });
+});
+
+const actionMessage = {
+  id: "00000000-0000-0000-0000-0000000000aa",
+  roomId: "00000000-0000-0000-0000-0000000000bb",
+  entityId: "00000000-0000-0000-0000-0000000000cc",
+  agentId: "00000000-0000-0000-0000-000000000001",
+  content: { text: "read the email", source: "client_chat" },
+  createdAt: 1,
+} as unknown as Memory;
+
+async function runReadAction(runtime: IAgentRuntime, parameters: Record<string, unknown>) {
+  const result = await messageAction.handler(
+    runtime,
+    actionMessage,
+    undefined,
+    { parameters: { action: "read_message", source: "gmail", ...parameters } },
+    undefined,
+    undefined
+  );
+  if (!result) throw new Error("MESSAGE read_message returned no result");
+  return result;
+}
+
+describe("MESSAGE Gmail progressive body reads", () => {
+  it("fetches full current detail and reaches evidence beyond the triage snippet", async () => {
+    const bodyText = "short\nLATE-EVIDENCE\n";
+    const getGmailMessageDetail = vi.fn(async () => ({
+      message: gmailMessage({ snippet: "short" }),
+      bodyText,
+    }));
+    const runtime = runtimeWithGoogleService({ getGmailMessageDetail });
+    getDefaultTriageService().register(new GoogleGmailAdapter());
+
+    const first = await runReadAction(runtime, {
+      accountId: "acct_google_1",
+      messageId: "gmail:msg_1",
+      unit: "byte",
+      limit: 6,
+    });
+    expect(first.text).toBe("short\n");
+    const firstProjection = first.data as {
+      readView: { reference: { ref: string }; slice: { revision: string } };
+      control: Record<string, unknown>;
+    };
+    expect(firstProjection.readView.reference.ref).not.toContain("acct_google_1");
+    expect(firstProjection.readView.reference.ref).not.toContain("msg_1");
+    expect(
+      Buffer.from(firstProjection.readView.reference.ref, "base64url").toString("utf8")
+    ).not.toMatch(/acct_google_1|msg_1/u);
+    expect(validateReadView(firstProjection.readView)).toEqual(firstProjection.readView);
+    expect(firstProjection.readView.reference).toMatchObject({
+      revision: firstProjection.readView.slice.revision,
+    });
+    expect(firstProjection.readView.slice).toMatchObject({
+      sliceSha256: createHash("sha256")
+        .update(first.text ?? "")
+        .digest("hex"),
+    });
+    expect(JSON.stringify(first.data)).not.toContain("LATE-EVIDENCE");
+    expect(JSON.stringify(first.promptData)).not.toContain("LATE-EVIDENCE");
+
+    const second = await runReadAction(runtime, {
+      ...firstProjection.control,
+      limit: 64,
+    });
+    expect(second.success).toBe(true);
+    expect(second.text).toBe("LATE-EVIDENCE\n");
+    expect(getGmailMessageDetail).toHaveBeenNthCalledWith(2, {
+      accountId: "acct_google_1",
+      messageId: "msg_1",
+    });
+  });
+
+  it("fails a continuation after the provider body changes", async () => {
+    let bodyText = "alpha\nbeta\n";
+    const getGmailMessageDetail = vi.fn(async () => ({ message: gmailMessage(), bodyText }));
+    const runtime = runtimeWithGoogleService({ getGmailMessageDetail });
+    getDefaultTriageService().register(new GoogleGmailAdapter());
+    const first = await runReadAction(runtime, { messageId: "msg_1", limit: 6 });
+    const control = (first.data as { control: Record<string, unknown> }).control;
+
+    bodyText = "alpha\nMUTATED\n";
+    const stale = await runReadAction(runtime, control);
+    expect(stale.success).toBe(false);
+    expect(stale.text).toContain("changed before the continuation");
+  });
+
+  it("rechecks service availability and account authorization on every page", async () => {
+    const getGmailMessageDetail = vi
+      .fn()
+      .mockResolvedValueOnce({ message: gmailMessage(), bodyText: "alpha\nbeta\n" })
+      .mockRejectedValueOnce(new Error("OAuth grant revoked"));
+    const runtime = runtimeWithGoogleService({ getGmailMessageDetail });
+    getDefaultTriageService().register(new GoogleGmailAdapter());
+    const first = await runReadAction(runtime, { messageId: "msg_1", limit: 6 });
+    const control = (first.data as { control: Record<string, unknown> }).control;
+
+    const revokedAuth = await runReadAction(runtime, control);
+    expect(revokedAuth.success).toBe(false);
+    expect(revokedAuth.text).toContain("OAuth grant revoked");
+
+    vi.mocked(runtime.getService).mockReturnValue(null);
+    const revokedService = await runReadAction(runtime, control);
+    expect(revokedService.success).toBe(false);
+    expect(revokedService.text).toContain("unavailable");
+  });
+
+  it("keeps Unicode intact and bounds a huge single-line body by UTF-8 bytes", async () => {
+    const unicodeRuntime = runtimeWithGoogleService({
+      getGmailMessageDetail: vi.fn(async () => ({ message: gmailMessage(), bodyText: "😀tail" })),
+    });
+    const unicodeAdapter = new GoogleGmailAdapter();
+    const unicode = await unicodeAdapter.readMessage(unicodeRuntime, {
+      messageId: "msg_1",
+      unit: "byte",
+      limit: 4,
+    });
+    expect(unicode.text).toBe("😀");
+    expect(unicode.readView.slice.range).toEqual({ unit: "byte", start: 0, end: 4, total: 8 });
+    await expect(
+      unicodeAdapter.readMessage(unicodeRuntime, {
+        messageId: "msg_1",
+        unit: "byte",
+        limit: 1,
+      })
+    ).rejects.toMatchObject({ code: "GMAIL_READ_LIMIT_SPLITS_CODE_POINT" });
+
+    const hugeRuntime = runtimeWithGoogleService({
+      getGmailMessageDetail: vi.fn(async () => ({
+        message: gmailMessage(),
+        bodyText: "x".repeat(70_000),
+      })),
+    });
+    const hugeAdapter = new GoogleGmailAdapter();
+    const huge = await hugeAdapter.readMessage(hugeRuntime, {
+      messageId: "msg_1",
+    });
+    expect(Buffer.byteLength(huge.text)).toBe(16_384);
+    expect(huge.readView.slice).toMatchObject({
+      range: { unit: "byte", start: 0, end: 16_384, total: 70_000 },
+      hasMore: true,
+      nextOffset: 16_384,
+    });
+    await expect(
+      hugeAdapter.readMessage(hugeRuntime, {
+        messageId: "msg_1",
+        unit: "line",
+        limit: 1,
+      })
+    ).rejects.toMatchObject({ code: "GMAIL_READ_UNIT_TOO_LARGE" });
+    await expect(
+      hugeAdapter.readMessage(hugeRuntime, {
+        messageId: "msg_1",
+        offset: 1,
+      })
+    ).rejects.toMatchObject({ code: "GMAIL_READ_EXPECTED_REVISION_REQUIRED" });
+    await expect(
+      hugeAdapter.readMessage(hugeRuntime, {
+        messageId: "msg_1",
+        offset: 70_001,
+        expectedRevision: huge.readView.slice.revision,
+      })
+    ).rejects.toMatchObject({ code: "GMAIL_READ_OFFSET_OUT_OF_RANGE" });
+    await expect(
+      hugeAdapter.readMessage(hugeRuntime, {
+        messageId: "msg_1",
+        unit: "line",
+        offset: 2,
+        expectedRevision: huge.readView.slice.revision,
+      })
+    ).rejects.toMatchObject({ code: "GMAIL_READ_OFFSET_OUT_OF_RANGE" });
+
+    const reference = huge.readView.reference.ref;
+    await expect(
+      new GoogleGmailAdapter().readMessage(hugeRuntime, {
+        reference,
+        expectedRevision: huge.readView.slice.revision,
+      })
+    ).rejects.toMatchObject({ code: "GMAIL_READ_REFERENCE_UNRESOLVED" });
   });
 });
