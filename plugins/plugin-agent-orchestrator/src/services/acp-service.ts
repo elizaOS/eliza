@@ -359,14 +359,25 @@ function findGitBinaryForAcp(): string {
 function findExecutableOnPath(name: string): string | undefined {
   for (const dir of (process.env.PATH ?? "").split(delimiter)) {
     if (!dir) continue;
-    const candidate = join(dir, name);
-    try {
-      if (!statSync(candidate).isFile()) continue;
-      accessSync(candidate, constants.X_OK);
-      return candidate;
-    } catch {
-      // error-policy:J3 PATH entries that are missing or non-executable are
-      // explicit preflight misses; continue looking for a runnable candidate.
+    const candidates = new Set([join(dir, name)]);
+    if (process.platform === "win32") {
+      for (const extension of (process.env.PATHEXT ?? ".EXE;.CMD;.BAT")
+        .split(";")
+        .map((value) => value.trim())
+        .filter(Boolean)) {
+        candidates.add(join(dir, `${name}${extension.toLowerCase()}`));
+        candidates.add(join(dir, `${name}${extension.toUpperCase()}`));
+      }
+    }
+    for (const candidate of candidates) {
+      try {
+        if (!statSync(candidate).isFile()) continue;
+        accessSync(candidate, constants.X_OK);
+        return candidate;
+      } catch {
+        // error-policy:J3 PATH entries that are missing or non-executable are
+        // explicit preflight misses; continue looking for a runnable candidate.
+      }
     }
   }
   return undefined;

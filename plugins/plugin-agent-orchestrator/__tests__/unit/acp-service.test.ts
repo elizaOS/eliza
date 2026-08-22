@@ -396,6 +396,52 @@ describe("AcpService", () => {
     expect(availability.every((entry) => entry.installed === true)).toBe(true);
   });
 
+  it("honors Windows PATHEXT when preflighting canonical backend commands", async () => {
+    const executableDirectory = mkdtempSync(
+      join(tmpdir(), "eliza-acp-pathext-"),
+    );
+    const previousEnv = snapshotEnv(["PATH", "PATHEXT"]);
+    const platform = vi
+      .spyOn(process, "platform", "get")
+      .mockReturnValue("win32");
+    try {
+      for (const command of [
+        "eliza-code-acp.cmd",
+        "pi-agent.cmd",
+        "npx.cmd",
+        "opencode.cmd",
+      ]) {
+        const executable = join(executableDirectory, command);
+        await fs.writeFile(executable, "@echo off\r\n");
+        await fs.chmod(executable, 0o755);
+      }
+      process.env.PATH = executableDirectory;
+      process.env.PATHEXT = ".CMD";
+      const service = new AcpService(
+        runtime({
+          ELIZA_ACP_TRANSPORT: "native",
+          ELIZA_ELIZAOS_ACP_COMMAND: "eliza-code-acp",
+          ELIZA_PI_AGENT_ACP_COMMAND: "pi-agent",
+          ELIZA_CLAUDE_ACP_COMMAND:
+            "npx -y @agentclientprotocol/claude-agent-acp@0.34.0",
+          ELIZA_CODEX_ACP_COMMAND: "npx -y codex-acp",
+          ELIZA_OPENCODE_ACP_COMMAND: "opencode acp",
+        }),
+      );
+
+      const availability = await service.checkAvailableAgents();
+
+      expect(availability).toHaveLength(CODING_AGENT_BACKENDS.length);
+      expect(availability.every((entry) => entry.installed === true)).toBe(
+        true,
+      );
+    } finally {
+      platform.mockRestore();
+      restoreEnv(previousEnv);
+      rmSync(executableDirectory, { recursive: true, force: true });
+    }
+  });
+
   it("fails with a clear diagnostic when acpx is missing on Android", async () => {
     const previousPlatform = process.env.ELIZA_PLATFORM;
     process.env.ELIZA_PLATFORM = "android";
