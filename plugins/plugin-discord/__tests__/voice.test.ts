@@ -263,4 +263,65 @@ describe("VoiceManager", () => {
 
 		expect(connection.receiver.subscribe).toHaveBeenCalledTimes(1);
 	});
+
+	it("routes a reused connection's speaking events through its latest channel", async () => {
+		const receiveStream = new PassThrough();
+		const connection = makeConnection(receiveStream);
+		voiceModule.joinVoiceChannel.mockImplementation(
+			(options: { channelId: string }) => {
+				connection.joinConfig.channelId = options.channelId;
+				return connection;
+			},
+		);
+		voiceModule.entersState.mockResolvedValue(connection);
+
+		const client = new EventEmitter() as EventEmitter & {
+			user?: { id: string };
+		};
+		client.user = { id: "bot-1" };
+		const userStream = vi.fn();
+		client.on("userStream", userStream);
+		const member = {
+			displayName: "Owner",
+			guild: { id: "guild-1" },
+			id: "user-1",
+			user: { bot: false, displayName: "Owner", username: "owner" },
+		};
+		const firstChannel = makeChannel();
+		const latestChannel = {
+			...makeChannel(member),
+			id: "voice-2",
+			name: "Latest Room",
+		};
+		const registerVoiceTarget = vi.fn();
+		const manager = new VoiceManager(
+			{
+				accountId: "test",
+				client: client as never,
+				registerVoiceTarget,
+			},
+			makeRuntime() as unknown as ICompatRuntime,
+		);
+
+		await Promise.all([
+			manager.joinChannel(firstChannel as never),
+			manager.joinChannel(latestChannel as never),
+		]);
+		connection.receiver.speaking.emit("start", "user-1");
+
+		await vi.waitFor(() => {
+			expect(connection.receiver.subscribe).toHaveBeenCalledTimes(1);
+			expect(registerVoiceTarget).toHaveBeenCalledTimes(1);
+			expect(registerVoiceTarget).toHaveBeenCalledWith(
+				expect.objectContaining({ channel: latestChannel }),
+			);
+			expect(userStream).toHaveBeenCalledWith(
+				"user-1",
+				"Owner",
+				"owner",
+				latestChannel,
+				expect.any(Transform),
+			);
+		});
+	});
 });
