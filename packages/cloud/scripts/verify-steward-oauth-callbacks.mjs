@@ -8,8 +8,6 @@
 
 import { createHash } from "node:crypto";
 import { pathToFileURL } from "node:url";
-import { CANONICAL_STEWARD_UPSTREAM_URLS } from "./verify-steward-upstream-binding.mjs";
-
 const PROVIDER_DESTINATIONS = Object.freeze({
   discord: {
     origin: "https://discord.com",
@@ -19,6 +17,15 @@ const PROVIDER_DESTINATIONS = Object.freeze({
     origin: "https://accounts.google.com",
     pathname: "/o/oauth2/v2/auth",
   },
+});
+
+// Provider callbacks terminate on the public Steward API authority, not on
+// either browser host. Both staging browser hosts share the isolated staging
+// challenge store through api-staging.eliza.app; production retains the
+// established direct Steward callback.
+const CANONICAL_STEWARD_CALLBACK_BASE_URLS = Object.freeze({
+  staging: "https://api-staging.eliza.app/steward",
+  production: "https://eliza.steward.fi",
 });
 
 const DEPLOY_ENVIRONMENTS = new Set(["staging", "production"]);
@@ -156,13 +163,8 @@ export async function verifyStewardOAuthCallbacks(
       }
       launchStates.add(providerState);
 
-      // Staging terminates the provider callback at the release origin because
-      // its challenge store is isolated there. Production retains the
-      // established direct callback on the canonical Steward upstream.
-      const expectedProviderCallback =
-        deployEnvironment === "staging"
-          ? `${baseUrl}/steward/auth/oauth/${encodeURIComponent(provider)}/callback`
-          : `${CANONICAL_STEWARD_UPSTREAM_URLS.production}/auth/oauth/${encodeURIComponent(provider)}/callback`;
+      const callbackBaseUrl = CANONICAL_STEWARD_CALLBACK_BASE_URLS[deployEnvironment];
+      const expectedProviderCallback = `${callbackBaseUrl}/auth/oauth/${encodeURIComponent(provider)}/callback`;
       const providerCallbacks = destination.searchParams.getAll("redirect_uri");
       const actualProviderCallback = providerCallbacks[0];
       if (

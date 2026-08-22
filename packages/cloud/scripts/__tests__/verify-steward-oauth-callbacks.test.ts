@@ -18,6 +18,9 @@ const CONFIG = {
   tenantId: "elizacloud-staging",
 };
 
+const STAGING_CALLBACK_BASE_URL =
+  "https://api-staging.eliza.app/steward";
+
 let providerStateSequence = 0;
 
 function providerDestination(
@@ -33,7 +36,7 @@ function providerDestination(
   destination.searchParams.set("state", state);
   destination.searchParams.set(
     "redirect_uri",
-    `${CONFIG.baseUrl}/steward/auth/oauth/${provider}/callback`,
+    `${STAGING_CALLBACK_BASE_URL}/auth/oauth/${provider}/callback`,
   );
   return destination.toString();
 }
@@ -183,7 +186,7 @@ describe("Steward OAuth callback deployment probe", () => {
         },
       ),
     ).rejects.toThrow(
-      "expected https://staging.eliza.app/steward/auth/oauth/discord/callback",
+      "expected https://api-staging.eliza.app/steward/auth/oauth/discord/callback",
     );
   });
 
@@ -217,7 +220,7 @@ describe("Steward OAuth callback deployment probe", () => {
           }),
       }),
     ).rejects.toThrow(
-      "expected https://staging.eliza.app/steward/auth/oauth/discord/callback",
+      "expected https://api-staging.eliza.app/steward/auth/oauth/discord/callback",
     );
   });
 
