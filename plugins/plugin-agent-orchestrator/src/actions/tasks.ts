@@ -1151,6 +1151,12 @@ async function runCreateLegacy(
       logger(runtime).warn(
         `[TASKS:create] follow-up folded into in-flight lane ${sibling.sessionId} (task ${sibling.taskId})`,
       );
+      // This origin's create claim (recorded at dispatch) would make the send
+      // read as a redundant same-origin send and queue nothing.
+      releaseCreateClaimForMessage(
+        runtime,
+        spawnRootIdFor(message, content) ?? "",
+      );
       return runSend(
         runtime,
         message,
@@ -4117,7 +4123,13 @@ Build on the existing files; do not recreate them.`
         return {
           success: true,
           text: "The lane just launched for this request already carries these instructions; nothing further was queued.",
-          data: { sessionId: target.session.id, redundantSameOriginSend: true },
+          data: {
+            sessionId: target.session.id,
+            redundantSameOriginSend: true,
+            // Bookkeeping, not an answer: the kickoff ack already covered
+            // this origin (the line reached chat verbatim, live 2026-08-22).
+            suppressPlannerReply: true,
+          },
           continueChain: false,
         };
       }
@@ -5063,6 +5075,17 @@ function hasRecentCreateClaimFromOtherOrigin(
     if (id !== originId && now - at < windowMs) return true;
   }
   return false;
+}
+
+function releaseCreateClaimForMessage(
+  runtime: IAgentRuntime,
+  messageId: string,
+): void {
+  (
+    runtime as IAgentRuntime & {
+      __orchestratorCreateClaims?: Map<string, number>;
+    }
+  ).__orchestratorCreateClaims?.delete(messageId);
 }
 
 function hasCreateClaimForMessage(
