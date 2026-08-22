@@ -2,10 +2,11 @@
  * Closes Cloudflare Pages deployment output into a privacy-safe release proof.
  *
  * Wrangler's append-only NDJSON is accepted only at the deployment boundary.
- * This module validates both v1 records, removes the raw deployment UUID, and
- * binds subsequent public and browser observations to one source SHA, alias,
- * workflow run, and renderer build before a staging receipt can claim that the
- * deployed renderer was tested.
+ * This module validates the session and both deployment records, removes the
+ * raw deployment UUID and local CLI metadata, and binds subsequent public and
+ * browser observations to one source SHA, alias, workflow run, and renderer
+ * build before a staging receipt can claim that the deployed renderer was
+ * tested.
  */
 import { createHash } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
@@ -32,6 +33,16 @@ const SHA256 = /^[0-9a-f]{64}$/;
 const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const PROJECT = /^[a-z0-9][a-z0-9-]{0,57}[a-z0-9]$/;
+const WRANGLER_VERSION = "4.100.0";
+
+const WRANGLER_SESSION_KEYS = [
+  "command_line_args",
+  "log_file_path",
+  "timestamp",
+  "type",
+  "version",
+  "wrangler_version",
+];
 
 const AUTHORITY_KEYS = [
   "aliasUrl",
@@ -146,6 +157,17 @@ function requirePositiveInteger(value, label) {
   return parsed;
 }
 
+function requireStringArray(value, label) {
+  if (
+    !Array.isArray(value) ||
+    value.length === 0 ||
+    value.some((entry) => typeof entry !== "string" || !entry)
+  ) {
+    fail(`${label} must be a non-empty string array`);
+  }
+  return value;
+}
+
 function requireHttpsUrl(value, label) {
   const raw = requireString(value, label);
   let parsed;
@@ -201,14 +223,37 @@ function parseNdjson(raw) {
   }
   const lines = raw.slice(0, -1).split("\n");
   if (
-    lines.length !== 2 ||
+    lines.length !== 3 ||
     lines.some((line) => !line || line.includes("\r"))
   ) {
-    fail("Wrangler output must contain exactly two non-empty NDJSON records");
+    fail("Wrangler output must contain exactly three non-empty NDJSON records");
   }
   return lines.map((line, index) =>
     parseJson(line, `Wrangler record ${index + 1}`),
   );
+}
+
+function parseWranglerSession(value) {
+  const session = requireExactKeys(
+    value,
+    WRANGLER_SESSION_KEYS,
+    "wrangler-session record",
+  );
+  if (session.type !== "wrangler-session" || session.version !== 1) {
+    fail("first Wrangler record must be wrangler-session/v1");
+  }
+  if (session.wrangler_version !== WRANGLER_VERSION) {
+    fail(`wrangler-session must report pinned Wrangler ${WRANGLER_VERSION}`);
+  }
+  requireIsoTimestamp(session.timestamp, "wrangler-session timestamp");
+  requireString(session.log_file_path, "wrangler-session log_file_path");
+  const commandLineArgs = requireStringArray(
+    session.command_line_args,
+    "wrangler-session command_line_args",
+  );
+  if (commandLineArgs[0] !== "pages" || commandLineArgs[1] !== "deploy") {
+    fail("wrangler-session must describe a Pages deploy command");
+  }
 }
 
 function parseWorkflow(value, label = "workflow") {
@@ -223,8 +268,9 @@ function parseWorkflow(value, label = "workflow") {
 }
 
 /**
- * Validates the two records emitted by Wrangler 4.100.0 and returns only the
- * closed, publishable identity needed by later release jobs.
+ * Validates the three records emitted by Wrangler 4.100.0 and returns only the
+ * closed, publishable identity needed by later release jobs. Session-local CLI
+ * arguments and log paths are deliberately validated and discarded.
  */
 export function parseWranglerPagesDeploymentOutput(
   raw,
@@ -239,7 +285,8 @@ export function parseWranglerPagesDeploymentOutput(
     runAttempt,
   },
 ) {
-  const [summaryValue, detailedValue] = parseNdjson(raw);
+  const [sessionValue, summaryValue, detailedValue] = parseNdjson(raw);
+  parseWranglerSession(sessionValue);
   const summary = requireExactKeys(
     summaryValue,
     ["deployment_id", "pages_project", "timestamp", "type", "url", "version"],
@@ -262,10 +309,10 @@ export function parseWranglerPagesDeploymentOutput(
     "pages-deploy-detailed record",
   );
   if (summary.type !== "pages-deploy" || summary.version !== 1) {
-    fail("first Wrangler record must be pages-deploy/v1");
+    fail("second Wrangler record must be pages-deploy/v1");
   }
   if (detailed.type !== "pages-deploy-detailed" || detailed.version !== 1) {
-    fail("second Wrangler record must be pages-deploy-detailed/v1");
+    fail("third Wrangler record must be pages-deploy-detailed/v1");
   }
   requireIsoTimestamp(summary.timestamp, "pages-deploy timestamp");
   requireIsoTimestamp(detailed.timestamp, "pages-deploy-detailed timestamp");
