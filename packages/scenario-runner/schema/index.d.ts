@@ -117,9 +117,11 @@ export type ScenarioContext = {
   /** Runtime IDs keyed by the logical identifiers authored in `rooms`. */
   roomIds?: Record<string, string>;
   worldIds?: Record<string, string>;
+  /** Canonical principal IDs keyed by `rooms[].entity`. */
   entityIds?: Record<string, string>;
+  /** Distinct connector principal IDs keyed by `rooms[].account`. */
   accountEntityIds?: Record<string, string>;
-  /** Per-room topology for seeds that need the room's canonical owner/world. */
+  /** Per-room topology for seeds that need the room's account principal/world. */
   roomWorldIds?: Record<string, string>;
   roomEntityIds?: Record<string, string>;
   actionsCalled: CapturedAction[];
@@ -551,8 +553,8 @@ export type ScenarioRoomSpec = {
    */
   account?: string;
   /**
-   * Canonical logical entity key. Distinct connector accounts may name the
-   * same entity to model verified linked identities across platforms.
+   * Canonical logical entity key. Distinct connector accounts naming the same
+   * entity become separate principals linked through the real identity graph.
    */
   entity?: string;
   title?: string;

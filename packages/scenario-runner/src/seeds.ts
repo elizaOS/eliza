@@ -2056,11 +2056,17 @@ function inboundMessageSenderEntityId(
   ctx: ScenarioContext,
   seed: InboundMessageMemorySeed,
 ): UUID {
-  const platform = readNonEmptyString(seed.platform) ?? "scenario";
-  const identity =
+  const explicitIdentity =
     readNonEmptyString(seed.platformUserId) ??
     readNonEmptyString(seed.handle) ??
-    inboundMessageSenderName(seed);
+    readNonEmptyString(seed.from) ??
+    readNonEmptyString(seed.id);
+  if (!explicitIdentity) {
+    const roomEntityId = readNonEmptyString(ctx.primaryUserId);
+    if (roomEntityId) return roomEntityId as UUID;
+  }
+  const platform = readNonEmptyString(seed.platform) ?? "scenario";
+  const identity = explicitIdentity ?? inboundMessageSenderName(seed);
   return stringToUuid(
     `scenario-inbound-message-sender:${ctx.scenarioId ?? "unknown"}:${platform}:${identity}`,
   ) as UUID;
@@ -2122,6 +2128,7 @@ async function seedInboundMessageMemory(
   const memory = createMessageMemory({
     id: stringToUuid(`scenario-inbound-message:${messageId}`),
     entityId: senderEntityId,
+    agentId: runtime.agentId,
     roomId: roomId as UUID,
     content: {
       text: text ?? "",

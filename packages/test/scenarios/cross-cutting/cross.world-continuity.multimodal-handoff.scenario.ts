@@ -63,13 +63,13 @@ export default scenario({
       kind: "message",
       name: "telegram-recalls-image-description",
       room: "telegram-dm",
-      text: "From the receipt image I shared elsewhere, what time is dinner, for how many people, and where?",
+      text: "What time is dinner, for how many people, and where?",
       responseIncludes: ["6:30", "four", "Saffron House"],
       responseExcludes: ["private.example"],
       responseJudge: {
         minimumScore: 0.9,
         rubric:
-          "The reply must recover 6:30 PM, four people, and Saffron House from the cross-world image description, and must not disclose a private media URL.",
+          "The reply must recover 6:30 PM, four people, and Saffron House from the cross-world attachment description, and must not disclose a private media URL.",
       },
     },
   ],

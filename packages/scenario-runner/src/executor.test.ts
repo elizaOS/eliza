@@ -35,6 +35,10 @@ function createRuntime(
     plugins: [],
     routes: [],
     ensureConnection: vi.fn(async () => undefined),
+    getEntityById: vi.fn(async () => null),
+    createEntity: vi.fn(async () => true),
+    getRelationships: vi.fn(async () => []),
+    createRelationship: vi.fn(async () => true),
     getService: vi.fn(() => null),
     reportError: vi.fn(),
     setSetting: vi.fn(),
@@ -109,8 +113,15 @@ describe("scenario executor multi-world topology", () => {
     const expectedEntityId = stringToUuid(
       "scenario-entity:multi-world-linked-owner:owner",
     );
-    expect(discordConnection?.entityId).toBe(expectedEntityId);
-    expect(telegramConnection?.entityId).toBe(expectedEntityId);
+    const discordAccountEntityId = stringToUuid(
+      "scenario-account:multi-world-linked-owner:discord:owner-123",
+    );
+    const telegramAccountEntityId = stringToUuid(
+      "scenario-account:multi-world-linked-owner:telegram:owner-456",
+    );
+    expect(discordConnection?.entityId).toBe(discordAccountEntityId);
+    expect(telegramConnection?.entityId).toBe(telegramAccountEntityId);
+    expect(discordConnection?.entityId).not.toBe(telegramConnection?.entityId);
     expect(discordConnection?.worldId).toBe(
       stringToUuid("scenario-world:multi-world-linked-owner:discord-guild-42"),
     );
@@ -133,12 +144,12 @@ describe("scenario executor multi-world topology", () => {
     });
     expect(seedContext?.entityIds).toEqual({ owner: expectedEntityId });
     expect(seedContext?.accountEntityIds).toEqual({
-      "discord:owner-123": expectedEntityId,
-      "telegram:owner-456": expectedEntityId,
+      "discord:owner-123": discordAccountEntityId,
+      "telegram:owner-456": telegramAccountEntityId,
     });
     expect(seedContext?.roomEntityIds).toEqual({
-      "discord-home": expectedEntityId,
-      "telegram-home": expectedEntityId,
+      "discord-home": discordAccountEntityId,
+      "telegram-home": telegramAccountEntityId,
     });
     expect(seedContext?.roomWorldIds).toEqual({
       "discord-home": discordConnection?.worldId,
