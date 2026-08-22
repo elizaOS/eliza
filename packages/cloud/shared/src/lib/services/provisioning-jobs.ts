@@ -6387,16 +6387,28 @@ export class ProvisioningJobService {
         body: rawBody,
         signal: AbortSignal.timeout(10_000),
       });
+      const responseOk = response.ok;
+      const responseStatus = response.status;
+      try {
+        await response.body?.cancel();
+      } catch (error) {
+        // error-policy:J6 The webhook status is already authoritative; response
+        // disposal is best-effort teardown of the pinned outbound connection.
+        logger.warn("[provisioning-jobs] Failed to release webhook response body", {
+          jobId: job.id,
+          error: jobErrorText(error),
+        });
+      }
 
       await jobsRepository.update(job.id, {
-        webhook_status: response.ok ? "delivered" : `failed_${response.status}`,
+        webhook_status: responseOk ? "delivered" : `failed_${responseStatus}`,
       });
 
-      if (!response.ok) {
+      if (!responseOk) {
         logger.warn("[provisioning-jobs] Webhook delivery failed", {
           jobId: job.id,
           webhookUrl: safeWebhookUrl.toString(),
-          status: response.status,
+          status: responseStatus,
         });
       }
     } catch (err) {
