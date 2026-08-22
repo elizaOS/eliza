@@ -203,7 +203,7 @@ describe("z.ai text parameter resolution", () => {
     expect(forwardedInit.body).toBe("not-json");
   });
 
-  it("sends at most one stop sequence because z.ai supports one stop word", async () => {
+  it("rejects multiple stop sequences instead of silently dropping model semantics", async () => {
     const runtime = {
       character: {},
       getSetting(key: string) {
@@ -219,12 +219,35 @@ describe("z.ai text parameter resolution", () => {
         prompt: "hello",
         stopSequences: ["</one>", "</two>"],
       })
+    ).rejects.toMatchObject({
+      code: "ZAI_STOP_SEQUENCE_LIMIT_EXCEEDED",
+      context: { maximum: 1, received: 2 },
+    });
+
+    expect(createOpenAICompatibleMock).not.toHaveBeenCalled();
+    expect(generateTextMock).not.toHaveBeenCalled();
+  });
+
+  it("preserves the one stop sequence supported by z.ai", async () => {
+    const runtime = {
+      character: {},
+      getSetting(key: string) {
+        if (key === "ZAI_API_KEY") return "test-key";
+        return undefined;
+      },
+    };
+
+    const { handleTextSmall } = await import("../models/text");
+
+    await expect(
+      handleTextSmall(runtime as never, {
+        prompt: "hello",
+        stopSequences: ["</one>"],
+      })
     ).resolves.toBe("ok");
 
     expect(generateTextMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        stopSequences: ["</one>"],
-      })
+      expect.objectContaining({ stopSequences: ["</one>"] })
     );
   });
 
