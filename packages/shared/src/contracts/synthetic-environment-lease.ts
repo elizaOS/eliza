@@ -5,6 +5,29 @@
  */
 
 export const SYNTHETIC_ENVIRONMENT_LEASE_VERSION = 1 as const;
+/** Matches the synthetic subprocess control envelope's namespace bound. */
+export const SYNTHETIC_ENVIRONMENT_NAMESPACE_MAX_LENGTH = 512 as const;
+
+function containsControlCharacter(value: string): boolean {
+  for (let index = 0; index < value.length; index += 1) {
+    const code = value.charCodeAt(index);
+    if (code <= 0x1f || code === 0x7f) return true;
+  }
+  return false;
+}
+
+/** Checks the canonical namespace shared by lease and subprocess authorities. */
+export function isSyntheticEnvironmentNamespace(
+  value: unknown,
+): value is string {
+  return (
+    typeof value === "string" &&
+    value.length > 0 &&
+    value.length <= SYNTHETIC_ENVIRONMENT_NAMESPACE_MAX_LENGTH &&
+    value === value.trim() &&
+    !containsControlCharacter(value)
+  );
+}
 
 export type SyntheticEnvironmentLeaseErrorCode =
   | "SYNTHETIC_LEASE_COLLISION"

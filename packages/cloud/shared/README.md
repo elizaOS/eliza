@@ -31,6 +31,9 @@ Import via subpath: `@elizaos/cloud-shared/billing`, `/db`, `/db/repositories/ap
 Synthetic test consumers use `/db/repositories/synthetic-environment-leases`.
 Its guarded callback receives the same locked PostgreSQL/PGlite transaction as
 the generation check, so an old reset generation cannot commit afterward.
+The lease and subprocess authorities share the exact 512-character namespace
+validator. Treat a transaction/transport exception as ambiguous and reconcile
+the canonical snapshot before retrying an acquire, rollover, or release.
 
 `src/lib/` is server-only — browser code lives in `cloud-frontend`. Only the isomorphic helpers (`billing/`, math/string/validation) are safe to import from the frontend.
 

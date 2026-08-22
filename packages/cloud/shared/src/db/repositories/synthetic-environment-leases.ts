@@ -15,7 +15,11 @@ import type {
   SyntheticEnvironmentLeaseSnapshot,
   SyntheticEnvironmentLeaseStore,
 } from "@elizaos/shared/contracts/synthetic-environment-lease";
-import { SYNTHETIC_ENVIRONMENT_LEASE_VERSION } from "@elizaos/shared/contracts/synthetic-environment-lease";
+import {
+  isSyntheticEnvironmentNamespace,
+  SYNTHETIC_ENVIRONMENT_LEASE_VERSION,
+  SYNTHETIC_ENVIRONMENT_NAMESPACE_MAX_LENGTH,
+} from "@elizaos/shared/contracts/synthetic-environment-lease";
 import { eq } from "drizzle-orm";
 import type { DbTransaction } from "../client";
 import { dbWrite } from "../helpers";
@@ -27,6 +31,14 @@ import { readPostLockDatabaseNow } from "./primary-database-clock";
 
 const MAX_LEASE_DURATION_MS = 86_400_000;
 const IDENTIFIER_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9._:@-]{0,127}$/;
+
+function containsControlCharacter(value: string): boolean {
+  for (let index = 0; index < value.length; index += 1) {
+    const code = value.charCodeAt(index);
+    if (code <= 0x1f || code === 0x7f) return true;
+  }
+  return false;
+}
 
 function invalidInput(message: string): ElizaError {
   return new ElizaError(message, {
@@ -43,14 +55,26 @@ function storageFailure(message: string, namespace: string): ElizaError {
   });
 }
 
-function validateIdentifier(value: string, field: string): string {
-  if (!IDENTIFIER_PATTERN.test(value)) {
+function validateNamespace(value: unknown, field: string): string {
+  if (!isSyntheticEnvironmentNamespace(value)) {
+    throw invalidInput(
+      `${field} must contain 1-${SYNTHETIC_ENVIRONMENT_NAMESPACE_MAX_LENGTH} non-control characters`,
+    );
+  }
+  return value;
+}
+
+function validateIdentifier(value: unknown, field: string): string {
+  if (typeof value !== "string" || !IDENTIFIER_PATTERN.test(value)) {
     throw invalidInput(`${field} must be 1-128 safe identifier characters and start alphanumeric`);
   }
   return value;
 }
 
 function validateOwner(owner: SyntheticEnvironmentLeaseOwner): SyntheticEnvironmentLeaseOwner {
+  if (typeof owner !== "object" || owner === null) {
+    throw invalidInput("owner must be an object");
+  }
   validateIdentifier(owner.ownerId, "owner.ownerId");
   if (
     owner.processId !== null &&
@@ -60,8 +84,9 @@ function validateOwner(owner: SyntheticEnvironmentLeaseOwner): SyntheticEnvironm
   ) {
     throw invalidInput("owner.processId must be a positive 32-bit integer or null");
   }
+  if (typeof owner.host !== "string") throw invalidInput("owner.host must be a string");
   const host = owner.host.trim();
-  if (host.length === 0 || host.length > 255 || /[\r\n\0]/.test(host)) {
+  if (host.length === 0 || host.length > 255 || containsControlCharacter(host)) {
     throw invalidInput("owner.host must contain 1-255 safe characters");
   }
   return { ...owner, host };
@@ -81,16 +106,19 @@ function validateDuration(leaseDurationMs: number): number {
 function validateAuthority(
   authority: SyntheticEnvironmentLeaseAuthority,
 ): SyntheticEnvironmentLeaseAuthority {
+  if (typeof authority !== "object" || authority === null) {
+    throw invalidInput("authority must be an object");
+  }
   if (authority.version !== SYNTHETIC_ENVIRONMENT_LEASE_VERSION) {
     throw invalidInput("authority.version is unsupported");
   }
-  validateIdentifier(authority.namespace, "authority.namespace");
+  const namespace = validateNamespace(authority.namespace, "authority.namespace");
   validateIdentifier(authority.leaseId, "authority.leaseId");
   validateOwner(authority.owner);
   if (!Number.isSafeInteger(authority.generation) || authority.generation < 1) {
     throw invalidInput("authority.generation must be a positive integer");
   }
-  return authority;
+  return { ...authority, namespace };
 }
 
 function rowOwner(row: SyntheticEnvironmentLease): SyntheticEnvironmentLeaseOwner | null {
@@ -205,7 +233,10 @@ export class CloudSyntheticEnvironmentLeaseStore
   async acquire(
     input: AcquireSyntheticEnvironmentLeaseInput,
   ): Promise<SyntheticEnvironmentLeaseReceipt> {
-    const namespace = validateIdentifier(input.namespace, "namespace");
+    if (typeof input !== "object" || input === null) {
+      throw invalidInput("acquire input must be an object");
+    }
+    const namespace = validateNamespace(input.namespace, "namespace");
     const owner = validateOwner(input.owner);
     const duration = validateDuration(input.leaseDurationMs);
     return dbWrite.transaction(async (tx) => {
@@ -263,7 +294,7 @@ export class CloudSyntheticEnvironmentLeaseStore
   }
 
   async read(namespace: string): Promise<SyntheticEnvironmentLeaseSnapshot | null> {
-    validateIdentifier(namespace, "namespace");
+    namespace = validateNamespace(namespace, "namespace");
     return dbWrite.transaction(async (tx) => {
       const row = await lockRow(tx, namespace);
       if (!row) return null;
@@ -275,18 +306,21 @@ export class CloudSyntheticEnvironmentLeaseStore
   async heartbeat(
     input: RefreshSyntheticEnvironmentLeaseInput,
   ): Promise<SyntheticEnvironmentLeaseReceipt> {
+    if (typeof input !== "object" || input === null) {
+      throw invalidInput("heartbeat input must be an object");
+    }
     const authority = validateAuthority(input.authority);
     const duration = validateDuration(input.leaseDurationMs);
     return dbWrite.transaction(async (tx) => {
       const row = await lockRow(tx, authority.namespace);
       const databaseNow = await readPostLockDatabaseNow(tx);
-      assertAuthorityMatches(row, authority, databaseNow);
+      const active = assertAuthorityMatches(row, authority, databaseNow);
       const [updated] = await tx
         .update(syntheticEnvironmentLeases)
         .set({
           heartbeat_at: databaseNow,
           expires_at: new Date(databaseNow.getTime() + duration),
-          revision: (row?.revision ?? 0) + 1,
+          revision: active.revision + 1,
           updated_at: databaseNow,
         })
         .where(eq(syntheticEnvironmentLeases.namespace, authority.namespace))
@@ -304,6 +338,9 @@ export class CloudSyntheticEnvironmentLeaseStore
   async rollover(
     input: RefreshSyntheticEnvironmentLeaseInput,
   ): Promise<SyntheticEnvironmentLeaseReceipt> {
+    if (typeof input !== "object" || input === null) {
+      throw invalidInput("rollover input must be an object");
+    }
     const authority = validateAuthority(input.authority);
     const duration = validateDuration(input.leaseDurationMs);
     return dbWrite.transaction(async (tx) => {

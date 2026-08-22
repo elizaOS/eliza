@@ -6,7 +6,7 @@
 
 import { Database } from "bun:sqlite";
 import { randomUUID } from "node:crypto";
-import { chmodSync, mkdirSync } from "node:fs";
+import { chmodSync, lstatSync, mkdirSync } from "node:fs";
 import path from "node:path";
 import { ElizaError } from "@elizaos/core";
 import type {
@@ -18,7 +18,11 @@ import type {
   SyntheticEnvironmentLeaseSnapshot,
   SyntheticEnvironmentLeaseStore,
 } from "@elizaos/shared/contracts/synthetic-environment-lease";
-import { SYNTHETIC_ENVIRONMENT_LEASE_VERSION } from "@elizaos/shared/contracts/synthetic-environment-lease";
+import {
+  isSyntheticEnvironmentNamespace,
+  SYNTHETIC_ENVIRONMENT_LEASE_VERSION,
+  SYNTHETIC_ENVIRONMENT_NAMESPACE_MAX_LENGTH,
+} from "@elizaos/shared/contracts/synthetic-environment-lease";
 
 interface LeaseRow {
   namespace: string;
@@ -37,15 +41,46 @@ interface LeaseRow {
 const MAX_LEASE_DURATION_MS = 86_400_000;
 const IDENTIFIER_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9._:@-]{0,127}$/;
 
-function invalidInput(message: string): ElizaError {
+function containsControlCharacter(value: string): boolean {
+  for (let index = 0; index < value.length; index += 1) {
+    const code = value.charCodeAt(index);
+    if (code <= 0x1f || code === 0x7f) return true;
+  }
+  return false;
+}
+
+function invalidInput(message: string, cause?: unknown): ElizaError {
   return new ElizaError(message, {
     code: "SYNTHETIC_LEASE_INVALID_INPUT",
     severity: "fatal",
+    cause,
   });
 }
 
-function validateIdentifier(value: string, field: string): string {
-  if (!IDENTIFIER_PATTERN.test(value)) {
+function storageFailure(
+  message: string,
+  namespace: string | null,
+  cause: unknown,
+): ElizaError {
+  return new ElizaError(message, {
+    code: "SYNTHETIC_LEASE_STORAGE_FAILURE",
+    severity: "fatal",
+    context: namespace === null ? undefined : { namespace },
+    cause,
+  });
+}
+
+function validateNamespace(value: unknown, field: string): string {
+  if (!isSyntheticEnvironmentNamespace(value)) {
+    throw invalidInput(
+      `${field} must contain 1-${SYNTHETIC_ENVIRONMENT_NAMESPACE_MAX_LENGTH} non-control characters`,
+    );
+  }
+  return value;
+}
+
+function validateIdentifier(value: unknown, field: string): string {
+  if (typeof value !== "string" || !IDENTIFIER_PATTERN.test(value)) {
     throw invalidInput(
       `${field} must be 1-128 safe identifier characters and start alphanumeric`,
     );
@@ -56,6 +91,9 @@ function validateIdentifier(value: string, field: string): string {
 function validateOwner(
   owner: SyntheticEnvironmentLeaseOwner,
 ): SyntheticEnvironmentLeaseOwner {
+  if (typeof owner !== "object" || owner === null) {
+    throw invalidInput("owner must be an object");
+  }
   validateIdentifier(owner.ownerId, "owner.ownerId");
   if (
     owner.processId !== null &&
@@ -67,8 +105,15 @@ function validateOwner(
       "owner.processId must be a positive 32-bit integer or null",
     );
   }
+  if (typeof owner.host !== "string") {
+    throw invalidInput("owner.host must be a string");
+  }
   const host = owner.host.trim();
-  if (host.length === 0 || host.length > 255 || /[\r\n\0]/.test(host)) {
+  if (
+    host.length === 0 ||
+    host.length > 255 ||
+    containsControlCharacter(host)
+  ) {
     throw invalidInput("owner.host must contain 1-255 safe characters");
   }
   return { ...owner, host };
@@ -90,16 +135,22 @@ function validateDuration(leaseDurationMs: number): number {
 function validateAuthority(
   authority: SyntheticEnvironmentLeaseAuthority,
 ): SyntheticEnvironmentLeaseAuthority {
+  if (typeof authority !== "object" || authority === null) {
+    throw invalidInput("authority must be an object");
+  }
   if (authority.version !== SYNTHETIC_ENVIRONMENT_LEASE_VERSION) {
     throw invalidInput("authority.version is unsupported");
   }
-  validateIdentifier(authority.namespace, "authority.namespace");
+  const namespace = validateNamespace(
+    authority.namespace,
+    "authority.namespace",
+  );
   validateIdentifier(authority.leaseId, "authority.leaseId");
   validateOwner(authority.owner);
   if (!Number.isSafeInteger(authority.generation) || authority.generation < 1) {
     throw invalidInput("authority.generation must be a positive integer");
   }
-  return authority;
+  return { ...authority, namespace };
 }
 
 function iso(milliseconds: number | null): string | null {
@@ -196,14 +247,58 @@ export class SqliteSyntheticEnvironmentLeaseStore
 {
   readonly database: Database;
   private transactionTail: Promise<void> = Promise.resolve();
+  private pendingTransactions = 0;
+  private closed = false;
 
   constructor(databasePath: string) {
     if (!path.isAbsolute(databasePath)) {
       throw invalidInput("databasePath must be absolute");
     }
-    mkdirSync(path.dirname(databasePath), { recursive: true, mode: 0o700 });
+    const parentPath = path.dirname(databasePath);
+    mkdirSync(parentPath, { recursive: true, mode: 0o700 });
+    const parent = lstatSync(parentPath);
+    if (!parent.isDirectory() || parent.isSymbolicLink()) {
+      throw invalidInput("databasePath parent must be a real directory");
+    }
+    if (process.platform !== "win32" && (parent.mode & 0o022) !== 0) {
+      throw invalidInput(
+        "databasePath parent must not be writable by group or other users",
+      );
+    }
+    let existingIdentity: { dev: number; ino: number } | null = null;
+    try {
+      const existing = lstatSync(databasePath);
+      if (!existing.isFile() || existing.isSymbolicLink()) {
+        throw invalidInput(
+          "databasePath must be a regular file, not a symbolic link",
+        );
+      }
+      existingIdentity = { dev: existing.dev, ino: existing.ino };
+    } catch (error) {
+      // error-policy:J3 Only an absent path may proceed to SQLite creation.
+      if (
+        typeof error !== "object" ||
+        error === null ||
+        !("code" in error) ||
+        error.code !== "ENOENT"
+      ) {
+        if (error instanceof ElizaError) throw error;
+        throw invalidInput("databasePath could not be inspected safely", error);
+      }
+    }
     this.database = new Database(databasePath, { create: true, strict: true });
     chmodSync(databasePath, 0o600);
+    const opened = lstatSync(databasePath);
+    if (
+      !opened.isFile() ||
+      opened.isSymbolicLink() ||
+      (existingIdentity !== null &&
+        (opened.dev !== existingIdentity.dev ||
+          opened.ino !== existingIdentity.ino))
+    ) {
+      this.database.close(false);
+      throw invalidInput("databasePath identity changed while it was opened");
+    }
     this.database.run("PRAGMA busy_timeout = 10000");
     // The default rollback journal supports atomic cross-process writers and
     // avoids a connection-start WAL mode transition racing another process.
@@ -234,16 +329,28 @@ export class SqliteSyntheticEnvironmentLeaseStore
   }
 
   close(): void {
+    if (this.closed) return;
+    if (this.pendingTransactions > 0) {
+      throw storageFailure(
+        "Cannot close synthetic lease storage while a transaction is pending",
+        null,
+        new Error("transaction in progress"),
+      );
+    }
+    this.closed = true;
     this.database.close(false);
   }
 
   async acquire(
     input: AcquireSyntheticEnvironmentLeaseInput,
   ): Promise<SyntheticEnvironmentLeaseReceipt> {
-    const namespace = validateIdentifier(input.namespace, "namespace");
+    if (typeof input !== "object" || input === null) {
+      throw invalidInput("acquire input must be an object");
+    }
+    const namespace = validateNamespace(input.namespace, "namespace");
     const owner = validateOwner(input.owner);
     const duration = validateDuration(input.leaseDurationMs);
-    return this.transaction(async (nowMs) => {
+    return this.transaction(namespace, async (nowMs) => {
       const current = this.select(namespace);
       if (
         current !== null &&
@@ -304,7 +411,9 @@ export class SqliteSyntheticEnvironmentLeaseStore
   async read(
     namespace: string,
   ): Promise<SyntheticEnvironmentLeaseSnapshot | null> {
-    validateIdentifier(namespace, "namespace");
+    namespace = validateNamespace(namespace, "namespace");
+    await this.transactionTail;
+    this.assertOpen();
     const nowMs = Date.now();
     const row = this.select(namespace);
     return row ? snapshot(row, nowMs) : null;
@@ -313,9 +422,12 @@ export class SqliteSyntheticEnvironmentLeaseStore
   async heartbeat(
     input: RefreshSyntheticEnvironmentLeaseInput,
   ): Promise<SyntheticEnvironmentLeaseReceipt> {
+    if (typeof input !== "object" || input === null) {
+      throw invalidInput("heartbeat input must be an object");
+    }
     const authority = validateAuthority(input.authority);
     const duration = validateDuration(input.leaseDurationMs);
-    return this.transaction(async (nowMs) => {
+    return this.transaction(authority.namespace, async (nowMs) => {
       assertAuthorityMatches(
         this.select(authority.namespace),
         authority,
@@ -339,9 +451,12 @@ export class SqliteSyntheticEnvironmentLeaseStore
   async rollover(
     input: RefreshSyntheticEnvironmentLeaseInput,
   ): Promise<SyntheticEnvironmentLeaseReceipt> {
+    if (typeof input !== "object" || input === null) {
+      throw invalidInput("rollover input must be an object");
+    }
     const authority = validateAuthority(input.authority);
     const duration = validateDuration(input.leaseDurationMs);
-    return this.transaction(async (nowMs) => {
+    return this.transaction(authority.namespace, async (nowMs) => {
       const row = assertAuthorityMatches(
         this.select(authority.namespace),
         authority,
@@ -375,7 +490,7 @@ export class SqliteSyntheticEnvironmentLeaseStore
     uncheckedAuthority: SyntheticEnvironmentLeaseAuthority,
   ): Promise<SyntheticEnvironmentLeaseReceipt> {
     const authority = validateAuthority(uncheckedAuthority);
-    return this.transaction(async (nowMs) => {
+    return this.transaction(authority.namespace, async (nowMs) => {
       const row = assertAuthorityMatches(
         this.select(authority.namespace),
         authority,
@@ -403,7 +518,7 @@ export class SqliteSyntheticEnvironmentLeaseStore
     write: (database: Database) => T | Promise<T>,
   ): Promise<{ value: T; receipt: SyntheticEnvironmentLeaseReceipt }> {
     const authority = validateAuthority(uncheckedAuthority);
-    return this.transaction(async (nowMs) => {
+    return this.transaction(authority.namespace, async (nowMs) => {
       assertAuthorityMatches(
         this.select(authority.namespace),
         authority,
@@ -457,9 +572,22 @@ export class SqliteSyntheticEnvironmentLeaseStore
     };
   }
 
+  private assertOpen(): void {
+    if (this.closed) {
+      throw storageFailure(
+        "Synthetic lease storage is closed",
+        null,
+        new Error("database closed"),
+      );
+    }
+  }
+
   private async transaction<T>(
+    namespace: string,
     operation: (nowMs: number) => Promise<T>,
   ): Promise<T> {
+    this.assertOpen();
+    this.pendingTransactions += 1;
     const previous = this.transactionTail;
     let release: () => void = () => undefined;
     this.transactionTail = new Promise<void>((resolve) => {
@@ -467,18 +595,46 @@ export class SqliteSyntheticEnvironmentLeaseStore
     });
     await previous;
     try {
-      this.database.run("BEGIN IMMEDIATE");
+      try {
+        this.database.run("BEGIN IMMEDIATE");
+      } catch (error) {
+        // error-policy:J2 SQLite lock/open failures become the declared storage boundary error.
+        throw storageFailure(
+          "Synthetic lease transaction could not begin",
+          namespace,
+          error,
+        );
+      }
       try {
         const result = await operation(Date.now());
-        this.database.run("COMMIT");
+        try {
+          this.database.run("COMMIT");
+        } catch (error) {
+          // error-policy:J2 A failed commit is ambiguous and must retain its storage cause.
+          throw storageFailure(
+            "Synthetic lease transaction commit was not confirmed",
+            namespace,
+            error,
+          );
+        }
         return result;
       } catch (error) {
         // error-policy:J2 rollback restores the atomic generation boundary;
         // the original typed failure is preserved for the caller.
-        this.database.run("ROLLBACK");
+        try {
+          this.database.run("ROLLBACK");
+        } catch (rollbackError) {
+          // error-policy:J2 A rollback failure supersedes neither cause and makes storage unusable.
+          throw storageFailure(
+            "Synthetic lease transaction rollback was not confirmed",
+            namespace,
+            new AggregateError([error, rollbackError]),
+          );
+        }
         throw error;
       }
     } finally {
+      this.pendingTransactions -= 1;
       release();
     }
   }
