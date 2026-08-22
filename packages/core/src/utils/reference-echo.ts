@@ -9,7 +9,7 @@
  * single-line strings, a rendered prompt never is.
  */
 
-import { toWellFormedUnicode, truncateWellFormed } from "./well-formed.ts";
+import { toWellFormedUnicode } from "./well-formed.ts";
 
 /**
  * Render a reference for user-facing text: quoted only when it is name-shaped
@@ -28,15 +28,12 @@ export function describeUserReference(
 }
 
 /**
- * Render a reference for logs and machine-facing text/data, where the actual
- * value matters but a blob must never travel whole: whitespace collapsed to
- * one line, clamped to 120 chars with a trailing ellipsis.
+ * Render a complete reference for machine-facing text/data while normalizing
+ * whitespace and malformed Unicode. Callers that cannot accept arbitrary
+ * references must reject them explicitly rather than silently changing them.
  */
 export function userReferenceLogView(reference: string): string {
 	const safeRef = typeof reference === "string" ? reference : "";
 	const collapsed = toWellFormedUnicode(safeRef.replace(/\s+/g, " ").trim());
-	if (collapsed.length <= 120) {
-		return collapsed;
-	}
-	return `${truncateWellFormed(collapsed, 119).trimEnd()}…`;
+	return collapsed;
 }

@@ -4870,10 +4870,7 @@ export class AcpService extends Service {
     if (code === 5) return "acpx permission denied.";
     if (code === 3) return "acpx prompt timed out.";
     if (stderr.trim()) {
-      const wellFormed = toWellFormedUnicode(stderr.trim());
-      return wellFormed.length > 500
-        ? truncateWellFormed(wellFormed, 500)
-        : wellFormed;
+      return toWellFormedUnicode(stderr.trim());
     }
     return `acpx subprocess exited with code ${code ?? "unknown"}`;
   }
@@ -5472,17 +5469,13 @@ function execRecordOneLiner(value: unknown): string | undefined {
   return line;
 }
 
-/** Extract a capped (≤200 char) stdout/stderr tail from an exec record. */
+/** Extract complete stdout/stderr text from an exec record. */
 function execRecordOutputTail(record: Record<string, unknown>): string {
   const candidates = [record.stdout, record.stderr, record.output]
     .map((entry) => (typeof entry === "string" ? entry.trim() : ""))
     .filter((entry) => entry.length > 0);
   if (candidates.length === 0) return "";
-  const joined = candidates.join("\n").trim();
-  const wellFormed = toWellFormedUnicode(joined);
-  return wellFormed.length > 200
-    ? `${truncateWellFormed(wellFormed, 200)}…`
-    : wellFormed;
+  return toWellFormedUnicode(candidates.join("\n").trim());
 }
 
 function parseJsonRecord(text: string): Record<string, unknown> | undefined {

@@ -717,7 +717,6 @@ async function resolveOptionalTarget(
 						"TARGET_AMBIGUOUS",
 						`Target ambiguous for ${connector.label}. Choose one of:\n` +
 							sorted
-								.slice(0, 8)
 								.map(
 									(t, i) =>
 										`${i + 1}. ${t.label ?? targetLabel(t.target)} (${t.kind ?? "target"})`,
@@ -3392,7 +3391,7 @@ async function handleReadWithContact(
 				conversations.push({
 					platform: roomPlatform,
 					roomId: room.id,
-					roomName: roomRecord.name ?? `Room ${room.id.slice(0, 8)}`,
+					roomName: roomRecord.name ?? `Room ${room.id}`,
 					messageCount: memories.length,
 					lastMessageAt: last?.createdAt
 						? new Date(last.createdAt).toISOString()

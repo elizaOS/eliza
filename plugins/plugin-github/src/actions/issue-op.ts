@@ -279,7 +279,7 @@ function buildPreview(
       case "label":
         return ` with [${labels?.join(", ") ?? ""}]`;
       case "comment":
-        return body ? ` body: "${body.slice(0, 120)}"` : "";
+        return body ? ` body: "${body}"` : "";
       default:
         return "";
     }

@@ -177,7 +177,7 @@ async function runReview(
 
   const preview =
     `About to ${action.replace("-", " ")} PR ${repo}#${number}` +
-    (body ? ` with body: "${body.slice(0, 120)}"` : "") +
+    (body ? ` with body: "${body}"` : "") +
     ` as ${describeSelection(selection)}.`;
   const decision = await requireConfirmation({
     runtime,

@@ -32,7 +32,6 @@ import {
   type SubactionsMap,
   stableStringify,
   toWellFormedUnicode,
-  truncateWellFormed,
 } from "@elizaos/core";
 import {
   type CalendarActionDeps,
@@ -135,15 +134,12 @@ interface CalendarApprovalQueue {
 }
 
 function approvalSafeLabel(value: string): string {
-  return truncateWellFormed(
-    toWellFormedUnicode(
-      value
-        .replace(/[\r\n\t]+/g, " ")
-        .replace(/[[\]]/g, "")
-        .replace(/\s+/g, " ")
-        .trim(),
-    ),
-    160,
+  return toWellFormedUnicode(
+    value
+      .replace(/[\r\n\t]+/g, " ")
+      .replace(/[[\]]/g, "")
+      .replace(/\s+/g, " ")
+      .trim(),
   );
 }
 
@@ -1427,7 +1423,7 @@ async function handleBulkReschedulePreview(args: {
     );
 
   const cohortText = cohortLabel ? `${cohortLabel} meetings` : "those meetings";
-  const previewLines = matches.slice(0, 8).map((event) => {
+  const previewLines = matches.map((event) => {
     const when = formatCalendarEventDateTime(event, {
       includeTimeZoneName: true,
     });

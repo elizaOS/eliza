@@ -2,14 +2,9 @@
  * Deterministic unit coverage for the reference-echo safety gate. Both helpers
  * are pure, so every case is an exact input/output assertion.
  *
- * This is a containment boundary, not formatting: a reference that fell back to
- * `message.content.text` can be an entire rendered prompt including the
- * external-content security envelope, and quoting it verbatim re-broadcasts
- * that scaffolding to chat (the 2026-08-02 live leak the module header cites).
- * The gate is a shape property, so the tests are written around its edges — the
- * exact 64- and 120-character boundaries, and which whitespace counts as
- * multi-line — because those are what a refactor moves by one and nothing else
- * would notice.
+ * User-facing quoting remains shape-gated, while machine-facing values preserve
+ * complete normalized content so downstream model/action state is not silently
+ * shortened.
  */
 
 import { describe, expect, it } from "vitest";
@@ -107,17 +102,16 @@ describe("userReferenceLogView", () => {
 		expect(userReferenceLogView(42 as unknown as string)).toBe("");
 	});
 
-	it("holds the 120-character boundary exactly", () => {
+	it("preserves content beyond the former 120-character boundary", () => {
 		const exactly120 = "a".repeat(120);
 		expect(userReferenceLogView(exactly120)).toBe(exactly120);
 
 		const over = "a".repeat(121);
-		expect(userReferenceLogView(over)).toBe(`${"a".repeat(119)}…`);
+		expect(userReferenceLogView(over)).toBe(over);
 	});
 
 	it("measures the boundary after collapsing, not before", () => {
-		// 150 raw characters that collapse to 89 must survive intact — clamping on
-		// the raw length would truncate this.
+		// 150 raw characters that collapse to 89 survive intact.
 		const spaced = "ab   ".repeat(30);
 		expect(spaced.length).toBeGreaterThan(120);
 
@@ -127,27 +121,23 @@ describe("userReferenceLogView", () => {
 		expect(collapsed).not.toContain("…");
 	});
 
-	it("appends exactly one ellipsis character when clamping", () => {
-		const clamped = userReferenceLogView("b".repeat(500));
-		expect(clamped).toHaveLength(120);
-		expect(clamped.endsWith("…")).toBe(true);
-		expect(clamped.slice(0, 119)).toBe("b".repeat(119));
+	it("preserves complete long references", () => {
+		const complete = userReferenceLogView("b".repeat(500));
+		expect(complete).toBe("b".repeat(500));
+		expect(complete).not.toContain("…");
 	});
 
-	it("keeps surrogate pairs intact when truncating at 120-char boundary", () => {
+	it("keeps complete surrogate pairs beyond the former boundary", () => {
 		const text = `${"a".repeat(118)}🦊${"b".repeat(50)}`;
-		const clamped = userReferenceLogView(text);
-		expect(clamped.length).toBeLessThanOrEqual(120);
-		expect(clamped.isWellFormed?.() ?? true).toBe(true);
-		expect(clamped.endsWith("…")).toBe(true);
-		expect(clamped).not.toContain("\uD83E");
+		const complete = userReferenceLogView(text);
+		expect(complete).toBe(text);
+		expect(complete.isWellFormed?.() ?? true).toBe(true);
 	});
 
-	it("sanitizes lone surrogates before clamping", () => {
+	it("sanitizes lone surrogates without shortening", () => {
 		const lone = `bad \uD800 ${"c".repeat(200)}`;
-		const clamped = userReferenceLogView(lone);
-		expect(clamped).toContain("\uFFFD");
-		expect(clamped.isWellFormed?.() ?? true).toBe(true);
-		expect(clamped.length).toBeLessThanOrEqual(120);
+		const complete = userReferenceLogView(lone);
+		expect(complete).toBe(`bad \uFFFD ${"c".repeat(200)}`);
+		expect(complete.isWellFormed?.() ?? true).toBe(true);
 	});
 });
