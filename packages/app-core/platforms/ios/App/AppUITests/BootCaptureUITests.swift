@@ -1258,13 +1258,19 @@ final class BootCaptureUITests: XCTestCase {
                 continue
             }
             if trustCopy.exists {
-                // The product confirmation is a React dialog inside the
-                // WKWebView, not a native XCUI alert. Query the app-wide
-                // button surface, but only while the exact trust copy is
-                // present, so this can never accept an unrelated prompt.
-                let confirm = app.buttons.matching(
+                // WebKit presents window.confirm as an XCUI Alert on physical
+                // devices. Target its button through the alert hierarchy so
+                // XCUITest does not classify the same alert as an unrelated
+                // interruption while trying to tap an app-wide button. Keep
+                // the app-wide fallback for runtimes that render confirmation
+                // in the document, but only while the exact trust copy exists.
+                let nativeConfirm = app.alerts.buttons.matching(
                     NSPredicate(format: "label ==[c] 'Ok' OR label ==[c] 'Connect'")
                 ).firstMatch
+                let documentConfirm = app.buttons.matching(
+                    NSPredicate(format: "label ==[c] 'Ok' OR label ==[c] 'Connect'")
+                ).firstMatch
+                let confirm = nativeConfirm.exists ? nativeConfirm : documentConfirm
                 if confirm.exists, !confirm.frame.isEmpty, tapAttempts < 3,
                    Date() >= nextTapAt
                 {
