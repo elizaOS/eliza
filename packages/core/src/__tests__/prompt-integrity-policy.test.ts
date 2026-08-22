@@ -167,6 +167,11 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 	"plugins/plugin-personal-assistant/src/actions/life.ts": [
 		/(?:attendeeNames|events|atRisk|needsAttention|onTrack|occurrences|goals|selected)\s*\.slice\(0,/,
 	],
+	"plugins/plugin-personal-assistant/src/actions/brief.ts": [
+		/limit:\s*25/,
+		/\.slice\(0,\s*25\)/,
+		/MAX_BRIEF_COMMITMENT_ITEMS/,
+	],
 	"plugins/plugin-personal-assistant/src/lifeops/creative-draft/index.ts": [
 		/\.slice\(0,\s*6\)/,
 	],
@@ -193,6 +198,10 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 		/truncateWellFormed/,
 		/SNIPPET_LENGTH/,
 		/clip\((?:text|draft\.body)/,
+	],
+	"plugins/plugin-discord/slash-commands.ts": [
+		/cleanedAnswer\.slice\(/,
+		/text\.slice\(0,\s*120\)/,
 	],
 	"plugins/plugin-x/src/lifeops-message-adapter.ts": [
 		/draft\.body\.(?:slice|substring)\(/,
@@ -242,6 +251,24 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 	],
 	"packages/agent/src/runtime/prompt-optimization.ts": [
 		/actionCompactionEnabled/,
+	],
+	"packages/scenario-runner/src/executor.ts": [
+		/serialized\.slice\(/,
+		/stringifyForJudge\([^,\n]+,\s*\d/,
+	],
+	"packages/app-core/src/services/account-pool-broker.ts": [
+		/trimmed\.slice\(0,\s*128\)/,
+	],
+	"plugins/plugin-computeruse/src/platform/browser.ts": [
+		/html\.slice\(0,\s*5000\)/,
+		/result\.length\s*>=\s*50/,
+		/textContent\.trim\(\)\.slice\(/,
+	],
+	"packages/browser-bridge-extension/src/page-extract.ts": [
+		/normalizeText\([^\n]+,\s*\d/,
+		/currentLength\s*>=/,
+		/\.slice\(0,\s*(?:10|12|20|40)\)/,
+		/collectVisibleText\(\d/,
 	],
 	"plugins/plugin-browser/src/providers/workspace.ts": [/MAX_TABS_IN_SUMMARY/],
 	"plugins/plugin-browser/src/workspace/browser-workspace-desktop.ts": [

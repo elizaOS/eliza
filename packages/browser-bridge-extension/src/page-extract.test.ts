@@ -1,10 +1,14 @@
 /**
  * Unit tests for capturePageContext over a jsdom DOM (test-dom-setup): field
- * extraction, visibility filtering, and length caps.
+ * extraction, visibility filtering, complete-content preservation, and atomic
+ * oversized-snapshot rejection.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import "./test-dom-setup";
-import { capturePageContext } from "./page-extract";
+import {
+  capturePageContext,
+  MAX_PAGE_CONTEXT_UTF8_BYTES,
+} from "./page-extract";
 
 describe("capturePageContext", () => {
   beforeEach(() => {
@@ -100,7 +104,8 @@ describe("capturePageContext", () => {
     expect(JSON.stringify(snapshot.forms)).not.toContain("shadow-token");
   });
 
-  it("bounds large text, heading, link, and form collections", () => {
+  it("preserves large text and complete heading, link, and form collections", () => {
+    const tail = "page-context-tail";
     document.body.innerHTML = [
       ...Array.from({ length: 20 }, (_, index) => `<h1>Heading ${index}</h1>`),
       ...Array.from(
@@ -112,14 +117,21 @@ describe("capturePageContext", () => {
         (_, index) =>
           `<form action="/${index}"><input name="field-${index}" /></form>`,
       ),
-      `<p>${"x".repeat(13_000)}</p>`,
+      `<p>${"x".repeat(13_000)}${tail}</p>`,
     ].join("");
 
     const snapshot = capturePageContext();
 
-    expect(snapshot.headings).toHaveLength(12);
-    expect(snapshot.links).toHaveLength(40);
-    expect(snapshot.forms).toHaveLength(10);
-    expect(snapshot.mainText?.length).toBeLessThanOrEqual(12_000);
+    expect(snapshot.headings).toHaveLength(20);
+    expect(snapshot.links).toHaveLength(50);
+    expect(snapshot.forms).toHaveLength(15);
+    expect(snapshot.mainText).toContain(tail);
+  });
+
+  it("rejects an oversized page context instead of returning a prefix", () => {
+    document.body.innerHTML = `<p>${"x".repeat(MAX_PAGE_CONTEXT_UTF8_BYTES + 1)}</p>`;
+    expect(() => capturePageContext()).toThrow(
+      /BROWSER_BRIDGE_PAGE_CONTEXT_TOO_LARGE/,
+    );
   });
 });
