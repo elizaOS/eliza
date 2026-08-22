@@ -6,8 +6,21 @@
 
 import crypto from "crypto";
 import { z } from "zod";
+import { ownedBoundedFetch } from "./owned-bounded-fetch";
 
 export const TWILIO_API_BASE = "https://api.twilio.com/2010-04-01";
+export const TWILIO_REQUEST_TIMEOUT_MS = 30_000;
+
+/**
+ * Bound every Twilio REST hop while preserving caller cancellation.
+ */
+export async function twilioFetch(
+  input: RequestInfo | URL,
+  init?: RequestInit,
+  timeoutMs: number = TWILIO_REQUEST_TIMEOUT_MS,
+): Promise<Response> {
+  return ownedBoundedFetch(input, init, { timeoutMs });
+}
 
 export interface TwilioSendMessageRequest {
   to: string;
@@ -93,7 +106,7 @@ export async function twilioApiRequest<T>(
 
   const auth = Buffer.from(`${accountSid}:${authToken}`).toString("base64");
 
-  const response = await fetch(url, {
+  const response = await twilioFetch(url, {
     method,
     headers: {
       Authorization: `Basic ${auth}`,

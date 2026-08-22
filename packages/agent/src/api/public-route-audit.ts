@@ -3,14 +3,10 @@
  *
  * Every `public: true` route bypasses the central `isAuthorized()` gate
  * (`runtime-plugin-routes.ts`: `route.public !== true && !isAuthorized()`), so a
- * new one is a new unauthenticated surface. Normal test runs scan the reviewed
- * baseline files plus branch-changed source files; baseline regeneration walks
- * the full source tree. The companion test pins the set against a checked-in
- * baseline so a NEW public route can't be added without an explicit, reviewed
- * baseline entry (regenerate with `UPDATE_PUBLIC_ROUTE_BASELINE=1`).
+ * new one is a new unauthenticated surface. The scanner walks the full source
+ * tree so focused security tests can inspect the current inventory directly.
  */
 
-import { execFileSync } from "node:child_process";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -18,7 +14,6 @@ import { fileURLToPath } from "node:url";
 const HERE = dirname(fileURLToPath(import.meta.url));
 // packages/agent/src/api → repo root is four levels up.
 export const REPO_ROOT = join(HERE, "..", "..", "..", "..");
-const BASELINE_PATH = join(HERE, "public-route-audit.baseline.json");
 
 const SCAN_ROOTS = ["packages", "plugins"];
 const SKIP_DIR = new Set([
@@ -65,121 +60,13 @@ function* walk(dir: string): Generator<string> {
   }
 }
 
-function isCandidateSourceFile(file: string): boolean {
-  const normalized = file.split(sep).join("/");
-  const basename = normalized.slice(normalized.lastIndexOf("/") + 1);
-  if (!(basename.endsWith(".ts") || basename.endsWith(".tsx"))) return false;
-  if (SKIP_FILE.test(basename) || basename.startsWith(SELF)) return false;
-  return !normalized.split("/").some((segment) => SKIP_DIR.has(segment));
-}
-
-function gitOutput(args: string[]): string | null {
-  try {
-    return execFileSync("git", ["-C", REPO_ROOT, ...args], {
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "ignore"],
-    });
-  } catch {
-    return null;
-  }
-}
-
-function baselineCandidateFiles(): string[] {
-  try {
-    const baseline = JSON.parse(
-      readFileSync(BASELINE_PATH, "utf8"),
-    ) as string[];
-    return baseline
-      .map((key) => key.split("::")[0])
-      .filter((file, index, files) => files.indexOf(file) === index)
-      .filter(isCandidateSourceFile)
-      .map((file) => join(REPO_ROOT, file));
-  } catch {
-    return [];
-  }
-}
-
-function splitGitPathOutput(output: string | null): string[] {
-  if (!output) return [];
-  return output.split("\0").filter(Boolean);
-}
-
-function changedCandidateFiles(): string[] {
-  const candidates = [
-    ...splitGitPathOutput(
-      gitOutput([
-        "diff",
-        "--name-only",
-        "--diff-filter=ACMR",
-        "-z",
-        "--",
-        ...SCAN_ROOTS,
-      ]),
-    ),
-    ...splitGitPathOutput(
-      gitOutput([
-        "diff",
-        "--cached",
-        "--name-only",
-        "--diff-filter=ACMR",
-        "-z",
-        "--",
-        ...SCAN_ROOTS,
-      ]),
-    ),
-    ...splitGitPathOutput(
-      gitOutput([
-        "diff",
-        "--name-only",
-        "--diff-filter=ACMR",
-        "-z",
-        "origin/develop...HEAD",
-        "--",
-        ...SCAN_ROOTS,
-      ]),
-    ),
-    ...splitGitPathOutput(
-      gitOutput([
-        "ls-files",
-        "--others",
-        "--exclude-standard",
-        "-z",
-        "--",
-        ...SCAN_ROOTS,
-      ]),
-    ),
-  ];
-  return candidates
-    .filter((file, index, files) => files.indexOf(file) === index)
-    .filter(isCandidateSourceFile)
-    .map((file) => join(REPO_ROOT, file));
-}
-
-function allCandidateFiles(): string[] {
+function listCandidateFiles(): string[] {
   const files: string[] = [];
   for (const root of SCAN_ROOTS) {
-    const base = join(REPO_ROOT, root);
-    try {
-      if (!statSync(base).isDirectory()) continue;
-    } catch {
-      continue;
-    }
-    files.push(...walk(base));
+    const directory = join(REPO_ROOT, root);
+    if (statSync(directory).isDirectory()) files.push(...walk(directory));
   }
   return files;
-}
-
-function listCandidateFiles(): string[] {
-  if (process.env.UPDATE_PUBLIC_ROUTE_BASELINE === "1") {
-    return allCandidateFiles();
-  }
-  const baselineFiles = baselineCandidateFiles();
-  const changedFiles = changedCandidateFiles();
-  const files =
-    changedFiles.length > 0
-      ? [...baselineFiles, ...changedFiles]
-      : [...baselineFiles, ...allCandidateFiles()];
-  return files.filter((file, index) => files.indexOf(file) === index);
 }
 
 let cachedPublicRoutes: PublicRouteEntry[] | undefined;
@@ -193,16 +80,14 @@ export interface PublicRouteEntry {
   path: string | null;
 }
 
-/** Stable per-occurrence id used by the baseline. */
+/** Stable per-occurrence id used by tests and reports. */
 export function publicRouteKey(entry: PublicRouteEntry): string {
   return `${entry.file}::${entry.path ?? "(no-path)"}`;
 }
 
-/** Scan the reviewed public-route ledger plus branch-changed source files. */
+/** Scan all production source files for public routes. */
 export function scanPublicRoutes(): PublicRouteEntry[] {
-  if (cachedPublicRoutes && process.env.UPDATE_PUBLIC_ROUTE_BASELINE !== "1") {
-    return cachedPublicRoutes;
-  }
+  if (cachedPublicRoutes) return cachedPublicRoutes;
   const found: PublicRouteEntry[] = [];
   for (const file of listCandidateFiles()) {
     let text: string;
@@ -229,8 +114,6 @@ export function scanPublicRoutes(): PublicRouteEntry[] {
   const sorted = found.sort((a, b) =>
     publicRouteKey(a).localeCompare(publicRouteKey(b)),
   );
-  if (process.env.UPDATE_PUBLIC_ROUTE_BASELINE !== "1") {
-    cachedPublicRoutes = sorted;
-  }
+  cachedPublicRoutes = sorted;
   return sorted;
 }

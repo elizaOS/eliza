@@ -27,6 +27,26 @@ export class AccountDeletionRequestsRepository {
     return request;
   }
 
+  async findOpenByUserAndOrganizationId(
+    userId: string,
+    organizationId: string,
+    readFromPrimary = false,
+  ): Promise<AccountDeletionRequest | undefined> {
+    const database = readFromPrimary ? dbWrite : dbRead;
+    const [request] = await database
+      .select()
+      .from(accountDeletionRequests)
+      .where(
+        and(
+          eq(accountDeletionRequests.user_id, userId),
+          eq(accountDeletionRequests.organization_id, organizationId),
+          isNull(accountDeletionRequests.completed_at),
+        ),
+      )
+      .limit(1);
+    return request;
+  }
+
   async findById(id: string): Promise<AccountDeletionRequest | undefined> {
     const [request] = await dbRead
       .select()
@@ -44,10 +64,14 @@ export class AccountDeletionRequestsRepository {
       .returning();
     if (created) return created;
 
-    if (!data.user_id) {
-      throw new Error("Account deletion request requires a user ID");
+    if (!data.user_id || !data.organization_id) {
+      throw new Error("Account deletion request requires user and organization IDs");
     }
-    const existing = await this.findOpenByUserId(data.user_id, true);
+    const existing = await this.findOpenByUserAndOrganizationId(
+      data.user_id,
+      data.organization_id,
+      true,
+    );
     if (!existing) {
       throw new Error("Account deletion request conflicted but no open request was found");
     }

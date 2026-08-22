@@ -124,7 +124,7 @@ describe("subscription coding adapter descriptors", () => {
       defaultAcpCommand: "kimi acp",
       loginCommands: [{ mode: "device", command: "kimi login" }],
       requiresUserAttended: true,
-      billingSource: { kind: "included-plan" },
+      billingSource: { kind: "included-plan", mayUsePaidOverage: true },
     });
     expect(SUBSCRIPTION_CODING_ADAPTERS.kimi.statusCommand).toBeUndefined();
     expect(SUBSCRIPTION_CODING_ADAPTERS.kimi.logoutCommand).toBeUndefined();
@@ -133,11 +133,11 @@ describe("subscription coding adapter descriptors", () => {
     );
 
     expect(SUBSCRIPTION_CODING_ADAPTERS.grok).toMatchObject({
-      defaultAcpCommand: "grok agent stdio",
+      defaultAcpCommand: "grok --no-auto-update agent stdio",
       statusCommand: "grok models",
       logoutCommand: "grok logout",
       requiresUserAttended: false,
-      billingSource: { kind: "included-plan" },
+      billingSource: { kind: "included-plan", mayUsePaidOverage: false },
     });
     expect(SUBSCRIPTION_CODING_ADAPTERS.grok.loginCommands).toEqual([
       { mode: "browser", command: "grok login" },
@@ -180,7 +180,7 @@ describe("subscription coding adapter probes", () => {
       installed: true,
       authenticated: true,
       spawnable: true,
-      billingSource: { kind: "included-plan" },
+      billingSource: { kind: "included-plan", mayUsePaidOverage: true },
     });
     expect(JSON.stringify(probe)).not.toContain("secret-access-token");
     expect(JSON.stringify(probe)).not.toContain("secret-refresh-token");
@@ -544,7 +544,11 @@ describe("subscription billing and error isolation", () => {
     ).buildEnv.bind(service);
 
     const kimiEnv = buildEnv(
-      { KIMI_CODE_HOME: "/caller-controlled/kimi" },
+      {
+        KIMI_CODE_HOME: "/caller-controlled/kimi",
+        KIMI_CODE_NO_AUTO_UPDATE: "0",
+        KIMI_DISABLE_CRON: "0",
+      },
       {},
       undefined,
       "kimi",
@@ -562,6 +566,8 @@ describe("subscription billing and error isolation", () => {
     );
 
     expect(kimiEnv.KIMI_CODE_HOME).toBe("/tenant-a/kimi");
+    expect(kimiEnv.KIMI_CODE_NO_AUTO_UPDATE).toBe("1");
+    expect(kimiEnv.KIMI_DISABLE_CRON).toBe("1");
     expect(grokEnv.GROK_HOME).toBe("/tenant-a/grok");
     expect(grokEnv.GROK_DISABLE_API_KEY_AUTH).toBe("1");
     expect(grokEnv.GROK_AUTH_PATH).toBeUndefined();
@@ -578,13 +584,19 @@ describe("subscription billing and error isolation", () => {
         billingSource: {
           kind: "included-plan",
           label: "Kimi Code included plan",
+          mayUsePaidOverage: true,
+          disclosure: expect.stringContaining("Extra Usage"),
         },
         executionPolicy: { requiresUserAttended: true },
       },
     );
     expect(available.find((agent) => agent.agentType === "grok")).toMatchObject(
       {
-        billingSource: { kind: "included-plan", label: "Grok included plan" },
+        billingSource: {
+          kind: "included-plan",
+          label: "Grok included plan",
+          mayUsePaidOverage: false,
+        },
         executionPolicy: { requiresUserAttended: false },
       },
     );

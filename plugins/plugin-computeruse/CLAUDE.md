@@ -10,6 +10,8 @@ Adds real desktop control to an Eliza agent: taking screenshots, clicking/typing
 
 File operations belong to the FILE action; shell/terminal access belongs to the SHELL action — this plugin does not expose them.
 
+Android action and agent-step trajectory fields are complete audit records. Do not clip error text, goals, rationales, references, or other emitted fields; logging transport failures must reject explicitly rather than produce a shortened trajectory.
+
 ## Plugin surface
 
 ### Actions

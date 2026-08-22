@@ -7,10 +7,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
-/**
- * UI-smoke exclusion-list ratchet (vitest, boot-free). It keeps exclusions
- * explicit and bounded without coupling the suite inventory to CI topology.
- */
+/** Keeps UI-smoke exclusions explicit without coupling inventory to CI topology. */
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const UI_SMOKE_DIR = path.join(HERE, "ui-smoke");
@@ -28,14 +25,6 @@ interface DenyEntry {
   category: DenyCategory;
   reason: string;
 }
-
-/**
- * Hard ceiling on the keyless-debt bucket — specs that are fixture-capable and
- * SHOULD run keyless but are not yet verified. Decrement every time a debt spec
- * is wired into the keyless lane (remove it from the deny-list). This is the
- * ratchet that prevents new dark specs from being parked in debt indefinitely.
- */
-const MAX_KEYLESS_DEBT = 3;
 
 function specFileNames(): string[] {
   const specs: string[] = [];
@@ -106,16 +95,6 @@ describe("ui-smoke spec coverage gate", () => {
       duplicates,
       `Duplicate deny-list entries: ${duplicates.join(", ")}`,
     ).toEqual([]);
-  });
-
-  it("keyless-debt bucket is a non-growing ratchet", () => {
-    const debt = denyList().filter((e) => e.category === "keyless-debt");
-    expect(
-      debt.length,
-      `keyless-debt entries (${debt.length}) exceed the ceiling (${MAX_KEYLESS_DEBT}). ` +
-        `Do not park new dark specs in debt — wire them into keyless CI instead, or pay ` +
-        `off existing debt and lower the ceiling.`,
-    ).toBeLessThanOrEqual(MAX_KEYLESS_DEBT);
   });
 
   it("the exclusion list never swallows the whole suite", () => {

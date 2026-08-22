@@ -3170,32 +3170,6 @@ const CODING_SUB_AGENT_CONTEXTS: readonly AgentContext[] = [
 	"automation",
 ];
 
-/**
- * Exact action surface for a direct coding turn. Context overlap is too broad:
- * attachment and media actions also carry file/automation contexts, and each
- * extra tool schema enlarges the request. A large tool set + a large file
- * generation is exactly what makes weaker hosted models (Cerebras glm-4.7)
- * intermittently reject the request (server_error / 400) or narrate instead of
- * emitting FILE. Keep the surface aligned with the tools that actually do the
- * work (FILE/SHELL/WORKTREE/WEB plus terminal controls).
- */
-const CODING_DIRECT_ACTIONS: ReadonlySet<string> = new Set(
-	// Stored in normalizeActionIdentifier() form (uppercase, underscores
-	// stripped), since that is what the filter compares against.
-	[
-		"READ",
-		"WRITE",
-		"EDIT",
-		"SHELL",
-		"WORKTREE",
-		"WEBFETCH",
-		"WEBSEARCH",
-		"REPLY",
-		"STOP",
-		"IGNORE",
-	],
-);
-
 function actionNameTokenKey(name: string): string {
 	return normalizeActionName(name).split("_").filter(Boolean).sort().join("_");
 }
@@ -3408,8 +3382,28 @@ function buildV5PlannerActionSurface(params: {
 	}
 
 	const toolSearchStartedAt = Date.now();
+	const authorizedActionIdentities = new Set(
+		params.actions.map((action) => action.name.trim()),
+	);
+	const authorizedActionNames = new Set(
+		params.actions.map((action) => normalizeActionIdentifier(action.name)),
+	);
+	// A parent may retain inline metadata for every registered child even when
+	// this turn's action gate rejected one of those children. Build retrieval and
+	// tier metadata from the authorized view so a denied child's name,
+	// description, schema, or examples cannot influence or enter model context.
+	const authorizedCatalogActions = params.actions.map((action) => ({
+		...action,
+		subActions: action.subActions?.filter((child) => {
+			const childName = typeof child === "string" ? child : child.name;
+			// Authorization uses the exact native tool identity. The retrieval
+			// normalizer intentionally collapses separators, so using it here would
+			// let an allowed FOO_BAR disclose a denied FOOBAR child (or vice versa).
+			return authorizedActionIdentities.has(childName.trim());
+		}),
+	}));
 	const catalog = getCachedActionCatalog(
-		params.actions,
+		authorizedCatalogActions,
 		params.localizedExamples,
 	);
 	const measurementMode = process.env.ELIZA_RETRIEVAL_MEASUREMENT === "1";
@@ -3445,8 +3439,14 @@ function buildV5PlannerActionSurface(params: {
 		queryTokens: retrieval.query.tokens,
 	});
 	const toolSearchEndedAt = Date.now();
-	const exposedActionNames = new Set(
-		tieredSurface.exposedActionNames.map(normalizeActionIdentifier),
+	const exposedActionNames = authorizedActionNames;
+	const tierAChildrenByParent = Object.fromEntries(
+		tieredSurface.tierAParents.map((parent) => [
+			parent.name,
+			parent.childNames.filter((childName) =>
+				authorizedActionIdentities.has(childName.trim()),
+			),
+		]),
 	);
 	const exposedActionCount = params.actions.filter((action) =>
 		exposedActionNames.has(normalizeActionIdentifier(action.name)),
@@ -3515,12 +3515,7 @@ function buildV5PlannerActionSurface(params: {
 			catalogParentCount: catalog.parents.length,
 			exposedActionCount,
 			tierAParents: tieredSurface.sortedTierAParentNames,
-			tierAChildrenByParent: Object.fromEntries(
-				tieredSurface.tierAParents.map((parent) => [
-					parent.name,
-					[...parent.childNames],
-				]),
-			),
+			tierAChildrenByParent,
 			tierBParents: tieredSurface.sortedTierBParentNames,
 			omittedParentCount: tieredSurface.omittedParentNames.length,
 			omittedParentNamesPreview: tieredSurface.omittedParentNames,
@@ -8894,36 +8889,22 @@ export async function runV5MessageRuntimeStage1(args: {
 				elizaTrustedCodingMode: true,
 			};
 		}
-		// Full-surface mode (a focused coding sub-agent): skip the relevance/role
-		// narrowing entirely and hand the planner EVERY action whose execution gates
-		// pass. The narrowing is built for big chat catalogs (retrieve the relevant
-		// few); a coding agent's whole small tool set is relevant, and narrowing was
-		// returning zero candidates → planner got no native tools → model narrated.
+		// A focused coding turn receives every action whose ordinary execution gates
+		// pass for the coding contexts. Relevance or a fixed name list may order or
+		// describe the tools, but cannot hide a newly registered authorized action.
 		const useFullSurface = args.codingMode === true;
 		const plannerCandidateActions = useFullSurface
-			? (args.runtime.actions ?? []).filter(
-					(action) =>
-						// Full-surface = a trusted coding turn. It must NOT receive the
-						// whole chat action catalog (MESSAGE_*/POST_*/…) — 40 tools drowns
-						// the model and it never calls FILE. Instead treat the coding
-						// contexts (code/files/terminal/automation) as active and run the
-						// normal execution gates: that admits the coding tools
-						// (FILE/SHELL/WORKTREE, which gate on a coding context) plus
-						// context-free control actions (REPLY/STOP/…) and drops the
-						// messaging/social chat actions. Role still applies (FILE=ADMIN,
-						// SHELL=OWNER; the coding sub-agent runs as OWNER). UI/orchestration
-						// parents that pass the gate but a coder never needs are dropped
-						// too (see CODING_DIRECT_ACTIONS) to keep the request
-						// small enough for weaker hosted models to handle large builds.
-						CODING_DIRECT_ACTIONS.has(normalizeActionIdentifier(action.name)) &&
-						// Static candidate-action set for a coding sub-agent — no concrete
-						// turn message here, so skip the private-action gate; the eventual
-						// execution still enforces it through the executor.
-						canActionRun(action, {
-							activeContexts: CODING_SUB_AGENT_CONTEXTS,
-							userRoles: [senderRole],
-							skipPrivateGate: true,
-						}),
+			? (args.runtime.actions ?? []).filter((action) =>
+					// The execution gates are the authority for a focused coding turn.
+					// Names may rank tools but cannot form a second fixed allowlist that
+					// silently hides newly registered coding capabilities.
+					canActionRun(action, {
+						activeContexts: CODING_SUB_AGENT_CONTEXTS,
+						userRoles: [senderRole],
+						// There is no concrete turn message in this static surface build;
+						// execution still enforces the private gate.
+						skipPrivateGate: true,
+					}),
 				)
 			: await collectV5PlannerCandidateActions({
 					runtime: args.runtime,

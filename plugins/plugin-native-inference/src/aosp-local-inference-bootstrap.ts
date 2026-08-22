@@ -2235,7 +2235,7 @@ function isFfiNullPointer(value: unknown): boolean {
  * hand-written {@link AospFusedLlmSymbols} interface (different function
  * representations), so the assertion is centralized here — one auditable FFI
  * boundary instead of the same `as unknown as` double-cast repeated inline at
- * every `createAospStreamingLlmBinding` call site (#12452 type-safety ratchet).
+ * every `createAospStreamingLlmBinding` call site (#12452 type-safety guard).
  */
 function asFusedLlmSymbols(symbols: unknown): AospFusedLlmSymbols {
   return symbols as AospFusedLlmSymbols;

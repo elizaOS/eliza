@@ -37,12 +37,6 @@ function sourceUrl(relativePath: string): string {
 	return pathToFileURL(resolve(packageRoot, relativePath)).href;
 }
 
-function consumerPackageUrl(relativePath: string): string {
-	return pathToFileURL(
-		resolve(consumerRoot, "node_modules/@elizaos/core", relativePath),
-	).href;
-}
-
 function targetExists(importer: string, specifier: string): boolean {
 	const unresolved = resolve(dirname(importer), specifier);
 	const hasModuleExtension = /\.(?:[cm]?[jt]sx?|json|node)$/.test(specifier);
@@ -186,10 +180,8 @@ describe("core source export resolution", () => {
 			{
 				"@elizaos/core": sourceUrl("src/index.ts"),
 				"@elizaos/core/node": sourceUrl("src/index.node.ts"),
-				"@elizaos/core/browser": consumerPackageUrl(
-					"dist/browser/index.browser.js",
-				),
-				"@elizaos/core/edge": consumerPackageUrl("dist/edge/index.edge.js"),
+				"@elizaos/core/browser": sourceUrl("dist/browser/index.browser.js"),
+				"@elizaos/core/edge": sourceUrl("dist/edge/index.edge.js"),
 				"@elizaos/core/testing": sourceUrl("src/testing/index.ts"),
 			},
 			true,
@@ -211,12 +203,12 @@ describe("core source export resolution", () => {
 	it("selects verified browser and workerd builds ahead of Node source", async () => {
 		await expect(
 			runResolutionProbe("node", [], ["eliza-source", "browser"], {
-				"@elizaos/core": consumerPackageUrl("dist/browser/index.browser.js"),
+				"@elizaos/core": sourceUrl("dist/browser/index.browser.js"),
 			}),
 		).resolves.toContain("core-source-ok");
 		await expect(
 			runResolutionProbe("node", [], ["eliza-source", "workerd"], {
-				"@elizaos/core": consumerPackageUrl("dist/edge/index.edge.js"),
+				"@elizaos/core": sourceUrl("dist/edge/index.edge.js"),
 			}),
 		).resolves.toContain("core-source-ok");
 	});
@@ -242,6 +234,15 @@ describe("core source export resolution", () => {
 				resolve(packageRoot, "node_modules"),
 				join(copiedCoreRoot, "node_modules"),
 				"dir",
+			);
+			await writeFile(
+				join(fixtureRoot, "tsconfig.json"),
+				JSON.stringify({
+					compilerOptions: {
+						module: "NodeNext",
+						moduleResolution: "NodeNext",
+					},
+				}),
 			);
 
 			await expect(
@@ -269,6 +270,8 @@ describe("core source export resolution", () => {
 			await writeFile(
 				join(fixtureRoot, "vite.config.mjs"),
 				[
+					`const expectedCoreSource = ${JSON.stringify(pathToFileURL(join(copiedCoreRoot, "src", "index.ts")).href)};`,
+					'if (import.meta.resolve("@elizaos/core") !== expectedCoreSource) throw new Error("Vite resolved " + import.meta.resolve("@elizaos/core") + ", expected " + expectedCoreSource);',
 					'import { ElizaError } from "@elizaos/core";',
 					'if (typeof ElizaError !== "function") throw new Error("Vite did not load the core source export");',
 					"export default {",
@@ -290,8 +293,14 @@ describe("core source export resolution", () => {
 				"--config",
 				"vite.config.mjs",
 			];
+			const viteEnvironment = {
+				...process.env,
+				TSX_DISABLE_CACHE: "1",
+				TSX_TSCONFIG_PATH: join(fixtureRoot, "tsconfig.json"),
+			};
 			await execFileAsync("node", viteArgs, {
 				cwd: fixtureRoot,
+				env: viteEnvironment,
 				timeout: 30_000,
 			});
 			expect(existsSync(join(fixtureRoot, "dist", "bundle.js"))).toBe(true);
@@ -299,18 +308,26 @@ describe("core source export resolution", () => {
 			const copiedEntry = join(copiedCoreRoot, "src", "index.ts");
 			const explicitSource = await readFile(copiedEntry, "utf8");
 			expect(explicitSource).toContain('export * from "./index.node.ts";');
+			const copiedPackageJson = join(copiedCoreRoot, "package.json");
+			const packageSource = await readFile(copiedPackageJson, "utf8");
 			await writeFile(
-				copiedEntry,
-				explicitSource.replace(
-					'export * from "./index.node.ts";',
-					'export * from "./index.node";',
-				),
+				copiedPackageJson,
+				packageSource.replaceAll("./src/index.ts", "./src/index.missing.ts"),
+			);
+			await writeFile(
+				join(fixtureRoot, "vite.config.negative.mjs"),
+				await readFile(join(fixtureRoot, "vite.config.mjs"), "utf8"),
 			);
 			await rm(join(fixtureRoot, "dist"), { recursive: true, force: true });
+			const negativeViteArgs = viteArgs.with(
+				viteArgs.length - 1,
+				"vite.config.negative.mjs",
+			);
 
 			await expect(
-				execFileAsync("node", viteArgs, {
+				execFileAsync("node", negativeViteArgs, {
 					cwd: fixtureRoot,
+					env: viteEnvironment,
 					timeout: 30_000,
 				}),
 			).rejects.toMatchObject({
@@ -319,5 +336,5 @@ describe("core source export resolution", () => {
 		} finally {
 			await rm(fixtureRoot, { recursive: true, force: true });
 		}
-	});
+	}, 30_000);
 });

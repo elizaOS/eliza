@@ -30,6 +30,7 @@ import type { Dispatch, SetStateAction } from "react";
 import type {
   AccountConnectRequest,
   ChatFailureKind,
+  ChatTerminalFailure,
   ChatToolCallEvent,
   ConversationMessage,
 } from "../api";
@@ -72,6 +73,8 @@ export type StreamingTextModification =
       fullText: string;
       /** Optional server-flagged failure class to stamp alongside the text. */
       failureKind?: ChatFailureKind;
+      /** Authoritative terminal failure details from the runtime. */
+      terminalFailure?: ChatTerminalFailure;
       /**
        * Optional structured "connect another account" request to stamp on the
        * completed turn so the renderer can swap in the AccountConnectBlock.
@@ -102,6 +105,8 @@ export type StreamingTextModification =
       mode: "fail";
       /** Server-flagged failure class. Text is left untouched. */
       failureKind: ChatFailureKind;
+      /** Authoritative terminal failure details from the runtime. */
+      terminalFailure?: ChatTerminalFailure;
     }
   | {
       messageId: string;
@@ -165,6 +170,8 @@ function computeNextMessage(
     case "complete": {
       const sameText = message.text === mod.fullText;
       const sameFailure = message.failureKind === mod.failureKind;
+      const sameTerminalFailure =
+        message.terminalFailure === mod.terminalFailure;
       const sameAccountConnect = message.accountConnect === mod.accountConnect;
       const sameReasoning =
         mod.reasoning === undefined || message.reasoning === mod.reasoning;
@@ -176,6 +183,7 @@ function computeNextMessage(
       if (
         sameText &&
         sameFailure &&
+        sameTerminalFailure &&
         sameAccountConnect &&
         sameReasoning &&
         sameAssistantEphemeral &&
@@ -198,6 +206,11 @@ function computeNextMessage(
         next.failureKind = mod.failureKind;
       } else if (message.failureKind !== undefined) {
         delete next.failureKind;
+      }
+      if (mod.terminalFailure) {
+        next.terminalFailure = mod.terminalFailure;
+      } else if (message.terminalFailure !== undefined) {
+        delete next.terminalFailure;
       }
       if (mod.accountConnect) {
         next.accountConnect = mod.accountConnect;
@@ -227,8 +240,18 @@ function computeNextMessage(
       return { ...message, toolEvents: nextEvents };
     }
     case "fail": {
-      if (message.failureKind === mod.failureKind) return null;
-      return { ...message, failureKind: mod.failureKind };
+      if (
+        message.failureKind === mod.failureKind &&
+        message.terminalFailure === mod.terminalFailure
+      )
+        return null;
+      return {
+        ...message,
+        failureKind: mod.failureKind,
+        ...(mod.terminalFailure
+          ? { terminalFailure: mod.terminalFailure }
+          : {}),
+      };
     }
     case "interrupt": {
       if (message.interrupted === true) return null;

@@ -122,7 +122,11 @@
       "outputs": ["dist/**"]
     },
     "@elizaos/ui#build": {
-      "dependsOn": ["@elizaos/core#build", "@elizaos/shared#build"],
+      "dependsOn": [
+        "@elizaos/core#build",
+        "@elizaos/shared#build",
+        "@elizaos/capacitor-secure-store#build"
+      ],
       "env": ["LOG_LEVEL"],
       "outputs": ["dist/**"]
     },
@@ -248,6 +252,7 @@
     "@elizaos/cloud-shared#typecheck": {
       "dependsOn": [
         "@elizaos/plugin-cloud-apps#build",
+        "@elizaos/plugin-doordash#build",
         "@elizaos/plugin-scheduling#build",
         "@elizaos/plugin-todos#build",
         "@elizaos/plugin-web-search#build"
@@ -259,7 +264,10 @@
       "outputs": []
     },
     "@elizaos/plugin-calendar#typecheck": {
-      "dependsOn": ["@elizaos/plugin-scheduling#build"],
+      "dependsOn": [
+        "@elizaos/ui#build",
+        "@elizaos/plugin-scheduling#build"
+      ],
       "outputs": []
     },
     "@elizaos/plugin-personal-assistant#typecheck": {

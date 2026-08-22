@@ -291,7 +291,7 @@ Initial invariant budgets, which are architecture-independent:
 - Externalization must not add more than one durable copy of identical content.
 - Cleanup returns handles/files/DB rows to the expected retention baseline.
 
-Initial measurement gates for ratcheting on pinned hosts:
+Initial measurement gates for tightening on pinned hosts:
 
 - Across 1, 10, and 100 MiB sources, peak RSS spread for the same page is at most `max(16 MiB, 4 × page size)` and external/array-buffer spread is at most `max(2 MiB, 4 × page size)`; generate source bytes outside the measured reader.
 - Pure database reads perform no application DML, use a constant query count per page, return and examine bounded rows, and show an indexed seek plan. Measure and attribute WAL deltas rather than assuming PostgreSQL emits none. Warm late-page p95 for 100 MiB is no more than twice the 10 MiB result before tighter baselines exist.
@@ -336,7 +336,7 @@ Do not raise all constants as an interim fix. It increases memory, token cost, c
 - **Should locators/artifacts be globally durable?** No. They honor native source or private-artifact retention and authorization; revision/expiry is explicit.
 - **Should the model be allowed to request the full object?** Yes when authorized and budgeted, but the runtime may deliver it as multiple exact pages.
 - **Should test corpora be checked in?** Check in generators, manifests, tiny golden fixtures, and hashes; generate large payloads in run directories.
-- **Should performance gates use fixed latency numbers immediately?** No. First land invariant bounds and telemetry, then ratchet from stable CI baselines.
+- **Should performance gates use fixed latency numbers immediately?** No. First land invariant bounds and telemetry, then guard from stable CI baselines.
 - **Should scenario expansion generate every size × encoding × source combination?** No. Use pairwise coverage in PR, targeted full Cartesian shards post-merge/nightly, and seeded randomized cases.
 - **Should live-model success be the primary gate?** No. Deterministic contract gates are primary; scheduled live-model trajectories prove planning robustness across models.
 

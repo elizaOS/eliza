@@ -30,6 +30,10 @@ import {
   type RunningStewardMock,
   startStewardMock,
 } from "@elizaos/cloud-test-mocks/steward";
+import {
+  type RunningBackendFaultProxy,
+  startBackendFaultProxy,
+} from "./backend-fault-proxy";
 import { buildSharedEnv } from "./env";
 import { type RunningMockLlm, startMockLlm } from "./mock-llm";
 
@@ -86,6 +90,8 @@ export interface StackHandle {
     controlPlane: RunningControlPlaneMock;
     steward: RunningStewardMock;
     mockLlm?: RunningMockLlm;
+    /** Present only when started with `backendFaults: true`. */
+    backendFaults?: RunningBackendFaultProxy;
   };
   dataDir: string;
   logDir: string;
@@ -268,6 +274,11 @@ export interface StartCloudStackOptions {
    */
   mockLlmEchoContext?: boolean;
   /**
+   * Put a test-only programmable fault proxy between the Vite frontend and the
+   * real local cloud-api. Defaults to false, leaving frontend routing unchanged.
+   */
+  backendFaults?: boolean;
+  /**
    * Test-only subprocess environment overrides. Values are scoped to this
    * stack's local PGlite/Worker/frontend processes and never mutate the parent
    * runner, so specs can exercise configuration boundaries without changing
@@ -417,6 +428,12 @@ export async function startCloudStack(
     label: "cloud-api",
   });
 
+  const backendFaults = opts.backendFaults
+    ? await startBackendFaultProxy({ targetUrl: apiUrl })
+    : undefined;
+  const frontendApiUrl = backendFaults?.url ?? apiUrl;
+  const frontendApiPort = backendFaults?.port ?? apiPort;
+
   // 3. console (apex) frontend Vite dev (skipped for API-only stacks).
   // The apex moved to packages/app in the cloud-frontend→packages/app cutover.
   // packages/app's vite dev does NOT honour VITE_API_PROXY_TARGET; it computes
@@ -438,10 +455,10 @@ export async function startCloudStack(
       ...stackEnv,
       // packages/app vite dev: UI listen port + /api proxy target.
       ELIZA_UI_PORT: String(frontendPort),
-      ELIZA_API_PORT: String(apiPort),
-      ELIZA_PORT: String(apiPort),
-      VITE_API_BASE_URL: apiUrl,
-      NEXT_PUBLIC_API_BASE_URL: apiUrl,
+      ELIZA_API_PORT: String(frontendApiPort),
+      ELIZA_PORT: String(frontendApiPort),
+      VITE_API_BASE_URL: frontendApiUrl,
+      NEXT_PUBLIC_API_BASE_URL: frontendApiUrl,
     };
     procs.push(
       spawnLogged(
@@ -498,6 +515,7 @@ export async function startCloudStack(
     await hetzner.stop().catch(() => undefined);
     await steward.stop().catch(() => undefined);
     await mockLlm?.stop().catch(() => undefined);
+    await backendFaults?.stop().catch(() => undefined);
     await rm(dataDir, { recursive: true, force: true }).catch(() => undefined);
     if (dbCloseError) {
       throw dbCloseError;
@@ -523,7 +541,13 @@ export async function startCloudStack(
     },
     frontendSkipped: frontendSkipReason !== undefined,
     frontendSkipReason,
-    mocks: { hetzner, controlPlane, steward, ...(mockLlm ? { mockLlm } : {}) },
+    mocks: {
+      hetzner,
+      controlPlane,
+      steward,
+      ...(mockLlm ? { mockLlm } : {}),
+      ...(backendFaults ? { backendFaults } : {}),
+    },
     dataDir,
     logDir: LOG_DIR,
   };

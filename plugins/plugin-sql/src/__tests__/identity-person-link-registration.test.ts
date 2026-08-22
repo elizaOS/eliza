@@ -32,7 +32,7 @@ describe("identity person-link registration", () => {
     expect(plugin.actions).toBeUndefined();
   });
 
-  it("ratchets deletion of the retired service, export, and implementation files", () => {
+  it("keeps the retired service, export, and implementation files deleted", () => {
     const retiredExport = ["Sql", "Identity", "Resolution", "Service"].join("");
     const retiredBasename = ["sql", "identity", "resolution"].join("-");
 

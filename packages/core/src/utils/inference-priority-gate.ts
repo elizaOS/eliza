@@ -104,7 +104,11 @@ export function resolveBackgroundInferenceBudget(
  * Validate a background generation request against the device budget. The
  * legacy function name and `clamped` result field remain source-compatible,
  * but accepted requests are returned byte-for-byte with no adjustments.
- * Missing or unsupported output ceilings reject before provider dispatch.
+ * Explicit unsupported output ceilings reject before provider dispatch. An
+ * omitted ceiling selects the device-class maximum because no smaller output
+ * was requested; it must not turn an otherwise valid background call into a
+ * failure merely because the public generation contract leaves maxTokens
+ * optional.
  */
 export function applyBackgroundInferenceBudget(
 	args: { prompt: string; maxTokens: number | undefined },
@@ -124,37 +128,29 @@ export function applyBackgroundInferenceBudget(
 			},
 		});
 	}
-	if (args.maxTokens === undefined) {
-		throw new ElizaError(
-			"Background inference requires an explicit output-token ceiling",
-			{
-				code: "INFERENCE_BACKGROUND_OUTPUT_BUDGET_REQUIRED",
-				context: { supportedMaxTokens: budget.maxTokens },
-			},
-		);
-	}
-	if (!Number.isSafeInteger(args.maxTokens) || args.maxTokens <= 0) {
+	const requestedMaxTokens = args.maxTokens ?? budget.maxTokens;
+	if (!Number.isSafeInteger(requestedMaxTokens) || requestedMaxTokens <= 0) {
 		throw new ElizaError("Background inference output ceiling is invalid", {
 			code: "INFERENCE_BACKGROUND_OUTPUT_BUDGET_INVALID",
 			context: {
-				requestedMaxTokens: args.maxTokens,
+				requestedMaxTokens,
 				supportedMaxTokens: budget.maxTokens,
 			},
 		});
 	}
-	if (args.maxTokens > budget.maxTokens) {
+	if (requestedMaxTokens > budget.maxTokens) {
 		throw new ElizaError(
 			"Background inference output request exceeds the device-class budget",
 			{
 				code: "INFERENCE_BACKGROUND_OUTPUT_BUDGET_EXCEEDED",
 				context: {
-					requestedMaxTokens: args.maxTokens,
+					requestedMaxTokens,
 					supportedMaxTokens: budget.maxTokens,
 				},
 			},
 		);
 	}
-	return { prompt: args.prompt, maxTokens: args.maxTokens, clamped: [] };
+	return { prompt: args.prompt, maxTokens: requestedMaxTokens, clamped: [] };
 }
 
 /**
