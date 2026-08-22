@@ -639,6 +639,21 @@ export interface AbortableTimeoutResult {
 }
 
 /**
+ * A turn the USER cancelled (core's TurnAbortedError, code TURN_ABORTED —
+ * raised when a stop/cancel ask aborts the in-flight planner turn of an
+ * earlier message). Not a provider failure: the stop turn's own confirmation
+ * is the notice, and "I hit a provider issue… Please retry." for the build the
+ * user just cancelled is wrong on both counts (live 2026-08-22, tetris).
+ */
+export function isUserRequestedTurnAbort(error: unknown): boolean {
+	return (
+		typeof error === "object" &&
+		error !== null &&
+		(error as { code?: unknown }).code === "TURN_ABORTED"
+	);
+}
+
+/**
  * Runs a single generation attempt against a wall-clock timeout, wiring an
  * {@link AbortController} so that a timeout ACTUALLY CANCELS the underlying
  * work instead of leaving it running as an orphan.
@@ -2993,6 +3008,29 @@ export class MessageManager {
 						},
 						"Suppressing Discord timeout handling while response dispatch is in flight",
 					);
+					return;
+				}
+
+				if (isUserRequestedTurnAbort(generationError)) {
+					statusReactions?.setDone();
+					await abortPendingDraft();
+					this.runtime.logger.warn(
+						{
+							src: "plugin:discord",
+							agentId: this.runtime.agentId,
+							messageId: message.id,
+							memoryId: messageId,
+							roomId,
+						},
+						"Suppressing Discord failure reply for a user-requested turn abort",
+					);
+					if (!inboundMemoryCommitted) {
+						inboundMemoryCommitted =
+							await this.releaseMessageProcessingIfInboundNotPersisted(
+								message.id,
+								inboundMemoryId,
+							);
+					}
 					return;
 				}
 

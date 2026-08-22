@@ -19,7 +19,10 @@
  * race-without-abort behavior).
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { runGenerationWithAbortableTimeout } from "../messages.ts";
+import {
+	isUserRequestedTurnAbort,
+	runGenerationWithAbortableTimeout,
+} from "../messages.ts";
 
 /** Deferred promise helper — lets a test control exactly when generation settles. */
 function deferred<T>() {
@@ -233,5 +236,20 @@ describe("runGenerationWithAbortableTimeout", () => {
 		expect(secondSignal).toBeDefined();
 		expect(secondSignal).not.toBe(firstSignal);
 		expect(secondSignal?.aborted).toBe(false);
+	});
+});
+
+describe("isUserRequestedTurnAbort", () => {
+	it("recognizes core's TURN_ABORTED error by code, not by message", () => {
+		const aborted = Object.assign(
+			new Error("Turn aborted: user requested to stop"),
+			{ code: "TURN_ABORTED" },
+		);
+		expect(isUserRequestedTurnAbort(aborted)).toBe(true);
+		expect(isUserRequestedTurnAbort(new Error("Turn aborted: anything"))).toBe(
+			false,
+		);
+		expect(isUserRequestedTurnAbort(new Error("Bad Request"))).toBe(false);
+		expect(isUserRequestedTurnAbort(undefined)).toBe(false);
 	});
 });

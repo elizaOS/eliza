@@ -149,6 +149,7 @@ import {
 	resolveDiscordRuntimeEntityId,
 	resolveElizaOwnerEntityId,
 } from "./identity";
+import { buildDiscordReplyPayload } from "./interactions";
 import {
 	beginDiscordOutboundDelivery,
 	createDiscordMessageMemoryOnce,
@@ -180,6 +181,7 @@ import type {
 } from "./types";
 import { DiscordEventTypes } from "./types";
 import {
+	buildDiscordComponents,
 	buildOutboundDiscordAttachment,
 	MAX_MESSAGE_LENGTH,
 	normalizeDiscordMessageText,
@@ -1967,7 +1969,19 @@ export class DiscordService extends Service implements IDiscordService {
 						? targetChannelGuild.name
 						: undefined;
 
-					const textContent = normalizeDiscordMessageText(content.text);
+					// Project embedded interaction blocks the same way the reply path
+					// does. This handler serves runtime.sendMessageToTarget — the
+					// sub-agent relay / progress / notice path — and sending
+					// `content.text` raw leaked literal `[FOLLOWUPS]…[/FOLLOWUPS]`
+					// markup to Discord (live 2026-08-17, wind-chimes relay). Blocks
+					// become action rows on the final chunk; block-free text is
+					// byte-identical to the previous behavior.
+					const rendered = buildDiscordReplyPayload(runtime, content);
+					const renderedComponents =
+						rendered.components.length > 0
+							? buildDiscordComponents(rendered.components)
+							: undefined;
+					const textContent = normalizeDiscordMessageText(rendered.text);
 					const outboundReplyToMessageId =
 						discordReplyReferenceFromContent(content);
 					if (textContent || files.length > 0) {
@@ -2061,6 +2075,9 @@ export class DiscordService extends Service implements IDiscordService {
 									const sent = await targetChannel.send({
 										content: chunks[chunks.length - 1],
 										files: files.length > 0 ? files : undefined,
+										...(renderedComponents
+											? { components: renderedComponents }
+											: {}),
 										...(outboundReplyToMessageId && chunks.length === 1
 											? {
 													reply: {
@@ -2076,6 +2093,9 @@ export class DiscordService extends Service implements IDiscordService {
 									const sent = await targetChannel.send({
 										content: chunks[0],
 										files: files.length > 0 ? files : undefined,
+										...(renderedComponents
+											? { components: renderedComponents }
+											: {}),
 										...(outboundReplyToMessageId
 											? {
 													reply: {
