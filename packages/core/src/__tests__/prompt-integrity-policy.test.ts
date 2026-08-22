@@ -47,6 +47,9 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 	"packages/core/src/runtime/evaluator.ts": [
 		/MAX_EVALUATOR_INPUT_CHARS/,
 		/chars truncated/,
+		/DEFAULT_EVALUATOR_MAX_TOKENS/,
+		/maxTokens\s*:/,
+		/retryMaxTokens/,
 	],
 	"packages/core/src/runtime/message-handler.ts": [
 		/normalizeStringHints/,
@@ -63,6 +66,8 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 		/maybeCompactPlannerTrajectory/,
 		/CONTEXT_COMPACTION/,
 		/projectStepForFinalSynthesis/,
+		/DEFAULT_(?:CODING_)?PLANNER_MAX_TOKENS/,
+		/maxTokens:\s*\d+/,
 	],
 	"packages/core/src/services/message/bot-noise-triage.ts": [
 		/MAX_HISTORY_MESSAGES/,
