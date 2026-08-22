@@ -938,17 +938,18 @@ function inferSourceFromTarget(
 	connectors: ConnectorWithHooks[],
 ): { target?: string; source?: string } {
 	if (!target) return {};
-	const prefix = splitConnectorPrefix(target);
+	const wellFormedTarget = toWellFormedUnicode(target);
+	const prefix = splitConnectorPrefix(wellFormedTarget);
 	if (prefix) {
 		const connector = findConnectorBySource(connectors, prefix.source);
 		if (connector) return { source: connector.source, target: prefix.target };
 	}
-	const suffix = splitConnectorSuffix(target);
+	const suffix = splitConnectorSuffix(wellFormedTarget);
 	if (suffix) {
 		const connector = findConnectorBySource(connectors, suffix.source);
 		if (connector) return { source: connector.source, target: suffix.target };
 	}
-	return { target };
+	return { target: wellFormedTarget };
 }
 
 function isConnectorName(value: string, min: number, max: number): boolean {
