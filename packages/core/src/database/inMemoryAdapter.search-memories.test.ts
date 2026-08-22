@@ -162,31 +162,87 @@ describe("InMemoryDatabaseAdapter.searchMemories", () => {
 		expect(results).toEqual([]);
 	});
 
-	it("uses the SQL-compatible default threshold while preserving an explicit zero", async () => {
-		const belowDefault = offAxis(2);
+	it("applies no similarity floor when match_threshold is absent or zero, and filters when set", async () => {
 		const adapter = await seed([
 			{
 				entityId: entityA,
 				roomId: roomA,
 				agentId,
-				content: { text: "below default" },
-				embedding: belowDefault,
+				content: { text: "near" },
+				embedding: offAxis(0.1),
+			},
+			{
+				entityId: entityA,
+				roomId: roomA,
+				agentId,
+				content: { text: "far" },
+				embedding: offAxis(2),
+			},
+			{
+				entityId: entityA,
+				roomId: roomA,
+				agentId,
+				content: { text: "opposite" },
+				embedding: onAxis().map((value) => -value),
 			},
 		]);
 
+		const texts = (memories: Memory[]) =>
+			memories.map((memory) => memory.content.text);
+
 		expect(
-			await adapter.searchMemories({
-				tableName: "memories",
-				embedding: onAxis(),
-			}),
-		).toEqual([]);
+			texts(
+				await adapter.searchMemories({
+					tableName: "memories",
+					embedding: onAxis(),
+				}),
+			),
+		).toEqual(["near", "far", "opposite"]);
 		expect(
-			await adapter.searchMemories({
-				tableName: "memories",
+			texts(
+				await adapter.searchMemories({
+					tableName: "memories",
+					embedding: onAxis(),
+					match_threshold: 0,
+				}),
+			),
+		).toEqual(["near", "far", "opposite"]);
+		expect(
+			texts(
+				await adapter.searchMemories({
+					tableName: "memories",
+					embedding: onAxis(),
+					match_threshold: 0.5,
+				}),
+			),
+		).toEqual(["near"]);
+	});
+
+	it("treats entityId as a row predicate like the SQL vector search", async () => {
+		const adapter = await seed([
+			{
+				entityId: entityA,
+				roomId: roomA,
+				agentId,
+				content: { text: "mine" },
+				embedding: offAxis(0.2),
+			},
+			{
+				entityId: entityB,
+				roomId: roomA,
+				agentId,
+				content: { text: "theirs" },
 				embedding: onAxis(),
-				match_threshold: 0,
-			}),
-		).toMatchObject([{ content: { text: "below default" } }]);
+			},
+		]);
+
+		const results = await adapter.searchMemories({
+			tableName: "memories",
+			embedding: onAxis(),
+			entityId: entityA,
+			count: 5,
+		});
+		expect(results.map((memory) => memory.content.text)).toEqual(["mine"]);
 	});
 });
 

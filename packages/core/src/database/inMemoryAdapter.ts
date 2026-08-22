@@ -133,13 +133,14 @@ function memoryMatchesMetadata(
 }
 
 /**
- * Cosine similarity for in-process vector recall. Returns -1 when the vectors
- * cannot be compared (empty, mixed width, or non-finite components) so a search
- * can skip them instead of inventing a score. Matches the document-fragment
- * in-memory twin.
+ * Cosine similarity for in-process vector recall. Returns null when the vectors
+ * cannot be compared (empty, mixed width, non-finite components, or a zero
+ * vector) so a search can skip them instead of inventing a score. A genuine
+ * negative similarity is a valid score, not a sentinel, which is why the
+ * incomparable case is null rather than -1.
  */
-function cosineSimilarity(left: number[], right: number[]): number {
-	if (left.length !== right.length || left.length === 0) return -1;
+function cosineSimilarity(left: number[], right: number[]): number | null {
+	if (left.length !== right.length || left.length === 0) return null;
 	let dot = 0;
 	let leftMagnitude = 0;
 	let rightMagnitude = 0;
@@ -152,13 +153,13 @@ function cosineSimilarity(left: number[], right: number[]): number {
 			!Number.isFinite(leftValue) ||
 			!Number.isFinite(rightValue)
 		) {
-			return -1;
+			return null;
 		}
 		dot += leftValue * rightValue;
 		leftMagnitude += leftValue * leftValue;
 		rightMagnitude += rightValue * rightValue;
 	}
-	if (leftMagnitude === 0 || rightMagnitude === 0) return -1;
+	if (leftMagnitude === 0 || rightMagnitude === 0) return null;
 	return dot / (Math.sqrt(leftMagnitude) * Math.sqrt(rightMagnitude));
 }
 
@@ -1437,27 +1438,33 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 		// Scope eligibility first, then the top-K cut — the plugin-sql contract.
 		// A global top-K followed by a post-hoc room/world/entity filter silently
 		// drops eligible matches whenever closer out-of-scope vectors outnumber
-		// the candidate pool.
-		const candidates = await this.getMemories({
-			tableName: params.tableName,
-			roomId: params.roomId,
-			worldId: params.worldId,
-			entityId: params.entityId,
-			unique: params.unique,
-			accessContext: params.accessContext,
-		});
+		// the candidate pool. `entityId` is a row predicate here (as in the SQL
+		// vector search), unlike getMemories where it only names the RLS context.
+		const candidates = (
+			await this.getMemories({
+				tableName: params.tableName,
+				roomId: params.roomId,
+				worldId: params.worldId,
+				unique: params.unique,
+				accessContext: params.accessContext,
+			})
+		).filter(
+			(memory) => !params.entityId || memory.entityId === params.entityId,
+		);
 		const limit = params.count ?? params.limit ?? 10;
-		const threshold = params.match_threshold ?? 0.5;
+		// Same truthiness contract as plugin-sql: an absent or zero threshold
+		// applies no similarity floor.
+		const threshold = params.match_threshold;
 		const scored: Memory[] = [];
 		for (const memory of candidates) {
 			if (!Array.isArray(memory.embedding) || memory.embedding.length === 0) {
 				continue;
 			}
 			const similarity = cosineSimilarity(memory.embedding, params.embedding);
-			if (similarity < 0) {
+			if (similarity === null) {
 				continue;
 			}
-			if (similarity < threshold) {
+			if (threshold && similarity < threshold) {
 				continue;
 			}
 			scored.push({ ...memory, similarity });
