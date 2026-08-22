@@ -317,6 +317,51 @@ function guardSpawnTaskIntent(args: {
   return undefined;
 }
 
+/**
+ * One deliverable is ONE lane. The planner fans single asks into parallel or
+ * phased subtasks, and every lane then resolves to the SAME directory:
+ * - an edit of one existing app ("make the unit converter dark mode" became
+ *   3 builds, live 2026-08-20) — three children racing each other's writes;
+ * - a single-repo ask whose PR/submit clause got its own lane ("add
+ *   CONTRIBUTING.md and open a PR", live 2026-08-20) — the second agent
+ *   invented unrequested work to justify its lane;
+ * - a fresh single page/app/script phased into sequential sub-agents ("build
+ *   me a lil tetris page with levels and a leaderboard" → 4 lanes, live
+ *   2026-08-22) — each owning a fragment nobody asked for on its own.
+ * Phases are the child's own plan. Collapsed lanes keep the planner's whole
+ * `task` first and the phases as the checklist. A plural ask ("three pages",
+ * "two scripts") or genuinely different targets keep their lanes.
+ */
+export function collapsePlannerLanes(
+  text: string,
+  tasks: string[],
+  wholeTask: string | undefined,
+  warn: (message: string) => void = () => undefined,
+): string[] {
+  if (tasks.length <= 1) return tasks;
+  const singleRepoPrAsk =
+    /\b(?:repo|repository)\b/i.test(text) &&
+    /\b(?:pr|pull request)\b/i.test(text);
+  const pluralDeliverableAsk =
+    /\b(?:\d+|two|three|four|five|six|several|multiple|a few|a couple of)\s+(?:[\w-]+\s+){0,2}(?:pages|apps|sites|games|scripts|tools|widgets)\b/i.test(
+      text,
+    );
+  const singleDeliverableBuild =
+    !pluralDeliverableAsk &&
+    (isAppBuildTask(text) || detectTaskType(text) === "script-run");
+  if (
+    !singleDeliverableBuild &&
+    !(isAppEditIntentText(text) && isAppBuildTask(text)) &&
+    !singleRepoPrAsk
+  ) {
+    return tasks;
+  }
+  warn(
+    `[TASKS:create] collapsing ${tasks.length} planner lanes to 1 (single-deliverable ask)`,
+  );
+  return [[wholeTask, ...tasks].filter(Boolean).join("\n")];
+}
+
 function taskParts(
   params: Record<string, unknown>,
   content: Record<string, unknown>,
@@ -1022,30 +1067,12 @@ async function runCreateLegacy(
     state,
   );
   let tasks = taskParts(params, content, text);
-  // One edit of one existing app is ONE lane. The planner fans edit asks into
-  // parallel subtasks ("make the unit converter dark mode" became 3 builds,
-  // live 2026-08-20), and every lane then resolves to the SAME app dir — three
-  // children racing each other's writes in one directory. Collapse to a single
-  // lane carrying the full instruction; genuine multi-app fan-outs (different
-  // targets, creation asks) keep their lanes.
-  // A single-repo ask whose PR/submit clause got split into its own lane is
-  // the same disease: "add CONTRIBUTING.md and open a PR" fanned into two
-  // agents, and the second invented unrequested work to justify its lane
-  // (live 2026-08-20: a README edit nobody asked for, plus an overclaimed
-  // "finished that pr" with no PR behind it). Opening the PR is the SUBMIT
-  // step of the one task, never a second agent.
-  const singleRepoPrAsk =
-    /\b(?:repo|repository)\b/i.test(text) &&
-    /\b(?:pr|pull request)\b/i.test(text);
-  if (
-    tasks.length > 1 &&
-    ((isAppEditIntentText(text) && isAppBuildTask(text)) || singleRepoPrAsk)
-  ) {
-    logger(runtime).warn(
-      `[TASKS:create] collapsing ${tasks.length} planner lanes to 1 (single-deliverable ask)`,
-    );
-    tasks = [tasks.join("\n")];
-  }
+  tasks = collapsePlannerLanes(
+    text,
+    tasks,
+    pickString(params, content, "task"),
+    (message) => logger(runtime).warn(message),
+  );
   if (tasks.length > MAX_CONCURRENT_AGENTS) {
     // Planner-facing refusal: mechanical text + structured facts; the planner
     // phrases the denial in voice instead of a canned callback bubble.
