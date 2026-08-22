@@ -9,6 +9,7 @@
  * per-turn cache scope.
  */
 
+import { ElizaError } from "../../errors.ts";
 import { logger } from "../../logger";
 import {
 	type IAgentRuntime,
@@ -17,6 +18,7 @@ import {
 	type Provider,
 } from "../../types";
 import { addHeader } from "../../utils";
+import { truncateWellFormed } from "../../utils/well-formed.ts";
 import { DocumentService } from "./service.ts";
 import type { DocumentMetadataExtended } from "./types.ts";
 import { normalizeDocumentSourceValue } from "./utils.ts";
@@ -53,26 +55,57 @@ export function renderPinnedDocuments(
 			);
 			return titleOrder || String(a.id ?? "").localeCompare(String(b.id ?? ""));
 		});
+	if (pinned.length === 0) {
+		return { text: "", truncated: false, includedIds: [] };
+	}
 	const includedIds: Array<Memory["id"]> = [];
 	const blocks: string[] = [];
 	const maximumCharacters = tokenBudget * APPROXIMATE_CHARACTERS_PER_TOKEN;
-	let usedCharacters = 0;
 	let truncated = false;
+	const headers = pinned.map(
+		(document, index) =>
+			`## ${getDocumentTitle(document, index)} (${document.id}; reference document:${document.id})`,
+	);
+	const blockSeparators = Math.max(0, pinned.length - 1) * 2;
+	const headerNewlines = pinned.length;
+	const markerSeparator = pinned.length > 0 ? 2 : 0;
+	const fixedCharacters =
+		headers.reduce((total, header) => total + header.length, 0) +
+		headerNewlines +
+		blockSeparators +
+		markerSeparator +
+		PINNED_DOCUMENT_TRUNCATION_MARKER.length;
+	if (fixedCharacters > maximumCharacters) {
+		throw new ElizaError(
+			"Pinned document identities exceed the configured prompt budget",
+			{
+				code: "PINNED_DOCUMENT_IDENTITY_BUDGET_EXCEEDED",
+				context: {
+					documentCount: pinned.length,
+					maximumCharacters,
+					identityCharacters: fixedCharacters,
+				},
+			},
+		);
+	}
+	const fairContentCharacters =
+		pinned.length === 0
+			? 0
+			: Math.max(
+					0,
+					Math.floor((maximumCharacters - fixedCharacters) / pinned.length),
+				);
 	for (const [index, document] of pinned.entries()) {
-		const block = `## ${getDocumentTitle(document, index)} (${document.id})\n${document.content.text ?? ""}`;
-		const separatorCharacters = blocks.length > 0 ? 2 : 0;
-		if (
-			usedCharacters + separatorCharacters + block.length >
-			maximumCharacters
-		) {
-			truncated = true;
-			continue;
-		}
+		const content = document.content.text ?? "";
+		const excerpt = truncateWellFormed(content, fairContentCharacters);
+		const block = `${headers[index]}\n${excerpt}`;
 		blocks.push(block);
 		includedIds.push(document.id);
-		usedCharacters += separatorCharacters + block.length;
+		if (excerpt.length < content.length) truncated = true;
 	}
-	if (truncated) blocks.push(PINNED_DOCUMENT_TRUNCATION_MARKER);
+	if (truncated) {
+		blocks.push(PINNED_DOCUMENT_TRUNCATION_MARKER);
+	}
 	return { text: blocks.join("\n\n"), truncated, includedIds };
 }
 

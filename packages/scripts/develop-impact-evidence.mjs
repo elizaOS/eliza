@@ -3,7 +3,8 @@
 /**
  * Computes and verifies the exact-input evidence manifest for Develop Full.
  * Surface digests bind tracked bytes, transitive workspace dependencies,
- * dependent-surface digests, the reviewed graph, and the CI environment.
+ * dependent-surface digests, repository-local workflow/action closures,
+ * persistently unowned inputs, the reviewed graph, and the CI policy identity.
  */
 
 import { spawnSync } from "node:child_process";
@@ -135,6 +136,11 @@ export function validateGraph(graph) {
   ) {
     throw new Error("evidenceTtlHours must be a positive safe integer");
   }
+  if (!["exact-environment", "current-run-only"].includes(graph.reusePolicy)) {
+    throw new Error(
+      "reusePolicy must be exact-environment or current-run-only",
+    );
+  }
   assertPlainObject(graph.environment, "environment");
   if (!Array.isArray(graph.globalInputs) || graph.globalInputs.length === 0) {
     throw new Error("globalInputs must be non-empty");
@@ -218,7 +224,19 @@ function trackedInventory(repoRoot) {
       const stat = lstatSync(absolutePath);
       if (!stat.isFile())
         throw new Error(`tracked input is not a regular file: ${relativePath}`);
-      contentDigest = sha256(readFileSync(absolutePath));
+      const content = readFileSync(absolutePath);
+      contentDigest = sha256(content);
+      files.set(relativePath, {
+        content:
+          /(?:^|\/)\.github\/(?:workflows|actions)\/[\s\S]+\.ya?ml$/.test(
+            `/${relativePath}`,
+          )
+            ? content.toString("utf8")
+            : undefined,
+        contentDigest,
+        mode,
+      });
+      continue;
     }
     files.set(relativePath, { contentDigest, mode });
   }
@@ -325,6 +343,282 @@ function inputRows(paths, tracked) {
   });
 }
 
+function stripYamlComment(line, label) {
+  let singleQuoted = false;
+  let doubleQuoted = false;
+  let escaped = false;
+  for (let index = 0; index < line.length; index += 1) {
+    const character = line[index];
+    if (doubleQuoted && escaped) {
+      escaped = false;
+      continue;
+    }
+    if (doubleQuoted && character === "\\") {
+      escaped = true;
+      continue;
+    }
+    if (!doubleQuoted && character === "'") {
+      if (singleQuoted && line[index + 1] === "'") {
+        index += 1;
+        continue;
+      }
+      singleQuoted = !singleQuoted;
+      continue;
+    }
+    if (!singleQuoted && character === '"') {
+      doubleQuoted = !doubleQuoted;
+      continue;
+    }
+    if (!singleQuoted && !doubleQuoted && character === "#") {
+      return line.slice(0, index);
+    }
+  }
+  if (singleQuoted || doubleQuoted || escaped) {
+    throw new Error(`${label}: invalid unterminated YAML scalar`);
+  }
+  return line;
+}
+
+function quotedYamlMask(line) {
+  let singleQuoted = false;
+  let doubleQuoted = false;
+  let escaped = false;
+  let masked = "";
+  for (let index = 0; index < line.length; index += 1) {
+    const character = line[index];
+    if (doubleQuoted && escaped) {
+      escaped = false;
+      masked += " ";
+      continue;
+    }
+    if (doubleQuoted && character === "\\") {
+      escaped = true;
+      masked += " ";
+      continue;
+    }
+    if (!doubleQuoted && character === "'") {
+      if (singleQuoted && line[index + 1] === "'") {
+        masked += "  ";
+        index += 1;
+        continue;
+      }
+      singleQuoted = !singleQuoted;
+      masked += character;
+      continue;
+    }
+    if (!singleQuoted && character === '"') {
+      doubleQuoted = !doubleQuoted;
+      masked += character;
+      continue;
+    }
+    masked += singleQuoted || doubleQuoted ? " " : character;
+  }
+  return masked;
+}
+
+function usesReferencesFromLine(line, label) {
+  const references = [];
+  const mask = quotedYamlMask(line);
+  const property = /\buses\s*:\s*/g;
+  for (const match of mask.matchAll(property)) {
+    const keyStart = match.index;
+    if (!/(?:^|[\s{[,])(?:-\s*)?$/.test(mask.slice(0, keyStart))) continue;
+    const valueStart = keyStart + match[0].length;
+    const quote = line[valueStart];
+    let reference;
+    if (quote === '"' || quote === "'") {
+      let end = valueStart + 1;
+      for (; end < line.length; end += 1) {
+        if (quote === '"' && line[end] === "\\") {
+          end += 1;
+          continue;
+        }
+        if (quote === "'" && line[end] === "'" && line[end + 1] === "'") {
+          end += 1;
+          continue;
+        }
+        if (line[end] === quote) break;
+      }
+      if (end >= line.length) {
+        throw new Error(`${label}: invalid quoted uses value`);
+      }
+      reference = line.slice(valueStart + 1, end);
+    } else {
+      const remainder = line.slice(valueStart);
+      reference = remainder.split(/[\s,}\]]/, 1)[0];
+    }
+    if (reference?.startsWith("./")) references.push(reference);
+  }
+  return references;
+}
+
+function parseAutomationSource(source, label, requiredRootKey) {
+  if (source.includes("\t")) {
+    throw new Error(`${label}: invalid YAML tab indentation`);
+  }
+  const references = [];
+  let requiredRootFound = false;
+  const lines = source.split(/\r?\n/);
+  for (let index = 0; index < lines.length; index += 1) {
+    const rawLine = lines[index];
+    const line = stripYamlComment(rawLine, label);
+    if (!line.trim() || /^\s*(?:---|\.\.\.)\s*$/.test(line)) continue;
+    const property = /^( *)(?:-\s+)?([A-Za-z_][A-Za-z0-9_-]*)\s*:\s*(.*)$/.exec(
+      line,
+    );
+    if (!property) continue;
+    const [, whitespace, key, rawValue] = property;
+    const propertyIndent = whitespace.length;
+    const value = rawValue.trim();
+    if (propertyIndent === 0 && key === requiredRootKey) {
+      requiredRootFound = true;
+    }
+    if (/^[>|][+-]?[0-9]*$/.test(value)) {
+      const content = [];
+      let nextIndex = index + 1;
+      for (; nextIndex < lines.length; nextIndex += 1) {
+        const candidate = lines[nextIndex];
+        const candidateIndent = candidate.match(/^ */)?.[0].length ?? 0;
+        if (candidate.trim() && candidateIndent <= propertyIndent) break;
+        content.push(candidate);
+      }
+      if (key === "uses") {
+        const nonEmpty = content.filter((candidate) => candidate.trim());
+        const contentIndent =
+          nonEmpty.length === 0
+            ? propertyIndent + 1
+            : Math.min(
+                ...nonEmpty.map(
+                  (candidate) => candidate.match(/^ */)?.[0].length ?? 0,
+                ),
+              );
+        const scalar = content
+          .map((candidate) => candidate.slice(contentIndent))
+          .join(value.startsWith(">") ? " " : "\n")
+          .trim();
+        if (scalar.startsWith("./")) references.push(scalar);
+      }
+      index = nextIndex - 1;
+      continue;
+    }
+    references.push(...usesReferencesFromLine(line, label));
+  }
+  if (!requiredRootFound) {
+    throw new Error(`${label}: must declare top-level ${requiredRootKey}`);
+  }
+  return references;
+}
+
+function normalizeLocalUses(reference, label) {
+  if (reference.includes("@")) {
+    throw new Error(`${label}: repository-local uses must not contain @`);
+  }
+  const normalized = path.posix.normalize(reference.slice(2));
+  if (
+    !normalized ||
+    normalized === "." ||
+    normalized === ".." ||
+    normalized.startsWith("../") ||
+    path.posix.isAbsolute(normalized)
+  ) {
+    throw new Error(
+      `${label}: invalid repository-local uses target ${reference}`,
+    );
+  }
+  return normalized;
+}
+
+function requireTrackedSource(tracked, descriptor, label) {
+  const entry = tracked.get(descriptor);
+  if (!entry) throw new Error(`${label}: missing local target ${descriptor}`);
+  if (entry.mode !== "100644" && entry.mode !== "100755") {
+    throw new Error(
+      `${label}: local target is not a regular file: ${descriptor}`,
+    );
+  }
+  if (typeof entry.content !== "string")
+    throw new Error(
+      `${label}: local target source is unavailable: ${descriptor}`,
+    );
+  return entry.content;
+}
+
+function resolveLocalTarget(reference, tracked, label) {
+  const target = normalizeLocalUses(reference, label);
+  if (target.endsWith(".yml") || target.endsWith(".yaml")) {
+    if (!target.startsWith(".github/workflows/")) {
+      throw new Error(
+        `${label}: local workflow target is outside .github/workflows: ${target}`,
+      );
+    }
+    const source = requireTrackedSource(tracked, target, label);
+    parseAutomationSource(source, target, "jobs");
+    return { descriptor: target, inputPaths: [target], source };
+  }
+
+  const candidates = [`${target}/action.yml`, `${target}/action.yaml`].filter(
+    (candidate) => tracked.has(candidate),
+  );
+  if (candidates.length !== 1) {
+    throw new Error(
+      `${label}: local action target must contain exactly one action.yml or action.yaml: ${target}`,
+    );
+  }
+  const descriptor = candidates[0];
+  const source = requireTrackedSource(tracked, descriptor, label);
+  parseAutomationSource(source, descriptor, "runs");
+  const prefix = `${target}/`;
+  const inputPaths = [...tracked.keys()]
+    .filter((relativePath) => relativePath.startsWith(prefix))
+    .sort(compareText);
+  if (inputPaths.length === 0) {
+    throw new Error(`${label}: local action input closure is empty: ${target}`);
+  }
+  return { descriptor, inputPaths, source };
+}
+
+function localDependencyClosure(surface, tracked) {
+  const root = surface.workflow;
+  const rootEntry = tracked.get(root);
+  if (!rootEntry) throw new Error(`${surface.id}: missing workflow ${root}`);
+  if (rootEntry.mode !== "100644" && rootEntry.mode !== "100755") {
+    throw new Error(`${surface.id}: workflow is not a regular file: ${root}`);
+  }
+  if (typeof rootEntry.content !== "string") {
+    throw new Error(`${surface.id}: workflow source is unavailable: ${root}`);
+  }
+
+  const inputs = new Set([root]);
+  const visiting = new Set();
+  const visited = new Set();
+  function visit(descriptor, source) {
+    if (visiting.has(descriptor)) {
+      throw new Error(
+        `${surface.id}: local uses dependency cycle at ${descriptor}`,
+      );
+    }
+    if (visited.has(descriptor)) return;
+    visiting.add(descriptor);
+    const requiredRootKey = descriptor.startsWith(".github/actions/")
+      ? "runs"
+      : "jobs";
+    for (const reference of parseAutomationSource(
+      source,
+      descriptor,
+      requiredRootKey,
+    )) {
+      const target = resolveLocalTarget(reference, tracked, descriptor);
+      for (const inputPath of target.inputPaths) inputs.add(inputPath);
+      visit(target.descriptor, target.source);
+    }
+    visiting.delete(descriptor);
+    visited.add(descriptor);
+  }
+
+  visit(root, rootEntry.content);
+  return [...inputs].sort(compareText);
+}
+
 export function computeExpectedManifest({
   baseSha,
   changedPaths,
@@ -350,43 +644,78 @@ export function computeExpectedManifest({
     const closureDirectories = new Set(
       closure.map((name) => workspaces.byName.get(name).directory),
     );
+    const localDependencyPaths = localDependencyClosure(surface, tracked);
+    const localDependencySet = new Set(localDependencyPaths);
     const directMatch = matcher([surface.workflow, ...surface.inputs]);
     const inputPaths = [...tracked.keys()]
       .filter((relativePath) => {
-        if (globalMatch(relativePath) || directMatch(relativePath)) return true;
+        if (
+          globalMatch(relativePath) ||
+          directMatch(relativePath) ||
+          localDependencySet.has(relativePath)
+        )
+          return true;
         const workspace = workspaceForPath(relativePath, workspaces);
         return workspace ? closureDirectories.has(workspace.directory) : false;
       })
       .sort(compareText);
     if (inputPaths.length === 0)
       throw new Error(`${surface.id}: input closure is empty`);
+    const inventory = inputRows(inputPaths, tracked);
+    const inputInventoryDigest = sha256(canonicalJson(inventory));
+    surfaceState.set(surface.id, {
+      catchAll: surface.catchAll === true,
+      directMatch,
+      id: surface.id,
+      inputInventoryDigest,
+      inputPaths,
+      localDependencyPaths,
+      workspaceClosure: closure,
+    });
+  }
+
+  const ownsTrackedPath = (relativePath) => {
+    if (globalMatch(relativePath) || knownNonValidation(relativePath))
+      return true;
+    const workspace = workspaceForPath(relativePath, workspaces);
+    return ordered.some((surface) => {
+      const state = surfaceState.get(surface.id);
+      if (state.catchAll) return false;
+      if (state.localDependencyPaths.includes(relativePath)) return true;
+      if (state.directMatch(relativePath)) return true;
+      return (
+        workspace !== null && state.workspaceClosure.includes(workspace.name)
+      );
+    });
+  };
+  const unownedTrackedPaths = [...tracked.keys()]
+    .filter((relativePath) => !ownsTrackedPath(relativePath))
+    .sort(compareText);
+  const unownedInputDigest = sha256(
+    canonicalJson(inputRows(unownedTrackedPaths, tracked)),
+  );
+
+  for (const surface of ordered) {
+    const state = surfaceState.get(surface.id);
     const dependencyDigests = Object.fromEntries(
       (surface.dependsOn ?? [])
         .sort(compareText)
         .map((id) => [id, surfaceState.get(id).inputDigest]),
     );
-    const inventory = inputRows(inputPaths, tracked);
-    const inputInventoryDigest = sha256(canonicalJson(inventory));
-    const inputDigest = sha256(
+    state.dependencyDigests = dependencyDigests;
+    state.inputDigest = sha256(
       canonicalJson({
         dependencyDigests,
         environmentDigest,
         graphDigest,
-        inputInventoryDigest,
+        inputInventoryDigest: state.inputInventoryDigest,
+        localDependencyPaths: state.localDependencyPaths,
         surface: surface.id,
+        unownedInputDigest,
         workflow: surface.workflow,
-        workspaceClosure: closure,
+        workspaceClosure: state.workspaceClosure,
       }),
     );
-    surfaceState.set(surface.id, {
-      catchAll: surface.catchAll === true,
-      dependencyDigests,
-      id: surface.id,
-      inputDigest,
-      inputInventoryDigest,
-      inputPaths,
-      workspaceClosure: closure,
-    });
   }
 
   const directlyTouched = new Set();
@@ -400,11 +729,14 @@ export function computeExpectedManifest({
     }
     for (const surface of ordered) {
       const state = surfaceState.get(surface.id);
-      const directMatch = matcher([surface.workflow, ...surface.inputs]);
       const workspaceMatch =
         changedWorkspace !== null &&
         state.workspaceClosure.includes(changedWorkspace.name);
-      if (directMatch(changedPath) || workspaceMatch) {
+      if (
+        state.directMatch(changedPath) ||
+        state.localDependencyPaths.includes(changedPath) ||
+        workspaceMatch
+      ) {
         directlyTouched.add(surface.id);
         if (!state.catchAll) owned = true;
       }
@@ -438,6 +770,9 @@ export function computeExpectedManifest({
     graphDigest,
     graphVersion: graph.graphVersion,
     headSha,
+    reusePolicy: graph.reusePolicy,
+    unownedInputCount: unownedTrackedPaths.length,
+    unownedInputDigest,
     unknownPaths,
     surfaces: [...surfaceState.values()]
       .sort((left, right) => compareText(left.id, right.id))
@@ -590,6 +925,8 @@ export function resolveEvidenceRuns(expected, evidenceRows, now = new Date()) {
   }
   return Object.fromEntries(
     expected.surfaces.map((surface) => {
+      if (expected.reusePolicy === "current-run-only")
+        return [surface.id, true];
       if (surface.forceRun) return [surface.id, true];
       const evidence = bySurface.get(surface.id);
       if (!evidence) return [surface.id, true];
@@ -708,6 +1045,9 @@ function recordCommand(args) {
       writeJson(path.join(evidenceRoot, surface.id, "evidence.json"), row);
       rows.push(row);
     } else if (result === "skipped") {
+      if (expected.reusePolicy === "current-run-only") {
+        throw new Error(`${surface.id}: current-run-only evidence was skipped`);
+      }
       if (surface.forceRun) {
         throw new Error(`${surface.id}: required execution was skipped`);
       }

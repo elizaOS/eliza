@@ -435,6 +435,7 @@
         "@elizaos/plugin-local-inference": "workspace:*",
         "@elizaos/plugin-registry": "workspace:*",
         "@elizaos/shared": "workspace:*",
+        "@napi-rs/keyring": "^1.1.6",
         "bonjour-service": "1.4.2",
         "electrobun": "^1.18.1",
       },
@@ -1050,6 +1051,7 @@
         "@elizaos/plugin-video": "workspace:*",
         "@elizaos/plugin-wallet": "workspace:*",
         "@elizaos/plugin-workflow": "workspace:*",
+        "@elizaos/shared": "workspace:*",
         "ws": "^8.21.3",
       },
       "devDependencies": {
@@ -1160,6 +1162,7 @@
         "cron-parser": "^5.5.0",
         "date-fns": "^4.1.0",
         "embla-carousel-react": "^8.6.0",
+        "libphonenumber-js": "^1.12.35",
         "lucide-react": "^1.0.0",
         "motion": "^12.38.0",
         "nprogress": "^0.2.0",

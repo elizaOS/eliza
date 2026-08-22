@@ -205,6 +205,8 @@ export interface PlannerToolResult {
 	 * action whose planner call explicitly declared final scope.
 	 */
 	modelReplyRequired?: boolean;
+	/** Vetted action-owned fallback for a failed required model synthesis. */
+	modelReplyFallback?: string;
 	/**
 	 * Explicit chain-control override. `false` unconditionally aborts the
 	 * remaining planner queue, including for legacy failure and fire-and-forget
@@ -262,6 +264,15 @@ export interface PlannerLoopResult {
 export interface PlannerLoopParams {
 	runtime: PlannerRuntime;
 	context: ContextObject;
+	/**
+	 * A sole tool result that already completed outside the planner loop and
+	 * explicitly requested a model-authored final reply. The loop starts from
+	 * this settled step and performs only the guarded no-tools synthesis round.
+	 */
+	postToolReplySeed?: {
+		toolCall: PlannerToolCall;
+		result: PlannerToolResult;
+	};
 	config?: Partial<ChainingLoopConfig>;
 	executeToolCall: (
 		toolCall: PlannerToolCall,

@@ -8,13 +8,10 @@ import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import { stringToUuid } from "@elizaos/core";
-import {
-  type RuntimeWithScenarioModelFixtures,
-  registerStrictActionRouteFixtures,
-} from "@elizaos/core/testing";
 import type {
   CapturedAction,
   ScenarioContext,
+  ScenarioModelFixture,
   ScenarioTurnExecution,
 } from "@elizaos/scenario-runner/schema";
 import { scenario } from "@elizaos/scenario-runner/schema";
@@ -111,6 +108,145 @@ const strictCodingToolRoutes = [
     messageToUser: "Exited and removed worktree",
   },
 ];
+
+const plannerToolNames: Record<string, readonly string[]> = {
+  FILE: ["FILE", "WEB_FETCH", "REPLY", "IGNORE", "STOP"],
+  SHELL: ["SHELL", "WEB_FETCH", "REPLY", "IGNORE", "STOP"],
+  WORKTREE: ["SHELL", "WORKTREE", "REPLY", "IGNORE", "STOP"],
+};
+
+function currentTurnInputPattern(input: string): string {
+  const escaped = input.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return `${escaped}(?![\\s\\S]*message:user:\\n)`;
+}
+
+const codingToolModelFixtures: ScenarioModelFixture[] = [
+  ...strictCodingToolRoutes.flatMap((route) => {
+    const slug = route.actionName.toLowerCase();
+    const replyText = route.messageToUser;
+    return [
+      {
+        name: `route-${slug}-stage1-${route.input}`,
+        match: {
+          modelType: "RESPONSE_HANDLER" as const,
+          input: { pattern: currentTurnInputPattern(route.input) },
+          toolNames: ["HANDLE_RESPONSE"],
+        },
+        response: {
+          json: {
+            contexts: route.contextIds,
+            intents: [route.input.toLowerCase()],
+            replyText,
+            threadOps: [],
+            candidateActionNames: [route.actionName],
+          },
+        },
+      },
+      {
+        name: `route-${slug}-planner-${route.input}`,
+        match: {
+          modelType: "ACTION_PLANNER" as const,
+          input: { pattern: currentTurnInputPattern(route.input) },
+          toolNames: plannerToolNames[route.actionName],
+        },
+        response: {
+          json: {
+            text: "",
+            thought: `Call ${route.actionName} for ${route.input}.`,
+            messageToUser: replyText,
+            completed: true,
+            finishReason: "tool-calls",
+            toolCalls: [
+              {
+                id: `call-${slug}`,
+                name: route.actionName,
+                type: "function",
+                arguments: route.args,
+              },
+            ],
+          },
+        },
+      },
+    ];
+  }),
+  {
+    name: "post-tool-reply-read-file",
+    match: {
+      modelType: "ACTION_PLANNER" as const,
+      input: {
+        pattern: currentTurnInputPattern(
+          "Read the deterministic coding tools note file",
+        ),
+      },
+      toolNames: [],
+    },
+    response: {
+      json: {
+        thought: "Report the complete file contents returned by FILE.",
+        messageToUser: "alpha coding-tools scenario\nbeta strict e2e",
+        completed: true,
+        finishReason: "stop",
+        toolCalls: [],
+      },
+    },
+  },
+  {
+    name: "post-tool-reply-exit-worktree",
+    match: {
+      modelType: "ACTION_PLANNER" as const,
+      input: {
+        pattern: currentTurnInputPattern(
+          "Exit and clean up the isolated repo worktree",
+        ),
+      },
+      toolNames: [],
+    },
+    response: {
+      json: {
+        thought: "Report the completed worktree cleanup.",
+        messageToUser: "Exited and removed worktree",
+        completed: true,
+        finishReason: "stop",
+        toolCalls: [],
+      },
+    },
+  },
+  {
+    name: "tool-result-rescue-read-file",
+    match: {
+      modelType: "TEXT_LARGE" as const,
+      input: { includes: "alpha coding-tools scenario" },
+      toolNames: [],
+    },
+    response: { text: "alpha coding-tools scenario\nbeta strict e2e" },
+  },
+  {
+    name: "tool-result-rescue-exit-worktree",
+    match: {
+      modelType: "TEXT_LARGE" as const,
+      input: { includes: "Exited and removed worktree " },
+      toolNames: [],
+    },
+    response: { text: "Exited and removed worktree" },
+  },
+];
+
+let previousEvaluators: unknown[] | null = null;
+let previousCodingToolsEnvironment: {
+  blockedPaths: string | undefined;
+  workspaceRoots: string | undefined;
+} | null = null;
+
+function restoreEnvironmentVariable(
+  name: "CODING_TOOLS_BLOCKED_PATHS" | "CODING_TOOLS_WORKSPACE_ROOTS",
+  value: string | undefined,
+): void {
+  if (value === undefined) {
+    delete process.env[name];
+    return;
+  }
+  process.env[name] = value;
+}
 
 type JsonRecord = Record<string, unknown>;
 
@@ -378,13 +514,16 @@ async function finalLedgerCheck(
   } catch {
     // missing is expected after WORKTREE exit cleanup.
   }
-  await fs.rm(tmpRoot, { force: true, recursive: true });
   return undefined;
 }
 
 export default scenario({
   id: "deterministic-coding-tools-actions",
   lane: "pr-deterministic",
+  modelFixtures: {
+    mode: "fixtures",
+    fixtures: [...codingToolModelFixtures],
+  },
   title: "Deterministic coding-tools action execution",
   domain: "scenario-runner",
   tags: ["pr", "deterministic", "zero-cost", "coding-tools"],
@@ -398,11 +537,15 @@ export default scenario({
       name: "seed isolated coding-tools git workspace",
       apply: async (ctx) => {
         await seedGitRepo();
+        previousCodingToolsEnvironment = {
+          blockedPaths: process.env.CODING_TOOLS_BLOCKED_PATHS,
+          workspaceRoots: process.env.CODING_TOOLS_WORKSPACE_ROOTS,
+        };
         process.env.CODING_TOOLS_WORKSPACE_ROOTS = tmpRoot;
         process.env.CODING_TOOLS_BLOCKED_PATHS = blockedRoot;
 
         const runtime = ctx.runtime as
-          | (RuntimeWithScenarioModelFixtures & {
+          | {
               plugins?: Array<{ name?: string }>;
               registerPlugin?: (
                 plugin: typeof codingToolsPlugin,
@@ -412,11 +555,17 @@ export default scenario({
               ensureConnection?: (
                 params: Record<string, unknown>,
               ) => Promise<void>;
-            })
+              evaluators: unknown[];
+            }
           | undefined;
         if (!runtime?.registerPlugin) {
           return "runtime.registerPlugin unavailable";
         }
+        // Post-turn evaluators are outside the coding-tools execution contract.
+        // Isolate them so every model call owned by this scenario is strict,
+        // then restore the shared runtime in cleanup.
+        previousEvaluators = runtime.evaluators;
+        runtime.evaluators = [];
         if (
           !runtime.plugins?.some(
             (plugin) =>
@@ -459,8 +608,32 @@ export default scenario({
             roles: { [userId]: "OWNER" },
           },
         });
-        registerStrictActionRouteFixtures(runtime, strictCodingToolRoutes);
         return undefined;
+      },
+    },
+  ],
+  cleanup: [
+    {
+      type: "custom",
+      name: "restore shared runtime and remove coding-tools workspace",
+      apply: async (ctx) => {
+        const runtime = ctx.runtime as { evaluators: unknown[] };
+        if (previousEvaluators !== null) {
+          runtime.evaluators = previousEvaluators;
+          previousEvaluators = null;
+        }
+        if (previousCodingToolsEnvironment !== null) {
+          restoreEnvironmentVariable(
+            "CODING_TOOLS_WORKSPACE_ROOTS",
+            previousCodingToolsEnvironment.workspaceRoots,
+          );
+          restoreEnvironmentVariable(
+            "CODING_TOOLS_BLOCKED_PATHS",
+            previousCodingToolsEnvironment.blockedPaths,
+          );
+          previousCodingToolsEnvironment = null;
+        }
+        await fs.rm(tmpRoot, { force: true, recursive: true });
       },
     },
   ],

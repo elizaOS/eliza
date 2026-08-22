@@ -1,9 +1,9 @@
 /**
  * `AVAILABLE_AGENTS` provider: the adapter inventory (which ACP coding backends
- * are installed and authenticated) plus the complete list of recent/active
+ * are installed and authenticated) plus a bounded list of recent/active
  * sessions, rendered into the planner context. Merges the `checkAvailableAgents`
- * inventory with framework state so shell-adapter backends like opencode — which
- * the adapter registry misses — still appear when installed and auth-ready.
+ * inventory with framework state so shell-adapter backends still appear when
+ * installed and auth-ready.
  */
 import type { IAgentRuntime, Memory, Provider, State } from "@elizaos/core";
 import {
@@ -57,29 +57,16 @@ export const availableAgentsProvider: Provider = {
       };
     }
 
-    // opencode is wired through the shell adapter (not in
-    // `coding-agent-adapters`'s registry), so `checkAvailableAgents`
-    // misses it. Query the framework-state directly so the planner sees
-    // opencode in its action context when authReady — otherwise the
-    // model reads "no compatible agent available" and refuses to spawn.
-    //
-    // A THROWN framework probe is a broken backend, NOT "opencode absent":
-    // swallowing it into `null` renders the same as a clean "opencode not
-    // installed" slate, so the planner can't distinguish a real probe crash
-    // from genuine absence and silently drops opencode from its options with
-    // no signal (#12273 healthy-empty-from-catch). Surface it — warn +
-    // reportError via reportProviderFetchFailure — and flag the context
-    // degraded so the failure is visible instead of masquerading as absence.
     let frameworkProbeFailed = false;
-    const [agents, sessions, frameworkState] = await Promise.all([
+    const [agents, sessions] = await Promise.all([
       service.checkAvailableAgents?.() ??
         service.getAvailableAgents?.() ??
         Promise.resolve([]),
       listSessionsWithin(service),
       getTaskAgentFrameworkState(runtime).catch(
         (error): TaskAgentFrameworkState | null => {
-          // error-policy:J7 framework probe threw — backend down, not
-          // "opencode absent". Surface it + degrade instead of a silent null.
+          // error-policy:J7 framework probe failures remain visible to the
+          // runtime while the provider degrades to the adapter registry.
           reportProviderFetchFailure(
             runtime,
             "AVAILABLE_AGENTS",
@@ -96,25 +83,10 @@ export const availableAgentsProvider: Provider = {
     if (frameworkProbeFailed) {
       lines.push(
         "",
-        "> framework probe unavailable — adapter inventory below may be incomplete (a shell-adapter backend such as opencode could be installed but undetected). This is a probe failure, not confirmed absence.",
+        "> framework probe unavailable — adapter inventory may be incomplete.",
       );
     }
-    const opencodeFramework = frameworkState?.frameworks.find(
-      (framework) => framework.id === "opencode",
-    );
-    const augmentedAgents =
-      opencodeFramework?.installed && opencodeFramework.authReady
-        ? [
-            ...agents,
-            {
-              agentType: "opencode",
-              adapter: "OpenCode",
-              installed: true,
-              auth: { status: "authenticated" as const },
-              reason: opencodeFramework.reason,
-            },
-          ]
-        : agents;
+    const augmentedAgents = agents;
 
     if (augmentedAgents.length > 0) {
       lines.push("", "## Available adapters");
