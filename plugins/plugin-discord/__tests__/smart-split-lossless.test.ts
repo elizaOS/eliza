@@ -24,14 +24,15 @@ describe("smartSplitMessage lossless validation", () => {
 		expect(chunks).toEqual(["abcdef", "ghijk"]);
 	});
 
-	it("accepts a projection that only reflows boundary whitespace", async () => {
+	it("rejects a projection that reflows boundary whitespace", async () => {
 		const source = "abc def\nghijk";
 		const chunks = await smartSplitMessage(
 			runtimeReturning(JSON.stringify(["abc def", "ghijk"])),
 			source,
 			7,
 		);
-		expect(chunks).toEqual(["abc def", "ghijk"]);
+		expect(chunks).toEqual(splitMessage(source, 7));
+		expect(chunks.join("")).toBe(source);
 	});
 
 	it("falls back when model chunks rewrite or omit source content", async () => {
@@ -42,9 +43,7 @@ describe("smartSplitMessage lossless validation", () => {
 			7,
 		);
 		expect(chunks).toEqual(splitMessage(source, 7));
-		expect(chunks.join("").replace(/\s+/g, "")).toBe(
-			source.replace(/\s+/g, ""),
-		);
+		expect(chunks.join("")).toBe(source);
 	});
 
 	it("falls back instead of dropping an oversized model chunk", async () => {
@@ -56,5 +55,16 @@ describe("smartSplitMessage lossless validation", () => {
 		);
 		expect(chunks).toEqual(splitMessage(source, 6));
 		expect(chunks.join("")).toBe(source);
+	});
+
+	it("preserves repeated whitespace, newlines, and Unicode exactly", async () => {
+		const source = "alpha  beta\n\n🎉 gamma   delta";
+		const chunks = await smartSplitMessage(
+			runtimeReturning(JSON.stringify(["alpha beta", "🎉 gamma delta"])),
+			source,
+			9,
+		);
+		expect(chunks.join("")).toBe(source);
+		expect(chunks.every((chunk) => chunk.length <= 9)).toBe(true);
 	});
 });
