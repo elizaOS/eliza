@@ -59,6 +59,7 @@ export const ACCOUNT_LIFECYCLE_OPERATION_CONTRACTS: Readonly<
 export type AccountDeletionStatus =
   | "reserved"
   | "recovery"
+  | "canceling"
   | "scheduled"
   | "processing"
   | "completed"
@@ -90,6 +91,8 @@ export interface AccountDeletionStatusDto {
   completedAt: string | null;
   /** Transitional projection for clients predating the lifecycle contract. */
   identityDeactivated: boolean;
+  /** Access remains fenced until cancellation cleanup is durably complete. */
+  accessState: "fenced" | "active" | "erased";
   canCancel: boolean;
   nextAction: AccountDeletionNextAction;
   export: {

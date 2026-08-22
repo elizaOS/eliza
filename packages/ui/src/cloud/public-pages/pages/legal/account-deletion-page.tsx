@@ -22,6 +22,8 @@ function statusHeading(request: AccountDeletionStatusDto): string {
       return "Deletion request reserved";
     case "recovery":
       return "Recovery window active";
+    case "canceling":
+      return "Cancellation cleanup in progress";
     case "scheduled":
     case "processing":
       return "Permanent deletion in progress";
