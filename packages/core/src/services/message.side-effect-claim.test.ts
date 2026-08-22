@@ -1207,6 +1207,27 @@ describe("evaluatePlannedReplyEgress", () => {
 			}),
 		).toBe(false);
 	});
+
+	it("allows a completed-side-effect claim on a sub-agent completion relay turn", () => {
+		// The task_complete relay IS the effect receipt: the child did and
+		// verified the work, so the reply may state it without an action
+		// result of this turn. The same reply without the relay flag still
+		// fails closed.
+		const reply =
+			"the bmi calculator is ready for you. i've set up the `index.html` file to handle everything.";
+		expect(
+			evaluatePlannedReplyEgress({
+				reply,
+				actionResults: [],
+				actions: [],
+				completionRelay: true,
+			}).verdict,
+		).toBe("allow");
+		expect(
+			evaluatePlannedReplyEgress({ reply, actionResults: [], actions: [] })
+				.verdict,
+		).toBe("reject");
+	});
 });
 
 describe("tasks context recap/status routing vocabulary", () => {

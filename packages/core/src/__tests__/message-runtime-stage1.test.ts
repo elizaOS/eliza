@@ -4723,6 +4723,54 @@ describe("runV5MessageRuntimeStage1", () => {
 		}
 	});
 
+	it("does not buffer an applied effect claim on a task_complete relay turn — the relay is the receipt", async () => {
+		// The inbound message IS a sub-agent task_complete relay: the child did
+		// and verified the work, so Stage 1's "applied" is grounded by the relay
+		// itself and the good reply must not be withheld behind the hedge
+		// (2026-08-22: a verified, live page shipped as "i'm not sure if that
+		// change actually went through").
+		const runtime = makeRuntime([
+			stage1Response({
+				thought: "Relay the finished build to the user.",
+				contexts: ["simple"],
+				replyText: "The dice roller app is built and deployed.",
+				extra: { requiresTool: true, replyEffectStatus: "applied" },
+			}),
+			JSON.stringify({
+				thought: "Deliver the relayed completion.",
+				toolCalls: [],
+				messageToUser: "The dice roller app is built and deployed — enjoy.",
+			}),
+		]);
+		const earlyReply = vi.fn(async () => undefined);
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({
+				text:
+					"[sub-agent: dice roller build (opencode) — task_complete]\n" +
+					"Done. The dice roller app is built and deployed.",
+				source: "sub_agent",
+				metadata: { subAgent: true },
+			}),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+			onResponseHandlerEarlyReply: earlyReply,
+		});
+
+		expect(earlyReply).toHaveBeenCalledWith(
+			expect.objectContaining({
+				text: "The dice roller app is built and deployed.",
+			}),
+		);
+		expect(result.kind).toBe("planned_reply");
+		if (result.kind === "planned_reply") {
+			expect(result.result.responseContent?.text).toBe(
+				"The dice roller app is built and deployed — enjoy.",
+			);
+		}
+	});
+
 	it("does not let a rejected early completion claim hide the later receipt-grounded confirmation", async () => {
 		const canonicalText = "Done — the pickup reminder is scheduled.";
 		const observedAt = "2026-07-27T18:00:00.000Z";
