@@ -4,6 +4,12 @@
  */
 import { expect, type Page, type Route, test } from "@playwright/test";
 import {
+  expectExactRootAgentParity,
+  inspectExactRootControls,
+  listViewElements,
+  viewInteract,
+} from "./agent-bridge-audit";
+import {
   hideChatOverlay,
   installDefaultAppRoutes,
   openAppPath,
@@ -704,6 +710,134 @@ function richOrchestratorFixture() {
 }
 
 test.describe("orchestrator GUI workbench", () => {
+  test("production host exposes every list, inspector, and operator control through the bridge", async ({
+    page,
+  }) => {
+    test.setTimeout(120_000);
+    await seedAppStorage(page);
+    await installDefaultAppRoutes(page);
+    await installOrchestratorWorkbenchRoutes(page, richOrchestratorFixture());
+    await openAppPath(page, "/orchestrator");
+
+    const root = page.getByTestId("orchestrator-workbench");
+    await expect(root).toBeVisible();
+    await expectExactRootAgentParity({
+      page,
+      root,
+      viewId: "orchestrator",
+      label: "Orchestrator task list",
+    });
+
+    const searchFill = (await viewInteract(page, "orchestrator", "agent-fill", {
+      id: "rail-search",
+      value: "Kanban",
+    })) as { ok?: boolean };
+    expect(searchFill.ok).toBe(true);
+    await expect(page.getByTestId("orchestrator-search")).toHaveValue("Kanban");
+    await viewInteract(page, "orchestrator", "agent-fill", {
+      id: "rail-search",
+      value: "",
+    });
+
+    const open = (await viewInteract(page, "orchestrator", "agent-click", {
+      id: "task-card-smoke-task-1",
+    })) as { ok?: boolean };
+    expect(open.ok).toBe(true);
+    await expect(page.getByTestId("orchestrator-timeline")).toBeVisible();
+    let elements = await expectExactRootAgentParity({
+      page,
+      root,
+      viewId: "orchestrator",
+      label: "Orchestrator task room",
+    });
+    expect(elements.map(({ id }) => id)).toEqual(
+      expect.arrayContaining([
+        "timeline-back",
+        "timeline-open-inspector",
+        "inspector-add-agent",
+        "sub-agent-inspect-session-codex",
+      ]),
+    );
+    const roomAudit = await inspectExactRootControls(root);
+    expect(roomAudit.humanOnlyIds).toEqual(
+      expect.arrayContaining([
+        "sub-agent-stop-session-codex",
+        "inspector-pause",
+        "inspector-archive",
+        "inspector-fork",
+        "inspector-restart",
+        "inspector-priority",
+        "inspector-delete",
+        "timeline-stop-active",
+      ]),
+    );
+    expect(elements.map(({ id }) => id)).not.toEqual(
+      expect.arrayContaining(roomAudit.humanOnlyIds),
+    );
+
+    await viewInteract(page, "orchestrator", "agent-click", {
+      id: "inspector-add-agent",
+    });
+    await viewInteract(page, "orchestrator", "agent-fill", {
+      id: "add-agent-label",
+      value: "Bridge Worker",
+    });
+    await expect(page.getByTestId("orchestrator-add-agent-label")).toHaveValue(
+      "Bridge Worker",
+    );
+    await expectExactRootAgentParity({
+      page,
+      root,
+      viewId: "orchestrator",
+      label: "Orchestrator add-agent form",
+    });
+    await viewInteract(page, "orchestrator", "agent-click", {
+      id: "add-agent-cancel",
+    });
+
+    await viewInteract(page, "orchestrator", "agent-click", {
+      id: "sub-agent-inspect-session-codex",
+    });
+    const operator = page.getByTestId("orchestrator-operator-detail");
+    await expect(operator).toBeVisible();
+    elements = await expectExactRootAgentParity({
+      page,
+      root,
+      viewId: "orchestrator",
+      label: "Orchestrator operator detail",
+    });
+    expect(elements.map(({ id }) => id)).toEqual(
+      expect.arrayContaining([
+        "operator-tab-input",
+        "operator-tab-output",
+        "operator-tab-events",
+        "operator-tab-usage",
+        "operator-detail-close",
+      ]),
+    );
+    const operatorAudit = await inspectExactRootControls(root);
+    expect(operatorAudit.humanOnlyIds).toContain("operator-retry-session");
+    expect(elements.map(({ id }) => id)).not.toContain(
+      "operator-retry-session",
+    );
+    await viewInteract(page, "orchestrator", "agent-click", {
+      id: "operator-tab-output",
+    });
+    await expect(operator.getByRole("tab", { name: "Output" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    await viewInteract(page, "orchestrator", "agent-click", {
+      id: "operator-detail-close",
+    });
+    await expect(operator).toBeHidden();
+
+    const finalIds = (await listViewElements(page, "orchestrator")).map(
+      ({ id }) => id,
+    );
+    expect(finalIds).not.toContain("operator-detail-close");
+  });
+
   test("renders the expected rich build-room data and drives inspector controls", async ({
     page,
   }) => {

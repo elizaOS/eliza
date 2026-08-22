@@ -488,7 +488,7 @@ describe("CockpitSessionPane — drill-in (client mocked at the boundary)", () =
     );
   });
 
-  it("leaves no rendered drill-in control outside the agent bridge", async () => {
+  it("inventories every drill-in control as agent-addressable or human-only", async () => {
     const { container } = renderPane();
     await screen.findByTestId("orchestrator-user-message");
     const controls = Array.from(
@@ -498,14 +498,17 @@ describe("CockpitSessionPane — drill-in (client mocked at the boundary)", () =
     ).filter((control) => !control.closest('[aria-hidden="true"]'));
     expect(
       controls
-        .filter((control) => !control.closest("[data-agent-id]"))
+        .filter(
+          (control) =>
+            !control.closest('[data-agent-id], [data-agent-authority="human"]'),
+        )
         .map(
           (control) =>
             control.getAttribute("data-testid") ??
             control.getAttribute("aria-label") ??
             `${control.tagName.toLowerCase()}:${control.textContent?.trim()}:${control.className}`,
         ),
-      "every rendered Cockpit session control must have a data-agent-id",
+      "every rendered Cockpit session control must declare its activation authority",
     ).toEqual([]);
   });
 });

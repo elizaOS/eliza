@@ -65,7 +65,10 @@ src/
   CodingAgentTasksPanel.tsx        Task thread list + PTY session panel; re-exports OrchestratorWorkbench
   CodingAgentTasksPanel.interact.ts  View-bundle `interact` capability handler (split for Fast-Refresh compat)
   task-coordinator-view-bundle.ts  Vite view-bundle entry; re-exports all view components + interact handler
-  OrchestratorWorkbench.tsx        Multi-agent orchestration workbench (main UI); exports TaskInspector + useIsMobile/INSPECTOR_DRAWER_STYLE reused by the cockpit
+  OrchestratorWorkbench.tsx        Live task-list/timeline coordinator; re-exports TaskInspector + mobile geometry for cockpit compatibility
+  orchestrator-task-inspector.tsx  Status header, task inspector, add-agent and recovery controls
+  orchestrator-operator-detail.tsx Timeline/session detail drawer, tabs, event and usage inspection
+  orchestrator-workbench-list.tsx  Task-list filter and compact task metadata projection
   CockpitRoute.tsx                 /cockpit route: deck + drill-in + tap-in terminal (GUI-only)
   CockpitSessionPane.tsx           Drill-in single-room view (transcript/terminal + mobile inspector drawer)
   CockpitInteractiveTerminal.tsx   Tap-in real eliza-code PTY terminal (spawn→xterm→WS I/O)
