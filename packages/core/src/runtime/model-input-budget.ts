@@ -117,6 +117,10 @@ export function estimateTokensFromChars(chars: number): number {
 }
 
 export function estimateModelInputTokens(args: {
+	/** The complete immutable handler request. When present, it is the sole
+	 * measurement authority; the legacy field list remains for diagnostic and
+	 * compatibility callers that do not own the final dispatch boundary. */
+	completeRequest?: unknown;
 	messages?: readonly ChatMessage[];
 	promptSegments?: readonly PromptSegment[];
 	tools?: readonly ToolDefinition[];
@@ -131,6 +135,12 @@ export function estimateModelInputTokens(args: {
 	estimationMode?: "heuristic" | "utf8-upper-bound";
 }): number {
 	const estimationMode = args.estimationMode ?? "heuristic";
+	if (Object.hasOwn(args, "completeRequest")) {
+		const measured = textMeasure(args.completeRequest, estimationMode);
+		return estimationMode === "utf8-upper-bound"
+			? measured
+			: estimateTokensFromChars(measured);
+	}
 	const messageChars =
 		estimationMode === "utf8-upper-bound"
 			? textMeasure(args.messages, estimationMode)
@@ -176,6 +186,8 @@ export function estimateModelInputTokens(args: {
 }
 
 export function buildModelInputBudget(args: {
+	/** Complete final handler request; measured instead of the legacy fields. */
+	completeRequest?: unknown;
 	messages?: readonly ChatMessage[];
 	promptSegments?: readonly PromptSegment[];
 	tools?: readonly ToolDefinition[];

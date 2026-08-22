@@ -80,6 +80,58 @@ describe("AgentRuntime final model-input budget", () => {
 		expect(handler).not.toHaveBeenCalled();
 	});
 
+	it("rejects an oversized provider-options-only payload before dispatch", async () => {
+		const runtime = makeRuntime();
+		const handler = vi.fn(async () => "must not run");
+		runtime.registerModel(ModelType.TEXT_SMALL, handler, "tiny", 10, {
+			contextWindowTokens: 20_000,
+		});
+
+		await expect(
+			runtime.useModel(ModelType.TEXT_SMALL, {
+				prompt: "small",
+				providerOptions: { custom: { blob: "x".repeat(15_000) } },
+			}),
+		).rejects.toMatchObject({ code: "MODEL_INPUT_OVER_BUDGET" });
+		expect(handler).not.toHaveBeenCalled();
+	});
+
+	it("dispatches an immutable clone without mutating caller-owned data", async () => {
+		const runtime = makeRuntime();
+		const callerParams = {
+			prompt: "small",
+			messages: [{ role: "user" as const, content: "complete" }],
+			providerOptions: { custom: { mode: "exact" } },
+		};
+		const handler = vi.fn(async (_runtime, params: Record<string, unknown>) => {
+			expect(params).not.toBe(callerParams);
+			expect(params.messages).not.toBe(callerParams.messages);
+			expect(params.providerOptions).not.toBe(callerParams.providerOptions);
+			expect(Object.isFrozen(params)).toBe(true);
+			expect(Object.isFrozen(params.messages)).toBe(true);
+			expect(Object.isFrozen(params.providerOptions)).toBe(true);
+			expect(() => {
+				(params.providerOptions as Record<string, unknown>).late = "unmeasured";
+			}).toThrow();
+			return "ok";
+		});
+		runtime.registerModel(ModelType.TEXT_SMALL, handler, "small", 10, {
+			contextWindowTokens: 20_000,
+		});
+
+		await expect(
+			runtime.useModel(ModelType.TEXT_SMALL, callerParams),
+		).resolves.toBe("ok");
+		expect(handler).toHaveBeenCalledTimes(1);
+		expect(callerParams.providerOptions).toEqual({
+			custom: { mode: "exact" },
+		});
+		expect(() => {
+			callerParams.messages[0].content = "still caller-owned";
+			callerParams.providerOptions.custom.mode = "still mutable";
+		}).not.toThrow();
+	});
+
 	it("reserves the caller's requested output before dispatch", async () => {
 		const runtime = makeRuntime();
 		const handler = vi.fn(async () => "must not run");
