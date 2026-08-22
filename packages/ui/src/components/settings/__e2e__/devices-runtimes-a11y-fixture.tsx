@@ -1,14 +1,22 @@
 /** Deterministic real-component fixture for Devices & Runtimes accessibility. */
 import { createRoot } from "react-dom/client";
 
+import { createTranslator } from "../../../i18n";
+import { TranslationCtx } from "../../../state/TranslationContext.hooks";
 import { DevicesRuntimesSection } from "../DevicesRuntimesSection";
 
 const noOp = () => {};
+const translationValue = {
+  t: createTranslator("en"),
+  uiLanguage: "en" as const,
+  setUiLanguage: noOp,
+};
 
 function Fixture() {
   return (
-    <main className="mx-auto min-h-screen w-full max-w-5xl min-w-0 p-4 text-txt">
-      <DevicesRuntimesSection
+    <TranslationCtx.Provider value={translationValue}>
+      <main className="mx-auto min-h-screen w-full max-w-5xl min-w-0 p-4 text-txt">
+        <DevicesRuntimesSection
         targets={[
           {
             id: "local",
@@ -68,8 +76,9 @@ function Fixture() {
         onActivateLinuxTarget={noOp}
         onSetLinuxTargetRunning={noOp}
         onRevokeLinuxTarget={noOp}
-      />
-    </main>
+        />
+      </main>
+    </TranslationCtx.Provider>
   );
 }
 

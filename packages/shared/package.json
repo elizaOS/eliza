@@ -64,6 +64,16 @@
       "import": "./dist/index.js",
       "default": "./dist/index.js"
     },
+    "./i18n/language": {
+      "types": "./dist/i18n/language.d.ts",
+      "eliza-source": {
+        "types": "./src/i18n/language.ts",
+        "import": "./src/i18n/language.ts",
+        "default": "./src/i18n/language.ts"
+      },
+      "import": "./dist/i18n/language.js",
+      "default": "./dist/i18n/language.js"
+    },
     "./automation-node-contributors": {
       "types": "./dist/automation-node-contributors.d.ts",
       "eliza-source": {
