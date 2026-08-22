@@ -18,7 +18,11 @@ export function session(overrides: Partial<SessionInfo> = {}): SessionInfo {
     approvalPreset: "standard",
     createdAt: now,
     lastActivityAt: now,
-    metadata: { label: "demo" },
+    // Production create paths always stamp the spawning room (`metadata.roomId`
+    // / `originRoomId` / `taskRoomId`) — cancel's ownership scope
+    // (`requesterOwnsSession`) keys on those stamps, so the default fixture
+    // session is owned by the default `memory()` requester room.
+    metadata: { label: "demo", roomId: "room1" },
     ...overrides,
   };
 }

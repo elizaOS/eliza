@@ -46,14 +46,25 @@ import {
 const THREAD_ID = "aaaabbbb-1111-2222-3333-444455556666";
 
 // Force the direct `runPromptAndClose` path (deterministic single-turn) and
-// suppress the default-acceptance-criteria auto-verifier so the real service
-// used below doesn't fire it — both branches stop the session in `finally`,
-// so the stale-status bug is identical on either runner.
+// keep the completion VERIFIER out of scope so the lifecycle bridge is the
+// only thing under test:
+//  - `ELIZA_REQUIRE_GOAL_CONTRACT=0` stops default-acceptance-criteria
+//    generation (the minted task stays criteria-free);
+//  - `ELIZA_ORCHESTRATOR_AUTO_GOAL_VERIFY=0` stops the auto-verifier itself.
+//    Criteria-free no longer implies verifier-no-op: the criteria-free
+//    completion gate (upstream develop) finishes such tasks explicitly as
+//    `done` once deterministic gates pass, racing the `validating` assertion
+//    below. That gate's contract is pinned in `auto-goal-verify.test.ts`;
+//    here the documented flag-off fallback parks the task at `validating`
+//    deterministically. Both runner branches stop the session in `finally`,
+//    so the stale-status bug is identical on either runner.
 const PREV_SMITHERS = process.env.ELIZA_ORCHESTRATOR_SMITHERS;
 const PREV_GOAL_CONTRACT = process.env.ELIZA_REQUIRE_GOAL_CONTRACT;
+const PREV_AUTO_VERIFY = process.env.ELIZA_ORCHESTRATOR_AUTO_GOAL_VERIFY;
 beforeAll(() => {
   process.env.ELIZA_ORCHESTRATOR_SMITHERS = "0";
   process.env.ELIZA_REQUIRE_GOAL_CONTRACT = "0";
+  process.env.ELIZA_ORCHESTRATOR_AUTO_GOAL_VERIFY = "0";
 });
 afterAll(() => {
   if (PREV_SMITHERS === undefined)
@@ -62,6 +73,9 @@ afterAll(() => {
   if (PREV_GOAL_CONTRACT === undefined)
     delete process.env.ELIZA_REQUIRE_GOAL_CONTRACT;
   else process.env.ELIZA_REQUIRE_GOAL_CONTRACT = PREV_GOAL_CONTRACT;
+  if (PREV_AUTO_VERIFY === undefined)
+    delete process.env.ELIZA_ORCHESTRATOR_AUTO_GOAL_VERIFY;
+  else process.env.ELIZA_ORCHESTRATOR_AUTO_GOAL_VERIFY = PREV_AUTO_VERIFY;
 });
 
 /**

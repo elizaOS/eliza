@@ -456,7 +456,7 @@ describe("verifyGoalCompletion (orchestration paths)", () => {
     expect(result.inconclusive).toBe(true);
   });
 
-  it("durably records the complete model-call error; the summary is a named preview", async () => {
+  it("carries the complete model-call error in the summary and reports it durably", async () => {
     const longMessage = `provider exploded: ${"x".repeat(500)}COMPLETE-TAIL`;
     const runtime = makeMockRuntime({ shouldThrow: new Error(longMessage) });
     const result = await verifyGoalCompletion(runtime, {
@@ -465,12 +465,12 @@ describe("verifyGoalCompletion (orchestration paths)", () => {
       completionEvidence: "evidence",
     });
     expect(result.passed).toBe(false);
-    // The bounded summary names itself a preview of the durable record …
-    expect(result.summary).toContain(
-      "[error preview — complete detail in the reported-error log]",
-    );
-    expect(result.summary).not.toContain("COMPLETE-TAIL");
-    // … and the COMPLETE error reached runtime.reportError first.
+    expect(result.inconclusive).toBe(true);
+    // The inconclusive summary carries the COMPLETE error text — no preview
+    // cap (prompt-integrity: the verdict summary rides model-facing context).
+    expect(result.summary).toContain("COMPLETE-TAIL");
+    expect(result.summary).toContain("Verifier model call failed:");
+    // The full Error (stack, cause chain) also reached runtime.reportError.
     expect(runtime.reportError).toHaveBeenCalledTimes(1);
     const [scope, err] = runtime.reportError.mock.calls[0] as [string, Error];
     expect(scope).toBe("[goal-llm-verifier]");

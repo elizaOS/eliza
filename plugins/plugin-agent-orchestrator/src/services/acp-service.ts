@@ -4021,19 +4021,6 @@ export class AcpService extends Service {
       });
       throw err;
     }
-    // A stopped session's scratch workdir may have been reclaimed by
-    // workspace GC; spawning into a missing cwd surfaces as a bare
-    // posix_spawn ENOENT on the agent command (live 2026-08-19), which reads
-    // as a broken install. Name the real condition instead.
-    if (!existsSync(session.workdir)) {
-      const message = `session workspace no longer exists (${session.workdir}); it was likely reclaimed after completion`;
-      await this.store.updateStatus(session.id, "errored", message);
-      this.emitSessionEvent(session.id, "error", { message });
-      throw new ElizaError(message, {
-        code: "ACP_SESSION_WORKSPACE_RECLAIMED",
-        context: { sessionId: session.id, workdir: session.workdir },
-      });
-    }
     let promptCredentials: Record<string, string> | undefined;
     try {
       promptCredentials = await this.accountCredentialsForSession(session);
@@ -4049,6 +4036,27 @@ export class AcpService extends Service {
       );
       await this.recordAccountCredentialFailure(session, err, message, true);
       throw err;
+    }
+    // A stopped session's scratch workdir may have been reclaimed by
+    // workspace GC; spawning into a missing cwd surfaces as a bare
+    // posix_spawn ENOENT on the agent command (live 2026-08-19), which reads
+    // as a broken install. Name the real condition instead. Checked AFTER the
+    // pinned-account re-resolve so an exhausted pool keeps its typed
+    // fail-closed refusal (#24355); this path revokes the freshly minted
+    // reconnect lease too, id-guarded so a newer lease is never clobbered.
+    if (!existsSync(session.workdir)) {
+      const message = `session workspace no longer exists (${session.workdir}); it was likely reclaimed after completion`;
+      await this.revokeModelLease(
+        session.id,
+        "native_reconnect:workspace_reclaimed",
+        reconnectLease?.leaseId,
+      );
+      await this.store.updateStatus(session.id, "errored", message);
+      this.emitSessionEvent(session.id, "error", { message });
+      throw new ElizaError(message, {
+        code: "ACP_SESSION_WORKSPACE_RECLAIMED",
+        context: { sessionId: session.id, workdir: session.workdir },
+      });
     }
     const promptEnv: Record<string, string> = {
       ...(opts.env ?? {}),

@@ -231,17 +231,43 @@ describe("reviewDiff — empty diff rejects", () => {
   });
 });
 
-describe("reviewDiff — case-insensitive secret matching (parity with core)", () => {
-  it("blocks a LOWERCASE env-style credential (core compiles patterns with `i`)", () => {
+describe("reviewDiff — secret-pattern parity with core", () => {
+  it("blocks a lowercase compound env credential (core's env pattern lists it explicitly)", () => {
+    // Core's ENV-style pattern is deliberately case-SENSITIVE (`/…/g`): the
+    // uppercase branch catches `DATABASE_PASSWORD=…` while lowercase spellings
+    // are covered only through the unambiguous compound names it enumerates
+    // (api_key, client_secret, …). Parity means the gate matches exactly that.
     const diff = addedFileDiff("config.sh", [
-      "database_password=hunter2hunter2hunter2",
+      "api_key=hunter2hunter2hunter2",
     ]);
     const result = reviewDiff({ diff, changedFiles: ["config.sh"] });
     expect(result.passed).toBe(false);
     expect(result.blocking.some((f) => f.check === "secret")).toBe(true);
   });
 
-  it("blocks a lowercase `authorization: bearer …` header", () => {
+  it("blocks an UPPERCASE env-style credential via the case-sensitive env branch", () => {
+    const diff = addedFileDiff("config.sh", [
+      "DATABASE_PASSWORD=hunter2hunter2hunter2",
+    ]);
+    const result = reviewDiff({ diff, changedFiles: ["config.sh"] });
+    expect(result.passed).toBe(false);
+    expect(result.blocking.some((f) => f.check === "secret")).toBe(true);
+  });
+
+  it("does NOT flag a broad lowercase env name core's pattern deliberately skips", () => {
+    // Upstream core keeps the broad environment-name form case-sensitive:
+    // compiling bare `key`/`password` with `i` also matched ordinary source
+    // (`key = prefix + tag`) and corrupted code. `database_password` is not in
+    // core's lowercase compound-name list, so parity requires the gate NOT to
+    // block it — matching core exactly, no broader and no narrower.
+    const diff = addedFileDiff("config.sh", [
+      "database_password=hunter2hunter2hunter2",
+    ]);
+    const result = reviewDiff({ diff, changedFiles: ["config.sh"] });
+    expect(result.blocking.some((f) => f.check === "secret")).toBe(false);
+  });
+
+  it("blocks a lowercase `authorization: bearer …` header (bare core patterns still compile with `i`)", () => {
     const diff = addedFileDiff("req.ts", [
       'const h = "authorization: bearer abcdefghijklmnopqrstuvwxyz012345";',
     ]);
