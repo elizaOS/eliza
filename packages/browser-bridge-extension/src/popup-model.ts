@@ -92,7 +92,7 @@ export function derivePopupStatusModel(args: {
       });
     }
     if (state.connectionIssue === "recovery_required") {
-      return model("error", "Reconnect this browser in Eliza", {
+      return model("error", "Reset in Eliza, then reconnect", {
         kind: "recover",
         label: "Reconnect",
       });
