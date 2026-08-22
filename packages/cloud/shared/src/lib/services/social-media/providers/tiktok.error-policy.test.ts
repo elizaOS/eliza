@@ -14,7 +14,7 @@
  * without the exponential-backoff sleeps; `globalThis.fetch` supplies the raw
  * upstream JSON.
  */
-import { afterAll, afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
+import { afterAll, afterEach, beforeEach, describe, expect, it, mock, test } from "bun:test";
 import type { SocialCredentials } from "../../../types/social-media";
 import * as realRateLimit from "../rate-limit";
 
