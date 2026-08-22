@@ -83,9 +83,9 @@ function healthyPrimary(
         billingStatus: "active",
         unitPrice: 99,
         billingInterval: "day",
-        lastBilledAt: null,
-        nextBillingAt: null,
-        estimatedNextBillingAt: null,
+        lastBilledAt: "2026-08-20T10:00:00.000Z",
+        nextBillingAt: "2026-08-21T10:00:00.000Z",
+        estimatedNextBillingAt: "2026-08-21T10:00:00.000Z",
         totalBilled: 0,
         cancelEndpoint:
           "/api/v1/billing/resources/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/cancel?resourceType=container",
@@ -261,6 +261,10 @@ describe("buildAccountBillingSnapshot v2", () => {
       value: [
         {
           name: "exact-rate-container",
+          billingInterval: "day",
+          lastBilledAt: "2026-08-20T10:00:00.000Z",
+          nextBillingAt: "2026-08-21T10:00:00.000Z",
+          estimatedNextBillingAt: "2026-08-21T10:00:00.000Z",
           rateSegment: {
             status: "available",
             source: "compute_billing_rate_segments",
