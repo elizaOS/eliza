@@ -568,7 +568,9 @@ export class EscalationService {
     runtime: IAgentRuntime,
     escalationId: string,
   ): Promise<void> {
-    const state = escalationsFor(agentIdOf(runtime)).get(escalationId);
+    // Read-only: escalationsFor() would allocate an empty bucket for an
+    // unknown escalation id.
+    const state = activeEscalations.get(agentIdOf(runtime))?.get(escalationId);
     if (!state || state.resolved) return;
 
     const config = loadEscalationConfig();
@@ -717,6 +719,14 @@ export class EscalationService {
    */
   static _hasPendingTimerBucket(agentId: string): boolean {
     return pendingTimers.has(agentId);
+  }
+
+  /**
+   * Test-only: whether `activeEscalations` still holds a bucket for this agent,
+   * including an empty one. Read-only lookups must not allocate one.
+   */
+  static _hasActiveEscalationBucket(agentId: string): boolean {
+    return activeEscalations.has(agentId);
   }
 
   static async _resetDb(runtime: IAgentRuntime): Promise<void> {

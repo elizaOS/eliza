@@ -5,8 +5,10 @@
  * one agent's escalation absorb another's: these tests pin per-agent isolation
  * of the active escalation, of the persisted cache row, and of resolution,
  * while keeping same-agent coalescing (the documented behaviour) intact. They
- * also pin that empty per-agent timer buckets are deleted on both timer-fire
- * and resolve, so a long-lived process does not retain one Map per agent id.
+ * also pin that empty per-agent buckets are never retained — timer buckets are
+ * deleted on both timer-fire and resolve, and a read-only lookup for an unknown
+ * escalation allocates nothing — so a long-lived process does not retain one
+ * Map per agent id.
  */
 import type { IAgentRuntime } from "@elizaos/core";
 import { afterEach, describe, expect, test, vi } from "vitest";
@@ -222,5 +224,14 @@ describe("EscalationService per-agent isolation", () => {
     // pendingTimers.get(), not timersFor(), or this recreates an empty bucket.
     await EscalationService.resolveEscalation(first.id, runtime);
     expect(EscalationService._hasPendingTimerBucket("agent-a")).toBe(false);
+  });
+
+  test("checkEscalation does not allocate an escalation bucket for an unknown id", async () => {
+    const cache: CacheStore = new Map();
+    const runtime = makeRuntime("agent-a", cache);
+
+    await EscalationService.checkEscalation(runtime, "unknown-id");
+
+    expect(EscalationService._hasActiveEscalationBucket("agent-a")).toBe(false);
   });
 });
