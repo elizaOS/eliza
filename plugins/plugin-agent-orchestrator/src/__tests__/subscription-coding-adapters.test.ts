@@ -575,6 +575,7 @@ describe("Kimi user-attended spawn policy", () => {
 
     await service.spawnSession({
       agentType: "kimi",
+      workdir: workspaceRoot,
       subscriptionExecutionAuthorization: authorization,
       env: {
         KIMI_MODEL_NAME: "direct/model",
