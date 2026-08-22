@@ -2,7 +2,13 @@
 
 import type { IAgentRuntime, Memory } from "@elizaos/core/edge";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { webSearchEdgeAction, webSearchEdgePlugin } from "./edge";
+import {
+    runWebSearchEdge,
+    webSearchEdgeAction,
+    webSearchEdgePlugin,
+    webSearchSourceEvidence,
+    webSearchSourceUrls,
+} from "./edge";
 
 const ORIGINAL_FETCH = globalThis.fetch;
 
@@ -22,7 +28,19 @@ describe("webSearchEdgePlugin", () => {
                 jsonrpc: "2.0",
                 id: 1,
                 result: {
-                    content: [{ type: "text", text: "Current public result" }],
+                    content: [
+                        {
+                            type: "text",
+                            text: JSON.stringify({
+                                results: [
+                                    {
+                                        url: "https://example.com/current",
+                                        title: "Current public result",
+                                    },
+                                ],
+                            }),
+                        },
+                    ],
                 },
             })
         ) as typeof fetch;
@@ -36,11 +54,114 @@ describe("webSearchEdgePlugin", () => {
 
         expect(result).toMatchObject({
             success: true,
-            text: "Current public result",
             data: {
                 actionName: "WEB_SEARCH",
                 provider: "parallel",
                 query: "current public result",
+                observedAt: expect.any(Number),
+                sourceUrls: ["https://example.com/current"],
+                sources: [
+                    {
+                        url: "https://example.com/current",
+                        text: expect.stringContaining("Current public result"),
+                    },
+                ],
+            },
+        });
+    });
+
+    it("extracts structured and prose source URLs without accepting credentials", () => {
+        expect(
+            webSearchSourceUrls(
+                `${JSON.stringify({ results: [{ url: "https://example.com/a" }] })}\n` +
+                    "Source: https://news.example.org/story). Ignore https://u:p@example.net/private"
+            )
+        ).toEqual(["https://example.com/a", "https://news.example.org/story"]);
+    });
+
+    it("binds evidence to its containing result and bounds hostile traversal", () => {
+        expect(
+            webSearchSourceEvidence(
+                JSON.stringify({
+                    results: [
+                        { url: "https://example.com/a", text: "value A 10 USD" },
+                        { url: "https://example.com/b", text: "value B 20 USD" },
+                    ],
+                })
+            ).sources
+        ).toEqual([
+            {
+                url: "https://example.com/b",
+                text: expect.stringContaining("value B 20 USD"),
+            },
+            {
+                url: "https://example.com/a",
+                text: expect.stringContaining("value A 10 USD"),
+            },
+        ]);
+        const nested: Record<string, unknown> = {};
+        let cursor = nested;
+        for (let index = 0; index < 520; index += 1) {
+            const next: Record<string, unknown> = {};
+            cursor.next = next;
+            cursor = next;
+        }
+        expect(webSearchSourceEvidence(JSON.stringify(nested))).toMatchObject({
+            sources: [],
+            overflowed: true,
+        });
+    });
+
+    it("does not emit raw successful provider text through the channel callback", async () => {
+        const callback = vi.fn();
+        globalThis.fetch = vi.fn(async () =>
+            Response.json({
+                jsonrpc: "2.0",
+                id: 1,
+                result: {
+                    content: [
+                        {
+                            type: "text",
+                            text: '{"results":[{"url":"https://example.com/a","text":"secret-looking provider prose"}]}',
+                        },
+                    ],
+                },
+            })
+        ) as typeof fetch;
+
+        await webSearchEdgeAction.handler(
+            {} as IAgentRuntime,
+            {} as Memory,
+            undefined,
+            { parameters: { query: "public result" } },
+            callback
+        );
+
+        expect(callback).not.toHaveBeenCalled();
+    });
+
+    it("exposes the same traceable receipt through the direct edge runner", async () => {
+        globalThis.fetch = vi.fn(async () =>
+            Response.json({
+                jsonrpc: "2.0",
+                id: 1,
+                result: {
+                    content: [
+                        {
+                            type: "text",
+                            text: '{"results":[{"url":"https://weather.example/current"}]}',
+                        },
+                    ],
+                },
+            })
+        ) as typeof fetch;
+
+        await expect(runWebSearchEdge("weather now")).resolves.toMatchObject({
+            success: true,
+            data: {
+                actionName: "WEB_SEARCH",
+                query: "weather now",
+                sourceUrls: ["https://weather.example/current"],
             },
         });
     });
