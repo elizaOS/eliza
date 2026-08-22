@@ -49,7 +49,6 @@ import type { AppEnv } from "@/types/cloud-worker-env";
 import jwksRoute from "../.well-known/jwks.json/route";
 import oidcJwksRoute from "../.well-known/oidc/jwks.json/route";
 import oidcDiscoveryRoute from "../.well-known/openid-configuration/route";
-import { handleBlueBubblesWebhook } from "../webhooks/bluebubbles/route";
 import { mountRoutes, mountShardRoutes } from "./_router.generated";
 import { appsDeployTriggerDecision } from "./lib/apps-deploy-gate";
 import { redactSensitiveRequestPath } from "./lib/observability/request-path-redaction";
@@ -595,23 +594,6 @@ export async function createApp(
       health: "/api/health",
       openapi: "/api/openapi.json",
     });
-  });
-
-  app.get("/api/webhooks/blooio/:orgId/bluebubbles", (c) =>
-    c.json({ status: "ok", service: "bluebubbles-blooio-bridge" }),
-  );
-  app.post("/api/webhooks/blooio/:orgId/bluebubbles", (c) =>
-    handleBlueBubblesWebhook(c),
-  );
-  app.post("/api/webhooks/blooio/:orgId", async (c, next) => {
-    const bridge =
-      c.req.header("x-eliza-bridge") ??
-      c.req.query("bridge") ??
-      new URL(c.req.url).searchParams.get("bridge");
-    if (bridge === "bluebubbles") {
-      return handleBlueBubblesWebhook(c);
-    }
-    await next();
   });
 
   // Public language suggestion derived from the CDN IP-geo country header and

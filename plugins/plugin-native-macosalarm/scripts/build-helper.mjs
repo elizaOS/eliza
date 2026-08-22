@@ -30,10 +30,10 @@ const MACHO_CPU_TYPES = {
 };
 
 const THIN_MAGICS = new Map([
-  ["cefaedfe", "le"],
-  ["cffaedfe", "le"],
-  ["feedface", "be"],
-  ["feedfacf", "be"],
+  ["cefaedfe", { endian: "le", headerSize: 28 }],
+  ["cffaedfe", { endian: "le", headerSize: 32 }],
+  ["feedface", { endian: "be", headerSize: 28 }],
+  ["feedfacf", { endian: "be", headerSize: 32 }],
 ]);
 
 const FAT_MAGICS = new Map([
@@ -49,14 +49,61 @@ function readUInt32(bytes, offset, endian) {
     : bytes.readUInt32BE(offset);
 }
 
+function readUInt64(bytes, offset, endian) {
+  const value =
+    endian === "le"
+      ? bytes.readBigUInt64LE(offset)
+      : bytes.readBigUInt64BE(offset);
+  return value <= BigInt(Number.MAX_SAFE_INTEGER) ? Number(value) : undefined;
+}
+
+function readThinMachOCpuType(bytes) {
+  if (bytes.length < 4) return undefined;
+
+  const thin = THIN_MAGICS.get(bytes.subarray(0, 4).toString("hex"));
+  if (!thin || bytes.length < thin.headerSize) return undefined;
+
+  const fileType = readUInt32(bytes, 12, thin.endian);
+  const commandCount = readUInt32(bytes, 16, thin.endian);
+  const commandBytes = readUInt32(bytes, 20, thin.endian);
+  const commandRegionEnd = thin.headerSize + commandBytes;
+  if (
+    fileType !== 2 ||
+    commandCount === 0 ||
+    commandBytes < commandCount * 8 ||
+    !Number.isSafeInteger(commandRegionEnd) ||
+    commandRegionEnd > bytes.length
+  ) {
+    return undefined;
+  }
+
+  let commandOffset = thin.headerSize;
+  for (let index = 0; index < commandCount; index += 1) {
+    if (commandOffset + 8 > commandRegionEnd) return undefined;
+    const commandSize = readUInt32(bytes, commandOffset + 4, thin.endian);
+    const nextCommandOffset = commandOffset + commandSize;
+    if (
+      commandSize < 8 ||
+      commandSize % 4 !== 0 ||
+      !Number.isSafeInteger(nextCommandOffset) ||
+      nextCommandOffset > commandRegionEnd
+    ) {
+      return undefined;
+    }
+    commandOffset = nextCommandOffset;
+  }
+  if (commandOffset !== commandRegionEnd) return undefined;
+
+  return readUInt32(bytes, 4, thin.endian);
+}
+
 /** Returns the CPU types declared by a thin or universal Mach-O header. */
 export function readMachOCpuTypes(bytes) {
+  const thinCpuType = readThinMachOCpuType(bytes);
+  if (thinCpuType !== undefined) return [thinCpuType];
   if (bytes.length < 8) return [];
 
   const magic = bytes.subarray(0, 4).toString("hex");
-  const thinEndian = THIN_MAGICS.get(magic);
-  if (thinEndian) return [readUInt32(bytes, 4, thinEndian)];
-
   const fat = FAT_MAGICS.get(magic);
   if (!fat) return [];
 
@@ -67,7 +114,33 @@ export function readMachOCpuTypes(bytes) {
 
   const cpuTypes = [];
   for (let index = 0; index < sliceCount; index += 1) {
-    cpuTypes.push(readUInt32(bytes, 8 + index * fat.entrySize, fat.endian));
+    const entryOffset = 8 + index * fat.entrySize;
+    const cpuType = readUInt32(bytes, entryOffset, fat.endian);
+    const sliceOffset =
+      fat.entrySize === 20
+        ? readUInt32(bytes, entryOffset + 8, fat.endian)
+        : readUInt64(bytes, entryOffset + 8, fat.endian);
+    const sliceSize =
+      fat.entrySize === 20
+        ? readUInt32(bytes, entryOffset + 12, fat.endian)
+        : readUInt64(bytes, entryOffset + 16, fat.endian);
+
+    if (
+      sliceOffset === undefined ||
+      sliceSize === undefined ||
+      sliceOffset < headerBytes ||
+      sliceSize === 0 ||
+      !Number.isSafeInteger(sliceOffset + sliceSize) ||
+      sliceOffset + sliceSize > bytes.length
+    ) {
+      return [];
+    }
+
+    const sliceCpuType = readThinMachOCpuType(
+      bytes.subarray(sliceOffset, sliceOffset + sliceSize),
+    );
+    if (sliceCpuType !== cpuType) return [];
+    cpuTypes.push(cpuType);
   }
   return cpuTypes;
 }

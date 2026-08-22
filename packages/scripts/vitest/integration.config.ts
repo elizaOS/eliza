@@ -245,19 +245,6 @@ const integrationResolveAlias: ModuleAlias[] = [
   ...buildWorkspaceSourceAliases(elizaWorkspaceRoot),
   ...getOptionalInstalledPackageAliases(repoRoot, [
     {
-      find: "@elizaos/plugin-signal",
-      packageName: "@elizaos/plugin-signal",
-      options: {
-        fallbackPath: path.join(
-          elizaWorkspaceRoot,
-          "plugins",
-          "plugin-signal",
-          "src",
-          "index",
-        ),
-      },
-    },
-    {
       find: "@elizaos/plugin-sql",
       packageName: "@elizaos/plugin-sql",
       options: {

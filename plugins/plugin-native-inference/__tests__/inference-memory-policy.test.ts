@@ -105,6 +105,35 @@ describe("resolveInferenceIdleUnloadMs", () => {
     ).toBe(0);
   });
 
+  it("ignores a trailing-garbage override instead of parsing its prefix", () => {
+    // parseInt("0junk") is 0, and 0 is documented as "disables" — so a typo
+    // silently turned idle unloading off and leaked the loaded model.
+    expect(
+      resolveInferenceIdleUnloadMs("standard", {
+        ELIZA_LOCAL_IDLE_UNLOAD_MS: "0junk",
+      }),
+    ).toBe(STANDARD_IDLE_UNLOAD_MS);
+    expect(
+      resolveInferenceIdleUnloadMs("standard", {
+        ELIZA_LOCAL_IDLE_UNLOAD_MS: "60000junk",
+      }),
+    ).toBe(STANDARD_IDLE_UNLOAD_MS);
+  });
+
+  it("keeps accepting a signed override and rejects one past the safe range", () => {
+    // `parseInt` accepted "+60000"; rejecting it would be a regression.
+    expect(
+      resolveInferenceIdleUnloadMs("standard", {
+        ELIZA_LOCAL_IDLE_UNLOAD_MS: "+60000",
+      }),
+    ).toBe(60_000);
+    expect(
+      resolveInferenceIdleUnloadMs("standard", {
+        ELIZA_LOCAL_IDLE_UNLOAD_MS: "9007199254740993",
+      }),
+    ).toBe(STANDARD_IDLE_UNLOAD_MS);
+  });
+
   it("ignores negative / garbage overrides", () => {
     expect(
       resolveInferenceIdleUnloadMs("constrained", {

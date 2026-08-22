@@ -42,9 +42,9 @@ describe("runtimeModelContextProvider", () => {
 			OPENAI_MEDIUM_MODEL: "gpt-oss-120b",
 			OPENAI_LARGE_MODEL: "gpt-oss-120b",
 			OPENAI_BASE_URL: "https://api.cerebras.ai/v1",
-			ELIZA_DEFAULT_AGENT_TYPE: "opencode",
-			ELIZA_OPENCODE_MODEL_POWERFUL: "gpt-oss-120b",
-			ELIZA_OPENCODE_BASE_URL: "https://api.cerebras.ai/v1",
+			ELIZA_DEFAULT_AGENT_TYPE: "elizaos",
+			ELIZA_CODE_MODEL_POWERFUL: "gpt-oss-120b",
+			ELIZA_CODE_BASE_URL: "https://api.cerebras.ai/v1",
 		});
 
 		const result = await runtimeModelContextProvider.get(
@@ -59,9 +59,9 @@ describe("runtimeModelContextProvider", () => {
 		expect(result.text).toContain(
 			"Response handler endpoint host: api.cerebras.ai",
 		);
-		expect(result.text).toContain("Default coding sub-agent: opencode");
-		expect(result.text).toContain("OpenCode model: gpt-oss-120b");
-		expect(result.text).toContain("OpenCode endpoint host: api.cerebras.ai");
+		expect(result.text).toContain("Default coding sub-agent: elizaos");
+		expect(result.text).toContain("Eliza Code model: gpt-oss-120b");
+		expect(result.text).toContain("Eliza Code endpoint host: api.cerebras.ai");
 		expect(result.text).not.toContain("Claude 3.5");
 		expect(result.data?.responseHandlerModel).toBe("gpt-oss-120b");
 		expect(result.data?.responseHandlerEndpointHost).toBe("api.cerebras.ai");
@@ -336,7 +336,7 @@ describe("runtimeModelContextProvider", () => {
 	it("stays silent for unrelated live-data questions", async () => {
 		const runtime = makeRuntime({
 			OPENAI_LARGE_MODEL: "gpt-oss-120b",
-			ELIZA_DEFAULT_AGENT_TYPE: "opencode",
+			ELIZA_DEFAULT_AGENT_TYPE: "elizaos",
 		});
 
 		const result = await runtimeModelContextProvider.get(
@@ -352,13 +352,13 @@ describe("runtimeModelContextProvider", () => {
 	it("stays silent for sub-agent completion transcripts", async () => {
 		const runtime = makeRuntime({
 			OPENAI_LARGE_MODEL: "gpt-oss-120b",
-			ELIZA_DEFAULT_AGENT_TYPE: "opencode",
+			ELIZA_DEFAULT_AGENT_TYPE: "elizaos",
 		});
 
 		const result = await runtimeModelContextProvider.get(
 			runtime,
 			makeMessage(
-				"[sub-agent: Build a static web app (opencode) — task_complete]\nCreated files and verified https://example.test/apps/demo/",
+				"[sub-agent: Build a static web app (elizaos) — task_complete]\nCreated files and verified https://example.test/apps/demo/",
 				{
 					source: "sub_agent",
 					metadata: { subAgent: true, subAgentEvent: "task_complete" },

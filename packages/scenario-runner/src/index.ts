@@ -25,6 +25,7 @@ export {
   SCENARIO_NATIVE_EXPORT_SCHEMA,
   SCENARIO_NATIVE_EXPORT_VERSION,
 } from "./native-export.ts";
+export * from "./production-manifest.ts";
 export * from "./provider-qualified/index.ts";
 export {
   buildAggregate,

@@ -171,7 +171,7 @@ describe("MESSAGE op=list_connections", () => {
 		expect(result.text).not.toContain("Matrix (unavailable)");
 	});
 
-	it("bounds the roster at 8 connectors", async () => {
+	it("returns the complete connector roster", async () => {
 		const many = Array.from({ length: 12 }, (_, i) =>
 			mockConnector(`platform-${i}`, `Platform ${i}`, ["#room"]),
 		);
@@ -181,8 +181,8 @@ describe("MESSAGE op=list_connections", () => {
 			connectionCount: number;
 			connections: unknown[];
 		};
-		expect(data.connections.length).toBe(8);
-		expect(data.connectionCount).toBe(8);
+		expect(data.connections.length).toBe(12);
+		expect(data.connectionCount).toBe(12);
 	});
 
 	it("returns zero platforms when no connector exposes listRooms", async () => {
@@ -757,6 +757,7 @@ describe("MESSAGE op=send room-first name resolution (over-routing fix)", () => 
 		hookCandidates?: Array<Record<string, unknown>>;
 		getEntityById?: (id: string) => Promise<unknown>;
 		getRelationships?: () => Promise<unknown[]>;
+		allowEntityModel?: boolean;
 	}) {
 		const sends: Array<{ target: Record<string, unknown>; text: string }> = [];
 		const resolveTargets = vi.fn(async () => options.hookCandidates ?? []);
@@ -776,6 +777,7 @@ describe("MESSAGE op=send room-first name resolution (over-routing fix)", () => 
 			],
 			getRoom: async () => roomFixture(),
 			getEntitiesForRoom: async () => options.roomEntities,
+			getMemories: async () => [],
 			getEntityById: (options.getEntityById ??
 				(async () => null)) as IAgentRuntime["getEntityById"],
 			getRelationships: (options.getRelationships ??
@@ -796,6 +798,9 @@ describe("MESSAGE op=send room-first name resolution (over-routing fix)", () => 
 				return { id: "00000000-0000-0000-0000-0000000000ff" } as Memory;
 			},
 			useModel: async () => {
+				if (options.allowEntityModel) {
+					return { type: "NO_MATCH" };
+				}
 				throw new Error(
 					"room-first resolution must be deterministic — no model call",
 				);
@@ -913,6 +918,33 @@ describe("MESSAGE op=send room-first name resolution (over-routing fix)", () => 
 		expect(
 			(result.data as { candidates?: unknown[] })?.candidates,
 		).toHaveLength(2);
+		expect(sends).toHaveLength(0);
+	});
+
+	it("returns every connector target when more than eight are ambiguous", async () => {
+		const candidates = Array.from({ length: 11 }, (_, index) => ({
+			target: { source: "discord", entityId: `platform-${index}` },
+			label: `@vega-${index}`,
+			kind: "user",
+			score: 0.9,
+			contexts: [],
+		}));
+		const { runtime, sends } = harness({
+			roomEntities: [],
+			hookCandidates: candidates,
+			allowEntityModel: true,
+		});
+		const result = await send(runtime, {
+			target: "vega",
+			message: "take a break",
+		});
+
+		expect(result.success).toBe(false);
+		expect((result.data as { error?: string })?.error).toBe("TARGET_AMBIGUOUS");
+		expect(
+			(result.data as { candidates?: unknown[] })?.candidates,
+		).toHaveLength(11);
+		expect(result.text).toContain("@vega-10");
 		expect(sends).toHaveLength(0);
 	});
 });

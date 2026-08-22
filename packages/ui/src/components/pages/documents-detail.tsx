@@ -614,7 +614,7 @@ export function DocumentViewer({
                   />
                 ) : previewText ? (
                   <pre className="custom-scrollbar max-h-[16rem] overflow-auto whitespace-pre-wrap break-words text-sm leading-relaxed text-txt/88">
-                    {previewText.slice(0, 2000)}
+                    {previewText}
                   </pre>
                 ) : (
                   <div className="py-6 text-center text-xs text-muted">

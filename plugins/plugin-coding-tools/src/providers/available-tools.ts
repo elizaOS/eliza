@@ -14,6 +14,9 @@ import { CODING_TOOLS_CONTEXTS } from "../types.js";
 
 const TOOL_NAMES = [
   "FILE",
+  "READ",
+  "WRITE",
+  "EDIT",
   "SHELL",
   "WEB_FETCH",
   "WEB_SEARCH",
@@ -41,7 +44,7 @@ export const availableToolsProvider: Provider = {
     const lines = [
       "# Native coding tools",
       "",
-      "FILE reads/writes/searches, SHELL runs commands plus background sessions, WEB_FETCH reads public HTTPS pages, WEB_SEARCH researches the web, and WORKTREE manages git worktrees.",
+      "READ, WRITE, and EDIT provide focused file operations; FILE retains grep/glob/list and compatibility operations. SHELL runs commands plus background sessions, WEB_FETCH reads public HTTPS pages, WEB_SEARCH researches the web, and WORKTREE manages git worktrees.",
       "Use absolute workspace paths unless a tool says it defaults to session cwd. Configured private/system paths are blocked.",
       "SHELL background subactions: start_background returns a stable handle; poll_background reads complete incremental stdout/stderr with offsets and rejects if the complete-capture ceiling is exceeded; write_background sends stdin; kill_background terminates; list_background shows sessions.",
       "",

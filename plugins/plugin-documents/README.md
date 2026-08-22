@@ -30,6 +30,8 @@ Documents are stored as memories in the runtime's `documents` table and chunked 
 | POST   | `/api/documents/bulk` | Upload up to 100 documents at once |
 | POST   | `/api/documents/url` | Ingest a URL or YouTube transcript: `{ url, scope?, metadata? }` |
 | PATCH  | `/api/documents/:id` | Update document text (only for non-bundled, non-character, text-backed documents) |
+| PATCH  | `/api/documents/:id/access` | Replace explicit entity read grants (OWNER or current room ADMIN) |
+| GET    | `/api/documents/:id/access` | Read explicit entity grants under the same management authority |
 | DELETE | `/api/documents/:id` | Delete document and all its fragments |
 
 ## Document scopes
@@ -41,7 +43,25 @@ Documents are stored as memories in the runtime's `documents` table and chunked 
 | `user-private` | Scoped to a specific user entity |
 | `agent-private` | OWNER, AGENT, and RUNTIME |
 
-The caller's role is resolved from the `x-eliza-entity-id` / `x-eliza-actor-entity-id` request headers and the `ELIZA_ADMIN_ENTITY_ID` runtime setting.
+The caller's role comes from the authenticated `AccessContext` supplied by the
+host route boundary. A request without that context returns `401`; request
+headers and `ELIZA_ADMIN_ENTITY_ID` never create an authenticated caller. Roles
+remain exact at this boundary: ADMIN is not OWNER, GUEST is not USER, and an
+unresolved role is rejected. Guests may read global documents in rooms where
+they are current members, but cannot read private scopes or mutate documents.
+List, facet, search, single-document, and fragment reads are resolved by
+`DocumentService` with that authenticated context. Routes never fetch a parent
+row, scan the document tables, or rank search results and then attempt to apply
+authorization locally. List pagination and facet counts are constructed only
+from the service-authorized set; fragment counts use the authorized parent and
+fragment path.
+PATCH and DELETE resolve mutation authority through the same service. Deletes
+use the adapter's atomic snapshot operation instead of route-managed fragment
+and parent deletion.
+Direct grants are independent of room membership for reads, but never grant
+mutation authority and never open `agent-private` documents. Grant replacement
+is atomic, validates every entity against the current agent, and is limited to
+OWNER or a current room ADMIN for `global` and `user-private` documents.
 
 ## Configuration
 

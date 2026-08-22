@@ -41,9 +41,10 @@ provider always requires an exact fixture or explicit resolver:
   `/api/mcp/status` route capability reporting for the discovered fixture tool
   and resource.
 - `deterministic-workflow-actions-routes` covers real embedded workflow services
-  from `@elizaos/plugin-workflow` by seeding and executing a Manual Trigger ->
-  Set workflow, then asserting `WORKFLOW` execution listing, `/workflows/:id`,
-  `/executions`, and exact runData output.
+  from `@elizaos/plugin-workflow` by tagging, seeding, and executing a native
+  Smithers workflow, then asserting `WORKFLOW` execution listing, canonical
+  `/api/workflow/workflows/:id` read routes, native run events, and exact
+  persisted execution input.
 - `deterministic-github-actions-routes` covers the real GitHub promoted issue
   parent `GITHUB` router, promoted issue actions (`GITHUB_ISSUE_CREATE`,
   assign, close, reopen, comment, label), `GITHUB_PR_LIST`,

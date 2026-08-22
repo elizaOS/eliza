@@ -375,10 +375,16 @@ function getCodexSdkSession(
   return session;
 }
 
-function parseTimeout(value: string | undefined): number | undefined {
+/** Parse a strictly positive timeout or restart cadence. Exported for tests. */
+export function parseTimeout(value: string | undefined): number | undefined {
   if (value === undefined) return undefined;
-  const n = Number.parseInt(value, 10);
-  return Number.isFinite(n) && n > 0 ? n : undefined;
+  // `Number.parseInt` stops at the first non-digit, so "300junk" parsed to 300
+  // and was taken as a deliberate setting. Require the whole trimmed value to
+  // be decimal; the sign is kept because `parseInt` accepted it, and the `> 0`
+  // check below stays the range authority.
+  const trimmed = value.trim();
+  const n = /^[+-]?\d+$/.test(trimmed) ? Number(trimmed) : Number.NaN;
+  return Number.isSafeInteger(n) && n > 0 ? n : undefined;
 }
 
 /** Turn-timeout parse (#16553): like {@link parseTimeout}, but an explicit
@@ -387,8 +393,13 @@ function parseTimeout(value: string | undefined): number | undefined {
  *  bounded default applies. Exported for tests. */
 export function parseTurnTimeout(value: string | undefined): number | undefined {
   if (value === undefined) return undefined;
-  const n = Number.parseInt(value, 10);
-  if (!Number.isFinite(n) || n < 0) return undefined;
+  // Same prefix-parse hole, and it matters more here: `0` is the documented
+  // opt-out to an unbounded turn, so "0junk" and "0.5" both truncated to 0 and
+  // silently REMOVED the turn timeout rather than falling back to the bounded
+  // default. An explicit "0" is still honoured.
+  const trimmed = value.trim();
+  const n = /^[+-]?\d+$/.test(trimmed) ? Number(trimmed) : Number.NaN;
+  if (!Number.isSafeInteger(n) || n < 0) return undefined;
   return n;
 }
 
