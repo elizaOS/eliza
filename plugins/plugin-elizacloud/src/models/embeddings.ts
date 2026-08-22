@@ -1,5 +1,9 @@
+/**
+ * Registers Cloud embedding handlers and validates dimension configuration before dispatch.
+ */
 import type { IAgentRuntime, TextEmbeddingParams } from "@elizaos/core";
 import {
+  ElizaError,
   logger,
   ModelType,
   timeInferenceSpan,
@@ -93,11 +97,7 @@ function getEmbeddingConfig(runtime: IAgentRuntime) {
     "ELIZAOS_CLOUD_EMBEDDING_MODEL",
     "text-embedding-3-small"
   );
-  // `Number.parseInt` stops at the first non-digit, so "1536junk" and "1536.9"
-  // both parsed to 1536 — a value that then PASSES the allowlist below, which
-  // is what makes this worth fixing: the guard is already here and reports the
-  // truncated number rather than what the operator wrote. Require the whole
-  // trimmed value to be decimal so a malformed setting reaches that error.
+  // Prefix parsing would turn a malformed setting into a valid but unintended dimension.
   const rawDimension =
     getSetting(runtime, "ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS", "1536") || "1536";
   const trimmedDimension = rawDimension.trim();
@@ -106,9 +106,19 @@ function getEmbeddingConfig(runtime: IAgentRuntime) {
   ) as (typeof VECTOR_DIMS)[keyof typeof VECTOR_DIMS];
 
   if (!Object.values(VECTOR_DIMS).includes(embeddingDimension)) {
-    const errorMsg = `Invalid embedding dimension: ${JSON.stringify(rawDimension)}. Must be one of: ${Object.values(VECTOR_DIMS).join(", ")}`;
-    logger.error(errorMsg);
-    throw new Error(errorMsg);
+    const allowedDimensions = Object.values(VECTOR_DIMS);
+    throw new ElizaError(
+      `Invalid ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS value ${JSON.stringify(rawDimension)}; expected one of ${allowedDimensions.join(", ")}`,
+      {
+        code: "ELIZA_CLOUD_EMBEDDING_DIMENSION_INVALID",
+        context: {
+          setting: "ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS",
+          value: rawDimension,
+          allowedDimensions,
+        },
+        severity: "fatal",
+      },
+    );
   }
 
   return { embeddingModelName, embeddingDimension };
