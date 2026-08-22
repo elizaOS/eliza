@@ -38,8 +38,17 @@ export const DEFAULT_CONTEXT_DEFINITIONS: readonly ContextDefinition[] =
 		{
 			id: "general",
 			label: "General",
+			// The current conversation's own history must be nameable here: a
+			// group-chat "what were the last 100 messages in this chat, summary?"
+			// (live 2026-08-21) routed to contexts=["general"], whose catalog line
+			// carried no channel-history vocabulary and whose surface had no
+			// message-history tool, so the planner honestly refused content every
+			// participant can already scroll. CHANNEL_RECAP registers under this
+			// context; cross-channel/inbox search stays gated in messaging.
 			description:
-				"Normal conversation and public agent behavior. Use when the reply needs general agent state but no tool work.",
+				"Normal conversation and public agent behavior. Use when the reply needs general agent state but no other context's tools. Also covers reading back or summarizing the current chat itself — 'summarize this chat', 'recap the channel', 'what were the last 100 messages', 'what did people say here earlier' — via the room-scoped CHANNEL_RECAP tool; cross-channel or inbox-wide message work stays in messaging.",
+			descriptionCompressed:
+				"Chat + current-channel history recall: 'summarize this chat', 'recap the channel', last N messages here",
 			sensitivity: "public",
 			cacheStable: true,
 			cacheScope: "global",

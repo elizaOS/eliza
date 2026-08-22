@@ -138,6 +138,7 @@ import { readAttachmentAction } from "../working-memory/readAttachmentAction.ts"
 // Direct leaf imports — see comment in
 // ../advanced-capabilities/index.ts for the Bun.build mis-rewrite that
 // requires bypassing barrels here too.
+import { channelRecapAction } from "./actions/channel-recap.ts";
 import { channelTopicSearchAction } from "./actions/channel-topic-search.ts";
 import { choiceAction } from "./actions/choice.ts";
 import { ignoreAction } from "./actions/ignore.ts";
@@ -1447,6 +1448,7 @@ export const basicActions = [
 	withCanonicalActionDocs(ignoreAction),
 	withCanonicalActionDocs(noneAction),
 	withCanonicalActionDocs(channelTopicSearchAction),
+	withCanonicalActionDocs(channelRecapAction),
 ];
 
 /**

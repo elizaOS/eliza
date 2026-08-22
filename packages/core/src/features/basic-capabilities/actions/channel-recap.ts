@@ -1,0 +1,245 @@
+/**
+ * CHANNEL_RECAP — reads back the recent stored message history of the room the
+ * triggering message arrived in, so a group-chat sender can ask for a recap,
+ * summary, or "the last N messages" of their own channel. Live evidence
+ * 2026-08-21: that ask routed to contexts=["general"], whose planner surface
+ * carried no message-history tool (SEARCH_MESSAGES lives behind the ADMIN
+ * messaging/email umbrella), so the agent honestly refused a request whose
+ * content every room participant can already scroll.
+ *
+ * Room scoping is structural, not parametric: the handler reads only
+ * `message.roomId` and exposes no room/channel selector, so a request from
+ * room A can never return room B content and cross-room/inbox-wide search
+ * stays gated on the messaging umbrella exactly as before. The returned text
+ * is model-facing and complete — every rendered message carries its full
+ * stored text, chronologically ordered. The only bound is
+ * `CHANNEL_RECAP_MAX_FETCH`, a documented storage read bound on how many rows
+ * are pulled (never a text cap); exceeding it is reported explicitly in the
+ * result rather than silently clamped.
+ */
+import { getEntityDetails } from "../../../entities.ts";
+import { isInternalBridgeMessage } from "../../../messaging/automated-turns.ts";
+import type {
+	Action,
+	ActionExample,
+	ActionResult,
+	AgentContext,
+	CustomMetadata,
+	Entity,
+	HandlerOptions,
+	IAgentRuntime,
+	Memory,
+	State,
+	UUID,
+} from "../../../types/index.ts";
+import { hasActionContext } from "../../../utils/action-validation.ts";
+import { formatMessages } from "../../../utils.ts";
+
+export const CHANNEL_RECAP_CONTEXTS = ["general"] satisfies AgentContext[];
+
+/** Messages rendered when the caller does not name a count. */
+export const CHANNEL_RECAP_DEFAULT_COUNT = 50;
+
+/**
+ * Storage read bound: the most rows a single recap pulls from the message
+ * store. A read bound on the DB fetch, not a cap on rendered text — every
+ * fetched message is rendered complete. Requests above it are answered with
+ * this many newest messages plus an explicit statement of the bound.
+ */
+export const CHANNEL_RECAP_MAX_FETCH = 500;
+
+function resolveRequestedCount(options?: HandlerOptions): number | undefined {
+	const raw =
+		options?.parameters && typeof options.parameters === "object"
+			? (options.parameters as Record<string, unknown>).count
+			: undefined;
+	if (typeof raw === "number" && Number.isFinite(raw)) return Math.floor(raw);
+	if (typeof raw === "string") {
+		const parsed = Number(raw.trim());
+		if (Number.isFinite(parsed)) return Math.floor(parsed);
+	}
+	return undefined;
+}
+
+/**
+ * Historical rooms can contain senders whose entity row is gone (they left the
+ * room). Mirror the RECENT_MESSAGES provider's fallback: synthesize a
+ * formatting entity from the message's stamped `entityName` metadata so the
+ * transcript keeps a real name instead of "Unknown User".
+ */
+function fallbackFormattingEntities(
+	known: readonly Entity[],
+	messages: readonly Memory[],
+): Entity[] {
+	const byId = new Map<UUID, Entity>();
+	for (const entity of known) {
+		if (entity.id) byId.set(entity.id, entity);
+	}
+	for (const memory of messages) {
+		if (!memory.entityId || byId.has(memory.entityId)) continue;
+		const metadata = memory.metadata as CustomMetadata | undefined;
+		const entityName =
+			typeof metadata?.entityName === "string"
+				? metadata.entityName.trim()
+				: "";
+		if (entityName.length === 0) continue;
+		byId.set(memory.entityId, {
+			id: memory.entityId,
+			agentId: memory.agentId,
+			names: [entityName],
+			metadata: { name: entityName, userName: entityName },
+		} as Entity);
+	}
+	return Array.from(byId.values());
+}
+
+export const channelRecapAction: Action = {
+	name: "CHANNEL_RECAP",
+	contexts: [...CHANNEL_RECAP_CONTEXTS],
+	// Deliberately no roleGate: this is the CURRENT room's transcript — content
+	// every participant can already read in their client (same GUEST-floor
+	// rationale as the RECENT_MESSAGES provider). Cross-room and inbox-wide
+	// reads stay on the ADMIN-gated MESSAGE umbrella.
+	description:
+		"Read back the recent message history of the CURRENT room/channel — the conversation this request arrived in — complete and in chronological order, so the reply can summarize, recap, or quote it: 'summarize this chat', 'recap the channel', 'what were the last 100 messages', 'what did people say here earlier'. Always scoped to this room only; searching other rooms, channels, or inboxes stays on MESSAGE.",
+	descriptionCompressed:
+		"read current room's own recent history for recap/summary/last-N-messages; this room only, cross-channel search stays on MESSAGE",
+	routingHint:
+		"recap/summarize/read back THIS chat's history -> CHANNEL_RECAP; cross-channel or inbox search -> MESSAGE (NOT this action)",
+	similes: [
+		"ROOM_HISTORY",
+		"CHAT_HISTORY",
+		"SUMMARIZE_CHAT",
+		"RECAP_CHANNEL",
+		"READ_RECENT_ROOM_MESSAGES",
+		"LAST_MESSAGES",
+	],
+	parameters: [
+		{
+			name: "count",
+			description: `How many most-recent messages to read back (default ${CHANNEL_RECAP_DEFAULT_COUNT}; storage read bound ${CHANNEL_RECAP_MAX_FETCH}).`,
+			required: false,
+			schema: {
+				type: "number" as const,
+				minimum: 1,
+				maximum: CHANNEL_RECAP_MAX_FETCH,
+			},
+		},
+	],
+	examples: [
+		[
+			{
+				name: "User",
+				content: {
+					text: "what were the last 100 messages in this chat? give me a summary",
+				},
+			},
+			{
+				name: "Agent",
+				content: {
+					text: "Reading back this channel's history.",
+					action: "CHANNEL_RECAP",
+				},
+			},
+		],
+	] as ActionExample[][],
+
+	validate: async (
+		_runtime: IAgentRuntime,
+		message: Memory,
+		state?: State,
+	): Promise<boolean> =>
+		hasActionContext(message, state, { contexts: CHANNEL_RECAP_CONTEXTS }),
+
+	handler: async (
+		runtime: IAgentRuntime,
+		message: Memory,
+		_state?: State,
+		options?: HandlerOptions,
+	): Promise<ActionResult> => {
+		const roomId = message.roomId;
+		if (!roomId) {
+			return {
+				success: false,
+				text: "CHANNEL_RECAP requires a room-bound message; this message has no roomId.",
+				values: { success: false },
+				data: { actionName: "CHANNEL_RECAP" },
+			};
+		}
+
+		const requestedCount = resolveRequestedCount(options);
+		const validRequested =
+			requestedCount !== undefined && requestedCount >= 1
+				? requestedCount
+				: undefined;
+		const fetchCount = Math.min(
+			validRequested ?? CHANNEL_RECAP_DEFAULT_COUNT,
+			CHANNEL_RECAP_MAX_FETCH,
+		);
+
+		// Newest-first from the store (adapter default order); formatMessages
+		// walks its input from the last element backwards, so passing the
+		// newest-first rows renders the transcript oldest-first (chronological).
+		const rows = await runtime.getMemories({
+			tableName: "messages",
+			roomId,
+			count: fetchCount,
+			unique: false,
+		});
+
+		// Strip only the agent's own machinery rows (action_result records and
+		// internal bridge relays) — the same structural filter RECENT_MESSAGES
+		// applies so the model never re-reads its own tooling as conversation.
+		// Every retained dialogue row is rendered complete.
+		const dialogue = rows.filter(
+			(row) =>
+				row.content?.type !== "action_result" && !isInternalBridgeMessage(row),
+		);
+
+		const roomEntities = await getEntityDetails({ runtime, roomId });
+		const entities = fallbackFormattingEntities(roomEntities, dialogue);
+		const transcript = formatMessages({ messages: dialogue, entities });
+
+		const boundNote =
+			validRequested !== undefined && validRequested > CHANNEL_RECAP_MAX_FETCH
+				? ` The requested ${validRequested} exceeds the documented storage read bound of ${CHANNEL_RECAP_MAX_FETCH} messages per recap; the ${CHANNEL_RECAP_MAX_FETCH} newest were read.`
+				: "";
+		const depthNote =
+			rows.length < fetchCount
+				? ` This room's stored history holds ${rows.length} message(s); the read requested up to ${fetchCount}.`
+				: "";
+		const text =
+			dialogue.length === 0
+				? `No stored messages found in this room's history.${boundNote}${depthNote}`
+				: `Complete transcript of the last ${dialogue.length} stored message(s) in this room, oldest first:${boundNote}${depthNote}\n\n${transcript}`;
+
+		return {
+			success: true,
+			text,
+			values: { success: true, messageCount: dialogue.length },
+			data: {
+				actionName: "CHANNEL_RECAP",
+				roomId,
+				scope: {
+					roomScoped: true,
+					requestedCount: validRequested ?? null,
+					fetchCount,
+					storageReadBound: CHANNEL_RECAP_MAX_FETCH,
+					fetchedRows: rows.length,
+					renderedCount: dialogue.length,
+					order: "chronological",
+				},
+				messages: dialogue
+					.slice()
+					.reverse()
+					.map((row) => ({
+						id: row.id ?? null,
+						entityId: row.entityId,
+						createdAt: row.createdAt ?? null,
+						// Complete stored text — never a snippet.
+						text: row.content?.text ?? "",
+					})),
+			},
+		};
+	},
+};

@@ -1,12 +1,18 @@
 /**
  * Validates `DEFAULT_CONTEXT_DEFINITIONS`: unique ids and required fields, clean
- * idempotent registration into a `ContextRegistry`, and role-scoped
- * `listAvailable` filtering (OWNER-only vs USER vs GUEST contexts). Pure, no
- * model.
+ * idempotent registration into a `ContextRegistry`, role-scoped
+ * `listAvailable` filtering (OWNER-only vs USER vs GUEST contexts), and the
+ * channel-history routing vocabulary the Stage-1 catalog must keep on the
+ * `general` line so group-chat recap asks can route to the room-scoped
+ * CHANNEL_RECAP surface. Pure, no model.
  */
 import { describe, expect, it } from "vitest";
+import { formatAvailableContextsForPrompt } from "../../services/message";
 import { ContextRegistry } from "../context-registry";
-import { DEFAULT_CONTEXT_DEFINITIONS } from "../default-contexts";
+import {
+	DEFAULT_CONTEXT_DEFINITIONS,
+	getDefaultContextDefinitions,
+} from "../default-contexts";
 
 describe("default-contexts", () => {
 	it("has unique ids", () => {
@@ -102,5 +108,42 @@ describe("default-contexts", () => {
 		// USER-gated contexts are excluded from GUEST.
 		expect(guestContexts).not.toContain("memory");
 		expect(guestContexts).not.toContain("documents");
+	});
+});
+
+describe("general context channel-history routing vocabulary", () => {
+	// Live 2026-08-21 root cause: a Discord group sender asked "what were last
+	// like 100 messages in this chat summary>" and Stage 1 routed
+	// contexts=["general"], but the general catalog line carried no
+	// channel-history vocabulary and the surface had no message-history tool,
+	// so the planner honestly refused. The catalog renders the complete
+	// description, which must keep carrying this vocabulary (same contract as
+	// the #17059 tasks recap line).
+	it("keeps recap/summary phrasings for the current chat in the general line", () => {
+		const catalog = formatAvailableContextsForPrompt(
+			getDefaultContextDefinitions(),
+		);
+		const generalLine = catalog
+			.split("\n")
+			.find((line) => line.startsWith("- general"));
+		expect(generalLine).toBeDefined();
+		expect(generalLine).toMatch(/summarize this chat/i);
+		expect(generalLine).toMatch(/recap the channel/i);
+		expect(generalLine).toMatch(/what were the last 100 messages/i);
+		expect(generalLine).toMatch(/what did people say here earlier/i);
+	});
+
+	it("names the room-scoped surface and keeps cross-channel work in messaging", () => {
+		const definition = DEFAULT_CONTEXT_DEFINITIONS.find(
+			(entry) => entry.id === "general",
+		);
+		expect(definition).toBeDefined();
+		expect(definition?.description).toMatch(/CHANNEL_RECAP/);
+		expect(definition?.description).toMatch(
+			/cross-channel or inbox-wide message work stays in messaging/i,
+		);
+		expect(definition?.descriptionCompressed).toMatch(
+			/current-channel history/i,
+		);
 	});
 });
