@@ -573,6 +573,9 @@ export const DIRECT_ACCOUNT_PROVIDER_BY_FIRST_RUN_PROVIDER = {
   zai: "zai-api",
   moonshot: "moonshot-api",
   cerebras: "cerebras-api",
+  openrouter: "openrouter-api",
+  xai: "xai-api",
+  grok: "xai-api",
 } as const satisfies Partial<
   Record<FirstRunProviderId, LinkedAccountProviderId>
 >;
@@ -782,6 +785,8 @@ const FIRST_RUN_PROVIDER_ALIASES: Record<string, FirstRunProviderId> = {
   cerebras: "cerebras",
   // Tolerate the linked-account form so env/integration callers normalize too.
   "cerebras-api": "cerebras",
+  "openrouter-api": "openrouter",
+  "xai-api": "xai",
 };
 
 export function isSubscriptionProviderSelectionId(

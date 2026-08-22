@@ -175,6 +175,14 @@ function providerDisplayName(
       return t("accounts.provider.cerebrasApi", {
         defaultValue: "Cerebras API",
       });
+    case "openrouter-api":
+      return t("accounts.provider.openrouterApi", {
+        defaultValue: "OpenRouter credits / BYOK",
+      });
+    case "xai-api":
+      return t("accounts.provider.xaiApi", {
+        defaultValue: "xAI API (metered)",
+      });
     default:
       return providerId;
   }
