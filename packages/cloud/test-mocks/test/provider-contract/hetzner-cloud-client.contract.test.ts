@@ -64,8 +64,38 @@ beforeAll(async () => {
         response: {
           status: 201,
           body: {
-            server: { id: 8, name: "node-b", public_net: {} },
+            server: {
+              id: 8,
+              name: "node-b",
+              status: "initializing",
+              public_net: {},
+            },
+            action: {
+              id: 80,
+              command: "create_server",
+              status: "success",
+              progress: 100,
+              resources: [{ id: 8, type: "server" }],
+              error: null,
+            },
+            next_actions: [],
             root_password: null,
+          },
+        },
+      },
+      {
+        id: "hetzner-get-created-server",
+        method: "GET",
+        path: "/v1/servers/8",
+        response: {
+          status: 200,
+          body: {
+            server: {
+              id: 8,
+              name: "node-b",
+              status: "running",
+              public_net: {},
+            },
           },
         },
       },
@@ -81,7 +111,28 @@ beforeAll(async () => {
           decision: "allow",
           confirmation: { state: "already_granted" },
         },
-        response: { status: 204 },
+        response: {
+          status: 201,
+          body: {
+            action: {
+              id: 70,
+              command: "delete_server",
+              status: "success",
+              progress: 100,
+              resources: [{ id: 7, type: "server" }],
+              error: null,
+            },
+          },
+        },
+      },
+      {
+        id: "hetzner-get-deleted-server",
+        method: "GET",
+        path: "/v1/servers/7",
+        response: {
+          status: 404,
+          body: { error: { code: "not_found", message: "server not found" } },
+        },
       },
     ],
   });

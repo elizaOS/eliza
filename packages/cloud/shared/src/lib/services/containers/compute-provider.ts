@@ -138,7 +138,7 @@ export interface CreateVolumeInput {
   name: string;
   /** Volume size in GiB (providers allocate whole GiB). */
   sizeGb: number;
-  /** Provider location code (must match the server it will attach to). */
+  /** Provider location for unattached creation; attached providers may derive it from `serverId`. */
   location: string;
   /** Filesystem format applied at creation time. Default `ext4`. */
   format?: "ext4" | "xfs";
@@ -177,7 +177,7 @@ export interface ComputeProvider {
   // -- Server lifecycle ----------------------------------------------------
   listServers(labels?: Record<string, string>): Promise<ComputeServer[]>;
   getServer(id: number): Promise<ComputeServer | null>;
-  /** Returns before the server is ready; poll `getServer`/`waitForAction`. */
+  /** Returns the provider's authoritative post-create server representation. */
   createServer(input: CreateServerInput): Promise<ProvisionedServer>;
   /** Provider 404 on delete is treated as success by consumers. */
   deleteServer(id: number): Promise<void>;
@@ -197,6 +197,7 @@ export interface ComputeProvider {
   deleteVolume(id: number): Promise<void>;
 
   // -- The load-bearing async primitive ------------------------------------
+  /** Returns a terminal action; strict providers reject terminal provider failures. */
   waitForAction(actionId: number, timeoutMs?: number): Promise<ComputeAction>;
 
   // -- Catalog (read-only) -------------------------------------------------

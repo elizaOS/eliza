@@ -72,7 +72,8 @@ Implements the subset of the Hetzner Cloud API that the autoscaler client in
 - `POST /v1/servers`, `GET /v1/servers`, `GET /v1/servers/{id}`, `DELETE /v1/servers/{id}`
 - `POST /v1/servers/{id}/actions/poweroff|poweron`
 - `GET /v1/actions/{id}` — pollable until `status: "success"`
-- `POST /v1/volumes`, `POST /v1/volumes/{id}/actions/attach`, `DELETE /v1/volumes/{id}`
+- `GET /v1/volumes`, `GET /v1/volumes/{id}`, `POST /v1/volumes`,
+  `POST /v1/volumes/{id}/actions/attach|detach`, `DELETE /v1/volumes/{id}`
 
 State is kept in memory and resets when the process exits.
 
