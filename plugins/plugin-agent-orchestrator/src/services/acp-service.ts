@@ -1943,7 +1943,8 @@ export class AcpService extends Service {
         ...opts.customCredentials,
         ...opts.env,
       };
-      const homeKey = agentType === "kimi" ? "KIMI_CODE_HOME" : "GROK_HOME";
+      const homeKey =
+        SUBSCRIPTION_CODING_ADAPTERS[agentType].homeEnvironmentKey;
       const configuredHome = this.setting(homeKey);
       if (configuredHome) preflightEnv[homeKey] = configuredHome;
       assertSubscriptionCodingAdapterReady(agentType, {
@@ -2984,7 +2985,7 @@ export class AcpService extends Service {
       }
       const descriptor = SUBSCRIPTION_CODING_ADAPTERS[normalized];
       const probeEnv: NodeJS.ProcessEnv = { ...process.env };
-      const homeKey = normalized === "kimi" ? "KIMI_CODE_HOME" : "GROK_HOME";
+      const homeKey = descriptor.homeEnvironmentKey;
       const configuredHome = this.setting(homeKey);
       if (configuredHome) probeEnv[homeKey] = configuredHome;
       const probe = probeSubscriptionCodingAdapter(normalized, {
@@ -5072,6 +5073,20 @@ export class AcpService extends Service {
     const normalizedAgentType =
       normalizeTaskAgentAdapter(agentType) ?? agentType;
     if (isSubscriptionCodingAdapter(normalizedAgentType)) {
+      const descriptor = SUBSCRIPTION_CODING_ADAPTERS[normalizedAgentType];
+      const configuredHome = this.setting(descriptor.homeEnvironmentKey);
+      if (configuredHome) {
+        // The same runtime-scoped home used by the preflight must win at the
+        // subprocess boundary. Otherwise a caller or shared host environment
+        // can pass the probe for account A but execute as account B.
+        env[descriptor.homeEnvironmentKey] = configuredHome;
+      }
+      if (normalizedAgentType === "grok") {
+        // Current Grok supports this as a live, non-overridable auth clamp. It
+        // disables env, auth.json, and per-model API-key precedence so an OAuth
+        // preflight cannot silently execute as pay-as-you-go API billing.
+        env.GROK_DISABLE_API_KEY_AUTH = "1";
+      }
       const removed = stripSubscriptionApiEnvironment(normalizedAgentType, env);
       if (removed.length > 0) {
         this.log(
