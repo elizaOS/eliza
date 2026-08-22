@@ -192,7 +192,7 @@ async function sendBlooioMessage(
 
   // Chat ids encode the provider API generation. Current `chat_*` resources
   // own their participants in v4; legacy `grp_*` resources remain on the v2
-  // chat API and require the configured account sender header.
+  // chat API and require the configured account sender field.
   const isV4Chat = /^chat_/i.test(event.chatId);
   const isLegacyV2Group = /^grp_/i.test(event.chatId);
   if (isLegacyV2Group) {
