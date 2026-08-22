@@ -11,7 +11,10 @@
  *
  * `attemptDiscordLogin` registered the client's only "error" listener with
  * `once(...)`, so the first rejecting gateway listener consumed it and the
- * client ran error-listener-less from the second rejection on.
+ * client ran error-listener-less from the second rejection on. The durable
+ * listener therefore belongs to the client factory, which every client —
+ * including the one `initializeAccount` builds and a healthy session keeps
+ * forever — is born from.
  */
 import { Client, Events, GatewayIntentBits } from "discord.js";
 import { describe, expect, it, vi } from "vitest";
@@ -68,11 +71,14 @@ function makeRuntime() {
 	};
 }
 
-function makeState(accountId: string): DiscordAccountClientState {
+function makeState(
+	accountId: string,
+	client: RecordingClient | null,
+): DiscordAccountClientState {
 	return {
 		accountId,
 		account: { accountId, token: "bot-token" },
-		client: null,
+		client,
 		settings: {},
 		dynamicChannelIds: new Set(),
 		clientReadyPromise: null,
@@ -82,12 +88,13 @@ function makeState(accountId: string): DiscordAccountClientState {
 
 function makeService(client: RecordingClient) {
 	const runtime = makeRuntime();
+	const createDiscordJsClient = vi.fn(() => client);
 	const service = Object.assign(Object.create(DiscordService.prototype), {
 		runtime,
 		defaultAccountId: "default",
 		_loginFailed: false,
 		timeouts: [] as ReturnType<typeof setTimeout>[],
-		createDiscordJsClient: () => client,
+		createDiscordJsClient,
 		setupEventListenersForAccount: vi.fn(),
 		onReadyForAccount: vi.fn().mockResolvedValue(undefined),
 		syncLegacyDefaultAliases: vi.fn(),
@@ -101,37 +108,33 @@ function makeService(client: RecordingClient) {
 			reject: (error: unknown) => void,
 		) => void;
 	};
+	return { service, runtime, createDiscordJsClient };
+}
+
+function makeFactoryService() {
+	const runtime = makeRuntime();
+	const service = Object.assign(Object.create(DiscordService.prototype), {
+		runtime,
+	}) as unknown as DiscordService & {
+		createDiscordJsClient: (accountId: string) => Client;
+	};
 	return { service, runtime };
 }
 
-describe("Discord client keeps a durable 'error' listener", () => {
-	it("registers error handling with on(), not only once()", () => {
-		const client = makeRecordingClient();
-		const { service } = makeService(client);
-		service.attemptDiscordLogin(
-			makeState("default"),
-			"bot-token",
-			0,
-			vi.fn(),
-			vi.fn(),
-		);
+describe("createDiscordJsClient gives every client a durable 'error' listener", () => {
+	it("attaches exactly one on(Events.Error) listener at construction", () => {
+		const { service } = makeFactoryService();
+		const client = service.createDiscordJsClient("default");
 
-		// Without a durable listener the client is error-listener-less after the
-		// first emit, and discord.js's captureRejections turns the next rejected
-		// gateway listener into an uncaughtException.
-		expect(client.durable.get(Events.Error) ?? []).toHaveLength(1);
+		// Without this the client is error-listener-less, and discord.js's
+		// captureRejections turns a rejected gateway listener into an
+		// uncaughtException.
+		expect(client.listenerCount(Events.Error)).toBe(1);
 	});
 
-	it("still logs every client error after the per-attempt once() is consumed", () => {
-		const client = makeRecordingClient();
-		const { service, runtime } = makeService(client);
-		service.attemptDiscordLogin(
-			makeState("default"),
-			"bot-token",
-			0,
-			vi.fn(),
-			vi.fn(),
-		);
+	it("logs every client error, not just the first", () => {
+		const { service, runtime } = makeFactoryService();
+		const client = service.createDiscordJsClient("default");
 
 		client.emit(Events.Error, new Error("gateway blew up once"));
 		client.emit(Events.Error, new Error("gateway blew up twice"));
@@ -147,23 +150,64 @@ describe("Discord client keeps a durable 'error' listener", () => {
 		]);
 	});
 
-	it("still logs a single error exactly once (no double logging)", () => {
+	it("scopes the log line to the account the client was created for", () => {
+		const { service, runtime } = makeFactoryService();
+		const client = service.createDiscordJsClient("secondary");
+
+		client.emit(Events.Error, new Error("boom"));
+
+		expect(String(runtime.logger.error.mock.calls[0][0])).toBe(
+			"Discord client error for account secondary: boom",
+		);
+	});
+});
+
+describe("attemptDiscordLogin keeps the factory's durable listener", () => {
+	it("reuses the client initializeAccount already built", () => {
+		const client = makeRecordingClient();
+		const { service, createDiscordJsClient } = makeService(client);
+		// The initializeAccount shape: the long-lived client of a healthy session
+		// exists before the first login attempt, so a fix that only runs when a
+		// fresh client is built never protects it.
+		const state = makeState("default", client);
+
+		service.attemptDiscordLogin(state, "bot-token", 0, vi.fn(), vi.fn());
+
+		expect(createDiscordJsClient).not.toHaveBeenCalled();
+		expect(state.client).toBe(client as unknown as typeof state.client);
+	});
+
+	it("builds an account-scoped client when the previous one was discarded", () => {
+		const client = makeRecordingClient();
+		const { service, createDiscordJsClient } = makeService(client);
+		const state = makeState("default", null);
+
+		service.attemptDiscordLogin(state, "bot-token", 0, vi.fn(), vi.fn());
+
+		expect(createDiscordJsClient).toHaveBeenCalledWith("default");
+		expect(state.client).toBe(client as unknown as typeof state.client);
+	});
+
+	it("adds only the retry-only once() listener, which never logs", () => {
 		const client = makeRecordingClient();
 		const { service, runtime } = makeService(client);
+
 		service.attemptDiscordLogin(
-			makeState("default"),
+			makeState("default", client),
 			"bot-token",
 			0,
 			vi.fn(),
 			vi.fn(),
 		);
 
-		client.emit(Events.Error, new Error("only once please"));
+		expect(client.durable.get(Events.Error) ?? []).toHaveLength(0);
+		expect(client.single.get(Events.Error) ?? []).toHaveLength(1);
 
-		expect(runtime.logger.error).toHaveBeenCalledTimes(1);
-		expect(String(runtime.logger.error.mock.calls[0][0])).toBe(
-			"Discord client error for account default: only once please",
-		);
+		// The per-attempt listener carries the retry decision only, so a single
+		// error still produces exactly one log line — from the durable listener
+		// the factory attached, never a second one from here.
+		client.emit(Events.Error, new Error("only once please"));
+		expect(runtime.logger.error).not.toHaveBeenCalled();
 	});
 
 	// --- the two library facts this defect rests on ---
