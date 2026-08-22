@@ -12,6 +12,7 @@ import {
 	IDENTITY_MERGE_OPERATIONS,
 	IDENTITY_MERGE_STATUSES,
 	IDENTITY_REDIRECT_STATUSES,
+	type IdentityClaim,
 	IdentityResolutionService,
 } from "./identity";
 import { ServiceType } from "./service";
@@ -57,6 +58,39 @@ describe("identity authority contract", () => {
 		expect(ServiceType.IDENTITY_RESOLUTION).toBe("identity_resolution");
 		expect(IdentityResolutionService.serviceType).toBe(
 			ServiceType.IDENTITY_RESOLUTION,
+		);
+	});
+
+	it("keeps contract-v1 claim versions additive for existing consumers", () => {
+		const legacyClaim: IdentityClaim = {
+			contractVersion: 1,
+			id: crypto.randomUUID() as IdentityClaim["id"],
+			agentId: crypto.randomUUID() as IdentityClaim["agentId"],
+			principalEntityId:
+				crypto.randomUUID() as IdentityClaim["principalEntityId"],
+			namespace: "legacy",
+			connectorId: "discord",
+			connectorAccountId:
+				crypto.randomUUID() as IdentityClaim["connectorAccountId"],
+			externalSubjectId: "subject",
+			handle: null,
+			displayName: null,
+			verification: "observed",
+			status: "active",
+			confidence: 0.5,
+			ownerBindingId: null,
+			provenance: {},
+			evidence: {},
+			firstSeenAt: "2026-08-21T00:00:00.000Z",
+			lastSeenAt: "2026-08-21T00:00:00.000Z",
+			verifiedAt: null,
+			revokedAt: null,
+			createdAt: "2026-08-21T00:00:00.000Z",
+			updatedAt: "2026-08-21T00:00:00.000Z",
+		};
+		expect(legacyClaim.version).toBeUndefined();
+		expect(IdentityResolutionService.prototype.observeClaim).toBeTypeOf(
+			"function",
 		);
 	});
 });

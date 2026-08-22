@@ -9,6 +9,7 @@
  */
 import { type IDatabaseAdapter, logger, type Plugin } from "@elizaos/core";
 import { applyIdentityPersonLinkAttestationGuard } from "./identity-person-link-attestation-guard";
+import { applyIdentityClaimJournalGuard } from "./identity-claim-journal-guard";
 import { applyMessageSearchObjects, messageSearchTableExists } from "./message-search";
 import { migrateToEntityRLS } from "./migrations";
 import { applyEntityRLSToAllTables, applyRLSToNewTables, installRLSFunctions } from "./rls";
@@ -42,6 +43,7 @@ export class DatabaseMigrationService {
   private readonly databaseBackend: DatabaseBackend;
   private messageSearchObjectsSettled = false;
   private identityPersonLinkGuardSettled = false;
+  private identityJournalGuardSettled = false;
 
   constructor(options: DatabaseMigrationServiceOptions = {}) {
     this.databaseBackend = options.databaseBackend ?? "unknown";
@@ -156,6 +158,9 @@ export class DatabaseMigrationService {
         this.identityPersonLinkGuardSettled = await applyIdentityPersonLinkAttestationGuard(
           this.db
         );
+      }
+      if (!this.identityJournalGuardSettled) {
+        this.identityJournalGuardSettled = await applyIdentityClaimJournalGuard(this.db);
       }
 
       // Install the message full-text/trigram search objects on the migrated

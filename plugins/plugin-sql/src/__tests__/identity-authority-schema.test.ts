@@ -39,6 +39,8 @@ describe("canonical identity authority schema", () => {
         "connector_account_id",
         "external_subject_id",
         "owner_binding_id",
+        "verification_authority_kind",
+        "verification_authority_id",
         "version",
       ])
     );
@@ -51,6 +53,10 @@ describe("canonical identity authority schema", () => {
       "identity_claim_journal_idempotency_unique"
     );
     expect(config.foreignKeys).toHaveLength(4);
+    expect(
+      config.foreignKeys.find((key) => key.getName() === "fk_identity_claim_journal_agent")
+        ?.onDelete
+    ).toBe("restrict");
     expect(config.checks.map((constraint) => constraint.name)).toEqual(
       expect.arrayContaining([
         "identity_claim_journal_event_check",

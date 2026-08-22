@@ -42,7 +42,10 @@ import {
 import { sha256 } from "@noble/hashes/sha2.js";
 import { and, desc, eq, inArray, lt, or, sql } from "drizzle-orm";
 import { authOwnerBindingTable } from "../schema/authOwnerBinding";
-import { connectorAccountsTable } from "../schema/connectorAccounts";
+import {
+  connectorAccountAuditEventsTable,
+  connectorAccountsTable,
+} from "../schema/connectorAccounts";
 import { entityTable } from "../schema/entity";
 import {
   identityAuthorityStateTable,
@@ -74,6 +77,8 @@ type RedirectRow = typeof identityCanonicalRedirectTable.$inferSelect;
 type ClaimRow = typeof identityClaimTable.$inferSelect;
 type PersonLinkAttestationRow = typeof identityPersonLinkAttestationTable.$inferSelect;
 type ClaimJournalRow = typeof identityClaimJournalTable.$inferSelect;
+type IdentityTx = Parameters<Parameters<DrizzleDatabase["transaction"]>[0]>[0];
+type VersionedIdentityClaim = IdentityClaim & { version: number };
 
 function fail(code: string, message: string, context: Record<string, unknown> = {}): never {
   throw new ElizaError(message, { code, context, severity: "fatal" });
@@ -210,7 +215,7 @@ function asUuidArray(value: unknown, field: string): UUID[] {
   return value as UUID[];
 }
 
-function mapClaim(row: ClaimRow): IdentityClaim {
+function mapClaim(row: ClaimRow): VersionedIdentityClaim {
   return {
     contractVersion: 1,
     id: row.id as UUID,
@@ -227,6 +232,9 @@ function mapClaim(row: ClaimRow): IdentityClaim {
     confidence: row.confidence,
     version: row.version,
     ownerBindingId: row.ownerBindingId,
+    verificationAuthorityKind:
+      row.verificationAuthorityKind as IdentityClaim["verificationAuthorityKind"],
+    verificationAuthorityId: row.verificationAuthorityId,
     provenance: asJsonObject(row.provenance, "claim.provenance"),
     evidence: asJsonObject(row.evidence, "claim.evidence"),
     firstSeenAt: iso(row.firstSeenAt),
@@ -238,7 +246,9 @@ function mapClaim(row: ClaimRow): IdentityClaim {
   };
 }
 
-function mapClaimJournal(row: ClaimJournalRow): IdentityClaimJournalEntry {
+function mapClaimJournal(
+  row: ClaimJournalRow
+): IdentityClaimJournalEntry & { afterClaim: VersionedIdentityClaim } {
   return {
     contractVersion: 1,
     id: row.id as UUID,
@@ -257,7 +267,10 @@ function mapClaimJournal(row: ClaimJournalRow): IdentityClaimJournalEntry {
     beforeClaim: row.beforeClaim
       ? (asJsonObject(row.beforeClaim, "claimJournal.beforeClaim") as unknown as IdentityClaim)
       : null,
-    afterClaim: asJsonObject(row.afterClaim, "claimJournal.afterClaim") as unknown as IdentityClaim,
+    afterClaim: asJsonObject(
+      row.afterClaim,
+      "claimJournal.afterClaim"
+    ) as unknown as VersionedIdentityClaim,
     createdAt: iso(row.createdAt),
   };
 }
@@ -413,7 +426,7 @@ export class SqlIdentityResolutionService extends IdentityResolutionService {
   }
 
   private async assertMutationPrincipals(
-    tx: Parameters<Parameters<DrizzleDatabase["transaction"]>[0]>[0],
+    tx: IdentityTx,
     agentId: UUID,
     principalIds: readonly UUID[]
   ): Promise<void> {
@@ -428,7 +441,7 @@ export class SqlIdentityResolutionService extends IdentityResolutionService {
   }
 
   private async replayClaimMutation(
-    tx: Parameters<Parameters<DrizzleDatabase["transaction"]>[0]>[0],
+    tx: IdentityTx,
     agentId: UUID,
     idempotencyKey: string,
     requestDigest: string
@@ -450,12 +463,22 @@ export class SqlIdentityResolutionService extends IdentityResolutionService {
     return mapClaimJournal(existing).afterClaim;
   }
 
-  private async advanceGeneration(
-    tx: Parameters<Parameters<DrizzleDatabase["transaction"]>[0]>[0],
+  private async lockClaimMutation(
+    tx: IdentityTx,
     agentId: UUID,
-    now: Date
-  ): Promise<void> {
+    idempotencyKey: string,
+    requestDigest: string
+  ): Promise<IdentityClaim | null> {
     await tx.insert(identityAuthorityStateTable).values({ agentId }).onConflictDoNothing();
+    await tx
+      .select({ agentId: identityAuthorityStateTable.agentId })
+      .from(identityAuthorityStateTable)
+      .where(eq(identityAuthorityStateTable.agentId, agentId))
+      .for("update");
+    return this.replayClaimMutation(tx, agentId, idempotencyKey, requestDigest);
+  }
+
+  private async advanceGeneration(tx: IdentityTx, agentId: UUID, now: Date): Promise<void> {
     await tx
       .update(identityAuthorityStateTable)
       .set({ generation: sql`${identityAuthorityStateTable.generation} + 1`, updatedAt: now })
@@ -485,14 +508,21 @@ export class SqlIdentityResolutionService extends IdentityResolutionService {
       !Number.isFinite(request.confidence) ||
       request.confidence < 0 ||
       request.confidence > 1 ||
+      typeof request.idempotencyKey !== "string" ||
+      request.idempotencyKey.trim().length === 0 ||
+      typeof request.reason !== "string" ||
+      request.reason.trim().length === 0 ||
+      typeof request.scope.namespace !== "string" ||
       request.scope.namespace.trim().length === 0 ||
+      typeof request.scope.connectorId !== "string" ||
       request.scope.connectorId.trim().length === 0 ||
+      typeof request.scope.externalSubjectId !== "string" ||
       request.scope.externalSubjectId.trim().length === 0
     ) {
       fail("IDENTITY_CLAIM_INPUT_INVALID", "Claim observation input is invalid.");
     }
     return this.db.transaction(async (tx) => {
-      const replay = await this.replayClaimMutation(
+      const replay = await this.lockClaimMutation(
         tx,
         request.agentId,
         request.idempotencyKey,
@@ -549,7 +579,7 @@ export class SqlIdentityResolutionService extends IdentityResolutionService {
       }
       const now = new Date();
       let prior: IdentityClaim | null = null;
-      let after: IdentityClaim;
+      let after: VersionedIdentityClaim;
       let eventKind: IdentityClaimEventKind;
       if (existing) {
         prior = mapClaim(existing);
@@ -631,6 +661,120 @@ export class SqlIdentityResolutionService extends IdentityResolutionService {
     });
   }
 
+  private async establishVerificationAuthority(
+    tx: IdentityTx,
+    request: VerifyIdentityClaimRequest,
+    claim: ClaimRow
+  ): Promise<{ kind: "connector_assertion" | "operator_migration"; id: string }> {
+    const [claimAccount] = await tx
+      .select()
+      .from(connectorAccountsTable)
+      .where(
+        and(
+          eq(connectorAccountsTable.id, claim.connectorAccountId),
+          eq(connectorAccountsTable.agentId, request.agentId),
+          eq(connectorAccountsTable.provider, claim.connectorId)
+        )
+      )
+      .limit(1);
+    if (!claimAccount || claimAccount.deletedAt !== null || claimAccount.status !== "connected") {
+      fail(
+        "IDENTITY_VERIFIER_AUTHORITY_INVALID",
+        "Trusted verification requires the claim connector account to remain connected."
+      );
+    }
+
+    if (request.authority.kind === "connector_assertion") {
+      const [event] = await tx
+        .select()
+        .from(connectorAccountAuditEventsTable)
+        .where(
+          and(
+            eq(connectorAccountAuditEventsTable.id, request.authority.auditEventId),
+            eq(connectorAccountAuditEventsTable.agentId, request.agentId),
+            eq(connectorAccountAuditEventsTable.accountId, claim.connectorAccountId),
+            eq(connectorAccountAuditEventsTable.provider, claim.connectorId),
+            eq(connectorAccountAuditEventsTable.action, "identity_subject_authenticated"),
+            eq(connectorAccountAuditEventsTable.outcome, "success")
+          )
+        )
+        .limit(1);
+      const metadata = event ? asJsonObject(event.metadata, "connectorAudit.metadata") : null;
+      if (
+        !event ||
+        event.actorId !== claim.externalSubjectId ||
+        metadata?.namespace !== claim.namespace ||
+        metadata?.externalSubjectId !== claim.externalSubjectId ||
+        metadata?.principalEntityId !== claim.principalEntityId ||
+        request.actorPrincipalId !== claim.principalEntityId
+      ) {
+        fail(
+          "IDENTITY_VERIFIER_AUTHORITY_INVALID",
+          "Connector assertion is not authenticated for this scoped subject."
+        );
+      }
+      return { kind: "connector_assertion", id: event.id };
+    }
+
+    const instanceSetting = this.runtime.getSetting("ELIZA_INSTANCE_ID");
+    const instanceId = typeof instanceSetting === "string" ? instanceSetting.trim() : "";
+    if (instanceId.length === 0 || request.authority.ownerBindingId.trim().length === 0) {
+      fail(
+        "IDENTITY_VERIFIER_AUTHORITY_INVALID",
+        "Operator migration requires an authenticated owner binding."
+      );
+    }
+    const [binding] = await tx
+      .select()
+      .from(authOwnerBindingTable)
+      .where(eq(authOwnerBindingTable.id, request.authority.ownerBindingId))
+      .limit(1);
+    const [ownerClaim] = await tx
+      .select()
+      .from(identityClaimTable)
+      .where(
+        and(
+          eq(identityClaimTable.agentId, request.agentId),
+          eq(identityClaimTable.principalEntityId, request.actorPrincipalId),
+          eq(identityClaimTable.verification, "owner_bound"),
+          eq(identityClaimTable.status, "active"),
+          eq(identityClaimTable.ownerBindingId, request.authority.ownerBindingId)
+        )
+      )
+      .limit(1);
+    const [ownerAccount] = ownerClaim
+      ? await tx
+          .select()
+          .from(connectorAccountsTable)
+          .where(
+            and(
+              eq(connectorAccountsTable.id, ownerClaim.connectorAccountId),
+              eq(connectorAccountsTable.agentId, request.agentId),
+              eq(connectorAccountsTable.ownerBindingId, request.authority.ownerBindingId)
+            )
+          )
+          .limit(1)
+      : [];
+    if (
+      !binding ||
+      !ownerClaim ||
+      !ownerAccount ||
+      ownerAccount.deletedAt !== null ||
+      ownerAccount.status !== "connected" ||
+      ownerAccount.provider !== ownerClaim.connectorId ||
+      binding.connector !== ownerClaim.connectorId ||
+      binding.externalId !== ownerClaim.externalSubjectId ||
+      binding.instanceId !== instanceId ||
+      binding.verifiedAt <= 0
+    ) {
+      fail(
+        "IDENTITY_VERIFIER_AUTHORITY_INVALID",
+        "Operator migration is not authorized by a live owner binding."
+      );
+    }
+    return { kind: "operator_migration", id: binding.id };
+  }
+
   private async transitionClaim(
     request: VerifyIdentityClaimRequest | DisputeIdentityClaimRequest | RevokeIdentityClaimRequest,
     eventKind: "verified" | "disputed" | "revoked"
@@ -649,7 +793,7 @@ export class SqlIdentityResolutionService extends IdentityResolutionService {
       evidence: request.evidence,
       ...(eventKind === "verified"
         ? {
-            attestationKind: (request as VerifyIdentityClaimRequest).attestationKind,
+            authority: (request as VerifyIdentityClaimRequest).authority,
             verifiedAt: (request as VerifyIdentityClaimRequest).verifiedAt,
           }
         : {}),
@@ -658,19 +802,29 @@ export class SqlIdentityResolutionService extends IdentityResolutionService {
         : {}),
     };
     assertRequestDigest(request.requestDigest, operation, requestValue);
+    const authority =
+      eventKind === "verified" ? (request as VerifyIdentityClaimRequest).authority : null;
     if (
       !Number.isInteger(request.expectedVersion) ||
       request.expectedVersion < 1 ||
+      typeof request.idempotencyKey !== "string" ||
       request.idempotencyKey.trim().length === 0 ||
+      typeof request.reason !== "string" ||
+      request.reason.trim().length === 0 ||
       (eventKind === "verified" &&
-        !["connector_assertion", "operator_migration"].includes(
-          (request as VerifyIdentityClaimRequest).attestationKind
-        ))
+        (!authority ||
+          !["connector_assertion", "operator_migration"].includes(authority.kind) ||
+          (authority.kind === "connector_assertion" &&
+            (typeof authority.auditEventId !== "string" ||
+              authority.auditEventId.trim().length === 0)) ||
+          (authority.kind === "operator_migration" &&
+            (typeof authority.ownerBindingId !== "string" ||
+              authority.ownerBindingId.trim().length === 0))))
     ) {
       fail("IDENTITY_CLAIM_INPUT_INVALID", "Claim transition input is invalid.");
     }
     return this.db.transaction(async (tx) => {
-      const replay = await this.replayClaimMutation(
+      const replay = await this.lockClaimMutation(
         tx,
         request.agentId,
         request.idempotencyKey,
@@ -705,6 +859,14 @@ export class SqlIdentityResolutionService extends IdentityResolutionService {
           "Claim cannot be revoked from its current state."
         );
       }
+      const verificationAuthority =
+        eventKind === "verified"
+          ? await this.establishVerificationAuthority(
+              tx,
+              request as VerifyIdentityClaimRequest,
+              row
+            )
+          : null;
       const now = new Date();
       const verifiedAt =
         eventKind === "verified"
@@ -733,6 +895,8 @@ export class SqlIdentityResolutionService extends IdentityResolutionService {
                 : row.status,
           verifiedAt,
           revokedAt,
+          verificationAuthorityKind: verificationAuthority?.kind ?? row.verificationAuthorityKind,
+          verificationAuthorityId: verificationAuthority?.id ?? row.verificationAuthorityId,
           provenance: toDbObject(request.provenance),
           evidence: toDbObject(request.evidence),
           version: row.version + 1,
@@ -788,6 +952,15 @@ export class SqlIdentityResolutionService extends IdentityResolutionService {
     options: { limit: number; cursor: string | null }
   ): Promise<IdentityClaimJournalPage> {
     this.assertAgent(agentId);
+    if (!Number.isFinite(options.limit) || options.limit < 1) {
+      fail("IDENTITY_JOURNAL_LIMIT_INVALID", "Claim journal limit must be a positive number.");
+    }
+    if (
+      options.cursor !== null &&
+      (typeof options.cursor !== "string" || options.cursor.trim().length === 0)
+    ) {
+      fail("IDENTITY_JOURNAL_CURSOR_INVALID", "Claim journal cursor is invalid.");
+    }
     const limit = Math.max(1, Math.min(MAX_JOURNAL_PAGE, Math.floor(options.limit)));
     const conditions = [
       eq(identityClaimJournalTable.agentId, agentId),
@@ -833,7 +1006,9 @@ export class SqlIdentityResolutionService extends IdentityResolutionService {
 
   async inspectLegacyMigration(agentId: UUID): Promise<IdentityMigrationInventory> {
     this.assertAgent(agentId);
-    return inspectSqlIdentityMigration(this.db, agentId);
+    const setting = this.runtime.getSetting("ELIZA_INSTANCE_ID");
+    const instanceId = typeof setting === "string" && setting.trim() ? setting.trim() : undefined;
+    return inspectSqlIdentityMigration(this.db, agentId, new Date(), instanceId);
   }
 
   async getCluster(agentId: UUID, principalId: UUID): Promise<IdentityCluster | null> {
@@ -894,11 +1069,139 @@ export class SqlIdentityResolutionService extends IdentityResolutionService {
   ): Promise<readonly IdentityClaim[]> {
     const cluster = await this.getCluster(agentId, principalId);
     if (!cluster) return [];
-    return cluster.claims.filter(
+    const candidates = cluster.claims.filter(
       (claim) =>
         claim.status === "active" &&
         (claim.verification === "verified" || claim.verification === "owner_bound") &&
         (connectorAccountId === undefined || claim.connectorAccountId === connectorAccountId)
+    );
+    const decisions = await Promise.all(
+      candidates.map(async (claim) => ({
+        claim,
+        trusted: await this.isTrustedDeliveryClaim(agentId, claim),
+      }))
+    );
+    return decisions.filter((decision) => decision.trusted).map((decision) => decision.claim);
+  }
+
+  private async isTrustedDeliveryClaim(agentId: UUID, claim: IdentityClaim): Promise<boolean> {
+    const [account] = await this.db
+      .select()
+      .from(connectorAccountsTable)
+      .where(
+        and(
+          eq(connectorAccountsTable.id, claim.connectorAccountId),
+          eq(connectorAccountsTable.agentId, agentId),
+          eq(connectorAccountsTable.provider, claim.connectorId)
+        )
+      )
+      .limit(1);
+    if (!account || account.deletedAt !== null || account.status !== "connected") return false;
+
+    const instanceSetting = this.runtime.getSetting("ELIZA_INSTANCE_ID");
+    const instanceId = typeof instanceSetting === "string" ? instanceSetting.trim() : "";
+    if (claim.verification === "owner_bound") {
+      if (!claim.ownerBindingId || instanceId.length === 0) return false;
+      const [binding] = await this.db
+        .select()
+        .from(authOwnerBindingTable)
+        .where(eq(authOwnerBindingTable.id, claim.ownerBindingId))
+        .limit(1);
+      return Boolean(
+        binding &&
+          account.ownerBindingId === binding.id &&
+          binding.connector === claim.connectorId &&
+          binding.externalId === claim.externalSubjectId &&
+          binding.instanceId === instanceId &&
+          binding.verifiedAt > 0
+      );
+    }
+
+    if (!claim.verificationAuthorityKind || !claim.verificationAuthorityId) return false;
+    if (claim.verificationAuthorityKind === "connector_assertion") {
+      const [event] = await this.db
+        .select()
+        .from(connectorAccountAuditEventsTable)
+        .where(
+          and(
+            eq(connectorAccountAuditEventsTable.id, claim.verificationAuthorityId as UUID),
+            eq(connectorAccountAuditEventsTable.agentId, agentId),
+            eq(connectorAccountAuditEventsTable.accountId, claim.connectorAccountId),
+            eq(connectorAccountAuditEventsTable.provider, claim.connectorId),
+            eq(connectorAccountAuditEventsTable.action, "identity_subject_authenticated"),
+            eq(connectorAccountAuditEventsTable.outcome, "success")
+          )
+        )
+        .limit(1);
+      const metadata = event ? asJsonObject(event.metadata, "connectorAudit.metadata") : null;
+      return Boolean(
+        event &&
+          event.actorId === claim.externalSubjectId &&
+          metadata?.namespace === claim.namespace &&
+          metadata?.externalSubjectId === claim.externalSubjectId &&
+          metadata?.principalEntityId === claim.principalEntityId
+      );
+    }
+
+    if (claim.verificationAuthorityKind !== "operator_migration" || instanceId.length === 0) {
+      return false;
+    }
+    const [journal] = await this.db
+      .select({ actorPrincipalId: identityClaimJournalTable.actorPrincipalId })
+      .from(identityClaimJournalTable)
+      .where(
+        and(
+          eq(identityClaimJournalTable.agentId, agentId),
+          eq(identityClaimJournalTable.claimId, claim.id),
+          eq(identityClaimJournalTable.eventKind, "verified")
+        )
+      )
+      .orderBy(desc(identityClaimJournalTable.createdAt))
+      .limit(1);
+    const [binding] = await this.db
+      .select()
+      .from(authOwnerBindingTable)
+      .where(eq(authOwnerBindingTable.id, claim.verificationAuthorityId))
+      .limit(1);
+    const [ownerClaim] = journal
+      ? await this.db
+          .select()
+          .from(identityClaimTable)
+          .where(
+            and(
+              eq(identityClaimTable.agentId, agentId),
+              eq(identityClaimTable.principalEntityId, journal.actorPrincipalId),
+              eq(identityClaimTable.verification, "owner_bound"),
+              eq(identityClaimTable.status, "active"),
+              eq(identityClaimTable.ownerBindingId, claim.verificationAuthorityId)
+            )
+          )
+          .limit(1)
+      : [];
+    const [ownerAccount] = ownerClaim
+      ? await this.db
+          .select()
+          .from(connectorAccountsTable)
+          .where(
+            and(
+              eq(connectorAccountsTable.id, ownerClaim.connectorAccountId),
+              eq(connectorAccountsTable.agentId, agentId),
+              eq(connectorAccountsTable.ownerBindingId, claim.verificationAuthorityId)
+            )
+          )
+          .limit(1)
+      : [];
+    return Boolean(
+      binding &&
+        ownerClaim &&
+        ownerAccount &&
+        ownerAccount.deletedAt === null &&
+        ownerAccount.status === "connected" &&
+        ownerAccount.provider === ownerClaim.connectorId &&
+        binding.connector === ownerClaim.connectorId &&
+        binding.externalId === ownerClaim.externalSubjectId &&
+        binding.instanceId === instanceId &&
+        binding.verifiedAt > 0
     );
   }
 

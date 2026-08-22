@@ -58,6 +58,14 @@ export const identityClaimSchema: SchemaTable = {
 			default: "'unverified'",
 		},
 		owner_binding_id: { name: "owner_binding_id", type: "text" },
+		verification_authority_kind: {
+			name: "verification_authority_kind",
+			type: "text",
+		},
+		verification_authority_id: {
+			name: "verification_authority_id",
+			type: "text",
+		},
 		status: {
 			name: "status",
 			type: "text",
@@ -283,10 +291,15 @@ export const identityClaimJournalSchema: SchemaTable = {
 		},
 	},
 	foreignKeys: {
-		fk_identity_claim_journal_agent: agentForeignKey(
-			"fk_identity_claim_journal_agent",
-			"identity_claim_journal",
-		),
+		fk_identity_claim_journal_agent: {
+			name: "fk_identity_claim_journal_agent",
+			tableFrom: "identity_claim_journal",
+			tableTo: "agents",
+			columnsFrom: ["agent_id"],
+			columnsTo: ["id"],
+			onDelete: "restrict",
+			schemaTo: "",
+		},
 		fk_identity_claim_journal_claim: {
 			name: "fk_identity_claim_journal_claim",
 			tableFrom: "identity_claim_journal",

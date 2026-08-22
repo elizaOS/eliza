@@ -11,7 +11,7 @@ import type {
   UUID,
 } from "@elizaos/core";
 import { sha256 } from "@noble/hashes/sha2.js";
-import { eq, inArray, sql } from "drizzle-orm";
+import { eq, inArray, or, sql } from "drizzle-orm";
 import { authOwnerBindingTable } from "../schema/authOwnerBinding";
 import { connectorAccountsTable } from "../schema/connectorAccounts";
 import { entityTable } from "../schema/entity";
@@ -88,7 +88,8 @@ function asMetadata(value: unknown): JsonObject {
 export async function inspectSqlIdentityMigration(
   db: DrizzleDatabase,
   agentId: UUID,
-  now: Date = new Date()
+  now: Date = new Date(),
+  instanceId?: string
 ): Promise<IdentityMigrationInventory> {
   const rows: IdentityMigrationInventoryRow[] = [];
   const sources: Record<string, number> = {
@@ -138,20 +139,27 @@ export async function inspectSqlIdentityMigration(
   const ownerBindingIds = [
     ...new Set(accounts.map((account) => account.ownerBindingId).filter(Boolean)),
   ] as string[];
-  if (ownerBindingIds.length > 0) {
-    const bindings = await db
-      .select()
-      .from(authOwnerBindingTable)
-      .where(inArray(authOwnerBindingTable.id, ownerBindingIds));
+  if (ownerBindingIds.length > 0 || instanceId) {
+    const ownerBindingScope =
+      ownerBindingIds.length > 0 && instanceId
+        ? or(
+            inArray(authOwnerBindingTable.id, ownerBindingIds),
+            eq(authOwnerBindingTable.instanceId, instanceId)
+          )
+        : ownerBindingIds.length > 0
+          ? inArray(authOwnerBindingTable.id, ownerBindingIds)
+          : eq(authOwnerBindingTable.instanceId, instanceId as string);
+    const bindings = await db.select().from(authOwnerBindingTable).where(ownerBindingScope);
     for (const binding of bindings) {
       sources.auth_owner_bindings += 1;
       const matchingAccounts = accounts.filter((account) => account.ownerBindingId === binding.id);
-      const validAccount = matchingAccounts.find(
+      const validAccounts = matchingAccounts.filter(
         (account) =>
           account.deletedAt === null &&
           account.status === "connected" &&
           account.provider.trim().toLowerCase() === binding.connector.trim().toLowerCase()
       );
+      const validAccount = validAccounts.length === 1 ? validAccounts[0] : null;
       rows.push({
         source: "auth_owner_bindings",
         sourceId: binding.id,
@@ -162,10 +170,27 @@ export async function inspectSqlIdentityMigration(
         disposition: validAccount ? "needs_principal_projection" : "conflict",
         reasons: validAccount
           ? ["verified_binding_has_no_canonical_owner_principal_mapping"]
-          : ["owner_binding_has_no_matching_connected_account"],
+          : validAccounts.length > 1
+            ? ["owner_binding_has_multiple_matching_connected_accounts"]
+            : matchingAccounts.length === 0
+              ? ["orphan_owner_binding_has_no_connector_account"]
+              : ["owner_binding_has_no_matching_connected_account"],
         metadata: { instanceId: binding.instanceId, verifiedAt: binding.verifiedAt },
       });
     }
+  }
+  if (!instanceId) {
+    rows.push({
+      source: "auth_owner_bindings",
+      sourceId: "unscoped-orphans",
+      principalReference: null,
+      connectorId: null,
+      connectorAccountReference: null,
+      externalSubjectReference: null,
+      disposition: "review",
+      reasons: ["instance_id_unavailable_for_orphan_owner_binding_inventory"],
+      metadata: {},
+    });
   }
 
   const legacyIdentities = await db
@@ -271,8 +296,11 @@ export async function inspectSqlIdentityMigration(
   ) {
     const result = await db.execute(sql`
       SELECT i.id, i.entity_id, i.platform, i.handle, i.connector_account_id,
-             i.verified, i.confidence
+             i.verified, i.confidence, e.entity_id AS declared_entity_id
         FROM app_lifeops.life_entity_identities i
+        LEFT JOIN app_lifeops.life_entities e
+          ON e.entity_id = i.entity_id
+         AND e.agent_id = i.agent_id
        WHERE i.agent_id = ${agentId}
        ORDER BY i.id
     `);
@@ -282,6 +310,9 @@ export async function inspectSqlIdentityMigration(
       const account = String(record.connector_account_id ?? "");
       sources.life_entity_identities += 1;
       const reasons: string[] = [];
+      if (record.declared_entity_id === null || record.declared_entity_id === undefined) {
+        reasons.push("lifeops_entity_missing");
+      }
       if (!isUuid(principal)) reasons.push("lifeops_principal_is_not_uuid");
       if (!isUuid(account)) reasons.push("lifeops_connector_account_is_not_uuid");
       rows.push({
@@ -318,6 +349,37 @@ export async function inspectSqlIdentityMigration(
     reasons: ["source_is_not_tenant_scoped_and_cannot_be_read_safely"],
     metadata: {},
   });
+
+  const subjectRows = new Map<string, IdentityMigrationInventoryRow[]>();
+  for (const row of rows) {
+    if (!row.connectorId || !row.externalSubjectReference) continue;
+    const key = `${row.connectorId.trim().toLowerCase()}\0${row.externalSubjectReference}`;
+    const matches = subjectRows.get(key) ?? [];
+    matches.push(row);
+    subjectRows.set(key, matches);
+  }
+  for (const matches of subjectRows.values()) {
+    const sourcesForSubject = new Set(matches.map((row) => row.source));
+    const principals = new Set(
+      matches
+        .map((row) => row.principalReference)
+        .filter((value): value is string => Boolean(value))
+    );
+    if (principals.size > 1) {
+      for (const row of matches) {
+        row.disposition = "conflict";
+        if (!row.reasons.includes("same_subject_on_multiple_declared_principals")) {
+          row.reasons = [...row.reasons, "same_subject_on_multiple_declared_principals"];
+        }
+      }
+    } else if (sourcesForSubject.size > 1) {
+      for (const row of matches) {
+        if (!row.reasons.includes("duplicate_subject_across_declared_sources")) {
+          row.reasons = [...row.reasons, "duplicate_subject_across_declared_sources"];
+        }
+      }
+    }
+  }
 
   const sortedRows = sortRows(rows);
   const sortedSources = Object.fromEntries(

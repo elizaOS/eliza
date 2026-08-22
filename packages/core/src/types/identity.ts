@@ -5,6 +5,7 @@
  * through versioned redirects instead of rewriting or deleting history.
  */
 
+import { ElizaError } from "../errors";
 import type { JsonObject, UUID } from "./primitives";
 import { Service, ServiceType } from "./service";
 
@@ -84,10 +85,17 @@ export interface IdentityClaim {
 	verification: IdentityClaimVerification;
 	status: IdentityClaimStatus;
 	confidence: number;
-	/** Optimistic-concurrency version for lifecycle mutations. */
-	version: number;
+	/** Optimistic-concurrency version for lifecycle mutations, when supported. */
+	version?: number;
 	/** Only this separately verified binding can confer owner authority. */
 	ownerBindingId: string | null;
+	/** Persisted authority kind that established a trusted verification. */
+	verificationAuthorityKind?:
+		| "connector_assertion"
+		| "operator_migration"
+		| null;
+	/** Audit-event or owner-binding identifier backing the trusted verification. */
+	verificationAuthorityId?: string | null;
 	provenance: JsonObject;
 	evidence: JsonObject;
 	firstSeenAt: string;
@@ -125,10 +133,20 @@ export interface ObserveIdentityClaimRequest extends IdentityClaimMutationBase {
 	observedAt: string;
 }
 
+export type IdentityClaimVerifierAuthority =
+	| {
+			kind: "connector_assertion";
+			auditEventId: UUID;
+	  }
+	| {
+			kind: "operator_migration";
+			ownerBindingId: string;
+	  };
+
 export interface VerifyIdentityClaimRequest extends IdentityClaimMutationBase {
 	claimId: UUID;
 	expectedVersion: number;
-	attestationKind: "connector_assertion" | "operator_migration";
+	authority: IdentityClaimVerifierAuthority;
 	verifiedAt: string;
 }
 
@@ -449,26 +467,40 @@ export abstract class IdentityResolutionService extends Service {
 	abstract resolveClaim(
 		scope: IdentityClaimScope,
 	): Promise<IdentityClaim | null>;
-	abstract observeClaim(
+	async observeClaim(
 		request: ObserveIdentityClaimRequest,
-	): Promise<IdentityClaim>;
-	abstract verifyClaim(
+	): Promise<IdentityClaim> {
+		return this.claimLifecycleUnavailable("observeClaim", request.agentId);
+	}
+	async verifyClaim(
 		request: VerifyIdentityClaimRequest,
-	): Promise<IdentityClaim>;
-	abstract disputeClaim(
+	): Promise<IdentityClaim> {
+		return this.claimLifecycleUnavailable("verifyClaim", request.agentId);
+	}
+	async disputeClaim(
 		request: DisputeIdentityClaimRequest,
-	): Promise<IdentityClaim>;
-	abstract revokeClaim(
+	): Promise<IdentityClaim> {
+		return this.claimLifecycleUnavailable("disputeClaim", request.agentId);
+	}
+	async revokeClaim(
 		request: RevokeIdentityClaimRequest,
-	): Promise<IdentityClaim>;
-	abstract listClaimJournal(
+	): Promise<IdentityClaim> {
+		return this.claimLifecycleUnavailable("revokeClaim", request.agentId);
+	}
+	async listClaimJournal(
 		agentId: UUID,
 		claimId: UUID,
 		options: { limit: number; cursor: string | null },
-	): Promise<IdentityClaimJournalPage>;
-	abstract inspectLegacyMigration(
+	): Promise<IdentityClaimJournalPage> {
+		void claimId;
+		void options;
+		return this.claimLifecycleUnavailable("listClaimJournal", agentId);
+	}
+	async inspectLegacyMigration(
 		agentId: UUID,
-	): Promise<IdentityMigrationInventory>;
+	): Promise<IdentityMigrationInventory> {
+		return this.claimLifecycleUnavailable("inspectLegacyMigration", agentId);
+	}
 	abstract getCluster(
 		agentId: UUID,
 		principalId: UUID,
@@ -509,4 +541,19 @@ export abstract class IdentityResolutionService extends Service {
 		agentId: UUID,
 		options: { limit: number; cursor: string | null },
 	): Promise<IdentityJournalPage>;
+
+	private claimLifecycleUnavailable<T>(
+		operation: string,
+		agentId: UUID,
+	): Promise<T> {
+		return Promise.reject(
+			new ElizaError(
+				"Identity claim lifecycle is unavailable in this adapter.",
+				{
+					code: "IDENTITY_CLAIM_LIFECYCLE_UNAVAILABLE",
+					context: { operation, agentId },
+				},
+			),
+		);
+	}
 }

@@ -39,6 +39,8 @@ export const identityClaimTable = pgTable(
     displayName: text("display_name"),
     verification: text("verification").notNull().default("unverified"),
     ownerBindingId: text("owner_binding_id"),
+    verificationAuthorityKind: text("verification_authority_kind"),
+    verificationAuthorityId: text("verification_authority_id"),
     status: text("status").notNull().default("active"),
     confidence: real("confidence").notNull().default(0),
     version: bigint("version", { mode: "number" }).notNull().default(1),
@@ -155,7 +157,7 @@ export const identityClaimJournalTable = pgTable(
       name: "fk_identity_claim_journal_agent",
       columns: [table.agentId],
       foreignColumns: [agentTable.id],
-    }).onDelete("cascade"),
+    }).onDelete("restrict"),
     foreignKey({
       name: "fk_identity_claim_journal_claim",
       columns: [table.claimId, table.agentId],

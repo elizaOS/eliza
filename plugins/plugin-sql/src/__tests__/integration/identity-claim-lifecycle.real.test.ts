@@ -7,7 +7,12 @@
 import type { IAgentRuntime, UUID, VerifyIdentityClaimRequest } from "@elizaos/core";
 import { and, eq, sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { connectorAccountsTable } from "../../schema/connectorAccounts";
+import { authIdentityTable } from "../../schema/authIdentity";
+import { authOwnerBindingTable } from "../../schema/authOwnerBinding";
+import {
+  connectorAccountAuditEventsTable,
+  connectorAccountsTable,
+} from "../../schema/connectorAccounts";
 import { entityTable } from "../../schema/entity";
 import { entityIdentityTable } from "../../schema/entityIdentity";
 import {
@@ -40,6 +45,9 @@ describe("SQL identity claim lifecycle and migration inventory", () => {
     db = setup.adapter.getDatabase() as DrizzleDatabase;
     agentId = setup.testAgentId;
     runtime = setup.runtime;
+    const getSetting = runtime.getSetting.bind(runtime);
+    runtime.getSetting = (key) =>
+      key === "ELIZA_INSTANCE_ID" ? "identity-claim-lifecycle-test" : getSetting(key);
     service = new SqlIdentityResolutionService(runtime);
     await db.insert(entityTable).values(
       [actorId, principalId, conflictingPrincipalId].map((id) => ({
@@ -101,19 +109,58 @@ describe("SQL identity claim lifecycle and migration inventory", () => {
     });
     expect(await service.observeClaim(request)).toEqual(observed);
 
-    const verifyValue = {
+    const unauthenticatedVerifyValue = {
       agentId,
       actorPrincipalId: actorId,
+      claimId: observed.id,
+      expectedVersion: 1,
+      idempotencyKey: "verify-person-42-unauthenticated",
+      reason: "forged connector assertion",
+      provenance: { verifier: "untrusted-caller" },
+      evidence: {},
+      authority: {
+        kind: "connector_assertion" as const,
+        auditEventId: crypto.randomUUID() as UUID,
+      },
+      verifiedAt: "2026-08-21T20:01:00.000Z",
+    };
+    await expect(
+      service.verifyClaim({
+        ...unauthenticatedVerifyValue,
+        requestDigest: computeIdentityRequestDigest("verify-claim", unauthenticatedVerifyValue),
+      })
+    ).rejects.toMatchObject({ code: "IDENTITY_VERIFIER_AUTHORITY_INVALID" });
+    const [assertion] = await db
+      .insert(connectorAccountAuditEventsTable)
+      .values({
+        accountId,
+        agentId,
+        provider: "discord",
+        actorId: "person-42",
+        action: "identity_subject_authenticated",
+        outcome: "success",
+        metadata: {
+          namespace: "provider_subject",
+          externalSubjectId: "person-42",
+          principalEntityId: principalId,
+        },
+      })
+      .returning();
+    if (!assertion) throw new Error("connector assertion audit event was not persisted");
+
+    const verifyValue = {
+      agentId,
+      actorPrincipalId: principalId,
       claimId: observed.id,
       expectedVersion: 1,
       idempotencyKey: "verify-person-42",
       reason: "connector assertion verified",
       provenance: { verifier: "discord-adapter" },
       evidence: { assertionId: "assertion-1" },
-      attestationKind: "connector_assertion" as const,
+      authority: { kind: "connector_assertion" as const, auditEventId: assertion.id },
       verifiedAt: "2026-08-21T20:01:00.000Z",
     };
-    const forgedVerification = { ...verifyValue, attestationKind: "owner_override" };
+    const forgedVerification = { ...verifyValue, authority: { kind: "owner_override" } };
     await expect(
       service.verifyClaim({
         ...forgedVerification,
@@ -126,6 +173,18 @@ describe("SQL identity claim lifecycle and migration inventory", () => {
     });
     expect(verified).toMatchObject({ verification: "verified", version: 2 });
     expect(verified.verification).not.toBe("owner_bound");
+    await expect(service.resolveVerifiedDeliveryClaims(agentId, principalId)).resolves.toEqual([
+      verified,
+    ]);
+    await db
+      .update(connectorAccountsTable)
+      .set({ status: "disabled" })
+      .where(eq(connectorAccountsTable.id, accountId));
+    await expect(service.resolveVerifiedDeliveryClaims(agentId, principalId)).resolves.toEqual([]);
+    await db
+      .update(connectorAccountsTable)
+      .set({ status: "connected" })
+      .where(eq(connectorAccountsTable.id, accountId));
 
     const transition = (suffix: string) => {
       const value = {
@@ -199,9 +258,64 @@ describe("SQL identity claim lifecycle and migration inventory", () => {
     expect(
       (await restarted.listClaimJournal(agentId, observed.id, { limit: 10, cursor: null })).items
     ).toHaveLength(4);
+    const guard = await db.execute(sql`
+      SELECT 1 AS present
+        FROM pg_trigger
+       WHERE tgname = 'identity_claim_journal_append_only'
+         AND NOT tgisinternal
+    `);
+    expect(guard.rows).toHaveLength(1);
+    await expect(
+      Promise.resolve(
+        db
+          .update(identityClaimJournalTable)
+          .set({ reason: "tampered" })
+          .where(eq(identityClaimJournalTable.claimId, observed.id))
+      )
+    ).rejects.toBeDefined();
+    expect(
+      await db
+        .select({ reason: identityClaimJournalTable.reason })
+        .from(identityClaimJournalTable)
+        .where(eq(identityClaimJournalTable.claimId, observed.id))
+    ).not.toEqual(expect.arrayContaining([expect.objectContaining({ reason: "tampered" })]));
+    await expect(
+      Promise.resolve(
+        db
+          .delete(identityClaimJournalTable)
+          .where(eq(identityClaimJournalTable.claimId, observed.id))
+      )
+    ).rejects.toBeDefined();
+    expect(
+      await db
+        .select()
+        .from(identityClaimJournalTable)
+        .where(eq(identityClaimJournalTable.claimId, observed.id))
+    ).toHaveLength(4);
   });
 
   it("rejects cross-principal scoped-subject claims and idempotency-key mutation", async () => {
+    const simultaneous = observationRequest({
+      scope: {
+        namespace: "provider_subject",
+        connectorId: "discord",
+        connectorAccountId: accountId,
+        externalSubjectId: "person-simultaneous",
+      },
+      idempotencyKey: "observe-person-simultaneous",
+    });
+    const [simultaneousLeft, simultaneousRight] = await Promise.all([
+      service.observeClaim(simultaneous),
+      service.observeClaim(simultaneous),
+    ]);
+    expect(simultaneousRight).toEqual(simultaneousLeft);
+    expect(
+      await db
+        .select()
+        .from(identityClaimJournalTable)
+        .where(eq(identityClaimJournalTable.claimId, simultaneousLeft.id))
+    ).toHaveLength(1);
+
     const first = observationRequest({
       scope: {
         namespace: "provider_subject",
@@ -211,7 +325,7 @@ describe("SQL identity claim lifecycle and migration inventory", () => {
       },
       idempotencyKey: "observe-person-99",
     });
-    await service.observeClaim(first);
+    const firstClaim = await service.observeClaim(first);
     const conflicting = observationRequest({
       principalEntityId: conflictingPrincipalId,
       scope: first.scope,
@@ -228,9 +342,125 @@ describe("SQL identity claim lifecycle and migration inventory", () => {
     await expect(service.observeClaim(changedReplay)).rejects.toMatchObject({
       code: "IDENTITY_IDEMPOTENCY_CONFLICT",
     });
+    await expect(
+      service.observeClaim(observationRequest({ idempotencyKey: "", reason: "blank key" }))
+    ).rejects.toMatchObject({ code: "IDENTITY_CLAIM_INPUT_INVALID" });
+    await expect(
+      service.observeClaim(
+        observationRequest({ idempotencyKey: "observe-blank-reason", reason: "   " })
+      )
+    ).rejects.toMatchObject({ code: "IDENTITY_CLAIM_INPUT_INVALID" });
+    await expect(
+      service.listClaimJournal(agentId, firstClaim.id, { limit: Number.NaN, cursor: null })
+    ).rejects.toMatchObject({ code: "IDENTITY_JOURNAL_LIMIT_INVALID" });
+  });
+
+  it("requires a live owner-bound operator for migration verification", async () => {
+    const ownerIdentityId = crypto.randomUUID();
+    const ownerBindingId = crypto.randomUUID();
+    const ownerAccountId = crypto.randomUUID() as UUID;
+    await db.insert(authIdentityTable).values({
+      id: ownerIdentityId,
+      kind: "owner",
+      displayName: "Migration operator",
+      createdAt: Date.now(),
+    });
+    await db.insert(authOwnerBindingTable).values({
+      id: ownerBindingId,
+      identityId: ownerIdentityId,
+      connector: "telegram",
+      externalId: "operator-subject",
+      displayHandle: "operator",
+      instanceId: "identity-claim-lifecycle-test",
+      verifiedAt: Date.now(),
+    });
+    await db.insert(connectorAccountsTable).values({
+      id: ownerAccountId,
+      agentId,
+      provider: "telegram",
+      accountKey: "migration-owner-account",
+      externalId: "operator-subject",
+      ownerBindingId,
+      accessGate: "owner_binding",
+      status: "connected",
+    });
+    await db.insert(identityClaimTable).values({
+      agentId,
+      principalEntityId: actorId,
+      namespace: "connector_subject",
+      connectorId: "telegram",
+      connectorAccountId: ownerAccountId,
+      externalSubjectId: "operator-subject",
+      verification: "owner_bound",
+      ownerBindingId,
+      status: "active",
+      confidence: 1,
+      verifiedAt: new Date(),
+    });
+
+    const observed = await service.observeClaim(
+      observationRequest({
+        scope: {
+          namespace: "provider_subject",
+          connectorId: "discord",
+          connectorAccountId: accountId,
+          externalSubjectId: "person-operator-migrated",
+        },
+        idempotencyKey: "observe-person-operator-migrated",
+      })
+    );
+    const value = {
+      agentId,
+      actorPrincipalId: actorId,
+      claimId: observed.id,
+      expectedVersion: 1,
+      idempotencyKey: "verify-person-operator-migrated",
+      reason: "authorized legacy migration",
+      provenance: { migration: "identity-v1" },
+      evidence: { source: "legacy-inventory" },
+      authority: { kind: "operator_migration" as const, ownerBindingId },
+      verifiedAt: "2026-08-21T20:03:00.000Z",
+    };
+    const verified = await service.verifyClaim({
+      ...value,
+      requestDigest: computeIdentityRequestDigest("verify-claim", value),
+    });
+    expect(verified).toMatchObject({
+      verification: "verified",
+      verificationAuthorityKind: "operator_migration",
+      verificationAuthorityId: ownerBindingId,
+    });
+    await db
+      .update(connectorAccountsTable)
+      .set({ status: "disabled" })
+      .where(eq(connectorAccountsTable.id, ownerAccountId));
+    await expect(service.resolveVerifiedDeliveryClaims(agentId, principalId)).resolves.not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: verified.id })])
+    );
+    await db
+      .update(connectorAccountsTable)
+      .set({ status: "connected" })
+      .where(eq(connectorAccountsTable.id, ownerAccountId));
   });
 
   it("reports incompatible LifeOps IDs and collisions without writing canonical rows", async () => {
+    const orphanIdentityId = crypto.randomUUID();
+    const orphanBindingId = crypto.randomUUID();
+    await db.insert(authIdentityTable).values({
+      id: orphanIdentityId,
+      kind: "owner",
+      displayName: "Orphan owner",
+      createdAt: Date.now(),
+    });
+    await db.insert(authOwnerBindingTable).values({
+      id: orphanBindingId,
+      identityId: orphanIdentityId,
+      connector: "discord",
+      externalId: "orphan-owner-subject",
+      displayHandle: "orphan",
+      instanceId: "identity-claim-lifecycle-test",
+      verifiedAt: Date.now(),
+    });
     await db.insert(entityIdentityTable).values([
       {
         agentId,
@@ -252,7 +482,12 @@ describe("SQL identity claim lifecycle and migration inventory", () => {
     await db
       .update(entityTable)
       .set({
-        metadata: { platformIdentities: [{ platform: "email", handle: "john@example.com" }] },
+        metadata: {
+          platformIdentities: [
+            { platform: "email", handle: "john@example.com" },
+            { platform: "telegram", handle: "same-handle" },
+          ],
+        },
       })
       .where(eq(entityTable.id, principalId));
     await db.insert(relationshipTable).values({
@@ -290,6 +525,8 @@ describe("SQL identity claim lifecycle and migration inventory", () => {
         id, agent_id, entity_id, platform, handle, connector_account_id, verified, confidence
       ) VALUES (
         'life-id-1', ${agentId}, 'ent_legacy_john', 'telegram', 'john', 'default', TRUE, 0.8
+      ), (
+        'life-id-missing', ${agentId}, 'ent_missing', 'telegram', 'missing', 'default', FALSE, 0.4
       )
     `);
 
@@ -310,14 +547,33 @@ describe("SQL identity claim lifecycle and migration inventory", () => {
       disposition: "needs_principal_projection",
       reasons: ["lifeops_principal_is_not_uuid", "lifeops_connector_account_is_not_uuid"],
     });
+    expect(first.rows.find((row) => row.sourceId === "life-id-missing")).toMatchObject({
+      reasons: expect.arrayContaining(["lifeops_entity_missing"]),
+    });
+    expect(first.rows.find((row) => row.sourceId === orphanBindingId)).toMatchObject({
+      disposition: "conflict",
+      reasons: ["orphan_owner_binding_has_no_connector_account"],
+    });
     expect(first.rows.filter((row) => row.source === "entity_identities")).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           disposition: "conflict",
-          reasons: expect.arrayContaining(["same_legacy_subject_on_multiple_principals"]),
+          reasons: expect.arrayContaining([
+            "same_legacy_subject_on_multiple_principals",
+            "same_subject_on_multiple_declared_principals",
+          ]),
         }),
       ])
     );
+    expect(
+      first.rows.find(
+        (row) =>
+          row.source === "entity_metadata_platform_identities" && row.connectorId === "telegram"
+      )
+    ).toMatchObject({
+      disposition: "conflict",
+      reasons: expect.arrayContaining(["same_subject_on_multiple_declared_principals"]),
+    });
     expect(first.rows.find((row) => row.source === "trust_identity_links")).toMatchObject({
       reasons: ["source_is_not_tenant_scoped_and_cannot_be_read_safely"],
     });

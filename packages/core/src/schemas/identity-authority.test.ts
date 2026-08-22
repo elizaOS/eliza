@@ -21,6 +21,9 @@ describe("portable identity authority schemas", () => {
 		expect(active?.where).toBe("status = 'active'");
 		expect(identityClaimSchema.columns.connector_account_id?.type).toBe("uuid");
 		expect(
+			identityClaimSchema.columns.verification_authority_kind?.notNull,
+		).not.toBe(true);
+		expect(
 			identityClaimSchema.foreignKeys.fk_identity_claim_owner_binding?.onDelete,
 		).toBe("restrict");
 	});
@@ -50,6 +53,10 @@ describe("portable identity authority schemas", () => {
 				?.columnsFrom,
 		).toEqual(["claim_id", "agent_id"]);
 		expect(identityClaimJournalSchema.columns.after_claim?.notNull).toBe(true);
+		expect(
+			identityClaimJournalSchema.foreignKeys.fk_identity_claim_journal_agent
+				?.onDelete,
+		).toBe("restrict");
 	});
 
 	it("binds a bounded confirmation to the exact plan and generation", () => {
