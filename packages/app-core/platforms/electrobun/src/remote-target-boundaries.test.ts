@@ -250,4 +250,63 @@ describe("remote target native boundaries", () => {
     store.values.set("target-test", JSON.stringify(stored));
     await expect(vault.load()).rejects.toThrow("corrupt");
   });
+
+  it("binds native host revocation to its stored bearer and exact response host", async () => {
+    const store = new MemorySecureStore();
+    const vault = new RemoteTargetVault(store, "revoke-target-test");
+    const pending = await vault.prepare({
+      ownerId: "owner-1",
+      displayName: "Linux target",
+      now: 2_000_000_000_000,
+    });
+    if (pending.status !== "pending") throw new Error("expected pending");
+    const enrollment = await vault.commitEnrollment({
+      apiBaseUrl: "https://api.example.test",
+      hostId: "11111111-1111-4111-8111-111111111111",
+      hostToken: `rhost_v1_${"A".repeat(43)}`,
+      runtimeKeyId: pending.keyId,
+      createdAt: 2_000_000_000_001,
+    });
+    const requests: Request[] = [];
+    const transport = new HttpRemoteTargetRelayTransport(
+      async (input, init) => {
+        requests.push(new Request(input, init));
+        return jsonResponse({
+          success: true,
+          data: {
+            id: enrollment.identity.runtimeId,
+            status: "revoked",
+            alreadyRevoked: false,
+            cleanup: { sessions: 1, commands: 2, more: false },
+          },
+        });
+      },
+    );
+    await expect(transport.revokeHost({ enrollment })).resolves.toMatchObject({
+      hostId: enrollment.identity.runtimeId,
+      status: "revoked",
+      cleanup: { more: false },
+    });
+    expect(requests[0]?.headers.get("authorization")).toBe(
+      `Bearer ${enrollment.hostToken}`,
+    );
+    expect(requests[0]?.headers.get("x-remote-host-id")).toBe(
+      enrollment.identity.runtimeId,
+    );
+
+    const substituted = new HttpRemoteTargetRelayTransport(async () =>
+      jsonResponse({
+        success: true,
+        data: {
+          id: "22222222-2222-4222-8222-222222222222",
+          status: "revoked",
+          alreadyRevoked: false,
+          cleanup: { sessions: 0, commands: 0, more: false },
+        },
+      }),
+    );
+    await expect(substituted.revokeHost({ enrollment })).rejects.toThrow(
+      "response is invalid",
+    );
+  });
 });

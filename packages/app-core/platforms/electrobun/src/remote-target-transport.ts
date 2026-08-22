@@ -3,6 +3,8 @@
  * process. Host and owner bearers are placed in request headers, never URLs or
  * returned diagnostics, and response bodies are rejected above a fixed limit.
  */
+
+import { ElizaError } from "@elizaos/core";
 import {
   canonicalizeRemoteControlValue,
   type EncryptedRemoteControlEnvelope,
@@ -79,6 +81,13 @@ export interface RemoteTargetClaim {
   claimExpiresAt: number;
 }
 
+export interface RemoteTargetHostRevocationPage {
+  hostId: string;
+  status: "revoked";
+  alreadyRevoked: boolean;
+  cleanup: { sessions: number; commands: number; more: boolean };
+}
+
 export interface RemoteTargetRelayTransport {
   enroll(
     input: RemoteTargetEnrollmentRequest,
@@ -108,6 +117,9 @@ export interface RemoteTargetRelayTransport {
     claimToken: string;
     envelope: EncryptedRemoteControlEnvelope;
   }): Promise<void>;
+  revokeHost(input: {
+    enrollment: EnrolledRemoteTargetVaultRecord;
+  }): Promise<RemoteTargetHostRevocationPage>;
 }
 
 function requireObject(value: unknown): Record<string, unknown> {
@@ -502,6 +514,48 @@ export class HttpRemoteTargetRelayTransport
     envelope: EncryptedRemoteControlEnvelope;
   }): Promise<void> {
     await this.commandMutation("complete", input);
+  }
+
+  async revokeHost(input: {
+    enrollment: EnrolledRemoteTargetVaultRecord;
+  }): Promise<RemoteTargetHostRevocationPage> {
+    const hostId = requireUuid(input.enrollment.identity.runtimeId);
+    const data = requireObject(
+      await this.request(
+        input.enrollment.apiBaseUrl,
+        `/api/v1/remote/hosts/${encodeURIComponent(hostId)}/revoke`,
+        {
+          method: "POST",
+          headers: this.hostHeaders(input.enrollment),
+        },
+      ),
+    );
+    const cleanup = requireObject(data.cleanup);
+    if (
+      data.id !== hostId ||
+      data.status !== "revoked" ||
+      typeof data.alreadyRevoked !== "boolean" ||
+      !Number.isSafeInteger(cleanup.sessions) ||
+      (cleanup.sessions as number) < 0 ||
+      !Number.isSafeInteger(cleanup.commands) ||
+      (cleanup.commands as number) < 0 ||
+      typeof cleanup.more !== "boolean"
+    ) {
+      throw new ElizaError("Remote host revocation response is invalid", {
+        code: "REMOTE_HOST_REVOCATION_RESPONSE_INVALID",
+        context: { hostId },
+      });
+    }
+    return {
+      hostId,
+      status: "revoked",
+      alreadyRevoked: data.alreadyRevoked,
+      cleanup: {
+        sessions: cleanup.sessions as number,
+        commands: cleanup.commands as number,
+        more: cleanup.more,
+      },
+    };
   }
 
   private async commandMutation(
