@@ -30,20 +30,18 @@ import {
 const id = (s: string) => s as UUID;
 
 describe("createMessageMemory", () => {
-	it("fails closed: no explicit scope and no agentId stamps owner-private, never shared", () => {
-		// Leak canary. This exact shape is what POST /api/memory/remember builds
-		// for hash-memory notes. The old default (`shared`) made every unscoped
-		// note readable by any USER/GUEST on the scope ladder — an unstamped
-		// personal note must never be world-readable by omission.
-		const unstamped = createMessageMemory({
+	it("stamps MESSAGE metadata and scope by agentId presence", () => {
+		// Intentional factory defaults: `shared` without an agentId, `private`
+		// with one. Omit-agentId production writers (inbound chat, cloud events,
+		// CLI chat) rely on `shared` so the sender and the agent can both read
+		// the row. Writers needing a tighter tier pass `scope` explicitly.
+		const shared = createMessageMemory({
 			entityId: id("e1"),
 			roomId: id("r1"),
 			content: { text: "hi" },
 		});
-		expect(unstamped.metadata?.type).toBe(MemoryType.MESSAGE);
-		expect((unstamped.metadata as { scope?: string }).scope).toBe(
-			"owner-private",
-		);
+		expect(shared.metadata?.type).toBe(MemoryType.MESSAGE);
+		expect((shared.metadata as { scope?: string }).scope).toBe("shared");
 
 		const priv = createMessageMemory({
 			entityId: id("e1"),
@@ -54,19 +52,19 @@ describe("createMessageMemory", () => {
 		expect((priv.metadata as { scope?: string }).scope).toBe("private");
 	});
 
-	it("honors an explicit scope: shared must be opted into, never inherited", () => {
-		const explicitShared = createMessageMemory({
+	it("honors an explicit scope over the agentId-derived default", () => {
+		const explicitAgentPrivate = createMessageMemory({
 			entityId: id("e1"),
 			roomId: id("r1"),
 			content: { text: "hi" },
-			scope: "shared",
+			scope: "agent-private",
 		});
-		expect((explicitShared.metadata as { scope?: string }).scope).toBe(
-			"shared",
+		expect((explicitAgentPrivate.metadata as { scope?: string }).scope).toBe(
+			"agent-private",
 		);
 		// The scope param must not leak onto the memory record itself — it only
 		// belongs in metadata, where the access-control ladder reads it.
-		expect("scope" in explicitShared).toBe(false);
+		expect("scope" in explicitAgentPrivate).toBe(false);
 
 		const explicitOwner = createMessageMemory({
 			entityId: id("e1"),

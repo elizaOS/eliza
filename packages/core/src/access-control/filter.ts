@@ -118,13 +118,14 @@ export function canReadScope(
  * Filter retrieval records down to those `ctx`'s requester may read. A pure,
  * strictly subtractive `.filter()`: it composes with (never duplicates)
  * Postgres RLS, which gates on `entity_id`/`server_id` while this gates on
- * `metadata.scope`. An ABSENT scope fails CLOSED to `owner-private` (the most
- * restrictive tier), matching `normalizeScope` in artifact-disclosure.ts: an
- * unstamped legacy row must never be treated as globally readable, because a
- * write path that forgot to stamp a scope would otherwise silently publish
- * private data to every actor. Malformed scopes also fail closed. The owning
- * entity is taken from `metadata.scopedToEntityId`, else `metadata.addedBy`,
- * else `entityId` (mirroring the documents plugin).
+ * `metadata.scope`. An ABSENT scope fails CLOSED to `private` (author-scoped):
+ * an unstamped legacy row must never be treated as globally readable, because
+ * a write path that forgot to stamp a scope would otherwise silently publish
+ * private data to every actor. `private` (rather than `owner-private`) keeps
+ * the author's own rows and the agent's self-recall working on legacy
+ * unstamped data while still denying strangers. Malformed scopes also fail
+ * closed. The owning entity is taken from `metadata.scopedToEntityId`, else
+ * `metadata.addedBy`, else `entityId` (mirroring the documents plugin).
  */
 export function filterByAccessContext<T extends AccessScopedRecord>(
 	memories: T[],
@@ -137,10 +138,15 @@ export function filterByAccessContext<T extends AccessScopedRecord>(
 		if (rawScope !== undefined && !isMemoryScope(rawScope)) {
 			return false;
 		}
-		// Fail closed: no stamp = owner-private, never `global`. Keep in lockstep
-		// with normalizeScope (artifact-disclosure.ts), which already defaults
-		// unknown/absent scopes to owner-private.
-		const scope = rawScope ?? "owner-private";
+		// Fail closed: no stamp = `private` (author-scoped), never `global`. The
+		// author (via the scopedToEntityId -> addedBy -> entityId resolution
+		// below), the agent, and the runtime can still read an unstamped row;
+		// strangers (USER/GUEST/unresolved) cannot. This deliberately DIVERGES
+		// from normalizeScope (artifact-disclosure.ts), which defaults absent
+		// scopes to owner-private: artifacts have no agent-self-recall
+		// requirement, but messages do — legacy unstamped message rows must stay
+		// readable to their author and to the agent, or recall silently breaks.
+		const scope = rawScope ?? "private";
 		const meta = memory.metadata;
 		const scopedTo = meta?.scopedToEntityId;
 		const addedBy = meta?.addedBy;
