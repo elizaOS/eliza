@@ -15,7 +15,8 @@ email bodies, attachments, and large memory fields through bounded, exact,
 model-aware views without irreversible prompt truncation. The complete source
 remains addressable under existing retention and authorization policies;
 continuation survives compaction; final serialization stays within budget; and
-real agent behavior, isolation, security, latency, memory, and cleanup are proven.
+real agent behavior, bounded source work, isolation, security, latency, memory,
+database cost, and cleanup are proven.
 
 Execution rules:
 - Read the root guide, CONTRIBUTING.md, and every owning package CLAUDE.md/README.
@@ -35,10 +36,20 @@ Execution rules:
 - Preserve existing fail-closed transport, security, and database limits.
 - Every behavioral acceptance test must execute production code and kill its
   assigned architectural mutant.
+- Classify continuations as restart-safe, session-safe, or non-resumable. Only
+  refs with a direct fresh-process durable resolver may enter persisted manifests.
+- Use one deterministic source/oracle corpus plus one native-realization ledger,
+  one parametrized adapter conformance suite, one threshold policy, one result
+  schema, and one evidence coordinator. Do not fork these per adapter.
+- A bounded response is not acceptance when the adapter still fetches, scans,
+  hashes, decodes, or allocates the complete source on every page.
+- Canonical continuity is logically complete. Bound each storage record and the
+  model projection, but roll overflow into ordered authorized addressable shards;
+  omission counters may describe projection only and never replace durable entries.
 - Completion means exact-head local gates, hosted CI, generated evidence, and
   inspected real artifacts/trajectories at the same revision.
 
-Dispatch parallel research/implementation lanes:
+Historical baseline ownership map (reference only; do not dispatch these as current lanes):
 
 1. Core contract and prompt projection
    - Own ReadSlice/expected-revision contracts, token-aware per-result and
@@ -91,6 +102,71 @@ Dispatch parallel research/implementation lanes:
    - Ingest benchmark JSON, scenario reports, trajectories, logs, screenshots,
      and videos through the canonical evidence bundle.
 
+Current parallel dispatch uses only these four non-overlapping lanes. Individual
+focused tests run within each lane, but do not start the integrated verification
+wave until A-D return and the coordinator completes shared-file integration.
+No parallel lane edits `packages/core/src/services/message.ts`; the coordinator
+integrates its summary-persistence, source-reader, and final-projection call sites
+sequentially after A, C, and D return. The coordinator also resolves shared type,
+export, fixture-ratchet, and registry-manifest changes.
+
+A. Lossless continuity and restart
+   - Exclusive ownership: `packages/core/src/features/advanced-memory/` summary
+     manifest/persistence/provider files, `packages/core/src/runtime/content-access-manifest*`,
+     `packages/core/src/types/content-manifest*`, and corresponding advanced-memory
+     storage contract/tests in core and plugin-sql. Do not edit `services/message.ts`.
+   - Replace lossy count/byte eviction with ordered restart-safe manifest shards
+     in the existing memory/database domain. Recover every ordered entry/range
+     after count rollover, byte rollover, repeated rollover, and serialization pressure.
+   - Kill mutants that replace shards with omission counters or break, skip,
+     repeat, reorder, or loop next-links. A owns these mutant implementations and
+     killing tests; B owns only the shared registry schema/harness.
+   - Deliver writer/reader child-process storage/provider harnesses over PGLite.
+     After shared-file integration, the coordinator runs production summary/action
+     traversal and the same semantic vectors on Postgres.
+
+B. Native corpus realization and conformance
+   - Exclusive ownership: `packages/corpus-tools/src/progressive-content-*`, a
+     shared conformance harness under `packages/core/src/testing/`, the checked-in
+     mutant registry schema/runner, and content-context threshold/result schemas.
+   - Consume corpus v2 and seed real memory/document/media/Gmail/tool-output
+     services. Emit a verified object-to-native-reference/revision/scope/cleanup ledger.
+   - Build one adapter factory/harness covering read, revision, authorization,
+     reassembly, source-work counters, faults, concurrency, restart, and cleanup.
+   - Provide named sub-artifacts to `test:matrix:review`; do not own bundle creation,
+     ingestion, verification, or review.
+
+C. Bounded native adapters
+   - Exclusive ownership: document, stored-memory reader, attachment, and email
+     action/service/storage files, excluding advanced-memory files owned by A and
+     excluding `packages/core/src/services/message.ts`.
+   - Store large document/message/attachment/email text as immutable,
+     non-overlapping indexed UTF-8 segments with precomputed revisions.
+   - Return typed reindex-required for legacy unsegmented large content; never
+     hide repeated parent scans, hashes, provider refetches, or source-sized
+     allocation behind a small page.
+   - Implement owner-bound attachment locators and stable connector body revisions;
+     reauthorize every continuation and cached read.
+
+D. Final-wire projection and private-artifact contract
+   - Exclusive ownership: provider request preparation/model-budget code and agent
+     terminal/private-artifact lifecycle files. Do not edit source adapters, corpus,
+     advanced-memory files, or `packages/core/src/services/message.ts`.
+   - Project after provider request preparation with tokenizer/model-aware counts,
+     reserves, rerendering, and provider-token reconciliation.
+   - Add private tool-result spill only after owner scope, leases, expiry, atomic
+     publication, redaction, reference-aware GC, and failure semantics pass.
+
+Integrated verification wave after A-D return and coordinator shared-file integration:
+- Scenario/evidence/app/CI owners consume, but do not redefine, the shared corpus,
+  conformance, mutant, threshold, and shard contracts.
+- Add strict-fixture planning with no offsets/canaries in prompts, provider-qualified
+  repetitions, inspector E2E, the complete fault/concurrency matrix, Postgres,
+  and the six-hour plus 100K-operation soak.
+- Add `packages/scripts/run-content-context.mjs` as a named completeness-enforcing
+  producer invoked by `test:matrix:review`; the matrix command remains the sole
+  bundle inventory/execution/creation/verification/review authority.
+
 Milestones and merge order:
 M0 inventory + issue + frozen contracts/fixtures.
 M1 ReadSlice/projection/telemetry behind a feature flag.
@@ -124,6 +200,8 @@ Non-negotiable acceptance:
   inspector surfaces.
 - Late evidence is found in every source family; multiple items are fair.
 - Model-safe references/ranges remain readable after compaction when authorized.
+- Count/byte pressure never deletes canonical references or ranges; a bounded
+  projection exposes an authorized continuation through every persisted shard.
 - Prompt tokens stay inside the computed post-serialization budget.
 - Source text is not duplicated through planner data.
 - Deterministic scenarios assert tool calls/ranges and final canaries.
@@ -135,6 +213,11 @@ Non-negotiable acceptance:
   corpus manifest/generator revision, commit, machine, sample count, warm/cold
   state, and concurrency.
 - The explicit architectural mutant catalog has a 100% kill rate.
+- A selected credentialed lane fails when credentials are absent; optional
+  discovery skips never satisfy acceptance.
+- The content-context named producer requires every declared sub-artifact;
+  `test:matrix:review` inventories producers, creates the exact bundle, verifies
+  and reviews it, and records the exact revision.
 
 CI/evidence mapping:
 - Focused core, agent integration, coding-tools, scenario-runner, evidence, and
