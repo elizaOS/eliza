@@ -2257,6 +2257,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         .select({ metadata: memoryTable.metadata })
         .from(memoryTable)
         .where(and(...this.documentReadConditions(params)))
+        .for("share")
         .limit(1);
       const parentRow = parentRows[0];
       if (!parentRow) return null;
@@ -2269,42 +2270,68 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
             ? parent.sourceLineCount
             : parent.sourceFragmentCount;
       const requestedEnd = Math.min(params.offset + params.limit, total);
+      const sourceParent = alias(memoryTable, "document_source_parent");
+      const sourceSegment = alias(memoryTable, "document_source_segment");
       const coordinateStart =
         params.unit === "byte"
-          ? sql`(${memoryTable.metadata}->>'sourceByteStart')::bigint`
+          ? sql`(${sourceSegment.metadata}->>'sourceByteStart')::bigint`
           : params.unit === "line"
-            ? sql`(${memoryTable.metadata}->>'sourceLineStart')::bigint`
-            : sql`(${memoryTable.metadata}->>'sourceFragmentStart')::bigint`;
+            ? sql`(${sourceSegment.metadata}->>'sourceLineStart')::bigint`
+            : sql`(${sourceSegment.metadata}->>'sourceFragmentStart')::bigint`;
       const coordinateEnd =
         params.unit === "byte"
-          ? sql`(${memoryTable.metadata}->>'sourceByteEnd')::bigint`
+          ? sql`(${sourceSegment.metadata}->>'sourceByteEnd')::bigint`
           : params.unit === "line"
-            ? sql`(${memoryTable.metadata}->>'sourceLineEnd')::bigint`
-            : sql`(${memoryTable.metadata}->>'sourceFragmentEnd')::bigint`;
+            ? sql`(${sourceSegment.metadata}->>'sourceLineEnd')::bigint`
+            : sql`(${sourceSegment.metadata}->>'sourceFragmentEnd')::bigint`;
       const revisionAttemptCondition = parent.revisionAttemptId
-        ? sql`${memoryTable.metadata}->>'revisionAttemptId' = ${parent.revisionAttemptId}`
-        : sql`NOT (${memoryTable.metadata} ? 'revisionAttemptId')`;
+        ? sql`${sourceSegment.metadata}->>'revisionAttemptId' = ${parent.revisionAttemptId}`
+        : sql`NOT (${sourceSegment.metadata} ? 'revisionAttemptId')`;
+      const hasGlobalVisibility = documentRoleHasGlobalVisibility(params.requesterRole);
+      const parentConditions: SQL[] = [
+        eq(sourceParent.id, params.documentId),
+        eq(sourceParent.type, "documents"),
+        eq(sourceParent.agentId, params.agentId),
+        isNotNull(sourceParent.roomId),
+        isNotNull(sourceParent.entityId),
+        sql`${sourceParent.metadata}->>'type' = 'document'`,
+        documentVisibilityCondition(params, sourceParent.metadata),
+      ];
+      if (!hasGlobalVisibility) {
+        parentConditions.push(
+          documentRoomOrDirectGrantCondition(
+            params,
+            params.requesterRoomIds.length > 0
+              ? inArray(sourceParent.roomId, params.requesterRoomIds)
+              : sql`false`,
+            sourceParent.metadata
+          )
+        );
+      }
       const rows = await tx
-        .select()
-        .from(memoryTable)
-        .where(
+        .select({ parentId: sourceParent.id, segment: sourceSegment })
+        .from(sourceParent)
+        .leftJoin(
+          sourceSegment,
           and(
-            eq(memoryTable.type, "document_fragments"),
-            eq(memoryTable.agentId, params.agentId),
-            sql`${memoryTable.metadata}->>'type' = 'fragment'`,
-            sql`${memoryTable.metadata}->>'fragmentRole' = 'source-segment'`,
-            sql`${memoryTable.metadata}->>'sourceSegmentVersion' = '1'`,
-            sql`${memoryTable.metadata}->>'documentId' = ${params.documentId}`,
-            validDocumentRevision(memoryTable.metadata),
-            sql`${documentRevisionExpression(memoryTable.metadata)} = ${parent.documentRevision}`,
+            eq(sourceSegment.type, "document_fragments"),
+            eq(sourceSegment.agentId, params.agentId),
+            sql`${sourceSegment.metadata}->>'type' = 'fragment'`,
+            sql`${sourceSegment.metadata}->>'fragmentRole' = 'source-segment'`,
+            sql`${sourceSegment.metadata}->>'sourceSegmentVersion' = '1'`,
+            sql`${sourceSegment.metadata}->>'documentId' = ${params.documentId}`,
+            validDocumentRevision(sourceSegment.metadata),
+            sql`${documentRevisionExpression(sourceSegment.metadata)} = ${parent.documentRevision}`,
             revisionAttemptCondition,
             sql`${coordinateEnd} > ${params.offset}`,
             sql`${coordinateStart} < ${requestedEnd}`
           )
         )
-        .orderBy(sql`(${memoryTable.metadata}->>'position')::bigint ASC`)
+        .where(and(...parentConditions))
+        .orderBy(sql`(${sourceSegment.metadata}->>'position')::bigint ASC NULLS LAST`)
         .limit(DOCUMENT_SOURCE_READ_LOOKAHEAD_SEGMENTS);
-      const segments = rows.map((row) => memoryFromRow(row));
+      if (rows.length === 0) return null;
+      const segments = rows.flatMap((row) => (row.segment ? [memoryFromRow(row.segment)] : []));
       return readDocumentSourceProjection({
         segments,
         params,

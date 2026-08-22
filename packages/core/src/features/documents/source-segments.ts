@@ -73,8 +73,14 @@ function intersectingUnitRange(
 	segmentStart: number,
 	segmentEnd: number,
 ): { start: number; end: number } {
-	let start = units.findIndex((unit) => unit.end > segmentStart);
-	if (start < 0) start = units.length;
+	let low = 0;
+	let high = units.length;
+	while (low < high) {
+		const middle = low + Math.floor((high - low) / 2);
+		if (units[middle].end <= segmentStart) low = middle + 1;
+		else high = middle;
+	}
+	const start = low;
 	let end = start;
 	while (end < units.length && units[end].start < segmentEnd) end++;
 	return { start, end };

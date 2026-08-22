@@ -481,8 +481,8 @@ describe("DocumentService requester authorization", () => {
 			}
 			expect(result?.text).toBe(lateLine);
 			expect(wholeRead).not.toHaveBeenCalled();
-			// Query/result-byte oracle: the adapter may scan the source inside the DB,
-			// but only the requested page and continuation metadata cross into JS.
+			// Query/result-byte oracle: indexed source segments keep the complete
+			// parent body out of both the database read path and the JS projection.
 			expect(Buffer.byteLength(JSON.stringify(result))).toBeLessThan(16 * 1024);
 			expect(result?.data).toMatchObject({
 				readView: {
