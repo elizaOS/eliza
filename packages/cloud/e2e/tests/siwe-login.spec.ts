@@ -2,6 +2,8 @@
 import { expect, test } from "../src/helpers/test-fixtures";
 import { loginWithTestWallet } from "../src/helpers/wallet-login";
 
+test.use({ stackOptions: { frontend: false } });
+
 function requestCanonicalRoute(canonicalPath: string, apiUrl: string) {
   return fetch(`${apiUrl}${canonicalPath}`);
 }
