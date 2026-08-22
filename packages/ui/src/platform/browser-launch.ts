@@ -266,6 +266,22 @@ export async function applyLaunchConnectionFromUrl(): Promise<boolean> {
     return false;
   }
 
+  try {
+    const parsed = new URL(apiBase);
+    if (
+      parsed.protocol === "https:" &&
+      isElizaCloudControlPlaneHostname(parsed.hostname)
+    ) {
+      // The runtime-less desktop shell carries its trusted control-plane base
+      // in this query parameter. It configures transport during renderer boot;
+      // it is not an agent connection and must not create an active-server row.
+      stripLaunchParams();
+      return false;
+    }
+  } catch {
+    // error-policy:J3 normalization below owns the structured invalid result.
+  }
+
   applyLaunchConnection({
     kind: "remote",
     apiBase,
