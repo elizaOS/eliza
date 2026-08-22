@@ -24,6 +24,7 @@ const { setActionNotice, appValue, clientMock, devMode } = vi.hoisted(() => ({
     createLocalAgentBackup: vi.fn(),
     restoreLocalAgentBackup: vi.fn(),
     seedDevNotifications: vi.fn(),
+    getBaseUrl: vi.fn(() => "http://127.0.0.1:31337"),
   },
   devMode: { value: false },
 }));
@@ -69,6 +70,7 @@ beforeEach(() => {
   setActionNotice.mockClear();
   devMode.value = false;
   clientMock.seedDevNotifications.mockReset();
+  clientMock.getBaseUrl.mockReturnValue("http://127.0.0.1:31337");
   clientMock.seedDevNotifications.mockResolvedValue({
     count: 8,
     notifications: [],
@@ -106,6 +108,19 @@ describe("AdvancedSection agent backups", () => {
     sizeBytes: 2048,
     stateSha256: "1234567890abcdef1234567890abcdef",
   };
+
+  it("renders a truthful unavailable state for Dedicated agents", () => {
+    clientMock.getBaseUrl.mockReturnValue(
+      "https://11111111-1111-4111-8111-111111111111.staging.elizacloud.ai",
+    );
+    render(<AdvancedSection />);
+
+    expect(
+      screen.getByText(/Manual backups are not available for Dedicated agents/),
+    ).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /Back up agent/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Restore agent/i })).toBeNull();
+  });
 
   it("lists local encrypted backups when the backup modal opens", async () => {
     clientMock.listLocalAgentBackups.mockResolvedValue([backup]);
