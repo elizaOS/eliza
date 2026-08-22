@@ -817,19 +817,21 @@ Return format:
 
 		const parsed = parseJsonArrayFromText(response);
 		if (Array.isArray(parsed)) {
-			const validChunks = parsed.filter(
-				(chunk: unknown): chunk is string =>
-					typeof chunk === "string" &&
-					chunk.trim().length > 0 &&
-					chunk.length <= maxLength,
-			);
+			const allValid =
+				parsed.length > 0 &&
+				parsed.every(
+					(chunk: unknown): chunk is string =>
+						typeof chunk === "string" &&
+						chunk.trim().length > 0 &&
+						chunk.length <= maxLength,
+				);
 
-			if (validChunks.length > 0) {
-				return validChunks;
+			if (allValid) {
+				return parsed;
 			}
 
 			runtime.logger.debug(
-				"Smart split returned empty or invalid chunks, falling back to simple split",
+				"Smart split returned empty, mixed, or over-limit chunks, falling back to simple split",
 			);
 		}
 	} catch (error) {
