@@ -2,6 +2,24 @@
 
 Private, redacted ledger for the Gmail, Google Calendar, and Apple Calendar candidate. It contains no provider content, account identifiers, credential values, or private event/message data.
 
+## Live supervised continuation — 2026-08-22
+
+- Preserved candidate `421c15ddfba78e3d1b57b36b107614d252e1b380` and tag remain untouched.
+- Initial continuation base: `bccb85b5407fd2b2704fe6fc4bae89ad0d8cf9b3`; latest fetched `origin/develop`: `3fa81c56a29c81236308a080b6d62ba00c2a4675`.
+- Current-base worktree: `/Users/nubs/.codex/worktrees/lifeops-current-base-live-qa-20260822/eliza`.
+- Current-base branch: `codex/lifeops-current-base-live-qa-20260822`.
+- Replayed current-base head before this ledger edit: `25ff4ca308c5efdc1c14a7fc7fc63653b29ddd4d`.
+- Preflight tag: `lifeops-current-base-live-qa-preflight-20260822`.
+- All eleven preserved commits are exact `=` matches under `git range-diff`; old/new cumulative stable patch ID is `8a9052e3a6bde7650434ca6fa8534d602b14dd25`.
+- Exact-source session: UI `http://127.0.0.1:43231/lifeops/connections`, API `127.0.0.1:43232`, isolated scratch state under `/Users/nubs/.codex/reports/lifeops-live-validation/2026-08-22-25ff4ca308-supervised/`.
+- `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI`, and supported model-provider settings are absent by name/presence-only process, project-env, and canonical-vault-audit inspection. No value was read or exposed.
+- Git identity is `nubs <nubs@nubs.site>`; authenticated GitHub identity is `NubsCarson`.
+- The Apple permission request reached the hash-matched existing EventKit dylib without rebuilding native code. macOS did not return within 10 seconds; the UI showed a retryable timeout while the TCC decision remains the user gate.
+- Current-base focused proof: Personal Assistant Gmail adapter attribution plus complete/Unicode-safe model-facing previews, 2 files / 33 tests passed; Inbox attributable interaction blocks, 1 file / 34 tests passed; focused Biome checks clean.
+- Fixed two current-base acceptance harness defects without changing provider behavior: production Gmail fixtures now implement the adapter's required message-detail surface, and stale tests no longer demand silent truncation of model-facing Gmail context. Inbox interaction tests now require attributable actions for every returned row rather than silently dropping the sixth.
+- Latest upstream overlap is limited to an independent Personal Assistant relative-schedule fix. Reconciliation will preserve that upstream commit after this bounded checkpoint; the other new upstream commits do not touch Gmail, Google Calendar, Apple Calendar, or LifeOps connection paths.
+- No Google redirect, provider read, send, calendar mutation, provider deletion, push, PR mutation, merge, or deployment has occurred.
+
 ## Workspace and exact checkpoints
 
 - Canonical candidate worktree: `/Users/nubs/.codex/worktrees/lifeops-current-develop-20260822/eliza`
@@ -103,16 +121,18 @@ Legend: deterministic means fixture/unit/integration/local-browser evidence. Rea
 
 ## Doing
 
-- No safe local implementation or deterministic acceptance work remains in the bounded Gmail, Google Calendar, and Apple Calendar scope.
+- Supervised real-provider acceptance on the current-base exact-source session.
+- Waiting only for the current macOS Calendar TCC click; after it returns, continue Apple inventory/seed proof and then the protected Google OAuth configuration/consent gate.
 
 ## Next: true external gates only
 
-- Real Google account chooser/consent/MFA, callback, token refresh/revoke, and protected credential-store read-back.
-- Explicitly approved disposable Gmail and Google Calendar acceptance; sending mail or changing provider events remains prohibited until that approval.
-- Packaged macOS Apple Calendar permission/recovery and macOS owner implementation of the preserved EventKit serialization contract.
+- User selects **Allow Full Access** (or **Allow**) on the pending macOS Calendar permission prompt, then this lane retries health and records only redacted calendar counts/provenance.
+- Provision `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and isolated `GOOGLE_REDIRECT_URI` through a protected route; then user completes account chooser/consent/password/MFA for `nubs@nubs.site` at the action-time grant boundary.
+- Explicitly confirmed disposable self-mail and dedicated Google/Apple calendar effects, followed by reversible cleanup only of session-created artifacts.
+- Token/cursor expiry, offline/reconnect, partial failure, dedupe, disconnect/purge/reconnect, and exact receipt acceptance.
 - iOS simulator/physical-device EventKit permission, external-edit, recurrence, timezone/DST, and reconnect acceptance.
-- Hosted reviewer/CI, draft PR, signing, and deployment gates; no push, PR, merge, signing, or deployment is authorized here.
+- Focused tests, app audit, commit/tag, normal branch push, and draft PR. Merge, signing, and deployment remain prohibited.
 
 ## Concrete user action now
 
-- None. The local deterministic candidate is complete. The next action is only needed when the user chooses to supervise a real Google chooser/MFA or Apple permission prompt, or authorizes hosted review/deployment work.
+- On the visible macOS Calendar permission dialog, click **Allow Full Access** (or **Allow** on an older prompt), then reply `done`. Do not change any other System Settings permission.
