@@ -2,6 +2,33 @@
 
 Stateful, in-process mocks of third-party cloud APIs used by Eliza Cloud. Designed for use in unit / integration tests and local development without hitting real provider APIs.
 
+## Shared subprocess control protocol
+
+`@elizaos/shared/synthetic-control` is the versioned authenticated
+HTTP contract used to seed, reset, advance time, install faults, inspect
+snapshots/ledgers, and tear down independently running mock processes. The
+scenario runner and Cloud E2E helpers both use `SyntheticControlClient` and
+`SyntheticControlSession`; callers must provide an explicit v1 manifest plus a
+control URL and token. A mock-profile string by itself cannot start a session.
+
+The HTTP adapter is state-neutral. Its `SyntheticControlAuthority` is
+implemented by the production owner of the relevant manifest, lease,
+generation, reset receipt, fault, and ledger state. The protocol must not grow
+an in-process fallback or a competing world store. The control-plane mock can
+mount an authority through `startControlPlaneMock({ syntheticControl: ... })`,
+which keeps normal Cloud routes and control commands in the same OS process.
+The concrete production-repository manifest/reset contract, durable
+cross-process lease/generation owner, and canonical fault/ledger/readback owner
+remain #24075, #24076, and #24077 respectively. Until those authorities are
+wired, a subprocess restart starts a fresh fixture generation and is not a
+durable shared-world recovery claim.
+
+If seeding fails after the authority advances its generation but before it
+returns a reset receipt, `SyntheticControlSession.open()` throws
+`SyntheticControlDirtySessionError` and deliberately leaves the lease held for
+authoritative recovery or expiry. It never releases a potentially dirty world
+using the pre-seed generation.
+
 ## Managed provider contract harness
 
 `@elizaos/cloud-test-mocks/provider-contract` provides a reusable real-HTTP

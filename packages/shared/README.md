@@ -14,6 +14,7 @@ Shared cross-platform contract library for [elizaOS](https://github.com/elizaOS/
 - **Brand tokens and assets** — canonical colors, font stacks, external URLs, and static brand assets for all elizaOS surfaces
 - **Custom event constants** — typed `eliza:*` DOM event name constants used across app, bridge, and component layers
 - **Shared utilities** — error formatting, rate limiter, streaming text, trajectory format, env parsing, and more
+- **Synthetic control** — a state-neutral subprocess protocol, client, and manifested session lifecycle for scenarios and Cloud E2E
 
 ## Who uses it
 
@@ -52,6 +53,7 @@ import "@elizaos/shared/brand.css";
 | `@elizaos/shared/brand-classic.css` | Eliza Classic CSS custom properties |
 | `@elizaos/shared/character-presets` | Built-in character preset definitions |
 | `@elizaos/shared/runtime-env` | Port and security config resolvers |
+| `@elizaos/shared/synthetic-control` | Versioned mock subprocess control contract and client |
 | `@elizaos/shared/config/allowed-hosts` | Allowed-hosts config helper |
 | `@elizaos/shared/contracts/synthetic-environment-lease` | Lease, generation, receipt, and guarded-write contract for synthetic environments |
 
