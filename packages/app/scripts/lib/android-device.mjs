@@ -428,8 +428,15 @@ export function verifyInstalledApkHash({ localHash, deviceHash } = {}) {
   return { sha256: localHash };
 }
 
-export function readInstalledApkPath(adbBin, serial) {
-  const pmPath = adbTry(adbBin, ["-s", serial, "shell", "pm", "path", APP_ID]);
+export function readInstalledApkPath(adbBin, serial, packageId = APP_ID) {
+  const pmPath = adbTry(adbBin, [
+    "-s",
+    serial,
+    "shell",
+    "pm",
+    "path",
+    packageId,
+  ]);
   return parseApkPath(pmPath);
 }
 
@@ -492,9 +499,9 @@ export function readRendererStampFromApk(apkPath) {
 export function readInstalledRendererStamp(
   adbBin,
   serial,
-  { tmpRoot = os.tmpdir(), log = () => {} } = {},
+  { tmpRoot = os.tmpdir(), log = () => {}, packageId = APP_ID } = {},
 ) {
-  const remoteApk = readInstalledApkPath(adbBin, serial);
+  const remoteApk = readInstalledApkPath(adbBin, serial, packageId);
   if (!remoteApk) return null;
 
   const tempDir = fs.mkdtempSync(path.join(tmpRoot, "eliza-android-apk-"));

@@ -16,6 +16,7 @@ import path from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { fileURLToPath } from "node:url";
+import { readInstalledRendererStamp } from "./lib/android-device.mjs";
 import { ANDROID_FULL_TURN_FAILURE_RE } from "./lib/chat-failure-strings.mjs";
 import {
   assertMarkerSurvivedRelaunch,
@@ -830,6 +831,11 @@ function androidDeviceSerial(adb) {
       );
     }
   }
+  if (requireInstalled && connected.length > 1) {
+    throw new Error(
+      `Multiple Android devices are attached (${connected.join(", ")}); set ANDROID_SERIAL so installed-app evidence is bound to one explicit target.`,
+    );
+  }
   return (
     connected.find((serial) => serial.startsWith("emulator-")) ??
     connected[0] ??
@@ -837,7 +843,54 @@ function androidDeviceSerial(adb) {
   );
 }
 
-async function launchAndroidEmulatorApp() {
+function commitsMatch(expected, actual) {
+  if (
+    !/^[0-9a-f]{7,40}$/i.test(expected) ||
+    !/^[0-9a-f]{7,40}$/i.test(actual)
+  ) {
+    return false;
+  }
+  return expected.startsWith(actual) || actual.startsWith(expected);
+}
+
+function currentGitHead() {
+  return requireExec(
+    "git",
+    ["rev-parse", "HEAD"],
+    "Could not resolve the source revision for Android installed-app evidence.",
+  ).trim();
+}
+
+function assertInstalledAndroidRendererIsFresh(
+  context,
+  { expectedCommit, readStamp = readInstalledRendererStamp } = {},
+) {
+  if (!context?.installed) return;
+  const sourceCommit = expectedCommit ?? currentGitHead();
+  const stamp = readStamp(context.adb, context.serial, {
+    packageId: appId(),
+    log: (message) => console.warn(`[local-chat-smoke] ${message}`),
+  });
+  if (
+    typeof stamp?.commit !== "string" ||
+    !commitsMatch(sourceCommit, stamp.commit)
+  ) {
+    const detail =
+      typeof stamp?.commit === "string" && stamp.commit.length > 0
+        ? `revision ${stamp.commit} does not match source HEAD ${sourceCommit}`
+        : "has no valid renderer revision";
+    throw new Error(
+      `Installed Android app on ${context.serial} ${detail}; refusing unverifiable smoke evidence.`,
+    );
+  }
+  console.log(
+    `[local-chat-smoke] Installed Android renderer matches source revision ${sourceCommit.slice(0, 12)}.`,
+  );
+}
+
+async function launchAndroidEmulatorApp({
+  verifyInstalled = assertInstalledAndroidRendererIsFresh,
+} = {}) {
   const adb = adbPath();
   if (!adb) {
     const message =
@@ -865,6 +918,7 @@ async function launchAndroidEmulatorApp() {
   }
 
   const context = { adb, serial, installed: true };
+  verifyInstalled(context);
   const prepareAndLaunch = async () => {
     if (androidSelectLocal) {
       removeAndroidReverse(context, ANDROID_LOCAL_AGENT_DEVICE_PORT);
@@ -2929,6 +2983,7 @@ export {
   androidE2eApiPortOverrideArgs,
   androidRunAs,
   appId,
+  assertInstalledAndroidRendererIsFresh,
   cleanupAndroidAgentForwards,
   copyFileIfChanged,
   describeAndroidSmokeModelSize,

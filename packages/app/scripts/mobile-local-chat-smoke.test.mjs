@@ -16,6 +16,7 @@ const fakeDirectory = fs.mkdtempSync(
 let fakeDefaultsState;
 let fakeIosDataContainer;
 let fakeAndroidContext;
+let fakeCommandLog;
 
 process.env.ANDROID_STABILITY_SAMPLES = "2";
 process.env.ANDROID_STABILITY_ATTEMPTS = "3";
@@ -107,6 +108,7 @@ function validIosFullBunResult() {
 
 beforeAll(() => {
   fakeDefaultsState = path.join(fakeDirectory, "defaults.json");
+  fakeCommandLog = path.join(fakeDirectory, "commands.jsonl");
   fakeIosDataContainer = path.join(fakeDirectory, "ios-data");
   const fakeIosAppContainer = path.join(fakeDirectory, "App.app");
   const fakeModel = path.join(fakeDirectory, "model.gguf");
@@ -120,6 +122,7 @@ beforeAll(() => {
   fs.writeFileSync(fakeModel, "gguf");
 
   process.env.FAKE_DEFAULTS_STATE = fakeDefaultsState;
+  process.env.FAKE_MOBILE_COMMAND_LOG = fakeCommandLog;
   process.env.FAKE_IOS_DATA_CONTAINER = fakeIosDataContainer;
   process.env.FAKE_IOS_APP_CONTAINER = fakeIosAppContainer;
   process.env.ELIZA_IOS_FULL_BUN_SMOKE_MODEL_PATH = fakeModel;
@@ -249,6 +252,61 @@ describe("mobile smoke filesystem and encoding helpers", () => {
 });
 
 describe("mobile smoke native command boundaries", () => {
+  it("binds installed Android smoke evidence to the current renderer revision", () => {
+    const context = { adb: "adb", serial: "device-1", installed: true };
+    let requestedPackageId = null;
+    expect(() =>
+      smoke.assertInstalledAndroidRendererIsFresh(context, {
+        expectedCommit: "abcdef1234567890",
+        readStamp: (_adb, _serial, options) => {
+          requestedPackageId = options.packageId;
+          return { commit: "abcdef1234", buildId: "build-1" };
+        },
+      }),
+    ).not.toThrow();
+    expect(requestedPackageId).toBe("ai.elizaos.app");
+    expect(() =>
+      smoke.assertInstalledAndroidRendererIsFresh(context, {
+        expectedCommit: "abcdef1234567890",
+        readStamp: () => null,
+      }),
+    ).toThrow(/no valid renderer revision/);
+    expect(() =>
+      smoke.assertInstalledAndroidRendererIsFresh(context, {
+        expectedCommit: "abcdef1234567890",
+        readStamp: () => ({ commit: 123, buildId: "malformed-build" }),
+      }),
+    ).toThrow(/no valid renderer revision/);
+    expect(() =>
+      smoke.assertInstalledAndroidRendererIsFresh(context, {
+        expectedCommit: "abcdef1234567890",
+        readStamp: () => ({ commit: "1111111111", buildId: "old-build" }),
+      }),
+    ).toThrow(/does not match source HEAD/);
+  });
+
+  it("refuses an unverifiable installed Android app before launching it", async () => {
+    fs.writeFileSync(fakeCommandLog, "");
+    await expect(
+      smoke.launchAndroidEmulatorApp({
+        verifyInstalled: () => {
+          throw new Error("installed revision mismatch");
+        },
+      }),
+    ).rejects.toThrow(/revision mismatch/);
+    const commands = fs
+      .readFileSync(fakeCommandLog, "utf8")
+      .trim()
+      .split("\n")
+      .filter(Boolean)
+      .map((line) => JSON.parse(line));
+    expect(
+      commands.some(
+        ({ command, args }) => command === "adb" && args.includes("am"),
+      ),
+    ).toBe(false);
+  });
+
   it("seeds, stages, reads, and verifies the iOS full-Bun handshake through simulator defaults", async () => {
     const launched = smoke.launchIosSimulatorApp();
     expect(launched).toMatchObject({
@@ -304,7 +362,9 @@ describe("mobile smoke native command boundaries", () => {
     expect(smoke.androidDeviceSerial(fakeAndroidContext.adb)).toBe(
       "emulator-unit",
     );
-    const launched = await smoke.launchAndroidEmulatorApp();
+    const launched = await smoke.launchAndroidEmulatorApp({
+      verifyInstalled: () => {},
+    });
     expect(launched).toMatchObject({
       serial: "emulator-unit",
       installed: true,
