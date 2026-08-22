@@ -134,6 +134,7 @@ describe("scenario executor wait turns", () => {
 
     let releaseBlockedProvider!: () => void;
     let blockedProviderTask!: Promise<void>;
+    const scenarioAbort = new AbortController();
     const startedAt = Date.now();
     const first = await runScenario(
       {
@@ -159,6 +160,7 @@ describe("scenario executor wait turns", () => {
                   }),
                 { kind: "diagnostic" },
               );
+              scenarioAbort.abort(new Error());
             },
           },
         ],
@@ -169,6 +171,7 @@ describe("scenario executor wait turns", () => {
         providerName: "deterministic-fixture-model",
         turnTimeoutMs: 1_000,
         postDeliveryTimeoutMs: 20,
+        abortSignal: scenarioAbort.signal,
       },
     );
 
