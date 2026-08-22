@@ -3279,13 +3279,21 @@ export class ElizaSandboxService {
     const previousStatus = rec.status;
     const lock = await agentSandboxesRepository.trySetProvisioning(rec.id);
     if (!lock) {
-      if (rec.status === "running" && rec.bridge_url && rec.health_url)
+      if (rec.status === "running" && rec.bridge_url && rec.health_url) {
+        if (restoreOverride?.kind === "from-backup") {
+          return {
+            success: false,
+            sandboxRecord: rec,
+            error: RESTORE_AUTHORITY_CHANGED,
+          };
+        }
         return {
           success: true,
           sandboxRecord: rec,
           bridgeUrl: rec.bridge_url,
           healthUrl: rec.health_url,
         };
+      }
       return {
         success: false,
         sandboxRecord: rec,

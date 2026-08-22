@@ -588,6 +588,27 @@ describe("ElizaSandboxService stopped restore-point pinning", () => {
     });
   });
 
+  test("fails closed when a stopped restore races with a concurrent wake", async () => {
+    const sandbox = await seedSandbox({ status: "stopped" });
+    const selected = await seedBackup(sandbox.id, "concurrent-wake");
+    const running: AgentSandbox = {
+      ...sandbox,
+      status: "running",
+      bridge_url: "http://127.0.0.1:21060",
+      health_url: "http://127.0.0.1:3000/health",
+    };
+    const fetchMock = installRestoreFetch();
+    globalThis.fetch = fetchMock;
+    spyOn(agentSandboxesRepository, "findByIdAndOrg").mockResolvedValue(running);
+    spyOn(agentSandboxesRepository, "trySetProvisioning").mockResolvedValue(null);
+
+    await expect(
+      new ElizaSandboxService().restore(sandbox.id, sandbox.organization_id, selected.id),
+    ).resolves.toEqual({ success: false, error: AUTHORITY_CHANGED });
+
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   test("fails a stopped custom restore when the exact backup endpoint returns 404", async () => {
     const { sandbox, storedBackup, running, service, stopForReplacement } =
       await armStoppedExactRestore("stopped-custom-404", state("stopped-custom-404"));
