@@ -63,8 +63,6 @@ const FILLABLE_ROLES = new Set([
   "select",
   "slider",
 ]);
-const CONFIRMATION_PATTERN =
-  /\b(delete|remove|clear|erase|send|transfer|purchase|pay|archive|stop|disconnect|revoke)\b/i;
 const SENSITIVE_PATTERN =
   /\b(password|passcode|passphrase|secret|token|api[\s_-]*key|private[\s_-]*key|seed[\s_-]*phrase|mnemonic|credential|one[\s_-]*time|otp)\b/i;
 const BUSINESS_MUTATION_PATTERN =
@@ -884,28 +882,16 @@ function elementContract({
 }) {
   const fillable = FILLABLE_ROLES.has(role);
   const clickable = CLICKABLE_ROLES.has(role);
-  const handlerText = handlerAnalysis.handlers
-    .map((handler) => handler.text)
-    .join(" ");
-  const destructive = CONFIRMATION_PATTERN.test(
-    `${identity.value} ${label} ${handlerText}`,
-  );
   const classification = sensitive
-    ? "secure-sensitive"
+    ? "sensitive-control-observation"
     : fillable || clickable
       ? "agent-operation"
       : "agent-observable";
   const channels = {
     view: true,
-    widget:
-      classification === "agent-operation" ||
-      classification === "agent-observable",
-    chat:
-      classification === "agent-operation" ||
-      classification === "agent-observable",
-    voice:
-      classification === "agent-operation" ||
-      classification === "agent-observable",
+    widget: false,
+    chat: false,
+    voice: false,
   };
   return {
     operationId: `${surface.id}.control.${scope}.${identity.value}`,
@@ -924,30 +910,14 @@ function elementContract({
       kind,
       scope,
     },
-    input: fillable
-      ? { type: "AgentFillInput", fields: { value: "string" } }
-      : { type: "AgentActivateInput", fields: {} },
-    output: {
-      type: "AgentActionResult",
-      fields: { ok: "boolean", reason: "string?", value: "unknown?" },
-    },
-    errors: [
-      "VIEW_NOT_ACTIVE",
-      "ELEMENT_MISSING",
-      "ELEMENT_DISABLED",
-      "ELEMENT_SENSITIVE",
-      "INTERACTION_REJECTED",
-    ],
-    authorization: sensitive
-      ? "native-sensitive-boundary"
-      : "authenticated-owner+agent-surface-capability",
-    idempotency: fillable
-      ? "idempotent-set"
-      : role === "tab" || role === "link"
-        ? "idempotent-navigation"
-        : "non-idempotent",
-    confirmation: destructive ? "required" : "none",
+    input: { type: "UnverifiedDomInteractionInput", fields: "unknown" },
+    output: { type: "UnverifiedDomInteractionResult", fields: "unknown" },
+    errors: ["UNVERIFIED_RUNTIME_OPERATION_CONTRACT"],
+    authorization: "unverified-dom-handler",
+    idempotency: "unverified-dom-handler",
+    confirmation: "unverified-dom-handler",
     channels,
+    contractStatus: "dom-handler-only",
     sensitive,
     semanticMutation: handlerAnalysis.mutation,
     unresolvedMutation: handlerAnalysis.unresolved,
@@ -1210,16 +1180,6 @@ function scanControlsForSurface(surface, files, repoRoot, cache) {
             operation.semanticMutation = analysis.mutation;
             operation.unresolvedMutation = analysis.unresolved;
             operation.semanticEvidence = analysis.handlers;
-            const handlerText = analysis.handlers
-              .map((handler) => handler.text)
-              .join(" ");
-            if (
-              CONFIRMATION_PATTERN.test(
-                `${operation.control.id} ${operation.control.label} ${handlerText}`,
-              )
-            ) {
-              operation.confirmation = "required";
-            }
           }
         }
         if (dataAgent || directAgentId || agentExpression || hasAgentSpread) {
@@ -1300,7 +1260,7 @@ function scanControlsForSurface(surface, files, repoRoot, cache) {
                 ? `Navigate through ${identity.value}`
                 : `Local ${eventName} affordance`,
               classification: sensitive
-                ? "secure-sensitive"
+                ? "sensitive-control-observation"
                 : isLink
                   ? "secure-linkout"
                   : "view-only",
@@ -1312,20 +1272,15 @@ function scanControlsForSurface(surface, files, repoRoot, cache) {
                 kind: eventName,
                 scope: scopeName(node),
               },
-              input: { type: `${eventName}Event`, fields: {} },
-              output: { type: "void", fields: {} },
-              errors: ["CONTROL_DISABLED"],
-              authorization: sensitive
-                ? "native-sensitive-boundary"
-                : "view-session",
-              idempotency: isLink
-                ? "idempotent-navigation"
-                : "presentation-local",
-              confirmation: CONFIRMATION_PATTERN.test(
-                `${identity.value} ${handler}`,
-              )
-                ? "required"
-                : "none",
+              input: { type: "ObservedViewControlInput", fields: "unknown" },
+              output: {
+                type: "UnverifiedViewControlResult",
+                fields: "unknown",
+              },
+              errors: ["UNVERIFIED_VIEW_CONTROL_CONTRACT"],
+              authorization: "unverified-view-control",
+              idempotency: "unverified-view-control",
+              confirmation: "unverified-view-control",
               channels: {
                 view: true,
                 widget: false,
@@ -1445,6 +1400,14 @@ function assertLedger(ledger) {
         operationId: operation.operationId,
         message:
           "view metadata names an operation but does not prove its handler, binding, policy, replay semantics, receipt, or channel delivery",
+      });
+    }
+    if (operation.contractStatus === "dom-handler-only") {
+      findings.push({
+        code: "unverified-runtime-operation-contract",
+        operationId: operation.operationId,
+        message:
+          "DOM handler presence does not prove authorization, typed input/output, replay semantics, confirmation, receipt, or non-view delivery",
       });
     }
     if (
@@ -1646,17 +1609,12 @@ export function discoverViewOperationLedger({ repoRoot, validate = true }) {
         useCase: `Display ${surface.view?.label ?? surface.id}`,
         classification: "view-only",
         control: null,
-        input: { type: "ViewDisplayInput", fields: {} },
-        output: {
-          type: "ViewDisplayReceipt",
-          fields: { ok: "boolean", reason: "string" },
-        },
-        errors: ["VIEW_UNAVAILABLE", "UNAUTHORIZED"],
-        authorization: surface.view?.minRole
-          ? `role>=${surface.view.minRole}`
-          : "authenticated-owner",
-        idempotency: "idempotent-render",
-        confirmation: "none",
+        input: { type: "ObservedViewRegistrationInput", fields: "unknown" },
+        output: { type: "UnverifiedViewDisplayResult", fields: "unknown" },
+        errors: ["UNVERIFIED_VIEW_DISPLAY_CONTRACT"],
+        authorization: "unverified-view-registration",
+        idempotency: "unverified-view-registration",
+        confirmation: "unverified-view-registration",
         channels: { view: true, widget: false, chat: false, voice: false },
         sensitive: false,
         semanticMutation: false,
@@ -1668,51 +1626,53 @@ export function discoverViewOperationLedger({ repoRoot, validate = true }) {
   }
 
   for (const operation of operations) {
-    operation.contractStatus ??= "statically-inferred";
+    operation.contractStatus ??= "static-ui-observation";
+    const contractProven =
+      operation.contractStatus === "runtime-operation-proven";
     operation.capability ??=
       operation.classification === "agent-action"
         ? operation.operationId.split(".action.")[1]
         : operation.classification === "view-capability"
           ? operation.operationId.split(".capability.")[1]
           : operation.classification === "agent-operation"
-            ? "agent-surface"
+            ? "unverified-agent-surface"
             : operation.classification;
-    operation.gate = {
-      authorization: operation.authorization,
-      confirmation: operation.confirmation,
-      sensitiveBoundary: operation.sensitive,
-    };
-    operation.delivery =
-      operation.contractStatus === "declaration-only"
-        ? {}
-        : Object.fromEntries(
-            Object.entries(operation.channels)
-              .filter(([, enabled]) => enabled)
-              .map(([channel]) => [
-                channel,
-                {
-                  output: operation.output.type,
-                  reason: "canonical-operation-reason",
-                  receipt: operation.output.type,
-                },
-              ]),
-          );
+    operation.gate = contractProven
+      ? {
+          authorization: operation.authorization,
+          confirmation: operation.confirmation,
+          sensitiveBoundary: operation.sensitive,
+        }
+      : {};
+    operation.delivery = !contractProven
+      ? {}
+      : Object.fromEntries(
+          Object.entries(operation.channels)
+            .filter(([, enabled]) => enabled)
+            .map(([channel]) => [
+              channel,
+              {
+                output: operation.output.type,
+                reason: "canonical-operation-reason",
+                receipt: operation.output.type,
+              },
+            ]),
+        );
     const siblingTest = operation.source.file.replace(
       /\.(tsx|ts)$/,
       ".test.$1",
     );
     operation.evidence = {
       implementation: `${operation.source.file}:${operation.source.line}`,
-      contractProven: operation.contractStatus !== "declaration-only",
-      tests:
-        operation.contractStatus === "declaration-only"
-          ? []
-          : [
-              "packages/scripts/__tests__/view-operation-ledger.test.ts",
-              ...(existsSync(path.resolve(repoRoot, siblingTest))
-                ? [siblingTest]
-                : []),
-            ],
+      contractProven,
+      tests: !contractProven
+        ? []
+        : [
+            "packages/scripts/__tests__/view-operation-ledger.test.ts",
+            ...(existsSync(path.resolve(repoRoot, siblingTest))
+              ? [siblingTest]
+              : []),
+          ],
     };
   }
 
@@ -1792,7 +1752,10 @@ export function discoverViewOperationLedger({ repoRoot, validate = true }) {
           operation.channels.voice,
       ).length,
       secureExceptions: operations.filter(
-        (operation) => operation.semanticMutation && operation.sensitive,
+        (operation) =>
+          operation.semanticMutation &&
+          operation.sensitive &&
+          operation.evidence.contractProven,
       ).length,
       viewOnlyViolations: operations.filter(
         (operation) =>
@@ -1812,7 +1775,11 @@ export function discoverViewOperationLedger({ repoRoot, validate = true }) {
           !operation.mutationRisk,
       ).length,
       sensitiveBoundary: operations.filter(
-        (operation) => operation.classification === "secure-sensitive",
+        (operation) => operation.sensitive && operation.evidence.contractProven,
+      ).length,
+      sensitiveCandidate: operations.filter(
+        (operation) =>
+          operation.sensitive && !operation.evidence.contractProven,
       ).length,
       localPresentation: operations.filter(
         (operation) =>
@@ -1831,6 +1798,7 @@ export function discoverViewOperationLedger({ repoRoot, validate = true }) {
       .filter(
         (operation) =>
           operation.contractStatus === "declaration-only" ||
+          operation.contractStatus === "dom-handler-only" ||
           (operation.classification === "view-only" &&
             (operation.mutationRisk || operation.unresolvedMutation)) ||
           (operation.classification === "agent-operation" &&
@@ -1845,13 +1813,15 @@ export function discoverViewOperationLedger({ repoRoot, validate = true }) {
         risk:
           operation.contractStatus === "declaration-only"
             ? "unverified-contract"
-            : operation.classification === "agent-operation"
-              ? "missing-handler-evidence"
-              : operation.sensitive
-                ? "sensitive"
-                : operation.mutationRisk
-                  ? "business-mutation"
-                  : "generic-indirection",
+            : operation.contractStatus === "dom-handler-only"
+              ? "unverified-runtime-operation"
+              : operation.classification === "agent-operation"
+                ? "missing-handler-evidence"
+                : operation.sensitive
+                  ? "sensitive"
+                  : operation.mutationRisk
+                    ? "business-mutation"
+                    : "generic-indirection",
         source: operation.source,
       })),
     registeredSurfaces: registered.map(({ root, ...surface }) => surface),
@@ -1876,7 +1846,7 @@ export function renderViewOperationLedgerMarkdown(ledger) {
     `- Operations and controls: ${ledger.operationCount}`,
     `- Channel coverage: view ${ledger.channelCounts.view}; widget ${ledger.channelCounts.widget}; chat ${ledger.channelCounts.chat}; voice ${ledger.channelCounts.voice}`,
     `- Semantic mutations: ${ledger.semanticMutationCounts.total}; agent-delivered ${ledger.semanticMutationCounts.agentDelivered}; secure exceptions ${ledger.semanticMutationCounts.secureExceptions}; view-only violations ${ledger.semanticMutationCounts.viewOnlyViolations}`,
-    `- Control risks: business mutation ${ledger.controlRiskCounts.businessMutation}; generic indirection ${ledger.controlRiskCounts.genericIndirection}; missing handler evidence ${ledger.controlRiskCounts.missingHandlerEvidence}; sensitive boundary ${ledger.controlRiskCounts.sensitiveBoundary}; local presentation ${ledger.controlRiskCounts.localPresentation}`,
+    `- Control risks: business mutation ${ledger.controlRiskCounts.businessMutation}; generic indirection ${ledger.controlRiskCounts.genericIndirection}; missing handler evidence ${ledger.controlRiskCounts.missingHandlerEvidence}; proven sensitive boundary ${ledger.controlRiskCounts.sensitiveBoundary}; unverified sensitive candidate ${ledger.controlRiskCounts.sensitiveCandidate}; local presentation ${ledger.controlRiskCounts.localPresentation}`,
     "",
     "## Bounded view-only justifications",
     "",
@@ -1913,6 +1883,7 @@ export function renderViewOperationLedgerMarkdown(ledger) {
 export const __test = {
   assertLedger,
   declarationOperations,
+  scanControlsForSurface,
   viewOnlyOperationId,
   VIEW_ONLY_JUSTIFICATIONS,
   isBusinessMutationText: (value) => BUSINESS_MUTATION_PATTERN.test(value),
