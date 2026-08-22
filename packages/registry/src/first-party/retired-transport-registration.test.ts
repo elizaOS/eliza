@@ -277,6 +277,10 @@ describe("retired transport registration", () => {
         "packages/scenario-runner/test/mocks/environments/lifeops-presence-active.json",
         /"provider":\s*"signal"/i,
       ],
+      [
+        "packages/scenario-runner/src/production-manifest.ts",
+        /["']signal["']/i,
+      ],
     ];
     for (const [authority, forbidden] of inactiveAuthorities) {
       expect(
