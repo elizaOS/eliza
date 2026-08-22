@@ -13,8 +13,8 @@ import {
 } from "@elizaos/ui/cloud-ui";
 import { useDocumentTitle } from "../lib/use-document-title";
 import { useSessionAuth } from "../lib/use-session-auth";
-import { ElizaAgentPricingBanner } from "./components/eliza-agent-pricing-banner";
 import { ElizaAgentActions } from "./components/agent-actions";
+import { ElizaAgentPricingBanner } from "./components/eliza-agent-pricing-banner";
 import { ElizaAgentsTable } from "./components/eliza-agents-table";
 import { useCreditsBalance } from "./lib/data/credits";
 import { useAgents, usePersonalElizaIdentity } from "./lib/data/eliza-agents";
@@ -114,7 +114,6 @@ export default function AgentsPage() {
                     agentId={personalQuery.data.id}
                     executionTier="shared"
                     status="running"
-                    webUiUrl={null}
                   />
                 </div>
               </section>

@@ -56,8 +56,8 @@ import { toast } from "sonner";
 import { ElizaClient } from "../../../api";
 import { Button } from "../../../components/ui/button";
 import { getBootConfig } from "../../../config/boot-config";
-import { runSharedToDedicatedUpgradeHandoff } from "../../handoff/start-tier-upgrade";
 import { silentlyRepointToDedicated } from "../../handoff/silent-repoint";
+import { runSharedToDedicatedUpgradeHandoff } from "../../handoff/start-tier-upgrade";
 import { apiWithStatus, readCloudBearerToken } from "../../lib/api-client";
 import { useT } from "../lib/i18n";
 import { openWebUIWithPairing } from "../lib/open-web-ui";
@@ -67,7 +67,7 @@ interface ElizaAgentActionsProps {
   agentId: string;
   executionTier: AgentExecutionTier;
   status: string;
-  webUiUrl: string | null;
+  showWebUiAction?: boolean;
 }
 
 interface DedicatedActivationQuote {
@@ -96,7 +96,7 @@ export function ElizaAgentActions({
   agentId,
   executionTier,
   status,
-  webUiUrl,
+  showWebUiAction = true,
 }: ElizaAgentActionsProps) {
   const t = useT();
   const navigate = useNavigate();
@@ -176,7 +176,10 @@ export function ElizaAgentActions({
   const isRunning = effectiveStatus === "running";
   const isSleeping = effectiveStatus === "sleeping";
   const isDedicated = executionTier !== "shared";
-  const hasStandaloneWebUi = isRunning && isDedicated && Boolean(webUiUrl);
+  // Do not infer reachability from the optional published URL. The pairing
+  // endpoint is the authority and can return either the managed HTTPS route or
+  // the explicitly loopback-bound local Docker handoff.
+  const hasStandaloneWebUi = showWebUiAction && isRunning && isDedicated;
   // Sleep (deep cold suspend) only applies to dedicated agents with their own
   // compute slot — shared-runtime agents have nothing to free.
   const canSleep = isRunning && isDedicated;

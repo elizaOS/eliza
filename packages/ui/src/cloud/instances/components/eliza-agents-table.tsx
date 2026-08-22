@@ -207,6 +207,7 @@ interface AgentRowViewModel {
   canSleep: boolean;
   /** Reactivate (wake): offered exactly for the sleeping (deactivated) state. */
   canWake: boolean;
+  /** The authenticated pairing endpoint owns final Web UI reachability. */
   hasStandaloneWebUi: boolean;
   runtimeKind: ReturnType<typeof getRuntimeKind>;
 }
@@ -235,9 +236,7 @@ export function deriveAgentRow(
       displayStatus === "running" && agent.executionTier !== "shared" && !busy,
     canWake: displayStatus === "sleeping" && !busy,
     hasStandaloneWebUi:
-      displayStatus === "running" &&
-      agent.executionTier !== "shared" &&
-      Boolean(agent.webUiUrl),
+      displayStatus === "running" && agent.executionTier !== "shared",
     runtimeKind: getRuntimeKind(agent),
   };
 }
@@ -1151,14 +1150,7 @@ export function ElizaAgentsTable({ agents }: { agents: AgentListItemDto[] }) {
                             })}
                           </Button>
                         ) : (
-                          <span className="text-xs text-muted">
-                            {displayStatus === "running" &&
-                            sb.executionTier !== "shared"
-                              ? t("cloud.elizaAgentsTable.unavailable", {
-                                  defaultValue: "Unavailable",
-                                })
-                              : "—"}
-                          </span>
+                          <span className="text-xs text-muted">—</span>
                         )}
                       </TableCell>
 
