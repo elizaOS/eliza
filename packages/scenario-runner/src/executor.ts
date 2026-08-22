@@ -24,9 +24,11 @@ import type {
 import {
   ChannelType,
   createMessageMemory,
+  drainPostDeliveryTasks,
   ElizaError,
   logger,
   MemoryType,
+  postDeliveryTaskQuarantineReason,
   stringToUuid,
 } from "@elizaos/core";
 import type { DeterministicModelDiagnostics } from "@elizaos/core/testing";
@@ -85,6 +87,8 @@ export interface ExecutorOptions {
   attemptId?: string;
   /** Optional bridge to the canonical synthetic-world namespace (#22898). */
   worldId?: string;
+  /** Maximum time to reach post-delivery quiescence before quarantining the runtime. */
+  postDeliveryTimeoutMs?: number;
 }
 
 /**
@@ -241,6 +245,7 @@ export function providerQualifiedScenarioProblems(
 }
 
 const DEFAULT_TURN_TIMEOUT_MS = 120_000;
+const DEFAULT_POST_DELIVERY_TIMEOUT_MS = 10_000;
 
 type TurnMatcher = string | RegExp;
 
@@ -665,6 +670,36 @@ function withTimeout<T>(
       },
     );
   });
+}
+
+async function drainScenarioPostDeliveryTasks(
+  runtime: AgentRuntime,
+  opts: ExecutorOptions,
+): Promise<string | undefined> {
+  const timeoutMs =
+    opts.postDeliveryTimeoutMs ?? DEFAULT_POST_DELIVERY_TIMEOUT_MS;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => {
+    controller.abort(
+      new Error(`post-delivery drain timed out after ${timeoutMs}ms`),
+    );
+  }, timeoutMs);
+  const abortFromCaller = () => {
+    controller.abort(
+      opts.abortSignal?.reason ?? new Error("scenario execution was aborted"),
+    );
+  };
+  opts.abortSignal?.addEventListener("abort", abortFromCaller, { once: true });
+  if (opts.abortSignal?.aborted) abortFromCaller();
+  try {
+    await drainPostDeliveryTasks(runtime, { signal: controller.signal });
+    return undefined;
+  } catch (error) {
+    return error instanceof Error ? error.message : String(error);
+  } finally {
+    clearTimeout(timeout);
+    opts.abortSignal?.removeEventListener("abort", abortFromCaller);
+  }
 }
 
 function normalizeChannelType(value: unknown): ChannelType {
@@ -2388,6 +2423,31 @@ export async function runScenario(
           },
   };
   if (
+    opts.postDeliveryTimeoutMs !== undefined &&
+    (!Number.isSafeInteger(opts.postDeliveryTimeoutMs) ||
+      opts.postDeliveryTimeoutMs <= 0)
+  ) {
+    report.status = "failed";
+    report.error = `invalid postDeliveryTimeoutMs: ${String(opts.postDeliveryTimeoutMs)}`;
+    report.failedAssertions.push({
+      label: "executorOptions",
+      detail: report.error,
+    });
+    report.durationMs = Date.now() - startedAt;
+    return report;
+  }
+  const quarantineReason = postDeliveryTaskQuarantineReason(runtime);
+  if (quarantineReason) {
+    report.status = "failed";
+    report.error = `runtime is quarantined after incomplete post-delivery work: ${quarantineReason}`;
+    report.failedAssertions.push({
+      label: "runtimeIsolation",
+      detail: report.error,
+    });
+    report.durationMs = Date.now() - startedAt;
+    return report;
+  }
+  if (
     scenario.executionProfile !== undefined &&
     scenario.executionProfile !== executionProfile
   ) {
@@ -2456,8 +2516,6 @@ export async function runScenario(
   const originalGetService = runtime.getService.bind(runtime);
   const scenarioComputerUseService = createScenarioComputerUseService();
   let apiServer: ScenarioApiServer | null = null;
-  let fixtureConsumptionChecked = false;
-
   try {
     beginScenarioModelFixtureAttempt(
       runtime,
@@ -2758,35 +2816,26 @@ export async function runScenario(
         }
       }
     }
-
-    const fixtureFailure = assertScenarioModelFixturesConsumed(runtime);
-    fixtureConsumptionChecked = true;
-    report.modelFixtureDiagnostics =
-      captureScenarioModelFixtureDiagnostics(runtime);
-    if (fixtureFailure) {
-      report.status = "failed";
-      report.failedAssertions.push({
-        label: "modelFixtures",
-        detail: fixtureFailure,
-      });
-    }
   } catch (err) {
     report.status = "failed";
     report.error = err instanceof Error ? err.message : String(err);
     logger.warn(`[scenario-runner] ${scenario.id} threw: ${report.error}`);
   } finally {
-    if (!fixtureConsumptionChecked) {
-      const fixtureFailure = assertScenarioModelFixturesConsumed(runtime);
-      if (fixtureFailure) {
-        report.status = "failed";
-        report.failedAssertions.push({
-          label: "modelFixtures",
-          detail: fixtureFailure,
-        });
-      }
+    // Tracked post-delivery work can enter the model after the last turn has
+    // returned. Drain it while scenario isolation is still active, then run
+    // cleanup and drain once more so cleanup-spawned work cannot escape the
+    // authoritative fixture assertion.
+    const preCleanupDrainFailure = await drainScenarioPostDeliveryTasks(
+      runtime,
+      opts,
+    );
+    if (preCleanupDrainFailure) {
+      report.status = "failed";
+      report.failedAssertions.push({
+        label: "postDeliveryTasks",
+        detail: preCleanupDrainFailure,
+      });
     }
-    report.modelFixtureDiagnostics =
-      captureScenarioModelFixtureDiagnostics(runtime);
     const cleanupFailures = await runScenarioCleanups(scenario, runtime, ctx);
     if (cleanupFailures.length > 0) {
       report.status = "failed";
@@ -2794,6 +2843,27 @@ export async function runScenario(
         report.failedAssertions.push({ label: "cleanup", detail });
       }
     }
+    const postCleanupDrainFailure = await drainScenarioPostDeliveryTasks(
+      runtime,
+      opts,
+    );
+    if (postCleanupDrainFailure) {
+      report.status = "failed";
+      report.failedAssertions.push({
+        label: "postDeliveryTasks",
+        detail: postCleanupDrainFailure,
+      });
+    }
+    const fixtureFailure = assertScenarioModelFixturesConsumed(runtime);
+    if (fixtureFailure) {
+      report.status = "failed";
+      report.failedAssertions.push({
+        label: "modelFixtures",
+        detail: fixtureFailure,
+      });
+    }
+    report.modelFixtureDiagnostics =
+      captureScenarioModelFixtureDiagnostics(runtime);
     (
       runtime as {
         getService: AgentRuntime["getService"];

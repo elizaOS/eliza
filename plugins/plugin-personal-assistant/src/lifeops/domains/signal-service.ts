@@ -32,7 +32,10 @@ export class SignalDomain {
       side: resolvedSide,
       connected: false,
       inbound: false,
-      reason: "unsupported",
+      // The direct Signal transport is hard-cut; "disconnected" is the closest
+      // contract reason and the degradation below carries the unsupported
+      // explanation (LIFEOPS_MESSAGING_CONNECTOR_REASONS has no wider value).
+      reason: "disconnected",
       identity: null,
       grantedCapabilities: [],
       pairing: null,

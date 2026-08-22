@@ -15,7 +15,9 @@ describe("SignalDomain unsupported boundary", () => {
       provider: "signal",
       connected: false,
       inbound: false,
-      reason: "unsupported",
+      // Contract-valid reason: LIFEOPS_MESSAGING_CONNECTOR_REASONS has no
+      // "unsupported"; the transport-offline degradation carries that story.
+      reason: "disconnected",
       identity: null,
       grant: null,
       grantedCapabilities: [],

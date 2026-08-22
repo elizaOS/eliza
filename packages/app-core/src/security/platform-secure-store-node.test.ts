@@ -1,6 +1,9 @@
 /** Verifies desktop secure-store adapters and renderer boundary hardening. */
-import { readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
+import { resolveBundledKeyringPath } from "./platform-secure-store-node";
 
 const source = readFileSync(
   new URL("./platform-secure-store-node.ts", import.meta.url),
@@ -30,6 +33,49 @@ const subscriptionCredentialSource = readFileSync(
 );
 
 describe("desktop platform secure-store boundary", () => {
+  it("resolves one Bun-emitted native Keychain addon beside the entrypoint", () => {
+    const runtimeDir = mkdtempSync(path.join(os.tmpdir(), "eliza-keyring-"));
+    try {
+      const entrypoint = path.join(runtimeDir, "index.js");
+      const bindingPath = path.join(
+        runtimeDir,
+        "keyring.darwin-arm64-buildhash.node",
+      );
+      writeFileSync(entrypoint, "entrypoint");
+      writeFileSync(bindingPath, "binding");
+
+      expect(
+        resolveBundledKeyringPath({
+          arch: "arm64",
+          entrypoint,
+          platform: "darwin",
+        }),
+      ).toBe(bindingPath);
+    } finally {
+      rmSync(runtimeDir, { force: true, recursive: true });
+    }
+  });
+
+  it("rejects ambiguous bundled native Keychain addons", () => {
+    const runtimeDir = mkdtempSync(path.join(os.tmpdir(), "eliza-keyring-"));
+    try {
+      const entrypoint = path.join(runtimeDir, "index.js");
+      writeFileSync(entrypoint, "entrypoint");
+      writeFileSync(path.join(runtimeDir, "keyring.darwin-arm64-a.node"), "a");
+      writeFileSync(path.join(runtimeDir, "keyring.darwin-arm64-b.node"), "b");
+
+      expect(
+        resolveBundledKeyringPath({
+          arch: "arm64",
+          entrypoint,
+          platform: "darwin",
+        }),
+      ).toBeNull();
+    } finally {
+      rmSync(runtimeDir, { force: true, recursive: true });
+    }
+  });
+
   it("uses the cross-platform native keyring binding and never launches the security CLI", () => {
     expect(source).toContain('import("@napi-rs/keyring")');
     expect(source).not.toContain('spawn("security"');

@@ -6,7 +6,7 @@
  * load-bearing guarantee: the WEB path stays same-origin-only and throws
  * `CROSS_ORIGIN_API_URL` on any cross-origin absolute URL, while native /
  * Electrobun resolves to the single allowlisted Eliza Cloud API host and rides
- * `CapacitorHttp` — but ONLY that one host (every other cross-origin target
+ * the desktop HTTP bridge — but ONLY that one host (every other cross-origin target
  * still throws, even on native). `@capacitor/core` is doubled to toggle native.
  */
 
@@ -14,6 +14,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const capacitorState = vi.hoisted(() => ({ isNative: false }));
 const capacitorMocks = vi.hoisted(() => ({ request: vi.fn() }));
+const desktopTransportMocks = vi.hoisted(() => ({ request: vi.fn() }));
 
 vi.mock("@capacitor/core", () => ({
   Capacitor: {
@@ -22,6 +23,14 @@ vi.mock("@capacitor/core", () => ({
   CapacitorHttp: {
     request: capacitorMocks.request,
   },
+}));
+
+vi.mock("../../api/desktop-http-transport", () => ({
+  desktopHttpTransportForUrl: (url: string) =>
+    (window as unknown as { __electrobunWindowId?: number })
+      .__electrobunWindowId && url.startsWith("https://api.eliza.app/")
+      ? { request: desktopTransportMocks.request }
+      : null,
 }));
 
 import {
@@ -74,6 +83,7 @@ describe("cloud api-client transport bridge", () => {
     capacitorState.isNative = false;
     setElectrobun(false);
     capacitorMocks.request.mockReset();
+    desktopTransportMocks.request.mockReset();
     window.localStorage.setItem(STEWARD_TOKEN_KEY, STEWARD_TOKEN);
   });
 
@@ -241,22 +251,30 @@ describe("cloud api-client transport bridge", () => {
       setElectrobun(true);
     });
 
-    it("resolves to the Cloud API base and rides CapacitorHttp", async () => {
-      capacitorMocks.request.mockResolvedValue({
-        status: 200,
-        data: { apps: [] },
-        headers: {},
-      });
+    it("resolves to the Cloud API base and rides the desktop HTTP bridge", async () => {
+      desktopTransportMocks.request.mockResolvedValue(
+        new Response(JSON.stringify({ apps: [] }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+      );
       const fetchSpy = vi.spyOn(globalThis, "fetch");
 
       const result = await api<{ apps: unknown[] }>("/api/v1/apps");
 
       expect(result).toEqual({ apps: [] });
       expect(fetchSpy).not.toHaveBeenCalled();
-      expect(capacitorMocks.request).toHaveBeenCalledWith(
-        expect.objectContaining({
-          url: "https://api.eliza.app/api/v1/apps",
-        }),
+      expect(capacitorMocks.request).not.toHaveBeenCalled();
+      expect(desktopTransportMocks.request).toHaveBeenCalledWith(
+        "https://api.eliza.app/api/v1/apps",
+        expect.objectContaining({ body: null }),
+        undefined,
+      );
+      const requestInit = desktopTransportMocks.request.mock.calls[0]?.[1] as
+        | RequestInit
+        | undefined;
+      expect(new Headers(requestInit?.headers).get("Authorization")).toBe(
+        `Bearer ${STEWARD_TOKEN}`,
       );
     });
 

@@ -173,10 +173,93 @@ function nativeStoreReason(error: unknown): SecureStoreFailure {
   };
 }
 
-let nativeKeyringModule: Promise<typeof import("@napi-rs/keyring")> | undefined;
+interface NativeKeyringEntry {
+  deleteCredential(): Promise<void>;
+  getPassword(): Promise<string | null>;
+  setPassword(value: string): Promise<void>;
+}
 
-function loadNativeKeyring(): Promise<typeof import("@napi-rs/keyring")> {
-  nativeKeyringModule ??= import("@napi-rs/keyring");
+type NativeKeyringEntryConstructor = new (
+  service: string,
+  account: string,
+) => NativeKeyringEntry;
+
+interface NativeKeyringModule {
+  AsyncEntry: NativeKeyringEntryConstructor;
+}
+
+function isNativeKeyringModule(value: unknown): value is NativeKeyringModule {
+  if (typeof value !== "object" || value === null) return false;
+  return "AsyncEntry" in value && typeof value.AsyncEntry === "function";
+}
+
+export function resolveBundledKeyringPath(options: {
+  arch: string;
+  entrypoint: string | undefined;
+  platform: string;
+}): string | null {
+  if (!options.entrypoint) return null;
+  const runtimeDir = path.dirname(options.entrypoint);
+  const prefix = `keyring.${options.platform}-${options.arch}`;
+  try {
+    const matches = fs
+      .readdirSync(runtimeDir)
+      .filter(
+        (fileName) =>
+          fileName.startsWith(prefix) && path.extname(fileName) === ".node",
+      )
+      .sort();
+    if (matches.length !== 1) return null;
+    return path.join(runtimeDir, matches[0]);
+  } catch {
+    // error-policy:J3 the packaged runtime directory may not exist.
+    return null;
+  }
+}
+
+function loadBundledNativeKeyring(): NativeKeyringModule {
+  const bindingPath = resolveBundledKeyringPath({
+    arch: process.arch,
+    entrypoint: process.argv[1],
+    platform: process.platform,
+  });
+  if (!bindingPath) {
+    throw new Error("Bundled native Keychain binding was not found.");
+  }
+
+  const nativeModule: { exports: unknown } = { exports: {} };
+  process.dlopen(nativeModule, bindingPath);
+  if (!isNativeKeyringModule(nativeModule.exports)) {
+    throw new Error("Bundled native Keychain binding has invalid exports.");
+  }
+  return nativeModule.exports;
+}
+
+let nativeKeyringModule: Promise<NativeKeyringModule> | undefined;
+
+async function importNativeKeyring(): Promise<NativeKeyringModule> {
+  try {
+    const imported: unknown = await import("@napi-rs/keyring");
+    if (!isNativeKeyringModule(imported)) {
+      throw new Error("Native Keychain package has invalid exports.");
+    }
+    return imported;
+  } catch (importError) {
+    // error-policy:J2 Bun 1.3.13 can emit a native addon while its generated
+    // import.meta.require cannot load it. Load the validated packaged addon.
+    try {
+      return loadBundledNativeKeyring();
+    } catch (bundledError) {
+      throw new AggregateError(
+        [importError, bundledError],
+        "Native Keychain binding is unavailable.",
+      );
+    }
+  }
+}
+
+function loadNativeKeyring(): Promise<NativeKeyringModule> {
+  nativeKeyringModule ??= importNativeKeyring();
   return nativeKeyringModule;
 }
 
