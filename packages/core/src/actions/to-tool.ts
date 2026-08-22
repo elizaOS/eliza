@@ -471,8 +471,9 @@ function resolveActionLookup(
  * alongside the parent, so relevance metadata cannot hide a callable action.
  *
  * Sub-action resolution:
- *   - Inline `Action` sub-actions are expanded only when their exact name is
- *     present in `actionLookup` or the authorized top-level input.
+ *   - Inline `Action` sub-actions are resolved through an explicitly supplied
+ *     authorized lookup before expansion; standalone callers without a lookup
+ *     retain the inline object.
  *   - String-only sub-action references are resolved through `actionLookup`
  *     when provided; references that cannot be resolved are skipped silently
  *     (the parent's handler can still route to them).
@@ -487,8 +488,8 @@ export function buildPlannerToolsFromTieredActions(
 	actions: ReadonlyArray<PlannerToolActionShape>,
 	options: BuildPlannerToolsFromTieredActionsOptions = {},
 ): ToolDefinition[] {
-	const hasAuthoritativeActionLookup = options.actionLookup !== undefined;
 	const actionLookup = resolveActionLookup(options.actionLookup);
+	const requireAuthorizedChild = options.actionLookup !== undefined;
 
 	// Top up the lookup with anything already in `actions` so children that
 	// appear inline elsewhere in the input remain resolvable from a string ref.
@@ -524,18 +525,16 @@ export function buildPlannerToolsFromTieredActions(
 				subActionName = subAction;
 			} else if (subAction && typeof subAction === "object") {
 				subActionName = subAction.name;
-				child = hasAuthoritativeActionLookup
-					? actionLookup.has(subActionName)
-						? actionLookup.get(subActionName)
-						: undefined
+				child = requireAuthorizedChild
+					? actionLookup.get(subAction.name)
 					: subAction;
 			}
-			if (typeof subAction === "string") {
-				child = actionLookup.get(subAction);
+			if (typeof subAction === "string" || (requireAuthorizedChild && !child)) {
+				child = actionLookup.get(subActionName);
 				if (!child) {
 					onUnresolved({
 						parentName: action.name,
-						subActionName: subAction,
+						subActionName,
 					});
 					continue;
 				}
