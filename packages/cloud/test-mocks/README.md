@@ -64,6 +64,20 @@ declared capabilities and nonce-bound observations emitted by the executed
 suite. Normal CI is fully offline and credential-free; live/sandbox lanes
 remain optional.
 
+## Wallet EVM JSON-RPC mock
+
+`@elizaos/cloud-test-mocks/wallet-evm` runs a resettable Base-compatible
+JSON-RPC HTTP simulator. It accepts real locally signed EIP-1559 transactions,
+deduplicates raw submissions, mines deterministic blocks, applies native-value
+effects before emitting success receipts, emits reverted receipts without an
+effect, and rolls mined state and receipts back during a reorg. Seed/reset,
+auth, rate-limit/provider/malformed/stall faults, generation fencing, and
+credential/raw-transaction-redacted readback are available through the store.
+
+The simulator intentionally implements a focused native-transfer subset, not
+a general EVM. Contract execution, logs, gas charging, and multichain behavior
+remain unsupported and must never be inferred from a passing receipt.
+
 ## Hetzner Cloud mock
 
 Implements the subset of the Hetzner Cloud API that the autoscaler client in

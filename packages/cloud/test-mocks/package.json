@@ -8,6 +8,7 @@
     ".": "./src/index.ts",
     "./hetzner": "./src/hetzner/index.ts",
     "./control-plane": "./src/control-plane/index.ts",
+    "./wallet-evm": "./src/wallet-evm/index.ts",
     "./steward": "./src/steward/index.ts",
     "./provider-contract": "./src/provider-contract/index.ts"
   },
@@ -28,7 +29,8 @@
     "@elizaos/core": "workspace:*",
     "@elizaos/cloud-shared": "workspace:*",
     "@elizaos/shared": "workspace:*",
-    "hono": "4.13.1"
+    "hono": "4.13.1",
+    "viem": "^2.48.8"
   },
   "devDependencies": {
     "@elizaos/cloud-sdk": "workspace:*",

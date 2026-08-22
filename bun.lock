@@ -794,6 +794,7 @@
         "@elizaos/core": "workspace:*",
         "@elizaos/shared": "workspace:*",
         "hono": "4.13.1",
+        "viem": "^2.48.8",
       },
       "devDependencies": {
         "@elizaos/cloud-sdk": "workspace:*",

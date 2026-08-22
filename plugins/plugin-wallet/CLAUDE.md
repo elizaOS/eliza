@@ -238,6 +238,11 @@ Extend `src/analytics/birdeye/service.ts`. The service proxies all calls through
 - **Auto-enable.** `auto-enable.ts` must remain a lightweight env-read module with no transitive plugin imports. The auto-enable engine loads it on every agent boot.
 - **UI surface is subpath-only.** The package root (`.`) is the server barrel and must never import `src/ui/**`. Hosts import `@elizaos/plugin-wallet/ui` (components/barrel) or rely on the manifest-driven renderer boot (`elizaos.appRegister: "register"` → `src/register.ts`). `src/ui/register-routes.ts` must execute exactly once; duplicate imports create duplicate shell pages.
 - **`walletAppPlugin` naming.** The UI descriptor is named `@elizaos/plugin-wallet:ui` with `packageName: "@elizaos/plugin-wallet"` so the views registry resolves the package dir while the app-route loader id stays distinct from the runtime `wallet` plugin. `normalizeAppRoutePluginId` strips `:ui`, so `ELIZA_SKIP_APP_ROUTE_PLUGINS=wallet` skips it.
+- **Offline EVM protocol proof.** Exercise `WalletProvider`'s real viem HTTP
+  clients against `@elizaos/cloud-test-mocks/wallet-evm`; do not replace
+  `PublicClient`, `WalletClient`, or their request methods when claiming JSON-RPC
+  integration evidence. The synthetic chain's receipts prove only its explicit
+  native-transfer state transition, never general EVM execution.
 - **View bundle.** `dist/views/bundle.js` is built by `vite.config.views.ts` (entry `src/ui/wallet-view-bundle.ts`, export `InventoryView`), not by the Node build. Both must run for a complete dist.
 
 ## Verification

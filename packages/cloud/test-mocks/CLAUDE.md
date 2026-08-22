@@ -25,6 +25,11 @@ exits.
   `Job`/`JobStatus`/`JobType`/`Sandbox`/`SandboxStatus` types.
 - `src/steward/` (export `./steward`) — stateful loopback mock for authenticated
   Steward platform-user deactivation and deletion calls used by account lifecycle E2E.
+- `src/wallet-evm/` (export `./wallet-evm`) — resettable Base-compatible
+  JSON-RPC simulator for the production plugin-wallet viem transport. It owns
+  seeded balances, signed-transaction admission, deterministic mining/time,
+  effect-backed receipts, duplicate submission, reorg rollback, faults,
+  generation-fenced reset, and secret/raw-transaction-redacted readback.
 - `src/fetch-server.ts` — shared `startFetchServer(fetch, opts)`; uses
   `Bun.serve` when running under Bun, falls back to a `node:http` adapter
   otherwise.

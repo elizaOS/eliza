@@ -91,6 +91,17 @@ All on-chain writes (`transfer`, `swap`, `bridge`, `gov`, `pump_fun_buy`) requir
 
 `src/audit/audit-log.ts` defines `AuditLogRow` plus hash-chain helpers for action validate/handler lifecycle events and signing requests. Runtime callers own where those rows are stored.
 
+## Offline EVM protocol integration
+
+The wallet EVM integration suite points the production `WalletProvider` viem
+HTTP transports at the resettable Base simulator exported by
+`@elizaos/cloud-test-mocks/wallet-evm`. It covers authenticated chain, block,
+balance, nonce, and call reads; ephemeral local signing and raw submission;
+deduplication; deterministic mining/time; effect-backed and reverted receipts;
+reorg rollback/re-inclusion; faults; reset isolation; and redacted readback.
+It does not claim contract execution, gas accounting, multichain coverage, or a
+real-provider transaction.
+
 ## SDK
 
 `src/sdk/` provides lower-level ERC-6551 token-bound account primitives, x402 micropayment protocol types, CCTP bridge helpers, and spend-policy tooling. These are primarily for plugin internals but are re-exported from the package barrel for external use. SDK source is MIT-licensed (attribution: agent-wallet-sdk); see `SDK-LICENSE`.
