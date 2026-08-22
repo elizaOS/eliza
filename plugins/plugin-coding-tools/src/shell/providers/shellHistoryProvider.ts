@@ -20,6 +20,35 @@ import type { CommandHistoryEntry, FileOperation } from "../types";
 
 const spec = requireProviderSpec("SHELL_HISTORY");
 
+const SHELL_HISTORY_ENTRY_LIMIT = 10;
+const SHELL_HISTORY_STREAM_CHAR_LIMIT = 2_000;
+const SHELL_HISTORY_ENTRY_CHAR_LIMIT = 5_000;
+const SHELL_HISTORY_TEXT_CHAR_LIMIT = 24_000;
+const SHELL_HISTORY_FILE_OPERATION_LIMIT = 20;
+
+function capHistoryText(text: string, maxChars: number): string {
+  if (text.length <= maxChars) return text;
+  const marker = `\n… [${text.length - maxChars} characters omitted] …\n`;
+  const remaining = Math.max(0, maxChars - marker.length);
+  const head = Math.floor(remaining * 0.6);
+  return `${text.slice(0, head)}${marker}${text.slice(-(remaining - head))}`;
+}
+
+function renderFileOperation(
+  runtime: IAgentRuntime,
+  op: FileOperation,
+): string {
+  const target = capHistoryText(redactShellText(runtime, op.target), 500);
+  if (op.secondaryTarget) {
+    const secondary = capHistoryText(
+      redactShellText(runtime, op.secondaryTarget),
+      500,
+    );
+    return `- ${op.type}: ${target} → ${secondary}`;
+  }
+  return `- ${op.type}: ${target}`;
+}
+
 export const shellHistoryProvider: Provider = {
   name: spec.name,
   description:
@@ -60,7 +89,12 @@ export const shellHistoryProvider: Provider = {
           data: { historyCount: 0, cwd: "N/A", allowedDir: "N/A" },
         };
       }
-      const history = shellService.getCommandHistory(conversationId);
+      // Bound only the provider projection. ShellService retains the complete
+      // history and full command output for explicit history inspection.
+      const history = shellService.getCommandHistory(
+        conversationId,
+        SHELL_HISTORY_ENTRY_LIMIT,
+      );
       const cwd = redactShellText(
         runtime,
         shellService.getCurrentDirectory(conversationId),
@@ -74,8 +108,14 @@ export const shellHistoryProvider: Provider = {
       if (history.length > 0) {
         historyText = history
           .map((entry: CommandHistoryEntry) => {
-            const stdout = redactShellText(runtime, entry.stdout ?? "");
-            const stderr = redactShellText(runtime, entry.stderr ?? "");
+            const stdout = capHistoryText(
+              redactShellText(runtime, entry.stdout ?? ""),
+              SHELL_HISTORY_STREAM_CHAR_LIMIT,
+            );
+            const stderr = capHistoryText(
+              redactShellText(runtime, entry.stderr ?? ""),
+              SHELL_HISTORY_STREAM_CHAR_LIMIT,
+            );
             let entryStr = redactShellText(
               runtime,
               `[${new Date(entry.timestamp).toISOString()}] ${entry.workingDirectory}> ${entry.command}`,
@@ -102,9 +142,13 @@ export const shellHistoryProvider: Provider = {
               });
             }
 
-            return entryStr;
+            return capHistoryText(entryStr, SHELL_HISTORY_ENTRY_CHAR_LIMIT);
           })
           .join("\n\n");
+        historyText = capHistoryText(
+          historyText,
+          SHELL_HISTORY_TEXT_CHAR_LIMIT,
+        );
       }
 
       const recentFileOps = history
@@ -112,7 +156,8 @@ export const shellHistoryProvider: Provider = {
           (entry: CommandHistoryEntry) =>
             entry.fileOperations && entry.fileOperations.length > 0,
         )
-        .flatMap((entry: CommandHistoryEntry) => entry.fileOperations ?? []);
+        .flatMap((entry: CommandHistoryEntry) => entry.fileOperations ?? [])
+        .slice(-SHELL_HISTORY_FILE_OPERATION_LIMIT);
 
       let fileOpsText = "";
       if (recentFileOps.length > 0) {
@@ -121,20 +166,18 @@ export const shellHistoryProvider: Provider = {
           addHeader(
             "# Recent File Operations",
             recentFileOps
-              .map((op: FileOperation) => {
-                if (op.secondaryTarget) {
-                  return `- ${op.type}: ${redactShellText(runtime, op.target)} → ${redactShellText(runtime, op.secondaryTarget)}`;
-                }
-                return `- ${op.type}: ${redactShellText(runtime, op.target)}`;
-              })
+              .map((op: FileOperation) => renderFileOperation(runtime, op))
               .join("\n"),
           );
       }
 
-      const text = `Current Directory: ${cwd}
+      const text = capHistoryText(
+        `Current Directory: ${cwd}
 Allowed Directory: ${allowedDir}
 
-${addHeader("# Shell History", historyText)}${fileOpsText}`;
+${addHeader("# Shell History", historyText)}${fileOpsText}`,
+        SHELL_HISTORY_TEXT_CHAR_LIMIT,
+      );
 
       return {
         values: {

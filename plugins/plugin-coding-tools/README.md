@@ -1,13 +1,14 @@
 # @elizaos/plugin-coding-tools
 
-Native Claude-Code-style coding tools for elizaOS agents. Adds filesystem operations (read, write, edit, search, glob, ls), shell command execution, and git worktree management to any Eliza agent running in a code or terminal context.
+Native coding tools for elizaOS agents. Adds focused read/write/edit actions, filesystem search and listing, shell command execution, and git worktree management to any Eliza agent running in a code or terminal context.
 
 ## What it does
 
-The plugin registers three umbrella actions and a set of supporting services:
+The plugin registers three focused file actions, three umbrella actions, and a set of supporting services:
 
 | Action | Operations | Description |
 |---|---|---|
+| **READ / WRITE / EDIT** | one operation each | Pi-shaped strict schemas for direct coding loops. They reuse FILE's sandbox, stale-file, secret, and size guards. |
 | **FILE** | `read`, `write`, `edit`, `grep`, `glob`, `ls` | All file and search operations. Relative read/write/edit paths resolve against the conversation's session cwd before sandbox validation. Optional `target=device` routes through a device filesystem bridge for mobile. |
 | **SHELL** | `run`, `start_background`, `poll_background`, `write_background`, `kill_background`, `list_background`, `clear_history`, `view_history` | `run` executes a command via `/bin/bash -c` with a per-call timeout (clamped to `[100, 600000]` ms, default 120000). Background actions return stable per-conversation handles, poll incremental stdout/stderr offsets with truncation markers, write stdin, terminate process groups, and list sessions. `view_history`/`clear_history` read or clear per-conversation command history. |
 | **WORKTREE** | `enter`, `exit` | Creates and tears down git worktrees, updating the agent's session cwd and sandbox roots automatically. |
@@ -54,7 +55,7 @@ All settings are optional. Configure via environment variables or agent settings
 | `CODING_TOOLS_BACKGROUND_SHELL_BUFFER_CHARS` | `64000` | Per-stream retained stdout/stderr ring size for background shell polling. |
 | `CODING_TOOLS_BACKGROUND_SHELL_KILL_GRACE_MS` | `1500` | Grace period between SIGTERM and SIGKILL for background shell termination. |
 | `CODING_TOOLS_MAX_READ_LINES` | `2000` | Max lines returned by FILE action=read. |
-| `CODING_TOOLS_MAX_FILE_SIZE_BYTES` | `262144` | File size cap for reads (bytes). Larger files are rejected. |
+| `CODING_TOOLS_MAX_FILE_SIZE_BYTES` | `262144` | Selected-content byte cap. Larger files require an explicit line `limit` (and optional `offset`) and are scanned with bounded memory. |
 | `CODING_TOOLS_GREP_HEAD_LIMIT` | `250` | Max output lines for GREP. Set to 0 to disable. |
 
 ### SHELL trust boundary

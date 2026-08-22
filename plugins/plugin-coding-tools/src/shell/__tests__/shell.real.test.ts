@@ -105,11 +105,11 @@ describePosixShell("shell plugin real local integration", () => {
       "}, 50);",
     ].join("");
     const result = await service.executeCommand(
-      `${JSON.stringify(process.execPath)} -e ${JSON.stringify(script)}`,
+      `node -e ${JSON.stringify(script)}`,
       "room-utf8",
     );
 
-    expect(result.success).toBe(true);
+    expect(result.success, JSON.stringify(result)).toBe(true);
     expect(result.stdout).toBe("\u4f60");
     expect(result.stderr).toBe("\u4f60");
   });
@@ -135,6 +135,37 @@ describePosixShell("shell plugin real local integration", () => {
 
     expect(JSON.stringify(history)).not.toContain(secret);
     expect(JSON.stringify(provider)).not.toContain(secret);
+  });
+
+  it("bounds provider history while retaining complete service history and output", async () => {
+    const largeOutput = "z".repeat(5_000);
+    await service.executeCommand(
+      `printf '%s' '${largeOutput}'`,
+      "room-bounded-history",
+    );
+    for (let index = 1; index <= 10; index += 1) {
+      await service.executeCommand(
+        `printf 'command-${index}'`,
+        "room-bounded-history",
+      );
+    }
+
+    const stored = service.getCommandHistory("room-bounded-history");
+    expect(stored).toHaveLength(11);
+    expect(stored[0]?.stdout).toContain(largeOutput);
+    expect(stored[0]?.stdout.length).toBeGreaterThanOrEqual(largeOutput.length);
+
+    const provider = await shellHistoryProvider.get(
+      runtime,
+      { roomId: "room-bounded-history", agentId: "agent-1" } as never,
+      {} as never,
+    );
+
+    expect(provider.text).not.toContain(largeOutput);
+    expect(provider.text).toContain("command-1");
+    expect(provider.text).toContain("command-10");
+    expect(provider.data?.historyCount).toBe(10);
+    expect(provider.text?.length).toBeLessThanOrEqual(24_000);
   });
 
   it("fails closed when a command tries to escape the allowed directory", async () => {

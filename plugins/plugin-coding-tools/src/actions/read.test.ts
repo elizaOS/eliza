@@ -453,6 +453,78 @@ describe("READ", () => {
     }
   });
 
+  it("streams a bounded line page from a file larger than the page budget", async () => {
+    const env2 = await setupEnv("read-big-line-window", {
+      extraSettings: { CODING_TOOLS_MAX_FILE_SIZE_BYTES: 64 },
+    });
+    try {
+      const file = path.join(env2.tmpDir, "big-lines.txt");
+      const lines = Array.from({ length: 100 }, (_, index) => `line-${index}`);
+      await fs.writeFile(file, lines.join("\n"), "utf8");
+      const first = await readFileHandler(
+        env2.runtime,
+        env2.message,
+        undefined,
+        { parameters: { file_path: file, unit: "line", limit: 1 } },
+      );
+      const revision = (
+        (first.data as Record<string, unknown>).readView as {
+          reference: { revision: string };
+        }
+      ).reference.revision;
+
+      const result = await readFileHandler(
+        env2.runtime,
+        env2.message,
+        undefined,
+        {
+          parameters: {
+            file_path: file,
+            unit: "line",
+            offset: 40,
+            limit: 3,
+            expectedRevision: revision,
+          },
+        },
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.text).toBe("line-40\nline-41\nline-42\n");
+      const data = result.data as Record<string, unknown>;
+      expect(
+        (data.readView as { slice: { range: unknown } }).slice.range,
+      ).toMatchObject({ unit: "line", start: 40, end: 43 });
+      expect(
+        (data.diagnostics as { bytesReturned: number }).bytesReturned,
+      ).toBe(Buffer.byteLength(result.text ?? ""));
+      expect(env2.fileState.get("test-room", file)).toBeDefined();
+    } finally {
+      await env2.cleanup();
+    }
+  });
+
+  it("rejects a requested line page whose selected content exceeds the byte cap", async () => {
+    const env2 = await setupEnv("read-big-line-window-cap", {
+      extraSettings: { CODING_TOOLS_MAX_FILE_SIZE_BYTES: 32 },
+    });
+    try {
+      const file = path.join(env2.tmpDir, "huge-line-page.txt");
+      await fs.writeFile(file, `${"x".repeat(128)}\ntail`, "utf8");
+      const result = await readFileHandler(
+        env2.runtime,
+        env2.message,
+        undefined,
+        { parameters: { file_path: file, unit: "line", limit: 1 } },
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.text).toContain("line window exceeds 32 bytes");
+      expect(result.text).toContain("retry with unit=byte");
+    } finally {
+      await env2.cleanup();
+    }
+  });
+
   it("round-trips Unicode byte pages and rejects stale continuations", async () => {
     const file = path.join(env.tmpDir, "unicode.txt");
     await fs.writeFile(file, "ab😀cdéfg", "utf8");
