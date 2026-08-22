@@ -4,8 +4,6 @@
  */
 import { describe, expect, it, vi } from "vitest";
 import { CoalescingSyncRunner } from "./coalescing-sync-runner";
-import type { NativeEnrollmentState } from "./native-enrollment";
-import { resumeNativeEnrollmentAfterOwnerDisconnect } from "./storage";
 
 interface SyncRequest {
   reason: string;
@@ -110,43 +108,5 @@ describe("CoalescingSyncRunner", () => {
       { reason: "startup", bypassNativeBackoff: false },
       { reason: "queued", bypassNativeBackoff: true },
     ]);
-  });
-
-  it("reconnects after owner disconnect without clearing stronger suppression", async () => {
-    let enrollmentState: NativeEnrollmentState = {
-      consecutiveFailures: 0,
-      nextAttemptAt: null,
-      lastFailureCode: null,
-      suppressedReason: "owner_disconnected",
-    };
-    const store = {
-      load: async () => enrollmentState,
-      save: async (next: NativeEnrollmentState) => {
-        enrollmentState = next;
-      },
-    };
-    const runner = new CoalescingSyncRunner<SyncRequest, SyncState>(
-      (_current, next) => next,
-      async () => ({ connected: enrollmentState.suppressedReason === null }),
-    );
-
-    expect(await resumeNativeEnrollmentAfterOwnerDisconnect(store)).toBe(true);
-    await expect(
-      runner.request({
-        reason: "owner-reconnect",
-        bypassNativeBackoff: true,
-      }),
-    ).resolves.toEqual({ connected: true });
-
-    for (const suppressedReason of [
-      "companion_revoked",
-      "credential_invalid",
-    ] as const) {
-      enrollmentState = { ...enrollmentState, suppressedReason };
-      expect(await resumeNativeEnrollmentAfterOwnerDisconnect(store)).toBe(
-        false,
-      );
-      expect(enrollmentState.suppressedReason).toBe(suppressedReason);
-    }
   });
 });

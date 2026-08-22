@@ -271,6 +271,34 @@ describe("native enrollment", () => {
     expect(send).toHaveBeenCalledTimes(1);
   });
 
+  it.each(["app_not_running", "app_not_authenticated"])(
+    "caps %s recovery at the sync-alarm cadence",
+    async (code) => {
+      const test = harness(
+        async (request) => ({
+          v: 1,
+          type: "browser_bridge.error",
+          requestId: request.requestId,
+          code,
+          retryable: true,
+        }),
+        5_000,
+        {
+          consecutiveFailures: 12,
+          nextAttemptAt: null,
+          lastFailureCode: code,
+          suppressedReason: null,
+        },
+      );
+      await expect(
+        test.coordinator.enroll({ browser: "chrome", profileId: PROFILE_ID }),
+      ).rejects.toMatchObject({ code });
+      expect(test.state().nextAttemptAt).toBe(
+        new Date(NOW + 30_000).toISOString(),
+      );
+    },
+  );
+
   it("persists revocation suppression and does not call the host again", async () => {
     const send = vi.fn(async (request: NativeEnrollmentRequest) => ({
       v: 1,

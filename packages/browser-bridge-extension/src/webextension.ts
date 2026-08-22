@@ -175,7 +175,7 @@ type RawDeclarativeNetRequestRule = {
   priority: number;
   action: {
     type: string;
-    redirect?: { url: string };
+    redirect?: { url?: string; extensionPath?: string };
   };
   condition: {
     urlFilter?: string;
@@ -601,6 +601,18 @@ export async function hasAllUrlHostPermission(): Promise<boolean> {
   );
 }
 
+export async function hasWebsiteAccess(
+  originPattern: string,
+): Promise<boolean> {
+  const permissions = getRawApi().permissions;
+  if (!permissions?.contains) {
+    return false;
+  }
+  return await invokeAsync<boolean>("permissions.contains", (callback) =>
+    permissions.contains?.({ origins: [originPattern] }, callback),
+  );
+}
+
 /**
  * Requests persistent access to normal HTTP(S) pages from a popup click.
  * Callers must invoke this directly inside a user-gesture handler; routing the
@@ -613,6 +625,19 @@ export async function requestAllWebsiteAccess(): Promise<boolean> {
   }
   return await invokeAsync<boolean>("permissions.request", (callback) =>
     permissions.request?.({ origins: ["https://*/*", "http://*/*"] }, callback),
+  );
+}
+
+/** Requests the browser-managed grant for one exact HTTP(S) origin. */
+export async function requestWebsiteAccess(
+  originPattern: string,
+): Promise<boolean> {
+  const permissions = getRawApi().permissions;
+  if (!permissions?.request) {
+    throw new Error("permissions.request is unavailable");
+  }
+  return await invokeAsync<boolean>("permissions.request", (callback) =>
+    permissions.request?.({ origins: [originPattern] }, callback),
   );
 }
 
