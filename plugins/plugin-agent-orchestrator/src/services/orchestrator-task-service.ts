@@ -3951,6 +3951,7 @@ export class OrchestratorTaskService extends Service {
       });
       if (suppressed) return;
       const label = doc.task.title.trim() || "the coding task";
+      const fabricatedInput = details.verifier === "fabricated-input-ledger";
       const deploy = resolveAppDeployConfig();
       const workdir = doc.sessions.at(-1)?.workdir;
       const url =
@@ -3985,6 +3986,7 @@ export class OrchestratorTaskService extends Service {
       summary: string;
       missing: string[];
       sessionId?: string;
+      verifier?: string;
     },
   ): Promise<void> {
     try {
@@ -4085,13 +4087,19 @@ export class OrchestratorTaskService extends Service {
             summary: details.summary,
             ...(missing.length > 0 ? { couldNotConfirm: missing } : {}),
             parked: true,
-            workMayStillBeFine: true,
+            // A manufactured input means the output is NOT to be trusted —
+            // "the work may still be fine" would soften a fabrication
+            // (live 2026-08-22: "though the output looks right").
+            ...(fabricatedInput
+              ? { outputIsFabricated: true, realInputMissingHere: true }
+              : { workMayStillBeFine: true }),
             userShouldCheckThenAcceptOrSayWhatToFix: true,
           },
           mustInclude: [label],
           mustNotClaim: [
             "the work was confirmed good",
             "the task was abandoned",
+            ...(fabricatedInput ? ["the output is correct or usable"] : []),
           ],
         },
         composeVerifyEscalationNotice(doc.task.title, details),
@@ -5333,6 +5341,7 @@ export class OrchestratorTaskService extends Service {
         summary,
         missing,
         sessionId,
+        verifier,
       });
       this.emitChange(taskId);
       return;
