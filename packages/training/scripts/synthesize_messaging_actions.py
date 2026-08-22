@@ -1281,7 +1281,6 @@ def _canonicalize_connector_args(
         "plugin-discord": "discord",
         "plugin-twitter": "x",
         "plugin-signal": "signal",
-        "plugin-bluebubbles": "bluebubbles",
         "plugin-imessage": "imessage",
         "plugin-whatsapp": "whatsapp",
     }
@@ -1446,10 +1445,6 @@ TARGET_ACTIONS_BY_PLUGIN: dict[str, list[tuple[str, str]]] = {
         ("MESSAGE", "signal_read_messages"),
         ("MESSAGE", "signal_message"),
         ("MESSAGE", "signal_reaction"),
-    ],
-    "plugin-bluebubbles": [
-        ("MESSAGE", "bluebubbles_reaction"),
-        ("MESSAGE", "bluebubbles_message"),
     ],
     "plugin-imessage": [("MESSAGE", "imessage_message")],
     "plugin-whatsapp": [

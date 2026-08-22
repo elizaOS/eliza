@@ -2848,9 +2848,6 @@ async function handleRequest(
   // ── WhatsApp routes (/api/whatsapp/*) ────────────────────────────────────
   // Moved to @elizaos/plugin-whatsapp setup-routes.ts (registered via Plugin.routes).
 
-  // ── BlueBubbles routes ──────────────────────────────────────────────────
-  // Extracted to @elizaos/plugin-bluebubbles setup-routes.ts (Plugin.routes).
-
   // ── Notification + inbox routes (/api/notifications/*, /api/inbox/*) ──
   // Notifications: the unified notification center backed by the runtime
   // NotificationService (see api/notification-routes.ts). Inbox: a

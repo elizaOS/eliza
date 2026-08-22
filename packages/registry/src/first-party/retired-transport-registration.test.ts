@@ -2,7 +2,7 @@
  * Guards the hard cutover from the retired BlueBubbles bridge to the native
  * iMessage plugin across the generated first-party registration authorities.
  */
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
@@ -36,6 +36,15 @@ describe("retired transport registration", () => {
         (plugin) => plugin.npmName === retiredPackage,
       ),
     ).toBe(false);
+
+    for (const authority of [
+      "packages/agent/src/runtime/core-plugins.ts",
+      "packages/scripts/release-cohort.json",
+    ]) {
+      expect(
+        readFileSync(path.join(repositoryRoot, authority), "utf8"),
+      ).not.toContain(retiredPackage);
+    }
   });
 
   it("keeps native iMessage as the first-party connector", () => {
