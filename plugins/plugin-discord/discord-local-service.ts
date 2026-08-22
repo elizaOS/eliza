@@ -529,6 +529,9 @@ export class DiscordLocalService extends Service {
 		}
 		this.connected = false;
 		this.authenticated = false;
+		// Same connection-scoped invariant as the socket "close" handler: the
+		// subscriptions do not survive the socket we are about to destroy.
+		this.subscribedChannelIds.clear();
 		this.connectedIpcPath = null;
 		const error = new Error("Discord local service stopped");
 		this.rejectPendingRequests(error);
@@ -937,6 +940,13 @@ export class DiscordLocalService extends Service {
 			const error = new Error("Discord local RPC connection closed");
 			this.connected = false;
 			this.authenticated = false;
+			// Discord RPC subscriptions are bound to the IPC connection, so they die
+			// with the socket exactly like the AUTHENTICATE above. Keeping the
+			// channel ids latched here made subscribeConfiguredChannels() skip every
+			// channel after a reconnect -- the connection came back authenticated and
+			// reported the channels as subscribed, but no SUBSCRIBE frame was ever
+			// re-sent and no MESSAGE_CREATE arrived again.
+			this.subscribedChannelIds.clear();
 			this.connectedIpcPath = null;
 			this.rejectPendingRequests(error);
 			this.readyReject?.(error);

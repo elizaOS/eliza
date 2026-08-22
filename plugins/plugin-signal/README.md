@@ -21,6 +21,13 @@ Importing the package remains a deliberate compatibility boundary: plugin
 initialization throws `SIGNAL_DIRECT_TRANSPORT_UNAVAILABLE`. It advertises no
 connector source, service, action, provider, route, or auto-enable capability.
 
+The cutover does not silently delete operator-owned Signal state. Old
+`SIGNAL_*` environment values are ignored, and new Signal connector-account
+records cannot be created. Operators retiring a previous `signal-cli` link
+should revoke that linked device in Signal's supported client first, then
+remove the old local `signal-cli` data directory according to that tool's
+documentation. elizaOS neither reads nor migrates those credentials.
+
 Re-enabling Signal requires a reviewed, distributable, in-process client that
 implements the real Signal service contract and stores credentials through the
 canonical elizaOS vault. An HTTP bridge, daemon subprocess, package-manager

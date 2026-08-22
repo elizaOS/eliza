@@ -39,7 +39,6 @@ export const CONNECTOR_UI_GROUPS: readonly ConnectorUiGroupMeta[] = [
 const GROUP_BY_ID: Readonly<Record<string, ConnectorUiGroupId>> = {
   discord: "messaging",
   telegram: "messaging",
-  signal: "messaging",
   whatsapp: "messaging",
   imessage: "messaging",
   blooio: "messaging",

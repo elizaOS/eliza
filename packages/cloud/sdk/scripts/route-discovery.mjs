@@ -125,6 +125,43 @@ export async function walkRoutes(dir, relativeSegments = [], out = []) {
   return out;
 }
 
+/**
+ * Canonicalizes one discovered route file into the (route, methods) pair the
+ * generated SDK exposes. `generate-public-routes.mjs` is the sole writer of
+ * `src/public-routes.ts` and `audit-api-routes.mjs` must compare against the
+ * exact same canonical form; sharing this helper keeps them from drifting:
+ * the storage `objects/{key}` catch-all becomes a fixed `objects/_` route
+ * with no path params and a synthesized HEAD wrapper, and files that expose
+ * no generator-eligible method contribute nothing. Public-scope selection
+ * stays with the callers: the generator skips non-public routes, while the
+ * audit inventories every scope. Returns null when the file yields no
+ * canonical pair.
+ */
+export async function canonicalRouteMethods(
+  source,
+  filePath,
+  cloudRoot,
+  relativeSegments,
+) {
+  let methods = (await extractMethods(source, filePath, cloudRoot)).filter(
+    (method) => method !== "OPTIONS" && method !== "HEAD",
+  );
+  if (methods.length === 0) return null;
+
+  const segments = relativeSegments.map(segmentToRouteParam);
+  const discoveredRoute = `/api/${segments.map((segment) => segment.routeSegment).join("/")}`;
+  const fixedStorageObject =
+    discoveredRoute === "/api/v1/apis/storage/objects/{key}";
+  const route = fixedStorageObject
+    ? "/api/v1/apis/storage/objects/_"
+    : discoveredRoute;
+  if (fixedStorageObject && !methods.includes("HEAD")) {
+    methods = [...methods, "HEAD"];
+  }
+
+  return { route, methods, fixedStorageObject };
+}
+
 function resolveRouteReexport(specifier, fromFile, cloudRoot) {
   let basePath = null;
   if (specifier.startsWith("@/api/")) {

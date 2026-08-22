@@ -114,7 +114,6 @@ const VIEWLESS_TEXT_CONNECTOR_SOURCES = new Set([
 	"telegram",
 	"matrix",
 	"slack",
-	"signal",
 	"whatsapp",
 	"twitter",
 	"x",

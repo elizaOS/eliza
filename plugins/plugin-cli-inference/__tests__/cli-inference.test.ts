@@ -23,6 +23,7 @@ import {
   cliInferencePlugin,
   findHandleResponseTool,
   LARGE_TIER_MODEL_TYPES,
+  parseTimeout,
   parseTurnTimeout,
   resolveCliBackend,
   resolveSdkEffort,
@@ -1280,5 +1281,30 @@ describe("parseTurnTimeout (#16553)", () => {
     expect(parseTurnTimeout(undefined)).toBeUndefined();
     expect(parseTurnTimeout("abc")).toBeUndefined();
     expect(parseTurnTimeout("-5")).toBeUndefined();
+  });
+
+  it("rejects prefix-parsed, fractional, and unsafe values", () => {
+    expect(parseTurnTimeout("0junk")).toBeUndefined();
+    expect(parseTurnTimeout("0.5")).toBeUndefined();
+    expect(parseTurnTimeout("120000junk")).toBeUndefined();
+    expect(parseTurnTimeout("9007199254740993")).toBeUndefined();
+  });
+
+  it("preserves the previously accepted explicit plus sign", () => {
+    expect(parseTurnTimeout("+120000")).toBe(120_000);
+  });
+});
+
+describe("parseTimeout", () => {
+  it("accepts only whole, safe, strictly positive values", () => {
+    expect(parseTimeout("120000")).toBe(120_000);
+    expect(parseTimeout("+120000")).toBe(120_000);
+    expect(parseTimeout(" 120000 ")).toBe(120_000);
+    expect(parseTimeout(undefined)).toBeUndefined();
+    expect(parseTimeout("0")).toBeUndefined();
+    expect(parseTimeout("-5")).toBeUndefined();
+    expect(parseTimeout("120000junk")).toBeUndefined();
+    expect(parseTimeout("120000.5")).toBeUndefined();
+    expect(parseTimeout("9007199254740993")).toBeUndefined();
   });
 });

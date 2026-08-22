@@ -68,7 +68,6 @@ const NOTIFICATION_PRIORITIES = new Set<AgentNotification["priority"]>([
 const APPROVAL_CHANNELS = new Set<ApprovalChannel>([
   "telegram",
   "discord",
-  "signal",
   "whatsapp",
   "slack",
   "imessage",

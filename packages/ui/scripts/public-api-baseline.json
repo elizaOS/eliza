@@ -3584,18 +3584,6 @@
       "source": "src/components/pages/__e2e__/chat-infinite-scroll-fixture.tsx"
     },
     {
-      "specifier": "@elizaos/ui/components/pages/__e2e__/connectors-fixture",
-      "source": "src/components/pages/__e2e__/connectors-fixture.tsx"
-    },
-    {
-      "specifier": "@elizaos/ui/components/pages/__e2e__/connectors-fixture-api-stub",
-      "source": "src/components/pages/__e2e__/connectors-fixture-api-stub.ts"
-    },
-    {
-      "specifier": "@elizaos/ui/components/pages/__e2e__/connectors-fixture-state-stub",
-      "source": "src/components/pages/__e2e__/connectors-fixture-state-stub.ts"
-    },
-    {
       "specifier": "@elizaos/ui/components/pages/__e2e__/launcher-fixture",
       "source": "src/components/pages/__e2e__/launcher-fixture.tsx"
     },

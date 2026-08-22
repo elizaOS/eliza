@@ -161,7 +161,7 @@ objects are quarantined instead of guessed away. A spool is removable only
 after an exact current `protected`, `retained`, or `restore_verified` catalogue
 proof covers every primary and secondary object.
 
-### Periodic RPO admission remains dormant
+### Dedicated periodic worker remains dormant
 
 The database scheduler uses database time, preserves one operation ID across
 response loss, admits at most one due operation per organization and source
@@ -169,15 +169,46 @@ node, and advances `next_backup_at` only after exact current manifest-v3 dual
 protection. Retry backoff has a separate timestamp, so a failure never moves the
 RPO deadline or hides an overdue agent.
 
-`AGENT_BACKUP_RPO_SCHEDULER_ENABLED` is off by default. This PR deliberately
-does not wire the catalogue runtime into the provisioning daemon and does not
-construct production capture, KMS, publication, or spool-cleanup executors from
-environment variables. It therefore makes no production 15-minute RPO claim.
-Activation/vault writers, a dedicated control-plane cadence of at most 60
-seconds, durable superseded-operation cancellation, coexistence fencing against
-legacy/manual producers, and fleet-capacity evidence must land before the gate
-may be enabled. Missing authority remains overdue and unroutable; it is never
-reported as protected.
+`eliza-backup-catalog-worker.service` is a dedicated, serial caller of the
+catalogue runtime. Its enabled composition binds one R2/Hetzner registry, one
+Steward KMS operation-key-bundle provider, the exact database-backed capture
+attestation, a persistent `/var/lib/eliza-backup-catalog/spool`, publication,
+GC, and the protected/terminal spool janitor. `--once` runs one deterministic
+cycle. The normal cadence and retry delay are bounded to 60 seconds, and
+SIGTERM reaches capture and publication before systemd's bounded shutdown
+fence. Health is published without locators or credentials at
+`/run/eliza-backup-catalog/health.json`.
+
+The runtime configuration exposes bounded schedule, operation, garbage-
+collection, and deletion batch/lease/retry controls in
+`packages/cloud/shared/.env.example`. Operation admission is deliberately
+fixed to one claim per cycle until a durable cross-cycle tenant cursor proves
+starvation freedom. Capture and object-transfer deadlines must each leave at
+least 30 seconds inside `AGENT_BACKUP_OPERATION_LEASE_MS` for fenced catalogue
+settlement. Operation and GC retry bases must not exceed their corresponding
+retry maxima; invalid combinations fail before provider authority is built.
+
+Both `AGENT_BACKUP_CATALOG_RUNTIME_ENABLED` and
+`AGENT_BACKUP_RPO_SCHEDULER_ENABLED` are forced to `0` in the merge-time
+systemd/deploy path. The disabled authority composition reads only those gates
+and returns before importing or constructing database, provider, KMS, executor,
+or spool authority. The outer daemon may additionally read non-secret cadence
+and health controls needed to publish its dormant status; the dedicated dormant
+file also pins an inert spool path. Before either gate can be activated, backup
+authority must leave the shared host's provisioning-account sudo/docker trust
+domain (or move to a dedicated host) and execute an integrity-protected
+artifact; a root-owned copy on the current shared host alone is not an isolation
+boundary. Enabled configuration is fail-closed: storage identities and
+credentials, Steward KMS bearer, persistent spool bounds, legacy-writer drain
+receipt, and deployment-pinned agent/database/plugin versions must all be
+present before any provider is built. These static runtime metadata values are
+required because the current activation receipt does not persist them; they are
+never inferred from mutable process state.
+
+This worker therefore makes no production 15-minute RPO claim at merge.
+Activation/vault writers, coexistence fencing against legacy/manual producers,
+and fleet-capacity evidence must land before the gates may be enabled. Missing
+authority remains overdue and unroutable; it is never reported as protected.
 
 ## Operational proof
 

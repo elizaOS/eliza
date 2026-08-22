@@ -37,6 +37,7 @@ const describeIfPosix = process.platform === "win32" ? describe.skip : describe;
 
 import codingToolsPlugin from "../index.js";
 import { runShell } from "../lib/run-shell.js";
+import { persistShellOutputArtifact } from "../lib/shell-output-artifact.js";
 import { availableToolsProvider } from "../providers/available-tools.js";
 import {
   BackgroundShellService,
@@ -120,6 +121,7 @@ async function withShellTimeoutEnv<T>(
 
 interface RuntimeOptions {
   blockedPaths?: string;
+  workspaceRoots?: string;
   shellTimeoutMs?: unknown;
   shellHistoryCommands?: string[];
   withShellHistoryService?: boolean;
@@ -150,6 +152,8 @@ async function makeRuntime(opts: RuntimeOptions = {}): Promise<{
   const settings: Record<string, unknown> = {};
   if (opts.blockedPaths)
     settings.CODING_TOOLS_BLOCKED_PATHS = opts.blockedPaths;
+  if (opts.workspaceRoots)
+    settings.CODING_TOOLS_WORKSPACE_ROOTS = opts.workspaceRoots;
   if (opts.shellTimeoutMs !== undefined)
     settings.CODING_TOOLS_SHELL_TIMEOUT_MS = opts.shellTimeoutMs;
   if (opts.backgroundBufferChars !== undefined) {
@@ -243,6 +247,21 @@ async function pollUntil(
     await delay(50);
   }
   throw new Error(`condition not met; last=${last?.text ?? "(none)"}`);
+}
+
+async function waitForBackgroundToSettle(
+  service: BackgroundShellService,
+  conversationId: string,
+  handle: string,
+): Promise<void> {
+  for (let attempt = 0; attempt < 40; attempt += 1) {
+    const session = service
+      .list(conversationId)
+      .find((candidate) => candidate.handle === handle);
+    if (session && session.status !== "running") return;
+    await delay(50);
+  }
+  throw new Error(`background shell ${handle} did not settle`);
 }
 
 function isProcessAlive(pid: number): boolean {
@@ -502,6 +521,9 @@ describeIfPosix("shellAction", () => {
     expect(providerResult.text).toContain("start_background");
     expect(providerResult.data?.codingTools).toEqual([
       "FILE",
+      "READ",
+      "WRITE",
+      "EDIT",
       "SHELL",
       "WEB_FETCH",
       "WEB_SEARCH",
@@ -620,6 +642,176 @@ describeIfPosix("shellAction", () => {
     expect(posts[0].text).toContain(lines[299]);
     expect(posts[0].text).toMatch(/\[\d+ lines omitted — ask to see more\]/);
     expect(posts[0].text.length).toBeLessThan(1700);
+  });
+
+  it("returns complete redacted Unicode stdout and stderr above the former model cap", async () => {
+    const secret = "marigold9-complete-shell-secret";
+    const stdout = `${"🙂α\n".repeat(7_000)}${secret}\nstdout-tail`;
+    const stderr = `${"界β\n".repeat(8_000)}${secret}\nstderr-tail`;
+    expect(stdout.length + stderr.length).toBeGreaterThan(50_000);
+    const { runtime } = await makeRuntime({ configuredSecret: secret });
+    const script = [
+      `process.stdout.write(${JSON.stringify("🙂α\n")}.repeat(7000)+${JSON.stringify(`${secret}\nstdout-tail`)});`,
+      `process.stderr.write(${JSON.stringify("界β\n")}.repeat(8000)+${JSON.stringify(`${secret}\nstderr-tail`)});`,
+    ].join("");
+
+    const result = requireActionResult(
+      await shellAction.handler?.(runtime, makeMessage(), undefined, {
+        command: `node -e ${JSON.stringify(script)}`,
+      }),
+    );
+    const redactedStdout = stdout.replace(secret, "[REDACTED:TEST_SECRET]");
+    const redactedStderr = stderr.replace(secret, "[REDACTED:TEST_SECRET]");
+    const resultText = result.text ?? "";
+    const streamText = resultText.slice(resultText.indexOf("--- stdout ---"));
+
+    expect(result.success).toBe(true);
+    expect(streamText).toBe(
+      `--- stdout ---\n${redactedStdout}\n--- stderr ---\n${redactedStderr}`,
+    );
+    expect((result.data as Record<string, unknown>).output_truncated).toBe(
+      false,
+    );
+    expect(result).not.toHaveProperty("data.output_artifact_handle");
+    expect(JSON.stringify(result)).not.toContain(secret);
+  });
+
+  it("retrieves a retained legacy artifact through an authorized opaque handle", async () => {
+    const stateDir = await fs.mkdtemp(
+      path.join(os.tmpdir(), "coding-tools-shell-artifact-"),
+    );
+    const previousStateDir = process.env.ELIZA_STATE_DIR;
+    const previousJobTtl = process.env.SHELL_JOB_TTL_MS;
+    process.env.ELIZA_STATE_DIR = stateDir;
+    process.env.SHELL_JOB_TTL_MS = "60000";
+    const artifactRoot = path.join(stateDir, "coding-tools", "shell-output");
+    const workspace = path.join(stateDir, "workspace");
+    const staleArtifact = path.join(artifactRoot, "shell_stale");
+    const secret = "marigold9-artifact-secret";
+    try {
+      await fs.mkdir(workspace, { recursive: true });
+      await fs.mkdir(staleArtifact, { recursive: true });
+      await fs.writeFile(path.join(staleArtifact, "stdout.txt"), "stale");
+      const staleDate = new Date(Date.now() - 120_000);
+      await fs.utimes(staleArtifact, staleDate, staleDate);
+      const { runtime, sandbox } = await makeRuntime({
+        configuredSecret: secret,
+        workspaceRoots: workspace,
+      });
+      const message = makeMessage();
+      const stdout = `${"row\n".repeat(14_000)}[REDACTED:TEST_SECRET]`;
+      const stderr = "stderr-tail\n";
+      const artifact = await persistShellOutputArtifact({
+        command: "legacy large command",
+        cwd: workspace,
+        stdout,
+        stderr,
+        exitCode: 0,
+        timedOut: false,
+        signal: null,
+        modelCharacterLimit: 50_000,
+        modelCharacters: 50_000,
+        ownerAgentId: String(runtime.agentId),
+        ownerConversationId: String(message.roomId),
+      });
+      const handle = artifact.handle;
+      const artifactDirectory = path.join(artifactRoot, handle);
+      const manifestPath = path.join(artifactDirectory, "manifest.json");
+      const stdoutPath = path.join(artifactDirectory, "stdout.txt");
+      const stderrPath = path.join(artifactDirectory, "stderr.txt");
+      expect(await fs.readFile(stdoutPath, "utf8")).toBe(stdout);
+      expect(await fs.readFile(stderrPath, "utf8")).toBe(stderr);
+      const manifest = JSON.parse(await fs.readFile(manifestPath, "utf8")) as {
+        stdout: { bytes: number; lines: number };
+        stderr: { bytes: number; lines: number };
+        truncation: { modelCharacterLimit: number; completeBytes: number };
+      };
+
+      expect(await fs.readFile(manifestPath, "utf8")).not.toContain(secret);
+      expect(manifest.stdout).toEqual({
+        path: stdoutPath,
+        characters: stdout.length,
+        bytes: Buffer.byteLength(stdout),
+        lines: 14001,
+      });
+      expect(manifest.stderr).toEqual({
+        path: stderrPath,
+        characters: stderr.length,
+        bytes: Buffer.byteLength(stderr),
+        lines: 1,
+      });
+      expect(manifest.truncation.modelCharacterLimit).toBe(50_000);
+      expect(manifest.truncation.completeBytes).toBe(
+        Buffer.byteLength(stdout) + Buffer.byteLength(stderr),
+      );
+      await expect(
+        sandbox.validatePath(String(message.roomId), manifestPath),
+      ).resolves.toMatchObject({ ok: false });
+
+      const retrieveStream = async (stream: "stdout" | "stderr") => {
+        let offset = 0;
+        let complete = false;
+        let retrieved = "";
+        while (!complete) {
+          const page = requireActionResult(
+            await shellAction.handler?.(runtime, message, undefined, {
+              action: "read_output_artifact",
+              handle,
+              artifact_stream: stream,
+              artifact_offset: offset,
+              artifact_limit: 20_000,
+            }),
+          );
+          expect(page.success).toBe(true);
+          const pageData = page.data as Record<string, unknown>;
+          expect(pageData.handle).toBe(handle);
+          expect(pageData.stream).toBe(stream);
+          expect(pageData.startOffset).toBe(offset);
+          retrieved += pageData.text as string;
+          offset = pageData.nextOffset as number;
+          complete = pageData.complete as boolean;
+        }
+        return retrieved;
+      };
+
+      expect(await retrieveStream("stdout")).toBe(stdout);
+      expect(await retrieveStream("stderr")).toBe(stderr);
+
+      const crossRoom = requireActionResult(
+        await shellAction.handler?.(
+          runtime,
+          makeMessage("99999999-aaaa-bbbb-cccc-222222222222"),
+          undefined,
+          {
+            action: "read_output_artifact",
+            handle,
+            artifact_stream: "stdout",
+          },
+        ),
+      );
+      expect(crossRoom.success).toBe(false);
+      expect(JSON.stringify(crossRoom)).not.toContain("row\n");
+
+      const malformed = requireActionResult(
+        await shellAction.handler?.(runtime, message, undefined, {
+          action: "read_output_artifact",
+          handle: "../manifest.json",
+          artifact_stream: "stdout",
+        }),
+      );
+      expect(malformed.success).toBe(false);
+      expect((await fs.stat(manifestPath)).mode & 0o777).toBe(0o600);
+      expect((await fs.stat(path.dirname(manifestPath))).mode & 0o777).toBe(
+        0o700,
+      );
+      expect(await pathExists(staleArtifact)).toBe(false);
+    } finally {
+      if (previousStateDir === undefined) delete process.env.ELIZA_STATE_DIR;
+      else process.env.ELIZA_STATE_DIR = previousStateDir;
+      if (previousJobTtl === undefined) delete process.env.SHELL_JOB_TTL_MS;
+      else process.env.SHELL_JOB_TTL_MS = previousJobTtl;
+      await fs.rm(stateDir, { recursive: true, force: true });
+    }
   });
 
   it("marks empty stdout and stderr explicitly for successful commands", async () => {
@@ -2219,9 +2411,9 @@ describeIfPosix("shellAction", () => {
     expect(JSON.stringify(afterTaint)).not.toContain(secret);
   });
 
-  it("keeps a split configured secret tainted through tiny visible caps", async () => {
+  it("rejects split-secret output that exceeds the complete-capture limit", async () => {
     const secret = "marigold9";
-    const { runtime } = await makeRuntime({
+    const { runtime, backgroundShell } = await makeRuntime({
       configuredSecret: secret,
       backgroundBufferChars: 5,
     });
@@ -2234,26 +2426,23 @@ describeIfPosix("shellAction", () => {
       }),
     );
     const handle = (start.data as Record<string, unknown>).handle as string;
-    const poll = await pollUntil(
-      runtime,
-      actor,
+    await waitForBackgroundToSettle(
+      backgroundShell,
+      String(actor.roomId),
       handle,
-      (data) => data.status === "exited",
     );
-    const data = poll.data as Record<string, unknown>;
+    const poll = requireActionResult(
+      await shellAction.handler?.(runtime, actor, undefined, {
+        action: "poll_background",
+        handle,
+      }),
+    );
 
-    expect(
-      JSON.stringify({ stdout: data.stdout, stderr: data.stderr }),
-    ).not.toContain("mari");
-    expect(
-      JSON.stringify({ stdout: data.stdout, stderr: data.stderr }),
-    ).not.toContain("gold9");
-    expect(data.stdout).toMatchObject({
-      text: "-safe",
-      startOffset: "mariXlater-safe".length - 5,
-      endOffset: "mariXlater-safe".length,
-    });
-    expect((data.stderr as Record<string, unknown>).text).toBe("");
+    expect(poll.success).toBe(false);
+    expect(poll.text).toContain("no partial output is available");
+    expect(JSON.stringify(poll)).not.toContain("mari");
+    expect(JSON.stringify(poll)).not.toContain("gold9");
+    expect(poll.data).toBeUndefined();
   });
 
   it("preserves same-stream event boundaries around harmless bytes", async () => {
@@ -2480,10 +2669,10 @@ describeIfPosix("shellAction", () => {
     );
   });
 
-  it("keeps an eviction-split configured secret inside the private overlap", async () => {
+  it("rejects eviction-split secret output beyond the capture limit", async () => {
     const secret = "violet73";
     const payload = `${"a".repeat(26)}${secret}${"z".repeat(16)}`;
-    const { runtime } = await makeRuntime({
+    const { runtime, backgroundShell } = await makeRuntime({
       backgroundBufferChars: 20,
       configuredSecret: secret,
     });
@@ -2495,25 +2684,30 @@ describeIfPosix("shellAction", () => {
       }),
     );
     const handle = (start.data as Record<string, unknown>).handle as string;
-    const poll = await pollUntil(runtime, actor, handle, (data) => {
-      const stdout = data.stdout as Record<string, unknown> | undefined;
-      return data.status === "exited" && stdout?.truncatedBefore === 30;
-    });
-    const stdout = (poll.data as Record<string, unknown>).stdout as Record<
-      string,
-      unknown
-    >;
+    await waitForBackgroundToSettle(
+      backgroundShell,
+      String(actor.roomId),
+      handle,
+    );
+    const poll = requireActionResult(
+      await shellAction.handler?.(runtime, actor, undefined, {
+        action: "poll_background",
+        handle,
+      }),
+    );
 
-    expect(stdout.text).toBe("z".repeat(16));
-    expect(stdout.startOffset).toBe(30);
+    expect(poll.success).toBe(false);
+    expect(poll.text).toContain("no partial output is available");
     expect(JSON.stringify(poll)).not.toContain(secret);
     expect(JSON.stringify(poll)).not.toContain(secret.slice(4));
   });
 
-  it("expands the private overlap when a configured secret rotates", async () => {
+  it("rejects rotated-secret output beyond the capture limit", async () => {
     const rotatedSecret = "rotated-secret-value-LEAK_SENTINEL_9Q";
     const payload = `${"a".repeat(10)}${rotatedSecret}${"z".repeat(8)}`;
-    const { runtime } = await makeRuntime({ backgroundBufferChars: 20 });
+    const { runtime, backgroundShell } = await makeRuntime({
+      backgroundBufferChars: 20,
+    });
     runtime.character.settings = {
       secrets: { ROTATED_SECRET: rotatedSecret },
     };
@@ -2528,18 +2722,20 @@ describeIfPosix("shellAction", () => {
       }),
     );
     const handle = (start.data as Record<string, unknown>).handle as string;
-    const poll = await pollUntil(runtime, actor, handle, (data) => {
-      const stdout = data.stdout as Record<string, unknown> | undefined;
-      return (
-        data.status === "exited" &&
-        stdout?.truncatedBefore === payload.length - 20
-      );
-    });
+    await waitForBackgroundToSettle(
+      backgroundShell,
+      String(actor.roomId),
+      handle,
+    );
+    const poll = requireActionResult(
+      await shellAction.handler?.(runtime, actor, undefined, {
+        action: "poll_background",
+        handle,
+      }),
+    );
 
-    expect(
-      ((poll.data as Record<string, unknown>).stdout as Record<string, unknown>)
-        .text,
-    ).toBe("z".repeat(8));
+    expect(poll.success).toBe(false);
+    expect(poll.text).toContain("no partial output is available");
     expect(JSON.stringify(poll)).not.toContain(rotatedSecret.slice(-12));
   });
 

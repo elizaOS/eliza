@@ -60,7 +60,7 @@ gate applies to every action carrying `roleGate: { minRole: "OWNER" }`:
 
 | Action | File | Notes |
 |---|---|---|
-| `CONNECTOR` | `src/actions/connector.ts` | Connect/disconnect/verify/status/list across Google, X, Telegram, Signal, Discord, iMessage, WhatsApp, health, browser. |
+| `CONNECTOR` | `src/actions/connector.ts` | Connect/disconnect/verify/status/list across Google, X, Telegram, Discord, iMessage, WhatsApp, health, browser. |
 | `CREDENTIALS` | `src/actions/credentials.ts` | Credential lookup + autofill. |
 | `PERSONAL_ASSISTANT` | `src/actions/owner-surfaces.ts` | Cross-domain assistant orchestration. |
 | `VOICE_CALL` | `src/actions/voice-call.ts` | Outbound Twilio voice. |
@@ -144,7 +144,7 @@ the PR/issue** per [`CONTRIBUTING.md`](../../../CONTRIBUTING.md).
 |---|---|---|---|
 | Google Calendar | _attach_ | _attach_ | pending live accounts |
 | Gmail / inbox | _attach_ | _attach_ | pending live accounts |
-| Telegram / Discord / Signal / WhatsApp / X | _attach_ | _attach_ | pending live accounts |
+| Telegram / Discord / WhatsApp / X | _attach_ | _attach_ | pending live accounts |
 | Phone / voice / SMS | _attach_ | n/a | pending Twilio env |
 | Health | _attach_ | n/a | pending native device |
 | Blocker / focus | _attach_ | n/a | pending native device |

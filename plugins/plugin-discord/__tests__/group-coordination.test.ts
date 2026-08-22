@@ -17,6 +17,8 @@ import { describe, expect, it, vi } from "vitest";
 import {
 	compareDiscordSnowflake,
 	createDiscordContenderToken,
+	DEFAULT_BOT_REPLY_BUDGET,
+	DEFAULT_SPEAKER_LEASE_MS,
 	deterministicCoordinationNonce,
 	deterministicDiscordNonce,
 	emitCoordinationReceipt,
@@ -377,5 +379,47 @@ describe("getGroupCoordinationConfig", () => {
 		expect(getGroupCoordinationConfig((key) => offSettings[key]).sweepMs).toBe(
 			0,
 		);
+	});
+});
+
+describe("group coordination config parsing", () => {
+	function settings(values: Record<string, string>) {
+		return (key: string) => values[key];
+	}
+
+	it("ignores trailing-garbage lease and budget values", () => {
+		// parseInt("3junk") is 3, so a malformed setting silently installed a
+		// 3ms speaker lease and a 3-reply bot budget.
+		const config = getGroupCoordinationConfig(
+			settings({
+				DISCORD_SPEAKER_LEASE_MS: "3junk",
+				DISCORD_BOT_REPLY_BUDGET: "3junk",
+			}),
+		);
+		expect(config.leaseMs).toBe(DEFAULT_SPEAKER_LEASE_MS);
+		expect(config.botReplyBudget).toBe(DEFAULT_BOT_REPLY_BUDGET);
+	});
+
+	it("keeps signed values and rejects ones past the safe range", () => {
+		// `Number.parseInt` accepted "+5000"; rejecting it would be a regression.
+		const signed = getGroupCoordinationConfig(
+			settings({ DISCORD_SPEAKER_LEASE_MS: "+5000" }),
+		);
+		expect(signed.leaseMs).toBe(5000);
+		const unsafe = getGroupCoordinationConfig(
+			settings({ DISCORD_SPEAKER_LEASE_MS: "9007199254740993" }),
+		);
+		expect(unsafe.leaseMs).toBe(DEFAULT_SPEAKER_LEASE_MS);
+	});
+
+	it("still honours clean lease and budget values", () => {
+		const config = getGroupCoordinationConfig(
+			settings({
+				DISCORD_SPEAKER_LEASE_MS: "5000",
+				DISCORD_BOT_REPLY_BUDGET: "0",
+			}),
+		);
+		expect(config.leaseMs).toBe(5000);
+		expect(config.botReplyBudget).toBe(0);
 	});
 });

@@ -136,12 +136,7 @@ function schedulingTarget(
   suffix: string,
 ): string {
   if (channel === "email") return `taylor-${suffix}@example.com`;
-  if (
-    channel === "sms" ||
-    channel === "imessage" ||
-    channel === "signal" ||
-    channel === "whatsapp"
-  ) {
+  if (channel === "sms" || channel === "imessage" || channel === "whatsapp") {
     return `+1555${suffix.replace(/\D/gu, "").padStart(7, "0").slice(-7)}`;
   }
   return `${channel}:taylor-${suffix}`;
@@ -163,10 +158,7 @@ async function createOpeningApproval(args: {
     primaryHandle: target,
     email: channel === "email" ? target : null,
     phone:
-      channel === "sms" ||
-      channel === "imessage" ||
-      channel === "signal" ||
-      channel === "whatsapp"
+      channel === "sms" || channel === "imessage" || channel === "whatsapp"
         ? target
         : null,
     notes: "scheduling delivery integration test",
@@ -1129,14 +1121,7 @@ describe("ApprovalQueue integration (real PGlite)", () => {
     }
   }, 60_000);
 
-  it.each([
-    "email",
-    "telegram",
-    "signal",
-    "whatsapp",
-    "imessage",
-    "sms",
-  ] as const)(
+  it.each(["email", "telegram", "whatsapp", "imessage", "sms"] as const)(
     "persists a provider receipt before completing a %s scheduling approval",
     async (channel) => {
       const { request } = await createOpeningApproval({

@@ -39,7 +39,7 @@ export function validateMessageAction(
 export const messageSourceParameter: ActionParameter = {
 	name: "sources",
 	description:
-		"Optional message sources to include, such as email, slack, discord, imessage, signal, whatsapp, telegram, or x.",
+		"Optional message sources to include, such as email, slack, discord, imessage, whatsapp, telegram, or x.",
 	required: false,
 	schema: {
 		type: "array" as const,

@@ -338,7 +338,7 @@ describe("aggregate builders", () => {
           timestamp: now - 1000,
         }),
         inboundChat({ id: "b1", text: "telegram msg", source: "telegram" }),
-        inboundChat({ id: "c1", text: "signal msg", source: "signal" }),
+        inboundChat({ id: "c1", text: "iMessage msg", source: "imessage" }),
       ],
       {
         limit: 10,
@@ -352,8 +352,7 @@ describe("aggregate builders", () => {
     expect(inbox.sources).toEqual([
       { source: "chat", state: "ok", degradations: [] },
     ]);
-    // Signal was filtered by the allow-list.
-    expect(inbox.channelCounts.signal.total).toBe(0);
+    // iMessage was filtered by the allow-list.
     expect(inbox.channelCounts.discord.total).toBe(2);
     expect(inbox.channelCounts.telegram.total).toBe(1);
     const discordGroup = inbox.threadGroups?.find(

@@ -4,7 +4,7 @@
  * per command (never clobbering `eliza_pair`), and role-gated dispatch. Runtime
  * and `hasRoleAccess` are mocked.
  */
-import type { IAgentRuntime } from "@elizaos/core";
+import { createUniqueUuid, type IAgentRuntime } from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // The connector bridge gates auth via the agent role model (`hasRoleAccess`).
@@ -73,12 +73,16 @@ import {
   buildTelegramCommandDescriptors,
   registerTelegramCommandHandlers,
   resolveTelegramEmbedUrl,
+  resolveTelegramSenderAuth,
 } from "./command-registration";
+import { resolveTelegramRuntimeEntityId } from "./identity";
 import type { MessageManager } from "./messageManager";
 
 const { getConnectorCommands } = pluginCommandsMock;
 
 const TELEGRAM_COMMAND_NAME = /^[a-z0-9_]{1,32}$/;
+
+const OWNER_ENTITY_ID = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
 
 function makeRuntime(settings: Record<string, string> = {}): IAgentRuntime {
   const cache = new Map<string, unknown>();
@@ -91,6 +95,23 @@ function makeRuntime(settings: Record<string, string> = {}): IAgentRuntime {
       return true;
     }),
     character: { name: "TestAgent" },
+  } as unknown as IAgentRuntime;
+}
+
+function ownerEntity(telegramUserId: string) {
+  return {
+    id: OWNER_ENTITY_ID,
+    names: ["owner"],
+    metadata: { telegram: { userId: telegramUserId } },
+  };
+}
+
+function makeOwnerRuntime(
+  getEntityById: ReturnType<typeof vi.fn>,
+): IAgentRuntime {
+  return {
+    ...makeRuntime({ ELIZA_ADMIN_ENTITY_ID: OWNER_ENTITY_ID }),
+    getEntityById,
   } as unknown as IAgentRuntime;
 }
 
@@ -139,6 +160,7 @@ function registerHandlers(
 beforeEach(() => {
   hasRoleAccess.mockReset();
   hasRoleAccess.mockResolvedValue(true);
+  pluginCommandsMock.resolveCommand.mockClear();
 });
 
 describe("buildTelegramCommandDescriptors", () => {
@@ -256,7 +278,13 @@ describe("registerTelegramCommandHandlers", () => {
     const { ctx } = makeCtx("/stop");
     await stopHandler?.(ctx);
 
-    expect(handleMessage).toHaveBeenCalledWith(ctx, { forceReply: true });
+    expect(handleMessage).toHaveBeenCalledWith(
+      ctx,
+      expect.objectContaining({
+        forceReply: true,
+        entityId: expect.any(String),
+      }),
+    );
   });
 
   it("wires navigate handlers to reply with an app destination", async () => {
@@ -379,6 +407,33 @@ describe("Telegram Mini App launch command", () => {
 });
 
 describe("auth gating", () => {
+  it("fails visibly and without dispatch when canonical identity storage rejects", async () => {
+    const identityError = new Error("identity database unavailable");
+    const reportError = vi.fn();
+    const rt = {
+      ...makeOwnerRuntime(vi.fn(async () => Promise.reject(identityError))),
+      reportError,
+    } as unknown as IAgentRuntime;
+    const { manager, handleMessage } = makeMessageManager();
+    const { handlers } = registerHandlers(rt, manager);
+    const restartHandler = handlers.get("restart");
+    expect(restartHandler).toBeDefined();
+    const { ctx, reply } = makeCtx("/restart");
+
+    await restartHandler?.(ctx);
+
+    expect(reply).toHaveBeenCalledWith(
+      "Could not verify your identity. Try again.",
+    );
+    expect(hasRoleAccess).not.toHaveBeenCalled();
+    expect(handleMessage).not.toHaveBeenCalled();
+    expect(reportError).toHaveBeenCalledWith(
+      "telegram:command-identity",
+      identityError,
+      { accountId: "default", telegramUserId: "4242" },
+    );
+  });
+
   it("refuses a requiresAuth command when the sender is not an owner", async () => {
     hasRoleAccess.mockResolvedValue(false);
     const { manager, handleMessage } = makeMessageManager();
@@ -406,8 +461,14 @@ describe("auth gating", () => {
     const { ctx } = makeCtx("/restart");
     await restartHandler?.(ctx);
 
-    // Owner access → command routes to the agent.
-    expect(handleMessage).toHaveBeenCalledWith(ctx, { forceReply: true });
+    // Owner access → command routes to the agent with the bound actor snapshot.
+    expect(handleMessage).toHaveBeenCalledWith(
+      ctx,
+      expect.objectContaining({
+        forceReply: true,
+        entityId: expect.any(String),
+      }),
+    );
   });
 
   it("consults both the OWNER and ADMIN roles when resolving the sender", async () => {
@@ -422,6 +483,100 @@ describe("auth gating", () => {
     const requestedRoles = hasRoleAccess.mock.calls.map((call) => call[2]);
     expect(requestedRoles).toContain("OWNER");
     expect(requestedRoles).toContain("ADMIN");
+  });
+
+  it("resolves default-account sender entity ids the same way inbound messages do", async () => {
+    hasRoleAccess.mockResolvedValue(true);
+    const rt = makeRuntime();
+    const { ctx } = makeCtx("/whoami");
+    await resolveTelegramSenderAuth(ctx, rt, "default");
+    const memory = hasRoleAccess.mock.calls[0]?.[1] as {
+      entityId?: string;
+    };
+    const expected = await resolveTelegramRuntimeEntityId(
+      rt,
+      "default",
+      "4242",
+    );
+    expect(memory.entityId).toBe(expected);
+    expect(memory.entityId).toBe(createUniqueUuid(rt, "default:4242"));
+    expect(memory.entityId).not.toBe(createUniqueUuid(rt, "4242"));
+  });
+
+  it("keeps non-default account sender ids on the historical account:user seed", async () => {
+    hasRoleAccess.mockResolvedValue(true);
+    const rt = makeRuntime();
+    const { ctx } = makeCtx("/whoami");
+    await resolveTelegramSenderAuth(ctx, rt, "acct-a");
+    const memory = hasRoleAccess.mock.calls[0]?.[1] as {
+      entityId?: string;
+    };
+    expect(memory.entityId).toBe(createUniqueUuid(rt, "acct-a:4242"));
+  });
+
+  it("resolves a configured owner through the entity store, not the UUID fallback", async () => {
+    const getEntityById = vi.fn(async () => ownerEntity("4242"));
+    const rt = makeOwnerRuntime(getEntityById);
+    const { ctx } = makeCtx("/whoami");
+    await resolveTelegramSenderAuth(ctx, rt, "default");
+    const memory = hasRoleAccess.mock.calls[0]?.[1] as {
+      entityId?: string;
+    };
+    expect(memory.entityId).toBe(OWNER_ENTITY_ID);
+    expect(memory.entityId).not.toBe(createUniqueUuid(rt, "default:4242"));
+    expect(getEntityById).toHaveBeenCalledWith(OWNER_ENTITY_ID);
+  });
+
+  it("binds the authorized entity through dispatch when the pairing snapshot changes", async () => {
+    const getEntityById = vi
+      .fn()
+      .mockResolvedValueOnce(ownerEntity("4242"))
+      .mockResolvedValueOnce(ownerEntity("9999"));
+    const rt = makeOwnerRuntime(getEntityById);
+    const { manager } = makeMessageManager();
+    const { handlers } = registerHandlers(rt, manager);
+    const thinkHandler = handlers.get("think");
+    expect(thinkHandler).toBeDefined();
+    const { ctx, reply } = makeCtx("/think high");
+
+    await thinkHandler?.(ctx);
+
+    const authorizedMemory = hasRoleAccess.mock.calls[0]?.[1] as
+      | { entityId?: string }
+      | undefined;
+    const dispatchedMemory = pluginCommandsMock.resolveCommand.mock
+      .calls[0]?.[1] as { entityId?: string } | undefined;
+    const authorizedEntity = authorizedMemory?.entityId;
+    const dispatchedEntity = dispatchedMemory?.entityId;
+    const identityCalls = [authorizedEntity, dispatchedEntity];
+
+    expect(authorizedEntity).toBe(OWNER_ENTITY_ID);
+    expect(dispatchedEntity).toBe(authorizedEntity);
+    expect(dispatchedEntity).not.toBe(createUniqueUuid(rt, "default:4242"));
+    expect(getEntityById).toHaveBeenCalledTimes(1);
+    expect(identityCalls).toEqual([OWNER_ENTITY_ID, OWNER_ENTITY_ID]);
+    expect(reply).toHaveBeenCalledTimes(1);
+  });
+
+  it("passes the bound authorized entity to pipeline dispatch without a second lookup", async () => {
+    const getEntityById = vi
+      .fn()
+      .mockResolvedValueOnce(ownerEntity("4242"))
+      .mockResolvedValueOnce(ownerEntity("9999"));
+    const rt = makeOwnerRuntime(getEntityById);
+    const { manager, handleMessage } = makeMessageManager();
+    const { handlers } = registerHandlers(rt, manager);
+    const stopHandler = handlers.get("stop");
+    expect(stopHandler).toBeDefined();
+    const { ctx } = makeCtx("/stop");
+
+    await stopHandler?.(ctx);
+
+    expect(getEntityById).toHaveBeenCalledTimes(1);
+    expect(handleMessage).toHaveBeenCalledWith(ctx, {
+      forceReply: true,
+      entityId: OWNER_ENTITY_ID,
+    });
   });
 });
 

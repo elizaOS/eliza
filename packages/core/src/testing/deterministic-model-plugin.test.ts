@@ -60,6 +60,13 @@ describe("createDeterministicModelPlugin", () => {
 				prompt: "anything",
 			} as GenerateTextParams),
 		).rejects.toThrow("multiple fixtures matched");
+
+		expect(() => unmatched.assertFixturesConsumed()).toThrow(
+			"deterministic model calls were unexpected",
+		);
+		expect(() => ambiguous.assertFixturesConsumed()).toThrow(
+			"deterministic model calls were unexpected",
+		);
 	});
 
 	it("distinguishes over-consumption and exposes only sanitized diagnostics", async () => {
@@ -79,6 +86,32 @@ describe("createDeterministicModelPlugin", () => {
 		});
 		expect(JSON.stringify(diagnostic)).not.toContain("secret prompt");
 		expect(diagnostic?.promptFingerprint).toMatch(/^sha256:[a-f0-9]{64}$/);
+		expect(() => plugin.assertFixturesConsumed()).toThrow(
+			"all matching fixtures were over-consumed",
+		);
+	});
+
+	it("fails final validation when a matched fixture returns no response", async () => {
+		const plugin = createDeterministicModelPlugin({
+			fixtures: [
+				{
+					name: "empty-resolver",
+					resolve: () => undefined,
+				},
+			],
+		});
+
+		await expect(
+			textHandler(plugin)(runtime, {
+				prompt: "sensitive prompt",
+			} as GenerateTextParams),
+		).rejects.toThrow('fixture "empty-resolver" did not return a response');
+		expect(() => plugin.assertFixturesConsumed()).toThrow(
+			"matched fixture did not return a response",
+		);
+		const serialized = JSON.stringify(plugin.getFixtureDiagnostics());
+		expect(serialized).not.toContain("sensitive prompt");
+		expect(serialized).toContain("empty-resolver");
 	});
 
 	it("resets stateful regular-expression matchers between calls", async () => {
@@ -120,6 +153,7 @@ describe("createDeterministicModelPlugin", () => {
 			} as GenerateTextParams),
 		).resolves.toBe("resolved response");
 		expect(plugin.getFixtureDiagnostics().unexpectedCalls).toEqual([]);
+		expect(() => plugin.assertFixturesConsumed()).not.toThrow();
 	});
 
 	it("preserves malformed output and streams the same bytes", async () => {
