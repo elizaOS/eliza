@@ -3,9 +3,9 @@
  * Postgres, if `POSTGRES_URL` is set) adapter via `createIsolatedTestDatabase`
  * — no mocks.
  */
-import { ChannelType, type Entity, type Room, type Task, type UUID } from "@elizaos/core";
+import { ChannelType, type Entity, logger, type Room, type Task, type UUID } from "@elizaos/core";
 import { v4 as uuidv4 } from "uuid";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PgDatabaseAdapter } from "../../pg/adapter";
 import type { PgliteDatabaseAdapter } from "../../pglite/adapter";
 import { taskTable } from "../../schema";
@@ -79,6 +79,7 @@ describe("Task Integration Tests", () => {
         name: "Test Task",
         description: "A test task",
         tags: ["a", "b"],
+        dueAt: 1_900_000_005_000n,
         metadata: { status: "pending" },
       };
 
@@ -89,6 +90,26 @@ describe("Task Integration Tests", () => {
       expect(retrieved).not.toBeNull();
       expect(retrieved?.id).toBe(taskId);
       expect(retrieved?.agentId).toBe(testAgentId);
+      expect(retrieved?.entityId).toBe(testEntityId);
+      expect(retrieved?.dueAt).toBe(1_900_000_005_000);
+      expect(retrieved?.metadata).toMatchObject({
+        status: "pending",
+        scheduledAt: "2030-03-17T17:46:45.000Z",
+      });
+      await expect(adapter.getTasks({ entityId: testEntityId })).resolves.toEqual([
+        expect.objectContaining({ id: taskId, entityId: testEntityId }),
+      ]);
+      await expect(adapter.getTasks({ entityId: uuidv4() as UUID })).resolves.toEqual([]);
+      await expect(
+        adapter.createTask({
+          ...task,
+          id: uuidv4() as UUID,
+          dueAt: BigInt(Number.MAX_SAFE_INTEGER) + 1n,
+        })
+      ).rejects.toThrow("safe integer millisecond timestamp");
+      await expect(
+        adapter.createTask({ ...task, id: uuidv4() as UUID, dueAt: Number.NaN })
+      ).rejects.toThrow("safe integer millisecond timestamp");
     });
 
     it("returns agentId from task lookup APIs", async () => {
@@ -125,18 +146,59 @@ describe("Task Integration Tests", () => {
         name: "Original Task",
         description: "Original description",
         tags: ["a"],
-        metadata: { status: "pending" },
+        metadata: { status: "pending", affinityKey: "preserved" },
       };
       await adapter.createTask(originalTask);
 
+      await adapter.updateTask(taskId, { dueAt: 1_900_000_009_000 });
+      await expect(adapter.getTask(taskId)).resolves.toMatchObject({
+        dueAt: 1_900_000_009_000,
+        metadata: {
+          status: "pending",
+          affinityKey: "preserved",
+          scheduledAt: "2030-03-17T17:46:49.000Z",
+        },
+      });
+
       await adapter.updateTask(taskId, {
         description: "Updated Description",
+        dueAt: 1_900_000_010_000,
         metadata: { status: "completed" },
       });
 
       const retrieved = await adapter.getTask(taskId);
       expect(retrieved?.description).toBe("Updated Description");
-      expect(retrieved?.metadata).toEqual({ status: "completed" });
+      expect(retrieved?.dueAt).toBe(1_900_000_010_000);
+      expect(retrieved?.metadata).toEqual({
+        status: "completed",
+        scheduledAt: "2030-03-17T17:46:50.000Z",
+      });
+    });
+
+    it("does not retry malformed persisted task timing", async () => {
+      const taskId = uuidv4() as UUID;
+      await adapter.createTask({
+        id: taskId,
+        roomId: testRoomId,
+        worldId: testWorldId,
+        entityId: testEntityId,
+        name: "Malformed timing",
+        metadata: {},
+      });
+      await (adapter.getDatabase() as DrizzleDatabase)
+        .update(taskTable)
+        .set({ metadata: { scheduledAt: "not-a-date" } });
+
+      const warn = vi.spyOn(logger, "warn");
+      try {
+        await expect(adapter.getTask(taskId)).rejects.toThrow("ISO-8601");
+        expect(warn).not.toHaveBeenCalledWith(
+          expect.objectContaining({ src: "plugin:sql" }),
+          "Database operation failed, retrying"
+        );
+      } finally {
+        warn.mockRestore();
+      }
     });
 
     it("allows exactly one pending-task lifecycle transition", async () => {
