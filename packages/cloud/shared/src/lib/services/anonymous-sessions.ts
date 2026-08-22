@@ -1,5 +1,8 @@
 // Coordinates cloud service anonymous sessions behavior behind route handlers.
-import { anonymousSessionsRepository } from "../../db/repositories";
+import {
+  type AnonymousHourlyRateLimitResult,
+  anonymousSessionsRepository,
+} from "../../db/repositories";
 import type { AnonymousSession } from "../../db/schemas";
 import { invalidateAnonymousChatGateByToken } from "./anonymous-chat-admission";
 
@@ -41,9 +44,7 @@ class AnonymousSessionsService {
     return anonymousSessionsRepository.refundMessageSlot(sessionId);
   }
 
-  async checkRateLimit(
-    sessionId: string,
-  ): Promise<{ allowed: boolean; remaining: number; retryAfter?: number }> {
+  async checkRateLimit(sessionId: string): Promise<AnonymousHourlyRateLimitResult> {
     return anonymousSessionsRepository.incrementHourlyCount(sessionId);
   }
 

@@ -1,4 +1,5 @@
 // Persists anonymous sessions records for cloud services through the shared DB boundary.
+import { ElizaError } from "@elizaos/core";
 import { and, eq, gt, gte, lt, sql } from "drizzle-orm";
 import { mutateRowCount } from "../execute-helpers";
 import { dbRead, dbWrite } from "../helpers";
@@ -25,6 +26,12 @@ export interface AnonymousChatGateCounterSnapshot {
   hourlyResetAt: Date | null;
   lastMessageAt: Date;
 }
+
+export type AnonymousHourlyRateLimitResult =
+  | { allowed: true; remaining: number }
+  | { allowed: false; remaining: 0; retryAfter: number };
+
+const HOUR_MS = 60 * 60 * 1_000;
 
 /**
  * Repository for anonymous session database operations.
@@ -209,10 +216,10 @@ export class AnonymousSessionsRepository {
    *
    * @throws Error if session not found.
    */
-  async incrementHourlyCount(sessionId: string): Promise<{ allowed: boolean; remaining: number }> {
+  async incrementHourlyCount(sessionId: string): Promise<AnonymousHourlyRateLimitResult> {
     const hourlyLimit = Number.parseInt(process.env.ANON_HOURLY_LIMIT || "10", 10);
     const now = new Date();
-    const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
+    const oneHourAgo = new Date(now.getTime() - HOUR_MS);
 
     // Use a single atomic update with conditional logic
     // This resets the counter if the hour has passed, otherwise increments
@@ -246,7 +253,24 @@ export class AnonymousSessionsRepository {
 
     // Check if limit exceeded after update
     if (updated.hourly_message_count > hourlyLimit) {
-      return { allowed: false, remaining: 0 };
+      if (!updated.hourly_reset_at) {
+        throw new ElizaError("Anonymous hourly window is unavailable after quota update", {
+          code: "ANONYMOUS_HOURLY_WINDOW_UNAVAILABLE",
+          context: {
+            sessionId,
+            hourlyMessageCount: updated.hourly_message_count,
+          },
+          severity: "fatal",
+        });
+      }
+      return {
+        allowed: false,
+        remaining: 0,
+        retryAfter: Math.max(
+          1,
+          Math.ceil((updated.hourly_reset_at.getTime() + HOUR_MS - now.getTime()) / 1_000),
+        ),
+      };
     }
 
     return {
