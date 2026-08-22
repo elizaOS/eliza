@@ -177,7 +177,7 @@ export const FormRequest = memo(function FormRequest({
     <ChatWidgetShell
       title={form.title ?? "Form"}
       status={
-        <span className="text-[11px] font-medium text-muted">
+        <span className="text-xs-tight font-medium text-muted">
           {submitted ? "Submitted" : `${form.fields.length} fields`}
         </span>
       }
@@ -192,7 +192,7 @@ export const FormRequest = memo(function FormRequest({
         onSubmit={handleSubmit}
       >
         {form.description ? (
-          <div className="text-xs text-txt/80">{form.description}</div>
+          <div className="text-xs text-muted-strong">{form.description}</div>
         ) : null}
 
         {form.fields.map((field) => {
@@ -236,7 +236,7 @@ export const FormRequest = memo(function FormRequest({
                     className={getConfigInputClassName({
                       density: "compact",
                       hasError: !!fieldErrors?.length,
-                      className: "text-txt placeholder:text-txt/70",
+                      className: "text-txt placeholder:text-muted",
                     })}
                     aria-label={label}
                   >
@@ -270,7 +270,7 @@ export const FormRequest = memo(function FormRequest({
                 className={getConfigInputClassName({
                   density: "compact",
                   hasError: !!fieldErrors?.length,
-                  className: "text-txt placeholder:text-txt/70",
+                  className: "text-txt placeholder:text-muted",
                 })}
                 type={htmlInputTypeForField(field.type)}
                 name={field.name}

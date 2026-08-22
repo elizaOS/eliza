@@ -83,7 +83,7 @@ export function PairingView() {
         <CardHeader className="pb-6 pt-6">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
             <div className="min-w-0 space-y-1.5">
-              <div className="text-xs-tight font-semibold uppercase tracking-[0.16em] text-muted/80">
+              <div className="text-xs-tight font-semibold uppercase tracking-[0.16em] text-muted">
                 {branding.appName}
               </div>
               <CardTitle className="text-xl text-txt-strong">
@@ -195,7 +195,7 @@ export function PairingView() {
               </p>
 
               <div className="space-y-3">
-                <p className="text-xs font-semibold uppercase tracking-[0.08em] text-muted">
+                <p className="text-xs font-semibold uppercase tracking-wider text-muted">
                   {t("pairingview.NextSteps")}
                 </p>
                 <ol className="list-decimal space-y-2 pl-5 text-sm leading-relaxed text-txt">

@@ -94,7 +94,7 @@ export function EmptyWidgetState({
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-col items-center justify-center gap-2 py-5 text-center">
-        <span className="text-muted/50">{icon}</span>
+        <span className="text-muted">{icon}</span>
         <p className="text-2xs text-muted">{title}</p>
         {description ? (
           <p className="text-3xs text-muted">{description}</p>

@@ -102,7 +102,7 @@ export function ConnectorAccountPicker({
             variant="outline"
             size="sm"
             disabled={disabled || loading}
-            className="h-7 max-w-full rounded-full px-2 text-[11px] shadow-none"
+            className="h-7 max-w-full rounded-full px-2 text-xs-tight shadow-none"
             data-testid="connector-account-picker-trigger"
           >
             {loading ? (
@@ -165,7 +165,7 @@ export function ConnectorAccountPicker({
                       {connectorAccountDisplayName(account)}
                     </span>
                     {account.isDefault ? (
-                      <span className="rounded-sm border border-border/40 px-1 py-0 text-[9px] uppercase text-muted">
+                      <span className="rounded-sm border border-border/40 px-1 py-0 text-3xs uppercase tracking-wider text-muted">
                         Default
                       </span>
                     ) : null}
@@ -174,9 +174,9 @@ export function ConnectorAccountPicker({
                     <StatusBadge
                       label={status.label}
                       tone={status.tone}
-                      className="px-1.5 py-0 text-[9px]"
+                      className="px-1.5 py-0 text-3xs"
                     />
-                    <span className="truncate text-[10px] text-muted">
+                    <span className="truncate text-2xs text-muted">
                       {accountSecondaryText(account)}
                     </span>
                   </span>
@@ -220,7 +220,7 @@ export function ConnectorAccountPicker({
         </DropdownMenuContent>
       </DropdownMenu>
       {selectedAccount && !isConnectorAccountUsable(selectedAccount) ? (
-        <span className="truncate text-[11px] text-warn">
+        <span className="truncate text-xs-tight text-warn">
           Account needs attention
         </span>
       ) : null}
