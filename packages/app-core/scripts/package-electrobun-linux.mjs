@@ -20,6 +20,10 @@ import { cp } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  assertLinuxDistributionClaim,
+  LINUX_DISTRIBUTION_CLAIMS,
+} from "./linux-distribution-contract.mjs";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(scriptDir, "..", "..", "..");
@@ -311,8 +315,15 @@ async function buildAppImage(buildDir) {
 
 mkdirSync(artifactRoot, { recursive: true });
 const buildDir = latestBuildDir();
+const inspection = assertLinuxDistributionClaim({
+  buildDir,
+  claim: LINUX_DISTRIBUTION_CLAIMS.PRODUCTION_DIRECT,
+});
 console.log(`Packaging Linux Electrobun build: ${buildDir}`);
 console.log(`Version: ${version}; channel: ${channel}; arch: ${arch}`);
+console.log(
+  `ELF ABI: ${inspection.glibcCompatibility.elfFileCount} files, maximum GLIBC_${inspection.glibcCompatibility.maxRequiredVersion ?? "none"} (ceiling GLIBC_${inspection.glibcCompatibility.maxAllowedVersion})`,
+);
 
 const outputs = [];
 outputs.push(await buildDeb(buildDir));

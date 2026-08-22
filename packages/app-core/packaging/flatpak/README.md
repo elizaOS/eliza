@@ -56,6 +56,51 @@ tree with:
 bun run --cwd packages/app-core verify:linux-distribution
 ```
 
+## GNU libc compatibility contract
+
+Every installable Linux package now has a fail-closed GNU libc audit before
+the first staging copy is made. The audit identifies ELF files by their magic
+bytes, not their filenames, and runs `readelf -W --version-info` over every
+one. That includes extensionless executables, native `.node` modules, and all
+lazy-loaded local-inference `.so` files nested under `Resources`. Musl and
+static ELF alternatives are still inspected; an ELF with no GLIBC version
+requirements does not raise the GNU libc floor. Private or named GLIBC ABI
+requirements fail closed.
+
+The maximum accepted requirement is `GLIBC_2.38`. This ceiling comes from the
+pinned Electrobun `1.18.1` Linux native wrapper, which already requires
+`GLIBC_2.38`; it is the existing unavoidable direct-package floor, not a new
+distro-support promise. Raising it in a fused or lazy-loaded library would make
+parts of an otherwise launchable application fail only when that feature is
+loaded. Lowering it below `2.38` requires rebuilding and qualifying the pinned
+native wrapper as well as the fused libraries.
+
+Both distribution entry points enforce the same complete-tree audit:
+
+```bash
+node packages/app-core/scripts/package-electrobun-linux.mjs \
+  --build-dir=packages/app-core/platforms/electrobun/build/dev-linux-x64/Eliza-dev
+node packages/app-core/scripts/package-electrobun-flatpak.mjs \
+  --build-dir=packages/app-core/platforms/electrobun/build/dev-linux-x64/Eliza-dev
+```
+
+The contract is only an ELF ABI ceiling. It does not by itself qualify Ubuntu,
+Debian, Fedora, or any other distribution: system WebKitGTK/GTK dependencies,
+the selected Flatpak runtime, architecture, installation, and runtime behavior
+must still be tested. In particular, do not claim Ubuntu 22.04 compatibility;
+its libc predates the pinned wrapper's floor. Ubuntu 24.04 or a newer libc is
+also not a completed compatibility claim without the remaining dependency and
+runtime evidence.
+
+The current release workflow still builds Linux inputs on the moving
+`ubuntu-latest` runner label. Packaging will now reject an output that exceeds
+the ceiling, but that runner label is not a reproducible builder contract. The
+remaining production gate is to rebuild the full native and fused closure in a
+pinned, immutable Linux builder whose libc is no newer than `2.38`, then run
+this audit on the exact staged tree and exercise the resulting installers and
+Flatpak. Do not use symbol-string editing, binary patching, or exclusions for
+inference libraries to manufacture a pass.
+
 ### Runtime refs and disk preflight
 
 The release default remains `org.gnome.Platform//49` with

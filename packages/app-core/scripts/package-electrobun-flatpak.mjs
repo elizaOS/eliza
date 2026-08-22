@@ -326,7 +326,7 @@ async function main() {
       "stable",
     ]);
     console.log(
-      `Wrote ${path.relative(repoRoot, output)} (outer Flatpak sandbox verified; Chromium renderer sandbox unavailable; preflight required ${space.requiredBytes} free bytes)`,
+      `Wrote ${path.relative(repoRoot, output)} (outer Flatpak sandbox verified; ${inspection.glibcCompatibility.elfFileCount} ELF files at or below GLIBC_${inspection.glibcCompatibility.maxAllowedVersion}; Chromium renderer sandbox unavailable; preflight required ${space.requiredBytes} free bytes)`,
     );
   } finally {
     run(process.execPath, [cleanupHelper, tempRoot]);

@@ -6,10 +6,14 @@
  * confined distribution is the exact-permission Flatpak outer sandbox.
  */
 
+import { execFileSync } from "node:child_process";
 import {
+  closeSync,
   lstatSync,
+  openSync,
   readdirSync,
   readFileSync,
+  readSync,
   realpathSync,
   statfsSync,
   statSync,
@@ -19,6 +23,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 const GIB = 1024n ** 3n;
 const REQUIRED_CEF_SWITCHES = ["disable-gpu-sandbox", "no-sandbox"];
+const ELF_MAGIC = Buffer.from([0x7f, 0x45, 0x4c, 0x46]);
 const EXACT_FLATPAK_PERMISSIONS = {
   command: "eliza",
   devices: ["dri"],
@@ -26,9 +31,17 @@ const EXACT_FLATPAK_PERMISSIONS = {
   sockets: ["fallback-x11", "pulseaudio", "wayland"],
 };
 
+/**
+ * The pinned Electrobun 1.18.1 Linux native wrapper already requires
+ * GLIBC_2.38. Direct packages cannot promise an older baseline until that
+ * wrapper is rebuilt; no other packaged ELF may silently raise the floor.
+ */
+export const MAX_PACKAGED_GLIBC_VERSION = "2.38";
+
 export const LINUX_DISTRIBUTION_CLAIMS = {
   DEVELOPMENT_DIRECT: "development-direct",
   FLATPAK_OUTER_SANDBOX: "flatpak-outer-sandbox",
+  PRODUCTION_DIRECT: "production-direct",
   PRODUCTION_RENDERER_SANDBOXED: "production-renderer-sandboxed",
 };
 
@@ -157,11 +170,149 @@ function binaryContainsAscii(filePath, value) {
   return readFileSync(filePath).includes(Buffer.from(value, "ascii"));
 }
 
+function isElfFile(filePath) {
+  const descriptor = openSync(filePath, "r");
+  try {
+    const header = Buffer.alloc(ELF_MAGIC.length);
+    return (
+      readSync(descriptor, header, 0, header.length, 0) === header.length &&
+      header.equals(ELF_MAGIC)
+    );
+  } finally {
+    closeSync(descriptor);
+  }
+}
+
+function compareVersions(left, right) {
+  const leftParts = left.split(".").map(Number);
+  const rightParts = right.split(".").map(Number);
+  const length = Math.max(leftParts.length, rightParts.length);
+  for (let index = 0; index < length; index += 1) {
+    const difference = (leftParts[index] ?? 0) - (rightParts[index] ?? 0);
+    if (difference !== 0) return Math.sign(difference);
+  }
+  return 0;
+}
+
+/** Extracts public numeric GLIBC requirements and rejects private/named ABI use. */
+export function parseGlibcRequirements(versionInfo) {
+  const markers = [
+    ...new Set(versionInfo.match(/\bGLIBC_[A-Za-z0-9_.]+\b/g) ?? []),
+  ].sort();
+  const unsupportedMarkers = markers.filter(
+    (marker) => !/^GLIBC_\d+(?:\.\d+)+$/.test(marker),
+  );
+  const versions = markers
+    .filter((marker) => /^GLIBC_\d+(?:\.\d+)+$/.test(marker))
+    .map((marker) => marker.slice("GLIBC_".length))
+    .sort(compareVersions);
+  return {
+    maxVersion: versions.at(-1) ?? null,
+    unsupportedMarkers,
+    versions,
+  };
+}
+
+function defaultReadelfVersionInfo(filePath) {
+  try {
+    return execFileSync("readelf", ["-W", "--version-info", filePath], {
+      encoding: "utf8",
+      maxBuffer: 16 * 1024 * 1024,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+  } catch (error) {
+    throw new LinuxDistributionContractError(
+      `readelf could not audit packaged ELF: ${filePath}`,
+      { cause: error },
+    );
+  }
+}
+
+/**
+ * Finds every ELF by magic bytes rather than filename, including native
+ * modules and lazy-loaded inference libraries nested anywhere in Resources.
+ */
+export function inspectPackagedGlibcCompatibility(
+  buildDir,
+  {
+    maxVersion = MAX_PACKAGED_GLIBC_VERSION,
+    readelfVersionInfo = defaultReadelfVersionInfo,
+  } = {},
+) {
+  if (!/^\d+(?:\.\d+)+$/.test(maxVersion)) {
+    fail(`invalid maximum packaged GLIBC version: ${maxVersion}`);
+  }
+  const canonicalRoot = realpathSync(buildDir);
+  const pending = [canonicalRoot];
+  const elfFiles = [];
+  while (pending.length > 0) {
+    const directory = pending.pop();
+    for (const entry of readdirSync(directory, { withFileTypes: true })) {
+      const entryPath = path.join(directory, entry.name);
+      if (entry.isDirectory()) {
+        pending.push(entryPath);
+        continue;
+      }
+      if ((entry.isFile() || entry.isSymbolicLink()) && isElfFile(entryPath)) {
+        elfFiles.push(entryPath);
+      }
+    }
+  }
+  if (elfFiles.length === 0) {
+    fail(`Linux desktop build contains no ELF files: ${canonicalRoot}`);
+  }
+
+  const files = elfFiles
+    .sort((left, right) => left.localeCompare(right))
+    .map((filePath) => {
+      const requirements = parseGlibcRequirements(readelfVersionInfo(filePath));
+      return {
+        maxVersion: requirements.maxVersion,
+        path: path.relative(canonicalRoot, filePath),
+        unsupportedMarkers: requirements.unsupportedMarkers,
+      };
+    });
+  const violations = files.filter(
+    (file) =>
+      file.unsupportedMarkers.length > 0 ||
+      (file.maxVersion !== null &&
+        compareVersions(file.maxVersion, maxVersion) > 0),
+  );
+  if (violations.length > 0) {
+    fail(
+      `packaged ELF GLIBC requirements exceed the supported GLIBC_${maxVersion} ceiling: ${violations
+        .map((file) => {
+          const requirements = [
+            file.maxVersion === null ? null : `GLIBC_${file.maxVersion}`,
+            ...file.unsupportedMarkers,
+          ].filter(Boolean);
+          return `${file.path} (${requirements.join(", ")})`;
+        })
+        .join("; ")}`,
+    );
+  }
+  const maxRequiredVersion = files
+    .map((file) => file.maxVersion)
+    .filter((version) => version !== null)
+    .sort(compareVersions)
+    .at(-1);
+  return {
+    elfFileCount: files.length,
+    files,
+    maxAllowedVersion: maxVersion,
+    maxRequiredVersion: maxRequiredVersion ?? null,
+  };
+}
+
 /** Inspects the real packaged tree without treating CEF file presence as sandbox proof. */
-export function inspectLinuxDesktopBuild(buildDir) {
+export function inspectLinuxDesktopBuild(buildDir, glibcAuditOptions) {
   const canonicalBuildDir = realpathSync(buildDir);
   const launcher = findLauncher(canonicalBuildDir);
   const { allocatedBytes, entryCount } = scanTree(canonicalBuildDir);
+  const glibcCompatibility = inspectPackagedGlibcCompatibility(
+    canonicalBuildDir,
+    glibcAuditOptions,
+  );
   const nativeWrapper = path.join(canonicalBuildDir, "bin/libNativeWrapper.so");
   assertRegularFile(nativeWrapper, "Linux native wrapper");
 
@@ -208,6 +359,7 @@ export function inspectLinuxDesktopBuild(buildDir) {
     buildDir: canonicalBuildDir,
     chromeSandbox,
     entryCount,
+    glibcCompatibility,
     hasCef,
     launcher,
     rendererProcessSandboxed: false,
@@ -335,9 +487,13 @@ export function assertLinuxDistributionClaim({
   buildDir,
   claim,
   finishArgs = [],
+  glibcAuditOptions,
 }) {
-  const inspection = inspectLinuxDesktopBuild(buildDir);
+  const inspection = inspectLinuxDesktopBuild(buildDir, glibcAuditOptions);
   if (claim === LINUX_DISTRIBUTION_CLAIMS.DEVELOPMENT_DIRECT) {
+    return inspection;
+  }
+  if (claim === LINUX_DISTRIBUTION_CLAIMS.PRODUCTION_DIRECT) {
     return inspection;
   }
   if (claim === LINUX_DISTRIBUTION_CLAIMS.PRODUCTION_RENDERER_SANDBOXED) {

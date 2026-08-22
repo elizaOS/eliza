@@ -19,7 +19,9 @@ import {
   assertFlatpakFinishArgs,
   assertLinuxDistributionClaim,
   inspectLinuxDesktopBuild,
+  inspectPackagedGlibcCompatibility,
   LINUX_DISTRIBUTION_CLAIMS,
+  parseGlibcRequirements,
   requiredFlatpakFreeBytes,
 } from "../linux-distribution-contract.mjs";
 
@@ -33,6 +35,14 @@ const FINISH_ARGS = [
   "--socket=pulseaudio",
   "--device=dri",
 ];
+const GLIBC_238_VERSION_INFO = `
+Version needs section '.gnu.version_r' contains 1 entry:
+  0x0010: Name: GLIBC_2.38  Flags: none  Version: 2
+  0x0020: Name: GLIBC_2.2.5  Flags: none  Version: 3
+`;
+const GLIBC_AUDIT_OPTIONS = {
+  readelfVersionInfo: () => GLIBC_238_VERSION_INFO,
+};
 
 function tempDir(): string {
   const directory = mkdtempSync(
@@ -42,9 +52,19 @@ function tempDir(): string {
   return directory;
 }
 
-function executable(filePath: string, contents: string): void {
+function executable(filePath: string, contents: string | Buffer): void {
   writeFileSync(filePath, contents);
   chmodSync(filePath, 0o755);
+}
+
+function elfExecutable(filePath: string, contents = "binary"): void {
+  executable(
+    filePath,
+    Buffer.concat([
+      Buffer.from([0x7f, 0x45, 0x4c, 0x46]),
+      Buffer.from(contents),
+    ]),
+  );
 }
 
 function cefBuild(): string {
@@ -52,13 +72,13 @@ function cefBuild(): string {
   mkdirSync(path.join(buildDir, "bin/cef"), { mode: 0o755, recursive: true });
   chmodSync(path.join(buildDir, "bin"), 0o755);
   chmodSync(path.join(buildDir, "bin/cef"), 0o755);
-  executable(path.join(buildDir, "bin/launcher"), "launcher");
-  executable(
+  elfExecutable(path.join(buildDir, "bin/launcher"), "launcher");
+  elfExecutable(
     path.join(buildDir, "bin/libNativeWrapper.so"),
     "binary-disable-gpu-sandbox-binary-no-sandbox",
   );
-  executable(path.join(buildDir, "bin/cef/libcef.so"), "cef");
-  executable(path.join(buildDir, "bin/chrome-sandbox"), "helper");
+  elfExecutable(path.join(buildDir, "bin/cef/libcef.so"), "cef");
+  elfExecutable(path.join(buildDir, "bin/chrome-sandbox"), "helper");
   return buildDir;
 }
 
@@ -70,7 +90,7 @@ afterEach(() => {
 
 describe("Linux desktop distribution claims", () => {
   it("records the pinned CEF wrapper as renderer-unsandboxed", () => {
-    const result = inspectLinuxDesktopBuild(cefBuild());
+    const result = inspectLinuxDesktopBuild(cefBuild(), GLIBC_AUDIT_OPTIONS);
     expect(result.hasCef).toBe(true);
     expect(result.rendererProcessSandboxed).toBe(false);
     expect(result.unsafeCefSwitches).toEqual([
@@ -86,6 +106,7 @@ describe("Linux desktop distribution claims", () => {
       assertLinuxDistributionClaim({
         buildDir: cefBuild(),
         claim: LINUX_DISTRIBUTION_CLAIMS.PRODUCTION_RENDERER_SANDBOXED,
+        glibcAuditOptions: GLIBC_AUDIT_OPTIONS,
       }),
     ).toThrow(/cannot claim production renderer sandboxing/);
   });
@@ -96,6 +117,7 @@ describe("Linux desktop distribution claims", () => {
         buildDir: cefBuild(),
         claim: LINUX_DISTRIBUTION_CLAIMS.FLATPAK_OUTER_SANDBOX,
         finishArgs: FINISH_ARGS,
+        glibcAuditOptions: GLIBC_AUDIT_OPTIONS,
       }),
     ).not.toThrow();
     expect(() =>
@@ -111,23 +133,73 @@ describe("Linux desktop distribution claims", () => {
   it("rejects unsafe artifact modes and escaping symlinks", () => {
     const writableBuild = cefBuild();
     chmodSync(path.join(writableBuild, "bin/libNativeWrapper.so"), 0o777);
-    expect(() => inspectLinuxDesktopBuild(writableBuild)).toThrow(
-      /group\/world-writable/,
-    );
+    expect(() =>
+      inspectLinuxDesktopBuild(writableBuild, GLIBC_AUDIT_OPTIONS),
+    ).toThrow(/group\/world-writable/);
 
     const escapingBuild = cefBuild();
     symlinkSync("/etc/passwd", path.join(escapingBuild, "escape"));
-    expect(() => inspectLinuxDesktopBuild(escapingBuild)).toThrow(
-      /symlink escapes/,
-    );
+    expect(() =>
+      inspectLinuxDesktopBuild(escapingBuild, GLIBC_AUDIT_OPTIONS),
+    ).toThrow(/symlink escapes/);
   });
 
   it("requires known CEF unsafe markers until upstream source is re-audited", () => {
     const buildDir = cefBuild();
-    executable(path.join(buildDir, "bin/libNativeWrapper.so"), "changed");
-    expect(() => inspectLinuxDesktopBuild(buildDir)).toThrow(
-      /sandbox posture is unknown/,
+    elfExecutable(path.join(buildDir, "bin/libNativeWrapper.so"), "changed");
+    expect(() =>
+      inspectLinuxDesktopBuild(buildDir, GLIBC_AUDIT_OPTIONS),
+    ).toThrow(/sandbox posture is unknown/);
+  });
+});
+
+describe("packaged ELF GLIBC compatibility", () => {
+  it("orders numeric requirements and rejects private ABI markers", () => {
+    expect(
+      parseGlibcRequirements(
+        "Name: GLIBC_2.9 Name: GLIBC_2.38 Name: GLIBC_2.10 Name: GLIBC_PRIVATE",
+      ),
+    ).toEqual({
+      maxVersion: "2.38",
+      unsupportedMarkers: ["GLIBC_PRIVATE"],
+      versions: ["2.9", "2.10", "2.38"],
+    });
+  });
+
+  it("fails on a lazy inference ELF that raises the pinned wrapper floor", () => {
+    const buildDir = cefBuild();
+    const lazyDir = path.join(
+      buildDir,
+      "Resources/app/node_modules/@elizaos/plugin-local-inference/native",
     );
+    mkdirSync(lazyDir, { recursive: true });
+    const lazyLibrary = path.join(lazyDir, "libelizainference.so");
+    elfExecutable(lazyLibrary, "lazy-inference");
+
+    expect(() =>
+      inspectPackagedGlibcCompatibility(buildDir, {
+        readelfVersionInfo: (filePath: string) =>
+          filePath === lazyLibrary
+            ? "Name: GLIBC_2.43"
+            : GLIBC_238_VERSION_INFO,
+      }),
+    ).toThrow(/libelizainference\.so \(GLIBC_2\.43\)/);
+  });
+
+  it("audits extensionless ELF files instead of relying on filename filters", () => {
+    const buildDir = cefBuild();
+    const lazyExecutable = path.join(buildDir, "Resources", "lazy-worker");
+    mkdirSync(path.dirname(lazyExecutable), { recursive: true });
+    elfExecutable(lazyExecutable, "lazy-worker");
+
+    const result = inspectPackagedGlibcCompatibility(buildDir, {
+      readelfVersionInfo: () => GLIBC_238_VERSION_INFO,
+    });
+    expect(result.files.map(({ path: filePath }) => filePath)).toContain(
+      "Resources/lazy-worker",
+    );
+    expect(result.maxAllowedVersion).toBe("2.38");
+    expect(result.maxRequiredVersion).toBe("2.38");
   });
 });
 
