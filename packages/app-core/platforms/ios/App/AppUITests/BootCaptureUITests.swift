@@ -331,6 +331,114 @@ final class BootCaptureUITests: XCTestCase {
         }
     }
 
+    /// Send a real Notes-view request and require the routed Notes surface,
+    /// rather than accepting arbitrary transcript or telemetry text as proof.
+    /// This gate also clears any persisted draft before typing so retries never
+    /// concatenate prompts and accidentally exercise a different model input.
+    func testNotesViewActionOpensNotesSurface() throws {
+        let env = ProcessInfo.processInfo.environment
+        let bootTimeout = Double(env["ELIZA_BOOT_TIMEOUT_SECONDS"] ?? "") ?? 180
+        let routeTimeout = Double(env["ELIZA_VIEW_ROUTE_TIMEOUT_SECONDS"] ?? "") ?? 120
+        let prompt = env["ELIZA_VIEW_PROMPT"] ?? "Open the Notes view now."
+
+        let app = XCUIApplication()
+        launchWithRetry(app)
+        try connectRemoteAgentFromClipboardIfRequested(app, env: env)
+
+        let bootDeadline = Date().addingTimeInterval(bootTimeout)
+        var reachedHome = false
+        while Date() < bootDeadline {
+            if app.state == .notRunning { break }
+            if let terminal = classifyBootState(of: app) {
+                reachedHome = terminal == .home
+                break
+            }
+            Thread.sleep(forTimeInterval: 1.0)
+        }
+        attachScreenshot(named: "notes-000-home")
+        guard reachedHome else {
+            try skipOrFail("boot did not reach home — Notes request not attempted", env: env)
+        }
+
+        guard let composer = firstHittableComposer(app) else {
+            attachAccessibilitySnapshot(of: app)
+            try skipOrFail("no hittable composer for Notes request", env: env)
+        }
+        composer.tap()
+        guard app.keyboards.firstMatch.waitForExistence(timeout: 10) else {
+            attachAccessibilitySnapshot(of: app)
+            try skipOrFail("keyboard never appeared for Notes request", env: env)
+        }
+
+        let initialDraft = (composer.value as? String) ?? ""
+        if !initialDraft.isEmpty {
+            composer.typeText(
+                String(
+                    repeating: XCUIKeyboardKey.delete.rawValue,
+                    count: min(initialDraft.count, 1_024)
+                )
+            )
+        }
+        let clearedDraft = (composer.value as? String) ?? ""
+        XCTAssertTrue(
+            clearedDraft.isEmpty,
+            "could not clear the persisted composer draft before the Notes request; remaining value was '\(clearedDraft)'"
+        )
+
+        composer.typeText(prompt)
+        attachScreenshot(named: "notes-010-typed-once")
+        XCTAssertEqual(
+            (composer.value as? String) ?? "",
+            prompt,
+            "the Notes prompt was not entered exactly once"
+        )
+
+        let sendButton = app.descendants(matching: .any).matching(
+            NSPredicate(format: "label BEGINSWITH[c] 'send'")
+        ).firstMatch
+        guard sendButton.waitForExistence(timeout: 5), sendButton.isHittable else {
+            attachAccessibilitySnapshot(of: app)
+            try skipOrFail("no hittable send control for Notes request", env: env)
+        }
+        sendButton.tap()
+
+        let submitDeadline = Date().addingTimeInterval(15)
+        var draftCleared = false
+        while Date() < submitDeadline {
+            let value = (composer.exists ? (composer.value as? String) : nil) ?? ""
+            if !value.contains(prompt) {
+                draftCleared = true
+                break
+            }
+            Thread.sleep(forTimeInterval: 0.25)
+        }
+        attachScreenshot(named: "notes-020-submitted")
+        XCTAssertTrue(draftCleared, "the Notes request did not leave the composer")
+
+        let notesSurface = app.descendants(matching: .any).matching(
+            NSPredicate(format: "label BEGINSWITH[c] 'Notes.'")
+        ).firstMatch
+        let emptyState = app.staticTexts["A quiet note wall"]
+        let routeDeadline = Date().addingTimeInterval(routeTimeout)
+        var notesVisible = false
+        while Date() < routeDeadline {
+            if app.state == .notRunning { break }
+            if emptyState.exists || (notesSurface.exists && !notesSurface.frame.isEmpty) {
+                notesVisible = true
+                break
+            }
+            Thread.sleep(forTimeInterval: 1.0)
+        }
+
+        attachScreenshot(named: notesVisible ? "notes-final-open" : "notes-final-still-home")
+        attachAccessibilitySnapshot(of: app)
+        XCTAssertNotEqual(app.state, .notRunning, "the app terminated during Notes navigation")
+        XCTAssertTrue(
+            notesVisible,
+            "the agent completed the request but the routed Notes surface never appeared"
+        )
+    }
+
     // MARK: - Full onboarding → chat → voice (cloud + local)
 
     private enum OnboardingPath: String {
@@ -803,6 +911,194 @@ final class BootCaptureUITests: XCTestCase {
             app.textFields.firstMatch,
         ]
         return candidates.first { $0.waitForExistence(timeout: 10) && $0.isHittable }
+    }
+
+    /// Re-enters the real remote-agent first-run path after a fresh-container
+    /// device reset. The caller supplies a short-lived, single-use code only to
+    /// the disposable pairing run; accepted evidence is captured by a second
+    /// run against the persisted paired container.
+    private func connectRemoteAgentFromClipboardIfRequested(
+        _ app: XCUIApplication,
+        env: [String: String]
+    ) throws {
+        guard let rawApiBase = env["ELIZA_TEST_REMOTE_API_BASE"]?.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        ), !rawApiBase.isEmpty else {
+            return
+        }
+        let pairingCode = (env["ELIZA_TEST_PAIRING_CODE"] ?? "")
+            .filter { $0.isLetter || $0.isNumber }
+            .uppercased()
+        guard pairingCode.count == 12 else {
+            throw StrictGateFailure(message: "the one-time pairing code did not have 12 characters")
+        }
+        guard var components = URLComponents(string: "elizaos://first-run/runtime/remote") else {
+            throw StrictGateFailure(message: "could not construct the remote-agent deep link")
+        }
+        components.queryItems = [URLQueryItem(name: "api", value: rawApiBase)]
+        guard let deepLink = components.url else {
+            throw StrictGateFailure(message: "could not encode the remote-agent deep link")
+        }
+        guard #available(iOS 16.4, *) else {
+            throw StrictGateFailure(
+                message: "opening the remote-agent test deep link requires iOS 16.4 or newer"
+            )
+        }
+
+        // A fresh physical-device install can raise Local Network before the
+        // renderer exposes any accessible content. Opening the deep link under
+        // that system sheet leaves an empty WKWebView and loses the pairing
+        // route, so clear only that exact Apple prompt and wait for the real
+        // renderer before delivering the URL.
+        _ = grantLocalNetworkPermissionIfPresent(app, timeout: 15)
+        try waitForInteractiveRenderer(app, timeout: 30)
+        app.open(deepLink)
+        XCTAssertTrue(
+            app.wait(for: .runningForeground, timeout: 20),
+            "the app did not return foreground after opening the remote-agent deep link"
+        )
+        _ = grantLocalNetworkPermissionIfPresent(app, timeout: 10)
+        try confirmRemoteServerTrustPromptIfNeeded(app, timeout: 15)
+
+        let pairingField = app.textFields.matching(
+            NSPredicate(
+                format: "label CONTAINS[c] 'pairing code' OR placeholderValue CONTAINS[c] 'pairing code'"
+            )
+        ).firstMatch
+        guard pairingField.waitForExistence(timeout: 30) else {
+            attachScreenshot(named: "pairing-010-form-missing")
+            attachAccessibilitySnapshot(of: app)
+            throw StrictGateFailure(
+                message: "the remote-agent deep link did not expose PairingView"
+            )
+        }
+
+        pairingField.tap()
+        XCTAssertTrue(
+            app.keyboards.firstMatch.waitForExistence(timeout: 10),
+            "the pairing-code keyboard never appeared"
+        )
+        pairingField.typeText(pairingCode)
+        let normalizedLength = ((pairingField.value as? String) ?? "")
+            .filter { $0.isLetter || $0.isNumber }.count
+        XCTAssertEqual(
+            normalizedLength,
+            12,
+            "the pasted pairing code did not have the required 12-character shape"
+        )
+
+        let submit = app.buttons["Submit"]
+        XCTAssertTrue(submit.waitForExistence(timeout: 5), "pairing Submit control was unavailable")
+        XCTAssertTrue(submit.isHittable, "pairing Submit control was not hittable")
+        submit.tap()
+        XCTAssertTrue(
+            pairingField.waitForNonExistence(timeout: 30),
+            "the app did not leave PairingView after submitting the one-time code"
+        )
+    }
+
+    /// Grants only the first-use Local Network alert. Other system permission
+    /// sheets remain untouched so this setup cannot accidentally widen the
+    /// app's authorization while preparing a remote-agent test.
+    @discardableResult
+    private func grantLocalNetworkPermissionIfPresent(
+        _ app: XCUIApplication,
+        timeout: TimeInterval
+    ) -> Bool {
+        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+        let localNetworkCopy = springboard.descendants(matching: .any).matching(
+            NSPredicate(format: "label CONTAINS[c] 'local networks'")
+        ).firstMatch
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if localNetworkCopy.exists {
+                let allow = springboard.buttons["Allow"]
+                if allow.exists, allow.isHittable {
+                    attachScreenshot(named: "pairing-001-local-network-permission")
+                    allow.tap()
+                    let dismissDeadline = Date().addingTimeInterval(10)
+                    while Date() < dismissDeadline, localNetworkCopy.exists {
+                        Thread.sleep(forTimeInterval: 0.25)
+                    }
+                    return true
+                }
+            }
+            if appHasAccessibleRendererContent(app) {
+                return false
+            }
+            Thread.sleep(forTimeInterval: 0.25)
+        }
+        return false
+    }
+
+    private func appHasAccessibleRendererContent(_ app: XCUIApplication) -> Bool {
+        guard app.state == .runningForeground, app.webViews.firstMatch.exists else {
+            return false
+        }
+        return app.staticTexts.count > 0 || app.buttons.count > 0
+            || app.textFields.count > 0 || app.textViews.count > 0
+    }
+
+    /// Accepts only the app's explicit remote-server confirmation. The prompt
+    /// is part of the product trust boundary, so generic alerts and unrelated
+    /// permission sheets are never dismissed by this setup path.
+    private func confirmRemoteServerTrustPromptIfNeeded(
+        _ app: XCUIApplication,
+        timeout: TimeInterval
+    ) throws {
+        let pairingField = app.textFields.matching(
+            NSPredicate(
+                format: "label CONTAINS[c] 'pairing code' OR placeholderValue CONTAINS[c] 'pairing code'"
+            )
+        ).firstMatch
+        let trustCopy = app.staticTexts.matching(
+            NSPredicate(format: "label BEGINSWITH[c] 'Connect to this server?'")
+        ).firstMatch
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if pairingField.exists {
+                return
+            }
+            if trustCopy.exists {
+                let confirm = app.buttons["Ok"]
+                guard confirm.exists, confirm.isHittable else {
+                    throw StrictGateFailure(
+                        message: "the remote-server trust prompt had no hittable Ok control"
+                    )
+                }
+                attachScreenshot(named: "pairing-006-server-trust-prompt")
+                confirm.tap()
+                return
+            }
+            Thread.sleep(forTimeInterval: 0.25)
+        }
+        attachScreenshot(named: "pairing-007-server-trust-prompt-missing")
+        attachAccessibilitySnapshot(of: app)
+        throw StrictGateFailure(
+            message: "the remote-agent deep link exposed neither trust confirmation nor PairingView"
+        )
+    }
+
+    private func waitForInteractiveRenderer(
+        _ app: XCUIApplication,
+        timeout: TimeInterval
+    ) throws {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if app.state == .runningForeground,
+                app.webViews.firstMatch.exists,
+                app.staticTexts.count > 0 || app.buttons.count > 0
+                    || app.textFields.count > 0 || app.textViews.count > 0
+            {
+                return
+            }
+            Thread.sleep(forTimeInterval: 0.25)
+        }
+        attachScreenshot(named: "pairing-005-renderer-not-interactive")
+        attachAccessibilitySnapshot(of: app)
+        throw StrictGateFailure(
+            message: "the renderer did not become interactive before remote-agent routing"
+        )
     }
 
     private func envFlag(_ name: String, env: [String: String]) -> Bool {

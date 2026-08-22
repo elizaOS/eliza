@@ -1202,6 +1202,7 @@ export const DEFAULT_IOS_XCUITEST_SHARDS = [
   "AppUITests/BootCaptureUITests/testBootReachesHomeOrErrorCard",
   "AppUITests/BootCaptureUITests/testComposerAcceptsTypedText",
   "AppUITests/BootCaptureUITests/testComposerSendsPromptAndWaitsForReply",
+  "AppUITests/BootCaptureUITests/testNotesViewActionOpensNotesSurface",
   "AppUITests/BootCaptureUITests/testCloudOnboardingChatAndVoice",
   "AppUITests/BootCaptureUITests/testLocalOnboardingChatAndVoice",
   "AppUITests/GestureSemanticsUITests",
