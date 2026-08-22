@@ -29,8 +29,8 @@ POST /v1/processes/run                run a command (JSON body)
   workspace escape rejection, symlink rejection, and process run (injects a fake
   `commandRunner`).
 - `Dockerfile` — `node:24-bookworm-slim` base; installs Bun plus `git`,
-  `ripgrep`, `python3`, `jq`, `openssh-client`, and (by default) the Codex,
-  and Claude Code CLIs.
+  `ripgrep`, `python3`, `jq`, `openssh-client`, and (by default) the Codex and
+  Claude Code CLIs.
   Runs as the non-root `runner` user; healthcheck hits `/health`.
 
 ## Scripts (scope with `--cwd`)

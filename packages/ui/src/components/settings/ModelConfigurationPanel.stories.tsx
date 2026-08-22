@@ -102,7 +102,6 @@ function codingGroup(save: ModelGroupSaveState): ModelConfigCodingGroup {
     backendOptions: [
       { value: "codex", label: "Codex" },
       { value: "claude", label: "Claude" },
-      { value: "opencode", label: "OpenCode" },
       { value: "eliza-code", label: "elizaOS" },
     ],
     persistedDefaultBackend: "codex",

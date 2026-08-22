@@ -8,7 +8,7 @@ This plugin adds two interactive surfaces to the elizaOS dashboard:
 
 **Task Coordinator** — lists active coding-agent sessions and task threads, shows live PTY output from running agents, and lets you stop individual sessions or all sessions at once.
 
-**Orchestrator** — a multi-agent task orchestration workbench. Create task threads with goals and acceptance criteria, assign sub-agents (elizaOS, Claude Code, Codex, OpenCode, Pi Agent), monitor their timeline of events and messages, fork tasks, validate results, and send messages to running tasks — all from one panel.
+**Orchestrator** — a multi-agent task orchestration workbench. Create task threads with goals and acceptance criteria, assign sub-agents (elizaOS, Claude Code, Codex, Pi Agent), monitor their timeline of events and messages, fork tasks, validate results, and send messages to running tasks — all from one panel.
 
 Both surfaces ship as dashboard GUI views. The view manifest keeps the standard
 view contract so future adapters can be added without changing the component
@@ -53,7 +53,7 @@ Per-framework coding-agent settings (model, LLM provider, approval preset) are c
 
 ## Supported agent frameworks
 
-The settings panel manages configuration for: elizaOS, Pi Agent, OpenCode, Claude, and Codex.
+The settings panel manages configuration for: elizaOS, Pi Agent, Claude, and Codex.
 
 ## Build
 

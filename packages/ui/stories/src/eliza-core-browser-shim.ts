@@ -244,7 +244,6 @@ export function isConnectorConfigured(): boolean {
   return false;
 }
 
-
 export function isWechatConfigured(): boolean {
   return false;
 }

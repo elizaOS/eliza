@@ -24,7 +24,12 @@ const rules = [
   {
     name: "ui-client-does-not-render-features",
     owners: ["api/"],
-    forbidden: ["components/pages/", "components/shell/", "cloud-ui/", "App.tsx"],
+    forbidden: [
+      "components/pages/",
+      "components/shell/",
+      "cloud-ui/",
+      "App.tsx",
+    ],
   },
   {
     name: "cloud-ui-does-not-own-the-app-shell",
@@ -99,7 +104,9 @@ const report = { counts, violations };
 
 if (updateBaseline) {
   await writeFile(baselinePath, `${JSON.stringify(report, null, 2)}\n`);
-  console.log(`Updated import-boundary baseline (${violations.length} violations).`);
+  console.log(
+    `Updated import-boundary baseline (${violations.length} violations).`,
+  );
   process.exit(0);
 }
 

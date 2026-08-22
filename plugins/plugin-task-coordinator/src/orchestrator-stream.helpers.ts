@@ -335,9 +335,9 @@ function toToolView(
       pickNumber(call, "exitCode");
     if (nextExit !== undefined) exitCode = nextExit;
   }
-  // A finished exec tool's exit code is the authoritative status — opencode tops
-  // its tool events out at in_progress, so the code is what distinguishes a
-  // success from a failure.
+  // A finished exec tool's exit code is the authoritative status — some
+  // frameworks top their tool events out at in_progress, so the code is what
+  // distinguishes a success from a failure.
   if (typeof exitCode === "number") status = exitCode === 0 ? "done" : "failed";
   // Wall-clock span from the tool's first to last event.
   const durationMs =
@@ -509,8 +509,8 @@ export function buildConversation(
   for (const [groupKey, group] of toolEvents) {
     const list = group.events;
     const tool = toToolView(group.id, groupKey, list);
-    // opencode never persists a tool's terminal status — its events top out at
-    // `in_progress`. Once the owning session has finished, a still-"running"
+    // Not every framework persists a tool's terminal status — events can top out
+    // at `in_progress`. Once the owning session has finished, a still-"running"
     // tool has in fact completed, so reflect that instead of a perpetual spinner.
     const sessionId = list[0].sessionId;
     if (

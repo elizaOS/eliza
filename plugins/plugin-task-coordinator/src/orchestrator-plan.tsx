@@ -3,9 +3,9 @@ import { Button } from "@elizaos/ui/components/ui/button";
 import { Check, ChevronRight, Circle, Loader } from "lucide-react";
 import { type ReactNode, useEffect, useState } from "react";
 
-// The orchestrator's current plan checklist. The sub-agent (opencode) emits its
-// checklist snapshot as an ACP `plan` update; the backend sanitizes it onto the
-// task's `currentPlan`, and this dock renders it the way Codex/Claude/opencode
+// The orchestrator's current plan checklist. A sub-agent emits its checklist
+// snapshot as an ACP `plan` update; the backend sanitizes it onto the task's
+// `currentPlan`, and this dock renders it the way Codex/Claude
 // surface a live checklist: a pinned, collapsible panel with per-item status
 // (pending / in-progress / done) and a progress count. Color is meaning-only —
 // green = done, neutral spinner = in-progress, muted = pending; no accent fill.
