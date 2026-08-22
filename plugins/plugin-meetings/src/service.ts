@@ -106,6 +106,7 @@ export type MeetingJoinErrorCode =
   | "unsupported_host"
   | "policy_blocked"
   | "already_joined"
+  | "service_stopping"
   | "invalid_duration_cap"
   | "insufficient_credits";
 
@@ -124,6 +125,7 @@ const TERMINAL_STATUSES: ReadonlySet<MeetingSessionStatus> = new Set([
   "ended",
   "failed",
 ]);
+const MAX_TERMINATED_SESSION_HISTORY = 256;
 
 interface InternalSession {
   readonly id: UUID;
@@ -152,6 +154,8 @@ interface InternalSession {
   confirmedSegments: TranscriptSegment[];
   /** Resolves when the adapter lifecycle + finalize have fully completed. */
   done: Promise<void>;
+  resolveDone(): void;
+  rejectDone(error: unknown): void;
 }
 
 export class MeetingService extends Service {
@@ -196,6 +200,7 @@ export class MeetingService extends Service {
   private readonly emitter: MeetingEventEmitter;
   private readonly deps: MeetingServiceDependencies;
   private worldReady: Promise<UUID> | null = null;
+  private stopPromise: Promise<void> | null = null;
 
   constructor(runtime?: IAgentRuntime, deps?: MeetingServiceDependencies) {
     if (!runtime) {
@@ -221,16 +226,38 @@ export class MeetingService extends Service {
     return service;
   }
 
+  /** Permanently close this instance and await every retained lifecycle. */
   async stop(): Promise<void> {
-    const active = [...this.sessions.values()].filter(
-      (s) => !TERMINAL_STATUSES.has(s.status),
-    );
-    for (const session of active) session.abort.abort();
-    await Promise.allSettled(active.map((s) => s.done));
+    if (this.stopPromise) return this.stopPromise;
+    const retained = [...this.sessions.values()];
+    for (const session of retained) {
+      if (!TERMINAL_STATUSES.has(session.status)) session.abort.abort();
+    }
+    this.stopPromise = (async () => {
+      const results = await Promise.allSettled(
+        retained.map((session) => session.done),
+      );
+      const failures = results.flatMap((result) =>
+        result.status === "rejected" ? [result.reason] : [],
+      );
+      if (failures.length > 0) {
+        throw new AggregateError(
+          failures,
+          `${failures.length} meeting session lifecycle(s) failed during shutdown`,
+        );
+      }
+    })();
+    return this.stopPromise;
   }
 
   /** Start a bot for a meeting URL. Resolves once the session is launched. */
   async requestJoin(request: MeetingJoinRequest): Promise<MeetingSession> {
+    if (this.stopPromise) {
+      throw new MeetingJoinError(
+        "service_stopping",
+        "the meetings service is shutting down and cannot accept new sessions",
+      );
+    }
     const parsed = parseMeetingUrl(request.meetingUrl);
     if (!parsed) {
       throw new MeetingJoinError(
@@ -284,7 +311,7 @@ export class MeetingService extends Service {
     // (TOCTOU). Every construction here (pipeline, writer, room id) is
     // synchronous; the awaited world/room/writer setup follows with the session
     // already claimed. Any failure rolls the reservation back (see catch).
-    const sessionId = crypto.randomUUID() as UUID;
+    const sessionId = this.allocateSessionId();
     const roomId = createUniqueUuid(this.runtime, `meeting:${sessionId}`);
     const botName =
       request.botName?.trim() ||
@@ -335,6 +362,12 @@ export class MeetingService extends Service {
     });
     const writer = new MeetingTranscriptWriter(this.runtime);
 
+    let resolveDone!: () => void;
+    let rejectDone!: (error: unknown) => void;
+    const done = new Promise<void>((resolve, reject) => {
+      resolveDone = resolve;
+      rejectDone = reject;
+    });
     const session: InternalSession = {
       id: sessionId,
       platform: parsed.platform,
@@ -356,7 +389,9 @@ export class MeetingService extends Service {
         ? { ghostAttendance: request.ghostAttendance }
         : {}),
       confirmedSegments: [],
-      done: Promise.resolve(),
+      done,
+      resolveDone,
+      rejectDone,
     };
     this.sessions.set(sessionId, session);
 
@@ -410,6 +445,7 @@ export class MeetingService extends Service {
         );
       }
       this.sessions.delete(sessionId);
+      session.resolveDone();
       logger.error(
         {
           sessionId,
@@ -433,6 +469,15 @@ export class MeetingService extends Service {
         throw new MeetingJoinError("insufficient_credits", err.message);
       }
       throw err;
+    }
+
+    if (session.abort.signal.aborted) {
+      await this.finishSession(session, "requested_stop", undefined);
+      session.resolveDone();
+      throw new MeetingJoinError(
+        "service_stopping",
+        "the meetings service stopped before this session could launch",
+      );
     }
 
     pipeline.onUpdate((update) => {
@@ -477,7 +522,22 @@ export class MeetingService extends Service {
       },
       "[MeetingService] meeting join requested",
     );
-    session.done = this.runSession(session, adapter, botSession);
+    void this.runSession(session, adapter, botSession).then(
+      session.resolveDone,
+      (error: unknown) => {
+        if (this.sessions.get(session.id) === session) {
+          session.status = "failed";
+          session.endReason = "error";
+          session.errorMessage =
+            error instanceof Error ? error.message : String(error);
+          session.endedAt = Date.now();
+          const failed = this.toDto(session);
+          this.sessions.delete(session.id);
+          this.retainTerminal(failed);
+        }
+        session.rejectDone(error);
+      },
+    );
     return this.toDto(session);
   }
 
@@ -506,9 +566,11 @@ export class MeetingService extends Service {
     return this.getSession(sessionId);
   }
 
-  /** Number of sessions whose production lifecycle still retains live work. */
-  pendingSessionWorkCount(): number {
-    return this.sessions.size;
+  /** Number of production lifecycles still retaining work, optionally by id. */
+  pendingSessionWorkCount(sessionId?: UUID): number {
+    return sessionId === undefined
+      ? this.sessions.size
+      : Number(this.sessions.has(sessionId));
   }
 
   listSessions(options?: { active?: boolean }): MeetingSession[] {
@@ -533,11 +595,6 @@ export class MeetingService extends Service {
       );
     }
     return terminal;
-  }
-
-  /** Number of retained internal sessions whose lifecycle work is not fully evicted. */
-  pendingSessionWorkCount(): number {
-    return this.sessions.size;
   }
 
   /** Import one completed Zoom cloud meeting into canonical media/transcripts. */
@@ -666,6 +723,25 @@ export class MeetingService extends Service {
         consumedMs: 0,
       }
     );
+  }
+
+  private allocateSessionId(): UUID {
+    for (let attempt = 0; attempt < 8; attempt += 1) {
+      const candidate = crypto.randomUUID() as UUID;
+      if (!this.sessions.has(candidate) && !this.terminated.has(candidate)) {
+        return candidate;
+      }
+    }
+    throw new Error("[MeetingService] failed to allocate a unique session id");
+  }
+
+  private retainTerminal(session: MeetingSession): void {
+    this.terminated.set(session.id, session);
+    while (this.terminated.size > MAX_TERMINATED_SESSION_HISTORY) {
+      const oldest = this.terminated.keys().next().value;
+      if (oldest === undefined) break;
+      this.terminated.delete(oldest);
+    }
   }
 
   /** One shared "Meetings" world across sessions (created once, reused). */
@@ -943,7 +1019,7 @@ export class MeetingService extends Service {
     // survives for status/history reads; the persisted transcript record holds
     // the durable data.
     this.sessions.delete(session.id);
-    this.terminated.set(session.id, dto);
+    this.retainTerminal(dto);
   }
 
   private async emitTranscriptFinalized(

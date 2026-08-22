@@ -21,11 +21,22 @@ import {
   segment,
 } from "./test-support.js";
 import { readTranscriptRow } from "./transcripts/meeting-transcript-writer.js";
+import type { MeetingPlatformAdapter } from "./types.js";
 
 const MEET_URL = "https://meet.google.com/abc-defg-hij";
 
+function deferred<T = void>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
+}
+
 function makeService(
-  adapters: ScriptedAdapter[] = [new ScriptedAdapter("google_meet")],
+  adapters: MeetingPlatformAdapter[] = [new ScriptedAdapter("google_meet")],
   billingSessions: FakeMeetingBillingSession[] = [],
 ) {
   const fake = makeFakeRuntime();
@@ -506,6 +517,56 @@ describe("MeetingService — session state machine", () => {
     expect(pipelines[0].finalized).toBe(true);
   });
 
+  it("binds quiescence and pending diagnostics to the exact concurrent session", async () => {
+    const meet = new ScriptedAdapter("google_meet");
+    const zoom = new ScriptedAdapter("zoom");
+    const { service } = makeService([meet, zoom]);
+    const [finished, stillRunning] = await Promise.all([
+      service.requestJoin({ platform: "google_meet", meetingUrl: MEET_URL }),
+      service.requestJoin({
+        platform: "zoom",
+        meetingUrl: "https://zoom.us/j/1234567890",
+      }),
+    ]);
+    await Promise.all([meet.started, zoom.started]);
+
+    meet.end("normal_completion");
+    const terminal = await service.waitForSessionTerminal(finished.id as never);
+
+    expect(terminal).toMatchObject({ id: finished.id, status: "ended" });
+    expect(service.pendingSessionWorkCount(finished.id as never)).toBe(0);
+    expect(service.pendingSessionWorkCount(stillRunning.id as never)).toBe(1);
+    expect(service.pendingSessionWorkCount()).toBe(1);
+    await expect(
+      service.waitForSessionTerminal(crypto.randomUUID() as never),
+    ).resolves.toBeNull();
+
+    zoom.end("normal_completion");
+    await service.waitForSessionTerminal(stillRunning.id as never);
+  });
+
+  it("bounds terminal snapshots and treats evicted ids as unknown", async () => {
+    const adapter: MeetingPlatformAdapter = {
+      platform: "google_meet",
+      run: async () => "normal_completion",
+    };
+    const { service } = makeService([adapter]);
+    let firstId: string | undefined;
+    for (let index = 0; index < 257; index += 1) {
+      const session = await service.requestJoin({
+        platform: "google_meet",
+        meetingUrl: MEET_URL,
+      });
+      firstId ??= session.id;
+      await service.waitForSessionTerminal(session.id as never);
+    }
+
+    expect(service.listSessions()).toHaveLength(256);
+    await expect(
+      service.waitForSessionTerminal(firstId as never),
+    ).resolves.toBeNull();
+  });
+
   it("maps an adapter throw to failed + errorMessage (never swallowed)", async () => {
     const adapter = new ScriptedAdapter("google_meet");
     const { service } = makeService([adapter]);
@@ -953,6 +1014,128 @@ describe("MeetingService — roster, transcripts, listing", () => {
     // stop() awaited done → the session reached a terminal state.
     const session = service.getSession(dto.id as never);
     expect(["ended", "failed"]).toContain(session?.status);
+  });
+
+  it("stop waits for terminal event delivery and is idempotent", async () => {
+    const adapter = new ScriptedAdapter("google_meet");
+    const { fake, service } = makeService([adapter]);
+    const enteredEvent = deferred();
+    const releaseEvent = deferred();
+    (
+      fake.runtime as {
+        emitEvent: (event: string, payload: unknown) => Promise<void>;
+      }
+    ).emitEvent = async () => {
+      enteredEvent.resolve();
+      await releaseEvent.promise;
+    };
+    const dto = await service.requestJoin({
+      platform: "google_meet",
+      meetingUrl: MEET_URL,
+      ghostAttendance: {
+        ownerUserId: "owner-1",
+        careAbouts: [],
+        attendees: [],
+      },
+    });
+    await adapter.started;
+    adapter.end("normal_completion");
+    await enteredEvent.promise;
+    expect(service.getSession(dto.id as never)?.status).toBe("ended");
+    expect(service.pendingSessionWorkCount(dto.id as never)).toBe(1);
+
+    const firstStop = service.stop();
+    const secondStop = service.stop();
+    let stopped = false;
+    void firstStop.then(() => {
+      stopped = true;
+    });
+    await Promise.resolve();
+    expect(stopped).toBe(false);
+
+    releaseEvent.resolve();
+    await expect(Promise.all([firstStop, secondStop])).resolves.toEqual([
+      undefined,
+      undefined,
+    ]);
+    expect(service.pendingSessionWorkCount()).toBe(0);
+  });
+
+  it("stop rejects new work and awaits a join already inside async setup", async () => {
+    const adapter = new ScriptedAdapter("google_meet");
+    const { fake, service } = makeService([adapter]);
+    const setupEntered = deferred();
+    const releaseSetup = deferred();
+    (
+      fake.runtime as { ensureWorldExists: (world: unknown) => Promise<void> }
+    ).ensureWorldExists = async () => {
+      setupEntered.resolve();
+      await releaseSetup.promise;
+    };
+
+    const joining = service.requestJoin({
+      platform: "google_meet",
+      meetingUrl: MEET_URL,
+    });
+    await setupEntered.promise;
+    const stopping = service.stop();
+    await expect(
+      service.requestJoin({ platform: "google_meet", meetingUrl: MEET_URL }),
+    ).rejects.toMatchObject({ code: "service_stopping" });
+    releaseSetup.resolve();
+
+    await expect(joining).rejects.toMatchObject({ code: "service_stopping" });
+    await expect(stopping).resolves.toBeUndefined();
+    expect(adapter.session).toBeNull();
+    expect(service.pendingSessionWorkCount()).toBe(0);
+  });
+
+  it("stop awaits every session before aggregating one lifecycle rejection", async () => {
+    const meet = new ScriptedAdapter("google_meet");
+    const zoom = new ScriptedAdapter("zoom");
+    const { fake, service } = makeService([meet, zoom]);
+    const [a, b] = await Promise.all([
+      service.requestJoin({ platform: "google_meet", meetingUrl: MEET_URL }),
+      service.requestJoin({
+        platform: "zoom",
+        meetingUrl: "https://zoom.us/j/1234567890",
+      }),
+    ]);
+    const [meetSession, zoomSession] = await Promise.all([
+      meet.started,
+      zoom.started,
+    ]);
+    const originalGetService = fake.runtime.getService.bind(fake.runtime);
+    (fake.runtime as { getService: (name: string) => unknown }).getService = (
+      name,
+    ) =>
+      name === "connector-setup"
+        ? {
+            broadcastWs: (event: {
+              session?: { id?: string; status?: string };
+            }) => {
+              if (
+                event.session?.id === a.id &&
+                event.session.status === "ended"
+              ) {
+                throw new Error("status transport failed");
+              }
+            },
+          }
+        : originalGetService(name);
+    meetSession.signal.addEventListener("abort", () =>
+      meet.end("requested_stop"),
+    );
+    zoomSession.signal.addEventListener("abort", () =>
+      zoom.end("requested_stop"),
+    );
+
+    await expect(service.stop()).rejects.toMatchObject({
+      errors: [expect.objectContaining({ message: "status transport failed" })],
+    });
+    expect(service.getSession(a.id as never)?.status).toBe("failed");
+    expect(service.getSession(b.id as never)?.status).toBe("ended");
+    expect(service.pendingSessionWorkCount()).toBe(0);
   });
 
   it("runs concurrent joins of DIFFERENT meetings independently", async () => {

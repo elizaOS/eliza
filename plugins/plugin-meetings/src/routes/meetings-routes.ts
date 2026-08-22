@@ -59,6 +59,7 @@ const joinErrorStatus: Record<MeetingJoinError["code"], number> = {
   unsupported_host: 422,
   policy_blocked: 403,
   already_joined: 409,
+  service_stopping: 503,
   invalid_duration_cap: 400,
   insufficient_credits: 402,
 };

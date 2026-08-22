@@ -160,6 +160,14 @@ bun run --cwd plugins/plugin-meetings typecheck   # tsgo --noEmit
 - One bot per meeting: `requestJoin` rejects (`already_joined`) while a
   non-terminal session exists for the same platform + native meeting id
   (canonicalized, so URL spelling variants collide correctly).
+- `waitForSessionTerminal(id)` is session-specific and returns `null` for an
+  unknown or history-evicted id; callers must require an expected terminal
+  status rather than treating `null` as completion. Terminal DTO history is
+  bounded to 256 entries. `pendingSessionWorkCount(id)` checks one lifecycle,
+  while the no-argument form is a global diagnostic.
+- `stop()` permanently closes that service instance to new joins and waits for
+  every retained lifecycle. Runtime restart creates a fresh `MeetingService`
+  instance; stopped instances are not restartable.
 - Sessions hang off one reused "Meetings" world; each meeting gets its own
   room with `source` = platform. Roster participants are wired to entities via
   `createUniqueUuid(runtime, "meeting-participant:<platform>:<name>")`.

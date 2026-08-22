@@ -87,9 +87,9 @@ export async function joinedTranscriptIsReady(
       `expected event-driven terminal status ended, saw ${String(terminal?.status)}`,
     );
   }
-  if (service.pendingSessionWorkCount() !== 0) {
+  if (service.pendingSessionWorkCount(sessionId as UUID) !== 0) {
     throw new Error(
-      `meeting lifecycle retained ${service.pendingSessionWorkCount()} pending session(s)`,
+      `meeting lifecycle retained work for terminal session ${sessionId}`,
     );
   }
   const transcriptId = terminal.transcriptId;
