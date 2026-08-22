@@ -301,6 +301,13 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 	"packages/app-core/src/services/account-pool-broker.ts": [
 		/trimmed\.slice\(0,\s*128\)/,
 	],
+	"packages/app-core/test/helpers/trajectory-harness.ts": [
+		/truncateText/,
+		/safeStringify/,
+		/formatMarkdownPayload/,
+		/v\.text\.slice\(/,
+		/state\.text\.slice\(/,
+	],
 	"plugins/plugin-computeruse/src/platform/browser.ts": [
 		/html\.slice\(0,\s*5000\)/,
 		/result\.length\s*>=\s*50/,
