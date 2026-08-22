@@ -1116,7 +1116,7 @@ final class BootCaptureUITests: XCTestCase {
         let trustCopy = app.staticTexts.matching(
             NSPredicate(format: "label BEGINSWITH[c] 'Connect to this server?'")
         ).firstMatch
-        let deadline = Date().addingTimeInterval(timeout)
+        var deadline = Date().addingTimeInterval(timeout)
         var tapAttempts = 0
         var nextTapAt = Date.distantPast
         while Date() < deadline {
@@ -1127,7 +1127,9 @@ final class BootCaptureUITests: XCTestCase {
                 let confirm = app.alerts.firstMatch.buttons.matching(
                     NSPredicate(format: "label ==[c] 'Ok' OR label ==[c] 'Connect'")
                 ).firstMatch
-                if confirm.exists, !confirm.frame.isEmpty, Date() >= nextTapAt {
+                if confirm.exists, !confirm.frame.isEmpty, tapAttempts < 3,
+                   Date() >= nextTapAt
+                {
                     if tapAttempts == 0 {
                         attachScreenshot(named: "pairing-006-server-trust-prompt")
                     }
@@ -1140,6 +1142,10 @@ final class BootCaptureUITests: XCTestCase {
                     }
                     tapAttempts += 1
                     nextTapAt = Date().addingTimeInterval(0.75)
+                    // XCUITest can spend most of the caller's timeout inside
+                    // a single alert tap. Give the renderer a bounded window
+                    // after that synchronous action returns to expose pairing.
+                    deadline = max(deadline, Date().addingTimeInterval(10))
                 }
             }
             Thread.sleep(forTimeInterval: 0.25)
