@@ -1,4 +1,9 @@
-// Exercises cloud DB anonymous sessions behavior with deterministic repository fixtures.
+/**
+ * Exercises anonymous-session persistence against a real isolated PGlite database.
+ * A fake clock makes lifetime and hourly quota boundaries deterministic while
+ * retaining the repository's production SQL and atomic update behavior.
+ */
+
 import {
   afterAll,
   afterEach,

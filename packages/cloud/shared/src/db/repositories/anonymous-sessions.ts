@@ -1,4 +1,9 @@
-// Persists anonymous sessions records for cloud services through the shared DB boundary.
+/**
+ * Owns anonymous-session persistence and atomic quota accounting for Cloud services.
+ * Repository results carry the authoritative hourly reset advice consumed by
+ * admission layers, so callers do not recalculate window state after mutation.
+ */
+
 import { ElizaError } from "@elizaos/core";
 import { and, eq, gt, gte, lt, sql } from "drizzle-orm";
 import { mutateRowCount } from "../execute-helpers";

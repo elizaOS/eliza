@@ -1,3 +1,9 @@
+/**
+ * Verifies anonymous quota refusal metadata through the mocked service boundary.
+ * The deterministic harness proves hourly retry advice survives both legacy
+ * checks and atomic reservation refunds without dispatching downstream work.
+ */
+
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 
 process.env.ANON_HOURLY_LIMIT ||= "10";

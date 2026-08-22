@@ -1,4 +1,9 @@
-// Coordinates cloud service anonymous sessions behavior behind route handlers.
+/**
+ * Coordinates anonymous-session repository operations for Cloud route services.
+ * Quota results remain authoritative across this boundary, while lifecycle
+ * mutations invalidate the Durable Object admission cache by session token.
+ */
+
 import {
   type AnonymousHourlyRateLimitResult,
   anonymousSessionsRepository,
