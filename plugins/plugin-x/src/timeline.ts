@@ -18,7 +18,12 @@ import {
   type State,
   type UUID,
 } from "@elizaos/core";
-import type { ClientBase, TwitterAccountSession, TwitterProfile } from "./base";
+import {
+  type ClientBase,
+  NO_REQUEST_RETRY,
+  type TwitterAccountSession,
+  type TwitterProfile,
+} from "./base";
 import type { Client, Tweet } from "./client/index";
 import { parseTwitterInterval } from "./environment";
 import {
@@ -660,7 +665,7 @@ ${tweet.text}${mediaDescriptions}`;
               String(responseObject.post),
               tweet.id,
             );
-          });
+          }, NO_REQUEST_RETRY);
         const result = await sendQuote();
 
         try {
