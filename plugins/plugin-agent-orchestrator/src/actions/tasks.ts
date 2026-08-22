@@ -5,6 +5,7 @@
  */
 
 import {
+  ANAPHOR_RE,
   FOLLOW_UP_SHAPE_RE,
   NEW_DELIVERABLE_RE,
 } from "../services/ask-shapes.js";
@@ -1107,15 +1108,20 @@ export function continuesFinishedWork(
 }
 
 /** follow_up: an instruction about the finished deliverable itself (inherits
- *  title, criteria, lineage, workdir). related: a NEW deliverable that names
- *  the prior work (lineage + workdir only — its criteria and title are its
- *  own; chaining the predecessor's criteria graded a prime script against
- *  .ts-count criteria twice, live 2026-08-22). fresh: nothing inherited. */
+ *  title, criteria, lineage, workdir). related: a NEW deliverable that
+ *  relates to the prior work (lineage only — its criteria, title and workdir
+ *  are its own; chaining the predecessor's criteria graded a prime script
+ *  against .ts-count criteria twice, live 2026-08-22). fresh: nothing
+ *  inherited. A new-deliverable sentence built around an anaphor ("make me a
+ *  dark version of it") is still about the prior work — related, not fresh. */
 export function finishedWorkRelation(
   text: string,
   priorTask: string,
 ): FinishedWorkRelation {
   if (!NEW_DELIVERABLE_RE.test(text)) return "follow_up";
+  if (FOLLOW_UP_SHAPE_RE.test(text) || ANAPHOR_RE.test(text)) {
+    return "related";
+  }
   const prior = contentWords(priorTask);
   for (const word of contentWords(text)) {
     if (prior.has(word)) return "related";
@@ -4228,9 +4234,17 @@ async function runSend(
       )
         ? ""
         : rawPriorTask;
+      // Classify on the USER'S words when the turn carries them — the
+      // planner's paraphrase drops the anaphors ("run it again" arrived as
+      // "Execute the number-sorting script") that mark a follow-up. An
+      // empty/junk priorTask cannot ground a relation; shape alone decides
+      // (the old behaviour: a follow-up shape keeps the workdir).
+      const relationText = requestText(_message).trim() || textInput;
       const relation: FinishedWorkRelation = priorTask
-        ? finishedWorkRelation(textInput, priorTask)
-        : "fresh";
+        ? finishedWorkRelation(relationText, priorTask)
+        : NEW_DELIVERABLE_RE.test(relationText)
+          ? "fresh"
+          : "follow_up";
       const continuesPrior = relation !== "fresh";
       logger(runtime).info(
         `[TASKS:send] target session ${target.session.id} is terminal (${target.session.status}); redirecting to a ${relation} create`,
@@ -4274,7 +4288,7 @@ Build on the existing files; do not recreate them.`
               : relation === "related"
                 ? `${textInput}
 
-Context: a NEW deliverable related to an earlier finished task (${priorTask}). Build it fresh here.`
+Context: a NEW standalone deliverable. Build it fresh in this workspace.`
                 : textInput,
           // Only a follow-up lands in the predecessor's workdir; a related
           // new deliverable resolves its own (the predecessor's route

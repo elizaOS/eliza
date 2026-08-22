@@ -51,4 +51,17 @@ describe("continuesFinishedWork", () => {
       ),
     ).toBe("fresh");
   });
+
+  it("an anaphoric new-deliverable ask is related, never fresh", () => {
+    // "version of it" names no new deliverable noun: same deliverable.
+    expect(
+      finishedWorkRelation("make me a dark mode version of it", COUNT),
+    ).toBe("follow_up");
+    expect(
+      finishedWorkRelation(
+        "build me a new page like that but for dogs",
+        "build me a cat facts page",
+      ),
+    ).toBe("related");
+  });
 });

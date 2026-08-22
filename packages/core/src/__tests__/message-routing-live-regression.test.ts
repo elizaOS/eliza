@@ -713,6 +713,7 @@ describe("live routing regressions", () => {
 		for (const text of [
 			"write a python script that just prints nubs",
 			"make me a bash script that only says hello",
+			"write a script that just prints 42",
 		]) {
 			expect(
 				inferDirectCurrentRequestCandidateActions(actions, text),
@@ -726,6 +727,8 @@ describe("live routing regressions", () => {
 			"write a script that just prints the current bitcoin price",
 			"write a python script that just prints the contents of /etc/hosts",
 			"make a python script that only outputs the primes under a million",
+			"write a script that just prints hello and then fetches the weather",
+			"make a python script that just prints my ip address",
 		]) {
 			expect(inferDirectCurrentRequestCandidateActions(actions, text)).toEqual([
 				"TASKS",

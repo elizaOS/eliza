@@ -13,3 +13,8 @@ export const NEW_DELIVERABLE_RE =
 export function looksLikeNewDeliverableAsk(text: string): boolean {
   return NEW_DELIVERABLE_RE.test(text);
 }
+
+/** "like that", "of it", "than this": the sentence leans on prior work even
+ *  when it names a new deliverable. */
+export const ANAPHOR_RE =
+  /\b(?:like|of|for|than|as|to)\s+(?:it|that|this)\b|\bthe\s+(?:last|previous|earlier)\s+one\b/i;
