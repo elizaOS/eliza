@@ -3984,12 +3984,6 @@ function terminalMessageWithFailureAuthority(
 	const unresolvedFailure =
 		latestUnresolvedFailedNonTerminalToolStep(trajectory);
 	if (!unresolvedFailure) return candidate;
-	if (
-		trajectory.codingMode === true &&
-		codingVerificationSupersedesFailure(trajectory, unresolvedFailure)
-	) {
-		return candidate;
-	}
 
 	const pendingInteraction = latestActionablePendingInteractionAfter(
 		trajectory,
@@ -4031,43 +4025,6 @@ function terminalMessageWithFailureAuthority(
 	);
 	if (successEvidence.length === 0) return failureNote;
 	return `${failureNote}\n\nWork that did complete: ${successEvidence.join(" ")}`;
-}
-
-/**
- * A repository verification command validates the resulting tree, not the
- * exact argument identity of every failed intermediate command. In coding
- * mode, a successful SHELL run after the latest successful mutation therefore
- * resolves earlier transient edit/test failures for terminal reporting. A
- * failure after that verification remains authoritative.
- */
-function codingVerificationSupersedesFailure(
-	trajectory: PlannerTrajectory,
-	failure: PlannerStep,
-): boolean {
-	const steps = [...trajectory.archivedSteps, ...trajectory.steps];
-	const failureIndex = steps.lastIndexOf(failure);
-	if (failureIndex < 0) return false;
-
-	let latestMutationIndex = -1;
-	for (let index = 0; index < steps.length; index++) {
-		const step = steps[index];
-		const name = step?.toolCall?.name.toUpperCase();
-		if (
-			(name === "WRITE" || name === "EDIT") &&
-			step.result?.success === true
-		) {
-			latestMutationIndex = index;
-		}
-	}
-	if (latestMutationIndex < 0) return false;
-
-	return steps.some(
-		(step, index) =>
-			index > latestMutationIndex &&
-			index > failureIndex &&
-			step.toolCall?.name.toUpperCase() === "SHELL" &&
-			step.result?.success === true,
-	);
 }
 
 /**

@@ -249,6 +249,21 @@ async function pollUntil(
   throw new Error(`condition not met; last=${last?.text ?? "(none)"}`);
 }
 
+async function waitForBackgroundToSettle(
+  service: BackgroundShellService,
+  conversationId: string,
+  handle: string,
+): Promise<void> {
+  for (let attempt = 0; attempt < 40; attempt += 1) {
+    const session = service
+      .list(conversationId)
+      .find((candidate) => candidate.handle === handle);
+    if (session && session.status !== "running") return;
+    await delay(50);
+  }
+  throw new Error(`background shell ${handle} did not settle`);
+}
+
 function isProcessAlive(pid: number): boolean {
   try {
     process.kill(pid, 0);
@@ -2394,9 +2409,9 @@ describeIfPosix("shellAction", () => {
     expect(JSON.stringify(afterTaint)).not.toContain(secret);
   });
 
-  it("keeps a split configured secret tainted through tiny visible caps", async () => {
+  it("rejects split-secret output that exceeds the complete-capture limit", async () => {
     const secret = "marigold9";
-    const { runtime } = await makeRuntime({
+    const { runtime, backgroundShell } = await makeRuntime({
       configuredSecret: secret,
       backgroundBufferChars: 5,
     });
@@ -2409,26 +2424,23 @@ describeIfPosix("shellAction", () => {
       }),
     );
     const handle = (start.data as Record<string, unknown>).handle as string;
-    const poll = await pollUntil(
-      runtime,
-      actor,
+    await waitForBackgroundToSettle(
+      backgroundShell,
+      String(actor.roomId),
       handle,
-      (data) => data.status === "exited",
     );
-    const data = poll.data as Record<string, unknown>;
+    const poll = requireActionResult(
+      await shellAction.handler?.(runtime, actor, undefined, {
+        action: "poll_background",
+        handle,
+      }),
+    );
 
-    expect(
-      JSON.stringify({ stdout: data.stdout, stderr: data.stderr }),
-    ).not.toContain("mari");
-    expect(
-      JSON.stringify({ stdout: data.stdout, stderr: data.stderr }),
-    ).not.toContain("gold9");
-    expect(data.stdout).toMatchObject({
-      text: "-safe",
-      startOffset: "mariXlater-safe".length - 5,
-      endOffset: "mariXlater-safe".length,
-    });
-    expect((data.stderr as Record<string, unknown>).text).toBe("");
+    expect(poll.success).toBe(false);
+    expect(poll.text).toContain("no partial output is available");
+    expect(JSON.stringify(poll)).not.toContain("mari");
+    expect(JSON.stringify(poll)).not.toContain("gold9");
+    expect(poll.data).toBeUndefined();
   });
 
   it("preserves same-stream event boundaries around harmless bytes", async () => {
@@ -2655,10 +2667,10 @@ describeIfPosix("shellAction", () => {
     );
   });
 
-  it("keeps an eviction-split configured secret inside the private overlap", async () => {
+  it("rejects eviction-split secret output beyond the capture limit", async () => {
     const secret = "violet73";
     const payload = `${"a".repeat(26)}${secret}${"z".repeat(16)}`;
-    const { runtime } = await makeRuntime({
+    const { runtime, backgroundShell } = await makeRuntime({
       backgroundBufferChars: 20,
       configuredSecret: secret,
     });
@@ -2670,25 +2682,30 @@ describeIfPosix("shellAction", () => {
       }),
     );
     const handle = (start.data as Record<string, unknown>).handle as string;
-    const poll = await pollUntil(runtime, actor, handle, (data) => {
-      const stdout = data.stdout as Record<string, unknown> | undefined;
-      return data.status === "exited" && stdout?.truncatedBefore === 30;
-    });
-    const stdout = (poll.data as Record<string, unknown>).stdout as Record<
-      string,
-      unknown
-    >;
+    await waitForBackgroundToSettle(
+      backgroundShell,
+      String(actor.roomId),
+      handle,
+    );
+    const poll = requireActionResult(
+      await shellAction.handler?.(runtime, actor, undefined, {
+        action: "poll_background",
+        handle,
+      }),
+    );
 
-    expect(stdout.text).toBe("z".repeat(16));
-    expect(stdout.startOffset).toBe(30);
+    expect(poll.success).toBe(false);
+    expect(poll.text).toContain("no partial output is available");
     expect(JSON.stringify(poll)).not.toContain(secret);
     expect(JSON.stringify(poll)).not.toContain(secret.slice(4));
   });
 
-  it("expands the private overlap when a configured secret rotates", async () => {
+  it("rejects rotated-secret output beyond the capture limit", async () => {
     const rotatedSecret = "rotated-secret-value-LEAK_SENTINEL_9Q";
     const payload = `${"a".repeat(10)}${rotatedSecret}${"z".repeat(8)}`;
-    const { runtime } = await makeRuntime({ backgroundBufferChars: 20 });
+    const { runtime, backgroundShell } = await makeRuntime({
+      backgroundBufferChars: 20,
+    });
     runtime.character.settings = {
       secrets: { ROTATED_SECRET: rotatedSecret },
     };
@@ -2703,18 +2720,20 @@ describeIfPosix("shellAction", () => {
       }),
     );
     const handle = (start.data as Record<string, unknown>).handle as string;
-    const poll = await pollUntil(runtime, actor, handle, (data) => {
-      const stdout = data.stdout as Record<string, unknown> | undefined;
-      return (
-        data.status === "exited" &&
-        stdout?.truncatedBefore === payload.length - 20
-      );
-    });
+    await waitForBackgroundToSettle(
+      backgroundShell,
+      String(actor.roomId),
+      handle,
+    );
+    const poll = requireActionResult(
+      await shellAction.handler?.(runtime, actor, undefined, {
+        action: "poll_background",
+        handle,
+      }),
+    );
 
-    expect(
-      ((poll.data as Record<string, unknown>).stdout as Record<string, unknown>)
-        .text,
-    ).toBe("z".repeat(8));
+    expect(poll.success).toBe(false);
+    expect(poll.text).toContain("no partial output is available");
     expect(JSON.stringify(poll)).not.toContain(rotatedSecret.slice(-12));
   });
 

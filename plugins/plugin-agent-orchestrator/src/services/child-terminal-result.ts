@@ -143,14 +143,12 @@ function completionEvidenceSummary(envelope: CompletionEnvelope): string {
     (criterion) => criterion.met,
   ).length;
   const testDetails = envelope.testResults
-    .slice(0, 3)
     .map(
       (result) =>
         `${result.exitCode === 0 ? "passed" : "failed"}: ${summaryText(result.summary) ?? "no summary"}`,
     )
     .join("; ");
   const criterionDetails = envelope.acceptanceCriteriaStatus
-    .slice(0, 3)
     .map(
       (criterion) =>
         `${criterion.met ? "met" : "unmet"}: ${summaryText(criterion.criterion) ?? "criterion"} (${summaryText(criterion.evidence) ?? "no evidence"})`,

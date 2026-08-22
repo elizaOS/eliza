@@ -919,6 +919,85 @@ describe("v5 planner loop skeleton", () => {
 		});
 	});
 
+	it("keeps an unrelated failed coding command authoritative after verification", async () => {
+		await withCodingRequiredToolDefaults(async () => {
+			const runtime = {
+				useModel: vi
+					.fn()
+					.mockResolvedValueOnce({
+						text: "",
+						toolCalls: [
+							{
+								id: "write-1",
+								name: "WRITE",
+								arguments: { path: "dice.html", content: "draft" },
+							},
+						],
+					})
+					.mockResolvedValueOnce({
+						text: "",
+						toolCalls: [
+							{
+								id: "deploy-failed",
+								name: "SHELL",
+								arguments: { command: "deploy dice.html" },
+							},
+						],
+					})
+					.mockResolvedValueOnce({
+						text: "",
+						toolCalls: [
+							{
+								id: "edit-1",
+								name: "EDIT",
+								arguments: {
+									path: "dice.html",
+									old_string: "draft",
+									new_string: "fixed",
+								},
+							},
+						],
+					})
+					.mockResolvedValueOnce({
+						text: "",
+						toolCalls: [
+							{
+								id: "verify-passed",
+								name: "SHELL",
+								arguments: { command: "test -s dice.html" },
+							},
+						],
+					})
+					.mockResolvedValueOnce(
+						codingReply("reply-verified", "Built and deployed dice.html."),
+					),
+			};
+			const executeToolCall = vi
+				.fn()
+				.mockResolvedValueOnce({ success: true, text: "wrote draft" })
+				.mockResolvedValueOnce({ success: false, text: "deploy failed" })
+				.mockResolvedValueOnce({ success: true, text: "fixed file" })
+				.mockResolvedValueOnce({ success: true, text: "file check passed" });
+
+			const result = await runPlannerLoop({
+				runtime,
+				context: codingPlannerContext,
+				codingMode: true,
+				tools: [
+					{ name: "WRITE", description: "Write a file." },
+					{ name: "EDIT", description: "Edit a file." },
+					{ name: "SHELL", description: "Run a command." },
+					{ name: "REPLY", description: "Reply to the user." },
+				],
+				executeToolCall,
+				evaluate: vi.fn(),
+			});
+
+			expect(result.finalMessage).toContain("failed");
+			expect(result.finalMessage).not.toContain("Built and deployed");
+		});
+	});
+
 	it("uses owner-declared action summaries for coding fallback replies", async () => {
 		await withCodingRequiredToolDefaults(async () => {
 			const runtime = {

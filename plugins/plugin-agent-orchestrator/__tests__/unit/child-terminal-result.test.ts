@@ -276,6 +276,13 @@ describe("child terminal-result envelope", () => {
           exitCode: 0,
           summary: "Passed /private/tmp/internal/result.test.ts",
         },
+        { command: "bun run typecheck", exitCode: 0, summary: "Types pass" },
+        { command: "bun run lint", exitCode: 0, summary: "Lint passes" },
+        {
+          command: "bun run test:e2e",
+          exitCode: 1,
+          summary: "Fourth check failed",
+        },
       ],
       screenshotPaths: ["/private/tmp/internal/screenshots/missing.png"],
       trajectoryPath: "/private/tmp/internal/traces/trajectory.jsonl",
@@ -284,6 +291,13 @@ describe("child terminal-result envelope", () => {
           criterion: "Result is projected",
           met: true,
           evidence: "Verified in /private/tmp/internal/src/result.ts",
+        },
+        { criterion: "Types pass", met: true, evidence: "Typecheck output" },
+        { criterion: "Lint passes", met: true, evidence: "Lint output" },
+        {
+          criterion: "End-to-end path passes",
+          met: false,
+          evidence: "Fourth criterion failed",
         },
       ],
       residualRisks: [],
@@ -329,8 +343,12 @@ describe("child terminal-result envelope", () => {
         ],
       },
     });
-    expect(result?.evidence.summary).toContain("Tests 1/1 passed");
-    expect(result?.evidence.summary).toContain("Criteria 1/1 met");
+    expect(result?.evidence.summary).toContain("Tests 3/4 passed");
+    expect(result?.evidence.summary).toContain("failed: Fourth check failed");
+    expect(result?.evidence.summary).toContain("Criteria 3/4 met");
+    expect(result?.evidence.summary).toContain(
+      "unmet: End-to-end path passes (Fourth criterion failed)",
+    );
     expect(JSON.stringify(result)).not.toContain("/private/tmp/internal");
   });
 

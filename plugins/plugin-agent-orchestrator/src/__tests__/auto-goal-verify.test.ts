@@ -27,10 +27,7 @@ import {
 } from "../services/goal-llm-verifier.js";
 import { OrchestratorTaskService } from "../services/orchestrator-task-service.js";
 import { OrchestratorTaskStore } from "../services/orchestrator-task-store.js";
-import {
-  type AttemptReflection,
-  MAX_ATTEMPT_REFLECTIONS,
-} from "../services/orchestrator-task-types.js";
+import type { AttemptReflection } from "../services/orchestrator-task-types.js";
 
 describe("shouldAutoVerifyGoal", () => {
   const prev = process.env.ELIZA_ORCHESTRATOR_AUTO_GOAL_VERIFY;
@@ -1009,8 +1006,8 @@ describe("independent read-only verifier (#8898)", () => {
  * Reflexion persistence (#8899): drive the REAL `autoVerifyCompletion` append
  * path (orchestrator-task-service.ts) so each failed verdict writes a
  * `{attempt, missing, summary}` post-mortem into `metadata.attemptReflections`,
- * the buffer caps at {@link MAX_ATTEMPT_REFLECTIONS} (dropping the oldest), and
- * malformed persisted entries are sanitized by `readAttemptReflections`. The
+ * prior post-mortems remain complete, and malformed persisted entries are
+ * sanitized by `readAttemptReflections`. The
  * shipped render leaf is already covered by goal-prompt.test.ts; this exercises
  * the stateful loop end to end with no hand-injected reflection array.
  */
@@ -1103,10 +1100,10 @@ describe("attempt reflection persistence (#8899)", () => {
     });
   });
 
-  it("caps the buffer at MAX_ATTEMPT_REFLECTIONS, dropping the oldest", async () => {
+  it("retains every prior reflection when appending a new one", async () => {
     const seeded: AttemptReflection[] = Array.from(
-      { length: MAX_ATTEMPT_REFLECTIONS },
-      (_unused, index) => ({
+      { length: 5 },
+      (_, index) => ({
         attempt: index + 1,
         summary: `reflection-${index + 1}`,
         missing: ["tests pass"],
@@ -1115,7 +1112,7 @@ describe("attempt reflection persistence (#8899)", () => {
     const { store, taskId } = await driveOneVerify({
       acceptanceCriteria: ["tests pass"],
       // Under the auto-verify attempt cap so the append branch (not the
-      // waiting_on_user escalation) runs and exercises `.slice(-MAX)`.
+      // waiting_on_user escalation) runs.
       seedMetadata: { autoVerifyAttempts: 1, attemptReflections: seeded },
       verdict: {
         passed: false,
@@ -1125,9 +1122,9 @@ describe("attempt reflection persistence (#8899)", () => {
     });
     await vi.waitFor(async () => {
       const reflections = await reflectionsOf(store, taskId);
-      expect(reflections).toHaveLength(MAX_ATTEMPT_REFLECTIONS);
-      // Oldest dropped, newest appended.
+      expect(reflections).toHaveLength(6);
       expect(reflections.map((r) => r.summary)).toEqual([
+        "reflection-1",
         "reflection-2",
         "reflection-3",
         "reflection-4",

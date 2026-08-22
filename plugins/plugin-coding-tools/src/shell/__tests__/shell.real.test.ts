@@ -137,7 +137,7 @@ describePosixShell("shell plugin real local integration", () => {
     expect(JSON.stringify(provider)).not.toContain(secret);
   });
 
-  it("bounds provider history while retaining complete service history and output", async () => {
+  it("renders complete service history and output in provider context", async () => {
     const largeOutput = "z".repeat(5_000);
     await service.executeCommand(
       `printf '%s' '${largeOutput}'`,
@@ -161,11 +161,10 @@ describePosixShell("shell plugin real local integration", () => {
       {} as never,
     );
 
-    expect(provider.text).not.toContain(largeOutput);
+    expect(provider.text).toContain(largeOutput);
     expect(provider.text).toContain("command-1");
     expect(provider.text).toContain("command-10");
-    expect(provider.data?.historyCount).toBe(10);
-    expect(provider.text?.length).toBeLessThanOrEqual(24_000);
+    expect(provider.data?.historyCount).toBe(11);
   });
 
   it("fails closed when a command tries to escape the allowed directory", async () => {

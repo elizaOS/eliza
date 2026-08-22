@@ -1,6 +1,6 @@
 /**
- * Verifies that SHELL_HISTORY projects a bounded recent window without mutating
- * the ShellService-owned full command history.
+ * Verifies that SHELL_HISTORY renders complete service-owned command context
+ * without mutating the underlying history.
  */
 import type { IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
@@ -9,7 +9,7 @@ import type { CommandHistoryEntry } from "../types";
 import { shellHistoryProvider } from "./shellHistoryProvider";
 
 describe("SHELL_HISTORY provider", () => {
-  it("caps recent output while leaving complete service history intact", async () => {
+  it("renders complete output and history without mutating the service", async () => {
     const largeOutput = "z".repeat(5_000);
     const fullHistory: CommandHistoryEntry[] = Array.from(
       { length: 12 },
@@ -43,16 +43,15 @@ describe("SHELL_HISTORY provider", () => {
       {} as never,
     );
 
-    expect(getCommandHistory).toHaveBeenCalledWith("room-bounded-history", 10);
+    expect(getCommandHistory).toHaveBeenCalledWith("room-bounded-history");
     expect(fullHistory).toHaveLength(12);
     expect(fullHistory[11]?.stdout).toBe(largeOutput);
-    expect(result.text).not.toContain("command-0");
-    expect(result.text).not.toMatch(/command-1(?:\D|$)/);
+    expect(result.text).toContain("command-0");
+    expect(result.text).toMatch(/command-1(?:\D|$)/);
     expect(result.text).toContain("command-2");
     expect(result.text).toContain("command-11");
-    expect(result.text).not.toContain(largeOutput);
-    expect(result.text).toContain("characters omitted");
-    expect(result.text?.length).toBeLessThanOrEqual(24_000);
-    expect(result.data?.historyCount).toBe(10);
+    expect(result.text).toContain(largeOutput);
+    expect(result.text).not.toContain("characters omitted");
+    expect(result.data?.historyCount).toBe(12);
   });
 });
