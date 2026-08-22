@@ -53,7 +53,10 @@ import { hasActionContext } from "../../../utils/action-validation.ts";
 import { requireConfirmation } from "../../../utils/confirmation.ts";
 import { getActiveRoutingContextsForTurn } from "../../../utils/context-routing.ts";
 import { isObjectRecord as isRecord } from "../../../utils/type-guards.ts";
-import { toWellFormedUnicode } from "../../../utils/well-formed.ts";
+import {
+	toWellFormedUnicode,
+	truncateWellFormed,
+} from "../../../utils/well-formed.ts";
 import { stringToUuid } from "../../../utils.ts";
 import { draftFollowupAction } from "../../messaging/triage/actions/draftFollowup.ts";
 import { draftReplyAction } from "../../messaging/triage/actions/draftReply.ts";
