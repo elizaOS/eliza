@@ -3739,27 +3739,7 @@ function deferCodingCompletionUntilMutationVerified(args: {
 	iteration: number;
 	redactDiagnosticText?: ToolDiagnosticTextRedactor;
 }): boolean {
-	let latestMutationIndex = -1;
-	for (let index = 0; index < args.trajectory.steps.length; index++) {
-		const step = args.trajectory.steps[index];
-		const name = step?.toolCall?.name.toUpperCase();
-		if (
-			(name === "WRITE" || name === "EDIT") &&
-			step.result?.success === true
-		) {
-			latestMutationIndex = index;
-		}
-	}
-	if (latestMutationIndex < 0) return false;
-
-	const verified = args.trajectory.steps
-		.slice(latestMutationIndex + 1)
-		.some(
-			(step) =>
-				step.toolCall?.name.toUpperCase() === "SHELL" &&
-				step.result?.success === true,
-		);
-	if (verified) return false;
+	if (!codingMutationRequiresVerification(args.trajectory)) return false;
 
 	const evaluator: EvaluatorOutput = {
 		success: false,
@@ -3783,6 +3763,33 @@ function deferCodingCompletionUntilMutationVerified(args: {
 	);
 	args.trajectory.plannedQueue.length = 0;
 	return true;
+}
+
+function codingMutationRequiresVerification(
+	trajectory: PlannerTrajectory,
+): boolean {
+	let latestMutationIndex = -1;
+	const steps = [...trajectory.archivedSteps, ...trajectory.steps];
+	for (let index = 0; index < steps.length; index++) {
+		const step = steps[index];
+		const name = step?.toolCall?.name.toUpperCase();
+		if (
+			(name === "WRITE" || name === "EDIT") &&
+			step.result?.success === true
+		) {
+			latestMutationIndex = index;
+		}
+	}
+	if (latestMutationIndex < 0) return false;
+
+	const verified = steps
+		.slice(latestMutationIndex + 1)
+		.some(
+			(step) =>
+				step.toolCall?.name.toUpperCase() === "SHELL" &&
+				step.result?.success === true,
+		);
+	return !verified;
 }
 
 function getToolDefinitionName(tool: ToolDefinition): string | undefined {
@@ -4211,7 +4218,9 @@ function toolCallIdentity(toolCall: PlannerToolCall): string {
  * deterministic unavailability (e.g. PAGE_DELEGATE's PAGE_CHILD_UNAVAILABLE)
  * that cannot change within the turn. Neither kind is re-executed. Legacy
  * archived steps still count, so a settled call stays settled after loading
- * an older persisted trajectory.
+ * an older persisted trajectory. In coding mode, a successful WRITE/EDIT
+ * invalidates earlier successes because an identical inspection can now
+ * return changed source.
  */
 export function partitionRedundantSucceededCalls(
 	calls: PlannerToolCall[],
@@ -4227,6 +4236,16 @@ export function partitionRedundantSucceededCalls(
 		if (!step.toolCall || !step.result) continue;
 		const identity = toolCallIdentity(step.toolCall);
 		if (step.result.success === true) {
+			// A successful coding mutation can change the answer to any earlier
+			// inspection. Clear those settled identities before recording the
+			// mutation itself so READ-after-EDIT remains executable while an exact
+			// duplicate EDIT is still suppressed.
+			if (
+				trajectory.codingMode === true &&
+				["WRITE", "EDIT"].includes(step.toolCall.name.toUpperCase())
+			) {
+				succeeded.clear();
+			}
 			succeeded.add(identity);
 		} else if (step.result.data?.retryable === false) {
 			failedNonRetryable.add(identity);
@@ -4432,6 +4451,46 @@ async function finishWithForcedSynthesis(params: {
 	failureAware?: boolean;
 }): Promise<PlannerLoopResult> {
 	const { loop, config, trajectory, iteration } = params;
+	if (
+		trajectory.codingMode === true &&
+		codingMutationRequiresVerification(trajectory)
+	) {
+		const message =
+			"I changed files but could not complete the required command verification. The coding task is incomplete.";
+		const evaluator: EvaluatorOutput = {
+			success: false,
+			decision: "FINISH",
+			thought:
+				"Forced synthesis stopped after repeated calls with an unverified coding mutation.",
+			messageToUser: message,
+		};
+		trajectory.steps.push({
+			iteration,
+			terminalMessage: message,
+			terminalOnly: true,
+		});
+		trajectory.evaluatorOutputs.push(evaluator);
+		appendEvaluatorContextEvent(trajectory, evaluator, iteration);
+		const recordedAt = Date.now();
+		await recordGatedEvaluationStage({
+			runtime: loop.runtime,
+			recorder: loop.recorder,
+			trajectoryId: loop.trajectoryId,
+			parentStageId: loop.parentStageId,
+			iteration,
+			startedAt: recordedAt,
+			endedAt: recordedAt,
+			output: evaluator,
+			reason: "coding_mutation_unverified",
+			logger: loop.runtime.logger,
+		});
+		return {
+			status: "finished",
+			trajectory,
+			evaluator,
+			finalMessage: message,
+		};
+	}
 	trajectory.context = appendContextEvent(trajectory.context, {
 		id: `force-synthesis:${iteration}`,
 		type: "instruction",
