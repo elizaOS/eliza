@@ -191,24 +191,40 @@ export function getAnthropicEffort(
   return normalized;
 }
 
+/**
+ * Parse a setting that must be a whole positive integer, returning 0 otherwise.
+ *
+ * `parseInt` stops at the first non-digit and truncates a fraction, so
+ * "2048junk" and "2048.9" both yielded 2048 — a thinking budget the operator
+ * never set, sent on every request. Mirrors `parsePositiveInt` in
+ * plugin-zai/utils/config.ts, which already parses this same setting strictly.
+ */
+function parsePositiveInt(value: string | undefined): number {
+  if (value === undefined) {
+    return 0;
+  }
+  const trimmed = value.trim();
+  if (!/^\d+$/.test(trimmed)) {
+    return 0;
+  }
+  const parsed = Number(trimmed);
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : 0;
+}
+
 export function getCoTBudget(runtime: IAgentRuntime, modelSize: ModelSize): number {
   const specificKey =
     modelSize === "small" ? "ANTHROPIC_COT_BUDGET_SMALL" : "ANTHROPIC_COT_BUDGET_LARGE";
 
   const specificValue = getRawSetting(runtime, specificKey);
   if (specificValue !== undefined) {
-    const parsed = parseInt(specificValue, 10);
-    if (!Number.isNaN(parsed) && parsed > 0) {
-      return parsed;
-    }
-    return 0;
+    return parsePositiveInt(specificValue);
   }
 
   const sharedValue = getRawSetting(runtime, "ANTHROPIC_COT_BUDGET");
   if (sharedValue !== undefined) {
-    const parsed = parseInt(sharedValue, 10);
-    if (!Number.isNaN(parsed) && parsed > 0) {
-      return parsed;
+    const shared = parsePositiveInt(sharedValue);
+    if (shared > 0) {
+      return shared;
     }
   }
 
@@ -253,8 +269,10 @@ export function getMaxOutputTokensOverride(
       continue;
     }
     const separator = trimmed.lastIndexOf(":");
-    const parsed = Number.parseInt(separator === -1 ? trimmed : trimmed.slice(separator + 1), 10);
-    if (Number.isNaN(parsed) || parsed <= 0) {
+    // Same prefix-parse hole: "sonnet:8192junk" yielded 8192 as a deliberate
+    // per-model cap. An entry that is not a whole positive integer is skipped.
+    const parsed = parsePositiveInt(separator === -1 ? trimmed : trimmed.slice(separator + 1));
+    if (parsed <= 0) {
       continue;
     }
     if (separator === -1) {
