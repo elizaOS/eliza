@@ -1,17 +1,19 @@
 /**
- * Native-transport bounded-output contracts: the terminal complete-capture
- * limit is a fail-closed REJECT whose typed refusal names the durably
- * persisted head (never a partial capture posing as the result), and the
- * agent-stderr accumulator persists the complete pre-slice text before
- * keeping a marked tail. Real child processes (POSIX shell) and a real
- * temp-dir durable content store — no mocks.
+ * Native-transport output contracts (post-rework): the terminal
+ * complete-capture limit is a fail-closed typed REJECT at the ACP terminal
+ * boundary — the sub-agent model receives either the complete output or an
+ * explicit refusal, never a partial capture posing as the result — and the
+ * agent-stderr accumulator keeps the COMPLETE text (the retired
+ * persist-before-slice tail substitution is gone: failure text built from
+ * this buffer is model-facing and must be complete). Real child processes
+ * (POSIX shell) and a real temp-dir durable content store — no mocks.
  */
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
-  appendBoundedStderr,
+  appendCompleteStderr,
   NativeAcpClient,
 } from "../services/acp-native-transport.js";
 import { readDurableContent } from "../services/durable-content-store.js";
@@ -67,7 +69,7 @@ function readAll(sha: string): string {
   return out;
 }
 
-describe("terminal complete-capture limit (fail-closed REJECT)", () => {
+describe("terminal complete-capture limit (fail-closed typed REJECT)", () => {
   it("returns complete output for a command within the limit", async () => {
     const client = makeTerminalClient(dir);
     const { terminalId } = await client.createTerminal({
@@ -93,10 +95,12 @@ describe("terminal complete-capture limit (fail-closed REJECT)", () => {
       thrown = err as Error;
     }
     // The refusal is explicit — no partial capture is ever presented as the
-    // command result.
+    // command result (complete content or typed rejection, never a silent
+    // partial).
     expect(thrown?.message).toContain("complete-capture safety limit");
     expect(thrown?.message).toContain("no partial result is available");
-    // The head captured before overflow is durably preserved and named.
+    // The head captured before overflow is durably preserved and named — a
+    // diagnostic aid on the rejection path, never a substitute result.
     const sha = thrown?.message.match(/content\/([0-9a-f]{64})/)?.[1];
     expect(sha).toBeTruthy();
     const head = readAll(sha as string);
@@ -105,57 +109,38 @@ describe("terminal complete-capture limit (fail-closed REJECT)", () => {
   });
 });
 
-describe("appendBoundedStderr (persist-before-slice)", () => {
+describe("appendCompleteStderr (complete accumulation, no tail substitution)", () => {
   it("keeps small accumulations verbatim", () => {
-    expect(appendBoundedStderr("abc", "def")).toBe("abcdef");
+    expect(appendCompleteStderr("abc", "def")).toBe("abcdef");
   });
 
-  it("persists the complete pre-slice stderr and keeps a marked byte-bounded tail", () => {
+  it("keeps an accumulation far past the old 16 KiB tail complete and verbatim", () => {
     const full = "e".repeat(20_000);
-    const view = appendBoundedStderr("", full);
-    expect(
-      view.startsWith(
-        "[agent stderr tail — full stderr: GET /api/orchestrator/content/",
-      ),
-    ).toBe(true);
-    const sha = view.match(/content\/([0-9a-f]{64})\]/)?.[1] as string;
-    expect(readAll(sha)).toBe(full);
-    const tail = view.slice(view.indexOf("]\n") + 2);
-    expect(Buffer.byteLength(tail, "utf8")).toBeLessThanOrEqual(16_384);
-    expect(full.endsWith(tail)).toBe(true);
+    const accumulated = appendCompleteStderr("", full);
+    expect(accumulated).toBe(full);
+    expect(accumulated).not.toContain("[agent stderr tail");
+    expect(accumulated).not.toContain("GET /api/orchestrator/content/");
   });
 
-  it("chains overflow records so successive persists cover the whole stream", () => {
-    const first = appendBoundedStderr("", "A".repeat(20_000));
-    const firstSha = first.match(/content\/([0-9a-f]{64})\]/)?.[1] as string;
-    const second = appendBoundedStderr(first, "B".repeat(20_000));
-    const secondSha = second.match(/content\/([0-9a-f]{64})\]/)?.[1] as string;
-    expect(secondSha).not.toBe(firstSha);
-    // The second record embeds the first record's marker — a resolvable chain.
-    expect(readAll(secondSha)).toContain(`content/${firstSha}]`);
+  it("keeps every byte across successive oversized appends", () => {
+    const first = appendCompleteStderr("", "A".repeat(20_000));
+    const second = appendCompleteStderr(first, "B".repeat(20_000));
+    expect(second).toBe(`${"A".repeat(20_000)}${"B".repeat(20_000)}`);
+    expect(second).not.toContain("[agent stderr");
   });
-});
 
-describe("appendBoundedStderr durable persist failure (no silent head drop)", () => {
-  it("retains the COMPLETE accumulation with one declared fault when the persist fails", () => {
-    // Point the trajectory dir at a regular FILE so persistDurableContent's
-    // mkdir fails with ENOTDIR — a real store fault, not a mock.
+  it("stays complete when the durable store is broken (no dependency on the store)", () => {
+    // Point the trajectory dir at a regular FILE so any store write would
+    // fail with ENOTDIR — the accumulator must not depend on the store at
+    // all: the complete text is the buffer.
     const blocker = path.join(dir, "not-a-dir");
     fs.writeFileSync(blocker, "occupied", "utf8");
     process.env.ELIZA_TRAJECTORY_DIR = blocker;
 
-    const first = appendBoundedStderr("", "A".repeat(20_000)); // > 16 KiB tail
-    expect(first.startsWith("[agent stderr durable persist failed")).toBe(true);
-    expect(first.endsWith("A".repeat(20_000))).toBe(true);
-    expect(first).not.toContain("GET /api/orchestrator/content/");
-
-    // A second failing append keeps everything and does NOT stack markers.
-    const second = appendBoundedStderr(first, "B".repeat(2_000));
-    expect(second.endsWith(`${"A".repeat(20_000)}${"B".repeat(2_000)}`)).toBe(
-      true,
-    );
-    expect(second.match(/\[agent stderr durable persist failed/g)?.length).toBe(
-      1,
-    );
+    const first = appendCompleteStderr("", "A".repeat(20_000));
+    const second = appendCompleteStderr(first, "B".repeat(2_000));
+    expect(second).toBe(`${"A".repeat(20_000)}${"B".repeat(2_000)}`);
+    expect(second).not.toContain("durable persist failed");
+    expect(second).not.toContain("GET /api/orchestrator/content/");
   });
 });

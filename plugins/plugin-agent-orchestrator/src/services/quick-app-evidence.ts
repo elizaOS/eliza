@@ -17,7 +17,6 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { logger } from "@elizaos/core";
-import { durableProjection } from "./durable-content-store.js";
 import type { WorkdirRouteUrlMapping } from "./task-agent-routing.js";
 
 const PROBE_TIMEOUT_MS = 5_000;
@@ -369,31 +368,15 @@ export function detectCheckSurfaces(
 const BINARY_CONTENT_RE =
   /\.(?:png|jpe?g|gif|webp|avif|ico|bmp|tiff?|woff2?|ttf|otf|eot|zip|gz|tgz|bz2|xz|7z|rar|pdf|mp[34]|m4[av]|mov|avi|webm|ogg|wav|flac|exe|dll|so|dylib|class|jar|wasm|sqlite3?|db|bin)$/i;
 
-/** Per-file view budget for the judge's contents section. A file under the
- *  budget is inlined WHOLE (the normal quick-app case); an oversized file is
- *  persisted whole to the durable content store FIRST and its view ends with
- *  a marker naming `GET /api/orchestrator/content/<sha256>` — content is
- *  paged, never lost. */
-const PER_FILE_CONTENT_BUDGET_CHARS = 24_000;
-
-function projectFileContent(content: string): string {
-  try {
-    return durableProjection(content, PER_FILE_CONTENT_BUDGET_CHARS).view;
-  } catch {
-    // error-policy:J4 a durable-store write failure must not sink evidence
-    // assembly — fall back to the COMPLETE text (uncapped) rather than
-    // reintroducing a silent cut.
-    return content;
-  }
-}
-
 /**
- * Read the complete contents of fs-verified text files so content
- * criteria are judged against the real file text. Same epistemic status as
- * the stat probe: the orchestrator reads the bytes itself; worker narration
- * never enters. Unreadable files contribute no entry, never a fabricated one.
- * Text detection is by sniff (no NUL byte in the decoded text), not by an
- * extension allowlist; only known-binary extensions skip the read outright.
+ * Read the COMPLETE contents of fs-verified text files so content criteria
+ * are judged against the real, whole file text — the entries feed the judge's
+ * model call, so no per-file budget or head+marker substitution applies. Same
+ * epistemic status as the stat probe: the orchestrator reads the bytes
+ * itself; worker narration never enters. Unreadable files contribute no
+ * entry, never a fabricated one. Text detection is by sniff (no NUL byte in
+ * the decoded text), not by an extension allowlist; only known-binary
+ * extensions skip the read outright.
  */
 export function readFsVerifiedContents(
   workdir: string,
@@ -422,10 +405,7 @@ export function readFsVerifiedContents(
     // Binary sniff: a NUL byte in the utf8-decoded text means this is not a
     // text deliverable — it stays listed (FS-VERIFIED FILES) but not inlined.
     if (content.includes("\u0000")) continue;
-    out.push({
-      path: relative,
-      content: projectFileContent(content),
-    });
+    out.push({ path: relative, content });
   }
   return out;
 }

@@ -13,9 +13,6 @@
  * stream + a fake router ledger; both gates fail open without the router.
  */
 
-import * as fs from "node:fs";
-import * as os from "node:os";
-import * as path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { buildSpawnAckSystemPrompt, registerProgressHook } from "../index.ts";
 import { AcpService } from "../services/acp-service.ts";
@@ -204,13 +201,12 @@ describe("buildSpawnAckSystemPrompt character completeness", () => {
   });
 });
 
-describe("narration flush durable projection", () => {
-  it("persists oversized narration and posts a view naming the content route", async () => {
-    const trajectoryDir = fs.mkdtempSync(
-      path.join(os.tmpdir(), "narration-flush-"),
-    );
-    const savedTrajectoryEnv = process.env.ELIZA_TRAJECTORY_DIR;
-    process.env.ELIZA_TRAJECTORY_DIR = trajectoryDir;
+describe("narration flush completeness", () => {
+  it("posts oversized narration COMPLETE — no projection marker, no 800-char budget", async () => {
+    // Repository contract (maintainer review on #24549–#24553): text on a
+    // path that can re-enter planner/evaluator context is passed whole. A
+    // capped head + continuation marker is not lossless for THIS post, so the
+    // flush must deliver every byte of the narration.
     vi.useFakeTimers();
     const { acp, sends, teardown } = harness({
       mode: "compact",
@@ -218,32 +214,22 @@ describe("narration flush durable projection", () => {
     });
     try {
       acp.metadataById.set("s7", sessionMeta("wkr-7", "req-77"));
-      const big = `narration-head ${"n".repeat(3000)}`;
+      const big = `narration-head ${"n".repeat(3000)} narration-tail-sentinel`;
       await acp.emit("s7", "message", { text: big });
       // Silence-flush fires after MESSAGE_SILENCE_FLUSH_MS (1500ms).
       await vi.advanceTimersByTimeAsync(1600);
       expect(sends).toHaveLength(1);
-      // Bounded chat view whose marker names the durable resolver route —
-      // the complete narration was persisted BEFORE any byte was dropped.
-      // (Compact-mode delivery may strip the 💬 [label] prefix; the view body
-      // and its continuation marker are the contract under test.)
-      expect(sends[0].text).toContain("narration-head");
-      expect(sends[0].text).toContain("GET /api/orchestrator/content/");
-      const sha = sends[0].text.match(
-        /GET \/api\/orchestrator\/content\/([0-9a-f]{64})/,
-      )?.[1];
-      expect(sha).toBeDefined();
-      const stored = fs.readFileSync(
-        path.join(trajectoryDir, "orchestrator-content", `${sha}.txt`),
-        "utf8",
-      );
-      expect(stored).toContain(big);
+      // The COMPLETE narration rides in the posted text: head, middle, and
+      // tail sentinel all present (well past the retired 800-char budget),
+      // and no durable-projection continuation marker is substituted.
+      // (Compact-mode delivery may strip the 💬 [label] prefix; the body is
+      // the contract under test.)
+      expect(sends[0].text).toContain(big);
+      expect(sends[0].text).toContain("narration-tail-sentinel");
+      expect(sends[0].text).not.toContain("GET /api/orchestrator/content/");
+      expect(sends[0].text).not.toContain("chars total — full content");
     } finally {
       vi.useRealTimers();
-      if (savedTrajectoryEnv === undefined)
-        delete process.env.ELIZA_TRAJECTORY_DIR;
-      else process.env.ELIZA_TRAJECTORY_DIR = savedTrajectoryEnv;
-      fs.rmSync(trajectoryDir, { recursive: true, force: true });
       teardown();
     }
   });

@@ -1,22 +1,22 @@
 /**
- * Content-addressed durable store for orchestrator text content, and the
- * bounded-projection primitive built on it. This is the recoverability half of
- * the durable-content contract: a bounded view is only allowed to drop bytes
- * when the COMPLETE value is persisted here first and the view carries a
- * reference that resolves through the orchestrator's own HTTP surface
- * (`GET /api/orchestrator/content/:sha256?offset=&limit=`) — a textual
- * truncation marker alone is not recoverability.
+ * Content-addressed durable store for orchestrator text content. This is the
+ * durability half of the lossless-content contract: model-facing surfaces
+ * always carry the COMPLETE canonical text, and this store keeps a
+ * content-addressed copy of large values so history stays retrievable through
+ * the orchestrator's own HTTP surface
+ * (`GET /api/orchestrator/content/:sha256?offset=&limit=`) — caller-requested
+ * pagination with an explicit continuation contract. A stored reference is
+ * observability metadata that rides NEXT TO complete content; it is never a
+ * substitute for it (an automatic bounded projection of model-facing content
+ * is a contract violation, however recoverable the omitted bytes are).
  *
  * Canonicalize-once invariant: every input is normalized exactly once to its
  * canonical form — lone surrogates replaced, provider credentials masked with
- * core's redactor — and EVERYTHING derives from that one canonical text: the
- * content sha, the stored bytes, the projection head and marker, and the
- * ReadView hashes/offsets/totals. A projection view therefore can never leak
- * what storage redacted, and continuation metadata always describes the bytes
- * the retrieval route actually serves.
+ * core's redactor — and everything derives from that one canonical text: the
+ * content sha, the stored bytes, and every window the retrieval route serves.
  *
  * Records are content-addressed (`<sha256>.txt` under the trajectory dir), so
- * repeated projections of the same content deduplicate, references are stable
+ * repeated persists of the same content deduplicate, references are stable
  * across retries, and the store never needs coordination. Windowed reads snap
  * to UTF-8 code-point boundaries and report the actual byte range served, so
  * every window decodes cleanly on its own and windows reassemble losslessly.
@@ -24,12 +24,11 @@
 import { createHash } from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import type { ContentReference, ReadView } from "@elizaos/core";
+import type { ContentReference } from "@elizaos/core";
 import {
   redactSensitiveText,
   resolveTrajectoryDir,
   toWellFormedUnicode,
-  truncateWellFormed,
 } from "@elizaos/core";
 
 const CONTENT_DIR_NAME = "orchestrator-content";
@@ -154,64 +153,5 @@ export function readDurableContent(
     totalBytes,
     hasMore: end < totalBytes,
     sourceSha256: sha,
-  };
-}
-
-export interface DurableProjection {
-  /** The bounded text; a partial view ends with a marker naming the
-   *  RESOLVABLE reference of the complete stored record. */
-  view: string;
-  truncated: boolean;
-  /** Present iff truncated: the persisted complete record's reference plus
-   *  the progressive-read envelope for the emitted head. */
-  reference?: ContentReference;
-  read?: ReadView;
-}
-
-/**
- * Bounded projection of arbitrary content. The input is canonicalized ONCE
- * (well-formed + redacted) and both branches emit that canonical text — a
- * view never contains anything the durable record redacted. Short content
- * passes through whole. Oversized content is FIRST persisted to the durable
- * store, then the canonical head is emitted with a continuation marker naming
- * the stored record — so the omitted bytes are recoverable through
- * `GET /api/orchestrator/content/<sha256>?offset=<n>`, and head + windows
- * reassemble to exactly the canonical text.
- */
-export function durableProjection(
-  full: string,
-  budgetChars: number,
-): DurableProjection {
-  const canonical = canonicalizeDurableText(full);
-  if (canonical.length <= budgetChars) {
-    return { view: canonical, truncated: false };
-  }
-  const reference = persistCanonicalText(canonical);
-  const sha = reference.ref.slice("acpx-content:".length);
-  const marker = `\n… [${canonical.length} chars total — full content: GET /api/orchestrator/content/${sha}]`;
-  const headBudget = Math.max(0, budgetChars - marker.length);
-  const head = truncateWellFormed(canonical, headBudget).trimEnd();
-  const headBytes = Buffer.byteLength(head, "utf8");
-  return {
-    view: `${head}${marker}`,
-    truncated: true,
-    reference,
-    read: {
-      reference,
-      slice: {
-        range: {
-          unit: "byte",
-          start: 0,
-          end: headBytes,
-          total: Buffer.byteLength(canonical, "utf8"),
-        },
-        hasPrevious: false,
-        hasMore: true,
-        nextOffset: headBytes,
-        completeness: "partial-recoverable",
-        sliceSha256: sha256(head),
-        sourceSha256: sha,
-      },
-    },
   };
 }

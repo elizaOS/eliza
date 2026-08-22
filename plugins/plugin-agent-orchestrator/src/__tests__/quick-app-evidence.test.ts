@@ -11,7 +11,6 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { describe, expect, it } from "vitest";
-import { readDurableContent } from "../services/durable-content-store.js";
 import {
   collectFsObservedFiles,
   deriveRouteMappedUrls,
@@ -303,30 +302,18 @@ describe("readFsVerifiedContents (reed-marsh content criteria)", () => {
     }
   });
 
-  it("an oversized text file is paged with a durable continuation reference, never cut silently", () => {
+  it("an oversized text file is inlined COMPLETE — judge input carries the whole text, no continuation marker", () => {
     const workdir = fs.mkdtempSync(path.join(os.tmpdir(), "content-big-"));
-    const trajectoryDir = fs.mkdtempSync(
-      path.join(os.tmpdir(), "content-traj-"),
-    );
-    const savedEnv = process.env.ELIZA_TRAJECTORY_DIR;
-    process.env.ELIZA_TRAJECTORY_DIR = trajectoryDir;
     try {
       const text = `console.log(1);\n${"z".repeat(30_000)}`;
       fs.writeFileSync(path.join(workdir, "big.js"), text);
       const [entry] = readFsVerifiedContents(workdir, ["big.js"]);
-      expect(entry?.content.length).toBeLessThanOrEqual(24_000);
-      const sha = /\/api\/orchestrator\/content\/([0-9a-f]{64})/.exec(
-        entry?.content ?? "",
-      )?.[1];
-      expect(sha).toBeTruthy();
-      // The reference resolves to the COMPLETE file text.
-      const window = readDurableContent(sha ?? "", { limit: 1_048_576 });
-      expect(window?.text).toBe(text);
+      // The full file text arrives, byte for byte — no per-file budget…
+      expect(entry?.content).toBe(text);
+      // …and no capped-projection continuation marker in its place.
+      expect(entry?.content).not.toContain("/api/orchestrator/content/");
     } finally {
-      if (savedEnv === undefined) delete process.env.ELIZA_TRAJECTORY_DIR;
-      else process.env.ELIZA_TRAJECTORY_DIR = savedEnv;
       fs.rmSync(workdir, { recursive: true, force: true });
-      fs.rmSync(trajectoryDir, { recursive: true, force: true });
     }
   });
 });

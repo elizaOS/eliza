@@ -3209,15 +3209,12 @@ describe("extractShortToolDeliverable", () => {
     expect(extractShortToolDeliverable(data)).toBe("two");
   });
 
-  it("projects an oversized block with a resolvable continuation instead of dropping it", () => {
+  it("relays an oversized block COMPLETE — no projection, no marker", () => {
     const big = "x".repeat(2049);
     const data = { response: `[tool output: dump]\n${big}\n[/tool output]` };
-    const projected = extractShortToolDeliverable(data);
-    // Cap-audit contract: the user-asked output is never silently withheld —
-    // the head is emitted with a marker naming the durable content record.
-    expect(projected).toBeDefined();
-    expect(projected).toContain("/api/orchestrator/content/");
-    expect((projected ?? "").length).toBeLessThanOrEqual(2049);
+    // Lossless contract: the user-asked output reaches the model whole; the
+    // former head+marker projection is retired.
+    expect(extractShortToolDeliverable(data)).toBe(big);
   });
 
   it("relays a block at the 2KB boundary verbatim", () => {

@@ -1,20 +1,20 @@
 /**
  * Prompt-integrity regression coverage for the task service's model-facing
- * views (repo invariant: model-facing content is complete, or a bounded view
- * carries a resolvable continuation reference — never a bare truncation).
+ * views (repo contract, maintainer ruling closing #24549–#24553: content that
+ * reaches a model call arrives COMPLETE — a capped projection with a
+ * recoverable reference does not preserve the current model call).
  *
- * - eventExcerpt / retryInstruction / withPlanRevisionContext: oversized
- *   payloads are persisted whole to the durable content store FIRST and the
- *   emitted head names `GET /api/orchestrator/content/<sha256>`; the marker's
- *   promise is proven real by reading the record back losslessly.
+ * - eventExcerpt / retryInstruction / withPlanRevisionContext: the payload is
+ *   passed WHOLE regardless of size — no head+marker substitution, no
+ *   `GET /api/orchestrator/content/<sha256>` route in the emitted text.
+ *   Canonicalization (well-formed Unicode + credential redaction) remains as
+ *   a security transform, never a cap.
  * - composeVerifyEscalationNotice: the user notice previews the first three
- *   missing items but NAMES the omission instead of dropping items silently.
+ *   missing items but NAMES the omission instead of dropping items silently
+ *   (user-facing preview surface; the complete list still reaches the model
+ *   prompt — covered in orchestrator-task-service.test.ts).
  */
-import * as fs from "node:fs";
-import * as os from "node:os";
-import * as path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { readDurableContent } from "../services/durable-content-store.js";
+import { describe, expect, it } from "vitest";
 import {
   composeVerifyEscalationNotice,
   eventExcerpt,
@@ -23,34 +23,7 @@ import {
 } from "../services/orchestrator-task-service.js";
 import type { OrchestratorTaskDocument } from "../services/orchestrator-task-types.js";
 
-let dir: string;
-let savedEnv: string | undefined;
-
-beforeEach(() => {
-  dir = fs.mkdtempSync(path.join(os.tmpdir(), "durable-task-views-"));
-  savedEnv = process.env.ELIZA_TRAJECTORY_DIR;
-  process.env.ELIZA_TRAJECTORY_DIR = dir;
-});
-
-afterEach(() => {
-  if (savedEnv === undefined) delete process.env.ELIZA_TRAJECTORY_DIR;
-  else process.env.ELIZA_TRAJECTORY_DIR = savedEnv;
-  fs.rmSync(dir, { recursive: true, force: true });
-});
-
 const CONTENT_ROUTE_RE = /\/api\/orchestrator\/content\/([0-9a-f]{64})/u;
-
-/** Assert a view's continuation marker resolves to the COMPLETE original. */
-function expectRecoverable(view: string, full: string): void {
-  const sha = CONTENT_ROUTE_RE.exec(view)?.[1];
-  expect(
-    sha,
-    `no resolvable content route in view: ${view.slice(-200)}`,
-  ).toBeDefined();
-  const record = readDurableContent(sha as string, { limit: 1_048_576 });
-  expect(record?.text).toBe(full);
-  expect(record?.hasMore).toBe(false);
-}
 
 function makeEvent(
   data: Record<string, unknown>,
@@ -73,15 +46,26 @@ describe("eventExcerpt (rerun prompt payload)", () => {
     expect(excerpt).not.toMatch(CONTENT_ROUTE_RE);
   });
 
-  it("projects an oversized payload durably: bounded head + resolvable route", () => {
+  it("passes an oversized payload COMPLETE — no cap, no content-route marker", () => {
     const data = { text: "x".repeat(5_000) };
     const full = JSON.stringify(data);
     const excerpt = eventExcerpt(makeEvent(data));
-    const dataSection = excerpt.slice(
-      excerpt.indexOf("\nData: ") + "\nData: ".length,
+    // The complete serialized payload is present verbatim in the model text.
+    expect(excerpt).toContain(full);
+    expect(excerpt).not.toMatch(CONTENT_ROUTE_RE);
+  });
+
+  it("canonicalizes without capping: redacts credentials, repairs lone surrogates", () => {
+    const secret = "sk-abcdef0123456789abcdef";
+    const excerpt = eventExcerpt(
+      makeEvent({ note: `API_KEY=${secret} \uD800 ${"y".repeat(3_000)}` }),
     );
-    expect(dataSection.length).toBeLessThanOrEqual(1_200);
-    expectRecoverable(excerpt, full);
+    // Security transform still applies to the complete text...
+    expect(excerpt).not.toContain(secret);
+    expect(excerpt).not.toContain("\uD800");
+    // ...but it is a transform, not a cap: the payload tail survives whole.
+    expect(excerpt).toContain("y".repeat(3_000));
+    expect(excerpt).not.toMatch(CONTENT_ROUTE_RE);
   });
 });
 
@@ -112,11 +96,11 @@ describe("retryInstruction (retry prompt source quote)", () => {
     expect(text).not.toMatch(CONTENT_ROUTE_RE);
   });
 
-  it("projects an oversized source message durably instead of bare-truncating", () => {
+  it("quotes an oversized source message COMPLETE — no truncation, no marker", () => {
     const full = "y".repeat(6_000);
     const text = retryInstruction(makeDoc(full), { messageId: "msg-1" });
-    expect(text.length).toBeLessThan(full.length);
-    expectRecoverable(text, full);
+    expect(text).toContain(full);
+    expect(text).not.toMatch(CONTENT_ROUTE_RE);
   });
 });
 
@@ -144,7 +128,7 @@ describe("withPlanRevisionContext (plan revision prompt)", () => {
     expect(text).not.toMatch(CONTENT_ROUTE_RE);
   });
 
-  it("projects an oversized plan durably so tail steps are never silently cut", () => {
+  it("inlines an oversized plan COMPLETE so tail steps are never cut", () => {
     const plan = {
       steps: Array.from(
         { length: 200 },
@@ -154,7 +138,11 @@ describe("withPlanRevisionContext (plan revision prompt)", () => {
     const full = JSON.stringify(plan);
     expect(full.length).toBeGreaterThan(2_000);
     const text = withPlanRevisionContext("do it", makeRevision(plan));
-    expectRecoverable(text, full);
+    // The whole serialized revision — including the final step — is in the
+    // prompt; nothing is deferred to a continuation route.
+    expect(text).toContain(full);
+    expect(text).toContain(`step 199: ${"z".repeat(40)}`);
+    expect(text).not.toMatch(CONTENT_ROUTE_RE);
   });
 });
 

@@ -296,7 +296,7 @@ describe("user interrupt durability", () => {
       { passed: true, summary: "coin ok" },
       "coin",
     );
-    let doc = await store.getTask(taskId);
+    const doc = await store.getTask(taskId);
     expect(doc?.task.metadata?.laneVerdicts).toEqual({
       dice: "parked",
       coin: "passed",

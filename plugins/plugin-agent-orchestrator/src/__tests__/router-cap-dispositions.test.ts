@@ -8,19 +8,24 @@
  *    planner treat a visible subset as the whole deliverable);
  *  - the origin's best captured result is persisted to the task record as
  *    metadata.canonicalBestResult at capture time (durable twin of the
- *    volatile FIFO-bounded map).
+ *    volatile FIFO-bounded map);
+ *  - the completion relay carries an oversized deliverable COMPLETE (no
+ *    capped projection, no continuation-marker substitution — maintainer
+ *    close of #24549-#24553) while the durable observability record and its
+ *    `subAgentDeliverableContentRef` metadata travel BESIDE the full text.
  * Real SubAgentRouter + real fs; fake ACP service and runtime, no live model.
  */
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import type { IAgentRuntime } from "@elizaos/core";
+import type { IAgentRuntime, Memory } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { SessionInfo } from "../services/types.ts";
+import { readDurableContent } from "../services/durable-content-store";
 import {
   observeWorkdirDeliverable,
   SubAgentRouter,
 } from "../services/sub-agent-router.ts";
+import type { SessionInfo } from "../services/types.ts";
 
 const ROOM = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const MSG = "11111111-1111-4111-8111-111111111111";
@@ -233,5 +238,79 @@ describe("canonicalBestResult durable persistence at capture time", () => {
     expect(router.bestResultFor("disc-canonical-1\0codex")?.text).toContain(
       "479001600",
     );
+  });
+});
+
+describe("completion relay deliverable completeness (rework of #24549-#24553)", () => {
+  it("relays an oversized deliverable COMPLETE with the durable observability ref as separate metadata", async () => {
+    const trajectoryDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "relay-complete-"),
+    );
+    const savedTrajectoryEnv = process.env.ELIZA_TRAJECTORY_DIR;
+    process.env.ELIZA_TRAJECTORY_DIR = trajectoryDir;
+    cleanups.push(() => {
+      if (savedTrajectoryEnv === undefined)
+        delete process.env.ELIZA_TRAJECTORY_DIR;
+      else process.env.ELIZA_TRAJECTORY_DIR = savedTrajectoryEnv;
+      fs.rmSync(trajectoryDir, { recursive: true, force: true });
+    });
+
+    const big = `${"z".repeat(4096)}END-OF-DELIVERABLE`;
+    const originMeta = {
+      roomId: ROOM,
+      taskRoomId: ROOM,
+      messageId: MSG,
+      spawnRootMessageId: MSG,
+      source: "discord",
+      label: "dump the run output",
+      initialTask: "run the script and report the output",
+    };
+    const sessions = new Map<string, Record<string, unknown>>([
+      [
+        "sess-full",
+        sessionInfo("sess-full", "/tmp/relay-complete", originMeta),
+      ],
+    ]);
+    const { internals, runtime } = await startRouter(sessions);
+
+    await internals.handleEvent("sess-full", "task_complete", {
+      response: `[tool output: bash]\n${big}\n[/tool output]\nDone.`,
+      stopReason: "end_turn",
+    });
+
+    const createMemory = (
+      runtime as unknown as { createMemory: ReturnType<typeof vi.fn> }
+    ).createMemory;
+    expect(createMemory).toHaveBeenCalled();
+    const relayed = createMemory.mock.calls
+      .map((call: unknown[]) => call[0] as Memory)
+      .find((m) => (m.content.metadata as Record<string, unknown>)?.subAgent);
+    expect(relayed).toBeDefined();
+    const meta = relayed?.content.metadata as Record<string, unknown>;
+
+    // COMPLETENESS: the model-facing relay text and the metadata deliverable
+    // both carry every byte — no capped head, no continuation marker.
+    expect(relayed?.content.text).toContain(big);
+    expect(meta.subAgentDeliverable).toBe(big);
+    expect(relayed?.content.text).not.toContain(
+      "GET /api/orchestrator/content/",
+    );
+
+    // The durable observability record travels BESIDE the complete text and
+    // reassembles to exactly the relayed deliverable.
+    const ref = meta.subAgentDeliverableContentRef;
+    expect(typeof ref).toBe("string");
+    const sha = String(ref).match(/^acpx-content:([0-9a-f]{64})$/)?.[1];
+    expect(sha).toBeDefined();
+    let stored = "";
+    let offset = 0;
+    for (;;) {
+      const window = readDurableContent(sha as string, { offset });
+      if (!window) throw new Error("durable record missing");
+      stored += window.text;
+      if (!window.hasMore) break;
+      offset = window.endOffset;
+    }
+    expect(stored).toBe(big);
   });
 });

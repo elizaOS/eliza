@@ -4,17 +4,6 @@
  * runners enforce access, routing, lifecycle, and session-event invariants.
  */
 
-import {
-  ANAPHOR_RE,
-  FOLLOW_UP_SHAPE_RE,
-  NEW_DELIVERABLE_RE,
-} from "../services/ask-shapes.js";
-import {
-  activateFollowUpOrigin,
-  notePendingFollowUpOrigin,
-  readFollowUpOrigin,
-  restoreFollowUpOrigin,
-} from "../services/follow-up-origin.js";
 import { randomUUID } from "node:crypto";
 import * as fs from "node:fs";
 import {
@@ -44,6 +33,7 @@ import {
   getStreamingContext,
   looksLikeBareLinkShare,
   MESSAGE_SOURCE_SUB_AGENT,
+  redactSensitiveText,
   stringToUuid,
   toWellFormedUnicode,
   unwrapUserMessageText,
@@ -62,7 +52,18 @@ import {
   isAppBuildTask,
   resolveAppDeployConfig,
 } from "../services/app-deploy-guidance.js";
+import {
+  ANAPHOR_RE,
+  FOLLOW_UP_SHAPE_RE,
+  NEW_DELIVERABLE_RE,
+} from "../services/ask-shapes.js";
 import { resolveCodingBackendLogged } from "../services/coding-backend-routing.js";
+import {
+  activateFollowUpOrigin,
+  notePendingFollowUpOrigin,
+  readFollowUpOrigin,
+  restoreFollowUpOrigin,
+} from "../services/follow-up-origin.js";
 import {
   collisionProviderFromWorkspaceService,
   LanePlannerService,
@@ -142,7 +143,6 @@ import {
   parseHistoryLimit,
   parseHistoryOffset,
 } from "./tasks-history-limit.js";
-import { durableProjection } from "../services/durable-content-store.js";
 
 const MAX_CONCURRENT_AGENTS = 8;
 const PROVISION_WORKSPACE_TIMEOUT_MS = 60_000;
@@ -171,7 +171,6 @@ function positiveIntParam(value: unknown, fallback: number): number {
   }
   return fallback;
 }
-const ISSUE_BODY_MAX_CHARS = 4_000;
 
 type TaskOp =
   | "create"
@@ -7188,15 +7187,14 @@ export async function handleIssueAction(
           };
         }
         const issue = await service.getIssue(repo, issueNumber);
-        // Model-facing body view: an oversized body is persisted whole to the
-        // durable content store FIRST and the emitted head carries a marker
-        // naming the resolver route (GET /api/orchestrator/content/<sha256>),
-        // so the tail is recoverable instead of silently clipped.
-        // data.issue also carries the complete body verbatim.
-        const issueBody = durableProjection(
-          issue.body,
-          ISSUE_BODY_MAX_CHARS,
-        ).view;
+        // Model-facing body: the planner receives the COMPLETE issue body.
+        // The repository contract (maintainer review on #24549–#24553)
+        // forbids substituting a capped projection on any model-facing path —
+        // an action result is not a hard boundary, so no head+marker view and
+        // no budget here. Canonicalization stays as a security transform
+        // (well-formed Unicode, then credential redaction), never a cap.
+        // data.issue additionally carries the provider's body verbatim.
+        const issueBody = redactSensitiveText(toWellFormedUnicode(issue.body));
         const issueText = `Issue #${issue.number}: ${issue.title} [${issue.state}]\n\n${issueBody}\n\nLabels: ${issue.labels.join(", ") || "none"}\n${issue.url}`;
         return {
           success: true,

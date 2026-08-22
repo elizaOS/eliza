@@ -1,31 +1,13 @@
 /**
  * Verifies extractShortToolDeliverable.
- * Deterministic unit test; no runtime, no live model. Oversized blocks hit the
- * REAL durable content store (temp trajectory dir): the complete output is
- * persisted first and the returned view carries a resolvable continuation
- * marker instead of the old silent `undefined` drop.
+ * Deterministic unit test; no runtime, no live model. COMPLETENESS contract
+ * (maintainer close of #24549-#24553): the captured block is model-facing
+ * relay text, so it is returned COMPLETE whatever its size — no capped
+ * projection, no continuation-marker substitution. Canonicalization
+ * (well-formed Unicode + credential redaction) is the only transform.
  */
-import * as fs from "node:fs";
-import * as os from "node:os";
-import * as path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { readDurableContent } from "../services/durable-content-store";
+import { describe, expect, it } from "vitest";
 import { extractShortToolDeliverable } from "../services/sub-agent-router";
-
-let trajectoryDir: string;
-let savedTrajectoryEnv: string | undefined;
-
-beforeEach(() => {
-  trajectoryDir = fs.mkdtempSync(path.join(os.tmpdir(), "tool-deliverable-"));
-  savedTrajectoryEnv = process.env.ELIZA_TRAJECTORY_DIR;
-  process.env.ELIZA_TRAJECTORY_DIR = trajectoryDir;
-});
-
-afterEach(() => {
-  if (savedTrajectoryEnv === undefined) delete process.env.ELIZA_TRAJECTORY_DIR;
-  else process.env.ELIZA_TRAJECTORY_DIR = savedTrajectoryEnv;
-  fs.rmSync(trajectoryDir, { recursive: true, force: true });
-});
 
 const wrap = (body: string, title = "bash") =>
   `[tool output: ${title}]\n${body}\n[/tool output]`;
@@ -102,14 +84,15 @@ describe("extractShortToolDeliverable", () => {
     ).toBe("479001600");
   });
 
-  it("projects the last block when it exceeds the size cap (final result wins, reference-bearing)", () => {
+  it("relays an oversized last block COMPLETE (final result wins, no projection)", () => {
     const big = "a".repeat(2049);
     const out = extractShortToolDeliverable({
       response: `${wrap("small")}\n${wrap(big)}`,
     });
-    expect(out).toBeDefined();
-    expect(out).toContain("GET /api/orchestrator/content/");
-    expect(out?.startsWith("a".repeat(100))).toBe(true);
+    // COMPLETENESS regression: every byte of the final block arrives — no
+    // capped head, no continuation marker standing in for the omitted bytes.
+    expect(out).toBe(big);
+    expect(out).not.toContain("GET /api/orchestrator/content/");
   });
 
   it("returns undefined when there is no tool-output block", () => {
@@ -123,26 +106,14 @@ describe("extractShortToolDeliverable", () => {
     expect(extractShortToolDeliverable({ response: wrap(body) })).toBe(body);
   });
 
-  it("returns a durable-projection view for a body over the 2048-byte cap", () => {
-    const body = "a".repeat(2049);
+  it("relays a body over the former 2048-byte cap COMPLETE", () => {
+    const body = "b".repeat(65_536);
     const out = extractShortToolDeliverable({ response: wrap(body) });
-    expect(out).toBeDefined();
-    expect(out?.length).toBeLessThanOrEqual(2048);
-    const sha = out?.match(
-      /GET \/api\/orchestrator\/content\/([0-9a-f]{64})/,
-    )?.[1];
-    expect(sha).toBeDefined();
-    // The marker resolves: the COMPLETE output is in the durable store.
-    let stored = "";
-    let offset = 0;
-    for (;;) {
-      const window = readDurableContent(sha as string, { offset });
-      if (!window) throw new Error("durable record missing");
-      stored += window.text;
-      if (!window.hasMore) break;
-      offset = window.offset + Buffer.byteLength(window.text, "utf8");
-    }
-    expect(stored).toBe(body);
+    // COMPLETENESS regression for the retired projection site: the model-
+    // facing deliverable is byte-for-byte complete, marker-free.
+    expect(out).toBe(body);
+    expect(out).not.toContain("GET /api/orchestrator/content/");
+    expect(out).not.toContain("chars total");
   });
 
   it("returns undefined for an empty body", () => {

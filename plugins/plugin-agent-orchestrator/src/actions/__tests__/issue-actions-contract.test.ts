@@ -14,7 +14,6 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { readDurableContent } from "../../services/durable-content-store";
 import { handleIssueAction } from "../tasks";
 
 /** Narrows the action result — the seams under test always return one. */
@@ -298,7 +297,7 @@ describe("issue get body projection", () => {
     expect(result.text).not.toContain("/api/orchestrator/content/");
   });
 
-  it("an oversized body is durably persisted whole; the view names the resolver", async () => {
+  it("an oversized body reaches the result COMPLETE — no projection, no marker", async () => {
     const body = `HEAD-SENTINEL ${"lorem ipsum ".repeat(600)}TAIL-SENTINEL`;
     const service = { getIssue: vi.fn(async () => issue(9, body)) } as never;
     const result = must(
@@ -312,17 +311,12 @@ describe("issue get body projection", () => {
       ),
     );
     const text = result.text ?? "";
+    // Lossless contract: the model-facing result carries the whole body —
+    // both sentinels present, no head+marker substitution.
     expect(text).toContain("HEAD-SENTINEL");
-    // The marker names the REAL resolver route with the record's sha256.
-    const match = text.match(
-      /GET \/api\/orchestrator\/content\/([0-9a-f]{64})/,
-    );
-    expect(match).not.toBeNull();
-    // The complete body is recoverable from the durable store (lossless).
-    const sha = match?.[1] as string;
-    const stored = readDurableContent(sha, { limit: 10_000_000 });
-    expect(stored?.text).toBe(body);
-    // The structured payload still carries the full body verbatim.
+    expect(text).toContain("TAIL-SENTINEL");
+    expect(text).not.toContain("/api/orchestrator/content/");
+    // The structured payload carries the full body verbatim.
     expect((result.data as { issue: { body: string } }).issue.body).toBe(body);
   });
 });

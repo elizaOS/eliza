@@ -1,27 +1,11 @@
-/** Unit tests for extractAskedOutputDeliverable — the verbatim relay of a
- *  short plain child response when the user's ask requested output/results.
- *  Deterministic, no runtime; oversized paths hit the REAL durable content
- *  store via a temp trajectory dir. */
-import * as fs from "node:fs";
-import * as os from "node:os";
-import * as path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+/** Unit tests for extractAskedOutputDeliverable — the verbatim relay of the
+ *  child's plain response when the user's ask requested output/results.
+ *  Deterministic, no runtime. COMPLETENESS contract (maintainer close of
+ *  #24549-#24553): the asked-for output is model-facing relay text and is
+ *  returned COMPLETE whatever its size — no bounded view, no continuation
+ *  marker standing in for omitted bytes. */
+import { describe, expect, it } from "vitest";
 import { extractAskedOutputDeliverable } from "./sub-agent-router.js";
-
-let trajectoryDir: string;
-let savedTrajectoryEnv: string | undefined;
-
-beforeEach(() => {
-  trajectoryDir = fs.mkdtempSync(path.join(os.tmpdir(), "asked-output-"));
-  savedTrajectoryEnv = process.env.ELIZA_TRAJECTORY_DIR;
-  process.env.ELIZA_TRAJECTORY_DIR = trajectoryDir;
-});
-
-afterEach(() => {
-  if (savedTrajectoryEnv === undefined) delete process.env.ELIZA_TRAJECTORY_DIR;
-  else process.env.ELIZA_TRAJECTORY_DIR = savedTrajectoryEnv;
-  fs.rmSync(trajectoryDir, { recursive: true, force: true });
-});
 
 describe("extractAskedOutputDeliverable", () => {
   it("relays a short plain response for an output ask", () => {
@@ -69,25 +53,17 @@ describe("extractAskedOutputDeliverable", () => {
     ).toBe("42");
   });
 
-  it("projects an oversized response through the durable store when no sessionId exists", () => {
+  it("relays an oversized response COMPLETE (no bounded view, no marker)", () => {
+    const body = "x".repeat(65_536);
     const out = extractAskedOutputDeliverable(
-      { response: "x".repeat(65_536) },
+      { response: body },
       "run it and show me the output",
     );
-    expect(out).toBeDefined();
-    expect(out).toContain("GET /api/orchestrator/content/");
-    expect(out?.length).toBeLessThanOrEqual(2048);
-  });
-
-  it("references the session transcript for an oversized response with a sessionId", () => {
-    const out = extractAskedOutputDeliverable(
-      { response: "x".repeat(65_536) },
-      "run it and show me the output",
-      "session-123",
-    );
-    expect(out).toBeDefined();
-    expect(out).toContain("acpx-session-output:session-123");
-    expect(out?.length).toBeLessThanOrEqual(2048);
+    // COMPLETENESS regression for the retired projection/bounded-view site:
+    // the user asked for THE OUTPUT — every byte of it arrives.
+    expect(out).toBe(body);
+    expect(out).not.toContain("GET /api/orchestrator/content/");
+    expect(out).not.toContain("acpx-session-output:");
   });
 });
 
@@ -115,13 +91,12 @@ describe("lastProofBlockOutput", () => {
     expect(lastProofBlockOutput("```bash\n$ ls\n...\n```")).toBeUndefined();
   });
 
-  it("projects an oversized proof output instead of dropping it", () => {
-    const out = lastProofBlockOutput(
-      `\`\`\`bash\n$ run\n${"x".repeat(500)}\n\`\`\``,
-    );
-    expect(out).toBeDefined();
-    expect(out).toContain("GET /api/orchestrator/content/");
-    expect(out?.length).toBeLessThanOrEqual(400);
+  it("relays an oversized proof output COMPLETE (no projection marker)", () => {
+    const body = "x".repeat(50_000);
+    const out = lastProofBlockOutput(`\`\`\`bash\n$ run\n${body}\n\`\`\``);
+    // COMPLETENESS regression for the retired 400-byte projection site.
+    expect(out).toBe(body);
+    expect(out).not.toContain("GET /api/orchestrator/content/");
   });
 
   it("ignores fences without command lines", () => {

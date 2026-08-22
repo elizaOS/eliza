@@ -1,11 +1,14 @@
 /**
- * Durable-projection contracts of AcpService's bounded output surfaces
- * (prompt-integrity regression coverage): the 12,000-char terminal tool-output
- * envelope persists the complete value and carries the content resolver; the
- * stderr cap persists before slicing; the session/turn output windows and the
- * stopped-event payload report ring evictions with the durable continuation
- * marker instead of posing as complete. Real service instance with an
- * in-memory store and a real temp-dir durable content store — no mocks.
+ * Completeness contracts of AcpService's model-facing output surfaces
+ * (prompt-integrity regression coverage, post-rework): the terminal
+ * tool-output envelope ALWAYS carries the COMPLETE output (the retired
+ * durableProjection head+marker substitution is gone — a durable reference
+ * does not preserve the CURRENT model call), with a durable copy attached
+ * only as SEPARATE observability metadata; the stderr accumulator keeps the
+ * complete text (no tail substitution); the session/turn output windows
+ * remain caller-requested pagination with an explicit continuation contract.
+ * Real service instance with an in-memory store and a real temp-dir durable
+ * content store — no mocks.
  */
 import * as fs from "node:fs";
 import * as os from "node:os";
@@ -13,7 +16,7 @@ import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   AcpService,
-  capStderr,
+  appendCompleteStderr,
   captureTerminalToolOutput,
 } from "../services/acp-service.ts";
 import { readDurableContent } from "../services/durable-content-store.js";
@@ -81,8 +84,8 @@ function readAll(sha: string): string {
   return out;
 }
 
-describe("captureTerminalToolOutput (12k envelope projection)", () => {
-  it("persists oversized tool output whole and emits a resolver-bearing head", () => {
+describe("captureTerminalToolOutput (COMPLETE model-facing envelope)", () => {
+  it("emits the COMPLETE oversized output in the envelope, with the durable copy as separate metadata", () => {
     const full = "T".repeat(30_000);
     const captured = captureTerminalToolOutput(
       { id: "tool-1", title: "bash" },
@@ -90,72 +93,64 @@ describe("captureTerminalToolOutput (12k envelope projection)", () => {
       new Set<string>(),
     );
     expect(captured).toBeDefined();
-    expect(captured).toContain("[tool output: bash]");
-    expect(captured).toContain("[/tool output]");
-    // The bare, unresolvable truncation marker is gone.
-    expect(captured).not.toContain("[tool output truncated]");
-    const match = captured?.match(
-      /GET \/api\/orchestrator\/content\/([0-9a-f]{64})/,
-    );
-    expect(match).toBeTruthy();
-    // The complete output is recoverable through the named resolver.
-    expect(readAll(match?.[1] as string)).toBe(full);
-    // The projection body respects the envelope budget (head + marker).
-    const lines = captured?.split("\n") ?? [];
-    const body = lines.slice(1, -1).join("\n");
-    expect(body.length).toBeLessThanOrEqual(12_000);
-    expect(body.startsWith("TTTT")).toBe(true);
+    // The model-facing envelope is the COMPLETE text — no head+marker
+    // projection, no budget, no resolver substituted into model context.
+    expect(captured?.text).toBe(`[tool output: bash]\n${full}\n[/tool output]`);
+    expect(captured?.text).not.toContain("[tool output truncated");
+    expect(captured?.text).not.toContain("GET /api/orchestrator/content/");
+    // The durable copy is SEPARATE observability metadata, and it holds the
+    // complete text too (losslessly reassembled from the store).
+    expect(captured?.durableRef).toMatch(/^acpx-content:[0-9a-f]{64}$/);
+    const sha = captured?.durableRef?.slice("acpx-content:".length) as string;
+    expect(readAll(sha)).toBe(full);
   });
 
-  it("passes within-budget output through whole, with no reference", () => {
+  it("passes small output through whole, with no durable metadata copy", () => {
     const captured = captureTerminalToolOutput(
       { id: "tool-2", title: "echo" },
       "hello world",
       new Set<string>(),
     );
-    expect(captured).toContain("hello world");
-    expect(captured).not.toContain("GET /api/orchestrator/content/");
+    expect(captured?.text).toBe(
+      "[tool output: echo]\nhello world\n[/tool output]",
+    );
+    expect(captured?.text).not.toContain("GET /api/orchestrator/content/");
+    expect(captured?.durableRef).toBeUndefined();
   });
 });
 
-describe("capStderr (persist-before-slice)", () => {
-  it("persists the complete pre-slice stderr and keeps a marked byte-bounded tail", () => {
-    const full = `${"H".repeat(40_000)}${"T".repeat(40_000)}`; // > 64 KiB
-    const view = capStderr(full);
-    expect(
-      view.startsWith(
-        "[stderr tail — full stderr: GET /api/orchestrator/content/",
-      ),
-    ).toBe(true);
-    const sha = view.match(/content\/([0-9a-f]{64})\]/)?.[1] as string;
-    expect(readAll(sha)).toBe(full);
-    const tail = view.slice(view.indexOf("]\n") + 2);
-    expect(Buffer.byteLength(tail, "utf8")).toBeLessThanOrEqual(64 * 1024);
-    expect(full.endsWith(tail)).toBe(true);
+describe("appendCompleteStderr (complete accumulation, no tail substitution)", () => {
+  it("keeps an accumulation far past the old 64 KiB cap complete and verbatim", () => {
+    const head = "H".repeat(40_000);
+    const tail = "T".repeat(40_000);
+    const accumulated = appendCompleteStderr(head, tail); // > 64 KiB
+    expect(accumulated).toBe(`${head}${tail}`);
+    expect(accumulated).not.toContain("[stderr tail");
+    expect(accumulated).not.toContain("GET /api/orchestrator/content/");
   });
 
-  it("chains overflow records so successive persists cover the whole stream", () => {
-    const first = capStderr("A".repeat(70_000));
-    const firstSha = first.match(/content\/([0-9a-f]{64})\]/)?.[1] as string;
-    const second = capStderr(`${first}${"B".repeat(70_000)}`);
-    const secondSha = second.match(/content\/([0-9a-f]{64})\]/)?.[1] as string;
-    expect(secondSha).not.toBe(firstSha);
-    // The second record embeds the first record's marker — a resolvable chain.
-    expect(readAll(secondSha)).toContain(`content/${firstSha}]`);
+  it("keeps every byte across successive oversized appends", () => {
+    let acc = "";
+    for (let i = 0; i < 4; i++) {
+      acc = appendCompleteStderr(acc, `${String(i)}:${"x".repeat(70_000)}\n`);
+    }
+    expect(acc.length).toBe(4 * (70_000 + 3));
+    for (let i = 0; i < 4; i++) expect(acc).toContain(`${String(i)}:x`);
+    expect(acc).not.toContain("[stderr");
   });
 
   it("returns small stderr verbatim", () => {
-    expect(capStderr("small stderr")).toBe("small stderr");
+    expect(appendCompleteStderr("small ", "stderr")).toBe("small stderr");
   });
 });
 
-describe("AcpService session output windows", () => {
+describe("AcpService session output windows (caller-requested pagination)", () => {
   it("marks a partial in-memory window with the continuation resolver", async () => {
     const { svc, internals } = makeService();
     internals.outputBuffers.set("s1", ["a\n", "b\n", "c\n"]);
     // A complete read carries no marker.
     expect(await svc.getSessionOutput("s1", 10)).toBe("a\nb\nc\n");
-    // A windowed read names the omission and the recovery state.
+    // A caller-requested window names the omission and the recovery state.
     const windowed = await svc.getSessionOutput("s1", 2);
     expect(windowed).toContain(
       "[session output tail: last 2 of 3 captured chunks",
@@ -238,7 +233,7 @@ describe("AcpService session output windows", () => {
   });
 });
 
-describe("durable persist failure honesty (no silent partial views)", () => {
+describe("durable store fault (envelope stays complete; only metadata is lost)", () => {
   /** Point the trajectory dir at a regular FILE so persistDurableContent's
    *  mkdir fails with ENOTDIR — a real store fault, not a mock. */
   function breakDurableStore(): void {
@@ -247,7 +242,7 @@ describe("durable persist failure honesty (no silent partial views)", () => {
     process.env.ELIZA_TRAJECTORY_DIR = blocker;
   }
 
-  it("captureTerminalToolOutput emits the COMPLETE output inline when the persist fails", () => {
+  it("captureTerminalToolOutput emits the COMPLETE output with no durableRef when the persist fails", () => {
     breakDurableStore();
     const full = "F".repeat(30_000);
     const captured = captureTerminalToolOutput(
@@ -256,22 +251,21 @@ describe("durable persist failure honesty (no silent partial views)", () => {
       new Set<string>(),
     );
     expect(captured).toBeDefined();
-    // Nothing dropped: the whole 30k-char output is present.
-    expect(captured).toContain(full);
-    // The fault is declared, and no truncation marker poses as a bounded view.
-    expect(captured).toContain("durable content persist failed");
-    expect(captured).not.toContain("[tool output truncated");
-    expect(captured).not.toContain("GET /api/orchestrator/content/");
+    // Nothing model-facing depends on the store: the whole output is present,
+    // byte for byte, and only the observability metadata is missing.
+    expect(captured?.text).toBe(`[tool output: bash]\n${full}\n[/tool output]`);
+    expect(captured?.text).not.toContain("[tool output truncated");
+    expect(captured?.text).not.toContain("GET /api/orchestrator/content/");
+    expect(captured?.durableRef).toBeUndefined();
   });
 
-  it("capStderr returns the COMPLETE stderr when the persist fails", () => {
+  it("appendCompleteStderr keeps the COMPLETE stderr regardless of store health", () => {
     breakDurableStore();
-    const full = `${"H".repeat(40_000)}${"T".repeat(40_000)}`; // > 64 KiB cap
-    const view = capStderr(full);
-    expect(view.startsWith("[stderr durable persist failed")).toBe(true);
-    // The head is NOT dropped: the complete stderr follows the declaration.
-    expect(view.endsWith(full)).toBe(true);
-    expect(view).not.toContain("GET /api/orchestrator/content/");
+    const head = "H".repeat(40_000);
+    const tail = "T".repeat(40_000);
+    const accumulated = appendCompleteStderr(head, tail); // > old 64 KiB cap
+    expect(accumulated).toBe(`${head}${tail}`);
+    expect(accumulated).not.toContain("GET /api/orchestrator/content/");
   });
 });
 

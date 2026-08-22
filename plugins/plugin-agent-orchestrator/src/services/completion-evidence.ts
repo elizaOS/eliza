@@ -25,22 +25,20 @@
  *   - **ARTIFACTS** — references to screenshot/trajectory artifacts found on the
  *     task/session, so UI and agent-behavior criteria have something to cite.
  *
- * Near-pure: the caller gathers the inputs (durable store + live ACP session
- * metadata) and hands them in; the ONLY IO is the durable-content store, which
- * persists the complete value whenever a bounded view must drop bytes so every
- * emitted marker names a resolvable record
- * (`GET /api/orchestrator/content/<sha256>`) instead of a dead-end textual
- * note. The whole assembly is null-safe; anything bounded is
- * reference-bearing, never silently cut.
+ * Everything assembled here reaches the verifier's model call, so every text
+ * that enters a section is passed COMPLETE — no head+marker substitution, no
+ * view budget. Near-pure: the caller gathers the inputs and hands them in; the
+ * ONLY IO is the durable-content store, used solely to disclose an UPSTREAM
+ * capture-level cut (a change set the git read buffer already truncated) by
+ * persisting the fullest captured record and naming its resolver
+ * (`GET /api/orchestrator/content/<sha256>`) — never to bound the evidence
+ * text itself.
  *
  * @module services/completion-evidence
  */
 
 import { toWellFormedUnicode } from "@elizaos/core";
-import {
-  durableProjection,
-  persistDurableContent,
-} from "./durable-content-store.js";
+import { persistDurableContent } from "./durable-content-store.js";
 import type { WorkspaceChangeSet } from "./workspace-diff.js";
 
 /** One recorded signal (a durable event or sub-agent message) the assembler
@@ -83,8 +81,8 @@ export interface EvidenceArtifactRef {
 
 /**
  * Captured stdout from the sub-agent's tool runs, split by tool class. Each
- * field is the raw (already-bounded) output of a `vitest`/`tsc`/`biome`-style
- * run mined from the recorded ACP tool events, so the verifier can read the
+ * field is the complete mined output of a `vitest`/`tsc`/`biome`-style
+ * run from the recorded ACP tool events, so the verifier can read the
  * actual run result rather than the agent's narration of it. `raw` is a
  * catch-all for tool output that matched a build/test marker but couldn't be
  * confidently classed as test/build/lint.
@@ -147,7 +145,7 @@ export interface CompletionEvidenceBundle {
   unverifiedClaimedFiles?: Array<{
     path: string;
     reason: "rejected-write" | "no-write-observed";
-}>;
+  }>;
   /** Files verified by direct fs inspection of the session workdir (exists +
    *  mtime after session start) when the structured tool ledger is absent —
    *  observation-grade evidence for adapters that fold tool results into
@@ -156,10 +154,10 @@ export interface CompletionEvidenceBundle {
   /** Check classes runnable where the verified deliverable lives (tooling
    *  manifests observed in its own directories); absent = unknown. */
   checkSurfaces?: { typecheck: boolean; lint: boolean; test: boolean };
-  /** Contents of small fs-verified static files, READ BY THE
+  /** COMPLETE contents of fs-verified static text files, READ BY THE
    *  ORCHESTRATOR from the session workdir — so content criteria ("the CSS
-   *  includes …") are judged against the real file text instead of failing as
-   *  unproven narration (#20794 reed-marsh). */
+   *  includes …") are judged against the real, whole file text instead of
+   *  failing as unproven narration (#20794 reed-marsh). */
   fsVerifiedFileContents?: Array<{ path: string; content: string }>;
   /** Screenshot artifact paths found on the task/session. */
   screenshots: string[];
@@ -239,23 +237,6 @@ function extractToolLines(text: string, seen: Set<string>): string[] {
   return out;
 }
 
-/** Char budget for one captured `[tool output]` envelope body inside the raw
- *  bucket. Oversized bodies are persisted whole to the durable content store
- *  FIRST; the emitted head ends with a marker naming
- *  `GET /api/orchestrator/content/<sha256>` so nothing is silently cut. */
-const ENVELOPE_VIEW_BUDGET_CHARS = 2_000;
-
-function projectEnvelopeBody(inner: string): string {
-  try {
-    return durableProjection(inner, ENVELOPE_VIEW_BUDGET_CHARS).view;
-  } catch {
-    // error-policy:J4 a durable-store write failure must not sink evidence
-    // assembly — fall back to the COMPLETE body (uncapped) rather than
-    // reintroducing a silent cut.
-    return inner;
-  }
-}
-
 /**
  * Classify the build/test/typecheck/lint output mined from recorded tool
  * signals into a {@link ToolOutputEvidence} bucket per tool class, so the
@@ -292,11 +273,11 @@ export function classifyToolOutput(
       const inner = (match[1] ?? "").trim();
       if (inner && !seen.has(inner)) {
         seen.add(inner);
-        // A long envelope body is persisted WHOLE to the durable content
-        // store before the bounded head enters the bucket — the head's
-        // marker names the resolver route, so a long test run is
-        // recoverable instead of silently cut at a bare slice.
-        buckets.raw.push(projectEnvelopeBody(inner));
+        // The envelope body enters the bucket COMPLETE. This text reaches the
+        // judge's model call, and the repository contract requires the model
+        // to receive the full content — a capped head with a continuation
+        // reference does not make the CURRENT model call lossless.
+        buckets.raw.push(inner);
       }
     }
     const lines = extractToolLines(signal.text, seen);
@@ -573,14 +554,14 @@ export function buildCompletionEvidenceString(
   // judged against this, not against the worker's description of it.
   const fileContents = bundle.fsVerifiedFileContents ?? [];
   if (fileContents.length > 0) {
-    // Inclusion rule named in the header: text files are inlined (whole when
-    // they fit the per-file budget; an oversized file's view ends with a
-    // durable continuation reference). Binary assets are NOT inlined — they
-    // remain listed under FS-VERIFIED FILES — so a missing entry here means
-    // "not a text file", never "does not exist".
+    // Inclusion rule named in the header: text files are inlined WHOLE —
+    // this section is judge input, so no per-file budget applies. Binary
+    // assets are NOT inlined — they remain listed under FS-VERIFIED FILES —
+    // so a missing entry here means "not a text file", never "does not
+    // exist".
     sections.push(
       [
-        "## FS-VERIFIED FILE CONTENTS (read by the orchestrator from the session workdir; text files only — binary assets stay listed under FS-VERIFIED FILES without inlined bytes; an oversized file's view ends with a durable continuation reference)",
+        "## FS-VERIFIED FILE CONTENTS (complete file text read by the orchestrator from the session workdir; text files only — binary assets stay listed under FS-VERIFIED FILES without inlined bytes)",
         ...fileContents.map(
           (entry) => `--- ${entry.path} ---\n${entry.content}`,
         ),

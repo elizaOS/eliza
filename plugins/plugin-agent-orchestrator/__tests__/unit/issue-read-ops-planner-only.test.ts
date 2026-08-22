@@ -151,6 +151,43 @@ describe("manage_issues planner-only read settlement (#18244)", () => {
     );
   });
 
+  it("passes an oversized issue body COMPLETE to the planner — no projection marker, no budget", async () => {
+    // Repository contract (maintainer review on #24549–#24553): action-result
+    // text is model-facing, so the COMPLETE body must arrive — a capped head
+    // plus a continuation marker is not lossless for this model call.
+    const bigBody = `body-head ${"b".repeat(6000)} body-tail-sentinel`;
+    fakeWorkspaceService.getIssue.mockResolvedValueOnce({
+      number: 42,
+      title: "Fix the thing",
+      state: "open",
+      labels: ["bug"],
+      body: bigBody,
+      url: "https://github.com/owner/repo/issues/42",
+    });
+    const callback = vi.fn(async () => []);
+    const result = await callHandler(
+      {
+        action: "manage_issues",
+        issueAction: "get",
+        repo: "owner/repo",
+        issueNumber: 42,
+      },
+      callback,
+    );
+
+    expectPlannerOnlyRead(result);
+    // Every byte of the body rides in the planner-visible text (well past the
+    // retired 4,000-char budget), and no durable-projection marker replaces
+    // the tail. data.issue carries the complete body too.
+    expect(result.text).toContain(bigBody);
+    expect(result.text).toContain("body-tail-sentinel");
+    expect(result.text).not.toContain("GET /api/orchestrator/content/");
+    expect(result.text).not.toContain("chars total — full content");
+    expect(result.data?.issue).toEqual(
+      expect.objectContaining({ number: 42, body: bigBody }),
+    );
+  });
+
   it("stays silent for lookup and delivers only the follow-up mutation", async () => {
     const callback = vi.fn(async () => []);
     const readResult = await callHandler(

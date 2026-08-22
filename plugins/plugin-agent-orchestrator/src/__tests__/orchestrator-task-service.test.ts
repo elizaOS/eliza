@@ -18,19 +18,18 @@ import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AcpService } from "../services/acp-service.ts";
 import { ADMIN_STOP_META_KEY } from "../services/admin-stop-marker.ts";
-import { readDurableContent } from "../services/durable-content-store.ts";
 import { MAX_AUTO_VERIFY_ATTEMPTS } from "../services/goal-llm-verifier.ts";
 import {
   composeVerifyEscalationNotice,
   OrchestratorTaskService,
 } from "../services/orchestrator-task-service.ts";
 import { OrchestratorTaskStore } from "../services/orchestrator-task-store.ts";
-import { CodingWorkspaceService } from "../services/workspace-service.ts";
 import type {
   SessionInfo,
   SpawnOptions,
   SpawnResult,
 } from "../services/types.ts";
+import { CodingWorkspaceService } from "../services/workspace-service.ts";
 
 type EventHandler = (sessionId: string, event: string, data: unknown) => void;
 
@@ -724,23 +723,14 @@ describe("phrased park notice receives the complete missing list", () => {
   });
 });
 
-describe("completionSummary durable projection", () => {
-  let trajDir: string;
-  let savedTrajEnv: string | undefined;
-
-  beforeEach(() => {
-    trajDir = fs.mkdtempSync(path.join(os.tmpdir(), "task-svc-traj-"));
-    savedTrajEnv = process.env.ELIZA_TRAJECTORY_DIR;
-    process.env.ELIZA_TRAJECTORY_DIR = trajDir;
-  });
-
-  afterEach(() => {
-    if (savedTrajEnv === undefined) delete process.env.ELIZA_TRAJECTORY_DIR;
-    else process.env.ELIZA_TRAJECTORY_DIR = savedTrajEnv;
-    fs.rmSync(trajDir, { recursive: true, force: true });
-  });
-
-  it("stores an oversized final response as a marker-bearing preview whose route resolves to the full text", async () => {
+describe("completionSummary completeness", () => {
+  // Repo contract (maintainer ruling closing #24549–#24553): the session's
+  // completionSummary stamp feeds DTO/task-history surfaces that can be
+  // rendered into prompts and swarm synthesis, so it is model-facing metadata
+  // and must hold the COMPLETE final response — no capped preview, no
+  // GET /api/orchestrator/content/<sha256> marker. Internal storage is not a
+  // hard boundary.
+  it("stores an oversized final response COMPLETE, with no content-route marker", async () => {
     const { acp, store, service } = await harness();
     const detail = await store.createTask({
       title: "long-finish",
@@ -762,18 +752,8 @@ describe("completionSummary durable projection", () => {
       )?.completionSummary;
     }
 
-    expect(summary).toBeDefined();
-    expect((summary as string).length).toBeLessThanOrEqual(2_000);
-    const sha = /\/api\/orchestrator\/content\/([0-9a-f]{64})/u.exec(
-      summary as string,
-    )?.[1];
-    expect(
-      sha,
-      "preview must carry the resolvable content route",
-    ).toBeDefined();
-    expect(readDurableContent(sha as string, { limit: 1_048_576 })?.text).toBe(
-      fullResponse,
-    );
+    expect(summary).toBe(fullResponse);
+    expect(summary).not.toMatch(/\/api\/orchestrator\/content\/[0-9a-f]{64}/u);
     // The COMPLETE response also rides the durable task_complete event row.
     const event = (await store.getTask(taskId))?.events.find(
       (row) => row.eventType === "task_complete",
@@ -801,6 +781,56 @@ describe("completionSummary durable projection", () => {
       )?.completionSummary;
     }
     expect(summary).toBe("all done");
+  });
+});
+
+describe("judge RUN OUTPUT completeness", () => {
+  // Maintainer ruling closing #24549–#24553, named explicitly for this site:
+  // verification must receive the COMPLETE accepted result or fail explicitly
+  // before dispatch — a later continuation handle does not make a partial
+  // judge input lossless. The former 16 KB durableProjection is gone: the
+  // captured session tail reaches the evidence bundle whole.
+  it("passes an oversized session output to the evidence bundle COMPLETE, canonicalized but uncapped", async () => {
+    const { acp, store, service } = await harness();
+    const detail = await store.createTask({
+      title: "big-output",
+      goal: "goal",
+      roomId: ROOM,
+    });
+    const taskId = detail.task.id;
+    await service.spawnAgentForTask(taskId);
+    const sessionId = acp.listSessions()[0]?.id as string;
+    const secret = "sk-abcdef0123456789abcdef";
+    const bigTail = `build line ${"o".repeat(40_000)} FINAL-LINE-MARKER`;
+    const rawOutput = `API_KEY=${secret}\n${bigTail}`;
+    (
+      acp as unknown as {
+        getSessionOutput: (id: string, lines?: number) => Promise<string>;
+      }
+    ).getSessionOutput = async () => rawOutput;
+
+    const bundle = await (
+      service as unknown as {
+        collectEvidenceBundle: (
+          t: string,
+          s: string,
+          f: string,
+        ) => Promise<{ runOutput?: string }>;
+      }
+    ).collectEvidenceBundle(taskId, sessionId, "done");
+
+    expect(bundle.runOutput).toBeDefined();
+    const runOutput = bundle.runOutput as string;
+    // Complete: well past the former 16_000 budget, tail intact.
+    expect(runOutput.length).toBeGreaterThan(16_000);
+    expect(runOutput).toContain(bigTail);
+    expect(runOutput).toContain("FINAL-LINE-MARKER");
+    // No head+marker substitution.
+    expect(runOutput).not.toMatch(
+      /\/api\/orchestrator\/content\/[0-9a-f]{64}/u,
+    );
+    // Canonicalization stays — security transform, not a cap.
+    expect(runOutput).not.toContain(secret);
   });
 });
 

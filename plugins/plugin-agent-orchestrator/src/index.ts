@@ -25,11 +25,11 @@ import {
   isLocalCodeExecutionAllowed,
   ModelType,
   promoteSubactionsToActions,
+  redactSensitiveText,
   requireConfirmedSendHandlerDelivery,
   toWellFormedUnicode,
   truncateWellFormed,
 } from "@elizaos/core";
-import { durableProjection } from "./services/durable-content-store.js";
 import { activateFollowUpOrigin } from "./services/follow-up-origin.js";
 
 // Register coding-agent HTTP routes with the runtime route registry.
@@ -2349,32 +2349,15 @@ export function registerProgressHook(runtime: IAgentRuntime): () => void {
     // like a clean sentence.
     const trimmed = buf.trim().replace(/[\s:;,\-—–]+$/, "");
     if (!trimmed) return;
-    // 800-char chat VIEW of mid-run narration. Sub-agents sometimes dump
-    // multi-paragraph results through narration chunks; posting those raw
-    // produces a wall of text that duplicates the final summary the response
-    // evaluator builds. durableProjection persists the COMPLETE flushed
-    // narration to the content-addressed store FIRST and the partial view's
-    // marker names the real resolver route
-    // (GET /api/orchestrator/content/<sha256>) — an exact record of this
-    // flush, independent of transcript interleaving (#24262 close-out).
-    let narrationView: string;
-    try {
-      narrationView = durableProjection(trimmed, 800).view;
-    } catch (err) {
-      // error-policy:J4 a store write failure must never silently drop bytes
-      // whose durable record does not exist — degrade to posting the COMPLETE
-      // narration instead of a cut view.
-      runtime.logger?.warn?.(
-        {
-          src: "@elizaos/plugin-agent-orchestrator",
-          sessionId,
-          error: err instanceof Error ? err.message : String(err),
-        },
-        "narration flush: durable store write failed; posting complete narration",
-      );
-      narrationView = toWellFormedUnicode(trimmed);
-    }
-    const text = `💬 [${label}] ${narrationView}`;
+    // COMPLETE mid-run narration. This flush lands in the origin room, where
+    // it can re-enter planner/evaluator context, so the repository contract
+    // (maintainer review on #24549–#24553) applies: model-facing text is
+    // passed whole — no head+marker projection, no character budget. An
+    // internal chat post is not a hard boundary. Canonicalization stays as a
+    // security transform (well-formed Unicode, then credential redaction),
+    // never a cap.
+    const narration = redactSensitiveText(toWellFormedUnicode(trimmed));
+    const text = `💬 [${label}] ${narration}`;
     // Reset heartbeat clock — message just posted, no need for a status
     // tick within the next heartbeat interval.
     lastHeartbeatPostAt.set(sessionId, Date.now());

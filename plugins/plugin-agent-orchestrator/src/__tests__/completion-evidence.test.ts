@@ -4,8 +4,9 @@
  * ledger-verified files vs unverified file claims. The judge only ever sees
  * the serialized string, so the section wording IS the contract. The durable
  * content store runs against a real temp filesystem (ELIZA_TRAJECTORY_DIR)
- * for the prompt-integrity pins: bounded views must be reference-bearing and
- * losslessly recoverable, never silent cuts.
+ * for the prompt-integrity pins: model-facing evidence text must arrive
+ * COMPLETE, and the only durable-reference marker left is the disclosure of
+ * an UPSTREAM capture-level changeset cut, whose record must resolve whole.
  */
 import * as fs from "node:fs";
 import * as os from "node:os";
@@ -15,8 +16,8 @@ import {
   appendCompletionEvidenceSection,
   buildCompletionEvidenceString,
   buildEvidenceStringFromInput,
-  classifyToolOutput,
   type CompletionEvidenceBundle,
+  classifyToolOutput,
   renderChangeSetBody,
 } from "../services/completion-evidence.js";
 import { readDurableContent } from "../services/durable-content-store.js";
@@ -119,24 +120,20 @@ describe("buildCompletionEvidenceString — unverified file claims (#16523)", ()
   });
 });
 
-describe("classifyToolOutput — prompt-integrity (no silent cuts)", () => {
-  it("a long [tool output] envelope is persisted whole; the bucket view names the resolver", () => {
+describe("classifyToolOutput — prompt-integrity (complete model input)", () => {
+  it("a long [tool output] envelope enters the raw bucket COMPLETE — no head+marker substitution", () => {
     const body = `test run FAILED\n${"x".repeat(6_000)}`;
     const out = classifyToolOutput([
       { text: `[tool output: bun test]${body}[/tool output]`, source: "run" },
     ]);
     const raw = out?.raw ?? "";
-    // Bounded view carries the continuation marker naming the REAL route…
-    expect(raw).toContain("/api/orchestrator/content/");
-    // …and the marker's promise is real: the COMPLETE body resolves.
-    const window = readDurableContent(extractContentSha(raw), {
-      limit: 1_048_576,
-    });
-    expect(window?.text).toBe(body);
-    expect(window?.hasMore).toBe(false);
+    // The judge's model call must receive the full body, byte for byte…
+    expect(raw).toContain(body);
+    // …with no capped-projection continuation marker in its place.
+    expect(raw).not.toContain("/api/orchestrator/content/");
   });
 
-  it("a short envelope flows whole with no marker and no persistence", () => {
+  it("a short envelope flows whole with no marker", () => {
     const out = classifyToolOutput([
       { text: "[tool output: python3 squares.py]1 4 9 16[/tool output]" },
     ]);

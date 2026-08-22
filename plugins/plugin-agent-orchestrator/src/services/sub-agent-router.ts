@@ -12,11 +12,7 @@
  * narration, so one task yields one user-facing completion rather than one per
  * lineage generation.
  */
-import {
-  boundedContentView,
-  orchestratorContentRef,
-} from "./durable-content.js";
-import { durableProjection } from "./durable-content-store.js";
+import { persistDurableContent } from "./durable-content-store.js";
 import { redactLoopbackUrls } from "./loopback-urls.js";
 
 export { redactLoopbackUrls } from "./loopback-urls.js";
@@ -37,6 +33,7 @@ import type {
 import {
   inspectSendHandlerResult,
   MESSAGE_SOURCE_SUB_AGENT,
+  redactSensitiveText,
   requireConfirmedSendHandlerDelivery,
   Service,
   ServiceType,
@@ -1944,9 +1941,14 @@ export class SubAgentRouter extends Service {
     // set and no verified URL, composeNarration→stripToolTranscript has just
     // deleted it from `text`. Recover the captured block from the RAW response
     // (before stripping) so the parent relays it verbatim instead of replying
-    // with an empty completion. Gated to a single short block so multi-KB
-    // transcripts stay on the model-rendered (summarized) path.
+    // with an empty completion. The recovered block relays COMPLETE whatever
+    // its size — deliverables are model-facing and never capped.
     let deliverable: string | undefined;
+    // Observability twin of an oversized deliverable: the complete text is
+    // ALSO persisted to the durable content store and its reference travels
+    // as a SEPARATE metadata field next to the complete relay text. Never a
+    // substitute for bytes — the visible/model text stays complete.
+    let deliverableContentRef: string | undefined;
     // Capture the deliverable even when files changed: a "do X and report the
     // output" task that also writes a file must still surface the output, not
     // only the diff summary. The verifiedUrls path keeps its dedicated handling.
@@ -1960,7 +1962,7 @@ export class SubAgentRouter extends Service {
               ?.initialTask,
           ),
         );
-        deliverable = extractAskedOutputDeliverable(data, ask, sessionId);
+        deliverable = extractAskedOutputDeliverable(data, ask);
       }
       if (deliverable === undefined) {
         // Verify-lap completions bury the answer under criteria-proof fences;
@@ -1980,30 +1982,49 @@ export class SubAgentRouter extends Service {
             !head.includes("[tool output") &&
             !/https?:\/\//.test(head)
           ) {
-            // The answer head IS the user's answer. When it exceeds the
-            // chat-verbatim budget it is no longer silently abandoned for the
-            // (paraphrase-prone) summarized path: durableProjection persists
-            // the COMPLETE head first and relays a view whose marker names
-            // GET /api/orchestrator/content/<sha256>.
-            deliverable =
-              Buffer.byteLength(head, "utf8") <= 400
-                ? head
-                : projectedDeliverableView(head, 400);
+            // The answer head IS the user's answer — relayed COMPLETE,
+            // whatever its size. The former capped durableProjection view was
+            // ruled invalid for model-facing text (maintainer close of
+            // #24549-#24553): a continuation reference does not make the
+            // CURRENT relay lossless. Canonicalization (well-formed +
+            // credential redaction) stays — a security transform, not a cap.
+            deliverable = canonicalDeliverable(head);
           } else {
             deliverable = lastProofBlockOutput(trimmed);
           }
         }
       }
-      if (deliverable !== undefined && !isDurableProjectionView(deliverable)) {
+      if (deliverable !== undefined) {
         // Whatever branch produced it: a verify-lap deliverable may carry the
         // criteria-proof checklist after the answer — chat gets the answer,
-        // not the ls/diff evidence (live 2026-08-21). Skipped for projected
-        // views: trimming would sever the trailing continuation marker from
-        // the durably stored record it names.
+        // not the ls/diff evidence (live 2026-08-21). This is answer
+        // EXTRACTION (selecting the deliverable out of the child's proof
+        // scaffolding), not a size cap — the selected answer itself is
+        // always relayed complete.
         const proofAt = deliverable.search(/\n(?:Evidence:\s*\n)?- \[x\] /);
         if (proofAt > 0) {
           const head = deliverable.slice(0, proofAt).trim();
           if (head) deliverable = head;
+        }
+      }
+      // Oversized deliverables additionally get a durable observability
+      // record: persist the COMPLETE text and carry the content reference as
+      // separate metadata (`subAgentDeliverableContentRef`) beside the
+      // complete relay text. Failure is non-fatal — nothing is being dropped
+      // from the relay, so no durable record is required before dispatch.
+      if (
+        deliverable !== undefined &&
+        Buffer.byteLength(deliverable, "utf8") > MAX_VERBATIM_DELIVERABLE_BYTES
+      ) {
+        try {
+          deliverableContentRef = persistDurableContent(deliverable).ref;
+        } catch (err) {
+          // error-policy:J4 observability-only persistence; the complete
+          // deliverable still relays.
+          this.log("warn", "durable deliverable persistence failed", {
+            sessionId,
+            error: err instanceof Error ? err.message : String(err),
+          });
         }
       }
       // Kept at warn deliberately: plugin info/debug never reaches bot.log
@@ -2422,6 +2443,11 @@ export class SubAgentRouter extends Service {
               ? { subAgentVerifiedUrls: verifiedUrls }
               : {}),
             ...(deliverable ? { subAgentDeliverable: deliverable } : {}),
+            // Durable observability reference for an oversized deliverable —
+            // metadata BESIDE the complete text above, never a stand-in.
+            ...(deliverableContentRef
+              ? { subAgentDeliverableContentRef: deliverableContentRef }
+              : {}),
             ...(finishReason ? { subAgentFinishReason: finishReason } : {}),
             ...(origin.userId ? { originUserId: origin.userId } : {}),
             ...(origin.parentMessageId
@@ -4582,42 +4608,28 @@ function normalizeFinishReason(
 // empty-title and unterminated blocks, which the router never emitted but which
 // leaked on the synthesis path.
 
-// Maximum size of a captured tool-output block we will relay verbatim. Above
-// this, the deliverable becomes a durable-store projection: the COMPLETE
-// output is persisted first and a bounded view with a resolvable continuation
-// marker is relayed instead of being dumped raw to the user.
+// Threshold above which a relayed deliverable ALSO gets a durable
+// observability record (persistDurableContent + `subAgentDeliverableContentRef`
+// metadata). NOT a relay cap: deliverables are model-facing and always relay
+// COMPLETE — the former durableProjection substitution (capped head +
+// continuation marker) was ruled invalid for model-facing text by the
+// maintainer close of #24549-#24553.
 const MAX_VERBATIM_DELIVERABLE_BYTES = 2048;
 
-// Marker fragment every durableProjection view carries; used to recognize a
-// projected deliverable so post-processing never severs the continuation
-// marker from the record it names.
-const DURABLE_CONTENT_MARKER = "GET /api/orchestrator/content/";
-
-export function isDurableProjectionView(text: string): boolean {
-  return text.includes(DURABLE_CONTENT_MARKER);
-}
-
-/** Bounded deliverable view whose omitted bytes are recoverable through the
- *  durable content store (persist-first, marker names the resolver route).
- *  On a store WRITE failure the complete content is returned WHOLE — the
- *  prompt-integrity invariant forbids dropping bytes with no durable record. */
-function projectedDeliverableView(full: string, budgetChars: number): string {
-  try {
-    return durableProjection(full, budgetChars).view;
-  } catch {
-    // error-policy:J4 store failure degrades to the COMPLETE value, never a cut.
-    return toWellFormedUnicode(full);
-  }
+/** Security canonicalization for a model-facing deliverable: well-formed
+ *  Unicode, then credential redaction — the same transform the durable store
+ *  applies, so the relayed text and its stored observability twin agree. A
+ *  TRANSFORM, never a cap: the complete text comes back regardless of size. */
+function canonicalDeliverable(full: string): string {
+  return redactSensitiveText(toWellFormedUnicode(full));
 }
 
 // Recover the deliverable when it is the sub-agent's printed/tool output and
 // composeNarration→stripToolTranscript has deleted it. Extracts the inner body
 // of the LAST non-empty `[tool output: …] … [/tool output]` block from the RAW
-// response (the same envelope captureTerminalToolOutput emits). A short block
-// (≤2KB) is returned verbatim; an oversized block is returned as a durable
-// projection — persisted whole, bounded view with a resolvable continuation
-// marker — instead of being silently abandoned to the summarized path, which
-// stripToolTranscript then deleted entirely (the >2KB output reached nobody).
+// response (the same envelope captureTerminalToolOutput emits). The block is
+// returned COMPLETE whatever its size — it is model-facing relay text; an
+// oversized block is canonicalized (well-formed + redacted), never capped.
 export function extractShortToolDeliverable(data: unknown): string | undefined {
   const response =
     pickPayloadString(data, "response") ?? pickPayloadString(data, "finalText");
@@ -4631,8 +4643,8 @@ export function extractShortToolDeliverable(data: unknown): string | undefined {
   // non-empty block is the sub-agent's final result, so surface it verbatim:
   // a weak coding model routinely truncates that result in its own prose
   // (relays "479" for a captured "479001600"), and the ground-truth tool
-  // output must win over the paraphrase. A block over the size cap is a
-  // transcript dump, not a deliverable — fall back to the summarized path.
+  // output must win over the paraphrase. An oversized block relays COMPLETE
+  // (canonicalized, never capped) — model-facing text takes no projection.
   for (let i = blocks.length - 1; i >= 0; i--) {
     const inner = blocks[i]
       .replace(/^\[tool output:[^\]]*\]/, "")
@@ -4644,7 +4656,7 @@ export function extractShortToolDeliverable(data: unknown): string | undefined {
     const deliverable = shellTranscriptStdout(inner) ?? inner;
     return Buffer.byteLength(deliverable, "utf8") >
       MAX_VERBATIM_DELIVERABLE_BYTES
-      ? projectedDeliverableView(deliverable, MAX_VERBATIM_DELIVERABLE_BYTES)
+      ? canonicalDeliverable(deliverable)
       : deliverable;
   }
   return undefined;
@@ -4699,11 +4711,11 @@ export function lastProofBlockOutput(response: string): string | undefined {
     // elided this output — relaying or projecting it would present a lossy
     // source as the run's stdout, so an older complete block is preferred.
     if (!output || output.includes("...")) continue;
-    // Oversized verify-lap stdout is the user's answer too: persist it whole
-    // and relay a durable-projection view instead of skipping to a stale
+    // Oversized verify-lap stdout is the user's answer too: relay it
+    // COMPLETE (canonicalized, never capped) instead of skipping to a stale
     // block / leaving the paraphrase ("479" for "479001600") to ship.
     if (Buffer.byteLength(output, "utf8") > 400) {
-      return projectedDeliverableView(output, 400);
+      return canonicalDeliverable(output);
     }
     return output;
   }
@@ -4713,7 +4725,6 @@ export function lastProofBlockOutput(response: string): string | undefined {
 export function extractAskedOutputDeliverable(
   data: unknown,
   userAsk: string,
-  sessionId?: string,
 ): string | undefined {
   if (!OUTPUT_ASK_RE.test(userAsk)) return undefined;
   const response =
@@ -4723,22 +4734,13 @@ export function extractAskedOutputDeliverable(
   if (Buffer.byteLength(trimmed, "utf8") <= MAX_VERBATIM_DELIVERABLE_BYTES) {
     return trimmed;
   }
-  // The user asked for THE OUTPUT and it is oversized: a bounded view with
-  // its continuation reference beats a summary that may paraphrase the
-  // payload away ("479" for a captured "479001600"). With a sessionId the
-  // full response is durable on the session transcript (#24262 close-out) and
-  // the view references GET /api/coding-agents/:id/output; without one the
-  // content is persisted to the durable content store instead — the former
-  // silent `undefined` degraded the asked-for output to the summary path with
-  // no reference at all.
-  if (!sessionId) {
-    return projectedDeliverableView(trimmed, MAX_VERBATIM_DELIVERABLE_BYTES);
-  }
-  return boundedContentView(
-    trimmed,
-    MAX_VERBATIM_DELIVERABLE_BYTES,
-    orchestratorContentRef("session-output", sessionId),
-  ).view;
+  // The user asked for THE OUTPUT: relay it COMPLETE whatever its size. The
+  // former bounded views (session-transcript reference / durable-store
+  // projection) were ruled invalid for model-facing text — a continuation
+  // reference does not make the current relay lossless. Canonicalization
+  // (well-formed + redaction) stays; the caller's oversized-deliverable path
+  // additionally persists the durable observability record.
+  return canonicalDeliverable(trimmed);
 }
 
 /**

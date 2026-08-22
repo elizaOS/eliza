@@ -1,12 +1,14 @@
 /**
- * Durable content store + projection: input canonicalized ONCE (well-formed
- * Unicode + credential redaction) with sha, stored bytes, projection head,
- * marker, and ReadView metadata all derived from that canonical text; windowed
- * reads snap to UTF-8 code-point boundaries and reassemble losslessly. Also
- * covers the continuation marker's HTTP promise END-TO-END: the marker path
- * must match a REGISTERED route template (setup-routes.ts) and dispatch through
- * the real route handler with strict offset/limit validation. Real filesystem
- * via the trajectory dir; the dispatcher runs against fake req/res objects.
+ * Durable content store: input canonicalized ONCE (well-formed Unicode +
+ * credential redaction) with sha and stored bytes derived from that canonical
+ * text; windowed reads snap to UTF-8 code-point boundaries and reassemble
+ * losslessly. Also covers the store's HTTP promise END-TO-END: the content
+ * path must match a REGISTERED route template (setup-routes.ts) and dispatch
+ * through the real route handler with strict offset/limit validation. Real
+ * filesystem via the trajectory dir; the dispatcher runs against fake req/res
+ * objects. The retired durableProjection substitution has no tests here —
+ * model-facing surfaces carry complete content and the store is durability +
+ * caller-requested retrieval only.
  */
 import { createHash } from "node:crypto";
 import * as fs from "node:fs";
@@ -16,7 +18,6 @@ import { redactSensitiveText, toWellFormedUnicode } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { handleCodingAgentRoutes } from "../api/routes.js";
 import {
-  durableProjection,
   persistDurableContent,
   readDurableContent,
 } from "../services/durable-content-store.js";
@@ -140,105 +141,41 @@ describe("durable content store", () => {
     expect(readAllFrom(sha, 0, 1)).toBe(text);
   });
 
-  it("a projection under budget passes through without persisting", () => {
-    const projection = durableProjection("short", 100);
-    expect(projection).toEqual({ view: "short", truncated: false });
-  });
-
-  it("an under-budget projection view is still redacted", () => {
+  it("persist canonicalizes once: sha and stored bytes derive from the redacted well-formed text", () => {
     const secret = "sk-abcdef0123456789abcdef";
-    const projection = durableProjection(`API_KEY=${secret}`, 200);
-    expect(projection.truncated).toBe(false);
-    expect(projection.view).not.toContain(secret);
-    expect(projection.view).toBe(canonicalOf(`API_KEY=${secret}`));
-  });
-
-  it("an oversized projection persists first and names the resolver route", () => {
-    const text = "x".repeat(5000);
-    const projection = durableProjection(text, 300);
-    expect(projection.truncated).toBe(true);
-    expect(projection.view.length).toBeLessThanOrEqual(300);
-    expect(projection.view).toContain("/api/orchestrator/content/");
-    const sha = projection.reference?.ref.slice("acpx-content:".length) ?? "";
-    // The marker's promise is real: the complete record resolves.
-    const window = readDurableContent(sha, { limit: 10_000 });
-    expect(window?.text).toBe(text);
-    expect(projection.read?.slice.completeness).toBe("partial-recoverable");
-    expect(projection.read?.slice.hasMore).toBe(true);
-  });
-
-  it("canonicalizes once: sha, stored bytes, head, marker, and ReadView all derive from the redacted well-formed text", () => {
-    const secret = "sk-abcdef0123456789abcdef";
-    // A lone surrogate proves the well-formed step; the secret sits in the
-    // head region so an unredacted projection would leak it into the view.
     const text = `API_KEY=${secret}\n\uD800tail ${"x".repeat(5000)}`;
     const canonical = canonicalOf(text);
     expect(canonical).not.toContain(secret);
-    expect(canonical).toContain("�"); // lone surrogate normalized
+    expect(canonical).toContain("\uFFFD"); // lone surrogate normalized
 
-    const projection = durableProjection(text, 400);
-    expect(projection.truncated).toBe(true);
-    const sha = projection.reference?.ref.slice("acpx-content:".length) ?? "";
-
-    // sha derives from the canonical text, and persist agrees.
+    const reference = persistDurableContent(text);
+    const sha = reference.ref.slice("acpx-content:".length);
     expect(sha).toBe(shaOf(canonical));
+    // Idempotent: same canonical text, same record.
     expect(persistDurableContent(text).ref).toBe(`acpx-content:${sha}`);
 
-    // Stored bytes ARE the canonical text.
+    // Stored bytes ARE the canonical text — a window can never leak what
+    // storage redacted.
     const full = readDurableContent(sha, { limit: 1_048_576 });
     expect(full?.text).toBe(canonical);
     expect(full?.totalBytes).toBe(Buffer.byteLength(canonical, "utf8"));
-
-    // The view (head + marker) never leaks what storage redacted, and the
-    // marker's char count describes the canonical text.
-    expect(projection.view).not.toContain(secret);
-    const marker = `\n… [${canonical.length} chars total — full content: GET /api/orchestrator/content/${sha}]`;
-    expect(projection.view.endsWith(marker)).toBe(true);
-
-    // ReadView offsets/hashes describe the canonical head exactly.
-    const head = projection.view.slice(
-      0,
-      projection.view.length - marker.length,
-    );
-    expect(canonical.startsWith(head)).toBe(true);
-    const headBytes = Buffer.byteLength(head, "utf8");
-    const slice = projection.read?.slice;
-    expect(slice?.range).toEqual({
-      unit: "byte",
-      start: 0,
-      end: headBytes,
-      total: Buffer.byteLength(canonical, "utf8"),
-    });
-    expect(slice?.nextOffset).toBe(headBytes);
-    expect(slice?.sliceSha256).toBe(shaOf(head));
-    expect(slice?.sourceSha256).toBe(sha);
+    expect(full?.text).not.toContain(secret);
   });
 
-  it("projection head + continuation windows reassemble to the canonical redacted text exactly", () => {
+  it("continuation windows reassemble a persisted record to the canonical redacted text exactly", () => {
     const secret = "sk-abcdef0123456789abcdef";
     const text = `token: "${secret}" then 中文漢字🙂🇺🇸héllo𝔘𝔫𝔦 `.repeat(60);
     const canonical = canonicalOf(text);
     expect(canonical).not.toContain(secret);
 
-    const projection = durableProjection(text, 500);
-    expect(projection.truncated).toBe(true);
-    const sha = projection.read?.slice.sourceSha256 ?? "";
-    const nextOffset = projection.read?.slice.nextOffset ?? Number.NaN;
-    const headEnd = projection.read?.slice.range.end ?? Number.NaN;
-    expect(nextOffset).toBe(headEnd);
-
-    const head = Buffer.from(canonical, "utf8")
-      .subarray(0, headEnd)
-      .toString("utf8");
-    expect(projection.view.startsWith(head)).toBe(true);
-
-    // Small windows force snapping across the multibyte runs; the head plus
-    // every continuation window reassembles to the canonical text, and no
-    // window leaks the redacted secret.
+    const reference = persistDurableContent(text);
+    const sha = reference.ref.slice("acpx-content:".length);
+    // Small windows force snapping across the multibyte runs; every window
+    // decodes cleanly and the concatenation is byte-exact canonical text.
     for (const limit of [7, 4096]) {
-      const rest = readAllFrom(sha, nextOffset, limit);
-      expect(rest).not.toContain(secret);
-      expect(head + rest).toBe(canonical);
+      const all = readAllFrom(sha, 0, limit);
+      expect(all).not.toContain(secret);
+      expect(all).toBe(canonical);
     }
   });
 });
@@ -312,29 +249,24 @@ async function dispatchGet(url: string): Promise<{
 }
 
 describe("content continuation route (registered + end-to-end)", () => {
-  it("the projection marker's path matches a REGISTERED route template", () => {
-    const projection = durableProjection("y".repeat(6000), 300);
-    expect(projection.truncated).toBe(true);
-    const markerPath = projection.view.match(
-      /GET (\/api\/orchestrator\/content\/[0-9a-f]{64})/,
-    )?.[1] as string;
-    expect(markerPath).toBeTruthy();
+  it("a persisted reference's content path matches a REGISTERED route template", () => {
+    const sha = persistDurableContent("y".repeat(6000)).ref.slice(
+      "acpx-content:".length,
+    );
+    const contentPath = `/api/orchestrator/content/${sha}`;
     // Regression: the handler existed but the path was missing from the
-    // registered route list, so the runtime dispatcher 404'd every marker.
+    // registered route list, so the runtime dispatcher 404'd every reference.
     const matches = CODING_AGENT_ROUTE_PATHS.filter(
       (route) =>
-        route.type === "GET" && templateToRegExp(route.path).test(markerPath),
+        route.type === "GET" && templateToRegExp(route.path).test(contentPath),
     );
     expect(matches.length).toBeGreaterThan(0);
   });
 
-  it("resolves a projection marker end-to-end through the route dispatcher", async () => {
+  it("resolves a persisted reference end-to-end through the route dispatcher", async () => {
     const full = `route resolve ${"中🙂z".repeat(1500)}`;
-    const projection = durableProjection(full, 260);
-    expect(projection.truncated).toBe(true);
-    const markerPath = projection.view.match(
-      /GET (\/api\/orchestrator\/content\/[0-9a-f]{64})/,
-    )?.[1] as string;
+    const sha = persistDurableContent(full).ref.slice("acpx-content:".length);
+    const markerPath = `/api/orchestrator/content/${sha}`;
 
     let out = "";
     let cursor = 0;

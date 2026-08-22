@@ -34,6 +34,7 @@ import {
   type IAgentRuntime,
   projectWorldId,
   type RecordedTrajectory,
+  redactSensitiveText,
   resolveStateDir,
   resolveTrajectoryGate,
   rollUpTrajectoryUsage,
@@ -111,7 +112,6 @@ import {
   getCuratedCodingMemoryService,
   renderInjectedCodingNotes,
 } from "./curated-coding-memory.js";
-import { durableProjection } from "./durable-content-store.js";
 import {
   detectFabricatedInput,
   type InputBaseline,
@@ -981,28 +981,34 @@ function _readGroundTruthVerdict(
   return raw as unknown as GroundTruthVerdict;
 }
 
+/** Canonicalize text bound for a model call, prompt, judge input, or task
+ *  metadata later rendered into prompts: well-formed Unicode, then provider
+ *  credential redaction. A pure SECURITY transform — never a cap. Model-facing
+ *  content must arrive COMPLETE; a capped projection with a recoverable
+ *  reference does not preserve the current model call (maintainer ruling
+ *  closing #24549–#24553). */
+function canonicalModelText(text: string): string {
+  return redactSensitiveText(toWellFormedUnicode(text));
+}
+
 /** Model-facing excerpt of a recorded event for rerun prompts. The payload is
- *  a durable projection, not a bare truncation: an oversized `event.data` is
- *  persisted whole to the content store FIRST and the emitted head ends with a
- *  marker naming `GET /api/orchestrator/content/<sha256>`, so the sub-agent
- *  (or an operator) can always recover the complete payload. Exported for the
- *  prompt-integrity regression tests. */
+ *  the COMPLETE `event.data` JSON (canonicalized — redaction only, no cap):
+ *  the rerun prompt is a model call, so no head+marker substitution is
+ *  allowed here. Exported for the prompt-integrity regression tests. */
 export function eventExcerpt(
   event: OrchestratorTaskDocument["events"][number],
 ): string {
   const data =
     Object.keys(event.data).length > 0
-      ? `\nData: ${durableProjection(JSON.stringify(event.data), 1200).view}`
+      ? `\nData: ${canonicalModelText(JSON.stringify(event.data))}`
       : "";
   return `Event ${event.id} (${event.eventType}): ${event.summary}${data}`;
 }
 
-/** Model-facing retry prompt. The quoted source message is a durable
- *  projection: an oversized `source.content` is persisted whole to the content
- *  store and the head carries the resolvable
- *  `GET /api/orchestrator/content/<sha256>` marker (the full message also
- *  remains durable on `doc.messages`). Exported for the prompt-integrity
- *  regression tests. */
+/** Model-facing retry prompt. The quoted source message is the COMPLETE
+ *  `source.content` (canonicalized — redaction only, no cap): the retry
+ *  prompt is a model call, so the quote must arrive whole. Exported for the
+ *  prompt-integrity regression tests. */
 export function retryInstruction(
   doc: OrchestratorTaskDocument,
   input: RetryTaskTurnInput,
@@ -1017,7 +1023,7 @@ export function retryInstruction(
     lines.push(
       "",
       `Source message ${source.id} (${source.senderKind}/${source.direction}):`,
-      durableProjection(source.content, 2000).view,
+      canonicalModelText(source.content),
     );
   }
   return lines.join("\n");
@@ -1034,12 +1040,11 @@ function rerunInstruction(
   ].join("\n");
 }
 
-/** Model-facing plan-revision context. The serialized plan is a durable
- *  projection: an oversized revision is persisted whole to the content store
- *  and the head names the resolvable `GET /api/orchestrator/content/<sha256>`
- *  route, so the sub-agent never follows a plan whose tail steps were silently
- *  cut (the revision also remains durable on `doc.planRevisions`). Exported
- *  for the prompt-integrity regression tests. */
+/** Model-facing plan-revision context. The serialized plan is COMPLETE
+ *  (canonicalized — redaction only, no cap): the sub-agent must never follow
+ *  a plan whose tail steps were cut, and a recoverable reference does not
+ *  preserve the current model call. Exported for the prompt-integrity
+ *  regression tests. */
 export function withPlanRevisionContext(
   instruction: string,
   revision?: OrchestratorTaskDocument["planRevisions"][number],
@@ -1052,9 +1057,7 @@ export function withPlanRevisionContext(
     `Revision: ${revision.id}`,
   ];
   if (revision.editSummary) lines.push(`Summary: ${revision.editSummary}`);
-  lines.push(
-    `Plan: ${durableProjection(JSON.stringify(revision.plan), 2000).view}`,
-  );
+  lines.push(`Plan: ${canonicalModelText(JSON.stringify(revision.plan))}`);
   return lines.join("\n");
 }
 
@@ -1953,14 +1956,15 @@ export class OrchestratorTaskService extends Service {
           {
             status: "completed",
             taskDelivered: true,
-            // Bounded PREVIEW of the worker's final response. The complete
-            // response is durable on this task_complete event row (addEvent
-            // persisted `data.response` whole); an oversized summary is also
-            // persisted to the content store so the stored preview itself
-            // carries a resolvable GET /api/orchestrator/content/<sha256>
-            // marker for downstream consumers (DTO, swarm synthesis).
+            // COMPLETE worker final response (canonicalized — redaction only,
+            // no cap). This session stamp feeds the DTO and task-history
+            // surfaces that can be rendered into prompts and swarm synthesis,
+            // so it is model-facing metadata: no head+marker substitution.
+            // Internal storage is not a hard boundary (maintainer ruling
+            // closing #24549–#24553). The response also rides the durable
+            // task_complete event row whole.
             completionSummary: summary
-              ? durableProjection(summary, 2000).view
+              ? canonicalModelText(summary)
               : undefined,
             stoppedAt: Date.now(),
           },
@@ -2982,19 +2986,16 @@ export class OrchestratorTaskService extends Service {
     let runOutput: string | undefined;
     try {
       const acpForOutput = this.acp();
-      // The judge's RUN OUTPUT section is a bounded VIEW of the durable
-      // session transcript, not the record itself: read a generous tail and
-      // project it durably — an oversized tail is persisted whole to the
-      // content store and the view's marker names the resolvable
-      // `GET /api/orchestrator/content/<sha256>` route (which, unlike the
-      // former acpx-session-output ref, outlives the session) so "the output
-      // is truncated" never reads as "the content is gone" (#24262 close-out).
+      // The judge's RUN OUTPUT section is VERIFICATION INPUT: the judge must
+      // receive the COMPLETE captured result or fail explicitly before
+      // dispatch — a capped head with a later continuation handle does not
+      // make a partial judge input lossless (maintainer ruling closing
+      // #24549–#24553). Pass the captured tail whole, canonicalized
+      // (redaction only, no cap).
       const rawRunOutput =
         (await acpForOutput?.getSessionOutput?.(sessionId, 2_000))?.trim() ||
         undefined;
-      runOutput = rawRunOutput
-        ? durableProjection(rawRunOutput, 16_000).view
-        : undefined;
+      runOutput = rawRunOutput ? canonicalModelText(rawRunOutput) : undefined;
     } catch {
       // error-policy:J4 output capture is evidence enrichment; absence just
       // leaves the section out.

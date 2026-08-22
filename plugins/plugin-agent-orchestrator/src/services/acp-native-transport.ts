@@ -212,7 +212,7 @@ export class NativeAcpClient {
     });
     proc.stderr.on("data", (chunk: Buffer) => {
       const text = chunk.toString("utf8");
-      this.stderrBuffer = appendBoundedStderr(this.stderrBuffer, text);
+      this.stderrBuffer = appendCompleteStderr(this.stderrBuffer, text);
       // Observer callback — a consumer throw here must not surface as a stream
       // 'error' event that tears down stderr for the whole agent.
       try {
@@ -1049,43 +1049,19 @@ export function compactJson(value: unknown): string | undefined {
   }
 }
 
-// In-memory bound for the ACP agent process's accumulated stderr — a MEMORY
-// bound, not a data bound (see appendBoundedStderr).
-const AGENT_STDERR_TAIL_BYTES = 16_384;
-
 /**
- * Accumulate agent stderr into a bounded tail without losing data: on overflow
- * the COMPLETE pre-slice text is persisted to the durable content store first
- * (successive overflow records chain — each begins with the previous record's
- * marker — so together they cover the whole stream), and the retained tail is
- * headed by a marker naming the resolver route. The process-close failure text
- * that embeds this buffer is therefore a named, reference-bearing tail view
- * rather than a silent head drop. The tail slice is byte-accurate and
- * well-formed (the previous code-unit `.slice(-16_384)` compared bytes but cut
- * UTF-16 units and could bisect a surrogate pair). Exported for unit coverage.
+ * Accumulate agent stderr COMPLETELY. This replaced the retired
+ * persist-before-slice tail (appendBoundedStderr): the process-close failure
+ * text that embeds this buffer reaches error events and relay bodies —
+ * model-facing paths where the repository contract requires the complete
+ * text (a durable reference to sliced-off bytes does not preserve the
+ * CURRENT model call). The in-memory record is internal storage, NOT a hard
+ * boundary, so no byte budget applies; any future memory-pressure handling
+ * must spill the complete text, never drop it. Exported for unit coverage
+ * of the completeness contract.
  */
-export function appendBoundedStderr(current: string, chunk: string): string {
-  const combined = `${current}${chunk}`;
-  const buf = Buffer.from(combined, "utf8");
-  if (buf.byteLength <= AGENT_STDERR_TAIL_BYTES) return combined;
-  let marker: string;
-  try {
-    const ref = persistDurableContent(combined);
-    const sha = ref.ref.slice("acpx-content:".length);
-    marker = `[agent stderr tail — full stderr: GET /api/orchestrator/content/${sha}]`;
-  } catch (err) {
-    // error-policy:J2 the durable persist is the PRECONDITION for keeping only
-    // a tail: when it fails, NOTHING may be dropped — retain the COMPLETE
-    // accumulation with the fault declared once (idempotent across repeated
-    // failing appends), never a tail whose head is unrecoverable.
-    if (combined.startsWith("[agent stderr durable persist failed")) {
-      return combined;
-    }
-    return `[agent stderr durable persist failed (${err instanceof Error ? err.message : String(err)}); complete stderr retained inline]\n${combined}`;
-  }
-  return `${marker}\n${toWellFormedUnicode(
-    buf.subarray(buf.byteLength - AGENT_STDERR_TAIL_BYTES).toString("utf8"),
-  )}`;
+export function appendCompleteStderr(current: string, chunk: string): string {
+  return `${current}${chunk}`;
 }
 
 function extractAgentSessionId(meta: unknown): string | undefined {

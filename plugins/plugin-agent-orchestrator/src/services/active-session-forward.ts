@@ -15,14 +15,14 @@ import {
 } from "@elizaos/core";
 import { AcpService } from "./acp-service.js";
 import {
+  ADMIN_STOP_META_KEY,
+  markSessionAdministrativelyStopped,
+} from "./admin-stop-marker.js";
+import {
   activateFollowUpOrigin,
   notePendingFollowUpOrigin,
   originMessageIdFor,
 } from "./follow-up-origin.js";
-import {
-  ADMIN_STOP_META_KEY,
-  markSessionAdministrativelyStopped,
-} from "./admin-stop-marker.js";
 import { decideInterruptionWithModel } from "./interruption-decider.js";
 import { OrchestratorTaskService } from "./orchestrator-task-service.js";
 import type {

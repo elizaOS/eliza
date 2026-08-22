@@ -74,10 +74,7 @@ import {
   applyCredentialProxyEnv,
   resolveOrchestratorCredentialProxyConfig,
 } from "./credential-proxy-env.js";
-import {
-  durableProjection,
-  persistDurableContent,
-} from "./durable-content-store.js";
+import { persistDurableContent } from "./durable-content-store.js";
 import {
   buildGitIdentityEnvPatch,
   resolveGitIdentityConfig,
@@ -226,11 +223,11 @@ type RunResult = {
   durationMs: number;
 };
 
-// In-memory bound for accumulated acpx subprocess stderr. A MEMORY bound, not
-// a data bound: on overflow capStderr persists the complete pre-slice text to
-// the durable content store BEFORE dropping the head, and the retained tail is
-// headed by a marker naming the resolver (see capStderr).
-const STDERR_CAP_BYTES = 64 * 1024;
+// Accumulated acpx subprocess stderr is kept COMPLETE (see
+// appendCompleteStderr): failure text derived from it reaches error events and
+// relay bodies (model-facing), and the repository contract requires complete
+// content on those paths — an in-memory record is internal storage, not a hard
+// boundary, so no tail substitution is permitted.
 const KILL_GRACE_MS = 5_000;
 // TTL for a per-spawn model lease when neither the spawn nor the service config
 // a timeout — mirrors ACPX_DEFAULT_TIMEOUT_MS (per-prompt) so a lease outlives a
@@ -458,11 +455,15 @@ const ACP_METADATA_GIT_INDEX_FILE = "gitIndexFile";
 const ACP_METADATA_GIT_INDEX_BASE_FILE = "gitIndexBaseFile";
 const ACP_METADATA_GIT_WRAPPER_DIR = "gitWrapperDir";
 const ACP_METADATA_SPAWN_MODEL = "spawnModel";
-// Budget for the per-tool-call output envelope relayed into model context.
-// NOT a truncation cap: overflow is persisted whole to the durable content
-// store and the envelope becomes a durableProjection view whose marker names
-// the resolver route (see captureTerminalToolOutput).
-const MAX_CAPTURED_TOOL_OUTPUT_CHARS = 12_000;
+// Observability threshold for durably persisting a copy of a captured
+// tool-output envelope's text. NOT a cap and NOT a budget: the model-facing
+// envelope ALWAYS carries the COMPLETE output (maintainer ruling: a capped
+// projection substituted into model context is invalid — a durable reference
+// makes omitted bytes recoverable later but does not preserve the CURRENT
+// model call). Above this size a durable copy is persisted as SEPARATE
+// metadata (a ContentReference next to the complete text) so large outputs
+// stay independently addressable after the session ends.
+const CAPTURED_TOOL_OUTPUT_DURABLE_COPY_THRESHOLD_CHARS = 12_000;
 const TOOL_OUTPUT_END_MARKER = "[/tool output]";
 const SESSION_GIT_WRAPPER_BODY = `const { spawn, spawnSync } = require("node:child_process");
 const { randomUUID } = require("node:crypto");
@@ -4226,14 +4227,17 @@ export class AcpService extends Service {
       });
 
       proc.stderr.on("data", (chunk: Buffer) => {
-        record.stderr = capStderr(record.stderr + chunk.toString("utf8"));
+        record.stderr = appendCompleteStderr(
+          record.stderr,
+          chunk.toString("utf8"),
+        );
       });
 
       proc.on("error", (err: NodeJS.ErrnoException) => {
-        record.stderr = capStderr(record.stderr + errorMessage(err));
+        record.stderr = appendCompleteStderr(record.stderr, errorMessage(err));
         if (err.code === "ENOENT") {
           const message = `acpx CLI not found at ${this.cliPath}. Set ELIZA_ACP_CLI or npm install -g acpx@latest.`;
-          record.stderr = capStderr(`${record.stderr}\n${message}`);
+          record.stderr = appendCompleteStderr(record.stderr, `\n${message}`);
           if (opts.sessionId)
             this.emitSessionEvent(opts.sessionId, "error", {
               message,
@@ -4652,8 +4656,18 @@ export class AcpService extends Service {
             capturedToolOutputs,
           );
           if (captured) {
-            finalText = appendTextBlock(finalText, captured);
-            this.appendOutput(sessionId, captured);
+            finalText = appendTextBlock(finalText, captured.text);
+            this.appendOutput(sessionId, captured.text);
+            if (captured.durableRef) {
+              // Observability metadata ONLY: the envelope above is complete;
+              // the durable copy is a side reference, never a substitute.
+              this.log("debug", "large tool output persisted durably", {
+                sessionId,
+                toolCallId: toolCall.id,
+                durableRef: captured.durableRef,
+                outputChars: captured.text.length,
+              });
+            }
           }
         }
       }
@@ -6081,45 +6095,43 @@ function extractAssistantText(
   return undefined;
 }
 
-// Exported for unit coverage of the durable-projection envelope contract.
+// Exported for unit coverage of the complete-envelope contract.
 export function captureTerminalToolOutput(
   toolCall: AcpToolCall,
   rawOutput: unknown,
   capturedToolOutputs: Set<string>,
-): string | undefined {
+): { text: string; durableRef?: string } | undefined {
   const output = normalizeToolOutput(rawOutput);
   if (!output) return undefined;
   const key = `${toolCall.id}\0${output}`;
   if (capturedToolOutputs.has(key)) return undefined;
   capturedToolOutputs.add(key);
   const wellFormed = toWellFormedUnicode(output);
-  // Prompt-integrity: an oversized tool output is persisted IN FULL to the
-  // durable content store FIRST, and the envelope carries the head plus a
-  // marker naming the resolver (GET /api/orchestrator/content/<sha256>) — a
-  // bare "[truncated]" cut would silently drop model-facing content. If the
-  // durable persist fails, the fallback view still declares exactly what was
-  // dropped instead of posing as complete.
-  let bounded: string;
-  if (wellFormed.length <= MAX_CAPTURED_TOOL_OUTPUT_CHARS) {
-    bounded = wellFormed;
-  } else {
+  // Prompt-integrity (rework of the retired durableProjection pattern): the
+  // envelope ALWAYS carries the COMPLETE canonicalized output. The envelope
+  // reaches finalText / session output / completion flows — model-facing
+  // paths where the repository contract requires complete content; a
+  // head+marker projection is invalid there because a durable reference does
+  // not preserve the CURRENT model call. For large outputs a durable copy is
+  // additionally persisted as SEPARATE observability metadata (returned as
+  // `durableRef`, attached/logged by the caller) — it never replaces envelope
+  // text.
+  let durableRef: string | undefined;
+  if (wellFormed.length > CAPTURED_TOOL_OUTPUT_DURABLE_COPY_THRESHOLD_CHARS) {
     try {
-      bounded = durableProjection(
-        wellFormed,
-        MAX_CAPTURED_TOOL_OUTPUT_CHARS,
-      ).view;
-    } catch (err) {
-      // error-policy:J2 the durable persist is the PRECONDITION for dropping
-      // bytes from the view (prompt-integrity: partial views must be
-      // recoverable). When it fails, nothing may be dropped: emit the
-      // COMPLETE output inline with the fault declared — never a truncated
-      // view whose omitted bytes are unrecoverable. The store fault still
-      // must not kill the transport event loop, so it is declared, not thrown.
-      bounded = `${wellFormed}\n[durable content persist failed (${errorMessage(err)}); the complete ${wellFormed.length}-char output is emitted inline above]`;
+      durableRef = persistDurableContent(wellFormed).ref;
+    } catch {
+      // error-policy:J7 observability metadata only — the COMPLETE text is
+      // already in the envelope, so a store fault drops nothing model-facing
+      // and must not kill the transport event loop.
+      durableRef = undefined;
     }
   }
   const title = toolCall.title?.trim() || "tool output";
-  return `[tool output: ${title}]\n${bounded}\n${TOOL_OUTPUT_END_MARKER}`;
+  return {
+    text: `[tool output: ${title}]\n${wellFormed}\n${TOOL_OUTPUT_END_MARKER}`,
+    durableRef,
+  };
 }
 
 // Exported for unit coverage of the exec-record one-liner path (issue #11578).
@@ -6252,42 +6264,18 @@ function isAuthText(text: string): boolean {
 }
 
 /**
- * Bound accumulated subprocess stderr to a tail without losing data: on
- * overflow the COMPLETE pre-slice text is persisted to the durable content
- * store first (successive overflow records chain — each record's head is the
- * previous record's marker — so together they cover the entire stream), and
- * the retained tail is headed by a marker naming the resolver route. Failure
- * text derived from this buffer is therefore a named, reference-bearing tail
- * view, never a silent head drop.
+ * Accumulate subprocess stderr COMPLETELY. This replaced the retired
+ * persist-before-slice tail (capStderr): failure text derived from this
+ * buffer reaches error events, exit classification, and relay bodies —
+ * model-facing paths where the repository contract requires the complete
+ * text (a durable reference to sliced-off bytes does not preserve the
+ * CURRENT model call). The in-memory record is internal storage, NOT a hard
+ * boundary, so no byte budget applies; any future memory-pressure handling
+ * must spill the complete text, never drop it.
  */
-// Exported for unit coverage of the persist-before-slice contract.
-export function capStderr(text: string): string {
-  if (Buffer.byteLength(text, "utf8") <= STDERR_CAP_BYTES) return text;
-  let marker: string;
-  try {
-    const ref = persistDurableContent(text);
-    const sha = ref.ref.slice("acpx-content:".length);
-    marker = `[stderr tail — full stderr: GET /api/orchestrator/content/${sha}]`;
-  } catch (err) {
-    // error-policy:J2 the durable persist is the PRECONDITION for slicing:
-    // when it fails, NOTHING may be dropped — return the complete stderr with
-    // the fault declared, never a tail whose head is unrecoverable.
-    return `[stderr durable persist failed (${errorMessage(err)}); complete stderr retained inline]\n${text}`;
-  }
-  return `${marker}\n${tailBytesWellFormed(text, STDERR_CAP_BYTES)}`;
-}
-
-/**
- * Last `maxBytes` BYTES of `text`, well-formed. (A bare code-unit
- * `.slice(-n)` after a byteLength comparison could retain up to ~2x the
- * intended bytes and bisect a surrogate pair at the cut.)
- */
-function tailBytesWellFormed(text: string, maxBytes: number): string {
-  const buf = Buffer.from(text, "utf8");
-  if (buf.byteLength <= maxBytes) return text;
-  return toWellFormedUnicode(
-    buf.subarray(buf.byteLength - maxBytes).toString("utf8"),
-  );
+// Exported for unit coverage of the completeness contract.
+export function appendCompleteStderr(current: string, chunk: string): string {
+  return `${current}${chunk}`;
 }
 
 /** Named 80-char log PREVIEW, always paired with a *Length field at call
