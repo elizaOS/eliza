@@ -99,6 +99,10 @@ function renderActions() {
             />
           }
         />
+        <Route
+          path="/cloud/agents/:agentId"
+          element={<p>Dedicated agent destination</p>}
+        />
         <Route path="/cloud/billing" element={<p>Billing destination</p>} />
       </Routes>
     </MemoryRouter>,
