@@ -14,7 +14,16 @@ const TELEGRAM_RESPONSE_BODY_MAX_BYTES = 1_000_000;
 const TELEGRAM_GET_URL_MAX_CHARS = 16_384;
 const TELEGRAM_METHOD_RE = /^[A-Za-z][A-Za-z0-9_]*$/;
 const TELEGRAM_TOKEN_RE = /^[A-Za-z0-9:_-]+$/;
-const responseDeadlineCleanup = new WeakMap<Response, () => void>();
+
+export interface TelegramApiRequestOptions {
+  signal?: AbortSignal;
+  timeoutMs?: number;
+}
+
+interface BoundedTelegramResponse {
+  response: Response;
+  releaseDeadline: () => void;
+}
 
 function telegramError(
   message: string,
@@ -71,11 +80,6 @@ function telegramMethodUrl(botToken: string, method: string): string {
   return `${TELEGRAM_API_BASE}/bot${botToken}/${method}`;
 }
 
-function releaseResponseDeadline(response: Response): void {
-  responseDeadlineCleanup.get(response)?.();
-  responseDeadlineCleanup.delete(response);
-}
-
 function cancelResponseBody(response: Response, reason?: unknown): void {
   try {
     void response.body?.cancel(reason).catch(() => {
@@ -92,11 +96,11 @@ function cancelResponseBody(response: Response, reason?: unknown): void {
  * are composed, and redirects are rejected so bot tokens and POST bodies never
  * leave the allowlisted Telegram origin.
  */
-export async function telegramApiFetch(
+async function telegramApiFetch(
   input: string | URL,
   init?: RequestInit,
   timeoutMs: number = TELEGRAM_REQUEST_TIMEOUT_MS,
-): Promise<Response> {
+): Promise<BoundedTelegramResponse> {
   const url = assertTelegramEndpoint(input);
   if (!Number.isSafeInteger(timeoutMs) || timeoutMs <= 0 || timeoutMs > 2_147_483_647) {
     throw telegramError(
@@ -118,8 +122,10 @@ export async function telegramApiFetch(
       redirect: "error",
       signal,
     });
-    responseDeadlineCleanup.set(response, () => clearTimeout(timer));
-    return response;
+    return {
+      response,
+      releaseDeadline: () => clearTimeout(timer),
+    };
   } catch (error) {
     clearTimeout(timer);
     throw error;
@@ -157,11 +163,15 @@ function serializeTelegramParams(params: Record<string, unknown>): string {
   return body;
 }
 
-async function readTelegramResponse<T>(response: Response, method: string): Promise<T> {
+async function readTelegramResponse<T>(
+  boundedResponse: BoundedTelegramResponse,
+  method: string,
+): Promise<T> {
+  const { response, releaseDeadline } = boundedResponse;
   const declaredLength = Number(response.headers.get("content-length"));
   if (Number.isFinite(declaredLength) && declaredLength > TELEGRAM_RESPONSE_BODY_MAX_BYTES) {
     cancelResponseBody(response);
-    releaseResponseDeadline(response);
+    releaseDeadline();
     throw telegramError(
       "Telegram API response exceeds the byte limit",
       "TELEGRAM_API_RESPONSE_TOO_LARGE",
@@ -201,7 +211,7 @@ async function readTelegramResponse<T>(response: Response, method: string): Prom
     }
     throw error;
   } finally {
-    releaseResponseDeadline(response);
+    releaseDeadline();
   }
 
   const bytes = new Uint8Array(receivedBytes);
@@ -246,13 +256,19 @@ export async function telegramBotApiRequest<T>(
   botToken: string,
   method: string,
   params?: Record<string, unknown>,
+  options: TelegramApiRequestOptions = {},
 ): Promise<T> {
-  const response = await telegramApiFetch(telegramMethodUrl(botToken, method), {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: params ? serializeTelegramParams(params) : undefined,
-  });
-  return readTelegramResponse<T>(response, method);
+  const boundedResponse = await telegramApiFetch(
+    telegramMethodUrl(botToken, method),
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: params ? serializeTelegramParams(params) : undefined,
+      signal: options.signal,
+    },
+    options.timeoutMs,
+  );
+  return readTelegramResponse<T>(boundedResponse, method);
 }
 
 /** Makes a bounded Telegram Bot API GET request for small query payloads. */
@@ -260,6 +276,7 @@ export async function telegramBotApiGet<T>(
   botToken: string,
   method: string,
   params?: Record<string, string | number | boolean>,
+  options: TelegramApiRequestOptions = {},
 ): Promise<T> {
   const url = new URL(telegramMethodUrl(botToken, method));
   for (const [key, value] of Object.entries(params ?? {})) {
@@ -272,6 +289,10 @@ export async function telegramBotApiGet<T>(
       { method, maxChars: TELEGRAM_GET_URL_MAX_CHARS },
     );
   }
-  const response = await telegramApiFetch(url);
-  return readTelegramResponse<T>(response, method);
+  const boundedResponse = await telegramApiFetch(
+    url,
+    { signal: options.signal },
+    options.timeoutMs,
+  );
+  return readTelegramResponse<T>(boundedResponse, method);
 }

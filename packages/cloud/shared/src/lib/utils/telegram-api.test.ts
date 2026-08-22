@@ -3,12 +3,14 @@
  * doubles, including cancellation, endpoint, body, and response failures.
  */
 import { afterEach, describe, expect, mock, test } from "bun:test";
-import { telegramApiFetch, telegramBotApiGet, telegramBotApiRequest } from "./telegram-api";
+import { telegramBotApiGet, telegramBotApiRequest } from "./telegram-api";
 
 const realFetch = globalThis.fetch;
+const realClearTimeout = globalThis.clearTimeout;
 
 afterEach(() => {
   globalThis.fetch = realFetch;
+  globalThis.clearTimeout = realClearTimeout;
 });
 
 function hungFetch() {
@@ -20,11 +22,11 @@ function hungFetch() {
   ) as typeof fetch;
 }
 
-describe("telegramApiFetch", () => {
+describe("bounded Telegram request lifecycle", () => {
   test("aborts a hung Telegram hop at the configured timeout", async () => {
     globalThis.fetch = hungFetch();
     await expect(
-      telegramApiFetch("https://api.telegram.org/bot1/getMe", undefined, 100),
+      telegramBotApiGet("1:token", "getMe", undefined, { timeoutMs: 100 }),
     ).rejects.toMatchObject({ name: "TimeoutError" });
   });
 
@@ -32,7 +34,10 @@ describe("telegramApiFetch", () => {
     globalThis.fetch = hungFetch();
     const caller = new AbortController();
     await expect(
-      telegramApiFetch("https://api.telegram.org/bot1/getMe", { signal: caller.signal }, 100),
+      telegramBotApiGet("1:token", "getMe", undefined, {
+        signal: caller.signal,
+        timeoutMs: 100,
+      }),
     ).rejects.toMatchObject({ name: "TimeoutError" });
     expect(caller.signal.aborted).toBe(false);
   });
@@ -40,29 +45,62 @@ describe("telegramApiFetch", () => {
   test("lets caller cancellation abort ahead of the deadline", async () => {
     globalThis.fetch = hungFetch();
     const caller = new AbortController();
-    const pending = telegramApiFetch(
-      "https://api.telegram.org/bot1/getMe",
-      { signal: caller.signal },
-      1_000,
-    );
+    const pending = telegramBotApiGet("1:token", "getMe", undefined, {
+      signal: caller.signal,
+      timeoutMs: 1_000,
+    });
     caller.abort();
     await expect(pending).rejects.toMatchObject({ name: "AbortError" });
   });
 
-  test("rejects non-Telegram endpoints and forces redirect errors", async () => {
-    await expect(
-      telegramApiFetch("https://example.com/bot1/getMe", undefined, 100),
-    ).rejects.toMatchObject({ code: "TELEGRAM_API_URL_FORBIDDEN" });
-
+  test("forces redirect errors on the derived canonical Telegram endpoint", async () => {
     let seen: RequestInit | undefined;
     globalThis.fetch = mock(async (_input: RequestInfo | URL, init?: RequestInit) => {
       seen = init;
-      return Response.json({ ok: true, result: {} });
+      return Response.json({ ok: true, result: { id: 1 } });
     }) as typeof fetch;
-    const response = await telegramApiFetch("https://api.telegram.org/bot1/getMe", undefined, 100);
-    await response.body?.cancel();
+    await expect(
+      telegramBotApiGet("1:token", "getMe", undefined, { timeoutMs: 100 }),
+    ).resolves.toEqual({ id: 1 });
     expect(seen?.redirect).toBe("error");
     expect(seen?.signal).toBeDefined();
+  });
+
+  test("aborts a stalled response body and clears its owned deadline", async () => {
+    let bodyAborted = false;
+    let clearedTimers = 0;
+    globalThis.clearTimeout = mock((timer: ReturnType<typeof setTimeout>) => {
+      clearedTimers += 1;
+      realClearTimeout(timer);
+    }) as typeof clearTimeout;
+
+    const fetchDouble = mock(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      const signal = init?.signal;
+      return new Response(
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            signal?.addEventListener("abort", () => {
+              bodyAborted = true;
+              controller.error(signal.reason);
+            });
+          },
+        }),
+      );
+    }) as typeof fetch;
+    globalThis.fetch = fetchDouble;
+
+    try {
+      await expect(
+        telegramBotApiGet("1:token", "getMe", undefined, { timeoutMs: 25 }),
+      ).rejects.toMatchObject({ name: "TimeoutError" });
+    } finally {
+      globalThis.fetch = realFetch;
+      globalThis.clearTimeout = realClearTimeout;
+    }
+
+    expect(bodyAborted).toBe(true);
+    expect(clearedTimers).toBe(1);
+    expect(globalThis.fetch).toBe(realFetch);
   });
 });
 
