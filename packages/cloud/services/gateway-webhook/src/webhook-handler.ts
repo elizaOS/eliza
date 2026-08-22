@@ -7,6 +7,7 @@ import {
   executeTelegramDelivery,
   type TelegramDeliveryHooks,
   type TelegramDeliveryLedger,
+  type TelegramDeliveryState,
   TelegramEgressAlreadyClaimedError,
 } from "@elizaos/cloud-services-common/telegram-delivery";
 import type {
@@ -209,6 +210,33 @@ function redisTelegramDeliveryLedger(
   const planKey = `${dedupKey}:plan`;
   const chunkKey = (chunkIndex: number, chunkDigest: string) =>
     `${dedupKey}:chunk:${chunkIndex}:${chunkDigest}`;
+  const decodeChunk = (
+    encoded: string | null,
+  ): { state: TelegramDeliveryState; providerMessageId?: string } | null => {
+    if (encoded === "uncertain" || encoded === "delivered") {
+      return { state: encoded };
+    }
+    if (!encoded) return null;
+    try {
+      const parsed = JSON.parse(encoded) as {
+        state?: unknown;
+        providerMessageId?: unknown;
+      };
+      if (
+        parsed.state === "delivered" &&
+        typeof parsed.providerMessageId === "string"
+      ) {
+        return {
+          state: "delivered",
+          providerMessageId: parsed.providerMessageId,
+        };
+      }
+    } catch {
+      // error-policy:J3 Redis delivery state is untrusted persisted input; an
+      // invalid value is treated as absent, never as permission to resend.
+    }
+    return null;
+  };
   return {
     async read() {
       const state = await redis.get<string>(dedupKey);
@@ -244,8 +272,16 @@ function redisTelegramDeliveryLedger(
         : "conflict";
     },
     async readChunk(chunkIndex, chunkDigest) {
-      const state = await redis.get<string>(chunkKey(chunkIndex, chunkDigest));
-      return state === "uncertain" || state === "delivered" ? state : null;
+      return (
+        decodeChunk(await redis.get<string>(chunkKey(chunkIndex, chunkDigest)))
+          ?.state ?? null
+      );
+    },
+    async readChunkProviderMessageId(chunkIndex, chunkDigest) {
+      return (
+        decodeChunk(await redis.get<string>(chunkKey(chunkIndex, chunkDigest)))
+          ?.providerMessageId ?? null
+      );
     },
     async claimChunk(chunkIndex, chunkDigest) {
       return Boolean(
@@ -258,10 +294,12 @@ function redisTelegramDeliveryLedger(
     async releaseChunk(chunkIndex, chunkDigest) {
       await redis.del(chunkKey(chunkIndex, chunkDigest));
     },
-    async markChunkDelivered(chunkIndex, chunkDigest) {
-      await redis.set(chunkKey(chunkIndex, chunkDigest), "delivered", {
-        ex: TELEGRAM_DELIVERY_TTL_SECONDS,
-      });
+    async markChunkDelivered(chunkIndex, chunkDigest, providerMessageId) {
+      await redis.set(
+        chunkKey(chunkIndex, chunkDigest),
+        JSON.stringify({ state: "delivered", providerMessageId }),
+        { ex: TELEGRAM_DELIVERY_TTL_SECONDS },
+      );
     },
     async markDelivered() {
       await redis.set(dedupKey, TELEGRAM_DELIVERED, {
@@ -533,7 +571,12 @@ async function processMessage(
   // forwarding used `userId` as its room and forked connector turns away from
   // the imported `personal:*` conversation.
   if (!explicitAgentId && isPersonalElizaTransport(adapter.platform)) {
-    const stopTyping = beginTypingFeedback(adapter, config, event);
+    // Membership transitions mutate routing state only. Emitting a typing
+    // action while the bot is being removed is both misleading and violates
+    // the no-provider-egress membership contract.
+    const stopTyping = event.membershipChange
+      ? () => undefined
+      : beginTypingFeedback(adapter, config, event);
     try {
       const timing = await sendPersonalSharedReply(
         adapter,
@@ -802,7 +845,14 @@ function beginTypingFeedback(
       error: err instanceof Error ? err.message : String(err),
     });
   });
-  return () => undefined;
+  return () => {
+    adapter.stopTypingIndicator?.(config, event).catch((err) => {
+      logger.debug("stopTypingIndicator failed", {
+        platform: adapter.platform,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    });
+  };
 }
 
 async function sendUnlinkedReply(
@@ -1024,7 +1074,17 @@ async function sendPersonalSharedReply(
     );
   }
   const cloudServerTiming = response.headers.get("Server-Timing");
-  const body: unknown = await response.json();
+  let body: unknown;
+  try {
+    body = await response.json();
+  } catch (error) {
+    // error-policy:J3 a successful transport response is still untrusted until
+    // its JSON contract parses; provider egress has not started at this point.
+    throw new PersonalSharedPreEgressError(
+      "personal Shared chat returned invalid JSON",
+      { cause: error },
+    );
+  }
   const cloudMs = attemptResult.durationMs;
   const reply =
     body && typeof body === "object" && "data" in body

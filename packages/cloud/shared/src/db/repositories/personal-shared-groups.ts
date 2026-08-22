@@ -129,14 +129,8 @@ export const personalSharedGroupsRepository = {
           and(
             eq(personalSharedGroupBindings.platform, input.platform),
             eq(personalSharedGroupBindings.project, input.project),
-            eq(
-              personalSharedGroupBindings.connector_account_id,
-              input.connectorAccountId,
-            ),
-            eq(
-              personalSharedGroupBindings.provider_chat_id,
-              input.providerChatId,
-            ),
+            eq(personalSharedGroupBindings.connector_account_id, input.connectorAccountId),
+            eq(personalSharedGroupBindings.provider_chat_id, input.providerChatId),
           ),
         )
         .limit(1);
@@ -182,6 +176,11 @@ export const personalSharedGroupsRepository = {
             last_verified_at: now,
             updated_at: now,
           },
+          // An active or suspended binding is tenant authority, not a
+          // last-writer-wins cache entry. The existing owner may reconnect it,
+          // and a deliberately revoked group may be claimed anew, but another
+          // participant cannot replace a live owner's billing and policy
+          // boundary merely by presenting their own valid claim.
           setWhere: or(
             eq(personalSharedGroupBindings.owner_user_id, claim.owner_user_id),
             eq(personalSharedGroupBindings.state, "revoked"),

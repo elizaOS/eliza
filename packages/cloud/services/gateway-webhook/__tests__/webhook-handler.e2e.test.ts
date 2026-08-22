@@ -346,12 +346,13 @@ describe("gateway webhook handler e2e routing", () => {
     const sendReplyWithReceipt = mock(async () => ({
       providerMessageIds: ["provider-eliza-reply-1"],
     }));
+    const stopTypingIndicator = mock(async () => undefined);
     const adapter: PlatformAdapter = {
       platform: "blooio",
       verifyWebhook: mock(async () => true),
       extractEvent: mock(async () => event),
       sendTypingIndicator: mock(async () => undefined),
-      stopTypingIndicator: mock(async () => undefined),
+      stopTypingIndicator,
       sendReply: mock(async () => undefined),
       sendReplyWithReceipt,
     };
@@ -409,6 +410,7 @@ describe("gateway webhook handler e2e routing", () => {
       replyToMessageId: "provider-eliza-reply-0",
     });
     expect(sendReplyWithReceipt).toHaveBeenCalledTimes(1);
+    expect(stopTypingIndicator).toHaveBeenCalledTimes(1);
     expect(receiptBody).toEqual({
       eventType: "delivery_receipt",
       platform: "blooio",
@@ -434,11 +436,12 @@ describe("gateway webhook handler e2e routing", () => {
       rawPayload: {},
     };
     const sendReply = mock(async () => undefined);
+    const sendTypingIndicator = mock(async () => undefined);
     const adapter: PlatformAdapter = {
       platform: "telegram",
       verifyWebhook: mock(async () => true),
       extractEvent: mock(async () => event),
-      sendTypingIndicator: mock(async () => undefined),
+      sendTypingIndicator,
       sendReply,
       sendReplyWithReceipt: mock(async () => ({ providerMessageIds: [] })),
     };
@@ -481,6 +484,7 @@ describe("gateway webhook handler e2e routing", () => {
       membershipChange: "removed",
     });
     expect(sendReply).not.toHaveBeenCalled();
+    expect(sendTypingIndicator).not.toHaveBeenCalled();
   });
 
   test("refuses Telegram egress when another worker atomically claimed delivery", async () => {

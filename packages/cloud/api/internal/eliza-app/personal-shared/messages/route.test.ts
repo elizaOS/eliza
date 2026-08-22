@@ -104,6 +104,7 @@ const issueGroupClaim = mock(async () => undefined);
 const consumeGroupClaimAndBind = mock(
   async (): Promise<
     | { status: "invalid" }
+    | { status: "already_bound" }
     | { status: "bound"; binding: Record<string, unknown> }
   > => ({ status: "invalid" }),
 );
@@ -289,7 +290,9 @@ describe("personal Shared messaging deliveries", () => {
     applyGroupMembershipChange.mockImplementation(async () => null);
     recordGroupDeliveryReceipts.mockImplementation(async () => 0);
     hasGroupDeliveryReceipt.mockImplementation(async () => false);
-    setGroupResponsePolicy.mockImplementation(async () => canonicalGroupBinding);
+    setGroupResponsePolicy.mockImplementation(
+      async () => canonicalGroupBinding,
+    );
     revokeGroupBinding.mockImplementation(async () => true);
     enqueueAgentResumeOnce.mockClear();
     enqueueAgentWakeOnce.mockClear();
@@ -901,7 +904,9 @@ describe("personal Shared messaging deliveries", () => {
   });
 
   test("does not report a policy update after the active binding changed", async () => {
-    resolveGroupBinding.mockImplementationOnce(async () => canonicalGroupBinding);
+    resolveGroupBinding.mockImplementationOnce(
+      async () => canonicalGroupBinding,
+    );
     setGroupResponsePolicy.mockImplementationOnce(async () => null);
     const response = await request({
       ...validGroup,
@@ -916,7 +921,9 @@ describe("personal Shared messaging deliveries", () => {
   });
 
   test("does not report a disconnect after the active binding changed", async () => {
-    resolveGroupBinding.mockImplementationOnce(async () => canonicalGroupBinding);
+    resolveGroupBinding.mockImplementationOnce(
+      async () => canonicalGroupBinding,
+    );
     revokeGroupBinding.mockImplementationOnce(async () => false);
     const response = await request({
       ...validGroup,

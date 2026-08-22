@@ -54,6 +54,10 @@ export interface TelegramDeliveryReceipt {
 export interface TelegramReplyDeliveryHooks {
   prepare(chunks: readonly string[]): Promise<void>;
   shouldSend(chunkIndex: number, chunk: string): Promise<boolean>;
+  deliveredProviderMessageId?(
+    chunkIndex: number,
+    chunk: string,
+  ): Promise<string | null>;
   accepted(
     chunkIndex: number,
     chunk: string,
@@ -544,6 +548,11 @@ export async function sendTelegramReply(
         deliveryHooks &&
         !(await deliveryHooks.shouldSend(chunkIndex, chunk))
       ) {
+        const priorProviderMessageId =
+          await deliveryHooks.deliveredProviderMessageId?.(chunkIndex, chunk);
+        if (priorProviderMessageId) {
+          providerMessageIds.push(priorProviderMessageId);
+        }
         break;
       }
       try {
