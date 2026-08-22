@@ -208,7 +208,7 @@ function nodeResponseBodyStream(res: IncomingMessage): ReadableStream<Uint8Array
     },
     {
       highWaterMark: NODE_RESPONSE_QUEUE_HIGH_WATER_MARK_BYTES,
-      size: (chunk) => chunk.byteLength,
+      size: (chunk) => chunk?.byteLength ?? 0,
     },
   );
 }
