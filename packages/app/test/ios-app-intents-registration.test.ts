@@ -622,6 +622,12 @@ describe("native assistant entry contracts", () => {
     expect(deviceExtensionSurfaceUITestsSwift).toContain(
       "elizaos://assistant?source=ios-widget&action=ask",
     );
+    expect(deviceExtensionSurfaceUITestsSwift).toContain(
+      "grantLocalNetworkPermissionIfPresent",
+    );
+    expect(deviceExtensionSurfaceUITestsSwift).toContain(
+      "label CONTAINS[c] 'local networks'",
+    );
     // The custom keyboard and hardware Action Button pieces are documented as
     // device-lane only instead of being faked in simulator evidence.
     expect(deviceExtensionSurfaceUITestsSwift).toContain(

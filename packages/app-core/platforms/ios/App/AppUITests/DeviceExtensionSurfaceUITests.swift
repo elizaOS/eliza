@@ -296,9 +296,34 @@ final class DeviceExtensionSurfaceUITests: XCTestCase {
         )
 
         let label = app.label.trimmingCharacters(in: .whitespacesAndNewlines)
-        return try XCTUnwrap(
+        let displayName = try XCTUnwrap(
             label.isEmpty ? nil : label,
             "Installed app must have a non-empty display label (CFBundleDisplayName/ELIZA_DISPLAY_NAME)."
+        )
+        try grantLocalNetworkPermissionIfPresent()
+        return displayName
+    }
+
+    /// Clears only the development remote-Mac lane's Local Network sheet before
+    /// handing control to SpringBoard. Leaving it presented makes Home-screen
+    /// presses target the permission sheet instead of entering jiggle mode.
+    private func grantLocalNetworkPermissionIfPresent() throws {
+        let copy = springboard.descendants(matching: .any).matching(
+            NSPredicate(format: "label CONTAINS[c] 'local networks'")
+        ).firstMatch
+        let deadline = Date().addingTimeInterval(8)
+        while Date() < deadline {
+            guard copy.exists else { return }
+            let allow = springboard.alerts.buttons["Allow"]
+            if allow.exists, allow.isHittable {
+                attachScreenshot(named: "widget-local-network-permission")
+                allow.tap()
+            }
+            Thread.sleep(forTimeInterval: 0.25)
+        }
+        XCTAssertFalse(
+            copy.exists,
+            "The Local Network sheet must dismiss before the widget flow operates SpringBoard."
         )
     }
 
