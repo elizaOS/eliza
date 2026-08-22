@@ -130,26 +130,31 @@ function readMessageMetadata(message: Memory): IncomingMessageSecurityMetadata {
 
 /**
  * Confirms that a connector's raw payload is either the whole rendered text or
- * the final field of a connector-rendered envelope. Arbitrary substring
- * containment is not a trust binding: a forged short value such as `yes`
- * occurs inside unrelated words and can otherwise become an action input.
+ * the final field of the envelope emitted by its attested source. Arbitrary
+ * substring containment or generic punctuation is not a trust binding: a
+ * forged short value such as `yes` can otherwise become an action input.
  */
 function isBoundConnectorPayload(
 	renderedText: string,
 	payloadText: string,
+	source: string | undefined,
 ): boolean {
 	const rendered = renderedText.trim();
 	const payload = payloadText.trim();
 	if (!payload) return false;
 	if (rendered === payload) return true;
+	if (!(source ?? "").trim().toLowerCase().includes("discord")) return false;
 	let offset = rendered.indexOf(payload);
 	while (offset >= 0) {
 		const prefix = rendered.slice(0, offset);
 		const suffix = rendered.slice(offset + payload.length);
-		const startsAtFieldBoundary = /(?::|\r?\n)\s*$/u.test(prefix);
+		const startsAtFieldBoundary =
+			/^\[Discord [^\r\n\]]+\] @[^\r\n]+(?: \([^\r\n)]*\))?:\s*$/u.test(prefix);
 		const endsAtFieldBoundary =
 			suffix.length === 0 ||
-			/^\r?\n\[platform_reply_reference\](?:\r?\n|$)/u.test(suffix);
+			/^\r?\n\[platform_reply_reference\]\r?\n[\s\S]*\r?\n\[\/platform_reply_reference\]\r?\n\(in reply to @[^\r\n)]*\)$/u.test(
+				suffix,
+			);
 		if (startsAtFieldBoundary && endsAtFieldBoundary) return true;
 		offset = rendered.indexOf(payload, offset + 1);
 	}
@@ -221,7 +226,7 @@ export function hardenIncomingUserMessage(message: Memory): void {
 		// must not steer resolvers to words the model never saw.
 		metadata.userPayloadText =
 			trimmedConnectorText &&
-			isBoundConnectorPayload(text, trimmedConnectorText)
+			isBoundConnectorPayload(text, trimmedConnectorText, source)
 				? trimmedConnectorText
 				: text;
 		message.content.text = wrapExternalContent(text, {
@@ -262,14 +267,19 @@ function resolveRetainedCandidate(message: Memory): string {
 		return retained.trim();
 	}
 	// Connector-only callers can resolve a message before the inbound hook has
-	// stamped metadata. Accept their raw field only when it occurs in the
-	// rendered text; an arbitrary currentMessageText cannot override a different
-	// visible payload (for example, forged "yes" beside a destructive request).
+	// stamped metadata. Accept their raw field only when it is bound to the
+	// source's rendered envelope; an arbitrary currentMessageText cannot override
+	// a different visible payload (for example, forged "yes" beside a destructive
+	// request).
 	const connectorText = message.content?.currentMessageText;
+	const source =
+		typeof message.content?.source === "string"
+			? message.content.source
+			: undefined;
 	if (
 		typeof connectorText === "string" &&
 		connectorText.trim().length > 0 &&
-		isBoundConnectorPayload(text, connectorText)
+		isBoundConnectorPayload(text, connectorText, source)
 	) {
 		return connectorText.trim();
 	}

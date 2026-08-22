@@ -1711,20 +1711,26 @@ function parseSubAgentTaskCompleteRelay(
 	if (!text) return undefined;
 	const trimmed = text.trimStart();
 	if (!trimmed.startsWith("[sub-agent:")) return undefined;
-	const headerEnd = trimmed.indexOf("]");
-	if (headerEnd < 0) return undefined;
+	const compactHeader = "[sub-agent:task_complete]";
+	if (trimmed.startsWith(compactHeader)) {
+		return { trimmed, headerEnd: compactHeader.length - 1 };
+	}
+	const lineEnd = trimmed.indexOf("\n");
+	if (lineEnd < 0) return undefined;
+	const headerLine = trimmed.slice(0, lineEnd).trimEnd();
+	if (!headerLine.endsWith("]")) return undefined;
+	const headerEnd = headerLine.length - 1;
 	const header = trimmed.slice(0, headerEnd + 1);
 	const inner = header.slice("[sub-agent:".length, -1).trim();
-	if (inner === "task_complete") return { trimmed, headerEnd };
-	const trailingEvent = inner.match(/\s—\s*([a-z_][a-z0-9_-]*)\s*$/iu)?.[1];
-	if (trailingEvent) {
-		return trailingEvent.toLowerCase() === "task_complete"
-			? { trimmed, headerEnd }
-			: undefined;
-	}
-	const completionDirective =
-		/\s—\s*task_complete\s*—\s*this delegated task is DONE;/u.test(inner);
-	return completionDirective ? { trimmed, headerEnd } : undefined;
+	const routeDelimiters = [...inner.matchAll(/\([^()\r\n]+\)\s—\s*/gu)];
+	const finalDelimiter = routeDelimiters.at(-1);
+	if (finalDelimiter?.index === undefined) return undefined;
+	const routedStatus = inner.slice(
+		finalDelimiter.index + finalDelimiter[0].length,
+	);
+	return /^task_complete(?:\s—|$)/iu.test(routedStatus)
+		? { trimmed, headerEnd }
+		: undefined;
 }
 
 /**
@@ -2565,15 +2571,8 @@ function replyReferenceEventForContext(message: Memory): ContextEvent | null {
 function isSubAgentCompletionArtifact(memory: Memory): boolean {
 	const content = memory.content;
 	if (!content || typeof content !== "object") return false;
-	const metadata =
-		content.metadata && typeof content.metadata === "object"
-			? (content.metadata as Record<string, unknown>)
-			: {};
-	if (metadata.subAgent === true) return true;
 	const source = typeof content.source === "string" ? content.source : "";
-	if (source.startsWith("acpx:sub-agent-router")) return true;
-	const text = typeof content.text === "string" ? content.text.trim() : "";
-	return text.startsWith("[sub-agent:");
+	return source.startsWith("acpx:sub-agent-router");
 }
 
 function looksLikePriorDialogueArtifact(text: string): boolean {

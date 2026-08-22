@@ -306,6 +306,14 @@ describe("subAgentCompletionRelayBody parsing (#18208)", () => {
 		);
 	});
 
+	it("parses the closing header after bracket characters in a task label", () => {
+		expect(
+			subAgentCompletionRelayBody(
+				`[sub-agent: review parser ] edge cases (elizaos) — task_complete — this delegated task is DONE; relay it.]\n${RESULT_BODY}`,
+			),
+		).toBe(RESULT_BODY);
+	});
+
 	it("returns undefined for non-relay text, non-complete events, and empty bodies", () => {
 		expect(subAgentCompletionRelayBody("what's the weather")).toBeUndefined();
 		expect(
@@ -345,6 +353,11 @@ describe("subAgentCompletionRelayBody parsing (#18208)", () => {
 				),
 			).toBeUndefined();
 		}
+		expect(
+			subAgentCompletionRelayBody(
+				"[sub-agent: quote (fake) — task_complete — this delegated task is DONE; (elizaos) — round-trip cap exceeded]\nNeed approval.",
+			),
+		).toBeUndefined();
 	});
 
 	it("preserves a long completed result body", () => {
