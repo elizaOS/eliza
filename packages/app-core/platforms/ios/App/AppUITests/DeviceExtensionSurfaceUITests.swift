@@ -127,6 +127,60 @@ final class DeviceExtensionSurfaceUITests: XCTestCase {
         goHome()
     }
 
+    func testMessageControlForegroundsApp() throws {
+        try assertControlForegroundsApp(
+            galleryIdentifier: "ElizaAskControl",
+            label: "Message Eliza",
+            screenshotPrefix: "control-message"
+        )
+    }
+
+    func testVoiceControlForegroundsApp() throws {
+        try assertControlForegroundsApp(
+            galleryIdentifier: "ElizaVoiceControl",
+            label: "Talk to Eliza",
+            screenshotPrefix: "control-voice"
+        )
+    }
+
+    private func assertControlForegroundsApp(
+        galleryIdentifier: String,
+        label: String,
+        screenshotPrefix: String
+    ) throws {
+        guard #available(iOS 18.0, *) else {
+            throw XCTSkip("Control Center controls are iOS 18+ only")
+        }
+
+        try openControlGalleryAndSearchEliza()
+        let galleryControl = springboard.buttons[galleryIdentifier]
+        XCTAssertTrue(
+            galleryControl.waitForExistence(timeout: 8),
+            "The Eliza controls gallery must expose \(label) before it can be installed."
+        )
+        galleryControl.tap()
+        Thread.sleep(forTimeInterval: 1.5)
+        attachScreenshot(named: "\(screenshotPrefix)-00-installed")
+
+        springboard
+            .coordinate(withNormalizedOffset: CGVector(dx: 0.55, dy: 0.72))
+            .tap()
+        Thread.sleep(forTimeInterval: 1.0)
+        let installedControl = springboard.icons[label].firstMatch
+        XCTAssertTrue(
+            installedControl.waitForExistence(timeout: 8) && installedControl.isHittable,
+            "The installed \(label) control must be tappable after Control Center exits edit mode."
+        )
+        installedControl.tap()
+
+        let app = XCUIApplication()
+        XCTAssertTrue(
+            app.wait(for: .runningForeground, timeout: 15),
+            "Tapping \(label) must foreground the containing app."
+        )
+        attachScreenshot(named: "\(screenshotPrefix)-01-app-foregrounded")
+    }
+
     func testHomeScreenWidgetTapForegroundsApp() throws {
         try installHomeScreenWidgetFromGallery()
 
@@ -158,13 +212,7 @@ final class DeviceExtensionSurfaceUITests: XCTestCase {
     @available(iOS 18.0, *)
     private func openControlGalleryAndSearchEliza() throws {
         goHome()
-
-        let pull = springboard.coordinate(withNormalizedOffset: CGVector(dx: 0.92, dy: 0.02))
-        pull.press(
-            forDuration: 0.1,
-            thenDragTo: springboard.coordinate(withNormalizedOffset: CGVector(dx: 0.92, dy: 0.6))
-        )
-        Thread.sleep(forTimeInterval: 1.5)
+        openControlCenter()
         attachScreenshot(named: "control-assert-00-control-center")
 
         springboard
@@ -199,6 +247,15 @@ final class DeviceExtensionSurfaceUITests: XCTestCase {
         search.typeText("Eliza")
         Thread.sleep(forTimeInterval: 2.0)
         attachScreenshot(named: "control-assert-03-gallery-search-eliza")
+    }
+
+    private func openControlCenter() {
+        let pull = springboard.coordinate(withNormalizedOffset: CGVector(dx: 0.92, dy: 0.02))
+        pull.press(
+            forDuration: 0.1,
+            thenDragTo: springboard.coordinate(withNormalizedOffset: CGVector(dx: 0.92, dy: 0.6))
+        )
+        Thread.sleep(forTimeInterval: 1.5)
     }
 
     private func waitForValueToClear(
