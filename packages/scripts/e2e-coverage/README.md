@@ -51,8 +51,11 @@ disappearing from the inventory. Canonical row ids use package, kind, and the
 registered boundary name; moving an implementation file does not change its id.
 
 `runtime-surface-dependencies.json` is the reviewed dependency authority for
-providers, connectors, model handlers, and routes. Exactly one package/kind
-rule must exist for every such production surface. Package imports such as
+every discovered production surface kind, including actions, services,
+scheduled workers, queues, views, and native bridges. Each package is covered
+by exactly one explicit external-service rule or a reviewed package-wide local
+disposition; no unlisted kind falls through to an automatic local-only default.
+Package imports such as
 React, Zod, SDKs, parsers, and database
 drivers remain visible under `packageDependencies`, but never imply an external
 service or mock. A service rule names its protocol and either a repository-local
@@ -61,9 +64,13 @@ exist inside the repository; mock/reset evidence remains row-specific and is
 not inferred from catalog ownership. The catalog records closed draft PR #23185
 only as a design reference for a richer provider conformance catalog; it does
 not treat that unmerged work as present evidence or a required stack. The
-current-develop migration has 61 rules and 94 package/kind selectors: three
-selectors were added and four stale selectors were removed from the prior
-snapshot.
+current-develop migration has 76 reviewed rules plus 40 reviewed local package
+boundaries, accounting for all 115 packages with discovered runtime surfaces.
+Forty-three rules declare external services, while the remaining rules record
+local or exact-surface dispositions. Package-wide external rules
+conservatively apply the named protocol and mock ownership to every registered
+row in that package; exact-surface rules narrow that result when a boundary is
+known not to invoke the package's other external collaborators.
 
 Coverage and dependency status are derived, never baselined. A deterministic scenario declares the
 full canonical id in its exported `runtimeSurfaceIds` array. Canonical bare

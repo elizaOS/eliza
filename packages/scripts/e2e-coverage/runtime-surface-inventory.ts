@@ -72,7 +72,10 @@ export interface MockDependency {
 
 export interface RuntimeDependencyRule {
   packageName: string;
-  kinds: RuntimeSurfaceKind[];
+  /** `all` applies this reviewed package boundary to every discovered kind. */
+  kinds: RuntimeSurfaceKind[] | "all";
+  /** Exact canonical ids override a package/kind rule for narrower truth. */
+  surfaceIds?: string[];
   noExternalServiceReason?: string;
   externalServices?: Array<{
     id: string;
@@ -92,6 +95,8 @@ export interface RuntimeDependencyCatalog {
     relationship: string;
   };
   rules: RuntimeDependencyRule[];
+  /** Reviewed package boundaries that do not call an external service. */
+  localPackages: Record<string, string>;
 }
 
 export interface RuntimeSurfaceRow {
@@ -236,14 +241,6 @@ const PLUGIN_FIELDS = new Map<string, RuntimeSurfaceKind>([
   ["connectorSources", "connector-ingress"],
 ]);
 
-const EXPLICIT_DEPENDENCY_KINDS = new Set<RuntimeSurfaceKind>([
-  "provider",
-  "connector-ingress",
-  "connector-egress",
-  "model-handler",
-  "route",
-]);
-
 const NAME_KEYS: Record<RuntimeSurfaceKind, readonly string[]> = {
   action: ["name"],
   subaction: ["name"],
@@ -265,6 +262,15 @@ const NAME_KEYS: Record<RuntimeSurfaceKind, readonly string[]> = {
 };
 
 const EXECUTABLE_EXTENSIONS = [".ts", ".tsx", ".js", ".mjs"];
+
+/**
+ * Production hosts whose boot entry is owned by deployment tooling rather than
+ * a package export. Keep this list narrow and source-backed: adding a filename
+ * convention here would make an unexported implementation look executable.
+ */
+const DOCUMENTED_HOST_BOOT_ENTRYPOINTS: Readonly<Record<string, string[]>> = {
+  "@elizaos/operator": ["pepr.ts"],
+};
 
 function walkFiles(
   root: string,
@@ -420,6 +426,9 @@ export function loadRuntimeDependencyCatalog(
   if (
     parsed.schema !== RUNTIME_DEPENDENCY_SCHEMA ||
     !Array.isArray(parsed.rules) ||
+    !parsed.localPackages ||
+    typeof parsed.localPackages !== "object" ||
+    Array.isArray(parsed.localPackages) ||
     !parsed.upstreamCatalog ||
     typeof parsed.upstreamCatalog !== "object"
   ) {
@@ -429,7 +438,10 @@ export function loadRuntimeDependencyCatalog(
 }
 
 function validateDependencyRule(rule: RuntimeDependencyRule): void {
-  if (!rule.packageName || rule.kinds.length === 0) {
+  if (
+    !rule.packageName ||
+    (Array.isArray(rule.kinds) && rule.kinds.length === 0)
+  ) {
     throw new Error(
       "Runtime dependency rules require a package and at least one kind",
     );
@@ -494,14 +506,39 @@ export function resolveRuntimeDependencies(
   packageName: string,
   kind: RuntimeSurfaceKind,
   catalog: RuntimeDependencyCatalog = loadRuntimeDependencyCatalog(),
+  surfaceId?: string,
 ): {
   externalServiceDependencies: ExternalServiceDependency[];
   mockDependencies: MockDependency[];
   dependencyDisposition: RuntimeSurfaceRow["dependencyDisposition"];
 } {
-  const matches = catalog.rules.filter(
-    (rule) => rule.packageName === packageName && rule.kinds.includes(kind),
+  const exactMatches = surfaceId
+    ? catalog.rules.filter(
+        (rule) =>
+          rule.packageName === packageName &&
+          rule.surfaceIds?.includes(surfaceId),
+      )
+    : [];
+  const packageMatches = catalog.rules.filter(
+    (rule) =>
+      rule.packageName === packageName &&
+      !rule.surfaceIds &&
+      (rule.kinds === "all" || rule.kinds.includes(kind)),
   );
+  const matches = exactMatches.length > 0 ? exactMatches : packageMatches;
+  const localReason = catalog.localPackages[packageName];
+  if (matches.length === 0 && typeof localReason === "string") {
+    if (localReason.trim().length < 24) {
+      throw new Error(
+        `${packageName} local-only dependency reason is not actionable`,
+      );
+    }
+    return {
+      externalServiceDependencies: [],
+      mockDependencies: [],
+      dependencyDisposition: "local-only",
+    };
+  }
   if (matches.length !== 1) {
     throw new Error(
       `${packageName}:${kind} requires exactly one explicit runtime dependency rule; found ${matches.length}`,
@@ -549,24 +586,67 @@ export function resolveRuntimeDependencies(
 }
 
 export function validateRuntimeDependencyCatalog(
-  surfaces: ReadonlyArray<{ packageName: string; kind: RuntimeSurfaceKind }>,
+  surfaces: ReadonlyArray<{
+    packageName: string;
+    kind: RuntimeSurfaceKind;
+    id?: string;
+  }>,
   catalog: RuntimeDependencyCatalog = loadRuntimeDependencyCatalog(),
 ): void {
   const required = new Set(
-    surfaces
-      .filter((surface) => EXPLICIT_DEPENDENCY_KINDS.has(surface.kind))
-      .map((surface) => `${surface.packageName}:${surface.kind}`),
+    surfaces.map((surface) => `${surface.packageName}:${surface.kind}`),
   );
+  const kindsByPackage = new Map<string, Set<RuntimeSurfaceKind>>();
+  for (const surface of surfaces) {
+    const kinds = kindsByPackage.get(surface.packageName) ?? new Set();
+    kinds.add(surface.kind);
+    kindsByPackage.set(surface.packageName, kinds);
+  }
   const declared = new Map<string, number>();
   for (const rule of catalog.rules) {
     validateDependencyRule(rule);
-    for (const kind of rule.kinds) {
-      if (!EXPLICIT_DEPENDENCY_KINDS.has(kind)) {
+    if (rule.surfaceIds) continue;
+    const kinds =
+      rule.kinds === "all"
+        ? [...(kindsByPackage.get(rule.packageName) ?? [])]
+        : rule.kinds;
+    for (const kind of kinds) {
+      const selector = `${rule.packageName}:${kind}`;
+      declared.set(selector, (declared.get(selector) ?? 0) + 1);
+    }
+  }
+  const availableIds = new Set(
+    surfaces
+      .map((surface) => surface.id)
+      .filter((id): id is string => typeof id === "string"),
+  );
+  const exactIds = new Set<string>();
+  for (const rule of catalog.rules.filter(
+    (candidate) => candidate.surfaceIds,
+  )) {
+    for (const id of rule.surfaceIds ?? []) {
+      if (exactIds.has(id)) {
+        throw new Error(`duplicate exact runtime dependency rule: ${id}`);
+      }
+      exactIds.add(id);
+      if (availableIds.size > 0 && !availableIds.has(id)) {
+        throw new Error(`stale exact runtime dependency rule: ${id}`);
+      }
+      if (!id.startsWith(`${rule.packageName}:`)) {
         throw new Error(
-          `${rule.packageName}:${kind} is not dependency-accounted`,
+          `${id} does not belong to dependency package ${rule.packageName}`,
         );
       }
-      const selector = `${rule.packageName}:${kind}`;
+    }
+  }
+  for (const [packageName, reason] of Object.entries(catalog.localPackages)) {
+    if (reason.trim().length < 24) {
+      throw new Error(
+        `${packageName} local-only dependency reason is not actionable`,
+      );
+    }
+    for (const kind of kindsByPackage.get(packageName) ?? []) {
+      const selector = `${packageName}:${kind}`;
       declared.set(selector, (declared.get(selector) ?? 0) + 1);
     }
   }
@@ -638,19 +718,6 @@ function resolveWorkspaceModule(specifier: string): string | null {
 
 export function packageEntryPoints(packageDir: string): string[] {
   const candidates = new Set<string>();
-  for (const base of [packageDir, path.join(packageDir, "src")]) {
-    for (const entry of [
-      "index.ts",
-      "index.tsx",
-      "index.browser.ts",
-      "index.node.ts",
-      "plugin.ts",
-      "edge.ts",
-    ]) {
-      const file = path.join(base, entry);
-      if (existsSync(file)) candidates.add(file);
-    }
-  }
   const manifest = readJson(path.join(packageDir, "package.json"));
   const visit = (value: unknown): void => {
     if (typeof value === "string") {
@@ -659,12 +726,20 @@ export function packageEntryPoints(packageDir: string): string[] {
         /^dist\/.*\.(?:m?js|cjs)$/.test(normalized) &&
         !normalized.includes("*")
       ) {
-        const stem = normalized
-          .replace(/^dist\//, "src/")
+        const outputStem = normalized
+          .replace(/^dist\//, "")
           .replace(/\.(?:m?js|cjs)$/, "");
-        for (const extension of [".ts", ".tsx", ".mts", ".cts"]) {
-          const sourceFile = path.join(packageDir, `${stem}${extension}`);
-          if (existsSync(sourceFile)) candidates.add(sourceFile);
+        const sourceStems = new Set([outputStem, path.join("src", outputStem)]);
+        const basename = path.basename(outputStem);
+        if (/^index\.(?:browser|node|edge)$/.test(basename)) {
+          sourceStems.add(basename);
+          sourceStems.add(path.join("src", basename));
+        }
+        for (const stem of sourceStems) {
+          for (const extension of [".ts", ".tsx", ".mts", ".cts"]) {
+            const sourceFile = path.join(packageDir, `${stem}${extension}`);
+            if (existsSync(sourceFile)) candidates.add(sourceFile);
+          }
         }
       }
       if (
@@ -685,13 +760,26 @@ export function packageEntryPoints(packageDir: string): string[] {
   visit(manifest.exports);
   visit(manifest.bin);
   for (const field of ["main", "module", "source"]) {
-    const value = manifest[field];
-    if (typeof value !== "string") continue;
-    const source = value
-      .replace(/^dist\//, "src/")
-      .replace(/\.(?:m?js|cjs)$/, ".ts");
-    const file = path.join(packageDir, source);
-    if (existsSync(file)) candidates.add(file);
+    visit(manifest[field]);
+  }
+  const scripts = manifest.scripts;
+  if (scripts && typeof scripts === "object" && !Array.isArray(scripts)) {
+    const start = (scripts as Record<string, unknown>).start;
+    if (typeof start === "string") {
+      for (const match of start.matchAll(
+        /(?:^|\s)([^\s"']+\.(?:ts|tsx|mts|cts))(?:\s|$)/g,
+      )) {
+        const file = path.join(packageDir, match[1].replace(/^\.\//, ""));
+        if (existsSync(file)) candidates.add(file);
+      }
+    }
+  }
+  if (typeof manifest.name === "string") {
+    for (const entrypoint of DOCUMENTED_HOST_BOOT_ENTRYPOINTS[manifest.name] ??
+      []) {
+      const file = path.join(packageDir, entrypoint);
+      if (existsSync(file)) candidates.add(file);
+    }
   }
   return [...candidates].sort();
 }
@@ -2418,28 +2506,13 @@ function cloudServiceSurfaces(): RawSurface[] {
     if (!statSync(dir).isDirectory()) continue;
     const info = packageContext(dir);
     if (!info) continue;
-    const manifest = readJson(path.join(dir, "package.json"));
-    const candidates = [
-      typeof manifest.main === "string" ? manifest.main : null,
-      typeof manifest.main === "string"
-        ? manifest.main.replace(/^dist\//, "src/").replace(/\.js$/, ".ts")
-        : null,
-      "src/index.ts",
-      "index.ts",
-      "pepr.ts",
-    ].filter((candidate): candidate is string => Boolean(candidate));
-    const entrypoint =
-      candidates.find((candidate) => existsSync(path.join(dir, candidate))) ??
-      walkFiles(
-        dir,
-        (file) => file.endsWith(".ts") && !file.endsWith(".test.ts"),
-      )[0]?.slice(dir.length + 1);
+    const entrypoint = packageEntryPoints(dir)[0];
     if (!entrypoint) continue;
     rows.push({
       kind: "cloud-service",
       name: info.packageName,
-      sourcePath: toRepoPath(path.join(dir, entrypoint)),
-      registrationField: "package.json#main",
+      sourcePath: toRepoPath(entrypoint),
+      registrationField: "package manifest or documented host boot entrypoint",
       package: info,
     });
   }
@@ -3242,6 +3315,7 @@ export function buildRuntimeSurfaceInventory(
     raw.map((surface) => ({
       packageName: surface.package.packageName,
       kind: surface.kind,
+      id: runtimeSurfaceId(surface),
     })),
     dependencyCatalog,
   );
@@ -3271,17 +3345,12 @@ export function buildRuntimeSurfaceInventory(
         ...matchingCells.map((cell) => cell.file),
       ]),
     ].sort();
-    const runtimeDependencies = EXPLICIT_DEPENDENCY_KINDS.has(surface.kind)
-      ? resolveRuntimeDependencies(
-          surface.package.packageName,
-          surface.kind,
-          dependencyCatalog,
-        )
-      : {
-          externalServiceDependencies: [],
-          mockDependencies: [],
-          dependencyDisposition: "local-only" as const,
-        };
+    const runtimeDependencies = resolveRuntimeDependencies(
+      surface.package.packageName,
+      surface.kind,
+      dependencyCatalog,
+      id,
+    );
     const covered = boundaryArtifacts.length > 0;
     const missingMock = runtimeDependencies.mockDependencies.some(
       (dependency) => dependency.availability === "missing",
