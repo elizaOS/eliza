@@ -1,6 +1,6 @@
 /**
  * Exercises the real managed Calendar feed through its authenticated fetch
- * boundary, including token cycles and independent request/event ceilings.
+ * boundary, including token cycles and the accumulated event ceiling.
  */
 import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
 import { logger } from "../../utils/logger";
@@ -80,24 +80,12 @@ describe("fetchManagedGoogleCalendarFeed pagination", () => {
     expect(globalThis.fetch).toHaveBeenCalledTimes(2);
   });
 
-  test("bounds pagination against a provider that never repeats but never stops", async () => {
-    let callCount = 0;
-    installFetchSequence(() => {
-      callCount += 1;
-      return page(`token-${callCount}`);
-    });
-    await expect(fetchManagedGoogleCalendarFeed(FEED_ARGS)).rejects.toBeInstanceOf(
-      AgentGoogleConnectorError,
-    );
-    expect(globalThis.fetch).toHaveBeenCalledTimes(1_000);
-  });
-
-  test("allows the exact terminal page ceiling", async () => {
-    installFetchSequence((i) => (i === 999 ? page() : page(`token-${i + 1}`)));
+  test("follows provider cursors beyond the former fixed page ceiling", async () => {
+    installFetchSequence((i) => (i === 1_000 ? page() : page(`token-${i + 1}`)));
     await expect(fetchManagedGoogleCalendarFeed(FEED_ARGS)).resolves.toMatchObject({
       events: [],
     });
-    expect(globalThis.fetch).toHaveBeenCalledTimes(1_000);
+    expect(globalThis.fetch).toHaveBeenCalledTimes(1_001);
   });
 
   test("allows exactly 10,000 normalized events", async () => {

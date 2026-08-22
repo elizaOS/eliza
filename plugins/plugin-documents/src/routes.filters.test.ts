@@ -2,8 +2,8 @@
  * Route-level tests for the first-class `roomId` filter and `mediaFormat` facet
  * added in #13593 (knowledge slice 1). Exercises `GET /api/documents` through
  * `handleDocumentsRoutes` with a mock documents service, asserting the new
- * filters compose with tags[] and that access control still applies after
- * filtering (owner-private items don't leak to a non-owner actor).
+ * filters compose with tags[] after the canonical service has authorized the
+ * requester's complete document set.
  */
 import type { AccessContext, Memory, UUID } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
@@ -69,17 +69,18 @@ function seedDocuments(): Memory[] {
 }
 
 function makeRuntimeAndService(docs: Memory[]) {
-  let scanned = false;
   const documentsService = {
-    getMemories: vi.fn(
-      async (params: { tableName: string; offset?: number }) => {
-        if (params.tableName !== "documents") return [];
-        // Single batch: return all on first call, empty after.
-        if (scanned) return [];
-        scanned = true;
-        return docs;
-      },
+    getMemories: vi.fn(async () => []),
+    listAllDocumentsWithAccessContext: vi.fn(
+      async (accessContext: AccessContext) =>
+        docs.filter((doc) => {
+          const metadata = doc.metadata as Record<string, unknown>;
+          return accessContext.isOwner
+            ? metadata.scope === "owner-private"
+            : metadata.scopedToEntityId === accessContext.requesterEntityId;
+        }),
     ),
+    listDocumentFragmentsWithAccessContext: vi.fn(async () => []),
     countMemories: vi.fn(async () => docs.length),
     addDocument: vi.fn(),
     searchDocuments: vi.fn(async () => []),
@@ -383,6 +384,9 @@ describe("GET /api/documents/search — roomId pushed into service scope (#13593
       | { roomId?: string }
       | undefined;
     expect(scopeArg?.roomId).toBe(ROOM_A);
+    expect(searchDocuments.mock.calls[0][3]).toEqual(
+      makeAccessContext(OWNER_ENTITY),
+    );
   });
 
   it("keeps help-tagged fragment results when free-text search also has tag=help", async () => {

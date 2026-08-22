@@ -18,10 +18,6 @@ export type OrchestratorTaskType =
 
 /** Lower bound the issue calls for: a generated set always has ≥3 criteria. */
 const MIN_CRITERIA = 3;
-/** Upper bound so the verifier prompt stays cheap and focused. */
-const MAX_CRITERIA = 5;
-/** Per-criterion length cap so a runaway model line can't bloat the record. */
-const MAX_CRITERION_CHARS = 240;
 /** A goal shorter than this is treated as trivial — no criteria generated. */
 const MIN_GOAL_CHARS = 8;
 
@@ -118,8 +114,7 @@ export function isNonTrivialGoal(goal: string): boolean {
   return (goal ?? "").trim().length >= MIN_GOAL_CHARS;
 }
 
-/** Normalize, de-dupe, length-cap and bound a candidate criteria list to the
- *  [MIN, MAX] window, topping up from the static fallback when the model
+/** Normalize and de-dupe a candidate criteria list, topping up from the static fallback when the model
  *  returned too few usable lines. Always returns ≥{@link MIN_CRITERIA} when the
  *  fallback set itself has that many. */
 function normalizeCriteria(
@@ -129,23 +124,20 @@ function normalizeCriteria(
   const seen = new Set<string>();
   const out: string[] = [];
   const push = (raw: string): void => {
-    const trimmed = raw.trim().slice(0, MAX_CRITERION_CHARS).trim();
+    const trimmed = raw.trim();
     if (trimmed.length === 0) return;
     const key = trimmed.toLowerCase();
     if (seen.has(key)) return;
     seen.add(key);
     out.push(trimmed);
   };
-  for (const candidate of candidates) {
-    if (out.length >= MAX_CRITERIA) break;
-    push(candidate);
-  }
+  for (const candidate of candidates) push(candidate);
   // Top up to the minimum from the static fallback if the model was stingy.
   for (const item of fallback) {
     if (out.length >= MIN_CRITERIA) break;
     push(item);
   }
-  return out.slice(0, MAX_CRITERIA);
+  return out;
 }
 
 /**
@@ -183,7 +175,7 @@ function buildRefinePrompt(
     template.map((c, i) => `${i + 1}. ${c}`).join("\n"),
     "",
     'Respond with a SINGLE JSON object and nothing else, no markdown fences. Schema: { "criteria": ["<criterion>", "<criterion>", ...] }',
-    `Return between ${MIN_CRITERIA} and ${MAX_CRITERIA} criteria.`,
+    `Return at least ${MIN_CRITERIA} criteria.`,
   ].join("\n");
 }
 

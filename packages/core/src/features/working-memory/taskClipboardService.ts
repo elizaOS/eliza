@@ -1,6 +1,6 @@
 /**
  * Task working-memory clipboard service.
- * Stores bounded per-entity action results for use within the current task context.
+ * Stores complete per-entity action results for use within the current task context.
  * This is NOT the user-facing todo list — it is runtime-internal working memory.
  */
 import crypto from "node:crypto";
@@ -56,7 +56,7 @@ interface WorkingMemoryConfig {
 	allowedExtensions?: string[];
 }
 
-export const TASK_CLIPBOARD_MAX_ITEMS = 5;
+export const TASK_CLIPBOARD_MAX_ITEMS = Number.MAX_SAFE_INTEGER;
 
 // --- Config ---
 
@@ -105,7 +105,7 @@ function createDefaultStore(): TaskClipboardStore {
 }
 
 function sanitizeTitle(value: string): string {
-	return value.replace(/\s+/g, " ").trim().slice(0, 120);
+	return value.replace(/\s+/g, " ").trim();
 }
 
 function defaultTitleForInput(input: AddTaskClipboardItemInput): string {
@@ -167,10 +167,7 @@ export class TaskClipboardService {
 			}
 			return {
 				version: 1,
-				maxItems:
-					typeof parsed.maxItems === "number" && parsed.maxItems > 0
-						? parsed.maxItems
-						: TASK_CLIPBOARD_MAX_ITEMS,
+				maxItems: TASK_CLIPBOARD_MAX_ITEMS,
 				items: parsed.items
 					.filter((item): item is TaskClipboardItem =>
 						Boolean(
@@ -260,12 +257,6 @@ export class TaskClipboardService {
 							item.sourceId === input.sourceId,
 					)
 				: -1;
-
-		if (replacementIndex === -1 && store.items.length >= store.maxItems) {
-			throw new Error(
-				`Clipboard is full (${store.items.length}/${store.maxItems}). Remove an unused item before adding another.`,
-			);
-		}
 
 		const existing =
 			replacementIndex >= 0 ? store.items[replacementIndex] : null;

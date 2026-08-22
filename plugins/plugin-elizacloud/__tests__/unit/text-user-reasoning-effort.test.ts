@@ -104,4 +104,26 @@ describe("ELIZAOS_CLOUD_REASONING_EFFORT user pin", () => {
     );
     expect(body?.reasoning_effort).toBe("none");
   });
+
+  it.each([128, 1024, 1025])(
+    "preserves an explicit user pin at maxTokens=%i without thinking-off intent",
+    async (maxTokens) => {
+      const body = await captureBody(
+        "zai-glm-4.7",
+        { ELIZAOS_CLOUD_REASONING_EFFORT: "high" },
+        { maxTokens }
+      );
+      expect(body?.max_tokens).toBe(maxTokens);
+      expect(body?.reasoning_effort).toBe("high");
+    }
+  );
+
+  it("uses explicit thinking-off intent even on a small-capped call", async () => {
+    const body = await captureBody(
+      "zai-glm-4.7",
+      { ELIZAOS_CLOUD_REASONING_EFFORT: "high" },
+      { maxTokens: 128, providerOptions: { eliza: { thinking: "off" } } }
+    );
+    expect(body?.reasoning_effort).toBe("none");
+  });
 });

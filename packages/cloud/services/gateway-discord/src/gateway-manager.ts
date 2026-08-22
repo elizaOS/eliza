@@ -30,6 +30,7 @@ import {
   type DiscordInstallWelcomeJob,
   DiscordInstallWelcomeQueue,
 } from "./discord-install-welcome-queue";
+import { chunkDiscordText, discordChunkNonce } from "./discord-text-chunks";
 import {
   type DiscordConnectionDmPolicyState,
   isDmSenderAllowed,
@@ -1669,9 +1670,9 @@ export class GatewayManager {
       );
 
       if (response) {
-        const truncated =
-          response.length > 2000 ? response.slice(0, 2000) : response;
-        await message.reply(truncated);
+        for (const chunk of chunkDiscordText(response)) {
+          await message.reply(chunk);
+        }
       }
 
       conn.eventsRouted++;
@@ -2722,20 +2723,25 @@ export class GatewayManager {
       }
 
       const replyText = routed.replyText.trim();
-      const truncated =
-        replyText.length > 2000 ? replyText.slice(0, 2000) : replyText;
-      const replyOptions = buildManagedReplyOptions(
-        message.id,
-        truncated,
-        routed.replyCta,
-      );
+      const replyChunks = chunkDiscordText(replyText);
       const failureOptions = buildManagedFailureReplyOptions(message.id);
       const delivery = await deliverManagedReply({
-        sendReply: async () =>
-          classifyManagedReplyReceipt(
-            await message.reply(replyOptions),
-            replyOptions,
-          ),
+        sendReply: async () => {
+          let delivered = false;
+          for (let index = 0; index < replyChunks.length; index += 1) {
+            const replyOptions = buildManagedReplyOptions(
+              discordChunkNonce(message.id, index),
+              replyChunks[index] ?? "",
+              index === replyChunks.length - 1 ? routed.replyCta : null,
+            );
+            const receipt = classifyManagedReplyReceipt(
+              await message.reply(replyOptions),
+              replyOptions,
+            );
+            if (receipt === "delivered") delivered = true;
+          }
+          return delivered ? "delivered" : "deduplicated";
+        },
         sendFailureNotice: async () =>
           classifyManagedReplyReceipt(
             await message.reply(failureOptions),

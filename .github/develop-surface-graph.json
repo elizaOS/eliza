@@ -1,0 +1,209 @@
+{
+  "schemaVersion": 1,
+  "graphVersion": "2026-08-21.1",
+  "evidenceTtlHours": 168,
+  "environment": {
+    "bun": "1.3.14",
+    "node": "24.15.0",
+    "runnerPolicy": "develop-full-v1"
+  },
+  "globalInputs": [
+    ".github/develop-surface-graph.json",
+    ".github/workflows/develop-full.yml",
+    ".github/actions/setup-bun-workspace/**",
+    "package.json",
+    "bun.lock",
+    "bunfig.toml",
+    "biome.json",
+    "turbo.json",
+    "tsconfig.json",
+    "tsconfig.base.json",
+    "packages/scripts/develop-impact-evidence.mjs"
+  ],
+  "surfaces": [
+    {
+      "id": "canonical",
+      "workflow": ".github/workflows/ci.yml",
+      "workspacePatterns": [
+        "packages/core",
+        "packages/agent",
+        "packages/auth",
+        "packages/logger",
+        "packages/prompts",
+        "packages/registry",
+        "packages/shared",
+        "packages/skills",
+        "packages/vault",
+        "plugins/**"
+      ],
+      "inputs": ["packages/scripts/**", "scripts/**"]
+    },
+    {
+      "id": "chat-shell",
+      "workflow": ".github/workflows/chat-shell-gestures.yml",
+      "workspacePatterns": [
+        "packages/app",
+        "packages/app-core",
+        "packages/core",
+        "packages/shared",
+        "packages/ui"
+      ],
+      "inputs": ["packages/ui/src/testing/**"],
+      "dependsOn": ["canonical"]
+    },
+    {
+      "id": "cloud-gateway-discord",
+      "workflow": ".github/workflows/cloud-gateway-discord.yml",
+      "workspacePatterns": [
+        "packages/cloud/shared",
+        "packages/cloud/services/gateway-discord",
+        "plugins/plugin-discord"
+      ],
+      "inputs": ["packages/cloud/scripts/**"],
+      "dependsOn": ["canonical"]
+    },
+    {
+      "id": "cloud",
+      "workflow": ".github/workflows/cloud-tests.yml",
+      "workspacePatterns": [
+        "packages/cloud/**",
+        "plugins/plugin-cloud-apps",
+        "plugins/plugin-elizacloud"
+      ],
+      "inputs": ["scripts/cloud/**"],
+      "dependsOn": ["canonical"]
+    },
+    {
+      "id": "dev-smoke",
+      "workflow": ".github/workflows/dev-smoke.yml",
+      "workspacePatterns": [
+        "packages/agent",
+        "packages/app",
+        "packages/app-core",
+        "packages/core",
+        "packages/shared",
+        "packages/ui"
+      ],
+      "inputs": ["packages/app/test/ui-smoke/**"],
+      "dependsOn": ["canonical"]
+    },
+    {
+      "id": "docker",
+      "workflow": ".github/workflows/docker-ci-smoke.yml",
+      "workspacePatterns": [
+        "packages/agent",
+        "packages/core",
+        "packages/shared"
+      ],
+      "inputs": [
+        "Dockerfile",
+        ".dockerignore",
+        "packages/scripts/build-core*.mjs"
+      ],
+      "dependsOn": ["canonical"]
+    },
+    {
+      "id": "secrets",
+      "workflow": ".github/workflows/gitleaks.yml",
+      "catchAll": true,
+      "workspacePatterns": [],
+      "inputs": ["**", ".gitleaks.toml"]
+    },
+    {
+      "id": "quality",
+      "workflow": ".github/workflows/quality.yml",
+      "workspacePatterns": [
+        "packages/app",
+        "packages/app-core",
+        "packages/homepage",
+        "packages/shared",
+        "packages/ui"
+      ],
+      "inputs": [
+        "*.md",
+        "**/*.md",
+        "packages/docs/**",
+        "packages/scripts/audit-*.mjs"
+      ],
+      "dependsOn": ["canonical"]
+    },
+    {
+      "id": "platform-smoke",
+      "workflow": ".github/workflows/platform-smoke.yml",
+      "workspacePatterns": ["packages/core", "packages/shared"],
+      "inputs": [
+        "packages/scripts/test-cloud-run-watchdog.self-test.mjs",
+        ".github/ci-windows-command-inventory.json"
+      ],
+      "dependsOn": ["canonical"]
+    },
+    {
+      "id": "scenarios",
+      "workflow": ".github/workflows/scenario-pr.yml",
+      "workspacePatterns": [
+        "packages/agent",
+        "packages/app",
+        "packages/app-core",
+        "packages/core",
+        "packages/prompts",
+        "packages/scenario-runner",
+        "packages/shared",
+        "packages/test",
+        "packages/ui",
+        "plugins/plugin-app-control",
+        "plugins/plugin-computeruse"
+      ],
+      "inputs": ["packages/scenario-runner/test/**"],
+      "dependsOn": ["canonical"]
+    },
+    {
+      "id": "tests",
+      "workflow": ".github/workflows/test.yml",
+      "workspacePatterns": ["packages/**", "plugins/**"],
+      "inputs": [
+        "packages/scripts/run-all-tests.mjs",
+        "vitest*.ts",
+        "vitest*.mts"
+      ],
+      "dependsOn": ["canonical"]
+    },
+    {
+      "id": "ui-core",
+      "workflow": ".github/workflows/ui-e2e-gate.yml",
+      "workspacePatterns": [
+        "packages/app",
+        "packages/app-core",
+        "packages/core",
+        "packages/shared",
+        "packages/ui"
+      ],
+      "inputs": ["packages/ui/src/**", "packages/ui/test/**"],
+      "dependsOn": ["canonical"]
+    },
+    {
+      "id": "ui-extended",
+      "workflow": ".github/workflows/ui-fixture-e2e.yml",
+      "workspacePatterns": [
+        "packages/app",
+        "packages/app-core",
+        "packages/core",
+        "packages/shared",
+        "packages/ui"
+      ],
+      "inputs": ["packages/ui/src/**", "packages/ui/test/**"],
+      "dependsOn": ["ui-core"]
+    },
+    {
+      "id": "ui-stories",
+      "workflow": ".github/workflows/ui-story-gate.yml",
+      "workspacePatterns": [
+        "packages/app",
+        "packages/app-core",
+        "packages/shared",
+        "packages/ui"
+      ],
+      "inputs": ["packages/ui/src/**/*.stories.*", ".storybook/**"],
+      "dependsOn": ["ui-core"]
+    }
+  ]
+}

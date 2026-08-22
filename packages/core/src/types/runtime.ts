@@ -555,6 +555,7 @@ type RuntimeDatabaseAdapterSurface = Omit<
 	| "getDocument"
 	| "queryDocumentFragments"
 	| "compareAndSwapDocument"
+	| "updateDocumentDirectGrants"
 	| "replaceDocumentRevision"
 	| "deleteDocumentWithSnapshot"
 >;

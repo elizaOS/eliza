@@ -32,6 +32,18 @@ describe("cloudSafeMainActivityJava", () => {
     expect(source).not.toContain("GatewayConnectionService");
   });
 
+  it("uses public edge-to-edge APIs without hiding the system bars", () => {
+    const source = cloudSafeMainActivityJava("ai.elizaos.app");
+
+    expect(source).toContain(
+      "WindowCompat.setDecorFitsSystemWindows(getWindow(), false);",
+    );
+    expect(source).toContain("setAppearanceLightStatusBars(false)");
+    expect(source).toContain("setAppearanceLightNavigationBars(false)");
+    expect(source).not.toContain("controller.hide(");
+    expect(source).not.toContain("SYSTEM_UI_FLAG_");
+  });
+
   it("captures cold and warm deep links before Capacitor dispatches them", () => {
     const source = cloudSafeMainActivityJava("ai.elizaos.app");
     const coldCapture = source.indexOf(
@@ -73,8 +85,25 @@ describe("cloudSafeMainActivityJava", () => {
 
   it("generates standard speech recognition and system TTS without local transports", () => {
     const source = cloudSafePlayVoicePluginJava("ai.elizaos.app");
+    const pluginThreadEntry = source.slice(
+      source.indexOf("public void startDictation"),
+      source.indexOf("private void startDictationOnMainThread"),
+    );
 
     expect(source).toContain('@CapacitorPlugin(\n    name = "ElizaPlayVoice"');
+    expect(source).toContain(
+      "private final Handler mainHandler = new Handler(Looper.getMainLooper());",
+    );
+    expect(source).toContain(
+      "runOnMainThread(() -> startDictationOnMainThread(call, language));",
+    );
+    expect(source).toContain(
+      "runOnMainThread(() -> speakOnMainThread(call, text, language));",
+    );
+    expect(pluginThreadEntry).not.toContain(
+      "SpeechRecognizer.createSpeechRecognizer",
+    );
+    expect(pluginThreadEntry).not.toContain("recognizer.startListening");
     expect(source).toContain("SpeechRecognizer.createSpeechRecognizer");
     expect(source).toContain(
       "private final Handler mainHandler = new Handler(Looper.getMainLooper());",

@@ -17,11 +17,7 @@
  *     allowlist gates substitution uniformly.
  */
 
-import {
-	tailWellFormed,
-	toWellFormedUnicode,
-	truncateWellFormed,
-} from "../utils/well-formed.ts";
+import { toWellFormedUnicode } from "../utils/well-formed.ts";
 import {
 	OPTIMIZED_PROMPT_SERVICE,
 	type OptimizedPromptFewShotExample,
@@ -57,25 +53,15 @@ export function resolveOptimizedPrompt(
 	if (!service) return baseline;
 	const optimized = service.getPrompt(task);
 	if (!optimized) return baseline;
-	// Wave 2-D: `ELIZA_PROMPT_COMPRESS=1` drops few-shot examples from the
-	// optimized prompt. This is the Cerebras "compress" escape hatch — keep
-	// the base optimized instruction text but skip the ICL demonstrations to
-	// reduce token budget pressure.
-	if (
-		process.env.ELIZA_PROMPT_COMPRESS === "1" ||
-		!optimized.fewShotExamples ||
-		optimized.fewShotExamples.length === 0
-	) {
+	if (!optimized.fewShotExamples || optimized.fewShotExamples.length === 0) {
 		return optimized.prompt;
 	}
 	return injectDemonstrations(optimized.prompt, optimized.fewShotExamples);
 }
 
 /**
- * Trim a recorded planner input down to the bits that meaningfully teach
- * the model in-context. Recorded inputs include the full provider block +
- * tool catalog (often ~30K chars); for ICL we only need the user's
- * current-turn request.
+ * Extract a recorded planner input's user section for an in-context example.
+ * When no tagged user section exists, retain the complete recorded input.
  */
 export function trimDemonstrationInput(rawInput: string): string {
 	const userMatch =
@@ -85,15 +71,9 @@ export function trimDemonstrationInput(rawInput: string): string {
 		rawInput.match(/(?:^|\n)user_message\s*:\s*([^\n]+(?:\n(?!\w+:)[^\n]+)*)/i);
 	const candidate = userMatch?.[1]?.trim();
 	if (candidate && candidate.length > 0) {
-		const wellFormedCandidate = toWellFormedUnicode(candidate);
-		if (wellFormedCandidate.length <= 600) {
-			return wellFormedCandidate;
-		}
-		return `${truncateWellFormed(wellFormedCandidate, 600).trimEnd()} …`;
+		return toWellFormedUnicode(candidate);
 	}
-	const wellFormed = toWellFormedUnicode(rawInput);
-	if (wellFormed.length <= 600) return wellFormed;
-	return `${truncateWellFormed(wellFormed, 400).trimEnd()}\n…\n${tailWellFormed(wellFormed, 200).trimStart()}`;
+	return toWellFormedUnicode(rawInput);
 }
 
 function injectDemonstrations(

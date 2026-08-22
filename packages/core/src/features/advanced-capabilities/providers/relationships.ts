@@ -1,11 +1,8 @@
 /**
  * RELATIONSHIPS provider: injects the people the current speaker interacts with
  * into the prompt context, sorted by interaction strength. Resolves the
- * speaker's related-entity cluster, loads their relationship edges, keeps the
- * strongest 30, and formats each counterpart as names + tags + a bounded slice
- * of that entity's metadata. Output is hard-capped both per entity and in total
- * because raw entity metadata can accumulate arbitrarily large blobs and would
- * otherwise push the planner prompt past small-context model limits.
+ * speaker's related-entity cluster, loads every relationship edge, and formats
+ * every counterpart with its complete names, tags, and metadata.
  */
 import { requireProviderSpec } from "../../../generated/spec-helpers.ts";
 import { getRelatedEntityIds } from "../../../identity-clusters.ts";
@@ -23,19 +20,9 @@ import type {
 // Get text content from centralized specs
 const spec = requireProviderSpec("RELATIONSHIPS");
 
-// Output bounds. Entity metadata is internal bookkeeping that can accumulate
-// arbitrarily large blobs (JSON state, embeddings-adjacent fields, history).
-// Dumping it verbatim for up to 30 relationships ballooned this provider to
-// 80k+ chars on busy agents, blowing the planner prompt past small-context
-// models' limits (e.g. Cerebras gpt-oss-120b's 131k ceiling). The useful
-// relationship signal is names + tags + interaction strength, not the raw
-// metadata, so cap metadata per entity and cap the provider's total output.
-const MAX_METADATA_CHARS_PER_ENTITY = 240;
-const MAX_RELATIONSHIPS_OUTPUT_CHARS = 4000;
-
 /**
  * Sorts relationships by interaction strength, resolves each counterpart entity
- * relative to the speaker's own ids, and renders the bounded names/tags/metadata
+ * relative to the speaker's own ids, and renders the complete names/tags/metadata
  * block. `currentEntityIds` are the speaker's clustered ids, used to pick which
  * side of each edge is the counterpart.
  */
@@ -52,8 +39,7 @@ async function formatRelationships(
 			(a, b) =>
 				((b.metadata && (b.metadata.interactions as number | undefined)) || 0) -
 				((a.metadata && (a.metadata.interactions as number | undefined)) || 0),
-		)
-		.slice(0, 30); // Get top 30
+		);
 
 	if (sortedRelationships.length === 0) {
 		return "";
@@ -94,29 +80,18 @@ async function formatRelationships(
 	const formatMetadata = (metadata?: Metadata) => {
 		if (!metadata) return "";
 		const lines: string[] = [];
-		let used = 0;
 		for (const [key, value] of Object.entries(metadata)) {
 			const line =
 				value && typeof value === "object"
 					? stringifyForDiagnostics({ [key]: value })
 					: `${key}: ${String(value)}`;
-			// Bound per entity: skip once the cap is reached so a single
-			// metadata-heavy entity can't dominate the provider output.
-			if (used + line.length > MAX_METADATA_CHARS_PER_ENTITY) {
-				if (used < MAX_METADATA_CHARS_PER_ENTITY) {
-					lines.push(line.slice(0, MAX_METADATA_CHARS_PER_ENTITY - used));
-				}
-				break;
-			}
 			lines.push(line);
-			used += line.length + 1;
 		}
 		return lines.join("\n");
 	};
 
 	// Format relationships using the entity map
 	const formattedRelationships: string[] = [];
-	let totalChars = 0;
 	for (const rel of sortedRelationships) {
 		const counterpartEntityId = currentEntityIdSet.has(rel.sourceEntityId)
 			? (rel.targetEntityId as UUID)
@@ -132,20 +107,7 @@ async function formatRelationships(
 		const metadata = formatMetadata(entity.metadata);
 		const parts = [names, tags, metadata].filter((part) => part.length > 0);
 		const block = `${parts.join("\n")}\n`;
-		// Bound total output: stop once the cap is reached so a busy agent's
-		// relationship graph can't dominate the planner prompt. Relationships
-		// are already sorted by interaction strength, so the kept ones are the
-		// most relevant. Always keep at least the first (strongest) block so a
-		// single oversized entry never collapses output to "No relationships
-		// found."
-		if (
-			formattedRelationships.length > 0 &&
-			totalChars + block.length > MAX_RELATIONSHIPS_OUTPUT_CHARS
-		) {
-			break;
-		}
 		formattedRelationships.push(block);
-		totalChars += block.length + 1;
 	}
 
 	return formattedRelationships.join("\n");

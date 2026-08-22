@@ -6,7 +6,11 @@
  * moving rail layer — then flushed once on settle.
  */
 
-import { activityEventToPlaintext } from "@elizaos/core";
+import {
+  activityEventToPlaintext,
+  toWellFormedUnicode,
+  truncateWellFormed,
+} from "@elizaos/core";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { client } from "../api";
 import { parseProactiveMessageEvent } from "../state/parsers";
@@ -22,6 +26,11 @@ const RING_BUFFER_CAP = 200;
 // stays open longer than this (a missed release edge), events flush anyway so
 // the widget rail can never go permanently stale behind a stuck signal.
 const RAIL_GESTURE_PARK_MAX_MS = 5_000;
+
+export function formatProactiveMessageSummary(text: string): string {
+  const wellFormed = toWellFormedUnicode(text.trim());
+  return truncateWellFormed(wellFormed, 120) || "Proactive message";
+}
 
 export interface ActivityEventSource {
   type: "pty-session-event" | "proactive-message" | "agent_event";
@@ -200,8 +209,7 @@ export function useActivityEvents() {
         // false, so the rail only ever showed the generic placeholder).
         const parsed = parseProactiveMessageEvent(data);
         if (!parsed) return;
-        const summary =
-          parsed.message.text.trim().slice(0, 120) || "Proactive message";
+        const summary = formatProactiveMessageSummary(parsed.message.text);
         const activity = activityEventToPlaintext(
           { type: "proactive-message", message: { text: summary } },
           { maxLength: 120 },

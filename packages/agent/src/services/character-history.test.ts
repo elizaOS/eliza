@@ -25,8 +25,8 @@ function makeMemory(timestamp: number) {
       historySource: "manual",
       fieldsChanged: ["name"],
       changes: [{ field: "name", before: "a", after: `b-${timestamp}` }],
-      before: { name: "a" },
-      after: { name: `b-${timestamp}` },
+      before: { name: "a" } as Record<string, unknown>,
+      after: { name: `b-${timestamp}` } as Record<string, unknown>,
     },
   };
 }

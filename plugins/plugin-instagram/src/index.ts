@@ -46,6 +46,6 @@ export {
   INSTAGRAM_PROVIDER_ID,
 } from "./connector-account-provider";
 export * from "./constants";
-export { InstagramService, truncateInstagramComment } from "./service";
+export { InstagramService, validateInstagramComment } from "./service";
 export * from "./types";
 export default instagramPlugin;

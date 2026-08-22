@@ -85,4 +85,32 @@ describe("POST /api/memory/remember idempotency", () => {
     );
     expect(createMemory).toHaveBeenCalledTimes(1);
   });
+
+  test("stamps hash-memory notes agent-private, never the shared factory default", async () => {
+    // Leak canary: without the route's explicit scope, createMessageMemory
+    // defaults an agentId-less memory to `shared` (world-readable on the
+    // access ladder). Hash memories are the agent's personal store — they
+    // must stamp `agent-private` (OWNER + AGENT + RUNTIME) so strangers are
+    // denied while the agent keeps its own recall.
+    const memories = new Map<UUID, Memory>();
+    const createMemory = vi.fn(async (memory: Memory) => {
+      if (!memory.id)
+        throw new Error("remember handler produced a memory without an id");
+      memories.set(memory.id, memory);
+      return memory.id;
+    });
+    const response: { value?: unknown } = {};
+    const ctx = contextFor({
+      body: { text: "personal note" },
+      memories,
+      createMemory,
+      response,
+    });
+    expect(await handleMemoryRoutes(ctx)).toBe(true);
+    expect(createMemory).toHaveBeenCalledTimes(1);
+    const stored = createMemory.mock.calls[0]?.[0] as Memory;
+    expect((stored.metadata as { scope?: string } | undefined)?.scope).toBe(
+      "agent-private",
+    );
+  });
 });

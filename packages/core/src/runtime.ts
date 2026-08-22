@@ -350,10 +350,7 @@ import {
 	StructuredFieldStreamExtractor,
 } from "./utils/streaming";
 import { isPlainObject } from "./utils/type-guards";
-import {
-	toWellFormedUnicode,
-	truncateWellFormed,
-} from "./utils/well-formed.js";
+import { toWellFormedUnicode } from "./utils/well-formed.js";
 
 const environmentSettings: RuntimeSettings = {};
 // Whether debug-level logs are emitted, captured once at load (mirrors the
@@ -5361,9 +5358,7 @@ export class AgentRuntime implements IAgentRuntime {
 						// access row — omit them so readers do not slice a different
 						// string with compose-local offsets.
 						purpose: "compose_state",
-						query: {
-							message: truncateWellFormed(toWellFormedUnicode(userText), 2000),
-						},
+						query: { message: toWellFormedUnicode(userText) },
 						runId: trajCtx?.runId,
 						roomId: trajCtx?.roomId,
 						messageId: trajCtx?.messageId,
@@ -5407,9 +5402,7 @@ export class AgentRuntime implements IAgentRuntime {
 						tokenCount: attribution?.tokenCount,
 						position: attribution?.position,
 						purpose: "compose_state",
-						query: {
-							message: truncateWellFormed(toWellFormedUnicode(userText), 2000),
-						},
+						query: { message: toWellFormedUnicode(userText) },
 						runId: trajCtx?.runId,
 						roomId: trajCtx?.roomId,
 						messageId: trajCtx?.messageId,
@@ -9311,12 +9304,8 @@ ${section_end}`;
 						const validatedParts: string[] = [];
 						for (const [field, content] of validatedContent) {
 							const wellFormedContent = toWellFormedUnicode(content);
-							const truncated =
-								wellFormedContent.length > 500
-									? `${truncateWellFormed(wellFormedContent, 497)}...`
-									: wellFormedContent;
 							validatedParts.push(
-								stringifyStructuredForPrompt({ [field]: truncated }),
+								stringifyStructuredForPrompt({ [field]: wellFormedContent }),
 							);
 						}
 						if (validatedParts.length > 0) {
@@ -9330,7 +9319,7 @@ ${section_end}`;
 				// Repair reroll: when the extractor didn't produce a targeted retry
 				// context (the common case — contextLevel 2, no streaming extractor,
 				// or no validated fields), feed the model the CONCRETE reason its last
-				// output was rejected + the (redacted, truncated) bad output, so the
+				// output was rejected + the complete redacted bad output, so the
 				// reroll is corrective instead of a blind re-roll of the same prompt.
 				// Goes in the same `_smartRetryContext` field, which is rendered as a
 				// `stable:false` segment (prompt-cache safe) and cleared on
@@ -9344,12 +9333,10 @@ ${section_end}`;
 								? [parseErrorMessage]
 								: [];
 					if (repairIssues.length > 0) {
-						const priorOutput = truncateWellFormed(
-							toWellFormedUnicode(this.redactSecrets(cleanResponse)),
-							AgentRuntime.STRUCTURED_FAILURE_PREVIEW_LIMIT,
+						const priorOutput = toWellFormedUnicode(
+							this.redactSecrets(cleanResponse),
 						);
 						const issueList = repairIssues
-							.slice(0, 8)
 							.map((issue) => `- ${issue}`)
 							.join("\n");
 						smartRetryContextNext = `\n\n[REPAIR] Your previous response was rejected because it did not satisfy the required schema. Fix exactly these problems and return a corrected response:\n${issueList}${

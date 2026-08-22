@@ -1,6 +1,6 @@
 /**
  * FILE `read` handler: returns file contents (line-numbered, size- and
- * line-capped) after validating the path through SandboxService, and records the
+ * line-numbered) after validating the path through SandboxService, and records the
  * read with FileStateService so a later write/edit can detect external
  * modification. Supports the `device_filesystem` bridge when reading device files.
  */
@@ -61,12 +61,10 @@ async function finalizeReadResult(params: {
     Math.floor(readNumberParam(params.options, "offset") ?? 0),
   );
   const requestedLimit = readNumberParam(params.options, "limit");
-  const defaultLimit = readPositiveIntSetting(
-    params.runtime,
-    "CODING_TOOLS_MAX_READ_LINES",
-    2000,
-  );
-  const limit = Math.max(1, Math.floor(requestedLimit ?? defaultLimit));
+  const limit =
+    requestedLimit === undefined
+      ? totalLines
+      : Math.max(1, Math.floor(requestedLimit));
 
   const endExclusive = Math.min(totalLines, offset + limit);
   const slice = lines.slice(offset, endExclusive);

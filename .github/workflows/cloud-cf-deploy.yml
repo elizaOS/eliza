@@ -7,10 +7,8 @@ name: Cloud CF Deploy
 # experience on cloud.eliza.app. Legacy elizacloud.ai hosts are Worker-owned
 # redirect inputs and never receive a separately built frontend.
 #
-# Per environment:
-# - push to develop  -> staging   (staging.eliza.app, cloud-staging.eliza.app,
-#                                   api-staging.eliza.app)
-# Production remains an explicit protected-environment operation.
+# Staging and production are explicit protected-environment operations until a
+# later current-SHA effect fence can safely reconcile automatic deploys.
 #
 # Required repo secrets:
 #   CLOUDFLARE_API_TOKEN   - account-scoped token with Workers + Pages edit perms
@@ -38,53 +36,6 @@ name: Cloud CF Deploy
 # Consolidated from the original standalone Cloud deployment workflow.
 
 on:
-  push:
-    branches: [develop]
-    paths:
-      - "bun.lock"
-      - "bunfig.toml"
-      - "package.json"
-      - "patches/**"
-      - "plugins/**"
-      - "tsconfig.base.json"
-      - "tsconfig.build.template.json"
-      - "tsconfig.json"
-      - "turbo.json"
-      - "packages/agent/**"
-      - "packages/cloud/api/**"
-      - "packages/cloud/routing/**"
-      - "packages/cloud/shared/**"
-      - "packages/cloud/services/**"
-      - "packages/cloud/sdk/**"
-      - "packages/cloud/scripts/**"
-      - "packages/app/**"
-      - "packages/app-core/**"
-      - "packages/auth/**"
-      - "packages/core/**"
-      - "packages/evidence/**"
-      - "packages/elizaos/**"
-      - "packages/homepage/**"
-      - "packages/logger/**"
-      - "packages/prompts/**"
-      - "packages/registry/**"
-      - "packages/scripts/build-private-workspace-packages.mjs"
-      - "packages/scripts/build-core-packages.mjs"
-      - "packages/scripts/build-core.mjs"
-      - "packages/scripts/ensure-workspace-symlinks.mjs"
-      - "packages/scripts/lib/repository-file-integrity.mjs"
-      - "packages/scripts/lib/script-metadata.mjs"
-      - "packages/scripts/lib/workspaces.mjs"
-      - "packages/scripts/patch-llama-cpp-capacitor.mjs"
-      - "packages/scripts/patch-nested-core-dist.mjs"
-      - "packages/scripts/patch-punycode-deprecation.mjs"
-      - "packages/scripts/run-turbo.mjs"
-      - "packages/shared/**"
-      - "packages/skills/**"
-      - "packages/ui/**"
-      - "packages/vault/**"
-      - ".github/workflows/cloud-cf-deploy.yml"
-      - ".github/workflows/cloud-cf-release.yml"
-      - ".github/workflows/cloud-cf-release.yml"
   workflow_dispatch:
     inputs:
       environment:

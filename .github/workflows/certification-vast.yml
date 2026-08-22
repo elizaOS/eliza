@@ -5,9 +5,8 @@
 # (bundle:create → certify:rollup → certify:sign) → poll → pull the signed
 # certification.json → DESTROY the instance in the script's own finally.
 #
-# Triggers: workflow_dispatch (any certifier with repo write), plus a nightly
-# cron that is a no-op unless the repo variable ELIZA_VAST_CERT_ENABLED is
-# the string 'true' — cost is real money, so nightly spend is owner-opt-in.
+# Trigger: workflow_dispatch by an authorized certifier. Cost is real money,
+# so certification is always an explicit owner action.
 # Deliberately NO pull_request trigger: this job holds VAST_API_KEY and the
 # ELIZA_CERT_SIGNING_KEY; PR-triggered code must never see either.
 #
@@ -48,10 +47,6 @@ on:
         required: false
         default: "120"
         type: string
-  schedule:
-    # Nightly on develop, 06:17 UTC (off the top-of-hour crunch); gated below
-    # on vars.ELIZA_VAST_CERT_ENABLED == 'true'.
-    - cron: "17 6 * * *"
 
 concurrency:
   group: certification-vast
@@ -63,7 +58,7 @@ permissions:
 jobs:
   vast-certification:
     name: vast-certification
-    if: github.event_name == 'workflow_dispatch' || vars.ELIZA_VAST_CERT_ENABLED == 'true'
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 400
     steps:

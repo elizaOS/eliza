@@ -23,12 +23,14 @@ import {
   type ConnectorOwnerBindingRecord,
   type ConsumeOAuthFlowStateParams,
   type CreateOAuthFlowStateParams,
+  canRequesterManageDocumentDirectGrants,
   canRequesterMutateDocument,
   DatabaseAdapter,
   type DeleteConnectorAccountParams,
   DOCUMENT_LIST_QUERY_CAPABILITY_VERSION,
   type DocumentCompareAndSwapParams,
   type DocumentDeleteParams,
+  type DocumentDirectGrantUpdateParams,
   type DocumentFragmentQueryParams,
   type DocumentGetQueryParams,
   type DocumentListCursor,
@@ -78,6 +80,7 @@ import {
   type TaskMetadata,
   type UpsertConnectorAccountParams,
   type UUID,
+  validateDocumentDirectGrantEntityIds,
   validateDocumentFragmentQueryParams,
   validateDocumentListQueryParams,
   validateDocumentRequesterContext,
@@ -234,6 +237,22 @@ function validDocumentAuthorizationMetadata(metadata: SQLWrapper): SQL {
       OR ${metadata}->>'addedBy' ~* ${DOCUMENT_UUID_PATTERN}
     )
     AND (
+      NOT (${metadata} ? 'directGrantEntityIds')
+      OR (
+        jsonb_typeof(${metadata}->'directGrantEntityIds') = 'array'
+        AND jsonb_array_length(${metadata}->'directGrantEntityIds') <= 1000
+        AND NOT EXISTS (
+          SELECT 1
+          FROM jsonb_array_elements_text(${metadata}->'directGrantEntityIds') AS grant_id
+          WHERE grant_id !~* ${DOCUMENT_UUID_PATTERN}
+        )
+        AND jsonb_array_length(${metadata}->'directGrantEntityIds') = (
+          SELECT COUNT(DISTINCT grant_id)
+          FROM jsonb_array_elements_text(${metadata}->'directGrantEntityIds') AS grant_id
+        )
+      )
+    )
+    AND (
       ${metadata}->>'scope' <> 'user-private'
       OR ${metadata}->>'scopedToEntityId' ~* ${DOCUMENT_UUID_PATTERN}
     )
@@ -245,6 +264,40 @@ function validDocumentAuthorizationMetadata(metadata: SQLWrapper): SQL {
   )`;
 }
 
+function documentDirectGrantCondition(
+  params: DocumentListQueryParams | DocumentGetQueryParams | DocumentFragmentQueryParams,
+  metadata: SQLWrapper = memoryTable.metadata
+): SQL {
+  if (
+    params.requesterRole === "UNRESOLVED" ||
+    params.requesterRole === "GUEST" ||
+    documentRoleHasGlobalVisibility(params.requesterRole)
+  ) {
+    return sql`false`;
+  }
+  return sql`(
+    ${metadata}->>'scope' <> 'agent-private'
+    AND EXISTS (
+      SELECT 1
+      FROM jsonb_array_elements_text(
+        COALESCE(${metadata}->'directGrantEntityIds', '[]'::jsonb)
+      ) AS grant_id
+      WHERE grant_id = ${params.requesterEntityId}
+    )
+  )`;
+}
+
+function documentRoomOrDirectGrantCondition(
+  params: DocumentListQueryParams | DocumentGetQueryParams | DocumentFragmentQueryParams,
+  roomCondition: SQL,
+  metadata: SQLWrapper = memoryTable.metadata
+): SQL {
+  return sql`(
+    ${roomCondition}
+    OR ${documentDirectGrantCondition(params, metadata)}
+  )`;
+}
+
 function documentVisibilityCondition(
   params: DocumentListQueryParams | DocumentGetQueryParams | DocumentFragmentQueryParams,
   metadata: SQLWrapper = memoryTable.metadata
@@ -253,15 +306,29 @@ function documentVisibilityCondition(
   if (documentRoleHasGlobalVisibility(params.requesterRole)) {
     return validAuthorizationMetadata;
   }
+  if (params.requesterRole === "UNRESOLVED") {
+    return sql`false`;
+  }
   if (params.requesterRole === "ADMIN") {
     return sql`(
       ${validAuthorizationMetadata}
-      AND ${metadata}->>'scope' IN ('global', 'user-private')
+      AND (
+        ${metadata}->>'scope' IN ('global', 'user-private')
+        OR ${documentDirectGrantCondition(params, metadata)}
+      )
+    )`;
+  }
+  if (params.requesterRole === "GUEST") {
+    return sql`(
+      ${validAuthorizationMetadata}
+      AND ${metadata}->>'scope' = 'global'
     )`;
   }
   return sql`(
     ${validAuthorizationMetadata}
     AND (
+      ${documentDirectGrantCondition(params, metadata)}
+      OR
       ${metadata}->>'scope' = 'global'
       OR (
         ${metadata}->>'scope' = 'user-private'
@@ -1760,9 +1827,12 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       ];
       if (!hasGlobalVisibility) {
         visibleConditions.push(
-          params.requesterRoomIds.length > 0
-            ? inArray(memoryTable.roomId, params.requesterRoomIds)
-            : sql`false`
+          documentRoomOrDirectGrantCondition(
+            params,
+            params.requesterRoomIds.length > 0
+              ? inArray(memoryTable.roomId, params.requesterRoomIds)
+              : sql`false`
+          )
         );
       }
       visibleConditions.push(documentVisibilityCondition(params));
@@ -2109,9 +2179,12 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       ...(hasGlobalVisibility
         ? []
         : [
-            params.requesterRoomIds.length > 0
-              ? inArray(memoryTable.roomId, params.requesterRoomIds)
-              : sql`false`,
+            documentRoomOrDirectGrantCondition(
+              params,
+              params.requesterRoomIds.length > 0
+                ? inArray(memoryTable.roomId, params.requesterRoomIds)
+                : sql`false`
+            ),
           ]),
       documentVisibilityCondition(params),
     ];
@@ -2177,14 +2250,19 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       ];
       if (!hasGlobalVisibility) {
         conditions.push(
-          params.requesterRoomIds.length > 0
-            ? inArray(parent.roomId, params.requesterRoomIds)
-            : sql`false`
+          documentRoomOrDirectGrantCondition(
+            params,
+            params.requesterRoomIds.length > 0
+              ? inArray(parent.roomId, params.requesterRoomIds)
+              : sql`false`,
+            parent.metadata
+          )
         );
       }
       if (params.roomId) conditions.push(eq(parent.roomId, params.roomId));
       if (params.worldId) conditions.push(eq(parent.worldId, params.worldId));
       if (params.entityId) conditions.push(eq(parent.entityId, params.entityId));
+      if (params.documentId) conditions.push(eq(parent.id, params.documentId));
 
       const parentJoin = sql`${parent.id}::text = ${fragment.metadata}->>'documentId'`;
       if (!params.embedding) {
@@ -2194,7 +2272,8 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
           .innerJoin(parent, parentJoin)
           .where(and(...conditions))
           .orderBy(desc(fragment.createdAt), desc(fragment.id))
-          .limit(params.limit);
+          .limit(params.limit)
+          .offset(params.offset ?? 0);
         return rows.map((row) => memoryFromRow(row.memory));
       }
 
@@ -2216,7 +2295,8 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         .innerJoin(parent, parentJoin)
         .where(and(...conditions))
         .orderBy(asc(distance), desc(fragment.createdAt), desc(fragment.id))
-        .limit(params.limit);
+        .limit(params.limit)
+        .offset(params.offset ?? 0);
       return rows.map((row) =>
         memoryFromRow(
           row.memory,
@@ -2259,6 +2339,58 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
           unique: replacement.unique ?? row.unique,
           metadata: replacement.metadata ?? {},
         })
+        .where(eq(memoryTable.id, params.documentId))
+        .returning();
+      return updated[0]
+        ? { status: "updated", document: memoryFromRow(updated[0]) }
+        : { status: "conflict" };
+    });
+  }
+
+  async updateDocumentDirectGrants(
+    params: DocumentDirectGrantUpdateParams
+  ): Promise<DocumentMutationResult> {
+    validateDocumentRequesterContext(params);
+    const directGrantEntityIds = validateDocumentDirectGrantEntityIds(params.directGrantEntityIds);
+    return this.withEntityContext(params.agentId, async (tx) => {
+      const rows = await tx
+        .select()
+        .from(memoryTable)
+        .where(and(...this.documentStorageConditions(params)))
+        .for("update")
+        .limit(1);
+      const row = rows[0];
+      if (!row) return { status: "not_found" };
+      const existing = memoryFromRow(row);
+      if (!documentMutationSnapshotMatches(existing, params.expected)) {
+        return { status: "conflict" };
+      }
+      if (!canRequesterManageDocumentDirectGrants(existing, params)) {
+        return { status: "forbidden" };
+      }
+      if (directGrantEntityIds.length > 0) {
+        const grantees = await tx
+          .select({ id: entityTable.id })
+          .from(entityTable)
+          .where(
+            and(
+              inArray(entityTable.id, directGrantEntityIds),
+              eq(entityTable.agentId, params.agentId)
+            )
+          );
+        if (grantees.length !== directGrantEntityIds.length) {
+          return { status: "not_found" };
+        }
+      }
+      const metadata = { ...((row.metadata ?? {}) as Record<string, unknown>) };
+      if (directGrantEntityIds.length > 0) {
+        metadata.directGrantEntityIds = directGrantEntityIds;
+      } else {
+        delete metadata.directGrantEntityIds;
+      }
+      const updated = await tx
+        .update(memoryTable)
+        .set({ metadata })
         .where(eq(memoryTable.id, params.documentId))
         .returning();
       return updated[0]

@@ -34,6 +34,8 @@ import torch
 import torch.nn.functional as F
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
+from training.tokenization import tokenize_with_explicit_limit
+
 from .simulation_bridge import (
     ActionOutcome,
     Scenario,
@@ -331,11 +333,11 @@ class TeamModel:
         self, agent_name: str, scenario: Scenario
     ) -> tuple[str, torch.Tensor, torch.Tensor]:
         prompt = self.build_prompt(agent_name, scenario)
-        enc = self.tokenizer(
+        enc = tokenize_with_explicit_limit(
+            self.tokenizer,
             prompt,
+            max_tokens=2048,
             return_tensors="pt",
-            truncation=True,
-            max_length=2048,
         ).to(self.config.device)
         # Must switch to eval mode for generation — gradient checkpointing
         # corrupts the KV cache and produces garbled output in train mode.
@@ -824,11 +826,11 @@ async def run_team_training(
                         tokenize=False,
                         add_generation_prompt=True,
                     )
-                    atk_enc = red_team.tokenizer(
+                    atk_enc = tokenize_with_explicit_limit(
+                        red_team.tokenizer,
                         atk_text,
+                        max_tokens=2048,
                         return_tensors="pt",
-                        truncation=True,
-                        max_length=2048,
                     ).to(config.device)
                     red_team.model.eval()
                     with torch.no_grad():
@@ -865,11 +867,11 @@ async def run_team_training(
                         tokenize=False,
                         add_generation_prompt=True,
                     )
-                    def_enc = blue_team.tokenizer(
+                    def_enc = tokenize_with_explicit_limit(
+                        blue_team.tokenizer,
                         def_text,
+                        max_tokens=2048,
                         return_tensors="pt",
-                        truncation=True,
-                        max_length=2048,
                     ).to(config.device)
                     blue_team.model.eval()
                     with torch.no_grad():

@@ -67,8 +67,10 @@ export type DocumentListRequesterRole =
 	| "OWNER"
 	| "ADMIN"
 	| "USER"
+	| "GUEST"
 	| "AGENT"
-	| "RUNTIME";
+	| "RUNTIME"
+	| "UNRESOLVED";
 
 /** Identity and room membership used by every document authorization query. */
 export interface DocumentRequesterContext {
@@ -106,6 +108,8 @@ export interface DocumentGetQueryParams extends DocumentRequesterContext {
  */
 export interface DocumentFragmentQueryParams extends DocumentRequesterContext {
 	limit: number;
+	offset?: number;
+	documentId?: UUID;
 	roomId?: UUID;
 	worldId?: UUID;
 	entityId?: UUID;
@@ -121,6 +125,7 @@ export interface DocumentMutationSnapshot {
 	scope: DocumentListScope;
 	roomId: UUID;
 	entityId: UUID;
+	directGrantEntityIds?: UUID[];
 	scopedToEntityId?: UUID;
 	addedBy?: UUID;
 	revision: number;
@@ -133,6 +138,14 @@ export interface DocumentCompareAndSwapParams extends DocumentRequesterContext {
 	documentId: UUID;
 	expected: DocumentMutationSnapshot;
 	replacement: Memory;
+}
+
+/** Atomic replacement of a document's explicit entity read grants. */
+export interface DocumentDirectGrantUpdateParams
+	extends DocumentRequesterContext {
+	documentId: UUID;
+	expected: DocumentMutationSnapshot;
+	directGrantEntityIds: UUID[];
 }
 
 /**
@@ -1112,13 +1125,13 @@ export interface IDatabaseAdapter<DB extends object = object> {
 	}): Promise<Memory[]>;
 
 	/**
-	 * Required native document-store contract. Version 3 covers canonical
+	 * Required native document-store contract. Version 4 covers canonical
 	 * visibility for list/lookup/search plus atomic revision replacement. Adapter
 	 * authors migrating from version 2 must implement all six methods; there is
 	 * deliberately no bounded compatibility scan because it cannot preserve
 	 * authorization, counts, or pagination guarantees.
 	 */
-	readonly documentListQueryCapability: 3;
+	readonly documentListQueryCapability: 4;
 	queryDocuments(
 		params: DocumentListQueryParams,
 	): Promise<DocumentListQueryResult>;
@@ -1128,6 +1141,9 @@ export interface IDatabaseAdapter<DB extends object = object> {
 	): Promise<Memory[]>;
 	compareAndSwapDocument(
 		params: DocumentCompareAndSwapParams,
+	): Promise<DocumentMutationResult>;
+	updateDocumentDirectGrants(
+		params: DocumentDirectGrantUpdateParams,
 	): Promise<DocumentMutationResult>;
 	replaceDocumentRevision(
 		params: DocumentRevisionReplaceParams,

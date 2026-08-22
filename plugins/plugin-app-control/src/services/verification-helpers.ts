@@ -126,21 +126,6 @@ export function stripAnsi(text: string): string {
 }
 
 /**
- * UTF-8 safe truncation. Appends a `...truncated N chars` suffix when the
- * input exceeds `max`.
- */
-export function truncate(text: string, max: number): string {
-	if (typeof text !== "string") return "";
-	// Use Array.from to count Unicode code points so we don't slice a
-	// surrogate pair in half.
-	const codePoints = Array.from(text);
-	if (codePoints.length <= max) return text;
-	const head = codePoints.slice(0, max).join("");
-	const dropped = codePoints.length - max;
-	return `${head}\n...truncated ${dropped} chars`;
-}
-
-/**
  * Parse `tsc --noEmit` style output. Both stdout and stderr can carry the
  * diagnostics depending on tsc version, so we accept a single string.
  *

@@ -17,14 +17,15 @@
 import { existsSync, statSync } from "node:fs";
 import { filterByAccessContext } from "../../access-control/filter";
 import {
+	canRequesterManageDocumentDirectGrants,
 	canRequesterMutateDocument,
 	DOCUMENT_LIST_MAX_LIMIT,
 	DOCUMENT_LIST_MAX_OFFSET,
-	DOCUMENT_LIST_MAX_PINNED_PAGES,
 	documentRoleHasGlobalVisibility,
 	isDocumentVisibleToRequester,
 	queryDocumentsWithCapability,
 	readDocumentMutationSnapshot,
+	validateDocumentDirectGrantEntityIds,
 } from "../../database/document-list-query";
 import { createUniqueUuid } from "../../entities";
 import { ElizaError } from "../../errors";
@@ -183,10 +184,7 @@ export async function resolveDocumentRequesterRole(
 		const result = await checkSenderRole(runtime, message);
 		return {
 			entityId: message.entityId,
-			role:
-				result?.role === "OWNER" || result?.role === "ADMIN"
-					? result.role
-					: "USER",
+			role: result?.role ?? "UNRESOLVED",
 		};
 	} catch (cause) {
 		// error-policy:J2 Preserve role-resolution context and fail the read/write.
@@ -214,17 +212,14 @@ export async function resolveDocumentRequesterRole(
  *
  * The read runs for the entity the caller named, not the message author, so a
  * privileged sender cannot widen a request the caller deliberately scoped. An
- * absent role is treated as an unprivileged USER rather than inherited from
- * the sender: the safe reading of "unspecified" is the least privilege.
+ * absent role remains `UNRESOLVED` rather than inheriting or fabricating a
+ * lower role. The storage authorization boundary denies that state.
  */
 export async function resolveDocumentRequesterFromAccessContext(
 	runtime: IAgentRuntime,
 	accessContext: AccessContext,
 ): Promise<DocumentRequester> {
-	const role: DocumentListRequesterRole =
-		accessContext.role === "OWNER" || accessContext.role === "ADMIN"
-			? accessContext.role
-			: "USER";
+	const role: DocumentListRequesterRole = accessContext.role ?? "UNRESOLVED";
 	if (documentRoleHasGlobalVisibility(role)) {
 		return { entityId: accessContext.requesterEntityId, roomIds: [], role };
 	}
@@ -562,6 +557,161 @@ export class DocumentService extends Service {
 		});
 	}
 
+	async getDocumentByIdWithAccessContext(
+		documentId: UUID,
+		accessContext: AccessContext,
+	): Promise<Memory | null> {
+		const requester = await resolveDocumentRequesterFromAccessContext(
+			this.runtime,
+			accessContext,
+		);
+		return this.runtime.adapter.getDocument({
+			agentId: this.runtime.agentId,
+			documentId,
+			requesterEntityId: requester.entityId,
+			requesterRoomIds: requester.roomIds,
+			requesterRole: requester.role,
+		});
+	}
+
+	async getMutableDocumentWithAccessContext(
+		documentId: UUID,
+		accessContext: AccessContext,
+	): Promise<Memory | null> {
+		const requester = await resolveDocumentRequesterFromAccessContext(
+			this.runtime,
+			accessContext,
+		);
+		const requestContext = {
+			agentId: this.runtime.agentId,
+			requesterEntityId: requester.entityId,
+			requesterRoomIds: requester.roomIds,
+			requesterRole: requester.role,
+		};
+		const document = await this.runtime.adapter.getDocument({
+			...requestContext,
+			documentId,
+		});
+		return document && canRequesterMutateDocument(document, requestContext)
+			? document
+			: null;
+	}
+
+	async setDocumentDirectGrantsWithAccessContext(
+		documentId: UUID,
+		directGrantEntityIds: UUID[],
+		accessContext: AccessContext,
+	): Promise<Memory> {
+		const grants = validateDocumentDirectGrantEntityIds(directGrantEntityIds);
+		const { snapshot, requestContext } =
+			await this.getDocumentDirectGrantManagementTarget(
+				documentId,
+				accessContext,
+			);
+		const result = await this.runtime.adapter.updateDocumentDirectGrants({
+			...requestContext,
+			documentId,
+			expected: snapshot,
+			directGrantEntityIds: grants,
+		});
+		if (result.status !== "updated") {
+			throw new ElizaError("Document grant authority changed before mutation", {
+				code:
+					result.status === "not_found"
+						? "DOCUMENT_GRANT_TARGET_NOT_FOUND"
+						: result.status === "forbidden"
+							? "DOCUMENT_GRANT_MUTATION_FORBIDDEN"
+							: "DOCUMENT_GRANT_MUTATION_CONFLICT",
+				context: { documentId, status: result.status },
+			});
+		}
+		return result.document;
+	}
+
+	async getDocumentDirectGrantsWithAccessContext(
+		documentId: UUID,
+		accessContext: AccessContext,
+	): Promise<UUID[]> {
+		const { snapshot } = await this.getDocumentDirectGrantManagementTarget(
+			documentId,
+			accessContext,
+		);
+		return snapshot.directGrantEntityIds ?? [];
+	}
+
+	private async getDocumentDirectGrantManagementTarget(
+		documentId: UUID,
+		accessContext: AccessContext,
+	) {
+		const requester = await resolveDocumentRequesterFromAccessContext(
+			this.runtime,
+			accessContext,
+		);
+		const requestContext = {
+			agentId: this.runtime.agentId,
+			requesterEntityId: requester.entityId,
+			requesterRoomIds: requester.roomIds,
+			requesterRole: requester.role,
+		};
+		const document = await this.runtime.adapter.getDocument({
+			...requestContext,
+			documentId,
+		});
+		if (!document) {
+			throw new ElizaError(`Document ${documentId} not found`, {
+				code: "DOCUMENT_NOT_FOUND",
+				context: { documentId },
+			});
+		}
+		const snapshot = readDocumentMutationSnapshot(document);
+		if (!snapshot) {
+			throw new ElizaError(
+				"Stored document authorization metadata is invalid",
+				{
+					code: "DOCUMENT_AUTHORIZATION_INVALID",
+					context: { documentId },
+					severity: "fatal",
+				},
+			);
+		}
+		if (!canRequesterManageDocumentDirectGrants(document, requestContext)) {
+			throw new ElizaError("Requester cannot manage document grants", {
+				code: "DOCUMENT_GRANT_MUTATION_FORBIDDEN",
+				context: {
+					documentId,
+					requesterEntityId: requester.entityId,
+					requesterRole: requester.role,
+				},
+			});
+		}
+		return { snapshot, requestContext };
+	}
+
+	async listDocumentFragmentsWithAccessContext(
+		documentId: UUID,
+		accessContext: AccessContext,
+	): Promise<Memory[]> {
+		const requester = await resolveDocumentRequesterFromAccessContext(
+			this.runtime,
+			accessContext,
+		);
+		const fragments: Memory[] = [];
+		const pageSize = 1_000;
+		for (let offset = 0; ; offset += pageSize) {
+			const page = await this.runtime.adapter.queryDocumentFragments({
+				agentId: this.runtime.agentId,
+				documentId,
+				requesterEntityId: requester.entityId,
+				requesterRoomIds: requester.roomIds,
+				requesterRole: requester.role,
+				limit: pageSize,
+				offset,
+			});
+			fragments.push(...page);
+			if (page.length < pageSize) return fragments;
+		}
+	}
+
 	async listDocuments(
 		message?: Memory,
 		options: DocumentListOptions = {},
@@ -575,6 +725,65 @@ export class DocumentService extends Service {
 	): Promise<DocumentListResult> {
 		return this.listDocumentsDetailedWithRequester(options, () =>
 			resolveDocumentRequester(this.runtime, message),
+		);
+	}
+
+	async listAllDocumentsWithAccessContext(
+		accessContext: AccessContext,
+	): Promise<Memory[]> {
+		const documents: Memory[] = [];
+		let cursor: DocumentListCursor | undefined;
+		const seenCursors = new Set<string>();
+		do {
+			const page = await this.listDocumentsDetailedWithRequester(
+				{
+					limit: DOCUMENT_LIST_MAX_LIMIT,
+					...(cursor ? { cursor } : {}),
+				},
+				() =>
+					resolveDocumentRequesterFromAccessContext(
+						this.runtime,
+						accessContext,
+					),
+			);
+			documents.push(...page.documents);
+			if (!page.hasMore) break;
+			if (!page.nextCursor) {
+				throw new ElizaError(
+					"Document list reported another page without a continuation cursor",
+					{
+						code: "DOCUMENT_LIST_CURSOR_MISSING",
+						context: { returnedDocuments: page.documents.length },
+						severity: "fatal",
+					},
+				);
+			}
+			const serializedCursor = documentListCursorKey(page.nextCursor);
+			if (seenCursors.has(serializedCursor)) {
+				throw new ElizaError(
+					"Document list reported a repeating pagination cursor",
+					{
+						code: "DOCUMENT_LIST_CURSOR_LOOP",
+						context: { cursor: page.nextCursor },
+						severity: "fatal",
+					},
+				);
+			}
+			seenCursors.add(serializedCursor);
+			cursor = page.nextCursor;
+		} while (cursor);
+
+		const finalRequester = await resolveDocumentRequesterFromAccessContext(
+			this.runtime,
+			accessContext,
+		);
+		return documents.filter((document) =>
+			isDocumentVisibleToRequester(document, {
+				agentId: this.runtime.agentId,
+				requesterEntityId: finalRequester.entityId,
+				requesterRoomIds: finalRequester.roomIds,
+				requesterRole: finalRequester.role,
+			}),
 		);
 	}
 
@@ -715,22 +924,7 @@ export class DocumentService extends Service {
 		const pinnedDocuments: Memory[] = [];
 		let cursor: DocumentListCursor | undefined;
 		const seenCursors = new Set<string>();
-		let pageCount = 0;
 		do {
-			pageCount += 1;
-			if (pageCount > DOCUMENT_LIST_MAX_PINNED_PAGES) {
-				throw new ElizaError(
-					"Pinned document list exceeded maximum page limit",
-					{
-						code: "DOCUMENT_LIST_PAGE_LIMIT_EXCEEDED",
-						context: {
-							pageCount,
-							maxPages: DOCUMENT_LIST_MAX_PINNED_PAGES,
-						},
-						severity: "fatal",
-					},
-				);
-			}
 			const page = await this.listDocumentsDetailedWithRequester(
 				{
 					limit: DOCUMENT_LIST_MAX_LIMIT,
@@ -778,6 +972,24 @@ export class DocumentService extends Service {
 
 	async deleteDocument(documentId: UUID, message?: Memory): Promise<void> {
 		const requester = await resolveDocumentRequester(this.runtime, message);
+		await this.deleteDocumentForRequester(documentId, requester);
+	}
+
+	async deleteDocumentWithAccessContext(
+		documentId: UUID,
+		accessContext: AccessContext,
+	): Promise<void> {
+		const requester = await resolveDocumentRequesterFromAccessContext(
+			this.runtime,
+			accessContext,
+		);
+		await this.deleteDocumentForRequester(documentId, requester);
+	}
+
+	private async deleteDocumentForRequester(
+		documentId: UUID,
+		requester: DocumentRequester,
+	): Promise<void> {
 		const document = await this.runtime.adapter.getDocument({
 			agentId: this.runtime.agentId,
 			documentId,
@@ -786,22 +998,6 @@ export class DocumentService extends Service {
 			requesterRole: requester.role,
 		});
 		if (!document) {
-			// A hidden document owned by this runtime is a forbidden mutation, while
-			// foreign-agent and non-document rows remain indistinguishable from a
-			// missing UUID. This preserves tenant isolation across the unscoped probe.
-			const existingUnscoped = await this.runtime.getMemoryById(documentId);
-			if (
-				existingUnscoped?.agentId === this.runtime.agentId &&
-				readDocumentMutationSnapshot(existingUnscoped)
-			) {
-				throw new ElizaError(
-					`Document ${documentId} cannot be deleted by this requester`,
-					{
-						code: "DOCUMENT_MUTATION_FORBIDDEN",
-						context: { documentId, requesterRole: requester.role },
-					},
-				);
-			}
 			throw new ElizaError(`Document ${documentId} not found`, {
 				code: "DOCUMENT_NOT_FOUND",
 				context: { documentId },
@@ -1005,7 +1201,6 @@ export class DocumentService extends Service {
 		const contentBasedId = generateContentBasedId(options.content, agentId, {
 			includeFilename: options.originalFilename,
 			contentType: options.contentType,
-			maxChars: 2000,
 		}) as UUID;
 
 		logger.info(
@@ -1772,8 +1967,7 @@ export class DocumentService extends Service {
 				worldId: fragment.worldId,
 			}))
 			.filter((item) => item.similarity > 0)
-			.sort((a, b) => b.similarity - a.similarity)
-			.slice(0, 20) as StoredDocument[];
+			.sort((a, b) => b.similarity - a.similarity) as StoredDocument[];
 	}
 
 	/**
@@ -1859,8 +2053,7 @@ export class DocumentService extends Service {
 					worldId: fragment.worldId,
 				};
 			})
-			.sort((a, b) => b.similarity - a.similarity)
-			.slice(0, 20) as StoredDocument[];
+			.sort((a, b) => b.similarity - a.similarity) as StoredDocument[];
 	}
 
 	async enrichConversationMemoryWithRAG(
@@ -2131,10 +2324,7 @@ export class DocumentService extends Service {
 				const documentId = generateContentBasedId(
 					trimmedItem,
 					this.runtime.agentId,
-					{
-						maxChars: 2000,
-						includeFilename: filename,
-					},
+					{ includeFilename: filename },
 				) as UUID;
 
 				if (await this.checkExistingDocument(documentId)) {
@@ -2187,14 +2377,17 @@ export class DocumentService extends Service {
 		documentId: UUID;
 		content: string;
 		message?: Memory;
+		accessContext?: AccessContext;
 	}): Promise<{
 		documentId: UUID;
 		fragmentCount: number;
 	}> {
-		const requester = await resolveDocumentRequester(
-			this.runtime,
-			options.message,
-		);
+		const requester = options.accessContext
+			? await resolveDocumentRequesterFromAccessContext(
+					this.runtime,
+					options.accessContext,
+				)
+			: await resolveDocumentRequester(this.runtime, options.message);
 		const requestContext = {
 			agentId: this.runtime.agentId,
 			requesterEntityId: requester.entityId,

@@ -5,6 +5,7 @@
  * Variables: per-request values populated by middleware (e.g. resolved user).
  */
 
+import type { BrowserWorker } from "@cloudflare/playwright";
 import type { Context } from "hono";
 import type { KvNamespaceLike } from "../lib/cache/adapters/kv-cache-adapter";
 import type { RuntimeR2Bucket } from "../lib/storage/r2-runtime-binding";
@@ -90,6 +91,9 @@ export interface Bindings {
    */
   CACHE_KV?: KvNamespaceLike;
 
+  /** Cloudflare Browser Run endpoint used by the managed DoorDash adapter. */
+  BROWSER?: BrowserWorker;
+
   /**
    * One strongly ordered coordinator per shared agent conversation. The object
    * owns warm history and mirrors it to Postgres after the response path.
@@ -101,6 +105,9 @@ export interface Bindings {
    * cached balance leases and endpoint rate limits without querying Postgres.
    */
   INFERENCE_ADMISSION_GATES?: RuntimeDurableObjectNamespace;
+
+  /** Atomic per-user ledger preventing duplicate confirmed DoorDash checkout submissions. */
+  DOORDASH_CHECKOUT_GATES?: RuntimeDurableObjectNamespace;
 
   /**
    * One strongly ordered identity/quota cache per anonymous chat session.

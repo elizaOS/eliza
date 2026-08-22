@@ -1,5 +1,5 @@
 /**
- * Verifies sub-agent completion: degenerate finish-reason relay (issue #8875).
+ * Verifies sub-agent completion: incomplete finish-reason rejection (issue #8875).
  * Deterministic unit test of pure helpers; no runtime, no live model.
  */
 import type { Memory, MessageHandlerResult, UUID } from "@elizaos/core";
@@ -54,8 +54,8 @@ function ctx(message: Memory, messageHandler: MessageHandlerResult) {
   >[0];
 }
 
-describe("sub-agent completion: degenerate finish-reason relay (issue #8875)", () => {
-  it("relays a length-truncated completion the planner would otherwise re-spawn", async () => {
+describe("sub-agent completion: incomplete finish-reason rejection (issue #8875)", () => {
+  it("handles an output-limited completion the planner would otherwise re-spawn", async () => {
     // The planner re-issued a fresh, concrete follow-up (TASKS_CREATE) — without
     // the finish-reason signal this would suppress the relay and let it re-spawn.
     const message = makeCompletion(LONG_TRUNCATED_BODY, "length");
@@ -70,7 +70,7 @@ describe("sub-agent completion: degenerate finish-reason relay (issue #8875)", (
     ).toBe(true);
   });
 
-  it("relays a content_filter (blocked) completion", async () => {
+  it("handles a content_filter (blocked) completion", async () => {
     const message = makeCompletion(LONG_TRUNCATED_BODY, "content_filter");
     const handler = makeHandler({
       candidateActions: ["TASKS_CREATE"],
@@ -126,7 +126,7 @@ describe("sub-agent completion: degenerate finish-reason relay (issue #8875)", (
     ).toBe(false);
   });
 
-  it("evaluate relays the best partial and clears candidate actions", async () => {
+  it("evaluate rejects the partial and clears candidate actions", async () => {
     const message = makeCompletion(LONG_TRUNCATED_BODY, "length");
     const handler = makeHandler({
       candidateActions: ["TASKS_CREATE"],
@@ -137,10 +137,12 @@ describe("sub-agent completion: degenerate finish-reason relay (issue #8875)", (
     );
     expect(patch?.clearCandidateActions).toBe(true);
     expect(patch?.clearParentActionHints).toBe(true);
-    expect(patch?.reply).toContain("began working through");
+    expect(patch?.reply).toContain("output limit");
+    expect(patch?.reply).toContain("No partial result was used");
+    expect(patch?.reply).not.toContain("began working through");
   });
 
-  it("evaluate suppresses (IGNORE) when a truncation has no usable partial", async () => {
+  it("returns the same explicit failure when there is no partial", async () => {
     const message = makeCompletion("", "length");
     const handler = makeHandler({
       candidateActions: ["TASKS_CREATE"],
@@ -149,7 +151,8 @@ describe("sub-agent completion: degenerate finish-reason relay (issue #8875)", (
     const patch = await subAgentCompletionResponseEvaluator.evaluate(
       ctx(message, handler),
     );
-    expect(patch?.processMessage).toBe("IGNORE");
+    expect(patch?.processMessage).not.toBe("IGNORE");
+    expect(patch?.reply).toContain("No partial result was used");
     expect(patch?.clearCandidateActions).toBe(true);
   });
 });
