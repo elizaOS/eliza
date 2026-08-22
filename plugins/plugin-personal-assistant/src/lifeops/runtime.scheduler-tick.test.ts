@@ -122,6 +122,10 @@ describe("executeLifeOpsSchedulerTask", () => {
     ).toBeLessThan(
       schedulerMocks.processScheduledWork.mock.invocationCallOrder[0],
     );
+    expect(schedulerMocks.ensureWorkflowRunIdempotencyKey).toHaveBeenCalledWith(
+      runtime,
+      { requireTable: true },
+    );
     expect(result.subsystemFailures).toEqual([
       { subsystem: "reminders", error: "reminders down" },
     ]);

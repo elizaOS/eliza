@@ -2697,8 +2697,21 @@ export class LifeOpsRepository {
    */
   static async ensureWorkflowRunIdempotencyKey(
     runtime: IAgentRuntime,
+    options: { requireTable?: boolean } = {},
   ): Promise<void> {
     if (!(await tableExists(runtime, "app_lifeops.life_workflow_runs"))) {
+      if (options.requireTable) {
+        throw new ElizaError(
+          "[LifeOpsRepository] Required relation app_lifeops.life_workflow_runs does not exist",
+          {
+            code: "LIFEOPS_WORKFLOW_RUN_TABLE_MISSING",
+            context: {
+              relation: "app_lifeops.life_workflow_runs",
+            },
+            severity: "ephemeral",
+          },
+        );
+      }
       return;
     }
     const buildValidIndexQuery = (requireMarker: boolean) => `SELECT EXISTS (

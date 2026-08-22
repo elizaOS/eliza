@@ -79,7 +79,9 @@ export async function executeLifeOpsSchedulerTask(
     ReturnType<LifeOpsService["processScheduledWork"]>
   >;
   try {
-    await LifeOpsRepository.ensureWorkflowRunIdempotencyKey(runtime);
+    await LifeOpsRepository.ensureWorkflowRunIdempotencyKey(runtime, {
+      requireTable: true,
+    });
     scheduledWork = await service.processScheduledWork({ now });
   } catch (error) {
     // A persisted scheduler task can fire from the task queue on restart
@@ -92,7 +94,9 @@ export async function executeLifeOpsSchedulerTask(
       "[lifeops-scheduler] LifeOps schema not ready; running plugin migrations and retrying tick",
     );
     await rerunLifeOpsPluginMigrations(runtime);
-    await LifeOpsRepository.ensureWorkflowRunIdempotencyKey(runtime);
+    await LifeOpsRepository.ensureWorkflowRunIdempotencyKey(runtime, {
+      requireTable: true,
+    });
     scheduledWork = await service.processScheduledWork({ now });
   }
 

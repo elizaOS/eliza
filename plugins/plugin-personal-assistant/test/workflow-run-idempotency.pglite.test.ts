@@ -77,6 +77,22 @@ describe("LifeOps workflow-run idempotency storage (real PGlite)", () => {
     await pg.close();
   });
 
+  it("distinguishes an optional absent table from a required scheduler precondition", async () => {
+    await pg.exec("DROP TABLE app_lifeops.life_workflow_runs");
+
+    await expect(
+      LifeOpsRepository.ensureWorkflowRunIdempotencyKey(runtime),
+    ).resolves.toBeUndefined();
+    await expect(
+      LifeOpsRepository.ensureWorkflowRunIdempotencyKey(runtime, {
+        requireTable: true,
+      }),
+    ).rejects.toMatchObject({
+      code: "LIFEOPS_WORKFLOW_RUN_TABLE_MISSING",
+      context: { relation: "app_lifeops.life_workflow_runs" },
+    });
+  });
+
   it("backfills one recent legacy key per scope and creates the partial unique index", async () => {
     await pg.exec(`
       INSERT INTO app_lifeops.life_workflow_runs
@@ -342,6 +358,33 @@ describe("LifeOps workflow-run idempotency storage (real PGlite)", () => {
         runningRun({ id: "winner-b", idempotencyKey: "shared-key" }),
       ),
     ]);
+    expect(outcomes.filter(Boolean)).toHaveLength(1);
+  });
+
+  it("repairs a wrong-order marked index idempotently before concurrent claims", async () => {
+    await pg.exec(`
+      ALTER TABLE app_lifeops.life_workflow_runs
+        ADD COLUMN idempotency_key TEXT;
+      CREATE INDEX idx_life_workflow_runs_idempotency
+        ON app_lifeops.life_workflow_runs (idempotency_key, workflow_id, agent_id)
+        WHERE idempotency_key IS NOT NULL;
+      COMMENT ON INDEX app_lifeops.idx_life_workflow_runs_idempotency
+        IS 'elizaos:life_workflow_runs:idempotency-backfill:v1';
+    `);
+
+    await LifeOpsRepository.ensureWorkflowRunIdempotencyKey(runtime);
+    await LifeOpsRepository.ensureWorkflowRunIdempotencyKey(runtime);
+
+    const outcomes = await Promise.all(
+      Array.from({ length: 8 }, (_, index) =>
+        repository.claimWorkflowRun(
+          runningRun({
+            id: `post-repair-${index}`,
+            idempotencyKey: "post-repair-shared",
+          }),
+        ),
+      ),
+    );
     expect(outcomes.filter(Boolean)).toHaveLength(1);
   });
 
