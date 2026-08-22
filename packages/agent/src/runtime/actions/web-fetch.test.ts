@@ -1,8 +1,9 @@
 /**
  * Behavioral tests for the WEB_FETCH action: capability gating via
- * ELIZA_WEB_FETCH, SSRF/DNS safety, response-body capping, JSON-path
- * extraction, and User-Agent defaults. Deterministic — DNS resolution and the
- * pinned fetch are stubbed through the test seams, so no real network or DNS.
+ * ELIZA_WEB_FETCH, SSRF/DNS safety, complete response preservation below the
+ * explicit transport safety limit, JSON-path extraction, and User-Agent
+ * defaults. Deterministic — DNS resolution and the pinned fetch are stubbed
+ * through the test seams, so no real network or DNS.
  */
 import type {
   ActionParameters,
@@ -107,9 +108,7 @@ describe("WEB_FETCH action", () => {
     expect(captured.text).toBeUndefined();
   });
 
-  it("caps an oversized response body (streaming read, not full buffer)", async () => {
-    // Body far larger than the 4 000-char snippet cap. The guarded reader
-    // stops streaming once the cap is reached rather than buffering all of it.
+  it("preserves a large response body in full", async () => {
     const huge = "x".repeat(50_000);
     __setPinnedFetchImplForTests(
       async () => new Response(huge, { status: 200 }),
@@ -118,8 +117,21 @@ describe("WEB_FETCH action", () => {
     const { result } = await runHandler({ url: TEST_URL });
 
     expect(result.success).toBe(true);
-    expect(result.text).toBeDefined();
-    expect((result.text ?? "").length).toBe(4_000);
+    expect(result.text).toBe(huge);
+  });
+
+  it("rejects a body over the transport safety limit instead of returning a prefix", async () => {
+    const huge = "x".repeat(256 * 1024 + 1);
+    __setPinnedFetchImplForTests(
+      async () => new Response(huge, { status: 200 }),
+    );
+
+    const { result } = await runHandler({ url: TEST_URL });
+
+    expect(result.success).toBe(false);
+    expect(result.text).toContain(
+      "HTTP response exceeds the configured 262144-character safety limit",
+    );
   });
 
   it("extracts a JSON path when extract is provided", async () => {

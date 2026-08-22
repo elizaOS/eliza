@@ -1,8 +1,8 @@
 /**
- * Exercises Unicode-safe truncation through the grounded reply prompt path.
+ * Exercises complete Unicode preservation through the grounded reply prompt path.
  * The harness captures the real TEXT_SMALL prompt so the regression proof
  * covers context serialization and recent-action rendering, not a replica of
- * the private truncation helper.
+ * a private helper.
  */
 import type { IAgentRuntime, Memory, State } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
@@ -44,7 +44,7 @@ async function capturePrompt(options: {
     state: options.state,
     intent: "confirm",
     domain: "lifeops",
-    scenario: "unicode truncation",
+    scenario: "unicode preservation",
     fallback: "Handled.",
     context: options.context,
   });
@@ -52,8 +52,8 @@ async function capturePrompt(options: {
   return prompt;
 }
 
-describe("grounded reply prompt Unicode truncation", () => {
-  it("does not split an emoji at the structured-context limit", async () => {
+describe("grounded reply prompt Unicode preservation", () => {
+  it("preserves complete structured context across the former boundary", async () => {
     const empty = JSON.stringify({ payload: "" });
     const contentStart = empty.indexOf('""') + 1;
     const highSurrogateIndex = 2_398;
@@ -66,8 +66,9 @@ describe("grounded reply prompt Unicode truncation", () => {
 
     expect(contextLine).toBeDefined();
     expect(isWellFormed(contextLine ?? "")).toBe(true);
-    expect(contextLine).not.toContain("🦊");
-    expect(contextLine?.endsWith("…")).toBe(true);
+    expect(contextLine).toContain(payload);
+    expect(contextLine).toContain("🦊tail");
+    expect(contextLine?.endsWith("…")).toBe(false);
   });
 
   it("sanitizes a lone surrogate in recent action text", async () => {
@@ -94,7 +95,7 @@ describe("grounded reply prompt Unicode truncation", () => {
     expect(historyLine).not.toContain("\\ud800");
   });
 
-  it("preserves a complete emoji that fits before the context limit", async () => {
+  it("preserves a complete emoji with its surrounding context", async () => {
     const prompt = await capturePrompt({ context: { payload: "hello🦊" } });
     const contextLine = prompt
       .split("\n")
