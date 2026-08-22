@@ -28,38 +28,33 @@ export function grabberBarOpacity(
   return openFade * (1 - clamp01(fullBleedProgress));
 }
 
-// Hand off the detached desktop handle only once both variants occupy the same
-// pixels. A short threshold avoids relying on a spring landing on exactly 1.
-const DESKTOP_HANDLE_HANDOFF_PROGRESS = 0.995;
-
 /**
  * Opacity for the detached desktop's fixed sheet grabber. Unlike the embedded
- * crossfade, it must never overlap the traveling mark: the user can see their
- * distinct positions while dragging between the resting pill and composer.
+ * crossfade, its owner is semantic rather than progress-based: the fixed
+ * grabber owns an actual transcript, while one continuous traveler owns both
+ * INPUT and PILL. Swapping DOM handles on the first drag pixel caused a small
+ * visible teleport even when their calculated centers matched.
  */
 export function desktopSheetGrabberOpacity(
-  openProgress: number,
+  travelerOwnsHandle: boolean,
   fullBleedProgress: number,
 ): number {
-  const ownsHandle =
-    clamp01(openProgress) >= DESKTOP_HANDLE_HANDOFF_PROGRESS ? 1 : 0;
+  const ownsHandle = travelerOwnsHandle ? 0 : 1;
   return ownsHandle * (1 - clamp01(fullBleedProgress));
 }
 
 /**
  * Opacity for the detached desktop's traveling resting handle. It remains one
- * continuous mark through the whole pill-to-composer motion, then hands off in
- * place to the sheet grabber. There is deliberately no crossfade: two handles
- * at different positions read as a duplicate even when their alpha sums to
- * one. Full-bleed always suppresses it so the restore handle is the only white
- * mark at the top edge.
+ * continuous mark through the whole pill-to-composer motion, including its
+ * fully formed INPUT endpoint. It hands off only when transcript chrome owns
+ * the surface, never on the first movement frame. Full-bleed suppresses it so
+ * the restore handle is the only white mark at the top edge.
  */
 export function desktopPillTravelerOpacity(
-  openProgress: number,
+  travelerOwnsHandle: boolean,
   fullBleedProgress: number,
 ): number {
-  const ownsHandle =
-    clamp01(openProgress) < DESKTOP_HANDLE_HANDOFF_PROGRESS ? 1 : 0;
+  const ownsHandle = travelerOwnsHandle ? 1 : 0;
   return ownsHandle * (1 - clamp01(fullBleedProgress));
 }
 

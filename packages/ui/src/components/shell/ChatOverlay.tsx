@@ -1034,6 +1034,10 @@ function SheetGrabber({
         // This handle is a complete gesture owner. In the shell it can sit over
         // a broad home/notification pull surface, whose native listener runs
         // independently of React; do not let this press seed both systems.
+        // Prevent only this handle-originated pointer from beginning native
+        // text selection underneath the drag. Transcript/message pointerdowns
+        // never pass through this handler and remain normally selectable.
+        event.preventDefault();
         event.stopPropagation();
         binding.onPointerDown(event);
       }}
@@ -1091,6 +1095,7 @@ function PillHandle({
   onOpen,
   breathing,
   pilled,
+  interactive = pilled,
   desktopOverlayHost,
   desktopMorphScaleX = 1,
   desktopMorphScaleY = 1,
@@ -1108,6 +1113,8 @@ function PillHandle({
   // opts back in), so the keyboard would never open. Gate on `pilled` so taps
   // pass through to the textarea once the input has formed.
   pilled: boolean;
+  /** The detached INPUT endpoint keeps this same traveler interactive. */
+  interactive?: boolean;
   desktopOverlayHost: boolean;
   desktopMorphScaleX?: MotionValue<number> | number;
   desktopMorphScaleY?: MotionValue<number> | number;
@@ -1173,11 +1180,19 @@ function PillHandle({
           if (event.cancelable) event.preventDefault();
         }}
         {...binding}
-        tabIndex={pilled ? undefined : -1}
-        aria-hidden={pilled ? undefined : true}
+        onPointerDown={(event) => {
+          // The traveler crosses the composer while captured. Cancel the
+          // browser's selection default at the handle origin so the placeholder
+          // cannot highlight mid-drag; real text outside this control keeps its
+          // ordinary selection behavior.
+          event.preventDefault();
+          binding.onPointerDown(event);
+        }}
+        tabIndex={interactive ? undefined : -1}
+        aria-hidden={interactive ? undefined : true}
         className={cn(
           "cursor-grab touch-none select-none active:cursor-grabbing",
-          pilled ? "pointer-events-auto" : "pointer-events-none",
+          interactive ? "pointer-events-auto" : "pointer-events-none",
         )}
       />
     </motion.div>
@@ -2277,6 +2292,18 @@ export function ChatOverlay({
   // The thread body remains mounted through opening previews and closing
   // springs so the renderer owns one continuous visual transition.
   const threadPresented = sheetOpen || dragPreviewVisible;
+  // Detached INPUT and PILL are one physical handle and one DOM node. Keeping
+  // the traveler as owner at the fully formed input endpoint prevents the
+  // first downward pixel from swapping to a near-but-not-identical node and
+  // visibly teleporting upward. Transcript chrome takes ownership only while
+  // a thread is actually painted (including its closing preview).
+  const desktopTravelerOwnsHandle = desktopOverlayHost && !threadPresented;
+  const desktopTravelerOwnership = useMotionValue(
+    desktopTravelerOwnsHandle ? 1 : 0,
+  );
+  React.useLayoutEffect(() => {
+    desktopTravelerOwnership.set(desktopTravelerOwnsHandle ? 1 : 0);
+  }, [desktopTravelerOwnership, desktopTravelerOwnsHandle]);
   useMotionValueEvent(openProgress, "change", (progress) => {
     const next = progress > 0.001;
     if (morphExpandedRef.current === next) return;
@@ -3592,8 +3619,9 @@ export function ChatOverlay({
     ([p, t]: number[]) => grabberBarOpacity(p, t),
   );
   const desktopGrabberOpacity = useTransform(
-    [openProgress, fullBleedT] as MotionValue<number>[],
-    ([p, t]: number[]) => desktopSheetGrabberOpacity(p, t),
+    [desktopTravelerOwnership, fullBleedT] as MotionValue<number>[],
+    ([travelerOwns, t]: number[]) =>
+      desktopSheetGrabberOpacity(travelerOwns >= 0.5, t),
   );
   // Detached macOS uses one continuous white mark instead of two bars with a
   // dead crossfade between them. The resting 64x12 pill travels from the
@@ -3621,8 +3649,9 @@ export function ChatOverlay({
     { clamp: true },
   );
   const desktopPillTravelerAlpha = useTransform(
-    [openProgress, fullBleedT] as MotionValue<number>[],
-    ([p, t]: number[]) => desktopPillTravelerOpacity(p, t),
+    [desktopTravelerOwnership, fullBleedT] as MotionValue<number>[],
+    ([travelerOwns, t]: number[]) =>
+      desktopPillTravelerOpacity(travelerOwns >= 0.5, t),
   );
   // Header reveal tracks the LIVE height: as the panel approaches the half
   // detent the top buttons FADE in and their space LERPS open; pulling back
@@ -6349,7 +6378,7 @@ export function ChatOverlay({
             opacity={
               desktopOverlayHost ? desktopGrabberOpacity : grabberOpacity
             }
-            pilled={pilled}
+            pilled={pilled || desktopTravelerOwnsHandle}
           />
         ) : null}
         <motion.fieldset
@@ -7522,9 +7551,10 @@ export function ChatOverlay({
             <PillHandle
               binding={pullBinding}
               counterScale={1}
-              onOpen={openFromPill}
+              onOpen={pilled ? openFromPill : openFromGrabber}
               breathing={listening || responding || recording}
               pilled={pilled}
+              interactive={desktopTravelerOwnsHandle}
               desktopOverlayHost
               desktopMorphScaleX={desktopPillTravelerScaleX}
               desktopMorphScaleY={desktopPillTravelerScaleY}

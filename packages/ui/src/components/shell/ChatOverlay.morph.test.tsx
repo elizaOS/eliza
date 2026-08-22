@@ -181,19 +181,23 @@ describe("detached desktop pill traveler handoff", () => {
   });
 
   it("keeps exactly one mark painted while handing off to the grabber", () => {
-    for (const progress of [0, 0.25, 0.55, 0.75, 0.95, 0.994, 0.995, 1]) {
-      const traveler = desktopPillTravelerOpacity(progress, 0);
-      const fixedGrabber = desktopSheetGrabberOpacity(progress, 0);
+    for (const travelerOwns of [true, false]) {
+      const traveler = desktopPillTravelerOpacity(travelerOwns, 0);
+      const fixedGrabber = desktopSheetGrabberOpacity(travelerOwns, 0);
       expect(traveler + fixedGrabber).toBe(1);
       expect(traveler * fixedGrabber).toBe(0);
     }
   });
 
+  it("keeps the traveler visible at the fully formed input endpoint", () => {
+    expect(desktopPillTravelerOpacity(true, 0)).toBe(1);
+    expect(desktopSheetGrabberOpacity(true, 0)).toBe(0);
+  });
+
   it("never resurrects the traveler in full bleed", () => {
-    expect(desktopPillTravelerOpacity(0, 1)).toBe(0);
-    expect(desktopPillTravelerOpacity(0.75, 1)).toBe(0);
-    expect(desktopPillTravelerOpacity(1, 1)).toBe(0);
-    expect(desktopSheetGrabberOpacity(1, 1)).toBe(0);
+    expect(desktopPillTravelerOpacity(true, 1)).toBe(0);
+    expect(desktopPillTravelerOpacity(false, 1)).toBe(0);
+    expect(desktopSheetGrabberOpacity(false, 1)).toBe(0);
   });
 });
 

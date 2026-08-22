@@ -9,6 +9,7 @@
 import {
   act,
   cleanup,
+  createEvent,
   fireEvent,
   render,
   screen,
@@ -4402,6 +4403,67 @@ describe("ChatOverlay single-thread (no chat swipe, #13531)", () => {
     expect(onWindowSizeClassChange).toHaveBeenLastCalledWith("input");
   });
 
+  it("uses one continuous interactive traveler from detached input to pill", () => {
+    render(
+      <ChatOverlay
+        controller={makeSwipeController().controller}
+        desktopOverlayHost
+        initialMode="input"
+      />,
+    );
+    const fixedGrabber = screen.getByTestId("chat-sheet-grabber");
+    const traveler = screen.getByTestId("chat-pill");
+
+    expect(fixedGrabber.style.pointerEvents).toBe("none");
+    expect(fixedGrabber.getAttribute("aria-hidden")).toBe("true");
+    expect(traveler.className).toContain("pointer-events-auto");
+    expect(traveler.getAttribute("aria-hidden")).toBeNull();
+
+    const handleDown = createEvent.pointerDown(traveler, {
+      clientY: 400,
+      screenY: 400,
+      pointerId: 93,
+    });
+    fireEvent(traveler, handleDown);
+    expect(handleDown.defaultPrevented).toBe(true);
+    fireEvent.pointerMove(traveler, {
+      clientY: 480,
+      screenY: 480,
+      pointerId: 93,
+    });
+    fireEvent.pointerUp(traveler, {
+      clientY: 480,
+      screenY: 480,
+      pointerId: 93,
+    });
+
+    expect(screen.getByTestId("chat-sheet").dataset.detent).toBe("pill");
+    expect(screen.getByTestId("chat-pill")).toBe(traveler);
+  });
+
+  it("prevents selection only for handle-originated drags", () => {
+    render(
+      <ChatOverlay
+        controller={makeSwipeController().controller}
+        desktopOverlayHost
+        initialMode="half"
+      />,
+    );
+    const messageText = screen.getByText("hi there");
+    const textDown = createEvent.pointerDown(messageText, {
+      clientY: 240,
+      screenY: 240,
+      pointerId: 94,
+    });
+    fireEvent(messageText, textDown);
+
+    expect(textDown.defaultPrevented).toBe(false);
+    expect(
+      messageText.closest<HTMLElement>('[data-testid="thread-line"]')
+        ?.className,
+    ).not.toContain("select-none");
+  });
+
   it("gives the detached resting pill one visible forgiving hit target", () => {
     render(
       <ChatOverlay
@@ -4805,8 +4867,14 @@ describe("ChatOverlay single-thread (no chat swipe, #13531)", () => {
       });
       expect(screen.getByTestId("chat-sheet").dataset.detent).toBe("collapsed");
       expect(screen.getByTestId("chat-sheet").dataset.chatState).toBe("INPUT");
-      expect(screen.getByTestId("chat-pill").getAttribute("aria-hidden")).toBe(
-        "true",
+      // INPUT and PILL intentionally share the same traveler now. Keeping it
+      // active at this endpoint avoids a first-pixel DOM-owner swap on the next
+      // downward drag.
+      expect(
+        screen.getByTestId("chat-pill").getAttribute("aria-hidden"),
+      ).toBeNull();
+      expect(screen.getByTestId("chat-pill").className).toContain(
+        "pointer-events-auto",
       );
       // This drag already carried the rendered transcript completely to zero,
       // so release must retire the preview and native sheet envelope instead
