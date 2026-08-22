@@ -7,7 +7,7 @@
  * Environment variables always override persisted values.
  */
 
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import fs from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
@@ -109,6 +109,19 @@ function readCredentialsFile():
   }
 }
 
+function fsyncMetadataDirectory(directory: string): void {
+  if (process.platform === "win32") return;
+  const descriptor = fs.openSync(
+    directory,
+    fs.constants.O_RDONLY | (fs.constants.O_DIRECTORY ?? 0),
+  );
+  try {
+    fs.fsyncSync(descriptor);
+  } finally {
+    fs.closeSync(descriptor);
+  }
+}
+
 function writeCredentialsMetadata(
   credentials: PersistedStewardCredentials | StewardCredentialsMetadata,
 ): void {
@@ -126,7 +139,31 @@ function writeCredentialsMetadata(
   if (credentials.tenantId) data.tenantId = credentials.tenantId;
   if (credentials.agentId) data.agentId = credentials.agentId;
 
-  fs.writeFileSync(credPath, JSON.stringify(data, null, 2), { mode: 0o600 });
+  // Write to a private temporary file and rename into place so an interrupted
+  // process can never leave a truncated steward-credentials.json behind: the
+  // loader treats unparseable metadata as "steward not configured", silently
+  // discarding the saved setup. Mirrors writeMetaStore() in account-pool.ts.
+  const tmp = `${credPath}.${process.pid}.${randomUUID()}.tmp`;
+  let descriptor: number | undefined;
+  try {
+    descriptor = fs.openSync(
+      tmp,
+      fs.constants.O_WRONLY |
+        fs.constants.O_CREAT |
+        fs.constants.O_EXCL |
+        (fs.constants.O_NOFOLLOW ?? 0),
+      0o600,
+    );
+    fs.writeFileSync(descriptor, JSON.stringify(data, null, 2), "utf-8");
+    fs.fsyncSync(descriptor);
+    fs.closeSync(descriptor);
+    descriptor = undefined;
+    fs.renameSync(tmp, credPath);
+    fsyncMetadataDirectory(dir);
+  } finally {
+    if (descriptor !== undefined) fs.closeSync(descriptor);
+    fs.rmSync(tmp, { force: true });
+  }
 }
 
 async function readStewardSecret(
