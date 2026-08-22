@@ -28,7 +28,6 @@ import {
   InternalHooksSchema,
 } from "./zod-schema.hooks.ts";
 import {
-  BlueBubblesConnectorConfigSchema,
   CustomRtmpConfigSchema,
   DiscordConfigSchema,
   DiscordLocalConfigSchema,
@@ -154,7 +153,6 @@ const ConnectorsSchema = z
       })
       .strict()
       .optional(),
-    bluebubbles: BlueBubblesConnectorConfigSchema.optional(),
     whatsapp: WhatsAppConfigSchema.optional(),
     telegram: TelegramConfigSchema.optional(),
     telegramAccount: TelegramAccountConnectorSchema.optional(),

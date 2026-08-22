@@ -220,13 +220,6 @@ function readBridgeDoctor() {
   }
 }
 
-function bridgeOutboundReady(doctor) {
-  if (!Array.isArray(doctor?.checks)) return false;
-  return doctor.checks.every(
-    (check) => check.name === "pending-replies" || check.status === "pass",
-  );
-}
-
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -255,7 +248,6 @@ async function main() {
   probeDeadlineAtMs = deadline;
   let lastWirelessAdbSummary = "";
   let lastWirelessAdbSeenAt = 0;
-  let printedBlueBubblesValidationHint = false;
 
   const expired = () => Date.now() > deadline;
   while (!expired()) {
@@ -271,7 +263,6 @@ async function main() {
     if (expired()) break;
     const bridgeDoctor = readBridgeDoctor();
     if (expired()) break;
-    const bridgeReady = bridgeOutboundReady(bridgeDoctor);
     const wirelessSummary = wirelessAdb
       .map((service) => `${service.type}:${service.endpoint}`)
       .join(", ");
@@ -324,32 +315,6 @@ async function main() {
           `[sms-gateway-watch] wireless adb connected: ${connectEndpoint.endpoint}`,
         );
         runInstallFlow([], "60");
-      }
-    }
-
-    if (bridgeReady) {
-      console.log("[sms-gateway-watch] BlueBubbles outbound is ready.");
-      console.log(
-        "Run: node packages/app-core/scripts/verify-bluebubbles-gateway-e2e.mjs",
-      );
-      return;
-    }
-
-    const bridgeOutbound = bridgeDoctor?.checks?.find(
-      (check) => check.name === "outbound",
-    );
-    if (
-      bridgeOutbound?.status === "blocked" &&
-      /Shortcut outbound validation missing/.test(bridgeOutbound.detail ?? "")
-    ) {
-      if (!printedBlueBubblesValidationHint) {
-        console.log(
-          "[sms-gateway-watch] BlueBubbles Shortcut is installed but needs a real validation send.",
-        );
-        console.log(
-          "After explicit real-send approval, run: bun run --cwd packages/app-core sms-gateway:validate:bluebubbles -- --confirm-real-send",
-        );
-        printedBlueBubblesValidationHint = true;
       }
     }
 

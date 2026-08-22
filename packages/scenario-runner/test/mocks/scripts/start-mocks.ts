@@ -41,7 +41,6 @@ import { MockHttpError } from "./mock-http-error.ts";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ENVS_DIR = path.resolve(__dirname, "..", "environments");
 const MOCK_BROWSER_WORKSPACE_TOKEN = "mock-browser-workspace-token";
-const MOCK_BLUEBUBBLES_PASSWORD = "mock-bluebubbles-password";
 
 export const MOCK_PROVIDER_ENVIRONMENTS = [
   "google",
@@ -52,7 +51,6 @@ export const MOCK_PROVIDER_ENVIRONMENTS = [
   "cloud-managed",
   "signal",
   "browser-workspace",
-  "bluebubbles",
   "imessage",
   "github",
   "discord",
@@ -144,7 +142,6 @@ export interface MockRequestLedgerEntry {
   whatsapp?: WhatsAppRequestLedgerMetadata;
   signal?: SignalRequestLedgerMetadata;
   browserWorkspace?: BrowserWorkspaceRequestLedgerMetadata;
-  bluebubbles?: BlueBubblesRequestLedgerMetadata;
   github?: GitHubRequestLedgerMetadata;
   payment?: PaymentRequestLedgerMetadata;
   lifeopsPresenceActive?: LifeOpsPresenceActiveRequestLedgerMetadata;
@@ -184,14 +181,6 @@ interface BrowserWorkspaceRequestLedgerMetadata {
   tabId?: string;
   partition?: string;
   url?: string;
-  runId?: string;
-}
-
-interface BlueBubblesRequestLedgerMetadata {
-  action: string;
-  chatGuid?: string;
-  messageGuid?: string;
-  query?: string;
   runId?: string;
 }
 
@@ -260,20 +249,6 @@ function envVarsFor(
     out.ELIZA_BROWSER_WORKSPACE_URL = baseUrls["browser-workspace"];
     out.ELIZA_BROWSER_WORKSPACE_TOKEN = MOCK_BROWSER_WORKSPACE_TOKEN;
     out.ELIZA_DISABLE_DISCORD_DESKTOP_CDP = "1";
-  }
-  if (envs.includes("bluebubbles")) {
-    out.ELIZA_IMESSAGE_BACKEND = "bluebubbles";
-    out.ELIZA_BLUEBUBBLES_URL = baseUrls.bluebubbles;
-    out.BLUEBUBBLES_SERVER_URL = baseUrls.bluebubbles;
-    out.ELIZA_BLUEBUBBLES_PASSWORD = MOCK_BLUEBUBBLES_PASSWORD;
-    out.BLUEBUBBLES_PASSWORD = MOCK_BLUEBUBBLES_PASSWORD;
-  }
-  if (envs.includes("imessage")) {
-    out.ELIZA_IMESSAGE_BACKEND = "bluebubbles";
-    out.ELIZA_BLUEBUBBLES_URL = baseUrls.imessage;
-    out.BLUEBUBBLES_SERVER_URL = baseUrls.imessage;
-    out.ELIZA_BLUEBUBBLES_PASSWORD = MOCK_BLUEBUBBLES_PASSWORD;
-    out.BLUEBUBBLES_PASSWORD = MOCK_BLUEBUBBLES_PASSWORD;
   }
   if (envs.includes("github")) {
     out.ELIZA_MOCK_GITHUB_BASE = baseUrls.github;
@@ -1532,234 +1507,6 @@ function browserWorkspaceDynamicFixture(
   }
 
   return mockJsonError(405, "method not allowed");
-}
-
-interface BlueBubblesChatFixture {
-  guid: string;
-  displayName: string;
-  chatIdentifier: string;
-  participants: Array<{ address: string }>;
-  lastMessageAt: number;
-}
-
-interface BlueBubblesMessageFixture {
-  guid: string;
-  text: string;
-  handle: { address: string } | null;
-  chatGuid: string;
-  chats: Array<{ guid: string }>;
-  isFromMe: boolean;
-  dateCreated: number;
-  isRead?: boolean;
-  isDelivered?: boolean;
-  error?: number | null;
-  errorDescription?: string | null;
-}
-
-interface BlueBubblesMockState {
-  chats: BlueBubblesChatFixture[];
-  messages: BlueBubblesMessageFixture[];
-}
-
-function simulatorBlueBubblesChat(
-  message: LifeOpsSimulatorChannelMessage,
-): BlueBubblesChatFixture {
-  const person = getLifeOpsSimulatorPerson(message.fromPersonKey);
-  return {
-    guid: message.threadId,
-    displayName: message.threadName,
-    chatIdentifier: person.phone,
-    participants: [{ address: person.phone }],
-    lastMessageAt: Date.parse(
-      lifeOpsSimulatorMessageTime(message.sentAtOffsetMs),
-    ),
-  };
-}
-
-function simulatorBlueBubblesMessage(
-  message: LifeOpsSimulatorChannelMessage,
-): BlueBubblesMessageFixture {
-  const person = getLifeOpsSimulatorPerson(message.fromPersonKey);
-  return {
-    guid: message.id,
-    text: message.text,
-    handle: { address: person.phone },
-    chatGuid: message.threadId,
-    chats: [{ guid: message.threadId }],
-    isFromMe: message.outgoing === true,
-    dateCreated: Date.parse(
-      lifeOpsSimulatorMessageTime(message.sentAtOffsetMs),
-    ),
-    isRead: message.unread !== true,
-    isDelivered: true,
-  };
-}
-
-function createBlueBubblesMockState(
-  opts?: MockFixtureOptions,
-): BlueBubblesMockState {
-  if (opts?.simulator) {
-    const messages = LIFEOPS_SIMULATOR_CHANNEL_MESSAGES.filter(
-      (message) => message.channel === "imessage",
-    );
-    return {
-      chats: messages.map(simulatorBlueBubblesChat),
-      messages: messages.map(simulatorBlueBubblesMessage),
-    };
-  }
-  const chatGuid = "iMessage;-;+15551112222";
-  return {
-    chats: [
-      {
-        guid: chatGuid,
-        displayName: "Alice iMessage",
-        chatIdentifier: "+15551112222",
-        participants: [{ address: "+15551112222" }],
-        lastMessageAt: Date.parse("2026-04-25T12:00:00.000Z"),
-      },
-    ],
-    messages: [
-      {
-        guid: "imsg-fixture-1",
-        text: "Can you review the BlueBubbles fixture?",
-        handle: { address: "+15551112222" },
-        chatGuid,
-        chats: [{ guid: chatGuid }],
-        isFromMe: false,
-        dateCreated: Date.parse("2026-04-25T12:00:00.000Z"),
-        isRead: true,
-        isDelivered: true,
-      },
-    ],
-  };
-}
-
-function bluebubblesResponse(data: JsonValue | object): DynamicFixtureResponse {
-  return jsonFixture({ status: 200, data });
-}
-
-function bluebubblesDynamicFixture(
-  state: BlueBubblesMockState,
-  method: string,
-  pathname: string,
-  requestBody: RequestBody,
-  headers: http.IncomingHttpHeaders,
-  ledgerEntry: MockRequestLedgerEntry,
-): DynamicFixtureResponse | null {
-  const authFailure = requireBearerToken(headers, MOCK_BLUEBUBBLES_PASSWORD);
-  if (authFailure) return authFailure;
-
-  if (method === "GET" && pathname === "/api/v1/server/info") {
-    ledgerEntry.bluebubbles = withRunId<BlueBubblesRequestLedgerMetadata>(
-      ledgerEntry,
-      {
-        action: "server.info",
-      },
-    );
-    return bluebubblesResponse({
-      private_api: true,
-      helper_connected: true,
-      detected_imessage: LIFEOPS_SIMULATOR_OWNER.email,
-      detected_icloud: "owner@icloud.test",
-    });
-  }
-
-  if (method === "POST" && pathname === "/api/v1/chat/query") {
-    ledgerEntry.bluebubbles = withRunId<BlueBubblesRequestLedgerMetadata>(
-      ledgerEntry,
-      {
-        action: "chat.query",
-      },
-    );
-    return bluebubblesResponse(state.chats);
-  }
-
-  if (method === "POST" && pathname === "/api/v1/message/query") {
-    const search = readOptionalString(requestBody, "search");
-    const chatGuid = readOptionalString(requestBody, "chatGuid");
-    const messages = state.messages.filter((message) => {
-      if (chatGuid && message.chatGuid !== chatGuid) return false;
-      if (
-        search &&
-        !message.text.toLowerCase().includes(search.toLowerCase())
-      ) {
-        return false;
-      }
-      return true;
-    });
-    ledgerEntry.bluebubbles = withRunId<BlueBubblesRequestLedgerMetadata>(
-      ledgerEntry,
-      {
-        action: search ? "message.search" : "message.query",
-        ...(chatGuid ? { chatGuid } : {}),
-        ...(search ? { query: search } : {}),
-      },
-    );
-    return bluebubblesResponse(messages);
-  }
-
-  const chatMessageId = routeParam(
-    pathname,
-    /^\/api\/v1\/chat\/([^/]+)\/message\/?$/,
-  );
-  if (method === "GET" && chatMessageId) {
-    const messages = state.messages.filter(
-      (message) => message.chatGuid === chatMessageId,
-    );
-    ledgerEntry.bluebubbles = withRunId<BlueBubblesRequestLedgerMetadata>(
-      ledgerEntry,
-      {
-        action: "chat.messages",
-        chatGuid: chatMessageId,
-      },
-    );
-    return bluebubblesResponse(messages);
-  }
-
-  if (method === "POST" && pathname === "/api/v1/message/text") {
-    const chatGuid = readRequiredFixtureString(requestBody, "chatGuid");
-    const text = readRequiredFixtureString(requestBody, "message");
-    const message: BlueBubblesMessageFixture = {
-      guid: `imsg-${randomFromAlphabet("0123456789abcdef", 12)}`,
-      text,
-      handle: null,
-      chatGuid,
-      chats: [{ guid: chatGuid }],
-      isFromMe: true,
-      dateCreated: Date.now(),
-      isRead: false,
-      isDelivered: true,
-    };
-    state.messages.unshift(message);
-    ledgerEntry.bluebubbles = withRunId<BlueBubblesRequestLedgerMetadata>(
-      ledgerEntry,
-      {
-        action: "message.text",
-        chatGuid,
-        messageGuid: message.guid,
-      },
-    );
-    return bluebubblesResponse(message);
-  }
-
-  const messageGuid = routeParam(pathname, /^\/api\/v1\/message\/([^/]+)\/?$/);
-  if (method === "GET" && messageGuid) {
-    const message = state.messages.find(
-      (candidate) => candidate.guid === messageGuid,
-    );
-    ledgerEntry.bluebubbles = withRunId<BlueBubblesRequestLedgerMetadata>(
-      ledgerEntry,
-      {
-        action: "message.get",
-        messageGuid,
-      },
-    );
-    return message
-      ? bluebubblesResponse(message)
-      : mockJsonError(404, "message not found");
-  }
-
-  return null;
 }
 
 interface GitHubIssueFixture {
@@ -3863,7 +3610,6 @@ type DynamicProviderState =
   | { kind: "whatsapp"; state: WhatsAppMockState }
   | { kind: "signal"; state: SignalMockState }
   | { kind: "browser-workspace"; state: BrowserWorkspaceMockState }
-  | { kind: "bluebubbles"; state: BlueBubblesMockState }
   | { kind: "github"; state: GitHubMockState }
   | { kind: "discord"; state: DiscordMockState }
   | { kind: "slack"; state: SlackMockState }
@@ -3906,9 +3652,6 @@ async function createDynamicProviderState(
       kind: "browser-workspace",
       state: createBrowserWorkspaceMockState(opts),
     };
-  }
-  if (environmentName === "BlueBubbles" || environmentName === "iMessage") {
-    return { kind: "bluebubbles", state: createBlueBubblesMockState(opts) };
   }
   if (environmentName === "GitHub REST") {
     return { kind: "github", state: createGitHubMockState() };
@@ -4065,15 +3808,6 @@ async function dynamicProviderFixture(args: {
       );
     case "browser-workspace":
       return browserWorkspaceDynamicFixture(
-        args.provider.state,
-        args.method,
-        args.pathname,
-        args.requestBody,
-        args.headers,
-        args.ledgerEntry,
-      );
-    case "bluebubbles":
-      return bluebubblesDynamicFixture(
         args.provider.state,
         args.method,
         args.pathname,

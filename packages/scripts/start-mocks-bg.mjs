@@ -41,7 +41,6 @@ const ENV_LIST = [
   "x-twitter",
   "signal",
   "browser-workspace",
-  "bluebubbles",
   "github",
   "cloud-managed",
   "lifeops-presence",

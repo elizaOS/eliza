@@ -30,7 +30,6 @@ export type ConnectorSetupPanelToken =
   | "whatsapp"
   | "signal"
   | "discord-local"
-  | "bluebubbles"
   | "imessage"
   | "lifeops-browser";
 
@@ -102,11 +101,6 @@ registerConnectorSetupPanelRule({
 registerConnectorSetupPanelRule({
   token: "discord-local",
   needle: "discordlocal",
-  match: "exact",
-});
-registerConnectorSetupPanelRule({
-  token: "bluebubbles",
-  needle: "bluebubbles",
   match: "exact",
 });
 registerConnectorSetupPanelRule({

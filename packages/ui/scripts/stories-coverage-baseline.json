@@ -29,7 +29,6 @@
     "src/components/cloud/StripeEmbeddedCheckout.tsx",
     "src/components/cockpit/MyRuntimesContainer.tsx",
     "src/components/composites/code/DiffReviewPanel.tsx",
-    "src/components/connectors/BlueBubblesStatusPanel.tsx",
     "src/components/connectors/ConnectorAccountAuditList.tsx",
     "src/components/connectors/ConnectorAccountList.tsx",
     "src/components/connectors/ConnectorAccountSetupScope.tsx",

@@ -39,11 +39,28 @@ describe("retired transport registration", () => {
 
     for (const authority of [
       "packages/agent/src/runtime/core-plugins.ts",
+      "packages/agent/src/config/env-vars.ts",
+      "packages/agent/src/config/zod-schema.ts",
+      "packages/app-core/package.json",
+      "packages/app-core/src/services/connector-secret-inventory.ts",
+      "packages/cloud/api/src/_router.generated.ts",
       "packages/scripts/release-cohort.json",
+      "packages/ui/src/components/connectors/connector-mode-registry.ts",
+      "packages/ui/src/components/connectors/connector-setup-panel-registry.ts",
     ]) {
       expect(
         readFileSync(path.join(repositoryRoot, authority), "utf8"),
-      ).not.toContain(retiredPackage);
+      ).not.toMatch(/bluebubbles/i);
+    }
+
+    for (const removedSurface of [
+      "packages/cloud/api/v1/phone-gateways/bluebubbles/route.ts",
+      "packages/cloud/api/webhooks/bluebubbles/route.ts",
+      "packages/cloud/scripts/install-bluebubbles-relay.mjs",
+      "packages/scenario-runner/test/mocks/mockoon/bluebubbles.json",
+      "packages/ui/src/components/connectors/BlueBubblesStatusPanel.tsx",
+    ]) {
+      expect(existsSync(path.join(repositoryRoot, removedSurface))).toBe(false);
     }
   });
 

@@ -18,21 +18,6 @@ import type { ElizaConfig } from "./types.ts";
 export const CONNECTOR_ENV_MAP: Readonly<
   Record<string, Readonly<Record<string, string>>>
 > = {
-  bluebubbles: {
-    enabled: "BLUEBUBBLES_ENABLED",
-    serverUrl: "BLUEBUBBLES_SERVER_URL",
-    password: "BLUEBUBBLES_PASSWORD",
-    webhookPath: "BLUEBUBBLES_WEBHOOK_PATH",
-    autoStartCommand: "BLUEBUBBLES_AUTOSTART_COMMAND",
-    autoStartArgs: "BLUEBUBBLES_AUTOSTART_ARGS",
-    autoStartCwd: "BLUEBUBBLES_AUTOSTART_CWD",
-    autoStartWaitMs: "BLUEBUBBLES_AUTOSTART_WAIT_MS",
-    dmPolicy: "BLUEBUBBLES_DM_POLICY",
-    groupPolicy: "BLUEBUBBLES_GROUP_POLICY",
-    allowFrom: "BLUEBUBBLES_ALLOW_FROM",
-    groupAllowFrom: "BLUEBUBBLES_GROUP_ALLOW_FROM",
-    sendReadReceipts: "BLUEBUBBLES_SEND_READ_RECEIPTS",
-  },
   discord: {
     token: "DISCORD_API_TOKEN",
     botToken: "DISCORD_API_TOKEN",

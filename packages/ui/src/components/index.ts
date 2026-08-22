@@ -201,7 +201,6 @@ export { SidebarContent } from "./composites/sidebar/sidebar-content";
 export { SidebarPanel } from "./composites/sidebar/sidebar-panel";
 export { SidebarScrollRegion } from "./composites/sidebar/sidebar-scroll-region";
 export * from "./config-ui";
-export * from "./connectors/BlueBubblesStatusPanel";
 export * from "./connectors/ConnectorAccountAuditList";
 export * from "./connectors/ConnectorAccountCard";
 export * from "./connectors/ConnectorAccountList";
