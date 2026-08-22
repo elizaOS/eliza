@@ -1,10 +1,10 @@
 /**
  * Applies versioned synthetic-world manifests through `AgentRuntime`'s
  * production persistence boundaries and projects canonical readback artifacts
- * from those same stores. The serialized receipt is the only reset input, so a
- * later process can remove exactly the records created by an earlier process.
+ * from those same stores. A serialized generation receipt plus its durable
+ * control record lets a later process resume and prove exact cleanup.
  */
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import {
   type ApprovalAction,
   type ApprovalChannel,
@@ -12,7 +12,7 @@ import {
   type ApprovalQueue,
   type ApprovalRequest,
   resolveApprovalService,
-} from "@elizaos/agent";
+} from "@elizaos/agent/services/approval/index";
 import {
   type AgentNotification,
   ChannelType,
@@ -45,6 +45,7 @@ const MANIFEST_MAX_CONTAINER_WIDTH = 2_000;
 const MANIFEST_MAX_TOP_LEVEL_ROWS = 1_000;
 const MANIFEST_MAX_STRING_BYTES = 65_536;
 const MANIFEST_MAX_TOTAL_STRING_BYTES = 1_048_576;
+const RESET_CONTROL_PREFIX = "scenario-manifest:reset-control:";
 const NOTIFICATION_CATEGORIES = new Set<AgentNotification["category"]>([
   "reminder",
   "task",
@@ -183,6 +184,7 @@ export interface ProductionManifestReceipt {
   version: typeof MANIFEST_VERSION;
   namespace: string;
   ownerAgentId: UUID;
+  generation: UUID;
   manifestSha256: string;
   worldId: UUID;
   entityIds: UUID[];
@@ -286,6 +288,18 @@ export interface ProductionManifestResetArtifact {
     approvals: string[];
     providerState: string[];
   };
+}
+
+type ResetControlState = "applied" | "resetting" | "complete";
+
+interface ResetControlRecord {
+  version: typeof MANIFEST_VERSION;
+  state: ResetControlState;
+  namespace: string;
+  ownerAgentId: UUID;
+  generation: UUID;
+  manifestSha256: string;
+  receiptSha256: string;
 }
 
 export interface ProductionManifestResidueEvidence {
@@ -1099,6 +1113,12 @@ export function parseProductionManifest(input: unknown): ProductionManifestV1 {
   const expandedProviderKeys = new Set<string>();
   providerState.forEach((entry, index) => {
     const expanded = entry.key.replaceAll("{{namespace}}", namespace);
+    if (expanded.startsWith(RESET_CONTROL_PREFIX)) {
+      fail(
+        `manifest.providerState[${index}].key`,
+        `must not use the reserved ${RESET_CONTROL_PREFIX} prefix`,
+      );
+    }
     if (expandedProviderKeys.has(expanded)) {
       fail(
         `manifest.providerState[${index}].key`,
@@ -1219,6 +1239,7 @@ function emptyReceipt(
     version: MANIFEST_VERSION,
     namespace: manifest.namespace,
     ownerAgentId: manifest.ownerAgentId,
+    generation: randomUUID() as UUID,
     manifestSha256: hashManifest(manifest),
     worldId: manifestId(manifest.namespace, "world", manifest.namespace),
     entityIds: [],
@@ -1278,6 +1299,7 @@ export function parseProductionManifestReceipt(
       "version",
       "namespace",
       "ownerAgentId",
+      "generation",
       "manifestSha256",
       "worldId",
       "entityIds",
@@ -1309,6 +1331,7 @@ export function parseProductionManifestReceipt(
     fail("receipt.manifestSha256", "must be a 64-character hexadecimal hash");
   }
   const ownerAgentId = requiredUuid(input.ownerAgentId, "receipt.ownerAgentId");
+  const generation = requiredUuid(input.generation, "receipt.generation");
   const worldId = requiredUuid(input.worldId, "receipt.worldId");
   const entityIds = uuidArray(input.entityIds, "receipt.entityIds");
   const roomIds = uuidArray(input.roomIds, "receipt.roomIds");
@@ -1408,6 +1431,7 @@ export function parseProductionManifestReceipt(
     version: MANIFEST_VERSION,
     namespace,
     ownerAgentId,
+    generation,
     manifestSha256: manifestSha256.toLowerCase(),
     worldId,
     entityIds,
@@ -1470,8 +1494,12 @@ function approvalIdempotencyKey(namespace: string, logicalId: string): string {
   return `scenario-manifest:${namespace}:approval:${logicalId}`;
 }
 
-function approvalRequestedBy(namespace: string, logicalId: string): string {
-  return `scenario-manifest:${namespace}:${logicalId}`;
+function approvalRequestedBy(
+  namespace: string,
+  generation: UUID,
+  logicalId: string,
+): string {
+  return `scenario-manifest:${namespace}:${generation}:${logicalId}`;
 }
 
 function requiredLogicalReference(
@@ -1618,6 +1646,7 @@ async function discoverManifestSideEffects(
       const logicalId = logicalIdFromScenarioMarker(
         row.metadata,
         manifest.namespace,
+        receipt.generation,
       );
       if (!expected || logicalId !== expected.id) {
         throw new Error(
@@ -1744,6 +1773,18 @@ export async function applyProductionManifest(
   receipt.providerStateKeys = (manifest.providerState ?? []).map((entry) =>
     providerStateKey(manifest.namespace, entry.key),
   );
+  const existingControl = await runtime.getCache<JsonValue>(
+    resetControlKey(receipt),
+  );
+  if (
+    existingControl !== undefined &&
+    (!isRecord(existingControl) || existingControl.state !== "complete")
+  ) {
+    throw new ProductionManifestApplyError(
+      `[production-manifest] namespace ${receipt.namespace} has an unfinished generation`,
+      "SCENARIO_MANIFEST_NAMESPACE_NOT_EMPTY",
+    );
+  }
   await assertTargetsAbsent(runtime, receipt);
   const existingRelationshipPairs = await runtime.getRelationshipsByPairs(
     (manifest.relationships ?? []).map((entry) => ({
@@ -1849,6 +1890,7 @@ export async function applyProductionManifest(
       ownership: { ownerId: runtime.agentId },
       extra: {
         namespace: manifest.namespace,
+        generation: receipt.generation,
         manifestSha256: receipt.manifestSha256,
       },
     },
@@ -1863,6 +1905,7 @@ export async function applyProductionManifest(
           ...entry.metadata,
           scenarioManifest: {
             namespace: manifest.namespace,
+            generation: receipt.generation,
             logicalId: entry.id,
           },
         },
@@ -1880,6 +1923,7 @@ export async function applyProductionManifest(
         metadata: {
           scenarioManifest: {
             namespace: manifest.namespace,
+            generation: receipt.generation,
             logicalId: entry.id,
           },
         },
@@ -1912,6 +1956,7 @@ export async function applyProductionManifest(
             ...entry.metadata,
             scenarioManifest: {
               namespace: manifest.namespace,
+              generation: receipt.generation,
               logicalId: entry.id,
               tableName: entry.tableName ?? "messages",
             },
@@ -1928,6 +1973,7 @@ export async function applyProductionManifest(
         ...entry.metadata,
         scenarioManifest: {
           namespace: manifest.namespace,
+          generation: receipt.generation,
           logicalId: entry.id,
         },
       },
@@ -1981,6 +2027,7 @@ export async function applyProductionManifest(
           ...entry.metadata,
           scenarioManifest: {
             namespace: manifest.namespace,
+            generation: receipt.generation,
             logicalId: entry.id,
           },
         },
@@ -2003,6 +2050,7 @@ export async function applyProductionManifest(
           ...(materializedTask.metadata ?? {}),
           scenarioManifest: {
             namespace: manifest.namespace,
+            generation: receipt.generation,
             logicalId: entry.id,
           },
         },
@@ -2034,7 +2082,11 @@ export async function applyProductionManifest(
         );
       }
       const result = await approvals.enqueueWithResultAndNotification({
-        requestedBy: approvalRequestedBy(manifest.namespace, entry.id),
+        requestedBy: approvalRequestedBy(
+          manifest.namespace,
+          receipt.generation,
+          entry.id,
+        ),
         subjectUserId,
         action: "execute_workflow" satisfies ApprovalAction,
         payload,
@@ -2080,6 +2132,7 @@ export async function applyProductionManifest(
           ...(entry.data ?? {}),
           scenarioManifest: {
             namespace: manifest.namespace,
+            generation: receipt.generation,
             logicalId: entry.id,
           },
         },
@@ -2106,8 +2159,36 @@ export async function applyProductionManifest(
         },
       },
     });
+    await writeResetControl(runtime, receipt, "applied");
     return receipt;
   } catch (cause) {
+    let existingWorlds: Array<{ metadata?: Metadata }>;
+    try {
+      existingWorlds = await runtime.getWorldsByIds([receipt.worldId]);
+    } catch (fenceCause) {
+      // error-policy:J2 Ownership cannot be assumed when generation readback fails.
+      throw new ProductionManifestApplyError(
+        "[production-manifest] apply failed and generation ownership could not be read back",
+        "SCENARIO_MANIFEST_DIRTY",
+        {
+          cause: new AggregateError([cause, fenceCause]),
+          dirtyReceipt: receipt,
+        },
+      );
+    }
+    if (
+      existingWorlds.some(
+        (entry) =>
+          !isRecord(entry.metadata?.extra) ||
+          entry.metadata.extra.generation !== receipt.generation,
+      )
+    ) {
+      throw new ProductionManifestApplyError(
+        `[production-manifest] namespace ${receipt.namespace} was acquired by another generation`,
+        "SCENARIO_MANIFEST_NAMESPACE_NOT_EMPTY",
+        { cause },
+      );
+    }
     try {
       await discoverManifestSideEffects(
         runtime,
@@ -2166,9 +2247,12 @@ function metadataWithoutScenarioMarker(value: unknown): JsonValue | null {
 function logicalIdFromScenarioMarker(
   value: unknown,
   namespace: string,
+  generation?: UUID,
 ): string | null {
   if (!isRecord(value) || !isRecord(value.scenarioManifest)) return null;
   return value.scenarioManifest.namespace === namespace &&
+    (generation === undefined ||
+      value.scenarioManifest.generation === generation) &&
     typeof value.scenarioManifest.logicalId === "string"
     ? value.scenarioManifest.logicalId
     : null;
@@ -2177,8 +2261,9 @@ function logicalIdFromScenarioMarker(
 function approvalLogicalId(
   request: ApprovalRequest,
   namespace: string,
+  generation: UUID,
 ): string | null {
-  const prefix = `scenario-manifest:${namespace}:`;
+  const prefix = `scenario-manifest:${namespace}:${generation}:`;
   return request.requestedBy.startsWith(prefix)
     ? request.requestedBy.slice(prefix.length)
     : null;
@@ -2283,6 +2368,7 @@ export async function readProductionManifestSnapshot(
       const logicalId = logicalIdFromScenarioMarker(
         entry.metadata,
         receipt.namespace,
+        receipt.generation,
       );
       if (!logicalId) {
         throw new ProductionManifestApplyError(
@@ -2299,6 +2385,7 @@ export async function readProductionManifestSnapshot(
       const logicalId = logicalIdFromScenarioMarker(
         entry.metadata,
         receipt.namespace,
+        receipt.generation,
       );
       if (!logicalId) {
         throw new ProductionManifestApplyError(
@@ -2315,6 +2402,7 @@ export async function readProductionManifestSnapshot(
       const logicalId = logicalIdFromScenarioMarker(
         entry.metadata,
         receipt.namespace,
+        receipt.generation,
       );
       if (!logicalId) {
         throw new ProductionManifestApplyError(
@@ -2409,6 +2497,7 @@ export async function readProductionManifestSnapshot(
         const logicalId = logicalIdFromScenarioMarker(
           entry.metadata,
           receipt.namespace,
+          receipt.generation,
         );
         if (!logicalId) {
           throw new ProductionManifestApplyError(
@@ -2530,9 +2619,17 @@ export async function readProductionManifestSnapshot(
           ? approvals.find((approval) => approval.id === approvalRecord.id)
           : undefined;
         const logicalId =
-          logicalIdFromScenarioMarker(entry.data, receipt.namespace) ??
+          logicalIdFromScenarioMarker(
+            entry.data,
+            receipt.namespace,
+            receipt.generation,
+          ) ??
           (relatedApproval
-            ? `approval:${approvalLogicalId(relatedApproval, receipt.namespace)}`
+            ? `approval:${approvalLogicalId(
+                relatedApproval,
+                receipt.namespace,
+                receipt.generation,
+              )}`
             : null);
         if (!logicalId) {
           throw new ProductionManifestApplyError(
@@ -2558,7 +2655,11 @@ export async function readProductionManifestSnapshot(
           deepLink: entry.deepLink ?? null,
           icon: entry.icon ?? null,
           groupKey: relatedApproval
-            ? `approval:${approvalLogicalId(relatedApproval, receipt.namespace)}`
+            ? `approval:${approvalLogicalId(
+                relatedApproval,
+                receipt.namespace,
+                receipt.generation,
+              )}`
             : (entry.groupKey?.replace(
                 `scenario-manifest:${receipt.namespace}:`,
                 "",
@@ -2570,7 +2671,11 @@ export async function readProductionManifestSnapshot(
       .sort((a, b) => a.logicalId.localeCompare(b.logicalId)),
     approvals: approvals
       .map((entry) => {
-        const logicalId = approvalLogicalId(entry, receipt.namespace);
+        const logicalId = approvalLogicalId(
+          entry,
+          receipt.namespace,
+          receipt.generation,
+        );
         if (!logicalId) {
           throw new ProductionManifestApplyError(
             `[production-manifest] approval ${entry.id} lacks namespace provenance`,
@@ -2599,6 +2704,62 @@ export async function readProductionManifestSnapshot(
   };
 }
 
+function resetControlKey(receipt: ProductionManifestReceipt): string {
+  const identity = createHash("sha256")
+    .update(`${receipt.ownerAgentId}\0${receipt.namespace}`)
+    .digest("hex");
+  return `${RESET_CONTROL_PREFIX}${identity}`;
+}
+
+function resetControlMatches(
+  value: unknown,
+  receipt: ProductionManifestReceipt,
+): value is ResetControlRecord {
+  return (
+    isRecord(value) &&
+    value.version === MANIFEST_VERSION &&
+    (value.state === "applied" ||
+      value.state === "resetting" ||
+      value.state === "complete") &&
+    value.namespace === receipt.namespace &&
+    value.ownerAgentId === receipt.ownerAgentId &&
+    value.generation === receipt.generation &&
+    value.manifestSha256 === receipt.manifestSha256 &&
+    value.receiptSha256 === hashReceipt(receipt)
+  );
+}
+
+async function readResetControl(
+  runtime: IAgentRuntime,
+  receipt: ProductionManifestReceipt,
+): Promise<ResetControlRecord | null> {
+  const value = await runtime.getCache<JsonValue>(resetControlKey(receipt));
+  return resetControlMatches(value, receipt) ? value : null;
+}
+
+async function writeResetControl(
+  runtime: IAgentRuntime,
+  receipt: ProductionManifestReceipt,
+  state: ResetControlState,
+): Promise<void> {
+  const record: ResetControlRecord = {
+    version: MANIFEST_VERSION,
+    state,
+    namespace: receipt.namespace,
+    ownerAgentId: receipt.ownerAgentId,
+    generation: receipt.generation,
+    manifestSha256: receipt.manifestSha256,
+    receiptSha256: hashReceipt(receipt),
+  };
+  if (!(await runtime.setCache(resetControlKey(receipt), record))) {
+    throw new ProductionManifestApplyError(
+      `[production-manifest] could not persist ${state} reset control`,
+      "SCENARIO_MANIFEST_DIRTY",
+      { dirtyReceipt: receipt },
+    );
+  }
+}
+
 /** Removes exactly the receipt's records and proves each identifier is absent. */
 export async function resetProductionManifest(
   runtime: IAgentRuntime,
@@ -2606,9 +2767,31 @@ export async function resetProductionManifest(
 ): Promise<ProductionManifestResetArtifact> {
   const receipt = parseProductionManifestReceipt(input);
   assertReceiptOwner(runtime, receipt);
-  await assertReceiptProvenance(runtime, receipt);
+  const control = await readResetControl(runtime, receipt);
+  const worlds = await runtime.getWorldsByIds([receipt.worldId]);
+  if (worlds.length > 0) {
+    await assertReceiptProvenance(runtime, receipt);
+  } else if (control?.state !== "resetting" && control?.state !== "complete") {
+    throw new ProductionManifestApplyError(
+      "[production-manifest] receipt has no authoritative finalized or resetting generation",
+      "SCENARIO_MANIFEST_RECEIPT_UNTRUSTED",
+    );
+  }
   await assertReceiptTargetsOwned(runtime, receipt);
+  if (control?.state === "complete") {
+    const residue = await readResidueEvidence(runtime, receipt);
+    if (Object.values(residue).some((ids) => ids.length > 0)) {
+      throw new ProductionManifestApplyError(
+        "[production-manifest] completed reset control conflicts with authoritative residue",
+        "SCENARIO_MANIFEST_DIRTY",
+        { dirtyReceipt: receipt, residue },
+      );
+    }
+    return resetArtifact(receipt);
+  }
+  await writeResetControl(runtime, receipt, "resetting");
   await resetRecordedManifestWrites(runtime, receipt);
+  await writeResetControl(runtime, receipt, "complete");
   return resetArtifact(receipt);
 }
 
@@ -2777,11 +2960,17 @@ async function resetRecordedManifestWrites(
   }
 }
 
-function hasNamespaceMarker(value: unknown, namespace: string): boolean {
+function hasNamespaceMarker(
+  value: unknown,
+  namespace: string,
+  generation?: UUID,
+): boolean {
   return (
     isRecord(value) &&
     isRecord(value.scenarioManifest) &&
-    value.scenarioManifest.namespace === namespace
+    value.scenarioManifest.namespace === namespace &&
+    (generation === undefined ||
+      value.scenarioManifest.generation === generation)
   );
 }
 
@@ -2810,6 +2999,7 @@ async function assertReceiptProvenance(
     world.metadata?.ownership?.ownerId !== runtime.agentId ||
     !isRecord(extra) ||
     extra.namespace !== receipt.namespace ||
+    extra.generation !== receipt.generation ||
     extra.manifestSha256 !== receipt.manifestSha256 ||
     extra.receiptSha256 !== hashReceipt(receipt)
   ) {
@@ -2865,17 +3055,22 @@ async function assertReceiptTargetsOwned(
       world.metadata?.ownership?.ownerId === runtime.agentId &&
       isRecord(world.metadata?.extra) &&
       world.metadata.extra.namespace === receipt.namespace &&
+      world.metadata.extra.generation === receipt.generation &&
       world.metadata.extra.manifestSha256 === receipt.manifestSha256,
   );
   const entitiesOwned = entities.every(
     (entity) =>
       entity.agentId === runtime.agentId &&
-      hasNamespaceMarker(entity.metadata, receipt.namespace),
+      hasNamespaceMarker(
+        entity.metadata,
+        receipt.namespace,
+        receipt.generation,
+      ),
   );
   const roomsOwned = rooms.every(
     (room) =>
       room.worldId === receipt.worldId &&
-      hasNamespaceMarker(room.metadata, receipt.namespace),
+      hasNamespaceMarker(room.metadata, receipt.namespace, receipt.generation),
   );
   const memoriesOwned = memories.every((memory) => {
     const index = receipt.memoryIds.indexOf(memory.id as UUID);
@@ -2886,7 +3081,11 @@ async function assertReceiptTargetsOwned(
       index >= 0 &&
       memory.agentId === runtime.agentId &&
       memory.worldId === receipt.worldId &&
-      hasNamespaceMarker(memory.metadata, receipt.namespace) &&
+      hasNamespaceMarker(
+        memory.metadata,
+        receipt.namespace,
+        receipt.generation,
+      ) &&
       isRecord(marker) &&
       marker.tableName === receipt.memoryTableNames[index]
     );
@@ -2894,13 +3093,17 @@ async function assertReceiptTargetsOwned(
   const relationshipsOwned = relationships.every(
     (relationship) =>
       relationship.agentId === runtime.agentId &&
-      hasNamespaceMarker(relationship.metadata, receipt.namespace),
+      hasNamespaceMarker(
+        relationship.metadata,
+        receipt.namespace,
+        receipt.generation,
+      ),
   );
   const tasksOwned = tasks.every(
     (task) =>
       task.agentId === runtime.agentId &&
       task.worldId === receipt.worldId &&
-      hasNamespaceMarker(task.metadata, receipt.namespace),
+      hasNamespaceMarker(task.metadata, receipt.namespace, receipt.generation),
   );
   const schedulesOwned = schedules
     .filter((entry) => receipt.scheduleIds.includes(entry.taskId))
@@ -2908,7 +3111,12 @@ async function assertReceiptTargetsOwned(
       (task) =>
         task.idempotencyKey?.startsWith(
           `scenario-manifest:${receipt.namespace}:schedule:`,
-        ) === true && hasNamespaceMarker(task.metadata, receipt.namespace),
+        ) === true &&
+        hasNamespaceMarker(
+          task.metadata,
+          receipt.namespace,
+          receipt.generation,
+        ),
     );
   const approvalById = new Map(
     approvals
@@ -2923,7 +3131,7 @@ async function assertReceiptTargetsOwned(
       record !== undefined &&
       approval.subjectUserId === record.subjectUserId &&
       approval.requestedBy.startsWith(
-        `scenario-manifest:${receipt.namespace}:`,
+        `scenario-manifest:${receipt.namespace}:${receipt.generation}:`,
       ) &&
       approval.idempotencyKey?.startsWith(
         `scenario-manifest:${receipt.namespace}:approval:`,
@@ -2936,7 +3144,18 @@ async function assertReceiptTargetsOwned(
   const notificationsOwned = [...notificationById.values()]
     .filter((notification) => receipt.notificationIds.includes(notification.id))
     .every((notification) => {
-      if (logicalIdFromScenarioMarker(notification.data, receipt.namespace)) {
+      if (
+        logicalIdFromScenarioMarker(
+          notification.data,
+          receipt.namespace,
+          receipt.generation,
+        ) &&
+        hasNamespaceMarker(
+          notification.data,
+          receipt.namespace,
+          receipt.generation,
+        )
+      ) {
         return notification.agentId === runtime.agentId;
       }
       const approvalRecord = receipt.approvalRecords.find(

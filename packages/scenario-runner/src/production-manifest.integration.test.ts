@@ -4,7 +4,7 @@
  * compensation, strict serialized receipts, and reset isolation without
  * replacing the stores under test.
  */
-import { resolveApprovalService } from "@elizaos/agent";
+import { resolveApprovalService } from "@elizaos/agent/services/approval/index";
 import {
   ChannelType,
   NotificationService,
@@ -806,19 +806,17 @@ describe("production manifest persistence", () => {
     120_000,
   );
 
-  it("resets a finalized receipt once and rejects replay without provenance", async () => {
+  it("replays a completed reset without fabricating a never-issued receipt", async () => {
     const receipt = await applyProductionManifest(
       runtime(),
-      manifest("once-only-reset"),
+      manifest("idempotent-reset"),
     );
     const reset = await resetProductionManifest(runtime(), receipt);
 
     expect(reset.absentAfterReset.world).toBe(true);
-    await expect(
-      resetProductionManifest(runtime(), receipt),
-    ).rejects.toMatchObject({
-      code: "SCENARIO_MANIFEST_RECEIPT_UNTRUSTED",
-    });
+    await expect(resetProductionManifest(runtime(), receipt)).resolves.toEqual(
+      reset,
+    );
     expect(await runtime().getWorldsByIds([receipt.worldId])).toEqual([]);
     expect(await runtime().getEntitiesByIds(receipt.entityIds)).toEqual([]);
     expect(await runtime().getRoomsByIds(receipt.roomIds)).toEqual([]);
@@ -827,6 +825,98 @@ describe("production manifest persistence", () => {
       await runtime().getRelationshipsByIds(receipt.relationshipIds),
     ).toEqual([]);
     expect(await runtime().getTasksByIds(receipt.taskIds)).toEqual([]);
+  }, 120_000);
+
+  it("recovers an ambiguous reset after the world delete committed", async () => {
+    const target = runtime();
+    const receipt = await applyProductionManifest(
+      target,
+      manifest("ambiguous-reset-completion"),
+    );
+    const originalDeleteWorlds = target.deleteWorlds.bind(target);
+    target.deleteWorlds = async (ids) => {
+      await originalDeleteWorlds(ids);
+      throw new Error("injected post-world-delete fault");
+    };
+    try {
+      await expect(
+        resetProductionManifest(target, receipt),
+      ).rejects.toMatchObject({ code: "SCENARIO_MANIFEST_DIRTY" });
+    } finally {
+      target.deleteWorlds = originalDeleteWorlds;
+    }
+
+    await expect(
+      resetProductionManifest(target, receipt),
+    ).resolves.toMatchObject({ namespace: receipt.namespace });
+    await expect(
+      resetProductionManifest(target, receipt),
+    ).resolves.toMatchObject({ namespace: receipt.namespace });
+  }, 120_000);
+
+  it("fences a completed receipt after the namespace is reseeded", async () => {
+    const target = runtime();
+    const input = manifest("stale-reset-generation");
+    const first = await applyProductionManifest(target, input);
+    await resetProductionManifest(target, first);
+    const second = await applyProductionManifest(target, input);
+    expect(second.generation).not.toBe(first.generation);
+    try {
+      await expect(
+        resetProductionManifest(target, first),
+      ).rejects.toMatchObject({ code: "SCENARIO_MANIFEST_RECEIPT_UNTRUSTED" });
+      expect(await target.getWorldsByIds([second.worldId])).toHaveLength(1);
+    } finally {
+      await resetProductionManifest(target, second);
+    }
+  }, 120_000);
+
+  it("does not let a losing concurrent generation compensate the winner", async () => {
+    const target = runtime();
+    const input = manifest("concurrent-generation-fence");
+    const originalCreateWorld = target.createWorld.bind(target);
+    let arrivals = 0;
+    let releaseBarrier: (() => void) | undefined;
+    const barrier = new Promise<void>((resolve) => {
+      releaseBarrier = resolve;
+    });
+    target.createWorld = async (world) => {
+      arrivals += 1;
+      if (arrivals === 2) releaseBarrier?.();
+      await barrier;
+      return originalCreateWorld(world);
+    };
+
+    let winner: ProductionManifestReceipt | undefined;
+    try {
+      const outcomes = await Promise.allSettled([
+        applyProductionManifest(target, input),
+        applyProductionManifest(target, input),
+      ]);
+      const fulfilled = outcomes.filter(
+        (entry): entry is PromiseFulfilledResult<ProductionManifestReceipt> =>
+          entry.status === "fulfilled",
+      );
+      const rejected = outcomes.filter(
+        (entry): entry is PromiseRejectedResult => entry.status === "rejected",
+      );
+      expect(fulfilled).toHaveLength(1);
+      expect(rejected).toHaveLength(1);
+      expect(rejected[0]?.reason).toMatchObject({
+        code: "SCENARIO_MANIFEST_NAMESPACE_NOT_EMPTY",
+      });
+      winner = fulfilled[0]?.value;
+      expect(winner).toBeDefined();
+      await expect(
+        readProductionManifestSnapshot(
+          target,
+          winner as ProductionManifestReceipt,
+        ),
+      ).resolves.toMatchObject({ namespace: input.namespace });
+    } finally {
+      target.createWorld = originalCreateWorld;
+      if (winner) await resetProductionManifest(target, winner);
+    }
   }, 120_000);
 
   it("rejects a well-formed never-issued receipt without mutation", async () => {
@@ -842,6 +932,7 @@ describe("production manifest persistence", () => {
       version: 1,
       namespace: "never-issued",
       ownerAgentId: target.agentId,
+      generation: stringToUuid("manifest-test:never-issued-generation"),
       manifestSha256: "a".repeat(64),
       worldId: forgedWorldId,
       entityIds: [],
