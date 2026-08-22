@@ -75,7 +75,9 @@ describe("DevicesRuntimesSection", () => {
       <DevicesRuntimesSection
         {...props({
           pairing: {
+            hostId: "host-mac",
             hostLabel: "Studio Mac",
+            sessionId: "session-1",
             code: "420731",
             expiresAt: new Date(Date.now() + 300_000).toISOString(),
             qrPayload: "elizaos://remote/pair?session=session-1&code=420731",
@@ -90,6 +92,64 @@ describe("DevicesRuntimesSection", () => {
       }),
     ).toBeTruthy();
     expect(screen.getByText(/Expires in 5:00|Expires in 4:59/)).toBeTruthy();
+  });
+
+  it("offers one-click activation only when pairing authority matches this Linux host", async () => {
+    const user = userEvent.setup();
+    const onActivateLinuxTarget = vi.fn();
+    const pairing = {
+      hostId: "linux-host",
+      hostLabel: "This Linux computer",
+      sessionId: "session-1",
+      code: "123456",
+      expiresAt: new Date(Date.now() + 300_000).toISOString(),
+      qrPayload: "elizaos://remote/pair?session=session-1&code=123456",
+    };
+    const view = render(
+      <DevicesRuntimesSection
+        {...props({
+          pairing,
+          linuxTarget: {
+            hostId: "linux-host",
+            enrolled: true,
+            running: false,
+            activeSessions: 0,
+            lastErrorCode: null,
+          },
+          onActivateLinuxTarget,
+        })}
+      />,
+    );
+    await user.click(
+      screen.getByRole("button", {
+        name: "Approve this pairing on this Linux computer",
+      }),
+    );
+    expect(onActivateLinuxTarget).toHaveBeenCalledWith({
+      sessionId: "session-1",
+      code: "123456",
+    });
+
+    view.rerender(
+      <DevicesRuntimesSection
+        {...props({
+          pairing: { ...pairing, hostId: "foreign-host" },
+          linuxTarget: {
+            hostId: "linux-host",
+            enrolled: true,
+            running: false,
+            activeSessions: 0,
+            lastErrorCode: null,
+          },
+          onActivateLinuxTarget,
+        })}
+      />,
+    );
+    expect(
+      screen.queryByRole("button", {
+        name: "Approve this pairing on this Linux computer",
+      }),
+    ).toBeNull();
   });
 
   it("requires inspection before connect and blocks a changed host key", async () => {

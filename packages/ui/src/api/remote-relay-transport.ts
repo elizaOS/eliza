@@ -10,6 +10,7 @@ import type {
   SignedRemoteCommand,
 } from "@elizaos/shared/contracts/remote-control";
 import {
+  acknowledgeRemoteCommandEnqueue,
   createRemoteCommand,
   getOrCreateRemoteControllerIdentity,
   openRemoteCommandResult,
@@ -25,7 +26,7 @@ async function defaultCloudClient(): Promise<RemoteControlCloudClient> {
 }
 
 import type { AgentRequestTransport } from "./transport";
-import { bodyToString, headersToRecord } from "./transport";
+import { headersToRecord } from "./transport";
 
 const enqueueTails = new Map<string, Promise<void>>();
 
@@ -73,16 +74,21 @@ async function withSessionEnqueue<T>(
 }
 
 function wait(ms: number, signal?: AbortSignal): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const timer = setTimeout(resolve, ms);
-    signal?.addEventListener(
-      "abort",
-      () => {
-        clearTimeout(timer);
-        reject(signal.reason ?? new DOMException("Aborted", "AbortError"));
-      },
-      { once: true },
+  if (signal?.aborted) {
+    return Promise.reject(
+      signal.reason ?? new DOMException("Aborted", "AbortError"),
     );
+  }
+  return new Promise((resolve, reject) => {
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(signal?.reason ?? new DOMException("Aborted", "AbortError"));
+    };
+    const timer = setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    signal?.addEventListener("abort", onAbort, { once: true });
   });
 }
 
@@ -108,24 +114,43 @@ async function sendCommand(
     platform: relay.targetPlatform,
     signingPublicKeyJwk: relay.targetSigningPublicKeyJwk,
     encryptionPublicKeyJwk: relay.targetEncryptionPublicKeyJwk,
-    createdAt: 0,
+    createdAt: relay.targetCreatedAt,
   };
+  if (!Number.isSafeInteger(target.createdAt) || target.createdAt <= 0) {
+    throw new Error(
+      "This remote profile is missing trusted host metadata. Remove it and pair again.",
+    );
+  }
   const created = await withSessionEnqueue(relay.sessionId, async () => {
-    const next = await createRemoteCommand({
-      ownerId: relay.ownerId,
-      grantId: relay.grantId,
-      grantRevision: relay.grantRevision,
-      sessionId: relay.sessionId,
-      controller,
-      target,
-      action,
-      payload,
-    });
-    await cloud.enqueueCommand({
-      sessionId: relay.sessionId,
-      envelope: next.envelope,
-    });
-    return next;
+    for (;;) {
+      const next = await createRemoteCommand({
+        ownerId: relay.ownerId,
+        grantId: relay.grantId,
+        grantRevision: relay.grantRevision,
+        sessionId: relay.sessionId,
+        controller,
+        target,
+        action,
+        payload,
+      });
+      await cloud.enqueueCommand({
+        sessionId: relay.sessionId,
+        envelope: next.envelope,
+      });
+      const acknowledged = await acknowledgeRemoteCommandEnqueue({
+        ownerId: relay.ownerId,
+        controllerDeviceId: controller.deviceId,
+        sessionId: relay.sessionId,
+        commandId: next.commandId,
+        bindingDigest: next.bindingDigest,
+      });
+      if (!acknowledged) {
+        throw new Error(
+          "The remote enqueue acknowledgement was not persisted.",
+        );
+      }
+      if (!next.recoveredPending) return next;
+    }
   });
 
   const resultDeadline = created.expiresAt + 10 * 60_000;
@@ -199,15 +224,6 @@ async function sendCommand(
   );
 }
 
-function safeHeaders(headers: HeadersInit | undefined): Record<string, string> {
-  const source = headersToRecord(headers);
-  return Object.fromEntries(
-    Object.entries(source).filter(([name]) =>
-      ["accept", "content-type"].includes(name.toLowerCase()),
-    ),
-  );
-}
-
 export function remoteRelayTransportForUrl(
   url: string,
   cloudFactory: () =>
@@ -218,48 +234,69 @@ export function remoteRelayTransportForUrl(
   if (!profile) return null;
   return {
     async request(requestUrl, init) {
-      const parsed = new URL(requestUrl);
-      const segments = parsed.pathname.split("/").filter(Boolean);
-      const path = `/${segments.slice(1).join("/")}${parsed.search}`;
-      const rawBody = bodyToString(init.body);
-      if (rawBody === undefined && init.body !== undefined) {
-        throw new Error("The remote relay supports text request bodies only.");
-      }
+      const payload = normalizeRelayHealthRequest(requestUrl, init);
       const result = await sendCommand(
         await cloudFactory(),
         profile,
         "agent.request",
-        {
-          path,
-          method: (init.method ?? "GET").toUpperCase(),
-          body: rawBody ?? null,
-          headers: safeHeaders(init.headers),
-        },
+        payload,
         init.signal ?? undefined,
       );
-      const response =
-        result && typeof result === "object" && !Array.isArray(result)
-          ? (result as Record<string, RemoteJsonValue>)
-          : {};
-      return new Response(
-        typeof response.body === "string" ? response.body : "",
-        {
-          status:
-            typeof response.status === "number" &&
-            response.status >= 100 &&
-            response.status <= 599
-              ? response.status
-              : 502,
-          headers:
-            response.headers &&
-            typeof response.headers === "object" &&
-            !Array.isArray(response.headers)
-              ? (response.headers as Record<string, string>)
-              : { "content-type": "application/json" },
-        },
-      );
+      return responseFromRemoteResult(result);
     },
   };
 }
 
-export const remoteRelayTransportInternals = { withSessionEnqueue };
+function normalizeRelayHealthRequest(
+  requestUrl: string,
+  init: RequestInit,
+): { path: string; method: "GET"; headers: Record<string, string> } {
+  const parsed = new URL(requestUrl);
+  const segments = parsed.pathname.split("/").filter(Boolean);
+  const path = `/${segments.slice(1).join("/")}${parsed.search}`;
+  const method = (init.method ?? "GET").toUpperCase();
+  const headers = headersToRecord(init.headers);
+  const hasUnsupportedHeaders = Object.keys(headers).some(
+    (name) => name.toLowerCase() !== "accept",
+  );
+  if (
+    method !== "GET" ||
+    !["/api/health", "/api/status"].includes(path) ||
+    init.body !== undefined ||
+    hasUnsupportedHeaders
+  ) {
+    throw new Error(
+      "This encrypted Linux relay currently supports GET /api/health and GET /api/status only. Chat and mutation routes are not enabled yet.",
+    );
+  }
+  return { path, method: "GET", headers: {} };
+}
+
+function responseFromRemoteResult(
+  result: RemoteJsonValue | undefined,
+): Response {
+  const response =
+    result && typeof result === "object" && !Array.isArray(result)
+      ? (result as Record<string, RemoteJsonValue>)
+      : {};
+  return new Response(typeof response.body === "string" ? response.body : "", {
+    status:
+      typeof response.status === "number" &&
+      response.status >= 100 &&
+      response.status <= 599
+        ? response.status
+        : 502,
+    headers:
+      response.headers &&
+      typeof response.headers === "object" &&
+      !Array.isArray(response.headers)
+        ? (response.headers as Record<string, string>)
+        : { "content-type": "application/json" },
+  });
+}
+
+export const remoteRelayTransportInternals = {
+  normalizeRelayHealthRequest,
+  responseFromRemoteResult,
+  withSessionEnqueue,
+};

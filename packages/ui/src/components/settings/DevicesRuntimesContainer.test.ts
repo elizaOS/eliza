@@ -1,7 +1,11 @@
 /** Pure state-reconciliation and destructive-cleanup tests for Devices & Runtimes. */
 import { describe, expect, it, vi } from "vitest";
 
-import type { RemoteHostDirectory } from "../../api/remote-control-cloud-client";
+import type {
+  RemoteHostDirectory,
+  RemoteHostSummary,
+  RemoteSessionSummary,
+} from "../../api/remote-control-cloud-client";
 import type { AgentProfile } from "../../state";
 import { devicesRuntimesInternals } from "./DevicesRuntimesContainer";
 
@@ -12,7 +16,7 @@ const PUBLIC_JWK: JsonWebKey = {
   y: "y",
 };
 
-const HOST = {
+const HOST: RemoteHostSummary = {
   id: "host-1",
   deviceId: "target-device",
   displayName: "Studio Mac",
@@ -27,7 +31,7 @@ const HOST = {
   revokedAt: null,
 };
 
-const SESSION = {
+const SESSION: RemoteSessionSummary = {
   id: "session-1",
   ownerId: "owner-1",
   grantId: "grant-1",
@@ -60,6 +64,7 @@ const PROFILE: AgentProfile = {
     targetRuntimeId: "host-1",
     targetKeyId: "target-key",
     targetDisplayName: "Studio Mac",
+    targetCreatedAt: Date.parse("2026-08-22T00:00:00.000Z"),
     targetPlatform: "macos",
     targetSigningPublicKeyJwk: PUBLIC_JWK,
     targetEncryptionPublicKeyJwk: PUBLIC_JWK,
@@ -133,5 +138,30 @@ describe("Devices & Runtimes reconciliation", () => {
       }),
     ).rejects.toThrow("Cloud unavailable");
     expect(failedRemove).not.toHaveBeenCalled();
+  });
+
+  it("revokes a Linux host in Cloud before native credential cleanup", async () => {
+    const events: string[] = [];
+    await devicesRuntimesInternals.revokeLinuxHostCloudFirst("host-1", {
+      revokeHost: vi.fn(async () => {
+        events.push("cloud");
+      }),
+      finalizeLocal: vi.fn(async () => {
+        events.push("native");
+        return true;
+      }),
+    });
+    expect(events).toEqual(["cloud", "native"]);
+
+    const finalizeLocal = vi.fn();
+    await expect(
+      devicesRuntimesInternals.revokeLinuxHostCloudFirst("host-1", {
+        revokeHost: vi.fn(async () => {
+          throw new Error("Cloud unavailable");
+        }),
+        finalizeLocal,
+      }),
+    ).rejects.toThrow("Cloud unavailable");
+    expect(finalizeLocal).not.toHaveBeenCalled();
   });
 });

@@ -69,6 +69,7 @@ interface SshTunnel {
   credentialRef: string | null;
   tempDir: string;
   startedAt: number;
+  disposePromise?: Promise<void>;
 }
 
 const tunnels = new Map<string, SshTunnel>();
@@ -363,13 +364,50 @@ function sshFailure(stderr: string, fallback: unknown): Error {
     : new Error("The SSH tunnel could not be started.");
 }
 
-async function disposeTunnel(tunnel: SshTunnel): Promise<void> {
-  if (tunnel.child.exitCode === null) tunnel.child.kill("SIGTERM");
-  // error-policy:J6 this directory contains only the strict known-hosts file
-  // created for this tunnel; process teardown may already have removed it.
-  await fs
-    .rm(tunnel.tempDir, { recursive: true, force: true })
-    .catch(() => undefined);
+function waitForChildExit(
+  child: ChildProcess,
+  timeoutMs: number,
+): Promise<boolean> {
+  if (child.exitCode !== null || child.signalCode !== null) {
+    return Promise.resolve(true);
+  }
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (exited: boolean) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      child.removeListener("exit", onExit);
+      resolve(exited);
+    };
+    const onExit = () => finish(true);
+    const timer = setTimeout(() => finish(false), timeoutMs);
+    child.once("exit", onExit);
+  });
+}
+
+function disposeTunnel(
+  tunnel: SshTunnel,
+  shutdownTimeoutMs = 2_000,
+): Promise<void> {
+  if (tunnel.disposePromise) return tunnel.disposePromise;
+  tunnel.disposePromise = (async () => {
+    if (tunnel.child.exitCode === null && tunnel.child.signalCode === null) {
+      tunnel.child.kill("SIGTERM");
+      if (!(await waitForChildExit(tunnel.child, shutdownTimeoutMs))) {
+        tunnel.child.kill("SIGKILL");
+        if (!(await waitForChildExit(tunnel.child, shutdownTimeoutMs))) {
+          throw new Error(
+            "SSH tunnel process did not exit after forced shutdown.",
+          );
+        }
+      }
+    }
+    // error-policy:J6 this directory contains only the strict known-hosts file
+    // created for this tunnel; process teardown may already have removed it.
+    await fs.rm(tunnel.tempDir, { recursive: true, force: true });
+  })();
+  return tunnel.disposePromise;
 }
 
 function tunnelSignature(input: ParsedSshRuntimeParams): string {
@@ -488,8 +526,14 @@ export async function desktopStartSshRuntime(
   try {
     await waitForTunnel(child, localPort, () => spawnError);
   } catch (error) {
-    child.kill("SIGTERM");
-    await fs.rm(tempDir, { recursive: true, force: true });
+    await disposeTunnel({
+      child,
+      localPort,
+      signature,
+      credentialRef: input.credentialRef ?? null,
+      tempDir,
+      startedAt: Date.now(),
+    });
     throw sshFailure(stderr, error);
   }
   const tunnel: SshTunnel = {
@@ -505,7 +549,7 @@ export async function desktopStartSshRuntime(
     if (tunnels.get(input.runtimeId) === tunnel) {
       tunnels.delete(input.runtimeId);
     }
-    void fs.rm(tempDir, { recursive: true, force: true });
+    void disposeTunnel(tunnel);
   });
   return {
     apiBase: `http://127.0.0.1:${localPort}`,
@@ -712,6 +756,8 @@ export async function desktopSshRuntimeRequest(params: unknown): Promise<{
 }
 
 export const sshRuntimeInternals = {
+  disposeTunnel,
+  waitForChildExit,
   parseStartParams,
   parseTarget,
   requireFingerprint,

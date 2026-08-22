@@ -35,6 +35,7 @@ export interface AgentProfile {
     targetRuntimeId: string;
     targetKeyId: string;
     targetDisplayName: string;
+    targetCreatedAt: number;
     targetPlatform: "macos" | "windows" | "linux" | "ios" | "android" | "web";
     targetSigningPublicKeyJwk: JsonWebKey;
     targetEncryptionPublicKeyJwk: JsonWebKey;

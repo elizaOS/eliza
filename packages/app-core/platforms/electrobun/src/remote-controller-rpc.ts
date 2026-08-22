@@ -7,9 +7,12 @@
 import { createHash, generateKeyPairSync, randomUUID } from "node:crypto";
 import {
   canonicalizeRemoteControlValue,
+  copyRemoteCommandBinding,
   type EncryptedRemoteControlEnvelope,
   isEncryptedRemoteControlEnvelope,
   isRemoteCommandAction,
+  isRemoteControllerPublicIdentity,
+  isSignedRemoteCommand,
   REMOTE_COMMAND_MAX_TTL_MS,
   REMOTE_CONTROL_PROTOCOL_VERSION,
   type RemoteCommandBody,
@@ -37,15 +40,25 @@ interface StoredControllerIdentity {
   identity: RemoteControllerPublicIdentity;
   signingPrivateKeyJwk: JsonWebKey;
   encryptionPrivateKeyJwk: JsonWebKey;
-  sessionSequences?: Record<
-    string,
-    { bindingDigest: string; sequence: number }
-  >;
+  sessionSequences?: Record<string, StoredRemoteSessionSequence>;
+}
+
+interface StoredRemoteSessionSequence {
+  bindingDigest: string;
+  sequence: number;
+  pending?: {
+    requestDigest: string;
+    commandId: string;
+    expiresAt: number;
+    command: SignedRemoteCommand;
+    envelope: EncryptedRemoteControlEnvelope;
+  };
 }
 
 const store = createNodePlatformSecureStore();
 const controllerMutationTails = new Map<string, Promise<void>>();
 const CONTROLLER_DEVICE_VAULT_ID = "remote-controller-device-v1";
+const MAX_STORED_REMOTE_SESSIONS = 256;
 
 async function withControllerMutation<T>(
   vaultId: string,
@@ -118,11 +131,18 @@ function parseStoredIdentity(value: string): StoredControllerIdentity {
   }
   const identity = record.identity as RemoteControllerPublicIdentity;
   if (
-    identity.version !== REMOTE_CONTROL_PROTOCOL_VERSION ||
-    identity.role !== "controller" ||
-    !isIdentifier(identity.ownerId) ||
-    !isIdentifier(identity.deviceId) ||
-    !isIdentifier(identity.keyId)
+    !isRemoteControllerPublicIdentity(identity) ||
+    canonicalizeRemoteControlValue(identity.signingPublicKeyJwk) !==
+      canonicalizeRemoteControlValue(publicJwk(record.signingPrivateKeyJwk)) ||
+    canonicalizeRemoteControlValue(identity.encryptionPublicKeyJwk) !==
+      canonicalizeRemoteControlValue(
+        publicJwk(record.encryptionPrivateKeyJwk),
+      ) ||
+    identity.keyId !==
+      identityKeyId(
+        identity.signingPublicKeyJwk,
+        identity.encryptionPublicKeyJwk,
+      )
   ) {
     throw new Error("Stored controller identity is corrupt.");
   }
@@ -132,6 +152,49 @@ function parseStoredIdentity(value: string): StoredControllerIdentity {
     (typeof sessionSequences !== "object" ||
       sessionSequences === null ||
       Array.isArray(sessionSequences) ||
+      Object.keys(sessionSequences).length > MAX_STORED_REMOTE_SESSIONS ||
+      Object.entries(sessionSequences).some(
+        ([sessionId, entry]) =>
+          !isIdentifier(sessionId) ||
+          typeof entry !== "object" ||
+          entry === null ||
+          typeof Reflect.get(entry, "bindingDigest") !== "string" ||
+          !/^[A-Za-z0-9_-]{43}$/.test(
+            String(Reflect.get(entry, "bindingDigest")),
+          ) ||
+          !Number.isSafeInteger(Reflect.get(entry, "sequence")) ||
+          Number(Reflect.get(entry, "sequence")) < 1 ||
+          (() => {
+            const pending = Reflect.get(entry, "pending");
+            if (pending === undefined) return false;
+            if (typeof pending !== "object" || pending === null) return true;
+            const command = Reflect.get(pending, "command");
+            const envelope = Reflect.get(pending, "envelope");
+            return (
+              typeof Reflect.get(pending, "requestDigest") !== "string" ||
+              !/^[A-Za-z0-9_-]{43}$/.test(
+                String(Reflect.get(pending, "requestDigest")),
+              ) ||
+              !isIdentifier(Reflect.get(pending, "commandId")) ||
+              !Number.isSafeInteger(Reflect.get(pending, "expiresAt")) ||
+              !isSignedRemoteCommand(command) ||
+              !isEncryptedRemoteControlEnvelope(envelope) ||
+              envelope.messageKind !== "command" ||
+              command.body.commandId !== Reflect.get(pending, "commandId") ||
+              envelope.commandId !== Reflect.get(pending, "commandId") ||
+              command.body.sequence !== Reflect.get(entry, "sequence") ||
+              envelope.sequence !== Reflect.get(entry, "sequence") ||
+              command.body.expiresAt !== Reflect.get(pending, "expiresAt") ||
+              envelope.expiresAt !== Reflect.get(pending, "expiresAt") ||
+              canonicalizeRemoteControlValue(
+                copyRemoteCommandBinding(command.body),
+              ) !==
+                canonicalizeRemoteControlValue(
+                  copyRemoteCommandBinding(envelope),
+                )
+            );
+          })(),
+      ) ||
       Object.values(sessionSequences).some(
         (entry) =>
           typeof entry !== "object" ||
@@ -327,6 +390,8 @@ export async function desktopCreateRemoteCommand(params: unknown): Promise<{
   expiresAt: number;
   command: SignedRemoteCommand;
   envelope: EncryptedRemoteControlEnvelope;
+  recoveredPending: boolean;
+  bindingDigest: string;
 }>;
 export async function desktopCreateRemoteCommand(
   params: unknown,
@@ -336,6 +401,8 @@ export async function desktopCreateRemoteCommand(
   expiresAt: number;
   command: SignedRemoteCommand;
   envelope: EncryptedRemoteControlEnvelope;
+  recoveredPending: boolean;
+  bindingDigest: string;
 }>;
 export async function desktopCreateRemoteCommand(
   params: unknown,
@@ -345,6 +412,8 @@ export async function desktopCreateRemoteCommand(
   expiresAt: number;
   command: SignedRemoteCommand;
   envelope: EncryptedRemoteControlEnvelope;
+  recoveredPending: boolean;
+  bindingDigest: string;
 }> {
   if (typeof params !== "object" || params === null || Array.isArray(params)) {
     throw new Error("Remote command parameters are required.");
@@ -397,20 +466,26 @@ export async function desktopCreateRemoteCommand(
       .digest("base64url");
     const sequences = { ...(stored.sessionSequences ?? {}) };
     const previous = sequences[record.sessionId as string];
+    const payload = asRemoteJsonValue(record.payload);
+    const requestDigest = createHash("sha256")
+      .update(
+        canonicalizeRemoteControlValue({ action: record.action, payload }),
+      )
+      .digest("base64url");
+    if (previous?.bindingDigest === bindingDigest && previous.pending) {
+      return {
+        commandId: previous.pending.commandId,
+        expiresAt: previous.pending.expiresAt,
+        command: previous.pending.command,
+        envelope: previous.pending.envelope,
+        recoveredPending: previous.pending.requestDigest !== requestDigest,
+        bindingDigest,
+      };
+    }
     const sequence =
       previous?.bindingDigest === bindingDigest ? previous.sequence + 1 : 1;
-    sequences[record.sessionId as string] = { bindingDigest, sequence };
-    const persisted = await nativeStore.set(
-      vaultId,
-      "runtime.agent_profiles",
-      JSON.stringify({ ...stored, sessionSequences: sequences }),
-    );
-    if (!persisted.ok) {
-      throw new Error("Secure remote sequence storage is unavailable.");
-    }
     const issuedAt = Date.now();
     const commandId = randomUUID();
-    const payload = asRemoteJsonValue(record.payload);
     const body: RemoteCommandBody = {
       version: REMOTE_CONTROL_PROTOCOL_VERSION,
       ownerId: record.ownerId as string,
@@ -437,16 +512,96 @@ export async function desktopCreateRemoteCommand(
       senderKeyId: body.controllerKeyId,
       recipientKeyId: body.targetKeyId,
     };
+    const envelope = sealRemoteControlMessage(
+      command,
+      scope,
+      record.targetEncryptionPublicKeyJwk as JsonWebKey,
+    );
+    sequences[record.sessionId as string] = {
+      bindingDigest,
+      sequence,
+      pending: {
+        requestDigest,
+        commandId,
+        expiresAt: body.expiresAt,
+        command,
+        envelope,
+      },
+    };
+    const persisted = await nativeStore.set(
+      vaultId,
+      "runtime.agent_profiles",
+      JSON.stringify({ ...stored, sessionSequences: sequences }),
+    );
+    if (!persisted.ok) {
+      throw new Error("Secure remote sequence storage is unavailable.");
+    }
     return {
       commandId,
       expiresAt: body.expiresAt,
       command,
-      envelope: sealRemoteControlMessage(
-        command,
-        scope,
-        record.targetEncryptionPublicKeyJwk as JsonWebKey,
-      ),
+      envelope,
+      recoveredPending: false,
+      bindingDigest,
     };
+  });
+}
+
+export async function desktopAcknowledgeRemoteCommandEnqueue(
+  params: unknown,
+  nativeStore: PlatformSecureStore = store,
+): Promise<{ acknowledged: boolean }> {
+  if (typeof params !== "object" || params === null || Array.isArray(params)) {
+    throw new Error("Remote enqueue acknowledgement parameters are required.");
+  }
+  const ownerId = Reflect.get(params, "ownerId");
+  const controllerDeviceId = Reflect.get(params, "controllerDeviceId");
+  const sessionId = Reflect.get(params, "sessionId");
+  const commandId = Reflect.get(params, "commandId");
+  const bindingDigest = Reflect.get(params, "bindingDigest");
+  if (
+    !isIdentifier(ownerId) ||
+    !isIdentifier(controllerDeviceId) ||
+    !isIdentifier(sessionId) ||
+    !isIdentifier(commandId) ||
+    typeof bindingDigest !== "string" ||
+    bindingDigest.length < 32 ||
+    bindingDigest.length > 128
+  ) {
+    throw new Error("Remote enqueue acknowledgement authority is invalid.");
+  }
+  const vaultId = controllerVaultId(ownerId, controllerDeviceId);
+  return withControllerMutation(vaultId, async () => {
+    const stored = await loadControllerIdentity(
+      ownerId,
+      controllerDeviceId,
+      nativeStore,
+    );
+    if (!stored) return { acknowledged: false };
+    const entry = stored.sessionSequences?.[sessionId];
+    if (!entry?.pending) return { acknowledged: false };
+    if (
+      entry.bindingDigest !== bindingDigest ||
+      entry.pending.commandId !== commandId
+    ) {
+      throw new Error(
+        "Remote enqueue acknowledgement does not match the pending command.",
+      );
+    }
+    const sessionSequences = { ...stored.sessionSequences };
+    sessionSequences[sessionId] = {
+      bindingDigest: entry.bindingDigest,
+      sequence: entry.sequence,
+    };
+    const persisted = await nativeStore.set(
+      vaultId,
+      "runtime.agent_profiles",
+      JSON.stringify({ ...stored, sessionSequences }),
+    );
+    if (!persisted.ok) {
+      throw new Error("Secure remote enqueue acknowledgement failed.");
+    }
+    return { acknowledged: true };
   });
 }
 
@@ -474,7 +629,13 @@ export async function desktopClearRemoteSessionState(
       controllerDeviceId,
       nativeStore,
     );
-    if (!stored?.sessionSequences?.[sessionId]) return { cleared: false };
+    const entry = stored?.sessionSequences?.[sessionId];
+    if (!entry) return { cleared: false };
+    if (entry.pending) {
+      throw new Error(
+        "A remote command is still awaiting enqueue acknowledgement. Resolve or revoke it before clearing this session.",
+      );
+    }
     const sessionSequences = { ...stored.sessionSequences };
     delete sessionSequences[sessionId];
     const persisted = await nativeStore.set(

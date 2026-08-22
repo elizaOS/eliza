@@ -595,6 +595,22 @@ export interface RemoteCommandOpenResultParams {
 
 export type RemoteCommandOpenStartReceiptParams = RemoteCommandOpenResultParams;
 
+export interface RemoteTargetEnrollParams {
+  apiBaseUrl: string;
+  ownerId: string;
+  ownerAccessToken: string;
+  displayName: string;
+}
+
+export interface RemoteTargetRunnerStatusResponse {
+  running: boolean;
+  enrolled: boolean;
+  activeSessions: number;
+  pendingResults: number;
+  lastPollAt: number | null;
+  lastErrorCode: string | null;
+}
+
 // -- Screencapture --
 export interface ScreenSource {
   id: string;
@@ -2250,6 +2266,8 @@ export type ElizaDesktopRPCSchema = {
           expiresAt: number;
           command: SignedRemoteCommand;
           envelope: EncryptedRemoteControlEnvelope;
+          recoveredPending: boolean;
+          bindingDigest: string;
         };
       };
       remoteControllerOpenResult: {
@@ -2271,6 +2289,57 @@ export type ElizaDesktopRPCSchema = {
           sessionId: string;
         };
         response: { cleared: boolean };
+      };
+      remoteControllerAcknowledgeEnqueue: {
+        params: {
+          ownerId: string;
+          controllerDeviceId: string;
+          sessionId: string;
+          commandId: string;
+          bindingDigest: string;
+        };
+        response: { acknowledged: boolean };
+      };
+      remoteTargetEnroll: {
+        params: RemoteTargetEnrollParams;
+        response: {
+          hostId: string;
+          status: "active";
+          identity: RemoteTargetPublicIdentity;
+        };
+      };
+      remoteTargetGetIdentity: {
+        params: Record<string, never>;
+        response: { enrolled: boolean; identity?: RemoteTargetPublicIdentity };
+      };
+      remoteTargetActivate: {
+        params: { sessionId: string; code: string };
+        response: {
+          sessionId: string;
+          status: "active";
+          controllerDisplayName: string;
+          grantExpiresAt: number;
+        };
+      };
+      remoteTargetStart: {
+        params: Record<string, never>;
+        response: { running: true };
+      };
+      remoteTargetStop: {
+        params: Record<string, never>;
+        response: { running: false };
+      };
+      remoteTargetStatus: {
+        params: Record<string, never>;
+        response: RemoteTargetRunnerStatusResponse;
+      };
+      remoteTargetRevoke: {
+        params: { sessionId: string };
+        response: { revoked: true };
+      };
+      remoteTargetFinalizeHostRevoke: {
+        params: { hostId: string; cloudRevoked: true };
+        response: { cleaned: true };
       };
 
       // ---- GPU Window ----
@@ -2921,6 +2990,15 @@ export const CHANNEL_TO_RPC_METHOD: Record<string, string> = {
   "remoteController:openResult": "remoteControllerOpenResult",
   "remoteController:openStartReceipt": "remoteControllerOpenStartReceipt",
   "remoteController:clearSessionState": "remoteControllerClearSessionState",
+  "remoteController:acknowledgeEnqueue": "remoteControllerAcknowledgeEnqueue",
+  "remoteTarget:enroll": "remoteTargetEnroll",
+  "remoteTarget:getIdentity": "remoteTargetGetIdentity",
+  "remoteTarget:activate": "remoteTargetActivate",
+  "remoteTarget:start": "remoteTargetStart",
+  "remoteTarget:stop": "remoteTargetStop",
+  "remoteTarget:status": "remoteTargetStatus",
+  "remoteTarget:revoke": "remoteTargetRevoke",
+  "remoteTarget:finalizeHostRevoke": "remoteTargetFinalizeHostRevoke",
 
   // GPU Window
   "gpuWindow:create": "gpuWindowCreate",

@@ -1,4 +1,9 @@
 /** Exercises strict SSH parameter, host-key, and tunneled-request validation without opening a network connection. */
+import type { ChildProcess } from "node:child_process";
+import { EventEmitter } from "node:events";
+import { promises as fs } from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -11,6 +16,40 @@ const ED25519_KEY = Buffer.from("deterministic-ed25519-host-key").toString(
   "base64",
 );
 const RSA_KEY = Buffer.from("deterministic-rsa-host-key").toString("base64");
+
+function fakeTunnelChild(options: { hangOnTerm?: boolean } = {}) {
+  const child = new EventEmitter() as EventEmitter & {
+    exitCode: number | null;
+    signalCode: NodeJS.Signals | null;
+    kills: NodeJS.Signals[];
+    kill(signal?: NodeJS.Signals): boolean;
+  };
+  child.exitCode = null;
+  child.signalCode = null;
+  child.kills = [];
+  child.kill = (signal = "SIGTERM") => {
+    child.kills.push(signal);
+    if (signal === "SIGKILL" || !options.hangOnTerm) {
+      child.signalCode = signal;
+      queueMicrotask(() => child.emit("exit", null, signal));
+    }
+    return true;
+  };
+  return child;
+}
+
+async function createFakeTunnel(child: ChildProcess) {
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "eliza-ssh-test-"));
+  await fs.writeFile(path.join(tempDir, "known-hosts"), "credential material");
+  return {
+    child,
+    localPort: 31_337,
+    signature: "test-signature",
+    credentialRef: null,
+    tempDir,
+    startedAt: Date.now(),
+  };
+}
 
 describe("SSH runtime RPC", () => {
   it("derives OpenSSH SHA256 fingerprints and prefers ed25519", () => {
@@ -115,5 +154,32 @@ describe("SSH runtime RPC", () => {
         timeoutMs: 5_000,
       }),
     ).toThrow("not available through SSH");
+  });
+
+  it("awaits normal SSH exit before removing its private known-hosts directory", async () => {
+    const child = fakeTunnelChild();
+    const tunnel = await createFakeTunnel(child as unknown as ChildProcess);
+
+    await sshRuntimeInternals.disposeTunnel(tunnel, 20);
+
+    expect(child.kills).toEqual(["SIGTERM"]);
+    await expect(fs.stat(tunnel.tempDir)).rejects.toMatchObject({
+      code: "ENOENT",
+    });
+  });
+
+  it("uses SIGKILL for a hung SSH child and keeps repeated disposal idempotent", async () => {
+    const child = fakeTunnelChild({ hangOnTerm: true });
+    const tunnel = await createFakeTunnel(child as unknown as ChildProcess);
+
+    const first = sshRuntimeInternals.disposeTunnel(tunnel, 10);
+    const second = sshRuntimeInternals.disposeTunnel(tunnel, 10);
+    expect(second).toBe(first);
+    await Promise.all([first, second]);
+
+    expect(child.kills).toEqual(["SIGTERM", "SIGKILL"]);
+    await expect(fs.stat(tunnel.tempDir)).rejects.toMatchObject({
+      code: "ENOENT",
+    });
   });
 });

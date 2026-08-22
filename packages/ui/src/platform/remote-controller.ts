@@ -63,12 +63,16 @@ export async function createRemoteCommand(input: {
   expiresAt: number;
   command: SignedRemoteCommand;
   envelope: EncryptedRemoteControlEnvelope;
+  recoveredPending: boolean;
+  bindingDigest: string;
 }> {
   const result = await invokeDesktopBridgeRequest<{
     commandId: string;
     expiresAt: number;
     command: SignedRemoteCommand;
     envelope: EncryptedRemoteControlEnvelope;
+    recoveredPending: boolean;
+    bindingDigest: string;
   }>({
     rpcMethod: "remoteControllerCreateCommand",
     ipcChannel: "remoteController:createCommand",
@@ -88,6 +92,23 @@ export async function createRemoteCommand(input: {
   });
   if (!result) throw new Error("Secure remote command signing is unavailable.");
   return result;
+}
+
+export async function acknowledgeRemoteCommandEnqueue(input: {
+  ownerId: string;
+  controllerDeviceId: string;
+  sessionId: string;
+  commandId: string;
+  bindingDigest: string;
+}): Promise<boolean> {
+  const result = await invokeDesktopBridgeRequest<{ acknowledged: boolean }>({
+    rpcMethod: "remoteControllerAcknowledgeEnqueue",
+    ipcChannel: "remoteController:acknowledgeEnqueue",
+    params: input,
+  });
+  if (!result)
+    throw new Error("Secure remote enqueue acknowledgement is unavailable.");
+  return result.acknowledged;
 }
 
 export async function openRemoteCommandResult(input: {

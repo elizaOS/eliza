@@ -8,6 +8,10 @@ import type {
   RemoteControllerPlatform,
   RemoteControllerPublicIdentity,
 } from "@elizaos/shared/contracts/remote-control";
+import {
+  isEncryptedRemoteControlEnvelope,
+  isRemoteControlIdentifier,
+} from "@elizaos/shared/contracts/remote-control";
 import { desktopHttpTransportForUrl } from "./desktop-http-transport";
 import { resolveDirectCloudAuthApiBase } from "./direct-cloud-endpoints";
 import { fetchAgentTransport } from "./transport";
@@ -17,11 +21,11 @@ export interface RemoteHostSummary {
   deviceId: string;
   displayName: string;
   platform: RemoteControllerPlatform;
-  connectionMode: string;
+  connectionMode: "relay";
   runtimeKeyId: string;
   signingPublicKeyJwk: JsonWebKey;
   encryptionPublicKeyJwk: JsonWebKey;
-  status: "active" | "offline" | "revoked" | string;
+  status: "active" | "offline" | "revoked";
   lastSeenAt: string | null;
   createdAt: string;
   revokedAt: string | null;
@@ -39,7 +43,7 @@ export interface RemoteSessionSummary {
   grantRevision: number;
   hostId: string;
   targetRuntimeId: string;
-  status: string;
+  status: "pending" | "active" | "denied" | "revoked" | "expired";
   controllerDeviceId: string;
   controllerKeyId: string;
   targetKeyId: string;
@@ -59,7 +63,7 @@ export interface RemotePairingReceipt {
   expiresAt: string;
   grantExpiresAt: string;
   ttlSeconds: number;
-  status: string;
+  status: "pending";
 }
 
 export type RemoteRelayCommandStatus =
@@ -103,10 +107,56 @@ function requiredString(value: unknown, field: string): string {
 }
 
 function requiredInteger(value: unknown, field: string): number {
-  if (!Number.isSafeInteger(value)) {
+  if (!Number.isSafeInteger(value) || Number(value) < 1) {
     throw new Error(`Cloud response is missing ${field}.`);
   }
   return value as number;
+}
+
+function identifier(value: unknown, field: string): string {
+  if (!isRemoteControlIdentifier(value)) {
+    throw new Error(`Cloud response has an invalid ${field}.`);
+  }
+  return value;
+}
+
+function uuid(value: unknown, field: string): string {
+  const result = identifier(value, field);
+  if (
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      result,
+    )
+  ) {
+    throw new Error(`Cloud response has an invalid ${field}.`);
+  }
+  return result;
+}
+
+function exactEnum<const T extends string>(
+  value: unknown,
+  field: string,
+  values: readonly T[],
+): T {
+  if (typeof value !== "string" || !values.includes(value as T)) {
+    throw new Error(`Cloud response has an invalid ${field}.`);
+  }
+  return value as T;
+}
+
+function isoDate(value: unknown, field: string): string {
+  const result = requiredString(value, field);
+  const timestamp = Date.parse(result);
+  if (
+    !Number.isFinite(timestamp) ||
+    new Date(timestamp).toISOString() !== result
+  ) {
+    throw new Error(`Cloud response has an invalid ${field}.`);
+  }
+  return result;
+}
+
+function optionalIsoDate(value: unknown, field: string): string | null {
+  return value === null || value === undefined ? null : isoDate(value, field);
 }
 
 function publicJwk(value: unknown, field: string): JsonWebKey {
@@ -115,7 +165,9 @@ function publicJwk(value: unknown, field: string): JsonWebKey {
     key?.kty !== "EC" ||
     key.crv !== "P-256" ||
     typeof key.x !== "string" ||
+    !/^[A-Za-z0-9_-]{43}$/.test(key.x) ||
     typeof key.y !== "string" ||
+    !/^[A-Za-z0-9_-]{43}$/.test(key.y) ||
     key.d !== undefined
   ) {
     throw new Error(`Cloud response has an invalid ${field}.`);
@@ -133,50 +185,74 @@ function parseHost(value: unknown): RemoteHostSummary {
     throw new Error("Cloud response contains an invalid host platform.");
   }
   return {
-    id: requiredString(item.id, "host id"),
-    deviceId: requiredString(item.deviceId, "host device id"),
+    id: uuid(item.id, "host id"),
+    deviceId: identifier(item.deviceId, "host device id"),
     displayName: requiredString(item.displayName, "host name"),
     platform: platform as RemoteControllerPlatform,
-    connectionMode: requiredString(item.connectionMode, "connection mode"),
-    runtimeKeyId: requiredString(item.runtimeKeyId, "runtime key id"),
+    connectionMode: exactEnum(item.connectionMode, "connection mode", [
+      "relay",
+    ]),
+    runtimeKeyId: identifier(item.runtimeKeyId, "runtime key id"),
     signingPublicKeyJwk: publicJwk(item.signingPublicKeyJwk, "signing key"),
     encryptionPublicKeyJwk: publicJwk(
       item.encryptionPublicKeyJwk,
       "encryption key",
     ),
-    status: requiredString(item.status, "host status"),
-    lastSeenAt: typeof item.lastSeenAt === "string" ? item.lastSeenAt : null,
-    createdAt: requiredString(item.createdAt, "host creation time"),
-    revokedAt: typeof item.revokedAt === "string" ? item.revokedAt : null,
+    status: exactEnum(item.status, "host status", [
+      "active",
+      "offline",
+      "revoked",
+    ]),
+    lastSeenAt: optionalIsoDate(item.lastSeenAt, "host last-seen time"),
+    createdAt: isoDate(item.createdAt, "host creation time"),
+    revokedAt: optionalIsoDate(item.revokedAt, "host revocation time"),
   };
 }
 
-function parseSession(value: unknown): RemoteSessionSummary {
+function parseSession(
+  value: unknown,
+  expectedHostId: string,
+  expectedOwnerId?: string,
+): RemoteSessionSummary {
   const item = record(value);
   if (!item) {
     throw new Error("Cloud response contains an invalid remote session.");
   }
+  const hostId = uuid(item.hostId, "host id");
+  const targetRuntimeId = uuid(
+    item.targetRuntimeId ?? item.hostId,
+    "target runtime id",
+  );
+  if (hostId !== expectedHostId || targetRuntimeId !== expectedHostId) {
+    throw new Error("Cloud response contains a session for a different host.");
+  }
+  const ownerId = uuid(item.ownerId, "session owner id");
+  if (expectedOwnerId && ownerId !== expectedOwnerId) {
+    throw new Error("Cloud response contains a session for a different owner.");
+  }
   return {
-    id: requiredString(item.id, "session id"),
-    ownerId: requiredString(item.ownerId, "session owner id"),
-    grantId: requiredString(item.grantId, "grant id"),
+    id: uuid(item.id, "session id"),
+    ownerId,
+    grantId: uuid(item.grantId, "grant id"),
     grantRevision: requiredInteger(item.grantRevision, "grant revision"),
-    hostId: requiredString(item.hostId, "host id"),
-    targetRuntimeId: requiredString(
-      item.targetRuntimeId ?? item.hostId,
-      "target runtime id",
-    ),
-    status: requiredString(item.status, "session status"),
-    controllerDeviceId: requiredString(
+    hostId,
+    targetRuntimeId,
+    status: exactEnum(item.status, "session status", [
+      "pending",
+      "active",
+      "denied",
+      "revoked",
+      "expired",
+    ]),
+    controllerDeviceId: identifier(
       item.controllerDeviceId,
       "controller device id",
     ),
-    controllerKeyId: requiredString(item.controllerKeyId, "controller key id"),
-    targetKeyId: requiredString(item.targetKeyId, "target key id"),
-    grantExpiresAt:
-      typeof item.grantExpiresAt === "string" ? item.grantExpiresAt : null,
-    createdAt: requiredString(item.createdAt, "session creation time"),
-    updatedAt: requiredString(item.updatedAt, "session update time"),
+    controllerKeyId: identifier(item.controllerKeyId, "controller key id"),
+    targetKeyId: identifier(item.targetKeyId, "target key id"),
+    grantExpiresAt: optionalIsoDate(item.grantExpiresAt, "grant expiration"),
+    createdAt: isoDate(item.createdAt, "session creation time"),
+    updatedAt: isoDate(item.updatedAt, "session update time"),
   };
 }
 
@@ -229,10 +305,14 @@ export class RemoteControlCloudClient {
     }
     const envelope = record(payload);
     if (!response.ok || envelope?.success === false) {
-      throw new RemoteCloudRequestError(
-        typeof envelope?.error === "string"
+      const cloudMessage =
+        typeof envelope?.error === "string" &&
+        envelope.error.length <= 256 &&
+        !/[\r\n]/.test(envelope.error)
           ? envelope.error
-          : "The remote device request failed. Try again.",
+          : "The remote device request failed. Try again.";
+      throw new RemoteCloudRequestError(
+        cloudMessage,
         response.status,
         typeof envelope?.code === "string" ? envelope.code : undefined,
       );
@@ -248,19 +328,26 @@ export class RemoteControlCloudClient {
       throw new Error("Cloud response is missing remote hosts.");
     }
     return {
-      ownerId: requiredString(data.ownerId, "owner id"),
+      ownerId: uuid(data.ownerId, "owner id"),
       hosts: data.hosts.map(parseHost),
     };
   }
 
-  async listSessions(hostId: string): Promise<RemoteSessionSummary[]> {
+  async listSessions(
+    hostId: string,
+    ownerId?: string,
+  ): Promise<RemoteSessionSummary[]> {
+    const expectedHostId = uuid(hostId, "host id");
+    const expectedOwnerId = ownerId ? uuid(ownerId, "owner id") : undefined;
     const data = await this.request<{ sessions?: unknown }>(
       `/api/v1/remote/sessions?hostId=${encodeURIComponent(hostId)}`,
     );
     if (!Array.isArray(data.sessions)) {
       throw new Error("Cloud response is missing remote sessions.");
     }
-    return data.sessions.map(parseSession);
+    return data.sessions.map((session) =>
+      parseSession(session, expectedHostId, expectedOwnerId),
+    );
   }
 
   async createPairing(input: {
@@ -286,33 +373,39 @@ export class RemoteControlCloudClient {
     if (!/^\d{6}$/.test(code)) {
       throw new Error("Cloud response contains an invalid pairing code.");
     }
+    const ownerId = uuid(data.ownerId, "owner id");
+    const targetRuntimeId = uuid(data.targetRuntimeId, "target runtime id");
+    if (
+      ownerId !== input.controller.ownerId ||
+      targetRuntimeId !== input.hostId
+    ) {
+      throw new Error(
+        "Cloud pairing authority does not match the requested host.",
+      );
+    }
+    const expiresAt = isoDate(data.expiresAt, "pairing expiration");
+    const derivedTtlSeconds = Math.ceil(
+      (Date.parse(expiresAt) - Date.now()) / 1_000,
+    );
+    const ttlSeconds =
+      data.ttlSeconds === undefined
+        ? derivedTtlSeconds
+        : requiredInteger(data.ttlSeconds, "pairing TTL");
+    if (ttlSeconds < 1 || ttlSeconds > 300) {
+      throw new Error("Cloud response has an invalid pairing TTL.");
+    }
     return {
-      ownerId: requiredString(data.ownerId, "owner id"),
-      sessionId: requiredString(data.sessionId, "session id"),
-      grantId: requiredString(data.grantId, "grant id"),
+      ownerId,
+      sessionId: uuid(data.sessionId, "session id"),
+      grantId: uuid(data.grantId, "grant id"),
       grantRevision: requiredInteger(data.grantRevision, "grant revision"),
-      targetRuntimeId: requiredString(
-        data.targetRuntimeId,
-        "target runtime id",
-      ),
-      targetKeyId: requiredString(data.targetKeyId, "target key id"),
+      targetRuntimeId,
+      targetKeyId: identifier(data.targetKeyId, "target key id"),
       code,
-      expiresAt: requiredString(data.expiresAt, "pairing expiration"),
-      grantExpiresAt: requiredString(data.grantExpiresAt, "grant expiration"),
-      ttlSeconds:
-        Number.isSafeInteger(data.ttlSeconds) && Number(data.ttlSeconds) > 0
-          ? Number(data.ttlSeconds)
-          : Math.max(
-              0,
-              Math.ceil(
-                (Date.parse(
-                  requiredString(data.expiresAt, "pairing expiration"),
-                ) -
-                  Date.now()) /
-                  1_000,
-              ),
-            ),
-      status: requiredString(data.status, "pairing status"),
+      expiresAt,
+      grantExpiresAt: isoDate(data.grantExpiresAt, "grant expiration"),
+      ttlSeconds,
+      status: exactEnum(data.status, "pairing status", ["pending"]),
     };
   }
 
@@ -367,14 +460,27 @@ export class RemoteControlCloudClient {
     ) {
       throw new Error("Cloud response contains an invalid command status.");
     }
+    const envelope = (
+      value: unknown,
+      kind: "start_receipt" | "result",
+    ): EncryptedRemoteControlEnvelope | null => {
+      if (value === null || value === undefined) return null;
+      if (
+        !isEncryptedRemoteControlEnvelope(value) ||
+        value.messageKind !== kind ||
+        value.sessionId !== input.sessionId ||
+        value.commandId !== input.commandId
+      ) {
+        throw new Error(
+          `Cloud response contains an invalid ${kind.replace("_", " ")} envelope.`,
+        );
+      }
+      return value;
+    };
     return {
       status: status as RemoteRelayCommandStatus,
-      startReceipt: record(
-        data.startReceipt,
-      ) as EncryptedRemoteControlEnvelope | null,
-      resultEnvelope: record(
-        data.resultEnvelope,
-      ) as EncryptedRemoteControlEnvelope | null,
+      startReceipt: envelope(data.startReceipt, "start_receipt"),
+      resultEnvelope: envelope(data.resultEnvelope, "result"),
     };
   }
 }

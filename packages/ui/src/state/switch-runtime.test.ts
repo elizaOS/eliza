@@ -118,6 +118,7 @@ const RELAY: AgentProfile = {
     targetRuntimeId: "host-1",
     targetKeyId: "target-key-1",
     targetDisplayName: "Studio Mac",
+    targetCreatedAt: Date.parse("2026-08-22T00:00:00.000Z"),
     targetPlatform: "macos",
     targetSigningPublicKeyJwk: {},
     targetEncryptionPublicKeyJwk: {},

@@ -2,18 +2,30 @@
 
 import type { RemoteControllerPublicIdentity } from "@elizaos/shared/contracts/remote-control";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-
 import type {
   RemoteHostDirectory,
   RemoteHostSummary,
   RemotePairingReceipt,
   RemoteSessionSummary,
 } from "../../api/remote-control-cloud-client";
-import { createDefaultRemoteControlCloudClient } from "../../api/remote-control-cloud-default";
+import {
+  createDefaultRemoteControlCloudClient,
+  getDefaultRemoteControlCloudConnection,
+} from "../../api/remote-control-cloud-default";
+import { isElectrobunRuntime } from "../../bridge/electrobun-runtime";
 import {
   clearRemoteControllerSessionState,
   getOrCreateRemoteControllerIdentity,
 } from "../../platform/remote-controller";
+import {
+  activateRemoteTarget,
+  enrollRemoteTarget,
+  finalizeRemoteTargetHostRevoke,
+  getRemoteTargetIdentity,
+  getRemoteTargetStatus,
+  startRemoteTarget,
+  stopRemoteTarget,
+} from "../../platform/remote-target";
 import {
   deleteRuntimeCredentialRecord,
   storeRuntimeCredential,
@@ -36,6 +48,7 @@ import {
   type DevicePairingView,
   type DeviceRuntimeTarget,
   DevicesRuntimesSection,
+  type LinuxRemoteTargetView,
   type SshConnectInput,
 } from "./DevicesRuntimesSection";
 
@@ -51,6 +64,14 @@ function platformName(platform: RemoteHostSummary["platform"]): string {
   if (platform === "ios") return "iPhone or iPad";
   if (platform === "android") return "Android device";
   return "Web runtime";
+}
+
+function requireHostCreatedAt(value: string): number {
+  const createdAt = Date.parse(value);
+  if (!Number.isSafeInteger(createdAt) || createdAt <= 0) {
+    throw new Error("Cloud returned invalid remote-host creation metadata.");
+  }
+  return createdAt;
 }
 
 function profileTarget(
@@ -83,18 +104,20 @@ function profileTarget(
       (item) => item.id === relay.sessionId,
     );
     const invalid = Boolean(
-      directory &&
-        (!host ||
-          host.status === "revoked" ||
-          session?.status !== "active" ||
-          (relay.expiresAt && Date.parse(relay.expiresAt) <= Date.now())),
+      !Number.isSafeInteger(relay.targetCreatedAt) ||
+        relay.targetCreatedAt <= 0 ||
+        (directory &&
+          (!host ||
+            host.status === "revoked" ||
+            session?.status !== "active" ||
+            (relay.expiresAt && Date.parse(relay.expiresAt) <= Date.now()))),
     );
     const offline =
       !invalid && Boolean(directory && host?.status === "offline");
     return {
       id: profile.id,
       label: profile.label,
-      detail: `${platformName(profile.remoteRelay.targetPlatform)} · encrypted Cloud relay`,
+      detail: `${platformName(profile.remoteRelay.targetPlatform)} · encrypted Cloud relay · health/status only`,
       kind: "relay",
       status: invalid
         ? "error"
@@ -107,7 +130,7 @@ function profileTarget(
         : offline
           ? "Host is offline"
           : directory
-            ? "End-to-end encrypted"
+            ? "Health/status checks available"
             : "Cloud status unavailable",
       error: invalid
         ? "This pairing is no longer active. Remove it and pair again."
@@ -156,7 +179,7 @@ function hostTarget(
   return {
     id: `host:${host.id}`,
     label: host.displayName,
-    detail: `${platformName(host.platform)} · ${host.connectionMode}`,
+    detail: `${platformName(host.platform)} · encrypted relay · health/status only`,
     kind: host.platform === "web" ? "cloud" : "relay",
     status: revoked
       ? "error"
@@ -214,6 +237,21 @@ async function removeRuntimeWithAuthority(
   dependencies.removeProfile(profile.id);
 }
 
+async function revokeLinuxHostCloudFirst(
+  hostId: string,
+  dependencies: {
+    revokeHost: (hostId: string) => Promise<void>;
+    finalizeLocal: (hostId: string) => Promise<boolean>;
+  },
+): Promise<void> {
+  await dependencies.revokeHost(hostId);
+  if (!(await dependencies.finalizeLocal(hostId))) {
+    throw new Error(
+      "Cloud revoked the Linux host, but local credential cleanup needs to be retried.",
+    );
+  }
+}
+
 export function DevicesRuntimesContainer({
   className,
 }: {
@@ -228,6 +266,9 @@ export function DevicesRuntimesContainer({
   );
   const [sshRunning, setSshRunning] = useState<Map<string, boolean>>(
     () => new Map(),
+  );
+  const [linuxTarget, setLinuxTarget] = useState<LinuxRemoteTargetView | null>(
+    null,
   );
   const [pairing, setPairing] = useState<{
     hostId: string;
@@ -258,6 +299,21 @@ export function DevicesRuntimesContainer({
       ),
     );
     setSshRunning(new Map(statuses));
+    if (
+      isElectrobunRuntime() &&
+      navigator.platform.toLowerCase().includes("linux")
+    ) {
+      const [status, identity] = await Promise.all([
+        getRemoteTargetStatus(),
+        getRemoteTargetIdentity(),
+      ]);
+      setLinuxTarget({
+        ...status,
+        hostId: identity.identity?.runtimeId ?? null,
+      });
+    } else {
+      setLinuxTarget(null);
+    }
 
     try {
       const cloud = createDefaultRemoteControlCloudClient();
@@ -268,7 +324,10 @@ export function DevicesRuntimesContainer({
       const nextSessions = new Map<string, RemoteSessionSummary[]>();
       await Promise.all(
         nextDirectory.hosts.map(async (host) => {
-          nextSessions.set(host.id, await cloud.listSessions(host.id));
+          nextSessions.set(
+            host.id,
+            await cloud.listSessions(host.id, nextDirectory.ownerId),
+          );
         }),
       );
       setDirectory(nextDirectory);
@@ -304,6 +363,7 @@ export function DevicesRuntimesContainer({
                 targetRuntimeId: session.targetRuntimeId,
                 targetKeyId: session.targetKeyId,
                 targetDisplayName: host.displayName,
+                targetCreatedAt: requireHostCreatedAt(host.createdAt),
                 targetPlatform: host.platform,
                 targetSigningPublicKeyJwk: host.signingPublicKeyJwk,
                 targetEncryptionPublicKeyJwk: host.encryptionPublicKeyJwk,
@@ -362,7 +422,9 @@ export function DevicesRuntimesContainer({
     if (!pairing) return null;
     const host = directory?.hosts.find((item) => item.id === pairing.hostId);
     return {
+      hostId: pairing.hostId,
       hostLabel: host?.displayName ?? "remote device",
+      sessionId: pairing.receipt.sessionId,
       code: pairing.receipt.code,
       expiresAt: pairing.receipt.expiresAt,
       qrPayload: `elizaos://remote/pair?session=${encodeURIComponent(pairing.receipt.sessionId)}&code=${pairing.receipt.code}`,
@@ -503,12 +565,55 @@ export function DevicesRuntimesContainer({
       await refresh();
     });
 
+  const onEnrollLinuxTarget = () =>
+    run(async () => {
+      const cloud = createDefaultRemoteControlCloudClient();
+      const currentDirectory = directory ?? (await cloud.listHosts());
+      const connection = getDefaultRemoteControlCloudConnection();
+      await enrollRemoteTarget({
+        apiBaseUrl: connection.baseUrl,
+        ownerId: currentDirectory.ownerId,
+        ownerAccessToken: connection.authToken,
+        displayName: "My Linux computer",
+      });
+      await refresh();
+    });
+
+  const onActivateLinuxTarget = (input: { sessionId: string; code: string }) =>
+    run(async () => {
+      await activateRemoteTarget(input);
+      await startRemoteTarget();
+      setPairing(null);
+      await refresh();
+    });
+
+  const onSetLinuxTargetRunning = (running: boolean) =>
+    run(async () => {
+      if (running) await startRemoteTarget();
+      else await stopRemoteTarget();
+      await refresh();
+    });
+
+  const onRevokeLinuxTarget = () =>
+    run(async () => {
+      const hostId = linuxTarget?.hostId;
+      if (!hostId) throw new Error("This Linux host identity is unavailable.");
+      const cloud = createDefaultRemoteControlCloudClient();
+      await revokeLinuxHostCloudFirst(hostId, {
+        revokeHost: (id) => cloud.revokeHost(id),
+        finalizeLocal: finalizeRemoteTargetHostRevoke,
+      });
+      setPairing((current) => (current?.hostId === hostId ? null : current));
+      await refresh();
+    });
+
   return (
     <DevicesRuntimesSection
       className={className}
       targets={targets}
       pairing={pairingView}
       sshInspection={sshInspection}
+      linuxTarget={linuxTarget}
       busy={busy}
       error={error}
       onRefresh={() => run(refresh)}
@@ -519,6 +624,10 @@ export function DevicesRuntimesContainer({
       onRemove={onRemove}
       onInspectSsh={onInspectSsh}
       onConnectSsh={onConnectSsh}
+      onEnrollLinuxTarget={onEnrollLinuxTarget}
+      onActivateLinuxTarget={onActivateLinuxTarget}
+      onSetLinuxTargetRunning={onSetLinuxTargetRunning}
+      onRevokeLinuxTarget={onRevokeLinuxTarget}
     />
   );
 }
@@ -527,4 +636,5 @@ export const devicesRuntimesInternals = {
   hostTarget,
   profileTarget,
   removeRuntimeWithAuthority,
+  revokeLinuxHostCloudFirst,
 };

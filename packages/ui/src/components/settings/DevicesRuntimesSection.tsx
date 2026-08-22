@@ -40,7 +40,9 @@ export interface DeviceRuntimeTarget {
 }
 
 export interface DevicePairingView {
+  hostId: string;
   hostLabel: string;
+  sessionId: string;
   code: string;
   expiresAt: string;
   qrPayload: string;
@@ -56,10 +58,19 @@ export interface SshConnectInput {
   expectedFingerprint: string;
 }
 
+export interface LinuxRemoteTargetView {
+  hostId: string | null;
+  enrolled: boolean;
+  running: boolean;
+  activeSessions: number;
+  lastErrorCode: string | null;
+}
+
 export interface DevicesRuntimesSectionProps {
   targets: DeviceRuntimeTarget[];
   pairing?: DevicePairingView | null;
   sshInspection?: SshHostInspection | null;
+  linuxTarget?: LinuxRemoteTargetView | null;
   busy?: boolean;
   error?: string | null;
   onRefresh: () => void | Promise<void>;
@@ -73,7 +84,217 @@ export interface DevicesRuntimesSectionProps {
     sshPort: number;
   }) => void | Promise<void>;
   onConnectSsh: (input: SshConnectInput) => void | Promise<void>;
+  onEnrollLinuxTarget?: () => void | Promise<void>;
+  onActivateLinuxTarget?: (input: {
+    sessionId: string;
+    code: string;
+  }) => void | Promise<void>;
+  onSetLinuxTargetRunning?: (running: boolean) => void | Promise<void>;
+  onRevokeLinuxTarget?: () => void | Promise<void>;
   className?: string;
+}
+
+function LinuxTargetPanel({
+  target,
+  pairing,
+  busy,
+  onEnroll,
+  onActivate,
+  onSetRunning,
+  onRevoke,
+}: {
+  target: LinuxRemoteTargetView;
+  pairing?: DevicePairingView | null;
+  busy: boolean;
+  onEnroll?: () => void | Promise<void>;
+  onActivate?: (input: {
+    sessionId: string;
+    code: string;
+  }) => void | Promise<void>;
+  onSetRunning?: (running: boolean) => void | Promise<void>;
+  onRevoke?: () => void | Promise<void>;
+}) {
+  const [sessionId, setSessionId] = useState("");
+  const [code, setCode] = useState("");
+  const [confirmingRevoke, setConfirmingRevoke] = useState(false);
+  const localPairing = pairing?.hostId === target.hostId ? pairing : null;
+  return (
+    <SettingsGroup
+      title="Share this Linux runtime"
+      description="Enroll this computer as an encrypted remote target, then approve a one-use pairing code shown on your controller device."
+      footer="The host token and target private keys stay in the native OS credential store."
+      bare
+    >
+      <div className="rounded-xl border border-border bg-card p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="text-sm font-semibold text-txt-strong">
+              This Linux computer
+            </p>
+            <p className="mt-1 text-xs text-muted">
+              {target.enrolled
+                ? `${target.running ? "Relay running" : "Relay stopped"} · ${target.activeSessions} active session${target.activeSessions === 1 ? "" : "s"}`
+                : "Not enrolled with Eliza Cloud"}
+            </p>
+          </div>
+          {!target.enrolled ? (
+            <Button
+              type="button"
+              className="min-h-11"
+              disabled={busy || !onEnroll}
+              onClick={() => void onEnroll?.()}
+            >
+              Enroll this computer
+            </Button>
+          ) : (
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                className="min-h-11"
+                disabled={busy || !onSetRunning}
+                onClick={() => void onSetRunning?.(!target.running)}
+              >
+                {target.running ? "Stop relay" : "Start relay"}
+              </Button>
+              {!confirmingRevoke ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className="min-h-11 text-destructive"
+                  disabled={busy || !onRevoke}
+                  onClick={() => setConfirmingRevoke(true)}
+                >
+                  Revoke host
+                </Button>
+              ) : null}
+            </div>
+          )}
+        </div>
+        {confirmingRevoke ? (
+          <div
+            role="alert"
+            className="mt-3 flex flex-wrap items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/5 p-2"
+          >
+            <span className="mr-auto text-xs text-txt-strong">
+              Revoke this host in Cloud, stop its relay, and remove local host
+              credentials?
+            </span>
+            <Button
+              type="button"
+              variant="ghost"
+              className="min-h-11"
+              onClick={() => setConfirmingRevoke(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              className="min-h-11"
+              disabled={busy || !onRevoke}
+              onClick={() => {
+                setConfirmingRevoke(false);
+                void onRevoke?.();
+              }}
+            >
+              Confirm revoke
+            </Button>
+          </div>
+        ) : null}
+        {target.lastErrorCode ? (
+          <p role="alert" className="mt-3 text-xs text-destructive">
+            Remote target needs attention ({target.lastErrorCode}). Retry or
+            inspect desktop logs.
+          </p>
+        ) : null}
+        {target.enrolled && onActivate ? (
+          <div className="mt-4 grid gap-4 border-t border-border pt-4">
+            {localPairing ? (
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-accent/30 bg-accent/5 p-3">
+                <div>
+                  <p className="text-sm font-medium text-txt-strong">
+                    Pair {localPairing.hostLabel} on this computer
+                  </p>
+                  <p className="mt-1 text-xs text-muted">
+                    Uses this in-memory session and its one-use code.
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  className="min-h-11"
+                  disabled={busy}
+                  onClick={() =>
+                    void onActivate({
+                      sessionId: localPairing.sessionId,
+                      code: localPairing.code,
+                    })
+                  }
+                >
+                  Approve this pairing on this Linux computer
+                </Button>
+              </div>
+            ) : null}
+            <p className="text-xs leading-relaxed text-muted">
+              Manual cross-device pairing requires both the session ID and the
+              6-digit code. Code-only session discovery is not available.
+            </p>
+            <form
+              className="grid gap-3 sm:grid-cols-[1fr_10rem_auto] sm:items-end"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void (async () => {
+                  await onActivate({ sessionId: sessionId.trim(), code });
+                  setCode("");
+                })();
+              }}
+            >
+              <label
+                htmlFor="linux-target-session"
+                className="grid gap-1.5 text-xs text-muted"
+              >
+                Pairing session ID
+                <Input
+                  id="linux-target-session"
+                  required
+                  density="relaxed"
+                  value={sessionId}
+                  onChange={(event) => setSessionId(event.target.value)}
+                  autoComplete="off"
+                  spellCheck={false}
+                />
+              </label>
+              <label
+                htmlFor="linux-target-code"
+                className="grid gap-1.5 text-xs text-muted"
+              >
+                6-digit code
+                <Input
+                  id="linux-target-code"
+                  required
+                  density="relaxed"
+                  value={code}
+                  onChange={(event) =>
+                    setCode(event.target.value.replace(/\D/g, "").slice(0, 6))
+                  }
+                  inputMode="numeric"
+                  pattern="[0-9]{6}"
+                  autoComplete="one-time-code"
+                />
+              </label>
+              <Button
+                type="submit"
+                className="min-h-11"
+                disabled={busy || !sessionId.trim() || code.length !== 6}
+              >
+                Approve pairing
+              </Button>
+            </form>
+          </div>
+        ) : null}
+      </div>
+    </SettingsGroup>
+  );
 }
 
 const KIND_ICON = {
@@ -145,8 +366,8 @@ function PairingPanel({ pairing }: { pairing: DevicePairingView }) {
           Pair {pairing.hostLabel}
         </div>
         <p className="mt-2 text-xs leading-relaxed text-muted">
-          Scan the QR code or enter the independent code on the target. It is
-          valid once for five minutes and cannot be reused.
+          Scan the QR code, or enter the session ID and code together on the
+          target. The code is valid once for five minutes and cannot be reused.
         </p>
         <output
           className="mt-4 font-[var(--mono)] text-3xl font-semibold tracking-[0.28em] text-txt-strong"
@@ -155,6 +376,22 @@ function PairingPanel({ pairing }: { pairing: DevicePairingView }) {
         >
           {pairing.code}
         </output>
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <code className="max-w-full break-all rounded bg-surface px-2 py-1 text-xs text-txt-strong">
+            Session {pairing.sessionId}
+          </code>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="min-h-11"
+            onClick={() =>
+              void navigator.clipboard.writeText(pairing.sessionId)
+            }
+          >
+            Copy session ID
+          </Button>
+        </div>
         <p
           className={cn(
             "mt-2 text-xs",
@@ -558,6 +795,7 @@ export function DevicesRuntimesSection({
   targets,
   pairing,
   sshInspection,
+  linuxTarget,
   busy = false,
   error,
   onRefresh,
@@ -568,6 +806,10 @@ export function DevicesRuntimesSection({
   onRemove,
   onInspectSsh,
   onConnectSsh,
+  onEnrollLinuxTarget,
+  onActivateLinuxTarget,
+  onSetLinuxTargetRunning,
+  onRevokeLinuxTarget,
   className,
 }: DevicesRuntimesSectionProps) {
   return (
@@ -614,6 +856,17 @@ export function DevicesRuntimesSection({
           ))}
         </div>
       </SettingsGroup>
+      {linuxTarget ? (
+        <LinuxTargetPanel
+          target={linuxTarget}
+          pairing={pairing}
+          busy={busy}
+          onEnroll={onEnrollLinuxTarget}
+          onActivate={onActivateLinuxTarget}
+          onSetRunning={onSetLinuxTargetRunning}
+          onRevoke={onRevokeLinuxTarget}
+        />
+      ) : null}
       <AdvancedSsh
         busy={busy}
         inspection={sshInspection}

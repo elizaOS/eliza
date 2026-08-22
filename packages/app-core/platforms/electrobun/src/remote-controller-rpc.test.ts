@@ -10,6 +10,7 @@ import type {
   SecureStoreSetResult,
 } from "../../../src/security/platform-secure-store";
 import {
+  desktopAcknowledgeRemoteCommandEnqueue,
   desktopClearRemoteSessionState,
   desktopCreateRemoteCommand,
   desktopGetOrCreateControllerIdentity,
@@ -101,17 +102,70 @@ describe("remote controller identity RPC", () => {
       desktopCreateRemoteCommand(input, store),
       desktopCreateRemoteCommand(input, store),
     ]);
-    expect([first.command.body.sequence, second.command.body.sequence]).toEqual(
-      [1, 2],
-    );
+    expect(first.command.body.sequence).toBe(1);
+    expect(second.command.body.sequence).toBe(1);
+    expect(second.commandId).toBe(first.commandId);
     const afterRestart = await desktopCreateRemoteCommand(input, store);
-    expect(afterRestart.command.body.sequence).toBe(3);
+    expect(afterRestart.commandId).toBe(first.commandId);
+    expect(afterRestart.envelope).toEqual(first.envelope);
+
+    const recoveredForDifferentRequest = await desktopCreateRemoteCommand(
+      { ...input, payload: { path: "/api/status", method: "GET" } },
+      store,
+    );
+    expect(recoveredForDifferentRequest.commandId).toBe(first.commandId);
+    expect(recoveredForDifferentRequest.recoveredPending).toBe(true);
+
+    await expect(
+      desktopAcknowledgeRemoteCommandEnqueue(
+        {
+          ownerId: input.ownerId,
+          controllerDeviceId: input.controllerDeviceId,
+          sessionId: input.sessionId,
+          commandId: first.commandId,
+          bindingDigest: first.bindingDigest,
+        },
+        store,
+      ),
+    ).resolves.toEqual({ acknowledged: true });
+    const next = await desktopCreateRemoteCommand(input, store);
+    expect(next.command.body.sequence).toBe(2);
+    await desktopAcknowledgeRemoteCommandEnqueue(
+      {
+        ownerId: input.ownerId,
+        controllerDeviceId: input.controllerDeviceId,
+        sessionId: input.sessionId,
+        commandId: next.commandId,
+        bindingDigest: next.bindingDigest,
+      },
+      store,
+    );
 
     const revised = await desktopCreateRemoteCommand(
       { ...input, grantRevision: 2 },
       store,
     );
     expect(revised.command.body.sequence).toBe(1);
+    await expect(
+      desktopClearRemoteSessionState(
+        {
+          ownerId: "owner-1",
+          controllerDeviceId: controller.deviceId,
+          sessionId: "session-1",
+        },
+        store,
+      ),
+    ).rejects.toThrow("awaiting enqueue acknowledgement");
+    await desktopAcknowledgeRemoteCommandEnqueue(
+      {
+        ownerId: input.ownerId,
+        controllerDeviceId: input.controllerDeviceId,
+        sessionId: input.sessionId,
+        commandId: revised.commandId,
+        bindingDigest: revised.bindingDigest,
+      },
+      store,
+    );
     await expect(
       desktopClearRemoteSessionState(
         {
@@ -157,6 +211,79 @@ describe("remote controller identity RPC", () => {
         {
           ownerId: "owner-1",
           deviceId: "desktop-1",
+          displayName: "Linux",
+          platform: "linux",
+        },
+        store,
+      ),
+    ).rejects.toThrow("corrupt");
+  });
+
+  it("rejects substituted public identity metadata from native secure storage", async () => {
+    const store = new MemorySecureStore();
+    const identity = await desktopGetOrCreateControllerIdentity(
+      {
+        ownerId: "owner-1",
+        deviceId: "desktop-1",
+        displayName: "Linux",
+        platform: "linux",
+      },
+      store,
+    );
+    const vaultId = remoteControllerInternals.controllerVaultId(
+      identity.ownerId,
+      identity.deviceId,
+    );
+    const record = JSON.parse(store.values.get(vaultId) ?? "{}") as {
+      identity: { signingPublicKeyJwk: JsonWebKey };
+    };
+    record.identity.signingPublicKeyJwk.x = "substituted-key-material";
+    store.values.set(vaultId, JSON.stringify(record));
+
+    await expect(
+      desktopGetOrCreateControllerIdentity(
+        {
+          ownerId: identity.ownerId,
+          deviceId: identity.deviceId,
+          displayName: "Linux",
+          platform: "linux",
+        },
+        store,
+      ),
+    ).rejects.toThrow("corrupt");
+  });
+
+  it("rejects an oversized native session/outbox map", async () => {
+    const store = new MemorySecureStore();
+    const identity = await desktopGetOrCreateControllerIdentity(
+      {
+        ownerId: "owner-1",
+        deviceId: "desktop-1",
+        displayName: "Linux",
+        platform: "linux",
+      },
+      store,
+    );
+    const vaultId = remoteControllerInternals.controllerVaultId(
+      identity.ownerId,
+      identity.deviceId,
+    );
+    const record = JSON.parse(store.values.get(vaultId) ?? "{}") as {
+      sessionSequences: Record<string, unknown>;
+    };
+    record.sessionSequences = Object.fromEntries(
+      Array.from({ length: 257 }, (_, index) => [
+        `session-${index}`,
+        { bindingDigest: "digest", sequence: 1 },
+      ]),
+    );
+    store.values.set(vaultId, JSON.stringify(record));
+
+    await expect(
+      desktopGetOrCreateControllerIdentity(
+        {
+          ownerId: identity.ownerId,
+          deviceId: identity.deviceId,
           displayName: "Linux",
           platform: "linux",
         },
