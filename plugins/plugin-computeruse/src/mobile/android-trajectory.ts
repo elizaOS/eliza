@@ -24,7 +24,7 @@
  * log-capture pipeline.
  */
 
-import { logger } from "@elizaos/core";
+import { logger, toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 
 export type AndroidActionKind =
   | "tap"
@@ -76,8 +76,11 @@ export function emitAndroidAction(
   event: AndroidTrajectoryActionEvent,
 ): AndroidTrajectoryActionEvent {
   const trimmed: AndroidTrajectoryActionEvent = { ...event };
-  if (trimmed.errorMessage) {
-    trimmed.errorMessage = trimmed.errorMessage.slice(0, MAX_ERROR_MSG);
+  if (typeof trimmed.errorMessage === "string") {
+    trimmed.errorMessage = truncateWellFormed(
+      toWellFormedUnicode(trimmed.errorMessage),
+      MAX_ERROR_MSG,
+    );
   }
   logger.info(
     {

@@ -10,9 +10,55 @@
 import { logger } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import {
+  type AndroidTrajectoryActionEvent,
   emitAndroidAction,
   emitAndroidAgentStep,
 } from "../mobile/android-trajectory.js";
+
+const ERROR_MESSAGE_MAX_CODE_UNITS = 256;
+const REPLACEMENT_CHARACTER = "�";
+
+function isWellFormed(text: string): boolean {
+  return (
+    (text as unknown as { isWellFormed?: () => boolean }).isWellFormed?.() ??
+    !/[\uD800-\uDFFF]/u.test(text)
+  );
+}
+
+function emitFailure(errorMessage?: string): {
+  event: AndroidTrajectoryActionEvent;
+  payload: AndroidTrajectoryActionEvent;
+  logged: Record<string, unknown>;
+} {
+  const spy = vi.spyOn(logger, "info").mockImplementation(() => logger);
+  try {
+    const event: AndroidTrajectoryActionEvent = {
+      kind: "tap",
+      success: false,
+      errorCode: "accessibility_unavailable",
+      errorMessage,
+    };
+    const payload = emitAndroidAction(event);
+    const logged = spy.mock.calls.at(-1)?.[0] as Record<string, unknown>;
+    return { event, payload, logged };
+  } finally {
+    spy.mockRestore();
+  }
+}
+
+function expectProjectedError(
+  input: string | undefined,
+  expected: string | undefined,
+): void {
+  const { event, payload, logged } = emitFailure(input);
+  expect(event.errorMessage).toBe(input);
+  expect(payload.errorMessage).toBe(expected);
+  expect(logged.errorMessage).toBe(expected);
+  if (expected !== undefined) {
+    expect(isWellFormed(expected)).toBe(true);
+    expect(expected.length).toBeLessThanOrEqual(ERROR_MESSAGE_MAX_CODE_UNITS);
+  }
+}
 
 describe("emitAndroidAction", () => {
   it("emits a structured `computeruse.android.action` log entry with platform=android", () => {
@@ -61,6 +107,69 @@ describe("emitAndroidAction", () => {
     } finally {
       spy.mockRestore();
     }
+  });
+
+  it.each([
+    ["empty", "", ""],
+    ["short", "bridge 🧠 failed", "bridge 🧠 failed"],
+  ])("preserves a %s error projection", (_, input, expected) => {
+    expectProjectedError(input, expected);
+  });
+
+  it("keeps an absent error message absent", () => {
+    const spy = vi.spyOn(logger, "info").mockImplementation(() => logger);
+    try {
+      const event: AndroidTrajectoryActionEvent = {
+        kind: "tap",
+        success: false,
+        errorCode: "accessibility_unavailable",
+      };
+      const payload = emitAndroidAction(event);
+      const logged = spy.mock.calls.at(-1)?.[0] as Record<string, unknown>;
+
+      expect(Object.hasOwn(event, "errorMessage")).toBe(false);
+      expect(Object.hasOwn(payload, "errorMessage")).toBe(false);
+      expect(Object.hasOwn(logged, "errorMessage")).toBe(false);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("preserves an exact-cap astral error without truncating", () => {
+    const input = `${"a".repeat(ERROR_MESSAGE_MAX_CODE_UNITS - 2)}🧠`;
+    expect(input.length).toBe(ERROR_MESSAGE_MAX_CODE_UNITS);
+    expectProjectedError(input, input);
+  });
+
+  it("caps a plain max+1 error at 256 code units", () => {
+    const input = "a".repeat(ERROR_MESSAGE_MAX_CODE_UNITS + 1);
+    expectProjectedError(input, "a".repeat(ERROR_MESSAGE_MAX_CODE_UNITS));
+  });
+
+  it("backs off when an astral pair crosses the cut", () => {
+    const input = `${"a".repeat(ERROR_MESSAGE_MAX_CODE_UNITS - 1)}🧠z`;
+    expectProjectedError(input, "a".repeat(ERROR_MESSAGE_MAX_CODE_UNITS - 1));
+  });
+
+  it.each([
+    ["lone high surrogate", "\uD83E"],
+    ["lone low surrogate", "\uDDE0"],
+  ])("normalizes a short %s", (_, lone) => {
+    expectProjectedError(
+      `left${lone}right`,
+      `left${REPLACEMENT_CHARACTER}right`,
+    );
+  });
+
+  it.each([
+    ["lone high surrogate", "\uD83E"],
+    ["lone low surrogate", "\uDDE0"],
+  ])("normalizes a long %s before truncating", (_, lone) => {
+    const input = `${"a".repeat(ERROR_MESSAGE_MAX_CODE_UNITS - 1)}${lone}z`;
+    expectProjectedError(
+      input,
+      `${"a".repeat(ERROR_MESSAGE_MAX_CODE_UNITS - 1)}${REPLACEMENT_CHARACTER}`,
+    );
   });
 
   it("does not emit fields that were not supplied", () => {
