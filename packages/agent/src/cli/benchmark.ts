@@ -121,6 +121,7 @@ export async function runBenchmarkTask(
       },
       {
         abortSignal,
+        ...(taskType === "coding" ? { codingMode: true } : {}),
         onStreamChunk: async (chunk: string) => {
           if (chunk) streamText += chunk;
         },
