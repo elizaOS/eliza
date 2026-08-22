@@ -63,7 +63,6 @@ export const RESERVED_SCHEDULED_TASK_CHANNEL_KEYS: ReadonlySet<string> =
     "imessage",
     "telegram",
     "discord",
-    "signal",
     "whatsapp",
     "x",
     "x_dm",

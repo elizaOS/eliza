@@ -15,8 +15,10 @@
  */
 import {
 	compareMemoryIds,
+	compareTasksForQuery,
 	DatabaseAdapter,
 	validateQueryEntitiesPagination,
+	validateTaskQueryPagination,
 } from "../database";
 import { ElizaError } from "../errors";
 import { rankMessageSearch, withinCreatedAtWindow } from "../search";
@@ -2008,16 +2010,19 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 
 	async getTasks(params: {
 		roomId?: UUID;
+		worldId?: UUID;
 		tags?: string[];
 		entityId?: UUID;
 		agentIds: UUID[];
 		limit?: number;
 		offset?: number;
 	}): Promise<Task[]> {
+		validateTaskQueryPagination(params);
 		if (params.agentIds.length === 0) return [];
 		const all = Array.from(this.tasks.values());
 		let filtered = all.filter((t) => {
 			if (params.roomId && t.roomId !== params.roomId) return false;
+			if (params.worldId && t.worldId !== params.worldId) return false;
 			if (params.entityId && t.entityId !== params.entityId) return false;
 			if (t.agentId == null || !params.agentIds.includes(t.agentId))
 				return false;
@@ -2028,6 +2033,8 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 			}
 			return true;
 		});
+
+		filtered.sort(compareTasksForQuery);
 
 		// Paginate to bound result size.
 		const offset = params.offset ?? 0;

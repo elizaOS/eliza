@@ -1102,7 +1102,6 @@ export function discoverPluginsFromManifest(): PluginEntry[] {
       );
 
       applyWhatsAppQrOverride(entries, resolveDefaultAgentWorkspaceDir());
-
       return entries;
     } catch (err) {
       logger.debug(
@@ -1145,7 +1144,6 @@ export function categorizePlugin(
     "slack",
     "twitter",
     "whatsapp",
-    "signal",
     "imessage",
     "farcaster",
     "bluesky",
@@ -1195,7 +1193,6 @@ const SOCIAL_CHAT_CONNECTOR_IDS = new Set([
   "discord",
   "slack",
   "whatsapp",
-  "signal",
   "imessage",
   "matrix",
   "mattermost",
@@ -1228,7 +1225,6 @@ const PLUGIN_METADATA_CATEGORY_TAGS: Record<string, string[]> = {
 };
 const PLUGIN_DESCRIPTION_OVERRIDES: Record<string, string> = {
   slack: "Slack workspace connector for chatting with your agent",
-  signal: "Signal connector for secure chats with your agent",
   mattermost: "Mattermost connector for team chat with your agent",
   msteams: "Microsoft Teams connector for chatting with your agent",
   "nextcloud-talk": "Nextcloud Talk connector for chatting with your agent",
@@ -1263,7 +1259,6 @@ const PLUGIN_SETUP_GUIDE_ANCHORS: Record<string, string> = {
   matrix: "#matrix",
   msteams: "#microsoft-teams",
   "google-chat": "#google-chat",
-  signal: "#signal",
   imessage: "#imessage-macos-only",
   blooio: "#blooio-sms-via-api",
   nostr: "#nostr",

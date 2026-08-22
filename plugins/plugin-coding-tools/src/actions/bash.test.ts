@@ -37,6 +37,7 @@ const describeIfPosix = process.platform === "win32" ? describe.skip : describe;
 
 import codingToolsPlugin from "../index.js";
 import { runShell } from "../lib/run-shell.js";
+import { persistShellOutputArtifact } from "../lib/shell-output-artifact.js";
 import { availableToolsProvider } from "../providers/available-tools.js";
 import {
   BackgroundShellService,
@@ -50,7 +51,6 @@ import {
 } from "../types.js";
 
 import {
-  boundedShellText,
   type CommandPlatform,
   localResourceUserFacingText,
   resolveCommandPlatform,
@@ -644,28 +644,39 @@ describeIfPosix("shellAction", () => {
     expect(posts[0].text.length).toBeLessThan(1700);
   });
 
-  it("hard-bounds the artifact notice for unusually long state paths", () => {
-    const longPath = `/state/${"nested-segment/".repeat(3_000)}`;
-    const bounded = boundedShellText("output-line\n".repeat(10_000), {
-      handle: "shell_worst_case_notice",
-      manifestPath: `${longPath}manifest.json`,
-      stdoutPath: `${longPath}stdout.txt`,
-      stderrPath: `${longPath}stderr.txt`,
-      createdAt: "2026-08-21T00:00:00.000Z",
-      expiresAt: "2026-08-21T00:30:00.000Z",
-      retentionMs: 1_800_000,
-      stdout: { characters: 120_000, bytes: 120_000, lines: 10_000 },
-      stderr: { characters: 0, bytes: 0, lines: 0 },
-    });
+  it("returns complete redacted Unicode stdout and stderr above the former model cap", async () => {
+    const secret = "marigold9-complete-shell-secret";
+    const stdout = `${"🙂α\n".repeat(7_000)}${secret}\nstdout-tail`;
+    const stderr = `${"界β\n".repeat(8_000)}${secret}\nstderr-tail`;
+    expect(stdout.length + stderr.length).toBeGreaterThan(50_000);
+    const { runtime } = await makeRuntime({ configuredSecret: secret });
+    const script = [
+      `process.stdout.write(${JSON.stringify("🙂α\n")}.repeat(7000)+${JSON.stringify(`${secret}\nstdout-tail`)});`,
+      `process.stderr.write(${JSON.stringify("界β\n")}.repeat(8000)+${JSON.stringify(`${secret}\nstderr-tail`)});`,
+    ].join("");
 
-    expect(bounded.truncated).toBe(true);
-    expect(bounded.text.length).toBeLessThanOrEqual(50_000);
-    expect(bounded.text).toContain("shell_worst_case_notice");
-    expect(bounded.text).toContain("action=read_output_artifact");
-    expect(bounded.text).not.toContain("/state/nested-segment/");
+    const result = requireActionResult(
+      await shellAction.handler?.(runtime, makeMessage(), undefined, {
+        command: `node -e ${JSON.stringify(script)}`,
+      }),
+    );
+    const redactedStdout = stdout.replace(secret, "[REDACTED:TEST_SECRET]");
+    const redactedStderr = stderr.replace(secret, "[REDACTED:TEST_SECRET]");
+    const resultText = result.text ?? "";
+    const streamText = resultText.slice(resultText.indexOf("--- stdout ---"));
+
+    expect(result.success).toBe(true);
+    expect(streamText).toBe(
+      `--- stdout ---\n${redactedStdout}\n--- stderr ---\n${redactedStderr}`,
+    );
+    expect((result.data as Record<string, unknown>).output_truncated).toBe(
+      false,
+    );
+    expect(result).not.toHaveProperty("data.output_artifact_handle");
+    expect(JSON.stringify(result)).not.toContain(secret);
   });
 
-  it("retrieves complete redacted output through an authorized opaque handle", async () => {
+  it("retrieves a retained legacy artifact through an authorized opaque handle", async () => {
     const stateDir = await fs.mkdtemp(
       path.join(os.tmpdir(), "coding-tools-shell-artifact-"),
     );
@@ -687,44 +698,35 @@ describeIfPosix("shellAction", () => {
         configuredSecret: secret,
         workspaceRoots: workspace,
       });
-      const script = [
-        `process.stdout.write(${JSON.stringify("row\n")}.repeat(14000));`,
-        `process.stdout.write(${JSON.stringify(secret)});`,
-        `process.stderr.write(${JSON.stringify("stderr-tail\n")});`,
-      ].join("");
-
       const message = makeMessage();
-      const result = requireActionResult(
-        await shellAction.handler?.(runtime, message, undefined, {
-          command: `node -e ${JSON.stringify(script)}`,
-          cwd: workspace,
-        }),
-      );
-      const data = result.data as Record<string, unknown>;
-      const handle = data.output_artifact_handle as string;
+      const stdout = `${"row\n".repeat(14_000)}[REDACTED:TEST_SECRET]`;
+      const stderr = "stderr-tail\n";
+      const artifact = await persistShellOutputArtifact({
+        command: "legacy large command",
+        cwd: workspace,
+        stdout,
+        stderr,
+        exitCode: 0,
+        timedOut: false,
+        signal: null,
+        modelCharacterLimit: 50_000,
+        modelCharacters: 50_000,
+        ownerAgentId: String(runtime.agentId),
+        ownerConversationId: String(message.roomId),
+      });
+      const handle = artifact.handle;
       const artifactDirectory = path.join(artifactRoot, handle);
       const manifestPath = path.join(artifactDirectory, "manifest.json");
       const stdoutPath = path.join(artifactDirectory, "stdout.txt");
       const stderrPath = path.join(artifactDirectory, "stderr.txt");
-      const stdout = await fs.readFile(stdoutPath, "utf8");
-      const stderr = await fs.readFile(stderrPath, "utf8");
+      expect(await fs.readFile(stdoutPath, "utf8")).toBe(stdout);
+      expect(await fs.readFile(stderrPath, "utf8")).toBe(stderr);
       const manifest = JSON.parse(await fs.readFile(manifestPath, "utf8")) as {
         stdout: { bytes: number; lines: number };
         stderr: { bytes: number; lines: number };
         truncation: { modelCharacterLimit: number; completeBytes: number };
       };
 
-      expect(result.success).toBe(true);
-      expect(result.text.length).toBeLessThanOrEqual(50_000);
-      expect(result.text).toContain("complete redacted artifact shell_");
-      expect(data.output_truncated).toBe(true);
-      expect(data.output_artifact_handle).toMatch(/^shell_/);
-      expect(data).not.toHaveProperty("output_artifact_path");
-      expect(data).not.toHaveProperty("output_artifact_stdout_path");
-      expect(data).not.toHaveProperty("output_artifact_stderr_path");
-      expect(stdout).toBe(`${"row\n".repeat(14000)}[REDACTED:TEST_SECRET]`);
-      expect(stderr).toBe("stderr-tail\n");
-      expect(JSON.stringify(result)).not.toContain(secret);
       expect(await fs.readFile(manifestPath, "utf8")).not.toContain(secret);
       expect(manifest.stdout).toEqual({
         path: stdoutPath,

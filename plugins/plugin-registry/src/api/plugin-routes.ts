@@ -716,7 +716,6 @@ export async function handlePluginRoutes(
     }
 
     applyWhatsAppQrOverride(allPlugins, resolveDefaultAgentWorkspaceDir());
-
     for (const plugin of allPlugins) {
       const providerModels = readProviderCache(plugin.id)?.models ?? [];
 

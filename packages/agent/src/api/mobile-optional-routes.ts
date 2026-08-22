@@ -288,7 +288,11 @@ export async function handleMobileOptionalRoutes(
     if (method === "POST") {
       await readRequestBody(req).catch(() => undefined);
     }
-    sendJson(res, absentPluginStub.buildBody(req));
+    sendJson(
+      res,
+      absentPluginStub.buildBody(req),
+      absentPluginStub.statusCode ?? 200,
+    );
     return true;
   }
 

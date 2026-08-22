@@ -49,7 +49,6 @@ type RelationshipsFeatureRuntime = AgentRuntime & {
 
 export const CANONICAL_IDENTITY_PLATFORMS = [
   "gmail",
-  "signal",
   "telegram",
   "whatsapp",
   "discord",
@@ -90,12 +89,6 @@ const PLATFORM_FIXTURES: Record<
       "Gmail: Priya Rao sent the investor packet and wants feedback before noon.",
     outboundText:
       "I saw the investor packet, Priya. I will send comments before lunch.",
-  },
-  signal: {
-    handle: "+14155550101",
-    inboundText:
-      "Signal: Priya Rao says the contractor can call after 4pm today.",
-    outboundText: "Thanks. Tell the contractor I am free after 4pm Pacific.",
   },
   telegram: {
     handle: "@priya_rao",

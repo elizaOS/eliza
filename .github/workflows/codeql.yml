@@ -157,7 +157,6 @@ jobs:
               - 'plugins/plugin-scape/**'
               - 'plugins/plugin-scheduling/**'
               - 'plugins/plugin-shopify-ui/**'
-              - 'plugins/plugin-signal/**'
               - 'plugins/plugin-slack/**'
               - 'plugins/plugin-social-alpha/**'
               - 'plugins/plugin-sql/**'

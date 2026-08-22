@@ -8,6 +8,7 @@ import {
   loadPersistedSession,
   resolveAuthDir,
   resolveSessionPath,
+  resolveShortSocketDir,
 } from "./auth-bridge";
 
 vi.mock("../logger", () => ({
@@ -64,5 +65,11 @@ describe("desktop auth bridge", () => {
     expect(loadPersistedSession(env, () => 1_700_000_000_000)).toBeNull();
 
     expect(logger.warn).not.toHaveBeenCalled();
+  });
+
+  it("uses a private child directory for short macOS bootstrap sockets", () => {
+    expect(resolveShortSocketDir("/private/var/tmp", 501)).toBe(
+      "/private/var/tmp/eza-dx",
+    );
   });
 });

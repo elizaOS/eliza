@@ -22,7 +22,6 @@ export const SCHEDULING_APPROVAL_TRANSPORT_CHANNELS = [
   "email",
   "telegram",
   "discord",
-  "signal",
   "whatsapp",
   "imessage",
   "sms",
@@ -73,7 +72,6 @@ export type ApprovalAction =
 export type ApprovalChannel =
   | "telegram"
   | "discord"
-  | "signal"
   | "whatsapp"
   | "slack"
   | "imessage"

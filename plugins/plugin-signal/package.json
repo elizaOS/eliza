@@ -22,26 +22,13 @@
       },
       "import": "./dist/index.js",
       "default": "./dist/index.js"
-    },
-    "./*.css": "./dist/*.css",
-    "./*": {
-      "types": "./dist/*.d.ts",
-      "eliza-source": {
-        "types": "./src/*.ts",
-        "import": "./src/*.ts",
-        "default": "./src/*.ts"
-      },
-      "import": "./dist/*.js",
-      "default": "./dist/*.js"
     }
   },
   "files": [
-    "dist",
-    "auto-enable.ts"
+    "dist"
   ],
   "elizaos": {
     "plugin": {
-      "autoEnableModule": "./auto-enable.ts",
       "capabilities": []
     }
   },

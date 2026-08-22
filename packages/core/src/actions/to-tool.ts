@@ -387,11 +387,36 @@ export interface BuildPlannerToolsFromTieredActionsOptions {
 		| Readonly<Record<string, readonly string[]>>;
 }
 
+/**
+ * Lenient key used ONLY for matching caller-supplied *hints* against action
+ * names: the tier-A parent set and the per-parent child allow-list. Those are
+ * configuration-shaped inputs, so separators and case are deliberately ignored.
+ *
+ * It must never be used as an action's IDENTITY. Because it strips every
+ * non-alphanumeric character, distinct registered actions such as
+ * `GMAIL_CREATE_DRAFT` and `GMAILCREATEDRAFT` — both legal under
+ * {@link NATIVE_TOOL_NAME_PATTERN}, and treated as distinct everywhere else in
+ * the runtime (see `matchActionWildcardParts`) — collapse onto one key. Keying
+ * emission or sub-action resolution on it silently drops one of the pair from
+ * the planner surface, or resolves a string sub-action reference to the wrong
+ * Action. Use {@link toolIdentityKey} for identity.
+ */
 function normalizeParentNameKey(name: string): string {
 	return String(name)
 		.trim()
 		.toUpperCase()
 		.replace(/[^A-Z0-9]/g, "");
+}
+
+/**
+ * Identity of an emitted tool. This is the exact string the model will send
+ * back as the tool name, so two actions are the same tool if and only if their
+ * names are equal. Only surrounding whitespace is trimmed;
+ * {@link assertNativeToolName} already constrains the rest of the shape (upper
+ * snake case), so no case folding is needed.
+ */
+function toolIdentityKey(name: string): string {
+	return String(name).trim();
 }
 
 function buildParentNameSet(
@@ -439,29 +464,70 @@ function resolveTierAChildAllowlist(
 	return map;
 }
 
+/**
+ * Sub-action reference resolver.
+ *
+ * Exact names win. A separator/case-insensitive fallback is kept so a parent
+ * declaring `subActions: ["play-music"]` still finds `PLAY_MUSIC`, but a
+ * loose key that more than one distinct action answers to is AMBIGUOUS and
+ * resolves to nothing rather than silently picking the first insertion — the
+ * previous behaviour handed the planner a tool built from the wrong Action's
+ * schema.
+ */
+class ActionLookup {
+	private readonly exact = new Map<string, PlannerToolActionShape>();
+	private readonly loose = new Map<string, PlannerToolActionShape | null>();
+
+	add(key: string, value: PlannerToolActionShape | undefined): void {
+		if (!value) {
+			return;
+		}
+		const identity = toolIdentityKey(key);
+		if (!identity || this.exact.has(identity)) {
+			return;
+		}
+		this.exact.set(identity, value);
+
+		const looseKey = normalizeParentNameKey(key);
+		if (!looseKey) {
+			return;
+		}
+		if (!this.loose.has(looseKey)) {
+			this.loose.set(looseKey, value);
+			return;
+		}
+		// A second, differently-spelled action answers to the same loose key.
+		// Poison it so the fallback cannot guess.
+		this.loose.set(looseKey, null);
+	}
+
+	has(key: string): boolean {
+		return this.exact.has(toolIdentityKey(key));
+	}
+
+	get(key: string): PlannerToolActionShape | undefined {
+		const identity = toolIdentityKey(key);
+		const exactMatch = this.exact.get(identity);
+		if (exactMatch) {
+			return exactMatch;
+		}
+		return this.loose.get(normalizeParentNameKey(key)) ?? undefined;
+	}
+}
+
 function resolveActionLookup(
 	lookup: BuildPlannerToolsFromTieredActionsOptions["actionLookup"],
-): Map<string, PlannerToolActionShape> {
-	const map = new Map<string, PlannerToolActionShape>();
+): ActionLookup {
+	const resolved = new ActionLookup();
 	if (!lookup) {
-		return map;
+		return resolved;
 	}
-	if (lookup instanceof Map) {
-		for (const [key, value] of lookup) {
-			const normalized = normalizeParentNameKey(key);
-			if (normalized && value && !map.has(normalized)) {
-				map.set(normalized, value);
-			}
-		}
-		return map;
+	const entries: Iterable<[string, PlannerToolActionShape]> =
+		lookup instanceof Map ? lookup : Object.entries(lookup);
+	for (const [key, value] of entries) {
+		resolved.add(key, value);
 	}
-	for (const [key, value] of Object.entries(lookup)) {
-		const normalized = normalizeParentNameKey(key);
-		if (normalized && value && !map.has(normalized)) {
-			map.set(normalized, value);
-		}
-	}
-	return map;
+	return resolved;
 }
 
 /**
@@ -501,9 +567,8 @@ export function buildPlannerToolsFromTieredActions(
 	// Top up the lookup with anything already in `actions` so children that
 	// appear inline elsewhere in the input remain resolvable from a string ref.
 	for (const action of actions) {
-		const key = normalizeParentNameKey(action.name);
-		if (key && !actionLookup.has(key)) {
-			actionLookup.set(key, action);
+		if (!actionLookup.has(action.name)) {
+			actionLookup.add(action.name, action);
 		}
 	}
 
@@ -511,7 +576,10 @@ export function buildPlannerToolsFromTieredActions(
 	const emittedNames = new Set<string>();
 
 	const emit = (action: PlannerToolActionShape): void => {
-		const key = normalizeParentNameKey(action.name);
+		// Dedupe on the tool's IDENTITY, not the lenient hint key: two actions
+		// whose names differ only by separators are two different tools and both
+		// must reach the planner.
+		const key = toolIdentityKey(action.name);
 		if (!key || emittedNames.has(key)) {
 			return;
 		}
@@ -548,7 +616,7 @@ export function buildPlannerToolsFromTieredActions(
 				continue;
 			}
 			if (typeof subAction === "string") {
-				child = actionLookup.get(normalizeParentNameKey(subAction));
+				child = actionLookup.get(subAction);
 				if (!child) {
 					onUnresolved({
 						parentName: action.name,

@@ -4,8 +4,14 @@
  * that edits one status message, and computer-use approval callback parsing.
  * Telegraf send/edit calls are mocked.
  */
-import { type Content, encodeReplyCallback, type Memory } from "@elizaos/core";
+import {
+  type Content,
+  createUniqueUuid,
+  encodeReplyCallback,
+  type Memory,
+} from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { resolveTelegramRuntimeEntityId } from "./identity";
 import {
   createTelegramCompactProgressCallback,
   MessageManager,
@@ -299,6 +305,49 @@ describe("Telegram computer-use approval callbacks (#8912)", () => {
     expect(messageId).toBe(88);
     expect(inlineId).toBeUndefined();
     expect(text).toContain("Step 2: click");
+  });
+
+  it("stamps callback-query turns with the inbound message entity id", async () => {
+    const data = encodeReplyCallback("continue");
+    expect(data).not.toBeNull();
+    const answerCbQuery = vi.fn(async () => undefined);
+    const seen: string[] = [];
+    const messageService = {
+      handleMessage: vi.fn(async (_runtime: unknown, memory: Memory) => {
+        seen.push(memory.entityId);
+      }),
+    };
+    const env = makeManager({ messageService });
+
+    await env.manager.handleCallbackQuery({
+      callbackQuery: {
+        id: "cbq-entity",
+        data,
+        message: {
+          message_id: 77,
+          chat: { id: 123, type: "private" },
+          date: 1_700_000_000,
+        },
+      },
+      from: {
+        id: 42,
+        first_name: "Ada",
+        username: "ada",
+        is_bot: false,
+      },
+      chat: { id: 123, type: "private" },
+      telegram: { sendMessage: env.sendMessage },
+      answerCbQuery,
+    } as never);
+
+    const expected = await resolveTelegramRuntimeEntityId(
+      env.runtime as never,
+      "default",
+      "42",
+    );
+    expect(seen).toEqual([expected]);
+    expect(expected).toBe(createUniqueUuid(env.runtime as never, "default:42"));
+    expect(expected).not.toBe(createUniqueUuid(env.runtime as never, "42"));
   });
 });
 

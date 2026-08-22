@@ -94,7 +94,7 @@ describe("Cloud CF atomic Worker secrets deploy", () => {
     );
 
     const verify = step("Verify required Worker secret binding names");
-    expect(verify.run).toContain("wrangler@4.100.0 secret list");
+    expect(verify.run).toContain("wrangler@4.116.0 secret list");
     expect(verify.run).toContain("values were not read");
     expect(verify.run).toContain('"DATABASE_URL"');
     expect(verify.run).toContain('"OIDC_SIGNING_JWKS"');

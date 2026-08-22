@@ -38,7 +38,7 @@ process.env.CACHE_ENABLED = "true";
 process.env.MOCK_REDIS = "1";
 
 import { pushSchema } from "drizzle-kit/api";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { closeDatabaseConnectionsForTests, dbWrite } from "../../client";
 import { buildMobileAppAuthCredentialProvenance } from "../../mobile-app-auth-credential-policy";
 import { type ApiKey, apiKeys, type NewApiKey } from "../../schemas/api-keys";
@@ -1418,6 +1418,28 @@ describe("AppsRepository.attachInitialApiKey", () => {
       ).toBeNull();
     });
   }
+
+  test("rejects a key that expires after the transaction starts but before attachment", async () => {
+    expect(pgliteReady).toBe(true);
+    const { organizationId, userId } = await seedOrgAndUser();
+    const app = await createProvisionalApp(organizationId, userId);
+    const candidate = await createAttachmentCandidate(organizationId, userId);
+
+    const attached = await dbWrite.transaction(async (tx) => {
+      await tx.execute(sql`SELECT CURRENT_TIMESTAMP`);
+      await tx
+        .update(apiKeys)
+        .set({ expires_at: new Date(Date.now() + 100) })
+        .where(eq(apiKeys.id, candidate.id));
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      return appsRepository.attachInitialApiKey(app.id, organizationId, candidate.id, tx);
+    });
+
+    expect(attached).toBeUndefined();
+    expect(
+      (await dbWrite.query.apps.findFirst({ where: eq(apps.id, app.id) }))?.api_key_id,
+    ).toBeNull();
+  });
 
   test("rejects a second attachment and preserves the first key", async () => {
     expect(pgliteReady).toBe(true);

@@ -127,7 +127,7 @@ afterEach(() => {
 // ── per-connector render ────────────────────────────────────────────
 
 describe("connector-setup card — renders for each chat-set-up connector", () => {
-  for (const id of ["discord", "telegram", "signal", "imessage", "wechat"]) {
+  for (const id of ["discord", "telegram", "imessage", "wechat"]) {
     it(`renders the setup card for ${id}`, async () => {
       clientMock.getPlugins.mockResolvedValue({
         plugins: [plugin({ id })],

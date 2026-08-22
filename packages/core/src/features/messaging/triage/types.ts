@@ -19,7 +19,6 @@ export type MessageSource =
 	| "telegram"
 	| "twitter"
 	| "imessage"
-	| "signal"
 	| "whatsapp"
 	| "calendly"
 	| "browser_bridge";
@@ -30,7 +29,6 @@ export const ALL_MESSAGE_SOURCES: readonly MessageSource[] = [
 	"telegram",
 	"twitter",
 	"imessage",
-	"signal",
 	"whatsapp",
 	"calendly",
 	"browser_bridge",

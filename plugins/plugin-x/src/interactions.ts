@@ -273,6 +273,8 @@ export class TwitterInteractionClient {
         logger.log("Finished checking Twitter interactions");
       });
     } catch (error) {
+      // error-policy:J7 polling diagnostics must remain visible without killing
+      // the recurring interaction loop.
       this.runtime.reportError("XInteractionClient.handleInteractions", error);
     }
   }
@@ -283,36 +285,47 @@ export class TwitterInteractionClient {
   private async handleMentions(session: TwitterAccountSession) {
     const { profile } = session;
     const twitterUsername = profile.username;
-    const cachedCursor =
-      (await this.client.getIdentityCache<string>(profile, "mention_cursor")) ??
-      "";
-
-    const searchResult = await this.client.fetchSearchTweets(
-      `@${twitterUsername}`,
-      20,
-      SearchMode.Latest,
-      String(cachedCursor),
-    );
-
-    const mentionCandidates = searchResult.tweets;
+    const lastCheckedTweetId = this.client.getLatestCheckedTweetId(profile.id);
+    const mentionCandidates: ClientTweet[] = [];
+    const seenCursors = new Set<string>();
+    let cursor: string | undefined;
+    // Stay inside the recent-search window without silently dropping mentions
+    // that sit past the first page. Stop at the snowflake watermark so already
+    // processed ids are not re-fetched on later pages.
+    while (true) {
+      const searchResult = await this.client.fetchSearchTweets(
+        `@${twitterUsername}`,
+        20,
+        SearchMode.Latest,
+        cursor,
+      );
+      let hitWatermark = false;
+      for (const tweet of searchResult.tweets) {
+        mentionCandidates.push(tweet);
+        if (
+          lastCheckedTweetId !== null &&
+          typeof tweet.id === "string" &&
+          tweet.id.length > 0 &&
+          BigInt(tweet.id) <= lastCheckedTweetId
+        ) {
+          hitWatermark = true;
+        }
+      }
+      const nextCursor = searchResult.next;
+      if (hitWatermark || !nextCursor) {
+        break;
+      }
+      if (seenCursors.has(nextCursor)) {
+        throw new ElizaError("X mention pagination repeated a cursor", {
+          code: "X_MENTION_CURSOR_CYCLE",
+          context: { cursor: nextCursor, accountId: this.client.accountId },
+        });
+      }
+      seenCursors.add(nextCursor);
+      cursor = nextCursor;
+    }
 
     await this.processMentionTweetsForSession(mentionCandidates, session);
-    this.assertCurrentSession(session);
-    if (mentionCandidates.length > 0 && searchResult.previous) {
-      await this.client.setIdentityCache(
-        profile,
-        "mention_cursor",
-        searchResult.previous,
-        session,
-      );
-    } else if (!searchResult.previous && !searchResult.next) {
-      await this.client.setIdentityCache(
-        profile,
-        "mention_cursor",
-        "",
-        session,
-      );
-    }
   }
 
   /**

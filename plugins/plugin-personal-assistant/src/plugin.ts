@@ -1132,11 +1132,15 @@ const rawPersonalAssistantPlugin: Plugin = {
     const lifeOpsSchedulerDisabled = isDisabledByEnv(
       "ELIZA_DISABLE_LIFEOPS_SCHEDULER",
     );
+    let workflowClaimSchemaReady = false;
     // Register the identity even when execution is disabled. Owner-profile
     // updates persist on the LIFEOPS_SCHEDULER row and can create it lazily;
     // the disabled worker keeps that row valid while shouldRun=false preserves
     // the process-level kill switch.
-    registerLifeOpsTaskWorker(runtime, { disabled: lifeOpsSchedulerDisabled });
+    registerLifeOpsTaskWorker(runtime, {
+      disabled: lifeOpsSchedulerDisabled,
+      isWorkflowClaimSchemaReady: () => workflowClaimSchemaReady,
+    });
     if (!lifeOpsSchedulerDisabled) {
       registerMessageDraftScheduledTaskBridge(runtime);
       scheduleTaskEnsureAfterRuntimeInit({
@@ -1153,6 +1157,17 @@ const rawPersonalAssistantPlugin: Plugin = {
         prefix: "[lifeops]",
         label: "scheduler task",
         ensure: async () => {
+          // The workflow-run claim is only an election once the partial
+          // unique index exists (installed by the bootstrapSchema compat
+          // repair, not by the ordinary drizzle migration). Install/verify it
+          // before the scheduler task is ensured so a cold worker cannot
+          // execute workflows against an unconstrained table. On failure the
+          // scheduler task stays un-ensured and the failure is logged +
+          // recorded by scheduleTaskEnsureAfterRuntimeInit ("subsystem is
+          // degraded"); claimWorkflowRun's explicit conflict target fails
+          // closed as the backstop for any path that races this install.
+          await LifeOpsRepository.bootstrapSchema(runtime);
+          workflowClaimSchemaReady = true;
           await ensureLifeOpsSchedulerTask(runtime);
         },
       });

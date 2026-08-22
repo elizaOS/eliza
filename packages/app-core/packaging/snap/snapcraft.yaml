@@ -138,7 +138,6 @@ parts:
           "plugin-personal-assistant",
           "plugin-local-inference",
           "plugin-pdf",
-          "plugin-signal",
           "plugin-sql",
           "plugin-task-coordinator",
           "plugin-telegram",

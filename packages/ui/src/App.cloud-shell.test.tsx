@@ -78,6 +78,24 @@ describe("App standalone chat-overlay wiring", () => {
     );
   });
 
+  it("keeps native auxiliary app windows free of duplicate chat overlays", () => {
+    expect(APP_TSX).toContain("isAppWindowRoute,");
+    expect(APP_TSX).toContain(
+      "const isAuxiliaryAppWindow = isAppWindowRoute();",
+    );
+    expect(APP_TSX).toContain("{!isAuxiliaryAppWindow ? (");
+
+    const auxiliaryGuard = APP_TSX.slice(
+      APP_TSX.indexOf("{!isAuxiliaryAppWindow ? ("),
+      APP_TSX.indexOf("<PermissionPrimingOverlay />"),
+    );
+    expect(auxiliaryGuard).toContain("<ChatOverlayMount");
+    expect(auxiliaryGuard).toContain("<FirstRunConductorMount");
+    expect(auxiliaryGuard).toContain("<ModelStatusConductorMount />");
+    expect(auxiliaryGuard).toContain("<BootRecoveryConductorMount />");
+    expect(auxiliaryGuard).toContain("<TutorialConductorMount />");
+  });
+
   it("opens the packaged desktop pill into the shared mobile chat composer", () => {
     const overlayShell = APP_TSX.slice(
       APP_TSX.indexOf("function ChatOverlayShell({"),
@@ -197,7 +215,10 @@ describe("App standalone chat-overlay wiring", () => {
     // persistent ambient overlay as its composer.
     expect(CHATVIEW_TSX).toContain("hideComposer");
     expect(APP_TSX).toContain("<ChatOverlayMount");
-    expect(APP_TSX).toContain("floats over EVERY view, including the /chat");
+    expect(APP_TSX).toContain(
+      "Chat overlay (ChatOverlay) — one ambient glass conversation in the",
+    );
+    expect(APP_TSX).toContain("primary shell.");
     // The composer swaps mic→send once there's a draft (one trailing control).
     expect(OVERLAY_TSX).toContain("hasDraft");
     expect(OVERLAY_TSX).toContain("(hasDraft || hasImages) && !recording");

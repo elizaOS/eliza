@@ -50,7 +50,6 @@ describe.skipIf(!LIVE_ENABLED || !provider)(
           "x-twitter",
           "calendly",
           "cloud-managed",
-          "signal",
           "browser-workspace",
           "imessage",
           "github",

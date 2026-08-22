@@ -101,7 +101,6 @@ const VALID_ACTIONS: ReadonlySet<ApprovalAction> = new Set([
 const VALID_CHANNELS: ReadonlySet<ApprovalChannel> = new Set([
   "telegram",
   "discord",
-  "signal",
   "whatsapp",
   "slack",
   "imessage",

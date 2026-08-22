@@ -64,7 +64,6 @@
       "@elizaos/plugin-whatsapp": [
         "../../plugins/plugin-whatsapp/src/index.ts"
       ],
-      "@elizaos/plugin-signal": ["../../plugins/plugin-signal/src/index.ts"],
       "@elizaos/plugin-task-coordinator": [
         "../../plugins/plugin-task-coordinator/src/index.ts"
       ],

@@ -660,10 +660,6 @@
       "destination": "/tracks/agent/connect-channels"
     },
     {
-      "source": "/connectors/signal",
-      "destination": "/tracks/agent/connect-channels"
-    },
-    {
       "source": "/connectors/slack",
       "destination": "/tracks/agent/connect-channels"
     },

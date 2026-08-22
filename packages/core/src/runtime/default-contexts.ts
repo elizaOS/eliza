@@ -301,7 +301,7 @@ export const DEFAULT_CONTEXT_DEFINITIONS: readonly ContextDefinition[] =
 			id: "messaging",
 			label: "Messaging",
 			description:
-				"Read, send, draft, search, triage, mute, follow, or manage private/group messages across Discord, Slack, Telegram, Signal, iMessage, WhatsApp, X DMs, and similar.",
+				"Read, send, draft, search, triage, mute, follow, or manage private/group messages across Discord, Slack, Telegram, iMessage, WhatsApp, X DMs, and similar.",
 			sensitivity: "private",
 			cacheScope: "turn",
 			subcontexts: ["phone", "social"],
