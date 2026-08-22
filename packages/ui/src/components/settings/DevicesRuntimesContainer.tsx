@@ -40,6 +40,7 @@ import {
   getSshRuntimeStatus,
   inspectSshHost,
   type SshHostInspection,
+  type SshRuntimeStatus,
   startSshRuntime,
   stopSshRuntime,
 } from "../../platform/ssh-runtime";
@@ -167,21 +168,31 @@ function restoredRelayProfile(
 function profileTarget(
   profile: AgentProfile,
   activeId: string | null,
-  sshRunning: ReadonlyMap<string, boolean>,
+  sshStatuses: ReadonlyMap<string, SshRuntimeStatus>,
   directory: RemoteHostDirectory | null,
   sessions: ReadonlyMap<string, RemoteSessionSummary[]>,
 ): DeviceRuntimeTarget {
   const selected = profile.id === activeId;
   if (profile.connectionMode === "ssh") {
-    const running = sshRunning.get(profile.id) ?? false;
+    const sshStatus = sshStatuses.get(profile.id);
+    const running = sshStatus?.running ?? false;
+    const blocked = sshStatus?.reconnectState === "blocked";
     return {
       id: profile.id,
       label: profile.label,
       detail: `VPS over SSH · ${profile.ssh?.target ?? "Unknown target"}`,
       kind: "ssh",
-      status: running ? "connected" : "offline",
+      status: blocked ? "error" : running ? "connected" : "offline",
       selected,
-      activity: running ? "Tunnel active" : "Tunnel stopped",
+      activity: blocked
+        ? "Reconnect blocked"
+        : running
+          ? "Tunnel active"
+          : "Tunnel stopped",
+      error: blocked
+        ? (sshStatus.lastError ??
+          "The SSH tunnel could not be restored. Inspect the host and reconnect manually.")
+        : undefined,
       canRemove: true,
     };
   }
@@ -348,7 +359,7 @@ function resolveRelayRevocationAuthority(
 
 function buildRuntimeTargets(
   registry: AgentProfileRegistry,
-  sshRunning: ReadonlyMap<string, boolean>,
+  sshStatuses: ReadonlyMap<string, SshRuntimeStatus>,
   directory: RemoteHostDirectory | null,
   sessions: ReadonlyMap<string, RemoteSessionSummary[]>,
   controller: RemoteControllerPublicIdentity | null,
@@ -357,7 +368,7 @@ function buildRuntimeTargets(
     profileTarget(
       profile,
       registry.activeProfileId,
-      sshRunning,
+      sshStatuses,
       directory,
       sessions,
     ),
@@ -475,7 +486,7 @@ export function DevicesRuntimesContainer({
   const [sessions, setSessions] = useState<Map<string, RemoteSessionSummary[]>>(
     () => new Map(),
   );
-  const [sshRunning, setSshRunning] = useState<Map<string, boolean>>(
+  const [sshStatuses, setSshStatuses] = useState<Map<string, SshRuntimeStatus>>(
     () => new Map(),
   );
   const [linuxTarget, setLinuxTarget] = useState<LinuxRemoteTargetView | null>(
@@ -507,13 +518,10 @@ export function DevicesRuntimesContainer({
     const statuses = await Promise.all(
       sshProfiles.map(
         async (profile) =>
-          [
-            profile.id,
-            (await getSshRuntimeStatus(profile.id)).running,
-          ] as const,
+          [profile.id, await getSshRuntimeStatus(profile.id)] as const,
       ),
     );
-    setSshRunning(new Map(statuses));
+    setSshStatuses(new Map(statuses));
     if (
       isElectrobunRuntime() &&
       navigator.platform.toLowerCase().includes("linux")
@@ -605,12 +613,12 @@ export function DevicesRuntimesContainer({
   const targets = useMemo(() => {
     return buildRuntimeTargets(
       registry,
-      sshRunning,
+      sshStatuses,
       directory,
       sessions,
       controller,
     );
-  }, [controller, directory, registry, sessions, sshRunning]);
+  }, [controller, directory, registry, sessions, sshStatuses]);
 
   const removeProfileAfterCleanup = useCallback((profileId: string) => {
     removeProfileWithoutStaleSelection(profileId, {

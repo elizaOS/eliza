@@ -81,6 +81,22 @@ const LOCAL_PROFILE: AgentProfile = {
   createdAt: "2026-08-21T00:00:00.000Z",
 };
 
+const SSH_PROFILE: AgentProfile = {
+  id: "ssh-profile",
+  label: "Production VPS",
+  kind: "remote",
+  apiBase: "eliza-ssh://runtime/ssh-profile",
+  credentialRef: "ssh-profile",
+  connectionMode: "ssh",
+  createdAt: "2026-08-21T00:00:00.000Z",
+  ssh: {
+    target: "eliza@vps.example",
+    sshPort: 22,
+    remoteApiPort: 3000,
+    hostFingerprint: `SHA256:${"A".repeat(43)}`,
+  },
+};
+
 const CONTROLLER = {
   version: 1 as const,
   role: "controller" as const,
@@ -120,6 +136,35 @@ describe("Devices & Runtimes reconciliation", () => {
     );
     expect(target.status).toBe("error");
     expect(target.error).toMatch(/no longer active/);
+  });
+
+  it("surfaces an actionable SSH restart block instead of generic offline state", () => {
+    const lastError =
+      "The trusted SSH host fingerprint no longer matches this runtime. Inspect and reconnect it manually.";
+    const target = devicesRuntimesInternals.profileTarget(
+      SSH_PROFILE,
+      null,
+      new Map([
+        [
+          SSH_PROFILE.id,
+          {
+            running: false,
+            localPort: null,
+            startedAt: null,
+            reconnectState: "blocked" as const,
+            lastError,
+          },
+        ],
+      ]),
+      null,
+      new Map(),
+    );
+
+    expect(target).toMatchObject({
+      status: "error",
+      activity: "Reconnect blocked",
+      error: lastError,
+    });
   });
 
   it("revokes Cloud before local cleanup and retains the profile after partial failure", async () => {
