@@ -662,6 +662,29 @@ describe("live routing regressions", () => {
 		}
 	});
 
+	it("a script that just prints a constant is an inline snippet, not coding work", () => {
+		const actions: Array<Pick<Action, "name" | "similes" | "tags">> = [
+			{ name: "TASKS", similes: ["TASKS_SPAWN_AGENT"] },
+		];
+		for (const text of [
+			"write a python script that just prints nubs",
+			"make me a bash script that only says hello",
+		]) {
+			expect(
+				inferDirectCurrentRequestCandidateActions(actions, text),
+			).not.toContain("TASKS");
+		}
+		// A computed deliverable still gets built and run.
+		for (const text of [
+			"write me a python script that picks a random card from a deck and prints it",
+			"write a python script that prints the current bitcoin price",
+		]) {
+			expect(inferDirectCurrentRequestCandidateActions(actions, text)).toEqual([
+				"TASKS",
+			]);
+		}
+	});
+
 	it("passive shares still route to WEB_FETCH and never reach TASKS (control for #18108)", () => {
 		// The control: genuine passive link shares must still route to the
 		// web-read light path — the fix must not widen routing to let passive

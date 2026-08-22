@@ -11573,7 +11573,17 @@ function looksLikeInlineCodeSnippetRequest(text: string): boolean {
 	) {
 		return false;
 	}
+	// A script whose whole body is one constant statement ("a python script
+	// that just prints nubs") is a snippet the reply can carry inline; routing
+	// it through a coding sub-agent spent a 27s build and the user never saw
+	// the one line (live 2026-08-22). Scoped by the just/only/simply marker so
+	// computed deliverables ("prints a random card") still get built and run.
+	const constantOutputScript =
+		/\b(?:script|program)\b[\s\S]{0,40}\b(?:just|only|simply)\s+(?:prints?|says?|outputs?|echo(?:es)?|displays?|returns?)\b/iu.test(
+			normalized,
+		);
 	const asksForSnippet =
+		constantOutputScript ||
 		/\b(?:write|give me|show me|generate|provide|create|make)\b[\s\S]{0,80}\b(?:code block|snippet|function|class|method|example|program|one[- ]?liner|hello world|fibonacci)\b/iu.test(
 			normalized,
 		) ||
@@ -11581,6 +11591,7 @@ function looksLikeInlineCodeSnippetRequest(text: string): boolean {
 			normalized,
 		);
 	const hasSmallScope =
+		constantOutputScript ||
 		/\b(?:hello world|fibonacci|fib|single|simple|short|small|tiny|example|snippet|function|code block|one[- ]?liner|\d+\s*[- ]?line)\b/iu.test(
 			normalized,
 		);
