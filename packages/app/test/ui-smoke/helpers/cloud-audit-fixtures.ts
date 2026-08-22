@@ -49,6 +49,7 @@ export async function seedStewardToken(page: Page): Promise<void> {
 // itself part of the audit.
 
 const NOW_ISO = new Date().toISOString();
+const HOURLY_FUTURE_ISO = new Date(Date.now() + 60 * 60 * 1000).toISOString();
 const FUTURE_ISO = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
 /** ApplicationDetailPage requires a valid UUID id (redirects otherwise). */
 export const SMOKE_APP_UUID = "6f9619ff-8b86-4d01-b42d-00c04fc964ff";
@@ -431,6 +432,10 @@ const STUB_RULES: StubRule[] = [
                   name: "Smoke API container",
                   status: "running",
                   billingStatus: "active",
+                  billingInterval: "day",
+                  lastBilledAt: NOW_ISO,
+                  nextBillingAt: FUTURE_ISO,
+                  estimatedNextBillingAt: FUTURE_ISO,
                   ratePerHour: {
                     status: "available",
                     source: "compute-billing-rate-segments",
@@ -458,6 +463,10 @@ const STUB_RULES: StubRule[] = [
                   name: "Smoke research agent",
                   status: "running",
                   billingStatus: "active",
+                  billingInterval: "hour",
+                  lastBilledAt: null,
+                  nextBillingAt: null,
+                  estimatedNextBillingAt: HOURLY_FUTURE_ISO,
                   ratePerHour: {
                     status: "available",
                     source: "compute-billing-rate-segments",
