@@ -5316,12 +5316,21 @@ export class OrchestratorTaskService extends Service {
 
       // 4. Text judge (fallback for non-code / criteria-light tasks).
       const { laneTask } = this.laneScope(doc, sessionId);
+      // The judge must see the user's own words: the planner's goal is often
+      // a bare title ("Lucky Numbers Script"), and a child that printed six
+      // numbers in 1-49 for "3 random lucky numbers between 1 and 50" passed
+      // because nothing in the goal said 3 or 50 (live 2026-08-22).
+      const request = doc.task.originalRequest?.trim();
+      const goalWithRequest =
+        request && request !== doc.task.goal
+          ? `${doc.task.goal}\n\nThe user's request, verbatim (the deliverable must match its specifics — counts, ranges, names, formats): ${request}`
+          : doc.task.goal;
       const verdict = await verifyGoalCompletion(
         this.runtime,
         {
           goal: laneTask
-            ? `${doc.task.goal}\n\nThis completion is for ONE lane of a multi-lane task. Judge ONLY this lane's deliverable: ${laneTask}\nSibling lanes are verified separately; their absence from the evidence is not a gap.`
-            : doc.task.goal,
+            ? `${goalWithRequest}\n\nThis completion is for ONE lane of a multi-lane task. Judge ONLY this lane's deliverable: ${laneTask}\nSibling lanes are verified separately; their absence from the evidence is not a gap.`
+            : goalWithRequest,
           acceptanceCriteria,
           completionEvidence: evidence,
         },
