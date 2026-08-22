@@ -902,12 +902,28 @@ export async function handleConnectorAccountRoutes(
       }
 
       if (action === "refresh") {
-        const refreshed = await manager.patchAccount(provider, accountId, {
-          metadata: {
-            ...(account.metadata ?? {}),
-            lastSyncedAt: Date.now(),
-          },
-        });
+        let refreshPatch: ConnectorAccountPatch;
+        try {
+          // error-policy:J1 route boundary — the stored row may already sit at
+          // the durable-storage node budget; adding lastSyncedAt tips it over,
+          // and the rejection must land before any registered provider
+          // patchAccount callback fires. Every other error is rethrown.
+          refreshPatch = validatePatchMetadataForStorage({
+            metadata: {
+              ...(account.metadata ?? {}),
+              lastSyncedAt: Date.now(),
+            },
+          });
+        } catch (err) {
+          if (!isUnboundedMetadataGraph(err)) throw err;
+          error(res, UNBOUNDED_METADATA_MESSAGE, 400);
+          return true;
+        }
+        const refreshed = await manager.patchAccount(
+          provider,
+          accountId,
+          refreshPatch,
+        );
         json(res, {
           ok: true,
           provider,
@@ -932,12 +948,23 @@ export async function handleConnectorAccountRoutes(
         for (const item of accounts) {
           const isTarget = item.id === accountId;
           if (item.metadata?.isDefault === isTarget) continue;
-          await manager.patchAccount(provider, item.id, {
-            metadata: {
-              ...(item.metadata ?? {}),
-              isDefault: isTarget,
-            },
-          });
+          let defaultPatch: ConnectorAccountPatch;
+          try {
+            // error-policy:J1 route boundary — same pre-provider validation as
+            // refresh: a listed row near the storage budget must be rejected
+            // here, before its provider callback can run. Rethrow otherwise.
+            defaultPatch = validatePatchMetadataForStorage({
+              metadata: {
+                ...(item.metadata ?? {}),
+                isDefault: isTarget,
+              },
+            });
+          } catch (err) {
+            if (!isUnboundedMetadataGraph(err)) throw err;
+            error(res, UNBOUNDED_METADATA_MESSAGE, 400);
+            return true;
+          }
+          await manager.patchAccount(provider, item.id, defaultPatch);
         }
         const updatedAccounts = await manager.listAccounts(provider);
         const updatedAccount =
