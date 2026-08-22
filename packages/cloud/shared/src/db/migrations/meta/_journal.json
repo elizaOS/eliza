@@ -1975,6 +1975,13 @@
       "when": 1793995200000,
       "tag": "0298_warm_pool_rate_segment_exemption",
       "breakpoints": true
+    },
+    {
+      "idx": 282,
+      "version": "7",
+      "when": 1794081600000,
+      "tag": "0299_retire_hosted_whatsapp_credentials",
+      "breakpoints": true
     }
   ]
 }
