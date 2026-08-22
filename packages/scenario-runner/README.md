@@ -145,10 +145,13 @@ from the authoritative stores, while `resetProductionManifest` accepts that
 receipt in a later process, strictly reparses its keys, hashes, UUID sets, and
 participant containment, and requires its canonical hash to match the
 finalized receipt hash in authoritative world metadata before public read or
-reset. Reset then verifies namespace ownership, deletes through the production
-boundaries, and proves absence. Public reset is intentionally once-only: an
-absent world has no authoritative provenance and a replay or never-issued
-receipt is rejected rather than reported as successful. Manifest input is
+reset. Each receipt carries a fresh generation fence. Reset then verifies
+namespace and generation ownership, persists an exact receipt-hash-bound
+`resetting` control record, deletes through the production boundaries, and
+proves absence before persisting `complete`. A retry after an ambiguous process
+exit resumes only that authorized generation, while a clean replay returns the
+same absence artifact; a never-issued or stale-generation receipt is rejected.
+Manifest input is
 admitted only as bounded, plain JSON data and recursively validated as lossless
 JSON before any write. Logical entity, relationship, and earlier-task
 references inside schedules are materialized to production IDs, then
@@ -161,9 +164,9 @@ and provider-state ownership needed for restart-safe cleanup. Apply discovers
 idempotent production rows after post-commit failures and compensates them;
 notification enumeration used for cleanup includes expired rows. Approval
 seeding awaits its durable notification projection, so no background write can
-escape receipt finalization. Cross-process generation fencing and virtual-clock
-authority remain controller-level composition dependencies rather than hidden
-manifest-local state.
+escape receipt finalization. The manifest generation fences deterministic rows
+and reset authority across processes; exclusive multi-host scheduling and
+virtual-clock authority remain controller-level composition dependencies.
 
 ## Strict model fixtures
 

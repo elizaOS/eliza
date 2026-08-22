@@ -91,14 +91,12 @@ const SCHEDULED_DISPATCH_TITLE_PROMPT_PREFIX =
 const SCHEDULED_DISPATCH_TITLE_BODY_MARKER = "\nMessage body:\n";
 
 async function createScenarioKnowledgeGraphPlugin(): Promise<Plugin> {
-  const agentPackageName: string = "@elizaos/agent";
-  const agentModule = (await import(agentPackageName)) as Record<
-    string,
-    unknown
-  >;
-  const KnowledgeGraphService = agentModule.KnowledgeGraphService;
-  const ApprovalService = agentModule.ApprovalService;
-  const knowledgeGraphSchema = agentModule.knowledgeGraphSchema;
+  const [knowledgeGraphModule, approvalModule] = await Promise.all([
+    import("@elizaos/agent/services/knowledge-graph"),
+    import("@elizaos/agent/services/approval/index"),
+  ]);
+  const { KnowledgeGraphService, knowledgeGraphSchema } = knowledgeGraphModule;
+  const { ApprovalService } = approvalModule;
   if (
     typeof KnowledgeGraphService !== "function" ||
     typeof ApprovalService !== "function" ||
