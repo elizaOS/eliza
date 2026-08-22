@@ -469,7 +469,6 @@
     "clsx": "^2.1.1",
     "cron-parser": "^5.5.0",
     "date-fns": "^4.1.0",
-    "electrobun-controls": "0.1.1",
     "embla-carousel-react": "^8.6.0",
     "libphonenumber-js": "^1.12.35",
     "lucide-react": "^1.0.0",

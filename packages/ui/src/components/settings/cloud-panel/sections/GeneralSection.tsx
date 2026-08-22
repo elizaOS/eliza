@@ -10,8 +10,8 @@ import { Check } from "lucide-react";
 import * as React from "react";
 import { useAgentElement } from "../../../../agent-surface";
 import { invokeDesktopBridgeRequest } from "../../../../bridge";
-import { isDesktopPlatform } from "../../../../platform";
 import { cn } from "../../../../lib/utils";
+import { isDesktopPlatform } from "../../../../platform";
 import { ACCENT_PRESETS, useAppSelector } from "../../../../state";
 import type { AccentPreset } from "../../../../state/ui-preferences";
 import {
@@ -20,15 +20,15 @@ import {
   DEFAULT_BACKGROUND_CATALOG_ID,
 } from "../../../../state/ui-preferences";
 import { useBackgroundConfig } from "../../../../state/useBackgroundConfig";
+import { LANGUAGES } from "../../../shared/LanguageDropdown.helpers";
 import {
+  NuphyRow,
+  NuphySegmentedRow,
+  NuphySelectRow,
+  NuphySwitchRow,
   SettingsGroup,
   SettingsStack,
-  NuphySwitchRow,
-  NuphySelectRow,
-  NuphySegmentedRow,
-  NuphyRow,
 } from "../nuphy-settings-primitives";
-import { LANGUAGES } from "../../../shared/LanguageDropdown.helpers";
 
 const THEME_OPTIONS = [
   { value: "system", label: "Auto" },

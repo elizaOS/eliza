@@ -438,7 +438,6 @@
         "@napi-rs/keyring": "^1.1.6",
         "bonjour-service": "1.4.2",
         "electrobun": "^1.18.1",
-        "electrobun-controls": "0.1.1",
       },
       "devDependencies": {
         "@biomejs/biome": "2.5.8",
@@ -1163,7 +1162,6 @@
         "clsx": "^2.1.1",
         "cron-parser": "^5.5.0",
         "date-fns": "^4.1.0",
-        "electrobun-controls": "0.1.1",
         "embla-carousel-react": "^8.6.0",
         "libphonenumber-js": "^1.12.35",
         "lucide-react": "^1.0.0",
@@ -7475,8 +7473,6 @@
     "ejs": ["ejs@5.0.1", "", { "bin": { "ejs": "bin/cli.js" } }, "sha512-COqBPFMxuPTPspXl2DkVYaDS3HtrD1GpzOGkNTJ1IYkifq/r9h8SVEFrjA3D9/VJGOEoMQcrlhpntcSUrM8k6A=="],
 
     "electrobun": ["electrobun@1.18.1", "", { "dependencies": { "@babylonjs/core": "^7.45.0", "@types/bun": "^1.3.8", "png-to-ico": "^2.1.8", "proxy-agent": "^6.5.0", "rcedit": "^4.0.1", "three": "^0.165.0" }, "bin": { "electrobun": "bin/electrobun.cjs" } }, "sha512-tgZ+WKGskn/1/Y5i1mpVCCkgRa1O31Tz7MIArBTK44GfPzT43uOq9c/HvxdQGrLeZV8ZvjK1lQrwqSXCgh6tvA=="],
-
-    "electrobun-controls": ["electrobun-controls@0.1.1", "", { "peerDependencies": { "electrobun": ">=1.16.0" } }, "sha512-Av7Re8tcQS+MZMuoXw3BwkXqL2scNejttmSjndGNnVup+1f4+Gta56EClXcwvujUoC0AhG5lK6LJblZAe3TeEA=="],
 
     "electron-to-chromium": ["electron-to-chromium@1.5.408", "", {}, "sha512-SLoprcYpJ/OH2v2ps0+N5biv9H4/KBT3+YmmDew64TwK5y9j2wv7pMOFY7IorVkyMtEyLSCRlXKLsNlakeAlPw=="],
 

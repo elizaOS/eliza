@@ -5,20 +5,23 @@
  * rows remain addressable from chat/voice (useAgentElement). The API mirrors
  * the shared settings-agent-rows but renders NuPhy's macOS-inspired controls
  * (IosToggle, SelectPill, Segmented, Slider, Button) instead of the legacy
- * Switch/Select/SegmentedGroup.
+ * Switch/Select/SegmentedGroup. This is the package's only dependency boundary:
+ * application behavior remains in these wrappers and all package styling is
+ * confined to the `.nuphy-scope` settings root.
  */
-import type { LucideIcon } from "lucide-react";
-import * as React from "react";
+
 import {
-  Button as NuphyButton,
   IosToggle,
-  Segmented,
-  SelectPill,
+  Button as NuphyButton,
+  Input as NuphyInput,
   SettingRow as NuphySettingRow,
   SettingsGroup as NuphySettingsGroup,
   Slider as NuphySlider,
-  Input as NuphyInput,
+  Segmented,
+  SelectPill,
 } from "@extrastu/nuphy-ui";
+import type { LucideIcon } from "lucide-react";
+import * as React from "react";
 import { useAgentElement } from "../../../agent-surface";
 import { cn } from "../../../lib/utils";
 
@@ -29,9 +32,7 @@ export function SettingsStack({
   className,
   ...props
 }: React.HTMLAttributes<HTMLDivElement>) {
-  return (
-    <div className={cn("flex flex-col gap-10", className)} {...props} />
-  );
+  return <div className={cn("flex flex-col gap-10", className)} {...props} />;
 }
 
 /**
@@ -84,8 +85,6 @@ export function NuphySwitchRow({
   label,
   agentLabel,
   description,
-  icon: Icon,
-  iconClassName,
   checked,
   onCheckedChange,
   disabled = false,
@@ -95,7 +94,7 @@ export function NuphySwitchRow({
   testId,
 }: NuphySwitchRowProps) {
   const resolvedLabel = agentLabel ?? labelToString(label, agentId);
-  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+  const { ref, agentProps } = useAgentElement<HTMLDivElement>({
     id: agentId,
     role: "toggle",
     label: resolvedLabel,
@@ -108,21 +107,25 @@ export function NuphySwitchRow({
   const { "aria-label": _ignored, ...toggleAgentProps } = agentProps;
 
   return (
-    <NuphySettingRow
-      title={typeof label === "string" ? label : labelToString(label, agentId)}
-      description={
-        typeof description === "string" ? description : undefined
-      }
-      control={
-        <IosToggle
-          id={agentId}
-          checked={checked}
-          onCheckedChange={onCheckedChange}
-          disabled={disabled}
-          {...(toggleAgentProps as Record<string, unknown>)}
-        />
-      }
-    />
+    <div className={className}>
+      <NuphySettingRow
+        title={
+          typeof label === "string" ? label : labelToString(label, agentId)
+        }
+        description={typeof description === "string" ? description : undefined}
+        control={
+          <div ref={ref} {...toggleAgentProps} data-testid={testId}>
+            <IosToggle
+              id={agentId}
+              checked={checked}
+              onCheckedChange={onCheckedChange}
+              disabled={disabled}
+              aria-label={resolvedLabel}
+            />
+          </div>
+        }
+      />
+    </div>
   );
 }
 
@@ -154,8 +157,6 @@ export function NuphySelectRow({
   label,
   agentLabel,
   description,
-  icon: Icon,
-  iconClassName,
   value,
   onValueChange,
   options,
@@ -178,23 +179,25 @@ export function NuphySelectRow({
   const { "aria-label": _ignored, ...selectAgentProps } = agentProps;
 
   return (
-    <NuphySettingRow
-      title={typeof label === "string" ? label : labelToString(label, agentId)}
-      description={
-        typeof description === "string" ? description : undefined
-      }
-      control={
-        <div ref={ref} {...selectAgentProps} data-testid={testId}>
-          <SelectPill
-            options={options}
-            value={value}
-            onValueChange={onValueChange}
-            disabled={disabled}
-            aria-label={resolvedLabel}
-          />
-        </div>
-      }
-    />
+    <div className={className}>
+      <NuphySettingRow
+        title={
+          typeof label === "string" ? label : labelToString(label, agentId)
+        }
+        description={typeof description === "string" ? description : undefined}
+        control={
+          <div ref={ref} {...selectAgentProps} data-testid={testId}>
+            <SelectPill
+              options={options}
+              value={value}
+              onValueChange={onValueChange}
+              disabled={disabled}
+              aria-label={resolvedLabel}
+            />
+          </div>
+        }
+      />
+    </div>
   );
 }
 
@@ -242,9 +245,7 @@ export function NuphySegmentedRow({
   return (
     <NuphySettingRow
       title={typeof label === "string" ? label : labelToString(label, agentId)}
-      description={
-        typeof description === "string" ? description : undefined
-      }
+      description={typeof description === "string" ? description : undefined}
       control={
         <div ref={ref} {...agentProps}>
           <Segmented
@@ -308,9 +309,7 @@ export function NuphySliderRow({
   return (
     <NuphySettingRow
       title={typeof label === "string" ? label : labelToString(label, agentId)}
-      description={
-        typeof description === "string" ? description : undefined
-      }
+      description={typeof description === "string" ? description : undefined}
       control={
         <NuphySlider
           value={value}
@@ -373,9 +372,7 @@ export function NuphyInputRow({
   return (
     <NuphySettingRow
       title={typeof label === "string" ? label : labelToString(label, agentId)}
-      description={
-        typeof description === "string" ? description : undefined
-      }
+      description={typeof description === "string" ? description : undefined}
       control={
         <NuphyInput
           ref={ref as React.Ref<HTMLInputElement>}
@@ -435,9 +432,7 @@ export function NuphyActionButton({
   return (
     <NuphySettingRow
       title={typeof label === "string" ? label : labelToString(label, agentId)}
-      description={
-        typeof description === "string" ? description : undefined
-      }
+      description={typeof description === "string" ? description : undefined}
       control={
         <NuphyButton
           ref={ref}
@@ -559,7 +554,9 @@ export function NuphyModal({
       aria-modal="true"
       aria-label={title}
     >
-      <div
+      <button
+        type="button"
+        aria-label="Close dialog"
         className="absolute inset-0 bg-black/40 backdrop-blur-[2px]"
         onClick={onClose}
       />
@@ -589,6 +586,7 @@ export function NuphyModal({
               aria-label="Close dialog"
             >
               <svg
+                aria-hidden="true"
                 className="h-4 w-4"
                 fill="none"
                 stroke="currentColor"
@@ -661,7 +659,9 @@ export function NuphyConfirmDialog({
         </div>
       }
     >
-      <p className="text-[14px] leading-5 text-muted-foreground">{description}</p>
+      <p className="text-[14px] leading-5 text-muted-foreground">
+        {description}
+      </p>
     </NuphyModal>
   );
 }

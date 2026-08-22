@@ -122,14 +122,63 @@
    aren't detected) and are stripped by LightningCSS if declared in
    @layer utilities. Declaring them here as plain CSS preserves them. */
 
-.nuphy-scope .hover\:bg-fill:hover { background-color: var(--fill); }
-.nuphy-scope .hover\:bg-fill-strong:hover { background-color: var(--fill-strong); }
-.nuphy-scope .hover\:bg-fill\/60:hover { background-color: color-mix(in oklab, var(--fill) 60%, transparent); }
-.nuphy-scope .active\:bg-fill-strong:active { background-color: var(--fill-strong); }
-.nuphy-scope .bg-success\/12 { background-color: color-mix(in oklab, var(--success) 12%, transparent); }
-.nuphy-scope .bg-destructive\/12 { background-color: color-mix(in oklab, var(--destructive) 12%, transparent); }
-.nuphy-scope .bg-warning\/12 { background-color: color-mix(in oklab, var(--warning) 12%, transparent); }
-.nuphy-scope .placeholder\:text-muted-foreground::placeholder { color: var(--muted-foreground); }
-.nuphy-scope .focus-visible\:ring-ring:focus-visible { --tw-ring-color: var(--ring); }
-.nuphy-scope .focus-visible\:ring-offset-canvas:focus-visible { --tw-ring-offset-color: var(--canvas); }
-.nuphy-scope .focus-visible\:ring-offset-2:focus-visible { --tw-ring-offset-width: 2px; }
+.nuphy-scope .hover\:bg-fill:hover {
+  background-color: var(--fill);
+}
+.nuphy-scope .hover\:bg-fill-strong:hover {
+  background-color: var(--fill-strong);
+}
+.nuphy-scope .hover\:bg-fill\/60:hover {
+  background-color: color-mix(in oklab, var(--fill) 60%, transparent);
+}
+.nuphy-scope .active\:bg-fill-strong:active {
+  background-color: var(--fill-strong);
+}
+.nuphy-scope .bg-fill {
+  background-color: var(--fill);
+}
+.nuphy-scope .bg-fill-strong {
+  background-color: var(--fill-strong);
+}
+.nuphy-scope .bg-surface {
+  background-color: var(--surface);
+}
+.nuphy-scope .bg-success {
+  background-color: var(--success);
+}
+.nuphy-scope .border-hairline {
+  border-color: var(--hairline);
+}
+.nuphy-scope .text-success {
+  color: var(--success);
+}
+.nuphy-scope .text-success-foreground {
+  color: var(--success-foreground);
+}
+.nuphy-scope .text-warning {
+  color: var(--warning);
+}
+.nuphy-scope .bg-success\/12 {
+  background-color: color-mix(in oklab, var(--success) 12%, transparent);
+}
+.nuphy-scope .bg-destructive\/12 {
+  background-color: color-mix(in oklab, var(--destructive) 12%, transparent);
+}
+.nuphy-scope .bg-warning\/12 {
+  background-color: color-mix(in oklab, var(--warning) 12%, transparent);
+}
+.nuphy-scope .placeholder\:text-muted-foreground::placeholder {
+  color: var(--muted-foreground);
+}
+.nuphy-scope .focus-visible\:ring-ring:focus-visible {
+  --tw-ring-color: var(--ring);
+}
+.nuphy-scope .focus-visible\:ring-offset-canvas:focus-visible {
+  --tw-ring-offset-color: var(--canvas);
+}
+.nuphy-scope .focus-visible\:ring-offset-2:focus-visible {
+  --tw-ring-offset-width: 2px;
+}
+.nuphy-scope .divide-hairline > :not([hidden]) ~ :not([hidden]) {
+  border-color: var(--hairline);
+}

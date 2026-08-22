@@ -25,6 +25,7 @@ export const CLOUD_PANEL_GROUP_ORDER: readonly CloudPanelGroupId[] =
   CLOUD_PANEL_GROUPS.map((g) => g.id);
 
 export const CLOUD_PANEL_GROUP_LABEL: Record<CloudPanelGroupId, string> =
-  Object.fromEntries(
-    CLOUD_PANEL_GROUPS.map((g) => [g.id, g.label]),
-  ) as Record<CloudPanelGroupId, string>;
+  Object.fromEntries(CLOUD_PANEL_GROUPS.map((g) => [g.id, g.label])) as Record<
+    CloudPanelGroupId,
+    string
+  >;

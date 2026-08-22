@@ -23,6 +23,7 @@ import { cn } from "../../../../lib/utils";
 import { useAppSelector } from "../../../../state";
 import { useDesktopPermissionsState } from "../../permission-controls.hooks";
 import type { PermissionDef } from "../../permission-types";
+import { hasCloudManagementCredential } from "../cloud-management-auth";
 import {
   DestructiveSecondaryButton,
   NuphyRow,
@@ -197,6 +198,7 @@ type CloudGrantsState =
 
 function CloudPluginGrantsGroup() {
   const cloudConnected = useAppSelector((s) => s.elizaCloudConnected);
+  const hasCloudCredential = hasCloudManagementCredential();
   const [state, setState] = useState<CloudGrantsState>({ kind: "loading" });
   const [revoking, setRevoking] = useState<string | null>(null);
 
@@ -221,8 +223,8 @@ function CloudPluginGrantsGroup() {
   }, []);
 
   useEffect(() => {
-    if (cloudConnected) void load();
-  }, [cloudConnected, load]);
+    if (cloudConnected || hasCloudCredential) void load();
+  }, [cloudConnected, hasCloudCredential, load]);
 
   const revoke = async (grantId: string) => {
     setRevoking(grantId);
@@ -243,7 +245,7 @@ function CloudPluginGrantsGroup() {
     }
   };
 
-  if (!cloudConnected) {
+  if (!cloudConnected && !hasCloudCredential) {
     return (
       <SettingsGroup
         title="Cloud plugin grants"

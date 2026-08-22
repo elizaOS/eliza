@@ -8,22 +8,21 @@
  */
 import { ArrowLeft } from "lucide-react";
 import { Suspense, useEffect, useState } from "react";
-import { useAppSelector } from "../../../state";
-import { cn } from "../../../lib/utils";
 import { useMediaQuery } from "../../../hooks/useMediaQuery";
+import { cn } from "../../../lib/utils";
 import { ErrorBoundary } from "../../ui/error-boundary";
+import { CloudSettingsSidebar } from "./CloudSettingsSidebar";
+import {
+  navigateCloudPanel,
+  readCloudPanelHash,
+  subscribeCloudPanelHash,
+} from "./cloud-panel-routing";
 import {
   CLOUD_PANEL_SECTIONS,
   type CloudPanelSection,
   groupedCloudPanelSections,
   resolveCloudPanelSection,
 } from "./cloud-panel-sections";
-import {
-  navigateCloudPanel,
-  readCloudPanelHash,
-  subscribeCloudPanelHash,
-} from "./cloud-panel-routing";
-import { CloudSettingsSidebar } from "./CloudSettingsSidebar";
 
 function SectionLoading({ label }: { label: string }) {
   return (
@@ -115,9 +114,7 @@ function HubList({
                     onClick={() => onSelect(section.id)}
                     className={cn(
                       "flex w-full items-start gap-3 rounded-lg px-3 py-2.5 text-left transition-colors",
-                      active
-                        ? "bg-[var(--accent)]"
-                        : "hover:bg-[var(--fill)]",
+                      active ? "bg-[var(--accent)]" : "hover:bg-[var(--fill)]",
                     )}
                   >
                     <Icon
@@ -200,7 +197,12 @@ export function CloudSettingsPanel() {
   if (!isWide) {
     const showHub = sectionId === "" || section === undefined;
     return (
-      <div className={cn(scopeClass, "flex h-full flex-col bg-[var(--canvas)] pt-8")}>
+      <div
+        className={cn(
+          scopeClass,
+          "flex h-full flex-col bg-[var(--canvas)] pt-8",
+        )}
+      >
         {showHub ? (
           <HubList activeSection={sectionId} onSelect={handleSelect} />
         ) : (
@@ -225,10 +227,7 @@ export function CloudSettingsPanel() {
   // Wide layout: sidebar + content side-by-side.
   return (
     <div className={cn(scopeClass, "flex h-full bg-[var(--canvas)]")}>
-      <CloudSettingsSidebar
-        activeSection={sectionId}
-        onSelect={handleSelect}
-      />
+      <CloudSettingsSidebar activeSection={sectionId} onSelect={handleSelect} />
       <main className="flex-1 overflow-y-auto bg-[var(--canvas)] bg-dotted pt-8">
         <div className="mx-auto max-w-3xl px-4 py-10 sm:px-6 sm:py-12">
           {section ? (

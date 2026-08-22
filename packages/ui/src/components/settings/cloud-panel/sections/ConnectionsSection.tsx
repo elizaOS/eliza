@@ -24,6 +24,7 @@ import {
   type ConnectorConfig,
   connectorFieldValidationError,
 } from "../cloud-connector-contracts";
+import { hasCloudManagementCredential } from "../cloud-management-auth";
 import {
   DestructiveSecondaryButton,
   NuphyConfirmDialog,
@@ -671,7 +672,7 @@ export function ConnectionsSection() {
     setMcpRemoveTarget(null);
   }, [mcpRemoveTarget, refetchMcps]);
 
-  if (!cloudConnected) {
+  if (!cloudConnected && !hasCloudManagementCredential()) {
     return (
       <SettingsStack>
         <CloudDisconnectedEmpty />
