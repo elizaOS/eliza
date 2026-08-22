@@ -4,7 +4,10 @@
  */
 import type { IAgentRuntime } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { buildOpencodeSpawnConfig } from "../../src/services/opencode-config.js";
+import {
+  buildOpencodeSpawnConfig,
+  safeOpencodeEndpointForLog,
+} from "../../src/services/opencode-config.js";
 
 function runtime(settings: Record<string, string | undefined> = {}) {
   return {
@@ -167,6 +170,31 @@ describe("buildOpencodeSpawnConfig", () => {
     ).toThrow(/requires XAI_API_KEY/i);
   });
 
+  it("keeps a selected account tuple authoritative over stale runtime settings", () => {
+    const result = buildOpencodeSpawnConfig(
+      runtime({
+        ELIZA_OPENCODE_PROVIDER: "xai-api",
+        DEEPSEEK_API_KEY: "stale-runtime-deepseek-key",
+        XAI_API_KEY: "stale-runtime-xai-key",
+      }),
+      {},
+      undefined,
+      {
+        providerId: "deepseek-api",
+        credentials: {
+          DEEPSEEK_API_KEY: "selected-account-deepseek-key",
+        },
+      },
+    );
+    const config = JSON.parse(result?.configContent ?? "{}");
+    expect(result?.accountProviderId).toBe("deepseek-api");
+    expect(config.provider.deepseek.options.apiKey).toBe(
+      "selected-account-deepseek-key",
+    );
+    expect(result?.configContent).not.toContain("stale-runtime-deepseek-key");
+    expect(result?.configContent).not.toContain("stale-runtime-xai-key");
+  });
+
   it("does not guess among multiple non-Cerebras billing sources", () => {
     const result = buildOpencodeSpawnConfig(runtime(), {
       DEEPSEEK_API_KEY: "deepseek-secret",
@@ -228,6 +256,52 @@ describe("buildOpencodeSpawnConfig", () => {
         DEEPSEEK_BASE_URL: "http://proxy.example.invalid/v1",
       }),
     ).toThrow(/invalid API base URL/i);
+    expect(() =>
+      buildOpencodeSpawnConfig(runtime(), {
+        ELIZA_OPENCODE_PROVIDER: "deepseek-api",
+        DEEPSEEK_API_KEY: "deepseek-secret",
+        DEEPSEEK_BASE_URL:
+          "https://proxy.example.invalid/v1?api_key=query-secret#fragment-secret",
+      }),
+    ).toThrow(/invalid API base URL/i);
+  });
+
+  it.each([
+    "http://localhost:11434/v1",
+    "http://127.0.0.1:11434/v1",
+    "http://[::1]:11434/v1",
+  ])("allows an explicit HTTP loopback API proxy at %s", (baseUrl) => {
+    const result = buildOpencodeSpawnConfig(runtime(), {
+      ELIZA_OPENCODE_PROVIDER: "deepseek-api",
+      DEEPSEEK_API_KEY: "deepseek-secret",
+      DEEPSEEK_BASE_URL: baseUrl,
+    });
+    expect(result?.baseUrl).toBe(baseUrl);
+  });
+
+  it.each([
+    "http://0.0.0.0:11434/v1",
+    "http://192.168.1.10:11434/v1",
+    "http://localhost.example.invalid:11434/v1",
+  ])("rejects a non-canonical insecure API proxy at %s", (baseUrl) => {
+    expect(() =>
+      buildOpencodeSpawnConfig(runtime(), {
+        ELIZA_OPENCODE_PROVIDER: "deepseek-api",
+        DEEPSEEK_API_KEY: "deepseek-secret",
+        DEEPSEEK_BASE_URL: baseUrl,
+      }),
+    ).toThrow(/invalid API base URL/i);
+  });
+
+  it("never projects endpoint credentials into structured logs", () => {
+    const logged = safeOpencodeEndpointForLog(
+      "https://user:password@proxy.example.invalid/v1?api_key=query-secret#fragment-secret",
+    );
+    expect(logged).toBe("https://proxy.example.invalid/v1");
+    expect(logged).not.toMatch(/user|password|query-secret|fragment-secret/);
+    expect(
+      safeOpencodeEndpointForLog("not a URL with secret material"),
+    ).toBeUndefined();
   });
 
   it("uses ELIZA_OPENCODE_MODEL_POWERFUL with a Cerebras base URL", () => {

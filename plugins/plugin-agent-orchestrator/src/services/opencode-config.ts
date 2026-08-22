@@ -12,6 +12,7 @@ import type { IAgentRuntime } from "@elizaos/core";
 import { DEFAULT_CEREBRAS_TEXT_MODEL, ElizaError } from "@elizaos/core";
 import { readConfigCloudKey, readConfigEnvKey } from "./config-env.js";
 import { resolveModelGatewayConfig } from "./model-gateway.js";
+import { classifyIpLiteral } from "./ssrf-guard.js";
 
 const ELIZA_CLOUD_OPENAI_BASE = "https://api.eliza.app/api/v1";
 const OPENCODE_LOCAL_DEFAULT_BASE_URL = "http://localhost:11434/v1";
@@ -185,6 +186,30 @@ export interface OpencodeAcpEnvResult {
   vendoredShimDir?: string;
 }
 
+export interface OpencodeAccountRouteOverride {
+  providerId: string;
+  credentials: Readonly<Record<string, string | undefined>>;
+}
+
+/** Removes URL components that may carry credentials before structured logging. */
+export function safeOpencodeEndpointForLog(
+  value: string | undefined,
+): string | undefined {
+  if (!value) return undefined;
+  try {
+    const parsed = new URL(value);
+    parsed.username = "";
+    parsed.password = "";
+    parsed.search = "";
+    parsed.hash = "";
+    return parsed.toString().replace(/\/$/, "");
+  } catch {
+    // error-policy:J3 logging untrusted configuration must never echo it when
+    // it is not a parseable URL.
+    return undefined;
+  }
+}
+
 function runtimeSetting(
   runtime: RuntimeLike | undefined,
   key: string,
@@ -295,7 +320,20 @@ function normalizeRouteId(
 function explicitlySelectedRoute(
   runtime: RuntimeLike | undefined,
   env: NodeJS.ProcessEnv | Record<string, string | undefined>,
+  accountRoute: OpencodeAccountRouteOverride | undefined,
 ): OpencodeApiProviderId | undefined {
+  const accountProviderId = normalizeRouteId(accountRoute?.providerId);
+  if (accountRoute && !accountProviderId) {
+    throw new ElizaError(
+      `Unsupported selected OpenCode API provider: ${accountRoute.providerId}`,
+      {
+        code: "OPENCODE_PROVIDER_UNSUPPORTED",
+        context: { providerId: accountRoute.providerId },
+        severity: "fatal",
+      },
+    );
+  }
+  if (accountProviderId) return accountProviderId;
   const raw =
     setting(runtime, env, "ELIZA_OPENCODE_PROVIDER_ID") ??
     setting(runtime, env, "ELIZA_OPENCODE_PROVIDER");
@@ -334,10 +372,17 @@ function buildTypedApiRouteConfig(
   routeId: OpencodeApiProviderId,
   powerfulOverride: string | undefined,
   fastOverride: string | undefined,
+  accountRoute: OpencodeAccountRouteOverride | undefined,
 ): OpencodeSpawnConfig {
   const route: OpencodeApiRoute = OPENCODE_API_ROUTES[routeId];
   const apiKey = usableApiKey(
-    firstSetting(runtime, env, routeCredentialKeys(route)),
+    accountRoute
+      ? firstSetting(
+          undefined,
+          accountRoute.credentials,
+          routeCredentialKeys(route),
+        )
+      : firstSetting(runtime, env, routeCredentialKeys(route)),
   );
   if (!apiKey) {
     throw new ElizaError(
@@ -385,10 +430,23 @@ function buildTypedApiRouteConfig(
   let baseUrl: string;
   try {
     const parsed = new URL(configuredBaseUrl);
-    if (parsed.protocol !== "https:" || parsed.username || parsed.password) {
-      throw new Error("expected an HTTPS URL without embedded credentials");
+    const host = parsed.hostname.replace(/^\[|\]$/g, "").toLowerCase();
+    const isLoopback =
+      host === "localhost" || classifyIpLiteral(host) === "loopback";
+    if (
+      (parsed.protocol !== "https:" &&
+        !(parsed.protocol === "http:" && isLoopback)) ||
+      !parsed.hostname ||
+      parsed.username ||
+      parsed.password ||
+      parsed.search ||
+      parsed.hash
+    ) {
+      throw new Error(
+        "expected an HTTPS URL without credentials, query, or fragment",
+      );
     }
-    baseUrl = parsed.toString().replace(/\/$/, "");
+    baseUrl = parsed.toString().replace(/\/+$/, "");
   } catch (cause) {
     // error-policy:J3 provider endpoint configuration is untrusted operator
     // input; reject malformed or credential-bearing URLs before child spawn.
@@ -442,6 +500,7 @@ export function buildOpencodeSpawnConfig(
   runtime: RuntimeLike | undefined,
   env: NodeJS.ProcessEnv | Record<string, string | undefined> = process.env,
   overrideModel?: string,
+  accountRoute?: OpencodeAccountRouteOverride,
 ): OpencodeSpawnConfig | null {
   const llmProvider =
     setting(runtime, env, "ELIZA_LLM_PROVIDER") || "subscription";
@@ -495,10 +554,17 @@ export function buildOpencodeSpawnConfig(
     );
   }
 
-  const explicitRoute = explicitlySelectedRoute(runtime, env);
+  const explicitRoute = explicitlySelectedRoute(runtime, env, accountRoute);
   const typedRoute = explicitRoute ?? autoDetectedRoute(runtime, env);
   if (typedRoute) {
-    return buildTypedApiRouteConfig(runtime, env, typedRoute, powerful, fast);
+    return buildTypedApiRouteConfig(
+      runtime,
+      env,
+      typedRoute,
+      powerful,
+      fast,
+      accountRoute,
+    );
   }
 
   const opencodeApiKey = usableApiKey(
@@ -618,6 +684,7 @@ export function buildOpencodeAcpEnv(
   runtime: RuntimeLike | undefined,
   env: NodeJS.ProcessEnv | Record<string, string | undefined> = process.env,
   model?: string,
+  accountRoute?: OpencodeAccountRouteOverride,
 ): OpencodeAcpEnvResult {
   const next: Record<string, string> = {};
   const vendoredShimDir = resolveVendoredOpencodeShim();
@@ -625,7 +692,8 @@ export function buildOpencodeAcpEnv(
     next.PATH = prependPathDir(env.PATH, vendoredShimDir);
   }
 
-  const config = buildOpencodeSpawnConfig(runtime, env, model) ?? undefined;
+  const config =
+    buildOpencodeSpawnConfig(runtime, env, model, accountRoute) ?? undefined;
   if (config) {
     next.OPENCODE_CONFIG_CONTENT = config.configContent;
     next.OPENCODE_MODEL = config.model;

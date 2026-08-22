@@ -296,6 +296,53 @@ describe("multi-account coding-agent spawn", () => {
     await service.stop();
   });
 
+  it("does not let runtime settings override a pooled OpenCode account", async () => {
+    installBridge({
+      opencode: {
+        providerId: "deepseek-api",
+        accountId: "deepseek-selected",
+        label: "Selected DeepSeek",
+        source: "api-key",
+        strategy: "least-used",
+        envPatch: {
+          ELIZA_OPENCODE_PROVIDER_ID: "deepseek-api",
+          DEEPSEEK_API_KEY: "deepseek-selected-key",
+        },
+      },
+    });
+    const service = new AcpService(
+      runtime({
+        ELIZA_OPENCODE_PROVIDER: "xai-api",
+        DEEPSEEK_API_KEY: "deepseek-stale-runtime-key",
+        XAI_API_KEY: "xai-stale-runtime-key",
+      }),
+    );
+    await service.start();
+    const result = await service.spawnSession({
+      name: "opencode-account-authority",
+      agentType: "opencode",
+      workdir: "/tmp/acp-test",
+    });
+    const env = firstNativeClient().opts.env ?? {};
+    const config = JSON.parse(env.OPENCODE_CONFIG_CONTENT ?? "{}") as {
+      provider?: { deepseek?: { options?: { apiKey?: string } } };
+    };
+    expect(config.provider?.deepseek?.options?.apiKey).toBe(
+      "deepseek-selected-key",
+    );
+    expect(env.OPENCODE_CONFIG_CONTENT).not.toContain(
+      "deepseek-stale-runtime-key",
+    );
+    expect(env.OPENCODE_CONFIG_CONTENT).not.toContain("xai-stale-runtime-key");
+    expect((result.metadata as Record<string, unknown>)?.account).toMatchObject(
+      {
+        providerId: "deepseek-api",
+        accountId: "deepseek-selected",
+      },
+    );
+    await service.stop();
+  });
+
   it("falls back to single-account behavior when no bridge is installed", async () => {
     const service = new AcpService(runtime());
     await service.start();

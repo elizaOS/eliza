@@ -94,6 +94,7 @@ import {
   buildOpencodeAcpEnv,
   OPENCODE_API_KEY_ENVS,
   resolveVendoredOpencodeAcpCommand,
+  safeOpencodeEndpointForLog,
 } from "./opencode-config.js";
 import {
   createOwnedArtifactRecord,
@@ -4759,7 +4760,20 @@ export class AcpService extends Service {
       }
     }
     if (agentType === "opencode") {
-      const opencode = buildOpencodeAcpEnv(this.runtime, env, model);
+      const selectedProviderId =
+        customCredentials?.ELIZA_OPENCODE_PROVIDER_ID ??
+        customCredentials?.ELIZA_OPENCODE_PROVIDER;
+      const opencode = buildOpencodeAcpEnv(
+        this.runtime,
+        env,
+        model,
+        selectedProviderId
+          ? {
+              providerId: selectedProviderId,
+              credentials: customCredentials ?? {},
+            }
+          : undefined,
+      );
       Object.assign(env, opencode.env);
       if (opencode.config) {
         if (opencode.config.accountProviderId) {
@@ -4780,7 +4794,7 @@ export class AcpService extends Service {
           accountProviderId: opencode.config.accountProviderId,
           billingMode: opencode.config.billingMode,
           termsPolicy: opencode.config.termsPolicy,
-          endpoint: opencode.config.baseUrl,
+          endpoint: safeOpencodeEndpointForLog(opencode.config.baseUrl),
           vendored: Boolean(opencode.vendoredShimDir),
         });
       }
