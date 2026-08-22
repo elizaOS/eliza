@@ -231,12 +231,12 @@ async function resolveRestoredConversationWithMessages(
  * Hydrate the app's single active conversation on boot.
  *
  * INVARIANT: the ChatOverlay is mounted over EVERY surface, so chat must always
- * end up with an active conversation regardless of the launch route. Most
- * surfaces seed that thread with the configured greeting; native iOS keeps a
- * new thread intentionally empty until the user's first turn.
+ * end up with an active conversation regardless of the launch route. New and
+ * restored empty threads stay intentionally empty until the user's first turn;
+ * canned character post examples are never injected as conversation content.
  *
- * Returns a conversation id when the caller should still backfill a greeting
- * (restored-but-empty, or created without an inline greeting), else null.
+ * Returns a conversation id only for callers that explicitly opt into legacy
+ * greeting backfill; the product policy keeps that option disabled everywhere.
  * Extracted from the hook so it can be tested directly with a fake client.
  */
 export async function hydrateInitialConversation(

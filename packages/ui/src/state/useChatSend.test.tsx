@@ -314,7 +314,7 @@ describe("useChatSend stop handling", () => {
     });
   });
 
-  it("waits for startup conversation hydration before claiming a cold first send", async () => {
+  it("keeps the first user send on the active empty startup conversation", async () => {
     const hydration = deferred();
     mocks.client.sendConversationMessageStream.mockResolvedValue({
       text: "Hi there",
@@ -350,6 +350,7 @@ describe("useChatSend stop handling", () => {
     });
 
     expect(mocks.client.createConversation).not.toHaveBeenCalled();
+    expect(deps.activeConversationIdRef.current).toBe("conv-restored");
     expect(
       mocks.client.sendConversationMessageStream.mock.calls[0]?.slice(0, 2),
     ).toEqual(["conv-restored", "hello"]);
