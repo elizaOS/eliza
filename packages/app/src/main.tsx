@@ -241,7 +241,10 @@ import {
   removeUrlParameter,
 } from "./runtime-chooser-override";
 import { registerViewServiceWorker } from "./sw-registration";
-import { isElizaCloudSharedHost } from "./url-trust-policy";
+import {
+  isElizaCloudSharedHost,
+  isTrustedCloudOnlyApiBaseUrl,
+} from "./url-trust-policy";
 
 declare const __ELIZA_BUILD_VARIANT__: string | undefined;
 // Set by vite.config.ts `define`. `true` for the web/desktop bundle, `false`
@@ -2967,6 +2970,9 @@ function isTrustedApiBaseUrl(parsed: URL): boolean {
     );
   }
   if (isPopoutWindow() && parsed.protocol === "https:") return true;
+  if (isTrustedCloudOnlyApiBaseUrl(parsed, APP_BRANDING.cloudOnly === true)) {
+    return true;
+  }
   return (
     isLoopbackApiHost(host) ||
     isCurrentOriginHost(host) ||
@@ -2980,6 +2986,9 @@ function isTrustedDeepLinkApiBaseUrl(parsed: URL): boolean {
   if (isIosLocalAgentIpcUrl(parsed)) return canUseIosLocalAgentIpc();
   if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return false;
   const host = parsed.hostname;
+  if (isTrustedCloudOnlyApiBaseUrl(parsed, APP_BRANDING.cloudOnly === true)) {
+    return true;
+  }
   if (usesStrictIosNetworkPolicy()) {
     if (allowsIosSimulatorLoopbackApiBase(parsed)) return true;
     if (parsed.protocol !== "https:" || isPrivateOrLoopbackApiHost(host)) {
