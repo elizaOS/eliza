@@ -143,6 +143,7 @@ function safeErrorKind<T extends Error>(
 
 const CONTAINER_BACKED_TARGET_REQUIRED_MESSAGE =
   "Agent job requires a container-backed execution tier";
+export const CONTAINER_BACKED_TARGET_REJECTION_REASON = "agent_job_target_not_container_backed";
 
 function isContainerBackedExecutionTier(tier: AgentExecutionTier): boolean {
   return (CONTAINER_BACKED_EXECUTION_TIERS as readonly AgentExecutionTier[]).includes(tier);
@@ -1608,6 +1609,10 @@ export class ProvisioningJobService {
         409,
         "session_not_ready",
         `${CONTAINER_BACKED_TARGET_REQUIRED_MESSAGE}: ${opts.jobType}`,
+        {
+          reason: CONTAINER_BACKED_TARGET_REJECTION_REASON,
+          jobType: opts.jobType,
+        },
       );
     }
 
