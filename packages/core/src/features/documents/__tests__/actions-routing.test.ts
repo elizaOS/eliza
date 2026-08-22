@@ -489,9 +489,9 @@ describe("documentAction.handler structured routing", () => {
 		const service = makeService();
 		const { runtime } = makeRuntime(service);
 		const lookupFailure = new Error("database unavailable");
-		(runtime.getRoom as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
-			lookupFailure,
-		);
+		(runtime.getRoom as ReturnType<typeof vi.fn>)
+			.mockResolvedValueOnce({ id: ROOM_ID, worldId: WORLD_ID })
+			.mockRejectedValueOnce(lookupFailure);
 
 		const res = await documentAction.handler?.(
 			runtime,

@@ -95,7 +95,15 @@ function makeRuntime(service: ReturnType<typeof makeService>): IAgentRuntime {
 			return found;
 		}),
 		getSetting: vi.fn(() => undefined),
-		getRoom: vi.fn(async () => null),
+		getRoom: vi.fn(async () => ({
+			id: ROOM_ID,
+			worldId: "00000000-0000-0000-0000-0000000000bb" as UUID,
+		})),
+		getWorld: vi.fn(async () => ({
+			id: "00000000-0000-0000-0000-0000000000bb" as UUID,
+			agentId: AGENT_ID,
+			metadata: { roles: { [USER_ID]: "USER" } },
+		})),
 		reportError: vi.fn(),
 		useModel: vi.fn(async () => {
 			throw new Error("useModel must not be called on the planner-trust path");

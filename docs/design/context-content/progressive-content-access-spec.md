@@ -1,6 +1,6 @@
 # Progressive content access specification
 
-Status: proposed
+Status: experimental implementation candidate; projection is opt-in
 
 Date: 2026-08-21
 
@@ -10,7 +10,7 @@ Owners: core runtime, agent host, coding tools, documents, connector adapters, s
 
 elizaOS must be able to work with large files, email bodies, attachments, documents, memories, and tool outputs without placing all source content in every model request and without irreversibly discarding content behind fixed character limits.
 
-The system will use one small slice/continuation contract across its existing domain actions. Each source remains owned and authorized by its native service. Each model turn receives a bounded projection appropriate to the active model and remaining context budget, and the agent can request additional exact ranges later, including after conversation compaction.
+The system uses one small slice/continuation contract across its existing domain actions. Each source remains owned and authorized by its native service. Each model turn can receive a bounded projection appropriate to the active model and remaining context budget, and the agent can request additional exact ranges later. A future compaction/archive seam must preserve those references mechanically; this change does not restore the removed compaction subsystem.
 
 The governing rule is:
 
@@ -48,7 +48,7 @@ Non-goals:
 5. **Model-aware budgets.** Prompt budgets are token-based and account for wrappers and aggregate turn cost. Byte/character limits remain safety ceilings only.
 6. **Authorization on every read.** A locator is not ambient authority. Native resolution rechecks the caller, room/world scope, connector grant, and retention state.
 7. **Revision-bound continuation.** Internal offsets carry an expected revision. Changed content yields a typed stale-source conflict; external APIs may later wrap this state in opaque signed cursors.
-8. **Mechanical compaction state.** References and ranges survive compaction through a runtime-derived manifest, not through summarizer memory alone.
+8. **Mechanical future compaction state.** Any future compaction implementation must preserve references and ranges through a runtime-derived manifest, not through summarizer memory alone.
 9. **No hidden duplication.** Prompt serializers use the bounded projection and must not serialize the full body again through `data`.
 10. **Measure real behavior.** Acceptance includes whether agents request and use later content, not only whether an API supports pagination.
 
@@ -238,22 +238,15 @@ The runtime derives this from the access ledger and actual mutations. It is sche
 
 ## 10. Telemetry contract
 
-Every content projection records:
+The v1 projection records a content-free aggregate for each model request:
 
-- Source kind and model-safe reference identity.
-- Source and returned sizes, unit/range, and generation.
-- Estimated and actual serialized tokens.
-- Model context window, reserve, per-result budget, and aggregate budget.
-- Whether the view was complete and whether continuation existed.
-- Omission/externalization reason.
-- Search query, retrieval scores, and exact ranges selected.
-- Read latency split into resolve, authorize, I/O, extraction, and serialization.
-- Process RSS/heap deltas for benchmark runs.
-- Cache effect where available.
-- Post-compaction read success.
-- Typed failure and retry/no-progress counters.
+- Whether projection was enabled and the result count.
+- Baseline and remaining estimated request tokens.
+- Per-result and aggregate estimated-token budgets.
+- Included and omitted page counts.
+- Numeric omission-reason counts.
 
-Telemetry must exclude raw sensitive content.
+It is attached to the existing structured log and model-call/trajectory metadata seams. It excludes raw content, source references, paths, IDs, provider/account metadata, and hashes. Adapter and benchmark lanes may record source kind, ranges, sizes, latency, I/O, memory, cache, and typed failures in their protected test artifacts; promoting those fields to production telemetry requires a separate privacy review.
 
 ## 11. Acceptance contract
 
@@ -266,12 +259,12 @@ The feature is not complete until all of the following are demonstrated:
 - UTF-8 decoding and JavaScript UTF-16 slicing never emit malformed surrogates or skip/duplicate code points.
 - Mutation between pages returns stale-source conflict rather than shifted content.
 - Revoked authorization blocks later retrieval without leaking prior unseen content.
-- Model-safe references/revisions remain usable after compaction when retention and access remain valid.
+- Model-safe references/revisions remain usable across later turns while retention and access remain valid.
 - Raw bodies are absent from prompt `data` when a bounded projection is present.
-- Deterministic scenario, live-model scenario, UI/API E2E, evidence bundle, and performance gates all pass at the same revision.
-- The context inspector can explain what was included, omitted, and recoverable for a turn.
+- Deterministic production-action scenario, evidence ingestion, and the invariant performance gate pass at the same revision.
+- A scheduled live-model planning lane, context-inspector UI/API, future compaction manifest, provider soak, and real-Postgres scale lane are follow-up rollout gates before enabling projection by default.
 
-The inspector exposes only redacted reference, kind, included range, completeness/omission reason, token budget/use, and retention state—never raw source text, paths, provider IDs, or unauthorized metadata.
+A future inspector exposes only redacted reference, kind, included range, completeness/omission reason, token budget/use, and retention state—never raw source text, paths, provider IDs, or unauthorized metadata.
 
 ### 11.1 Normative verification
 

@@ -2,9 +2,9 @@
 
 Date: 2026-08-21
 
-Local audit revision: `bb038370b4c2f631378376e0ce5f04176a9dffb8`
+Implementation branch rebased onto: `ce20804092dc9503a772d7d9ab6d135939b5bb0e`
 
-Observed `origin/develop` during final pass: `9c1fc32c0def7f3da4d40d54d88ac343e24c3a97`
+Canonical tracking issue: [#24286](https://github.com/elizaOS/eliza/issues/24286)
 
 ## Executive finding
 
@@ -13,6 +13,25 @@ The problem is not that elizaOS sometimes shows a 10K-character preview. The pro
 The best elizaOS v1 is smaller: keep native FILE, DOCUMENT, ATTACHMENT, email/message, memory, and SHELL actions; give them one `ReadSlice` continuation envelope; and unify prompt projection around the existing model-input budget. Native services retain identifiers and authorization. A generic action/URI and private raw-output spill layer come later only if measured need and lifecycle requirements justify them.
 
 This pass concentrated on proof: generated corpora, fault models, scenario/E2E architecture, live-model behavior, and speed/memory measurements. It also looked for architecture that can be deleted or unified rather than adding another framework.
+
+## Implementation pass result
+
+The accompanying feature branch implements the coherent, keyless v1 slice rather than pretending the entire long-term test matrix is already automated:
+
+- One strict `ContentReference`/`ReadSlice`/`ReadView` contract with exact zero-based half-open ranges, SHA-256 page proofs, revision-bound continuation, and hostile-shape rejection.
+- Opt-in central planner/evaluator projection via `ELIZA_PROGRESSIVE_CONTENT_PROJECTION`. The projection replaces full structured bodies with validated page metadata under per-result and aggregate model budgets. Diagnostics contain counts and token estimates only—no content, paths, references, provider IDs, or hashes.
+- Production paging for coding FILE, stored DOCUMENT text, stored ATTACHMENT text, stored MESSAGE memories, Gmail bodies, and persisted terminal-output attachments. Continuations reauthorize and/or re-resolve the native source.
+- Native positioned FILE reads with bounded lookahead and revision-keyed sparse line checkpoints. A 10 MiB page does not call whole-file `readFile`.
+- A database-adapter document range capability that bounds runtime transfer and rechecks document authorization. Because the current document parent is one JSON text value, the SQL implementation still scans/splits that value server-side to count units and fingerprint revisions; genuinely source-independent document I/O requires indexed fragment/line storage and is not claimed here.
+- A deterministic streamed corpus generator covering exact legacy thresholds, LF/CRLF/no-final-newline, single-line/minified content, invalid UTF-8, planted canaries, scopes, hashes, and micro/PR/nightly/release profiles.
+- A bounded isolated-scenario runner and a 13-turn, model-free production-action scenario. It proves exact late-page access, revisions, mutation rejection, cross-room denial, Gmail reauthorization, and absence of duplicate page carriers; it does not prove autonomous model planning.
+- Canonical `reports/content-context/` evidence ingestion and a fresh-child-process FILE benchmark with revision, corpus, latency, throughput, I/O, CPU/event-loop, memory, descriptor, traversal-hash, and prompt-amplification fields.
+
+Focused proof after the final rebase included 153 core contract/action tests with two pre-existing document-harness failures subsequently repaired, five real-PGLite authorization/range tests over a 10 MiB document, 45 coding/terminal/benchmark tests, 37 connector/corpus/evidence tests, and the 13-turn isolated scenario. Final exact-head package and repository gates are recorded with the PR rather than frozen into this design note.
+
+The first 1,000-operation 10 MiB FILE benchmark was a calibration run, not a CI budget: p50 0.987 ms, p95 4.726 ms, p99 21.231 ms, 1,485 operations/second, and 97.34 MiB/second. A 64 KiB request read 65,539 bytes including bounded UTF-8 lookahead for both 1 MiB and 10 MiB sources, and full traversal matched the source SHA. This establishes serialization/I/O invariance, not yet RSS invariance; final reports preserve the raw memory samples and are rerun on the exact PR head.
+
+Deliberate remaining boundaries are explicit: no private shell-output spill lifecycle, no generic content URI/action, no restored conversation compaction or manifest, no context-inspector UI, no live-provider trajectory, and no soak/Postgres matrix in the keyless PR lane. Stored memory and attachment reads still materialize their existing database row, Gmail fetches the provider body before slicing, and richer PDF/DOCX/OCR/MIME corpus producers are follow-up adapter lanes. These are not described as complete or bounded-source-I/O proof.
 
 ## Method and limits
 
@@ -101,11 +120,12 @@ The proposed design deliberately removes concepts:
 
 | Layer | Harness | Required proof |
 | --- | --- | --- |
-| Pure unit | Vitest in owning packages | Cursor encoding, budget math, Unicode boundaries, serializer non-duplication, fair-share allocation |
+| Pure unit | Vitest in owning packages | Reference/range validation, budget math, Unicode boundaries, serializer non-duplication, fair-share allocation |
 | Seeded property/fuzz | Repository seeded PRNG pattern | No gaps/overlap, stable round trips, arbitrary chunking, hostile shapes, deterministic replay |
 | Adapter contract | Shared conformance suite | Every adapter implements exact slice/offset/revision and typed failures consistently |
 | Real persistence integration | PGLite/temp filesystem/loopback connector | Transactions/auth/indexes in PGLite; restart/readback in a fresh child process over an explicit state directory; cleanup |
-| Deterministic scenario | Scenario runner with strict fixture model | Agent sees partial marker, calls next/search, answers from late evidence |
+| Deterministic action scenario | Scenario runner, model-free direct turns | Production handlers return exact late pages, revisions, typed denials, and one text carrier |
+| Deterministic planning scenario | Scenario runner with strict fixture model | Agent sees partial marker, calls next/search, and answers from late evidence without canary leakage |
 | Isolated scenario | `test:scenarios:isolated` | No cross-scenario memory, handle, cache, or embedding leakage |
 | Live-model scenario | Credentialed scheduled lane | Multiple model families reliably discover and use continuation without prompt coaching |
 | API/UI E2E | Real local stack plus Playwright | Upload/email/document flow, visible partial state, context inspector, later retrieval |
@@ -231,17 +251,17 @@ Initial invariant budgets, which are architecture-independent:
 - UI changes use the app's existing Playwright/audit and recording paths.
 - Use PGLite in PR lanes and real Postgres for nightly/release scale evidence.
 
-The isolated runner currently uses serial `spawnSync`, `/tmp` report names derived only from scenario IDs, and limited argument forwarding. Before using it for a large parallel corpus, harden it with per-run temporary directories, collision-free report paths, signal/timeout handling, lane/glob forwarding, deterministic aggregation, and bounded worker concurrency. The scenario judge itself caps some serialized values, so exact content proof must use mechanical access/hash ledgers rather than the judge.
+The isolated runner now uses per-run temporary directories, collision-free report paths, signal/timeout handling, argument forwarding, deterministic aggregation, and bounded worker concurrency. The scenario judge itself caps some serialized values, so exact content proof uses mechanical access/hash ledgers rather than the judge.
 
 The existing real-LLM attachment smoke calls a provider with content already embedded and can skip cleanly without credentials. Do not count it as progressive-access proof; add real-runtime live scenarios that fail loudly when an explicitly selected live lane lacks its provider. Retain or remove the smoke independently based on its current provider-contract value.
 
 ## Rollout recommendation
 
-1. Add the small internal `ReadSlice` contract, conformance tests, central budget accounting, and telemetry behind a feature flag.
-2. Fix coding FILE to perform bounded range I/O with expected revision.
-3. Add authorized exact-document fragment paging and per-attachment paging; remove full-body duplication from `data`.
-4. Add inbox/email body paging through native connector authorization.
-5. Unify planner/evaluator/classic projection and add aggregate-result budgets.
+1. Land the implemented internal `ReadSlice` contract, conformance tests, central budget accounting, and telemetry behind the opt-in feature flag.
+2. Land the implemented bounded coding FILE range I/O with expected revision and invariant benchmark.
+3. Land authorized document/runtime-range transfer and per-attachment paging, while tracking indexed document source I/O separately.
+4. Land native connector-authorized Gmail body paging and retain compact triage previews.
+5. Tune the implemented planner/evaluator aggregate projection from exact-head trajectories before enabling it by default.
 6. Add mechanical compaction locator/range manifests.
 7. Design private tool-output spill only after authorization, retention, reference-aware GC, and atomicity are accepted.
 8. Convert remaining destructive truncation sites and tune budgets from measured trajectories.
