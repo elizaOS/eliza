@@ -77,6 +77,112 @@ describe("OmarchyBridge", () => {
     });
   });
 
+  it.each([
+    ["non-object entry", [null]],
+    [
+      "blank id",
+      [
+        {
+          id: " ",
+          enabled: true,
+          firstParty: false,
+          kinds: ["panel"],
+          name: "Eliza",
+        },
+      ],
+    ],
+    [
+      "missing name",
+      [
+        {
+          id: "elizaos.eliza",
+          enabled: true,
+          firstParty: false,
+          kinds: ["panel"],
+        },
+      ],
+    ],
+    [
+      "invalid name",
+      [
+        {
+          id: "elizaos.eliza",
+          enabled: true,
+          firstParty: false,
+          kinds: ["panel"],
+          name: 42,
+        },
+      ],
+    ],
+    [
+      "missing enabled state",
+      [
+        {
+          id: "elizaos.eliza",
+          firstParty: false,
+          kinds: ["panel"],
+          name: "Eliza",
+        },
+      ],
+    ],
+    [
+      "missing first-party state",
+      [
+        {
+          id: "elizaos.eliza",
+          enabled: true,
+          kinds: ["panel"],
+          name: "Eliza",
+        },
+      ],
+    ],
+    [
+      "non-array kinds",
+      [
+        {
+          id: "elizaos.eliza",
+          enabled: true,
+          firstParty: false,
+          kinds: "panel",
+          name: "Eliza",
+        },
+      ],
+    ],
+    [
+      "invalid kind member",
+      [
+        {
+          id: "elizaos.eliza",
+          enabled: true,
+          firstParty: false,
+          kinds: ["panel", false],
+          name: "Eliza",
+        },
+      ],
+    ],
+  ])("rejects the complete inventory for a %s", async (_label, malformed) => {
+    const valid = {
+      id: "omarchy.clock",
+      enabled: true,
+      firstParty: true,
+      kinds: ["bar-widget"],
+      name: "Clock",
+    };
+    const { run } = runnerWith({
+      "omarchy-version": "1.2.3\n",
+      "omarchy-theme-current": "Tokyo Night\n",
+      "omarchy-plugin-list": JSON.stringify([valid, ...malformed]),
+    });
+
+    const snapshot = await new OmarchyBridge(run).snapshot();
+
+    expect(snapshot).toMatchObject({
+      available: false,
+      errorCode: "OMARCHY_PLUGIN_LIST_INVALID",
+    });
+    expect(snapshot).not.toHaveProperty("plugins");
+  });
+
   it("passes notification text only as argument slots", async () => {
     const { run, calls } = runnerWith({
       "omarchy-notification-send": "",
@@ -110,6 +216,20 @@ describe("OmarchyBridge", () => {
     await expect(bridge.notify("Hello", "--exec", "normal")).rejects.toThrow(
       /cannot start with a hyphen/,
     );
+    expect(run).not.toHaveBeenCalled();
+  });
+
+  it("rejects invalid urgency before process launch", async () => {
+    const run: CommandRunner = vi.fn(async () => ({ stdout: "", stderr: "" }));
+    const bridge = new OmarchyBridge(run);
+
+    await expect(
+      Reflect.apply(bridge.notify, bridge, [
+        "Hello",
+        "This must not launch.",
+        "urgent",
+      ]),
+    ).rejects.toMatchObject({ code: "OMARCHY_NOTIFICATION_INVALID" });
     expect(run).not.toHaveBeenCalled();
   });
 

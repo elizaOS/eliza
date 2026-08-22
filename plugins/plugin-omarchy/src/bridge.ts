@@ -32,6 +32,7 @@ export interface OmarchySnapshot extends Record<string, ProviderValue> {
   theme?: string;
   plugins?: OmarchyPluginStatus[];
   reason?: string;
+  errorCode?: "OMARCHY_PLUGIN_LIST_INVALID";
 }
 
 export type NotificationUrgency = "low" | "normal" | "critical";
@@ -93,6 +94,56 @@ function cleanNotificationText(
   return cleaned;
 }
 
+/** Validates urgency again at the process boundary because JS callers are untrusted. */
+export function parseNotificationUrgency(value: unknown): NotificationUrgency {
+  if (value !== "low" && value !== "normal" && value !== "critical") {
+    throw new ElizaError("Notification urgency is invalid", {
+      code: "OMARCHY_NOTIFICATION_INVALID",
+      context: { field: "urgency" },
+    });
+  }
+  return value;
+}
+
+function invalidPluginInventory(message: string, cause?: unknown): ElizaError {
+  return new ElizaError(message, {
+    code: "OMARCHY_PLUGIN_LIST_INVALID",
+    cause,
+  });
+}
+
+function requiredInventoryString(
+  record: Record<string, unknown>,
+  field: "id" | "name",
+  index: number,
+): string {
+  const value = record[field];
+  if (typeof value !== "string" || value.trim().length === 0) {
+    throw invalidPluginInventory(
+      `Omarchy plugin inventory entry ${index} has an invalid ${field}`,
+    );
+  }
+  return value;
+}
+
+function requiredInventoryKinds(value: unknown, index: number): string[] {
+  if (!Array.isArray(value)) {
+    throw invalidPluginInventory(
+      `Omarchy plugin inventory entry ${index} has invalid kinds`,
+    );
+  }
+  const kinds: string[] = [];
+  for (const kind of value) {
+    if (typeof kind !== "string" || kind.trim().length === 0) {
+      throw invalidPluginInventory(
+        `Omarchy plugin inventory entry ${index} has invalid kinds`,
+      );
+    }
+    kinds.push(kind);
+  }
+  return kinds;
+}
+
 function parsePlugins(raw: string): OmarchyPluginStatus[] {
   let parsed: unknown;
   try {
@@ -100,35 +151,37 @@ function parsePlugins(raw: string): OmarchyPluginStatus[] {
   } catch (cause) {
     // error-policy:J2 command output is untrusted; preserve the parse cause in
     // a typed error rather than fabricating an empty plugin inventory.
-    throw new ElizaError("Omarchy returned invalid plugin JSON", {
-      code: "OMARCHY_PLUGIN_LIST_INVALID",
-      cause,
-    });
+    throw invalidPluginInventory("Omarchy returned invalid plugin JSON", cause);
   }
   if (!Array.isArray(parsed)) {
-    throw new ElizaError("Omarchy plugin inventory was not an array", {
-      code: "OMARCHY_PLUGIN_LIST_INVALID",
-    });
+    throw invalidPluginInventory("Omarchy plugin inventory was not an array");
   }
-  return parsed.flatMap((entry): OmarchyPluginStatus[] => {
-    if (!entry || typeof entry !== "object") return [];
-    const record = entry as Record<string, unknown>;
-    if (typeof record.id !== "string" || typeof record.enabled !== "boolean") {
-      return [];
+
+  return parsed.map((entry, index): OmarchyPluginStatus => {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+      throw invalidPluginInventory(
+        `Omarchy plugin inventory entry ${index} was not an object`,
+      );
     }
-    return [
-      {
-        id: record.id,
-        enabled: record.enabled,
-        firstParty: record.firstParty === true,
-        kinds: Array.isArray(record.kinds)
-          ? record.kinds.filter(
-              (kind): kind is string => typeof kind === "string",
-            )
-          : [],
-        name: typeof record.name === "string" ? record.name : record.id,
-      },
-    ];
+    const record = entry as Record<string, unknown>;
+    const id = requiredInventoryString(record, "id", index);
+    const name = requiredInventoryString(record, "name", index);
+    const kinds = requiredInventoryKinds(record.kinds, index);
+    if (
+      typeof record.enabled !== "boolean" ||
+      typeof record.firstParty !== "boolean"
+    ) {
+      throw invalidPluginInventory(
+        `Omarchy plugin inventory entry ${index} has invalid ownership state`,
+      );
+    }
+    return {
+      id,
+      enabled: record.enabled,
+      firstParty: record.firstParty,
+      kinds,
+      name,
+    };
   });
 }
 
@@ -217,6 +270,7 @@ export class OmarchyBridge {
         version,
         theme,
         reason: error instanceof Error ? error.message : String(error),
+        errorCode: "OMARCHY_PLUGIN_LIST_INVALID",
       };
     }
   }
@@ -228,13 +282,7 @@ export class OmarchyBridge {
   ): Promise<void> {
     const safeHeadline = cleanNotificationText(headline, "headline", 120);
     const safeBody = cleanNotificationText(body, "body", 500);
-    const safeUrgency: NotificationUrgency = [
-      "low",
-      "normal",
-      "critical",
-    ].includes(urgency)
-      ? urgency
-      : "normal";
+    const safeUrgency = parseNotificationUrgency(urgency);
     await this.invoke("omarchy-notification-send", [
       "--app-name",
       "elizaos",

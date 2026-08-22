@@ -14,14 +14,22 @@ import {
   type NotificationUrgency,
   type OmarchyBridge,
   omarchyBridge,
+  parseNotificationUrgency,
 } from "../bridge.js";
 
 function parameter(
   options: HandlerOptions | undefined,
   name: string,
 ): string | undefined {
-  const value = options?.parameters?.[name];
+  const value = rawParameter(options, name);
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function rawParameter(
+  options: HandlerOptions | undefined,
+  name: string,
+): unknown {
+  return options?.parameters?.[name];
 }
 
 function failure(error: unknown): ActionResult {
@@ -101,21 +109,22 @@ export function createOmarchyDesktopActions(
     ): Promise<ActionResult> => {
       const headline = parameter(options, "headline");
       const body = parameter(options, "body");
-      const requestedUrgency = parameter(options, "urgency");
       if (!headline || !body) {
         return {
           success: false,
           text: "SHOW_OMARCHY_NOTIFICATION requires headline and body parameters.",
         };
       }
-      const urgency: NotificationUrgency = [
-        "low",
-        "normal",
-        "critical",
-      ].includes(requestedUrgency ?? "")
-        ? (requestedUrgency as NotificationUrgency)
-        : "normal";
       try {
+        const requestedUrgency = rawParameter(options, "urgency");
+        const urgency: NotificationUrgency =
+          requestedUrgency === undefined
+            ? "normal"
+            : parseNotificationUrgency(
+                typeof requestedUrgency === "string"
+                  ? requestedUrgency.trim()
+                  : requestedUrgency,
+              );
         await bridge.notify(headline, body, urgency);
         return {
           success: true,

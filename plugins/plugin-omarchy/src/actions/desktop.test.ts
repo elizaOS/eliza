@@ -90,6 +90,34 @@ describe("Omarchy desktop actions", () => {
     ]);
   });
 
+  it.each(["urgent", "", 42])(
+    "rejects explicit invalid urgency %j instead of coercing it",
+    async (urgency) => {
+      const { bridge, calls } = recordingBridge();
+      const notify = createOmarchyDesktopActions(bridge, () => true).find(
+        (action) => action.name === "SHOW_OMARCHY_NOTIFICATION",
+      );
+      const options = {
+        parameters: {
+          headline: "Build finished",
+          body: "All focused tests passed.",
+          urgency,
+        },
+      } as unknown as HandlerOptions;
+
+      const result = await notify?.handler(
+        runtime,
+        message("notify me when the build finishes"),
+        undefined,
+        options,
+      );
+
+      expect(result).toMatchObject({ success: false });
+      expect(result?.text).toMatch(/urgency is invalid/);
+      expect(calls).toEqual([]);
+    },
+  );
+
   it("summons only the Eliza pill on explicit request", async () => {
     const { bridge, calls } = recordingBridge();
     const showPill = createOmarchyDesktopActions(bridge, () => true).find(
