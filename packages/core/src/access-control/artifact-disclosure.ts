@@ -223,7 +223,7 @@ export function resolveArtifactDisclosure(
 	if (!ctx) return "full";
 	if (ctx.requesterEntityId === agentId) return "full";
 	const actor = actorFromAccessContext(ctx, agentId);
-	if (actor.role !== "USER") return "full";
+	if (actor.role === "OWNER" || actor.role === "ADMIN") return "full";
 	const grants = record.grants ?? record.share?.grants;
 	const grant = grants?.find((g) => g.entityId === ctx.requesterEntityId);
 	if (grant) return grant.mode === "full" ? "full" : "redacted";

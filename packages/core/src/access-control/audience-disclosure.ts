@@ -260,7 +260,7 @@ export function attestedAudienceViewerResolver(
 		const ctx: AccessContext =
 			ownerId !== null && entityId === ownerId
 				? { requesterEntityId: entityId, role: "OWNER", isOwner: true }
-				: { requesterEntityId: entityId };
+				: { requesterEntityId: entityId, role: "USER" };
 		return resolveArtifactDisclosure(record, ctx, agentId);
 	};
 }
