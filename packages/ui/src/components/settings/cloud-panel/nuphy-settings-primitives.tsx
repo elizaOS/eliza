@@ -23,6 +23,12 @@ import type { LucideIcon } from "lucide-react";
 import * as React from "react";
 import { useAgentElement } from "../../../agent-surface";
 import { cn } from "../../../lib/utils";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogTitle,
+} from "../../ui/dialog";
 
 interface SettingsGroupProps {
   children: React.ReactNode;
@@ -551,11 +557,7 @@ export interface NuphyModalProps {
   maxWidth?: string;
 }
 
-/**
- * A centered overlay dialog with backdrop, used for connector setup forms
- * and MCP configuration. Renders above the settings panel with focus trap
- * and Escape-to-close.
- */
+/** A NuPhy-styled composition of the shared modal dialog primitive. */
 export function NuphyModal({
   open,
   title,
@@ -565,47 +567,48 @@ export function NuphyModal({
   footer,
   maxWidth = "max-w-md",
 }: NuphyModalProps) {
-  React.useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open, onClose]);
-
-  if (!open) return null;
+  const returnFocusRef = React.useRef<HTMLElement | null>(null);
+  const wasOpenRef = React.useRef(false);
+  if (
+    open &&
+    !wasOpenRef.current &&
+    document.activeElement instanceof HTMLElement
+  ) {
+    returnFocusRef.current = document.activeElement;
+  }
+  wasOpenRef.current = open;
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center"
-      role="dialog"
-      aria-modal="true"
-      aria-label={title}
+    <Dialog
+      open={open}
+      onOpenChange={(nextOpen) => {
+        if (!nextOpen) onClose();
+      }}
     >
-      <button
-        type="button"
-        aria-label="Close dialog"
-        className="absolute inset-0 bg-black/40 backdrop-blur-[2px]"
-        onClick={onClose}
-      />
-      <div
+      <DialogContent
+        showCloseButton={false}
+        overlayClassName="bg-black/40 backdrop-blur-[2px]"
+        onCloseAutoFocus={(event) => {
+          event.preventDefault();
+          returnFocusRef.current?.focus();
+          returnFocusRef.current = null;
+        }}
         className={cn(
-          "relative z-10 w-full rounded-xl border border-hairline bg-surface shadow-lg",
+          "block w-[min(calc(100vw_-_2rem),28rem)] gap-0 overflow-y-auto rounded-xl border-hairline bg-surface p-0 text-foreground shadow-lg",
           maxWidth,
-          "mx-4 max-h-[85vh] overflow-y-auto",
+          "max-h-[85vh]",
         )}
       >
         <div className="border-b border-hairline px-5 py-4">
           <div className="flex items-start justify-between gap-4">
             <div className="min-w-0">
-              <h2 className="text-[15px] font-semibold leading-6 text-foreground">
+              <DialogTitle className="text-[15px] font-semibold leading-6 text-foreground">
                 {title}
-              </h2>
+              </DialogTitle>
               {description ? (
-                <p className="mt-1 text-[13px] leading-5 text-muted-foreground">
+                <DialogDescription className="mt-1 text-[13px] leading-5 text-muted-foreground">
                   {description}
-                </p>
+                </DialogDescription>
               ) : null}
             </div>
             <button
@@ -635,8 +638,8 @@ export function NuphyModal({
         {footer ? (
           <div className="border-t border-hairline px-5 py-3">{footer}</div>
         ) : null}
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 

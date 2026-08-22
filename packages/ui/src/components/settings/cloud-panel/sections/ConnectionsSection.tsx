@@ -19,6 +19,7 @@ import { useCallback, useEffect, useState } from "react";
 import { ApiError, api, apiFetch } from "../../../../cloud/lib/api-client";
 import { useCloudConnectorConnections } from "../../../../hooks/useCloudConnectorConnections";
 import { useAppSelector } from "../../../../state";
+import { openExternalUrl } from "../../../../utils/openExternalUrl";
 import {
   CLOUD_CONNECTORS,
   type ConnectorConfig,
@@ -27,7 +28,6 @@ import {
 import { hasCloudManagementCredential } from "../cloud-management-auth";
 import {
   DestructiveSecondaryButton,
-  NuphyConfirmDialog,
   NuphyFormField,
   NuphyModal,
   NuphyRow,
@@ -172,10 +172,11 @@ function ConnectModal({
           },
         );
         if (data.authUrl) {
-          window.location.href = data.authUrl;
-          return;
+          if (await openExternalUrl(data.authUrl)) return;
+          setError("The authorization page could not be opened safely.");
+        } else {
+          setError(data.error ?? "Failed to start OAuth flow.");
         }
-        setError(data.error ?? "Failed to start OAuth flow.");
       } catch (err) {
         setError(apiErrorMessage(err, "Failed to start OAuth flow."));
       } finally {
@@ -211,7 +212,7 @@ function ConnectModal({
           return;
         }
         payload = {
-          ...fieldValues,
+          ...payload,
           characterId,
           metadata: { responseMode: "mention" },
         };
@@ -318,19 +319,70 @@ function DisconnectDialog({
 }: {
   connector: ConnectorConfig | null;
   onClose: () => void;
-  onConfirm: () => void;
+  onConfirm: () => Promise<string | null>;
 }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   if (!connector) return null;
   return (
-    <NuphyConfirmDialog
+    <NuphyModal
       open={connector !== null}
       title={`Disconnect ${connector.name}?`}
-      description={`This will remove the ${connector.name} connection from your agent. You can reconnect later.`}
-      confirmLabel="Disconnect"
-      destructive
       onClose={onClose}
-      onConfirm={onConfirm}
-    />
+      maxWidth="max-w-sm"
+      footer={
+        <div className="flex items-center justify-between gap-3">
+          {error ? (
+            <p role="alert" className="text-[13px] text-destructive">
+              {error}
+            </p>
+          ) : (
+            <span />
+          )}
+          <div className="flex gap-2">
+            <NuphyButton
+              variant="ghost"
+              size="sm"
+              disabled={busy}
+              onClick={onClose}
+            >
+              Cancel
+            </NuphyButton>
+            <NuphyButton
+              variant="destructive"
+              size="sm"
+              disabled={busy}
+              onClick={() =>
+                void (async () => {
+                  setBusy(true);
+                  setError(null);
+                  try {
+                    const message = await onConfirm();
+                    if (message) setError(message);
+                    else onClose();
+                  } catch (cause) {
+                    // error-policy:J4 unexpected boundary failure remains visible in the open dialog.
+                    setError(
+                      apiErrorMessage(cause, "Failed to disconnect connector."),
+                    );
+                  } finally {
+                    setBusy(false);
+                  }
+                })()
+              }
+            >
+              {" "}
+              {busy ? "Disconnecting…" : "Disconnect"}{" "}
+            </NuphyButton>
+          </div>
+        </div>
+      }
+    >
+      <p className="text-[14px] leading-5 text-muted-foreground">
+        This will remove the {connector.name} connection from your agent. You
+        can reconnect later.
+      </p>
+    </NuphyModal>
   );
 }
 
@@ -488,19 +540,70 @@ function McpRemoveDialog({
 }: {
   mcp: McpEntry | null;
   onClose: () => void;
-  onConfirm: () => void;
+  onConfirm: () => Promise<string | null>;
 }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   if (!mcp) return null;
   return (
-    <NuphyConfirmDialog
+    <NuphyModal
       open={mcp !== null}
       title={`Remove ${mcp.name}?`}
-      description="This will remove the MCP server from your agent. You can add it again later."
-      confirmLabel="Remove"
-      destructive
       onClose={onClose}
-      onConfirm={onConfirm}
-    />
+      maxWidth="max-w-sm"
+      footer={
+        <div className="flex items-center justify-between gap-3">
+          {error ? (
+            <p role="alert" className="text-[13px] text-destructive">
+              {error}
+            </p>
+          ) : (
+            <span />
+          )}
+          <div className="flex gap-2">
+            <NuphyButton
+              variant="ghost"
+              size="sm"
+              disabled={busy}
+              onClick={onClose}
+            >
+              Cancel
+            </NuphyButton>
+            <NuphyButton
+              variant="destructive"
+              size="sm"
+              disabled={busy}
+              onClick={() =>
+                void (async () => {
+                  setBusy(true);
+                  setError(null);
+                  try {
+                    const message = await onConfirm();
+                    if (message) setError(message);
+                    else onClose();
+                  } catch (cause) {
+                    // error-policy:J4 unexpected boundary failure remains visible in the open dialog.
+                    setError(
+                      apiErrorMessage(cause, "Failed to remove MCP server."),
+                    );
+                  } finally {
+                    setBusy(false);
+                  }
+                })()
+              }
+            >
+              {" "}
+              {busy ? "Removing…" : "Remove"}{" "}
+            </NuphyButton>
+          </div>
+        </div>
+      }
+    >
+      <p className="text-[14px] leading-5 text-muted-foreground">
+        This will remove the MCP server from your agent. You can add it again
+        later.
+      </p>
+    </NuphyModal>
   );
 }
 
@@ -509,6 +612,7 @@ function McpRemoveDialog({
 function useMcpServers() {
   const [servers, setServers] = useState<McpEntry[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   const fetchMcps = useCallback(async () => {
     setLoading(true);
@@ -524,19 +628,23 @@ function useMcpServers() {
           statusText: m.status ?? "Active",
         })),
       );
-    } catch {
-      // 401/404 — cloud not connected or no MCPs yet.
-      setServers([]);
+      setError(null);
+    } catch (cause) {
+      // error-policy:J4 preserve the last authoritative list and expose refresh failure.
+      setError(apiErrorMessage(cause, "Failed to load MCP servers."));
+      throw cause;
     } finally {
       setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    void fetchMcps();
+    void fetchMcps().catch(() => {
+      // error-policy:J5 the same rejection is represented by the hook's visible error state.
+    });
   }, [fetchMcps]);
 
-  return { servers, loading, refetch: fetchMcps };
+  return { servers, loading, error, refetch: fetchMcps };
 }
 
 // ── MCP row ─────────────────────────────────────────────────────────────
@@ -621,12 +729,15 @@ export function ConnectionsSection() {
   const {
     servers: mcpServers,
     loading: mcpLoading,
+    error: mcpError,
     refetch: refetchMcps,
   } = useMcpServers();
 
   // Disconnect handler — calls the connector's DELETE endpoint.
-  const handleDisconnectConfirm = useCallback(async () => {
-    if (!disconnectTarget) return;
+  const handleDisconnectConfirm = useCallback(async (): Promise<
+    string | null
+  > => {
+    if (!disconnectTarget) return "No connector was selected.";
     try {
       if (disconnectTarget.authMode === "oauth") {
         // OAuth: need the connection id. Fetch it first.
@@ -637,47 +748,67 @@ export function ConnectionsSection() {
           data.connections?.find(
             (candidate) => candidate.status === "active",
           ) ?? data.connections?.[0];
-        if (connection) {
-          await apiFetch(
-            `${disconnectTarget.disconnectPath}/${connection.id}`,
-            {
-              method: "DELETE",
-            },
-          );
+        if (!connection) {
+          return `No active ${disconnectTarget.name} connection was found. Refresh and try again.`;
         }
+        await apiFetch(`${disconnectTarget.disconnectPath}/${connection.id}`, {
+          method: "DELETE",
+        });
       } else if (disconnectTarget.id === "discord") {
         // Discord: delete the first connection.
         const data = await api<{ connections?: Array<{ id: string }> }>(
           disconnectTarget.statusPath,
         );
         const first = data.connections?.[0];
-        if (first) {
-          await apiFetch(`${disconnectTarget.disconnectPath}/${first.id}`, {
-            method: "DELETE",
-          });
+        if (!first) {
+          return "No Discord connection was found. Refresh and try again.";
         }
+        await apiFetch(`${disconnectTarget.disconnectPath}/${first.id}`, {
+          method: "DELETE",
+        });
       } else {
         await api(disconnectTarget.disconnectPath, { method: "DELETE" });
       }
       setConnectorRefreshVersion((version) => version + 1);
-    } catch {
-      // Error is transient — the row's status refetch will show the real state.
+      return null;
+    } catch (error) {
+      // error-policy:J4 mutation failure stays visible while an authoritative refetch reconciles the row.
+      setConnectorRefreshVersion((version) => version + 1);
+      return apiErrorMessage(
+        error,
+        `Failed to disconnect ${disconnectTarget.name}.`,
+      );
     }
-    setDisconnectTarget(null);
   }, [disconnectTarget]);
 
   // MCP remove handler.
-  const handleMcpRemoveConfirm = useCallback(async () => {
-    if (!mcpRemoveTarget) return;
+  const handleMcpRemoveConfirm = useCallback(async (): Promise<
+    string | null
+  > => {
+    if (!mcpRemoveTarget) return "No MCP server was selected.";
     try {
       await apiFetch(`/api/v1/mcps/${mcpRemoveTarget.id}`, {
         method: "DELETE",
       });
-      void refetchMcps();
-    } catch {
-      // Transient — refetch will reconcile.
+    } catch (error) {
+      // error-policy:J4 mutation failure stays visible while an authoritative refetch reconciles the list.
+      try {
+        await refetchMcps();
+      } catch {
+        // error-policy:J4 reconciliation failure does not replace the actionable mutation error.
+      }
+      return apiErrorMessage(
+        error,
+        `Failed to remove ${mcpRemoveTarget.name}.`,
+      );
     }
-    setMcpRemoveTarget(null);
+    try {
+      await refetchMcps();
+      return null;
+    } catch {
+      // error-policy:J4 deletion completed, but the list remains visibly unavailable until retry.
+      return `${mcpRemoveTarget.name} was removed, but the MCP list could not be refreshed.`;
+    }
   }, [mcpRemoveTarget, refetchMcps]);
 
   if (!cloudConnected && !hasCloudManagementCredential()) {
@@ -725,7 +856,25 @@ export function ConnectionsSection() {
             </NuphyButton>
           }
         />
-        {mcpLoading ? (
+        {mcpError ? (
+          <NuphyRow
+            label="MCP servers unavailable"
+            description={mcpError}
+            control={
+              <NuphyButton
+                variant="secondary"
+                size="sm"
+                onClick={() => {
+                  void refetchMcps().catch(() => {
+                    // error-policy:J5 the hook exposes the same rejection in mcpError.
+                  });
+                }}
+              >
+                Retry
+              </NuphyButton>
+            }
+          />
+        ) : mcpLoading ? (
           <NuphyRow label="Loading MCP servers…" />
         ) : mcpServers.length === 0 ? (
           <NuphyRow
@@ -749,9 +898,10 @@ export function ConnectionsSection() {
         }}
       />
       <DisconnectDialog
+        key={disconnectTarget?.id ?? "closed"}
         connector={disconnectTarget}
         onClose={() => setDisconnectTarget(null)}
-        onConfirm={() => void handleDisconnectConfirm()}
+        onConfirm={handleDisconnectConfirm}
       />
       <McpAddModal
         open={mcpAddOpen}
@@ -762,9 +912,10 @@ export function ConnectionsSection() {
         }}
       />
       <McpRemoveDialog
+        key={mcpRemoveTarget?.id ?? "closed"}
         mcp={mcpRemoveTarget}
         onClose={() => setMcpRemoveTarget(null)}
-        onConfirm={() => void handleMcpRemoveConfirm()}
+        onConfirm={handleMcpRemoveConfirm}
       />
     </SettingsStack>
   );

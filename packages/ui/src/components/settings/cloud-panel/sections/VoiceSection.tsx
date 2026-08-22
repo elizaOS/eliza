@@ -127,61 +127,87 @@ export function VoiceSection() {
   const [wakeWordEnabled, setWakeWordEnabled] = useState(false);
   const [profiles, setProfiles] = useState<VoiceProfile[]>([]);
   const [voiceTesting, setVoiceTesting] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const [configLoading, setConfigLoading] = useState(true);
+  const [profilesLoading, setProfilesLoading] = useState(true);
+  const [configLoaded, setConfigLoaded] = useState(false);
+  const [configLoadError, setConfigLoadError] = useState<string | null>(null);
+  const [profilesLoadError, setProfilesLoadError] = useState<string | null>(
+    null,
+  );
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const mountedRef = useRef(true);
+
+  const loadConfig = useCallback(async () => {
+    setConfigLoading(true);
+    setConfigLoadError(null);
+    try {
+      const config = await client.getConfig();
+      if (!mountedRef.current) return;
+      const messages = (config.messages ?? {}) as Record<string, unknown>;
+      const tts = (messages[TTS_CONFIG_KEY] as VoiceConfig | undefined) ?? {};
+      const stored = (messages[VOICE_PREFS_CONFIG_KEY] ?? {}) as Record<
+        string,
+        unknown
+      >;
+      const loaded: VoicePrefs = {
+        ...DEFAULT_VOICE_PREFS,
+        continuous:
+          (stored.continuous as VoiceContinuousMode | undefined) ??
+          DEFAULT_VOICE_PREFS.continuous,
+        osIntentAutoStartVoice: stored.osIntentAutoStartVoice === true,
+        osIntentAutoStartTranscription:
+          stored.osIntentAutoStartTranscription === true,
+        vadAutoStopEnabled: stored.vadAutoStopEnabled === true,
+        silenceMs:
+          typeof stored.silenceMs === "number"
+            ? stored.silenceMs
+            : SILENCE_DEFAULT_MS,
+        wakeWord: typeof stored.wakeWord === "string" ? stored.wakeWord : "",
+        selectedVoiceProfileId:
+          typeof stored.selectedVoiceProfileId === "string"
+            ? stored.selectedVoiceProfileId
+            : "",
+      };
+      setVoiceConfig(tts);
+      setSavedVoiceConfig(tts);
+      setPrefs(loaded);
+      setSavedPrefs(loaded);
+      setConfigLoaded(true);
+    } catch {
+      // error-policy:J4 A failed config load disables editing and exposes retry.
+      if (!mountedRef.current) return;
+      setConfigLoaded(false);
+      setConfigLoadError("Voice settings are unavailable. Try again.");
+    } finally {
+      if (mountedRef.current) setConfigLoading(false);
+    }
+  }, []);
+
+  const loadProfiles = useCallback(async () => {
+    setProfilesLoading(true);
+    setProfilesLoadError(null);
+    try {
+      const list = await profilesClient.list();
+      if (!mountedRef.current) return;
+      setProfiles(list);
+    } catch {
+      // error-policy:J4 A failed profile load is distinct and retryable in-place.
+      if (!mountedRef.current) return;
+      setProfilesLoadError("Voice profiles are unavailable. Try again.");
+    } finally {
+      if (mountedRef.current) setProfilesLoading(false);
+    }
+  }, []);
 
   // Load TTS config, voice prefs, and voice profiles on mount.
   useEffect(() => {
-    let cancelled = false;
-    void (async () => {
-      try {
-        const config = await client.getConfig();
-        if (cancelled) return;
-        const messages = (config.messages ?? {}) as Record<string, unknown>;
-        const tts = (messages[TTS_CONFIG_KEY] as VoiceConfig | undefined) ?? {};
-        setVoiceConfig(tts);
-        setSavedVoiceConfig(tts);
-        const stored = (messages[VOICE_PREFS_CONFIG_KEY] ?? {}) as Record<
-          string,
-          unknown
-        >;
-        const loaded: VoicePrefs = {
-          ...DEFAULT_VOICE_PREFS,
-          continuous:
-            (stored.continuous as VoiceContinuousMode | undefined) ??
-            DEFAULT_VOICE_PREFS.continuous,
-          osIntentAutoStartVoice: stored.osIntentAutoStartVoice === true,
-          osIntentAutoStartTranscription:
-            stored.osIntentAutoStartTranscription === true,
-          vadAutoStopEnabled: stored.vadAutoStopEnabled === true,
-          silenceMs:
-            typeof stored.silenceMs === "number"
-              ? stored.silenceMs
-              : SILENCE_DEFAULT_MS,
-          wakeWord: typeof stored.wakeWord === "string" ? stored.wakeWord : "",
-          selectedVoiceProfileId:
-            typeof stored.selectedVoiceProfileId === "string"
-              ? stored.selectedVoiceProfileId
-              : "",
-        };
-        setPrefs(loaded);
-        setSavedPrefs(loaded);
-      } catch {
-        // Config fetch failed — keep defaults so the panel still renders.
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-      try {
-        const list = await profilesClient.list();
-        if (!cancelled) setProfiles(list);
-      } catch {
-        // Profiles endpoint unavailable — dropdown stays empty.
-      }
-    })();
+    mountedRef.current = true;
+    void loadConfig();
+    void loadProfiles();
     return () => {
-      cancelled = true;
+      mountedRef.current = false;
     };
-  }, []);
+  }, [loadConfig, loadProfiles]);
 
   // Seed wake-word from the persisted device-local pref.
   useEffect(() => {
@@ -365,6 +391,9 @@ export function VoiceSection() {
   const dirty = ttsDirty || prefsDirty;
 
   const performSave = useCallback(async () => {
+    if (!configLoaded) {
+      throw new Error("Reload voice settings before saving.");
+    }
     if (!ttsDirty && !prefsDirty) return;
     const config = await client.getConfig();
     const messages = (config.messages ?? {}) as Record<string, unknown>;
@@ -380,7 +409,7 @@ export function VoiceSection() {
       mirrorPrefs(prefs);
       setSavedPrefs(prefs);
     }
-  }, [mirrorPrefs, prefs, prefsDirty, ttsDirty, voiceConfig]);
+  }, [configLoaded, mirrorPrefs, prefs, prefsDirty, ttsDirty, voiceConfig]);
 
   const { saving, saveError, saveSuccess, handleSave } = useSettingsSave({
     onSave: performSave,
@@ -391,6 +420,20 @@ export function VoiceSection() {
 
   return (
     <SettingsStack>
+      {configLoadError ? (
+        <SettingsGroup title="Voice settings unavailable">
+          <NuphyActionButton
+            agentId="cloud-voice-config-retry"
+            label={configLoadError}
+            agentLabel="Retry loading voice settings"
+            buttonLabel={configLoading ? "Retrying…" : "Retry"}
+            onActivate={() => void loadConfig()}
+            disabled={configLoading}
+            variant="secondary"
+            size="sm"
+          />
+        </SettingsGroup>
+      ) : null}
       {/* Text-to-Speech */}
       <SettingsGroup
         title={t("settings.voice.ttsGroupTitle", {
@@ -403,6 +446,7 @@ export function VoiceSection() {
           label={t("settings.voice.provider", { defaultValue: "Provider" })}
           value={provider}
           onValueChange={handleProviderChange}
+          disabled={!configLoaded || configLoading}
           options={[
             { value: "elevenlabs", label: "ElevenLabs" },
             { value: "edge", label: "Edge" },
@@ -414,7 +458,7 @@ export function VoiceSection() {
           value={visibleVoicePresetId ?? ""}
           options={voiceOptions}
           onValueChange={handleVoiceSelect}
-          disabled={loading}
+          disabled={!configLoaded || configLoading}
         />
         <NuphyActionButton
           agentId="cloud-voice-tts-test"
@@ -430,7 +474,9 @@ export function VoiceSection() {
             )
           }
           onActivate={voiceTesting ? stopVoicePreview : handlePreviewVoice}
-          disabled={!activeVoicePreset?.previewUrl || loading}
+          disabled={
+            !configLoaded || configLoading || !activeVoicePreset?.previewUrl
+          }
           variant={voiceTesting ? "destructive" : "ghost"}
         />
         <NuphySliderRow
@@ -442,6 +488,7 @@ export function VoiceSection() {
           max={SPEED_MAX}
           step={SPEED_STEP}
           unit="×"
+          disabled={!configLoaded || configLoading}
         />
       </SettingsGroup>
 
@@ -452,6 +499,18 @@ export function VoiceSection() {
         })}
         footer="Configure how Eliza listens and transcribes."
       >
+        {profilesLoadError ? (
+          <NuphyActionButton
+            agentId="cloud-voice-profiles-retry"
+            label={profilesLoadError}
+            agentLabel="Retry loading voice profiles"
+            buttonLabel={profilesLoading ? "Retrying…" : "Retry"}
+            onActivate={() => void loadProfiles()}
+            disabled={profilesLoading}
+            variant="secondary"
+            size="sm"
+          />
+        ) : null}
         <NuphySelectRow
           agentId="cloud-voice-stt-profile"
           label={t("settings.voice.voiceProfile", {
@@ -460,7 +519,12 @@ export function VoiceSection() {
           value={prefs.selectedVoiceProfileId}
           options={profileOptions}
           onValueChange={(id) => updatePrefs({ selectedVoiceProfileId: id })}
-          disabled={profiles.length === 0}
+          disabled={
+            !configLoaded ||
+            configLoading ||
+            profilesLoading ||
+            profiles.length === 0
+          }
         />
         <NuphySwitchRow
           agentId="cloud-voice-vad-autostop"
@@ -468,6 +532,7 @@ export function VoiceSection() {
             defaultValue: "VAD auto-stop",
           })}
           checked={prefs.vadAutoStopEnabled}
+          disabled={!configLoaded || configLoading}
           onCheckedChange={(checked) =>
             updatePrefs({ vadAutoStopEnabled: checked })
           }
@@ -484,6 +549,7 @@ export function VoiceSection() {
             max={SILENCE_MAX_MS}
             step={SILENCE_STEP_MS}
             unit="ms"
+            disabled={!configLoaded || configLoading}
           />
         ) : null}
         <NuphySwitchRow
@@ -500,7 +566,7 @@ export function VoiceSection() {
           placeholder={t("settings.voice.wakeWordPlaceholder", {
             defaultValue: "e.g. Hey Eliza",
           })}
-          disabled={!wakeWordEnabled}
+          disabled={!configLoaded || configLoading || !wakeWordEnabled}
         />
       </SettingsGroup>
 
@@ -517,6 +583,7 @@ export function VoiceSection() {
             defaultValue: "Continuous chat",
           })}
           checked={prefs.continuous !== "off"}
+          disabled={!configLoaded || configLoading}
           onCheckedChange={(checked) =>
             updatePrefs({ continuous: checked ? "vad-gated" : "off" })
           }
@@ -527,6 +594,7 @@ export function VoiceSection() {
             defaultValue: "OS intent auto-start voice",
           })}
           checked={prefs.osIntentAutoStartVoice}
+          disabled={!configLoaded || configLoading}
           onCheckedChange={(checked) =>
             updatePrefs({ osIntentAutoStartVoice: checked })
           }
@@ -537,6 +605,7 @@ export function VoiceSection() {
             defaultValue: "OS intent auto-start transcription",
           })}
           checked={prefs.osIntentAutoStartTranscription}
+          disabled={!configLoaded || configLoading}
           onCheckedChange={(checked) =>
             updatePrefs({ osIntentAutoStartTranscription: checked })
           }

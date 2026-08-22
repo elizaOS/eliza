@@ -238,17 +238,15 @@ export function SettingsView({
   navigatePayload?: unknown;
   navigateSequence?: number;
 } = {}) {
-  // Gate: cloud-only desktop builds render the consolidated CloudSettingsPanel
-  // instead of the legacy registry-driven view. This check lives in a thin
-  // wrapper so each branch has its own hook tree — an early return inside the
-  // legacy body would trigger React error #300 (hooks-count mismatch) when
-  // the boot config or runtime target settles after first render.
-  const runtimeTarget = useAppSelector((s) => s.startupCoordinator.target);
+  // Gate: explicitly cloud-only desktop builds render the consolidated
+  // CloudSettingsPanel instead of the legacy registry-driven view. Managed
+  // Cloud web runtimes still use the legacy view and its Cloud sections. This
+  // check lives in a thin wrapper so each branch has its own hook tree — an
+  // early return inside the legacy body would trigger React error #300
+  // (hooks-count mismatch) if the boot config settles after first render.
   const cloudOnlyBranding = getBootConfig().branding.cloudOnly === true;
-  const managedCloudRuntime =
-    isManagedCloudRuntime(runtimeTarget) || cloudOnlyBranding;
 
-  if (managedCloudRuntime && !inModal) {
+  if (cloudOnlyBranding && !inModal) {
     return <CloudSettingsPanel />;
   }
   return (

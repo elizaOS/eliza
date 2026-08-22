@@ -72,7 +72,7 @@ export function AdvancedSection() {
     }
   }, [setActionNotice]);
 
-  const handleClearCache = useCallback(() => {
+  const handleClearCache = useCallback(async () => {
     if (
       !window.confirm(
         "Clear cache? This removes cached data and temporary files. This cannot be undone.",
@@ -82,12 +82,17 @@ export function AdvancedSection() {
     }
     try {
       if (typeof caches !== "undefined") {
-        void caches.keys().then((keys) => {
-          for (const k of keys) void caches.delete(k);
-        });
+        const keys = await caches.keys();
+        const deleted = await Promise.all(
+          keys.map((key) => caches.delete(key)),
+        );
+        if (deleted.some((result) => !result)) {
+          throw new Error("A cache could not be deleted.");
+        }
       }
       setActionNotice?.("Cache cleared.", "success", 4000);
     } catch {
+      // error-policy:J4 Cache deletion failure is reported as a visible error.
       setActionNotice?.("Could not clear cache.", "error", 4000);
     }
   }, [setActionNotice]);
@@ -161,7 +166,7 @@ export function AdvancedSection() {
           buttonLabel="Clear cache"
           variant="destructive"
           size="sm"
-          onActivate={handleClearCache}
+          onActivate={() => void handleClearCache()}
         />
         <NuphyActionButton
           agentId="cloud-sign-out"
