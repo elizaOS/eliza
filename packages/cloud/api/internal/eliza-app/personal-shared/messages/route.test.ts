@@ -118,7 +118,11 @@ const revokeGroupBinding = mock(async () => false);
 const applyGroupMembershipChange = mock(
   async (): Promise<Record<string, unknown> | null> => null,
 );
-const recordGroupDeliveryReceipts = mock(async () => 0);
+const authorizeGroupDelivery = mock(async () => false);
+const recordGroupDeliveryReceipts = mock(async () => ({
+  recorded: false,
+  inserted: 0,
+}));
 const hasGroupDeliveryReceipt = mock(async () => false);
 const namespace = {
   getByName: mock(() => ({ fetch: mock(async () => new Response()) })),
@@ -177,6 +181,7 @@ mock.module("@/db/repositories/personal-shared-groups", () => ({
     setResponsePolicy: setGroupResponsePolicy,
     revokeBinding: revokeGroupBinding,
     applyMembershipChange: applyGroupMembershipChange,
+    authorizeDelivery: authorizeGroupDelivery,
     recordDeliveryReceipts: recordGroupDeliveryReceipts,
     hasDeliveryReceipt: hasGroupDeliveryReceipt,
   },
@@ -250,6 +255,7 @@ const canonicalGroupBinding = {
   state: "active",
   response_policy: "mention_only",
   created_by_platform_user_id: "123456789",
+  authority_version: 7,
 };
 
 const validGroup = {
@@ -287,10 +293,15 @@ describe("personal Shared messaging deliveries", () => {
     setGroupResponsePolicy.mockClear();
     revokeGroupBinding.mockClear();
     applyGroupMembershipChange.mockClear();
+    authorizeGroupDelivery.mockClear();
     recordGroupDeliveryReceipts.mockClear();
     hasGroupDeliveryReceipt.mockClear();
     applyGroupMembershipChange.mockImplementation(async () => null);
-    recordGroupDeliveryReceipts.mockImplementation(async () => 0);
+    authorizeGroupDelivery.mockImplementation(async () => false);
+    recordGroupDeliveryReceipts.mockImplementation(async () => ({
+      recorded: false,
+      inserted: 0,
+    }));
     hasGroupDeliveryReceipt.mockImplementation(async () => false);
     setGroupResponsePolicy.mockImplementation(
       async () => canonicalGroupBinding,
@@ -967,7 +978,10 @@ describe("personal Shared messaging deliveries", () => {
   });
 
   test("records provider egress receipts without entering inference", async () => {
-    recordGroupDeliveryReceipts.mockImplementationOnce(async () => 1);
+    recordGroupDeliveryReceipts.mockImplementationOnce(async () => ({
+      recorded: true,
+      inserted: 1,
+    }));
     const response = await request({
       eventType: "delivery_receipt",
       platform: "blooio",
@@ -976,12 +990,55 @@ describe("personal Shared messaging deliveries", () => {
       chatId: "chat_group_123",
       sourceMessageId: "blooio:eliza-app:incoming-42",
       providerMessageIds: ["outgoing-42"],
+      authority: {
+        bindingId: canonicalGroupBinding.id,
+        ownerUserId: canonicalGroupBinding.owner_user_id,
+        personalAgentId: canonicalGroupBinding.personal_agent_id,
+        version: canonicalGroupBinding.authority_version,
+      },
     });
 
     await expect(response.json()).resolves.toMatchObject({
-      data: { code: "group_delivery_receipt_recorded", inserted: 1 },
+      data: {
+        code: "group_delivery_receipt_recorded",
+        recorded: true,
+        inserted: 1,
+      },
     });
     expect(recordGroupDeliveryReceipts).toHaveBeenCalledTimes(1);
+    expect(sharedRestMessageSend).not.toHaveBeenCalled();
+  });
+
+  test("revalidates the exact binding generation before provider egress", async () => {
+    authorizeGroupDelivery.mockImplementationOnce(async () => true);
+    const authority = {
+      bindingId: canonicalGroupBinding.id,
+      ownerUserId: canonicalGroupBinding.owner_user_id,
+      personalAgentId: canonicalGroupBinding.personal_agent_id,
+      version: canonicalGroupBinding.authority_version,
+    };
+    const response = await request({
+      eventType: "delivery_authorization",
+      platform: "telegram",
+      project: "eliza-app",
+      connectorAccountId: "telegram:test-bot",
+      chatId: "-100123456789",
+      invocation: "ambient",
+      authority,
+    });
+
+    await expect(response.json()).resolves.toMatchObject({
+      data: { code: "group_delivery_authorization", authorized: true },
+    });
+    expect(authorizeGroupDelivery).toHaveBeenCalledWith({
+      eventType: "delivery_authorization",
+      platform: "telegram",
+      project: "eliza-app",
+      connectorAccountId: "telegram:test-bot",
+      chatId: "-100123456789",
+      invocation: "ambient",
+      authority,
+    });
     expect(sharedRestMessageSend).not.toHaveBeenCalled();
   });
 

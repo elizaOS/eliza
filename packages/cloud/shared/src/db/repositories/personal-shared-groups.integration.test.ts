@@ -2,7 +2,14 @@
  * Exercises Personal Shared group claims and bindings against isolated PGlite,
  * including atomic consumption, tenant-takeover resistance, and safe reclaim.
  */
-import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
+import {
+  afterAll,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  test,
+} from "bun:test";
 
 process.env.DATABASE_URL = "pglite://memory";
 process.env.TEST_DATABASE_URL = "pglite://memory";
@@ -55,17 +62,31 @@ async function consume(codeHash: string, platformUserId: string) {
 }
 
 beforeAll(async () => {
-  ({ closeDatabaseConnectionsForTests, getPgliteClientForTests } = await import("../client"));
-  ({ personalSharedGroupsRepository: repository } = await import("./personal-shared-groups"));
+  ({ closeDatabaseConnectionsForTests, getPgliteClientForTests } = await import(
+    "../client"
+  ));
+  ({ personalSharedGroupsRepository: repository } = await import(
+    "./personal-shared-groups"
+  ));
   const database = getPgliteClientForTests();
   await database.exec(`
     CREATE TABLE organizations (id uuid PRIMARY KEY);
     CREATE TABLE users (id uuid PRIMARY KEY);
   `);
   const migration = await Bun.file(
-    new URL("../migrations/0297_personal_shared_group_bindings.sql", import.meta.url),
+    new URL(
+      "../migrations/0297_personal_shared_group_bindings.sql",
+      import.meta.url,
+    ),
   ).text();
   await database.exec(migration);
+  const authorityMigration = await Bun.file(
+    new URL(
+      "../migrations/0299_personal_shared_group_authority_version.sql",
+      import.meta.url,
+    ),
+  ).text();
+  await database.exec(authorityMigration);
 });
 
 beforeEach(async () => {
@@ -101,7 +122,10 @@ describe("personalSharedGroupsRepository", () => {
       consume("claim-a", "+15551110001"),
       consume("claim-a", "+15551110001"),
     ]);
-    expect(attempts.map(({ status }) => status).sort()).toEqual(["already_used", "bound"]);
+    expect(attempts.map(({ status }) => status).sort()).toEqual([
+      "already_used",
+      "bound",
+    ]);
     const result = attempts.find(({ status }) => status === "bound");
     if (!result || result.status !== "bound") {
       throw new Error("expected a bound claim");
@@ -125,7 +149,9 @@ describe("personalSharedGroupsRepository", () => {
       personalAgentId: "personal:owner-a",
       platformUserId: "+15551110001",
     });
-    expect((await consume("claim-owner-a", "+15551110001")).status).toBe("bound");
+    expect((await consume("claim-owner-a", "+15551110001")).status).toBe(
+      "bound",
+    );
 
     await issue({
       codeHash: "claim-owner-b",
@@ -217,6 +243,12 @@ describe("personalSharedGroupsRepository", () => {
     const bound = await consume("claim-receipts", "+15551110001");
     if (bound.status !== "bound") throw new Error("expected receipt binding");
     const receipt = {
+      authority: {
+        bindingId: bound.binding.id,
+        ownerUserId: bound.binding.owner_user_id,
+        personalAgentId: bound.binding.personal_agent_id,
+        version: bound.binding.authority_version,
+      },
       platform: "blooio" as const,
       project: "eliza-app",
       connectorAccountId: CONNECTOR_ID,
@@ -224,8 +256,14 @@ describe("personalSharedGroupsRepository", () => {
       sourceMessageId: "incoming-1",
       providerMessageIds: ["outgoing-1"],
     };
-    expect(await repository.recordDeliveryReceipts(receipt)).toBe(1);
-    expect(await repository.recordDeliveryReceipts(receipt)).toBe(0);
+    expect(await repository.recordDeliveryReceipts(receipt)).toEqual({
+      recorded: true,
+      inserted: 1,
+    });
+    expect(await repository.recordDeliveryReceipts(receipt)).toEqual({
+      recorded: true,
+      inserted: 0,
+    });
     expect(
       await repository.hasDeliveryReceipt({
         bindingId: bound.binding.id,
@@ -242,6 +280,87 @@ describe("personalSharedGroupsRepository", () => {
         sourceMessageId: "incoming-2",
         providerMessageIds: ["outgoing-2"],
       }),
-    ).toBe(0);
+    ).toEqual({ recorded: false, inserted: 0 });
+  });
+
+  test("invalidates in-flight delivery authority on policy and membership changes", async () => {
+    await issue({
+      codeHash: "claim-authority",
+      organizationId: ORG_A,
+      ownerUserId: USER_A,
+      personalAgentId: "personal:owner-a",
+      platformUserId: "+15551110001",
+    });
+    const bound = await consume("claim-authority", "+15551110001");
+    if (bound.status !== "bound") throw new Error("expected authority binding");
+    const authority = {
+      bindingId: bound.binding.id,
+      ownerUserId: bound.binding.owner_user_id,
+      personalAgentId: bound.binding.personal_agent_id,
+      version: bound.binding.authority_version,
+    };
+    const request = {
+      authority,
+      platform: "blooio" as const,
+      project: "eliza-app",
+      connectorAccountId: CONNECTOR_ID,
+      providerChatId: CHAT_ID,
+      invocation: "ambient" as const,
+    };
+
+    expect(await repository.authorizeDelivery(request)).toBe(false);
+    await repository.setResponsePolicy({
+      bindingId: bound.binding.id,
+      ownerUserId: USER_A,
+      policy: "ambient",
+    });
+    expect(await repository.authorizeDelivery(request)).toBe(false);
+    const refreshed = await repository.resolveBinding({
+      platform: "blooio",
+      project: "eliza-app",
+      connectorAccountId: CONNECTOR_ID,
+      providerChatId: CHAT_ID,
+    });
+    if (!refreshed) throw new Error("expected refreshed authority");
+    const refreshedRequest = {
+      ...request,
+      authority: { ...authority, version: refreshed.authority_version },
+    };
+    expect(await repository.authorizeDelivery(refreshedRequest)).toBe(true);
+    await repository.applyMembershipChange({
+      platform: "blooio",
+      project: "eliza-app",
+      connectorAccountId: CONNECTOR_ID,
+      providerChatId: CHAT_ID,
+      membershipChange: "removed",
+      verifiedAt: NOW,
+    });
+    expect(await repository.authorizeDelivery(refreshedRequest)).toBe(false);
+    await repository.applyMembershipChange({
+      platform: "blooio",
+      project: "eliza-app",
+      connectorAccountId: CONNECTOR_ID,
+      providerChatId: CHAT_ID,
+      membershipChange: "joined",
+      verifiedAt: new Date(NOW.getTime() + 1),
+    });
+    const restored = await repository.resolveBinding({
+      platform: "blooio",
+      project: "eliza-app",
+      connectorAccountId: CONNECTOR_ID,
+      providerChatId: CHAT_ID,
+    });
+    if (!restored) throw new Error("expected restored authority");
+    const restoredRequest = {
+      ...request,
+      invocation: "mention" as const,
+      authority: { ...authority, version: restored.authority_version },
+    };
+    expect(await repository.authorizeDelivery(restoredRequest)).toBe(true);
+    await repository.revokeBinding({
+      bindingId: restored.id,
+      ownerUserId: USER_A,
+    });
+    expect(await repository.authorizeDelivery(restoredRequest)).toBe(false);
   });
 });
