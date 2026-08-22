@@ -659,6 +659,9 @@ const children = [];
 const childNames = new WeakMap();
 // Exact path/PID/launch identity for the LaunchServices fallback we started.
 let launchServicesAppAuthority = null;
+// Covers the complete inspect -> open -> claim sequence. Shutdown awaits this
+// before deciding whether an exact native app needs termination.
+let launchServicesOwnershipPromise = Promise.resolve(null);
 // Same bounded window as dev-ui.mjs (#18435): covers the longest bounded
 // child-side teardown (Discord 10 s drain + 2 s reconcile) with margin.
 const SHUTDOWN_DRAIN_WINDOW_MS = resolveShutdownDrainWindowMs(process.env);
@@ -1092,55 +1095,62 @@ async function launch() {
         return null;
       }
     };
-    const triggerOpen = async (reason) => {
-      if (scheduledOpen) return;
+    const triggerOpen = (reason) => {
+      if (scheduledOpen || shuttingDown) return;
       scheduledOpen = true;
-      const macAppPath = resolveDevMacAppPath();
-      if (!macAppPath) {
-        console.log(
-          "[eliza] LaunchServices auto-open skipped — no .app bundle found in dev build dir",
-        );
-        return;
-      }
-      try {
-        const canonicalAppPath = realpathSync(macAppPath);
-        const baseline = await inspectMacApplicationsAtPath(canonicalAppPath);
-        if (!baseline.ok) {
+      launchServicesOwnershipPromise = (async () => {
+        const macAppPath = resolveDevMacAppPath();
+        if (!macAppPath) {
           console.log(
-            `[eliza] LaunchServices ownership preflight failed: ${baseline.error}`,
+            "[eliza] LaunchServices auto-open skipped — no .app bundle found in dev build dir",
           );
-          return;
+          return null;
         }
-        const opener = pushChild(
-          "launchservices-open",
-          "open",
-          ["-W", canonicalAppPath],
-          electrobunDir,
-        );
-        opener.on("error", (err) => {
-          console.log(
-            `[eliza] LaunchServices auto-open failed: ${err.message}`,
+        try {
+          const canonicalAppPath = realpathSync(macAppPath);
+          const baseline = await inspectMacApplicationsAtPath(canonicalAppPath);
+          if (!baseline.ok) {
+            console.log(
+              `[eliza] LaunchServices ownership preflight failed: ${baseline.error}`,
+            );
+            return null;
+          }
+          // A signal may have arrived during the bounded JXA preflight. Never
+          // create a new native process once supervisor teardown has started.
+          if (shuttingDown) return null;
+          const opener = pushChild(
+            "launchservices-open",
+            "open",
+            ["-W", canonicalAppPath],
+            electrobunDir,
           );
-        });
-        console.log(
-          `[eliza] LaunchServices auto-open (${reason}): open -W ${path.basename(macAppPath)}`,
-        );
-        const claimed = await claimMacApplicationAtPath(
-          canonicalAppPath,
-          baseline.applications,
-        );
-        if (claimed.ok) {
-          launchServicesAppAuthority = claimed.authority;
-        } else {
+          opener.on("error", (err) => {
+            console.log(
+              `[eliza] LaunchServices auto-open failed: ${err.message}`,
+            );
+          });
           console.log(
-            `[eliza] LaunchServices ownership not claimed: ${claimed.error}`,
+            `[eliza] LaunchServices auto-open (${reason}): open -W ${path.basename(macAppPath)}`,
           );
+          const claimed = await claimMacApplicationAtPath(
+            canonicalAppPath,
+            baseline.applications,
+          );
+          if (claimed.ok) {
+            launchServicesAppAuthority = claimed.authority;
+            return claimed.authority;
+          } else {
+            console.log(
+              `[eliza] LaunchServices ownership not claimed: ${claimed.error}`,
+            );
+          }
+        } catch (err) {
+          console.log(
+            `[eliza] LaunchServices auto-open threw: ${err instanceof Error ? err.message : String(err)}`,
+          );
+          return null;
         }
-      } catch (err) {
-        console.log(
-          `[eliza] LaunchServices auto-open threw: ${err instanceof Error ? err.message : String(err)}`,
-        );
-      }
+      })();
     };
 
     // Watch for the screenshot server port — if it comes up on its own, the
@@ -1210,8 +1220,11 @@ function shutdownDesktopDev({
   // the window is escalated (loudly, per child), and a bounded kill grace
   // keeps exit from racing the escalation. Already-exited children are
   // skipped inside the drain, preserving the no-stale-tree-signal behavior.
-  const stopLaunchServicesApp = launchServicesAppAuthority
-    ? stopMacApplication(launchServicesAppAuthority).then((result) => {
+  const stopLaunchServicesApp = launchServicesOwnershipPromise.then(
+    (claimedAuthority) => {
+      const authority = claimedAuthority ?? launchServicesAppAuthority;
+      if (!authority) return;
+      return stopMacApplication(authority).then((result) => {
         for (const attempt of [result.graceful, result.forced]) {
           if (!attempt.ok) {
             console.error(
@@ -1219,8 +1232,9 @@ function shutdownDesktopDev({
             );
           }
         }
-      })
-    : Promise.resolve();
+      });
+    },
+  );
 
   void stopLaunchServicesApp
     .then(() =>

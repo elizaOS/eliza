@@ -370,9 +370,15 @@ describe("dev-platform supervisor wiring", () => {
       "inspectMacApplicationsAtPath(canonicalAppPath)",
     );
     expect(devPlatformSource).toContain("claimMacApplicationAtPath(");
+    expect(devPlatformSource).toContain("stopMacApplication(authority)");
     expect(devPlatformSource).toContain(
-      "stopMacApplication(launchServicesAppAuthority)",
+      "launchServicesOwnershipPromise = (async () =>",
     );
+    expect(devPlatformSource).toContain("launchServicesOwnershipPromise.then(");
+    expect(devPlatformSource).toContain(
+      "if (scheduledOpen || shuttingDown) return;",
+    );
+    expect(devPlatformSource).toContain("if (shuttingDown) return null;");
     expect(devPlatformSource).not.toContain("opener.unref()");
   });
 
