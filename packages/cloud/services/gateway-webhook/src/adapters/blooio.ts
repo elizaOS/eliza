@@ -5,10 +5,28 @@
 import crypto from "node:crypto";
 import { z } from "zod";
 import { logger } from "../logger";
+import { boundedGatewayFetch } from "./bounded-fetch";
 import type { ChatEvent, PlatformAdapter, WebhookConfig } from "./types";
 
 const BLOOIO_V2_API_BASE = "https://api.blooio.com/v2/api";
 const BLOOIO_V4_MESSAGES_URL = "https://api.blooio.com/v4/messages";
+
+export const BLOOIO_GATEWAY_REQUEST_TIMEOUT_MS = 30_000;
+const BLOOIO_GATEWAY_RESPONSE_MAX_BYTES = 64 * 1024;
+
+export function blooioGatewayFetch(
+  input: RequestInfo | URL,
+  init?: RequestInit,
+  timeoutMs: number = BLOOIO_GATEWAY_REQUEST_TIMEOUT_MS,
+): Promise<Response> {
+  return boundedGatewayFetch(
+    fetch,
+    input,
+    init,
+    timeoutMs,
+    BLOOIO_GATEWAY_RESPONSE_MAX_BYTES,
+  );
+}
 
 export class BlooioApiResponseError extends Error {
   constructor(
@@ -159,7 +177,7 @@ async function sendBlooioMessage(
   };
   if (from) body.from = from;
 
-  const response = await fetch(BLOOIO_V4_MESSAGES_URL, {
+  const response = await blooioGatewayFetch(BLOOIO_V4_MESSAGES_URL, {
     method: "POST",
     headers,
     body: JSON.stringify(body),
@@ -375,7 +393,7 @@ export const blooioAdapter: PlatformAdapter = {
       };
       if (config.fromNumber) headers["X-From-Number"] = config.fromNumber;
 
-      await fetch(url, { method: "POST", headers });
+      await blooioGatewayFetch(url, { method: "POST", headers });
     } catch (error) {
       // error-policy:J4 typing is a non-critical UX affordance; a failed
       // indicator is observable but must not fail message delivery.

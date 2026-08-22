@@ -7,9 +7,27 @@ import {
   resolveTwilioSmsCostPerSegment,
 } from "../billing";
 import { logger } from "../logger";
+import { boundedGatewayFetch } from "./bounded-fetch";
 import type { ChatEvent, PlatformAdapter, WebhookConfig } from "./types";
 
 const TWILIO_API_BASE = "https://api.twilio.com/2010-04-01";
+
+export const TWILIO_GATEWAY_REQUEST_TIMEOUT_MS = 30_000;
+const TWILIO_GATEWAY_RESPONSE_MAX_BYTES = 64 * 1024;
+
+export function twilioGatewayFetch(
+  input: RequestInfo | URL,
+  init?: RequestInit,
+  timeoutMs: number = TWILIO_GATEWAY_REQUEST_TIMEOUT_MS,
+): Promise<Response> {
+  return boundedGatewayFetch(
+    fetch,
+    input,
+    init,
+    timeoutMs,
+    TWILIO_GATEWAY_RESPONSE_MAX_BYTES,
+  );
+}
 
 function resolveSmsCostPerSegment(): number {
   const raw = process.env.TWILIO_SMS_COST_PER_SEGMENT_USD;
@@ -233,7 +251,7 @@ export const twilioAdapter: PlatformAdapter = {
       Body: text,
     });
 
-    const response = await fetch(url, {
+    const response = await twilioGatewayFetch(url, {
       method: "POST",
       headers: {
         Authorization: `Basic ${auth}`,
